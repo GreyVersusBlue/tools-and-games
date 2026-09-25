@@ -58,7 +58,6 @@ const CURB = '#d6d4c8';
 const SIDEWALK_W = 2.6;                         // metres of pavement outside the curb
 const ROOFS = ['#8f8b84', '#a27453', '#707b88', '#9d968a', '#7d6f63', '#b3aca0'];
 const GLOW = { red: '255,59,48', yellow: '255,194,31', green: '46,224,107' };
-const DUSK_LEVELS = new Set(['rush-hour']);     // which levels are played at dusk
 // multiply: over the whole ground; over: the same light laid on each car's own pixels
 const TINT = { dusk: { multiply: '#e0b49e', over: 'rgba(110,60,45,0.22)' }, night: { multiply: '#3a4266', over: 'rgba(14,18,40,0.62)' } };
 const WALKER_TINTS = ['#f2d16b', '#e8734a', '#7fc8f8', '#c9a0ff', '#9fe37a', '#f7f7f7'];
@@ -197,9 +196,9 @@ export class Renderer {
 
   reset() { this.effects = []; this.crashMarks = []; this.banners = []; this.preview = null; this.staticWorld = null; }
 
-  // The light a world is drawn in: night while the power is out, dusk on a
-  // dusk level, day otherwise.
-  lightFor(world) { return world.powerOut ? 'night' : world.level && DUSK_LEVELS.has(world.level.id) ? 'dusk' : 'day'; }
+  // The light a world is drawn in: night while the power is out, else the
+  // level's own `light` ('dusk' on Rush Hour, R5), day when it has none.
+  lightFor(world) { return world.powerOut ? 'night' : world.level && world.level.light === 'dusk' ? 'dusk' : 'day'; }
 
   // The layer nothing moves on, drawn at device resolution for the camera
   // as it is, and kept until the camera or the world changes.

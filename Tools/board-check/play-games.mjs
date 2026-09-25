@@ -2031,6 +2031,48 @@ const SUITES = {
     t.ok(delivered.left === null, 'and the courier key is cleared, so a refresh does not load it twice');
     await t.shot('workbench-handoff');
   },
+
+  // ---- Signal City ----------------------------------------------------------
+  // First Light, played the way the level's hint says: press 2, a real key on
+  // the plain page (no `?debug`), and let it run 20 s at 1x. input.js turns
+  // the key into a phase request and main.js writes what changed the signal
+  // into the Signal line, then the level runs on until a car has cleared.
+  // Every beat is read off the DOM (#39). Pointing the
+  // key at a phase that does not exist (input.js keyPhase, `n + 8` for
+  // `n - 1`) is refused without a word, so the Signal line is what catches
+  // it: it stays on "The level's opening phase". Nothing here is a movement
+  // assertion (#53): the clock and the count are the page's own.
+  'signal-city': async (p, t) => {
+    const read = () => p.evaluate(() => ({
+      cause: document.getElementById('cause').textContent.trim(),
+      stage: document.getElementById('stage').textContent.trim(),
+      cleared: document.getElementById('cleared').textContent.trim(),
+      clock: document.getElementById('clock').textContent.trim(),
+      speed: document.getElementById('speedBtn').textContent.trim(),
+      level: document.getElementById('levelName').textContent.trim(),
+    }));
+    const secs = c => { const [m, s] = c.split(':').map(Number); return m * 60 + s; };
+    const start = await read();
+    t.ok(/First Light/.test(start.level) && start.speed === '1x',
+      'the First Light card starts First Light, at 1x', `${start.level}; ${start.speed}`);
+    await p.keyboard.press('2');
+    await wait(20000);
+    const end = await read();
+    t.ok(end.cause === 'Changed by you',
+      'pressing 2 changes the signal, and the Signal line says who did', `"${end.cause}" (${end.stage})`);
+    const ran = secs(start.clock) - secs(end.clock);
+    t.ok(end.speed === '1x' && ran >= 15 && ran <= 24,
+      'the clock ran about 20 s in 20 s: 1x, and nothing paused it', `${start.clock} -> ${end.clock}, ${ran} s`);
+    await t.shot('first-light-20s');
+    // A car counts as cleared when it leaves the far end of the map, 110 m
+    // past the box, and with 2 pressed at the start the first one does that
+    // 20.9 to 48.3 s in over forty seeds: never by 20 s. So the count is
+    // read once the level's clock passes a car's trip, 45 s more at most (#649).
+    const firstOut = await waitFor(p, () => /^[1-9]/.test(document.getElementById('cleared').textContent.trim()),
+      { timeout: 45000 }).then(() => true, () => false);
+    const late = await read();
+    t.ok(firstOut, 'and cars clear the box, inside the first 65 s', `${late.cleared} at ${late.clock}`);
+  },
 };
 
 /**

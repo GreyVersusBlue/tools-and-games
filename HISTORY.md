@@ -1177,6 +1177,10 @@ Generator.
 
 **#648. Endless starts on the district's third day with no events, and its rule is N = 0: the reference hand lasts at least as long as no input on five seeds of six.** The hand's phase choice does not raise a district's capacity, which is where the target climbs to, so it outlasts no input only where the 20 s rule locks early (seed 5, by four days), and N = 1 holds on two seeds of six at most, on either ramp. Day 3's district cuts two idle days and moves nothing else; an event a day from day 4 is off because a surge box-blocked the hand on day 4 of seeds 4 and 5, so events punished playing. Five seeds, not the row's four, because with events on the hand holds on exactly four. Reversible in `endless.js RAMP`; the tables are R4's log. *Signal City, R4.*
 
+**#649. The board's Signal City recipe reads the cleared count once a car has cleared, up to 65 s in, not at 20 s.** A car counts when it leaves the far end of the map, 110 m past the box, and with 2 pressed at the start of First Light the first one does that 20.9 to 48.3 s in over forty seeds, so R5's "cleared above zero at 20 s" could not pass. The Signal line and the clock are still read at 20 s. *Signal City, R5.*
+
+**#650. Signal City's preview is captured on Windows with a GPU, and it is Rush Hour at dusk.** R5 said to capture on Linux; a 2D canvas draws the same under SwiftShader and a GPU, and the recipe asserts the level, the light and the surge before it shoots, so where it ran does not change the frame. The district of six it also shoots was turned down: its cars are a few pixels each at 330 px. *Signal City, R5.*
+
 ---
 
 # The log

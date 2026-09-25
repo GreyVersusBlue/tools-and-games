@@ -427,6 +427,52 @@ const RECIPES = {
       return `Deep Field, aim drawn, plan outcome ${outcome}`;
     },
   },
+
+  // ---- Signal City: Rush Hour at dusk, mid-surge (R5). games.mjs's open()
+  // plays First Light, the one card a fresh save opens; `?debug` hands the
+  // page to the World so the recipe can start Rush Hour on seed 7 and step it
+  // into the surge's queues, which run from 60 s to the outage at 110. The
+  // page draws the stepped world, then runs on at 1x for the motion check.
+  'signal-city': {
+    query: '?debug',
+    async play(p, { shot }) {
+      await p.evaluate(() => {
+        const sc = window.__signalCity;
+        sc.game.start('rush-hour', 7);
+        sc.game.paused = true;
+        sc.step(60 * 95);
+        sc.game.paused = false;
+      });
+      await wait(600);
+      const at = await p.evaluate(() => ({
+        level: window.__signalCity.world.level.id,
+        light: document.getElementById('boardWrap').dataset.light,
+        scale: window.__signalCity.world.demandScale(),
+        cars: window.__signalCity.world.cars.filter(c => !c.done).length,
+        t: window.__signalCity.world.t,
+      }));
+      if (at.level !== 'rush-hour' || at.light !== 'dusk' || !(at.scale > 1.5))
+        throw new Error(`wanted Rush Hour at dusk mid-surge, got ${JSON.stringify(at)}`);
+      await shot('rush-hour-dusk');
+      // the row's other frame: Free Play's district of six on city 7
+      await p.evaluate(() => {
+        const g = window.__signalCity.game;
+        g.district = { boxes: 6, seed: 7 };
+        g.start('free-play', 7);
+        g.paused = true;
+        window.__signalCity.step(60 * 90);
+        g.paused = false;
+      });
+      await wait(600);
+      const d = await p.evaluate(() => ({
+        boxes: window.__signalCity.world.nodes.length,
+        cars: window.__signalCity.world.cars.filter(c => !c.done).length,
+      }));
+      if (d.boxes !== 6) throw new Error(`wanted a district of six, got ${d.boxes} boxes`);
+      await shot('district-six');
+      return `Rush Hour at ${at.t.toFixed(0)} s, ${at.light}, traffic x${at.scale}, ${at.cars} cars; a district of ${d.boxes}, ${d.cars} cars`;
+    },
+  },
 };
 
 /* ------------------------------------------------------------------- run ---- */
