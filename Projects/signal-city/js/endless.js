@@ -8,14 +8,14 @@
 // `GROWTH` more per day than on day one.
 //
 // A day's target climbs 8 cars a day and never stops (#609), from 36: a
-// run starts on the district's third day (R4, #642, the ramp below). A
+// run starts on the district's third day (R4, #648, the ramp below). A
 // district tops out: past five boxes it clears 50 to 130 cars in a day
 // whatever its demand and whatever its cycle, because a queue backed up to
 // the edge stops cars entering, and at three times day one's traffic (day
 // 21) no hands-off run locked. So the growing traffic alone cannot end a
 // run; the climbing target does, at the district's capacity. With a 20 s
 // rule at every box on seeds 1 to 6 a run first misses on day 10, 10, 6,
-// 8, 2 and 8, and the reference hand's on 9, 10, 6, 8, 6 and 9 (#642).
+// 8, 2 and 8, and the reference hand's on 9, 10, 6, 8, 6 and 9 (#648).
 // Pushing more through than the default would buy a day; choosing phases
 // box by box, as the reference hand does, does not. What ends a
 // run is the day's own verdict (scoring.js score): the grid locked, or the
@@ -31,7 +31,7 @@ export const GROWTH = 0.1;        // demand per day, over day one's
 export const TARGET = { first: 20, perDay: 8 };
 export const WAIT_TARGET = 20;    // seconds, for the day's stars and so its points
 
-// The ramp (R4, #642). A run starts on the district's day `start`, not its
+// The ramp (R4, #648). A run starts on the district's day `start`, not its
 // first: the box count, the traffic and the target of day n are the
 // district's day n + start - 1, so day one is three boxes and 36 cars and
 // the target still climbs 8 a day. From day `events` of the run every day

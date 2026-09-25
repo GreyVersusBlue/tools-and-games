@@ -3,7 +3,7 @@
 // Endless (M9, second increment): the days a run is made of (js/endless.js),
 // what carries overnight, what ends a run, the card's lock, and the record
 // in the save (`endless`, added through repair; signal_city_v1 unchanged).
-// R4 (#642) adds the ramp's rule: the reference hand (tools/calibrate.mjs
+// R4 (#648) adds the ramp's rule: the reference hand (tools/calibrate.mjs
 // handStep, imported, not copied) lasts at least as long as no input on
 // four seeds of six. Each seed's run is a child process of this file, as
 // many at once as there are cores (`--jobs=N` for fewer). Site CI plays
@@ -74,7 +74,7 @@ group('the days: one city, three boxes on day one, a box more each day, then mor
     if (got.join(' ') !== want.join(' ')) { same = false; bad = `seed ${seed} day ${day}: ${got.join(' ')} against ${want.join(' ')}`; break; }
   }
   ok(same, 'on six seeds, day n is growCells(seed, n + 2) box for box, and past twelve the full district', bad);
-  // the ramp starts on the district's third day (R4, #642)
+  // the ramp starts on the district's third day (R4, #648)
   ok(dayLevel(4, 1).network.cells.length === 3 && layout(dayLevel(4, 1, M9_RAMP).network.cells).join() === layout(growCells(4, 1)).join(), 'day one is three boxes; M9\'s ramp, which the calibration still plays, was one', `${dayLevel(4, 1).network.cells.length} and ${dayLevel(4, 1, M9_RAMP).network.cells.length}`);
 
   // yesterday's boxes stand where they stood, with their legs and rings
@@ -115,7 +115,7 @@ group('the days: one city, three boxes on day one, a box more each day, then mor
 group('the calibration: a hands-off city clears the early days and not the full district');
 
 {
-  // a 20 s rule at every box, the grid's own; #642's log has the full
+  // a 20 s rule at every box, the grid's own; #648's log has the full
   // table on the ramp as it ships. This samples it.
   const rows = [];
   let all = true;
@@ -131,14 +131,14 @@ group('the calibration: a hands-off city clears the early days and not the full 
 
 /* ------------------------------------------------ the hand against no input -- */
 
-group('the hand against no input (R4, #642): playing does not cost a run its days');
+group('the hand against no input (R4, #648): playing does not cost a run its days');
 
 {
-  // #642: N = 0. The hand's phase choice does not raise a district's
+  // #648: N = 0. The hand's phase choice does not raise a district's
   // capacity, which the target climbs to, so it ties no input on most
   // seeds; what the rule holds is that the ramp does not punish playing.
   // Five seeds, not the row's four: with an event a day from day 4
-  // (EVENTS_RAMP, the lever #642 turned down) the hand falls short on
+  // (EVENTS_RAMP, the lever #648 turned down) the hand falls short on
   // seeds 2 and 4 and holds on exactly four, so at four this line passed
   // the ramp the calibration rejects. As it ships: six of six here, five
   // of six to the end (seed 1, 9 against 10).

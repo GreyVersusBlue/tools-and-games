@@ -34,7 +34,7 @@
 // a seed stops at its first miss, since a run ends there. `--m9` plays
 // the ramp as M9 shipped it (day one a single box) and `--events` the
 // shipped ramp with R4's rejected second lever, an event a day from day
-// 4, instead of the ramp as it ships (endless.js RAMP). #642 has the tables.
+// 4, instead of the ramp as it ships (endless.js RAMP). #648 has the tables.
 // `--baseline` (R1) plays every level exactly as it ships with no input,
 // and `--hand` plays it with the reference hand (handStep below), or with
 // `--hand=phases,platoons,corridor,walks,offset` only the parts named; both at

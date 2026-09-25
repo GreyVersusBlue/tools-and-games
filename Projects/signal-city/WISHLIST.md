@@ -349,7 +349,7 @@ on the shipped Rush Hour (the run ends with the "does not forgive one"
 reason) and on the shipped Main Street (it goes on), and `test/browser.mjs`
 checks that only Rush Hour's card says "one collision ends it".
 
-### R4. Endless: measure the hand, then fix the ramp: done (HISTORY.md #642)
+### R4. Endless: measure the hand, then fix the ramp: done (HISTORY.md #648)
 
 The hand does not fix endless, and the ramp cannot make it. Run through
 `--endless`, R1's hand first misses on day 11, 12, 10, 11, 6, 10 against

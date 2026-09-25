@@ -205,7 +205,7 @@ jobs:
           # world through the ?debug hook and lets rAF only draw, so nothing in
           # it is timed and #53 does not reach it. stars.mjs (R2) plays every
           # starred level six seeds with no input, a child process a level,
-          # about two minutes on four cores. endless.mjs (R4, #642) plays six
+          # about two minutes on four cores. endless.mjs (R4, #648) plays six
           # cities' first six days with no input and then with the reference
           # hand, a child process a run: about eight minutes on three cores,
           # so this entry gets 30 minutes rather than the 20 the others get.

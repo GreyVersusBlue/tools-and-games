@@ -962,7 +962,7 @@ try {
       name: document.getElementById('levelName').textContent, nodes: window.__signalCity.world.nodes.length, run: window.__signalCity.run,
       cleared: document.getElementById('cleared').textContent, tab: document.getElementById('panel').dataset.tab, nodeBar: !document.getElementById('nodes').classList.contains('hidden'),
     }));
-    ok(d1.name === 'Endless, day 1' && d1.nodes === 3 && d1.run.seed === 7 && d1.run.day === 1, 'the card starts day 1: three boxes (R4, #642), on the city the debug seed rolls', `${d1.name}, ${d1.nodes} boxes, seed ${d1.run.seed}`);
+    ok(d1.name === 'Endless, day 1' && d1.nodes === 3 && d1.run.seed === 7 && d1.run.day === 1, 'the card starts day 1: three boxes (R4, #648), on the city the debug seed rolls', `${d1.name}, ${d1.nodes} boxes, seed ${d1.run.seed}`);
     ok(d1.cleared === '0 / 36' && d1.tab === 'rules', 'the HUD asks for the day\'s 36, and the panel opens on the rules', `${d1.cleared}, ${d1.tab}`);
     // something the player set on box 1, to see it again tomorrow
     await page.evaluate(() => { window.__signalCity.game.setTiming({ allRed: 2.5 }); });
