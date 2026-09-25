@@ -962,8 +962,8 @@ try {
       name: document.getElementById('levelName').textContent, nodes: window.__signalCity.world.nodes.length, run: window.__signalCity.run,
       cleared: document.getElementById('cleared').textContent, tab: document.getElementById('panel').dataset.tab, nodeBar: !document.getElementById('nodes').classList.contains('hidden'),
     }));
-    ok(d1.name === 'Endless, day 1' && d1.nodes === 1 && d1.run.seed === 7 && d1.run.day === 1, 'the card starts day 1: one box, on the city the debug seed rolls', `${d1.name}, ${d1.nodes} box, seed ${d1.run.seed}`);
-    ok(d1.cleared === '0 / 20' && d1.tab === 'rules', 'the HUD asks for the day\'s 20, and the panel opens on the rules', `${d1.cleared}, ${d1.tab}`);
+    ok(d1.name === 'Endless, day 1' && d1.nodes === 3 && d1.run.seed === 7 && d1.run.day === 1, 'the card starts day 1: three boxes (R4, #642), on the city the debug seed rolls', `${d1.name}, ${d1.nodes} boxes, seed ${d1.run.seed}`);
+    ok(d1.cleared === '0 / 36' && d1.tab === 'rules', 'the HUD asks for the day\'s 36, and the panel opens on the rules', `${d1.cleared}, ${d1.tab}`);
     // something the player set on box 1, to see it again tomorrow
     await page.evaluate(() => { window.__signalCity.game.setTiming({ allRed: 2.5 }); });
     for (let i = 0; i < 9; i++) await page.evaluate(n => window.__signalCity.step(n), 60 * 20);
@@ -980,17 +980,17 @@ try {
     ok(e1.run === `1 day · ${e1.result.points} points` && /^1 day · \d+ points · new$/.test(e1.best) && e1.city === '7', 'the card reads the run, the city it is on and the new best', `${e1.run}; city ${e1.city}; ${e1.best}`);
     ok(e1.saved.days === 1 && e1.saved.points === e1.result.points && e1.saved.runs === 1 && e1.saved.seed === 7 && !e1.levels.includes('endless'), 'and the save under signal_city_v1 holds the best under endless, not among the levels', JSON.stringify(e1.saved));
     await page.click('#retryBtn');
-    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 2, { timeout: 5000 });
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 4, { timeout: 5000 });
     await page.evaluate(() => { window.__signalCity.game.paused = true; });
     const d2 = await page.evaluate(() => ({
       name: document.getElementById('levelName').textContent, run: window.__signalCity.run, cleared: document.getElementById('cleared').textContent,
       allRed: window.__signalCity.world.controllers.map(c => c.timing.allRed), slider: document.getElementById('allRedVal').textContent,
       buttons: [...document.querySelectorAll('#nodes .node')].map(b => b.textContent).join(), t: window.__signalCity.world.t,
     }));
-    ok(d2.name === 'Endless, day 2' && d2.run.day === 2 && d2.run.days === 1 && d2.cleared === '0 / 28' && d2.buttons === 'Box 1,Box 2', 'Next day builds day 2: two boxes, a target of 28, the run one day in', `${d2.name}, ${d2.cleared}, ${d2.buttons}`);
+    ok(d2.name === 'Endless, day 2' && d2.run.day === 2 && d2.run.days === 1 && d2.cleared === '0 / 44' && d2.buttons === 'Box 1,Box 2,Box 3,Box 4', 'Next day builds day 2: four boxes, a target of 44, the run one day in', `${d2.name}, ${d2.cleared}, ${d2.buttons}`);
     // a fresh World: yesterday's ended at 180 s. Not 0: the page runs a
     // frame or two between the click and the pause above.
-    ok(d2.allRed.join() === '2.5,1' && d2.slider === '2.5 s' && d2.t < 1, 'box 1 kept its 2.5 s all-red overnight into a fresh day, the new box has the default, and the slider shows box 1\'s', `${d2.allRed.join(', ')}; ${d2.slider}; ${d2.t.toFixed(2)} s in`);
+    ok(d2.allRed.join() === '2.5,1,1,1' && d2.slider === '2.5 s' && d2.t < 1, 'box 1 kept its 2.5 s all-red overnight into a fresh day, the other boxes and the new one have the default, and the slider shows box 1\'s', `${d2.allRed.join(', ')}; ${d2.slider}; ${d2.t.toFixed(2)} s in`);
     // the grid locks: the run is over, and the best stays
     await page.evaluate(() => { window.__signalCity.step(60); window.__signalCity.world.stats.gridlock = true; window.__signalCity.game.paused = false; });
     await waitFor(page, () => document.getElementById('endScrim').classList.contains('show'), { timeout: 15000 });
@@ -1002,7 +1002,7 @@ try {
     ok(e2.title === 'The run is over.' && /the grid locked/.test(e2.why) && e2.button === 'Again', 'a locked grid ends the run: "The run is over.", the reason, and Again', `${e2.title} ${e2.why}`);
     ok(/^1 day · /.test(e2.run) && !/new/.test(e2.best) && e2.saved.days === 1 && e2.saved.runs === 1, 'the run stands at the one day it survived, and the best is unchanged', `${e2.run}; ${e2.best}; ${JSON.stringify(e2.saved)}`);
     await page.click('#retryBtn');
-    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 1, { timeout: 5000 });
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 3, { timeout: 5000 });
     const d3 = await page.evaluate(() => ({ run: window.__signalCity.run, name: document.getElementById('levelName').textContent, allRed: window.__signalCity.world.controllers[0].timing.allRed }));
     ok(d3.run.seed === 7 && d3.run.day === 1 && d3.run.days === 0 && d3.name === 'Endless, day 1' && d3.allRed === 1, 'Again starts the same city over from day 1, with nothing carried', JSON.stringify(d3.run));
     // what a reload has to survive: the best on the card (#39)
