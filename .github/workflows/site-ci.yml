@@ -171,8 +171,10 @@ jobs:
 
           - name: Blue Hour
             dir: Projects/blue-hour-trail
+            install: Tools/board-check
             commands: |
               node test/smoke.mjs
+              node test/gltf-loader.mjs
 
           - name: Golden Hour
             dir: Projects/golden-hour-beach
