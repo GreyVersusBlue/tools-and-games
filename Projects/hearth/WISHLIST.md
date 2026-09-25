@@ -1118,6 +1118,31 @@ completely unautomated, and the only test this project has.
 `Tools/board-check/`. *Save:* none. *Model:* **Claude Opus 5** — CI wiring
 against an existing suite and an existing workflow to copy.
 
+## Blender assets (ranks 37 to 39, from 2026-09-25)
+
+Blender-made assets rank above everything else (HISTORY.md #642). The shared
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
+without `blender` on PATH skips it and takes the next row.
+
+**B1. The sprite pipeline (rank 37, ¼, Opus 5.5, gate `blender`).** Hearth's
+own copy of Signal City's sprite renderer (#643), straight down at the map's
+tile size (`T`, 8 px, in `js/core.js`), with frames at a whole multiple of it
+so nothing is resampled. The palette comes off `js/render.js`. Hearth's
+scripts are classic, not modules, and share one scope in a load order that
+matters, so the sheet's atlas loads as data, not as an import. The validator
+joins `.github/workflows/hearth-ci.yml`.
+
+**B2. The building sheet (rank 38, ½, Opus 5.5, gate `blender`).** The eight
+kinds in `BLD` (hut, well, market, mill, smoke, bridge, hall, light) and the
+houses. **The faces stay procedural** (#646): every face is pixel-identical to
+the one its seed drew before, and `drawFace` consumes its first draw either way
+to keep it so.
+
+**B3. Wiring the sheet (rank 39, ¼, Opus 5.5, no gate, after rank 38).**
+`draw()` draws frames where it draws buildings. `harness.mjs determinism`,
+`save`, `soak` and `pinned` stay green; none of them should move, because the
+sim never reads a picture.
+
 ## What this leaves for a later arc
 
 - **A second island that actually simulates.** Phase 5 keeps the far island a

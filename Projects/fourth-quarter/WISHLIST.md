@@ -942,6 +942,54 @@ apply pressure, and the events to be able to sink you.
 under "What this leaves for a later arc" below is still open, and this project
 has no ranked phases left.
 
+## Blender assets (ranks 13 to 16, from 2026-09-25)
+
+Blender-made assets rank above everything else (HISTORY.md #642). The plan
+every Blender row shares, including where Blender runs and what `common.py`,
+`budget.json` and `validate.mjs` are, is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan).
+A row gated `blender` needs Devon's Windows machine; a session without
+`blender` on PATH skips it and takes the next row.
+
+**B1. The pipeline (rank 13, ¼, Opus 5.5, gate `blender`).** The Fourth
+Quarter's own copy of `tools/blender/` (#643), beside `tools/browser-check.mjs`
+and `tools/measure-load.mjs`. The validator joins
+`.github/workflows/fourth-quarter-ci.yml`. The style sheet decides first:
+
+- **Scale:** each piece fits the box the description gives it. Colliders are
+  derived from the description's numbers and nothing is measured off a mesh
+  (`js/world.js`, the fit-out block), so a model is cosmetic and is scaled to
+  `f.w`, `f.h`, `f.d` at load. The bar counter's length is `desc.bar.len`,
+  so it is two end pieces and a middle piece that repeats or stretches.
+- **Materials:** a model's material names match the keys `mat()` in
+  `js/materials.js` knows (`barTop`, `wallPlaster` and the rest), and the game
+  puts its own tiered material on by name at load. Textures stay one set,
+  written by the `fourth-quarter-textures` recipe (#622), and a model carries
+  none. What `flat(0x...)` colours today becomes vertex colour.
+- **Triangles:** fixture 1,500 (stove, prep, crate, stool, table), counter
+  piece 800, bottle 150, frame and board 300.
+
+**B2. The GLTFLoader (rank 14, ¼, Opus 5.5, no gate).** Copy
+`Projects/bell-to-bell/libs/addons/loaders/GLTFLoader.js` and
+`libs/addons/utils/BufferGeometryUtils.js` into this project's `libs/addons/`
+(#18's layout), and check both byte for byte against three@0.160.0's own in
+`Tools/board-check/three-0.160.0/` after `npm install` there (#19). A loader
+test in `test/` in the shape of Golden Hour's B2 (BACKLOG.md), in this
+project's workflow.
+
+**B3. The bar pack (rank 15, ½, Opus 5.5, gate `blender`).** The fit-out and
+furniture `js/world.js` builds from `BoxGeometry`: stove, prep and crate by
+kind, the counter and its kick, the back-bar shelf and bottles, the kitchen
+shelf, the cork board and its frame, the TV's frame, the door frame and the
+window sill. **Not** the walls, wall segments, deck lips, panels, rails,
+posts, steps, beams and lintels: they are built from the layout, and the room
+is a description (Phase 1, HISTORY.md #646).
+
+**B4. Wiring the bar (rank 16, ½, Opus 5.5, no gate, after rank 15).** Every
+piece loads before `world.js` builds the room; a missing file fails a suite
+line. The smoke suites stay green, and `tools/browser-check.mjs` and
+`npm run games fourth-quarter` from `Tools/board-check` are run and named in
+the PR body. `pickTier()` still chooses the textures.
+
 ## What this leaves for a later arc
 
 - **Distributors, bulk pricing and par levels.** The 2D build's sprint 9 —
