@@ -1,0 +1,58 @@
+{
+  "about": "Golden Hour's Blender style sheet as data (BACKLOG.md 'Golden Hour: Blender assets' B1). validate.mjs reads it. Bytes are KiB x 1024. extent is the longest side a class may have, in metres; each item's box is the builder's box it replaces, held to 10% per axis. texture is the largest image side in pixels, and 0 means none.",
+  "loader": "libs/addons/loaders/GLTFLoader.js",
+  "needsDecoder": [
+    "KHR_draco_mesh_compression",
+    "EXT_meshopt_compression",
+    "KHR_meshopt_compression",
+    "KHR_texture_basisu"
+  ],
+  "palette": {
+    "gull": "f2ebe0",
+    "dolphin": "3d4a52",
+    "crab": "cabc9d",
+    "heron": "7d8894",
+    "bill": "c9a04a",
+    "cormorant": "232a2e",
+    "cormorant-wing": "2c3438",
+    "owl": "9a8a74",
+    "snag": "4a4038",
+    "bat": "1a1418",
+    "pelican": "8a7d6c",
+    "pelican-wing": "6e6355",
+    "sanderling": "d8d2c4",
+    "seal": "6e6258",
+    "wrack-shell": "e8d8c2",
+    "wrack-pebble": "7d6a58",
+    "wrack-weed": "4a4630",
+    "wood": "6a5747",
+    "stone": "4b4550",
+    "pier-wood": "584a3c",
+    "pier-old-wood": "453a30",
+    "shell": "d9c9ae",
+    "whelk": "b9a284",
+    "sand-dollar": "cfc4ab",
+    "sand-dollar-rosette": "786950",
+    "sea-glass-green": "3d7a52",
+    "sea-glass-blue": "5577aa",
+    "sea-glass-amber": "a87b3a",
+    "skimming-stone": "6a655e",
+    "sandcastle": "b59a72"
+  },
+  "classes": {
+    "animal-large": { "triangles": 3000, "bytes": 256000, "extent": 6.0, "texture": 0, "clips": true },
+    "animal-small": { "triangles": 1500, "bytes": 153600, "extent": 3.6, "texture": 0, "clips": true },
+    "flock":        { "triangles": 300,  "bytes": 20480,  "extent": 1.0, "texture": 0, "clips": false },
+    "prop-large":   { "triangles": 4000, "bytes": 204800, "extent": 60.0, "texture": 0, "clips": false },
+    "prop":         { "triangles": 1200, "bytes": 81920,  "extent": 6.0, "texture": 0, "clips": false },
+    "scatter":      { "triangles": 150,  "bytes": 10240,  "extent": 0.5, "texture": 0, "clips": false }
+  },
+  "items": {
+    "gull": {
+      "file": "assets/models/animals/gull.glb",
+      "class": "animal-small",
+      "box": [3.2, 0.352, 0.7],
+      "clips": ["fly"]
+    }
+  }
+}

@@ -1183,6 +1183,14 @@ Generator.
 
 **#651. A vendored r185 GLTFLoader carries both utils it imports, unmodified.** The plan said one util, `BufferGeometryUtils.js`; line 69 of r185's `GLTFLoader.js` also imports `clone` from `../utils/SkeletonUtils.js` (used when a node sits in several scenes), and without it the loader does not import at all. Patching the import out would make the vendored file differ from upstream on every future bump, so every project's GLTFLoader row takes `SkeletonUtils.js` (11.5 KB, imports only `three`) as well. *Golden Hour, B2.*
 
+**#652. A Blender pipeline makes its reruns byte-stable by canonicalising mesh order, not by a tolerance.** Under 5.2.2, `bmesh.ops.create_uvsphere` returned four face orders in four runs of one script, so the exporter wrote the same vertices with the triangles reordered and the gull's `.glb` hashed differently on six runs out of six. `common.canonical()` rebuilds every bmesh before it becomes a mesh: vertices sorted by position, each face's loop started at its lowest vertex (winding kept), faces sorted by material then vertices. Six reruns, one hash; with the call taken out, three hashes in four runs. Every project's own copy of the pipeline (#643) carries it. *Golden Hour.*
+
+**#653. Scale is held per item, not per class: `budget.json` gives each item the builder box it replaces, and the validator holds every side to 10%.** A class spans a crab and a cormorant, so a class-wide bounds cap cannot enforce "within 10% of what it replaces"; each item's `box` can, and an item without one fails. The class keeps a longest-side cap as a sanity bound only. The validator also checks what the plan did not list and a file can show: the palette (a material or vertex colour outside `budget.json`'s list fails, so a new colour is a visible decision), clip names against the item's list, keys on the 30 fps grid, loops that close, and any `.glb` under `assets/models/` that `budget.json` does not name. *Golden Hour.*
+
+**#654. Golden Hour's sand dollar keeps its one texture, capped at 128 px.** The five-petal rosette is 2.5 px strokes on a 128 px canvas (`sandDollarMaterialTop()`), and a 150-triangle scatter item cannot draw it in vertex colour. Its item carries `texture: 128`; every other item's cap stays 0. *Golden Hour.*
+
+**#655. The gull model faces -Z with its wings as nodes, and `fly` beats them about the forward axis.** `makeGull()` leads with -Z while orbiting but with +X, a wingtip, in `approach` (`atan2(-dz, dx)`), and its flap is a rotation about the wing's own span, a twist. The model follows the orbit, keeps `wingR`/`wingL` (the builder's `wL`/`wR`) pivoted at the shoulder so the game can still pose them, and its clip is a real wingbeat, 24 frames at 30 fps, 0.6 rad each way. Whether the approach heading turns and which of the two drives the wings is rank 3's call. *Golden Hour.*
+
 ---
 
 # The log

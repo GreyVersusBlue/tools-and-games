@@ -161,6 +161,7 @@ jobs:
               node test/smoke-state.mjs
               node test/desktop-input.mjs
               node test/gltf-loader.mjs
+              node tools/blender/validate.mjs
 
           # Bell to Bell's suites read ../data relative to the working
           # directory, so they run from tests/ and nowhere else.
@@ -179,6 +180,7 @@ jobs:
             commands: |
               node test/smoke.mjs
               node test/gltf-loader.mjs
+              node tools/blender/validate.mjs
 
           - name: Golden Hour
             dir: Projects/golden-hour-beach
@@ -186,6 +188,7 @@ jobs:
             commands: |
               node test/smoke.mjs
               node test/gltf-loader.mjs
+              node tools/blender/validate.mjs
 
           - name: Integer Foundry
             dir: .

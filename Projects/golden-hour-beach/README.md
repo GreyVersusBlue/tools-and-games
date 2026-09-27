@@ -126,9 +126,12 @@ js/audio.js       the whole synthesized soundscape
 js/footprints.js  footprint ring buffer (glows teal at night)
 libs/             three.module.js, three.core.js, Sky.js, Water.js
 libs/addons/      loaders/GLTFLoader.js, utils/ (its two imports)
-assets/           waternormals.jpg, textures/
+assets/           waternormals.jpg, textures/, models/ (Blender-made .glb)
 test/smoke.mjs    node test/smoke.mjs — the world's arithmetic, no browser
 test/gltf-loader.mjs  a hand-built GLB through the vendored loader, headless
+tools/blender/    the Blender pipeline: common.py (pinned export settings),
+                  one script per pack, budget.json (the style sheet as data),
+                  validate.mjs (checks every model against it, no Blender)
 ```
 
 `field.js` and `journal-core.js` import nothing, and that is the point of them:
@@ -142,6 +145,7 @@ them to their claims.
 ```
 node test/smoke.mjs
 node test/gltf-loader.mjs   # after `npm ci` in Tools/board-check
+node tools/blender/validate.mjs
 ```
 
 116 checks on the arithmetic: twelve golden heights hold the home beach
