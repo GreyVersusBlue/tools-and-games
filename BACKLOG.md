@@ -773,7 +773,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Golden Hour's Blender pipeline: `tools/blender/` with `common.py`, `validate.mjs`, the style sheet, and the Blender version pinned | `Projects/golden-hour-beach` | ½ | Opus 5.5 | blender |  | [Golden Hour: Blender assets](#golden-hour-blender-assets) B1 |
+| 1 | Golden Hour's Blender pipeline: `tools/blender/` with `common.py`, `validate.mjs`, the style sheet, and the Blender version pinned | `Projects/golden-hour-beach` | ½ | Opus 5.5 | blender | claude/golden-hour-blender-pipeline | [Golden Hour: Blender assets](#golden-hour-blender-assets) B1 |
 | 2 | Golden Hour's animal pack: its ten animals as `.glb`, with clips on the ones that move by themselves | `Projects/golden-hour-beach` | 1 | Opus 5.5 | blender |  | [Golden Hour: Blender assets](#golden-hour-blender-assets) B3 |
 | 3 | Wire Golden Hour's animal pack in, once rank 2 has merged: the models replace the sphere-and-cone builders and the movement code stays | `Projects/golden-hour-beach` | ½ | Opus 5.5 |  |  | [Golden Hour: Blender assets](#golden-hour-blender-assets) B4 |
 | 4 | Blue Hour's Blender pipeline: its own copy of Golden Hour's (#643) and its own style sheet | `Projects/blue-hour-trail` | ¼ | Opus 5.5 | blender |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B1 |
