@@ -786,7 +786,7 @@ and #222 was closed unmerged an hour of suites later.
 | 12 | The Fourth Quarter's bar pack: the fixtures and furniture `js/world.js` builds from boxes, not the walls its layout builds (#646) | `Projects/fourth-quarter` | ½ | Opus 5.5 | blender |  | `Projects/fourth-quarter/WISHLIST.md` B3 |
 | 13 | Wire the bar pack in, once rank 12 has merged | `Projects/fourth-quarter` | ½ | Opus 5.5 |  |  | `Projects/fourth-quarter/WISHLIST.md` B4 |
 | 14 | Aphelion's Blender pipeline, its own copy (#643) | `Projects/aphelion` | ¼ | Opus 5.5 | blender |  | [Aphelion: Blender assets](#aphelion-blender-assets) B1 |
-| 15 | Aphelion's GLTFLoader at r160, and its loader test | `Projects/aphelion` | ¼ | Opus 5.5 |  |  | [Aphelion: Blender assets](#aphelion-blender-assets) B2 |
+| 15 | Aphelion's GLTFLoader at r160, and its loader test | `Projects/aphelion` | ¼ | Opus 5.5 |  | `claude/aphelion-gltfloader-r160` | [Aphelion: Blender assets](#aphelion-blender-assets) B2 |
 | 16 | Aphelion's ship pack: the interior props and the hull that `src/ship.js` builds from primitives | `Projects/aphelion` | ½ | Opus 5.5 | blender |  | [Aphelion: Blender assets](#aphelion-blender-assets) B3 |
 | 17 | Wire the ship pack in, once rank 16 has merged | `Projects/aphelion` | ¼ | Opus 5.5 |  |  | [Aphelion: Blender assets](#aphelion-blender-assets) B4 |
 | 18 | Bell to Bell's Blender pipeline, writing the `.gltf` its meshopt recipe expects | `Projects/bell-to-bell` | ¼ | Opus 5.5 | blender |  | `Projects/bell-to-bell/WISHLIST.md` B1 |
