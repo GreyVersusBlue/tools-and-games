@@ -31,14 +31,15 @@ const ok = (cond, label, detail = '') => {
 };
 
 // Every file the game is made of, except this folder and the vendored
-// Three.js (whose comments say "touches"; the libs rule pins that folder).
+// Three.js and its GLTFLoader (whose comments say "touches"; the libs rule
+// pins that folder file by file).
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
   const p = path.join(dir, d.name);
   return d.isDirectory() ? walk(p) : [p];
 });
 const all = walk(ROOT).map((p) => path.relative(ROOT, p).split(path.sep).join('/'));
 const code = all.filter((f) => /\.(html?|m?js|css)$/i.test(f)
-  && !f.startsWith('test/') && f !== 'libs/three.module.js');
+  && !f.startsWith('test/') && !f.startsWith('libs/'));
 
 // A stripped comment keeps its newlines, so a failure's line number is the file's.
 const blank = (s) => s.replace(/[^\n]/g, '');
@@ -80,9 +81,16 @@ for (const [label, re] of RULES) {
 }
 
 // A scheme can arrive as a file before it arrives as a line: a vendored stick
-// library, a src/touch.js. The libs folder is Three.js and nothing else.
-const libs = all.filter((f) => f.startsWith('libs/'));
-ok(libs.length === 1 && libs[0] === 'libs/three.module.js', 'libs/ holds Three.js and nothing else',
+// library, a src/touch.js. The libs folder is Three.js r160 and the two files
+// its GLTFLoader needs (BACKLOG.md "Aphelion: Blender assets" B2), named one by
+// one, so the scan above can skip the folder without skipping a newcomer.
+const LIBS = [
+  'libs/addons/loaders/GLTFLoader.js',
+  'libs/addons/utils/BufferGeometryUtils.js',
+  'libs/three.module.js',
+];
+const libs = all.filter((f) => f.startsWith('libs/')).sort();
+ok(libs.join() === LIBS.join(), 'libs/ holds Three.js, its GLTFLoader and nothing else',
   `it holds ${libs.join(', ')}. ${WHY}.`);
 const named = all.filter((f) => !f.startsWith('test/') && /touch|gamepad|joystick|joypad|mobile|virtual.?stick/i.test(f));
 ok(named.length === 0, 'no file is named for a touch or gamepad scheme', `${named.join(', ')}. ${WHY}.`);
