@@ -1081,7 +1081,7 @@ frame are on the south wall, so `Math.PI`. The TV's screen plane still goes
 0.05 in front of the frame's centre, 1 cm clear of its bezel. The notes are
 seeded now, not `Math.random()` per build.
 
-**B4. Wiring the bar (rank 3, ½, Opus 5.5, no gate, after rank 2).** Every
+**B4. Wiring the bar (rank 2, ½, Opus 5.5, no gate, after rank 1).** Every
 piece loads before `world.js` builds the room; a missing file fails a suite
 line. The smoke suites stay green, and `tools/browser-check.mjs` and
 `npm run games fourth-quarter` from `Tools/board-check` are run and named in
