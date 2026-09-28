@@ -110,6 +110,34 @@ def cone(bm, r1, r2, depth, matrix, segments=6):
                                  calc_uvs=False)['verts']
 
 
+def limb(bm, a, b, r1, r2, segments=4):
+    """A tapered rod from point a (radius r1) to point b (radius r2): a leg, a
+    neck, a bill."""
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    turn = Vector((0.0, 0.0, 1.0)).rotation_difference(d.normalized()).to_matrix().to_4x4()
+    return cone(bm, r1, r2, d.length, Matrix.Translation((a + b) / 2) @ turn, segments)
+
+
+def solid(bm, points, faces):
+    """A closed shape from its corners and faces (a fin, a fluke, a flipper).
+    The faces may be listed in either winding; their normals are turned to face
+    out here."""
+    vs = [bm.verts.new(p) for p in points]
+    made = [bm.faces.new([vs[i] for i in f]) for f in faces]
+    bmesh.ops.recalc_face_normals(bm, faces=made)
+    return vs
+
+
+def sheet(bm, points, faces, side=1):
+    """An open shape one face thick (a wing), mirrored across x when side is -1
+    with its winding flipped to match. Its material is double-sided."""
+    vs = [bm.verts.new((x * side, y, z)) for x, y, z in points]
+    for f in faces:
+        bm.faces.new([vs[i] for i in (f if side > 0 else reversed(f))])
+    return vs
+
+
 def paint(bm, verts, slot):
     """Give every face touching `verts` material slot `slot`."""
     vs = set(verts)
@@ -184,10 +212,13 @@ def ground(root):
     return hi - lo
 
 
-def clip(name, obj, frames, key):
+def clip(name, obj, frames, key, paths=('rotation_euler',)):
     """A looping clip on one object, keyed on every frame (30 fps) so the
     exported samples are exactly the curve. key(obj, t) poses obj for t in
-    [0, 1]; frame `frames` must pose the same as frame 0 for the loop to close.
+    [0, 1]; frame `frames` must pose the same as frame 0 for the loop to close,
+    and frame 0 is the rest pose, since that is what the file's nodes carry.
+    `paths` says what is keyed (rotation_euler, location, scale); a clip that
+    keys location is made after ground(), which moves the children.
     Every object's track shares `name`, and the exporter merges tracks of one
     name into one glTF animation."""
     obj.animation_data_create()
@@ -195,7 +226,8 @@ def clip(name, obj, frames, key):
     obj.animation_data.action = act
     for f in range(frames + 1):
         key(obj, f / frames)
-        obj.keyframe_insert('rotation_euler', frame=f)
+        for p in paths:
+            obj.keyframe_insert(p, frame=f)
     obj.animation_data.action = None
     track = obj.animation_data.nla_tracks.new()
     track.name = name
@@ -246,20 +278,45 @@ def export_glb(root, rel):
     return path
 
 
+def retire(root, tag):
+    """Rename an exported item's objects, meshes, materials and actions out of
+    the way, so the next item can use the same names (every wing is `wingR`,
+    every head `head`). Blender would otherwise export the second one as
+    `wingR.001`, and a file's node names would depend on what else was built in
+    the same run."""
+    for ob in tree(root):
+        if ob.animation_data:
+            for track in ob.animation_data.nla_tracks:
+                for strip in track.strips:
+                    strip.action.name = f'~{tag}.{strip.action.name}'
+        if ob.type == 'MESH':
+            for m in ob.data.materials:
+                if not m.name.startswith('~'):
+                    m.name = f'~{tag}.{m.name}'
+            ob.data.name = f'~{tag}.{ob.data.name}'
+        ob.name = f'~{tag}.{ob.name}'
+
+
 def contact_sheet(roots, name, tile=192):
     """Every item in a row under one fixed camera, rendered with Workbench to
     tools/blender/out/<name>.png (gitignored, #645). It is for looking at; no
-    check reads it."""
+    check reads it. Each item is scaled to fill its tile, since a pack can hold
+    a 7 m dolphin and a 0.3 m crab; the files are already written by then."""
     scene = bpy.context.scene
     bpy.context.view_layer.update()
-    spans = []
     for r in roots:
+        for ob in tree(r):              # the rest pose, not a clip's frame 0
+            if ob.animation_data:
+                ob.animation_data.use_nla = False
         pts = [ob.matrix_world @ Vector(c) for ob in tree(r) if ob.type == 'MESH'
                for c in ob.bound_box]
-        spans.append(max(max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)))
-    step = max(spans) * 1.15
+        span = max(max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3))
+        r.scale = (1 / span,) * 3
+        r.rotation_euler.z = math.radians(40)    # three-quarters, so length shows
+    bpy.context.view_layer.update()
+    step = 1.15
     for i, r in enumerate(roots):
-        r.location.x += (i - (len(roots) - 1) / 2) * step
+        r.location.x -= (i - (len(roots) - 1) / 2) * step   # the camera faces -Y: first on the left
 
     cam_data = bpy.data.cameras.new('sheet')
     cam_data.type = 'ORTHO'

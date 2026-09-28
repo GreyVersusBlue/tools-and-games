@@ -15,7 +15,9 @@
 //     read with a decoder this project does not vendor
 //   - a material or vertex colour that is not in the palette
 //   - clips that differ from the item's list, a clip where the class has none,
-//     a key off the 30 fps grid, or a clip whose ends do not meet
+//     a key off the 30 fps grid, a clip whose ends do not meet, or a budget
+//     that lists clips for a class with none
+//   - a node the item names (a wing, a head the game poses) missing from the file
 //   - a .glb under assets/models/ that budget.json does not name
 //
 // The optional argument points it at another budget file; paths in it still
@@ -230,8 +232,15 @@ function check(name, item) {
     ok(inPalette([0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16))), `${name}: vertex colour is a palette colour`, `#${h}`);
   }
 
+  // Nodes the game poses itself (a wing, a head): the wiring row finds them by
+  // name, so a rename in Blender has to fail here, not in the browser.
+  const names = new Set((gltf.nodes || []).map(n => n.name));
+  for (const n of item.nodes || []) ok(names.has(n), `${name}: node ${n} is in the file for the game to pose`);
+
   // Clips.
   const clips = (gltf.animations || []).map(a => a.name);
+  ok(cls.clips || !(item.clips || []).length, `${name}: budget.json gives no clips to a class that has none`,
+     `${item.class} has none, and the item lists [${(item.clips || []).join(', ')}]`);
   const want = cls.clips ? (item.clips || []) : [];
   ok(clips.slice().sort().join() === want.slice().sort().join(), `${name}: clips`,
      `has [${clips.join(', ')}], budget says [${want.join(', ')}]${cls.clips ? '' : ` (${item.class} has none)`}`);
