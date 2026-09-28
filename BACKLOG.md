@@ -804,8 +804,8 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Wire Blue Hour's animal pack in; the pack merged in PR #440 | `Projects/blue-hour-trail` | ½ | Opus 5.5 |  |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B4 |
-| 2 | Wire Golden Hour's prop pack in; the pack merged in PR #437 | `Projects/golden-hour-beach` | ¼ | Opus 5.5 |  |  | [Golden Hour: Blender assets](#golden-hour-blender-assets) B6 |
+| 1 | Wire Blue Hour's animal pack in; the pack merged in PR #440 | `Projects/blue-hour-trail` | ½ | Opus 5.5 |  | `claude/blue-golden-hour-packs-r91erk` | [Blue Hour: Blender assets](#blue-hour-blender-assets) B4 |
+| 2 | Wire Golden Hour's prop pack in; the pack merged in PR #437 | `Projects/golden-hour-beach` | ¼ | Opus 5.5 |  | `claude/blue-golden-hour-packs-r91erk` | [Golden Hour: Blender assets](#golden-hour-blender-assets) B6 |
 | 3 | Blue Hour's trail prop pack: markers, cairn stones, bridge, bench, fire tower, cabin, radio, headlamp, mushrooms | `Projects/blue-hour-trail` | ½ | Opus 5.5 | blender |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B5 |
 | 4 | Wire Blue Hour's prop pack in, once rank 3 has merged | `Projects/blue-hour-trail` | ¼ | Opus 5.5 |  |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B6 |
 | 5 | The Fourth Quarter's Blender pipeline, its own copy (#643) | `Projects/fourth-quarter` | ¼ | Opus 5.5 | blender |  | `Projects/fourth-quarter/WISHLIST.md` B1 |
