@@ -117,12 +117,12 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Integer Foundry's two
-conservative model gaps**: rank 43, a 1 naming Fable 5.1, worked under Opus
-5.5 (#638) in a cloud container, claimed in PR #447 and shipped in PR #448.
-The row is gone and the rows below it moved up one. That is the line to update when your batch merges; a PR that
+**The last batch of ranked work that shipped** is **Signal City R6, the
+priority corridor following the vehicle across boxes**: rank 46, a ½ naming
+Opus 5, worked under Opus 5.5 (#638) on Devon's Windows machine, claimed in
+PR #450 and shipped in PR #451. It was the last row, so no rank moved. That is the line to update when your batch merges; a PR that
 only changes these files is not a batch and does not belong in it.
-**46 ranked items remain**, and **every one of them names a model.**
+**45 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need Devon's machine** (#642,
 2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 35 are
@@ -144,18 +144,32 @@ gated `blender` or is a wiring row waiting on the gated pack row above it.
 Opus 5.5, gate `blender`). Rank 3, The Fourth Quarter's pipeline (a ¼, gate
 `blender`), fits beside it inside the spanning-areas caps. Rank 2 wires rank
 1's pack in and waits for it to merge.
-**A cloud session takes rank 46** (Signal City R6, the priority corridor
-following the vehicle across boxes, a ½ naming Opus 5 that runs on Opus 5.5
-under #638, no gate), as a batch alone. It is the first row below the Blender
-block that waits on neither hardware nor Devon: rank 43 (The Fracture Cycle's
-fourth prong) and rank 45 (Orbital's `gvb-save.js` adoption) are both
-written "only if Devon" wants them, and a scope Devon has not asked for is not
-a judgement call a session makes for him. Rank 44 wants a phone.
+**No ranked row is ready for a cloud session now.** Below the Blender
+block, rank 43 (The Fracture Cycle's fourth prong) and rank 45 (Orbital's
+`gvb-save.js` adoption) are both written "only if Devon" wants them, and a
+scope Devon has not asked for is not a judgement call a session makes for
+him. Rank 44 wants a phone. A cloud session has nothing to take until a
+Blender pack row merges and its wiring row opens, or Devon adds rows.
 Ranks 36 to 42 and 44 still want a real GPU, a real phone or a person listening for
 an hour, and their `Gate` cell says which.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Signal City's priority corridor follows its vehicle** (#682, PR #451).
+Once the player calls a car, every box it is handed to holds for it
+(`_followPriority` from `_handoff`). A car nobody called is still held for
+nowhere. `test/grid.mjs` 46 to 50: an ambulance called at box 1 of three in
+a row is held for at all three, and clearing `priority` on handoff fails
+the box 2 line. **The row's premise was wrong**: Two Blocks and Main Street
+did not change, because Main Street is one box and Two Blocks has no
+emergency vehicle. Both calibration tables match the pre-change tables
+exactly. Only the Free Play district moves: a called ambulance crosses 8
+boxes in 54.1 s against 64.3 s. Collisions on eight boxes went from 11 to 14
+and the cause was not traced (Known gaps). **Worth carrying forward**:
+`npm run check` counts 1,913 units in a fresh `git worktree` of `main` and
+1,920 in Devon's checkout with no diff, because `check-integrity.mjs` walks
+gitignored files too. The unit count is not a count of the site.
 
 **Integer Foundry's model gaps are closed, as one piece** (#681, Q48 struck).
 A merger fed by one line pairs a value with itself, so Merge + doubles and
@@ -892,7 +906,6 @@ and #222 was closed unmerged an hour of suites later.
 | 43 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 44 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 45 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 46 | Signal City R6: the priority corridor follows the vehicle across boxes | `Projects/signal-city` | ½ | Opus 5 |  | `claude/signal-city-r6` | [Signal City](#signal-city), `WISHLIST.md` R6 |
 
 ## Parked — needs a person at a real device
 
@@ -1917,7 +1930,7 @@ hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
 as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
 (#649, #650): a board-check recipe, the Rush Hour preview and the card
-copy, and Rush Hour's dusk is a level field. R6 (½) is rank 46.
+copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks).
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
