@@ -774,10 +774,10 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Blue Hour's Blender pipeline: its own copy of Golden Hour's (#643) and its own style sheet | `Projects/blue-hour-trail` | ¼ | Opus 5.5 | blender |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B1 |
+| 1 | Blue Hour's Blender pipeline: its own copy of Golden Hour's (#643) and its own style sheet | `Projects/blue-hour-trail` | ¼ | Opus 5.5 | blender | `claude/blender-bh-pipeline-gh-props` | [Blue Hour: Blender assets](#blue-hour-blender-assets) B1 |
 | 2 | Blue Hour's animal pack: deer, fox, owl, crow, squirrel and small bird, with clips; the bear and the elk stay as they are (#646) | `Projects/blue-hour-trail` | 1 | Opus 5.5 | blender |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B3 |
 | 3 | Wire Blue Hour's animal pack in, once rank 2 has merged | `Projects/blue-hour-trail` | ½ | Opus 5.5 |  |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B4 |
-| 4 | Golden Hour's beach prop pack: driftwood, groyne, rocks, wrack, fence, pier, cave dressing, four shells, a skimming stone, the sandcastle | `Projects/golden-hour-beach` | ½ | Opus 5.5 | blender |  | [Golden Hour: Blender assets](#golden-hour-blender-assets) B5 |
+| 4 | Golden Hour's beach prop pack: driftwood, groyne, rocks, wrack, fence, pier, cave dressing, four shells, a skimming stone, the sandcastle | `Projects/golden-hour-beach` | ½ | Opus 5.5 | blender | `claude/blender-bh-pipeline-gh-props` | [Golden Hour: Blender assets](#golden-hour-blender-assets) B5 |
 | 5 | Wire Golden Hour's prop pack in, once rank 4 has merged | `Projects/golden-hour-beach` | ¼ | Opus 5.5 |  |  | [Golden Hour: Blender assets](#golden-hour-blender-assets) B6 |
 | 6 | Blue Hour's trail prop pack: markers, cairn stones, bridge, bench, fire tower, cabin, radio, headlamp, mushrooms | `Projects/blue-hour-trail` | ½ | Opus 5.5 | blender |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B5 |
 | 7 | Wire Blue Hour's prop pack in, once rank 6 has merged | `Projects/blue-hour-trail` | ¼ | Opus 5.5 |  |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B6 |
