@@ -31,15 +31,120 @@
   },
   "classes": {
     "fixture": { "triangles": 1500, "bytes": 200192, "extent": 2.6, "texture": 0 },
-    "counter": { "triangles": 800,  "bytes": 110592, "extent": 2.5, "texture": 0 },
-    "bottle":  { "triangles": 150,  "bytes": 27392,  "extent": 0.5, "texture": 0 },
-    "frame":   { "triangles": 300,  "bytes": 46592,  "extent": 2.5, "texture": 0 }
+    "counter": { "triangles": 800, "bytes": 110592, "extent": 2.5, "texture": 0 },
+    "bottle": { "triangles": 150, "bytes": 27392, "extent": 0.5, "texture": 0 },
+    "frame": { "triangles": 300, "bytes": 46592, "extent": 2.5, "texture": 0 }
   },
   "items": {
     "crate-wood": {
       "file": "models/bar/crate-wood.glb",
       "class": "fixture",
       "box": [0.55, 0.5, 0.55]
+    },
+    "stove": {
+      "file": "models/bar/stove.glb",
+      "class": "fixture",
+      "box": [1.7, 0.95, 0.85]
+    },
+    "prep": {
+      "file": "models/bar/prep.glb",
+      "class": "fixture",
+      "box": [2.4, 0.95, 0.9]
+    },
+    "crate": {
+      "file": "models/bar/crate.glb",
+      "class": "fixture",
+      "box": [0.7, 0.6, 0.6]
+    },
+    "counter-mid": {
+      "file": "models/bar/counter-mid.glb",
+      "class": "counter",
+      "box": [1, 1.1, 0.75]
+    },
+    "counter-end": {
+      "file": "models/bar/counter-end.glb",
+      "class": "counter",
+      "box": [0.5, 1.1, 0.75]
+    },
+    "kick": {
+      "file": "models/bar/kick.glb",
+      "class": "counter",
+      "box": [1, 0.12, 0.8]
+    },
+    "shelf-back": {
+      "file": "models/bar/shelf-back.glb",
+      "class": "counter",
+      "box": [1, 0.08, 0.35]
+    },
+    "shelf-kitchen": {
+      "file": "models/bar/shelf-kitchen.glb",
+      "class": "counter",
+      "box": [1, 0.06, 0.35]
+    },
+    "sill": {
+      "file": "models/bar/sill.glb",
+      "class": "counter",
+      "box": [1.9, 0.08, 0.7]
+    },
+    "bottle-green": {
+      "file": "models/bar/bottle-green.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-amber": {
+      "file": "models/bar/bottle-amber.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-violet": {
+      "file": "models/bar/bottle-violet.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-blue": {
+      "file": "models/bar/bottle-blue.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-gold": {
+      "file": "models/bar/bottle-gold.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "tap": {
+      "file": "models/bar/tap.glb",
+      "class": "bottle",
+      "box": [0.06, 0.35, 0.06]
+    },
+    "can": {
+      "file": "models/bar/can.glb",
+      "class": "bottle",
+      "box": [0.16, 0.2, 0.16]
+    },
+    "corkboard": {
+      "file": "models/bar/corkboard.glb",
+      "class": "frame",
+      "box": [1.62, 1.12, 0.065]
+    },
+    "tv-frame": {
+      "file": "models/bar/tv-frame.glb",
+      "class": "frame",
+      "box": [1.95, 1.15, 0.08]
+    },
+    "door-frame": {
+      "file": "models/bar/door-frame.glb",
+      "class": "frame",
+      "box": [1.4, 2.3, 0.12]
+    },
+    "stool": {
+      "file": "models/bar/stool.glb",
+      "class": "fixture",
+      "box": [0.44, 0.745, 0.44]
+    },
+    "table": {
+      "file": "models/bar/table.glb",
+      "class": "fixture",
+      "box": [1.24, 0.95, 1.24]
     }
   }
 }

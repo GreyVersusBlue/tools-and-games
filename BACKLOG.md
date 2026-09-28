@@ -1189,13 +1189,28 @@ Ranks 4, 5 and 6. The common plan is
 [Blender assets: the common plan](#blender-assets-the-common-plan). three is
 r160 here.
 
-**B1. The pipeline (rank 4, ¼, gate `blender`).** Aphelion's own copy
-(#643). The palette is the `M` table at the top of `src/ship.js` (wall, trim,
-panel, metal, bed, blanket, soil, leaf, glass, hullExt, sat), with its
-emissive panel values kept: `panelLow` and `panelOk` are the power state, and a
-model's panel material must still take them. Starting budgets: interior prop
-1,500 triangles, hull shell 6,000, satellite and EVA points of interest 2,000.
-No textures. The validator joins Site CI's Aphelion entry.
+**B1. The pipeline. Shipped 2026-09-28, PR #459** (#691; rank 4, ¼, Opus 5.5,
+gate `blender`). `tools/blender/` is Aphelion's own copy of The Fourth
+Quarter's `common.py`, `validate.mjs` and `.gitignore` at 7abc774 (#643),
+pinned to Blender 5.2, with `ship.py` and `budget.json`. **Every material is
+a key of `M`**, read out of `src/ship.js` as text (that file imports three),
+carrying `M`'s colour, roughness, metalness, emissive and opacity; there is
+no flat- kind, no vertex colour and no UV, since the game draws every surface
+from `M`. A `panel` slot carries `M.panel`'s emissive at 0.25, and the wiring
+row puts each system's own clone on it, so `panelLow` and `panelOk` still
+work. Classes: `interior` 1,500 triangles / 4.5 m, `hull` 6,000 / 26 m, `poi`
+2,000 / 5.5 m; bytes are triangles x 72 + 8 KiB. The sample is the cockpit
+console, `models/ship/console.glb`: 300 triangles, 18,084 bytes, box 4.400 x
+0.775 x 1.050 m, `metal` and `panel`. It keeps ship.js's box, whose base is
+0.15 m above the deck, so B4 puts it at y 0.15. Three runs, one hash.
+`validate.mjs` (30 checks) is a line in Site CI's Aphelion entry, and
+`test/gltf-loader.mjs` loads every model `budget.json` names (15 to 24). Run
+from `Projects/aphelion`:
+
+```
+blender -b --factory-startup -P tools/blender/ship.py -- [item ...]
+node tools/blender/validate.mjs
+```
 
 **B2. The GLTFLoader. Shipped 2026-09-27, PR #425.** GLTFLoader and
 BufferGeometryUtils vendored unmodified from three@0.160.0 into `libs/addons/`
