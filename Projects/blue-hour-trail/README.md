@@ -62,7 +62,9 @@ down to the root.
   that takes the birds lower down has no birds left to take up there, so it
   takes the wind, and gives it back all at once. A branch breaking is a
   stone instead, let go somewhere above you and knocking its way down past
-  you into the fog.
+  you into the fog. The shape up the trail is standing up there. And the
+  eyes in the trees are a light instead, far down the slope below you, a
+  headlamp going the other way.
 - There is somebody in the fire lookout. It is the only structure up there,
   the only thing on the mountain that implies other people, and it has
   someone standing at the rail facing whichever way you go. Look away and

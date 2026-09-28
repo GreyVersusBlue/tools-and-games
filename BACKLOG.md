@@ -117,13 +117,14 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Blue Hour's animal pack
-and Golden Hour's prop pack wired in (PR #443)**: ranks 1 and 2, a ½ and a ¼
-across two areas, both naming Opus 5.5, worked under Opus 5.5 (#638) in a
-cloud session, claimed in PR #442. Their rows are gone and the rows below
-moved up two. That is the line to update when your batch merges; a PR that
+**The last batch of ranked work that shipped** is **Blue Hour's beats above
+the fog line, the shape and the eyes**: rank 43, a 1 naming Fable 5.1, worked
+under Opus 5.5 (#638) on Devon's machine, claimed in PR #445. Its three commits
+reached `main` by direct push rather than through a PR (see below); the fix
+to the light's placement and this rewrite came through PR #446 instead. The
+row is gone and the rows below it moved up one. That is the line to update when your batch merges; a PR that
 only changes these files is not a batch and does not belong in it.
-**48 ranked items remain**, and **every one of them names a model.**
+**47 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need Devon's machine** (#642,
 2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 35 are
@@ -145,14 +146,31 @@ gated `blender` or is a wiring row waiting on the gated pack row above it.
 Opus 5.5, gate `blender`). Rank 3, The Fourth Quarter's pipeline (a ¼, gate
 `blender`), fits beside it inside the spanning-areas caps. Rank 2 wires rank
 1's pack in and waits for it to merge.
-**A cloud session takes rank 43** (beats that change in kind above the fog
-line, a 1 naming Fable 5.1 that runs on Opus 5.5 under #638, no gate), the
-first row below the Blender block not waiting on hardware, as a batch alone.
+**A cloud session takes rank 43** (Integer Foundry's two conservative model
+gaps, as one coupled piece of work, a 1 naming Fable 5.1 that runs on Opus 5.5
+under #638, no gate), the first row below the Blender block not waiting on
+hardware, as a batch alone.
 Ranks 36 to 42 still want a real GPU, a real phone or a person listening for
 an hour, and their `Gate` cell says which.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Above the fog line Blue Hour's shape stands up and its eyes are a light
+going away** (#680). Both visual beats change kind at #635's `summitKind`,
+decided where they are staged: the shape keeps the bear's placement, flip and
+ways out with an upright silhouette, and the eyes become a headlamp halo at
+least 30 m off, found by sweeping from the fall line toward the less-watched
+side for ground 8 m under the walker, walking downhill at 0.7 m/s. `test/browser.mjs` 103 to 110. **Worth carrying forward**: this
+checkout was switched back to `main` by something outside the session between
+`git checkout -b` and the first commit (the reflog shows a checkout the session
+never ran), so `git push -u origin HEAD` sent three commits straight to `main`;
+Site CI ran on the push. Check `git branch --show-current` before every commit
+and push by branch name, never `HEAD`. And a fixed 300 ms wait after
+`teleport` is not enough with two browsers running: the break runs staged
+"high" beats at altT 0.00 until the checks waited on three animation frames. A fall-line trace stalls on the
+summit's flat at the bench and declined the beat every time there, which only
+the scheduler's "every read is a beat" line noticed; sweep, don't trace.
 
 **Blue Hour's animals and Golden Hour's props are in the games** (#676 to
 #679, PR #443). Blue Hour's creatures are the pack's models in seat groups; the
@@ -469,7 +487,7 @@ adding a beat**: a section that throws now costs its own checks and no others
 (#529), after the first deliberate break lost twelve unrelated ones to an abort;
 and the plan-vs-flight assertion has to be the clock and not the endpoint
 (#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
-the break ran green from 46/46. Orbital's rotate-to-play gate (rank 46) is still a real
+the break ran green from 46/46. Orbital's rotate-to-play gate (rank 45) is still a real
 device's job and is untouched.
 
 **A sink says what an order costs** (#531, #532). The tile-cost row was a design
@@ -649,7 +667,7 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Two rows are 2+: rank 35 (the dioramas) and rank 45 (The Fracture
+**Two rows are 2+: rank 35 (the dioramas) and rank 44 (The Fracture
 Cycle's fourth prong).** Of the thirteen rows ranked before #642 (now 41 to
 53), five are ¼ (43, 44, 45, 46 and 51) and **all five want hardware nothing
 here has**, as do three of the halves (41, 42, 47); the Parked section below the
@@ -857,12 +875,11 @@ and #222 was closed unmerged an hour of suites later.
 | 40 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
 | 41 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
 | 42 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 43 | Beats that change in kind above the fog line: the silence and the snap done (#635), the shape and the eyes left | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | claude/blue-hour-fog-beats | [Blue Hour](#blue-hour) |
-| 44 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  |  | [Integer Foundry](#integer-foundry) |
-| 45 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 46 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 47 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 48 | Signal City R6: the priority corridor follows the vehicle across boxes | `Projects/signal-city` | ½ | Opus 5 |  |  | [Signal City](#signal-city), `WISHLIST.md` R6 |
+| 43 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  |  | [Integer Foundry](#integer-foundry) |
+| 44 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 45 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
+| 46 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
+| 47 | Signal City R6: the priority corridor follows the vehicle across boxes | `Projects/signal-city` | ½ | Opus 5 |  |  | [Signal City](#signal-city), `WISHLIST.md` R6 |
 
 ## Parked — needs a person at a real device
 
@@ -1500,19 +1517,15 @@ move; the pool water stays procedural. `test/props.mjs`, 29 checks on port
    grant, and Golden Hour parity remains the odd one out. The live choice now
    is: keep pushing into `dread.js`, or write "no save, no verbs, no
    collection" into the record as a locked decision.
-2. **Beats in kind above the fog line. First increment shipped 2026-09-24**
-   (#635). The rule: above the fog line a beat changes kind by passing from
-   the woods to the mountain. Past `STILL_AIR` (0.6 of `summitAir`, where the
-   birdsong already ended) the silence stills the wind and lets go with one
-   gust, and the snap is a stone rolling from the uphill ear to the valley
-   one. The transmission and the figure in the lookout were already
-   altitude-only. **Left**: the two visual beats, the shape and the eyes,
-   which are still the same animal everywhere. One candidate that obeys the
-   doctrine is a pale light low in the trees below, going away downhill, for
-   the eyes' summit kind: the only other sign of a person on the mountain,
-   leaving. It wants pixel checks, which under Xvfb are drafts (#630). The
-   phantom steps, the howl and the radio stay as they are; the steps already
-   borrow the previous walk's gait and the radio is the cabin's.
+2. **Beats in kind above the fog line. Closed 2026-09-28** (#635, #680).
+   Above the fog line a beat changes kind by passing from the woods to the
+   mountain. Past `STILL_AIR` the silence stills the wind, the snap is a stone,
+   the shape stands up, and the eyes are a pale light on the slope below going
+   away downhill, the only other sign of a person on the mountain. The
+   transmission and the lookout figure were already altitude-only; the phantom
+   steps, the howl and the radio stay as they are. How the light and the
+   standing shape look has only been judged from a draft screenshot (#630); a
+   real GPU run (item 3) should look at both.
 3. **A real GPU run.** Every number on this project is still swiftshader —
    1.0–1.8 fps — now including the headlamp's SpotLight cost and the newly-alive
    mist/breath fill rate, which makes this MORE urgent than before, not less:
@@ -1898,7 +1911,7 @@ hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
 as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
 (#649, #650): a board-check recipe, the Rush Hour preview and the card
-copy, and Rush Hour's dusk is a level field. R6 (½) is rank 48.
+copy, and Rush Hour's dusk is a level field. R6 (½) is rank 47.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
