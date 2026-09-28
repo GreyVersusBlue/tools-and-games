@@ -942,7 +942,7 @@ apply pressure, and the events to be able to sink you.
 under "What this leaves for a later arc" below is still open, and this project
 has no ranked phases left.
 
-## Blender assets (ranks 2 and 3, from 2026-09-25; B1 shipped in PR #454)
+## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #PRNUM)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The plan
 every Blender row shares, including where Blender runs and what `common.py`,
@@ -1031,13 +1031,55 @@ copies. r160's loader names no SkeletonUtils. `test/gltf-loader.mjs`, port
 installs `Tools/board-check`. Since B1 it also loads every model
 `budget.json` names.
 
-**B3. The bar pack (rank 2, ½, Opus 5.5, gate `blender`).** The fit-out and
-furniture `js/world.js` builds from `BoxGeometry`: stove, prep and crate by
-kind, the counter and its kick, the back-bar shelf and bottles, the kitchen
-shelf, the cork board and its frame, the TV's frame, the door frame and the
-window sill. **Not** the walls, wall segments, deck lips, panels, rails,
-posts, steps, beams and lintels: they are built from the layout, and the room
-is a description (Phase 1, HISTORY.md #646).
+**B3. The bar pack. Shipped 2026-09-28, PR #PRNUM** (#689, #690; rank 2, ½,
+Opus 5.5, gate `blender`). `bar.py` writes 22 files to `models/bar/`, every
+one inside 10% of the `world.js` box it replaces and every one through
+`validate.mjs` (400 checks) and `test/gltf-loader.mjs` (170):
+
+| File | Replaces | Material | Triangles |
+| --- | --- | --- | --- |
+| `crate-wood` | the `crateWood` block (B1's sample, unchanged) | `flat-crateWood` | 240 |
+| `stove` | the `stove` block, not its burners | `metal` | 204 |
+| `prep` | the `prep` block | `metal` | 84 |
+| `crate` | the `crate` block | `metal` | 96 |
+| `counter-mid` | one metre of the bar's `barLen` block | `barTop` | 60 |
+| `counter-end` | the bar's end, 0.5 m, closed side +X | `barTop` | 72 |
+| `kick` | one metre of the kick | `flat-kick` | 24 |
+| `shelf-back` | one metre of the back-bar shelf | `barTop` | 24 |
+| `shelf-kitchen` | one metre of the dry-goods shelf | `barTop` | 24 |
+| `sill` | the pass sill at the Corner Tap's 1.9 m | `barTop` | 36 |
+| `bottle-green`, `-amber`, `-violet`, `-blue`, `-gold` | one back-bar bottle each, five shapes | `flat-bottle` | 112 |
+| `tap` | a tap handle | `flat-tap` | 84 |
+| `can` | a dry-goods can | `flat-can` | 108 |
+| `corkboard` | the cork, its frame and the five notes | `flat-cork` | 120 |
+| `tv-frame` | a TV's frame, not its screen or light | `flat-tvFrame` | 72 |
+| `door-frame` | the front door's frame, not its glow | `flat-doorFrame` | 60 |
+| `stool` | `stool()`: a `leather` cushion, a flat steel child | both | 212 |
+| `table` | `table4()`: a `tableTop` top, a flat pedestal child | both | 192 |
+
+Three runs, one hash for all 22; `crate-wood.glb` is byte-identical to B1's,
+because a new item goes at the end of `ITEMS` and no seed moves. Two calls
+the rows needed:
+
+- **The burners stay the game's** (#689). They are `glow()`, an emissive, and
+  a model's colour is never emissive here, so `world.js` keeps drawing the
+  four discs at `f.h + 0.01`. The stove's grates sit under their spots, their
+  tops at the block's 0.95.
+- **Anything `world.js` sizes from the room is a unit piece** (#690). The
+  counter is two `counter-end`s (the west one mirrored, `scale.x = -1`)
+  and `desc.bar.len - 1` metres of `counter-mid`; the kick and both shelves
+  are one-metre pieces; the sill is built at 1.9 m. B4 repeats or stretches
+  each along x. A middle carries no stile at its edges, so a run of them
+  shows no doubled joint.
+
+**What the wiring row needs to know.** Every file's origin is the centre of
+its base, so a piece `world.js` centres on `y` goes in at `y - h / 2`. The
+stool's leg starts 1 cm up in `stool()` and the file stands on 0, so its
+box is 0.755 m to `world.js`'s 0.745. A wall piece (corkboard, TV frame,
+door frame) faces +Z and takes its wall's `ry`: the corkboard and the door
+frame are on the south wall, so `Math.PI`. The TV's screen plane still goes
+0.05 in front of the frame's centre, 1 cm clear of its bezel. The notes are
+seeded now, not `Math.random()` per build.
 
 **B4. Wiring the bar (rank 3, ½, Opus 5.5, no gate, after rank 2).** Every
 piece loads before `world.js` builds the room; a missing file fails a suite

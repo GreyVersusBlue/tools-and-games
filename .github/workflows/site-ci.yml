@@ -153,7 +153,9 @@ jobs:
           # desktop-input.mjs fails on the first line of a touch or gamepad
           # scheme (#629): that scheme is Q40, Devon's call. gltf-loader.mjs
           # parses a hand-built GLB in Chromium through board-check's harness,
-          # which is what the install is for.
+          # which is what the install is for, and loads every model
+          # tools/blender/budget.json names. validate.mjs checks those models
+          # against the style sheet with no Blender (#645).
           - name: Aphelion
             dir: Projects/aphelion
             install: Tools/board-check
@@ -161,6 +163,7 @@ jobs:
               node test/smoke-state.mjs
               node test/desktop-input.mjs
               node test/gltf-loader.mjs
+              node tools/blender/validate.mjs
 
           # Bell to Bell's suites read ../data relative to the working
           # directory, so they run from tests/ and nowhere else.
