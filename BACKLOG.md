@@ -893,11 +893,11 @@ and #222 was closed unmerged an hour of suites later.
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | The Fourth Quarter's bar pack: the fixtures and furniture `js/world.js` builds from boxes, not the walls its layout builds (#646) | `Projects/fourth-quarter` | ½ | Opus 5.5 | blender | claude/fq-bar-aph-pipeline | `Projects/fourth-quarter/WISHLIST.md` B3 |
-| 2 | Wire the bar pack in, once rank 1 has merged | `Projects/fourth-quarter` | ½ | Opus 5.5 |  |  | `Projects/fourth-quarter/WISHLIST.md` B4 |
+| 2 | Wire the bar pack in, once rank 1 has merged | `Projects/fourth-quarter` | ½ | Opus 5.5 |  | claude/fq-wire-bar-b2b-pipeline | `Projects/fourth-quarter/WISHLIST.md` B4 |
 | 3 | Aphelion's Blender pipeline, its own copy (#643) | `Projects/aphelion` | ¼ | Opus 5.5 | blender | claude/fq-bar-aph-pipeline | [Aphelion: Blender assets](#aphelion-blender-assets) B1 |
 | 4 | Aphelion's ship pack: the interior props and the hull that `src/ship.js` builds from primitives | `Projects/aphelion` | ½ | Opus 5.5 | blender |  | [Aphelion: Blender assets](#aphelion-blender-assets) B3 |
 | 5 | Wire the ship pack in, once rank 4 has merged | `Projects/aphelion` | ¼ | Opus 5.5 |  |  | [Aphelion: Blender assets](#aphelion-blender-assets) B4 |
-| 6 | Bell to Bell's Blender pipeline, writing the `.gltf` its meshopt recipe expects | `Projects/bell-to-bell` | ¼ | Opus 5.5 | blender |  | `Projects/bell-to-bell/WISHLIST.md` B1 |
+| 6 | Bell to Bell's Blender pipeline, writing the `.gltf` its meshopt recipe expects | `Projects/bell-to-bell` | ¼ | Opus 5.5 | blender | claude/fq-wire-bar-b2b-pipeline | `Projects/bell-to-bell/WISHLIST.md` B1 |
 | 7 | Bell to Bell's classroom pack: what `src/world/` still builds from boxes and `data/assets.json` does not name | `Projects/bell-to-bell` | ½ | Opus 5.5 | blender |  | `Projects/bell-to-bell/WISHLIST.md` B2 |
 | 8 | Wire the classroom pack in, once rank 7 has merged: the recipe, `data/assets.json`, the registry, a `BASELINE` each | `Projects/bell-to-bell` | ¼ | Opus 5.5 |  |  | `Projects/bell-to-bell/WISHLIST.md` B3 |
 | 9 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
