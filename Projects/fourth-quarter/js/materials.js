@@ -72,6 +72,8 @@ export function mat(key) {
     roughness: def.rough ?? 0.8,
     metalness: def.metal ?? 0.0,
   });
+  // named for its key, as the bar pack's files name the slot it fills (B4)
+  m.name = key;
   if (USE_TEXTURES && def.files) {
     // mat() before initTextures() means a caller that never chose — take the default.
     if (!status.tier) status.tier = DEFAULT_TIER;
