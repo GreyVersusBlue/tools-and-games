@@ -180,6 +180,7 @@ jobs:
               node test/smoke.mjs
               node test/gltf-loader.mjs
               node test/animals.mjs
+              node test/props.mjs
               node tools/blender/validate.mjs
 
           - name: Golden Hour

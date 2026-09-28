@@ -113,6 +113,17 @@ the loader can only convert through `toTrianglesDrawMode`. 15 checks, port 8162:
 node test/gltf-loader.mjs   # after `npm ci` in Tools/board-check
 ```
 
+`test/animals.mjs` (port 8166) and `test/props.mjs` (port 8168) use the same
+harness to build the game's wildlife and props from the two packs in
+`assets/models/`. The props suite holds every prop to the box its primitive
+builder drew, and has one line per file that fails if the file is missing or
+if `js/pieces.js` would load without it:
+
+```
+node test/animals.mjs
+node test/props.mjs
+```
+
 `test/browser.mjs` is the other half: it serves the site, boots the real page in
 real Chromium through `?debug`, and checks the things arithmetic can't see —
 draw budget, the fog cycle, the climb, the cairn names, the logbook overlay,
