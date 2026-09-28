@@ -139,13 +139,13 @@ committed files (#645); a wiring row is taken only once the pack row above it
 has merged. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Rank 1 is ready for a cloud session now**: wiring The Fourth Quarter's bar
-pack in (a ½ naming Opus 5.5, no gate), B4 in
-`Projects/fourth-quarter/WISHLIST.md`, whose B3 says what each file needs at
-load (#690's unit pieces, the burners the game keeps, the stool's 1 cm).
-**On Devon's machine**, rank 2 is Aphelion's ship pack (a ½, gate `blender`),
-on the pipeline PR #459 put in, and rank 4, Bell to Bell's pipeline (a ¼, gate
-`blender`), fits beside it inside the spanning-areas caps. Rank 3 wires rank
+**Ranks 1 and 4 are claimed** by `claude/fq-wire-bar-b2b-pipeline` (PR #462,
+which claimed them as ranks 2 and 6 before this renumbering): wiring The
+Fourth Quarter's bar pack in, and Bell to Bell's pipeline. B3 in
+`Projects/fourth-quarter/WISHLIST.md` says what each bar file needs at load
+(#690's unit pieces, the burners the game keeps, the stool's 1 cm).
+**The next free row on Devon's machine** is rank 2, Aphelion's ship pack (a ½,
+gate `blender`), on the pipeline PR #459 put in. Rank 3 wires rank
 2's pack in and waits for it to merge.
 Below the Blender block, rank 38 (The Fracture Cycle's fourth prong) and rank
 40 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
@@ -903,10 +903,10 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Wire the bar pack in; the pack merged in PR #459 | `Projects/fourth-quarter` | ½ | Opus 5.5 |  |  | `Projects/fourth-quarter/WISHLIST.md` B4 |
+| 1 | Wire the bar pack in; the pack merged in PR #459 | `Projects/fourth-quarter` | ½ | Opus 5.5 |  | claude/fq-wire-bar-b2b-pipeline | `Projects/fourth-quarter/WISHLIST.md` B4 |
 | 2 | Aphelion's ship pack: the interior props and the hull that `src/ship.js` builds from primitives | `Projects/aphelion` | ½ | Opus 5.5 | blender |  | [Aphelion: Blender assets](#aphelion-blender-assets) B3 |
 | 3 | Wire the ship pack in, once rank 2 has merged | `Projects/aphelion` | ¼ | Opus 5.5 |  |  | [Aphelion: Blender assets](#aphelion-blender-assets) B4 |
-| 4 | Bell to Bell's Blender pipeline, writing the `.gltf` its meshopt recipe expects | `Projects/bell-to-bell` | ¼ | Opus 5.5 | blender |  | `Projects/bell-to-bell/WISHLIST.md` B1 |
+| 4 | Bell to Bell's Blender pipeline, writing the `.gltf` its meshopt recipe expects | `Projects/bell-to-bell` | ¼ | Opus 5.5 | blender | claude/fq-wire-bar-b2b-pipeline | `Projects/bell-to-bell/WISHLIST.md` B1 |
 | 5 | Bell to Bell's classroom pack: what `src/world/` still builds from boxes and `data/assets.json` does not name | `Projects/bell-to-bell` | ½ | Opus 5.5 | blender |  | `Projects/bell-to-bell/WISHLIST.md` B2 |
 | 6 | Wire the classroom pack in, once rank 5 has merged: the recipe, `data/assets.json`, the registry, a `BASELINE` each | `Projects/bell-to-bell` | ¼ | Opus 5.5 |  |  | `Projects/bell-to-bell/WISHLIST.md` B3 |
 | 7 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
