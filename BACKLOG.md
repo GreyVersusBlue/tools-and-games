@@ -1189,7 +1189,7 @@ Ranks 4, 5 and 6. The common plan is
 [Blender assets: the common plan](#blender-assets-the-common-plan). three is
 r160 here.
 
-**B1. The pipeline. Shipped 2026-09-28, PR #PRNUM** (#691; rank 4, ¼, Opus 5.5,
+**B1. The pipeline. Shipped 2026-09-28, PR #459** (#691; rank 4, ¼, Opus 5.5,
 gate `blender`). `tools/blender/` is Aphelion's own copy of The Fourth
 Quarter's `common.py`, `validate.mjs` and `.gitignore` at 7abc774 (#643),
 pinned to Blender 5.2, with `ship.py` and `budget.json`. **Every material is

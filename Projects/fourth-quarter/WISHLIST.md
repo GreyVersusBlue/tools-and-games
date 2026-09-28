@@ -942,7 +942,7 @@ apply pressure, and the events to be able to sink you.
 under "What this leaves for a later arc" below is still open, and this project
 has no ranked phases left.
 
-## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #PRNUM)
+## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #459)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The plan
 every Blender row shares, including where Blender runs and what `common.py`,
@@ -1031,7 +1031,7 @@ copies. r160's loader names no SkeletonUtils. `test/gltf-loader.mjs`, port
 installs `Tools/board-check`. Since B1 it also loads every model
 `budget.json` names.
 
-**B3. The bar pack. Shipped 2026-09-28, PR #PRNUM** (#689, #690; rank 2, ½,
+**B3. The bar pack. Shipped 2026-09-28, PR #459** (#689, #690; rank 2, ½,
 Opus 5.5, gate `blender`). `bar.py` writes 22 files to `models/bar/`, every
 one inside 10% of the `world.js` box it replaces and every one through
 `validate.mjs` (400 checks) and `test/gltf-loader.mjs` (170):
