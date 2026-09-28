@@ -524,7 +524,7 @@ and add to this list rather than starting a new one.
   `test/tools/run.mjs` — whose `boot-budget` check is now the thing that
   fails if any of it is undone.
 
-## Blender assets (ranks 10 to 12, from 2026-09-25)
+## Blender assets (ranks 9 to 11, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
 plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
@@ -532,7 +532,7 @@ without `blender` on PATH skips it and takes the next row. This project needs
 no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a
 file into a real catalog row.
 
-**B1. The pipeline (rank 10, ¼, Opus 5.5, gate `blender`).** School
+**B1. The pipeline (rank 9, ¼, Opus 5.5, gate `blender`).** School
 Generator's own copy of `tools/blender/` (#643), beside `tools/export-walk.mjs`
 and `tools/make-gallery.mjs`. **`common.py` writes only what `gltf.js`
 reads:** `TRIANGLES` primitives with `POSITION`, `NORMAL` and `COLOR_0`, one
@@ -544,13 +544,13 @@ model into its catalog row's footprint anyway. Style sheet: the palette is the
 tints `js/render.js` gives each `geo` today; seat and desk 800 triangles,
 table and bench 600, locker, shelf and cubby 400.
 
-**B2. The model pack (rank 11, ½, Opus 5.5, gate `blender`).** About twelve
+**B2. The model pack (rank 10, ½, Opus 5.5, gate `blender`).** About twelve
 of the furniture `geo` kinds in `js/catalog.js`: chair (one per `style`
 silhouette), desk, table, stool, softseat, counter, shelf, cubby, locker,
 labbench, workstation and plant. The files go in `assets/models/`, which holds
 only a `.gitkeep` today.
 
-**B3. Wiring the pack (rank 12, ¼, Opus 5.5, no gate, after rank 11).** A
+**B3. Wiring the pack (rank 11, ¼, Opus 5.5, no gate, after rank 10).** A
 built-in catalog row names its file the way an imported one does, and the
 design decides which the row draws. Every file joins `PRECACHE` in
 `js/offline.js` with `REV` bumped, or the service worker serves a stale
