@@ -37,15 +37,19 @@ export function buildShells(scene, interact, controls, camera, audio, pieces) {
   let examining = null;      // { mesh, home, homeRot, name }
   let returning = null;
 
+  // A cockle's or a whelk's variant is its place among its own kind, not its
+  // seed: six cockles' seeds modulo 3 never come to 1, and cockle-2 would
+  // ship unseen (#679). The seed still names it, as before.
+  const nth = { cockle: 0, whelk: 0 };
   for (const s of LAYOUT.shells) {
     let mesh, name;
     const nameRnd = mulberry32(s.seed);
     const pick = arr => arr[(nameRnd() * arr.length) | 0];
     if (s.kind === 'cockle') {
-      mesh = find(pieces, `cockle-${variant(s.seed, 3) + 1}`, s.s);
+      mesh = find(pieces, `cockle-${variant(nth.cockle++, 3) + 1}`, s.s);
       name = pick(NAMES.cockle);
     } else if (s.kind === 'whelk') {
-      mesh = find(pieces, `whelk-${variant(s.seed, 3) + 1}`, s.s);
+      mesh = find(pieces, `whelk-${variant(nth.whelk++, 3) + 1}`, s.s);
       name = pick(NAMES.whelk);
     } else if (s.kind === 'sanddollar') {
       mesh = find(pieces, 'sand-dollar', s.s);

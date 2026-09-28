@@ -100,16 +100,22 @@ try {
     const byGeo = new Map(Object.entries(pieces).map(([n, p]) => [p.geometry, n]));
     const drawn = new Set();
     out.foreign = [];
-    out.byName = {};
+    const byName = {};
     scene.traverse(o => {
       if (!o.isMesh) return;
       if (o.name === 'tide-pool-water' || o.geometry.type === 'RingGeometry') return;   // procedural by design
       const n = byGeo.get(o.geometry);
       if (!n || o.material !== pieces[n].material) { out.foreign.push(`${o.name || o.type}:${o.geometry.type}`); return; }
       drawn.add(n);
-      (out.byName[n] ||= []).push(o);
+      (byName[n] ||= []).push(o);
     });
-    out.undrawn = P.PIECES.filter(n => !drawn.has(n));
+    // The sandcastle piece is drawn once a castle is shaped, below.
+    // Draw calls the static props cost now, for the record (#678).
+    out.draws = {};
+    for (const n of ['props', 'pier', 'stone-patches']) {
+      let k = 0; scene.getObjectByName(n).traverse(o => { if (o.isMesh) k++; }); out.draws[n] = k;
+    }
+    out.undrawn = P.PIECES.filter(n => !drawn.has(n) && n !== 'sandcastle');
     out.foreignCount = out.foreign.length;
     out.foreign = out.foreign.slice(0, 6);
 
@@ -125,7 +131,7 @@ try {
     };
     const all = (names, keep = () => true) => {
       const list = [];
-      for (const n of names) for (const mesh of (out.byName[n] || []).filter(keep)) {
+      for (const n of names) for (const mesh of (byName[n] || []).filter(keep)) {
         const count = mesh.isInstancedMesh ? mesh.count : 1;
         for (let i = 0; i < count; i++) list.push(boxOf(mesh, i));
       }
@@ -175,7 +181,7 @@ try {
     const kinds = { shell: 0, pebble: 0, weed: 0 };
     for (const w of F.LAYOUT.wrack) kinds[w.kind]++;
     out.wrack = Object.fromEntries(Object.keys(kinds).map(k => {
-      const list = out.byName[`wrack-${k}`] || [];
+      const list = byName[`wrack-${k}`] || [];
       return [k, { meshes: list.length, instanced: list.every(x => x.isInstancedMesh), count: list.reduce((s, x) => s + x.count, 0), want: kinds[k] }];
     }));
 
@@ -195,7 +201,10 @@ try {
     const stumps = all(['pier-stump-1', 'pier-stump-2']);
     out.stumps = { n: stumps.length, below: stumps.every(b => b.max.y < F.pierDeckY(b.c.z)), past: stumps.every(b => b.c.z < F.PIER.deckEnd + 0.3) };
     const beams = all(['pier-stringer']);
-    out.beams = { n: beams.length, under: beams.every(b => b.max.y < F.pierDeckY(b.c.z) && b.max.y > F.pierDeckY(b.c.z) - 0.5) };
+    // A stringer slopes with the deck, so its box's top is its sea end: under
+    // the deck's highest point there, and within half a metre of it.
+    const high = F.pierDeckY(F.PIER.deckEnd);
+    out.beams = { n: beams.length, under: beams.every(b => b.max.y < high && b.max.y > high - 0.5) };
 
     // -- the skimming stones: on the sand of their patch
     const lying = all(['skimming-stone-1', 'skimming-stone-2', 'skimming-stone-3'], mesh => mesh.parent.name === 'stone-patches');
@@ -234,10 +243,11 @@ try {
       for (let i = 0; i < 90; i++) sc.update(1 / 30);
       scene.updateMatrixWorld(true);
       const cg = scene.getObjectByName('sandcastle');
-      const b = boxOf(cg.children[0]);
+      const b = cg.children[0] ? boxOf(cg.children[0]) : { min: new THREE.Vector3(NaN, NaN, NaN), max: new THREE.Vector3(NaN, NaN, NaN) };
       out.castle.base = b.min.y - F.groundHeight(cg.position.x, cg.position.z);
       out.castle.height = b.max.y - b.min.y;
       out.castle.scale = cg.scale.x;
+      out.castle.piece = !!cg.children[0] && cg.children[0].geometry === pieces.sandcastle.geometry && cg.children[0].material === pieces.sandcastle.material;
     }
 
     // -- a thrown stone: picked up, wound up, thrown; it spins about its middle
@@ -284,6 +294,7 @@ try {
   ok(r.foreignCount === 0, 'no mesh the builders made draws anything but a piece (the pool water and splash rings aside)',
      r.foreignCount ? `${r.foreignCount}: ${r.foreign.join(', ')}` : '');
   ok(r.undrawn.length === 0, 'and every piece in the pack is drawn somewhere', r.undrawn.join(', '));
+  console.log(`  note  draws: props ${r.draws.props}, pier ${r.draws.pier}, stone patches ${r.draws['stone-patches']}`);
 
   group('each piece stands where field.js says (B6)');
   const G = r.groyne;
@@ -323,7 +334,7 @@ try {
   const C = r.castle;
   ok(C.r === 2 && C.avail, 'the sandcastle verb still answers at 2 m on damp sand', JSON.stringify({ r: C.r, avail: C.avail }));
   if (C.avail) {
-    ok(Math.abs(C.base) < 0.01 && Math.abs(C.height - 0.94) < 0.1 && Math.abs(C.scale - 1) < 1e-6,
+    ok(Math.abs(C.base) < 0.01 && Math.abs(C.height - 0.94) < 0.1 && Math.abs(C.scale - 1) < 1e-6 && C.piece,
        'a castle rises to full size standing on the sand', `base ${f3(C.base)} m off, ${f2(C.height)} m tall, scale ${f2(C.scale)}`);
   }
   const T = r.throw;
