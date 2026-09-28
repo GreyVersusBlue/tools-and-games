@@ -859,7 +859,12 @@ subsection of its section below) adds its style sheet and its list.
 `blender -b -P tools/blender/<script>.py -- <args>`, from the project's folder.
 Before claiming a `blender` row, `blender --version` has to print a version.
 The Windows installer does not put Blender on PATH, so add the folder it
-installed into (the one holding `blender.exe`) to PATH first. A session
+installed into (the one holding `blender.exe`) to PATH first, or call it by
+absolute path: on Devon's machine it is the Steam install,
+`C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe`, which
+answers for `blender --version` (#642) and which Steam updates on its own.
+Add `--factory-startup` to every run, so Devon's preferences and add-ons
+stay out of it. A session
 without it takes the next row (rule 4). Node 22 and `git` are the only other
 tools a Blender row needs. No Python package is installed: the scripts use what
 ships inside Blender.
@@ -1300,27 +1305,67 @@ what is Golden Hour's own. three is r185 here (`libs/three.core.js`), split
 into `three.module.js` and `three.core.js`, and nothing in the project can
 load a model yet.
 
-**B1. The pipeline (rank 1, ½, gate `blender`).** `tools/blender/` as the
-common plan lays it out, with the gull as the sample asset (`makeGull()` in
-`js/wildlife.js`, the simplest builder, five in the sky). The validator joins
-Site CI's Golden Hour entry beside `node test/smoke.mjs`. The style sheet to
-decide and write here, with these as the starting point:
+**B1. The pipeline. Shipped 2026-09-27** (#652 to #655). `tools/blender/`
+holds `common.py` (pinned to Blender 5.2, the Steam install's 5.2.2 LTS; the
+export settings; `canonical()`, which makes a rerun byte-stable, #652),
+`animals.py` (the pack script, with the gull as the sample), `budget.json`
+and `validate.mjs`, which runs in Site CI's Golden Hour entry. The gull is
+`assets/models/animals/gull.glb`: 206 triangles, 17,116 bytes, box 3.200 x
+0.350 x 0.720 m against the builder's 3.2 x 0.352 x 0.7, unlit as
+`makeGull()`'s MeshBasicMaterial is, and a `fly` clip (#655). Run from this
+folder:
 
-| Class | Members | Triangles | Bytes | Clips |
-| --- | --- | --- | --- | --- |
-| animal, large | seal, dolphin, heron, pelican | 3,000 | 250 KB | yes |
-| animal, small | gull, cormorant, owl, crab | 1,500 | 150 KB | where it moves alone |
-| flock | sanderling, bat | 300 | 20 KB | none (#646's flock rule) |
-| prop, large | groyne, pier section, cave dressing, a fence run | 4,000 | 200 KB | none |
-| prop | driftwood, rocks, wrack, tide-pool stones, sandcastle | 1,200 | 80 KB | none |
-| scatter | cockle, whelk, sand dollar, sea glass, skimming stone | 150 | 10 KB | none |
+```
+blender -b --factory-startup -P tools/blender/animals.py -- [item ...]
+node tools/blender/validate.mjs
+```
 
-Scale is each builder's box as the game makes it now, within 10%. The palette
-comes off the materials in `js/wildlife.js`, `js/creatures/*.js`,
-`js/props.js`, `js/pier.js`, `js/shells.js`, `js/stones.js` and
-`js/sandcastle.js`. Texture cap: none. `sand dollar` has a canvas texture today
-(`sandDollarMaterialTop`), and the style sheet says whether it becomes vertex
-colour or stays the one texture, at 128 px.
+**The style sheet**, as decided. `budget.json` holds every number here and
+the validator holds the models to it:
+
+| Class | Members | Triangles | Bytes | Longest side | Clips |
+| --- | --- | --- | --- | --- | --- |
+| `animal-large` | seal, dolphin, heron, pelican | 3,000 | 250 KiB | 6 m | yes |
+| `animal-small` | gull, cormorant, owl, crab | 1,500 | 150 KiB | 3.6 m | where it moves alone |
+| `flock` | sanderling, bat | 300 | 20 KiB | 1 m | none (#646's flock rule) |
+| `prop-large` | groyne, pier section, cave dressing, a fence run | 4,000 | 200 KiB | 60 m | none |
+| `prop` | driftwood, rocks, wrack, tide-pool stones, sandcastle | 1,200 | 80 KiB | 6 m | none |
+| `scatter` | cockle, whelk, sand dollar, sea glass, skimming stone | 150 | 10 KiB | 0.5 m | none |
+
+- **Scale** is per item, not per class (#653): each item in `budget.json`
+  carries `box`, the builder's box it replaces in glTF axes (x across, y up,
+  z along), and every side has to land within 10% of it. The class's longest
+  side is only a sanity cap; the pack rows (ranks 2 and 7) measure each
+  builder and may tighten it. An item with no `box` fails.
+- **Palette**: thirty named colours in `budget.json`, lifted off the
+  materials in `js/wildlife.js`, `js/creatures/*.js`, `js/props.js`,
+  `js/pier.js`, `js/shells.js`, `js/stones.js` and `js/sandcastle.js`, plus
+  the sand dollar's canvas fill `#cfc4ab` and rosette `#786950`. A material
+  or vertex colour outside it fails; a new colour is a decision and a line in
+  the palette. The tide-pool water (`#14383c`) stays procedural and is not in
+  it.
+- **Textures: none**, with one exception decided here (#654): the sand dollar
+  keeps its one texture, at 128 px, as `texture: 128` on its item. The
+  five-petal rosette is 2.5 px strokes on a 128 px canvas, and a 150-triangle
+  scatter item cannot draw it in vertex colour.
+- **Unlit** where the builder is a MeshBasicMaterial (the gull, the bats):
+  `common.material(..., unlit=True)` exports `KHR_materials_unlit`, which the
+  vendored loader reads.
+- **Clips** are checked too: the names match the item's `clips` exactly, a
+  class with none may carry none, every key sits on the 30 fps grid, and each
+  channel's ends meet, so the clip loops.
+
+**What the pack rows inherit from the gull** (#655). `makeGull()` flies two
+ways: orbiting, its local -Z leads (`rotation.y = -a * dir + ...`), but in
+`approach` it turns with `atan2(-dz, dx)`, which leads with +X, a wingtip.
+And its "flap" is `wL.rotation.x`, a rotation about the wing's own span, so
+the wing twists rather than beats. The model faces -Z like the orbit, with
+`wingR` (+X, the builder's `wL`) and `wingL` as their own nodes pivoted at the
+shoulder, and `fly` beats them about the forward axis. Rank 3 decides whether
+the approach heading gets a quarter turn and whether `fly` or the game's own
+wing code drives the wings. The model's origin is its base, where the
+builder's was the body's centre: a gull on the sand sits at
+`groundHeight + 0.12` today, so the wiring row drops that offset to 0.
 
 **B2. Golden Hour's GLTFLoader. Shipped 2026-09-25, PR #416** (#651).
 GLTFLoader, BufferGeometryUtils and SkeletonUtils vendored unmodified from
