@@ -1,8 +1,8 @@
 // node test/gltf-loader.mjs
 //
-// Proves the vendored GLTFLoader loads a model in a real browser, before any
-// Blender asset exists to feed it (WISHLIST.md "Blender assets" B2). Exits
-// non-zero on any failure (#13).
+// Proves the vendored GLTFLoader loads a model in a real browser (WISHLIST.md
+// "Blender assets" B2), then loads every model tools/blender/budget.json names
+// (B1 onward). Exits non-zero on any failure (#13).
 //
 // The Fourth Quarter's own copy of Blue Hour's test/gltf-loader.mjs, not an
 // import of it (#17): each project vendors its loader separately and each proves
@@ -42,6 +42,7 @@ let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
   if (cond) { passed++; console.log(`  ok    ${what}${detail ? '  ' + detail : ''}`); }
   else { failed++; console.log(`  FAIL  ${what}${detail ? '  ' + detail : ''}`); }
+  return cond;
 };
 const group = name => console.log(`\n${name}`);
 
@@ -171,6 +172,63 @@ try {
     ok(strip.indices === 6, 'it is re-indexed as two triangles (six indices)', `${strip.indices}`);
     ok(same(strip.min, [0, 0, 0]) && same(strip.max, [1, 1, 0]), 'its bounds are (0,0,0) to (1,1,0)',
        `${strip.min} .. ${strip.max}`);
+  }
+
+  // What the Blender pipeline writes (B1 onward), through the same loader:
+  // every model budget.json names, fetched from where the game will fetch it.
+  // tools/blender/validate.mjs reads the files with its own parser; this is
+  // three reading them. Every material must come back as the
+  // MeshStandardMaterial the game's flat() and mat() make, a flat- one white
+  // with vertexColors on (so the colour is the vertices', as flat() paints
+  // it), a keyed one under its MATS key's name with no vertexColors (the name
+  // is how the wiring row swaps mat(key) in). Three's own box must stand on
+  // y = 0 and sit within 10% of world.js's box, and nothing may carry a
+  // texture: a keyed slot's texture is the game's, put on at load.
+  const budget = JSON.parse(fs.readFileSync(path.join(PROJECT, 'tools', 'blender', 'budget.json'), 'utf8'));
+  const { MATS } = await import(pathToFileURL(path.join(PROJECT, budget.mats)).href);
+  const models = await page.evaluate(async items => {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import('./libs/addons/loaders/GLTFLoader.js');
+    const out = {};
+    for (const [name, item] of Object.entries(items)) {
+      try {
+        const g = await new GLTFLoader().loadAsync('./' + item.file);
+        const mats = [];
+        let maps = 0;
+        g.scene.traverse(o => {
+          if (!o.isMesh) return;
+          for (const m of [].concat(o.material)) {
+            mats.push({ name: m.name, type: m.type, vc: !!m.vertexColors, colour: m.color.getHex(),
+                        hasColour: !!o.geometry.attributes.color });
+            if (m.map) maps++;
+          }
+        });
+        const box = new THREE.Box3().setFromObject(g.scene, true);
+        out[name] = { mats, maps, min: box.min.toArray(), size: box.getSize(new THREE.Vector3()).toArray() };
+      } catch (e) { out[name] = { error: String(e && e.message || e) }; }
+    }
+    return out;
+  }, budget.items);
+
+  group('the Blender pipeline\'s models');
+  ok(Object.keys(budget.items).length > 0, 'budget.json names at least one model', Object.keys(budget.items).join(', '));
+  for (const [name, item] of Object.entries(budget.items)) {
+    const m = models[name];
+    if (!ok(!m.error, `${name}: loads`, m.error || item.file)) continue;
+    const wrong = m.mats.filter(x => x.type !== 'MeshStandardMaterial');
+    ok(m.mats.length > 0 && wrong.length === 0, `${name}: every material is a MeshStandardMaterial, as flat() and mat() make`,
+       m.mats.map(x => `${x.name} ${x.type}`).join(', '));
+    const flatBad = m.mats.filter(x => x.name.startsWith('flat-') && !(x.vc && x.hasColour && x.colour === 0xffffff));
+    ok(flatBad.length === 0, `${name}: each flat- material is white with vertexColors on and a colour attribute`,
+       flatBad.map(x => `${x.name} vertexColors ${x.vc}, colour #${x.colour.toString(16)}`).join(', '));
+    const keyBad = m.mats.filter(x => !x.name.startsWith('flat-') && !(Object.hasOwn(MATS, x.name) && !x.vc));
+    ok(keyBad.length === 0, `${name}: every other material is a MATS key, with no vertexColors`,
+       keyBad.map(x => `${x.name} vertexColors ${x.vc}`).join(', '));
+    ok(Math.abs(m.min[1]) <= 0.01, `${name}: three's box stands on y = 0`, `lowest y ${m.min[1].toFixed(3)}`);
+    const off = m.size.map((s, k) => s / item.box[k] - 1);
+    ok(off.every(o => Math.abs(o) <= 0.10), `${name}: three's box is within 10% of world.js's ${item.box.join(' x ')}`,
+       m.size.map(s => s.toFixed(3)).join(' x '));
+    ok(m.maps === 0, `${name}: it carries no texture`, `${m.maps} map(s)`);
   }
 
   group('the page');

@@ -4,11 +4,17 @@
 # assertion — and until this file they ran when somebody remembered. See
 # Projects/fourth-quarter/WISHLIST.md, Phase 5.
 #
-# Three commands through suite.yml, the shared template. The first two name the
-# suites that exist today, so a red job says which one. The third runs whatever
+# Four commands through suite.yml, the shared template. The first two name the
+# suites that existed then, so a red job says which one; the third is the
+# Blender validator, below. The fourth runs whatever
 # else is in test/*.mjs, so a suite a later phase adds (smoke-layout.mjs and
 # friends) is picked up without editing this file, and fails the job the same
 # way, naming the file.
+#
+# tools/blender/validate.mjs checks every model tools/blender/budget.json names
+# against the style sheet (WISHLIST.md "Blender assets" B1). It is Node with no
+# dependency and needs no Blender, so it runs here (#645); it lives under
+# tools/, so the test/*.mjs loop does not find it, and it has its own line.
 #
 # `install: Tools/board-check` is for test/gltf-loader.mjs, the one suite here
 # that drives a browser: it borrows that folder's harness.mjs, and without the
@@ -45,4 +51,5 @@ jobs:
       commands: |
         node test/smoke-engine.mjs
         node test/smoke-campaign.mjs
+        node tools/blender/validate.mjs
         failed=0; for f in test/*.mjs; do case "$f" in test/smoke-engine.mjs|test/smoke-campaign.mjs) continue;; esac; echo "== $f"; node "$f" || { echo "FAIL $f"; failed=1; }; done; exit $failed

@@ -179,10 +179,19 @@ try {
   // (unlit where the builder's are a MeshBasicMaterial, lit where they are a
   // MeshLambertMaterial), three's own box must stand on y = 0, and nothing may
   // carry a texture, since the style sheet allows none. The owl is the one
-  // model with both: unlit eyes on a lit head, as makeOwl() draws them (#671).
+  // animal with both: unlit eyes on a lit head, as makeOwl() draws them (#671).
+  // Four props have both too (B5): the markers' blazes, the tower's panes, the
+  // cabin's window and the headlamp's lens are a MeshBasicMaterial in
+  // js/props.js. The glowing mushroom's cap is the one emissive thing, and its
+  // emissive has to arrive as the builder's #2a3a26.
   const budget = JSON.parse(fs.readFileSync(path.join(PROJECT, 'tools', 'blender', 'budget.json'), 'utf8'));
   const BASIC = 'MeshBasicMaterial', LIT = 'MeshStandardMaterial';
-  const KINDS = { crow: [BASIC], 'small-bird': [BASIC], owl: [BASIC, LIT] };
+  const KINDS = {
+    crow: [BASIC], 'small-bird': [BASIC], owl: [BASIC, LIT],
+    'marker-1': [BASIC, LIT], 'marker-2': [BASIC, LIT], tower: [BASIC, LIT], cabin: [BASIC, LIT],
+    headlamp: [BASIC, LIT],
+  };
+  const GLOWS = { 'mushroom-glow': '2a3a26' };
   const models = await page.evaluate(async items => {
     const THREE = await import('three');
     const { GLTFLoader } = await import('./libs/addons/loaders/GLTFLoader.js');
@@ -190,12 +199,13 @@ try {
     for (const [name, item] of Object.entries(items)) {
       try {
         const g = await new GLTFLoader().loadAsync('./' + item.file);
-        const mats = new Set();
+        const mats = new Set(), glows = new Set();
         let maps = 0;
         g.scene.traverse(o => {
           if (!o.isMesh) return;
           mats.add(o.material.type);
           if (o.material.map) maps++;
+          if (o.material.emissive && o.material.emissive.getHex() !== 0) glows.add(o.material.emissive.getHexString());
         });
         // precise: the vertices, since the deer's head rests rotated (#674).
         const box = new THREE.Box3().setFromObject(g.scene, true);
@@ -204,6 +214,7 @@ try {
           missing: (item.nodes || []).filter(n => !g.scene.getObjectByName(n)),
           mats: [...mats].sort(),
           maps,
+          glows: [...glows],
           base: box.min.y,
         };
       } catch (e) { out[name] = { error: String(e && e.message || e) }; }
@@ -225,6 +236,11 @@ try {
        m.mats.join(', '));
     ok(Math.abs(m.base) <= 0.01, `${name}: three's box stands on y = 0`, `lowest y ${m.base.toFixed(3)}`);
     ok(m.maps === 0, `${name}: it carries no texture`, `${m.maps} map(s)`);
+    const glow = GLOWS[name];
+    ok(glow ? m.glows.length === 1 && [0, 2, 4].every(i => Math.abs(parseInt(m.glows[0].slice(i, i + 2), 16)
+      - parseInt(glow.slice(i, i + 2), 16)) <= 1) : m.glows.length === 0,
+       `${name}: ${glow ? `its cap glows #${glow}, as the builder's does` : 'nothing on it glows'}`,
+       m.glows.length ? `#${m.glows.join(', #')}` : 'no emissive');
   }
 
   group('the page');

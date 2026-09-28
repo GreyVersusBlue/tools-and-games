@@ -78,13 +78,16 @@ def linear(hexv):
     return (ch((hexv >> 16) & 255), ch((hexv >> 8) & 255), ch(hexv & 255), 1.0)
 
 
-def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=1.0, image=None):
+def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=1.0, image=None,
+             emissive=None):
     """A flat material. unlit=True exports as KHR_materials_unlit, which is how
     the game's MeshBasicMaterial things (the crow, the small birds) read. alpha under
     1 exports as alphaMode BLEND. image is a texture for the
     base colour, only on an item budget.json gives a texture cap (the sand
     dollar in Golden Hour, #654; Blue Hour has none); the factor is then
-    white, which the palette check allows."""
+    white, which the palette check allows. emissive is a palette hex written
+    as the material's emissiveFactor at strength 1, which is how three's
+    `emissive` reads (the glowing mushrooms' caps)."""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     mat.use_backface_culling = not double_sided
@@ -101,6 +104,9 @@ def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=
         bsdf.inputs['Base Color'].default_value = linear(hexv)
         bsdf.inputs['Roughness'].default_value = roughness
         bsdf.inputs['Metallic'].default_value = 0.0
+        if emissive is not None:
+            bsdf.inputs['Emission Color'].default_value = linear(emissive)
+            bsdf.inputs['Emission Strength'].default_value = 1.0
         if alpha < 1.0:
             bsdf.inputs['Alpha'].default_value = alpha
             mat.surface_render_method = 'BLENDED'
