@@ -189,7 +189,7 @@ BAR_H, BAR_D, TOP_T = 1.1, 0.75, 0.06
 
 
 def counter_mid(rnd):
-    """One metre of the counter (#689). world.js draws the bar as one
+    """One metre of the counter (#690). world.js draws the bar as one
     desc.bar.len x 1.1 x 0.75 block in mat("barTop"); the pack gives it as two
     end pieces and this middle, which the wiring row repeats and stretches
     along x to fill desc.bar.len less the ends. The top overhangs the body at
