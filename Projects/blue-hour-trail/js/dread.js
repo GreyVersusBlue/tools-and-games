@@ -43,6 +43,14 @@ import { groundHeight, trailInfo, fallLine, summitKind, LAYOUT } from './field.j
 // kept, nothing that knows it was listened to. What changes is who is holding
 // its breath. Low down it is the woods. Up here it is the mountain.
 //
+// The two visual beats followed (#680). Past the same line the shape up the
+// trail is standing: the same bulk, the same distance, the same head turned
+// down the mountain, on two legs where nothing on four has any business being.
+// And the eyes low in the trees become a pale light on the slope below, a
+// headlamp going away downhill: the only other sign of a person on this
+// mountain, and it is leaving. Neither is ever closer than the woods' kind was,
+// and neither answers being looked for.
+//
 // Still true, and not negotiable: nothing here can hurt you. Nothing chases,
 // nothing closes, nothing touches the walker. The lookout below is the furthest
 // this piece goes, and it goes there by standing perfectly still.
@@ -91,6 +99,50 @@ function eyesTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+// The shape's summit kind (#680): the bear's bulk stood up. Head low and
+// forward on the local -x side, as the bear's is, so the same flip turns it
+// down the mountain; shoulders hunched over it, a long column under, and two
+// legs. Not a person, since the figure at the rail keeps that, and not an animal
+// anyone could name either.
+function standingTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 128, 256);
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(68, 118, 30, 70, 0.1, 0, Math.PI * 2);      // the column
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(58, 66, 34, 28, -0.35, 0, Math.PI * 2);     // shoulders, hunched
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(30, 56, 17, 15, 0.2, 0, Math.PI * 2);       // head, low and forward
+  ctx.fill();
+  for (const [x, w] of [[50, 17], [74, 18]]) {
+    ctx.fillRect(x, 170, w, 80);                          // legs
+  }
+  ctx.filter = 'blur(3px)';
+  ctx.drawImage(c, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+
+// The eyes' summit kind (#680): one cold-white point with a wide halo, which
+// is what a headlamp is at forty metres in fog. No beam; it is pointed away.
+function lampTexture() {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(236,240,244,0.95)');
+  g.addColorStop(0.08, 'rgba(220,228,236,0.7)');
+  g.addColorStop(0.3, 'rgba(190,204,216,0.18)');
+  g.addColorStop(1, 'rgba(180,196,210,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
 // The figure on the lookout platform. Deliberately not anatomy: a head, a set
 // of shoulders and a column, blurred until it is only a posture. Everything
 // that would make it a character — a face, hands, a silhouette you could
@@ -124,6 +176,14 @@ export function createDread(scene, audio) {
   const bear = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 2.4), bearMat);
   bear.visible = false;
   scene.add(bear);
+  // Above the fog line (#680) it is standing. Same material settings, same
+  // staging; only the outline and the height differ.
+  const tallMat = bearMat.clone();
+  tallMat.map = standingTexture();
+  const tall = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.6), tallMat);
+  tall.visible = false;
+  scene.add(tall);
+  let shape = bear;
 
   // ---- the eyes ----
   const eyesMat = new THREE.MeshBasicMaterial({
@@ -133,6 +193,13 @@ export function createDread(scene, audio) {
   const eyes = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.27), eyesMat);
   eyes.visible = false;
   scene.add(eyes);
+  const lampMat = new THREE.MeshBasicMaterial({
+    map: lampTexture(), transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  });
+  const lamp = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), lampMat);
+  lamp.visible = false;
+  scene.add(lamp);
 
   // ---- the lookout ----
   //
@@ -398,18 +465,25 @@ export function createDread(scene, audio) {
         const side = (pick(1) < pick(-1) ? 1 : -1) * mag;
         const x = camera.position.x + camDir.x * dist - camDir.z * dist * side;
         const z = camera.position.z + camDir.z * dist + camDir.x * dist * side;
-        bear.position.set(x, groundHeight(x, z) + 1.1, z);
-        bear.lookAt(camera.position.x, bear.position.y, camera.position.z);
+        // Which kind is decided here and held for the beat's life, as the
+        // silence's is: a shape staged on four legs does not stand up because
+        // the walker climbed past the line while it was there.
+        const standing = summitKind(controls.pos.y);
+        bear.visible = false; tall.visible = false;
+        shape = standing ? tall : bear;
+        state._bearKind = standing ? 'standing' : 'animal';
+        shape.position.set(x, groundHeight(x, z) + (standing ? 1.3 : 1.1), z);
+        shape.lookAt(camera.position.x, shape.position.y, camera.position.z);
 
         // The silhouette's head is on its local -x side. After lookAt, local
         // +x lies along up × (toward-camera); flip scale.x so the head end
         // points DOWNHILL — the shape is on its way off this mountain, like
         // everything else here except the walker and the thing at the top.
-        const n = toShape.copy(camera.position).sub(bear.position).setY(0).normalize();
+        const n = toShape.copy(camera.position).sub(shape.position).setY(0).normalize();
         const headWorld = { x: -n.z, z: n.x };            // local -x in world, unflipped
         const dh = downhillAt(x, z);
         const headDot = headWorld.x * dh.x + headWorld.z * dh.z;
-        bear.scale.x = headDot >= 0 ? 1 : -1;
+        shape.scale.x = headDot >= 0 ? 1 : -1;
         // After the flip the head points |headDot| of the way downhill; the
         // suite asserts this never goes negative.
         state._bearHeadDot = Math.abs(headDot);
@@ -425,11 +499,10 @@ export function createDread(scene, audio) {
         // AWAY from the camera and there is no profile left to point with. The
         // invariant that survives in every direction is this one: never up the
         // mountain.
-        state._bearHead = { x: headWorld.x * bear.scale.x, z: headWorld.z * bear.scale.x };
+        state._bearHead = { x: headWorld.x * shape.scale.x, z: headWorld.z * shape.scale.x };
         state._bearDownhill = dh;
 
-        bear.visible = true;
-        bearMat.opacity = 0.92;
+        shape.visible = true;
         state._bearActive = true;
         state._bearLife = 40;
         state._bearSeen = false;
@@ -438,6 +511,35 @@ export function createDread(scene, audio) {
       }
 
       case 'eyes': {
+        if (summitKind(controls.pos.y)) {
+          // The summit's kind (#680): a light on the slope below, 30-50 m
+          // down the fall line and to one side of it, at a walker's head
+          // height, going away. The director picks the side as it does for
+          // the eyes, and a walker who has been staring down both flanks of
+          // the valley gets nothing, the same refusal.
+          const dh = downhillAt(controls.pos.x, controls.pos.z);
+          const down = 30 + Math.random() * 20;
+          const out = 8 + Math.random() * 12;
+          const at = s => ({
+            x: controls.pos.x + dh.x * down - dh.z * out * s,
+            z: controls.pos.z + dh.z * down + dh.x * out * s,
+          });
+          const dwellOf = s => { const p = at(s); return dwellAt(yawOf(p.x - controls.pos.x, p.z - controls.pos.z)); };
+          const dwellL = dwellOf(-1), dwellR = dwellOf(1);
+          if (Math.min(dwellL, dwellR) > STARE) return false;
+          const p = at(dwellR < dwellL ? 1 : -1);
+          lamp.position.set(p.x, groundHeight(p.x, p.z) + 1.6, p.z);
+          eyes.visible = false;
+          lamp.visible = true;
+          lampMat.opacity = 0;
+          state._eyesKind = 'lamp';
+          state._eyesActive = true;
+          state._eyesLife = 9 + Math.random() * 4;
+          state._eyesDrift = downhillAt(p.x, p.z);
+          break;
+        }
+        state._eyesKind = 'eyes';
+        lamp.visible = false;
         camDir.set(-Math.sin(controls.yaw), 0, -Math.cos(controls.yaw));
         // low, off to one side, in the treeline — and the director picks the
         // side: whichever arc the walker has looked at least. If they have
@@ -483,14 +585,22 @@ export function createDread(scene, audio) {
   state.dwellAt = yaw => dwellAt(yaw);
   state.bucketOf = yaw => bucketOf(yaw);
   state.bearInfo = () => ({
-    x: bear.position.x, z: bear.position.z, visible: bear.visible,
-    flip: bear.scale.x, headDownhillDot: state._bearHeadDot,
+    x: shape.position.x, y: shape.position.y, z: shape.position.z,
+    visible: shape.visible, kind: state._bearKind || null,
+    // Both meshes, read straight off the scene graph: which one is drawn.
+    drawn: { animal: bear.visible, standing: tall.visible },
+    flip: shape.scale.x, headDownhillDot: state._bearHeadDot,
     head: state._bearHead, downhill: state._bearDownhill,
   });
-  state.eyesInfo = () => ({
-    x: eyes.position.x, z: eyes.position.z, visible: eyes.visible,
-    drift: state._eyesDrift,
-  });
+  state.eyesInfo = () => {
+    const m = state._eyesKind === 'lamp' ? lamp : eyes;
+    return {
+      x: m.position.x, y: m.position.y, z: m.position.z, visible: m.visible,
+      kind: state._eyesKind || null, drift: state._eyesDrift,
+      drawn: { eyes: eyes.visible, lamp: lamp.visible },
+      opacity: (state._eyesKind === 'lamp' ? lampMat : eyesMat).opacity,
+    };
+  };
   state.candidates = (controls, fogT) => candidatesFor(controls, fogT).candidates;
 
   // For the regression suite and for tuning: where the figure is and whether it
@@ -571,7 +681,7 @@ export function createDread(scene, audio) {
     if (state._bearActive) {
       state._bearLife -= dt;
       camera.getWorldDirection(camDir);
-      toShape.copy(bear.position).sub(camera.position);
+      toShape.copy(shape.position).sub(camera.position);
       const dist = toShape.length();
       toShape.normalize();
       const dot = camDir.dot(toShape);
@@ -584,7 +694,7 @@ export function createDread(scene, audio) {
         dist < 32 ||                          // walked toward it: never was
         state._bearLife <= 0;
       if (gone) {
-        bear.visible = false;
+        shape.visible = false;
         state._bearActive = false;
         // And nothing else happens. There used to be a lowSting on this line,
         // fired if the shape had been SEEN and its life had not yet run out —
@@ -650,8 +760,31 @@ export function createDread(scene, audio) {
       state.lookoutWatching = show;
     }
 
+    // ---- the light below, while it lasts (#680) ----
+    if (state._eyesActive && state._eyesKind === 'lamp') {
+      state._eyesLife -= dt;
+      // Walking pace, down the fall line from wherever it has got to, so it
+      // follows the slope round rather than sliding off it in a straight line.
+      const dh = downhillAt(lamp.position.x, lamp.position.z);
+      state._eyesDrift = dh;
+      lamp.position.x += dh.x * dt * 0.7;
+      lamp.position.z += dh.z * dt * 0.7;
+      lamp.position.y = groundHeight(lamp.position.x, lamp.position.z) + 1.6
+        + Math.sin(state._elapsed * 11) * 0.025;          // a step's bob, barely
+      lamp.lookAt(camera.position);
+      // Up over two seconds, never past 0.4, and down over the last two: it
+      // is not switched off, it goes round a shoulder of the hill.
+      const target = Math.min(0.4, state._eyesLife / 5);
+      lampMat.opacity += (target - lampMat.opacity) * Math.min(1, dt * 1.2);
+      const dist = Math.hypot(lamp.position.x - controls.pos.x, lamp.position.z - controls.pos.z);
+      if (dist < 15 || state._eyesLife <= 0) {
+        lamp.visible = false;
+        state._eyesActive = false;
+      }
+    }
+
     // ---- the eyes, while they last ----
-    if (state._eyesActive) {
+    if (state._eyesActive && state._eyesKind !== 'lamp') {
       state._eyesLife -= dt;
       // Leaving, at a pace nobody could swear to: ~6 cm a second, downhill.
       if (state._eyesDrift) {

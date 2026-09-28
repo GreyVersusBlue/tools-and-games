@@ -900,6 +900,125 @@ ok('and it rolls from the uphill ear to the valley one, whichever way you face',
   [stones.up, stones.down].map((st, i) => `${i ? 'descending' : 'climbing'} ${
     typeof st.from === 'number' ? `${st.from.toFixed(2)} to ${st.to.toFixed(2)}` : 'no stone'}`).join(', '));
 
+group('the shape and the eyes above the fog line');
+// #680: past STILL_AIR the shape stands up and the eyes are a light on the
+// slope below, going away. Low down both are what they always were. Every
+// "which kind" here is read off the scene graph, the two meshes' own visible
+// flags, not off the kind label the beat writes for itself (#39).
+const visualKinds = await page.evaluate(async () => {
+  const d = __bh.dread;
+  const trail = __bh.trail();
+  const frame = () => new Promise(r => requestAnimationFrame(r));
+  const out = {};
+  for (const [k, t] of [['low', 0.5], ['high', 0.9]]) {
+    const i = Math.round(t * (trail.length - 1));
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz), 0);
+    await new Promise(r => setTimeout(r, 300));
+    d._gaze.fill(0);
+    d._lastBeat = null;
+    __bh.fireDread('bear');
+    const b = d.bearInfo();
+    d._lastBeat = null;
+    __bh.fireDread('eyes');
+    const e = d.eyesInfo();
+    const p = __bh.pos();
+    out[k] = { altT: __bh.altT(), shape: b.drawn, light: e.drawn, e, p };
+    d._bearLife = 0; d._eyesLife = 0;
+    await frame(); await frame();
+  }
+  return out;
+});
+ok('low down the shape is on four legs and the eyes are eyes',
+  visualKinds.low.shape.animal && !visualKinds.low.shape.standing
+    && visualKinds.low.light.eyes && !visualKinds.low.light.lamp,
+  `altT ${visualKinds.low.altT.toFixed(2)}`);
+ok('above the fog line the shape is standing',
+  visualKinds.high.shape.standing && !visualKinds.high.shape.animal,
+  `altT ${visualKinds.high.altT.toFixed(2)}`);
+ok('and the eyes are a light instead',
+  visualKinds.high.light.lamp && !visualKinds.high.light.eyes);
+
+// Where the light is, measured here rather than trusted: below the walker's
+// feet, and down the hill from them by mountainH, not by the fall line the
+// beat itself used.
+const lampAt = await page.evaluate(async () => {
+  const { mountainH } = await import('/Projects/blue-hour-trail/js/field.js');
+  const d = __bh.dread;
+  const trail = __bh.trail();
+  const out = [];
+  for (const t of [0.86, 0.9, 0.95]) {
+    const i = Math.round(t * (trail.length - 1));
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz), 0);
+    await new Promise(r => setTimeout(r, 300));
+    d._gaze.fill(0);
+    d._lastBeat = null;
+    const fired = __bh.fireDread('eyes');
+    const e = d.eyesInfo();
+    const p = __bh.pos();
+    out.push({ fired, kind: e.kind, below: p.y - e.y,
+      drop: mountainH(p.x, p.z) - mountainH(e.x, e.z) });
+    d._eyesLife = 0;
+  }
+  return out;
+});
+ok('the light is on the slope below the walker',
+  lampAt.every(l => l.fired && l.kind === 'lamp' && l.below > 4 && l.drop > 4),
+  lampAt.map(l => `${l.below.toFixed(1)} m below`).join(', '));
+
+// Going away: over real time it moves down the hill, measured on mountainH at
+// its start and end, and never toward the walker. Under swiftshader main.js
+// clamps dt to 0.1 s, so the distance covered is small; the sign is the claim.
+const lampGoing = await page.evaluate(async () => {
+  const { mountainH } = await import('/Projects/blue-hour-trail/js/field.js');
+  const d = __bh.dread;
+  const trail = __bh.trail();
+  const i = Math.round(0.9 * (trail.length - 1));
+  __bh.teleport(trail[i].x, trail[i].z);
+  __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz), 0);
+  await new Promise(r => setTimeout(r, 300));
+  d._gaze.fill(0);
+  d._lastBeat = null;
+  __bh.fireDread('eyes');
+  const a = d.eyesInfo();
+  const p = __bh.pos();
+  await new Promise(r => setTimeout(r, 4000));
+  const b = d.eyesInfo();
+  const out = {
+    moved: Math.hypot(b.x - a.x, b.z - a.z),
+    fell: mountainH(a.x, a.z) - mountainH(b.x, b.z),
+    further: Math.hypot(b.x - p.x, b.z - p.z) - Math.hypot(a.x - p.x, a.z - p.z),
+    opacity: b.opacity, active: d._eyesActive,
+  };
+  d._eyesLife = 0;
+  return out;
+});
+ok('and it is going away down the hill',
+  lampGoing.moved > 0.05 && lampGoing.fell > 0 && lampGoing.further > 0,
+  `${lampGoing.moved.toFixed(2)} m, ${lampGoing.fell.toFixed(2)} m lower, ${lampGoing.further.toFixed(2)} m further off`);
+ok('half there at most, while it lasts',
+  lampGoing.active && lampGoing.opacity > 0.02 && lampGoing.opacity <= 0.4,
+  `opacity ${lampGoing.opacity.toFixed(3)}`);
+
+// The director still decides: stare down both flanks of the valley and the
+// light never comes on.
+const lampStared = await page.evaluate(async () => {
+  const d = __bh.dread;
+  const trail = __bh.trail();
+  const i = Math.round(0.9 * (trail.length - 1));
+  __bh.teleport(trail[i].x, trail[i].z);
+  await new Promise(r => setTimeout(r, 300));
+  d._gaze.fill(0);
+  for (let b = 0; b < d._gaze.length; b++) d._gaze[b] = 10;
+  d._lastBeat = null;
+  const fired = __bh.fireDread('eyes');
+  const e = d.eyesInfo();
+  d._gaze.fill(0);
+  return { fired, lamp: e.drawn.lamp };
+});
+ok('a watched valley shows no light', lampStared.fired === false && !lampStared.lamp);
+
 group('the headlamp');
 // Ladder 6: findable at the cabin, one toggle, and honest — the cone is a
 // real light and the world outside it genuinely darkens while it burns.
