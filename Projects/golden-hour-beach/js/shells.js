@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundHeight, LAYOUT, mulberry32 } from './field.js';
+import { REF, variant, pieceMesh } from './pieces.js';
 import { SHELL_NAMES_BY_KIND } from './journal-core.js';
 
 // The forty shells worth crouching for. field.js fixes where they lie; this
@@ -12,121 +13,52 @@ import { SHELL_NAMES_BY_KIND } from './journal-core.js';
 // Names live in journal-core.js so the notebook's slots and the beach's finds
 // can never drift apart.
 const NAMES = SHELL_NAMES_BY_KIND;
-const GLASS_TINT = [0x3d7a52, 0x5577aa, 0xa87b3a];
 
-function cockleGeo(seed) {
-  const rnd = mulberry32(seed);
-  const geo = new THREE.SphereGeometry(1, 26, 12);
-  const pos = geo.attributes.position;
-  const ridges = 8 + (rnd() * 4 | 0);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const a = Math.atan2(z, x);
-    const ridge = 1 + Math.abs(Math.sin(a * ridges * 0.5)) * 0.14;
-    pos.setXYZ(i, x * ridge, Math.max(y * 0.42, -0.06), z * ridge);
-  }
-  geo.computeVertexNormals();
-  return geo;
+// One sea-glass piece per tint, in the order the builder's GLASS_TINT listed
+// them: green, blue, amber (#666). The name follows the tint as it did.
+const GLASS_TINTS = 3;
+
+// Each find is its piece inside a group of its own: the group is what the
+// examine verb lifts, turns and sets back, at the spot and height the builder's
+// mesh had, and the piece inside it sits where the builder's primitive sat
+// (pieces.js). Scaled by the entry's s over the pack's 0.175.
+function find(pieces, name, s) {
+  const g = new THREE.Group();
+  g.name = `find:${name}`;
+  g.add(pieceMesh(pieces, name));
+  g.scale.setScalar(s / REF.shell.s);
+  return g;
 }
 
-function whelkGeo(seed) {
-  // A logarithmic spiral swept by a circle — built by hand because three has
-  // no parametric geometry in core and vendoring an addon for one shell would
-  // be the wrong trade. ~1,000 triangles.
-  const rnd = mulberry32(seed);
-  const turns = 2.6 + rnd() * 0.6, U = 64, V = 10;
-  const positions = [], indices = [], up = new THREE.Vector3(0, 1, 0);
-  const center = new THREE.Vector3(), radial = new THREE.Vector3();
-  for (let i = 0; i <= U; i++) {
-    const u = i / U;
-    const th = turns * Math.PI * 2 * u;
-    const r = 0.05 + 0.42 * Math.pow(u, 1.25);
-    const tube = 0.04 + r * 0.62;
-    center.set(Math.cos(th) * r * 0.55, 1.05 * (1 - u) - 0.35, Math.sin(th) * r * 0.55);
-    radial.set(Math.cos(th), 0, Math.sin(th));
-    for (let j = 0; j <= V; j++) {
-      const v = (j / V) * Math.PI * 2;
-      const px = center.x + radial.x * Math.cos(v) * tube;
-      const py = center.y + Math.sin(v) * tube;
-      const pz = center.z + radial.z * Math.cos(v) * tube;
-      positions.push(px, py, pz);
-    }
-  }
-  for (let i = 0; i < U; i++) {
-    for (let j = 0; j < V; j++) {
-      const a = i * (V + 1) + j, b = a + V + 1;
-      indices.push(a, b, a + 1, b, b + 1, a + 1);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function sandDollarMaterialTop() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d');
-  g.fillStyle = '#cfc4ab'; g.fillRect(0, 0, 128, 128);
-  // The five-petal rosette.
-  g.strokeStyle = 'rgba(120,105,80,0.65)';
-  g.lineWidth = 2.5;
-  for (let p = 0; p < 5; p++) {
-    const a = (p / 5) * Math.PI * 2 - Math.PI / 2;
-    g.beginPath();
-    g.ellipse(64 + Math.cos(a) * 22, 64 + Math.sin(a) * 22, 8, 20, a + Math.PI / 2, 0, Math.PI * 2);
-    g.stroke();
-  }
-  g.fillStyle = 'rgba(120,105,80,0.5)';
-  g.beginPath(); g.arc(64, 64, 3, 0, 6.29); g.fill();
-  return new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(c), roughness: 0.9 });
-}
-
-function seaglassGeo(seed) {
-  const rnd = mulberry32(seed);
-  const geo = new THREE.IcosahedronGeometry(0.8, 1);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const j = 0.86 + rnd() * 0.28;
-    pos.setXYZ(i, pos.getX(i) * j, pos.getY(i) * 0.5 * j, pos.getZ(i) * j);
-  }
-  geo.computeVertexNormals();
-  return geo;
-}
-
-export function buildShells(scene, interact, controls, camera, audio) {
-  const shellMat = new THREE.MeshStandardMaterial({ color: 0xd9c9ae, roughness: 0.8 });
-  const whelkMat = new THREE.MeshStandardMaterial({ color: 0xb9a284, roughness: 0.75 });
-  const dollarMat = sandDollarMaterialTop();
+export function buildShells(scene, interact, controls, camera, audio, pieces) {
   const caption = document.getElementById('shell-caption');
 
   const shells = [];
   let examining = null;      // { mesh, home, homeRot, name }
   let returning = null;
 
+  // A cockle's or a whelk's variant is its place among its own kind, not its
+  // seed: six cockles' seeds modulo 3 never come to 1, and cockle-2 would
+  // ship unseen (#679). The seed still names it, as before.
+  const nth = { cockle: 0, whelk: 0 };
   for (const s of LAYOUT.shells) {
     let mesh, name;
     const nameRnd = mulberry32(s.seed);
     const pick = arr => arr[(nameRnd() * arr.length) | 0];
     if (s.kind === 'cockle') {
-      mesh = new THREE.Mesh(cockleGeo(s.seed), shellMat);
+      mesh = find(pieces, `cockle-${variant(nth.cockle++, 3) + 1}`, s.s);
       name = pick(NAMES.cockle);
     } else if (s.kind === 'whelk') {
-      mesh = new THREE.Mesh(whelkGeo(s.seed), whelkMat);
+      mesh = find(pieces, `whelk-${variant(nth.whelk++, 3) + 1}`, s.s);
       name = pick(NAMES.whelk);
     } else if (s.kind === 'sanddollar') {
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.04, 0.16, 22), dollarMat);
+      mesh = find(pieces, 'sand-dollar', s.s);
       name = pick(NAMES.sanddollar);
     } else {
-      const idx = (nameRnd() * GLASS_TINT.length) | 0;
-      mesh = new THREE.Mesh(seaglassGeo(s.seed), new THREE.MeshStandardMaterial({
-        color: GLASS_TINT[idx], roughness: 0.35, transparent: true, opacity: 0.78,
-      }));
+      const idx = (nameRnd() * GLASS_TINTS) | 0;
+      mesh = find(pieces, `sea-glass-${idx + 1}`, s.s);
       name = NAMES.seaglass[idx];
     }
-    mesh.scale.setScalar(s.s);
     mesh.position.set(s.x, groundHeight(s.x, s.z) + s.s * 0.25, s.z);
     mesh.rotation.y = s.yaw;
     scene.add(mesh);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundHeight, LAYOUT, CAVE } from './field.js';
+import { REF, variant, instances, byVariant, pieceMesh } from './pieces.js';
 
 // Everything standing on the sand. Before this the beach was 280 m by 106 m of
 // empty ground: you could walk west for seventy seconds and arrive at a view
@@ -14,161 +15,87 @@ import { groundHeight, LAYOUT, CAVE } from './field.js';
 //   wrack line  a reason to look down, running the full width
 //
 // Where each one sits is in field.js, which has no three.js import and is what
-// test/smoke.mjs checks. This file only turns those numbers into meshes.
-
-/**
- * Turn a primitive into something weathered: displace every vertex radially by a
- * smooth function of where it already is.
- *
- * A function of position, not a per-vertex random number. The random version
- * looked equivalent and wasn't: a sphere's pole is a fan of coincident vertices
- * with the same position and different indices, so independent jitter pulled them
- * apart into a crown of spikes. Every boulder in the cluster had one, and up
- * close they read as shards of glass rather than rock. Any two vertices at the
- * same point get the same displacement here, so seams and poles stay shut.
- */
-const _v = new THREE.Vector3();
-function roughen(geo, amount, seed) {
-  const s = (seed >>> 0) % 1000 * 0.017;
-  const p = geo.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    _v.fromBufferAttribute(p, i);
-    const n = Math.sin(_v.x * 1.7 + s)
-            * Math.sin(_v.y * 2.3 - s * 1.6)
-            * Math.sin(_v.z * 1.9 + s * 2.4);
-    _v.multiplyScalar(1 + n * amount);
-    p.setXYZ(i, _v.x, _v.y, _v.z);
-  }
-  p.needsUpdate = true;
-  geo.computeVertexNormals();
-  return geo;
-}
+// test/smoke.mjs checks. This file only turns those numbers into meshes, each
+// a piece from the prop pack (pieces.js, B6).
 
 /* ------------------------------------------------------------------- groyne - */
 
-function buildGroyne(mat) {
-  // One merged buffer instead of 16 meshes: same picture, one draw call. The
-  // posts never move relative to each other, so there is nothing to gain from
-  // keeping them separate.
-  const parts = [];
-  for (const p of LAYOUT.groyne) {
+// Each post is a groyne-post piece (#665), picked by the seed the builder
+// roughened it with, stretched from the reference post's r 0.2 and 3.9 m to
+// its own, leaning where it leaned. Three variants, three draw calls.
+function buildGroyne(pieces) {
+  const posts = LAYOUT.groyne.map(p => {
     const len = p.top - p.base;
-    const g = new THREE.CylinderGeometry(p.r * 0.88, p.r, len, 7, 1);
-    roughen(g, 0.10, (p.x * 977 + p.z * 131) | 0);
-    g.rotateZ(p.lean);
-    g.translate(p.x, p.base + len / 2, p.z);
-    parts.push(g);
-  }
-  return new THREE.Mesh(mergeGeometries(parts), mat);
+    return {
+      v: variant((p.x * 977 + p.z * 131) | 0, 3),
+      x: p.x, y: p.base + len / 2, z: p.z, rz: p.lean,
+      sx: p.r / REF.groyne.r, sy: len / REF.groyne.len, sz: p.r / REF.groyne.r,
+    };
+  });
+  return byVariant(pieces, ['groyne-post-1', 'groyne-post-2', 'groyne-post-3'], posts);
 }
 
 /* ---------------------------------------------------------------- driftwood - */
 
-function buildDriftwood(mat) {
-  const parts = [];
-  for (const d of LAYOUT.driftwood) {
-    const g = groundHeight(d.x, d.z);
-    const trunk = new THREE.CylinderGeometry(d.r * 0.7, d.r, d.len, 8, 1);
-    roughen(trunk, 0.14, d.seed);
-    trunk.rotateZ(Math.PI / 2);                 // lay it down
-    trunk.rotateX(d.roll);
-    trunk.rotateY(d.yaw);
-    trunk.translate(d.x, g + d.r - d.sink, d.z);
-    parts.push(trunk);
-
-    for (let b = 0; b < d.branches; b++) {
-      const t = (b + 1) / (d.branches + 1) - 0.5;
-      const bl = d.len * (0.22 + 0.16 * b);
-      const br = new THREE.CylinderGeometry(d.r * 0.16, d.r * 0.3, bl, 5, 1);
-      roughen(br, 0.2, d.seed + b * 7919);
-      br.rotateZ(Math.PI / 2.6 + b * 0.5);
-      br.rotateY(d.yaw + (b % 2 ? 1.1 : -1.3));
-      br.translate(
-        d.x + Math.cos(d.yaw) * t * d.len,
-        g + d.r * 1.1,
-        d.z - Math.sin(d.yaw) * t * d.len);
-      parts.push(br);
-    }
-  }
-  return new THREE.Mesh(mergeGeometries(parts), mat);
+// The four logs are four pieces, each LAYOUT.driftwood's own log whole with
+// its roll and branches in it (#666). The builder laid the trunk's lowest
+// side at the sand less `sink`; the piece's base goes there, yawed.
+function buildDriftwood(pieces) {
+  return LAYOUT.driftwood.map((d, i) => {
+    const mesh = pieceMesh(pieces, `driftwood-${i + 1}`);
+    mesh.position.set(d.x, groundHeight(d.x, d.z) - d.sink, d.z);
+    mesh.rotation.y = d.yaw;
+    return mesh;
+  });
 }
 
 /* -------------------------------------------------------------------- rocks - */
 
-function buildRocks(mat) {
-  const parts = [];
-  for (const r of LAYOUT.rocks) {
-    // 9×7 segments jittered by 0.34 made shards, not boulders — up close the
-    // cluster read as a pile of broken glass. Rounder sphere, smooth displacement.
-    const g = new THREE.SphereGeometry(r.r, 14, 10);
-    roughen(g, 0.22, r.seed);
-    g.scale(1, r.flat, 1);
-    g.rotateY(r.yaw);
-    g.translate(r.x, groundHeight(r.x, r.z) - r.sink, r.z);
-    parts.push(g);
-  }
-  return new THREE.Mesh(mergeGeometries(parts), mat);
+function buildRocks(pieces) {
+  const rocks = LAYOUT.rocks.map(r => {
+    const k = r.r / REF.boulder.r;
+    return {
+      v: variant(r.seed, 3),
+      x: r.x, y: groundHeight(r.x, r.z) - r.sink, z: r.z, ry: r.yaw,
+      sx: k, sy: k * r.flat, sz: k,
+    };
+  });
+  return byVariant(pieces, ['boulder-1', 'boulder-2', 'boulder-3'], rocks);
 }
 
 /* -------------------------------------------------------------------- wrack - */
 
-// 460 pieces of debris as three InstancedMeshes — three draw calls for the whole
-// tide line. One mesh each, so the shells can be pale and the weed dark without
-// a per-instance colour attribute.
-function buildWrack() {
-  const kinds = {
-    shell: {
-      geo: (() => { const g = new THREE.SphereGeometry(1, 7, 5, 0, Math.PI * 2, 0, Math.PI * 0.55); g.scale(1, 0.5, 1.25); return g; })(),
-      mat: new THREE.MeshStandardMaterial({ color: 0xe8d8c2, roughness: 0.7, side: THREE.DoubleSide }),
-    },
-    pebble: {
-      geo: roughen(new THREE.SphereGeometry(1, 6, 5), 0.4, 0x51ab).scale(1, 0.55, 0.9),
-      mat: new THREE.MeshStandardMaterial({ color: 0x7d6a58, roughness: 0.9 }),
-    },
-    weed: {
-      geo: (() => { const g = new THREE.BoxGeometry(2.6, 0.18, 0.7); return roughen(g, 0.5, 0x9c2d); })(),
-      mat: new THREE.MeshStandardMaterial({ color: 0x4a4630, roughness: 1.0 }),
-    },
-  };
-
+// 1,300 pieces of debris as three InstancedMeshes, three draw calls for the
+// whole tide line, as before: one per kind, each drawing its piece.
+function buildWrack(pieces) {
   const byKind = { shell: [], pebble: [], weed: [] };
-  for (const w of LAYOUT.wrack) byKind[w.kind].push(w);
-
-  const out = [];
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
-  const pos = new THREE.Vector3(), scl = new THREE.Vector3();
-  for (const [name, list] of Object.entries(byKind)) {
-    if (!list.length) continue;
-    const inst = new THREE.InstancedMesh(kinds[name].geo, kinds[name].mat, list.length);
-    list.forEach((w, i) => {
-      e.set(w.tilt * 0.4, w.yaw, w.tilt);
-      q.setFromEuler(e);
-      // Half-buried: sitting a shell exactly on the surface makes it read as a
-      // sticker. Sinking it by a third of its own size makes it read as sand.
-      pos.set(w.x, groundHeight(w.x, w.z) - w.s * 0.33, w.z);
-      scl.setScalar(w.s);
-      inst.setMatrixAt(i, m.compose(pos, q, scl));
+  for (const w of LAYOUT.wrack) {
+    const k = w.s / REF.wrack.s;
+    // Half-buried: sitting a shell exactly on the surface makes it read as a
+    // sticker. Sinking it by a third of its own size makes it read as sand.
+    byKind[w.kind].push({
+      x: w.x, y: groundHeight(w.x, w.z) - w.s * 0.33, z: w.z,
+      rx: w.tilt * 0.4, ry: w.yaw, rz: w.tilt, sx: k,
     });
-    inst.instanceMatrix.needsUpdate = true;
-    out.push(inst);
+  }
+  const out = [];
+  for (const [kind, list] of Object.entries(byKind)) {
+    if (list.length) out.push(instances(pieces, `wrack-${kind}`, list));
   }
   return out;
 }
 
 /* -------------------------------------------------------------------- fence - */
 
-// The dune-trail fence: one merged mesh of leaning posts pacing the path.
-function buildFence(mat) {
-  const parts = [];
-  for (const f of LAYOUT.dunes.fence) {
-    const g = groundHeight(f.x, f.z);
-    const post = new THREE.CylinderGeometry(0.055, 0.07, f.h + 0.5, 6, 1);
-    roughen(post, 0.12, (f.x * 331 + f.z * 17) | 0);
-    post.rotateZ(f.lean);
-    post.translate(f.x, g + f.h / 2 - 0.25, f.z);
-    parts.push(post);
-  }
-  return new THREE.Mesh(mergeGeometries(parts), mat);
+// The dune-trail fence: leaning posts pacing the path, each h + 0.5 long
+// against the reference post's 1.475.
+function buildFence(pieces) {
+  const posts = LAYOUT.dunes.fence.map(f => ({
+    v: variant((f.x * 331 + f.z * 17) | 0, 3),
+    x: f.x, y: groundHeight(f.x, f.z) + f.h / 2 - 0.25, z: f.z, rz: f.lean,
+    sy: (f.h + 0.5) / (REF.fence.h + 0.5),
+  }));
+  return byVariant(pieces, ['fence-post-1', 'fence-post-2', 'fence-post-3'], posts);
 }
 
 /* --------------------------------------------------------------- tide pools - */
@@ -176,15 +103,15 @@ function buildFence(mat) {
 // Still water in carved basins on the headland shelf, each ringed by low
 // rocks. The water is a plain reflective disc, NOT a Water instance — five
 // reflection render targets for five puddles would be the definition of not
-// measuring first.
-function buildTidePools(stoneMat) {
+// measuring first. The discs stay procedural; the rim is pool-stone pieces.
+function buildTidePools(pieces) {
   const group = new THREE.Group();
   const waterMat = new THREE.MeshStandardMaterial({
     color: 0x14383c, roughness: 0.06, metalness: 0.55,
     transparent: true, opacity: 0.88,
   });
   const rnd = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(20250811);
-  const rimParts = [];
+  const rim = [];
   for (const p of LAYOUT.headland.pools) {
     const rimN = 8 + (rnd() * 4 | 0);
     for (let i = 0; i < rimN; i++) {
@@ -192,19 +119,19 @@ function buildTidePools(stoneMat) {
       const rx = p.x + Math.cos(a) * p.r * 1.06;
       const rz = p.z + Math.sin(a) * p.r * 0.98;
       const rr = 0.14 + rnd() * 0.16;
-      const rock = new THREE.SphereGeometry(rr, 8, 6);
-      roughen(rock, 0.3, (rx * 977 + rz * 131) | 0);
-      rock.scale(1, 0.65, 1);
-      rock.translate(rx, groundHeight(rx, rz) + rr * 0.2, rz);
-      rimParts.push(rock);
+      rim.push({
+        v: variant((rx * 977 + rz * 131) | 0, 3),
+        x: rx, y: groundHeight(rx, rz) + rr * 0.2, z: rz, sx: rr / REF.poolStone.r,
+      });
     }
     const disc = new THREE.Mesh(new THREE.CircleGeometry(p.r * 0.9, 22), waterMat);
+    disc.name = 'tide-pool-water';
     disc.rotation.x = -Math.PI / 2;
     // Water sits partway up the basin: below the rim, above the bottom.
     disc.position.set(p.x, groundHeight(p.x, p.z) + p.depth * 0.55, p.z);
     group.add(disc);
   }
-  group.add(new THREE.Mesh(mergeGeometries(rimParts), stoneMat));
+  for (const inst of byVariant(pieces, ['pool-stone-1', 'pool-stone-2', 'pool-stone-3'], rim)) group.add(inst);
   return group;
 }
 
@@ -214,77 +141,49 @@ function buildTidePools(stoneMat) {
 // the fallen lintel blocks and rubble that make it read as a cave rather than
 // a dent. The glowing pool inside belongs to main.js (it needs the night
 // palette).
-function buildCaveDressing(stoneMat) {
-  const parts = [];
+function buildCaveDressing(pieces) {
   const rnd = (s => () => (s = (s * 48271) % 2147483647) / 2147483647)(51966);
   // Big tumbled blocks flanking the entry.
+  const blocks = [];
   for (const [dx, dz, r] of [[-4.5, 2.5, 1.6], [4.2, 2.1, 1.9], [-2.8, -1.5, 1.1], [3.4, -2, 0.9]]) {
-    const g = new THREE.SphereGeometry(r, 10, 8);
-    roughen(g, 0.3, ((CAVE.x + dx) * 977) | 0);
-    g.scale(1, 0.7, 1);
     const x = CAVE.x + dx, z = CAVE.z + dz;
-    g.translate(x, groundHeight(x, z) + r * 0.25, z);
-    parts.push(g);
+    blocks.push({
+      v: variant(((CAVE.x + dx) * 977) | 0, 2),
+      x, y: groundHeight(x, z) + r * 0.25, z, sx: r / REF.caveBlock.r,
+    });
   }
   // Rubble across the floor.
+  const rubble = [];
   for (let i = 0; i < 14; i++) {
     const a = rnd() * Math.PI * 2, d = rnd() * 5;
     const x = CAVE.x + Math.cos(a) * d, z = CAVE.z + Math.sin(a) * d * 0.8;
     const r = 0.12 + rnd() * 0.3;
-    const g = new THREE.SphereGeometry(r, 7, 5);
-    roughen(g, 0.35, (x * 131 + z * 977) | 0);
-    g.translate(x, groundHeight(x, z) + r * 0.3, z);
-    parts.push(g);
+    rubble.push({
+      v: variant((x * 131 + z * 977) | 0, 2),
+      x, y: groundHeight(x, z) + r * 0.3, z, sx: r / REF.caveRubble.r,
+    });
   }
-  return new THREE.Mesh(mergeGeometries(parts), stoneMat);
-}
-
-/* ------------------------------------------------------------------- merge --- */
-
-/**
- * Concatenate non-indexed BufferGeometries sharing an attribute set.
- *
- * three ships `BufferGeometryUtils.mergeGeometries`, but pulling it in means
- * vendoring another addon for forty lines of array copying, and locked decision
- * #18 says a new addon has to mirror three's own `examples/jsm/` folder layout
- * rather than being flattened next to Sky.js. Not worth a folder. Everything
- * here comes out of the primitive constructors with the same three attributes.
- */
-function mergeGeometries(geos) {
-  const names = ['position', 'normal', 'uv'];
-  const nonIndexed = geos.map(g => (g.index ? g.toNonIndexed() : g));
-  const merged = new THREE.BufferGeometry();
-  for (const name of names) {
-    const size = nonIndexed[0].attributes[name].itemSize;
-    let total = 0;
-    for (const g of nonIndexed) total += g.attributes[name].count * size;
-    const arr = new Float32Array(total);
-    let off = 0;
-    for (const g of nonIndexed) {
-      arr.set(g.attributes[name].array, off);
-      off += g.attributes[name].count * size;
-    }
-    merged.setAttribute(name, new THREE.BufferAttribute(arr, size));
-  }
-  for (const g of nonIndexed) g.dispose();
-  return merged;
+  return [
+    ...byVariant(pieces, ['cave-block-1', 'cave-block-2'], blocks),
+    ...byVariant(pieces, ['cave-rubble-1', 'cave-rubble-2'], rubble),
+  ];
 }
 
 /* -------------------------------------------------------------------- build - */
 
-export function buildProps(scene) {
+export function buildProps(scene, pieces) {
   const group = new THREE.Group();
+  group.name = 'props';
 
-  const wood = new THREE.MeshStandardMaterial({ color: 0x6a5747, roughness: 0.95 });
-  const stone = new THREE.MeshStandardMaterial({ color: 0x4b4550, roughness: 0.82 });
-
-  group.add(buildGroyne(wood));
-  group.add(buildDriftwood(wood));
-  group.add(buildRocks(stone));
-  group.add(buildFence(wood));
-  group.add(buildTidePools(stone));
-  group.add(buildCaveDressing(stone));
-  for (const inst of buildWrack()) group.add(inst);
+  for (const o of [
+    ...buildGroyne(pieces),
+    ...buildDriftwood(pieces),
+    ...buildRocks(pieces),
+    ...buildFence(pieces),
+    buildTidePools(pieces),
+    ...buildCaveDressing(pieces),
+    ...buildWrack(pieces),
+  ]) group.add(o);
 
   scene.add(group);
   return group;

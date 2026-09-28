@@ -6,6 +6,7 @@ import { buildProps } from './props.js';
 import { buildOcean } from './ocean.js';
 import { buildWildlife } from './wildlife.js';
 import { loadAnimals } from './animals.js';
+import { loadPieces } from './pieces.js';
 import { WalkControls } from './controls.js';
 import { Soundscape } from './audio.js';
 import { buildFootprints } from './footprints.js';
@@ -197,13 +198,14 @@ function setSunElevation(deg) {
 // Before anything reads `sun`: buildOcean clones the direction it is handed.
 setSunElevation(SUN_FROM);
 
+// The two packs first, fetched together: every creature and every prop is
+// built from them, and a model that fails to load stops the page here, by
+// name, rather than drawing nothing (B4, B6).
+const [animals, pieces] = await Promise.all([loadAnimals(), loadPieces()]);
 buildTerrain(scene);
-buildProps(scene);
+buildProps(scene, pieces);
 const ocean = buildOcean(scene, sun);
 const audio = new Soundscape();
-// The animal pack first: every creature is built from it, and a model that
-// fails to load stops the page here, by name, rather than drawing nothing (B4).
-const animals = await loadAnimals();
 const wildlife = buildWildlife(scene, audio, animals);
 const controls = new WalkControls(camera, canvas, groundHeight);
 controls.pos.set(0, 0, 14);   // start on dry sand, sea ahead
@@ -245,7 +247,7 @@ placeGlint();
 // walkable now, so the promise is kept — a real tower whose beam sweeps from
 // its true position all night.
 const lighthouse = buildLighthouse(scene);
-buildPier(scene);
+buildPier(scene, pieces);
 
 // The pool inside the sea cave glows faintly at night — the same
 // bioluminescence the foam carries, pooled and still. Driven by the palette's
@@ -345,8 +347,8 @@ interact.register({
   use: () => wildlife.feedAt(CAMP.x - 6, CAMP.z - 6),
 });
 
-const stones = buildStones(scene, interact, controls, camera, audio, ocean);
-const shells = buildShells(scene, interact, controls, camera, audio);
+const stones = buildStones(scene, interact, controls, camera, audio, ocean, pieces);
+const shells = buildShells(scene, interact, controls, camera, audio, pieces);
 
 // ---------- The journal ----------
 // Discoveries persist (gvb-save); the sun does not. Species sight themselves
@@ -357,7 +359,7 @@ skynight.journal = journal;
 shells.onExamine = shell => journal.foundShell(shell.name);
 const regions = buildRegions(controls, journal);
 const events = buildEvents(scene, audio, skynight, journal);
-const sandcastles = buildSandcastles(scene, interact, controls, camera, audio, ocean);
+const sandcastles = buildSandcastles(scene, interact, controls, camera, audio, ocean, pieces);
 
 // Photo mode: H hides every piece of chrome. The journal frames what you saw;
 // this frames what you see.

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundHeight, shorelineZ, waterLineZ } from './field.js';
+import { pieceMesh } from './pieces.js';
 
 // Sandcastles. Kneel on damp sand, shape one; it rises under your hands.
 // Build it too close to the water and the swash takes it back — a scale-melt,
@@ -9,31 +10,16 @@ import { groundHeight, shorelineZ, waterLineZ } from './field.js';
 
 const MAX_CASTLES = 5;
 
-function makeCastle(sandColor) {
+// The sandcastle piece is makeCastle() whole, its base on the sand as the
+// builder's group had it (pieces.js). The group is still what rises and melts.
+function makeCastle(pieces) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: sandColor, roughness: 0.98 });
-  const keep = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.44, 0.5, 10), mat);
-  keep.position.y = 0.25;
-  g.add(keep);
-  const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.3, 9), mat);
-  upper.position.y = 0.62;
-  g.add(upper);
-  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.18, 9), mat);
-  cap.position.y = 0.85;
-  g.add(cap);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + 0.4;
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.4, 7), mat);
-    tower.position.set(Math.cos(a) * 0.5, 0.2, Math.sin(a) * 0.5);
-    g.add(tower);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.12, 7), mat);
-    tip.position.set(Math.cos(a) * 0.5, 0.45, Math.sin(a) * 0.5);
-    g.add(tip);
-  }
+  g.name = 'sandcastle';
+  g.add(pieceMesh(pieces, 'sandcastle'));
   return g;
 }
 
-export function buildSandcastles(scene, interact, controls, camera, audio, ocean) {
+export function buildSandcastles(scene, interact, controls, camera, audio, ocean, pieces) {
   const castles = [];   // { group, x, z, rise, melt }
   let next = 0;
 
@@ -59,7 +45,7 @@ export function buildSandcastles(scene, interact, controls, camera, audio, ocean
       camera.getWorldDirection(fwd);
       const x = controls.pos.x + fwd.x * 1.3;
       const z = controls.pos.z + fwd.z * 1.3;
-      const g = makeCastle(0xb59a72);
+      const g = makeCastle(pieces);
       g.position.set(x, groundHeight(x, z), z);
       g.scale.setScalar(0.01);
       scene.add(g);

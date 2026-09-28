@@ -804,24 +804,23 @@ const SUITES = {
     // is instanced rather than 460 objects, because the day someone "simplifies"
     // that into a loop is the day this page starts costing 460 draw calls.
     const props = await p.evaluate(() => {
-      let instanced = 0, instances = 0, merged = 0;
+      let instanced = 0, instances = 0, merged = 0, biggest = 0;
       window.__scene.traverse(o => {
-        if (o.isInstancedMesh) { instanced++; instances += o.count; }
+        if (o.isInstancedMesh) { instanced++; instances += o.count; biggest = Math.max(biggest, o.count); }
         else if (o.isMesh && o.geometry?.attributes?.position?.count > 400
                  && !o.material?.uniforms) merged++;
       });
-      return { instanced, instances, merged };
+      return { instanced, instances, merged, biggest };
     });
     t.ok(props.instances > 400, 'the wrack line is on the sand',
       `${props.instances} pieces across ${props.instanced} instanced meshes`);
-    // Six on 2026-09-24: three wrack kinds (821, 259 and 220 pieces), a 10-piece
-    // prop set, the footprints and one more small basic-material set. This read
-    // `<= 4` from session 8 until then and failed on every run since the beach
-    // grew; nothing about it was a GPU question. The bound is loose on purpose —
-    // what it guards is the wrack becoming 1,300 separate meshes, not a seventh
-    // instanced set arriving.
-    t.ok(props.instanced <= 10, 'and it is instanced, not 1,300 separate objects',
-      `${props.instanced} instanced meshes`);
+    // This read `props.instanced <= 10` (six sets on 2026-09-24) until the prop
+    // pack drew every piece as an instanced set per variant, 33 in all (#678).
+    // A count of sets never guarded what its message says: the wrack made into
+    // separate meshes lowers it, and the line above is what catches that. What
+    // this line holds is the wrack's shells, 821 pieces, staying one draw.
+    t.ok(props.biggest >= 800, 'and it is instanced, not 1,300 separate objects',
+      `largest instanced set ${props.biggest} pieces, ${props.instanced} sets`);
 
     // Arrow keys look. This is the whole keyboard-only path: nothing in this
     // piece needs aiming, so nothing in it should require pointer lock, and a
@@ -941,15 +940,18 @@ const SUITES = {
       });
       return { meshes, instanced };
     });
-    // 104 meshes and 8 instanced sets on 2026-09-24, so the floor is 100 of the
-    // 112. It read `> 10` first and stayed green with every mesh added straight
-    // to the scene dropped (92 left, because most of the mountain arrives inside
-    // groups): that proved the scene existed and nothing more. A deliberate cut
-    // below 100 should move this number with it. No fog clause: main.js
+    // 104 meshes and 8 instanced sets on 2026-09-24, so the floor was 100 of
+    // the 112. It read `> 10` first and stayed green with every mesh added
+    // straight to the scene dropped (92 left, because most of the mountain
+    // arrives inside groups): that proved the scene existed and nothing more.
+    // The animal pack was the deliberate cut (#677): 77 meshes and 8 sets, the
+    // deer's ten primitives now four, so the floor is 81 of the 85, and the
+    // same break (the 20 meshes added straight to the scene dropped) leaves 65.
+    // A deliberate cut below 81 should move this number with it. No fog clause: main.js
     // reads scene.fog every frame, so a page without it dies before the probe
     // attaches and this line is never reached. Broken on purpose, that is what
     // happened; the error line below is what catches it.
-    t.ok(scene.meshes + scene.instanced >= 100, 'the mountain is built',
+    t.ok(scene.meshes + scene.instanced >= 81, 'the mountain is built',
       `${scene.meshes} meshes, ${scene.instanced} instanced`);
     await t.shot('trailhead');
   },

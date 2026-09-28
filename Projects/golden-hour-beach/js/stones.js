@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { groundHeight, LAYOUT, mulberry32 } from './field.js';
+import { groundHeight, LAYOUT } from './field.js';
+import { REF, variant, byVariant, pieceMesh } from './pieces.js';
 
 // Skipping stones. Three patches of flat stones live on the sand (field.js
 // places them, so the smoke suite can check they sit above the waterline);
@@ -12,39 +13,34 @@ import { groundHeight, LAYOUT, mulberry32 } from './field.js';
 
 const GRAVITY = 9.8;
 
-function makeStoneGeo(seed) {
-  const rnd = mulberry32(seed);
-  const geo = new THREE.DodecahedronGeometry(1, 0);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const j = 0.85 + rnd() * 0.3;
-    pos.setXYZ(i, pos.getX(i) * j, pos.getY(i) * 0.34, pos.getZ(i) * j);
-  }
-  geo.computeVertexNormals();
-  return geo;
-}
+const STONES = ['skimming-stone-1', 'skimming-stone-2', 'skimming-stone-3'];
 
-export function buildStones(scene, interact, controls, camera, audio, ocean) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x6a655e, roughness: 0.85 });
-
-  // The patches as they lie on the sand.
+export function buildStones(scene, interact, controls, camera, audio, ocean, pieces) {
+  // The patches as they lie on the sand: skimming-stone pieces (pieces.js),
+  // a variant each by the seed the builder shaped it from.
   const patchGroup = new THREE.Group();
+  patchGroup.name = 'stone-patches';
+  const lying = [];
   let seed = 0x5107;
   for (const patch of LAYOUT.stones) {
     for (const s of patch.stones) {
-      const m = new THREE.Mesh(makeStoneGeo(seed++), mat);
-      m.scale.setScalar(s.s);
-      m.position.set(s.x, groundHeight(s.x, s.z) + s.s * 0.3, s.z);
-      m.rotation.y = s.yaw;
-      patchGroup.add(m);
+      lying.push({
+        v: variant(seed++, 3),
+        x: s.x, y: groundHeight(s.x, s.z) + s.s * 0.3, z: s.z, ry: s.yaw, sx: s.s / REF.stone.s,
+      });
     }
   }
+  for (const inst of byVariant(pieces, STONES, lying)) patchGroup.add(inst);
   scene.add(patchGroup);
 
   // The one stone in flight (or in hand). One is enough — nobody winds up a
   // second stone mid-flight, and a pool would just be this with bookkeeping.
-  const flying = new THREE.Mesh(makeStoneGeo(0xcafe), mat.clone());
-  flying.scale.setScalar(0.06);
+  // A group round its piece, so it spins about the stone's middle as the
+  // builder's did; 0.06 across, as before.
+  const flying = new THREE.Group();
+  flying.name = 'stone-in-hand';
+  flying.add(pieceMesh(pieces, STONES[variant(0xcafe, 3)]));
+  flying.scale.setScalar(0.06 / REF.stone.s);
   flying.visible = false;
   scene.add(flying);
 
