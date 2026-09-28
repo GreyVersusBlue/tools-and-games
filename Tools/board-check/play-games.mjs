@@ -964,11 +964,15 @@ const SUITES = {
     // The animal pack was the deliberate cut (#677): 77 meshes and 8 sets, the
     // deer's ten primitives now four, so the floor is 81 of the 85, and the
     // same break (the 20 meshes added straight to the scene dropped) leaves 65.
-    // A deliberate cut below 81 should move this number with it. No fog clause: main.js
+    // The prop pack went the other way (#689): 79 meshes and 8 sets after
+    // #680's shape and lamp, then one instanced set per material per variant
+    // where the builders merged, 79 and 16, so 95, and the floor is 91.
+    // Dropping the props group leaves 70 and fails it.
+    // A deliberate cut below 91 should move this number with it. No fog clause: main.js
     // reads scene.fog every frame, so a page without it dies before the probe
     // attaches and this line is never reached. Broken on purpose, that is what
     // happened; the error line below is what catches it.
-    t.ok(scene.meshes + scene.instanced >= 81, 'the mountain is built',
+    t.ok(scene.meshes + scene.instanced >= 91, 'the mountain is built',
       `${scene.meshes} meshes, ${scene.instanced} instanced`);
     await t.shot('trailhead');
   },
