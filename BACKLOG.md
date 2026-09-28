@@ -1666,7 +1666,7 @@ node tools/blender/validate.mjs
 | `flock` | small bird (seven fly together) | 300 | 20 KiB | 1.5 m | none |
 | `prop-large` | fire tower, cabin, bridge | 4,000 | 200 KiB | 13 m | none |
 | `prop` | bench, trail markers | 1,200 | 80 KiB | 3 m | none |
-| `prop-small` | cairn stones, mushrooms, radio, headlamp | 300 | 20 KiB | 1 m | none |
+| `prop-small` | cairn stones, mushrooms, radio, headlamp | 300 | 20 KiB | 1.1 m (#685) | none |
 
 - **What reads is what the fog leaves.** FogExp2 at 0.019, 0.046 and 0.055
   (clear, thick, summit) is 95% fogged at 91, 38 and 31 m, where a pixel of the
@@ -1716,23 +1716,39 @@ ground. `test/animals.mjs`, 30 checks on port 8166, in Site CI;
 `test/browser.mjs` 103 of 103 under `xvfb-run`. The board's floor for the
 mountain moved from 100 to 81 with the pack (#677).
 
-**B5. The trail prop pack (rank 1, ½, gate `blender`).** The nine
-`js/props.js` builds: trail markers, cairn stones, the bridge, the bench, the
-fire tower, the cabin, the radio, the headlamp, the mushrooms. The bootprints
-are a texture and stay one. The trees are not in this pack: `js/forest.js`
-instances conifers and birches with their own silhouette texture, and a tree
-pack would be its own row. Golden Hour's B5 set the pattern (#665): pieces at
-a reference entry where a builder loops over `LAYOUT` (the markers, the cairn
-stones, the mushrooms), whole where it builds one thing once (the tower, the
-cabin, the bridge).
+**B5. The trail prop pack. Shipped 2026-09-28, PR #454** (#683 to #685).
+`tools/blender/props.py` writes 13 files to `assets/models/props/` in about
+3 s: two markers, three cairn stones, the bridge, the bench, the tower, the
+cabin, the radio, the headlamp, and the mushroom with its glowing twin. The
+bootprints stay a texture, and the trees are not in this pack. Every item is
+ported in its builder's own frame, before the builder's last yaw and
+translate, and `budget.json`'s `ref.origin` says where the builder's origin
+landed once the file was grounded; `props.py` stops if the two disagree by a
+millimetre (#683). The looped builders' pieces are real entries: the cairn
+stones are `LAYOUT.cairns[0]`'s first three at their own `r` and seed, the
+markers two weatherings of the one builder, the mushroom one shape with two
+caps (#684). Every box is the builder's, measured by running `buildProps()`
+under the game's own three in Node and taking each thing back out of its
+placement, and every file is inside 10% of it. The tower and the cabin carry
+their unlit glass as nodes, `panes` and `window`. Two calls on the style
+sheet: `prop-small` is 1.1 m now, for the radio's aerial, and the cabin's
+lopsided three-sided roof is a saltbox in the same box (#685).
+`validate.mjs` 328, `test/gltf-loader.mjs` 149.
 
 **B6. Wiring the props (rank 2, ¼, no gate, after rank 1).** The radio and
 the headlamp are things the walker finds; their positions and what finding
 them does stay exactly as they are. Golden Hour's `js/pieces.js` is the
-pattern (#678, #679): copy it into this project (#17), re-origin each piece at
-load, and let each builder keep its arithmetic. Run `npm run games blue-hour`
-as well as the Node suites: its mountain floor (81 of 85, #677) counts meshes,
-and a pack moves it.
+pattern (#678, #679): copy it into this project (#17), and let each builder
+keep its arithmetic. The re-origin is simpler than Golden Hour's: put each
+file's `ref.origin` at the builder's origin (subtract it at load), and every
+`place()`, `rotateY` and `translate` in `js/props.js` stays as written. The
+markers' blazes, the tower's `panes`, the cabin's `window` and the headlamp's
+lens arrive as `MeshBasicMaterial`; `update()` lerps the cabin's `window`
+material where it lerped `winMat`. The mushrooms stay instanced, one
+`InstancedMesh` per material per file, scaled 0.6 to 1.9 as now; the cairn
+stones scale by entry `r` over the variant's `ref.r`. Run `npm run games
+blue-hour` as well as the Node suites: its mountain floor (81 of 85, #677)
+counts meshes, and a pack moves it.
 
 ## Integer Foundry
 
