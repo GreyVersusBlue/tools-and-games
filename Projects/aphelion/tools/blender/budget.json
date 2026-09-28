@@ -1,0 +1,24 @@
+{
+  "about": "Aphelion's Blender style sheet as data (BACKLOG.md 'Aphelion: Blender assets' B1). validate.mjs reads it. Every material is a key of M in src/ship.js, read from that file as text, and carries M's colour, roughness, metalness, emissive and opacity; there is no vertex colour, no UV and no texture, since the game draws every surface from M. Bytes are triangles x 72 + 8 KiB: the worst case of a flat-shaded triangle carrying its own three vertices (position and normal, 24 bytes each) and three 16-bit indices, plus the JSON chunk. extent is the longest side a class may have, in metres, a sanity bound only; each item's box is the one src/ship.js gives the thing it replaces, held to 10% per axis (x, y, z in three's frame). texture is the largest image side in pixels, and 0 means none.",
+  "loader": "libs/addons/loaders/GLTFLoader.js",
+  "palette": "src/ship.js",
+  "models": "models",
+  "needsDecoder": [
+    "KHR_draco_mesh_compression",
+    "EXT_meshopt_compression",
+    "KHR_meshopt_compression",
+    "KHR_texture_basisu"
+  ],
+  "classes": {
+    "interior": { "triangles": 1500, "bytes": 116192, "extent": 4.5, "texture": 0 },
+    "hull":     { "triangles": 6000, "bytes": 440192, "extent": 26,  "texture": 0 },
+    "poi":      { "triangles": 2000, "bytes": 152192, "extent": 5.5, "texture": 0 }
+  },
+  "items": {
+    "console": {
+      "file": "models/ship/console.glb",
+      "class": "interior",
+      "box": [4.4, 0.775, 1.05]
+    }
+  }
+}

@@ -1,8 +1,8 @@
 // node test/gltf-loader.mjs
 //
-// Proves the vendored GLTFLoader loads a model in a real browser, before any
-// Blender asset exists to feed it (BACKLOG.md "Aphelion: Blender assets" B2).
-// Exits non-zero on any failure (#13).
+// Proves the vendored GLTFLoader loads a model in a real browser (BACKLOG.md
+// "Aphelion: Blender assets" B2), then loads every model tools/blender/budget.json
+// names (B1 onward). Exits non-zero on any failure (#13).
 //
 // Aphelion's own copy of The Fourth Quarter's test/gltf-loader.mjs, not an
 // import of it (#17): each project vendors its loader separately and each proves
@@ -42,6 +42,7 @@ let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
   if (cond) { passed++; console.log(`  ok    ${what}${detail ? '  ' + detail : ''}`); }
   else { failed++; console.log(`  FAIL  ${what}${detail ? '  ' + detail : ''}`); }
+  return cond;   // the pipeline block below skips on a failed load; nothing did before it
 };
 const group = name => console.log(`\n${name}`);
 
@@ -171,6 +172,71 @@ try {
     ok(strip.indices === 6, 'it is re-indexed as two triangles (six indices)', `${strip.indices}`);
     ok(same(strip.min, [0, 0, 0]) && same(strip.max, [1, 1, 0]), 'its bounds are (0,0,0) to (1,1,0)',
        `${strip.min} .. ${strip.max}`);
+  }
+
+  // What the Blender pipeline writes (B1 onward), through the same loader:
+  // every model budget.json names, fetched from where the game will fetch it.
+  // tools/blender/validate.mjs reads the files with its own parser; this is
+  // three reading them. Every material must come back as a
+  // MeshStandardMaterial named for a key of M in src/ship.js (the name is how
+  // the wiring row swaps M[key] in), with M's colour and emissive, and no
+  // vertexColors. Three's own box must stand on y = 0 and sit within 10% of
+  // ship.js's box, and nothing may carry a texture. M is read from ship.js as
+  // text, as validate.mjs reads it, since ship.js imports three.
+  const budget = JSON.parse(fs.readFileSync(path.join(PROJECT, 'tools', 'blender', 'budget.json'), 'utf8'));
+  const mTable = fs.readFileSync(path.join(PROJECT, budget.palette), 'utf8').match(/^const M = \{([\s\S]*?)^\};/m);
+  const M = Object.fromEntries([...(mTable ? mTable[1] : '').matchAll(/(\w+):\s*new THREE\.MeshStandardMaterial\(\{([^}]*)\}\)/g)]
+    .map(m => [m[1], { color: Number((m[2].match(/color:\s*(0x[0-9a-fA-F]+)/) || [0, '0xffffff'])[1]),
+                       emissive: Number((m[2].match(/emissive:\s*(0x[0-9a-fA-F]+)/) || [0, '0x000000'])[1]) }]));
+  const models = await page.evaluate(async items => {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import('./libs/addons/loaders/GLTFLoader.js');
+    const out = {};
+    for (const [name, item] of Object.entries(items)) {
+      try {
+        const g = await new GLTFLoader().loadAsync('./' + item.file);
+        const mats = [];
+        let maps = 0;
+        g.scene.traverse(o => {
+          if (!o.isMesh) return;
+          for (const m of [].concat(o.material)) {
+            mats.push({ name: m.name, type: m.type, vc: !!m.vertexColors, colour: m.color.getHex(),
+                        emissive: m.emissive.getHex(), hasColour: !!o.geometry.attributes.color });
+            if (m.map || m.emissiveMap) maps++;
+          }
+        });
+        const box = new THREE.Box3().setFromObject(g.scene, true);
+        out[name] = { mats, maps, min: box.min.toArray(), size: box.getSize(new THREE.Vector3()).toArray() };
+      } catch (e) { out[name] = { error: String(e && e.message || e) }; }
+    }
+    return out;
+  }, budget.items);
+
+  group('the Blender pipeline\'s models');
+  ok(Object.keys(M).length > 0, 'M was read from src/ship.js', Object.keys(M).join(', '));
+  ok(Object.keys(budget.items).length > 0, 'budget.json names at least one model', Object.keys(budget.items).join(', '));
+  const nearHex = (a, b) => [16, 8, 0].every(k => Math.abs(((a >> k) & 255) - ((b >> k) & 255)) <= 1);
+  for (const [name, item] of Object.entries(budget.items)) {
+    const m = models[name];
+    if (!ok(!m.error, `${name}: loads`, m.error || item.file)) continue;
+    const wrong = m.mats.filter(x => x.type !== 'MeshStandardMaterial');
+    ok(m.mats.length > 0 && wrong.length === 0, `${name}: every material is a MeshStandardMaterial, as M's are`,
+       m.mats.map(x => `${x.name} ${x.type}`).join(', '));
+    const keyBad = m.mats.filter(x => !(Object.hasOwn(M, x.name) && !x.vc && !x.hasColour));
+    ok(keyBad.length === 0, `${name}: every material is a key of M, with no vertex colour`,
+       keyBad.map(x => `${x.name} vertexColors ${x.vc}`).join(', '));
+    // three drops the emissive intensity into the colour when it has no
+    // extension to read, so the emissive is checked for its hue being M's
+    // (a nonzero M emissive comes back nonzero, a zero one zero).
+    const hueBad = m.mats.filter(x => Object.hasOwn(M, x.name) &&
+      (!nearHex(x.colour, M[x.name].color) || (x.emissive !== 0) !== (M[x.name].emissive !== 0)));
+    ok(hueBad.length === 0, `${name}: every material carries M's colour, and an emissive only where M has one`,
+       hueBad.map(x => `${x.name} #${x.colour.toString(16)} emissive #${x.emissive.toString(16)}`).join(', '));
+    ok(Math.abs(m.min[1]) <= 0.01, `${name}: three's box stands on y = 0`, `lowest y ${m.min[1].toFixed(3)}`);
+    const off = m.size.map((sz, k) => sz / item.box[k] - 1);
+    ok(off.every(o => Math.abs(o) <= 0.10), `${name}: three's box is within 10% of ship.js's ${item.box.join(' x ')}`,
+       m.size.map(sz => sz.toFixed(3)).join(' x '));
+    ok(m.maps === 0, `${name}: it carries no texture`, `${m.maps} map(s)`);
   }
 
   group('the page');

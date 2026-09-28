@@ -964,7 +964,7 @@ const SUITES = {
     // The animal pack was the deliberate cut (#677): 77 meshes and 8 sets, the
     // deer's ten primitives now four, so the floor is 81 of the 85, and the
     // same break (the 20 meshes added straight to the scene dropped) leaves 65.
-    // The prop pack went the other way (#689): 79 meshes and 8 sets after
+    // The prop pack went the other way (#692): 79 meshes and 8 sets after
     // #680's shape and lamp, then one instanced set per material per variant
     // where the builders merged, 79 and 16, so 95, and the floor is 91.
     // Dropping the props group leaves 70 and fails it.

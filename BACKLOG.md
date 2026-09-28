@@ -139,16 +139,17 @@ committed files (#645); a wiring row is taken only once the pack row above it
 has merged. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Ranks 1 and 3 are claimed** by `claude/fq-bar-aph-pipeline` (PR #457): The
-Fourth Quarter's bar pack and Aphelion's pipeline, on Devon's machine. Rank 2
-wires rank 1's pack in and waits for it to merge; rank 4, Aphelion's ship
-pack, waits on rank 3's pipeline, and rank 5 on rank 4.
-**The next free row is rank 6, on Devon's machine**: Bell to Bell's Blender
-pipeline (a ¼ naming Opus 5.5, gate `blender`), B1 in
-`Projects/bell-to-bell/WISHLIST.md`. Rank 9, School Generator's pipeline (a
-¼, gate `blender`), fits beside it inside the spanning-areas caps.
-**No row is ready for a cloud session**: every cloud row left in the block
-wires a pack that has not been made yet.
+**Ranks 1 and 3 shipped in PR #459** (The Fourth Quarter's bar pack and
+Aphelion's pipeline, `claude/fq-bar-aph-pipeline`). They stay in the table
+until that session's own backlog update retires them and moves every row up
+two; this header was written by the Blue Hour session before it did, so read
+the table's `Claimed` column before trusting a rank here.
+**Rank 2 is ready for a cloud session now**: wiring the bar pack in (a ½
+naming Opus 5.5, no gate), B4 in `Projects/fourth-quarter/WISHLIST.md`.
+**On Devon's machine**, rank 4 is Aphelion's ship pack (a ½, gate `blender`),
+on the pipeline PR #459 put in, and rank 6, Bell to Bell's pipeline (a ¼, gate
+`blender`), fits beside it inside the spanning-areas caps. Rank 5 wires rank
+4's pack in and waits for it to merge.
 Below the Blender block, rank 40 (The Fracture Cycle's fourth prong) and rank
 42 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
 them, and a scope Devon has not asked for is not a judgement call a session
@@ -158,7 +159,8 @@ person listening for an hour, and their `Gate` cell says which.
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
 
-**Blue Hour's props are the pack's** (#689 to #691, PR #458). `js/pieces.js`
+**Blue Hour's props are the pack's** (#692 to #694, PR #458; they were #689 to
+#691 when they merged, see #692). `js/pieces.js`
 loads the 13 files beside the animals and subtracts each `ref.origin`, so
 `js/props.js` kept every builder's placement; the markers, cairn stones and
 mushrooms are instanced sets, the rest are groups, and the radio and the
@@ -1202,13 +1204,28 @@ Ranks 3, 4 and 5. The common plan is
 [Blender assets: the common plan](#blender-assets-the-common-plan). three is
 r160 here.
 
-**B1. The pipeline (rank 3, ¼, gate `blender`).** Aphelion's own copy
-(#643). The palette is the `M` table at the top of `src/ship.js` (wall, trim,
-panel, metal, bed, blanket, soil, leaf, glass, hullExt, sat), with its
-emissive panel values kept: `panelLow` and `panelOk` are the power state, and a
-model's panel material must still take them. Starting budgets: interior prop
-1,500 triangles, hull shell 6,000, satellite and EVA points of interest 2,000.
-No textures. The validator joins Site CI's Aphelion entry.
+**B1. The pipeline. Shipped 2026-09-28, PR #459** (#691; rank 4, ¼, Opus 5.5,
+gate `blender`). `tools/blender/` is Aphelion's own copy of The Fourth
+Quarter's `common.py`, `validate.mjs` and `.gitignore` at 7abc774 (#643),
+pinned to Blender 5.2, with `ship.py` and `budget.json`. **Every material is
+a key of `M`**, read out of `src/ship.js` as text (that file imports three),
+carrying `M`'s colour, roughness, metalness, emissive and opacity; there is
+no flat- kind, no vertex colour and no UV, since the game draws every surface
+from `M`. A `panel` slot carries `M.panel`'s emissive at 0.25, and the wiring
+row puts each system's own clone on it, so `panelLow` and `panelOk` still
+work. Classes: `interior` 1,500 triangles / 4.5 m, `hull` 6,000 / 26 m, `poi`
+2,000 / 5.5 m; bytes are triangles x 72 + 8 KiB. The sample is the cockpit
+console, `models/ship/console.glb`: 300 triangles, 18,084 bytes, box 4.400 x
+0.775 x 1.050 m, `metal` and `panel`. It keeps ship.js's box, whose base is
+0.15 m above the deck, so B4 puts it at y 0.15. Three runs, one hash.
+`validate.mjs` (30 checks) is a line in Site CI's Aphelion entry, and
+`test/gltf-loader.mjs` loads every model `budget.json` names (15 to 24). Run
+from `Projects/aphelion`:
+
+```
+blender -b --factory-startup -P tools/blender/ship.py -- [item ...]
+node tools/blender/validate.mjs
+```
 
 **B2. The GLTFLoader. Shipped 2026-09-27, PR #425.** GLTFLoader and
 BufferGeometryUtils vendored unmodified from three@0.160.0 into `libs/addons/`
@@ -1762,15 +1779,15 @@ sheet: `prop-small` is 1.1 m now, for the radio's aerial, and the cabin's
 lopsided three-sided roof is a saltbox in the same box (#685).
 `validate.mjs` 328, `test/gltf-loader.mjs` 149.
 
-**B6. Wiring the props. Shipped 2026-09-28, PR #458** (#689 to #691).
+**B6. Wiring the props. Shipped 2026-09-28, PR #458** (#692 to #694).
 `js/pieces.js`, Blue Hour's own copy of Golden Hour's (#17), loads the 13
 files with the animals before `buildProps` and subtracts each file's
 `ref.origin`, so every placement in `js/props.js` is its builder's. The markers
 alternate `marker-1`/`marker-2` up the trail, a cairn stone is variant s mod 3
 scaled by r over its `ref.r`, and the mushrooms are one instanced set per
-material per file at 0.6 to 1.9 (#690); the assemblies are groups (#689). The
+material per file at 0.6 to 1.9 (#693); the assemblies are groups (#692). The
 unlit four arrive as `MeshBasicMaterial` and `update()` lerps the cabin
-`window`'s own; the lit ones keep the file's `MeshStandardMaterial` (#691).
+`window`'s own; the lit ones keep the file's `MeshStandardMaterial` (#694).
 `test/props.mjs`, 43 checks on port 8168, in Site CI. `npm run games
 blue-hour`'s floor is 91 of 95.
 
