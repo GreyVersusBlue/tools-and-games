@@ -53,6 +53,35 @@
       "box": [2.64, 0.356, 0.616],
       "clips": ["fly"],
       "nodes": ["wingR", "wingL"]
+    },
+    "deer": {
+      "file": "assets/models/animals/deer.glb",
+      "class": "animal-large",
+      "box": [1.24, 1.729, 2.857],
+      "clips": ["graze"],
+      "nodes": ["head"]
+    },
+    "fox": {
+      "file": "assets/models/animals/fox.glb",
+      "class": "animal-mid",
+      "box": [0.33, 0.54, 1.299]
+    },
+    "owl": {
+      "file": "assets/models/animals/owl.glb",
+      "class": "animal-mid",
+      "box": [0.351, 0.705, 0.312],
+      "nodes": ["head"]
+    },
+    "squirrel": {
+      "file": "assets/models/animals/squirrel.glb",
+      "class": "animal-small",
+      "box": [0.182, 0.376, 0.413]
+    },
+    "small-bird": {
+      "file": "assets/models/animals/small-bird.glb",
+      "class": "flock",
+      "box": [1.2, 0.162, 0.28],
+      "nodes": ["wingR", "wingL"]
     }
   }
 }

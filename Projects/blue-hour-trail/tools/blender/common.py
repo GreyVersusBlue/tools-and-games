@@ -245,10 +245,16 @@ def tree(root):
 def ground(root):
     """Move the asset so its origin is the centre of its base: x and z (Blender
     x and y) centred, the lowest point on y = 0 (Blender z = 0). Checked by
-    validate.mjs to 1 cm."""
+    validate.mjs to 1 cm.
+
+    The box is the vertices', not each object's bound_box corners: a node that
+    rests rotated (the deer's head, down at 0.9 rad) swings its local box's
+    corners well past its geometry, and centred the deer 3.9 cm off. For a node
+    at no rotation the two are the same box, so every earlier file rebuilt
+    byte-identical (#674)."""
     bpy.context.view_layer.update()
-    pts = [ob.matrix_world @ Vector(c) for ob in tree(root) if ob.type == 'MESH'
-           for c in ob.bound_box]
+    pts = [ob.matrix_world @ v.co for ob in tree(root) if ob.type == 'MESH'
+           for v in ob.data.vertices]
     lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
     hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
     shift = Vector((-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -lo.z))
