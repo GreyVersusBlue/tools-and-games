@@ -1,5 +1,5 @@
 {
-  "about": "Golden Hour's Blender style sheet as data (BACKLOG.md 'Golden Hour: Blender assets' B1). validate.mjs reads it. Bytes are KiB x 1024. extent is the longest side a class may have, in metres; each item's box is the builder's box it replaces, held to 10% per axis. texture is the largest image side in pixels, and 0 means none. clips are the clip names an item must carry, exactly; nodes are the node names the game finds and poses itself, and each must be in the file.",
+  "about": "Golden Hour's Blender style sheet as data (BACKLOG.md 'Golden Hour: Blender assets' B1). validate.mjs reads it. Bytes are KiB x 1024. extent is the longest side a class may have, in metres; each item's box is the builder's box it replaces, held to 10% per axis. texture is the largest image side in pixels, and 0 means none. clips are the clip names an item must carry, exactly; nodes are the node names the game finds and poses itself, and each must be in the file. ref is the entry a prop piece was built at (#665): the wiring row scales each piece by the field.js entry's numbers over these, and its note gives the range the entries span.",
   "loader": "libs/addons/loaders/GLTFLoader.js",
   "needsDecoder": [
     "KHR_draco_mesh_compression",
@@ -44,7 +44,8 @@
     "animal-small": { "triangles": 1500, "bytes": 153600, "extent": 3.6, "texture": 0, "clips": true },
     "flock":        { "triangles": 300,  "bytes": 20480,  "extent": 1.0, "texture": 0, "clips": false },
     "prop-large":   { "triangles": 4000, "bytes": 204800, "extent": 60.0, "texture": 0, "clips": false },
-    "prop":         { "triangles": 1200, "bytes": 81920,  "extent": 6.0, "texture": 0, "clips": false },
+    "prop":         { "triangles": 1200, "bytes": 81920,  "extent": 7.0, "texture": 0, "clips": false },
+    "find":         { "triangles": 1500, "bytes": 65536,  "extent": 0.5, "texture": 0, "clips": false },
     "scatter":      { "triangles": 150,  "bytes": 10240,  "extent": 0.5, "texture": 0, "clips": false }
   },
   "items": {
@@ -112,6 +113,277 @@
       "box": [0.975, 0.833, 2.94],
       "clips": ["breathe"],
       "nodes": ["head"]
+    },
+    "driftwood-1": {
+      "file": "assets/models/props/driftwood-1.glb",
+      "class": "prop",
+      "box": [6.561, 0.857, 2.3],
+      "ref": { "log": 1, "len": 6.4, "r": 0.38, "note": "LAYOUT.driftwood's own log, whole; the wiring yaws and sinks it" }
+    },
+    "driftwood-2": {
+      "file": "assets/models/props/driftwood-2.glb",
+      "class": "prop",
+      "box": [4.929, 1.494, 1.915],
+      "ref": { "log": 2, "len": 5.0, "r": 0.3, "note": "LAYOUT.driftwood's own log, whole; the wiring yaws and sinks it" }
+    },
+    "driftwood-3": {
+      "file": "assets/models/props/driftwood-3.glb",
+      "class": "prop",
+      "box": [4.22, 0.785, 0.866],
+      "ref": { "log": 3, "len": 4.2, "r": 0.26, "note": "LAYOUT.driftwood's own log, whole; the wiring yaws and sinks it" }
+    },
+    "driftwood-4": {
+      "file": "assets/models/props/driftwood-4.glb",
+      "class": "prop",
+      "box": [3.481, 0.477, 1.197],
+      "ref": { "log": 4, "len": 3.4, "r": 0.22, "note": "LAYOUT.driftwood's own log, whole; the wiring yaws and sinks it" }
+    },
+    "groyne-post-1": {
+      "file": "assets/models/props/groyne-post-1.glb",
+      "class": "prop",
+      "box": [0.389, 3.918, 0.381],
+      "ref": { "r": 0.2, "len": 3.9, "note": "LAYOUT.groyne: r 0.17 to 0.21, len (top - base) 3.6 to 4.2" }
+    },
+    "groyne-post-2": {
+      "file": "assets/models/props/groyne-post-2.glb",
+      "class": "prop",
+      "box": [0.389, 3.957, 0.38],
+      "ref": { "r": 0.2, "len": 3.9, "note": "LAYOUT.groyne: r 0.17 to 0.21, len (top - base) 3.6 to 4.2" }
+    },
+    "groyne-post-3": {
+      "file": "assets/models/props/groyne-post-3.glb",
+      "class": "prop",
+      "box": [0.375, 4.004, 0.368],
+      "ref": { "r": 0.2, "len": 3.9, "note": "LAYOUT.groyne: r 0.17 to 0.21, len (top - base) 3.6 to 4.2" }
+    },
+    "boulder-1": {
+      "file": "assets/models/props/boulder-1.glb",
+      "class": "prop",
+      "box": [3.349, 3.463, 3.406],
+      "ref": { "r": 1.5, "flat": 1, "note": "LAYOUT.rocks: r 0.59 to 2.97, flat 0.74 to 0.95" }
+    },
+    "boulder-2": {
+      "file": "assets/models/props/boulder-2.glb",
+      "class": "prop",
+      "box": [2.977, 3.018, 2.918],
+      "ref": { "r": 1.5, "flat": 1, "note": "LAYOUT.rocks: r 0.59 to 2.97, flat 0.74 to 0.95" }
+    },
+    "boulder-3": {
+      "file": "assets/models/props/boulder-3.glb",
+      "class": "prop",
+      "box": [3.361, 3.415, 3.319],
+      "ref": { "r": 1.5, "flat": 1, "note": "LAYOUT.rocks: r 0.59 to 2.97, flat 0.74 to 0.95" }
+    },
+    "wrack-shell": {
+      "file": "assets/models/props/wrack-shell.glb",
+      "class": "scatter",
+      "box": [0.366, 0.113, 0.469],
+      "ref": { "s": 0.195, "note": "LAYOUT.wrack: s 0.09 to 0.30" }
+    },
+    "wrack-pebble": {
+      "file": "assets/models/props/wrack-pebble.glb",
+      "class": "scatter",
+      "box": [0.424, 0.219, 0.346],
+      "ref": { "s": 0.195, "note": "LAYOUT.wrack: s 0.09 to 0.30" }
+    },
+    "wrack-weed": {
+      "file": "assets/models/props/wrack-weed.glb",
+      "class": "scatter",
+      "box": [0.489, 0.035, 0.135],
+      "ref": { "s": 0.195, "note": "LAYOUT.wrack: s 0.09 to 0.30" }
+    },
+    "fence-post-1": {
+      "file": "assets/models/props/fence-post-1.glb",
+      "class": "prop",
+      "box": [0.122, 1.486, 0.141],
+      "ref": { "h": 0.975, "note": "LAYOUT.dunes.fence: h 0.87 to 1.10; the post is h + 0.5 long" }
+    },
+    "fence-post-2": {
+      "file": "assets/models/props/fence-post-2.glb",
+      "class": "prop",
+      "box": [0.122, 1.484, 0.14],
+      "ref": { "h": 0.975, "note": "LAYOUT.dunes.fence: h 0.87 to 1.10; the post is h + 0.5 long" }
+    },
+    "fence-post-3": {
+      "file": "assets/models/props/fence-post-3.glb",
+      "class": "prop",
+      "box": [0.115, 1.495, 0.132],
+      "ref": { "h": 0.975, "note": "LAYOUT.dunes.fence: h 0.87 to 1.10; the post is h + 0.5 long" }
+    },
+    "pool-stone-1": {
+      "file": "assets/models/props/pool-stone-1.glb",
+      "class": "scatter",
+      "box": [0.44, 0.286, 0.44],
+      "ref": { "r": 0.22, "note": "buildTidePools rim stones: r 0.14 to 0.30" }
+    },
+    "pool-stone-2": {
+      "file": "assets/models/props/pool-stone-2.glb",
+      "class": "scatter",
+      "box": [0.472, 0.305, 0.471],
+      "ref": { "r": 0.22, "note": "buildTidePools rim stones: r 0.14 to 0.30" }
+    },
+    "pool-stone-3": {
+      "file": "assets/models/props/pool-stone-3.glb",
+      "class": "scatter",
+      "box": [0.458, 0.297, 0.458],
+      "ref": { "r": 0.22, "note": "buildTidePools rim stones: r 0.14 to 0.30" }
+    },
+    "cave-block-1": {
+      "file": "assets/models/props/cave-block-1.glb",
+      "class": "prop",
+      "box": [2.601, 1.776, 2.525],
+      "ref": { "r": 1.375, "note": "buildCaveDressing's four blocks: r 0.9 to 1.9" }
+    },
+    "cave-rubble-1": {
+      "file": "assets/models/props/cave-rubble-1.glb",
+      "class": "scatter",
+      "box": [0.466, 0.5, 0.48],
+      "ref": { "r": 0.27, "note": "buildCaveDressing's rubble: r 0.12 to 0.42" }
+    },
+    "cave-block-2": {
+      "file": "assets/models/props/cave-block-2.glb",
+      "class": "prop",
+      "box": [2.864, 1.912, 2.705],
+      "ref": { "r": 1.375, "note": "buildCaveDressing's four blocks: r 0.9 to 1.9" }
+    },
+    "cave-rubble-2": {
+      "file": "assets/models/props/cave-rubble-2.glb",
+      "class": "scatter",
+      "box": [0.406, 0.434, 0.412],
+      "ref": { "r": 0.27, "note": "buildCaveDressing's rubble: r 0.12 to 0.42" }
+    },
+    "pier-pile-1": {
+      "file": "assets/models/props/pier-pile-1.glb",
+      "class": "prop",
+      "box": [0.37, 2.904, 0.364],
+      "ref": { "len": 3.0, "note": "pier.js's sound piles: len 1.57 to 4.32" }
+    },
+    "pier-stump-1": {
+      "file": "assets/models/props/pier-stump-1.glb",
+      "class": "prop",
+      "box": [0.408, 4.159, 0.397],
+      "ref": { "len": 4.1, "note": "pier.js's broken piles past deckEnd: len 3.48 to 4.68" }
+    },
+    "pier-pile-2": {
+      "file": "assets/models/props/pier-pile-2.glb",
+      "class": "prop",
+      "box": [0.378, 2.97, 0.37],
+      "ref": { "len": 3.0, "note": "pier.js's sound piles: len 1.57 to 4.32" }
+    },
+    "pier-stump-2": {
+      "file": "assets/models/props/pier-stump-2.glb",
+      "class": "prop",
+      "box": [0.407, 4.123, 0.398],
+      "ref": { "len": 4.1, "note": "pier.js's broken piles past deckEnd: len 3.48 to 4.68" }
+    },
+    "pier-plank-1": {
+      "file": "assets/models/props/pier-plank-1.glb",
+      "class": "prop",
+      "box": [4.1, 0.09, 0.5],
+      "ref": { "w": 4.1, "note": "pier.js's planks: PIER.halfW * 2 + 0.3" }
+    },
+    "pier-plank-2": {
+      "file": "assets/models/props/pier-plank-2.glb",
+      "class": "prop",
+      "box": [4.1, 0.09, 0.5],
+      "ref": { "w": 4.1, "note": "pier.js's planks: PIER.halfW * 2 + 0.3" }
+    },
+    "pier-plank-3": {
+      "file": "assets/models/props/pier-plank-3.glb",
+      "class": "prop",
+      "box": [4.1, 0.09, 0.5],
+      "ref": { "w": 4.1, "note": "pier.js's planks: PIER.halfW * 2 + 0.3" }
+    },
+    "pier-stringer": {
+      "file": "assets/models/props/pier-stringer.glb",
+      "class": "prop-large",
+      "box": [0.18, 0.22, 27.6],
+      "ref": { "len": 27.6, "note": "pier.js's stringers: deckStart - deckEnd + 0.6" }
+    },
+    "cockle-1": {
+      "file": "assets/models/props/cockle-1.glb",
+      "class": "find",
+      "box": [0.384, 0.084, 0.387],
+      "ref": { "s": 0.175, "note": "LAYOUT.shells: s 0.13 to 0.22" }
+    },
+    "cockle-2": {
+      "file": "assets/models/props/cockle-2.glb",
+      "class": "find",
+      "box": [0.393, 0.084, 0.396],
+      "ref": { "s": 0.175, "note": "LAYOUT.shells: s 0.13 to 0.22" }
+    },
+    "cockle-3": {
+      "file": "assets/models/props/cockle-3.glb",
+      "class": "find",
+      "box": [0.393, 0.084, 0.396],
+      "ref": { "s": 0.175, "note": "LAYOUT.shells: s 0.13 to 0.22" }
+    },
+    "whelk-1": {
+      "file": "assets/models/props/whelk-1.glb",
+      "class": "find",
+      "box": [0.188, 0.251, 0.17],
+      "ref": { "s": 0.175, "note": "LAYOUT.shells: s 0.13 to 0.22" }
+    },
+    "whelk-2": {
+      "file": "assets/models/props/whelk-2.glb",
+      "class": "find",
+      "box": [0.18, 0.251, 0.164],
+      "ref": { "s": 0.175, "note": "LAYOUT.shells: s 0.13 to 0.22" }
+    },
+    "whelk-3": {
+      "file": "assets/models/props/whelk-3.glb",
+      "class": "find",
+      "box": [0.178, 0.251, 0.18],
+      "ref": { "s": 0.175, "note": "LAYOUT.shells: s 0.13 to 0.22" }
+    },
+    "sand-dollar": {
+      "file": "assets/models/props/sand-dollar.glb",
+      "class": "find",
+      "box": [0.36, 0.028, 0.364],
+      "ref": { "s": 0.175, "note": "LAYOUT.shells: s 0.13 to 0.22" },
+      "texture": 128
+    },
+    "sea-glass-1": {
+      "file": "assets/models/props/sea-glass-1.glb",
+      "class": "find",
+      "box": [0.294, 0.151, 0.311],
+      "ref": { "s": 0.175, "tint": "green", "note": "LAYOUT.shells: s 0.13 to 0.22; one file per GLASS_TINT" }
+    },
+    "sea-glass-2": {
+      "file": "assets/models/props/sea-glass-2.glb",
+      "class": "find",
+      "box": [0.302, 0.157, 0.31],
+      "ref": { "s": 0.175, "tint": "blue", "note": "LAYOUT.shells: s 0.13 to 0.22; one file per GLASS_TINT" }
+    },
+    "sea-glass-3": {
+      "file": "assets/models/props/sea-glass-3.glb",
+      "class": "find",
+      "box": [0.309, 0.157, 0.303],
+      "ref": { "s": 0.175, "tint": "amber", "note": "LAYOUT.shells: s 0.13 to 0.22; one file per GLASS_TINT" }
+    },
+    "skimming-stone-1": {
+      "file": "assets/models/props/skimming-stone-1.glb",
+      "class": "scatter",
+      "box": [0.134, 0.041, 0.137],
+      "ref": { "s": 0.065, "note": "LAYOUT.stones: s 0.05 to 0.077" }
+    },
+    "skimming-stone-2": {
+      "file": "assets/models/props/skimming-stone-2.glb",
+      "class": "scatter",
+      "box": [0.136, 0.041, 0.135],
+      "ref": { "s": 0.065, "note": "LAYOUT.stones: s 0.05 to 0.077" }
+    },
+    "skimming-stone-3": {
+      "file": "assets/models/props/skimming-stone-3.glb",
+      "class": "scatter",
+      "box": [0.137, 0.041, 0.14],
+      "ref": { "s": 0.065, "note": "LAYOUT.stones: s 0.05 to 0.077" }
+    },
+    "sandcastle": {
+      "file": "assets/models/props/sandcastle.glb",
+      "class": "prop",
+      "box": [1.175, 0.94, 1.168],
+      "ref": { "note": "makeCastle() at full size; the game scales it as it rises and melts" }
     }
   }
 }

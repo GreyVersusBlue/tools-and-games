@@ -73,9 +73,12 @@ def linear(hexv):
     return (ch((hexv >> 16) & 255), ch((hexv >> 8) & 255), ch(hexv & 255), 1.0)
 
 
-def material(name, hexv, unlit=False, double_sided=False, roughness=0.85):
+def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=1.0, image=None):
     """A flat material. unlit=True exports as KHR_materials_unlit, which is how
-    the game's MeshBasicMaterial things (the gull, the bats) read."""
+    the game's MeshBasicMaterial things (the gull, the bats) read. alpha under
+    1 exports as alphaMode BLEND (the sea glass). image is a texture for the
+    base colour, only on an item budget.json gives a texture cap (the sand
+    dollar, #654); the factor is then white, which the palette check allows."""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     mat.use_backface_culling = not double_sided
@@ -92,8 +95,31 @@ def material(name, hexv, unlit=False, double_sided=False, roughness=0.85):
         bsdf.inputs['Base Color'].default_value = linear(hexv)
         bsdf.inputs['Roughness'].default_value = roughness
         bsdf.inputs['Metallic'].default_value = 0.0
+        if alpha < 1.0:
+            bsdf.inputs['Alpha'].default_value = alpha
+            mat.surface_render_method = 'BLENDED'
+        if image is not None:
+            tex = nodes.new('ShaderNodeTexImage')
+            tex.image = image
+            tex.interpolation = 'Linear'
+            links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
         links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     return mat
+
+
+def image(name, size, pixel):
+    """A size x size texture from pixel(x, y) -> sRGB (r, g, b) in 0..1, y up,
+    packed into the .blend so the exporter embeds it as a PNG."""
+    img = bpy.data.images.new(name, size, size, alpha=False)
+    img.colorspace_settings.name = 'sRGB'
+    px = []
+    for y in range(size):
+        for x in range(size):
+            px.extend((*pixel(x, y), 1.0))
+    img.pixels.foreach_set(px)
+    img.file_format = 'PNG'
+    img.pack()
+    return img
 
 
 # ---------------------------------------------------------------- geometry
@@ -154,28 +180,43 @@ def canonical(bm):
     under 5.2.2, so the exporter wrote the same triangles in a different order
     and the .glb changed on every run. Rebuilding with vertices sorted by
     position, each face's loop started at its lowest vertex (winding kept), and
-    faces sorted by material then vertices, makes a rerun byte-stable."""
+    faces sorted by material then vertices, makes a rerun byte-stable. Each
+    face keeps its smooth flag and, where the mesh has one, its UVs; neither
+    takes part in the order, so a mesh without them sorts as it always did."""
     verts = sorted(bm.verts, key=lambda v: (v.co.z, v.co.y, v.co.x))
     index = {v: i for i, v in enumerate(verts)}
+    uv = bm.loops.layers.uv.active
     faces = []
     for f in bm.faces:
         ids = [index[v] for v in f.verts]
         k = ids.index(min(ids))
-        faces.append((f.material_index, ids[k:] + ids[:k]))
-    faces.sort()
+        uvs = [tuple(l[uv].uv) for l in f.loops] if uv else None
+        faces.append((f.material_index, ids[k:] + ids[:k], f.smooth,
+                      uvs[k:] + uvs[:k] if uvs else None))
+    faces.sort(key=lambda t: (t[0], t[1]))
     out = bmesh.new()
+    out_uv = out.loops.layers.uv.new('UVMap') if uv else None
     nv = [out.verts.new(v.co) for v in verts]
-    for mat, ids in faces:
-        out.faces.new([nv[i] for i in ids]).material_index = mat
+    for mat, ids, smooth, uvs in faces:
+        f = out.faces.new([nv[i] for i in ids])
+        f.material_index = mat
+        f.smooth = smooth
+        if uvs:
+            for l, c in zip(f.loops, uvs):
+                l[out_uv].uv = c
     bm.free()
     return out
 
 
-def mesh_object(name, bm, materials, parent=None, location=(0, 0, 0)):
-    """A flat-shaded object from a bmesh, with its transforms already applied."""
+def mesh_object(name, bm, materials, parent=None, location=(0, 0, 0), smooth=False):
+    """An object from a bmesh, with its transforms already applied. Flat-shaded
+    unless smooth=True, which keeps each face's own smooth flag as the pack set
+    it: a rock is smooth all over, a post smooth round its sides with flat
+    ends, the way three's primitives shade them in the builders."""
     bm = canonical(bm)
-    for f in bm.faces:
-        f.smooth = False
+    if not smooth:
+        for f in bm.faces:
+            f.smooth = False
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
@@ -237,9 +278,11 @@ def clip(name, obj, frames, key, paths=('rotation_euler',)):
 
 # ---------------------------------------------------------------- output
 
-def export_glb(root, rel):
+def export_glb(root, rel, textured=False):
     """Write root and its children to PROJECT/rel as a .glb, with the settings
-    this project loads. Returns the absolute path."""
+    this project loads. Returns the absolute path. textured=True writes UVs
+    and embeds the images as PNG; only an item with a texture cap in
+    budget.json passes it, and every other file carries neither."""
     path = os.path.join(PROJECT, rel)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     for ob in bpy.context.scene.objects:
@@ -253,12 +296,12 @@ def export_glb(root, rel):
         use_selection=True,
         export_yup=True,
         export_apply=True,
-        export_texcoords=False,
+        export_texcoords=textured,
         export_normals=True,
         export_tangents=False,
         export_materials='EXPORT',
         export_vertex_color='MATERIAL',
-        export_image_format='NONE',
+        export_image_format='AUTO' if textured else 'NONE',
         export_draco_mesh_compression_enable=False,
         export_meshopt_compression_enable=False,
         export_use_gltfpack=False,
