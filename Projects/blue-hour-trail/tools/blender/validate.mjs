@@ -180,12 +180,13 @@ function check(name, item) {
         const count = p.indices !== undefined ? gltf.accessors[p.indices].count
           : gltf.accessors[p.attributes.POSITION].count;
         tris += mode === 4 ? count / 3 : (mode === 5 || mode === 6) ? Math.max(0, count - 2) : 0;
-        const acc = gltf.accessors[p.attributes.POSITION];
-        for (const cx of [acc.min[0], acc.max[0]]) for (const cy of [acc.min[1], acc.max[1]])
-          for (const cz of [acc.min[2], acc.max[2]]) {
-            const w = apply(m, [cx, cy, cz]);
-            for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], w[k]); hi[k] = Math.max(hi[k], w[k]); }
-          }
+        // Every vertex, not the accessor's min/max corners: a node that rests
+        // rotated (the deer's head) swings those corners past its geometry,
+        // and differently per primitive (#674).
+        for (const v of readAccessor(gltf, bin, p.attributes.POSITION)) {
+          const w = apply(m, v);
+          for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], w[k]); hi[k] = Math.max(hi[k], w[k]); }
+        }
       }
     }
     for (const c of node.children || []) walk(c, m);

@@ -788,7 +788,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Blue Hour's animal pack: deer, fox, owl, crow, squirrel and small bird, with clips; the bear and the elk stay as they are (#646) | `Projects/blue-hour-trail` | 1 | Opus 5.5 | blender | | `claude/blue-hour-animals` | [Blue Hour: Blender assets](#blue-hour-blender-assets) B3 |
+| 1 | Blue Hour's animal pack: deer, fox, owl, crow, squirrel and small bird, with clips; the bear and the elk stay as they are (#646) | `Projects/blue-hour-trail` | 1 | Opus 5.5 | blender | `claude/blue-hour-animals` | [Blue Hour: Blender assets](#blue-hour-blender-assets) B3 |
 | 2 | Wire Blue Hour's animal pack in, once rank 1 has merged | `Projects/blue-hour-trail` | ½ | Opus 5.5 |  |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B4 |
 | 3 | Wire Golden Hour's prop pack in; the pack merged in PR #437 | `Projects/golden-hour-beach` | ¼ | Opus 5.5 |  |  | [Golden Hour: Blender assets](#golden-hour-blender-assets) B6 |
 | 4 | Blue Hour's trail prop pack: markers, cairn stones, bridge, bench, fire tower, cabin, radio, headlamp, mushrooms | `Projects/blue-hour-trail` | ½ | Opus 5.5 | blender |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B5 |
@@ -1635,18 +1635,27 @@ which are separately vendored under #17 and #18 (both utils per #651).
 `test/gltf-loader.mjs`, port 8162, 15 checks, in Site CI. It loads the animal
 pack once rank 1 merges.
 
-**B3. The animal pack (rank 1, 1, gate `blender`).** Deer, fox, owl,
-squirrel and small bird beside the crow B1 shipped, the six `js/wildlife.js`
-builds. **The bear stays the
-silhouette plane the dread beat puts up in `js/dread.js`, and the elk stays a
-bugle in `audio.js`** (#646): not seeing either one clearly is the point.
-Clips where the code moves a part now; the small birds are static, with
-`wingR`/`wingL` nodes the game poses, as Golden Hour's bats. The owl's eyes are
-a `MeshBasicMaterial` on a lit body, so `test/gltf-loader.mjs`'s one-material
-line needs widening for it, and `UNLIT` there names the small bird already.
+**B3. The animal pack. Shipped 2026-09-28, PR #440** (#671 to #675).
+Deer, fox, owl, squirrel and small bird beside the crow, in
+`assets/models/animals/`. **The bear stays the silhouette plane the dread beat
+puts up in `js/dread.js`, and the elk stays a bugle in `audio.js`** (#646).
+The deer is 756 triangles (#672) with a `head` node and a `graze` clip, and
+rests head down at 0.9 rad, the clip's first frame (#673); the owl has a
+`head` node the game turns with `lookAt` and unlit eyes on a lit head (#671);
+the small bird is flock class with `wingR`/`wingL` and no clip; the fox and
+the squirrel are moved whole and carry neither. Boxes are vertices' now, in
+`ground()`, the validator and the loader test (#674).
 
 **B4. Wiring the animals (rank 2, ½, no gate, after rank 1).** As Golden
-Hour's B4. `test/browser.mjs` is outside CI on purpose (#353), so run it under
+Hour's B4, with #675's table: every model is turned π inside its group (the
+owl's head `lookAt` too), and lifted by crow 0.178 m, small bird 0.081, owl
+0.010, deer and fox 0; the squirrel's builder floated 2.4 cm, which is the
+row's call. The deer's `graze` plays while it grazes and the game poses
+`head` for alert, at +0.1 on the turned node (#673). The small birds' and
+crows' wings beat about the forward axis where the builder twisted them
+(#663, #670). Fix the `dir = -1` crows' heading here (#670). Fail loud on a
+missing file, as Golden Hour's `js/animals.js` does (#664).
+`test/browser.mjs` is outside CI on purpose (#353), so run it under
 `xvfb-run` and name what it printed; its `> 10` meshes floor counts a loaded
 model's meshes too, so check the count still means what its comment says.
 

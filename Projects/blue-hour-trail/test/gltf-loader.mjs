@@ -175,11 +175,14 @@ try {
   // every model budget.json names, fetched from where the game will fetch it.
   // validate.mjs reads the files with its own parser; this is three reading
   // them. The clips and the nodes the game poses must come through by name,
-  // the unlit builders (a MeshBasicMaterial today) must come back as
-  // MeshBasicMaterial, three's own box must stand on y = 0, and nothing may
-  // carry a texture, since the style sheet allows none.
+  // each model's materials must come back as the kinds its builder draws with
+  // (unlit where the builder's are a MeshBasicMaterial, lit where they are a
+  // MeshLambertMaterial), three's own box must stand on y = 0, and nothing may
+  // carry a texture, since the style sheet allows none. The owl is the one
+  // model with both: unlit eyes on a lit head, as makeOwl() draws them (#671).
   const budget = JSON.parse(fs.readFileSync(path.join(PROJECT, 'tools', 'blender', 'budget.json'), 'utf8'));
-  const UNLIT = new Set(['crow', 'small-bird']);
+  const BASIC = 'MeshBasicMaterial', LIT = 'MeshStandardMaterial';
+  const KINDS = { crow: [BASIC], 'small-bird': [BASIC], owl: [BASIC, LIT] };
   const models = await page.evaluate(async items => {
     const THREE = await import('three');
     const { GLTFLoader } = await import('./libs/addons/loaders/GLTFLoader.js');
@@ -194,7 +197,8 @@ try {
           mats.add(o.material.type);
           if (o.material.map) maps++;
         });
-        const box = new THREE.Box3().setFromObject(g.scene);
+        // precise: the vertices, since the deer's head rests rotated (#674).
+        const box = new THREE.Box3().setFromObject(g.scene, true);
         out[name] = {
           clips: g.animations.map(a => a.name).sort(),
           missing: (item.nodes || []).filter(n => !g.scene.getObjectByName(n)),
@@ -216,8 +220,8 @@ try {
     ok(m.clips.join() === want.join(), `${name}: its clips come through by name`, `[${m.clips.join(', ')}]`);
     ok(m.missing.length === 0, `${name}: the nodes the game poses are found by name`,
        m.missing.length ? `missing ${m.missing.join(', ')}` : (item.nodes || []).join(', '));
-    const kind = UNLIT.has(name) ? 'MeshBasicMaterial' : 'MeshStandardMaterial';
-    ok(m.mats.join() === kind, `${name}: its materials are ${kind}, lit or unlit as its builder's are`,
+    const kinds = (KINDS[name] || [LIT]).join(', ');
+    ok(m.mats.join(', ') === kinds, `${name}: its materials are ${kinds}, lit or unlit as its builder's are`,
        m.mats.join(', '));
     ok(Math.abs(m.base) <= 0.01, `${name}: three's box stands on y = 0`, `lowest y ${m.base.toFixed(3)}`);
     ok(m.maps === 0, `${name}: it carries no texture`, `${m.maps} map(s)`);
