@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { shorelineZ } from '../field.js';
+import { makeAnimal } from '../animals.js';
 
 // A pelican squadron: five heavy birds in a line, skimming the water just off
 // the break, following the shoreline curve the whole length of the coast.
@@ -13,37 +14,27 @@ const COUNT = 5;
 const HISTORY = 240;             // ~4 s per follower gap at 60 fps
 const GAP = 45;                  // history samples between birds
 
-function makePelican() {
+// The pack's pelican, wings across the body where the builder laid them fore
+// and aft (#658). Its `fly` clip is the flap train's beat, 0.55 rad at 9 rad/s;
+// between trains its weight fades to nothing and the wings rest flat, which is
+// the glide (#662).
+function makePelican(animals) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a7d6c, roughness: 0.85 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), mat);
-  body.scale.set(1.9, 0.75, 0.7);
-  g.add(body);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 1.1, 6), mat);
-  beak.rotation.z = -Math.PI / 2;
-  beak.position.set(1.35, -0.05, 0);
-  g.add(beak);
-  const wingGeo = new THREE.BufferGeometry();
-  wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, 0, 2.4, 0.1, 0.55, 2.4, 0.1, -0.55,
-  ], 3));
-  wingGeo.computeVertexNormals();
-  const wL = new THREE.Mesh(wingGeo, new THREE.MeshStandardMaterial({
-    color: 0x6e6355, roughness: 0.9, side: THREE.DoubleSide,
-  }));
-  const wR = new THREE.Mesh(wingGeo.clone(), wL.material);
-  wR.scale.x = -1;
-  g.add(wL, wR);
-  g.userData = { wL, wR };
+  const a = makeAnimal(animals, 'pelican');
+  g.add(a.seat);
+  g.userData = { mixer: a.mixer, fly: a.actions.fly, weight: 1 };
   return g;
 }
 
-export function makePelicans(scene, audio) {
+export function makePelicans(scene, audio, animals) {
   const birds = [];
   const group = new THREE.Group();
   scene.add(group);
   for (let i = 0; i < COUNT; i++) {
-    const b = makePelican();
+    const b = makePelican(animals);
+    // Each bird a beat behind the one ahead, as sin(t * 9 + i * 0.7) had it.
+    b.userData.fly.play();
+    b.userData.fly.time = (i * 0.7) / 9;
     group.add(b);
     birds.push(b);
   }
@@ -89,9 +80,10 @@ export function makePelicans(scene, audio) {
       const pos = history[idx];
       b.position.copy(pos);
       b.rotation.y = dir > 0 ? 0 : Math.PI;
-      const flap = train ? Math.sin(flapClock * 9 + i * 0.7) * 0.55 : Math.sin(flapClock * 0.8 + i) * 0.06;
-      b.userData.wL.rotation.x = flap;
-      b.userData.wR.rotation.x = -flap;
+      const u = b.userData;
+      u.weight += ((train ? 1 : 0) - u.weight) * Math.min(1, dt * 5);
+      u.fly.setEffectiveWeight(u.weight);
+      u.mixer.update(dt);
     }
 
     croakT -= dt;

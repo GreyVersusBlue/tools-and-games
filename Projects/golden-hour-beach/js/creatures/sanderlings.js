@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundHeight, waterLineZ } from '../field.js';
+import { flockGeometry } from '../animals.js';
 
 // Sanderlings: the little birds that chase the edge of every wave out and
 // sprint back in ahead of the next one. The signature piece of the bestiary,
@@ -8,7 +9,9 @@ import { groundHeight, waterLineZ } from '../field.js';
 // on, and not by any private clock. If the water and the birds ever disagree,
 // the birds are wrong.
 //
-// One InstancedMesh, ten birds, one draw call. States live on the flock:
+// One InstancedMesh, ten birds, one draw call, its geometry and material the
+// pack's sanderling (#659), turned and dropped into the old builder's frame so
+// the matrices below are written exactly as they were. States live on the flock:
 //   FORAGE  — track the waterline (out as it retreats, in ahead of run-up),
 //             individual birds jittering, pausing, probing
 //   FLUSH   — the player got within ~6 m: everybody up, a short low flight
@@ -17,32 +20,10 @@ import { groundHeight, waterLineZ } from '../field.js';
 
 const COUNT = 10;
 
-function birdGeometry() {
-  const body = new THREE.SphereGeometry(0.09, 8, 6);
-  body.scale(1.7, 0.9, 0.8);
-  const head = new THREE.SphereGeometry(0.05, 6, 5);
-  head.translate(0.13, 0.07, 0);
-  const geos = [body, head].map(g => g.toNonIndexed());
-  const total = geos.reduce((n, g) => n + g.attributes.position.count, 0);
-  const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3);
-  let off = 0;
-  for (const g of geos) {
-    pos.set(g.attributes.position.array, off);
-    nor.set(g.attributes.normal.array, off);
-    off += g.attributes.position.count * 3;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  return geo;
-}
-
-export function makeSanderlings(scene, audio) {
-  const mesh = new THREE.InstancedMesh(
-    birdGeometry(),
-    new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.9 }),
-    COUNT,
-  );
+export function makeSanderlings(scene, audio, animals) {
+  const bird = flockGeometry(animals, 'sanderling');
+  const mesh = new THREE.InstancedMesh(bird.geometry, bird.material, COUNT);
+  mesh.name = 'sanderlings';
   scene.add(mesh);
 
   const home = { x: -70, z: -4, radius: 90 };

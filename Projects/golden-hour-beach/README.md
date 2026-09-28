@@ -110,6 +110,7 @@ js/props.js       groyne, driftwood, boulders, wrack, fence, pools, cave
 js/pier.js        the ruined pier's piles, planking and stumps
 js/lighthouse.js  the tower and its sweeping beam
 js/ocean.js       water shader, the swash on the tide, per-chunk foam strips
+js/animals.js     loads the animal pack; seats each model in its builder's group
 js/wildlife.js    the original quartet + the creature registry
 js/creatures/     sanderlings, crabs, pelicans, seals, tidepool life,
                   fireflies/owl/bats, heron/cormorants
@@ -131,6 +132,8 @@ assets/           waternormals.jpg, textures/, models/ (Blender-made .glb)
 test/smoke.mjs    node test/smoke.mjs — the world's arithmetic, no browser
 test/gltf-loader.mjs  a hand-built GLB, then every model budget.json names, through
                   the vendored loader, headless
+test/animals.mjs  the game's wildlife built from the pack and stepped: every
+                  creature is its model, and each clip and posed node moves
 tools/blender/    the Blender pipeline: common.py (pinned export settings),
                   one script per pack, budget.json (the style sheet as data),
                   validate.mjs (checks every model against it, no Blender)
@@ -147,6 +150,7 @@ them to their claims.
 ```
 node test/smoke.mjs
 node test/gltf-loader.mjs   # after `npm ci` in Tools/board-check
+node test/animals.mjs       # the same
 node tools/blender/validate.mjs
 ```
 
