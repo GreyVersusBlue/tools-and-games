@@ -698,13 +698,13 @@ outside CI on purpose (#353).
 
 *Leaned on:* `Tools/board-check/games.mjs`, `drive-save.mjs`. *Save:* none.
 
-## Blender assets (ranks 25 to 27, from 2026-09-25)
+## Blender assets (ranks 23 to 25, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
 plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
 without `blender` on PATH skips it and takes the next row.
 
-**B1. The sprite pipeline (rank 25, ¼, Opus 5.5, gate `blender`).** Corner &
+**B1. The sprite pipeline (rank 23, ¼, Opus 5.5, gate `blender`).** Corner &
 Kettle's own copy of Signal City's sprite renderer (#643), with a
 three-quarter camera for things on a counter. The palette is `BASE_COLORS`,
 `MILKS`, `SYRUPS` and `TOPPINGS` in `js/content.js`. Style sheet: a cup is a
@@ -715,10 +715,10 @@ a frame per layer, tinted and stacked at draw time. The pixel customer
 otherwise and records why. The validator joins
 `.github/workflows/corner-kettle-ci.yml`.
 
-**B2. The cup and food sheet (rank 26, ½, Opus 5.5, gate `blender`).** The
+**B2. The cup and food sheet (rank 24, ½, Opus 5.5, gate `blender`).** The
 cup body and its layers, and one frame per entry in `FOODS`.
 
-**B3. Wiring the sheet (rank 27, ¼, Opus 5.5, no gate, after rank 26).**
+**B3. Wiring the sheet (rank 25, ¼, Opus 5.5, no gate, after rank 24).**
 `cupSvg` and `orderIconsHtml` draw from the sheet; `js/draw.js` stays a leaf
 that reads no state and touches no DOM. The station keys and the
 `npm run games corner-and-kettle` section stay green.
