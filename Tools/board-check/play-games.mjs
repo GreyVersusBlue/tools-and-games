@@ -249,9 +249,23 @@ const SUITES = {
   // The one project on the board with no Node test of any kind: its whole engine
   // is an IIFE inside a single HTML file, reachable only through a browser.
   'integer-foundry': async (p, t) => {
+    // The line re-renders #grid every tick, so under Puppeteer a cell resolved a
+    // moment ago can be detached before the press. Both errors below throw before
+    // the mouse goes down, so pressing again cannot place twice. Same helper as
+    // Projects/integer-foundry/test/browser.mjs (#353); Playwright re-queries on
+    // its own, which is why this beat passed on Windows and aborted on Linux.
+    const press = async sel => {
+      for (let attempt = 1; ; attempt++) {
+        try { return await p.click(sel); }
+        catch (e) {
+          if (attempt >= 5 || !/detached|not clickable/i.test(String(e && e.message))) throw e;
+          await new Promise(r => setTimeout(r, 80));
+        }
+      }
+    };
     const place = async (tool, x, y) => {
-      await p.click(`[data-tool="${tool}"]`);
-      await p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
+      await press(`[data-tool="${tool}"]`);
+      await press(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
     };
 
     const tools = await p.$$eval('#tools .tool-btn', els => els.map(e => e.dataset.tool));
@@ -313,9 +327,9 @@ const SUITES = {
     // need disarming: read the number and build a line that delivers it. Erase the
     // demo line first — its sink already paid out a 3 and won't ask again until it
     // does, which would leave nothing to build toward.
-    await p.click('[data-tool="erase"]');
+    await press('[data-tool="erase"]');
     for (const [x, y] of [[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2]]) {
-      await p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
+      await press(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
     }
     await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
@@ -328,8 +342,8 @@ const SUITES = {
     const want = Number((await p.$eval('.sink-target', el => el.textContent)).replace(/\D/g, ''));
     t.ok(Number.isInteger(want) && want >= 2 && want <= 12,
       'the opening order is between 2 and 12', `wants ${want}`);
-    await p.click('[data-tool="erase"]');
-    await p.click('#grid .cell[data-x="0"][data-y="0"]');
+    await press('[data-tool="erase"]');
+    await press('#grid .cell[data-x="0"][data-y="0"]');
     await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
       { timeout: 10000 });
@@ -350,19 +364,22 @@ const SUITES = {
       : { x: last.x - 1, y: last.y };
 
     await place('source', 0, 2);
-    await p.click('[data-tool="add1"]');
-    for (const c of chain) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+    await press('[data-tool="add1"]');
+    for (const c of chain) await press(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
     // Clicking a placed tile with the same tool selected steps its output E>S>W>N.
     for (const c of chain) {
       const turns = c.dir === 'E' ? 0 : c.dir === 'S' ? 1 : 2;
-      for (let i = 0; i < turns; i++) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+      for (let i = 0; i < turns; i++) await press(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
     }
     await place('sink', sinkAt.x, sinkAt.y);
     t.ok((await p.$$eval('#grid .cell:not(.empty)', els => els.length)) === want + 1,
       'built a line of exactly the right length', `for an order of ${want}`);
 
+    // Wait for THIS order in the log, not for the order count to leave zero: one
+    // opening roll in eleven is a 3, the demo line above already filled it, and
+    // the count was 1 before this line was built.
     const filled = await waitFor(p,
-      () => /[1-9]/.test(document.getElementById('stat-orders').textContent),
+      `[...document.querySelectorAll('#log div')].some(e => e.textContent.includes('Order filled: ${want} '))`,
       { timeout: 30000 }).then(() => true, () => false);
     await t.shot('order-filled');
     const live = await p.evaluate(() => ({

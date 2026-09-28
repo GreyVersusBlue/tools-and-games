@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  OP_TILES, HARD_CAP, MIN_TARGET, opBudget, countSinks, buildCosts, boardPlan,
+  OP_TILES, MERGE_TILES, STEP_TILES, HARD_CAP, MIN_TARGET, opBudget, countSinks, buildCosts, boardPlan,
   minCells, isReachable, reachableMax, recipe, describeRecipe, nearestReachable, rollTarget,
 } from '../js/targets.js';
 import {
@@ -223,25 +223,94 @@ group('The bug, put back on purpose');
   eq(first, 12, 'the twelfth order is the first that could be unfillable', `worst roll ${worstOld(12)} vs ceiling ${ceiling}`);
   ok(worstOld(11) <= ceiling, 'and the eleventh never could', `worst roll ${worstOld(11)}`);
 
-  // ...unless the player bought x2, the one purchase that lifts the modelled
-  // ceiling. Everything else in the shop leaves it at 47, which is why an
-  // impossible order was reachable on a real save and not only in a test: nothing
-  // makes a player spend the 80 ingots.
-  for (const key of ['sub1', 'div2', 'split', 'merge_add', 'merge_mul']) {
+  // ...unless the player bought a doubler. x2 was the only one until #681 put the
+  // mergers in the model, and the three that remain leave the ceiling at 47:
+  // -1 and ÷2 only walk down, and a splitter on a line of its own is a belt. That
+  // is why an impossible order was reachable on a real save and not only in a
+  // test: nothing makes a player spend on a doubler.
+  for (const key of ['sub1', 'div2', 'split']) {
     const max = reachableMax(boardPlan({ ...OPENING, unlocked: { [key]: true } }));
     eq(max, 47, `${key} leaves the modelled ceiling where it was`);
   }
   eq(reachableMax(boardPlan({ ...OPENING, unlocked: { mul2: true } })), HARD_CAP,
     'x2 takes it straight to the cap');
+}
 
-  // merge_mul is the one place the model is knowingly pessimistic. Two lines of
-  // +1 into a Merge x really does reach (1+a)(1+b) — about 529 on this floor — but
-  // the model is single-chain and cannot see it, so it keeps asking for 47 or less
-  // on a board that could do more. That is under-promising, which is the safe
-  // direction: it means an order stays easier than it could be, never impossible.
-  const mergeOnly = boardPlan({ ...OPENING, unlocked: { merge_mul: true } });
-  ok(reachableMax(mergeOnly) < 529,
-    'and the merger case stays conservative rather than optimistic', `modelled max ${reachableMax(mergeOnly)}`);
+/* ----------------------------------------------- a merger fed by one line -- */
+
+group('A merger fed by one line (#681)');
+
+{
+  // The gap this closes. A merger pairs the first two packets that reach it, so
+  // on ONE line it pairs a value with itself: Merge + doubles and Merge x squares,
+  // on one tile, whatever the timing. The model used to leave mergers out
+  // entirely and capped a Merge-only board at 47. browser.mjs builds these lines
+  // in the real page and watches the sink take them; this is the arithmetic.
+  const addOnly = boardPlan({ ...OPENING, unlocked: { merge_add: true } });
+  const mulOnly = boardPlan({ ...OPENING, unlocked: { merge_mul: true } });
+  eq(reachableMax(addOnly), HARD_CAP, 'Merge + alone lifts the opening board from 47 to the cap');
+  eq(reachableMax(mulOnly), HARD_CAP, 'Merge x alone does too');
+  ok([...Array(HARD_CAP - 1)].every((_, i) => isReachable(i + 2, addOnly) && isReachable(i + 2, mulOnly)),
+    'and on both, every order from 2 to 300 is fillable');
+
+  // Merge + on one line is x2 by another name, so it prices every value exactly
+  // as x2 does. Not a coincidence worth keeping by accident: if a merger's
+  // one-line output ever stops being 2v, this is the line that says so.
+  ok([...withDoubler.cost].every(([v, c]) => addOnly.cost.get(v) === c),
+    'Merge + prices every order exactly as x2 does', `max cost ${Math.max(...addOnly.cost.values())}`);
+
+  eq(minCells(289, mulOnly), 5, '289 is five tiles on a Merge x board: 2, 4, 16, 17, then squared');
+  eq(describeRecipe(recipe(289, mulOnly)), '+1, 2× Merge × (one line), +1, Merge × (one line)',
+    'and the recipe on the sink says to feed each merger one line');
+  eq(describeRecipe(recipe(8, addOnly)), '+1, 2× Merge + (one line)', 'two mergers in a row compress like any tile');
+  // Consistency, not truth: this walks the model's own STEP_TILES, so a wrong
+  // merger step passes it. Breaking `apply` to 2v+1 leaves it green and fails the
+  // two combine() lines below and browser.mjs's line, which is where the truth is.
+  ok([2, 9, 47, 100, 199, 289, 300].every(n => {
+    const r = recipe(n, mulOnly);
+    return !!r && r.length === minCells(n, mulOnly) && r.reduce((v, op) => STEP_TILES[op].apply(v), 1) === n;
+  }), 'every Merge x recipe is exactly minCells long and walks its own steps to its target');
+
+  // What stays out, on purpose: two lines into one merger pair whatever arrives
+  // first, which is timing, which is the layout. The model has no step for it,
+  // so it can only ever price a value at or above what two lines would cost.
+
+  // The merger arithmetic has one definition. STEP_TILES wraps it, the page's
+  // tick() calls it, and this reads it rather than restating a + b.
+  eq(STEP_TILES.merge_add.apply(21), MERGE_TILES.merge_add.combine(21, 21), 'a one-line Merge + is combine(v, v)');
+  eq(STEP_TILES.merge_mul.apply(12), 144, 'and a one-line Merge x of 12 is 144');
+
+  // The other half of #681: opBudget's even split credits no prefix shared
+  // through a splitter, and the reason it can stay that way is this. With x2 or
+  // Merge + owned, the dearest order on every floor the shop sells costs no more
+  // than a three-way share of it, so a sharing credit would change no roll. It
+  // only binds on a board with no doubler, or Merge x alone, and there the credit
+  // would depend on the other sinks' orders. If this ever fails, the credit is
+  // worth building; the argument is at opBudget.
+  {
+    const bound = [];
+    for (const [cols, rows] of [[8, 6], [10, 7], [12, 8]]) {
+      for (const doubler of ['mul2', 'merge_add']) {
+        for (const extra of [{}, { sub1: true }, { div2: true }, { merge_mul: true }, { sub1: true, div2: true, merge_mul: true }]) {
+          const unlocked = { [doubler]: true, ...extra };
+          const free = buildCosts(unlocked, cols * rows);
+          const dearest = Math.max(...free.cost.values());
+          const share = opBudget({ cols, rows, sinks: 3 });
+          if (dearest > share) bound.push(`${cols}x${rows} ${Object.keys(unlocked).join('+')}: ${dearest} > ${share}`);
+        }
+      }
+    }
+    eq(bound.join('; '), '', 'with a doubler owned, no order on any floor costs more than a third of it');
+    const noDoubler = buildCosts({}, opBudget({ cols: 8, rows: 6, sinks: 1 }));
+    ok(Math.max(...noDoubler.cost.values()) > opBudget({ cols: 8, rows: 6, sinks: 2 }),
+      'while +1 alone on two sinks is where the even split binds', `${Math.max(...noDoubler.cost.values())} against a share of ${opBudget({ cols: 8, rows: 6, sinks: 2 })}`);
+  }
+
+  // The splitter's half of #681: it prices nothing. A splitter on a line of its
+  // own is a belt, so buying one must not move a single cost.
+  const withSplit = boardPlan({ ...OPENING, unlocked: { mul2: true, split: true } });
+  ok([...withDoubler.cost].every(([v, c]) => withSplit.cost.get(v) === c) && withSplit.cost.size === withDoubler.cost.size,
+    'a splitter changes no order\'s price');
 }
 
 /* ------------------------------------ the line browser.mjs builds to order -- */
