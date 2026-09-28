@@ -7,6 +7,7 @@ import { buildProps } from './props.js';
 import { buildCreek } from './creek.js';
 import { buildAtmosphere } from './atmosphere.js';
 import { buildWildlife } from './wildlife.js';
+import { loadAnimals } from './animals.js';
 import { createDread } from './dread.js';
 import { buildLogbook } from './logbook.js';
 import { WalkControls } from './controls.js';
@@ -161,7 +162,10 @@ const props = buildProps(scene);
 const creek = buildCreek(scene);
 const atmosphere = buildAtmosphere(scene);
 const audio = new Soundscape();
-const wildlife = buildWildlife(scene, audio);
+// The animal pack first: every creature is built from it, and a model that
+// fails to load stops the page here, by name, rather than drawing nothing (B4).
+const animals = await loadAnimals();
+const wildlife = buildWildlife(scene, audio, animals);
 const dread = createDread(scene, audio);
 const controls = new WalkControls(camera, canvas);
 const logbook = buildLogbook(scene, controls);

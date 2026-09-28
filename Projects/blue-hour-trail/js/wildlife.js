@@ -1,165 +1,99 @@
 import * as THREE from 'three';
 import { groundHeight, trailPoint, trailInfo, TRAIL, LAYOUT } from './field.js';
+import { makeAnimal } from './animals.js';
 
 // The mountain's population: deer that watch you before they decide, small
 // birds working the perches, crows above the canopy, a squirrel, an owl, and
-// a fox that crosses the trail exactly once. Everything is primitives and a
-// timer-driven state machine — Golden Hour's dolphin pattern, seven times
-// over. The dread system lives in dread.js; the line between them is that
+// a fox that crosses the trail exactly once. Every one is a model from the
+// animal pack (animals.js) driven by a timer-driven state machine — Golden
+// Hour's dolphin pattern, seven times over. The dread system lives in dread.js; the line between them is that
 // everything in THIS file is really there.
 
 /* ----------------------------------------------------------------- makers */
 
-function makeDeer() {
+// Each maker is the group its builder made, holding the pack's model in a seat
+// (animals.js) rather than primitives. The group is what the creature code
+// below moves and turns, in the builder's frame, exactly as before (#664).
+
+function seated(animals, name) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0x5a4a3c });
-  const pale = new THREE.MeshLambertMaterial({ color: 0x8a7a66 });
-
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), mat);
-  body.scale.set(0.62, 0.5, 1.05);
-  body.position.y = 1.05;
-  g.add(body);
-
-  for (const [lx, lz] of [[-0.22, 0.55], [0.22, 0.55], [-0.22, -0.55], [0.22, -0.55]]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 1.0, 5), mat);
-    leg.position.set(lx, 0.5, lz);
-    g.add(leg);
-  }
-
-  // Neck and head pivot together so grazing/alert is one rotation.
-  const headG = new THREE.Group();
-  headG.position.set(0, 1.3, 0.85);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 0.75, 6), mat);
-  neck.position.set(0, 0.3, 0.08);
-  neck.rotation.x = 0.35;
-  headG.add(neck);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.46), mat);
-  head.position.set(0, 0.65, 0.3);
-  headG.add(head);
-  for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 5), pale);
-    ear.position.set(side * 0.13, 0.82, 0.18);
-    ear.rotation.z = side * -0.5;
-    headG.add(ear);
-  }
-  g.add(headG);
-
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), pale);
-  tail.position.set(0, 1.25, -1.0);
-  g.add(tail);
-
-  g.userData.headG = headG;
+  const a = makeAnimal(animals, name);
+  g.add(a.seat);
+  g.userData = { nodes: a.nodes, mixer: a.mixer, actions: a.actions };
   return g;
 }
 
-function makeSmallBird() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color: 0x3a3f45, side: THREE.DoubleSide });
-  const wingGeo = new THREE.BufferGeometry();
-  wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, 0, 0.6, 0.06, 0.14, 0.6, 0.06, -0.14,
-  ], 3));
-  wingGeo.computeVertexNormals();
-  const wL = new THREE.Mesh(wingGeo, mat);
-  const wR = new THREE.Mesh(wingGeo.clone(), mat);
-  wR.scale.x = -1;
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), mat);
-  body.scale.set(1.7, 0.9, 0.9);
-  g.add(wL, wR, body);
-  g.userData = { wL, wR };
+// The deer's head is a node: `graze` nods it while it grazes, and the game
+// poses it for alert. The file rests in graze's first frame, head down (#673).
+function makeDeer(animals) {
+  const g = seated(animals, 'deer');
+  g.userData.head = g.userData.nodes.head;
+  g.userData.graze = g.userData.actions.graze;
   return g;
 }
 
-function makeCrow() {
-  const g = makeSmallBird();
-  g.scale.setScalar(2.2);
-  g.traverse(o => { if (o.material) o.material = new THREE.MeshBasicMaterial({ color: 0x14161a, side: THREE.DoubleSide }); });
+// Seven small birds, each its own group with wingR/wingL the game beats about
+// the forward axis (#676). The builder's flap was a twist about the span.
+function makeSmallBird(animals) {
+  const g = seated(animals, 'small-bird');
+  g.userData.wingR = g.userData.nodes.wingR;
+  g.userData.wingL = g.userData.nodes.wingL;
   return g;
 }
 
-function makeSquirrel() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0x6a4a34 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.12, 7, 6), mat);
-  body.scale.set(0.8, 0.8, 1.4);
-  body.position.y = 0.12;
-  g.add(body);
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), mat);
-  tail.scale.set(0.6, 1.8, 0.6);
-  tail.position.set(0, 0.22, -0.2);
-  g.add(tail);
+// The crow's model is at full size, so the group is no longer scaled 2.2; its
+// wings are its `fly` clip (#676).
+function makeCrow(animals) {
+  const g = seated(animals, 'crow');
+  g.userData.fly = g.userData.actions.fly;
   return g;
 }
 
-function makeOwl() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0x4e463c });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), mat);
-  body.scale.set(0.9, 1.25, 0.8);
-  body.position.y = 0.24;
-  g.add(body);
-  const headG = new THREE.Group();
-  headG.position.y = 0.52;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 7), mat);
-  headG.add(head);
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xd8c86a });
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 5, 4), eyeMat);
-    eye.position.set(side * 0.06, 0.03, 0.11);
-    headG.add(eye);
-    const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 4), mat);
-    tuft.position.set(side * 0.09, 0.13, 0);
-    headG.add(tuft);
-  }
-  g.add(headG);
-  g.userData.headG = headG;
+function makeSquirrel(animals) {
+  return seated(animals, 'squirrel');
+}
+
+function makeOwl(animals) {
+  const g = seated(animals, 'owl');
+  g.userData.head = g.userData.nodes.head;
   return g;
 }
 
-function makeFox() {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0x7a4630 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat);
-  body.scale.set(0.75, 0.65, 1.7);
-  body.position.y = 0.34;
-  g.add(body);
-  const head = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 6), mat);
-  head.rotation.x = Math.PI / 2;
-  head.position.set(0, 0.42, 0.45);
-  g.add(head);
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), mat);
-  tail.scale.set(0.7, 0.7, 2.2);
-  tail.position.set(0, 0.36, -0.5);
-  g.add(tail);
-  for (const [lx, lz] of [[-0.1, 0.22], [0.1, 0.22], [-0.1, -0.22], [0.1, -0.22]]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.022, 0.32, 4), new THREE.MeshLambertMaterial({ color: 0x2e2019 }));
-    leg.position.set(lx, 0.16, lz);
-    g.add(leg);
-  }
-  return g;
+function makeFox(animals) {
+  return seated(animals, 'fox');
+}
+
+// `graze` from where the builder's sine would be at d.t: one period of
+// 0.9 + 0.12 sin(0.4 t) is the clip's whole 15.7 s (#673).
+function grazeFrom(d) {
+  const a = d.g.userData.graze;
+  a.reset().play();
+  a.time = d.t % a.getClip().duration;
 }
 
 /* -------------------------------------------------------------------- build */
 
-export function buildWildlife(scene, audio) {
+export function buildWildlife(scene, audio, animals) {
   // ---- deer ----
   const deer = [];
   for (let i = 0; i < 3; i++) {
-    const d = makeDeer();
+    const d = makeDeer(animals);
     const c = LAYOUT.clearings[(i * 4 + 1) % LAYOUT.clearings.length];
     d.position.set(c.x, groundHeight(c.x, c.z), c.z);
     d.rotation.y = i * 2.1;
     scene.add(d);
-    deer.push({
+    const rec = {
       g: d, state: 'graze', t: Math.random() * 10,
       graze: 0, respawn: 0, bolt: null,
-    });
+    };
+    grazeFrom(rec);
+    deer.push(rec);
   }
 
   // ---- small birds ----
   const birds = [];
   for (let i = 0; i < 7; i++) {
-    const b = makeSmallBird();
+    const b = makeSmallBird(animals);
     const p = LAYOUT.perches[i % LAYOUT.perches.length];
     b.position.set(p.x, groundHeight(p.x, p.z) + p.h, p.z);
     scene.add(b);
@@ -172,7 +106,7 @@ export function buildWildlife(scene, audio) {
   // ---- crows ----
   const crows = [];
   for (let i = 0; i < 3; i++) {
-    const c = makeCrow();
+    const c = makeCrow(animals);
     scene.add(c);
     crows.push({
       g: c,
@@ -187,16 +121,22 @@ export function buildWildlife(scene, audio) {
       },
       cawTimer: 15 + Math.random() * 40,
     });
+    // `fly` is one wingbeat of 0.5 rad, the builder's amplitude; it runs at
+    // the builder's o.flap x 4 rad/s from the builder's phase (#676).
+    const o = crows[i].orbit, fly = c.userData.fly, dur = fly.getClip().duration;
+    fly.timeScale = o.flap * 4 * dur / (Math.PI * 2);
+    fly.play();
+    fly.time = ((o.phase / (Math.PI * 2)) % 1) * dur;
   }
 
   // ---- squirrel ----
-  const squirrel = makeSquirrel();
+  const squirrel = makeSquirrel(animals);
   squirrel.visible = false;
   scene.add(squirrel);
   const sq = { g: squirrel, state: 'hidden', timer: 20, tree: null, spiral: 0, hop: 0 };
 
   // ---- owl: on a low branch just off the trail's third quarter ----
-  const owl = makeOwl();
+  const owl = makeOwl(animals);
   {
     const p = trailPoint(0.66);
     // nearest near-tier conifer to a spot off the trail's left shoulder
@@ -213,7 +153,7 @@ export function buildWildlife(scene, audio) {
   const owlState = { hootTimer: 20, fled: false, fleeT: 0, from: null, to: null };
 
   // ---- fox: crosses once, somewhere in the middle third ----
-  const fox = makeFox();
+  const fox = makeFox(animals);
   fox.visible = false;
   scene.add(fox);
   const foxState = { done: false, timer: 240 + Math.random() * 180, active: false, t: 0, from: null, to: null };
@@ -222,6 +162,8 @@ export function buildWildlife(scene, audio) {
   let elkTimer = 90;
 
   const state = { t: 0 };
+  // The records the update below drives, for test/animals.mjs to read.
+  state.animals = { deer, birds, crows, sq, owl: owlState, fox: foxState };
 
   const tmpA = new THREE.Vector3();
 
@@ -235,7 +177,7 @@ export function buildWildlife(scene, audio) {
       const dist = Math.hypot(d.g.position.x - px, d.g.position.z - pz);
       if (d.state === 'graze') {
         // head down, drifting a step at a time
-        d.g.userData.headG.rotation.x = 0.9 + Math.sin(d.t * 0.4) * 0.12;
+        d.g.userData.mixer.update(dt);
         if (Math.sin(d.t * 0.23) > 0.92) {
           const step = 0.25 * dt;
           d.g.position.x += Math.sin(d.g.rotation.y) * step;
@@ -244,13 +186,15 @@ export function buildWildlife(scene, audio) {
         }
         if (dist < 26) {
           d.state = 'alert';
+          d.g.userData.graze.stop();
           audio.rustle(0.6);
         }
       } else if (d.state === 'alert') {
         // The freeze. Head up, facing you, absolutely still — the animal
         // deciding whether you are a problem. This is the spooky beat that
         // wildlife does for free.
-        d.g.userData.headG.rotation.x = -0.1;
+        // The builder's -0.1, on a node turned a half turn (#673).
+        d.g.userData.head.rotation.set(0.1, 0, 0);
         tmpA.set(px, d.g.position.y, pz);
         d.g.lookAt(tmpA);
         if (dist < 13) {
@@ -264,6 +208,7 @@ export function buildWildlife(scene, audio) {
           audio.deerThump();
         } else if (dist > 34) {
           d.state = 'graze';
+          grazeFrom(d);
         }
       } else if (d.state === 'bolt') {
         d.bolt.t += dt;
@@ -290,6 +235,7 @@ export function buildWildlife(scene, audio) {
           d.g.rotation.set(0, Math.random() * 6.28, 0);
           d.g.visible = true;
           d.state = 'graze';
+          grazeFrom(d);
         }
       }
     }
@@ -299,8 +245,8 @@ export function buildWildlife(scene, audio) {
       if (b.state === 'perch') {
         b.timer -= dt;
         const flap = Math.max(0, Math.sin(state.t * 14 + b.flyT));
-        b.g.userData.wL.rotation.x = flap * 0.15;
-        b.g.userData.wR.rotation.x = -flap * 0.15;
+        b.g.userData.wingR.rotation.z = flap * 0.15;
+        b.g.userData.wingL.rotation.z = -flap * 0.15;
         if (b.timer <= 0) {
           // pick another perch within earshot of the walker
           const near = LAYOUT.perches.filter(p =>
@@ -324,8 +270,8 @@ export function buildWildlife(scene, audio) {
         b.g.position.y += Math.sin(f * Math.PI) * 3;      // over, not through
         b.g.lookAt(b.to.x, b.g.position.y, b.to.z);
         const flap = Math.sin(b.flyT * 26);
-        b.g.userData.wL.rotation.x = flap * 0.8;
-        b.g.userData.wR.rotation.x = -flap * 0.8;
+        b.g.userData.wingR.rotation.z = flap * 0.8;
+        b.g.userData.wingL.rotation.z = -flap * 0.8;
         if (f >= 1) {
           b.state = 'perch';
           b.timer = 4 + Math.random() * 11;
@@ -343,10 +289,11 @@ export function buildWildlife(scene, audio) {
         anchor.x + Math.cos(a) * o.r,
         groundHeight(anchor.x, anchor.z) + o.h + Math.sin(state.t * 0.3 + o.phase) * 1.5,
         anchor.z + Math.sin(a) * o.r);
-      c.g.rotation.y = -a * o.dir + (o.dir > 0 ? Math.PI : 0);
-      const flap = Math.sin(state.t * o.flap * 4 + o.phase);
-      c.g.userData.wL.rotation.x = flap * 0.5;
-      c.g.userData.wR.rotation.x = -flap * 0.5;
+      // Along the circle's tangent, whichever way round it flies. The builder's
+      // -a * dir + (dir > 0 ? π : 0) set a where the dir = -1 heading needs -a
+      // (#670), which a body long across the wings never showed (#676).
+      c.g.rotation.y = -a + (o.dir > 0 ? 0 : Math.PI);
+      c.g.userData.mixer.update(dt);
       c.cawTimer -= dt;
       if (c.cawTimer <= 0) {
         c.cawTimer = 18 + Math.random() * 45;
@@ -403,7 +350,8 @@ export function buildWildlife(scene, audio) {
       const od = Math.hypot(owl.position.x - px, owl.position.z - pz);
       if (od < 20) {
         tmpA.set(px, owl.position.y, pz);
-        owl.userData.headG.lookAt(tmpA);   // just the head. Just the head.
+        owl.userData.head.lookAt(tmpA);   // just the head. Just the head.
+        owl.userData.head.rotateY(Math.PI);   // lookAt aims +Z; the beak is -Z (#675)
       }
       owlState.hootTimer -= dt;
       if (owlState.hootTimer <= 0) {
