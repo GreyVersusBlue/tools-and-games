@@ -905,6 +905,15 @@ group('the shape and the eyes above the fog line');
 // slope below, going away. Low down both are what they always were. Every
 // "which kind" here is read off the scene graph, the two meshes' own visible
 // flags, not off the kind label the beat writes for itself (#39).
+// settle(): the walker's height follows a teleport on the next frame, so wait
+// on frames, not on a clock. Two suites running at once once staged the
+// "high" beats at altT 0.00 behind a fixed 300 ms wait.
+await page.evaluate(() => {
+  window.__settle = async () => {
+    const frame = () => new Promise(r => requestAnimationFrame(r));
+    await frame(); await frame(); await frame();
+  };
+});
 const visualKinds = await page.evaluate(async () => {
   const d = __bh.dread;
   const trail = __bh.trail();
@@ -914,7 +923,7 @@ const visualKinds = await page.evaluate(async () => {
     const i = Math.round(t * (trail.length - 1));
     __bh.teleport(trail[i].x, trail[i].z);
     __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz), 0);
-    await new Promise(r => setTimeout(r, 300));
+    await window.__settle();
     d._gaze.fill(0);
     d._lastBeat = null;
     __bh.fireDread('bear');
@@ -951,7 +960,7 @@ const lampAt = await page.evaluate(async () => {
     const i = Math.round(t * (trail.length - 1));
     __bh.teleport(trail[i].x, trail[i].z);
     __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz), 0);
-    await new Promise(r => setTimeout(r, 300));
+    await window.__settle();
     d._gaze.fill(0);
     d._lastBeat = null;
     const fired = __bh.fireDread('eyes');
@@ -977,7 +986,7 @@ const lampGoing = await page.evaluate(async () => {
   const i = Math.round(0.9 * (trail.length - 1));
   __bh.teleport(trail[i].x, trail[i].z);
   __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz), 0);
-  await new Promise(r => setTimeout(r, 300));
+  await window.__settle();
   d._gaze.fill(0);
   d._lastBeat = null;
   __bh.fireDread('eyes');
@@ -1008,7 +1017,7 @@ const lampStared = await page.evaluate(async () => {
   const trail = __bh.trail();
   const i = Math.round(0.9 * (trail.length - 1));
   __bh.teleport(trail[i].x, trail[i].z);
-  await new Promise(r => setTimeout(r, 300));
+  await window.__settle();
   d._gaze.fill(0);
   for (let b = 0; b < d._gaze.length; b++) d._gaze[b] = 10;
   d._lastBeat = null;
