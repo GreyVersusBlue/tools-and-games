@@ -517,17 +517,32 @@ export function createDread(scene, audio) {
           // height, going away. The director picks the side as it does for
           // the eyes, and a walker who has been staring down both flanks of
           // the valley gets nothing, the same refusal.
+          //
+          // Traced down the fall line in 4 m steps rather than stepped out in
+          // a straight line, and not stopped until the ground is 8 m under
+          // the walker's feet: near the top the summit's shoulder (#524) is
+          // nearly flat, and a straight 30 m put the light 3 m below, level
+          // with the walker in all but name. No slope below within 90 m, no
+          // light.
           const dh = downhillAt(controls.pos.x, controls.pos.z);
           const down = 30 + Math.random() * 20;
           const out = 8 + Math.random() * 12;
-          const at = s => ({
-            x: controls.pos.x + dh.x * down - dh.z * out * s,
-            z: controls.pos.z + dh.z * down + dh.x * out * s,
-          });
-          const dwellOf = s => { const p = at(s); return dwellAt(yawOf(p.x - controls.pos.x, p.z - controls.pos.z)); };
-          const dwellL = dwellOf(-1), dwellR = dwellOf(1);
+          const floor = groundHeight(controls.pos.x, controls.pos.z) - 8;
+          const at = s => {
+            let x = controls.pos.x - dh.z * out * s;
+            let z = controls.pos.z + dh.x * out * s;
+            for (let run = 0; run < 90; run += 4) {
+              if (run >= down && groundHeight(x, z) <= floor) return { x, z };
+              const f = downhillAt(x, z);
+              x += f.x * 4; z += f.z * 4;
+            }
+            return null;
+          };
+          const dwellOf = p => p ? dwellAt(yawOf(p.x - controls.pos.x, p.z - controls.pos.z)) : Infinity;
+          const pL = at(-1), pR = at(1);
+          const dwellL = dwellOf(pL), dwellR = dwellOf(pR);
           if (Math.min(dwellL, dwellR) > STARE) return false;
-          const p = at(dwellR < dwellL ? 1 : -1);
+          const p = dwellR < dwellL ? pR : pL;
           lamp.position.set(p.x, groundHeight(p.x, p.z) + 1.6, p.z);
           eyes.visible = false;
           lamp.visible = true;

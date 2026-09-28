@@ -964,7 +964,7 @@ const lampAt = await page.evaluate(async () => {
   return out;
 });
 ok('the light is on the slope below the walker',
-  lampAt.every(l => l.fired && l.kind === 'lamp' && l.below > 4 && l.drop > 4),
+  lampAt.every(l => l.fired && l.kind === 'lamp' && l.below > 6 && l.drop > 6),
   lampAt.map(l => `${l.below.toFixed(1)} m below`).join(', '));
 
 // Going away: over real time it moves down the hill, measured on mountainH at
