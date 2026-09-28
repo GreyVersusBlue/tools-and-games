@@ -956,9 +956,13 @@ const lampAt = await page.evaluate(async () => {
   const d = __bh.dread;
   const trail = __bh.trail();
   const out = [];
-  for (const t of [0.86, 0.9, 0.95]) {
-    const i = Math.round(t * (trail.length - 1));
-    __bh.teleport(trail[i].x, trail[i].z);
+  // The bench too: the summit's flat, where the low ground is 60 m off and a
+  // fall-line trace once found none and declined the beat every time.
+  const L = __bh.layout();
+  for (const t of [0.86, 0.9, 0.95, 'bench']) {
+    const i = Math.round((t === 'bench' ? 1 : t) * (trail.length - 1));
+    if (t === 'bench') __bh.teleport(L.bench.x, L.bench.z);
+    else __bh.teleport(trail[i].x, trail[i].z);
     __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz), 0);
     await window.__settle();
     d._gaze.fill(0);
@@ -974,7 +978,7 @@ const lampAt = await page.evaluate(async () => {
 });
 ok('the light is on the slope below the walker',
   lampAt.every(l => l.fired && l.kind === 'lamp' && l.below > 6 && l.drop > 6),
-  lampAt.map(l => `${l.below.toFixed(1)} m below`).join(', '));
+  lampAt.map(l => l.fired ? `${l.below.toFixed(1)} m below` : 'declined').join(', '));
 
 // Going away: over real time it moves down the hill, measured on mountainH at
 // its start and end, and never toward the walker. Under swiftshader main.js

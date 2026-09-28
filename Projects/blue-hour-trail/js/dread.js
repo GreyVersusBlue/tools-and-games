@@ -512,29 +512,31 @@ export function createDread(scene, audio) {
 
       case 'eyes': {
         if (summitKind(controls.pos.y)) {
-          // The summit's kind (#680): a light on the slope below, 30-50 m
-          // down the fall line and to one side of it, at a walker's head
+          // The summit's kind (#680): a light on the slope below, at least
+          // 30 m off and to one side of the fall line, at a walker's head
           // height, going away. The director picks the side as it does for
           // the eyes, and a walker who has been staring down both flanks of
           // the valley gets nothing, the same refusal.
           //
-          // Traced down the fall line in 4 m steps rather than stepped out in
-          // a straight line, and not stopped until the ground is 8 m under
-          // the walker's feet: near the top the summit's shoulder (#524) is
-          // nearly flat, and a straight 30 m put the light 3 m below, level
-          // with the walker in all but name. No slope below within 90 m, no
-          // light.
+          // Found by sweeping, not by stepping: from the fall line swung
+          // 15 to 135 degrees toward the side, and 30 to 80 m out, the first
+          // spot whose ground is 8 m under the walker's feet. A straight 30 m
+          // down the fall line put the light 3 m below on the summit's
+          // shoulder (#524), and tracing the fall line stalled on the flat at
+          // the bench, where the low ground is 60 m off and not downhill of
+          // anything near.
           const dh = downhillAt(controls.pos.x, controls.pos.z);
-          const down = 30 + Math.random() * 20;
-          const out = 8 + Math.random() * 12;
+          const near = 30 + Math.random() * 20;
           const floor = groundHeight(controls.pos.x, controls.pos.z) - 8;
           const at = s => {
-            let x = controls.pos.x - dh.z * out * s;
-            let z = controls.pos.z + dh.x * out * s;
-            for (let run = 0; run < 90; run += 4) {
-              if (run >= down && groundHeight(x, z) <= floor) return { x, z };
-              const f = downhillAt(x, z);
-              x += f.x * 4; z += f.z * 4;
+            for (let deg = 15; deg < 150; deg += 30) {
+              const r = deg * Math.PI / 180 * s;
+              const ux = dh.x * Math.cos(r) - dh.z * Math.sin(r);
+              const uz = dh.z * Math.cos(r) + dh.x * Math.sin(r);
+              for (let d = near; d <= near + 30; d += 5) {
+                const x = controls.pos.x + ux * d, z = controls.pos.z + uz * d;
+                if (groundHeight(x, z) <= floor) return { x, z };
+              }
             }
             return null;
           };
