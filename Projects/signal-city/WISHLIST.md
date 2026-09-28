@@ -383,22 +383,23 @@ tile. #585 is folded in: Rush Hour carries `light: 'dusk'` and
 `lightFor` reads it; with it set to day, "Rush Hour is played at dusk"
 fails alone.
 
-### R6. The priority corridor follows the vehicle across boxes
+### R6. The priority corridor follows the vehicle across boxes: done (HISTORY.md #682)
 
-**Size ½. Model Opus 5. Open call first (architect).** A car keeps
-`priority` across a handoff, so the next box does not hold for it and E
-does not offer it again (Known gaps). The sandbox's ambulances cross two to
-four boxes. The call: at the next box, is the corridor automatic (the
-player called the vehicle once, and the city's pre-emption follows it,
-which is how real emergency pre-emption works), or does the player call it
-again at each box? Recommended: automatic once called, so the lesson stays
-"call it early" and a district does not ask for a key press per box.
-Changes Two Blocks and Main Street under play, so re-run their calibration
-(Main Street's motorcade takes the corridor) and record both tables. Guard
-in `test/grid.mjs`: an ambulance called at box 1 of a three-box route is
-held for at box 2; break it by clearing the request on handoff and watch
-that line fail. Ask the World where the car is, not the helper that
-decided (#614's lesson).
+Automatic once called. A car the player called is pre-empted at every box
+it is handed to (`World._followPriority`, from `_handoff`), so the lesson
+stays "call it early". E and a click still call only a car nobody has
+called, and a car nobody called is held for nowhere. A ring or a blackout
+refuses the follow as it refuses E, and a box already holding the car's
+movement (a motorcade's lead got there first) is left to `_holdPriority`.
+`test/grid.mjs` calls an ambulance at box 1 of three in a row and reads
+each box's light off the World as the car's front reaches that box's stop
+line: held at all three, and uncalled at none. With the request cleared on
+handoff, the box 2 line fails on "box 2 E-W yellow". The row expected Two
+Blocks and Main Street to change, and neither did. Main Street is one box
+and Two Blocks has no emergency vehicle, so both `--baseline --hand` tables
+match the pre-change tables exactly (#682). The change only affects play
+in the Free Play district. There, a called ambulance's time on the map
+fell from 30.4 to 28.6 s on four boxes and from 64.3 to 54.1 s on eight.
 
 ### R7. Sound
 
@@ -553,13 +554,14 @@ sprite, so every run hashes as before.
 
 ## Known gaps and decisions
 
-- The priority corridor is one box's. A car keeps `priority` across a
-  handoff, so on a corridor or a district the next box does not hold for
-  it and E does not offer it again (`priorityNearest` skips a car that has
-  it). On one box it never mattered; the sandbox's ambulances cross two to
-  four boxes. Clearing it on handoff would change Two Blocks and Main
-  Street under play, so it waits for a row of its own. A district has no
-  target and no calibration: it is a sandbox (#615).
+- The corridor follows its vehicle (#682), with two edges left as they
+  were. A follow a blackout refused is not retried when the power comes
+  back. A follow into a box already pre-empted for a conflicting movement
+  (two ambulances meeting) takes the box from the first, as E always has.
+  On eight-box districts, collisions over six seeds went from 11 to 14
+  with every ambulance called on spawn (four boxes: 4 and 4). The cause
+  was not traced. A district is a sandbox with no target (#615), so
+  nothing was tuned for it.
 
 - A grid's edge legs end in grass inside the district: a box whose
   neighbour cell is empty has a 110 m spawning leg that stops where cars
