@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundHeight, mulberry32 } from '../field.js';
+import { makeAnimal } from '../animals.js';
 
 // Ghost crabs, out along the wrack line from dusk. Mostly still — the thing a
 // ghost crab does best is not be seen — then a fast sideways scuttle away from
@@ -7,21 +8,15 @@ import { groundHeight, mulberry32 } from '../field.js';
 
 const COUNT = 7;
 
-function makeCrab() {
+// The pack's crab, claws first along the builder's +Z and seated so the
+// builder's heights still put it on the sand.
+function makeCrab(animals) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: 0xcabc9d, roughness: 0.85 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), mat);
-  body.scale.set(1.5, 0.55, 1.1);
-  g.add(body);
-  for (const sx of [-1, 1]) {
-    const claw = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), mat);
-    claw.position.set(sx * 0.13, 0.01, 0.08);
-    g.add(claw);
-  }
+  g.add(makeAnimal(animals, 'crab').seat);
   return g;
 }
 
-export function makeCrabs(scene, audio) {
+export function makeCrabs(scene, audio, animals) {
   const rnd = mulberry32(0xc4ab);
   const crabs = [];
   const group = new THREE.Group();
@@ -29,7 +24,7 @@ export function makeCrabs(scene, audio) {
   const home = { x: 40, z: -1, radius: 110 };
 
   for (let i = 0; i < COUNT; i++) {
-    const mesh = makeCrab();
+    const mesh = makeCrab(animals);
     const x = home.x - 100 + rnd() * 200;
     const z = -2 + rnd() * 4;
     mesh.position.set(x, groundHeight(x, z) + 0.05, z);

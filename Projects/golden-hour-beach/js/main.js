@@ -5,6 +5,7 @@ import { buildTerrain } from './terrain.js';
 import { buildProps } from './props.js';
 import { buildOcean } from './ocean.js';
 import { buildWildlife } from './wildlife.js';
+import { loadAnimals } from './animals.js';
 import { WalkControls } from './controls.js';
 import { Soundscape } from './audio.js';
 import { buildFootprints } from './footprints.js';
@@ -200,7 +201,10 @@ buildTerrain(scene);
 buildProps(scene);
 const ocean = buildOcean(scene, sun);
 const audio = new Soundscape();
-const wildlife = buildWildlife(scene, audio);
+// The animal pack first: every creature is built from it, and a model that
+// fails to load stops the page here, by name, rather than drawing nothing (B4).
+const animals = await loadAnimals();
+const wildlife = buildWildlife(scene, audio, animals);
 const controls = new WalkControls(camera, canvas, groundHeight);
 controls.pos.set(0, 0, 14);   // start on dry sand, sea ahead
 const footprints = buildFootprints(scene);

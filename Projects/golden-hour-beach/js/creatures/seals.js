@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundHeight, shorelineZ, mulberry32 } from '../field.js';
+import { makeAnimal } from '../animals.js';
 
 // Harbour seals hauled out near the base of the headland's east flank. Mostly
 // what a hauled-out seal does is breathe — a slow swell of the body, an
@@ -18,39 +19,36 @@ const SPOTS = (() => {
   return out;
 })();
 
-function makeSeal(spot) {
+// The pack's seal. Its `breathe` clip swells it about the belly; its `head`
+// node is the game's to raise, from where the file rests it.
+function makeSeal(spot, animals) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x6e6258, roughness: 0.75 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 9), mat);
-  body.scale.set(2.2, 0.75, 0.9);
-  g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), mat);
-  head.position.set(1.15, 0.18, 0);
-  g.add(head);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.6, 6), mat);
-  tail.rotation.z = Math.PI / 2;
-  tail.position.set(-1.25, 0.02, 0);
-  g.add(tail);
+  const a = makeAnimal(animals, 'seal');
+  g.add(a.seat);
   g.position.set(spot.x, groundHeight(spot.x, spot.z) + 0.32, spot.z);
   g.rotation.y = spot.yaw;
-  g.userData = { body, head };
+  g.userData = { head: a.nodes.head, headRest: a.nodes.head.position.y, mixer: a.mixer, breathe: a.actions.breathe };
   return g;
 }
 
-export function makeSeals(scene, audio) {
+export function makeSeals(scene, audio, animals) {
   const group = new THREE.Group();
   scene.add(group);
   const home = { x: -442, z: shorelineZ(-442), radius: 60 };
 
   const seals = SPOTS.map(spot => {
-    const mesh = makeSeal(spot);
+    const mesh = makeSeal(spot, animals);
     group.add(mesh);
+    const breathe = Math.random() * 6.28;
+    // The clip is one breath at 0.7 rad/s, so its clock is the old one's.
+    mesh.userData.breathe.play();
+    mesh.userData.breathe.time = breathe / 0.7;
     return {
       mesh, spot,
       mode: 'idle',        // idle | slide | gone
       t: Math.random() * 5,
       goneT: 0,
-      breathe: Math.random() * 6.28,
+      breathe,
       headUp: 0,
     };
   });
@@ -98,16 +96,17 @@ export function makeSeals(scene, audio) {
       } else {
         // Breathing, and the occasional raised head.
         s.breathe += dt * 0.7;
-        const swell = 1 + Math.sin(s.breathe) * 0.035;
-        s.mesh.userData.body.scale.set(2.2 * swell, 0.75 * swell, 0.9);
+        s.mesh.userData.mixer.update(dt);
         s.t -= dt;
         if (s.t <= 0) {
           s.t = 4 + Math.random() * 9;
           s.headUp = 1.4;   // seconds of raised head
         }
         if (s.headUp > 0) s.headUp -= dt;
-        const target = s.headUp > 0 ? 0.42 : 0.18;
-        s.mesh.userData.head.position.y += (target - s.mesh.userData.head.position.y) * Math.min(1, dt * 4);
+        // Raised 0.24 m, as the builder's head went from 0.18 to 0.42.
+        const u = s.mesh.userData;
+        const target = u.headRest + (s.headUp > 0 ? 0.24 : 0);
+        u.head.position.y += (target - u.head.position.y) * Math.min(1, dt * 4);
       }
     }
 
