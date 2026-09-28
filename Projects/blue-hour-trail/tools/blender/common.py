@@ -1,4 +1,8 @@
-# Golden Hour's Blender pipeline: the one place its export settings live.
+# Blue Hour's Blender pipeline: the one place its export settings live.
+#
+# Blue Hour's own copy of Golden Hour's tools/blender/common.py as it stood at
+# commit d93690d (#643): nothing here is imported from the other project, and
+# a change to one is not a change to the other.
 #
 # Pinned to the Blender this pipeline was built and checked under:
 #   Blender 5.2.2 LTS (hash d13f752e3b9c), the Steam install on Devon's machine,
@@ -7,7 +11,7 @@
 # here at check_version() until someone reruns the pack, checks that
 # `git status --porcelain` stays empty, and moves REQUIRED.
 #
-# Run from Projects/golden-hour-beach, headless, never through a GUI session:
+# Run from Projects/blue-hour-trail, headless, never through a GUI session:
 #   blender -b --factory-startup -P tools/blender/<pack>.py -- [item ...]
 # --factory-startup keeps the machine's preferences and add-ons out, and reset()
 # empties the scene again before anything is built (BACKLOG.md "Blender assets:
@@ -18,7 +22,8 @@
 # project vendors neither decoder), origin at the centre of the asset's base so
 # y = 0 is the ground it stands on, flat materials with no texture unless
 # budget.json names a cap, colours from budget.json's palette only, clips at
-# 30 fps named for what the game calls the motion.
+# 30 fps named for what the game calls the motion. What reads at the distances
+# Blue Hour's fog allows is BACKLOG.md "Blue Hour: Blender assets" B1's call.
 
 import math
 import os
@@ -75,10 +80,11 @@ def linear(hexv):
 
 def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=1.0, image=None):
     """A flat material. unlit=True exports as KHR_materials_unlit, which is how
-    the game's MeshBasicMaterial things (the gull, the bats) read. alpha under
-    1 exports as alphaMode BLEND (the sea glass). image is a texture for the
+    the game's MeshBasicMaterial things (the crow, the small birds) read. alpha under
+    1 exports as alphaMode BLEND. image is a texture for the
     base colour, only on an item budget.json gives a texture cap (the sand
-    dollar, #654); the factor is then white, which the palette check allows."""
+    dollar in Golden Hour, #654; Blue Hour has none); the factor is then
+    white, which the palette check allows."""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     mat.use_backface_culling = not double_sided
@@ -344,7 +350,8 @@ def contact_sheet(roots, name, tile=192):
     """Every item in a row under one fixed camera, rendered with Workbench to
     tools/blender/out/<name>.png (gitignored, #645). It is for looking at; no
     check reads it. Each item is scaled to fill its tile, since a pack can hold
-    a 7 m dolphin and a 0.3 m crab; the files are already written by then."""
+    a 3 m fire-tower cabin and a 10 cm mushroom; the files are already
+    written by then."""
     scene = bpy.context.scene
     bpy.context.view_layer.update()
     for r in roots:

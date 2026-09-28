@@ -167,12 +167,15 @@ try {
        `${strip.min} .. ${strip.max}`);
   }
 
-  // The animal pack (B3), through the same loader: every model budget.json
-  // names, fetched from where the game will fetch it. validate.mjs reads the
-  // files with its own parser; this is three reading them. The clips and the
-  // nodes the game poses must come through by name, the unlit builders (a
-  // MeshBasicMaterial today) must come back as MeshBasicMaterial, and three's
-  // own box must stand on y = 0.
+  // The animal pack (B3) and the prop pack (B5), through the same loader:
+  // every model budget.json names, fetched from where the game will fetch it.
+  // validate.mjs reads the files with its own parser; this is three reading
+  // them. The clips and the nodes the game poses must come through by name,
+  // the unlit builders (a MeshBasicMaterial today) must come back as
+  // MeshBasicMaterial, and three's own box must stand on y = 0. The sand
+  // dollar's rosette (#654) must arrive as a map at its cap, and nothing else
+  // may carry one; the sea glass must come back see-through at the builder's
+  // 0.78, and nothing else may.
   const budget = JSON.parse(fs.readFileSync(path.join(PROJECT, 'tools', 'blender', 'budget.json'), 'utf8'));
   const UNLIT = new Set(['gull', 'bat']);
   const models = await page.evaluate(async items => {
@@ -182,13 +185,19 @@ try {
     for (const [name, item] of Object.entries(items)) {
       try {
         const g = await new GLTFLoader().loadAsync('./' + item.file);
-        const mats = new Set();
-        g.scene.traverse(o => { if (o.isMesh) mats.add(o.material.type); });
+        const mats = new Set(), maps = [], clear = [];
+        g.scene.traverse(o => {
+          if (!o.isMesh) return;
+          mats.add(o.material.type);
+          if (o.material.map) maps.push(Math.max(o.material.map.image.width, o.material.map.image.height));
+          if (o.material.transparent) clear.push(o.material.opacity);
+        });
         const box = new THREE.Box3().setFromObject(g.scene);
         out[name] = {
           clips: g.animations.map(a => a.name).sort(),
           missing: (item.nodes || []).filter(n => !g.scene.getObjectByName(n)),
           mats: [...mats].sort(),
+          maps, clear,
           base: box.min.y,
         };
       } catch (e) { out[name] = { error: String(e && e.message || e) }; }
@@ -196,7 +205,7 @@ try {
     return out;
   }, budget.items);
 
-  group('the animal pack');
+  group('the animal and prop packs');
   for (const [name, item] of Object.entries(budget.items)) {
     const m = models[name];
     if (!ok(!m.error, `${name}: loads`, m.error || item.file)) continue;
@@ -207,6 +216,13 @@ try {
     const kind = UNLIT.has(name) ? 'MeshBasicMaterial' : 'MeshStandardMaterial';
     ok(m.mats.join() === kind, `${name}: its materials are ${kind}, as its builder's are`, m.mats.join(', '));
     ok(Math.abs(m.base) <= 0.01, `${name}: three's box stands on y = 0`, `lowest y ${m.base.toFixed(3)}`);
+    ok(item.texture ? m.maps.length > 0 && m.maps.every(px => px <= item.texture) : m.maps.length === 0,
+       `${name}: ${item.texture ? `its texture arrives as a map, at most ${item.texture} px` : 'it carries no texture'}`,
+       m.maps.length ? `${m.maps.join(', ')} px` : 'no map');
+    const glass = !!item.ref?.tint;
+    ok(glass ? m.clear.length > 0 && m.clear.every(a => Math.abs(a - 0.78) < 0.01) : m.clear.length === 0,
+       `${name}: ${glass ? 'see-through at 0.78, as the builder\'s sea glass' : 'opaque'}`,
+       m.clear.length ? `opacity ${m.clear.map(a => a.toFixed(2)).join(', ')}` : 'opaque');
   }
 
   group('the page');

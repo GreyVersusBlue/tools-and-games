@@ -39,6 +39,7 @@ let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
   if (cond) { passed++; console.log(`  ok    ${what}${detail ? '  ' + detail : ''}`); }
   else { failed++; console.log(`  FAIL  ${what}${detail ? '  ' + detail : ''}`); }
+  return cond;
 };
 const group = name => console.log(`\n${name}`);
 
@@ -168,6 +169,58 @@ try {
     ok(strip.indices === 6, 'it is re-indexed as two triangles (six indices)', `${strip.indices}`);
     ok(same(strip.min, [0, 0, 0]) && same(strip.max, [1, 1, 0]), 'its bounds are (0,0,0) to (1,1,0)',
        `${strip.min} .. ${strip.max}`);
+  }
+
+  // What the Blender pipeline writes (B1 onward), through the same loader:
+  // every model budget.json names, fetched from where the game will fetch it.
+  // validate.mjs reads the files with its own parser; this is three reading
+  // them. The clips and the nodes the game poses must come through by name,
+  // the unlit builders (a MeshBasicMaterial today) must come back as
+  // MeshBasicMaterial, three's own box must stand on y = 0, and nothing may
+  // carry a texture, since the style sheet allows none.
+  const budget = JSON.parse(fs.readFileSync(path.join(PROJECT, 'tools', 'blender', 'budget.json'), 'utf8'));
+  const UNLIT = new Set(['crow', 'small-bird']);
+  const models = await page.evaluate(async items => {
+    const THREE = await import('three');
+    const { GLTFLoader } = await import('./libs/addons/loaders/GLTFLoader.js');
+    const out = {};
+    for (const [name, item] of Object.entries(items)) {
+      try {
+        const g = await new GLTFLoader().loadAsync('./' + item.file);
+        const mats = new Set();
+        let maps = 0;
+        g.scene.traverse(o => {
+          if (!o.isMesh) return;
+          mats.add(o.material.type);
+          if (o.material.map) maps++;
+        });
+        const box = new THREE.Box3().setFromObject(g.scene);
+        out[name] = {
+          clips: g.animations.map(a => a.name).sort(),
+          missing: (item.nodes || []).filter(n => !g.scene.getObjectByName(n)),
+          mats: [...mats].sort(),
+          maps,
+          base: box.min.y,
+        };
+      } catch (e) { out[name] = { error: String(e && e.message || e) }; }
+    }
+    return out;
+  }, budget.items);
+
+  group('the Blender pipeline\'s models');
+  ok(Object.keys(budget.items).length > 0, 'budget.json names at least one model', Object.keys(budget.items).join(', '));
+  for (const [name, item] of Object.entries(budget.items)) {
+    const m = models[name];
+    if (!ok(!m.error, `${name}: loads`, m.error || item.file)) continue;
+    const want = (item.clips || []).slice().sort();
+    ok(m.clips.join() === want.join(), `${name}: its clips come through by name`, `[${m.clips.join(', ')}]`);
+    ok(m.missing.length === 0, `${name}: the nodes the game poses are found by name`,
+       m.missing.length ? `missing ${m.missing.join(', ')}` : (item.nodes || []).join(', '));
+    const kind = UNLIT.has(name) ? 'MeshBasicMaterial' : 'MeshStandardMaterial';
+    ok(m.mats.join() === kind, `${name}: its materials are ${kind}, lit or unlit as its builder's are`,
+       m.mats.join(', '));
+    ok(Math.abs(m.base) <= 0.01, `${name}: three's box stands on y = 0`, `lowest y ${m.base.toFixed(3)}`);
+    ok(m.maps === 0, `${name}: it carries no texture`, `${m.maps} map(s)`);
   }
 
   group('the page');

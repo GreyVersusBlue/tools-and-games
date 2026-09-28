@@ -179,6 +179,7 @@ jobs:
             commands: |
               node test/smoke.mjs
               node test/gltf-loader.mjs
+              node tools/blender/validate.mjs
 
           - name: Golden Hour
             dir: Projects/golden-hour-beach

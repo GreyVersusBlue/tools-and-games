@@ -1,0 +1,58 @@
+{
+  "about": "Blue Hour's Blender style sheet as data (BACKLOG.md 'Blue Hour: Blender assets' B1). validate.mjs reads it. Bytes are KiB x 1024. extent is the longest side a class may have, in metres; each item's box is the builder's box it replaces, held to 10% per axis. texture is the largest image side in pixels, and 0 means none. clips are the clip names an item must carry, exactly; nodes are the node names the game finds and poses itself, and each must be in the file. The palette is every colour js/wildlife.js, js/props.js and js/forest.js draw with, named for what wears it.",
+  "loader": "libs/addons/loaders/GLTFLoader.js",
+  "needsDecoder": [
+    "KHR_draco_mesh_compression",
+    "EXT_meshopt_compression",
+    "KHR_meshopt_compression",
+    "KHR_texture_basisu"
+  ],
+  "palette": {
+    "deer": "5a4a3c",
+    "deer-pale": "8a7a66",
+    "small-bird": "3a3f45",
+    "crow": "14161a",
+    "squirrel": "6a4a34",
+    "owl": "4e463c",
+    "owl-eye": "d8c86a",
+    "fox": "7a4630",
+    "fox-leg": "2e2019",
+    "wood": "4a4038",
+    "wood-dark": "3a332c",
+    "stone": "565a5e",
+    "marker-blaze": "c8d0d8",
+    "tower-pane": "11181f",
+    "cabin-window": "8a6a30",
+    "cabin-window-lit": "d9a545",
+    "radio": "3c443e",
+    "headlamp": "3a4046",
+    "headlamp-strap": "55504a",
+    "headlamp-lens": "cfc9ae",
+    "mushroom-stem": "b0a894",
+    "mushroom-cap": "6e4a38",
+    "mushroom-glow": "9aa88a",
+    "conifer": "33443a",
+    "conifer-light": "4e6248",
+    "conifer-dead": "2a3230",
+    "conifer-dead-light": "3a4038",
+    "tree-tint": "37444c"
+  },
+  "classes": {
+    "animal-large": { "triangles": 3000, "bytes": 256000, "extent": 3.0, "texture": 0, "clips": true },
+    "animal-mid":   { "triangles": 1500, "bytes": 153600, "extent": 1.5, "texture": 0, "clips": true },
+    "animal-small": { "triangles": 800,  "bytes": 81920,  "extent": 3.0, "texture": 0, "clips": true },
+    "flock":        { "triangles": 300,  "bytes": 20480,  "extent": 1.5, "texture": 0, "clips": false },
+    "prop-large":   { "triangles": 4000, "bytes": 204800, "extent": 13.0, "texture": 0, "clips": false },
+    "prop":         { "triangles": 1200, "bytes": 81920,  "extent": 3.0, "texture": 0, "clips": false },
+    "prop-small":   { "triangles": 300,  "bytes": 20480,  "extent": 1.0, "texture": 0, "clips": false }
+  },
+  "items": {
+    "crow": {
+      "file": "assets/models/animals/crow.glb",
+      "class": "animal-small",
+      "box": [2.64, 0.356, 0.616],
+      "clips": ["fly"],
+      "nodes": ["wingR", "wingL"]
+    }
+  }
+}
