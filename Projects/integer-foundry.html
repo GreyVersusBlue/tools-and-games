@@ -303,7 +303,7 @@ footer a{color:var(--copper); text-decoration:none;}
 
 <script type="module">
 import { mountSaveBar } from '../assets/js/gvb-save.js';
-import { OP_TILES, boardPlan, minCells, recipe, describeRecipe, rollTarget }
+import { OP_TILES, MERGE_TILES, boardPlan, minCells, recipe, describeRecipe, rollTarget }
   from './integer-foundry/js/targets.js';
 import { DIRS, emptyCell, foundrySlot, makeEmptyGrid } from './integer-foundry/js/state.js';
 
@@ -888,7 +888,7 @@ function tick(){
       if((c.type==='merge_add' || c.type==='merge_mul') && c.mergeBuf && c.mergeBuf.length>=2 && !c.packet){
         const a = c.mergeBuf.shift();
         const b = c.mergeBuf.shift();
-        const val = c.type==='merge_add' ? (a+b) : (a*b);
+        const val = MERGE_TILES[c.type].combine(a, b);
         c.packet = {value: val};
       }
     }
@@ -963,8 +963,8 @@ const SHOP_ITEMS = [
   {key:'sub1', name:'Subtractor (-1)', desc:'Unlocks the -1 fabricator.', cost:s=>30, unlocked:s=>s.unlocked.sub1, buy:s=>{s.unlocked.sub1=true;}},
   {key:'mul2', name:'Doubler (\u00D72)', desc:'Unlocks the \u00D72 fabricator.', cost:s=>80, unlocked:s=>s.unlocked.mul2, buy:s=>{s.unlocked.mul2=true;}},
   {key:'div2', name:'Halver (\u00F72)', desc:'Unlocks the \u00F72 fabricator (rounds down).', cost:s=>140, unlocked:s=>s.unlocked.div2, buy:s=>{s.unlocked.div2=true;}},
-  {key:'merge_add', name:'Adder Merge', desc:'Combines two lines into one, sum of values.', cost:s=>220, unlocked:s=>s.unlocked.merge_add, buy:s=>{s.unlocked.merge_add=true;}},
-  {key:'merge_mul', name:'Multiplier Merge', desc:'Combines two lines into one, product of values.', cost:s=>420, unlocked:s=>s.unlocked.merge_mul, buy:s=>{s.unlocked.merge_mul=true;}},
+  {key:'merge_add', name:'Adder Merge', desc:'Combines two lines into one, sum of values. Fed by one line, it doubles.', cost:s=>220, unlocked:s=>s.unlocked.merge_add, buy:s=>{s.unlocked.merge_add=true;}},
+  {key:'merge_mul', name:'Multiplier Merge', desc:'Combines two lines into one, product of values. Fed by one line, it squares.', cost:s=>420, unlocked:s=>s.unlocked.merge_mul, buy:s=>{s.unlocked.merge_mul=true;}},
   {key:'split', name:'Splitter', desc:'Duplicates a value onto a second line.', cost:s=>300, unlocked:s=>s.unlocked.split, buy:s=>{s.unlocked.split=true;}},
   {key:'fastSource', name:'Rapid Feed', desc:'Sources spawn ingots faster.', cost:s=>250, unlocked:s=>s.unlocked.fastSource, buy:s=>{s.unlocked.fastSource=true;}},
   {key:'sink2', name:'Second Sink Slot', desc:'Place a second order sink.', cost:s=>350, unlocked:s=>s.unlocked.sink2, buy:s=>{s.unlocked.sink2=true;}},

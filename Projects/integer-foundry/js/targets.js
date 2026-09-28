@@ -15,9 +15,15 @@
 // it — uniform cost per tile, so the first time a value is reached is the cheapest
 // way to reach it.
 //
-// Mergers and splitters are deliberately left out. They only ever ADD reachable
-// values, never remove one, so a target this file admits is still buildable on a
-// board that has them — the model under-promises, which is the safe direction. It
+// A merger is in the model, but only the half of it whose output is fixed (#681).
+// A merger buffers whatever arrives and combines the first two, so fed by ONE
+// line it sees the same value twice and is a single-input operator: Merge +
+// doubles, Merge × squares, on one tile, whatever the timing. Fed by two lines it
+// pairs whatever reaches it first, which is arrival timing and so the layout, and
+// that half stays out. Splitters stay out too: a splitter on a line of its own is
+// a belt, and what it saves is a prefix shared by two orders, which is a property
+// of the orders rather than of the floor. Everything left out only ever ADDS
+// reachable values, so the model under-promises, which is the safe direction. It
 // also means the answer does not depend on the layout currently on the floor: it
 // is what the board is CAPABLE of, so an order stays fillable after the player
 // tears their line down, which is most of what playing this game is.
@@ -34,6 +40,28 @@ export const OP_TILES = {
   div2: { label: '÷2',    unlock: 'div2', apply: v => Math.floor(v / 2) },
 };
 
+/**
+ * The two mergers, with the arithmetic the simulator uses when two packets pair.
+ * The page's tick() reads `combine` from here, for the same reason TILE_DEFS reads
+ * `apply` from OP_TILES: the model and the simulator cannot disagree.
+ */
+export const MERGE_TILES = {
+  merge_add: { label: 'Merge +', unlock: 'merge_add', combine: (a, b) => a + b },
+  merge_mul: { label: 'Merge ×', unlock: 'merge_mul', combine: (a, b) => a * b },
+};
+
+/**
+ * Every tile `buildCosts` can put in a chain: the four operators, plus each merger
+ * fed by one line, where both packets it pairs carry the same value. The label
+ * says "one line" because the recipe a sink prints is the player's instructions,
+ * and a merger is sold as taking two.
+ */
+export const STEP_TILES = {
+  ...OP_TILES,
+  ...Object.fromEntries(Object.entries(MERGE_TILES).map(([k, m]) =>
+    [k, { label: `${m.label} (one line)`, unlock: m.unlock, apply: v => m.combine(v, v) }])),
+};
+
 /** Ceiling on any order, whatever the board could manage. Was `Math.min(300, …)`. */
 export const HARD_CAP = 300;
 
@@ -45,9 +73,20 @@ export const MIN_TARGET = 2;
  *
  * A line needs one source and one sink of its own, and a straight chain of k
  * operators occupies exactly k cells — an 8x6 grid takes a 48-cell snake, so the
- * bound is tight rather than optimistic. Multiple sinks split the floor between
- * them; dividing is conservative (real lines share a prefix through a splitter)
- * and it stops three sinks all being promised the whole board.
+ * bound is tight rather than optimistic. A merger on one line is one more tile in
+ * that chain, so the bound holds for it unchanged. Multiple sinks split the floor
+ * between them, which stops three sinks all being promised the whole board.
+ *
+ * Dividing evenly credits nothing for a prefix two lines share through a splitter,
+ * and #681 decided it stays that way. Read off tick(), a splitter passes its
+ * packet on and drops a copy, raw, onto the first free side neighbour in N, E, S,
+ * W order that is not a sink or a merger, so the copy skips that tile's operator
+ * and the branch needs a belt. Sharing p operators saves p - 1 tiles: one source
+ * and p operators, less the splitter and that belt. That number belongs to a PAIR
+ * of orders, not to a floor, so crediting it here would make one sink's order
+ * depend on another's, and on a tree layout nothing here proves fits. It would
+ * also buy nothing on most boards: with x2 or Merge + owned, the dearest order on
+ * every floor costs no more than a third of it (smoke-targets.mjs holds that).
  */
 export function opBudget({ cols, rows, sinks = 1 }) {
   const slots = Math.max(1, Math.floor(sinks) || 1);
@@ -72,7 +111,7 @@ const memo = new Map();
  * reachable at all. BFS by tile count, so the first arrival is the cheapest one.
  */
 export function buildCosts(unlocked, budget, limit = HARD_CAP) {
-  const ops = Object.keys(OP_TILES).filter(k => !OP_TILES[k].unlock || !!(unlocked && unlocked[OP_TILES[k].unlock]));
+  const ops = Object.keys(STEP_TILES).filter(k => !STEP_TILES[k].unlock || !!(unlocked && unlocked[STEP_TILES[k].unlock]));
   const key = ops.join(',') + '|' + budget + '|' + limit;
   const hit = memo.get(key);
   if (hit) return hit;
@@ -84,7 +123,7 @@ export function buildCosts(unlocked, budget, limit = HARD_CAP) {
     const next = [];
     for (const v of frontier) {
       for (const op of ops) {
-        const w = OP_TILES[op].apply(v);
+        const w = STEP_TILES[op].apply(v);
         // Nothing routes through 0: the only way out of it is +1 back to a value
         // already reached for free. Above the cap is off the board by definition.
         if (w < 1 || w > limit || cost.has(w)) continue;
@@ -149,7 +188,7 @@ export function describeRecipe(chain) {
     if (last && last.op === op) last.n++;
     else runs.push({ op, n: 1 });
   }
-  return runs.map(r => (r.n > 1 ? `${r.n}× ` : '') + OP_TILES[r.op].label).join(', ');
+  return runs.map(r => (r.n > 1 ? `${r.n}× ` : '') + STEP_TILES[r.op].label).join(', ');
 }
 
 /** The reachable value closest to `n`, ties going low. Used to rescue old saves. */
@@ -219,6 +258,6 @@ export function rollTarget(state, rand = Math.random) {
   return pool[Math.floor(rand() * pool.length)];
 }
 
-export default { OP_TILES, HARD_CAP, MIN_TARGET, opBudget, countSinks, buildCosts,
+export default { OP_TILES, MERGE_TILES, STEP_TILES, HARD_CAP, MIN_TARGET, opBudget, countSinks, buildCosts,
   boardPlan, minCells, isReachable, reachableMax, recipe, describeRecipe,
   nearestReachable, rollTarget };

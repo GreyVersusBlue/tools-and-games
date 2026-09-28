@@ -1730,37 +1730,30 @@ new beat arms a one-shot capture listener on `#grid` to swallow a click on
 purpose, which is the only way to see the retry work, since the CI failure it
 exists for cannot be scheduled. Nothing is open against this file.
 
-The other item still on the table is deliberately parked, not forgotten:
+**The two conservative model gaps are closed** (2026-09-28, #681, Q48). They
+were one gap, as round 3 argued, and the missing number turned out to be two:
+a merger fed by ONE line pairs a value with itself, so Merge + doubles and
+Merge x squares on one tile whatever the timing, and `buildCosts` prices both
+as steps of a chain now. A Merge-only board goes from orders capped at 47 to
+every order from 2 to 300. A two-line merge pairs by arrival timing, which is
+the layout, and stays out. The splitter's number is p - 1 tiles saved for p
+shared operators, and it belongs to a pair of orders rather than to a floor, so
+`opBudget` keeps its even split: with x2 or Merge + owned no order on any floor
+costs more than a three-way share, so the credit would change no roll.
+`test/browser.mjs` builds a 290 through three one-line mergers in the real page.
 
-1. **The two conservative model gaps, if Devon or a future session wants them
-   despite the coupling argument.** Both are safe-direction (make orders easier
-   than they need to be, never harder), so neither is urgent: mergers/splitters
-   are left out of the BFS entirely (a board with `Merge x` but not `x2` gets
-   orders capped at 47 on a floor that could reach roughly 529); `opBudget`
-   divides the floor evenly across sinks placed, ignoring shared prefixes
-   through a splitter.
+One thing the work turned up and did not build, because it is not the row:
 
-   Round 3 looked at these longer than "not urgent" alone would justify,
-   because the prompt flagged `opBudget`'s fix as the smaller, lower-risk one
-   of the two, worth picking up on its own. That isn't true, and it is worth
-   writing down why so nobody picks it up in isolation expecting a small
-   change: `targets.js`'s whole design commits to one invariant on purpose —
-   "the answer does not depend on the layout currently on the floor... so an
-   order stays fillable after the player tears their line down." `opBudget`
-   currently assumes zero sharing between sinks specifically *because* assuming
-   sharing would mean reasoning about whether a splitter is actually placed and
-   where, which is layout information the rest of the model is built to ignore.
-   You cannot correctly credit a sink for "a splitter could share this prefix"
-   without first knowing how much a splitter actually saves, and that number
-   does not exist anywhere in this codebase yet — mergers and splitters are
-   outside `buildCosts` entirely. So `opBudget`'s fix and the BFS-tree fix
-   aren't two independent gaps of different sizes; they're one gap. Any
-   standalone `opBudget` change would have to guess at a sharing bonus without
-   proving it, which is exactly the kind of guess that turns "conservative" into
-   "wrong" in the one system here that has to never over-promise. **If this
-   gets picked up, it should be picked up as one piece of work, not the smaller
-   half of two** — model mergers/splitters as a tree in `buildCosts` first,
-   then `opBudget` can credit actual proven sharing instead of guessing at it.
+1. **The even split is per roll, not per floor.** `opBudget` divides by the
+   sinks placed at the moment a roll happens, so an order rolled while one sink
+   stood keeps its whole-floor size after a second sink goes down. On +1 alone,
+   after about a dozen fills, sink 1 can want 46 tiles while sink 2 is rolled
+   into a 22-tile share: each is fillable, not both at once. It only binds with
+   no doubler owned (see #681's measurement), which is why it is a note and
+   not a ranked row. The fix, if anyone wants one, is to divide by sink slots
+   unlocked rather than sinks placed, which also stops the budget reading the
+   floor at all.
+
 2. **The tile-cost hint. Shipped 2026-09-16, PR #335** (#531). The question was
    whether a three-digit `NEEDS` needs a cost beside it; the arithmetic says yes
    and says why. On the opening board the order and its cost are the same
@@ -2268,7 +2261,7 @@ live. Nothing in that column is a link to follow.
 | Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
 | Q46 | **Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?** The second changes the eyes' drift and the shape's head-flip too, since all three read the same function — an argument for doing it deliberately or not at all. | 1 | prompt 24, session 6 |
 | Q47 | **Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?** The tooltip already explains the cheap recipe. A design question, not a bug. | 2 | prompt 14, the project's notes |
-| Q48 | **Do Integer Foundry's two model gaps get built despite the coupling argument?** Two rounds have looked hard and declined; the third added a real argument for why they are one piece of work, not two. This is the one thing that would pull the project back off the shelf. | 2 | prompt 14, the project's notes |
+| ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
 | Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |
 
