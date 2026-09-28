@@ -1323,7 +1323,7 @@ the validator holds the models to it:
 
 | Class | Members | Triangles | Bytes | Longest side | Clips |
 | --- | --- | --- | --- | --- | --- |
-| `animal-large` | seal, dolphin, heron, pelican | 3,000 | 250 KiB | 6 m | yes |
+| `animal-large` | seal, dolphin, heron, pelican | 3,000 | 250 KiB | 7.5 m (#658) | yes |
 | `animal-small` | gull, cormorant, owl, crab | 1,500 | 150 KiB | 3.6 m | where it moves alone |
 | `flock` | sanderling, bat | 300 | 20 KiB | 1 m | none (#646's flock rule) |
 | `prop-large` | groyne, pier section, cave dressing, a fence run | 4,000 | 200 KiB | 60 m | none |
@@ -1371,21 +1371,46 @@ three@0.185.0 into `libs/addons/`: r185's loader imports two utils, not one.
 `test/gltf-loader.mjs`, 15 checks, in Site CI. It loads the gull once the
 animal pack (now rank 1) merges.
 
-**B3. The animal pack (rank 1, 1, gate `blender`).** The ten animals Golden
-Hour builds now: dolphin, gull, crab, heron, cormorant, owl, bat, pelican,
-sanderling, seal. Not the fireflies (points of light) or the tide-pool life,
-which stay procedural. A clip goes on an animal whose builder moves a part
-today (a wing, a flipper, a leg); read each `update` before deciding, and name
-the clip for what the code does. Deliver the `.glb` files under
-`assets/models/animals/`, the contact sheet, and the validator green on all
-ten.
+**B3. The animal pack. Shipped 2026-09-27** (#656 to #660). The ten animals
+are `assets/models/animals/*.glb`, built by `tools/blender/animals.py` in
+about 3 s and byte-stable over reruns and single-item runs. The fireflies and
+the tide-pool life stay procedural, as do the owl's snags.
+
+| Item | Class | Triangles | Bytes | Box (x across, y up, z along), m | Clips | Nodes |
+| --- | --- | --- | --- | --- | --- | --- |
+| gull | `animal-small` | 206 | 17,116 | 3.200 x 0.350 x 0.720 | `fly` | `wingR`, `wingL` |
+| dolphin | `animal-large` | 222 | 13,912 | 1.700 x 2.450 x 6.804 | | |
+| crab | `animal-small` | 240 | 15,356 | 0.324 x 0.106 x 0.212 | | |
+| heron | `animal-large` | 324 | 21,476 | 0.426 x 1.514 x 1.278 | `strike` | `head` |
+| cormorant | `animal-small` | 176 | 23,444 | 0.950 x 0.718 x 0.577 | `dry` | `wingR`, `wingL` |
+| owl | `animal-small` | 212 | 13,952 | 0.312 x 0.635 x 0.312 | | `head` |
+| bat | `flock` | 42 | 5,180 | 0.440 x 0.030 x 0.200 | | `wingR`, `wingL` |
+| pelican | `animal-large` | 248 | 18,176 | 4.800 x 0.750 x 2.854 | `fly` | `wingR`, `wingL` |
+| sanderling | `flock` | 152 | 10,088 | 0.144 x 0.217 x 0.353 | | |
+| seal | `animal-large` | 336 | 26,272 | 0.975 x 0.832 x 3.014 | `breathe` | `head` |
+
+Every box is within 10% of its builder's, measured by building each one with
+the game's own three.js in Node. `validate.mjs` runs 180 checks on the ten,
+and `test/gltf-loader.mjs` loads all ten through the vendored r185 loader
+(65 checks): clips and nodes by name, `MeshBasicMaterial` for the gull and
+bat, three's own box on `y = 0`.
 
 **B4. Wiring the animals (rank 2, ½, no gate, after rank 1).** Load the ten
 before `js/main.js` calls `buildWildlife(scene, audio)`, which builds every
 creature; swap the
 mesh where each builder made one; drive clips with one `AnimationMixer` per
 animal, stepped in the existing `update`; keep every path, perch, flush
-distance and sound where it is. The owl's hunt (`nightpaths.js`) and the
+distance and sound where it is. Every model faces -Z with its origin at its
+base (#656), so each swap takes a turn inside its group (`rotation.y` -π/2
+for the +X builders, π for the crab, none for the gull and bat) and a lift,
+the height the builder's origin stood above its base: dolphin 0.90 m, seal
+0.41, pelican 0.375, owl 0.24, gull 0.176, sanderling 0.097, crab 0.05, the
+rest 0. The game keeps posing the named nodes (#657): the owl's `head` by
+`lookAt`, turned half round, the seal's `head` toward its raised target, and
+each bat's `wingR`/`wingL`. The sanderling goes into the flock's
+`InstancedMesh` as its geometry and material (#659). `heron`'s `strike` is a
+one-shot (`LoopOnce`); the pelican's `fly` fades out for the glide between
+flap trains. The owl's hunt (`nightpaths.js`) and the
 `?debug` hooks `owl()` and `owlHunt(p)` must still answer. Run
 `node test/smoke.mjs`, the loader test, and `npm run games golden-hour` from
 `Tools/board-check` under `xvfb-run` (its real-time beats are #53's).

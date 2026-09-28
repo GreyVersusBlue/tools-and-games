@@ -80,7 +80,8 @@ rule — a stride that would rise more than 0.9 m is refused.
 - three.js (r185), Sky and Water addons — bundled locally in `libs/`.
 - GLTFLoader and the two utils it imports (`BufferGeometryUtils.js`,
   `SkeletonUtils.js`), r185 and unmodified, in `libs/addons/` under three's own
-  `examples/jsm/` layout (#18). Nothing loads a model yet; the Blender packs will.
+  `examples/jsm/` layout (#18). The animal pack is built (`assets/models/animals/`,
+  ten `.glb`), and nothing in the game loads it yet; that is the wiring row.
 - `assets/waternormals.jpg` — bundled (from the three.js examples repo).
 - Sand texture: Poly Haven's `aerial_beach_01` diffuse + normal maps, **bundled**
   in `assets/textures/` (370 KB, CC0 — see the README there). `terrain.js`
@@ -128,7 +129,8 @@ libs/             three.module.js, three.core.js, Sky.js, Water.js
 libs/addons/      loaders/GLTFLoader.js, utils/ (its two imports)
 assets/           waternormals.jpg, textures/, models/ (Blender-made .glb)
 test/smoke.mjs    node test/smoke.mjs — the world's arithmetic, no browser
-test/gltf-loader.mjs  a hand-built GLB through the vendored loader, headless
+test/gltf-loader.mjs  a hand-built GLB, then every model budget.json names, through
+                  the vendored loader, headless
 tools/blender/    the Blender pipeline: common.py (pinned export settings),
                   one script per pack, budget.json (the style sheet as data),
                   validate.mjs (checks every model against it, no Blender)

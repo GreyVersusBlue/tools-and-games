@@ -1,5 +1,5 @@
 {
-  "about": "Golden Hour's Blender style sheet as data (BACKLOG.md 'Golden Hour: Blender assets' B1). validate.mjs reads it. Bytes are KiB x 1024. extent is the longest side a class may have, in metres; each item's box is the builder's box it replaces, held to 10% per axis. texture is the largest image side in pixels, and 0 means none.",
+  "about": "Golden Hour's Blender style sheet as data (BACKLOG.md 'Golden Hour: Blender assets' B1). validate.mjs reads it. Bytes are KiB x 1024. extent is the longest side a class may have, in metres; each item's box is the builder's box it replaces, held to 10% per axis. texture is the largest image side in pixels, and 0 means none. clips are the clip names an item must carry, exactly; nodes are the node names the game finds and poses itself, and each must be in the file.",
   "loader": "libs/addons/loaders/GLTFLoader.js",
   "needsDecoder": [
     "KHR_draco_mesh_compression",
@@ -40,7 +40,7 @@
     "sandcastle": "b59a72"
   },
   "classes": {
-    "animal-large": { "triangles": 3000, "bytes": 256000, "extent": 6.0, "texture": 0, "clips": true },
+    "animal-large": { "triangles": 3000, "bytes": 256000, "extent": 7.5, "texture": 0, "clips": true },
     "animal-small": { "triangles": 1500, "bytes": 153600, "extent": 3.6, "texture": 0, "clips": true },
     "flock":        { "triangles": 300,  "bytes": 20480,  "extent": 1.0, "texture": 0, "clips": false },
     "prop-large":   { "triangles": 4000, "bytes": 204800, "extent": 60.0, "texture": 0, "clips": false },
@@ -52,7 +52,66 @@
       "file": "assets/models/animals/gull.glb",
       "class": "animal-small",
       "box": [3.2, 0.352, 0.7],
-      "clips": ["fly"]
+      "clips": ["fly"],
+      "nodes": ["wingR", "wingL"]
+    },
+    "dolphin": {
+      "file": "assets/models/animals/dolphin.glb",
+      "class": "animal-large",
+      "box": [1.6, 2.45, 6.8],
+      "clips": []
+    },
+    "crab": {
+      "file": "assets/models/animals/crab.glb",
+      "class": "animal-small",
+      "box": [0.327, 0.099, 0.208],
+      "clips": []
+    },
+    "heron": {
+      "file": "assets/models/animals/heron.glb",
+      "class": "animal-large",
+      "box": [0.426, 1.51, 1.278],
+      "clips": ["strike"],
+      "nodes": ["head"]
+    },
+    "cormorant": {
+      "file": "assets/models/animals/cormorant.glb",
+      "class": "animal-small",
+      "box": [1, 0.718, 0.543],
+      "clips": ["dry"],
+      "nodes": ["wingR", "wingL"]
+    },
+    "owl": {
+      "file": "assets/models/animals/owl.glb",
+      "class": "animal-small",
+      "box": [0.312, 0.635, 0.312],
+      "clips": [],
+      "nodes": ["head"]
+    },
+    "bat": {
+      "file": "assets/models/animals/bat.glb",
+      "class": "flock",
+      "box": [0.44, 0.03, 0.2],
+      "nodes": ["wingR", "wingL"]
+    },
+    "pelican": {
+      "file": "assets/models/animals/pelican.glb",
+      "class": "animal-large",
+      "box": [4.8, 0.75, 2.85],
+      "clips": ["fly"],
+      "nodes": ["wingR", "wingL"]
+    },
+    "sanderling": {
+      "file": "assets/models/animals/sanderling.glb",
+      "class": "flock",
+      "box": [0.144, 0.201, 0.331]
+    },
+    "seal": {
+      "file": "assets/models/animals/seal.glb",
+      "class": "animal-large",
+      "box": [0.975, 0.833, 2.94],
+      "clips": ["breathe"],
+      "nodes": ["head"]
     }
   }
 }
