@@ -117,14 +117,12 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Blue Hour's beats above
-the fog line, the shape and the eyes**: rank 43, a 1 naming Fable 5.1, worked
-under Opus 5.5 (#638) on Devon's machine, claimed in PR #445. Its three commits
-reached `main` by direct push rather than through a PR (see below); the fix
-to the light's placement and this rewrite came through PR #446 instead. The
-row is gone and the rows below it moved up one. That is the line to update when your batch merges; a PR that
+**The last batch of ranked work that shipped** is **Integer Foundry's two
+conservative model gaps**: rank 43, a 1 naming Fable 5.1, worked under Opus
+5.5 (#638) in a cloud container, claimed in PR #447 and shipped in PR #448.
+The row is gone and the rows below it moved up one. That is the line to update when your batch merges; a PR that
 only changes these files is not a batch and does not belong in it.
-**47 ranked items remain**, and **every one of them names a model.**
+**46 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need Devon's machine** (#642,
 2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 35 are
@@ -146,15 +144,31 @@ gated `blender` or is a wiring row waiting on the gated pack row above it.
 Opus 5.5, gate `blender`). Rank 3, The Fourth Quarter's pipeline (a ¼, gate
 `blender`), fits beside it inside the spanning-areas caps. Rank 2 wires rank
 1's pack in and waits for it to merge.
-**A cloud session takes rank 43** (Integer Foundry's two conservative model
-gaps, as one coupled piece of work, a 1 naming Fable 5.1 that runs on Opus 5.5
-under #638, no gate), the first row below the Blender block not waiting on
-hardware, as a batch alone.
-Ranks 36 to 42 still want a real GPU, a real phone or a person listening for
+**A cloud session takes rank 46** (Signal City R6, the priority corridor
+following the vehicle across boxes, a ½ naming Opus 5 that runs on Opus 5.5
+under #638, no gate), as a batch alone. It is the first row below the Blender
+block that waits on neither hardware nor Devon: rank 43 (The Fracture Cycle's
+fourth prong) and rank 45 (Orbital's `gvb-save.js` adoption) are both
+written "only if Devon" wants them, and a scope Devon has not asked for is not
+a judgement call a session makes for him. Rank 44 wants a phone.
+Ranks 36 to 42 and 44 still want a real GPU, a real phone or a person listening for
 an hour, and their `Gate` cell says which.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Integer Foundry's model gaps are closed, as one piece** (#681, Q48 struck).
+A merger fed by one line pairs a value with itself, so Merge + doubles and
+Merge x squares on one tile; `buildCosts` prices both, and a Merge-only board
+goes from orders capped at 47 to every order from 2 to 300. A two-line merge is
+timing, which is the layout, and stays out. The splitter's credit was measured
+(p - 1 tiles for p shared operators) and declined: it belongs to a pair of
+orders, and with x2 or Merge + owned no order on any floor costs more than a
+three-way share. `smoke-targets.mjs` 119, `browser.mjs` 74. **Worth carrying
+forward**: `npm run games integer-foundry` aborted 3 of 3 on `main` under
+Puppeteer in a Linux container ("Node is detached from document"); its clicks
+re-press now and it is 20 of 20. `npm run check` counts 1,915 units in a
+cloud container against 1,920 on Devon's machine, on `main` as well.
 
 **Above the fog line Blue Hour's shape stands up and its eyes are a light
 going away** (#680). Both visual beats change kind at #635's `summitKind`,
@@ -487,7 +501,7 @@ adding a beat**: a section that throws now costs its own checks and no others
 (#529), after the first deliberate break lost twelve unrelated ones to an abort;
 and the plan-vs-flight assertion has to be the clock and not the endpoint
 (#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
-the break ran green from 46/46. Orbital's rotate-to-play gate (rank 45) is still a real
+the break ran green from 46/46. Orbital's rotate-to-play gate (rank 44) is still a real
 device's job and is untouched.
 
 **A sink says what an order costs** (#531, #532). The tile-cost row was a design
@@ -667,7 +681,7 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Two rows are 2+: rank 35 (the dioramas) and rank 44 (The Fracture
+**Two rows are 2+: rank 35 (the dioramas) and rank 43 (The Fracture
 Cycle's fourth prong).** Of the thirteen rows ranked before #642 (now 41 to
 53), five are ¼ (43, 44, 45, 46 and 51) and **all five want hardware nothing
 here has**, as do three of the halves (41, 42, 47); the Parked section below the
@@ -875,11 +889,10 @@ and #222 was closed unmerged an hour of suites later.
 | 40 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
 | 41 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
 | 42 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 43 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | `claude/serene-galileo-5qonfg` | [Integer Foundry](#integer-foundry) |
-| 44 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 45 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 46 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 47 | Signal City R6: the priority corridor follows the vehicle across boxes | `Projects/signal-city` | ½ | Opus 5 |  |  | [Signal City](#signal-city), `WISHLIST.md` R6 |
+| 43 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 44 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
+| 45 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
+| 46 | Signal City R6: the priority corridor follows the vehicle across boxes | `Projects/signal-city` | ½ | Opus 5 |  |  | [Signal City](#signal-city), `WISHLIST.md` R6 |
 
 ## Parked — needs a person at a real device
 
@@ -1904,7 +1917,7 @@ hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
 as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
 (#649, #650): a board-check recipe, the Rush Hour preview and the card
-copy, and Rush Hour's dusk is a level field. R6 (½) is rank 47.
+copy, and Rush Hour's dusk is a level field. R6 (½) is rank 46.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
