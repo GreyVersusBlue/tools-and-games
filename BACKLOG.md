@@ -1222,7 +1222,7 @@ change to have something to report would be worse than reporting none.
 
 ### Aphelion: Blender assets
 
-Ranks 2 and 3 (B1 shipped in PR #459). The common plan is
+Rank 1 is B4 (B1 shipped in PR #459, B3 in PR #466). The common plan is
 [Blender assets: the common plan](#blender-assets-the-common-plan). three is
 r160 here.
 
@@ -1257,14 +1257,37 @@ port 8164, 15 checks. `desktop-input.mjs`'s libs line now names the three
 files by name and the scan skips `libs/`; Site CI's Aphelion entry installs
 `Tools/board-check` and the test. It loads the ship pack once rank 1 merges.
 
-**B3. The ship pack (rank 1, ½, gate `blender`).** What `src/ship.js` builds
-from its twelve primitive calls: the interior props and interactables, the
-exterior shell, the satellite and the EVA points of interest. The starfield
-stays procedural.
+**B3. The ship pack. Shipped 2026-09-28, PR #466** (#700, #701; ½, Opus 5.5,
+gate `blender`). Eleven files beside the console in `models/ship/`, each
+built in `ship.js`'s own frame from its `box()` arguments, with
+`budget.json`'s `at` saying where its origin goes (#700):
 
-**B4. Wiring the ship (rank 2, ¼, no gate, after rank 1).** Every
+| Item | Replaces in `ship.js` | Triangles | `at` |
+| --- | --- | --- | --- |
+| `seat` | the pilot's cushion and back (`bed`), plus metal armrests | 84 | (0, 0.475, -11.5875) |
+| `panel` | each system's panel (`metal`, `panel`), built facing +Z | 192 | `panel.pos` + (0, -0.55, 0), turned by `systems.json`'s `rotY` |
+| `pipes` | the systems bay's four pipes | 740 | (0, 2.156, -6.8) |
+| `workbench` | the systems bay box (`metal`, `trim`) | 96 | (2.0, 0, -7.4) |
+| `bed` | frame, blanket, pillow (`bed`, `blanket`, `wall`) | 48 | (-1.9, 0.105, 4.8) |
+| `shelf` | the curio plank (`trim`) | 36 | (2.5, 1.67, 4.8) |
+| `tray` | the hydroponics body and soil (`metal`, `soil`) | 144 | (-0.005, 0, 0) in the tray group |
+| `hatch-inner` | the inner hatch and its header (`metal`, `trim`) | 136 | (0, 0.1, 9.85) |
+| `hull` | body, hump, dish, pods (`hullExt`, `sat`) | 376 | (0, -0.53, -2) in `refs.exterior` |
+| `hatch-outer` | the EVA hatch (`trim`, `metal`) | 36 | (0, 0.1, 10.9) in `refs.exterior` |
+| `satellite` | every POI's core, wings and antenna (`sat`, `solar`) | 180 | (0, -0.4, 0) in the POI group |
+
+The interior shell, the starfield, the sun, the engine glows and the gauge
+strips stay the game's (#701). `M` gained `solar`, and `interior`'s longest
+side is 6 m. validate 330 checks, gltf-loader 101.
+
+**B4. Wiring the ship (rank 1, ¼, no gate; its pack has merged).** Every
 interactable keeps its position and its prompt; the power state still dims
-the panels. Run `node test/smoke-state.mjs`, `node test/desktop-input.mjs` and
+the panels. Each file goes at its `at`. A glTF mesh with two materials comes
+back as a group of one mesh per material, so the interactables are found by
+material name: the bed's `bed` mesh, the tray's `soil`, the satellite's
+`sat`, the whole hatch and panel. Each panel's `panel` mesh takes that
+system's own clone of `M.panel`, and every other slot takes `M[name]`. The
+glows and the gauge strips are still built where they were. Run `node test/smoke-state.mjs`, `node test/desktop-input.mjs` and
 `npm run games aphelion` from `Tools/board-check`.
 
 ## Closing Time

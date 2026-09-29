@@ -18,7 +18,8 @@
 //     with a decoder this project does not vendor, or one only the meshopt
 //     recipe may add (EXT_meshopt_compression) in what Blender wrote
 //   - a material that is not a palette entry, or whose colour is not that
-//     entry's (white where a texture carries the colour instead)
+//     entry's (white where a texture carries the colour instead), or whose
+//     alpha is not budget.json's opacity for it (blended), or 1 (opaque)
 //   - a primitive with no material, one carrying a vertex colour, or one
 //     carrying UVs its material has no texture to use
 //   - once the recipe has run (B3), the .glb beside the .gltf: a glTF binary
@@ -275,6 +276,11 @@ function check(name, item) {
     const target = pbr.baseColorTexture ? [255, 255, 255] : rgbOf(want);
     ok(near(rgb, target), `${name}: material ${mat.name} carries ${pbr.baseColorTexture ? 'white under its texture' : 'its palette colour'}`,
        `#${hex(rgb)}, want #${hex(target)}`);
+    const alpha = (pbr.baseColorFactor || [1, 1, 1, 1])[3] ?? 1;
+    const wantAlpha = budget.opacity?.[mat.name] ?? 1;
+    ok(Math.abs(alpha - wantAlpha) < 0.01 && (wantAlpha < 1) === (mat.alphaMode === 'BLEND'),
+       `${name}: material ${mat.name} carries its opacity`,
+       `alpha ${alpha.toFixed(2)} ${mat.alphaMode || 'OPAQUE'}, want ${wantAlpha}${wantAlpha < 1 ? ' BLEND' : ''}`);
   }
   for (const mesh of gltf.meshes || []) for (const [pi, p] of mesh.primitives.entries()) {
     const where = `${mesh.name || 'mesh'} primitive ${pi}`;

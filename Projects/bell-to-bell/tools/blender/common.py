@@ -95,7 +95,9 @@ def linear(hexv):
 def material(name, roughness=0.85, metalness=0.0):
     """A material named for a palette entry in budget.json, carrying its
     colour. Roughness and metalness default to what createMaterials() gives the
-    room's own surfaces (0.85, and 0 for anything but metal)."""
+    room's own surfaces (0.85, and 0 for anything but metal). An entry in
+    budget.json's `opacity` (glass, 0.75, as createMaterials() makes it) is
+    written as that alpha, blended; every other material is opaque."""
     pal = BUDGET['palette']
     if name not in pal:
         print(f'common.py: "{name}" is not in budget.json\'s palette; '
@@ -111,6 +113,10 @@ def material(name, roughness=0.85, metalness=0.0):
     bsdf.inputs['Base Color'].default_value = linear(int(pal[name], 16))
     bsdf.inputs['Roughness'].default_value = roughness
     bsdf.inputs['Metallic'].default_value = metalness
+    alpha = BUDGET.get('opacity', {}).get(name, 1.0)
+    if alpha < 1:
+        bsdf.inputs['Alpha'].default_value = alpha
+        mat.surface_render_method = 'BLENDED'
     links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     mat.diffuse_color = linear(int(pal[name], 16))
     return mat

@@ -750,7 +750,7 @@ without `pointer-events:none` on the layer itself it ate every touch meant for
 the room, so the game took no input at all. `smoke.mjs` now asserts the layer
 is inert.
 
-## Blender assets (from 2026-09-25; B1 shipped 2026-09-28, PR #463; B2 and B3 are ranks 3 and 4)
+## Blender assets (from 2026-09-25; B1 shipped 2026-09-28, PR #463; B2 shipped 2026-09-28, PR #466; B3 is rank 2)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
 plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
@@ -814,19 +814,42 @@ thermal twin is not in the file; `registerModel()` gives every mesh of a
 loaded model one flat colour, so B3 registers each piece with its fixture's
 thermal hex.
 
-**B2. The classroom pack (rank 3, ½, Opus 5.5, gate `blender`).** First,
-list every primitive `src/world/` builds (`room.js`, `board.js`,
-`students.js`, `tellmesh.js`) and say what each is. The pack is the classroom
-objects among them that `data/assets.json` does not already name. Two groups
-stay as they are: the students' box bodies, which are what `src/quality.js`
-falls back to when it drops the rigged characters at boot, and the tell meshes
-(the phone, the note), which live in a tell group's buckets and are built to
-the centimetre in `tellmesh.js`.
+**B2. The classroom pack. Shipped 2026-09-28, PR #466** (#702; rank 3, ½, Opus 5.5,
+gate `blender`). What `src/world/` builds from primitives, and what became of each:
 
-**B3. Wiring the pack (rank 4, ¼, Opus 5.5, no gate, after rank 3).** A
+| Where | Primitive | What it is | In the pack? |
+| --- | --- | --- | --- |
+| `room.js` fixtures | `floor`, `ceiling`, four walls | the room shell, tiled sets | no, the room is a description (#646) |
+| | `whiteboard` | the board the lesson is written on | B1's sample |
+| | `objectiveBoard` | the yellow board still showing Tuesday | **yes**, `objective-board` |
+| | `posterA` to `posterD` | the four posters | no, `assets.json`'s `art` already dresses all four |
+| | `window1` to `window3` | glass on the right wall | **yes**, one `window` hung three times |
+| | `teacherDeskTop`, `teacherDeskBody` | the teacher's desk | no, `desk.glb` dresses it |
+| | `rug` | a 2 cm slab in the tiled wool set | no, a flat file would lose the texture |
+| `room.js` occluders | `cabinet`, `bookshelf`, and the bookshelf's clutter boxes | sightline blockers | no, Kenney bookcases; the clutter is the fallback |
+| `board.js` | two `PlaneGeometry` screens | the canvases the lesson and objective are drawn on | no, they are text |
+| `students.js` | desk top, four legs, chair seat | fallbacks under `studentDesk` and `studentChair` | no, Kenney desk and chair |
+| | torso cylinder, skull, hair, legs | the box bodies `quality.js` falls back to | no, as the plan says |
+| | the aura plane | comprehension, a vision inference | no, not an object |
+| `tellmesh.js` | phone, note halves, paper, murmur arcs, route line | the tells | no, as the plan says |
+
+`window` is 84 triangles and 7,044 bytes, built facing +Z at 1.5 x 1.2 x
+0.06: a Kenney-metal frame with a mullion and a transom over one pane of
+`glass` at 0.75, blended, the alpha `createMaterials()` gives glass, which
+`budget.json`'s new `opacity` carries and `validate.mjs` checks. B3 hangs it
+at each window fixture turned -pi/2. `objective-board` is 72 triangles and
+7,197 bytes at the fixture's 1.5 x 1.0 x 0.06: a `poster` face 1.5 cm back in a
+`kenney-wood` frame, with a `kenney-metal-medium` clip rail in the margin
+above the canvas, which still stands 2 cm clear. `validate.mjs` is 95
+checks. Three runs, one hash, and the whiteboard rebuilt identical to its
+committed blob (a checkout under `core.autocrlf` gives the `.gltf` CRLF, so
+compare against `git show`).
+
+**B3. Wiring the pack (rank 2, ¼, Opus 5.5, no gate; its pack has merged).** A
 `bell-to-bell-blender` recipe in `Tools/board-check/asset-pipeline.mjs` (the
-site's file, called out in the PR body) pinned at rank 5's commit; the
-paths in `data/assets.json`; `registry.add` for every mesh; a `BASELINE`
+site's file, called out in the PR body) pinned at PR #466's commit, reading `whiteboard`, `window` and
+`objective-board`; the paths in `data/assets.json`; `registerModel` for
+every piece with its fixture's thermal hex; the window turned -pi/2; a `BASELINE`
 entry each in `tests/props.mjs`. All five suites the Site CI entry runs stay
 green.
 

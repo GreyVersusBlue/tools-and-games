@@ -18,6 +18,7 @@ const M = {
   glass:  new THREE.MeshStandardMaterial({ color: 0x0c1220, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.5 }),
   hullExt:new THREE.MeshStandardMaterial({ color: 0x3a4150, roughness: 0.7, metalness: 0.4 }),
   sat:    new THREE.MeshStandardMaterial({ color: 0x7d8494, roughness: 0.5, metalness: 0.7 }),
+  solar:  new THREE.MeshStandardMaterial({ color: 0x2a3d66, roughness: 0.3, metalness: 0.5 }),
 };
 
 function box(w, h, d, mat, x, y, z, ry = 0) {
@@ -198,7 +199,7 @@ export function buildWorld(scene, roomsData, systemDefs, poiData) {
     g.position.set(...poi.pos);
     const core = box(0.8, 0.8, 1.4, M.sat, 0, 0, 0);
     g.add(core);
-    for (const sx of [-1, 1]) g.add(box(2.2, 0.05, 0.9, new THREE.MeshStandardMaterial({ color: 0x2a3d66, roughness: 0.3, metalness: 0.5 }), sx * 1.6, 0, 0));
+    for (const sx of [-1, 1]) g.add(box(2.2, 0.05, 0.9, M.solar, sx * 1.6, 0, 0));
     const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.6), M.sat);
     ant.position.set(0, 1.0, 0); g.add(ant);
     g.rotation.set(0.4, 0.8, 0.15);
