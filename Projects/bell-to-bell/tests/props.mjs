@@ -270,8 +270,15 @@ const near = (a, b, tol = TOL) => a === null || b === null ? a === b
 check('eleven props, the frame and the three Blender pieces', Object.keys(models).length === 15);
 check('every prop is a .glb the pipeline wrote', Object.values(models).every(p => p.endsWith('.glb')));
 
+// A file gone from disk fails here, by name, and reads as an empty .glb below,
+// rather than killing the run before any line can say which one it was.
+const gone = Object.entries(models).filter(([, p]) => !fs.existsSync('../' + p)).map(([k]) => k);
+check('every model the manifest names is on disk', gone.length === 0);
+if (gone.length) console.log('        gone: ' + gone.join(', '));
+
 // Reads a .glb's JSON chunk without three: 12-byte header, then the chunk.
 function glbJson(p) {
+  if (!fs.existsSync('../' + p)) return {};
   const b = fs.readFileSync('../' + p);
   return JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'));
 }
@@ -323,7 +330,7 @@ for (const [k, p] of Object.entries(models)) {
 // piece is found by the fixture id room.js writes on it, never by its type,
 // and held to its fixture's box: every corner within 2 cm, as The Fourth
 // Quarter's bar and Aphelion's ship are (#697). A window turned +pi/2 has the
-// same box as one turned -pi/2, so the turn has its own line.
+// same box as one turned -pi/2, so which way it faces has its own line.
 {
   const { buildRoom } = await import('../src/world/room.js');
   const { createMaterials, createRegistry } = await import('../src/world/materials.js');
@@ -360,8 +367,15 @@ for (const [k, p] of Object.entries(models)) {
     }
     check(`${id}: every corner within 2 cm of its fixture's box`, worst <= 0.02);
     if (worst > 0.02) console.log(`        worst ${worst.toFixed(3)} m`);
-    check(`${id}: turned by ${(entry.rotY || 0).toFixed(4)}, as assets.json says`,
-      Math.abs(piece.rotation.y - (entry.rotY || 0)) < 1e-9 && piece.rotation.x === 0 && piece.rotation.z === 0);
+    // The file's front is +Z (#698). Turned, it has to face into the room,
+    // along the fixture's thin side: a window turned +pi/2 has the same box and
+    // looks at the car park. Checked against the room, not against assets.json's
+    // rotY, which a wrong value there would agree with.
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(piece.quaternion);
+    const inward = new THREE.Vector3(-f.pos[0], 0, (room.bounds.zFront + room.bounds.zBack) / 2 - f.pos[2]);
+    const thin = f.size[0] < f.size[2] ? Math.abs(front.x) : Math.abs(front.z);
+    check(`${id}: faces into the room, along its fixture's thin side`, thin > 0.9999 && front.dot(inward) > 0);
+    if (!(thin > 0.9999 && front.dot(inward) > 0)) console.log(`        front ${front.toArray().map(n => n.toFixed(3)).join(', ')}`);
     const meshes = [];
     piece.traverse(o => { if (o.isMesh) meshes.push(o); });
     // the file's own materials, not the palette's: the colour is in the file
