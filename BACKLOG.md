@@ -1268,7 +1268,7 @@ BufferGeometryUtils vendored unmodified from three@0.160.0 into `libs/addons/`
 Bell's copies. r160's loader names no SkeletonUtils. `test/gltf-loader.mjs`,
 port 8164, 15 checks. `desktop-input.mjs`'s libs line now names the three
 files by name and the scan skips `libs/`; Site CI's Aphelion entry installs
-`Tools/board-check` and the test. It loads the ship pack once rank 1 merges.
+`Tools/board-check` and the test. It loads the ship pack too, 101 checks since PR #466.
 
 **B3. The ship pack. Shipped 2026-09-28, PR #466** (#700, #701; ½, Opus 5.5,
 gate `blender`). Eleven files beside the console in `models/ship/`, each
