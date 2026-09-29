@@ -103,9 +103,15 @@ function pickInteractable() {
   const eva = state.mode === 'eva';
   raycaster.far = eva ? 6 : 2.6;
   const eligible = refs.interactables.filter(i => EVA_TYPES.has(i.type) === eva);
-  const hits = raycaster.intersectObjects(eligible.map(i => i.mesh), false);
+  // An interactable is a mesh (the bed's `bed` part) or a whole piece (the
+  // hatches, a panel), so the ray goes into groups and the hit walks back up.
+  const hits = raycaster.intersectObjects(eligible.map(i => i.mesh), true);
   if (!hits.length) return null;
-  return eligible.find(i => i.mesh === hits[0].object) || null;
+  for (let o = hits[0].object; o; o = o.parent) {
+    const it = eligible.find(i => i.mesh === o);
+    if (it) return it;
+  }
+  return null;
 }
 
 function promptFor(it) {
