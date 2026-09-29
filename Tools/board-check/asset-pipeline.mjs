@@ -112,6 +112,33 @@ export const RECIPES = {
     externalImages: true,
     meshopt: "high",
     decoder: "Projects/bell-to-bell/libs/addons/libs/meshopt_decoder.module.js"
+  },
+
+  // Bell to Bell's Blender pack (its WISHLIST.md "Blender assets" B3): the
+  // whiteboard, the window and the objective board, which its own
+  // tools/blender/classroom.py writes as glTF Separate into
+  // Assets/models/blender/. Read at 3956289, the merge of PR #466, where all
+  // three stood. Flat palette colours, no textures, so no image to keep loose;
+  // the .gltf and .bin stay on disk as Blender's output, and the .glb beside
+  // them is what the game loads (#699).
+  "bell-to-bell-blender": {
+    rev: "3956289be614ce801e93d3b3a271bf65429d6a52",
+    pairs: () => ["whiteboard", "window", "objective-board"].map(name => ({
+      from: `${B2B}/Assets/models/blender/${name}.gltf`,
+      to: `${B2B}/Assets/models/blender/${name}.glb`
+    })),
+    // Too small for the rule in the header (#704). At 72 to 84 triangles the
+    // .glb's JSON chunk is 2,880 to 3,496 of its 3,796 to 4,464 bytes, and the
+    // .gltf and .bin it replaces gzip to 1,394 to 1,456 together, so nothing
+    // raw can come in under them. Measured at 3956289: raw 6,393 -> 3,796,
+    // 7,044 -> 3,956 and 7,197 -> 4,464; gzipped 1,394 -> 1,455, 1,452 ->
+    // 1,541 and 1,456 -> 1,582. So each output is held instead to under its
+    // source raw, which is the host that does not gzip, and to within 256
+    // bytes of its source gzipped, which is the host that does: 61 to 126
+    // bytes more a file, bought with one request where there were two.
+    gzipSlack: 256,
+    meshopt: "high",
+    decoder: "Projects/bell-to-bell/libs/addons/libs/meshopt_decoder.module.js"
   }
 };
 
@@ -521,7 +548,10 @@ async function main() {
     const s = sources.reduce((n, b) => n + b.length, 0), sg = sources.reduce((n, b) => n + gz(b), 0);
     const o = out.length, og = gz(out);
     before += s; beforeGz += sg; after += o; afterGz += og;
-    if (o >= sg) problems.push(`${to}: ${o} bytes raw is not under the source's ${sg} gzipped`);
+    if (recipe.gzipSlack != null) {
+      if (o >= s) problems.push(`${to}: ${o} bytes raw is not under the source's ${s} raw`);
+      if (og > sg + recipe.gzipSlack) problems.push(`${to}: ${og} bytes gzipped is over the source's ${sg} gzipped plus the recipe's ${recipe.gzipSlack}`);
+    } else if (o >= sg) problems.push(`${to}: ${o} bytes raw is not under the source's ${sg} gzipped`);
     const label = recipe.externalImages ? path.basename(dir) : path.basename(path.dirname(path.dirname(path.dirname(from))));
     console.log(`  ${label.slice(0, 34).padEnd(34)} ` +
       `${path.basename(to).slice(0, 30).padEnd(30)} ${kb(s)} (gz ${kb(sg)}) -> ${kb(o)} (gz ${kb(og)})`);

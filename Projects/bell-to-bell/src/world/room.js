@@ -73,6 +73,36 @@ async function dressPoster(scene, registry, loader, framePath, paintingPath, box
   }
 }
 
+// A Blender piece (tools/blender/) is built at the size of the fixture it
+// dresses, origin at the centre of its base, facing +Z (#698). So it hangs
+// where the fixture stands, dropped half the fixture's height, and turns by
+// its entry's rotY; it is never rescaled, since fitting it would undo the
+// build. tests/props.mjs places each one through this and holds it to its
+// fixture's box.
+export function hangPiece(model, fixture, entry) {
+  model.position.set(fixture.pos[0], fixture.pos[1] - fixture.size[1] / 2, fixture.pos[2]);
+  model.rotation.y = entry.rotY || 0;
+  return model;
+}
+
+// A fixture dressed by its piece: the box stays where it was, registered and
+// hidden, as dressWithModel() leaves one, and the piece takes the fixture's own
+// thermal colour. If the file fails to load, the box just stays visible.
+async function dressFixture(scene, registry, loader, entry, fixture, box, thermalHex) {
+  if (!loader || !entry?.model) return false;
+  try {
+    const model = hangPiece(await loader.loadStatic(entry.model), fixture, entry);
+    model.userData.fixture = fixture.id;
+    registerModel(model, registry, thermalHex);
+    scene.add(model);
+    box.visible = false;
+    return true;
+  } catch (err) {
+    console.warn(`Model for ${fixture.id} failed to load, keeping the placeholder box.`, err);
+    return false;
+  }
+}
+
 // Pure set dressing — a clock, a fire alarm, a plant, whatever the manifest
 // lists. Nothing in the game reads these (no collision, no sightline math),
 // so a missing one is just skipped rather than falling back to a box; there
@@ -111,6 +141,12 @@ export async function buildRoom(scene, registry, mats, data, opts = {}) {
   for (const f of data.fixtures) {
     fixtureMeshes[f.id] = box(scene, registry, mats, f.mat, f.size, f.pos, f.rotY || 0);
   }
+
+  // The whiteboard, the objective board and the three windows (#702).
+  const fixtureModels = assets?.fixtures || {};
+  await Promise.all(data.fixtures.filter(f => fixtureModels[f.id]).map(f => dressFixture(
+    scene, registry, loader, fixtureModels[f.id], f, fixtureMeshes[f.id], mats[f.mat].userData.thermal.color.getHex()
+  )));
 
   // The teacher's desk is two fixtures (a wood top, a metal body) that one
   // desk.glb replaces at once.
