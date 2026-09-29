@@ -942,7 +942,7 @@ apply pressure, and the events to be able to sink you.
 under "What this leaves for a later arc" below is still open, and this project
 has no ranked phases left.
 
-## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #459, B4 in this batch)
+## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #459, B4 in PR #463)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The plan
 every Blender row shares, including where Blender runs and what `common.py`,
@@ -1081,7 +1081,7 @@ frame are on the south wall, so `Math.PI`. The TV's screen plane still goes
 0.05 in front of the frame's centre, 1 cm clear of its bezel. The notes are
 seeded now, not `Math.random()` per build.
 
-**B4. Wiring the bar. Shipped 2026-09-28** (#695 to #697; rank 1, ½, Opus 5.5,
+**B4. Wiring the bar. Shipped 2026-09-28, PR #463** (#695 to #697; rank 1, ½, Opus 5.5,
 no gate). `js/pieces.js` loads all 22 files at the top of `world.js`, and
 every fixture and stick of furniture is built from them: the fit-out blocks
 at `f.w`, `f.h`, `f.d` over the file's box, the counter as two ends (the
