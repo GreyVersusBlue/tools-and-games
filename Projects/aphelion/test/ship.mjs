@@ -96,7 +96,9 @@ try {
     const j = n => fetch(`./data/${n}.json`).then(res => res.json());
     const [rooms, systems, poi] = await Promise.all([j('rooms'), j('systems'), j('poi')]);
     const scene = new THREE.Scene();
-    const refs = S.buildWorld(scene, rooms, systems.systems, poi);
+    let refs;
+    try { refs = S.buildWorld(scene, rooms, systems.systems, poi); }
+    catch (e) { out.buildError = String(e && e.message || e); return out; }
     scene.updateMatrixWorld(true);
     const M = S.M;
 
@@ -196,6 +198,8 @@ try {
   group('the pack is what the game loads');
   ok(!r.importError, 'src/pieces.js imports through the map', r.importError || '');
   ok(!r.loadError, 'src/ship.js imports, and its top-level load of all 12 lands', r.loadError || '');
+  ok(!r.importError && !r.loadError && !r.buildError, 'buildWorld() builds with every piece, and none is missing from what it got',
+    r.buildError || '');
 
   group('a missing file stops the game, by name (one line a piece)');
   for (const [name, item] of Object.entries(budget.items).sort(([a], [b]) => a.localeCompare(b))) {
@@ -206,7 +210,7 @@ try {
       onDisk ? (m ? (m.message || 'resolved') : 'not in PIECES') : 'not on disk');
   }
 
-  if (r.importError || r.loadError) throw new Error('nothing to test');
+  if (r.importError || r.loadError || r.buildError) throw new Error('nothing to test');
   group('what it loads');
   const want = Object.keys(budget.items).sort();
   ok(r.pieces.slice().sort().join() === want.join(), 'PIECES is every model budget.json names, and only those',
