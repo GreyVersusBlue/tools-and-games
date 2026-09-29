@@ -933,8 +933,8 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Wire the ship pack in; it merged in PR #466 | `Projects/aphelion` | ¼ | Opus 5.5 |  |  | [Aphelion: Blender assets](#aphelion-blender-assets) B4 |
-| 2 | Wire the classroom pack in (merged in PR #466): the recipe, `data/assets.json`, the registry, a `BASELINE` each | `Projects/bell-to-bell` | ¼ | Opus 5.5 |  |  | `Projects/bell-to-bell/WISHLIST.md` B3 |
+| 1 | Wire the ship pack in; it merged in PR #466 | `Projects/aphelion` | ¼ | Opus 5.5 |  | `claude/aphelion-b4-b2b-b3-wire-packs` | [Aphelion: Blender assets](#aphelion-blender-assets) B4 |
+| 2 | Wire the classroom pack in (merged in PR #466): the recipe, `data/assets.json`, the registry, a `BASELINE` each | `Projects/bell-to-bell` | ¼ | Opus 5.5 |  | `claude/aphelion-b4-b2b-b3-wire-packs` | `Projects/bell-to-bell/WISHLIST.md` B3 |
 | 3 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
 | 4 | School Generator's built-in model pack: catalog props as vertex-coloured `.glb` in `assets/models/` | `Projects/school-generator` | ½ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B2 |
 | 5 | Wire the model pack in, once rank 4 has merged: catalog rows that point at a file, and the precache | `Projects/school-generator` | ¼ | Opus 5.5 |  |  | `Projects/school-generator/WISHLIST.md` B3 |
