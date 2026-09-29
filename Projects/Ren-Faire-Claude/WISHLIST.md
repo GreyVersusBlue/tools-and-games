@@ -840,7 +840,7 @@ click. Both are real, neither is what round 2 and round 3 kept finding.
 ## Blender assets (ranks 17 to 19, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Blender on one of Devon's machines, Windows or huginn (#710); a session
 without `blender` on PATH skips it and takes the next row.
 
 **B1. The sprite pipeline (rank 17, ¼, Opus 5.5, gate `blender`).** Faire

@@ -753,7 +753,7 @@ is inert.
 ## Blender assets (from 2026-09-25; B1 shipped 2026-09-28, PR #463; B2 shipped 2026-09-28, PR #466; B3 shipped 2026-09-29, PR #468)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Blender on one of Devon's machines, Windows or huginn (#710); a session
 without `blender` on PATH skips it and takes the next row. **This project's
 `CLAUDE.md` governs inside the folder**, and three of its rules shape these
 rows: a new prop goes in as a `.gltf` in one commit, then through the

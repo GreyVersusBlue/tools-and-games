@@ -527,7 +527,7 @@ and add to this list rather than starting a new one.
 ## Blender assets (ranks 7 to 9, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Blender on one of Devon's machines, Windows or huginn (#710); a session
 without `blender` on PATH skips it and takes the next row. This project needs
 no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a
 file into a real catalog row.

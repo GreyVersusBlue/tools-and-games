@@ -1293,6 +1293,8 @@ Generator.
 
 **#706. Bell to Bell hangs a Blender piece on its fixture from `assets.json`'s `fixtures`, and keeps the fixture's box as the fallback.** A fixture id names a model and a `rotY`; `room.js`'s `hangPiece()` puts the piece at the fixture's base, unscaled, and `dressFixture()` registers it with the fixture's thermal hex and hides the box, which comes back with a warning if the file fails, as `dressWithModel()` has always done in this game. A missing file still fails suite lines (`props.mjs`, and `assets.mjs`'s "referenced but missing"), so the fallback is never silent in CI (#646). The window's turn is tested against the room, not against the `rotY` it reads. *Bell to Bell, B3.*
 
+**#710. Blender runs on huginn too; `blender-win` marks the heavy rows that stay on Windows.** Devon's call, 2026-09-29: huginn, his Linux machine, has Blender 5.2.2 from blender.org's tarball in `~/.local/blender` on PATH, and takes the light work, 2D sprite sheets, logos and low-poly props, slowly, which is fine. Heavy work (lit 3D renders, dense scenes, anything like Castle Conundrum's) stays on Windows under the new gate `blender-win`: the site's two diorama rows. School Generator's props are read as light, since they are vertex-coloured, 800 triangles at most and exported rather than rendered; flip their cell if they prove otherwise. Cloud containers still never run Blender. *(#707 to #709 are held by PR #469.)*
+
 ---
 
 # The log

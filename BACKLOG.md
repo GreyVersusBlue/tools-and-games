@@ -30,8 +30,10 @@ Match by #638: Fable 5.1 and Opus 5 rows run on Opus 5.5, Sonnet 5 rows on Sonne
 If a row needs hardware this machine does not have — a real GPU, a phone, a pair of
 ears — move it to Parked with its context and take the next row, so the batch still
 lands real work. Do not write a report about it instead. A row whose Gate is
-`blender` is the exception (#642): if `blender --version` fails here, leave it
-where it is, unclaimed, and take the next row.
+`blender` or `blender-win` is the exception (#642, #710): if `blender --version`
+fails here, leave it where it is, unclaimed, and take the next row. A
+`blender-win` row also waits for Devon's Windows machine: on any other machine,
+leave it and take the next row.
 
 One PR for the whole batch. Merge to main when CI is green, then update BACKLOG.md's
 header, ranks and Claimed column, and write your decisions into HISTORY.md, before
@@ -102,11 +104,17 @@ rewrites for the end, and its first PR merged with the row still in the ranked t
 next session spent about an hour rebuilding something that already existed.
 
 **4. Blender rows rank first, and a session that cannot run Blender skips them in place**
-(#642, #644, 2026-09-25). Devon made Blender-made assets the top priority. Blender runs only on
-his local Windows machine, headless, as `blender -b -P script.py`, and never in a cloud
-container. So a row whose `Gate` reads `blender` is not parked under rule 2: it stays ranked,
-and a session without `blender` on PATH takes the next row down. Check with `blender --version`
-before claiming. The GLTFLoader and wiring rows between them carry no gate and are cloud work
+(#642, #644, 2026-09-25). Devon made Blender-made assets the top priority. Blender runs
+headless, as `blender -b -P script.py`, on two of Devon's machines and never in a cloud
+container (#710, 2026-09-29): his Windows machine, and huginn, his Linux machine, which has
+Blender 5.2.2 in `~/.local/blender` on PATH since 2026-09-29. huginn is the weaker machine, so
+the `Gate` column splits the work: `blender` is light work either machine can do (2D sprite
+sheets, logos, low-poly vertex-coloured props with no real render), and `blender-win` is heavy
+work that stays on Windows (lit 3D renders, dense scenes, anything like Castle Conundrum's
+Blender work). Slow is fine on huginn; nothing here is in a hurry. A `blender` or
+`blender-win` row is not parked under rule 2: it stays ranked, and a session without `blender`
+on PATH, or on a machine other than Windows for a `blender-win` row, takes the next row down.
+Check with `blender --version` before claiming. The GLTFLoader and wiring rows between them carry no gate and are cloud work
 (#645).
 
 The two things that are still not a session's call, because they change what the work *is*
@@ -127,26 +135,30 @@ line to update when your batch merges; a PR that only changes these files is
 not a batch and does not belong in it.
 **34 ranked items remain**, and **every one of them names a model.**
 
-**Blender rows lead the list, and they need Devon's machine** (#642,
+**Blender rows lead the list, and they need one of Devon's machines** (#642,
 2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 24 are
 Blender-made assets: a pipeline per project, then its GLTFLoader where it has
 none, then its packs, then the rows that wire each pack into the game, with
-the site's dioramas last. **Blender runs only on Devon's local Windows machine,
-headless (`blender -b -P script.py`), never in a cloud container.** The table's
-`Gate` column says which rows need it (#644): **17 rows read `blender`**, and a
+the site's dioramas last. **Blender runs headless (`blender -b -P script.py`)
+on Devon's Windows machine and on huginn, his Linux machine, never in a cloud
+container** (#710). The table's `Gate` column says which rows need it (#644):
+**15 rows read `blender`**, light work either machine can take (every 2D
+sprite sheet, and School Generator's low-poly props), and **2 read
+`blender-win`**, the site's dioramas, lit 3D renders that stay on Windows. A
 session without `blender` on PATH skips each of them where it stands and takes
-the next row, without parking it. The other 7 in the block (every
+the next row, without parking it, and a session off Windows skips the
+`blender-win` rows the same way. The other 7 in the block (every
 GLTFLoader row and every wiring row) are cloud work, because they read
 committed files (#645); a wiring row is taken only once the pack row above it
 has merged. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
 **Nothing is claimed.** **The next row** is rank 1, School Generator's
-Blender pipeline (¼, Opus 5.5, gate `blender`): it needs Devon's machine. Rank
-2, its model pack, is ½ in the same area, and the two batch together inside
-#382's cap. No cloud row is ready: every remaining wiring row (ranks 3, 6, 10,
-13, 16, 19 and 22) waits on a pack that has not been built, so a session
-without Blender has nothing in the Blender block to take.
+Blender pipeline (¼, Opus 5.5, gate `blender`): huginn can take it now
+(#710). Rank 2, its model pack, is ½ in the same area, and the two batch
+together inside #382's cap. No cloud row is ready: every remaining wiring row
+(ranks 3, 6, 10, 13, 16, 19 and 22) waits on a pack that has not been built,
+so a session without Blender has nothing in the Blender block to take.
 Below the Blender block, rank 32 (The Fracture Cycle's fourth prong) and rank
 34 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
 them, and a scope Devon has not asked for is not a judgement call a session
@@ -930,9 +942,11 @@ Sonnet 5. The Blender rows (#642) were written after #638 and name **Opus 5.5**
 itself, which runs on Opus 5.5.
 
 `Gate` (#644) is what the session's machine needs before it can take the row:
-`blender` on PATH, a real `GPU`, a real `phone`, or a person's `ears`. Blank
-means a cloud container can do it. A `blender` row is skipped in place by a
-session that does not have it; see rule 4 above.
+`blender` on PATH (Devon's Windows machine or huginn), `blender-win` (Blender on
+Devon's Windows machine, for heavy work; #710), a real `GPU`, a real `phone`, or
+a person's `ears`. Blank means a cloud container can do it. A `blender` or
+`blender-win` row is skipped in place by a session that cannot take it; see
+rule 4 above.
 
 Seven rows read Fable, which at 7 of the 13 rows ranked before #642 is a heavier share than any single
 project's wishlist carries, and the reason is what this list is: the leftovers
@@ -972,8 +986,8 @@ and #222 was closed unmerged an hour of suites later.
 | 20 | Orbital's sprite pipeline | `Projects/orbital` | ¼ | Opus 5.5 | blender |  | [Orbital: Blender assets](#orbital-blender-assets) B1 |
 | 21 | Orbital's body sheet: planet, star, rock, repulsor, black hole, wormhole and booster | `Projects/orbital` | ½ | Opus 5.5 | blender |  | [Orbital: Blender assets](#orbital-blender-assets) B2 |
 | 22 | Wire the body sheet in, once rank 21 has merged, with the glow drawn over it | `Projects/orbital` | ¼ | Opus 5.5 |  |  | [Orbital: Blender assets](#orbital-blender-assets) B3 |
-| 23 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
-| 24 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 23 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-win |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
+| 24 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-win |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
 | 25 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
 | 26 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
 | 27 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
@@ -1010,10 +1024,21 @@ Ranks 1 to 24 (#642 to #647; 41 when it was written, ranks 1 and 4 shipped in PR
 each project's own plan (its `WISHLIST.md` "Blender assets" section, or a
 subsection of its section below) adds its style sheet and its list.
 
-**Where it runs.** Blender runs on Devon's Windows machine only, headless:
-`blender -b -P tools/blender/<script>.py -- <args>`, from the project's folder.
-Before claiming a `blender` row, `blender --version` has to print a version.
-The Windows installer does not put Blender on PATH, so add the folder it
+**Where it runs.** Blender runs on two of Devon's machines, headless:
+`blender -b -P tools/blender/<script>.py -- <args>`, from the project's folder
+(#710). **Devon's Windows machine** takes every Blender row, and is the only
+one for a `blender-win` row: heavy work, like lit 3D renders or dense scenes.
+**huginn**, his Linux machine, takes `blender` rows, the light work: 2D sprite
+sheets, logos, low-poly props. It has the official Linux build of Blender 5.2.2
+unpacked into `~/.local/blender`, with `~/.local/bin/blender` linked to it
+(checksum checked against blender.org's `blender-5.2.2.sha256`), and Workbench,
+Cycles on the CPU and EEVEE all rendered headless there on 2026-09-29. Node 22
+is `~/.local/node`, linked into `~/.local/bin` the same day. It is slower than
+Windows, and that is fine. A Linux upgrade is a new tarball in the same
+folder, never the distro's package, since `common.py`'s `REQUIRED` pins the
+version and a distro's Blender drifts from it. Before claiming either kind of
+row, `blender --version` has to print a version.
+On Windows the installer does not put Blender on PATH, so add the folder it
 installed into (the one holding `blender.exe`) to PATH first, or call it by
 absolute path: on Devon's machine it is the Steam install,
 `C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe`, which
@@ -2257,7 +2282,7 @@ Ranks 29 and 30, last in the Blender block (#642). One consistent diorama per
 board card, so the board's previews and share cards read as a set.
 Castle Conundrum is out of scope: its card and images stay as they are (#491).
 
-**D1. The pipeline (rank 29, ½, gate `blender`).** The site's own copy of
+**D1. The pipeline (rank 29, ½, gate `blender-win`).** The site's own copy of
 `common.py` in `Tools/board-check/blender/` (#643; the site's area, #43 and
 #51). One plinth, one camera, one light rig, one background, for every card.
 It renders 2640 by 1600 (the 33:20 `promote-previews.mjs` crops from) into
@@ -2270,7 +2295,7 @@ and the light. A diorama uses the game's own Blender assets where it has them
 (the `.glb` files, or the scene a sheet was rendered from) and is built for
 the card where it does not.
 
-**D2. The dioramas (rank 30, 1+, Sonnet 5, gate `blender`).** Four cards an
+**D2. The dioramas (rank 30, 1+, Sonnet 5, gate `blender-win`).** Four cards an
 increment, the 3D games first: Golden Hour, Blue Hour, The Fourth Quarter,
 Aphelion, then School Generator, Faire Weekend, The Absalom Inheritance,
 Corner & Kettle, Orbital, Closing Time, Integer Foundry, Daredevil, The
