@@ -11,6 +11,9 @@
     "Pathfinder Characters": {
       "owns": ["Pathfinder/characters.html", "Pathfinder/characters-assets/"]
     },
+    "Pathfinder Converter": {
+      "owns": ["Pathfinder/converter.html", "Pathfinder/converter-assets/"]
+    },
     "Aphelion": { "owns": ["Projects/aphelion/"] },
     "Closing Time": { "owns": ["Projects/Closing Time/"] },
     "The Fourth Quarter": {

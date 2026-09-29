@@ -1167,6 +1167,27 @@ review. Round 3 made zero edits and found zero findings.
    don't share", round 2, locked decision #17 stays in force for this pair.
    Don't re-litigate it.
 
+## Pathfinder Converter
+
+`Pathfinder/converter.html`, `Pathfinder/converter-assets/`. Its suites live in
+`Pathfinder/tests/converter*.test.mjs` and `tests/fixtures/pf1/`, inside the
+Anathema Archive's folder the way the other Pathfinder pages' suites are.
+
+**Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709).
+Open follow-ups, none ranked:
+
+1. **The spell map's 1,087 "partial" entries** were written by a second pass
+   that fixed the first pass's misses; they have not been read by a person. A
+   GM reading `spell-map.json` and correcting entries is the best use of an
+   hour here.
+2. **HP runs low**: 8 of the eleven printed monsters in
+   `converter-convert.test.mjs` come out under Paizo's number, median 12% under
+   (the troll 86 against 115, the balor 375 against 480). Moving the hp anchor
+   in `tables.js` from moderate toward high would close it; measure first.
+3. **Special abilities keep their PF1e text** with DCs, action costs and
+   condition names rewritten. Monster Core wording exists for eighteen universal
+   abilities (`UMR_TEXT` in `convert.js`); the rest need a person.
+
 ## Pathfinder Characters
 
 `Pathfinder/characters.html`, `Pathfinder/characters-assets/`.
@@ -2506,6 +2527,7 @@ now.
 | Anathema Archive | `Pathfinder/Anathema_Archive.html`, `Pathfinder/data/`, `Pathfinder/fetch json data.py`, `Pathfinder/tests/` | `index.html`, `assets/js/gvb-save.js`, `Tools/board-check/**`, `assets/previews` + `assets/og` |
 | Pathfinder Campaigns | `Pathfinder/campaigns.html`, `Pathfinder/campaigns-assets/` | as above |
 | Pathfinder Characters | `Pathfinder/characters.html`, `Pathfinder/characters-assets/` | as above |
+| Pathfinder Converter | `Pathfinder/converter.html`, `Pathfinder/converter-assets/` | as above, and `Pathfinder/data/` (read under its README, never written) |
 | Aphelion | `Projects/aphelion/` | as above |
 | Closing Time | `Projects/Closing Time/` | the four shared |
 | The Fourth Quarter | `Projects/fourth-quarter/`, **`Projects/The-Fourth-Quarter.html`** (the original flat build, board-linked at `index.html:508`, owned by nobody until #355 caught it), `.github/workflows/fourth-quarter-ci.yml` | the four shared |

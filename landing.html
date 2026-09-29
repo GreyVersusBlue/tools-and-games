@@ -265,7 +265,7 @@
   /* ---------- chronicles ---------- */
   .chronicles { background: linear-gradient(180deg, var(--bg-deep), #1a1209 25%, #1a1209 75%, var(--bg-deep)); background-size: cover; }
   .tomes { display: grid; gap: 1.3rem; }
-  @media (min-width: 760px) { .tomes { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.6rem; } }
+  @media (min-width: 760px) { .tomes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.6rem; } }
   .tome { position: relative; display: grid; gap: .8rem; align-content: start; background: linear-gradient(180deg, #F7EFDA, var(--parchment)); color: var(--ink); padding: 1.7rem 1.5rem 1.9rem; min-height: 280px; box-shadow: 0 20px 40px rgba(0,0,0,.45); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), 94% 100%, 88% calc(100% - 5px), 81% 100%, 74% calc(100% - 6px), 66% 100%, 58% calc(100% - 4px), 50% 100%, 42% calc(100% - 7px), 34% 100%, 26% calc(100% - 5px), 18% 100%, 10% calc(100% - 6px), 3% 100%, 0 calc(100% - 4px)); }
   .tome .eyebrow { color: var(--wax); }
   .tome h3 { font-family: var(--display); font-weight: 700; font-size: clamp(1.7rem, 3vw, 2.3rem); line-height: 1; color: var(--ink); }
@@ -758,7 +758,7 @@
           <p class="eyebrow">Chronicles of the Table</p>
           <h2 id="chron-h" class="title">Pathfinder, kept in order.</h2>
         </div>
-        <p class="lede reveal" style="--i:1">Three volumes for the Second Edition Remaster: a rules archive to search, a log of campaigns run, and a muster of characters played.</p>
+        <p class="lede reveal" style="--i:1">Four volumes for the Second Edition Remaster: a rules archive to search, a log of campaigns run, a muster of characters played, and a codex that brings First Edition monsters and spells across.</p>
       </div>
       <div class="tomes">
         <a class="tome reveal" href="Pathfinder/Anathema_Archive.html" data-cursor="view" style="--i:0">
@@ -782,6 +782,13 @@
           <h3>Characters</h3>
           <p>A showcase of the characters built for PFS and casual games.</p>
           <span class="go">See the muster <span class="arr" aria-hidden="true">→</span></span>
+        </a>
+        <a class="tome reveal" href="Pathfinder/converter.html" data-cursor="view" style="--i:3">
+          <svg class="orn" viewBox="0 0 24 24" aria-hidden="true"><use href="#g-moon"/></svg>
+          <p class="eyebrow">Chronicle IV · Utility</p>
+          <h3>Conversion Codex</h3>
+          <p>First Edition stat blocks and spells, rewritten for the Remaster.</p>
+          <span class="go">Open the codex <span class="arr" aria-hidden="true">→</span></span>
         </a>
       </div>
     </div>
@@ -844,7 +851,7 @@
       <div class="grid">
         <div class="stat reveal" style="--i:0"><div class="num" data-to="18">18</div><div class="lbl">Quests posted</div></div>
         <div class="stat reveal" style="--i:1"><div class="num" data-to="7">7</div><div class="lbl">In three dimensions</div></div>
-        <div class="stat reveal" style="--i:2"><div class="num" data-to="3">3</div><div class="lbl">Chronicles</div></div>
+        <div class="stat reveal" style="--i:2"><div class="num" data-to="4">4</div><div class="lbl">Chronicles</div></div>
         <div class="stat reveal" style="--i:3"><div class="num" data-to="7">7</div><div class="lbl">School tools</div></div>
         <div class="stat reveal" style="--i:4"><div class="num" data-to="1">1</div><div class="lbl">Live-action world</div></div>
         <div class="stat reveal" style="--i:5"><div class="num" data-to="16">16</div><div class="lbl">Versions of the board</div></div>

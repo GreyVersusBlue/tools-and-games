@@ -141,6 +141,24 @@ jobs:
             commands: |
               node Pathfinder/tests/showcase.test.mjs
 
+          # The Conversion Codex's arithmetic: the stat block parser, both
+          # editions' benchmark tables, the spell map against data/spell.json,
+          # and conversions measured against the printed PF2e monsters in
+          # data/npcs. No browser.
+          - name: Pathfinder converter
+            dir: .
+            commands: |
+              node Pathfinder/tests/converter-parse.test.mjs
+              node Pathfinder/tests/converter-tables.test.mjs
+              node Pathfinder/tests/converter-spells.test.mjs
+              node Pathfinder/tests/converter-convert.test.mjs
+
+          - name: Pathfinder converter in a browser
+            dir: .
+            install: Tools/board-check
+            commands: |
+              node Pathfinder/tests/converter.test.mjs
+
           - name: Faire Weekend
             dir: Projects/Ren-Faire-Claude
             install: Projects/Ren-Faire-Claude
