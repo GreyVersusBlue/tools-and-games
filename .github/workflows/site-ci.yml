@@ -175,6 +175,7 @@ jobs:
               node assets.mjs
               node characters.mjs
               node props.mjs
+              node ../tools/blender/validate.mjs
 
           - name: Blue Hour
             dir: Projects/blue-hour-trail
