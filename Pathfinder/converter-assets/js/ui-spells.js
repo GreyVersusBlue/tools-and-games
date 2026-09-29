@@ -5,7 +5,7 @@ import { suggest, findPf1, convertSpell } from './spells.js';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const FIT_TEXT = {
+export const FIT_TEXT = {
   exact: 'Direct equivalent',
   close: 'Close equivalent',
   partial: 'Partial: covers some of it',

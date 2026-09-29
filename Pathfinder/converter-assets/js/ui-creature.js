@@ -10,7 +10,7 @@ import { parsePf1, formatPf1Section, SECTION_LABELS } from './parse-pf1.js';
 import { emptyCreature } from './pf1-schema.js';
 import { convertCreature, toText, ordinal } from './convert.js';
 import { maxRankForLevel } from './spells.js';
-import { actionGlyph } from './ui-spells.js';
+import { actionGlyph, pf2Card, FIT_TEXT } from './ui-spells.js';
 import { EXAMPLE } from './example.js';
 
 const $ = (id) => document.getElementById(id);
@@ -122,7 +122,12 @@ function readForm() {
 }
 
 // ---- rendering ----
+// Each spell in the block is a button; renderBlock numbers them into
+// spellRefs, and the card opens in a row under the spell line (openSpell).
+let spellRefs = [];
+
 function renderBlock(o) {
+  spellRefs = [];
   const traits = [
     o.rarity !== 'common' ? `<span class="trait rarity-${o.rarity}">${esc(o.rarity)}</span>` : '',
     `<span class="trait size">${esc(o.size)}</span>`,
@@ -134,7 +139,7 @@ function renderBlock(o) {
   const spellLine = (sc) => {
     const ranks = sc.ranks.map((r) => {
       const head = r.rank === 0 ? `Cantrips (${ordinal(sc.top)})` : `${ordinal(r.rank)}${r.slots ? ` (${r.slots} slots)` : ''}`;
-      const items = r.spells.map((s) => `<span class="spell-ref fit-${s.fit}" title="${esc(s.why)}"><i>${esc(s.name.toLowerCase())}</i></span>${s.freq && s.freq !== 'at will' ? ` (${esc(s.freq)})` : s.freq === 'at will' ? ' (at will)' : ''}${s.count > 1 ? ` (×${s.count})` : ''}`);
+      const items = r.spells.map((s) => `<button type="button" class="spell-ref fit-${s.fit}" data-ref="${spellRefs.push({ ...s, rank: r.rank }) - 1}" aria-expanded="false" title="${esc(s.why)}"><i>${esc(s.name.toLowerCase())}</i></button>${s.freq && s.freq !== 'at will' ? ` (${esc(s.freq)})` : s.freq === 'at will' ? ' (at will)' : ''}${s.count > 1 ? ` (×${s.count})` : ''}`);
       return `<b>${head}</b> ${items.join(', ')}`;
     }).join('; ');
     return `<p class="sb-line"><b>${esc(sc.name)}</b> ${why(`DC ${sc.dc}`, sc.why)}, attack ${signed(sc.attack)}; ${ranks}</p>`;
@@ -166,6 +171,44 @@ function renderBlock(o) {
     ${o.offAbilities.map(ability).join('')}
     ${o.otherAbilities.map(ability).join('')}
   `;
+}
+
+// The PF2e spell card for a spell in the block, as a row under its line.
+// One open at a time; the same spell again, the close button, or Escape shuts
+// it and hands focus back to the spell.
+function closeSpell(refocus) {
+  const pop = $('spell-pop');
+  if (!pop) return;
+  const btn = document.querySelector(`#pf2-block .spell-ref[data-ref="${pop.dataset.ref}"]`);
+  pop.remove();
+  if (btn) {
+    btn.setAttribute('aria-expanded', 'false');
+    if (refocus) btn.focus();
+  }
+}
+
+function openSpell(btn) {
+  const was = $('spell-pop')?.dataset.ref;
+  closeSpell(false);
+  if (was === btn.dataset.ref) { btn.focus(); return; }
+  const s = spellRefs[Number(btn.dataset.ref)];
+  if (!s?.target) return;
+  const t = s.target;
+  const at = s.rank === 0 ? 'as a cantrip' : s.rank === t.rank ? `at rank ${s.rank}` : `at rank ${s.rank}, heightened from ${t.rank}`;
+  const pop = document.createElement('div');
+  pop.id = 'spell-pop';
+  pop.className = 'spell-pop';
+  pop.dataset.ref = btn.dataset.ref;
+  pop.setAttribute('role', 'region');
+  pop.setAttribute('aria-label', `${t.name}, PF2e spell card`);
+  pop.tabIndex = -1;
+  pop.innerHTML = `<div class="spell-pop-bar"><span><span class="fit ${s.fit}">${FIT_TEXT[s.fit] || s.fit}</span> for PF1e <i>${esc(s.pf1)}</i>; cast here ${at}.</span>`
+    + `<span><a href="#spell/${encodeURIComponent(s.pf1)}">Spells tab</a> <button type="button" class="spell-pop-close" aria-label="Close ${esc(t.name)}">×</button></span></div>`
+    + (s.note ? `<p class="hint">${esc(s.note)}</p>` : '') + pf2Card(t);
+  btn.closest('.sb-line').after(pop);
+  btn.setAttribute('aria-expanded', 'true');
+  btn.setAttribute('aria-controls', 'spell-pop');
+  pop.focus();
 }
 
 function renderNotes(o) {
@@ -223,6 +266,14 @@ export function initCreature(getIndex) {
       $('copy-status').textContent = 'Copied';
     } catch { $('copy-status').textContent = 'Clipboard blocked'; }
     setTimeout(() => { $('copy-status').textContent = ''; }, 1800);
+  });
+  $('pf2-block').addEventListener('click', (e) => {
+    const ref = e.target.closest('.spell-ref');
+    if (ref) openSpell(ref);
+    else if (e.target.closest('.spell-pop-close')) closeSpell(true);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('spell-pop')) { e.preventDefault(); closeSpell(true); }
   });
   $('print-btn').addEventListener('click', () => window.print());
   return { rerun: run, load };

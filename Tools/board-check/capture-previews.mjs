@@ -433,6 +433,27 @@ const RECIPES = {
   // page to the World so the recipe can start Rush Hour on seed 7 and step it
   // into the surge's queues, which run from 60 s to the outage at 110. The
   // page draws the stepped world, then runs on at 1x for the motion check.
+  // ---- The Conversion Codex: the pasted dragon beside its conversion,
+  // scrolled to the tabs so both panel headings and the top of the PF2e stat
+  // block are in the frame. (Opening a spell card was tried: the og crop cuts
+  // it off below the fold.)
+  'converter': {
+    async play(p, { shot }) {
+      await p.evaluate(() => {
+        const top = document.querySelector('.tabs').getBoundingClientRect().top + window.scrollY;
+        window.scrollTo(0, top - 12);
+      });
+      await wait(300);
+      const seen = await p.evaluate(() => {
+        const r = document.querySelector('#pf2-block .sb-name').getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= window.innerHeight;
+      });
+      await shot('dragon-converted');
+      if (!seen) throw new Error('the converted stat block\'s name is not in the frame');
+      return 'young red dragon pasted and converted to Creature 10';
+    },
+  },
+
   'signal-city': {
     query: '?debug',
     async play(p, { shot }) {
@@ -495,7 +516,9 @@ for (const f of fs.readdirSync(OUT)) {
 }
 
 const server = await serve(PORT);
-const browser = await launch({ headed: true });
+// Headed unless every recipe in this run is a DOM page that says it doesn't
+// need a screen (`headless: true` in games.mjs); the three.js games always do.
+const browser = await launch({ headed: !names.every(n => GAMES[n].headless) });
 // Merge, for the same reason: a single-recipe run shouldn't erase the report for
 // the other six.
 const reportPath = path.join(OUT, 'report.json');

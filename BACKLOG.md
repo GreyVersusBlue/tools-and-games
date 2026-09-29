@@ -1173,20 +1173,31 @@ review. Round 3 made zero edits and found zero findings.
 `Pathfinder/tests/converter*.test.mjs` and `tests/fixtures/pf1/`, inside the
 Anathema Archive's folder the way the other Pathfinder pages' suites are.
 
-**Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709).
-Open follow-ups, none ranked:
+**Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709,
+#711). Since then: HP anchored at tier 2.25 (#711), spell cards open inline
+from the stat block, and the board card has a preview. Open follow-ups, none
+ranked; the first three wait on Devon's go-ahead:
 
 1. **The spell map's 1,087 "partial" entries** were written by a second pass
-   that fixed the first pass's misses; they have not been read by a person. A
-   GM reading `spell-map.json` and correcting entries is the best use of an
-   hour here.
-2. **HP runs low**: 8 of the eleven printed monsters in
-   `converter-convert.test.mjs` come out under Paizo's number, median 12% under
-   (the troll 86 against 115, the balor 375 against 480). Moving the hp anchor
-   in `tables.js` from moderate toward high would close it; measure first.
-3. **Special abilities keep their PF1e text** with DCs, action costs and
+   that fixed the first pass's misses; they have not been read by a person. The
+   next step is a pass that flags the weakest of them for Devon to review,
+   not one that rewrites them.
+2. **Special abilities keep their PF1e text** with DCs, action costs and
    condition names rewritten. Monster Core wording exists for eighteen universal
-   abilities (`UMR_TEXT` in `convert.js`); the rest need a person.
+   abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
+   the open question.
+3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
+4. **Foundry link syntax shows in PF2e spell text.** `data/spell.json`'s text
+   keeps references like "Compendium.pf2e.feats-srd.Item.Shield Block" and
+   "Compendium.pf2e.spell-effects.Item.Spell Effect: Shield"; both the Spells
+   tab and the inline card print them raw. `pf2Summary` in `spells.js` could
+   reduce each to its last segment (and drop the spell-effect lines) on read;
+   `data/` itself is the Archive's and is not written.
+5. **The goblin sits on its bound.** At hp tier 2.25 the goblin converts to 9
+   HP against the Goblin Warrior's 6, exactly the per-monster 50% limit in
+   `converter-convert.test.mjs`. It is the only pair below CR 1, so whether
+   low-CR hp runs high is one data point; a separate CR < 1 hp anchor is the
+   fix if more pairs show it.
 
 ## Pathfinder Characters
 

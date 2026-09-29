@@ -91,7 +91,13 @@ const mae = (xs) => xs.reduce((a, x) => a + Math.abs(x), 0) / xs.length;
 ok(mae(err.level) <= 0.35, 'level: mean error at most 0.35', mae(err.level).toFixed(2));
 ok(mae(err.ac) <= 2.0, 'AC: mean error at most 2', mae(err.ac).toFixed(2));
 ok(mae(err.save) <= 3.0, 'saves: mean error at most 3', mae(err.save).toFixed(2));
-ok(mae(err.hp) <= 0.25, 'HP: mean error at most 25%', (100 * mae(err.hp)).toFixed(1) + '%');
+// HP had run low (7 of 11 under, troll 86 against 115). HISTORY #711 moved
+// its anchor to HP_ANCHOR_TIER, 2.25, which measures 19.0% error and +0.5%
+// bias here; moderate measured 20.0% and -4.1%. The bias bound is the one
+// that tells the two apart.
+const bias = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
+ok(mae(err.hp) <= 0.195, 'HP: mean error at most 19.5%', (100 * mae(err.hp)).toFixed(1) + '%');
+ok(Math.abs(bias(err.hp)) <= 0.03, 'HP: mean bias within 3% either way', (100 * bias(err.hp)).toFixed(1) + '%');
 ok(mae(err.perception) <= 3.5, 'Perception: mean error at most 3.5', mae(err.perception).toFixed(2));
 ok(mae(err.strike) <= 2.5, 'top Strike: mean error at most 2.5', mae(err.strike).toFixed(2));
 

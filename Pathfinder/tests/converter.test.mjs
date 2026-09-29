@@ -7,7 +7,8 @@
 // serve()/launch()/prepPage(), against the real data files. The Node suites
 // (converter-parse, -tables, -spells, -convert) cover the arithmetic; this one
 // covers what only the page does: loading three JSON files, the form feeding
-// the conversion, the spell combobox, hash routes, and a 375-pixel phone.
+// the conversion, spell cards opening from the stat block, the spell
+// combobox, hash routes, and a 375-pixel phone.
 // Exits non-zero on any failure.
 
 import { serve, launch, prepPage } from '../../Tools/board-check/harness.mjs';
@@ -122,6 +123,49 @@ async function testSpells(browser) {
   await deep.page.close();
 }
 
+// Each spell in the converted block is a button that opens its PF2e card
+// (ui-spells.js's pf2Card) in a row under the spell line.
+async function testSpellCard(browser) {
+  console.log('\nspell cards in the stat block');
+  const { page, errors } = await freshPage(browser);
+  await page.click('#example-btn');
+  await waitFor(page, () => document.querySelectorAll('#pf2-block .spell-ref').length > 1, { label: 'spells in the block' });
+  let reached = null;
+  await page.evaluate(() => document.activeElement?.blur());
+  for (let i = 0; i < 250 && !reached; i++) {
+    await page.keyboard.press('Tab');
+    reached = await page.evaluate(() => (document.activeElement?.matches('#pf2-block .spell-ref') ? document.activeElement.textContent : null));
+  }
+  ok(!!reached, 'Tab reaches a spell in the stat block', reached || 'never reached');
+  await page.keyboard.press('Enter');
+  const open = await page.evaluate(() => {
+    const pop = document.getElementById('spell-pop'), btn = document.activeElement.closest('#spell-pop') && document.querySelector('#pf2-block .spell-ref[aria-expanded="true"]');
+    return pop && btn && { name: pop.querySelector('.spell-card h3 span')?.textContent, ref: btn.textContent, card: pop.textContent, afterLine: pop.previousElementSibling?.contains(btn) };
+  });
+  ok(open && open.name.toLowerCase() === open.ref.toLowerCase(), 'Enter opens that spell\'s PF2e card, with focus in it', open ? `${open.ref} -> ${open.name}` : 'no card');
+  ok(open && /Traditions/.test(open.card) && /PF1e/.test(open.card), 'the card is the Spells tab\'s card plus the fit and the PF1e name', open?.card.slice(0, 80));
+  ok(open?.afterLine, 'the card opens as a row under the spell line');
+  await page.keyboard.press('Escape');
+  const shut = await page.evaluate(() => ({
+    gone: !document.getElementById('spell-pop'),
+    back: document.activeElement?.matches('.spell-ref[aria-expanded="false"]') && document.activeElement.textContent,
+  }));
+  ok(shut.gone && shut.back === reached, 'Escape closes it and puts focus back on the spell', JSON.stringify(shut));
+
+  const refs = await page.$$('#pf2-block .spell-ref');
+  await refs[0].click();
+  await refs[1].click();
+  const one = await page.evaluate(() => ({ pops: document.querySelectorAll('.spell-pop').length, expanded: document.querySelectorAll('.spell-ref[aria-expanded="true"]').length }));
+  ok(one.pops === 1 && one.expanded === 1, 'a second spell replaces the first card', JSON.stringify(one));
+  await page.click('.spell-pop-close');
+  ok(await page.evaluate(() => !document.getElementById('spell-pop')), 'the close button shuts it');
+  await refs[1].click();
+  await refs[1].click();
+  ok(await page.evaluate(() => !document.getElementById('spell-pop')), 'clicking the open spell again shuts it');
+  ok(errors.length === 0, 'no console errors', errors.slice(0, 3).join(' | '));
+  await page.close();
+}
+
 async function testPhone(browser) {
   console.log('\nphone width');
   const { page } = await freshPage(browser, '', { width: 375, height: 800 });
@@ -129,12 +173,15 @@ async function testPhone(browser) {
   await waitFor(page, () => /Creature 10/.test(document.getElementById('pf2-block').textContent), { label: 'converted' });
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   ok(over <= 0, 'nothing scrolls sideways at 375 pixels', `${over}px over`);
+  await page.click('#pf2-block .spell-ref');
+  const overCard = await page.evaluate(() => document.getElementById('spell-pop') && document.documentElement.scrollWidth - window.innerWidth);
+  ok(overCard !== null && overCard <= 0, 'nor with a spell card open', `${overCard}px over`);
   await page.close();
 }
 
 const server = await serve(PORT);
 const browser = await launch({ headed: false });
-for (const t of [testLoad, testCreature, testSpells, testPhone]) {
+for (const t of [testLoad, testCreature, testSpellCard, testSpells, testPhone]) {
   try { await t(browser); }
   catch (err) { failures++; checks++; console.log(`  ABORTED  ${t.name}: ${String(err.message || err).slice(0, 300)}`); }
 }

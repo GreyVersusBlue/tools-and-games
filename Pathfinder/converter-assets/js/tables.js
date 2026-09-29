@@ -632,7 +632,9 @@ export function levelToCr(level) {
 // each sit on the PF1e median (within a point or two), and the median full
 // attack sits between high and low damage. The PF2 medians (the cross-check
 // above) give the tier each one maps to:
-//   hp      table hp              = PF2 moderate (2)
+//   hp      table hp              = PF2 HP_ANCHOR_TIER, 2.25: moderate (2)
+//                                   read the printed monsters low; see
+//                                   HP_ANCHOR_TIER below
 //   ac      table AC              = PF2 AC_ANCHOR_TIER, 2.5: the PF2 median
 //                                   AC is moderate at 10 of levels 1-20 and
 //                                   high at the other 10
@@ -648,7 +650,7 @@ export function levelToCr(level) {
 //
 // Step: PF2's, not PF1e's. The d20 stats (ac, attack, dc, save) move one
 // PF2 point per PF1e point off the anchor, and hp and damage move by ratio
-// (a 1e monster with 1.2x its CR's hp gets 1.2x the moderate PF2 hp at the
+// (a 1e monster with 1.2x its CR's hp gets 1.2x the anchor-tier PF2 hp at the
 // level, then that is tiered). Taking the step from PF1e's own two columns
 // was tried and dropped: at CR 1/2 high and low attack are 1 and 0, so a
 // perfectly ordinary +3 would read as five tiers above high.
@@ -677,6 +679,16 @@ export function levelToCr(level) {
 //                      bias AC +0.35  attack +0.48  save +1.29  DC +1.02  hp -7.7%
 // So the table works from CR 3 up and the low end needed the medians.
 export const AC_ANCHOR_TIER = 2.5;
+// HP anchors a quarter tier above moderate (HISTORY #711). On the 11 monsters
+// converter-convert.test.mjs checks against their printed PF2e versions:
+//   anchor tier   2      2.1    2.2    2.25   2.3    2.4    2.5    3
+//   mean |error|  20.0%  19.4%  19.1%  19.0%  20.2%  20.1%  19.5%  24.2%
+//   mean bias     -4.1%  -2.1%  -0.5%  +0.5%  +3.1%  +4.9%  +7.0%  +17.8%
+// 2.25 has the least error and the least bias, and agrees with the wider answer
+// key above, whose hp bias of -7.7% at moderate asks for about a third of a
+// tier. A quarter of a tier is 5% to 6% more HP (troll 86 to 91, balor 375
+// to 399).
+export const HP_ANCHOR_TIER = 2.25;
 export const DAMAGE_ANCHOR_TIER = 2.25;
 
 // Medians of PF1e monsters by CR (aonprd.com, fetched 2026-09-29), CR 1/8 to 2.
@@ -723,7 +735,7 @@ export function pf1TierOf(stat, value, cr) {
   const d20 = (table, anchor, tier) => tierOf(value - anchor + at(table, tier), pf2Row(table, level));
   const ratio = (table, anchor, tier) => tierOf(value / anchor * at(table, tier), pf2Row(table, level));
   switch (stat) {
-    case 'hp': return ratio(PF2_HP, a.hp, TIERS.moderate);
+    case 'hp': return ratio(PF2_HP, a.hp, HP_ANCHOR_TIER);
     case 'ac': return d20(PF2_AC, a.ac, AC_ANCHOR_TIER);
     case 'attack': return d20(PF2_STRIKE_ATTACK, a.attack, TIERS.high);
     case 'damage': return ratio(PF2_STRIKE_DAMAGE, a.damage, DAMAGE_ANCHOR_TIER);

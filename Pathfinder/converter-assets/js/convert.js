@@ -573,7 +573,7 @@ export function convertCreature(c, opts = {}) {
         if (!out.has(rank)) out.set(rank, []);
         const list = out.get(rank);
         if (list.some((x) => x.name === t.name && x.freq === e.freq)) continue;
-        list.push({ name: t.name, pf1: nm, fit: r.fit, note: r.note, count: s.count || 1, freq: e.freq || '', why: `PF1e ${nm} (level ${lvl}) ${r.fit === 'exact' ? 'is' : r.fit === 'close' ? 'is close to' : 'is partly'} ${t.name}${t.rank ? ` (rank ${t.rank})` : ' (cantrip)'}${r.note ? '. ' + r.note : ''}` });
+        list.push({ name: t.name, target: t, pf1: nm, fit: r.fit, note: r.note, count: s.count || 1, freq: e.freq || '', why: `PF1e ${nm} (level ${lvl}) ${r.fit === 'exact' ? 'is' : r.fit === 'close' ? 'is close to' : 'is partly'} ${t.name}${t.rank ? ` (rank ${t.rank})` : ' (cantrip)'}${r.note ? '. ' + r.note : ''}` });
         if (rank > blockTop && rank > 0) spellNotes.push({ pf1: nm, fit: 'partial', note: `${t.name} is rank ${rank}, above the rank ${blockTop} this caster otherwise tops out at.` });
       }
     }
