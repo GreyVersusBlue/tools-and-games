@@ -52,7 +52,13 @@ globalThis.createImageBitmap = async blob => {
 };
 
 const manifest = JSON.parse(fs.readFileSync('../data/assets.json', 'utf8'));
-const models = { ...manifest.props, frame: manifest.art.frame };
+// The Blender pieces (tools/blender/, through the recipe bell-to-bell-blender)
+// by file name: the window is one file hung three times.
+const pieces = {};
+for (const [id, f] of Object.entries(manifest.fixtures || {})) {
+  if (!id.startsWith('_')) pieces[f.model.slice(f.model.lastIndexOf('/') + 1).replace(/\.glb$/, '')] = f.model;
+}
+const models = { ...manifest.props, frame: manifest.art.frame, ...pieces };
 const dirOf = p => p.slice(0, p.lastIndexOf('/') + 1);
 
 const r4 = v => v.toArray().map(x => +x.toFixed(4));
@@ -69,7 +75,7 @@ export async function measure(path) {
     meshes.push(o.name);
     const name = o.material.name;
     const m = byMat[name] ??= {
-      box: new THREE.Box3(), sum: new THREE.Vector3(), n: 0,
+      box: new THREE.Box3(), sum: new THREE.Vector3(), n: 0, uvs: false,
       uvBox: new THREE.Box2(), uvSum: new THREE.Vector2(), maps: new Set()
     };
     for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap', 'emissiveMap']) {
@@ -83,7 +89,7 @@ export async function measure(path) {
       v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
       m.box.expandByPoint(v);
       m.sum.add(v);
-      if (tex) { uv.fromBufferAttribute(tex, i); m.uvBox.expandByPoint(uv); m.uvSum.add(uv); }
+      if (tex) { uv.fromBufferAttribute(tex, i); m.uvBox.expandByPoint(uv); m.uvSum.add(uv); m.uvs = true; }
       m.n++;
     }
   });
@@ -93,7 +99,9 @@ export async function measure(path) {
     box.union(m.box);
     materials[name] = {
       min: r4(m.box.min), max: r4(m.box.max), mean: r4(m.sum.divideScalar(m.n)),
-      uvMin: r4(m.uvBox.min), uvMax: r4(m.uvBox.max), uvMean: r4(m.uvSum.divideScalar(m.n)),
+      // a Blender piece has no texture and so no UVs (#698): null, not Infinity
+      uvMin: m.uvs ? r4(m.uvBox.min) : null, uvMax: m.uvs ? r4(m.uvBox.max) : null,
+      uvMean: m.uvs ? r4(m.uvSum.divideScalar(m.n)) : null,
       maps: [...m.maps].sort()
     };
   }
@@ -213,6 +221,37 @@ const BASELINE = {
       "fancy_picture_frame_01_canvas": { min: [-0.2701,-0.2011,0.0066], max: [0.2693,0.1991,0.0066], mean: [-0.0004,-0.001,0.0066], uvMin: [0.0323,0.1253], uvMax: [0.9686,0.8202], uvMean: [0.5004,0.4728], maps: ["map","metalnessMap","normalMap","roughnessMap"] },
     }
   },
+  // The Blender pieces, measured the same way from Blender's .gltf and .bin at
+  // 3956289 (the merge of PR #466), before the recipe bell-to-bell-blender
+  // wrote the .glb. No texture, so no UVs and no maps (#698).
+  whiteboard: {
+    box: [[-3.2,0,-0.03],[3.2,1.5,0.03]],
+    meshes: ["whiteboard_1","whiteboard_2"],
+    images: [],
+    materials: {
+      "board": { min: [-3.16,0.04,-0.03], max: [3.16,1.46,0.015], mean: [0,0.75,-0.0075], uvMin: null, uvMax: null, uvMean: null, maps: [] },
+      "kenney-metal": { min: [-3.2,0,-0.03], max: [3.2,1.5,0.03], mean: [0,0.611,0.0048], uvMin: null, uvMax: null, uvMean: null, maps: [] },
+    }
+  },
+  window: {
+    box: [[-0.75,0,-0.03],[0.75,1.2,0.03]],
+    meshes: ["window_1","window_2"],
+    images: [],
+    materials: {
+      "glass": { min: [-0.7,0.05,-0.005], max: [0.7,1.15,0.005], mean: [0,0.6,0], uvMin: null, uvMax: null, uvMean: null, maps: [] },
+      "kenney-metal": { min: [-0.75,0,-0.03], max: [0.75,1.2,0.03], mean: [0,0.6417,0], uvMin: null, uvMax: null, uvMean: null, maps: [] },
+    }
+  },
+  "objective-board": {
+    box: [[-0.75,0,-0.03],[0.75,1,0.03]],
+    meshes: ["objective-board_1","objective-board_2","objective-board_3"],
+    images: [],
+    materials: {
+      "kenney-metal-medium": { min: [-0.3,0.935,0.015], max: [0.3,0.955,0.027], mean: [0,0.945,0.021], uvMin: null, uvMax: null, uvMean: null, maps: [] },
+      "kenney-wood": { min: [-0.75,0,-0.03], max: [0.75,1,0.03], mean: [0,0.5,0], uvMin: null, uvMax: null, uvMean: null, maps: [] },
+      "poster": { min: [-0.71,0.04,-0.03], max: [0.71,0.96,0.015], mean: [0,0.5,-0.0075], uvMin: null, uvMax: null, uvMean: null, maps: [] },
+    }
+  },
 };
 
 // Measured 2026-09-24 against the files the pipeline wrote (positions at 14
@@ -225,13 +264,21 @@ const BASELINE = {
 // the frame, and at 8 six props; 10 passes (half a step is 0.0005, a texel at
 // 1k is 0.001).
 const TOL = 0.001, UV_TOL = 0.001;
-const near = (a, b, tol = TOL) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) <= tol);
+const near = (a, b, tol = TOL) => a === null || b === null ? a === b
+  : a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) <= tol);
 
-check('eleven props and the frame', Object.keys(models).length === 12);
+check('eleven props, the frame and the three Blender pieces', Object.keys(models).length === 15);
 check('every prop is a .glb the pipeline wrote', Object.values(models).every(p => p.endsWith('.glb')));
+
+// A file gone from disk fails here, by name, and reads as an empty .glb below,
+// rather than killing the run before any line can say which one it was.
+const gone = Object.entries(models).filter(([, p]) => !fs.existsSync('../' + p)).map(([k]) => k);
+check('every model the manifest names is on disk', gone.length === 0);
+if (gone.length) console.log('        gone: ' + gone.join(', '));
 
 // Reads a .glb's JSON chunk without three: 12-byte header, then the chunk.
 function glbJson(p) {
+  if (!fs.existsSync('../' + p)) return {};
   const b = fs.readFileSync('../' + p);
   return JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'));
 }
@@ -272,6 +319,88 @@ for (const [k, p] of Object.entries(models)) {
   // that catches a .glb naming the wrong file that does exist.
   check(`${k}: every material has the same texture slots filled`, unmapped.length === 0);
   if (unmapped.length) console.log('        changed: ' + unmapped.join(', '));
+}
+
+// ---- the room hangs each Blender piece where its fixture stood (#702) ----
+//
+// The game's own buildRoom(), run into a bare Scene, with the palette
+// createMaterials() makes when there are no texture sets to load, and only the
+// manifest's `fixtures`: no screens (they draw on a canvas), no props, no
+// Kenney models and no art, so the pieces are the only thing it loads. Each
+// piece is found by the fixture id room.js writes on it, never by its type,
+// and held to its fixture's box: every corner within 2 cm, as The Fourth
+// Quarter's bar and Aphelion's ship are (#697). A window turned +pi/2 has the
+// same box as one turned -pi/2, so which way it faces has its own line.
+{
+  const { buildRoom } = await import('../src/world/room.js');
+  const { createMaterials, createRegistry } = await import('../src/world/materials.js');
+  const room = JSON.parse(fs.readFileSync('../data/room.json', 'utf8'));
+  const scene = new THREE.Scene(), registry = createRegistry(), mats = createMaterials({});
+  const warned = [], warn = console.warn;
+  console.warn = (...a) => warned.push(a.map(String).join(' '));
+  try {
+    await buildRoom(scene, registry, mats, { ...room, screens: [], props: [] },
+      { loader: createModelLoader(), assets: { fixtures: manifest.fixtures } });
+  } finally { console.warn = warn; }
+  scene.updateMatrixWorld(true);
+  check('buildRoom() hangs every piece with no warning', warned.length === 0);
+  for (const w of warned) console.log('        ' + w.slice(0, 200));
+
+  const ids = Object.keys(manifest.fixtures).filter(k => !k.startsWith('_')).sort();
+  const hung = scene.children.filter(o => o.userData.fixture);
+  check(`one piece a dressed fixture (${ids.join(', ')})`, hung.map(o => o.userData.fixture).sort().join() === ids.join());
+
+  const pieceBox = {};
+  for (const id of ids) {
+    const f = room.fixtures.find(x => x.id === id), entry = manifest.fixtures[id];
+    const piece = hung.find(o => o.userData.fixture === id);
+    if (!f || !piece) { check(`${id} is a fixture in room.json, and hung`, false); continue; }
+    const box = scene.children.find(o => o.isMesh && o.geometry.type === 'BoxGeometry' &&
+      o.position.x === f.pos[0] && o.position.y === f.pos[1] && o.position.z === f.pos[2]);
+    check(`${id}: its fixture's box is still there, hidden`, !!box && !box.visible);
+    const b = new THREE.Box3().setFromObject(piece, true);
+    pieceBox[id] = b;
+    let worst = 0;
+    for (let a = 0; a < 3; a++) {
+      worst = Math.max(worst, Math.abs(b.min.getComponent(a) - (f.pos[a] - f.size[a] / 2)),
+        Math.abs(b.max.getComponent(a) - (f.pos[a] + f.size[a] / 2)));
+    }
+    check(`${id}: every corner within 2 cm of its fixture's box`, worst <= 0.02);
+    if (worst > 0.02) console.log(`        worst ${worst.toFixed(3)} m`);
+    // The file's front is +Z (#698). Turned, it has to face into the room,
+    // along the fixture's thin side: a window turned +pi/2 has the same box and
+    // looks at the car park. Checked against the room, not against assets.json's
+    // rotY, which a wrong value there would agree with.
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(piece.quaternion);
+    const inward = new THREE.Vector3(-f.pos[0], 0, (room.bounds.zFront + room.bounds.zBack) / 2 - f.pos[2]);
+    const thin = f.size[0] < f.size[2] ? Math.abs(front.x) : Math.abs(front.z);
+    check(`${id}: faces into the room, along its fixture's thin side`, thin > 0.9999 && front.dot(inward) > 0);
+    if (!(thin > 0.9999 && front.dot(inward) > 0)) console.log(`        front ${front.toArray().map(n => n.toFixed(3)).join(', ')}`);
+    const meshes = [];
+    piece.traverse(o => { if (o.isMesh) meshes.push(o); });
+    // the file's own materials, not the palette's: the colour is in the file
+    check(`${id}: draws the file's own materials`, meshes.length > 0 && meshes.every(m => !Object.values(mats).includes(m.material)));
+    if (id.startsWith('window')) {
+      const glass = meshes.find(m => m.material.name === 'glass');
+      check(`${id}: its glass is blended at 0.75, as createMaterials() makes glass`,
+        !!glass && glass.material.transparent && Math.abs(glass.material.opacity - 0.75) < 1e-6);
+    }
+    registry.setThermal(true);
+    const hex = mats[f.mat].userData.thermal.color.getHex();
+    const cold = meshes.filter(m => !m.material.isMeshBasicMaterial || m.material.color.getHex() !== hex);
+    check(`${id}: every mesh swaps to the ${f.mat} fixture's thermal 0x${hex.toString(16).padStart(6, '0')} under Withitness`, cold.length === 0);
+    registry.setThermal(false);
+  }
+
+  // The canvases board.js draws the lesson and the objective on stand in front
+  // of the boards. The screen is a plane at its room.json z; the piece's front
+  // (the frame's face) must stay 2 cm behind it, or the frame cuts the text.
+  for (const [screen, id] of [['board', 'whiteboard'], ['objective', 'objectiveBoard']]) {
+    const s = room.screens.find(x => x.id === screen), b = pieceBox[id];
+    const clear = s && b ? s.pos[2] - b.max.z : -1;
+    check(`the ${screen} canvas stands 2 cm clear of the ${id} piece`, clear >= 0.02 - 1e-4);
+    if (s && b) console.log(`        ${(clear * 100).toFixed(1)} cm`);
+  }
 }
 
 console.log(fails ? `\n${fails} FAILURES` : '\nall green');

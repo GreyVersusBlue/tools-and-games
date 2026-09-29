@@ -163,6 +163,7 @@ jobs:
               node test/smoke-state.mjs
               node test/desktop-input.mjs
               node test/gltf-loader.mjs
+              node test/ship.mjs
               node tools/blender/validate.mjs
 
           # Bell to Bell's suites read ../data relative to the working

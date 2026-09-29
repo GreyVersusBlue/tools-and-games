@@ -135,6 +135,7 @@ export function auditAssets() {
   if (manifest.art?.frame) add(manifest.art.frame);
   for (const p of Object.values(manifest.art?.paintings || {})) add(p);
   for (const p of Object.values(manifest.props || {})) add(p);
+  for (const [id, f] of Object.entries(manifest.fixtures || {})) if (!id.startsWith('_')) add(f.model);
 
   // Cataloged: on disk on purpose, never loaded.
   const cataloged = new Set();

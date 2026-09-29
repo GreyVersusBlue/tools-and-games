@@ -750,7 +750,7 @@ without `pointer-events:none` on the layer itself it ate every touch meant for
 the room, so the game took no input at all. `smoke.mjs` now asserts the layer
 is inert.
 
-## Blender assets (from 2026-09-25; B1 shipped 2026-09-28, PR #463; B2 shipped 2026-09-28, PR #466; B3 is rank 2)
+## Blender assets (from 2026-09-25; B1 shipped 2026-09-28, PR #463; B2 shipped 2026-09-28, PR #466; B3 shipped 2026-09-29, PR #468)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
 plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
@@ -845,13 +845,19 @@ checks. Three runs, one hash, and the whiteboard rebuilt identical to its
 committed blob (a checkout under `core.autocrlf` gives the `.gltf` CRLF, so
 compare against `git show`).
 
-**B3. Wiring the pack (rank 2, ¼, Opus 5.5, no gate; its pack has merged).** A
-`bell-to-bell-blender` recipe in `Tools/board-check/asset-pipeline.mjs` (the
-site's file, called out in the PR body) pinned at PR #466's commit, reading `whiteboard`, `window` and
-`objective-board`; the paths in `data/assets.json`; `registerModel` for
-every piece with its fixture's thermal hex; the window turned -pi/2; a `BASELINE`
-entry each in `tests/props.mjs`. All five suites the Site CI entry runs stay
-green.
+**B3. Wiring the pack. Shipped 2026-09-29, PR #468** (#704, #706; ¼, Opus
+5.5, no gate). The recipe `bell-to-bell-blender` in
+`Tools/board-check/asset-pipeline.mjs` reads the three `.gltf` and `.bin`
+pairs at 3956289 and writes a meshopt `.glb` beside each: 3,796, 3,956 and
+4,464 bytes. At this size the header's raw-under-gzipped rule cannot be met,
+so the recipe is held to raw under raw and 256 bytes of gzip slack (#704).
+`data/assets.json`'s `fixtures` names each dressed fixture's model and turn;
+`room.js`'s `hangPiece()` puts a piece at its fixture's base, unscaled, and
+`dressFixture()` registers it with the fixture's thermal hex and hides the
+box, which comes back if the file fails (#706). `tests/props.mjs` (157) has a
+`BASELINE` each and builds the room through `buildRoom()`: 2 cm of each
+fixture's box, facing into the room, glass at 0.75, the thermal swap, and both
+canvases 2.0 cm clear. `validate.mjs` reads the `.glb` files too (128).
 
 ## What this leaves for a later arc
 
