@@ -8,6 +8,9 @@
 // rectangles with their own ceiling height, opening through a gap in one of
 // the hall's walls, which is why the hall's walls are drawn from
 // layout.wallSegments() rather than as three unbroken planes.
+//   The fixtures and furniture are the bar pack (models/bar/, js/pieces.js),
+// every file loaded before this module finishes evaluating; the walls, floors,
+// joinery and lights are still built here from boxes and planes.
 //   None of the numbers live here — layout.js holds
 // them and derives seats, colliders, inBounds(), the TV mounts and the cook
 // line; this file turns that into meshes and converts the derived boxes to
@@ -19,6 +22,11 @@
 import * as THREE from "three";
 import { mat, flat, glow } from "./materials.js";
 import * as L from "./layout.js";
+import { loadPieces, pieceGroup, keyed, BOX } from "./pieces.js";
+
+// Every piece of the bar pack, loaded once, before buildWorld() can run. A
+// missing file rejects this, naming it, and the page stops here (B4).
+const PIECES = await loadPieces();
 
 // Every export below is filled in by buildWorld() from the venue's description
 // and rewritten on each rebuild — the objects keep their identity, so a module
@@ -275,9 +283,8 @@ export function buildWorld(scene, venueId) {
   lintel.position.set((DOORWAY.x0 + DOORWAY.x1) / 2, L.DOOR_H, nz); g.add(lintel);
 
   // pass-through sill (both sides of the wall) — where food lands
-  const sill = new THREE.Mesh(new THREE.BoxGeometry(WINDOW.x1 - WINDOW.x0 + 0.2, 0.08, 0.7), mat("barTop"));
-  sill.position.set((WINDOW.x0 + WINDOW.x1) / 2, WINDOW.y0, nz);
-  sill.castShadow = true; g.add(sill);
+  piece(g, "sill", (WINDOW.x0 + WINDOW.x1) / 2, WINDOW.y0 - 0.04, nz,
+    { sx: (WINDOW.x1 - WINDOW.x0 + 0.2) / BOX.sill[0], shadow: true });
   const passSign = makeLabel("KITCHEN", 0xe8a33d);
   passSign.position.set((WINDOW.x0 + WINDOW.x1) / 2, WINDOW.y1 + 0.35, nz + WALL_T); g.add(passSign);
 
@@ -294,37 +301,32 @@ export function buildWorld(scene, venueId) {
   //      derived from the same numbers, so nothing is measured off a mesh).
   //      Drawn by kind: a stove is a metal block with four burners, a prep a
   //      metal block, a crate metal or wood. Any count of each. ----
-  const block = (f, m) => {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, f.d), m);
-    b.position.set(f.x, f.h / 2, f.z); b.rotation.y = f.rotY || 0;
-    b.castShadow = true; g.add(b);
-    return b;
-  };
+  //      Each block is its kind's piece, scaled by the block's w, h, d over
+  //      the box the file was built at: 1 in every room there is. The
+  //      burners stay the game's glow() discs (#689). ----
+  const block = (f, name) => piece(g, name, f.x, 0, f.z,
+    { ry: f.rotY || 0, sx: f.w / BOX[name][0], sy: f.h / BOX[name][1], sz: f.d / BOX[name][2], shadow: true });
   for (const f of desc.fitout) {
     if (f.kind === "stove") {
-      const stove = block(f, mat("metal"));
+      const stove = block(f, "stove");
       for (let i = 0; i < 4; i++) {
         const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 12), glow(0xff5a2b, 0.9));
         burner.position.set(stove.position.x - 0.35 + (i % 2) * 0.7, f.h + 0.01, stove.position.z - 0.17 + Math.floor(i / 2) * 0.36);
         g.add(burner);
       }
     } else if (f.kind === "crateWood") {
-      block(f, flat(0x5a4632, 0.8));
+      block(f, "crate-wood");
     } else {
-      block(f, mat("metal")); // prep, crate
+      block(f, f.kind); // prep, crate
     }
   }
   // dry-goods shelf on the kitchen's north wall, west end: the Corner Tap's
   // 2.2 m shelf with six cans, longer in a wider kitchen
   const shelfLen = Math.min(kW - 0.8, 2.2 + Math.max(0, kW - 7) * 0.4);
   const shelfX = KITCHEN.x0 + 0.3 + shelfLen / 2, shelfZ = KITCHEN.z0 + 0.25;
-  const kShelf = new THREE.Mesh(new THREE.BoxGeometry(shelfLen, 0.06, 0.35), mat("barTop"));
-  kShelf.position.set(shelfX, 1.7, shelfZ); g.add(kShelf);
+  run(g, "shelf-kitchen", shelfX - shelfLen / 2, shelfX + shelfLen / 2, 1.7 - 0.03, shelfZ);
   const cans = Math.round(shelfLen / 0.34);
-  for (let i = 0; i < cans; i++) {
-    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.2, 10), flat(0xb8b2a6, 0.5, 0.4));
-    can.position.set(shelfX - shelfLen / 2 + 0.25 + i * 0.34, 1.83, shelfZ); g.add(can);
-  }
+  for (let i = 0; i < cans; i++) piece(g, "can", shelfX - shelfLen / 2 + 0.25 + i * 0.34, 1.83 - 0.1, shelfZ);
   // the kitchen never goes dark: one warm light per 7 m of its width
   const kLights = Math.max(1, Math.round(kW / 7));
   for (let i = 0; i < kLights; i++) {
@@ -338,36 +340,36 @@ export function buildWorld(scene, venueId) {
 
   // door frame (front entrance, visual) — on the south wall at the door's x
   const doorX = DOOR.x;
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.3, 0.12), flat(0x241a10, 0.7));
-  frame.position.set(doorX, 1.15, ROOM.z - 0.02); g.add(frame);
+  piece(g, "door-frame", doorX, 0, ROOM.z - 0.02, { ry: Math.PI });
   const doorGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.1), glow(0x2b3f66, 0.5));
   doorGlow.position.set(doorX, 1.1, ROOM.z - 0.09); doorGlow.rotation.y = Math.PI; g.add(doorGlow);
 
   // ---- the bar (pulled off the wall — a real lane behind it) ----
   const barLen = desc.bar.len, barX = desc.bar.x, barZ = desc.bar.z;
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(barLen, 1.1, desc.bar.depth), mat("barTop"));
-  counter.position.set(barX, 0.55, barZ); counter.castShadow = true; g.add(counter);
-  const kick = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.12, 0.8), flat(0x120c07));
-  kick.position.set(barX, 0.06, barZ); g.add(kick);
+  // The counter is two ends, the west one mirrored so its closed side faces
+  // out too, and barLen - 1 metres of middle between them (#690); the kick
+  // and the back shelf are runs of one-metre pieces. The pieces are built at
+  // the bar's 0.75 m depth, so a deeper bar would stretch them in z.
+  const barX0 = barX - barLen / 2, barX1 = barX + barLen / 2, deep = desc.bar.depth / BOX["counter-mid"][2];
+  piece(g, "counter-end", barX0 + 0.25, 0, barZ, { sx: -1, sz: deep, shadow: true });
+  piece(g, "counter-end", barX1 - 0.25, 0, barZ, { sz: deep, shadow: true });
+  run(g, "counter-mid", barX0 + 0.5, barX1 - 0.5, 0, barZ, { sz: deep, shadow: true });
+  run(g, "kick", barX0, barX1, 0, barZ);
   // back bar shelf + bottles, on the north wall behind the lane
-  const shelf = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.08, 0.35), mat("barTop"));
-  shelf.position.set(barX, 1.5, nz + WALL_T / 2 + 0.2); g.add(shelf);
-  const bottleCols = [0x7fb069, 0xc46a3a, 0x9a6fb5, 0x5aa7d6, 0xd7b45a];
+  run(g, "shelf-back", barX0, barX1, 1.5 - 0.04, nz + WALL_T / 2 + 0.2);
   const bottles = Math.max(1, Math.round((barLen - 0.8) / 0.56) + 1);
   for (let i = 0; i < bottles; i++) {
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.32, 8), flat(bottleCols[i % bottleCols.length], 0.25));
-    b.position.set(barX - barLen / 2 + 0.4 + i * 0.56, 1.7, nz + WALL_T / 2 + 0.2); g.add(b);
+    piece(g, BOTTLES[i % BOTTLES.length], barX0 + 0.4 + i * 0.56, 1.7 - 0.16, nz + WALL_T / 2 + 0.2);
   }
   for (let i = 0; i < desc.bar.taps; i++) {
-    const tap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.35, 8), flat(0xc9c9c9, 0.3, 0.9));
-    tap.position.set(desc.bar.tapX0 + i * desc.bar.tapPitch, 1.28, barZ - 0.1); g.add(tap);
+    piece(g, "tap", desc.bar.tapX0 + i * desc.bar.tapPitch, 1.28 - 0.175, barZ - 0.1);
   }
   const barSign = makeLabel("BAR PICK-UP", 0xe8a33d);
   barSign.position.set(PASS_DRINK.x, 1.75, barZ + 0.4); g.add(barSign);
 
   // stools: one mesh per derived seat (bar stools first, then each table's
   // four) — the seat list itself was filled by adoptLayout() above
-  for (const s of seats) stool(g, s.pos.x, s.pos.z, s.pos.y);
+  for (const s of seats) piece(g, "stool", s.pos.x, s.pos.y, s.pos.z, { shadow: "keyed" });
 
   const stoveRing = stationRing(0xff5a2b);
   stoveRing.position.set(STOVE_STATION.x, STOVE_STATION.y + 0.02, STOVE_STATION.z); stoveRing.scale.setScalar(0.7);
@@ -376,8 +378,9 @@ export function buildWorld(scene, venueId) {
   tapRing.position.set(TAP_STATION.x, TAP_STATION.y + 0.02, TAP_STATION.z); tapRing.scale.setScalar(0.7);
   g.add(tapRing);
 
-  // ---- tables, each on the floor under it ----
-  for (const t of desc.tables) table4(g, t.x, t.z, L.floorYAt(desc, t.x, t.z));
+  // ---- tables, each on the floor under it: a top and a pedestal. Its
+  //      stools come from the seats above, its collider from layout.js ----
+  for (const t of desc.tables) piece(g, "table", t.x, L.floorYAt(desc, t.x, t.z), t.z, { shadow: "keyed" });
 
   // ---- TVs with live scoreboard canvases, hung where the description says ----
   const tvs = desc.tvs.map(tv => { const m = L.tvMount(desc, tv); return tvScreen(g, m.x, m.y, m.z, m.ry); });
@@ -388,18 +391,9 @@ export function buildWorld(scene, venueId) {
   neon.position.set(doorX, 2.6, ROOM.z - 0.08); neon.rotation.y = Math.PI; g.add(neon);
 
   // ---- corkboard (promo station, south wall — over the promo ring's x) ----
-  const corkX = desc.stations.promo.x;
-  const cork = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 0.05), flat(0x8a6a42, 0.95));
-  cork.position.set(corkX, 1.6, ROOM.z - 0.05); g.add(cork);
-  const corkFrame = new THREE.Mesh(new THREE.BoxGeometry(1.62, 1.12, 0.04), flat(0x2e1d10, 0.7));
-  corkFrame.position.set(corkX, 1.6, ROOM.z - 0.03); g.add(corkFrame);
-  for (let i = 0; i < 5; i++) {
-    const note = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.28),
-      flat([0xf2e9dc, 0xe8d27a, 0xa8c8e0][i % 3], 1));
-    note.position.set(corkX - 0.55 + (i % 3) * 0.55, 1.75 - Math.floor(i / 3) * 0.4, ROOM.z - 0.07);
-    note.rotation.z = (Math.random() - 0.5) * 0.2; note.rotation.y = Math.PI;
-    g.add(note);
-  }
+  // One piece: the cork, its frame and the five notes, centred 1.6 m up and
+  // standing 1 to 7.5 cm off the wall, as the boxes and the notes were.
+  piece(g, "corkboard", desc.stations.promo.x, 1.6 - BOX.corkboard[1] / 2, ROOM.z - 0.0425, { ry: Math.PI });
 
   // ---- upgrades sign (the crates themselves are fit-out, drawn above) ----
   const toolSign = makeLabel("UPGRADES", 0x9a6fb5);
@@ -461,24 +455,30 @@ function plane(w, h, refW, refH) {
   return geo;
 }
 
-function stool(g, x, z, y = 0) {
-  const s = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.07, 14), mat("leather"));
-  top.position.y = 0.72; top.castShadow = true; s.add(top);
-  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.7, 8), flat(0x2a2a2e, 0.4, 0.8));
-  leg.position.y = 0.36; s.add(leg);
-  s.position.set(x, y, z); g.add(s);
+// the five back-bar bottles, in the order world.js has always coloured them
+const BOTTLES = ["bottle-green", "bottle-amber", "bottle-violet", "bottle-blue", "bottle-gold"];
+
+/**
+ * One piece of the bar pack into `g`, its base centre at (x, y, z), turned
+ * `ry` about y and scaled by sx, sy, sz. A keyed material is swapped for the
+ * game's own mat() by name, so the tier and the repeats are the ones every
+ * other surface gets. `shadow`: true casts from every part, "keyed" from the
+ * keyed parts only (a stool's cushion, a table's top, as before B4).
+ */
+function piece(g, name, x, y, z, { ry = 0, sx = 1, sy = 1, sz = 1, shadow = false } = {}) {
+  const p = pieceGroup(PIECES, name, m => (keyed(m) ? mat(m.name) : m));
+  p.position.set(x, y, z); p.rotation.y = ry; p.scale.set(sx, sy, sz);
+  if (shadow) for (const m of p.children) m.castShadow = shadow === true || keyed(m.material);
+  g.add(p);
+  return p;
 }
 
-/** A four-top's top and leg. Its stools and their seats come from the
- *  description (layout.seatsFor), and its collider from layout.collidersFor. */
-function table4(g, x, z, y = 0) {
-  const t = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(L.TABLE_TOP_R, L.TABLE_TOP_R, 0.06, 20), mat("tableTop"));
-  top.position.y = 0.92; top.castShadow = true; t.add(top);
-  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 0.9, 10), flat(0x1c130b, 0.5));
-  leg.position.y = 0.45; t.add(leg);
-  t.position.set(x, y, z); g.add(t);
+/** A one-metre piece run along x from x0 to x1: as many whole metres as
+ *  divide the run most nearly, each stretched to fit, so a texture keeps
+ *  about the density it was tuned at. */
+function run(g, name, x0, x1, y, z, opts = {}) {
+  const n = Math.max(1, Math.round(x1 - x0)), each = (x1 - x0) / n;
+  for (let i = 0; i < n; i++) piece(g, name, x0 + each * (i + 0.5), y, z, { ...opts, sx: each * (opts.sx ?? 1) });
 }
 
 // ---- canvas helpers ----
@@ -500,8 +500,7 @@ function tvScreen(g, x, y, z, ry) {
   const c = document.createElement("canvas"); c.width = 512; c.height = 288;
   const ctx = c.getContext("2d");
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.95, 1.15, 0.08), flat(0x0a0a0a, 0.4));
-  frame.position.set(x, y, z); frame.rotation.y = ry; g.add(frame);
+  piece(g, "tv-frame", x, y - BOX["tv-frame"][1] / 2, z, { ry });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.0),
     new THREE.MeshBasicMaterial({ map: tex }));
   screen.position.set(x, y, z); screen.rotation.y = ry;

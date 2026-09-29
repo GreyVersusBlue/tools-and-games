@@ -942,7 +942,7 @@ apply pressure, and the events to be able to sink you.
 under "What this leaves for a later arc" below is still open, and this project
 has no ranked phases left.
 
-## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #459)
+## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #459, B4 in this batch)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The plan
 every Blender row shares, including where Blender runs and what `common.py`,
@@ -1081,11 +1081,24 @@ frame are on the south wall, so `Math.PI`. The TV's screen plane still goes
 0.05 in front of the frame's centre, 1 cm clear of its bezel. The notes are
 seeded now, not `Math.random()` per build.
 
-**B4. Wiring the bar (rank 1, ½, Opus 5.5, no gate; B3 merged in PR #459).** Every
-piece loads before `world.js` builds the room; a missing file fails a suite
-line. The smoke suites stay green, and `tools/browser-check.mjs` and
-`npm run games fourth-quarter` from `Tools/board-check` are run and named in
-the PR body. `pickTier()` still chooses the textures.
+**B4. Wiring the bar. Shipped 2026-09-28** (#695 to #697; rank 1, ½, Opus 5.5,
+no gate). `js/pieces.js` loads all 22 files at the top of `world.js`, and
+every fixture and stick of furniture is built from them: the fit-out blocks
+at `f.w`, `f.h`, `f.d` over the file's box, the counter as two ends (the
+west one mirrored) and a run of middles, the kick and both shelves as runs of
+one-metre pieces, as many as divide the run most nearly (#696). A keyed part
+wears the game's own `mat(key)`, put on at build time so `pickTier()` still
+chooses the textures (#695); `mat()` names its material for its key. The
+burners, walls, floors, joinery and lights are still the game's own.
+`test/bar.mjs` (180, port 8169) fails a line a piece when a file is gone and
+holds every piece to 2 cm of where the primitive builders stood in all four
+rooms, from `test/fixtures/bar-builders.json` (#697).
+`tools/browser-check.mjs` (261) finds the stools and tables by name, and
+`npm run games fourth-quarter` is 45 of 45.
+
+**What is left.** Nothing in this pack. The loaded geometry is shared and
+never disposed, so a room rebuild adds meshes but no geometry, where the
+primitives made new geometry every time and never disposed it either.
 
 ## What this leaves for a later arc
 

@@ -351,8 +351,10 @@ const built = await page.evaluate(async () => {
       if (o.isMesh) {
         meshes.push({ x: o.position.x, y: o.position.y, z: o.position.z, ry: o.rotation.y, rx: o.rotation.x });
         o.getWorldPosition(wp);
-        const sz = o.geometry.parameters;
-        world.push({ x: wp.x, y: wp.y, z: wp.z, rx: o.rotation.x, geo: o.geometry.type, w: sz.width, h: sz.height, d: sz.depth, rt: sz.radiusTop });
+        // a bar-pack piece's geometry is loaded, not a primitive, and has no
+        // parameters; its mesh is named piece/material and sits at its origin
+        const sz = o.geometry.parameters || {};
+        world.push({ x: wp.x, y: wp.y, z: wp.z, rx: o.rotation.x, geo: o.geometry.type, name: o.name, w: sz.width, h: sz.height, d: sz.depth, rt: sz.radiusTop });
       }
       if (o.isLight && o.position) lights.push({ x: o.position.x, y: o.position.y, z: o.position.z });
     });
@@ -424,13 +426,15 @@ group("world.js draws the mezzanine");
   const deck = W.filter(o => near2(o.x, cx) && near2(o.z, cz) && near2(o.y, m.y) && o.geo === "PlaneGeometry");
   ok(`the deck is a floor plane at its centre, ${m.y} m up`, deck.length === 1, `${deck.length} planes there`);
   ok("the hall's own floor is still at 0 under it", built.flag.world.some(o => near2(o.x, 0) && near2(o.z, 0) && near2(o.y, 0) && o.geo === "PlaneGeometry"));
-  // stool tops are 0.72 m up their stool, table tops 0.92: twelve and three lifted
-  const tops = W.filter(o => o.rt === 0.22 && inDeck(o));
-  ok("twelve stool tops stand on the deck, 0.72 m over it", tops.length === 12 && tops.every(o => near2(o.y, m.y + 0.72)), `${tops.length}, at ${tops[0] && tops[0].y.toFixed(2)}`);
-  ok("and none on the deck is at the hall floor's stool height", !tops.some(o => near2(o.y, 0.72)));
-  const tables = W.filter(o => o.rt === L.TABLE_TOP_R && inDeck(o));
-  ok("three table tops stand on it, 0.92 m over it", tables.length === 3 && tables.every(o => near2(o.y, m.y + 0.92)), `${tables.length}`);
-  ok(`the other ${L.seatsFor(f).length - 12} stool tops are at 0.72`, W.filter(o => o.rt === 0.22 && !inDeck(o) && near2(o.y, 0.72)).length === L.seatsFor(f).length - 12);
+  // a stool or a table is a bar-pack piece (B4) whose origin is the centre of
+  // its base, so its cushion's mesh sits where the stool stands: twelve stools
+  // and three tables lifted onto the deck
+  const tops = W.filter(o => o.name === "stool/leather" && inDeck(o));
+  ok("twelve stools stand on the deck", tops.length === 12 && tops.every(o => near2(o.y, m.y)), `${tops.length}, at ${tops[0] && tops[0].y.toFixed(2)}`);
+  ok("and none on the deck stands on the hall floor", !tops.some(o => near2(o.y, 0)));
+  const tables = W.filter(o => o.name === "table/tableTop" && inDeck(o));
+  ok("three tables stand on it", tables.length === 3 && tables.every(o => near2(o.y, m.y)), `${tables.length}`);
+  ok(`the other ${L.seatsFor(f).length - 12} stools stand on the floor`, W.filter(o => o.name === "stool/leather" && !inDeck(o) && near2(o.y, 0)).length === L.seatsFor(f).length - 12);
   // the stair: solid steps, each a riser taller than the last
   const steps = W.filter(o => inStair(o) && o.geo === "BoxGeometry" && o.y < m.y && o.h > 0.1).sort((a, b) => a.x - b.x);
   const n = Math.ceil(m.y / 0.18);

@@ -273,6 +273,7 @@ taking a new one.
 | 8166 | `Projects/blue-hour-trail/test/animals.mjs` |
 | 8167 | `Projects/golden-hour-beach/test/props.mjs` |
 | 8168 | `Projects/blue-hour-trail/test/props.mjs` |
+| 8169 | `Projects/fourth-quarter/test/bar.mjs` |
 
 8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are
 never run in the same process, and neither is in the other's CI job. It is on the
