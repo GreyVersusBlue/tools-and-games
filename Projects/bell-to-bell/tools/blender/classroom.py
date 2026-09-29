@@ -49,11 +49,61 @@ def whiteboard(rnd):
     return root
 
 
+def window(rnd):
+    """A window. data/room.json's three `window` fixtures are 0.06 x 1.2 x 1.5
+    glass boxes on the right wall, thin across the room, standing 2 cm proud
+    of it. The file is one window, built facing +Z at 1.5 x 1.2 x 0.06, and
+    the wiring row hangs it three times turned -pi / 2 to face the room (#702).
+    A 5 cm frame in the Kenney kit's light metal, the whiteboard's, with a
+    mullion and a transom, over one pane of glass at createMaterials()'s 0.75
+    opacity, set in the middle of the frame's depth."""
+    GLASS, FRAME = 0, 1
+    W, H, D, F = 1.5, 1.2, 0.06, 0.05
+    bm = bmesh.new()
+    common.box(bm, (W - 2 * F, 0.01, H - 2 * F), (0, 0, H / 2), GLASS)                # the pane
+    common.box(bm, (W, D, F), (0, 0, H - F / 2), FRAME)                                # head
+    common.box(bm, (W, D, F), (0, 0, F / 2), FRAME)                                    # sill rail
+    for x in (-(W - F) / 2, (W - F) / 2):
+        common.box(bm, (F, D, H - 2 * F), (x, 0, H / 2), FRAME)                        # jambs
+    common.box(bm, (0.04, 0.04, H - 2 * F), (0, 0, H / 2), FRAME)                      # mullion
+    common.box(bm, (W - 2 * F, 0.04, 0.04), (0, 0, 0.85), FRAME)                       # transom
+    root = common.mesh_object('window', bm, [common.material('glass'),
+                                             common.material('kenney-metal', 0.4, 0.6)])
+    common.ground(root)
+    return root
+
+
+def objective_board(rnd):
+    """The objective board. data/room.json's `objectiveBoard` fixture is a 1.5
+    x 1.0 x 0.06 box in the poster colour on the front wall, and board.js hangs
+    its 1.36 x 0.86 canvas 2 cm in front of it (z -3.46 against the fixture's
+    face at -3.48). The file keeps that box: a poster-coloured face set 1.5 cm
+    back inside a 4 cm frame in the Kenney kit's wood, and a clip rail in the
+    kit's medium metal in the top margin the canvas leaves, all behind the
+    fixture's front, so the canvas still stands clear of it."""
+    FACE, FRAME, RAIL = 0, 1, 2
+    W, H, D, F = 1.5, 1.0, 0.06, 0.04
+    bm = bmesh.new()
+    common.box(bm, (W - 2 * F, D - 0.015, H - 2 * F), (0, 0.0075, H / 2), FACE)       # the face
+    common.box(bm, (W, D, F), (0, 0, H - F / 2), FRAME)
+    common.box(bm, (W, D, F), (0, 0, F / 2), FRAME)
+    for x in (-(W - F) / 2, (W - F) / 2):
+        common.box(bm, (F, D, H - 2 * F), (x, 0, H / 2), FRAME)
+    common.box(bm, (0.6, 0.012, 0.02), (0, -0.015 - 0.006, H - F - 0.015), RAIL)      # clip rail
+    root = common.mesh_object('objective-board', bm, [common.material('poster'),
+                                                      common.material('kenney-wood'),
+                                                      common.material('kenney-metal-medium', 0.4, 0.6)])
+    common.ground(root)
+    return root
+
+
 # name -> builder. The file each one writes is budget.json's, never a literal
 # here. Order is the seed order: a new item goes at the end, so no item's seed
 # moves.
 ITEMS = {
     'whiteboard': whiteboard,
+    'window': window,
+    'objective-board': objective_board,
 }
 
 

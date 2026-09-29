@@ -1,5 +1,5 @@
 {
-  "about": "Aphelion's Blender style sheet as data (BACKLOG.md 'Aphelion: Blender assets' B1). validate.mjs reads it. Every material is a key of M in src/ship.js, read from that file as text, and carries M's colour, roughness, metalness, emissive and opacity; there is no vertex colour, no UV and no texture, since the game draws every surface from M. Bytes are triangles x 72 + 8 KiB: the worst case of a flat-shaded triangle carrying its own three vertices (position and normal, 24 bytes each) and three 16-bit indices, plus the JSON chunk. extent is the longest side a class may have, in metres, a sanity bound only; each item's box is the one src/ship.js gives the thing it replaces, held to 10% per axis (x, y, z in three's frame). texture is the largest image side in pixels, and 0 means none.",
+  "about": "Aphelion's Blender style sheet as data (BACKLOG.md 'Aphelion: Blender assets' B1, B3). validate.mjs reads it. Every material is a key of M in src/ship.js, read from that file as text, and carries M's colour, roughness, metalness, emissive and opacity; there is no vertex colour, no UV and no texture, since the game draws every surface from M. Bytes are triangles x 72 + 8 KiB: the worst case of a flat-shaded triangle carrying its own three vertices (position and normal, 24 bytes each) and three 16-bit indices, plus the JSON chunk. extent is the longest side a class may have, in metres, a sanity bound only; each item's box is the one src/ship.js gives the thing it replaces, held to 10% per axis (x, y, z in three's frame). texture is the largest image side in pixels, and 0 means none. at is where the file's origin (the centre of its base) goes in ship.js's frame with no rotation: the scene's for most, the hydroponics tray group's for the tray, the POI group's for the satellite, and an offset from systems.json's panel.pos for the panel, which alone is built facing +Z and takes that entry's rotY (#700).",
   "loader": "libs/addons/loaders/GLTFLoader.js",
   "palette": "src/ship.js",
   "models": "models",
@@ -10,7 +10,7 @@
     "KHR_texture_basisu"
   ],
   "classes": {
-    "interior": { "triangles": 1500, "bytes": 116192, "extent": 4.5, "texture": 0 },
+    "interior": { "triangles": 1500, "bytes": 116192, "extent": 6,   "texture": 0 },
     "hull":     { "triangles": 6000, "bytes": 440192, "extent": 26,  "texture": 0 },
     "poi":      { "triangles": 2000, "bytes": 152192, "extent": 5.5, "texture": 0 }
   },
@@ -18,7 +18,74 @@
     "console": {
       "file": "models/ship/console.glb",
       "class": "interior",
-      "box": [4.4, 0.775, 1.05]
+      "box": [4.4, 0.775, 1.05],
+      "at": [0, 0.15, -12.825]
+    },
+    "seat": {
+      "file": "models/ship/seat.glb",
+      "class": "interior",
+      "box": [0.8, 1.025, 0.825],
+      "at": [0, 0.475, -11.5875]
+    },
+    "panel": {
+      "file": "models/ship/panel.glb",
+      "class": "interior",
+      "box": [1.4, 1.1, 0.08],
+      "at": [0, -0.55, 0]
+    },
+    "pipes": {
+      "file": "models/ship/pipes.glb",
+      "class": "interior",
+      "box": [5.6, 0.6, 0.12],
+      "at": [0, 2.156, -6.8]
+    },
+    "workbench": {
+      "file": "models/ship/workbench.glb",
+      "class": "interior",
+      "box": [1.8, 0.8, 0.7],
+      "at": [2.0, 0, -7.4]
+    },
+    "bed": {
+      "file": "models/ship/bed.glb",
+      "class": "interior",
+      "box": [2.0, 0.455, 0.95],
+      "at": [-1.9, 0.105, 4.8]
+    },
+    "shelf": {
+      "file": "models/ship/shelf.glb",
+      "class": "interior",
+      "box": [1.4, 0.06, 0.35],
+      "at": [2.5, 1.67, 4.8]
+    },
+    "tray": {
+      "file": "models/ship/tray.glb",
+      "class": "interior",
+      "box": [1.6, 0.82, 0.8],
+      "at": [-0.005, 0, 0]
+    },
+    "hatch-inner": {
+      "file": "models/ship/hatch-inner.glb",
+      "class": "interior",
+      "box": [1.6, 2.175, 0.3],
+      "at": [0, 0.1, 9.85]
+    },
+    "hull": {
+      "file": "models/ship/hull.glb",
+      "class": "hull",
+      "box": [9.6, 5.95, 25.5],
+      "at": [0, -0.53, -2]
+    },
+    "hatch-outer": {
+      "file": "models/ship/hatch-outer.glb",
+      "class": "interior",
+      "box": [1.4, 2.0, 0.2],
+      "at": [0, 0.1, 10.9]
+    },
+    "satellite": {
+      "file": "models/ship/satellite.glb",
+      "class": "poi",
+      "box": [5.4, 2.2, 1.4],
+      "at": [0, -0.4, 0]
     }
   }
 }
