@@ -58,6 +58,50 @@ ok(fb.rank === 3 && fb.traditions.includes('arcane') && fb.traits.includes('fire
 const cantrip = S.pf2Summary(pf2.find((s) => s.name === 'Detect Magic'));
 ok(cantrip.cantrip && cantrip.rank === 0 && !cantrip.traits.includes('cantrip'), 'a cantrip reads as rank 0 and drops the trait from its list');
 
+// ---- Foundry inline markup, read as print --------------------------------------
+// data/spell.json's text is Foundry's: links, damage formulas, checks and area
+// templates as @UUID[...], @Damage[...], @Check[...], @Template[...] and
+// [[/r ...]]. Both the Spells tab and the inline card print pf2Summary's text,
+// so none of that syntax may survive it anywhere in the file.
+console.log('Foundry markup');
+const summaries = pf2.map((s) => S.pf2Summary(s));
+const RAW = {
+  'a Compendium path': /Compendium\./,
+  'an @ reference or @item formula': /@\w/,
+  'a [[/roll]]': /\[\[|\]\]/,
+  'a {label} brace': /[{}]/,
+  'an unfolded rank formula': /[(,]rank[-+*\/,)]|ternary\(|ceil\(|floor\(/,
+};
+for (const [what, re] of Object.entries(RAW)) {
+  const bad = summaries.filter((s) => re.test(s.text));
+  const at = bad[0] ? bad[0].text.slice(Math.max(0, bad[0].text.search(re) - 30), bad[0].text.search(re) + 50) : '';
+  ok(bad.length === 0, `no PF2e spell's text keeps ${what}`, `${bad.length} do, e.g. ${bad[0]?.name}: ...${at}...`);
+}
+const textOf = (n) => summaries.find((s) => s.name === n).text;
+const READS = [
+  ['Angelic Halo', /healing from the Heal spell/, 'an unlabelled link reads as its last segment'],
+  ['Adapt Self', /lasts 10 minutes\.$/, "a trailing \"Spell Effect:\" button is dropped, not printed"],
+  ['Acid Splash', /takes 1 persistent acid damage/, '@Damage folds ceil(@item.level/2) at rank 1 to "1 persistent acid"'],
+  ['Bramble Bush', /takes 1d4 piercing damage/, '@Damage folds "1d4 + ceil(rank/2) - 1" to "1d4"'],
+  ['Acid Arrow', /deal 3d8 acid damage plus 1d6 persistent acid damage/, "@Damage reads @item.rank as the spell's own rank (2 here, not 1)"],
+  ['Drain Planar Connection', /4d12 \+ 26 force/, '@Damage keeps a constant beside its dice'],
+  ['Vital Beacon', /It restores 4d10 Hit Points to the first/, 'a healing @Damage prints its amount alone; the prose says "Hit Points"'],
+  ['Blazing Blade', /takes 1d6 persistent spirit damage/, '@Damage reads ternary(gte(rank,N),a,b) at the base rank'],
+  ['Glass Sand', /takes full damage and 1 persistent bleed damage/, 'a {label} after a reference wins over the formula'],
+  ['Alarm', /attempt a DC 15 Perception check to wake up/, '@Check reads "DC 15 Perception" without doubling "check"'],
+  ['Read Fate', /rolls a secret DC 6 flat check\./, '@Check adds "check" when the prose does not'],
+  ['Heal', /disperse vital energy in a 30-foot emanation/, '@Template reads "30-foot emanation"'],
+  ['Agile Feet', /Stride, Step, or Tumble Through;/, '[[/act tumble-through]] reads "Tumble Through"'],
+  ['Angelic Messenger', /within 10d10 miles/, '[[/r 10d10 #Miles Off]] reads "10d10"'],
+  ['Adapt Self', /Speed\.\n• If you are in water, you become able to breathe water\.\n• /, 'list items read one bullet a line, with no blank line between'],
+  ['Imprisonment', /Haste spell\.\n• Object \(9th or 10th rank\)/, 'a list that follows prose starts on its own line'],
+  ['Elysian Whimsy', /\n1d4 \| Effect\n1 \| The target feels a powerful urge to dance/, 'table cells read "a | b", a row a line'],
+];
+for (const [n, re, what] of READS) {
+  const t = textOf(n);
+  ok(re.test(t), `${n}: ${what}`, t.replace(/\n/g, ' ').slice(0, 400));
+}
+
 // ---- pf1-spells.json --------------------------------------------------------
 console.log('pf1-spells.json');
 ok(pf1.length > 2900, `holds every PF1e spell (${pf1.length})`);

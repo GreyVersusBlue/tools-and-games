@@ -60,6 +60,11 @@ const FIXTURES = {
     cr: 4, hp: 47, hd: '5d10+20', ac: [15, 10, 14], saves: [10, 5, 2], abil: [19, 12, 18, 2, 12, 10],
     melee0: [2, 8, '1d6+4'], extra0: 'grab', nMelee: 2, speed: { land: 30 }, space: [10, 5], sa: [],
   },
+  'dire-rat.txt': {
+    cr: 1 / 3, hp: 5, hd: '1d8+1', ac: [14, 14, 11], saves: [3, 5, 1], abil: [10, 17, 13, 2, 13, 4],
+    melee0: [1, 1, '1d4'], extra0: 'disease', nMelee: 1, speed: { land: 40, climb: 20, swim: 20 },
+    sa: ['Disease'], saDc: { Disease: 11 },
+  },
   'erinyes.txt': {
     cr: 8, hp: 94, hd: '9d10+45', ac: [23, 17, 16], saves: [11, 12, 7], abil: [20, 23, 21, 14, 18, 21],
     melee0: [1, 15, '1d8+8'], crit0: '19-20', nMelee: 1, speed: { land: 30, fly: 50 },
@@ -72,16 +77,36 @@ const FIXTURES = {
     melee0: [1, 2, '1d6'], extra0: '1d6 acid', nMelee: 1, speed: { land: 15 }, init: -5,
     sa: ['Acid', 'Engulf', 'Paralysis', 'Transparent'], saDc: { Paralysis: 20, Engulf: 12 },
   },
+  'giant-centipede.txt': {
+    cr: 1 / 2, hp: 5, hd: '1d8+1', ac: [14, 12, 12], saves: [3, 2, 0], abil: [9, 15, 12, null, 10, 2],
+    melee0: [1, 2, '1d6-1'], extra0: 'poison', nMelee: 1, speed: { land: 40, climb: 40 },
+    immune: ['mind-affecting effects'], sa: ['Poison'], saDc: { Poison: 13 }, saKind0: 'Ex', // printed "(EX)" on Nethys
+  },
   'goblin.txt': {
     cr: 1 / 3, hp: 6, hd: '1d10+1', ac: [16, 13, 14], saves: [3, 2, -1], abil: [11, 15, 12, 10, 9, 6],
     melee0: [1, 2, '1d4'], crit0: '19-20', nMelee: 1, speed: { land: 30 }, classLine: 'Goblin warrior 1',
     ranged: [['short bow', [4], 'x3', false, 0]], sa: [],
+  },
+  'human-skeleton.txt': {
+    cr: 1 / 3, hp: 4, hd: '1d8', ac: [16, 12, 14], saves: [0, 2, 2], abil: [15, 14, null, null, 10, 10],
+    melee0: [1, 0, '1d6'], nMelee: 3, groups: [0, 0, 1], speed: { land: 30 }, init: 6,
+    dr: [{ amount: 5, bypass: 'bludgeoning' }], feats: ['Improved Initiative'], sa: [],
+  },
+  'human-zombie.txt': {
+    cr: 1 / 2, hp: 12, hd: '2d8+3', ac: [12, 10, 12], saves: [0, 0, 3], abil: [17, 10, null, null, 10, 10],
+    melee0: [1, 4, '1d6+4'], nMelee: 1, speed: { land: 30 }, dr: [{ amount: 5, bypass: 'slashing' }],
+    feats: ['Toughness'], sa: [],
   },
   'iron-golem.txt': {
     cr: 13, hp: 129, hd: '18d10+30', ac: [28, 8, 28], saves: [6, 5, 6], abil: [32, 9, null, null, 11, 1],
     melee0: [2, 28, '2d10+16'], crit0: '19-20', nMelee: 1, speed: { land: 20 },
     dr: [{ amount: 15, bypass: 'adamantine' }], sa: ['Breath Weapon', 'Immunity to Magic', 'Powerful Blows'],
     saDc: { 'Breath Weapon': 19 },
+  },
+  'kobold.txt': {
+    cr: 1 / 4, hp: 5, hd: '1d10', ac: [15, 12, 14], saves: [2, 1, -1], abil: [9, 13, 10, 10, 9, 8],
+    melee0: [1, 1, '1d6-1'], nMelee: 1, speed: { land: 30 }, classLine: 'Kobold warrior 1',
+    ranged: [['sling', [3], '', false, 0]], weaknesses: ['light sensitivity'], sa: ['Crafty'],
   },
   'lich.txt': {
     cr: 12, hp: 111, hd: '11d6+55', hpNotes: '15 false life', ac: [23, 14, 21], saves: [6, 7, 11], abil: [10, 14, null, 22, 14, 16],
@@ -184,6 +209,7 @@ for (const [file, x] of Object.entries(FIXTURES)) {
   if (x.slaSample) ok(c.spellLikeAbilities.some((b) => b.entries.some((e) => e.spells.some((s) => s.name === x.slaSample))),
     `${n}: SLA list includes ${x.slaSample}`);
   eq(c.specialAbilities.map((a) => a.name), x.sa, `${n}: special ability names`);
+  if (x.saKind0) eq(c.specialAbilities[0]?.kind, x.saKind0, `${n}: special ability kind read case-blind`);
   for (const [name, dc] of Object.entries(x.saDc || {})) eq(c.specialAbilities.find((a) => a.name === name)?.dc, dc, `${n}: ${name} DC`);
   if (x.caster) {
     const b = c.spellcasting[0] || {};

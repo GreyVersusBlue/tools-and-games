@@ -1189,9 +1189,12 @@ review. Round 3 made zero edits and found zero findings.
 Anathema Archive's folder the way the other Pathfinder pages' suites are.
 
 **Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709,
-#711). Since then: HP anchored at tier 2.25 (#711), spell cards open inline
-from the stat block, and the board card has a preview. Open follow-ups, none
-ranked; the first three wait on Devon's go-ahead:
+#711, #712). Since then: spell cards open inline from the stat block, the board
+card has a preview, PF2e spell text reads Foundry's markup as print (links,
+damage formulas at the spell's rank, checks, templates, lists and tables), and
+hp is anchored at low below CR 1 and at 2.5 from CR 1 up (#712), measured on
+sixteen printed pairs, six of them CR 1/4 to 1/2. Open follow-ups, none ranked;
+the first three wait on Devon's go-ahead:
 
 1. **The spell map's 1,087 "partial" entries** were written by a second pass
    that fixed the first pass's misses; they have not been read by a person. The
@@ -1202,17 +1205,15 @@ ranked; the first three wait on Devon's go-ahead:
    abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
    the open question.
 3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
-4. **Foundry link syntax shows in PF2e spell text.** `data/spell.json`'s text
-   keeps references like "Compendium.pf2e.feats-srd.Item.Shield Block" and
-   "Compendium.pf2e.spell-effects.Item.Spell Effect: Shield"; both the Spells
-   tab and the inline card print them raw. `pf2Summary` in `spells.js` could
-   reduce each to its last segment (and drop the spell-effect lines) on read;
-   `data/` itself is the Archive's and is not written.
-5. **The goblin sits on its bound.** At hp tier 2.25 the goblin converts to 9
-   HP against the Goblin Warrior's 6, exactly the per-monster 50% limit in
-   `converter-convert.test.mjs`. It is the only pair below CR 1, so whether
-   low-CR hp runs high is one data point; a separate CR < 1 hp anchor is the
-   fix if more pairs show it.
+4. **Divine Dragon's Watch prints no reaction text.** Its description embeds
+   the Dragon's Protection action by Foundry id (`@Embed[...Zt9bo3FYLQihmpAz]`),
+   and the converter reads no actions file to resolve it from, so the reader
+   drops it. One spell; resolving it means reading one more Archive file under
+   data/README.md's contract, with each field asserted.
+5. **More CR 1 to 2 pairs.** The CR >= 1 hp anchor (2.5) rests on ten
+   monsters, only one of them (the wolf) below CR 3. Pairs at CR 1 and 2 would
+   show whether that end runs high the way CR < 1 did; fixtures come from
+   aonprd.com the way the five added for #712 did.
 
 ## Pathfinder Characters
 

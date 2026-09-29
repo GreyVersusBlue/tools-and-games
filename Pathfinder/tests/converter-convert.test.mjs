@@ -48,7 +48,9 @@ const convert = (n, opts = {}) => C.convertCreature(fixture(n), { spellIndex: in
 // ---- against Paizo's own PF2e versions -------------------------------------
 console.log('against the printed PF2e creature');
 const PAIRS = [
-  ['goblin', 'Goblin Warrior', 'minus1'], ['wolf', 'Wolf', '1'], ['ogre', 'Ogre Warrior', '3'],
+  ['goblin', 'Goblin Warrior', 'minus1'], ['kobold', 'Kobold Warrior', 'minus1'], ['human-skeleton', 'Skeleton Guard', 'minus1'],
+  ['dire-rat', 'Giant Rat', 'minus1'], ['giant-centipede', 'Giant Centipede', 'minus1'], ['human-zombie', 'Zombie Shambler', 'minus1'],
+  ['wolf', 'Wolf', '1'], ['ogre', 'Ogre Warrior', '3'],
   ['gelatinous-cube', 'Gelatinous Cube', '3'], ['owlbear', 'Owlbear', '4'], ['troll', 'Troll', '5'],
   ['army-ant-swarm', 'Army Ant Swarm', '5'], ['succubus', 'Succubus', '7'], ['lich', 'Lich', '12'],
   ['iron-golem', 'Iron Golem', '13'], ['balor', 'Balor', '20'],
@@ -68,6 +70,7 @@ function printed(name, shard) {
   };
 }
 const err = { level: [], ac: [], save: [], hp: [], perception: [], strike: [] };
+const lowHp = [], highHp = []; // hp error of the six CR 1/4 to 1/2 pairs (printed at level -1), and the rest
 for (const [fx, name, shard] of PAIRS) {
   const p = printed(name, shard);
   ok(p && Object.values(p).every((v) => v === null || Number.isFinite(v)), `data/npcs has ${name} with every field this suite reads`);
@@ -81,7 +84,7 @@ for (const [fx, name, shard] of PAIRS) {
     strike: top != null && p.strike != null ? top - p.strike : null,
   };
   err.level.push(d.level); err.ac.push(d.ac); err.save.push(d.fort, d.ref, d.will);
-  err.hp.push(d.hp); err.perception.push(d.perception); if (d.strike != null) err.strike.push(d.strike);
+  err.hp.push(d.hp); (shard === 'minus1' ? lowHp : highHp).push(d.hp); err.perception.push(d.perception); if (d.strike != null) err.strike.push(d.strike);
   const detail = `level ${o.level.value}/${p.level}, AC ${o.ac.value}/${p.ac}, HP ${o.hp.value}/${p.hp}, saves ${o.saves.fort.value}/${p.fort} ${o.saves.ref.value}/${p.ref} ${o.saves.will.value}/${p.will}, strike ${top}/${p.strike}`;
   ok(Math.abs(d.level) <= 1 && Math.abs(d.ac) <= 5 && Math.abs(d.hp) <= 0.5
     && [d.fort, d.ref, d.will].every((x) => Math.abs(x) <= 8) && (d.strike == null || Math.abs(d.strike) <= 5),
@@ -91,13 +94,19 @@ const mae = (xs) => xs.reduce((a, x) => a + Math.abs(x), 0) / xs.length;
 ok(mae(err.level) <= 0.35, 'level: mean error at most 0.35', mae(err.level).toFixed(2));
 ok(mae(err.ac) <= 2.0, 'AC: mean error at most 2', mae(err.ac).toFixed(2));
 ok(mae(err.save) <= 3.0, 'saves: mean error at most 3', mae(err.save).toFixed(2));
-// HP had run low (7 of 11 under, troll 86 against 115). HISTORY #711 moved
-// its anchor to HP_ANCHOR_TIER, 2.25, which measures 19.0% error and +0.5%
-// bias here; moderate measured 20.0% and -4.1%. The bias bound is the one
-// that tells the two apart.
+// HP is anchored at low below CR 1 and at 2.5 from CR 1 up (HISTORY #712).
+// Measured on these sixteen: the six CR 1/4 to 1/2 pairs at 2.25, #711's
+// anchor, ran +26.8% (goblin, kobold and skeleton 43% to 50% over), 12.5%
+// error and -2.5% bias at low; the ten from CR 1 up ran 15.9% and -4.5% at
+// 2.25, 14.8% and +1.0% at 2.5, +3.0% at 2.6. Each bound below fails one of
+// those neighbours: the low-CR bounds fail every anchor tried from 1.25 up,
+// the CR >= 1 bias fails 2.25 and 2.6, and the overall error fails 2.25.
 const bias = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
-ok(mae(err.hp) <= 0.195, 'HP: mean error at most 19.5%', (100 * mae(err.hp)).toFixed(1) + '%');
-ok(Math.abs(bias(err.hp)) <= 0.03, 'HP: mean bias within 3% either way', (100 * bias(err.hp)).toFixed(1) + '%');
+ok(lowHp.length === 6 && highHp.length === 10, 'six hp pairs below CR 1 and ten from CR 1 up', `${lowHp.length} ${highHp.length}`);
+ok(mae(err.hp) <= 0.145, 'HP: mean error at most 14.5%', (100 * mae(err.hp)).toFixed(1) + '%');
+ok(mae(lowHp) <= 0.13 && Math.abs(bias(lowHp)) <= 0.05, 'HP below CR 1: mean error at most 13%, bias within 5%',
+  `${(100 * mae(lowHp)).toFixed(1)}%, ${(100 * bias(lowHp)).toFixed(1)}%`);
+ok(Math.abs(bias(highHp)) <= 0.02, 'HP from CR 1 up: mean bias within 2% either way', (100 * bias(highHp)).toFixed(1) + '%');
 ok(mae(err.perception) <= 3.5, 'Perception: mean error at most 3.5', mae(err.perception).toFixed(2));
 ok(mae(err.strike) <= 2.5, 'top Strike: mean error at most 2.5', mae(err.strike).toFixed(2));
 

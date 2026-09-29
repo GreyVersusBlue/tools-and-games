@@ -369,8 +369,9 @@ function parseSpecialAbilities(region) {
   // sentence before. A short run is taken whole, so d20pfsrd's "Breath weapon
   // (Su)" keeps its lowercase word; a long one ("... uses its grab (Ex)") is a
   // reference inside prose unless a Title Case name ends it.
+  // Case is loose: Nethys prints the giant centipede's "Poison (EX)".
   const marks = [];
-  for (const m of flat.matchAll(/\s*\((Ex|Su|Sp)\)\s*:?\s*/g)) {
+  for (const m of flat.matchAll(/\s*\((Ex|Su|Sp)\)\s*:?\s*/gi)) {
     const base = marks.length ? marks[marks.length - 1].bodyStart : 0;
     const before = flat.slice(base, m.index);
     const tail = /[^.!?:]*$/.exec(before)[0];
@@ -382,7 +383,7 @@ function parseSpecialAbilities(region) {
       name = t[1];
       start = base + before.lastIndexOf(name);
     }
-    marks.push({ name, kind: m[1], start, bodyStart: m.index + m[0].length });
+    marks.push({ name, kind: m[1][0].toUpperCase() + m[1][1].toLowerCase(), start, bodyStart: m.index + m[0].length });
   }
   marks.forEach((mk, i) => {
     const text = flat.slice(mk.bodyStart, i + 1 < marks.length ? marks[i + 1].start : flat.length).trim();
@@ -419,7 +420,7 @@ export function parsePf1(input) {
     saText = text.slice(sa.bodyStart, sa.end);
     text = text.slice(0, sa.start) + '\n\n' + text.slice(sa.end);
   }
-  if (!sa && /^[A-Z][^()]{0,60}\((?:Ex|Su|Sp)\)/.test(text) && !scanLabels(text).some((h) => h.start === 0)) {
+  if (!sa && /^[A-Z][^()]{0,60}\((?:Ex|Su|Sp)\)/i.test(text) && !scanLabels(text).some((h) => h.start === 0)) {
     // No header, and it opens with "Stench (Ex)": the whole paste is special abilities.
     c.specialAbilities = parseSpecialAbilities(text);
     return c;

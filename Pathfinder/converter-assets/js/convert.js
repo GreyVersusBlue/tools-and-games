@@ -215,7 +215,10 @@ export function convertCreature(c, opts = {}) {
     const t = T.pf1TierOf(stat, v1, crN);
     const tier = clamp(t, floor, 4.5);
     const v = pf2At(table, level, tier);
-    return { ...explain(v, `PF1e ${label} ${stat === 'hp' || stat === 'damage' ? v1 : signed(v1)} is ${tierWord(t)} for CR ${fmtCr(crN)}; ${tierWord(tier)} ${label} at level ${level} is ${v}.`), tier };
+    // Below CR 1, PF2e's own creatures run low on hp, so a typical PF1e hp
+    // lands low on purpose (HISTORY #712); say so rather than call it low.
+    const lowHp = stat === 'hp' && crN < 1 ? ` PF2e builds its level -1 and 0 creatures on low Hit Points, so a typical CR ${fmtCr(crN)} total lands on low.` : '';
+    return { ...explain(v, `PF1e ${label} ${stat === 'hp' || stat === 'damage' ? v1 : signed(v1)} is ${tierWord(t)} for CR ${fmtCr(crN)}; ${tierWord(tier)} ${label} at level ${level} is ${v}.${lowHp}`), tier };
   }
 
   // ---- traits ----
