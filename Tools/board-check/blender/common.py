@@ -7,14 +7,19 @@
 # site itself: the tavern set") and, later, D1's dioramas.
 #
 # Pinned to the Blender this pipeline was built and checked under:
-#   Blender 5.2.2 LTS, the Steam install on Devon's machine,
-#   C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe
-# Steam updates that install on its own, so a minor bump stops every script
-# here at check_version() until someone reruns the renders, looks at them,
-# and moves REQUIRED.
+#   Blender 5.2.2 LTS. It was written against the Steam install on Devon's
+#   Windows machine and calibrated there; the committed room plate
+#   (assets/tavern/room.webp) was rendered on huginn, Linux, Blender 5.2.2
+#   LTS at ~/.local/bin/blender, Cycles on the CPU with 4 threads.
+# A lit render's bytes differ between machines, so every plate in one pack
+# comes from one machine: re-render them all together, on one of the two.
+# A minor bump of either install stops every script here at check_version()
+# until someone reruns the renders, looks at them, and moves REQUIRED.
 #
-# Run from Tools/board-check, headless, never through a GUI session:
-#   blender -b --factory-startup -P blender/<script>.py -- [args]
+# Run from Tools/board-check, headless, never through a GUI session, and on
+# huginn one render at a time across the whole machine with 4 threads
+# (run.mjs waits for any other Blender to finish and passes -t for you):
+#   blender -b --factory-startup -t 4 -P blender/<script>.py -- [args]
 # --factory-startup keeps the machine's preferences and add-ons out, and
 # reset() empties the scene again before anything is built.
 #
@@ -293,6 +298,7 @@ def room_camera(scene, cam=None):
     ob.location = (rx(cam['eye_x']), -D, rz(cam['horizon']))
     ob.rotation_euler = (math.pi / 2, 0.0, 0.0)
     scene.camera = ob
+    ob['frame_aspect'] = fw / fh              # render() keeps this shape at any size
     scene.render.resolution_x = fw
     scene.render.resolution_y = fh
     return ob
@@ -326,9 +332,17 @@ def render(path, width=None, height=None, engine='CYCLES', samples=256, seed=0,
     Cycles renders on the GPU at a fixed seed with denoising; Workbench is
     flat colour with no anti-aliasing, for calibration frames and silhouette
     sheets that must come back the same every run. fmt is PNG or WEBP
-    (lossy at `quality`, lossless at 100)."""
+    (lossy at `quality`, lossless at 100).
+
+    A width by height that is not the camera's own shape keeps the camera's
+    frame and stretches the pixels instead: the room plate is 3200 by 1800
+    over a 2000 by 1300 frame, so its pixels are 1.156 times taller than wide
+    and the page draws it back onto the 2000 by 1300 rect. Without this the
+    horizontal-fit camera would crop the frame to 2000 by 1125."""
     scene = bpy.context.scene
     r = scene.render
+    cam = scene.camera
+    frame_aspect = cam['frame_aspect'] if cam and 'frame_aspect' in cam else r.resolution_x / r.resolution_y
     r.engine = engine
     if engine == 'CYCLES':
         scene.cycles.samples = samples
@@ -346,6 +360,11 @@ def render(path, width=None, height=None, engine='CYCLES', samples=256, seed=0,
         r.resolution_x = width
     if height:
         r.resolution_y = height
+    # (resolution_x * pixel_aspect_x) / (resolution_y * pixel_aspect_y) is the
+    # view's shape; Blender wants both aspects at 1 or more
+    stretch = (r.resolution_x / r.resolution_y) / frame_aspect
+    r.pixel_aspect_x = 1.0 if stretch >= 1.0 else 1.0 / stretch
+    r.pixel_aspect_y = stretch if stretch >= 1.0 else 1.0
     r.resolution_percentage = percent
     r.film_transparent = transparent
     r.image_settings.file_format = fmt

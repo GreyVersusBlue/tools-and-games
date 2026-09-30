@@ -12,12 +12,15 @@
 //     across `laneX`) have a median luminance under `luminanceFloor`, which is
 //     where a #0c0803 silhouette would stop reading against the floor
 //   - a file under assets/tavern/ that budget.json does not name
+//   - the camera's distance does not flatten table 0's top to the 0.28 the
+//     canvas draws it at (budget.json `calibration.tabletop`)
 //
 // With --rendered, which `npm run tavern` passes after a render, it also reads
-// out/calibrate.png (untracked, so CI cannot) and holds each of the nine
-// markers to `tolerance` room units of where the room camera should have put
-// it; a missing calibration frame fails rather than skips. A render is held
-// to this, its size, its lanes and its bytes, not to its hash: Cycles output
+// out/calibrate.png (untracked, so CI cannot), rendered at the room plate's
+// size, and holds each of the nine markers to `tolerance` room units of where
+// the page will draw that room point, and the tabletop disc to the same 0.28;
+// a missing calibration frame fails rather than skips. A render is held to
+// this, its size, its lanes and its bytes, not to its hash: Cycles output
 // is not byte-stable across runs, and #652's rule is for .glb files.
 //
 // The optional budget argument points it at another file; paths in it still
@@ -51,7 +54,7 @@ const rel = p => p.split(path.sep).join('/');
 // and for a calibration frame the centroid of the bright pixels near each
 // expected marker. Luminance is Rec. 709 on the 8-bit sRGB values, the same
 // figure a designer's picker reads.
-async function probe({ url, lanes, markers, window }) {
+async function probe({ url, lanes, markers, window, blobs = [] }) {
   const img = new Image();
   img.src = url;
   await img.decode();
@@ -72,14 +75,27 @@ async function probe({ url, lanes, markers, window }) {
     v.sort((a, b) => a - b);
     return { n: v.length, median: v.length ? v[v.length >> 1] : 0, min: v.length ? v[0] : 0 };
   });
-  const markerOut = markers.map(([mx, my]) => {
+  const markerOut = markers.map(([ex, ey]) => {
+    const mx = Math.round(ex), my = Math.round(ey);    // pixel indices, or px[] reads undefined
     let sx = 0, sy = 0, n = 0;
     for (let y = Math.max(0, my - window); y <= Math.min(h - 1, my + window); y++)
       for (let x = Math.max(0, mx - window); x <= Math.min(w - 1, mx + window); x++)
         if (lum(x, y) > 128) { sx += x + 0.5; sy += y + 0.5; n++; }
     return { n, x: n ? sx / n : NaN, y: n ? sy / n : NaN };
   });
-  return { w, h, lanes: laneOut, markers: markerOut };
+  // the bounding box of the bright pixels inside each [x0, x1, y0, y1] window
+  const blobOut = blobs.map(([x0, x1, y0, y1]) => {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, n = 0;
+    for (let y = Math.max(0, y0 | 0); y < Math.min(h, y1); y++)
+      for (let x = Math.max(0, x0 | 0); x < Math.min(w, x1); x++)
+        if (lum(x, y) > 128) {
+          n++;
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+    return { n, w: n ? maxX - minX + 1 : 0, h: n ? maxY - minY + 1 : 0 };
+  });
+  return { w, h, lanes: laneOut, markers: markerOut, blobs: blobOut };
 }
 
 // ---------------------------------------------------------------- run
@@ -130,23 +146,48 @@ try {
     ? fs.readdirSync(dir).map(f => `assets/tavern/${f}`).filter(f => !named.has(f)) : [];
   ok(stray.length === 0, 'assets/tavern/ holds only what budget.json names', stray.join(', '));
 
+  // ---- the camera's distance, from the canvas's own tabletop ellipse. A
+  // level camera sees a small flat disc whose centre projects dy room units
+  // below the horizon flattened to about dy * unit / distance; paintTable()
+  // draws table 0's top at 0.28, so the budget's distance has to predict that.
+  const top = budget.calibration.tabletop;
+  const [tx, ty, tr] = top.table;
+  const predicted = (ty - tr * 0.1 - budget.camera.horizon) * budget.unit / budget.camera.distance;
+  ok(Math.abs(predicted - top.ratio) <= top.tolerance,
+    `camera: distance ${budget.camera.distance} m flattens table 0's top to ${top.ratio} within ${top.tolerance}`,
+    `predicts ${predicted.toFixed(3)}`);
+
   // ---- the calibration frame
   if (rendered) {
     const cal = budget.calibration;
     const file = path.join(SITE, cal.file);
     if (ok(fs.existsSync(file), `calibration: ${cal.file} was rendered`)) {
-      const expected = cal.markers.map(([x, y]) => [x - fx, y - fy]);
-      const r = await page.evaluate(probe, { url: `/${rel(cal.file)}?${Date.now()}`, lanes: [], markers: expected, window: 16 });
-      ok(r.w === budget.camera.frame[2] && r.h === budget.camera.frame[3],
-        `calibration: frame is ${budget.camera.frame[2]}x${budget.camera.frame[3]}`, `is ${r.w}x${r.h}`);
+      // rendered at the size of the plate it stands for, so a marker is held
+      // to where the page will draw that room point from the plate's pixels
+      const plate = budget.plates[cal.plate];
+      const sx = plate.width / budget.camera.frame[2], sy = plate.height / budget.camera.frame[3];
+      const expected = cal.markers.map(([x, y]) => [(x - fx) * sx, (y - fy) * sy]);
+      // the disc's window: 140 room units either side, 60 above and below,
+      // clear of every marker
+      const disc = [(tx - 140 - fx) * sx, (tx + 140 - fx) * sx, (ty - tr * 0.1 - 60 - fy) * sy, (ty - tr * 0.1 + 60 - fy) * sy];
+      const r = await page.evaluate(probe, { url: `/${rel(cal.file)}?${Date.now()}`, lanes: [], markers: expected, window: 16, blobs: [disc] });
+      ok(r.w === plate.width && r.h === plate.height,
+        `calibration: frame is ${plate.width}x${plate.height}, the ${cal.plate} plate's size`, `is ${r.w}x${r.h}`);
       r.markers.forEach((m, i) => {
         const [x, y] = cal.markers[i];
         const [ex, ey] = expected[i];
-        const off = m.n ? Math.hypot(m.x - ex, m.y - ey) : Infinity;
+        const off = m.n ? Math.hypot((m.x - ex) / sx, (m.y - ey) / sy) : Infinity;
         ok(m.n > 0 && off <= cal.tolerance,
           `calibration: marker (${x}, ${y}) lands within ${cal.tolerance} room units`,
-          m.n ? `at (${(m.x + fx).toFixed(1)}, ${(m.y + fy).toFixed(1)}), ${off.toFixed(2)} off, ${m.n} px` : 'no bright pixels within 16');
+          m.n ? `at (${(m.x / sx + fx).toFixed(1)}, ${(m.y / sy + fy).toFixed(1)}), ${off.toFixed(2)} off, ${m.n} px` : 'no bright pixels within 16 px');
       });
+      const b = r.blobs[0];
+      const ratio = b.n ? (b.h / sy) / (b.w / sx) : NaN;
+      ok(b.n > 0 && Math.abs(ratio - top.ratio) <= top.tolerance,
+        `calibration: the tabletop disc renders ${top.ratio} tall to wide within ${top.tolerance}`,
+        b.n ? `is ${ratio.toFixed(3)}, ${(b.w / sx).toFixed(1)} by ${(b.h / sy).toFixed(1)} room units` : 'no bright pixels in its window');
+      const worst = Math.max(...r.markers.map((m, i) => m.n ? Math.hypot((m.x - expected[i][0]) / sx, (m.y - expected[i][1]) / sy) : Infinity));
+      console.log(`calibration: ${r.w}x${r.h}, worst marker ${worst.toFixed(2)} room units off, tabletop ${ratio.toFixed(3)}`);
     }
   }
 } finally {
