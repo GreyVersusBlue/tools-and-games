@@ -1,6 +1,6 @@
 # The Conversion Codex's own data
 
-Two files, both owned by the Pathfinder Converter area. Neither lives in
+Three files, all owned by the Pathfinder Converter area. Neither lives in
 `Pathfinder/data/`, which the Anathema Archive owns and only
 `Pathfinder/fetch json data.py` writes (#350). The PF2e side of every spell
 lookup reads that folder under its README's contract, rather than copying it.
@@ -39,6 +39,18 @@ mechanics), `partial` (covers some of it) or `none`. `note` tells a GM what
 differs. `match-spells.py` shortlists candidates for whoever edits it; the map
 itself is hand-checked. Every `to` name must exist in `Pathfinder/data/spell.json`;
 `Pathfinder/tests/converter-spells.test.mjs` fails if one does not.
+
+## `embeds.json`
+
+The actions PF2e spells embed by Foundry id (`@Embed[Compendium.pf2e.actionspf2e.Item.<id> inline]`),
+as `{ "<id>": { "name", "description" } }`, sliced from
+`Pathfinder/data/action.json` so the page does not fetch 1.3 MB for them. One
+action as of 2026-09-29: Dragon's Protection, embedded by Divine Dragon's Watch.
+Regenerate with `node Pathfinder/converter-assets/vendor-embeds.mjs` from the
+repo root. `Pathfinder/tests/converter-spells.test.mjs` fails when the file no
+longer matches what `action.json` holds, or when a spell embeds an id it lacks.
+The action text is Paizo content under the ORC License, like the rest of
+`Pathfinder/data/`; see that folder's README for the notice.
 
 ## Licence
 

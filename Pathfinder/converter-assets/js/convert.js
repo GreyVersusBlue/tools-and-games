@@ -527,7 +527,7 @@ export function convertCreature(c, opts = {}) {
     const u = UMR[lower] || UMR[lower.replace(/\s+\d.*$/, '')];
     offAbilities.push({
       name: u || titleCase(nameOnly), actions: '', traits: [],
-      text: detail ? convertText(detail.text) : [umrText(lower), s.includes('(') ? `PF1e: ${convertText(s.match(/\((.*)\)/)[1])}.` : ''].filter(Boolean).join(' '),
+      text: detail ? convertText(detail.text) : [umrText(lower), s.includes('(') ? `PF1e: ${convertText(s.match(/\((.*)\)|\((.*)$/).slice(1).find((x) => x !== undefined))}.` : ''].filter(Boolean).join(' '),
       why: /DC\s*\d+/.test(s + (detail?.text || '')) ? 'DCs rescaled against the PF1e ability DC benchmark for this CR.' : '',
     });
   }

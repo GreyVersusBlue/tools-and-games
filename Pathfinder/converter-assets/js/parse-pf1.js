@@ -73,15 +73,19 @@ export function splitTop(s, seps = ',;') {
   return out.map((x) => x.trim()).filter(Boolean);
 }
 
-/** Split on the word " or " outside parentheses. */
-function splitOr(s) {
+/** Split on the word " or " outside parentheses. With afterParen, only where
+ * the word follows a closing parenthesis: "bite +5 (1d8+4 plus grab) and tail
+ * slap +0 (1d12+2)" is two attacks, a name like "sword and board" is one. */
+function splitOr(s, word = ' or ', afterParen = false) {
   const out = [];
   let depth = 0, start = 0;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (ch === '(' || ch === '[') depth++;
     else if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
-    else if (depth === 0 && s.startsWith(' or ', i)) { out.push(s.slice(start, i)); start = i + 4; i += 3; }
+    else if (depth === 0 && s.startsWith(word, i) && (!afterParen || s[i - 1] === ')')) {
+      out.push(s.slice(start, i)); start = i + word.length; i += word.length - 1;
+    }
   }
   out.push(s.slice(start));
   return out.map((x) => x.trim()).filter(Boolean);
@@ -175,11 +179,29 @@ const TRAILS_INTO_PROSE = new Set(['combatGear', 'otherGear', 'gear', 'languages
   'racialMods', 'environment', 'organization', 'treasure']);
 const PROSE_START = /\s(?=(?:The|These|This|Those|A|An|In|When|While|Although|Its|His|Her|Their|Some|Many|Most|Once|Unlike|Few|Such|Legends)\s+[a-z]+\s+[a-z])/;
 
+// The [open, close] spans of each matched pair of parentheses. An unmatched
+// "(" (a paste cut mid-field) opens no span, so it cannot swallow the labels
+// after it.
+function parenSpans(text) {
+  const spans = [], stack = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(') stack.push(i);
+    else if (text[i] === ')' && stack.length) spans.push([stack.pop(), i]);
+  }
+  return spans;
+}
+
 function scanLabels(text) {
   const hits = [];
+  // A label inside parentheses is prose: "swallow whole (1d4 bludgeoning
+  // damage, AC 10, 1 hp)" is one special attack, not a second AC field.
+  const spans = parenSpans(text);
+  const inParens = (i) => spans.some(([o, c]) => o < i && i < c);
   for (const [key, re] of LABEL_RES) {
     re.lastIndex = 0;
-    for (const m of text.matchAll(re)) hits.push({ key, start: m.index, end: m.index + m[0].length, label: m[0] });
+    for (const m of text.matchAll(re)) {
+      if (!inParens(m.index)) hits.push({ key, start: m.index, end: m.index + m[0].length, label: m[0] });
+    }
   }
   hits.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
   const kept = [];
@@ -230,7 +252,8 @@ function findRegion(text, startRe, endRes) {
 function parseAttacks(value, isRanged) {
   const out = [];
   splitOr(value).forEach((alt, group) => {
-    for (const part of splitTop(alt, ',')) {
+    // Bestiary full attacks join with commas, and some with ") and ".
+    for (const part of splitTop(alt, ',').flatMap((p) => splitOr(p, ' and ', true))) {
       const rm = /^range\s+(\d+)\s*(?:ft|feet)\.?$/i.exec(part);
       const prev = out[out.length - 1];
       if (rm && isRanged && prev && prev.group === group) { prev.range = Number(rm[1]); continue; }

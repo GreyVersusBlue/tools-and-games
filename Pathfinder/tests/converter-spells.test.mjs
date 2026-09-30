@@ -31,6 +31,8 @@ const ok = (cond, label, detail = '') => {
 const pf1 = read('converter-assets/data/pf1-spells.json');
 const pf2 = read('data/spell.json');
 const map = read('converter-assets/data/spell-map.json');
+const actions = read('data/action.json');
+const embeds = read('converter-assets/data/embeds.json');
 
 // ---- data/spell.json: every field pf2Summary reads -------------------------
 console.log('data/spell.json fields');
@@ -64,7 +66,7 @@ ok(cantrip.cantrip && cantrip.rank === 0 && !cantrip.traits.includes('cantrip'),
 // [[/r ...]]. Both the Spells tab and the inline card print pf2Summary's text,
 // so none of that syntax may survive it anywhere in the file.
 console.log('Foundry markup');
-const summaries = pf2.map((s) => S.pf2Summary(s));
+const summaries = pf2.map((s) => S.pf2Summary(s, embeds));
 const RAW = {
   'a Compendium path': /Compendium\./,
   'an @ reference or @item formula': /@\w/,
@@ -95,12 +97,36 @@ const READS = [
   ['Angelic Messenger', /within 10d10 miles/, '[[/r 10d10 #Miles Off]] reads "10d10"'],
   ['Adapt Self', /Speed\.\n• If you are in water, you become able to breathe water\.\n• /, 'list items read one bullet a line, with no blank line between'],
   ['Imprisonment', /Haste spell\.\n• Object \(9th or 10th rank\)/, 'a list that follows prose starts on its own line'],
+  ['Divine Dragon\'s Watch', /\(concentrate, sanctified, spirit\)\n\nTrigger An enemy you can see would reduce this spell's target to 0 Hit Points\n\nEffect The dragon intercepts[^\n]*dealing 5d4 spirit damage to it with a basic Reflex save\.\n\nHeightened \(\+1\)/,
+    "@Embed prints the embedded action's trigger and effect in place, its own markup read as print"],
   ['Elysian Whimsy', /\n1d4 \| Effect\n1 \| The target feels a powerful urge to dance/, 'table cells read "a | b", a row a line'],
 ];
 for (const [n, re, what] of READS) {
   const t = textOf(n);
   ok(re.test(t), `${n}: ${what}`, t.replace(/\n/g, ' ').slice(0, 400));
 }
+
+// ---- embeds.json: the slice of data/action.json the spells embed ------------
+// data/README.md asks a reader to assert every field it relies on. embedSlice
+// reads _id, name and system.description.value from data/action.json, and
+// the page reads the vendored slice rather than the 1.3 MB file.
+console.log('embeds.json and data/action.json');
+const ACTION_FIELDS = {
+  '_id': (a) => a._id,
+  'name': (a) => a.name,
+  'system.description.value': (a) => a.system.description.value,
+};
+for (const [f, get] of Object.entries(ACTION_FIELDS)) {
+  const missing = actions.filter((a) => typeof get(a) !== 'string');
+  ok(missing.length === 0, `every PF2e action has ${f}`, `${missing.length} lack it, e.g. ${missing[0]?._id}`);
+}
+const fresh = S.embedSlice(pf2, actions);
+ok(JSON.stringify(fresh) === JSON.stringify(embeds), 'embeds.json matches what data/action.json holds now',
+  'run node Pathfinder/converter-assets/vendor-embeds.mjs and commit the result');
+const embedIds = [...new Set(pf2.flatMap((s) => [...s.system.description.value.matchAll(/@Embed\[Compendium\.pf2e\.\w+\.Item\.(\w+)/g)].map((m) => m[1])))];
+const unresolved = embedIds.filter((id) => !embeds[id]);
+ok(embedIds.length > 0 && unresolved.length === 0, `every action a PF2e spell embeds is in embeds.json (${embedIds.length})`,
+  `${unresolved.length} missing: ${unresolved.join(', ')}`);
 
 // ---- pf1-spells.json --------------------------------------------------------
 console.log('pf1-spells.json');

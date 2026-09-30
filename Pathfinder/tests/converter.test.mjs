@@ -52,7 +52,7 @@ const text = (page, sel) => page.$eval(sel, (el) => el.textContent);
 async function testLoad(browser) {
   console.log('\nloading');
   const { page, errors, offsite } = await freshPage(browser);
-  ok(await page.evaluate(() => document.body.dataset.ready) === 'true', 'all three data files load');
+  ok(await page.evaluate(() => document.body.dataset.ready) === 'true', 'all four data files load (embeds.json with them)');
   ok(/PF1e spells/.test(await text(page, '#spell-status')), 'the spell tab reports its counts', await text(page, '#spell-status'));
   ok(errors.length === 0, 'no console errors', errors.slice(0, 3).join(' | '));
   ok(offsite.length === 0, 'no offsite requests', offsite.slice(0, 3).join(' '));

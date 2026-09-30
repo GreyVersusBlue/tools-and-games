@@ -1,12 +1,14 @@
 // spells.js — PF1e spell lookup and the PF1e -> PF2e spell map.
 //
-// Three files feed it:
+// Four files feed it:
 //   converter-assets/data/pf1-spells.json   every PF1e spell (fetch-pf1-spells.py)
 //   converter-assets/data/spell-map.json    the curated PF1e -> PF2e map
+//   converter-assets/data/embeds.json       the actions PF2e spells @Embed, a
+//                                           slice of data/action.json (embedSlice)
 //   data/spell.json                         the Anathema Archive's PF2e spells,
 //                                           read under data/README.md's contract
-// The loader takes the three already-parsed arrays so Node tests can hand them
-// in from disk and the page can hand them in from fetch().
+// The loader takes them already parsed so Node tests can hand them in from
+// disk and the page can hand them in from fetch().
 
 // "Cure Light Wounds, Mass", "mass cure light wounds" and "cure light wounds
 // (mass)" all key the same. Superscript markers stat blocks carry (D for a
@@ -58,7 +60,7 @@ export function metamagicOf(raw) {
   return m ? m[0].trim().toLowerCase() : '';
 }
 
-const stripHtml = (s, rank) => inlineRefs(String(s || '')
+const stripHtml = (s, rank, embeds) => inlineRefs(withEmbeds(String(s || ''), embeds)
   .replace(/<\/p>\s*<p>/g, '\n\n')
   .replace(/<br\s*\/?>/g, '\n')
   .replace(/<hr\s*\/?>/g, '\n\n')
@@ -74,6 +76,32 @@ const stripHtml = (s, rank) => inlineRefs(String(s || '')
   .replace(/^(• .*)\n\n(?=• )/gm, '$1\n').replace(/^(• .*)\n\n(?=• )/gm, '$1\n')
   .replace(/^(.* \| .*)\n\n(?=.* \| )/gm, '$1\n').replace(/^(.* \| .*)\n\n(?=.* \| )/gm, '$1\n')
   .trim();
+
+// @Embed[Compendium.pf2e.actionspf2e.Item.<id> inline] prints that action's own
+// description in place (Divine Dragon's Watch prints Dragon's Protection's
+// trigger and effect). The spell already prints the action's name and traits
+// above it. embeds is embeds.json's { id: { name, description } }; an id it
+// lacks falls through to refText, which drops it.
+function withEmbeds(html, embeds) {
+  if (!embeds) return html;
+  return html.replace(/@Embed\[Compendium\.pf2e\.\w+\.Item\.(\w+)(?: inline)?\]/g,
+    (whole, id) => (embeds[id] ? embeds[id].description : whole));
+}
+
+// The actions data/spell.json embeds, by id, read from data/action.json:
+// embeds.json's contents. converter-assets/vendor-embeds.mjs writes the file,
+// and converter-spells.test.mjs fails when it no longer matches the Archive.
+export function embedSlice(spells, actions) {
+  const ids = new Set();
+  for (const s of spells) {
+    for (const m of (s.system.description.value || '').matchAll(/@Embed\[Compendium\.pf2e\.\w+\.Item\.(\w+)/g)) ids.add(m[1]);
+  }
+  const out = {};
+  for (const a of actions) {
+    if (ids.has(a._id)) out[a._id] = { name: a.name, description: a.system.description.value };
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+}
 
 // Foundry's inline markup, read as the printed book would print it.
 //   @UUID[Compendium.pf2e.spells-srd.Item.Heal]         Heal
@@ -268,7 +296,7 @@ function diceText(formula, rank) {
 
 // The fields of a PF2e spell this module reads. tests/converter-spells.test.mjs
 // asserts each of them against the real data/spell.json, per data/README.md.
-export function pf2Summary(s) {
+export function pf2Summary(s, embeds) {
   const sy = s.system;
   const traits = sy.traits?.value || [];
   const cantrip = traits.includes('cantrip');
@@ -291,11 +319,11 @@ export function pf2Summary(s) {
     heightens: !!sy.heightening,
     remaster: !!sy.publication?.remaster,
     source: sy.publication?.title || '',
-    text: stripHtml(sy.description?.value, sy.level?.value),
+    text: stripHtml(sy.description?.value, sy.level?.value, embeds),
   };
 }
 
-export function buildSpellIndex({ pf1, pf2, map }) {
+export function buildSpellIndex({ pf1, pf2, map, embeds = {} }) {
   const pf1ByKey = new Map();
   for (const s of pf1) pf1ByKey.set(spellKey(s.name), s);
   const pf2ByName = new Map();
@@ -309,7 +337,7 @@ export function buildSpellIndex({ pf1, pf2, map }) {
   for (const [k, v] of Object.entries(map.map || map)) mapByKey.set(spellKey(k), v);
   const pf1Names = pf1.map((s) => s.name).sort((a, b) => a.localeCompare(b));
   const lowerNames = pf1Names.map((n) => n.toLowerCase());
-  return { pf1ByKey, pf2ByName, mapByKey, pf1Names, lowerNames };
+  return { pf1ByKey, pf2ByName, mapByKey, pf1Names, lowerNames, embeds };
 }
 
 // Autocomplete: names starting with the query first, then words starting
@@ -344,13 +372,13 @@ export function convertSpell(index, name) {
     return {
       pf1, fit: same ? 'close' : 'unmapped',
       note: same ? 'Same name in PF2e; not yet checked by hand.' : '',
-      targets: same ? [pf2Summary(same)] : [], missing: [],
+      targets: same ? [pf2Summary(same, index.embeds)] : [], missing: [],
     };
   }
   const targets = [], missing = [];
   for (const t of entry.to || []) {
     const s = index.pf2ByName.get(t.toLowerCase());
-    if (s) targets.push(pf2Summary(s)); else missing.push(t);
+    if (s) targets.push(pf2Summary(s, index.embeds)); else missing.push(t);
   }
   return { pf1, fit: entry.fit, note: entry.note || '', targets, missing };
 }

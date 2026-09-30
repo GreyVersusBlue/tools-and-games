@@ -56,6 +56,32 @@ const FIXTURES = {
     melee0: [1, undefined, '1d6'], nMelee: 1, speed: { land: 5, fly: 40, flyManeuver: 'good' },
     space: [10, 0], sa: ['Wounding'],
   },
+  'boar.txt': {
+    cr: 2, hp: 18, hd: '2d8+9', ac: [14, 10, 14], saves: [6, 3, 1], abil: [17, 10, 17, 2, 13, 4],
+    melee0: [1, 4, '1d8+4'], nMelee: 1, speed: { land: 40 }, other: ['ferocity'], feats: ['Toughness'], sa: [],
+  },
+  'choker.txt': {
+    cr: 2, hp: 16, hd: '3d8+3', ac: [17, 13, 15], saves: [2, 3, 4], abil: [16, 14, 13, 4, 13, 7],
+    melee0: [2, 6, '1d4+3'], extra0: 'grab', nMelee: 1, speed: { land: 20, climb: 10 }, space: [5, 10], init: 6,
+    cmbNotes: '+8 grappling', feats: ['Improved Initiative', 'Skill Focus (Stealth)'], sa: ['Strangle', 'Quickness'],
+  },
+  'crocodile.txt': {
+    cr: 2, hp: 22, hd: '3d8+9', ac: [14, 10, 13], saves: [6, 4, 2], abil: [19, 12, 17, 1, 12, 2],
+    melee0: [1, 5, '1d8+4'], extra0: 'grab', nMelee: 2, groups: [0, 0], // "bite ... (1d8+4 plus grab) and tail slap +0"
+    speed: { land: 20, swim: 30 }, space: [10, 5], cmbNotes: '+11 grapple', cmdNotes: '22 vs. trip',
+    sa: ['Death Roll', 'Hold Breath', 'Sprint'],
+  },
+  'darkmantle.txt': {
+    cr: 1, hp: 15, hd: '2d10+4', ac: [15, 13, 13], saves: [5, 3, 0], abil: [11, 15, 14, 2, 11, 10],
+    melee0: [1, 3, '1d4'], extra0: 'grab', nMelee: 1, speed: { land: 20, fly: 30, flyManeuver: 'poor' }, init: 6,
+    sla: ['1/day'], slaSample: 'darkness', cmbNotes: '+5 grapple', cmdNotes: "can't be tripped", sa: [],
+  },
+  'dretch.txt': {
+    cr: 2, hp: 18, hd: '2d10+7', ac: [14, 11, 14], saves: [5, 0, 3], abil: [12, 10, 14, 5, 11, 11],
+    melee0: [2, 4, '1d4+1'], nMelee: 2, speed: { land: 20 }, dr: [{ amount: 5, bypass: 'cold iron or good' }],
+    immune: ['electricity', 'poison'], resist: [['acid', 10], ['cold', 10], ['fire', 10]],
+    sla: ['1/day'], slaSample: 'stinking cloud', sa: [],
+  },
   'd20pfsrd-owlbear.txt': {
     cr: 4, hp: 47, hd: '5d10+20', ac: [15, 10, 14], saves: [10, 5, 2], abil: [19, 12, 18, 2, 12, 10],
     melee0: [2, 8, '1d6+4'], extra0: 'grab', nMelee: 2, speed: { land: 30 }, space: [10, 5], sa: [],
@@ -82,10 +108,36 @@ const FIXTURES = {
     melee0: [1, 2, '1d6-1'], extra0: 'poison', nMelee: 1, speed: { land: 40, climb: 40 },
     immune: ['mind-affecting effects'], sa: ['Poison'], saDc: { Poison: 13 }, saKind0: 'Ex', // printed "(EX)" on Nethys
   },
+  'ghoul.txt': {
+    cr: 1, hp: 13, hd: '2d8+4', ac: [14, 12, 12], saves: [2, 2, 5], abil: [13, 15, null, 13, 14, 14],
+    melee0: [1, 3, '1d6+1'], extra0: 'disease and paralysis', nMelee: 2, groups: [0, 0], // "... paralysis) and 2 claws +3"
+    speed: { land: 30 }, other: ['channel resistance +2'], sa: ['Disease'], saDc: { Disease: 13 },
+  },
+  'giant-ant.txt': {
+    cr: 2, hp: 18, hd: '2d8+9', ac: [15, 10, 15], saves: [6, 0, 1], abil: [14, 10, 17, null, 13, 11],
+    melee0: [1, 3, '1d6+2'], extra0: 'grab', nMelee: 2, speed: { land: 50, climb: 20 }, immune: ['mind-affecting effects'],
+    cmbNotes: '+7 grapple', cmdNotes: '21 vs. trip', feats: ['Toughness'], sa: ['Poison'], saDc: { Poison: 14 },
+  },
+  'giant-frog.txt': {
+    cr: 1, hp: 15, hd: '2d8+6', ac: [12, 11, 11], saves: [6, 6, -1], abil: [15, 13, 16, 1, 8, 6],
+    melee0: [1, 3, '1d6+2'], extra0: 'grab', nMelee: 2, groups: [0, 1], speed: { land: 30, swim: 30 },
+    reach: [5, '15 ft. with tongue'], cmbNotes: '+7 grapple', cmdNotes: '18 vs. trip', sa: ['Tongue'],
+    spa: ['pull (tongue, 5 feet)', 'swallow whole (1d4 bludgeoning damage, AC 10, 1 hp)', 'tongue'], // "AC 10" is not the AC label
+  },
   'goblin.txt': {
     cr: 1 / 3, hp: 6, hd: '1d10+1', ac: [16, 13, 14], saves: [3, 2, -1], abil: [11, 15, 12, 10, 9, 6],
     melee0: [1, 2, '1d4'], crit0: '19-20', nMelee: 1, speed: { land: 30 }, classLine: 'Goblin warrior 1',
     ranged: [['short bow', [4], 'x3', false, 0]], sa: [],
+  },
+  'hippogriff.txt': {
+    cr: 2, hp: 22, hd: '3d10+6', ac: [14, 12, 11], saves: [5, 5, 2], abil: [15, 15, 14, 2, 12, 9],
+    melee0: [1, 4, '1d6+2'], nMelee: 2, speed: { land: 40, fly: 100, flyManeuver: 'average' }, space: [10, 5],
+    feats: ['Dodge', 'Wingover'], sa: [],
+  },
+  'homunculus.txt': {
+    cr: 1, hp: 11, hd: '2d10', ac: [14, 14, 12], saves: [0, 4, 1], abil: [8, 15, null, 10, 12, 7],
+    melee0: [1, 3, '1d4-1'], extra0: 'poison', nMelee: 1, speed: { land: 20, fly: 50, flyManeuver: 'good' },
+    space: [2.5, 0], other: ['construct traits'], sa: ['Poison', 'Telepathic Link'], saDc: { Poison: 13 },
   },
   'human-skeleton.txt': {
     cr: 1 / 3, hp: 4, hd: '1d8', ac: [16, 12, 14], saves: [0, 2, 2], abil: [15, 14, null, null, 10, 10],
@@ -208,6 +260,7 @@ for (const [file, x] of Object.entries(FIXTURES)) {
   if (x.summon) eq(c.spellLikeAbilities[0].entries.at(-1).spells.find((s) => s.name === 'summon')?.note, x.summon, `${n}: summon note kept whole, separators and all`);
   if (x.slaSample) ok(c.spellLikeAbilities.some((b) => b.entries.some((e) => e.spells.some((s) => s.name === x.slaSample))),
     `${n}: SLA list includes ${x.slaSample}`);
+  if (x.spa) eq(c.specialAttacks, x.spa, `${n}: special attacks`);
   eq(c.specialAbilities.map((a) => a.name), x.sa, `${n}: special ability names`);
   if (x.saKind0) eq(c.specialAbilities[0]?.kind, x.saKind0, `${n}: special ability kind read case-blind`);
   for (const [name, dc] of Object.entries(x.saDc || {})) eq(c.specialAbilities.find((a) => a.name === name)?.dc, dc, `${n}: ${name} DC`);
@@ -315,6 +368,8 @@ eq(parsePf1('Melee longsword +10/+5 (1d8+3/19−20) or bite +4 (1d4)').melee.map
   [[[10, 5], '19-20', 0], [[4], '', 1]], 'iteratives, unicode minus in a crit range, "or" groups');
 eq(parsePf1('Melee mwk longsword +8 (1d8+2/19-20/x3)').melee[0].crit, '19-20/x3', 'crit range with multiplier');
 eq(parsePf1('Melee incorporeal touch +5 touch (1d6 cold)').melee[0].touch, true, 'touch attack');
+eq(parsePf1('Melee rock and chain +6 (1d8+3) and bite +1 (1d4+1)').melee.map((a) => a.name), ['rock and chain', 'bite'],
+  '" and " splits attacks only after a closing parenthesis, not inside a name');
 eq(parsePf1('Init −2; Senses darkvision 60 ft.; Perception –1').init, -2, 'unicode minus and en dash as minus');
 eq(parsePf1('Str 18, Dex —, Con 14, Int —, Wis 10, Cha 1').abilities, { str: 18, dex: null, con: 14, int: null, wis: 10, cha: 1 }, '"—" ability scores');
 eq(parsePf1('DR 5/—; SR 15').defensive.dr, [{ amount: 5, bypass: '-' }], 'DR 5/—');

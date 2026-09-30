@@ -633,8 +633,9 @@ export function levelToCr(level) {
 // attack sits between high and low damage. The PF2 medians (the cross-check
 // above) give the tier each one maps to:
 //   hp      table hp              = PF2 HP_ANCHOR_TIER, 2.5 (low below
-//                                   CR 1): moderate (2) read the printed
-//                                   monsters low; see HP_ANCHOR_TIER below
+//                                   CR 1, 2.2 at CR 1 and 2): moderate (2)
+//                                   read the printed monsters low; see
+//                                   HP_ANCHOR_TIER below
 //   ac      table AC              = PF2 AC_ANCHOR_TIER, 2.5: the PF2 median
 //                                   AC is moderate at 10 of levels 1-20 and
 //                                   high at the other 10
@@ -679,10 +680,11 @@ export function levelToCr(level) {
 //                      bias AC +0.35  attack +0.48  save +1.29  DC +1.02  hp -7.7%
 // So the table works from CR 3 up and the low end needed the medians.
 export const AC_ANCHOR_TIER = 2.5;
-// HP anchors half a tier above moderate from CR 1 up, and at low below CR 1
-// (HISTORY #712, which replaced #711's 2.25). Paizo builds its level -1 and 0
+// HP anchors half a tier above moderate from CR 3 up, at 2.2 at CR 1 and 2
+// (HISTORY #713), and at low below CR 1 (HISTORY #712, which replaced #711's
+// 2.25). Paizo builds its level -1 and 0
 // mooks on low Hit Points: Skeleton Guard 4, Goblin Warrior 6, Kobold Warrior
-// 7, where level -1 low is 5 to 6. converter-convert.test.mjs checks 16
+// 7, where level -1 low is 5 to 6. converter-convert.test.mjs checked 16
 // monsters against their printed PF2e versions, six of them CR 1/4 to 1/2:
 //   CR < 1 anchor   2.25   2      1.75   1.5    1.25   1
 //   mean |error|    26.8%  23.7%  23.7%  17.8%  18.2%  12.5%
@@ -694,11 +696,25 @@ export const AC_ANCHOR_TIER = 2.5;
 // #711 had measured 2.25 best with the goblin among the eleven then checked;
 // its +50% at the old anchor was hiding a -4.5% bias in the other ten. The
 // wider answer key above (-7.7% hp bias at moderate) points the same way.
-// PF1e has no CR between 1/2 and 1, so the switch falls between levels 0 and
-// 1 and never inside one.
+// #713 added ten CR 1 and 2 pairs (ghoul, giant frog, darkmantle, homunculus,
+// boar, crocodile, giant ant, dretch, choker, hippogriff). At 2.5 the eleven
+// CR 1 to 2 pairs ran +7.4% (12% to 44% over on five of them) while the nine
+// from CR 3 up held at +1.6%, so CR 1 and 2 get their own anchor, with the
+// other two left where they were:
+//   CR 1-2 anchor   2      2.1    2.15   2.2    2.25   2.3    2.5
+//   mean |error|    17.4%  17.3%  17.1%  17.3%  17.5%  18.1%  19.5%
+//   mean bias       -5.4%  -2.0%  -0.8%  +0.2%  +0.9%  +3.2%  +7.4%
+// One anchor of 2.25 for every CR from 1 up (#711's value) came to 15.9%
+// error over all 26 against 15.7% here, and left CR 3+ at -3.6%. Below CR 3
+// the PF1e side is anchored on measured medians, not Table 1-1 (see
+// pf1Anchors), so a different PF2 tier there is no surprise. The bias over
+// eleven pairs has a standard error of about 6.4%, so 2.1 to 2.25 are equally
+// good; 2.2 zeroes it. PF1e has no CR between 1/2 and 1 or between 2 and 3, so each
+// switch falls between two levels and never inside one.
 export const HP_ANCHOR_TIER = 2.5;
+export const HP_CR_1_2_ANCHOR_TIER = 2.2;
 export const HP_LOW_CR_ANCHOR_TIER = 1;
-export const hpAnchorTier = (cr) => (cr < 1 ? HP_LOW_CR_ANCHOR_TIER : HP_ANCHOR_TIER);
+export const hpAnchorTier = (cr) => (cr < 1 ? HP_LOW_CR_ANCHOR_TIER : cr < 3 ? HP_CR_1_2_ANCHOR_TIER : HP_ANCHOR_TIER);
 export const DAMAGE_ANCHOR_TIER = 2.25;
 
 // Medians of PF1e monsters by CR (aonprd.com, fetched 2026-09-29), CR 1/8 to 2.

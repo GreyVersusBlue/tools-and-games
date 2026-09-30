@@ -45,8 +45,9 @@ Promise.all([
   getJson('converter-assets/data/pf1-spells.json'),
   getJson('converter-assets/data/spell-map.json'),
   getJson('data/spell.json'),
-]).then(([pf1, map, pf2]) => {
-  index = buildSpellIndex({ pf1, pf2, map });
+  getJson('converter-assets/data/embeds.json'),
+]).then(([pf1, map, pf2, embeds]) => {
+  index = buildSpellIndex({ pf1, pf2, map, embeds });
   const withMatch = Object.values(map.map || {}).filter((v) => v.fit !== 'none').length;
   $('spell-status').textContent = `${pf1.length.toLocaleString()} PF1e spells, ${withMatch.toLocaleString()} with a PF2e equivalent`;
   document.body.dataset.ready = 'true';
