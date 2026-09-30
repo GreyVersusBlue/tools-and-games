@@ -651,6 +651,38 @@
     { src: "assets/tavern/table-2.webp", x: 322, y: 803, w: 260, h: 151.04, at: [452, 862, 118] }
   ];
 
+  // The cast sheet: the seated patrons, the dog, the cat and the barkeep, one
+  // row a value the canvas varies continuously and one column a step of it
+  // (Tools/board-check/blender/cast.py; budget.json's `cast` plate holds the
+  // same numbers and validate.mjs holds the two to each other). Every cell is
+  // CASTSHEET.cell pixels at CASTSHEET.ppu pixels a figure unit; `ax` is the pixel
+  // column in it where the figure's origin stands, and CASTSHEET.ay the row.
+  //   seat-<hat>-<food>  the drink cycle, 0 to 1, in 6 steps
+  //   dog-<head lift>    the tail's angle, -1.35 to 0.35, in 6 steps
+  //   cat-sit-<stretch>  the tail's curl, -0.5 to 1.5, in 6 steps
+  //   cat-walk           the stride, one turn of the phase, in 6 steps
+  //   keep               wipe, pour, idle
+  var CASTSHEET = { src: "assets/tavern/cast.webp", cell: [160, 184], ppu: 1.25, ay: 172, rows: [
+    { id: "seat-none-mug", frames: 6, ax: 40 },
+    { id: "seat-none-bread", frames: 6, ax: 40 },
+    { id: "seat-hood-mug", frames: 6, ax: 40 },
+    { id: "seat-hood-bread", frames: 6, ax: 40 },
+    { id: "seat-bun-mug", frames: 6, ax: 40 },
+    { id: "seat-bun-bread", frames: 6, ax: 40 },
+    { id: "seat-beard-mug", frames: 6, ax: 40 },
+    { id: "seat-beard-bread", frames: 6, ax: 40 },
+    { id: "dog-0", frames: 6, ax: 72 },
+    { id: "dog-5", frames: 6, ax: 72 },
+    { id: "dog-10", frames: 6, ax: 72 },
+    { id: "dog-15", frames: 6, ax: 72 },
+    { id: "cat-sit-0", frames: 6, ax: 22 },
+    { id: "cat-sit-1", frames: 6, ax: 22 },
+    { id: "cat-walk", frames: 6, ax: 36 },
+    { id: "keep", frames: 3, ax: 33 }
+  ] };
+  var CASTROW = {};
+  CASTSHEET.rows.forEach(function (r, i) { CASTROW[r.id] = { row: i, frames: r.frames, ax: r.ax }; });
+
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function pick(a) { return a[(Math.random() * a.length) | 0]; }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -764,6 +796,16 @@
     ctx.globalAlpha = rim || 1;
     ctx.drawImage(rim ? sp.tint : sp.img, col * cw, row * ch, cw, ch,
       -WALK.anchor[0] / r, -WALK.anchor[1] / r, cw / r, ch / r);
+  }
+
+  // One cell of the cast sheet at the origin: `id` the row, `v` 0 to 1 along
+  // it (the nearest of its steps). `rim` is the alpha of the firelit pass, 0 for
+  // the black one, as drawSprite() takes it. The caller has saved the context.
+  function drawCast(ctx, cs, rim, id, v) {
+    var r = CASTROW[id], cw = CASTSHEET.cell[0], ch = CASTSHEET.cell[1], k = CASTSHEET.ppu;
+    var col = clamp(Math.round(v * (r.frames - 1)), 0, r.frames - 1);
+    ctx.globalAlpha = rim || 1;
+    ctx.drawImage(rim ? cs.tint : cs.img, col * cw, r.row * ch, cw, ch, -r.ax / k, -CASTSHEET.ay / k, cw / k, ch / k);
   }
 
   // rim: alpha of the firelit pass when a sheet draws, 0 for the black one;
@@ -1028,11 +1070,21 @@
 
   // Seated at a table. The tabletop covers the lap, so the read is all in the
   // shoulders, the lean, and the hand bringing a tankard up to the beard.
-  function drawSeated(ctx, s, t) {
+  // cs: the loaded cast sheet, or null for the vector figure below; rim as
+  // drawSprite() takes it. The sheet's cell has the rest lean and the page adds
+  // the talk, about the hip, as it adds the idle bob to a standing walker.
+  function drawSeated(ctx, s, t, cs, rim) {
     var cyc = Math.sin(t * 0.6 + s.seed);
     var eat = Math.max(0, cyc - 0.5) * 2;
     var talk = Math.sin(t * 1.5 + s.seed) * 0.045;
     var hipY = -52, lean = -0.15 + talk;
+    if (cs) {
+      ctx.save();
+      ctx.translate(0, hipY); ctx.rotate(talk); ctx.translate(0, -hipY);
+      drawCast(ctx, cs, rim, "seat-" + (s.hat || "none") + "-" + s.food, eat);
+      ctx.restore();
+      return;
+    }
 
     ctx.save();
     ctx.fillStyle = PAINT;
@@ -1115,9 +1167,15 @@
     ctx.restore();
   }
 
-  function drawDog(ctx, d, t) {
+  function drawDog(ctx, d, t, cs) {
     var wag = Math.sin(t * (3 + d.excite * 9)) * (0.35 + d.excite * 0.5);
     var head = Math.max(0, Math.sin(t * 0.31) - 0.82) * 26 + d.excite * 10;
+    if (cs) {
+      ctx.save();
+      drawCast(ctx, cs, 0, "dog-" + clamp(Math.round(head / 5), 0, 3) * 5, (wag - 0.5 + 1.35) / 1.7);
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.fillStyle = PAINT;
     ctx.beginPath();                        // body
@@ -1144,10 +1202,17 @@
     ctx.restore();
   }
 
-  function drawCat(ctx, c, t) {
+  function drawCat(ctx, c, t, cs) {
     var tail = Math.sin(t * 1.6 + c.seed) * 0.5 + c.excite;
     ctx.save();
     ctx.scale(c.dir, 1);
+    if (cs) {
+      if (c.mode === "sit") drawCast(ctx, cs, 0, "cat-sit-" + clamp(Math.round(c.stretch), 0, 1), (tail + 0.5) / 2);
+      else drawCast(ctx, cs, 0, "cat-walk",
+        (Math.round((((c.phase % 6.283185) + 6.283185) % 6.283185) / 6.283185 * 6) % 6) / 5);
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle = DARKER;
     if (c.mode === "sit") {
       ctx.beginPath();                     // haunches
@@ -1348,9 +1413,9 @@
   // be filled with a fillStyle the way a path is.
   TavernScene.prototype.loadSprites = function () {
     var el = this;
-    this.sheet = null; this.tableImgs = null;
+    this.sheet = null; this.cast = null; this.tableImgs = null;
     function load(src) { var im = new Image(); im.src = src; return im.decode().then(function () { return im; }); }
-    load(WALK.src).then(function (img) {
+    function tinted(img) {
       var tint = document.createElement("canvas");
       tint.width = img.naturalWidth; tint.height = img.naturalHeight;
       var c = tint.getContext("2d");
@@ -1358,7 +1423,14 @@
       c.globalCompositeOperation = "source-in";
       c.fillStyle = "rgb(255,148,62)";
       c.fillRect(0, 0, tint.width, tint.height);
-      el.sheet = { img: img, tint: tint };
+      return { img: img, tint: tint };
+    }
+    load(WALK.src).then(function (img) {
+      el.sheet = tinted(img);
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+    load(CASTSHEET.src).then(function (img) {
+      el.cast = tinted(img);
       if (el.hasAttribute("still") || el.reduce) el.frame(0);
     }, function () {});
     Promise.all(TABLEIMG.map(function (t) { return load(t.src); })).then(function (imgs) {
@@ -1783,19 +1855,28 @@
     var kx = kmode === "wipe" ? Math.sin(t * 2.2) * 26 : 0;
     ctx.translate(kx, 0);
     ctx.fillStyle = PAINT;
-    ctx.beginPath();
-    ctx.moveTo(-20, 0); ctx.quadraticCurveTo(-24, -60, -15, -96);
-    ctx.lineTo(15, -96); ctx.quadraticCurveTo(24, -60, 20, 0);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -110, 13, 0, 6.284); ctx.fill();
+    var cs = this.cast;
+    if (cs) {
+      ctx.save();
+      drawCast(ctx, cs, 0, "keep", kmode === "wipe" ? 0 : kmode === "pour" ? 0.5 : 1);
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(-20, 0); ctx.quadraticCurveTo(-24, -60, -15, -96);
+      ctx.lineTo(15, -96); ctx.quadraticCurveTo(24, -60, 20, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, -110, 13, 0, 6.284); ctx.fill();
+    }
     ctx.save();
     ctx.translate(14, -90);
     ctx.rotate(kmode === "pour" ? -1.35 : (kmode === "wipe" ? -0.9 : -0.15));
-    ctx.beginPath();
-    ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(3, 40); ctx.lineTo(-3, 40);
-    ctx.closePath(); ctx.fill();
+    if (!cs) {
+      ctx.beginPath();
+      ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(3, 40); ctx.lineTo(-3, 40);
+      ctx.closePath(); ctx.fill();
+    }
     if (kmode === "pour") {
-      ctx.fillRect(-6, 36, 12, 26);
+      if (!cs) ctx.fillRect(-6, 36, 12, 26);
       ctx.strokeStyle = "rgba(226,170,86,0.6)"; ctx.lineWidth = 2.4;
       ctx.beginPath(); ctx.moveTo(0, 60); ctx.lineTo(2, 90); ctx.stroke();
     }
@@ -1811,13 +1892,13 @@
       PAINT = "rgba(255,148,62," + (0.4 * clamp(lit, 0, 1)).toFixed(3) + ")";
       ctx.translate(s.x + (lx / ln) * (2.6 + self.f * 1.3) * s.s, s.y + (ly / ln) * 1.5 * s.s);
       ctx.scale(s.s * s.dir, s.s);
-      drawSeated(ctx, s, t);
+      drawSeated(ctx, s, t, self.cast, 0.4 * clamp(lit, 0, 1));
       ctx.restore();
       PAINT = DARK;
       ctx.save();
       ctx.translate(s.x, s.y);
       ctx.scale(s.s * s.dir, s.s);
-      drawSeated(ctx, s, t);
+      drawSeated(ctx, s, t, self.cast, 0);
       ctx.restore();
     });
 
@@ -1825,14 +1906,14 @@
     ctx.save();
     ctx.translate(this.cat.x, this.cat.y);
     ctx.scale(1.35, 1.35);
-    drawCat(ctx, this.cat, t);
+    drawCat(ctx, this.cat, t, this.cast);
     ctx.restore();
 
     // dog by the fire
     ctx.save();
     ctx.translate(this.dog.x, this.dog.y);
     ctx.scale(1.6, 1.6);
-    drawDog(ctx, this.dog, t);
+    drawDog(ctx, this.dog, t, this.cast);
     ctx.restore();
 
     // walkers + tables interleaved by depth
