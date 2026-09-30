@@ -326,13 +326,17 @@ def use_gpu():
 
 
 def render(path, width=None, height=None, engine='CYCLES', samples=256, seed=0,
-           transparent=False, fmt='PNG', quality=80, percent=100, view='Standard'):
+           transparent=False, fmt='PNG', quality=80, percent=100, view='Standard', border=None, aa='OFF'):
     """Render the scene through its camera to `path` (absolute), at width by
     height pixels (the camera's own size when omitted), and return the path.
     Cycles renders on the GPU at a fixed seed with denoising; Workbench is
-    flat colour with no anti-aliasing, for calibration frames and silhouette
+    flat colour with no anti-aliasing unless `aa` says otherwise ('8' is
+    eight samples), for calibration frames and silhouette
     sheets that must come back the same every run. fmt is PNG or WEBP
-    (lossy at `quality`, lossless at 100).
+    (lossy at `quality`, lossless at 100). border is (x0, y0, x1, y1) as fractions
+    of the full render from its top left, and crops the file to that window:
+    the tables are cut out of a plate-sized frame this way, at the plate's own
+    pixels.
 
     A width by height that is not the camera's own shape keeps the camera's
     frame and stretches the pixels instead: the room plate is 3200 by 1800
@@ -353,7 +357,7 @@ def render(path, width=None, height=None, engine='CYCLES', samples=256, seed=0,
     elif engine == 'BLENDER_WORKBENCH':
         scene.display.shading.light = 'FLAT'
         scene.display.shading.color_type = 'MATERIAL'
-        scene.display.render_aa = 'OFF'
+        scene.display.render_aa = aa
     scene.view_settings.view_transform = view
     scene.view_settings.look = 'None'
     if width:
@@ -367,6 +371,15 @@ def render(path, width=None, height=None, engine='CYCLES', samples=256, seed=0,
     r.pixel_aspect_y = stretch if stretch >= 1.0 else 1.0
     r.resolution_percentage = percent
     r.film_transparent = transparent
+    r.use_border = border is not None
+    r.use_crop_to_border = border is not None
+    if border is not None:
+        # Blender floors a border edge to a pixel, and 1 - f is a hair under a
+        # whole pixel as often as over it, so each edge is nudged a hundredth
+        # of a pixel up to land on the pixel the caller meant
+        nx, ny = 0.01 / r.resolution_x, 0.01 / r.resolution_y
+        r.border_min_x, r.border_max_x = border[0] + nx, border[2] + nx
+        r.border_min_y, r.border_max_y = 1.0 - border[3] + ny, 1.0 - border[1] + ny
     r.image_settings.file_format = fmt
     r.image_settings.color_mode = 'RGBA' if transparent else 'RGB'
     if fmt == 'WEBP':

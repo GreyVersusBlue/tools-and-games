@@ -9,6 +9,13 @@
 #
 #   blender -b --factory-startup -t 4 -P blender/tavern.py -- [--preview] [--samples N] [--quality Q] [--encode]
 #
+# The three tables are not in the plate (#732 is closed by T2): they render
+# as their own alpha crops, assets/tavern/table-N.webp, from this same scene.
+# The plate pass hides them from the camera and leaves them casting shadows, so
+# their shadow is in the plate and the page only has to draw the table over
+# it; the table pass hides everything else from the camera and leaves it
+# lighting them. --plate-only and --tables-only run one of the two.
+#
 # --preview renders at a quarter size to out/room-preview.png and writes no
 # plate, for looking at while tuning. A full run renders once to
 # out/room.png (lossless, untracked) and encodes the plate from it as WebP at
@@ -34,7 +41,10 @@ ARGS = C.args()
 PREVIEW = '--preview' in ARGS
 SAMPLES = int(ARGS[ARGS.index('--samples') + 1]) if '--samples' in ARGS else 256
 QUALITY = int(ARGS[ARGS.index('--quality') + 1]) if '--quality' in ARGS else 82
+TABLE_QUALITY = 90
 ENCODE = '--encode' in ARGS
+PLATE_ONLY = '--plate-only' in ARGS
+TABLES_ONLY = '--tables-only' in ARGS
 
 # the light, in watts, and the world's warm ambient
 FIRE = 600
@@ -523,7 +533,34 @@ def encode(image):
     print(f'tavern: wrote {dest} at quality {QUALITY}, {os.path.getsize(dest)} bytes')
 
 
+def visibility(tables, rest):
+    for ob in scene.objects:
+        if ob.type == 'MESH':
+            ob.visible_camera = tables if ob.name.startswith('table-') else rest
+
+
+def render_tables():
+    """Each table cut out of a plate-sized frame at the plate's own pixels:
+    the crop is budget.json's `rect` in room units, turned into plate pixels
+    and then into the fractions Blender's border wants."""
+    visibility(True, False)
+    sx, sy = plate['width'] / fw, plate['height'] / fh
+    for i in range(len(TABLES)):
+        p = C.BUDGET['plates'][f'table-{i}']
+        x, y, w, h = p['rect']
+        px0, py0 = round((x - fx) * sx), round((y - fy) * sy)
+        px1, py1 = px0 + p['width'], py0 + p['height']
+        path = os.path.join(C.SITE, p['file'])
+        C.render(path, plate['width'], plate['height'], samples=SAMPLES, transparent=True, fmt='WEBP',
+                 quality=TABLE_QUALITY, border=(px0 / plate['width'], py0 / plate['height'],
+                                                px1 / plate['width'], py1 / plate['height']))
+        im = bpy.data.images.load(path, check_existing=False)
+        print(f'tavern: wrote {path}, {im.size[0]}x{im.size[1]} (budget {p["width"]}x{p["height"]}), {os.path.getsize(path)} bytes')
+    visibility(True, True)
+
+
 if PREVIEW:
+    visibility(False, True)
     out = C.render(os.path.join(C.OUT, 'room-preview.png'), plate['width'], plate['height'],
                    samples=min(SAMPLES, 96), percent=25)
     print('tavern: wrote', out)
@@ -532,7 +569,11 @@ elif ENCODE:
     # byte cap: --encode --quality N
     encode(bpy.data.images.load(master))
 else:
-    # one full render: a lossless master in out/ (untracked), then the plate
-    C.render(master, plate['width'], plate['height'], samples=SAMPLES)
-    print('tavern: wrote', master)
-    encode(bpy.data.images['Render Result'])
+    if not TABLES_ONLY:
+        # one full render: a lossless master in out/ (untracked), then the plate
+        visibility(False, True)
+        C.render(master, plate['width'], plate['height'], samples=SAMPLES)
+        print('tavern: wrote', master)
+        encode(bpy.data.images['Render Result'])
+    if not PLATE_ONLY:
+        render_tables()
