@@ -1012,6 +1012,13 @@ in the other repo can still be dropped into `candidates/` and promoted from
 here. What it is waiting on has not changed and is not this repo's: a machine
 with real GPU compositing.
 
+**SkyWings 64 on real hardware.** Three things, all in its `WISHLIST.md`: a
+hand playtest of the glider's landing (item 1: the autopilot lands it 50 to 95
+m off a 42 m pad, where the belt and gyrocopter land within 3 m), a profile on
+a real GPU (item 2: 520 draw calls and 1.72 M triangles a frame under
+SwiftShader), and a phone and a controller in hand (item 4). Not verified:
+every number came from SwiftShader.
+
 
 ## Blender assets: the common plan
 
@@ -2199,6 +2206,15 @@ copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): 
     to #613) and the sandbox, Free Play grown into a district (PR #373,
     #614 to #618). M9 is done.
 
+## SkyWings 64
+
+A Pilotwings 64-style flight game Devon had built outside this repo and asked
+to move in on 2026-09-30 (#715): hang glider, gyrocopter and rocket belt, six
+scored missions with medals and unlocks, and Free Flight over one island.
+Folder `Projects/skywings64/`; `WISHLIST.md` there carries the four open
+items, all waiting on a person or a GPU (see Parked). Its suite is
+`node test/browser.mjs` from the project folder, in Site CI's matrix.
+
 ## Tools/board-check
 
 The site-wide check and regression suite. Owns `check-integrity.mjs`,
@@ -2599,6 +2615,7 @@ now.
 | Orbital | `Projects/orbital/` | the four shared |
 | Blue Hour | `Projects/blue-hour-trail/` | the four shared |
 | Signal City | `Projects/signal-city/` | the four shared |
+| SkyWings 64 | `Projects/skywings64/` | the four shared |
 | Hearth | `Projects/hearth/`, `.github/workflows/hearth-ci.yml` | the four shared |
 | Bell to Bell | `Projects/bell-to-bell/` — and its own `CLAUDE.md` governs inside it | the four shared |
 | School Generator | `Projects/school-generator/`, `.github/workflows/school-generator-ci.yml` | the four shared |

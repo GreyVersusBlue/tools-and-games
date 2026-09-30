@@ -262,6 +262,15 @@ jobs:
               node test/stars.mjs
               node test/browser.mjs
 
+          # SkyWings 64 steps the game synchronously through window.__qa.sim, so no
+          # beat waits on a frame (#53); the rocket-belt autopilot flies Hop Skip Jump
+          # end to end. About a minute.
+          - name: SkyWings 64
+            dir: Projects/skywings64
+            install: Tools/board-check
+            commands: |
+              node test/browser.mjs
+
           - name: The Fracture Cycle
             dir: Projects/the-fracture-cycle
             commands: |
