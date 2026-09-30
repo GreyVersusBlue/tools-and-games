@@ -96,6 +96,10 @@ function fileFor(href) {
 // the block with whichever line ending the file on disk already uses makes
 // the comparison (and the write) agree with git's own checkout behavior
 // instead of fighting it every time autocrlf converts a file.
+// Previews of a tool rather than a game: their share card is the tool in use,
+// not mid-play.
+const TOOL_PREVIEWS = new Set(['converter']);
+
 function blockFor(n, eol = '\n') {
   const url = `${ORIGIN}/${n.href.replace(/ /g, '%20')}`;
   const img = n.preview
@@ -104,7 +108,7 @@ function blockFor(n, eol = '\n') {
   const title = `${attr(n.title)} — greyversusblue`;
   const desc = attr(n.desc);
   const alt = n.preview
-    ? `${attr(n.title)}, mid-play.`
+    ? `${attr(n.title)}, ${TOOL_PREVIEWS.has(n.preview) ? 'in use' : 'mid-play'}.`
     : `A tavern notice board headed 'The Guild Board of greyversusblue'.`;
   return [
     START,

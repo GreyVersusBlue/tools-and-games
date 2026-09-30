@@ -1182,6 +1182,41 @@ review. Round 3 made zero edits and found zero findings.
    don't share", round 2, locked decision #17 stays in force for this pair.
    Don't re-litigate it.
 
+## Pathfinder Converter
+
+`Pathfinder/converter.html`, `Pathfinder/converter-assets/`. Its suites live in
+`Pathfinder/tests/converter*.test.mjs` and `tests/fixtures/pf1/`, inside the
+Anathema Archive's folder the way the other Pathfinder pages' suites are.
+
+**Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709,
+#711 to #713). Since then: spell cards open inline from the stat block, the
+board card has a preview, PF2e spell text reads Foundry's markup as print
+(links, damage formulas at the spell's rank, checks, templates, lists, tables,
+and the one embedded action), and hp is anchored at low below CR 1, 2.2 at CR
+1 and 2, and 2.5 from CR 3 up (#712, #713), measured on 26 printed pairs: six
+below CR 1, eleven at CR 1 and 2, nine from CR 3 up. Open follow-ups, none
+ranked; the first three wait on Devon's go-ahead:
+
+1. **The spell map's 1,087 "partial" entries** were written by a second pass
+   that fixed the first pass's misses; they have not been read by a person. The
+   next step is a pass that flags the weakest of them for Devon to review,
+   not one that rewrites them.
+2. **Special abilities keep their PF1e text** with DCs, action costs and
+   condition names rewritten. Monster Core wording exists for eighteen universal
+   abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
+   the open question.
+3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
+4. **Pairs at CR 3 to 6.** The CR 3+ anchor (2.5) rests on nine monsters, and
+   only the ogre and the gelatinous cube sit at CR 3. The CR 1 to 2 band showed
+   that ten pairs can move an anchor by 0.3 of a tier, so the CR 3+ band
+   deserves the same test. Fixtures come from aonprd.com the way #713's did;
+   run the parse suite on each before trusting the numbers, since two of
+   #713's ten blocks found parser bugs.
+5. **Hand-checked parse values lag behind the parser's reach.** The FIXTURES
+   table checks special attacks only for the giant frog and never checks
+   `specialAttacks` on the other 33 fixtures. Adding `spa` to each is cheap
+   and would have caught #713's "AC 10" cut earlier.
+
 ## Pathfinder Characters
 
 `Pathfinder/characters.html`, `Pathfinder/characters-assets/`.
@@ -2523,6 +2558,7 @@ now.
 | Anathema Archive | `Pathfinder/Anathema_Archive.html`, `Pathfinder/data/`, `Pathfinder/fetch json data.py`, `Pathfinder/tests/` | `index.html`, `assets/js/gvb-save.js`, `Tools/board-check/**`, `assets/previews` + `assets/og` |
 | Pathfinder Campaigns | `Pathfinder/campaigns.html`, `Pathfinder/campaigns-assets/` | as above |
 | Pathfinder Characters | `Pathfinder/characters.html`, `Pathfinder/characters-assets/` | as above |
+| Pathfinder Converter | `Pathfinder/converter.html`, `Pathfinder/converter-assets/` | as above, and `Pathfinder/data/` (read under its README, never written) |
 | Aphelion | `Projects/aphelion/` | as above |
 | Closing Time | `Projects/Closing Time/` | the four shared |
 | The Fourth Quarter | `Projects/fourth-quarter/`, **`Projects/The-Fourth-Quarter.html`** (the original flat build, board-linked at `index.html:508`, owned by nobody until #355 caught it), `.github/workflows/fourth-quarter-ci.yml` | the four shared |
