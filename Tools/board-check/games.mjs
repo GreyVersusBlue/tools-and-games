@@ -311,6 +311,25 @@ export const GAMES = {
         { timeout: 5000 });
     },
   },
+
+  // ---- The Conversion Codex: a tool, not a game, but its board card wants a
+  // preview too. The first frame of use is the built-in example (a young red
+  // dragon) read and converted. No save: it keeps nothing in the browser
+  // (Pathfinder HISTORY #709). Plain DOM, no WebGL or pointer lock, so
+  // `headless: true` lets capture-previews shoot it without a screen.
+  'converter': {
+    title: 'Conversion Codex',
+    url: '/Pathfinder/converter.html',
+    vw: 1320, vh: 800, dsf: 1,
+    intro: [],
+    live: false,
+    headless: true,
+    async open(p) {
+      await waitFor(p, () => document.body.dataset.ready === 'true', { timeout: 20000 });
+      await p.click('#example-btn');
+      await waitFor(p, () => /Creature 10/.test(document.getElementById('pf2-block').textContent), { timeout: 10000 });
+    },
+  },
 };
 
 export const NAMES = Object.keys(GAMES);

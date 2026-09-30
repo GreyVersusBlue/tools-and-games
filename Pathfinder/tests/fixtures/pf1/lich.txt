@@ -1,0 +1,35 @@
+Lich CR 12
+Source Pathfinder RPG Bestiary pg. 188
+XP 19,200
+Human lich necromancer 11
+NE Medium undead (augmented humanoid)
+Init +2; Senses darkvision 60 ft., life sight; Perception +24
+Aura fear (60-ft. radius, DC 18)
+DEFENSE
+AC 23, touch 14, flat-footed 21 (+4 armor, +2 deflection, +2 Dex, +5 natural)
+hp 111 (11d6+55 plus 15 false life)
+Fort +6, Ref +7, Will +11
+Defensive Abilities channel resistance +4; DR 15/bludgeoning and magic; Immune cold, electricity, undead traits
+OFFENSE
+Speed 30 ft.
+Melee touch +5 (1d8+5 plus paralyzing touch)
+Special Attacks grave touch (9/day), paralyzing touch (DC 18), power over undead (9/day, DC 18)
+Spells Prepared (CL 11th)
+6th—circle of death (DC 22), globe of invulnerability, maximized fireball (DC 19)
+5th—cloudkill (DC 21), cone of cold (DC 21), quickened magic missile, waves of fatigue
+4th—dimension door, enervation, fire shield, wall of ice (2)
+3rd—dispel magic (2), fireball (DC 19), suggestion (DC 19), vampiric touch (2)
+2nd—darkness, extended mage armor (already cast), false life (already cast), scorching ray (2), see invisibility, spectral hand
+1st—magic missile (3), ray of enfeeblement (2), shield (2)
+0—bleed (DC 16), detect magic, ray of frost, read magic
+Opposition Schools illusion, transmutation
+STATISTICS
+Str 10, Dex 14, Con —, Int 22, Wis 14, Cha 16
+Base Atk +5; CMB +5; CMD 25
+Feats Craft Wondrous Item, Defensive Combat Training, Extend Spell, Improved Lightning Reflexes, Iron Will, Lightning Reflexes, Maximize Spell, Quicken Spell, Scribe Scroll, Toughness
+Skills Craft (alchemy) +20, Intimidate +17, Knowledge (arcana) +20, Knowledge (planes) +20, Linguistics +20, Perception +24, Sense Motive +24, Spellcraft +20, Stealth +24; Racial Modifiers +8 Perception, +8 Sense Motive, +8 Stealth
+Languages Abyssal, Aklo, Aquan, Celestial, Common, Draconic, Dwarven, Elven, Giant, Gnome, Goblin, Ignan, Infernal, Orc, Undercommon
+ECOLOGY
+Environment any
+Organization solitary
+Treasure NPC gear (boots of levitation, headband of vast intelligence +2 [Perception], ring of protection +2, potion of invisibility, scroll of dominate person, scroll of teleport)

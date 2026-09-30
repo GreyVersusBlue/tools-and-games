@@ -1,7 +1,13 @@
 // Builds the whole 3D world: ship interior, props/interactables,
 // ship exterior shell, starfield, and EVA points of interest.
+//
+// The props, the hull and the satellite are the ship pack (src/pieces.js),
+// loaded here before buildWorld() can run; a missing file stops the game by
+// name (#646). What is built from rooms.json stays built from it, and so do
+// the engine glows, the gauge strips, the starfield and the sun (#701).
 
 import * as THREE from 'three';
+import { loadPieces, pieceGroup, part } from './pieces.js';
 
 const M = {
   wall:   new THREE.MeshStandardMaterial({ color: 0x2a2e38, roughness: 0.9 }),
@@ -20,6 +26,12 @@ const M = {
   sat:    new THREE.MeshStandardMaterial({ color: 0x7d8494, roughness: 0.5, metalness: 0.7 }),
   solar:  new THREE.MeshStandardMaterial({ color: 0x2a3d66, roughness: 0.3, metalness: 0.5 }),
 };
+// Every material is named for its key, so a clone and a test can tell it.
+for (const k in M) if (M[k].isMaterial) M[k].name = k;
+export { M };
+
+const pieces = await loadPieces();
+const piece = (name, offset, material = n => M[n]) => pieceGroup(pieces, name, material, offset);
 
 function box(w, h, d, mat, x, y, z, ry = 0) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -81,13 +93,7 @@ export function buildWorld(scene, roomsData, systemDefs, poiData) {
   }
 
   // ---------- Cockpit props ----------
-  const console_ = new THREE.Group();
-  console_.add(box(4.4, 0.15, 1.0, M.metal, 0, 0.85, -12.8));
-  console_.add(box(4.4, 0.7, 0.5, M.panel.clone(), 0, 0.5, -13.1));
-  const seat = new THREE.Group();
-  seat.add(box(0.8, 0.15, 0.8, M.bed, 0, 0.55, -11.6));
-  seat.add(box(0.8, 0.9, 0.15, M.bed, 0, 1.05, -11.25));
-  scene.add(console_, seat);
+  scene.add(piece('console'), piece('seat'));
   // Desk lamp — a practical warm light
   const lamp = new THREE.PointLight(0xffca85, 3, 4, 2);
   lamp.position.set(-1.6, 1.3, -12.5);
@@ -95,9 +101,10 @@ export function buildWorld(scene, roomsData, systemDefs, poiData) {
 
   // ---------- System panels ----------
   for (const s of systemDefs) {
+    // the file faces +Z; rotY turns it onto its wall (#700)
     const mat = M.panel.clone();
-    const p = box(0.08, 1.1, 1.4, mat, ...s.panel.pos);
-    p.rotation.y = 0; // pos already against wall; thin axis is x
+    const p = piece('panel', s.panel.pos, n => n === 'panel' ? mat : M[n]);
+    p.rotation.y = s.panel.rotY;
     scene.add(p);
     // little gauge strip
     const strip = box(0.02, 0.08, 1.0, new THREE.MeshBasicMaterial({ color: 0xffb367 }),
@@ -108,25 +115,15 @@ export function buildWorld(scene, roomsData, systemDefs, poiData) {
   }
 
   // Systems bay dressing: pipes and a workbench
-  for (let i = 0; i < 4; i++) {
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 5.6), M.metal);
-    pipe.rotation.z = Math.PI / 2;
-    pipe.position.set(0, 2.7 - i * 0.16, -6.8);
-    scene.add(pipe);
-  }
-  scene.add(box(1.8, 0.8, 0.7, M.metal, 2.0, 0.4, -7.4));
+  scene.add(piece('pipes'), piece('workbench'));
 
   // ---------- Quarters & hydroponics ----------
-  const bed = new THREE.Group();
-  bed.add(box(2.0, 0.35, 0.95, M.bed, -1.9, 0.28, 4.8));
-  bed.add(box(1.6, 0.12, 0.9, M.blanket, -2.05, 0.5, 4.8));
-  bed.add(box(0.4, 0.1, 0.6, M.wall, -1.2, 0.48, 4.8)); // pillow
+  const bed = piece('bed');
   scene.add(bed);
-  refs.interactables.push({ mesh: bed.children[0], type: 'bed' });
+  refs.interactables.push({ mesh: part(bed, 'bed'), type: 'bed' });
 
   // Curio shelf
-  const shelf = box(1.4, 0.06, 0.35, M.trim, 2.5, 1.7, 4.8);
-  scene.add(shelf);
+  scene.add(piece('shelf'));
   refs.curioShelf = new THREE.Group();
   refs.curioShelf.position.set(2.5, 1.82, 4.8);
   scene.add(refs.curioShelf);
@@ -134,8 +131,8 @@ export function buildWorld(scene, roomsData, systemDefs, poiData) {
   // Hydroponics tray
   const tray = new THREE.Group();
   tray.position.set(2.2, 0, 0.8);
-  tray.add(box(1.6, 0.7, 0.8, M.metal, 0, 0.35, 0));
-  tray.add(box(1.4, 0.12, 0.6, M.soil, 0, 0.76, 0));
+  const trayBody = piece('tray');
+  tray.add(trayBody);
   const growLight = new THREE.PointLight(0xd8b8ff, 2.5, 3, 2);
   growLight.position.set(2.2, 1.8, 0.8);
   scene.add(growLight);
@@ -145,30 +142,24 @@ export function buildWorld(scene, roomsData, systemDefs, poiData) {
   tray.add(plantGroup);
   refs.plantGroup = plantGroup;
   scene.add(tray);
-  refs.interactables.push({ mesh: tray.children[1], type: 'plant' });
+  refs.interactables.push({ mesh: part(trayBody, 'soil'), type: 'plant' });
 
   // ---------- Airlock ----------
-  const hatch = box(1.4, 2.0, 0.15, M.metal, 0, 1.1, 9.9);
+  const hatch = piece('hatch-inner');
   scene.add(hatch);
-  scene.add(box(1.6, 0.15, 0.3, M.trim, 0, 2.2, 9.85));
   refs.interactables.push({ mesh: hatch, type: 'airlock-inner' });
 
   // ---------- Ship exterior (visible during EVA) ----------
   const ext = new THREE.Group();
-  const body = box(W + 1, H + 1, L + 1.5, M.hullExt, 0, H / 2, cz);
-  ext.add(body);
-  ext.add(box(2.5, 1.2, 3.5, M.hullExt, 0, H + 1.2, -9));       // dorsal hump
-  const dish = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 0.1, 0.5, 16), M.sat);
-  dish.position.set(0, H + 2.2, -9); ext.add(dish);
-  for (const sx of [-1, 1]) {                                     // engine pods
-    ext.add(box(1.2, 1.2, 4, M.hullExt, sx * 4.2, H / 2, 7));
+  ext.add(piece('hull'));                                        // body, hump, dish, pods
+  for (const sx of [-1, 1]) {                                     // engine glows
     const glow = new THREE.Mesh(new THREE.CircleGeometry(0.45, 16),
       new THREE.MeshBasicMaterial({ color: 0x6fb7ff }));
     glow.position.set(sx * 4.2, H / 2, 9.05);
     ext.add(glow);
   }
   // Exterior hatch marker
-  const extHatch = box(1.4, 2.0, 0.2, M.trim, 0, 1.1, 10.9);
+  const extHatch = piece('hatch-outer');
   ext.add(extHatch);
   refs.interactables.push({ mesh: extHatch, type: 'airlock-outer' });
   scene.add(ext);
@@ -197,15 +188,12 @@ export function buildWorld(scene, roomsData, systemDefs, poiData) {
   for (const poi of poiData.pois) {
     const g = new THREE.Group();
     g.position.set(...poi.pos);
-    const core = box(0.8, 0.8, 1.4, M.sat, 0, 0, 0);
-    g.add(core);
-    for (const sx of [-1, 1]) g.add(box(2.2, 0.05, 0.9, M.solar, sx * 1.6, 0, 0));
-    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.6), M.sat);
-    ant.position.set(0, 1.0, 0); g.add(ant);
+    const sat = piece('satellite');
+    g.add(sat);
     g.rotation.set(0.4, 0.8, 0.15);
     scene.add(g);
     refs.pois[poi.id] = { group: g, def: poi };
-    refs.interactables.push({ mesh: core, type: 'poi', id: poi.id });
+    refs.interactables.push({ mesh: part(sat, 'sat'), type: 'poi', id: poi.id });
   }
 
   scene.fog = null;

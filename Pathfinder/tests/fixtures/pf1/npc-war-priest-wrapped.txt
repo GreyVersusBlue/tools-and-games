@@ -1,0 +1,53 @@
+War Priest CR 1
+Source NPC Codex pg. 44
+XP 400
+Dwarf cleric of Gorum 2
+CE Medium humanoid (dwarf)
+Init +0; Senses darkvision 60 ft.; Perception +4
+DEFENSE
+AC 15, touch 10, flat-footed 15 (+5 armor) (+4
+dodge vs. giants)
+hp 21 (2d8+9)
+Fort +5, Ref +0, Will +6; +2 vs. poison, spells,
+and spell-like abilities
+OFFENSE
+Speed 20 ft.
+Melee mwk greatsword with magic weapon +4
+(2d6+4/19–20)
+Ranged light crossbow +1 (1d8/19–20)
+Special Attacks +1 on attack rolls against
+goblinoid and orc humanoids, channel negative
+energy 3/day (DC 11, 1d6), destructive smite (+1,
+6/day)
+Spell-Like Abilities (CL 2nd; concentration +5)
+6/day—touch of chaos
+Cleric Spells Prepared (CL 2nd; concentration +5)
+1st—bane (DC 14), magic stone, magic weapon, true
+strikeD
+0 (at will)—bleed (DC 13), detect magic, detect
+poison, read magic
+D Domain spell; Domains Chaos, Destruction
+TACTICS
+Before Combat The cleric casts magic weapon.
+During Combat The cleric uses destructive smite as
+often as possible.
+Base Statistics Without magic weapon, the cleric’s
+statistics are Melee mwk greatsword +4
+(2d6+3/19–20).
+STATISTICS
+Str 15, Dex 10, Con 15, Int 8, Wis 16, Cha 10
+Base Atk +1; CMB +3; CMD 13 (17 vs. bull rush or
+trip)
+Feats Toughness
+Skills Knowledge (religion) +5, Perception +4 (+6
+to notice unusual stonework)
+Languages Common, Dwarven
+SQ aura
+Combat Gear potions of cure light wounds (2); Other
+Gear masterwork scale mail, light crossbow with 20
+bolts, masterwork greatsword, wooden unholy symbol,
+94 gp
+
+The dwarven war priest serves the god of strength,
+and uses her divine powers for the glory of war
+itself.
