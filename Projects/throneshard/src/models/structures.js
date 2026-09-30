@@ -30,7 +30,7 @@ if (typeof window !== 'undefined') initStructures();
 // Team tints are linear-space multipliers of the (light, neutral) baked albedo inside each mask region.
 const TEAM_LOOK = {
   sunward: { stone: [1.0, 0.86, 0.64], metal: [1.0, 0.6, 0.17], cloth: [0.05, 0.15, 0.07], metalness: 0.85, glow: 0x4dff7a, extra: () => M.metal(0xc9a24a, 0.35) },
-  duskward: { stone: [0.2, 0.14, 0.16], metal: [0.1, 0.06, 0.06], cloth: [0.13, 0.025, 0.02], metalness: 0.6, glow: 0xff3322, extra: () => M.flat(0x2e2226, 0.5) },
+  duskward: { stone: [0.075, 0.068, 0.088], metal: [0.14, 0.07, 0.06], cloth: [0.13, 0.025, 0.02], metalness: 0.6, glow: 0xff3322, extra: () => M.flat(0x2e2226, 0.5) },
   neutral: { stone: [0.85, 0.76, 0.6], metal: [1.0, 0.6, 0.17], cloth: [0.42, 0.14, 0.04], metalness: 0.85, glow: 0xffcc55, extra: () => M.metal(0xc9a24a, 0.35) },
   secret: { stone: [0.35, 0.35, 0.55], metal: [0.6, 0.6, 0.75], cloth: [0.16, 0.08, 0.5], metalness: 0.7, glow: 0xa070ff, extra: () => M.flat(0x3a2a6a, 0.5) },
 };

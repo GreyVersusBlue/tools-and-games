@@ -5,6 +5,8 @@ import { Fx, GEO, initGeometries, addMat, normMat, beamMat, fireMat, fresnelMat,
 import { GENERIC_EFFECTS } from './effects/generic.js';
 import { ABILITY_EFFECTS } from './effects/abilities.js';
 import { ATTACHMENTS } from './effects/attachments.js';
+import { ONDUR_LIORA_EFFECTS } from './effects/ondur_liora.js';
+import { RUNE_EFFECTS, RUNE_ATTACH } from './effects/runes.js';
 import { createProjectileVisual, projectileImpact } from './effects/projectiles.js';
 
 // VFX system — see ARCHITECTURE.md "VFX contract".
@@ -46,8 +48,8 @@ export class VFX {
       this._lights.push(l);
     }
     this.sharedMats = {};
-    this.registry = { ...GENERIC_EFFECTS, ...ABILITY_EFFECTS };
-    this.attachments = ATTACHMENTS;
+    this.registry = { ...GENERIC_EFFECTS, ...ABILITY_EFFECTS, ...ONDUR_LIORA_EFFECTS, ...RUNE_EFFECTS };
+    this.attachments = { ...ATTACHMENTS, ...RUNE_ATTACH };
     this.hookBus();
     this._ready = true;
   }
@@ -585,6 +587,11 @@ export class VFX {
       this._hitThrottle += 1;
       const p = this.unitPoint(target, 0.55);
       this.spawn('hit', { position: p, color: crit ? 0xff4422 : unit.kind === 'hero' ? 0xffd9a0 : 0xffcc88, small: unit.kind !== 'hero', source: unit });
+    });
+    bus.on('rune:picked', ({ type, rune }) => { if (rune?.pos) this.spawn('rune_pickup', { position: rune.pos.clone(), type }); });
+    bus.on('rune:activated', ({ hero, type }) => {
+      if (!hero?.alive || (this.game.isOnScreen && !this.game.isOnScreen(hero.position, 30))) return;
+      this.spawn('rune_activate', { unit: hero, type });
     });
     bus.on('ability:cast', ({ hero, ability }) => {
       this._castHero = hero; this._castFrame = this.game.frame;

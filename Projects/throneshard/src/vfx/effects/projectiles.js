@@ -30,6 +30,9 @@ const STYLES = {
   grave_frost: { glow: 0x66c8ff, size: 2.0, mesh: 'crystal', crystal: 0xbfe8ff, crystalScale: 0.35, trail: { rate: 80, color: 0xffffff, color2: 0x3a9cff, size: [0.5, 0.05], life: 0.45, frame: FRAME.FLAKE, spread: 0.3 }, core: 0xffffff, impact: 'none' },
   leaping_cold: { glow: 0x55bbff, size: 2.6, mesh: 'orb', orb: 0x88ddff, trail: { rate: 100, color: 0xeaf8ff, color2: 0x2266ff, size: [0.55, 0.05], life: 0.55, frame: FRAME.FLAKE, spread: 0.5 }, core: 0xffffff, impact: 'none' },
   final_round: { glow: 0xffa040, size: 1.6, mesh: 'bullet', streak: 0xff7a20, streakLen: 4, trail: { rate: 120, color: 0xbbb0a0, alpha: true, size: [0.3, 1.0], life: 0.7 }, core: 0xffffff, impact: 'none' },
+  // Liora: heavy rope-and-hemp arrow trailing chain links / a long pale wind arrow with a spiral and a streak
+  tether_shot: { glow: 0xe0b060, size: 1.0, mesh: 'arrow', arrowScale: 2.4, wood: 0x6a4520, tip: 0xc8a060, trail: { rate: 55, color: 0xf0d090, color2: 0x6a4420, size: [0.3, 0.12], life: 0.5, frame: FRAME.RING, spread: 0.04 }, impact: 'tether' },
+  piercing_gale: { glow: 0xfff0b8, size: 2.2, core: 0xffffff, mesh: 'arrow', arrowScale: 3.4, wood: 0xf4ecd0, tip: 0xffffff, streak: 0xf6e8b0, streakLen: 5, spiral: { rate: 90, r: 1.1, color: 0xffffff, color2: 0xf0c860, size: [0.6, 0.03], life: 0.4 }, trail: { rate: 90, color: 0xffffff, color2: 0xf0c860, size: [0.4, 0.02], life: 0.3, frame: FRAME.SPARK, spread: 0.3 }, impact: 'none' },
   throwing_knife: { glow: 0xc080ff, size: 1.6, mesh: 'dagger', trail: { rate: 90, color: 0xe0c0ff, color2: 0x6020a0, size: [0.55, 0.03], life: 0.3 }, impact: 'none' },
 };
 
@@ -63,11 +66,23 @@ function glowMat(vfx, color) {
 function buildMesh(vfx, st, g) {
   switch (st.mesh) {
     case 'arrow': {
-      const wood = cached(vfx, 'arrow_wood', () => new THREE.MeshBasicMaterial({ color: 0x7a5a3a }));
-      const tip = cached(vfx, 'arrow_tip', () => new THREE.MeshBasicMaterial({ color: 0xdde8f0 }));
+      const wc = st.wood ?? 0x7a5a3a, tc = st.tip ?? 0xdde8f0;
+      const wood = cached(vfx, 'arrow_wood' + wc, () => new THREE.MeshBasicMaterial({ color: wc }));
+      const tip = cached(vfx, 'arrow_tip' + tc, () => new THREE.MeshBasicMaterial({ color: tc }));
+      const a = new THREE.Group(); // scaled as a unit so the shaft and head keep their proportions
       const s = new THREE.Mesh(GEO.arrowShaft, wood); s.scale.set(1, 1, 1.1);
       const h = new THREE.Mesh(GEO.arrowHead, tip);
-      g.add(s, h);
+      a.add(s, h);
+      if (st.arrowScale) a.scale.setScalar(st.arrowScale);
+      g.add(a);
+      if (st.streak) {
+        // pale additive streak trailing behind the arrow
+        const m = cached(vfx, 'streak_' + st.streak, () => new THREE.MeshBasicMaterial({ color: st.streak, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+        const sm = new THREE.Mesh(GEO.streak, m);
+        sm.scale.set(4, 4, st.streakLen ?? 1.6);
+        sm.position.z = -0.4;
+        g.add(sm);
+      }
       break;
     }
     case 'bullet': {
@@ -171,6 +186,11 @@ export function createProjectileVisual(vfx, kind, opts = {}) {
   const tmp = new THREE.Vector3();
   let spikeDist = 0;
 
+  const sp = st.spiral;
+  const spO = sp ? { position: new THREE.Vector3(), life: [sp.life * 0.7, sp.life], size: sp.size, color: sp.color, color2: sp.color2, frame: FRAME.SPARK, fadeIn: 0 } : null;
+  const right = new THREE.Vector3(), upv = new THREE.Vector3();
+  let phase = 0, spAcc = 0;
+
   const update = (dt) => {
     t += dt;
     if (curtain) {
@@ -198,6 +218,20 @@ export function createProjectileVisual(vfx, kind, opts = {}) {
       }
     }
     // Linear "wave" projectiles (Flame Wave, Hush Wind) — emit across the width, perpendicular to travel
+    if (sp) {
+      // two interleaved helices around the flight axis (object +X/+Y are perpendicular to travel)
+      right.set(1, 0, 0).applyQuaternion(g.quaternion);
+      upv.set(0, 1, 0).applyQuaternion(g.quaternion);
+      spAcc += dt * sp.rate * vfx.quality;
+      const n = Math.floor(spAcc);
+      spAcc -= n;
+      for (let i = 0; i < n; i++) {
+        phase += 0.7;
+        const cs = Math.cos(phase) * sp.r, sn = Math.sin(phase) * sp.r;
+        spO.position.set(p.x + right.x * cs + upv.x * sn, p.y + right.y * cs + upv.y * sn, p.z + right.z * cs + upv.z * sn);
+        vfx.add.emit(1, spO);
+      }
+    }
     if (st.wave && hasLast) {
       const dir = tmp.subVectors(p, last);
       const len = dir.length();
@@ -277,6 +311,11 @@ export function projectileImpact(vfx, kind, pos, p) {
     case 'pierce':
       vfx.emit(14, { position: pos, speed: [3, 8], life: [0.15, 0.3], size: [0.4, 0.03], color: 0xffffff, color2: 0x88ccff, frame: FRAME.SPARK, drag: 2 });
       vfx.emit(1, { position: pos, life: 0.2, size: [2.2, 0.4], color: 0xffffff, frame: FRAME.FLARE, fadeIn: 0 });
+      return;
+    case 'tether': // rope links spill off the strike point
+      vfx.emit(8, { position: pos, spread: 0.15, speed: [2, 5], up: [1, 3], life: [0.4, 0.7], size: [0.34, 0.26], color: 0xf0d090, color2: 0x6a4420, frame: FRAME.RING, gravity: 14, rotSpeed: 6, fadeIn: 0 });
+      vfx.emit(6, { position: pos, speed: [2, 6], life: [0.12, 0.25], size: [0.35, 0.05], color: 0xffffff, color2: 0xd9a95c, frame: FRAME.SPARK, drag: 3 });
+      vfx.emit(1, { position: pos, life: 0.2, size: [1.8, 0.3], color: 0xd9a95c, frame: FRAME.FLARE, fadeIn: 0 });
       return;
     case 'boulder':
       vfx.emitAlpha(10, { position: pos, spread: 0.3, speed: [1, 3], up: [0.5, 2], life: [0.6, 1.1], size: [0.8, 2], color: 0x8a7a66, alpha: 0.6, frame: FRAME.SMOKE, rotSpeed: 1, drag: 2 });

@@ -123,7 +123,7 @@ row ranks above every other row.
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
 **The last batch of ranked work that shipped** is **the tavern set's T3, the
 cast sheet**, PR #494: rank 1, a ½ naming Fable 5.1 that ran on Sonnet 5.5
-(#756), worked on huginn. The tavern set is done (T1 in PR #483, T2 in PR
+(#760), worked on huginn. The tavern set is done (T1 in PR #483, T2 in PR
 #491). That is the line to update when your batch merges; a PR that only
 changes these files is not a batch and does not belong in it.
 **30 ranked items remain**, and **every one of them names a model.**
@@ -152,7 +152,7 @@ the same area, and the two batch together inside #382's cap. **Rank 4,
 Signal City's wiring row (¼, Opus 5.5, no gate), is cloud work and ready**,
 because its sheet merged in PR #478: a session without Blender takes it. **So
 is rank 20, the tavern's click targets (¼, Opus 5.5, no gate)**: the five
-never receive a click (HISTORY #755), and it wants no Blender.
+never receive a click (HISTORY #759), and it wants no Blender.
 Every other wiring row (ranks 3, 8, 11, 14 and 17) waits on a pack that has
 not been built.
 Below the Blender block, rank 28 (The Fracture Cycle's fourth prong) and rank
@@ -1022,7 +1022,7 @@ and #222 was closed unmerged an hour of suites later.
 | 17 | Wire the cup and food sheet in, once rank 16 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
 | 18 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
 | 19 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
-| 20 | The tavern's five click targets never receive a click: `#page` (z-index 2, the whole band) covers `#room` (z-index 0), so `poke()` in `index.html` gets no pointerdown (HISTORY #755) | The site | ¼ | Opus 5.5 |  |  | `HISTORY.md` #755 |
+| 20 | The tavern's five click targets never receive a click: `#page` (z-index 2, the whole band) covers `#room` (z-index 0), so `poke()` in `index.html` gets no pointerdown (HISTORY #759) | The site | ¼ | Opus 5.5 |  |  | `HISTORY.md` #755 |
 | 21 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
 | 22 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
 | 23 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
@@ -2301,12 +2301,24 @@ items, all waiting on a person or a GPU (see Parked). Its suite is
 A 3D lane battler Devon had built outside this repo and asked to move in on
 2026-09-30 under a name of its own (#738): fourteen heroes, three lanes, bots
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
-Its suites are `node test/data.mjs` and `node test/browser.mjs` from the
-project folder, in Site CI's matrix. Open, unranked: a preview capture for its
-card (it needs a `games.mjs` entry and a `capture-previews.mjs` recipe; the card
-shows the shard glyph until then), recorded announcer lines to replace the
-formant voice on kill streaks, and a motion check of the every-second-frame
-shadow map on moving units, on real hardware.
+Its suites are `node test/data.mjs` (916 checks) and `node test/browser.mjs`
+(14) from the project folder, in Site CI's matrix. Its first polish pass
+shipped the same day (card preview, bots, XP curve, effects, art, announcer,
+Settings; `HISTORY.md` #749 to #755). Open, unranked, all Devon's to call:
+
+- Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four
+  abilities each, talents, a scepter upgrade, an item build, voice fallback and
+  effects, with original names and kits. Not started.
+- Rift Wall has no gameplay wall: the slabs are a picture and enemies walk
+  through, against its tooltip (#755).
+- Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
+  17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
+- Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
+  a match (#751).
+- The card preview is a SwiftShader draft (#749), and the every-second-frame
+  shadow map was judged from a frame sequence, not a recording (#753); both
+  want one look on real hardware.
+- Piercing Gale's spiral and the rune auras read faint from the game camera.
 
 ## Tools/board-check
 

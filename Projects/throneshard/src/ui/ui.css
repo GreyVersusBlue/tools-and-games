@@ -713,3 +713,20 @@
 .ui-modal { zoom: var(--uz, 1); }
 /* overlay canvases stacked on the minimap (e.g. WS5 rune markers) must stay transparent */
 .hud-minimap canvas.mm-markers { background: transparent; box-shadow: none; border-color: transparent; cursor: inherit; }
+
+/* Settings / Game Menu: wide enough that both tabs fit a 1280x720 window without a scrollbar (columns, tighter rows) */
+.ui-modal.settings { width: 900px; max-width: 96vw; max-height: 97vh; }
+.ui-modal.settings .md-head { padding: 8px 16px; }
+.ui-modal.settings .md-body { padding: 8px 16px 12px; }
+.ui-modal.settings .set-tabs { margin-bottom: 6px; }
+.ui-modal.settings .set-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; align-items: start; }
+.ui-modal.settings .set-sec { margin: 10px 0 3px; }
+.ui-modal.settings .set-row { padding: 3px 0; }
+.ui-modal.settings .set-note { margin: 1px 0 3px; }
+.ui-modal.settings .kb-grid { grid-template-columns: repeat(3, 1fr); gap: 0 22px; }
+.ui-modal.settings .kb-gh { margin: 5px 0 1px; }
+.ui-modal.settings .kb-row { padding: 1px 0; font-size: 13px; }
+.ui-modal.settings .ctl-grid { grid-template-columns: repeat(3, 1fr); gap: 0 22px; }
+.ui-modal.settings .ctl-row { padding: 2px 0; font-size: 13px; }
+.ui-modal.settings .set-actions { margin-top: 8px; }
+.ui-modal.settings .kb-actions { margin-top: 6px; }

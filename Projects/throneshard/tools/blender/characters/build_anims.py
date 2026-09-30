@@ -6,6 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
 from lib import *
+import author_clips
 
 CLIPS_UAL1 = ['Idle_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Walk_Loop', 'Death01', 'Sword_Attack', 'Sword_Idle',
               'Spell_Simple_Shoot', 'Spell_Simple_Enter', 'Spell_Simple_Idle_Loop', 'Punch_Cross', 'Punch_Jab',
@@ -47,8 +48,9 @@ def main(out):
             bpy.data.objects.remove(o, do_unlink=True)
     # strip bones + their curves
     strip_bones(arm, [])
+    authored = [author_clips.author_bow(arm), author_clips.author_rifle(arm)]
     for a in bpy.data.actions:
-        a.name = a.name.split('.')[0] if a.name.split('.')[0] in CLIPS_UAL1 + CLIPS_UAL2 else a.name
+        a.name = a.name.split('.')[0] if a.name.split('.')[0] in CLIPS_UAL1 + CLIPS_UAL2 + ['Bow_Shoot', 'Rifle_Shoot'] else a.name
         cb = channelbag(a)
         if not cb:
             continue

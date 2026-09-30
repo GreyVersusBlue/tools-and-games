@@ -133,7 +133,6 @@ export class Runes {
       }
     }
     g.audio?.play?.('rune', { position: rune.pos });
-    g.vfx?.spawn?.('gold', { position: rune.pos.clone(), color: RUNE_TYPES[rune.type].color });
     g.bus.emit('rune:picked', { hero, type: rune.type, rune, bottled });
     if (!bottled) this.activate(hero, rune.type);
   }
@@ -153,13 +152,13 @@ export class Runes {
       }
       case 'haste':
         // movement speed becomes the maximum (550)
-        hero.addModifier({ ...base, id: 'rune_haste', vfxName: 'speed_boost', bonus: { get moveSpeed() { return Math.max(0, du(550) - hero.baseStats.moveSpeed); } } });
+        hero.addModifier({ ...base, id: 'rune_haste', vfxName: 'rune_haste', bonus: { get moveSpeed() { return Math.max(0, du(550) - hero.baseStats.moveSpeed); } } });
         break;
       case 'double_damage':
-        hero.addModifier({ ...base, id: 'rune_double_damage', bonus: { get damage() { return (hero.baseStats.damageMin + hero.baseStats.damageMax) / 2 + (hero.def?.primary && hero.def.primary !== 'uni' ? hero.attr(hero.def.primary) : 0); } } });
+        hero.addModifier({ ...base, id: 'rune_double_damage', vfxName: 'rune_double_damage', bonus: { get damage() { return (hero.baseStats.damageMin + hero.baseStats.damageMax) / 2 + (hero.def?.primary && hero.def.primary !== 'uni' ? hero.attr(hero.def.primary) : 0); } } });
         break;
       case 'regeneration':
-        hero.addModifier({ ...base, id: 'rune_regeneration', vfxName: 'heal',
+        hero.addModifier({ ...base, id: 'rune_regeneration', vfxName: 'rune_regeneration',
           bonus: { get hpRegen() { return 0.06 * hero.getStat('maxHp'); }, get manaRegen() { return 0.06 * hero.getStat('maxMana'); } },
           onTick(u) { if (u.hp >= u.getStat('maxHp') - 1 && u.mana >= u.getStat('maxMana') - 1) this.remaining = 0; },
           onDamageTaken(u, info) {
@@ -171,7 +170,7 @@ export class Runes {
         hero.addModifier({ ...base, id: 'rune_invisibility', invisible: true, breakOnAttack: true, breakOnCast: true, appliedFrame: g.frame });
         break;
       case 'arcane':
-        hero.addModifier({ ...base, id: 'rune_arcane', bonus: { cooldownReduction: 0.3, manaCostReduction: 0.3 } });
+        hero.addModifier({ ...base, id: 'rune_arcane', vfxName: 'rune_arcane', bonus: { cooldownReduction: 0.3, manaCostReduction: 0.3 } });
         break;
       case 'illusion':
         try { g.items?.spawnIllusions?.(hero, 2, def.duration); } catch (e) { console.warn('[runes] illusions', e); }

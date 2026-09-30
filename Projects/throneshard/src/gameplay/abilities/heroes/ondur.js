@@ -24,10 +24,8 @@ export default [
       const dir = dirTo(h.position, p);
       const from = h.position.clone().addScaledVector(dir, 1);
       const len = ab.v('length');
-      for (let d = 0; d <= len; d += 2.2) {
-        const q = from.clone().addScaledVector(dir, d);
-        g.delay(d / 60, () => fx(g, 'explosion', { position: q, radius: 1.2, color: 0xa07040, small: true }));
-      }
+      // Visual wall climbs at the same 60 units/s pace the old per-point blasts used.
+      fx(g, 'rift_wall', { position: from, direction: dir, length: len, delayPerUnit: 1 / 60 });
       for (const e of unitsOnLine(g, h, from, dir, len, ab.getRadius() * 0.5)) {
         damage(e, ab.v('damage'), 'magical', h, ab);
         stun(e, ab.v('stun'), h);
@@ -79,15 +77,15 @@ export default [
     hint: { type: 'self', teamfight: true, minEnemies: 2 },
     cast(ab) {
       const h = ab.hero, g = ab.game, r = ab.getRadius();
-      fx(g, 'shockwave', { position: h.position.clone(), radius: r, color: 0xffa040 });
-      fx(g, 'explosion', { position: h.position.clone(), radius: 3, color: 0xffa040 });
+      fx(g, 'deep_quake', { position: h.position.clone(), radius: r, color: 0xffa040 });
       const targets = enemiesIn(g, h, h.position, r).filter((u) => u.kind !== 'ward');
       const echoes = targets.reduce((n, u) => n + (u.kind === 'hero' && ab.hasScepter ? 2 : 1), 0);
       for (const e of targets) {
         damage(e, ab.v('initial'), 'magical', h, ab);
+        g.delay(Math.min(0.7, e.position.distanceTo(h.position) / (r / 0.75)), () => fx(g, 'quake_echo', { unit: e, position: e.position.clone() })); // tremor as the ring front passes
         const own = e.kind === 'hero' && ab.hasScepter ? 2 : 1;
         const n = echoes - own;
-        if (n > 0) g.delay(0.3, () => { if (e.alive) { damage(e, ab.v('echo') * n, 'magical', h, ab); fx(g, 'hit', { position: chest(e), unit: e, color: 0xffa040 }); } });
+        if (n > 0) g.delay(0.3, () => { if (e.alive) { damage(e, ab.v('echo') * n, 'magical', h, ab); fx(g, 'hit', { position: chest(e), unit: e, color: 0xffa040 }); fx(g, 'quake_echo', { unit: e, position: e.position.clone(), echo: true }); } });
       }
     },
   },

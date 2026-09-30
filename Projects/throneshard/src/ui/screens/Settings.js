@@ -45,10 +45,10 @@ export class Settings {
 }
 
 export class Modal {
-  constructor(ui, title, bodyHTML, { wide = false } = {}) {
+  constructor(ui, title, bodyHTML, { wide = false, cls = '' } = {}) {
     this.ui = ui;
     this.node = el('div', 'ui-modal-wrap', `
-      <div class="ui-modal panel-frame ${wide ? 'wide' : ''}">
+      <div class="ui-modal panel-frame ${wide ? 'wide' : ''} ${cls}">
         <div class="md-head"><span>${title}</span><button class="md-x" title="Close">✕</button></div>
         <div class="md-body">${bodyHTML}</div>
       </div>`);
@@ -107,7 +107,7 @@ function generalTab(ui) {
   const s = ui.settings;
   const q = s.get('quality');
   const slider = (k, label) => `<div class="set-row"><label>${label}</label><input type="range" min="0" max="1" step="0.01" data-k="${k}" value="${s.get(k)}"><output>${Math.round(s.get(k) * 100)}%</output></div>`;
-  return `
+  return `<div class="set-cols"><div>
     <div class="set-sec">Video</div>
     <div class="set-row"><label>Graphics Quality</label>
       <div class="seg" data-k="quality">${['low', 'medium', 'high', 'ultra'].map((x) => `<button data-v="${x}" class="${x === q ? 'on' : ''}">${x}</button>`).join('')}</div></div>
@@ -117,13 +117,15 @@ function generalTab(ui) {
     ${slider('sfx', 'Effects Volume')}
     ${slider('voice', 'Voices &amp; Announcer')}
     ${slider('music', 'Music Volume')}
+    </div><div>
     <div class="set-sec">Interface</div>
     ${toggle('damageNumbers', 'Floating combat text', s)}
     ${toggle('allDamageNumbers', 'Show all damage numbers', s)}
     ${toggle('hpText', 'Health values on hero bars', s)}
     ${toggle('edgePan', 'Camera edge panning', s)}
     ${toggle('tutorial', 'Show tutorial tips', s)}
-    <div class="set-row"><label>Tutorial progress</label><button class="btn-game dim small" data-act="tips-reset">Show all tips again</button></div>`;
+    <div class="set-row"><label>Tutorial progress</label><button class="btn-game dim small" data-act="tips-reset">Show all tips again</button></div>
+    </div></div>`;
 }
 
 export function openSettings(ui, { inGame = false, tab = 'general' } = {}) {
@@ -133,7 +135,7 @@ export function openSettings(ui, { inGame = false, tab = 'general' } = {}) {
     <div class="set-pane" data-pane="general">${generalTab(ui)}</div>
     <div class="set-pane" data-pane="controls">${controlsTab(ui)}</div>
     ${inGame ? `<div class="set-actions"><button class="btn-game" data-act="resume">Resume</button><button class="btn-game red" data-act="quit">Leave Game</button></div>` : ''}`;
-  const m = new Modal(ui, inGame ? 'Game Menu' : 'Settings', body, { wide: true });
+  const m = new Modal(ui, inGame ? 'Game Menu' : 'Settings', body, { wide: true, cls: 'settings' });
   const input = ui.game.input;
   const setTab = (t) => {
     m.node.querySelectorAll('.set-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));

@@ -74,7 +74,21 @@ const SOUNDS = {
   atk_frost: { synth: 'iceBolt', vol: 0.36, rate: 0.7, pitchVar: 0.1, max: 3, gap: 0.05 },
   atk_zap: { synth: 'zap', vol: 0.34, pitchVar: 0.15, max: 3, gap: 0.05 },
   atk_dark: { synth: 'darkBolt', vol: 0.38, pitchVar: 0.12, max: 3, gap: 0.05 },
-  // announcer (Kenney CC0 voice-overs + procedural formant voice for the kill-streak lines)
+  // announcer (Kenney CC0 voice-overs; the kill-streak lines are recorded clips from tools/scripts/audio/build_announcer_lines.py)
+  ann_first_blood: { files: ['announcer/first_blood_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_double_kill: { files: ['announcer/double_kill_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_triple_kill: { files: ['announcer/triple_kill_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_quad_kill: { files: ['announcer/quad_kill_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_massacre: { files: ['announcer/massacre_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_killing_spree: { files: ['announcer/killing_spree_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_dominating: { files: ['announcer/dominating_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_relentless: { files: ['announcer/relentless_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_unstoppable: { files: ['announcer/unstoppable_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_merciless: { files: ['announcer/merciless_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_ruthless: { files: ['announcer/ruthless_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_legendary: { files: ['announcer/legendary_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_mythic: { files: ['announcer/mythic_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
+  ann_shutdown: { files: ['announcer/shutdown_0.ogg'], vol: 0.95, bus: 'voice', max: 1, gap: 1, prio: 6 },
   ann_prepare: { files: ['announcer/prepare_0.ogg'], vol: 0.85, bus: 'voice', max: 1, gap: 1, prio: 6 },
   ann_fight: { files: ['announcer/fight_0.ogg'], vol: 0.9, bus: 'voice', max: 1, gap: 1, prio: 6 },
   ann_multi: { files: ['announcer/multi_kill_0.ogg'], vol: 0.9, bus: 'voice', max: 1, gap: 1, prio: 6 },
@@ -132,7 +146,10 @@ const MALE_FALLBACK = ['male0', 'male1', 'male2', 'male3', 'orc'];
 const FEMALE_FALLBACK = ['fem1', 'fem2', 'fem3'];
 const FEMALE_HINT = /isolde|sera|vesna|sable|liora|queen|witch|lady|priestess|archer|she\b|her\b/i;
 
-// Formant "announcer" lines (ARPAbet-ish phonemes, 1 = stressed vowel, | = word gap). See speak().
+// Length in seconds of each recorded kill-streak clip, so the announcer queue waits for it.
+const ANNOUNCER_CLIP_SECS = { first_blood: 1.0, double_kill: 0.94, triple_kill: 1.28, quad_kill: 0.78, massacre: 1.08, killing_spree: 0.96, dominating: 1.31, relentless: 0.83, unstoppable: 1.54, merciless: 1.1, ruthless: 1.7, legendary: 1.61, mythic: 1.21, shutdown: 1.42 };
+
+// Formant "announcer" lines (fallback only, used when a recorded clip has not loaded) (ARPAbet-ish phonemes, 1 = stressed vowel, | = word gap). See speak().
 const ANNOUNCER_LINES = {
   first_blood: 'F ER1 S T | B L AH1 D',
   double_kill: 'D AH1 B AH L | K IH1 L',
@@ -803,10 +820,15 @@ export class AudioSystem {
       else if (ANNOUNCER_LINES[line]) {
         const sting = ANNOUNCER_STINGS[line];
         if (sting) this.play(sting, { volume: 0.7 });
-        // the Kenney "Multi kill!" sample reinforces the bigger multi-kills
-        if (line === 'quad_kill' || line === 'massacre') setTimeout(() => this.play('ann_multi'), 1300);
-        const v = this.speak(line, t + (sting === 'first_blood' ? 0.25 : 0.12));
-        dur = (v?.dur ?? 1) + 0.5;
+        // the recorded clip comes in just under the sting; the formant voice only speaks if the clip is not decoded yet
+        const clip = SOUNDS['ann_' + line];
+        if (clip && this.buffers.get(clip.files[0]) instanceof AudioBuffer) {
+          setTimeout(() => this.play('ann_' + line), sting === 'first_blood' ? 250 : 120);
+          dur = (ANNOUNCER_CLIP_SECS[line] ?? 1.2) + 0.6;
+        } else {
+          const v = this.speak(line, t + (sting === 'first_blood' ? 0.25 : 0.12));
+          dur = (v?.dur ?? 1) + 0.5;
+        }
       } else if (SOUNDS[line]) { this.play(line); }
     } catch { /* never throw from audio */ }
     this._annBusyUntil = t + dur;
