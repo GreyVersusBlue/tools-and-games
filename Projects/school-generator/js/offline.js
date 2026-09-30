@@ -41,7 +41,7 @@
 // cached byte and start again. It is deliberately a hand-typed string: there
 // is no build step to stamp a hash into, and a revision somebody has to think
 // about once a phase is more honest than one that changes when a comment does.
-export const REV = '30.1';
+export const REV = '30.2';
 
 export const CACHE_PREFIX = 'school-generator-';
 
@@ -57,6 +57,25 @@ export const PRECACHE = [
   './manifest.webmanifest',
   './js/main.js',
   './libs/three.module.js',
+  // The Blender pack (builtin-models.js). Fifteen files, 168 KB: a school
+  // opened offline for the first time still draws its furniture from them
+  // rather than from the procedural stand-ins, and `immutable` would otherwise
+  // serve the stale copy of a file whose REV did not move.
+  './assets/models/chair-basic.glb',
+  './assets/models/chair-rocker.glb',
+  './assets/models/chair-stack.glb',
+  './assets/models/chair-task.glb',
+  './assets/models/counter.glb',
+  './assets/models/cubby.glb',
+  './assets/models/desk.glb',
+  './assets/models/labbench.glb',
+  './assets/models/locker.glb',
+  './assets/models/plant.glb',
+  './assets/models/shelf.glb',
+  './assets/models/sofa.glb',
+  './assets/models/stool.glb',
+  './assets/models/table.glb',
+  './assets/models/workstation.glb',
 ];
 
 // Caches from an older revision of this worker — the ones `activate` deletes.
