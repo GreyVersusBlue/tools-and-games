@@ -2078,22 +2078,43 @@ at ~42px and resolves `plan.outcome === "WIN"`.
 
 ### Orbital: Blender assets
 
-Ranks 26 to 28. The common plan is
+B1 and B2 shipped on 2026-09-30; B3 is the ranked row. The common plan is
 [Blender assets: the common plan](#blender-assets-the-common-plan). Orbital
 draws on a 2D canvas (`js/render.js`), every body a radial-gradient
 `glowCircle` in a colour from its `COLOR` table.
 
-**B1. The pipeline (rank 26, ¼, gate `blender`).** Orbital's own copy of
-Signal City's sprite renderer (#643): a camera straight down, a transparent
-film, one frame per body type at a size the style sheet sets from the largest
-radius a level draws at. The palette is `COLOR`. The glow stays the game's to
-draw, so a frame is the body and nothing around it.
+**B1. The pipeline. Shipped 2026-09-30** (#717 to #720). `tools/blender/` is
+Orbital's own copy of Aphelion's `common.py` at db06e5f (#643) with a sprite
+renderer in place of the glTF export, the first 2D pipeline in the repo:
+Signal City's row had not shipped, so the later 2D copies start from this one
+(#717). A camera straight down, a transparent film, Workbench with studio
+lighting, the Standard view transform and the stamp metadata off, so three
+renders hash the same (#719). `bodies.py` builds the pack, `budget.json` is
+the style sheet as data, `validate.mjs` decodes the PNG and holds every frame
+to it in Site CI. The style sheet (#718): **256 px frames on a 4-wide grid**,
+every body drawn so its outermost extent lands at 120 px, with `r` in the
+atlas the body's radius in frame pixels (planet and star 120, wormhole 116,
+rock 108, booster 100, repulse 80, black hole 62); the game scales a frame by
+`(R * view.s) / r`. The largest body a shipped level draws is the star at
+r 78, 125 screen pixels at 1080p, so the frame is drawn at about its own size
+there and scaled down everywhere smaller. The palette is `COLOR`, read from
+`render.js` as text, plus `drawBody`'s own gradient stops and stroke colours;
+nothing new (#720). The glow stays the game's to draw, so a frame is the body
+and nothing around it, at spin 0, flow 0 and dir 0. The atlas is the common
+plan's shape plus `r`: `{ "<type>": { x, y, w, h, ax, ay, r } }` in
+`assets/sprites/bodies.json`, the sheet beside it.
 
-**B2. The body sheet (rank 27, ½, gate `blender`).** Planet, star, rock,
-repulsor, black hole, wormhole and booster: the seven entries in `COLOR`.
+**B2. The body sheet. Shipped 2026-09-30** with B1. Planet, star, rock,
+repulsor, black hole, wormhole and booster: the seven entries in `COLOR`, the
+sheet 1024 x 512 at 170,695 bytes against a 256 KiB cap.
 
-**B3. Wiring the sheet (rank 28, ¼, no gate, after rank 27).** `render.js`
-draws the frame scaled to the body's radius and the existing glow over it.
+**B3. Wiring the sheet (¼, no gate, after B2).** `render.js` draws the frame
+scaled to the body's radius and the existing glow over it, rotating the frame
+where `drawBody` rotates the drawing: the black hole's rings and the wormhole's
+by `spin`, the booster by `b.dir` (its chevrons point +x in the frame, and the
+flow is a still). The frames carry alpha, so the game's blend is the
+canvas's. Load the sheet before the first frame and fail loud when it is
+missing (#646), a suite line rather than a fallback to the gradients.
 `test/browser.mjs` flies a real shot on fixed DT; it must still resolve.
 
 ## Signal City
