@@ -247,11 +247,14 @@ jobs:
           # cities' first six days with no input and then with the reference
           # hand, a child process a run: about eight minutes on three cores,
           # so this entry gets 30 minutes rather than the 20 the others get.
+          # tools/blender/validate.mjs checks the car sheet against sprites.js
+          # and budget.json (WISHLIST.md B1): no Blender, a second or two.
           - name: Signal City
             dir: Projects/signal-city
             install: Tools/board-check
             timeout: 30
             commands: |
+              node tools/blender/validate.mjs
               node test/signals.mjs
               node test/sim.mjs
               node test/scoring.mjs
