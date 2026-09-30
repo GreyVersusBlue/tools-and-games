@@ -19,6 +19,37 @@
       "lanes": [[644, 672], [818, 848]],
       "laneX": [100, 1500],
       "luminanceFloor": 14
+    },
+    "walkers": {
+      "file": "assets/tavern/walkers.webp",
+      "page": "index.html", "element": "tavern-scene", "prop": "sheet",
+      "width": 2600, "height": 2000,
+      "bytes": 163840,
+      "sheet": {
+        "types": ["traveler", "dwarf", "ranger", "rogue", "server", "patron", "child", "knight"],
+        "frames": 12, "cell": [200, 250], "ppu": 1.25, "anchor": [100, 231], "aa": "OFF", "yaw": 22
+      }
+    },
+    "table-0": {
+      "file": "assets/tavern/table-0.webp",
+      "page": "index.html", "element": "tavern-scene", "prop": "tables",
+      "width": 333, "height": 163,
+      "bytes": 12288,
+      "table": [706, 720, 92], "rect": [602, 674.0, 208, 117.76]
+    },
+    "table-1": {
+      "file": "assets/tavern/table-1.webp",
+      "page": "index.html", "element": "tavern-scene", "prop": "tables",
+      "width": 378, "height": 188,
+      "bytes": 12288,
+      "table": [1078, 786, 106], "rect": [960, 733.0, 236, 135.68]
+    },
+    "table-2": {
+      "file": "assets/tavern/table-2.webp",
+      "page": "index.html", "element": "tavern-scene", "prop": "tables",
+      "width": 416, "height": 209,
+      "bytes": 12288,
+      "table": [452, 862, 118], "rect": [322, 803.0, 260, 151.04]
     }
   }
 }

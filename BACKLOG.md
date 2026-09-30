@@ -121,9 +121,10 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Orbital's device-pixel
-playfield**: rank 31, a ¼ naming Opus 5.5, worked on huginn, and shipped in
-the PR that carries this edit. It was the last row, so no rank moved. That is the
+**The last batch of ranked work that shipped** is **the tavern set's T2, the
+walker sheet and the tables**: rank 1, a 2+ naming Fable 5.1 that ran on
+Sonnet 5.5 (#748), worked on huginn, and shipped in the PR that carries this
+edit. The row stays at rank 1, rewritten to T3, a ½, so no rank moved. That is the
 line to update when your batch merges; a PR that only changes these files is
 not a batch and does not belong in it.
 **30 ranked items remain**, and **every one of them names a model.**
@@ -1004,7 +1005,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | The tavern set and sprites from Blender, T2: the walker sheet (T1, the pipeline and the room plate, shipped in PR #483) | The site | 2+ | Fable 5.1 | blender | claude/tavern-set-t2 | [The site itself: the tavern set](#the-site-itself-the-tavern-set) |
+| 1 | The tavern set and sprites from Blender, T3: the cast sheet (T1 shipped in PR #483, T2 the walker sheet and the tables in the PR after it) | The site | ½ | Fable 5.1 | blender |  | [The site itself: the tavern set](#the-site-itself-the-tavern-set) |
 | 2 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
 | 3 | School Generator's built-in model pack: catalog props as vertex-coloured `.glb` in `assets/models/` | `Projects/school-generator` | ½ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B2 |
 | 4 | Wire the model pack in, once rank 3 has merged: catalog rows that point at a file, and the precache | `Projects/school-generator` | ¼ | Opus 5.5 |  |  | `Projects/school-generator/WISHLIST.md` B3 |
@@ -2461,31 +2462,29 @@ canvas keeps its loop, its clicks, its cover-fit framing, its reduced-motion
 frame and its fire. Budget: 0.5 to 0.7 MB of images on the page, against the
 850 KB the card previews already load.
 
-**T1 shipped in PR #483** (2026-09-30): the pipeline in
-`Tools/board-check/blender/`, `assets/tavern/room.webp` and `paintRoom()` wired
-with its procedural fallback. The record is `HISTORY.md` #727 to #734. What T2
-and T3 need from it:
+**T1 shipped in PR #483 and T2 in the PR that carries this edit** (2026-09-30).
+The records are `HISTORY.md` #727 to #734 and #743 to #748. What T3 needs:
 
 - The plate covers room x -200..1800 and y -200..1100 at 3200 by 1800, so its
-  pixels are not square (#730).
-- The camera distance is 19.5, pinned by the 0.28 tabletop ellipse (#731).
-- The three tables are still in the plate. `plateTable()` in `index.html`
-  re-lays them in the depth sort until T2 moves them to an alpha sheet and
-  re-renders the plate without them (#732). T2 therefore re-renders
-  `room.webp` on huginn, about 32 minutes at 128 samples.
+  pixels are not square (#730). The camera distance is 19.5 (#731).
+- The tables are out of the plate: `table-0..2.webp` are alpha crops and the
+  plate was re-rendered without them, their shadow kept (#745). Re-rendering
+  the plate is `node blender/run.mjs tavern -- --samples 128`, about 29
+  minutes on huginn; `--plate-only` and `--tables-only` run half.
+- The walker sheet is `walkers.webp`, 139,488 bytes of the 160 KB, at 1.25 px a
+  room unit with no anti-aliasing (#743); `walkers.py` is the rig (#744) and
+  its `Rig` class, `path()` and `key()` are what a cast rig reuses. The page
+  now carries about 0.42 MB of tavern images (plate 68 KB, tables 21 KB,
+  walkers 139 KB, and `cast.webp` to come at up to 100 KB), under the row's
+  0.5 to 0.7 MB.
 - `budget.json` needs a `plates` entry for every new sheet, or `validate.mjs`
-  fails the file as a stray. `node blender/validate.mjs` runs 9 assertions in
-  Site CI and 21 with `--rendered`.
-- huginn renders one thing at a time, and `run.mjs` waits for the last one.
-
-**T2. The walker sheet (1).** Eight types from `TYPE` on a hand-built
-armature with the same two-bone limbs, keyed from `drawPerson()`'s own sine
-formulas, 12 frames a cycle plus a standing frame, Workbench flat black on
-alpha at a slight three-quarter turn. `assets/tavern/walkers.webp`, lossless,
-cap 160 KB. `drawPerson()` takes the frame from `phase`; the rim pass tints
-the sprite toward the fire and the black pass follows, as today. The three
-tables leave the plate for an alpha sheet so the depth sort at
-`index.html:1772` still puts a far walker behind them.
+  fails the file as a stray. It runs 42 assertions in Site CI and 54 with
+  `--rendered`, and holds a `sheet` cell by cell (#747).
+- The page's loaders are all or nothing with a vector fallback (#746), and
+  `walkers` and `tables` are taken names on the element (the arrays of people
+  and tables): the sheet is `el.sheet`, the crops `el.tableImgs`.
+- huginn renders one thing at a time, and `run.mjs` waits for the last one. A
+  shell loop that waits on `pgrep -f blender` matches its own command line.
 
 **T3. The cast sheet (½).** Seated patrons (four hats, two foods, the drink
 cycle), the dog, the cat's sit and walk, the barkeep's wipe, pour and idle.
@@ -2497,9 +2496,11 @@ night wash stay canvas; `landing.html`'s seal is its own thing; the board's
 share image `assets/og/guild-board.png` is re-shot after T3 if it shows the
 room.
 
-Still owed from T1: the five click boxes were not re-checked at three widths,
-and the plate was not looked at in a browser with a real GPU. T3 re-checks the
-clicks; the GPU look goes with whichever increment is next to touch the plate.
+Still owed: the five click boxes were not re-checked at three widths, and the
+plate, the walker sheet and the tables were not looked at in a browser with a
+real GPU (the sprites' stepped edges at a device pixel ratio of 2 are the thing
+to look at, #743). T3 re-checks the clicks; the GPU look goes with whichever
+increment is next to touch the plate.
 
 ## Questions for Devon
 

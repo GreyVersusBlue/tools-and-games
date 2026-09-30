@@ -13,6 +13,12 @@
 //     where a #0c0803 silhouette would stop reading against the floor
 //   - the page budget.json names for a plate (index.html) does not decode it
 //     into its element, or logs an error or asks for anything offsite
+//   - the walker sheet (a plate with a `sheet`): a cell with no figure in it,
+//     a figure that touches its cell's edge, feet that are not at the
+//     anchor, or a row order, cell size, anchor or ppu that index.html's WALK
+//     does not share (and TYPE's keys that WALK's types are not)
+//   - a table crop with nothing in it, or whose rect index.html's TABLEIMG
+//     does not share
 //   - a file under assets/tavern/ that budget.json does not name
 //   - the camera's distance does not flatten table 0's top to the 0.28 the
 //     canvas draws it at (budget.json `calibration.tabletop`)
@@ -100,6 +106,37 @@ async function probe({ url, lanes, markers, window, blobs = [] }) {
   return { w, h, lanes: laneOut, markers: markerOut, blobs: blobOut };
 }
 
+// Runs inside Chromium. The opaque pixels' bounds (alpha over 8) in each
+// cw by ch cell of an image, row by row, and of the whole image when cw is 0.
+async function cells({ url, cw, ch, rows: want }) {
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, w, h).data;
+  const cols = cw ? Math.floor(w / cw) : 1, rows = want || (cw ? Math.floor(h / ch) : 1);
+  const W = cw || w, H = ch || h;
+  const out = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let n = 0, x0 = W, x1 = -1, y0 = H, y1 = -1;
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++)
+          if (((r * H + y) * w + c * W + x) * 4 + 3 < px.length && px[((r * H + y) * w + c * W + x) * 4 + 3] > 8) {
+            n++;
+            if (x < x0) x0 = x; if (x > x1) x1 = x;
+            if (y < y0) y0 = y; if (y > y1) y1 = y;
+          }
+      out.push({ r, c, n, x0, x1, y0, y1 });
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- run
 
 const server = await serve(PORT);
@@ -149,16 +186,19 @@ try {
         await board.goto(`http://127.0.0.1:${PORT}/${plate.page}`, { waitUntil: 'load' });
         let drawn = null;
         for (let i = 0; i < 40 && !drawn; i++) {
-          drawn = await board.evaluate(sel => {
+          drawn = await board.evaluate((sel, prop) => {
             const el = document.querySelector(sel);
-            return el && el.plate ? `${el.plate.naturalWidth}x${el.plate.naturalHeight}` : null;
-          }, plate.element);
+            const v = el && el[prop];
+            if (!v) return null;
+            const im = v.img || (Array.isArray(v) ? v[0] : v);
+            return `${im.naturalWidth}x${im.naturalHeight}`;
+          }, plate.element, plate.prop || 'plate');
           if (!drawn) await new Promise(res => setTimeout(res, 250));
         }
         // decoded at all, not at what size: the size is the check above's
         ok(drawn !== null,
-          `${name}: ${plate.page}'s <${plate.element}> decodes the plate and paints with it`,
-          drawn ? `decoded ${drawn}` : 'its .plate never set in 10 s, so the procedural room is what shows');
+          `${name}: ${plate.page}'s <${plate.element}> decodes it (.${plate.prop || 'plate'}) and paints with it`,
+          drawn ? `decoded ${drawn}` : `its .${plate.prop || 'plate'} never set in 10 s, so the vector drawing is what shows`);
         ok(!board.__errs.length && !board.__blocked.length && !board.__shimmed.length,
           `${name}: ${plate.page} loads with no errors and nothing offsite`,
           [...board.__errs, ...board.__blocked, ...board.__shimmed].join('; '));
@@ -167,6 +207,47 @@ try {
       }
     }
   }
+
+  // ---- the walker sheet and the table crops, cell by cell
+  const html = fs.readFileSync(path.join(SITE, 'index.html'), 'utf8');
+  for (const [name, plate] of Object.entries(budget.plates)) {
+    if (!plate.sheet || !fs.existsSync(path.join(SITE, plate.file))) continue;
+    const sh = plate.sheet, [cw, ch] = sh.cell, cols = sh.frames + 1;
+    ok(plate.width === cols * cw && plate.height === sh.types.length * ch,
+      `${name}: ${plate.width}x${plate.height} is ${cols} columns by ${sh.types.length} rows of ${cw}x${ch} cells`);
+    const got = await page.evaluate(cells, { url: `/${rel(plate.file)}`, cw, ch, rows: sh.types.length });
+    const empty = got.filter(c => c.n === 0).map(c => `${sh.types[c.r]}[${c.c}]`);
+    ok(empty.length === 0, `${name}: every cell has a figure in it`, empty.join(', '));
+    const edge = got.filter(c => c.n && (c.x0 === 0 || c.y0 === 0 || c.x1 === cw - 1 || c.y1 === ch - 1)).map(c => `${sh.types[c.r]}[${c.c}]`);
+    ok(edge.length === 0, `${name}: no figure touches its cell's edge`, edge.join(', '));
+    // the lowest pixel stands on the anchor row: up to 12 px above it at the
+    // walk's highest bob (both feet off the floor, drawPerson()'s own
+    // |sin| bob and swing), and a boot's sole a few below
+    const off = got.filter(c => c.n && (c.y1 < sh.anchor[1] - 12 || c.y1 > sh.anchor[1] + 6))
+      .map(c => `${sh.types[c.r]}[${c.c}] at ${c.y1}`);
+    ok(off.length === 0, `${name}: feet are on the anchor row ${sh.anchor[1]} in every cell`, off.join(', '));
+    // the page's WALK is the same sheet
+    const walk = html.match(/var WALK = \{([^}]*)\}/);
+    const w = walk ? walk[1] : '';
+    const num = k => { const m = w.match(new RegExp(k + ':\\s*\\[?\\s*([\\d.]+)(?:\\s*,\\s*([\\d.]+))?')); return m ? m.slice(1).filter(Boolean).map(Number) : null; };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    ok(same(num('cell'), sh.cell) && same(num('anchor'), sh.anchor) && same(num('ppu'), [sh.ppu]) && same(num('frames'), [sh.frames]),
+      `${name}: index.html's WALK has budget.json's cell, anchor, ppu and frames`, w.replace(/\s+/g, ' '));
+    const types = (w.match(/types:\s*\[([^\]]*)\]/) || [, ''])[1].match(/"(\w+)"/g) || [];
+    ok(same(types.map(t => t.replace(/"/g, '')), sh.types), `${name}: WALK's types are budget.json's, in row order`, types.join(','));
+    const tbl = html.match(/var TYPE = \{([\s\S]*?)\n  \};/);
+    const keys = tbl ? [...tbl[1].matchAll(/^\s{4}(\w+):/gm)].map(m => m[1]) : [];
+    ok(same([...keys].sort(), [...sh.types].sort()), `${name}: every key of the page's TYPE has a row, and every row a key`, keys.join(','));
+  }
+  for (const [name, plate] of Object.entries(budget.plates)) {
+    if (!plate.rect || !fs.existsSync(path.join(SITE, plate.file))) continue;
+    const got = (await page.evaluate(cells, { url: `/${rel(plate.file)}`, cw: 0, ch: 0 }))[0];
+    ok(got.n > plate.width * plate.height * 0.1, `${name}: the crop has a table in it`, `${got.n} opaque px`);
+    const T = html.match(new RegExp(`src: "${plate.file.replace(/[.]/g, '\\.')}", x: ([\\d.]+), y: ([\\d.]+), w: ([\\d.]+), h: ([\\d.]+), at: \\[([\\d, ]+)\\]`));
+    ok(T && same3(T.slice(1, 5).map(Number), plate.rect) && same3(T[5].split(',').map(Number), plate.table),
+      `${name}: index.html's TABLEIMG has budget.json's rect and table`, T ? T.slice(1).join(' ') : 'no TABLEIMG entry for it');
+  }
+  function same3(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
   // ---- nothing unnamed beside them
   const dir = path.join(SITE, 'assets', 'tavern');

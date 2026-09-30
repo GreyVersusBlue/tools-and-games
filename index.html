@@ -635,6 +635,21 @@
   // in it, lit by a fire that is not; everything that moves or glows stays
   // canvas and goes on top.
   var PLATE = { src: "assets/tavern/room.webp", x: -200, y: -200, w: 2000, h: 1300 };
+  // The walker sheet: one row a TYPE in this order, WALK.frames walk frames
+  // and then the standing frame, each in a cell of WALK.cell pixels with the
+  // feet at WALK.anchor, at WALK.ppu pixels a room unit. Blender's
+  // (Tools/board-check/blender/walkers.py); budget.json holds the same numbers
+  // and validate.mjs holds the two to each other.
+  var WALK = { src: "assets/tavern/walkers.webp", frames: 12, cell: [200, 250], anchor: [100, 231], ppu: 1.25,
+    types: ["traveler", "dwarf", "ranger", "rogue", "server", "patron", "child", "knight"] };
+  // The tables, cut out of the plate's own frame (3200 by 1800 over PLATE's
+  // rect): x, y, w, h in room units, as Blender cropped them, and the table
+  // each one is (x, y, r) so paintTable() can find it.
+  var TABLEIMG = [
+    { src: "assets/tavern/table-0.webp", x: 602, y: 674, w: 208, h: 117.76, at: [706, 720, 92] },
+    { src: "assets/tavern/table-1.webp", x: 960, y: 733, w: 236, h: 135.68, at: [1078, 786, 106] },
+    { src: "assets/tavern/table-2.webp", x: 322, y: 803, w: 260, h: 151.04, at: [452, 862, 118] }
+  ];
 
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function pick(a) { return a[(Math.random() * a.length) | 0]; }
@@ -730,7 +745,31 @@
     knight:   { h: 1.04, wide: 1.18, sword: 1, pauldron: 1, helm: 1 }
   };
 
-  function drawPerson(ctx, p, t) {
+  // A walker from the sheet: the frame the phase is at, or the standing frame,
+  // at the feet. `rim` is the alpha of the firelit pass (the tinted copy of
+  // the sheet), or 0 for the black pass. Standing adds drawPerson()'s own idle
+  // bob and lean from the clock, since the sheet's standing frame has neither.
+  function drawSprite(ctx, p, t, sp, rim) {
+    var row = WALK.types.indexOf(p.type);
+    if (row < 0) row = WALK.types.indexOf("patron");
+    var n = WALK.frames, col = n;
+    if (p.moving) {
+      col = Math.round((((p.phase % 6.283185) + 6.283185) % 6.283185) / 6.283185 * n) % n;
+    } else {
+      var u = (TYPE[p.type] || TYPE.patron).h;
+      ctx.translate(0, -Math.sin(t * 1.2 + p.seed) * 0.8 * u);
+      ctx.rotate(Math.sin(t * 0.7 + p.seed) * 0.02);
+    }
+    var cw = WALK.cell[0], ch = WALK.cell[1], r = WALK.ppu;
+    ctx.globalAlpha = rim || 1;
+    ctx.drawImage(rim ? sp.tint : sp.img, col * cw, row * ch, cw, ch,
+      -WALK.anchor[0] / r, -WALK.anchor[1] / r, cw / r, ch / r);
+  }
+
+  // rim: alpha of the firelit pass when a sheet draws, 0 for the black one;
+  // sp: the loaded sheet, or null for the vector figure below
+  function drawPerson(ctx, p, t, sp, rim) {
+    if (sp) { drawSprite(ctx, p, t, sp, rim); return; }
     var k = TYPE[p.type] || TYPE.patron;
     var H = 150 * k.h;
     var u = H / 150;
@@ -1190,6 +1229,7 @@
     this.build();
     this.resize();
     this.loadPlate();
+    this.loadSprites();
 
     this._ro = new ResizeObserver(function () { el.resize(); });
     this._ro.observe(el);
@@ -1296,6 +1336,33 @@
     img.src = PLATE.src;
     img.decode().then(function () {
       el.plate = img;
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+  };
+
+  // The sheet and the tables load the way the plate does: null until every
+  // image has decoded, and for good if one fails, so the page keeps the
+  // vector figures and tables rather than draw half of either. The firelit
+  // pass draws a copy of the sheet filled with the rim colour, made once here
+  // (source-in keeps the alpha and swaps the colour), because a sprite cannot
+  // be filled with a fillStyle the way a path is.
+  TavernScene.prototype.loadSprites = function () {
+    var el = this;
+    this.sheet = null; this.tableImgs = null;
+    function load(src) { var im = new Image(); im.src = src; return im.decode().then(function () { return im; }); }
+    load(WALK.src).then(function (img) {
+      var tint = document.createElement("canvas");
+      tint.width = img.naturalWidth; tint.height = img.naturalHeight;
+      var c = tint.getContext("2d");
+      c.drawImage(img, 0, 0);
+      c.globalCompositeOperation = "source-in";
+      c.fillStyle = "rgb(255,148,62)";
+      c.fillRect(0, 0, tint.width, tint.height);
+      el.sheet = { img: img, tint: tint };
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+    Promise.all(TABLEIMG.map(function (t) { return load(t.src); })).then(function (imgs) {
+      el.tableImgs = imgs;
       if (el.hasAttribute("still") || el.reduce) el.frame(0);
     }, function () {});
   };
@@ -1469,7 +1536,7 @@
   };
 
   TavernScene.prototype.paintTable = function (ctx, tb) {
-    if (this.plate) { this.plateTable(ctx, tb); return; }
+    if (this.tableImgs) { this.spriteTable(ctx, tb); return; }
     ctx.save();
     ctx.translate(tb.x, tb.y);
     ctx.fillStyle = "#0d0904";
@@ -1493,25 +1560,19 @@
     ctx.restore();
   };
 
-  // With the plate up, the tables are already in it. The depth sort still
-  // calls paintTable() in each table's turn, and this lays the plate's own
-  // table back over whatever was drawn since (a walker behind it, the seated
-  // patrons' legs), clipped to the table's shape: its top and rim, the
-  // tankards, the post and the foot, as tavern.py builds them. The same
-  // pixels as the plate underneath, so nothing can misregister. T2 moves the
-  // tables to their own sheet and this goes.
-  TavernScene.prototype.plateTable = function (ctx, tb) {
-    var r = tb.r, x0 = tb.x - r - 4, y0 = tb.y - r * 0.42, w = 2 * r + 8, h = r * 1.1;
-    var img = this.plate, kx = img.naturalWidth / PLATE.w, ky = img.naturalHeight / PLATE.h;
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(tb.x, tb.y - r * 0.06, r + 2, r * 0.32, 0, 0, 6.284);        // top and rim
-    ctx.rect(tb.x - r * 0.16, tb.y - r * 0.38, r * 0.4, r * 0.3);            // tankards
-    ctx.rect(tb.x - r * 0.13, tb.y, r * 0.26, r * 0.52);                     // post
-    ctx.ellipse(tb.x, tb.y + r * 0.53, r * 0.52, r * 0.17, 0, 0, 6.284);     // foot
-    ctx.clip();
-    ctx.drawImage(img, (x0 - PLATE.x) * kx, (y0 - PLATE.y) * ky, w * kx, h * ky, x0, y0, w, h);
-    ctx.restore();
+  // The table's own alpha crop, at the pixels Blender cut it from, so it
+  // lands on the plate's floor (and its shadow) without a seam and a walker
+  // drawn before it in the depth sort goes behind it.
+  TavernScene.prototype.spriteTable = function (ctx, tb) {
+    for (var i = 0; i < TABLEIMG.length; i++) {
+      var T = TABLEIMG[i];
+      if (T.at[0] !== tb.x || T.at[1] !== tb.y) continue;
+      var img = this.tableImgs[i], kx = 3200 / PLATE.w, ky = 1800 / PLATE.h;
+      // Blender cut it at a whole plate pixel, so it is drawn from that pixel
+      ctx.drawImage(img, Math.round((T.x - PLATE.x) * kx) / kx + PLATE.x, Math.round((T.y - PLATE.y) * ky) / ky + PLATE.y,
+        img.naturalWidth / kx, img.naturalHeight / ky);
+      return;
+    }
   };
 
   /* ---------------- fire ---------------- */
@@ -1791,15 +1852,16 @@
       var ln = Math.hypot(lx, ly) || 1;
       var lit = clamp(1 - ln / 1150, 0.12, 1) * (0.72 + self.f * 0.36);
       ctx.save();
-      PAINT = "rgba(255,148,62," + (0.42 * clamp(lit, 0, 1)).toFixed(3) + ")";
+      var rim = 0.42 * clamp(lit, 0, 1);
+      PAINT = "rgba(255,148,62," + rim.toFixed(3) + ")";
       ctx.translate(p.x + (lx / ln) * (2.8 + self.f * 1.4) * s, p.y + (ly / ln) * 1.6 * s);
       ctx.scale(s * (p.dir < 0 ? -1 : 1), s);
-      drawPerson(ctx, p, t);
+      drawPerson(ctx, p, t, self.sheet, rim);
       ctx.restore();
       PAINT = DARK;
       ctx.translate(p.x, p.y);
       ctx.scale(s * (p.dir < 0 ? -1 : 1), s);
-      drawPerson(ctx, p, t);
+      drawPerson(ctx, p, t, self.sheet, 0);
       ctx.restore();
     });
 
