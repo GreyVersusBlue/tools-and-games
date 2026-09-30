@@ -146,6 +146,34 @@ async function answering(page, accept, fn) {
   return seen;
 }
 
+/* The atlas as it is on disk, read here and not out of the page, so a frame the
+   game draws is held to the committed file and not to the game's copy of it. */
+const ATLAS = JSON.parse(fs.readFileSync(path.join(HERE, '../assets/sprites/bodies.json'), 'utf8'));
+const TAU = Math.PI * 2;
+const sameAngle = (a, b) => { const d = (((a - b) % TAU) + TAU) % TAU; return Math.min(d, TAU - d) < 1e-6; };
+
+/** Draw a shipped level's bodies once, at clock `ms`, and return what the
+    canvas was asked for: every drawImage with the transform it ran under, and
+    every glowCircle, in call order. It calls drawBody the way frame() does
+    rather than waiting on a frame, so the log is one pass and the clock is the
+    one named here. */
+const drawn = (page, gi, ms) => page.evaluate(([gi, ms]) => {
+  loadLevel(gi);
+  const log = [], di = ctx.drawImage, gc = glowCircle;
+  ctx.drawImage = function (img, sx, sy, sw, sh, dx, dy, dw, dh) {
+    const m = ctx.getTransform();
+    log.push({ what: 'frame', sheet: img === SPRITES.img, n: arguments.length,
+      src: [sx, sy, sw, sh], dst: [dx, dy, dw, dh], at: [m.e, m.f], turn: Math.atan2(m.b, m.a) });
+    return di.apply(ctx, arguments);
+  };
+  glowCircle = function (x, y, r) { log.push({ what: 'glow', x, y, r }); return gc.apply(null, arguments); };
+  const posed = OrbitalPhysics.posBodies(bodies, 0);
+  try { for (const b of posed) drawBody(b, ms); }
+  finally { delete ctx.drawImage; glowCircle = gc; }
+  return { log, view, reduced, name: L.name,
+    bodies: posed.map(b => ({ type: b.type, x: b.x, y: b.y, r: b.r, dir: b.dir })) };
+}, [gi, ms]);
+
 const srv = await serve(PORT);
 const browser = await launch();
 let page;
@@ -351,6 +379,77 @@ try {
     await shot(page, 'wiped');
   });
 
+  await section('The body sheet is what draws a body', async () => {
+    await boot(page, null);
+    await waitFor(page, () => SPRITES.atlas !== null, { timeout: 10000 });
+    const sheet = await page.evaluate(() => ({
+      w: SPRITES.img.naturalWidth, h: SPRITES.img.naturalHeight,
+      frames: Object.keys(SPRITES.atlas).sort().join(' '), types: Object.keys(COLOR).sort().join(' '),
+    }));
+    t.ok(sheet.w === 1024 && sheet.h === 512, 'the sheet is loaded', `${sheet.w} x ${sheet.h}`);
+    t.ok(sheet.frames === Object.keys(ATLAS).sort().join(' ') && sheet.frames === sheet.types,
+      'and its atlas has a frame for every body type', sheet.frames);
+
+    // The Gauntlet (star, planet, repulse, rock) and Deep Field (black hole,
+    // planet, booster, two wormholes) between them hold all seven types.
+    const CLOCK = 1234;
+    const seen = new Set();
+    let frames = 0, bodies = 0, fromSheet = true, boxed = true, sized = true, placed = true;
+    let turned = true, glowLast = true, holeFirst = null, detail = '';
+    for (const gi of [9, 21]) {
+      const d = await drawn(page, gi, CLOCK);
+      const spin = d.reduced ? 0 : CLOCK * 0.001;
+      const draws = d.log.filter(e => e.what === 'frame');
+      frames += draws.length; bodies += d.bodies.length;
+      d.bodies.forEach((b, i) => {
+        const e = draws[i], f = ATLAS[b.type];
+        if (!e) return;
+        seen.add(b.type);
+        const say = why => { if (!detail) detail = `${d.name}, ${b.type}: ${why}`; };
+        if (!e.sheet || e.n !== 9) { fromSheet = false; say('not a nine-argument drawImage of the sheet'); }
+        if (e.src.join() !== [f.x, f.y, f.w, f.h].join()) { boxed = false; say(`source ${e.src.join()}`); }
+        // (b.r * view.s) / r, #718: the frame's r lands on the body's radius.
+        const R = e.dst[2] / f.w * f.r;
+        if (Math.abs(R - b.r * d.view.s) > 1e-6 || Math.abs(e.dst[2] / f.w - e.dst[3] / f.h) > 1e-9) {
+          sized = false; say(`radius ${R.toFixed(3)} against ${(b.r * d.view.s).toFixed(3)}`);
+        }
+        // About the anchor: the frame's (ax, ay) sits on the body's centre.
+        const k = e.dst[2] / f.w;
+        const cx = d.view.ox + b.x * d.view.s, cy = d.view.oy + b.y * d.view.s;
+        if (Math.hypot(e.at[0] - cx, e.at[1] - cy) > 1e-6 ||
+            Math.abs(e.dst[0] + f.ax * k) > 1e-6 || Math.abs(e.dst[1] + f.ay * k) > 1e-6) {
+          placed = false;
+          say(`origin ${e.at.map(v => v.toFixed(2)).join()} against ${cx.toFixed(2)},${cy.toFixed(2)}, ` +
+            `corner ${e.dst[0].toFixed(2)},${e.dst[1].toFixed(2)} against ${(-f.ax * k).toFixed(2)},${(-f.ay * k).toFixed(2)}`);
+        }
+        // drawBody's own turns before the sheet: the accretion rings at twice
+        // the clock, the wormhole's dashes at three times, the booster along dir.
+        const want = b.type === 'blackhole' ? spin * 2 : b.type === 'wormhole' ? spin * 3
+                   : b.type === 'booster' ? b.dir : 0;
+        if (!sameAngle(e.turn, want)) { turned = false; say(`turned ${e.turn.toFixed(4)} against ${want.toFixed(4)}`); }
+        // Glow over the frame, the black hole's under it (#736).
+        const at = d.log.indexOf(e);
+        const glow = d.log.findIndex(g => g.what === 'glow' && g.x === b.x && g.y === b.y && g.r === b.r);
+        if (b.type === 'blackhole') holeFirst = glow >= 0 && glow < at;
+        else if (!(glow > at)) { glowLast = false; say(`glow at call ${glow}, frame at ${at}`); }
+      });
+    }
+    t.ok(frames === bodies && bodies === 9, 'every body in two shipped levels is one drawImage',
+      `${frames} frames for ${bodies} bodies`);
+    t.ok(seen.size === 7, 'and the two levels cover all seven types', [...seen].join(' '));
+    t.ok(fromSheet, 'each one is a frame cut from the sheet', detail);
+    t.ok(boxed, 'from its own box in the atlas on disk', detail);
+    t.ok(sized, 'scaled so the frame\'s r lands on the body\'s radius', detail);
+    t.ok(placed, 'with its anchor on the body\'s centre', detail);
+    t.ok(turned, 'turned by the clock or by dir where the drawing used to turn', detail);
+    t.ok(glowLast, 'with the glow drawn over it', detail);
+    t.ok(holeFirst === true, 'except the black hole, whose glow stays behind', `glow first: ${holeFirst}`);
+    await begin(page);
+    await page.evaluate(() => loadLevel(21));
+    await new Promise(r => setTimeout(r, 1500));
+    await shot(page, 'bodies');
+  });
+
   await section('Clean', async () => {
     t.ok(page.__errs.length === 0, 'no page or console errors', page.__errs.slice(0, 3).join(' | '));
     const offsite = [...new Set(page.__blocked)];
@@ -360,6 +459,60 @@ try {
     // two families under Projects/orbital/fonts/, so this is empty too.
     const shimmed = [...new Set(page.__shimmed)];
     t.ok(shimmed.length === 0, 'and nothing was served by the font shim', shimmed.slice(0, 3).join(' | '));
+  });
+
+  // After Clean, because this one is supposed to put an error on the console.
+  await section('A sheet that will not load stops the game and says so', async () => {
+    // The real loader and the real failure path against a real 404, run a
+    // second time on a page whose own sheet loaded. The loop is already
+    // running here, so the boot order is the next section's.
+    await boot(page, null);
+    await waitFor(page, () => SPRITES.atlas !== null, { timeout: 10000 });
+    const errsBefore = page.__errs.length;
+    await page.evaluate(() => { SPRITES.src = 'assets/sprites/missing'; return startFrames(); });
+    const s = await page.evaluate(() => {
+      const el = document.getElementById('linkErr');
+      return { hidden: el.hidden, text: el.textContent,
+        intro: document.getElementById('introScrim').classList.contains('show'),
+        begin: document.getElementById('btnStart').disabled };
+    });
+    t.ok(!s.hidden && /assets\/sprites\/missing\.(png|json)/.test(s.text),
+      'the intro card names the file that did not load', s.text);
+    t.ok(s.intro && s.begin, 'and its Begin button is off', `intro ${s.intro}, disabled ${s.begin}`);
+    const said = page.__errs.slice(errsBefore).filter(e => /Orbital: assets\/sprites\/missing/.test(e));
+    t.ok(said.length === 1, 'the console gets the same reason once', page.__errs.slice(errsBefore).join(' | ').slice(0, 200));
+    await shot(page, 'no-sheet');
+  });
+
+  await section('No frame is drawn before the sheet arrives', async () => {
+    // A level with bodies in the link, so a frame drawn early would have
+    // something to draw, and the atlas held back by hand so "early" is not a
+    // race: the fetch waits on __release() and every requestAnimationFrame is
+    // counted. Both engines take an init script, under two names.
+    const code = await page.evaluate(() => OrbitalCode.encode(LEVELS[9]));
+    const hold = () => {
+      let release;
+      const gate = new Promise(r => { release = r; });
+      const f = window.fetch.bind(window), raf = window.requestAnimationFrame.bind(window);
+      window.__release = release; window.__rafs = 0;
+      window.fetch = (u, o) => /bodies\.json/.test(String(u)) ? gate.then(() => f(u, o)) : f(u, o);
+      window.requestAnimationFrame = cb => { window.__rafs++; return raf(cb); };
+    };
+    if (page.evaluateOnNewDocument) await page.evaluateOnNewDocument(hold);
+    else await page.addInitScript(hold);
+    const errsBefore = page.__errs.length;
+    await page.goto(BASE + PAGE_URL + '#l=' + code, { waitUntil: 'load', timeout: 45000 });
+    await page.reload({ waitUntil: 'load', timeout: 45000 });
+    await page.waitForSelector('#btnStart');
+    const held = await page.evaluate(() =>
+      ({ bodies: bodies.length, atlas: SPRITES.atlas !== null, rafs: window.__rafs }));
+    t.ok(held.bodies === 4, 'the linked level is up, with bodies to draw', `${held.bodies} bodies`);
+    t.ok(!held.atlas && held.rafs === 0, 'and with the atlas held back no frame has been asked for',
+      `atlas ${held.atlas}, ${held.rafs} requestAnimationFrame calls`);
+    await page.evaluate(() => window.__release());
+    await waitFor(page, () => SPRITES.atlas !== null && window.__rafs > 1, { timeout: 10000 });
+    t.ok(page.__errs.length === errsBefore, 'the loop starts when it arrives, with no error on the way',
+      page.__errs.slice(errsBefore, errsBefore + 3).join(' | '));
   });
 } catch (err) {
   failures++;
