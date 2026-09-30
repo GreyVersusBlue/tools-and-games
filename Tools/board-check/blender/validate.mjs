@@ -17,6 +17,11 @@
 //     a figure that touches its cell's edge, feet that are not at the
 //     anchor, or a row order, cell size, anchor or ppu that index.html's WALK
 //     does not share (and TYPE's keys that WALK's types are not)
+//   - the cast sheet (a plate whose `sheet` has `rows`): a cell a row has with
+//     nothing in it, anything past a row's last frame, a figure that touches
+//     its cell's edge, feet off the anchor row, an `ax` outside the figure, a
+//     CASTSHEET in index.html that differs from budget.json's, or a hat, food,
+//     dog, cat or barkeep row the page can ask for that the sheet lacks
 //   - a table crop with nothing in it, or whose rect index.html's TABLEIMG
 //     does not share
 //   - a file under assets/tavern/ that budget.json does not name
@@ -211,7 +216,7 @@ try {
   // ---- the walker sheet and the table crops, cell by cell
   const html = fs.readFileSync(path.join(SITE, 'index.html'), 'utf8');
   for (const [name, plate] of Object.entries(budget.plates)) {
-    if (!plate.sheet || !fs.existsSync(path.join(SITE, plate.file))) continue;
+    if (!plate.sheet || plate.sheet.rows || !fs.existsSync(path.join(SITE, plate.file))) continue;
     const sh = plate.sheet, [cw, ch] = sh.cell, cols = sh.frames + 1;
     ok(plate.width === cols * cw && plate.height === sh.types.length * ch,
       `${name}: ${plate.width}x${plate.height} is ${cols} columns by ${sh.types.length} rows of ${cw}x${ch} cells`);
@@ -238,6 +243,56 @@ try {
     const tbl = html.match(/var TYPE = \{([\s\S]*?)\n  \};/);
     const keys = tbl ? [...tbl[1].matchAll(/^\s{4}(\w+):/gm)].map(m => m[1]) : [];
     ok(same([...keys].sort(), [...sh.types].sort()), `${name}: every key of the page's TYPE has a row, and every row a key`, keys.join(','));
+  }
+  // ---- the cast sheet: rows of different lengths in a common cell
+  for (const [name, plate] of Object.entries(budget.plates)) {
+    if (!plate.sheet || !plate.sheet.rows || !fs.existsSync(path.join(SITE, plate.file))) continue;
+    const sh = plate.sheet, [cw, ch] = sh.cell, rows = sh.rows;
+    const cols = Math.max(...rows.map(r => r.frames));
+    ok(plate.width === cols * cw && plate.height === rows.length * ch,
+      `${name}: ${plate.width}x${plate.height} is ${cols} columns by ${rows.length} rows of ${cw}x${ch} cells`);
+    const got = await page.evaluate(cells, { url: `/${rel(plate.file)}`, cw, ch, rows: rows.length });
+    const label = c => `${rows[c.r].id}[${c.c}]`;
+    const used = c => c.c < rows[c.r].frames;
+    const empty = got.filter(c => used(c) && c.n === 0).map(label);
+    ok(empty.length === 0, `${name}: every cell a row has is drawn`, empty.join(', '));
+    const spare = got.filter(c => !used(c) && c.n > 0).map(label);
+    ok(spare.length === 0, `${name}: no cell past a row's last frame has anything in it`, spare.join(', '));
+    const live = got.filter(c => used(c) && c.n);
+    const edge = live.filter(c => c.x0 === 0 || c.y0 === 0 || c.x1 === cw - 1 || c.y1 === ch - 1).map(label);
+    ok(edge.length === 0, `${name}: no figure touches its cell's edge`, edge.join(', '));
+    // the lowest pixel stands on the row every figure's origin is on: a
+    // seated patron's boot and a dog's paws go a few pixels under it
+    const off = live.filter(c => c.y1 < sh.ay - 4 || c.y1 > sh.ay + 8).map(c => `${label(c)} at ${c.y1}`);
+    ok(off.length === 0, `${name}: feet are on the anchor row ${sh.ay} in every cell`, off.join(', '));
+    // and the figure stands on its row's ax: the pixel column the page draws from
+    const away = live.filter(c => !(c.x0 < rows[c.r].ax && c.x1 > rows[c.r].ax)).map(label);
+    ok(away.length === 0, `${name}: each row's ax is inside its figure`, away.join(', '));
+    // the page's CASTSHEET is the same sheet
+    const m = html.match(/var CASTSHEET = \{([\s\S]*?)\n  \] \};/);
+    const c = m ? m[1] : '';
+    const pg = {
+      src: (c.match(/src:\s*"([^"]+)"/) || [])[1],
+      cell: (c.match(/cell:\s*\[(\d+),\s*(\d+)\]/) || []).slice(1).map(Number),
+      ppu: Number((c.match(/ppu:\s*([\d.]+)/) || [])[1]),
+      ay: Number((c.match(/ay:\s*(\d+),\s*rows/) || [])[1]),
+      rows: [...c.matchAll(/\{ id: "([\w-]+)", frames: (\d+), ax: (\d+) \}/g)].map(x => ({ id: x[1], frames: +x[2], ax: +x[3] })),
+    };
+    ok(pg.src === plate.file && same3(pg.cell, sh.cell) && pg.ppu === sh.ppu && pg.ay === sh.ay,
+      `${name}: index.html's CASTSHEET has budget.json's file, cell, ppu and ay`, JSON.stringify({ ...pg, rows: pg.rows.length }));
+    ok(same3(pg.rows, rows), `${name}: CASTSHEET's rows are budget.json's, in order, with the same frames and ax`,
+      pg.rows.map(r => r.id).join(',') || 'no CASTSHEET in index.html');
+    // every row the page can ask for is one the sheet has: the hats and
+    // foods build() draws from, the dog's four head lifts, the cat's two
+    // stretches, its walk and the barkeep
+    const hats = ((html.match(/hat: pick\(\[([^\]]*)\]\)/) || [, ''])[1].match(/null|"\w+"/g) || []).map(h => h === 'null' ? 'none' : h.replace(/"/g, ''));
+    const need = [];
+    for (const h of hats) for (const f of ['mug', 'bread']) need.push(`seat-${h}-${f}`);
+    need.push('dog-0', 'dog-5', 'dog-10', 'dog-15', 'cat-sit-0', 'cat-sit-1', 'cat-walk', 'keep');
+    const have = new Set(rows.map(r => r.id));
+    const lack = need.filter(id => !have.has(id));
+    ok(hats.length === 4 && lack.length === 0, `${name}: a row for every hat and food build() picks, and each of the dog, cat and barkeep's`,
+      `hats ${hats.join(',')}; missing ${lack.join(', ')}`);
   }
   for (const [name, plate] of Object.entries(budget.plates)) {
     if (!plate.rect || !fs.existsSync(path.join(SITE, plate.file))) continue;

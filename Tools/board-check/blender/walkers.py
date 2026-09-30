@@ -470,54 +470,61 @@ def key(ob, g, pose, ph, frame):
 
 # ---------------------------------------------------------------- the sheet
 
-flat = C.material('silhouette', DARK, unlit=True)
-cols = FRAMES + 1
-types = [t for t in TYPES if ONLY is None or t in ONLY]
-cw, ch = SHEET['cell'][0] / SHEET['ppu'], SHEET['cell'][1] / SHEET['ppu']           # a cell in room units
-ax, ay = ANCHOR[0] / SHEET['ppu'], ANCHOR[1] / SHEET['ppu']
+def main():
+
+    flat = C.material('silhouette', DARK, unlit=True)
+    cols = FRAMES + 1
+    types = [t for t in TYPES if ONLY is None or t in ONLY]
+    cw, ch = SHEET['cell'][0] / SHEET['ppu'], SHEET['cell'][1] / SHEET['ppu']           # a cell in room units
+    ax, ay = ANCHOR[0] / SHEET['ppu'], ANCHOR[1] / SHEET['ppu']
 
 
-def bake(ob, skin, row, col):
-    """The posed mesh as a plain object in its cell, turned by YAW about the feet."""
-    dg = bpy.context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(skin.evaluated_get(dg))
-    me.materials.clear()
-    me.materials.append(flat)
-    baked = bpy.data.objects.new(f'cell-{row}-{col}', me)
-    scene.collection.objects.link(baked)
-    baked.location = ((col * cw + ax) * U, 0.0, -(row * ch + ay) * U)
-    baked.rotation_euler = (0.0, 0.0, -YAW)
+    def bake(ob, skin, row, col):
+        """The posed mesh as a plain object in its cell, turned by YAW about the feet."""
+        dg = bpy.context.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(skin.evaluated_get(dg))
+        me.materials.clear()
+        me.materials.append(flat)
+        baked = bpy.data.objects.new(f'cell-{row}-{col}', me)
+        scene.collection.objects.link(baked)
+        baked.location = ((col * cw + ax) * U, 0.0, -(row * ch + ay) * U)
+        baked.rotation_euler = (0.0, 0.0, -YAW)
 
 
-for row, tname in enumerate(types):
-    for moving in (True, False):
-        g, pose = build(tname, moving)
-        ob, skin = armature(g)
-        frames = range(FRAMES) if moving else [FRAMES]
-        for f in frames:
-            key(ob, g, pose, f * 2 * PI / FRAMES if moving else 0.0, 1 + f)
-        for f in frames:
-            scene.frame_set(1 + f)
-            bake(ob, skin, row, f)
-        bpy.data.objects.remove(skin)
-        bpy.data.objects.remove(ob)
-    print(f'walkers: {tname}')
+    for row, tname in enumerate(types):
+        for moving in (True, False):
+            g, pose = build(tname, moving)
+            ob, skin = armature(g)
+            frames = range(FRAMES) if moving else [FRAMES]
+            for f in frames:
+                key(ob, g, pose, f * 2 * PI / FRAMES if moving else 0.0, 1 + f)
+            for f in frames:
+                scene.frame_set(1 + f)
+                bake(ob, skin, row, f)
+            bpy.data.objects.remove(skin)
+            bpy.data.objects.remove(ob)
+        print(f'walkers: {tname}')
 
-# the camera: orthographic, level, square on to the sheet, one pixel a 1/PPU room unit
-data = bpy.data.cameras.new('sheet')
-data.type = 'ORTHO'
-data.ortho_scale = cols * cw * U
-data.clip_start, data.clip_end = 0.1, 100.0
-cam = bpy.data.objects.new('sheet', data)
-scene.collection.objects.link(cam)
-cam.location = (cols * cw * U / 2, -10.0, -len(types) * ch * U / 2)
-cam.rotation_euler = (PI / 2, 0.0, 0.0)
-scene.camera = cam
-width, height = round(cols * cw * PPU), round(len(types) * ch * PPU)
-cam['frame_aspect'] = width / height          # render() keeps the pixels square at any size
+    # the camera: orthographic, level, square on to the sheet, one pixel a 1/PPU room unit
+    data = bpy.data.cameras.new('sheet')
+    data.type = 'ORTHO'
+    data.ortho_scale = cols * cw * U
+    data.clip_start, data.clip_end = 0.1, 100.0
+    cam = bpy.data.objects.new('sheet', data)
+    scene.collection.objects.link(cam)
+    cam.location = (cols * cw * U / 2, -10.0, -len(types) * ch * U / 2)
+    cam.rotation_euler = (PI / 2, 0.0, 0.0)
+    scene.camera = cam
+    width, height = round(cols * cw * PPU), round(len(types) * ch * PPU)
+    cam['frame_aspect'] = width / height          # render() keeps the pixels square at any size
 
-dest = os.path.join(C.SITE, PLATE['file']) if ONLY is None else os.path.join(C.OUT, 'walkers-preview.webp')
-if PNG:
-    C.render(os.path.join(C.OUT, 'walkers.png'), width, height, engine='BLENDER_WORKBENCH', transparent=True, aa=AA)
-C.render(dest, width, height, engine='BLENDER_WORKBENCH', transparent=True, fmt='WEBP', quality=100, aa=AA)
-print(f'walkers: wrote {dest}, {width}x{height}, {os.path.getsize(dest)} bytes')
+    dest = os.path.join(C.SITE, PLATE['file']) if ONLY is None else os.path.join(C.OUT, 'walkers-preview.webp')
+    if PNG:
+        C.render(os.path.join(C.OUT, 'walkers.png'), width, height, engine='BLENDER_WORKBENCH', transparent=True, aa=AA)
+    C.render(dest, width, height, engine='BLENDER_WORKBENCH', transparent=True, fmt='WEBP', quality=100, aa=AA)
+    print(f'walkers: wrote {dest}, {width}x{height}, {os.path.getsize(dest)} bytes')
+
+
+
+if __name__ == "__main__":
+    main()
