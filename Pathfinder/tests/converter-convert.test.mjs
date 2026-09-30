@@ -5,7 +5,7 @@
 // Exits non-zero on any failure.
 //
 // WHY. The converter's promise is that its output is a creature Paizo could
-// have printed. Twenty-six of the fixtures are monsters Paizo did print in both
+// have printed. Thirty-eight of the fixtures are monsters Paizo did print in both
 // editions, and the Anathema Archive's data/npcs holds the PF2e versions, so
 // the first half of this suite converts the PF1e block and measures it
 // against the real one. The tolerances are wide per monster (a golem's AC is
@@ -53,7 +53,10 @@ const PAIRS = [
   ['wolf', 'Wolf', '1'], ['ghoul', 'Ghoul Stalker', '1'], ['giant-frog', 'Giant Frog', '1'], ['darkmantle', 'Darkmantle', '1'],
   ['homunculus', 'Homunculus', '0'], ['boar', 'Boar', '2'], ['crocodile', 'Crocodile', '2'], ['giant-ant', 'Giant Ant', '2'],
   ['dretch', 'Dretch', '2'], ['choker', 'Choker', '2'], ['hippogriff', 'Hippogriff', '2'], ['ogre', 'Ogre Warrior', '3'],
-  ['gelatinous-cube', 'Gelatinous Cube', '3'], ['owlbear', 'Owlbear', '4'], ['troll', 'Troll', '5'],
+  ['gelatinous-cube', 'Gelatinous Cube', '3'], ['dire-wolf', 'Dire Wolf', '3'], ['doppelganger', 'Doppelganger', '3'],
+  ['rust-monster', 'Rust Monster', '3'], ['hell-hound', 'Hell Hound', '3'], ['owlbear', 'Owlbear', '4'], ['gargoyle', 'Gargoyle', '4'],
+  ['griffon', 'Griffon', '4'], ['mimic', 'Mimic', '4'], ['basilisk', 'Basilisk', '5'], ['gibbering-mouther', 'Gibbering Mouther', '5'],
+  ['djinni', 'Djinni', '5'], ['ettin', 'Ettin', '6'], ['wyvern', 'Wyvern', '6'], ['troll', 'Troll', '5'],
   ['army-ant-swarm', 'Army Ant Swarm', '5'], ['succubus', 'Succubus', '7'], ['lich', 'Lich', '12'],
   ['iron-golem', 'Iron Golem', '13'], ['balor', 'Balor', '20'],
 ];
@@ -71,9 +74,13 @@ function printed(name, shard) {
     perception: sy.perception?.mod, strike: strikes.length ? Math.max(...strikes) : null,
   };
 }
+// Paizo prints the gargoyle at 40 hp, under level 4's low row, and gives it
+// physical resistance 5 instead; no PF1e number predicts that. It stays in the
+// hp averages below (HISTORY #714) but is excused from the per-monster 50%.
+const HP_OUTLIERS = new Set(['gargoyle']);
 const err = { level: [], ac: [], save: [], hp: [], perception: [], strike: [] };
 // hp error of the six CR 1/4 to 1/2 pairs (printed at level -1), the eleven at
-// CR 1 and 2, and the nine from CR 3 up: one list per hp anchor.
+// CR 1 and 2, and the twenty-one from CR 3 up.
 const lowHp = [], midHp = [], highHp = [];
 for (const [fx, name, shard] of PAIRS) {
   const p = printed(name, shard);
@@ -91,7 +98,7 @@ for (const [fx, name, shard] of PAIRS) {
   const cr = fixture(fx).cr;
   err.hp.push(d.hp); (cr < 1 ? lowHp : cr < 3 ? midHp : highHp).push(d.hp); err.perception.push(d.perception); if (d.strike != null) err.strike.push(d.strike);
   const detail = `level ${o.level.value}/${p.level}, AC ${o.ac.value}/${p.ac}, HP ${o.hp.value}/${p.hp}, saves ${o.saves.fort.value}/${p.fort} ${o.saves.ref.value}/${p.ref} ${o.saves.will.value}/${p.will}, strike ${top}/${p.strike}`;
-  ok(Math.abs(d.level) <= 1 && Math.abs(d.ac) <= 5 && Math.abs(d.hp) <= 0.5
+  ok(Math.abs(d.level) <= 1 && Math.abs(d.ac) <= 5 && (Math.abs(d.hp) <= 0.5 || HP_OUTLIERS.has(fx))
     && [d.fort, d.ref, d.will].every((x) => Math.abs(x) <= 8) && (d.strike == null || Math.abs(d.strike) <= 5),
   `${fx} lands near the printed ${name}`, detail);
 }
@@ -99,18 +106,19 @@ const mae = (xs) => xs.reduce((a, x) => a + Math.abs(x), 0) / xs.length;
 ok(mae(err.level) <= 0.35, 'level: mean error at most 0.35', mae(err.level).toFixed(2));
 ok(mae(err.ac) <= 2.0, 'AC: mean error at most 2', mae(err.ac).toFixed(2));
 ok(mae(err.save) <= 3.0, 'saves: mean error at most 3', mae(err.save).toFixed(2));
-// HP is anchored at low below CR 1 (HISTORY #712), 2.2 at CR 1 and 2 and 2.5
-// from CR 3 up (#713). Measured on these 26: the six CR 1/4 to 1/2 pairs ran
-// 12.4% error and -2.6% bias at low, 18.1% and +4.7% at 1.25; the eleven at CR
-// 1 and 2 ran -2.0% bias at 2.1, +0.2% at 2.2, +3.2% at 2.3, +7.4% at 2.5; the
-// nine from CR 3 up ran -3.6% at 2.25, +1.6% at 2.5, +3.7% at 2.6. Each bound
-// below fails a neighbour: the low-CR bounds fail 1.25, the CR 1 to 2 bias
-// fails 2.1 and 2.3, the CR 3+ bias fails 2.25 and 2.6, and the overall error
-// (15.72% here) fails 2.25 at CR 1 to 2 (15.79%) and 2.4 from CR 3 (15.80%).
+// HP is anchored at low below CR 1 (HISTORY #712) and at 2.2 from CR 1 up
+// (#714). Measured on these 38: the six CR 1/4 to 1/2 pairs ran 12.4% error
+// and -2.6% bias at low, 18.1% and +4.7% at 1.25; the eleven at CR 1 and 2 ran
+// -2.0% bias at 2.1, +0.2% at 2.2, +3.2% at 2.3; the twenty-one from CR 3 up
+// ran -3.6% at 2.0, +0.8% at 2.2, +2.0% at 2.25 and +7.9% at #713's 2.5. Each
+// bound below fails a neighbour: the low-CR bounds fail 1.25, the CR 1 to 2
+// bias fails 2.1 and 2.3, the CR 3+ bias fails 2.0 and 2.25, and the overall
+// error (16.54% here) fails 2.25 from CR 1 up (16.87%) and 2.5 from CR 3 up
+// (18.05%).
 const bias = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
-ok(lowHp.length === 6 && midHp.length === 11 && highHp.length === 9, 'hp pairs: six below CR 1, eleven at CR 1 and 2, nine from CR 3 up',
+ok(lowHp.length === 6 && midHp.length === 11 && highHp.length === 21, 'hp pairs: six below CR 1, eleven at CR 1 and 2, twenty-one from CR 3 up',
   `${lowHp.length} ${midHp.length} ${highHp.length}`);
-ok(mae(err.hp) <= 0.1575, 'HP: mean error at most 15.75%', (100 * mae(err.hp)).toFixed(2) + '%');
+ok(mae(err.hp) <= 0.166, 'HP: mean error at most 16.6%', (100 * mae(err.hp)).toFixed(2) + '%');
 ok(mae(lowHp) <= 0.13 && Math.abs(bias(lowHp)) <= 0.05, 'HP below CR 1: mean error at most 13%, bias within 5%',
   `${(100 * mae(lowHp)).toFixed(1)}%, ${(100 * bias(lowHp)).toFixed(1)}%`);
 ok(Math.abs(bias(midHp)) <= 0.02, 'HP at CR 1 and 2: mean bias within 2% either way', (100 * bias(midHp)).toFixed(1) + '%');

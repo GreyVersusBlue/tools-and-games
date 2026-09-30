@@ -1215,13 +1215,14 @@ review. Round 3 made zero edits and found zero findings.
 Anathema Archive's folder the way the other Pathfinder pages' suites are.
 
 **Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709,
-#711 to #713). Since then: spell cards open inline from the stat block, the
+#711 to #714). Since then: spell cards open inline from the stat block, the
 board card has a preview, PF2e spell text reads Foundry's markup as print
 (links, damage formulas at the spell's rank, checks, templates, lists, tables,
-and the one embedded action), and hp is anchored at low below CR 1, 2.2 at CR
-1 and 2, and 2.5 from CR 3 up (#712, #713), measured on 26 printed pairs: six
-below CR 1, eleven at CR 1 and 2, nine from CR 3 up. Open follow-ups, none
-ranked; the first three wait on Devon's go-ahead:
+and the one embedded action), and hp is anchored at low below CR 1 and at 2.2
+from CR 1 up (#712, #714), measured on 38 printed pairs: six below CR 1,
+eleven at CR 1 and 2, twenty-one from CR 3 up. Every parse fixture's special
+attacks are hand-checked. Open follow-ups, none ranked; the first three wait
+on Devon's go-ahead:
 
 1. **The spell map's 1,087 "partial" entries** were written by a second pass
    that fixed the first pass's misses; they have not been read by a person. The
@@ -1232,16 +1233,15 @@ ranked; the first three wait on Devon's go-ahead:
    abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
    the open question.
 3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
-4. **Pairs at CR 3 to 6.** The CR 3+ anchor (2.5) rests on nine monsters, and
-   only the ogre and the gelatinous cube sit at CR 3. The CR 1 to 2 band showed
-   that ten pairs can move an anchor by 0.3 of a tier, so the CR 3+ band
-   deserves the same test. Fixtures come from aonprd.com the way #713's did;
-   run the parse suite on each before trusting the numbers, since two of
-   #713's ten blocks found parser bugs.
-5. **Hand-checked parse values lag behind the parser's reach.** The FIXTURES
-   table checks special attacks only for the giant frog and never checks
-   `specialAttacks` on the other 33 fixtures. Adding `spa` to each is cheap
-   and would have caught #713's "AC 10" cut earlier.
+4. **Pairs from CR 7 up.** Four pairs sit there (succubus, lich, iron golem,
+   balor), and at #714's 2.2 they average about -6% (succubus +19%, the other
+   three -7% to -18%), against +0.8% for the whole CR 3+ band. Four is too
+   few to act on; eight to ten more at CR 7 to 15 would say whether high CRs
+   want their own anchor. Fixtures come from aonprd.com with `curl` (Python's
+   default user agent gets a 403), and the parse suite runs on each first:
+   #713's ten blocks found two parser bugs and #714's twelve found two more.
+   Expect a design outlier or two like the gargoyle (#714); excuse it from the
+   per-monster bound by name rather than dropping it from the averages.
 
 ## Pathfinder Characters
 

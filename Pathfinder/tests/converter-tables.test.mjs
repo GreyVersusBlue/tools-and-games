@@ -222,11 +222,11 @@ console.log('\npf1TierOf');
 {
   // From CR 3 up the anchors are Table 1-1's own columns.
   const r = T.pf1Row(10);
-  ok(near(T.pf1TierOf('hp', r.hp, 10), T.HP_ANCHOR_TIER) && T.HP_ANCHOR_TIER === 2.5, 'CR 10 table hp -> HP_ANCHOR_TIER, 2.5 (HISTORY #712)');
+  ok(near(T.pf1TierOf('hp', r.hp, 10), T.HP_ANCHOR_TIER) && T.HP_ANCHOR_TIER === 2.2, 'CR 10 table hp -> HP_ANCHOR_TIER, 2.2 (HISTORY #714)');
   const hpTier = (cr) => T.pf1TierOf('hp', T.pf1Anchors(cr).hp, cr);
-  ok(near(hpTier(1 / 3), 1) && near(hpTier(1), 2.2) && near(hpTier(2), 2.2) && near(hpTier(3), 2.5),
-    'the median hp lands on low below CR 1, 2.2 at CR 1 and 2, 2.5 from CR 3 (HISTORY #712, #713)',
-    [1 / 3, 1, 2, 3].map(hpTier).join(' '));
+  ok(near(hpTier(1 / 3), 1) && near(hpTier(1), 2.2) && near(hpTier(2), 2.2) && near(hpTier(3), 2.2) && near(hpTier(6), 2.2),
+    'the median hp lands on low below CR 1 and on 2.2 from CR 1 up (HISTORY #712, #714)',
+    [1 / 3, 1, 2, 3, 6].map(hpTier).join(' '));
   ok(near(T.pf1TierOf('ac', r.ac, 10), T.AC_ANCHOR_TIER) && T.AC_ANCHOR_TIER === 2.5, 'CR 10 table AC -> 2.5');
   ok(near(T.pf1TierOf('attack', r.highAttack, 10), 3), 'CR 10 high attack -> high');
   ok(near(T.pf1TierOf('dc', r.primaryDC, 10), 3), 'CR 10 primary DC -> high');
