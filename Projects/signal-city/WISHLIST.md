@@ -531,13 +531,14 @@ on huginn or Devon's Windows machine, and one gated `blender-gpu` on the
 Windows machine only (#707); a session that cannot take it skips it and
 takes the next row.
 
-**B1. The sprite pipeline: done (HISTORY.md #717 to #719).** The first 2D
-pipeline, in `tools/blender/`: `common.py` (the render settings, the geometry
+**B1. The sprite pipeline: done (HISTORY.md #721 to #723).** A 2D
+pipeline in `tools/blender/`, built beside Orbital's the same day (#717, which
+merged first and is the one later 2D copies start from): `common.py` (the render settings, the geometry
 kit, the packer and a PNG writer of its own), `spec.mjs` (reads every
 archetype's size and palettes out of `js/sprites.js`, so the palette has one
 home), `budget.json` (the style sheet below as data) and `validate.mjs`, which
-runs in Site CI's Signal City entry: 523 checks, no Blender. Other 2D projects
-copy these files rather than share them (#643). The style sheet:
+runs in Site CI's Signal City entry: 523 checks, no Blender. Nothing here is
+shared with another project (#643). The style sheet:
 
 - **Projection.** Straight down through an orthographic camera onto a
   transparent film. A car is built in metres, nose along +x, centred on the
@@ -547,23 +548,23 @@ copy these files rather than share them (#643). The style sheet:
   brighter toward it, so a crowned roof and a glass pane reflect a gradient
   that runs back from the nose. Cycles on the CPU, 128 samples, seed 0,
   adaptive sampling and the denoiser off, the Standard view transform. That is
-  byte-stable across runs and across thread counts on one machine (#717).
-- **Scale.** 36 px a metre in the sheet (#718). A frame is
+  byte-stable across runs and across thread counts on one machine (#721).
+- **Scale.** 36 px a metre in the sheet (#722). A frame is
   `ceil(length * 36) + 4` by `ceil(width * 36) + 4`, the canvas `spriteFor()`
   makes at that scale, anchored at its centre.
 - **The band.** `spriteFor` draws a frame from the sheet while its own pixels
   per metre are 12 to 36 (`spriteFrom`, `spriteTo`) and the procedural car
   outside that band. Below 12 a car is under 55 sprite pixels long, and a
   district's 6 px car gains nothing from a render. Above 36 the vector car
-  stays sharp where an upscaled frame would blur (#718).
+  stays sharp where an upscaled frame would blur (#722).
 - **Palettes.** Separate frames, not a body and a tint mask: a palette carries
-  body, glass and accent, and the trailer swaps body and accent (#719).
+  body, glass and accent, and the trailer swaps body and accent (#723).
 - **The atlas.** `{ "sheet": { w, h, ppm, pad }, "frames": { name: { x, y, w,
   h, ax, ay } } }`, the common plan's frame map wrapped with the sheet's own
-  numbers, which the game needs to scale a frame (#717). A frame is named
+  numbers, which the game needs to scale a frame (#721). A frame is named
   `<archetype>/<palette>/<state>`, and the trailer is `trailer/<palette>/0`.
 
-**B2. The car sheet: done (HISTORY.md #719).** `tools/blender/cars.py` builds
+**B2. The car sheet: done (HISTORY.md #723).** `tools/blender/cars.py` builds
 all ten archetypes and the trailer from `sprites.js`'s own hulls, glass, trim
 and lamps, in their four palettes, with rideshare's four pulse states (t = 0,
 0.25, 0.5, 0.75, the four `spriteFor` caches) and emergency's two light-bar

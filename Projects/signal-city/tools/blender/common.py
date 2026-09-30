@@ -1,11 +1,12 @@
 # Signal City's Blender pipeline: the one place its render settings live.
 #
-# The first 2D pipeline in the repo (WISHLIST.md B1). It renders sprite sheets,
+# A 2D pipeline (WISHLIST.md B1, HISTORY.md #721). It renders sprite sheets,
 # not models: every frame is one render straight down through an orthographic
 # camera onto a transparent film, and the frames are packed into one PNG with a
-# JSON atlas beside it. Other 2D projects copy this file rather than share it
-# (#643). canonical() is Golden Hour's, from d93690d, where #652 found that
-# Blender's own primitives do not come out in a stable order.
+# JSON atlas beside it. It is Signal City's own (#643); Orbital's, built the
+# same day, is the one later 2D copies start from (#717). canonical() is Golden
+# Hour's, from d93690d, where #652 found that Blender's own primitives do not
+# come out in a stable order.
 #
 # Pinned to the Blender this pipeline was built and checked under:
 #   Blender 5.2.2 LTS on huginn (~/.local/bin/blender), Cycles on the CPU.
@@ -569,7 +570,7 @@ def write_sheet(frames, width, png_rel, atlas_rel, ppm, pad):
     """Pack `frames` ({name: (w, h, rows)}) into one sheet `width` pixels wide,
     and write the PNG and its atlas under the project. The atlas is
     { "sheet": { w, h, ppm, pad }, "frames": { name: { x, y, w, h, ax, ay } } },
-    the anchor in frame pixels (#715)."""
+    the anchor in frame pixels (#721)."""
     at, height = pack({n: (f[0], f[1]) for n, f in frames.items()}, width)
     sheet = [bytearray(width * 4) for _ in range(height)]
     atlas = {}

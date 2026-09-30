@@ -237,6 +237,7 @@ jobs:
               node test/levelcode.mjs
               node test/generator.mjs
               node test/browser.mjs
+              node tools/blender/validate.mjs
 
           # Nine Node suites and one headless page drive. browser.mjs steps the
           # world through the ?debug hook and lets rAF only draw, so nothing in
