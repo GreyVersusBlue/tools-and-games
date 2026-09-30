@@ -56,6 +56,12 @@ jobs:
       - name: Unit suite
         run: node --test 'test/*.test.mjs'
 
+      # The built-in model pack against tools/blender/budget.json: what
+      # js/gltf.js reads and nothing more, the triangle and byte caps, the
+      # box and the palette. It needs no Blender (#645).
+      - name: Model pack budget
+        run: node tools/blender/validate.mjs
+
   browser:
     name: visual baselines + tool smoke
     runs-on: ubuntu-latest
