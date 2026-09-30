@@ -386,7 +386,7 @@ function parseSpellBlock(label, value) {
 // A Title Case run ending right before the marker: "Immunity to Magic", "Breath Weapon".
 const SA_TITLE = /(?:^|[\s.])([A-Z][\w'-]*(?:\s+(?:[A-Z][\w'-]*|of|the|and|or|a|an|in|to|with|from|on|vs\.|\d+|\([^)]*\)))*)\s*$/;
 
-function parseSpecialAbilities(region) {
+function parseSpecialAbilities(region, known = []) {
   const out = [];
   if (!region) return out;
   const flat = region.replace(/\s+/g, ' ');
@@ -410,6 +410,31 @@ function parseSpecialAbilities(region) {
     }
     marks.push({ name, kind: m[1][0].toUpperCase() + m[1][1].toLowerCase(), start, bodyStart: m.index + m[0].length });
   }
+  // An ability printed without its tag, as the Bestiary's gorgon prints
+  // "Breath Weapon A gorgon can use its breath weapon...". It is taken only
+  // where a name the block already lists (a special attack, a defense, an SQ)
+  // opens a sentence and a capital follows it, or where a short Title Case
+  // name opens one with a colon, which is how formatPf1Section writes it back.
+  // Its kind is '' because the book does not say.
+  const inside = (i) => marks.some((mk) => i >= mk.start && i < mk.bodyStart);
+  const seen = new Set(marks.map((mk) => mk.name.toLowerCase()));
+  const untagged = [];
+  const take = (m, name) => {
+    const start = m.index + m[0].lastIndexOf(name, m[0].length - 1);
+    if (!/^[A-Z]/.test(name) || seen.has(name.toLowerCase()) || inside(start)) return false;
+    seen.add(name.toLowerCase());
+    untagged.push({ name, kind: '', start, bodyStart: m.index + m[0].length });
+    return true;
+  };
+  for (const k of known) {
+    const name = String(k).replace(/\s*\(.*$/, '').trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    const re = new RegExp(`(?:^\\s*|[.!?]\\s+)(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s+`, 'gi');
+    for (const m of flat.matchAll(re)) if (/[A-Z]/.test(flat[m.index + m[0].length] || '') && take(m, m[1])) break;
+  }
+  for (const m of flat.matchAll(/(?:^\s*|[.!?]\s+)([A-Z][\w'-]*(?:\s+(?:[A-Z][\w'-]*|of|the|and|to)){0,3}):\s+/g)) take(m, m[1]);
+  marks.push(...untagged);
+  marks.sort((a, b) => a.start - b.start);
   marks.forEach((mk, i) => {
     const text = flat.slice(mk.bodyStart, i + 1 < marks.length ? marks[i + 1].start : flat.length).trim();
     const dc = /DC\s*(\d+)/.exec(text) || /\bsave\s+(?:Fort|Ref|Will)\w*\s+(\d+)/.exec(text);
@@ -498,7 +523,8 @@ export function parsePf1(input) {
     headerRest += ' ' + xp.slice(m ? m[0].length : 0);
   }
   headerRest = squash(headerRest);
-  const alRe = new RegExp(`(?<=^|\\s)(LG|NG|CG|LN|N|CN|LE|NE|CE|Any|any|Always [LNC][GNE]?|Usually [LNC][GNE]?)\\s+(${SIZES.join('|')})\\s+(${TYPES.join('|')})(?:\\s*\\(([^)]*)\\))?`);
+  const alRe = new RegExp(`(?<=^|\\s)((?:LG|NG|CG|LN|N|CN|LE|NE|CE|Any|any|Always [LNC][GNE]?|Usually [LNC][GNE]?)(?:\\s+alignment)?(?:\\s*\\([^)]*\\))?)\\s+(${SIZES.join('|')})\\s+(${TYPES.join('|')})(?:\\s*\\(([^)]*)\\))?`);
+  // "Any alignment (same as creator) Tiny construct": the homunculus.
   const al = alRe.exec(headerRest);
   if (al) {
     c.alignment = al[1];
@@ -692,7 +718,7 @@ export function parsePf1(input) {
   if (env || org || tr) c.ecology = { environment: env || '', organization: org || '', treasure: tr || '' };
 
   // ---- special abilities
-  c.specialAbilities = parseSpecialAbilities(saText);
+  c.specialAbilities = parseSpecialAbilities(saText, [...c.specialAttacks, ...c.defensive.other, ...(c.sq || [])]);
   return c;
 }
 
@@ -836,7 +862,7 @@ export function formatPf1Section(c, key) {
         return lines.join('\n');
       }).join('\n');
     case 'specialAbilities':
-      return (c.specialAbilities || []).map((a) => `${a.name} (${a.kind || 'Ex'}) ${a.text}`).join('\n\n');
+      return (c.specialAbilities || []).map((a) => (a.kind ? `${a.name} (${a.kind}) ${a.text}` : `${a.name}: ${a.text}`)).join('\n\n');
     default:
       throw new Error(`formatPf1Section: no section called "${key}"`);
   }
