@@ -1,0 +1,21 @@
+{
+  "about": "The site's Blender style sheet as data (BACKLOG.md 'The site itself: the tavern set'). validate.mjs reads it. unit is metres per room unit, the 1600 by 900 frame index.html's <tavern-scene> draws in. camera is the recipe common.py builds the room camera from: a level camera at eye_x with its horizon at room y `horizon`, `distance` metres back from the back wall, framing `frame` (x, y, w, h in room units) so the wall plane lands 1:1 on a w by h render. calibration is where calibrate.py writes its markers and where validate.mjs --rendered expects to find each, to `tolerance` room units. Each plate is a committed render: its size in pixels, its byte cap, and for the room plate the two walk lanes (room y ranges, sampled across laneX) whose median luminance must stay at or above luminanceFloor, so a #0c0803 silhouette still reads against it.",
+  "unit": 0.008,
+  "room": { "W": 1600, "H": 900, "floor": 618, "hearth": [330, 470] },
+  "camera": { "eye_x": 800, "horizon": 29, "distance": 19.5, "frame": [-200, -200, 2000, 1300] },
+  "calibration": {
+    "file": "Tools/board-check/blender/out/calibrate.png",
+    "markers": [[0, 0], [800, 0], [1600, 0], [0, 618], [800, 618], [1600, 618], [330, 470], [956, 500], [800, 900]],
+    "tolerance": 2
+  },
+  "plates": {
+    "room": {
+      "file": "assets/tavern/room.webp",
+      "width": 3200, "height": 1800,
+      "bytes": 460800,
+      "lanes": [[644, 672], [818, 848]],
+      "laneX": [100, 1500],
+      "luminanceFloor": 14
+    }
+  }
+}
