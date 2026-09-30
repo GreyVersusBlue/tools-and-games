@@ -422,10 +422,9 @@ for m in range(7):
 # The top surface is the canvas's ellipse exactly; what makes them read as
 # tables rather than discs on sticks is under it: a 5 cm slab with a
 # moulded underside, a turned post with a collar at each end, and a stepped
-# pedestal foot. index.html's plateTable() clips to this shape (top and rim
-# inside an r by r * 0.32 ellipse about ty - r * 0.06, post r * 0.13 either
-# side, foot r * 0.52 by r * 0.17 about ty + r * 0.53), so a change here that
-# grows past it shows there.
+# pedestal foot. Each is rendered as its own crop (budget.json's table-N
+# `rect`, which has to hold the whole of this: a tankard above the top, the
+# foot's base below it); a change here that grows past the rect is cut off.
 TABLES = [(706, 720, 92), (1078, 786, 106), (452, 862, 118)]
 SLAB = 0.05
 for i, (tx, ty, r) in enumerate(TABLES):
