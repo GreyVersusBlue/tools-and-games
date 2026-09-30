@@ -121,10 +121,10 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City's sprite
-pipeline and car sheet**: ranks 5 and 6, two ½ rows both naming Opus 5.5,
-worked under Opus 5.5 on huginn (Blender 5.2.2), and shipped in PR #478.
-Every row from old rank 7 moved up two. That is the
+**The last batch of ranked work that shipped** is **the tavern set's T1**: the
+first increment of rank 1, a 2+ row that stays ranked, worked under Opus 5.5 on
+huginn (Blender 5.2.2), and shipped in PR #483. No rank moved.
+That is the
 line to update when your batch merges; a PR that only changes these files is
 not a batch and does not belong in it.
 **31 ranked items remain**, and **every one of them names a model.**
@@ -146,9 +146,13 @@ committed files (#645); a wiring row is taken only once the pack row above it
 has merged. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Two claims stand**: rank 1 (the tavern set, `claude/tavern-set-t1`) and
-rank 19 (Orbital's wiring row, `claude/orbital-wire-body-sheet`). **The next
-open row** is rank 2, School Generator's Blender pipeline (¼, Opus 5.5, gate
+**One claim stands**: rank 19 (Orbital's wiring row,
+`claude/orbital-wire-body-sheet`). Rank 1 is unclaimed again. **Pick up next**
+is rank 1's second increment, T2, the walker sheet (size 1 on its own, gate
+`blender`, Model Fable 5.1 so it runs on Opus 5.5 under #638), **on huginn**,
+because #733 says one pack's plates come from one machine and T1's came from
+there. **For a session that is not taking the tavern set, the next open row**
+is rank 2, School Generator's Blender pipeline (¼, Opus 5.5, gate
 `blender`): huginn or the Windows machine. Rank 3, its model pack, is ½ in
 the same area, and the two batch together inside #382's cap. **Rank 5,
 Signal City's wiring row (¼, Opus 5.5, no gate), is cloud work and ready**,
@@ -985,7 +989,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | The tavern set and sprites from Blender, T1: the site's `common.py`, the calibration check and the room plate behind the Guild Board | The site | 2+ | Fable 5.1 | blender | claude/tavern-set-t1 | [The site itself: the tavern set](#the-site-itself-the-tavern-set) |
+| 1 | The tavern set and sprites from Blender, T2: the walker sheet (T1, the pipeline and the room plate, shipped in PR #483) | The site | 2+ | Fable 5.1 | blender |  | [The site itself: the tavern set](#the-site-itself-the-tavern-set) |
 | 2 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
 | 3 | School Generator's built-in model pack: catalog props as vertex-coloured `.glb` in `assets/models/` | `Projects/school-generator` | ½ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B2 |
 | 4 | Wire the model pack in, once rank 2 has merged: catalog rows that point at a file, and the precache | `Projects/school-generator` | ¼ | Opus 5.5 |  |  | `Projects/school-generator/WISHLIST.md` B3 |
@@ -2404,7 +2408,7 @@ cards are done. `npm run check` and `npm run social:check` stay green.
 
 Rank 1, Devon's own instruction on 2026-09-30, a 2+ with gate `blender`,
 outside the dioramas' numbering. The Guild Board's background is
-`<tavern-scene>`, a custom element inline at `index.html:588-1790`: pure
+`<tavern-scene>`, a custom element inline at `index.html:605-1853`: pure
 canvas, the room in `paintRoom()` as flat rectangles and gradients in a
 fixed 1600 by 900 frame (`FLOOR` 618, the hearth at 330,470), the people as
 two-bone IK silhouettes posed every frame, and the fire, glow, embers, motes,
@@ -2416,21 +2420,22 @@ canvas keeps its loop, its clicks, its cover-fit framing, its reduced-motion
 frame and its fire. Budget: 0.5 to 0.7 MB of images on the page, against the
 850 KB the card previews already load.
 
-**T1. The pipeline, the calibration and the room plate (½).** The site's own
-`common.py` in `Tools/board-check/blender/` (#643; D1 below reuses it), a
-`render()` helper and a camera built from `budget.json`'s recipe.
-`tavern.py` builds the set at `paintRoom()`'s numbers: the wall and its
-studs, the top plate at y 96..122, beams every 300, the hearth surround centred
-on x 330 with its arch 412..618 and mantel at 228, the door at x 872..1040, the
-bar from x 1096 with its top at 470, the shelf at 300, the mugs at 176..222,
-boards receding to (800, 29), the near beams at the edges. `calibrate.py`
-renders markers at nine known room points and `validate.mjs` reads them back
-to 2 room units; it also holds the plate's walk lanes (`FLOOR`+26..54 and
-818..848) lighter than the silhouettes' `#0c0803`, its dimensions, and its
-bytes. Output `assets/tavern/room.webp`, 3200 by 1800, the frame x -200..1800
-and y -200..1100 so cover-fit never shows an edge, cap 450 KB. `paintRoom()`
-draws the plate when it has loaded and its rectangles until then and whenever it
-fails, so the first frame is never blank and nothing offsite is needed.
+**T1 shipped in PR #483** (2026-09-30): the pipeline in
+`Tools/board-check/blender/`, `assets/tavern/room.webp` and `paintRoom()` wired
+with its procedural fallback. The record is `HISTORY.md` #727 to #734. What T2
+and T3 need from it:
+
+- The plate covers room x -200..1800 and y -200..1100 at 3200 by 1800, so its
+  pixels are not square (#730).
+- The camera distance is 19.5, pinned by the 0.28 tabletop ellipse (#731).
+- The three tables are still in the plate. `plateTable()` in `index.html`
+  re-lays them in the depth sort until T2 moves them to an alpha sheet and
+  re-renders the plate without them (#732). T2 therefore re-renders
+  `room.webp` on huginn, about 32 minutes at 128 samples.
+- `budget.json` needs a `plates` entry for every new sheet, or `validate.mjs`
+  fails the file as a stray. `node blender/validate.mjs` runs 9 assertions in
+  Site CI and 21 with `--rendered`.
+- huginn renders one thing at a time, and `run.mjs` waits for the last one.
 
 **T2. The walker sheet (1).** Eight types from `TYPE` on a hand-built
 armature with the same two-bone limbs, keyed from `drawPerson()`'s own sine
@@ -2439,7 +2444,7 @@ alpha at a slight three-quarter turn. `assets/tavern/walkers.webp`, lossless,
 cap 160 KB. `drawPerson()` takes the frame from `phase`; the rim pass tints
 the sprite toward the fire and the black pass follows, as today. The three
 tables leave the plate for an alpha sheet so the depth sort at
-`index.html:1707` still puts a far walker behind them.
+`index.html:1772` still puts a far walker behind them.
 
 **T3. The cast sheet (½).** Seated patrons (four hats, two foods, the drink
 cycle), the dog, the cat's sit and walk, the barkeep's wipe, pour and idle.
@@ -2450,6 +2455,10 @@ Not in the row: the fire, glow, embers, motes, candles, lantern and the door's
 night wash stay canvas; `landing.html`'s seal is its own thing; the board's
 share image `assets/og/guild-board.png` is re-shot after T3 if it shows the
 room.
+
+Still owed from T1: the five click boxes were not re-checked at three widths,
+and the plate was not looked at in a browser with a real GPU. T3 re-checks the
+clicks; the GPU look goes with whichever increment is next to touch the plate.
 
 ## Questions for Devon
 
