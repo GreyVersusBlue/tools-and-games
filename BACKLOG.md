@@ -962,8 +962,8 @@ and #222 was closed unmerged an hour of suites later.
 | 1 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
 | 2 | School Generator's built-in model pack: catalog props as vertex-coloured `.glb` in `assets/models/` | `Projects/school-generator` | ½ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B2 |
 | 3 | Wire the model pack in, once rank 2 has merged: catalog rows that point at a file, and the precache | `Projects/school-generator` | ¼ | Opus 5.5 |  |  | `Projects/school-generator/WISHLIST.md` B3 |
-| 4 | Signal City's sprite pipeline, the first 2D one: `common.py` renders a sprite sheet and its atlas instead of exporting a `.glb` | `Projects/signal-city` | ½ | Opus 5.5 | blender |  | `Projects/signal-city/WISHLIST.md` B1 |
-| 5 | Signal City's car sheet: the ten archetypes, top-down, in `sprites.js`'s metres | `Projects/signal-city` | ½ | Opus 5.5 | blender |  | `Projects/signal-city/WISHLIST.md` B2 |
+| 4 | Signal City's sprite pipeline, the first 2D one: `common.py` renders a sprite sheet and its atlas instead of exporting a `.glb` | `Projects/signal-city` | ½ | Opus 5.5 | blender | claude/signal-city-sprites | `Projects/signal-city/WISHLIST.md` B1 |
+| 5 | Signal City's car sheet: the ten archetypes, top-down, in `sprites.js`'s metres | `Projects/signal-city` | ½ | Opus 5.5 | blender | claude/signal-city-sprites | `Projects/signal-city/WISHLIST.md` B2 |
 | 6 | Wire the car sheet in, once rank 5 has merged: `spriteFor` draws a frame and `sprites.html` shows both | `Projects/signal-city` | ¼ | Opus 5.5 |  |  | `Projects/signal-city/WISHLIST.md` B3 |
 | 7 | The Absalom Inheritance's sprite pipeline: Signal City's renderer with a 2:1 isometric camera | `Projects/absalom-inheritance` | ¼ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B1 |
 | 8 | Absalom's tile sheet: floor, wall, door, pillar, gate, stairs and treasure, as `js/render.js` shades them | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B2 |
