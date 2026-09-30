@@ -5,7 +5,7 @@
 // Exits non-zero on any failure.
 //
 // WHY. The converter's promise is that its output is a creature Paizo could
-// have printed. Thirty-eight of the fixtures are monsters Paizo did print in both
+// have printed. Forty-eight of the fixtures are monsters Paizo did print in both
 // editions, and the Anathema Archive's data/npcs holds the PF2e versions, so
 // the first half of this suite converts the PF1e block and measures it
 // against the real one. The tolerances are wide per monster (a golem's AC is
@@ -58,7 +58,10 @@ const PAIRS = [
   ['griffon', 'Griffon', '4'], ['mimic', 'Mimic', '4'], ['basilisk', 'Basilisk', '5'], ['gibbering-mouther', 'Gibbering Mouther', '5'],
   ['djinni', 'Djinni', '5'], ['ettin', 'Ettin', '6'], ['wyvern', 'Wyvern', '6'], ['troll', 'Troll', '5'],
   ['army-ant-swarm', 'Army Ant Swarm', '5'], ['succubus', 'Succubus', '7'], ['lich', 'Lich', '12'],
-  ['iron-golem', 'Iron Golem', '13'], ['balor', 'Balor', '20'],
+  ['iron-golem', 'Iron Golem', '13'], ['balor', 'Balor', '20'], ['chuul', 'Chuul', '7'], ['medusa', 'Medusa', '7'],
+  ['hill-giant', 'Hill Giant', '7'], ['gorgon', 'Gorgon', '8'], ['erinyes', 'Erinys', '8'], ['frost-giant', 'Frost Giant', '9'],
+  ['fire-giant', 'Fire Giant', '10'], ['stone-golem', 'Stone Golem', '11'], ['glabrezu', 'Glabrezu', '13'],
+  ['nalfeshnee', 'Nalfeshnee', '14'],
 ];
 const shards = new Map();
 function printed(name, shard) {
@@ -80,8 +83,8 @@ function printed(name, shard) {
 const HP_OUTLIERS = new Set(['gargoyle']);
 const err = { level: [], ac: [], save: [], hp: [], perception: [], strike: [] };
 // hp error of the six CR 1/4 to 1/2 pairs (printed at level -1), the eleven at
-// CR 1 and 2, and the twenty-one from CR 3 up.
-const lowHp = [], midHp = [], highHp = [];
+// CR 1 and 2, the thirty-one from CR 3 up, and the fourteen of those from CR 7 up.
+const lowHp = [], midHp = [], highHp = [], topHp = [];
 for (const [fx, name, shard] of PAIRS) {
   const p = printed(name, shard);
   ok(p && Object.values(p).every((v) => v === null || Number.isFinite(v)), `data/npcs has ${name} with every field this suite reads`);
@@ -96,7 +99,7 @@ for (const [fx, name, shard] of PAIRS) {
   };
   err.level.push(d.level); err.ac.push(d.ac); err.save.push(d.fort, d.ref, d.will);
   const cr = fixture(fx).cr;
-  err.hp.push(d.hp); (cr < 1 ? lowHp : cr < 3 ? midHp : highHp).push(d.hp); err.perception.push(d.perception); if (d.strike != null) err.strike.push(d.strike);
+  err.hp.push(d.hp); (cr < 1 ? lowHp : cr < 3 ? midHp : highHp).push(d.hp); if (cr >= 7) topHp.push(d.hp); err.perception.push(d.perception); if (d.strike != null) err.strike.push(d.strike);
   const detail = `level ${o.level.value}/${p.level}, AC ${o.ac.value}/${p.ac}, HP ${o.hp.value}/${p.hp}, saves ${o.saves.fort.value}/${p.fort} ${o.saves.ref.value}/${p.ref} ${o.saves.will.value}/${p.will}, strike ${top}/${p.strike}`;
   ok(Math.abs(d.level) <= 1 && Math.abs(d.ac) <= 5 && (Math.abs(d.hp) <= 0.5 || HP_OUTLIERS.has(fx))
     && [d.fort, d.ref, d.will].every((x) => Math.abs(x) <= 8) && (d.strike == null || Math.abs(d.strike) <= 5),
@@ -107,22 +110,25 @@ ok(mae(err.level) <= 0.35, 'level: mean error at most 0.35', mae(err.level).toFi
 ok(mae(err.ac) <= 2.0, 'AC: mean error at most 2', mae(err.ac).toFixed(2));
 ok(mae(err.save) <= 3.0, 'saves: mean error at most 3', mae(err.save).toFixed(2));
 // HP is anchored at low below CR 1 (HISTORY #712) and at 2.2 from CR 1 up
-// (#714). Measured on these 38: the six CR 1/4 to 1/2 pairs ran 12.4% error
-// and -2.6% bias at low, 18.1% and +4.7% at 1.25; the eleven at CR 1 and 2 ran
-// -2.0% bias at 2.1, +0.2% at 2.2, +3.2% at 2.3; the twenty-one from CR 3 up
-// ran -3.6% at 2.0, +0.8% at 2.2, +2.0% at 2.25 and +7.9% at #713's 2.5. Each
-// bound below fails a neighbour: the low-CR bounds fail 1.25, the CR 1 to 2
-// bias fails 2.1 and 2.3, the CR 3+ bias fails 2.0 and 2.25, and the overall
-// error (16.54% here) fails 2.25 from CR 1 up (16.87%) and 2.5 from CR 3 up
-// (18.05%).
+// (#714, and #716 for CR 7 up). Measured on these 48: the six CR 1/4 to 1/2
+// pairs ran 12.4% error and -2.6% bias at low, 18.1% and +4.7% at 1.25; the
+// eleven at CR 1 and 2 ran -2.0% bias at 2.1, +0.2% at 2.2, +3.2% at 2.3; the
+// thirty-one from CR 3 up ran -3.4% at 2.0, +1.1% at 2.2, +2.4% at 2.25 and
+// +8.3% at #713's 2.5; the fourteen from CR 7 up ran -2.7% at 2.1, -0.3% at
+// 2.2 and +2.1% at 2.3. Each bound below fails a neighbour: the low-CR bounds
+// fail 1.25, the CR 1 to 2 bias fails 2.1 and 2.3, the CR 3+ bias fails 2.0
+// and 2.25, the CR 7+ bias fails 2.1 and 2.3, and the overall error (16.0%
+// here) fails 2.25 (16.4%).
 const bias = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
-ok(lowHp.length === 6 && midHp.length === 11 && highHp.length === 21, 'hp pairs: six below CR 1, eleven at CR 1 and 2, twenty-one from CR 3 up',
-  `${lowHp.length} ${midHp.length} ${highHp.length}`);
-ok(mae(err.hp) <= 0.166, 'HP: mean error at most 16.6%', (100 * mae(err.hp)).toFixed(2) + '%');
+ok(lowHp.length === 6 && midHp.length === 11 && highHp.length === 31 && topHp.length === 14,
+  'hp pairs: six below CR 1, eleven at CR 1 and 2, thirty-one from CR 3 up, fourteen of them from CR 7 up',
+  `${lowHp.length} ${midHp.length} ${highHp.length} ${topHp.length}`);
+ok(mae(err.hp) <= 0.162, 'HP: mean error at most 16.2%', (100 * mae(err.hp)).toFixed(2) + '%');
 ok(mae(lowHp) <= 0.13 && Math.abs(bias(lowHp)) <= 0.05, 'HP below CR 1: mean error at most 13%, bias within 5%',
   `${(100 * mae(lowHp)).toFixed(1)}%, ${(100 * bias(lowHp)).toFixed(1)}%`);
 ok(Math.abs(bias(midHp)) <= 0.02, 'HP at CR 1 and 2: mean bias within 2% either way', (100 * bias(midHp)).toFixed(1) + '%');
 ok(Math.abs(bias(highHp)) <= 0.02, 'HP from CR 3 up: mean bias within 2% either way', (100 * bias(highHp)).toFixed(1) + '%');
+ok(Math.abs(bias(topHp)) <= 0.02, 'HP from CR 7 up: mean bias within 2% either way', (100 * bias(topHp)).toFixed(1) + '%');
 ok(mae(err.perception) <= 3.5, 'Perception: mean error at most 3.5', mae(err.perception).toFixed(2));
 ok(mae(err.strike) <= 2.5, 'top Strike: mean error at most 2.5', mae(err.strike).toFixed(2));
 
@@ -144,6 +150,22 @@ ok(dragon.weaknesses.some((w) => w.type === 'cold'), 'vulnerability to cold beco
 const bw = dragon.offAbilities.find((a) => a.name === 'Breath Weapon');
 ok(bw && /40-foot cone/.test(bw.text) && /\d+d10 fire/.test(bw.text) && /basic Reflex/.test(bw.text) && bw.actions === '2',
   'breath weapon keeps its cone, die and element, as a two-action basic Reflex save', bw?.text);
+{
+  // A PF1e construct's Fort is a base save with no Con behind it (stone golem
+  // +4 at CR 11, terrible); it reads no lower than moderate (HISTORY #715).
+  const g = convert('stone-golem'), h = convert('homunculus');
+  ok(g.saves.fort.value === 21 && g.saves.ref.value === 15, 'a construct\'s Fort reads no lower than moderate; its Reflex is left alone',
+    `Fort ${g.saves.fort.value}, Ref ${g.saves.ref.value}`);
+  ok(h.traits.includes('construct'), 'the homunculus ("Any alignment (same as creator) Tiny construct") is a construct', h.traits.join(', '));
+}
+{
+  // The gorgon's breath turns to stone and rolls no dice: it keeps its own
+  // text rather than becoming an untyped damage cone, and is written once.
+  const g = convert('gorgon');
+  const b = g.offAbilities.filter((a) => a.name === 'Breath Weapon');
+  ok(b.length === 1 && /petrified/.test(b[0].text) && !/damage \(DC/.test(b[0].text) && /additional Fortitude saves/.test(b[0].text) && !g.otherAbilities.some((a) => a.name === 'Breath Weapon'),
+    'a breath weapon with no damage dice keeps its petrifying text, once, and "saves" stays plural', JSON.stringify(b));
+}
 const sorc = dragon.spellcasting.find((sc) => /Spontaneous/.test(sc.name));
 ok(sorc && sorc.top === 1 && sorc.ranks.every((r) => r.rank <= 1),
   'a CR 10 dragon casting as a 1st-level sorcerer casts 1st-rank spells, not 5th', JSON.stringify(sorc?.ranks.map((r) => r.rank)));

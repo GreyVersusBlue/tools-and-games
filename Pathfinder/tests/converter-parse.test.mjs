@@ -73,6 +73,12 @@ const FIXTURES = {
     cmbNotes: '+8 grappling', feats: ['Improved Initiative', 'Skill Focus (Stealth)'], sa: ['Strangle', 'Quickness'],
     spa: ['constrict (1d4+3)', 'strangle', 'grab (Large)'],
   },
+  'chuul.txt': {
+    cr: 7, hp: 85, hd: '10d8+40', ac: [22, 12, 19], saves: [7, 6, 9], abil: [25, 16, 18, 10, 14, 5],
+    melee0: [2, 14, '2d6+7'], extra0: 'grab', nMelee: 1, speed: { land: 30, swim: 20 }, space: [10, 5], init: 7,
+    immune: ['poison'], cmbNotes: '+19 grapple', cmdNotes: '32 vs. trip', feats: ['Blind-Fight', 'Weapon Focus (claw)'],
+    sa: ['Paralytic Tentacles'], saDc: { 'Paralytic Tentacles': 19 }, spa: ['constrict (2d6+7)', 'paralytic tentacles'],
+  },
   'crocodile.txt': {
     cr: 2, hp: 22, hd: '3d8+9', ac: [14, 10, 13], saves: [6, 4, 2], abil: [19, 12, 17, 1, 12, 2],
     melee0: [1, 5, '1d8+4'], extra0: 'grab', nMelee: 2, groups: [0, 0], // "bite ... (1d8+4 plus grab) and tail slap +0"
@@ -130,6 +136,19 @@ const FIXTURES = {
     ranged: [['javelin', [5], '', false, 0]], languages: ['pidgin of Giant', 'Goblin', 'Orc'], // "Goblin, and Orc"
     feats: ['Cleave', 'Power Attack'], sa: ['Superior Two-Weapon Fighting'], spa: ['superior two-weapon fighting'],
   },
+  'fire-giant.txt': {
+    cr: 10, hp: 142, hd: '15d8+75', ac: [24, 8, 24], saves: [14, 4, 9], abil: [31, 9, 21, 10, 14, 10],
+    melee0: [1, 21, '3d6+15'], iter0: [21, 16, 11], nMelee: 2, groups: [0, 1], speed: { land: 40, notes: '30 ft. in armor' },
+    space: [10, 10], init: -1, immune: ['fire'], weaknesses: ['vulnerability to cold'], other: ['rock catching'],
+    ranged: [['rock', [10], '', false, 0]], languages: ['Common', 'Giant'],
+    sa: ['Heated Rock'], spa: ['heated rock', 'rock throwing (120 ft.)'],
+  },
+  'frost-giant.txt': {
+    cr: 9, hp: 133, hd: '14d8+70', ac: [21, 8, 21], saves: [14, 3, 6], abil: [29, 9, 20, 10, 14, 11],
+    melee0: [1, 18, '3d6+13'], iter0: [18, 13], nMelee: 2, groups: [0, 1], speed: { land: 40 }, space: [10, 10], init: -1,
+    immune: ['cold'], weaknesses: ['vulnerability to fire'], other: ['rock catching'], ranged: [['rock', [9], '', false, 0]],
+    skillNote: ['Stealth', '+6 in snow'], sa: [], spa: ['rock throwing (120 ft.)'],
+  },
   'gargoyle.txt': {
     cr: 4, hp: 42, hd: '5d10+15', ac: [16, 12, 14], saves: [4, 6, 4], abil: [15, 14, 16, 6, 11, 7],
     melee0: [2, 7, '1d6+2'], nMelee: 3, speed: { land: 40, fly: 60, flyManeuver: 'average' }, init: 6,
@@ -171,10 +190,24 @@ const FIXTURES = {
     saDc: { Gibbering: 13, Spittle: 18 },
     spa: ['blood drain', 'engulf (6d4 damage plus 2 Con damage, AC 13, hp 4)', 'gibbering', 'ground manipulation', 'spittle (+6 ranged touch)'],
   },
+  'glabrezu.txt': {
+    cr: 13, hp: 186, hd: '12d10+120', ac: [28, 8, 28], saves: [18, 4, 11], abil: [31, 11, 31, 16, 16, 20],
+    melee0: [2, 20, '2d8+10'], crit0: '19-20', nMelee: 3, speed: { land: 40 }, space: [15, 15], init: 0,
+    dr: [{ amount: 10, bypass: 'good' }], sr: 24, resist: [['acid', 10], ['cold', 10], ['fire', 10]], immune: ['electricity', 'poison'],
+    sla: ['constant', 'at will', '1/day', '1/month'], slaSample: 'reverse gravity', languageSpecial: ['telepathy 100 ft.'],
+    feats: ['Improved Critical (pincer)', 'Vital Strike'], sa: [], spa: ['rend (2 pincers, 2d8+15)'],
+  },
   'goblin.txt': {
     cr: 1 / 3, hp: 6, hd: '1d10+1', ac: [16, 13, 14], saves: [3, 2, -1], abil: [11, 15, 12, 10, 9, 6],
     melee0: [1, 2, '1d4'], crit0: '19-20', nMelee: 1, speed: { land: 30 }, classLine: 'Goblin warrior 1',
     ranged: [['short bow', [4], 'x3', false, 0]], sa: [], spa: [],
+  },
+  'gorgon.txt': {
+    cr: 8, hp: 100, hd: '8d10+56', ac: [20, 9, 20], saves: [13, 6, 7], abil: [24, 10, 24, 2, 16, 9],
+    melee0: [1, 14, '2d8+7'], nMelee: 2, speed: { land: 30 }, space: [10, 5], init: 4, languages: [],
+    // Printed without its (Su): the name is found because the Special Attacks line lists it.
+    sa: ['Breath Weapon'], saDc: { 'Breath Weapon': 21 },
+    spa: ['breath weapon (60-foot cone, turn to stone, Fortitude DC 21 negates)', 'trample (2d8+10, DC 21)'],
   },
   'griffon.txt': {
     cr: 4, hp: 42, hd: '5d10+15', ac: [17, 11, 15], saves: [7, 6, 4], abil: [16, 15, 16, 5, 13, 8],
@@ -187,6 +220,12 @@ const FIXTURES = {
     weaknesses: ['vulnerability to cold'], sa: [],
     spa: ['breath weapon (10-ft. cone, once every 2d4 rounds, 2d6 fire damage, Reflex DC 14 for half)'],
   },
+  'hill-giant.txt': {
+    cr: 7, hp: 85, hd: '10d8+40', ac: [21, 8, 21], saves: [11, 2, 3], abil: [25, 8, 19, 6, 10, 7],
+    melee0: [1, 14, '2d8+10'], iter0: [14, 9], nMelee: 2, groups: [0, 1], speed: { land: 40, notes: '30 ft. in armor' },
+    space: [10, 10], init: -1, other: ['rock catching'], ranged: [['rock', [6], '', false, 0]], languages: ['Giant'],
+    sa: [], spa: ['rock throwing (120 ft.)'],
+  },
   'hippogriff.txt': {
     cr: 2, hp: 22, hd: '3d10+6', ac: [14, 12, 11], saves: [5, 5, 2], abil: [15, 15, 14, 2, 12, 9],
     melee0: [1, 4, '1d6+2'], nMelee: 2, speed: { land: 40, fly: 100, flyManeuver: 'average' }, space: [10, 5],
@@ -196,6 +235,7 @@ const FIXTURES = {
     cr: 1, hp: 11, hd: '2d10', ac: [14, 14, 12], saves: [0, 4, 1], abil: [8, 15, null, 10, 12, 7],
     melee0: [1, 3, '1d4-1'], extra0: 'poison', nMelee: 1, speed: { land: 20, fly: 50, flyManeuver: 'good' },
     space: [2.5, 0], other: ['construct traits'], sa: ['Poison', 'Telepathic Link'], saDc: { Poison: 13 }, spa: [],
+    typeLine: ['Any alignment (same as creator)', 'Tiny', 'construct'],
   },
   'human-skeleton.txt': {
     cr: 1 / 3, hp: 4, hd: '1d8', ac: [16, 12, 14], saves: [0, 2, 2], abil: [15, 14, null, null, 10, 10],
@@ -226,10 +266,23 @@ const FIXTURES = {
     opposition: ['illusion', 'transmutation'], aura: ['fear'], sa: [],
     spa: ['grave touch (9/day)', 'paralyzing touch (DC 18)', 'power over undead (9/day, DC 18)'],
   },
+  'medusa.txt': {
+    cr: 7, hp: 76, hd: '8d10+32', ac: [15, 12, 13], saves: [6, 8, 7], abil: [10, 15, 18, 12, 13, 15],
+    melee0: [1, 10, '1d4'], iter0: [10, 5], crit0: '19-20', nMelee: 2, speed: { land: 30 }, init: 6,
+    ranged: [['mwk longbow', [11, 6], 'x3', false, 0]], feats: ['Point-Blank Shot', 'Weapon Finesse'],
+    sa: ['All-Around Vision', 'Petrifying Gaze', 'Poison'], saDc: { 'Petrifying Gaze': 16, Poison: 18 }, spa: ['petrifying gaze'],
+  },
   'mimic.txt': {
     cr: 4, hp: 52, hd: '7d8+21', ac: [16, 11, 15], saves: [5, 5, 6], abil: [19, 12, 17, 10, 13, 10],
     melee0: [1, 10, '1d8+6'], extra0: 'adhesive', nMelee: 1, speed: { land: 10 }, immune: ['acid'], cmdNotes: "can't be tripped",
     sa: ['Adhesive', 'Mimic Object'], saDc: { Adhesive: 17 }, spa: ['constrict (slam, 1d8+6)'],
+  },
+  'nalfeshnee.txt': {
+    cr: 14, hp: 203, hd: '14d10+126', ac: [29, 13, 28], saves: [22, 9, 21], abil: [32, 13, 29, 23, 22, 20],
+    melee0: [1, 23, '3d8+11'], crit0: '19-20', nMelee: 2, speed: { land: 30, fly: 40, flyManeuver: 'poor' }, space: [15, 15], init: 5,
+    dr: [{ amount: 10, bypass: 'good' }], sr: 25, resist: [['acid', 10], ['cold', 10], ['fire', 10]], immune: ['electricity', 'poison'],
+    sla: ['constant', 'at will', '1/day'], slaSample: 'feeblemind', summon: 'level 5, 1 nalfeshnee 20%, 1d4 hezrous 40%, or 1d4 vrocks 50%',
+    aura: ['unholy aura'], languageSpecial: ['telepathy 100 ft.'], sa: ['Unholy Nimbus'], saDc: { 'Unholy Nimbus': 22 }, spa: ['unholy nimbus'],
   },
   'npc-battle-mage.txt': {
     cr: 2, hp: 19, hd: '3d6+6', ac: [16, 12, 14], saves: [2, 3, 3], saveNotes: '+2 vs. enchantments', abil: [12, 15, 12, 17, 10, 8],
@@ -263,6 +316,13 @@ const FIXTURES = {
     cr: 3, hp: 27, hd: '5d8+5', ac: [18, 13, 15], saves: [2, 4, 5], abil: [10, 17, 13, 2, 13, 8],
     melee0: [1, 6, '1d3'], nMelee: 2, speed: { land: 40, climb: 10 }, cmdNotes: '20 vs. trip',
     sa: ['Rust', 'Scent Metals'], saDc: { Rust: 15 }, spa: [],
+  },
+  'stone-golem.txt': {
+    cr: 11, hp: 107, hd: '14d10+30', ac: [26, 8, 26], saves: [4, 3, 4], abil: [28, 9, null, null, 11, 1],
+    melee0: [2, 22, '2d10+9'], nMelee: 1, speed: { land: 20 }, space: [10, 10], init: -1,
+    dr: [{ amount: 10, bypass: 'adamantine' }], immune: ['construct traits', 'magic'],
+    // Nethys runs the two abilities together on one line ("hit points.A stone to flesh ... Slow (Su)").
+    sa: ['Immunity to Magic', 'Slow'], saDc: { Slow: 17 }, spa: ['slow'],
   },
   'succubus.txt': {
     cr: 7, hp: 84, hd: '8d10+40', ac: [20, 13, 17], saves: [7, 9, 10], abil: [13, 17, 20, 18, 14, 27],
@@ -377,6 +437,7 @@ for (const [file, x] of Object.entries(FIXTURES)) {
   if ('cmb' in x) eq(c.cmb, x.cmb, `${n}: CMB`);
   if (x.init !== undefined) eq(c.init, x.init, `${n}: init`);
   if (x.classLine) eq(c.classLine, x.classLine, `${n}: class line`);
+  if (x.typeLine) eq([c.alignment, c.size, c.type], x.typeLine, `${n}: alignment, size and type`);
   if (x.ageCategory) eq(c.ageCategory, x.ageCategory, `${n}: dragon age category`);
   if (x.skillNote) eq(c.skills.find((s) => s.name === x.skillNote[0])?.note, x.skillNote[1], `${n}: ${x.skillNote[0]} situational note`);
   if (x.tactics) ok(x.tactics.test(c.tactics) && !c.melee.some((a) => /\+3\)/.test(a.damage)), `${n}: TACTICS cut out and kept`);
@@ -468,6 +529,15 @@ eq(parsePf1('Wizard Spells Prepared (CL 5th)\n3rd—fireball\nOpposition Schools
 }
 eq(parseDiceAvg('2d6+4'), 11, 'parseDiceAvg("2d6+4") is 11');
 eq([parseDiceAvg('1d8'), parseDiceAvg('2d6–1'), parseDiceAvg('1d6+1d4'), parseDiceAvg('grab')], [4.5, 6, 6, null], 'parseDiceAvg edge cases');
+
+// An ability printed without (Ex), (Su) or (Sp): found by a name the block
+// already lists, or by the "Name: text" form formatPf1Section writes it back as.
+eq(parsed['gorgon.txt'].specialAbilities.map((a) => [a.kind, a.text.slice(0, 20)]), [['', 'A gorgon can use its']],
+  'an untagged ability keeps kind "" and its text');
+eq(parsePf1('SPECIAL ABILITIES Breath Weapon: A gorgon breathes. Trample (Ex) It tramples.').specialAbilities.map((a) => [a.name, a.kind]),
+  [['Breath Weapon', ''], ['Trample', 'Ex']], 'a lone section reads "Name: text" as an untagged ability');
+eq(parsePf1('Special Attacks trample\nSPECIAL ABILITIES\nRend (Ex) It rends. Trample damage is doubled.').specialAbilities.map((a) => a.name),
+  ['Rend'], 'a listed name opening a sentence of prose is not an ability');
 
 // ---------------------------------------------------------------- round-trip
 // A section's text back through the parser gives the same data. Fields a
