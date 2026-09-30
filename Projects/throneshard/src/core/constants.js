@@ -79,9 +79,12 @@ export const NEUTRAL_RESPAWN_INTERVAL = 60;
 export const PASSIVE_GOLD_PER_SEC = 1.5;
 export const STARTING_GOLD = 600;
 export const MAX_LEVEL = 25;
-// Cumulative XP needed to reach level index+1
-export const XP_TABLE = [0, 240, 640, 1160, 1760, 2440, 3200, 4000, 4900, 5900, 7000, 8200, 9500, 10900, 12400,
+// Cumulative XP needed to reach level index+1. The raw curve left bot heroes at level 12 to 14 when a match ends at 35
+// minutes, so talents at 20 and 25 and scepters almost never showed; XP_CURVE_SCALE pulls level 20 to about minute 35.
+const XP_CURVE_RAW = [0, 240, 640, 1160, 1760, 2440, 3200, 4000, 4900, 5900, 7000, 8200, 9500, 10900, 12400,
   14000, 15700, 17500, 19400, 21400, 23600, 26000, 28600, 31400, 34400];
+export const XP_CURVE_SCALE = 0.42;
+export const XP_TABLE = XP_CURVE_RAW.map((v) => Math.round((v * XP_CURVE_SCALE) / 10) * 10);
 export const XP_SHARE_RADIUS = 15;
 export const respawnTime = (level) => 4 + level * 2;
 export const heroKillGold = (victimLevel, streak = 0) => 110 + victimLevel * 8 + Math.min(streak, 10) * 30;

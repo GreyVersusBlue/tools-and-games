@@ -9,10 +9,12 @@ import { WARD_SPOTS, SENTRY_SPOTS } from './WardSpots.js';
 // deward, contest Grimmaw more readily); runes/wards: rune pickup and warding behaviour.
 export const DIFFICULTY = {
   easy: { think: 0.4, lhAcc: 0.8, lhMiss: 0.35, abilityUse: 0.3, engage: 1.7, retreatHp: 0.22, harass: 0.04, deny: 0.1, focus: 0.5, dive: false, itemUse: 0.4, runes: 0.3, wards: false },
-  normal: { think: 0.2, lhAcc: 0.97, lhMiss: 0.1, abilityUse: 0.65, engage: 1.3, retreatHp: 0.3, harass: 0.12, deny: 0.45, focus: 0.8, dive: false, itemUse: 0.8, runes: 1, wards: true },
-  hard: { think: 0.1, lhAcc: 1.0, lhMiss: 0.0, abilityUse: 1, engage: 1.0, retreatHp: 0.3, harass: 0.3, deny: 0.9, focus: 1, dive: true, itemUse: 1, runes: 1, wards: true, combo: true, lead: true, smart: true, aware: true },
+  normal: { think: 0.2, lhAcc: 0.9, lhMiss: 0.1, abilityUse: 0.65, engage: 1.3, retreatHp: 0.3, harass: 0.12, deny: 0.45, focus: 0.8, dive: false, itemUse: 0.8, runes: 1, wards: true },
+  hard: { think: 0.1, lhAcc: 0.9, lhMiss: 0.03, abilityUse: 1, engage: 1.0, retreatHp: 0.3, harass: 0.3, deny: 0.9, focus: 1, dive: true, itemUse: 1, runes: 1, wards: true, combo: true, lead: true, smart: true, aware: true },
 };
 
+const LANE_PHASE_END = 660; // seconds; laners keep last-hitting until then unless a kill or a big edge is on
+const LANE_ENGAGE_RATIO = 2.1;
 const HEAL_ITEM = /salve|healing|bark_ration|clarity|honeyed_plum|bottle|wisp_ember/i;
 const MANA_ITEM = /clarity|honeyed_plum|bottle|tidecall/i;
 const _v = new THREE.Vector3();
@@ -681,7 +683,10 @@ export class BotBrain {
     const laning = this.plan?.type === 'lane' || !this.plan;
     let engage = ratio > this.diff.engage || killable || committed;
     // In lane, only commit to real kill chances or big advantages; otherwise harass
-    if (laning && !killable && ratio < this.diff.engage * 1.6 && !committed) engage = false;
+    // (Before LANE_PHASE_END the bar is the same for every difficulty: hard's lower `engage` used to pull its
+    // laners into skirmishes and cost them a third of their last hits, 10.3 against normal's 15.9 at 10 min.)
+    const laneBar = this.game.time < LANE_PHASE_END ? Math.max(this.diff.engage * 1.6, LANE_ENGAGE_RATIO) : this.diff.engage * 1.6;
+    if (laning && !killable && ratio < laneBar && !committed) engage = false;
     // Being attacked by a hero in lane: fight back if not losing
     if (!engage && target.attackTarget === h && ratio > 0.9 && h.distanceTo(target) < h.getStat('attackRange') + 3) engage = true;
     // Don't chase under enemy towers
@@ -689,6 +694,8 @@ export class BotBrain {
     if (engage && h.distanceTo(target) > 22 && !killable) engage = false;
     if (!engage) {
       this.fightTarget = null;
+      // a creep that can be taken now is worth more than a poke at the enemy laner
+      if (laning && this.tryLastHit()) return true;
       return this.tryHarass(target);
     }
     this.fightTarget = target;
@@ -739,6 +746,9 @@ export class BotBrain {
     if (this.underEnemyTower(target.position) || this.underEnemyTower(h.position)) return false;
     const aggroCreeps = this.ctx.enemyCreeps.filter((c) => c.distanceTo(h) < du(500)).length;
     if (aggroCreeps > 3) return false;
+    // one roll per half second, whatever the think interval (hard thinks every 0.1 s and used to poke twice as often for it)
+    if (this.now < (this.harassRollAt ?? 0)) return false;
+    this.harassRollAt = this.now + 0.5;
     if (Math.random() > this.diff.harass) {
       // occasionally nuke in lane on hard/normal
       if (target.healthPct < 0.6 && Math.random() < this.diff.abilityUse * 0.25 && h.manaPct > 0.5) return this.tryCast(target);
