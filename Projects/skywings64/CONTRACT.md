@@ -2,7 +2,7 @@
 
 No build step. Plain ES modules. `import * as THREE from 'three'` (import map -> vendor/three.module.js).
 Lives in tools-and-games at `Projects/skywings64/` (the repo root is served whole; open `/Projects/skywings64/`).
-`three/addons/` maps to vendor/addons/, which holds ONLY the files the game imports (HISTORY.md #721): a new
+`three/addons/` maps to vendor/addons/, which holds ONLY the files the game imports (HISTORY.md #724): a new
 addon import means copying that one file from three.js r160. Zero offsite requests: textures, HDRs, fonts and
 GLBs are all under assets/. Suite: `node test/browser.mjs` from this folder (needs `npm install` in Tools/board-check).
 Open work: WISHLIST.md. The file-ownership lists below are from the original multi-agent build and are historical.
