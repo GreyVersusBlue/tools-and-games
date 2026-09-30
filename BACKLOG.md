@@ -1038,7 +1038,7 @@ and #222 was closed unmerged an hour of suites later.
 | 28 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 29 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 30 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 31 | Draw the playfield in device pixels: at a device pixel ratio of 2 it fills the top left quarter of the canvas | `Projects/orbital` | ¼ | Opus 5.5 |  |  | [Orbital](#orbital) item 6 |
+| 31 | Draw the playfield in device pixels: at a device pixel ratio of 2 it fills the top left quarter of the canvas | `Projects/orbital` | ¼ | Opus 5.5 |  | claude/orbital-device-pixels | [Orbital](#orbital) item 6 |
 
 ## Parked — needs a person at a real device
 
