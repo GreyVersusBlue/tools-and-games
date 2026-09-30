@@ -180,8 +180,9 @@ let page;
 
 try {
   // 1320x800 at dsf 1, the same view games.mjs frames Orbital in. dsf 2 doubles
-  // the canvas and halves an already slow frame rate for nothing: no assertion
-  // here reads a pixel.
+  // the canvas and halves an already slow frame rate, so only the section
+  // about device pixels opens a second page at 2 (#742). Everything else here
+  // is independent of the ratio, and no assertion reads a pixel.
   page = await prepPage(browser, BASE, { width: 1320, height: 800, dsf: 1 });
   await page.goto(BASE + PAGE_URL, { waitUntil: 'load', timeout: 45000 });
 
@@ -448,6 +449,55 @@ try {
     await page.evaluate(() => loadLevel(21));
     await new Promise(r => setTimeout(r, 1500));
     await shot(page, 'bodies');
+  });
+
+  await section('At a device pixel ratio of 2 the playfield fills the canvas', async () => {
+    // The page drew the field in CSS pixels on a canvas sized in device pixels,
+    // so at 2 everything landed in the top left quarter (#742). Nothing here
+    // recomputes view: the world's centre has to land on the canvas's centre,
+    // its corners inside the canvas and touching it on one axis, and the
+    // editor's hit test has to find a body where the canvas drew it.
+    const p2 = await prepPage(browser, BASE, { width: 1320, height: 800, dsf: 2 });
+    try {
+      await p2.goto(BASE + PAGE_URL, { waitUntil: 'load', timeout: 45000 });
+      await boot(p2, null);
+      await waitFor(p2, () => SPRITES.atlas !== null, { timeout: 10000 });
+      const g = await p2.evaluate(() => {
+        const [cx, cy] = W2S(W / 2, H / 2), [x0, y0] = W2S(0, 0), [x1, y1] = W2S(W, H);
+        return { dpr: DPR, cw: cv.width, ch: cv.height, cx, cy, x0, y0, x1, y1 };
+      });
+      t.ok(g.dpr === 2 && g.cw === 2640 && g.ch === 1600, 'the canvas is 2640 x 1600 for a 1320 x 800 window',
+        `dpr ${g.dpr}, ${g.cw} x ${g.ch}`);
+      t.ok(Math.abs(g.cx - g.cw / 2) < 1 && Math.abs(g.cy - g.ch / 2) < 1,
+        'the world\'s centre lands on the canvas\'s centre',
+        `${g.cx.toFixed(1)},${g.cy.toFixed(1)} against ${g.cw / 2},${g.ch / 2}`);
+      const inside = g.x0 >= -0.5 && g.y0 >= -0.5 && g.x1 <= g.cw + 0.5 && g.y1 <= g.ch + 0.5;
+      const fits = Math.abs(g.x1 - g.x0 - g.cw) < 1 || Math.abs(g.y1 - g.y0 - g.ch) < 1;
+      t.ok(inside && fits, 'its corners are inside the canvas and the field fills it on one axis',
+        `${g.x0.toFixed(0)},${g.y0.toFixed(0)} to ${g.x1.toFixed(0)},${g.y1.toFixed(0)} of ${g.cw} x ${g.ch}`);
+
+      // The editor, on a shipped level, with the bodies drawn once and each
+      // centre read off the transform drawImage ran under.
+      await p2.evaluate(() => edEnter(JSON.parse(JSON.stringify(LEVELS[21]))));
+      const at = await p2.evaluate(() => {
+        const out = [], di = ctx.drawImage;
+        ctx.drawImage = function () { const m = ctx.getTransform(); out.push([m.e, m.f]); return di.apply(ctx, arguments); };
+        try { for (const b of OrbitalPhysics.posBodies(bodies, 0)) drawBody(b, 0); }
+        finally { delete ctx.drawImage; }
+        return out;
+      });
+      t.ok(at.length === 5, 'the editor draws the five bodies of Deep Field', `${at.length} drawn`);
+      let hits = 0, detail = '';
+      for (let i = 0; i < at.length; i++) {
+        await p2.evaluate(() => edSelect(null));
+        await p2.mouse.click(at[i][0] / 2, at[i][1] / 2);
+        const got = await p2.evaluate(() => edSel && edSel.kind === 'body' ? bodies.indexOf(edSel.body) : -1);
+        if (got === i) hits++; else if (!detail) detail = `a click on body ${i} selected ${got}`;
+      }
+      t.ok(hits === at.length, 'a click where the canvas drew each body selects that body',
+        detail || `${hits} of ${at.length}`);
+      await shot(p2, 'dsf2-editor');
+    } finally { await p2.close().catch(() => {}); }
   });
 
   await section('Clean', async () => {

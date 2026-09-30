@@ -121,13 +121,12 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Orbital's body sheet,
-wired in**: rank 19, a ¼ naming Opus 5.5, worked on huginn, and shipped in
-PR #484. Every row from old rank 20 moved up one, and one row is new at the
-bottom, rank 31. That is the
+**The last batch of ranked work that shipped** is **Orbital's device-pixel
+playfield**: rank 31, a ¼ naming Opus 5.5, worked on huginn, and shipped in
+the PR that carries this edit. It was the last row, so no rank moved. That is the
 line to update when your batch merges; a PR that only changes these files is
 not a batch and does not belong in it.
-**31 ranked items remain**, and **every one of them names a model.**
+**30 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
 2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 20 are
@@ -157,10 +156,7 @@ the same area, and the two batch together inside #382's cap. **Rank 5,
 Signal City's wiring row (¼, Opus 5.5, no gate), is cloud work and ready**,
 because its sheet merged in PR #478: a session without Blender takes it.
 Every other wiring row (ranks 4, 9, 12, 15 and 18) waits on a pack that has
-not been built. **Rank 31 is new and is cloud work too**: Orbital draws its
-playfield in the top left quarter of the canvas at a device pixel ratio of 2,
-found while wiring the sheet (¼, Opus 5.5, no gate). It sits last because a
-session does not re-rank; Devon may want it higher.
+not been built.
 Below the Blender block, rank 28 (The Fracture Cycle's fourth prong) and rank
 30 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
 them, and a scope Devon has not asked for is not a judgement call a session
@@ -1038,7 +1034,6 @@ and #222 was closed unmerged an hour of suites later.
 | 28 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 29 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 30 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 31 | Draw the playfield in device pixels: at a device pixel ratio of 2 it fills the top left quarter of the canvas | `Projects/orbital` | ¼ | Opus 5.5 |  | claude/orbital-device-pixels | [Orbital](#orbital) item 6 |
 
 ## Parked — needs a person at a real device
 
@@ -2115,22 +2110,13 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
    no harder than the one below) has the numbers to move a band and the fixture
    in `test/generator.mjs` to say what it moved.
 
-6. **Draw the playfield in device pixels** (ranked, ¼, no gate; found
-   2026-09-30 while wiring the body sheet). `resize()` in `js/game.js` sizes
-   the canvas at `innerWidth * DPR` and leaves `view.s`, `view.ox` and
-   `view.oy` in CSS pixels, and `frame()` sets an identity transform, so at a
-   device pixel ratio of 2 everything `W2S` places lands in the top left
-   quarter of the canvas while the HUD stays full size. It has been that way
-   since the first commit (b9649d0). The evidence is one screenshot: the
-   harness at 1320 x 800 and `dsf: 2`. Every suite and `games.mjs` run Orbital
-   at `dsf: 1`, which is why nothing caught it. The aim is a drag vector and
-   survives; `toWorld` is in CSS pixels, so anything that hit-tests a drawn
-   thing (the editor's select and move) is off by the ratio. The fix is one
-   of two: scale the context by `DPR` once a frame and take the `* DPR` off
-   every line width, or put `view` in device pixels and multiply the pointer
-   in `toWorld`. Either way the suite line is `test/browser.mjs` at `dsf: 2`
-   asserting where a body's `drawImage` lands against the canvas size, and
-   the editor's hit test on a body it drew.
+6. **Draw the playfield in device pixels. Shipped 2026-09-30** (#742).
+   `view` is in device pixels and `toWorld` multiplies the pointer by `DPR`.
+   `test/browser.mjs` opens a second page at `dsf: 2` and holds the world's
+   centre to the canvas's centre, its corners inside the canvas, and the
+   editor's hit test to where each body was drawn. Nothing is open against it.
+   Every other suite and `games.mjs` still run Orbital at `dsf: 1`, so a fix
+   that only holds at 2 has one place to fail.
 
 One correction worth carrying, since the file that carried it is deleted:
 **the live level count is 22, not the 21 an earlier survey recorded**, and
@@ -2184,7 +2170,7 @@ drawing turned: the black hole at `spin * 2`, the wormhole at `spin * 3`, the
 booster by `b.dir`, its chevrons a still. The glow is over the frame, except
 the black hole's, which stays behind it (#736). `game.js` waits for the sheet
 before the first frame and stops with the reason on the intro card when it
-will not load (#735). `test/browser.mjs` holds all of it, 65 checks.
+will not load (#735). `test/browser.mjs` holds all of it, 70 checks, since the device-pixel section (#742).
 
 **B4. Unlit cores (not ranked; needs Blender).** The black hole's core and the
 wormhole's render grey, 69,70,75 and 65,73,75 at the centre, where the game

@@ -1365,6 +1365,8 @@ Generator.
 
 **#741. Throneshard's browser suite plays one whole bot match with a fixed step and rendering stubbed.** Under the harness's software GL a rendered frame costs far more than a tick, so `test/browser.mjs` stops the animation loop, stubs `renderer.render` and calls `game.tick()` at `fixedDt = 0.05` until the match ends or 70 game minutes pass. Nothing in it is timed (#53). The end screen is waited for on the DOM, because `UI.js` raises it on a 2.5 s wall-clock `setTimeout`. *Throneshard, 2026-09-30.*
 
+**#742. Orbital's `view` is in device pixels, and `toWorld` multiplies the pointer by `DPR`.** The canvas has been sized in device pixels and every line width scaled by `DPR` since the first commit, while `view` stayed in CSS pixels, so at a ratio of 2 the field filled the top left quarter and the editor's hit test was off by the ratio. Changing the one place `view` is built keeps every draw call as it was; the alternative, scaling the context and stripping `* DPR` from about 30 lines, touches far more for the same result.
+
 # The log
 
 One paragraph per phase or batch, oldest first within each project. PR and
@@ -1860,3 +1862,7 @@ B3 (¼, no gate), on huginn, no subagents. `render.js`'s `drawBody` lost its gra
 ## Throneshard joins the board, 2026-09-30
 
 Not a ranked row: Devon asked for the game to move in here from its private repo under a legally distinct name, and for later work on it to happen here. It came in as files (#738), renamed throughout before the first commit, with ten hero models rebuilt so none reads as a copy of a commercial hero, and ported off Vite to an importmap and a vendored three r186 (#740). The page is 36 MB on disk, mostly character and structure `.glb` (meshopt and WebP) and audio. Suites: `test/data.mjs`, 916 checks on every id the game names, broken twice on purpose (an item build naming a missing item, a talent naming another hero's ability) and failing on the line each claims; `test/browser.mjs`, 14 checks over a whole bot match (33 to 45 game minutes in four runs, about 3 to 8 minutes of wall clock under the harness), broken once by not raising the end screen, which failed the three end-screen checks and nothing else (#741). Frame rate on huginn's Vega 11 at 1280x720, quiet machine: 60 mid-fight on high and on low, after terrain tiles went to one index buffer, the shadow map and bloom to every second frame, and outlined overlay text to cached canvases. The card has no preview yet, so it shows the shard glyph on a sealed tile.
+
+## Orbital draws the playfield in device pixels, 2026-09-30
+
+Rank 31 (¼, no gate), on huginn, no subagents, after rank 1 turned out to be claimed on `main` by another session (#488). One edit in `js/game.js`'s `resize()` and `toWorld` (#742). `test/browser.mjs` gained a section on its own page at `dsf: 2`: 5 checks, 65 to 70. With the fix stashed, three fail as they should: the world's centre lands at 660,400 against 1320,800, the corners span 35,0 to 1285,800 of a 2640 x 1600 canvas, and an editor click on body 0 selects nothing; the canvas-size check passes either way, as it should. The centre check reads `W2S` and not `view`, so it does not restate the formula it guards. `physics`, `levelcode` and `generator` pass, and `validate.mjs` reports 103.

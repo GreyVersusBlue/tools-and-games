@@ -49,9 +49,13 @@ function resize() {
   const inset = edInset();
   const w = winW - inset;
   const s = Math.min(w / W, h / H);
-  view = { s, ox: inset + (w - W * s) / 2, oy: (h - H * s) / 2 };
+  // `view` is in device pixels, the unit the canvas and every `* DPR` line
+  // width are in. It was CSS pixels until 2026-09-30, so at a ratio of 2 the
+  // playfield filled the top left quarter of the canvas.
+  view = { s: s * DPR, ox: (inset + (w - W * s) / 2) * DPR, oy: ((h - H * s) / 2) * DPR };
 }
-const toWorld = (px, py) => ({ x: (px - view.ox) / view.s, y: (py - view.oy) / view.s });
+// Pointer events arrive in CSS pixels; `view` is in device pixels.
+const toWorld = (px, py) => ({ x: (px * DPR - view.ox) / view.s, y: (py * DPR - view.oy) / view.s });
 
 // ---- state ----
 let L, curIndex = 0, bodies = [], probe = null, vel = null, flyState = null;
