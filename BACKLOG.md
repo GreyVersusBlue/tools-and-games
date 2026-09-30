@@ -979,8 +979,8 @@ and #222 was closed unmerged an hour of suites later.
 | 18 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
 | 19 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
 | 20 | Wire the cup and food sheet in, once rank 18 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
-| 21 | Orbital's sprite pipeline | `Projects/orbital` | ¼ | Opus 5.5 | blender |  | [Orbital: Blender assets](#orbital-blender-assets) B1 |
-| 22 | Orbital's body sheet: planet, star, rock, repulsor, black hole, wormhole and booster | `Projects/orbital` | ½ | Opus 5.5 | blender |  | [Orbital: Blender assets](#orbital-blender-assets) B2 |
+| 21 | Orbital's sprite pipeline | `Projects/orbital` | ¼ | Opus 5.5 | blender | `claude/orbital-sprite-pipeline-body-sheet` | [Orbital: Blender assets](#orbital-blender-assets) B1 |
+| 22 | Orbital's body sheet: planet, star, rock, repulsor, black hole, wormhole and booster | `Projects/orbital` | ½ | Opus 5.5 | blender | `claude/orbital-sprite-pipeline-body-sheet` | [Orbital: Blender assets](#orbital-blender-assets) B2 |
 | 23 | Wire the body sheet in, once rank 21 has merged, with the glow drawn over it | `Projects/orbital` | ¼ | Opus 5.5 |  |  | [Orbital: Blender assets](#orbital-blender-assets) B3 |
 | 24 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
 | 25 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
@@ -1216,14 +1216,15 @@ review. Round 3 made zero edits and found zero findings.
 Anathema Archive's folder the way the other Pathfinder pages' suites are.
 
 **Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709,
-#711 to #714). Since then: spell cards open inline from the stat block, the
+#711 to #716). Since then: spell cards open inline from the stat block, the
 board card has a preview, PF2e spell text reads Foundry's markup as print
 (links, damage formulas at the spell's rank, checks, templates, lists, tables,
 and the one embedded action), and hp is anchored at low below CR 1 and at 2.2
-from CR 1 up (#712, #714), measured on 38 printed pairs: six below CR 1,
-eleven at CR 1 and 2, twenty-one from CR 3 up. Every parse fixture's special
-attacks are hand-checked. Open follow-ups, none ranked; the first three wait
-on Devon's go-ahead:
+from CR 1 up (#712, #714, #716), measured on 48 printed pairs: six below CR 1,
+eleven at CR 1 and 2, seventeen at CR 3 to 6, fourteen from CR 7 up. A
+construct's Fort reads no lower than moderate (#715). Every parse fixture's
+special attacks are hand-checked. Open follow-ups, none ranked; the first
+three wait on Devon's go-ahead:
 
 1. **The spell map's 1,087 "partial" entries** were written by a second pass
    that fixed the first pass's misses; they have not been read by a person. The
@@ -1234,15 +1235,14 @@ on Devon's go-ahead:
    abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
    the open question.
 3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
-4. **Pairs from CR 7 up.** Four pairs sit there (succubus, lich, iron golem,
-   balor), and at #714's 2.2 they average about -6% (succubus +19%, the other
-   three -7% to -18%), against +0.8% for the whole CR 3+ band. Four is too
-   few to act on; eight to ten more at CR 7 to 15 would say whether high CRs
-   want their own anchor. Fixtures come from aonprd.com with `curl` (Python's
-   default user agent gets a 403), and the parse suite runs on each first:
-   #713's ten blocks found two parser bugs and #714's twelve found two more.
-   Expect a design outlier or two like the gargoyle (#714); excuse it from the
-   per-monster bound by name rather than dropping it from the averages.
+4. **Two pairs sit on a per-monster bound.** The medusa's AC converts to 20
+   against Paizo's 25 (the bound is 5), and the nalfeshnee's Will to 31
+   against 23 (the bound is 8). Neither is hp, and both are in bounds, but
+   one more point of drift fails the suite. Worth a look at what the PF1e
+   numbers miss before a tier table changes: the medusa's AC 15 at CR 7 is
+   Dex and natural armor 3, and the nalfeshnee's Will +21 at CR 14 is a good
+   save with Wis 22 and Iron Will on it. No pair from CR 15 to 19 exists yet; the balor at 20 is alone
+   above the nalfeshnee.
 
 ## Pathfinder Characters
 

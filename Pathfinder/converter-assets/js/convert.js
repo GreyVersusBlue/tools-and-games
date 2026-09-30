@@ -242,8 +242,11 @@ export function convertCreature(c, opts = {}) {
 
   // ---- defenses ----
   const ac = bench('ac', c.ac?.total, T.PF2_AC, 'AC');
+  // A PF1e construct has no Con, so its Fort is a bare base save and reads as
+  // terrible (stone golem +4 at CR 11); PF2e prints most constructs at high
+  // Fortitude or better. It is read no lower than moderate (HISTORY #715).
   const saves = {
-    fort: bench('save', c.saves?.fort, T.PF2_SAVES, 'Fortitude'),
+    fort: bench('save', c.saves?.fort, T.PF2_SAVES, 'Fortitude', 2, typ === 'construct' && c.abilities?.con == null ? T.TIERS.moderate : 0),
     ref: bench('save', c.saves?.ref, T.PF2_SAVES, 'Reflex'),
     will: bench('save', c.saves?.will, T.PF2_SAVES, 'Will'),
   };
@@ -489,7 +492,7 @@ export function convertCreature(c, opts = {}) {
   };
   const convertText = (text) => String(text || '')
     .replace(/\bDC\s*(\d+)/g, (_, d) => `DC ${dcFor(Number(d)).value}`)
-    .replace(/Fortitude save/gi, 'Fortitude').replace(/Reflex save/gi, 'Reflex').replace(/Will save/gi, 'Will')
+    .replace(/\b(Fortitude|Reflex|Will) save\b/gi, '$1') // not "saves": "additional Fortitude saves" stays a noun
     .replace(/\ban? standard action\b/gi, '2 actions').replace(/\ban? swift action\b/gi, '1 action')
     .replace(/\ban? move action\b/gi, '1 action').replace(/\ban? full-round action\b/gi, '3 actions')
     .replace(/\ban? immediate action\b/gi, 'a reaction')
@@ -507,7 +510,9 @@ export function convertCreature(c, opts = {}) {
     const lower = nameOnly.toLowerCase();
     const detail = specialByName.get(lower) || [...specialByName.values()].find((x) => lower.startsWith(String(x.name).toLowerCase()));
     if (detail) usedSpecial.add(detail.name.toLowerCase());
-    if (/^breath weapon/i.test(s)) {
+    // A breath that deals no dice (the gorgon's turns to stone) is not an area
+    // damage ability, and falls through to keep its own text.
+    if (/^breath weapon/i.test(s) && /\d+d\d+/.test(s.match(/\((.*)\)/)?.[1] || '')) {
       const m = s.match(/\((.*)\)/)?.[1] || '';
       const shape = m.match(/(\d+)-?ft\.?\s*(cone|line)/i);
       const dice = m.match(/(\d+)d(\d+)\s+([a-z]+)/i);
