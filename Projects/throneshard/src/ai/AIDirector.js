@@ -95,8 +95,8 @@ class TeamAI {
     const attackers = g.heroes.filter((h) => h.alive && h.team === this.enemy && h.distanceTo(pit) < 16);
     if (!attackers.length) return false;
     if (g.canSee(this.team, grim) || attackers.some((a) => g.canSee(this.team, a))) return true;
-    const chance = this.diff.aware ? 0.3 : 0.12;
-    return grim.hp < maxHp * 0.7 && Math.random() < chance;
+    const chance = this.diff.aware ? 0.5 : 0.25;
+    return grim.hp < maxHp * 0.85 && Math.random() < chance;
   }
 
   heroes() { return this.game.heroes.filter((h) => h.team === this.team); }
@@ -122,6 +122,12 @@ class TeamAI {
 
     const avgHp = alive.reduce((a, h) => a + h.healthPct, 0) / Math.max(1, alive.length);
     const enemyAlive = enemies.filter((h) => h.alive).length;
+    const grim = this.d.neutrals.grimmaw;
+    const canContest = grim?.alive && alive.length >= 2 && alive.length >= enemyAlive - 2;
+    const startContest = () => {
+      this.plan = { type: 'grimmaw', contest: true, since: t, count: alive.length };
+      this.d.stats.grimmawContests = (this.d.stats.grimmawContests ?? 0) + 1;
+    };
 
     // Continue / abort an ongoing push
     if (this.plan.type === 'push') {
@@ -137,6 +143,8 @@ class TeamAI {
           const near = alive.filter((h) => h.distanceTo(this.plan.rally) < 22).length;
           if (near >= Math.min(3, alive.length) || t - this.plan.since > 30) this.plan.gathered = true;
         }
+        // A push gives way to contesting Grimmaw (this branch used to return first, so a team that was pushing never noticed)
+        if (canContest && this.noticeGrimmaw(grim)) { startContest(); return; }
         // Rally follows our wave front so we push with creeps
         return;
       }
@@ -144,18 +152,13 @@ class TeamAI {
 
     // Grimmaw: a team attempt when ahead (numbers / net worth) with 3+ alive and enough levels; the other team
     // contests if it notices (see noticeGrimmaw).
-    const grim = this.d.neutrals.grimmaw;
     if (this.plan.type === 'grimmaw') {
       const p = this.plan;
       const tooLong = t - p.since > (p.contest ? 50 : 110);
       if (!grim?.alive || tooLong || alive.length < (p.contest ? 2 : 3)) { this.plan = { type: 'farm', since: t }; this.nextPushAt = t + 5; this.nextGrimmawCheck = t + 60; }
       else return;
     }
-    if (grim?.alive && alive.length >= 3 && alive.length >= enemyAlive - 1 && this.noticeGrimmaw(grim)) {
-      this.plan = { type: 'grimmaw', contest: true, since: t, count: alive.length };
-      this.d.stats.grimmawContests = (this.d.stats.grimmawContests ?? 0) + 1;
-      return;
-    }
+    if (canContest && this.noticeGrimmaw(grim)) { startContest(); return; }
     const avgLvl = alive.reduce((a, h) => a + h.level, 0) / Math.max(1, alive.length);
     const ahead = alive.length - enemyAlive >= 1 || enemyAlive <= 2 || this.netWorthRatio() > 1.12;
     if (t > 900 && t >= this.nextGrimmawCheck && grim?.alive && alive.length >= 3 && avgLvl >= 11 && ahead && avgHp > 0.6) {

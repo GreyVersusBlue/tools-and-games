@@ -24,6 +24,11 @@ voice/fem*/death_0           "Female Hurt Grunts & Groans" by Nocturnal_Vanguard
 announcer/fight, prepare, multi_kill, you_win, you_lose
                              "Voiceover Pack: Fighter" by Kenney — CC0
                              https://opengameart.org/content/voiceover-pack-fighter-40-taunts
+announcer/first_blood ... shutdown (the 14 kill-streak lines, built by tools/scripts/audio/build_announcer_lines.py)
+                             "Voiceover Pack: Fighter" by Kenney (kill_him, combo, multi_kill, deathmatch, sudden_death, kill_it,
+                             final_round, flawless_victory, championship_mode, combo_breaker) and "Voiceover Pack" by Kenney
+                             (Male/power_up, war_go_go_go, war_target_engaged, new_highscore) — CC0. The packs have no lines for
+                             the banner names, so each tier plays the nearest shout; these replace a formant synthesis.
 announcer/target_destroyed, objective, look_out, level_up
                              "Voiceover Pack" by Kenney — CC0  https://kenney.nl/assets/voiceover-pack
 creature/roar_*              "80 CC0 creature SFX" by rubberduck — OpenGameArt, CC0

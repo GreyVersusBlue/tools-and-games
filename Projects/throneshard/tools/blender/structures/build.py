@@ -485,6 +485,52 @@ def tower():
 
 
 # ------------------------------------------------------------------ BARRACKS (~6 tall)
+def tri_prism(depth, h, thick):
+    """Gable-end board: triangle (base `depth` along three-z, apex `h` up) extruded `thick` along three-x. Blender coords."""
+    def f(bm):
+        pts = [(0, -depth / 2, 0), (0, depth / 2, 0), (0, 0, h)]
+        a = [bm.verts.new((-thick / 2, y, z)) for _, y, z in pts]
+        b = [bm.verts.new((thick / 2, y, z)) for _, y, z in pts]
+        bm.faces.new(a[::-1])
+        bm.faces.new(b)
+        for i in range(3):
+            j = (i + 1) % 3
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    return f
+
+
+def gable_roof(SB, MT):
+    """Melee barracks roof: two pitched slopes along X with stepped shingle courses, a metal ridge cap,
+    eave trim and gable-end boards, so the profile reads from the top-down camera. ~1.4k tris after sculpt."""
+    out = []
+    eave, rise, half, L_x = 3.95, 1.75, 2.75, 6.1
+    th = math.atan2(rise, half)
+    slope = math.hypot(rise, half)
+    ridge_y = eave + rise
+    n = 5
+    for side in (1, -1):
+        rx = th * side
+        nrm = (0, math.cos(th), side * math.sin(th))
+        down = (0, -math.sin(th), side * math.cos(th))
+        # base slab, blender-native box(x, depth, height)
+        c = (0, ridge_y + down[1] * slope / 2 - 0.06, side * half / 2)
+        out.append(sculpt(put('slab%d' % side, box(L_x, slope, 0.16), ROOF(), c, (rx, 0, 0)), 0.02, 1, 0.02, 0.02))
+        for k in range(n):
+            s = slope * (k + 0.5) / n
+            lift = 0.09 + 0.02 * k
+            p = (0, ridge_y + down[1] * s + nrm[1] * lift, side * (half * (k + 0.5) / n * 1.0) + nrm[2] * lift)
+            length = slope / n * 0.86
+            mat_ = ROOF() if k % 2 == 0 else SB
+            out.append(sculpt(put('crs%d_%d' % (side, k), box(L_x - 0.1 * k * 0.4, length, 0.12), mat_, p, (rx + side * 0.07, 0, 0)), 0.02, 1, 0.02, 0.0))
+    # ridge cap + eave trim
+    out.append(sculpt(put('ridge', box(L_x + 0.5, 0.36, 0.3), MT, (0, ridge_y + 0.06, 0)), 0.04, 1, 0.02, 0.0))
+    for side in (1, -1):
+        out.append(sculpt(put('eave%d' % side, box(L_x + 0.2, 0.2, 0.22), MT, (0, eave - 0.02, side * (half + 0.05)), (0, 0, 0)), 0.03, 1, 0.02, 0.0))
+    for sx in (-1, 1):
+        out.append(sculpt(put('gab%d' % sx, tri_prism(half * 2 - 0.4, rise - 0.15, 0.24), SB, (sx * (L_x / 2 - 0.15), eave + 0.0, 0)), 0.02, 1, 0.02, 0.0))
+    return out
+
+
 def barracks(ranged):
     S, SB, MT, CL, WD = STONE(), STONE_B(), METAL(), CLOTH(), WOOD()
     body, glow = [], []
@@ -495,10 +541,9 @@ def barracks(ranged):
     if not ranged:
         body.append(sculpt(put('hall', box(4.4, 2.8, 4.4), S, (0, 2.3, 0)), 0.08, 3, 0.07, 0.06, 0.8))
         body.append(put('trim', box(4.7, 0.3, 4.7), MT, (0, 3.8, 0)))
-        roof = put('roof', cyl(3.6 * 1.2, 0.02, 2.2, 4), ROOF(), (0, 5.0, 0), (0, math.pi / 4, 0))
-        body.append(sculpt(roof, 0.05, 2, 0.03, 0.04))
-        body.append(put('fin', cyl(0.18, 0.02, 0.9, 8), MT, (0, 6.3, 0)))
-        glow.append(put('orb', ico(0.28, 2), glow_mat(), (0, 6.2, 0)))
+        body.extend(gable_roof(SB, MT))
+        body.append(put('fin', cyl(0.18, 0.02, 0.9, 8), MT, (0, 6.45, 0)))
+        glow.append(put('orb', ico(0.28, 2), glow_mat(), (0, 6.35, 0)))
         for s in (-1, 1):
             glow.append(put('emb%d' % s, box(0.12, 1.2, 0.08), glow_mat(), (0, 3.2, 2.25), (0, 0, 0.6 * s)))
     else:

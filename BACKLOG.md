@@ -2298,12 +2298,24 @@ items, all waiting on a person or a GPU (see Parked). Its suite is
 A 3D lane battler Devon had built outside this repo and asked to move in on
 2026-09-30 under a name of its own (#738): fourteen heroes, three lanes, bots
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
-Its suites are `node test/data.mjs` and `node test/browser.mjs` from the
-project folder, in Site CI's matrix. Open, unranked: a preview capture for its
-card (it needs a `games.mjs` entry and a `capture-previews.mjs` recipe; the card
-shows the shard glyph until then), recorded announcer lines to replace the
-formant voice on kill streaks, and a motion check of the every-second-frame
-shadow map on moving units, on real hardware.
+Its suites are `node test/data.mjs` (916 checks) and `node test/browser.mjs`
+(14) from the project folder, in Site CI's matrix. Its first polish pass
+shipped the same day (card preview, bots, XP curve, effects, art, announcer,
+Settings; `HISTORY.md` #749 to #755). Open, unranked, all Devon's to call:
+
+- Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four
+  abilities each, talents, a scepter upgrade, an item build, voice fallback and
+  effects, with original names and kits. Not started.
+- Rift Wall has no gameplay wall: the slabs are a picture and enemies walk
+  through, against its tooltip (#755).
+- Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
+  17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
+- Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
+  a match (#751).
+- The card preview is a SwiftShader draft (#749), and the every-second-frame
+  shadow map was judged from a frame sequence, not a recording (#753); both
+  want one look on real hardware.
+- Piercing Gale's spiral and the rune auras read faint from the game camera.
 
 ## Tools/board-check
 

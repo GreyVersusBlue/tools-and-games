@@ -23,7 +23,9 @@ export default [
           const dur = latch || tree ? ab.v('stun') : ab.v('lone');
           damage(tt, ab.v('damage'), 'magical', h, ab);
           stun(tt, dur, h);
-          if (latch) { stun(latch, dur, h); fx(g, 'lightning', { position: chest(tt), target: chest(latch), source: tt, unit: latch, color: 0xc8b070 }); }
+          if (latch) { stun(latch, dur, h); fx(g, 'tether_link', { unit: tt, target: latch, duration: dur }); }
+          else if (tree) fx(g, 'tether_link', { unit: tt, point: tt.position.clone().addScaledVector(dir, 3).setY(0.8), duration: dur });
+          else fx(g, 'tether_lone', { unit: tt });
         },
       });
     },
@@ -39,10 +41,11 @@ export default [
       const dir = dirTo(h.position, p);
       const from = h.position.clone().addScaledVector(dir, 0.8); from.y += 1.2;
       let mult = 1;
+      fx(g, 'gale_line', { position: from, direction: dir, length: ab.v('distance'), speed: ab.v('speed') });
       g.projectiles?.launch({
         source: h, from, direction: dir, distance: ab.v('distance'), width: ab.getRadius(), speed: ab.v('speed'), kind: 'piercing_gale',
         filter: (u) => validEnemy(h, u) && u.kind !== 'ward',
-        onUnitHit: (u) => { damage(u, ab.v('damage') * mult, 'magical', h, ab); mult *= 1 - ab.v('falloff'); fx(g, 'hit', { position: chest(u), unit: u, color: 0xe8e0a0 }); },
+        onUnitHit: (u, p) => { damage(u, ab.v('damage') * mult, 'magical', h, ab); mult *= 1 - ab.v('falloff'); fx(g, 'gale_hit', { position: chest(u), unit: u, direction: p?.direction ?? dir }); },
       });
     },
   },

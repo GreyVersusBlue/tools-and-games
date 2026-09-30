@@ -19,6 +19,10 @@ character. chars/anims.glb holds the shared skeleton + animation clips.
 - LowPoly Medieval Weapons — Quaternius — CC0 1.0
   https://quaternius.itch.io/lowpoly-medieval-weapons  (axes, swords, daggers, bows, hammers, spear, shields)
 
+Authored here (original work, no new source): the clips Bow_Shoot and Rifle_Shoot in chars/anims.glb are built by
+tools/blender/characters/author_clips.py from Universal Animation Library poses (Punch_Jab for the bow arm,
+Pistol_Shoot for the rifle) plus an IK-driven second arm, baked to bone rotations.
+
 Legacy models still used:
 - Fox.glb — Khronos glTF-Sample-Models "Fox" — CC-BY 4.0 (model: PixelMannequin / @tomkranis; rig+anims: @AsoboStudio,
   @scurest). https://github.com/KhronosGroup/glTF-Sample-Models/tree/master/2.0/Fox  (wolves: neutral_medium, summon_wolf)
