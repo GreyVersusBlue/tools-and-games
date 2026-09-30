@@ -30,6 +30,7 @@ Each lives in its own folder under `Projects/` and keeps its own saves.
 | [Orbital](https://greyversusblue.com/Projects/orbital/) | Launch a probe and let gravity fly it to the marker |
 | [School Generator](https://greyversusblue.com/Projects/school-generator/) | Draw or generate a school, read its code report, walk its halls |
 | [Signal City](https://greyversusblue.com/Projects/signal-city/) | Program the traffic lights, never the cars |
+| [Throneshard](https://greyversusblue.com/Projects/throneshard/) | 3D lane battler: fourteen heroes, three lanes, bots on both sides |
 | [Torchbearer](https://greyversusblue.com/Projects/torchbearer.html) | Solo PF2e Remaster adventure engine |
 
 **Castle Conundrum**, a first-person medieval murder mystery, is on the board
