@@ -7,10 +7,13 @@
 # not in it. The near beams at the frame's edges stay the canvas's, since they
 # sit in front of the walkers.
 #
-#   blender -b --factory-startup -P blender/tavern.py -- [--preview] [--samples N]
+#   blender -b --factory-startup -t 4 -P blender/tavern.py -- [--preview] [--samples N] [--quality Q] [--encode]
 #
 # --preview renders at a quarter size to out/room-preview.png and writes no
-# plate, for looking at while tuning. Every number in room units is the one
+# plate, for looking at while tuning. A full run renders once to
+# out/room.png (lossless, untracked) and encodes the plate from it as WebP at
+# --quality (82 unless given); --encode re-encodes that master without
+# rendering, which is how the plate is fitted under its byte cap. Every number in room units is the one
 # the canvas uses; anything that stands off the wall goes through at_depth()
 # so it lands where the canvas drew it.
 
@@ -30,6 +33,13 @@ scene = C.reset()
 ARGS = C.args()
 PREVIEW = '--preview' in ARGS
 SAMPLES = int(ARGS[ARGS.index('--samples') + 1]) if '--samples' in ARGS else 256
+QUALITY = int(ARGS[ARGS.index('--quality') + 1]) if '--quality' in ARGS else 82
+ENCODE = '--encode' in ARGS
+
+# the light, in watts, and the world's warm ambient
+FIRE = 600
+SPILL = 200
+AMBIENT = 0.3
 
 FLOOR = C.FLOOR
 HX = C.ROOM['hearth'][0]
@@ -89,7 +99,7 @@ def plaster_build(nodes, links, bsdf):
     n.inputs['Detail'].default_value = 6.0
     n.inputs['Roughness'].default_value = 0.7
     links.new(co, n.inputs['Vector'])
-    links.new(mix_colour(nodes, links, n.outputs['Fac'], 0x7a6a52, 0x5a4a36), bsdf.inputs['Base Color'])
+    links.new(mix_colour(nodes, links, n.outputs['Fac'], 0x9a7448, 0x6e4e2e), bsdf.inputs['Base Color'])
     bump(nodes, links, bsdf, n.outputs['Fac'], 0.25, 0.01)
 
 
@@ -114,8 +124,8 @@ def stone_build(nodes, links, bsdf):
     br.inputs['Mortar Smooth'].default_value = 0.4
     br.inputs['Brick Width'].default_value = 52 * C.UNIT
     br.inputs['Row Height'].default_value = 42 * C.UNIT
-    br.inputs['Color1'].default_value = C.linear(0x5e564a)
-    br.inputs['Color2'].default_value = C.linear(0x4a433a)
+    br.inputs['Color1'].default_value = C.linear(0x3a3026)
+    br.inputs['Color2'].default_value = C.linear(0x2c241c)
     br.inputs['Mortar'].default_value = C.linear(0x1e1a14)
     # bricks laid across x by height: the texture reads x and z
     mp = nodes.new('ShaderNodeMapping')
@@ -130,7 +140,7 @@ def stone_build(nodes, links, bsdf):
     m.data_type = 'RGBA'
     m.inputs['Factor'].default_value = 0.35
     links.new(br.outputs['Color'], m.inputs['A'])
-    links.new(mix_colour(nodes, links, n.outputs['Fac'], 0x6a6256, 0x3c3630), m.inputs['B'])
+    links.new(mix_colour(nodes, links, n.outputs['Fac'], 0x3e3428, 0x221c16), m.inputs['B'])
     links.new(m.outputs['Result'], bsdf.inputs['Base Color'])
     bump(nodes, links, bsdf, br.outputs['Fac'], 0.6, 0.02)
 
@@ -189,12 +199,12 @@ def door_build(nodes, links, bsdf):
     bump(nodes, links, bsdf, br.outputs['Fac'], 0.5, 0.01)
 
 
-plaster = shader('plaster', 0x6a5a44, 0.9, plaster_build, 0.2)
+plaster = shader('plaster', 0x8a6a42, 0.9, plaster_build, 0.2)
 timber = shader('timber', 0x261708, 0.65, timber_build, 0.4)
 stone = shader('stone', 0x5a5248, 0.85, stone_build, 0.3)
-floor_m = shader('floor', 0x46321c, 0.45, floor_build, 0.5)
+floor_m = shader('floor', 0x46321c, 0.75, floor_build, 0.25)
 door_m = shader('door', 0x34220f, 0.6, door_build, 0.4)
-soot = shader('soot', 0x0a0704, 0.95, None, 0.1)
+soot = shader('soot', 0x000000, 1.0, None, 0.0)
 iron = shader('iron', 0x17130f, 0.5, None, 0.6)
 tabletop = shader('tabletop', 0x3d2a15, 0.5, timber_build, 0.5)
 glass_g = shader('glass-green', 0x2c4a22, 0.15, None, 0.8)
@@ -398,8 +408,16 @@ for m in range(7):
     obj(f'mug-{m}', bm, pewter, smooth=True)
 
 # ---- the three tables: a round top on a post and a foot, at the depth
-# whose floor point is the canvas's base ellipse, sized to project as drawn
+# whose floor point is the canvas's base ellipse, sized to project as drawn.
+# The top surface is the canvas's ellipse exactly; what makes them read as
+# tables rather than discs on sticks is under it: a 5 cm slab with a
+# moulded underside, a turned post with a collar at each end, and a stepped
+# pedestal foot. index.html's plateTable() clips to this shape (top and rim
+# inside an r by r * 0.32 ellipse about ty - r * 0.06, post r * 0.13 either
+# side, foot r * 0.52 by r * 0.17 about ty + r * 0.53), so a change here that
+# grows past it shows there.
 TABLES = [(706, 720, 92), (1078, 786, 106), (452, 862, 118)]
+SLAB = 0.05
 for i, (tx, ty, r) in enumerate(TABLES):
     y_base = ty + r * 0.55
     Y = C.depth_for(y_base)
@@ -408,16 +426,23 @@ for i, (tx, ty, r) in enumerate(TABLES):
     centre = Vector(at(tx, y_base, Y))
     top_c = Vector(at(tx, ty - r * 0.1, Y))
     bm = bmesh.new()
-    C.cone(bm, R, R, 0.035, C.Matrix.Translation((top_c.x, top_c.y, top_c.z)), 28)
+    C.cone(bm, R, R, SLAB, C.Matrix.Translation((top_c.x, top_c.y, top_c.z - SLAB / 2)), 40)
+    C.cone(bm, R * 0.97, R * 0.9, 0.02, C.Matrix.Translation((top_c.x, top_c.y, top_c.z - SLAB - 0.01)), 40)
     obj(f'table-{i}-top', bm, tabletop, smooth=True)
     bm = bmesh.new()
     post_r = r * 0.12 * C.UNIT * k
-    C.cone(bm, post_r, post_r * 0.8, top_c.z - 0.03, C.Matrix.Translation((centre.x, centre.y, (top_c.z - 0.03) / 2)), 10)
-    C.cone(bm, R * 0.55, R * 0.45, 0.04, C.Matrix.Translation((centre.x, centre.y, 0.02)), 16)
+    under = top_c.z - SLAB - 0.02
+    foot_h = 0.07
+    at_c = lambda z: C.Matrix.Translation((centre.x, centre.y, z))  # noqa: E731
+    C.cone(bm, post_r * 0.8, post_r, under - foot_h - 0.12, at_c((under + foot_h) / 2), 16)
+    C.cone(bm, post_r * 1.3, post_r * 1.3, 0.06, at_c(under - 0.03), 16)            # top collar
+    C.cone(bm, post_r * 1.25, post_r * 1.1, 0.06, at_c(foot_h + 0.03), 16)          # bottom collar
+    C.cone(bm, R * 0.5, R * 0.42, foot_h * 0.6, at_c(foot_h * 0.3), 28)             # the foot, stepped
+    C.cone(bm, R * 0.34, R * 0.26, foot_h * 0.4, at_c(foot_h * 0.8), 28)
     obj(f'table-{i}-base', bm, timber, smooth=True)
     # plates, bread and tankards where the canvas puts them
     bm = bmesh.new()
-    zt = top_c.z + 0.035
+    zt = top_c.z
     for (ox, oy, pr) in ((-0.42, -0.14, 0.2), (0.44, -0.10, 0.17)):
         p = at(tx + r * ox, ty - r * 0.1 + r * oy * 0.28 / 0.28, Y)
         C.cone(bm, r * pr * C.UNIT * k, r * pr * C.UNIT * k, 0.008,
@@ -450,11 +475,16 @@ def light(name, kind, loc, colour, energy, size=0.3, rot=None):
     return ob
 
 
-# the fire: a warm point in the firebox mouth and a deeper ember glow
-light('fire', 'POINT', at(HX, 548, -0.10), (1.0, 0.52, 0.2), 900, 0.32)
-light('embers', 'POINT', at(HX, 592, 0.25), (1.0, 0.36, 0.1), 300, 0.4)
+# the fire: the canvas draws it in the firebox mouth, so its light stands
+# just in front of the surround, where it can reach the room; a low ember
+# glow on the hearth floor; and a broad dim spill a few metres out, standing
+# in for the fire's bounce, so the far wall and the walk lanes are lit the
+# way the canvas's glow gradient lights them rather than falling off to black
+light('fire', 'POINT', at(HX, 500, -SURR - 0.3), (1.0, 0.5, 0.2), FIRE, 0.6)
+light('embers', 'POINT', at(HX, 600, -SURR - 0.15), (1.0, 0.36, 0.1), FIRE * 0.06, 0.5)
+light('spill', 'POINT', at(HX + 260, 560, -3.0), (1.0, 0.56, 0.26), SPILL, 2.0)
 # the lantern over the bar: the canvas draws the lantern, the plate its pool
-light('lantern', 'POINT', at(1230, 165, -0.6), (1.0, 0.72, 0.42), 140, 0.12)
+light('lantern', 'POINT', at(1230, 175, -0.6), (1.0, 0.72, 0.42), 70, 0.35)
 # candles on the tables, where the canvas draws them
 for (tx, ty, r) in TABLES:
     Y = C.depth_for(ty + r * 0.55)
@@ -466,19 +496,38 @@ light('fill', 'AREA', (rx(1300), -9.0, 4.0), (0.55, 0.62, 0.8), 40, 6.0, (math.r
 scene.world = bpy.data.worlds.new('night')
 scene.world.use_nodes = True
 scene.world.node_tree.nodes['Background'].inputs['Color'].default_value = (0.02, 0.012, 0.006, 1.0)
-scene.world.node_tree.nodes['Background'].inputs['Strength'].default_value = 0.4
+scene.world.node_tree.nodes['Background'].inputs['Strength'].default_value = AMBIENT
 
 # ---------------------------------------------------------------- render
 
 C.room_camera(scene)
 scene.view_settings.exposure = 0.0
 plate = C.BUDGET['plates']['room']
+master = os.path.join(C.OUT, 'room.png')
+dest = os.path.join(C.SITE, plate['file'])
+
+
+def encode(image):
+    """The plate is the master's pixels as a lossy WebP at QUALITY."""
+    s = scene.render.image_settings
+    s.file_format = 'WEBP'
+    s.color_mode = 'RGB'
+    s.quality = QUALITY
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    image.save_render(dest, scene=scene)
+    print(f'tavern: wrote {dest} at quality {QUALITY}, {os.path.getsize(dest)} bytes')
+
+
 if PREVIEW:
     out = C.render(os.path.join(C.OUT, 'room-preview.png'), plate['width'], plate['height'],
                    samples=min(SAMPLES, 96), percent=25)
+    print('tavern: wrote', out)
+elif ENCODE:
+    # re-encode the last full render without rendering again, to fit the
+    # byte cap: --encode --quality N
+    encode(bpy.data.images.load(master))
 else:
-    out = C.render(os.path.join(C.SITE, plate['file']), plate['width'], plate['height'],
-                   samples=SAMPLES, fmt='WEBP', quality=82)
-    C.render(os.path.join(C.OUT, 'room.png'), plate['width'], plate['height'],
-             samples=SAMPLES, percent=50)
-print('tavern: wrote', out)
+    # one full render: a lossless master in out/ (untracked), then the plate
+    C.render(master, plate['width'], plate['height'], samples=SAMPLES)
+    print('tavern: wrote', master)
+    encode(bpy.data.images['Render Result'])
