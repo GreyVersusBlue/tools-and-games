@@ -1008,7 +1008,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | The tavern set and sprites from Blender, T2: the walker sheet (T1, the pipeline and the room plate, shipped in PR #483) | The site | 2+ | Fable 5.1 | blender |  | [The site itself: the tavern set](#the-site-itself-the-tavern-set) |
+| 1 | The tavern set and sprites from Blender, T2: the walker sheet (T1, the pipeline and the room plate, shipped in PR #483) | The site | 2+ | Fable 5.1 | blender | claude/tavern-set-t2 | [The site itself: the tavern set](#the-site-itself-the-tavern-set) |
 | 2 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
 | 3 | School Generator's built-in model pack: catalog props as vertex-coloured `.glb` in `assets/models/` | `Projects/school-generator` | ½ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B2 |
 | 4 | Wire the model pack in, once rank 3 has merged: catalog rows that point at a file, and the precache | `Projects/school-generator` | ¼ | Opus 5.5 |  |  | `Projects/school-generator/WISHLIST.md` B3 |
