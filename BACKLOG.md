@@ -1216,14 +1216,15 @@ review. Round 3 made zero edits and found zero findings.
 Anathema Archive's folder the way the other Pathfinder pages' suites are.
 
 **Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709,
-#711 to #714). Since then: spell cards open inline from the stat block, the
+#711 to #716). Since then: spell cards open inline from the stat block, the
 board card has a preview, PF2e spell text reads Foundry's markup as print
 (links, damage formulas at the spell's rank, checks, templates, lists, tables,
 and the one embedded action), and hp is anchored at low below CR 1 and at 2.2
-from CR 1 up (#712, #714), measured on 38 printed pairs: six below CR 1,
-eleven at CR 1 and 2, twenty-one from CR 3 up. Every parse fixture's special
-attacks are hand-checked. Open follow-ups, none ranked; the first three wait
-on Devon's go-ahead:
+from CR 1 up (#712, #714, #716), measured on 48 printed pairs: six below CR 1,
+eleven at CR 1 and 2, seventeen at CR 3 to 6, fourteen from CR 7 up. A
+construct's Fort reads no lower than moderate (#715). Every parse fixture's
+special attacks are hand-checked. Open follow-ups, none ranked; the first
+three wait on Devon's go-ahead:
 
 1. **The spell map's 1,087 "partial" entries** were written by a second pass
    that fixed the first pass's misses; they have not been read by a person. The
@@ -1234,15 +1235,14 @@ on Devon's go-ahead:
    abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
    the open question.
 3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
-4. **Pairs from CR 7 up.** Four pairs sit there (succubus, lich, iron golem,
-   balor), and at #714's 2.2 they average about -6% (succubus +19%, the other
-   three -7% to -18%), against +0.8% for the whole CR 3+ band. Four is too
-   few to act on; eight to ten more at CR 7 to 15 would say whether high CRs
-   want their own anchor. Fixtures come from aonprd.com with `curl` (Python's
-   default user agent gets a 403), and the parse suite runs on each first:
-   #713's ten blocks found two parser bugs and #714's twelve found two more.
-   Expect a design outlier or two like the gargoyle (#714); excuse it from the
-   per-monster bound by name rather than dropping it from the averages.
+4. **Two pairs sit on a per-monster bound.** The medusa's AC converts to 20
+   against Paizo's 25 (the bound is 5), and the nalfeshnee's Will to 31
+   against 23 (the bound is 8). Neither is hp, and both are in bounds, but
+   one more point of drift fails the suite. Worth a look at what the PF1e
+   numbers miss before a tier table changes: the medusa's AC 15 at CR 7 is
+   Dex and natural armor 3, and the nalfeshnee's Will +21 at CR 14 is a good
+   save with Wis 22 and Iron Will on it. No pair from CR 15 to 19 exists yet; the balor at 20 is alone
+   above the nalfeshnee.
 
 ## Pathfinder Characters
 
@@ -2083,15 +2083,15 @@ B1 and B2 shipped on 2026-09-30; B3 is the ranked row. The common plan is
 draws on a 2D canvas (`js/render.js`), every body a radial-gradient
 `glowCircle` in a colour from its `COLOR` table.
 
-**B1. The pipeline. Shipped 2026-09-30** (#715 to #718). `tools/blender/` is
+**B1. The pipeline. Shipped 2026-09-30** (#717 to #720). `tools/blender/` is
 Orbital's own copy of Aphelion's `common.py` at db06e5f (#643) with a sprite
 renderer in place of the glTF export, the first 2D pipeline in the repo:
 Signal City's row had not shipped, so the later 2D copies start from this one
-(#715). A camera straight down, a transparent film, Workbench with studio
+(#717). A camera straight down, a transparent film, Workbench with studio
 lighting, the Standard view transform and the stamp metadata off, so three
-renders hash the same (#717). `bodies.py` builds the pack, `budget.json` is
+renders hash the same (#719). `bodies.py` builds the pack, `budget.json` is
 the style sheet as data, `validate.mjs` decodes the PNG and holds every frame
-to it in Site CI. The style sheet (#716): **256 px frames on a 4-wide grid**,
+to it in Site CI. The style sheet (#718): **256 px frames on a 4-wide grid**,
 every body drawn so its outermost extent lands at 120 px, with `r` in the
 atlas the body's radius in frame pixels (planet and star 120, wormhole 116,
 rock 108, booster 100, repulse 80, black hole 62); the game scales a frame by
@@ -2099,7 +2099,7 @@ rock 108, booster 100, repulse 80, black hole 62); the game scales a frame by
 r 78, 125 screen pixels at 1080p, so the frame is drawn at about its own size
 there and scaled down everywhere smaller. The palette is `COLOR`, read from
 `render.js` as text, plus `drawBody`'s own gradient stops and stroke colours;
-nothing new (#718). The glow stays the game's to draw, so a frame is the body
+nothing new (#720). The glow stays the game's to draw, so a frame is the body
 and nothing around it, at spin 0, flow 0 and dir 0. The atlas is the common
 plan's shape plus `r`: `{ "<type>": { x, y, w, h, ax, ay, r } }` in
 `assets/sprites/bodies.json`, the sheet beside it.
