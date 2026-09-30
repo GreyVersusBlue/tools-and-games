@@ -155,7 +155,8 @@ try {
           }, plate.element);
           if (!drawn) await new Promise(res => setTimeout(res, 250));
         }
-        ok(drawn === `${plate.width}x${plate.height}`,
+        // decoded at all, not at what size: the size is the check above's
+        ok(drawn !== null,
           `${name}: ${plate.page}'s <${plate.element}> decodes the plate and paints with it`,
           drawn ? `decoded ${drawn}` : 'its .plate never set in 10 s, so the procedural room is what shows');
         ok(!board.__errs.length && !board.__blocked.length && !board.__shimmed.length,
