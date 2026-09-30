@@ -302,4 +302,16 @@ initInput();
 initEditor();
 loadLevel(0);              // set up level 0 behind the intro
 bootFromHash();            // a link overrides it
-requestAnimationFrame(frame);
+// The first frame waits for the body sheet (#735). Without the sheet nothing
+// is drawn, and the intro card says why where its Begin button was live.
+function startFrames() {
+  return loadSprites().then(() => { requestAnimationFrame(frame); }, err => {
+    console.error("Orbital: " + err.message);
+    const el = document.getElementById("linkErr");
+    el.textContent = "Orbital could not load its artwork: " + err.message + ". Reload the page to try again.";
+    el.hidden = false;
+    document.getElementById("introScrim").classList.add("show");
+    document.getElementById("btnStart").disabled = true;
+  });
+}
+startFrames();
