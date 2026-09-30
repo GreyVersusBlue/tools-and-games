@@ -524,38 +524,30 @@ and add to this list rather than starting a new one.
   `test/tools/run.mjs` — whose `boot-budget` check is now the thing that
   fails if any of it is undone.
 
-## Blender assets (ranks 7 to 9, from 2026-09-25)
+## Blender assets (rank 1, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session
-without `blender` on PATH skips it and takes the next row. This project needs
-no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a
-file into a real catalog row.
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). B1 and B2 shipped in PR #496 (`HISTORY.md` #761 to #764): `tools/blender/` and 15 `.glb` files in `assets/models/` exist, and `node tools/blender/validate.mjs` (554 assertions, in the project's CI) holds them. What is left is wiring. This project needs no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a file into a real catalog row.
 
-**B1. The pipeline (rank 7, ¼, Opus 5.5, gate `blender`).** School
-Generator's own copy of `tools/blender/` (#643), beside `tools/export-walk.mjs`
-and `tools/make-gallery.mjs`. **`common.py` writes only what `gltf.js`
-reads:** `TRIANGLES` primitives with `POSITION`, `NORMAL` and `COLOR_0`, one
-material's base colour, no image, no skin, no animation, no extension. The
-validator refuses anything else, and its caps sit well under gltf.js's own
-`MAX_MODEL_BYTES` and `MAX_TRIANGLES`, since a built-in prop is placed by the
-hundred. Units are metres like every other project: `fitModel` normalizes a
-model into its catalog row's footprint anyway. Style sheet: the palette is the
-tints `js/render.js` gives each `geo` today; seat and desk 800 triangles,
-table and bench 600, locker, shelf and cubby 400.
-
-**B2. The model pack (rank 8, ½, Opus 5.5, gate `blender`).** About twelve
-of the furniture `geo` kinds in `js/catalog.js`: chair (one per `style`
-silhouette), desk, table, stool, softseat, counter, shelf, cubby, locker,
-labbench, workstation and plant. The files go in `assets/models/`, which holds
-only a `.gitkeep` today.
-
-**B3. Wiring the pack (rank 9, ¼, Opus 5.5, no gate, after rank 8).** A
-built-in catalog row names its file the way an imported one does, and the
-design decides which the row draws. Every file joins `PRECACHE` in
-`js/offline.js` with `REV` bumped, or the service worker serves a stale
-school offline. `node --test 'test/*.test.mjs'` stays green, including
-`offline.test.mjs` and `gltf.test.mjs`.
+**B3. Wiring the pack (rank 1, ¼, Opus 5.5, no gate).** The files are
+`chair-basic`, `chair-stack`, `chair-task`, `chair-rocker`, `stool`, `sofa`,
+`desk`, `table`, `workstation`, `counter`, `labbench`, `shelf`, `cubby`,
+`locker` and `plant`, each `.glb` in `assets/models/`. Each is one named
+catalog row's silhouette in the page's feet and axes, so a row that shares a
+builder shares a file, and `budget.json`'s `left` names what a file leaves out
+(#763). A built-in catalog row names its file the way an imported one does, and
+the design decides which the row draws. **Fitting into the row's box is this
+row's job, and so is the fit mode** (#763): `'stretch'` where the row's
+dimensions are the intent (a 5 ft desk from the 2 ft desk file), `'contain'`
+otherwise. Some files are a little bigger than their row (counter 6.15 ft wide,
+labbench 3.58 high, workstation 3.64 high, plant 3.35 high against 4).
+The darkest tints are black in the files because the page draws them black
+(#764); that is a finding for `js/render.js`, not for this row. Every file joins
+`PRECACHE` in `js/offline.js` with `REV` bumped, or the service worker serves a
+stale school offline. `node --test 'test/*.test.mjs'` stays green, including
+`offline.test.mjs` and `gltf.test.mjs`, and so does
+`node tools/blender/validate.mjs`. Look at the pack on a real page once it is
+wired: nothing has drawn these files lit yet.
 
 ## The shipped phases
 

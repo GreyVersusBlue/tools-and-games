@@ -67,8 +67,8 @@ js/             the tool — one module per question, ~100 of them
 libs/           vendored three.js and the addons it uses
 test/           one suite per pure module, plus visual/ and tools/
 server/         the optional design store and session relay
-tools/          the walkthrough exporter, and the gallery baker
-assets/         textures and imported models
+tools/          the walkthrough exporter, the gallery baker, and tools/blender/ (the model pack's Blender scripts and validator)
+assets/         textures, imported models, and the 15 built-in models in assets/models/
 ```
 
 `js/gallerystock.js` is generated, not written: it holds the front door's
