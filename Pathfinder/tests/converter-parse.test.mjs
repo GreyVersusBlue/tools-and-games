@@ -37,11 +37,12 @@ const strip = (c) => { const x = structuredClone(c); delete x.raw; return x; };
 // abil: Str Dex Con Int Wis Cha, null for "—". melee0: [count, first bonus,
 // damage] of the first melee attack; nMelee: how many attack entries.
 // spells: "level:name" samples from the first spellcasting block.
+// spa: the Special Attacks line, item by item, [] when the block has none.
 const FIXTURES = {
   'army-ant-swarm.txt': {
     cr: 5, hp: 49, hd: '11d8', ac: [20, 20, 18], saves: [7, 5, 3], abil: [1, 15, 10, null, 10, 2],
     melee0: [1, undefined, '3d6'], nMelee: 1, speed: { land: 30, climb: 30 },
-    immune: ['weapon damage'], sa: ['Cling', 'Consume'], cmb: null,
+    immune: ['weapon damage'], sa: ['Cling', 'Consume'], cmb: null, spa: ['cling', 'consume', 'distraction (DC 15)'],
   },
   'balor.txt': {
     cr: 20, hp: 370, hd: '20d10+260', ac: [36, 20, 29], saves: [29, 17, 25], abil: [35, 25, 36, 24, 24, 27],
@@ -50,73 +51,111 @@ const FIXTURES = {
     resist: [['acid', 10], ['cold', 10]], sla: ['constant', 'at will', '3/day', '1/day'], slaSample: 'dominate monster',
     reach: [10, '20 ft. with whip'], summon: 'level 9, any 1 CR 19 or lower demon 100%', aura: ['flaming body', 'unholy aura'],
     sa: ['Death Throes', 'Entangle', 'Flaming Body', 'Vorpal Strike', 'Whip Mastery'], languageSpecial: ['telepathy 100 ft.'],
+    spa: [],
+  },
+  'basilisk.txt': {
+    cr: 5, hp: 52, hd: '7d10+14', ac: [17, 9, 17], saves: [9, 4, 5], abil: [16, 8, 15, 2, 13, 11],
+    melee0: [1, 10, '1d8+4'], nMelee: 1, speed: { land: 20 }, init: -1, cmdNotes: '31 vs. trip',
+    feats: ['Blind-Fight', 'Great Fortitude', 'Iron Will'], sa: ['Gaze'], saDc: { Gaze: 15 }, spa: ['gaze'],
   },
   'bat-swarm.txt': {
     cr: 2, hp: 13, hd: '3d8', ac: [16, 16, 14], saves: [3, 7, 3], abil: [3, 15, 11, 2, 14, 4],
     melee0: [1, undefined, '1d6'], nMelee: 1, speed: { land: 5, fly: 40, flyManeuver: 'good' },
-    space: [10, 0], sa: ['Wounding'],
+    space: [10, 0], sa: ['Wounding'], spa: ['distraction (DC 11)', 'wounding'],
   },
   'boar.txt': {
     cr: 2, hp: 18, hd: '2d8+9', ac: [14, 10, 14], saves: [6, 3, 1], abil: [17, 10, 17, 2, 13, 4],
-    melee0: [1, 4, '1d8+4'], nMelee: 1, speed: { land: 40 }, other: ['ferocity'], feats: ['Toughness'], sa: [],
+    melee0: [1, 4, '1d8+4'], nMelee: 1, speed: { land: 40 }, other: ['ferocity'], feats: ['Toughness'], sa: [], spa: [],
   },
   'choker.txt': {
     cr: 2, hp: 16, hd: '3d8+3', ac: [17, 13, 15], saves: [2, 3, 4], abil: [16, 14, 13, 4, 13, 7],
     melee0: [2, 6, '1d4+3'], extra0: 'grab', nMelee: 1, speed: { land: 20, climb: 10 }, space: [5, 10], init: 6,
     cmbNotes: '+8 grappling', feats: ['Improved Initiative', 'Skill Focus (Stealth)'], sa: ['Strangle', 'Quickness'],
+    spa: ['constrict (1d4+3)', 'strangle', 'grab (Large)'],
   },
   'crocodile.txt': {
     cr: 2, hp: 22, hd: '3d8+9', ac: [14, 10, 13], saves: [6, 4, 2], abil: [19, 12, 17, 1, 12, 2],
     melee0: [1, 5, '1d8+4'], extra0: 'grab', nMelee: 2, groups: [0, 0], // "bite ... (1d8+4 plus grab) and tail slap +0"
     speed: { land: 20, swim: 30 }, space: [10, 5], cmbNotes: '+11 grapple', cmdNotes: '22 vs. trip',
-    sa: ['Death Roll', 'Hold Breath', 'Sprint'],
+    sa: ['Death Roll', 'Hold Breath', 'Sprint'], spa: ['death roll (1d8+6 plus trip)'],
   },
   'darkmantle.txt': {
     cr: 1, hp: 15, hd: '2d10+4', ac: [15, 13, 13], saves: [5, 3, 0], abil: [11, 15, 14, 2, 11, 10],
     melee0: [1, 3, '1d4'], extra0: 'grab', nMelee: 1, speed: { land: 20, fly: 30, flyManeuver: 'poor' }, init: 6,
     sla: ['1/day'], slaSample: 'darkness', cmbNotes: '+5 grapple', cmdNotes: "can't be tripped", sa: [],
+    spa: ['constrict (1d4+4)', 'grab (any size)'],
+  },
+  'dire-wolf.txt': {
+    cr: 3, hp: 37, hd: '5d8+15', ac: [14, 11, 12], saves: [7, 6, 2], abil: [19, 15, 17, 2, 12, 10],
+    melee0: [1, 7, '1d8+6'], extra0: 'trip', nMelee: 1, speed: { land: 50 }, space: [10, 5], cmdNotes: '24 vs. trip',
+    skillNote: ['Survival', '+5 scent tracking'], feats: ['Run', 'Weapon Focus (bite)'], sa: [], spa: [],
+  },
+  'djinni.txt': {
+    cr: 5, hp: 52, hd: '7d10+14', ac: [19, 14, 14], saves: [4, 9, 7], abil: [18, 19, 14, 14, 15, 15],
+    melee0: [2, 10, '1d8+4'], nMelee: 2, groups: [0, 1], speed: { land: 20, fly: 60, flyManeuver: 'perfect' }, space: [10, 10],
+    init: 8, immune: ['acid'], sla: ['at will', '1/day'], slaSample: 'persistent image', languageSpecial: ['telepathy 100 ft.'],
+    feats: ['Combat Reflexes', 'Improved Initiative', 'Wind Stance'], sa: ['Air Mastery'],
+    spa: ['air mastery', 'whirlwind (1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 17)'], // en dash in "10–50" read as a hyphen
+  },
+  'doppelganger.txt': {
+    cr: 3, hp: 26, hd: '4d10+4', ac: [16, 12, 14], saves: [4, 5, 6], abil: [18, 13, 12, 13, 14, 13],
+    melee0: [2, 8, '1d8+4'], nMelee: 1, speed: { land: 30 }, immune: ['charm', 'sleep'], sla: ['at will'], slaSample: 'detect thoughts',
+    skillNote: ['Disguise', '+29 while using change shape ability'], sa: ['Mimicry', 'Perfect Copy'], spa: [],
   },
   'dretch.txt': {
     cr: 2, hp: 18, hd: '2d10+7', ac: [14, 11, 14], saves: [5, 0, 3], abil: [12, 10, 14, 5, 11, 11],
     melee0: [2, 4, '1d4+1'], nMelee: 2, speed: { land: 20 }, dr: [{ amount: 5, bypass: 'cold iron or good' }],
     immune: ['electricity', 'poison'], resist: [['acid', 10], ['cold', 10], ['fire', 10]],
-    sla: ['1/day'], slaSample: 'stinking cloud', sa: [],
+    sla: ['1/day'], slaSample: 'stinking cloud', sa: [], spa: [],
   },
   'd20pfsrd-owlbear.txt': {
     cr: 4, hp: 47, hd: '5d10+20', ac: [15, 10, 14], saves: [10, 5, 2], abil: [19, 12, 18, 2, 12, 10],
-    melee0: [2, 8, '1d6+4'], extra0: 'grab', nMelee: 2, speed: { land: 30 }, space: [10, 5], sa: [],
+    melee0: [2, 8, '1d6+4'], extra0: 'grab', nMelee: 2, speed: { land: 30 }, space: [10, 5], sa: [], spa: [],
   },
   'dire-rat.txt': {
     cr: 1 / 3, hp: 5, hd: '1d8+1', ac: [14, 14, 11], saves: [3, 5, 1], abil: [10, 17, 13, 2, 13, 4],
     melee0: [1, 1, '1d4'], extra0: 'disease', nMelee: 1, speed: { land: 40, climb: 20, swim: 20 },
-    sa: ['Disease'], saDc: { Disease: 11 },
+    sa: ['Disease'], saDc: { Disease: 11 }, spa: ['disease'],
   },
   'erinyes.txt': {
     cr: 8, hp: 94, hd: '9d10+45', ac: [23, 17, 16], saves: [11, 12, 7], abil: [20, 23, 21, 14, 18, 21],
     melee0: [1, 15, '1d8+8'], crit0: '19-20', nMelee: 1, speed: { land: 30, fly: 50 },
     dr: [{ amount: 5, bypass: 'good' }], sr: 19, sla: ['constant', 'at will', '1/day'], slaSample: 'unholy blight',
     ranged: [['+1 flaming composite longbow', [14, 14, 9], 'x3', false, 0], ['rope', [15], '', true, 1]],
-    feats: ['Dodge', 'Mobility'], sa: ['Entangle'],
+    feats: ['Dodge', 'Mobility'], sa: ['Entangle'], spa: [],
+  },
+  'ettin.txt': {
+    cr: 6, hp: 65, hd: '10d8+20', ac: [18, 8, 18], saves: [9, 2, 5], abil: [23, 8, 15, 6, 10, 11],
+    melee0: [2, 12, '2d6+6'], iter0: [12, 7], nMelee: 1, speed: { land: 40 }, space: [10, 10], init: 3,
+    ranged: [['javelin', [5], '', false, 0]], languages: ['pidgin of Giant', 'Goblin', 'Orc'], // "Goblin, and Orc"
+    feats: ['Cleave', 'Power Attack'], sa: ['Superior Two-Weapon Fighting'], spa: ['superior two-weapon fighting'],
+  },
+  'gargoyle.txt': {
+    cr: 4, hp: 42, hd: '5d10+15', ac: [16, 12, 14], saves: [4, 6, 4], abil: [15, 14, 16, 6, 11, 7],
+    melee0: [2, 7, '1d6+2'], nMelee: 3, speed: { land: 40, fly: 60, flyManeuver: 'average' }, init: 6,
+    dr: [{ amount: 10, bypass: 'magic' }], skillNote: ['Stealth', '+17 in stony areas'], sa: ['Freeze'], spa: [],
   },
   'gelatinous-cube.txt': {
     cr: 3, hp: 50, hd: '4d8+32', ac: [4, 4, 4], saves: [9, -4, -4], abil: [10, 1, 26, null, 1, 1],
     melee0: [1, 2, '1d6'], extra0: '1d6 acid', nMelee: 1, speed: { land: 15 }, init: -5,
-    sa: ['Acid', 'Engulf', 'Paralysis', 'Transparent'], saDc: { Paralysis: 20, Engulf: 12 },
+    sa: ['Acid', 'Engulf', 'Paralysis', 'Transparent'], saDc: { Paralysis: 20, Engulf: 12 }, spa: ['engulf', 'paralysis'],
   },
   'giant-centipede.txt': {
     cr: 1 / 2, hp: 5, hd: '1d8+1', ac: [14, 12, 12], saves: [3, 2, 0], abil: [9, 15, 12, null, 10, 2],
     melee0: [1, 2, '1d6-1'], extra0: 'poison', nMelee: 1, speed: { land: 40, climb: 40 },
     immune: ['mind-affecting effects'], sa: ['Poison'], saDc: { Poison: 13 }, saKind0: 'Ex', // printed "(EX)" on Nethys
+    spa: ['poison'],
   },
   'ghoul.txt': {
     cr: 1, hp: 13, hd: '2d8+4', ac: [14, 12, 12], saves: [2, 2, 5], abil: [13, 15, null, 13, 14, 14],
     melee0: [1, 3, '1d6+1'], extra0: 'disease and paralysis', nMelee: 2, groups: [0, 0], // "... paralysis) and 2 claws +3"
     speed: { land: 30 }, other: ['channel resistance +2'], sa: ['Disease'], saDc: { Disease: 13 },
+    spa: ['paralysis (1d4+1 rounds, DC 13, elves are immune to this effect)'],
   },
   'giant-ant.txt': {
     cr: 2, hp: 18, hd: '2d8+9', ac: [15, 10, 15], saves: [6, 0, 1], abil: [14, 10, 17, null, 13, 11],
     melee0: [1, 3, '1d6+2'], extra0: 'grab', nMelee: 2, speed: { land: 50, climb: 20 }, immune: ['mind-affecting effects'],
-    cmbNotes: '+7 grapple', cmdNotes: '21 vs. trip', feats: ['Toughness'], sa: ['Poison'], saDc: { Poison: 14 },
+    cmbNotes: '+7 grapple', cmdNotes: '21 vs. trip', feats: ['Toughness'], sa: ['Poison'], saDc: { Poison: 14 }, spa: [],
   },
   'giant-frog.txt': {
     cr: 1, hp: 15, hd: '2d8+6', ac: [12, 11, 11], saves: [6, 6, -1], abil: [15, 13, 16, 1, 8, 6],
@@ -124,41 +163,60 @@ const FIXTURES = {
     reach: [5, '15 ft. with tongue'], cmbNotes: '+7 grapple', cmdNotes: '18 vs. trip', sa: ['Tongue'],
     spa: ['pull (tongue, 5 feet)', 'swallow whole (1d4 bludgeoning damage, AC 10, 1 hp)', 'tongue'], // "AC 10" is not the AC label
   },
+  'gibbering-mouther.txt': {
+    cr: 5, hp: 46, hd: '4d8+28', ac: [19, 13, 16], saves: [8, 4, 5], abil: [10, 17, 24, 4, 13, 12],
+    melee0: [6, 7, '1d4'], extra0: 'grab', nMelee: 1, speed: { land: 10, swim: 20 }, dr: [{ amount: 5, bypass: 'bludgeoning' }],
+    immune: ['critical hits', 'precision damage'], other: ['amorphous'], cmbNotes: '+7 grapple', cmdNotes: "can't be tripped",
+    sa: ['All-Around Vision', 'Amorphous', 'Blood Drain', 'Engulf', 'Gibbering', 'Ground Manipulation', 'Spittle'],
+    saDc: { Gibbering: 13, Spittle: 18 },
+    spa: ['blood drain', 'engulf (6d4 damage plus 2 Con damage, AC 13, hp 4)', 'gibbering', 'ground manipulation', 'spittle (+6 ranged touch)'],
+  },
   'goblin.txt': {
     cr: 1 / 3, hp: 6, hd: '1d10+1', ac: [16, 13, 14], saves: [3, 2, -1], abil: [11, 15, 12, 10, 9, 6],
     melee0: [1, 2, '1d4'], crit0: '19-20', nMelee: 1, speed: { land: 30 }, classLine: 'Goblin warrior 1',
-    ranged: [['short bow', [4], 'x3', false, 0]], sa: [],
+    ranged: [['short bow', [4], 'x3', false, 0]], sa: [], spa: [],
+  },
+  'griffon.txt': {
+    cr: 4, hp: 42, hd: '5d10+15', ac: [17, 11, 15], saves: [7, 6, 4], abil: [16, 15, 16, 5, 13, 8],
+    melee0: [1, 8, '1d6+3'], nMelee: 2, speed: { land: 30, fly: 80, flyManeuver: 'average' }, space: [10, 5],
+    cmdNotes: '25 vs. trip', sa: [], spa: ['pounce', 'rake (2 claws +7, 1d4+3)'],
+  },
+  'hell-hound.txt': {
+    cr: 3, hp: 30, hd: '4d10+8', ac: [16, 11, 15], saves: [6, 5, 1], abil: [13, 13, 15, 6, 10, 6],
+    melee0: [1, 5, '1d8+1'], extra0: '1d6 fire', nMelee: 1, speed: { land: 40 }, init: 5, immune: ['fire'],
+    weaknesses: ['vulnerability to cold'], sa: [],
+    spa: ['breath weapon (10-ft. cone, once every 2d4 rounds, 2d6 fire damage, Reflex DC 14 for half)'],
   },
   'hippogriff.txt': {
     cr: 2, hp: 22, hd: '3d10+6', ac: [14, 12, 11], saves: [5, 5, 2], abil: [15, 15, 14, 2, 12, 9],
     melee0: [1, 4, '1d6+2'], nMelee: 2, speed: { land: 40, fly: 100, flyManeuver: 'average' }, space: [10, 5],
-    feats: ['Dodge', 'Wingover'], sa: [],
+    feats: ['Dodge', 'Wingover'], sa: [], spa: [],
   },
   'homunculus.txt': {
     cr: 1, hp: 11, hd: '2d10', ac: [14, 14, 12], saves: [0, 4, 1], abil: [8, 15, null, 10, 12, 7],
     melee0: [1, 3, '1d4-1'], extra0: 'poison', nMelee: 1, speed: { land: 20, fly: 50, flyManeuver: 'good' },
-    space: [2.5, 0], other: ['construct traits'], sa: ['Poison', 'Telepathic Link'], saDc: { Poison: 13 },
+    space: [2.5, 0], other: ['construct traits'], sa: ['Poison', 'Telepathic Link'], saDc: { Poison: 13 }, spa: [],
   },
   'human-skeleton.txt': {
     cr: 1 / 3, hp: 4, hd: '1d8', ac: [16, 12, 14], saves: [0, 2, 2], abil: [15, 14, null, null, 10, 10],
     melee0: [1, 0, '1d6'], nMelee: 3, groups: [0, 0, 1], speed: { land: 30 }, init: 6,
-    dr: [{ amount: 5, bypass: 'bludgeoning' }], feats: ['Improved Initiative'], sa: [],
+    dr: [{ amount: 5, bypass: 'bludgeoning' }], feats: ['Improved Initiative'], sa: [], spa: [],
   },
   'human-zombie.txt': {
     cr: 1 / 2, hp: 12, hd: '2d8+3', ac: [12, 10, 12], saves: [0, 0, 3], abil: [17, 10, null, null, 10, 10],
     melee0: [1, 4, '1d6+4'], nMelee: 1, speed: { land: 30 }, dr: [{ amount: 5, bypass: 'slashing' }],
-    feats: ['Toughness'], sa: [],
+    feats: ['Toughness'], sa: [], spa: [],
   },
   'iron-golem.txt': {
     cr: 13, hp: 129, hd: '18d10+30', ac: [28, 8, 28], saves: [6, 5, 6], abil: [32, 9, null, null, 11, 1],
     melee0: [2, 28, '2d10+16'], crit0: '19-20', nMelee: 1, speed: { land: 20 },
     dr: [{ amount: 15, bypass: 'adamantine' }], sa: ['Breath Weapon', 'Immunity to Magic', 'Powerful Blows'],
-    saDc: { 'Breath Weapon': 19 },
+    saDc: { 'Breath Weapon': 19 }, spa: ['breath weapon', 'powerful blows'],
   },
   'kobold.txt': {
     cr: 1 / 4, hp: 5, hd: '1d10', ac: [15, 12, 14], saves: [2, 1, -1], abil: [9, 13, 10, 10, 9, 8],
     melee0: [1, 1, '1d6-1'], nMelee: 1, speed: { land: 30 }, classLine: 'Kobold warrior 1',
-    ranged: [['sling', [3], '', false, 0]], weaknesses: ['light sensitivity'], sa: ['Crafty'],
+    ranged: [['sling', [3], '', false, 0]], weaknesses: ['light sensitivity'], sa: ['Crafty'], spa: [],
   },
   'lich.txt': {
     cr: 12, hp: 111, hd: '11d6+55', hpNotes: '15 false life', ac: [23, 14, 21], saves: [6, 7, 11], abil: [10, 14, null, 22, 14, 16],
@@ -166,43 +224,56 @@ const FIXTURES = {
     caster: ['prepared', '', 11], levels: [6, 5, 4, 3, 2, 1, 0],
     spells: ['6:circle of death', '4:wall of ice', '2:false life', '0:bleed'], counts: { 'wall of ice': 2, 'magic missile': 3 },
     opposition: ['illusion', 'transmutation'], aura: ['fear'], sa: [],
+    spa: ['grave touch (9/day)', 'paralyzing touch (DC 18)', 'power over undead (9/day, DC 18)'],
+  },
+  'mimic.txt': {
+    cr: 4, hp: 52, hd: '7d8+21', ac: [16, 11, 15], saves: [5, 5, 6], abil: [19, 12, 17, 10, 13, 10],
+    melee0: [1, 10, '1d8+6'], extra0: 'adhesive', nMelee: 1, speed: { land: 10 }, immune: ['acid'], cmdNotes: "can't be tripped",
+    sa: ['Adhesive', 'Mimic Object'], saDc: { Adhesive: 17 }, spa: ['constrict (slam, 1d8+6)'],
   },
   'npc-battle-mage.txt': {
     cr: 2, hp: 19, hd: '3d6+6', ac: [16, 12, 14], saves: [2, 3, 3], saveNotes: '+2 vs. enchantments', abil: [12, 15, 12, 17, 10, 8],
     melee0: [1, 3, '1d6'], crit0: '18-20', nMelee: 1, speed: { land: 30 },
     caster: ['prepared', 'Wizard', 3], levels: [2, 1, 0], spells: ['2:mirror image', '1:shocking grasp', '0:daze'],
-    tactics: /^Before Combat/, gearOther: '113 gp', sa: [],
+    tactics: /^Before Combat/, gearOther: '113 gp', sa: [], spa: ['hand of the apprentice (6/day)'],
   },
   'npc-storm-sorcerer.txt': {
     cr: 5, hp: 35, hd: '6d6+12', ac: [18, 14, 15], saves: [4, 5, 7], abil: [8, 15, 12, 12, 12, 16],
     melee0: [1, 2, '1d8-1'], crit0: 'x3', nMelee: 1, speed: { land: 30 }, sla: ['6/day'], slaSample: 'elemental ray',
     caster: ['known', 'Sorcerer', 6], levels: [3, 2, 1, 0], perDay: [4, 6, 7, 'at will'],
     spells: ['3:lightning bolt', '1:burning hands', '0:acid splash'], bloodline: 'elemental (air)',
-    resist: [['electricity', 10]], sa: [],
+    resist: [['electricity', 10]], sa: [], spa: [],
   },
   'npc-war-priest.txt': {
     cr: 1, hp: 21, hd: '2d8+9', ac: [15, 10, 15], acNotes: '+4 dodge vs. giants', saves: [5, 0, 6], abil: [15, 10, 15, 8, 16, 10],
     melee0: [1, 4, '2d6+4'], crit0: '19-20', nMelee: 1, speed: { land: 20 }, sla: ['6/day'], slaSample: 'touch of chaos',
     caster: ['prepared', 'Cleric', 2], levels: [1, 0], spells: ['1:true strike', '0:bleed'], domainSpell: 'true strike',
     domains: ['Chaos', 'Destruction'], cmdNotes: '17 vs. bull rush or trip', gearOther: '94 gp', sa: [],
+    spa: ['+1 on attack rolls against goblinoid and orc humanoids', 'channel negative energy 3/day (DC 11, 1d6)', 'destructive smite (+1, 6/day)'],
   },
   'ogre.txt': {
     cr: 3, hp: 30, hd: '4d8+12', ac: [17, 8, 17], saves: [6, 0, 3], abil: [21, 8, 15, 6, 10, 7],
-    melee0: [1, 7, '2d8+7'], nMelee: 1, speed: { land: 30, notes: '40 ft. base' }, sa: [],
+    melee0: [1, 7, '2d8+7'], nMelee: 1, speed: { land: 30, notes: '40 ft. base' }, sa: [], spa: [],
   },
   'owlbear.txt': {
     cr: 4, hp: 47, hd: '5d10+20', ac: [15, 10, 14], saves: [10, 5, 2], abil: [19, 12, 18, 2, 12, 10],
-    melee0: [2, 8, '1d6+4'], extra0: 'grab', nMelee: 2, speed: { land: 30 }, cmbNotes: '+14 grapple', sa: [],
+    melee0: [2, 8, '1d6+4'], extra0: 'grab', nMelee: 2, speed: { land: 30 }, cmbNotes: '+14 grapple', sa: [], spa: [],
+  },
+  'rust-monster.txt': {
+    cr: 3, hp: 27, hd: '5d8+5', ac: [18, 13, 15], saves: [2, 4, 5], abil: [10, 17, 13, 2, 13, 8],
+    melee0: [1, 6, '1d3'], nMelee: 2, speed: { land: 40, climb: 10 }, cmdNotes: '20 vs. trip',
+    sa: ['Rust', 'Scent Metals'], saDc: { Rust: 15 }, spa: [],
   },
   'succubus.txt': {
     cr: 7, hp: 84, hd: '8d10+40', ac: [20, 13, 17], saves: [7, 9, 10], abil: [13, 17, 20, 18, 14, 27],
     melee0: [2, 11, '1d6+1'], nMelee: 1, speed: { land: 30, fly: 50, flyManeuver: 'average' },
     dr: [{ amount: 10, bypass: 'cold iron or good' }], sr: 18, sla: ['constant', 'at will', '1/day'], slaSample: 'charm monster',
-    languageSpecial: ['tongues', 'telepathy 100 ft.'], sa: ['Energy Drain', 'Profane Gift'],
+    languageSpecial: ['tongues', 'telepathy 100 ft.'], sa: ['Energy Drain', 'Profane Gift'], spa: ['energy drain', 'profane gift'],
   },
   'troll.txt': {
     cr: 5, hp: 63, hd: '6d8+36', ac: [16, 11, 14], saves: [11, 4, 3], abil: [21, 14, 23, 6, 9, 6],
     melee0: [1, 8, '1d8+5'], nMelee: 2, speed: { land: 30 }, other: ['regeneration 5 (acid or fire)'], sa: [],
+    spa: ['rend (2 claws, 1d6+7)'],
   },
   'vampire.txt': {
     cr: 9, hp: 102, hd: '8d6+72', ac: [23, 17, 18], saves: [13, 11, 12], abil: [16, 18, null, 14, 16, 26],
@@ -211,16 +282,24 @@ const FIXTURES = {
     caster: ['known', 'Sorcerer', 8], levels: [4, 3, 2, 1, 0], perDay: [5, 5, 8, 8, null],
     spells: ['4:greater invisibility', '3:fireball', '0:open/close'], bloodline: 'undead',
     other: ['fast healing 5', 'channel resistance +4'], sa: [],
+    spa: ['blood drain', 'children of the night', 'create spawn', 'dominate (DC 22)', 'energy drain (2 levels, DC 22)'],
   },
   'wolf.txt': {
     cr: 1, hp: 13, hd: '2d8+4', ac: [14, 12, 12], saves: [5, 5, 1], abil: [13, 15, 15, 2, 12, 6],
     melee0: [1, 2, '1d6+1'], extra0: 'trip', nMelee: 1, speed: { land: 50 }, skillNote: ['Survival', '+5 scent tracking'], sa: [],
+    spa: [],
+  },
+  'wyvern.txt': {
+    cr: 6, hp: 73, hd: '7d12+28', ac: [19, 10, 18], saves: [9, 6, 8], abil: [19, 12, 18, 7, 12, 9],
+    melee0: [1, 10, '1d6+4'], extra0: 'poison', nMelee: 3, speed: { land: 20, fly: 60, flyManeuver: 'poor' }, space: [10, 5],
+    immune: ['sleep', 'paralysis'], cmbNotes: '+16 grapple', sa: ['Poison'], saDc: { Poison: 17 }, spa: [],
   },
   'young-red-dragon.txt': {
     cr: 10, hp: 115, hd: '11d12+44', ac: [22, 10, 21], saves: [11, 8, 10], abil: [25, 12, 19, 12, 13, 12],
     melee0: [1, 17, '2d6+10'], nMelee: 4, speed: { land: 40, fly: 200, flyManeuver: 'poor' }, ageCategory: 'young',
     reach: [5, '10 ft. with bite'], weaknesses: ['vulnerability to cold'], sla: ['at will'], slaSample: 'detect magic',
     caster: ['known', '', 1], levels: [1, 0], perDay: [3, 'at will'], spells: ['1:true strike', '0:prestidigitation'], sa: [],
+    spa: ['breath weapon (40-ft. cone, DC 19, 6d10 fire)'],
   },
 };
 // The variants the task names: same stat block, different whitespace.
@@ -260,7 +339,7 @@ for (const [file, x] of Object.entries(FIXTURES)) {
   if (x.summon) eq(c.spellLikeAbilities[0].entries.at(-1).spells.find((s) => s.name === 'summon')?.note, x.summon, `${n}: summon note kept whole, separators and all`);
   if (x.slaSample) ok(c.spellLikeAbilities.some((b) => b.entries.some((e) => e.spells.some((s) => s.name === x.slaSample))),
     `${n}: SLA list includes ${x.slaSample}`);
-  if (x.spa) eq(c.specialAttacks, x.spa, `${n}: special attacks`);
+  eq(c.specialAttacks, x.spa, `${n}: special attacks`); // every entry carries spa, [] when none is printed
   eq(c.specialAbilities.map((a) => a.name), x.sa, `${n}: special ability names`);
   if (x.saKind0) eq(c.specialAbilities[0]?.kind, x.saKind0, `${n}: special ability kind read case-blind`);
   for (const [name, dc] of Object.entries(x.saDc || {})) eq(c.specialAbilities.find((a) => a.name === name)?.dc, dc, `${n}: ${name} DC`);
@@ -288,6 +367,7 @@ for (const [file, x] of Object.entries(FIXTURES)) {
   if (x.space) eq([c.space, c.reach], x.space, `${n}: space and reach`);
   if (x.aura) eq(c.aura.map((a) => a.name), x.aura, `${n}: auras`);
   if (x.languageSpecial) eq(c.languageSpecial, x.languageSpecial, `${n}: language specials`);
+  if (x.languages) eq(c.languages, x.languages, `${n}: languages, a list's closing "and" dropped`);
   if (x.feats) ok(x.feats.every((f) => c.feats.includes(f)), `${n}: feats with the bonus-feat marker stripped`, J(c.feats));
   if (x.hpNotes) eq(c.hp.notes, x.hpNotes, `${n}: hp notes`);
   if (x.saveNotes) eq(c.saves.notes, x.saveNotes, `${n}: save notes`);
@@ -368,6 +448,10 @@ eq(parsePf1('Melee longsword +10/+5 (1d8+3/19−20) or bite +4 (1d4)').melee.map
   [[[10, 5], '19-20', 0], [[4], '', 1]], 'iteratives, unicode minus in a crit range, "or" groups');
 eq(parsePf1('Melee mwk longsword +8 (1d8+2/19-20/x3)').melee[0].crit, '19-20/x3', 'crit range with multiplier');
 eq(parsePf1('Melee incorporeal touch +5 touch (1d6 cold)').melee[0].touch, true, 'touch attack');
+eq(parsePf1('Melee sting +10 melee (1d6+4 plus poison)').melee.map((a) => [a.name, a.bonus, a.damage]), [['sting', [10], '1d6+4']],
+  '"+10 melee" after the bonus is the line label repeated (wyvern)');
+eq(parsePf1('Ranged scorching ray +5 ranged touch (4d6 fire)').ranged.map((a) => [a.name, a.bonus, a.touch]), [['scorching ray', [5], true]],
+  '"+5 ranged touch" is a touch attack named "scorching ray"');
 eq(parsePf1('Melee rock and chain +6 (1d8+3) and bite +1 (1d4+1)').melee.map((a) => a.name), ['rock and chain', 'bite'],
   '" and " splits attacks only after a closing parenthesis, not inside a name');
 eq(parsePf1('Init −2; Senses darkvision 60 ft.; Perception –1').init, -2, 'unicode minus and en dash as minus');

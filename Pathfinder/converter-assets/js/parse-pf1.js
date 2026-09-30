@@ -276,7 +276,9 @@ function parseAttack(part, isRanged) {
   let count = 1;
   const cm = /^(\d+)\s+(?=[a-z])/i.exec(s);
   if (cm && !/^\d+\s*d\d/.test(s)) { count = Number(cm[1]); s = s.slice(cm[0].length); }
-  const m = /^(.*?)\s+([+-]\d+(?:\s*\/\s*[+-]\d+)*)\s*(touch)?\s*(?:\((.*)\))?$/.exec(s)
+  // "sting +10 melee (...)" (wyvern) and "ray +5 ranged touch (...)": the
+  // word after the bonus repeats the line's label and is dropped.
+  const m = /^(.*?)\s+([+-]\d+(?:\s*\/\s*[+-]\d+)*)\s*(?:(?:melee|ranged)\s*)?(touch)?\s*(?:\((.*)\))?$/.exec(s)
     || /^(.*?)()\s*(touch)?\s*\((.*)\)$/.exec(s);
   if (!m) return { name: s, count, bonus: [], damage: '', damageAvg: null, crit: '', extra: '', touch: false, ...(isRanged ? { range: null } : {}) };
   let name = m[1].trim();
@@ -680,7 +682,7 @@ export function parsePf1(input) {
   const lang = val('languages');
   if (lang) {
     const [main, ...special] = splitTop(lang, ';');
-    c.languages = splitTop(main || '', ',');
+    c.languages = splitTop(main || '', ',').map((x) => x.replace(/^and\s+/, '')); // "Giant, Goblin, and Orc" (ettin)
     c.languageSpecial = special.flatMap((x) => splitTop(x, ','));
   }
   const sq = val('sq'); if (sq) c.sq = splitTop(sq, ',;');
