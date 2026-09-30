@@ -1349,7 +1349,7 @@ Generator.
 
 **#733. The tavern plates are rendered on huginn: CPU Cycles, 128 samples with the denoiser, `-t 4`, WebP quality 92.** The room plate took 31.5 minutes and 3.37 GB peak. 256 samples would have doubled the time for no visible gain over the 96-sample previews, and quality 82 smeared the plaster and grain. One pack's plates come from one machine (#707), so T2 and T3 render on huginn too; `run.mjs` waits while any other Blender process runs. *The site, 2026-09-30.*
 
-**#734. A session launched on a model #638 rules out delegates the row's work to the #533 agents and says so in its report.** The 2026-09-30 session was launched on Fable 5.1 and could not switch itself, so it gave the build to the `builder` agent (Opus 5.5) and this record to `scribe` (Sonnet 5), and kept only the lead role. *The site, 2026-09-30.*
+**#734. The tavern set's T1 session was launched on Fable 5.1 against #638, and it delegated the work rather than stopping.** It could not switch itself, so it gave the build to the `builder` agent (Opus 5.5) and this record to `scribe` (Sonnet 5), and kept only the lead role (#533). This records what one session did, not a change to #638: whether a session launched that way should stop instead is Devon's call. *The site, 2026-09-30.*
 
 # The log
 
@@ -1836,6 +1836,6 @@ Ranks 5 and 6, two ½ rows in one area, both naming Opus 5.5, worked under Opus 
 
 Asked for by Devon rather than taken from a ranked row, under Opus 5.5; two Sonnet 5 subagents built the eleven Blender models before the account's spend limit stopped both mid-task, and the integration was finished by hand. Before the move: an autopilot flew all six scored missions through `window.__qa.sim`. Thermal Peak was unflyable (its first ring sat at 502 m over a thermal on the mountain, 222 m above the launch; the thermal is now chosen only if the launch can glide to it with 40 m spare), a rocket-belt or gyro landing off the pad ended the run (it now lifts off again while there is fuel), a glider landing in Free Flight never ended, and the rocket belt ran dry before Tower Ascent's last ring (per-mission `fuelBurn`). On the last runs the autopilot took gold on Sunrise Glide (early build), Rotor Rally, Hop Skip Jump and Tower Ascent, and silver on Bombs Away; Thermal Peak took all eleven rings and landed off the pad. Added: a loading bar, first-flight hints, a replay on the results screen, medal unlocks, touch controls, `?perf=1`, and the glider's air brake. `node test/browser.mjs`: 37 checks, 0 failures; the relaunch rule, Thermal Peak's thermal filter and the pause debounce were each broken once and caught by their own assertions (#34). Nothing was seen on a real GPU; see Parked.
 
-## The tavern set, T1: the room plate, 2026-09-30 (PR #TBD)
+## The tavern set, T1: the room plate, 2026-09-30 (PR #483)
 
 Rank 1, launched on Fable 5.1 and delegated under #734. Pipeline in `Tools/board-check/blender/` (`common.py`, `tavern.py`, `calibrate.py`, `run.mjs`, `budget.json`, `validate.mjs`); plate `assets/tavern/room.webp`, 171,090 bytes, rendered on huginn (#733); `paintRoom()` wired to it with the procedural room as fallback (#728). `node blender/validate.mjs` joined Site CI's board-check job: 9 assertions in CI, 21 with `--rendered`. Nine breaks, each failing its own assertion (#34). T2, the walker sheet, is next.
