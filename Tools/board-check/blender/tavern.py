@@ -508,7 +508,12 @@ dest = os.path.join(C.SITE, plate['file'])
 
 
 def encode(image):
-    """The plate is the master's pixels as a lossy WebP at QUALITY."""
+    """The plate is the master's pixels as a lossy WebP at QUALITY. The view
+    transform is set here too, because --encode never goes through
+    C.render(), and Blender 5's default AgX darkens a re-saved PNG by up to
+    9 levels in the shadows."""
+    scene.view_settings.view_transform = 'Standard'
+    scene.view_settings.look = 'None'
     s = scene.render.image_settings
     s.file_format = 'WEBP'
     s.color_mode = 'RGB'

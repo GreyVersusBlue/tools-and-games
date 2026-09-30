@@ -11,6 +11,8 @@
 //   - the room plate's walk lanes (budget.json `lanes`, room y ranges, sampled
 //     across `laneX`) have a median luminance under `luminanceFloor`, which is
 //     where a #0c0803 silhouette would stop reading against the floor
+//   - the page budget.json names for a plate (index.html) does not decode it
+//     into its element, or logs an error or asks for anything offsite
 //   - a file under assets/tavern/ that budget.json does not name
 //   - the camera's distance does not flatten table 0's top to the 0.28 the
 //     canvas draws it at (budget.json `calibration.tabletop`)
@@ -137,6 +139,32 @@ try {
     });
     console.log(`${name}: ${r.w}x${r.h}, ${bytes.toLocaleString()} bytes` +
       (r.lanes.length ? `, lanes ${r.lanes.map(l => l.median.toFixed(1)).join(' / ')}` : ''));
+
+    // ---- and the page that uses it draws it: the element only sets .plate
+    // once the image has decoded, and paintRoom() only uses it then, so a
+    // wrong URL leaves .plate null and the procedural room on screen
+    if (plate.page) {
+      const board = await prepPage(browser, `http://127.0.0.1:${PORT}`, { width: 1600, height: 900, dsf: 1 });
+      try {
+        await board.goto(`http://127.0.0.1:${PORT}/${plate.page}`, { waitUntil: 'load' });
+        let drawn = null;
+        for (let i = 0; i < 40 && !drawn; i++) {
+          drawn = await board.evaluate(sel => {
+            const el = document.querySelector(sel);
+            return el && el.plate ? `${el.plate.naturalWidth}x${el.plate.naturalHeight}` : null;
+          }, plate.element);
+          if (!drawn) await new Promise(res => setTimeout(res, 250));
+        }
+        ok(drawn === `${plate.width}x${plate.height}`,
+          `${name}: ${plate.page}'s <${plate.element}> decodes the plate and paints with it`,
+          drawn ? `decoded ${drawn}` : 'its .plate never set in 10 s, so the procedural room is what shows');
+        ok(!board.__errs.length && !board.__blocked.length && !board.__shimmed.length,
+          `${name}: ${plate.page} loads with no errors and nothing offsite`,
+          [...board.__errs, ...board.__blocked, ...board.__shimmed].join('; '));
+      } finally {
+        await board.close();
+      }
+    }
   }
 
   // ---- nothing unnamed beside them
