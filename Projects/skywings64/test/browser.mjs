@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from '../../../Tools/board-check/harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PORT = 8171;
+const PORT = 8172; // see Tools/board-check/README.md for the ports already in use
 const BASE = `http://127.0.0.1:${PORT}`;
 // quality=low keeps the software renderer quick; touch=1 forces the on-screen controls on.
 const URL_ = `${BASE}/Projects/skywings64/index.html?quality=low&touch=1`;
