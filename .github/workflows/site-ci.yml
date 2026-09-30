@@ -87,6 +87,11 @@ jobs:
         run: npm ci --ignore-scripts
       - name: ci-check.mjs
         run: node ci-check.mjs
+      # The tavern plate's size, bytes, walk-lane luminance and stray files,
+      # and the camera distance against the canvas's tabletop ellipse. No
+      # --rendered: CI has no Blender and the calibration frame is untracked.
+      - name: blender/validate.mjs
+        run: node blender/validate.mjs
 
   suites:
     name: ${{ matrix.name }}

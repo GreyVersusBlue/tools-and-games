@@ -1335,6 +1335,22 @@ Generator.
 
 **#726. SkyWings 64's GLB colours are converted sRGB to linear on load, not re-baked.** The Blender scripts set Principled Base Color from sRGB picks, so every exported `baseColorFactor` was sRGB in a linear slot and the eleven models rendered washed out (red roofs came out salmon). `src/core/models.js` converts each GLB material once as it loads. Re-exporting would need the AO bakes redone for all eleven; if the scripts are ever fixed at the source, this conversion has to go in the same change. *SkyWings 64, 2026-09-30.*
 
+**#727. A render is held to its calibration, size, walk lanes and bytes, not to its hash.** Cycles output with the denoiser is not byte-stable across runs or machines, and #652's one-hash rule is for .glb files. `validate.mjs` checks that the plate exists, is 3200 x 1800, is within 460,800 bytes, has median luminance of 14 or more in the walk lanes (room y 644 to 672 and 818 to 848) so a `#0c0803` silhouette reads, and that `assets/tavern/` holds no stray file; with `--rendered` it adds nine markers held to 2 room units. Shipped plate: 171,090 bytes, lanes 36.0 and 34.0, worst marker 0.42 units. *The site, 2026-09-30.*
+
+**#728. The procedural room stays as the fallback.** `paintRoom()` draws the plate only after `decode()` resolves, and draws its rectangles until then and whenever the load fails, so the first frame is never blank. Broken on purpose: the plate URL pointed at a missing file, and the procedural room painted in full. *The site, 2026-09-30.*
+
+**#729. The rim light stays canvas, along with the fire, glow, embers, motes, candles, lantern, door night wash and the near beams.** Each of them moves, glows, or sits in front of a walker, so none can be baked. The plate holds the fire's light and no fire; its firebox is black. *The site, 2026-09-30.*
+
+**#730. The plate has non-square pixels, and calibration renders at the plate's size.** The plan's 3200 x 1800 (16:9) covers a 2000 x 1300 room frame (20:13), and the first `render()` would have cropped it to y -112.5 to 1012.5. Pixels are 1.156 times taller than wide and the page draws the plate back onto the 2000 x 1300 rect, so calibrating at the plate's own size tests the mapping that ships. *The site, 2026-09-30.*
+
+**#731. Camera distance 19.5 m is pinned by the canvas's 0.28 tabletop ellipse, to 0.01.** Wall markers land 1:1 at any distance and cannot see it: a calibration rendered at 25 m passed all nine markers and failed only the disc (0.219). `validate.mjs` holds it both as arithmetic from budget.json and as a rendered disc (0.278). *The site, 2026-09-30.*
+
+**#732. The tables stay in the plate for T1, and `paintTable()` re-lays the plate's own table pixels in the depth sort.** It clips them to the table's shape, so a far walker still goes behind a table. T2 moves the tables to an alpha sheet and `plateTable()` goes. *The site, 2026-09-30.*
+
+**#733. The tavern plates are rendered on huginn: CPU Cycles, 128 samples with the denoiser, `-t 4`, WebP quality 92.** The room plate took 31.5 minutes and 3.37 GB peak. 256 samples would have doubled the time for no visible gain over the 96-sample previews, and quality 82 smeared the plaster and grain. One pack's plates come from one machine (#707), so T2 and T3 render on huginn too; `run.mjs` waits while any other Blender process runs. *The site, 2026-09-30.*
+
+**#734. The tavern set's T1 session was launched on Fable 5.1 against #638, and it delegated the work rather than stopping.** It could not switch itself, so it gave the build to the `builder` agent (Opus 5.5) and this record to `scribe` (Sonnet 5), and kept only the lead role (#533). This records what one session did, not a change to #638: whether a session launched that way should stop instead is Devon's call. *The site, 2026-09-30.*
+
 # The log
 
 One paragraph per phase or batch, oldest first within each project. PR and
@@ -1819,3 +1835,7 @@ Ranks 5 and 6, two ½ rows in one area, both naming Opus 5.5, worked under Opus 
 ## SkyWings 64 moves in, 2026-09-30
 
 Asked for by Devon rather than taken from a ranked row, under Opus 5.5; two Sonnet 5 subagents built the eleven Blender models before the account's spend limit stopped both mid-task, and the integration was finished by hand. Before the move: an autopilot flew all six scored missions through `window.__qa.sim`. Thermal Peak was unflyable (its first ring sat at 502 m over a thermal on the mountain, 222 m above the launch; the thermal is now chosen only if the launch can glide to it with 40 m spare), a rocket-belt or gyro landing off the pad ended the run (it now lifts off again while there is fuel), a glider landing in Free Flight never ended, and the rocket belt ran dry before Tower Ascent's last ring (per-mission `fuelBurn`). On the last runs the autopilot took gold on Sunrise Glide (early build), Rotor Rally, Hop Skip Jump and Tower Ascent, and silver on Bombs Away; Thermal Peak took all eleven rings and landed off the pad. Added: a loading bar, first-flight hints, a replay on the results screen, medal unlocks, touch controls, `?perf=1`, and the glider's air brake. `node test/browser.mjs`: 37 checks, 0 failures; the relaunch rule, Thermal Peak's thermal filter and the pause debounce were each broken once and caught by their own assertions (#34). Nothing was seen on a real GPU; see Parked.
+
+## The tavern set, T1: the room plate, 2026-09-30 (PR #483)
+
+Rank 1, launched on Fable 5.1 and delegated under #734. Pipeline in `Tools/board-check/blender/` (`common.py`, `tavern.py`, `calibrate.py`, `run.mjs`, `budget.json`, `validate.mjs`); plate `assets/tavern/room.webp`, 171,090 bytes, rendered on huginn (#733); `paintRoom()` wired to it with the procedural room as fallback (#728). `node blender/validate.mjs` joined Site CI's board-check job: 9 assertions in CI, 21 with `--rendered`. Nine breaks, each failing its own assertion (#34). T2, the walker sheet, is next.

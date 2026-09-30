@@ -604,7 +604,8 @@
 
 <script>
 /* <tavern-scene> — a procedurally animated medieval tavern common room.
-   Pure canvas, no assets, no network. Silhouettes lit by a hearth.
+   Canvas, with one same-origin image: the room plate, which paintRoom()
+   falls back from to its own rectangles. Silhouettes lit by a hearth.
    Attributes:
      crowd     0..1   how many people are milling about (default .6)
      intensity 0..1   how strong the firelight / overall warmth is (default .7)
@@ -618,6 +619,13 @@
   var W = 1600, H = 900;          // room coordinates
   var FLOOR = 618;                // back wall / floor seam
   var HEARTH = { x: 330, y: 470 };
+  // The room plate: Blender's render of the set paintRoom() draws
+  // (Tools/board-check/blender/tavern.py), 3200 by 1800 pixels over room x
+  // -200..1800 and y -200..1100, so its pixels are drawn 1.156 times taller
+  // than wide. The walls, hearth, door, bar, floor and the three tables are
+  // in it, lit by a fire that is not; everything that moves or glows stays
+  // canvas and goes on top.
+  var PLATE = { src: "assets/tavern/room.webp", x: -200, y: -200, w: 2000, h: 1300 };
 
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function pick(a) { return a[(Math.random() * a.length) | 0]; }
@@ -1172,6 +1180,7 @@
     this.reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     this.build();
     this.resize();
+    this.loadPlate();
 
     this._ro = new ResizeObserver(function () { el.resize(); });
     this._ro.observe(el);
@@ -1270,6 +1279,18 @@
     if (this.hasAttribute("still") || this.reduce) this.frame(0);
   };
 
+  // this.plate stays null until the image has decoded, and for good if it
+  // fails, so paintRoom() never draws a half-loaded plate or a blank room.
+  TavernScene.prototype.loadPlate = function () {
+    var el = this, img = new Image();
+    this.plate = null;
+    img.src = PLATE.src;
+    img.decode().then(function () {
+      el.plate = img;
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+  };
+
   TavernScene.prototype.toRoom = function (cx, cy) {
     return { x: (cx - this.ox) / this.scale, y: (cy - this.oy) / this.scale };
   };
@@ -1301,6 +1322,8 @@
   /* ---------------- static layers ---------------- */
 
   TavernScene.prototype.paintRoom = function (ctx) {
+    if (this.plate) { ctx.drawImage(this.plate, PLATE.x, PLATE.y, PLATE.w, PLATE.h); return; }
+    // everything below is the fallback while the plate loads or if it fails
     // back wall: plaster between dark timber studs
     var wall = ctx.createLinearGradient(0, 60, 0, FLOOR);
     wall.addColorStop(0, "#120c06");
@@ -1437,6 +1460,7 @@
   };
 
   TavernScene.prototype.paintTable = function (ctx, tb) {
+    if (this.plate) { this.plateTable(ctx, tb); return; }
     ctx.save();
     ctx.translate(tb.x, tb.y);
     ctx.fillStyle = "#0d0904";
@@ -1457,6 +1481,27 @@
     ctx.fillRect(-R2 * 0.12, -R2 * 0.34, R2 * 0.11, R2 * 0.2);
     ctx.fillRect(-R2 * 0.02, -R2 * 0.28, R2 * 0.04, R2 * 0.09);
     ctx.fillRect(R2 * 0.12, -R2 * 0.32, R2 * 0.1, R2 * 0.19);
+    ctx.restore();
+  };
+
+  // With the plate up, the tables are already in it. The depth sort still
+  // calls paintTable() in each table's turn, and this lays the plate's own
+  // table back over whatever was drawn since (a walker behind it, the seated
+  // patrons' legs), clipped to the table's shape: its top and rim, the
+  // tankards, the post and the foot, as tavern.py builds them. The same
+  // pixels as the plate underneath, so nothing can misregister. T2 moves the
+  // tables to their own sheet and this goes.
+  TavernScene.prototype.plateTable = function (ctx, tb) {
+    var r = tb.r, x0 = tb.x - r - 4, y0 = tb.y - r * 0.42, w = 2 * r + 8, h = r * 1.1;
+    var img = this.plate, kx = img.naturalWidth / PLATE.w, ky = img.naturalHeight / PLATE.h;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(tb.x, tb.y - r * 0.06, r + 2, r * 0.32, 0, 0, 6.284);        // top and rim
+    ctx.rect(tb.x - r * 0.16, tb.y - r * 0.38, r * 0.4, r * 0.3);            // tankards
+    ctx.rect(tb.x - r * 0.13, tb.y, r * 0.26, r * 0.52);                     // post
+    ctx.ellipse(tb.x, tb.y + r * 0.53, r * 0.52, r * 0.17, 0, 0, 6.284);     // foot
+    ctx.clip();
+    ctx.drawImage(img, (x0 - PLATE.x) * kx, (y0 - PLATE.y) * ky, w * kx, h * ky, x0, y0, w, h);
     ctx.restore();
   };
 
