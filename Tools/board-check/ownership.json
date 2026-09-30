@@ -44,6 +44,7 @@
     "Blue Hour": { "owns": ["Projects/blue-hour-trail/"] },
     "SkyWings 64": { "owns": ["Projects/skywings64/"] },
     "Signal City": { "owns": ["Projects/signal-city/"] },
+    "Throneshard": { "owns": ["Projects/throneshard/"] },
     "Hearth": {
       "owns": ["Projects/hearth/", ".github/workflows/hearth-ci.yml"]
     },

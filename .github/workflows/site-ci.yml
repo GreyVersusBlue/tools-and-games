@@ -244,6 +244,18 @@ jobs:
               node test/browser.mjs
               node tools/blender/validate.mjs
 
+          # data.mjs is pure Node: every hero, ability, talent, item recipe and
+          # asset path the game names has to resolve. browser.mjs boots the
+          # page under the harness, starts a bot-only match and steps it with
+          # a fixed dt and rendering stubbed, so nothing in it is timed and #53
+          # does not reach it.
+          - name: Throneshard
+            dir: Projects/throneshard
+            install: Tools/board-check
+            commands: |
+              node test/data.mjs
+              node test/browser.mjs
+
           # Nine Node suites and one headless page drive. browser.mjs steps the
           # world through the ?debug hook and lets rAF only draw, so nothing in
           # it is timed and #53 does not reach it. stars.mjs (R2) plays every

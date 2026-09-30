@@ -2306,6 +2306,18 @@ Folder `Projects/skywings64/`; `WISHLIST.md` there carries the four open
 items, all waiting on a person or a GPU (see Parked). Its suite is
 `node test/browser.mjs` from the project folder, in Site CI's matrix.
 
+## Throneshard
+
+A 3D lane battler Devon had built outside this repo and asked to move in on
+2026-09-30 under a name of its own (#738): fourteen heroes, three lanes, bots
+on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
+Its suites are `node test/data.mjs` and `node test/browser.mjs` from the
+project folder, in Site CI's matrix. Open, unranked: a preview capture for its
+card (it needs a `games.mjs` entry and a `capture-previews.mjs` recipe; the card
+shows the shard glyph until then), recorded announcer lines to replace the
+formant voice on kill streaks, and a motion check of the every-second-frame
+shadow map on moving units, on real hardware.
+
 ## Tools/board-check
 
 The site-wide check and regression suite. Owns `check-integrity.mjs`,
@@ -2763,6 +2775,7 @@ now.
 | Blue Hour | `Projects/blue-hour-trail/` | the four shared |
 | Signal City | `Projects/signal-city/` | the four shared |
 | SkyWings 64 | `Projects/skywings64/` | the four shared |
+| Throneshard | `Projects/throneshard/` | the four shared |
 | Hearth | `Projects/hearth/`, `.github/workflows/hearth-ci.yml` | the four shared |
 | Bell to Bell | `Projects/bell-to-bell/` — and its own `CLAUDE.md` governs inside it | the four shared |
 | School Generator | `Projects/school-generator/`, `.github/workflows/school-generator-ci.yml` | the four shared |
