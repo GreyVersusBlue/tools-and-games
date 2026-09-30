@@ -46,7 +46,10 @@ test('the precached shell is the shell, and every entry is relative', () => {
   for (const p of PRECACHE) assert.ok(p.startsWith('./'), `${p} is not relative to the scope`);
   // Small on purpose: precaching eighty modules by hand is a list that is
   // wrong within a phase, and the other seventy-five arrive through `fresh`.
-  assert.ok(PRECACHE.length <= 8, 'the precache has grown into a manifest');
+  // The Blender pack's files are the exception, and test/builtin-models.test.mjs
+  // holds that list to the files on disk; it is the shell that stays small.
+  const shell = PRECACHE.filter((p) => !p.startsWith('./assets/models/'));
+  assert.ok(shell.length <= 8, 'the precache has grown into a manifest');
 });
 
 // ---------- the one decision ----------

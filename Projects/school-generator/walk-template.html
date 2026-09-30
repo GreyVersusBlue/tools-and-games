@@ -55235,6 +55235,11 @@ const __m_js_catalog_js = (() => {
 //                   worth stating on the rows where the category lies: soft
 //                   furniture in a hard category, or a product whose entire
 //                   purpose is absorption.
+//   file: id, fit: 'contain'|'stretch' — the Blender pack (builtin-models.js):
+//                   this row draws from assets/models/<file>.glb when the page
+//                   has the bytes, and from its `geo` builder otherwise (and
+//                   always for a recoloured prop). `stretch` is a row whose
+//                   dimensions are not its file's source row's.
 // plus builder parameters (`top`, `style`, `device`, `rows`, ...) documented
 // beside each geometry builder in render.js.
 
@@ -55283,14 +55288,14 @@ const GEO_KEYS = [
 
 const PROP_CATALOG = [
   // ---- Tables & Desks ----
-  { type: 'student-desk', name: 'Student Desk', category: 'Tables & Desks', icon: '🪑', w: 2, d: 1.5, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk' },
-  { type: 'desk-double', name: 'Double Student Desk', category: 'Tables & Desks', icon: '👥', w: 5, d: 2, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk' },
+  { type: 'student-desk', name: 'Student Desk', category: 'Tables & Desks', icon: '🪑', w: 2, d: 1.5, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'contain' },
+  { type: 'desk-double', name: 'Double Student Desk', category: 'Tables & Desks', icon: '👥', w: 5, d: 2, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
   { type: 'teacher-desk', name: 'Teacher Desk', category: 'Tables & Desks', icon: '🗄️', w: 5, d: 2.5, h: 2.5, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'desk' },
   { type: 'desk-standing', name: 'Standing Desk', category: 'Tables & Desks', icon: '🧍', w: 4, d: 2, h: 3.6, y: 0, color: '#9c7248', mount: 'floor', geo: 'desk' },
-  { type: 'desk-computer', name: 'Computer Workstation', category: 'Tables & Desks', icon: '🖥️', w: 4, d: 2.5, h: 2.5, y: 0, color: '#b08a5f', mount: 'floor', geo: 'workstation', device: 'monitor' },
+  { type: 'desk-computer', name: 'Computer Workstation', category: 'Tables & Desks', icon: '🖥️', w: 4, d: 2.5, h: 2.5, y: 0, color: '#b08a5f', mount: 'floor', geo: 'workstation', device: 'monitor', file: 'workstation', fit: 'contain' },
   { type: 'carrel', name: 'Study Carrel', category: 'Tables & Desks', icon: '📖', w: 3, d: 2, h: 4, y: 0, color: '#a9825a', mount: 'floor', geo: 'carrel' },
-  { type: 'table-seminar-6', name: 'Seminar Table 6ft', category: 'Tables & Desks', icon: '▭', w: 6, d: 2.5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table' },
-  { type: 'table-seminar-8', name: 'Seminar Table 8ft', category: 'Tables & Desks', icon: '▬', w: 8, d: 3, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table' },
+  { type: 'table-seminar-6', name: 'Seminar Table 6ft', category: 'Tables & Desks', icon: '▭', w: 6, d: 2.5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', file: 'table', fit: 'contain' },
+  { type: 'table-seminar-8', name: 'Seminar Table 8ft', category: 'Tables & Desks', icon: '▬', w: 8, d: 3, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', file: 'table', fit: 'stretch' },
   { type: 'table-round-4', name: 'Round Table 4ft', category: 'Tables & Desks', icon: '⚪', w: 4, d: 4, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', top: 'round' },
   { type: 'table-round-5', name: 'Round Table 5ft', category: 'Tables & Desks', icon: '🔵', w: 5, d: 5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', top: 'round' },
   { type: 'table-trapezoid', name: 'Trapezoid Table', category: 'Tables & Desks', icon: '⬠', w: 5, d: 2.5, h: 2.4, y: 0, color: '#caa26b', mount: 'floor', geo: 'table', top: 'trapezoid' },
@@ -55300,28 +55305,28 @@ const PROP_CATALOG = [
   { type: 'podium', name: 'Lectern', category: 'Tables & Desks', icon: '🎤', w: 2, d: 1.5, h: 4, y: 0, color: '#7a5230', mount: 'floor', geo: 'podium' },
 
   // ---- Seating ----
-  { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair', light: true },
-  { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack', light: true },
+  { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair', light: true, file: 'chair-basic', fit: 'contain' },
+  { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack', light: true, file: 'chair-stack', fit: 'contain' },
   { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task', light: 0.8 },
-  { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task', light: true },
-  { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker', light: 0.8 },
-  { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true },
-  { type: 'stool-lab-30', name: 'Lab Stool 30in', category: 'Seating', icon: '🧫', w: 1.2, d: 1.2, h: 2.5, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true },
+  { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task', light: true, file: 'chair-task', fit: 'contain' },
+  { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker', light: 0.8, file: 'chair-rocker', fit: 'contain' },
+  { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true, file: 'stool', fit: 'contain' },
+  { type: 'stool-lab-30', name: 'Lab Stool 30in', category: 'Seating', icon: '🧫', w: 1.2, d: 1.2, h: 2.5, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true, file: 'stool', fit: 'stretch' },
   { type: 'bench-hall', name: 'Hallway Bench', category: 'Seating', icon: '🛋️', w: 6, d: 1.25, h: 1.5, y: 0, color: '#9c7248', mount: 'floor', geo: 'bench' },
   { type: 'seat-auditorium', name: 'Auditorium Seat', category: 'Seating', icon: '🎟️', w: 1.8, d: 2, h: 3.2, y: 0, color: '#7c2f3e', mount: 'floor', geo: 'audseat' },
   { type: 'chair-lounge', name: 'Lounge Chair', category: 'Seating', icon: '🧘', w: 2.8, d: 2.8, h: 2.6, y: 0, color: '#4f6f52', mount: 'floor', geo: 'softseat', kind: 'lounge', light: 0.5 },
-  { type: 'sofa', name: 'Sofa', category: 'Seating', icon: '🛋', w: 6, d: 2.8, h: 2.7, y: 0, color: '#54617a', mount: 'floor', geo: 'softseat', kind: 'sofa' },
+  { type: 'sofa', name: 'Sofa', category: 'Seating', icon: '🛋', w: 6, d: 2.8, h: 2.7, y: 0, color: '#54617a', mount: 'floor', geo: 'softseat', kind: 'sofa', file: 'sofa', fit: 'contain' },
   { type: 'beanbag', name: 'Bean Bag', category: 'Seating', icon: '🫧', w: 2.5, d: 2.5, h: 1.3, y: 0, color: '#b0503f', mount: 'floor', geo: 'softseat', kind: 'beanbag', light: true },
   { type: 'cushion', name: 'Floor Cushion', category: 'Seating', icon: '🔶', w: 1.8, d: 1.8, h: 0.4, y: 0, color: '#c99a3f', mount: 'floor', geo: 'softseat', kind: 'cushion' },
 
   // ---- Storage ----
   { type: 'file-cabinet', name: 'File Cabinet', category: 'Storage', icon: '🗃️', w: 1.25, d: 2, h: 4.3, y: 0, color: '#6b7280', mount: 'floor', geo: 'cabinet' },
   { type: 'cabinet-supply', name: 'Supply Cabinet', category: 'Storage', icon: '🚪', w: 3, d: 1.5, h: 6, y: 0, color: '#6f7a72', mount: 'floor', geo: 'cabinet', front: 'doors' },
-  { type: 'bookshelf-full', name: 'Bookshelf (Full)', category: 'Storage', icon: '📚', w: 3, d: 1, h: 6, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf' },
+  { type: 'bookshelf-full', name: 'Bookshelf (Full)', category: 'Storage', icon: '📚', w: 3, d: 1, h: 6, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf', file: 'shelf', fit: 'contain' },
   { type: 'bookshelf-low', name: 'Bookshelf (Low)', category: 'Storage', icon: '📗', w: 3, d: 1, h: 3, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf' },
-  { type: 'cubby-unit', name: 'Cubby Unit', category: 'Storage', icon: '🗂️', w: 4, d: 1.25, h: 3.5, y: 0, color: '#c17a4f', mount: 'floor', geo: 'cubby' },
+  { type: 'cubby-unit', name: 'Cubby Unit', category: 'Storage', icon: '🗂️', w: 4, d: 1.25, h: 3.5, y: 0, color: '#c17a4f', mount: 'floor', geo: 'cubby', file: 'cubby', fit: 'contain' },
   { type: 'tote-rack', name: 'Tote Bin Rack', category: 'Storage', icon: '🧺', w: 3, d: 1.3, h: 3, y: 0, color: '#8a8f96', mount: 'floor', geo: 'cubby', bins: true },
-  { type: 'locker-bank', name: 'Locker Bank (Tall)', category: 'Storage', icon: '🔒', w: 6, d: 1.25, h: 6, y: 0, color: '#3f6fae', mount: 'floor', geo: 'locker', doors: 6 },
+  { type: 'locker-bank', name: 'Locker Bank (Tall)', category: 'Storage', icon: '🔒', w: 6, d: 1.25, h: 6, y: 0, color: '#3f6fae', mount: 'floor', geo: 'locker', doors: 6, file: 'locker', fit: 'contain' },
   { type: 'locker-bank-half', name: 'Locker Bank (Half)', category: 'Storage', icon: '🔐', w: 6, d: 1.25, h: 6, y: 0, color: '#a24a3f', mount: 'floor', geo: 'locker', doors: 6, tiers: 2 },
   { type: 'coat-rack', name: 'Coat Rack', category: 'Storage', icon: '🧥', w: 4, d: 1.5, h: 5.5, y: 0, color: '#7a6248', mount: 'floor', geo: 'coatrack' },
   { type: 'book-cart', name: 'Book Cart', category: 'Storage', icon: '🛒', w: 3, d: 1.5, h: 3.5, y: 0, color: '#606a75', mount: 'floor', geo: 'cart', light: true },
@@ -55382,8 +55387,8 @@ const PROP_CATALOG = [
   { type: 'rack-drying', name: 'Drying Rack', category: 'Subject Rooms', icon: '🖌️', w: 2.5, d: 1.5, h: 4, y: 0, color: '#8a8f96', mount: 'floor', geo: 'dryrack' },
   { type: 'kiln', name: 'Kiln', category: 'Subject Rooms', icon: '🔥', w: 2.5, d: 2.5, h: 3, y: 0, color: '#8f8a80', mount: 'floor', geo: 'kiln' },
   { type: 'pottery-wheel', name: 'Pottery Wheel', category: 'Subject Rooms', icon: '🏺', w: 2.5, d: 2, h: 1.8, y: 0, color: '#5f6a72', mount: 'floor', geo: 'wheel' },
-  { type: 'bench-lab', name: 'Lab Bench', category: 'Subject Rooms', icon: '🧪', w: 6, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench' },
-  { type: 'table-demo', name: 'Demo Table', category: 'Subject Rooms', icon: '🔬', w: 8, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench' },
+  { type: 'bench-lab', name: 'Lab Bench', category: 'Subject Rooms', icon: '🧪', w: 6, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench', file: 'labbench', fit: 'contain' },
+  { type: 'table-demo', name: 'Demo Table', category: 'Subject Rooms', icon: '🔬', w: 8, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench', file: 'labbench', fit: 'stretch' },
   { type: 'bench-robotics', name: 'Robotics Workbench', category: 'Subject Rooms', icon: '🤖', w: 6, d: 2.5, h: 3, y: 0, color: '#9c7248', mount: 'floor', geo: 'labbench', pegboard: true },
   { type: 'fume-hood', name: 'Fume Hood', category: 'Subject Rooms', icon: '🌫️', w: 4, d: 2.5, h: 8, y: 0, color: '#cfd4d9', mount: 'floor', geo: 'fumehood' },
   { type: 'eyewash', name: 'Eyewash Station', category: 'Subject Rooms', icon: '🚿', w: 1.2, d: 1.2, h: 3.6, y: 0, color: '#3f9e4f', mount: 'floor', geo: 'eyewash' },
@@ -55413,7 +55418,7 @@ const PROP_CATALOG = [
   // ---- Library & Office ----
   { type: 'library-stack', name: 'Library Stack', category: 'Library & Office', icon: '🏛️', w: 3, d: 2, h: 5.5, y: 0, color: '#6a5636', mount: 'floor', geo: 'stack' },
   { type: 'rack-display', name: 'Book Display Rack', category: 'Library & Office', icon: '📰', w: 2.5, d: 1.5, h: 5, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf' },
-  { type: 'desk-circulation', name: 'Circulation Desk', category: 'Library & Office', icon: '📇', w: 6, d: 2.5, h: 3.2, y: 0, color: '#8a6a48', mount: 'floor', geo: 'counter' },
+  { type: 'desk-circulation', name: 'Circulation Desk', category: 'Library & Office', icon: '📇', w: 6, d: 2.5, h: 3.2, y: 0, color: '#8a6a48', mount: 'floor', geo: 'counter', file: 'counter', fit: 'contain' },
   { type: 'counter-reception', name: 'Reception Counter', category: 'Library & Office', icon: '🛎️', w: 6, d: 2.5, h: 3.5, y: 0, color: '#8a6a48', mount: 'floor', geo: 'counter', tier: 2 },
   { type: 'copier', name: 'Copier', category: 'Library & Office', icon: '📠', w: 2, d: 2.3, h: 3.8, y: 0, color: '#d7dadd', mount: 'floor', geo: 'machine', style: 'copier' },
   { type: 'mail-cubbies', name: 'Staff Mail Cubbies', category: 'Library & Office', icon: '📬', w: 3, d: 1, h: 3, y: 0, color: '#a9825a', mount: 'floor', geo: 'cubby' },
@@ -55427,7 +55432,7 @@ const PROP_CATALOG = [
 
   // ---- Decor ----
   { type: 'rug', name: 'Rug', category: 'Decor', icon: '▦', w: 6, d: 4, h: 0.08, y: 0, color: '#b0503f', mount: 'floor', geo: 'rug', absorb: 0.28 },
-  { type: 'plant-floor', name: 'Potted Plant', category: 'Decor', icon: '🪴', w: 1.5, d: 1.5, h: 4, y: 0, color: '#3f7a48', mount: 'floor', geo: 'plant', light: 0.5 },
+  { type: 'plant-floor', name: 'Potted Plant', category: 'Decor', icon: '🪴', w: 1.5, d: 1.5, h: 4, y: 0, color: '#3f7a48', mount: 'floor', geo: 'plant', light: 0.5, file: 'plant', fit: 'contain' },
   { type: 'plant-desk', name: 'Desk Plant', category: 'Decor', icon: '🌱', w: 0.6, d: 0.6, h: 0.9, y: 2.5, color: '#3f7a48', mount: 'floor', geo: 'plant', surface: true },
   { type: 'aquarium', name: 'Aquarium', category: 'Decor', icon: '🐠', w: 3, d: 1.3, h: 4, y: 0, color: '#3a6a8a', mount: 'floor', geo: 'aquarium', sound: { kind: 'burble', db: 44, hz: 900, q: 2, dy: 3 } },
   { type: 'pet-cage', name: 'Class Pet Cage', category: 'Decor', icon: '🐹', w: 2.5, d: 1.5, h: 3, y: 0, color: '#8a8f96', mount: 'floor', geo: 'cage' },
@@ -77970,6 +77975,122 @@ registerRecord('models', { normalize: normalizeModels, isEmpty: (models) => mode
 
 return { MODEL_PREFIX, MODEL_CATEGORY, MODEL_MIME, MAX_MODELS, MAX_LIBRARY_BYTES, DEFAULT_BOX, MIN_DIM, MAX_DIM, FIT_MODES, nameFromFile, modelDataURL, modelBytes, modelSize, librarySize, nextModelId, makeModel, normalizeModel, normalizeModels, modelType, isModelType, modelIdOf, modelRow, modelRows, modelsOf, findModel, addModel, removeModel, modelUseCount, updateModel, describeModel, importModel };
 })();
+// ---- js/builtin-models.js ----
+const __m_js_builtin_models_js = (() => {
+const { parseModelFile, readModel, fitModel, bakeFit, FT_TO_M } = __m_js_gltf_js;
+// builtin-models.js — the Blender pack, as catalog rows that name a file.
+//
+// `assets/models/` holds fifteen .glb files (HISTORY #761 to #765), each one
+// catalog row's silhouette in the page's own axes: faces +Z, base on y=0,
+// feet scaled to metres. models.js already made an imported file wear a
+// catalog row; this is the same move for a file the build ships. A built-in
+// row carries `file` (an id below) and `fit` ('contain' or 'stretch'), keeps
+// its `geo` key, and render.js draws the file when it has the bytes and the
+// procedural builder when it does not.
+//
+// Three rules decide which rows name a file, and the test holds all three:
+//
+//   1. A file carries its source row's colours in its vertices, so a row
+//      draws from it only if its colour is the source row's.
+//   2. A file leaves out what budget.json's `left` lists (the round top, the
+//      pegboard, the tote bins, the second tier), so a row whose builder
+//      parameters ask for one of those stays procedural.
+//   3. A row whose dimensions are the source row's is `contain`; a row that
+//      wants other dimensions from the same file is `stretch`, which scales
+//      each axis by row / source row rather than by an absolute box, so the
+//      source row itself is drawn at exactly the file's own scale (a labbench
+//      file is 3.58 ft tall against a 3 ft row because of its tap, and a
+//      plain fit into 3 ft would shrink the whole bench).
+//
+// A recoloured prop (Phase 11's `data.color`) draws procedurally: the paint
+// is baked into the vertices, and a file's are already baked.
+//
+// Pure: no DOM, no three. `fetchBuiltins` takes the fetch it should use.
+
+
+
+const BUILTIN_DIR = 'assets/models/';
+
+// id -> the catalog row the file was built against. budget.json in
+// tools/blender carries the same pairing and validate.mjs checks that file's
+// side; test/builtin-models.test.mjs checks this side against it.
+const BUILTIN_MODELS = {
+  'chair-basic': { source: 'student-chair' },
+  'chair-stack': { source: 'chair-stack' },
+  'chair-task': { source: 'chair-task' },
+  'chair-rocker': { source: 'chair-rocking' },
+  stool: { source: 'stool-lab-24' },
+  sofa: { source: 'sofa' },
+  desk: { source: 'student-desk' },
+  table: { source: 'table-seminar-6' },
+  workstation: { source: 'desk-computer' },
+  counter: { source: 'desk-circulation' },
+  labbench: { source: 'bench-lab' },
+  shelf: { source: 'bookshelf-full' },
+  cubby: { source: 'cubby-unit' },
+  locker: { source: 'locker-bank' },
+  plant: { source: 'plant-floor' },
+};
+
+const BUILTIN_IDS = Object.keys(BUILTIN_MODELS);
+
+const builtinFile = (id) => `${BUILTIN_DIR}${id}.glb`;
+
+// The size a file is drawn at for a row: the file's own box, scaled per axis
+// by how far the row's dimensions are from its source row's. `source` is that
+// source row (w/d/h) and `bbox` the parsed file's, which is in metres: the
+// page works in feet and gltf.js only converts on the way out. A source row
+// gets the file's own box back, to the last bit.
+function builtinBox(entry, source, bbox) {
+  const sx = (bbox.maxX - bbox.minX) / FT_TO_M;
+  const sy = (bbox.maxY - bbox.minY) / FT_TO_M;
+  const sz = (bbox.maxZ - bbox.minZ) / FT_TO_M;
+  return {
+    w: sx * (entry.w / source.w),
+    d: sz * (entry.d / source.d),
+    h: sy * (entry.h / source.h),
+  };
+}
+
+// Parsed, fitted and baked into catalog coordinates: what render.js merges
+// into one geometry. Throws whatever gltf.js throws about a bad file.
+function loadBuiltin(bytes, entry, source) {
+  const model = readModel(parseModelFile(bytes));
+  return bakeFit(model, fitModel(model.bbox, builtinBox(entry, source, model.bbox), entry.fit));
+}
+
+// Whether a row would draw from a file given the paint on this one prop.
+const drawsFromFile = (entry, variant = '') => !!(entry && entry.file && !variant);
+
+// The file ids a set of prop types needs that are not loaded yet.
+function neededBuiltins(types, entryOf, have) {
+  const want = new Set();
+  for (const type of types) {
+    const e = entryOf(type);
+    if (e && e.file && BUILTIN_MODELS[e.file] && !have.has(e.file)) want.add(e.file);
+  }
+  return [...want];
+}
+
+// Fetch the named files. Nothing here hides a miss: a file that could not be
+// read comes back in `failed` with its reason, and the page says so.
+async function fetchBuiltins(ids, fetchFn, base = './') {
+  const bytes = new Map();
+  const failed = [];
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const resp = await fetchFn(`${base}${builtinFile(id)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      bytes.set(id, new Uint8Array(await resp.arrayBuffer()));
+    } catch (err) {
+      failed.push({ id, message: err && err.message ? err.message : String(err) });
+    }
+  }));
+  return { bytes, failed };
+}
+
+return { BUILTIN_DIR, BUILTIN_MODELS, BUILTIN_IDS, builtinFile, builtinBox, loadBuiltin, drawsFromFile, neededBuiltins, fetchBuiltins };
+})();
 // ---- js/xr.js ----
 const __m_js_xr_js = (() => {
 
@@ -78197,6 +78318,7 @@ const { roofPlan, roofTop, PARAPET_H, COPING_T } = __m_js_roof_js;
 const { sampleBake, bakedTint } = __m_js_bakelight_js;
 const { loadModel, writeGLB, FT_TO_M } = __m_js_gltf_js;
 const { modelBytes, modelsOf } = __m_js_models_js;
+const { BUILTIN_MODELS, loadBuiltin, drawsFromFile } = __m_js_builtin_models_js;
 const { REFERENCE_SPACES, XR_MODE, rigPosition } = __m_js_xr_js;
 const { collectDoorLeaves, leafAngle, mullionPositions, windowBand, LEAF_T, MULLION_BAY } = __m_js_openings_js;
 // render.js — three.js scene setup, procedural PBR-style materials, lighting,
@@ -78238,6 +78360,7 @@ const { collectDoorLeaves, leafAngle, mullionPositions, windowBand, LEAF_T, MULL
 
 
 // --- Phase 9 ---
+
 
 
 
@@ -82272,6 +82395,24 @@ function initRender(canvas) {
     return failed;
   }
 
+  // The pack's files, by id, as the page fetched them. Geometry is built per
+  // row on first use, because a file's fit depends on the row that asks for
+  // it (desk.glb is a student desk and a double desk).
+  const builtinBytes = new Map();
+  function setBuiltinModels(bytesById) {
+    for (const [id, bytes] of bytesById) builtinBytes.set(id, bytes);
+    for (const [key, geo] of propGeoCache) {
+      const type = key.split('|')[0];
+      const entry = catalogEntry(type);
+      if (!entry || !entry.file || !bytesById.has(entry.file)) continue;
+      if (key === type) {
+        if (geo.body) geo.body.dispose();
+        propGeoCache.delete(key);
+      }
+    }
+    return builtinBytes.size;
+  }
+
   // A stand-in for an import that failed or has been deleted: a wireframe-ish
   // box at the row's own size, so a prop whose model is missing is visibly
   // *there* rather than invisibly gone. Losing a chair silently is how you
@@ -82317,6 +82458,24 @@ function initRender(canvas) {
       geo = { body: fromFile || missingModelGeo(entry), lens: null };
       propGeoCache.set(key, geo);
       return geo;
+    }
+    // The Blender pack: a row that names a file draws it once the page has
+    // the bytes. Before that (the first frame, a walk export, a Node test)
+    // and for a recoloured prop it is the procedural builder below, and the
+    // stand-in is not kept: setBuiltinModels clears this row's key when the
+    // bytes arrive.
+    if (drawsFromFile(entry, variant) && builtinBytes.has(entry.file)) {
+      try {
+        const source = catalogEntry(BUILTIN_MODELS[entry.file].source);
+        geo = { body: mergeModelParts(loadBuiltin(builtinBytes.get(entry.file), entry, source)), lens: null };
+        propGeoCache.set(key, geo);
+        return geo;
+      } catch (err) {
+        // The suite parses every file, so this is a file that was damaged in
+        // transit. Say so, and do not draw the building without the prop.
+        console.error(`assets/models/${entry.file}.glb could not be read: ${err.message}`);
+        builtinBytes.delete(entry.file);
+      }
     }
     const build = PROP_GEO_BUILDERS[entry.geo] || buildDesk;
     const built = build(variant ? { ...entry, color: variant } : entry);
@@ -85422,6 +85581,8 @@ function initRender(canvas) {
     // the headset. All three are one write and one read, the arrangement
     // every phase since the third has settled on.
     setModels,
+    setBuiltinModels,
+    get builtinModelIds() { return [...builtinBytes.keys()]; },
     get modelCount() { return modelGeoCache.size; },
     exportGLB, downloadGLB, exportStats,
     enterXR, exitXR, setXRRig, xrHeadLocal,

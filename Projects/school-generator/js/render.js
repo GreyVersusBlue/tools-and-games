@@ -58,6 +58,7 @@ import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
 import { sampleBake, bakedTint } from './bakelight.js';
 import { loadModel, writeGLB, FT_TO_M } from './gltf.js';
 import { modelBytes, modelsOf } from './models.js';
+import { BUILTIN_MODELS, loadBuiltin, drawsFromFile } from './builtin-models.js';
 import { REFERENCE_SPACES, XR_MODE, rigPosition } from './xr.js';
 import {
   collectDoorLeaves, leafAngle, mullionPositions,
@@ -4092,6 +4093,24 @@ export function initRender(canvas) {
     return failed;
   }
 
+  // The pack's files, by id, as the page fetched them. Geometry is built per
+  // row on first use, because a file's fit depends on the row that asks for
+  // it (desk.glb is a student desk and a double desk).
+  const builtinBytes = new Map();
+  function setBuiltinModels(bytesById) {
+    for (const [id, bytes] of bytesById) builtinBytes.set(id, bytes);
+    for (const [key, geo] of propGeoCache) {
+      const type = key.split('|')[0];
+      const entry = catalogEntry(type);
+      if (!entry || !entry.file || !bytesById.has(entry.file)) continue;
+      if (key === type) {
+        if (geo.body) geo.body.dispose();
+        propGeoCache.delete(key);
+      }
+    }
+    return builtinBytes.size;
+  }
+
   // A stand-in for an import that failed or has been deleted: a wireframe-ish
   // box at the row's own size, so a prop whose model is missing is visibly
   // *there* rather than invisibly gone. Losing a chair silently is how you
@@ -4137,6 +4156,24 @@ export function initRender(canvas) {
       geo = { body: fromFile || missingModelGeo(entry), lens: null };
       propGeoCache.set(key, geo);
       return geo;
+    }
+    // The Blender pack: a row that names a file draws it once the page has
+    // the bytes. Before that (the first frame, a walk export, a Node test)
+    // and for a recoloured prop it is the procedural builder below, and the
+    // stand-in is not kept: setBuiltinModels clears this row's key when the
+    // bytes arrive.
+    if (drawsFromFile(entry, variant) && builtinBytes.has(entry.file)) {
+      try {
+        const source = catalogEntry(BUILTIN_MODELS[entry.file].source);
+        geo = { body: mergeModelParts(loadBuiltin(builtinBytes.get(entry.file), entry, source)), lens: null };
+        propGeoCache.set(key, geo);
+        return geo;
+      } catch (err) {
+        // The suite parses every file, so this is a file that was damaged in
+        // transit. Say so, and do not draw the building without the prop.
+        console.error(`assets/models/${entry.file}.glb could not be read: ${err.message}`);
+        builtinBytes.delete(entry.file);
+      }
     }
     const build = PROP_GEO_BUILDERS[entry.geo] || buildDesk;
     const built = build(variant ? { ...entry, color: variant } : entry);
@@ -7242,6 +7279,8 @@ export function initRender(canvas) {
     // the headset. All three are one write and one read, the arrangement
     // every phase since the third has settled on.
     setModels,
+    setBuiltinModels,
+    get builtinModelIds() { return [...builtinBytes.keys()]; },
     get modelCount() { return modelGeoCache.size; },
     exportGLB, downloadGLB, exportStats,
     enterXR, exitXR, setXRRig, xrHeadLocal,

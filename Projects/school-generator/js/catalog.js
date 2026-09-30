@@ -48,6 +48,11 @@
 //                   worth stating on the rows where the category lies: soft
 //                   furniture in a hard category, or a product whose entire
 //                   purpose is absorption.
+//   file: id, fit: 'contain'|'stretch' — the Blender pack (builtin-models.js):
+//                   this row draws from assets/models/<file>.glb when the page
+//                   has the bytes, and from its `geo` builder otherwise (and
+//                   always for a recoloured prop). `stretch` is a row whose
+//                   dimensions are not its file's source row's.
 // plus builder parameters (`top`, `style`, `device`, `rows`, ...) documented
 // beside each geometry builder in render.js.
 
@@ -96,14 +101,14 @@ export const GEO_KEYS = [
 
 export const PROP_CATALOG = [
   // ---- Tables & Desks ----
-  { type: 'student-desk', name: 'Student Desk', category: 'Tables & Desks', icon: '🪑', w: 2, d: 1.5, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk' },
-  { type: 'desk-double', name: 'Double Student Desk', category: 'Tables & Desks', icon: '👥', w: 5, d: 2, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk' },
+  { type: 'student-desk', name: 'Student Desk', category: 'Tables & Desks', icon: '🪑', w: 2, d: 1.5, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'contain' },
+  { type: 'desk-double', name: 'Double Student Desk', category: 'Tables & Desks', icon: '👥', w: 5, d: 2, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
   { type: 'teacher-desk', name: 'Teacher Desk', category: 'Tables & Desks', icon: '🗄️', w: 5, d: 2.5, h: 2.5, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'desk' },
   { type: 'desk-standing', name: 'Standing Desk', category: 'Tables & Desks', icon: '🧍', w: 4, d: 2, h: 3.6, y: 0, color: '#9c7248', mount: 'floor', geo: 'desk' },
-  { type: 'desk-computer', name: 'Computer Workstation', category: 'Tables & Desks', icon: '🖥️', w: 4, d: 2.5, h: 2.5, y: 0, color: '#b08a5f', mount: 'floor', geo: 'workstation', device: 'monitor' },
+  { type: 'desk-computer', name: 'Computer Workstation', category: 'Tables & Desks', icon: '🖥️', w: 4, d: 2.5, h: 2.5, y: 0, color: '#b08a5f', mount: 'floor', geo: 'workstation', device: 'monitor', file: 'workstation', fit: 'contain' },
   { type: 'carrel', name: 'Study Carrel', category: 'Tables & Desks', icon: '📖', w: 3, d: 2, h: 4, y: 0, color: '#a9825a', mount: 'floor', geo: 'carrel' },
-  { type: 'table-seminar-6', name: 'Seminar Table 6ft', category: 'Tables & Desks', icon: '▭', w: 6, d: 2.5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table' },
-  { type: 'table-seminar-8', name: 'Seminar Table 8ft', category: 'Tables & Desks', icon: '▬', w: 8, d: 3, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table' },
+  { type: 'table-seminar-6', name: 'Seminar Table 6ft', category: 'Tables & Desks', icon: '▭', w: 6, d: 2.5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', file: 'table', fit: 'contain' },
+  { type: 'table-seminar-8', name: 'Seminar Table 8ft', category: 'Tables & Desks', icon: '▬', w: 8, d: 3, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', file: 'table', fit: 'stretch' },
   { type: 'table-round-4', name: 'Round Table 4ft', category: 'Tables & Desks', icon: '⚪', w: 4, d: 4, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', top: 'round' },
   { type: 'table-round-5', name: 'Round Table 5ft', category: 'Tables & Desks', icon: '🔵', w: 5, d: 5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', top: 'round' },
   { type: 'table-trapezoid', name: 'Trapezoid Table', category: 'Tables & Desks', icon: '⬠', w: 5, d: 2.5, h: 2.4, y: 0, color: '#caa26b', mount: 'floor', geo: 'table', top: 'trapezoid' },
@@ -113,28 +118,28 @@ export const PROP_CATALOG = [
   { type: 'podium', name: 'Lectern', category: 'Tables & Desks', icon: '🎤', w: 2, d: 1.5, h: 4, y: 0, color: '#7a5230', mount: 'floor', geo: 'podium' },
 
   // ---- Seating ----
-  { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair', light: true },
-  { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack', light: true },
+  { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair', light: true, file: 'chair-basic', fit: 'contain' },
+  { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack', light: true, file: 'chair-stack', fit: 'contain' },
   { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task', light: 0.8 },
-  { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task', light: true },
-  { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker', light: 0.8 },
-  { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true },
-  { type: 'stool-lab-30', name: 'Lab Stool 30in', category: 'Seating', icon: '🧫', w: 1.2, d: 1.2, h: 2.5, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true },
+  { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task', light: true, file: 'chair-task', fit: 'contain' },
+  { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker', light: 0.8, file: 'chair-rocker', fit: 'contain' },
+  { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true, file: 'stool', fit: 'contain' },
+  { type: 'stool-lab-30', name: 'Lab Stool 30in', category: 'Seating', icon: '🧫', w: 1.2, d: 1.2, h: 2.5, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true, file: 'stool', fit: 'stretch' },
   { type: 'bench-hall', name: 'Hallway Bench', category: 'Seating', icon: '🛋️', w: 6, d: 1.25, h: 1.5, y: 0, color: '#9c7248', mount: 'floor', geo: 'bench' },
   { type: 'seat-auditorium', name: 'Auditorium Seat', category: 'Seating', icon: '🎟️', w: 1.8, d: 2, h: 3.2, y: 0, color: '#7c2f3e', mount: 'floor', geo: 'audseat' },
   { type: 'chair-lounge', name: 'Lounge Chair', category: 'Seating', icon: '🧘', w: 2.8, d: 2.8, h: 2.6, y: 0, color: '#4f6f52', mount: 'floor', geo: 'softseat', kind: 'lounge', light: 0.5 },
-  { type: 'sofa', name: 'Sofa', category: 'Seating', icon: '🛋', w: 6, d: 2.8, h: 2.7, y: 0, color: '#54617a', mount: 'floor', geo: 'softseat', kind: 'sofa' },
+  { type: 'sofa', name: 'Sofa', category: 'Seating', icon: '🛋', w: 6, d: 2.8, h: 2.7, y: 0, color: '#54617a', mount: 'floor', geo: 'softseat', kind: 'sofa', file: 'sofa', fit: 'contain' },
   { type: 'beanbag', name: 'Bean Bag', category: 'Seating', icon: '🫧', w: 2.5, d: 2.5, h: 1.3, y: 0, color: '#b0503f', mount: 'floor', geo: 'softseat', kind: 'beanbag', light: true },
   { type: 'cushion', name: 'Floor Cushion', category: 'Seating', icon: '🔶', w: 1.8, d: 1.8, h: 0.4, y: 0, color: '#c99a3f', mount: 'floor', geo: 'softseat', kind: 'cushion' },
 
   // ---- Storage ----
   { type: 'file-cabinet', name: 'File Cabinet', category: 'Storage', icon: '🗃️', w: 1.25, d: 2, h: 4.3, y: 0, color: '#6b7280', mount: 'floor', geo: 'cabinet' },
   { type: 'cabinet-supply', name: 'Supply Cabinet', category: 'Storage', icon: '🚪', w: 3, d: 1.5, h: 6, y: 0, color: '#6f7a72', mount: 'floor', geo: 'cabinet', front: 'doors' },
-  { type: 'bookshelf-full', name: 'Bookshelf (Full)', category: 'Storage', icon: '📚', w: 3, d: 1, h: 6, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf' },
+  { type: 'bookshelf-full', name: 'Bookshelf (Full)', category: 'Storage', icon: '📚', w: 3, d: 1, h: 6, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf', file: 'shelf', fit: 'contain' },
   { type: 'bookshelf-low', name: 'Bookshelf (Low)', category: 'Storage', icon: '📗', w: 3, d: 1, h: 3, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf' },
-  { type: 'cubby-unit', name: 'Cubby Unit', category: 'Storage', icon: '🗂️', w: 4, d: 1.25, h: 3.5, y: 0, color: '#c17a4f', mount: 'floor', geo: 'cubby' },
+  { type: 'cubby-unit', name: 'Cubby Unit', category: 'Storage', icon: '🗂️', w: 4, d: 1.25, h: 3.5, y: 0, color: '#c17a4f', mount: 'floor', geo: 'cubby', file: 'cubby', fit: 'contain' },
   { type: 'tote-rack', name: 'Tote Bin Rack', category: 'Storage', icon: '🧺', w: 3, d: 1.3, h: 3, y: 0, color: '#8a8f96', mount: 'floor', geo: 'cubby', bins: true },
-  { type: 'locker-bank', name: 'Locker Bank (Tall)', category: 'Storage', icon: '🔒', w: 6, d: 1.25, h: 6, y: 0, color: '#3f6fae', mount: 'floor', geo: 'locker', doors: 6 },
+  { type: 'locker-bank', name: 'Locker Bank (Tall)', category: 'Storage', icon: '🔒', w: 6, d: 1.25, h: 6, y: 0, color: '#3f6fae', mount: 'floor', geo: 'locker', doors: 6, file: 'locker', fit: 'contain' },
   { type: 'locker-bank-half', name: 'Locker Bank (Half)', category: 'Storage', icon: '🔐', w: 6, d: 1.25, h: 6, y: 0, color: '#a24a3f', mount: 'floor', geo: 'locker', doors: 6, tiers: 2 },
   { type: 'coat-rack', name: 'Coat Rack', category: 'Storage', icon: '🧥', w: 4, d: 1.5, h: 5.5, y: 0, color: '#7a6248', mount: 'floor', geo: 'coatrack' },
   { type: 'book-cart', name: 'Book Cart', category: 'Storage', icon: '🛒', w: 3, d: 1.5, h: 3.5, y: 0, color: '#606a75', mount: 'floor', geo: 'cart', light: true },
@@ -195,8 +200,8 @@ export const PROP_CATALOG = [
   { type: 'rack-drying', name: 'Drying Rack', category: 'Subject Rooms', icon: '🖌️', w: 2.5, d: 1.5, h: 4, y: 0, color: '#8a8f96', mount: 'floor', geo: 'dryrack' },
   { type: 'kiln', name: 'Kiln', category: 'Subject Rooms', icon: '🔥', w: 2.5, d: 2.5, h: 3, y: 0, color: '#8f8a80', mount: 'floor', geo: 'kiln' },
   { type: 'pottery-wheel', name: 'Pottery Wheel', category: 'Subject Rooms', icon: '🏺', w: 2.5, d: 2, h: 1.8, y: 0, color: '#5f6a72', mount: 'floor', geo: 'wheel' },
-  { type: 'bench-lab', name: 'Lab Bench', category: 'Subject Rooms', icon: '🧪', w: 6, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench' },
-  { type: 'table-demo', name: 'Demo Table', category: 'Subject Rooms', icon: '🔬', w: 8, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench' },
+  { type: 'bench-lab', name: 'Lab Bench', category: 'Subject Rooms', icon: '🧪', w: 6, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench', file: 'labbench', fit: 'contain' },
+  { type: 'table-demo', name: 'Demo Table', category: 'Subject Rooms', icon: '🔬', w: 8, d: 2.5, h: 3, y: 0, color: '#20242a', mount: 'floor', geo: 'labbench', file: 'labbench', fit: 'stretch' },
   { type: 'bench-robotics', name: 'Robotics Workbench', category: 'Subject Rooms', icon: '🤖', w: 6, d: 2.5, h: 3, y: 0, color: '#9c7248', mount: 'floor', geo: 'labbench', pegboard: true },
   { type: 'fume-hood', name: 'Fume Hood', category: 'Subject Rooms', icon: '🌫️', w: 4, d: 2.5, h: 8, y: 0, color: '#cfd4d9', mount: 'floor', geo: 'fumehood' },
   { type: 'eyewash', name: 'Eyewash Station', category: 'Subject Rooms', icon: '🚿', w: 1.2, d: 1.2, h: 3.6, y: 0, color: '#3f9e4f', mount: 'floor', geo: 'eyewash' },
@@ -226,7 +231,7 @@ export const PROP_CATALOG = [
   // ---- Library & Office ----
   { type: 'library-stack', name: 'Library Stack', category: 'Library & Office', icon: '🏛️', w: 3, d: 2, h: 5.5, y: 0, color: '#6a5636', mount: 'floor', geo: 'stack' },
   { type: 'rack-display', name: 'Book Display Rack', category: 'Library & Office', icon: '📰', w: 2.5, d: 1.5, h: 5, y: 0, color: '#7a5230', mount: 'floor', geo: 'shelf' },
-  { type: 'desk-circulation', name: 'Circulation Desk', category: 'Library & Office', icon: '📇', w: 6, d: 2.5, h: 3.2, y: 0, color: '#8a6a48', mount: 'floor', geo: 'counter' },
+  { type: 'desk-circulation', name: 'Circulation Desk', category: 'Library & Office', icon: '📇', w: 6, d: 2.5, h: 3.2, y: 0, color: '#8a6a48', mount: 'floor', geo: 'counter', file: 'counter', fit: 'contain' },
   { type: 'counter-reception', name: 'Reception Counter', category: 'Library & Office', icon: '🛎️', w: 6, d: 2.5, h: 3.5, y: 0, color: '#8a6a48', mount: 'floor', geo: 'counter', tier: 2 },
   { type: 'copier', name: 'Copier', category: 'Library & Office', icon: '📠', w: 2, d: 2.3, h: 3.8, y: 0, color: '#d7dadd', mount: 'floor', geo: 'machine', style: 'copier' },
   { type: 'mail-cubbies', name: 'Staff Mail Cubbies', category: 'Library & Office', icon: '📬', w: 3, d: 1, h: 3, y: 0, color: '#a9825a', mount: 'floor', geo: 'cubby' },
@@ -240,7 +245,7 @@ export const PROP_CATALOG = [
 
   // ---- Decor ----
   { type: 'rug', name: 'Rug', category: 'Decor', icon: '▦', w: 6, d: 4, h: 0.08, y: 0, color: '#b0503f', mount: 'floor', geo: 'rug', absorb: 0.28 },
-  { type: 'plant-floor', name: 'Potted Plant', category: 'Decor', icon: '🪴', w: 1.5, d: 1.5, h: 4, y: 0, color: '#3f7a48', mount: 'floor', geo: 'plant', light: 0.5 },
+  { type: 'plant-floor', name: 'Potted Plant', category: 'Decor', icon: '🪴', w: 1.5, d: 1.5, h: 4, y: 0, color: '#3f7a48', mount: 'floor', geo: 'plant', light: 0.5, file: 'plant', fit: 'contain' },
   { type: 'plant-desk', name: 'Desk Plant', category: 'Decor', icon: '🌱', w: 0.6, d: 0.6, h: 0.9, y: 2.5, color: '#3f7a48', mount: 'floor', geo: 'plant', surface: true },
   { type: 'aquarium', name: 'Aquarium', category: 'Decor', icon: '🐠', w: 3, d: 1.3, h: 4, y: 0, color: '#3a6a8a', mount: 'floor', geo: 'aquarium', sound: { kind: 'burble', db: 44, hz: 900, q: 2, dy: 3 } },
   { type: 'pet-cage', name: 'Class Pet Cage', category: 'Decor', icon: '🐹', w: 2.5, d: 1.5, h: 3, y: 0, color: '#8a8f96', mount: 'floor', geo: 'cage' },
