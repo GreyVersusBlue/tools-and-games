@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ args: ['--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+const errs = [];
+p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+p.on('pageerror', e => errs.push(e.message));
+await p.goto(process.argv[2] || 'http://localhost:5173');
+await p.waitForTimeout(8000);
+await p.screenshot({ path: '/tmp/shot.png' });
+console.log('errors:', errs.slice(0, 20));
+console.log(await p.evaluate(() => window.game ? { units: game.units.length, time: game.time, running: game.running } : 'no game'));
+await b.close();

@@ -1,0 +1,24 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ args: ['--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+await p.goto('http://localhost:4173');
+await p.waitForFunction(() => window.game?.ui && document.querySelector('.btn-play'), null, { timeout: 120000 });
+const r = await p.evaluate(async () => {
+  const g = window.game; g.startMatch({ heroId: 'sera' });
+  g.renderer.setAnimationLoop(null);
+  g.cameraCtl.focus(-30, 30, true); for (let i=0;i<30;i++) g.tick();
+  const R = g.renderer; R.info.autoReset = false;
+  const measure = () => { R.info.reset(); R.render(g.scene, g.camera); const t = performance.now(); for (let i=0;i<10;i++) R.render(g.scene,g.camera); R.getContext().finish(); return { tris: R.info.render.triangles/11|0, calls: R.info.render.calls/11|0, ms: +((performance.now()-t)/10).toFixed(1) }; };
+  const out = { all: measure() };
+  const f = g.world.foliage ?? g.world.trees ?? null;
+  const keys = Object.keys(g.world);
+  const grass = f?.grassMeshes ?? []; const trees = f?.treeMeshes ?? [];
+  grass.forEach(m => m.visible = false); out.noGrass = measure(); grass.forEach(m => m.visible = true);
+  trees.forEach(m => m.visible = false); out.noTrees = measure(); trees.forEach(m => m.visible = true);
+  R.shadowMap.enabled = false; g.scene.traverse(o => { if (o.material) { (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); } }); out.noShadow = measure(); R.shadowMap.enabled = true;
+  const units = g.units.map(u=>u.object); units.forEach(o=>o.visible=false); out.noUnits = measure(); units.forEach(o=>o.visible=true);
+  out.worldKeys = keys.join(',');
+  out.grassCount = grass.reduce((a,m)=>a+m.count*(m.geometry.index?m.geometry.index.count/3:m.geometry.attributes.position.count/3),0);
+  return out;
+});
+console.log(JSON.stringify(r, null, 1)); await b.close();
