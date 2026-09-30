@@ -56,7 +56,7 @@ committed file measurably worse than the recipe's own output. `assets.mjs`
 holds each tier-named file to its width, from the JPEG header, in CI.
 
 The Blender pack is built from code by `tools/blender/` (#643; WISHLIST.md
-"Blender assets"), on Devon's Windows machine only:
+"Blender assets"), on Devon's machines only, huginn or Windows (#707):
 `blender -b --factory-startup -P tools/blender/classroom.py -- [item ...]`
 from this folder. It writes glTF Separate (`.gltf` and `.bin`) into
 `Assets/models/blender/`, because that is what the meshopt recipe reads out of

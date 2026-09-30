@@ -1293,6 +1293,8 @@ Generator.
 
 **#706. Bell to Bell hangs a Blender piece on its fixture from `assets.json`'s `fixtures`, and keeps the fixture's box as the fallback.** A fixture id names a model and a `rotY`; `room.js`'s `hangPiece()` puts the piece at the fixture's base, unscaled, and `dressFixture()` registers it with the fixture's thermal hex and hides the box, which comes back with a warning if the file fails, as `dressWithModel()` has always done in this game. A missing file still fails suite lines (`props.mjs`, and `assets.mjs`'s "referenced but missing"), so the fallback is never silent in CI (#646). The window's turn is tested against the room, not against the `rotY` it reads. *Bell to Bell, B3.*
 
+**#707. Blender runs on two machines, and the gate says which: `blender` for basic headless work (huginn or Devon's Windows machine), `blender-gpu` for the full feature set (the Windows machine only).** Devon's instruction, 2026-09-29. Since that day huginn has Blender 5.2.2 LTS on PATH, but its Cycles has only a CPU (no HIP), its Eevee a Vega iGPU, and it has 14 GB of RAM with little swap free. Building meshes, glTF export and small Workbench or CPU Cycles sheets run there; large lit renders do not, so the site's dioramas (ranks 23 and 24) are gated `blender-gpu` and every other Blender row stays `blender`. A lit render's bytes differ between machines, so one pack renders on one machine and its PR names which. *All projects; rule 4.*
+
 ---
 
 # The log
