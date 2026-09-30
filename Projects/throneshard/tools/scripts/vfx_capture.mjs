@@ -3,7 +3,7 @@
 // and an overall contact sheet.
 //
 //   node scripts/vfx_capture.mjs <url> [outDir=/tmp/vfx] [tag=shot] [filter]
-//     filter: comma list of hero ids, ability ids, item ids, or the words "heroes" / "items".
+//     filter: comma list of hero ids, ability ids, item ids, rune types, or the words "heroes" / "items" / "runes".
 //
 // Output: <outDir>/<tag>_<id>_a.png, _b.png (full 1280x720), <outDir>/pair_<tag>_<id>.png (cropped side by side),
 //         <outDir>/<tag>_contact_<n>.png (grid of all pairs).
@@ -18,7 +18,7 @@ const tag = process.argv[4] || 'shot';
 const filter = (process.argv[5] || '').split(',').filter(Boolean);
 fs.mkdirSync(outDir, { recursive: true });
 
-const HEROES = ['brakka', 'kenshar', 'isolde', 'pell', 'sera', 'gorrow', 'vesna', 'aldric', 'morvane', 'sable', 'thalor', 'vashkar'];
+const HEROES = ['brakka', 'kenshar', 'isolde', 'pell', 'sera', 'gorrow', 'vesna', 'aldric', 'morvane', 'sable', 'thalor', 'vashkar', 'ondur', 'liora'];
 // mode: enemy | point | none | self (unit-target on self) | toggle | attack (passive proc on hero attacks)
 //       attacked (dummy attacks hero) | idle (just stand) | kill (dummy creep dies next to hero)
 // shots: seconds after the trigger (cast / first attack landed) for frame a and b.  pre: extra shot during cast point.
@@ -71,7 +71,16 @@ const ABIL = {
   vashkar_toadcurse: { mode: 'enemy', shots: [0.05, 0.5] },
   vashkar_siphon_will: { mode: 'enemy', shots: [0.3, 1.0] },
   vashkar_death_mark: { mode: 'enemy', shots: [0.1, 0.33] },
+  ondur_rift_wall: { mode: 'point', shots: [0.3, 0.9] },
+  ondur_totem_swing: { mode: 'none', shots: [0.1, 0.5] },
+  ondur_tremor: { mode: 'castOther', shots: [0.15, 0.5] },
+  ondur_deep_quake: { mode: 'none', shots: [0.25, 0.7] },
+  liora_tether_shot: { mode: 'enemy', behind: true, shots: [0.15, 1.0] },
+  liora_piercing_gale: { mode: 'point', shots: [0.08, 0.2] },
+  liora_tailwind: { mode: 'none', shots: [0.2, 1.0] },
+  liora_arrow_storm: { mode: 'enemy', shots: [0.2, 0.8] },
 };
+const RUNES = ['haste', 'double_damage', 'regeneration', 'invisibility', 'arcane', 'illusion', 'bounty'];
 const ITEMS = {
   homeward_scroll: { mode: 'tp', shots: [0.5, 2.6] }, wayfarer_boots: { mode: 'tp', shots: [0.5, 2.6] },
   bark_ration: { mode: 'none' }, healing_salve: { mode: 'none' }, clarity: { mode: 'none' }, honeyed_plum: { mode: 'none' },
@@ -212,6 +221,10 @@ async function captureAbility(p, heroId, idx) {
       target = cap.spawnCreep(E.position.x - 2.5, E.position.z, cfg.lowHp ? 120 : 400);
       cap.step(0.05);
     }
+    if (cfg.behind) { // second dummy on the far side of the target, on the line from the hero: the shot latches
+      const d = target.position.clone().sub(h.position).setY(0).normalize();
+      cap.place(cap.dummies[1], target.position.x + d.x * 4, target.position.z + d.z * 4);
+    }
     const pt = cfg.near ? h.position.clone().add({ x: 3, y: 0, z: 1.5 }) : target.position.clone();
     cap.watch('ability:cast', (e) => e.hero === h && e.ability === ab);
     switch (cfg.mode) {
@@ -306,6 +319,35 @@ async function captureItem(p, id) {
   console.log('  captured item', id);
 }
 
+// Runes: spawn one at a spot beside the hero (frame a: pickup burst), let the hero walk onto it, and shoot the
+// activation flourish (frame b) and the lasting aura (frame c).
+async function captureRune(p, type) {
+  const id = 'rune_' + type;
+  if (!want('runes', id) && !want('runes', type)) return;
+  await p.evaluate((type) => {
+    const g = window.game, cap = window.__cap, h = cap.h;
+    cap.reset(); cap.step(0.05);
+    for (const m of [...h.modifiers]) if (m.rune) h.removeModifier(m);
+    for (const r of [...g.runes.runes]) g.runes.remove(r);
+    const spot = h.position.clone().add({ x: 3, y: 0, z: 1 });
+    const rune = g.runes.spawn(type, spot, type === 'bounty' ? 'bounty' : 'power');
+    rune.pos.copy(spot);
+    rune.mesh.position.copy(spot);
+    cap.rune = rune;
+    cap.step(0.3);
+    g.runes.pick(h, rune);
+  }, type);
+  await p.evaluate(() => window.__cap.step(0.12));
+  await snap(p, `${tag}_${id}_a`);
+  await p.evaluate(() => window.__cap.step(0.25));
+  await snap(p, `${tag}_${id}_b`);
+  await p.evaluate(() => window.__cap.step(1.2));
+  await snap(p, `${tag}_${id}_c`);
+  await p.evaluate(() => { const c = window.__cap; for (const m of [...c.h.modifiers]) if (m.rune) c.h.removeModifier(m); c.clearFx(); c.reset(); c.step(1.5); c.clearFx(); });
+  done.push(id);
+  console.log('  captured', id);
+}
+
 const t0 = Date.now();
 const SHEETS_ONLY = !!process.env.SHEETS_ONLY; // rebuild sheets from existing shots in outDir
 if (SHEETS_ONLY) for (const id of [...Object.keys(ABIL), ...Object.keys(ITEMS)]) if (fs.existsSync(`${outDir}/${tag}_${id}_a.png`) && want(id.startsWith('cm_') ? 'isolde' : 'x', id)) done.push(id);
@@ -315,6 +357,14 @@ for (const heroId of SHEETS_ONLY ? [] : HEROES) {
   const p = await newMatch(heroId);
   for (let i = 0; i < 4; i++) {
     try { await captureAbility(p, heroId, i); } catch (e) { console.log('  capture error', heroId, i, e.message.slice(0, 300)); }
+  }
+  await p.close();
+}
+if (!SHEETS_ONLY && (!filter.length || filter.includes('runes') || RUNES.some((r) => filter.includes(r) || filter.includes('rune_' + r)))) {
+  console.log('runes');
+  const p = await newMatch('aldric');
+  for (const type of RUNES) {
+    try { await captureRune(p, type); } catch (e) { console.log('  rune error', type, e.message.slice(0, 300)); }
   }
   await p.close();
 }
@@ -333,13 +383,14 @@ const sheetPage = await b.newPage({ viewport: { width: 1600, height: 1000 } });
 const imgData = (f) => (fs.existsSync(f) ? 'data:image/png;base64,' + fs.readFileSync(f).toString('base64') : '');
 const cell = (id, w) => {
   const pre = fs.existsSync(`${outDir}/${tag}_${id}_pre.png`);
-  const imgs = [...(pre ? ['pre'] : []), 'a', 'b'].map((s) => `<div style="width:${w}px;height:${Math.round(w * CROP.h / CROP.w)}px;overflow:hidden;position:relative;display:inline-block">
+  const c3 = fs.existsSync(`${outDir}/${tag}_${id}_c.png`);
+  const imgs = [...(pre ? ['pre'] : []), 'a', 'b', ...(c3 ? ['c'] : [])].map((s) => `<div style="width:${w}px;height:${Math.round(w * CROP.h / CROP.w)}px;overflow:hidden;position:relative;display:inline-block">
       <img src="${imgData(`${outDir}/${tag}_${id}_${s}.png`)}" style="position:absolute;left:${-CROP.x * w / CROP.w}px;top:${-CROP.y * w / CROP.w}px;width:${1280 * w / CROP.w}px"></div>`).join('');
   return `<div style="display:inline-block;margin:2px;background:#111;color:#eee;font:12px sans-serif"><div>${id}</div>${imgs}</div>`;
 };
 for (const id of done) {
   const pre = fs.existsSync(`${outDir}/${tag}_${id}_pre.png`);
-  const n = pre ? 3 : 2;
+  const n = pre || fs.existsSync(`${outDir}/${tag}_${id}_c.png`) ? 3 : 2;
   await sheetPage.setViewportSize({ width: n * 640 + 8, height: 385 });
   await sheetPage.setContent(`<body style="margin:0;background:#000">${cell(id, 640)}</body>`, { timeout: 120000 });
   await sheetPage.screenshot({ path: `${outDir}/pair_${tag}_${id}.png` });
