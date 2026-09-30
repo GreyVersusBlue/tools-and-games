@@ -1,0 +1,18 @@
+{
+  "about": "Signal City's sprite style sheet as data (WISHLIST.md B1). validate.mjs reads it; cars.py reads ppm, pad and the sheet. ppm is pixels per metre in the sheet: a frame is ceil(length * ppm) + 2 * pad by ceil(width * ppm) + 2 * pad, the canvas spriteFor() makes. spriteFrom and spriteTo are the band of spriteFor's own pixels per metre in which B3 draws a frame from the sheet; outside it the procedural car. states is how many frames an archetype has per palette where it is not 1. maxKiB is KiB x 1024, maxSide the longest side in pixels, minCoverage the share of a frame's pixels at alpha 128 or more below which the frame is taken for empty or half-built.",
+  "ppm": 36,
+  "pad": 2,
+  "spriteFrom": 12,
+  "spriteTo": 36,
+  "states": { "rideshare": 4, "emergency": 2 },
+  "sheets": {
+    "cars": {
+      "png": "assets/sprites/cars.png",
+      "atlas": "assets/sprites/cars.json",
+      "width": 1024,
+      "maxSide": 1024,
+      "maxKiB": 960,
+      "minCoverage": 0.7
+    }
+  }
+}

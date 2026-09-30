@@ -242,6 +242,7 @@ jobs:
               node test/levelcode.mjs
               node test/generator.mjs
               node test/browser.mjs
+              node tools/blender/validate.mjs
 
           # Nine Node suites and one headless page drive. browser.mjs steps the
           # world through the ?debug hook and lets rAF only draw, so nothing in
@@ -251,11 +252,14 @@ jobs:
           # cities' first six days with no input and then with the reference
           # hand, a child process a run: about eight minutes on three cores,
           # so this entry gets 30 minutes rather than the 20 the others get.
+          # tools/blender/validate.mjs checks the car sheet against sprites.js
+          # and budget.json (WISHLIST.md B1): no Blender, a second or two.
           - name: Signal City
             dir: Projects/signal-city
             install: Tools/board-check
             timeout: 30
             commands: |
+              node tools/blender/validate.mjs
               node test/signals.mjs
               node test/sim.mjs
               node test/scoring.mjs
@@ -265,6 +269,15 @@ jobs:
               node test/grid.mjs
               node test/endless.mjs
               node test/stars.mjs
+              node test/browser.mjs
+
+          # SkyWings 64 steps the game synchronously through window.__qa.sim, so no
+          # beat waits on a frame (#53); the rocket-belt autopilot flies Hop Skip Jump
+          # end to end. About a minute.
+          - name: SkyWings 64
+            dir: Projects/skywings64
+            install: Tools/board-check
+            commands: |
               node test/browser.mjs
 
           - name: The Fracture Cycle

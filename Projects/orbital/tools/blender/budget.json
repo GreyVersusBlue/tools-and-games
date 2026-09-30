@@ -1,0 +1,22 @@
+{
+  "about": "Orbital's Blender style sheet as data (BACKLOG.md 'Orbital: Blender assets' B1, B2). validate.mjs reads it. One sheet, one frame per key of COLOR in js/render.js, read from that file as text, 256 px square on a 4-wide grid: the largest body a shipped level draws is the star at r 78 on a 1000 x 640 playfield, 125 screen pixels of radius at 1080p, so a 120 px frame radius is drawn at about its own size there and scaled down everywhere smaller. Each item's r is the body's radius in frame pixels, the number the game divides by to scale the frame to a body (bodies.py holds the same number and stops if the two disagree); extent is how far from the anchor the drawing reaches, in frame pixels, and validate.mjs holds the rendered frame to it within 10%, under the frame's half side less the margin, so a frame turned in the game never shows a neighbour. core says the anchor pixel is covered; hue says the frame's mean opaque colour has the COLOR hue (the black hole's COLOR is its glow, which stays the game's, and the rock's grey has no hue to hold). bytes is the sheet's cap: the sheet that shipped is 170,695 bytes, and the cap is a round number above that with room for a redraw, not a target.",
+  "palette": "js/render.js",
+  "sprites": "assets/sprites",
+  "sheet": {
+    "file": "assets/sprites/bodies.png",
+    "atlas": "assets/sprites/bodies.json",
+    "frame": 256,
+    "cols": 4,
+    "margin": 4,
+    "bytes": 262144
+  },
+  "items": {
+    "planet":    { "r": 120, "extent": 120, "core": true,  "hue": true },
+    "star":      { "r": 120, "extent": 120, "core": true,  "hue": true },
+    "rock":      { "r": 108, "extent": 119, "core": true,  "hue": false },
+    "repulse":   { "r": 80,  "extent": 120, "core": true,  "hue": true },
+    "blackhole": { "r": 62,  "extent": 120, "core": true,  "hue": false },
+    "wormhole":  { "r": 116, "extent": 120, "core": true,  "hue": true },
+    "booster":   { "r": 100, "extent": 119, "core": false, "hue": true }
+  }
+}
