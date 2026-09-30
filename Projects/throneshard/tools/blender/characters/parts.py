@@ -42,6 +42,10 @@ def w_torso(C):
     return f
 
 
+LEG_CAP = 0.4
+SIDE_SPLIT = 0.45
+
+
 def w_skirt(C, stiff=0.35):
     """Skirts / robes: pelvis at the waist, increasingly following each thigh towards the hem."""
     zw = BH(C, 'pelvis').z + 0.08
@@ -50,8 +54,12 @@ def w_skirt(C, stiff=0.35):
 
     def f(co):
         t = smoothstep(0, 1, (zw - co.z) / max(1e-3, zw - zk))  # 0 at waist, 1 at knee
-        leg = t * (1 - stiff)
+        # A robe is a bell, not two trouser legs: cap how far the skirt follows the thighs (0.4 of the weight) and pull the left/right split
+        # towards an even mix, so the two opposite thigh swings of a run cancel instead of dragging a flap of cloth
+        # out to the front and back (the old weights let the hem follow one thigh by up to 100%).
+        leg = min(t * (1 - stiff), LEG_CAP)
         s = max(0.0, min(1.0, 0.5 + co.x / (2.2 * abs(xl))))
+        s = 0.5 + (s - 0.5) * SIDE_SPLIT
         w = {'pelvis': 1 - leg}
         if leg > 0:
             w['thigh_l'] = leg * s
