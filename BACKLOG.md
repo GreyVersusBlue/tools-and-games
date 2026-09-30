@@ -129,7 +129,7 @@ closeout went into the same PR, on Devon's instruction for that session (one
 merge, at the end). Every row from old rank 3 moved up two. That is the
 line to update when your batch merges; a PR that only changes these files is
 not a batch and does not belong in it.
-**34 ranked items remain**, and **every one of them names a model.**
+**35 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
 2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 24 are
@@ -959,40 +959,41 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
-| 2 | School Generator's built-in model pack: catalog props as vertex-coloured `.glb` in `assets/models/` | `Projects/school-generator` | ½ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B2 |
-| 3 | Wire the model pack in, once rank 2 has merged: catalog rows that point at a file, and the precache | `Projects/school-generator` | ¼ | Opus 5.5 |  |  | `Projects/school-generator/WISHLIST.md` B3 |
-| 4 | Signal City's sprite pipeline, the first 2D one: `common.py` renders a sprite sheet and its atlas instead of exporting a `.glb` | `Projects/signal-city` | ½ | Opus 5.5 | blender | claude/signal-city-sprites | `Projects/signal-city/WISHLIST.md` B1 |
-| 5 | Signal City's car sheet: the ten archetypes, top-down, in `sprites.js`'s metres | `Projects/signal-city` | ½ | Opus 5.5 | blender | claude/signal-city-sprites | `Projects/signal-city/WISHLIST.md` B2 |
-| 6 | Wire the car sheet in, once rank 5 has merged: `spriteFor` draws a frame and `sprites.html` shows both | `Projects/signal-city` | ¼ | Opus 5.5 |  |  | `Projects/signal-city/WISHLIST.md` B3 |
-| 7 | The Absalom Inheritance's sprite pipeline: Signal City's renderer with a 2:1 isometric camera | `Projects/absalom-inheritance` | ¼ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B1 |
-| 8 | Absalom's tile sheet: floor, wall, door, pillar, gate, stairs and treasure, as `js/render.js` shades them | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B2 |
-| 9 | Absalom's figure sheet: the heirs, the foes and the boss, recoloured from each pack's palette | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B3 |
-| 10 | Wire Absalom's two sheets in, once ranks 8 and 9 have merged | `Projects/absalom-inheritance` | ½ | Opus 5.5 |  |  | `Projects/absalom-inheritance/WISHLIST.md` B4 |
-| 11 | Faire Weekend's sprite pipeline, top-down, in the plat's ink | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B1 |
-| 12 | Faire Weekend's marker sheet: one drawing per plot kind, where a glyph stands on the plat today | `Projects/Ren-Faire-Claude` | ½ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B2 |
-| 13 | Wire the marker sheet in, once rank 12 has merged | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 |  |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B3 |
-| 14 | Hearth's sprite pipeline, at the map's tile size | `Projects/hearth` | ¼ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B1 |
-| 15 | Hearth's building sheet: every kind in `BLD`; the faces stay procedural (#646) | `Projects/hearth` | ½ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B2 |
-| 16 | Wire the building sheet in, once rank 15 has merged | `Projects/hearth` | ¼ | Opus 5.5 |  |  | `Projects/hearth/WISHLIST.md` B3 |
-| 17 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
-| 18 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
-| 19 | Wire the cup and food sheet in, once rank 18 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
-| 20 | Orbital's sprite pipeline | `Projects/orbital` | ¼ | Opus 5.5 | blender |  | [Orbital: Blender assets](#orbital-blender-assets) B1 |
-| 21 | Orbital's body sheet: planet, star, rock, repulsor, black hole, wormhole and booster | `Projects/orbital` | ½ | Opus 5.5 | blender |  | [Orbital: Blender assets](#orbital-blender-assets) B2 |
-| 22 | Wire the body sheet in, once rank 21 has merged, with the glow drawn over it | `Projects/orbital` | ¼ | Opus 5.5 |  |  | [Orbital: Blender assets](#orbital-blender-assets) B3 |
-| 23 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
-| 24 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
-| 25 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
-| 26 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
-| 27 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
-| 28 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 | phone |  | [Golden Hour](#golden-hour) |
-| 29 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
-| 30 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
-| 31 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 32 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 33 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 34 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
+| 1 | The tavern set and sprites from Blender, T1: the site's `common.py`, the calibration check and the room plate behind the Guild Board | The site | 2+ | Fable 5.1 | blender | claude/tavern-set-t1 | [The site itself: the tavern set](#the-site-itself-the-tavern-set) |
+| 2 | School Generator's Blender pipeline, writing only what `js/gltf.js` reads | `Projects/school-generator` | ¼ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B1 |
+| 3 | School Generator's built-in model pack: catalog props as vertex-coloured `.glb` in `assets/models/` | `Projects/school-generator` | ½ | Opus 5.5 | blender |  | `Projects/school-generator/WISHLIST.md` B2 |
+| 4 | Wire the model pack in, once rank 2 has merged: catalog rows that point at a file, and the precache | `Projects/school-generator` | ¼ | Opus 5.5 |  |  | `Projects/school-generator/WISHLIST.md` B3 |
+| 5 | Signal City's sprite pipeline, the first 2D one: `common.py` renders a sprite sheet and its atlas instead of exporting a `.glb` | `Projects/signal-city` | ½ | Opus 5.5 | blender | claude/signal-city-sprites | `Projects/signal-city/WISHLIST.md` B1 |
+| 6 | Signal City's car sheet: the ten archetypes, top-down, in `sprites.js`'s metres | `Projects/signal-city` | ½ | Opus 5.5 | blender | claude/signal-city-sprites | `Projects/signal-city/WISHLIST.md` B2 |
+| 7 | Wire the car sheet in, once rank 5 has merged: `spriteFor` draws a frame and `sprites.html` shows both | `Projects/signal-city` | ¼ | Opus 5.5 |  |  | `Projects/signal-city/WISHLIST.md` B3 |
+| 8 | The Absalom Inheritance's sprite pipeline: Signal City's renderer with a 2:1 isometric camera | `Projects/absalom-inheritance` | ¼ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B1 |
+| 9 | Absalom's tile sheet: floor, wall, door, pillar, gate, stairs and treasure, as `js/render.js` shades them | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B2 |
+| 10 | Absalom's figure sheet: the heirs, the foes and the boss, recoloured from each pack's palette | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B3 |
+| 11 | Wire Absalom's two sheets in, once ranks 8 and 9 have merged | `Projects/absalom-inheritance` | ½ | Opus 5.5 |  |  | `Projects/absalom-inheritance/WISHLIST.md` B4 |
+| 12 | Faire Weekend's sprite pipeline, top-down, in the plat's ink | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B1 |
+| 13 | Faire Weekend's marker sheet: one drawing per plot kind, where a glyph stands on the plat today | `Projects/Ren-Faire-Claude` | ½ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B2 |
+| 14 | Wire the marker sheet in, once rank 12 has merged | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 |  |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B3 |
+| 15 | Hearth's sprite pipeline, at the map's tile size | `Projects/hearth` | ¼ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B1 |
+| 16 | Hearth's building sheet: every kind in `BLD`; the faces stay procedural (#646) | `Projects/hearth` | ½ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B2 |
+| 17 | Wire the building sheet in, once rank 15 has merged | `Projects/hearth` | ¼ | Opus 5.5 |  |  | `Projects/hearth/WISHLIST.md` B3 |
+| 18 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
+| 19 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
+| 20 | Wire the cup and food sheet in, once rank 18 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
+| 21 | Orbital's sprite pipeline | `Projects/orbital` | ¼ | Opus 5.5 | blender | `claude/orbital-sprite-pipeline-body-sheet` | [Orbital: Blender assets](#orbital-blender-assets) B1 |
+| 22 | Orbital's body sheet: planet, star, rock, repulsor, black hole, wormhole and booster | `Projects/orbital` | ½ | Opus 5.5 | blender | `claude/orbital-sprite-pipeline-body-sheet` | [Orbital: Blender assets](#orbital-blender-assets) B2 |
+| 23 | Wire the body sheet in, once rank 21 has merged, with the glow drawn over it | `Projects/orbital` | ¼ | Opus 5.5 |  |  | [Orbital: Blender assets](#orbital-blender-assets) B3 |
+| 24 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
+| 25 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 26 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
+| 27 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
+| 28 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
+| 29 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 | phone |  | [Golden Hour](#golden-hour) |
+| 30 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
+| 31 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
+| 32 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
+| 33 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 34 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
+| 35 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -1215,14 +1216,15 @@ review. Round 3 made zero edits and found zero findings.
 Anathema Archive's folder the way the other Pathfinder pages' suites are.
 
 **Shipped 2026-09-29 at Devon's request, not from a ranked row** (#707 to #709,
-#711 to #714). Since then: spell cards open inline from the stat block, the
+#711 to #716). Since then: spell cards open inline from the stat block, the
 board card has a preview, PF2e spell text reads Foundry's markup as print
 (links, damage formulas at the spell's rank, checks, templates, lists, tables,
 and the one embedded action), and hp is anchored at low below CR 1 and at 2.2
-from CR 1 up (#712, #714), measured on 38 printed pairs: six below CR 1,
-eleven at CR 1 and 2, twenty-one from CR 3 up. Every parse fixture's special
-attacks are hand-checked. Open follow-ups, none ranked; the first three wait
-on Devon's go-ahead:
+from CR 1 up (#712, #714, #716), measured on 48 printed pairs: six below CR 1,
+eleven at CR 1 and 2, seventeen at CR 3 to 6, fourteen from CR 7 up. A
+construct's Fort reads no lower than moderate (#715). Every parse fixture's
+special attacks are hand-checked. Open follow-ups, none ranked; the first
+three wait on Devon's go-ahead:
 
 1. **The spell map's 1,087 "partial" entries** were written by a second pass
    that fixed the first pass's misses; they have not been read by a person. The
@@ -1233,15 +1235,14 @@ on Devon's go-ahead:
    abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
    the open question.
 3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
-4. **Pairs from CR 7 up.** Four pairs sit there (succubus, lich, iron golem,
-   balor), and at #714's 2.2 they average about -6% (succubus +19%, the other
-   three -7% to -18%), against +0.8% for the whole CR 3+ band. Four is too
-   few to act on; eight to ten more at CR 7 to 15 would say whether high CRs
-   want their own anchor. Fixtures come from aonprd.com with `curl` (Python's
-   default user agent gets a 403), and the parse suite runs on each first:
-   #713's ten blocks found two parser bugs and #714's twelve found two more.
-   Expect a design outlier or two like the gargoyle (#714); excuse it from the
-   per-monster bound by name rather than dropping it from the averages.
+4. **Two pairs sit on a per-monster bound.** The medusa's AC converts to 20
+   against Paizo's 25 (the bound is 5), and the nalfeshnee's Will to 31
+   against 23 (the bound is 8). Neither is hp, and both are in bounds, but
+   one more point of drift fails the suite. Worth a look at what the PF1e
+   numbers miss before a tier table changes: the medusa's AC 15 at CR 7 is
+   Dex and natural armor 3, and the nalfeshnee's Will +21 at CR 14 is a good
+   save with Wis 22 and Iron Will on it. No pair from CR 15 to 19 exists yet; the balor at 20 is alone
+   above the nalfeshnee.
 
 ## Pathfinder Characters
 
@@ -2339,6 +2340,57 @@ Fracture Cycle and Torchbearer. Each increment rewrites this row to say which
 cards are done. `npm run check` and `npm run social:check` stay green.
 
 ---
+
+### The site itself: the tavern set
+
+Rank 1, Devon's own instruction on 2026-09-30, a 2+ with gate `blender`,
+outside the dioramas' numbering. The Guild Board's background is
+`<tavern-scene>`, a custom element inline at `index.html:588-1790`: pure
+canvas, the room in `paintRoom()` as flat rectangles and gradients in a
+fixed 1600 by 900 frame (`FLOOR` 618, the hearth at 330,470), the people as
+two-bone IK silhouettes posed every frame, and the fire, glow, embers, motes,
+candles and lantern as additive layers on top. Five click targets (fire, dog,
+cat, door, barkeep) raise `tavern-egg` and the page answers with a flavor
+line. Devon wants it polished in the same look, silhouettes lit by a hearth.
+Blender renders the set as one plate and the figures as silhouette sheets; the
+canvas keeps its loop, its clicks, its cover-fit framing, its reduced-motion
+frame and its fire. Budget: 0.5 to 0.7 MB of images on the page, against the
+850 KB the card previews already load.
+
+**T1. The pipeline, the calibration and the room plate (½).** The site's own
+`common.py` in `Tools/board-check/blender/` (#643; D1 below reuses it), a
+`render()` helper and a camera built from `budget.json`'s recipe.
+`tavern.py` builds the set at `paintRoom()`'s numbers: the wall and its
+studs, the top plate at y 96..122, beams every 300, the hearth surround centred
+on x 330 with its arch 412..618 and mantel at 228, the door at x 872..1040, the
+bar from x 1096 with its top at 470, the shelf at 300, the mugs at 176..222,
+boards receding to (800, 29), the near beams at the edges. `calibrate.py`
+renders markers at nine known room points and `validate.mjs` reads them back
+to 2 room units; it also holds the plate's walk lanes (`FLOOR`+26..54 and
+818..848) lighter than the silhouettes' `#0c0803`, its dimensions, and its
+bytes. Output `assets/tavern/room.webp`, 3200 by 1800, the frame x -200..1800
+and y -200..1100 so cover-fit never shows an edge, cap 450 KB. `paintRoom()`
+draws the plate when it has loaded and its rectangles until then and whenever it
+fails, so the first frame is never blank and nothing offsite is needed.
+
+**T2. The walker sheet (1).** Eight types from `TYPE` on a hand-built
+armature with the same two-bone limbs, keyed from `drawPerson()`'s own sine
+formulas, 12 frames a cycle plus a standing frame, Workbench flat black on
+alpha at a slight three-quarter turn. `assets/tavern/walkers.webp`, lossless,
+cap 160 KB. `drawPerson()` takes the frame from `phase`; the rim pass tints
+the sprite toward the fire and the black pass follows, as today. The three
+tables leave the plate for an alpha sheet so the depth sort at
+`index.html:1707` still puts a far walker behind them.
+
+**T3. The cast sheet (½).** Seated patrons (four hats, two foods, the drink
+cycle), the dog, the cat's sit and walk, the barkeep's wipe, pour and idle.
+`assets/tavern/cast.webp`, cap 100 KB. The click boxes in `poke()` are in
+room units and do not move; re-check the five by hand at three widths.
+
+Not in the row: the fire, glow, embers, motes, candles, lantern and the door's
+night wash stay canvas; `landing.html`'s seal is its own thing; the board's
+share image `assets/og/guild-board.png` is re-shot after T3 if it shows the
+room.
 
 ## Questions for Devon
 
