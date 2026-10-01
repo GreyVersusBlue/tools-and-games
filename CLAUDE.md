@@ -186,7 +186,11 @@ retired. Two things replace it:
    A row with somebody else's branch in it is taken. **The claim has to be on
    `main` to be seen** (#283): commit it alone, open a PR, merge it, then
    start. Two sessions once built the same row in full because each had
-   claimed it on a branch the other could not read.
+   claimed it on a branch the other could not read. **Put `[skip ci]` in the claim
+   commit's message and in the PR title** (2026-10-01): it changes one Markdown cell.
+   **If you are the only session working this repo, use single-operator wave mode
+   instead** (`BACKLOG.md`, rule 4, next to the batch-size table): no claim, one branch, one
+   PR for the whole wave.
 
 **Shared-file edits go in the same PR as the project change now, not in a
 request queue.** The four shared things — `index.html`, `assets/js/gvb-save.js`,
@@ -215,12 +219,14 @@ your own branch, in the same commit, and say so in the PR body.
 5. The closing report names the next open item's rank and its model, the
    one the row runs on under #638, so whoever opens the next session knows
    which row to take.
-6. **Update `BACKLOG.md` as soon as your merge is confirmed** — its header (the
-   last **batch of ranked work** that shipped and its PR number, the ranked-item
-   count, what to pick up next), the ranks if your work reordered anything, and
-   the `Claimed` column, which your row should no longer be in. A PR that only
-   changes `BACKLOG.md`, `HISTORY.md` or this file is not a batch and does not
-   take that line (#382). **Never leave this for a later
+6. **Update `BACKLOG.md` in the same PR as the work** (Devon, 2026-10-01; it used to
+   be a second PR after the merge) — its header (the last **batch of ranked work**
+   that shipped and its PR number, the ranked-item count, what to pick up next), the
+   ranks if your work reordered anything, and the `Claimed` column, which your row
+   should no longer be in. Put `#PENDING` where the PR number goes and fill it in once
+   the PR is open; **if CI fails and the fix changes what shipped, correct it before
+   merging.** A PR that only changes `BACKLOG.md`, `HISTORY.md` or this file is not a
+   batch and does not take that line (#382). **Never leave this for a later
    session.** It is the rule most likely to be dropped as batches grow, and its
    casualty is on record in the sibling repo (`GreyVersusBlue/AI_Tools`): a
    session batched two phases, saved both backlog rewrites for the end, and its
