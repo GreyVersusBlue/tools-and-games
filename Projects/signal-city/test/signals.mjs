@@ -596,5 +596,58 @@ group('bought phases (M8): appended, and never reached by next');
   ok(threw, 'a bought phase ahead of a level\'s own is refused');
 }
 
+group('a rule that calls a phase, and a phase that skips (R9)');
+
+{
+  const T = { yellow: 1, allRed: 1, minGreen: 2 };
+  const CALLS = ['N-L', 'S-L', 'E-L', 'W-L'].map(m => ({ when: 'queue', movement: m, threshold: 3, then: 'call' }));
+  const make = () => new Controller({ lefts: true, skip: [1, 3], rules: [...CALLS, { when: 'elapsed', seconds: 5, then: 'next' }], timing: T });
+  const none = () => 0;
+  // nobody in a bay: the arrows are passed over and the throughs alternate
+  const a = make();
+  ok(a.phases[1].skip && a.phases[3].skip && !a.phases[0].skip, 'skip: [1, 3] marks the two arrow phases');
+  run(a, 5 + 1 + 1 + 0.05, 0.1, none);
+  ok(a.phase === 2 && a.stage === 'green', 'with the loops empty, next from N-S skips the N-S arrows and goes to E-W', `phase ${a.phase} ${a.stage}`);
+  run(a, 5 + 1 + 1, 0.1, none);
+  ok(a.phase === 0, 'and from E-W skips the E-W arrows back to N-S', `phase ${a.phase}`);
+  // N-L runs only on the N-S arrows here, so a full N bay calls them
+  const b = make();
+  run(b, 3, 0.1, m => (m === 'N-L' ? 4 : 0));
+  ok(b.calls.has(1) && b.stage === 'green' && b.phase === 0 && b.next === null, 'four in the N bay call the N-S arrows and cut nothing: N-S is still green at 3 s', `calls ${[...b.calls]} ${b.stage} next ${b.next}`);
+  ok(b.log.some(l => l.kind === 'call' && l.detail === 'N-S lefts'), 'the call is in the log by the phase it called');
+  run(b, 2 + 1 + 1 + 0.05, 0.1, none);
+  ok(b.phase === 1 && b.stage === 'green' && !b.calls.has(1), 'at its turn the called arrow phase runs, and its call is spent', `phase ${b.phase} calls ${[...b.calls]}`);
+  run(b, 5 + 1 + 1, 0.1, none);
+  ok(b.phase === 2, 'then E-W, the arrows of which nobody called', `phase ${b.phase}`);
+  // a sensor is what makes skip mean anything
+  const c = make();
+  run(c, 5 + 1 + 1 + 0.05);
+  ok(c.phase === 1, 'without loops to read, a skip phase runs at its turn like any other', `phase ${c.phase}`);
+  // the green rests when there is nothing else to serve
+  const d = new Controller({ skip: [1], rules: [{ when: 'queue', movement: 'E-T', threshold: 2, then: 'call' }, { when: 'elapsed', seconds: 5, then: 'next' }], timing: T });
+  run(d, 12, 0.1, none);
+  ok(d.phase === 0 && d.stage === 'green', 'a two-phase box whose side street skips rests in the main street\'s green while nobody waits', `phase ${d.phase} ${d.stage} at ${d.t.toFixed(1)}`);
+  ok(d.timeToYellow('N-T') === Infinity, 'and a resting green reads no scheduled end to a driver', String(d.timeToYellow('N-T')));
+  run(d, 0.2, 0.1, m => (m === 'E-T' ? 2 : 0));
+  ok(d.stage === 'yellow' && d.next === 1, 'two on the side street call it, and the elapsed rule, long past, ends the rest at once', `${d.stage} next ${d.next}`);
+  // a bought arrow phase has no turn: a call puts it next
+  const e = new Controller({ extra: ['lefts'], rules: [{ when: 'queue', movement: 'E-L', threshold: 2, then: 'call' }, { when: 'elapsed', seconds: 5, then: 'next' }], timing: T });
+  ok(e.servingPhase('E-L') === 3 && e.servingPhase('N-T') === 0, 'the phase a call is for carries its movement protected when one does', `${e.servingPhase('E-L')} ${e.servingPhase('N-T')}`);
+  run(e, 5 + 1 + 1 + 0.05, 0.1, m => (m === 'E-L' ? 2 : 0));
+  ok(e.phase === 3, 'a called bought arrow phase runs after the green it was called in', `phase ${e.phase}`);
+  run(e, 5 + 1 + 1, 0.1, none);
+  ok(e.phase === 1, 'and the sequence goes on from the last own phase', `phase ${e.phase}`);
+  // refusals
+  let threw = false;
+  try { new Controller({ skip: [0, 1] }); } catch { threw = true; }
+  ok(threw, 'a cycle whose phases all skip is refused: the green has nowhere to rest');
+  threw = false;
+  try { make().setRules([{ when: 'elapsed', seconds: 5, then: 'call' }]); } catch { threw = true; }
+  ok(threw, 'only a queue rule can call a phase');
+  // a clone keeps its calls apart
+  const f = make(); f.calls.add(1); const g = f.clone(); g.calls.delete(1);
+  ok(f.calls.has(1), 'a forecast copy has calls of its own');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

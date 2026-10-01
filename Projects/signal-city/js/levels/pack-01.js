@@ -114,17 +114,23 @@ export const LEVELS = [
     id: 'crossing',
     name: 'Crossing',
     blurb: 'Four Ways again, with people. A call on any leg wants a walk, and a walk holds the green until the last walker is across.',
-    hint: 'Calls light up on the panel and on the map. The walk runs with the through phase parallel to it; give the E-W phase when N or S calls, and the loops in the left bays will ask for the arrows for you.',
+    hint: 'Calls light up on the panel and on the map. The walk runs with the through phase parallel to it; give the E-W phase when N or S calls. The loops in the left bays call the arrows for their turn, and an arrow nobody is waiting for is skipped.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, leftLane: true },
-    // a full bay pulls its arrow in once the through has had 16 s; the
-    // elapsed rule keeps the board cycling on its own. `after` matters: at
-    // the 4 s minimum green the bays cut every through short and the board
-    // locked on 3 of 6 seeds
+    // an actuated box (R9): a bay with three in it calls its arrow phase
+    // for its turn in the cycle and cuts nothing, and an arrow phase nobody
+    // called is skipped. The elapsed rule keeps the board cycling on its
+    // own. It replaced queue rules that cut the through to the arrows after
+    // 16 s (at the 4 s minimum green they locked 3 of 6 seeds): with no
+    // input, six seeds clear 60 to 72 at 37 to 48 s against 55 to 63 at 47
+    // to 52 s, and the reference hand 59 to 82 against 57 to 74
     controller: {
       lefts: true, peds: true, timing: { yellow: 3, allRed: 1.5, minGreen: 4 },
+      skip: [1, 3],
       rules: [
-        { when: 'queue', movement: 'N-L', threshold: 3, after: 16, then: 1 },
-        { when: 'queue', movement: 'E-L', threshold: 3, after: 16, then: 3 },
+        { when: 'queue', movement: 'N-L', threshold: 3, then: 'call' },
+        { when: 'queue', movement: 'S-L', threshold: 3, then: 'call' },
+        { when: 'queue', movement: 'E-L', threshold: 3, then: 'call' },
+        { when: 'queue', movement: 'W-L', threshold: 3, then: 'call' },
         { when: 'elapsed', seconds: 24, then: 'next' },
       ],
     },

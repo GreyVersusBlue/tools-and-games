@@ -52,7 +52,7 @@ group('the level pack');
   ok(l4.loops.join() === 'N-L,S-L,E-L,W-L' && l4.pedDemand && Object.keys(l4.pedDemand).join('') === 'NSEW', 'its loops are in the four left bays and every leg takes calls', l4.loops.join());
   ok(Object.keys(l4.mix).sort().join() === 'granny,standard,student,tourist' && l4.unlocks.includes('peds') && l4.unlocks.includes('sensors'), 'standard, granny, tourist and student drive it, and it unlocks peds and sensors', l4.unlocks.join());
   const w4 = new World(l4, 1);
-  ok(w4.controller.phases.map(p => p.walks.join('+')).join('|') === 'P-E+P-W||P-N+P-S|' && w4.controller.rules.filter(r => r.when === 'queue').every(r => r.after === 16), 'its through phases carry the walks and its queue rules hold a through 16 s', w4.controller.phases.map(p => p.walks.join('+')).join('|'));
+  ok(w4.controller.phases.map(p => p.walks.join('+')).join('|') === 'P-E+P-W||P-N+P-S|' && w4.controller.rules.filter(r => r.when === 'queue').length === 4 && w4.controller.rules.filter(r => r.when === 'queue').every(r => r.then === 'call') && w4.controller.phases.map(p => !!p.skip).join() === 'false,true,false,true', 'its through phases carry the walks, its four bays call their arrows (R9), and the arrows skip when nobody called them', w4.controller.phases.map(p => p.walks.join('+')).join('|'));
   const l5 = levelById('two-blocks');
   ok(l5.network.nodes === 2 && l5.network.spacing === 220 && l5.controller.mode === 'timed' && l5.controller.main === 'EW', 'Two Blocks is two boxes 220 m apart on a timed plan with E-W as phase 1', `${l5.network.nodes} nodes, ${l5.network.spacing} m`);
   const w5 = new World(l5, 1);
@@ -179,7 +179,9 @@ group('Crossing: walks and loops on Four Ways\' board');
 {
   // the calibration (six seeds, the 26 s / 8 s plan with the level's calls
   // and loops): 55 to 76 cleared, 28 to 37 s average wait, 2 to 7 calls
-  // late; the level's own rules at 24 s: 55 to 63 cleared, 47 to 52 s. Target
+  // late; the level's own rules at 24 s, calling the arrows (R9): 60 to 72
+  // cleared, 37 to 48 s (the queue rules it shipped before cleared 55 to 63
+  // at 47 to 52 s). Target
   // 48, waitTarget 36. A two-lane four-minute run with walkers costs about
   // 18 s here, so this is one seed of the plan and one of the level as
   // shipped, and the six are the tool's.
