@@ -17,7 +17,7 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const { ARCHETYPES, SPRITES, drawCar, spriteFor, clearSpriteCache } = await import(
+const { ARCHETYPES, SPRITES, drawCar, spriteFor, trailerSpriteFor, clearSpriteCache, setSheet, hasSheet, loadSheet, frameName, trailerFrameName, SHEET_FROM, SHEET_TO } = await import(
   pathToFileURL(path.join(HERE, '..', 'js', 'sprites.js')).href);
 
 let passed = 0, failed = 0;
@@ -210,6 +210,125 @@ group('spriteFor in Node');
   } catch (e) { message = e.message; }
   ok(/no canvas/i.test(message), 'with no OffscreenCanvas and no document it says so plainly',
     message ? `"${message}"` : 'it did not throw at all');
+}
+
+/* ---------------------------------------------------- the rendered car sheet -- */
+
+group('the rendered sheet (B3)');
+
+{
+  const fs = await import('node:fs');
+  const atlas = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'assets', 'sprites', 'cars.json'), 'utf8'));
+
+  // Every frame the game can ask for is in the atlas: each archetype, each of
+  // its four palettes, each state spriteFor can produce, and the trailer.
+  const missing = [];
+  for (const a of ARCHETYPES) {
+    for (let v = 0; v < 4; v++) {
+      const states = a === 'rideshare' ? 4 : a === 'emergency' ? 2 : 1;
+      const seen = new Set();
+      for (let af = 0; af < 4; af++) seen.add(frameName(a, v, af));
+      if (seen.size !== states) missing.push(`${a}/${v} asks for ${seen.size} states, the sheet has ${states}`);
+      for (const n of seen) if (!atlas.frames[n]) missing.push(n);
+    }
+  }
+  for (let v = 0; v < 4; v++) if (!atlas.frames[trailerFrameName(v)]) missing.push(trailerFrameName(v));
+  ok(missing.length === 0, 'every archetype, palette and state spriteFor can ask for has a frame, and so has the trailer',
+    missing.slice(0, 3).join('; '));
+  ok(frameName('standard', 5, 3) === 'standard/1/0' && frameName('standard', -1, 0) === 'standard/3/0',
+    'a variant wraps the way drawCar wraps it, and a car with one state always asks for state 0');
+  ok(frameName('emergency', 0, 3) === 'emergency/0/1' && frameName('rideshare', 2, 3) === 'rideshare/2/3',
+    "rideshare's state is the pulse frame and emergency's is that frame mod 2");
+
+  // A recording canvas stands in for the browser's.
+  const made = [];
+  globalThis.OffscreenCanvas = class {
+    constructor(w, h) {
+      this.width = w; this.height = h; this.ctx = recorder();
+      made.push(this);
+    }
+    getContext() { return this.ctx; }
+  };
+  const image = { tag: 'sheet' };
+  const first = c => { const o = c.ctx.ops.find(x => x.op === 'drawImage'); return o ? [o.op, ...o.args] : undefined; };
+  const drawn = c => c.canvas.ctx.ops.filter(o => o.op === 'drawImage').length;
+  try {
+    clearSpriteCache(); setSheet(null, null);
+    ok(!hasSheet() && trailerSpriteFor(0, 20) === null, 'before the sheet loads there is no trailer sprite and no sheet');
+    const procedural = spriteFor('standard', 0, 20);
+    ok(drawn(procedural) === 0 && procedural.canvas.ctx.ops.some(o => o.op === 'fill'), 'and spriteFor draws the procedural car', `${drawn(procedural)} drawImage calls`);
+
+    setSheet(image, atlas);
+    ok(hasSheet(), 'setSheet takes the sheet');
+    const f = atlas.frames['standard/0/0'];
+    const s = spriteFor('standard', 0, 18);
+    const d = first(s.canvas);
+    ok(d && d[1] === image && d[2] === f.x && d[3] === f.y && d[4] === f.w && d[5] === f.h,
+      'inside the band spriteFor draws the standard car\'s own frame from the sheet',
+      d ? `source ${d.slice(2, 6).join(',')}, want ${f.x},${f.y},${f.w},${f.h}` : 'no drawImage');
+    const k = 18 / atlas.sheet.ppm;
+    ok(d && Math.abs(d[8] - f.w * k) < 1e-9 && Math.abs(d[9] - f.h * k) < 1e-9,
+      'at a scale of the target px per metre over the sheet\'s', d ? `${d[8]} x ${d[9]} from ${f.w} x ${f.h}` : '');
+    ok(d && Math.abs(d[6] + d[8] / 2 - s.ox) < 1e-9 && Math.abs(d[7] + d[9] / 2 - s.oy) < 1e-9,
+      'centred on the sprite\'s anchor, and the canvas is the size the procedural car would be',
+      `${s.w} x ${s.h}`);
+    ok(s.w === Math.ceil(SPRITES.standard.length * 18) + 4 && spriteFor('standard', 0, 18) === s,
+      'drawn once: the second call is the same cached sprite');
+
+    const names = [];
+    for (const [a, v, t, want] of [['rideshare', 1, 0.5, 'rideshare/1/2'], ['rideshare', 1, 0.75, 'rideshare/1/3'],
+      ['emergency', 3, 0.25, 'emergency/3/1'], ['emergency', 3, 0.5, 'emergency/3/0']]) {
+      const r = spriteFor(a, v, 20, t);
+      const q = atlas.frames[want];
+      const c = first(r.canvas);
+      names.push(c && c[2] === q.x && c[3] === q.y);
+    }
+    ok(names.every(Boolean), 'the animated archetypes take the frame their pulse state names', names.join(','));
+
+    const tf = atlas.frames['trailer/2/0'];
+    const ts = trailerSpriteFor(2, 24);
+    const td = ts && first(ts.canvas);
+    ok(td && td[2] === tf.x && td[3] === tf.y, 'the trailer takes trailer/<variant>/0 in the band');
+
+    // The band's edges: 12 and 36 are in, and either side is procedural.
+    const calls = px => first(spriteFor('granny', 1, px).canvas) ? 'sheet' : 'procedural';
+    ok(calls(SHEET_FROM) === 'sheet' && calls(SHEET_TO) === 'sheet', 'the band includes both its ends', `${SHEET_FROM} to ${SHEET_TO}`);
+    ok(calls(SHEET_FROM - 0.5) === 'procedural' && calls(SHEET_TO + 0.5) === 'procedural',
+      'and nothing outside it: a district\'s 6 px car and a close zoom stay procedural');
+    ok(trailerSpriteFor(1, SHEET_FROM - 1) === null && trailerSpriteFor(1, SHEET_TO + 1) === null,
+      'the trailer keeps to the same band');
+
+    // A frame the atlas lacks falls to the procedural car rather than throwing.
+    const thin = { sheet: atlas.sheet, frames: {} };
+    setSheet(image, thin);
+    ok(drawn(spriteFor('tourist', 0, 20)) === 0, 'an atlas without the frame draws the procedural car');
+
+    // setSheet drops what was cached before, so a car drawn procedurally
+    // while the sheet was loading is redrawn from it once it lands.
+    setSheet(null, null);
+    const before = spriteFor('student', 2, 20);
+    setSheet(image, atlas);
+    const after = spriteFor('student', 2, 20);
+    ok(before !== after && first(after.canvas), 'setSheet clears the cache, so an early procedural car is replaced');
+  } finally {
+    delete globalThis.OffscreenCanvas;
+    setSheet(null, null);
+    clearSpriteCache();
+  }
+
+  // A file that cannot be read is a console.error and no sheet.
+  const errors = [];
+  const realError = console.error, realFetch = globalThis.fetch;
+  console.error = (...a) => errors.push(a.join(' '));
+  try {
+    globalThis.fetch = async () => ({ ok: false, status: 404 });
+    const loaded = await loadSheet(new URL('file:///nowhere/'));
+    ok(loaded === false && !hasSheet() && errors.length === 1 && /404/.test(errors[0]),
+      'a sheet that answers 404 is one console.error naming the status, and no sheet', errors[0] || 'no error logged');
+  } finally {
+    console.error = realError;
+    globalThis.fetch = realFetch;
+  }
 }
 
 /* --------------------------------------------------------------------------- */

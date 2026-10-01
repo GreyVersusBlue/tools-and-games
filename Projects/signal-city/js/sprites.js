@@ -588,6 +588,80 @@ function makeCanvas(w, h) {
   throw new Error('spriteFor: no canvas here (no OffscreenCanvas and no document). Draw with drawCar into a ctx you own instead.');
 }
 
+/* ------------------------------------------------------ the rendered sheet -- */
+
+/* B2's car sheet (assets/sprites/cars.png and cars.json, WISHLIST.md B3). A
+   frame is drawn from it while spriteFor's own pixels per metre sit in
+   [SHEET_FROM, SHEET_TO], which is tools/blender/budget.json's spriteFrom and
+   spriteTo (validate.mjs fails if the two drift); outside the band, and until
+   the page has fetched the sheet, the procedural car stands in. */
+export const SHEET_FROM = 12;
+export const SHEET_TO = 36;
+
+let sheet = null;   // { image, atlas }
+
+/* The frame name for a car, or for the trailer. A variant wraps like drawCar's,
+   rideshare's four pulse states are spriteFor's animFrame, and emergency's two
+   light-bar states are that frame mod 2. */
+export function frameName(archetype, variant, animFrame = 0) {
+  const spec = SPRITES[archetype];
+  const n = spec.palettes.length;
+  const v = ((variant | 0) % n + n) % n;
+  const state = archetype === 'rideshare' ? animFrame : archetype === 'emergency' ? animFrame % 2 : 0;
+  return `${archetype}/${v}/${state}`;
+}
+
+export function trailerFrameName(variant) {
+  const n = SPRITES.trucker.palettes.length;
+  return `trailer/${((variant | 0) % n + n) % n}/0`;
+}
+
+export function setSheet(image, atlas) {
+  sheet = image && atlas ? { image, atlas } : null;
+  cache.clear();   // a car cached procedurally inside the band is stale now
+}
+
+export function hasSheet() { return sheet !== null; }
+
+/* Fetches cars.json and cars.png once. A file that cannot be read is a
+   console.error and the procedural cars carry on: the page is still playable,
+   but a missing sheet is a deploy bug somebody should see. */
+export async function loadSheet(base = new URL('../assets/sprites/', import.meta.url)) {
+  try {
+    const res = await fetch(new URL('cars.json', base));
+    if (!res.ok) throw new Error(`cars.json answered ${res.status}`);
+    const atlas = await res.json();
+    const img = await fetch(new URL('cars.png', base));
+    if (!img.ok) throw new Error(`cars.png answered ${img.status}`);
+    const bitmap = await createImageBitmap(await img.blob());
+    setSheet(bitmap, atlas);
+    return true;
+  } catch (e) {
+    console.error(`signal-city: the car sheet did not load, drawing the procedural cars (${e.message})`);
+    return false;
+  }
+}
+
+/* One frame, drawn once at the target size into a canvas of the size the
+   procedural car would have, so a downscale is not repeated every frame. The
+   anchor is the frame's centre, which is the car's. null when there is no
+   sheet, the scale is outside the band or the atlas has no such frame. */
+function sheetSprite(name, length, width, pxPerMetre) {
+  if (!sheet || pxPerMetre < SHEET_FROM || pxPerMetre > SHEET_TO) return null;
+  const f = sheet.atlas.frames[name];
+  if (!f) return null;
+  const w = Math.ceil(length * pxPerMetre) + PAD * 2;
+  const h = Math.ceil(width * pxPerMetre) + PAD * 2;
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  const ox = w / 2, oy = h / 2;
+  const k = pxPerMetre / sheet.atlas.sheet.ppm;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(sheet.image, f.x, f.y, f.w, f.h, ox - f.ax * k, oy - f.ay * k, f.w * k, f.h * k);
+  return { canvas, w, h, ox, oy };
+}
+
 export function spriteFor(archetype, variant, pxPerMetre, t = 0) {
   const spec = SPRITES[archetype];
   if (!spec) throw new Error(`spriteFor: unknown archetype "${archetype}"`);
@@ -596,6 +670,9 @@ export function spriteFor(archetype, variant, pxPerMetre, t = 0) {
   const key = `${archetype}/${variant}/${pxPerMetre}/${animFrame}`;
   const hit = cache.get(key);
   if (hit) return hit;
+
+  const rendered = sheetSprite(frameName(archetype, variant, animFrame), spec.length, spec.width, pxPerMetre);
+  if (rendered) { cache.set(key, rendered); return rendered; }
 
   const w = Math.ceil(spec.length * pxPerMetre) + PAD * 2;
   const h = Math.ceil(spec.width * pxPerMetre) + PAD * 2;
@@ -611,6 +688,18 @@ export function spriteFor(archetype, variant, pxPerMetre, t = 0) {
   const sprite = { canvas, w, h, ox, oy };
   cache.set(key, sprite);
   return sprite;
+}
+
+/* The trucker's trailer as a sprite, or null where render.js should draw
+   SPRITES.trucker.trailer live (outside the band, or before the sheet). */
+export function trailerSpriteFor(variant, pxPerMetre) {
+  const key = `trailer/${variant}/${pxPerMetre}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const tr = SPRITES.trucker.trailer;
+  const rendered = sheetSprite(trailerFrameName(variant), tr.length, tr.width, pxPerMetre);
+  if (rendered) cache.set(key, rendered);
+  return rendered;
 }
 
 export function clearSpriteCache() {

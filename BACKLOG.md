@@ -121,42 +121,39 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **School Generator's model
-pack wired in**, PR #498: rank 1 of the Blender block, a ¼ that names Opus 5.5
-and ran on Sonnet 5.5, worked on huginn. The batch before it was School
-Generator's Blender pipeline and model pack (PR #496). That is the line to
+**The last batch of ranked work that shipped** is **Signal City's car sheet
+wired in and the tavern's click targets** (PR #500): two ¼s that name Opus 5.5
+and ran on Sonnet 5.5, a cloud session. The batch before it was School
+Generator's model pack wired in (PR #498). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**27 ranked items remain**, and **every one of them names a model.**
+**25 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
-2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 16 are
+2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 15 are
 Blender-made assets: a pipeline per project, then its GLTFLoader where it has
 none, then its packs, then the rows that wire each pack into the game, with
 the site's dioramas last. **Blender runs on Devon's machines only, headless
 (`blender -b -P script.py`), never in a cloud container.** The table's
 `Gate` column says which rows need it and which machine (#644, #707): **9 rows
 read `blender`**, basic headless Blender that **huginn or the Windows machine**
-can run, and **2 read `blender-gpu`** (ranks 15 and 16, the dioramas), which
+can run, and **2 read `blender-gpu`** (ranks 14 and 15, the dioramas), which
 need the full feature set on a GPU and so **the Windows machine only**. A
 session that cannot take a row skips it where it stands and takes the next
-row, without parking it. The other 5 in the block (every
+row, without parking it. The other 4 in the block (every
 GLTFLoader row and every wiring row) are cloud work, because they read
 committed files (#645); a wiring row is taken only once the pack row above it
 has merged. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
 **Nothing is claimed.** **Pick up next**
-is rank 1, Signal City's wiring row (¼, Opus 5.5, no gate): cloud work and
-ready, because its sheet merged in PR #478. **So is rank 17, the tavern's click
-targets (¼, Opus 5.5, no gate)**: the five never receive a click (HISTORY #759),
-and it wants no Blender. The next Blender row is rank 2, Absalom's sprite
-pipeline (¼, gate `blender`): **huginn or the Windows machine**. Every other
-wiring row (ranks 5, 8, 11 and 14) waits on a pack that has not been built.
-Below the Blender block, rank 25 (The Fracture Cycle's fourth prong) and rank
-27 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
+is rank 1, Absalom's sprite pipeline (¼, Opus 5.5, gate `blender`): **huginn or
+the Windows machine**. Every wiring row (ranks 4, 7, 10 and 13) waits on a pack
+that has not been built.
+Below the Blender block, rank 23 (The Fracture Cycle's fourth prong) and rank
+25 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
 them, and a scope Devon has not asked for is not a judgement call a session
-makes for him. Ranks 18 to 24 and 26 still want a real GPU, a real phone or a
+makes for him. Ranks 16 to 22 and 24 still want a real GPU, a real phone or a
 person listening for an hour, and their `Gate` cell says which.
 
 The ranks in this header are the new ones. What shipped, and what it means
@@ -191,7 +188,7 @@ pulse states, emergency's two light-bar states, and the trailer in the cab's
 palettes (#723). `validate.mjs` (523) is in Site CI's Signal City entry. It
 was built beside Orbital's the same day without either seeing the other;
 Orbital's merged first and #717 stands, so later 2D copies start from
-Orbital's. The plan for B3 is in the project's WISHLIST.md.
+Orbital's. B3, the wiring, shipped in PR #500 (#770).
 
 **Orbital has a sprite pipeline and a body sheet** (#717 to #720, PR #477).
 `tools/blender/` is the repo's first 2D pipeline, copied from Aphelion's
@@ -832,11 +829,11 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Two rows are 2+: rank 16 (the dioramas) and rank 25 (The Fracture
-Cycle's fourth prong).** The eleven rows below the Blender block (17 to 27,
-recounted off the table on 2026-09-30) are one ready cloud row (17), eight that
-want hardware nothing here has (18 to 24 and 26) and two written "only if
-Devon" (25 and 27); the
+**Two rows are 2+: rank 15 (the dioramas) and rank 23 (The Fracture
+Cycle's fourth prong).** The ten rows below the Blender block (16 to 25,
+recounted off the table on 2026-09-30) are eight that
+want hardware nothing here has (16 to 22 and 24) and two written "only if
+Devon" (23 and 25); the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
 2026-09-25, when 47 Blender rows went in above the thirteen. Signal City's row
 retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
@@ -846,15 +843,15 @@ same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
 the question it waited on is Devon's. Aphelion's touch/gamepad row left the
 same way the same day, for Q40 (#629).
 
-**The model split is 16 Opus 5.5, 3 Opus 5, 4 Fable 5.1, 4 Sonnet 5.** Counted
+**The model split is 14 Opus 5.5, 3 Opus 5, 4 Fable 5.1, 4 Sonnet 5.** Counted
 off the table rather than decremented, which is how the 15/14/9 drift was
-caught: 16 + 3 + 4 + 4 is 27, and the table has 27 rows. By size it is 14 ¼,
-11 ½ and 2 of the 2+, the same 27 (recounted 2026-09-30, after PR #498). By
+caught: 14 + 3 + 4 + 4 is 25, and the table has 25 rows. By size it is 12 ¼,
+11 ½ and 2 of the 2+, the same 25 (recounted 2026-09-30, after PR #500). By
 gate it is 9 `blender`, 2 `blender-gpu`, 2 `GPU`, 3 `phone`, 1 `GPU, phone`,
-2 `ears` and 8
+2 `ears` and 6
 with none. The Blender rows name Opus 5.5 directly, since they were written after
-#638, except rank 16 (the dioramas), whose
-increments are variants of a style rank 15 fixes and name Sonnet 5.
+#638, except rank 15 (the dioramas), whose
+increments are variants of a style rank 14 fixes and name Sonnet 5.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under. The split counts the names; under #638 the Opus 5.5,
@@ -1001,33 +998,31 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Wire the car sheet in (it merged in PR #478): `spriteFor` draws a frame and `sprites.html` shows both | `Projects/signal-city` | ¼ | Opus 5.5 |  | claude/signal-city-car-sheet-wiring | `Projects/signal-city/WISHLIST.md` B3 |
-| 2 | The Absalom Inheritance's sprite pipeline: Signal City's renderer with a 2:1 isometric camera | `Projects/absalom-inheritance` | ¼ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B1 |
-| 3 | Absalom's tile sheet: floor, wall, door, pillar, gate, stairs and treasure, as `js/render.js` shades them | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B2 |
-| 4 | Absalom's figure sheet: the heirs, the foes and the boss, recoloured from each pack's palette | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B3 |
-| 5 | Wire Absalom's two sheets in, once ranks 3 and 4 have merged | `Projects/absalom-inheritance` | ½ | Opus 5.5 |  |  | `Projects/absalom-inheritance/WISHLIST.md` B4 |
-| 6 | Faire Weekend's sprite pipeline, top-down, in the plat's ink | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B1 |
-| 7 | Faire Weekend's marker sheet: one drawing per plot kind, where a glyph stands on the plat today | `Projects/Ren-Faire-Claude` | ½ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B2 |
-| 8 | Wire the marker sheet in, once rank 7 has merged | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 |  |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B3 |
-| 9 | Hearth's sprite pipeline, at the map's tile size | `Projects/hearth` | ¼ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B1 |
-| 10 | Hearth's building sheet: every kind in `BLD`; the faces stay procedural (#646) | `Projects/hearth` | ½ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B2 |
-| 11 | Wire the building sheet in, once rank 10 has merged | `Projects/hearth` | ¼ | Opus 5.5 |  |  | `Projects/hearth/WISHLIST.md` B3 |
-| 12 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
-| 13 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
-| 14 | Wire the cup and food sheet in, once rank 13 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
-| 15 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
-| 16 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
-| 17 | The tavern's five click targets never receive a click: `#page` (z-index 2, the whole band) covers `#room` (z-index 0), so `poke()` in `index.html` gets no pointerdown (HISTORY #759) | The site | ¼ | Opus 5.5 |  | claude/signal-city-car-sheet-wiring | `HISTORY.md` #759 |
-| 18 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
-| 19 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
-| 20 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
-| 21 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 | phone |  | [Golden Hour](#golden-hour) |
-| 22 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
-| 23 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
-| 24 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 25 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 26 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 27 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
+| 1 | The Absalom Inheritance's sprite pipeline: Signal City's renderer with a 2:1 isometric camera | `Projects/absalom-inheritance` | ¼ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B1 |
+| 2 | Absalom's tile sheet: floor, wall, door, pillar, gate, stairs and treasure, as `js/render.js` shades them | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B2 |
+| 3 | Absalom's figure sheet: the heirs, the foes and the boss, recoloured from each pack's palette | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B3 |
+| 4 | Wire Absalom's two sheets in, once ranks 2 and 3 have merged | `Projects/absalom-inheritance` | ½ | Opus 5.5 |  |  | `Projects/absalom-inheritance/WISHLIST.md` B4 |
+| 5 | Faire Weekend's sprite pipeline, top-down, in the plat's ink | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B1 |
+| 6 | Faire Weekend's marker sheet: one drawing per plot kind, where a glyph stands on the plat today | `Projects/Ren-Faire-Claude` | ½ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B2 |
+| 7 | Wire the marker sheet in, once rank 6 has merged | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 |  |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B3 |
+| 8 | Hearth's sprite pipeline, at the map's tile size | `Projects/hearth` | ¼ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B1 |
+| 9 | Hearth's building sheet: every kind in `BLD`; the faces stay procedural (#646) | `Projects/hearth` | ½ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B2 |
+| 10 | Wire the building sheet in, once rank 9 has merged | `Projects/hearth` | ¼ | Opus 5.5 |  |  | `Projects/hearth/WISHLIST.md` B3 |
+| 11 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
+| 12 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
+| 13 | Wire the cup and food sheet in, once rank 12 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
+| 14 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
+| 15 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 16 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
+| 17 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
+| 18 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
+| 19 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 | phone |  | [Golden Hour](#golden-hour) |
+| 20 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
+| 21 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
+| 22 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
+| 23 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 24 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
+| 25 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -1062,7 +1057,7 @@ Windows machine or a phone. Parked, not verified.
 
 ## Blender assets: the common plan
 
-Ranks 1 to 16 (#642 to #647; 41 when it was written, ranks 1 and 4 shipped in PR #437, rank 1 in PR #440, ranks 1 and 2 in PR #443, ranks 1 and 3 in PR #454, rank 1 in PR #458, ranks 1 and 3 in PR #459, ranks 1 and 4 in PR #463, ranks 1 and 3 in PR #466, ranks 1 and 2 in PR #468, ranks 21 and 22 in PR #477, ranks 5 and 6 in PR #478, rank 19 in PR #484, and ranks 1 and 2 in PR #496, and rank 1 in PR #498). This section is what every Blender row shares;
+Ranks 1 to 15 (#642 to #647; 41 when it was written, ranks 1 and 4 shipped in PR #437, rank 1 in PR #440, ranks 1 and 2 in PR #443, ranks 1 and 3 in PR #454, rank 1 in PR #458, ranks 1 and 3 in PR #459, ranks 1 and 4 in PR #463, ranks 1 and 3 in PR #466, ranks 1 and 2 in PR #468, ranks 21 and 22 in PR #477, ranks 5 and 6 in PR #478, rank 19 in PR #484, and ranks 1 and 2 in PR #496, and rank 1 in PR #498). This section is what every Blender row shares;
 each project's own plan (its `WISHLIST.md` "Blender assets" section, or a
 subsection of its section below) adds its style sheet and its list.
 
@@ -2430,11 +2425,11 @@ write `assets/og/hearth.jpg` and the block would pick it up on the next
 
 ### The site itself: Blender dioramas
 
-Ranks 15 and 16, last in the Blender block (#642). One consistent diorama per
+Ranks 14 and 15, last in the Blender block (#642). One consistent diorama per
 board card, so the board's previews and share cards read as a set.
 Castle Conundrum is out of scope: its card and images stay as they are (#491).
 
-**D1. The pipeline (rank 15, ½, gate `blender-gpu`: Devon's Windows machine only, #707).** The site's own copy of
+**D1. The pipeline (rank 14, ½, gate `blender-gpu`: Devon's Windows machine only, #707).** The site's own copy of
 `common.py` in `Tools/board-check/blender/` (#643; the site's area, #43 and
 #51). One plinth, one camera, one light rig, one background, for every card.
 It renders 2640 by 1600 (the 33:20 `promote-previews.mjs` crops from) into
@@ -2447,7 +2442,7 @@ and the light. A diorama uses the game's own Blender assets where it has them
 (the `.glb` files, or the scene a sheet was rendered from) and is built for
 the card where it does not.
 
-**D2. The dioramas (rank 16, 1+, Sonnet 5, gate `blender-gpu`: Devon's Windows machine only, #707).** Four cards an
+**D2. The dioramas (rank 15, 1+, Sonnet 5, gate `blender-gpu`: Devon's Windows machine only, #707).** Four cards an
 increment, the 3D games first: Golden Hour, Blue Hour, The Fourth Quarter,
 Aphelion, then School Generator, Faire Weekend, The Absalom Inheritance,
 Corner & Kettle, Orbital, Closing Time, Integer Foundry, Daredevil, The

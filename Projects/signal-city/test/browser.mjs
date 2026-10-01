@@ -1157,8 +1157,28 @@ try {
     ok(g.canvases >= 10, 'the gallery drew at least ten canvases', String(g.canvases));
     ok(/STUDENT|student/i.test(g.text) && /trucker/i.test(g.text), 'and names the archetypes');
     ok(g.button, 'with a download button');
+    const sh = await page.evaluate(async () => {
+      const m = await import('./js/sprites.js');
+      return { note: document.getElementById('sheetnote').textContent, has: m.hasSheet(), cells: document.querySelectorAll('canvas.rendered').length };
+    });
+    ok(sh.has && /loaded/.test(sh.note) && sh.cells >= 40, 'the rendered sheet loaded and every row has its rendered cell (B3)', `${sh.note}; ${sh.cells} cells`);
     await shot(page, 'sprites');
     ok(errors.length === 0, 'no page errors on the gallery', errors.join(' | '));
+  });
+
+  // The game page fetches the sheet itself and counts on spriteFor to use it.
+  await section('the car sheet on the game page', async () => {
+    const requests = [];
+    const onReq = r => { if (/\/assets\/sprites\//.test(r.url())) requests.push(r.url().split('/').pop()); };
+    page.on('request', onReq);
+    errors.length = 0;
+    await page.goto(`${BASE}/Projects/signal-city/index.html?debug`, { waitUntil: 'load', timeout: 45000 });
+    await waitFor(page, () => window.__sheetProbe === true || (import('./js/sprites.js').then(m => { if (m.hasSheet()) window.__sheetProbe = true; }), false), { timeout: 15000 }).catch(() => {});
+    page.off('request', onReq);
+    const has = await page.evaluate(async () => (await import('./js/sprites.js')).hasSheet());
+    ok(has, 'the page loads the car sheet without anyone asking for it');
+    ok(requests.sort().join(',') === 'cars.json,cars.png', 'in exactly two requests, the atlas and the sheet', requests.join(','));
+    ok(errors.length === 0, 'and with nothing on the console', errors.join(' | '));
   });
 } finally {
   await browser.close();
