@@ -477,6 +477,66 @@ try {
     }
   }
 
+  group('A merger fed by one line fills what the model promised (#681)');
+  {
+    // targets.js prices a merger on ONE line as a single-input tile: Merge +
+    // doubles, Merge x squares. That is a claim about the simulator, and this is
+    // the simulator answering it. The order is 290 on a board with no x2, which
+    // the model capped at 47 before #681; the line is whatever recipe() prints,
+    // read from the same module the page runs, built tile by tile along row 2,
+    // and judged by the page's own tick(). Nothing here does the arithmetic.
+    const WANT = 290, ROW = 2;
+    await p.evaluate(([k, want]) => {
+      const set = localStorage.setItem.bind(localStorage);
+      const raw = JSON.parse(localStorage.getItem(k));
+      raw.unlocked = { ...raw.unlocked, merge_add: true, merge_mul: true, mul2: false, sub1: false, div2: false };
+      raw.grid = raw.grid.map(row => row.map(() =>
+        ({ type: null, dir: 'E', packet: null, mergeBuf: [], sourceTimer: 0, sinkIndex: null })));
+      raw.sinks = [{ target: want }];
+      raw.ordersFilled = 0;
+      raw.log = [];
+      localStorage.setItem = () => {};
+      set(k, JSON.stringify(raw));
+    }, [KEY, WANT]);
+    await p.reload({ waitUntil: 'load' });
+    await GAMES['integer-foundry'].open(p);
+
+    const steps = await p.evaluate(async want => {
+      const m = await import('./integer-foundry/js/targets.js');
+      const grid = Array.from({ length: 6 }, () => Array.from({ length: 8 }, () => ({ type: null })));
+      return m.recipe(want, m.boardPlan({ cols: 8, rows: 6, grid, unlocked: { merge_add: true, merge_mul: true } }));
+    }, WANT);
+    t.ok(Array.isArray(steps) && steps.length <= BASE_COLS - 2,
+      'the model promises 290 in one row of the opening floor', JSON.stringify(steps));
+    t.ok(!!steps && steps.includes('merge_add') && steps.includes('merge_mul'),
+      'and its line runs through both kinds of merger');
+
+    if (steps && steps.length <= BASE_COLS - 2) {
+      await place(p, 'source', 0, ROW);
+      for (let i = 0; i < steps.length; i++) await place(p, steps[i], i + 1, ROW);
+      await place(p, 'sink', steps.length + 1, ROW);
+
+      const sink = await p.evaluate(() => {
+        const cell = document.querySelector('#grid .cell.sink');
+        return { needs: cell.querySelector('.sink-target').textContent.trim(), title: cell.title };
+      });
+      t.ok(sink.needs === `NEEDS ${WANT}`, 'the sink kept the order through the placement', sink.needs);
+      t.ok(/Merge × \(one line\)/.test(sink.title) && /Merge \+ \(one line\)/.test(sink.title),
+        'and its tooltip tells the player to feed each merger one line', sink.title);
+
+      // Three mergers in series each pass on one packet for every two: one 290
+      // for every eight 1s, a source every three ticks at 550 ms, so about 16 s.
+      const filled = await waitFor(p,
+        `[...document.querySelectorAll('#log div')].some(e => e.textContent.includes('Order filled: ${WANT} '))`,
+        { timeout: 60000 }).then(() => true, () => false);
+      const log = await p.evaluate(() => [...document.querySelectorAll('#log div')].map(e => e.textContent.trim()));
+      t.ok(filled, 'and the real line fills it', log.find(l => /order filled/i.test(l)) || log.slice(0, 3).join(' | '));
+      t.ok(!log.some(l => /^Rejected/.test(l)), 'with no packet rejected on the way',
+        log.find(l => /^Rejected/.test(l)) || '');
+      await shot(p, 'merger-one-line');
+    }
+  }
+
   group('A click the grid swallows is placed again (#532)');
   {
     // The guard-rail for place()'s read-back, and the only way to see it work:

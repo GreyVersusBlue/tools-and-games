@@ -87,6 +87,11 @@ jobs:
         run: npm ci --ignore-scripts
       - name: ci-check.mjs
         run: node ci-check.mjs
+      # The tavern plate's size, bytes, walk-lane luminance and stray files,
+      # and the camera distance against the canvas's tabletop ellipse. No
+      # --rendered: CI has no Blender and the calibration frame is untracked.
+      - name: blender/validate.mjs
+        run: node blender/validate.mjs
 
   suites:
     name: ${{ matrix.name }}
@@ -106,6 +111,14 @@ jobs:
             install: Tools/board-check
             commands: |
               node assets/js/gvb-save.browser.mjs
+
+          # The tavern's five click targets under #page, with a real mouse
+          # (HISTORY #759): the page lets a click through where it is empty.
+          - name: Tavern click targets
+            dir: Tools/board-check
+            install: Tools/board-check
+            commands: |
+              node check-tavern-clicks.mjs
 
           - name: Anathema Archive
             dir: .
@@ -141,6 +154,24 @@ jobs:
             commands: |
               node Pathfinder/tests/showcase.test.mjs
 
+          # The Conversion Codex's arithmetic: the stat block parser, both
+          # editions' benchmark tables, the spell map against data/spell.json,
+          # and conversions measured against the printed PF2e monsters in
+          # data/npcs. No browser.
+          - name: Pathfinder converter
+            dir: .
+            commands: |
+              node Pathfinder/tests/converter-parse.test.mjs
+              node Pathfinder/tests/converter-tables.test.mjs
+              node Pathfinder/tests/converter-spells.test.mjs
+              node Pathfinder/tests/converter-convert.test.mjs
+
+          - name: Pathfinder converter in a browser
+            dir: .
+            install: Tools/board-check
+            commands: |
+              node Pathfinder/tests/converter.test.mjs
+
           - name: Faire Weekend
             dir: Projects/Ren-Faire-Claude
             install: Projects/Ren-Faire-Claude
@@ -151,12 +182,20 @@ jobs:
               node tests/wiring.mjs
 
           # desktop-input.mjs fails on the first line of a touch or gamepad
-          # scheme (#629): that scheme is Q40, Devon's call. No browser.
+          # scheme (#629): that scheme is Q40, Devon's call. gltf-loader.mjs
+          # parses a hand-built GLB in Chromium through board-check's harness,
+          # which is what the install is for, and loads every model
+          # tools/blender/budget.json names. validate.mjs checks those models
+          # against the style sheet with no Blender (#645).
           - name: Aphelion
             dir: Projects/aphelion
+            install: Tools/board-check
             commands: |
               node test/smoke-state.mjs
               node test/desktop-input.mjs
+              node test/gltf-loader.mjs
+              node test/ship.mjs
+              node tools/blender/validate.mjs
 
           # Bell to Bell's suites read ../data relative to the working
           # directory, so they run from tests/ and nowhere else.
@@ -168,16 +207,27 @@ jobs:
               node assets.mjs
               node characters.mjs
               node props.mjs
+              node ../tools/blender/validate.mjs
 
           - name: Blue Hour
             dir: Projects/blue-hour-trail
+            install: Tools/board-check
             commands: |
               node test/smoke.mjs
+              node test/gltf-loader.mjs
+              node test/animals.mjs
+              node test/props.mjs
+              node tools/blender/validate.mjs
 
           - name: Golden Hour
             dir: Projects/golden-hour-beach
+            install: Tools/board-check
             commands: |
               node test/smoke.mjs
+              node test/gltf-loader.mjs
+              node test/animals.mjs
+              node test/props.mjs
+              node tools/blender/validate.mjs
 
           - name: Integer Foundry
             dir: .
@@ -200,6 +250,19 @@ jobs:
               node test/levelcode.mjs
               node test/generator.mjs
               node test/browser.mjs
+              node tools/blender/validate.mjs
+
+          # data.mjs is pure Node: every hero, ability, talent, item recipe and
+          # asset path the game names has to resolve. browser.mjs boots the
+          # page under the harness, starts a bot-only match and steps it with
+          # a fixed dt and rendering stubbed, so nothing in it is timed and #53
+          # does not reach it.
+          - name: Throneshard
+            dir: Projects/throneshard
+            install: Tools/board-check
+            commands: |
+              node test/data.mjs
+              node test/browser.mjs
 
           # Nine Node suites and one headless page drive. browser.mjs steps the
           # world through the ?debug hook and lets rAF only draw, so nothing in
@@ -209,11 +272,14 @@ jobs:
           # cities' first six days with no input and then with the reference
           # hand, a child process a run: about eight minutes on three cores,
           # so this entry gets 30 minutes rather than the 20 the others get.
+          # tools/blender/validate.mjs checks the car sheet against sprites.js
+          # and budget.json (WISHLIST.md B1): no Blender, a second or two.
           - name: Signal City
             dir: Projects/signal-city
             install: Tools/board-check
             timeout: 30
             commands: |
+              node tools/blender/validate.mjs
               node test/signals.mjs
               node test/sim.mjs
               node test/scoring.mjs
@@ -223,6 +289,15 @@ jobs:
               node test/grid.mjs
               node test/endless.mjs
               node test/stars.mjs
+              node test/browser.mjs
+
+          # SkyWings 64 steps the game synchronously through window.__qa.sim, so no
+          # beat waits on a frame (#53); the rocket-belt autopilot flies Hop Skip Jump
+          # end to end. About a minute.
+          - name: SkyWings 64
+            dir: Projects/skywings64
+            install: Tools/board-check
+            commands: |
               node test/browser.mjs
 
           - name: The Fracture Cycle

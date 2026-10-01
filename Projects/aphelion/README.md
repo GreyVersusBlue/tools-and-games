@@ -62,9 +62,14 @@ data/
   poi.json          EVA points of interest
 assets/
   fonts/            vendored IBM Plex Mono + Lora (see assets/fonts/README.md)
-libs/               vendored three.module.js
+libs/               vendored three.module.js (r160), and in addons/ three@0.160.0's
+                    GLTFLoader.js and BufferGeometryUtils.js, unmodified, for the
+                    Blender ship pack; nothing in the game imports them yet
 test/
   smoke-state.mjs   node test/smoke-state.mjs — save slot + repair/validate
+  desktop-input.mjs node test/desktop-input.mjs — no touch or gamepad scheme (Q40)
+  gltf-loader.mjs   node test/gltf-loader.mjs — the loader parses a hand-built GLB
+                    in Chromium; needs `npm ci` in Tools/board-check first
 ```
 
 ## Extending it

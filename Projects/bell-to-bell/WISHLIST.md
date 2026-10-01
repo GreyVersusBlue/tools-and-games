@@ -750,10 +750,10 @@ without `pointer-events:none` on the layer itself it ate every touch meant for
 the room, so the game took no input at all. `smoke.mjs` now asserts the layer
 is inert.
 
-## Blender assets (ranks 21 to 23, from 2026-09-25)
+## Blender assets (from 2026-09-25; B1 shipped 2026-09-28, PR #463; B2 shipped 2026-09-28, PR #466; B3 shipped 2026-09-29, PR #468)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session
 without `blender` on PATH skips it and takes the next row. **This project's
 `CLAUDE.md` governs inside the folder**, and three of its rules shape these
 rows: a new prop goes in as a `.gltf` in one commit, then through the
@@ -762,34 +762,102 @@ entry in `tests/props.mjs`; a model path is content and goes in
 `data/assets.json`; and anything added to the scene is registered with
 `registry.add(mesh)` or it will not swap into thermal view.
 
-**B1. The pipeline (rank 21, ¼, Opus 5.5, gate `blender`).** Bell to Bell's
-own copy of `tools/blender/` (#643), in a `tools/` folder this project does
-not have yet. **`common.py` writes glTF Separate** (`.gltf`, `.bin`, and any
-texture beside them) into `Assets/models/blender/`, not a `.glb`, because
-that is what the meshopt recipe reads (#619, #624). The validator reads the
-`.gltf` and, once a recipe has run, the meshopt `.glb` (it allows
-`EXT_meshopt_compression` here and nowhere else). It joins Site CI's Bell to
-Bell entry, which runs from `tests/`, as `node ../tools/blender/validate.mjs`,
-and the `## Commands` block in `CLAUDE.md` gains the line. Style sheet: the
-palette comes off the Kenney furniture and the room's texture sets the prop
-has to sit beside; props a hand could cover get 512 px maps if they get maps
-at all (#621); classroom prop 2,000 triangles, desk-top prop 600.
+**B1. The pipeline. Shipped 2026-09-28, PR #463** (#698, #699; rank 4, ¼, Opus 5.5,
+gate `blender`). `tools/blender/` is Bell to Bell's own copy of Aphelion's
+`common.py`, `validate.mjs` and `.gitignore` at b63cd05 (#643), pinned to
+Blender 5.2 (5.2.2 LTS, the Steam install), with `classroom.py` (the pack
+script, the whiteboard its sample) and `budget.json`. **`common.py` writes
+glTF Separate** (`.gltf`, `.bin`, and any texture beside them) into
+`Assets/models/blender/`, because that is what the meshopt recipe reads out of
+git (#619, #624). `validate.mjs` (29 checks) reads the `.gltf` and, once the
+recipe has run, the `.glb` beside it, by accessor corners (#699); it allows
+`EXT_meshopt_compression` there and nowhere else. It is a line in Site CI's
+Bell to Bell entry, run from `tests/` as `node ../tools/blender/validate.mjs`,
+and in `CLAUDE.md`'s Commands. The whiteboard is `whiteboard.gltf` and
+`whiteboard.bin`: 72 triangles, 6,393 bytes, box 6.400 x 1.500 x 0.060 m
+against the fixture's 6.4 x 1.5 x 0.06, a `board` face 1.5 cm back in a
+`kenney-metal` frame, with a marker lip inside the fixture's 6 cm. Three
+runs, one hash. Run from this folder:
 
-**B2. The classroom pack (rank 22, ½, Opus 5.5, gate `blender`).** First,
-list every primitive `src/world/` builds (`room.js`, `board.js`,
-`students.js`, `tellmesh.js`) and say what each is. The pack is the classroom
-objects among them that `data/assets.json` does not already name. Two groups
-stay as they are: the students' box bodies, which are what `src/quality.js`
-falls back to when it drops the rigged characters at boot, and the tell meshes
-(the phone, the note), which live in a tell group's buckets and are built to
-the centimetre in `tellmesh.js`.
+```
+blender -b --factory-startup -P tools/blender/classroom.py -- [item ...]
+cd tests && node ../tools/blender/validate.mjs
+```
 
-**B3. Wiring the pack (rank 23, ¼, Opus 5.5, no gate, after rank 22).** A
-`bell-to-bell-blender` recipe in `Tools/board-check/asset-pipeline.mjs` (the
-site's file, called out in the PR body) pinned at rank 22's commit; the
-paths in `data/assets.json`; `registry.add` for every mesh; a `BASELINE`
-entry each in `tests/props.mjs`. All five suites the Site CI entry runs stay
-green.
+**The style sheet**, as decided (#698). `budget.json` holds every number:
+
+| Class | Members | Triangles | Bytes (.gltf + .bin) | Longest side | Map |
+| --- | --- | --- | --- | --- | --- |
+| `classroom` | anything standing in the room or on a wall | 2,000 | 264,192 | 7 m | 1,024 px |
+| `desktop` | anything a hand could cover | 600 | 84,992 | 0.6 m | 512 px |
+
+- **Scale.** Built in metres at the box `data/room.json` (or `src/world/`)
+  gives what the piece replaces, held to 10% per axis. Origin at the centre of
+  the base, front to +Z; a wall piece faces +Z and takes its wall's turn.
+- **Materials.** The game loads a model's own materials, so the colour is in
+  the file. Every material is named for a palette entry and carries its
+  colour, or white under a texture. The palette is `PALETTE`'s ten flat
+  colours in `src/world/materials.js` (floor, wall, ceil, board, desk, metal,
+  wood, rug, poster, glass) and the Kenney kit's four: `kenney-wood` f3cca8,
+  `kenney-metal` dfeaec, `kenney-metal-medium` a3b6b6, `kenney-carpet`
+  f9a39e. A new colour is a decision. No vertex colour; UVs only under a
+  texture.
+- **Textures.** A loose file beside the `.gltf`, never embedded, as the Poly
+  Haven props' are, since the recipe keeps them loose. None yet; a map needs a
+  reason.
+
+**What cost time, for B2 and B3.** The props' source `.gltf` files are
+gone from disk (the recipe reads them from git at 52d2a59), and their `.bin`
+files are not named after the `.gltf` (`clipboard.bin` beside
+`clipboard_1k.gltf`): read the buffer's `uri`, do not guess it. The
+thermal twin is not in the file; `registerModel()` gives every mesh of a
+loaded model one flat colour, so B3 registers each piece with its fixture's
+thermal hex.
+
+**B2. The classroom pack. Shipped 2026-09-28, PR #466** (#702; rank 3, ½, Opus 5.5,
+gate `blender`). What `src/world/` builds from primitives, and what became of each:
+
+| Where | Primitive | What it is | In the pack? |
+| --- | --- | --- | --- |
+| `room.js` fixtures | `floor`, `ceiling`, four walls | the room shell, tiled sets | no, the room is a description (#646) |
+| | `whiteboard` | the board the lesson is written on | B1's sample |
+| | `objectiveBoard` | the yellow board still showing Tuesday | **yes**, `objective-board` |
+| | `posterA` to `posterD` | the four posters | no, `assets.json`'s `art` already dresses all four |
+| | `window1` to `window3` | glass on the right wall | **yes**, one `window` hung three times |
+| | `teacherDeskTop`, `teacherDeskBody` | the teacher's desk | no, `desk.glb` dresses it |
+| | `rug` | a 2 cm slab in the tiled wool set | no, a flat file would lose the texture |
+| `room.js` occluders | `cabinet`, `bookshelf`, and the bookshelf's clutter boxes | sightline blockers | no, Kenney bookcases; the clutter is the fallback |
+| `board.js` | two `PlaneGeometry` screens | the canvases the lesson and objective are drawn on | no, they are text |
+| `students.js` | desk top, four legs, chair seat | fallbacks under `studentDesk` and `studentChair` | no, Kenney desk and chair |
+| | torso cylinder, skull, hair, legs | the box bodies `quality.js` falls back to | no, as the plan says |
+| | the aura plane | comprehension, a vision inference | no, not an object |
+| `tellmesh.js` | phone, note halves, paper, murmur arcs, route line | the tells | no, as the plan says |
+
+`window` is 84 triangles and 7,044 bytes, built facing +Z at 1.5 x 1.2 x
+0.06: a Kenney-metal frame with a mullion and a transom over one pane of
+`glass` at 0.75, blended, the alpha `createMaterials()` gives glass, which
+`budget.json`'s new `opacity` carries and `validate.mjs` checks. B3 hangs it
+at each window fixture turned -pi/2. `objective-board` is 72 triangles and
+7,197 bytes at the fixture's 1.5 x 1.0 x 0.06: a `poster` face 1.5 cm back in a
+`kenney-wood` frame, with a `kenney-metal-medium` clip rail in the margin
+above the canvas, which still stands 2 cm clear. `validate.mjs` is 95
+checks. Three runs, one hash, and the whiteboard rebuilt identical to its
+committed blob (a checkout under `core.autocrlf` gives the `.gltf` CRLF, so
+compare against `git show`).
+
+**B3. Wiring the pack. Shipped 2026-09-29, PR #468** (#704, #706; ¼, Opus
+5.5, no gate). The recipe `bell-to-bell-blender` in
+`Tools/board-check/asset-pipeline.mjs` reads the three `.gltf` and `.bin`
+pairs at 3956289 and writes a meshopt `.glb` beside each: 3,796, 3,956 and
+4,464 bytes. At this size the header's raw-under-gzipped rule cannot be met,
+so the recipe is held to raw under raw and 256 bytes of gzip slack (#704).
+`data/assets.json`'s `fixtures` names each dressed fixture's model and turn;
+`room.js`'s `hangPiece()` puts a piece at its fixture's base, unscaled, and
+`dressFixture()` registers it with the fixture's thermal hex and hides the
+box, which comes back if the file fails (#706). `tests/props.mjs` (157) has a
+`BASELINE` each and builds the room through `buildRoom()`: 2 cm of each
+fixture's box, facing into the room, glass at 0.75, the thermal swap, and both
+canvases 2.0 cm clear. `validate.mjs` reads the `.glb` files too (128).
 
 ## What this leaves for a later arc
 

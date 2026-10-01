@@ -29,7 +29,7 @@ file cannot test arithmetic without launching a browser.
 against blobs you would never produce by playing.
 
 The page imports both. It does **not** re-implement the tile arithmetic: the `op`
-functions in `TILE_DEFS` come from `targets.js`, so the solver that promises an
+functions in `TILE_DEFS` and the mergers' `combine` come from `targets.js`, so the solver that promises an
 order is fillable and the simulator that carries the packet cannot disagree.
 
 ## Running the tests
@@ -39,12 +39,13 @@ node Projects/integer-foundry/test/smoke-targets.mjs
 node Projects/integer-foundry/test/browser.mjs
 ```
 
-Both exit non-zero on failure. `smoke-targets.mjs` is plain Node — 90 checks over
-the reachable-range maths, the order generator, `repair`, and the slot.
-`browser.mjs` drives the real page through `Tools/board-check`'s harness — 56
+Both exit non-zero on failure. `smoke-targets.mjs` is plain Node — 119 checks
+over the reachable-range maths, the order generator, `repair`, and the slot.
+`browser.mjs` drives the real page through `Tools/board-check`'s harness — 74
 checks over the vendored fonts, the save bar, autosave latency, export/import,
 an unfillable order being caught on load, building a line to whatever the sink
-asks for, a save from the pre-`gvb-save` build, and the grid at 375x812.
+asks for, a 290 built through three one-line mergers (#681), a save from the
+pre-`gvb-save` build, and the grid at 375x812.
 
 `npm run games integer-foundry` in `Tools/board-check` still owns "the production
 line works". Nothing here duplicates it.

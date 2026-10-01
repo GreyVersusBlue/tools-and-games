@@ -249,9 +249,23 @@ const SUITES = {
   // The one project on the board with no Node test of any kind: its whole engine
   // is an IIFE inside a single HTML file, reachable only through a browser.
   'integer-foundry': async (p, t) => {
+    // The line re-renders #grid every tick, so under Puppeteer a cell resolved a
+    // moment ago can be detached before the press. Both errors below throw before
+    // the mouse goes down, so pressing again cannot place twice. Same helper as
+    // Projects/integer-foundry/test/browser.mjs (#353); Playwright re-queries on
+    // its own, which is why this beat passed on Windows and aborted on Linux.
+    const press = async sel => {
+      for (let attempt = 1; ; attempt++) {
+        try { return await p.click(sel); }
+        catch (e) {
+          if (attempt >= 5 || !/detached|not clickable/i.test(String(e && e.message))) throw e;
+          await new Promise(r => setTimeout(r, 80));
+        }
+      }
+    };
     const place = async (tool, x, y) => {
-      await p.click(`[data-tool="${tool}"]`);
-      await p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
+      await press(`[data-tool="${tool}"]`);
+      await press(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
     };
 
     const tools = await p.$$eval('#tools .tool-btn', els => els.map(e => e.dataset.tool));
@@ -313,9 +327,9 @@ const SUITES = {
     // need disarming: read the number and build a line that delivers it. Erase the
     // demo line first — its sink already paid out a 3 and won't ask again until it
     // does, which would leave nothing to build toward.
-    await p.click('[data-tool="erase"]');
+    await press('[data-tool="erase"]');
     for (const [x, y] of [[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2]]) {
-      await p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
+      await press(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
     }
     await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
@@ -328,8 +342,8 @@ const SUITES = {
     const want = Number((await p.$eval('.sink-target', el => el.textContent)).replace(/\D/g, ''));
     t.ok(Number.isInteger(want) && want >= 2 && want <= 12,
       'the opening order is between 2 and 12', `wants ${want}`);
-    await p.click('[data-tool="erase"]');
-    await p.click('#grid .cell[data-x="0"][data-y="0"]');
+    await press('[data-tool="erase"]');
+    await press('#grid .cell[data-x="0"][data-y="0"]');
     await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
       { timeout: 10000 });
@@ -350,19 +364,22 @@ const SUITES = {
       : { x: last.x - 1, y: last.y };
 
     await place('source', 0, 2);
-    await p.click('[data-tool="add1"]');
-    for (const c of chain) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+    await press('[data-tool="add1"]');
+    for (const c of chain) await press(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
     // Clicking a placed tile with the same tool selected steps its output E>S>W>N.
     for (const c of chain) {
       const turns = c.dir === 'E' ? 0 : c.dir === 'S' ? 1 : 2;
-      for (let i = 0; i < turns; i++) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+      for (let i = 0; i < turns; i++) await press(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
     }
     await place('sink', sinkAt.x, sinkAt.y);
     t.ok((await p.$$eval('#grid .cell:not(.empty)', els => els.length)) === want + 1,
       'built a line of exactly the right length', `for an order of ${want}`);
 
+    // Wait for THIS order in the log, not for the order count to leave zero: one
+    // opening roll in eleven is a 3, the demo line above already filled it, and
+    // the count was 1 before this line was built.
     const filled = await waitFor(p,
-      () => /[1-9]/.test(document.getElementById('stat-orders').textContent),
+      `[...document.querySelectorAll('#log div')].some(e => e.textContent.includes('Order filled: ${want} '))`,
       { timeout: 30000 }).then(() => true, () => false);
     await t.shot('order-filled');
     const live = await p.evaluate(() => ({
@@ -804,24 +821,23 @@ const SUITES = {
     // is instanced rather than 460 objects, because the day someone "simplifies"
     // that into a loop is the day this page starts costing 460 draw calls.
     const props = await p.evaluate(() => {
-      let instanced = 0, instances = 0, merged = 0;
+      let instanced = 0, instances = 0, merged = 0, biggest = 0;
       window.__scene.traverse(o => {
-        if (o.isInstancedMesh) { instanced++; instances += o.count; }
+        if (o.isInstancedMesh) { instanced++; instances += o.count; biggest = Math.max(biggest, o.count); }
         else if (o.isMesh && o.geometry?.attributes?.position?.count > 400
                  && !o.material?.uniforms) merged++;
       });
-      return { instanced, instances, merged };
+      return { instanced, instances, merged, biggest };
     });
     t.ok(props.instances > 400, 'the wrack line is on the sand',
       `${props.instances} pieces across ${props.instanced} instanced meshes`);
-    // Six on 2026-09-24: three wrack kinds (821, 259 and 220 pieces), a 10-piece
-    // prop set, the footprints and one more small basic-material set. This read
-    // `<= 4` from session 8 until then and failed on every run since the beach
-    // grew; nothing about it was a GPU question. The bound is loose on purpose —
-    // what it guards is the wrack becoming 1,300 separate meshes, not a seventh
-    // instanced set arriving.
-    t.ok(props.instanced <= 10, 'and it is instanced, not 1,300 separate objects',
-      `${props.instanced} instanced meshes`);
+    // This read `props.instanced <= 10` (six sets on 2026-09-24) until the prop
+    // pack drew every piece as an instanced set per variant, 33 in all (#678).
+    // A count of sets never guarded what its message says: the wrack made into
+    // separate meshes lowers it, and the line above is what catches that. What
+    // this line holds is the wrack's shells, 821 pieces, staying one draw.
+    t.ok(props.biggest >= 800, 'and it is instanced, not 1,300 separate objects',
+      `largest instanced set ${props.biggest} pieces, ${props.instanced} sets`);
 
     // Arrow keys look. This is the whole keyboard-only path: nothing in this
     // piece needs aiming, so nothing in it should require pointer lock, and a
@@ -941,15 +957,22 @@ const SUITES = {
       });
       return { meshes, instanced };
     });
-    // 104 meshes and 8 instanced sets on 2026-09-24, so the floor is 100 of the
-    // 112. It read `> 10` first and stayed green with every mesh added straight
-    // to the scene dropped (92 left, because most of the mountain arrives inside
-    // groups): that proved the scene existed and nothing more. A deliberate cut
-    // below 100 should move this number with it. No fog clause: main.js
+    // 104 meshes and 8 instanced sets on 2026-09-24, so the floor was 100 of
+    // the 112. It read `> 10` first and stayed green with every mesh added
+    // straight to the scene dropped (92 left, because most of the mountain
+    // arrives inside groups): that proved the scene existed and nothing more.
+    // The animal pack was the deliberate cut (#677): 77 meshes and 8 sets, the
+    // deer's ten primitives now four, so the floor is 81 of the 85, and the
+    // same break (the 20 meshes added straight to the scene dropped) leaves 65.
+    // The prop pack went the other way (#692): 79 meshes and 8 sets after
+    // #680's shape and lamp, then one instanced set per material per variant
+    // where the builders merged, 79 and 16, so 95, and the floor is 91.
+    // Dropping the props group leaves 70 and fails it.
+    // A deliberate cut below 91 should move this number with it. No fog clause: main.js
     // reads scene.fog every frame, so a page without it dies before the probe
     // attaches and this line is never reached. Broken on purpose, that is what
     // happened; the error line below is what catches it.
-    t.ok(scene.meshes + scene.instanced >= 100, 'the mountain is built',
+    t.ok(scene.meshes + scene.instanced >= 91, 'the mountain is built',
       `${scene.meshes} meshes, ${scene.instanced} instanced`);
     await t.shot('trailhead');
   },
@@ -2030,6 +2053,48 @@ const SUITES = {
       `${delivered.title} — packs: ${delivered.packs.join(', ')}`);
     t.ok(delivered.left === null, 'and the courier key is cleared, so a refresh does not load it twice');
     await t.shot('workbench-handoff');
+  },
+
+  // ---- Signal City ----------------------------------------------------------
+  // First Light, played the way the level's hint says: press 2, a real key on
+  // the plain page (no `?debug`), and let it run 20 s at 1x. input.js turns
+  // the key into a phase request and main.js writes what changed the signal
+  // into the Signal line, then the level runs on until a car has cleared.
+  // Every beat is read off the DOM (#39). Pointing the
+  // key at a phase that does not exist (input.js keyPhase, `n + 8` for
+  // `n - 1`) is refused without a word, so the Signal line is what catches
+  // it: it stays on "The level's opening phase". Nothing here is a movement
+  // assertion (#53): the clock and the count are the page's own.
+  'signal-city': async (p, t) => {
+    const read = () => p.evaluate(() => ({
+      cause: document.getElementById('cause').textContent.trim(),
+      stage: document.getElementById('stage').textContent.trim(),
+      cleared: document.getElementById('cleared').textContent.trim(),
+      clock: document.getElementById('clock').textContent.trim(),
+      speed: document.getElementById('speedBtn').textContent.trim(),
+      level: document.getElementById('levelName').textContent.trim(),
+    }));
+    const secs = c => { const [m, s] = c.split(':').map(Number); return m * 60 + s; };
+    const start = await read();
+    t.ok(/First Light/.test(start.level) && start.speed === '1x',
+      'the First Light card starts First Light, at 1x', `${start.level}; ${start.speed}`);
+    await p.keyboard.press('2');
+    await wait(20000);
+    const end = await read();
+    t.ok(end.cause === 'Changed by you',
+      'pressing 2 changes the signal, and the Signal line says who did', `"${end.cause}" (${end.stage})`);
+    const ran = secs(start.clock) - secs(end.clock);
+    t.ok(end.speed === '1x' && ran >= 15 && ran <= 24,
+      'the clock ran about 20 s in 20 s: 1x, and nothing paused it', `${start.clock} -> ${end.clock}, ${ran} s`);
+    await t.shot('first-light-20s');
+    // A car counts as cleared when it leaves the far end of the map, 110 m
+    // past the box, and with 2 pressed at the start the first one does that
+    // 20.9 to 48.3 s in over forty seeds: never by 20 s. So the count is
+    // read once the level's clock passes a car's trip, 45 s more at most (#649).
+    const firstOut = await waitFor(p, () => /^[1-9]/.test(document.getElementById('cleared').textContent.trim()),
+      { timeout: 45000 }).then(() => true, () => false);
+    const late = await read();
+    t.ok(firstOut, 'and cars clear the box, inside the first 65 s', `${late.cleared} at ${late.clock}`);
   },
 };
 

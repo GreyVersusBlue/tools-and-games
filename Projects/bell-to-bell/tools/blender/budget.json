@@ -1,0 +1,49 @@
+{
+  "about": "Bell to Bell's Blender style sheet as data (WISHLIST.md 'Blender assets' B1). validate.mjs reads it. Every file is glTF Separate: the .gltf and its .bin, which is what the pipeline writes and the meshopt recipe reads; once the recipe has run, the .glb beside it (the same name) is checked too, and is the only place EXT_meshopt_compression may appear. Every material is named for a palette entry and carries its colour: the game's PALETTE in src/world/materials.js, and the four colours of the Kenney furniture kit's desk, bookcases and chair. Bytes are the .gltf and .bin together, triangles x 128 + 8 KiB: a flat-shaded triangle carrying its own three vertices (position, normal and UV, 32 bytes each), three 16-bit indices and headroom, plus the JSON. extent is the longest side a class may have, in metres, a sanity bound only; each item's box is the one data/room.json (or src/world/) gives what it replaces, held to 10% per axis (x, y, z in three's frame). texture is the largest image side in pixels: a desk-top prop a hand could cover gets 512 at most (#621), a classroom prop 1024, the room's own sets' size, and an image is a loose file beside the .gltf, never embedded. opacity is a palette entry's alpha where createMaterials() makes it transparent (glass, 0.75), written blended; every other material is opaque. A wall piece is built facing +Z and takes its wall's turn: the window is the right wall's three, turned -pi / 2 (#702).",
+  "loader": "libs/addons/loaders/GLTFLoader.js",
+  "models": "Assets/models/blender",
+  "needsDecoder": [
+    "KHR_draco_mesh_compression",
+    "KHR_meshopt_compression",
+    "KHR_texture_basisu"
+  ],
+  "recipeOnly": ["EXT_meshopt_compression"],
+  "palette": {
+    "floor": "c9bfa8",
+    "wall": "d8dcd2",
+    "ceil": "e9ece6",
+    "board": "f2f4f0",
+    "desk": "bfa478",
+    "metal": "7a8078",
+    "wood": "8a6a44",
+    "rug": "6e7f8c",
+    "poster": "e0c24a",
+    "glass": "cfe4f2",
+    "kenney-wood": "f3cca8",
+    "kenney-metal": "dfeaec",
+    "kenney-metal-medium": "a3b6b6",
+    "kenney-carpet": "f9a39e"
+  },
+  "opacity": { "glass": 0.75 },
+  "classes": {
+    "classroom": { "triangles": 2000, "bytes": 264192, "extent": 7, "texture": 1024 },
+    "desktop": { "triangles": 600, "bytes": 84992, "extent": 0.6, "texture": 512 }
+  },
+  "items": {
+    "whiteboard": {
+      "file": "Assets/models/blender/whiteboard.gltf",
+      "class": "classroom",
+      "box": [6.4, 1.5, 0.06]
+    },
+    "window": {
+      "file": "Assets/models/blender/window.gltf",
+      "class": "classroom",
+      "box": [1.5, 1.2, 0.06]
+    },
+    "objective-board": {
+      "file": "Assets/models/blender/objective-board.gltf",
+      "class": "classroom",
+      "box": [1.5, 1.0, 0.06]
+    }
+  }
+}

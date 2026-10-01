@@ -51,7 +51,8 @@
 // among the paths its lane can take, `s` and the perception ring shifted
 // into the new frame, and `newApproach()` so every once-per-approach
 // decision (the yellow, the red roll, the trust roll, the four-way order)
-// is made again at the second box.
+// is made again at the second box. A car whose priority corridor was
+// called is pre-empted again at the box it is handed to (R6, #682).
 //
 // The grid (M9). `network.cells` builds a box per cell (network.js
 // buildCells, js/grid.js growCells), joined north-south as well as
@@ -489,15 +490,34 @@ export class World {
       car.platoon.priority = true;
       for (const m of car.platoon.cars) if (m !== car) m.priority = true;
     }
+    this._preemptFor(car);
+    car.priority = true;
+    this.events.push({ t: this.t, kind: 'priority', car: car.id });
+    return true;
+  }
+
+  // The box the car is on now holds its entry leg green for it.
+  _preemptFor(car) {
     const p = car.path;
     const dist = Math.max(0, p.boxExit - car.rear);
     const hold = Math.min(40, dist / Math.max(4, car.v || 4) + 6);
     const ctl = this.controllerFor(car);
     const leg = ctl.movements.filter(m => { const mv = parseMovement(m); return !mv.ped && mv.entry === p.entry; });
     ctl.preempt(leg.includes(p.movement) ? leg : [p.movement], hold);
-    car.priority = true;
-    this.events.push({ t: this.t, kind: 'priority', car: car.id });
-    return true;
+  }
+
+  // The corridor follows its vehicle (R6, #682): a car the player called
+  // once is pre-empted at every box it is handed to, the way a city's
+  // emergency pre-emption works, so the lesson stays "call it early". A
+  // box already holding this movement for it (a motorcade's lead got
+  // there first) is left to _holdPriority; a ring or a blackout refuses
+  // it, as they refuse E.
+  _followPriority(car) {
+    if (car.crashed || this.powerOut || this.nodes[car.path.node].roundabout) return;
+    const pre = this.controllerFor(car).preemption;
+    if (pre && pre.movements.includes(car.path.movement)) return;
+    this._preemptFor(car);
+    this.events.push({ t: this.t, kind: 'priority', car: car.id, node: car.path.node, follow: true });
   }
 
   // The corridor holds until its vehicle is through the box, plus a margin
@@ -980,6 +1000,7 @@ export class World {
     car.waitAtHandoff = car.wait;
     this.stats.handoffs++;
     this.events.push({ t: this.t, kind: 'handoff', car: car.id, to: next.movement, node: link.node });
+    if (car.priority) this._followPriority(car);
   }
 
   _collide() {

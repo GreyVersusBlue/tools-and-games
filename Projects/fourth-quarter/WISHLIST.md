@@ -942,53 +942,163 @@ apply pressure, and the events to be able to sink you.
 under "What this leaves for a later arc" below is still open, and this project
 has no ranked phases left.
 
-## Blender assets (ranks 13 to 16, from 2026-09-25)
+## Blender assets (from 2026-09-25; B1 shipped in PR #454, B3 in PR #459, B4 in PR #463)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The plan
 every Blender row shares, including where Blender runs and what `common.py`,
 `budget.json` and `validate.mjs` are, is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan).
-A row gated `blender` needs Devon's Windows machine; a session without
+A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session without
 `blender` on PATH skips it and takes the next row.
 
-**B1. The pipeline (rank 13, ¼, Opus 5.5, gate `blender`).** The Fourth
-Quarter's own copy of `tools/blender/` (#643), beside `tools/browser-check.mjs`
-and `tools/measure-load.mjs`. The validator joins
-`.github/workflows/fourth-quarter-ci.yml`. The style sheet decides first:
+**B1. The pipeline. Shipped 2026-09-28, PR #454** (#686 to #688; rank 3, ¼, Opus 5.5,
+gate `blender`). `tools/blender/` holds The Fourth Quarter's own copy of Blue
+Hour's `common.py`, `validate.mjs` and `.gitignore` as they stood at 0038881
+(#643), pinned to Blender 5.2 (5.2.2 LTS, the Steam install), with `bar.py`
+(the pack script, the wooden crate its sample) and `budget.json`.
+`validate.mjs` runs in `.github/workflows/fourth-quarter-ci.yml` on its own
+line, 19 checks, and `test/gltf-loader.mjs` loads every model `budget.json`
+names (15 to 23 checks). The crate is `models/bar/crate-wood.glb`: 240
+triangles, 19,836 bytes, box 0.550 x 0.500 x 0.550 m against the `crateWood`
+block's 0.55 x 0.5 x 0.55, one `flat-crateWood` material, colour `#5a4632`
+in the vertices. Three runs, one hash. Run from this folder:
 
-- **Scale:** each piece fits the box the description gives it. Colliders are
-  derived from the description's numbers and nothing is measured off a mesh
-  (`js/world.js`, the fit-out block), so a model is cosmetic and is scaled to
-  `f.w`, `f.h`, `f.d` at load. The bar counter's length is `desc.bar.len`,
-  so it is two end pieces and a middle piece that repeats or stretches.
-- **Materials:** a model's material names match the keys `mat()` in
-  `js/materials.js` knows (`barTop`, `wallPlaster` and the rest), and the game
-  puts its own tiered material on by name at load. Textures stay one set,
-  written by the `fourth-quarter-textures` recipe (#622), and a model carries
-  none. What `flat(0x...)` colours today becomes vertex colour.
-- **Triangles:** fixture 1,500 (stove, prep, crate, stool, table), counter
-  piece 800, bottle 150, frame and board 300.
+```
+blender -b --factory-startup -P tools/blender/bar.py -- [item ...]
+node tools/blender/validate.mjs
+```
 
-**B2. The GLTFLoader (rank 14, ¼, Opus 5.5, no gate).** Copy
-`Projects/bell-to-bell/libs/addons/loaders/GLTFLoader.js` and
-`libs/addons/utils/BufferGeometryUtils.js` into this project's `libs/addons/`
-(#18's layout), and check both byte for byte against three@0.160.0's own in
-`Tools/board-check/three-0.160.0/` after `npm install` there (#19). A loader
-test in `test/` in the shape of Golden Hour's B2 (BACKLOG.md), in this
-project's workflow.
+**The style sheet**, as decided. `budget.json` holds every number:
 
-**B3. The bar pack (rank 15, ½, Opus 5.5, gate `blender`).** The fit-out and
-furniture `js/world.js` builds from `BoxGeometry`: stove, prep and crate by
-kind, the counter and its kick, the back-bar shelf and bottles, the kitchen
-shelf, the cork board and its frame, the TV's frame, the door frame and the
-window sill. **Not** the walls, wall segments, deck lips, panels, rails,
-posts, steps, beams and lintels: they are built from the layout, and the room
-is a description (Phase 1, HISTORY.md #646).
+| Class | Members | Triangles | Bytes | Longest side |
+| --- | --- | --- | --- | --- |
+| `fixture` | stove, prep, crate, stool, table | 1,500 | 200,192 | 2.6 m |
+| `counter` | counter pieces, kick, shelves, sill | 800 | 110,592 | 2.5 m |
+| `bottle` | back-bar bottles, cans | 150 | 27,392 | 0.5 m |
+| `frame` | cork board and frame, TV frame, door frame | 300 | 46,592 | 2.5 m |
 
-**B4. Wiring the bar (rank 16, ½, Opus 5.5, no gate, after rank 15).** Every
-piece loads before `world.js` builds the room; a missing file fails a suite
-line. The smoke suites stay green, and `tools/browser-check.mjs` and
-`npm run games fourth-quarter` from `Tools/board-check` are run and named in
-the PR body. `pickTier()` still chooses the textures.
+- **Scale.** Every piece is built in metres at the box `js/world.js` gives
+  what it replaces, at the Corner Tap's numbers, and held to 10% per axis. The
+  fit-out's `w`, `h`, `d` are the same in all four rooms, so the wiring row's
+  scale of `f.w`, `f.h`, `f.d` over the file's box is 1 wherever a room keeps
+  them, and a piece shows at its true size with no scale at all. Colliders stay
+  derived from the description; nothing is measured off a mesh. The counter is
+  still two end pieces and a middle that repeats or stretches to
+  `desc.bar.len`, which is B3's to build.
+- **Frame.** Origin at the centre of the base, `y = 0` the floor. The front
+  faces +Z in the file: glTF's own front, and the side a fit-out block at
+  `rotY` 0 shows the room (the stove's burners, the counter's customer face),
+  so `f.rotY` goes on as it is, with no half turn. A wall-hung piece faces +Z
+  and takes its wall's `ry`.
+- **Materials.** Every material is one of two kinds, and `validate.mjs`
+  fails anything else. A key of `MATS` in `js/textures.js` (`barTop`, `metal`,
+  `leather` and the rest) is a slot the game fills with its own tiered `mat()`
+  by name; it carries `MATS`'s placeholder colour, roughness and metalness,
+  and UVs box-projected so each side of the piece's box spans 0 to 1, as the
+  `BoxGeometry` the repeats were tuned on does. `flat-<what>` is what
+  `flat(0x...)` makes: white, the colour in `COLOR_0`, roughness and
+  metalness as the `flat()` call gave them, which r160's GLTFLoader loads as a
+  `MeshStandardMaterial` with `vertexColors` on and the wiring row leaves
+  alone. The two kinds never share an object: the exporter writes `COLOR_0`
+  on every primitive of a mesh once one material reads it, so a scratch stool
+  with a leather top and a flat leg on one mesh gave the leather a white
+  vertex colour. `common.mesh_object()` refuses the mix.
+- **Palette.** 18 named colours, every `flat()` colour `js/world.js` draws the
+  pack's pieces with: the wooden crate, the cans, the kick, five bottles, the
+  tap, the cork, its frame, three notes, the door frame, the TV frame, the
+  stool leg and the table leg. The burners are `glow()`, an emissive, and are
+  not in it; how a model carries one is B3's call.
+- **Triangles** as the table. **Bytes** are triangles x 128 + 8 KiB, the worst
+  case of a flat-shaded triangle carrying its own three vertices (position,
+  normal and float colour, 40 bytes each) and three 16-bit indices, plus the
+  JSON chunk. **Longest side** is a sanity bound: the prep is 2.4 m, the door
+  frame 2.3.
+- **Textures: none** in any file. A keyed slot's texture is the game's, one
+  set from the `fourth-quarter-textures` recipe (#622).
+
+**What cost time, for B3.** Blender 5.2.2's exporter only looks through Base
+Color for a colour attribute when `export_image_format` is not `NONE`
+(`io_scene_gltf2`'s `__gather_base_color_factor`): with `NONE` the crate came
+out 0.8 grey with no `COLOR_0` and a warning that its vertex colour was
+unused. `common.py` exports with `AUTO`, and no material holds an image to
+write. The crate is byte-stable with or without `canonical()` (boxes come out
+of `create_cube` in a stable order), but #652 keeps it for the cylinders.
+
+**B2. The GLTFLoader. Shipped 2026-09-25, PR #422.** GLTFLoader and
+BufferGeometryUtils vendored unmodified from three@0.160.0 into `libs/addons/`
+(#18's layout), byte for byte against the pack (#19) and against Bell to Bell's
+copies. r160's loader names no SkeletonUtils. `test/gltf-loader.mjs`, port
+8163, 15 checks, run by `fourth-quarter-ci.yml`'s `test/*.mjs` loop, which now
+installs `Tools/board-check`. Since B1 it also loads every model
+`budget.json` names.
+
+**B3. The bar pack. Shipped 2026-09-28, PR #459** (#689, #690; rank 2, ½,
+Opus 5.5, gate `blender`). `bar.py` writes 22 files to `models/bar/`, every
+one inside 10% of the `world.js` box it replaces and every one through
+`validate.mjs` (400 checks) and `test/gltf-loader.mjs` (170):
+
+| File | Replaces | Material | Triangles |
+| --- | --- | --- | --- |
+| `crate-wood` | the `crateWood` block (B1's sample, unchanged) | `flat-crateWood` | 240 |
+| `stove` | the `stove` block, not its burners | `metal` | 204 |
+| `prep` | the `prep` block | `metal` | 84 |
+| `crate` | the `crate` block | `metal` | 96 |
+| `counter-mid` | one metre of the bar's `barLen` block | `barTop` | 60 |
+| `counter-end` | the bar's end, 0.5 m, closed side +X | `barTop` | 72 |
+| `kick` | one metre of the kick | `flat-kick` | 24 |
+| `shelf-back` | one metre of the back-bar shelf | `barTop` | 24 |
+| `shelf-kitchen` | one metre of the dry-goods shelf | `barTop` | 24 |
+| `sill` | the pass sill at the Corner Tap's 1.9 m | `barTop` | 36 |
+| `bottle-green`, `-amber`, `-violet`, `-blue`, `-gold` | one back-bar bottle each, five shapes | `flat-bottle` | 112 |
+| `tap` | a tap handle | `flat-tap` | 84 |
+| `can` | a dry-goods can | `flat-can` | 108 |
+| `corkboard` | the cork, its frame and the five notes | `flat-cork` | 120 |
+| `tv-frame` | a TV's frame, not its screen or light | `flat-tvFrame` | 72 |
+| `door-frame` | the front door's frame, not its glow | `flat-doorFrame` | 60 |
+| `stool` | `stool()`: a `leather` cushion, a flat steel child | both | 212 |
+| `table` | `table4()`: a `tableTop` top, a flat pedestal child | both | 192 |
+
+Three runs, one hash for all 22; `crate-wood.glb` is byte-identical to B1's,
+because a new item goes at the end of `ITEMS` and no seed moves. Two calls
+the rows needed:
+
+- **The burners stay the game's** (#689). They are `glow()`, an emissive, and
+  a model's colour is never emissive here, so `world.js` keeps drawing the
+  four discs at `f.h + 0.01`. The stove's grates sit under their spots, their
+  tops at the block's 0.95.
+- **Anything `world.js` sizes from the room is a unit piece** (#690). The
+  counter is two `counter-end`s (the west one mirrored, `scale.x = -1`)
+  and `desc.bar.len - 1` metres of `counter-mid`; the kick and both shelves
+  are one-metre pieces; the sill is built at 1.9 m. B4 repeats or stretches
+  each along x. A middle carries no stile at its edges, so a run of them
+  shows no doubled joint.
+
+**What the wiring row needs to know.** Every file's origin is the centre of
+its base, so a piece `world.js` centres on `y` goes in at `y - h / 2`. The
+stool's leg starts 1 cm up in `stool()` and the file stands on 0, so its
+box is 0.755 m to `world.js`'s 0.745. A wall piece (corkboard, TV frame,
+door frame) faces +Z and takes its wall's `ry`: the corkboard and the door
+frame are on the south wall, so `Math.PI`. The TV's screen plane still goes
+0.05 in front of the frame's centre, 1 cm clear of its bezel. The notes are
+seeded now, not `Math.random()` per build.
+
+**B4. Wiring the bar. Shipped 2026-09-28, PR #463** (#695 to #697; rank 1, ½, Opus 5.5,
+no gate). `js/pieces.js` loads all 22 files at the top of `world.js`, and
+every fixture and stick of furniture is built from them: the fit-out blocks
+at `f.w`, `f.h`, `f.d` over the file's box, the counter as two ends (the
+west one mirrored) and a run of middles, the kick and both shelves as runs of
+one-metre pieces, as many as divide the run most nearly (#696). A keyed part
+wears the game's own `mat(key)`, put on at build time so `pickTier()` still
+chooses the textures (#695); `mat()` names its material for its key. The
+burners, walls, floors, joinery and lights are still the game's own.
+`test/bar.mjs` (180, port 8169) fails a line a piece when a file is gone and
+holds every piece to 2 cm of where the primitive builders stood in all four
+rooms, from `test/fixtures/bar-builders.json` (#697).
+`tools/browser-check.mjs` (261) finds the stools and tables by name, and
+`npm run games fourth-quarter` is 45 of 45.
+
+**What is left.** Nothing in this pack. The loaded geometry is shared and
+never disposed, so a room rebuild adds meshes but no geometry, where the
+primitives made new geometry every time and never disposed it either.
 
 ## What this leaves for a later arc
 

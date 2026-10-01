@@ -367,44 +367,39 @@ on exactly four, so four would pass the lever the calibration turned down. Raisi
 beyond the ramp; a hand that skipped queues with a full exit and cut a
 green over a car stalled 12 s in the box did not change the lock.
 
-### R5. The site's side: board check, preview, card copy
+### R5. The site's side: board check, preview, card copy: done (HISTORY.md #649, #650)
 
-**Size ¼. Model Sonnet 5. Shared files: say so in the PR body.**
+`npm run games signal-city` plays First Light on the plain page: the
+card, the 2 key, 20 s at 1x, and the Signal line reads "Changed by you".
+The cleared count is read once a car has cleared, up to 65 s in, because
+a car counts only past the far end of the map and the first does that
+20.9 to 48.3 s in (#649). Pointing the key at a phase that does not
+exist fails the Signal line alone. The preview is Rush Hour at dusk,
+95 s in, mid-surge, captured on this Windows machine (#650), promoted to
+`assets/previews/signal-city.jpg` and `assets/og/signal-city.jpg`, and
+the page's social block points at it. The card names the district and
+endless, and `landing.html` shows the still in place of the sealed
+tile. #585 is folded in: Rush Hour carries `light: 'dusk'` and
+`lightFor` reads it; with it set to day, "Rush Hour is played at dusk"
+fails alone.
 
-- A `signal-city` recipe in `Tools/board-check/games.mjs`: load First
-  Light, press 2, run 20 s at 1x, assert the Signal line reads "Changed by
-  you", cleared is above zero and there are no page errors. Break it by
-  pointing the key at a phase that does not exist.
-- A preview in `capture-previews.mjs`: Rush Hour at dusk mid-surge, or a
-  district of six in the sandbox. Capture on Linux, promote through
-  `promote-previews.mjs` into `assets/previews/signal-city.jpg` and
-  `assets/og/signal-city.jpg`, then `npm run social` and `social:check`.
-  SwiftShader draws a 2D canvas the same as a GPU; this one is not a draft.
-- The card in `index.html` and `landing.html` still says "one
-  crossroads". Mention the district and endless.
-- Fold in #585 while here: `DUSK_LEVELS` in `render.js` becomes a `light`
-  field on the level (`'dusk'`), read by `lightFor`. Every level renders
-  the same; the browser suite's dusk check holds it.
+### R6. The priority corridor follows the vehicle across boxes: done (HISTORY.md #682)
 
-`cd Tools/board-check && npm run check && npm run social:check && node
-ci-check.mjs` is the bar.
-
-### R6. The priority corridor follows the vehicle across boxes
-
-**Size ½. Model Opus 5. Open call first (architect).** A car keeps
-`priority` across a handoff, so the next box does not hold for it and E
-does not offer it again (Known gaps). The sandbox's ambulances cross two to
-four boxes. The call: at the next box, is the corridor automatic (the
-player called the vehicle once, and the city's pre-emption follows it,
-which is how real emergency pre-emption works), or does the player call it
-again at each box? Recommended: automatic once called, so the lesson stays
-"call it early" and a district does not ask for a key press per box.
-Changes Two Blocks and Main Street under play, so re-run their calibration
-(Main Street's motorcade takes the corridor) and record both tables. Guard
-in `test/grid.mjs`: an ambulance called at box 1 of a three-box route is
-held for at box 2; break it by clearing the request on handoff and watch
-that line fail. Ask the World where the car is, not the helper that
-decided (#614's lesson).
+Automatic once called. A car the player called is pre-empted at every box
+it is handed to (`World._followPriority`, from `_handoff`), so the lesson
+stays "call it early". E and a click still call only a car nobody has
+called, and a car nobody called is held for nowhere. A ring or a blackout
+refuses the follow as it refuses E, and a box already holding the car's
+movement (a motorcade's lead got there first) is left to `_holdPriority`.
+`test/grid.mjs` calls an ambulance at box 1 of three in a row and reads
+each box's light off the World as the car's front reaches that box's stop
+line: held at all three, and uncalled at none. With the request cleared on
+handoff, the box 2 line fails on "box 2 E-W yellow". The row expected Two
+Blocks and Main Street to change, and neither did. Main Street is one box
+and Two Blocks has no emergency vehicle, so both `--baseline --hand` tables
+match the pre-change tables exactly (#682). The change only affects play
+in the Free Play district. There, a called ambulance's time on the map
+fell from 30.4 to 28.6 s on four boxes and from 64.3 to 54.1 s on eight.
 
 ### R7. Sound
 
@@ -528,44 +523,78 @@ R14. They are the same kind of row as the site's real-hardware passes.
   the Timing tab on Two Blocks without the hint. Devon's to arrange.
   **Size ½. Model Opus 5.**
 
-## Blender assets (ranks 27 to 29, from 2026-09-25)
+## Blender assets (from 2026-09-25; B1 to B3 done 2026-09-30)
 
 Blender-made assets rank above everything else (HISTORY.md #642), which puts
-these three rows above R4. The shared plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs
-Devon's Windows machine; a session without `blender` on PATH skips it and
+these three rows above R4. The shared plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs
+on huginn or Devon's Windows machine, and one gated `blender-gpu` on the
+Windows machine only (#707); a session that cannot take it skips it and
 takes the next row.
 
-**B1. The sprite pipeline (rank 27, ½, Opus 5.5, gate `blender`).** The first
-2D pipeline, so this is where the sprite-sheet renderer is written, and the
-other 2D projects copy it (#643). `common.py` renders straight down with an
-orthographic camera, a transparent film, the light from the side
-`js/sprites.js` puts its roof gloss on, and the frames packed into one PNG
-with a JSON atlas. Style sheet: pixels per metre at the closest zoom the game
-draws (a car is drawn in metres, nose along +x, centred on the origin), the
-four palettes per archetype as separate frames or one body and a tint mask,
-and the size under which `spriteFor` keeps drawing the procedural car: at
-twelve boxes a car is 6 px long (#617), where a render adds nothing. The
-validator joins Site CI's Signal City entry.
+**B1. The sprite pipeline: done (HISTORY.md #721 to #723).** A 2D
+pipeline in `tools/blender/`, built beside Orbital's the same day (#717, which
+merged first and is the one later 2D copies start from): `common.py` (the render settings, the geometry
+kit, the packer and a PNG writer of its own), `spec.mjs` (reads every
+archetype's size and palettes out of `js/sprites.js`, so the palette has one
+home), `budget.json` (the style sheet below as data) and `validate.mjs`, which
+runs in Site CI's Signal City entry: 523 checks, no Blender. Nothing here is
+shared with another project (#643). The style sheet:
 
-**B2. The car sheet (rank 28, ½, Opus 5.5, gate `blender`).** The ten
-`ARCHETYPES`, in their four palettes, with frames for the states of the two
-archetypes whose `draw()` reads `t`.
+- **Projection.** Straight down through an orthographic camera onto a
+  transparent film. A car is built in metres, nose along +x, centred on the
+  origin, exactly as `sprites.js` draws it; Blender's +Y is the game's -y, so
+  the top of a frame is the side `sprites.js` puts its roof gloss on.
+- **Light.** A sun from the front and the -y side, fifty degrees up, and a sky
+  brighter toward it, so a crowned roof and a glass pane reflect a gradient
+  that runs back from the nose. Cycles on the CPU, 128 samples, seed 0,
+  adaptive sampling and the denoiser off, the Standard view transform. That is
+  byte-stable across runs and across thread counts on one machine (#721).
+- **Scale.** 36 px a metre in the sheet (#722). A frame is
+  `ceil(length * 36) + 4` by `ceil(width * 36) + 4`, the canvas `spriteFor()`
+  makes at that scale, anchored at its centre.
+- **The band.** `spriteFor` draws a frame from the sheet while its own pixels
+  per metre are 12 to 36 (`spriteFrom`, `spriteTo`) and the procedural car
+  outside that band. Below 12 a car is under 55 sprite pixels long, and a
+  district's 6 px car gains nothing from a render. Above 36 the vector car
+  stays sharp where an upscaled frame would blur (#722).
+- **Palettes.** Separate frames, not a body and a tint mask: a palette carries
+  body, glass and accent, and the trailer swaps body and accent (#723).
+- **The atlas.** `{ "sheet": { w, h, ppm, pad }, "frames": { name: { x, y, w,
+  h, ax, ay } } }`, the common plan's frame map wrapped with the sheet's own
+  numbers, which the game needs to scale a frame (#721). A frame is named
+  `<archetype>/<palette>/<state>`, and the trailer is `trailer/<palette>/0`.
 
-**B3. Wiring the sheet (rank 29, ¼, Opus 5.5, no gate, after rank 28).**
-`spriteFor` draws a frame from the sheet above the size B1 set and the
-procedural car below it; `sprites.html` shows both side by side;
-`test/sprites.mjs` fails when an archetype has no frame. The sim never reads a
-sprite, so every run hashes as before.
+**B2. The car sheet: done (HISTORY.md #723).** `tools/blender/cars.py` builds
+all ten archetypes and the trailer from `sprites.js`'s own hulls, glass, trim
+and lamps, in their four palettes, with rideshare's four pulse states (t = 0,
+0.25, 0.5, 0.75, the four `spriteFor` caches) and emergency's two light-bar
+states: 60 frames, `assets/sprites/cars.png` (1024 x 944, 883,946 bytes) and
+`assets/sprites/cars.json`. Eight minutes on huginn with `-t 4`; a second run
+leaves `git status --porcelain` empty. `-- standard/0/0` renders named frames
+into the gitignored `tools/blender/out/frames/` and writes nothing the game
+loads, which is the loop for changing one car.
+
+**B3. Wiring the sheet: done (HISTORY.md #770).** `SHEET_FROM` and `SHEET_TO`
+in `js/sprites.js` are the band, held to `budget.json` by `validate.mjs` (525
+checks). `spriteFor` draws a cached per-scale copy of the frame from
+`cars.json` and the procedural car outside the band; `trailerSpriteFor` does
+the trailer; `loadSheet()` is called from `main.js`; `sprites.html` shows the
+procedural and rendered cars side by side. `test/sprites.mjs` is 42 checks and
+`test/browser.mjs` 238 (one failure that predates the work, the cone-orange
+pixel check, fails the same way on `main` under this machine's software
+rendering). The sim never reads a sprite. Not looked at: the sheet on a real
+GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 
 ## Known gaps and decisions
 
-- The priority corridor is one box's. A car keeps `priority` across a
-  handoff, so on a corridor or a district the next box does not hold for
-  it and E does not offer it again (`priorityNearest` skips a car that has
-  it). On one box it never mattered; the sandbox's ambulances cross two to
-  four boxes. Clearing it on handoff would change Two Blocks and Main
-  Street under play, so it waits for a row of its own. A district has no
-  target and no calibration: it is a sandbox (#615).
+- The corridor follows its vehicle (#682), with two edges left as they
+  were. A follow a blackout refused is not retried when the power comes
+  back. A follow into a box already pre-empted for a conflicting movement
+  (two ambulances meeting) takes the box from the first, as E always has.
+  On eight-box districts, collisions over six seeds went from 11 to 14
+  with every ambulance called on spawn (four boxes: 4 and 4). The cause
+  was not traced. A district is a sandbox with no target (#615), so
+  nothing was tuned for it.
 
 - A grid's edge legs end in grass inside the district: a box whose
   neighbour cell is empty has a 110 m spawning leg that stops where cars

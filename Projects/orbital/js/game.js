@@ -49,9 +49,13 @@ function resize() {
   const inset = edInset();
   const w = winW - inset;
   const s = Math.min(w / W, h / H);
-  view = { s, ox: inset + (w - W * s) / 2, oy: (h - H * s) / 2 };
+  // `view` is in device pixels, the unit the canvas and every `* DPR` line
+  // width are in. It was CSS pixels until 2026-09-30, so at a ratio of 2 the
+  // playfield filled the top left quarter of the canvas.
+  view = { s: s * DPR, ox: (inset + (w - W * s) / 2) * DPR, oy: ((h - H * s) / 2) * DPR };
 }
-const toWorld = (px, py) => ({ x: (px - view.ox) / view.s, y: (py - view.oy) / view.s });
+// Pointer events arrive in CSS pixels; `view` is in device pixels.
+const toWorld = (px, py) => ({ x: (px * DPR - view.ox) / view.s, y: (py * DPR - view.oy) / view.s });
 
 // ---- state ----
 let L, curIndex = 0, bodies = [], probe = null, vel = null, flyState = null;
@@ -302,4 +306,16 @@ initInput();
 initEditor();
 loadLevel(0);              // set up level 0 behind the intro
 bootFromHash();            // a link overrides it
-requestAnimationFrame(frame);
+// The first frame waits for the body sheet (#735). Without the sheet nothing
+// is drawn, and the intro card says why where its Begin button was live.
+function startFrames() {
+  return loadSprites().then(() => { requestAnimationFrame(frame); }, err => {
+    console.error("Orbital: " + err.message);
+    const el = document.getElementById("linkErr");
+    el.textContent = "Orbital could not load its artwork: " + err.message + ". Reload the page to try again.";
+    el.hidden = false;
+    document.getElementById("introScrim").classList.add("show");
+    document.getElementById("btnStart").disabled = true;
+  });
+}
+startFrames();

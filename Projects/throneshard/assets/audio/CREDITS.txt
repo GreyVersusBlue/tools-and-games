@@ -1,0 +1,38 @@
+All audio in this folder is CC0 (public domain). Sources:
+
+sfx/*            Kenney (www.kenney.nl): RPG Audio, Impact Sounds, Interface Sounds, Sci-fi Sounds, Music Jingles — CC0
+music/battle_theme_a.mp3  "Battle Theme A" by cynicmusic — OpenGameArt, CC0
+music/town_theme.mp3      "Town Theme RPG" by cynicmusic — OpenGameArt, CC0
+ambience/forest.mp3       "Forest Ambience" — OpenGameArt, CC0
+ambience/river.mp3        "River" — OpenGameArt, CC0
+
+Hero voices / announcer / creatures (trimmed, normalized, resampled to 22.05 kHz mono Vorbis by
+scripts/audio/build_voice_assets.py — rerun it to rebuild; it downloads the packs below):
+voice/orc/*, voice/brute/*   "Orc Voice" (Orc Commander pack) by Tim Rockk — OpenGameArt, CC0
+                             https://opengameart.org/content/orc-voice
+voice/demon/*, voice/revenant/*, voice/brute/ult_0 ("Dinnertime")
+                             "Demon Voice" (Demon Lord pack) by Tim Rockk — OpenGameArt, CC0
+                             https://opengameart.org/content/demon-voice
+voice/male0..3/*             "Male Grunt/Yelling Sounds" by HaelDB — OpenGameArt, CC0 (dual-licensed OGA-BY 3.0 / CC0; used under CC0)
+                             https://opengameart.org/content/male-gruntyelling-sounds
+voice/male0/death_1          "5 Hit Sounds + Dying" by TinyWorlds — OpenGameArt, CC0
+                             https://opengameart.org/content/5-hit-sounds-dying
+voice/fem1..3/*              "Female RPG Voice Starter Pack" by cicifyre — OpenGameArt, CC0
+                             https://opengameart.org/content/female-rpg-voice-starter-pack
+voice/fem*/death_0           "Female Hurt Grunts & Groans" by Nocturnal_Vanguard — OpenGameArt, CC0
+                             https://opengameart.org/content/female-hurt-grunts-groans
+announcer/fight, prepare, multi_kill, you_win, you_lose
+                             "Voiceover Pack: Fighter" by Kenney — CC0
+                             https://opengameart.org/content/voiceover-pack-fighter-40-taunts
+announcer/first_blood ... shutdown (the 14 kill-streak lines, built by tools/scripts/audio/build_announcer_lines.py)
+                             "Voiceover Pack: Fighter" by Kenney (kill_him, combo, multi_kill, deathmatch, sudden_death, kill_it,
+                             final_round, flawless_victory, championship_mode, combo_breaker) and "Voiceover Pack" by Kenney
+                             (Male/power_up, war_go_go_go, war_target_engaged, new_highscore) — CC0. The packs have no lines for
+                             the banner names, so each tier plays the nearest shout; these replace a formant synthesis.
+announcer/target_destroyed, objective, look_out, level_up
+                             "Voiceover Pack" by Kenney — CC0  https://kenney.nl/assets/voiceover-pack
+creature/roar_*              "80 CC0 creature SFX" by rubberduck — OpenGameArt, CC0
+                             https://opengameart.org/content/80-cc0-creature-sfx
+
+Kill-streak announcer lines (First Blood, Double Kill, ... Mythic) are synthesized at runtime by a formant voice
+(AudioSystem.speak); anything else missing is synthesized at runtime by src/audio/AudioSystem.js (WebAudio).

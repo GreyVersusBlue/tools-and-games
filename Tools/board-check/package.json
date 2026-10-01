@@ -15,6 +15,9 @@
     "promote": "node promote-previews.mjs",
     "social": "node sync-social-tags.mjs",
     "social:check": "node sync-social-tags.mjs --check",
+    "tavern": "node blender/run.mjs",
+    "tavern:check": "node blender/validate.mjs",
+    "tavern:clicks": "node check-tavern-clicks.mjs",
     "postinstall": "npm i --prefix three-0.160.0 three@0.160.0 && npm i --prefix three-0.169.0 three@0.169.0"
   },
   "dependencies": {

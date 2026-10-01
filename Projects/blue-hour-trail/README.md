@@ -62,7 +62,9 @@ down to the root.
   that takes the birds lower down has no birds left to take up there, so it
   takes the wind, and gives it back all at once. A branch breaking is a
   stone instead, let go somewhere above you and knocking its way down past
-  you into the fog.
+  you into the fog. The shape up the trail is standing up there. And the
+  eyes in the trees are a light instead, far down the slope below you, a
+  headlamp going the other way.
 - There is somebody in the fire lookout. It is the only structure up there,
   the only thing on the mountain that implies other people, and it has
   someone standing at the rail facing whichever way you go. Look away and
@@ -82,6 +84,12 @@ Same shape as Golden Hour: no build step, ES modules resolved through an
 import map, three.js vendored in `libs/`, zero offsite requests, every
 texture drawn into a canvas at load, every sound synthesized in Web Audio.
 
+`libs/` holds three.js r185 (`three.module.js`, `three.core.js`) and, under
+`libs/addons/` in three's own `examples/jsm/` layout (#18), GLTFLoader and the
+two utils it imports (`utils/BufferGeometryUtils.js`, `utils/SkeletonUtils.js`),
+r185 and unmodified. They are Blue Hour's own copies, not Golden Hour's (#17).
+Nothing loads a model yet; the Blender animal pack will.
+
 The piece saves nothing — no progress, no score, no position. The one thing
 it keeps (in `localStorage`, under `blue-hour-last-walk`) is the rhythm of
 your previous walk's footsteps, and what it does with that is its own
@@ -93,6 +101,27 @@ everything standing on it), and `test/smoke.mjs` checks it under bare Node:
 
 ```
 node test/smoke.mjs
+```
+
+`test/gltf-loader.mjs` proves the vendored loader before any model exists to
+feed it. It borrows `Tools/board-check`'s harness (so `npm ci` there first),
+writes a page with `index.html`'s import map, and parses a GLB built byte by
+byte in the page: one plain triangle, and one quad as a triangle strip, which
+the loader can only convert through `toTrianglesDrawMode`. 15 checks, port 8162:
+
+```
+node test/gltf-loader.mjs   # after `npm ci` in Tools/board-check
+```
+
+`test/animals.mjs` (port 8166) and `test/props.mjs` (port 8168) use the same
+harness to build the game's wildlife and props from the two packs in
+`assets/models/`. The props suite holds every prop to the box its primitive
+builder drew, and has one line per file that fails if the file is missing or
+if `js/pieces.js` would load without it:
+
+```
+node test/animals.mjs
+node test/props.mjs
 ```
 
 `test/browser.mjs` is the other half: it serves the site, boots the real page in

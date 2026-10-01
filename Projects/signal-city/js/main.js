@@ -18,10 +18,15 @@ import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 import { waveModel, WaveHistory, drawWave } from './wave.js';
 import { legDir } from './network.js';
 import { exitLeg, parseMovement } from './signals.js';
+import { loadSheet } from './sprites.js';
 
 const $ = id => document.getElementById(id);
 const DEBUG = new URLSearchParams(location.search).has('debug');
 const SVG = 'http://www.w3.org/2000/svg';
+
+// The rendered car sheet (B3): two requests, not awaited. The procedural cars
+// draw until it lands, and a failure is a console.error inside loadSheet.
+loadSheet();
 
 // The panel shows one section at a time (the UI pass). Each level opens on
 // the tab its lesson is about; a tab whose controls the level has not

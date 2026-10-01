@@ -29,6 +29,8 @@
 //               as the roundabout converts it (campaign.js convertible,
 //               #598): measured on the ring, not on signals
 //   mode        'soft' (collisions count) | 'hard' (one collision ends it)
+//   light       'dusk' draws the level at dusk (render.js lightFor, R5);
+//               none is day, and an outage is night whatever the level
 //   unlocks     which signal controls the panel shows:
 //               phases    the phase buttons
 //               auto      the rule panel (elapsed rules; queue rules wait for M6)
@@ -181,6 +183,7 @@ export const LEVELS = [
       { kind: 'ambulance', at: 185, leg: 'W', turn: 'T', within: 40 },
     ],
     duration: 240,
+    light: 'dusk',
     // calibrated on a 22 s cycle over six seeds: the corridor called 2 s
     // after the ambulance arrives clears 59 to 77 at 13 to 21 s with it on
     // time every seed; never called, 65 to 83 at 10 to 17 s and late on 3.

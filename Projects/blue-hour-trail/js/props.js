@@ -1,37 +1,21 @@
 import * as THREE from 'three';
 import { groundHeight, LAYOUT } from './field.js';
+import { REF, pieceGroup, instances, byVariant } from './pieces.js';
 
 // Everything built by hands — real or imagined — standing on the mountain:
 // trail markers, the cairns, the footbridge, the summit bench, the fire
 // lookout, the cabin, and the mushrooms underfoot. Where each one sits is in
 // field.js; this file only turns those numbers into meshes.
+//
+// What it stands there is the trail prop pack (pieces.js, B6), each piece in
+// its builder's own frame, so every placement below is the arithmetic the
+// builders did for their primitives. The bootprints are the one thing still
+// drawn here: they are a texture, not a model (B5).
 
-/**
- * Weathering displacement — a smooth function of position, not per-vertex
- * random, for the reason Golden Hour's props.js documents at length: a
- * sphere's pole is a fan of coincident vertices, and independent jitter pulls
- * them apart into a crown of spikes. Same-point-same-displacement keeps
- * seams and poles shut.
- */
-const _v = new THREE.Vector3();
-function roughen(geo, amount, seed) {
-  const s = (seed >>> 0) % 1000 * 0.017;
-  const p = geo.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    _v.fromBufferAttribute(p, i);
-    const n = Math.sin(_v.x * 1.7 + s)
-            * Math.sin(_v.y * 2.3 - s * 1.6)
-            * Math.sin(_v.z * 1.9 + s * 2.4);
-    _v.multiplyScalar(1 + n * amount);
-    p.setXYZ(i, _v.x, _v.y, _v.z);
-  }
-  p.needsUpdate = true;
-  geo.computeVertexNormals();
-  return geo;
-}
+const place = (obj, x, y, z, yaw = 0) => { obj.rotation.y = yaw; obj.position.set(x, y, z); return obj; };
+const named = (name, ...objs) => { const g = new THREE.Group(); g.name = name; g.add(...objs); return g; };
 
-// Golden Hour's local merge helper — see the note there about why this stays
-// forty lines here instead of a vendored addon.
+// Golden Hour's local merge helper, kept for the bootprints' quads.
 function mergeGeometries(geos) {
   const names = ['position', 'normal', 'uv'];
   const nonIndexed = geos.map(g => (g.index ? g.toNonIndexed() : g));
@@ -52,186 +36,84 @@ function mergeGeometries(geos) {
   return merged;
 }
 
-const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const place = (geo, x, y, z, yaw = 0) => { if (yaw) geo.rotateY(yaw); geo.translate(x, y, z); return geo; };
+const placeGeo = (geo, x, y, z, yaw = 0) => { if (yaw) geo.rotateY(yaw); geo.translate(x, y, z); return geo; };
 
 /* ------------------------------------------------------------------ markers */
 
-// Posts with a pale blaze board. The blazes are their own merged mesh so they
-// can be near-unlit — a marker that vanishes into the murk marks nothing.
-function buildMarkers(woodMat) {
-  const posts = [], blazes = [];
-  for (const mk of LAYOUT.markers) {
-    const g = groundHeight(mk.x, mk.z);
-    posts.push(place(box(0.13, 1.5, 0.13), mk.x, g + 0.65, mk.z, mk.yaw));
-    const top = place(box(0.3, 0.22, 0.05), mk.x, g + 1.28, mk.z, mk.yaw);
-    posts.push(top);
-    blazes.push(place(box(0.16, 0.24, 0.06), mk.x, g + 0.95, mk.z, mk.yaw));
-  }
-  return [
-    new THREE.Mesh(mergeGeometries(posts), woodMat),
-    new THREE.Mesh(mergeGeometries(blazes),
-      new THREE.MeshBasicMaterial({ color: 0xc8d0d8, fog: true })),
-  ];
+// Posts with a pale blaze board, unlit on both faces — a marker that vanishes
+// into the murk marks nothing. Two weatherings of the one post (#684), taken
+// in turn up the trail, since a marker has no seed.
+function buildMarkers(pieces) {
+  const posts = LAYOUT.markers.map((mk, i) =>
+    ({ x: mk.x, y: groundHeight(mk.x, mk.z), z: mk.z, ry: mk.yaw, v: i % 2 }));
+  return named('markers', ...byVariant(pieces, ['marker-1', 'marker-2'], posts));
 }
 
 /* ------------------------------------------------------------------- cairns */
 
-function buildCairns(stoneMat) {
-  const parts = [];
+// Each stone is a variant by its place in its cairn, since the three variants
+// are LAYOUT.cairns[0]'s first three stones (#684), scaled by its own r over
+// the variant's. The stack's arithmetic is the builder's.
+const STONES = ['cairn-stone-1', 'cairn-stone-2', 'cairn-stone-3'];
+function buildCairns(pieces) {
+  const stones = [];
   LAYOUT.cairns.forEach((c, ci) => {
     const g = groundHeight(c.x, c.z);
     let y = g - 0.05;
     for (let s = 0; s < c.stones; s++) {
       const t = s / c.stones;
       const r = 0.34 * (1 - t * 0.55) + 0.04 * Math.sin(ci * 3.1 + s * 7.7);
-      const stone = new THREE.SphereGeometry(r, 9, 7);
-      roughen(stone, 0.18, ci * 131 + s * 977);
-      stone.scale(1, 0.55, 1);
+      const v = s % 3;
       y += r * 0.52;
-      place(stone, c.x + Math.sin(s * 2.6 + ci) * 0.05, y, c.z + Math.cos(s * 1.9) * 0.05);
+      stones.push({
+        x: c.x + Math.sin(s * 2.6 + ci) * 0.05, y, z: c.z + Math.cos(s * 1.9) * 0.05,
+        s: r / REF[STONES[v]].r, v,
+      });
       y += r * 0.42;
-      parts.push(stone);
     }
   });
-  return new THREE.Mesh(mergeGeometries(parts), stoneMat);
+  return named('cairns', ...byVariant(pieces, STONES, stones));
 }
 
 /* ------------------------------------------------------------------- bridge */
 
-function buildBridge(woodMat) {
+// Built along local +Z (the walking direction), its origin mid-span on the
+// deck, then turned by the bridge's yaw.
+function buildBridge(pieces) {
   const b = LAYOUT.bridge;
-  const parts = [];
-  // Deck planks across the walking direction; built along local +Z (the
-  // walking direction), then rotated by the bridge's yaw.
-  const plankN = 9;
-  for (let i = 0; i < plankN; i++) {
-    const along = -b.len / 2 + (i + 0.5) * (b.len / plankN);
-    parts.push(place(box(b.width, 0.07, b.len / plankN - 0.05), 0, -0.045, along));
-  }
-  // stringers under the deck
-  for (const side of [-1, 1]) {
-    parts.push(place(box(0.14, 0.2, b.len), side * (b.width / 2 - 0.15), -0.18, 0));
-  }
-  // posts and handrails
-  for (const side of [-1, 1]) {
-    for (const end of [-1, 1]) {
-      parts.push(place(box(0.1, 1.0, 0.1), side * b.width / 2, 0.42, end * (b.len / 2 - 0.2)));
-    }
-    parts.push(place(box(0.08, 0.08, b.len), side * b.width / 2, 0.9, 0));
-  }
-  const geo = mergeGeometries(parts);
-  geo.rotateY(b.yaw);
-  geo.translate(b.x, b.deckY, b.z);
-  return new THREE.Mesh(geo, woodMat);
+  const g = place(pieceGroup(pieces, 'bridge'), b.x, b.deckY, b.z, b.yaw);
+  g.scale.set(b.width / REF.bridge.width, 1, b.len / REF.bridge.len);
+  return g;
 }
 
 /* ------------------------------------------------- summit bench and lookout */
 
-function buildBench(woodMat) {
+function buildBench(pieces) {
   const be = LAYOUT.bench;
-  const g = groundHeight(be.x, be.z);
-  const parts = [
-    place(box(1.6, 0.07, 0.45), 0, 0.46, 0),
-    place(box(1.6, 0.4, 0.06), 0, 0.75, -0.24),
-    place(box(0.08, 0.46, 0.4), -0.68, 0.23, 0),
-    place(box(0.08, 0.46, 0.4), 0.68, 0.23, 0),
-  ];
-  const geo = mergeGeometries(parts);
-  geo.rotateY(be.yaw);
-  geo.translate(be.x, g, be.z);
-  return new THREE.Mesh(geo, woodMat);
+  return place(pieceGroup(pieces, 'bench'), be.x, groundHeight(be.x, be.z), be.z, be.yaw);
 }
 
-function buildTower(woodMat) {
+// The cab's window band (`panes`): a fire lookout is mostly glass. Dark
+// panes, no light behind them. What the glass is FOR is the steam
+// (atmosphere.js): a wisp rising at the pane on the bench side. The cab is
+// warm and nobody says so.
+function buildTower(pieces) {
   const tw = LAYOUT.tower;
-  const g = groundHeight(tw.x, tw.z);
-  const parts = [];
-  const H = 9;                       // legs
-  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const leg = new THREE.CylinderGeometry(0.09, 0.13, H, 5);
-    // splayed: base 2.4 out, head 1.3 out
-    const dx = sx * 1.85, dz = sz * 1.85;
-    leg.rotateZ(-sx * 0.12);
-    leg.rotateX(sz * 0.12);
-    place(leg, dx * 0.75, H / 2, dz * 0.75);
-    parts.push(leg);
-  }
-  for (let lvl = 1; lvl <= 3; lvl++) {           // cross braces
-    const y = lvl * 2.4;
-    const spread = 1.85 * (1 - (y / H) * 0.45) * 1.5;
-    parts.push(place(box(spread * 2, 0.09, 0.09), 0, y, -spread * 0.62));
-    parts.push(place(box(spread * 2, 0.09, 0.09), 0, y, spread * 0.62));
-    parts.push(place(box(0.09, 0.09, spread * 1.24), -spread * 0.95, y, 0));
-    parts.push(place(box(0.09, 0.09, spread * 1.24), spread * 0.95, y, 0));
-  }
-  parts.push(place(box(3.4, 0.16, 3.4), 0, H, 0));            // platform
-  parts.push(place(box(2.6, 1.7, 2.6), 0, H + 0.95, 0));      // cab
-  const roof = new THREE.ConeGeometry(2.25, 1.1, 4);
-  roof.rotateY(Math.PI / 4);
-  parts.push(place(roof, 0, H + 2.35, 0));
-  for (const side of [-1, 1]) {                                // platform rail
-    parts.push(place(box(3.4, 0.06, 0.06), 0, H + 0.6, side * 1.7));
-    parts.push(place(box(0.06, 0.06, 3.4), side * 1.7, H + 0.6, 0));
-  }
-  const geo = mergeGeometries(parts);
-  geo.rotateY(tw.yaw);
-  geo.translate(tw.x, g, tw.z);
-  const body = new THREE.Mesh(geo, woodMat);
-
-  // The cab's window band — a fire lookout is mostly glass, and this one has
-  // been a black box for four sessions. Dark panes, no light behind them.
-  // What the glass is FOR is the steam (atmosphere.js): a wisp rising at the
-  // pane on the bench side. The cab is warm and nobody says so.
-  const winParts = [];
-  for (let s = 0; s < 4; s++) {
-    const pane = new THREE.PlaneGeometry(2.2, 0.62);
-    pane.rotateY(s * Math.PI / 2);
-    const off = 1.301;
-    pane.translate(
-      s === 1 ? off : s === 3 ? -off : 0,
-      H + 1.12,
-      s === 0 ? off : s === 2 ? -off : 0);
-    winParts.push(pane);
-  }
-  const winGeo = mergeGeometries(winParts);
-  winGeo.rotateY(tw.yaw);
-  winGeo.translate(tw.x, g, tw.z);
-  const win = new THREE.Mesh(winGeo, new THREE.MeshBasicMaterial({
-    color: 0x11181f, fog: true,
-  }));
-  return { body, win };
+  return place(pieceGroup(pieces, 'tower'), tw.x, groundHeight(tw.x, tw.z), tw.z, tw.yaw);
 }
 
 /* -------------------------------------------------------------------- cabin */
 
-function buildCabin(woodMat) {
+// The lit `window` is the one warm note in the piece. Brighter when the fog is
+// thick — a lit window forty metres off in heavy murk is the oldest promise in
+// the woods, and whether it's a comfort or a lure is left to the walker. Its
+// material is the file's own, unlit, and update() lerps it.
+function buildCabin(pieces) {
   const cb = LAYOUT.cabin;
-  const g = groundHeight(cb.x, cb.z);
-  const parts = [
-    place(box(4.2, 2.4, 3.2), 0, 1.2, 0),
-    place(box(0.9, 1.8, 0.12), 1.1, 0.9, 1.62),      // door on the trail side
-  ];
-  const gable = new THREE.CylinderGeometry(1.9, 1.9, 4.6, 3, 1);
-  gable.rotateZ(Math.PI / 2);
-  gable.rotateX(Math.PI);
-  place(gable, 0, 2.75, 0);
-  parts.push(gable);
-  const geo = mergeGeometries(parts);
-  geo.rotateY(cb.yaw);
-  geo.translate(cb.x, g, cb.z);
-  const body = new THREE.Mesh(geo, woodMat);
-
-  // The one warm note in the piece. Brighter when the fog is thick — a lit
-  // window forty metres off in heavy murk is the oldest promise in the woods,
-  // and whether it's a comfort or a lure is left to the walker.
-  const winMat = new THREE.MeshBasicMaterial({ color: 0x8a6a30, fog: true });
-  const winGeo = new THREE.PlaneGeometry(0.7, 0.6);
-  winGeo.translate(-0.9, 1.35, 1.61);   // front face, other side from the door
-  winGeo.rotateY(cb.yaw);
-  winGeo.translate(cb.x, g, cb.z);
-  const win = new THREE.Mesh(winGeo, winMat);
-  return { body, win, winMat };
+  const group = place(pieceGroup(pieces, 'cabin'), cb.x, groundHeight(cb.x, cb.z), cb.z, cb.yaw);
+  const win = group.children.find(m => m.name === 'window');
+  if (!win) throw new Error('Blue Hour: the cabin piece has no window');
+  return { group, winMat: win.material };
 }
 
 /* --------------------------------------------------------------- bootprints */
@@ -259,7 +141,7 @@ function buildBootprints() {
     const quad = new THREE.PlaneGeometry(0.11, 0.3);
     quad.rotateX(-Math.PI / 2);
     // texture toe is at +z before this yaw, so the prints point uphill
-    place(quad, bp.x, groundHeight(bp.x, bp.z) + 0.02, bp.z, bp.yaw);
+    placeGeo(quad, bp.x, groundHeight(bp.x, bp.z) + 0.02, bp.z, bp.yaw);
     parts.push(quad);
   }
   const mat = new THREE.MeshBasicMaterial({
@@ -274,58 +156,31 @@ function buildBootprints() {
 
 // A field set on the cabin porch rail, aerial up, dial dark. It implies the
 // unanswered half of every radio check in the logbook without adding a verb —
-// nothing here can be switched on, which is not the same as it being off.
-function buildRadio() {
+// nothing here can be switched on, which is not the same as it being off. Its
+// piece is in the cabin's frame, so it stands where the cabin stands.
+function buildRadio(pieces) {
   const cb = LAYOUT.cabin;
-  const g = groundHeight(cb.x, cb.z);
-  const parts = [
-    place(box(0.34, 0.22, 0.14), -1.7, 1.02, 1.55),   // the set, by the window
-    place(box(0.36, 0.05, 0.18), -1.7, 0.88, 1.55),   // its shelf
-    place(box(0.012, 0.85, 0.012), -1.83, 1.5, 1.5),  // whip antenna
-  ];
-  const geo = mergeGeometries(parts);
-  geo.rotateY(cb.yaw);
-  geo.translate(cb.x, g, cb.z);
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x3c443e }));
+  return place(pieceGroup(pieces, 'radio'), cb.x, groundHeight(cb.x, cb.z), cb.z, cb.yaw);
 }
 
 /* ----------------------------------------------------------------- headlamp */
 
 // A headlamp on the cabin step, lens dark, strap coiled — set down by a hand
 // on its way in, still where it was left. The one findable thing on the
-// mountain that does something. main.js hides this mesh when the walker picks
+// mountain that does something. main.js hides this group when the walker picks
 // it up; nothing else about the world changes, which is rather the point.
-function buildHeadlamp() {
+function buildHeadlamp(pieces) {
   const h = LAYOUT.headlamp;
-  const g = groundHeight(h.x, h.z);
-  const group = new THREE.Group();
-
-  const body = new THREE.Mesh(
-    place(box(0.09, 0.06, 0.06), h.x, g + 0.05, h.z, 0.7),
-    new THREE.MeshLambertMaterial({ color: 0x3a4046 }));
-  const strap = new THREE.Mesh(
-    place(box(0.16, 0.015, 0.1), h.x - 0.02, g + 0.02, h.z + 0.06, 0.4),
-    new THREE.MeshLambertMaterial({ color: 0x55504a }));
-  // The lens, unlit but pale enough to catch the eye from the trail side.
-  const lensGeo = new THREE.CircleGeometry(0.026, 10);
-  lensGeo.rotateY(0.7 + Math.PI / 2);
-  lensGeo.translate(h.x + 0.036, g + 0.05, h.z - 0.032);
-  const lens = new THREE.Mesh(lensGeo,
-    new THREE.MeshBasicMaterial({ color: 0xcfc9ae, fog: true }));
-
-  group.add(body, strap, lens);
-  return group;
+  return place(pieceGroup(pieces, 'headlamp'), h.x, groundHeight(h.x, h.z), h.z);
 }
 
 /* ---------------------------------------------------------------- mushrooms */
 
-function buildMushrooms() {
-  const stems = [], caps = [], glows = [];
-  const stemGeo = new THREE.CylinderGeometry(0.02, 0.035, 0.12, 5);
-  stemGeo.translate(0, 0.06, 0);
-  const capGeo = new THREE.SphereGeometry(0.06, 7, 5, 0, Math.PI * 2, 0, Math.PI * 0.55);
-  capGeo.translate(0, 0.1, 0);
-
+// Still instanced, one InstancedMesh per material per file: the plain ones
+// are `mushroom`, the glowing clusters `mushroom-glow`, whose cap carries the
+// emissive (#684).
+function buildMushrooms(pieces) {
+  const plain = [], glows = [];
   for (const m of LAYOUT.mushrooms) {
     const rnd = (i => () => {                        // tiny local PRNG off the seed
       i = (i * 1103515245 + 12345) & 0x7fffffff;
@@ -335,58 +190,36 @@ function buildMushrooms() {
       const x = m.x + (rnd() - 0.5) * 1.3;
       const z = m.z + (rnd() - 0.5) * 1.3;
       const s = 0.6 + rnd() * 1.3;
-      const entry = { x, y: groundHeight(x, z) - 0.01, z, s };
-      stems.push(entry);
-      (m.glow ? glows : caps).push(entry);
+      (m.glow ? glows : plain).push({ x, y: groundHeight(x, z) - 0.01, z, s });
     }
   }
-
-  const mk = (list, geo, mat) => {
-    const inst = new THREE.InstancedMesh(geo, mat, list.length);
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
-    const pos = new THREE.Vector3(), scl = new THREE.Vector3();
-    list.forEach((e, i) => {
-      pos.set(e.x, e.y, e.z);
-      scl.setScalar(e.s);
-      inst.setMatrixAt(i, m4.compose(pos, q, scl));
-    });
-    inst.instanceMatrix.needsUpdate = true;
-    return inst;
-  };
-
-  const out = [
-    mk(stems, stemGeo, new THREE.MeshLambertMaterial({ color: 0xb0a894 })),
-  ];
-  if (caps.length) out.push(mk(caps, capGeo.clone(),
-    new THREE.MeshLambertMaterial({ color: 0x6e4a38 })));
-  if (glows.length) out.push(mk(glows, capGeo.clone(),
-    new THREE.MeshLambertMaterial({ color: 0x9aa88a, emissive: 0x2a3a26 })));
-  return out;
+  const out = [];
+  if (plain.length) out.push(...instances(pieces, 'mushroom', plain));
+  if (glows.length) out.push(...instances(pieces, 'mushroom-glow', glows));
+  return named('mushrooms', ...out);
 }
 
 /* -------------------------------------------------------------------- build */
 
-export function buildProps(scene) {
+// `pieces` is loadPieces()'s, awaited before this runs.
+export function buildProps(scene, pieces) {
   const group = new THREE.Group();
+  group.name = 'props';
 
-  const wood = new THREE.MeshLambertMaterial({ color: 0x4a4038 });
-  const darkWood = new THREE.MeshLambertMaterial({ color: 0x3a332c });
-  const stone = new THREE.MeshLambertMaterial({ color: 0x565a5e });
-
-  for (const mesh of buildMarkers(wood)) group.add(mesh);
-  group.add(buildCairns(stone));
-  group.add(buildBridge(wood));
-  group.add(buildBench(wood));
-  const tower = buildTower(darkWood);
-  group.add(tower.body, tower.win);
-  const cabin = buildCabin(darkWood);
-  group.add(cabin.body, cabin.win);
-  group.add(buildRadio());
-  const lamp = buildHeadlamp();
+  group.add(buildMarkers(pieces));
+  group.add(buildCairns(pieces));
+  group.add(buildBridge(pieces));
+  group.add(buildBench(pieces));
+  group.add(buildTower(pieces));
+  const cabin = buildCabin(pieces);
+  group.add(cabin.group);
+  group.add(buildRadio(pieces));
+  const lamp = buildHeadlamp(pieces);
   group.add(lamp);
   const prints = buildBootprints();
+  prints.mesh.name = 'bootprints';
   group.add(prints.mesh);
-  for (const inst of buildMushrooms()) group.add(inst);
+  group.add(buildMushrooms(pieces));
 
   scene.add(group);
 

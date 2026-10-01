@@ -26,6 +26,7 @@ are enforced by the promote step.
 | `daredevil.jpg` | Daredevil |
 | `fracture-cycle.jpg` | The Fracture Cycle |
 | `corner-and-kettle.jpg` | Corner & Kettle |
+| `converter.jpg` | Conversion Codex (a tool; `headless: true` in `games.mjs`) |
 
 Torchbearer is the one remaining quest with neither — see
 `HISTORY.md`, site session 8, for why (it needs a prebuilt save file from

@@ -1,0 +1,150 @@
+{
+  "about": "The Fourth Quarter's Blender style sheet as data (WISHLIST.md 'Blender assets' B1). validate.mjs reads it. Bytes are triangles x 128 + 8 KiB: the worst case of a flat-shaded triangle carrying its own three vertices (position, normal, float colour, 40 bytes each) and three 16-bit indices, plus the JSON chunk. extent is the longest side a class may have, in metres, a sanity bound only; each item's box is the one js/world.js gives the thing it replaces, at the Corner Tap's numbers, held to 10% per axis (x, y, z in three's frame). texture is the largest image side in pixels, and 0 means none: a keyed material's texture is the game's, put on at load. The palette is every flat() colour js/world.js draws the pack's pieces with, named for what wears it; a keyed material's colour is checked against MATS in js/textures.js instead.",
+  "loader": "libs/addons/loaders/GLTFLoader.js",
+  "mats": "js/textures.js",
+  "models": "models",
+  "needsDecoder": [
+    "KHR_draco_mesh_compression",
+    "EXT_meshopt_compression",
+    "KHR_meshopt_compression",
+    "KHR_texture_basisu"
+  ],
+  "palette": {
+    "crate-wood": "5a4632",
+    "can": "b8b2a6",
+    "kick": "120c07",
+    "bottle-green": "7fb069",
+    "bottle-amber": "c46a3a",
+    "bottle-violet": "9a6fb5",
+    "bottle-blue": "5aa7d6",
+    "bottle-gold": "d7b45a",
+    "tap": "c9c9c9",
+    "cork": "8a6a42",
+    "cork-frame": "2e1d10",
+    "note-cream": "f2e9dc",
+    "note-yellow": "e8d27a",
+    "note-blue": "a8c8e0",
+    "door-frame": "241a10",
+    "tv-frame": "0a0a0a",
+    "stool-leg": "2a2a2e",
+    "table-leg": "1c130b"
+  },
+  "classes": {
+    "fixture": { "triangles": 1500, "bytes": 200192, "extent": 2.6, "texture": 0 },
+    "counter": { "triangles": 800, "bytes": 110592, "extent": 2.5, "texture": 0 },
+    "bottle": { "triangles": 150, "bytes": 27392, "extent": 0.5, "texture": 0 },
+    "frame": { "triangles": 300, "bytes": 46592, "extent": 2.5, "texture": 0 }
+  },
+  "items": {
+    "crate-wood": {
+      "file": "models/bar/crate-wood.glb",
+      "class": "fixture",
+      "box": [0.55, 0.5, 0.55]
+    },
+    "stove": {
+      "file": "models/bar/stove.glb",
+      "class": "fixture",
+      "box": [1.7, 0.95, 0.85]
+    },
+    "prep": {
+      "file": "models/bar/prep.glb",
+      "class": "fixture",
+      "box": [2.4, 0.95, 0.9]
+    },
+    "crate": {
+      "file": "models/bar/crate.glb",
+      "class": "fixture",
+      "box": [0.7, 0.6, 0.6]
+    },
+    "counter-mid": {
+      "file": "models/bar/counter-mid.glb",
+      "class": "counter",
+      "box": [1, 1.1, 0.75]
+    },
+    "counter-end": {
+      "file": "models/bar/counter-end.glb",
+      "class": "counter",
+      "box": [0.5, 1.1, 0.75]
+    },
+    "kick": {
+      "file": "models/bar/kick.glb",
+      "class": "counter",
+      "box": [1, 0.12, 0.8]
+    },
+    "shelf-back": {
+      "file": "models/bar/shelf-back.glb",
+      "class": "counter",
+      "box": [1, 0.08, 0.35]
+    },
+    "shelf-kitchen": {
+      "file": "models/bar/shelf-kitchen.glb",
+      "class": "counter",
+      "box": [1, 0.06, 0.35]
+    },
+    "sill": {
+      "file": "models/bar/sill.glb",
+      "class": "counter",
+      "box": [1.9, 0.08, 0.7]
+    },
+    "bottle-green": {
+      "file": "models/bar/bottle-green.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-amber": {
+      "file": "models/bar/bottle-amber.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-violet": {
+      "file": "models/bar/bottle-violet.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-blue": {
+      "file": "models/bar/bottle-blue.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "bottle-gold": {
+      "file": "models/bar/bottle-gold.glb",
+      "class": "bottle",
+      "box": [0.1, 0.32, 0.1]
+    },
+    "tap": {
+      "file": "models/bar/tap.glb",
+      "class": "bottle",
+      "box": [0.06, 0.35, 0.06]
+    },
+    "can": {
+      "file": "models/bar/can.glb",
+      "class": "bottle",
+      "box": [0.16, 0.2, 0.16]
+    },
+    "corkboard": {
+      "file": "models/bar/corkboard.glb",
+      "class": "frame",
+      "box": [1.62, 1.12, 0.065]
+    },
+    "tv-frame": {
+      "file": "models/bar/tv-frame.glb",
+      "class": "frame",
+      "box": [1.95, 1.15, 0.08]
+    },
+    "door-frame": {
+      "file": "models/bar/door-frame.glb",
+      "class": "frame",
+      "box": [1.4, 2.3, 0.12]
+    },
+    "stool": {
+      "file": "models/bar/stool.glb",
+      "class": "fixture",
+      "box": [0.44, 0.745, 0.44]
+    },
+    "table": {
+      "file": "models/bar/table.glb",
+      "class": "fixture",
+      "box": [1.24, 0.95, 1.24]
+    }
+  }
+}

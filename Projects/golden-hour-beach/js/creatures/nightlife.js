@@ -3,6 +3,7 @@ import { groundHeight, mulberry32 } from '../field.js';
 import {
   FIREFLY, fireflyField, fireflyAnchor, owlPerches, HUNT, huntTarget, huntReturn, huntPos,
 } from './nightpaths.js';
+import { makeAnimal } from '../animals.js';
 
 // The dusk-and-dark set, small enough to share a file: fireflies in the dune
 // hollows at half-light, some of them drifting down to the fire as it gets
@@ -71,11 +72,10 @@ export function makeFireflies(scene) {
 
 /* --------------------------------------------------------------------- owl */
 
-export function makeOwl(scene, audio) {
+export function makeOwl(scene, audio, animals) {
   const group = new THREE.Group();
   scene.add(group);
 
-  const mat = new THREE.MeshStandardMaterial({ color: 0x9a8a74, roughness: 0.9 });
   const snagMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 1 });
 
   // Two dead snags; the owl moves between them if pressed.
@@ -92,20 +92,12 @@ export function makeOwl(scene, audio) {
     group.add(arm);
   }
 
+  // The pack's owl; the snags stay built here. Its `head` node is the game's.
   const owl = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 7), mat);
-  body.scale.set(1, 1.5, 1);
-  owl.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), mat);
-  head.position.y = 0.26;
-  owl.add(head);
-  for (const sx of [-1, 1]) {
-    const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.07, 4), mat);
-    tuft.position.set(sx * 0.06, 0.36, 0);
-    owl.add(tuft);
-  }
+  const model = makeAnimal(animals, 'owl');
+  owl.add(model.seat);
   group.add(owl);
-  owl.userData = { head };
+  owl.userData = { head: model.nodes.head };
 
   const home = { x: perches[0].x, z: perches[0].z, radius: 70 };
   let at = 0, flying = 0;
@@ -181,7 +173,9 @@ export function makeOwl(scene, audio) {
       } else {
         // The head tracks the walker. Most of the night that is the whole
         // act, and it is enough.
+        // lookAt points a node's +Z; the model's face is its -Z, so half round.
         owl.userData.head.lookAt(px, owl.position.y + 0.26, pz);
+        owl.userData.head.rotateY(Math.PI);
         huntTimer -= dt;
         if (huntTimer <= 0) {
           huntTimer = HUNT.everyLo + rnd() * (HUNT.everyHi - HUNT.everyLo);
@@ -211,25 +205,18 @@ export function makeOwl(scene, audio) {
 
 /* -------------------------------------------------------------------- bats */
 
-export function makeBats(scene) {
+export function makeBats(scene, animals) {
   const COUNT = 4;
   const rnd = mulberry32(0xba75);
   const group = new THREE.Group();
   scene.add(group);
-  const mat = new THREE.MeshBasicMaterial({ color: 0x1a1418, side: THREE.DoubleSide });
   const bats = [];
   for (let i = 0; i < COUNT; i++) {
+    // The pack's bat: no clip (#659), two wing nodes the loop below beats.
     const g = new THREE.Group();
-    for (const sx of [-1, 1]) {
-      const wing = new THREE.BufferGeometry();
-      wing.setAttribute('position', new THREE.Float32BufferAttribute([
-        0, 0, 0, sx * 0.22, 0.03, 0.1, sx * 0.22, 0.03, -0.1,
-      ], 3));
-      wing.computeVertexNormals();
-      const w = new THREE.Mesh(wing, mat);
-      g.add(w);
-      g.userData[sx < 0 ? 'wL' : 'wR'] = w;
-    }
+    const model = makeAnimal(animals, 'bat');
+    g.add(model.seat);
+    g.userData = { wingR: model.nodes.wingR, wingL: model.nodes.wingL };
     group.add(g);
     bats.push({
       mesh: g,
@@ -258,9 +245,10 @@ export function makeBats(scene) {
       const z = b.cz + Math.sin(b.a * 1.3) * 5 + jx * 0.5;
       const y = groundHeight(x, z) + b.h + jy;
       b.mesh.position.set(x, y, z);
+      // A beat about the forward axis, tips up and down together (#663).
       const flap = Math.sin(t * b.flap);
-      b.mesh.userData.wL.rotation.x = flap * 0.9;
-      b.mesh.userData.wR.rotation.x = -flap * 0.9;
+      b.mesh.userData.wingR.rotation.z = flap * 0.9;
+      b.mesh.userData.wingL.rotation.z = -flap * 0.9;
     }
     // A bat cannot be watched for 1.6 s — that is the whole point of a bat.
     // One clean look at the nearest one counts (glimpse, like the meteors).

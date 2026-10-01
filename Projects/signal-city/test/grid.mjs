@@ -258,6 +258,41 @@ group('the sandbox: Free Play grown into a district (M9, #614 to #618)');
     ok(!w.stats.gridlock && w.stats.cleared > 100, 'and the district runs its five minutes hands-off', `${w.stats.cleared} cleared, ${w.stats.handoffs} handoffs, ${w.stats.collisions} collisions`);
   }
 
+  // the corridor follows its vehicle (R6, #682): an ambulance called once,
+  // at box 1 of three boxes in a row, is held for at boxes 2 and 3. What
+  // the light shows is read off the World as the car's front reaches each
+  // stop line: the box is the car's own path.node, not anything
+  // _followPriority decided (#614).
+  const straight = () => {
+    const L = gridLevel(1, 3);
+    L.network.cells = [0, 1, 2].map(c => ({ at: [c, 0], legs: ['N', 'E', 'S', 'W'] }));
+    L.demand = [{ W: 300, N: 200, S: 200 }, { N: 200, S: 200 }, { E: 300, N: 200, S: 200 }];
+    L.turns = { T: 1 };
+    L.spawns = [{ t: 20, node: 0, leg: 'W', archetype: 'emergency', turn: 'T' }];
+    return L;
+  };
+  const runStraight = call => {
+    const w = new World(straight(), 1);
+    let amb = null;
+    const at = {};
+    for (let i = 0; i < 120 * 60 && !(amb && amb.done); i++) {
+      w.step();
+      if (!amb && (amb = w.cars.find(c => c.archetype === 'emergency')) && call) w.requestPriority(amb);
+      if (!amb || amb.done) continue;
+      const n = amb.path.node, ctl = w.controllers[n];
+      if (!at[n] && amb.front >= amb.path.stopLine) at[n] = { held: ctl.current.name === 'priority' && ctl.head(amb.path.movement) === 'green', light: `${ctl.current.name} ${ctl.head(amb.path.movement)}` };
+    }
+    return { at, done: !!(amb && amb.done), read: [0, 1, 2].map(n => `box ${n + 1} ${at[n] ? at[n].light : 'never reached'}`).join(', ') };
+  };
+  {
+    const r = runStraight(true);
+    ok(r.done && r.at[0] && r.at[0].held, 'an ambulance called at box 1 of three in a row is held for there', r.read);
+    ok(r.at[1] && r.at[1].held, 'and at box 2 the corridor has followed it: the box is holding its green when it reaches the line', r.read);
+    ok(r.at[2] && r.at[2].held, 'and at box 3', r.read);
+    const u = runStraight(false);
+    ok(u.done && [0, 1, 2].every(n => u.at[n] && !u.at[n].held), 'one nobody called is held for at none of them: the corridor is still the player\'s call', u.read);
+  }
+
   // the roundabout never converts a district (#613, #618); one box still converts
   const withRing = loadout(districtLevel(fp, 5, 4), ['roundabout']);
   ok(!withRing.network.roundabout && !(withRing.bought || []).includes('roundabout'), 'an owned roundabout leaves a district\'s signals alone');

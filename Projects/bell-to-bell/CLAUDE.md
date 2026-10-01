@@ -19,6 +19,7 @@ cd tests && SOAK=500 node balance.mjs   # more seeds through the generator
 cd tests && node assets.mjs     # what Assets/ weighs, and what of it the game opens
 cd tests && node characters.mjs # the eight compressed outfits still stand where the originals stood
 cd tests && node props.mjs      # the eleven props and the frame still have their shape, UVs and textures
+cd tests && node ../tools/blender/validate.mjs   # the Blender pack against its style sheet (tools/blender/budget.json)
 node --check src/<file>.js      # syntax check a module
 ```
 No build step, no package manager, no `node_modules`. three.js is vendored in
@@ -53,6 +54,16 @@ picker. Do not re-save a texture by hand; change the recipe, re-run it, and run
 `Tools/board-check/` (it needs `npm i --no-save sharp@0.35.4`), which fails a
 committed file measurably worse than the recipe's own output. `assets.mjs`
 holds each tier-named file to its width, from the JPEG header, in CI.
+
+The Blender pack is built from code by `tools/blender/` (#643; WISHLIST.md
+"Blender assets"), on Devon's machines only, huginn or Windows (#707):
+`blender -b --factory-startup -P tools/blender/classroom.py -- [item ...]`
+from this folder. It writes glTF Separate (`.gltf` and `.bin`) into
+`Assets/models/blender/`, because that is what the meshopt recipe reads out of
+git, and the recipe writes the `.glb` the game loads beside it. Do not
+hand-edit either; change the script and rerun it, then
+`node ../tools/blender/validate.mjs` from `tests/`. A rerun that changes a
+byte of an unchanged item is a bug.
 
 `src/persist.js` is the only thing that writes to `localStorage`, and it degrades to
 an in-memory store if the browser refuses. Nothing else may reach for storage.

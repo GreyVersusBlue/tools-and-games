@@ -7,6 +7,8 @@ import { buildProps } from './props.js';
 import { buildCreek } from './creek.js';
 import { buildAtmosphere } from './atmosphere.js';
 import { buildWildlife } from './wildlife.js';
+import { loadAnimals } from './animals.js';
+import { loadPieces } from './pieces.js';
 import { createDread } from './dread.js';
 import { buildLogbook } from './logbook.js';
 import { WalkControls } from './controls.js';
@@ -157,11 +159,15 @@ function applyWeather(fogT, altT) {
 // ---------- World ----------
 const terrain = buildTerrain(scene);
 const forest = buildForest(scene);
-const props = buildProps(scene);
+// The animal and prop packs first: every creature and every prop is built
+// from them, and a model that fails to load stops the page here, by name,
+// rather than drawing nothing (B4, B6).
+const [animals, pieces] = await Promise.all([loadAnimals(), loadPieces()]);
+const props = buildProps(scene, pieces);
 const creek = buildCreek(scene);
 const atmosphere = buildAtmosphere(scene);
 const audio = new Soundscape();
-const wildlife = buildWildlife(scene, audio);
+const wildlife = buildWildlife(scene, audio, animals);
 const dread = createDread(scene, audio);
 const controls = new WalkControls(camera, canvas);
 const logbook = buildLogbook(scene, controls);

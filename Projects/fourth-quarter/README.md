@@ -187,8 +187,10 @@ table and this week's fixtures.
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
   `node test/smoke-league.mjs`, `node test/smoke-regulars.mjs`,
   `node test/smoke-events.mjs`, `node test/smoke-layout.mjs`,
-  `node test/smoke-nav.mjs` and `node test/smoke-textures.mjs` (CI runs every
-  `test/*.mjs`).
+  `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs` and
+  `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`). The last one drives
+  Chromium through `Tools/board-check/harness.mjs`, so it needs `npm ci` in
+  that folder first; CI does that for the whole job.
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
   hand; it needs `playwright-core`. `node tools/measure-load.mjs` is the
   texture load measurement (below). Both texture tiers are written by
@@ -225,6 +227,14 @@ table and this week's fixtures.
 - `js/materials.js` — the loader: one counted `LoadingManager`, the tier
   chosen once, a 404 keeping that slot's placeholder colour.
 - `js/main.js` — loop, HUD, overlays, broadcast theater.
+- `libs/three.module.js` — three.js r160, the only entry in `index.html`'s
+  import map. `libs/addons/loaders/GLTFLoader.js` and
+  `libs/addons/utils/BufferGeometryUtils.js` are three@0.160.0's own files,
+  unmodified (byte for byte against `Tools/board-check/three-0.160.0/`), there
+  for the Blender bar pack (WISHLIST.md, Blender assets). r160's loader imports
+  that one util and `three`, so the map needs nothing new.
+  `test/gltf-loader.mjs` proves it loads a hand-built GLB, a triangle strip
+  included, in a real browser. Nothing in the game imports it yet.
 
 ## Textures
 

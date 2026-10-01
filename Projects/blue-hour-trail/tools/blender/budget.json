@@ -1,0 +1,101 @@
+{
+  "about": "Blue Hour's Blender style sheet as data (BACKLOG.md 'Blue Hour: Blender assets' B1). validate.mjs reads it. Bytes are KiB x 1024. extent is the longest side a class may have, in metres; each item's box is the builder's box it replaces, held to 10% per axis. texture is the largest image side in pixels, and 0 means none. clips are the clip names an item must carry, exactly; nodes are the node names the game finds and poses itself, and each must be in the file. ref is the entry a prop was built at (#665), and ref.origin is where the builder's own origin sits in the model's frame, in metres at ref, which props.py checks on every export so the wiring row can put it back (B5). The palette is every colour js/wildlife.js, js/props.js and js/forest.js draw with, named for what wears it.",
+  "loader": "libs/addons/loaders/GLTFLoader.js",
+  "needsDecoder": [
+    "KHR_draco_mesh_compression",
+    "EXT_meshopt_compression",
+    "KHR_meshopt_compression",
+    "KHR_texture_basisu"
+  ],
+  "palette": {
+    "deer": "5a4a3c",
+    "deer-pale": "8a7a66",
+    "small-bird": "3a3f45",
+    "crow": "14161a",
+    "squirrel": "6a4a34",
+    "owl": "4e463c",
+    "owl-eye": "d8c86a",
+    "fox": "7a4630",
+    "fox-leg": "2e2019",
+    "wood": "4a4038",
+    "wood-dark": "3a332c",
+    "stone": "565a5e",
+    "marker-blaze": "c8d0d8",
+    "tower-pane": "11181f",
+    "cabin-window": "8a6a30",
+    "cabin-window-lit": "d9a545",
+    "radio": "3c443e",
+    "headlamp": "3a4046",
+    "headlamp-strap": "55504a",
+    "headlamp-lens": "cfc9ae",
+    "mushroom-stem": "b0a894",
+    "mushroom-cap": "6e4a38",
+    "mushroom-glow": "9aa88a",
+    "mushroom-glow-emissive": "2a3a26",
+    "conifer": "33443a",
+    "conifer-light": "4e6248",
+    "conifer-dead": "2a3230",
+    "conifer-dead-light": "3a4038",
+    "tree-tint": "37444c"
+  },
+  "classes": {
+    "animal-large": { "triangles": 3000, "bytes": 256000, "extent": 3.0, "texture": 0, "clips": true },
+    "animal-mid":   { "triangles": 1500, "bytes": 153600, "extent": 1.5, "texture": 0, "clips": true },
+    "animal-small": { "triangles": 800,  "bytes": 81920,  "extent": 3.0, "texture": 0, "clips": true },
+    "flock":        { "triangles": 300,  "bytes": 20480,  "extent": 1.5, "texture": 0, "clips": false },
+    "prop-large":   { "triangles": 4000, "bytes": 204800, "extent": 13.0, "texture": 0, "clips": false },
+    "prop":         { "triangles": 1200, "bytes": 81920,  "extent": 3.0, "texture": 0, "clips": false },
+    "prop-small":   { "triangles": 300,  "bytes": 20480,  "extent": 1.1, "texture": 0, "clips": false }
+  },
+  "items": {
+    "crow": {
+      "file": "assets/models/animals/crow.glb",
+      "class": "animal-small",
+      "box": [2.64, 0.356, 0.616],
+      "clips": ["fly"],
+      "nodes": ["wingR", "wingL"]
+    },
+    "deer": {
+      "file": "assets/models/animals/deer.glb",
+      "class": "animal-large",
+      "box": [1.24, 1.729, 2.857],
+      "clips": ["graze"],
+      "nodes": ["head"]
+    },
+    "fox": {
+      "file": "assets/models/animals/fox.glb",
+      "class": "animal-mid",
+      "box": [0.33, 0.54, 1.299]
+    },
+    "owl": {
+      "file": "assets/models/animals/owl.glb",
+      "class": "animal-mid",
+      "box": [0.351, 0.705, 0.312],
+      "nodes": ["head"]
+    },
+    "squirrel": {
+      "file": "assets/models/animals/squirrel.glb",
+      "class": "animal-small",
+      "box": [0.182, 0.376, 0.413]
+    },
+    "small-bird": {
+      "file": "assets/models/animals/small-bird.glb",
+      "class": "flock",
+      "box": [1.2, 0.162, 0.28],
+      "nodes": ["wingR", "wingL"]
+    },
+    "marker-1": {"file": "assets/models/props/marker-1.glb", "class": "prop", "box": [0.3, 1.5, 0.13], "ref": {"origin": [0.0004, 0.1, 0], "note": "buildMarkers(): all 14 in LAYOUT.markers are one builder; the post is sunk 10 cm, so the ground is 0.10 up the model"}},
+    "marker-2": {"file": "assets/models/props/marker-2.glb", "class": "prop", "box": [0.3, 1.5, 0.13], "ref": {"origin": [0.0126, 0.1, 0], "note": "a second weathering of marker-1"}},
+    "cairn-stone-1": {"file": "assets/models/props/cairn-stone-1.glb", "class": "prop-small", "box": [0.644, 0.374, 0.654], "ref": {"r": 0.34, "seed": 0, "origin": [0, 0.187, 0], "note": "LAYOUT.cairns[0]'s bottom stone; entries run r 0.14 to 0.38, scale by r over this"}},
+    "cairn-stone-2": {"file": "assets/models/props/cairn-stone-2.glb", "class": "prop-small", "box": [0.6962, 0.3967, 0.6955], "ref": {"r": 0.3328, "seed": 977, "origin": [-0.0164, 0.2003, 0.0154], "note": "LAYOUT.cairns[0]'s second stone"}},
+    "cairn-stone-3": {"file": "assets/models/props/cairn-stone-3.glb", "class": "prop-small", "box": [0.5189, 0.2987, 0.5223], "ref": {"r": 0.2586, "seed": 1954, "origin": [-0.0118, 0.1538, -0.0027], "note": "LAYOUT.cairns[0]'s third stone"}},
+    "bridge": {"file": "assets/models/props/bridge.glb", "class": "prop-large", "box": [2.5, 1.22, 7.0], "ref": {"len": 7, "width": 2.4, "origin": [0, 0.28, 0], "note": "findBridge()'s fixed 7 x 2.4; the builder's origin is deckY, mid-span"}},
+    "bench": {"file": "assets/models/props/bench.glb", "class": "prop", "box": [1.6, 0.95, 0.495], "ref": {"origin": [0, 0, 0.0225], "note": "buildBench() whole; the origin is the ground under the seat's middle"}},
+    "tower": {"file": "assets/models/props/tower.glb", "class": "prop-large", "box": [4.884, 11.857, 4.007], "ref": {"origin": [0, 0, -0.0082], "note": "buildTower() whole with its window band; the legs' feet stand 4 cm off the builder's ground"}, "nodes": ["panes"]},
+    "cabin": {"file": "assets/models/props/cabin.glb", "class": "prop-large", "box": [4.6, 4.395, 3.58], "ref": {"origin": [0, 0, 0.0512], "note": "buildCabin() whole with its window; the door is on +z"}, "nodes": ["window"]},
+    "radio": {"file": "assets/models/props/radio.glb", "class": "prop-small", "box": [0.36, 1.07, 0.18], "ref": {"origin": [1.6955, -0.855, -1.55], "note": "buildRadio() in the cabin's frame: the origin is the cabin's"}},
+    "headlamp": {"file": "assets/models/props/headlamp.glb", "class": "prop-small", "box": [0.1863, 0.0675, 0.1891], "ref": {"origin": [0.02, -0.0125, -0.0362], "note": "buildHeadlamp() whole, at no yaw of its own; the origin is LAYOUT.headlamp's ground point"}},
+    "mushroom": {"file": "assets/models/props/mushroom.glb", "class": "prop-small", "box": [0.1127, 0.16, 0.1156], "ref": {"origin": [0, 0, 0], "note": "buildMushrooms()'s stem and cap at unit scale; entries scale 0.6 to 1.9"}},
+    "mushroom-glow": {"file": "assets/models/props/mushroom-glow.glb", "class": "prop-small", "box": [0.1127, 0.16, 0.1156], "ref": {"origin": [0, 0, 0], "note": "the same, with the glowing cap and its emissive"}}
+  }
+}

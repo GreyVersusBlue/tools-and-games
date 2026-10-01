@@ -199,6 +199,8 @@ button:focus-visible{outline:2px solid var(--goal);outline-offset:2px}
 .ed-acts button{flex:1 1 auto}
 .link-err{color:#ff8a6b !important;font-family:"Space Mono",monospace;font-size:12px;
   line-height:1.5;border:1px solid rgba(255,120,100,.35);border-radius:10px;padding:10px 12px}
+/* the sheet did not load (#735): the card says why and Begin is off */
+#btnStart:disabled{opacity:.4;cursor:default}
 @media (max-width:1000px){ .ed{width:248px} }
 @media (max-width:680px){ .ed{width:200px} .ed-tools{grid-template-columns:1fr} }
 /* A short landscape window (a phone on its side is about 400px tall) has no

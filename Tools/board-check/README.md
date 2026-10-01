@@ -265,6 +265,19 @@ taking a new one.
 | 8153 | `assets/js/gvb-save.browser.mjs` |
 | 8155 | `Projects/orbital/test/browser.mjs` |
 | 8157 | `Projects/signal-city/test/browser.mjs` |
+| 8161 | `Projects/golden-hour-beach/test/gltf-loader.mjs` |
+| 8162 | `Projects/blue-hour-trail/test/gltf-loader.mjs` |
+| 8163 | `Projects/fourth-quarter/test/gltf-loader.mjs` |
+| 8164 | `Projects/aphelion/test/gltf-loader.mjs` |
+| 8165 | `Projects/golden-hour-beach/test/animals.mjs` |
+| 8166 | `Projects/blue-hour-trail/test/animals.mjs` |
+| 8167 | `Projects/golden-hour-beach/test/props.mjs` |
+| 8168 | `Projects/blue-hour-trail/test/props.mjs` |
+| 8169 | `Projects/fourth-quarter/test/bar.mjs` |
+| 8170 | `Projects/aphelion/test/ship.mjs` |
+| 8171 | `Pathfinder/tests/converter.test.mjs` |
+| 8172 | `Projects/skywings64/test/browser.mjs` |
+| 8173 | `check-tavern-clicks.mjs` |
 
 8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are
 never run in the same process, and neither is in the other's CI job. It is on the

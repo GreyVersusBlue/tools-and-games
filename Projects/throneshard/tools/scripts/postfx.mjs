@@ -1,0 +1,20 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ args: ['--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+await p.goto('http://localhost:4173');
+await p.waitForFunction(() => window.game?.ui && document.querySelector('.btn-play'), null, { timeout: 120000 });
+const r = await p.evaluate(async () => {
+  const g = window.game; g.startMatch({ heroId: 'sera' });
+  g.renderer.setAnimationLoop(null);
+  g.cameraCtl.focus(-30, 30, true); for (let i=0;i<30;i++) g.tick();
+  const R = g.renderer, P = g.world.post, C = g.composer;
+  const m = () => { C.render(0.016); R.getContext().finish(); const t = performance.now(); for (let i=0;i<20;i++) C.render(0.016); R.getContext().finish(); return +((performance.now()-t)/20).toFixed(2); };
+  const raw = () => { R.render(g.scene,g.camera); R.getContext().finish(); const t = performance.now(); for (let i=0;i<20;i++) R.render(g.scene,g.camera); R.getContext().finish(); return +((performance.now()-t)/20).toFixed(2); };
+  const o = { pixelRatio: R.getPixelRatio(), raw: raw(), full: m() };
+  P.bloom.enabled = false; o.noBloom = m(); P.bloom.enabled = true;
+  P.smaa.enabled = false; o.noSmaa = m(); P.fxaa.enabled = true; o.fxaaInstead = m(); P.fxaa.enabled = false; P.smaa.enabled = true;
+  const tick = () => { const t = performance.now(); for (let i=0;i<20;i++) g.tick(); R.getContext().finish(); return +((performance.now()-t)/20).toFixed(2); };
+  o.tickFull = tick();
+  return o;
+});
+console.log(JSON.stringify(r)); await b.close();

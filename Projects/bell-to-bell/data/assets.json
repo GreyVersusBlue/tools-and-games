@@ -80,6 +80,14 @@
     "binder": "Assets/models/Props/binder_notebook_1k.gltf/binder_notebook_1k.glb",
     "stapler": "Assets/models/Props/vintage_stapler_1k.gltf/vintage_stapler_1k.glb"
   },
+  "fixtures": {
+    "_comment": "A room.json fixture dressed by a Blender piece (tools/blender/, WISHLIST.md 'Blender assets'), by the fixture's id. The piece is built at the fixture's size, origin at the centre of its base and facing +Z, so it is hung where the fixture stands and turned by rotY, never rescaled; the window faces +Z and the right wall faces -X, hence -pi/2 (#702). The fixture's box stays, hidden, and comes back if the model fails to load.",
+    "whiteboard": { "model": "Assets/models/blender/whiteboard.glb" },
+    "objectiveBoard": { "model": "Assets/models/blender/objective-board.glb" },
+    "window1": { "model": "Assets/models/blender/window.glb", "rotY": -1.5707963267948966 },
+    "window2": { "model": "Assets/models/blender/window.glb", "rotY": -1.5707963267948966 },
+    "window3": { "model": "Assets/models/blender/window.glb", "rotY": -1.5707963267948966 }
+  },
   "_alternates": {
     "_comment": "The sets we chose against and kept on disk on purpose, so the choice stays re-makeable. tests/assets.mjs asserts every path here still resolves, so this block can never advertise a file that is gone.",
     "textures": [

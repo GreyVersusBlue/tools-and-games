@@ -7,6 +7,7 @@ import { makeSeals } from './creatures/seals.js';
 import { makeTidepoolLife } from './creatures/tidepool.js';
 import { makeFireflies, makeOwl, makeBats } from './creatures/nightlife.js';
 import { makeHeron, makeCormorants } from './creatures/estuary.js';
+import { makeAnimal, LIFT } from './animals.js';
 
 // Two layers now. The original quartet — dolphin arcs, circling/feeding gulls,
 // the sailboat, the jet with its contrail — lives in this file, as tuned and
@@ -18,51 +19,44 @@ import { makeHeron, makeCormorants } from './creatures/estuary.js';
 // entirely — a seal nobody is west of costs nothing.
 
 // ---------- Dolphin ----------
-function makeDolphin() {
+// The pack's dolphin, seated in a group that moves in the old builder's frame
+// (+X leading, origin at the body's centre), so the arcs below are unchanged.
+function makeDolphin(animals) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x3d4a52, roughness: 0.4, metalness: 0.1 });
-
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), mat);
-  body.scale.set(2.6, 0.9, 0.8);
-  g.add(body);
-
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.4, 10), mat);
-  nose.rotation.z = -Math.PI / 2;
-  nose.position.set(2.9, 0.05, 0);
-  g.add(nose);
-
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.1, 3), mat);
-  fin.position.set(0.2, 1.0, 0);
-  fin.rotation.y = Math.PI / 2;
-  fin.scale.set(1, 1, 0.35);
-  g.add(fin);
-
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.2, 3), mat);
-  tail.position.set(-2.6, 0, 0);
-  tail.rotation.z = Math.PI / 2;
-  tail.scale.set(1, 1, 0.3);
-  g.add(tail);
-
+  g.add(makeAnimal(animals, 'dolphin').seat);
   return g;
 }
 
 // ---------- Gull ----------
-function makeGull() {
+// The gull model faces -Z like the orbit always led, and its wings are nodes
+// the `fly` clip beats about the forward axis (#655). The clip drives the
+// wings whenever the gull is in the air, sped to each gull's own flap rate;
+// on the sand the clip stops and the game folds the wings back along the body
+// (#661). YXZ makes rotation.x a pitch about the gull's own span whatever way
+// it is heading: positive is nose up.
+function makeGull(animals) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color: 0xf2ebe0, side: THREE.DoubleSide });
-  const wingGeo = new THREE.BufferGeometry();
-  wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, 0, 0,   1.6, 0.15, 0.35,   1.6, 0.15, -0.35,
-  ], 3));
-  wingGeo.computeVertexNormals();
-  const wL = new THREE.Mesh(wingGeo, mat);
-  const wR = new THREE.Mesh(wingGeo.clone(), mat);
-  wR.scale.x = -1;
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 5), mat);
-  body.scale.set(1.8, 0.8, 0.8);
-  g.add(wL, wR, body);
-  g.userData = { wL, wR };
+  g.rotation.order = 'YXZ';
+  const a = makeAnimal(animals, 'gull');
+  g.add(a.seat);
+  const fly = a.actions.fly;
+  fly.play();
+  fly.time = Math.random() * fly.getClip().duration;
+  g.userData = {
+    mixer: a.mixer, fly,
+    wingR: a.nodes.wingR, wingL: a.nodes.wingL,
+    // One loop of the clip is this many radians of the old sin(t * k) flap.
+    rate: (Math.PI * 2) / fly.getClip().duration,
+  };
   return g;
+}
+
+// Turn toward a heading by the short way round, eased so a change of mode
+// never snaps the bird about.
+function turnToward(obj, heading, k) {
+  let d = heading - obj.rotation.y;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  obj.rotation.y += d * Math.min(1, k);
 }
 
 // ---------- Sailboat ----------
@@ -115,14 +109,14 @@ function makePlane() {
   return g;
 }
 
-export function buildWildlife(scene, audio) {
-  const dolphin = makeDolphin();
+export function buildWildlife(scene, audio, animals) {
+  const dolphin = makeDolphin(animals);
   dolphin.visible = false;
   scene.add(dolphin);
 
   const gulls = [];
   for (let i = 0; i < 5; i++) {
-    const gull = makeGull();
+    const gull = makeGull(animals);
     gull.userData.orbit = {
       cx: -40 + Math.random() * 120,
       cz: -60 - Math.random() * 60,
@@ -201,18 +195,18 @@ export function buildWildlife(scene, audio) {
 
   // ---------- The creature registry ----------
   // The owl is kept by name too: the ?debug hook can start its hunt.
-  state.owl = makeOwl(scene, audio);
+  state.owl = makeOwl(scene, audio, animals);
   const entities = [
-    makeSanderlings(scene, audio),
-    makeCrabs(scene, audio),
-    makePelicans(scene, audio),
-    makeSeals(scene, audio),
+    makeSanderlings(scene, audio, animals),
+    makeCrabs(scene, audio, animals),
+    makePelicans(scene, audio, animals),
+    makeSeals(scene, audio, animals),
     makeTidepoolLife(scene, audio),
     makeFireflies(scene),
     state.owl,
-    makeBats(scene),
-    makeHeron(scene, audio),
-    makeCormorants(scene, audio),
+    makeBats(scene, animals),
+    makeHeron(scene, audio, animals),
+    makeCormorants(scene, audio, animals),
   ];
   // waterY is this second's surface, wave and all — what an animal standing in
   // the swash reacts to. tideY is the same sea with the wave taken out, which
@@ -290,9 +284,7 @@ export function buildWildlife(scene, audio) {
         gull.position.set(o.cx + Math.cos(a) * o.r, o.h + Math.sin(state.t * 0.4 + o.phase) * 1.5, o.cz + Math.sin(a) * o.r);
         gull.rotation.y = -a * o.dir + (o.dir > 0 ? Math.PI : 0);
         gull.rotation.x = 0;
-        const flap = Math.sin(state.t * o.flap * 4 + o.phase);
-        gd.wL.rotation.x = flap * 0.6;
-        gd.wR.rotation.x = -flap * 0.6;
+        gd.fly.timeScale = o.flap * 4 / gd.rate;
 
         if (state.crumbs && state.crumbs.t > 12) {
           const d = Math.hypot(gull.position.x - state.crumbs.x, gull.position.z - state.crumbs.z);
@@ -305,8 +297,10 @@ export function buildWildlife(scene, audio) {
           }
         }
       } else if (gd.mode === 'approach') {
-        // Fly at the landing spot, descending, flare close in.
-        const gy = groundHeight(gd.spot.x, gd.spot.z) + 0.12;
+        // Fly at the landing spot, descending, flare close in. Head first:
+        // the builder's atan2(-dz, dx) led with a wingtip, so the model takes
+        // the quarter turn (#661).
+        const gy = groundHeight(gd.spot.x, gd.spot.z) + LIFT.gull;
         const dx = gd.spot.x - gull.position.x, dz = gd.spot.z - gull.position.z;
         const dist = Math.hypot(dx, dz);
         const speed = dist < 5 ? 2.2 + dist * 0.9 : 7;
@@ -314,23 +308,25 @@ export function buildWildlife(scene, audio) {
         gull.position.x += (dx / (dist || 1)) * speed * dt;
         gull.position.z += (dz / (dist || 1)) * speed * dt;
         gull.position.y += vy * speed * 0.35 * dt;
-        gull.rotation.y = Math.atan2(-dz, dx);
-        gull.rotation.x = dist < 5 ? -0.35 : 0.1;   // flare up to land
-        const flap = Math.sin(state.t * o.flap * 8);
-        gd.wL.rotation.x = flap * 0.8;
-        gd.wR.rotation.x = -flap * 0.8;
+        if (dist > 0.3) turnToward(gull, Math.atan2(-dz, dx) - Math.PI / 2, dt * 6);
+        gull.rotation.x = dist < 5 ? 0.35 : -0.1;   // flare up to land, nose down on the glide in
+        gd.fly.timeScale = o.flap * 8 / gd.rate;
         if (dist < 0.5 && Math.abs(gull.position.y - gy) < 0.4) {
           gd.mode = 'ground';
           gd.groundT = 22 + Math.random() * 14;
           gd.hopT = 0;
-          gull.position.y = gy;
+          // Where it touched down, not the spot it aimed for: half a metre out
+          // on a sloping beach is a centimetre of air or of sand.
+          gull.position.y = groundHeight(gull.position.x, gull.position.z) + LIFT.gull;
           gull.rotation.x = 0;
+          // Wings folded back along the body: the clip lets go of them.
+          gd.fly.stop();
+          gd.wingR.rotation.set(0, -1.25, -0.3);
+          gd.wingL.rotation.set(0, 1.25, 0.3);
         }
       } else if (gd.mode === 'ground') {
         gd.groundT -= dt;
-        // Folded wings, quick hops between pecks, an occasional squabble.
-        gd.wL.rotation.x = 1.1;
-        gd.wR.rotation.x = -1.1;
+        // Quick hops between pecks, an occasional squabble.
         gd.hopT -= dt;
         if (gd.hopT <= 0 && state.crumbs) {
           gd.hopT = 0.5 + Math.random() * 1.1;
@@ -346,23 +342,27 @@ export function buildWildlife(scene, audio) {
           if (d > 0.1) {
             gull.position.x += (dx / d) * 1.5 * dt;
             gull.position.z += (dz / d) * 1.5 * dt;
-            gull.rotation.y = Math.atan2(-dz, dx);
+            turnToward(gull, Math.atan2(-dz, dx) - Math.PI / 2, dt * 10);
           }
         }
-        gull.position.y = groundHeight(gull.position.x, gull.position.z) + 0.12;
-        // Peck: a quick nod on a jittered clock.
-        gull.rotation.x = Math.max(0, Math.sin(state.t * 3.1 + o.phase * 7)) * 0.55;
-        if (gd.groundT <= 0 || !state.crumbs) gd.mode = 'depart';
+        // The model's base on the sand: its origin is its feet (#656).
+        gull.position.y = groundHeight(gull.position.x, gull.position.z) + LIFT.gull;
+        // Peck: a quick nod, nose down, on a jittered clock.
+        gull.rotation.x = -Math.max(0, Math.sin(state.t * 3.1 + o.phase * 7)) * 0.55;
+        if (gd.groundT <= 0 || !state.crumbs) {
+          gd.mode = 'depart';
+          gd.fly.play();
+        }
       } else if (gd.mode === 'depart') {
         // Climb out seaward, then splice back into the orbit exactly where the
         // climb ends — re-anchoring phase and radius so there is no snap.
+        const vx = Math.sin(state.t * 0.7 + o.phase);
         gull.position.y += 3.2 * dt;
         gull.position.z -= 2.6 * dt;
-        gull.position.x += Math.sin(state.t * 0.7 + o.phase) * dt;
+        gull.position.x += vx * dt;
+        turnToward(gull, Math.atan2(2.6, vx) - Math.PI / 2, dt * 3);
         gull.rotation.x = 0.25;
-        const flap = Math.sin(state.t * o.flap * 7);
-        gd.wL.rotation.x = flap * 0.8;
-        gd.wR.rotation.x = -flap * 0.8;
+        gd.fly.timeScale = o.flap * 7 / gd.rate;
         if (gull.position.y >= o.h - 0.5) {
           const a = Math.atan2(gull.position.z - o.cz, gull.position.x - o.cx);
           o.r = Math.min(34, Math.max(10, Math.hypot(gull.position.x - o.cx, gull.position.z - o.cz)));
@@ -372,6 +372,7 @@ export function buildWildlife(scene, audio) {
           delete gd.spot; delete gd.hop;
         }
       }
+      gd.mixer.update(dt);
     }
 
     // --- sailboat: slow drift + rock ---

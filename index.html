@@ -72,7 +72,14 @@
     position: absolute; top: 0; left: 0; right: 0; height: var(--band); z-index: 1; pointer-events: none;
     background: linear-gradient(180deg, rgba(10,6,3,.5) 0%, rgba(10,6,3,0) 24%, rgba(10,6,3,0) 66%, rgba(20,14,7,.86) 90%, #140e07 100%);
   }
-  #page { position: relative; z-index: 2; }
+  /* #page covers the room, so it lets pointers through where it is empty and
+     takes them back on its own children: the tavern's five click targets
+     (TavernScene.poke) only ever see the clicks the page leaves them. A direct
+     child's box is solid, so the hanging sign stays in front of the room, and
+     #flavor, a caption nothing listens to, lets the door through (guarded by
+     Tools/board-check/check-tavern-clicks.mjs). */
+  #page { position: relative; z-index: 2; pointer-events: none; }
+  #page > * { pointer-events: auto; }
 
   /* ---------- hanging sign ---------- */
   @keyframes sway { 0%,100% { transform: rotate(-.5deg); } 50% { transform: rotate(.5deg); } }
@@ -99,7 +106,7 @@
     letter-spacing: .26em; color: #C9B583; margin-top: .5rem;
   }
   #flavor {
-    max-width: 640px; margin: 1rem auto 0; padding: 0 1.2rem; text-align: center;
+    max-width: 640px; margin: 1rem auto 0; padding: 0 1.2rem; text-align: center; pointer-events: none;
     font-style: italic; font-size: 1.06rem; color: #D3BE90; min-height: 1.6em;
     text-shadow: 0 2px 6px rgba(0,0,0,.9); transition: opacity .25s ease;
   }
@@ -352,7 +359,9 @@
   <symbol id="g-school" viewBox="0 0 24 24"><path d="M3 12.2 12 5.2l9 7"/><path d="M5.6 11.2v8.6h12.8v-8.6"/><path d="M10.1 19.8v-4.6h3.8v4.6"/><path d="M11 5.4V2.8h2"/></symbol>
   <symbol id="g-orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2"/><ellipse cx="12" cy="12" rx="9.2" ry="4"/><circle cx="20.5" cy="10.6" r="1.3"/></symbol>
   <symbol id="g-signal" viewBox="0 0 24 24"><rect x="8.5" y="2.5" width="7" height="16" rx="2"/><circle cx="12" cy="6.3" r="1.5"/><circle cx="12" cy="10.5" r="1.5"/><circle cx="12" cy="14.7" r="1.5"/><path d="M12 18.5v3M9.5 21.5h5"/></symbol>
+  <symbol id="g-wing" viewBox="0 0 24 24"><path d="M2.5 13.5 12 5.5l9.5 8L12 11z"/><path d="M12 11v4.5"/><path d="M9 19.5l3-4 3 4z"/></symbol>
   <symbol id="g-campfire" viewBox="0 0 24 24"><path d="M12 4c2.4 3 4 5.3 4 7.6a4 4 0 0 1-8 0C8 9.3 9.6 7 12 4z"/><path d="M5 19.5 12 15l7 4.5"/><path d="M6.5 21 12 17.5 17.5 21"/></symbol>
+  <symbol id="g-shard" viewBox="0 0 24 24"><path d="M12 2.5 17 9l-5 12.5L7 9z"/><path d="M7 9h10"/><path d="M12 2.5 10.2 9 12 21.5 13.8 9z"/><path d="M4 20.5h16"/></symbol>
 </defs></svg>
 
 <div id="room"><tavern-scene crowd="0.8" intensity="0.9" view="room"></tavern-scene></div>
@@ -506,13 +515,29 @@
     <div class="reward">REWARD: <b>A BUILDING THAT PASSES</b> · DESIGN TOOL</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-house"/></svg></span>
   </a>
-  <a class="notice" data-tags="Sim" data-new href="Projects/signal-city/">
+  <a class="notice" data-tags="Sim" data-new data-preview="assets/previews/signal-city.jpg" href="Projects/signal-city/">
     <span class="pin" aria-hidden="true"></span>
     <div class="eyebrow">QUEST POSTED</div>
     <h3>Signal City</h3>
-    <p class="desc">Program the traffic lights, never the cars — eight kinds of driver, one crossroads, and a clearance interval you will learn to respect.</p>
+    <p class="desc">Program the traffic lights, never the cars: eight kinds of driver, a district of twelve boxes, and an endless city that grows a box every day you hold it.</p>
     <div class="reward">REWARD: <b>A GREEN WAVE</b> · SIGNAL SIM</div>
     <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-signal"/></svg></span>
+  </a>
+  <a class="notice" data-tags="Sim Explore" data-new data-preview="assets/previews/skywings64.jpg" href="Projects/skywings64/">
+    <span class="pin" aria-hidden="true"></span>
+    <div class="eyebrow">QUEST POSTED</div>
+    <h3>SkyWings 64</h3>
+    <p class="desc">Hang glider, gyrocopter and rocket belt over a holiday island: thread the rings, ride the thermals, bomb the targets, stick the landing.</p>
+    <div class="reward">REWARD: <b>SIX GOLD MEDALS</b> · FLIGHT SIM</div>
+    <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-wing"/></svg></span>
+  </a>
+  <a class="notice" data-tags="Action" data-new data-preview="assets/previews/throneshard.jpg" href="Projects/throneshard/">
+    <span class="pin" aria-hidden="true"></span>
+    <div class="eyebrow">QUEST POSTED</div>
+    <h3>Throneshard</h3>
+    <p class="desc">Three lanes, two thrones, ten heroes. Pick one of fourteen, farm your lane, buy your build and break the enemy's Throneshard before the bots break yours.</p>
+    <div class="reward">REWARD: <b>A SHATTERED THRONE</b> · 3D ARENA BATTLER</div>
+    <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-shard"/></svg></span>
   </a>
   <a class="notice archived" data-tags="Sim" href="Projects/The-Fourth-Quarter.html">
     <span class="pin" aria-hidden="true"></span>
@@ -551,6 +576,14 @@
       <div class="reward">REWARD: <b>A ROSTER WORTH BOASTING OF</b> · CV</div>
       <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-helm"/></svg></span>
     </a>
+    <a class="notice" data-preview="assets/previews/converter.jpg" href="Pathfinder/converter.html">
+      <span class="pin" aria-hidden="true"></span>
+      <div class="eyebrow">QUEST POSTED</div>
+      <h3>Conversion Codex</h3>
+      <p class="desc">Paste a First Edition stat block and get a Remaster creature back, or look up any 1e spell's 2e equivalent.</p>
+      <div class="reward">REWARD: <b>OLD MONSTERS, NEW MATH</b> · UTILITY</div>
+      <span class="seal" aria-hidden="true"><svg class="glyph"><use href="#g-book"/></svg></span>
+    </a>
 
     <audio id="easter-egg-audio" src="Audio/thepwhatnow.mp3" preload="none"></audio>
 
@@ -587,7 +620,8 @@
 
 <script>
 /* <tavern-scene> — a procedurally animated medieval tavern common room.
-   Pure canvas, no assets, no network. Silhouettes lit by a hearth.
+   Canvas, with one same-origin image: the room plate, which paintRoom()
+   falls back from to its own rectangles. Silhouettes lit by a hearth.
    Attributes:
      crowd     0..1   how many people are milling about (default .6)
      intensity 0..1   how strong the firelight / overall warmth is (default .7)
@@ -601,6 +635,60 @@
   var W = 1600, H = 900;          // room coordinates
   var FLOOR = 618;                // back wall / floor seam
   var HEARTH = { x: 330, y: 470 };
+  // The room plate: Blender's render of the set paintRoom() draws
+  // (Tools/board-check/blender/tavern.py), 3200 by 1800 pixels over room x
+  // -200..1800 and y -200..1100, so its pixels are drawn 1.156 times taller
+  // than wide. The walls, hearth, door, bar, floor and the three tables are
+  // in it, lit by a fire that is not; everything that moves or glows stays
+  // canvas and goes on top.
+  var PLATE = { src: "assets/tavern/room.webp", x: -200, y: -200, w: 2000, h: 1300 };
+  // The walker sheet: one row a TYPE in this order, WALK.frames walk frames
+  // and then the standing frame, each in a cell of WALK.cell pixels with the
+  // feet at WALK.anchor, at WALK.ppu pixels a room unit. Blender's
+  // (Tools/board-check/blender/walkers.py); budget.json holds the same numbers
+  // and validate.mjs holds the two to each other.
+  var WALK = { src: "assets/tavern/walkers.webp", frames: 12, cell: [200, 250], anchor: [100, 231], ppu: 1.25,
+    types: ["traveler", "dwarf", "ranger", "rogue", "server", "patron", "child", "knight"] };
+  // The tables, cut out of the plate's own frame (3200 by 1800 over PLATE's
+  // rect): x, y, w, h in room units, as Blender cropped them, and the table
+  // each one is (x, y, r) so paintTable() can find it.
+  var TABLEIMG = [
+    { src: "assets/tavern/table-0.webp", x: 602, y: 674, w: 208, h: 117.76, at: [706, 720, 92] },
+    { src: "assets/tavern/table-1.webp", x: 960, y: 733, w: 236, h: 135.68, at: [1078, 786, 106] },
+    { src: "assets/tavern/table-2.webp", x: 322, y: 803, w: 260, h: 151.04, at: [452, 862, 118] }
+  ];
+
+  // The cast sheet: the seated patrons, the dog, the cat and the barkeep, one
+  // row a value the canvas varies continuously and one column a step of it
+  // (Tools/board-check/blender/cast.py; budget.json's `cast` plate holds the
+  // same numbers and validate.mjs holds the two to each other). Every cell is
+  // CASTSHEET.cell pixels at CASTSHEET.ppu pixels a figure unit; `ax` is the pixel
+  // column in it where the figure's origin stands, and CASTSHEET.ay the row.
+  //   seat-<hat>-<food>  the drink cycle, 0 to 1, in 6 steps
+  //   dog-<head lift>    the tail's angle, -1.35 to 0.35, in 6 steps
+  //   cat-sit-<stretch>  the tail's curl, -0.5 to 1.5, in 6 steps
+  //   cat-walk           the stride, one turn of the phase, in 6 steps
+  //   keep               wipe, pour, idle
+  var CASTSHEET = { src: "assets/tavern/cast.webp", cell: [160, 184], ppu: 1.25, ay: 172, rows: [
+    { id: "seat-none-mug", frames: 6, ax: 40 },
+    { id: "seat-none-bread", frames: 6, ax: 40 },
+    { id: "seat-hood-mug", frames: 6, ax: 40 },
+    { id: "seat-hood-bread", frames: 6, ax: 40 },
+    { id: "seat-bun-mug", frames: 6, ax: 40 },
+    { id: "seat-bun-bread", frames: 6, ax: 40 },
+    { id: "seat-beard-mug", frames: 6, ax: 40 },
+    { id: "seat-beard-bread", frames: 6, ax: 40 },
+    { id: "dog-0", frames: 6, ax: 72 },
+    { id: "dog-5", frames: 6, ax: 72 },
+    { id: "dog-10", frames: 6, ax: 72 },
+    { id: "dog-15", frames: 6, ax: 72 },
+    { id: "cat-sit-0", frames: 6, ax: 22 },
+    { id: "cat-sit-1", frames: 6, ax: 22 },
+    { id: "cat-walk", frames: 6, ax: 36 },
+    { id: "keep", frames: 3, ax: 33 }
+  ] };
+  var CASTROW = {};
+  CASTSHEET.rows.forEach(function (r, i) { CASTROW[r.id] = { row: i, frames: r.frames, ax: r.ax }; });
 
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function pick(a) { return a[(Math.random() * a.length) | 0]; }
@@ -696,7 +784,55 @@
     knight:   { h: 1.04, wide: 1.18, sword: 1, pauldron: 1, helm: 1 }
   };
 
-  function drawPerson(ctx, p, t) {
+  // A walker from the sheet: the frame the phase is at, or the standing frame,
+  // at the feet. `rim` is the alpha of the firelit pass (the tinted copy of
+  // the sheet), or 0 for the black pass. Standing adds drawPerson()'s own idle
+  // bob and lean from the clock, since the sheet's standing frame has neither.
+  function drawSprite(ctx, p, t, sp, rim) {
+    var row = WALK.types.indexOf(p.type);
+    if (row < 0) row = WALK.types.indexOf("patron");
+    var n = WALK.frames, col = n, next = -1, mix = 0;
+    if (p.moving) {
+      var pos = (((p.phase % 6.283185) + 6.283185) % 6.283185) / 6.283185 * n;
+      col = Math.floor(pos) % n; next = (col + 1) % n; mix = pos - Math.floor(pos);
+    } else {
+      var u = (TYPE[p.type] || TYPE.patron).h;
+      ctx.translate(0, -Math.sin(t * 1.2 + p.seed) * 0.8 * u);
+      ctx.rotate(Math.sin(t * 0.7 + p.seed) * 0.02);
+    }
+    var cw = WALK.cell[0], ch = WALK.cell[1], r = WALK.ppu, img = rim ? sp.tint : sp.img;
+    var a = rim || 1;
+    // the frame the phase has passed at full strength, the next one fading in
+    // over it: twelve frames a stride step in whole cells, and a silhouette
+    // that only ever changes between cells reads as a flicker at 60 Hz
+    ctx.globalAlpha = a;
+    ctx.drawImage(img, col * cw, row * ch, cw, ch, -WALK.anchor[0] / r, -WALK.anchor[1] / r, cw / r, ch / r);
+    if (next >= 0 && mix > 0.02) {
+      ctx.globalAlpha = a * mix;
+      ctx.drawImage(img, next * cw, row * ch, cw, ch, -WALK.anchor[0] / r, -WALK.anchor[1] / r, cw / r, ch / r);
+    }
+  }
+
+  // One cell of the cast sheet at the origin: `id` the row, `v` 0 to 1 along
+  // it (a blend of the two steps either side). `rim` is the alpha of the firelit pass, 0 for
+  // the black one, as drawSprite() takes it. The caller has saved the context.
+  function drawCast(ctx, cs, rim, id, v) {
+    var r = CASTROW[id], cw = CASTSHEET.cell[0], ch = CASTSHEET.cell[1], k = CASTSHEET.ppu;
+    var pos = clamp(v, 0, 1) * (r.frames - 1), lo = Math.floor(pos), mix = pos - lo;
+    var img = rim ? cs.tint : cs.img;
+    // neighbouring steps crossfaded, so a slow wag or a breath is not six jumps
+    ctx.globalAlpha = rim || 1;
+    ctx.drawImage(img, lo * cw, r.row * ch, cw, ch, -r.ax / k, -CASTSHEET.ay / k, cw / k, ch / k);
+    if (mix > 0.02 && lo < r.frames - 1) {
+      ctx.globalAlpha = (rim || 1) * mix;
+      ctx.drawImage(img, (lo + 1) * cw, r.row * ch, cw, ch, -r.ax / k, -CASTSHEET.ay / k, cw / k, ch / k);
+    }
+  }
+
+  // rim: alpha of the firelit pass when a sheet draws, 0 for the black one;
+  // sp: the loaded sheet, or null for the vector figure below
+  function drawPerson(ctx, p, t, sp, rim) {
+    if (sp) { drawSprite(ctx, p, t, sp, rim); return; }
     var k = TYPE[p.type] || TYPE.patron;
     var H = 150 * k.h;
     var u = H / 150;
@@ -955,11 +1091,21 @@
 
   // Seated at a table. The tabletop covers the lap, so the read is all in the
   // shoulders, the lean, and the hand bringing a tankard up to the beard.
-  function drawSeated(ctx, s, t) {
+  // cs: the loaded cast sheet, or null for the vector figure below; rim as
+  // drawSprite() takes it. The sheet's cell has the rest lean and the page adds
+  // the talk, about the hip, as it adds the idle bob to a standing walker.
+  function drawSeated(ctx, s, t, cs, rim) {
     var cyc = Math.sin(t * 0.6 + s.seed);
     var eat = Math.max(0, cyc - 0.5) * 2;
     var talk = Math.sin(t * 1.5 + s.seed) * 0.045;
     var hipY = -52, lean = -0.15 + talk;
+    if (cs) {
+      ctx.save();
+      ctx.translate(0, hipY); ctx.rotate(talk); ctx.translate(0, -hipY);
+      drawCast(ctx, cs, rim, "seat-" + (s.hat || "none") + "-" + s.food, eat);
+      ctx.restore();
+      return;
+    }
 
     ctx.save();
     ctx.fillStyle = PAINT;
@@ -1042,9 +1188,15 @@
     ctx.restore();
   }
 
-  function drawDog(ctx, d, t) {
+  function drawDog(ctx, d, t, cs) {
     var wag = Math.sin(t * (3 + d.excite * 9)) * (0.35 + d.excite * 0.5);
     var head = Math.max(0, Math.sin(t * 0.31) - 0.82) * 26 + d.excite * 10;
+    if (cs) {
+      ctx.save();
+      drawCast(ctx, cs, 0, "dog-" + clamp(Math.round(head / 5), 0, 3) * 5, (wag - 0.5 + 1.35) / 1.7);
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.fillStyle = PAINT;
     ctx.beginPath();                        // body
@@ -1071,10 +1223,17 @@
     ctx.restore();
   }
 
-  function drawCat(ctx, c, t) {
+  function drawCat(ctx, c, t, cs) {
     var tail = Math.sin(t * 1.6 + c.seed) * 0.5 + c.excite;
     ctx.save();
     ctx.scale(c.dir, 1);
+    if (cs) {
+      if (c.mode === "sit") drawCast(ctx, cs, 0, "cat-sit-" + clamp(Math.round(c.stretch), 0, 1), (tail + 0.5) / 2);
+      else drawCast(ctx, cs, 0, "cat-walk",
+        (Math.round((((c.phase % 6.283185) + 6.283185) % 6.283185) / 6.283185 * 6) % 6) / 5);
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle = DARKER;
     if (c.mode === "sit") {
       ctx.beginPath();                     // haunches
@@ -1155,6 +1314,8 @@
     this.reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     this.build();
     this.resize();
+    this.loadPlate();
+    this.loadSprites();
 
     this._ro = new ResizeObserver(function () { el.resize(); });
     this._ro.observe(el);
@@ -1253,6 +1414,52 @@
     if (this.hasAttribute("still") || this.reduce) this.frame(0);
   };
 
+  // this.plate stays null until the image has decoded, and for good if it
+  // fails, so paintRoom() never draws a half-loaded plate or a blank room.
+  TavernScene.prototype.loadPlate = function () {
+    var el = this, img = new Image();
+    this.plate = null;
+    img.src = PLATE.src;
+    img.decode().then(function () {
+      el.plate = img;
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+  };
+
+  // The sheet and the tables load the way the plate does: null until every
+  // image has decoded, and for good if one fails, so the page keeps the
+  // vector figures and tables rather than draw half of either. The firelit
+  // pass draws a copy of the sheet filled with the rim colour, made once here
+  // (source-in keeps the alpha and swaps the colour), because a sprite cannot
+  // be filled with a fillStyle the way a path is.
+  TavernScene.prototype.loadSprites = function () {
+    var el = this;
+    this.sheet = null; this.cast = null; this.tableImgs = null;
+    function load(src) { var im = new Image(); im.src = src; return im.decode().then(function () { return im; }); }
+    function tinted(img) {
+      var tint = document.createElement("canvas");
+      tint.width = img.naturalWidth; tint.height = img.naturalHeight;
+      var c = tint.getContext("2d");
+      c.drawImage(img, 0, 0);
+      c.globalCompositeOperation = "source-in";
+      c.fillStyle = "rgb(255,148,62)";
+      c.fillRect(0, 0, tint.width, tint.height);
+      return { img: img, tint: tint };
+    }
+    load(WALK.src).then(function (img) {
+      el.sheet = tinted(img);
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+    load(CASTSHEET.src).then(function (img) {
+      el.cast = tinted(img);
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+    Promise.all(TABLEIMG.map(function (t) { return load(t.src); })).then(function (imgs) {
+      el.tableImgs = imgs;
+      if (el.hasAttribute("still") || el.reduce) el.frame(0);
+    }, function () {});
+  };
+
   TavernScene.prototype.toRoom = function (cx, cy) {
     return { x: (cx - this.ox) / this.scale, y: (cy - this.oy) / this.scale };
   };
@@ -1284,6 +1491,8 @@
   /* ---------------- static layers ---------------- */
 
   TavernScene.prototype.paintRoom = function (ctx) {
+    if (this.plate) { ctx.drawImage(this.plate, PLATE.x, PLATE.y, PLATE.w, PLATE.h); return; }
+    // everything below is the fallback while the plate loads or if it fails
     // back wall: plaster between dark timber studs
     var wall = ctx.createLinearGradient(0, 60, 0, FLOOR);
     wall.addColorStop(0, "#120c06");
@@ -1420,6 +1629,7 @@
   };
 
   TavernScene.prototype.paintTable = function (ctx, tb) {
+    if (this.tableImgs) { this.spriteTable(ctx, tb); return; }
     ctx.save();
     ctx.translate(tb.x, tb.y);
     ctx.fillStyle = "#0d0904";
@@ -1441,6 +1651,21 @@
     ctx.fillRect(-R2 * 0.02, -R2 * 0.28, R2 * 0.04, R2 * 0.09);
     ctx.fillRect(R2 * 0.12, -R2 * 0.32, R2 * 0.1, R2 * 0.19);
     ctx.restore();
+  };
+
+  // The table's own alpha crop, at the pixels Blender cut it from, so it
+  // lands on the plate's floor (and its shadow) without a seam and a walker
+  // drawn before it in the depth sort goes behind it.
+  TavernScene.prototype.spriteTable = function (ctx, tb) {
+    for (var i = 0; i < TABLEIMG.length; i++) {
+      var T = TABLEIMG[i];
+      if (T.at[0] !== tb.x || T.at[1] !== tb.y) continue;
+      var img = this.tableImgs[i], kx = 3200 / PLATE.w, ky = 1800 / PLATE.h;
+      // Blender cut it at a whole plate pixel, so it is drawn from that pixel
+      ctx.drawImage(img, Math.round((T.x - PLATE.x) * kx) / kx + PLATE.x, Math.round((T.y - PLATE.y) * ky) / ky + PLATE.y,
+        img.naturalWidth / kx, img.naturalHeight / ky);
+      return;
+    }
   };
 
   /* ---------------- fire ---------------- */
@@ -1482,6 +1707,144 @@
     eb.addColorStop(1, "rgba(255,90,20,0)");
     ctx.fillStyle = eb;
     ctx.beginPath(); ctx.ellipse(0, -4, 96, 26, 0, 0, 6.284); ctx.fill();
+    ctx.restore();
+  };
+
+  // What hangs on the walls and stands about, drawn over the plate so it can
+  // move: a banner, a shield, a torch, herb bunches, barrels, mugs on the bar
+  // and smoke off the hearth. The page shows room x -60 to 1530 and y 217 on
+  // down, and the sign hides x 385 to 1090 above y 445, so nothing here that
+  // wants to be seen sits behind it. Everything is flat dark like the figures,
+  // with a thin orange edge toward the fire.
+  var Y = function (py) { return -200 + py * 1.4444; };
+  var X = function (px) { return -200 + px * 1.25; };
+  TavernScene.prototype.paintDecor = function (ctx, t, f) {
+    var inten = this.inten, hx = HEARTH.x;
+    // the fire's edge on a shape, by how near it is
+    var edge = function (x) { return "rgba(255,150,64," + (clamp(1 - Math.abs(x - hx) / 1100, 0.05, 1) * (0.25 + f * 0.25) * inten).toFixed(3) + ")"; };
+
+    // banner on the panel right of the hearth
+    ctx.save();
+    ctx.translate(540, 456);
+    ctx.rotate(Math.sin(t * 0.55 + 1.3) * 0.012);
+    ctx.fillStyle = "#1e0e08";
+    ctx.fillRect(-34, -6, 68, 5);
+    ctx.beginPath();
+    ctx.moveTo(-28, 0); ctx.lineTo(28, 0); ctx.lineTo(28, 118);
+    ctx.lineTo(0, 98 + Math.sin(t * 0.9) * 3); ctx.lineTo(-28, 118);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = edge(540); ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = "rgba(180,138,62,0.34)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 42, 13, 0, 6.284); ctx.moveTo(0, 29); ctx.lineTo(0, 55); ctx.moveTo(-11, 42); ctx.lineTo(11, 42); ctx.stroke();
+    ctx.fillStyle = "#0d0703";
+    ctx.fillRect(-37, -9, 7, 11); ctx.fillRect(30, -9, 7, 11);
+    ctx.restore();
+
+    // shield and crossed swords on the panel by the door
+    ctx.save();
+    ctx.translate(764, 524);
+    ctx.strokeStyle = "#120b05"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(-40, -34); ctx.lineTo(40, 36); ctx.moveTo(40, -34); ctx.lineTo(-40, 36); ctx.stroke();
+    ctx.fillStyle = "#170e07";
+    ctx.beginPath(); ctx.moveTo(-24, -26); ctx.lineTo(24, -26); ctx.quadraticCurveTo(26, 12, 0, 34); ctx.quadraticCurveTo(-26, 12, -24, -26); ctx.fill();
+    ctx.strokeStyle = edge(764); ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = "rgba(170,132,64,0.3)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(0, 24); ctx.moveTo(-16, -6); ctx.lineTo(16, -6); ctx.stroke();
+    ctx.restore();
+
+    // torch in a bracket by the bar post, throwing its own light on the shelf
+    var tx = 1136, ty = 392, tf = 0.72 + noise(t * 6.3 + 5) * 0.28;
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.fillStyle = "#110a05";
+    ctx.fillRect(-3, 0, 6, 40); ctx.fillRect(-9, 36, 18, 5); ctx.fillRect(-4, 40, 8, 14);
+    ctx.globalCompositeOperation = "lighter";
+    var tg = ctx.createRadialGradient(0, -8, 2, 0, -8, 190 * tf);
+    tg.addColorStop(0, "rgba(255,170,84," + (0.38 * inten) + ")");
+    tg.addColorStop(1, "rgba(255,140,60,0)");
+    ctx.fillStyle = tg; ctx.beginPath(); ctx.arc(0, -8, 190 * tf, 0, 6.284); ctx.fill();
+    ctx.fillStyle = "rgba(255,208,124,0.95)";
+    ctx.beginPath(); ctx.ellipse(Math.sin(t * 9) * 1.2, -10, 5 * tf, 13 * tf, 0, 0, 6.284); ctx.fill();
+    ctx.restore();
+
+    // herb bunches on long cords from the beam, and a pair of hanging pans
+    [[1190, 0.6, 1], [1262, 2.0, 0.8], [1420, 0.2, 1], [1490, 1.4, 0.9]].forEach(function (h) {
+      ctx.save();
+      ctx.translate(h[0], 100);
+      ctx.rotate(Math.sin(t * 0.8 + h[1] * 4) * 0.025);
+      ctx.strokeStyle = "#100a04"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 150 * h[2]); ctx.stroke();
+      ctx.translate(0, 148 * h[2]);
+      ctx.fillStyle = "#13100a";
+      ctx.beginPath(); ctx.moveTo(-5, 0); ctx.quadraticCurveTo(-22, 34, -11, 66); ctx.lineTo(11, 66);
+      ctx.quadraticCurveTo(22, 34, 5, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(100,116,54,0.26)"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-6, 12); ctx.lineTo(-8, 60); ctx.moveTo(5, 12); ctx.lineTo(7, 62); ctx.stroke();
+      ctx.restore();
+    });
+    [[1340, 3.1, 1.1], [1380, 0.7, 0.8]].forEach(function (pn) {
+      ctx.save();
+      ctx.translate(pn[0], 100);
+      ctx.rotate(Math.sin(t * 0.6 + pn[1]) * 0.02);
+      ctx.strokeStyle = "#100a04"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 150 * pn[2]); ctx.stroke();
+      ctx.translate(0, 150 * pn[2]);
+      ctx.fillStyle = "#15100a";
+      ctx.beginPath(); ctx.ellipse(0, 18, 20, 20, 0, 0, 6.284); ctx.fill();
+      ctx.fillRect(-3, -4, 6, 6);
+      ctx.fillStyle = "rgba(255,170,84," + (0.2 * inten).toFixed(3) + ")";
+      ctx.beginPath(); ctx.ellipse(-8, 12, 4, 7, -0.5, 0, 6.284); ctx.fill();
+      ctx.restore();
+    });
+
+    // barrels and a crate along the back wall, left of the door
+    var barrel = function (bx, by, k) {
+      ctx.save();
+      ctx.translate(bx, by); ctx.scale(k, k);
+      ctx.fillStyle = "#150d06";
+      ctx.beginPath(); ctx.moveTo(-22, 0); ctx.quadraticCurveTo(-30, -36, -22, -72); ctx.lineTo(22, -72);
+      ctx.quadraticCurveTo(30, -36, 22, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = edge(bx); ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = "rgba(10,6,3,0.9)";
+      ctx.fillRect(-27, -58, 54, 4); ctx.fillRect(-27, -16, 54, 4);
+      ctx.fillStyle = "rgba(255,170,84," + (0.14 * inten).toFixed(3) + ")";
+      ctx.fillRect(-19, -70, 3, 66);
+      ctx.restore();
+    };
+    barrel(800, 622, 1); barrel(850, 622, 0.9);
+    ctx.save();
+    ctx.fillStyle = "#130c06"; ctx.fillRect(634, 568, 62, 54);
+    ctx.strokeStyle = edge(660); ctx.lineWidth = 1.5; ctx.strokeRect(634, 568, 62, 54);
+    ctx.fillStyle = "rgba(255,170,84," + (0.1 * inten).toFixed(3) + ")";
+    ctx.fillRect(634, 568, 62, 3); ctx.fillRect(661, 571, 4, 51);
+    ctx.restore();
+
+    // mugs, a bottle and a plate stack on the bar top
+    var barY = Y(463);
+    ctx.save();
+    ctx.fillStyle = "#120b05";
+    [[1062, 1], [1094, 0.9], [1470, 1], [1526, 0.85]].forEach(function (m) {
+      var mx = X(m[0]), k = m[1] * 1.3;
+      ctx.fillRect(mx - 7 * k, barY - 17 * k, 14 * k, 17 * k);
+      ctx.strokeStyle = "#120b05"; ctx.lineWidth = 2.4 * k;
+      ctx.beginPath(); ctx.arc(mx + 8 * k, barY - 9 * k, 4.5 * k, -1.5, 1.5); ctx.stroke();
+      ctx.fillStyle = "rgba(255,190,110," + (0.22 * inten) + ")";
+      ctx.fillRect(mx - 5.5 * k, barY - 15 * k, 1.8 * k, 12 * k);
+      ctx.fillStyle = "#120b05";
+    });
+    var bx = X(1180);
+    ctx.fillRect(bx - 5, barY - 24, 10, 24); ctx.fillRect(bx - 2, barY - 36, 4, 14);
+    for (var pl = 0; pl < 4; pl++) ctx.fillRect(X(1560) - 20, barY - 5 - pl * 4, 40, 3);
+    ctx.restore();
+
+    // smoke curling off the fire up the stonework, thinning as it climbs
+    ctx.save();
+    for (var sm = 0; sm < 4; sm++) {
+      var age = ((t * 0.05 + sm * 0.25) % 1), sx = hx + 10 + Math.sin(t * 0.35 + sm * 2.1) * 22 + age * 90;
+      var sy = 470 - age * 250;
+      ctx.fillStyle = "rgba(78,56,36," + (0.16 * (1 - age) * Math.min(1, age * 6) * inten).toFixed(3) + ")";
+      ctx.beginPath(); ctx.ellipse(sx, sy, 30 + age * 70, 18 + age * 40, 0, 0, 6.284); ctx.fill();
+    }
     ctx.restore();
   };
 
@@ -1594,6 +1957,7 @@
     ctx.scale(this.scale, this.scale);
 
     this.paintRoom(ctx);
+    this.paintDecor(ctx, t, f);
 
     // night spilling through the open door
     if (this.door.open > 0.02) {
@@ -1651,19 +2015,28 @@
     var kx = kmode === "wipe" ? Math.sin(t * 2.2) * 26 : 0;
     ctx.translate(kx, 0);
     ctx.fillStyle = PAINT;
-    ctx.beginPath();
-    ctx.moveTo(-20, 0); ctx.quadraticCurveTo(-24, -60, -15, -96);
-    ctx.lineTo(15, -96); ctx.quadraticCurveTo(24, -60, 20, 0);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -110, 13, 0, 6.284); ctx.fill();
+    var cs = this.cast;
+    if (cs) {
+      ctx.save();
+      drawCast(ctx, cs, 0, "keep", kmode === "wipe" ? 0 : kmode === "pour" ? 0.5 : 1);
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(-20, 0); ctx.quadraticCurveTo(-24, -60, -15, -96);
+      ctx.lineTo(15, -96); ctx.quadraticCurveTo(24, -60, 20, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, -110, 13, 0, 6.284); ctx.fill();
+    }
     ctx.save();
     ctx.translate(14, -90);
     ctx.rotate(kmode === "pour" ? -1.35 : (kmode === "wipe" ? -0.9 : -0.15));
-    ctx.beginPath();
-    ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(3, 40); ctx.lineTo(-3, 40);
-    ctx.closePath(); ctx.fill();
+    if (!cs) {
+      ctx.beginPath();
+      ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(3, 40); ctx.lineTo(-3, 40);
+      ctx.closePath(); ctx.fill();
+    }
     if (kmode === "pour") {
-      ctx.fillRect(-6, 36, 12, 26);
+      if (!cs) ctx.fillRect(-6, 36, 12, 26);
       ctx.strokeStyle = "rgba(226,170,86,0.6)"; ctx.lineWidth = 2.4;
       ctx.beginPath(); ctx.moveTo(0, 60); ctx.lineTo(2, 90); ctx.stroke();
     }
@@ -1679,13 +2052,13 @@
       PAINT = "rgba(255,148,62," + (0.4 * clamp(lit, 0, 1)).toFixed(3) + ")";
       ctx.translate(s.x + (lx / ln) * (2.6 + self.f * 1.3) * s.s, s.y + (ly / ln) * 1.5 * s.s);
       ctx.scale(s.s * s.dir, s.s);
-      drawSeated(ctx, s, t);
+      drawSeated(ctx, s, t, self.cast, 0.4 * clamp(lit, 0, 1));
       ctx.restore();
       PAINT = DARK;
       ctx.save();
       ctx.translate(s.x, s.y);
       ctx.scale(s.s * s.dir, s.s);
-      drawSeated(ctx, s, t);
+      drawSeated(ctx, s, t, self.cast, 0);
       ctx.restore();
     });
 
@@ -1693,14 +2066,14 @@
     ctx.save();
     ctx.translate(this.cat.x, this.cat.y);
     ctx.scale(1.35, 1.35);
-    drawCat(ctx, this.cat, t);
+    drawCat(ctx, this.cat, t, this.cast);
     ctx.restore();
 
     // dog by the fire
     ctx.save();
     ctx.translate(this.dog.x, this.dog.y);
     ctx.scale(1.6, 1.6);
-    drawDog(ctx, this.dog, t);
+    drawDog(ctx, this.dog, t, this.cast);
     ctx.restore();
 
     // walkers + tables interleaved by depth
@@ -1720,15 +2093,16 @@
       var ln = Math.hypot(lx, ly) || 1;
       var lit = clamp(1 - ln / 1150, 0.12, 1) * (0.72 + self.f * 0.36);
       ctx.save();
-      PAINT = "rgba(255,148,62," + (0.42 * clamp(lit, 0, 1)).toFixed(3) + ")";
+      var rim = 0.42 * clamp(lit, 0, 1);
+      PAINT = "rgba(255,148,62," + rim.toFixed(3) + ")";
       ctx.translate(p.x + (lx / ln) * (2.8 + self.f * 1.4) * s, p.y + (ly / ln) * 1.6 * s);
       ctx.scale(s * (p.dir < 0 ? -1 : 1), s);
-      drawPerson(ctx, p, t);
+      drawPerson(ctx, p, t, self.sheet, rim);
       ctx.restore();
       PAINT = DARK;
       ctx.translate(p.x, p.y);
       ctx.scale(s * (p.dir < 0 ? -1 : 1), s);
-      drawPerson(ctx, p, t);
+      drawPerson(ctx, p, t, self.sheet, 0);
       ctx.restore();
     });
 
