@@ -507,6 +507,8 @@ try {
       calls: [...document.querySelectorAll('#calls .call')].map(b => b.dataset.leg),
       rows: [...document.querySelectorAll('#rules .rule')].map(r => r.className),
       badge: document.querySelector('#rules .badge')?.textContent || '',
+      ruleThen: [...document.querySelectorAll('#rules .rule')].map(r => r.querySelector('select.then').value + (r.querySelector('input.after') ? '+after' : '')).join(','),
+      skips: [...document.querySelectorAll('#phases .phase')].map(e => e.classList.contains('skips')).join(),
       sensors: window.__signalCity.world.sensors,
       loops: [window.__signalCity.world.hasLoop(0, 'N', 1), window.__signalCity.world.hasLoop(0, 'N', 0)],
     }));
@@ -522,7 +524,8 @@ try {
     await page.click('#tabs .tab[data-tab="crossings"]');
     ok(await page.evaluate(() => !document.getElementById('pedLateStat').classList.contains('hidden')), 'a level with crossings shows the walkers stat');
     ok(c0.sensors && c0.sensorsNote && c0.loops[0] && !c0.loops[1], 'the loops are live, on the left bays only', `bay ${c0.loops[0]}, curb ${c0.loops[1]}`);
-    ok(c0.rows.length === 3 && c0.rows.filter(r => /sensed/.test(r)).length === 2 && !c0.rows.some(r => /sleeping/.test(r)) && c0.badge === '', 'its two queue rules show live, not greyed, with no badge', c0.rows.join(' | '));
+    ok(c0.rows.length === 5 && c0.rows.filter(r => /sensed/.test(r)).length === 4 && !c0.rows.some(r => /sleeping/.test(r)) && c0.badge === '', 'its four queue rules show live, not greyed, with no badge', c0.rows.join(' | '));
+    ok(c0.ruleThen === 'call,call,call,call,next' && c0.skips === 'false,true,false,true', 'they read "call its phase" with no after field, and the two arrow cards are marked as skipping (R9)', `${c0.ruleThen}; ${c0.skips}`);
     await page.click('#calls .call[data-leg="N"]');
     const c1 = await page.evaluate(() => ({
       pending: !!window.__signalCity.world.pedCalls[0].N,
@@ -569,7 +572,7 @@ try {
     await page.click('#tabs .tab[data-tab="rules"]');
     await page.click('#addQueueBtn');
     const c5 = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#rules .rule')].map(r => r.className), badge: document.querySelector('#rules .badge')?.textContent || '' }));
-    ok(c5.rows.length === 4 && /sensed/.test(c5.rows[3]) && c5.badge === '', 'a queue rule added here is live at once', c5.rows[3]);
+    ok(c5.rows.length === 6 && /sensed/.test(c5.rows[5]) && c5.badge === '', 'a queue rule added here is live at once', c5.rows[5]);
     ok(errors.length === 0, 'no page errors on Crossing', errors.join(' | '));
   });
 
@@ -1179,6 +1182,117 @@ try {
     ok(has, 'the page loads the car sheet without anyone asking for it');
     ok(requests.sort().join(',') === 'cars.json,cars.png', 'in exactly two requests, the atlas and the sheet', requests.join(','));
     ok(errors.length === 0, 'and with nothing on the console', errors.join(' | '));
+  });
+
+  // R7: the switch is settings.sound, written at once and read back on a
+  // reload; the context waits for an input (whether it sounds right is H3).
+  await section('the sound switch (R7)', async () => {
+    errors.length = 0;
+    await page.goto(`${BASE}/Projects/signal-city/?debug`, { waitUntil: 'load', timeout: 45000 });
+    await waitFor(page, () => !!window.__signalCity, { timeout: 15000 });
+    const before = await page.evaluate(() => ({ ctx: window.__signalCity.sound.ctx === null, text: document.getElementById('soundBtn').textContent, on: window.__signalCity.game.save.settings.sound }));
+    ok(before.ctx && before.on === true && before.text === 'Sound on', 'a fresh page has the sound on and no context until an input', JSON.stringify(before));
+    await page.evaluate(() => window.__signalCity.game.start('first-light'));
+    await page.click('#soundBtn');
+    const off = await page.evaluate(k => ({ saved: (s => (s.data || s).settings.sound)(JSON.parse(localStorage.getItem(k))), text: document.getElementById('soundBtn').textContent, pressed: document.getElementById('soundBtn').getAttribute('aria-pressed'), live: window.__signalCity.sound.live }), KEY);
+    ok(off.saved === false && off.text === 'Sound off' && off.pressed === 'false' && !off.live, 'the switch writes settings.sound false into the save at once and silences the game', JSON.stringify(off));
+    await page.reload({ waitUntil: 'load' });
+    await waitFor(page, () => !!window.__signalCity, { timeout: 15000 });
+    const kept = await page.evaluate(() => ({ text: document.getElementById('soundBtn').textContent, enabled: window.__signalCity.sound.enabled }));
+    ok(kept.text === 'Sound off' && kept.enabled === false, 'and a reload keeps it off', JSON.stringify(kept));
+    await page.evaluate(() => window.__signalCity.game.start('first-light'));
+    await page.keyboard.press('m');
+    const back = await page.evaluate(k => ({ saved: (s => (s.data || s).settings.sound)(JSON.parse(localStorage.getItem(k))), live: window.__signalCity.sound.live, made: !!window.__signalCity.sound.ctx }), KEY);
+    ok(back.saved === true && back.live && back.made, 'M switches it back on, and the context is made then', JSON.stringify(back));
+    ok(errors.length === 0, 'with nothing on the console', errors.join(' | '));
+  });
+
+  // R8: a phone, in emulation. 390 by 844 with touch: the board fills the
+  // width, the panel is reached by scrolling, a tap is a click and two
+  // fingers zoom. How it feels under a thumb is H1, on real glass.
+  await section('the phone layout, in emulation (R8)', async () => {
+    const phone = await prepPage(browser, BASE, { width: 390, height: 844, dsf: 1, mobile: true });
+    const perrs = [];
+    phone.on('pageerror', e => perrs.push(String(e && e.message || e)));
+    phone.on('console', m => { if (m.type() === 'error') perrs.push(m.text()); });
+    try {
+      await phone.goto(`${BASE}/Projects/signal-city/?debug`, { waitUntil: 'load', timeout: 45000 });
+      await waitFor(phone, () => !!window.__signalCity, { timeout: 15000 });
+      // the level list (#132): its top is on screen, and its end is reached by scrolling the scrim
+      const list = await phone.evaluate(() => {
+        const scrim = document.getElementById('selectScrim');
+        scrim.scrollTop = 0;
+        const first = document.querySelector('#levelList .level-card').getBoundingClientRect().top;
+        const head = document.querySelector('#selectScrim h2').getBoundingClientRect().top;
+        scrim.scrollTop = scrim.scrollHeight;
+        const last = document.querySelector('.level-card.endless').getBoundingClientRect();
+        const foot = document.querySelector('#selectScrim .foot').getBoundingClientRect();
+        scrim.scrollTop = 0;
+        return { head, first, lastBottom: last.bottom, footBottom: foot.bottom, H: innerHeight, scrolls: scrim.scrollHeight > scrim.clientHeight };
+      });
+      ok(list.scrolls && list.head >= 0 && list.first >= 0 && list.lastBottom <= list.H && list.footBottom <= list.H, 'the level list starts on screen and its last card is reached by scrolling it (#132)', JSON.stringify(list));
+      await phone.evaluate(() => window.__signalCity.game.start('four-ways'));
+      await new Promise(r => setTimeout(r, 300));
+      const fit = await phone.evaluate(() => {
+        const b = document.getElementById('board').getBoundingClientRect(), p = document.getElementById('panel').getBoundingClientRect();
+        return { boardW: b.width, panelW: p.width, docW: document.scrollingElement.scrollWidth, W: innerWidth, belowBoard: p.top >= b.bottom - 0.5, touch: getComputedStyle(document.getElementById('board')).touchAction };
+      });
+      ok(fit.boardW >= fit.W - 24 - 0.5 && fit.boardW === fit.panelW && fit.docW <= fit.W, 'the board fills the width (less the page padding), as wide as the panel, and nothing scrolls sideways', JSON.stringify(fit));
+      ok(fit.belowBoard && fit.touch === 'none', 'the panel is under the board, and the board takes its own touches', JSON.stringify(fit));
+      // every phase card and the Levels button, scrolled to, is on screen and the thing at its centre
+      const reach = await phone.evaluate(() => {
+        const out = [];
+        for (const e of [...document.querySelectorAll('#phases .phase'), document.getElementById('menuBtn'), document.getElementById('soundBtn')]) {
+          e.scrollIntoView({ block: 'center' });
+          const r = e.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          out.push({ id: e.id || `phase ${e.dataset.phase}`, on: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth, hit: !!hit && e.contains(hit), h: Math.round(r.height) });
+        }
+        window.scrollTo(0, 0);
+        return out;
+      });
+      ok(reach.length === 6 && reach.every(x => x.on && x.hit), 'all four phase cards, Levels and the sound switch are reached by scrolling, and nothing covers them', reach.map(x => `${x.id}${x.on && x.hit ? '' : ' MISSED'}`).join(', '));
+      ok(reach.every(x => x.h >= 36), 'and each is at least 36 px tall for a thumb', reach.map(x => x.h).join(', '));
+      // a tap on a phase card changes the signal
+      const card = await phone.evaluate(() => { const e = document.querySelector('#phases .phase[data-phase="2"]'); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      await phone.touchscreen.tap(card.x, card.y);
+      const tapped = await phone.evaluate(() => { const c = window.__signalCity.game.ctl; return { next: c.next, stage: c.stage, by: c.cause.by }; });
+      ok(tapped.next === 2 && tapped.by === 'player', 'a tap on the E-W card queues E-W, by the player', JSON.stringify(tapped));
+      // a tap on an ambulance calls its corridor
+      await phone.evaluate(() => { window.scrollTo(0, 0); const g = window.__signalCity.game; g.start('first-light'); g.paused = true; g.world.spawnCar({ leg: 'W', archetype: 'emergency', turn: 'T' });
+        // paused, so it is where it was aimed at when the tap lands; stepped until it is on the board, short of the box
+        for (let k = 0; k < 60; k++) { window.__signalCity.step(10); const c = g.world.cars.find(x => x.archetype === 'emergency'); const sp = g.renderer.toScreen(c.path.at(c.s).x, 0); if (sp.x > 30) break; } });
+      const amb = await phone.evaluate(() => {
+        const g = window.__signalCity.game, car = g.world.cars.find(c => c.archetype === 'emergency' && !c.done);
+        const p = car.path.at(car.s), sp = g.renderer.toScreen(p.x, p.y), r = g.canvas.getBoundingClientRect();
+        // a fingertip lands off-centre: aim 8 px wide of the car's middle
+        return { id: car.id, x: r.left + sp.x + 8, y: r.top + sp.y + 8, called: !!car.priority, onBoard: sp.x > 0 && sp.x < r.width && sp.y > 0 && sp.y < r.height };
+      });
+      await phone.touchscreen.tap(amb.x, amb.y);
+      const called = await phone.evaluate(id => !!window.__signalCity.world.cars.find(c => c.id === id).priority, amb.id);
+      ok(amb.onBoard && !amb.called && called, 'a tap 8 px off an ambulance calls its corridor', JSON.stringify(amb));
+      // two fingers: spread to zoom in, pinch to zoom out
+      const cdp = browser.__engine === 'playwright' ? await phone.context().newCDPSession(phone) : await phone.createCDPSession();
+      const box = await phone.evaluate(() => { const r = document.getElementById('board').getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; });
+      const pinch = async (from, to) => {
+        const pts = d => [{ x: box.cx - d, y: box.cy, id: 1 }, { x: box.cx + d, y: box.cy, id: 2 }];
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pts(from) });
+        for (let k = 1; k <= 6; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pts(from + (to - from) * k / 6) });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      };
+      const s0 = await phone.evaluate(() => ({ scale: window.__signalCity.game.renderer.scale, scroll: window.scrollY, called: window.__signalCity.world.cars.filter(c => c.priority).length }));
+      await pinch(40, 100);
+      const s1 = await phone.evaluate(() => ({ scale: window.__signalCity.game.renderer.scale, scroll: window.scrollY, called: window.__signalCity.world.cars.filter(c => c.priority).length }));
+      await pinch(100, 50);
+      const s2 = await phone.evaluate(() => window.__signalCity.game.renderer.scale);
+      ok(s1.scale > s0.scale * 1.5 && s1.scroll === s0.scroll, 'two fingers spread on the board zoom it in, and the page does not move', `${s0.scale.toFixed(2)} to ${s1.scale.toFixed(2)} px/m`);
+      ok(s2 < s1.scale * 0.75, 'and pinched together zoom it out', `${s1.scale.toFixed(2)} to ${s2.toFixed(2)} px/m`);
+      ok(s1.called === s0.called, 'and a pinch is never taken for a tap', `${s0.called} called before, ${s1.called} after`);
+      await phone.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-phone.png`), fullPage: true });
+      ok(perrs.length === 0, 'with nothing on the console', perrs.join(' | '));
+    } finally {
+      await phone.close();
+    }
   });
 } finally {
   await browser.close();

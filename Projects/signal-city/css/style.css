@@ -34,6 +34,8 @@ button:hover { background: #343a43; }
 .top h1 { font-size: 20px; margin: 0; letter-spacing: 0.3px; }
 .top h1 .lv { color: var(--dim); font-weight: 400; font-size: 15px; margin-left: 8px; }
 .home { text-decoration: none; color: var(--dim); font-size: 14px; }
+.sound-btn { min-height: 36px; padding: 6px 12px; font-size: 13px; color: var(--dim); }   /* R7: in the header, so the panel's foot keeps one row */
+.sound-btn[aria-pressed="true"] { color: var(--ink); }
 .hud { display: flex; gap: 16px; margin-left: auto; flex-wrap: wrap; }
 .stat { display: flex; flex-direction: column; min-width: 54px; }
 .stat.wide { min-width: 130px; }
@@ -46,6 +48,7 @@ button:hover { background: #343a43; }
 
 .play { display: flex; gap: 16px; padding: 16px; flex: 1; align-items: flex-start; }
 .board-wrap { flex: 1; min-width: 0; position: relative; background: #5d7a4a; border-radius: var(--radius); overflow: hidden; }   /* grass behind the ground canvas while a drag slides it */
+.board-wrap, canvas#board { touch-action: none; }   /* R8: a drag on the board pans it and two fingers zoom it; the page is scrolled from the panel */
 /* (a) event banners queue in the board's top-left corner, newest last, and never overlap */
 .banners { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; max-width: 45%; }
 .banner { font-weight: 800; font-size: 15px; letter-spacing: 1px; padding: 5px 10px; border-radius: 6px; background: rgba(20,22,26,0.88); color: var(--yellow); border-left: 4px solid var(--yellow); box-shadow: 0 2px 8px rgba(0,0,0,0.4); animation: banner-in 0.25s ease-out; }
@@ -193,6 +196,8 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .shop-item .ring-switch.on { border-color: var(--green); color: var(--green); }
 .ring-note { margin: 10px 0; }
 .phase.bought .name::before { content: '+ '; }
+.phase.skips .name::after { content: ' · skips'; color: var(--dim); font-weight: 400; font-size: 12px; }   /* R9: passed over until a call rule calls it */
+.phase.called:not(.queued):not(.active) { border-left-color: var(--by-rule); }
 .foot { margin: 16px 0 0; color: var(--dim); font-size: 13px; }
 .stars { font-size: 34px; color: var(--yellow); letter-spacing: 6px; margin: 4px 0 12px; }
 .end-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #2c3138; }
@@ -201,7 +206,7 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .card .controls { margin-top: 16px; }
 
 @media (max-width: 760px) {
-  .play { flex-direction: column; padding: 12px; }
+  .play { flex-direction: column; padding: 12px; align-items: stretch; }   /* R8: flex-start shrank the board to the canvas's 300 px default, 66 px short of a 390 px phone */
   .panel { width: 100%; }
   .hud { margin-left: 0; gap: 12px; }
   .stat.wide { min-width: 130px; }

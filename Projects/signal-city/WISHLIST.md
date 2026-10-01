@@ -401,49 +401,37 @@ match the pre-change tables exactly (#682). The change only affects play
 in the Free Play district. There, a called ambulance's time on the map
 fell from 30.4 to 28.6 s on four boxes and from 64.3 to 54.1 s on eight.
 
-### R7. Sound
+### R7. Sound: done (HISTORY.md #773)
 
-**Size ½. Model Fable 5.1.** The game is silent, and it counts honks. A
-`js/audio.js` on Web Audio, every sound synthesized in code, so nothing is
-vendored and nothing is fetched: a horn per archetype (the trucker's low,
-the aggressive driver's short and repeated), the relay click of a signal
-change, a siren that rises as the vehicle nears the box and pans with its
-x, a crash, the pedestrian push-button chirp, and a traffic bed whose
-level follows the cars on screen. Caps: at most three horns a second, so
-Rush Hour's surge is a jam and not a noise. The context starts on the
-first input. The mute switch is `settings.sound`, **already in the save
-and already defaulting to true** (`js/save.js fresh()`), so there is no
-storage change. Tests: a Node check with a stub `AudioContext` that counts
-what a seeded Rush Hour asks to play (the siren starts when the ambulance
-spawns, stops when it leaves, a surge's honks never pass the cap), and a
-browser check that the switch writes `settings.sound` and a reload keeps
-it. Whether it sounds right is H3, not this row.
+`js/audio.js`, every voice synthesized on Web Audio: a horn per archetype,
+the relay click, a siren that climbs and pans with the ambulance, a crash,
+the push-button chirp and a traffic bed, capped at three horns and six
+clicks a second of wall time. The context starts on the first input and
+`settings.sound` is the switch, a header button and the M key, with no
+storage change. `test/audio.mjs` counts what a seeded Rush Hour asks of a
+stub `AudioContext`, and `test/browser.mjs` reloads the switch. How it
+sounds is H3.
 
-### R8. The phone layout, in emulation
+### R8. The phone layout, in emulation: done (HISTORY.md #774)
 
-**Size ¼. Model Opus 5.** There is one breakpoint (760 px: the panel goes
-under the board) and nothing has ever loaded the page at phone size. Zoom
-is the wheel and the + and - keys, so a phone cannot zoom at all, and
-hover is how a car is picked for the pointer cursor. Add a section to
-`test/browser.mjs` at 390 by 844 with `hasTouch`: the board fills the
-width, every phase card and the Levels button are reachable by scrolling,
-a tap on a phase card changes the signal, a tap on an ambulance calls its
-corridor. Add two-pointer pinch zoom to `js/input.js` (the camera already
-has `zoomBy`), and a tap that did not move picks a car, as the click does
-now. Watch for #132 on the level list: a centred scroll container needs
-`safe`. How it feels under a thumb is H1.
+`test/browser.mjs` loads the page at 390 by 844 with touch: the board fills
+the width (it was 300 px of 366 until the column stretched), every phase
+card, Levels and the sound switch are reached by scrolling, a tap on a
+card changes the signal, a tap 8 px off an ambulance calls its corridor,
+two fingers spread and pinch the camera, and the level list passes #132.
+`js/input.js` tracks pointers for the pinch and gives a touch a 12 px slop
+and a 22 px reach. How it feels under a thumb is H1.
 
-### R9. A rule that calls a phase instead of cutting one
+### R9. A rule that calls a phase instead of cutting one: done (HISTORY.md #775, #776)
 
-**Size ½. Model Opus 5.** Known gaps: a `queue` rule cuts the running green
-as soon as its `after` has run, which on Crossing cut every through short
-and locked 3 of 6 seeds at 4 s, so the level ships `after: 16`. A real
-actuated controller *calls* the phase for its next turn and *skips* a
-phase nobody is waiting for. Add `then: 'call'` (the phase runs at its
-turn in the sequence, not now) and a skip-when-empty flag on a phase for
-levels with sensors. Crossing's calibration re-runs with the call form; if
-it beats `after: 16` the level's default can move to it. Sensors are a
-shop item, so this gives the purchase something new to do.
+`then: 'call'` on a queue rule latches a call on the phase serving its
+movement and cuts nothing; `skip` on a phase has `next` pass it over until
+called, while the box has loops. Crossing moved to it: four call rules on
+its bays, the arrows skipping, the 24 s rule kept. With no input six seeds
+clear 66.0 at 42.5 s against 59.5 at 50.2 s for the `after: 16` rules, still
+one star each, and the hand still beats it. A bought arrow phase that is
+called runs after the green it was called in, so sensors bought with the
+arrows now buy an actuated left.
 
 ### R10. Entry metering: a hand in a roundabout run
 
@@ -653,9 +641,9 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 - Queue rules sleep on a level without `sensors: true` and fire on one with
   it. A queue rule cuts the running green as soon as its `after` seconds
   have run (the minimum green by default): at 4 s Crossing's bays cut every
-  through short and the board locked on 3 of 6 seeds, so the level ships
-  `after: 16`. A rule that *calls* a phase for its next turn in the
-  sequence, the way an actuated controller does, is not built.
+  through short and the board locked on 3 of 6 seeds. Since R9 a queue
+  rule may instead *call* its phase for its turn (`then: 'call'`), and a
+  `skip` phase nobody called is passed over; Crossing ships that (#776).
 - A corridor's handoff keeps the car in its lane: at the second box it picks
   among the turns that lane allows, so on a two-lane corridor with a left
   bay a car that arrived in the inner lane can only turn left. Two Blocks

@@ -19,6 +19,7 @@ import { waveModel, WaveHistory, drawWave } from './wave.js';
 import { legDir } from './network.js';
 import { exitLeg, parseMovement } from './signals.js';
 import { loadSheet } from './sprites.js';
+import { Sound } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -79,7 +80,14 @@ class Game {
     this.bannerKey = '';
     this.run = null;         // an endless run (M9): { seed, day, days, points }
     this.district = { boxes: 1, seed: DEBUG ? 7 : rollCity() };   // the sandbox's choice (#614)
+    // the sound (R7): the context waits for the first input, and
+    // settings.sound, in the save since version 1, is its switch
+    this.sound = new Sound({ enabled: this.save.settings.sound !== false });
+    const wake = () => this.sound.start();
+    window.addEventListener('pointerdown', wake, { once: true, capture: true });
+    window.addEventListener('keydown', wake, { once: true, capture: true });
     bindInput({ canvas: this.canvas, renderer: this.renderer, game: this });
+    this.showSound();
     window.addEventListener('resize', () => this.layout());
     this.layout();
     this.buildLevelSelect();
@@ -504,6 +512,9 @@ class Game {
       }
     }
     if (this.world) {
+      // the sound reads the world's events before the renderer drains them
+      if (this.state === 'playing' && !this.paused) this.sound.take(this.world, now, this.view());
+      else this.sound.quiet();
       this.renderer.takeEvents(this.world);
       this.renderer.draw(this.world, now);
       this.updateHud();
@@ -591,8 +602,9 @@ class Game {
     const ctl = this.ctl;
     box.innerHTML = '';
     if (!ctl.rules.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'No rules: the phases change when you press them.'; box.appendChild(p); return; }
-    const thenOptions = sel => {
-      const opts = [['next', 'the next phase']].concat(ctl.phases.map((p, i) => [String(i), `${i + 1}: ${p.name}`]));
+    // a queue rule may also call its phase for its turn (R9) instead of cutting to one
+    const thenOptions = (sel, queue) => {
+      const opts = [['next', 'the next phase']].concat(queue ? [['call', 'call its phase']] : [], ctl.phases.map((p, i) => [String(i), `${i + 1}: ${p.name}`]));
       for (const [v, label] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); }
     };
     ctl.rules.forEach((r, i) => {
@@ -601,7 +613,7 @@ class Game {
       row.dataset.i = i;
       const body = document.createElement('div');
       body.className = 'body';
-      const then = document.createElement('select'); then.className = 'then'; thenOptions(then);
+      const then = document.createElement('select'); then.className = 'then'; thenOptions(then, r.when === 'queue');
       then.value = r.then === undefined || r.then === 'next' ? 'next' : String(r.then);
       if (r.when === 'elapsed') {
         const n = document.createElement('input'); n.type = 'number'; n.className = 'seconds'; n.min = '1'; n.max = '180'; n.step = '1'; n.value = String(r.seconds);
@@ -612,7 +624,8 @@ class Game {
         mv.value = r.movement || ctl.movements[0];
         const th = document.createElement('input'); th.type = 'number'; th.className = 'threshold'; th.min = '1'; th.max = '30'; th.step = '1'; th.value = String(r.threshold ?? 3);
         const af = document.createElement('input'); af.type = 'number'; af.className = 'after'; af.min = '0'; af.max = '180'; af.step = '1'; af.value = String(r.after ?? ctl.timing.minGreen);
-        body.append('when ', mv, ' has ', th, ' queued, after ', af, ' s, go to ', then);
+        if (r.then === 'call') body.append('when ', mv, ' has ', th, ' queued, ', then);
+        else body.append('when ', mv, ' has ', th, ' queued, after ', af, ' s, go to ', then);
       }
       const ops = document.createElement('div'); ops.className = 'ops';
       for (const [cls, glyph, title] of [['up', '▲', 'earlier'], ['down', '▼', 'later'], ['remove', '✕', 'remove']]) {
@@ -633,9 +646,14 @@ class Game {
   readRule(row, r) {
     const out = { ...r };
     const then = row.querySelector('select.then').value;
-    out.then = then === 'next' ? 'next' : Number(then);
+    out.then = then === 'next' || then === 'call' ? then : Number(then);
     if (r.when === 'elapsed') out.seconds = Math.max(1, Number(row.querySelector('input.seconds').value) || 1);
-    else { out.movement = row.querySelector('select.movement').value; out.threshold = Math.max(1, Number(row.querySelector('input.threshold').value) || 1); out.after = Math.max(0, Number(row.querySelector('input.after').value) || 0); }
+    else {
+      out.movement = row.querySelector('select.movement').value; out.threshold = Math.max(1, Number(row.querySelector('input.threshold').value) || 1);
+      const af = row.querySelector('input.after');   // a call rule shows no `after`: it cuts nothing
+      if (af) out.after = Math.max(0, Number(af.value) || 0);
+      else if (out.after === undefined) out.after = this.ctl.timing.minGreen;
+    }
     return out;
   }
 
@@ -660,12 +678,31 @@ class Game {
     });
   }
 
+  // The board's left and right edges in world x, for the siren's pan.
+  view() { return { x0: this.renderer.toWorld(0, 0).x, x1: this.renderer.toWorld(this.renderer.width, 0).x }; }
+
+  // The sound switch writes settings.sound at once, so a reload keeps it.
+  toggleSound() {
+    this.save.settings.sound = !(this.save.settings.sound !== false);
+    this.slot.save(this.save);
+    this.sound.setEnabled(this.save.settings.sound);
+    this.showSound();
+  }
+
+  showSound() {
+    const on = this.save.settings.sound !== false;
+    $('soundBtn').textContent = on ? 'Sound on' : 'Sound off';
+    $('soundBtn').setAttribute('aria-pressed', String(on));
+  }
+
   togglePause() { if (this.state === 'playing') { this.paused = !this.paused; $('pauseBtn').textContent = this.paused ? 'Resume' : 'Pause'; } }
   toggleSpeed() { this.speed = this.speed === 1 ? 2 : 1; $('speedBtn').textContent = `${this.speed}x`; }
 
-  carAt(x, y) {
+  // The car nearest (x, y) within `reach` metres; a tap reaches further
+  // than a cursor (input.js TAP_PX).
+  carAt(x, y, reach = 3.5) {
     if (!this.world) return null;
-    let best = null, bd = 3.5;
+    let best = null, bd = Math.max(3.5, reach);
     for (const c of this.world.cars) {
       if (c.done) continue;
       const p = c.path.at(c.s);
@@ -703,6 +740,7 @@ class Game {
       b.setAttribute('aria-label', `${i + 1}: ${p.name}, ${p.movements.join(' ')}`);
       const key = document.createElement('span'); key.className = 'key'; key.textContent = String(i + 1);
       const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
+      if (p.skip) { b.classList.add('skips'); b.title = 'Skipped when nobody has called it: a queue rule set to call its phase calls it'; }
       b.append(key, phaseDiagram(legs, p), name);
       b.addEventListener('click', () => this.requestPhase(i));
       b.addEventListener('mouseenter', () => this.preview(i));
@@ -800,6 +838,7 @@ class Game {
       const i = +b.dataset.phase;
       b.classList.toggle('active', i === ctl.phase && !ctl.preemption && !flashing);
       b.classList.toggle('queued', ctl.next === i);
+      b.classList.toggle('called', ctl.calls.has(i));
       b.classList.toggle('green', i === ctl.phase && ctl.stage === 'green' && !ctl.preemption);
     }
     $('flashRedBtn').classList.toggle('on', flashing && ctl.flash === 'red');
@@ -849,7 +888,7 @@ class Game {
   mountSave() {
     mountSaveBar($('saveBar'), this.slot, {
       getState: () => this.save,
-      setState: s => { this.save = s; this.buildLevelSelect(); },
+      setState: s => { this.save = s; this.sound.setEnabled(s.settings.sound !== false); this.showSound(); this.buildLevelSelect(); },
       filename: 'signal-city-save.json',
     });
   }
@@ -938,6 +977,7 @@ $('priorityBtn').addEventListener('click', () => game.priorityNearest());
 $('retryBtn').addEventListener('click', () => game.retry());
 $('levelsBtn').addEventListener('click', () => { $('endScrim').classList.remove('show'); $('selectScrim').classList.add('show'); game.state = 'select'; });
 $('menuBtn').addEventListener('click', () => game.escape());
+$('soundBtn').addEventListener('click', () => game.toggleSound());
 $('flashRedBtn').addEventListener('click', () => game.setFlash('red'));
 $('flashYellowBtn').addEventListener('click', () => game.setFlash('yellow'));
 $('signalsBtn').addEventListener('click', () => game.setFlash(null));
@@ -953,7 +993,8 @@ if (DEBUG) {
   window.__signalCity = {
     game,
     get world() { return game.world; },
-    step(n = 1) { for (let i = 0; i < n; i++) { game.world.step(); game.wave.sample(game.world); } game.renderer.takeEvents(game.world); game.updateHud(true); },
+    step(n = 1) { for (let i = 0; i < n; i++) { game.world.step(); game.wave.sample(game.world); } game.sound.take(game.world, performance.now() / 1000, game.view()); game.renderer.takeEvents(game.world); game.updateHud(true); },
+    get sound() { return game.sound; },
     setOffset(s) { game.setOffset(s); },
     callPed(leg) { game.callPed(leg); },
     selectNode(i) { game.selectNode(i); },
