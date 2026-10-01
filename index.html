@@ -791,28 +791,42 @@
   function drawSprite(ctx, p, t, sp, rim) {
     var row = WALK.types.indexOf(p.type);
     if (row < 0) row = WALK.types.indexOf("patron");
-    var n = WALK.frames, col = n;
+    var n = WALK.frames, col = n, next = -1, mix = 0;
     if (p.moving) {
-      col = Math.round((((p.phase % 6.283185) + 6.283185) % 6.283185) / 6.283185 * n) % n;
+      var pos = (((p.phase % 6.283185) + 6.283185) % 6.283185) / 6.283185 * n;
+      col = Math.floor(pos) % n; next = (col + 1) % n; mix = pos - Math.floor(pos);
     } else {
       var u = (TYPE[p.type] || TYPE.patron).h;
       ctx.translate(0, -Math.sin(t * 1.2 + p.seed) * 0.8 * u);
       ctx.rotate(Math.sin(t * 0.7 + p.seed) * 0.02);
     }
-    var cw = WALK.cell[0], ch = WALK.cell[1], r = WALK.ppu;
-    ctx.globalAlpha = rim || 1;
-    ctx.drawImage(rim ? sp.tint : sp.img, col * cw, row * ch, cw, ch,
-      -WALK.anchor[0] / r, -WALK.anchor[1] / r, cw / r, ch / r);
+    var cw = WALK.cell[0], ch = WALK.cell[1], r = WALK.ppu, img = rim ? sp.tint : sp.img;
+    var a = rim || 1;
+    // the frame the phase has passed at full strength, the next one fading in
+    // over it: twelve frames a stride step in whole cells, and a silhouette
+    // that only ever changes between cells reads as a flicker at 60 Hz
+    ctx.globalAlpha = a;
+    ctx.drawImage(img, col * cw, row * ch, cw, ch, -WALK.anchor[0] / r, -WALK.anchor[1] / r, cw / r, ch / r);
+    if (next >= 0 && mix > 0.02) {
+      ctx.globalAlpha = a * mix;
+      ctx.drawImage(img, next * cw, row * ch, cw, ch, -WALK.anchor[0] / r, -WALK.anchor[1] / r, cw / r, ch / r);
+    }
   }
 
   // One cell of the cast sheet at the origin: `id` the row, `v` 0 to 1 along
-  // it (the nearest of its steps). `rim` is the alpha of the firelit pass, 0 for
+  // it (a blend of the two steps either side). `rim` is the alpha of the firelit pass, 0 for
   // the black one, as drawSprite() takes it. The caller has saved the context.
   function drawCast(ctx, cs, rim, id, v) {
     var r = CASTROW[id], cw = CASTSHEET.cell[0], ch = CASTSHEET.cell[1], k = CASTSHEET.ppu;
-    var col = clamp(Math.round(v * (r.frames - 1)), 0, r.frames - 1);
+    var pos = clamp(v, 0, 1) * (r.frames - 1), lo = Math.floor(pos), mix = pos - lo;
+    var img = rim ? cs.tint : cs.img;
+    // neighbouring steps crossfaded, so a slow wag or a breath is not six jumps
     ctx.globalAlpha = rim || 1;
-    ctx.drawImage(rim ? cs.tint : cs.img, col * cw, r.row * ch, cw, ch, -r.ax / k, -CASTSHEET.ay / k, cw / k, ch / k);
+    ctx.drawImage(img, lo * cw, r.row * ch, cw, ch, -r.ax / k, -CASTSHEET.ay / k, cw / k, ch / k);
+    if (mix > 0.02 && lo < r.frames - 1) {
+      ctx.globalAlpha = (rim || 1) * mix;
+      ctx.drawImage(img, (lo + 1) * cw, r.row * ch, cw, ch, -r.ax / k, -CASTSHEET.ay / k, cw / k, ch / k);
+    }
   }
 
   // rim: alpha of the firelit pass when a sheet draws, 0 for the black one;
@@ -1696,6 +1710,144 @@
     ctx.restore();
   };
 
+  // What hangs on the walls and stands about, drawn over the plate so it can
+  // move: a banner, a shield, a torch, herb bunches, barrels, mugs on the bar
+  // and smoke off the hearth. The page shows room x -60 to 1530 and y 217 on
+  // down, and the sign hides x 385 to 1090 above y 445, so nothing here that
+  // wants to be seen sits behind it. Everything is flat dark like the figures,
+  // with a thin orange edge toward the fire.
+  var Y = function (py) { return -200 + py * 1.4444; };
+  var X = function (px) { return -200 + px * 1.25; };
+  TavernScene.prototype.paintDecor = function (ctx, t, f) {
+    var inten = this.inten, hx = HEARTH.x;
+    // the fire's edge on a shape, by how near it is
+    var edge = function (x) { return "rgba(255,150,64," + (clamp(1 - Math.abs(x - hx) / 1100, 0.05, 1) * (0.25 + f * 0.25) * inten).toFixed(3) + ")"; };
+
+    // banner on the panel right of the hearth
+    ctx.save();
+    ctx.translate(540, 456);
+    ctx.rotate(Math.sin(t * 0.55 + 1.3) * 0.012);
+    ctx.fillStyle = "#1e0e08";
+    ctx.fillRect(-34, -6, 68, 5);
+    ctx.beginPath();
+    ctx.moveTo(-28, 0); ctx.lineTo(28, 0); ctx.lineTo(28, 118);
+    ctx.lineTo(0, 98 + Math.sin(t * 0.9) * 3); ctx.lineTo(-28, 118);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = edge(540); ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = "rgba(180,138,62,0.34)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 42, 13, 0, 6.284); ctx.moveTo(0, 29); ctx.lineTo(0, 55); ctx.moveTo(-11, 42); ctx.lineTo(11, 42); ctx.stroke();
+    ctx.fillStyle = "#0d0703";
+    ctx.fillRect(-37, -9, 7, 11); ctx.fillRect(30, -9, 7, 11);
+    ctx.restore();
+
+    // shield and crossed swords on the panel by the door
+    ctx.save();
+    ctx.translate(764, 524);
+    ctx.strokeStyle = "#120b05"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(-40, -34); ctx.lineTo(40, 36); ctx.moveTo(40, -34); ctx.lineTo(-40, 36); ctx.stroke();
+    ctx.fillStyle = "#170e07";
+    ctx.beginPath(); ctx.moveTo(-24, -26); ctx.lineTo(24, -26); ctx.quadraticCurveTo(26, 12, 0, 34); ctx.quadraticCurveTo(-26, 12, -24, -26); ctx.fill();
+    ctx.strokeStyle = edge(764); ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = "rgba(170,132,64,0.3)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(0, 24); ctx.moveTo(-16, -6); ctx.lineTo(16, -6); ctx.stroke();
+    ctx.restore();
+
+    // torch in a bracket by the bar post, throwing its own light on the shelf
+    var tx = 1136, ty = 392, tf = 0.72 + noise(t * 6.3 + 5) * 0.28;
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.fillStyle = "#110a05";
+    ctx.fillRect(-3, 0, 6, 40); ctx.fillRect(-9, 36, 18, 5); ctx.fillRect(-4, 40, 8, 14);
+    ctx.globalCompositeOperation = "lighter";
+    var tg = ctx.createRadialGradient(0, -8, 2, 0, -8, 190 * tf);
+    tg.addColorStop(0, "rgba(255,170,84," + (0.38 * inten) + ")");
+    tg.addColorStop(1, "rgba(255,140,60,0)");
+    ctx.fillStyle = tg; ctx.beginPath(); ctx.arc(0, -8, 190 * tf, 0, 6.284); ctx.fill();
+    ctx.fillStyle = "rgba(255,208,124,0.95)";
+    ctx.beginPath(); ctx.ellipse(Math.sin(t * 9) * 1.2, -10, 5 * tf, 13 * tf, 0, 0, 6.284); ctx.fill();
+    ctx.restore();
+
+    // herb bunches on long cords from the beam, and a pair of hanging pans
+    [[1190, 0.6, 1], [1262, 2.0, 0.8], [1420, 0.2, 1], [1490, 1.4, 0.9]].forEach(function (h) {
+      ctx.save();
+      ctx.translate(h[0], 100);
+      ctx.rotate(Math.sin(t * 0.8 + h[1] * 4) * 0.025);
+      ctx.strokeStyle = "#100a04"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 150 * h[2]); ctx.stroke();
+      ctx.translate(0, 148 * h[2]);
+      ctx.fillStyle = "#13100a";
+      ctx.beginPath(); ctx.moveTo(-5, 0); ctx.quadraticCurveTo(-22, 34, -11, 66); ctx.lineTo(11, 66);
+      ctx.quadraticCurveTo(22, 34, 5, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(100,116,54,0.26)"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-6, 12); ctx.lineTo(-8, 60); ctx.moveTo(5, 12); ctx.lineTo(7, 62); ctx.stroke();
+      ctx.restore();
+    });
+    [[1340, 3.1, 1.1], [1380, 0.7, 0.8]].forEach(function (pn) {
+      ctx.save();
+      ctx.translate(pn[0], 100);
+      ctx.rotate(Math.sin(t * 0.6 + pn[1]) * 0.02);
+      ctx.strokeStyle = "#100a04"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 150 * pn[2]); ctx.stroke();
+      ctx.translate(0, 150 * pn[2]);
+      ctx.fillStyle = "#15100a";
+      ctx.beginPath(); ctx.ellipse(0, 18, 20, 20, 0, 0, 6.284); ctx.fill();
+      ctx.fillRect(-3, -4, 6, 6);
+      ctx.fillStyle = "rgba(255,170,84," + (0.2 * inten).toFixed(3) + ")";
+      ctx.beginPath(); ctx.ellipse(-8, 12, 4, 7, -0.5, 0, 6.284); ctx.fill();
+      ctx.restore();
+    });
+
+    // barrels and a crate along the back wall, left of the door
+    var barrel = function (bx, by, k) {
+      ctx.save();
+      ctx.translate(bx, by); ctx.scale(k, k);
+      ctx.fillStyle = "#150d06";
+      ctx.beginPath(); ctx.moveTo(-22, 0); ctx.quadraticCurveTo(-30, -36, -22, -72); ctx.lineTo(22, -72);
+      ctx.quadraticCurveTo(30, -36, 22, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = edge(bx); ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = "rgba(10,6,3,0.9)";
+      ctx.fillRect(-27, -58, 54, 4); ctx.fillRect(-27, -16, 54, 4);
+      ctx.fillStyle = "rgba(255,170,84," + (0.14 * inten).toFixed(3) + ")";
+      ctx.fillRect(-19, -70, 3, 66);
+      ctx.restore();
+    };
+    barrel(800, 622, 1); barrel(850, 622, 0.9);
+    ctx.save();
+    ctx.fillStyle = "#130c06"; ctx.fillRect(634, 568, 62, 54);
+    ctx.strokeStyle = edge(660); ctx.lineWidth = 1.5; ctx.strokeRect(634, 568, 62, 54);
+    ctx.fillStyle = "rgba(255,170,84," + (0.1 * inten).toFixed(3) + ")";
+    ctx.fillRect(634, 568, 62, 3); ctx.fillRect(661, 571, 4, 51);
+    ctx.restore();
+
+    // mugs, a bottle and a plate stack on the bar top
+    var barY = Y(463);
+    ctx.save();
+    ctx.fillStyle = "#120b05";
+    [[1062, 1], [1094, 0.9], [1470, 1], [1526, 0.85]].forEach(function (m) {
+      var mx = X(m[0]), k = m[1] * 1.3;
+      ctx.fillRect(mx - 7 * k, barY - 17 * k, 14 * k, 17 * k);
+      ctx.strokeStyle = "#120b05"; ctx.lineWidth = 2.4 * k;
+      ctx.beginPath(); ctx.arc(mx + 8 * k, barY - 9 * k, 4.5 * k, -1.5, 1.5); ctx.stroke();
+      ctx.fillStyle = "rgba(255,190,110," + (0.22 * inten) + ")";
+      ctx.fillRect(mx - 5.5 * k, barY - 15 * k, 1.8 * k, 12 * k);
+      ctx.fillStyle = "#120b05";
+    });
+    var bx = X(1180);
+    ctx.fillRect(bx - 5, barY - 24, 10, 24); ctx.fillRect(bx - 2, barY - 36, 4, 14);
+    for (var pl = 0; pl < 4; pl++) ctx.fillRect(X(1560) - 20, barY - 5 - pl * 4, 40, 3);
+    ctx.restore();
+
+    // smoke curling off the fire up the stonework, thinning as it climbs
+    ctx.save();
+    for (var sm = 0; sm < 4; sm++) {
+      var age = ((t * 0.05 + sm * 0.25) % 1), sx = hx + 10 + Math.sin(t * 0.35 + sm * 2.1) * 22 + age * 90;
+      var sy = 470 - age * 250;
+      ctx.fillStyle = "rgba(78,56,36," + (0.16 * (1 - age) * Math.min(1, age * 6) * inten).toFixed(3) + ")";
+      ctx.beginPath(); ctx.ellipse(sx, sy, 30 + age * 70, 18 + age * 40, 0, 0, 6.284); ctx.fill();
+    }
+    ctx.restore();
+  };
+
   TavernScene.prototype.paintGlow = function (ctx, f) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
@@ -1805,6 +1957,7 @@
     ctx.scale(this.scale, this.scale);
 
     this.paintRoom(ctx);
+    this.paintDecor(ctx, t, f);
 
     // night spilling through the open door
     if (this.door.open > 0.02) {
