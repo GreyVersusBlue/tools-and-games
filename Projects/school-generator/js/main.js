@@ -98,6 +98,7 @@ import { moveStorey } from './section.js';
 import { clone as deepClone } from './history.js';
 // --- Phase 9 ---
 import { registerRows } from './catalog.js';
+import { neededBuiltins, fetchBuiltins } from './builtin-models.js';
 import { loadModel as readModelFile, FT_TO_M } from './gltf.js';
 import {
   MAX_MODELS, modelRows, modelsOf, importModel, addModel, removeModel,
@@ -281,6 +282,28 @@ function rebuild(throttled = false) {
   }
   lastRebuild = now;
   renderApi.buildFromState(state);
+  ensureBuiltins();
+}
+
+// The Blender pack (builtin-models.js): a design fetches only the files its
+// props name, after the first draw, so the boot stays as light as it was and a
+// school with no sofa never asks for the sofa. The first frame is the
+// procedural builders; when the bytes land the geometry is swapped and the
+// design redrawn once. A file that cannot be read is an error on the console,
+// not a quiet fallback, and is not asked for again this session.
+const builtinTried = new Set();
+async function ensureBuiltins(extraTypes = []) {
+  const types = new Set(extraTypes);
+  for (const p of state.props || []) types.add(p.type);
+  const ids = neededBuiltins(types, catalogEntry, new Set(renderApi.builtinModelIds))
+    .filter((id) => !builtinTried.has(id));
+  if (!ids.length) return;
+  for (const id of ids) builtinTried.add(id);
+  const { bytes, failed } = await fetchBuiltins(ids, (url) => fetch(url));
+  for (const f of failed) console.error(`assets/models/${f.id}.glb could not be fetched: ${f.message}`);
+  if (!bytes.size) return;
+  renderApi.setBuiltinModels(bytes);
+  rebuild();
 }
 
 // --- Phase 14: the shared session ---

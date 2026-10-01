@@ -433,6 +433,87 @@ const RECIPES = {
   // page to the World so the recipe can start Rush Hour on seed 7 and step it
   // into the surge's queues, which run from 60 s to the outage at 110. The
   // page draws the stepped world, then runs on at 1x for the motion check.
+  // ---- The Conversion Codex: the pasted dragon beside its conversion,
+  // scrolled to the tabs so both panel headings and the top of the PF2e stat
+  // block are in the frame. (Opening a spell card was tried: the og crop cuts
+  // it off below the fold.)
+  'converter': {
+    async play(p, { shot }) {
+      await p.evaluate(() => {
+        const top = document.querySelector('.tabs').getBoundingClientRect().top + window.scrollY;
+        window.scrollTo(0, top - 12);
+      });
+      await wait(300);
+      const seen = await p.evaluate(() => {
+        const r = document.querySelector('#pf2-block .sb-name').getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= window.innerHeight;
+      });
+      await shot('dragon-converted');
+      if (!seen) throw new Error('the converted stat block\'s name is not in the frame');
+      return 'young red dragon pasted and converted to Creature 10';
+    },
+  },
+
+  // ---- Throneshard: the frame is a teamfight. Ten bots play on autoplay with
+  // rendering stubbed and a fixed step (the harness's software GL is far too slow
+  // to play in real time, #53) until five or more heroes of both teams stand
+  // within 10 units of one another, in a lane with creeps around them, then the loop and the composer come back, the
+  // camera closes to a readable distance and the shot is taken live. The hud is
+  // left on: the bars and the minimap are the game's identity.
+  'throneshard': {
+    async play(p, { shot }) {
+      await p.evaluate(() => {
+        const g = window.game;
+        g.ai.setPlayerAutoplay?.(true);
+        g.renderer.setAnimationLoop(null);
+        g.__render = g.renderer.render.bind(g.renderer);
+        g.__composer = g.composer;
+        g.renderer.render = () => {};
+        g.composer = null;
+        g.fixedDt = 0.05;
+      });
+      let fight = null;
+      for (let chunk = 0; chunk < 100 && !fight; chunk++) {
+        fight = await p.evaluate(() => {
+          const g = window.game;
+          const t0 = g.time;
+          while (g.time - t0 < 10 && !g.matchOver) {
+            g.tick();
+            if (g.time < 620) continue; // the day phases are 0-300 s and 600-900 s
+            if (g.time > 890) break;
+            const hs = g.heroes.filter(h => h.alive);
+            for (const c of hs) {
+              const near = hs.filter(h => Math.hypot(h.position.x - c.position.x, h.position.z - c.position.z) < 10);
+              const teams = new Set(near.map(h => h.team));
+              const fighting = near.filter(h => h.state === 'attacking' || h.state === 'casting').length;
+              // in a lane, not the jungle: trees hide a jungle fight from this camera
+              const creeps = g.units.filter(u => u.alive && u.kind === 'creep' && Math.hypot(u.position.x - c.position.x, u.position.z - c.position.z) < 14).length;
+              if (near.length >= 5 && teams.size === 2 && fighting >= 3 && creeps >= 3 && near.every(h => h.healthPct > 0.2)) {
+                const x = near.reduce((s, h) => s + h.position.x, 0) / near.length;
+                const z = near.reduce((s, h) => s + h.position.z, 0) / near.length;
+                return { x, z, t: g.time, n: near.length };
+              }
+            }
+          }
+          return null;
+        });
+      }
+      if (!fight) throw new Error('no five-hero daytime teamfight inside the step budget');
+      await p.evaluate(({ x, z }) => {
+        const g = window.game;
+        g.renderer.render = g.__render;
+        g.composer = g.__composer;
+        g.fixedDt = undefined;
+        g.cameraCtl.desiredDistance = 30;
+        g.cameraCtl.focus(x, z, true);
+        g.renderer.setAnimationLoop(() => g.tick());
+      }, fight);
+      await wait(900);
+      await shot('teamfight');
+      return `${fight.n} heroes fighting at ${(fight.t / 60).toFixed(1)} min`;
+    },
+  },
+
   'signal-city': {
     query: '?debug',
     async play(p, { shot }) {
@@ -495,7 +576,9 @@ for (const f of fs.readdirSync(OUT)) {
 }
 
 const server = await serve(PORT);
-const browser = await launch({ headed: true });
+// Headed unless every recipe in this run is a DOM page that says it doesn't
+// need a screen (`headless: true` in games.mjs); the three.js games always do.
+const browser = await launch({ headed: !names.every(n => GAMES[n].headless) });
 // Merge, for the same reason: a single-recipe run shouldn't erase the report for
 // the other six.
 const reportPath = path.join(OUT, 'report.json');

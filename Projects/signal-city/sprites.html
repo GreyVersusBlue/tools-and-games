@@ -48,6 +48,7 @@
   .rows { padding: 6px 0 10px; overflow-x: auto; }
   .row { display: flex; align-items: center; gap: 12px; padding: 2px 14px; }
   .row .name { width: 104px; flex: none; color: var(--dim); font-size: 13px; }
+  canvas.rendered { background: #1f2430; }
   canvas { display: block; background: #23282f; border-radius: 6px; }
 </style>
 </head>
@@ -58,17 +59,20 @@
     Every archetype in every palette, drawn from <code>js/sprites.js</code>.
     Each row is one palette: four headings at 12 px per metre, then the same car
     at 28 px per metre. The trucker rows draw the cab with its trailer hinged
-    behind it. Rideshare signs and emergency light bars animate.
+    behind it. Rideshare signs and emergency light bars animate. The right-hand cell of
+    each row is the rendered car from <code>assets/sprites/cars.png</code>, at the
+    same two scales, drawn the way the game draws it.
   </p>
   <div class="bar">
     <button id="sheet">Download sheet</button>
+    <span id="sheetnote">loading the rendered sheet</span>
     <span id="status">32 sprites at 16 px per metre, PNG</span>
   </div>
   <div id="gallery"></div>
 </main>
 
 <script type="module">
-import { ARCHETYPES, SPRITES, drawCar } from './js/sprites.js';
+import { ARCHETYPES, SPRITES, drawCar, spriteFor, trailerSpriteFor, loadSheet, SHEET_FROM, SHEET_TO } from './js/sprites.js';
 
 const SMALL = 12;          // px per metre for the four headings
 const BIG = 28;            // px per metre for the close look
@@ -146,6 +150,37 @@ function paintRow(canvas, a, variant, t) {
 }
 
 const animated = [];
+const renderedCells = [];
+let sheetLoaded = false;
+
+// The same car from the rendered sheet, through spriteFor and trailerSpriteFor
+// exactly as the game calls them, at the same two scales. Until the sheet has
+// loaded (or if it never does) the cell says so rather than showing the
+// procedural car under the rendered column's name.
+function paintRendered(canvas, a, variant, t) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!sheetLoaded) {
+    ctx.fillStyle = '#8a94a4';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText('no sheet', 8, canvas.height / 2);
+    return;
+  }
+  const spec = SPRITES[a];
+  let x = 12;
+  for (const px of [SMALL, BIG]) {
+    const cab = spriteFor(a, variant, px, t);
+    const cx = x + (isRig(a) ? (spec.trailer.length + HINGE_GAP + spec.length) * px : spec.length * px) / 2 + 2;
+    const cy = canvas.height / 2;
+    if (isRig(a)) {
+      const ts = trailerSpriteFor(variant, px);
+      const tx = cx - (spec.length / 2 + HINGE_GAP + spec.trailer.length / 2) * px;
+      ctx.drawImage(ts.canvas, tx - ts.ox, cy - ts.oy);
+    }
+    ctx.drawImage(cab.canvas, cx - cab.ox, cy - cab.oy);
+    x = cx + (spec.length / 2) * px + 18;
+  }
+}
 const gallery = document.getElementById('gallery');
 
 for (const a of ARCHETYPES) {
@@ -174,8 +209,14 @@ for (const a of ARCHETYPES) {
     row.appendChild(name);
     row.appendChild(canvas);
     rows.appendChild(row);
+    const shown = document.createElement('canvas');
+    shown.className = 'rendered';
+    shown.width = Math.ceil(extent(a).len * (SMALL + BIG)) + 54;
+    shown.height = Math.max(side, bigH);
+    row.appendChild(shown);
     paintRow(canvas, a, variant, 0);
-    if (a === 'rideshare' || a === 'emergency') animated.push({ canvas, a, variant });
+    renderedCells.push({ shown, a, variant });
+    if (a === 'rideshare' || a === 'emergency') animated.push({ canvas, shown, a, variant });
   });
 
   section.appendChild(rows);
@@ -186,11 +227,22 @@ if (animated.length) {
   const start = performance.now();
   const tick = now => {
     const t = (now - start) / 1000;
-    for (const item of animated) paintRow(item.canvas, item.a, item.variant, t);
+    for (const item of animated) {
+      paintRow(item.canvas, item.a, item.variant, t);
+      paintRendered(item.shown, item.a, item.variant, t);
+    }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
 }
+
+loadSheet().then(ok => {
+  sheetLoaded = ok;
+  document.getElementById('sheetnote').textContent = ok
+    ? `rendered sheet loaded: drawn at ${SHEET_FROM} to ${SHEET_TO} px per metre, the right-hand cells`
+    : 'rendered sheet did not load, see the console';
+  for (const c of renderedCells) paintRendered(c.shown, c.a, c.variant, 0);
+});
 
 /* ------------------------------------------------------------- the sheet -- */
 

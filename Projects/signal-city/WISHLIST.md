@@ -523,34 +523,67 @@ R14. They are the same kind of row as the site's real-hardware passes.
   the Timing tab on Two Blocks without the hint. Devon's to arrange.
   **Size ½. Model Opus 5.**
 
-## Blender assets (ranks 10 to 12, from 2026-09-25)
+## Blender assets (from 2026-09-25; B1 to B3 done 2026-09-30)
 
 Blender-made assets rank above everything else (HISTORY.md #642), which puts
-these three rows above R4. The shared plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Blender on one of Devon's machines,
-Windows or huginn (#710); a session without `blender` on PATH skips it and
+these three rows above R4. The shared plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs
+on huginn or Devon's Windows machine, and one gated `blender-gpu` on the
+Windows machine only (#707); a session that cannot take it skips it and
 takes the next row.
 
-**B1. The sprite pipeline (rank 10, ½, Opus 5.5, gate `blender`).** The first
-2D pipeline, so this is where the sprite-sheet renderer is written, and the
-other 2D projects copy it (#643). `common.py` renders straight down with an
-orthographic camera, a transparent film, the light from the side
-`js/sprites.js` puts its roof gloss on, and the frames packed into one PNG
-with a JSON atlas. Style sheet: pixels per metre at the closest zoom the game
-draws (a car is drawn in metres, nose along +x, centred on the origin), the
-four palettes per archetype as separate frames or one body and a tint mask,
-and the size under which `spriteFor` keeps drawing the procedural car: at
-twelve boxes a car is 6 px long (#617), where a render adds nothing. The
-validator joins Site CI's Signal City entry.
+**B1. The sprite pipeline: done (HISTORY.md #721 to #723).** A 2D
+pipeline in `tools/blender/`, built beside Orbital's the same day (#717, which
+merged first and is the one later 2D copies start from): `common.py` (the render settings, the geometry
+kit, the packer and a PNG writer of its own), `spec.mjs` (reads every
+archetype's size and palettes out of `js/sprites.js`, so the palette has one
+home), `budget.json` (the style sheet below as data) and `validate.mjs`, which
+runs in Site CI's Signal City entry: 523 checks, no Blender. Nothing here is
+shared with another project (#643). The style sheet:
 
-**B2. The car sheet (rank 11, ½, Opus 5.5, gate `blender`).** The ten
-`ARCHETYPES`, in their four palettes, with frames for the states of the two
-archetypes whose `draw()` reads `t`.
+- **Projection.** Straight down through an orthographic camera onto a
+  transparent film. A car is built in metres, nose along +x, centred on the
+  origin, exactly as `sprites.js` draws it; Blender's +Y is the game's -y, so
+  the top of a frame is the side `sprites.js` puts its roof gloss on.
+- **Light.** A sun from the front and the -y side, fifty degrees up, and a sky
+  brighter toward it, so a crowned roof and a glass pane reflect a gradient
+  that runs back from the nose. Cycles on the CPU, 128 samples, seed 0,
+  adaptive sampling and the denoiser off, the Standard view transform. That is
+  byte-stable across runs and across thread counts on one machine (#721).
+- **Scale.** 36 px a metre in the sheet (#722). A frame is
+  `ceil(length * 36) + 4` by `ceil(width * 36) + 4`, the canvas `spriteFor()`
+  makes at that scale, anchored at its centre.
+- **The band.** `spriteFor` draws a frame from the sheet while its own pixels
+  per metre are 12 to 36 (`spriteFrom`, `spriteTo`) and the procedural car
+  outside that band. Below 12 a car is under 55 sprite pixels long, and a
+  district's 6 px car gains nothing from a render. Above 36 the vector car
+  stays sharp where an upscaled frame would blur (#722).
+- **Palettes.** Separate frames, not a body and a tint mask: a palette carries
+  body, glass and accent, and the trailer swaps body and accent (#723).
+- **The atlas.** `{ "sheet": { w, h, ppm, pad }, "frames": { name: { x, y, w,
+  h, ax, ay } } }`, the common plan's frame map wrapped with the sheet's own
+  numbers, which the game needs to scale a frame (#721). A frame is named
+  `<archetype>/<palette>/<state>`, and the trailer is `trailer/<palette>/0`.
 
-**B3. Wiring the sheet (rank 12, ¼, Opus 5.5, no gate, after rank 11).**
-`spriteFor` draws a frame from the sheet above the size B1 set and the
-procedural car below it; `sprites.html` shows both side by side;
-`test/sprites.mjs` fails when an archetype has no frame. The sim never reads a
-sprite, so every run hashes as before.
+**B2. The car sheet: done (HISTORY.md #723).** `tools/blender/cars.py` builds
+all ten archetypes and the trailer from `sprites.js`'s own hulls, glass, trim
+and lamps, in their four palettes, with rideshare's four pulse states (t = 0,
+0.25, 0.5, 0.75, the four `spriteFor` caches) and emergency's two light-bar
+states: 60 frames, `assets/sprites/cars.png` (1024 x 944, 883,946 bytes) and
+`assets/sprites/cars.json`. Eight minutes on huginn with `-t 4`; a second run
+leaves `git status --porcelain` empty. `-- standard/0/0` renders named frames
+into the gitignored `tools/blender/out/frames/` and writes nothing the game
+loads, which is the loop for changing one car.
+
+**B3. Wiring the sheet: done (HISTORY.md #770).** `SHEET_FROM` and `SHEET_TO`
+in `js/sprites.js` are the band, held to `budget.json` by `validate.mjs` (525
+checks). `spriteFor` draws a cached per-scale copy of the frame from
+`cars.json` and the procedural car outside the band; `trailerSpriteFor` does
+the trailer; `loadSheet()` is called from `main.js`; `sprites.html` shows the
+procedural and rendered cars side by side. `test/sprites.mjs` is 42 checks and
+`test/browser.mjs` 238 (one failure that predates the work, the cone-orange
+pixel check, fails the same way on `main` under this machine's software
+rendering). The sim never reads a sprite. Not looked at: the sheet on a real
+GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 
 ## Known gaps and decisions
 

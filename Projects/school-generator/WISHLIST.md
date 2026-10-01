@@ -524,38 +524,22 @@ and add to this list rather than starting a new one.
   `test/tools/run.mjs` — whose `boot-budget` check is now the thing that
   fails if any of it is undone.
 
-## Blender assets (ranks 7 to 9, from 2026-09-25)
+## Blender assets (from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Blender on one of Devon's machines, Windows or huginn (#710); a session
-without `blender` on PATH skips it and takes the next row. This project needs
-no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a
-file into a real catalog row.
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). B1 and B2 shipped in PR #496 (`HISTORY.md` #761 to #764): `tools/blender/` and 15 `.glb` files in `assets/models/` exist, and `node tools/blender/validate.mjs` (554 assertions, in the project's CI) holds them. B3 wired them in (PR #498). This project needed no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a file into a real catalog row.
 
-**B1. The pipeline (rank 7, ¼, Opus 5.5, gate `blender`).** School
-Generator's own copy of `tools/blender/` (#643), beside `tools/export-walk.mjs`
-and `tools/make-gallery.mjs`. **`common.py` writes only what `gltf.js`
-reads:** `TRIANGLES` primitives with `POSITION`, `NORMAL` and `COLOR_0`, one
-material's base colour, no image, no skin, no animation, no extension. The
-validator refuses anything else, and its caps sit well under gltf.js's own
-`MAX_MODEL_BYTES` and `MAX_TRIANGLES`, since a built-in prop is placed by the
-hundred. Units are metres like every other project: `fitModel` normalizes a
-model into its catalog row's footprint anyway. Style sheet: the palette is the
-tints `js/render.js` gives each `geo` today; seat and desk 800 triangles,
-table and bench 600, locker, shelf and cubby 400.
-
-**B2. The model pack (rank 8, ½, Opus 5.5, gate `blender`).** About twelve
-of the furniture `geo` kinds in `js/catalog.js`: chair (one per `style`
-silhouette), desk, table, stool, softseat, counter, shelf, cubby, locker,
-labbench, workstation and plant. The files go in `assets/models/`, which holds
-only a `.gitkeep` today.
-
-**B3. Wiring the pack (rank 9, ¼, Opus 5.5, no gate, after rank 8).** A
-built-in catalog row names its file the way an imported one does, and the
-design decides which the row draws. Every file joins `PRECACHE` in
-`js/offline.js` with `REV` bumped, or the service worker serves a stale
-school offline. `node --test 'test/*.test.mjs'` stays green, including
-`offline.test.mjs` and `gltf.test.mjs`.
+**B3. Wiring the pack. Shipped 2026-09-30, PR #498** (#766 to #769). 19 catalog
+rows carry `file` and `fit`, `js/builtin-models.js` is the table, the page
+fetches the files after its first draw, and all 15 are in `PRECACHE` (`REV`
+30.2). What is left of it, none of it ranked: a tint applied when a file loads,
+so the rows that are another colour (`teacher-desk`, `table-art`,
+`teacher-chair`) can share a file (#766); the walk export carrying the files,
+so a walk draws the pack and not the procedural stand-ins (#768); and
+`js/render.js` drawing its darkest tints black (#764), which shows on the
+pack's legs and lab bench top. The pack has been looked at on a lit scene; it
+has not been looked at in the page's own lights on a full school or on a real
+GPU.
 
 ## The shipped phases
 

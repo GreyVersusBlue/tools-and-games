@@ -947,7 +947,7 @@ has no ranked phases left.
 Blender-made assets rank above everything else (HISTORY.md #642). The plan
 every Blender row shares, including where Blender runs and what `common.py`,
 `budget.json` and `validate.mjs` are, is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan).
-A row gated `blender` needs Blender on one of Devon's machines, Windows or huginn (#710); a session without
+A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session without
 `blender` on PATH skips it and takes the next row.
 
 **B1. The pipeline. Shipped 2026-09-28, PR #454** (#686 to #688; rank 3, ¼, Opus 5.5,

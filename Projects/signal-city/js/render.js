@@ -40,7 +40,7 @@
 // 950 px board is about 3 px per metre, and the wheel zooms and a drag pans
 // from there. The legs stay 110 m whatever is framed.
 
-import { spriteFor, SPRITES } from './sprites.js';
+import { spriteFor, trailerSpriteFor, SPRITES } from './sprites.js';
 import { LANE_WIDTH, CROSSWALK, legDir, RING_R, RING_W, YIELD_D, SPLIT, SPLIT_TAPER } from './network.js';
 import { parseMovement } from './signals.js';
 import { LOOP_LENGTH, TAPER } from './sim.js';
@@ -938,9 +938,11 @@ export class Renderer {
       if (car.stats.trailer && rects[1]) {
         const tr = rects[1];
         const pal = SPRITES.trucker.palettes[car.variant % SPRITES.trucker.palettes.length];
+        const ts = trailerSpriteFor(car.variant, px);
         ctx.save();
         ctx.translate(tr.x, tr.y); ctx.rotate(tr.heading);
-        SPRITES.trucker.trailer.draw(ctx, pal);
+        if (ts) { ctx.scale(1 / px, 1 / px); ctx.drawImage(ts.canvas, -ts.ox, -ts.oy); }
+        else SPRITES.trucker.trailer.draw(ctx, pal);
         ctx.restore();
       }
       const body = rects[0];

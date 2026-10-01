@@ -311,6 +311,46 @@ export const GAMES = {
         { timeout: 5000 });
     },
   },
+
+  // ---- The Conversion Codex: a tool, not a game, but its board card wants a
+  // preview too. The first frame of use is the built-in example (a young red
+  // dragon) read and converted. No save: it keeps nothing in the browser
+  // (Pathfinder HISTORY #709). Plain DOM, no WebGL or pointer lock, so
+  // `headless: true` lets capture-previews shoot it without a screen.
+  'converter': {
+    title: 'Conversion Codex',
+    url: '/Pathfinder/converter.html',
+    vw: 1320, vh: 800, dsf: 1,
+    intro: [],
+    live: false,
+    headless: true,
+    async open(p) {
+      await waitFor(p, () => document.body.dataset.ready === 'true', { timeout: 20000 });
+      await p.click('#example-btn');
+      await waitFor(p, () => /Creature 10/.test(document.getElementById('pf2-block').textContent), { timeout: 10000 });
+    },
+  },
+
+  // ---- Throneshard: a 3D lane battler. The menu, the hero pick and the lock
+  // button are all DOM; `open` takes them like a player and waits for the match
+  // clock. No save key on purpose: its keys (#739) hold settings and keybinds,
+  // and wiping them would only make a capture differ from a first visit. The
+  // three.js import map is the page's own, so no scene probe is attached.
+  'throneshard': {
+    title: 'Throneshard',
+    url: '/Projects/throneshard/',
+    vw: 1320, vh: 800, dsf: 1,
+    intro: ['.btn-play', '.btn-lock'],
+    async open(p) {
+      await p.waitForSelector('.btn-play', { timeout: 180000 });
+      await p.click('.btn-play');
+      await p.waitForSelector('.pk-card[data-id="sera"]');
+      await p.click('.pk-card[data-id="sera"]');
+      await p.click('.btn-lock');
+      await waitFor(p, () => !!window.game?.running, { timeout: 60000 });
+      await wait(1500);
+    },
+  },
 };
 
 export const NAMES = Object.keys(GAMES);

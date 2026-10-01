@@ -85,7 +85,7 @@ async function loadPlaywright() {
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png',
-  '.svg': 'image/svg+xml', '.json': 'application/json',
+  '.svg': 'image/svg+xml', '.glb': 'model/gltf-binary', '.json': 'application/json',
   // Phase 30: the app manifest, so the install path is served the way a real
   // host serves it rather than as a blob the browser declines to parse.
   '.webmanifest': 'application/manifest+json',
@@ -95,7 +95,9 @@ function startServer() {
   const server = createServer(async (req, res) => {
     let p = decodeURIComponent(req.url.split('?')[0]);
     if (p === '/') p = '/index.html';
-    const file = p.startsWith('/assets/') ? join(REPO, p) : join(PROJECT, p);
+    // The site's /assets/ is the repo's; the Blender pack's is this project's.
+    const file = p.startsWith('/assets/') && !p.startsWith('/assets/models/')
+      ? join(REPO, p) : join(PROJECT, p);
     try {
       const data = await readFile(file);
       res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
@@ -316,6 +318,29 @@ const CHECKS = [
         throw new Error(`${pinned.join(', ')} loaded at boot — something on the boot path imports ` +
           `${pinned.length === 1 ? 'it' : 'them'} again`);
       }
+    },
+  },
+  {
+    name: 'builtin-pack',
+    what: 'the Blender files the sample school\'s props name were fetched, and nothing failed loudly',
+    async run(d) {
+      // The page fetches them after its first draw; give that a few seconds.
+      return d.page.evaluate(`(async () => {
+        const { catalogEntry } = await import('./js/catalog.js');
+        const want = [...new Set(window.app.state.props
+          .map((p) => catalogEntry(p.type)).filter((e) => e && e.file).map((e) => e.file))];
+        for (let i = 0; i < 50; i++) {
+          const have = window.app.renderApi.builtinModelIds;
+          if (want.every((id) => have.includes(id))) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        return { want, have: window.app.renderApi.builtinModelIds };
+      })()`);
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.want.length) throw new Error('the sample school has no prop that names a file to check');
+      const missing = ctx.want.filter((id) => !ctx.have.includes(id));
+      if (missing.length) throw new Error(`never fetched: ${missing.join(', ')}`);
     },
   },
   {

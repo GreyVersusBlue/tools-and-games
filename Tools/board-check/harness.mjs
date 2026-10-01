@@ -25,7 +25,7 @@ const MIME = {
   '.json': 'application/json; charset=utf-8', '.png': 'image/png',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
   '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff',
-  '.mp3': 'audio/mpeg', '.md': 'text/plain; charset=utf-8',
+  '.mp3': 'audio/mpeg', '.md': 'text/plain; charset=utf-8', '.webp': 'image/webp',
 };
 
 /* ---------------- fonts: "Zilla Slab" -> @fontsource/zilla-slab ------------ */

@@ -37,81 +37,60 @@ function drawBg(t) {
   ctx.globalAlpha = 1;
 }
 
-function drawBody(b, t) {
-  const [sx, sy] = W2S(b.x, b.y), R = b.r * view.s;
+/* The body sheet (tools/blender/, #717 to #720). One frame per COLOR key, each
+   a drawBody without its glow at spin 0 and dir 0; the atlas gives the frame's
+   box, its anchor and r, the body's radius in frame pixels. game.js waits on
+   loadSprites() before the first frame, and a sheet that will not load stops
+   the game with the reason on screen: there are no gradients to fall back to
+   (#646, #735). */
+const SPRITES = { src: "assets/sprites/bodies", img: null, atlas: null };
+
+function loadSprites() {
+  const img = new Image();
+  const pixels = new Promise((ok, no) => {
+    img.onload = () => ok();
+    img.onerror = () => no(new Error(SPRITES.src + ".png did not load"));
+  });
+  img.src = SPRITES.src + ".png";
+  const atlas = fetch(SPRITES.src + ".json").then(r => {
+    if (!r.ok) throw new Error(SPRITES.src + ".json answered " + r.status);
+    return r.json();
+  });
+  return Promise.all([pixels, atlas]).then(([, a]) => {
+    for (const type in COLOR) if (!a[type]) throw new Error(SPRITES.src + ".json has no frame for " + type);
+    SPRITES.img = img; SPRITES.atlas = a;
+  });
+}
+
+// The glow each body wears: its rgba and its reach in radii. The frame carries
+// none of it (#720), so drawBody lays it over the frame. The black hole is the
+// exception and keeps its glow behind: over the frame it turned the core
+// violet (#736).
+const GLOW = {
+  planet: ["rgba(99,216,255,0.5)", 2.4], star: ["rgba(255,178,87,0.5)", 3.4],
+  rock: ["rgba(154,160,184,0.5)", 2.4], repulse: ["rgba(255,94,200,0.5)", 2.4],
+  blackhole: ["rgba(124,92,255,0.55)", 4.2], wormhole: ["rgba(102,255,224,0.5)", 2.2],
+  booster: ["rgba(255,224,102,0.4)", 2.0]
+};
+
+// How far a body's frame is turned (#737). The accretion rings and the
+// wormhole's dashes turn with the clock, the booster points along its dir, and
+// the four gravity bodies are lit from one side and stay put.
+function bodyTurn(b, t) {
   const spin = reduced ? 0 : t * 0.001;
+  return b.type === "blackhole" ? spin * 2 : b.type === "wormhole" ? spin * 3
+       : b.type === "booster" ? b.dir : 0;
+}
 
-  if (b.type === "blackhole") {
-    glowCircle(b.x, b.y, b.r, "rgba(124,92,255,0.55)", 4.2);
-    // accretion ring
-    ctx.save(); ctx.translate(sx, sy); ctx.rotate(spin * 2);
-    for (let k = 0; k < 2; k++) {
-      ctx.strokeStyle = k ? "rgba(200,180,255,.5)" : "rgba(255,230,255,.85)";
-      ctx.lineWidth = (k ? 2 : 3) * DPR;
-      ctx.beginPath(); ctx.ellipse(0, 0, R * (1.5 + k * 0.4), R * (0.7 + k * 0.2), 0, 0.3, 5.5); ctx.stroke();
-    }
-    ctx.restore();
-    // core
-    const core = ctx.createRadialGradient(sx, sy, R * 0.1, sx, sy, R);
-    core.addColorStop(0, "#000005"); core.addColorStop(.7, "#05010f"); core.addColorStop(1, "#2a1a5c");
-    ctx.fillStyle = core; ctx.beginPath(); ctx.arc(sx, sy, R, 0, 6.28); ctx.fill();
-    ctx.strokeStyle = "rgba(160,140,255,.9)"; ctx.lineWidth = 1.5 * DPR;
-    ctx.beginPath(); ctx.arc(sx, sy, R, 0, 6.28); ctx.stroke();
-    return;
-  }
-
-  if (b.type === "wormhole") {
-    glowCircle(b.x, b.y, b.r, "rgba(102,255,224,0.5)", 2.2);
-    ctx.save(); ctx.translate(sx, sy);
-    for (let k = 0; k < 3; k++) {
-      ctx.rotate(spin * (k % 2 ? -3 : 3) + k);
-      ctx.strokeStyle = `rgba(102,255,224,${0.75 - k * 0.18})`;
-      ctx.lineWidth = 2 * DPR; ctx.setLineDash([6 * DPR, 7 * DPR]);
-      ctx.beginPath(); ctx.arc(0, 0, R * (1 - k * 0.22), 0, 6.28); ctx.stroke();
-    }
-    ctx.setLineDash([]); ctx.restore();
-    const core = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 0.7);
-    core.addColorStop(0, "#04211d"); core.addColorStop(1, "rgba(4,33,29,0)");
-    ctx.fillStyle = core; ctx.beginPath(); ctx.arc(sx, sy, R * 0.7, 0, 6.28); ctx.fill();
-    return;
-  }
-
-  if (b.type === "booster") {
-    glowCircle(b.x, b.y, b.r, "rgba(255,224,102,0.4)", 2.0);
-    ctx.save(); ctx.translate(sx, sy); ctx.rotate(b.dir);
-    // gate ring
-    ctx.strokeStyle = "rgba(255,224,102,.85)"; ctx.lineWidth = 2.5 * DPR;
-    ctx.beginPath(); ctx.arc(0, 0, R, 0, 6.28); ctx.stroke();
-    // flowing chevrons pointing +dir
-    const flow = reduced ? 0 : (t * 0.004) % 1;
-    for (let k = 0; k < 3; k++) {
-      const off = (k + flow) / 3, a = 0.35 + off * 0.6;
-      ctx.globalAlpha = 1 - off; ctx.strokeStyle = "#ffe066"; ctx.lineWidth = 3 * DPR;
-      const cxp = (off - 0.5) * R * 1.6;
-      ctx.beginPath();
-      ctx.moveTo(cxp - R * 0.35, -R * a); ctx.lineTo(cxp + R * 0.2, 0); ctx.lineTo(cxp - R * 0.35, R * a);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1; ctx.restore();
-    return;
-  }
-
-  // gravity bodies (planet / star / rock / repulse)
-  const col = COLOR[b.type];
-  const rgb = col === "#63d8ff" ? "99,216,255" : col === "#ffb257" ? "255,178,87"
-            : col === "#9aa0b8" ? "154,160,184" : "255,94,200";
-  glowCircle(b.x, b.y, b.r, `rgba(${rgb},0.5)`, b.type === "star" ? 3.4 : 2.4);
-  const g = ctx.createRadialGradient(sx - R * 0.3, sy - R * 0.3, R * 0.1, sx, sy, R);
-  if (b.type === "repulse") { g.addColorStop(0, "#ffd0f0"); g.addColorStop(1, "#c01d86"); }
-  else if (b.type === "star") { g.addColorStop(0, "#fff2d0"); g.addColorStop(.6, "#ffb257"); g.addColorStop(1, "#c9701a"); }
-  else if (b.type === "rock") { g.addColorStop(0, "#c3c8db"); g.addColorStop(1, "#5c6178"); }
-  else { g.addColorStop(0, "#c9f2ff"); g.addColorStop(.7, "#63d8ff"); g.addColorStop(1, "#1f7ea6"); }
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, R, 0, 6.28); ctx.fill();
-  if (b.type === "repulse") {
-    ctx.strokeStyle = "rgba(255,150,225,.7)"; ctx.lineWidth = 1.5 * DPR;
-    ctx.setLineDash([4 * DPR, 5 * DPR]); ctx.beginPath(); ctx.arc(sx, sy, R * 1.5, 0, 6.28); ctx.stroke();
-    ctx.setLineDash([]);
-  }
+function drawBody(b, t) {
+  const [sx, sy] = W2S(b.x, b.y), f = SPRITES.atlas[b.type];
+  const k = (b.r * view.s) / f.r, turn = bodyTurn(b, t);
+  const under = b.type === "blackhole";
+  if (under) glowCircle(b.x, b.y, b.r, GLOW[b.type][0], GLOW[b.type][1]);
+  ctx.save(); ctx.translate(sx, sy); if (turn) ctx.rotate(turn);
+  ctx.drawImage(SPRITES.img, f.x, f.y, f.w, f.h, -f.ax * k, -f.ay * k, f.w * k, f.h * k);
+  ctx.restore();
+  if (!under) glowCircle(b.x, b.y, b.r, GLOW[b.type][0], GLOW[b.type][1]);
 }
 
 function drawGoal(t) {

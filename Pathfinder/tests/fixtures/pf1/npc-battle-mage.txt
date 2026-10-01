@@ -1,0 +1,34 @@
+Battle Mage CR 2
+Source NPC Codex pg. 179
+XP 600
+Elf wizard 3
+NE Medium humanoid (elf)
+Init +2; Senses low-light vision; Perception +5
+DEFENSE
+AC 16, touch 12, flat-footed 14 (+4 armor, +2 Dex)
+hp 19 (3d6+6)
+Fort +2, Ref +3, Will +3; +2 vs. enchantments
+Immune sleep
+OFFENSE
+Speed 30 ft.
+Melee mwk rapier +3 (1d6/18–20)
+Ranged mwk longbow +4 (1d8+1/×3)
+Special Attacks hand of the apprentice (6/day)
+Wizard Spells Prepared (CL 3rd; concentration +6)
+2nd—mirror image, scorching ray
+1st—magic missile, shield, shocking grasp
+0 (at will)—daze (DC 13), detect magic, light, resistance
+TACTICS
+Before Combat The wizard uses her wand to cast mage armor.
+During Combat The wizard attacks with scorching ray, her longbow, and hand of the apprentice. If forced into melee, she casts mirror image and obscuring mist.
+Base Statistics Without mage armor, the wizard’s statistics are AC 12, touch 12, flat-footed 10.
+STATISTICS
+Str 12, Dex 15, Con 12, Int 17, Wis 10, Cha 8
+Base Atk +1; CMB +2; CMD 14
+Feats Combat Casting, Point-Blank Shot, Scribe Scroll
+Skills Acrobatics +4, Climb +2, Knowledge (arcana) +9, Knowledge (history) +7, Perception +5, Spellcraft +9 (+11 to identify magic item properties), Stealth +4
+Languages Common, Draconic, Elven, Orc, Sylvan
+SQ arcane bond (rapier), elven magic, weapon familiarity
+Combat Gear potion of cure moderate wounds, scroll of glitterdust, scroll of invisibility, scroll of magic weapon, scrolls of mirror image (2), scroll of obscuring mist, scroll of protection from evil, scroll of scorching ray, wand of mage armor (20 charges); Other Gear masterwork longbow with 20 arrows, masterwork rapier, spellbook, 113 gp
+
+These mercenary wizards are able to fill many roles, and demand a high fee for their versatility.

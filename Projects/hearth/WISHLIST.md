@@ -1121,7 +1121,7 @@ against an existing suite and an existing workflow to copy.
 ## Blender assets (ranks 20 to 22, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Blender on one of Devon's machines, Windows or huginn (#710); a session
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session
 without `blender` on PATH skips it and takes the next row.
 
 **B1. The sprite pipeline (rank 20, ¼, Opus 5.5, gate `blender`).** Hearth's
