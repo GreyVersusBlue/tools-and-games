@@ -858,7 +858,7 @@ actually worked under. The split counts the names; under #638 the Opus 5.5,
 Opus 5 and Fable rows run on Opus 5.5 and the Sonnet rows on Sonnet 5.
 
 **`Projects/corner-and-kettle` has no open phase** apart from its three
-Blender rows (15 to 17). Arc one (Phases 1 to 4) and
+Blender rows (11 to 13). Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
 leaves for a later arc" list — candidates, not a ranked arc, and the largest of
 them (reshaping the five recipes that are another recipe's requirement list,
@@ -1057,7 +1057,7 @@ Windows machine or a phone. Parked, not verified.
 
 ## Blender assets: the common plan
 
-Ranks 1 to 15 (#642 to #647; 41 when it was written, ranks 1 and 4 shipped in PR #437, rank 1 in PR #440, ranks 1 and 2 in PR #443, ranks 1 and 3 in PR #454, rank 1 in PR #458, ranks 1 and 3 in PR #459, ranks 1 and 4 in PR #463, ranks 1 and 3 in PR #466, ranks 1 and 2 in PR #468, ranks 21 and 22 in PR #477, ranks 5 and 6 in PR #478, rank 19 in PR #484, and ranks 1 and 2 in PR #496, and rank 1 in PR #498). This section is what every Blender row shares;
+Ranks 1 to 15 are governed by decisions #642 to #647, which reorganized the Blender rows: 47 new rows at ranks 1–47, and the previous 13 rows moved to ranks 48–60. This section is what every Blender row shares;
 each project's own plan (its `WISHLIST.md` "Blender assets" section, or a
 subsection of its section below) adds its style sheet and its list.
 
@@ -2325,7 +2325,7 @@ and nothing is today. The four rows this line used to cite, Golden Hour's
 `?debug` beats and preview recapture and Blue Hour's `games.mjs` entry and
 preview recipe, shipped together on 2026-09-24 (`HISTORY.md`, "The site,
 board-check: Golden Hour's hook and Blue Hour on the board"); the two previews
-are SwiftShader drafts that the real-hardware pass (rank 31) recaptures. The
+are SwiftShader drafts that the real-hardware pass (rank 16) recaptures. The
 four numbers drifted through three renumberings before anyone noticed they
 pointed at shipped rows, so this line cites none now. Castle Conundrum's
 preview promotion was rank 1, was parked, and left with the project (#491);

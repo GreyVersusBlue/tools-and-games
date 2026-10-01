@@ -42,9 +42,8 @@ promotion, Golden Hour's recapture and debug-hook beats, Blue Hour's
 `games.mjs` entry and preview recipe, and the ownership manifest.
 
 `Tools/prompt-builder.html` is not archived either, for a different reason: it
-is owned by nothing, it hotlinks Google Fonts, and it is one of the two
-standing `npm run check` failures on `main` today. A red integrity check is a
-site problem, so it stays in `BACKLOG.md` under "The site itself".
+is owned by nothing, and its fonts are vendored (formerly #354). It stays in
+`BACKLOG.md` under "The site itself".
 
 ---
 

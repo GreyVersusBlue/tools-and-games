@@ -24,7 +24,7 @@ default 'high'; read it, never write it).
 ## Testing recipe (REQUIRED — actually run the game and LOOK at screenshots; iterate until it looks great)
 Use your OWN port to avoid clashing with other agents (pick one: terrain 8201, sky 8202, render 8203, vehicles 8204, ui 8205, fx 8206):
 ```
-cd /home/devon/projects/skywings64 && (python3 -m http.server PORT >/dev/null 2>&1 &)
+cd /home/devon/projects/tools-and-games/Projects/skywings64 && (python3 -m http.server PORT >/dev/null 2>&1 &)
 google-chrome --headless=new --no-sandbox --disable-gpu --use-gl=swiftshader --enable-unsafe-swiftshader \
   --enable-logging=stderr --v=0 --virtual-time-budget=9000 --window-size=1280,720 \
   --screenshot=/tmp/YOURNAME.png http://localhost:PORT/YOURPAGE.html 2>&1 | grep -E "PAGEERR|Uncaught|TypeError|SyntaxError|Failed"
