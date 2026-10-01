@@ -523,7 +523,7 @@ R14. They are the same kind of row as the site's real-hardware passes.
   the Timing tab on Two Blocks without the hint. Devon's to arrange.
   **Size ½. Model Opus 5.**
 
-## Blender assets (from 2026-09-25; B1 and B2 done 2026-09-30)
+## Blender assets (from 2026-09-25; B1 to B3 done 2026-09-30)
 
 Blender-made assets rank above everything else (HISTORY.md #642), which puts
 these three rows above R4. The shared plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs
@@ -574,18 +574,16 @@ leaves `git status --porcelain` empty. `-- standard/0/0` renders named frames
 into the gitignored `tools/blender/out/frames/` and writes nothing the game
 loads, which is the loop for changing one car.
 
-**B3. Wiring the sheet (¼, Opus 5.5, no gate; B2 has shipped, so it is
-ready).** `spriteFor` draws a frame from the sheet inside the band
-`budget.json` sets (`spriteFrom` 12 to `spriteTo` 36, in `spriteFor`'s own px
-a metre) and the procedural car outside it, from `cars.json`'s frames by
-`<archetype>/<variant % 4>/<state>`: rideshare's state is `spriteFor`'s
-`animFrame`, emergency's `animFrame % 2`. The trailer, which `render.js` draws
-straight from `SPRITES.trucker.trailer.draw`, takes `trailer/<variant>/0` in
-the same band. The sheet loads asynchronously, so the procedural car stands in
-until it has. Downscaling a 36 px/m frame to 12 wants a cached copy drawn once
-at the target size rather than a `drawImage` scale every frame; `sprites.html` shows both side by side;
-`test/sprites.mjs` fails when an archetype has no frame. The sim never reads a
-sprite, so every run hashes as before.
+**B3. Wiring the sheet: done (HISTORY.md #770).** `SHEET_FROM` and `SHEET_TO`
+in `js/sprites.js` are the band, held to `budget.json` by `validate.mjs` (525
+checks). `spriteFor` draws a cached per-scale copy of the frame from
+`cars.json` and the procedural car outside the band; `trailerSpriteFor` does
+the trailer; `loadSheet()` is called from `main.js`; `sprites.html` shows the
+procedural and rendered cars side by side. `test/sprites.mjs` is 42 checks and
+`test/browser.mjs` 238 (one failure that predates the work, the cone-orange
+pixel check, fails the same way on `main` under this machine's software
+rendering). The sim never reads a sprite. Not looked at: the sheet on a real
+GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 
 ## Known gaps and decisions
 

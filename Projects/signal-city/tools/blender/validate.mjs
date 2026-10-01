@@ -18,6 +18,7 @@
 //     half-built car), or a pixel outside every frame that is not transparent
 //   - two states of one archetype that are the same pixels (an animation that
 //     does not move), or two palettes of one archetype that are
+//   - js/sprites.js's SHEET_FROM and SHEET_TO are not budget.json's band
 //   - a file in the sheet's folder that budget.json does not name
 //
 // The optional argument points it at another budget file; paths in it still
@@ -33,7 +34,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT = path.join(HERE, '..', '..');
 const budgetPath = path.resolve(process.argv[2] || path.join(HERE, 'budget.json'));
 const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
-const { ARCHETYPES, SPRITES } = await import(
+const { ARCHETYPES, SPRITES, SHEET_FROM, SHEET_TO } = await import(
   pathToFileURL(path.join(PROJECT, 'js', 'sprites.js')).href);
 
 let passed = 0, failed = 0;
@@ -42,6 +43,11 @@ const ok = (cond, what, detail = '') => {
   else { failed++; console.log(`  FAIL  ${what}${detail ? '  ' + detail : ''}`); }
   return cond;
 };
+
+// The band spriteFor draws the sheet in is js/sprites.js's constants and
+// budget.json's numbers both; they are one fact and must not drift (B3).
+ok(SHEET_FROM === budget.spriteFrom, `js/sprites.js SHEET_FROM ${SHEET_FROM} is budget.json's spriteFrom ${budget.spriteFrom}`);
+ok(SHEET_TO === budget.spriteTo, `js/sprites.js SHEET_TO ${SHEET_TO} is budget.json's spriteTo ${budget.spriteTo}`);
 
 // ---------------------------------------------------------------- png
 
