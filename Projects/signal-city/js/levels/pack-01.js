@@ -27,7 +27,10 @@
 //               ambulance, platoons, progression { stops }, walks { within }
 //   ring        { target, waitTarget } the same two numbers for the board
 //               as the roundabout converts it (campaign.js convertible,
-//               #598): measured on the ring, not on signals
+//               #598): measured on the ring, not on signals, and
+//               `meter`, the entry meter { leg, red } that beats the bare
+//               ring's wait on four seeds of six, or null where none does
+//               and the board offers no meter (R10, #778)
 //   mode        'soft' (collisions count) | 'hard' (one collision ends it)
 //   light       'dusk' draws the level at dusk (render.js lightFor, R5);
 //               none is day, and an outage is night whatever the level
@@ -68,7 +71,8 @@ export const LEVELS = [
     target: 32,
     waitTarget: 15,
     // as a roundabout, six seeds clear 31 to 53 at 1 to 3 s (#598)
-    ring: { target: 30, waitTarget: 6 },
+    // no entry meter beats the bare ring's wait on four seeds of six (R10, #778)
+    ring: { target: 30, waitTarget: 6, meter: null },
     mode: 'soft',
     unlocks: ['phases', 'auto'],
   },
@@ -86,7 +90,8 @@ export const LEVELS = [
     target: 30,
     waitTarget: 15,
     // as a roundabout, six seeds clear 34 to 50 at 0 to 5 s (#598)
-    ring: { target: 32, waitTarget: 8 },
+    // no entry meter beats the bare ring's wait on four seeds of six (R10, #778)
+    ring: { target: 32, waitTarget: 8, meter: null },
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred'],
   },
@@ -280,8 +285,11 @@ export const LEVELS = [
     duration: 300,
     target: 60,
     waitTarget: 30,
-    // as a roundabout, six seeds clear 84 to 94 at 6 to 18 s (#598)
-    ring: { target: 80, waitTarget: 24 },
+    // as a roundabout, six seeds clear 84 to 94 at 6 to 18 s (#598); 78 to
+    // 98 at 5 to 18 s by 2026-10-01, with #777's fix in
+    // a meter on S at 3 s beats the bare ring's wait on four seeds of six,
+    // mean 10.4 to 7.4 s; no other leg and red does (R10, #778)
+    ring: { target: 80, waitTarget: 24, meter: { leg: 'S', red: 3 } },
     mode: 'soft',
     sandbox: true,
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],

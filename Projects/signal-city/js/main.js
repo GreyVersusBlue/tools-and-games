@@ -39,6 +39,7 @@ const LESSON_TAB = {
   endless: 'rules',
 };
 const STRIP_SECONDS = 60;
+const RING_METER_NOTE = 'A roundabout: every car yields to the ring, and the ring never stops for anyone. Its one light is the entry meter below.';
 const RING_NOTE = 'A roundabout: no lights and nothing to press. Every car yields to the ring, and the ring never stops for anyone.';
 const RING_SWITCH = ' Switch it off in the shop to play this board\'s signals.';
 const FRESH = 2.5;
@@ -74,6 +75,7 @@ class Game {
     this.seed = 1;
     this.node = 0;           // the box the panel drives (a corridor has two)
     this.ringOn = true;      // the roundabout's switch, when it is owned (#599)
+    this.meter = { leg: null, red: null };   // the ring's entry meter (R10): the session's, never stored, like the switch
     this.wave = new WaveHistory();   // the platoon diagram's samples (M7)
     this.hudEls = {};
     this.tab = 'phases';
@@ -301,6 +303,7 @@ class Game {
     this.seed = seed ?? ((Date.now() % 100000) + 1);
     if (DEBUG) this.seed = seed ?? 7;
     this.world = new World(lvl, this.seed);
+    if (lvl.ringMeter && this.meter.leg) this.world.setMeter(this.meter.leg, this.meter.red ?? lvl.ringMeter.red);
     this.node = 0;
     this.wave.reset();
     this.renderer.reset();
@@ -368,8 +371,36 @@ class Game {
   // to its signals because it has none.
   showRing() {
     $('ringNote').classList.toggle('hidden', !this.onRing);
-    $('ringNote').textContent = RING_NOTE + (this.isGrid ? '' : RING_SWITCH);
+    $('ringNote').textContent = (this.meterOffered ? RING_METER_NOTE : RING_NOTE) + (this.isGrid ? '' : RING_SWITCH);
     $('strip').classList.toggle('hidden', this.onRing);
+    this.buildMeter();
+  }
+
+  // The entry meter (R10, #778): offered on a converted board whose
+  // calibration found one that beats the bare ring, never on a grid. The
+  // leg and the red are the session's, and every run of the board starts
+  // with them.
+  get meterOffered() { return !!(this.onRing && !this.isGrid && this.level && this.level.ringMeter); }
+  buildMeter() {
+    const box = $('meterBox');
+    box.classList.toggle('hidden', !this.meterOffered);
+    if (!this.meterOffered) return;
+    const red = this.meter.red ?? this.level.ringMeter.red;
+    const sel = $('meterLeg');
+    sel.innerHTML = '';
+    for (const [v, t] of [['', 'off']].concat(this.world.nodes[0].legs.map(l => [l, `on ${l}`]))) {
+      const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
+    }
+    sel.value = this.meter.leg || '';
+    $('meterRed').value = String(red);
+    $('meterRedVal').textContent = String(red);
+  }
+  setMeter(leg, red) {
+    if (!this.meterOffered) return;
+    if (leg !== undefined) this.meter.leg = leg || null;
+    if (red !== undefined) { this.meter.red = red; $('meterRedVal').textContent = String(red); }
+    this.world.setMeter(this.meter.leg, this.meter.red ?? this.level.ringMeter.red);
+    this.updateHud(true);
   }
 
   // A corridor: which box the panel drives. The phases, the sliders and the
@@ -784,6 +815,10 @@ class Game {
     $('honks').textContent = String(m.honks);
     $('pedLate').textContent = String(m.pedLate);
     $('pedLate').className = m.pedLate ? 'bad' : '';
+    if (this.meterOffered) {
+      const mt = w.meters[0];
+      $('meterState').textContent = mt ? `${mt.leg} is ${w.meterHead(mt.leg)}, watching ${mt.watch}'s loop · fired ${mt.fired} time${mt.fired === 1 ? '' : 's'}` : 'Off. Put it on the leg whose traffic keeps the next leg round waiting.';
+    }
     const flashing = ctl.stage === 'flash';
     const stageOf = c => {
       if (c.roundabout) return 'Roundabout: no signals';
@@ -984,6 +1019,8 @@ $('signalsBtn').addEventListener('click', () => game.setFlash(null));
 $('yellowRange').addEventListener('input', e => game.setTiming({ yellow: Number(e.target.value) }));
 $('allRedRange').addEventListener('input', e => game.setTiming({ allRed: Number(e.target.value) }));
 $('offsetRange').addEventListener('input', e => game.setOffset(Number(e.target.value)));
+$('meterLeg').addEventListener('change', e => game.setMeter(e.target.value));
+$('meterRed').addEventListener('input', e => game.setMeter(undefined, Number(e.target.value)));
 $('addElapsedBtn').addEventListener('click', () => game.addRule('elapsed'));
 $('addQueueBtn').addEventListener('click', () => game.addRule('queue'));
 $('helpBtn').addEventListener('click', () => game.toggleHelp());

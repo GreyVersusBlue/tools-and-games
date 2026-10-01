@@ -24,6 +24,11 @@
 // `--ring` plays the board as the roundabout converts it (loadout with the
 // roundabout bought, #595): one row, no cycle, scored against the level's
 // `ring` calibration. A board the roundabout does not convert is skipped.
+// `--ring --meter` (R10) adds an entry meter sweep under the bare ring:
+// every leg at every red in `--reds=3,5,8` (seconds), six seeds each, and
+// how many seeds each beats the bare ring's average wait on. A board's
+// `ring.meter` is the setting that beats it on four of six, or null when
+// none does (#778).
 // `--endless` (M9) plays endless's days hands-off instead, the grid's 20 s
 // rule at every box: `node tools/calibrate.mjs endless 1,2,3,12` prints a
 // row per day (cleared against the day's target, LOCK for a locked grid)
@@ -109,12 +114,27 @@ export function holdPlatoon(w) {
 
 // One run. `offset` (a corridor only) shifts the second box's plan.
 export function cell(level, seed, cycle, opts = {}, offset = null) {
-  const lvl = opts.ring ? loadout(level, ['roundabout']) : { ...level, controller: controllerFor(level, cycle, opts) };
+  let lvl = opts.ring ? loadout(level, ['roundabout']) : { ...level, controller: controllerFor(level, cycle, opts) };
+  if (opts.meter) lvl = { ...lvl, meter: opts.meter };
   if (offset !== null) lvl.controllers = [{ offset: 0 }, { offset }];
   const w = new World(lvl, seed);
   for (let i = 0; i < level.duration * 60; i++) { w.step(); if (opts.hold) holdPlatoon(w); if (w.stats.gridlock) break; }
   const r = score(w);
-  return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, survived: r.survived, pedLate: r.pedLate, pedServed: r.pedServed, splits: r.splits, platoons: r.platoons };
+  return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, survived: r.survived, pedLate: r.pedLate, pedServed: r.pedServed, splits: r.splits, platoons: r.platoons, fired: w.meters[0] ? w.meters[0].fired : 0 };
+}
+
+// R10: every leg at every red against the bare ring, six seeds. `bare` is
+// the six bare cells. Returns one row per setting, with `wins`, the seeds
+// whose average wait it beats.
+export function meterSweep(level, reds, bare, opts = {}) {
+  const out = [];
+  for (const leg of (level.network.legs || ['N', 'E', 'S', 'W'])) {
+    for (const red of reds) {
+      const row = seeds.map(s => cell(level, s, 0, { ...opts, ring: true, meter: { leg, red } }));
+      out.push({ leg, red, row, wins: row.filter((c, i) => c.wait < bare[i].wait - 1e-9).length });
+    }
+  }
+  return out;
 }
 
 // ---- the reference hand (R1) ------------------------------------------------
@@ -346,6 +366,15 @@ for (const level of levels) {
     const row = seeds.map(s => cell(level, s, 0, opts));
     const cl = row.map(c => c.cleared), wt = row.map(c => c.wait);
     console.log(`  ring ${row.map(c => `${c.gridlock ? 'LOCK' : String(c.cleared).padStart(3)} ${c.wait.toFixed(0).padStart(3)}s ${c.collisions}x ${'★'.repeat(c.stars).padEnd(3, '☆')}`.padEnd(16)).join('')} ${Math.min(...cl)} to ${Math.max(...cl)}   ${Math.min(...wt).toFixed(0)} to ${Math.max(...wt).toFixed(0)} s`);
+    if (flags.includes('--meter')) {
+      const redsArg = flags.find(f => f.startsWith('--reds='));
+      const reds = redsArg ? redsArg.split('=')[1].split(',').map(Number) : [3, 5, 8];
+      const mean = xs => (xs.reduce((a, c) => a + c.wait, 0) / xs.length).toFixed(1);
+      console.log(`  ring.meter ships as ${JSON.stringify((level.ring || {}).meter ?? null)}; bare mean wait ${mean(row)} s. A cell is cleared/wait, then how often the meter fired.`);
+      for (const m of meterSweep(level, reds, row)) {
+        console.log(`  ${m.leg} ${String(m.red).padStart(2)} s ${m.row.map(c => `${c.gridlock ? 'LOCK' : c.cleared}/${c.wait.toFixed(1)} f${c.fired}`.padEnd(14)).join('')} beats ${m.wins}/6, mean ${mean(m.row)} s${m.wins >= 4 ? '  <- worth selling' : ''}`);
+      }
+    }
     continue;
   }
   const corridor = isCorridor(level);

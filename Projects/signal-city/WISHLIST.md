@@ -433,17 +433,17 @@ one star each, and the hand still beats it. A bought arrow phase that is
 called runs after the green it was called in, so sensors bought with the
 arrows now buy an actuated left.
 
-### R10. Entry metering: a hand in a roundabout run
+### R10. Entry metering: done, on Free Play's ring (HISTORY.md #777, #778)
 
-**Size ½. Model Fable 5.1.** With the ring bought, a run has nothing to
-press (#599). Entry metering is the real fix for a dominant leg: a signal
-on one approach that holds that leg for a few seconds when the leg it
-starves has queued past a loop. One meter per ring, on the leg the player
-picks, with a red time slider; the ring's controller stays dark apart from
-it. It extends #595's ring without a two-lane ring (still refused). Each
-converted board gets a `ring.meter` calibration: the meter set well should
-beat the bare ring's wait on at least four of six seeds, or the item is
-not worth selling.
+A meter on one leg of a ring (`World.setMeter`) holds that leg amber 2 s
+and red 2 to 12 s when the next leg round has queued 15 m back from its
+yield line. `tools/calibrate.mjs --ring --meter` sweeps every leg and red
+against the bare ring; `ring.meter` is what it found, and only Free Play's
+ring passes the four-of-six rule (S at 3 s, mean wait 10.4 to 7.4 s), so
+only Free Play's panel offers the meter. First Light and the Stem carry
+`null`: their bare rings wait 1 to 3 s. `test/stars.mjs` holds the rule.
+The sweep also found #777: a retried scheduled arrival moved the level's
+own spawn time, so Free Play ran differently after its first run in a page.
 
 ### R11. The trucker's sweep as geometry
 

@@ -15,7 +15,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
-const { World, DT } = await load('sim.js');
+const { World, DT, meterWatch, METER_RED } = await load('sim.js');
+const { score } = await load('scoring.js');
 const { Network, rectsOverlap, LANE_WIDTH, CROSSWALK, RING_R, buildNodes } = await load('network.js');
 const { ARCHETYPES, Car, stopLineVerdict, BRAKE_LIGHT_A, INDICATE_FROM } = await load('cars.js');
 const { makeRng } = await load('rng.js');
@@ -203,6 +204,15 @@ group('determinism');
   ok(c.hash() !== a.hash(), 'a different seed is a different run');
   const d = new World(CYCLING, 11).run(5); d.requestPhase(1); d.run(55);
   ok(d.hash() !== a.hash(), 'and so is a different input');
+}
+{
+  // two arrivals scheduled at once on one lane: the second finds it full
+  // and is retried a second later. The retry moved the level's own spawn,
+  // so the next run of the same level object was a different run (#777)
+  const L = { demand: { N: 300 }, duration: 30, controller: { startPhase: 1 }, spawns: [{ t: 0.5, leg: 'W', archetype: 'standard', turn: 'T' }, { t: 0.5, leg: 'W', archetype: 'trucker', turn: 'T' }] };
+  const a = new World(L, 3).run(30), b = new World(L, 3).run(30);
+  ok(a.events.filter(e => e.kind === 'spawn' && e.scheduled).length === 2 && L.spawns[1].t === 0.5, 'a blocked scheduled arrival is retried without moving the level\'s own time', JSON.stringify(L.spawns.map(x => x.t)));
+  ok(a.hash() === b.hash(), 'so a level replayed from the same object is the same run', `${a.hash()} ${b.hash()}`);
 }
 
 /* ------------------------------------------------------------ the box -- */
@@ -1209,6 +1219,50 @@ const net0 = () => new Network({ roundabout: true });
   const h2 = new World(L, 5).run(90).hash();
   const h3 = new World(L, 6).run(90).hash();
   ok(h1 === h2 && h1 !== h3, 'the same seed round the ring is the same run, a different seed is not', `${h1} ${h2} ${h3}`);
+}
+
+group('entry metering (R10, #778): a meter on a ring\'s leg, fired by the leg it starves');
+
+{
+  const four = buildNodes({ roundabout: true })[0], stem = buildNodes({ roundabout: true, legs: ['N', 'E', 'S'] })[0];
+  const map = ['N', 'E', 'S', 'W'].map(l => l + '>' + meterWatch(four, l)).join(' ');
+  ok(map === 'N>W E>N S>E W>S', 'a meter watches the next leg round the ring, the one its traffic passes first', map);
+  ok(meterWatch(stem, 'N') === 'S' && meterWatch(stem, 'S') === 'E', 'on the Stem the leg N passes first is S, past the missing W', `${meterWatch(stem, 'N')} ${meterWatch(stem, 'S')}`);
+  const sig = new World({ demand: {}, duration: 30 }, 1);
+  ok(sig.setMeter('E', 4) === false && sig.meters[0] === null, 'a box with lights refuses a meter');
+  const r = new World({ network: { roundabout: true }, demand: {}, duration: 30 }, 1);
+  ok(r.setMeter('E', 40) && r.meters[0].red === METER_RED[1] && r.meters[0].watch === 'N', 'a ring takes one, and its red is clamped to the slider', JSON.stringify(r.meters[0]));
+  ok(r.setMeter(null) && r.meters[0] === null, 'and a null leg takes it away');
+}
+
+{
+  // a board the meter is for: E heavy and turning left, so its traffic
+  // passes N's join, and N queues behind it. The converted boards have no
+  // such leg but Free Play (#778), so this one is built here.
+  const M = { network: { roundabout: true }, demand: { N: 420, S: 150, E: 650, W: 150 }, turns: { T: 0.5, L: 0.4, R: 0.1 }, mix: { standard: 6, granny: 1, aggressive: 1, tourist: 1, trucker: 0.5, student: 0.5, rideshare: 1 }, duration: 180 };
+  const play = (seed, meter) => {
+    const w = new World(meter ? { ...M, meter } : M, seed);
+    let ran = 0, red = false, cannot = new Set(), over = new Map();
+    for (let i = 0; i < 180 * 60; i++) {
+      const was = new Map(w.cars.filter(c => !c.done && c.path.entry === 'E').map(c => [c.id, c.front - c.path.stopLine]));
+      w.step();
+      const m = w.meters[0];
+      if (m && m.stage === 'red' && !red) {
+        // at red's onset, the cars on E that could not have stopped: they go on, and nobody else may
+        cannot = new Set(w.cars.filter(c => !c.done && c.path.entry === 'E' && c.front <= c.path.stopLine && c.v * c.v / (2 * Math.max(0.1, c.path.stopLine - c.front)) > c.stats.brake * 0.9).map(c => c.id));
+      }
+      red = !!m && m.stage === 'red';
+      if (red) for (const c of w.cars) if (!c.done && was.has(c.id) && was.get(c.id) <= 0 && c.front - c.path.stopLine > 0 && !cannot.has(c.id)) over.set(c.id, +w.t.toFixed(1));
+      if (m && m.stage === 'red') ran++;
+    }
+    return { w, sc: score(w), ran, over };
+  };
+  const bare2 = play(2), bare6 = play(6), e2 = play(2, { leg: 'E', red: 5 }), e6 = play(6, { leg: 'E', red: 5 });
+  ok(e2.w.meters[0].fired > 0 && e6.w.meters[0].fired > 0, 'the meter on E fires when N queues past its loop', `${e2.w.meters[0].fired} and ${e6.w.meters[0].fired} times`);
+  ok(e2.over.size === 0 && e6.over.size === 0, 'and no car on E crosses its yield line on red, bar one that could not stop when the red came', JSON.stringify([...e2.over, ...e6.over]));
+  ok(e2.sc.avgWait < bare2.sc.avgWait && e6.sc.avgWait < bare6.sc.avgWait, 'held 5 s a firing, it beats the bare ring\'s average wait on seeds 2 and 6',
+    `${f1(bare2.sc.avgWait)} to ${f1(e2.sc.avgWait)} s, ${f1(bare6.sc.avgWait)} to ${f1(e6.sc.avgWait)} s`);
+  ok(e2.w.events.filter(e => e.kind === 'meter' && e.leg === 'E').length === e2.w.meters[0].fired, 'each firing is an event the page can hear');
 }
 
 group('a three-minute mixed run on the cycling level');

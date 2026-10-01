@@ -125,6 +125,16 @@
 // its leader (leaderOf), and finds everything else on the ring through
 // obstacleAhead's probe. Walkers, loops and closures are not built for it:
 // the boards it converts have none (campaign.js convertible, #597).
+//
+// Entry metering (R10). A ring may carry one meter (`level.meter` or
+// `setMeter`): a signal on one leg's yield line that watches the leg its
+// traffic starves, the next leg round the ring. When a car stands on the
+// watched leg METER_LOOP metres or more back from its yield line, the meter
+// shows amber for METER_AMBER s and then red for its `red` seconds, and
+// then green for at least METER_REST s before it can fire again. A car on
+// the metered leg stops for amber when it can at a comfortable brake and
+// for red when it can stop at all; the gap rule (ringVerdict) is unchanged.
+// The meter needs power: in an outage it rests green.
 
 import { makeRng } from './rng.js';
 import { Controller, conflicts, wideConflicts, parseMovement } from './signals.js';
@@ -140,6 +150,27 @@ export const TAPER = 12;           // metres a lane closure's cones angle across
 export const MERGE_WINDOW = 40;    // metres before the taper a car starts looking for its gap
 export const MERGE_AHEAD = 1.0;    // metres of daylight a merge needs to the car ahead in the new lane
 export const MERGE_BEHIND = 1.0;   // and to the car behind, plus 0.4 s of its speed and 1.2 s of the speed it is closing at
+
+export const METER_LOOP = 15;      // metres back from the watched leg's yield line its loop sits: a queue past it fires the meter
+export const METER_AMBER = 2;      // seconds of amber before the meter's red
+export const METER_REST = 6;       // seconds of green a meter shows before it may fire again
+export const METER_RED = [2, 12];  // the red slider's range, seconds
+
+// The leg a meter on `leg` watches: the first other leg its traffic passes
+// round the ring (anticlockwise on the screen, the angle falling), so the
+// one it starves. Null on a node that is not a ring.
+export function meterWatch(net, leg) {
+  if (!net.roundabout || !net.legs.includes(leg)) return null;
+  const ang = { E: 0, S: Math.PI / 2, W: Math.PI, N: -Math.PI / 2 };
+  let best = null, bestW = Infinity;
+  for (const o of net.legs) {
+    if (o === leg) continue;
+    let w = (ang[leg] - ang[o]) % (2 * Math.PI);
+    if (w <= 0) w += 2 * Math.PI;
+    if (w < bestW) { bestW = w; best = o; }
+  }
+  return best;
+}
 
 export const DEFAULT_MIX = { standard: 6, granny: 1, aggressive: 1, tourist: 1, trucker: 0.5, student: 0.5, rideshare: 1, emergency: 0 };
 export const DEFAULT_TURNS = { T: 0.6, L: 0.2, R: 0.2 };
@@ -166,6 +197,8 @@ export class World {
       return c;
     });
     this.controller = this.controllers[0];
+    this.meters = this.nodes.map(() => null);   // R10: one entry meter per ring, or null
+    if (level.meter) this.setMeter(level.meter.leg, level.meter.red, level.meter.node || 0);
     this.cars = [];
     this.walkers = [];
     this.pedCalls = this.nodes.map(() => ({}));   // per node: leg -> { since, walkers, late }
@@ -187,7 +220,9 @@ export class World {
     this.crashClear = level.crashClear ?? 8;
     this.nextArrival = this.nodes.map(n => { const o = {}; for (const leg of n.spawnLegs) o[leg] = this.rng.exp(this.demandFor(n.node, leg) / 3600); return o; });
     this.nextCall = this.nodes.map(n => { const o = {}; if (this.pedDemand) for (const leg of n.legs) o[leg] = this.rng.exp((this.pedDemand[leg] || 0) / 3600); return o; });
-    this.scheduled = (level.spawns || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, archetype, turn, node }]
+    // copies: a blocked arrival is retried by moving its own `t`, and that
+    // must not move the level's (#777)
+    this.scheduled = (level.spawns || []).map(s => ({ ...s })).sort((a, b) => a.t - b.t); // [{ t, leg, archetype, turn, node }]
     this.scheduledCalls = (level.calls || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, node, walkers }]
     this.schedule = (level.events || []).map(e => ({ ...e })).sort((a, b) => a.at - b.at); // events yet to start (M7)
     this.active = [];       // events in force: { kind, at, until, ... }
@@ -451,6 +486,67 @@ export class World {
   setFlash(f, node = 0) {
     if (this.powerOut || this.nodes[node].roundabout) return false;
     return this.controllers[node].setFlash(f);
+  }
+
+  // An entry meter on a ring's leg (R10), `red` seconds a firing, clamped to
+  // METER_RED; a null leg takes it away. Refused on a node that is not a
+  // ring, or on a leg it does not have. Returns true when it is set.
+  setMeter(leg, red = 4, node = 0) {
+    const net = this.nodes[node];
+    if (!net || !net.roundabout) return false;
+    if (leg === null) { this.meters[node] = null; return true; }
+    const watch = meterWatch(net, leg);
+    if (!watch) return false;
+    red = Math.max(METER_RED[0], Math.min(METER_RED[1], Number(red) || 0));
+    const m = this.meters[node];
+    if (m && m.leg === leg) { m.red = red; return true; }
+    this.meters[node] = { leg, watch, red, stage: 'green', t: METER_REST, fired: 0 };
+    return true;
+  }
+
+  // The meter's light for a leg: 'green', 'amber', 'red', or null with no meter there.
+  meterHead(leg, node = 0) {
+    const m = this.meters[node];
+    if (!m || m.leg !== leg) return null;
+    return this.powerOut ? 'dark' : m.stage;
+  }
+
+  _meterTick(dt) {
+    for (let n = 0; n < this.meters.length; n++) {
+      const m = this.meters[n];
+      if (!m) continue;
+      m.t += dt;
+      if (this.powerOut) { m.stage = 'green'; continue; }
+      if (m.stage === 'amber' && m.t >= METER_AMBER) { m.stage = 'red'; m.t = 0; }
+      else if (m.stage === 'red' && m.t >= m.red) { m.stage = 'green'; m.t = 0; }
+      else if (m.stage === 'green' && m.t >= METER_REST && this._meterQueued(n, m.watch)) {
+        m.stage = 'amber'; m.t = 0; m.fired++;
+        this.events.push({ t: this.t, kind: 'meter', node: n, leg: m.leg });
+      }
+    }
+  }
+
+  // Is a car standing on the watched leg's loop, METER_LOOP metres or more back from its yield line?
+  _meterQueued(node, leg) {
+    for (const c of this.cars) {
+      if (c.done || c.path.node !== node || c.path.entry !== leg || c.v >= 1) continue;
+      const d = c.path.stopLine - c.front;
+      if (d >= METER_LOOP && d < METER_LOOP + 8) return true;
+    }
+    return false;
+  }
+
+  // The meter's verdict for a car on a ring (R10): its yield line, or 0.
+  // A car already stopping for it keeps stopping; one that cannot stop in
+  // time (amber at a comfortable brake, red at its hardest) goes on.
+  _meterVerdict(car) {
+    const m = this.meters[car.path.node];
+    if (!m || m.stage === 'green' || car.path.entry !== m.leg) return 0;
+    const p = car.path, d = p.stopLine - car.front;
+    if (d < -0.5) return 0;
+    if (car.stopVerdict === p.stopLine) return p.stopLine;
+    const need = car.v * car.v / (2 * Math.max(0.1, d));
+    return need <= (m.stage === 'amber' ? car.stats.bComf : car.stats.brake * 0.9) ? p.stopLine : 0;
   }
 
   // The corridor's offset (M7): how many seconds behind the first box the
@@ -903,6 +999,7 @@ export class World {
     this._spawnTick();
     this._pedTick(dt);
     this._mergeTick();
+    this._meterTick(dt);
 
     // 1. verdicts, from the true present, recorded for later perception
     for (const car of this.cars) {
@@ -911,7 +1008,7 @@ export class World {
       const head = ctl.head(car.path.movement);
       specialStops(car, this, dt);
       if (car.crashed) { car.stopVerdict = 0; car.boxVerdict = 0; }
-      else if (car.path.ring) { car.stopVerdict = ringVerdict(car, this); car.boxVerdict = 0; }
+      else if (car.path.ring) { car.stopVerdict = this._meterVerdict(car) || ringVerdict(car, this); car.boxVerdict = 0; }
       else {
         car.stopVerdict = stopLineVerdict(car, head, ctl.timeToYellow(car.path.movement), this);
         car.boxVerdict = car.stopVerdict > 0 ? 0 : boxVerdict(car, head, this);

@@ -195,6 +195,9 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .shop-item .buy { flex: none; min-width: 56px; }
 .shop-item .ring-switch.on { border-color: var(--green); color: var(--green); }
 .ring-note { margin: 10px 0; }
+.meter-box { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 0 0 10px; }
+.meter-box label { display: flex; gap: 6px; align-items: center; }
+.meter-box .note { flex-basis: 100%; margin: 0; }
 .phase.bought .name::before { content: '+ '; }
 .phase.skips .name::after { content: ' · skips'; color: var(--dim); font-weight: 400; font-size: 12px; }   /* R9: passed over until a call rule calls it */
 .phase.called:not(.queued):not(.active) { border-left-color: var(--by-rule); }

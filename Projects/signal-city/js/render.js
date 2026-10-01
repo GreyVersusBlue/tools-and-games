@@ -43,7 +43,7 @@
 import { spriteFor, trailerSpriteFor, SPRITES } from './sprites.js';
 import { LANE_WIDTH, CROSSWALK, legDir, RING_R, RING_W, YIELD_D, SPLIT, SPLIT_TAPER } from './network.js';
 import { parseMovement } from './signals.js';
-import { LOOP_LENGTH, TAPER } from './sim.js';
+import { LOOP_LENGTH, TAPER, METER_LOOP } from './sim.js';
 
 const GRASS = '#5d7a4a';
 const GRASS_2 = '#556f43';
@@ -271,6 +271,7 @@ export class Renderer {
     perNode(net => {
       this._beacons(ctx, world, net, now);
       if (!net.roundabout) this._heads(ctx, world, net, now);
+      else if (world.meters[net.node]) this._meter(ctx, world, net, now);
       if (world.controllers[net.node].hasPeds) this._pedHeads(ctx, world, net, now);
     });
     this._carLamps(ctx, world);
@@ -901,6 +902,30 @@ export class Renderer {
       }
       ctx.restore();
     }
+  }
+
+  // A ring's entry meter (R10): one head on the driver's right at the
+  // metered leg's yield line, and the watched leg's loop, METER_LOOP
+  // metres back from its yield line, lit while a car stands on it.
+  _meter(ctx, world, net, now) {
+    const m = world.meters[net.node];
+    const head = world.meterHead(m.leg, net.node);
+    const d = legDir(m.leg), rr = [d[1], -d[0]];
+    ctx.save();
+    ctx.translate(d[0] * (YIELD_D - 0.5) + rr[0] * 6.4, d[1] * (YIELD_D - 0.5) + rr[1] * 6.4);
+    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(0, 0, 0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.rotate(Math.atan2(-d[1], -d[0]) + Math.PI);
+    this._headBody(ctx, head === 'amber' ? 'yellow' : head === 'dark' ? 'dark' : head, Math.floor(now * 2) % 2 === 0, 0);
+    ctx.restore();
+    const w = legDir(m.watch), lit = world._meterQueued(net.node, m.watch);
+    const a = net.lanePoint(m.watch, 0, true, YIELD_D + METER_LOOP), b = net.lanePoint(m.watch, 0, true, YIELD_D + METER_LOOP + 8);
+    ctx.save();
+    ctx.translate((a[0] + b[0]) / 2 - net.origin[0], (a[1] + b[1]) / 2 - net.origin[1]); ctx.rotate(Math.atan2(-w[1], -w[0]));
+    ctx.strokeStyle = lit ? LOOP_LIT : LOOP; ctx.lineWidth = lit ? 0.4 : 0.25;
+    ctx.setLineDash([0.8, 0.5]);
+    ctx.strokeRect(-4, -(LANE_WIDTH - 1.2) / 2, 8, LANE_WIDTH - 1.2);
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
   _headBody(ctx, state, blink, slot) {

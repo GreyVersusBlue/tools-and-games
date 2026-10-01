@@ -367,7 +367,9 @@ try {
       stage: document.getElementById('stage').textContent, cause: document.getElementById('cause').textContent,
       target: window.__signalCity.world.level.target, waitTarget: window.__signalCity.world.level.waitTarget,
       strip: document.getElementById('strip').classList.contains('hidden'), hint: document.getElementById('hint').textContent,
+      meter: document.getElementById('meterBox').classList.contains('hidden'),
     }));
+    ok(r2.meter, 'and offers no entry meter: none beats First Light\'s bare ring (R10, #778)');
     ok(r2.ring && r2.note && r2.offered === '', 'First Light opens as a ring: the note shows and no tab is offered', `tabs "${r2.offered}"`);
     ok(r2.stage === 'Roundabout: no signals' && r2.cause === 'Every entry yields to the ring' && r2.strip, 'the Signal line says there are none, with no strip of phases under it', `${r2.stage}; ${r2.cause}`);
     ok(/^Nothing to press here/.test(r2.hint), 'and the help says there is nothing to press, not First Light\'s "press 1 and 2"', r2.hint.slice(0, 40));
@@ -392,6 +394,25 @@ try {
     await new Promise(r => setTimeout(r, 300));
     const fp = await page.evaluate(() => ({ ring: window.__signalCity.world.nodes[0].roundabout === true, amb: window.__signalCity.world.cars.some(c => !c.done && c.archetype === 'emergency'), btn: document.getElementById('priorityBtn').classList.contains('show') }));
     ok(fp.ring && fp.amb && !fp.btn, 'Free Play on the ring: its ambulance is on the map at 62 s and no priority button offers a corridor the ring would refuse', JSON.stringify(fp));
+    // Free Play's ring sells the entry meter (R10, #778): a leg and a red
+    const m0 = await page.evaluate(() => ({ shown: !document.getElementById('meterBox').classList.contains('hidden'), legs: [...document.querySelectorAll('#meterLeg option')].map(o => o.value || 'off').join(','), meter: window.__signalCity.world.meters[0], note: document.getElementById('ringNote').textContent }));
+    ok(m0.shown && m0.legs === 'off,N,E,S,W' && m0.meter === null, 'Free Play on the ring offers the entry meter, off, with a leg to pick', JSON.stringify(m0).slice(0, 90));
+    ok(/entry meter below/.test(m0.note) && !/nothing to press/.test(m0.note), 'and its ring note names the meter instead of saying there is nothing to press', m0.note.slice(0, 60));
+    await page.evaluate(() => {
+      const l = document.getElementById('meterLeg'); l.value = 'S'; l.dispatchEvent(new Event('change'));
+      const r = document.getElementById('meterRed'); r.value = '5'; r.dispatchEvent(new Event('input'));
+    });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 60);
+    const m1 = await page.evaluate(() => ({ m: window.__signalCity.world.meters[0], state: document.getElementById('meterState').textContent, val: document.getElementById('meterRedVal').textContent }));
+    ok(m1.m && m1.m.leg === 'S' && m1.m.watch === 'E' && m1.m.red === 5 && m1.val === '5', 'picking S and 5 s puts a meter on S watching E, holding 5 s', JSON.stringify(m1.m));
+    ok(/^S is (green|amber|red), watching E's loop · fired \d+ time/.test(m1.state), 'and the panel reads its light and how often it has fired', m1.state);
+    await shot(page, 'roundabout-meter');
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="free-play"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'free-play' && window.__signalCity.world.t < 1, { timeout: 5000 });
+    const m2 = await page.evaluate(() => ({ m: window.__signalCity.world.meters[0], sel: document.getElementById('meterLeg').value }));
+    ok(m2.m && m2.m.leg === 'S' && m2.m.red === 5 && m2.sel === 'S', 'and the next run of the board starts with the same meter', JSON.stringify(m2));
+    await page.evaluate(() => { window.__signalCity.game.paused = true; window.__signalCity.game.meter = { leg: null, red: null }; });
     // switched off in the shop, First Light is its signals again
     await page.keyboard.press('Escape');
     await page.click('.shop-item[data-item="roundabout"] .buy');
