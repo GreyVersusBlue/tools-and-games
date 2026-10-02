@@ -24,6 +24,10 @@
 # other view modules for rules they must not own. coffee_shop_sim.html stays in
 # the list because it is the redirect stub section 10 also checks.
 # gvb-save.js is there because save.js is a thin layer over it.
+#
+# tools/blender/validate.mjs checks the cup and food sheet against its style
+# sheet (budget.json) with no Blender and no dependency, so it runs first:
+# a sheet that is wrong is the cheapest failure to read (WISHLIST.md B1).
 
 name: Corner & Kettle CI
 
@@ -56,11 +60,12 @@ concurrency:
 
 jobs:
   node:
-    name: smoke-sim, smoke-save, balance
+    name: sheet, smoke-sim, smoke-save, balance
     uses: ./.github/workflows/suite.yml
     with:
       working-directory: Projects/corner-and-kettle
       commands: |
+        node tools/blender/validate.mjs
         node test/smoke-sim.mjs
         node test/smoke-save.mjs
         node test/balance.mjs
