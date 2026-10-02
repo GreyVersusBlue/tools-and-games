@@ -1,5 +1,5 @@
 {
-  "about": "The Absalom Inheritance's sprite style sheet as data (WISHLIST.md B1). validate.mjs reads it; the sheet scripts read pad and their sheet. A frame is 112 + 2 * pad pixels wide (112 a square, render.js's largest tw on a 2x screen) and 56 + 2 * (ht + headroom) + 2 * pad tall, where ht is the solid's height in render.js pixels (SOLIDS by name, or the frame's own ht) and headroom is room above it for detail; its anchor is where the square's centre lands on the floor. fp is the footprint as a share of a square. faces names the PALETTE entry each face's centre must come out at, within faceTolerance levels; mask marks a frame rendered with red, green and blue for top, left and right, to be tinted at draw time. maxKiB is KiB x 1024, maxSide the longest side in pixels, maxTriangles the most any one frame's scene may hold, minCoverage the share of a frame's pixels at alpha 128 or more below which the frame is taken for empty or half-built, and boxSlack how far, as a share of the box, a frame's drawing may stand off the box it replaces.",
+  "about": "The Absalom Inheritance's sprite style sheet as data (WISHLIST.md B1). validate.mjs reads it; the sheet scripts read pad and their sheet. A frame is 112 + 2 * pad pixels wide (112 a square, render.js's largest tw on a 2x screen) and 56 + 2 * (ht + headroom) + 2 * pad tall, where ht is the solid's height in render.js pixels (SOLIDS by name, or the frame's own ht) and headroom is room above it for detail; its anchor is where the square's centre lands on the floor. fp is the footprint as a share of a square. faces names the PALETTE entry each face's centre must come out at, within faceTolerance levels; mask marks a frame rendered with red, green and blue for top, left and right, to be tinted at draw time. maxKiB is KiB x 1024, maxSide the longest side in pixels, maxTriangles the most any one frame's scene may hold, minCoverage the share of a frame's pixels at alpha 128 or more below which the frame is taken for empty or half-built, boxSlack how far, as a share of the box, a frame's drawing may stand off the box it replaces, figure marks a frame that stands in its box rather than filling it (its top may come down to the prism's height), and colours names the PALETTE entries a fixed-colour figure is drawn in.",
   "pad": 2,
   "faceTolerance": 4,
   "boxSlack": 0.1,
@@ -23,6 +23,19 @@
         "wall": { "solid": "wall", "minCoverage": 0.6, "faces": { "top": "wallTop", "left": "wallLeft", "right": "wallRight" } },
         "door": { "solid": "door", "minCoverage": 0.6, "faces": { "top": "doorTop", "left": "doorLeft", "right": "doorRight" } },
         "pillar": { "solid": "pillar", "minCoverage": 0.25, "faces": { "top": "pillarTop" } }
+      }
+    },
+    "figures": {
+      "png": "assets/sprites/figures.png",
+      "atlas": "assets/sprites/figures.json",
+      "width": 512,
+      "maxSide": 512,
+      "maxKiB": 64,
+      "maxTriangles": 4000,
+      "frames": {
+        "heir": { "solid": "heir", "figure": true, "mask": true, "minCoverage": 0.05 },
+        "foe": { "solid": "foe", "figure": true, "minCoverage": 0.05, "colours": ["foeTop", "foeLeft", "foeRight"] },
+        "boss": { "solid": "boss", "figure": true, "minCoverage": 0.05, "colours": ["bossTop", "bossLeft", "bossRight"] }
       }
     }
   }

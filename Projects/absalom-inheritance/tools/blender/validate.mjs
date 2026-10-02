@@ -20,8 +20,10 @@
 //     entry, or its own ht and fp) by more than boxSlack: its top too high or
 //     too low, or its sides wider than the box (style sheet item 1)
 //   - a face whose centre is not the PALETTE colour budget.json names for it,
-//     within faceTolerance levels (the three-face light, #794), or a mask
-//     frame whose top, left and right are not pure red, green and blue
+//     within faceTolerance levels (the three-face light, #794); a mask frame
+//     where red, green or blue never leads, or with pixels no tint would
+//     light (#796); a figure whose median colour is not the hue of the
+//     PALETTE colour it names first
 //   - a SOLIDS entry a frame names that render.js does not have, or a PALETTE
 //     name it does not have
 //   - a file in a sheet's folder that budget.json does not name
@@ -126,6 +128,7 @@ for (const [name, sheet] of Object.entries(budget.sheets)) {
     for (const [face, pal] of Object.entries(item.faces ?? {})) {
       ok(pal in PALETTE, `${name}: ${f}'s ${face} face "${pal}" is in render.js's PALETTE`);
     }
+    for (const pal of item.colours ?? []) ok(pal in PALETTE, `${name}: ${f}'s colour "${pal}" is in render.js's PALETTE`);
   }
   const pngPath = path.join(PROJECT, sheet.png);
   const atlasPath = path.join(PROJECT, sheet.atlas);
@@ -178,14 +181,18 @@ for (const [name, sheet] of Object.entries(budget.sheets)) {
       `${(cover * 100).toFixed(1)}% opaque, floor ${(item.minCoverage * 100).toFixed(0)}%`);
 
     // The box it replaces (style sheet item 1): render.js's prism at this
-    // height and footprint, in frame pixels. Its top is the top diamond's far
-    // corner; its sides are the diamond's left and right corners.
+    // height and footprint, in frame pixels. A block's top is the top
+    // diamond's far corner. A figure stands in the box rather than filling
+    // it, so its top may come down as far as the top diamond's centre, the
+    // prism's height over the square. Its sides are the diamond's left and
+    // right corners.
     const [ht, fp] = boxOf(item);
     const boxTop = r.ay - 2 * ht - (TW / 4) * fp;
     const boxH = 2 * ht + (TW / 2) * fp;
     const slack = budget.boxSlack * boxH;
-    ok(Math.abs(top - boxTop) <= slack, `${name}: ${f} stands as tall as its box`,
-      `top at ${top}, box top ${boxTop.toFixed(1)}, slack ${slack.toFixed(1)}`);
+    const lowest = item.figure ? r.ay - 2 * ht : boxTop;
+    ok(top >= boxTop - slack && top <= lowest + slack, `${name}: ${f} stands as tall as its box`,
+      `top at ${top}, box top ${boxTop.toFixed(1)}${item.figure ? ` to ${lowest.toFixed(1)}` : ''}, slack ${slack.toFixed(1)}`);
     const half = (TW / 2) * fp, sideSlack = budget.boxSlack * 2 * half;
     ok(left >= r.ax - half - sideSlack && right <= r.ax + half + sideSlack,
       `${name}: ${f} is no wider than its box`,
@@ -212,13 +219,48 @@ for (const [name, sheet] of Object.entries(budget.sheets)) {
       ok(got[3] === 255 && off <= budget.faceTolerance, `${name}: ${f}'s ${face} face is ${pal}`,
         `rgba(${got.join(',')}) against ${PALETTE[pal]}, ${off} off`);
     }
+    // A mask (#796): red, green and blue are how much of the build's top,
+    // left and right colour a pixel takes, so each has to lead somewhere, and
+    // a pixel any palette's render would show has some of at least one.
     if (item.mask) {
-      for (const [face, ch] of [['top', 0], ['left', 1], ['right', 2]]) {
-        const got = median(...faceAt[face]);
-        const others = [0, 1, 2].filter(c => c !== ch).map(c => got[c]);
-        ok(got[3] === 255 && got[ch] >= 255 - budget.faceTolerance && Math.max(...others) <= budget.faceTolerance,
-          `${name}: ${f}'s ${face} face is pure channel ${'RGB'[ch]} for tinting`, `rgba(${got.join(',')})`);
+      const lead = [0, 0, 0];
+      let opaque = 0, black = 0;
+      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+        const i = at(r.x + x, r.y + y);
+        if (img.px[i + 3] < 128) continue;
+        opaque++;
+        const c = [img.px[i], img.px[i + 1], img.px[i + 2]];
+        if (Math.max(...c) < 8) black++;
+        for (let k = 0; k < 3; k++) {
+          if (c[k] > 32 + Math.max(...c.filter((_, j) => j !== k))) lead[k]++;
+        }
       }
+      for (let k = 0; k < 3; k++) {
+        ok(lead[k] >= 0.05 * opaque, `${name}: ${f}'s ${['top', 'left', 'right'][k]} channel ${'RGB'[k]} leads somewhere`,
+          `${lead[k]} of ${opaque} opaque pixels`);
+      }
+      ok(black <= 0.02 * opaque, `${name}: ${f} has no mask pixel that no palette would light`,
+        `${black} of ${opaque}`);
+    }
+    // A figure in fixed colours: its median opaque pixel has the hue of the
+    // first PALETTE colour it names, as the share each channel takes of the
+    // pixel's sum, within 0.06. The light scales a colour without turning it,
+    // so a frame rendered in another figure's colours fails, and a bound on
+    // brightness alone did not (the foe in the boss's colours passed one).
+    if (item.colours) {
+      const vals = [[], [], []];
+      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+        const i = at(r.x + x, r.y + y);
+        if (img.px[i + 3] < 255) continue;
+        for (let k = 0; k < 3; k++) vals[k].push(img.px[i + k]);
+      }
+      const med = vals.map(v => v.sort((a, b) => a - b)[v.length >> 1]);
+      const want = hex(PALETTE[item.colours[0]] ?? '#000000');
+      const share = c => { const t = c[0] + c[1] + c[2] || 1; return c.map(v => v / t); };
+      const got = share(med), aim = share(want);
+      const off = Math.max(...got.map((v, k) => Math.abs(v - aim[k])));
+      ok(off <= 0.06, `${name}: ${f} is drawn in ${item.colours[0]}'s hue`,
+        `median rgb(${med.join(',')}) against ${PALETTE[item.colours[0]]}, ${off.toFixed(3)} off`);
     }
   }
   let stray = 0;
