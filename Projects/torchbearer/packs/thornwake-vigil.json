@@ -52,7 +52,7 @@
   ],
 
   "companions": [
-    { "id": "mercy-vane", "name": "Mercy Vane", "subtitle": "Human Cleric (Vigil-Keeper) 3",
+    { "id": "mercy-vane", "name": "Mercy Vane", "subtitle": "Human Cleric (Vigil-Keeper)",
       "ac": 19, "hp": 42, "speed": 25, "perception": 9,
       "saves": { "fort": 9, "ref": 7, "will": 11 }, "initSkill": 9,
       "attacks": [ { "name": "Lantern Mace", "bonus": 9, "damage": "1d6+3", "damageType": "bludgeoning", "range": 1 } ],

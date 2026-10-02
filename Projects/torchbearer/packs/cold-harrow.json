@@ -85,7 +85,7 @@
   ],
 
   "companions": [
-    { "id": "alder-quist", "name": "Alder Quist", "subtitle": "Human Tally-Keeper 3",
+    { "id": "alder-quist", "name": "Alder Quist", "subtitle": "Human Tally-Keeper",
       "ac": 19, "hp": 38, "speed": 25, "perception": 11, "initSkill": 11,
       "saves": { "fort": 7, "ref": 11, "will": 8 },
       "attacks": [ { "name": "Tally-Knife", "bonus": 11, "damage": "1d4+4", "damageType": "piercing",

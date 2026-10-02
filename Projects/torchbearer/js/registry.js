@@ -217,6 +217,12 @@ export const Validator = {
     // at all — the schema has a `companion` def like everything else, and a
     // companion with no id renders a card for `undefined` on the offer screen.
     checkIds(pack.companions, "companions", extraRequired("companion"));
+    // added with companion levelling: `level` is what the stat block is grown
+    // from and `hpPerLevel` how fast. Either one wrong is NaN on the sheet.
+    (pack.companions || []).forEach(c => {
+      if (c.level !== undefined && (!Number.isInteger(c.level) || c.level < 1)) errs.push(`Companion "${c.id}": "level" must be a whole number of 1 or more.`);
+      if (c.hpPerLevel !== undefined && (!Number.isInteger(c.hpPerLevel) || c.hpPerLevel < 0)) errs.push(`Companion "${c.id}": "hpPerLevel" must be a whole number of 0 or more.`);
+    });
     checkIds(pack.adventures, "adventures", extraRequired("adventure"));
     checkIds(pack.campaigns, "campaigns", extraRequired("campaign"));
 

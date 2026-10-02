@@ -45,7 +45,7 @@
 
 import { Registry } from "./registry.js";
 import { OPENERS } from "./downtime.js";
-import { Dice, skillMod, SIZES, sizeIndex, levelDC } from "./rules.js";
+import { Dice, skillMod, SIZES, sizeIndex, levelDC, kitAt, strikingDie } from "./rules.js";
 import { esc, cap } from "./text.js";
 
 /**
@@ -1866,13 +1866,36 @@ export function heroCombatant(ch){
       focus:ch.focusMax,font:ch.casting&&ch.casting.font?ch.casting.font.uses:0,
       potions:Array((ch.consumables.find(c=>c.id==="healing-potion-minor")||{count:0}).count).fill("healing-potion-minor")}};
 }
-/** A companion as a combatant, from its Registry entry. */
-export function companionCombatant(id){
-  const c=Registry.companions[id];
-  return {id:"comp-"+id,side:"pc",name:c.name,subtitle:c.subtitle,hpMax:c.hp,hp:c.hp,tempHP:0,ac:c.ac,
+/** The level every companion is written at unless its data says otherwise:
+    all of them shipped beside level-3 adventures. */
+export const COMPANION_LEVEL = 3;
+/**
+ * A companion's numbers at `level`, from the stat block written at its own
+ * `level` (COMPANION_LEVEL if it names none). A companion walks with the hero
+ * and grows with the hero: +1 per level to AC, every save, Perception,
+ * initiative and every attack, HP by `hpPerLevel` a level (default: its HP
+ * spread over one more than its level, which is the ancestry's share plus the
+ * class's), and a striking rune on its weapons from 4th, the same level
+ * `kitAt` gives the hero one. Heals, sneak dice and ability uses are not
+ * scaled. `level` undefined is the stat block as written.
+ */
+export function companionAt(c, level){
+  const at=Number.isInteger(c.level)? c.level : COMPANION_LEVEL;
+  const L=Number.isInteger(level)? level : at, d=L-at;
+  const per=Number.isInteger(c.hpPerLevel)? c.hpPerLevel : Math.round(c.hp/(at+1));
+  const strike=kitAt(L).striking&&!kitAt(at).striking;
+  const saves={}; Object.keys(c.saves||{}).forEach(k=>{ saves[k]=c.saves[k]+d; });
+  return {level:L, ac:c.ac+d, hp:Math.max(1,c.hp+per*d), saves, perception:(c.perception||0)+d,
+    initSkill:c.initSkill===undefined? undefined : c.initSkill+d,
+    attacks:(c.attacks||[]).map(a=>({...a, bonus:a.bonus+d, damage:strike? strikingDie(a.damage) : a.damage}))};
+}
+/** A companion as a combatant, from its Registry entry, at the hero's level. */
+export function companionCombatant(id, level){
+  const c=Registry.companions[id], k=companionAt(c,level);
+  return {id:"comp-"+id,side:"pc",name:c.name,subtitle:c.subtitle,level:k.level,hpMax:k.hp,hp:k.hp,tempHP:0,ac:k.ac,
     reach:c.reach||1,reactions:c.reactions||[],
-    saves:{...c.saves},perception:c.perception,initSkill:c.initSkill,speed:Math.floor(c.speed/5),
-    attacks:c.attacks.map(a=>({...a,die:a.damage,dmgMod:0,traits:a.traits||[],ranged:a.range>1})),
+    saves:k.saves,perception:k.perception,initSkill:k.initSkill,speed:Math.floor(c.speed/5),
+    attacks:k.attacks.map(a=>({...a,die:a.damage,dmgMod:0,traits:a.traits||[],ranged:a.range>1})),
     abilities:(c.abilities||[]).map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,resources:{slots:{1:0,2:0},focus:0,font:0,potions:[]}};
 }
 

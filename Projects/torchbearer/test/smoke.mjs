@@ -45,7 +45,7 @@ const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDic
         spellGrantsAt, spellChoices } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
-const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
+const { newCombat, heroCombatant, companionCombatant, companionAt, COMPANION_LEVEL, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
 const { SCOPE, scopedFlag, isScoped, flagsSetBy, foldFlags, flagOk, entriesOf,
         progress: campaignRows, nextAdventure, isComplete: campaignDone } = await mod("js/campaign.js");
 const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LEVEL,
@@ -2292,6 +2292,31 @@ ok(Registry.hasPack("barrowmoor") || Registry.adventures.barrowmoor, "the advent
 const ADV = Registry.adventures.barrowmoor;
 // `fighter` — a longsword, a crossbow, a chain shirt and a shield — is defined
 // in section 8c, which needs it first.
+group("companions grow with the hero");
+{
+  const aldous = Registry.companions.aldous;
+  eq(COMPANION_LEVEL, 3, "a companion that names no level is written at 3, as every shipped one is");
+  const at3 = companionCombatant("aldous", 3), at6 = companionCombatant("aldous", 6);
+  eq([at3.level, at3.ac, at3.hpMax, at3.saves, at3.attacks[0].bonus, at3.attacks[0].die],
+    [3, aldous.ac, aldous.hp, aldous.saves, aldous.attacks[0].bonus, aldous.attacks[0].damage],
+    "at the level it is written at, a companion is its stat block");
+  eq(companionCombatant("aldous").hpMax, aldous.hp, "…and with no level at all, so is a companion built before a hero exists");
+  eq([at6.level, at6.ac, at6.perception, at6.initSkill, at6.saves, at6.attacks[0].bonus],
+    [6, aldous.ac + 3, aldous.perception + 3, aldous.initSkill + 3,
+      { fort: aldous.saves.fort + 3, ref: aldous.saves.ref + 3, will: aldous.saves.will + 3 }, aldous.attacks[0].bonus + 3],
+    "three levels up: +3 to AC, Perception, initiative, every save and every attack");
+  eq(at6.hpMax, aldous.hp + 3 * Math.round(aldous.hp / 4), "…HP by its own HP over one more than its level, per level: 44 + 3 × 11");
+  eq([at6.attacks[0].die, companionCombatant("wren", 4).attacks[1].die], ["2d6+3", "2d6+2"], "…and a striking rune from 4th, as the hero's kit gets");
+  eq([at6.abilities[0].heal, at6.abilities[0].uses], [aldous.abilities[0].heal, aldous.abilities[0].uses], "heals and uses are not scaled");
+  eq(companionAt({ ...aldous, level: 5, hpPerLevel: 5 }, 3).hp, aldous.hp - 10, "a pack's own `level` and `hpPerLevel` are read, downwards too");
+  // The validator knows both fields.
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const cerrs = c => Validator.validate({ ...base, companions: [{ id: "c", name: "C", ...c }] }, emptyRegistry());
+  eq(cerrs({ level: 0 }), ['Companion "c": "level" must be a whole number of 1 or more.'], "a companion's level is a whole number of 1 or more");
+  eq(cerrs({ hpPerLevel: "9" }), ['Companion "c": "hpPerLevel" must be a whole number of 0 or more.'], "…and so is its HP a level");
+  eq(cerrs({ level: 5, hpPerLevel: 9 }), [], "…and real ones pass");
+}
+
 /** An engine with the hooks a fight needs to end, and counters on each. */
 const fight = (over = {}) => {
   const h = { victory: 0, defeat: 0, saves: 0, mounts: 0, toasts: [], hints: [] };

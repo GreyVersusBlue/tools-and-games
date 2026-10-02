@@ -557,7 +557,7 @@ import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, acti
          finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, advancesUpTo, grantsAt,
          XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing, spellChoices, levelDC } from "./torchbearer/js/rules.js";
 import { createTorchSlot } from "./torchbearer/js/save.js";
-import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
+import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, companionAt, REACTIONS } from "./torchbearer/js/combat.js";
 import { esc, cap } from "./torchbearer/js/text.js";
 import { fetchLibrary, fetchPack } from "./torchbearer/js/library.js";
 import { flagOk, foldFlags, progress as campaignRows, nextAdventure, isComplete as campaignDone }
@@ -1071,12 +1071,12 @@ const ADVENTURE_PACK = {
 
 /* ---------------- COMPANIONS (pre-built allies) ---------------- */
 "companions":[
-{"id":"aldous","name":"Brother Aldous","subtitle":"Human Cleric of Sarenrae (Warpriest) 3",
+{"id":"aldous","name":"Brother Aldous","subtitle":"Human Cleric of Sarenrae (Warpriest)",
  "ac":19,"hp":44,"speed":20,"perception":9,"saves":{"fort":10,"ref":6,"will":11},"initSkill":9,
  "attacks":[{"name":"Blessed Mace","bonus":9,"damage":"1d6+3","damageType":"bludgeoning","range":1}],
  "abilities":[{"id":"c-heal","name":"Heal (Font)","cost":2,"type":"heal","heal":"2d8+16","range":6,"uses":3,"flavor":"Dawnlight pools in his cupped hands."}],
  "desc":"Round-faced, mule-stubborn, smells of candle smoke. Came to Lantern Cross to retire. The moor had other plans."},
-{"id":"wren","name":"Wren Thistledown","subtitle":"Halfling Rogue (Thief) 3",
+{"id":"wren","name":"Wren Thistledown","subtitle":"Halfling Rogue (Thief)",
  "ac":20,"hp":38,"speed":25,"perception":10,"saves":{"fort":7,"ref":12,"will":9},"initSkill":12,
  "attacks":[{"name":"Shortbow","bonus":11,"damage":"1d6","damageType":"piercing","range":12,"sneak":"1d6"},
             {"name":"Shortsword","bonus":11,"damage":"1d6+2","damageType":"piercing","range":1,"sneak":"1d6","traits":["agile"]}],
@@ -2354,7 +2354,9 @@ const App = {
     this.heroCb=buildHero(ch);
     return this.heroCb;
   },
-  companionCombatant(id){ return buildCompanion(id); },
+  /* A companion grows with the hero (companionAt), so it is always built at
+     the hero's level; with no hero yet it is the stat block as written. */
+  companionCombatant(id){ return buildCompanion(id,this.hero?this.hero.level:undefined); },
   party(){ return [this.heroCombatant(),...this.companions]; },
 
   /* ---------- adventure flow ---------- */
@@ -2447,7 +2449,7 @@ const App = {
       const pct=Math.round(100*cb.hp/cb.hpMax);
       return `<div class="pc-card ${cur===cb?"active-turn":""}">
       <div class="pc-name">${esc(cb.name)}</div>
-      <div class="pc-sub">${esc(cb.char? `${cb.char.heritage||cb.char.ancestry} ${cb.char.className} ${cb.char.level} · AC ${cb.ac}`:(cb.subtitle||"")+" · AC "+cb.ac)}</div>
+      <div class="pc-sub">${esc(cb.char? `${cb.char.heritage||cb.char.ancestry} ${cb.char.className} ${cb.char.level} · AC ${cb.ac}`:(cb.subtitle||"")+(cb.level?" "+cb.level:"")+" · AC "+cb.ac)}</div>
       <div class="hp-bar"><div class="hp-fill" style="width:${pct}%"></div><div class="hp-txt">${cb.hp} / ${cb.hpMax}${cb.tempHP?" +"+cb.tempHP:""}</div></div>
       <div class="cond-row">${cb.dying?`<span class="cond-chip">DYING ${cb.dying}</span>`:""}
         ${cb.conditions.map(c=>`<span class="cond-chip">${c.c}${c.v>1?" "+c.v:""}</span>`).join("")}
@@ -2794,10 +2796,10 @@ const App = {
     const offered=(this.adv.companionsOffered||[]);
     return `<div class="section-sub" style="margin-top:18px">Traveling Companions</div>
       <div class="small" style="margin-bottom:8px">Choose who walks the moor with you. (Encounters scale to your party's size.)</div>
-      <div class="card-grid">${offered.map(id=>{ const c=Registry.companions[id];
+      <div class="card-grid">${offered.map(id=>{ const c=Registry.companions[id], k=companionAt(c,this.hero?this.hero.level:undefined);
         const sel=this.companions.some(x=>x.id==="comp-"+id);
         return `<div class="opt-card ${sel?"selected":""}" data-comp="${id}"><h3>${esc(c.name)}</h3>
-          <div class="meta">${esc(c.subtitle)} · AC ${c.ac} · HP ${c.hp}</div><div class="desc">${esc(c.desc)}</div></div>`; }).join("")}</div>`;
+          <div class="meta">${esc(c.subtitle)} ${k.level} · AC ${k.ac} · HP ${k.hp}</div><div class="desc">${esc(c.desc)}</div></div>`; }).join("")}</div>`;
   },
   bindCompanionPicker(){
     document.querySelectorAll("[data-comp]").forEach(el=>el.onclick=()=>{
@@ -2914,6 +2916,9 @@ const App = {
     this.hero=finalizeCharacter(build); this.heroCb=null;
     this.xp=Math.max(0,this.xp-XP_PER_LEVEL);
     if(old){ const cb=this.heroCombatant(); cb.resources.potions=old.resources.potions; cb.wounded=old.wounded; }
+    // The companions walking with the hero grow with it, and the level is a
+    // rest for them too.
+    this.companions=this.companions.map(c=>this.companionCombatant(c.id.replace("comp-","")));
     this.log(`<b>${esc(this.hero.name)}</b> reaches level ${this.hero.level}: HP ${was.hpMax} → ${this.hero.hpMax}, AC ${was.ac} → ${this.hero.ac}.`,"narr");
     this.toTitle(); this.toast(`${this.hero.name} is now level ${this.hero.level}`);
     this.autosave();

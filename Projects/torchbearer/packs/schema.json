@@ -1270,7 +1270,7 @@
     },
     "companion": {
       "type": "object",
-      "description": "A pre-built ally: a flat stat block the player does not forge.",
+      "description": "A pre-built ally: a flat stat block the player does not forge. It grows with the hero's level from the level it is written at.",
       "required": [
         "id",
         "name"
@@ -1287,6 +1287,16 @@
         "subtitle": {
           "type": "string",
           "description": "The line under the name on the card."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The level the stat block is written at. Defaults to 3."
+        },
+        "hpPerLevel": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "HP gained or lost per level away from `level`. Defaults to HP / (level + 1)."
         },
         "ac": {
           "type": "integer",
