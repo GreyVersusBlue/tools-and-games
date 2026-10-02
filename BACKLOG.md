@@ -121,37 +121,36 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Absalom's sprite
-pipeline, tile sheet, figure sheet and wiring** (old ranks 1 to 4, audit line
-TG-09, committed locally for the nightly merge, so its PR number is the
-nightly's): a ¼ and three ½s naming Opus 5.5, run under it on huginn. The
-batch before it was Signal City's car sheet wired in and the tavern's click
-targets (PR #500). That is the line to
+**The last batch of ranked work that shipped** is **Faire Weekend's sprite
+pipeline, marker sheet and wiring** (old ranks 5 to 7, audit line TG-10,
+committed locally for the nightly merge, so its PR number is the nightly's): a
+¼, a ½ and a ¼ naming Opus 5.5, run under it on huginn. The batch before it was
+Absalom's sprite pipeline, both sheets and wiring (old ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**21 ranked items remain**, and **every one of them names a model.**
+**18 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
-2026-09-25, Devon's instruction and his re-rank). Ranks 5 to 15 are
+2026-09-25, Devon's instruction and his re-rank). Ranks 8 to 15 are
 Blender-made assets: a pipeline per project, then its GLTFLoader where it has
 none, then its packs, then the rows that wire each pack into the game, with
 the site's dioramas last. **Blender runs on Devon's machines only, headless
 (`blender -b -P script.py`), never in a cloud container.** The table's
-`Gate` column says which rows need it and which machine (#644, #707): **6 rows
+`Gate` column says which rows need it and which machine (#644, #707): **4 rows
 read `blender`**, basic headless Blender that **huginn or the Windows machine**
 can run, and **2 read `blender-gpu`** (ranks 14 and 15, the dioramas), which
 need the full feature set on a GPU and so **the Windows machine only**. A
 session that cannot take a row skips it where it stands and takes the next
-row, without parking it. The other 3 in the block (every
+row, without parking it. The other 2 in the block (every
 wiring row) are cloud work, because they read
 committed files (#645); a wiring row is taken only once the pack row above it
 has merged. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** Ranks 1 to 4 shipped and their rows are gone; the
+**Nothing is claimed.** Ranks 1 to 7 shipped and their rows are gone; the
 others keep their numbers until the next renumbering. **Pick up next**
-is rank 5, Faire Weekend's sprite pipeline (¼, Opus 5.5, gate `blender`): **huginn or
-the Windows machine**. Every wiring row (ranks 7, 10 and 13) waits on a pack
+is rank 8, Hearth's sprite pipeline (¼, Opus 5.5, gate `blender`): **huginn or
+the Windows machine**. Every wiring row (ranks 10 and 13) waits on a pack
 that has not been built.
 Below the Blender block, rank 23 (The Fracture Cycle's fourth prong) and rank
 25 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
@@ -1001,9 +1000,6 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 5 | Faire Weekend's sprite pipeline, top-down, in the plat's ink | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B1 |
-| 6 | Faire Weekend's marker sheet: one drawing per plot kind, where a glyph stands on the plat today | `Projects/Ren-Faire-Claude` | ½ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B2 |
-| 7 | Wire the marker sheet in, once rank 6 has merged | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 |  |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B3 |
 | 8 | Hearth's sprite pipeline, at the map's tile size | `Projects/hearth` | ¼ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B1 |
 | 9 | Hearth's building sheet: every kind in `BLD`; the faces stay procedural (#646) | `Projects/hearth` | ½ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B2 |
 | 10 | Wire the building sheet in, once rank 9 has merged | `Projects/hearth` | ¼ | Opus 5.5 |  |  | `Projects/hearth/WISHLIST.md` B3 |

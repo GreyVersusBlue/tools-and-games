@@ -5846,5 +5846,106 @@ function makeMemoryStorage() {
   }
 }
 
+// ---------------------------------------------------------------------
+// Section 31: the marker sheet, wired in (WISHLIST.md B3).
+//
+// Every plot marker and the gate show their frame of
+// assets/sprites/markers.png instead of a glyph; the glyph stays at the
+// front of the title, which is also the accessible name. Ghost and blocked
+// cells are not drawings and keep their glyphs and classes. The sheet is
+// imported by ui.js, so a missing atlas stops the page; the PNG it names
+// is checked here, since a missing image would otherwise show an empty
+// token with nothing said.
+// ---------------------------------------------------------------------
+{
+  const atlas = JSON.parse(fs.readFileSync(path.join(root, 'assets', 'sprites', 'markers.json'), 'utf8'));
+  const png = path.join(root, 'assets', 'sprites', 'markers.png');
+  const head = fs.existsSync(png) ? fs.readFileSync(png).subarray(0, 24) : Buffer.alloc(24);
+  assert(head.readUInt32BE(16) === atlas.sheet.w && head.readUInt32BE(20) === atlas.sheet.h,
+    `assets/sprites/markers.png is there and is the atlas’s ${atlas.sheet.w} x ${atlas.sheet.h} (read ${head.readUInt32BE(16)} x ${head.readUInt32BE(20)})`);
+  const css = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
+  assert(/\.marker-art\s*\{[^}]*url\('\.\.\/assets\/sprites\/markers\.png'\)/.test(css),
+    'style.css’s .marker-art draws from that same file');
+
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 8, 5).state;
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  s = State.buildPlot(s, 'vendor', 4, 2).state;
+  const storage = makeMemoryStorage();
+  storage.setItem('renn-faire-sim-save-v1', JSON.stringify({ ...s, __v: 2 }));
+  const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = storage;
+  globalThis.confirm = () => true;
+  await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+  const doc = dom.window.document;
+
+  // Where a frame sits in the sheet, read back from the percentages the
+  // page was given: CSS puts a background at pct% x (sheet - frame).
+  const frameAt = (el) => {
+    const art = el.querySelector(':scope > .marker-art');
+    if (!art) return null;
+    const [px, py] = art.style.backgroundPosition.split(' ').map(parseFloat);
+    const [sx, sy] = art.style.backgroundSize.split(' ').map(parseFloat);
+    const fw = Math.round(atlas.sheet.w * 100 / sx), fh = Math.round(atlas.sheet.h * 100 / sy);
+    const x = Math.round(px / 100 * (atlas.sheet.w - fw)), y = Math.round(py / 100 * (atlas.sheet.h - fh));
+    return Object.entries(atlas.frames).find(([, f]) => f.x === x && f.y === y && f.w === fw && f.h === fh)?.[0] ?? `none at ${x},${y} ${fw}x${fh}`;
+  };
+
+  // The fixture builds three kinds; the fourth is planned through the page,
+  // the way a player does it, so a planning marker is looked at too.
+  const click = (sel) => doc.querySelector(sel).dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  click('[data-action="selectBuild"][data-kind="food"]');
+  const ghost = doc.querySelector('.plot-marker.ghost');
+  const blocked = doc.querySelector('.plot-marker.blocked');
+  assert(!!ghost && ghost.textContent === '+' && !ghost.querySelector('.marker-art'), 'a ghost cell keeps its + and draws no frame');
+  assert(!!blocked && blocked.textContent === '✕' && !blocked.querySelector('.marker-art'), 'a blocked cell keeps its ✕ and draws no frame');
+  click('[data-action="selectBuild"][data-kind="demo"]');
+  click('.plot-marker.ghost[data-x="2"][data-y="1"]');
+
+  const plots = [...doc.querySelectorAll('.plot-marker:not(.ghost):not(.blocked)')];
+  assert(plots.length === 4 && ['stage', 'food', 'vendor', 'demo'].every(k => plots.some(el => el.classList.contains(`kind-${k}`))),
+    `the plat holds one of every kind (${plots.map(el => el.className).join(' | ')})`);
+  for (const el of plots) {
+    const kind = [...el.classList].find(c => c.startsWith('kind-')).slice(5);
+    const glyph = STRUCTURE_TYPES[kind].icon;
+    assert(frameAt(el) === kind, `the ${kind} marker shows the ${kind} frame of the sheet (shows ${frameAt(el)})`);
+    assert(el.textContent.trim() === '', `the ${kind} marker shows no glyph of its own`);
+    assert(el.getAttribute('title').startsWith(`${glyph} `), `the ${kind} glyph ${glyph} leads its title`);
+    assert(el.getAttribute('role') === 'img' && el.getAttribute('aria-label') === el.getAttribute('title'),
+      `and its accessible name is that title, glyph and all`);
+    assert(el.querySelector('.marker-art')?.getAttribute('aria-hidden') === 'true', `the ${kind} drawing itself is hidden from a screen reader`);
+  }
+  assert(doc.querySelector('.plot-marker.kind-demo').classList.contains('planning') && doc.querySelectorAll('.plot-marker.built').length === 3,
+    'the planned demo camp keeps .planning and the other three keep .built');
+
+  const gate = doc.querySelector('.gate-marker');
+  assert(!!gate && frameAt(gate) === 'gate' && gate.textContent.trim() === '', `the front gate shows the gate frame and no glyph (shows ${gate && frameAt(gate)})`);
+  assert(!!gate && gate.getAttribute('title').startsWith('⛲ ') && gate.getAttribute('aria-label') === gate.getAttribute('title'),
+    'and its fountain glyph leads its title and accessible name');
+
+  // Moving a plot: the plot keeps its drawing and gains .moving.
+  click('[data-tab="fairfloor"]');
+  const move = doc.querySelector('[data-action="selectMove"]');
+  if (move) {
+    move.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    const moving = doc.querySelector('.plot-marker.moving');
+    assert(!!moving && !!frameAt(moving) && !String(frameAt(moving)).startsWith('none') && moving.querySelector('.marker-art'),
+      'a plot being moved keeps its drawing and wears .moving');
+    const arrow = doc.querySelector('.plot-marker.ghost');
+    assert(!!arrow && arrow.textContent === '➔', 'and its destinations are ghosts with the arrow, as before');
+  } else {
+    assert(false, 'the page offers a selectMove button for a plot, so the moving class can be looked at');
+  }
+
+  // A kind with no frame fails loud rather than falling back to its glyph.
+  const { markerArt } = await import(mod('js/ui.js'));
+  let threw = '';
+  try { markerArt('well'); } catch (e) { threw = e.message; }
+  assert(/no frame for "well"/.test(threw), `markerArt throws on a kind the sheet has no frame for (${threw || 'it did not throw'})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

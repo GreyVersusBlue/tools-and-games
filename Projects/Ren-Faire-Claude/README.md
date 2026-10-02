@@ -127,6 +127,26 @@ account's other GitHub Pages projects.
   solely so `npm test` can install jsdom; nothing in them runs on the static
   GitHub Pages deploy, and nothing in `index.html` imports from them. Keep
   them: deleting them takes the smoke suite with them.
+- `assets/sprites/markers.png` and `markers.json` — the marker sheet: one
+  drawing for each kind in `STRUCTURE_TYPES` and the front gate, rendered
+  headless in Blender 5.2 by `tools/blender/` (HISTORY.md #798, #799). Every
+  `.plot-marker kind-*` and the `.gate-marker` show their frame through
+  `ui.js`'s `markerArt()`, a span with a percent background, and the glyph
+  each one used to show leads its `title`, which is also its accessible name.
+  `ui.js` imports the atlas as a JSON module, so a missing atlas stops the page.
+- `tools/blender/` — the sheet's pipeline. The style sheet: straight down,
+  north up, one cell is 1.0 in Blender; every surface is a flat emission of
+  `plat.js`'s `INK`, a `TERRAIN_FILL` or `PAPER`, and Blender's Freestyle
+  draws the line work over it in `INK`, 3 px, at every silhouette, every crease
+  under 150 degrees and every material edge. A frame is the marker's footprint
+  x 48 px (the largest `--cell`) x 2, anchored at its centre, with its outer
+  ring left clear. Cycles on the CPU, 32 samples, seed 0, no denoiser: a rerun
+  is byte-identical on huginn. `spec.mjs` reads the palette and the marker list
+  out of the game; `markers.py` draws them (`blender -b --factory-startup -t 4
+  -P tools/blender/markers.py`); `budget.json` holds the numbers and
+  `validate.mjs` (75 checks, Node, no Blender, in Site CI) holds the sheet to
+  them: sizes, coverage, nothing clipped, and the share of each frame in `INK`
+  and in the plat's colours.
 - `assets/fonts/` — the three vendored type families, woff2 only. See the
   README in that folder for source, licence, and which weights are here and why.
 - `WISHLIST.md` — the plan: all eight phases, now all shipped, plus the standing backlog and the open questions. Stages 1-22 are recorded in the repo root's `HISTORY.md`
@@ -138,7 +158,7 @@ npm install
 npm test
 ```
 
-2,118 checks in `tests/smoke.mjs`, 168 in `tests/guests.mjs`, 172 in
+2,149 checks in `tests/smoke.mjs`, 168 in `tests/guests.mjs`, 172 in
 `tests/mapview.mjs` and 136 in `tests/wiring.mjs` (see the file list above
 for what the last three cover). Two more scripts need a real Chromium and are not part of `npm
 test`: `npm run shoot` (Phase 5's layout camera, `tools/shoot-states.mjs`)
