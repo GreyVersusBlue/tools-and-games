@@ -555,7 +555,7 @@ import { mountSaveBar } from "../assets/js/gvb-save.js";
 import { Registry } from "./torchbearer/js/registry.js";
 import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, activeEffects, abilityMods,
          finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, advancesUpTo, grantsAt,
-         XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing, levelDC } from "./torchbearer/js/rules.js";
+         XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing, spellChoices, levelDC } from "./torchbearer/js/rules.js";
 import { createTorchSlot } from "./torchbearer/js/save.js";
 import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
 import { esc, cap } from "./torchbearer/js/text.js";
@@ -1303,7 +1303,7 @@ const Builder = {
     this.build=JSON.parse(JSON.stringify(cur));
     this.build.level=L;
     this.build.advances=this.build.advances||{};
-    this.build.advances[L]={feats:{},skillIncrease:null,boosts:[]};
+    this.build.advances[L]={feats:{},skillIncrease:null,boosts:[],spells:{r1:[],r2:[]}};
     this.mode="levelup"; this.target=L; this.step=0;
     App.show("builder"); this.render();
   },
@@ -1318,6 +1318,7 @@ const Builder = {
       if(g.boosts) s.push({id:"attributes",label:"Boosts"});
       if(g.skillIncrease) s.push({id:"skills",label:"Skill Increase"});
       if(g.feats.length) s.push({id:"feats",label:"Feats"});
+      if(g.spells[1]||g.spells[2]) s.push({id:"spells",label:"Spells"});
       s.push({id:"review",label:"Review"});
       return s;
     }
@@ -1412,7 +1413,8 @@ const Builder = {
       switch(id){
         case "attributes": return !miss.includes("boosts");
         case "skills": return !miss.includes("skillIncrease");
-        case "feats": return !miss.some(k=>k!=="boosts"&&k!=="skillIncrease");
+        case "feats": return !miss.some(k=>k!=="boosts"&&k!=="skillIncrease"&&k!=="spells");
+        case "spells": return !miss.includes("spells");
       }
       return true;
     }
@@ -1728,7 +1730,29 @@ const Builder = {
     });
   },
 
+  /* Levelling: one more spell for every slot the level adds at a rank
+     (`grantsAt(...).spells`), off `spellChoices`, which already leaves out
+     what the hero knows. Written into this level's entry alone. */
+  ui_spells_levelup(){
+    const b=this.build, L=this.target, g=grantsAt(Registry.classes[b.cls],L), e=this.advance();
+    const sc=Registry.classes[b.cls].spellcasting;
+    let html=`<div class="step-title">Spells</div>
+      <div class="step-hint">Level ${L} brings a new spell slot, and a new spell to fill it: ${sc.type==="spontaneous"?"it joins your repertoire":"it joins the list you prepare"}.</div>`;
+    [1,2].forEach(r=>{
+      const want=g.spells[r]; if(!want) return;
+      const key="r"+r, sel=e.spells[key], opts=spellChoices(b,L,r);
+      html+=`<div class="section-sub">Rank ${r} <span class="counter-pill">${sel.length} / ${want}</span>${r===2?` <span class="small">(rank-1 spells may be heightened)</span>`:""}</div>`;
+      if(!opts.length){ html+=`<div class="small" style="font-style:italic;margin-bottom:14px">Every rank-${r} spell of your tradition in the loaded content is already yours. Carry on without one.</div>`; return; }
+      html+=`<div class="card-grid">`+opts.map(sp=>{
+        const isSel=sel.includes(sp.id), full=!isSel&&sel.length>=want;
+        return `<div class="opt-card ${isSel?"selected":""} ${full?"disabled":""}" data-sp="${sp.id}" data-key="${key}">
+          <h3>${sp.name}</h3><div class="meta">rank ${sp.rank} · ${"◆".repeat(Math.min(3,sp.actions||2))}${sp.save?" · "+cap3(sp.save)+" save":sp.attackRoll?" · spell attack":""}</div>
+          <div class="desc">${sp.desc}</div></div>`; }).join("")+`</div>`;
+    });
+    return html;
+  },
   ui_spells(){
+    if(this.mode==="levelup") return this.ui_spells_levelup();
     const b=this.build, cls=Registry.classes[b.cls], sc=cls.spellcasting, ex=this.extras();
     let trad=sc.tradition;
     if(trad==="patron"){ const sub=(cls.subclass.options||[]).find(o=>o.id===b.subclass);
@@ -1759,7 +1783,7 @@ const Builder = {
     const b=this.build;
     document.querySelectorAll("#builder-body [data-sp]").forEach(el=>el.onclick=()=>{
       if(el.classList.contains("disabled")) return;
-      const key=el.dataset.key, id=el.dataset.sp, arr=b.spells[key];
+      const key=el.dataset.key, id=el.dataset.sp, arr=(this.mode==="levelup"? this.advance().spells : b.spells)[key];
       const i=arr.indexOf(id); if(i>=0) arr.splice(i,1); else arr.push(id);
       this.render();
     });
@@ -1811,6 +1835,7 @@ const Builder = {
       g.feats.forEach(sl=>{ const id=e.feats[sl.key]; lines.push(`${cap(sl.type)} feat: <b>${id?esc((Registry.feats[id]||{name:id}).name):"none available"}</b>`); });
       if(g.skillIncrease) lines.push(`Skill increase: <b>${cap(e.skillIncrease||"")}</b>`);
       if(g.boosts) lines.push(`Boosts: <b>${e.boosts.filter(Boolean).map(a=>a.toUpperCase()).join(", ")}</b>`);
+      [1,2].forEach(r=>{ if(g.spells[r]) lines.push(`Rank-${r} spell: <b>${e.spells["r"+r].map(id=>esc((Registry.spells[id]||{name:id}).name)).join(", ")||"none available"}</b>`); });
       return `<div class="step-title">Level ${L}</div>
       <div class="step-hint">${esc(ch.name)} goes from ${was.level} to ${L}: HP ${was.hpMax} → ${ch.hpMax}, AC ${was.ac} → ${ch.ac}. Taking the level spends ${XP_PER_LEVEL} XP.</div>
       <div class="small" style="margin-bottom:12px">${lines.join(" · ")}</div>

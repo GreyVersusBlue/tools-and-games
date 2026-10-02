@@ -86,10 +86,10 @@ export function repairBuild(build) {
 
 /**
  * The per-level choice map: `{ "4": { feats: {class4: id}, skillIncrease: id|null,
- * boosts: [abil…] }, … }`, one entry per level from 4 up, written by the
+ * boosts: [abil…], spells: {r1: [id…], r2: [id…]} }, … }`, one entry per level from 4 up, written by the
  * level-up flow and read by `rules.js`. Keys that are not whole levels above
- * 3 are dropped; an entry's three fields are shaped the way the builder's
- * own `feats`, `skillIncrease` and `boosts.free` are.
+ * 3 are dropped; an entry's four fields are shaped the way the builder's
+ * own `feats`, `skillIncrease`, `boosts.free` and `spells` are.
  */
 export function repairAdvances(advances) {
   const out = {};
@@ -101,10 +101,19 @@ export function repairAdvances(advances) {
     out[k] = {
       feats: obj(e.feats) || {},
       skillIncrease: typeof e.skillIncrease === "string" ? e.skillIncrease : null,
-      boosts: Array.isArray(e.boosts) ? e.boosts.filter(b => typeof b === "string") : []
+      boosts: Array.isArray(e.boosts) ? e.boosts.filter(b => typeof b === "string") : [],
+      spells: repairLearned(e.spells)
     };
   }
   return out;
+}
+
+/** A level-up's new spells, `{ r1: [id…], r2: [id…] }`. Absent on every save
+    written before the level-up had a spell step, which is the same as none. */
+function repairLearned(spells) {
+  const o = obj(spells) || {};
+  const ids = v => Array.isArray(v) ? v.filter(x => typeof x === "string") : [];
+  return { r1: ids(o.r1), r2: ids(o.r2) };
 }
 
 /**

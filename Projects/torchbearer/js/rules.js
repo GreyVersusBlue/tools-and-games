@@ -79,15 +79,31 @@ export function skillIncreaseLevels(cls, level = MAX_LEVEL){
 /**
  * What reaching `level` grants a hero of `cls`: the feat slots, keyed the way
  * `Builder.featSlots` keys the level-1-to-3 ones (`class4`, `skill4`,
- * `general7`, `ancestry5`), whether it carries a skill increase, and how many
- * attribute boosts. This is the one answer the level-up screen renders.
+ * `general7`, `ancestry5`), whether it carries a skill increase, how many
+ * attribute boosts, and how many new spells at each rank. This is the one
+ * answer the level-up screen renders.
  */
 export function grantsAt(cls, level){
   const feats = [];
   for (const type of ["ancestry", "class", "skill", "general"]) {
     if (featLevelsFor(cls, type, level).includes(level)) feats.push({ key: type + level, type, level });
   }
-  return { level, feats, skillIncrease: skillIncreaseLevels(cls, level).includes(level), boosts: BOOST_LEVELS.includes(level) ? 4 : 0 };
+  return { level, feats, skillIncrease: skillIncreaseLevels(cls, level).includes(level), boosts: BOOST_LEVELS.includes(level) ? 4 : 0,
+    spells: spellGrantsAt(cls, level) };
+}
+/**
+ * New spells a level brings, by rank: one for every slot the rank gains over
+ * the level before. A prepared caster's list and a spontaneous caster's
+ * repertoire are both one spell per slot at forge (guide §4), so both grow the
+ * same way: the rank-2 slot that arrives at 4th brings one more rank-2 spell to
+ * cast with it. Levels below 4 are the forge's business, and ranks 3 and up are
+ * not modelled (locked #114), so in practice this is that one spell at 4th.
+ */
+export function spellGrantsAt(cls, level){
+  const sc = cls && cls.spellcasting;
+  if (!sc || level < 4) return { 1: 0, 2: 0 };
+  const now = spellSlotsAt(sc.slots, level), was = spellSlotsAt(sc.slots, level - 1);
+  return { 1: Math.max(0, now[1] - was[1]), 2: Math.max(0, now[2] - was[2]) };
 }
 /**
  * Spell slots at a level, for the two ranks the engine runs. A class's `slots`
@@ -177,6 +193,28 @@ export function featChoices(build, slot, except){
   });
 }
 /**
+ * The spells a level-up may add at `rank`: the hero's own tradition (a witch's
+ * patron resolved), not a focus spell, not a cantrip the class grants anyway,
+ * and not already on that rank's list. Rank 2 also offers the rank-1 spells,
+ * heightened, the same way the forge's spell step does. `except` is the pick
+ * already made, which stays offered so it can be changed. The sheet is read
+ * without this level's own picks, so a pick does not hide itself.
+ */
+export function spellChoices(build, level, rank, except){
+  const cls = Registry.classes[build.cls], sc = cls && cls.spellcasting;
+  if (!sc) return [];
+  const adv = { ...((build && build.advances) || {}) };
+  adv[level] = { ...(adv[level] || {}), spells: { r1: [], r2: [] } };
+  const casting = finalizeCharacter({ ...build, advances: adv }).casting;
+  const known = new Set(casting["r" + rank] || []);
+  return Registry.list(Registry.spells, s => {
+    if (s.focus || !(s.rank === rank || (rank === 2 && s.rank === 1))) return false;
+    if (!(s.traditions || []).includes(casting.tradition)) return false;
+    if ((sc.grantCantrips || []).includes(s.id)) return false;
+    return !known.has(s.id) || s.id === except;
+  });
+}
+/**
  * What this level's skill increase may raise, and to what: `{ skill: rank }`
  * for every skill whose next rank the level allows (RANK_FLOOR — Master waits
  * for 7, Legendary for 15). Computed on the sheet without this level's own
@@ -213,6 +251,13 @@ export function advanceMissing(build, level){
   if (g.boosts) {
     const b = (e.boosts || []).filter(Boolean);
     if (b.length !== g.boosts || new Set(b).size !== b.length) missing.push("boosts");
+  }
+  // A rank with nothing left to learn is satisfied short, the way an empty
+  // feat slot is (locked #117).
+  for (const r of [1, 2]) {
+    const want = g.spells[r]; if (!want) continue;
+    const have = ((e.spells && e.spells["r" + r]) || []).filter(Boolean).length;
+    if (have < Math.min(want, spellChoices(build, level, r).length)) { missing.push("spells"); break; }
   }
   return missing;
 }
@@ -448,8 +493,11 @@ export function finalizeCharacter(build){
     const dc=10+profB("T")+castAbil, atk=profB("T")+castAbil;
     let cantrips=[...build.spells.cantrips,...(sc.grantCantrips||[])];
     cantrips=[...new Set(cantrips)];
+    /* The forge's lists, then every spell a level-up added (spellGrantsAt),
+       at the levels the hero has reached. */
+    const learned=r=>advancesUpTo(build).flatMap(a=>((a.spells&&a.spells["r"+r])||[]).filter(Boolean));
     casting={tradition,type:sc.type,ability:sc.ability,dc,attack:atk,
-      cantrips, r1:[...build.spells.r1], r2:[...build.spells.r2],
+      cantrips, r1:[...build.spells.r1,...learned(1)], r2:[...build.spells.r2,...learned(2)],
       slots:spellSlotsAt(sc.slots,lvl),
       font: specials.has("font-heal")? {spell:"heal",uses:4}:null};
   }

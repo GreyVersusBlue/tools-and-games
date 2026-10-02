@@ -41,7 +41,8 @@ const { createTorchSlot, repairSnapshot, repairBuild, repairHero, repairAdvances
 const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDiceSource, activeEffects, abilityMods,
         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, SIZES, sizeIndex, levelDC,
         FEAT_LEVELS, SKILL_INCREASE_LEVELS, BOOST_LEVELS, featLevelsFor, skillIncreaseLevels, grantsAt, spellSlotsAt,
-        XP_PER_LEVEL, canLevelUp, awardFor, kitAt, strikingDie, takenFeats, featChoices, skillIncreaseOptions, advanceMissing } = {
+        XP_PER_LEVEL, canLevelUp, awardFor, kitAt, strikingDie, takenFeats, featChoices, skillIncreaseOptions, advanceMissing,
+        spellGrantsAt, spellChoices } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
 const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
@@ -409,7 +410,7 @@ const goodSnap = () => ({
   const store3 = memStore(); store3.setItem(SAVE_KEY, JSON.stringify({ ...v2, __v: 3 }));
   const back3 = createTorchSlot(store3).load();
   eq([back3.build.level, back3.build.advances, back3.xp],
-    [7, { "4": { feats: { class4: "power-attack" }, skillIncrease: null, boosts: [] } }, 40],
+    [7, { "4": { feats: { class4: "power-attack" }, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } } }, 40],
     "…while a version-3 save keeps all three, repaired into shape");
 }
 
@@ -566,10 +567,10 @@ group("repair");
     [1, 10, 4, 3], "level is a whole number clamped to 1..10, and garbage is 3");
   eq(repairBuild({ advances: [] }).advances, {}, "an array of advances is an empty map");
   eq(repairBuild({ advances: { "3": {}, "4": { feats: { class4: "x" } }, "5.5": {}, "11": {}, "04": {} } }).advances,
-    { "4": { feats: { class4: "x" }, skillIncrease: null, boosts: [] } },
-    "only whole levels 4..10 survive as keys, and each entry gets its three fields");
-  eq(repairAdvances({ "5": { feats: "no", skillIncrease: 3, boosts: ["str", 7, null] } })["5"],
-    { feats: {}, skillIncrease: null, boosts: ["str"] }, "an entry's fields are shaped, not trusted");
+    { "4": { feats: { class4: "x" }, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } } },
+    "only whole levels 4..10 survive as keys, and each entry gets its four fields");
+  eq(repairAdvances({ "5": { feats: "no", skillIncrease: 3, boosts: ["str", 7, null], spells: { r1: "x", r2: ["magic-missile", 4] } } })["5"],
+    { feats: {}, skillIncrease: null, boosts: ["str"], spells: { r1: [], r2: ["magic-missile"] } }, "an entry's fields are shaped, not trusted");
   eq([repairSnapshot({ build: {} }).xp, repairSnapshot({ build: {}, xp: -5 }).xp, repairSnapshot({ build: {}, xp: "30" }).xp],
     [0, 0, 30], "xp is a number, never negative, and 0 when missing");
 }
@@ -844,9 +845,9 @@ eq(MAX_LEVEL, 10, "MAX_LEVEL is 10 — where the Player Core's tables stop being
   eq(skillIncreaseLevels(fighter, 10), [3, 5, 7, 9], "skill increases at 3, 5, 7 and 9");
   eq(skillIncreaseLevels(rogue, 6), [2, 3, 4, 5, 6], "a Rogue's are 2 and every level after");
   eq([FEAT_LEVELS.general, SKILL_INCREASE_LEVELS.at(-1), BOOST_LEVELS], [[3, 7, 11, 15, 19], 19, [5, 10, 15, 20]], "the standard rows read as the Player Core prints them");
-  eq(grantsAt(fighter, 4), { level: 4, feats: [{ key: "class4", type: "class", level: 4 }, { key: "skill4", type: "skill", level: 4 }], skillIncrease: false, boosts: 0 },
+  eq(grantsAt(fighter, 4), { level: 4, feats: [{ key: "class4", type: "class", level: 4 }, { key: "skill4", type: "skill", level: 4 }], skillIncrease: false, boosts: 0, spells: { 1: 0, 2: 0 } },
     "level 4 grants a Fighter a class feat and a skill feat");
-  eq(grantsAt(fighter, 5), { level: 5, feats: [{ key: "ancestry5", type: "ancestry", level: 5 }], skillIncrease: true, boosts: 4 },
+  eq(grantsAt(fighter, 5), { level: 5, feats: [{ key: "ancestry5", type: "ancestry", level: 5 }], skillIncrease: true, boosts: 4, spells: { 1: 0, 2: 0 } },
     "level 5 grants an ancestry feat, a skill increase and four boosts");
   eq(grantsAt(fighter, 7).feats.map(f => f.key), ["general7"], "level 7 grants a general feat");
   eq(grantsAt(rogue, 7).feats.map(f => f.key), ["skill7", "general7"], "…and a Rogue a skill feat with it");
@@ -956,7 +957,7 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   const slot = createTorchSlot(memStore());
   const sera = slot.deserialize(fs.readFileSync(path.join(PROJECT, "test", "sera-voss.torchsave.json"), "utf8")).build;
   const s3 = finalizeCharacter(sera);
-  const up = JSON.parse(JSON.stringify(sera)); up.level = 4; up.advances[4] = { feats: {}, skillIncrease: null, boosts: [] };
+  const up = JSON.parse(JSON.stringify(sera)); up.level = 4; up.advances[4] = { feats: {}, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } };
   const choices = grantsAt(Registry.classes[up.cls], 4).feats.map(sl => [sl.key, featChoices(up, sl)[0]]);
   ok(choices.length === 2 && choices.every(([, f]) => f), `level 4 offers Sera something in both slots — ${choices.map(([k, f]) => k + ": " + (f && f.id)).join(", ")}`);
   choices.forEach(([k, f]) => { up.advances[4].feats[k] = f.id; });
@@ -969,6 +970,38 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   const back = slot.deserialize(slot.serialize({ build: up, xp: 0 })).build;
   eq(back.advances, up.advances, "the level-4 entry survives a save round trip as written");
   eq(finalizeCharacter(back).hpMax, s4.hpMax, "…and the reloaded sheet is the same sheet");
+}
+{ // the level-up's spell step: the rank-2 slot that arrives at 4th brings a rank-2 spell to cast with it
+  const C = Registry.classes;
+  eq([spellGrantsAt(C.wizard, 4), spellGrantsAt(C.bard, 4), spellGrantsAt(C.wizard, 5), spellGrantsAt(C.wizard, 3), spellGrantsAt(C.fighter, 4)],
+    [{ 1: 0, 2: 1 }, { 1: 0, 2: 1 }, { 1: 0, 2: 0 }, { 1: 0, 2: 0 }, { 1: 0, 2: 0 }],
+    "a prepared and a spontaneous caster each learn one rank-2 spell at 4th; nothing after, nothing below, nothing for a Fighter");
+  eq(grantsAt(C.wizard, 4).spells, { 1: 0, 2: 1 }, "…and grantsAt says so beside the feats");
+  const arcane = r => Registry.list(Registry.spells, x => x.rank === r && !x.focus && x.traditions.includes("arcane")).map(x => x.id);
+  const [a1, a2] = [arcane(1), arcane(2)];
+  ok(a1.length >= 3 && a2.length >= 3, `the core pack has arcane spells to choose from — ${a1.length} at rank 1, ${a2.length} at rank 2`);
+  const w = forge("wizard", { spells: { cantrips: [], r1: a1.slice(0, 3), r2: a2.slice(0, 2) } }).build;
+  const up = JSON.parse(JSON.stringify(w)); up.level = 4;
+  up.advances = { 4: { feats: {}, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } } };
+  ok(advanceMissing(up, 4).includes("spells"), "level 4 wants the wizard's new spell");
+  const offered = spellChoices(up, 4, 2).map(x => x.id);
+  eq([offered.includes(a2[0]), offered.includes(a2[1]), offered.includes(a2[2]), offered.includes(a1[0])], [false, false, true, true],
+    "…offering a rank-2 spell it does not know, or a rank-1 spell to heighten, and not the two it already prepares");
+  ok(!offered.includes("heal"), "…from its own tradition only");
+  up.advances[4].spells.r2 = [a2[2]];
+  ok(!advanceMissing(up, 4).includes("spells"), "one pick completes it");
+  ok(spellChoices(up, 4, 2).some(x => x.id === a2[2]), "…and the pick stays offered, so it can be changed");
+  const s4 = finalizeCharacter(up);
+  eq([s4.casting.r2, s4.casting.slots[2]], [[...a2.slice(0, 2), a2[2]], 3], "the sheet prepares three rank-2 spells into three rank-2 slots");
+  eq(finalizeCharacter({ ...up, level: 3 }).casting.r2, a2.slice(0, 2), "…and a build read back at 3 carries the pick without applying it");
+  const slot = createTorchSlot(memStore());
+  eq(slot.deserialize(slot.serialize({ build: up, xp: 0 })).build.advances[4].spells, { r1: [], r2: [a2[2]] }, "the pick survives a save round trip");
+  // Nothing left to learn is satisfied short, like an empty feat slot (#117).
+  const full = JSON.parse(JSON.stringify(up));
+  full.spells.r2 = spellChoices(up, 4, 2).map(x => x.id).concat(a2.slice(0, 2));
+  full.advances[4].spells.r2 = [];
+  eq([spellChoices(full, 4, 2).length, advanceMissing(full, 4).includes("spells")], [0, false],
+    "a wizard who knows every rank-2 choice is not stuck on the step");
 }
 
 /* ---------------- 8d. the campaign record (Phase 7, increment 1) ----------------
