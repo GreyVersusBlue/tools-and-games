@@ -30,6 +30,10 @@
 //   progression  at most `stops` of the cars one box hands to the next
 //                wait again there: the offset carries the platoon
 //   walks        no walk call waits longer than `within` seconds
+//   meter        the ring's entry meter fired, and the average wait came
+//                in at or under `wait` seconds (R13): a meter that never
+//                fires does not earn it, and one that fires without bringing
+//                the wait down does not either
 // Stars stay 0 to 3, so the save's shape does not change (#36, #37).
 
 export const MODES = ['soft', 'hard'];
@@ -42,6 +46,7 @@ export function lessonName(lesson) {
     case 'platoons': return 'no platoon split by the light';
     case 'progression': return `at most ${Math.round(lesson.stops * 100)}% of cars stopping again at the next box`;
     case 'walks': return `no walk call waiting over ${lesson.within} s`;
+    case 'meter': return `the entry meter working, the wait under ${lesson.wait} s`;
     default: throw new Error(`no lesson kind ${lesson.kind}`);
   }
 }
@@ -74,6 +79,13 @@ export function lessonMet(world) {
       for (const calls of world.pedCalls) for (const c of Object.values(calls)) if (c) most = Math.max(most, world.t - c.since);
       const met = most <= lesson.within;
       return { met, why: met ? '' : `a walk call waited ${Math.round(most)} s, against ${lesson.within} s` };
+    }
+    case 'meter': {
+      const fired = world.meters.reduce((n, m) => n + (m ? m.fired : 0), 0);
+      if (!fired) return { met: false, why: 'the entry meter never fired' };
+      const wait = meters(world).avgWait;
+      const met = wait <= lesson.wait;
+      return { met, why: met ? '' : `the meter fired ${fired} time${fired === 1 ? '' : 's'}, and the average wait was ${wait.toFixed(0)} s against ${lesson.wait} s` };
     }
     default: throw new Error(`no lesson kind ${lesson.kind}`);
   }

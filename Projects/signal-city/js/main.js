@@ -75,7 +75,7 @@ class Game {
     this.seed = 1;
     this.node = 0;           // the box the panel drives (a corridor has two)
     this.ringOn = true;      // the roundabout's switch, when it is owned (#599)
-    this.meter = { leg: null, red: null };   // the ring's entry meter (R10): the session's, never stored, like the switch
+    this.meterFor = {};      // the ring's entry meter per level id, { leg, red } (R10): the session's, never stored, like the switch
     this.wave = new WaveHistory();   // the platoon diagram's samples (M7)
     this.hudEls = {};
     this.tab = 'phases';
@@ -303,7 +303,8 @@ class Game {
     this.seed = seed ?? ((Date.now() % 100000) + 1);
     if (DEBUG) this.seed = seed ?? 7;
     this.world = new World(lvl, this.seed);
-    if (lvl.ringMeter && this.meter.leg) this.world.setMeter(this.meter.leg, this.meter.red ?? lvl.ringMeter.red);
+    const mt = this.meterFor[lvl.id];
+    if (lvl.ringMeter && mt && mt.leg) this.world.setMeter(mt.leg, mt.red ?? lvl.ringMeter.red);
     this.node = 0;
     this.wave.reset();
     this.renderer.reset();
@@ -371,7 +372,9 @@ class Game {
   // to its signals because it has none.
   showRing() {
     $('ringNote').classList.toggle('hidden', !this.onRing);
-    $('ringNote').textContent = (this.meterOffered ? RING_METER_NOTE : RING_NOTE) + (this.isGrid ? '' : RING_SWITCH);
+    // the shop's switch is the way back to signals only on a board the ring converted
+    const converted = !this.isGrid && (this.level.bought || []).includes('roundabout');
+    $('ringNote').textContent = (this.meterOffered ? RING_METER_NOTE : RING_NOTE) + (converted ? RING_SWITCH : '');
     $('strip').classList.toggle('hidden', this.onRing);
     this.buildMeter();
   }
@@ -381,6 +384,7 @@ class Game {
   // leg and the red are the session's, and every run of the board starts
   // with them.
   get meterOffered() { return !!(this.onRing && !this.isGrid && this.level && this.level.ringMeter); }
+  get meter() { return this.meterFor[this.level.id] || (this.meterFor[this.level.id] = { leg: null, red: null }); }
   buildMeter() {
     const box = $('meterBox');
     box.classList.toggle('hidden', !this.meterOffered);

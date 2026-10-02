@@ -11,7 +11,7 @@
 // scoring.js's lessonMet (the helper under test): on every seed, the move
 // the level teaches was not made by nobody. The ambulance had no corridor,
 // a platoon was split, over half the cars one box handed on stopped again,
-// a walk call waited past the lesson's bar.
+// a walk call waited past the lesson's bar, no entry meter fired.
 //
 // R10's rule (#778) rides here too: a converted board's `ring.meter`, the
 // entry meter it sells, beats the bare ring's average wait on at least
@@ -49,7 +49,8 @@ function runLevel(level) {
     for (const e of w.events) if (e.kind === 'walk') longestCall = Math.max(longestCall, e.waited);
     for (const calls of w.pedCalls) for (const c of Object.values(calls)) if (c) longestCall = Math.max(longestCall, w.t - c.since);
     const escorted = w.events.filter(e => e.kind === 'priority').length;
-    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: s.gridlock, splits: s.platoonSplits, ambulances: s.ambulances, escorted, carried: s.carried, carriedStops: s.carriedStops, longestCall };
+    const meterFired = w.meters.reduce((n, m) => n + (m ? m.fired : 0), 0);
+    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: s.gridlock, splits: s.platoonSplits, ambulances: s.ambulances, escorted, carried: s.carried, carriedStops: s.carriedStops, longestCall, meterFired };
   });
 }
 
@@ -106,12 +107,14 @@ const played = {
   platoons: (r) => r.splits === 0,
   progression: (r, l) => r.carried > 0 && r.carriedStops / r.carried <= l.lesson.stops,
   walks: (r, l) => r.longestCall <= l.lesson.within,
+  meter: (r) => r.meterFired > 0,
 };
 const said = {
   ambulance: r => `${r.escorted} corridor${r.escorted === 1 ? '' : 's'}`,
   platoons: r => `${r.splits} split`,
   progression: r => `${Math.round((100 * r.carriedStops) / Math.max(1, r.carried))}% stopped again`,
   walks: r => `longest call ${r.longestCall.toFixed(0)} s`,
+  meter: r => `meter fired ${r.meterFired}`,
 };
 console.log('\nand on a lesson level the World says nobody played the lesson');
 for (const level of starred.filter(l => l.lesson)) {

@@ -233,6 +233,8 @@ export function played(level, seed, { hand = false, offset = null } = {}) {
   const parts = typeof hand === 'object' ? hand : {};
   const w = new World(level, seed);
   if (offset !== null) for (let n = 1; n < w.controllers.length; n++) w.setOffset(offset * n, n);
+  // on a ring level the hand's move is the entry meter, set at load as the level offers it (R13)
+  if (hand && level.ringMeter) w.setMeter(level.ringMeter.leg, level.ringMeter.red);
   for (let i = 0; i < level.duration * 60; i++) { w.step(); if (hand) handStep(w, parts); if (w.stats.gridlock) break; }
   const r = score(w);
   return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, ambulanceLate: w.stats.ambulanceLate, splits: r.splits, pedLate: r.pedLate };

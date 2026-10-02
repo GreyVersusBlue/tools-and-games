@@ -57,7 +57,7 @@ export const RING_HINT = 'Nothing to press here. A car at a yield line waits for
 // A generated grid (M9) is never converted: its rings are its own.
 export function convertible(level) {
   const net = level.network || {};
-  if (net.cells) return false;
+  if (net.cells || net.roundabout) return false;   // a ring already (R13): nothing to convert
   const ctl = level.controller || {};
   return (net.nodes || 1) === 1 && (net.lanesPerDir || 1) === 1 && !ctl.peds && !level.pedDemand
     && ctl.mode !== 'timed' && !(level.events || []).length;
@@ -123,6 +123,7 @@ export function buy(save, id) {
 export function applies(level, bought) {
   // a roundabout replaces the box, and everything else was for its signals
   if (bought.includes('roundabout') && convertible(level)) return ['roundabout'];
+  if ((level.network || {}).roundabout) return [];   // a ring level has no signals to buy for (R13)
   const ctl = level.controller || {};
   const legs = (level.network && level.network.legs) || ['N', 'E', 'S', 'W'];
   const timed = ctl.mode === 'timed';

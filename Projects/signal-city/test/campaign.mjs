@@ -26,8 +26,8 @@ const withStars = pairs => { const s = fresh(); for (const [id, n] of pairs) s.l
 
 group('the order');
 
-ok(CAMPAIGN.join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street',
-  'the campaign is the eight starred levels in pack order, Free Play out of it', CAMPAIGN.join());
+ok(CAMPAIGN.join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring',
+  'the campaign is the starred levels in pack order, pack 2 after pack 1 (R13), Free Play out of it', CAMPAIGN.join());
 
 group('what is open');
 
@@ -77,10 +77,11 @@ group('loadout');
   const want = {
     'first-light': 'lefts+split+sensors', stem: 'lefts+split+sensors', 'four-ways': 'split+sensors', crossing: 'split',
     'two-blocks': '-', 'rush-hour': 'lefts+split+sensors', 'school-run': 'lefts+split+sensors', 'main-street': 'lefts+split+sensors', 'free-play': 'lefts+split+sensors',
+    'market-ring': '-',
   };
   const bad = Object.keys(want).filter(id => table[id] !== want[id]);
   ok(!bad.length, 'what each level takes: no arrows where the lefts are protected, no phases on a timed plan, sensors only where there are rules and no loops yet',
-    bad.map(id => `${id}: ${table[id]} (want ${want[id]})`).join('; ') || 'all nine as expected');
+    bad.map(id => `${id}: ${table[id]} (want ${want[id]})`).join('; ') || `all ${LEVELS.length} as expected`);
   ok(LEVELS.every(l => loadout(l, []) === l), 'with nothing bought every level is the same object, untouched');
   const fl = levelById('first-light');
   const before = JSON.stringify(fl);
@@ -139,6 +140,9 @@ group('the roundabout (#594 to #599)');
   const a = new World(levelById('main-street'), 2).run(120);
   const b = new World(loadout(levelById('main-street'), ['roundabout']), 2).run(120);
   ok(a.hash() === b.hash() && loadout(levelById('main-street'), ['roundabout']) === levelById('main-street'), 'Main Street with the ring owned is the same object and the same run', `${a.hash()} ${b.hash()}`);
+  // a level built as a ring (R13) is not converted again, takes nothing from the shop, and opens on Main Street's star
+  const mr = levelById('market-ring');
+  ok(!convertible(mr) && loadout(mr, ['roundabout', 'lefts', 'split', 'sensors']) === mr, 'Market Ring is a ring already: the roundabout does not convert it and nothing else in the shop applies');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

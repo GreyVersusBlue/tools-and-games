@@ -33,7 +33,7 @@ const withAuto = (l, seconds = 22) => ({ ...l, controller: { ...l.controller, ru
 group('the level pack');
 
 {
-  ok(LEVELS.length === 9 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,free-play', 'nine levels: First Light, Stem, Four Ways, Crossing, Two Blocks, Rush Hour, School Run, Main Street, Free Play', LEVELS.map(l => l.id).join(', '));
+  ok(LEVELS.length === 10 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,free-play', 'ten levels: pack 1\'s eight, Market Ring from pack 2 (R13), then Free Play', LEVELS.map(l => l.id).join(', '));
   const l1 = levelById('first-light');
   ok(l1.duration === 180 && l1.target > 0 && l1.waitTarget > 0 && l1.mode === 'soft', 'level 1 is 3 minutes, soft, with a target and a wait target', `${l1.target} cars, ${l1.waitTarget} s`);
   ok(Object.keys(l1.mix).every(k => ['standard', 'granny'].includes(k)), 'and only standard and granny drive it', Object.keys(l1.mix).join(', '));
@@ -317,8 +317,14 @@ group('the lesson decides a star (R2)');
 
 {
   const lessons = Object.fromEntries(LEVELS.filter(l => l.lesson).map(l => [l.id, l.lesson]));
-  ok(JSON.stringify(lessons) === JSON.stringify({ 'two-blocks': { kind: 'progression', stops: 0.5 }, 'rush-hour': { kind: 'ambulance' }, 'school-run': { kind: 'walks', within: 40 }, 'main-street': { kind: 'platoons' } }), 'the four levels with a default carry a lesson, and levels 1 to 4 and Free Play keep the wait star', JSON.stringify(lessons));
+  ok(JSON.stringify(lessons) === JSON.stringify({ 'two-blocks': { kind: 'progression', stops: 0.5 }, 'rush-hour': { kind: 'ambulance' }, 'school-run': { kind: 'walks', within: 40 }, 'main-street': { kind: 'platoons' }, 'market-ring': { kind: 'meter', wait: 16 } }), 'the four levels with a default carry a lesson, and so does Market Ring (R13); levels 1 to 4 and Free Play keep the wait star', JSON.stringify(lessons));
   ok(Object.values(lessons).every(l => lessonName(l).length > 10) && lessonName(null) === '', 'every lesson has a name for the cards', Object.values(lessons).map(lessonName).join(' / '));
+  // the meter (R13): Market Ring on seed 1 with the meter it offers, and with none
+  const mr = levelById('market-ring');
+  const ringRun = meter => { const w = new World(meter ? { ...mr, meter } : mr, 1); for (let i = 0; i < mr.duration * 60 && !w.stats.gridlock; i++) w.step(); return score(w); };
+  const metered = ringRun(mr.ringMeter), bare = ringRun(null);
+  ok(metered.lesson.met && metered.stars === 3 && metered.avgWait <= mr.lesson.wait, 'Market Ring with its meter on E: the lesson is met and the run three-stars', `${starString(metered.stars)} ${metered.avgWait.toFixed(1)} s`);
+  ok(!bare.lesson.met && /never fired/.test(bare.lesson.why) && bare.avgWait <= mr.lesson.wait && bare.stars === 1, 'and with no meter it is not, though this seed\'s wait would have made the old wait star', `${starString(bare.stars)} ${bare.avgWait.toFixed(1)} s: ${bare.lesson.why}`);
   let threw = false;
   try { lessonName({ kind: 'nonsense' }); } catch { threw = true; }
   ok(threw, 'an unknown lesson kind throws rather than reading as met');
@@ -413,7 +419,7 @@ group('the save');
   ok(r.unlocks.join() === 'phases,sensors' && r.settings.sound === false && r.lastLevel === 'first-light', 'keeps string unlocks, settings and the last level', r.unlocks.join());
   const seven = fresh();
   for (const l of LEVELS) recordResult(seven, l.id, { stars: 2, points: 100 });
-  ok(Object.keys(repair(seven).levels).length === 9 && repair(seven).levels['main-street'].stars === 2, 'a record for every level through M7 comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
+  ok(Object.keys(repair(seven).levels).length === LEVELS.length && repair(seven).levels['main-street'].stars === 2 && repair(seven).levels['market-ring'].stars === 2, 'a record for every level, pack 2\'s too, comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
   ok(JSON.stringify(repair(null)) === JSON.stringify(fresh()), 'repair of nothing is a fresh save');
   ok(JSON.stringify(repair(repair(r))) === JSON.stringify(repair(r)), 'repair is idempotent');
   const st = fresh();

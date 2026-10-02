@@ -52,7 +52,9 @@
 // Milestone 4 shipped level 1 and the free-play board; milestone 5 levels 2
 // and 3; milestone 6 levels 4 and 5; milestone 7 levels 6 to 8, the events.
 
-export const LEVELS = [
+import { PACK_02 } from './pack-02.js';
+
+const PACK_01 = [
   {
     id: 'first-light',
     name: 'First Light',
@@ -295,5 +297,8 @@ export const LEVELS = [
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],
   },
 ];
+
+// pack 2 (R13) runs on from Main Street, and Free Play stays last
+export const LEVELS = [...PACK_01.filter(l => !l.sandbox), ...PACK_02, ...PACK_01.filter(l => l.sandbox)];
 
 export function levelById(id) { return LEVELS.find(l => l.id === id) || null; }

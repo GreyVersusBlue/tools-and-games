@@ -106,7 +106,7 @@ try {
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
-    ok(sel.cards.length === 9 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Free Play', 'with nine cards, First Light first and Free Play last', sel.cards.join(', '));
+    ok(sel.cards.length === 10 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Market Ring,Free Play', 'with ten cards, First Light first, Market Ring after Main Street (R13) and Free Play last', sel.cards.join(', '));
     ok(sel.endless, 'and after them Endless, shut (M9)');
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     const camp = await page.evaluate(() => ({
@@ -117,8 +117,8 @@ try {
       wallet: document.getElementById('wallet').textContent,
       shop: [...document.querySelectorAll('#shopList .shop-item')].map(e => `${e.dataset.item}:${e.querySelector('.buy').disabled ? 'off' : 'on'}`).join(),
     }));
-    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street' && camp.disabled === 7,
-      'a fresh save has seven cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
+    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring' && camp.disabled === 8,
+      'a fresh save has eight cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
     ok(camp.next === 'first-light' && camp.shut === 'A star on First Light opens it.', 'First Light is marked next and the Stem says what opens it', `${camp.next}; ${camp.shut}`);
     ok(camp.wallet === '0 to spend' && camp.shop === 'lefts:off,split:off,sensors:off,roundabout:off', 'the shop has four things on it and nothing to spend', `${camp.wallet}; ${camp.shop}`);
     await shot(page, 'select');
@@ -412,7 +412,7 @@ try {
     await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'free-play' && window.__signalCity.world.t < 1, { timeout: 5000 });
     const m2 = await page.evaluate(() => ({ m: window.__signalCity.world.meters[0], sel: document.getElementById('meterLeg').value }));
     ok(m2.m && m2.m.leg === 'S' && m2.m.red === 5 && m2.sel === 'S', 'and the next run of the board starts with the same meter', JSON.stringify(m2));
-    await page.evaluate(() => { window.__signalCity.game.paused = true; window.__signalCity.game.meter = { leg: null, red: null }; });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; window.__signalCity.game.meterFor = {}; });
     // switched off in the shop, First Light is its signals again
     await page.keyboard.press('Escape');
     await page.click('.shop-item[data-item="roundabout"] .buy');
@@ -426,6 +426,30 @@ try {
     // back as the rest of the suite expects: nothing bought, the switch on, the levels as they were
     await page.evaluate(b => { const g = window.__signalCity.game; g.save.unlocks = ['phases']; g.save.levels = JSON.parse(b); g.ringOn = true; g.slot.save(g.save); g.buildLevelSelect(); }, before);
     ok(errors.length === 0, 'no page errors on the ring', errors.join(' | '));
+  });
+
+  await section('Market Ring: a level built as a ring, its lesson the entry meter (R13)', async () => {
+    await page.keyboard.press('Escape');
+    const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); g.save.levels['main-street'] = { stars: 1, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
+    const c0 = await page.evaluate(() => { const c = document.querySelector('.level-card[data-level="market-ring"]'); return c && { lesson: c.querySelector('.lv-lesson')?.textContent || '', next: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
+    ok(c0 && /entry meter/.test(c0.lesson) && c0.next === 'main-street' && c0.after === 'free-play', 'its card follows Main Street, before Free Play, and names the meter as its second star', JSON.stringify(c0));
+    await page.click('.level-card[data-level="market-ring"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'market-ring', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const m0 = await page.evaluate(() => ({
+      ring: window.__signalCity.world.nodes[0].roundabout === true, meter: window.__signalCity.world.meters[0],
+      shown: !document.getElementById('meterBox').classList.contains('hidden'), leg: document.getElementById('meterLeg').value, red: document.getElementById('meterRed').value,
+      note: document.getElementById('ringNote').textContent, tabs: [...document.querySelectorAll('#tabs .tab:not(.hidden)')].map(b => b.dataset.tab).join(','),
+    }));
+    ok(m0.ring && m0.shown && m0.meter === null && m0.leg === '' && m0.red === '4' && m0.tabs === '', 'it plays as a ring with no tabs, the meter offered and off, its red at 4 s', JSON.stringify(m0).slice(0, 120));
+    ok(!/shop/.test(m0.note), 'and its note does not send the player to a shop switch it never bought', m0.note);
+    await page.evaluate(() => { const l = document.getElementById('meterLeg'); l.value = 'E'; l.dispatchEvent(new Event('change')); });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 90);
+    const m1 = await page.evaluate(() => ({ m: window.__signalCity.world.meters[0], state: document.getElementById('meterState').textContent }));
+    ok(m1.m && m1.m.leg === 'E' && m1.m.watch === 'N' && m1.m.red === 4 && m1.m.fired > 0, 'on E it watches N and fires within 90 s', `${m1.state}`);
+    await shot(page, 'market-ring');
+    await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.meterFor = {}; g.slot.save(g.save); g.buildLevelSelect(); }, before);
+    ok(errors.length === 0, 'no page errors on Market Ring', errors.join(' | '));
   });
 
   await section('Stem and the all-red slider', async () => {
@@ -1106,7 +1130,7 @@ try {
     });
     const r0 = await row();
     ok(r0.after && r0.size === 'one box' && r0.less && !r0.more && !r0.reroll && r0.city === null, 'under Free Play\'s card a district row reads one box, with no city to reroll yet', JSON.stringify(r0));
-    ok(/clear 60$/.test(r0.meta) && r0.cards === 10, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
+    ok(/clear 60$/.test(r0.meta) && r0.cards === 11, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
     for (let i = 0; i < 5; i++) await page.click('#levelList .district [data-district="more"]');
     const r1 = await row();
     ok(r1.size === '6 boxes' && r1.city === '7' && r1.reroll && !r1.less && r1.focus === 'more', 'five presses of + make six boxes on city 7 (the debug seed), and the keyboard stays on +', `${r1.size}, city ${r1.city}, focus ${r1.focus}`);

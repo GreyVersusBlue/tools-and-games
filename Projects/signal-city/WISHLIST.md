@@ -466,16 +466,19 @@ lane at a time, when the gap is long enough at its speed, the same path swap
 the zipper uses; 25 m before the line it gives up and takes its lane's turn.
 One lane each way draws exactly as before, so nothing shipped moved.
 
-### R13. More board: a second pack
+### R13. More board: a second pack (in progress: Market Ring shipped, HISTORY.md #782)
 
-**Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels teach
-eight ideas. Candidates that use what exists: a two-lane corridor with a
-green wave both ways (the two-way wave wants travel time at half a cycle;
-Two Blocks' 43 s cycle is not 31, so a new block length), a grid of three
-where the ambulance crosses every box (R6), a ring with a metered leg
-(R10), an outage on a timed corridor (its return wants `setOffset`'s
-shift, Known gaps). Each level gets R1's two tables and R2's rule from the
-first commit. One increment a session, a level or two at a time.
+**Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
+eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
+Street. Shipped: **Market Ring** (2026-10-01), a ring whose east leg
+starves the north, its second star the entry meter (`lesson: { kind:
+'meter' }`). Candidates still open: a two-lane corridor with a green wave
+both ways (the two-way wave wants travel time at half a cycle; Two Blocks'
+43 s cycle is not 31, so a new block length; R12's lane changes are what
+make two lanes work), a grid of three where the ambulance crosses every box
+(R6), an outage on a timed corridor (its return wants `setOffset`'s shift,
+Known gaps). Each level gets R1's two tables and R2's rule from the first
+commit. One increment a session, a level or two at a time.
 
 ### R14. Endless keeps a day that was left halfway
 
