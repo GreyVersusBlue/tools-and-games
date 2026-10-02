@@ -396,7 +396,7 @@ try {
     const CLOCK = 1234;
     const seen = new Set();
     let frames = 0, bodies = 0, fromSheet = true, boxed = true, sized = true, placed = true;
-    let turned = true, glowLast = true, holeFirst = null, detail = '';
+    let turned = true, glowLast = true, holesFirst = true, holes = 0, detail = '';
     for (const gi of [9, 21]) {
       const d = await drawn(page, gi, CLOCK);
       const spin = d.reduced ? 0 : CLOCK * 0.001;
@@ -428,10 +428,13 @@ try {
         const want = b.type === 'blackhole' ? spin * 2 : b.type === 'wormhole' ? spin * 3
                    : b.type === 'booster' ? b.dir : 0;
         if (!sameAngle(e.turn, want)) { turned = false; say(`turned ${e.turn.toFixed(4)} against ${want.toFixed(4)}`); }
-        // Glow over the frame, the black hole's under it (#736).
+        // Glow over the frame, the black hole's and the wormhole's under it (#736).
         const at = d.log.indexOf(e);
         const glow = d.log.findIndex(g => g.what === 'glow' && g.x === b.x && g.y === b.y && g.r === b.r);
-        if (b.type === 'blackhole') holeFirst = glow >= 0 && glow < at;
+        if (b.type === 'blackhole' || b.type === 'wormhole') {
+          holes++;
+          if (!(glow >= 0 && glow < at)) { holesFirst = false; say(`${b.type} glow at call ${glow}, frame at ${at}`); }
+        }
         else if (!(glow > at)) { glowLast = false; say(`glow at call ${glow}, frame at ${at}`); }
       });
     }
@@ -444,7 +447,7 @@ try {
     t.ok(placed, 'with its anchor on the body\'s centre', detail);
     t.ok(turned, 'turned by the clock or by dir where the drawing used to turn', detail);
     t.ok(glowLast, 'with the glow drawn over it', detail);
-    t.ok(holeFirst === true, 'except the black hole, whose glow stays behind', `glow first: ${holeFirst}`);
+    t.ok(holes === 3 && holesFirst, 'except the black hole and the wormhole, whose glow stays behind', `${holes} dark cores, glow first: ${holesFirst}${detail ? '; ' + detail : ''}`);
     await begin(page);
     await page.evaluate(() => loadLevel(21));
     await new Promise(r => setTimeout(r, 1500));

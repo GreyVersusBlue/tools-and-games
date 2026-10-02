@@ -171,10 +171,7 @@ reason on the intro card (#735). `test/browser.mjs` is 65 checks, up from 48.
 Starting the loop without waiting ran green at 62/62 until the suite held the
 atlas fetch by hand from an init script (`evaluateOnNewDocument` under
 puppeteer, `addInitScript` under playwright) and counted
-`requestAnimationFrame` calls. And the black hole's and wormhole's cores are
-grey in the sheet, 69,70,75 where the game drew #05010f: Workbench lights
-them. A rerun of `bodies.py` with those two cores unlit would fix it and needs
-Blender, so it is B4 in the Orbital section, not ranked.
+`requestAnimationFrame` calls.
 
 **Signal City has a sprite pipeline and a car sheet** (#721 to #723, PR
 #478). `tools/blender/` renders each frame with Cycles on the CPU (128
@@ -2149,16 +2146,9 @@ sheet 1024 x 512 at 170,695 bytes against a 256 KiB cap.
 `drawBody` draws the frame scaled to the body's radius, turned where the
 drawing turned: the black hole at `spin * 2`, the wormhole at `spin * 3`, the
 booster by `b.dir`, its chevrons a still. The glow is over the frame, except
-the black hole's, which stays behind it (#736). `game.js` waits for the sheet
+the black hole's and the wormhole's, which stay behind it (#736, #806). `game.js` waits for the sheet
 before the first frame and stops with the reason on the intro card when it
 will not load (#735). `test/browser.mjs` holds all of it, 70 checks, since the device-pixel section (#742).
-
-**B4. Unlit cores (not ranked; needs Blender).** The black hole's core and the
-wormhole's render grey, 69,70,75 and 65,73,75 at the centre, where the game
-drew #05010f and #04211d: Workbench lights them like the planets (#719). A
-rerun of `bodies.py` with those two cores flat, then `validate.mjs` and a
-look at `test/shots/07-bodies.png`. With a dark core the wormhole's glow
-could go back behind its frame too (#736).
 
 ## Signal City
 

@@ -153,7 +153,7 @@ def blackhole(rnd, color):
     common.ellipse_ring(bm, 1.5 * r, 0.7 * r, 3 * k, -5.5, -0.3, z=-1.0, slot=2)
     common.ellipse_ring(bm, 1.9 * r, 0.9 * r, 2 * k, -5.5, -0.3, z=-2.0, slot=3)
     ob = common.mesh_object('blackhole', bm, [
-        common.material('hole_core', STOP['hole_core'], roughness=0.9),   # no hot spot on a black core
+        common.material('hole_core', STOP['hole_core'], roughness=0.9, flat=True),   # flat: no hot spot on a black core
         common.material('hole_edge', STOP['hole_edge'], alpha=0.9),
         common.material('hole_ring0', STOP['hole_ring0'], alpha=0.85),
         common.material('hole_ring1', STOP['hole_ring1'], alpha=0.5),
@@ -179,7 +179,7 @@ def wormhole(rnd, color):
         common.material('worm_ring0', color, alpha=0.75),
         common.material('worm_ring1', color, alpha=0.57),
         common.material('worm_ring2', color, alpha=0.39),
-        common.material('worm_core', STOP['worm_core'], roughness=0.8),
+        common.material('worm_core', STOP['worm_core'], roughness=0.8, flat=True),
     ])
     return ob, r
 

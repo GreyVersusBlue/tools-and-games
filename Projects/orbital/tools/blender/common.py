@@ -131,7 +131,7 @@ def palette():
             for m in re.finditer(r'(\w+):\s*"#([0-9a-fA-F]{6})"', table.group(1))}
 
 
-def material(name, hexv, alpha=1.0, roughness=0.55):
+def material(name, hexv, alpha=1.0, roughness=0.55, flat=False):
     """A Workbench material: `diffuse_color` is what MATERIAL colour renders,
     so the hex lands on the film as itself under the Standard view transform.
     An alpha under 1 renders blended."""
@@ -139,6 +139,10 @@ def material(name, hexv, alpha=1.0, roughness=0.55):
     mat.diffuse_color = linear(hexv, alpha)
     mat.roughness = roughness
     mat.metallic = 0.0
+    if flat:
+        # Workbench's studio highlight ignores roughness and specular_intensity
+        # and tints by base colour at full metallic: a dark core stays dark.
+        mat.metallic = 1.0
     if alpha < 1.0:
         mat.surface_render_method = 'BLENDED'
         if hasattr(mat, 'blend_method'):
