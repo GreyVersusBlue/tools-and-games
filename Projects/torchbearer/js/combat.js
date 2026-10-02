@@ -196,8 +196,13 @@ export const CombatCore = {
       if(this.readyFires(cb,name,ctx)){
         if(ctx.dryRun){ ctx.fired.push({cb,rid:"readied"}); continue; }
         cb.reactionUsed=true; ctx.fired.push({cb,rid:"readied"});
-        this.log(`<b>Readied Strike!</b> ${esc(cb.name)} was waiting for ${esc(ctx.actor.name)}.`);
-        this.reactiveStrike(cb,ctx.actor,this.readiedAttack(cb));
+        if(cb.readied.kind==="spell"){
+          this.log(`<b>Readied spell!</b> ${esc(cb.name)} was waiting for ${esc(ctx.actor.name)}.`);
+          this.readiedCast(cb,ctx.actor);
+        } else {
+          this.log(`<b>Readied Strike!</b> ${esc(cb.name)} was waiting for ${esc(ctx.actor.name)}.`);
+          this.reactiveStrike(cb,ctx.actor,this.readiedAttack(cb));
+        }
         cb.readied=null;
         if(ctx.actor.dead||(ctx.actor.dying||0)>0) break;
         continue;
@@ -762,6 +767,11 @@ export const CombatCore = {
    *   ranged — fires when a foe steps into a square within range and line of
    *            sight from one that was not: it came round the corner, or
    *            through the door, or close enough.
+   *   spell  — a one-action spell aimed at a foe (the witch's hexes are the
+   *            ones the packs carry), on the ranged Strike's trigger and at
+   *            its own range. Ready holds a single action, which is why a
+   *            two-action spell is not offered. The slot or focus point is
+   *            spent when it fires, not when it is readied.
    *
    * A readied action is not a feat, so it is not in `REACTIONS` and not part of
    * the content contract a monster's `"reactions"` field names (locked #109).
@@ -770,9 +780,29 @@ export const CombatCore = {
    * turn whether it fired or not.
    */
   readyOptions(cb){
-    return (cb.attacks||[]).map((a,i)=>({atkIdx:i,name:a.name,ranged:!!a.ranged,
+    const strikes=(cb.attacks||[]).map((a,i)=>({kind:"strike",atkIdx:i,name:a.name,ranged:!!a.ranged,
       label:a.ranged? `${a.name}, at the first foe to come within range and sight`
                     : `${a.name}, at the first foe to step within reach`}));
+    const spells=this.allSpellRows(cb).filter(r=>this.readiable(r)).map(r=>({kind:"spell",
+        spellId:r.sp.id,pool:r.pool,rank:r.rank,name:r.sp.name,ranged:true,range:Math.max(1,Math.floor((r.sp.range||0)/5)),
+        label:`${r.sp.name}, at the first foe to come within range and sight`}));
+    return [...strikes,...spells];
+  },
+  /** Every spell row a combatant has, slots and focus alike; none for anyone
+      without a sheet. */
+  allSpellRows(cb){
+    const ch=cb.char; if(!ch) return [];
+    return [...(ch.casting? this.spellRows(cb,false) : []),...(ch.focusSpells.length? this.spellRows(cb,true) : [])];
+  },
+  /** A spell row Ready can hold: one action, castable now, and aimed at a
+      single foe — the same test `armSpell` uses to decide a target is
+      friendly, read the other way. */
+  readiable(r){
+    const sp=r.sp;
+    if((sp.actions||2)!==1||r.spent||r.hexBlocked) return false;
+    if(sp.area||sp.partyBuff||sp.selfBuff||sp.allyBuff||sp.utility||sp.special||sp.healOrHarmUndead) return false;
+    if(sp.heal||Object.values(sp.rankEffects||{}).some(e=>e&&e.heal)) return false;
+    return !!(sp.save||sp.attackRoll||sp.autoHit);
   },
   /** The page puts the options in front of the player; with one option, or
       with no view at all, the first weapon is the choice. */
@@ -782,8 +812,9 @@ export const CombatCore = {
     const opt=this.readyOptions(cb)[atkIdx||0];
     if(!opt){ this.toast("Nothing to Ready a Strike with."); return false; }
     this.spend(2);
-    cb.readied={kind:"strike",atkIdx:opt.atkIdx,ranged:opt.ranged};
-    this.log(`${esc(cb.name)} <b>Readies</b> a Strike with ${esc(opt.name)}, and waits for something to come ${opt.ranged?"into sight":"within reach"}.`);
+    cb.readied= opt.kind==="spell"? {kind:"spell",spellId:opt.spellId,pool:opt.pool,rank:opt.rank,range:opt.range,ranged:true}
+      : {kind:"strike",atkIdx:opt.atkIdx,ranged:opt.ranged};
+    this.log(`${esc(cb.name)} <b>Readies</b> ${opt.kind==="spell"?"":"a Strike with "}${esc(opt.name)}, and waits for something to come ${opt.ranged?"into sight":"within reach"}.`);
     this.armed=null; this.hint(""); this.renderAll();
     return true;
   },
@@ -793,7 +824,9 @@ export const CombatCore = {
   readyFires(cb,name,ctx){
     if(!cb.readied||name!=="move-out-of-reach") return false;
     if(!ctx.actor||ctx.actor.side===cb.side||!ctx.from||!ctx.to) return false;
-    const atk=this.readiedAttack(cb);
+    const spell=cb.readied.kind==="spell";
+    if(spell&&!this.readiedSpellRow(cb)) return false;
+    const atk=spell? {ranged:true,range:cb.readied.range} : this.readiedAttack(cb);
     if(!atk) return false;
     if(atk.ranged){
       const R=atk.range||1;
@@ -805,8 +838,21 @@ export const CombatCore = {
   },
   /** The attack a readied Strike swings with. */
   readiedAttack(cb){
-    const r=cb.readied; if(!r||!cb.attacks) return null;
+    const r=cb.readied; if(!r||r.kind==="spell"||!cb.attacks) return null;
     return cb.attacks[r.atkIdx||0]||null;
+  },
+  /** A readied spell's row, if it can still be cast: the pool can have run
+      dry, or a hex been spent, since it was readied. */
+  readiedSpellRow(cb){
+    const r=cb.readied; if(!r||r.kind!=="spell") return null;
+    return this.allSpellRows(cb).find(x=>x.sp.id===r.spellId&&x.pool===r.pool&&!x.spent&&!x.hexBlocked)||null;
+  },
+  /** Cast it, off the readier's turn: no actions are spent, the pool is. */
+  readiedCast(cb,target){
+    const row=this.readiedSpellRow(cb); if(!row) return;
+    const armed=this.armed;
+    this.castAt(cb,{kind:"target",btn:"spell",mode:"spell-target",spell:row.sp,castRank:row.rank,pool:row.pool,cost:0,range:cb.readied.range},target);
+    this.armed=armed;
   },
 
 

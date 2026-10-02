@@ -4447,6 +4447,38 @@ group("Ready, with any weapon");
   s4.eng.doReady(s4.hero, 0);
   s4.eng.provokeAlong(s4.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
   eq(s4.hero.readied && s4.hero.readied.atkIdx, 0, "a readied melee Strike waits for reach, not sight");
+
+  // A one-action spell: a witch readies her hex for whatever comes round the wall.
+  const coven = () => {
+    const primal = r => Registry.list(Registry.spells, x => x.rank === r && !x.focus && x.traditions.includes("primal")).map(x => x.id);
+    const ch = forge("witch", { subclass: "wilding-steward", spells: { cantrips: primal(0).slice(0, 3), r1: primal(1).slice(0, 3), r2: [] },
+      gear: { weapon: "dagger", weapon2: null, ranged: null, armor: "explorers-clothing", shield: false } });
+    const hero = Object.assign(heroCombatant(ch), { x: 1, y: 1 });
+    const foe = hound({ x: 8, y: 1 });
+    const eng = stage([hero, foe], { walls: ["5,0", "5,1", "5,2"] });
+    return { eng, hero, foe, ch };
+  };
+  const w = coven();
+  const opts = w.eng.readyOptions(w.hero);
+  const hexAt = opts.findIndex(o => o.kind === "spell" && o.spellId === "wilding-word");
+  ok(hexAt >= 0, "a witch can Ready her one-action hex");
+  ok(w.eng.allSpellRows(w.hero).some(r => (r.sp.actions || 2) > 1 && (r.sp.save || r.sp.attackRoll)), "the witch under test has two-action attack spells too");
+  ok(opts.filter(o => o.kind === "spell").every(o => (Registry.spells[o.spellId].actions || 2) === 1), "…and only one-action spells are offered: Ready holds a single action");
+  ok(!opts.some(o => o.spellId === "shield"), "…aimed at a foe, so Shield is not one of them");
+  w.eng.doReady(w.hero, hexAt);
+  eq([w.hero.readied?.kind, w.hero.readied?.spellId, w.eng.actions, w.hero.resources.focus], ["spell", "wilding-word", 1, w.ch.focusMax],
+    "readying costs two actions and spends nothing from the pool yet");
+  pin([20, 3]);
+  w.eng.provokeAlong(w.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  ok(w.eng.events.some(ev => /<b>Readied spell!<\/b>/.test(ev.text)) && w.eng.events.some(ev => /casts <b>Wilding Word/.test(ev.text)),
+    "the hex goes off on the step that brings the foe into sight");
+  eq([w.eng.condVal(w.foe, "hexed"), w.hero.hexUsed, w.hero.readied, w.hero.reactionUsed, w.eng.actions], [1, true, null, true, 1],
+    "…it lands, it is the hex for the turn, it costs the reaction, and it spends no action");
+  const w2 = coven();
+  w2.eng.doReady(w2.hero, w2.eng.readyOptions(w2.hero).findIndex(o => o.spellId === "wilding-word"));
+  w2.hero.hexUsed = true;
+  w2.eng.provokeAlong(w2.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  eq([w2.hero.readied && w2.hero.readied.spellId, w2.hero.reactionUsed], ["wilding-word", false], "a hex already spent this turn does not fire, and the reaction is kept");
 }
 
 group("four feats past 2nd that the engine reads");

@@ -2097,7 +2097,7 @@ const Combat = Object.assign(newCombat(), {
     const cb=this.cur();
     st.innerHTML=`<b>${esc(cb.name)}</b> — HP ${cb.hp}/${cb.hpMax}${cb.tempHP?" (+"+cb.tempHP+" temp)":""}<br>
       MAP: ${cb.mapCount===0?"none":cb.mapCount===1?"–5 (–4 agile)":"–10 (–8 agile)"}${this.huntPreyId&&cb.char?"<br>Prey: "+esc((this.cbs.find(c=>c.id===this.huntPreyId)||{}).name||""):""}
-      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.condVal(cb,"grabbed")?"<br>"+(this.condVal(cb,"restrained")?"restrained":"grabbed")+" — Escape DC "+(cb.grabDC||15):""}${cb.readied?"<br>Strike readied ("+esc((this.readiedAttack(cb)||{name:"?"}).name)+")":""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
+      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.condVal(cb,"grabbed")?"<br>"+(this.condVal(cb,"restrained")?"restrained":"grabbed")+" — Escape DC "+(cb.grabDC||15):""}${cb.readied?"<br>readied: "+esc(cb.readied.kind==="spell"?((Registry.spells[cb.readied.spellId]||{name:"a spell"}).name):(this.readiedAttack(cb)||{name:"a Strike"}).name):""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
       ${cb.conditions.length?"<br>"+cb.conditions.map(c=>c.c+(c.v>1?" "+c.v:"")).join(", "):""}`;
     if(cb.side!=="pc"){ bar.innerHTML=`<div class="small" style="padding:8px">${esc(cb.name)} acts…</div>`; return; }
     /* Restrained greys out everything but the handful of actions with neither
@@ -2161,9 +2161,9 @@ const Combat = Object.assign(newCombat(), {
   chooseReady(cb){
     const opts=this.readyOptions(cb);
     if(opts.length<=1) return this.doReady(cb,0);
-    const body=opts.map((o,i)=>`<div class="opt-card" data-i="${i}"><h3>${o.ranged?"🏹":"⚔"} ${esc(o.name)}</h3>
+    const body=opts.map((o,i)=>`<div class="opt-card" data-i="${i}"><h3>${o.kind==="spell"?"✦":o.ranged?"🏹":"⚔"} ${esc(o.name)}</h3>
         <div class="desc">${esc(o.label)}.</div></div>`).join("");
-    App.modal("Ready a Strike",`<div class="card-grid">${body}</div>`,[{label:"Cancel"}]);
+    App.modal("Ready",`<div class="card-grid">${body}</div>`,[{label:"Cancel"}]);
     document.querySelectorAll("#modal-body .opt-card").forEach(el=>el.onclick=()=>{
       App.closeModal(); this.doReady(cb,+el.dataset.i);
     });
