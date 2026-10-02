@@ -24,7 +24,7 @@ const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World } = await load('sim.js');
 const { score } = await load('scoring.js');
 const { growCells } = await load('grid.js');
-const { dayLevel, dayTarget, daySeed, demandScale, boxesOn, carryOver, expectedArrivals, DAY_SECONDS, FULL, M9_RAMP } = await load('endless.js');
+const { dayLevel, dayTarget, daySeed, demandScale, boxesOn, carryOver, boxesOf, applyBoxes, expectedArrivals, DAY_SECONDS, FULL, M9_RAMP } = await load('endless.js');
 const { fresh, repair, recordEndless, recordResult, totalStars, SAVE_KEY, SAVE_VERSION } = await load('save.js');
 const { endlessOpen, convertible, loadout, wallet } = await load('campaign.js');
 const { handStep } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
@@ -255,7 +255,7 @@ group('the save: `endless` through repair, the key and the version as they were'
 {
   ok(SAVE_KEY === 'signal_city_v1' && SAVE_VERSION === 1, 'the key is signal_city_v1 and the version 1');
   const f = fresh();
-  ok(JSON.stringify(f.endless) === '{"days":0,"points":0,"seed":null,"runs":0}', 'a fresh save has an empty endless record', JSON.stringify(f.endless));
+  ok(JSON.stringify(f.endless) === '{"days":0,"points":0,"seed":null,"runs":0,"pending":null}', 'a fresh save has an empty endless record, no run pending', JSON.stringify(f.endless));
   // a save from before endless: M8's shape, no field
   const old = { levels: { 'first-light': { stars: 3, best: 700, plays: 2 }, 'two-blocks': { stars: 2, best: 500, plays: 1 } }, unlocks: ['phases', 'lefts'], settings: { sound: false }, lastLevel: 'two-blocks' };
   const r = repair(JSON.parse(JSON.stringify(old)));
@@ -274,6 +274,20 @@ group('the save: `endless` through repair, the key and the version as they were'
   ok(recordEndless(s, { days: 3, points: 1400, seed: 9 }) === false && s.endless.seed === 8, 'the same days on fewer points is not a best');
   ok(recordEndless(s, { days: 3, points: 1600, seed: 9 }) === true && s.endless.seed === 9, 'the same days on more points is');
   ok(recordEndless(s, { days: 2, points: 9000, seed: 10 }) === false && s.endless.days === 3, 'and fewer days is not, whatever the points');
+  // R14: the day a run is on, so a run closed halfway is taken up at that day's start
+  const pre = repair({ endless: { days: 4, points: 2000, seed: 9, runs: 3 } });
+  ok(pre.endless.pending === null && pre.endless.days === 4, 'a save from before the pending day reads none, the rest as it was', JSON.stringify(pre.endless));
+  const lvl3 = dayLevel(9, 3), w3 = new World(lvl3, daySeed(9, 3));
+  w3.controllers[0].setRules([{ when: 'elapsed', seconds: 11, then: 'next' }]); w3.controllers[0].setTiming({ allRed: 2.5 });
+  const kept = repair({ endless: { days: 2, points: 900, seed: 9, runs: 1, pending: { seed: 9, day: 3, days: 2, points: 900, boxes: boxesOf(w3) } } });
+  const back = new World(dayLevel(9, 3), daySeed(9, 3));
+  applyBoxes(kept.endless.pending.boxes, back);
+  ok(kept.endless.pending.day === 3 && JSON.stringify(back.controllers.map(c => [c.rules, c.timing])) === JSON.stringify(w3.controllers.map(c => [c.rules, c.timing])),
+    'a pending day comes through repair and puts every box\'s rules and timing back as the day began', JSON.stringify(back.controllers[0].rules));
+  ok(lvl3.network.cells.every((c, i) => (c.roundabout ? kept.endless.pending.boxes[i] === null : !!kept.endless.pending.boxes[i])), 'a ring keeps no box in it');
+  const bad = [{ seed: 'x', day: 3, boxes: [] }, { seed: 9, day: 0, boxes: [] }, { seed: 9, day: 3 }, 'tomorrow'];
+  ok(bad.every(p => repair({ endless: { runs: 1, pending: p } }).endless.pending === null), 'and one with no city, no day or no boxes reads as none: that run is lost, as every run left halfway was before');
+  ok(JSON.stringify(repair(repair(kept))) === JSON.stringify(repair(kept)), 'repair is idempotent with a pending day in it');
   // nothing about endless reaches the levels, the stars or the wallet
   const before = totalStars(s);
   recordResult(s, 'first-light', { stars: 2, points: 300 });

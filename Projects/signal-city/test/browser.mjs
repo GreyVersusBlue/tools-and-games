@@ -1026,7 +1026,8 @@ try {
     }));
     ok(e1.title === 'Day 1 survived.' && e1.stars === '' && e1.button === 'Next day', 'the day ends on "Day 1 survived.", no stars, and a Next day button', `${e1.title} ${e1.result.cleared}/${e1.result.target}; ${e1.button}`);
     ok(e1.run === `1 day · ${e1.result.points} points` && /^1 day · \d+ points · new$/.test(e1.best) && e1.city === '7', 'the card reads the run, the city it is on and the new best', `${e1.run}; city ${e1.city}; ${e1.best}`);
-    ok(e1.saved.days === 1 && e1.saved.points === e1.result.points && e1.saved.runs === 1 && e1.saved.seed === 7 && !e1.levels.includes('endless'), 'and the save under signal_city_v1 holds the best under endless, not among the levels', JSON.stringify(e1.saved));
+    ok(e1.saved.days === 1 && e1.saved.points === e1.result.points && e1.saved.runs === 1 && e1.saved.seed === 7 && !e1.levels.includes('endless'), 'and the save under signal_city_v1 holds the best under endless, not among the levels', JSON.stringify({ ...e1.saved, pending: undefined }));
+    ok(e1.saved.pending && e1.saved.pending.day === 2 && e1.saved.pending.days === 1 && e1.saved.pending.boxes[0].timing.allRed === 2.5, 'and leaves the run pending on day 2, with box 1\'s 2.5 s all-red (R14)', JSON.stringify(e1.saved.pending).slice(0, 100));
     await page.click('#retryBtn');
     await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 4, { timeout: 5000 });
     await page.evaluate(() => { window.__signalCity.game.paused = true; });
@@ -1049,6 +1050,7 @@ try {
     }));
     ok(e2.title === 'The run is over.' && /the grid locked/.test(e2.why) && e2.button === 'Again', 'a locked grid ends the run: "The run is over.", the reason, and Again', `${e2.title} ${e2.why}`);
     ok(/^1 day · /.test(e2.run) && !/new/.test(e2.best) && e2.saved.days === 1 && e2.saved.runs === 1, 'the run stands at the one day it survived, and the best is unchanged', `${e2.run}; ${e2.best}; ${JSON.stringify(e2.saved)}`);
+    ok(e2.saved.pending === null, 'and nothing is left pending: a lost run is over (R14)');
     await page.click('#retryBtn');
     await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 3, { timeout: 5000 });
     const d3 = await page.evaluate(() => ({ run: window.__signalCity.run, name: document.getElementById('levelName').textContent, allRed: window.__signalCity.world.controllers[0].timing.allRed }));
@@ -1058,6 +1060,14 @@ try {
     await waitFor(page, () => !!window.__signalCity && !!document.querySelector('.level-card[data-level="endless"]'), { timeout: 15000 });
     const c2 = await page.evaluate(() => ({ best: document.querySelector('.level-card[data-level="endless"] .lv-best')?.textContent, e: window.__signalCity.game.save.endless }));
     ok(c2.best === `best 1 day · ${e1.result.points} points` && c2.e.runs === 1, 'after a reload the card reads the best; the second run, left before its first day ended, is not counted', `${c2.best}; ${c2.e.runs} run`);
+    // R14: that second run was left on day 1, and the select offers it back
+    const r0 = await page.evaluate(() => { const r = document.querySelector('#levelList .resume-row'); return r && { text: r.textContent, after: r.previousElementSibling && r.previousElementSibling.dataset.level }; });
+    ok(r0 && /^Resume day 1City 7, 0 days survived/.test(r0.text) && r0.after === 'endless', 'after the reload a row under the Endless card offers the run left on day 1 back (R14)', r0 && r0.text);
+    await page.click('#levelList .resume-row [data-resume]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'endless', { timeout: 5000 });
+    const d4 = await page.evaluate(() => ({ run: window.__signalCity.run, name: document.getElementById('levelName').textContent, t: window.__signalCity.world.t }));
+    ok(d4.run.seed === 7 && d4.run.day === 1 && d4.name === 'Endless, day 1' && d4.t < 1, 'and takes it up at the day\'s start, on its city', JSON.stringify(d4.run));
+    await page.keyboard.press('Escape');
     await page.evaluate(() => document.querySelector('.level-card[data-level="endless"]').scrollIntoView({ block: 'center' }));
     await shot(page, 'endless-card');
     // put the save back

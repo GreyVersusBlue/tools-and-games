@@ -480,13 +480,12 @@ make two lanes work), a grid of three where the ambulance crosses every box
 Known gaps). Each level gets R1's two tables and R2's rule from the first
 commit. One increment a session, a level or two at a time.
 
-### R14. Endless keeps a day that was left halfway
+### R14. Endless keeps a day that was left halfway: done (HISTORY.md #783)
 
-**Size ½. Model Sonnet 5. Low priority.** #612: nothing is saved mid-day,
-so a run closed in the middle loses that day. The fix is an
-`endless.pending` record (seed, day, carried rules) that `repair` fills
-empty on older saves, key unchanged. Only worth doing if R4 makes runs
-long enough that losing a day hurts.
+`endless.pending` holds the day a run is on, with every box's rules and
+timing as it starts; `repair` fills it with null on older saves, key and
+version unchanged. A run closed halfway is offered back under the Endless
+card as "Resume day N", replayed from that day's start.
 
 ### Needs a real device, real ears or a person (last)
 

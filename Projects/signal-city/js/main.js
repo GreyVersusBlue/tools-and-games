@@ -13,7 +13,7 @@ import { LEVELS, levelById } from './levels/pack-01.js';
 import { gridLevel, districtLevel } from './grid.js';
 import { makeSlot, recordResult, recordEndless, totalStars } from './save.js';
 import { SHOP, shopItem, isOpen, nextLevel, owned, wallet, canBuy, buy, applies, loadout, endlessOpen, ENDLESS_AFTER } from './campaign.js';
-import { dayLevel, daySeed, carryOver, DAY_SECONDS } from './endless.js';
+import { dayLevel, daySeed, carryOver, boxesOf, applyBoxes, DAY_SECONDS } from './endless.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 import { waveModel, WaveHistory, drawWave } from './wave.js';
 import { legDir } from './network.js';
@@ -164,6 +164,8 @@ class Game {
       if (open && base.id === SANDBOX) list.appendChild(this.districtRow(mine));
     });
     list.appendChild(this.endlessCard());
+    const resume = this.resumeRow();
+    if (resume) list.appendChild(resume);
     $('starTotal').textContent = `${totalStars(this.save)} stars`;
     this.buildShop();
   }
@@ -225,6 +227,25 @@ class Game {
     return card;
   }
 
+  // A run left on a day (R14): a row under the endless card that takes it
+  // up at that day's start, with the rules and timing the day began with.
+  resumeRow() {
+    const p = this.save.endless && this.save.endless.pending;
+    if (!p || !endlessOpen(this.save)) return null;
+    const row = document.createElement('div');
+    row.className = 'resume-row';
+    row.innerHTML = `<button class="small" data-resume>Resume day ${p.day}</button><span class="district-note">City ${p.seed}, ${p.days} day${p.days === 1 ? '' : 's'} survived so far. A new run replaces it.</span>`;
+    row.querySelector('[data-resume]').addEventListener('click', () => this.resumeEndless());
+    return row;
+  }
+
+  resumeEndless() {
+    const p = this.save.endless.pending;
+    if (!p) return;
+    this.run = { seed: p.seed, day: p.day, days: p.days, points: p.points };
+    this.playDay(null, p.boxes);
+  }
+
   buildShop() {
     const box = $('shopList');
     box.innerHTML = '';
@@ -281,10 +302,16 @@ class Game {
 
   // Day `run.day` of the run, with yesterday's rules and timing on every
   // box that stood yesterday (#611).
-  playDay(yesterday) {
+  // A resumed day (R14) takes its boxes from the save instead. Either way
+  // the day is recorded as pending as it starts.
+  playDay(yesterday, boxes = null) {
     const r = this.run;
     this.play(loadout(dayLevel(r.seed, r.day), this.bought()), daySeed(r.seed, r.day));
-    if (yesterday) { carryOver(yesterday, this.world); this.buildTiming(); this.buildRules(); }
+    if (yesterday) carryOver(yesterday, this.world);
+    else if (boxes) applyBoxes(boxes, this.world);
+    if (yesterday || boxes) { this.buildTiming(); this.buildRules(); }
+    this.save.endless.pending = { seed: r.seed, day: r.day, days: r.days, points: r.points, boxes: boxesOf(this.world) };
+    this.slot.save(this.save);
   }
 
   // The end card's first button: the next day of a run that survived, the
@@ -506,6 +533,8 @@ class Game {
     const r = this.result, run = this.run;
     if (r.survived) { run.days = run.day; run.points += r.points; }
     const best = recordEndless(this.save, { days: run.days, points: run.points, seed: run.seed }, { first: run.day === 1 });
+    // a survived day leaves the run on the next one, with today's rules; a lost one ends it (R14)
+    this.save.endless.pending = r.survived ? { seed: run.seed, day: run.day + 1, days: run.days, points: run.points, boxes: boxesOf(this.world) } : null;
     this.slot.save(this.save);
     const e = this.save.endless;
     $('endTitle').textContent = r.survived ? `Day ${run.day} survived.` : 'The run is over.';

@@ -5,7 +5,9 @@
 //
 // `endless` is the one field added since version 1 shipped. A save from
 // before it has none and gets the empty record from `repair`, so the key
-// and the version stay as they are.
+// and the version stay as they are. `endless.pending` (R14) is the day a
+// run is on, so a run closed halfway through a day can be taken up again
+// at that day's start; a save from before it reads null.
 //
 // `migrate` is for version drift; `repair` runs on every load and fills any
 // field a hand-edited or truncated save is missing (#37).
@@ -22,7 +24,7 @@ export function fresh() {
 // Endless's record: the best run's days survived and its points, the city
 // seed it was on, and how many runs have played out a first day (nothing
 // is saved mid-day, so a run left before its first day ends is not one).
-const freshEndless = () => ({ days: 0, points: 0, seed: null, runs: 0 });
+const freshEndless = () => ({ days: 0, points: 0, seed: null, runs: 0, pending: null });
 const count = x => Math.max(0, Math.floor(Number(x) || 0));
 
 export function repair(state) {
@@ -43,9 +45,20 @@ export function repair(state) {
   if (typeof s.lastLevel === 'string') out.lastLevel = s.lastLevel;
   if (s.endless && typeof s.endless === 'object') {
     const e = s.endless;
-    out.endless = { days: count(e.days), points: count(e.points), seed: Number.isFinite(e.seed) ? e.seed : null, runs: count(e.runs) };
+    out.endless = { days: count(e.days), points: count(e.points), seed: Number.isFinite(e.seed) ? e.seed : null, runs: count(e.runs), pending: repairPending(e.pending) };
   }
   return out;
+}
+
+// A run left on a day (R14): { seed, day, days, points, boxes }, `boxes`
+// one entry per box, { timing, rules } as the day starts or null for a
+// ring. Anything that does not read as one is null: the run is lost, as it
+// was before there was a record.
+function repairPending(p) {
+  if (!p || typeof p !== 'object' || !Number.isFinite(p.seed) || !(count(p.day) >= 1) || !Array.isArray(p.boxes)) return null;
+  const boxes = p.boxes.map(b => (b && typeof b === 'object' && b.timing && typeof b.timing === 'object' && Array.isArray(b.rules)
+    ? { timing: { ...b.timing }, rules: b.rules.filter(r => r && typeof r === 'object').map(r => ({ ...r })) } : null));
+  return { seed: p.seed, day: count(p.day), days: count(p.days), points: count(p.points), boxes };
 }
 
 export function migrate(state, from) {
