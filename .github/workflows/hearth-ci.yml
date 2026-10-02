@@ -7,8 +7,9 @@
 #
 # Two jobs:
 #
-#   gate  on every pull request and push to main — determinism, save, a
-#         twelve-day soak on the two fixed seeds, and `pinned`, which compares
+#   gate  on every pull request and push to main — the building sheet's
+#         validator, determinism, save, a twelve-day soak on the two fixed
+#         seeds, and `pinned`, which compares
 #         the forty-day pack() hashes of seeds 7 and 20260819 against
 #         test/hashes.json. About a minute of browser time; the install is the
 #         slow part.
@@ -67,7 +68,7 @@ defaults:
 
 jobs:
   gate:
-    name: determinism, save, 12-day soak, pinned hashes
+    name: sheet validator, determinism, save, 12-day soak, pinned hashes
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +79,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: Projects/hearth/test/package-lock.json
+
+      # The building sheet against its style sheet (tools/blender/budget.json), with no Blender and no
+      # install (#645): every kind in BLD and every roof has a frame, whole tiles, render.js's colours.
+      - name: Building sheet (tools/blender/validate.mjs)
+        run: node ../tools/blender/validate.mjs
 
       - name: Install the pinned Playwright
         run: npm ci
