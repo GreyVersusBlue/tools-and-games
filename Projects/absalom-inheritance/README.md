@@ -24,7 +24,10 @@ absalom-inheritance/
   js/content.js               load and validate a pack; refuse a broken one
   js/game.js                  the run: state, turns, the reaction bus, commands. Headless.
   js/save.js                  the gvb-save slot, and repair
-  js/render.js                isometric canvas renderer
+  js/render.js                isometric canvas renderer, drawing frames from the two sprite sheets
+  assets/sprites/             tiles.png and figures.png with their atlases, rendered in Blender
+  tools/blender/              the sheets' pipeline: common.py, tiles.py, figures.py, budget.json,
+                              and validate.mjs, the style sheet as a check (Node, no Blender)
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
   test/smoke.mjs              1,370 assertions
@@ -33,10 +36,11 @@ absalom-inheritance/
   test/baseline.json          the numbers the last commit measured, rewritten with --write-baseline
   test/autopilot.mjs          a competent player, shared by both suites
   test/browser.mjs            the surface, in real Chromium: the hint bar, the log's colours,
-                              the build's own prism, a keyboard that answers when it refuses,
+                              the build's own colours on the heir, a keyboard that answers when it refuses,
                               four picker cards stacking to one column at 375px, a per-build
                               satchel in the inventory panel, the second buff's ring and
-                              readout, and ?pack= opening the second adventure off the same page
+                              readout, ?pack= opening the second adventure off the same page,
+                              and a sprite sheet that will not load stopping the boot
 ```
 
 `rules.js`, `world.js`, `templates.js`, `conditions.js`, `ai.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
@@ -78,10 +82,11 @@ node Projects/absalom-inheritance/test/browser.mjs
 ```
 
 It serves the site root, boots the real page in real Chromium and asserts what a player sees —
-the hint bar after a stairway, the two new log colours, the chosen build's own prism on the
-canvas, the sentence the keyboard says when it refuses a command (locked #39), and `?pack=`
-opening the second adventure off the same HTML file under its own storage key. 39 checks,
-about twenty seconds. Nothing in it is a frame-timing assertion, so locked #53 does not apply:
+the hint bar after a stairway, the two new log colours, the chosen build's own colours on the
+heir on the canvas, the sentence the keyboard says when it refuses a command (locked #39), and `?pack=`
+opening the second adventure off the same HTML file under its own storage key, and a sprite
+sheet that will not load stopping the boot with the reason in the hint bar. 54 checks, about
+a minute. Nothing in it is a frame-timing assertion, so locked #53 does not apply:
 this game draws on input and sits still between clicks.
 
 To find out *why* a number moved, `--variant name={json}` patches the pack (RFC 7386 merge patch,
@@ -443,3 +448,28 @@ move with the arrow keys and discard with Delete. A live region announces what t
 
 Below 900px the three columns become one stack with a tab bar. The board gets the full viewport
 width; the whole 22×22 map fits at 375px.
+
+## The sprite sheets
+
+The board is drawn from two sheets in `assets/sprites/`, rendered headless in Blender 5.2 by
+`tools/blender/` (WISHLIST.md B1 to B4, shipped; HISTORY.md #794 to #797). The style sheet:
+
+- **Projection.** An orthographic camera down 30 degrees along the board's diagonal, so a
+  square is a diamond twice as wide as it is tall, as `isoX`/`isoY` draw it. 112 frame pixels
+  a square (`tw` 56 on a 2x screen); every frame is 116 wide, anchored on the square's centre.
+- **Scale.** Every solid is held to the box `render.js`'s `SOLIDS` gives it, within 10%:
+  the prism it replaced, so the bars, pips, eyes and gems placed over it still land.
+- **Palette.** Every colour is a `PALETTE` entry read through `spec.mjs`. A three-face
+  emission light puts a face square to an axis at exactly its top, left or right colour (#794);
+  a thing with one colour takes its sides at the wall's ratios (#795).
+- **The heir is a mask** (#796): red, green and blue for the build's top, left and right,
+  tinted at draw time by `tint()`, so a pack with new colours needs no new render.
+- **No textures**; at most 4,000 triangles a frame. Cycles on the CPU, 64 samples, seed 0, no
+  denoiser: a rerun is byte-identical on one machine, so one sheet comes from one machine.
+
+```
+cd Projects/absalom-inheritance
+blender -b --factory-startup -t 4 -P tools/blender/tiles.py
+blender -b --factory-startup -t 4 -P tools/blender/figures.py
+node tools/blender/validate.mjs
+```

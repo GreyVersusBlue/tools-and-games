@@ -158,25 +158,36 @@ eq("and the manifest lists every pack this game ships",
  * ========================================================================= */
 group("the heir looks like the build she is");
 
-/** How many pixels on the canvas are exactly this colour. */
+/**
+ * How many pixels on the canvas are within 6 levels of this colour on every
+ * channel. Not exact any more: the heir is a frame from the figure sheet,
+ * tinted with the build's palette and scaled down to the board's tile (#796),
+ * so her top face is the build's top colour give or take the filtering. Six
+ * levels keeps the wizard's blue and the fighter's green 16 or more apart.
+ */
 const countColour = hex => page.evaluate(h => {
   const c = document.getElementById("game");
   const ctx = c.getContext("2d");
   const d = ctx.getImageData(0, 0, c.width, c.height).data;
   const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
   let n = 0;
-  for (let i = 0; i < d.length; i += 4) if (d[i] === r && d[i + 1] === g && d[i + 2] === b) n++;
+  for (let i = 0; i < d.length; i += 4) {
+    if (Math.abs(d[i] - r) <= 6 && Math.abs(d[i + 1] - g) <= 6 && Math.abs(d[i + 2] - b) <= 6) n++;
+  }
   return n;
 }, hex);
 
 const fighterPal = PACK.pcOptions.find(p => p.id === "fighter").palette;
 const wizardPal = PACK.pcOptions.find(p => p.id === "wizard").palette;
-const fighterTop = await countColour(fighterPal.top);
-const wizardTop = await countColour(wizardPal.top);
-ok("the fighter's top face is on the board", fighterTop > 20, `${fighterTop} px`);
+// All three faces, not the top alone: at this zoom the heir is about ten
+// pixels across and the part of her facing straight up is under one of them.
+const facesOf = async pal => (await countColour(pal.top)) + (await countColour(pal.left)) + (await countColour(pal.right));
+const fighterTop = await facesOf(fighterPal);
+const wizardTop = await facesOf(wizardPal);
+ok("the fighter's faces are on the board", fighterTop > 20, `${fighterTop} px`);
 // The one that would have failed before this phase, when both builds drew
 // PALETTE.pcTop: the wizard's blue was on screen no matter who was playing.
-eq("and the wizard's is not", wizardTop, 0);
+eq("and the wizard's are not", wizardTop, 0);
 
 /* ========================================================================= *
  * The keyboard, when it refuses                                             *
@@ -432,6 +443,27 @@ ok("and draws a ring around the heir who has never held a shield",
 
 group("the whole run");
 ok("no page errors, start to finish", errors.length === 0, errors.slice(0, 5).join(" | "));
+
+/* ========================================================================= *
+ * The sheets                                                                *
+ * ========================================================================= */
+// After the error check above, because this group makes one on purpose. The
+// board is drawn from two sprite sheets (WISHLIST.md B4), and a sheet that
+// will not load stops the boot with the reason where the player looks, rather
+// than drawing a board with holes in it (#797). A fresh page, so the route
+// that refuses the file cannot reach anything above.
+group("a sheet that will not load");
+{
+  const p2 = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  await p2.route("**/assets/sprites/tiles.png", r => r.abort());
+  await p2.goto(URL_, { waitUntil: "load" });
+  const said = await p2.waitForFunction(() => /art would not load/.test(document.getElementById("hint").textContent),
+    null, { timeout: 20000 }).then(() => true, () => false);
+  ok("stops the boot and says so in the hint bar", said, JSON.stringify(await p2.textContent("#hint")));
+  ok("naming the file", /tiles\.png/.test(await p2.textContent("#hint")));
+  eq("and no game is built on it", await p2.evaluate(() => typeof window.__absalom), "undefined");
+  await p2.close();
+}
 
 console.log(`\n${pass + fail} checks, ${fail} failed`);
 await browser.close();

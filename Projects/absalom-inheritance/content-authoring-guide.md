@@ -122,9 +122,10 @@ cards or four.
 ]
 ```
 
-**`palette` is required, and it is three colours because the prism has three faces.**
-`render.js` extrudes a top diamond and two sides, and there is no colour space in this renderer
-to shade one hex into three. Hex `#rrggbb` only, checked at load: a canvas `fillStyle` handed
+**`palette` is required, and it is three colours because the heir has three faces.**
+The heir on the board is one figure rendered as a mask, red, green and blue for the faces that
+look up, left and right, and `render.js` tints it with these three colours (#796); there is
+no colour space in this renderer to shade one hex into three. Hex `#rrggbb` only, checked at load: a canvas `fillStyle` handed
 nonsense silently keeps the value it had, so a typo would draw the last thing drawn's colour and
 read as a renderer bug rather than as a content one.
 

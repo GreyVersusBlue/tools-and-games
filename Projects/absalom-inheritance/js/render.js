@@ -1,11 +1,19 @@
-// render.js — the isometric view. Vanilla canvas, geometric primitives, no
-// assets and no offsite requests.
+// render.js — the isometric view. Vanilla canvas, no offsite requests. The
+// squares, the solids and the figures are frames from two sprite sheets
+// rendered in Blender (tools/blender/, WISHLIST.md B1 to B3), loaded by
+// loadSprites() before the board is built; the overlays that carry state
+// (fog, the hover and cursor marks, the aim preview, a lore gem read or not,
+// a foe's eye, the bars and the pips) are still drawn here.
 //
 // Reads game state and draws it. Never writes to it.
 
 import { TILE } from "./world.js";
 import { CONDITIONS } from "./conditions.js";
 
+// The board's colours. The squares, solids and figures are in the sheets now,
+// rendered from these entries through tools/blender/spec.mjs, and
+// validate.mjs fails if a frame's faces drift from them; the rest are the
+// overlays this file still draws.
 export const PALETTE = {
   floorA: "#241f2e", floorB: "#282334",
   treasure: "#3a2f14", gateShut: "#141019", gateOpen: "#20303a",
@@ -25,10 +33,11 @@ export const PALETTE = {
 };
 
 /**
- * Every solid the board stands up, as `prism` draws it at the largest tile
- * (`tw` 56): its height in pixels and its footprint as a share of a tile.
- * One table, so the sprite pipeline (tools/blender/spec.mjs) renders against
- * the same boxes the board draws and validate.mjs can hold a frame to its box.
+ * Every solid the board stands up, as the prisms it drew before the sheets
+ * did, at the largest tile (`tw` 56): its height in pixels and its footprint
+ * as a share of a tile. The sprite pipeline (tools/blender/spec.mjs) builds
+ * against these boxes and validate.mjs holds each frame to its box, so a
+ * figure stays the size the overlays above it were placed for.
  */
 export const SOLIDS = Object.freeze({
   wall:   Object.freeze({ ht: 26, fp: 1 }),
@@ -39,7 +48,64 @@ export const SOLIDS = Object.freeze({
   boss:   Object.freeze({ ht: 24, fp: 0.62 }),
 });
 
-export function createRenderer(canvas, game) {
+/**
+ * The frames this file draws, by sheet. tools/blender/validate.mjs holds
+ * budget.json to this list both ways, so a frame renamed on one side fails CI
+ * rather than drawing nothing.
+ */
+export const FRAMES = Object.freeze({
+  tiles: Object.freeze(["floor/a", "floor/b", "treasure", "casket", "gate/shut", "gate/open",
+    "stairs", "steps", "wall", "door", "pillar"]),
+  figures: Object.freeze(["heir", "foe", "boss"]),
+});
+
+/**
+ * Fetch both sheets and their atlases. Throws, with the file named, if any of
+ * them will not load or an atlas lacks a frame in FRAMES: main.js stops the
+ * boot on that rather than drawing a board with holes in it (#797).
+ */
+export async function loadSprites(base = new URL("../assets/sprites/", import.meta.url)) {
+  const sheets = {};
+  await Promise.all(Object.keys(FRAMES).map(async name => {
+    const res = await fetch(new URL(`${name}.json`, base));
+    if (!res.ok) throw new Error(`${name}.json: HTTP ${res.status}`);
+    const atlas = await res.json();
+    const missing = FRAMES[name].filter(f => !atlas.frames?.[f]);
+    if (missing.length) throw new Error(`${name}.json has no ${missing.join(", ")}`);
+    const img = new Image();
+    img.src = new URL(`${name}.png`, base).href;
+    try { await img.decode(); } catch { throw new Error(`${name}.png would not load`); }
+    sheets[name] = { atlas, img };
+  }));
+  return sheets;
+}
+
+/**
+ * Tint the heir's mask in place (#796). Each pixel's red, green and blue are
+ * how much of the build's top, left and right colour it takes, as linear
+ * light, which is how the sheet's renderer mixed them; alpha is left alone.
+ * A pure red pixel comes out exactly `palette.top`.
+ */
+export function tint(px, palette) {
+  const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const enc = v => {
+    v = Math.min(1, Math.max(0, v));
+    return Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055));
+  };
+  const faces = [palette.top, palette.left, palette.right].map(h =>
+    [1, 3, 5].map(i => lin(parseInt(h.slice(i, i + 2), 16))));
+  const table = Array.from({ length: 256 }, (_, v) => lin(v));
+  for (let i = 0; i < px.length; i += 4) {
+    const w = [table[px[i]], table[px[i + 1]], table[px[i + 2]]];
+    for (let c = 0; c < 3; c++) {
+      px[i + c] = enc(w[0] * faces[0][c] + w[1] * faces[1][c] + w[2] * faces[2][c]);
+    }
+  }
+  return px;
+}
+
+export function createRenderer(canvas, game, sprites) {
+  if (!sprites?.tiles || !sprites?.figures) throw new Error("createRenderer needs the sheets loadSprites() returns");
   const ctx = canvas.getContext("2d");
   // The current area, refreshed at the top of every drawFrame() call. A
   // stairway swaps game.area out from under the renderer mid-session, and a
@@ -122,20 +188,35 @@ export function createRenderer(canvas, game) {
     ctx.closePath();
   }
 
-  /** Extruded prism: a top diamond raised by `ht`, with two side faces. */
-  function prism(x, y, ht, top, left, right, scale = 1) {
-    const cx = isoX(x, y), cy = isoY(x, y);
-    const w = tw * scale, h = th * scale;
-    ctx.fillStyle = left; ctx.beginPath();
-    ctx.moveTo(cx - w / 2, cy); ctx.lineTo(cx, cy + h / 2);
-    ctx.lineTo(cx, cy + h / 2 - ht); ctx.lineTo(cx - w / 2, cy - ht);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = right; ctx.beginPath();
-    ctx.moveTo(cx + w / 2, cy); ctx.lineTo(cx, cy + h / 2);
-    ctx.lineTo(cx, cy + h / 2 - ht); ctx.lineTo(cx + w / 2, cy - ht);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = top; diamond(cx, cy - ht, w, h); ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 1; ctx.stroke();
+  /**
+   * One frame on square (x, y), its anchor on the square's centre, scaled
+   * from the sheet's tile width to the board's. `source` is a canvas holding
+   * just that frame (the tinted heir), or nothing for the sheet itself.
+   */
+  function sprite(sheet, name, x, y, source = null) {
+    const s = sprites[sheet], f = s.atlas.frames[name];
+    const k = tw / s.atlas.sheet.tw;
+    const dx = isoX(x, y) - f.ax * k, dy = isoY(x, y) - f.ay * k;
+    if (source) ctx.drawImage(source, 0, 0, f.w, f.h, dx, dy, f.w * k, f.h * k);
+    else ctx.drawImage(s.img, f.x, f.y, f.w, f.h, dx, dy, f.w * k, f.h * k);
+  }
+
+  // The heir in a build's colours, tinted once per palette and kept.
+  const heirs = new Map();
+  function heirIn(pal) {
+    const key = `${pal.top} ${pal.left} ${pal.right}`;
+    let c = heirs.get(key);
+    if (c) return c;
+    const s = sprites.figures, f = s.atlas.frames.heir;
+    c = document.createElement("canvas");
+    c.width = f.w; c.height = f.h;
+    const cx = c.getContext("2d", { willReadFrequently: true });
+    cx.drawImage(s.img, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+    const d = cx.getImageData(0, 0, f.w, f.h);
+    tint(d.data, pal);
+    cx.putImageData(d, 0, 0);
+    heirs.set(key, c);
+    return c;
   }
 
   function outline(x, y, colour, width, scale = 1) {
@@ -151,10 +232,11 @@ export function createRenderer(canvas, game) {
     syncSize();
     if (!cssW || !cssH) return;
     ctx.clearRect(0, 0, cssW, cssH);
+    ctx.imageSmoothingQuality = "high";   // frames are drawn at 1/8 to 1x
 
     const visible = game.visible, explored = game.explored;
     const gateOpen = game.run.gateOpen;
-    const scale = tw / 56;   // keep furniture proportional at small tile sizes
+    const scale = tw / 56;   // keep the overlays proportional at small tile sizes
 
     // Pass 1 — the floor, back to front.
     for (let y = 0; y < area.height; y++) {
@@ -163,29 +245,20 @@ export function createRenderer(canvas, game) {
         const vis = visible.has(k), seen = explored.has(k);
         if (!vis && !seen) continue;                 // never seen: the void
         const t = area.tiles[y][x];
-        if (t === TILE.WALL) continue;               // a prism in pass 2
+        if (t === TILE.WALL) continue;               // a solid in pass 2
         const cx = isoX(x, y), cy = isoY(x, y);
-        let fill = ((x + y) % 2 === 0) ? PALETTE.floorA : PALETTE.floorB;
-        if (t === TILE.TREASURE) fill = PALETTE.treasure;
-        if (t === TILE.GATE) fill = gateOpen ? PALETTE.gateOpen : PALETTE.gateShut;
-        if (t === TILE.STAIRS) fill = PALETTE.stairs;
+        let frame = ((x + y) % 2 === 0) ? "floor/a" : "floor/b";
+        if (t === TILE.TREASURE) frame = "treasure";
+        if (t === TILE.GATE) frame = gateOpen ? "gate/open" : "gate/shut";
+        if (t === TILE.STAIRS) frame = "stairs";
+        // A stairway in sight is drawn as its well, rather than a plain floor
+        // square that happens to teleport you; out of sight it is the square.
+        sprite("tiles", vis && t === TILE.STAIRS ? "steps" : frame, x, y);
         diamond(cx, cy, tw, th);
-        ctx.fillStyle = fill; ctx.fill();
         ctx.strokeStyle = vis ? "rgba(212,168,67,.10)" : "rgba(80,75,95,.15)";
         ctx.stroke();
         if (!vis) { ctx.fillStyle = PALETTE.fog; ctx.fill(); }
-        if (vis && t === TILE.TREASURE) {
-          ctx.fillStyle = PALETTE.gold;
-          diamond(cx, cy - 8 * scale, 14 * scale, 7 * scale); ctx.fill();
-        }
-        if (vis && t === TILE.STAIRS) {
-          // Two nested diamonds reading as a stairway seen from above, rather
-          // than a plain floor square that happens to teleport you.
-          ctx.strokeStyle = "rgba(212,168,67,.55)"; ctx.lineWidth = 1.5;
-          diamond(cx, cy, tw * 0.6, th * 0.6); ctx.stroke();
-          diamond(cx, cy, tw * 0.3, th * 0.3); ctx.stroke();
-          ctx.lineWidth = 1;
-        }
+        if (vis && t === TILE.TREASURE) sprite("tiles", "casket", x, y);
       }
     }
 
@@ -246,11 +319,11 @@ export function createRenderer(canvas, game) {
       const dim = !visible.has(s.x + "," + s.y);
       ctx.globalAlpha = dim ? 0.35 : 1;
 
-      if (s.kind === "wall") prism(s.x, s.y, SOLIDS.wall.ht * scale, PALETTE.wallTop, PALETTE.wallLeft, PALETTE.wallRight);
-      if (s.kind === "gate") prism(s.x, s.y, SOLIDS.door.ht * scale, PALETTE.doorTop, PALETTE.doorLeft, PALETTE.doorRight);
+      if (s.kind === "wall") sprite("tiles", "wall", s.x, s.y);
+      if (s.kind === "gate") sprite("tiles", "door", s.x, s.y);
 
       if (s.kind === "pillar") {
-        prism(s.x, s.y, SOLIDS.pillar.ht * scale, PALETTE.pillarTop, PALETTE.pillarLeft, PALETTE.pillarRight, SOLIDS.pillar.fp);
+        sprite("tiles", "pillar", s.x, s.y);
         ctx.fillStyle = game.run.loreRead.includes(s.lore) ? PALETTE.goldDim : PALETTE.gold;
         diamond(isoX(s.x, s.y), isoY(s.x, s.y) - 46 * scale, 12 * scale, 6 * scale);
         ctx.fill();
@@ -261,8 +334,8 @@ export function createRenderer(canvas, game) {
         // The build, on the board. A wizard and a fighter drew the same blue
         // prism for two rounds; the colours are content now, required of every
         // build in the pack, so a third one cannot arrive without deciding.
-        const pal = game.content.pc.palette;
-        prism(s.x, s.y, SOLIDS.heir.ht * scale, pal.top, pal.left, pal.right, SOLIDS.heir.fp);
+        // The figure is one mask tinted with them (#796).
+        sprite("figures", "heir", s.x, s.y, heirIn(game.content.pc.palette));
         ctx.fillStyle = PALETTE.gold;
         diamond(cx, cy - 27 * scale, 10 * scale, 5 * scale); ctx.fill();
         if (game.conditionsOf("pc").some(c => CONDITIONS[c.id]?.helpful)) {
@@ -283,11 +356,7 @@ export function createRenderer(canvas, game) {
         const c = s.creature, d = game.def(c);
         const cx = isoX(s.x, s.y), cy = isoY(s.x, s.y);
         const boss = d.level >= 0;
-        const box = boss ? SOLIDS.boss : SOLIDS.foe;
-        prism(s.x, s.y, box.ht * scale,
-          boss ? PALETTE.bossTop : PALETTE.foeTop,
-          boss ? PALETTE.bossLeft : PALETTE.foeLeft,
-          boss ? PALETTE.bossRight : PALETTE.foeRight, box.fp);
+        sprite("figures", boss ? "boss" : "foe", s.x, s.y);
         // A dormant creature has no lit eye — that is the whole tell for "this
         // one has not seen you yet", and it is the difference between one fight
         // and two.

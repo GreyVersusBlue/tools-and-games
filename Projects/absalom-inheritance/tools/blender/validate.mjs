@@ -9,7 +9,7 @@
 //   - the atlas's sheet size is not the PNG's, or its tw or pad is not the
 //     pipeline's
 //   - a frame budget.json names is missing from the atlas, or the atlas holds
-//     one it does not name
+//     one it does not name, or budget.json and render.js's FRAMES disagree
 //   - a frame not the size frame_box() gives it (112 + 2 * pad across, tall
 //     enough for its box), or its anchor not where the square's centre goes,
 //     or outside the sheet, or overlapping another
@@ -41,7 +41,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT = path.join(HERE, '..', '..');
 const budgetPath = path.resolve(process.argv[2] || path.join(HERE, 'budget.json'));
 const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
-const { PALETTE, SOLIDS } = await import(pathToFileURL(path.join(PROJECT, 'js', 'render.js')).href);
+const { PALETTE, SOLIDS, FRAMES } = await import(pathToFileURL(path.join(PROJECT, 'js', 'render.js')).href);
 
 const TW = 112;   // common.py's TW: frame pixels across one square
 
@@ -123,6 +123,9 @@ const named = new Set(Object.values(budget.sheets).flatMap(s => [s.png, s.atlas]
 for (const [name, sheet] of Object.entries(budget.sheets)) {
   console.log(`sheet ${name}: ${sheet.png}`);
   const items = sheet.frames;
+  // The frames render.js draws are the frames this sheet holds, both ways.
+  for (const f of FRAMES[name] ?? []) ok(f in items, `${name}: render.js's frame ${f} is in budget.json`);
+  for (const f of Object.keys(items)) ok((FRAMES[name] ?? []).includes(f), `${name}: ${f} is a frame render.js draws`);
   for (const [f, item] of Object.entries(items)) {
     if ('solid' in item) ok(item.solid in SOLIDS, `${name}: ${f}'s solid "${item.solid}" is in render.js's SOLIDS`);
     for (const [face, pal] of Object.entries(item.faces ?? {})) {
