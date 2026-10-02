@@ -906,13 +906,15 @@ eq([canLevelUp({ level: 3 }, 999), canLevelUp({ level: 3 }, 1000), canLevelUp({ 
 }
 /** Every fighter class feat in the core pack, lowest level first. */
 const FIGHTER_FEATS = Registry.list(Registry.feats, f => f.type === "class" && (f.classes || []).includes("fighter")).sort((a, b) => a.level - b.level).map(f => f.id);
-eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
+eq(FIGHTER_FEATS.length, 8, "the core pack has eight fighter class feats: five at 1st and 2nd, three from 4th to 8th");
 { // which feats a slot may hold
   const b4 = fighter({ level: 4, feats: { class1: FIGHTER_FEATS[0], class2: FIGHTER_FEATS[1] } }).build;
   const class4 = { key: "class4", type: "class", level: 4 };
-  eq(featChoices(b4, class4).map(f => f.id), FIGHTER_FEATS.slice(2), "a level-4 class slot offers the three fighter feats not yet taken");
-  eq(featChoices(b4, class4, FIGHTER_FEATS[0]).map(f => f.id), [FIGHTER_FEATS[0], ...FIGHTER_FEATS.slice(2)], "…plus the one already in the slot, so a pick can be changed");
-  eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).length, 3, "an ancestry slot offers the hero's own ancestry's feats");
+  const upTo4 = FIGHTER_FEATS.slice(2).filter(id => Registry.feats[id].level <= 4);
+  eq(upTo4.length, 4, "four fighter feats at 4th or below are left after two are taken");
+  eq(featChoices(b4, class4).map(f => f.id), upTo4, "a level-4 class slot offers exactly those");
+  eq(featChoices(b4, class4, FIGHTER_FEATS[0]).map(f => f.id), [FIGHTER_FEATS[0], ...upTo4], "…plus the one already in the slot, so a pick can be changed");
+  eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).length, 4, "an ancestry slot offers the hero's own ancestry's feats, the 5th-level one included");
   eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).every(f => f.ancestry === "human"), true, "…and only those");
   ok(!featChoices(b4, { key: "skill4", type: "skill", level: 4 }).some(f => f.id === "battle-medicine"), "a skill feat whose prerequisite is untrained is not offered");
   ok(featChoices(b4, { key: "skill4", type: "skill", level: 4 }).some(f => f.id === "titan-wrestler"), "…and one whose prerequisite Soldier trains is");
@@ -945,11 +947,14 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   eq(advanceMissing(b5, 5), ["boosts"], "…nor are three");
   b5.advances[5].boosts = ["str", "dex", "con", "wis"];
   eq(advanceMissing(b5, 5), [], "…four different attributes complete it");
-  // The empty slot: a fighter who has taken all five class feats by 8 has
-  // nothing to put in class10, and the level must not be stuck on it (#117).
+  // The empty slot: a fighter who already holds every fighter feat in the
+  // loaded content has nothing to put in class10, and the level must not be
+  // stuck on it (#117). The core pack no longer runs dry by 10th on its own,
+  // so the extra feats are written into the choice map under spare keys.
+  const extra = Object.fromEntries(FIGHTER_FEATS.slice(5).map((id, i) => ["spare" + i, id]));
   const b10 = fighter({ level: 10, feats: { class1: FIGHTER_FEATS[0], class2: FIGHTER_FEATS[1] },
-    advances: { 4: { feats: { class4: FIGHTER_FEATS[2] } }, 6: { feats: { class6: FIGHTER_FEATS[3] } }, 8: { feats: { class8: FIGHTER_FEATS[4] } } } }).build;
-  eq(featChoices(b10, { key: "class10", type: "class", level: 10 }), [], "at 10 the fifth class slot has nothing left to offer");
+    advances: { 4: { feats: { class4: FIGHTER_FEATS[2], ...extra } }, 6: { feats: { class6: FIGHTER_FEATS[3] } }, 8: { feats: { class8: FIGHTER_FEATS[4] } } } }).build;
+  eq(featChoices(b10, { key: "class10", type: "class", level: 10 }), [], "with every fighter feat taken, class10 has nothing left to offer");
   const m10 = advanceMissing(b10, 10);
   ok(!m10.includes("class10") && m10.includes("skill10") && m10.includes("boosts"), `…so it is satisfied empty, and the level still wants its skill feat and boosts — missing ${m10.join(", ")}`);
 }
@@ -1002,6 +1007,51 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   full.advances[4].spells.r2 = [];
   eq([spellChoices(full, 4, 2).length, advanceMissing(full, 4).includes("spells")], [0, false],
     "a wizard who knows every rank-2 choice is not stuck on the step");
+}
+
+{ // the core pack's feats reach 10th: no class or ancestry slot from 1st to 10th runs dry
+  /** Walk a hero from 3 to 10 the way the level-up does, taking the first
+      offer in every slot, and return every slot that had nothing to offer. */
+  const climb = (cls, over = {}) => {
+    const b = forge(cls, over).build;
+    const dry = [];
+    for (const [key, type, level] of [["ancestry1", "ancestry", 1], ["class1", "class", 1], ["class2", "class", 2]]) {
+      const f = featChoices(b, { key, type, level })[0];
+      if (f) b.feats[key] = f.id; else dry.push(key);
+    }
+    b.advances = {};
+    for (let L = 4; L <= 10; L++) {
+      b.level = L; b.advances[L] = { feats: {}, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } };
+      for (const slot of grantsAt(Registry.classes[cls], L).feats) {
+        if (slot.type !== "class" && slot.type !== "ancestry") continue;
+        const f = featChoices(b, slot)[0];
+        if (f) b.advances[L].feats[slot.key] = f.id; else dry.push(slot.key);
+      }
+    }
+    return dry;
+  };
+  const classes = Object.keys(Registry.classes).filter(id => KEY[id]);
+  eq(classes.length, 8, "all eight core classes are walked");
+  eq(Object.fromEntries(classes.map(c => [c, climb(c)]).filter(([, d]) => d.length)), {},
+    "every core class has a class feat for every class slot from 1st to 10th");
+  const ancestries = Object.keys(Registry.ancestries).filter(id => Registry.ancestries[id].heritages.length && ["dwarf", "elf", "gnome", "goblin", "halfling", "human"].includes(id));
+  eq(Object.fromEntries(ancestries.map(a => [a, climb("fighter", { ancestry: a, heritage: Registry.ancestries[a].heritages[0].id }).filter(k => k.startsWith("ancestry"))])
+    .filter(([, d]) => d.length)), {}, "…and every core ancestry an ancestry feat for 1st, 5th and 9th");
+  ok(ancestries.every(a => Registry.list(Registry.feats, f => f.type === "ancestry" && f.ancestry === a && f.level === 9).length >= 1),
+    "every core ancestry has a 9th-level feat to offer, not just its 1st-level ones again");
+  // Mountain's Stoutness is +level HP, and stacks with Toughness.
+  const dwarf = (feats9, extra = {}) => forge("fighter", { ancestry: "dwarf", heritage: "rock-dwarf", level: 9,
+    advances: { 9: { feats: feats9 } }, ...extra });
+  const d0 = dwarf({}), d1 = dwarf({ ancestry9: "mountains-stoutness" });
+  eq(d1.hpMax - d0.hpMax, 9, "Mountain's Stoutness is +9 HP at 9th");
+  eq(dwarf({ ancestry9: "mountains-stoutness" }, { feats: { general3: "toughness" } }).hpMax - dwarf({}, { feats: { general3: "toughness" } }).hpMax, 9,
+    "…on top of Toughness, not instead of it");
+  // The three new real effects off the DSL.
+  const druid = forge("druid", { level: 4, subclass: "leaf", advances: { 4: { feats: { class4: "order-magic" } } }, focusChoices: { "Order Magic": "tempest-surge" } });
+  eq([druid.focusSpells.includes("tempest-surge"), druid.focusMax], [true, 2], "Order Magic teaches a second order's spell and a focus point");
+  eq(forge("fighter", { ancestry: "halfling", heritage: "nomadic-halfling", level: 9, advances: { 9: { feats: { ancestry9: "irrepressible" } } } }).condBonuses,
+    [{ target: "save.all", value: 1, type: "circumstance", vs: "emotion" }], "Irrepressible is +1 against emotion, read by every save");
+  eq(forge("fighter", { feats: { general3: "canny-acumen-ref" } }).prof.saves.ref, "E", "the three new Canny Acumens raise what they say");
 }
 
 /* ---------------- 8d. the campaign record (Phase 7, increment 1) ----------------
@@ -4397,6 +4447,40 @@ group("Ready, with any weapon");
   s4.eng.doReady(s4.hero, 0);
   s4.eng.provokeAlong(s4.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
   eq(s4.hero.readied && s4.hero.readied.atkIdx, 0, "a readied melee Strike waits for reach, not sight");
+}
+
+group("four feats past 2nd that the engine reads");
+{
+  // Blind-Fight: one step off every flat check.
+  const { eng, hero, foe, ch } = duel();
+  eng.setDetect(hero, foe, "concealed");
+  const before = eng.flatCheckDC(hero, foe);
+  eng.setDetect(hero, foe, "hidden");
+  const beforeHidden = eng.flatCheckDC(hero, foe);
+  ch.specials.push("blind-fight");
+  const afterHidden = eng.flatCheckDC(hero, foe);
+  eng.setDetect(hero, foe, "concealed");
+  eq([before, beforeHidden, eng.flatCheckDC(hero, foe), afterHidden], [5, 11, 0, 5], "Blind-Fight: no check against concealed, DC 5 against hidden");
+  // Gang Up: off-guard without standing opposite.
+  const g = duel();
+  const ally = mk({ id: "a", side: "pc", name: "Bran", x: 2, y: 2 });
+  g.eng.cbs.push(ally);
+  eq(g.eng.effAC(g.foe, g.hero).offGuard, false, "an ally beside the target but not opposite is not flanking");
+  g.ch.specials.push("gang-up");
+  eq(g.eng.effAC(g.foe, g.hero).offGuard, true, "…but Gang Up makes the target off-guard anyway");
+  eq(g.eng.effAC(g.foe, { ...g.hero, ranged: true }).offGuard, false, "…to melee only");
+  ally.dying = 1;
+  eq(g.eng.effAC(g.foe, g.hero).offGuard, false, "…and only while the ally is on its feet");
+  // Kip Up: Stand is free.
+  const k = duel();
+  k.eng.addCond(k.hero, "prone", 1, undefined, true);
+  k.ch.specials.push("kip-up");
+  k.eng.actionClick("stand");
+  eq([k.eng.condVal(k.hero, "prone"), k.eng.actions], [0, 3], "Kip Up stands for no action");
+  const k2 = duel();
+  k2.eng.addCond(k2.hero, "prone", 1, undefined, true);
+  k2.eng.actionClick("stand");
+  eq(k2.eng.actions, 2, "…where an ordinary Stand costs one");
 }
 
 group("conditional save bonuses off the sheet");

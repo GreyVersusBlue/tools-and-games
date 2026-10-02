@@ -281,8 +281,15 @@ export const CombatCore = {
   },
   /** True when `obs` cannot see well enough to skip the flat check. */
   isHidden(obs,t){ const s=this.detectState(obs,t); return s==="hidden"||s==="undetected"; },
-  /** The DC of the flat check `obs` rolls to affect `t`. 0 means no check. */
-  flatCheckDC(obs,t){ const s=this.detectState(obs,t); return s==="observed"?0:s==="concealed"?5:11; },
+  /** The DC of the flat check `obs` rolls to affect `t`. 0 means no check.
+      Blind-Fight takes one step off: no check against concealed, DC 5 against
+      hidden. */
+  flatCheckDC(obs,t){
+    const s=this.detectState(obs,t);
+    if(s==="observed") return 0;
+    const blind=!!(obs&&obs.char&&obs.char.specials.includes("blind-fight"));
+    return s==="concealed"? (blind?0:5) : (blind?5:11);
+  },
   /**
    * The expiry rule, and the only one there is: a hidden creature that moves or
    * attacks gives the hiding place away. Every "hidden" override naming it is
@@ -609,9 +616,11 @@ export const CombatCore = {
   doStand(cb){
     if(!this.condVal(cb,"prone")){ this.toast("You are already on your feet."); return false; }
     if(this.condVal(cb,"grabbed")){ this.toast("You are grabbed — Escape first."); return false; }
-    this.spend(1);
+    // Kip Up: standing is a free action.
+    const kip=!!(cb.char&&cb.char.specials.includes("kip-up"));
+    if(!kip) this.spend(1);
     cb.conditions=cb.conditions.filter(c=>c.c!=="prone");
-    this.log(`${esc(cb.name)} gets back up.`);
+    this.log(`${esc(cb.name)} ${kip?"kips up":"gets back up"}.`);
     this.armed=null; this.hint(""); this.renderAll();
     return true;
   },
@@ -898,6 +907,11 @@ export const CombatCore = {
       offGuard=true; target.feint.usesLeft--;
     }
     if(attacker&&!attacker.ranged&&this.isFlanking(attacker,target)) offGuard=true;
+    /* Gang Up: flanking without the geometry. A target within reach of the
+       rogue and of any standing ally is off-guard to the rogue's melee. */
+    if(attacker&&!attacker.ranged&&attacker.char&&attacker.char.specials.includes("gang-up")&&attacker.x!==undefined
+       &&this.dist(attacker,target)<=1
+       &&this.cbs.some(a=>a.id!==attacker.id&&a.side===attacker.side&&!a.dead&&(a.dying||0)===0&&this.dist(a,target)<=this.reachOf(a))) offGuard=true;
     if(offGuard&&!(target.char&&target.char.specials.includes("deny-advantage"))) ac-=2;
     /* Cover. `opts.from` names the body the line is drawn from, because
        strikeMonster hands in a bare {id,ranged} stand-in with no coordinates

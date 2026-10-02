@@ -430,6 +430,8 @@ export function finalizeCharacter(build){
   advancesUpTo(build).forEach(a=>{ const s=a.skillIncrease; if(!s||!(s in skills)) return;
     const up=RANK_UP[skills[s]]; if(up && (RANK_FLOOR[up]||1)<=a.level) skills[s]=up; });
   if(specials.has("toughness")) hpBonus+=lvl;
+  // Mountain's Stoutness stacks with Toughness: another +level.
+  if(specials.has("mountains-stoutness")) hpBonus+=lvl;
 
   // gear
   const wep = Registry.items[build.gear.weapon]||Registry.items["fist"];
