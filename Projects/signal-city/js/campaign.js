@@ -44,6 +44,7 @@ export const SHOP = [
   },
 ];
 
+export const RING_METER_HINT = 'A car at a yield line waits for a gap in the ring, and the ring never waits for it. The one thing to set is the entry meter: put it on the leg that floods the ring, and it holds that leg for a few seconds whenever the next leg round has queued past its loop.';
 export const RING_HINT = 'Nothing to press here. A car at a yield line waits for a gap in the ring, and the ring never waits for it. Watch where the queues build, then switch the ring off in the shop and see whether your signals beat it.';
 
 // Which boards a roundabout converts (#597): one box, one lane each way, no
@@ -56,7 +57,7 @@ export const RING_HINT = 'Nothing to press here. A car at a yield line waits for
 // A generated grid (M9) is never converted: its rings are its own.
 export function convertible(level) {
   const net = level.network || {};
-  if (net.cells) return false;
+  if (net.cells || net.roundabout) return false;   // a ring already (R13): nothing to convert
   const ctl = level.controller || {};
   return (net.nodes || 1) === 1 && (net.lanesPerDir || 1) === 1 && !ctl.peds && !level.pedDemand
     && ctl.mode !== 'timed' && !(level.events || []).length;
@@ -122,6 +123,7 @@ export function buy(save, id) {
 export function applies(level, bought) {
   // a roundabout replaces the box, and everything else was for its signals
   if (bought.includes('roundabout') && convertible(level)) return ['roundabout'];
+  if ((level.network || {}).roundabout) return [];   // a ring level has no signals to buy for (R13)
   const ctl = level.controller || {};
   const legs = (level.network && level.network.legs) || ['N', 'E', 'S', 'W'];
   const timed = ctl.mode === 'timed';
@@ -149,7 +151,9 @@ export function loadout(level, bought) {
   if (use[0] === 'roundabout') {
     const ring = level.ring || {};
     return {
-      ...level, network: { ...(level.network || {}), roundabout: true }, controller: { ...(level.controller || {}) }, unlocks: [], bought: use, hint: RING_HINT,
+      ...level, network: { ...(level.network || {}), roundabout: true }, controller: { ...(level.controller || {}) }, unlocks: [], bought: use, hint: ring.meter ? RING_METER_HINT : RING_HINT,
+      // the entry meter, offered where the calibration found one that beats the bare ring (R10, #778)
+      ringMeter: ring.meter ?? null,
       target: ring.target ?? level.target, waitTarget: ring.waitTarget ?? level.waitTarget,
     };
   }

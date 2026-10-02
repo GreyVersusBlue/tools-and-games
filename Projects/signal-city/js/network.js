@@ -49,6 +49,8 @@ export const YIELD_D = 18;
 // trailer leaving by a leg clears a car waiting to enter by it.
 export const SPLIT = 1.5;
 export const SPLIT_TAPER = 22;
+export const TRUCK_LEFT_K = 0.6;   // a truck's left: the turn's control arms, against a car's 0.3 (R11)
+export const TRAIL_DS = 0.25;      // metres between the steps a trailer's track is integrated at (R11)
 
 const DIR = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };   // outward unit vector per leg
 
@@ -195,13 +197,16 @@ export class Network {
         for (const lane of this.lanesForTurn(turn)) {
           const exitLane = turn === 'T' ? lane : turn === 'R' ? 0 : this.lanesPerDir - 1;
           const p = this.roundabout ? this._ringPath(entry, lane, turn, exit, exitLane) : this._makePath(entry, lane, turn, exit, exitLane);
+          // a truck's left goes deeper before it turns (R11, #779), so its
+          // trailer, cutting inside, stops short of the exit leg's stop line
+          if (!this.roundabout && turn === 'L') { p.truck = this._makePath(entry, lane, turn, exit, exitLane, TRUCK_LEFT_K); p.truck.key += '~truck'; }
           this.paths.set(p.key, p);
         }
       }
     }
   }
 
-  _makePath(entry, lane, turn, exit, exitLane) {
+  _makePath(entry, lane, turn, exit, exitLane, kTurn = null) {
     const pts = [];
     const L = this.legLength;
     // approach: from the leg's far end to the stop line, straight
@@ -221,7 +226,7 @@ export class Network {
       pts.push(b1);
     } else {
       const dist = Math.hypot(b1[0] - b0[0], b1[1] - b0[1]);
-      const k = turn === 'R' ? 0.42 : 0.3;   // a left hugs its own quadrant: opposing lefts pass 4 m apart
+      const k = kTurn ?? (turn === 'R' ? 0.42 : 0.3);   // a left hugs its own quadrant: opposing lefts pass 4 m apart
       const c0 = [b0[0] + inH[0] * dist * k, b0[1] + inH[1] * dist * k];
       const c1 = [b1[0] - outH[0] * dist * k, b1[1] - outH[1] * dist * k];
       const n = 16;
@@ -308,6 +313,11 @@ export class Path {
     this.length = this.cum[this.cum.length - 1];
     this.stopLine = 0; this.boxEnter = 0; this.boxExit = 0;
     this.ring = null;           // { aIn, aOut, sIn, sOut } on a roundabout's path
+    this.truck = null;          // the same way for a vehicle with a trailer, where it differs (R11)
+    // the trailer's track per wheelbase (trailerHeading), declared here: added
+    // later, it changed every path's shape mid-run and a district's later days
+    // ran up to ten times slower in the same process
+    this._trail = null;
   }
 
   // The angle on the ring (screen atan2, falling as the car goes round) of
@@ -346,6 +356,38 @@ export class Path {
   }
 
   inBox(s) { return s > this.boxEnter && s < this.boxExit; }
+
+  // The trailer's heading with its kingpin at s (R11, #779). A trailer
+  // hinged at the fifth wheel is towed, not steered: its rear axle,
+  // `wheelbase` metres behind the kingpin, moves only along the trailer's
+  // own axis, so as the kingpin goes round a corner the trailer turns
+  // through dθ = sin(φ - θ) ds / wheelbase and cuts inside the tractor's
+  // line. That is the off-tracking of a tractor-trailer. A pure function of
+  // the path, integrated once per wheelbase from the path's start, where
+  // the trailer lines up with the road, every TRAIL_DS metres.
+  trailerHeading(s, wheelbase) {
+    let track = this._trail && this._trail.get(wheelbase);
+    if (!track) {
+      const n = Math.ceil(this.length / TRAIL_DS) + 1;
+      track = new Float64Array(n);
+      let th = this.at(0).heading;
+      for (let i = 0; i < n; i++) {
+        track[i] = th;
+        const phi = this.at(i * TRAIL_DS).heading;
+        let d = phi - th;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        th += Math.sin(d) * TRAIL_DS / wheelbase;
+      }
+      (this._trail || (this._trail = new Map())).set(wheelbase, track);
+    }
+    if (s <= 0) return track[0];
+    const f = s / TRAIL_DS, i = Math.min(track.length - 2, Math.floor(f)), t = Math.min(1, f - i);
+    let d = track[i + 1] - track[i];
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return track[i] + d * t;
+  }
 
   // Does a vehicle of `len` metres centred at s overlap the box at all?
   touchesBox(s, len) { return s + len / 2 > this.boxEnter && s - len / 2 < this.boxExit; }
@@ -430,25 +472,33 @@ export function pointInRect(x, y, r) {
   return Math.abs(u) <= r.length / 2 && Math.abs(v) <= r.width / 2;
 }
 
-// Oriented rectangle overlap by separating axes: the collision test.
+// Oriented rectangle overlap by separating axes: the collision test. The
+// corners go into two scratch arrays rather than fresh ones per call: it is
+// the hottest function in the sim (obstacleAhead's probe), and the arrays
+// and closures it used to build ran up to ten times slower once a district's
+// later days had deoptimized them (#784). The arithmetic is the old one,
+// term for term, so every answer is the same to the last bit.
+const CA = new Float64Array(8), CB = new Float64Array(8);
+function cornersInto(out, r, c, s) {
+  const hx = r.length / 2, hy = r.width / 2;
+  out[0] = r.x + hx * c - hy * s;   out[1] = r.y + hx * s + hy * c;
+  out[2] = r.x + hx * c - -hy * s;  out[3] = r.y + hx * s + -hy * c;
+  out[4] = r.x + -hx * c - -hy * s; out[5] = r.y + -hx * s + -hy * c;
+  out[6] = r.x + -hx * c - hy * s;  out[7] = r.y + -hx * s + hy * c;
+}
+function separated(ax, ay) {
+  let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity;
+  for (let i = 0; i < 8; i += 2) {
+    const pa = CA[i] * ax + CA[i + 1] * ay; if (pa < minA) minA = pa; if (pa > maxA) maxA = pa;
+    const pb = CB[i] * ax + CB[i + 1] * ay; if (pb < minB) minB = pb; if (pb > maxB) maxB = pb;
+  }
+  return maxA < minB || maxB < minA;
+}
 export function rectsOverlap(a, b) {
-  const axes = [];
-  for (const r of [a, b]) {
-    const c = Math.cos(r.heading), s = Math.sin(r.heading);
-    axes.push([c, s], [-s, c]);
-  }
-  const corners = r => {
-    const c = Math.cos(r.heading), s = Math.sin(r.heading);
-    const hx = r.length / 2, hy = r.width / 2;
-    return [[hx, hy], [hx, -hy], [-hx, -hy], [-hx, hy]].map(([px, py]) => [r.x + px * c - py * s, r.y + px * s + py * c]);
-  };
-  const ca = corners(a), cb = corners(b);
-  for (const [ax, ay] of axes) {
-    let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity;
-    for (const [x, y] of ca) { const p = x * ax + y * ay; if (p < minA) minA = p; if (p > maxA) maxA = p; }
-    for (const [x, y] of cb) { const p = x * ax + y * ay; if (p < minB) minB = p; if (p > maxB) maxB = p; }
-    if (maxA < minB || maxB < minA) return false;
-  }
+  const ac = Math.cos(a.heading), as = Math.sin(a.heading), bc = Math.cos(b.heading), bs = Math.sin(b.heading);
+  cornersInto(CA, a, ac, as); cornersInto(CB, b, bc, bs);
+  if (separated(ac, as) || separated(-as, ac)) return false;
+  if (separated(bc, bs) || separated(-bs, bc)) return false;
   return true;
 }
 

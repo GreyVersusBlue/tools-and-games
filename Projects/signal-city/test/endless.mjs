@@ -24,7 +24,7 @@ const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World } = await load('sim.js');
 const { score } = await load('scoring.js');
 const { growCells } = await load('grid.js');
-const { dayLevel, dayTarget, daySeed, demandScale, boxesOn, carryOver, expectedArrivals, DAY_SECONDS, FULL, M9_RAMP } = await load('endless.js');
+const { dayLevel, dayTarget, daySeed, demandScale, boxesOn, carryOver, boxesOf, applyBoxes, expectedArrivals, DAY_SECONDS, FULL, M9_RAMP } = await load('endless.js');
 const { fresh, repair, recordEndless, recordResult, totalStars, SAVE_KEY, SAVE_VERSION } = await load('save.js');
 const { endlessOpen, convertible, loadout, wallet } = await load('campaign.js');
 const { handStep } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
@@ -141,7 +141,7 @@ group('the hand against no input (R4, #648): playing does not cost a run its day
   // (EVENTS_RAMP, the lever #648 turned down) the hand falls short on
   // seeds 2 and 4 and holds on exactly four, so at four this line passed
   // the ramp the calibration rejects. As it ships: six of six here, five
-  // of six to the end (seed 1, 9 against 10).
+  // of six to the end (seed 1, 9 against 10), as R4 measured it.
   const N = 0, SEEDS = [1, 2, 3, 4, 5, 6], ENOUGH = 5;
   const CAP = process.argv.includes('--full') ? 30 : 6;
   const self = fileURLToPath(import.meta.url);
@@ -166,18 +166,20 @@ group('the hand against no input (R4, #648): playing does not cost a run its day
     // the hand holds when it gets through every day no input got through, and N more
     const need = Math.min(CAP, (a.missed ?? CAP + 1) - 1 + N);
     const holds = b.missed === null ? b.days.length >= need : b.missed > need;
-    const outlasts = a.missed !== null && b.missed === null && b.days.length >= a.missed;
-    return { s, holds, outlasts, line: `seed ${s}: no input ${text(a)}, hand ${text(b)}` };
+    return { s, holds, line: `seed ${s}: no input ${text(a)}, hand ${text(b)}` };
   });
   const held = rows.filter(r => r.holds);
   ok(held.length >= ENOUGH, `the hand lasts at least as long as no input (N = ${N}) on at least ${ENOUGH} seeds of six, over the first ${CAP} days`, `${held.length} of 6: ${rows.map(r => r.line + (r.holds ? '' : ' SHORT')).join('; ')}`);
   // and its commands reach the World: where the 20 s rule misses early the
-  // hand gets past that day (seed 5 misses day 2 hands-off). Holding a
-  // green is enough for it: with World.requestPhase refusing everything
-  // this line stays green, and with holdGreen refusing too it fails, the
-  // line above tying six of six
-  const past = rows.filter(r => r.outlasts).map(r => r.s);
-  ok(past.length >= 1, 'and on a seed where no input misses early, the hand gets through that day', `seed ${past.join(', ') || 'none'}`);
+  // hand gets past that day. City 5 missed day 2 hands-off until the
+  // trucker's sweep became geometry (R11, #780) and took its lock away, so
+  // none of the six misses before day 6 now; city 16 misses day 3. With
+  // World.requestPhase refusing everything the hand holds greens it cannot
+  // end and locks day 1, and with holdGreen refusing too it misses day 3
+  // with no input: either way this line fails
+  const EARLY = 16;
+  const eo = await child(EARLY, false, 3), eh = await child(EARLY, true, eo.missed ?? 3);
+  ok(eo.missed !== null && eh.missed === null && eh.days.length >= eo.missed, 'and on a city where no input misses early, the hand gets through that day', `city ${EARLY}: no input ${text(eo)}, hand ${text(eh)}`);
 }
 
 /* ---------------------------------------------------------- what ends a run -- */
@@ -253,7 +255,7 @@ group('the save: `endless` through repair, the key and the version as they were'
 {
   ok(SAVE_KEY === 'signal_city_v1' && SAVE_VERSION === 1, 'the key is signal_city_v1 and the version 1');
   const f = fresh();
-  ok(JSON.stringify(f.endless) === '{"days":0,"points":0,"seed":null,"runs":0}', 'a fresh save has an empty endless record', JSON.stringify(f.endless));
+  ok(JSON.stringify(f.endless) === '{"days":0,"points":0,"seed":null,"runs":0,"pending":null}', 'a fresh save has an empty endless record, no run pending', JSON.stringify(f.endless));
   // a save from before endless: M8's shape, no field
   const old = { levels: { 'first-light': { stars: 3, best: 700, plays: 2 }, 'two-blocks': { stars: 2, best: 500, plays: 1 } }, unlocks: ['phases', 'lefts'], settings: { sound: false }, lastLevel: 'two-blocks' };
   const r = repair(JSON.parse(JSON.stringify(old)));
@@ -272,6 +274,20 @@ group('the save: `endless` through repair, the key and the version as they were'
   ok(recordEndless(s, { days: 3, points: 1400, seed: 9 }) === false && s.endless.seed === 8, 'the same days on fewer points is not a best');
   ok(recordEndless(s, { days: 3, points: 1600, seed: 9 }) === true && s.endless.seed === 9, 'the same days on more points is');
   ok(recordEndless(s, { days: 2, points: 9000, seed: 10 }) === false && s.endless.days === 3, 'and fewer days is not, whatever the points');
+  // R14: the day a run is on, so a run closed halfway is taken up at that day's start
+  const pre = repair({ endless: { days: 4, points: 2000, seed: 9, runs: 3 } });
+  ok(pre.endless.pending === null && pre.endless.days === 4, 'a save from before the pending day reads none, the rest as it was', JSON.stringify(pre.endless));
+  const lvl3 = dayLevel(9, 3), w3 = new World(lvl3, daySeed(9, 3));
+  w3.controllers[0].setRules([{ when: 'elapsed', seconds: 11, then: 'next' }]); w3.controllers[0].setTiming({ allRed: 2.5 });
+  const kept = repair({ endless: { days: 2, points: 900, seed: 9, runs: 1, pending: { seed: 9, day: 3, days: 2, points: 900, boxes: boxesOf(w3) } } });
+  const back = new World(dayLevel(9, 3), daySeed(9, 3));
+  applyBoxes(kept.endless.pending.boxes, back);
+  ok(kept.endless.pending.day === 3 && JSON.stringify(back.controllers.map(c => [c.rules, c.timing])) === JSON.stringify(w3.controllers.map(c => [c.rules, c.timing])),
+    'a pending day comes through repair and puts every box\'s rules and timing back as the day began', JSON.stringify(back.controllers[0].rules));
+  ok(lvl3.network.cells.every((c, i) => (c.roundabout ? kept.endless.pending.boxes[i] === null : !!kept.endless.pending.boxes[i])), 'a ring keeps no box in it');
+  const bad = [{ seed: 'x', day: 3, boxes: [] }, { seed: 9, day: 0, boxes: [] }, { seed: 9, day: 3 }, 'tomorrow'];
+  ok(bad.every(p => repair({ endless: { runs: 1, pending: p } }).endless.pending === null), 'and one with no city, no day or no boxes reads as none: that run is lost, as every run left halfway was before');
+  ok(JSON.stringify(repair(repair(kept))) === JSON.stringify(repair(kept)), 'repair is idempotent with a pending day in it');
   // nothing about endless reaches the levels, the stars or the wallet
   const before = totalStars(s);
   recordResult(s, 'first-light', { stars: 2, points: 300 });

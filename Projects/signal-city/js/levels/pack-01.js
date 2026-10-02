@@ -27,7 +27,10 @@
 //               ambulance, platoons, progression { stops }, walks { within }
 //   ring        { target, waitTarget } the same two numbers for the board
 //               as the roundabout converts it (campaign.js convertible,
-//               #598): measured on the ring, not on signals
+//               #598): measured on the ring, not on signals, and
+//               `meter`, the entry meter { leg, red } that beats the bare
+//               ring's wait on four seeds of six, or null where none does
+//               and the board offers no meter (R10, #778)
 //   mode        'soft' (collisions count) | 'hard' (one collision ends it)
 //   light       'dusk' draws the level at dusk (render.js lightFor, R5);
 //               none is day, and an outage is night whatever the level
@@ -49,7 +52,9 @@
 // Milestone 4 shipped level 1 and the free-play board; milestone 5 levels 2
 // and 3; milestone 6 levels 4 and 5; milestone 7 levels 6 to 8, the events.
 
-export const LEVELS = [
+import { PACK_02 } from './pack-02.js';
+
+const PACK_01 = [
   {
     id: 'first-light',
     name: 'First Light',
@@ -68,7 +73,8 @@ export const LEVELS = [
     target: 32,
     waitTarget: 15,
     // as a roundabout, six seeds clear 31 to 53 at 1 to 3 s (#598)
-    ring: { target: 30, waitTarget: 6 },
+    // no entry meter beats the bare ring's wait on four seeds of six (R10, #778)
+    ring: { target: 30, waitTarget: 6, meter: null },
     mode: 'soft',
     unlocks: ['phases', 'auto'],
   },
@@ -86,7 +92,8 @@ export const LEVELS = [
     target: 30,
     waitTarget: 15,
     // as a roundabout, six seeds clear 34 to 50 at 0 to 5 s (#598)
-    ring: { target: 32, waitTarget: 8 },
+    // no entry meter beats the bare ring's wait on four seeds of six (R10, #778)
+    ring: { target: 32, waitTarget: 8, meter: null },
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred'],
   },
@@ -114,17 +121,23 @@ export const LEVELS = [
     id: 'crossing',
     name: 'Crossing',
     blurb: 'Four Ways again, with people. A call on any leg wants a walk, and a walk holds the green until the last walker is across.',
-    hint: 'Calls light up on the panel and on the map. The walk runs with the through phase parallel to it; give the E-W phase when N or S calls, and the loops in the left bays will ask for the arrows for you.',
+    hint: 'Calls light up on the panel and on the map. The walk runs with the through phase parallel to it; give the E-W phase when N or S calls. The loops in the left bays call the arrows for their turn, and an arrow nobody is waiting for is skipped.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, leftLane: true },
-    // a full bay pulls its arrow in once the through has had 16 s; the
-    // elapsed rule keeps the board cycling on its own. `after` matters: at
-    // the 4 s minimum green the bays cut every through short and the board
-    // locked on 3 of 6 seeds
+    // an actuated box (R9): a bay with three in it calls its arrow phase
+    // for its turn in the cycle and cuts nothing, and an arrow phase nobody
+    // called is skipped. The elapsed rule keeps the board cycling on its
+    // own. It replaced queue rules that cut the through to the arrows after
+    // 16 s (at the 4 s minimum green they locked 3 of 6 seeds): with no
+    // input, six seeds clear 60 to 72 at 37 to 48 s against 55 to 63 at 47
+    // to 52 s, and the reference hand 59 to 82 against 57 to 74
     controller: {
       lefts: true, peds: true, timing: { yellow: 3, allRed: 1.5, minGreen: 4 },
+      skip: [1, 3],
       rules: [
-        { when: 'queue', movement: 'N-L', threshold: 3, after: 16, then: 1 },
-        { when: 'queue', movement: 'E-L', threshold: 3, after: 16, then: 3 },
+        { when: 'queue', movement: 'N-L', threshold: 3, then: 'call' },
+        { when: 'queue', movement: 'S-L', threshold: 3, then: 'call' },
+        { when: 'queue', movement: 'E-L', threshold: 3, then: 'call' },
+        { when: 'queue', movement: 'W-L', threshold: 3, then: 'call' },
         { when: 'elapsed', seconds: 24, then: 'next' },
       ],
     },
@@ -274,12 +287,18 @@ export const LEVELS = [
     duration: 300,
     target: 60,
     waitTarget: 30,
-    // as a roundabout, six seeds clear 84 to 94 at 6 to 18 s (#598)
-    ring: { target: 80, waitTarget: 24 },
+    // as a roundabout, six seeds clear 84 to 94 at 6 to 18 s (#598); with
+    // the trailer's sweep as geometry, 74 to 103 at 4 to 15 s (R11, #780).
+    // A meter on S at 6 s beats the bare ring's wait on four seeds of six;
+    // S at 3 s did before R11 and beats two after it (R10, #778; #780)
+    ring: { target: 72, waitTarget: 24, meter: { leg: 'S', red: 6 } },
     mode: 'soft',
     sandbox: true,
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],
   },
 ];
+
+// pack 2 (R13) runs on from Main Street, and Free Play stays last
+export const LEVELS = [...PACK_01.filter(l => !l.sandbox), ...PACK_02, ...PACK_01.filter(l => l.sandbox)];
 
 export function levelById(id) { return LEVELS.find(l => l.id === id) || null; }

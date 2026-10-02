@@ -126,3 +126,23 @@ export function carryOver(from, to) {
   }
   return kept;
 }
+
+// The boxes' rules and timing as a day stands, for the save (R14): one
+// entry per box, null for a ring, which has neither.
+export function boxesOf(world) {
+  return world.controllers.map((c, i) => (world.nodes[i].roundabout ? null : { timing: { ...c.timing }, rules: c.rules.map(r => ({ ...r })) }));
+}
+
+// And back onto a new day's World, the way carryOver does it from
+// yesterday's World. Returns the boxes it set.
+export function applyBoxes(boxes, to) {
+  let kept = 0;
+  const n = Math.min(boxes.length, to.controllers.length);
+  for (let i = 0; i < n; i++) {
+    if (!boxes[i] || to.nodes[i].roundabout) continue;
+    to.controllers[i].setTiming({ ...boxes[i].timing });
+    to.controllers[i].setRules(boxes[i].rules.map(r => ({ ...r })));
+    kept++;
+  }
+  return kept;
+}

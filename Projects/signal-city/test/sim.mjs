@@ -15,9 +15,11 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
-const { World, DT } = await load('sim.js');
+const { World, DT, meterWatch, METER_RED } = await load('sim.js');
+const { score } = await load('scoring.js');
 const { Network, rectsOverlap, LANE_WIDTH, CROSSWALK, RING_R, buildNodes } = await load('network.js');
-const { ARCHETYPES, Car, stopLineVerdict, BRAKE_LIGHT_A, INDICATE_FROM } = await load('cars.js');
+const { ARCHETYPES, Car, stopLineVerdict, BRAKE_LIGHT_A, INDICATE_FROM, trailerRect } = await load('cars.js');
+const { conflicts } = await load('signals.js');
 const { makeRng } = await load('rng.js');
 
 let passed = 0, failed = 0;
@@ -204,6 +206,15 @@ group('determinism');
   const d = new World(CYCLING, 11).run(5); d.requestPhase(1); d.run(55);
   ok(d.hash() !== a.hash(), 'and so is a different input');
 }
+{
+  // two arrivals scheduled at once on one lane: the second finds it full
+  // and is retried a second later. The retry moved the level's own spawn,
+  // so the next run of the same level object was a different run (#777)
+  const L = { demand: { N: 300 }, duration: 30, controller: { startPhase: 1 }, spawns: [{ t: 0.5, leg: 'W', archetype: 'standard', turn: 'T' }, { t: 0.5, leg: 'W', archetype: 'trucker', turn: 'T' }] };
+  const a = new World(L, 3).run(30), b = new World(L, 3).run(30);
+  ok(a.events.filter(e => e.kind === 'spawn' && e.scheduled).length === 2 && L.spawns[1].t === 0.5, 'a blocked scheduled arrival is retried without moving the level\'s own time', JSON.stringify(L.spawns.map(x => x.t)));
+  ok(a.hash() === b.hash(), 'so a level replayed from the same object is the same run', `${a.hash()} ${b.hash()}`);
+}
 
 /* ------------------------------------------------------------ the box -- */
 
@@ -369,7 +380,74 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
   ok(w.stats.collisions === 0, 'and the ones behind cope', `${w.stats.collisions} collisions`);
 }
 {
-  // trucker's wide left blocks the adjacent lane
+  // the trucker's sweep as geometry (R11, #779): the trailer hinges at the
+  // tractor's rear and cuts inside its line, and a truck holds only the
+  // lanes its tractor or trailer actually cross in the box
+  const w1 = new World({ demand: {}, duration: 60 }, 1), n1 = w1.nodes[0];
+  const truckOn = (w, p) => new Car({ archetype: 'trucker', path: p, rng: makeRng(1) });
+  const right = n1.pathFor('N', 0, 'R'), left = n1.pathFor('N', 0, 'L').truck, thru = n1.pathFor('N', 0, 'T');
+  const st = ARCHETYPES.trucker;
+  // how far inside the tractor's line the trailer's rear gets, the
+  // off-tracking: signed, so a trailer swinging outside the turn reads
+  // negative (the screen's y is down, so a heading that grows is a right)
+  const offTrack = p => {
+    let dh = p.at(p.boxExit).heading - p.at(p.boxEnter).heading;
+    while (dh > Math.PI) dh -= 2 * Math.PI;
+    while (dh < -Math.PI) dh += 2 * Math.PI;
+    let worst = 0;
+    for (let s = p.boxEnter; s < p.boxExit + 12; s += 0.5) {
+      const r = trailerRect(p, s, st), rx = r.x - Math.cos(r.heading) * r.length / 2, ry = r.y - Math.sin(r.heading) * r.length / 2;
+      let d = Infinity, near = null;
+      for (let q = 0; q < p.length; q += 0.25) { const a = p.at(q), e = Math.hypot(a.x - rx, a.y - ry); if (e < d) { d = e; near = a; } }
+      const side = Math.cos(near.heading) * (ry - near.y) - Math.sin(near.heading) * (rx - near.x);
+      const signed = Math.abs(dh) < 0.1 ? d : side * dh > 0 ? d : -d;
+      if (Math.abs(signed) > Math.abs(worst)) worst = signed;
+    }
+    return worst;
+  };
+  ok(offTrack(right) > 2.5 && offTrack(left) > 1.5 && offTrack(thru) < 0.2, 'a trailer off-tracks inside a turn, more on the tight right, and not at all on a through',
+    `right ${f1(offTrack(right))} m, left ${f1(offTrack(left))} m, through ${f1(offTrack(thru))} m`);
+  const tr = trailerRect(thru, 50, st), old = thru.at(50 - st.length / 2 - st.trailer.gap - st.trailer.length / 2);
+  ok(Math.hypot(tr.x - old.x, tr.y - old.y) < 1e-6, 'on a straight the trailer sits where it always did, on the path behind the tractor');
+  // a truck takes its own left, deeper into the box: with a car's, the
+  // trailer swinging back across the centre line reached a car standing
+  // 1.5 m behind the stop line of the lane in from its exit leg
+  ok(left && left !== n1.pathFor('N', 0, 'L') && w1.pathOf('trucker', n1.pathFor('N', 0, 'L')) === left && w1.pathOf('standard', n1.pathFor('N', 0, 'L')) !== left, 'a truck turning left takes its own deeper path; a car does not');
+  const reach = p => {
+    let deepest = -Infinity;
+    for (const v of ['L', 'T', 'R'].map(t => n1.pathFor('E', 0, t)).filter(Boolean)) {
+      for (let s = p.boxEnter - 2; s < p.boxExit + 14; s += 0.5) {
+        const tr = trailerRect(p, s, st);
+        for (let sb = v.stopLine - 8; sb <= v.boxEnter; sb += 0.5) { const c = v.at(sb - 2.3); if (rectsOverlap(tr, { x: c.x, y: c.y, heading: c.heading, length: 4.6, width: 2.2 })) deepest = Math.max(deepest, v.stopLine - sb); }
+      }
+    }
+    return deepest;
+  };
+  ok(reach(n1.pathFor('N', 0, 'L')) > 0 && reach(left) < 0, 'on a car\'s left the trailer reaches a car behind its stop line on the leg it turns onto; on the truck\'s it stops short of the line', `${f1(reach(n1.pathFor('N', 0, 'L')))} m behind the line, and ${f1(-reach(left))} m past it`);
+  const e0r = n1.pathFor('E', 0, 'R'), w0t = n1.pathFor('W', 0, 'T');
+  ok(!!w1.sweep(truckOn(w1, left), e0r) && !conflicts('N-L', 'E-R'), 'a truck\'s left on one lane sweeps the right turn in from its exit leg, which no car\'s left crosses');
+  ok(w1.sweep(truckOn(w1, right), w0t) === null, 'and its right cuts the corner, so the through in from its exit leg is no longer held, as the old rule held it');
+  const w2 = new World({ demand: {}, duration: 60, network: { lanesPerDir: 2 } }, 1), n2 = w2.nodes[0];
+  ok(w2.sweep(truckOn(w2, n2.pathFor('N', 1, 'L')), n2.pathFor('N', 0, 'T')) === null, 'on two lanes a left from the inner lane never sweeps the curb lane beside it');
+  // a car the trailer will sweep waits behind the stretch it sweeps, not at
+  // the box edge: an N-R car at its red line while a W-L truck turns, and
+  // N's green asked for as the truck enters the box
+  const held = lag => {
+    const w = new World({ demand: {}, duration: 90, controller: { startPhase: 1, timing: { yellow: 3, allRed: 1, minGreen: 2 } } }, 3);
+    const truck = w.spawnCar({ leg: 'W', archetype: 'trucker', turn: 'L' });
+    let car = null, asked = false, inSweep = false;
+    for (let i = 0; i < 60 * 60; i++) {
+      w.step();
+      if (!asked && truck.front > truck.path.boxEnter) asked = w.requestPhase(0);
+      if (!car && w.t >= lag) car = w.spawnCar({ leg: 'N', archetype: 'standard', turn: 'R' });
+      const sw = car && !truck.done && !car.done && w.sweep(truck, car.path);
+      if (sw && truck.s <= sw.clear && car.front > sw.otherFrom && car.front < sw.otherTo) inSweep = true;
+    }
+    return { inSweep, done: car.done && truck.done, coll: w.stats.collisions };
+  };
+  const h = [0, 2, 4].map(held);
+  ok(h.every(x => !x.inSweep && x.done && !x.coll), 'a car on the lane a turning trailer sweeps waits behind the swept stretch until the trailer is past it', JSON.stringify(h));
+  // and so, on the road: the curb-lane car beside a truck turning left goes
   const sweep = archetype => {
     const w = new World({ demand: {}, duration: 120, network: { lanesPerDir: 2 }, controller: { startPhase: 0 } }, 1);
     const turner = w.spawnCar({ leg: 'N', archetype, turn: 'L', lane: 1 });
@@ -380,9 +458,8 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
     return { blocked: blocked / 60, straight, w };
   };
   const t = sweep('trucker'), s = sweep('standard');
-  ok(t.blocked > 1, 'a truck turning left holds the curb-lane car at the box', `${f1(t.blocked)} s held`);
-  ok(s.blocked === 0, 'a standard car turning left does not', `${f1(s.blocked)} s`);
-  ok(t.w.stats.collisions === 0 && s.w.stats.collisions === 0, 'and neither run crashes');
+  ok(t.blocked === 0 && s.blocked === 0, 'a truck turning left holds the curb-lane car beside it no more than a car does: its trailer cuts the other way', `${f1(t.blocked)} s and ${f1(s.blocked)} s held`);
+  ok(t.w.stats.collisions === 0 && s.w.stats.collisions === 0 && t.straight.done, 'and neither run crashes');
 }
 {
   // the priority corridor
@@ -673,6 +750,53 @@ group('the corridor: two boxes, one handoff, fresh decisions');
 }
 
 /* ------------------------------------------------------------ the events -- */
+
+group('lane changes on a corridor (R12, #781): a car handed on in the wrong lane moves over');
+
+{
+  // two lanes each way, both boxes on E-W green (phase 1) for good: a car
+  // from box 1's west leg goes through in the curb lane and is handed to
+  // box 2 there, where only lane 1 turns left
+  const C = (turns, extra = {}) => ({ network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 }, demand: {}, duration: 120, turns, controller: { startPhase: 1 }, ...extra });
+  const w = new World(C({ L: 1 }), 2);
+  const car = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
+  let handed = null, atLine = null;
+  for (let i = 0; i < 60 * 60 && !car.done; i++) {
+    w.step();
+    if (!handed && car.path.node === 1) handed = { lane: car.path.lane, turn: car.path.turn, want: car.laneWant && { ...car.laneWant } };
+    if (car.path.node === 1 && !atLine && car.front >= car.path.stopLine - 1) atLine = { lane: car.path.lane, turn: car.path.turn };
+  }
+  ok(handed && handed.lane === 0 && handed.want && handed.want.lane === 1 && handed.want.turn === 'L', 'handed on in the curb lane, a car that drew a left wants the inner lane', JSON.stringify(handed));
+  ok(atLine && atLine.lane === 1 && atLine.turn === 'L' && w.stats.laneChanges === 1, 'and reaches box 2\'s stop line in it, turning left: one lane change', `${JSON.stringify(atLine)}, ${w.stats.laneChanges} change`);
+  ok(car.done && w.stats.collisions === 0, 'and leaves the map with nothing hit', `${w.stats.collisions} collisions`);
+  // a truck moving over for a left takes the truck's own left (R11)
+  const wt = new World(C({ L: 1 }), 2);
+  const truck = wt.spawnCar({ leg: 'W', archetype: 'trucker', turn: 'T', lane: 0 });
+  let took = null;
+  for (let i = 0; i < 60 * 60 && !took; i++) { wt.step(); if (truck.path.node === 1 && truck.path.turn === 'L') took = truck.path; }
+  ok(took && took === wt.nodes[1].pathFor('W', 1, 'L').truck, 'and a truck that moves over for a left takes the truck\'s own left', took && took.key);
+}
+
+{
+  // box 2's inner lane is a standing queue under its red: the gap never
+  // comes, so the car keeps its lane and its through
+  const C = { network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 }, demand: {}, duration: 120, turns: { L: 1 }, controller: { startPhase: 1 }, controllers: [{}, { startPhase: 0 }] };
+  const w = new World(C, 2);
+  // until the spawner refuses: the queue reaches back past where box 1 hands cars on
+  for (let k = 0, refused = 0; k < 60 && refused < 20; k++) { if (!w.spawnCar({ leg: 'W', node: 1, archetype: 'standard', turn: 'L', lane: 1 })) refused++; w.run(1.2); }
+  const car = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
+  let atLine = null;
+  for (let i = 0; i < 60 * 60 && !atLine; i++) { w.step(); if (car.path.node === 1 && car.v < 0.1 && car.front >= car.path.stopLine - 3) atLine = { lane: car.path.lane, turn: car.path.turn }; }
+  ok(atLine && atLine.lane === 0 && atLine.turn === 'T' && w.stats.laneGiveUps === 1 && w.stats.laneChanges === 0, 'with the inner lane queued solid it gives up 25 m out and waits at the line in its own lane, going through', `${JSON.stringify(atLine)}, ${w.stats.laneChanges} changes, ${w.stats.laneGiveUps} given up`);
+  ok(w.stats.collisions === 0, 'and nobody is hit', `${w.stats.collisions} collisions`);
+}
+
+{
+  // one lane each way: every lane takes every turn, so the draw is the old draw
+  const L = { network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1, nodes: 2, spacing: 220 }, demand: [{ W: 500, N: 200, S: 200 }, { E: 500, N: 200, S: 200 }], duration: 120, controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 22 }, { phase: 1, green: 12 }] } };
+  const w = new World(L, 4).run(120);
+  ok(w.stats.handoffs > 10 && w.stats.laneChanges === 0 && w.stats.laneGiveUps === 0, 'on one lane each way nobody ever wants another lane', `${w.stats.handoffs} handoffs`);
+}
 
 group('events (M7): the surge');
 
@@ -1209,6 +1333,50 @@ const net0 = () => new Network({ roundabout: true });
   const h2 = new World(L, 5).run(90).hash();
   const h3 = new World(L, 6).run(90).hash();
   ok(h1 === h2 && h1 !== h3, 'the same seed round the ring is the same run, a different seed is not', `${h1} ${h2} ${h3}`);
+}
+
+group('entry metering (R10, #778): a meter on a ring\'s leg, fired by the leg it starves');
+
+{
+  const four = buildNodes({ roundabout: true })[0], stem = buildNodes({ roundabout: true, legs: ['N', 'E', 'S'] })[0];
+  const map = ['N', 'E', 'S', 'W'].map(l => l + '>' + meterWatch(four, l)).join(' ');
+  ok(map === 'N>W E>N S>E W>S', 'a meter watches the next leg round the ring, the one its traffic passes first', map);
+  ok(meterWatch(stem, 'N') === 'S' && meterWatch(stem, 'S') === 'E', 'on the Stem the leg N passes first is S, past the missing W', `${meterWatch(stem, 'N')} ${meterWatch(stem, 'S')}`);
+  const sig = new World({ demand: {}, duration: 30 }, 1);
+  ok(sig.setMeter('E', 4) === false && sig.meters[0] === null, 'a box with lights refuses a meter');
+  const r = new World({ network: { roundabout: true }, demand: {}, duration: 30 }, 1);
+  ok(r.setMeter('E', 40) && r.meters[0].red === METER_RED[1] && r.meters[0].watch === 'N', 'a ring takes one, and its red is clamped to the slider', JSON.stringify(r.meters[0]));
+  ok(r.setMeter(null) && r.meters[0] === null, 'and a null leg takes it away');
+}
+
+{
+  // a board the meter is for: E heavy and turning left, so its traffic
+  // passes N's join, and N queues behind it. The converted boards have no
+  // such leg but Free Play (#778), so this one is built here.
+  const M = { network: { roundabout: true }, demand: { N: 420, S: 150, E: 650, W: 150 }, turns: { T: 0.5, L: 0.4, R: 0.1 }, mix: { standard: 6, granny: 1, aggressive: 1, tourist: 1, trucker: 0.5, student: 0.5, rideshare: 1 }, duration: 180 };
+  const play = (seed, meter) => {
+    const w = new World(meter ? { ...M, meter } : M, seed);
+    let ran = 0, red = false, cannot = new Set(), over = new Map();
+    for (let i = 0; i < 180 * 60; i++) {
+      const was = new Map(w.cars.filter(c => !c.done && c.path.entry === 'E').map(c => [c.id, c.front - c.path.stopLine]));
+      w.step();
+      const m = w.meters[0];
+      if (m && m.stage === 'red' && !red) {
+        // at red's onset, the cars on E that could not have stopped: they go on, and nobody else may
+        cannot = new Set(w.cars.filter(c => !c.done && c.path.entry === 'E' && c.front <= c.path.stopLine && c.v * c.v / (2 * Math.max(0.1, c.path.stopLine - c.front)) > c.stats.brake * 0.9).map(c => c.id));
+      }
+      red = !!m && m.stage === 'red';
+      if (red) for (const c of w.cars) if (!c.done && was.has(c.id) && was.get(c.id) <= 0 && c.front - c.path.stopLine > 0 && !cannot.has(c.id)) over.set(c.id, +w.t.toFixed(1));
+      if (m && m.stage === 'red') ran++;
+    }
+    return { w, sc: score(w), ran, over };
+  };
+  const bare2 = play(2), bare6 = play(6), e2 = play(2, { leg: 'E', red: 5 }), e6 = play(6, { leg: 'E', red: 5 });
+  ok(e2.w.meters[0].fired > 0 && e6.w.meters[0].fired > 0, 'the meter on E fires when N queues past its loop', `${e2.w.meters[0].fired} and ${e6.w.meters[0].fired} times`);
+  ok(e2.over.size === 0 && e6.over.size === 0, 'and no car on E crosses its yield line on red, bar one that could not stop when the red came', JSON.stringify([...e2.over, ...e6.over]));
+  ok(e2.sc.avgWait < bare2.sc.avgWait && e6.sc.avgWait < bare6.sc.avgWait, 'held 5 s a firing, it beats the bare ring\'s average wait on seeds 2 and 6',
+    `${f1(bare2.sc.avgWait)} to ${f1(e2.sc.avgWait)} s, ${f1(bare6.sc.avgWait)} to ${f1(e6.sc.avgWait)} s`);
+  ok(e2.w.events.filter(e => e.kind === 'meter' && e.leg === 'E').length === e2.w.meters[0].fired, 'each firing is an event the page can hear');
 }
 
 group('a three-minute mixed run on the cycling level');

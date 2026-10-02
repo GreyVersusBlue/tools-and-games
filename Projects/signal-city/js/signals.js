@@ -102,17 +102,6 @@ export function conflicts(aId, bId) {
   return inA1 !== inA2;
 }
 
-// A trucker mid-turn sweeps wider than its chord: it also blocks the other
-// lanes of its own entry leg and of its exit leg. The cars use this on top of
-// `conflicts` when the turning vehicle is flagged wide.
-export function wideConflicts(aId, bId) {
-  if (aId === bId) return false;
-  const a = parseMovement(aId), b = parseMovement(bId);
-  if (a.ped || b.ped) return conflicts(a, b);
-  if (a.turn === 'T') return conflicts(a, b);
-  return conflicts(a, b) || a.entry === b.entry || a.exit === b.exit || a.exit === b.entry;
-}
-
 // Every vehicle movement an intersection with these legs can carry.
 export function movementsFor(legs) {
   const out = [];
@@ -260,6 +249,7 @@ export class Controller {
     plan = null,          // timed: [{ phase: index, green: seconds }]
     offset = 0,           // timed: seconds the cycle is shifted by
     rules = [],           // [{ when: 'elapsed', seconds, then }] | [{ when: 'queue', movement, threshold, after?, then }]
+    skip = [],            // R9: indices of phases 'next' passes over while nothing has called them (with sensors)
     flash = null,         // null | 'red' | { major: ['N','S'] } (major legs flash yellow, others red)
     startPhase = 0,
     extra = [],           // campaign purchases (M8): 'lefts' | 'split', appended by extraPhases
@@ -275,17 +265,21 @@ export class Controller {
       const walks = (p.walks || []).slice();
       const allowed = walksFor(this.legs, p.movements, p.permissive || []);
       for (const w of walks) if (!allowed.includes(w)) throw new Error(`phase ${p.name || i} cannot carry ${w}: it crosses a movement in the phase`);
-      return { name: p.name || `phase ${i + 1}`, movements: p.movements.slice(), permissive: (p.permissive || []).slice(), walks, ...(p.extra ? { extra: p.extra } : {}) };
+      const skips = !!p.skip || skip.includes(i);
+      return { name: p.name || `phase ${i + 1}`, movements: p.movements.slice(), permissive: (p.permissive || []).slice(), walks, ...(p.extra ? { extra: p.extra } : {}), ...(skips ? { skip: true } : {}) };
     });
     if (!this.phases.length) throw new Error('a controller needs at least one phase');
     // the phases 'next' cycles through: the level's own, never a bought one
     this.cycle = this.phases.filter(p => !p.extra).length;
     if (this.phases.slice(0, this.cycle).some(p => p.extra)) throw new Error('bought phases go after the level\'s own');
+    if (this.phases.slice(0, this.cycle).every(p => p.skip)) throw new Error('a cycle of phases that all skip has nothing to rest on');
     this.mode = mode;
     this.plan = plan;
     this.offset = offset;
     this.shift = 0;        // seconds of plan still to lose (> 0, greens cut) or gain (< 0, greens stretched) after setOffset
     this.rules = rules.map(r => ({ ...r }));
+    this.calls = new Set();      // R9: phases a 'call' rule has called, latched until each runs green
+    this.sensing = false;        // whether the last step had loops to read: skip only means anything then
     this.t = 0;
     this.phase = startPhase;
     this.lastBase = startPhase;   // the last of the level's own phases to run green: 'next' from a bought phase goes on from it
@@ -352,7 +346,11 @@ export class Controller {
     if (this.preemption) return Math.max(0, this.preemption.hold - this.stageT);
     if (this.mode === 'timed' && this.plan) return Math.max(0, this._plannedGreen() - this.stageT);
     for (const r of this.rules) {
-      if (r.when === 'elapsed') return Math.max(0, r.seconds - (this.stageT - this.heldT));
+      // a green resting because every other phase skips (R9) has no end yet
+      if (r.when === 'elapsed') {
+        const rests = this.sensing && (r.then === 'next' || r.then === undefined) && this.resumeAt === null && this._after(this.phase) === this.phase;
+        return rests ? Infinity : Math.max(0, r.seconds - (this.stageT - this.heldT));
+      }
     }
     return Infinity;
   }
@@ -541,6 +539,7 @@ export class Controller {
     c.pedTiming = { ...this.pedTiming };
     c.rules = this.rules.map(r => ({ ...r }));
     c.pedCalls = new Set(this.pedCalls);
+    c.calls = new Set(this.calls);
     c.walk = this.walk ? { ...this.walk } : null;
     c.preemption = this.preemption ? { ...this.preemption } : null;
     c.log = [];
@@ -571,6 +570,7 @@ export class Controller {
   setRules(rules) {
     for (const r of rules) {
       if (typeof r.then === 'number' && (r.then < 0 || r.then >= this.phases.length || !Number.isInteger(r.then))) throw new RangeError(`no phase ${r.then}`);
+      if (r.then === 'call' && r.when !== 'queue') throw new RangeError('only a queue rule can call a phase');
     }
     this.rules = rules.map(r => ({ ...r }));
   }
@@ -631,6 +631,7 @@ export class Controller {
   // `sense` is an optional function(movement) -> queued vehicle count, used by
   // 'queue' rules (induction loops, mechanic 6). Without it those rules sleep.
   step(dt, sense = null) {
+    this.sensing = !!sense;
     this.t += dt;
     this.stageT += dt;
     const { yellow, allRed } = this.timing;
@@ -677,6 +678,7 @@ export class Controller {
           this.stage = 'green';
           this.stageT -= allRed;
           this.heldT = 0;
+          if (!this.preemption) this.calls.delete(this.phase);
           if (!this.preemption && this.phase < this.cycle) this.lastBase = this.phase;
           this._log('green', this.current.name);
         }
@@ -703,6 +705,12 @@ export class Controller {
   // the jump goes there. Without this a full N bay during E-W pulled N-S
   // lefts, 'next' went back to E-W, and the N-S throughs waited 180 s
   // (Crossing locked 3 of 6 seeds).
+  //
+  // A queue rule with `then: 'call'` (R9) cuts nothing: it calls the phase
+  // that serves its movement for that phase's turn in the sequence, and the
+  // rules below it go on being read. A phase marked `skip` is passed over
+  // by 'next' until something has called it, so with sensors a left arrow
+  // nobody is queued for costs the cycle nothing.
   _runRules(sense) {
     for (let k = 0; k < this.rules.length; k++) {
       const r = this.rules[k];
@@ -711,6 +719,14 @@ export class Controller {
       else if (r.when === 'queue') {
         if (!sense) continue;
         if (this.current.movements.includes(r.movement)) continue; // it is being served
+        if (r.then === 'call') {
+          const p = this.servingPhase(r.movement);
+          if (p !== null && p !== this.phase && !this.calls.has(p) && sense(r.movement) >= r.threshold) {
+            this.calls.add(p);
+            this._log('call', this.phases[p].name);
+          }
+          continue;
+        }
         // `after`: the green this rule may not cut short, the minimum green by default
         const after = Math.max(this.timing.minGreen, r.after || 0);
         queued = sense(r.movement);
@@ -733,10 +749,34 @@ export class Controller {
   }
 
   // The phase 'next' brings after `p`: the level's own phases in order, and
-  // from a bought phase the one after the last of them to run.
+  // from a bought phase the one after the last of them to run. With loops
+  // to read (R9), a called bought phase goes first, since it has no turn of
+  // its own, and a `skip` phase nobody has called is passed over; when
+  // every other phase is passed over the answer is `p` itself, and the
+  // green rests where it is.
   _after(p) {
     const n = this.cycle;
-    return p < n ? (p + 1) % n : (this.lastBase + 1) % n;
+    const from = p < n ? p : this.lastBase;
+    if (!this.sensing) return (from + 1) % n;
+    for (let i = n; i < this.phases.length; i++) if (this.calls.has(i) && i !== p) return i;
+    for (let k = 1; k <= n; k++) {
+      const i = (from + k) % n;
+      if (i === p) return p;
+      if (!this.phases[i].skip || this.calls.has(i)) return i;
+    }
+    for (let k = 1; k <= n; k++) if (!this.phases[(from + k) % n].skip) return (from + k) % n;
+    return p;
+  }
+
+  // The phase a call for `movement` is for (R9): the first that carries it
+  // protected, else the first that carries it at all, the level's own
+  // before a bought one. null when no phase carries it.
+  servingPhase(movement) {
+    const carries = (p, prot) => p.movements.includes(movement) && (!prot || !p.permissive.includes(movement));
+    for (const prot of [true, false]) {
+      for (let i = 0; i < this.phases.length; i++) if (carries(this.phases[i], prot)) return i;
+    }
+    return null;
   }
 
   // A timed green is ending: what it lost against the plan (or gained) comes

@@ -13,12 +13,13 @@ import { LEVELS, levelById } from './levels/pack-01.js';
 import { gridLevel, districtLevel } from './grid.js';
 import { makeSlot, recordResult, recordEndless, totalStars } from './save.js';
 import { SHOP, shopItem, isOpen, nextLevel, owned, wallet, canBuy, buy, applies, loadout, endlessOpen, ENDLESS_AFTER } from './campaign.js';
-import { dayLevel, daySeed, carryOver, DAY_SECONDS } from './endless.js';
+import { dayLevel, daySeed, carryOver, boxesOf, applyBoxes, DAY_SECONDS } from './endless.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 import { waveModel, WaveHistory, drawWave } from './wave.js';
 import { legDir } from './network.js';
 import { exitLeg, parseMovement } from './signals.js';
 import { loadSheet } from './sprites.js';
+import { Sound } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -38,6 +39,7 @@ const LESSON_TAB = {
   endless: 'rules',
 };
 const STRIP_SECONDS = 60;
+const RING_METER_NOTE = 'A roundabout: every car yields to the ring, and the ring never stops for anyone. Its one light is the entry meter below.';
 const RING_NOTE = 'A roundabout: no lights and nothing to press. Every car yields to the ring, and the ring never stops for anyone.';
 const RING_SWITCH = ' Switch it off in the shop to play this board\'s signals.';
 const FRESH = 2.5;
@@ -73,13 +75,21 @@ class Game {
     this.seed = 1;
     this.node = 0;           // the box the panel drives (a corridor has two)
     this.ringOn = true;      // the roundabout's switch, when it is owned (#599)
+    this.meterFor = {};      // the ring's entry meter per level id, { leg, red } (R10): the session's, never stored, like the switch
     this.wave = new WaveHistory();   // the platoon diagram's samples (M7)
     this.hudEls = {};
     this.tab = 'phases';
     this.bannerKey = '';
     this.run = null;         // an endless run (M9): { seed, day, days, points }
     this.district = { boxes: 1, seed: DEBUG ? 7 : rollCity() };   // the sandbox's choice (#614)
+    // the sound (R7): the context waits for the first input, and
+    // settings.sound, in the save since version 1, is its switch
+    this.sound = new Sound({ enabled: this.save.settings.sound !== false });
+    const wake = () => this.sound.start();
+    window.addEventListener('pointerdown', wake, { once: true, capture: true });
+    window.addEventListener('keydown', wake, { once: true, capture: true });
     bindInput({ canvas: this.canvas, renderer: this.renderer, game: this });
+    this.showSound();
     window.addEventListener('resize', () => this.layout());
     this.layout();
     this.buildLevelSelect();
@@ -154,6 +164,8 @@ class Game {
       if (open && base.id === SANDBOX) list.appendChild(this.districtRow(mine));
     });
     list.appendChild(this.endlessCard());
+    const resume = this.resumeRow();
+    if (resume) list.appendChild(resume);
     $('starTotal').textContent = `${totalStars(this.save)} stars`;
     this.buildShop();
   }
@@ -215,6 +227,25 @@ class Game {
     return card;
   }
 
+  // A run left on a day (R14): a row under the endless card that takes it
+  // up at that day's start, with the rules and timing the day began with.
+  resumeRow() {
+    const p = this.save.endless && this.save.endless.pending;
+    if (!p || !endlessOpen(this.save)) return null;
+    const row = document.createElement('div');
+    row.className = 'resume-row';
+    row.innerHTML = `<button class="small" data-resume>Resume day ${p.day}</button><span class="district-note">City ${p.seed}, ${p.days} day${p.days === 1 ? '' : 's'} survived so far. A new run replaces it.</span>`;
+    row.querySelector('[data-resume]').addEventListener('click', () => this.resumeEndless());
+    return row;
+  }
+
+  resumeEndless() {
+    const p = this.save.endless.pending;
+    if (!p) return;
+    this.run = { seed: p.seed, day: p.day, days: p.days, points: p.points };
+    this.playDay(null, p.boxes);
+  }
+
   buildShop() {
     const box = $('shopList');
     box.innerHTML = '';
@@ -271,10 +302,16 @@ class Game {
 
   // Day `run.day` of the run, with yesterday's rules and timing on every
   // box that stood yesterday (#611).
-  playDay(yesterday) {
+  // A resumed day (R14) takes its boxes from the save instead. Either way
+  // the day is recorded as pending as it starts.
+  playDay(yesterday, boxes = null) {
     const r = this.run;
     this.play(loadout(dayLevel(r.seed, r.day), this.bought()), daySeed(r.seed, r.day));
-    if (yesterday) { carryOver(yesterday, this.world); this.buildTiming(); this.buildRules(); }
+    if (yesterday) carryOver(yesterday, this.world);
+    else if (boxes) applyBoxes(boxes, this.world);
+    if (yesterday || boxes) { this.buildTiming(); this.buildRules(); }
+    this.save.endless.pending = { seed: r.seed, day: r.day, days: r.days, points: r.points, boxes: boxesOf(this.world) };
+    this.slot.save(this.save);
   }
 
   // The end card's first button: the next day of a run that survived, the
@@ -293,6 +330,8 @@ class Game {
     this.seed = seed ?? ((Date.now() % 100000) + 1);
     if (DEBUG) this.seed = seed ?? 7;
     this.world = new World(lvl, this.seed);
+    const mt = this.meterFor[lvl.id];
+    if (lvl.ringMeter && mt && mt.leg) this.world.setMeter(mt.leg, mt.red ?? lvl.ringMeter.red);
     this.node = 0;
     this.wave.reset();
     this.renderer.reset();
@@ -360,8 +399,39 @@ class Game {
   // to its signals because it has none.
   showRing() {
     $('ringNote').classList.toggle('hidden', !this.onRing);
-    $('ringNote').textContent = RING_NOTE + (this.isGrid ? '' : RING_SWITCH);
+    // the shop's switch is the way back to signals only on a board the ring converted
+    const converted = !this.isGrid && (this.level.bought || []).includes('roundabout');
+    $('ringNote').textContent = (this.meterOffered ? RING_METER_NOTE : RING_NOTE) + (converted ? RING_SWITCH : '');
     $('strip').classList.toggle('hidden', this.onRing);
+    this.buildMeter();
+  }
+
+  // The entry meter (R10, #778): offered on a converted board whose
+  // calibration found one that beats the bare ring, never on a grid. The
+  // leg and the red are the session's, and every run of the board starts
+  // with them.
+  get meterOffered() { return !!(this.onRing && !this.isGrid && this.level && this.level.ringMeter); }
+  get meter() { return this.meterFor[this.level.id] || (this.meterFor[this.level.id] = { leg: null, red: null }); }
+  buildMeter() {
+    const box = $('meterBox');
+    box.classList.toggle('hidden', !this.meterOffered);
+    if (!this.meterOffered) return;
+    const red = this.meter.red ?? this.level.ringMeter.red;
+    const sel = $('meterLeg');
+    sel.innerHTML = '';
+    for (const [v, t] of [['', 'off']].concat(this.world.nodes[0].legs.map(l => [l, `on ${l}`]))) {
+      const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
+    }
+    sel.value = this.meter.leg || '';
+    $('meterRed').value = String(red);
+    $('meterRedVal').textContent = String(red);
+  }
+  setMeter(leg, red) {
+    if (!this.meterOffered) return;
+    if (leg !== undefined) this.meter.leg = leg || null;
+    if (red !== undefined) { this.meter.red = red; $('meterRedVal').textContent = String(red); }
+    this.world.setMeter(this.meter.leg, this.meter.red ?? this.level.ringMeter.red);
+    this.updateHud(true);
   }
 
   // A corridor: which box the panel drives. The phases, the sliders and the
@@ -463,6 +533,8 @@ class Game {
     const r = this.result, run = this.run;
     if (r.survived) { run.days = run.day; run.points += r.points; }
     const best = recordEndless(this.save, { days: run.days, points: run.points, seed: run.seed }, { first: run.day === 1 });
+    // a survived day leaves the run on the next one, with today's rules; a lost one ends it (R14)
+    this.save.endless.pending = r.survived ? { seed: run.seed, day: run.day + 1, days: run.days, points: run.points, boxes: boxesOf(this.world) } : null;
     this.slot.save(this.save);
     const e = this.save.endless;
     $('endTitle').textContent = r.survived ? `Day ${run.day} survived.` : 'The run is over.';
@@ -504,6 +576,9 @@ class Game {
       }
     }
     if (this.world) {
+      // the sound reads the world's events before the renderer drains them
+      if (this.state === 'playing' && !this.paused) this.sound.take(this.world, now, this.view());
+      else this.sound.quiet();
       this.renderer.takeEvents(this.world);
       this.renderer.draw(this.world, now);
       this.updateHud();
@@ -591,8 +666,9 @@ class Game {
     const ctl = this.ctl;
     box.innerHTML = '';
     if (!ctl.rules.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'No rules: the phases change when you press them.'; box.appendChild(p); return; }
-    const thenOptions = sel => {
-      const opts = [['next', 'the next phase']].concat(ctl.phases.map((p, i) => [String(i), `${i + 1}: ${p.name}`]));
+    // a queue rule may also call its phase for its turn (R9) instead of cutting to one
+    const thenOptions = (sel, queue) => {
+      const opts = [['next', 'the next phase']].concat(queue ? [['call', 'call its phase']] : [], ctl.phases.map((p, i) => [String(i), `${i + 1}: ${p.name}`]));
       for (const [v, label] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); }
     };
     ctl.rules.forEach((r, i) => {
@@ -601,7 +677,7 @@ class Game {
       row.dataset.i = i;
       const body = document.createElement('div');
       body.className = 'body';
-      const then = document.createElement('select'); then.className = 'then'; thenOptions(then);
+      const then = document.createElement('select'); then.className = 'then'; thenOptions(then, r.when === 'queue');
       then.value = r.then === undefined || r.then === 'next' ? 'next' : String(r.then);
       if (r.when === 'elapsed') {
         const n = document.createElement('input'); n.type = 'number'; n.className = 'seconds'; n.min = '1'; n.max = '180'; n.step = '1'; n.value = String(r.seconds);
@@ -612,7 +688,8 @@ class Game {
         mv.value = r.movement || ctl.movements[0];
         const th = document.createElement('input'); th.type = 'number'; th.className = 'threshold'; th.min = '1'; th.max = '30'; th.step = '1'; th.value = String(r.threshold ?? 3);
         const af = document.createElement('input'); af.type = 'number'; af.className = 'after'; af.min = '0'; af.max = '180'; af.step = '1'; af.value = String(r.after ?? ctl.timing.minGreen);
-        body.append('when ', mv, ' has ', th, ' queued, after ', af, ' s, go to ', then);
+        if (r.then === 'call') body.append('when ', mv, ' has ', th, ' queued, ', then);
+        else body.append('when ', mv, ' has ', th, ' queued, after ', af, ' s, go to ', then);
       }
       const ops = document.createElement('div'); ops.className = 'ops';
       for (const [cls, glyph, title] of [['up', '▲', 'earlier'], ['down', '▼', 'later'], ['remove', '✕', 'remove']]) {
@@ -633,9 +710,14 @@ class Game {
   readRule(row, r) {
     const out = { ...r };
     const then = row.querySelector('select.then').value;
-    out.then = then === 'next' ? 'next' : Number(then);
+    out.then = then === 'next' || then === 'call' ? then : Number(then);
     if (r.when === 'elapsed') out.seconds = Math.max(1, Number(row.querySelector('input.seconds').value) || 1);
-    else { out.movement = row.querySelector('select.movement').value; out.threshold = Math.max(1, Number(row.querySelector('input.threshold').value) || 1); out.after = Math.max(0, Number(row.querySelector('input.after').value) || 0); }
+    else {
+      out.movement = row.querySelector('select.movement').value; out.threshold = Math.max(1, Number(row.querySelector('input.threshold').value) || 1);
+      const af = row.querySelector('input.after');   // a call rule shows no `after`: it cuts nothing
+      if (af) out.after = Math.max(0, Number(af.value) || 0);
+      else if (out.after === undefined) out.after = this.ctl.timing.minGreen;
+    }
     return out;
   }
 
@@ -660,12 +742,31 @@ class Game {
     });
   }
 
+  // The board's left and right edges in world x, for the siren's pan.
+  view() { return { x0: this.renderer.toWorld(0, 0).x, x1: this.renderer.toWorld(this.renderer.width, 0).x }; }
+
+  // The sound switch writes settings.sound at once, so a reload keeps it.
+  toggleSound() {
+    this.save.settings.sound = !(this.save.settings.sound !== false);
+    this.slot.save(this.save);
+    this.sound.setEnabled(this.save.settings.sound);
+    this.showSound();
+  }
+
+  showSound() {
+    const on = this.save.settings.sound !== false;
+    $('soundBtn').textContent = on ? 'Sound on' : 'Sound off';
+    $('soundBtn').setAttribute('aria-pressed', String(on));
+  }
+
   togglePause() { if (this.state === 'playing') { this.paused = !this.paused; $('pauseBtn').textContent = this.paused ? 'Resume' : 'Pause'; } }
   toggleSpeed() { this.speed = this.speed === 1 ? 2 : 1; $('speedBtn').textContent = `${this.speed}x`; }
 
-  carAt(x, y) {
+  // The car nearest (x, y) within `reach` metres; a tap reaches further
+  // than a cursor (input.js TAP_PX).
+  carAt(x, y, reach = 3.5) {
     if (!this.world) return null;
-    let best = null, bd = 3.5;
+    let best = null, bd = Math.max(3.5, reach);
     for (const c of this.world.cars) {
       if (c.done) continue;
       const p = c.path.at(c.s);
@@ -703,6 +804,7 @@ class Game {
       b.setAttribute('aria-label', `${i + 1}: ${p.name}, ${p.movements.join(' ')}`);
       const key = document.createElement('span'); key.className = 'key'; key.textContent = String(i + 1);
       const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
+      if (p.skip) { b.classList.add('skips'); b.title = 'Skipped when nobody has called it: a queue rule set to call its phase calls it'; }
       b.append(key, phaseDiagram(legs, p), name);
       b.addEventListener('click', () => this.requestPhase(i));
       b.addEventListener('mouseenter', () => this.preview(i));
@@ -746,6 +848,10 @@ class Game {
     $('honks').textContent = String(m.honks);
     $('pedLate').textContent = String(m.pedLate);
     $('pedLate').className = m.pedLate ? 'bad' : '';
+    if (this.meterOffered) {
+      const mt = w.meters[0];
+      $('meterState').textContent = mt ? `${mt.leg} is ${w.meterHead(mt.leg)}, watching ${mt.watch}'s loop · fired ${mt.fired} time${mt.fired === 1 ? '' : 's'}` : 'Off. Put it on the leg whose traffic keeps the next leg round waiting.';
+    }
     const flashing = ctl.stage === 'flash';
     const stageOf = c => {
       if (c.roundabout) return 'Roundabout: no signals';
@@ -800,6 +906,7 @@ class Game {
       const i = +b.dataset.phase;
       b.classList.toggle('active', i === ctl.phase && !ctl.preemption && !flashing);
       b.classList.toggle('queued', ctl.next === i);
+      b.classList.toggle('called', ctl.calls.has(i));
       b.classList.toggle('green', i === ctl.phase && ctl.stage === 'green' && !ctl.preemption);
     }
     $('flashRedBtn').classList.toggle('on', flashing && ctl.flash === 'red');
@@ -849,7 +956,7 @@ class Game {
   mountSave() {
     mountSaveBar($('saveBar'), this.slot, {
       getState: () => this.save,
-      setState: s => { this.save = s; this.buildLevelSelect(); },
+      setState: s => { this.save = s; this.sound.setEnabled(s.settings.sound !== false); this.showSound(); this.buildLevelSelect(); },
       filename: 'signal-city-save.json',
     });
   }
@@ -938,12 +1045,15 @@ $('priorityBtn').addEventListener('click', () => game.priorityNearest());
 $('retryBtn').addEventListener('click', () => game.retry());
 $('levelsBtn').addEventListener('click', () => { $('endScrim').classList.remove('show'); $('selectScrim').classList.add('show'); game.state = 'select'; });
 $('menuBtn').addEventListener('click', () => game.escape());
+$('soundBtn').addEventListener('click', () => game.toggleSound());
 $('flashRedBtn').addEventListener('click', () => game.setFlash('red'));
 $('flashYellowBtn').addEventListener('click', () => game.setFlash('yellow'));
 $('signalsBtn').addEventListener('click', () => game.setFlash(null));
 $('yellowRange').addEventListener('input', e => game.setTiming({ yellow: Number(e.target.value) }));
 $('allRedRange').addEventListener('input', e => game.setTiming({ allRed: Number(e.target.value) }));
 $('offsetRange').addEventListener('input', e => game.setOffset(Number(e.target.value)));
+$('meterLeg').addEventListener('change', e => game.setMeter(e.target.value));
+$('meterRed').addEventListener('input', e => game.setMeter(undefined, Number(e.target.value)));
 $('addElapsedBtn').addEventListener('click', () => game.addRule('elapsed'));
 $('addQueueBtn').addEventListener('click', () => game.addRule('queue'));
 $('helpBtn').addEventListener('click', () => game.toggleHelp());
@@ -953,7 +1063,8 @@ if (DEBUG) {
   window.__signalCity = {
     game,
     get world() { return game.world; },
-    step(n = 1) { for (let i = 0; i < n; i++) { game.world.step(); game.wave.sample(game.world); } game.renderer.takeEvents(game.world); game.updateHud(true); },
+    step(n = 1) { for (let i = 0; i < n; i++) { game.world.step(); game.wave.sample(game.world); } game.sound.take(game.world, performance.now() / 1000, game.view()); game.renderer.takeEvents(game.world); game.updateHud(true); },
+    get sound() { return game.sound; },
     setOffset(s) { game.setOffset(s); },
     callPed(leg) { game.callPed(leg); },
     selectNode(i) { game.selectNode(i); },

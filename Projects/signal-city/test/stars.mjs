@@ -11,7 +11,13 @@
 // scoring.js's lessonMet (the helper under test): on every seed, the move
 // the level teaches was not made by nobody. The ambulance had no corridor,
 // a platoon was split, over half the cars one box handed on stopped again,
-// a walk call waited past the lesson's bar.
+// a walk call waited past the lesson's bar, no entry meter fired.
+//
+// R10's rule (#778) rides here too: a converted board's `ring.meter`, the
+// entry meter it sells, beats the bare ring's average wait on at least
+// four seeds of six, the meter and the bare ring each played with no
+// other input; and every board the roundabout converts says which meter
+// it sells, or null.
 //
 // Each level runs in a child process of this file, as many at once as
 // there are cores: the six seeds are 5 to 17 s each. Exits non-zero on any
@@ -27,6 +33,7 @@ const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World } = await load('sim.js');
 const { score, starString } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
+const { loadout, convertible } = await load('campaign.js');
 
 const SEEDS = [1, 2, 3, 4, 5, 6];
 
@@ -42,13 +49,30 @@ function runLevel(level) {
     for (const e of w.events) if (e.kind === 'walk') longestCall = Math.max(longestCall, e.waited);
     for (const calls of w.pedCalls) for (const c of Object.values(calls)) if (c) longestCall = Math.max(longestCall, w.t - c.since);
     const escorted = w.events.filter(e => e.kind === 'priority').length;
-    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: s.gridlock, splits: s.platoonSplits, ambulances: s.ambulances, escorted, carried: s.carried, carriedStops: s.carriedStops, longestCall };
+    const meterFired = w.meters.reduce((n, m) => n + (m ? m.fired : 0), 0);
+    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: s.gridlock, splits: s.platoonSplits, ambulances: s.ambulances, escorted, carried: s.carried, carriedStops: s.carriedStops, longestCall, meterFired };
   });
+}
+
+// One converted board as a ring, six seeds bare and six with its meter.
+function runMeter(level) {
+  const ring = loadout(level, ['roundabout']);
+  const wait = lvl => SEEDS.map(seed => {
+    const w = new World(lvl, seed);
+    for (let i = 0; i < lvl.duration * 60 && !w.stats.gridlock; i++) w.step();
+    return score(w).avgWait;
+  });
+  return { bare: wait(ring), meter: wait({ ...ring, meter: level.ring.meter }) };
 }
 
 const child = process.argv.indexOf('--level');
 if (child > 0) {
   process.stdout.write(JSON.stringify(runLevel(levelById(process.argv[child + 1]))));
+  process.exit(0);
+}
+const meterChild = process.argv.indexOf('--meter');
+if (meterChild > 0) {
+  process.stdout.write(JSON.stringify(runMeter(levelById(process.argv[meterChild + 1]))));
   process.exit(0);
 }
 
@@ -60,11 +84,12 @@ const ok = (cond, what, detail = '') => {
 
 const starred = LEVELS.filter(l => !l.sandbox);
 const self = fileURLToPath(import.meta.url);
-const runChild = id => new Promise((resolve, reject) => execFile(process.execPath, [self, '--level', id], { maxBuffer: 1 << 20 }, (err, out, errOut) => (err ? reject(new Error(`${id}: ${errOut || err.message}`)) : resolve(JSON.parse(out)))));
-const results = new Map();
-const queue = starred.map(l => l.id);
+const runChild = (id, flag = '--level') => new Promise((resolve, reject) => execFile(process.execPath, [self, flag, id], { maxBuffer: 1 << 20 }, (err, out, errOut) => (err ? reject(new Error(`${id}: ${errOut || err.message}`)) : resolve(JSON.parse(out)))));
+const results = new Map(), meters = new Map();
+const metered = LEVELS.filter(l => convertible(l) && l.ring && l.ring.meter);
+const queue = metered.map(l => ['--meter', l.id]).concat(starred.map(l => ['--level', l.id]));
 await Promise.all(Array.from({ length: Math.max(1, Math.min(os.cpus().length, queue.length)) }, async () => {
-  while (queue.length) { const id = queue.shift(); results.set(id, await runChild(id)); }
+  while (queue.length) { const [flag, id] = queue.shift(); (flag === '--meter' ? meters : results).set(id, await runChild(id, flag)); }
 }));
 
 const cellText = r => `${r.lock ? 'LOCK' : r.cleared} ${r.wait.toFixed(0)}s ${starString(r.stars)}`;
@@ -82,12 +107,14 @@ const played = {
   platoons: (r) => r.splits === 0,
   progression: (r, l) => r.carried > 0 && r.carriedStops / r.carried <= l.lesson.stops,
   walks: (r, l) => r.longestCall <= l.lesson.within,
+  meter: (r) => r.meterFired > 0,
 };
 const said = {
   ambulance: r => `${r.escorted} corridor${r.escorted === 1 ? '' : 's'}`,
   platoons: r => `${r.splits} split`,
   progression: r => `${Math.round((100 * r.carriedStops) / Math.max(1, r.carried))}% stopped again`,
   walks: r => `longest call ${r.longestCall.toFixed(0)} s`,
+  meter: r => `meter fired ${r.meterFired}`,
 };
 console.log('\nand on a lesson level the World says nobody played the lesson');
 for (const level of starred.filter(l => l.lesson)) {
@@ -96,6 +123,15 @@ for (const level of starred.filter(l => l.lesson)) {
   if (!test) { ok(false, `${level.name}: a lesson kind this suite can read`, level.lesson.kind); continue; }
   const made = rows.filter(r => test(r, level)).map(r => r.seed);
   ok(made.length === 0, `${level.name}: the lesson (${level.lesson.kind}) was not played on any seed`, `${rows.map(r => said[level.lesson.kind](r)).join(' | ')}${made.length ? `, played on seed ${made.join(', ')}` : ''}`);
+}
+
+console.log('\na ring sells an entry meter only where it beats the bare ring on four seeds of six (R10)');
+const converted = LEVELS.filter(convertible);
+ok(converted.length > 0 && converted.every(l => l.ring && 'meter' in l.ring), 'every board the roundabout converts says which meter it sells, or null', converted.map(l => `${l.id}: ${JSON.stringify(l.ring && l.ring.meter)}`).join(', '));
+for (const level of metered) {
+  const { bare, meter } = meters.get(level.id);
+  const wins = meter.filter((x, i) => x < bare[i] - 1e-9).length;
+  ok(wins >= 4, `${level.name}: a meter on ${level.ring.meter.leg} at ${level.ring.meter.red} s beats the bare ring's wait on ${wins} seeds of six`, bare.map((b, i) => `${b.toFixed(1)} to ${meter[i].toFixed(1)} s`).join(' | '));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

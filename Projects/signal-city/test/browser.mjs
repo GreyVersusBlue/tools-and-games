@@ -106,7 +106,7 @@ try {
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
-    ok(sel.cards.length === 9 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Free Play', 'with nine cards, First Light first and Free Play last', sel.cards.join(', '));
+    ok(sel.cards.length === 10 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Market Ring,Free Play', 'with ten cards, First Light first, Market Ring after Main Street (R13) and Free Play last', sel.cards.join(', '));
     ok(sel.endless, 'and after them Endless, shut (M9)');
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     const camp = await page.evaluate(() => ({
@@ -117,8 +117,8 @@ try {
       wallet: document.getElementById('wallet').textContent,
       shop: [...document.querySelectorAll('#shopList .shop-item')].map(e => `${e.dataset.item}:${e.querySelector('.buy').disabled ? 'off' : 'on'}`).join(),
     }));
-    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street' && camp.disabled === 7,
-      'a fresh save has seven cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
+    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring' && camp.disabled === 8,
+      'a fresh save has eight cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
     ok(camp.next === 'first-light' && camp.shut === 'A star on First Light opens it.', 'First Light is marked next and the Stem says what opens it', `${camp.next}; ${camp.shut}`);
     ok(camp.wallet === '0 to spend' && camp.shop === 'lefts:off,split:off,sensors:off,roundabout:off', 'the shop has four things on it and nothing to spend', `${camp.wallet}; ${camp.shop}`);
     await shot(page, 'select');
@@ -367,7 +367,9 @@ try {
       stage: document.getElementById('stage').textContent, cause: document.getElementById('cause').textContent,
       target: window.__signalCity.world.level.target, waitTarget: window.__signalCity.world.level.waitTarget,
       strip: document.getElementById('strip').classList.contains('hidden'), hint: document.getElementById('hint').textContent,
+      meter: document.getElementById('meterBox').classList.contains('hidden'),
     }));
+    ok(r2.meter, 'and offers no entry meter: none beats First Light\'s bare ring (R10, #778)');
     ok(r2.ring && r2.note && r2.offered === '', 'First Light opens as a ring: the note shows and no tab is offered', `tabs "${r2.offered}"`);
     ok(r2.stage === 'Roundabout: no signals' && r2.cause === 'Every entry yields to the ring' && r2.strip, 'the Signal line says there are none, with no strip of phases under it', `${r2.stage}; ${r2.cause}`);
     ok(/^Nothing to press here/.test(r2.hint), 'and the help says there is nothing to press, not First Light\'s "press 1 and 2"', r2.hint.slice(0, 40));
@@ -392,6 +394,25 @@ try {
     await new Promise(r => setTimeout(r, 300));
     const fp = await page.evaluate(() => ({ ring: window.__signalCity.world.nodes[0].roundabout === true, amb: window.__signalCity.world.cars.some(c => !c.done && c.archetype === 'emergency'), btn: document.getElementById('priorityBtn').classList.contains('show') }));
     ok(fp.ring && fp.amb && !fp.btn, 'Free Play on the ring: its ambulance is on the map at 62 s and no priority button offers a corridor the ring would refuse', JSON.stringify(fp));
+    // Free Play's ring sells the entry meter (R10, #778): a leg and a red
+    const m0 = await page.evaluate(() => ({ shown: !document.getElementById('meterBox').classList.contains('hidden'), legs: [...document.querySelectorAll('#meterLeg option')].map(o => o.value || 'off').join(','), meter: window.__signalCity.world.meters[0], note: document.getElementById('ringNote').textContent }));
+    ok(m0.shown && m0.legs === 'off,N,E,S,W' && m0.meter === null, 'Free Play on the ring offers the entry meter, off, with a leg to pick', JSON.stringify(m0).slice(0, 90));
+    ok(/entry meter below/.test(m0.note) && !/nothing to press/.test(m0.note), 'and its ring note names the meter instead of saying there is nothing to press', m0.note.slice(0, 60));
+    await page.evaluate(() => {
+      const l = document.getElementById('meterLeg'); l.value = 'S'; l.dispatchEvent(new Event('change'));
+      const r = document.getElementById('meterRed'); r.value = '5'; r.dispatchEvent(new Event('input'));
+    });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 60);
+    const m1 = await page.evaluate(() => ({ m: window.__signalCity.world.meters[0], state: document.getElementById('meterState').textContent, val: document.getElementById('meterRedVal').textContent }));
+    ok(m1.m && m1.m.leg === 'S' && m1.m.watch === 'E' && m1.m.red === 5 && m1.val === '5', 'picking S and 5 s puts a meter on S watching E, holding 5 s', JSON.stringify(m1.m));
+    ok(/^S is (green|amber|red), watching E's loop · fired \d+ time/.test(m1.state), 'and the panel reads its light and how often it has fired', m1.state);
+    await shot(page, 'roundabout-meter');
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="free-play"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'free-play' && window.__signalCity.world.t < 1, { timeout: 5000 });
+    const m2 = await page.evaluate(() => ({ m: window.__signalCity.world.meters[0], sel: document.getElementById('meterLeg').value }));
+    ok(m2.m && m2.m.leg === 'S' && m2.m.red === 5 && m2.sel === 'S', 'and the next run of the board starts with the same meter', JSON.stringify(m2));
+    await page.evaluate(() => { window.__signalCity.game.paused = true; window.__signalCity.game.meterFor = {}; });
     // switched off in the shop, First Light is its signals again
     await page.keyboard.press('Escape');
     await page.click('.shop-item[data-item="roundabout"] .buy');
@@ -405,6 +426,30 @@ try {
     // back as the rest of the suite expects: nothing bought, the switch on, the levels as they were
     await page.evaluate(b => { const g = window.__signalCity.game; g.save.unlocks = ['phases']; g.save.levels = JSON.parse(b); g.ringOn = true; g.slot.save(g.save); g.buildLevelSelect(); }, before);
     ok(errors.length === 0, 'no page errors on the ring', errors.join(' | '));
+  });
+
+  await section('Market Ring: a level built as a ring, its lesson the entry meter (R13)', async () => {
+    await page.keyboard.press('Escape');
+    const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); g.save.levels['main-street'] = { stars: 1, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
+    const c0 = await page.evaluate(() => { const c = document.querySelector('.level-card[data-level="market-ring"]'); return c && { lesson: c.querySelector('.lv-lesson')?.textContent || '', next: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
+    ok(c0 && /entry meter/.test(c0.lesson) && c0.next === 'main-street' && c0.after === 'free-play', 'its card follows Main Street, before Free Play, and names the meter as its second star', JSON.stringify(c0));
+    await page.click('.level-card[data-level="market-ring"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'market-ring', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const m0 = await page.evaluate(() => ({
+      ring: window.__signalCity.world.nodes[0].roundabout === true, meter: window.__signalCity.world.meters[0],
+      shown: !document.getElementById('meterBox').classList.contains('hidden'), leg: document.getElementById('meterLeg').value, red: document.getElementById('meterRed').value,
+      note: document.getElementById('ringNote').textContent, tabs: [...document.querySelectorAll('#tabs .tab:not(.hidden)')].map(b => b.dataset.tab).join(','),
+    }));
+    ok(m0.ring && m0.shown && m0.meter === null && m0.leg === '' && m0.red === '4' && m0.tabs === '', 'it plays as a ring with no tabs, the meter offered and off, its red at 4 s', JSON.stringify(m0).slice(0, 120));
+    ok(!/shop/.test(m0.note), 'and its note does not send the player to a shop switch it never bought', m0.note);
+    await page.evaluate(() => { const l = document.getElementById('meterLeg'); l.value = 'E'; l.dispatchEvent(new Event('change')); });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 90);
+    const m1 = await page.evaluate(() => ({ m: window.__signalCity.world.meters[0], state: document.getElementById('meterState').textContent }));
+    ok(m1.m && m1.m.leg === 'E' && m1.m.watch === 'N' && m1.m.red === 4 && m1.m.fired > 0, 'on E it watches N and fires within 90 s', `${m1.state}`);
+    await shot(page, 'market-ring');
+    await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.meterFor = {}; g.slot.save(g.save); g.buildLevelSelect(); }, before);
+    ok(errors.length === 0, 'no page errors on Market Ring', errors.join(' | '));
   });
 
   await section('Stem and the all-red slider', async () => {
@@ -507,6 +552,8 @@ try {
       calls: [...document.querySelectorAll('#calls .call')].map(b => b.dataset.leg),
       rows: [...document.querySelectorAll('#rules .rule')].map(r => r.className),
       badge: document.querySelector('#rules .badge')?.textContent || '',
+      ruleThen: [...document.querySelectorAll('#rules .rule')].map(r => r.querySelector('select.then').value + (r.querySelector('input.after') ? '+after' : '')).join(','),
+      skips: [...document.querySelectorAll('#phases .phase')].map(e => e.classList.contains('skips')).join(),
       sensors: window.__signalCity.world.sensors,
       loops: [window.__signalCity.world.hasLoop(0, 'N', 1), window.__signalCity.world.hasLoop(0, 'N', 0)],
     }));
@@ -522,7 +569,8 @@ try {
     await page.click('#tabs .tab[data-tab="crossings"]');
     ok(await page.evaluate(() => !document.getElementById('pedLateStat').classList.contains('hidden')), 'a level with crossings shows the walkers stat');
     ok(c0.sensors && c0.sensorsNote && c0.loops[0] && !c0.loops[1], 'the loops are live, on the left bays only', `bay ${c0.loops[0]}, curb ${c0.loops[1]}`);
-    ok(c0.rows.length === 3 && c0.rows.filter(r => /sensed/.test(r)).length === 2 && !c0.rows.some(r => /sleeping/.test(r)) && c0.badge === '', 'its two queue rules show live, not greyed, with no badge', c0.rows.join(' | '));
+    ok(c0.rows.length === 5 && c0.rows.filter(r => /sensed/.test(r)).length === 4 && !c0.rows.some(r => /sleeping/.test(r)) && c0.badge === '', 'its four queue rules show live, not greyed, with no badge', c0.rows.join(' | '));
+    ok(c0.ruleThen === 'call,call,call,call,next' && c0.skips === 'false,true,false,true', 'they read "call its phase" with no after field, and the two arrow cards are marked as skipping (R9)', `${c0.ruleThen}; ${c0.skips}`);
     await page.click('#calls .call[data-leg="N"]');
     const c1 = await page.evaluate(() => ({
       pending: !!window.__signalCity.world.pedCalls[0].N,
@@ -569,7 +617,7 @@ try {
     await page.click('#tabs .tab[data-tab="rules"]');
     await page.click('#addQueueBtn');
     const c5 = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#rules .rule')].map(r => r.className), badge: document.querySelector('#rules .badge')?.textContent || '' }));
-    ok(c5.rows.length === 4 && /sensed/.test(c5.rows[3]) && c5.badge === '', 'a queue rule added here is live at once', c5.rows[3]);
+    ok(c5.rows.length === 6 && /sensed/.test(c5.rows[5]) && c5.badge === '', 'a queue rule added here is live at once', c5.rows[5]);
     ok(errors.length === 0, 'no page errors on Crossing', errors.join(' | '));
   });
 
@@ -978,7 +1026,8 @@ try {
     }));
     ok(e1.title === 'Day 1 survived.' && e1.stars === '' && e1.button === 'Next day', 'the day ends on "Day 1 survived.", no stars, and a Next day button', `${e1.title} ${e1.result.cleared}/${e1.result.target}; ${e1.button}`);
     ok(e1.run === `1 day · ${e1.result.points} points` && /^1 day · \d+ points · new$/.test(e1.best) && e1.city === '7', 'the card reads the run, the city it is on and the new best', `${e1.run}; city ${e1.city}; ${e1.best}`);
-    ok(e1.saved.days === 1 && e1.saved.points === e1.result.points && e1.saved.runs === 1 && e1.saved.seed === 7 && !e1.levels.includes('endless'), 'and the save under signal_city_v1 holds the best under endless, not among the levels', JSON.stringify(e1.saved));
+    ok(e1.saved.days === 1 && e1.saved.points === e1.result.points && e1.saved.runs === 1 && e1.saved.seed === 7 && !e1.levels.includes('endless'), 'and the save under signal_city_v1 holds the best under endless, not among the levels', JSON.stringify({ ...e1.saved, pending: undefined }));
+    ok(e1.saved.pending && e1.saved.pending.day === 2 && e1.saved.pending.days === 1 && e1.saved.pending.boxes[0].timing.allRed === 2.5, 'and leaves the run pending on day 2, with box 1\'s 2.5 s all-red (R14)', JSON.stringify(e1.saved.pending).slice(0, 100));
     await page.click('#retryBtn');
     await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 4, { timeout: 5000 });
     await page.evaluate(() => { window.__signalCity.game.paused = true; });
@@ -1001,6 +1050,7 @@ try {
     }));
     ok(e2.title === 'The run is over.' && /the grid locked/.test(e2.why) && e2.button === 'Again', 'a locked grid ends the run: "The run is over.", the reason, and Again', `${e2.title} ${e2.why}`);
     ok(/^1 day · /.test(e2.run) && !/new/.test(e2.best) && e2.saved.days === 1 && e2.saved.runs === 1, 'the run stands at the one day it survived, and the best is unchanged', `${e2.run}; ${e2.best}; ${JSON.stringify(e2.saved)}`);
+    ok(e2.saved.pending === null, 'and nothing is left pending: a lost run is over (R14)');
     await page.click('#retryBtn');
     await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 3, { timeout: 5000 });
     const d3 = await page.evaluate(() => ({ run: window.__signalCity.run, name: document.getElementById('levelName').textContent, allRed: window.__signalCity.world.controllers[0].timing.allRed }));
@@ -1010,6 +1060,14 @@ try {
     await waitFor(page, () => !!window.__signalCity && !!document.querySelector('.level-card[data-level="endless"]'), { timeout: 15000 });
     const c2 = await page.evaluate(() => ({ best: document.querySelector('.level-card[data-level="endless"] .lv-best')?.textContent, e: window.__signalCity.game.save.endless }));
     ok(c2.best === `best 1 day · ${e1.result.points} points` && c2.e.runs === 1, 'after a reload the card reads the best; the second run, left before its first day ended, is not counted', `${c2.best}; ${c2.e.runs} run`);
+    // R14: that second run was left on day 1, and the select offers it back
+    const r0 = await page.evaluate(() => { const r = document.querySelector('#levelList .resume-row'); return r && { text: r.textContent, after: r.previousElementSibling && r.previousElementSibling.dataset.level }; });
+    ok(r0 && /^Resume day 1City 7, 0 days survived/.test(r0.text) && r0.after === 'endless', 'after the reload a row under the Endless card offers the run left on day 1 back (R14)', r0 && r0.text);
+    await page.click('#levelList .resume-row [data-resume]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'endless', { timeout: 5000 });
+    const d4 = await page.evaluate(() => ({ run: window.__signalCity.run, name: document.getElementById('levelName').textContent, t: window.__signalCity.world.t }));
+    ok(d4.run.seed === 7 && d4.run.day === 1 && d4.name === 'Endless, day 1' && d4.t < 1, 'and takes it up at the day\'s start, on its city', JSON.stringify(d4.run));
+    await page.keyboard.press('Escape');
     await page.evaluate(() => document.querySelector('.level-card[data-level="endless"]').scrollIntoView({ block: 'center' }));
     await shot(page, 'endless-card');
     // put the save back
@@ -1082,7 +1140,7 @@ try {
     });
     const r0 = await row();
     ok(r0.after && r0.size === 'one box' && r0.less && !r0.more && !r0.reroll && r0.city === null, 'under Free Play\'s card a district row reads one box, with no city to reroll yet', JSON.stringify(r0));
-    ok(/clear 60$/.test(r0.meta) && r0.cards === 10, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
+    ok(/clear 60$/.test(r0.meta) && r0.cards === 11, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
     for (let i = 0; i < 5; i++) await page.click('#levelList .district [data-district="more"]');
     const r1 = await row();
     ok(r1.size === '6 boxes' && r1.city === '7' && r1.reroll && !r1.less && r1.focus === 'more', 'five presses of + make six boxes on city 7 (the debug seed), and the keyboard stays on +', `${r1.size}, city ${r1.city}, focus ${r1.focus}`);
@@ -1179,6 +1237,117 @@ try {
     ok(has, 'the page loads the car sheet without anyone asking for it');
     ok(requests.sort().join(',') === 'cars.json,cars.png', 'in exactly two requests, the atlas and the sheet', requests.join(','));
     ok(errors.length === 0, 'and with nothing on the console', errors.join(' | '));
+  });
+
+  // R7: the switch is settings.sound, written at once and read back on a
+  // reload; the context waits for an input (whether it sounds right is H3).
+  await section('the sound switch (R7)', async () => {
+    errors.length = 0;
+    await page.goto(`${BASE}/Projects/signal-city/?debug`, { waitUntil: 'load', timeout: 45000 });
+    await waitFor(page, () => !!window.__signalCity, { timeout: 15000 });
+    const before = await page.evaluate(() => ({ ctx: window.__signalCity.sound.ctx === null, text: document.getElementById('soundBtn').textContent, on: window.__signalCity.game.save.settings.sound }));
+    ok(before.ctx && before.on === true && before.text === 'Sound on', 'a fresh page has the sound on and no context until an input', JSON.stringify(before));
+    await page.evaluate(() => window.__signalCity.game.start('first-light'));
+    await page.click('#soundBtn');
+    const off = await page.evaluate(k => ({ saved: (s => (s.data || s).settings.sound)(JSON.parse(localStorage.getItem(k))), text: document.getElementById('soundBtn').textContent, pressed: document.getElementById('soundBtn').getAttribute('aria-pressed'), live: window.__signalCity.sound.live }), KEY);
+    ok(off.saved === false && off.text === 'Sound off' && off.pressed === 'false' && !off.live, 'the switch writes settings.sound false into the save at once and silences the game', JSON.stringify(off));
+    await page.reload({ waitUntil: 'load' });
+    await waitFor(page, () => !!window.__signalCity, { timeout: 15000 });
+    const kept = await page.evaluate(() => ({ text: document.getElementById('soundBtn').textContent, enabled: window.__signalCity.sound.enabled }));
+    ok(kept.text === 'Sound off' && kept.enabled === false, 'and a reload keeps it off', JSON.stringify(kept));
+    await page.evaluate(() => window.__signalCity.game.start('first-light'));
+    await page.keyboard.press('m');
+    const back = await page.evaluate(k => ({ saved: (s => (s.data || s).settings.sound)(JSON.parse(localStorage.getItem(k))), live: window.__signalCity.sound.live, made: !!window.__signalCity.sound.ctx }), KEY);
+    ok(back.saved === true && back.live && back.made, 'M switches it back on, and the context is made then', JSON.stringify(back));
+    ok(errors.length === 0, 'with nothing on the console', errors.join(' | '));
+  });
+
+  // R8: a phone, in emulation. 390 by 844 with touch: the board fills the
+  // width, the panel is reached by scrolling, a tap is a click and two
+  // fingers zoom. How it feels under a thumb is H1, on real glass.
+  await section('the phone layout, in emulation (R8)', async () => {
+    const phone = await prepPage(browser, BASE, { width: 390, height: 844, dsf: 1, mobile: true });
+    const perrs = [];
+    phone.on('pageerror', e => perrs.push(String(e && e.message || e)));
+    phone.on('console', m => { if (m.type() === 'error') perrs.push(m.text()); });
+    try {
+      await phone.goto(`${BASE}/Projects/signal-city/?debug`, { waitUntil: 'load', timeout: 45000 });
+      await waitFor(phone, () => !!window.__signalCity, { timeout: 15000 });
+      // the level list (#132): its top is on screen, and its end is reached by scrolling the scrim
+      const list = await phone.evaluate(() => {
+        const scrim = document.getElementById('selectScrim');
+        scrim.scrollTop = 0;
+        const first = document.querySelector('#levelList .level-card').getBoundingClientRect().top;
+        const head = document.querySelector('#selectScrim h2').getBoundingClientRect().top;
+        scrim.scrollTop = scrim.scrollHeight;
+        const last = document.querySelector('.level-card.endless').getBoundingClientRect();
+        const foot = document.querySelector('#selectScrim .foot').getBoundingClientRect();
+        scrim.scrollTop = 0;
+        return { head, first, lastBottom: last.bottom, footBottom: foot.bottom, H: innerHeight, scrolls: scrim.scrollHeight > scrim.clientHeight };
+      });
+      ok(list.scrolls && list.head >= 0 && list.first >= 0 && list.lastBottom <= list.H && list.footBottom <= list.H, 'the level list starts on screen and its last card is reached by scrolling it (#132)', JSON.stringify(list));
+      await phone.evaluate(() => window.__signalCity.game.start('four-ways'));
+      await new Promise(r => setTimeout(r, 300));
+      const fit = await phone.evaluate(() => {
+        const b = document.getElementById('board').getBoundingClientRect(), p = document.getElementById('panel').getBoundingClientRect();
+        return { boardW: b.width, panelW: p.width, docW: document.scrollingElement.scrollWidth, W: innerWidth, belowBoard: p.top >= b.bottom - 0.5, touch: getComputedStyle(document.getElementById('board')).touchAction };
+      });
+      ok(fit.boardW >= fit.W - 24 - 0.5 && fit.boardW === fit.panelW && fit.docW <= fit.W, 'the board fills the width (less the page padding), as wide as the panel, and nothing scrolls sideways', JSON.stringify(fit));
+      ok(fit.belowBoard && fit.touch === 'none', 'the panel is under the board, and the board takes its own touches', JSON.stringify(fit));
+      // every phase card and the Levels button, scrolled to, is on screen and the thing at its centre
+      const reach = await phone.evaluate(() => {
+        const out = [];
+        for (const e of [...document.querySelectorAll('#phases .phase'), document.getElementById('menuBtn'), document.getElementById('soundBtn')]) {
+          e.scrollIntoView({ block: 'center' });
+          const r = e.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          out.push({ id: e.id || `phase ${e.dataset.phase}`, on: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth, hit: !!hit && e.contains(hit), h: Math.round(r.height) });
+        }
+        window.scrollTo(0, 0);
+        return out;
+      });
+      ok(reach.length === 6 && reach.every(x => x.on && x.hit), 'all four phase cards, Levels and the sound switch are reached by scrolling, and nothing covers them', reach.map(x => `${x.id}${x.on && x.hit ? '' : ' MISSED'}`).join(', '));
+      ok(reach.every(x => x.h >= 36), 'and each is at least 36 px tall for a thumb', reach.map(x => x.h).join(', '));
+      // a tap on a phase card changes the signal
+      const card = await phone.evaluate(() => { const e = document.querySelector('#phases .phase[data-phase="2"]'); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      await phone.touchscreen.tap(card.x, card.y);
+      const tapped = await phone.evaluate(() => { const c = window.__signalCity.game.ctl; return { next: c.next, stage: c.stage, by: c.cause.by }; });
+      ok(tapped.next === 2 && tapped.by === 'player', 'a tap on the E-W card queues E-W, by the player', JSON.stringify(tapped));
+      // a tap on an ambulance calls its corridor
+      await phone.evaluate(() => { window.scrollTo(0, 0); const g = window.__signalCity.game; g.start('first-light'); g.paused = true; g.world.spawnCar({ leg: 'W', archetype: 'emergency', turn: 'T' });
+        // paused, so it is where it was aimed at when the tap lands; stepped until it is on the board, short of the box
+        for (let k = 0; k < 60; k++) { window.__signalCity.step(10); const c = g.world.cars.find(x => x.archetype === 'emergency'); const sp = g.renderer.toScreen(c.path.at(c.s).x, 0); if (sp.x > 30) break; } });
+      const amb = await phone.evaluate(() => {
+        const g = window.__signalCity.game, car = g.world.cars.find(c => c.archetype === 'emergency' && !c.done);
+        const p = car.path.at(car.s), sp = g.renderer.toScreen(p.x, p.y), r = g.canvas.getBoundingClientRect();
+        // a fingertip lands off-centre: aim 8 px wide of the car's middle
+        return { id: car.id, x: r.left + sp.x + 8, y: r.top + sp.y + 8, called: !!car.priority, onBoard: sp.x > 0 && sp.x < r.width && sp.y > 0 && sp.y < r.height };
+      });
+      await phone.touchscreen.tap(amb.x, amb.y);
+      const called = await phone.evaluate(id => !!window.__signalCity.world.cars.find(c => c.id === id).priority, amb.id);
+      ok(amb.onBoard && !amb.called && called, 'a tap 8 px off an ambulance calls its corridor', JSON.stringify(amb));
+      // two fingers: spread to zoom in, pinch to zoom out
+      const cdp = browser.__engine === 'playwright' ? await phone.context().newCDPSession(phone) : await phone.createCDPSession();
+      const box = await phone.evaluate(() => { const r = document.getElementById('board').getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; });
+      const pinch = async (from, to) => {
+        const pts = d => [{ x: box.cx - d, y: box.cy, id: 1 }, { x: box.cx + d, y: box.cy, id: 2 }];
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pts(from) });
+        for (let k = 1; k <= 6; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pts(from + (to - from) * k / 6) });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      };
+      const s0 = await phone.evaluate(() => ({ scale: window.__signalCity.game.renderer.scale, scroll: window.scrollY, called: window.__signalCity.world.cars.filter(c => c.priority).length }));
+      await pinch(40, 100);
+      const s1 = await phone.evaluate(() => ({ scale: window.__signalCity.game.renderer.scale, scroll: window.scrollY, called: window.__signalCity.world.cars.filter(c => c.priority).length }));
+      await pinch(100, 50);
+      const s2 = await phone.evaluate(() => window.__signalCity.game.renderer.scale);
+      ok(s1.scale > s0.scale * 1.5 && s1.scroll === s0.scroll, 'two fingers spread on the board zoom it in, and the page does not move', `${s0.scale.toFixed(2)} to ${s1.scale.toFixed(2)} px/m`);
+      ok(s2 < s1.scale * 0.75, 'and pinched together zoom it out', `${s1.scale.toFixed(2)} to ${s2.toFixed(2)} px/m`);
+      ok(s1.called === s0.called, 'and a pinch is never taken for a tap', `${s0.called} called before, ${s1.called} after`);
+      await phone.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-phone.png`), fullPage: true });
+      ok(perrs.length === 0, 'with nothing on the console', perrs.join(' | '));
+    } finally {
+      await phone.close();
+    }
   });
 } finally {
   await browser.close();

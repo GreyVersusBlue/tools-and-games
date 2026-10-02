@@ -401,102 +401,91 @@ match the pre-change tables exactly (#682). The change only affects play
 in the Free Play district. There, a called ambulance's time on the map
 fell from 30.4 to 28.6 s on four boxes and from 64.3 to 54.1 s on eight.
 
-### R7. Sound
+### R7. Sound: done (HISTORY.md #773)
 
-**Size ½. Model Fable 5.1.** The game is silent, and it counts honks. A
-`js/audio.js` on Web Audio, every sound synthesized in code, so nothing is
-vendored and nothing is fetched: a horn per archetype (the trucker's low,
-the aggressive driver's short and repeated), the relay click of a signal
-change, a siren that rises as the vehicle nears the box and pans with its
-x, a crash, the pedestrian push-button chirp, and a traffic bed whose
-level follows the cars on screen. Caps: at most three horns a second, so
-Rush Hour's surge is a jam and not a noise. The context starts on the
-first input. The mute switch is `settings.sound`, **already in the save
-and already defaulting to true** (`js/save.js fresh()`), so there is no
-storage change. Tests: a Node check with a stub `AudioContext` that counts
-what a seeded Rush Hour asks to play (the siren starts when the ambulance
-spawns, stops when it leaves, a surge's honks never pass the cap), and a
-browser check that the switch writes `settings.sound` and a reload keeps
-it. Whether it sounds right is H3, not this row.
+`js/audio.js`, every voice synthesized on Web Audio: a horn per archetype,
+the relay click, a siren that climbs and pans with the ambulance, a crash,
+the push-button chirp and a traffic bed, capped at three horns and six
+clicks a second of wall time. The context starts on the first input and
+`settings.sound` is the switch, a header button and the M key, with no
+storage change. `test/audio.mjs` counts what a seeded Rush Hour asks of a
+stub `AudioContext`, and `test/browser.mjs` reloads the switch. How it
+sounds is H3.
 
-### R8. The phone layout, in emulation
+### R8. The phone layout, in emulation: done (HISTORY.md #774)
 
-**Size ¼. Model Opus 5.** There is one breakpoint (760 px: the panel goes
-under the board) and nothing has ever loaded the page at phone size. Zoom
-is the wheel and the + and - keys, so a phone cannot zoom at all, and
-hover is how a car is picked for the pointer cursor. Add a section to
-`test/browser.mjs` at 390 by 844 with `hasTouch`: the board fills the
-width, every phase card and the Levels button are reachable by scrolling,
-a tap on a phase card changes the signal, a tap on an ambulance calls its
-corridor. Add two-pointer pinch zoom to `js/input.js` (the camera already
-has `zoomBy`), and a tap that did not move picks a car, as the click does
-now. Watch for #132 on the level list: a centred scroll container needs
-`safe`. How it feels under a thumb is H1.
+`test/browser.mjs` loads the page at 390 by 844 with touch: the board fills
+the width (it was 300 px of 366 until the column stretched), every phase
+card, Levels and the sound switch are reached by scrolling, a tap on a
+card changes the signal, a tap 8 px off an ambulance calls its corridor,
+two fingers spread and pinch the camera, and the level list passes #132.
+`js/input.js` tracks pointers for the pinch and gives a touch a 12 px slop
+and a 22 px reach. How it feels under a thumb is H1.
 
-### R9. A rule that calls a phase instead of cutting one
+### R9. A rule that calls a phase instead of cutting one: done (HISTORY.md #775, #776)
 
-**Size ½. Model Opus 5.** Known gaps: a `queue` rule cuts the running green
-as soon as its `after` has run, which on Crossing cut every through short
-and locked 3 of 6 seeds at 4 s, so the level ships `after: 16`. A real
-actuated controller *calls* the phase for its next turn and *skips* a
-phase nobody is waiting for. Add `then: 'call'` (the phase runs at its
-turn in the sequence, not now) and a skip-when-empty flag on a phase for
-levels with sensors. Crossing's calibration re-runs with the call form; if
-it beats `after: 16` the level's default can move to it. Sensors are a
-shop item, so this gives the purchase something new to do.
+`then: 'call'` on a queue rule latches a call on the phase serving its
+movement and cuts nothing; `skip` on a phase has `next` pass it over until
+called, while the box has loops. Crossing moved to it: four call rules on
+its bays, the arrows skipping, the 24 s rule kept. With no input six seeds
+clear 66.0 at 42.5 s against 59.5 at 50.2 s for the `after: 16` rules, still
+one star each, and the hand still beats it. A bought arrow phase that is
+called runs after the green it was called in, so sensors bought with the
+arrows now buy an actuated left.
 
-### R10. Entry metering: a hand in a roundabout run
+### R10. Entry metering: done, on Free Play's ring (HISTORY.md #777, #778)
 
-**Size ½. Model Fable 5.1.** With the ring bought, a run has nothing to
-press (#599). Entry metering is the real fix for a dominant leg: a signal
-on one approach that holds that leg for a few seconds when the leg it
-starves has queued past a loop. One meter per ring, on the leg the player
-picks, with a red time slider; the ring's controller stays dark apart from
-it. It extends #595's ring without a two-lane ring (still refused). Each
-converted board gets a `ring.meter` calibration: the meter set well should
-beat the bare ring's wait on at least four of six seeds, or the item is
-not worth selling.
+A meter on one leg of a ring (`World.setMeter`) holds that leg amber 2 s
+and red 2 to 12 s when the next leg round has queued 15 m back from its
+yield line. `tools/calibrate.mjs --ring --meter` sweeps every leg and red
+against the bare ring; `ring.meter` is what it found, and only Free Play's
+ring passes the four-of-six rule (S at 3 s, mean wait 10.4 to 7.4 s; S at
+6 s after R11), so only Free Play's panel offers the meter. First Light and the Stem carry
+`null`: their bare rings wait 1 to 3 s. `test/stars.mjs` holds the rule.
+The sweep also found #777: a retried scheduled arrival moved the level's
+own spawn time, so Free Play ran differently after its first run in a page.
 
-### R11. The trucker's sweep as geometry
+### R11. The trucker's sweep as geometry: done (HISTORY.md #779, #780)
 
-**Size 1. Model Fable 5.1.** Known gaps: the wide sweep is a rule (a
-turning truck ties up every other lane of its entry and exit legs until it
-clears) and "wrong in the way a diagram is". Model the trailer: a second
-body hinged at the fifth wheel, following the tractor's path with the
-off-tracking of a tractor-trailer, swept against the other lanes' paths by
-the same SAT test collisions use, so a truck blocks only the lanes its
-trailer actually crosses. Every level with trucks shifts, so re-run all
-calibrations and hold every shipped target, or move it and say so in
-`HISTORY.md`. A 1 because the calibration is the job, not the geometry.
+The trailer is a second body hinged at the tractor's rear, towed along a
+heading integrated from the path (`Path.trailerHeading`), so it cuts
+inside a turn. `World.sweep` tests tractor and trailer against every other
+lane's slices with the collisions' SAT test, and `boxVerdict` holds on that
+instead of the old rule. A truck turns left on its own deeper path, because
+on a car's the trailer reached a car standing behind its stop line, and a
+car held by a sweeping truck waits behind the swept stretch. Every shipped
+target held; Free Play's ring target went to 72 and its meter to S at 6 s.
+The new truck collisions are trusting starters meeting a trailer on the
+all-red.
 
-### R12. Lane changes on a corridor segment
+### R12. Lane changes on a corridor segment: done (HISTORY.md #781)
 
-**Size ½. Model Opus 5.** A car handed from one box to the next keeps its
-lane, so on a two-lane corridor with a left bay a car in the inner lane can
-only turn left (Known gaps). Two Blocks runs one lane each way so nothing
-shows it today. Give the segment a lane change: a gap-acceptance swap on
-the straight between boxes toward a lane that allows the car's next turn,
-the same path swap the zipper uses. Needed before any two-lane corridor
-level, and a prerequisite for R13's second corridor level.
+A car handed to the next box draws its turn from every turn the leg allows.
+When its lane does not take that turn it moves over on the straight, one
+lane at a time, when the gap is long enough at its speed, the same path swap
+the zipper uses; 25 m before the line it gives up and takes its lane's turn.
+One lane each way draws exactly as before, so nothing shipped moved.
 
-### R13. More board: a second pack
+### R13. More board: a second pack (in progress: Market Ring shipped, HISTORY.md #782)
 
-**Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels teach
-eight ideas. Candidates that use what exists: a two-lane corridor with a
-green wave both ways (the two-way wave wants travel time at half a cycle;
-Two Blocks' 43 s cycle is not 31, so a new block length), a grid of three
-where the ambulance crosses every box (R6), a ring with a metered leg
-(R10), an outage on a timed corridor (its return wants `setOffset`'s
-shift, Known gaps). Each level gets R1's two tables and R2's rule from the
-first commit. One increment a session, a level or two at a time.
+**Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
+eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
+Street. Shipped: **Market Ring** (2026-10-01), a ring whose east leg
+starves the north, its second star the entry meter (`lesson: { kind:
+'meter' }`). Candidates still open: a two-lane corridor with a green wave
+both ways (the two-way wave wants travel time at half a cycle; Two Blocks'
+43 s cycle is not 31, so a new block length; R12's lane changes are what
+make two lanes work), a grid of three where the ambulance crosses every box
+(R6), an outage on a timed corridor (its return wants `setOffset`'s shift,
+Known gaps). Each level gets R1's two tables and R2's rule from the first
+commit. One increment a session, a level or two at a time.
 
-### R14. Endless keeps a day that was left halfway
+### R14. Endless keeps a day that was left halfway: done (HISTORY.md #783)
 
-**Size ½. Model Sonnet 5. Low priority.** #612: nothing is saved mid-day,
-so a run closed in the middle loses that day. The fix is an
-`endless.pending` record (seed, day, carried rules) that `repair` fills
-empty on older saves, key unchanged. Only worth doing if R4 makes runs
-long enough that losing a day hurts.
+`endless.pending` holds the day a run is on, with every box's rules and
+timing as it starts; `repair` fills it with null on older saves, key and
+version unchanged. A run closed halfway is offered back under the Endless
+card as "Resume day N", replayed from that day's start.
 
 ### Needs a real device, real ears or a person (last)
 
@@ -653,9 +642,9 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 - Queue rules sleep on a level without `sensors: true` and fire on one with
   it. A queue rule cuts the running green as soon as its `after` seconds
   have run (the minimum green by default): at 4 s Crossing's bays cut every
-  through short and the board locked on 3 of 6 seeds, so the level ships
-  `after: 16`. A rule that *calls* a phase for its next turn in the
-  sequence, the way an actuated controller does, is not built.
+  through short and the board locked on 3 of 6 seeds. Since R9 a queue
+  rule may instead *call* its phase for its turn (`then: 'call'`), and a
+  `skip` phase nobody called is passed over; Crossing ships that (#776).
 - A corridor's handoff keeps the car in its lane: at the second box it picks
   among the turns that lane allows, so on a two-lane corridor with a left
   bay a car that arrived in the inner lane can only turn left. Two Blocks

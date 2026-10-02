@@ -289,6 +289,7 @@ jobs:
               node test/grid.mjs
               node test/endless.mjs
               node test/stars.mjs
+              node test/audio.mjs
               node test/browser.mjs
 
           # SkyWings 64 steps the game synchronously through window.__qa.sim, so no
