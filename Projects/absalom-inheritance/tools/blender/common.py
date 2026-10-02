@@ -149,6 +149,22 @@ def linear(hexv):
 
 MASK = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
 
+# A thing PALETTE gives one colour (the stairs, the gold) takes its two side
+# faces from that colour at render.js's own wall ratios, wallLeft / wallTop
+# and wallRight / wallTop to the nearest hundredth, rather than from a new hex
+# (#795).
+LEFT_OF, RIGHT_OF = 0.61, 0.76
+
+
+def tone(hexv, k):
+    """A palette hex with every sRGB channel times k, rounded."""
+    return '#' + ''.join(f'{min(255, round(c * k)):02x}' for c in rgb(hexv))
+
+
+def sides_of(hexv):
+    """A single PALETTE colour as top, left and right (#795)."""
+    return hexv, tone(hexv, LEFT_OF), tone(hexv, RIGHT_OF)
+
 
 # ---------------------------------------------------------------- the scene
 
@@ -301,6 +317,20 @@ def face_mat(name, top, left, right):
     nt.links.new(lit.outputs[0], em.inputs['Color'])
     out = nt.nodes.new('ShaderNodeOutputMaterial')
     nt.links.new(em.outputs['Emission'], out.inputs['Surface'])
+    return mat
+
+
+def holdout_mat(name):
+    """A surface that hides whatever is behind it and leaves the film
+    transparent: the earth in front of a stairwell, which the board's own
+    floor in front of the square will draw."""
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    hold = nt.nodes.new('ShaderNodeHoldout')
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    nt.links.new(hold.outputs['Holdout'], out.inputs['Surface'])
     return mat
 
 

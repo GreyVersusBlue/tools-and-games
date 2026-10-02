@@ -12,7 +12,17 @@
       "maxKiB": 256,
       "maxTriangles": 4000,
       "frames": {
-        "wall": { "solid": "wall", "minCoverage": 0.6, "faces": { "top": "wallTop", "left": "wallLeft", "right": "wallRight" } }
+        "floor/a": { "minCoverage": 0.4, "faces": { "top": "floorA" } },
+        "floor/b": { "minCoverage": 0.4, "faces": { "top": "floorB" } },
+        "treasure": { "minCoverage": 0.4, "faces": { "top": "treasure" } },
+        "casket": { "ht": 10, "fp": 0.25, "minCoverage": 0.02, "faces": { "top": "gold" } },
+        "gate/shut": { "minCoverage": 0.4, "faces": { "top": "gateShut" } },
+        "gate/open": { "minCoverage": 0.4, "faces": { "top": "gateOpen" } },
+        "stairs": { "minCoverage": 0.4, "faces": { "top": "stairs" } },
+        "steps": { "minCoverage": 0.4 },
+        "wall": { "solid": "wall", "minCoverage": 0.6, "faces": { "top": "wallTop", "left": "wallLeft", "right": "wallRight" } },
+        "door": { "solid": "door", "minCoverage": 0.6, "faces": { "top": "doorTop", "left": "doorLeft", "right": "doorRight" } },
+        "pillar": { "solid": "pillar", "minCoverage": 0.25, "faces": { "top": "pillarTop" } }
       }
     }
   }
