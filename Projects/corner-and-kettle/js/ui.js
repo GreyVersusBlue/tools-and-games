@@ -20,7 +20,7 @@ import { buildCatalog, createCornerKettleSlot, toSaveData, applyToState } from "
 // in Node with a seed.
 import * as CONTENT from "./content.js";
 import { createSim, freshState, freshDayStats } from "./sim.js";
-import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, cupSvg, regularMoodEmoji } from "./draw.js";
+import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, cupSvg, foodSvg, regularMoodEmoji, SHEET_URL } from "./draw.js";
 import { createSound } from "./sound.js";
 import { STATION_TAB_DEFS, createStations } from "./stations.js";
 import { createChalkboard } from "./chalkboard.js";
@@ -156,7 +156,7 @@ function renderSlots(){
       ${worker ? `<div class="baristaChip">🧑‍🍳 ${worker.name} is on it…</div>` : ''}
       <button class="clearbtn" title="release order back to queue">release</button>
       <div class="ticket">${orderDescriptionHtml(order, sim.getOrderRequirements(order), slot)}</div>
-      <div class="cupwrap">${ slot.food ? `<div style="font-size:64px">${FOODS.find(f=>f.id===order.foodId).icon}</div>` : cupSvg(slot.cup) }</div>
+      <div class="cupwrap">${ slot.food ? foodSvg(order.foodId, 64) : cupSvg(slot.cup) }</div>
       <div class="slotbtnrow">
         <button class="discardbtn" title="dump the cup and start over">🗑️ Dump</button>
         ${serveButtonHtml(slot)}
@@ -493,7 +493,25 @@ function mountBar(){
 }
 
 /* ---------- INIT ---------- */
+// The cups and plates are frames of one picture, and an <image> that cannot
+// load draws nothing and says nothing. So the page loads it once itself: a
+// sheet that fails is a toast and a console error, and `sheet` on the debug
+// hook, which drive-save.mjs reads. The shop still runs without it; every
+// ticket is words as well.
+let sheetState = 'loading';
+function loadSheet(){
+  const img = new Image();
+  img.onload = () => { sheetState = 'loaded'; };
+  img.onerror = () => {
+    sheetState = 'failed';
+    console.error(`corner-and-kettle: the cup and food sheet did not load (${SHEET_URL})`);
+    toast('The cup pictures did not load. Reload to try again.');
+  };
+  img.src = SHEET_URL;
+}
+
 function init(){
+  loadSheet();
   const hadSave = loadState();
   if(!hadSave){
     applyToState(state, saveSlot.fresh());
@@ -522,6 +540,7 @@ init();
 if(typeof window !== 'undefined'){
   window.__CK_DEBUG__ = {
     get state(){ return state; },
+    get sheet(){ return sheetState; },
     doUnlock: buy, fireRandomEvent: sim.fireRandomEvent, generateOrder: sim.generateOrder,
     tryAcceptCustomer, orderIsComplete: sim.orderIsComplete, serveReadiness: sim.serveReadiness,
     autoAssistStep: sim.autoAssistStep, serveSlot, saveState: saveNow, loadState, adoptSave,

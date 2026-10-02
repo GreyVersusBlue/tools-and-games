@@ -147,6 +147,45 @@ try {
   // Google Fonts requests locally before the blocked list is written.
   t.ok(p.__blocked.length === 0, 'nothing offsite was refused either', p.__blocked.join(' ') || 'none');
 
+  /* ---------- 2b. the cup and food sheet ---------- */
+
+  t.section('2b. the cups and plates are drawn from the sheet (#805)');
+  const sheetState = await waitFor(p, () => window.__CK_DEBUG__.sheet !== 'loading', { timeout: 10000 })
+    .then(() => p.evaluate(() => window.__CK_DEBUG__.sheet), () => 'loading');
+  t.ok(sheetState === 'loaded', 'the page loaded cups.png itself', sheetState);
+  const sheetRes = await p.evaluate(() => performance.getEntriesByType('resource')
+    .filter(r => r.name.endsWith('/assets/sprites/cups.png')).map(r => r.name));
+  t.ok(sheetRes.length >= 1 && sheetRes[0].startsWith(BASE + '/Projects/corner-and-kettle/'),
+    'from this project, not anywhere else', sheetRes.join(' ') || 'never requested');
+  const bubbles = await p.$$eval('.customer .bubble', els => els.map(e => ({
+    images: e.querySelectorAll('image').length,
+    href: e.querySelector('image')?.getAttribute('href') || '',
+  })));
+  t.ok(bubbles.length > 0 && bubbles.every(b => b.images >= 1 && b.href.endsWith('/assets/sprites/cups.png')),
+    'every waiting customer\'s bubble draws from the sheet', JSON.stringify(bubbles.map(b => b.images)));
+
+  // A sheet that will not load says so. The page's own loader is pointed at
+  // a file that is not there, before the module runs.
+  const p404 = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await p404.evaluateOnNewDocument(() => {
+    const d = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true, get() { return d.get.call(this); },
+      set(v) { d.set.call(this, String(v).replace('cups.png', 'cups-not-here.png')); },
+    });
+  });
+  const errors = [];
+  p404.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await p404.goto(PAGE, { waitUntil: 'load' });
+  await waitFor(p404, () => window.__CK_DEBUG__ && window.__CK_DEBUG__.sheet !== 'loading', { timeout: 10000 }).catch(() => {});
+  const failed = await p404.evaluate(() => ({ sheet: window.__CK_DEBUG__?.sheet,
+    toast: [...document.querySelectorAll('.toast')].map(e => e.textContent).join(' | ') }));
+  t.ok(failed.sheet === 'failed' && /cup pictures did not load/.test(failed.toast),
+    'a sheet that will not load is a toast, not a blank cup', JSON.stringify(failed));
+  t.ok(errors.some(e => e.includes('corner-and-kettle: the cup and food sheet did not load')),
+    'and a console error naming the file', errors.filter(e => e.startsWith('corner-and-kettle')).join(' ') || 'none');
+  await p404.close();
+
   /* ---------- 3. actually play ---------- */
 
   t.section('3. build a drink and serve it');

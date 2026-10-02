@@ -121,38 +121,35 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Hearth's sprite
-pipeline, building sheet and wiring** (old ranks 8 to 10, audit line TG-11,
-committed locally for the nightly merge, so its PR number is the nightly's): a
-¼, a ½ and a ¼ naming Opus 5.5, run under it on huginn. The batches before it
-were Faire Weekend's (old ranks 5 to 7, TG-10) and Absalom's (old ranks 1 to 4,
-TG-09) sprite pipelines, sheets and wiring. That is the line to
+**The last batch of ranked work that shipped** is **Corner & Kettle's sprite
+pipeline, cup and food sheet and wiring** (old ranks 11 to 13, audit line
+TG-12, committed locally for the nightly merge, so its PR number is the
+nightly's): a ¼, a ½ and a ¼ naming Opus 5.5, run under it on huginn. The
+batches before it were Hearth's (old ranks 8 to 10, TG-11), Faire Weekend's
+(old ranks 5 to 7, TG-10) and Absalom's (old ranks 1 to 4, TG-09) sprite
+pipelines, sheets and wiring. That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**15 ranked items remain**, and **every one of them names a model.**
+**12 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
-2026-09-25, Devon's instruction and his re-rank). Ranks 11 to 15 are
-Blender-made assets: a pipeline per project, then its GLTFLoader where it has
-none, then its packs, then the rows that wire each pack into the game, with
-the site's dioramas last. **Blender runs on Devon's machines only, headless
+2026-09-25, Devon's instruction and his re-rank). Ranks 14 and 15 are what is
+left of the Blender block: every project's pipeline, packs and wiring have
+shipped, and the site's dioramas are last. **Blender runs on Devon's machines only, headless
 (`blender -b -P script.py`), never in a cloud container.** The table's
-`Gate` column says which rows need it and which machine (#644, #707): **2 rows
-read `blender`**, basic headless Blender that **huginn or the Windows machine**
-can run, and **2 read `blender-gpu`** (ranks 14 and 15, the dioramas), which
+`Gate` column says which rows need it and which machine (#644, #707): **no row
+reads `blender`** any more (basic headless Blender, huginn or the Windows
+machine), and **2 read `blender-gpu`** (ranks 14 and 15, the dioramas), which
 need the full feature set on a GPU and so **the Windows machine only**. A
 session that cannot take a row skips it where it stands and takes the next
-row, without parking it. The other one in the block (rank 13, the
-wiring row) is cloud work, because it reads
-committed files (#645); a wiring row is taken only once the pack row above it
-has merged. The plan every Blender row shares is
+row, without parking it. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** Ranks 1 to 10 shipped and their rows are gone; the
+**Nothing is claimed.** Ranks 1 to 13 shipped and their rows are gone; the
 others keep their numbers until the next renumbering. **Pick up next**
-is rank 11, Corner & Kettle's sprite pipeline (¼, Opus 5.5, gate `blender`):
-**huginn or the Windows machine**. The wiring row (rank 13) waits on a pack
-that has not been built.
+is rank 14, the site's diorama pipeline (½, Opus 5.5, gate `blender-gpu`):
+**the Windows machine only**. A session on huginn skips 14 and 15, and every
+row below them wants a GPU, a phone, ears or Devon's say-so.
 Below the Blender block, rank 23 (The Fracture Cycle's fourth prong) and rank
 25 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
 them, and a scope Devon has not asked for is not a judgement call a session
@@ -860,8 +857,8 @@ quota — take the model the row names and say in the PR body which one you
 actually worked under. The split counts the names; under #638 the Opus 5.5,
 Opus 5 and Fable rows run on Opus 5.5 and the Sonnet rows on Sonnet 5.
 
-**`Projects/corner-and-kettle` has no open phase** apart from its three
-Blender rows (11 to 13). Arc one (Phases 1 to 4) and
+**`Projects/corner-and-kettle` has no open phase.** Its three Blender rows
+(old 11 to 13) shipped on 2026-10-02 (#803 to #805). Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
 leaves for a later arc" list — candidates, not a ranked arc, and the largest of
 them (reshaping the five recipes that are another recipe's requirement list,
@@ -1001,9 +998,6 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 11 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
-| 12 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
-| 13 | Wire the cup and food sheet in, once rank 12 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
 | 14 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
 | 15 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
 | 16 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
