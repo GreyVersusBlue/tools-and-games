@@ -49,6 +49,8 @@ export const YIELD_D = 18;
 // trailer leaving by a leg clears a car waiting to enter by it.
 export const SPLIT = 1.5;
 export const SPLIT_TAPER = 22;
+export const TRUCK_LEFT_K = 0.6;   // a truck's left: the turn's control arms, against a car's 0.3 (R11)
+export const TRAIL_DS = 0.25;      // metres between the steps a trailer's track is integrated at (R11)
 
 const DIR = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };   // outward unit vector per leg
 
@@ -195,13 +197,16 @@ export class Network {
         for (const lane of this.lanesForTurn(turn)) {
           const exitLane = turn === 'T' ? lane : turn === 'R' ? 0 : this.lanesPerDir - 1;
           const p = this.roundabout ? this._ringPath(entry, lane, turn, exit, exitLane) : this._makePath(entry, lane, turn, exit, exitLane);
+          // a truck's left goes deeper before it turns (R11, #779), so its
+          // trailer, cutting inside, stops short of the exit leg's stop line
+          if (!this.roundabout && turn === 'L') { p.truck = this._makePath(entry, lane, turn, exit, exitLane, TRUCK_LEFT_K); p.truck.key += '~truck'; }
           this.paths.set(p.key, p);
         }
       }
     }
   }
 
-  _makePath(entry, lane, turn, exit, exitLane) {
+  _makePath(entry, lane, turn, exit, exitLane, kTurn = null) {
     const pts = [];
     const L = this.legLength;
     // approach: from the leg's far end to the stop line, straight
@@ -221,7 +226,7 @@ export class Network {
       pts.push(b1);
     } else {
       const dist = Math.hypot(b1[0] - b0[0], b1[1] - b0[1]);
-      const k = turn === 'R' ? 0.42 : 0.3;   // a left hugs its own quadrant: opposing lefts pass 4 m apart
+      const k = kTurn ?? (turn === 'R' ? 0.42 : 0.3);   // a left hugs its own quadrant: opposing lefts pass 4 m apart
       const c0 = [b0[0] + inH[0] * dist * k, b0[1] + inH[1] * dist * k];
       const c1 = [b1[0] - outH[0] * dist * k, b1[1] - outH[1] * dist * k];
       const n = 16;
@@ -308,6 +313,7 @@ export class Path {
     this.length = this.cum[this.cum.length - 1];
     this.stopLine = 0; this.boxEnter = 0; this.boxExit = 0;
     this.ring = null;           // { aIn, aOut, sIn, sOut } on a roundabout's path
+    this.truck = null;          // the same way for a vehicle with a trailer, where it differs (R11)
   }
 
   // The angle on the ring (screen atan2, falling as the car goes round) of
@@ -346,6 +352,38 @@ export class Path {
   }
 
   inBox(s) { return s > this.boxEnter && s < this.boxExit; }
+
+  // The trailer's heading with its kingpin at s (R11, #779). A trailer
+  // hinged at the fifth wheel is towed, not steered: its rear axle,
+  // `wheelbase` metres behind the kingpin, moves only along the trailer's
+  // own axis, so as the kingpin goes round a corner the trailer turns
+  // through dθ = sin(φ - θ) ds / wheelbase and cuts inside the tractor's
+  // line. That is the off-tracking of a tractor-trailer. A pure function of
+  // the path, integrated once per wheelbase from the path's start, where
+  // the trailer lines up with the road, every TRAIL_DS metres.
+  trailerHeading(s, wheelbase) {
+    let track = this._trail && this._trail.get(wheelbase);
+    if (!track) {
+      const n = Math.ceil(this.length / TRAIL_DS) + 1;
+      track = new Float64Array(n);
+      let th = this.at(0).heading;
+      for (let i = 0; i < n; i++) {
+        track[i] = th;
+        const phi = this.at(i * TRAIL_DS).heading;
+        let d = phi - th;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        th += Math.sin(d) * TRAIL_DS / wheelbase;
+      }
+      (this._trail || (this._trail = new Map())).set(wheelbase, track);
+    }
+    if (s <= 0) return track[0];
+    const f = s / TRAIL_DS, i = Math.min(track.length - 2, Math.floor(f)), t = Math.min(1, f - i);
+    let d = track[i + 1] - track[i];
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return track[i] + d * t;
+  }
 
   // Does a vehicle of `len` metres centred at s overlap the box at all?
   touchesBox(s, len) { return s + len / 2 > this.boxEnter && s - len / 2 < this.boxExit; }

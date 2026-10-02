@@ -141,7 +141,7 @@ group('the hand against no input (R4, #648): playing does not cost a run its day
   // (EVENTS_RAMP, the lever #648 turned down) the hand falls short on
   // seeds 2 and 4 and holds on exactly four, so at four this line passed
   // the ramp the calibration rejects. As it ships: six of six here, five
-  // of six to the end (seed 1, 9 against 10).
+  // of six to the end (seed 1, 9 against 10), as R4 measured it.
   const N = 0, SEEDS = [1, 2, 3, 4, 5, 6], ENOUGH = 5;
   const CAP = process.argv.includes('--full') ? 30 : 6;
   const self = fileURLToPath(import.meta.url);
@@ -166,18 +166,20 @@ group('the hand against no input (R4, #648): playing does not cost a run its day
     // the hand holds when it gets through every day no input got through, and N more
     const need = Math.min(CAP, (a.missed ?? CAP + 1) - 1 + N);
     const holds = b.missed === null ? b.days.length >= need : b.missed > need;
-    const outlasts = a.missed !== null && b.missed === null && b.days.length >= a.missed;
-    return { s, holds, outlasts, line: `seed ${s}: no input ${text(a)}, hand ${text(b)}` };
+    return { s, holds, line: `seed ${s}: no input ${text(a)}, hand ${text(b)}` };
   });
   const held = rows.filter(r => r.holds);
   ok(held.length >= ENOUGH, `the hand lasts at least as long as no input (N = ${N}) on at least ${ENOUGH} seeds of six, over the first ${CAP} days`, `${held.length} of 6: ${rows.map(r => r.line + (r.holds ? '' : ' SHORT')).join('; ')}`);
   // and its commands reach the World: where the 20 s rule misses early the
-  // hand gets past that day (seed 5 misses day 2 hands-off). Holding a
-  // green is enough for it: with World.requestPhase refusing everything
-  // this line stays green, and with holdGreen refusing too it fails, the
-  // line above tying six of six
-  const past = rows.filter(r => r.outlasts).map(r => r.s);
-  ok(past.length >= 1, 'and on a seed where no input misses early, the hand gets through that day', `seed ${past.join(', ') || 'none'}`);
+  // hand gets past that day. City 5 missed day 2 hands-off until the
+  // trucker's sweep became geometry (R11, #780) and took its lock away, so
+  // none of the six misses before day 6 now; city 16 misses day 3. With
+  // World.requestPhase refusing everything the hand holds greens it cannot
+  // end and locks day 1, and with holdGreen refusing too it misses day 3
+  // with no input: either way this line fails
+  const EARLY = 16;
+  const eo = await child(EARLY, false, 3), eh = await child(EARLY, true, eo.missed ?? 3);
+  ok(eo.missed !== null && eh.missed === null && eh.days.length >= eo.missed, 'and on a city where no input misses early, the hand gets through that day', `city ${EARLY}: no input ${text(eo)}, hand ${text(eh)}`);
 }
 
 /* ---------------------------------------------------------- what ends a run -- */

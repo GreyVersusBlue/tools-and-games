@@ -18,7 +18,8 @@ const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World, DT, meterWatch, METER_RED } = await load('sim.js');
 const { score } = await load('scoring.js');
 const { Network, rectsOverlap, LANE_WIDTH, CROSSWALK, RING_R, buildNodes } = await load('network.js');
-const { ARCHETYPES, Car, stopLineVerdict, BRAKE_LIGHT_A, INDICATE_FROM } = await load('cars.js');
+const { ARCHETYPES, Car, stopLineVerdict, BRAKE_LIGHT_A, INDICATE_FROM, trailerRect } = await load('cars.js');
+const { conflicts } = await load('signals.js');
 const { makeRng } = await load('rng.js');
 
 let passed = 0, failed = 0;
@@ -379,7 +380,74 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
   ok(w.stats.collisions === 0, 'and the ones behind cope', `${w.stats.collisions} collisions`);
 }
 {
-  // trucker's wide left blocks the adjacent lane
+  // the trucker's sweep as geometry (R11, #779): the trailer hinges at the
+  // tractor's rear and cuts inside its line, and a truck holds only the
+  // lanes its tractor or trailer actually cross in the box
+  const w1 = new World({ demand: {}, duration: 60 }, 1), n1 = w1.nodes[0];
+  const truckOn = (w, p) => new Car({ archetype: 'trucker', path: p, rng: makeRng(1) });
+  const right = n1.pathFor('N', 0, 'R'), left = n1.pathFor('N', 0, 'L').truck, thru = n1.pathFor('N', 0, 'T');
+  const st = ARCHETYPES.trucker;
+  // how far inside the tractor's line the trailer's rear gets, the
+  // off-tracking: signed, so a trailer swinging outside the turn reads
+  // negative (the screen's y is down, so a heading that grows is a right)
+  const offTrack = p => {
+    let dh = p.at(p.boxExit).heading - p.at(p.boxEnter).heading;
+    while (dh > Math.PI) dh -= 2 * Math.PI;
+    while (dh < -Math.PI) dh += 2 * Math.PI;
+    let worst = 0;
+    for (let s = p.boxEnter; s < p.boxExit + 12; s += 0.5) {
+      const r = trailerRect(p, s, st), rx = r.x - Math.cos(r.heading) * r.length / 2, ry = r.y - Math.sin(r.heading) * r.length / 2;
+      let d = Infinity, near = null;
+      for (let q = 0; q < p.length; q += 0.25) { const a = p.at(q), e = Math.hypot(a.x - rx, a.y - ry); if (e < d) { d = e; near = a; } }
+      const side = Math.cos(near.heading) * (ry - near.y) - Math.sin(near.heading) * (rx - near.x);
+      const signed = Math.abs(dh) < 0.1 ? d : side * dh > 0 ? d : -d;
+      if (Math.abs(signed) > Math.abs(worst)) worst = signed;
+    }
+    return worst;
+  };
+  ok(offTrack(right) > 2.5 && offTrack(left) > 1.5 && offTrack(thru) < 0.2, 'a trailer off-tracks inside a turn, more on the tight right, and not at all on a through',
+    `right ${f1(offTrack(right))} m, left ${f1(offTrack(left))} m, through ${f1(offTrack(thru))} m`);
+  const tr = trailerRect(thru, 50, st), old = thru.at(50 - st.length / 2 - st.trailer.gap - st.trailer.length / 2);
+  ok(Math.hypot(tr.x - old.x, tr.y - old.y) < 1e-6, 'on a straight the trailer sits where it always did, on the path behind the tractor');
+  // a truck takes its own left, deeper into the box: with a car's, the
+  // trailer swinging back across the centre line reached a car standing
+  // 1.5 m behind the stop line of the lane in from its exit leg
+  ok(left && left !== n1.pathFor('N', 0, 'L') && w1.pathOf('trucker', n1.pathFor('N', 0, 'L')) === left && w1.pathOf('standard', n1.pathFor('N', 0, 'L')) !== left, 'a truck turning left takes its own deeper path; a car does not');
+  const reach = p => {
+    let deepest = -Infinity;
+    for (const v of ['L', 'T', 'R'].map(t => n1.pathFor('E', 0, t)).filter(Boolean)) {
+      for (let s = p.boxEnter - 2; s < p.boxExit + 14; s += 0.5) {
+        const tr = trailerRect(p, s, st);
+        for (let sb = v.stopLine - 8; sb <= v.boxEnter; sb += 0.5) { const c = v.at(sb - 2.3); if (rectsOverlap(tr, { x: c.x, y: c.y, heading: c.heading, length: 4.6, width: 2.2 })) deepest = Math.max(deepest, v.stopLine - sb); }
+      }
+    }
+    return deepest;
+  };
+  ok(reach(n1.pathFor('N', 0, 'L')) > 0 && reach(left) < 0, 'on a car\'s left the trailer reaches a car behind its stop line on the leg it turns onto; on the truck\'s it stops short of the line', `${f1(reach(n1.pathFor('N', 0, 'L')))} m behind the line, and ${f1(-reach(left))} m past it`);
+  const e0r = n1.pathFor('E', 0, 'R'), w0t = n1.pathFor('W', 0, 'T');
+  ok(!!w1.sweep(truckOn(w1, left), e0r) && !conflicts('N-L', 'E-R'), 'a truck\'s left on one lane sweeps the right turn in from its exit leg, which no car\'s left crosses');
+  ok(w1.sweep(truckOn(w1, right), w0t) === null, 'and its right cuts the corner, so the through in from its exit leg is no longer held, as the old rule held it');
+  const w2 = new World({ demand: {}, duration: 60, network: { lanesPerDir: 2 } }, 1), n2 = w2.nodes[0];
+  ok(w2.sweep(truckOn(w2, n2.pathFor('N', 1, 'L')), n2.pathFor('N', 0, 'T')) === null, 'on two lanes a left from the inner lane never sweeps the curb lane beside it');
+  // a car the trailer will sweep waits behind the stretch it sweeps, not at
+  // the box edge: an N-R car at its red line while a W-L truck turns, and
+  // N's green asked for as the truck enters the box
+  const held = lag => {
+    const w = new World({ demand: {}, duration: 90, controller: { startPhase: 1, timing: { yellow: 3, allRed: 1, minGreen: 2 } } }, 3);
+    const truck = w.spawnCar({ leg: 'W', archetype: 'trucker', turn: 'L' });
+    let car = null, asked = false, inSweep = false;
+    for (let i = 0; i < 60 * 60; i++) {
+      w.step();
+      if (!asked && truck.front > truck.path.boxEnter) asked = w.requestPhase(0);
+      if (!car && w.t >= lag) car = w.spawnCar({ leg: 'N', archetype: 'standard', turn: 'R' });
+      const sw = car && !truck.done && !car.done && w.sweep(truck, car.path);
+      if (sw && truck.s <= sw.clear && car.front > sw.otherFrom && car.front < sw.otherTo) inSweep = true;
+    }
+    return { inSweep, done: car.done && truck.done, coll: w.stats.collisions };
+  };
+  const h = [0, 2, 4].map(held);
+  ok(h.every(x => !x.inSweep && x.done && !x.coll), 'a car on the lane a turning trailer sweeps waits behind the swept stretch until the trailer is past it', JSON.stringify(h));
+  // and so, on the road: the curb-lane car beside a truck turning left goes
   const sweep = archetype => {
     const w = new World({ demand: {}, duration: 120, network: { lanesPerDir: 2 }, controller: { startPhase: 0 } }, 1);
     const turner = w.spawnCar({ leg: 'N', archetype, turn: 'L', lane: 1 });
@@ -390,9 +458,8 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
     return { blocked: blocked / 60, straight, w };
   };
   const t = sweep('trucker'), s = sweep('standard');
-  ok(t.blocked > 1, 'a truck turning left holds the curb-lane car at the box', `${f1(t.blocked)} s held`);
-  ok(s.blocked === 0, 'a standard car turning left does not', `${f1(s.blocked)} s`);
-  ok(t.w.stats.collisions === 0 && s.w.stats.collisions === 0, 'and neither run crashes');
+  ok(t.blocked === 0 && s.blocked === 0, 'a truck turning left holds the curb-lane car beside it no more than a car does: its trailer cuts the other way', `${f1(t.blocked)} s and ${f1(s.blocked)} s held`);
+  ok(t.w.stats.collisions === 0 && s.w.stats.collisions === 0 && t.straight.done, 'and neither run crashes');
 }
 {
   // the priority corridor

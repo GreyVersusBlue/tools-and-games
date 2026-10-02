@@ -137,9 +137,9 @@
 // The meter needs power: in an outage it rests green.
 
 import { makeRng } from './rng.js';
-import { Controller, conflicts, wideConflicts, parseMovement } from './signals.js';
+import { Controller, conflicts, parseMovement } from './signals.js';
 import { Network, buildNodes, rectsOverlap, pointInRect, LANE_WIDTH, CROSSWALK } from './network.js';
-import { Car, ARCHETYPES, DT, resetIds, drive, stopLineVerdict, boxVerdict, ringVerdict, specialStops } from './cars.js';
+import { Car, ARCHETYPES, DT, resetIds, drive, stopLineVerdict, boxVerdict, ringVerdict, specialStops, trailerRect } from './cars.js';
 
 export { DT };
 
@@ -147,6 +147,8 @@ export const LOOP_LENGTH = 8;   // metres of lane the drawn loop covers, back fr
 export const PRIORITY_MARGIN = 6;  // seconds a corridor stays green after its vehicle is through the box
 export const PRIORITY_CAP = 60;    // and the most a corridor's green can run, whatever is still in the way
 export const TAPER = 12;           // metres a lane closure's cones angle across the lane before the closed stretch
+export const SWEEP_BACK = 8;       // metres behind another lane's stop line a truck's sweep is tested from (R11)
+export const SWEEP_WIDTH = 2.2;     // metres of another lane a truck's sweep is tested against: the widest car's body (R11)
 export const MERGE_WINDOW = 40;    // metres before the taper a car starts looking for its gap
 export const MERGE_AHEAD = 1.0;    // metres of daylight a merge needs to the car ahead in the new lane
 export const MERGE_BEHIND = 1.0;   // and to the car behind, plus 0.4 s of its speed and 1.2 s of the speed it is closing at
@@ -230,6 +232,7 @@ export class World {
     this.events = [];       // [{ t, kind, ... }], the renderer drains these
     this.boxStallT = 0;
     this._conf = new Map();
+    this._sweep = new Map();
     this._walkerId = 0;
     resetIds();
   }
@@ -252,7 +255,43 @@ export class World {
     if (v === undefined) { v = conflicts(a, b); this._conf.set(k, v); }
     return v;
   }
-  wideConflicts(a, b) { return wideConflicts(a, b); }
+  // The way a vehicle of this archetype takes along `path`: a truck's own
+  // left where the network built one (R11, #779), else the path itself.
+  pathOf(archetype, path) { return path && path.truck && ARCHETYPES[archetype].trailer ? path.truck : path; }
+
+  // The trucker's sweep as geometry (R11, #779). Does the truck `car`,
+  // turning on its path, put its tractor or its off-tracking trailer over
+  // the lane of `other` inside the box? The truck is stepped every half
+  // metre from its front at the box edge until its trailer is out, and each
+  // pose is tested with rectsOverlap, the collisions' own test, against
+  // SWEEP_WIDTH-wide slices of `other` from SWEEP_BACK metres behind its
+  // stop line to its box exit: a trailer cutting a corner can reach a car
+  // standing at its line.
+  // Returns null, or { clear, otherFrom, otherTo }: the tractor's s past
+  // which it is off that lane, and the stretch of `other` it covers.
+  // Cached per node, pair and vehicle; one lane's own followers are
+  // leaderOf's, so a path from the same lane is never swept.
+  sweep(car, other) {
+    const p = car.path, st = car.stats;
+    if (p.node !== other.node || (p.entry === other.entry && p.lane === other.lane)) return null;
+    const key = `${p.node}:${p.key}|${other.key}|${car.archetype}`;
+    if (this._sweep.has(key)) return this._sweep.get(key);
+    const slices = [];
+    for (let sb = other.stopLine - SWEEP_BACK; sb <= other.boxExit; sb += 1) { const q = other.at(sb); slices.push({ sb, r: { x: q.x, y: q.y, heading: q.heading, length: 1.2, width: SWEEP_WIDTH } }); }
+    let out = null;
+    for (let s = p.boxEnter - st.length / 2; s <= p.boxExit + car.length; s += 0.5) {
+      const b = p.at(s);
+      const rects = [{ x: b.x, y: b.y, heading: b.heading, length: st.length, width: st.width }];
+      if (st.trailer) rects.push(trailerRect(p, s, st));
+      for (const { sb, r } of slices) {
+        if (!rects.some(x => rectsOverlap(x, r))) continue;
+        if (!out) out = { clear: s, otherFrom: sb, otherTo: sb };
+        out.clear = s; out.otherFrom = Math.min(out.otherFrom, sb); out.otherTo = Math.max(out.otherTo, sb);
+      }
+    }
+    this._sweep.set(key, out);
+    return out;
+  }
 
   // ---- events (M7) --------------------------------------------------------
 
@@ -424,9 +463,9 @@ export class World {
         const keep = target >= 0 && net.lanesForTurn(car.path.turn, e.leg).includes(target);
         const next = target < 0 ? null : ((keep && net.pathFor(e.leg, target, car.path.turn)) || net.pathFor(e.leg, target, 'T') || net.choicesFrom(e.leg, target)[0]);
         if (!next || !this._roomFor(car, next)) { car.mergeS = e.taperS; car.mergeLane = target; continue; }
-        const from = car.path.at(car.s), to = next.at(car.s);
+        const to = this.pathOf(car.archetype, next).at(car.s), from = car.path.at(car.s);
         car.latX += from.x - to.x; car.latY += from.y - to.y;
-        car.path = next;
+        car.path = this.pathOf(car.archetype, next);
         this.stats.merges++;
         this.events.push({ t: this.t, kind: 'merge', car: car.id, to: next.movement });
       }
@@ -660,7 +699,7 @@ export class World {
       for (const p of net.paths.values()) if (p.entry === leg) { paths = [p]; break; }
       if (!paths.length) return null;
     }
-    const path = paths[0];
+    const path = this.pathOf(archetype, paths[0]);
     // is the lane start clear? Arrive no faster than the car ahead if it is
     // close, so a queue that has backed up to the map edge is joined, not hit.
     const st = ARCHETYPES[archetype];
@@ -1089,7 +1128,7 @@ export class World {
     let turn = Object.values(weights).some(w => w > 0) ? this.rng.weighted(weights) : choices[0].turn;
     let next = choices.find(p => p.turn === turn) || choices[0];
     const shift = link.atS - old.length;
-    car.path = next;
+    car.path = this.pathOf(car.archetype, next);
     car.s += shift;
     for (const h of car.hist) h.s += shift;
     car.stopVerdict = 0; car.boxVerdict = 0;

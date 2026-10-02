@@ -102,17 +102,6 @@ export function conflicts(aId, bId) {
   return inA1 !== inA2;
 }
 
-// A trucker mid-turn sweeps wider than its chord: it also blocks the other
-// lanes of its own entry leg and of its exit leg. The cars use this on top of
-// `conflicts` when the turning vehicle is flagged wide.
-export function wideConflicts(aId, bId) {
-  if (aId === bId) return false;
-  const a = parseMovement(aId), b = parseMovement(bId);
-  if (a.ped || b.ped) return conflicts(a, b);
-  if (a.turn === 'T') return conflicts(a, b);
-  return conflicts(a, b) || a.entry === b.entry || a.exit === b.exit || a.exit === b.entry;
-}
-
 // Every vehicle movement an intersection with these legs can carry.
 export function movementsFor(legs) {
   const out = [];

@@ -285,11 +285,11 @@ export const LEVELS = [
     duration: 300,
     target: 60,
     waitTarget: 30,
-    // as a roundabout, six seeds clear 84 to 94 at 6 to 18 s (#598); 78 to
-    // 98 at 5 to 18 s by 2026-10-01, with #777's fix in
-    // a meter on S at 3 s beats the bare ring's wait on four seeds of six,
-    // mean 10.4 to 7.4 s; no other leg and red does (R10, #778)
-    ring: { target: 80, waitTarget: 24, meter: { leg: 'S', red: 3 } },
+    // as a roundabout, six seeds clear 84 to 94 at 6 to 18 s (#598); with
+    // the trailer's sweep as geometry, 74 to 103 at 4 to 15 s (R11, #780).
+    // A meter on S at 6 s beats the bare ring's wait on four seeds of six;
+    // S at 3 s did before R11 and beats two after it (R10, #778; #780)
+    ring: { target: 72, waitTarget: 24, meter: { leg: 'S', red: 6 } },
     mode: 'soft',
     sandbox: true,
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],

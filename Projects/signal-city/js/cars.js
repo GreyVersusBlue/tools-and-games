@@ -22,7 +22,7 @@ export const ARCHETYPES = {
   granny:    { accel: 1.4, brake: 4.8, bComf: 1.8, vmax: 10, turnV: 4.0, T: 2.2, s0: 3.0, reaction: 0.9, runRed: 0.00, patience: 150, yellowBias: 1.7, length: 5.8, width: 1.9, greenTrust: 0.0, cautious: 0.5 },
   aggressive:{ accel: 3.8, brake: 6.5, bComf: 4.5, vmax: 17, turnV: 8.0, T: 0.7, s0: 1.2, reaction: 0.4, runRed: 0.08, patience: 15, yellowBias: 0.35, length: 5.0, width: 2.2, greenTrust: 0.6 },
   tourist:   { accel: 2.4, brake: 4.5, bComf: 2.6, vmax: 13, turnV: 5.0, T: 1.6, s0: 2.2, reaction: 0.7, runRed: 0.02, patience: 50, yellowBias: 1.1, length: 5.0, width: 2.0, greenTrust: 0.25, hesitate: 0.35, hesitateFor: 1.6, wrongTurn: 0.15 },
-  trucker:   { accel: 1.0, brake: 2.8, bComf: 1.5, vmax: 12, turnV: 3.5, T: 2.0, s0: 4.0, reaction: 1.2, runRed: 0.01, patience: 70, yellowBias: 1.2, length: 2.6, width: 2.4, greenTrust: 0.05, trailer: { length: 9.0, width: 2.5, gap: 0.3 }, wide: true },
+  trucker:   { accel: 1.0, brake: 2.8, bComf: 1.5, vmax: 12, turnV: 3.5, T: 2.0, s0: 4.0, reaction: 1.2, runRed: 0.01, patience: 70, yellowBias: 1.2, length: 2.6, width: 2.4, greenTrust: 0.05, trailer: { length: 9.0, width: 2.5, gap: 0.3, wheelbase: 7.8 } },
   student:   { accel: 1.8, brake: 3.8, bComf: 2.2, vmax: 11, turnV: 4.5, T: 2.0, s0: 2.5, reaction: 1.1, runRed: 0.00, patience: 55, yellowBias: 1.3, length: 3.8, width: 1.7, greenTrust: 0.05, jitter: 1.5, jerky: 0.45 },
   rideshare: { accel: 2.6, brake: 4.5, bComf: 2.6, vmax: 14, turnV: 6.0, T: 1.4, s0: 2.0, reaction: 0.6, runRed: 0.02, patience: 30, yellowBias: 1.0, length: 4.4, width: 1.7, greenTrust: 0.2, pickup: 0.012, pickupFor: 4.0 },
   emergency: { accel: 3.6, brake: 6.5, bComf: 4.0, vmax: 20, turnV: 8.0, T: 1.0, s0: 2.0, reaction: 0.4, runRed: 1.00, patience: 0, yellowBias: 0.0, length: 5.6, width: 2.2, greenTrust: 0.0, ignoresSignals: true },
@@ -57,6 +57,19 @@ const HIST = 90;               // ring buffer depth: 1.5 s at 60 Hz, past any re
 
 let nextId = 1;
 export function resetIds() { nextId = 1; }
+
+// The trailer of a vehicle whose tractor is centred at s on `path` (R11,
+// #779): the kingpin is the tractor's rear on its path, and the trailer
+// hangs `gap` behind it along its own heading (Path.trailerHeading), so on
+// a straight it sits where the old trailer did and in a turn it cuts the
+// corner. The sweep (sim.js World.sweep) and the collisions read this one
+// function.
+export function trailerRect(path, s, st, latX = 0, latY = 0) {
+  const tr = st.trailer, sk = s - st.length / 2;
+  const k = path.at(sk), th = path.trailerHeading(sk, tr.wheelbase);
+  const back = tr.gap + tr.length / 2;
+  return { x: k.x - Math.cos(th) * back + latX, y: k.y - Math.sin(th) * back + latY, heading: th, length: tr.length, width: tr.width, part: 'trailer' };
+}
 
 export class Car {
   constructor({ archetype, variant = 0, path, rng, id = nextId++, spawnedAt = 0 }) {
@@ -134,17 +147,13 @@ export class Car {
   touchesBox() { return this.path.touchesBox(this.s, this.length); }
   inBox() { return this.front > this.path.boxEnter && this.rear < this.path.boxExit; }
 
-  // Rectangles for drawing and collision: the body, plus the trailer trailing
-  // along the same path.
+  // Rectangles for drawing and collision: the body, plus the trailer, hinged
+  // at the tractor's rear and off-tracking inside its line (R11, #779).
   rects() {
     const st = this.stats;
     const body = this.path.at(this.s);
     const out = [{ x: body.x + this.latX, y: body.y + this.latY, heading: body.heading, length: st.length, width: st.width, part: 'body' }];
-    if (st.trailer) {
-      const back = this.s - st.length / 2 - st.trailer.gap - st.trailer.length / 2;
-      const t = this.path.at(back);
-      out.push({ x: t.x + this.latX, y: t.y + this.latY, heading: t.heading, length: st.trailer.length, width: st.trailer.width, part: 'trailer' });
-    }
+    if (st.trailer) out.push(trailerRect(this.path, this.s, st, this.latX, this.latY));
     return out;
   }
 
@@ -267,7 +276,8 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
 
 // Is the box safe to enter for this car right now? Returns the s the FRONT
 // must wait at, or 0 for go. Conflicts come from the signal model's
-// geometry; a wide turner (trucker) also blocks its own and its exit leg.
+// geometry; a turning truck also blocks every lane its trailer sweeps
+// (World.sweep, R11).
 //
 // A permissive left waits 4 m inside the box rather than at its edge, the
 // way real drivers do, so that on the yellow it can finish the turn during
@@ -309,13 +319,19 @@ export function boxVerdict(car, head, world) {
   for (const o of world.cars) {
     if (o === car || o.done || o.path.node !== p.node) continue;
     const other = o.path.movement;
-    const clash = world.conflicts(mine, other) || (car.stats.wide && car.path.turn !== 'T' && world.wideConflicts(mine, other)) || (o.stats.wide && o.path.turn !== 'T' && world.wideConflicts(other, mine));
+    // a trailer's sweep (R11, #779): mine across their lane, or theirs across mine
+    const swept = car.stats.trailer && p.turn !== 'T' ? world.sweep(car, o.path) : null;
+    const sweptBy = o.stats.trailer && o.path.turn !== 'T' ? world.sweep(o, p) : null;
+    const geo = world.conflicts(mine, other);
+    const clash = geo || swept || sweptBy;
     if (!clash) continue;
     // first come, first served at a four-way stop: a conflicting car that
     // stopped at its line before I did, and has not yet entered, goes first
     if (allWayStop && !inside && car.stoppedAtLine && o.stoppedAtLine && !o.crashed && o.front <= o.path.boxEnter + 0.5
       && (o.stoppedAt < car.stoppedAt || (o.stoppedAt === car.stoppedAt && o.id < car.id))) { car.blockedBy = o.id; return waitAt; }
     const crossing = o.path.exit !== p.exit;
+    // held by a truck whose trailer sweeps my lane: wait behind the stretch it sweeps (R11)
+    const holdAt = sweptBy ? Math.min(waitAt, sweptBy.otherFrom - 0.5) : waitAt;
     if (inside) {
       if (trusting && crossing) continue;
       if (!o.committed || o.touchesBox() || o.v < 0.5) continue;
@@ -326,19 +342,22 @@ export function boxVerdict(car, head, world) {
       continue;
     }
     if (o.touchesBox()) {
-      // past the point where our paths meet: no longer in my way. A sweep
-      // (wide conflict with no geometric crossing) clears only at its box exit.
-      const x = world.conflicts(mine, other) ? net.crossing(car.path, o.path) : { sB: o.path.boxExit };
-      if (o.rear > x.sB + 0.5) continue;
+      // past the point where our paths meet: no longer in my way. A truck
+      // whose trailer sweeps my lane is clear once its trailer has left it,
+      // and a car in a lane my trailer sweeps once it is past the sweep.
+      // Every one that applies has to be past.
+      if ((!geo || o.rear > net.crossing(car.path, o.path).sB + 0.5) && (!sweptBy || o.s > sweptBy.clear + 0.5) && (!swept || o.rear > swept.otherTo + 0.5)) continue;
       // stationary: obstacleAhead() catches a body actually on my line, and
-      // one that is not (a permissive left waiting mid-box) is not in my way
-      if (o.v < 0.5 || o.crashed) continue;
+      // one that is not (a permissive left waiting mid-box) is not in my way.
+      // Not a truck whose trailer sweeps my lane: standing mid-turn, the
+      // trailer lies across it at an angle the probe ahead of me misses (R11)
+      if (o.crashed || (o.v < 0.5 && !sweptBy)) continue;
       // moving through, and not yet clear of me
       if (car.committed && !o.crashed) continue;
       // a trusting starter looked at the light, not the box
       if (trusting && crossing) continue;
       car.blockedBy = o.id;
-      return waitAt;
+      return holdAt;
     }
     // approaching and about to enter, with the right of way or committed
     if (trusting && crossing) continue;
@@ -348,8 +367,8 @@ export function boxVerdict(car, head, world) {
     const theirHead = ctl.head(other);
     const theyHaveGreen = theirHead === 'green' || theirHead === 'green-arrow' || theirHead === 'yellow';
     if (car.committed && !o.committed) continue;
-    if (permissive || uncontrolled) { if (eta < gapNeed) { car.blockedBy = o.id; return waitAt; } continue; }
-    if ((o.committed || theyHaveGreen) && eta < gapNeed) { car.blockedBy = o.id; return waitAt; }
+    if (permissive || uncontrolled) { if (eta < gapNeed) { car.blockedBy = o.id; return holdAt; } continue; }
+    if ((o.committed || theyHaveGreen) && eta < gapNeed) { car.blockedBy = o.id; return holdAt; }
   }
   return 0;
 }

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const S = await import(pathToFileURL(path.join(HERE, '..', 'js', 'signals.js')).href);
-const { LEGS, exitLeg, parseMovement, conflicts, wideConflicts, movementsFor, conflictMatrix,
+const { LEGS, exitLeg, parseMovement, conflicts, movementsFor, conflictMatrix,
   phaseIsValid, standardPhases, extraPhases, Controller } = S;
 
 let passed = 0, failed = 0;
@@ -58,8 +58,6 @@ ok(!conflicts('N-T', 'P-E'), 'a through does not conflict with the parallel cros
   ok(symmetric, 'the matrix is symmetric');
   ok(conflicts('N-L', 'E-L') === conflicts('E-L', 'N-L'), 'and so is the function');
 }
-ok(wideConflicts('N-L', 'N-T') && wideConflicts('N-L', 'W-T') && !wideConflicts('N-T', 'N-L'),
-  'a wide left also blocks its own leg and its exit leg; a wide through does not');
 
 group('phases');
 

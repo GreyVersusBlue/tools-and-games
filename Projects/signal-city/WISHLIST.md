@@ -439,23 +439,24 @@ A meter on one leg of a ring (`World.setMeter`) holds that leg amber 2 s
 and red 2 to 12 s when the next leg round has queued 15 m back from its
 yield line. `tools/calibrate.mjs --ring --meter` sweeps every leg and red
 against the bare ring; `ring.meter` is what it found, and only Free Play's
-ring passes the four-of-six rule (S at 3 s, mean wait 10.4 to 7.4 s), so
-only Free Play's panel offers the meter. First Light and the Stem carry
+ring passes the four-of-six rule (S at 3 s, mean wait 10.4 to 7.4 s; S at
+6 s after R11), so only Free Play's panel offers the meter. First Light and the Stem carry
 `null`: their bare rings wait 1 to 3 s. `test/stars.mjs` holds the rule.
 The sweep also found #777: a retried scheduled arrival moved the level's
 own spawn time, so Free Play ran differently after its first run in a page.
 
-### R11. The trucker's sweep as geometry
+### R11. The trucker's sweep as geometry: done (HISTORY.md #779, #780)
 
-**Size 1. Model Fable 5.1.** Known gaps: the wide sweep is a rule (a
-turning truck ties up every other lane of its entry and exit legs until it
-clears) and "wrong in the way a diagram is". Model the trailer: a second
-body hinged at the fifth wheel, following the tractor's path with the
-off-tracking of a tractor-trailer, swept against the other lanes' paths by
-the same SAT test collisions use, so a truck blocks only the lanes its
-trailer actually crosses. Every level with trucks shifts, so re-run all
-calibrations and hold every shipped target, or move it and say so in
-`HISTORY.md`. A 1 because the calibration is the job, not the geometry.
+The trailer is a second body hinged at the tractor's rear, towed along a
+heading integrated from the path (`Path.trailerHeading`), so it cuts
+inside a turn. `World.sweep` tests tractor and trailer against every other
+lane's slices with the collisions' SAT test, and `boxVerdict` holds on that
+instead of the old rule. A truck turns left on its own deeper path, because
+on a car's the trailer reached a car standing behind its stop line, and a
+car held by a sweeping truck waits behind the swept stretch. Every shipped
+target held; Free Play's ring target went to 72 and its meter to S at 6 s.
+The new truck collisions are trusting starters meeting a trailer on the
+all-red.
 
 ### R12. Lane changes on a corridor segment
 
