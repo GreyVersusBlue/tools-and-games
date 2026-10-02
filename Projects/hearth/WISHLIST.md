@@ -254,6 +254,18 @@ wrong, and the handoff that names it is cited.
   `[name, far]`; the v12→v13 hop widens it and its `down` narrows it again. A
   gone person who does not know which way they went cannot be brought back by
   the right boat.
+- **The buildings are a sprite sheet now** (#800 to #802). `tools/blender/buildings.py`
+  draws every kind in `BLD`, the house in each roof `sim.js` picks, both ways of
+  the bridge and five snow frames into `assets/sprites/buildings.png`, with its
+  atlas in `buildings.js` (`const BSHEET=`, a classic script before
+  `render.js`). Rerun it from this folder with
+  `blender -b --factory-startup -t 4 -P tools/blender/buildings.py`, then
+  `node tools/blender/validate.mjs`; a second run is byte-identical. A new kind
+  in `BLD` or a new roof colour fails the validator until it has a frame, and a
+  colour `render.js` stops using has to go into `budget.json`'s `lifted` if a
+  frame still uses it. The sails, lit windows, lamp, chimney pots, shelf, boat
+  and anything still being built stay drawn by `draw()`; `harness.mjs sheet`
+  checks the frames land on their tile corners.
 - **Every sprint ends with a handoff file in the project root** in the same
   five sections: a 5-line changelog, measured numbers, decisions made without
   asking, complications hit, and quality-bar leftovers for the next sprint.
@@ -1117,31 +1129,6 @@ completely unautomated, and the only test this project has.
 *Leans on:* `test/harness.mjs` unchanged, `.github/workflows/`,
 `Tools/board-check/`. *Save:* none. *Model:* **Claude Opus 5** — CI wiring
 against an existing suite and an existing workflow to copy.
-
-## Blender assets (ranks 8 to 10)
-
-Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session
-without `blender` on PATH skips it and takes the next row.
-
-**B1. The sprite pipeline (rank 8, ¼, Opus 5.5, gate `blender`).** Hearth's
-own copy of Signal City's sprite renderer (#643), straight down at the map's
-tile size (`T`, 8 px, in `js/core.js`), with frames at a whole multiple of it
-so nothing is resampled. The palette comes off `js/render.js`. Hearth's
-scripts are classic, not modules, and share one scope in a load order that
-matters, so the sheet's atlas loads as data, not as an import. The validator
-joins `.github/workflows/hearth-ci.yml`.
-
-**B2. The building sheet (rank 9, ½, Opus 5.5, gate `blender`).** The eight
-kinds in `BLD` (hut, well, market, mill, smoke, bridge, hall, light) and the
-houses. **The faces stay procedural** (#646): every face is pixel-identical to
-the one its seed drew before, and `drawFace` consumes its first draw either way
-to keep it so.
-
-**B3. Wiring the sheet (rank 10, ¼, Opus 5.5, no gate, after rank 9).**
-`draw()` draws frames where it draws buildings. `harness.mjs determinism`,
-`save`, `soak` and `pinned` stay green; none of them should move, because the
-sim never reads a picture.
 
 ## What this leaves for a later arc
 

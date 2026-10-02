@@ -15,6 +15,7 @@
 //   node harness.mjs wider
 //   node harness.mjs strain      [--days 40] [--seeds 7,20260819]
 //   node harness.mjs leftovers   (phase 7: the ring's shared phase, the widened elder roll, the weighted prayer, the most-visited stone)
+//   node harness.mjs sheet       (rank 10: every building is drawn from the sheet, where the old drawing stood; a missing sheet stops the island)
 //   node harness.mjs pinned      [--write]   (phase 8: the forty-day pack() hashes in hashes.json, compared, or rewritten with --write)
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
@@ -44,6 +45,9 @@ async function openIsland(browser, seed, warns) {
   page.on('pageerror', e => warns.push('PAGEERROR: ' + e.message));
   await page.goto(GAME);
   await page.waitForFunction(() => !!window.__hearth);
+  // the building sheet (#801): every mode waits for it, so a sheet that will not load fails every mode by name
+  await page.waitForFunction(() => window.__hearth.sheet.ready || !!window.__hearth.sheet.fail);
+  { const f = await page.evaluate(() => window.__hearth.sheet.fail); if (f) warns.push('SHEET: ' + f); }
   // pause the RAF loop so this harness owns every step
   await page.evaluate(() => {
     const b = document.getElementById('b-pause');
@@ -2398,6 +2402,89 @@ if (mode === 'leftovers') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 6).forEach(v => console.log('  WARN ' + v)); }
   console.log(failed ? '\nFAIL' : '\nPASS: the four leftovers, each through its own door');
   await ctx.close();
+}
+
+// Rank 10 (#800 to #802): the buildings come off the sheet. draw() is watched through the canvas's drawImage: every kind in BLD
+// and a house in every roof is put on an empty island, done, and each must be drawn from its own frame, its anchor on the
+// building's tile corner. Snow draws the snow frames at the snow's depth, the lit windows still light, the sim's hash does not
+// care, and a sheet that will not load stops the loop and says so.
+if (mode === 'sheet') {
+  const bad = [];
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const r = await page.evaluate(() => {
+    const h = window.__hearth, A = h.sheet.atlas, T = 8;
+    const before = h.pack ? JSON.stringify(h.pack()).length : 0;
+    h.houses.length = 0; h.bldg.length = 0;
+    const roofs = Object.keys(A.frames).filter(k => /^house-[0-9a-f]{6}$/.test(k)).map(k => '#' + k.slice(6));
+    roofs.forEach((r, i) => h.houses.push({ x: 10 + i * 4, y: 10, r, owners: [] }));
+    h.houses.push({ x: 30, y: 10, r: '#8a3e30', owners: [] });                 // a roof from a hand-made link
+    const kinds = ['hut', 'well', 'market', 'mill', 'smoke', 'hall', 'light', 'bridge'];
+    kinds.forEach((k, i) => h.bldg.push({ kind: k, x: 10 + i * 5, y: 30, w: 1, h: 1, done: true, prog: 1, work: 1 }));
+    const g = document.getElementById('c').getContext('2d');
+    const orig = g.drawImage;
+    let calls = [];
+    g.drawImage = function (img, ...a) { if (a.length === 8 && img.src && img.src.endsWith('buildings.png')) calls.push({ a, alpha: g.globalAlpha }); return orig.call(this, img, ...a); };
+    const nameAt = (sx, sy) => Object.keys(A.frames).find(k => A.frames[k].x === sx && A.frames[k].y === sy);
+    const run = () => { calls = []; h.draw(); return calls.map(c => ({ f: nameAt(c.a[0], c.a[1]), x: c.a[4], y: c.a[5], alpha: c.alpha })); };
+    h.setSnow(0); h.setTime(h.time - (h.time % 1)); // whatever the hour; the frames do not depend on it
+    const dry = run();
+    h.setSnow(0.5);   // cap is snowD x 1.4, held to 1: 0.7 here, so a frame drawn opaque shows
+    const snowy = run();
+    h.setSnow(0);
+    let threw = '';
+    const keep = A.frames.well; delete A.frames.well;
+    try { h.draw(); } catch (e) { threw = e.message; }
+    A.frames.well = keep;
+    g.drawImage = orig;
+    return { dry, snowy, threw, roofs, kinds, T,
+      want: [...h.houses.map(x => ({ x: x.x * T, y: x.y * T })), ...h.bldg.map(b => ({ k: b.kind, x: b.x * T, y: b.y * T }))],
+      frames: A.frames, roofOf: h.roofFrame('#8a3e30') };
+  });
+  const at = (list, name) => list.filter(c => c.f === name);
+  for (const [i, roof] of r.roofs.entries()) {
+    const f = 'house-' + roof.slice(1), fr = r.frames[f], hits = at(r.dry, f);
+    if (!hits.some(c => c.x === (10 + i * 4) * 8 - fr.ax && c.y === 80 - fr.ay)) bad.push(`house roof ${roof} is not drawn from ${f} on its tile corner`);
+  }
+  if (r.roofOf !== 'house-8a3d2f') bad.push(`a roof of #8a3e30 takes ${r.roofOf}, not the nearest, house-8a3d2f`);
+  if (!at(r.dry, 'house-8a3d2f').some(c => c.x === 240 - r.frames['house-8a3d2f'].ax)) bad.push('the hand-made roof is not drawn');
+  for (const [i, k] of r.kinds.entries()) {
+    const x = (10 + i * 5) * 8, y = 240;
+    const names = k === 'bridge' ? ['bridge-h', 'bridge-v'] : [k];
+    if (!r.dry.some(c => names.includes(c.f) && c.x === x - r.frames[c.f].ax && c.y === y - r.frames[c.f].ay)) bad.push(`${k} is not drawn from its frame on its tile corner`);
+  }
+  const snowFrames = Object.keys(r.frames).filter(k => k.endsWith('-snow'));
+  if (r.dry.some(c => c.f && c.f.endsWith('-snow'))) bad.push('a snow frame is drawn with no snow on the ground');
+  for (const f of snowFrames) {
+    const hits = at(r.snowy, f);
+    if (!hits.length) bad.push(`${f} is not drawn in deep snow`);
+    else if (hits.some(c => c.alpha <= 0 || c.alpha >= 1)) bad.push(`${f} is not drawn at the snow's depth (alpha ${hits[0].alpha})`);
+  }
+  if (!/no frame well/.test(r.threw)) bad.push(`a frame missing from the atlas did not stop draw(): ${r.threw || 'it drew on'}`);
+  console.log(`  ${r.dry.length} frames drawn dry, ${r.snowy.length} in snow; a missing frame: ${r.threw || '(nothing)'}`);
+  if (warns.length) bad.push(...warns);
+  await ctx.close();
+
+  // the sheet will not load: the loop never starts, and the reason is said and printed
+  {
+    const ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const errs = [];
+    page2.on('console', m => { if (m.text().startsWith('hearth:')) errs.push(m.text()); });
+    await ctx2.route('**/buildings.png', route => route.abort());
+    await page2.goto(GAME);
+    await page2.waitForFunction(() => !!window.__hearth && !!window.__hearth.sheet.fail);
+    const t0 = await page2.evaluate(() => window.__hearth.time);
+    await page2.waitForTimeout(400);
+    const s = await page2.evaluate(() => ({ t: window.__hearth.time, log: document.getElementById('log').textContent }));
+    if (s.t !== t0) bad.push('with no sheet the loop ran anyway');
+    if (!/cannot be drawn/.test(s.log)) bad.push('with no sheet the log does not say why');
+    if (!errs.length) bad.push('with no sheet nothing was printed for the harness');
+    console.log(`  no sheet: ${errs[0] || '(silent)'}`);
+    await ctx2.close();
+  }
+  if (bad.length) { failed = true; bad.forEach(b => console.log('  FAIL ' + b)); }
+  console.log(failed ? '\nFAIL: the buildings are not the sheet\'s' : '\nPASS: every building is drawn from the sheet, and a missing sheet stops the island');
 }
 
 // Phase 8: the machine's copy of the number every handoff pasted by hand. hashes.json holds the pack() hash of each listed seed

@@ -114,6 +114,22 @@ function rbSprite(){if(rbCv)return rbCv;rbCv=document.createElement('canvas');rb
   for(let i=0;i<7;i++){c.strokeStyle=cols[i];c.globalAlpha=.55;c.lineWidth=5;c.beginPath();c.arc(220,220,206-i*5.4,Math.PI,2*Math.PI);c.stroke()}
   return rbCv}
 const prints=[];for(let i=0;i<256;i++)prints.push({x:0,y:0,t0:-1e9});let printC=0;
+// The building sheet (#800 to #802): Blender's frames, one frame pixel to one map pixel, made by tools/blender/buildings.py. Its atlas
+// is BSHEET, loaded as data by <script> before this file; the loop waits for the picture (sheetGo, in main.js), and a sheet that will
+// not come stops the island with the reason in the log rather than drawing it without its buildings. Nothing in the sim reads it.
+const BIMG=new Image();let bReady=false,bFail=typeof BSHEET==='undefined'?'assets/sprites/buildings.js would not load':'';
+BIMG.addEventListener('load',()=>{if(BIMG.naturalWidth!==BSHEET.sheet.w||BIMG.naturalHeight!==BSHEET.sheet.h)bFail=`assets/sprites/buildings.png is ${BIMG.naturalWidth} x ${BIMG.naturalHeight}, and its atlas says ${BSHEET.sheet.w} x ${BSHEET.sheet.h}`;else bReady=true});
+BIMG.addEventListener('error',()=>{bFail='assets/sprites/buildings.png would not load'});
+if(!bFail)BIMG.src='assets/sprites/buildings.png';
+function sheetGo(go,fail){if(bFail)return fail(bFail);if(bReady)return go();
+  BIMG.addEventListener('load',()=>bFail?fail(bFail):go(),{once:true});BIMG.addEventListener('error',()=>fail(bFail),{once:true})}
+function bFrame(name,x,y,a){const f=BSHEET.frames[name];if(!f)throw new Error('hearth: no frame '+name+' in the building sheet');
+  if(a!==undefined)g.globalAlpha=a;g.drawImage(BIMG,f.x,f.y,f.w,f.h,x-f.ax,y-f.ay,f.w,f.h);if(a!==undefined)g.globalAlpha=1}
+/* a house's roof is one of the three sim.js picks; a roof from anywhere else (a hand-made link) takes the nearest of them rather than no house */
+const roofFrame=r=>{if(BSHEET.frames['house-'+String(r).slice(1)])return'house-'+String(r).slice(1);
+  const c=h=>[1,3,5].map(i=>parseInt(String(h).slice(i,i+2),16)||0),a=c(r);let best='',bd=1e9;
+  for(const k of Object.keys(BSHEET.frames)){if(!/^house-[0-9a-f]{6}$/.test(k))continue;const b=c('#'+k.slice(6));const d=(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;if(d<bd){bd=d;best=k}}
+  return best}
 function draw(){
   const s=sea(),sd=seaDay();
   if(paintedKey!==s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV)paintTerrain();
@@ -146,35 +162,35 @@ function draw(){
     if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(t.x*T-r*.6,t.y*T-r*1.1,2,2);g.fillRect(t.x*T+r*.3,t.y*T-r*1.5,2,2);g.fillRect(t.x*T+r*.1,t.y*T-r*.6,2,2)}
     if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();g.arc(t.x*T-r*.2,t.y*T-r*1.35,r*.55*cap,0,6.283);g.fill()}}});
   const occSet=new Set();for(const p of people)if(p.inside&&p.shelterH)occSet.add(p.shelterH); // a house someone is waiting out the storm in shows a light
-  for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;g.fillStyle='#b8a17e';g.fillRect(x+1,y+7,14,9);g.fillStyle=h.r;g.beginPath();g.moveTo(x-1,y+8);g.lineTo(x+8,y);g.lineTo(x+17,y+8);g.fill();
-    if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+8-7*cap,y+7*cap);g.lineTo(x+8,y);g.lineTo(x+8+7*cap,y+7*cap);g.fill();g.fillRect(x+1,y+7,14,1)}
+  // the frames are drawn; what moves or changes is drawn over them: snow settling, the kiln's chimney pots, a window lit (#802)
+  for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;bFrame(roofFrame(h.r),x,y);
+    if(cap>0)bFrame('house-snow',x,y,cap);
     if(hasWay(2)){g.fillStyle='#a34a2a';g.fillRect(x+11,y+1,2,3);g.fillStyle='#6b2f1e';g.fillRect(x+11,y+1,2,1)} // kiln-fired chimney pots
-    g.fillStyle=(L<.5||occSet.has(h))?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3);g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5)}});
+    if(L<.5||occSet.has(h)){g.fillStyle='#f5c463';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3)}}});
   // buildings (bridge and hut sit low; the lighthouse sorts by its foot)
   const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
   for(const b of bAll())ents.push({y:b.y+b.h,d:()=>{const x=b.x*T,y=b.y*T,done=b.done,pr=done?1:Math.min(1,b.prog/b.work);
     if(!done){g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,b.w*T,b.h*T);g.fillStyle='#8a6a44';for(let i=0;i<b.w*T;i+=4)g.fillRect(x+i,y+b.h*T-2-pr*6,2,2+pr*6);return}
     switch(b.kind){
-      case 'hut':g.fillStyle='#8a6a44';g.fillRect(x+1,y-1,14,8);g.fillStyle='#6f4b32';g.fillRect(x,y-4,16,4);g.fillStyle='#4a3a2a';g.fillRect(x+6,y+2,3,5);g.fillStyle='#3a3a30';g.fillRect(x+11,y+1,3,4);g.fillRect(x+12,y-6,1,6);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x,y-4,16,Math.ceil(2*cap))}
+      case 'hut':bFrame('hut',x,y);if(cap>0)bFrame('hut-snow',x,y,cap);
         if(!boats.some(bb=>bb.kind==='fish')){const bx=x+(b.x>center.x?b.w*T+1:-10),by=y+8; // the boat, pulled up on the sand beside the hut
           g.fillStyle='rgba(0,0,0,.2)';g.fillRect(bx,by+3,9,1);
           g.fillStyle='#8a6a44';g.fillRect(bx+1,by,7,1);g.fillRect(bx+7,by-4,1,4);g.fillRect(bx+6,by-5,2,1);
           g.fillStyle='#6b4a2a';g.fillRect(bx,by+1,9,1);
           g.fillStyle='#4a2f16';g.fillRect(bx+1,by+2,7,1);g.fillRect(bx+3,by,1,1)}break;
-      case 'well':g.fillStyle='#8c8478';g.fillRect(x+1,y+2,6,5);g.fillStyle='#3a3a30';g.fillRect(x+2,y+3,4,3);g.fillStyle='#6f4b32';g.fillRect(x+1,y-2,1,5);g.fillRect(x+6,y-2,1,5);g.fillRect(x,y-3,8,1);g.fillStyle='#d9d4c8';g.fillRect(x+1,y+2,6,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x,y-4,8,1)}break;
-      case 'market':for(let i=0;i<3;i++){const sx=x+2+i*8,sy=y+(i===1?14:2);g.fillStyle=['#8a3d2f','#4c5f78','#c9a24a'][i];g.fillRect(sx,sy,6,3);g.fillStyle='#6f4b32';g.fillRect(sx,sy+3,1,4);g.fillRect(sx+5,sy+3,1,4);g.fillStyle='#b8a17e';g.fillRect(sx+1,sy+5,4,2)}break;
-      case 'mill':{g.fillStyle='#a89880';g.fillRect(x+3,y+3,10,13);g.fillStyle='#8c8478';g.fillRect(x+12,y+3,1,13);g.fillStyle='#4c5f78';g.beginPath();g.moveTo(x+2,y+4);g.lineTo(x+8,y-2);g.lineTo(x+14,y+4);g.fill();if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+8-6*cap,y+4-6*(1-cap));g.lineTo(x+8,y-2);g.lineTo(x+8+6*cap,y+4-6*(1-cap));g.fill()}g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5);
+      case 'well':bFrame('well',x,y);if(cap>0)bFrame('well-snow',x,y,cap);break;
+      case 'market':bFrame('market',x,y);break;
+      case 'mill':{bFrame('mill',x,y);if(cap>0)bFrame('mill-snow',x,y,cap);
         const cx=x+8,cy=y+2,a=time*(.5+wind*.9);g.strokeStyle='#e8dcc4';g.lineWidth=1.5;g.beginPath();for(let i=0;i<4;i++){const an=a+i*Math.PI/2;g.moveTo(cx,cy);g.lineTo(cx+Math.cos(an)*9,cy+Math.sin(an)*9)}g.stroke();g.strokeStyle='#8a6a44';g.lineWidth=1;g.beginPath();for(let i=0;i<4;i++){const an=a+i*Math.PI/2+.25;g.moveTo(cx+Math.cos(an)*3,cy+Math.sin(an)*3);g.lineTo(cx+Math.cos(an)*8,cy+Math.sin(an)*8)}g.stroke();g.fillStyle='#4a2f16';g.fillRect(cx-1,cy-1,2,2);break}
-      case 'smoke':g.fillStyle='#4a3a2a';g.fillRect(x+1,y,14,7);g.fillStyle='#3a2a1a';g.fillRect(x,y-3,16,3);g.fillStyle='#2a1c12';g.fillRect(x+6,y+2,3,5);g.fillStyle='#8c8478';g.fillRect(x+12,y-6,2,3);break;
-      case 'bridge':{const hz=at(b.x-1,b.y)===WATER&&at(b.x+1,b.y)===WATER;g.fillStyle='#8a6a44';if(hz){g.fillRect(x-1,y+1,10,6);g.fillStyle='#6b4a2a';for(let i=0;i<5;i++)g.fillRect(x-1,y+1+i*1.5,10,.6);g.fillStyle='#4a2f16';g.fillRect(x-1,y,10,1);g.fillRect(x-1,y+7,10,1)}
-        else{g.fillRect(x+1,y-1,6,10);g.fillStyle='#6b4a2a';for(let i=0;i<5;i++)g.fillRect(x+1+i*1.5,y-1,.6,10);g.fillStyle='#4a2f16';g.fillRect(x,y-1,1,10);g.fillRect(x+7,y-1,1,10)}break}
-      case 'hall':g.fillStyle='#b8a17e';g.fillRect(x+1,y+5,22,11);g.fillStyle='#6f4b32';g.beginPath();g.moveTo(x-1,y+6);g.lineTo(x+12,y-2);g.lineTo(x+25,y+6);g.fill();g.fillStyle='#8c8478';g.fillRect(x+10,y-7,4,7);g.fillStyle='#6f4b32';g.fillRect(x+9,y-8,6,1);g.fillStyle='#f0b35a';g.fillRect(x+11,y-5,2,2);
-        g.fillStyle=L<.5?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+8,3,3);g.fillRect(x+17,y+8,3,3);g.fillStyle='#4a2f16';g.fillRect(x+10,y+10,4,6);
+      case 'smoke':bFrame('smoke',x,y);break;
+      case 'bridge':bFrame(at(b.x-1,b.y)===WATER&&at(b.x+1,b.y)===WATER?'bridge-h':'bridge-v',x,y);break;
+      case 'hall':bFrame('hall',x,y);if(cap>0)bFrame('hall-snow',x,y,cap);
+        if(L<.5){g.fillStyle='#f5c463';g.fillRect(x+4,y+8,3,3);g.fillRect(x+17,y+8,3,3)}
         {const sh=things.filter(t=>!t.holder);if(sh.length){/* the shelf where things wait (sprint 13): a plank between the windows, and what sits on it */
           g.fillStyle='#6b4a2a';g.fillRect(x+9,y+8,6,1);const TC=['#d9d4c8','#c9a24a','#4a5f8a'];
           for(let i=0;i<Math.min(3,sh.length);i++){g.fillStyle=TC[i%3];g.fillRect(x+10+i*2,y+7,1,1)}}}
-        if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+12-11*cap,y+6-8*(1-cap));g.lineTo(x+12,y-2);g.lineTo(x+12+11*cap,y+6-8*(1-cap));g.fill()}break;
-      case 'light':g.fillStyle='#e6e2d8';g.fillRect(x+1,y-10,6,16);g.fillStyle='#8a3d2f';g.fillRect(x+1,y-6,6,3);g.fillRect(x+1,y,6,3);g.fillStyle='#c9c4b8';g.fillRect(x+6,y-10,1,16);g.fillStyle='#4a4640';g.fillRect(x,y-11,8,1);g.fillStyle=L<.55?'#fff2b0':'#5a5a60';g.fillRect(x+2,y-14,4,3);g.fillStyle='#4a4640';g.fillRect(x+1,y-15,6,1);break;
+        break;
+      case 'light':bFrame('light',x,y);if(L<.55){g.fillStyle='#fff2b0';g.fillRect(x+2,y-14,4,3)}break;
     }}});
   for(const w of works)ents.push({y:w.y+1,d:()=>{const x=Math.round(w.x*T),y=Math.round(w.y*T);
     if(!w.done){if(w.paid){g.fillStyle='rgba(60,45,25,.45)';g.fillRect(x,y,14,8);g.fillStyle='#8a6a44';const pr=Math.min(1,w.prog/14);for(let i=0;i<14;i+=4)g.fillRect(x+i,y+6-pr*5,2,2+pr*5)}return}

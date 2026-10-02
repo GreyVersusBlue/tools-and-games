@@ -9,7 +9,7 @@
 #
 #   gate  on every pull request and push to main — the building sheet's
 #         validator, determinism, save, a twelve-day soak on the two fixed
-#         seeds, and `pinned`, which compares
+#         seeds, `sheet`, and `pinned`, which compares
 #         the forty-day pack() hashes of seeds 7 and 20260819 against
 #         test/hashes.json. About a minute of browser time; the install is the
 #         slow part.
@@ -68,7 +68,7 @@ defaults:
 
 jobs:
   gate:
-    name: sheet validator, determinism, save, 12-day soak, pinned hashes
+    name: sheet, determinism, save, 12-day soak, pinned hashes
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -109,6 +109,9 @@ jobs:
 
       - name: Pinned forty-day hashes (test/hashes.json)
         run: node harness.mjs pinned
+
+      - name: Sheet (every building drawn from its frame; no sheet, no island)
+        run: node harness.mjs sheet
 
   deep:
     name: deep · ${{ matrix.mode }}
