@@ -17,6 +17,8 @@
 //   node harness.mjs leftovers   (phase 7: the ring's shared phase, the widened elder roll, the weighted prayer, the most-visited stone)
 //   node harness.mjs sheet       (rank 10: every building is drawn from the sheet, where the old drawing stood; a missing sheet stops the island)
 //   node harness.mjs pinned      [--write]   (phase 8: the forty-day pack() hashes in hashes.json, compared, or rewritten with --write)
+//   node harness.mjs debt        [--days 700] [--seed 7]   (TG-26: the lit window, a house half up, a held storm, a long island's cost)
+//   node unit.mjs                (TG-26: the functions in Node through load.mjs; no browser, no install)
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
 // seeds including random ones; a single healthy island at a polite interval proves nothing.
@@ -97,7 +99,9 @@ async function runDay(page, auditEvery) {
       const knew = (p, d2) => !!(d2.rels && d2.rels.some(r => r.who === p.name)) || p.rels.some(r => r.who === d2.name);
       const outlived = (p, d2) => { const g = grave(d2); return knew(p, d2) || (!!g && g.d > p.born); };
       const tooSmall = (kd, d2) => { const g = grave(d2); return !!g && g.d < bornOn(kd) + 100; };
-      return alive.some(p => age(p) >= 60 && H.dead.some(d2 => outlived(p, d2) && kids.some(kd => tooSmall(kd, d2)))) ? 1 : 0;
+      // TG-26: and a grown adult under sixty may tell it when no elder can, if they were five or more the day the stone went up
+      const recalls = (p, d2) => { const g = grave(d2); return knew(p, d2) || (!!g && g.d >= bornOn(p) + 100); };
+      return alive.some(p => age(p) >= 14 && H.dead.some(d2 => outlived(p, d2) && (age(p) >= 60 || recalls(p, d2)) && kids.some(kd => tooSmall(kd, d2)))) ? 1 : 0;
     })();
     out.day = H.dayCount; out.pop = H.people.length; out.food = H.food; out.granary = H.granary;
     out.houses = H.houses.length; out.bldg = H.bldg.map(b => b.kind).join(',');
@@ -1188,6 +1192,7 @@ if (mode === 'migrate') {
     h.declareWant(); h.people[0].short = 1;                              // v14: the short winter, and the one eating last through it
     h.takeSick(h.people[1], null); h.people[2].wellD = h.dayCount - 1;    // v15: a wave, somebody in it, and somebody proof against it
     h.startFeud(h.people[3], h.people[4]);                                // v16: two who are not speaking, on purpose
+    h.plots.push({ x: 44, y: 30, prog: 6.5, forCouple: null });          // v17: a house half up, with nobody on it
   });
 
   // A current island packs, unpacks and re-packs byte-identical: the ladder must not touch a save already at SAVE_V.
@@ -1217,7 +1222,7 @@ if (mode === 'migrate') {
       const wide = (rows, dflt) => rows && rows.length ? Math.min(...rows.map(a => a.length)) : dflt;
       const shape = { v: o.v, pe: wide(o.pe, 32), vo: o.vo && o.vo[5] ? o.vo[5].length : 32, gv: wide(o.gv, 7),
         wk: wide(o.wk, 8), ch: wide(o.ch, 7), go: wide(o.go, 2),
-        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi', 'wa', 'wy', 'iw', 'fd'].filter(k => o[k] === undefined) };
+        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi', 'wa', 'wy', 'iw', 'fd', 'hp'].filter(k => o[k] === undefined) };
       try { h.unpack(o); } catch (e) { return { err: 'threw: ' + e.message } }
       try { h.pack(); } catch (e) { return { err: 'packs no more: ' + e.message } }
       return { shape,
@@ -1231,6 +1236,7 @@ if (mode === 'migrate') {
         want: h.want ? 1 : 0, short: h.people.filter(p => p.short).length,
         ill: h.ill ? 1 : 0, sick: h.people.filter(p => p.sick).length, clock: h.people.filter(p => p.sick && !p.sickD).length,
         well: h.people.filter(p => p.wellD).length,
+        plots: h.plots.length, plotProg: h.plots.map(q => q.prog).join('/'),
         feud: h.feud ? 1 : 0, rivals: h.feud ? [0, 1].filter(i => { const x = h.byName(h.feud.rv[i]), y = h.feud.rv[1 - i]; return x && x.rels.some(r => r.who === y && r.k === 'rival') }).length : 0,
       };
     }, { cur, v });
@@ -1246,6 +1252,8 @@ if (mode === 'migrate') {
     // that repair (#37) is supposed to invent for whoever it finds in bed. That second one is a positive assertion, not an absence.
     // v16 added the feud record and nothing else; an older save comes up with nobody not speaking to anybody on purpose, and a v16 one
     // comes up with the record and with the two of them rivals both ways, which is what the repair (#37) is for
+    // v17 (TG-26) added the houses going up; anything older comes up with none, the current one with the forced plot at its progress
+    if (v <= 16 && r.plots) bad.push('a house going up came through a v16 save');
     if (v <= 15 && r.feud) bad.push('a feud came through a v15 save');
     if (v <= 14 && r.well) bad.push('proof against having had it came through a v14 save');
     if (v <= 14 && r.sick && !r.ill) bad.push('somebody came up a v14 save in bed with no wave to belong to — repair did not run');
@@ -1269,7 +1277,7 @@ if (mode === 'migrate') {
     console.log(`  v${v}: pop ${r.pop}, songs ${r.songs}, snowmen ${r.snowmen}, skipN ${r.skipN}, grave-visits ${r.vn}, ` +
       `loreN ${r.loreN}, places ${r.lorePl}, things ${r.things}, works ${r.works} (${r.wip} wip, prog ${r.prog || '-'}), faith ${r.faith}, ` +
       `far ${r.far} (${r.goneN} gone, ${r.farGone} of them over the water), want ${r.want}/${r.short}, ill ${r.ill}/${r.sick}` +
-      `, feud ${r.feud}/${r.rivals}, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}/${r.shape.go}` +
+      `, feud ${r.feud}/${r.rivals}, plots ${r.plots}, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}/${r.shape.go}` +
       (bad.length ? `  !! ${bad.join('; ')}` : '  ok'));
     if (bad.length) failed = true;
   }
@@ -1279,12 +1287,12 @@ if (mode === 'migrate') {
   // what proves the range is one the ladder can actually walk.
   // These two literals are moved by hand on every version bump, and that is the whole point: phase 5 bumped SAVE_V to 13 and this
   // check went red on its own, which is what a computed bound would never have done. Phase 6 bumped it to 14, then to 15, then to
-  // 16, and it did so all three times.
+  // 16, and it did so all three times. TG-26 bumped it to 17.
   const gate = await H(() => {
     const h = window.__hearth, o = JSON.parse(JSON.stringify(h.pack()));
-    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 17 }), nope: h.canLoad({ ...o, pe: undefined }) };
+    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 18 }), nope: h.canLoad({ ...o, pe: undefined }) };
   });
-  console.log(`the gate: v4 ${gate.low}, v17 ${gate.high}, no people ${gate.nope} — all three must be false`);
+  console.log(`the gate: v4 ${gate.low}, v18 ${gate.high}, no people ${gate.nope} — all three must be false`);
   if (gate.low || gate.high || gate.nope) { failed = true; console.log('FAIL: canLoad accepts something it should not'); }
 
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
@@ -2491,6 +2499,122 @@ if (mode === 'sheet') {
 // after `days` sim-days; a shifted R() draw, a field added to pack(), or a rule that moves anybody's stream changes it, and this
 // mode says which seed and by how much (the length after the colon is the packed save's size, which is the cheap half of the
 // diagnosis). Rewrite the file with --write when the move was meant, and say so in the PR; the diff is then the record.
+// TG-26: the standing backlog's debts, each through the page. A sheltering islander's house shows a light; a house half up is drawn
+// and survives a save; and the island's unbounded lists are measured where nobody had measured them, past day 120.
+//   node harness.mjs debt  [--days 700] [--seed 7]
+if (mode === 'debt') {
+  const bad = [];
+  const warns = [];
+  const days = parseInt(arg('days', '700'));
+  const seed = parseInt(arg('seed', '7'));
+  const { ctx, page } = await openIsland(browser, seed, warns);
+  for (let d = 0; d < 3; d++) await runDay(page, 1e9);
+
+  // ---- 1. nobody vanishes into a storm: every house somebody is waiting it out in shows a lit window ----
+  // Noon, so the dark does not light every window; thunder, so everyone not brave goes in. draw() is watched through fillRect in the
+  // window colour, at each house's two window corners. Break: drop occSet from the window test, and no house lights at noon.
+  const lit = await page.evaluate(() => {
+    const h = window.__hearth, T = 8;
+    h.setTime(Math.floor(h.time / 140) * 140 + 70); h.setWx('thunder');
+    for (let i = 0; i < 1200 && !h.people.some(p => p.inside); i++) { h.setTime(Math.floor(h.time / 140) * 140 + 70); h.step(0.05); }
+    const g = document.getElementById('c').getContext('2d'), orig = g.fillRect, rects = [];
+    g.fillRect = function (x, y, w, hh) { if (g.fillStyle === '#f5c463') rects.push(x + ',' + y); return orig.call(this, x, y, w, hh); };
+    h.draw(); g.fillRect = orig;
+    const occ = [...new Set(h.people.filter(p => p.inside && p.shelterH).map(p => h.houses.indexOf(p.shelterH)))];
+    const shown = occ.filter(i => rects.includes((h.houses[i].x * T + 4) + ',' + (h.houses[i].y * T + 10)));
+    const dark = h.houses.map((x, i) => i).filter(i => !occ.includes(i) && rects.includes((h.houses[i].x * T + 4) + ',' + (h.houses[i].y * T + 10)));
+    return { inside: h.people.filter(p => p.inside).length, occ: occ.length, shown: shown.length, dark: dark.length, houses: h.houses.length };
+  });
+  console.log(`storm at noon: ${lit.inside} indoors in ${lit.occ} of ${lit.houses} houses, ${lit.shown} of them lit, ${lit.dark} empty houses lit`);
+  if (!lit.occ) bad.push('nobody went indoors in a thunderstorm at noon');
+  if (lit.shown !== lit.occ) bad.push(`${lit.occ - lit.shown} houses with somebody sheltering in them show no light`);
+  if (lit.dark) bad.push(`${lit.dark} empty houses are lit at noon`);
+
+  // ---- 2. a house half up: drawn, packed, and back after a load at its progress ----
+  // Break: drop `hp` from pack(), and the plot comes back empty; drop the plots loop from draw(), and the frame is not drawn.
+  const plot = await page.evaluate(() => {
+    const h = window.__hearth, T = 8;
+    h.setWx('clear');
+    const x = h.houses.length ? h.houses[0].x + 30 : 40, y = h.houses.length ? h.houses[0].y : 30;
+    h.plots.push({ x, y, prog: 6.6, forCouple: null });
+    const g = document.getElementById('c').getContext('2d'), orig = g.fillRect;
+    let framed = false;
+    g.fillRect = function (a, b, w, hh) { if (a === x * T && b === y * T && w === 2 * T && hh === 2 * T) framed = true; return orig.call(this, a, b, w, hh); };
+    h.draw(); g.fillRect = orig;
+    const o = JSON.parse(JSON.stringify(h.pack()));
+    h.unpack(o);
+    const back = h.plots.find(q => q.x === x && q.y === y);
+    return { framed, hp: o.hp.length, prog: back ? back.prog : null };
+  });
+  console.log(`a house half up: drawn ${plot.framed}, packed ${plot.hp}, back at ${plot.prog}`);
+  if (!plot.framed) bad.push('a house going up draws no frame');
+  await ctx.close();
+
+  // ---- 2b. a storm-heavy start: thunder held from day 1 to day 10, the worst case natural weather never deals ----
+  // On main before TG-26 this took one to three people off six islands in ten by day 20. Nobody leaves in the first ten days now,
+  // and the island is still there at day 20. Break: drop `dayCount>FIRST_DAYS` from the departure roll.
+  for (const s of [5000, 28757, 36676]) {
+    const w3 = [];
+    const { ctx: c3, page: p3 } = await openIsland(browser, s, w3);
+    const r = await p3.evaluate(() => {
+      const h = window.__hearth, out = {};
+      while (h.dayCount <= 20) { if (h.dayCount <= 10 && h.wx !== 'thunder') h.setWx('thunder'); h.step(0.05); if (h.dayCount <= 10) { out.g10 = h.gone.length; out.p10 = h.people.length; } }   /* the last instant of day 10: day 11's dawn is the first that may sail */
+      out.p20 = h.people.length; return out;
+    });
+    console.log(`held thunder, seed ${s}: ${r.g10} gone and ${r.p10} here at day 10, ${r.p20} at day 20`);
+    if (r.g10) bad.push(`seed ${s}: ${r.g10} sailed off in the first ten days of a storm`);
+    if (r.p20 < 4) bad.push(`seed ${s}: ${r.p20} left at day 20`);
+    if (w3.length) bad.push(...w3);
+    await c3.close();
+  }
+  if (plot.prog !== 6.6) bad.push(`a house going up came back from a save at ${plot.prog}, not 6.6`);
+
+  // ---- 3. what a long island costs: the lists that grow, and the frame, past day 120 ----
+  // chron is the island's record and stays whole (TG-26 decided it); events and every hist are capped. So the bound asserted here is
+  // on what the whole record costs: the save's bytes per day, and the frame. Timing on a software-rendered runner is a reading, not a
+  // verdict (#53), so the frame budget is set where only something gone quadratic would cross it.
+  {
+    const w2 = [];
+    const { ctx: c2, page: p2 } = await openIsland(browser, seed, w2);
+    const marks = [120, 400, days].filter((v, i, a) => v <= days && a.indexOf(v) === i);
+    const rows = [];
+    let d = 0;
+    const t0 = Date.now();
+    for (const m of marks) {
+      const s0 = Date.now(), d0 = d;
+      for (; d < m; d++) await runDay(p2, 1e9);
+      const stepMs = (Date.now() - s0) / Math.max(1, d - d0);
+      rows.push(await p2.evaluate(stepMs => {
+        const h = window.__hearth, ms = [];
+        for (let i = 0; i < 25; i++) { const a = performance.now(); h.draw(); ms.push(performance.now() - a); }
+        ms.sort((a, b) => a - b);
+        const pk = JSON.stringify(h.pack());
+        return { day: h.dayCount, pop: h.people.length, chron: h.chron.length, chronB: JSON.stringify(h.pack().ch).length, packB: pk.length,
+          events: h.events.length, hist: Math.max(...h.people.map(p => p.hist.length)), dead: h.dead.length,
+          draw: +ms[12].toFixed(2), drawMax: +ms[24].toFixed(2), stepDay: +stepMs.toFixed(0) };
+      }, stepMs));
+      const r = rows[rows.length - 1];
+      console.log(`  day ${r.day}: pop ${r.pop}, chron ${r.chron} (${r.chronB} bytes), save ${r.packB} bytes (${(r.packB / r.day).toFixed(0)}/day), ` +
+        `events ${r.events}, longest hist ${r.hist}, draw ${r.draw} ms median (${r.drawMax} worst of 25), a day's steps ${r.stepDay} ms wall`);
+    }
+    console.log(`  ${((Date.now() - t0) / 60000).toFixed(1)} min`);
+    const last = rows[rows.length - 1];
+    if (last.events > 40) bad.push(`events ran past 40 (${last.events})`);
+    if (last.hist > 60) bad.push(`a life story ran past 60 lines (${last.hist})`);
+    // the people's share of the save is capped (pop by beds, hist by HIST_MAX) and fills by about day 200, so the bytes a day fall
+    // after it and only chron's share keeps growing; both are judged on a long island only, where that is true
+    if (last.day >= 400 && last.packB / last.day > 600) bad.push(`the save costs ${(last.packB / last.day).toFixed(0)} bytes a day by day ${last.day}, budget 600`);
+    if (last.day >= 400 && last.chronB / last.day > 200) bad.push(`the chronicle costs ${(last.chronB / last.day).toFixed(0)} bytes a day by day ${last.day}, budget 200`);
+    if (last.draw > 40) bad.push(`draw() takes ${last.draw} ms at day ${last.day}, budget 40`);
+    if (w2.length) bad.push(...w2);
+    await c2.close();
+  }
+
+  if (warns.length) bad.push(...warns);
+  if (bad.length) { failed = true; bad.forEach(b => console.log('  FAIL ' + b)); }
+  console.log(failed ? '\nFAIL' : '\nPASS: shelter shows, a house half up keeps, and a long island costs what it says');
+}
+
 if (mode === 'pinned') {
   const FILE = path.join(HERE, 'hashes.json');
   const pin = JSON.parse(fs.readFileSync(FILE, 'utf8'));

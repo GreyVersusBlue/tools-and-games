@@ -30,6 +30,9 @@ let wadeTiles=new Set(),bridgeUp=false;
 const CRAFTS=['field','wood','sea','frame','store'];
 const CRAFT_EPITHET=['who keeps the fields','who reads the trees','who reads the water','who raises the beams','who keeps the store'];
 let works=[],dry01=0,breadYr=0,retYr=0;
+// TG-26: a house going up. It used to live only on its builder's p.tgt, so nightfall, a storm or a save dropped the plot and the
+// 18 wood paid for it. A plot stays here until its last beam, and whoever is free next and has nobody on it picks it back up.
+let plots=[];
 const hasW=k=>works.some(w=>w.wk===k&&w.done);
 // sprint 11 state: the island's temper, the year's fortunes (arcs), the ways the village learns for good, and the quiet account it keeps of the watcher
 const TEMPERS=['kind','rainy','dry','windy','cold'];
@@ -216,13 +219,13 @@ const mkTree=(x,y,s,o)=>({x,y,s,hp:3,b:R()<.45,a:R(),o:o||0});
    brown rectangle. The oldest go back to grass. A person's story is every line they ever earned, and a long life earns more than the
    card can show; the first line, how they came to be here, stays, and the most recent HIST_MAX-1 stay with it. Both are trimmed where
    the world changes rather than in pack(), so an island reloaded from a link looks like the one that ran straight through. */
-const STUMP_MAX=240, HIST_MAX=60;
+const STUMP_MAX=240, HIST_MAX=60, FIRST_DAYS=10;
 function addStump(x,y){stumps.push({x,y});if(stumps.length>STUMP_MAX)stumps.splice(0,stumps.length-STUMP_MAX)}
 function trimHist(p){if(p.hist.length>HIST_MAX)p.hist.splice(1,p.hist.length-HIST_MAX)}
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
-  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;farRec=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;want=null;wantYr=0;ill=null;feud=null;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];plots=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;farRec=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;want=null;wantYr=0;ill=null;feud=null;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
   faith=0;faithSt=0;acts=[];prayer=null;arc=null;arcYr=0;wayYr=0;bookYr=0;ways=0;lastStormDay=0;rainedDay=0;wreckYr=0;famDone=false;temper=TEMPERS[(seed>>>0)%5]; // temper from the seed alone: no rnd(), so old links keep their terrain
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -357,11 +360,11 @@ function nearestShore(x,y){let b=null,bd=1e9;for(const s of shore){const d=Math.
 const bAll=()=>bldgTgt?bldg.concat([bldgTgt]):bldg;
 function freeSpot(r0,r1,need=1){for(let k=0;k<80;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(center.x+Math.cos(a)*r),y=Math.round(center.y+Math.sin(a)*r*.75);
   let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
-    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
   if(ok)return{x,y}}return null}
 function freeSpotNear(cx,cy,r0,r1,need){for(let k=0;k<60;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(cx+Math.cos(a)*r),y=Math.round(cy+Math.sin(a)*r*.75);
   let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
-    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
   if(ok)return{x,y}}return null}
 // people walk on land. The stream can be waded — slowly, feeling for the stones — and once the bridge is up it carries them over dry. The sea refuses.
 const canWalk=(x,y)=>at(x|0,y|0)!==WATER||(bridgeUp&&bridgeSite&&(x|0)===bridgeSite.x&&(y|0)===bridgeSite.y);

@@ -95,7 +95,11 @@ function newDay(){saidToday=new Set();
   // and the thaw, which is not a roll and not conditional on the store: spring comes whether the counting worked or not
   if(want&&(s==='spring'||s==='summer'||granary+food>=people.length*COLD))endWant();
   // hunger drives people away
-  if(hunger>.7&&R()<hunger*.4){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!people.some(k=>k.parents.includes(p.name)));if(cand.length>1){const wts=cand.map(p=>(has(p,'restless')?2.5:1)*(has(p,'homesick')?2.5:1)*(p.partner?.4:1));let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}leave(p)}}
+  /* TG-26: not off the beach they landed on this week. The first ten days are the only stretch where a run of storms can empty the
+     store before anyone has fished, and a held thunder from day 1 to 10 took one to three people off six islands in ten; natural
+     weather never gets near it (30 islands, at most 6% of the first twenty days in thunder, nobody gone by day 40). The test comes
+     before the draw, so an island that is not starving in its first ten days is on the stream it always was. */
+  if(hunger>.7&&dayCount>FIRST_DAYS&&R()<hunger*.4){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!people.some(k=>k.parents.includes(p.name)));if(cand.length>1){const wts=cand.map(p=>(has(p,'restless')?2.5:1)*(has(p,'homesick')?2.5:1)*(p.partner?.4:1));let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}leave(p)}}
   if(yr!==lastYear){lastYear=yr;const oldest=people.filter(p=>!p.dead).sort((a,b)=>ageOf(b)-ageOf(a))[0];say(`A new year begins. ${oldest?B(oldest)+' is the eldest now, at '+ageI(oldest)+'.':''}`,true);
     {const yn=yearName(yr-1);if(yn&&yn!=='a quiet year')say(`The year that ended is already being called ${yn}. Nobody decided that either.`,true)} /* sprint 16: the year's name arrives the way the village's did */
     forgetSongs();
@@ -345,9 +349,16 @@ function tellOfDead(alive){
   const graveOf=d2=>graves.find(g=>g.name===d2.name),bornOn=p=>p.born-(p.age0||0)*YEAR;
   const outlived=(p,d2)=>{const g=graveOf(d2);return knewDead(p,d2)||(!!g&&g.d>p.born)};
   const tooSmall=(kd,d2)=>{const g=graveOf(d2);return !!g&&g.d<bornOn(kd)+5*YEAR};
+  /* TG-26: the teller used to have to be an elder, and seed 7 has somebody past sixty on 57 days in 700, so the island's only
+     durable record of a generation fired about once in thirty-five years. A grown adult who remembers the dead can tell it too —
+     remembers: was five or more the day the stone went up, the same five the child is measured against — and an elder still goes
+     first when there is one. The draws are the elder roll's draws, so a day with an elder to tell it is the stream it always was. */
+  const recalls=(p,d2)=>{const g=graveOf(d2);return knewDead(p,d2)||(!!g&&g.d>=bornOn(p)+5*YEAR)};
   if(dead.length&&R()<.05){const kds=alive.filter(p=>isKid(p)&&ageOf(p)>=5);
-    const elds=alive.filter(p=>isElder(p)&&dead.some(d2=>outlived(p,d2)&&kds.some(kd=>tooSmall(kd,d2))));
-    if(elds.length){const el=pick(elds);const pool=dead.filter(d2=>outlived(el,d2)&&kds.some(kd=>tooSmall(kd,d2))),kn=pool.filter(d2=>knewDead(el,d2));
+    const can=(p,d2)=>outlived(p,d2)&&kds.some(kd=>tooSmall(kd,d2));
+    let elds=alive.filter(p=>isElder(p)&&dead.some(d2=>can(p,d2)));
+    if(!elds.length)elds=alive.filter(p=>!isKid(p)&&!isElder(p)&&dead.some(d2=>recalls(p,d2)&&can(p,d2)));
+    if(elds.length){const el=pick(elds);const pool=dead.filter(d2=>can(el,d2)&&(isElder(el)||recalls(el,d2))),kn=pool.filter(d2=>knewDead(el,d2));
       const d2=pick(kn.length?kn:pool),kd=pick(kds.filter(kd=>tooSmall(kd,d2))),g=graveOf(d2);
       say(`${B(el)} tells ${B(kd)} about ${d2.name}, who is under one of the stones on the hill, and ${kd.name} repeats the name to get it right.`,false,'tolddead');
       kd.hist.push({d:dayCount,s:`was told about ${d2.name}, who died ${g.d<bornOn(kd)?`before ${kd.name} was born`:`when ${kd.name} was too small to remember`}`})}}

@@ -167,6 +167,9 @@ function draw(){
     if(cap>0)bFrame('house-snow',x,y,cap);
     if(hasWay(2)){g.fillStyle='#a34a2a';g.fillRect(x+11,y+1,2,3);g.fillStyle='#6b2f1e';g.fillRect(x+11,y+1,2,1)} // kiln-fired chimney pots
     if(L<.5||occSet.has(h)){g.fillStyle='#f5c463';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3)}}});
+  // a house going up (TG-26) is the frame every building in progress shows, on its two tiles
+  for(const h of plots)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T,pr=Math.min(1,h.prog/12);
+    g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,2*T,2*T);g.fillStyle='#8a6a44';for(let i=0;i<2*T;i+=4)g.fillRect(x+i,y+2*T-2-pr*6,2,2+pr*6)}});
   // buildings (bridge and hut sit low; the lighthouse sorts by its foot)
   const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
   for(const b of bAll())ents.push({y:b.y+b.h,d:()=>{const x=b.x*T,y=b.y*T,done=b.done,pr=done?1:Math.min(1,b.prog/b.work);
