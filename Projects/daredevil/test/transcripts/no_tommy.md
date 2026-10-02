@@ -237,8 +237,6 @@ He said the last part in the way that people say things they know aren't entirel
 
 **→ took:** Option A"I'd need a hundred and fifty."Counter high. See what he's actually got.
 
-> **$135 and a Name in Print** — You pushed. He moved. First real negotiation.
-
 ### `fr1_org_counter`
 **DUKE:** I'd need a hundred and fifty.
 Perkins wrote something on his clipboard.
@@ -280,9 +278,6 @@ He stopped himself and recalibrated.
 - Option C"This isn't something I can teach."Be straight with him.
 
 **→ took:** Option A"Show me what you've got."Go see. Doesn't cost you anything but an hour.
-
-> **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
-> - _Pete_ → **Hanger-On**
 
 ### `fr1_wannabe_look`
 **DUKE:** Show me what you've got.
@@ -371,8 +366,6 @@ The bar got louder around them. Tommy was three deep into a story Duke had heard
 - Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
 
 **→ took:** Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
-
-> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
 
 ### `fr1_eve_bar_fair`
 The flatbed story ended the way it always ended, with the man from Larkin in a ditch and Tommy delighted about it.
@@ -488,9 +481,6 @@ He stepped back. Earl had heard it. Earl was looking at Cal with something that 
 
 **→ took:** Option AAccept and shake.You've heard what you need to hear. Sign the deal.
 
-> **The Deal Is Signed** — Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.
-> - _Earl Maddox_ → **Business Partner**
-
 ### `m2_sign`
 Earl extended his hand. Duke shook it.
 **EARL:** Welcome to the bigger world, son.
@@ -540,8 +530,6 @@ Duke thought he knew what it meant. He didn't say.
 - Option C"I'll stay."Watch him. Know what you're dealing with.
 
 **→ took:** Option A"Good for you."Flat. Let him figure out what it means.
-
-> **Danny — First Contact** — Filed. Circuit noted.
 
 ### `fr2_danny_01_flat`
 **DUKE:** Good for you.
@@ -719,8 +707,6 @@ Pete had the decency not to answer that.
 
 **→ took:** Option ACome down hard.Make the authority clear. Pete stops overstepping.
 
-> **Hard Lesson** — Pete understands now. He won't overstep again. He'll get good on earned terms.
-
 ### `fr2_pete_hard`
 **DUKE:** You told those kids you learned from me.
 **PETE:** I did learn from you.
@@ -862,8 +848,6 @@ He also thought about the car show in October, and the forty minutes before the 
 
 **→ took:** Option B"He's not behind me. He's beside me."Keep it about Danny. That is what the evening was about.
 
-> **Night at the Bar** — Tommy said something true. He does that sometimes.
-
 ### `fr2_eve_bar_danny`
 **DUKE:** He's not behind me. He's beside me. That's a different problem.
 **TOMMY:** Is it?
@@ -959,7 +943,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 94** — Cleared the cars and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the cars and landed dead level
 
 ### `m3_triumph_clean`
 Clean arc. Clean landing. The back wheel kissed the ramp mat with the specific weight of something that had gone exactly right — every calculation confirmed in the same half-second.
@@ -1058,8 +1042,6 @@ He thought about the man from Los Angeles in the fourth row.
 
 **→ took:** Option A"I'm in. Set it up."Move fast. Control the narrative before Earl does.
 
-> **Regional TV Feature** — Thirty minutes, prime time. The profile ran. The man from LA made the call.
-
 ### `fr3_press_sandra_accept`
 **DUKE:** I'm in. Set it up.
 A pause.
@@ -1098,9 +1080,6 @@ Sandra waited. She had the patience of somebody who does this for a living.
 - Option B"Nothing from me."Let him have it. Let the calendar do the rest.
 
 **→ took:** Option A"Get me his number."Say it to him. Whatever it turns out to be.
-
-> **Diamondback Danny** — Somebody else's calendar, every Saturday of it. Duke called him anyway.
-> - _Danny_ → **Poached**
 
 ### `fr3_danny_call`
 He called from the shop phone, with Cal pretending to be busy eight feet away.
@@ -1143,8 +1122,6 @@ He waited. Duke thought about the clause — the exclusivity clause, the thing f
 - Option C"Let me read it before we talk."The contract first. The conversation after.
 
 **→ took:** Option A"What's the new number?"Engage. See what he's actually offering.
-
-> **The New Numbers** — Sixty-forty. Five-year extension. Duke has the week to decide.
 
 ### `fr3_eve_earl_engage`
 **DUKE:** What's the new number.
@@ -1232,9 +1209,6 @@ He didn't say any of that. He had to say something.
 
 **→ took:** Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
 
-> **Twelve People** — He offered the one honest thing he had. Duke measured it against something else.
-> - _Tommy_ → **Absent**
-
 ### `fr3_eve_tommy_measured`
 **DUKE:** Twelve people isn't a career.
 It came out of him in somebody else's cadence. Sandra's, or the regional paper's, or the man who reads the introduction before a show. Not his own.
@@ -1307,7 +1281,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the buses and landed dead level
 
 ### `m4_triumph_buses`
 Thirteen buses. He cleared all of them.
@@ -1350,8 +1324,6 @@ He thought: Fisk had gotten there on his own.
 - Option C"No."Duke owns what happened. He doesn't need it in print.
 
 **→ took:** Option A"Let's talk."The story will be told. Duke can shape it.
-
-> **The Book Starts** — Fisk is writing it. Duke is shaping it. The story has a shape.
 
 ### `fr4_biographer_yes`
 **FISK:** Good. I want to start with the county fair.
@@ -1519,8 +1491,6 @@ Eight options. Not choices exactly — more like the eight things a man in his p
 - Option HDisappear.Duke leaves. No retirement, no announcement. Just gone.
 
 **→ took:** Option ARetire clean on top.Walk away while the name still means something. Classic ending.
-
-> **Clean Exit** — On top. The name means something. It always will.
 
 ### `m5_retire_clean`
 He made the call.

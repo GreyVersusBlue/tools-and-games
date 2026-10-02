@@ -317,7 +317,7 @@ function goToScene(id){
     return;
   }
   if(id === '_m5_question_route'){
-    // Ruthie solid → Cal loyal or warm → Earl mentor → nobody, from the table
+    // Ruthie solid → Earl mentor → Cal loyal or warm → nobody, from the table
     // in scenes.js (Phase 3) — except that Cal, if he already asked the
     // question in Free Roam 4, asks it again first.
     const calRow = M5_QUESTION_ROUTES.find(r => r.who === 'cal');
@@ -524,14 +524,13 @@ function handleChoice(choice){
   // Apply effects
   if(choice.effects) applyEffects(choice.effects);
 
-  // Check if scene has a stat update tied to a specific choice goto
-  const targetScene = SCENES[choice.goto];
-
-  if(targetScene && targetScene.statUpdate){
-    triggerStatUpdate({...targetScene.statUpdate, rels: targetScene.statUpdate.rels||{}, flags: targetScene.statUpdate.flags||{}}, choice.goto);
-  } else {
-    goToScene(choice.goto);
-  }
+  // A scene's statUpdate fires once, from afterScene, at the end of the scene.
+  // This used to fire it here as well when the scene was reached by a choice,
+  // so thirty-three scenes paid their deltas twice and showed the stat screen
+  // twice (TG-08). No scene carries both a statUpdate and choices, and
+  // smoke-save.mjs fails on one that does, because afterScene never runs for
+  // a scene that ends in choices and its update would never fire.
+  goToScene(choice.goto);
 }
 
 /** Which hub the story is currently in. One source of truth: a scene falling
@@ -613,15 +612,12 @@ function triggerStatUpdate(update, afterTarget){
 
   // Apply flags and rels right away (not stats — those animate).
   //
-  // Deliberately NOT dollars (Phase 6). A scene reached by a choice fires its
-  // statUpdate twice — the double-apply the standing backlog has carried since
-  // Phase 1, with thirty-three scenes frozen in `smoke-save.mjs` — and the
-  // doubling is invisible for a flag or a relationship write, which are
-  // idempotent, and is not for an accumulating number. The first version of
-  // this phase put the solo bank note's monthly on its statUpdate and the
-  // transcripts came out at seventy-four dollars a month against a prose line
-  // that says thirty-seven. Money and monthly paper go through `effects`,
-  // which `applyEffects` runs once, and `smoke-save.mjs` fails on a
+  // Deliberately NOT dollars (Phase 6). Until TG-08 a scene reached by a
+  // choice fired its statUpdate twice, invisible for an idempotent flag or
+  // relationship write and not for an accumulating number: the solo bank
+  // note's monthly came out at seventy-four dollars against a prose line that
+  // says thirty-seven. The engine fires it once now, and money and monthly
+  // paper still go through `effects`; `smoke-save.mjs` fails on a
   // `statUpdate` that carries either key.
   if(update.rels) for(const[k,v] of Object.entries(update.rels)) setRel(GS.rels, k, v);
   if(update.flags) for(const[k,v] of Object.entries(update.flags)) GS.flags[k]=v;

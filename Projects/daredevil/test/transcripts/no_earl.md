@@ -239,8 +239,6 @@ He said the last part in the way that people say things they know aren't entirel
 
 **→ took:** Option A"I'd need a hundred and fifty."Counter high. See what he's actually got.
 
-> **$135 and a Name in Print** — You pushed. He moved. First real negotiation.
-
 ### `fr1_org_counter`
 **DUKE:** I'd need a hundred and fifty.
 Perkins wrote something on his clipboard.
@@ -282,9 +280,6 @@ He stopped himself and recalibrated.
 - Option C"This isn't something I can teach."Be straight with him.
 
 **→ took:** Option A"Show me what you've got."Go see. Doesn't cost you anything but an hour.
-
-> **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
-> - _Pete_ → **Hanger-On**
 
 ### `fr1_wannabe_look`
 **DUKE:** Show me what you've got.
@@ -374,8 +369,6 @@ The bar got louder around them. Tommy was three deep into a story Duke had heard
 
 **→ took:** Option A"What have you been doing?"He has been waiting eight months for somebody to ask.
 
-> **Night at the Nail** — Good for Showmanship. Hard on Condition. He wrote it on a receipt.
-
 ### `fr1_eve_bar_him`
 **DUKE:** What have you been doing?
 Tommy stopped mid-flatbed. It took him a second.
@@ -439,8 +432,6 @@ He thought: Earl would have had the Speedway on the phone before the sentence wa
 
 **→ took:** Option A"Make the Tri-County calls. I'll take the Saturdays."Small, steady, and somebody else dials. He will want something for it.
 
-> **Six Saturdays** — Perkins dialed. Fifty-five a show, the cows, and August locked. You owe him one.
-
 ### `m2_solo_perkins_calls`
 **DUKE:** Make the calls. I'll take the Saturdays.
 **ORGANIZER:** I can do that.
@@ -476,8 +467,6 @@ He was being a little difficult. He was also right, which was worse.
 
 **→ took:** Option A"The equipment. The bike, the truck, the trailer."Put up everything you own. Twelve months, eight percent, real.
 
-> **Paper on the Bike** — Thirty-seven dollars a month, twelve times, rain or not. Pyle owns the downside now.
-
 ### `m2_solo_bank_collateral`
 **DUKE:** The equipment. The bike, the truck, the trailer.
 **PYLE:** A motorcycle. A truck with — how many miles?
@@ -511,8 +500,6 @@ Then Cal said the other thing, the thing he'd come to say.
 - Option B"Book it. I'll find the money when it's due."Fast. Five cars on a page that barely holds three cows.
 
 **→ took:** Option A"We don't book the cars until we can pay for the cars."Slow. Cows all fall; the car show when the page says so.
-
-> **Cars When the Page Says Cars** — Slow, and yours. Cows through October.
 
 ### `m2_solo_plan_slow`
 **DUKE:** We don't book the cars until we can pay for the cars.
@@ -600,8 +587,6 @@ Duke thought he knew what it meant. He didn't say.
 - Option C"I'll stay."Watch him. Know what you're dealing with.
 
 **→ took:** Option A"Good for you."Flat. Let him figure out what it means.
-
-> **Danny — First Contact** — Filed. Circuit noted.
 
 ### `fr2_danny_01_flat`
 **DUKE:** Good for you.
@@ -776,8 +761,6 @@ Pete had the decency not to answer that.
 
 **→ took:** Option ACome down hard.Make the authority clear. Pete stops overstepping.
 
-> **Hard Lesson** — Pete understands now. He won't overstep again. He'll get good on earned terms.
-
 ### `fr2_pete_hard`
 **DUKE:** You told those kids you learned from me.
 **PETE:** I did learn from you.
@@ -883,9 +866,6 @@ He also thought about the car show in October, and the forty minutes before the 
 
 **→ took:** Option A"Do the warm-up at the car show."Forty minutes before the gate. His name on the handbill.
 
-> **Night at the Bar** — Forty minutes and a handbill. He stopped being somebody who watches.
-> - _Tommy_ → **Ally**
-
 ### `fr2_eve_bar_hinkle`
 **DUKE:** The car show in October. There's forty minutes before the gate and nothing in it.
 **TOMMY:** So?
@@ -989,7 +969,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cars and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cars and landed dead level
 
 ### `m3_triumph_clean`
 Clean arc. Clean landing. The back wheel kissed the ramp mat with the specific weight of something that had gone exactly right — every calculation confirmed in the same half-second.
@@ -1088,8 +1068,6 @@ He thought about the man from Los Angeles in the fourth row.
 
 **→ took:** Option A"I'm in. Set it up."Move fast. Nobody else is going to.
 
-> **Regional TV Feature** — Thirty minutes, prime time. The profile ran. The man from LA made the call.
-
 ### `fr3_press_sandra_accept`
 **DUKE:** I'm in. Set it up.
 A pause.
@@ -1125,9 +1103,6 @@ Sandra waited. She had the patience of somebody who does this for a living.
 - Option B"Nothing from me."Let him have it. Let the calendar do the rest.
 
 **→ took:** Option A"Get me his number."Say it to him. Whatever it turns out to be.
-
-> **Diamondback Danny** — Twelve half-hours and a ramp drawn by a man who has never seen one. Duke called him anyway.
-> - _Danny_ → **Poached**
 
 ### `fr3_danny_call`
 He called from the shop phone, with Cal pretending to be busy eight feet away.
@@ -1216,9 +1191,6 @@ He didn't say any of that. He had to say something.
 - Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
 
 **→ took:** Option A"That's a good thing to want."Say it flat. Let it be true.
-
-> **Something True** — Tommy said the thing he needed to say. Duke let him say it.
-> - _Tommy_ → **Ally**
 
 ### `fr3_eve_tommy_true`
 **DUKE:** That's a good thing to want.
@@ -1334,8 +1306,6 @@ He thought: Fisk had gotten there on his own.
 - Option C"No."Duke owns what happened. He doesn't need it in print.
 
 **→ took:** Option A"Let's talk."The story will be told. Duke can shape it.
-
-> **The Book Starts** — Fisk is writing it. Duke is shaping it. The story has a shape.
 
 ### `fr4_biographer_yes`
 **FISK:** Good. I want to start with the county fair.
@@ -1479,8 +1449,6 @@ He thought: this is what the percentage was for. He thought: alright.
 
 **→ took:** Option A"Yes. Set the date."Take it as read. He said the number; you heard it.
 
-> **The Man from California** — Vegas, direct. No middleman, because there was never one.
-
 ### `fr4_california_close`
 He said yes. The man from California said: good. He said he'd have the paper out by Friday. Duke said: Friday. That was the call.
 He hung up. He sat at the table for a while.
@@ -1547,8 +1515,6 @@ Seven options. Not choices exactly — more like the seven things a man in his p
 - Option HDisappear.Duke leaves. No retirement, no announcement. Just gone.
 
 **→ took:** Option ARetire clean on top.Walk away while the name still means something. Classic ending.
-
-> **Clean Exit** — On top. The name means something. It always will.
 
 ### `m5_retire_clean`
 He made the call.

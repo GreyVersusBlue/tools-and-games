@@ -216,8 +216,6 @@ He said the last part in the way that people say things they know aren't entirel
 
 **→ took:** Option D"I appreciate the offer. I'll pass for now."Keep the table clean for Earl's conversation.
 
-> **Table Stays Clean** — "I'd rather not overcommit." Sometimes that's the right move.
-
 ### `fr1_org_decline`
 **DUKE:** I appreciate the offer. I'll pass for now.
 Perkins blinked.
@@ -333,8 +331,6 @@ The bar got louder around them. Tommy was three deep into a story Duke had heard
 - Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
 
 **→ took:** Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
-
-> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
 
 ### `fr1_eve_bar_fair`
 The flatbed story ended the way it always ended, with the man from Larkin in a ditch and Tommy delighted about it.
@@ -517,8 +513,6 @@ The math was specific.
 
 **→ took:** Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean. It comes out of what you have.
 
-> **Self-Funded** — Nobody holds the number. That's worth the two Saturdays.
-
 ### `fr2_debt_self`
 He went through the numbers three times.
 If he pushed the truck payment to the end of the month. If he used the parts money he'd been holding and called Cal about deferring the invoice — Cal would defer it, without being asked to be thanked for it.
@@ -606,8 +600,6 @@ He also thought about the car show in October, and the forty minutes before the 
 - Option B"He's not behind me. He's beside me."Keep it about Danny. That is what the evening was about.
 
 **→ took:** Option B"He's not behind me. He's beside me."Keep it about Danny. That is what the evening was about.
-
-> **Night at the Bar** — Tommy said something true. He does that sometimes.
 
 ### `fr2_eve_bar_danny`
 **DUKE:** He's not behind me. He's beside me. That's a different problem.
@@ -815,8 +807,6 @@ He thought about the man from Los Angeles in the fourth row.
 
 **→ took:** Option C"Tell them I want approval over the narrative."You want control. Sandra will negotiate it.
 
-> **The True Version** — Sandra wrote what she saw. It was true. Duke read it seventeen times.
-
 ### `fr3_press_sandra_control`
 **DUKE:** Tell them I want approval over the narrative.
 A pause.
@@ -856,8 +846,6 @@ He waited. Duke thought about the clause — the exclusivity clause, the thing f
 - Option C"Let me read it before we talk."The contract first. The conversation after.
 
 **→ took:** Option C"Let me read it before we talk."The contract first. The conversation after.
-
-> **Read the Contract** — Page seven removed. Extension to three years. Duke knew what he was giving up before he gave it up.
 
 ### `fr3_eve_earl_read`
 **DUKE:** Let me read it before we talk.
@@ -946,9 +934,6 @@ He didn't say any of that. He had to say something.
 - Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
 
 **→ took:** Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
-
-> **Twelve People** — He offered the one honest thing he had. Duke measured it against something else.
-> - _Tommy_ → **Absent**
 
 ### `fr3_eve_tommy_measured`
 **DUKE:** Twelve people isn't a career.
@@ -1077,8 +1062,6 @@ He thought: Fisk had gotten there on his own.
 
 **→ took:** Option C"No."Duke owns what happened. He doesn't need it in print.
 
-> **No.** — Duke owns the story. Nobody writes it down.
-
 ### `fr4_biographer_no`
 Fisk looked at him.
 **FISK:** Can I ask why?
@@ -1174,8 +1157,6 @@ There was a pause. The pause-before-real-numbers.
 
 **→ took:** Option C"Tell him I'll call him myself."Cut out the middleman. Earl notes this.
 
-> **Dealing Direct** — Duke called it himself. Earl noted it. The Hustle stat knows.
-
 ### `fr4_earl_direct`
 There was a pause. A different kind — Earl processing something.
 **EARL:** I can arrange that.
@@ -1251,8 +1232,6 @@ Seven options. Not choices exactly — more like the seven things a man in his p
 - Option HDisappear.Duke leaves. No retirement, no announcement. Just gone.
 
 **→ took:** Option DWalk away quietly.No announcement. Some people never know he retired.
-
-> **Quiet Exit** — No announcement. No headline. Just gone.
 
 ### `m5_walk_quiet`
 He didn't announce it.
