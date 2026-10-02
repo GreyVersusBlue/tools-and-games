@@ -97,7 +97,7 @@ const EFFECT = {
   additionalProperties: true,
   properties: {
     bonus: obj("A flat numeric bonus applied at finalize.", {
-      target: str("speed, hp, initiative, perception, or save.all."),
+      target: str("speed, hp, initiative, perception, save.all, or maneuver-dc (with vs naming trip or shove)."),
       value: int("How much."),
       type: str("status, circumstance, or untyped."),
       vs: str("What the bonus is against. Only speed keeps it off the flat number; every vs bonus is also collected as condBonuses.")
@@ -328,6 +328,8 @@ const MONSTER = obj("A monster.", {
   hp: int("Hit points.", 1),
   speed: int("Feet.", 0),
   perception: int("Perception modifier."),
+  stealth: int("Stealth modifier. A monster with one Hides when it is losing; one without cannot Hide, and a Seek for it rolls against 10 + Perception."),
+  athletics: int("Athletics modifier. A monster with one opens a turn with a Trip; one without cannot Trip."),
   reach: int("Cells. Defaults to 1.", 1),
   reactions: arr(enums(KNOWN_REACTIONS, ""), "Reaction ids the engine implements. Any other id is rejected — a reaction the engine does not have is a monster that silently never reacts."),
   saves: obj("Modifiers for fort, ref and will.", {

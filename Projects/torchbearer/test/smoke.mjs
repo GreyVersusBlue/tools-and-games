@@ -4067,7 +4067,7 @@ group("Ready");
   };
   const { eng, hero, foe } = setup();
   eng.actionClick("ready");
-  eq([hero.readied, eng.actions], [{ kind: "strike" }, 1], "Ready is two actions and arms one Strike");
+  eq([hero.readied, eng.actions], [{ kind: "strike", atkIdx: 0, ranged: false }, 1], "Ready is two actions and arms one Strike");
   ok(eng.events.some(ev => /<b>Readies<\/b> a Strike/.test(ev.text)), "…and says what it is waiting for");
 
   // It fires on the step that brings a foe into reach, not before.
@@ -4082,7 +4082,7 @@ group("Ready");
   const s2 = setup();
   s2.eng.actionClick("ready");
   s2.eng.provokeAlong(s2.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }]);
-  eq([s2.hero.readied, s2.hero.reactionUsed], [{ kind: "strike" }, false], "a foe that stays out of reach does not set it off");
+  eq([s2.hero.readied, s2.hero.reactionUsed], [{ kind: "strike", atkIdx: 0, ranged: false }, false], "a foe that stays out of reach does not set it off");
 
   // Nor does one already inside it that merely shuffles: the trigger is
   // entering reach, which is both halves of the comparison and not just the
@@ -4091,7 +4091,7 @@ group("Ready");
   s2b.foe.x = 2; s2b.foe.y = 1;
   s2b.eng.actionClick("ready");
   s2b.eng.provokeAlong(s2b.foe, [{ x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]);
-  eq([s2b.hero.readied, s2b.foe.hp], [{ kind: "strike" }, 24],
+  eq([s2b.hero.readied, s2b.foe.hp], [{ kind: "strike", atkIdx: 0, ranged: false }, 24],
     "a foe already within reach that moves inside it does not set it off either");
 
   // It is not a reaction id, so content cannot name it and the validator does
@@ -4112,7 +4112,233 @@ group("Ready");
   s4.eng.cbs.push(ally); s4.eng.order.push(ally);
   s4.eng.actionClick("ready");
   s4.eng.provokeAlong(ally, [{ x: 6, y: 1 }, { x: 5, y: 1 }, { x: 2, y: 1 }]);
-  eq(s4.hero.readied, { kind: "strike" }, "a readied Strike is aimed at the other side only");
+  eq(s4.hero.readied, { kind: "strike", atkIdx: 0, ranged: false }, "a readied Strike is aimed at the other side only");
+}
+
+/* ---------------- the engine holes ----------------
+   A monster had no Stealth and no Athletics number, so it could neither Hide
+   nor Trip; a critical Grapple was an ordinary grab with a higher DC; Disarm's
+   −2 hit every attack the target had; and Ready armed exactly one thing, a
+   melee Strike. Each of these is the fix, pinned. */
+group("monsters Hide");
+{
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const errs = m => Validator.validate({ ...base, monsters: [{ id: "m", name: "M", ac: 10, hp: 10, attacks: [], saves: {}, ...m }] }, emptyRegistry());
+  eq(errs({ stealth: "8" }), ['Monster "m": "stealth" is a modifier and must be a whole number.'], "a Stealth number has to be a number");
+  eq(errs({ athletics: 7.5 }), ['Monster "m": "athletics" is a modifier and must be a whole number.'], "…and so does an Athletics one");
+  eq(errs({ stealth: 8, athletics: -1 }), [], "…and whole numbers, negative included, pass");
+
+  /** The fighter at (1,1), a foe at (5,1) behind a wall at (3,1), the foe's turn. */
+  const lair = (foeOver = {}, over = {}) => {
+    const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+    const foe = hound({ x: 5, y: 1, hp: 10, stealth: 8, ...foeOver });
+    const eng = stage([foe, hero], { order: [foe, hero], walls: ["3,1"], ...over });
+    return { eng, hero, foe };
+  };
+  {
+    const { eng, hero, foe } = lair();
+    pin([20, 12]);
+    eq(eng.doHide(foe), true, "a monster with a Stealth number Hides");
+    eq(rolls(eng).at(-1).math, "12+8 = 20", "…rolling its own Stealth, not its Perception");
+    eq([eng.detectState(hero, foe), foe.hideDC, eng.actions], ["hidden", 20, 2], "…is hidden from the hero at the total it rolled, for one action");
+  }
+  {
+    const { eng, foe } = lair({ stealth: undefined });
+    eq([eng.doHide(foe), rolls(eng).length, eng.actions], [false, 0, 3], "a monster with no Stealth number cannot Hide, and spends nothing trying");
+    eq(eng.stealthDC(lair().foe), 18, "a Seek for an unhidden monster rolls against 10 + its Stealth");
+    eq(eng.stealthDC(foe), 17, "…and against 10 + Perception when it has none");
+  }
+  {
+    // The AI: losing, nothing in reach, and a wall to get behind.
+    const { eng, hero, foe } = lair();
+    pin([20, 12]);
+    eq(eng.aiStep(foe), { action: "hide", wait: 500 }, "a losing monster with Stealth and a wall to use Hides");
+    eq(eng.detectState(hero, foe), "hidden", "…and gets away with it");
+    eq(eng.aiStep(foe), { action: "lurk", wait: 400 }, "hidden from every hero, it holds still rather than give the place away");
+    eq([eng.actions, foe.x], [0, 5], "…spending the rest of the turn where it is");
+    ok(eng.events.some(ev => /holds still in the dark/.test(ev.text)), "…and the Chronicle says so");
+  }
+  {
+    const { eng, foe } = lair({ hp: 24 });
+    eq(eng.aiStep(foe).action, "move", "a monster that is not losing comes on as it always did");
+    const s2 = lair({ stealth: undefined });
+    eq(s2.eng.aiStep(s2.foe).action, "move", "…and so does a losing one with no Stealth number");
+    const s3 = lair({}, { walls: [] });
+    eq(s3.eng.aiStep(s3.foe).action, "move", "…and one with nothing to hide behind");
+  }
+  {
+    // A failed Hide is not tried again the same turn.
+    const { eng, foe } = lair();
+    pin([20, 1]);
+    eq(eng.aiStep(foe).action, "hide", "a losing monster tries to Hide");
+    eq(eng.aiStep(foe).action, "move", "…and, seen, does not spend a second action on it that turn");
+  }
+  {
+    // Lurking ends when a hero comes within reach: it strikes out of hiding.
+    const { eng, hero, foe } = lair();
+    eng.setDetect(hero, foe, "hidden");
+    foe.x = 2; foe.y = 1;
+    pin([20, 12], [8, 4]);
+    eq(eng.aiStep(foe).action, "strike", "a hidden monster with a hero in reach strikes rather than lurks");
+    eq(eng.detectState(hero, foe), "observed", "…and gives the hiding place away doing it");
+  }
+}
+
+group("monsters Trip");
+{
+  /** A foe at (2,1) between the fighter at (1,1) and an ally at (3,1), the foe's turn. */
+  const pit = (foeOver = {}, heroOver = {}) => {
+    const hero = Object.assign(heroCombatant(fighter(heroOver)), { x: 1, y: 1 });
+    const ally = mk({ id: "a", side: "pc", name: "Bran", x: 3, y: 1, ac: 12, hp: 44, hpMax: 44 });
+    const foe = hound({ athletics: 10, ...foeOver });
+    const eng = stage([foe, hero, ally], { order: [foe, hero, ally] });
+    return { eng, hero, ally, foe };
+  };
+  {
+    const { eng, hero, ally, foe } = pit();
+    ok(hero.ac > ally.ac, "the fighter wears the heavier armour");
+    pin([20, 12]);
+    eq(eng.aiStep(foe), { action: "trip", target: "hero", wait: 550 }, "a monster with Athletics opens by Tripping the heaviest armour in reach");
+    eq(rolls(eng).at(-1).math, `12+10 = 22 vs DC ${10 + eng.saveMod(hero, "reflex")}`, "…with its own Athletics against 10 + the hero's Reflex");
+    eq([eng.condVal(hero, "prone"), foe.mapCount, eng.actions], [1, 1, 2], "…and the hero is down, the MAP is up, and an action is gone");
+    pin([20, 12], [8, 4]);
+    eq(eng.aiStep(foe).action, "strike", "…then it Strikes, and does not Trip twice");
+    eq(eng.effAC(hero, foe).offGuard, true, "…at a target that is off-guard on the floor");
+  }
+  {
+    const { eng, foe } = pit({ athletics: undefined });
+    pin([20, 12], [8, 4]);
+    eq(eng.aiStep(foe).action, "strike", "a monster with no Athletics number Strikes, as before");
+    const s2 = pit();
+    s2.eng.actions = 1;
+    pin([20, 12], [8, 4]);
+    eq(s2.eng.aiStep(s2.foe).action, "strike", "…and so does one with a single action left to follow a Trip with");
+    const s3 = pit({ size: "Tiny", monster: { level: 1, traits: ["beast"], size: "Tiny" } });
+    pin([20, 12], [8, 4]);
+    eq(s3.eng.aiStep(s3.foe).action, "strike", "…and one too small to throw anybody in reach");
+  }
+  {
+    // Rock Dwarf's +2 is on the DC the monster rolls against.
+    const { eng, hero, foe } = pit({}, { ancestry: "dwarf", heritage: "rock-dwarf" });
+    pin([20, 12]);
+    eng.maneuver(foe, hero, "trip");
+    eq(rolls(eng).at(-1).math, `12+10 = 22 vs DC ${12 + eng.saveMod(hero, "reflex")}`, "a Rock Dwarf is +2 harder to Trip");
+    const s2 = pit({}, { ancestry: "dwarf", heritage: "rock-dwarf" });
+    pin([20, 12]);
+    s2.eng.maneuver(s2.foe, s2.hero, "grapple");
+    eq(rolls(s2.eng).at(-1).math, `12+10 = 22 vs DC ${10 + s2.eng.saveMod(s2.hero, "fortitude")}`, "…and no harder to Grapple");
+  }
+}
+
+group("a critical Grapple restrains");
+{
+  {
+    const { eng, hero, foe } = duel();
+    pin([20, 20]);
+    eng.actionClick("grapple"); eng.tokenClick(foe);
+    eq([eng.condVal(foe, "grabbed"), eng.condVal(foe, "restrained")], [1, 1], "a critical Grapple is grabbed and restrained");
+    ok(eng.events.some(ev => /pinned, able to do nothing but struggle/.test(ev.text)), "…and the Chronicle says what that means");
+    const d2 = duel();
+    pin([20, 12]);
+    d2.eng.actionClick("grapple"); d2.eng.tokenClick(d2.foe);
+    eq([d2.eng.condVal(d2.foe, "grabbed"), d2.eng.condVal(d2.foe, "restrained")], [1, 0], "an ordinary success is grabbed alone");
+    // The AI: Escape first, even with a hero standing in reach to bite.
+    eng.order = [foe, hero]; eng.turnIdx = 0; eng.actions = 3;
+    pin([20, 1]);
+    eq(eng.aiStep(foe).action, "escape", "a restrained monster spends its action on Escape, not on the hero beside it");
+    pin([20, 20]);
+    eq(eng.aiStep(foe).action, "escape", "…every action, until it is free");
+    eq([eng.condVal(foe, "grabbed"), eng.condVal(foe, "restrained")], [0, 0], "one Escape ends both");
+    eq(eng.aiStep(foe).action, "pass", "…and two Escapes are MAP 2, so the last action is not worth a bite");
+    const d3 = duel();
+    pin([20, 20]);
+    d3.eng.actionClick("grapple"); d3.eng.tokenClick(d3.foe);
+    d3.eng.order = [d3.foe, d3.hero]; d3.eng.turnIdx = 0; d3.eng.actions = 3; d3.foe.mapCount = 0;
+    pin([20, 20]);
+    eq(d3.eng.aiStep(d3.foe).action, "escape", "a monster that breaks free first time…");
+    pin([20, 12], [8, 4]);
+    eq(d3.eng.aiStep(d3.foe).action, "strike", "…bites with what is left");
+  }
+  {
+    // A restrained hero can do nothing with the attack or manipulate trait.
+    const { eng, hero, foe } = duel();
+    eng.grab(foe, hero, 18, true);
+    eq(eng.effAC(hero, foe).offGuard, true, "restrained is off-guard");
+    eng.actionClick("strike0");
+    eq([eng.armed, eng.h.toasts.at(-1), eng.actions], [null, "You are restrained — Escape first.", 3], "a restrained hero cannot Strike, and it costs nothing");
+    eng.spellMenu = () => { eng.h.menu = true; };
+    eng.actionClick("spells");
+    eq(eng.h.menu, undefined, "…nor open the spell menu");
+    eq(["escape", "demoralize", "recall", "seek", "end", "delay"].every(id => eng.actionAllowed(hero, id)), true,
+      "…but may Escape, and do the things with neither trait");
+    eq(["strike0", "trip", "potion", "ready", "stride", "aid", "raise"].some(id => eng.actionAllowed(hero, id)), false,
+      "…and nothing else");
+    pin([20, 20]);
+    eng.actionClick("escape");
+    eq([eng.condVal(hero, "restrained"), eng.actionAllowed(hero, "strike0")], [0, true], "an Escape frees the hands as well as the feet");
+  }
+}
+
+group("Disarm aims at one weapon");
+{
+  const champ = { attacks: [{ name: "Longsword", bonus: 12, damage: "1d8+4", damageType: "slashing", range: 1 },
+    { name: "Gauntlet", bonus: 12, damage: "1d4+4", damageType: "bludgeoning", range: 1, traits: ["agile"] }] };
+  const { eng, hero, foe } = duel({}, champ);
+  pin([20, 12]);
+  eng.actionClick("disarm"); eng.tokenClick(foe);
+  eq(foe.conditions.find(c => c.c === "disarmed").weapon, "Longsword", "Disarm is aimed at the weapon the target leads with");
+  ok(eng.events.some(ev => /−2 with its Longsword/.test(ev.text)), "…and the Chronicle names it");
+  pin([20, 10]);
+  eng.strikeMonster(foe, hero, { name: "Longsword", bonus: 12, die: "1d8+4", damageType: "slashing", traits: [], range: 1 });
+  ok(rolls(eng).at(-1).math.startsWith("10+10 "), "the longsword swings at −2");
+  foe.mapCount = 0;
+  pin([20, 10]);
+  eng.strikeMonster(foe, hero, { name: "Gauntlet", bonus: 12, die: "1d4+4", damageType: "bludgeoning", traits: ["agile"], range: 1 });
+  ok(rolls(eng).at(-1).math.startsWith("10+12 "), "…and the gauntlet does not");
+  // The same per-weapon read on a hero's attack bonus.
+  hero.conditions.push({ c: "disarmed", v: 1, dur: 2, weapon: hero.attacks[0].name });
+  eq([eng.atkMod(hero, hero.attacks[0]), eng.atkMod(hero, hero.attacks[1])], [hero.attacks[0].bonus - 2, hero.attacks[1].bonus],
+    "a disarmed hero is −2 with that weapon and nothing else");
+}
+
+group("Ready, with any weapon");
+{
+  /** The fighter at (1,1), longsword and crossbow, a hound at (8,1) behind a wall at (5,1). */
+  const setup = () => {
+    const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+    const foe = hound({ x: 8, y: 1 });
+    const eng = stage([hero, foe], { walls: ["5,0", "5,1", "5,2"] });
+    return { eng, hero, foe };
+  };
+  const { eng, hero, foe } = setup();
+  eq(eng.readyOptions(hero).map(o => [o.name, o.ranged]), [["Longsword", false], ["Crossbow", true]],
+    "Ready offers every weapon the hero carries");
+  eng.actionClick("ready");
+  eq(hero.readied, { kind: "strike", atkIdx: 0, ranged: false }, "with no view to ask, Ready arms the first");
+  const s2 = setup();
+  eq(s2.eng.doReady(s2.hero, 1), true, "a ranged Strike can be readied");
+  eq([s2.hero.readied, s2.eng.actions], [{ kind: "strike", atkIdx: 1, ranged: true }, 1], "…for two actions");
+  ok(s2.eng.events.some(ev => /Readies<\/b> a Strike with Crossbow, and waits for something to come into sight/.test(ev.text)), "…and says what it waits for");
+  // Behind the wall and moving behind it: nothing.
+  s2.eng.provokeAlong(s2.foe, [{ x: 8, y: 1 }, { x: 7, y: 1 }, { x: 6, y: 1 }]);
+  eq([s2.hero.readied && s2.hero.readied.atkIdx, s2.foe.hp], [1, 24], "a foe moving behind the wall does not set it off");
+  // Round the end of the wall and into sight: the shot.
+  pin([20, 15], [8, 4]);
+  s2.eng.provokeAlong(s2.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  eq(rolls(s2.eng).length, 1, "a readied shot fires once, on the step that brings the foe into sight");
+  eq((rolls(s2.eng).at(-1) || {}).text, `${s2.hero.name}: Crossbow vs Hound`, "…with the crossbow");
+  eq([s2.hero.readied, s2.hero.reactionUsed, s2.foe.hp < 24], [null, true, true], "…it lands, is spent, and costs the reaction");
+  // A foe already in sight that closes in does not set a shot off: it was never out of it.
+  const s3 = setup();
+  s3.eng.walls = new Set();
+  s3.eng.doReady(s3.hero, 1);
+  s3.eng.provokeAlong(s3.foe, [{ x: 8, y: 1 }, { x: 7, y: 1 }, { x: 6, y: 1 }]);
+  eq(s3.hero.readied && s3.hero.readied.atkIdx, 1, "a foe already in range and sight that moves does not set off a readied shot");
+  // A readied melee Strike ignores a foe stepping into sight far away.
+  const s4 = setup();
+  s4.eng.doReady(s4.hero, 0);
+  s4.eng.provokeAlong(s4.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  eq(s4.hero.readied && s4.hero.readied.atkIdx, 0, "a readied melee Strike waits for reach, not sight");
 }
 
 group("conditional save bonuses off the sheet");
@@ -4174,11 +4400,11 @@ group("three feats stopped being note text");
   ok(withFeat("mountain-strategy").includes("bonus-dmg-vs-large"),
     "Mountain Strategy already carried `bonus-dmg-vs-large`; it just did nothing");
   ok(withFeat("titan-slinger").includes("bonus-dmg-vs-large"), "…as did Titan Slinger");
-  // Rock Dwarf stays a note on purpose: nothing in the game can Shove or Trip
-  // a hero, so there is no DC for its +2 to apply to.
-  ok(forge("fighter", { ancestry: "dwarf", heritage: "rock-dwarf" }).notes
-      .some(n => /\+2 DC vs Shove\/Trip\/prone/.test(n)),
-    "Rock Dwarf is still a note, because only heroes make maneuvers");
+  // Rock Dwarf was a note while nothing could Shove or Trip a hero. A monster
+  // with an Athletics number can, so the +2 is a conditional bonus now, read
+  // off the sheet by `maneuver` (and checked there, under "monsters Trip").
+  eq(forge("fighter", { ancestry: "dwarf", heritage: "rock-dwarf" }).condBonuses.filter(b => b.target === "maneuver-dc").map(b => b.vs),
+    ["trip", "shove"], "Rock Dwarf's +2 is a maneuver-dc bonus against Trip and Shove, not a note");
 }
 
 group("the monster schema grew two fields");

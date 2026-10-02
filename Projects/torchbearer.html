@@ -581,7 +581,7 @@ const CORE_PACK = {
  "traits":["dwarf","humanoid"],"languages":["Common","Dwarven"],"senses":["darkvision"],
  "desc":"Short, stocky, and stubborn as the mountains that birthed them. Dwarves remember every debt and every grudge.",
  "heritages":[
-  {"id":"rock-dwarf","name":"Rock Dwarf","desc":"Your feet are set like stone. +2 circumstance bonus to your DC against being Shoved, Tripped, or knocked prone.","effects":[{"note":"+2 DC vs Shove/Trip/prone"}]},
+  {"id":"rock-dwarf","name":"Rock Dwarf","desc":"Your feet are set like stone. +2 circumstance bonus to your DC against being Shoved, Tripped, or knocked prone.","effects":[{"bonus":{"target":"maneuver-dc","vs":"trip","value":2,"type":"circumstance"}},{"bonus":{"target":"maneuver-dc","vs":"shove","value":2,"type":"circumstance"}}]},
   {"id":"strong-blooded-dwarf","name":"Strong-Blooded Dwarf","desc":"Poison rolls off your blood. You gain poison resistance equal to half your level (minimum 1).","effects":[{"resist":{"type":"poison","value":"halfLevel"}}]},
   {"id":"ancient-blooded-dwarf","name":"Ancient-Blooded Dwarf","desc":"Old magic slides off you. +1 status bonus to saving throws against magic.","effects":[{"bonus":{"target":"save.all","value":1,"type":"status","vs":"magic"}}]}]},
 {"id":"elf","name":"Elf","hp":6,"size":"Medium","speed":30,"boosts":["dex","int","free"],"flaws":["con"],
@@ -2032,10 +2032,13 @@ const Combat = Object.assign(newCombat(), {
     const cb=this.cur();
     st.innerHTML=`<b>${esc(cb.name)}</b> — HP ${cb.hp}/${cb.hpMax}${cb.tempHP?" (+"+cb.tempHP+" temp)":""}<br>
       MAP: ${cb.mapCount===0?"none":cb.mapCount===1?"–5 (–4 agile)":"–10 (–8 agile)"}${this.huntPreyId&&cb.char?"<br>Prey: "+esc((this.cbs.find(c=>c.id===this.huntPreyId)||{}).name||""):""}
-      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.condVal(cb,"grabbed")?"<br>grabbed — Escape DC "+(cb.grabDC||15):""}${cb.readied?"<br>Strike readied":""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
+      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.condVal(cb,"grabbed")?"<br>"+(this.condVal(cb,"restrained")?"restrained":"grabbed")+" — Escape DC "+(cb.grabDC||15):""}${cb.readied?"<br>Strike readied ("+esc((this.readiedAttack(cb)||{name:"?"}).name)+")":""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
       ${cb.conditions.length?"<br>"+cb.conditions.map(c=>c.c+(c.v>1?" "+c.v:"")).join(", "):""}`;
     if(cb.side!=="pc"){ bar.innerHTML=`<div class="small" style="padding:8px">${esc(cb.name)} acts…</div>`; return; }
-    const B=[]; const btn=(id,label,cost,disabled,cls)=>B.push(`<button class="act-btn ${cls||""} ${this.armed&&this.armed.btn===id?"armed":""}" data-act="${id}" ${disabled?"disabled":""}>${label}${cost?` <span class="cost">${cost}</span>`:""}</button>`);
+    /* Restrained greys out everything but the handful of actions with neither
+       the attack nor the manipulate trait; the engine refuses the same list. */
+    const B=[]; const btn=(id,label,cost,disabled,cls)=>{ disabled=disabled||!this.actionAllowed(cb,id);
+      B.push(`<button class="act-btn ${cls||""} ${this.armed&&this.armed.btn===id?"armed":""}" data-act="${id}" ${disabled?"disabled":""}>${label}${cost?` <span class="cost">${cost}</span>`:""}</button>`); };
     const no=this.actions<=0;
     (cb.attacks||[]).forEach((a,i)=>{
       const mapPen=this.mapPenalty(cb,a);
@@ -2048,7 +2051,7 @@ const Combat = Object.assign(newCombat(), {
     btn("seek","👁 Seek","◆",no);
     if(this.condVal(cb,"grabbed")) btn("escape","🪢 Escape","◆",no);
     if(this.condVal(cb,"prone")) btn("stand","🧍 Stand","◆",no||this.condVal(cb,"grabbed")>0);
-    btn("ready","⏳ Ready a Strike","◆◆",no||this.actions<2||!(cb.attacks||[]).length);
+    btn("ready","⏳ Ready","◆◆",no||this.actions<2||!(cb.attacks||[]).length);
     if(cb.char&&cb.char.build.gear.shield) btn("raise","🛡 Raise Shield","◆",no||cb.shieldRaised);
     if(cb.attacks.some(a=>a.ranged&&(a.traits||[]).includes("reload-1"))) btn("reload","🔃 Reload","◆",no||cb.reloadedThisTurn);
     if(cb.char){
@@ -2086,6 +2089,18 @@ const Combat = Object.assign(newCombat(), {
     btn("end","⏭ End Turn","", false,"end-turn");
     bar.innerHTML=B.join("");
     bar.querySelectorAll(".act-btn").forEach(el=>el.onclick=()=>this.actionClick(el.dataset.act));
+  },
+
+  /* ---------- Ready's weapon picker; the options come from the engine ---------- */
+  chooseReady(cb){
+    const opts=this.readyOptions(cb);
+    if(opts.length<=1) return this.doReady(cb,0);
+    const body=opts.map((o,i)=>`<div class="opt-card" data-i="${i}"><h3>${o.ranged?"🏹":"⚔"} ${esc(o.name)}</h3>
+        <div class="desc">${esc(o.label)}.</div></div>`).join("");
+    App.modal("Ready a Strike",`<div class="card-grid">${body}</div>`,[{label:"Cancel"}]);
+    document.querySelectorAll("#modal-body .opt-card").forEach(el=>el.onclick=()=>{
+      App.closeModal(); this.doReady(cb,+el.dataset.i);
+    });
   },
 
   /* ---------- the spell menu's cards; the rows come from the engine ---------- */

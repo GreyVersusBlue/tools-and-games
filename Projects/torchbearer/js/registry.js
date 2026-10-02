@@ -240,6 +240,12 @@ export const Validator = {
       if (m.size !== undefined && !SIZES.includes(m.size)) {
         errs.push(`Monster "${m.id}": unknown size "${m.size}" (known: ${SIZES.join(", ")}).`);
       }
+      // added for monster Hide and Trip: `stealth` and `athletics` are what a monster Hides and
+      // Trips with. Either one that is not a whole number reads as NaN on the
+      // roll and makes every check against it fail silently.
+      ["stealth", "athletics"].forEach(k => {
+        if (m[k] !== undefined && !Number.isInteger(m[k])) errs.push(`Monster "${m.id}": "${k}" is a modifier and must be a whole number.`);
+      });
       // added Phase 5: `lore` is the line a critical Recall Knowledge prints.
       if (m.lore !== undefined && typeof m.lore !== "string") {
         errs.push(`Monster "${m.id}": "lore" must be a string — the one line a critical Recall Knowledge prints.`);

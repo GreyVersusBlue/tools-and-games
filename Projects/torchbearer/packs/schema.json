@@ -1011,6 +1011,14 @@
           "type": "integer",
           "description": "Perception modifier."
         },
+        "stealth": {
+          "type": "integer",
+          "description": "Stealth modifier. A monster with one Hides when it is losing; one without cannot Hide, and a Seek for it rolls against 10 + Perception."
+        },
+        "athletics": {
+          "type": "integer",
+          "description": "Athletics modifier. A monster with one opens a turn with a Trip; one without cannot Trip."
+        },
         "reach": {
           "type": "integer",
           "minimum": 1,
@@ -1824,7 +1832,7 @@
           "properties": {
             "target": {
               "type": "string",
-              "description": "speed, hp, initiative, perception, or save.all."
+              "description": "speed, hp, initiative, perception, save.all, or maneuver-dc (with vs naming trip or shove)."
             },
             "value": {
               "type": "integer",
