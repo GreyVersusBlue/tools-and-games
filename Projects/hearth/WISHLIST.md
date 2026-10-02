@@ -147,6 +147,7 @@ test file. Seventeen modes live in it as top-level `if (mode === '…')` blocks:
 `soak`, `nan`, `depth`, `determinism`, `save`, `decade`, `migrate`, `saga`,
 `wider`, `strain`, `leftovers`, and one per sprint, `eleven` through `sixteen`. It is a good harness. It is not a
 fast one, and it cannot tell you a function is wrong, only that an island is.
+(TG-26 added `test/unit.mjs`, which can, #811.)
 
 ## Conventions a new builder must know
 
@@ -301,17 +302,6 @@ migration ladder, the missing CI) are claimed by Phases 1–8. Pull from here,
 and add to this list rather than starting a new one.
 
 **The island's memory**
-- **The teller has to be an elder, and this island rarely makes one.** Phase 5
-  measured it while chasing a red `decade`: on seed 7, somebody aged sixty is
-  alive on **57 days out of 700**, and on `main`'s stream of the same seed, 255
-  — one to three individuals either way. "An elder who knew somebody under a
-  stone tells a child about them" is the only durable record that generation
-  leaves, and it fires about once per thirty-five game-years because its teller
-  pool is empty most of the time. The fix is not the 5% roll; it is who may
-  tell. A grown adult who knew the dead can do it, with an elder preferred.
-  Phase 5 did not take it — it is a behaviour change to a sprint-16 system and
-  would have shifted the stream a third time in one session — and `decade` now
-  states the opportunity count every run (#67) so it stays visible.
 - The recited names on the hill are a `say()` line only, never chronicled: a
   walk touching four stones leaves no record of *whose* names.
 - Only 8 of the 24 growable story kinds have ground under them
@@ -334,30 +324,24 @@ and add to this list rather than starting a new one.
 
 **People and behaviour, from the sprint handoffs**
 
-Nine leftovers the thirteen sprint handoffs named and no phase in this file
-claims. Carried here when those handoffs were retired into `HISTORY.md`.
+Leftovers the thirteen sprint handoffs named and no phase in this file
+claims, carried here when those handoffs were retired into `HISTORY.md`. There
+were nine; TG-26 closed three (`HISTORY.md`, #807 to #811).
 
-- **Sheltering islanders vanish entirely during a storm.** A lit window would
-  fix the feeling (sprints 5 and 6).
 - **The beached-boat pixel at the hut is crude** (sprints 5 and 6).
 - **Deer do not avoid water when fleeing across a narrow neck** — they retarget
   six times, then go anyway (sprints 5 and 6).
 - **A lone surviving child has no behaviour but `play`** (sprint 6).
 - **The NaN islander is an open case.** Observed once on a random island that
   had collapsed to one person by day 44; never reproduced since, including
-  under forced starvation for 144 sim-days. The guard converts it from a
-  permanent ghost into a one-frame blip with a breadcrumb — if a
-  `hearth: non-finite position` warning ever appears in a console, the task
-  name in it is the lead (sprint 8).
-- **A storm-heavy island's first 40 days can look broken.** Storms send
-  everyone indoors, hunger drives people off, and with `food` low no arrivals
-  come; one observed island had three people gone by day 8 and wood untouched
-  at its starting 12, and recovered on its own by day 51. Worth a balance pass:
-  maybe let people work through light rain, or give the granary a floor
-  (sprint 5).
-- **Works in progress lose progress on save**, the shrine included — it
-  re-arms itself at the next dawn via `faithSt`, so the stone always eventually
-  stands (sprint 11).
+  under forced starvation for 144 sim-days and TG-26's sweep of 25 islands at
+  200 days each with starvation windows. The guard converts it from a
+  permanent ghost into a one-frame blip with a breadcrumb, and since TG-26 the
+  crumb says which went first: `target` (the task named set a bad `tx`/`ty`)
+  or `position` (`walk()` or a teleport), with the four numbers, the day and
+  whether a boat or the bridge was involved. If a
+  `hearth: non-finite position` warning ever appears in a console, that line
+  is the lead (sprint 8).
 - **The shelf in the hall has no art.** Things on it exist only in prose; a
   two-pixel row inside the hall when `things.some(t=>!t.holder)` would be a
   nice touch (sprint 12).
@@ -366,13 +350,9 @@ claims. Carried here when those handoffs were retired into `HISTORY.md`.
   cairn after enough walks, would be the same trick as the shelf (sprint 13).
 
 **Format, tooling, and the machine**
-- There is no pure module and no unit suite; everything is tested by driving
-  the real page, which means no test can say a function is wrong.
 - No preview image. Phase 8 decided against a `Tools/board-check/games.mjs`
   entry (#84); the 330×200 capture waits for the social-tag cleanup, since
   promoting one also writes `assets/og/hearth.jpg` and this page's og block.
-- `chron`, `events` and every person's `hist` grow without bound, and nobody
-  has measured frame time past day 120.
 
 ## Arc one — a decade you can sit through
 
@@ -815,7 +795,8 @@ lists cap at five or six entries — so the eligible-day count on seed 20260819
 went from 64 to 171 by asking both. It is also what stops `pick()` being handed
 an empty array, which the two hand-copied predicates it replaced were one edit
 away from. The other is not fixed and belongs to whoever takes Phase 7: **the
-teller has to be an elder, and this island rarely makes one.**
+teller has to be an elder, and this island rarely makes one.** (Phase 7 did not
+take it; TG-26 did, #807.)
 
 Broken on purpose, four times, each break watched to fail and then put back:
 
@@ -1138,10 +1119,12 @@ against an existing suite and an existing workflow to copy.
 - **The watcher having a history.** `faith` and `acts` track what the watcher
   does and no phase here shows the watcher that account. Deliberate — the
   ambiguity is the feature, and a UI for it would read as a score.
-- **Pure modules with unit suites.** The long answer to "no test can tell you
-  a function is wrong" is extracting the rules engine from `sim.js` and
-  `life.js`. It is also a rewrite of the two files every phase above touches,
-  and it should follow the arcs, not precede them.
+- **Pure modules.** The short answer to "no test can tell you a function is
+  wrong" shipped in TG-26: `test/unit.mjs` runs the real scripts in Node
+  through `test/load.mjs` (a vm context and a stub page) and calls into them
+  one at a time (#811). The long answer is still extracting the rules engine
+  from `sim.js` and `life.js` into modules, a rewrite of the two files every
+  phase above touches, and it should follow the arcs, not precede them.
 - **Art past the pixel budget.** Interiors, seasonal building states, a real
   night palette. Sprint 15 removed the size ceiling and no sprint has spent
   it.
