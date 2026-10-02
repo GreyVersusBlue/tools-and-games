@@ -6,7 +6,7 @@
 import { TILE } from "./world.js";
 import { CONDITIONS } from "./conditions.js";
 
-const PALETTE = {
+export const PALETTE = {
   floorA: "#241f2e", floorB: "#282334",
   treasure: "#3a2f14", gateShut: "#141019", gateOpen: "#20303a",
   wallTop: "#3a3448", wallLeft: "#231f2d", wallRight: "#2c2738",
@@ -23,6 +23,21 @@ const PALETTE = {
   hpBack: "#0c0b10", hpPC: "#4f9e5f", hpFoe: "#b03a48",
   ember: "#e07a3a", afflicted: "#c26b78",
 };
+
+/**
+ * Every solid the board stands up, as `prism` draws it at the largest tile
+ * (`tw` 56): its height in pixels and its footprint as a share of a tile.
+ * One table, so the sprite pipeline (tools/blender/spec.mjs) renders against
+ * the same boxes the board draws and validate.mjs can hold a frame to its box.
+ */
+export const SOLIDS = Object.freeze({
+  wall:   Object.freeze({ ht: 26, fp: 1 }),
+  door:   Object.freeze({ ht: 30, fp: 1 }),
+  pillar: Object.freeze({ ht: 40, fp: 0.72 }),
+  heir:   Object.freeze({ ht: 20, fp: 0.55 }),
+  foe:    Object.freeze({ ht: 18, fp: 0.55 }),
+  boss:   Object.freeze({ ht: 24, fp: 0.62 }),
+});
 
 export function createRenderer(canvas, game) {
   const ctx = canvas.getContext("2d");
@@ -231,11 +246,11 @@ export function createRenderer(canvas, game) {
       const dim = !visible.has(s.x + "," + s.y);
       ctx.globalAlpha = dim ? 0.35 : 1;
 
-      if (s.kind === "wall") prism(s.x, s.y, 26 * scale, PALETTE.wallTop, PALETTE.wallLeft, PALETTE.wallRight);
-      if (s.kind === "gate") prism(s.x, s.y, 30 * scale, PALETTE.doorTop, PALETTE.doorLeft, PALETTE.doorRight);
+      if (s.kind === "wall") prism(s.x, s.y, SOLIDS.wall.ht * scale, PALETTE.wallTop, PALETTE.wallLeft, PALETTE.wallRight);
+      if (s.kind === "gate") prism(s.x, s.y, SOLIDS.door.ht * scale, PALETTE.doorTop, PALETTE.doorLeft, PALETTE.doorRight);
 
       if (s.kind === "pillar") {
-        prism(s.x, s.y, 40 * scale, PALETTE.pillarTop, PALETTE.pillarLeft, PALETTE.pillarRight, 0.72);
+        prism(s.x, s.y, SOLIDS.pillar.ht * scale, PALETTE.pillarTop, PALETTE.pillarLeft, PALETTE.pillarRight, SOLIDS.pillar.fp);
         ctx.fillStyle = game.run.loreRead.includes(s.lore) ? PALETTE.goldDim : PALETTE.gold;
         diamond(isoX(s.x, s.y), isoY(s.x, s.y) - 46 * scale, 12 * scale, 6 * scale);
         ctx.fill();
@@ -247,7 +262,7 @@ export function createRenderer(canvas, game) {
         // prism for two rounds; the colours are content now, required of every
         // build in the pack, so a third one cannot arrive without deciding.
         const pal = game.content.pc.palette;
-        prism(s.x, s.y, 20 * scale, pal.top, pal.left, pal.right, 0.55);
+        prism(s.x, s.y, SOLIDS.heir.ht * scale, pal.top, pal.left, pal.right, SOLIDS.heir.fp);
         ctx.fillStyle = PALETTE.gold;
         diamond(cx, cy - 27 * scale, 10 * scale, 5 * scale); ctx.fill();
         if (game.conditionsOf("pc").some(c => CONDITIONS[c.id]?.helpful)) {
@@ -268,10 +283,11 @@ export function createRenderer(canvas, game) {
         const c = s.creature, d = game.def(c);
         const cx = isoX(s.x, s.y), cy = isoY(s.x, s.y);
         const boss = d.level >= 0;
-        prism(s.x, s.y, (boss ? 24 : 18) * scale,
+        const box = boss ? SOLIDS.boss : SOLIDS.foe;
+        prism(s.x, s.y, box.ht * scale,
           boss ? PALETTE.bossTop : PALETTE.foeTop,
           boss ? PALETTE.bossLeft : PALETTE.foeLeft,
-          boss ? PALETTE.bossRight : PALETTE.foeRight, boss ? 0.62 : 0.55);
+          boss ? PALETTE.bossRight : PALETTE.foeRight, box.fp);
         // A dormant creature has no lit eye — that is the whole tell for "this
         // one has not seen you yet", and it is the difference between one fight
         // and two.

@@ -1,0 +1,19 @@
+{
+  "about": "The Absalom Inheritance's sprite style sheet as data (WISHLIST.md B1). validate.mjs reads it; the sheet scripts read pad and their sheet. A frame is 112 + 2 * pad pixels wide (112 a square, render.js's largest tw on a 2x screen) and 56 + 2 * (ht + headroom) + 2 * pad tall, where ht is the solid's height in render.js pixels (SOLIDS by name, or the frame's own ht) and headroom is room above it for detail; its anchor is where the square's centre lands on the floor. fp is the footprint as a share of a square. faces names the PALETTE entry each face's centre must come out at, within faceTolerance levels; mask marks a frame rendered with red, green and blue for top, left and right, to be tinted at draw time. maxKiB is KiB x 1024, maxSide the longest side in pixels, maxTriangles the most any one frame's scene may hold, minCoverage the share of a frame's pixels at alpha 128 or more below which the frame is taken for empty or half-built, and boxSlack how far, as a share of the box, a frame's drawing may stand off the box it replaces.",
+  "pad": 2,
+  "faceTolerance": 4,
+  "boxSlack": 0.1,
+  "sheets": {
+    "tiles": {
+      "png": "assets/sprites/tiles.png",
+      "atlas": "assets/sprites/tiles.json",
+      "width": 512,
+      "maxSide": 1024,
+      "maxKiB": 256,
+      "maxTriangles": 4000,
+      "frames": {
+        "wall": { "solid": "wall", "minCoverage": 0.6, "faces": { "top": "wallTop", "left": "wallLeft", "right": "wallRight" } }
+      }
+    }
+  }
+}

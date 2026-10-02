@@ -47,6 +47,12 @@
 # check here names the fight that moved. If it is the change you meant, rerun
 # with --write-baseline and commit the file.
 #
+# tools/blender/validate.mjs is the sprite sheets' style sheet (WISHLIST.md
+# B1): every frame budget.json names, at the size and anchor of the square it
+# stands on, held to the box render.js's SOLIDS gives it and to PALETTE's
+# colours face by face. The sheets are rendered by Blender on Devon's machines
+# (#707); the check needs only Node, so it runs here.
+#
 # The job itself runs through suite.yml, the shared template. Site-wide checks
 # (Tools/board-check, gvb-save.test.mjs, the projects with no workflow of their
 # own) live in site-ci.yml and run on every pull request.
@@ -89,3 +95,4 @@ jobs:
       commands: |
         node test/smoke.mjs
         node test/balance.mjs 2000
+        node tools/blender/validate.mjs
