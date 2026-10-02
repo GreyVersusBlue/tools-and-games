@@ -751,6 +751,53 @@ group('the corridor: two boxes, one handoff, fresh decisions');
 
 /* ------------------------------------------------------------ the events -- */
 
+group('lane changes on a corridor (R12, #781): a car handed on in the wrong lane moves over');
+
+{
+  // two lanes each way, both boxes on E-W green (phase 1) for good: a car
+  // from box 1's west leg goes through in the curb lane and is handed to
+  // box 2 there, where only lane 1 turns left
+  const C = (turns, extra = {}) => ({ network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 }, demand: {}, duration: 120, turns, controller: { startPhase: 1 }, ...extra });
+  const w = new World(C({ L: 1 }), 2);
+  const car = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
+  let handed = null, atLine = null;
+  for (let i = 0; i < 60 * 60 && !car.done; i++) {
+    w.step();
+    if (!handed && car.path.node === 1) handed = { lane: car.path.lane, turn: car.path.turn, want: car.laneWant && { ...car.laneWant } };
+    if (car.path.node === 1 && !atLine && car.front >= car.path.stopLine - 1) atLine = { lane: car.path.lane, turn: car.path.turn };
+  }
+  ok(handed && handed.lane === 0 && handed.want && handed.want.lane === 1 && handed.want.turn === 'L', 'handed on in the curb lane, a car that drew a left wants the inner lane', JSON.stringify(handed));
+  ok(atLine && atLine.lane === 1 && atLine.turn === 'L' && w.stats.laneChanges === 1, 'and reaches box 2\'s stop line in it, turning left: one lane change', `${JSON.stringify(atLine)}, ${w.stats.laneChanges} change`);
+  ok(car.done && w.stats.collisions === 0, 'and leaves the map with nothing hit', `${w.stats.collisions} collisions`);
+  // a truck moving over for a left takes the truck's own left (R11)
+  const wt = new World(C({ L: 1 }), 2);
+  const truck = wt.spawnCar({ leg: 'W', archetype: 'trucker', turn: 'T', lane: 0 });
+  let took = null;
+  for (let i = 0; i < 60 * 60 && !took; i++) { wt.step(); if (truck.path.node === 1 && truck.path.turn === 'L') took = truck.path; }
+  ok(took && took === wt.nodes[1].pathFor('W', 1, 'L').truck, 'and a truck that moves over for a left takes the truck\'s own left', took && took.key);
+}
+
+{
+  // box 2's inner lane is a standing queue under its red: the gap never
+  // comes, so the car keeps its lane and its through
+  const C = { network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 }, demand: {}, duration: 120, turns: { L: 1 }, controller: { startPhase: 1 }, controllers: [{}, { startPhase: 0 }] };
+  const w = new World(C, 2);
+  // until the spawner refuses: the queue reaches back past where box 1 hands cars on
+  for (let k = 0, refused = 0; k < 60 && refused < 20; k++) { if (!w.spawnCar({ leg: 'W', node: 1, archetype: 'standard', turn: 'L', lane: 1 })) refused++; w.run(1.2); }
+  const car = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
+  let atLine = null;
+  for (let i = 0; i < 60 * 60 && !atLine; i++) { w.step(); if (car.path.node === 1 && car.v < 0.1 && car.front >= car.path.stopLine - 3) atLine = { lane: car.path.lane, turn: car.path.turn }; }
+  ok(atLine && atLine.lane === 0 && atLine.turn === 'T' && w.stats.laneGiveUps === 1 && w.stats.laneChanges === 0, 'with the inner lane queued solid it gives up 25 m out and waits at the line in its own lane, going through', `${JSON.stringify(atLine)}, ${w.stats.laneChanges} changes, ${w.stats.laneGiveUps} given up`);
+  ok(w.stats.collisions === 0, 'and nobody is hit', `${w.stats.collisions} collisions`);
+}
+
+{
+  // one lane each way: every lane takes every turn, so the draw is the old draw
+  const L = { network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1, nodes: 2, spacing: 220 }, demand: [{ W: 500, N: 200, S: 200 }, { E: 500, N: 200, S: 200 }], duration: 120, controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 22 }, { phase: 1, green: 12 }] } };
+  const w = new World(L, 4).run(120);
+  ok(w.stats.handoffs > 10 && w.stats.laneChanges === 0 && w.stats.laneGiveUps === 0, 'on one lane each way nobody ever wants another lane', `${w.stats.handoffs} handoffs`);
+}
+
 group('events (M7): the surge');
 
 {

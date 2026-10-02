@@ -147,6 +147,9 @@ export const LOOP_LENGTH = 8;   // metres of lane the drawn loop covers, back fr
 export const PRIORITY_MARGIN = 6;  // seconds a corridor stays green after its vehicle is through the box
 export const PRIORITY_CAP = 60;    // and the most a corridor's green can run, whatever is still in the way
 export const TAPER = 12;           // metres a lane closure's cones angle across the lane before the closed stretch
+export const LANE_LAST = 25;        // metres before the stop line a lane change on a corridor gives up (R12)
+export const LANE_AHEAD = 2.0;      // metres of daylight a lane change needs either side, plus
+export const LANE_HEAD = 0.8;       // seconds of the speed each side is doing, and of any closing speed
 export const SWEEP_BACK = 8;       // metres behind another lane's stop line a truck's sweep is tested from (R11)
 export const SWEEP_WIDTH = 2.2;     // metres of another lane a truck's sweep is tested against: the widest car's body (R11)
 export const MERGE_WINDOW = 40;    // metres before the taper a car starts looking for its gap
@@ -228,7 +231,7 @@ export class World {
     this.scheduledCalls = (level.calls || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, node, walkers }]
     this.schedule = (level.events || []).map(e => ({ ...e })).sort((a, b) => a.at - b.at); // events yet to start (M7)
     this.active = [];       // events in force: { kind, at, until, ... }
-    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0, outages: 0, ambulances: 0, ambulanceLate: 0, platoons: 0, platoonSplits: 0, closures: 0, merges: 0, pedMaxWait: 0, carried: 0, carriedStops: 0, ambulanceEscorted: 0, ambulanceLateBy: 0 };
+    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0, outages: 0, ambulances: 0, ambulanceLate: 0, platoons: 0, platoonSplits: 0, closures: 0, merges: 0, pedMaxWait: 0, carried: 0, carriedStops: 0, ambulanceEscorted: 0, ambulanceLateBy: 0, laneChanges: 0, laneGiveUps: 0 };
     this.events = [];       // [{ t, kind, ... }], the renderer drains these
     this.boxStallT = 0;
     this._conf = new Map();
@@ -470,6 +473,51 @@ export class World {
         this.events.push({ t: this.t, kind: 'merge', car: car.id, to: next.movement });
       }
     }
+  }
+
+  // Lane changes on a corridor's straight (R12, #781). A car handed on in
+  // a lane that does not take the turn it drew (laneWant) moves one lane
+  // over at a time when the gap in the next lane is long enough at its
+  // speed (_laneRoom), between the handoff and LANE_LAST metres before the
+  // stop line; it moves the way the zipper does, the path swapped under a
+  // body that eases across. A car that has not found its gap by then keeps
+  // its lane and the turn the lane takes.
+  _laneTick() {
+    for (const car of this.cars) {
+      const want = car.laneWant;
+      if (!want || car.done) continue;
+      const p = car.path;
+      if (car.crashed || p.node !== want.node) { car.laneWant = null; continue; }
+      if (p.stopLine - car.front < LANE_LAST) {
+        car.laneWant = null; this.stats.laneGiveUps++;
+        this.events.push({ t: this.t, kind: 'lane-missed', car: car.id, turn: want.turn });
+        continue;
+      }
+      if (car.mergeS > 0) continue;   // a closure's merge comes first
+      const net = this.nodes[p.node];
+      const lane = p.lane + Math.sign(want.lane - p.lane);
+      const next = this.pathOf(car.archetype, lane === want.lane ? net.pathFor(p.entry, lane, want.turn) : (net.pathFor(p.entry, lane, 'T') || net.choicesFrom(p.entry, lane)[0]));
+      if (!next || !this._laneRoom(car, next)) continue;
+      const from = p.at(car.s), to = next.at(car.s);
+      car.latX += from.x - to.x; car.latY += from.y - to.y;
+      car.path = next;
+      if (lane === want.lane) car.laneWant = null;
+      this.stats.laneChanges++;
+      this.events.push({ t: this.t, kind: 'lane', car: car.id, to: next.movement, lane });
+    }
+  }
+
+  // Room to change into `next` at speed: LANE_AHEAD metres plus LANE_HEAD
+  // seconds of my speed (and of the speed I am closing at) to the car
+  // ahead, and the same of its speed to the car behind.
+  _laneRoom(car, next) {
+    for (const o of this.cars) {
+      if (o === car || o.done) continue;
+      if (o.path.node !== next.node || o.path.entry !== next.entry || o.path.lane !== next.lane || o.rear > o.path.boxEnter) continue;
+      if (o.s > car.s) { if (o.rear - car.front < LANE_AHEAD + LANE_HEAD * car.v + LANE_HEAD * Math.max(0, car.v - o.v)) return false; }
+      else if (car.rear - o.front < LANE_AHEAD + LANE_HEAD * o.v + LANE_HEAD * Math.max(0, o.v - car.v)) return false;
+    }
+    return true;
   }
 
   _roomFor(car, next) {
@@ -1038,6 +1086,7 @@ export class World {
     this._spawnTick();
     this._pedTick(dt);
     this._mergeTick();
+    this._laneTick();
     this._meterTick(dt);
 
     // 1. verdicts, from the true present, recorded for later perception
@@ -1123,10 +1172,22 @@ export class World {
     const net = this.nodes[link.node];
     const choices = net.choicesFrom(link.entry, old.exitLane);
     if (!choices.length) { car.done = true; this.stats.cleared++; return; }
+    // the turn is drawn from every turn the leg allows, not only the lane's
+    // (R12, #781): on one lane each way that is the same draw as before
     const weights = {};
     for (const p of choices) weights[p.turn] = this.turns[p.turn] || 0;
+    for (const t of ['L', 'T', 'R']) if (!(t in weights) && net.lanesForTurn(t).some(l => net.pathFor(link.entry, l, t))) weights[t] = this.turns[t] || 0;
     let turn = Object.values(weights).some(w => w > 0) ? this.rng.weighted(weights) : choices[0].turn;
-    let next = choices.find(p => p.turn === turn) || choices[0];
+    let next = choices.find(p => p.turn === turn);
+    car.laneWant = null;
+    if (!next) {
+      // a turn this lane does not take: hold the lane on its through (or its
+      // first way out) and change lanes on the straight before the box
+      const lanes = net.lanesForTurn(turn).filter(l => net.pathFor(link.entry, l, turn));
+      const lane = lanes.reduce((a, l) => (Math.abs(l - old.exitLane) < Math.abs(a - old.exitLane) ? l : a), lanes[0]);
+      car.laneWant = { node: link.node, lane, turn };
+      next = choices.find(p => p.turn === 'T') || choices[0];
+    }
     const shift = link.atS - old.length;
     car.path = this.pathOf(car.archetype, next);
     car.s += shift;

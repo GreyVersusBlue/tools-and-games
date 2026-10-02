@@ -118,6 +118,7 @@ export class Car {
     this.platoon = null;        // the motorcade or procession event this car belongs to (M7)
     this.mergeS = 0;            // a lane closure's taper this car must merge before, or 0
     this.mergeLane = -1;        // and the lane it is waiting to merge into
+    this.laneWant = null;       // R12: { node, lane, turn } a corridor car is changing lanes for
     this.latX = 0; this.latY = 0;   // where the body still is, relative to its path, after a merge: eases to 0
     this.rng = rng;
   }
@@ -139,6 +140,7 @@ export class Car {
   get indicator() {
     if (this.done || this.crashed) return null;
     if (this.mergeS > 0 && this.mergeLane >= 0) return this.mergeLane > this.path.lane ? 'L' : 'R';
+    if (this.laneWant) return this.laneWant.lane > this.path.lane ? 'L' : 'R';   // a corridor lane change (R12)
     const t = this.path.turn;
     if (t !== 'L' && t !== 'R') return null;
     return this.front > this.path.stopLine - INDICATE_FROM && this.rear < this.path.boxExit ? t : null;

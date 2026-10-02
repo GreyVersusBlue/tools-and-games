@@ -458,15 +458,13 @@ target held; Free Play's ring target went to 72 and its meter to S at 6 s.
 The new truck collisions are trusting starters meeting a trailer on the
 all-red.
 
-### R12. Lane changes on a corridor segment
+### R12. Lane changes on a corridor segment: done (HISTORY.md #781)
 
-**Size ½. Model Opus 5.** A car handed from one box to the next keeps its
-lane, so on a two-lane corridor with a left bay a car in the inner lane can
-only turn left (Known gaps). Two Blocks runs one lane each way so nothing
-shows it today. Give the segment a lane change: a gap-acceptance swap on
-the straight between boxes toward a lane that allows the car's next turn,
-the same path swap the zipper uses. Needed before any two-lane corridor
-level, and a prerequisite for R13's second corridor level.
+A car handed to the next box draws its turn from every turn the leg allows.
+When its lane does not take that turn it moves over on the straight, one
+lane at a time, when the gap is long enough at its speed, the same path swap
+the zipper uses; 25 m before the line it gives up and takes its lane's turn.
+One lane each way draws exactly as before, so nothing shipped moved.
 
 ### R13. More board: a second pack
 
