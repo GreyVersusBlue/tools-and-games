@@ -314,6 +314,10 @@ export class Path {
     this.stopLine = 0; this.boxEnter = 0; this.boxExit = 0;
     this.ring = null;           // { aIn, aOut, sIn, sOut } on a roundabout's path
     this.truck = null;          // the same way for a vehicle with a trailer, where it differs (R11)
+    // the trailer's track per wheelbase (trailerHeading), declared here: added
+    // later, it changed every path's shape mid-run and a district's later days
+    // ran up to ten times slower in the same process
+    this._trail = null;
   }
 
   // The angle on the ring (screen atan2, falling as the car goes round) of
@@ -468,25 +472,33 @@ export function pointInRect(x, y, r) {
   return Math.abs(u) <= r.length / 2 && Math.abs(v) <= r.width / 2;
 }
 
-// Oriented rectangle overlap by separating axes: the collision test.
+// Oriented rectangle overlap by separating axes: the collision test. The
+// corners go into two scratch arrays rather than fresh ones per call: it is
+// the hottest function in the sim (obstacleAhead's probe), and the arrays
+// and closures it used to build ran up to ten times slower once a district's
+// later days had deoptimized them (#784). The arithmetic is the old one,
+// term for term, so every answer is the same to the last bit.
+const CA = new Float64Array(8), CB = new Float64Array(8);
+function cornersInto(out, r, c, s) {
+  const hx = r.length / 2, hy = r.width / 2;
+  out[0] = r.x + hx * c - hy * s;   out[1] = r.y + hx * s + hy * c;
+  out[2] = r.x + hx * c - -hy * s;  out[3] = r.y + hx * s + -hy * c;
+  out[4] = r.x + -hx * c - -hy * s; out[5] = r.y + -hx * s + -hy * c;
+  out[6] = r.x + -hx * c - hy * s;  out[7] = r.y + -hx * s + hy * c;
+}
+function separated(ax, ay) {
+  let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity;
+  for (let i = 0; i < 8; i += 2) {
+    const pa = CA[i] * ax + CA[i + 1] * ay; if (pa < minA) minA = pa; if (pa > maxA) maxA = pa;
+    const pb = CB[i] * ax + CB[i + 1] * ay; if (pb < minB) minB = pb; if (pb > maxB) maxB = pb;
+  }
+  return maxA < minB || maxB < minA;
+}
 export function rectsOverlap(a, b) {
-  const axes = [];
-  for (const r of [a, b]) {
-    const c = Math.cos(r.heading), s = Math.sin(r.heading);
-    axes.push([c, s], [-s, c]);
-  }
-  const corners = r => {
-    const c = Math.cos(r.heading), s = Math.sin(r.heading);
-    const hx = r.length / 2, hy = r.width / 2;
-    return [[hx, hy], [hx, -hy], [-hx, -hy], [-hx, hy]].map(([px, py]) => [r.x + px * c - py * s, r.y + px * s + py * c]);
-  };
-  const ca = corners(a), cb = corners(b);
-  for (const [ax, ay] of axes) {
-    let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity;
-    for (const [x, y] of ca) { const p = x * ax + y * ay; if (p < minA) minA = p; if (p > maxA) maxA = p; }
-    for (const [x, y] of cb) { const p = x * ax + y * ay; if (p < minB) minB = p; if (p > maxB) maxB = p; }
-    if (maxA < minB || maxB < minA) return false;
-  }
+  const ac = Math.cos(a.heading), as = Math.sin(a.heading), bc = Math.cos(b.heading), bs = Math.sin(b.heading);
+  cornersInto(CA, a, ac, as); cornersInto(CB, b, bc, bs);
+  if (separated(ac, as) || separated(-as, ac)) return false;
+  if (separated(bc, bs) || separated(-bs, bc)) return false;
   return true;
 }
 
