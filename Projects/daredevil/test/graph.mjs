@@ -252,20 +252,13 @@ export function walkWithRels(g, root = ROOT) {
 /**
  * Scenes the relationship walk cannot reach, frozen the way flags.mjs freezes
  * its write-only list (#264): the list can shrink, a new name fails, and a
- * name that has since found a path fails too. One entry today, and it is the
- * first thing the walk found: `m5_question_earl` is Milestone 5's question
- * asked by Earl, behind the table's `earl: mentor` row — and the only way to
- * `earl: 'mentor'` is "I want Cal in the room" on `fr3_eve_earl`, whose
- * choice writes `cal: 'loyal'` and whose target, `fr3_eve_earl_cal`, writes
- * it again. Cal's row is above Earl's and nothing after Milestone 1 moves
- * Cal off loyal, so every run in which Earl could ask has Cal asking
- * instead. A written scene, a labelled route row, and no bag of
- * relationships that reaches it. Fixing it is a story call (who asks, or a
- * second way to a mentor) and is on WISHLIST.md. Removing only one of the
- * two Cal writes leaves it unreachable, which the break-on-purpose run
- * confirmed; removing both makes this entry stale and fails the suite.
+ * name that has since found a path fails too. Empty since TG-08. Its one
+ * entry was the first thing the walk found: `m5_question_earl`, behind the
+ * table's `earl: mentor` row, when the only way to `earl: 'mentor'` also
+ * writes `cal: 'loyal'` and Cal's row sat above Earl's (#285). Earl's row is
+ * above Cal's now, so a mentor run hears the question from Earl.
  */
-export const UNREACHABLE_BY_RELS = ['m5_question_earl'];
+export const UNREACHABLE_BY_RELS = [];
 
 /**
  * Which of each hub's cards cost an evening (Phase 6).
