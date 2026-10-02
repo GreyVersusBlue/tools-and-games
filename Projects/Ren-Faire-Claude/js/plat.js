@@ -16,6 +16,9 @@ import { FRAME, TRACK, contentSize, trackSize, cellOrigin, edges } from './mapvi
 
 export const INK = '#6B5433';
 export const RULE_INK = 'rgba(107, 84, 51, 0.85)';
+// The paper: the compass's N, and the canvas of every tent on the marker
+// sheet (tools/blender/). style.css's --map-mat is the same colour.
+export const PAPER = '#F2E6C6';
 export const TERRAIN_FILL = {
   clearing: '#93A052',
   hill: '#BC9C52',
@@ -193,7 +196,7 @@ function paintCartouche(ctx, c, t, opts) {
   ctx.closePath();
   ctx.fill();
   ctx.font = `600 ${Math.round(r * 0.55)}px 'Fraunces', Georgia, serif`;
-  ctx.fillStyle = '#F2E6C6';
+  ctx.fillStyle = PAPER;
   ctx.textAlign = 'center';
   ctx.fillText('N', cx, cy - r * 0.45);
 }
