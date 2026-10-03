@@ -32,7 +32,7 @@ import {
 import { catalogEntry, propColor, variantKey } from './catalog.js';
 import { revealAt } from './hunt.js';
 import {
-  stairMetrics, stairsOf, openingRails, runMetrics,
+  stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
   floorCuts, inFloorCut, stairWidth,
 } from './stairs.js';
@@ -4875,11 +4875,61 @@ export function initRender(canvas) {
     // in here rather than straight onto the storey.
     let liftGroup = null;
 
+    // A box between two local points at different heights: built along +Z,
+    // pitched, turned to face down the line, then placed like `localBox`.
+    const localBeam = (link, w, h, a, b, lift, color, target) => {
+      const flat = Math.hypot(b.x - a.x, b.z - a.z);
+      const g = new THREE.BoxGeometry(w, h, Math.hypot(flat, b.y - a.y));
+      g.rotateX(-Math.atan2(b.y - a.y, flat));
+      g.rotateY(Math.atan2(b.x - a.x, b.z - a.z));
+      g.translate((a.x + b.x) / 2, (a.y + b.y) / 2 + lift, (a.z + b.z) / 2);
+      g.rotateY(link.rotationY || 0);
+      g.translate(link.x, baseY, link.z);
+      coloredGeo(g, color);
+      target.push(g);
+    };
+
+    // A ramp folded into lanes (#825): a sloped deck per run, a level one per
+    // landing, and the guards stairs.js says stand on it. Everything is read
+    // from the one layout the walker and the hole in the floor above read, so
+    // what is drawn is what is walked on.
+    const buildSwitchback = (link, fold) => {
+      for (const r of fold.runs) {
+        const cx = (r.box.x0 + r.box.x1) / 2;
+        const lo = { x: cx, y: r.y0, z: r.dir === 1 ? r.box.z0 : r.box.z1 };
+        const hi = { x: cx, y: r.y1, z: r.dir === 1 ? r.box.z1 : r.box.z0 };
+        localBeam(link, fold.width, 0.5, lo, hi, -0.25, _tread, stairGeos);
+      }
+      for (const l of fold.landings) {
+        const b = l.box;
+        localBox(link, b.x1 - b.x0, 0.5, b.z1 - b.z0,
+          (b.x0 + b.x1) / 2, l.y - 0.25, (b.z0 + b.z1) / 2, _tread, stairGeos);
+      }
+      for (const g of rampGuards(link, metrics)) {
+        const len = Math.hypot(g.b.x - g.a.x, g.b.z - g.a.z);
+        if (len < 0.05) continue;
+        const posts = Math.max(1, Math.round(len / POST_GAP));
+        for (let i = 0; i <= posts; i++) {
+          const t = i / posts;
+          const y = g.a.y + (g.b.y - g.a.y) * t;
+          // A post stands from the lower floor up: between two lanes the low
+          // side of it is the wall of the high one.
+          localBox(link, 0.13, y + RAIL_H, 0.13,
+            g.a.x + (g.b.x - g.a.x) * t, (y + RAIL_H) / 2, g.a.z + (g.b.z - g.a.z) * t,
+            _railPost, railGeos);
+        }
+        localBeam(link, 0.18, 0.18, g.a, g.b, RAIL_H, _railCap, railGeos);
+        localBeam(link, 0.28, 0.4, g.a, g.b, 0.2, _nosing, stairGeos);
+      }
+    };
+
     const buildStairRun = (link) => {
       if (!metrics) return;
       const w = stairWidth(link);
       const m = runMetrics(link, metrics);
       if (m.run <= 0) return;
+      const fold = rampLayout(link, metrics);
+      if (fold) { buildSwitchback(link, fold); return; }
       if (link.type === 'ramp') {
         // A ramp is the same run without the risers, which is the whole of
         // what the model says about one — so it is the same solid mass with a

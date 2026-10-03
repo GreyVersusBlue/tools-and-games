@@ -29,7 +29,7 @@ import { propsOnFloor } from './props.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import {
   stairsOf, stairWidth, runMetrics, stairMetrics, rampSlope, elevatorSize,
-  isRun, isElevator, openingSize,
+  isRun, isElevator, openingSize, rampRuns, rampLandingArea,
 } from './stairs.js';
 import { computeFloorPlan } from './blueprint.js';
 import { finishEntry } from './finish.js';
@@ -190,10 +190,13 @@ function linkRows(state) {
       rows.push({
         id: link.id, type: link.type, from: link.from, to: link.to,
         label: link.type === 'ramp'
-          ? `Ramp ${round(w)} ft wide at 1:${rampSlope(link)}`
+          ? `Ramp ${round(w)} ft wide at 1:${rampSlope(link)}` +
+            (rampRuns(link) > 1 ? `, ${rampRuns(link)} runs` : '')
           : `Stair ${round(w)} ft wide, ${m.steps} risers`,
-        w, run: m.run, steps: m.steps, area: w * m.run,
+        // A folded ramp is the same sloped deck plus its landings (#825).
+        w, run: m.run, steps: m.steps, area: w * m.run + rampLandingArea(link, metrics),
         slope: link.type === 'ramp' ? rampSlope(link) : 0,
+        ...(rampRuns(link) > 1 ? { runs: rampRuns(link) } : null),
       });
       continue;
     }

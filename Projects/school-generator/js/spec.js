@@ -37,7 +37,7 @@ import { MIN_EXIT_CLEAR, MIN_EGRESS_STAIR_W } from './egress.js';
 import {
   RISER_TARGET, TREAD, RAMP_SLOPE, ELEV_DOOR_W,
   stairsOf, stairMetrics, runMetrics, stairWidth, rampSlope, elevatorSize,
-  isRun, isElevator,
+  isRun, isElevator, rampRuns,
 } from './stairs.js';
 import { normalizeRoof, ensureRoof, roofStyleEntry, PARAPET_H } from './roof.js';
 import { ROOF_MEMBRANE, ROOF_SHINGLE } from './finish.js';
@@ -155,7 +155,13 @@ function rating(key, state) {
       const ramps = stairsOf(state).filter((l) => isRun(l) && l.type === 'ramp');
       if (!ramps.length) return '';
       const steepest = Math.min(...ramps.map((l) => rampSlope(l)));
-      return `steepest 1:${round(steepest, 1)} — 1:${RAMP_SLOPE} is the accessible maximum`;
+      // The most any one run rises (#825): a straight ramp is one run the
+      // height of the storey, a folded one divides it.
+      const rise = Math.max(...ramps.map((l) => metrics.rise / rampRuns(l)));
+      const folded = ramps.some((l) => rampRuns(l) > 1)
+        ? `; longest run rises ${round(rise * 12)} in, 30 in is the most one may`
+        : '';
+      return `steepest 1:${round(steepest, 1)} — 1:${RAMP_SLOPE} is the accessible maximum${folded}`;
     }
     case 'elevator': {
       const cars = stairsOf(state).filter((l) => isElevator(l));

@@ -1390,6 +1390,68 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the check left its paint on the design');
     },
   },
+  // A folded ramp, drawn (#825). test/ramp-fold.test.mjs proves the layout,
+  // the hole and the guards as numbers; none of it can see render.js. This
+  // builds a two-storey slab with a five-run ramp on it, straight into the
+  // scene, and drops a ray on it from above at five places.
+  {
+    name: 'ramp-fold',
+    what: 'a five-run ramp is drawn lane by lane, under a hole in the floor above',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { createState, addFloor } = await import('./js/grid.js');
+        const { createLattice, setTile, bake } = await import('./js/lattice.js');
+        const { addStair } = await import('./js/stairs.js');
+        const s = createState(60, 60);
+        addFloor(s);
+        for (const i of [0, 1]) {
+          const lat = createLattice(60, 60);
+          for (let y = 0; y < 60; y++) for (let x = 0; x < 60; x++) setTile(lat, x, y, true);
+          bake(s, i, lat);
+        }
+        addStair(s, 0, { type: 'ramp', x: 100, z: 100, rotationY: 0, runs: 5 });
+        const api = window.app.renderApi;
+        api.buildFromState(s);
+        api.scene.updateMatrixWorld(true);
+        const ray = new THREE.Raycaster();
+        // The highest thing under a point, looking down from \`from\` feet.
+        // Only the storeys' own merged meshes: a sprite left in the scene by
+        // an earlier check cannot be hit without a camera, and throws.
+        const baked = [];
+        api.scene.traverse((o) => { if (o.isMesh && o.userData.baked) baked.push(o); });
+        const top = (x, z, from) => {
+          ray.set(new THREE.Vector3(x, from, z), new THREE.Vector3(0, -1, 0));
+          const hit = ray.intersectObjects(baked, false)[0];
+          return hit ? hit.point.y : null;
+        };
+        const out = {
+          lane0: top(100, 107.2, 6),         // a quarter of the way up the first run
+          lane3: top(112, 107.2, 12.5),      // through the hole, onto the fourth
+          landing: top(116, 131, 12.5),      // the top landing, in the hole
+          slab: top(100, 114.4, 12.5),       // the floor above, whole over lane 0
+          rail: top(102, 114.4, 11),         // the guard between lanes 0 and 1
+        };
+        api.buildFromState(window.app.state);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      // Five runs of 28.8ft rising 2.4ft each. A quarter of the way along,
+      // lane 0 is at 0.6ft; lane 3 climbs coming back, 7.2 to 9.6, so it is three
+      // quarters up there, 9.0 (off the middle, so a deck pitched the wrong way
+      // reads wrong); the top landing is the
+      // floor above, 12; the slab sits a hair over that; the guard stands
+      // 3.5ft over lane 1's 3.6ft, under a cap 0.18 thick.
+      const want = { lane0: 0.6, lane3: 9.0, landing: 12, slab: 12, rail: 3.6 + 3.5 + 0.09 };
+      for (const [k, y] of Object.entries(want)) {
+        if (ctx[k] === null || Math.abs(ctx[k] - y) > 0.12) {
+          throw new Error(`${k}: the highest thing there is at ${ctx[k]}ft, not ${y}ft`);
+        }
+      }
+      if (after.json !== before.json) throw new Error('the check left its ramp on the design');
+    },
+  },
   {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',

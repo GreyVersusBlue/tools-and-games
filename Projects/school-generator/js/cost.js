@@ -42,7 +42,9 @@ import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { computeFloorPlan } from './blueprint.js';
 import { normalizeRoof, ensureRoof, roofStyleEntry, roofMask, maskCount } from './roof.js';
 import { siteSchedule, regionsOf, markingEntry } from './site.js';
-import { stairsOf, stairMetrics, runMetrics, stairWidth, isRun, isElevator } from './stairs.js';
+import {
+  stairsOf, stairMetrics, runMetrics, stairWidth, isRun, isElevator, rampLandingArea,
+} from './stairs.js';
 import {
   assemblyKey, assemblyEntry, assemblyLabel, systemEntry,
   normalizeRates, rateIndex, ratesSummary, isEmptyRates, currencySymbol, SYSTEMS,
@@ -220,7 +222,8 @@ export function sharedQuantities(state) {
     if (!isRun(link)) continue;               // a plain floor opening costs a hole, not money
     if (link.type === 'ramp') {
       const m = runMetrics(link, metrics);
-      add(out, 'ramp', stairWidth(link) * m.run);
+      // A folded ramp is priced on its landings as well as its runs (#825).
+      add(out, 'ramp', stairWidth(link) * m.run + rampLandingArea(link, metrics));
       continue;
     }
     add(out, 'stair', 1);

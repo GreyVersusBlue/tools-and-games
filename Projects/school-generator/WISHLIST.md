@@ -360,22 +360,22 @@ Everything below is open and unclaimed — pull from here for the next phase,
 and add to this list rather than starting a new one.
 
 **Model and geometry**
-- Switchback ramps: the geometry exists and nothing uses it. `switchback.js`
-  (#824) folds a ramp into lanes side by side, 30in of rise a run and a 5ft
-  landing at each turn, so a 12ft storey at 1:12 is five runs in 20ft by
-  38.8ft; it gives the layout, the surface height, the cut in the floor above
-  and where the guards stand. A placed ramp is still one straight 144ft run.
-  Left, in the order it has to go: a run count and a side on the link
-  (`data.runs`, `data.side`, clamped in `linkData` and on load, absent
-  meaning 1 so no old file changes); `footprintBox`, `cutBox` (one box
-  today, a switchback's cut is several), `stairSurfaceAt` and `openingRails`
-  in `stairs.js` reading the layout; `render.js`'s `buildStairRun` drawing
-  lanes and landings; `collide.js` taking the dividers as rails;
-  `navgraph.js`'s span and the two ends of the link (the exit is on the near
-  end for an even count); the plan symbol, the elevation, the takeoff, cost
-  and spec lines; the run count in the tool rail, which moves a `test/visual`
-  baseline. The straight ramp's top landing is 4ft (`LANDING`) and ADA asks
-  for 5; nothing reports a run that rises more than 30in.
+- Switchback ramps are wired but cannot be placed from the page. A ramp link
+  with `data.runs` of 2 to 12 (and `data.side: -1` for the other hand) is
+  folded by `switchback.js` (#824, #825): it loads, cuts the floor above in
+  one ring, carries a walker and a chair lane by lane behind guards, routes
+  through its turns, draws, and shows on the plan, the section, the takeoff,
+  the cost and the spec. A file without the fields is the straight ramp it
+  was, and the save version did not move. Left, in order: the run count and
+  the side in the tool rail, which is the only way to make one without
+  editing a file and which moves a `test/visual` baseline (`chrome-rail`);
+  a finding for a run that rises more than 30in, which every straight
+  floor-to-floor ramp does, so it changes the sample school's report and the
+  same baseline; the guard between the top landing and the landing beside it
+  on the storey above (a 4.8ft drop stops a walker there today, not a rail);
+  the 4ft notch in front of the entry counted as footprint; crowd agents
+  walked up one in a browser, which nobody has watched. The straight ramp's
+  top landing is 4ft (`LANDING`) and ADA asks for 5.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is

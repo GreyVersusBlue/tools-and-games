@@ -10,10 +10,9 @@
 // This module is the geometry of that fold and nothing else (#824). It reads
 // plain numbers and returns boxes, heights and segments in the stair's own
 // local frame, so the footprint, the walkable surface, the hole in the floor
-// above and the guards are one description. Nothing in the page calls it yet:
-// no link stores a run count, and stairs.js, render.js, collide.js and the
-// rest still build the straight run. Wiring them is the next increment, and
-// WISHLIST.md's standing backlog lists what that takes.
+// above and the guards are one description. stairs.js is the one caller: a
+// ramp link with `data.runs` of two or more is folded through here (#825), and
+// everything else reads the fold from stairs.js.
 //
 // The shape is a serpentine, not a stack:
 //
@@ -42,7 +41,25 @@
 //
 // Pure module: no three.js, no state. Exercised by test/switchback.test.mjs.
 
-import { HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE } from './stairs.js';
+// The numbers a ramp is made of. They are stairs.js's by name and every caller
+// still reads them from there (it re-exports them); they are written down here
+// because stairs.js imports this module to fold a ramp, and the walk export's
+// bundler refuses an import cycle (#825).
+//
+// Clear height a tread needs under the floor above. Where the run gets closer
+// to the ceiling than this, the floor above has to be open — which is what
+// decides where the cut starts rather than a number someone picked.
+export const HEADROOM = 6.8;          // ft
+// Ramps. 1:12 is the ADA maximum and the default; the shallower options exist
+// because a floor-to-floor ramp at 1:12 is 144ft of run, which is a real
+// number a real building has to find room for and this tool should say out
+// loud rather than quietly steepen.
+export const RAMP_SLOPE = 12;              // ft of run per ft of rise
+export const MIN_RAMP_SLOPE = 4;
+export const MAX_RAMP_SLOPE = 20;
+export const RAMP_W = 4;                   // ft — 3ft clear plus the rails
+export const MIN_RAMP_W = 3;
+export const MAX_RAMP_W = 12;
 
 // ADA 2010 405.6: the rise of any one ramp run is 30in at most.
 export const MAX_RUN_RISE = 2.5;      // ft

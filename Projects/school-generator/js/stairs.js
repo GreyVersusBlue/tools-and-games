@@ -38,6 +38,15 @@
 import { FLOOR_H, RAIL_H, CELL } from './grid.js';
 import { pointInRing, floorSolidAt } from './shapes.js';
 import { addLink, MAX_LINKS } from './props.js';
+// A ramp's own numbers are defined in switchback.js, because this module
+// imports the fold from there and the walk export refuses an import cycle.
+// Every caller still reads them from here.
+import {
+  switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS,
+  HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE,
+} from './switchback.js';
+
+export { HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS };
 
 // Tread and riser: 7in up, 11in forward is the standard school run, and at a
 // 12ft floor-to-floor that lands on 21 risers over about 19ft of floor.
@@ -52,10 +61,8 @@ export const MAX_STAIR_W = 12;
 // How far past the top step the opening runs, so you arrive somewhere rather
 // than onto the lip of the hole you just climbed through.
 export const LANDING = 4;             // ft
-// Clear height a tread needs under the floor above. Where the run gets closer
-// to the ceiling than this, the floor above has to be open — which is what
-// decides where the cut starts rather than a number someone picked.
-export const HEADROOM = 6.8;          // ft
+// `HEADROOM`, the clear height a tread needs under the floor above, is
+// switchback.js's to define and this module's to hand out (see the imports).
 export const CUT_MARGIN = 0.25;       // ft of slack each side of the run
 
 export const OPENING_W = 8;           // ft, default plain floor opening
@@ -63,17 +70,8 @@ export const OPENING_D = 8;
 export const MIN_OPENING = 3;
 export const MAX_OPENING = 120;
 
-// Ramps. 1:12 is the ADA maximum and the default; the shallower options exist
-// because a floor-to-floor ramp at 1:12 is 144ft of run, which is a real
-// number a real building has to find room for and this tool should say out
-// loud rather than quietly steepen.
-export const RAMP_SLOPE = 12;              // ft of run per ft of rise
+// Ramps. The slope and width limits live in switchback.js with `HEADROOM`.
 export const RAMP_SLOPES = [12, 10, 8, 6];
-export const MIN_RAMP_SLOPE = 4;
-export const MAX_RAMP_SLOPE = 20;
-export const RAMP_W = 4;                   // ft — 3ft clear plus the rails
-export const MIN_RAMP_W = 3;
-export const MAX_RAMP_W = 12;
 
 // Elevator car: a 3500lb school passenger car is about 6'8" x 5'5" clear.
 // The shaft is the car plus its walls, which is what the footprint describes.
@@ -122,6 +120,38 @@ export const rampSlope = (link) =>
   clamp(Number.isFinite(link && link.data && link.data.slope) ? link.data.slope : RAMP_SLOPE,
     MIN_RAMP_SLOPE, MAX_RAMP_SLOPE);
 
+// ---------- the folded ramp (#825) ----------
+//
+// A ramp link may carry two more numbers in `data`: `runs`, how many lanes it
+// is folded into, and `side`, which way the later lanes stack (-1 for local
+// -X). Both are read here and clamped here, the way `width` and `slope` are,
+// and a link without them is one straight run: every ramp saved before they
+// existed reads as exactly the ramp it was, and the save version does not
+// move. Only a ramp folds. A stair with `runs` on it is still a stair.
+export const rampRuns = (link) => {
+  if (!link || link.type !== 'ramp') return 1;
+  const n = link.data && link.data.runs;
+  return Number.isFinite(n) ? clamp(Math.round(n), 1, MAX_RUNS) : 1;
+};
+export const rampSide = (link) => (link && link.data && link.data.side === -1 ? -1 : 1);
+export const isSwitchback = (link) => rampRuns(link) > 1;
+
+// The fold itself, from switchback.js, or null for anything that is one run.
+// Kept per link and rebuilt when any number it was built from moves: the
+// walker asks for the surface under it every frame.
+const _layouts = new WeakMap();
+export function rampLayout(link, metrics) {
+  if (!isSwitchback(link)) return null;
+  const rise = metrics.rise, slope = rampSlope(link), width = stairWidth(link);
+  const runs = rampRuns(link), side = rampSide(link);
+  const key = `${rise}|${slope}|${width}|${runs}|${side}`;
+  const hit = _layouts.get(link);
+  if (hit && hit.key === key) return hit.layout;
+  const layout = switchbackLayout({ rise, slope, width, runs, side });
+  _layouts.set(link, { key, layout });
+  return layout;
+}
+
 // The car's clear size, the way `openingSize` reads a plain opening's.
 export const elevatorSize = (link) => ({
   w: clamp(Number.isFinite(link && link.data && link.data.w) ? link.data.w : ELEV_W,
@@ -131,12 +161,21 @@ export const elevatorSize = (link) => ({
 });
 
 // How much floor a link eats climbing one storey. A stair's run comes off the
-// riser count; a ramp's comes off its slope; nothing else has one.
+// riser count; a ramp's comes off its slope; nothing else has one. A folded
+// ramp's is the same number, the sloped length of all its lanes together: it
+// is what the slope costs, and the landings are on top of it (`runTravel`).
 export function runLength(link, metrics) {
   if (!link) return 0;
   if (link.type === 'ramp') return metrics.rise * rampSlope(link);
   if (link.type === 'stair') return metrics.run;
   return 0;
+}
+
+// What a walker covers from the bottom to the top: the run, and for a folded
+// ramp the crossing of every turn landing as well.
+export function runTravel(link, metrics) {
+  const layout = rampLayout(link, metrics);
+  return layout ? layout.travel : runLength(link, metrics);
 }
 
 // The per-link version of `stairMetrics`, which only knows about the building.
@@ -202,6 +241,11 @@ export function footprintBox(link, metrics) {
     const { w, d } = elevatorSize(link);
     return { x0: -w / 2, x1: w / 2, z0: -d / 2, z1: d / 2 };
   }
+  // A folded ramp stands on the box round all its lanes and landings. The
+  // one corner of that box it does not fill is the 5ft in front of the
+  // entry, beside the first near landing: counted, though nothing stands on it.
+  const layout = rampLayout(link, metrics);
+  if (layout) return { ...layout.box };
   const hw = stairWidth(link) / 2;
   return { x0: -hw, x1: hw, z0: 0, z1: runLength(link, metrics) };
 }
@@ -210,12 +254,73 @@ export function footprintBox(link, metrics) {
 // none. An elevator is the only link with nothing to cut: its car stands on
 // the slab at each end rather than passing through it, so the floor above is
 // whole and you arrive standing on it.
+//
+// For a folded ramp this is the box *round* the hole, which is what a status
+// line wants; the hole itself is not a box, and
+// `cutColumns` and `cutPolygon` are the ones that say what it is.
 export function cutBox(link, metrics) {
   if (link.type === 'elevator') return null;
   if (link.type === 'opening') return footprintBox(link, metrics);
+  const cols = cutColumns(link, metrics);
+  if (cols) {
+    return {
+      x0: cols[0].x0, x1: cols[cols.length - 1].x1,
+      z0: Math.min(...cols.map((c) => c.z0)), z1: Math.max(...cols.map((c) => c.z1)),
+    };
+  }
   const hw = stairWidth(link) / 2 + CUT_MARGIN;
   const run = runLength(link, metrics);
   return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + LANDING };
+}
+
+// A folded ramp's hole, as one local box per lane, left to right, or null for
+// every other link. switchback.js gives the open parts as a box per run and
+// per landing; in any one lane those stack end to end (a run and the landing
+// it climbs onto), so a lane is open over a single stretch and the whole hole
+// is a row of columns of different lengths. The lanes below the headroom line
+// keep their ceiling and have no column. `CUT_MARGIN` goes on the two outer
+// sides only, as it does on a straight run.
+export function cutColumns(link, metrics) {
+  const layout = rampLayout(link, metrics);
+  if (!layout) return null;
+  const byLane = new Map();
+  for (const b of switchbackCut(layout)) {
+    for (let x = b.x0; x < b.x1 - 1e-9; x += layout.width) {
+      const k = Math.round(x / layout.width * 1e6) / 1e6;
+      const col = byLane.get(k);
+      if (!col) byLane.set(k, { x0: x, x1: x + layout.width, z0: b.z0, z1: b.z1 });
+      else { col.z0 = Math.min(col.z0, b.z0); col.z1 = Math.max(col.z1, b.z1); }
+    }
+  }
+  const cols = [...byLane.values()].sort((a, b) => a.x0 - b.x0);
+  if (!cols.length) return null;
+  cols[0].x0 -= CUT_MARGIN;
+  cols[cols.length - 1].x1 += CUT_MARGIN;
+  return cols;
+}
+
+// The outline of a row of columns: along their near ends left to right, back
+// along their far ends. Neighbours always overlap, so it is one simple ring.
+function columnRing(cols) {
+  const near = [], far = [];
+  cols.forEach((c, i) => {
+    const prev = cols[i - 1], next = cols[i + 1];
+    if (!prev || prev.z0 !== c.z0) near.push([c.x0, c.z0]);
+    if (!next || next.z0 !== c.z0) near.push([c.x1, c.z0]);
+    if (!prev || prev.z1 !== c.z1) far.push([c.x0, c.z1]);
+    if (!next || next.z1 !== c.z1) far.push([c.x1, c.z1]);
+  });
+  return near.concat(far.reverse());
+}
+
+// Any local ring -> world polygon, wound counter-clockwise like `rectCorners`.
+function ringToWorld(link, ring) {
+  const pts = ring.map(([lx, lz]) => localToWorld(link, lx, lz));
+  let a = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    a += pts[j].x * pts[i].z - pts[i].x * pts[j].z;
+  }
+  return a > 0 ? pts : pts.reverse();
 }
 
 // Local box -> world polygon, wound the same way whichever way it's turned.
@@ -237,6 +342,8 @@ export function rectCorners(link, box) {
 
 export const footprintPolygon = (link, metrics) => rectCorners(link, footprintBox(link, metrics));
 export const cutPolygon = (link, metrics) => {
+  const cols = cutColumns(link, metrics);
+  if (cols) return ringToWorld(link, columnRing(cols));
   const box = cutBox(link, metrics);
   return box ? rectCorners(link, box) : null;
 };
@@ -293,6 +400,8 @@ export { floorSolidAt };
 // mid-air, which is what an opening running off the side of a partial upper
 // floor would otherwise leave you with. Omit `floor` for every side.
 export function openingRails(link, metrics, floor = null) {
+  const cols = cutColumns(link, metrics);
+  if (cols) return columnRails(link, metrics, cols, floor);
   const box = cutBox(link, metrics);
   if (!box) return [];   // an elevator opens no hole, so it needs no rail
   const corner = (lx, lz) => localToWorld(link, lx, lz);
@@ -316,6 +425,129 @@ export function openingRails(link, metrics, floor = null) {
   });
 }
 
+// The same for a folded ramp's hole: every edge of the row of columns, less
+// the one you step off the top landing across. Where two neighbouring columns
+// are different lengths, the step between them is an edge as well.
+function columnRails(link, metrics, cols, floor) {
+  const layout = rampLayout(link, metrics);
+  const ex0 = Math.min(layout.exit.a.x, layout.exit.b.x);
+  const ez = layout.exit.a.z;
+  const sides = [];
+  const push = (x0, z0, x1, z1, side, out) => {
+    if (Math.hypot(x1 - x0, z1 - z0) < 1e-6) return;
+    sides.push({
+      a: localToWorld(link, x0, z0), b: localToWorld(link, x1, z1), side,
+      at: [(x0 + x1) / 2, (z0 + z1) / 2], out,
+    });
+  };
+  cols.forEach((c, i) => {
+    // The exit is one lane wide and is the whole end of the column under the
+    // top landing. That column is always an outer one, so its margin is here.
+    const top = ex0 > c.x0 - CUT_MARGIN - 1e-6 && ex0 < c.x1 - 1e-6;
+    if (!(top && Math.abs(ez - c.z0) < 1e-6)) push(c.x0, c.z0, c.x1, c.z0, 'near', [0, -1]);
+    if (!(top && Math.abs(ez - c.z1) < 1e-6)) push(c.x0, c.z1, c.x1, c.z1, 'far', [0, 1]);
+    const next = cols[i + 1];
+    if (!next) return;
+    // Whichever column stops short has floor past its end, on its own side.
+    for (const k of ['z0', 'z1']) {
+      if (Math.abs(c[k] - next[k]) < 1e-6) continue;
+      const shortIsThis = k === 'z0' ? c.z0 > next.z0 : c.z1 < next.z1;
+      push(c.x1, Math.min(c[k], next[k]), c.x1, Math.max(c[k], next[k]), 'step',
+        [shortIsThis ? -1 : 1, 0]);
+    }
+  });
+  const first = cols[0], last = cols[cols.length - 1];
+  push(first.x0, first.z0, first.x0, first.z1, 'left', [-1, 0]);
+  push(last.x1, last.z0, last.x1, last.z1, 'right', [1, 0]);
+  if (!floor) return sides;
+  return sides.filter((s) => {
+    const p = localToWorld(link, s.at[0] + s.out[0] * RAIL_PROBE, s.at[1] + s.out[1] * RAIL_PROBE);
+    return floorSolidAt(floor, p.x, p.z);
+  });
+}
+
+// ---------- the guards on a folded ramp ----------
+//
+// `openingRails` is the rail round the hole, on the floor above. These are the
+// rails on the ramp itself: both sides of every lane and round every landing,
+// which is where ADA 405.8 and 405.9 put them and where switchback.js says
+// they stand. A straight run has none here; its two handrails are render.js's
+// own and nothing collides with them.
+//
+// Each piece is straight in all three dimensions, in the link's local frame,
+// `y` above the lower floor: a segment is cut wherever the surface beside it
+// changes pitch (the two ends of the runs, and every lane line it crosses),
+// and stands on the higher of the two surfaces it divides.
+export function rampGuards(link, metrics) {
+  const layout = rampLayout(link, metrics);
+  if (!layout) return [];
+  const { runLen: L, width } = layout;
+  const out = [];
+  const e = 1e-4;
+  for (const seg of switchbackRails(layout)) {
+    const alongZ = Math.abs(seg.a.x - seg.b.x) < 1e-9;
+    const lo = alongZ ? Math.min(seg.a.z, seg.b.z) : Math.min(seg.a.x, seg.b.x);
+    const hi = alongZ ? Math.max(seg.a.z, seg.b.z) : Math.max(seg.a.x, seg.b.x);
+    const stops = [lo, hi];
+    if (alongZ) {
+      for (const z of [0, L]) if (z > lo + e && z < hi - e) stops.push(z);
+    } else {
+      const from = Math.ceil((lo + width / 2) / width - 1e-6);
+      for (let k = from; k * width - width / 2 < hi - e; k++) {
+        const x = k * width - width / 2;
+        if (x > lo + e) stops.push(x);
+      }
+    }
+    stops.sort((p, q) => p - q);
+    const fixed = alongZ ? seg.a.x : seg.a.z;
+    // The surface either side of the line at a point along it, the higher one.
+    const yAt = (t) => {
+      const hs = [-e, e].map((d) => (alongZ
+        ? switchbackSurfaceAt(layout, fixed + d, t)
+        : switchbackSurfaceAt(layout, t, fixed + d)));
+      return Math.max(0, ...hs.filter((h) => h !== null));
+    };
+    for (let i = 0; i + 1 < stops.length; i++) {
+      const t0 = stops[i], t1 = stops[i + 1];
+      const y0 = yAt(t0 + e), y1 = yAt(t1 - e);
+      out.push(alongZ
+        ? { a: { x: fixed, y: y0, z: t0 }, b: { x: fixed, y: y1, z: t1 }, kind: seg.kind }
+        : { a: { x: t0, y: y0, z: fixed }, b: { x: t1, y: y1, z: fixed }, kind: seg.kind });
+    }
+  }
+  return out;
+}
+
+// The middle of a folded ramp from the bottom to the top, as the two ends of
+// every run in the order they are climbed: local points, `y` above the lower
+// floor. What a section draws and what a plan's arrows follow. Empty for
+// anything that is one run.
+export function rampPath(link, metrics) {
+  const layout = rampLayout(link, metrics);
+  if (!layout) return [];
+  const out = [];
+  for (const r of layout.runs) {
+    const x = (r.box.x0 + r.box.x1) / 2;
+    const lo = r.dir === 1 ? r.box.z0 : r.box.z1, hi = r.dir === 1 ? r.box.z1 : r.box.z0;
+    out.push({ x, y: r.y0, z: lo }, { x, y: r.y1, z: hi });
+  }
+  return out;
+}
+
+// The level deck a folded ramp carries on top of its runs, in ft²: every turn
+// and the top landing. Nothing for a straight run, which has no landing built.
+export function rampLandingArea(link, metrics) {
+  const layout = rampLayout(link, metrics);
+  if (!layout) return 0;
+  return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
+}
+
+// The same guards as world segments on the plan, for the collider.
+export const rampGuardSegments = (link, metrics) =>
+  rampGuards(link, metrics).map((g) => ({
+    a: localToWorld(link, g.a.x, g.a.z), b: localToWorld(link, g.b.x, g.b.z), kind: g.kind,
+  }));
+
 // ---------- walking on one ----------
 
 // Height of the stair surface above its *lower* floor's slab at (x, z), or
@@ -327,6 +559,14 @@ export function stairSurfaceAt(link, metrics, x, z) {
   const run = runLength(link, metrics);
   if (run <= 0) return null;
   const { lx, lz } = worldToLocal(link, x, z);
+  const layout = rampLayout(link, metrics);
+  if (layout) {
+    // The same slack at the foot a straight run gives: a toe short of the
+    // first lane is on it.
+    const h = switchbackSurfaceAt(layout, lx, lz);
+    if (h !== null || lz >= 0 || lz < -CUT_MARGIN) return h;
+    return switchbackSurfaceAt(layout, lx, 0) === null ? null : 0;
+  }
   const hw = stairWidth(link) / 2;
   if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + LANDING) return null;
   if (lz > run) return metrics.rise;   // the landing at the top
@@ -437,10 +677,18 @@ function linkData(type, opts) {
     return { width: clamp(opts.width || STAIR_W, MIN_STAIR_W, MAX_STAIR_W) };
   }
   if (type === 'ramp') {
-    return {
+    const data = {
       width: clamp(opts.width || RAMP_W, MIN_RAMP_W, MAX_RAMP_W),
       slope: clamp(opts.slope || RAMP_SLOPE, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE),
     };
+    // Written only when they say something: a straight ramp's record is the
+    // record it always was, field for field.
+    const runs = rampRuns({ type, data: { runs: opts.runs } });
+    if (runs > 1) {
+      data.runs = runs;
+      if (opts.side === -1) data.side = -1;
+    }
+    return data;
   }
   if (type === 'elevator') {
     return {
