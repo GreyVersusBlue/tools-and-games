@@ -670,7 +670,7 @@ maneuvers — no monster in the game carries an Athletics number — which is wh
 Rock Dwarf's "+2 DC vs Shove/Trip/prone" is still a note: nothing can Shove or
 Trip a hero, so there is no DC for it to apply to. And Ready arms one Strike
 against one trigger rather than an arbitrary action against an arbitrary one.
-All four were closed on 2026-10-02 (locked #787 to #790).
+All four were closed on 2026-10-02 (locked #791 to #794).
 
 *Leans on:* Phases 2 and 3. *Save:* none. *Model:* **Claude Opus 5** — a table
 of skill checks against DCs the engine already computes, each a variation on an

@@ -34,7 +34,7 @@
 #     solid's height plus its headroom (frame_box below; validate.mjs computes
 #     the same box and holds the frame to it).
 #
-# The light (#794). render.js fills a block's top, left and right faces with
+# The light (#798). render.js fills a block's top, left and right faces with
 # three flat colours, and the sheets keep that look: no lamp, but an emission
 # shader that weights the three colours by the surface normal, w = max(n, 0)^2
 # per axis, so a face square to an axis comes out at exactly that colour and a
@@ -152,7 +152,7 @@ MASK = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
 # A thing PALETTE gives one colour (the stairs, the gold) takes its two side
 # faces from that colour at render.js's own wall ratios, wallLeft / wallTop
 # and wallRight / wallTop to the nearest hundredth, rather than from a new hex
-# (#795).
+# (#799).
 LEFT_OF, RIGHT_OF = 0.61, 0.76
 
 
@@ -162,7 +162,7 @@ def tone(hexv, k):
 
 
 def sides_of(hexv):
-    """A single PALETTE colour as top, left and right (#795)."""
+    """A single PALETTE colour as top, left and right (#799)."""
     return hexv, tone(hexv, LEFT_OF), tone(hexv, RIGHT_OF)
 
 
@@ -243,7 +243,7 @@ def clear():
 # ---------------------------------------------------------------- materials
 
 def face_mat(name, top, left, right):
-    """The three-face light (#794): emission of top, left and right (linear
+    """The three-face light (#798): emission of top, left and right (linear
     RGB triples) weighted by the normal's +Z, +X and +Y, squared; what is left
     of the weight goes to SHADE times `left`; then ambient occlusion."""
     mat = bpy.data.materials.new(name)

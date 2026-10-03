@@ -47,7 +47,7 @@ async function openIsland(browser, seed, warns) {
   page.on('pageerror', e => warns.push('PAGEERROR: ' + e.message));
   await page.goto(GAME);
   await page.waitForFunction(() => !!window.__hearth);
-  // the building sheet (#801): every mode waits for it, so a sheet that will not load fails every mode by name
+  // the building sheet (#805): every mode waits for it, so a sheet that will not load fails every mode by name
   await page.waitForFunction(() => window.__hearth.sheet.ready || !!window.__hearth.sheet.fail);
   { const f = await page.evaluate(() => window.__hearth.sheet.fail); if (f) warns.push('SHEET: ' + f); }
   // pause the RAF loop so this harness owns every step
@@ -2412,7 +2412,7 @@ if (mode === 'leftovers') {
   await ctx.close();
 }
 
-// Rank 10 (#800 to #802): the buildings come off the sheet. draw() is watched through the canvas's drawImage: every kind in BLD
+// Rank 10 (#804 to #806): the buildings come off the sheet. draw() is watched through the canvas's drawImage: every kind in BLD
 // and a house in every roof is put on an empty island, done, and each must be drawn from its own frame, its anchor on the
 // building's tile corner. Snow draws the snow frames at the snow's depth, the lit windows still light, the sim's hash does not
 // care, and a sheet that will not load stops the loop and says so.

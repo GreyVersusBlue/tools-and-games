@@ -1,7 +1,7 @@
 // node tools/blender/validate.mjs [budget.json]
 //
 // Checks the building sheet budget.json names against Hearth's style sheet
-// (HISTORY.md #800 to #802), with no dependency and no Blender, so Hearth CI
+// (HISTORY.md #804 to #806), with no dependency and no Blender, so Hearth CI
 // runs it. Exits 1 on any failure (#13):
 //
 //   - the PNG is missing, is not an 8-bit RGBA PNG, is over its bytes, or has

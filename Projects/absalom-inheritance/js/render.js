@@ -62,7 +62,7 @@ export const FRAMES = Object.freeze({
 /**
  * Fetch both sheets and their atlases. Throws, with the file named, if any of
  * them will not load or an atlas lacks a frame in FRAMES: main.js stops the
- * boot on that rather than drawing a board with holes in it (#797).
+ * boot on that rather than drawing a board with holes in it (#801).
  */
 export async function loadSprites(base = new URL("../assets/sprites/", import.meta.url)) {
   const sheets = {};
@@ -81,7 +81,7 @@ export async function loadSprites(base = new URL("../assets/sprites/", import.me
 }
 
 /**
- * Tint the heir's mask in place (#796). Each pixel's red, green and blue are
+ * Tint the heir's mask in place (#800). Each pixel's red, green and blue are
  * how much of the build's top, left and right colour it takes, as linear
  * light, which is how the sheet's renderer mixed them; alpha is left alone.
  * A pure red pixel comes out exactly `palette.top`.
@@ -334,7 +334,7 @@ export function createRenderer(canvas, game, sprites) {
         // The build, on the board. A wizard and a fighter drew the same blue
         // prism for two rounds; the colours are content now, required of every
         // build in the pack, so a third one cannot arrive without deciding.
-        // The figure is one mask tinted with them (#796).
+        // The figure is one mask tinted with them (#800).
         sprite("figures", "heir", s.x, s.y, heirIn(game.content.pc.palette));
         ctx.fillStyle = PALETTE.gold;
         diamond(cx, cy - 27 * scale, 10 * scale, 5 * scale); ctx.fill();

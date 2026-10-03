@@ -38,7 +38,7 @@ const boot = async () => {
   // The sheets the board is drawn from, before anything is built on it. A
   // sheet that will not load stops the boot with the reason in the hint bar,
   // the way an unreadable pack does: a board drawn with holes in it would be
-  // a game that looks broken for a reason nobody is told (#797).
+  // a game that looks broken for a reason nobody is told (#801).
   let sprites;
   try {
     sprites = await loadSprites();

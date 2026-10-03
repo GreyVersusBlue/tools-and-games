@@ -92,6 +92,11 @@ jobs:
       # --rendered: CI has no Blender and the calibration frame is untracked.
       - name: blender/validate.mjs
         run: node blender/validate.mjs
+      # The dioramas' style sheet: 33:20, every card a preview the board asks
+      # for, every .glb present, promote-previews.mjs's KNOWN equal to the
+      # board's previews. No --rendered: the renders are untracked.
+      - name: blender/dioramas.mjs
+        run: node blender/dioramas.mjs
 
   suites:
     name: ${{ matrix.name }}

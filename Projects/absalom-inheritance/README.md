@@ -452,7 +452,7 @@ width; the whole 22×22 map fits at 375px.
 ## The sprite sheets
 
 The board is drawn from two sheets in `assets/sprites/`, rendered headless in Blender 5.2 by
-`tools/blender/` (WISHLIST.md B1 to B4, shipped; HISTORY.md #794 to #797). The style sheet:
+`tools/blender/` (WISHLIST.md B1 to B4, shipped; HISTORY.md #798 to #801). The style sheet:
 
 - **Projection.** An orthographic camera down 30 degrees along the board's diagonal, so a
   square is a diamond twice as wide as it is tall, as `isoX`/`isoY` draw it. 112 frame pixels
@@ -460,9 +460,9 @@ The board is drawn from two sheets in `assets/sprites/`, rendered headless in Bl
 - **Scale.** Every solid is held to the box `render.js`'s `SOLIDS` gives it, within 10%:
   the prism it replaced, so the bars, pips, eyes and gems placed over it still land.
 - **Palette.** Every colour is a `PALETTE` entry read through `spec.mjs`. A three-face
-  emission light puts a face square to an axis at exactly its top, left or right colour (#794);
-  a thing with one colour takes its sides at the wall's ratios (#795).
-- **The heir is a mask** (#796): red, green and blue for the build's top, left and right,
+  emission light puts a face square to an axis at exactly its top, left or right colour (#798);
+  a thing with one colour takes its sides at the wall's ratios (#799).
+- **The heir is a mask** (#800): red, green and blue for the build's top, left and right,
   tinted at draw time by `tint()`, so a pack with new colours needs no new render.
 - **No textures**; at most 4,000 triangles a frame. Cycles on the CPU, 64 samples, seed 0, no
   denoiser: a rerun is byte-identical on one machine, so one sheet comes from one machine.

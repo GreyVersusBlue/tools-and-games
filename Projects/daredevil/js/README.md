@@ -169,7 +169,7 @@ my_scene_id: {
   `_gateReason` as the lock note, when false.
 - **A scene's `statUpdate` fires once, from `afterScene()`, when its
   Continue is clicked.** Until TG-08 `handleChoice()` fired it too, before the
-  scene, so a choice-reached scene paid its `deltas` twice (#785). A scene that
+  scene, so a choice-reached scene paid its `deltas` twice (#789). A scene that
   ends in choices never reaches `afterScene()`, so it cannot carry a
   `statUpdate`; `smoke-save.mjs` fails on one that does, and `smoke-page.mjs`
   fails on a stat screen shown twice for one scene. Numbers can go on the

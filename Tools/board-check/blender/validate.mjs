@@ -191,13 +191,13 @@ try {
         await board.goto(`http://127.0.0.1:${PORT}/${plate.page}`, { waitUntil: 'load' });
         let drawn = null;
         for (let i = 0; i < 40 && !drawn; i++) {
-          drawn = await board.evaluate((sel, prop) => {
+          drawn = await board.evaluate(({ sel, prop }) => {
             const el = document.querySelector(sel);
             const v = el && el[prop];
             if (!v) return null;
             const im = v.img || (Array.isArray(v) ? v[0] : v);
             return `${im.naturalWidth}x${im.naturalHeight}`;
-          }, plate.element, plate.prop || 'plate');
+          }, { sel: plate.element, prop: plate.prop || 'plate' });
           if (!drawn) await new Promise(res => setTimeout(res, 250));
         }
         // decoded at all, not at what size: the size is the check above's

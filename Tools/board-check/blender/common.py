@@ -4,7 +4,8 @@
 # own, nothing is shared across projects), taken at PR #476's main and with
 # the .glb output section replaced by a renderer. What this folder makes is
 # images, not models: the tavern set behind the Guild Board (BACKLOG.md "The
-# site itself: the tavern set") and, later, D1's dioramas.
+# site itself: the tavern set") and the board cards' dioramas (D1, the
+# diorama section at the bottom of this file, and diorama.py).
 #
 # Pinned to the Blender this pipeline was built and checked under:
 #   Blender 5.2.2 LTS. It was written against the Steam install on Devon's
@@ -93,7 +94,8 @@ def linear(hexv):
     return (ch((hexv >> 16) & 255), ch((hexv >> 8) & 255), ch(hexv & 255), 1.0)
 
 
-def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=1.0, image=None):
+def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=1.0, image=None,
+             metallic=0.0, emit=0.0):
     """A flat material. unlit=True is a Background shader with no lighting,
     the flat colour Golden Hour used for its MeshBasicMaterial things; here it
     is what a calibration marker and a silhouette sheet are made of."""
@@ -112,7 +114,10 @@ def material(name, hexv, unlit=False, double_sided=False, roughness=0.85, alpha=
         bsdf = nodes.new('ShaderNodeBsdfPrincipled')
         bsdf.inputs['Base Color'].default_value = linear(hexv)
         bsdf.inputs['Roughness'].default_value = roughness
-        bsdf.inputs['Metallic'].default_value = 0.0
+        bsdf.inputs['Metallic'].default_value = metallic
+        if emit:
+            bsdf.inputs['Emission Color'].default_value = linear(hexv)
+            bsdf.inputs['Emission Strength'].default_value = emit
         if alpha < 1.0:
             bsdf.inputs['Alpha'].default_value = alpha
             mat.surface_render_method = 'BLENDED'
@@ -391,3 +396,161 @@ def render(path, width=None, height=None, engine='CYCLES', samples=256, seed=0,
     scene.frame_set(0)
     bpy.ops.render.render(write_still=True)
     return path
+
+
+# ---------------------------------------------------------------- dioramas
+#
+# D1 (BACKLOG.md "The site itself: Blender dioramas"). Every board card gets
+# the same plinth, the same camera, the same light rig and the same backdrop,
+# all read from dioramas.json's `style`, so the board's previews and share
+# cards read as one set. Only what stands on the plinth's top changes from
+# card to card. The plinth top is the plane Z = 0, centred on the origin,
+# `plinth.top` wide in X and deep in Y, with the camera looking at it from
+# negative Y. diorama.py builds a card's scene on it; dioramas.mjs holds the
+# render to the frame.
+
+with open(os.path.join(HERE, 'dioramas.json'), encoding='utf8') as _f:
+    DIORAMAS = json.load(_f)
+STYLE = DIORAMAS['style']
+
+
+def plinth(style=None):
+    """The plinth: a bevelled walnut block whose top face is Z = 0, a brass
+    band round its top edge, and a wider, darker foot. The top face takes
+    material slot 1 (`top`), so a card's ground colour can cover it."""
+    p = (style or STYLE)['plinth']
+    w, d = p['top']
+    h, foot, band = p['height'], p['foot'], p['band']
+    wood = material('plinth-wood', int(p['wood'], 16), roughness=0.55)
+    top = material('plinth-top', int(p['ground'], 16), roughness=0.9)
+    brass = material('plinth-brass', int(p['brass'], 16), roughness=0.35, metallic=0.85)
+    dark = material('plinth-foot', int(p['footColour'], 16), roughness=0.6)
+
+    bm = bmesh.new()
+    box(bm, (-w / 2, -d / 2, -h), (w / 2, d / 2, 0.0))
+    bmesh.ops.bevel(bm, geom=list(bm.edges), offset=p['bevel'], segments=2, affect='EDGES')
+    for f in bm.faces:
+        f.material_index = 1 if f.normal.z > 0.99 and f.calc_center_median().z > -1e-4 else 0
+    body = mesh_object('plinth', bm, [wood, top])
+
+    bm = bmesh.new()
+    o = p['bevel'] * 0.5
+    box(bm, (-w / 2 - o, -d / 2 - o, -band - 0.004), (w / 2 + o, d / 2 + o, -0.004))
+    # hollow it: the band is only a frame, the top stays the plinth's
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if abs(f.normal.z) > 0.99], context='FACES_ONLY')
+    mesh_object('plinth-band', bm, [brass])
+
+    bm = bmesh.new()
+    box(bm, (-w / 2 - foot, -d / 2 - foot, -h - p['footHeight']), (w / 2 + foot, d / 2 + foot, -h))
+    bmesh.ops.bevel(bm, geom=list(bm.edges), offset=p['bevel'], segments=2, affect='EDGES')
+    mesh_object('plinth-foot', bm, [dark])
+    return body
+
+
+def diorama_camera(scene, style=None):
+    """The one diorama camera: `lens` mm on a 36 mm sensor, `elevation`
+    degrees above the plinth top and `azimuth` degrees round from straight
+    on (positive swings it to the right), `distance` metres from `target`.
+    It renders `size` (2640 by 1600, the 33:20 promote-previews.mjs crops
+    from), with no shift: the plinth sits where the framing puts it."""
+    c = (style or STYLE)['camera']
+    W, H = (style or STYLE)['size']
+    data = bpy.data.cameras.new('diorama')
+    data.sensor_fit = 'HORIZONTAL'
+    data.sensor_width = 36.0
+    data.lens = c['lens']
+    data.clip_start = 0.05
+    data.clip_end = 200.0
+    ob = bpy.data.objects.new('diorama', data)
+    scene.collection.objects.link(ob)
+    el, az = math.radians(c['elevation']), math.radians(c['azimuth'])
+    t = Vector(c['target'])
+    ob.location = t + c['distance'] * Vector((math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)))
+    ob.rotation_euler = (t - ob.location).to_track_quat('-Z', 'Y').to_euler()
+    scene.camera = ob
+    ob['frame_aspect'] = W / H
+    scene.render.resolution_x = W
+    scene.render.resolution_y = H
+    return ob
+
+
+def light_rig(style=None):
+    """Three area lights, each `at` a world point and aimed at `target`:
+    a warm key from the front left, a cool fill from the right, and a rim
+    from behind that lifts the silhouettes off the backdrop."""
+    s = style or STYLE
+    t = Vector(s['camera']['target'])
+    made = []
+    for name, l in s['lights'].items():
+        data = bpy.data.lights.new(name, 'AREA')
+        data.shape = 'DISK'
+        data.size = l['size']
+        data.energy = l['power']
+        data.color = linear(int(l['colour'], 16))[:3]
+        ob = bpy.data.objects.new(name, data)
+        bpy.context.scene.collection.objects.link(ob)
+        ob.location = Vector(l['at'])
+        ob.rotation_euler = (t - ob.location).to_track_quat('-Z', 'Y').to_euler()
+        made.append(ob)
+    return made
+
+
+def backdrop(scene, style=None):
+    """The backdrop: a vertical gradient in screen space, `top` to `bottom`,
+    that only the camera sees. Every other ray sees a dim, even `ambient`,
+    so the backdrop's colour never tints the plinth."""
+    b = (style or STYLE)['backdrop']
+    world = bpy.data.worlds.new('diorama')
+    scene.world = world
+    world.use_nodes = True
+    nodes, links = world.node_tree.nodes, world.node_tree.links
+    nodes.clear()
+    out = nodes.new('ShaderNodeOutputWorld')
+    coords = nodes.new('ShaderNodeTexCoord')
+    split = nodes.new('ShaderNodeSeparateXYZ')
+    ramp = nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].color = linear(int(b['bottom'], 16))
+    ramp.color_ramp.elements[1].color = linear(int(b['top'], 16))
+    seen = nodes.new('ShaderNodeBackground')
+    lit = nodes.new('ShaderNodeBackground')
+    lit.inputs['Color'].default_value = linear(int(b['ambient'], 16))
+    lit.inputs['Strength'].default_value = b['ambientStrength']
+    path_ = nodes.new('ShaderNodeLightPath')
+    mix = nodes.new('ShaderNodeMixShader')
+    links.new(coords.outputs['Window'], split.inputs['Vector'])
+    links.new(split.outputs['Y'], ramp.inputs['Fac'])
+    links.new(ramp.outputs['Color'], seen.inputs['Color'])
+    links.new(path_.outputs['Is Camera Ray'], mix.inputs['Fac'])
+    links.new(lit.outputs['Background'], mix.inputs[1])
+    links.new(seen.outputs['Background'], mix.inputs[2])
+    links.new(mix.outputs['Shader'], out.inputs['Surface'])
+    return world
+
+
+def import_glb(path, at=(0, 0, 0), rot=0.0, scale=1.0, name=None):
+    """A .glb from the repo (path from the site root) under one empty, which
+    takes the placement: `at` on the plinth top, `rot` degrees about Z,
+    `scale` uniformly. Returns the empty."""
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=os.path.join(SITE, path))
+    made = [o for o in bpy.data.objects if o not in before]
+    holder = bpy.data.objects.new(name or os.path.basename(path), None)
+    bpy.context.scene.collection.objects.link(holder)
+    for o in made:
+        if o.parent is None:
+            o.parent = holder
+    holder.location = Vector(at)
+    holder.rotation_euler = (0.0, 0.0, math.radians(rot))
+    holder.scale = (scale, scale, scale)
+    return holder
+
+
+def diorama_stage(style=None):
+    """An empty scene with everything a card shares: plinth, camera, lights
+    and backdrop. diorama.py builds the card on top of it."""
+    scene = reset()
+    plinth(style)
+    diorama_camera(scene, style)
+    light_rig(style)
+    backdrop(scene, style)
+    return scene

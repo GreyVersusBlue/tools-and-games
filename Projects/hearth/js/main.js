@@ -161,7 +161,7 @@ function frame(dt,run){
   if((++frameN&3)===0){audioTick(genAcc);cardT-=genAcc;genAcc=0;renderCard(false);draw()}}
 function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now; // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
   frame(dt,!paused);requestAnimationFrame(loop)}
-// the loop waits for the building sheet (#801): an island drawn without its buildings is a wrong island, so a sheet that will not
+// the loop waits for the building sheet (#805): an island drawn without its buildings is a wrong island, so a sheet that will not
 // come stops it here, says why in the log, and prints it for the harness, which fails on any console line that starts `hearth:`
 sheetGo(()=>{last=performance.now();requestAnimationFrame(loop)},why=>{say(`The island cannot be drawn: ${why}.`,true);console.error('hearth: '+why)});
 // exposed for headless testing only

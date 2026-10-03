@@ -129,7 +129,7 @@ account's other GitHub Pages projects.
   them: deleting them takes the smoke suite with them.
 - `assets/sprites/markers.png` and `markers.json` — the marker sheet: one
   drawing for each kind in `STRUCTURE_TYPES` and the front gate, rendered
-  headless in Blender 5.2 by `tools/blender/` (HISTORY.md #798, #799). Every
+  headless in Blender 5.2 by `tools/blender/` (HISTORY.md #802, #803). Every
   `.plot-marker kind-*` and the `.gate-marker` show their frame through
   `ui.js`'s `markerArt()`, a span with a percent background, and the glyph
   each one used to show leads its `title`, which is also its accessible name.

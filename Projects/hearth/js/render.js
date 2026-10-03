@@ -114,7 +114,7 @@ function rbSprite(){if(rbCv)return rbCv;rbCv=document.createElement('canvas');rb
   for(let i=0;i<7;i++){c.strokeStyle=cols[i];c.globalAlpha=.55;c.lineWidth=5;c.beginPath();c.arc(220,220,206-i*5.4,Math.PI,2*Math.PI);c.stroke()}
   return rbCv}
 const prints=[];for(let i=0;i<256;i++)prints.push({x:0,y:0,t0:-1e9});let printC=0;
-// The building sheet (#800 to #802): Blender's frames, one frame pixel to one map pixel, made by tools/blender/buildings.py. Its atlas
+// The building sheet (#804 to #806): Blender's frames, one frame pixel to one map pixel, made by tools/blender/buildings.py. Its atlas
 // is BSHEET, loaded as data by <script> before this file; the loop waits for the picture (sheetGo, in main.js), and a sheet that will
 // not come stops the island with the reason in the log rather than drawing it without its buildings. Nothing in the sim reads it.
 const BIMG=new Image();let bReady=false,bFail=typeof BSHEET==='undefined'?'assets/sprites/buildings.js would not load':'';
@@ -162,7 +162,7 @@ function draw(){
     if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(t.x*T-r*.6,t.y*T-r*1.1,2,2);g.fillRect(t.x*T+r*.3,t.y*T-r*1.5,2,2);g.fillRect(t.x*T+r*.1,t.y*T-r*.6,2,2)}
     if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();g.arc(t.x*T-r*.2,t.y*T-r*1.35,r*.55*cap,0,6.283);g.fill()}}});
   const occSet=new Set();for(const p of people)if(p.inside&&p.shelterH)occSet.add(p.shelterH); // a house someone is waiting out the storm in shows a light
-  // the frames are drawn; what moves or changes is drawn over them: snow settling, the kiln's chimney pots, a window lit (#802)
+  // the frames are drawn; what moves or changes is drawn over them: snow settling, the kiln's chimney pots, a window lit (#806)
   for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;bFrame(roofFrame(h.r),x,y);
     if(cap>0)bFrame('house-snow',x,y,cap);
     if(hasWay(2)){g.fillStyle='#a34a2a';g.fillRect(x+11,y+1,2,3);g.fillStyle='#6b2f1e';g.fillRect(x+11,y+1,2,1)} // kiln-fired chimney pots

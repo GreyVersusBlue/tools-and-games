@@ -184,7 +184,7 @@ this project does not use it.
   (`noindex`, `meta refresh`, `rel=canonical`, locked decision #46). The board
   card is `index.html`'s, edited in the same PR as the move now that the
   shared-file request queue is retired (#347).
-- **The cup and the plates are a sprite sheet** (#803 to #805).
+- **The cup and the plates are a sprite sheet** (#807 to #809).
   `tools/blender/cups.py` draws every layer `cupLayers` stacks (the glass in
   two halves, the liquid at two levels, ice, foam, each topping, the straw) and
   one plate per `FOODS` entry into `assets/sprites/cups.png`, its atlas
@@ -715,8 +715,8 @@ outside CI on purpose (#353).
 - **Touch.** The suite checks that 375×812 renders; nothing checks that a
   queue card and seven station tabs are actually thumb-sized at that width.
 - **Sound.** Every sound is a `beep()`, the cheapest audible upgrade left. The
-  cup and the plates are a Blender sheet now (#803 to #805); the customer is
-  still the 10×14 sprite pattern, on purpose (#803).
+  cup and the plates are a Blender sheet now (#807 to #809); the customer is
+  still the 10×14 sprite pattern, on purpose (#807).
 - **A second shop.** `franchise` costs $5,000, says "Second Location," and
   grants +10% income. There is no second location.
 - **Five recipes are another recipe's requirement list under a second name**

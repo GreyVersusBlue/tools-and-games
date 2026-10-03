@@ -121,39 +121,43 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Corner & Kettle's sprite
-pipeline, cup and food sheet and wiring** (old ranks 11 to 13, audit line
-TG-12, committed locally for the nightly merge, so its PR number is the
-nightly's): a ¼, a ½ and a ¼ naming Opus 5.5, run under it on huginn. The
-batches before it were Hearth's (old ranks 8 to 10, TG-11), Faire Weekend's
-(old ranks 5 to 7, TG-10) and Absalom's (old ranks 1 to 4, TG-09) sprite
-pipelines, sheets and wiring. That is the line to
+**The last batch of ranked work that shipped** is **TG-13, the site's
+diorama pipeline and its first four dioramas** (PR #506): the old rank 14 (½,
+Opus 5.5) and the first increment of the dioramas row, now rank 14 (2+, naming
+Sonnet 5), both run under Opus 5.5 on Devon's Windows machine as one PR by
+his instruction (#785). TG-13 is done only when that row is. The batches before
+it were the four sprite pipelines, each with its sheet and its wiring, all
+committed locally on huginn for the nightly merge, so their PR number is the
+nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
+8 to 10, TG-11), Faire Weekend's (old ranks 5 to 7, TG-10) and Absalom's (old
+ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**12 ranked items remain**, and **every one of them names a model.**
+**11 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
-2026-09-25, Devon's instruction and his re-rank). Ranks 14 and 15 are what is
+2026-09-25, Devon's instruction and his re-rank). Rank 14 is what is
 left of the Blender block: every project's pipeline, packs and wiring have
-shipped, and the site's dioramas are last. **Blender runs on Devon's machines only, headless
+shipped, the diorama pipeline has shipped, and 10 of the 14 dioramas are left.
+**Blender runs on Devon's machines only, headless
 (`blender -b -P script.py`), never in a cloud container.** The table's
 `Gate` column says which rows need it and which machine (#644, #707): **no row
 reads `blender`** any more (basic headless Blender, huginn or the Windows
-machine), and **2 read `blender-gpu`** (ranks 14 and 15, the dioramas), which
-need the full feature set on a GPU and so **the Windows machine only**. A
+machine), and **1 reads `blender-gpu`** (rank 14, the dioramas), which
+needs the full feature set on a GPU and so **the Windows machine only**. A
 session that cannot take a row skips it where it stands and takes the next
 row, without parking it. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
 **Nothing is claimed.** Ranks 1 to 13 shipped and their rows are gone; the
 others keep their numbers until the next renumbering. **Pick up next**
-is rank 14, the site's diorama pipeline (½, Opus 5.5, gate `blender-gpu`):
-**the Windows machine only**. A session on huginn skips 14 and 15, and every
-row below them wants a GPU, a phone, ears or Devon's say-so.
-Below the Blender block, rank 23 (The Fracture Cycle's fourth prong) and rank
-25 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
+is rank 14, the next four dioramas (2+, naming Sonnet 5, gate `blender-gpu`):
+**the Windows machine only**. A session on huginn skips it, and every
+row below it wants a GPU, a phone, ears or Devon's say-so.
+Below the Blender block, rank 22 (The Fracture Cycle's fourth prong) and rank
+24 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
 them, and a scope Devon has not asked for is not a judgement call a session
-makes for him. Ranks 16 to 22 and 24 still want a real GPU, a real phone or a
+makes for him. Ranks 15 to 21 and 23 still want a real GPU, a real phone or a
 person listening for an hour, and their `Gate` cell says which.
 
 The ranks in this header are the new ones. What shipped, and what it means
@@ -826,11 +830,11 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Two rows are 2+: rank 15 (the dioramas) and rank 23 (The Fracture
-Cycle's fourth prong).** The ten rows below the Blender block (16 to 25,
-recounted off the table on 2026-09-30) are eight that
-want hardware nothing here has (16 to 22 and 24) and two written "only if
-Devon" (23 and 25); the
+**Two rows are 2+: rank 14 (the dioramas) and rank 22 (The Fracture
+Cycle's fourth prong).** The ten rows below the Blender block (15 to 24,
+recounted off the table on 2026-10-03) are eight that
+want hardware nothing here has (15 to 21 and 23) and two written "only if
+Devon" (22 and 24); the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
 2026-09-25, when 47 Blender rows went in above the thirteen. Signal City's row
 retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
@@ -840,22 +844,22 @@ same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
 the question it waited on is Devon's. Aphelion's touch/gamepad row left the
 same way the same day, for Q40 (#629).
 
-**The model split is 14 Opus 5.5, 3 Opus 5, 4 Fable 5.1, 4 Sonnet 5.** Counted
+**The model split is 13 Opus 5.5, 3 Opus 5, 4 Fable 5.1, 4 Sonnet 5.** Counted
 off the table rather than decremented, which is how the 15/14/9 drift was
-caught: 14 + 3 + 4 + 4 is 25, and the table has 25 rows. By size it is 12 ¼,
-11 ½ and 2 of the 2+, the same 25 (recounted 2026-09-30, after PR #500). By
-gate it is 9 `blender`, 2 `blender-gpu`, 2 `GPU`, 3 `phone`, 1 `GPU, phone`,
+caught: 13 + 3 + 4 + 4 is 24, and the table has 24 rows. By size it is 12 ¼,
+10 ½ and 2 of the 2+, the same 24 (recounted 2026-10-03, after TG-13). By
+gate it is 9 `blender`, 1 `blender-gpu`, 2 `GPU`, 3 `phone`, 1 `GPU, phone`,
 2 `ears` and 6
 with none. The Blender rows name Opus 5.5 directly, since they were written after
-#638, except rank 15 (the dioramas), whose
-increments are variants of a style rank 14 fixes and name Sonnet 5.
+#638, except rank 14 (the dioramas), whose
+increments are variants of a style D1 fixed (#786) and name Sonnet 5.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under. The split counts the names; under #638 the Opus 5.5,
 Opus 5 and Fable rows run on Opus 5.5 and the Sonnet rows on Sonnet 5.
 
 **`Projects/corner-and-kettle` has no open phase.** Its three Blender rows
-(old 11 to 13) shipped on 2026-10-02 (#803 to #805). Arc one (Phases 1 to 4) and
+(old 11 to 13) shipped on 2026-10-02 (#807 to #809). Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
 leaves for a later arc" list — candidates, not a ranked arc, and the largest of
 them (reshaping the five recipes that are another recipe's requirement list,
@@ -995,18 +999,17 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 14 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
-| 15 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
-| 16 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
-| 17 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
-| 18 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
-| 19 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 | phone |  | [Golden Hour](#golden-hour) |
-| 20 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
-| 21 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
-| 22 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 23 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 24 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 25 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
+| 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **4 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion; TG-13); School Generator, Faire Weekend, The Absalom Inheritance and Corner & Kettle are next | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 15 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
+| 16 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
+| 17 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
+| 18 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 | phone |  | [Golden Hour](#golden-hour) |
+| 19 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
+| 20 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
+| 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
+| 22 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
+| 24 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -1041,7 +1044,7 @@ Windows machine or a phone. Parked, not verified.
 
 ## Blender assets: the common plan
 
-Ranks 1 to 15 are governed by decisions #642 to #647, which reorganized the Blender rows: 47 new rows at ranks 1–47, and the previous 13 rows moved to ranks 48–60. This section is what every Blender row shares;
+Rank 14, the last of the Blender block, is governed by decisions #642 to #647, which reorganized the Blender rows: 47 new rows at ranks 1–47, and the previous 13 rows moved to ranks 48–60. This section is what every Blender row shares;
 each project's own plan (its `WISHLIST.md` "Blender assets" section, or a
 subsection of its section below) adds its style sheet and its list.
 
@@ -2146,7 +2149,7 @@ sheet 1024 x 512 at 170,695 bytes against a 256 KiB cap.
 `drawBody` draws the frame scaled to the body's radius, turned where the
 drawing turned: the black hole at `spin * 2`, the wormhole at `spin * 3`, the
 booster by `b.dir`, its chevrons a still. The glow is over the frame, except
-the black hole's and the wormhole's, which stay behind it (#736, #806). `game.js` waits for the sheet
+the black hole's and the wormhole's, which stay behind it (#736, #810). `game.js` waits for the sheet
 before the first frame and stops with the reason on the intro card when it
 will not load (#735). `test/browser.mjs` holds all of it, 70 checks, since the device-pixel section (#742).
 
@@ -2302,7 +2305,7 @@ and nothing is today. The four rows this line used to cite, Golden Hour's
 `?debug` beats and preview recapture and Blue Hour's `games.mjs` entry and
 preview recipe, shipped together on 2026-09-24 (`HISTORY.md`, "The site,
 board-check: Golden Hour's hook and Blue Hour on the board"); the two previews
-are SwiftShader drafts that the real-hardware pass (rank 16) recaptures. The
+are SwiftShader drafts that the real-hardware pass (rank 15) recaptures. The
 four numbers drifted through three renumberings before anyone noticed they
 pointed at shipped rows, so this line cites none now. Castle Conundrum's
 preview promotion was rank 1, was parked, and left with the project (#491);
@@ -2390,26 +2393,29 @@ Three of them are closed.
 
 ### The site itself: Blender dioramas
 
-Ranks 14 and 15, last in the Blender block (#642). One consistent diorama per
+D1 shipped in TG-13 (#785 to #788) and D2 is rank 14, last in the Blender
+block (#642). One consistent diorama per
 board card, so the board's previews and share cards read as a set.
 Castle Conundrum is out of scope: its card and images stay as they are (#491).
 
-**D1. The pipeline (rank 14, ½, gate `blender-gpu`: Devon's Windows machine only, #707).** The site's own copy of
-`common.py` in `Tools/board-check/blender/` (#643; the site's area, #43 and
-#51). One plinth, one camera, one light rig, one background, for every card.
-It renders 2640 by 1600 (the 33:20 `promote-previews.mjs` crops from) into
-`Tools/board-check/candidates/`, which is untracked; `candidates/chosen.json`
-names the frame and `npm run promote <name>` writes
-`assets/previews/<name>.jpg` and `assets/og/<name>.jpg`. `school-generator` has
-a card and a preview but is not in the script's `KNOWN` set; add it. The
-style sheet here is the plinth's size, the camera's angle and focal length,
-and the light. A diorama uses the game's own Blender assets where it has them
-(the `.glb` files, or the scene a sheet was rendered from) and is built for
-the card where it does not.
+**D1. The pipeline: shipped in TG-13 (#786 to #788).** The style sheet is
+`Tools/board-check/blender/dioramas.json`; `common.py`'s diorama section
+builds the plinth, camera, lights and backdrop from it, and `diorama.py` puts
+a card's scene on the plinth. **How to do a card:** add its entry to
+`dioramas.json` (the game's `.glb` files under `place`, anything the game
+draws in code as `patch`, `wall`, `pine`, `window` or `post` shapes, or a new
+shape kind in `diorama.py`'s `SHAPES`), frame it with
+`npm run dioramas -- -- <card> --preview` (quarter size, 32 samples, into
+`blender/out/`, about 4 s), then `npm run dioramas -- -- <card>` for the
+2640 by 1600 render into `candidates/` and the frame check, LOOK at it, point
+`candidates/chosen.json` at `<card>-diorama.png`, and
+`npm run promote <card>`. Every render in the set comes from Devon's Windows
+machine (#786); a card that needs the style itself changed re-renders every
+done card with it.
 
-**D2. The dioramas (rank 15, 1+, Sonnet 5, gate `blender-gpu`: Devon's Windows machine only, #707).** Four cards an
-increment, the 3D games first: Golden Hour, Blue Hour, The Fourth Quarter,
-Aphelion, then School Generator, Faire Weekend, The Absalom Inheritance,
+**D2. The dioramas (rank 14, 2+, Sonnet 5, gate `blender-gpu`: Devon's Windows machine only, #707), TG-13 (#785).** Four cards an
+increment, the 3D games first. **Done (4 of 14):** Golden Hour, Blue Hour, The Fourth Quarter,
+Aphelion. **Next:** School Generator (it ships `.glb` files too), Faire Weekend, The Absalom Inheritance,
 Corner & Kettle, Orbital, Closing Time, Integer Foundry, Daredevil, The
 Fracture Cycle and Torchbearer. Each increment rewrites this row to say which
 cards are done. `npm run check` and `npm run social:check` stay green.

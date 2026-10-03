@@ -66,7 +66,7 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   requirement lines as an argument rather than asking the sim. The cup is
   frames of `assets/sprites/cups.png` stacked back to front (`cupLayers`), the
   liquid and a drizzle tinted by an SVG multiply filter; a plate is one frame
-  (`foodSvg`). The sheet is drawn by `tools/blender/cups.py` (#803 to #805);
+  (`foodSvg`). The sheet is drawn by `tools/blender/cups.py` (#807 to #809);
   `ui.js` loads it once at boot and toasts if it cannot.
 - **`sound.js`** — `createSound(isMuted)`, every sound as a WebAudio beep.
   **Imports nothing.** `isMuted` is a function, asked on each beep, so the mute

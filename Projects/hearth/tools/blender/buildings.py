@@ -1,4 +1,4 @@
-# The building sheet (HISTORY.md #802): every kind in js/core.js's BLD, the
+# The building sheet (HISTORY.md #806): every kind in js/core.js's BLD, the
 # house in each roof colour sim.js picks from, and a snow frame for each
 # building the game puts snow on. Writes assets/sprites/buildings.png and
 # buildings.js, and a contact sheet over the grass to tools/blender/out/.
@@ -11,7 +11,7 @@
 # so a door, a window or a lamp is on the pixel it was on. What stays drawn by
 # render.js over a frame is what moves or changes: the mill's sails, a lit
 # window, the lighthouse lamp, the kiln's chimney pots, the hall's shelf, the
-# boat beside the hut, and a building still going up (#802).
+# boat beside the hut, and a building still going up (#806).
 
 import os
 import sys

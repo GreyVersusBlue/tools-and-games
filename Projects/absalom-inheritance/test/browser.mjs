@@ -161,7 +161,7 @@ group("the heir looks like the build she is");
 /**
  * How many pixels on the canvas are within 6 levels of this colour on every
  * channel. Not exact any more: the heir is a frame from the figure sheet,
- * tinted with the build's palette and scaled down to the board's tile (#796),
+ * tinted with the build's palette and scaled down to the board's tile (#800),
  * so her top face is the build's top colour give or take the filtering. Six
  * levels keeps the wizard's blue and the fighter's green 16 or more apart.
  */
@@ -450,7 +450,7 @@ ok("no page errors, start to finish", errors.length === 0, errors.slice(0, 5).jo
 // After the error check above, because this group makes one on purpose. The
 // board is drawn from two sprite sheets (WISHLIST.md B4), and a sheet that
 // will not load stops the boot with the reason where the player looks, rather
-// than drawing a board with holes in it (#797). A fresh page, so the route
+// than drawing a board with holes in it (#801). A fresh page, so the route
 // that refuses the file cannot reach anything above.
 group("a sheet that will not load");
 {
