@@ -63,11 +63,16 @@ and renumber; parking is not the same as verifying, and the note should say whic
 contexts, four suites and four closeouts; two ½ rows inside one project is one of each. The
 cost that scales with a batch is the closeout, not the code.
 
-| Size | Same area | Spanning areas |
-|---|---|---|
-| ¼ | up to **6** | **4** |
-| ½ | **3** | **2** |
-| 2+ | **that row is the whole batch** | never pair it with anything |
+| Size | Same area | Spanning areas | Wave mode, same area | Wave mode, spanning areas |
+|---|---|---|---|---|
+| ¼ | up to **6** | **4** | up to **12** | **8** |
+| ½ | **3** | **2** | **6** | **4** |
+| 1 | one 1 plus two ¼ | one 1 | two 1s | one 1 plus two ¼ |
+| 2+ | **that row is the whole batch** | never pair it with anything | one increment each of up to **2** rows in different areas | same |
+
+The two wave-mode columns apply only in **single-operator wave mode** (below), added
+2026-10-01 at Devon's direction. They are a starting point, not a measurement: if a red CI
+cannot be bisected inside a wave, drop back to the first two columns.
 
 **Why the same-area column is bigger.** CI is the bottleneck, not the model: Site CI runs in
 about 60 s and only Daredevil's suite is slow at 11.5 min, so rows-per-PR is nearly free. The
@@ -79,6 +84,30 @@ closeout: two line-of-sight checks that passed while doing nothing, Absalom's st
 passing against a deliberately inverted planner, two sessions building Daredevil Phase 4 in
 full, and PR #284 itself merging with three of its own shipped rows still in the ranked table
 (#381). So the cap rises where the closeout is shared and holds where it is not.
+
+**4. Single-operator wave mode** (Devon, 2026-10-01). It applies whenever one session is the
+only one working this repo: check the `Claimed` column and `git branch -r` for branches from
+other sessions in the last 24 hours, and if there are none, you are the only operator. It
+relaxes the multi-session rules for that case; it does not replace them.
+
+- **One branch per wave**, named `claude/wave-<date>-<code>`. Push it to `origin` after every
+  row or every hour, whichever comes first. That is the backup for work that otherwise lives
+  only on Huginn, and a branch push without a PR opens no CI run.
+- **No claim commits.** List the wave's rows in the PR description. If a second session
+  appears (another branch, or a claim in the table), stop and fall back to normal claims.
+- **Run the narrow suites while you work**, from the directory that owns each suite. Run
+  everything the wave touched once before opening the PR, in the background, with no Blender
+  render running: Huginn has about 14 GB, so one heavy job at a time (`-t 4`, one render at a
+  time).
+- **One PR per wave, with the handoff already in it** (definition of done, step 6). Site CI took
+  about 10 minutes on the last push to `main` (the older "about 60 s" figure above is stale), so
+  each avoided PR round and claim round trip is worth about that much; Daredevil's slow suite
+  already runs only when its folder changes.
+- **Keep real-hardware rows out of the wave** (GPU, phone, speakers, printer, ears).
+- **Rebase on `origin/main` before the PR**, and re-read the next `HISTORY.md` decision number
+  just before closeout (two sessions have written the same number in parallel).
+- **Do not use wave mode** for a row that changes `assets/js/gvb-save.js`, `index.html`, a
+  storage key (#36), or `Tools/board-check/**`, or that ends a 2+ row. Those go alone.
 
 **Whatever the batch, it merges to `main` as one PR** — every row in the batch, in a single
 pull request, never one PR per row (changed 2026-09-12; before that a session sometimes opened
