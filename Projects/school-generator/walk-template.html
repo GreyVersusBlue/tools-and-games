@@ -59344,6 +59344,26 @@ const rampGuardSegments = (link, metrics) =>
     a: localToWorld(link, g.a.x, g.a.z), b: localToWorld(link, g.b.x, g.b.z), kind: g.kind,
   }));
 
+// The guards a body on the storey *above* can walk into: the ones that stand
+// level at that floor's height, which are the two sides of the top landing
+// (#826). The far side of the hole is `openingRails`'s and the open end is the
+// way off; what was missing is the side that faces the next lane, where the
+// landing beside it is two runs lower and also inside the hole, so no edge of
+// the hole runs between them. A 4.8ft drop held a walker there, half a foot
+// past the guard that is drawn. With two or three runs the neighbour's ceiling
+// is still there and a 'step' rail already covers that side; the guard is
+// returned all the same, because it is the thing drawn. Empty for one run.
+function rampTopGuardSegments(link, metrics) {
+  const layout = rampLayout(link, metrics);
+  if (!layout || !(layout.rise > 0)) return [];
+  const up = (y) => Math.abs(y - layout.rise) < 1e-6;
+  return rampGuards(link, metrics)
+    .filter((g) => up(g.a.y) && up(g.b.y))
+    .map((g) => ({
+      a: localToWorld(link, g.a.x, g.a.z), b: localToWorld(link, g.b.x, g.b.z), kind: g.kind,
+    }));
+}
+
 // ---------- walking on one ----------
 
 // Height of the stair surface above its *lower* floor's slab at (x, z), or
@@ -59524,7 +59544,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {
@@ -60965,7 +60985,7 @@ const { WALL_T, FLOOR_H, WALL_H } = __m_js_grid_js;
 const { shapesOf, segEnds, isBuilt, isDoorOpening, openingSpec } = __m_js_shapes_js;
 const { propsOnFloor } = __m_js_props_js;
 const { footprintOf } = __m_js_propplace_js;
-const { stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt, openingRails, elevatorsOn, elevatorWalls, rampSlope, rampGuardSegments } = __m_js_stairs_js;
+const { stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt, openingRails, elevatorsOn, elevatorWalls, rampSlope, rampGuardSegments, rampTopGuardSegments } = __m_js_stairs_js;
 const { wallProbe } = __m_js_walls_js;
 const { wallLinesOf, lineOpenings } = __m_js_wallrun_js;
 const { terrainField, emptyField, groundAt } = __m_js_terrain_js;
@@ -61294,12 +61314,19 @@ const GUARD_PAD = 0.1;     // ft
 // difference in their heights, and beside a turn landing that is a kerb a
 // walker steps over, which cuts the corner the landing is there to make.
 // A straight run has none and this returns nothing for it.
+//
+// The storey it climbs *to* gets the two that stand at its own height, either
+// side of the top landing (#826): the same `storeyAt` puts somebody who has
+// arrived on the upper storey, where the lower one's guards are not in the
+// collider, and the side of the landing that faces the next lane is inside the
+// hole, so no rail of the hole's stands there.
 function rampGuardSegs(state, floorIndex) {
   const metrics = stairMetrics(state);
   const out = [];
   for (const link of stairsOf(state)) {
-    if (link.from !== floorIndex) continue;
-    for (const g of rampGuardSegments(link, metrics)) {
+    const guards = link.from === floorIndex ? rampGuardSegments(link, metrics)
+      : link.to === floorIndex ? rampTopGuardSegments(link, metrics) : [];
+    for (const g of guards) {
       out.push({ ax: g.a.x, az: g.a.z, bx: g.b.x, bz: g.b.z, t: 0.2, pad: GUARD_PAD });
     }
   }

@@ -26,7 +26,7 @@ import {
 import { buildNav, runLandings, runTurns, waypoints } from '../js/navgraph.js';
 import { serialize, deserialize, SAVE_VERSION } from '../js/save-load.js';
 import { catalogEntry } from '../js/catalog.js';
-import { rampPath, rampLandingArea } from '../js/stairs.js';
+import { rampPath, rampLandingArea, rampTopGuardSegments } from '../js/stairs.js';
 import { takeoff } from '../js/takeoff.js';
 import { quantities } from '../js/cost.js';
 import { specSheet } from '../js/spec.js';
@@ -366,6 +366,80 @@ test('nobody on the floor below walks in through the side of a lane', () => {
   const { s } = school({ runs: 5 });
   const end = walk(s, { x: 94, y: 0, z: 101 }, [{ x: 100, z: 101 }]);
   assert.ok(end.x < 98, `stopped at x ${end.x}, outside the rail at 98`);
+});
+
+// ---------- the storey above (#826) ----------
+
+// Sorted and rounded, so a test states a guard as four numbers and a kind.
+const flat = (segs) => segs
+  .map((g) => [Math.min(g.a.x, g.b.x), Math.min(g.a.z, g.b.z), Math.max(g.a.x, g.b.x), Math.max(g.a.z, g.b.z)]
+    .map((v) => +v.toFixed(4)).concat(g.kind))
+  .sort((p, q) => p[0] - q[0]);
+
+test('the guards at the upper floor are the two sides of the top landing', () => {
+  // Five runs: the top landing is lane 4, x 14 to 18, past the far end of its
+  // run, z 28.8 to 33.8. Lane 3 beside it is the turn at 7.2ft.
+  assert.deepEqual(flat(rampTopGuardSegments(ramp({ runs: 5 }), M)),
+    [[14, 28.8, 14, 33.8, 'landing'], [18, 28.8, 18, 33.8, 'edge']]);
+  // Six: lane 5, x 18 to 22, at the near end, z -5 to 0.
+  assert.deepEqual(flat(rampTopGuardSegments(ramp({ runs: 6 }), M)),
+    [[18, -5, 18, 0, 'landing'], [22, -5, 22, 0, 'edge']]);
+  // Two: lane 1 at the near end, and the side that faces the entry is an edge.
+  assert.deepEqual(flat(rampTopGuardSegments(ramp({ runs: 2 }), M)),
+    [[2, -5, 2, 0, 'edge'], [6, -5, 6, 0, 'edge']]);
+  // The other hand is the same two, mirrored.
+  assert.deepEqual(flat(rampTopGuardSegments(ramp({ runs: 5, side: -1 }), M)),
+    [[-18, 28.8, -18, 33.8, 'edge'], [-14, 28.8, -14, 33.8, 'landing']]);
+});
+
+test('a straight ramp has no guard on the storey above, and neither has a stair', () => {
+  assert.deepEqual(rampTopGuardSegments(ramp({}), M), []);
+  assert.deepEqual(rampTopGuardSegments({ ...ramp({ runs: 5 }), type: 'stair' }, M), []);
+  const { s } = school();
+  assert.deepEqual(rampGuardSegs(s, 1), []);
+});
+
+test('the upper storey collides with those two and the lower with every one', () => {
+  const { s, link } = school({ runs: 5 });
+  assert.deepEqual(
+    flat(rampGuardSegs(s, 1).map((g) => ({ a: { x: g.ax, z: g.az }, b: { x: g.bx, z: g.bz }, kind: g.pad }))),
+    [[114, 128.8, 114, 133.8, 0.1], [118, 128.8, 118, 133.8, 0.1]]);
+  assert.equal(rampGuardSegs(s, 0).length, rampGuards(link, M).length);
+  // A storey the ramp does not touch has none of them.
+  addFloor(s);
+  assert.deepEqual(rampGuardSegs(s, 2), []);
+});
+
+test('somebody on the top landing is stopped by the guard, not by the drop behind it', () => {
+  // The body is 0.9ft in radius and a guard's pad is 0.1ft, so a walker
+  // pressed against the guard on the lane line is 1ft off it. Without the
+  // guard the drop holds them with their middle past the line. They start
+  // 1.8ft off it, so no whole number of half-foot steps lands on the answer.
+  for (const [runs, side] of [[5, 1], [5, -1], [6, 1], [4, 1]]) {
+    const { s } = school({ runs, side });
+    const far = (runs - 1) % 2 === 0;
+    const z = 100 + (far ? 144 / runs + 2.5 : -2.5);
+    const line = 100 + side * ((runs - 1) * 4 - 2);
+    const end = walk(s, { x: line + side * 1.8, y: 12, z }, [{ x: line - side * 4, z }]);
+    const off = (end.x - line) * side;
+    assert.ok(near(off, 1, 0.02), `${runs} runs, side ${side}: ${off}ft from the lane line`);
+    assert.ok(near(end.y, 12));
+  }
+});
+
+test('and is still let off the open end of it, and back down the run', () => {
+  for (const runs of [5, 6]) {
+    const { s } = school({ runs });
+    const far = (runs - 1) % 2 === 0;
+    const L = 144 / runs, x = 100 + (runs - 1) * 4;
+    const z = 100 + (far ? L + 2.5 : -2.5);
+    const out = walk(s, { x, y: 12, z }, [{ x, z: z + (far ? 6 : -6) }]);
+    assert.equal(out.stuck, undefined);
+    assert.equal(supportAt(s, out.x, out.z, out.y).kind, 'floor');
+    const down = walk(s, { x, y: 12, z }, [{ x, z: 100 + (far ? L - 6 : 6) }]);
+    assert.equal(down.stuck, undefined);
+    assert.ok(near(down.y, 12 - 6 / 12, 0.05), `${runs} runs: ${down.y}ft, six feet down the last run`);
+  }
 });
 
 test('a chair is carried up a 1:12 fold and refused a 1:8 one', () => {
