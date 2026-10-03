@@ -11,14 +11,15 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 import {
-  buildBundle, buildTemplate, spliceDesign, spliceBake,
-  DESIGN_MARKER, BAKE_MARKER, TEMPLATE_BUDGET, TEMPLATE_PATH,
+  buildBundle, buildTemplate, spliceDesign, spliceBake, spliceModels, modelsPayload,
+  DESIGN_MARKER, BAKE_MARKER, MODELS_MARKER, TEMPLATE_BUDGET, TEMPLATE_PATH,
   resolveSpec, parseModule, bindingFor,
 } from '../tools/export-walk.mjs';
 import { serialize, deserialize } from '../js/save-load.js';
 import { encodeShare, decodeShare } from '../js/share.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { catalogEntry } from '../js/catalog.js';
+import { unpackBuiltins, builtinFile, loadBuiltin, BUILTIN_MODELS } from '../js/builtin-models.js';
 import {
   bakeLight, bakeKey, packBake, unpackBake, encodeBakeText, decodeBakeText,
 } from '../js/bakelight.js';
@@ -135,6 +136,7 @@ test('the shell\'s module script holds no HTML comment (a SyntaxError in a modul
 test('the template keeps its design slot, and stays under the stated budget', () => {
   assert.ok(built.html.includes(DESIGN_MARKER), 'the design marker survives bundling');
   assert.ok(built.html.includes(BAKE_MARKER), 'so does the bake slot (Phase 27)');
+  assert.ok(built.html.includes(MODELS_MARKER), 'and the models slot (#820)');
   assert.ok(built.html.length <= TEMPLATE_BUDGET,
     `template is ${built.html.length} bytes, budget ${TEMPLATE_BUDGET}`);
 });
@@ -192,4 +194,61 @@ test('an armed haunt travels inside the payload — no marker, no new slot, no t
   const exportedPlain = spliceDesign(built.html, plain);
   assert.equal(exported.replace(payload, ''), exportedPlain.replace(plain, ''),
     'armed and unarmed exports differ only in the design they carry');
+});
+
+// ---------- the pack's files in it (#820) ----------
+
+// main.js's comments said the suite pinned its markers and nothing did. The
+// export button splices by these three strings, so a marker renamed on one
+// side would ship a walk with no design, light or furniture in it.
+test('the export button splices by the bundler\'s three markers', async () => {
+  const main = await readFile(new URL('../js/main.js', import.meta.url), 'utf8');
+  for (const [name, marker] of [['WALK_DESIGN_MARKER', DESIGN_MARKER], ['WALK_BAKE_MARKER', BAKE_MARKER],
+    ['WALK_MODELS_MARKER', MODELS_MARKER]]) {
+    assert.ok(main.includes(`const ${name} = '${marker}';`), `main.js's ${name} is not ${marker}`);
+  }
+});
+
+test('a walk carries the files its props name, and the walk reads them back', async () => {
+  const school = buildSampleSchool();
+  const { ids, payload } = await modelsPayload(school);
+  const want = [...new Set(school.props.map((p) => catalogEntry(p.type)).filter((e) => e && e.file)
+    .map((e) => e.file))].sort();
+  assert.ok(want.length >= 3, 'the sample school has pack furniture in it');
+  assert.deepEqual(ids, want, 'the files named by the design, and no others');
+
+  const designed = spliceDesign(built.html, await encodeShare(serialize(school, { omitOverlay: true })));
+  // A design spliced without its files keeps the marker: the procedural walk.
+  assert.ok(designed.includes(MODELS_MARKER));
+  const exported = spliceModels(designed, payload);
+  assert.ok(!exported.includes(MODELS_MARKER), 'the marker was replaced');
+  const m = exported.match(/<script id="sg-models" type="text\/plain">([^<]*)<\/script>/);
+  assert.ok(m, 'the files ride in their own text script tag');
+  assert.ok(exported.indexOf('id="sg-models"') < exported.indexOf('<script type="module">'),
+    'and the slot is in the page before the bundle that reads it');
+
+  // What walk-main.js does with the slot, through the modules the bundle carries.
+  const back = unpackBuiltins(await decodeShare(m[1]));
+  assert.deepEqual([...back.keys()].sort(), want);
+  for (const id of want) {
+    const disk = new Uint8Array(await readFile(new URL(`../${builtinFile(id)}`, import.meta.url)));
+    assert.deepEqual(back.get(id), disk, `${id}.glb did not survive the trip`);
+    const src = catalogEntry(BUILTIN_MODELS[id].source);
+    assert.ok(loadBuiltin(back.get(id), src, src).meshes.length, `${id}.glb does not load on the far side`);
+  }
+  assert.ok(exported.length <= TEMPLATE_BUDGET, `a sample walk with its files is ${exported.length} bytes`);
+});
+
+test('the walk hands its files to the renderer before it builds the scene', async () => {
+  const walk = await readFile(new URL('../js/walk-main.js', import.meta.url), 'utf8');
+  const set = walk.indexOf('renderApi.setBuiltinModels(builtinFiles)');
+  const buildAt = walk.indexOf('renderApi.buildFromState(state)');
+  assert.ok(set > 0, 'walk-main.js never gives the renderer the files');
+  assert.ok(set < buildAt, 'the files arrive after the first build, so a frame draws the stand-ins');
+  assert.ok(walk.includes("embeddedText('sg-models')"), 'walk-main.js does not read the slot');
+});
+
+test('an id this build has no row for is dropped on the way in', () => {
+  assert.deepEqual([...unpackBuiltins('{"nope":"AAAA","desk":"AAAA"}').keys()], ['desk']);
+  assert.throws(() => unpackBuiltins('not json'));
 });

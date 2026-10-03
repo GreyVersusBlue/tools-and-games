@@ -64,6 +64,10 @@ const ENTRY = join(PROJECT, 'js', 'walk-main.js');
 // marker is never spliced opens on live lighting.
 export const DESIGN_MARKER = '<!--SG-DESIGN-->';
 export const BAKE_MARKER = '<!--SG-BAKE-->';
+// And a third (HISTORY #820): the Blender pack's files the design's props
+// name. A template whose models marker is never spliced draws the procedural
+// furniture, which is what every export before it drew.
+export const MODELS_MARKER = '<!--SG-MODELS-->';
 // The bundle marker sits inside a <script type="module">, so it has to be a
 // JavaScript comment: an HTML comment there is a SyntaxError in a module,
 // and check-integrity.mjs parsed the shell as one and was red on it from
@@ -240,7 +244,7 @@ export async function buildBundle(entryPath = ENTRY) {
 export async function buildTemplate() {
   const shell = unixText(await readFile(SHELL_PATH, 'utf8'));
   if (!shell.includes(BUNDLE_MARKER) || !shell.includes(DESIGN_MARKER)
-      || !shell.includes(BAKE_MARKER)) {
+      || !shell.includes(BAKE_MARKER) || !shell.includes(MODELS_MARKER)) {
     throw new Error('walk-shell.html has lost a splice marker');
   }
   const { bundle, files } = await buildBundle();
@@ -260,6 +264,22 @@ export const spliceDesign = (template, payload) =>
 
 export const spliceBake = (template, payload) =>
   template.replace(BAKE_MARKER, () => payload);
+
+export const spliceModels = (template, payload) =>
+  template.replace(MODELS_MARKER, () => payload);
+
+// The models payload for a design, read off the disk: the files its props
+// name and no others. The export button builds the same text from a fetch.
+export async function modelsPayload(state) {
+  const { neededBuiltins, builtinFile, packBuiltins } =
+    await import(pathToFileURL(join(PROJECT, 'js', 'builtin-models.js')));
+  const { catalogEntry } = await import(pathToFileURL(join(PROJECT, 'js', 'catalog.js')));
+  const { encodeShare } = await import(pathToFileURL(join(PROJECT, 'js', 'share.js')));
+  const ids = neededBuiltins((state.props || []).map((p) => p.type), catalogEntry, new Set());
+  const bytes = new Map();
+  for (const id of ids) bytes.set(id, new Uint8Array(await readFile(join(PROJECT, builtinFile(id)))));
+  return { ids: [...bytes.keys()].sort(), payload: await encodeShare(packBuiltins(bytes)) };
+}
 
 // ---------- CLI ----------
 
@@ -295,11 +315,13 @@ async function main() {
     const { bakeLight, packBake, encodeBakeText } =
       await import(pathToFileURL(join(PROJECT, 'js', 'bakelight.js')));
     const packed = packBake(bakeLight(deserialize(json), catalogEntry));
+    const models = await modelsPayload(deserialize(json));
     const out = join(PROJECT, 'walk.html');
-    await writeFile(out, spliceBake(
+    await writeFile(out, spliceModels(spliceBake(
       spliceDesign(html, await encodeShare(json)),
-      await encodeShare(encodeBakeText(packed))));
-    console.log(`walk.html — ${which === 'sample' ? 'the sample school' : which} embedded, light baked in`);
+      await encodeShare(encodeBakeText(packed))), models.payload));
+    console.log(`walk.html — ${which === 'sample' ? 'the sample school' : which} embedded, light baked in, `
+      + `${models.ids.length} model files`);
   }
 }
 

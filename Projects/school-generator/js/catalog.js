@@ -50,9 +50,10 @@
 //                   purpose is absorption.
 //   file: id, fit: 'contain'|'stretch' — the Blender pack (builtin-models.js):
 //                   this row draws from assets/models/<file>.glb when the page
-//                   has the bytes, and from its `geo` builder otherwise (and
-//                   always for a recoloured prop). `stretch` is a row whose
-//                   dimensions are not its file's source row's.
+//                   has the bytes, and from its `geo` builder otherwise. The
+//                   file is repainted to the row's `color`, or the prop's
+//                   own, as it loads. `stretch` is a row whose dimensions are
+//                   not its file's source row's.
 // plus builder parameters (`top`, `style`, `device`, `rows`, ...) documented
 // beside each geometry builder in render.js.
 
@@ -103,8 +104,8 @@ export const PROP_CATALOG = [
   // ---- Tables & Desks ----
   { type: 'student-desk', name: 'Student Desk', category: 'Tables & Desks', icon: '🪑', w: 2, d: 1.5, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'contain' },
   { type: 'desk-double', name: 'Double Student Desk', category: 'Tables & Desks', icon: '👥', w: 5, d: 2, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
-  { type: 'teacher-desk', name: 'Teacher Desk', category: 'Tables & Desks', icon: '🗄️', w: 5, d: 2.5, h: 2.5, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'desk' },
-  { type: 'desk-standing', name: 'Standing Desk', category: 'Tables & Desks', icon: '🧍', w: 4, d: 2, h: 3.6, y: 0, color: '#9c7248', mount: 'floor', geo: 'desk' },
+  { type: 'teacher-desk', name: 'Teacher Desk', category: 'Tables & Desks', icon: '🗄️', w: 5, d: 2.5, h: 2.5, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
+  { type: 'desk-standing', name: 'Standing Desk', category: 'Tables & Desks', icon: '🧍', w: 4, d: 2, h: 3.6, y: 0, color: '#9c7248', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
   { type: 'desk-computer', name: 'Computer Workstation', category: 'Tables & Desks', icon: '🖥️', w: 4, d: 2.5, h: 2.5, y: 0, color: '#b08a5f', mount: 'floor', geo: 'workstation', device: 'monitor', file: 'workstation', fit: 'contain' },
   { type: 'carrel', name: 'Study Carrel', category: 'Tables & Desks', icon: '📖', w: 3, d: 2, h: 4, y: 0, color: '#a9825a', mount: 'floor', geo: 'carrel' },
   { type: 'table-seminar-6', name: 'Seminar Table 6ft', category: 'Tables & Desks', icon: '▭', w: 6, d: 2.5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', file: 'table', fit: 'contain' },
@@ -113,14 +114,14 @@ export const PROP_CATALOG = [
   { type: 'table-round-5', name: 'Round Table 5ft', category: 'Tables & Desks', icon: '🔵', w: 5, d: 5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', top: 'round' },
   { type: 'table-trapezoid', name: 'Trapezoid Table', category: 'Tables & Desks', icon: '⬠', w: 5, d: 2.5, h: 2.4, y: 0, color: '#caa26b', mount: 'floor', geo: 'table', top: 'trapezoid' },
   { type: 'table-kidney', name: 'Kidney Table', category: 'Tables & Desks', icon: '🫘', w: 6, d: 4, h: 2.2, y: 0, color: '#caa26b', mount: 'floor', geo: 'table', top: 'kidney' },
-  { type: 'table-art', name: 'Art Table', category: 'Tables & Desks', icon: '🎨', w: 5, d: 3, h: 2.9, y: 0, color: '#8f8a80', mount: 'floor', geo: 'table' },
+  { type: 'table-art', name: 'Art Table', category: 'Tables & Desks', icon: '🎨', w: 5, d: 3, h: 2.9, y: 0, color: '#8f8a80', mount: 'floor', geo: 'table', file: 'table', fit: 'stretch' },
   { type: 'table-cafeteria', name: 'Folding Cafeteria Table', category: 'Tables & Desks', icon: '🍽️', w: 12, d: 2.5, h: 2.4, y: 0, color: '#d8d3c8', mount: 'floor', geo: 'table', base: 'folding' },
   { type: 'podium', name: 'Lectern', category: 'Tables & Desks', icon: '🎤', w: 2, d: 1.5, h: 4, y: 0, color: '#7a5230', mount: 'floor', geo: 'podium' },
 
   // ---- Seating ----
   { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair', light: true, file: 'chair-basic', fit: 'contain' },
   { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack', light: true, file: 'chair-stack', fit: 'contain' },
-  { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task', light: 0.8 },
+  { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task', light: 0.8, file: 'chair-task', fit: 'stretch' },
   { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task', light: true, file: 'chair-task', fit: 'contain' },
   { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker', light: 0.8, file: 'chair-rocker', fit: 'contain' },
   { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true, file: 'stool', fit: 'contain' },
@@ -216,7 +217,7 @@ export const PROP_CATALOG = [
   { type: 'cooler-milk', name: 'Milk Cooler', category: 'Cafeteria', icon: '🥛', w: 3, d: 2.5, h: 3, y: 0, color: '#d7dadd', mount: 'floor', geo: 'machine', style: 'cooler', sound: { kind: 'hum', db: 54, hz: 120, q: 7, dy: 1 } },
   { type: 'vending', name: 'Vending Machine', category: 'Cafeteria', icon: '🥤', w: 3.3, d: 2.8, h: 6, y: 0, color: '#a23a45', mount: 'floor', geo: 'machine', style: 'vending', sound: { kind: 'hum', db: 55, hz: 120, q: 8, dy: 2 } },
   { type: 'fridge-commercial', name: 'Commercial Fridge', category: 'Cafeteria', icon: '❄️', w: 4.5, d: 2.7, h: 6.8, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'machine', style: 'fridge', sound: { kind: 'hum', db: 58, hz: 120, q: 7, dy: 2 } },
-  { type: 'table-prep', name: 'Prep Table', category: 'Cafeteria', icon: '🔪', w: 6, d: 2.5, h: 3, y: 0, color: '#c2c7cd', mount: 'floor', geo: 'table' },
+  { type: 'table-prep', name: 'Prep Table', category: 'Cafeteria', icon: '🔪', w: 6, d: 2.5, h: 3, y: 0, color: '#c2c7cd', mount: 'floor', geo: 'table', file: 'table', fit: 'stretch' },
   { type: 'station-recycle', name: 'Recycling Station', category: 'Cafeteria', icon: '♻️', w: 4, d: 2, h: 3.5, y: 0, color: '#5a6a5f', mount: 'floor', geo: 'recycle', light: 0.45 },
 
   // ---- Gym & Stage ----

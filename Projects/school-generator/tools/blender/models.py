@@ -6,9 +6,9 @@
 # with, at the row budget.json names, written in the page's own feet and
 # coordinates (common.py says how they reach Blender). Colours come from
 # budget.json's per-item palette, by role, and nowhere else: the palette is
-# the tints render.js gives that row, computed the way render.js computes them
-# (three.js's HSL in its linear working space, which is why the darkest tints
-# are black: the page draws them black).
+# the tints render.js gives that row, and validate.mjs holds it to the recipes
+# in js/builtin-models.js (`tints`, HSL in sRGB since HISTORY #818), so a
+# colour is changed there and copied here, never edited here alone.
 #
 # One file per silhouette, not per row. Two rows that share a builder share a
 # file, and the wiring row fits the file into each row's box (`fitModel`,

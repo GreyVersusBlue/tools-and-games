@@ -287,6 +287,9 @@
   <!-- Phase 27: the baked light, when the export carried one — same codec as
        the design. An unspliced marker means live lighting, not an error. -->
   <script id="sg-bake" type="text/plain"><!--SG-BAKE--></script>
+  <!-- The Blender pack's files the design's props name (HISTORY #820), same
+       codec again. An unspliced marker means the procedural furniture. -->
+  <script id="sg-models" type="text/plain"><!--SG-MODELS--></script>
   <script type="module">
 // ---- libs/three.module.js ----
 const __m_libs_three_module_js = (() => {
@@ -55237,9 +55240,10 @@ const __m_js_catalog_js = (() => {
 //                   purpose is absorption.
 //   file: id, fit: 'contain'|'stretch' — the Blender pack (builtin-models.js):
 //                   this row draws from assets/models/<file>.glb when the page
-//                   has the bytes, and from its `geo` builder otherwise (and
-//                   always for a recoloured prop). `stretch` is a row whose
-//                   dimensions are not its file's source row's.
+//                   has the bytes, and from its `geo` builder otherwise. The
+//                   file is repainted to the row's `color`, or the prop's
+//                   own, as it loads. `stretch` is a row whose dimensions are
+//                   not its file's source row's.
 // plus builder parameters (`top`, `style`, `device`, `rows`, ...) documented
 // beside each geometry builder in render.js.
 
@@ -55290,8 +55294,8 @@ const PROP_CATALOG = [
   // ---- Tables & Desks ----
   { type: 'student-desk', name: 'Student Desk', category: 'Tables & Desks', icon: '🪑', w: 2, d: 1.5, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'contain' },
   { type: 'desk-double', name: 'Double Student Desk', category: 'Tables & Desks', icon: '👥', w: 5, d: 2, h: 2.5, y: 0, color: '#c9a06a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
-  { type: 'teacher-desk', name: 'Teacher Desk', category: 'Tables & Desks', icon: '🗄️', w: 5, d: 2.5, h: 2.5, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'desk' },
-  { type: 'desk-standing', name: 'Standing Desk', category: 'Tables & Desks', icon: '🧍', w: 4, d: 2, h: 3.6, y: 0, color: '#9c7248', mount: 'floor', geo: 'desk' },
+  { type: 'teacher-desk', name: 'Teacher Desk', category: 'Tables & Desks', icon: '🗄️', w: 5, d: 2.5, h: 2.5, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
+  { type: 'desk-standing', name: 'Standing Desk', category: 'Tables & Desks', icon: '🧍', w: 4, d: 2, h: 3.6, y: 0, color: '#9c7248', mount: 'floor', geo: 'desk', file: 'desk', fit: 'stretch' },
   { type: 'desk-computer', name: 'Computer Workstation', category: 'Tables & Desks', icon: '🖥️', w: 4, d: 2.5, h: 2.5, y: 0, color: '#b08a5f', mount: 'floor', geo: 'workstation', device: 'monitor', file: 'workstation', fit: 'contain' },
   { type: 'carrel', name: 'Study Carrel', category: 'Tables & Desks', icon: '📖', w: 3, d: 2, h: 4, y: 0, color: '#a9825a', mount: 'floor', geo: 'carrel' },
   { type: 'table-seminar-6', name: 'Seminar Table 6ft', category: 'Tables & Desks', icon: '▭', w: 6, d: 2.5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', file: 'table', fit: 'contain' },
@@ -55300,14 +55304,14 @@ const PROP_CATALOG = [
   { type: 'table-round-5', name: 'Round Table 5ft', category: 'Tables & Desks', icon: '🔵', w: 5, d: 5, h: 2.4, y: 0, color: '#b08a5f', mount: 'floor', geo: 'table', top: 'round' },
   { type: 'table-trapezoid', name: 'Trapezoid Table', category: 'Tables & Desks', icon: '⬠', w: 5, d: 2.5, h: 2.4, y: 0, color: '#caa26b', mount: 'floor', geo: 'table', top: 'trapezoid' },
   { type: 'table-kidney', name: 'Kidney Table', category: 'Tables & Desks', icon: '🫘', w: 6, d: 4, h: 2.2, y: 0, color: '#caa26b', mount: 'floor', geo: 'table', top: 'kidney' },
-  { type: 'table-art', name: 'Art Table', category: 'Tables & Desks', icon: '🎨', w: 5, d: 3, h: 2.9, y: 0, color: '#8f8a80', mount: 'floor', geo: 'table' },
+  { type: 'table-art', name: 'Art Table', category: 'Tables & Desks', icon: '🎨', w: 5, d: 3, h: 2.9, y: 0, color: '#8f8a80', mount: 'floor', geo: 'table', file: 'table', fit: 'stretch' },
   { type: 'table-cafeteria', name: 'Folding Cafeteria Table', category: 'Tables & Desks', icon: '🍽️', w: 12, d: 2.5, h: 2.4, y: 0, color: '#d8d3c8', mount: 'floor', geo: 'table', base: 'folding' },
   { type: 'podium', name: 'Lectern', category: 'Tables & Desks', icon: '🎤', w: 2, d: 1.5, h: 4, y: 0, color: '#7a5230', mount: 'floor', geo: 'podium' },
 
   // ---- Seating ----
   { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair', light: true, file: 'chair-basic', fit: 'contain' },
   { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack', light: true, file: 'chair-stack', fit: 'contain' },
-  { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task', light: 0.8 },
+  { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task', light: 0.8, file: 'chair-task', fit: 'stretch' },
   { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task', light: true, file: 'chair-task', fit: 'contain' },
   { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker', light: 0.8, file: 'chair-rocker', fit: 'contain' },
   { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true, file: 'stool', fit: 'contain' },
@@ -55403,7 +55407,7 @@ const PROP_CATALOG = [
   { type: 'cooler-milk', name: 'Milk Cooler', category: 'Cafeteria', icon: '🥛', w: 3, d: 2.5, h: 3, y: 0, color: '#d7dadd', mount: 'floor', geo: 'machine', style: 'cooler', sound: { kind: 'hum', db: 54, hz: 120, q: 7, dy: 1 } },
   { type: 'vending', name: 'Vending Machine', category: 'Cafeteria', icon: '🥤', w: 3.3, d: 2.8, h: 6, y: 0, color: '#a23a45', mount: 'floor', geo: 'machine', style: 'vending', sound: { kind: 'hum', db: 55, hz: 120, q: 8, dy: 2 } },
   { type: 'fridge-commercial', name: 'Commercial Fridge', category: 'Cafeteria', icon: '❄️', w: 4.5, d: 2.7, h: 6.8, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'machine', style: 'fridge', sound: { kind: 'hum', db: 58, hz: 120, q: 7, dy: 2 } },
-  { type: 'table-prep', name: 'Prep Table', category: 'Cafeteria', icon: '🔪', w: 6, d: 2.5, h: 3, y: 0, color: '#c2c7cd', mount: 'floor', geo: 'table' },
+  { type: 'table-prep', name: 'Prep Table', category: 'Cafeteria', icon: '🔪', w: 6, d: 2.5, h: 3, y: 0, color: '#c2c7cd', mount: 'floor', geo: 'table', file: 'table', fit: 'stretch' },
   { type: 'station-recycle', name: 'Recycling Station', category: 'Cafeteria', icon: '♻️', w: 4, d: 2, h: 3.5, y: 0, color: '#5a6a5f', mount: 'floor', geo: 'recycle', light: 0.45 },
 
   // ---- Gym & Stage ----
@@ -77977,7 +77981,7 @@ return { MODEL_PREFIX, MODEL_CATEGORY, MODEL_MIME, MAX_MODELS, MAX_LIBRARY_BYTES
 })();
 // ---- js/builtin-models.js ----
 const __m_js_builtin_models_js = (() => {
-const { parseModelFile, readModel, fitModel, bakeFit, FT_TO_M } = __m_js_gltf_js;
+const { parseModelFile, readModel, fitModel, bakeFit, FT_TO_M, bytesToBase64, base64ToBytes } = __m_js_gltf_js;
 // builtin-models.js — the Blender pack, as catalog rows that name a file.
 //
 // `assets/models/` holds fifteen .glb files (HISTORY #761 to #765), each one
@@ -77988,22 +77992,25 @@ const { parseModelFile, readModel, fitModel, bakeFit, FT_TO_M } = __m_js_gltf_js
 // its `geo` key, and render.js draws the file when it has the bytes and the
 // procedural builder when it does not.
 //
-// Three rules decide which rows name a file, and the test holds all three:
+// Two rules decide which rows name a file, and the test holds both:
 //
-//   1. A file carries its source row's colours in its vertices, so a row
-//      draws from it only if its colour is the source row's.
-//   2. A file leaves out what budget.json's `left` lists (the round top, the
+//   1. A file leaves out what budget.json's `left` lists (the round top, the
 //      pegboard, the tote bins, the second tier), so a row whose builder
 //      parameters ask for one of those stays procedural.
-//   3. A row whose dimensions are the source row's is `contain`; a row that
+//   2. A row whose dimensions are the source row's is `contain`; a row that
 //      wants other dimensions from the same file is `stretch`, which scales
 //      each axis by row / source row rather than by an absolute box, so the
 //      source row itself is drawn at exactly the file's own scale (a labbench
 //      file is 3.58 ft tall against a 3 ft row because of its tap, and a
 //      plain fit into 3 ft would shrink the whole bench).
 //
-// A recoloured prop (Phase 11's `data.color`) draws procedurally: the paint
-// is baked into the vertices, and a file's are already baked.
+// Colour is not a rule any more (HISTORY #819). A file carries its source
+// row's colours in its vertices, and `tints` below says how each of those
+// colours was made from the row's one `color`, by role, the way render.js's
+// builder makes it. `retint` reads a vertex's role off its colour and paints
+// it as the same role of another colour, so `teacher-desk` wears desk.glb in
+// its own brown and a recoloured prop (Phase 11's `data.color`) keeps the
+// file's shape.
 //
 // Pure: no DOM, no three. `fetchBuiltins` takes the fetch it should use.
 
@@ -78011,26 +78018,116 @@ const { parseModelFile, readModel, fitModel, bakeFit, FT_TO_M } = __m_js_gltf_js
 
 const BUILTIN_DIR = 'assets/models/';
 
-// id -> the catalog row the file was built against. budget.json in
-// tools/blender carries the same pairing and validate.mjs checks that file's
-// side; test/builtin-models.test.mjs checks this side against it.
-const BUILTIN_MODELS = {
-  'chair-basic': { source: 'student-chair' },
-  'chair-stack': { source: 'chair-stack' },
-  'chair-task': { source: 'chair-task' },
-  'chair-rocker': { source: 'chair-rocking' },
-  stool: { source: 'stool-lab-24' },
-  sofa: { source: 'sofa' },
-  desk: { source: 'student-desk' },
-  table: { source: 'table-seminar-6' },
-  workstation: { source: 'desk-computer' },
-  counter: { source: 'desk-circulation' },
-  labbench: { source: 'bench-lab' },
-  shelf: { source: 'bookshelf-full' },
-  cubby: { source: 'cubby-unit' },
-  locker: { source: 'locker-bank' },
-  plant: { source: 'plant-floor' },
+// The one tint (HISTORY #818). `dl` and `ds` move lightness and saturation in
+// sRGB, which is the space a catalog row's `#rrggbb` is written in: a leg at
+// -0.25 is a darker leg. Until #818 render.js did this in three.js's linear
+// working space, where a mid blue has a lightness of 0.24 and the same -0.25
+// is black. render.js's `tint` is this function, so the page, the pack's
+// palette and `retint` cannot disagree. Takes and returns sRGB in 0..1.
+function tintSrgb([r, g, b], dl, ds = 0) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const c = max - min;
+    s = l <= 0.5 ? c / (max + min) : c / (2 - max - min);
+    if (max === r) h = (g - b) / c + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / c + 2;
+    else h = (r - g) / c + 4;
+    h /= 6;
+  }
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  const s2 = clamp(s + ds), l2 = clamp(l + dl);
+  if (s2 === 0) return [l2, l2, l2];
+  const q = l2 <= 0.5 ? l2 * (1 + s2) : l2 + s2 - l2 * s2;
+  const p = 2 * l2 - q;
+  const hue = (t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * 6 * (2 / 3 - t);
+    return p;
+  };
+  return [hue(h + 1 / 3), hue(h), hue(h - 1 / 3)];
+}
+
+const hexToSrgb = (hex) => {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
 };
+const srgbToHex = (rgb) => rgb.map((c) => Math.round(Math.min(1, Math.max(0, c)) * 255)
+  .toString(16).padStart(2, '0')).join('');
+const toLinear = (c) => (c < 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+const toSrgb = (c) => (c < 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+
+// A role's colour for a row painted `color`: a string is a fixed colour (the
+// lab bench's tap, the plant's pot), an array is tint steps applied in order,
+// each `[dl]` or `[dl, ds]`, and `[]` is the row's colour itself.
+function roleSrgb(recipe, color) {
+  if (typeof recipe === 'string') return hexToSrgb(recipe);
+  let c = hexToSrgb(color);
+  for (const [dl, ds = 0] of recipe) c = tintSrgb(c, dl, ds);
+  return c;
+}
+
+// id -> the catalog row the file was built against, and how render.js's
+// builder for that row makes each colour in the file. budget.json in
+// tools/blender carries the same pairing and each role's colour as hex;
+// validate.mjs checks that file's side against `tints` and
+// test/builtin-models.test.mjs checks this side against it.
+const CHAIR = { seat: [], back: [[-0.08]], leg: [[-0.25]] };
+const SHELF = { side: [[-0.12]], shelf: [[0.06]] };
+const BUILTIN_MODELS = {
+  'chair-basic': { source: 'student-chair', tints: CHAIR },
+  'chair-stack': { source: 'chair-stack', tints: { ...CHAIR, back: [[-0.06]] } },
+  'chair-task': { source: 'chair-task', tints: { ...CHAIR, caster: [[-0.35]] } },
+  'chair-rocker': { source: 'chair-rocking', tints: CHAIR },
+  stool: { source: 'stool-lab-24', tints: { seat: [[0.15]], leg: [[-0.2]] } },
+  sofa: { source: 'sofa', tints: { frame: [[-0.12]], cushion: [[0.08]], backcushion: [[0.05]] } },
+  desk: { source: 'student-desk', tints: { top: [], leg: [[-0.28]] } },
+  table: { source: 'table-seminar-6', tints: { top: [], leg: [[-0.3]] } },
+  workstation: { source: 'desk-computer', tints: { top: [], leg: [[-0.28]], dark: [[-0.45, -0.2]], keys: [[0.15]] } },
+  counter: { source: 'desk-circulation', tints: { body: [], top: [[0.12]] } },
+  labbench: {
+    source: 'bench-lab',
+    tints: { top: [[-0.3]], body: [[0.18]], door: [[0.18], [0.06]], handle: [[-0.1]], tap: '#b8bcc2' },
+  },
+  shelf: { source: 'bookshelf-full', tints: SHELF },
+  cubby: { source: 'cubby-unit', tints: { ...SHELF, divider: [[-0.15]] } },
+  locker: { source: 'locker-bank', tints: { body: [[-0.18]], door: [], vent: [[-0.3]] } },
+  plant: { source: 'plant-floor', tints: { pot: '#a9623f', stem: '#7a5230', leaf: [], leaf2: [[0.05]], leaf3: [[-0.06]] } },
+};
+
+// A file's palette for a row painted `color`: role -> 'rrggbb'.
+function builtinPalette(id, color) {
+  const out = {};
+  for (const [role, recipe] of Object.entries(BUILTIN_MODELS[id].tints)) out[role] = srgbToHex(roleSrgb(recipe, color));
+  return out;
+}
+
+// Repaint a parsed file from its source row's colour to another. Each vertex
+// is matched to a role by its colour (to one 8-bit step, which is what the
+// file's 16-bit colours and the palette's hex agree to) and takes that role's
+// colour for `to`. A colour no role claims is left alone, and the validator
+// fails a file that has one. Mutates and returns `model`; colours are linear,
+// as gltf.js hands them over.
+function retint(model, id, from, to) {
+  const roles = Object.values(BUILTIN_MODELS[id].tints).map((recipe) => ({
+    was: roleSrgb(recipe, from).map((c) => Math.round(c * 255)),
+    now: roleSrgb(recipe, to).map(toLinear),
+  }));
+  for (const part of model.meshes) {
+    const c = part.color;
+    for (let i = 0; i < c.length; i += 3) {
+      const r = Math.round(toSrgb(c[i]) * 255), g = Math.round(toSrgb(c[i + 1]) * 255), b = Math.round(toSrgb(c[i + 2]) * 255);
+      const role = roles.find(({ was }) => Math.abs(was[0] - r) <= 1 && Math.abs(was[1] - g) <= 1 && Math.abs(was[2] - b) <= 1);
+      if (!role) continue;
+      c[i] = role.now[0]; c[i + 1] = role.now[1]; c[i + 2] = role.now[2];
+    }
+  }
+  return model;
+}
 
 const BUILTIN_IDS = Object.keys(BUILTIN_MODELS);
 
@@ -78052,15 +78149,19 @@ function builtinBox(entry, source, bbox) {
   };
 }
 
-// Parsed, fitted and baked into catalog coordinates: what render.js merges
-// into one geometry. Throws whatever gltf.js throws about a bad file.
-function loadBuiltin(bytes, entry, source) {
+// Parsed, fitted, baked into catalog coordinates and painted: what render.js
+// merges into one geometry. `color` is the paint this prop wears, the row's
+// own unless it was recoloured. Throws whatever gltf.js throws about a bad
+// file.
+function loadBuiltin(bytes, entry, source, color = entry.color) {
   const model = readModel(parseModelFile(bytes));
-  return bakeFit(model, fitModel(model.bbox, builtinBox(entry, source, model.bbox), entry.fit));
+  bakeFit(model, fitModel(model.bbox, builtinBox(entry, source, model.bbox), entry.fit));
+  const same = String(color).toLowerCase() === String(source.color).toLowerCase();
+  return same ? model : retint(model, entry.file, source.color, color);
 }
 
-// Whether a row would draw from a file given the paint on this one prop.
-const drawsFromFile = (entry, variant = '') => !!(entry && entry.file && !variant);
+// Whether a row draws from a file: any row that names one, in any paint.
+const drawsFromFile = (entry) => !!(entry && entry.file);
 
 // The file ids a set of prop types needs that are not loaded yet.
 function neededBuiltins(types, entryOf, have) {
@@ -78089,7 +78190,27 @@ async function fetchBuiltins(ids, fetchFn, base = './') {
   return { bytes, failed };
 }
 
-return { BUILTIN_DIR, BUILTIN_MODELS, BUILTIN_IDS, builtinFile, builtinBox, loadBuiltin, drawsFromFile, neededBuiltins, fetchBuiltins };
+// The files a walk export carries (HISTORY #820): the ids a design's props
+// name, as one JSON object of base64, which share.js's codec then deflates
+// into the export's `sg-models` slot. An exported walk opens from file:// and
+// asks the network for nothing, so the bytes ride in the file or not at all.
+function packBuiltins(bytesById) {
+  const out = {};
+  for (const id of [...bytesById.keys()].sort()) out[id] = bytesToBase64(bytesById.get(id));
+  return JSON.stringify(out);
+}
+
+// The other way. An id this build has no row for is dropped: the file would
+// have no source row to be fitted against.
+function unpackBuiltins(text) {
+  const bytes = new Map();
+  for (const [id, b64] of Object.entries(JSON.parse(text))) {
+    if (BUILTIN_MODELS[id] && typeof b64 === 'string') bytes.set(id, base64ToBytes(b64));
+  }
+  return bytes;
+}
+
+return { BUILTIN_DIR, tintSrgb, hexToSrgb, srgbToHex, roleSrgb, BUILTIN_MODELS, builtinPalette, retint, BUILTIN_IDS, builtinFile, builtinBox, loadBuiltin, drawsFromFile, neededBuiltins, fetchBuiltins, packBuiltins, unpackBuiltins };
 })();
 // ---- js/xr.js ----
 const __m_js_xr_js = (() => {
@@ -78318,7 +78439,7 @@ const { roofPlan, roofTop, PARAPET_H, COPING_T } = __m_js_roof_js;
 const { sampleBake, bakedTint } = __m_js_bakelight_js;
 const { loadModel, writeGLB, FT_TO_M } = __m_js_gltf_js;
 const { modelBytes, modelsOf } = __m_js_models_js;
-const { BUILTIN_MODELS, loadBuiltin, drawsFromFile } = __m_js_builtin_models_js;
+const { BUILTIN_MODELS, loadBuiltin, drawsFromFile, tintSrgb } = __m_js_builtin_models_js;
 const { REFERENCE_SPACES, XR_MODE, rigPosition } = __m_js_xr_js;
 const { collectDoorLeaves, leafAngle, mullionPositions, windowBand, LEAF_T, MULLION_BAY } = __m_js_openings_js;
 // render.js — three.js scene setup, procedural PBR-style materials, lighting,
@@ -80522,12 +80643,14 @@ function initRender(canvas) {
   // bottom at local y=0 — so placing an instance is just translate(x, baseY +
   // prop.y, z) · rotateY(rotationY) · scale(prop.scale), no per-type offset.
 
+  // In sRGB, where a row's `#rrggbb` is written (HISTORY #818): the arithmetic
+  // is builtin-models.js's `tintSrgb`, so the pack's palette is this function.
   const _tintColor = new THREE.Color();
+  const _tintRGB = { r: 0, g: 0, b: 0 };
   function tint(hex, dl, ds = 0) {
-    _tintColor.set(hex);
-    const hsl = {};
-    _tintColor.getHSL(hsl);
-    return _tintColor.clone().setHSL(hsl.h, Math.min(1, Math.max(0, hsl.s + ds)), Math.min(1, Math.max(0, hsl.l + dl)));
+    _tintColor.set(hex).getRGB(_tintRGB, THREE.SRGBColorSpace);
+    const [r, g, b] = tintSrgb([_tintRGB.r, _tintRGB.g, _tintRGB.b], dl, ds);
+    return new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
   }
 
   function box(w, h, d, x, y, z, color) {
@@ -82405,10 +82528,9 @@ function initRender(canvas) {
       const type = key.split('|')[0];
       const entry = catalogEntry(type);
       if (!entry || !entry.file || !bytesById.has(entry.file)) continue;
-      if (key === type) {
-        if (geo.body) geo.body.dispose();
-        propGeoCache.delete(key);
-      }
+      // a recoloured prop draws from the file too (#819), so its key goes as well
+      if (geo.body) geo.body.dispose();
+      propGeoCache.delete(key);
     }
     return builtinBytes.size;
   }
@@ -82460,14 +82582,15 @@ function initRender(canvas) {
       return geo;
     }
     // The Blender pack: a row that names a file draws it once the page has
-    // the bytes. Before that (the first frame, a walk export, a Node test)
-    // and for a recoloured prop it is the procedural builder below, and the
-    // stand-in is not kept: setBuiltinModels clears this row's key when the
-    // bytes arrive.
-    if (drawsFromFile(entry, variant) && builtinBytes.has(entry.file)) {
+    // the bytes, painted the row's colour or the prop's own (#819). Before
+    // that (the first frame, a Node test) it is the procedural builder below,
+    // and the stand-in is not kept: setBuiltinModels clears this row's keys
+    // when the bytes arrive.
+    if (drawsFromFile(entry) && builtinBytes.has(entry.file)) {
       try {
         const source = catalogEntry(BUILTIN_MODELS[entry.file].source);
-        geo = { body: mergeModelParts(loadBuiltin(builtinBytes.get(entry.file), entry, source)), lens: null };
+        const model = loadBuiltin(builtinBytes.get(entry.file), entry, source, variant || entry.color);
+        geo = { body: mergeModelParts(model), lens: null };
         propGeoCache.set(key, geo);
         return geo;
       } catch (err) {
@@ -94760,6 +94883,7 @@ const { doorEvents } = __m_js_sound_js;
 const { MAX_SHOVE } = __m_js_shove_js;
 const { deserialize } = __m_js_save_load_js;
 const { decodeShare } = __m_js_share_js;
+const { unpackBuiltins } = __m_js_builtin_models_js;
 const { decodeBakeText, unpackBake, bakeKey } = __m_js_bakelight_js;
 const { makeLabelGate, LABEL_MODES, sightBlockers, sightClear, doorPoints } = __m_js_sightline_js;
 const { murmurEmitters, paScript } = __m_js_murmur_js;
@@ -94801,6 +94925,7 @@ const { floorBounds } = __m_js_shadow_js;
 // The one convention that matters most here is inherited rather than new:
 // this file is a *shell*, thin over the same modules main.js is thin over.
 // Anything smart enough to test belongs in one of them, not here.
+
 
 
 
@@ -94878,11 +95003,18 @@ let state = null;
 // scene builds. Absent, mismatched or damaged all mean the same thing: live
 // lighting, exactly what every export before this phase shipped.
 let bakedLight = null;
+// The Blender pack's files this export carried (HISTORY #820), by id. Empty
+// for an export made before the slot existed, which draws the procedural
+// furniture as it always did.
+let builtinFiles = new Map();
 
 // ---------- everything below runs only once the design decodes ----------
 
 function boot() {
   const renderApi = initRender(canvas);
+  // Before the first build, so no frame draws the stand-ins: the bytes are
+  // already in the file, where the page has to wait on a fetch.
+  if (builtinFiles.size) renderApi.setBuiltinModels(builtinFiles);
   const audio = initAudio(renderApi.walkCamera, { catalogEntry });
 
   // The leaves' open/shut fractions between frames, so a latch fires once.
@@ -96117,6 +96249,15 @@ function boot() {
       if (data && data.key === bakeKey(state, catalogEntry)) bakedLight = data;
     }
   } catch { /* live lighting */ }
+  // The pack's files, if they rode along. A slot that will not decode is said
+  // out loud (#768: a failure is an error, not a quiet fallback) and the walk
+  // still opens, on the procedural furniture.
+  try {
+    const modelsText = embeddedText('sg-models');
+    if (modelsText) builtinFiles = unpackBuiltins(await decodeShare(modelsText));
+  } catch (err) {
+    console.error(`The model files this walk carries could not be read: ${err.message}`);
+  }
   boot();
 })();
 

@@ -15,7 +15,9 @@ import { parseModelFile, readModel, FT_TO_M } from '../js/gltf.js';
 import {
   BUILTIN_MODELS, BUILTIN_IDS, builtinFile, builtinBox, loadBuiltin,
   drawsFromFile, neededBuiltins, fetchBuiltins,
+  tintSrgb, hexToSrgb, srgbToHex, builtinPalette,
 } from '../js/builtin-models.js';
+import * as THREE from '../libs/three.module.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bytesOf = (id) => new Uint8Array(readFileSync(path.join(root, builtinFile(id))));
@@ -23,9 +25,26 @@ const budget = JSON.parse(readFileSync(path.join(root, 'tools/blender/budget.jso
 const wired = PROP_CATALOG.filter((e) => e.file);
 const EPS = 1e-6;
 
-// What a row carries that is not about its builder: every other key has to
-// agree with the source row's, or the file would draw something the row is not.
-const OWN_KEYS = new Set(['type', 'name', 'category', 'icon', 'w', 'd', 'h', 'file', 'fit']);
+// What a row carries that is not about its builder's shape: every other key
+// has to agree with the source row's, or the file would draw something the row
+// is not. `color` is here since #819 (a file is repainted when it loads) and
+// `light` is how easily a prop is shoved, which no builder reads.
+const OWN_KEYS = new Set(['type', 'name', 'category', 'icon', 'w', 'd', 'h', 'file', 'fit', 'color', 'light']);
+
+// The colours a loaded file wears, as sRGB hex, and how many vertices wear each.
+const toSrgb = (c) => (c < 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+function worn(model) {
+  const seen = new Map();
+  for (const part of model.meshes) {
+    for (let i = 0; i < part.color.length; i += 3) {
+      const hex = srgbToHex([toSrgb(part.color[i]), toSrgb(part.color[i + 1]), toSrgb(part.color[i + 2])]);
+      seen.set(hex, (seen.get(hex) || 0) + 1);
+    }
+  }
+  return seen;
+}
+const rgb = (hex) => [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const within1 = (a, b) => rgb(a).every((c, i) => Math.abs(c - rgb(b)[i]) <= 1);
 
 test('the table, the files on disk and budget.json are the same fifteen', () => {
   const onDisk = readdirSync(path.join(root, 'assets/models'))
@@ -59,8 +78,8 @@ test('every file parses, and is the box budget.json says it is', () => {
   }
 });
 
-test('nineteen rows name a file, each a real id with a real fit', () => {
-  assert.equal(wired.length, 19);
+test('twenty-four rows name a file, each a real id with a real fit', () => {
+  assert.equal(wired.length, 24);
   for (const e of wired) {
     assert.ok(BUILTIN_MODELS[e.file], `${e.type} names ${e.file}, which is not in the table`);
     assert.ok(FIT_MODES.includes(e.fit), `${e.type} has fit ${e.fit}`);
@@ -71,10 +90,9 @@ test('nineteen rows name a file, each a real id with a real fit', () => {
   }
 });
 
-test('a row shares a file only with its colour and builder parameters', () => {
+test('a row shares a file only with its builder parameters', () => {
   for (const e of wired) {
     const src = catalogEntry(BUILTIN_MODELS[e.file].source);
-    assert.equal(e.color, src.color, `${e.type} is painted differently from ${src.type}`);
     for (const k of new Set([...Object.keys(e), ...Object.keys(src)])) {
       if (OWN_KEYS.has(k)) continue;
       assert.deepEqual(e[k], src[k],
@@ -90,7 +108,8 @@ test('stretch is exactly the rows whose dimensions are not their source row\'s',
     assert.equal(e.fit, same ? 'contain' : 'stretch', `${e.type}'s fit`);
   }
   assert.deepEqual(wired.filter((e) => e.fit === 'stretch').map((e) => e.type).sort(),
-    ['desk-double', 'stool-lab-30', 'table-demo', 'table-seminar-8']);
+    ['desk-double', 'desk-standing', 'stool-lab-30', 'table-art', 'table-demo', 'table-prep',
+      'table-seminar-8', 'teacher-chair', 'teacher-desk']);
 });
 
 test('a source row is drawn at the file\'s own scale, sitting on the floor', () => {
@@ -125,23 +144,107 @@ test('the shapes a file leaves out keep the procedural builder', () => {
   const plain = new Set(['table-round-4', 'table-round-5', 'table-trapezoid', 'table-kidney',
     'table-cafeteria', 'bench-robotics', 'tote-rack', 'mail-cubbies', 'locker-bank-half',
     'printer-3d', 'table-sewing', 'counter-serving', 'tray-return', 'counter-reception',
-    'chair-lounge', 'beanbag', 'cushion', 'teacher-chair', 'teacher-desk', 'desk-standing',
-    'bookshelf-low', 'plant-desk']);
+    'chair-lounge', 'beanbag', 'cushion', 'bookshelf-low', 'plant-desk']);
   for (const type of plain) {
     assert.ok(catalogEntry(type), `${type} is not in the catalog`);
     assert.equal(catalogEntry(type).file, undefined, `${type} names a file its shape is not in`);
   }
 });
 
-test('a recoloured prop draws procedurally, and a row with no file always does', () => {
-  assert.equal(drawsFromFile(catalogEntry('student-desk'), ''), true);
-  assert.equal(drawsFromFile(catalogEntry('student-desk'), '#ff0000'), false);
-  assert.equal(drawsFromFile(catalogEntry('teacher-desk'), ''), false);
-  assert.equal(drawsFromFile(null, ''), false);
+test('a row with a file draws from it, and a row with none does not', () => {
+  assert.equal(drawsFromFile(catalogEntry('student-desk')), true);
+  assert.equal(drawsFromFile(catalogEntry('teacher-desk')), true);
+  assert.equal(drawsFromFile(catalogEntry('table-round-4')), false);
+  assert.equal(drawsFromFile(null), false);
+});
+
+// #818. The numbers are written out, not recomputed: a leg at -0.25 on the
+// student chair's blue is a dark blue, and in three.js's linear working space
+// (what render.js did before) it is 000000.
+test('a tint is HSL in sRGB, so a darker leg is not a black one', () => {
+  const t = (hex, dl, ds) => srgbToHex(tintSrgb(hexToSrgb(hex), dl, ds));
+  assert.equal(t('#3f6fae', -0.25), '1d3350');
+  assert.equal(t('#7a5230', -0.12), '4e341f');
+  assert.equal(t('#b08a5f', -0.45, -0.2), '181512');
+  assert.equal(t('#3f6fae', 0), '3f6fae');
+  assert.deepEqual(tintSrgb(hexToSrgb('#20242a'), -0.3), [0, 0, 0], 'a tint still clamps at black');
+  assert.deepEqual(tintSrgb(hexToSrgb('#e6e8ea'), 0.3), [1, 1, 1], 'and at white');
+  assert.equal(t('#808080', 0.1), '9a9a9a', 'a grey has no hue to keep');
+});
+
+test('tintSrgb is three.js\'s own HSL in sRGB, which is what render.js draws', () => {
+  for (const hex of ['#3f6fae', '#20242a', '#c9a06a', '#ffffff', '#000000', '#808080', '#a24a3f']) {
+    for (const [dl, ds] of [[-0.25, 0], [0.18, 0], [-0.45, -0.2], [0.15, 0.1], [0, 0]]) {
+      const hsl = {};
+      new THREE.Color(hex).getHSL(hsl, THREE.SRGBColorSpace);
+      const clamp = (v) => Math.min(1, Math.max(0, v));
+      const want = {};
+      new THREE.Color().setHSL(hsl.h, clamp(hsl.s + ds), clamp(hsl.l + dl), THREE.SRGBColorSpace)
+        .getRGB(want, THREE.SRGBColorSpace);
+      const got = tintSrgb(hexToSrgb(hex), dl, ds);
+      assert.ok(Math.abs(got[0] - want.r) < 1e-4 && Math.abs(got[1] - want.g) < 1e-4 && Math.abs(got[2] - want.b) < 1e-4,
+        `${hex} ${dl} ${ds}`);
+    }
+  }
+  const src = readFileSync(path.join(root, 'js/render.js'), 'utf8');
+  const body = src.slice(src.indexOf('function tint(hex, dl, ds = 0)'), src.indexOf('function box('));
+  assert.match(body, /tintSrgb\(/, 'render.js\'s tint no longer goes through tintSrgb');
+  assert.doesNotMatch(body, /setHSL|getHSL/, 'render.js\'s tint does its own HSL again');
+});
+
+test('budget.json\'s palette is each role\'s recipe on the source row\'s colour', () => {
+  for (const id of BUILTIN_IDS) {
+    const src = catalogEntry(BUILTIN_MODELS[id].source);
+    assert.deepEqual(builtinPalette(id, src.color), budget.items[id].palette, id);
+  }
+});
+
+// #819. Held against the palette a builder would give the row, role by role
+// and vertex count by vertex count, so a role that was not repainted, or was
+// repainted as another role, fails here.
+test('a row of another colour wears the file in its own colour', () => {
+  const others = wired.filter((e) => e.color !== catalogEntry(BUILTIN_MODELS[e.file].source).color);
+  assert.deepEqual(others.map((e) => e.type).sort(),
+    ['desk-standing', 'table-art', 'table-prep', 'teacher-chair', 'teacher-desk']);
+  for (const e of others) {
+    const src = catalogEntry(BUILTIN_MODELS[e.file].source);
+    const before = worn(loadBuiltin(bytesOf(e.file), src, src));
+    const after = worn(loadBuiltin(bytesOf(e.file), e, src));
+    const from = builtinPalette(e.file, src.color), to = builtinPalette(e.file, e.color);
+    for (const hex of after.keys()) {
+      assert.ok(Object.values(to).some((p) => within1(p, hex)), `${e.type} wears ${hex}, which is no role of ${e.color}`);
+    }
+    for (const role of Object.keys(to)) {
+      const count = (seen, want) => [...seen].filter(([hex]) => within1(hex, want)).reduce((n, [, c]) => n + c, 0);
+      // roles that tint to one colour (two blacks) are counted together on both sides
+      const twins = Object.keys(to).filter((r) => to[r] === to[role]);
+      const was = new Set(twins.map((r) => from[r]));
+      const had = [...was].reduce((n, hex) => n + count(before, hex), 0);
+      assert.ok(had > 0, `${e.file}.glb has no vertex in role ${role}`);
+      assert.equal(count(after, to[role]), had, `${e.type}: role ${role} should be ${to[role]} on ${had} vertices`);
+    }
+    assert.ok([...after.keys()].some((hex) => within1(hex, e.color.slice(1))), `${e.type} wears its own ${e.color} nowhere`);
+  }
+});
+
+test('a recoloured prop keeps the file\'s shape and takes the paint', () => {
+  const e = catalogEntry('student-chair');
+  const plain = loadBuiltin(bytesOf(e.file), e, e);
+  const red = loadBuiltin(bytesOf(e.file), e, e, '#b0503f');
+  assert.deepEqual(red.meshes.map((m) => m.position.length), plain.meshes.map((m) => m.position.length));
+  assert.deepEqual([...worn(plain).keys()].sort(), Object.values(builtinPalette('chair-basic', e.color)).sort());
+  const want = Object.values(builtinPalette('chair-basic', '#b0503f'));
+  for (const hex of worn(red).keys()) assert.ok(want.some((p) => within1(p, hex)), `${hex} is not a red chair's colour`);
+  assert.equal(worn(red).size, 3);
+  // a fixed colour is not the row's to repaint: the plant's pot stays terracotta
+  const plant = catalogEntry('plant-floor');
+  const blue = worn(loadBuiltin(bytesOf('plant'), plant, plant, '#3f6fae'));
+  assert.ok([...blue.keys()].some((hex) => within1(hex, 'a9623f')), 'the pot was repainted');
+  assert.ok(![...blue.keys()].some((hex) => within1(hex, '3f7a48')), 'the leaves kept their green');
 });
 
 test('neededBuiltins asks only for files a prop names and the page lacks', () => {
-  const types = ['student-desk', 'desk-double', 'teacher-desk', 'sofa', 'nope'];
+  const types = ['student-desk', 'desk-double', 'table-round-4', 'sofa', 'nope'];
   assert.deepEqual(neededBuiltins(types, catalogEntry, new Set()).sort(), ['desk', 'sofa']);
   assert.deepEqual(neededBuiltins(types, catalogEntry, new Set(['desk'])), ['sofa']);
 });

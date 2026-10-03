@@ -30,6 +30,7 @@ import { doorEvents } from './sound.js';
 import { MAX_SHOVE } from './shove.js';
 import { deserialize } from './save-load.js';
 import { decodeShare } from './share.js';
+import { unpackBuiltins } from './builtin-models.js';
 import { decodeBakeText, unpackBake, bakeKey } from './bakelight.js';
 import { makeLabelGate, LABEL_MODES, sightBlockers, sightClear, doorPoints } from './sightline.js';
 import { murmurEmitters, paScript } from './murmur.js';
@@ -114,11 +115,18 @@ let state = null;
 // scene builds. Absent, mismatched or damaged all mean the same thing: live
 // lighting, exactly what every export before this phase shipped.
 let bakedLight = null;
+// The Blender pack's files this export carried (HISTORY #820), by id. Empty
+// for an export made before the slot existed, which draws the procedural
+// furniture as it always did.
+let builtinFiles = new Map();
 
 // ---------- everything below runs only once the design decodes ----------
 
 function boot() {
   const renderApi = initRender(canvas);
+  // Before the first build, so no frame draws the stand-ins: the bytes are
+  // already in the file, where the page has to wait on a fetch.
+  if (builtinFiles.size) renderApi.setBuiltinModels(builtinFiles);
   const audio = initAudio(renderApi.walkCamera, { catalogEntry });
 
   // The leaves' open/shut fractions between frames, so a latch fires once.
@@ -1353,5 +1361,14 @@ function boot() {
       if (data && data.key === bakeKey(state, catalogEntry)) bakedLight = data;
     }
   } catch { /* live lighting */ }
+  // The pack's files, if they rode along. A slot that will not decode is said
+  // out loud (#768: a failure is an error, not a quiet fallback) and the walk
+  // still opens, on the procedural furniture.
+  try {
+    const modelsText = embeddedText('sg-models');
+    if (modelsText) builtinFiles = unpackBuiltins(await decodeShare(modelsText));
+  } catch (err) {
+    console.error(`The model files this walk carries could not be read: ${err.message}`);
+  }
   boot();
 })();
