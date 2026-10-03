@@ -107,7 +107,125 @@ def window(s, name):
     mesh_object(name + '-stars', bm, [material(name + '-stars', 0xe8eeff, emit=6.0)])
 
 
-SHAPES = {'patch': patch, 'wall': wall, 'pine': pine, 'post': post, 'window': window}
+# What a game with no Blender pipeline draws in its DOM or on a canvas,
+# built out of five plain solids (#850): Closing Time's street, Integer
+# Foundry's board, Daredevil's ramps and buses, Orbital's marker and flight
+# plan. Each takes `colour` and, where it says so, `roughness`, `metallic`
+# and `emit` (an emission strength in the same colour).
+
+def _mat(s, name):
+    return material(name, int(s['colour'], 16), roughness=s.get('roughness', 0.8),
+                    metallic=s.get('metallic', 0.0), emit=s.get('emit', 0.0))
+
+
+def _stand(bm, s):
+    """Turn a solid built round its own origin `pitch` degrees about Y, then
+    `rot` about Z, and stand it at `at`, `z` above the plinth top."""
+    x, y = s['at']
+    m = Matrix.Translation((x, y, s.get('z', 0.0))) @ Matrix.Rotation(math.radians(s.get('rot', 0.0)), 4, 'Z') \
+        @ Matrix.Rotation(math.radians(s.get('pitch', 0.0)), 4, 'Y')
+    bmesh.ops.transform(bm, matrix=m, verts=bm.verts)
+
+
+def block(s, name):
+    """A box `size` [w, d, h], its bottom centred on `at`."""
+    w, d, h = s['size']
+    bm = bmesh.new()
+    box(bm, (-w / 2, -d / 2, 0.0), (w / 2, d / 2, h))
+    _stand(bm, s)
+    mesh_object(name, bm, [_mat(s, name)])
+
+
+def prism(s, name):
+    """A triangular prism `size` [w, d, h] along Y, its ridge `peak` of the
+    way across the width: 0.5 is a gable roof, 1 a ramp rising to +X and 0
+    one falling to it."""
+    w, d, h = s['size']
+    ax = -w / 2 + s.get('peak', 0.5) * w
+    pts = [(-w / 2, -d / 2, 0.0), (w / 2, -d / 2, 0.0), (ax, -d / 2, h),
+           (-w / 2, d / 2, 0.0), (w / 2, d / 2, 0.0), (ax, d / 2, h)]
+    bm = bmesh.new()
+    common.solid(bm, pts, [(0, 1, 2), (3, 5, 4), (0, 3, 4, 1), (1, 4, 5, 2), (0, 2, 5, 3)])
+    _stand(bm, s)
+    mesh_object(name, bm, [_mat(s, name)])
+
+
+def ball(s, name):
+    """A smooth ball of radius `r` (or [rx, ry, rz]) centred `z` up at `at`."""
+    r = s['r'] if isinstance(s['r'], list) else [s['r']] * 3
+    bm = bmesh.new()
+    common.sphere(bm, r, (0.0, 0.0, 0.0), segments=32, rings=16)
+    _stand(bm, s)
+    ob = mesh_object(name, bm, [_mat(s, name)])
+    for p in ob.data.polygons:
+        p.use_smooth = True
+
+
+def dots(s, name):
+    """Small balls of radius `r`: every `gap` along `path` ([x, y, z] points),
+    or `scatter` of them strewn over the plinth top from a seeded generator
+    (`seed`), `z` up."""
+    bm = bmesh.new()
+    r = s['r']
+    if 'path' in s:
+        pts = [Vector(p) for p in s['path']]
+        carry = 0.0
+        for a, b in zip(pts, pts[1:]):
+            seg = (b - a).length
+            t = carry
+            while t <= seg + 1e-9:
+                common.sphere(bm, (r, r, r), a.lerp(b, t / seg), segments=10, rings=6)
+                t += s['gap']
+            carry = t - seg
+    else:
+        tw, td = STYLE['plinth']['top']
+        g = common.rng(s['seed'])
+        for _ in range(s['scatter']):
+            common.sphere(bm, (r, r, r), ((g.random() - 0.5) * (tw - 0.1), (g.random() - 0.5) * (td - 0.1),
+                                          s.get('z', 0.0)), segments=6, rings=4)
+    ob = mesh_object(name, bm, [_mat(s, name)])
+    for p in ob.data.polygons:
+        p.use_smooth = True
+
+
+def ring(s, name):
+    """A flat ring at `at`, `z` up: radius `r` to its middle, `w` across, `h`
+    thick, with `ticks` bars of length `tick` standing off it at even angles
+    (Orbital's marker has four)."""
+    r, w, h = s['r'], s['w'], s['h']
+    n = 96
+    bm = bmesh.new()
+    rows = [[bm.verts.new((rad * math.cos(math.tau * i / n), rad * math.sin(math.tau * i / n), zz))
+             for i in range(n)] for rad, zz in ((r - w / 2, 0.0), (r + w / 2, 0.0), (r + w / 2, h), (r - w / 2, h))]
+    for k in range(4):
+        a, b = rows[k], rows[(k + 1) % 4]
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    for k in range(s.get('ticks', 0)):
+        tv = box(bm, (r + w, -w / 2, 0.0), (r + w + s['tick'], w / 2, h))
+        bmesh.ops.transform(bm, matrix=Matrix.Rotation(math.tau * (k + 0.5) / s['ticks'], 4, 'Z'), verts=tv)
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    _stand(bm, s)
+    mesh_object(name, bm, [_mat(s, name)])
+
+
+SHAPES = {'patch': patch, 'wall': wall, 'pine': pine, 'post': post, 'window': window,
+          'block': block, 'prism': prism, 'ball': ball, 'dots': dots, 'ring': ring}
+
+
+def repeat(s, k):
+    """Copy k of a shape that has `count` and `step`: moved k steps in X and Y."""
+    dx, dy = (v * k for v in s.get('step', [0, 0]))
+    t = dict(s)
+    for key in ('at', 'from', 'to'):
+        if key in s:
+            t[key] = [s[key][0] + dx, s[key][1] + dy]
+    if 'poly' in s:
+        t['poly'] = [[x + dx, y + dy] for x, y in s['poly']]
+    if 'path' in s:
+        t['path'] = [[x + dx, y + dy, *rest] for x, y, *rest in s['path']]
+    return t
 
 
 # ---------------------------------------------------------------- the 2D games' own builders
@@ -122,21 +240,26 @@ SHAPES = {'patch': patch, 'wall': wall, 'pine': pine, 'post': post, 'window': wi
 
 _scripts = {}
 _colours = {}
+_glow = {}
 
 
 def lit(name, colour, alpha=1.0):
-    """A builder's material, lit: `colour` a palette hex ('#rrggbb') or a
-    linear RGB(A) triple, unless the card's `colours` names this material."""
+    """A builder's material, lit: `colour` a palette hex ('#rrggbb' or an
+    int) or a linear RGB(A) triple, unless the card's `colours` names this
+    material; the card's `glow` gives one an emission strength."""
     if name in _colours:
         colour = _colours[name]
     if isinstance(colour, str):
         hexv = int(colour.lstrip('#'), 16)
+    elif isinstance(colour, int):
+        hexv = colour
     else:
         def ch(c):
             c = max(0.0, min(1.0, c))
             return round(255 * (c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055))
         hexv = (ch(colour[0]) << 16) | (ch(colour[1]) << 8) | ch(colour[2])
-    return material(name, hexv, roughness=0.15 if alpha < 1.0 else 0.75, alpha=alpha)
+    return material(name, hexv, roughness=0.15 if alpha < 1.0 else 0.75, alpha=alpha,
+                    emit=_glow.get(name, 0.0))
 
 
 def relight(gc):
@@ -152,6 +275,8 @@ def relight(gc):
         gc.holdout = lambda ob: bpy.data.objects.remove(ob)
     if hasattr(gc, 'bare'):
         gc.bare = lambda ob: ob
+    if hasattr(gc, 'material'):                 # Orbital: Workbench, its colour in diffuse_color only
+        gc.material = lambda name, hexv, alpha=1.0, *a, **k: lit(name, hexv, alpha)
 
 
 def game_script(project, script):
@@ -189,7 +314,8 @@ def game_script(project, script):
 def call_builder(mod, gc, call):
     """One call, [function, arg, ...]: a function of the script's, or a frame
     of its BUILDERS ('floor/a'). {"rng": n} is the project's own seeded
-    generator and {"spec": true} the spec its sheets build from."""
+    generator, {"spec": true} the spec its sheets build from and
+    {"palette": key} a colour from the game's own table (Orbital's COLOR)."""
     fn, *args = call
     def arg(a):
         if isinstance(a, dict) and 'rng' in a:
@@ -198,6 +324,8 @@ def call_builder(mod, gc, call):
             if gc._diorama_spec is None:
                 gc._diorama_spec = gc.spec()
             return gc._diorama_spec
+        if isinstance(a, dict) and 'palette' in a:
+            return gc.palette()[a['palette']]
         return a
     f = getattr(mod, fn, None) or getattr(mod, 'BUILDERS', {})[fn]
     f(*map(arg, args))
@@ -208,6 +336,8 @@ def build_game(project, b, x, y, name):
     mod, gc = game_script(project, b['build'])
     _colours.clear()
     _colours.update(b.get('colours', {}))
+    _glow.clear()
+    _glow.update(b.get('glow', {}))
     before = set(bpy.data.objects)
     for call in b['calls']:
         call_builder(mod, gc, call)
@@ -222,6 +352,7 @@ def build_game(project, b, x, y, name):
     s = b['scale']
     holder.scale = (s, s, s)
     _colours.clear()
+    _glow.clear()
     return holder
 
 
@@ -251,7 +382,8 @@ def build(card):
         bpy.data.materials['plinth-top'].node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = \
             common.linear(int(spec['ground'], 16))
     for i, s in enumerate(spec.get('shapes', [])):
-        SHAPES[s['kind']](s, f'{card}-{s["kind"]}-{i}')
+        for k in range(s.get('count', 1)):
+            SHAPES[s['kind']](repeat(s, k), f'{card}-{s["kind"]}-{i}' + (f'-{k}' if k else ''))
     for p in spec.get('place', []):
         step = p.get('step', [0, 0])
         for k in range(p.get('count', 1)):
