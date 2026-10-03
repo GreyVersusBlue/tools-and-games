@@ -192,11 +192,139 @@ export function wallPaint(floor, ax, az, bx, bz, probe = 1.2) {
     paintAt(floor, mx + nx, mz + nz),
     paintAt(floor, mx - nx, mz - nz),
   ].filter(Boolean);
-  // Two rooms, two opinions: the lower hex wins. Arbitrary, but *stable* —
-  // the alternative is a wall whose colour depends on ring winding.
-  if (sides.length === 2) return sides[0] <= sides[1] ? sides[0] : sides[1];
-  return sides[0] || DEFAULT_PAINT;
+  return pickPaint(sides[0], sides[1]);
 }
+
+// Two rooms, two opinions: the lower hex wins. Arbitrary, but *stable* —
+// the alternative is a wall whose colour depends on ring winding.
+function pickPaint(a, b) {
+  if (a && b) return a <= b ? a : b;
+  return a || b || DEFAULT_PAINT;
+}
+
+// ---------- one wall, two faces ----------
+//
+// `wallPaint` answers for the wall as one object, and until #823 that was the
+// only answer: a red room beside a blue one shared a wall that was red on both
+// sides, and a painted room beside a plain corridor painted the corridor's
+// side of the wall too. A wall has two faces, and each one is in a room.
+//
+// So a boundary is read as *stretches*: along the run, wherever the room on
+// either side changes, the wall changes with it. Each stretch says what its
+// left face is painted, what its right face is painted, and what the rest of
+// it is — the top, the ends, a face with no room in front of it — which is
+// `wallPaint`'s old rule asked of that stretch alone.
+//
+//   { t0, t1, left, right, body }
+//
+// `t0`/`t1` are fractions of the run. `left` is the face on the run's
+// left-hand normal (in (x, z), 90° counter-clockwise from a to b — walls.js's
+// `side: +1`) and `right` the other. A face is the hex of the room in front of
+// it, `DEFAULT_PAINT` for a room that never said, and null where there is no
+// room at all: that face is the weather's, and the facade's to clad.
+//
+// The stretches come from where the probe line *crosses a room's outline*,
+// not from samples along it, so a corridor wall with six classrooms behind it
+// changes colour exactly on each partition and nowhere else.
+
+// How far off the run's own line a face is read. Rooms meet on a wall's
+// centreline, so "which room is this face in" is exact however close the
+// probe stands — and close is what an angled room needs: at a 45° corner a
+// probe 1.2ft out (`wallPaint`'s, a 4ft lattice's) is outside the room for the
+// first 1.2ft of the wall, and that much of a painted wall would come out
+// plain.
+export const FACE_PROBE = 0.1;   // ft
+
+// A face shorter than this is not worth a seam. At an acute corner the probe
+// line starts outside the room it is about to enter, and a sliver of "no room"
+// there would cut a 6in piece off the end of the wall to say so.
+export const MIN_FACE = 1;   // ft
+
+// What one side of a run sees: [{ t0, t1, room, paint }], in order.
+function sideRuns(floor, segs, ox, oz, dx, dz) {
+  const ts = [0, 1];
+  for (const [p, q] of segs) {
+    const ex = q.x - p.x, ez = q.z - p.z;
+    const den = dx * ez - dz * ex;
+    if (Math.abs(den) < 1e-9) continue;          // parallel: it never crosses
+    const t = ((p.x - ox) * ez - (p.z - oz) * ex) / den;
+    const u = ((p.x - ox) * dz - (p.z - oz) * dx) / den;
+    if (u < -1e-9 || u > 1 + 1e-9) continue;
+    if (t > 1e-9 && t < 1 - 1e-9) ts.push(t);
+  }
+  ts.sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i + 1 < ts.length; i++) {
+    const t0 = ts[i], t1 = ts[i + 1];
+    if (t1 - t0 < 1e-9) continue;
+    const m = (t0 + t1) / 2;
+    const shape = shapeAt(floor, ox + dx * m, oz + dz * m);
+    out.push({ t0, t1, room: !!shape, paint: shape ? readPaint(shape.paint) : null });
+  }
+  return out;
+}
+
+const sideAt = (runs, t) => runs.find((r) => t >= r.t0 && t <= r.t1) || { room: false, paint: null };
+const sameFace = (a, b) => a.left === b.left && a.right === b.right && a.body === b.body;
+
+// A reader for one storey. Every room outline on it is gathered once, so a
+// rebuild that asks about a thousand walls walks the rings a thousand times
+// rather than gathering them a thousand times.
+export function facePainter(floor, probe = FACE_PROBE) {
+  const segs = [];
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings || []) {
+      const n = ring.pts.length;
+      for (let i = 0; i < n; i++) segs.push([ring.pts[i], ring.pts[(i + 1) % n]]);
+    }
+  }
+  return (ax, az, bx, bz) => {
+    const dx = bx - ax, dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-6) return [];
+    const nx = (-dz / len) * probe, nz = (dx / len) * probe;
+    const left = sideRuns(floor, segs, ax + nx, az + nz, dx, dz);
+    const right = sideRuns(floor, segs, ax - nx, az - nz, dx, dz);
+    const cuts = [...new Set([...left, ...right].flatMap((r) => [r.t0, r.t1]))]
+      .sort((a, b) => a - b);
+    let runs = [];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const t0 = cuts[i], t1 = cuts[i + 1];
+      if (t1 - t0 < 1e-9) continue;
+      const l = sideAt(left, (t0 + t1) / 2), r = sideAt(right, (t0 + t1) / 2);
+      runs.push({
+        t0, t1,
+        left: l.room ? l.paint || DEFAULT_PAINT : null,
+        right: r.room ? r.paint || DEFAULT_PAINT : null,
+        body: pickPaint(l.paint, r.paint),
+      });
+    }
+    // Slivers go to the longer neighbour, shortest first...
+    for (;;) {
+      if (runs.length < 2) break;
+      let k = -1;
+      for (let i = 0; i < runs.length; i++) {
+        const span = (runs[i].t1 - runs[i].t0) * len;
+        if (span < MIN_FACE && (k < 0 || span < (runs[k].t1 - runs[k].t0) * len)) k = i;
+      }
+      if (k < 0) break;
+      const a = runs[k - 1], b = runs[k + 1];
+      const into = !b || (a && a.t1 - a.t0 >= b.t1 - b.t0) ? a : b;
+      if (into === a) a.t1 = runs[k].t1; else b.t0 = runs[k].t0;
+      runs.splice(k, 1);
+    }
+    // ...and two stretches that say the same thing are one stretch.
+    runs = runs.reduce((acc, r) => {
+      const last = acc[acc.length - 1];
+      if (last && sameFace(last, r)) last.t1 = r.t1; else acc.push(r);
+      return acc;
+    }, []);
+    return runs;
+  };
+}
+
+export const wallFaceRuns = (floor, ax, az, bx, bz, probe = FACE_PROBE) =>
+  facePainter(floor, probe)(ax, az, bx, bz);
 
 // ---------- writing ----------
 

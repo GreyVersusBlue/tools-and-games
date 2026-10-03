@@ -44,7 +44,7 @@ import { failureText } from './bootcheck.js';
 import { overlaySize, showsOn } from './overlay.js';
 import { floorBounds, unionBounds, footprintMask } from './shadow.js';
 import {
-  finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT,
+  finishEntry, facePainter, DEFAULT_FINISH, DEFAULT_PAINT,
   facadeEntry, ROOF_MEMBRANE, ROOF_SHINGLE,
   glazingEntry, glazingForUse, DEFAULT_GLAZING,
 } from './finish.js';
@@ -4543,16 +4543,24 @@ export function initRender(canvas) {
     // boundary (walls.js, finish.js). Both are probes over the storey's rooms,
     // so both are memoized for the length of one rebuild.
     const thickness = wallProbe(floor);
-    const _paint = new THREE.Color();
-    const paintOf = (ax, az, bx, bz) => {
-      const hex = wallPaint(floor, ax, az, bx, bz);
-      // An unpainted room keeps the plain white multiplier the wall texture
-      // has always been drawn with, so a design from before Phase 2 renders
-      // exactly as it did.
-      if (hex === DEFAULT_PAINT) return _white;
-      _paint.set(hex);
-      return _paint;
-    };
+    //
+    // Paint is per *face* (#823): finish.js reads a run as stretches, each
+    // with the room in front of its left face, the room in front of its right,
+    // and a body colour for the top and the ends. `paintOf` turns the hexes
+    // into colours and leaves the stretches as they are.
+    const facesOf = facePainter(floor);
+    // An unpainted room keeps the plain white multiplier the wall texture
+    // has always been drawn with, so a design from before Phase 2 renders
+    // exactly as it did.
+    const tintOf = (hex) => (hex === DEFAULT_PAINT ? _white : new THREE.Color(hex));
+    const paintOf = (ax, az, bx, bz, out) => facesOf(ax, az, bx, bz).map((r) => ({
+      t0: r.t0,
+      t1: r.t1,
+      color: tintOf(r.body),
+      // A face with no room in front of it keeps the body colour, and the
+      // facade goes over it if the weather is what it faces.
+      skin: { out, left: r.left && tintOf(r.left), right: r.right && tintOf(r.right) },
+    }));
 
     // Phase 31's glazing, derived exactly as paint and thickness are: from
     // what is on either side of the boundary, never from a field.
@@ -4630,7 +4638,7 @@ export function initRender(canvas) {
     // A run of anything at any angle: the box is built along +X and turned to
     // face down the segment (see the rotation note in propplace.js — this is
     // the same convention, one axis over).
-    const addOriented = (len, h, d, x, y, z, angle, color, target = wallGeos, face = 0) => {
+    const addOriented = (len, h, d, x, y, z, angle, color, target = wallGeos, skin = null) => {
       const g = new THREE.BoxGeometry(len, h, d);
       // A grid wall is one cell wide and gets one tile of the wall texture; a
       // polygon wall is whatever length it is, so its long faces repeat per
@@ -4643,8 +4651,14 @@ export function initRender(canvas) {
       g.rotateY(-angle);
       g.translate(x, y, z);
       coloredGeo(g, color);
-      // ...and pz is 16-19, nz is 20-23. See `outwardFace`.
-      if (face) paintFace(g, face, _facade);
+      // ...and pz is 16-19, nz is 20-23. See `outwardFace`. Each room's paint
+      // goes on the face that room looks at, and the facade goes on last, so
+      // a face the weather sees is brick whatever is behind it.
+      if (skin) {
+        if (skin.left) paintFace(g, 1, skin.left);
+        if (skin.right) paintFace(g, -1, skin.right);
+        if (skin.out) paintFace(g, skin.out, _facade);
+      }
       target.push(g);
     };
 
@@ -4687,7 +4701,7 @@ export function initRender(canvas) {
     // the wall itself carrying on above and below it. Same construction as the
     // curtain wall above — frame, mullions, one pane — at a tighter spacing,
     // because a punched window is a smaller thing than a storefront bay.
-    const windowRun = (p0, p1, len, angle, band, t, color, face = 0, glaze = DEFAULT_GLAZING) => {
+    const windowRun = (p0, p1, len, angle, band, t, color, skin = null, glaze = DEFAULT_GLAZING) => {
       const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
       const ux = (p1.x - p0.x) / len, uz = (p1.z - p0.z) / len;
       // Wall under the sill and over the head — this is the line that makes a
@@ -4696,11 +4710,11 @@ export function initRender(canvas) {
       // window, so they are clad the same way — otherwise a brick school comes
       // out with a plaster band running under every classroom window.
       if (band.sill > 0.05) {
-        addOriented(len, band.sill, t, cx, baseY + band.sill / 2, cz, angle, color, wallGeos, face);
+        addOriented(len, band.sill, t, cx, baseY + band.sill / 2, cz, angle, color, wallGeos, skin);
       }
       const over = wallH - band.head;
       if (over > 0.05) {
-        addOriented(len, over, t, cx, baseY + band.head + over / 2, cz, angle, color, wallGeos, face);
+        addOriented(len, over, t, cx, baseY + band.head + over / 2, cz, angle, color, wallGeos, skin);
       }
       const paneH = band.head - band.sill;
       if (paneH <= 0.15) return;
@@ -4738,14 +4752,14 @@ export function initRender(canvas) {
 
     // One full-height piece of boundary, whichever kind it is. Everything that
     // knows about doorways calls this and stays out of the material business.
-    const fillSpan = (kind, p0, p1, angle, h, t, color, face = 0, glaze = DEFAULT_GLAZING) => {
+    const fillSpan = (kind, p0, p1, angle, h, t, color, skin = null, glaze = DEFAULT_GLAZING) => {
       const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
       if (len < 0.02) return;
       if (kind === SEG_RAIL) railRun(p0, p1, len, angle);
       else if (kind === SEG_GLASS) glazedRun(p0, p1, len, angle, h, baseY, t, glaze);
       else {
         addOriented(len, h, t, (p0.x + p1.x) / 2, baseY + h / 2, (p0.z + p1.z) / 2,
-          angle, color, wallGeos, face);
+          angle, color, wallGeos, skin);
       }
     };
 
@@ -4754,9 +4768,10 @@ export function initRender(canvas) {
     // according to what *it* is — a door leaves a hole with a header over it,
     // a window fills the stretch with wall, glass and wall again.
     //
-    // Thickness and paint are per run, resolved once from the uncut segment:
-    // a jamb is the same wall as the door beside it, and painting one of them
-    // and not the other would be a visible seam.
+    // Thickness is per run, resolved once from the uncut segment: a jamb is
+    // the same wall as the door beside it. Paint is per stretch of the run
+    // (`paintOf`), and a stretch only ends where the room in front of a face
+    // does, so the seam it makes is the one a partition is already standing on.
     const buildSegWall = (a, b, openings, kind = SEG_WALL) => {
       const L = segLength(a, b);
       if (L < 0.01) return;
@@ -4764,11 +4779,14 @@ export function initRender(canvas) {
       const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
       const h = kind === SEG_RAIL ? RAIL_H : wallH;
       const t = kind === SEG_RAIL ? WALL_T : thickness(a.x, a.z, b.x, b.z);
-      const color = kind === SEG_WALL ? paintOf(a.x, a.z, b.x, b.z).clone() : _white;
       // Which face of this run, if any, faces the weather. Resolved once per
-      // run for the same reason thickness and paint are: a door's jamb is the
-      // same wall as the door, and cladding one and not the other is a seam.
+      // run for the same reason thickness is: a door's jamb is the same wall
+      // as the door, and cladding one and not the other is a seam.
       const face = kind === SEG_WALL ? outwardFace(a.x, a.z, b.x, b.z) : 0;
+      // Glass and rail are not painted: one stretch, white, no skin.
+      const faces = kind === SEG_WALL ? paintOf(a.x, a.z, b.x, b.z, face) : [];
+      if (!faces.length) faces.push({ t0: 0, t1: 1, color: _white, skin: null });
+      const faceAt = (v) => faces.find((f) => v <= f.t1) || faces[faces.length - 1];
       // ...and which glazing, on the same terms and for the same reason: a
       // window and the borrowed light beside it are the same wall.
       const glaze = glazingOf(a.x, a.z, b.x, b.z);
@@ -4778,19 +4796,23 @@ export function initRender(canvas) {
         at(t0, (t0 <= 0 ? -t / 2 : 0) - grow),
         at(t1, (t1 >= 1 ? t / 2 : 0) + grow),
       ];
+      // A solid span is cut again wherever its paint changes, so each piece
+      // is one box with one colour a face.
       const span = (t0, t1) => {
-        const [p0, p1] = ends(t0, t1);
-        fillSpan(kind, p0, p1, angle, h, t, color, face, glaze);
+        for (const f of faces) {
+          const s0 = Math.max(t0, f.t0), s1 = Math.min(t1, f.t1);
+          if (s1 - s0 < 1e-9) continue;
+          const [p0, p1] = ends(s0, s1);
+          fillSpan(kind, p0, p1, angle, h, t, f.color, f.skin, glaze);
+        }
       };
+      // A door's header and trim are the door's own colour on every face, so
+      // they take no skin.
       const header = (t0, t1, hh, cy, col, depth = t, grow = 0) => {
         const [p0, p1] = ends(t0, t1, grow);
         const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
         if (len < 0.02) return;
-        // A header or a sill over an opening is the same wall as the run it
-        // interrupts, so it is clad the same way — but only when it is drawn
-        // in the run's own colour; a door's own trim keeps its own.
-        addOriented(len, hh, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, col,
-          wallGeos, col === color ? face : 0);
+        addOriented(len, hh, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, col);
       };
 
       const cuts = openings
@@ -4812,7 +4834,10 @@ export function initRender(canvas) {
           const [p0, p1] = ends(c.t0, c.t1);
           const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
           if (len > 0.05 && kind !== SEG_RAIL) {
-            windowRun(p0, p1, len, angle, windowBand(c.spec), t, color, face, glaze);
+            // One window is one piece of wall: it takes the paint at its
+            // own middle rather than being cut under the glass.
+            const f = faceAt((c.t0 + c.t1) / 2);
+            windowRun(p0, p1, len, angle, windowBand(c.spec), t, f.color, f.skin, glaze);
           }
         } else {
           // A gap in a railing is just a gap — there is nothing to hang a

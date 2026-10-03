@@ -364,7 +364,12 @@ and add to this list rather than starting a new one.
   long and rarely placeable indoors.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
-- Wall paint is one colour per wall, not per face.
+- Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
+  the room in front of it, and a wall changes colour on the partition behind
+  it. What a face takes is still the *room's* one paint; there is no accent
+  wall, because nothing stores a colour against one segment of a ring. The
+  top and the ends keep the one-colour rule, and a glazed run's frame is not
+  painted at all.
 - A pitched roof over a curve is a stepped rectangle; a straight skeleton
   would fix it.
 - Site regions can be restyled and deleted but not re-shaped.

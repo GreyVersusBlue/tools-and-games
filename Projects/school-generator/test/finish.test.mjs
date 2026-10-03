@@ -12,6 +12,7 @@ import { serialize, deserialize } from '../js/save-load.js';
 import {
   FLOOR_FINISHES, FINISH_KEYS, DEFAULT_FINISH, DEFAULT_PAINT,
   finishEntry, readFinish, readPaint, finishAt, paintAt, wallPaint,
+  wallFaceRuns, facePainter,
   applyFinish, finishSchedule,
   GLAZINGS, GLAZING_KEYS, DEFAULT_GLAZING, glazingEntry, glazingForUse, PRIVATE_USES,
 } from '../js/finish.js';
@@ -93,6 +94,109 @@ test('a wall between two painted rooms picks one, and always the same one', () =
   const b = wallPaint(f, 5 * CELL, y, 1 * CELL, y);   // the same wall, read backwards
   assert.equal(a, b, 'a wall does not change colour with which way you read it');
   assert.ok(a === '#aa0000' || a === '#0000aa');
+});
+
+// ---------- one wall, two faces (#823) ----------
+//
+// The fixture every test below reads: a red room and a blue room side by
+// side, 12ft each, with a plain hall under both. In feet, A is x 4..16,
+// B is x 16..28, both z 4..12; the hall is x 4..28, z 12..20.
+function twoRoomsAndAHall() {
+  const s = createState(20, 20);
+  sheet(s, 0)
+    .box(1, 1, 3, 2, { name: 'A', paint: '#aa0000' })
+    .box(4, 1, 6, 2, { name: 'B', paint: '#0000aa' })
+    .box(1, 3, 6, 4, { name: 'Hall' })
+    .bake();
+  return s.floors[0];
+}
+
+test('a wall between two painted rooms is each room\'s colour on that room\'s side', () => {
+  const f = twoRoomsAndAHall();
+  // The partition, read toward +z: its left-hand normal (-dz, dx) points at
+  // -x, which is A.
+  assert.deepEqual(wallFaceRuns(f, 16, 4, 16, 12), [
+    { t0: 0, t1: 1, left: '#aa0000', right: '#0000aa', body: '#0000aa' },
+  ]);
+  // Read backwards it is the same wall: the faces swap names and keep rooms.
+  const back = wallFaceRuns(f, 16, 12, 16, 4);
+  assert.equal(back.length, 1);
+  assert.equal(back[0].left, '#0000aa', 'B is on the left reading toward -z');
+  assert.equal(back[0].right, '#aa0000');
+  assert.equal(back[0].body, wallPaint(f, 16, 4, 16, 12), 'the top keeps the one-colour rule');
+});
+
+test('a painted room does not paint the plain room\'s side of the wall', () => {
+  const f = twoRoomsAndAHall();
+  // A's south wall only: the hall is at +z.
+  const [run, ...rest] = wallFaceRuns(f, 4, 12, 16, 12);
+  assert.equal(rest.length, 0);
+  assert.equal(run.left, DEFAULT_PAINT, 'the hall never said, so its face is off-white');
+  assert.equal(run.right, '#aa0000');
+});
+
+test('a face with no room in front of it is nobody\'s to paint', () => {
+  const f = twoRoomsAndAHall();
+  // A's north wall: the room is at +z, the car park at -z.
+  const [run] = wallFaceRuns(f, 4, 4, 16, 4);
+  assert.equal(run.left, '#aa0000');
+  assert.equal(run.right, null, 'null is what leaves the face to the facade');
+  // ...and a run with nothing either side is one stretch saying so.
+  assert.deepEqual(wallFaceRuns(f, 40, 60, 60, 60), [
+    { t0: 0, t1: 1, left: null, right: null, body: DEFAULT_PAINT },
+  ]);
+});
+
+test('a wall with two rooms behind it changes colour on the partition, not at its middle', () => {
+  const s = createState(20, 20);
+  // A is 8ft wide and B is 16ft, so the partition is a third of the way
+  // along the hall's 24ft wall: x 12 of 4..28.
+  sheet(s, 0)
+    .box(1, 1, 2, 2, { name: 'A', paint: '#aa0000' })
+    .box(3, 1, 6, 2, { name: 'B', paint: '#0000aa' })
+    .box(1, 3, 6, 4, { name: 'Hall' })
+    .bake();
+  const runs = wallFaceRuns(s.floors[0], 4, 12, 28, 12);
+  assert.equal(runs.length, 2);
+  assert.ok(Math.abs(runs[0].t1 - 1 / 3) < 1e-9, `the seam is at ${runs[0].t1}, not 1/3`);
+  assert.equal(runs[0].t1, runs[1].t0, 'and the two stretches meet on it');
+  assert.deepEqual(runs.map((r) => r.right), ['#aa0000', '#0000aa']);
+  assert.deepEqual(runs.map((r) => r.left), [DEFAULT_PAINT, DEFAULT_PAINT]);
+  assert.deepEqual(runs.map((r) => r.body), ['#aa0000', '#0000aa']);
+});
+
+test('two rooms the same colour behind one wall are one stretch', () => {
+  const s = createState(20, 20);
+  sheet(s, 0)
+    .box(1, 1, 2, 2, { name: 'A', paint: '#336699' })
+    .box(3, 1, 6, 2, { name: 'B', paint: '#336699' })
+    .box(1, 3, 6, 4, { name: 'Hall' })
+    .bake();
+  assert.equal(wallFaceRuns(s.floors[0], 4, 12, 28, 12).length, 1);
+});
+
+test('an angled room\'s wall is painted to the corner', () => {
+  const s = createState(20, 20);
+  // A right triangle with a 45° corner at (4, 4). Along its hypotenuse the
+  // probe line is outside the room for the first 0.1ft, which is a sliver.
+  const tri = addShape(s, 0, [{ x: 4, z: 4 }, { x: 24, z: 4 }, { x: 24, z: 24 }], {});
+  applyFinish(tri, undefined, '#445566');
+  const f = s.floors[0];
+  // Whichever way the hypotenuse is read, one face is the room's from end to
+  // end and the other is nobody's.
+  for (const run of [wallFaceRuns(f, 4, 4, 24, 24), wallFaceRuns(f, 24, 24, 4, 4)]) {
+    assert.equal(run.length, 1, 'no sliver is cut off the end');
+    assert.deepEqual([run[0].t0, run[0].t1], [0, 1]);
+    assert.deepEqual([run[0].left, run[0].right].sort(), ['#445566', null].sort());
+  }
+});
+
+test('one painter answers for every wall on the storey', () => {
+  const f = twoRoomsAndAHall();
+  const faces = facePainter(f);
+  assert.deepEqual(faces(16, 4, 16, 12), wallFaceRuns(f, 16, 4, 16, 12));
+  assert.deepEqual(faces(4, 12, 28, 12), wallFaceRuns(f, 4, 12, 28, 12));
+  assert.deepEqual(faces(5, 5, 5, 5), [], 'a run with no length has no faces');
 });
 
 test('applyFinish sets, clears, and reports whether anything changed', () => {
