@@ -1000,7 +1000,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **8 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion, School Generator, Faire Weekend, The Absalom Inheritance, Corner & Kettle; TG-13); Orbital, Closing Time, Integer Foundry and Daredevil are next | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **8 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion, School Generator, Faire Weekend, The Absalom Inheritance, Corner & Kettle; TG-13); Orbital, Closing Time, Integer Foundry and Daredevil are next | `site` | 2+ | Sonnet 5 | blender-gpu | claude/dioramas-3 | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
 | 15 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
 | 16 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
 | 17 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
