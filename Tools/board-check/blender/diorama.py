@@ -32,7 +32,8 @@ from common import DIORAMAS, STYLE, OUT, SITE, box, cone, material, mesh_object
 
 
 def patch(s, name):
-    """A flat prism over a polygon on the plinth top, `z` thick."""
+    """A flat prism over a polygon on the plinth top, `z` thick; `emit` makes
+    it glow in its own colour (The Fracture Cycle's seam)."""
     bm = bmesh.new()
     bottom = [bm.verts.new((x, y, 0.0)) for x, y in s['poly']]
     top = [bm.verts.new((x, y, s['z'])) for x, y in s['poly']]
@@ -43,7 +44,8 @@ def patch(s, name):
         j = (i + 1) % n
         bm.faces.new([bottom[i], bottom[j], top[j], top[i]])
     bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
-    mesh_object(name, bm, [material(name, int(s['colour'], 16), roughness=s.get('roughness', 0.85))])
+    mesh_object(name, bm, [material(name, int(s['colour'], 16), roughness=s.get('roughness', 0.85),
+                                    emit=s.get('emit', 0.0))])
 
 
 def wall(s, name):

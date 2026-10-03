@@ -22,8 +22,9 @@
 // holds it to the frame: the style's size, and everything that is not
 // backdrop inside `frame.safe` and at least `frame.minWidth` of the frame
 // across. A pixel is backdrop when it is within `frame.tolerance` of its
-// row's colour at the frame's left edge: the backdrop is a vertical gradient,
-// so a row is one colour. A missing render fails rather than skips. Named
+// row's colour at the frame's left edge (the median of pixels 1 to 5; the
+// outermost pixel ring is the denoiser's padding and is not read, #853): the
+// backdrop is a vertical gradient, so a row is one colour. A missing render fails rather than skips. Named
 // cards narrow it to those; --preview reads diorama.py --preview's quarter-
 // size frames from out/ instead.
 //
@@ -166,11 +167,15 @@ async function frame({ b64, tol }) {
   const ctx = cv.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
   const px = ctx.getImageData(0, 0, w, h).data;
+  // The denoiser pads the frame's outermost pixels (Torchbearer's top-left
+  // corner came out 32,24,15 among 39,25,12), so that ring is not scanned and
+  // a row's backdrop is the median of its next five pixels, not one (#853).
+  const med = (r, c) => [1, 2, 3, 4, 5].map(x => px[r + x * 4 + c]).sort((a, b) => a - b)[2];
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
-  for (let y = 0; y < h; y++) {
+  for (let y = 1; y < h - 1; y++) {
     const r = y * w * 4;
-    const br = px[r], bg = px[r + 1], bb = px[r + 2];
-    for (let x = 0; x < w; x++) {
+    const br = med(r, 0), bg = med(r, 1), bb = med(r, 2);
+    for (let x = 1; x < w - 1; x++) {
       const i = r + x * 4;
       if (Math.abs(px[i] - br) > tol || Math.abs(px[i + 1] - bg) > tol || Math.abs(px[i + 2] - bb) > tol) {
         if (x < x0) x0 = x; if (x > x1) x1 = x;
