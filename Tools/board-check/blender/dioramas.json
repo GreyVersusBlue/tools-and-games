@@ -1,5 +1,5 @@
 {
-  "about": "The board cards' dioramas (BACKLOG.md 'The site itself: Blender dioramas'). `style` is the style sheet every card shares and common.py's diorama section builds from: the render size (2640 by 1600, the 33:20 promote-previews.mjs crops both outputs from), the plinth (its top, `top` metres wide by deep, is the plane Z = 0), the camera, the three lights and the backdrop. `frame` is what dioramas.mjs --rendered holds each render to: everything that is not backdrop inside `safe` (x0, y0, x1, y1 as fractions of the frame from its top left; y1 keeps it above the og card's crop, which loses the bottom 13%), spanning at least `minWidth` of the frame, with a pixel counted as backdrop when it is within `tolerance` (0-255, per channel) of its row's own colour at the frame's left edge. `machine` is the one machine every render in the set comes from (a lit render's pixels differ between machines). Each card is named as its preview is (index.html data-preview, promote-previews.mjs KNOWN) and lists what stands on its plinth: `ground` recolours the plinth top, `shapes` are built for the card (patch: a flat prism over a polygon; wall; pine; post), and `place` imports the game's own .glb files from `project`, at a point on the plinth top, `z` above it, `rot` degrees about Z and `scale`, repeated `count` times `step` apart. Castle Conundrum is out of scope (#491).",
+  "about": "The board cards' dioramas (BACKLOG.md 'The site itself: Blender dioramas'). `style` is the style sheet every card shares and common.py's diorama section builds from: the render size (2640 by 1600, the 33:20 promote-previews.mjs crops both outputs from), the plinth (its top, `top` metres wide by deep, is the plane Z = 0), the camera, the three lights and the backdrop. `frame` is what dioramas.mjs --rendered holds each render to: everything that is not backdrop inside `safe` (x0, y0, x1, y1 as fractions of the frame from its top left; y1 keeps it above the og card's crop, which loses the bottom 13%), spanning at least `minWidth` of the frame, with a pixel counted as backdrop when it is within `tolerance` (0-255, per channel) of its row's own colour at the frame's left edge. `machine` is the one machine every render in the set comes from (a lit render's pixels differ between machines). Each card is named as its preview is (index.html data-preview, promote-previews.mjs KNOWN) and lists what stands on its plinth: `ground` recolours the plinth top, `shapes` are built for the card (patch: a flat prism over a polygon; wall; pine; post), and `place` imports the game's own .glb files from `project`, at a point on the plinth top, `z` above it, `rot` degrees about Z and `scale`, repeated `count` times `step` apart. A game that ships no .glb has `build` instead (#848): `calls` run the game's own sprite script (`build`, from `project`, with its project's common.py) one function or BUILDERS frame at a time, [name, arg ...] with {rng: n} for the project's seeded generator and {spec: true} for its spec; what they build stands under one empty placed like `place`, its unlit sprite materials made lit in the same colours, and `colours` recolours a material by name (Absalom's heir is a tint mask; Corner & Kettle's liquid is white until the game tints it). A `wall` may take `z` to stand on something. Castle Conundrum is out of scope (#491).",
   "machine": "Devon's Windows machine: RTX 3070 Ti, Blender 5.2.2 LTS (Steam), Cycles on OptiX",
   "style": {
     "size": [2640, 1600],
@@ -130,6 +130,100 @@
         { "glb": "models/ship/panel.glb", "at": [1.3, 1.25], "z": 0.4, "scale": 0.5 },
         { "glb": "models/ship/pipes.glb", "at": [0.0, 1.24], "z": 0.95, "scale": 0.5 },
         { "glb": "models/ship/shelf.glb", "at": [-1.95, -0.55], "z": 0.75, "rot": 90, "scale": 0.5 }
+      ]
+    },
+    "school-generator": {
+      "project": "Projects/school-generator",
+      "ground": "c9b48a",
+      "shapes": [
+        { "kind": "wall", "from": [-2, 1.3], "to": [2, 1.3], "h": 1.1, "t": 0.06, "colour": "e9e6df" },
+        { "kind": "wall", "from": [-2, -1.3], "to": [-2, 1.3], "h": 1.1, "t": 0.06, "colour": "dcd8cf" },
+        { "kind": "window", "at": [0.1, 1.27], "z": 0.6, "w": 1.6, "h": 0.42, "colour": "f4f4f0", "stars": 0 }
+      ],
+      "place": [
+        { "glb": "assets/models/desk.glb", "at": [-0.95, -0.75], "rot": 0, "scale": 0.45, "step": [0.6, 0], "count": 4 },
+        { "glb": "assets/models/chair-basic.glb", "at": [-0.95, -0.95], "rot": 180, "scale": 0.45, "step": [0.6, 0], "count": 4 },
+        { "glb": "assets/models/desk.glb", "at": [-0.95, -0.2], "rot": 0, "scale": 0.45, "step": [0.6, 0], "count": 4 },
+        { "glb": "assets/models/chair-basic.glb", "at": [-0.95, -0.4], "rot": 180, "scale": 0.45, "step": [0.6, 0], "count": 4 },
+        { "glb": "assets/models/desk.glb", "at": [-0.95, 0.35], "rot": 0, "scale": 0.45, "step": [0.6, 0], "count": 4 },
+        { "glb": "assets/models/chair-basic.glb", "at": [-0.95, 0.14999999999999997], "rot": 180, "scale": 0.45, "step": [0.6, 0], "count": 4 },
+        { "glb": "assets/models/workstation.glb", "at": [1.35, 0.85], "rot": 0, "scale": 0.45 },
+        { "glb": "assets/models/chair-task.glb", "at": [1.35, 1.05], "rot": 180, "scale": 0.45 },
+        { "glb": "assets/models/locker.glb", "at": [-1.9, 0.3], "rot": -90, "scale": 0.45 },
+        { "glb": "assets/models/shelf.glb", "at": [-1.35, 1.18], "rot": 0, "scale": 0.45 },
+        { "glb": "assets/models/plant.glb", "at": [1.8, 1.1], "rot": 0, "scale": 0.45 },
+        { "glb": "assets/models/cubby.glb", "at": [1.75, -0.6], "rot": 90, "scale": 0.45 }
+      ]
+    },
+    "faire-weekend": {
+      "project": "Projects/Ren-Faire-Claude",
+      "ground": "93a052",
+      "shapes": [
+        { "kind": "patch", "colour": "a57b4c", "z": 0.006, "roughness": 0.95, "poly": [[-1.97, -0.5], [1.97, -0.5], [1.97, -0.15], [-1.97, -0.15]] },
+        { "kind": "patch", "colour": "bc9c52", "z": 0.004, "roughness": 0.95, "poly": [[-1.97, -1.27], [-0.45, -1.27], [-0.45, -0.62], [-1.97, -0.62]] },
+        { "kind": "patch", "colour": "33512f", "z": 0.004, "roughness": 0.95, "poly": [[1, 0.8], [1.97, 0.8], [1.97, 1.27], [1, 1.27]] },
+        { "kind": "pine", "at": [1.75, 1.05], "h": 0.8, "colour": "33512f" },
+        { "kind": "pine", "at": [1.3, 1.1], "h": 0.7, "colour": "2a4428" }
+      ],
+      "build": [
+        { "build": "tools/blender/markers.py", "calls": [["gate"]], "at": [-1.6, -0.33], "scale": 0.85 },
+        { "build": "tools/blender/markers.py", "calls": [["stage"]], "at": [-0.55, 0.45], "scale": 0.85 },
+        { "build": "tools/blender/markers.py", "calls": [["food"]], "at": [0.6, 0.3], "scale": 0.85 },
+        { "build": "tools/blender/markers.py", "calls": [["vendor"]], "at": [1.4, 0.3], "scale": 0.85 },
+        { "build": "tools/blender/markers.py", "calls": [["demo"]], "at": [-0.85, -0.95], "scale": 0.85 },
+        { "build": "tools/blender/markers.py", "calls": [["food"]], "at": [0.6, -0.95], "rot": 180, "scale": 0.85 },
+        { "build": "tools/blender/markers.py", "calls": [["vendor"]], "at": [1.4, -0.95], "rot": 180, "scale": 0.85 }
+      ]
+    },
+    "absalom-inheritance": {
+      "project": "Projects/absalom-inheritance",
+      "ground": "141019",
+      "shapes": [],
+      "build": [
+        { "build": "tools/blender/tiles.py", "calls": [["floor/a", {"spec": true}]], "at": [-0.86, -1.075], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 3 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/b", {"spec": true}]], "at": [-1.29, -1.075], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/a", {"spec": true}]], "at": [-1.29, -0.645], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/b", {"spec": true}]], "at": [-0.86, -0.645], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/a", {"spec": true}]], "at": [-0.86, -0.215], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/b", {"spec": true}]], "at": [-1.29, -0.215], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/a", {"spec": true}]], "at": [-1.29, 0.215], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/b", {"spec": true}]], "at": [-0.86, 0.215], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/a", {"spec": true}]], "at": [-0.86, 0.645], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["floor/b", {"spec": true}]], "at": [-1.29, 0.645], "z": 0.012, "scale": 0.43, "step": [0.86, 0], "count": 3 },
+        { "build": "tools/blender/tiles.py", "calls": [["treasure", {"spec": true}]], "at": [1.29, 0.645], "z": 0.012, "scale": 0.43 },
+        { "build": "tools/blender/tiles.py", "calls": [["stairs", {"spec": true}]], "at": [1.72, -1.075], "z": 0.012, "scale": 0.43 },
+        { "build": "tools/blender/tiles.py", "calls": [["wall", {"spec": true}]], "at": [-1.72, 1.075], "scale": 0.43, "step": [0.43, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["door", {"spec": true}]], "at": [0, 1.075], "scale": 0.43 },
+        { "build": "tools/blender/tiles.py", "calls": [["wall", {"spec": true}]], "at": [0.43, 1.075], "scale": 0.43, "step": [0.43, 0], "count": 4 },
+        { "build": "tools/blender/tiles.py", "calls": [["wall", {"spec": true}]], "at": [-1.72, -1.075], "scale": 0.43, "step": [0, 0.43], "count": 5 },
+        { "build": "tools/blender/tiles.py", "calls": [["pillar", {"spec": true}]], "at": [-0.43, 0.215], "z": 0.012, "scale": 0.43 },
+        { "build": "tools/blender/tiles.py", "calls": [["pillar", {"spec": true}]], "at": [0.86, 0.215], "z": 0.012, "scale": 0.43 },
+        { "build": "tools/blender/tiles.py", "calls": [["casket", {"spec": true}]], "at": [1.29, 0.645], "z": 0.012, "rot": -20, "scale": 0.43 },
+        { "build": "tools/blender/figures.py", "calls": [["heir", {"spec": true}]], "at": [-0.43, -0.645], "z": 0.012, "rot": 70, "scale": 0.43, "colours": {"heir": "#3f6ea8"} },
+        { "build": "tools/blender/figures.py", "calls": [["foe", {"spec": true}]], "at": [0.43, -0.645], "z": 0.012, "rot": 20, "scale": 0.43 },
+        { "build": "tools/blender/figures.py", "calls": [["foe", {"spec": true}]], "at": [0.43, -1.075], "z": 0.012, "rot": 30, "scale": 0.43 },
+        { "build": "tools/blender/figures.py", "calls": [["boss", {"spec": true}]], "at": [0.86, -0.215], "z": 0.012, "rot": 40, "scale": 0.43 }
+      ]
+    },
+    "corner-and-kettle": {
+      "project": "Projects/corner-and-kettle",
+      "ground": "8a5a3a",
+      "shapes": [
+        { "kind": "wall", "from": [-2, 1.3], "to": [2, 1.3], "h": 1.1, "t": 0.06, "colour": "f5ece1" },
+        { "kind": "wall", "from": [-2, -1.3], "to": [-2, 1.3], "h": 1.1, "t": 0.06, "colour": "eadfce" },
+        { "kind": "window", "at": [-0.6, 1.27], "z": 0.7, "w": 1.4, "h": 0.4, "colour": "5e4a6a", "stars": 0 },
+        { "kind": "window", "at": [1.2, 1.27], "z": 0.75, "w": 0.9, "h": 0.5, "colour": "2b2420", "stars": 0 },
+        { "kind": "wall", "from": [-1.55, -0.15], "to": [1.55, -0.15], "h": 0.42000000000000004, "t": 0.42, "colour": "3b2418" },
+        { "kind": "wall", "from": [-1.57, -0.15], "to": [1.57, -0.15], "z": 0.42000000000000004, "h": 0.04, "t": 0.5, "colour": "e6d3b3" }
+      ],
+      "build": [
+        { "build": "tools/blender/cups.py", "calls": [["glass", "back", 0.42], ["liquid", "full"], ["foam"], ["glass", "front", 0.07], ["handle"]], "at": [-1.05, -0.2], "z": 0.46, "rot": 0, "scale": 0.075, "colours": {"liquid": "#938276"} },
+        { "build": "tools/blender/cups.py", "calls": [["glass", "back", 0.42], ["liquid", "full"], ["ice", {"rng": 104}], ["straw"], ["glass", "front", 0.07]], "at": [-0.43, -0.08], "z": 0.46, "rot": 0, "scale": 0.075, "colours": {"liquid": "#5a3a24"} },
+        { "build": "tools/blender/cups.py", "calls": [["glass", "back", 0.42], ["liquid", "full"], ["whip"], ["drizzle"], ["glass", "front", 0.07], ["handle"]], "at": [0.19, -0.2], "z": 0.46, "rot": 0, "scale": 0.075, "colours": {"liquid": "#7d5e4c", "drizzle": "#c98a3a"} },
+        { "build": "tools/blender/cups.py", "calls": [["glass", "back", 0.42], ["liquid", "full"], ["sprinkles", {"rng": 108}], ["glass", "front", 0.07], ["handle"]], "at": [0.81, -0.08], "z": 0.46, "rot": 0, "scale": 0.075, "colours": {"liquid": "#c7a679"} },
+        { "build": "tools/blender/cups.py", "calls": [["croissant"]], "at": [1.25, -0.25], "z": 0.46, "rot": 0, "scale": 0.12 },
+        { "build": "tools/blender/cups.py", "calls": [["muffin"]], "at": [1.3, 0], "z": 0.46, "rot": 0, "scale": 0.12 },
+        { "build": "tools/blender/cups.py", "calls": [["cookie", {"rng": 203}]], "at": [-1.4, -0.2], "z": 0.46, "rot": 0, "scale": 0.16 }
       ]
     }
   }

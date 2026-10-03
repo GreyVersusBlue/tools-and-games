@@ -1,6 +1,8 @@
 # A board card's diorama (D1 and D2, BACKLOG.md "The site itself: Blender
 # dioramas"): the shared plinth, camera, lights and backdrop from common.py,
-# with the card's own scene from dioramas.json standing on the plinth top.
+# with the card's own scene from dioramas.json standing on the plinth top:
+# the game's .glb files (`place`), shapes built here (`shapes`), and, for a
+# game that ships no .glb, its own sprite builders (`build`, #848).
 #
 #   blender -b --factory-startup -P blender/diorama.py -- [card ...] [--samples N] [--preview]
 #
@@ -49,7 +51,8 @@ def wall(s, name):
     d = b - a
     t = s['t'] / 2
     bm = bmesh.new()
-    box(bm, (-d.length / 2 - t, -t, 0.0), (d.length / 2 + t, t, s['h']))
+    z = s.get('z', 0.0)                         # a wall may stand on something: a counter's top
+    box(bm, (-d.length / 2 - t, -t, z), (d.length / 2 + t, t, z + s['h']))
     turn = Matrix.Rotation(math.atan2(d.y, d.x), 4, 'Z')
     bmesh.ops.transform(bm, matrix=Matrix.Translation((a + b) / 2) @ turn, verts=bm.verts)
     mesh_object(name, bm, [material(name, int(s['colour'], 16), roughness=0.9)])
@@ -107,6 +110,121 @@ def window(s, name):
 SHAPES = {'patch': patch, 'wall': wall, 'pine': pine, 'post': post, 'window': window}
 
 
+# ---------------------------------------------------------------- the 2D games' own builders
+#
+# A game that ships no .glb still builds its sprites in Blender: Faire
+# Weekend's markers, Absalom's tiles and figures, Corner & Kettle's cups are
+# real geometry, rendered flat. A `build` entry calls those builders (#848)
+# rather than modelling the game a second time. The script is loaded with its
+# own project's common.py in place of this one and its top-level main() call
+# left out; its flat, unlit materials become lit ones of the same colour, so
+# the plinth's lights shade them like everything else on it.
+
+_scripts = {}
+_colours = {}
+
+
+def lit(name, colour, alpha=1.0):
+    """A builder's material, lit: `colour` a palette hex ('#rrggbb') or a
+    linear RGB(A) triple, unless the card's `colours` names this material."""
+    if name in _colours:
+        colour = _colours[name]
+    if isinstance(colour, str):
+        hexv = int(colour.lstrip('#'), 16)
+    else:
+        def ch(c):
+            c = max(0.0, min(1.0, c))
+            return round(255 * (c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055))
+        hexv = (ch(colour[0]) << 16) | (ch(colour[1]) << 8) | ch(colour[2])
+    return material(name, hexv, roughness=0.15 if alpha < 1.0 else 0.75, alpha=alpha)
+
+
+def relight(gc):
+    """Swap a project common.py's unlit materials for lit ones, and its
+    sprite-only tricks (holdouts, the ink-free collection) for nothing."""
+    if hasattr(gc, 'flat'):
+        gc.flat = lambda name, hexv, alpha=1.0, *a, **k: lit(name, hexv, alpha)
+    if hasattr(gc, 'face_mat'):                 # Absalom: top, left, right; the top is the colour
+        gc.face_mat = lambda name, top, left, right: lit(name, top)
+    if hasattr(gc, 'holdout_mat'):
+        gc.holdout_mat = lambda name: lit(name, '#000000', alpha=0.0)
+    if hasattr(gc, 'holdout'):
+        gc.holdout = lambda ob: bpy.data.objects.remove(ob)
+    if hasattr(gc, 'bare'):
+        gc.bare = lambda ob: ob
+
+
+def game_script(project, script):
+    """A game's sprite script as a module, loaded once."""
+    key = (project, script)
+    if key in _scripts:
+        return _scripts[key]
+    import ast
+    import importlib.util
+    import types
+    path = os.path.join(SITE, project, script)
+    folder = os.path.dirname(path)
+    tag = os.path.basename(project).replace('-', '_').lower()
+    spec = importlib.util.spec_from_file_location(f'{tag}_common', os.path.join(folder, 'common.py'))
+    gc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gc)
+    relight(gc)
+    tree = ast.parse(open(path, encoding='utf8').read(), path)
+    tree.body = [n for n in tree.body if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+                                              and getattr(n.value.func, 'id', None) == 'main')]
+    mod = types.ModuleType(f'{tag}_{os.path.splitext(os.path.basename(script))[0]}')
+    mod.__file__ = path
+    saved_path, saved_common = list(sys.path), sys.modules.get('common')
+    sys.modules['common'] = gc
+    try:
+        exec(compile(tree, path, 'exec'), mod.__dict__)
+    finally:
+        sys.path[:] = saved_path
+        sys.modules['common'] = saved_common
+    gc._diorama_spec = None
+    _scripts[key] = (mod, gc)
+    return mod, gc
+
+
+def call_builder(mod, gc, call):
+    """One call, [function, arg, ...]: a function of the script's, or a frame
+    of its BUILDERS ('floor/a'). {"rng": n} is the project's own seeded
+    generator and {"spec": true} the spec its sheets build from."""
+    fn, *args = call
+    def arg(a):
+        if isinstance(a, dict) and 'rng' in a:
+            return gc.rng(a['rng'])
+        if isinstance(a, dict) and a.get('spec'):
+            if gc._diorama_spec is None:
+                gc._diorama_spec = gc.spec()
+            return gc._diorama_spec
+        return a
+    f = getattr(mod, fn, None) or getattr(mod, 'BUILDERS', {})[fn]
+    f(*map(arg, args))
+
+
+def build_game(project, b, x, y, name):
+    """One `build` entry at one point: its calls, under one empty."""
+    mod, gc = game_script(project, b['build'])
+    _colours.clear()
+    _colours.update(b.get('colours', {}))
+    before = set(bpy.data.objects)
+    for call in b['calls']:
+        call_builder(mod, gc, call)
+    made = [o for o in bpy.data.objects if o not in before]
+    holder = bpy.data.objects.new(name, None)
+    bpy.context.scene.collection.objects.link(holder)
+    for o in made:
+        if o.parent is None:
+            o.parent = holder
+    holder.location = Vector((x, y, b.get('z', 0.0)))
+    holder.rotation_euler = (0.0, 0.0, math.radians(b.get('rot', 0.0)))
+    s = b['scale']
+    holder.scale = (s, s, s)
+    _colours.clear()
+    return holder
+
+
 def centre(holder):
     """Move a holder's children so their bounds sit centred on it in X and Y
     with their lowest point on it: a model built round some other origin
@@ -142,6 +260,11 @@ def build(card):
                                   at=(x, y, p.get('z', 0.0)), rot=p.get('rot', 0.0), scale=p['scale'])
             if p.get('centre'):
                 centre(h)
+    for i, b in enumerate(spec.get('build', [])):
+        step = b.get('step', [0, 0])
+        for k in range(b.get('count', 1)):
+            build_game(spec['project'], b, b['at'][0] + step[0] * k, b['at'][1] + step[1] * k,
+                       f'{card}-build-{i}-{k}')
     return scene
 
 
