@@ -1011,8 +1011,8 @@ and #222 was closed unmerged an hour of suites later.
 | 11 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
 | 12 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
 | 13 | Wire the cup and food sheet in, once rank 12 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
-| 14 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
-| 15 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 14 | The site's diorama pipeline: `Tools/board-check/blender/`, one camera, one light rig and one plinth for every board card | `site` | ½ | Opus 5.5 | blender-gpu | `claude/site-dioramas` | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D1 |
+| 15 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment | `site` | 2+ | Sonnet 5 | blender-gpu | `claude/site-dioramas` | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
 | 16 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
 | 17 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
 | 18 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
