@@ -14,7 +14,7 @@ import { floorLabel, floorBaseY } from './grid.js';
 import { removeLink, wrapAngle } from './props.js';
 import { gridSnap } from './propplace.js';
 import {
-  STAIR_TYPES, stairMetrics, footprintBox, rectCorners, cutBox,
+  STAIR_TYPES, stairMetrics, footprintBox, rectCorners, cutBox, cutPolygon, rampLayout,
   linksFrom, linkAt, linkById, addStair, stairWidth, openingSize,
   elevatorSize, elevatorDoorWidth,
 } from './stairs.js';
@@ -54,7 +54,11 @@ function describe(state, link, metrics) {
   const inches = (metrics.riser * 12).toFixed(1);
   const cut = cutBox(link, metrics);
   const noun = link.type === 'ramp' ? 'Ramp' : 'Stair';
-  const rise = link.type === 'ramp'
+  const fold = rampLayout(link, metrics);
+  const rise = fold
+    ? `${fold.n} runs of ${fold.runLen.toFixed(1)}ft, ${(fold.runRise * 12).toFixed(0)}in of rise each` +
+      (fold.legal ? '' : ' (over the 30in a run may rise)')
+    : link.type === 'ramp'
     ? `${metrics.run.toFixed(1)}ft of run`
     : `${metrics.steps} risers at ${inches}in, ${metrics.run.toFixed(1)}ft of run`;
   const opens = cut
@@ -156,8 +160,8 @@ export function initStairEdit({ getState, renderApi, host }) {
       // ...and `cutBox` is null for an elevator, which cuts nothing. `setLoop`
       // already takes null to mean "draw no outline"; what it could not take
       // was `rectCorners` being handed one.
-      const cut = cutBox(link, metrics);
-      setLoop(cutOutline, cut ? rectCorners(link, cut) : null);
+      // The polygon, not the box: a folded ramp's hole is not a rectangle.
+      setLoop(cutOutline, cutPolygon(link, metrics));
     } else {
       selOutline.visible = false;
       cutOutline.visible = false;

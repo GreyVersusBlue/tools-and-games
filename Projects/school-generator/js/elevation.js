@@ -46,7 +46,7 @@ import {
 import { terrainField, groundAt } from './terrain.js';
 import {
   stairMetrics, linksFrom, runMetrics, localToWorld, footprintPolygon, isRun,
-  floorCuts, inFloorCut, pointInPolygon,
+  floorCuts, inFloorCut, pointInPolygon, rampPath,
 } from './stairs.js';
 import { sheetDims, stackDims } from './annotate.js';
 
@@ -604,7 +604,16 @@ export function computeSection(state, sec) {
       if (!crossed) continue;
       const m = runMetrics(link, metrics);
       const pts = [];
-      if (link.type === 'ramp') {
+      const path = rampPath(link, metrics);
+      if (path.length) {
+        // A folded ramp in profile: every run, in the order it is climbed.
+        // Runs side by side overlap on the page, which is what a section
+        // through a switchback looks like.
+        for (const p of path) {
+          const w = localToWorld(link, p.x, p.z);
+          pts.push({ u: uAt(w.x, w.z), y: base + p.y });
+        }
+      } else if (link.type === 'ramp') {
         const p0 = localToWorld(link, 0, 0);
         const p1 = localToWorld(link, 0, m.run);
         pts.push({ u: uAt(p0.x, p0.z), y: base });

@@ -60,8 +60,8 @@ import { meshSite, yardTileFor } from './sitemesh.js';
 import { siteCurbs } from './site.js';
 import { MinHeap } from './heap.js';
 import {
-  stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, isElevator,
-  LANDING,
+  stairsOf, stairMetrics, runLength, runTravel, rampLayout, localToWorld, elevatorSize,
+  isRun, isElevator, LANDING,
 } from './stairs.js';
 import { MIN_ACCESSIBLE_W, doorRolls, rampRolls } from './clearance.js';
 
@@ -423,7 +423,9 @@ export function buildNav(state, opts = {}) {
       // (It took a fire drill that never finished to notice.)
       const ends = runLandings(link, metrics);
       foot = ends.foot; head = ends.head;
-      span = runLength(link, metrics);
+      // A folded ramp is walked the long way round: every lane and across
+      // every turn, which is what it costs and what egress has to count.
+      span = runTravel(link, metrics);
       cost = span * (link.type === 'ramp' ? RAMP_COST : STAIR_COST);
     }
     const node = put({
@@ -438,6 +440,10 @@ export function buildNav(state, opts = {}) {
       b: { x: head.x, z: head.z, floor: link.to },
       link,
     });
+    // The turns of a folded ramp, bottom to top. A straight line from foot to
+    // head crosses every guard between the lanes, so a route says each one.
+    const via = runTurns(link, metrics);
+    if (via.length) node.via = via;
     links.push(node);
     adj.set(node.id, []);
     const below = roomIdAt(link.from, foot.x, foot.z);
@@ -591,11 +597,40 @@ export function runLandings(link, metrics) {
     const at = localToWorld(link, 0, -(d / 2 + 2));
     return { foot: at, head: at };
   }
+  // A folded ramp leaves by the open edge of its top landing, which is at the
+  // near end beside the foot for an even count and at the far end for an odd
+  // one, and never straight ahead of the entry.
+  const layout = rampLayout(link, metrics);
+  if (layout) {
+    const mx = (layout.exit.a.x + layout.exit.b.x) / 2, ez = layout.exit.a.z;
+    return {
+      foot: localToWorld(link, 0, -2),
+      head: localToWorld(link, mx, ez + (ez > 0 ? 2 : -2)),
+    };
+  }
   const run = runLength(link, metrics);
   return {
     foot: localToWorld(link, 0, -2),
     head: localToWorld(link, 0, run + LANDING + 2),
   };
+}
+
+// Where a folded ramp is walked between its two ends, bottom to top: into and
+// out of every turn landing down the middle of the lane, half a landing in.
+// World points on the storey it climbs from. Empty for anything straight.
+export function runTurns(link, metrics) {
+  const layout = isElevator(link) ? null : rampLayout(link, metrics);
+  if (!layout) return [];
+  const out = [];
+  for (const l of layout.landings) {
+    if (l.kind !== 'turn') continue;
+    const z = (l.box.z0 + l.box.z1) / 2;
+    for (const i of l.lanes) {
+      const r = layout.runs[i].box;
+      out.push({ ...localToWorld(link, (r.x0 + r.x1) / 2, z), floor: link.from });
+    }
+  }
+  return out;
 }
 
 // Which node a point is standing in: the room if it is in one, the outside if
@@ -776,6 +811,10 @@ export function waypoints(nav, path, opts = {}) {
       const first = up ? n.a : n.b;
       const second = up ? n.b : n.a;
       out.push({ x: first.x, z: first.z, floor: first.floor, kind: 'link', node: n.id, link: n.link });
+      // A folded ramp's turns, in the order this direction meets them.
+      for (const v of (up ? n.via || [] : [...(n.via || [])].reverse())) {
+        out.push({ x: v.x, z: v.z, floor: v.floor, kind: 'ride', node: n.id, link: n.link });
+      }
       out.push({ x: second.x, z: second.z, floor: second.floor, kind: 'ride', node: n.id, link: n.link });
       floor = second.floor;
     } else if (n.kind === 'outside') {

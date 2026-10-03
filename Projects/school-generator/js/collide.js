@@ -46,7 +46,7 @@ import { propsOnFloor } from './props.js';
 import { footprintOf } from './propplace.js';
 import {
   stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt,
-  openingRails, elevatorsOn, elevatorWalls, rampSlope,
+  openingRails, elevatorsOn, elevatorWalls, rampSlope, rampGuardSegments,
 } from './stairs.js';
 import { wallProbe } from './walls.js';
 import { wallLinesOf, lineOpenings } from './wallrun.js';
@@ -317,6 +317,29 @@ export function openingRailSegments(state, floorIndex) {
   return out;
 }
 
+// A handrail is two inches of tube, not a wall: a 4ft lane with a rail down
+// each side has to leave a walker room to be in it.
+export const GUARD_PAD = 0.1;     // ft
+
+// The guards on a folded ramp, on the storey it climbs from: both sides of
+// every lane and round every landing (#825). They belong to the lower storey
+// because `storeyAt` floors, so somebody on the ramp is on that storey until
+// they have arrived. Without them the only thing between two lanes is the
+// difference in their heights, and beside a turn landing that is a kerb a
+// walker steps over, which cuts the corner the landing is there to make.
+// A straight run has none and this returns nothing for it.
+export function rampGuardSegs(state, floorIndex) {
+  const metrics = stairMetrics(state);
+  const out = [];
+  for (const link of stairsOf(state)) {
+    if (link.from !== floorIndex) continue;
+    for (const g of rampGuardSegments(link, metrics)) {
+      out.push({ ax: g.a.x, az: g.a.z, bx: g.b.x, bz: g.b.z, t: 0.2, pad: GUARD_PAD });
+    }
+  }
+  return out;
+}
+
 // The three shaft walls an elevator car stands inside, on either of the two
 // storeys it serves. A stair's boundary is the rail around the hole it cut; an
 // elevator cuts nothing, so the shaft is what keeps you in the car.
@@ -349,6 +372,7 @@ export function buildCollider(state, floorIndex, catalogGet, opts = {}) {
   const probe = floor ? wallProbe(floor) : null;
   const segs = wallSegments(floor, probe)
     .concat(openingRailSegments(state, floorIndex))
+    .concat(rampGuardSegs(state, floorIndex))
     .concat(elevatorSegments(state, floorIndex));
   const props = propObstacles(state, floorIndex, catalogGet);
   return {

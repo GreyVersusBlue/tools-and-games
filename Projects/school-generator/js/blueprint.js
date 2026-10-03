@@ -27,7 +27,7 @@ import {
 import { solidSpans } from './collide.js';
 import {
   stairMetrics, linksFrom, floorCuts, footprintPolygon, stairWidth, runMetrics,
-  rampSlope, elevatorsOn, elevatorSize,
+  rampSlope, elevatorsOn, elevatorSize, rampLayout, rampPath, rampGuards, localToWorld,
 } from './stairs.js';
 import { propsOnFloor } from './props.js';
 import { catalogEntry, variantKey } from './catalog.js';
@@ -183,6 +183,25 @@ function planProps(state, floorIndex) {
   return out;
 }
 
+function foldSymbol(link, metrics) {
+  const fold = rampLayout(link, metrics);
+  if (!fold) return null;
+  const at = (p) => localToWorld(link, p.x, p.z);
+  const path = rampPath(link, metrics);
+  const lanes = [];
+  for (let i = 0; i + 1 < path.length; i += 2) lanes.push({ a: at(path[i]), b: at(path[i + 1]) });
+  const lines = rampGuards(link, metrics)
+    .filter((g) => g.kind !== 'edge')
+    .map((g) => ({ a: at(g.a), b: at(g.b) }));
+  // Where each run meets a landing, across its own lane.
+  for (const r of fold.runs) {
+    for (const z of [r.box.z0, r.box.z1]) {
+      lines.push({ a: at({ x: r.box.x0, z }), b: at({ x: r.box.x1, z }) });
+    }
+  }
+  return { runs: fold.n, lanes, lines };
+}
+
 function stairSymbols(state, floorIndex) {
   const metrics = stairMetrics(state);
   const out = [];
@@ -196,6 +215,10 @@ function stairSymbols(state, floorIndex) {
         // A ramp's plan symbol carries its slope, because that number is the
         // difference between an accessible route and a decorative one.
         slope: link.type === 'ramp' ? rampSlope(link) : 0,
+        // A folded ramp (#825): how many runs, the two ends of each in the
+        // order they are climbed, and the lines between its lanes and
+        // landings. Absent on a straight run, which draws as it always did.
+        ...foldSymbol(link, metrics),
       });
     } else if (link.type !== 'elevator') {
       out.push({ kind: 'opening', poly });
@@ -608,6 +631,24 @@ function drawStairs(ctx, plan, layout) {
     // slope instead of treads, since a ramp with tread lines is a stair.
     const link = s.link;
     const hw = s.width / 2;
+    if (s.lanes) {
+      // A folded ramp: the lines between its lanes and landings, an arrow up
+      // every run, and the slope with the count on the first one.
+      for (const l of s.lines) strokePath(ctx, plan, layout, [l.a, l.b]);
+      const along = (l, t) => ({ x: l.a.x + (l.b.x - l.a.x) * t, z: l.a.z + (l.b.z - l.a.z) * t });
+      for (const l of s.lanes) drawArrow(ctx, plan, layout, along(l, 0.15), along(l, 0.85));
+      const mid = along(s.lanes[0], 0.5);
+      const c = toPx(plan, layout, mid.x, mid.z);
+      const label = `RAMP 1:${Math.round(s.slope)} ×${s.runs}`;
+      ctx.font = `${Math.round(layout.scale * 0.6)}px "Public Sans", system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      const w = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(c.x - w / 2 - 3, c.y - layout.scale * 0.55, w + 6, layout.scale * 0.85);
+      ctx.fillStyle = INK.dim;
+      ctx.fillText(label, c.x, c.y);
+      continue;
+    }
     for (let k = 1; k < s.steps; k++) {
       const lz = (k / s.steps) * s.run;
       const a = ptWorld(link, -hw, lz), b = ptWorld(link, hw, lz);
