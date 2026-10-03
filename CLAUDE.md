@@ -5,7 +5,8 @@ games under `Projects/`, classroom tools under `Tools/`, the Numina rules site
 under `Numina/`, PF2e Remaster reference data under `Pathfinder/`, and shared
 media and JS under `assets/` and `Audio/`. The repo root is served whole
 (Firebase Hosting was dropped on 2026-09-23 and `firebase.json` with it; the
-`CNAME` and `.nojekyll` files are the host's config now), so **every file here
+`CNAME` and `.nojekyll` files are the host's config now; the domain's DNS is
+Cloudflare's, and the responses measured on 2026-10-03 came from GitHub Pages, #821), so **every file here
 is a live URL**, markdown included, and nothing can be hidden from the web by
 an ignore rule any more.
 

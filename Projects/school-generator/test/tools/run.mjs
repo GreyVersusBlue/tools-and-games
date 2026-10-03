@@ -1281,6 +1281,115 @@ const CHECKS = [
       if (relief.maps < 3) throw new Error(`only ${relief.maps} relief maps are in the scene`);
     },
   },
+  // ---------- #823: a wall has two faces ----------
+  //
+  // finish.test.mjs proves which room each face of a run belongs to. Nothing
+  // in Node can say whether render.js then wrote that colour onto *that* face
+  // of the box: `addOriented` turns a box built along +X, and the claim that
+  // its +Z face ends up on the run's left is a claim about three.js. So this
+  // reads the triangles back out of the scene and asks each one which way it
+  // faces and what colour it is.
+  {
+    name: 'wall-faces',
+    what: 'a partition between a red room and a blue one is red on one face and blue on the other',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { shapesOf, shapeAt, isBuilt, SEG_WALL } = await import('./js/shapes.js');
+        const { floorBaseY } = await import('./js/grid.js');
+        const s = window.app.state, fi = s.currentFloor, floor = s.floors[fi];
+        // A plain partition: built, solid, nothing cut into it, and one room
+        // (the same one, end to end) in front of each face.
+        let pick = null;
+        for (const shape of shapesOf(floor)) {
+          for (const ring of shape.rings) {
+            for (let i = 0; i < ring.pts.length && !pick; i++) {
+              if (ring.walls[i] !== SEG_WALL || !isBuilt(ring.walls[i])) continue;
+              if (ring.openings.some((o) => o.seg === i)) continue;
+              const a = ring.pts[i], b = ring.pts[(i + 1) % ring.pts.length];
+              const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+              if (len < 8) continue;
+              const nx = -dz / len, nz = dx / len;
+              const rooms = (side) => new Set([0.1, 0.3, 0.5, 0.7, 0.9].map((t) =>
+                shapeAt(floor, a.x + dx * t + nx * side * 0.3, a.z + dz * t + nz * side * 0.3)));
+              const l = rooms(1), r = rooms(-1);
+              if (l.size !== 1 || r.size !== 1) continue;
+              const [left] = l, [right] = r;
+              if (!left || !right || left === right) continue;
+              pick = { a, b, dx, dz, len, nx, nz, left, right };
+            }
+          }
+        }
+        if (!pick) return { found: false };
+        const { a, dx, dz, len, nx, nz, left, right } = pick;
+        const was = [left.paint, right.paint];
+        left.paint = '#aa0000';
+        right.paint = '#0000aa';
+        window.app.renderApi.buildFromState(s);
+        const want = { left: new THREE.Color('#aa0000'), right: new THREE.Color('#0000aa') };
+        const out = { found: true, left: { n: 0, bad: [] }, right: { n: 0, bad: [] } };
+        const y0 = floorBaseY(s, fi), y1 = floorBaseY(s, fi + 1);
+        window.app.renderApi.scene.traverse((o) => {
+          const g = o.isMesh && o.geometry;
+          if (!g || !g.attributes.color || !g.attributes.normal || !o.userData.baked) return;
+          const P = g.attributes.position, N = g.attributes.normal, C = g.attributes.color;
+          const I = g.index;
+          const tris = (I ? I.count : P.count) / 3;
+          for (let k = 0; k < tris; k++) {
+            const tri = [0, 1, 2].map((j) => (I ? I.getX(k * 3 + j) : k * 3 + j));
+            // One triangle of one long face of this wall: every corner faces
+            // across the run, sits on this storey and within a wall's
+            // thickness of the run's line — and the triangle lies inside the
+            // run and spans most of it, which the next wall along the same
+            // line does not, nor the end cap of a wall that butts into this
+            // one (same normal, same place).
+            const at = tri.map((i) => {
+              const rx = P.getX(i) - a.x, rz = P.getZ(i) - a.z;
+              return {
+                i, y: P.getY(i),
+                facing: N.getX(i) * nx + N.getZ(i) * nz,
+                along: (rx * dx + rz * dz) / len,
+                off: rx * nx + rz * nz,
+              };
+            });
+            if (at.some((v) => v.y < y0 - 0.01 || v.y > y1 + 0.01)) continue;
+            if (at.some((v) => Math.abs(v.facing) < 0.99 || Math.abs(v.off) > 0.6)) continue;
+            if (at.some((v) => Math.sign(v.off) !== Math.sign(v.facing))) continue;
+            const alongs = at.map((v) => v.along);
+            if (Math.min(...alongs) < -0.6 || Math.max(...alongs) > len + 0.6) continue;
+            if (Math.max(...alongs) - Math.min(...alongs) < len / 2) continue;
+            const side = at[0].facing > 0 ? 'left' : 'right';
+            const w = want[side];
+            for (const v of at) {
+              out[side].n++;
+              const c = [C.getX(v.i), C.getY(v.i), C.getZ(v.i)];
+              if (Math.abs(c[0] - w.r) + Math.abs(c[1] - w.g) + Math.abs(c[2] - w.b) > 0.003) {
+                out[side].bad.push(c.map((x) => x.toFixed(3)).join(' '));
+              }
+            }
+          }
+        });
+        // Put the school back the way the next check expects to find it.
+        left.paint = was[0];
+        right.paint = was[1];
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!ctx.found) throw new Error('the sample school has no plain partition between two rooms');
+      for (const side of ['left', 'right']) {
+        if (ctx[side].n < 6) {
+          throw new Error(`found ${ctx[side].n} corners on the ${side} face, and a face is two triangles`);
+        }
+        if (ctx[side].bad.length) {
+          throw new Error(`${ctx[side].bad.length} of ${ctx[side].n} corners on the ${side} face ` +
+            `are ${ctx[side].bad[0]}, not that room's paint`);
+        }
+      }
+      if (after.json !== before.json) throw new Error('the check left its paint on the design');
+    },
+  },
   {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',

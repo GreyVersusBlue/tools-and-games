@@ -2359,10 +2359,8 @@ Three of them are closed.
    `tests/props.mjs`), and Fourth Quarter's two texture tiers (2k 69.2 to
    23.0 MB, 1k byte for byte). Bell to Bell's referenced bytes went from 62.1
    MB to 13.4. `--check` holds every texture to its error against the
-   original. Still **not measurable here**: whether the host gzips `.gltf`
-   and `.glb`. The host is Cloudflare Pages, whose proxy 403s this sandbox,
-   so every number above is raw bytes and gzip-6 bytes side by side; a
-   `curl -sI -H 'Accept-Encoding: gzip'` from a real machine settles it.
+   original. The host gzips `.gltf` and `.glb` (measured 2026-10-03, #821), so
+   the raw-under-gzipped rule is the conservative one and stays.
    Castle Conundrum was the third game and is doing its own version of this in
    its own repo (#491). Not touched: Bell to Bell's four paintings (1.78 MB).
 3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and

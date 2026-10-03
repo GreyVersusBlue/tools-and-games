@@ -10,7 +10,7 @@ has collision, gravity, footsteps, room acoustics, a positioned sun, a start
 point you choose, and a school's worth of people walking their timetable. It
 reads what you have drawn — occupant load, travel distance, common path,
 accessible route, whether a wheelchair can turn at each door and reach each
-counter, glazing ratio, reverberation time — against the code edition you
+counter, glazing ratio, daylight factor, reverberation time — against the code edition you
 name, citing the table each number came from and answering with a range
 where its input was a guess — and it will generate a whole building from a
 student count and a sentence.
