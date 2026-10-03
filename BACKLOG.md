@@ -121,13 +121,16 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City's car sheet
-wired in and the tavern's click targets** (PR #500): two ¼s that name Opus 5.5
-and ran on Sonnet 5.5, a cloud session. The batch before it was School
-Generator's model pack wired in (PR #498). That is the line to
+**The last batch of ranked work that shipped** is **TG-13, the site's
+diorama pipeline and its first four dioramas** (PR #506): the old rank 14 (½,
+Opus 5.5) and the first increment of the dioramas row, now rank 14 (2+, naming
+Sonnet 5), both run under Opus 5.5 on Devon's Windows machine as one PR by
+his instruction (#785). TG-13 is done only when that row is. The batch before
+it was Signal City's car sheet wired in and the tavern's click targets
+(PR #500). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**25 ranked items remain**, and **every one of them names a model.**
+**24 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
 2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 14 are
