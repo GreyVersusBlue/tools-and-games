@@ -1,5 +1,5 @@
 {
-  "about": "School Generator's Blender style sheet as data (BACKLOG.md 'Blender assets: the common plan', Projects/school-generator/WISHLIST.md B1 and B2). validate.mjs reads it. Files hold only what js/gltf.js reads: TRIANGLES primitives with POSITION, NORMAL and COLOR_0, one material, no image, no skin, no animation, no extension. A class's triangles and bytes sit well under gltf.js's MAX_TRIANGLES and MAX_MODEL_BYTES, since a built-in prop is placed by the hundred; validate.mjs reads those two constants from the loader and fails if a class reaches them. unit is metres per foot: the builders work in feet like js/render.js, files leave in metres. row is the catalog row a builder was written against, in feet, and box is what that builder actually draws (an overhanging counter top or a faucet makes it a little bigger than the row), held to `tolerance` per axis. The base sits on y = 0 within 1 cm and the footprint's centre within `centre` metres of x = 0 and z = 0. palette is the tints render.js gives that row by role, computed the way render.js computes them (three.js HSL in its linear working space, so its darkest tints are black), and a vertex colour outside it fails. left says what a file does not carry that its page builder does.",
+  "about": "School Generator's Blender style sheet as data (BACKLOG.md 'Blender assets: the common plan', Projects/school-generator/WISHLIST.md B1 and B2). validate.mjs reads it. Files hold only what js/gltf.js reads: TRIANGLES primitives with POSITION, NORMAL and COLOR_0, one material, no image, no skin, no animation, no extension. A class's triangles and bytes sit well under gltf.js's MAX_TRIANGLES and MAX_MODEL_BYTES, since a built-in prop is placed by the hundred; validate.mjs reads those two constants from the loader and fails if a class reaches them. unit is metres per foot: the builders work in feet like js/render.js, files leave in metres. row is the catalog row a builder was written against, in feet, and box is what that builder actually draws (an overhanging counter top or a faucet makes it a little bigger than the row), held to `tolerance` per axis. The base sits on y = 0 within 1 cm and the footprint's centre within `centre` metres of x = 0 and z = 0. palette is the tints render.js gives that row by role, as hex: js/builtin-models.js's `tints` says how each role is made from the row's colour (HSL in sRGB, HISTORY #818), validate.mjs fails a palette entry that is not what `tints` gives, and a vertex colour outside the palette fails. left says what a file does not carry that its page builder does.",
   "loader": "js/gltf.js",
   "unit": 0.3048,
   "tolerance": 0.1,
@@ -16,85 +16,85 @@
     "chair-basic": {
       "class": "seat", "file": "assets/models/chair-basic.glb",
       "row": { "type": "student-chair", "w": 1.4, "d": 1.5, "h": 2.7 }, "box": [1.4, 1.46, 2.7],
-      "palette": { "seat": "3f6fae", "back": "335b90", "leg": "000000" }
+      "palette": { "seat": "3f6fae", "back": "345c90", "leg": "1d3350" }
     },
     "chair-stack": {
       "class": "seat", "file": "assets/models/chair-stack.glb",
       "row": { "type": "chair-stack", "w": 1.6, "d": 1.6, "h": 2.7 }, "box": [1.6, 1.55, 2.7],
-      "palette": { "seat": "7a3f3f", "back": "592c2c", "leg": "000000" }
+      "palette": { "seat": "7a3f3f", "back": "663535", "leg": "261414" }
     },
     "chair-task": {
       "class": "seat", "file": "assets/models/chair-task.glb",
       "row": { "type": "chair-task", "w": 2, "d": 2, "h": 3 }, "box": [2.0, 1.94, 3.0],
-      "palette": { "seat": "37474f", "back": "000000", "leg": "000000", "caster": "000000" }
+      "palette": { "seat": "37474f", "back": "263137", "leg": "030304", "caster": "000000" }
     },
     "chair-rocker": {
       "class": "seat", "file": "assets/models/chair-rocker.glb",
       "row": { "type": "chair-rocking", "w": 2, "d": 2.5, "h": 3.3 }, "box": [2.0, 2.63, 3.3],
-      "palette": { "seat": "8a5a3a", "back": "603d26", "leg": "000000" }
+      "palette": { "seat": "8a5a3a", "back": "6d472e", "leg": "301f14" }
     },
     "stool": {
       "class": "seat", "file": "assets/models/stool.glb",
       "row": { "type": "stool-lab-24", "w": 1.2, "d": 1.2, "h": 2 }, "box": [1.2, 1.2, 1.99],
-      "palette": { "seat": "6d7682", "leg": "000000" },
+      "palette": { "seat": "535c66", "leg": "030304" },
       "left": "the foot ring (a torus); two crossed rails hold the legs"
     },
     "sofa": {
       "class": "seat", "file": "assets/models/sofa.glb",
       "row": { "type": "sofa", "w": 6, "d": 2.8, "h": 2.7 }, "box": [6, 2.8, 2.7],
-      "palette": { "frame": "1f2530", "cushion": "687896", "backcushion": "61708c" },
+      "palette": { "frame": "3b4456", "cushion": "657492", "backcushion": "5e6d89" },
       "left": "the lounge chair, bean bag and floor cushion, which are the same builder's other kinds"
     },
     "desk": {
       "class": "desk", "file": "assets/models/desk.glb",
       "row": { "type": "student-desk", "w": 2, "d": 1.5, "h": 2.5 }, "box": [2, 1.5, 2.5],
-      "palette": { "top": "c9a06a", "leg": "675033" }
+      "palette": { "top": "c9a06a", "leg": "79572c" }
     },
     "table": {
       "class": "table", "file": "assets/models/table.glb",
       "row": { "type": "table-seminar-6", "w": 6, "d": 2.5, "h": 2.4 }, "box": [6, 2.5, 2.4],
-      "palette": { "top": "b08a5f", "leg": "000000" },
+      "palette": { "top": "b08a5f", "leg": "4f3c27" },
       "left": "the round, trapezoid and kidney tops and the folding base"
     },
     "workstation": {
       "class": "desk", "file": "assets/models/workstation.glb",
       "row": { "type": "desk-computer", "w": 4, "d": 2.5, "h": 2.5 }, "box": [4, 2.5, 3.64],
-      "palette": { "top": "b08a5f", "leg": "000000", "dark": "000000", "keys": "d6a875" },
+      "palette": { "top": "b08a5f", "leg": "56412a", "dark": "181512", "keys": "c9af92" },
       "left": "the printer and sewing machine devices"
     },
     "counter": {
       "class": "bench", "file": "assets/models/counter.glb",
       "row": { "type": "desk-circulation", "w": 6, "d": 2.5, "h": 3.2 }, "box": [6.15, 2.5, 3.2],
-      "palette": { "body": "8a6a48", "top": "b28a5f" },
+      "palette": { "body": "8a6a48", "top": "ad8962" },
       "left": "the sneeze guard, the second tier and the tray return's chute"
     },
     "labbench": {
       "class": "bench", "file": "assets/models/labbench.glb",
       "row": { "type": "bench-lab", "w": 6, "d": 2.5, "h": 3 }, "box": [6, 2.54, 3.58],
-      "palette": { "top": "000000", "body": "6d7888", "door": "7b8799", "handle": "000000", "tap": "b8bcc2" },
+      "palette": { "top": "000000", "body": "48515e", "door": "55606f", "handle": "0a0b0d", "tap": "b8bcc2" },
       "left": "the robotics bench's pegboard"
     },
     "shelf": {
       "class": "storage", "file": "assets/models/shelf.glb",
       "row": { "type": "bookshelf-full", "w": 3, "d": 1, "h": 6 }, "box": [3, 1, 6],
-      "palette": { "side": "000000", "shelf": "95653c" }
+      "palette": { "side": "4e341f", "shelf": "906139" }
     },
     "cubby": {
       "class": "storage", "file": "assets/models/cubby.glb",
       "row": { "type": "cubby-unit", "w": 4, "d": 1.25, "h": 3.5 }, "box": [4, 1.25, 3.5],
-      "palette": { "side": "9a603e", "shelf": "d18556", "divider": "8e5938" },
+      "palette": { "side": "9c5d37", "shelf": "c98b66", "divider": "915633" },
       "left": "the tote rack's coloured bins"
     },
     "locker": {
       "class": "storage", "file": "assets/models/locker.glb",
       "row": { "type": "locker-bank", "w": 6, "d": 1.25, "h": 6 }, "box": [6, 1.32, 6],
-      "palette": { "body": "1c375a", "door": "3f6fae", "vent": "000000" },
+      "palette": { "body": "27446b", "door": "3f6fae", "vent": "16273e" },
       "left": "the half-height bank's second tier"
     },
     "plant": {
       "class": "plant", "file": "assets/models/plant.glb",
       "row": { "type": "plant-floor", "w": 1.5, "d": 1.5, "h": 4 }, "box": [1.5, 1.26, 3.35],
-      "palette": { "pot": "a9623f", "stem": "7a5230", "leaf": "3f7a48", "leaf2": "4b8f55", "leaf3": "2c5933" }
+      "palette": { "pot": "a9623f", "stem": "7a5230", "leaf": "3f7a48", "leaf2": "488b52", "leaf3": "35663c" }
     }
   }
 }

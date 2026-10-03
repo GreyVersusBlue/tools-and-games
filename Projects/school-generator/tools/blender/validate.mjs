@@ -20,6 +20,11 @@
 //     `centre` metres off x = 0 or z = 0, or any side more than `tolerance` off
 //     the box render.js's builder draws at the catalog row the item names
 //   - the row's own w, d and h no longer being what js/catalog.js says
+//   - a palette that is not what js/builtin-models.js's `tints` gives the
+//     item's row: a role on one side only, or a hex that is not the recipe
+//     applied to the row's colour in js/catalog.js (HISTORY #818)
+//   - two roles of one file that are made differently and come out the same
+//     colour, which `retint` could not tell apart (#819)
 //   - a vertex colour that is not in the item's palette, or a palette colour
 //     no vertex wears
 //   - a .glb under assets/models/ that budget.json does not name
@@ -47,6 +52,8 @@ const ok = (cond, what, detail = '') => {
 const { MAX_MODEL_BYTES, MAX_TRIANGLES, parseGLB, readModel } =
   await import(pathToFileURL(path.join(PROJECT, budget.loader)).href);
 const { catalogEntry } = await import(pathToFileURL(path.join(PROJECT, 'js', 'catalog.js')).href);
+const { BUILTIN_MODELS, builtinPalette } =
+  await import(pathToFileURL(path.join(PROJECT, 'js', 'builtin-models.js')).href);
 
 const toSrgb = c => {
   const v = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
@@ -148,7 +155,23 @@ for (const [name, item] of Object.entries(budget.items)) {
       `${name}: ${axis} ${got[i].toFixed(2)} ft is within ${budget.tolerance * 100}% of ${want}`);
   });
 
-  // colour: every vertex in the palette, every palette entry on some vertex
+  // colour: the palette is the page's recipes applied to the row's colour
+  const recipes = (BUILTIN_MODELS[name] || {}).tints || {};
+  const want = row && BUILTIN_MODELS[name] ? builtinPalette(name, row.color) : {};
+  ok(Object.keys(recipes).sort().join() === Object.keys(item.palette).sort().join(),
+    `${name}: the palette's roles are the ones js/builtin-models.js tints`,
+    `${Object.keys(item.palette).join(' ')} against ${Object.keys(recipes).join(' ')}`);
+  for (const [role, hex] of Object.entries(item.palette)) {
+    ok(want[role] === hex, `${name}: palette "${role}" ${hex} is its recipe on ${row ? row.color : 'no row'}`, `the recipe gives ${want[role]}`);
+  }
+  const roles = Object.keys(recipes);
+  const clash = [];
+  roles.forEach((a, i) => roles.slice(i + 1).forEach((b) => {
+    if (JSON.stringify(recipes[a]) !== JSON.stringify(recipes[b]) && want[a] && want[b] && rgbOf(want[a]).every((c, k) => Math.abs(c - rgbOf(want[b])[k]) <= 2)) clash.push(`${a}/${b}`);
+  }));
+  ok(!clash.length, `${name}: no two roles made differently are within two steps of one colour`, clash.join(' '));
+
+  // every vertex in the palette, every palette entry on some vertex
   const palette = Object.entries(item.palette).map(([role, hex]) => ({ role, rgb: rgbOf(hex), seen: false }));
   const strays = new Set();
   for (const part of model.meshes) {

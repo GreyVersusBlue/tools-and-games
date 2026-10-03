@@ -98,7 +98,7 @@ import { moveStorey } from './section.js';
 import { clone as deepClone } from './history.js';
 // --- Phase 9 ---
 import { registerRows } from './catalog.js';
-import { neededBuiltins, fetchBuiltins } from './builtin-models.js';
+import { neededBuiltins, fetchBuiltins, packBuiltins } from './builtin-models.js';
 import { loadModel as readModelFile, FT_TO_M } from './gltf.js';
 import {
   MAX_MODELS, modelRows, modelsOf, importModel, addModel, removeModel,
@@ -6582,6 +6582,9 @@ const WALK_DESIGN_MARKER = '<!--SG-DESIGN-->';
 // file opens with the good light and computes nothing. Pinned by
 // test/export-walk.test.mjs on the bundler's side.
 const WALK_BAKE_MARKER = '<!--SG-BAKE-->';
+// The third (HISTORY #820): the Blender pack's files the design's props name,
+// so a walk draws the furniture the tool draws. Pinned the same way.
+const WALK_MODELS_MARKER = '<!--SG-MODELS-->';
 let walkTemplate = null;   // fetched once per session — it never changes under us
 
 async function downloadWalkExport() {
@@ -6615,9 +6618,24 @@ async function downloadWalkExport() {
       const packed = await bakeObtain(bakeKey(state, catalogEntry));
       if (packed) bakeText = await encodeShare(encodeBakeText(packed));
     } catch { /* live light, then */ }
+    // The pack's files for the props this design has. Asked for again rather
+    // than read off the scene: within a revision the service worker answers
+    // from its cache, and a file the page failed to fetch earlier gets a
+    // second chance. One that still cannot be fetched stops the export, since
+    // a walk that quietly shows other furniture is the thing #768 refuses.
+    let modelsText = '';
+    const ids = neededBuiltins((state.props || []).map((p) => p.type), catalogEntry, new Set());
+    if (ids.length) {
+      const { bytes, failed } = await fetchBuiltins(ids, (url) => fetch(url));
+      if (failed.length) {
+        throw new Error(`assets/models/${failed[0].id}.glb could not be fetched (${failed[0].message})`);
+      }
+      modelsText = await encodeShare(packBuiltins(bytes));
+    }
     note.textContent = 'Bundling…';
     const html = walkTemplate.replace(WALK_DESIGN_MARKER, () => payload)
-      .replace(WALK_BAKE_MARKER, () => bakeText);
+      .replace(WALK_BAKE_MARKER, () => bakeText)
+      .replace(WALK_MODELS_MARKER, () => modelsText || WALK_MODELS_MARKER);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -6629,6 +6647,7 @@ async function downloadWalkExport() {
     // is about to send this file deserves to know which file it is.
     note.textContent = `${Math.round(html.length / 1024)} KB — opens anywhere, even offline.`
       + (bakeText ? ' · light baked in' : '')
+      + (ids.length ? ` · ${ids.length} model files` : '')
       + (normalizeHaunt(state.haunt).on ? ' · haunted' : '');
   } catch (err) {
     // The likeliest failure is file:// — this page opened from disk cannot

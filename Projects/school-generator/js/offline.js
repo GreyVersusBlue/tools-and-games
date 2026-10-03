@@ -41,7 +41,7 @@
 // cached byte and start again. It is deliberately a hand-typed string: there
 // is no build step to stamp a hash into, and a revision somebody has to think
 // about once a phase is more honest than one that changes when a comment does.
-export const REV = '30.2';
+export const REV = '30.3';
 
 export const CACHE_PREFIX = 'school-generator-';
 

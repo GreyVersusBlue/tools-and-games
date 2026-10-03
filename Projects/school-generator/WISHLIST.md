@@ -433,6 +433,8 @@ and add to this list rather than starting a new one.
 - A hunt cannot survive a structural edit — hints name rooms that may no
   longer exist.
 - A colour variant cannot recolour an imported model; a prop has one paint.
+  (A built-in pack file is repainted by role, #819; a file somebody imported
+  has no roles to repaint by.)
 - The crowd cannot shove anything.
 - Hands are desktop-only — touch has no Q, and the palette ring belongs on
   the touch HUD beside the joystick it doesn't yet have.
@@ -527,19 +529,21 @@ and add to this list rather than starting a new one.
 ## Blender assets (from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). B1 and B2 shipped in PR #496 (`HISTORY.md` #761 to #764): `tools/blender/` and 15 `.glb` files in `assets/models/` exist, and `node tools/blender/validate.mjs` (554 assertions, in the project's CI) holds them. B3 wired them in (PR #498). This project needed no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a file into a real catalog row.
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). B1 and B2 shipped in PR #496 (`HISTORY.md` #761 to #764): `tools/blender/` and 15 `.glb` files in `assets/models/` exist, and `node tools/blender/validate.mjs` (630 assertions, in the project's CI) holds them. B3 wired them in (PR #498). This project needed no loader row: `js/gltf.js` reads `.glb` already, and `js/models.js` turns a file into a real catalog row.
 
 **B3. Wiring the pack. Shipped 2026-09-30, PR #498** (#766 to #769). 19 catalog
 rows carry `file` and `fit`, `js/builtin-models.js` is the table, the page
 fetches the files after its first draw, and all 15 are in `PRECACHE` (`REV`
-30.2). What is left of it, none of it ranked: a tint applied when a file loads,
-so the rows that are another colour (`teacher-desk`, `table-art`,
-`teacher-chair`) can share a file (#766); the walk export carrying the files,
-so a walk draws the pack and not the procedural stand-ins (#768); and
-`js/render.js` drawing its darkest tints black (#764), which shows on the
-pack's legs and lab bench top. The pack has been looked at on a lit scene; it
-has not been looked at in the page's own lights on a full school or on a real
-GPU.
+30.2).
+
+**The pack's leftovers. Shipped 2026-10-03** (#818 to #820, TG-28). Tints are
+HSL in sRGB, so the pack's legs and the page's are no longer black; a file is
+repainted by role as it loads, so `teacher-desk`, `desk-standing`, `table-art`,
+`table-prep` and `teacher-chair` name a file (24 rows) and a recoloured prop
+keeps the file's shape; a walk export carries the files its props name (`REV`
+30.3). What is left, not ranked: the pack has been looked at on a lit scene and
+under software rendering, and has not been looked at in the page's own lights
+on a full school or on a real GPU. That look needs the Windows machine.
 
 ## The shipped phases
 

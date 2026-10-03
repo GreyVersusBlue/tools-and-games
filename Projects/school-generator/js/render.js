@@ -58,7 +58,7 @@ import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
 import { sampleBake, bakedTint } from './bakelight.js';
 import { loadModel, writeGLB, FT_TO_M } from './gltf.js';
 import { modelBytes, modelsOf } from './models.js';
-import { BUILTIN_MODELS, loadBuiltin, drawsFromFile } from './builtin-models.js';
+import { BUILTIN_MODELS, loadBuiltin, drawsFromFile, tintSrgb } from './builtin-models.js';
 import { REFERENCE_SPACES, XR_MODE, rigPosition } from './xr.js';
 import {
   collectDoorLeaves, leafAngle, mullionPositions,
@@ -2220,12 +2220,14 @@ export function initRender(canvas) {
   // bottom at local y=0 — so placing an instance is just translate(x, baseY +
   // prop.y, z) · rotateY(rotationY) · scale(prop.scale), no per-type offset.
 
+  // In sRGB, where a row's `#rrggbb` is written (HISTORY #818): the arithmetic
+  // is builtin-models.js's `tintSrgb`, so the pack's palette is this function.
   const _tintColor = new THREE.Color();
+  const _tintRGB = { r: 0, g: 0, b: 0 };
   function tint(hex, dl, ds = 0) {
-    _tintColor.set(hex);
-    const hsl = {};
-    _tintColor.getHSL(hsl);
-    return _tintColor.clone().setHSL(hsl.h, Math.min(1, Math.max(0, hsl.s + ds)), Math.min(1, Math.max(0, hsl.l + dl)));
+    _tintColor.set(hex).getRGB(_tintRGB, THREE.SRGBColorSpace);
+    const [r, g, b] = tintSrgb([_tintRGB.r, _tintRGB.g, _tintRGB.b], dl, ds);
+    return new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
   }
 
   function box(w, h, d, x, y, z, color) {
@@ -4103,10 +4105,9 @@ export function initRender(canvas) {
       const type = key.split('|')[0];
       const entry = catalogEntry(type);
       if (!entry || !entry.file || !bytesById.has(entry.file)) continue;
-      if (key === type) {
-        if (geo.body) geo.body.dispose();
-        propGeoCache.delete(key);
-      }
+      // a recoloured prop draws from the file too (#819), so its key goes as well
+      if (geo.body) geo.body.dispose();
+      propGeoCache.delete(key);
     }
     return builtinBytes.size;
   }
@@ -4158,14 +4159,15 @@ export function initRender(canvas) {
       return geo;
     }
     // The Blender pack: a row that names a file draws it once the page has
-    // the bytes. Before that (the first frame, a walk export, a Node test)
-    // and for a recoloured prop it is the procedural builder below, and the
-    // stand-in is not kept: setBuiltinModels clears this row's key when the
-    // bytes arrive.
-    if (drawsFromFile(entry, variant) && builtinBytes.has(entry.file)) {
+    // the bytes, painted the row's colour or the prop's own (#819). Before
+    // that (the first frame, a Node test) it is the procedural builder below,
+    // and the stand-in is not kept: setBuiltinModels clears this row's keys
+    // when the bytes arrive.
+    if (drawsFromFile(entry) && builtinBytes.has(entry.file)) {
       try {
         const source = catalogEntry(BUILTIN_MODELS[entry.file].source);
-        geo = { body: mergeModelParts(loadBuiltin(builtinBytes.get(entry.file), entry, source)), lens: null };
+        const model = loadBuiltin(builtinBytes.get(entry.file), entry, source, variant || entry.color);
+        geo = { body: mergeModelParts(model), lens: null };
         propGeoCache.set(key, geo);
         return geo;
       } catch (err) {
