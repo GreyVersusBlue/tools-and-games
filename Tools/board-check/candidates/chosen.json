@@ -3,13 +3,13 @@
   "aphelion": "aphelion-diorama.png",
   "golden-hour": "golden-hour-diorama.png",
   "fourth-quarter": "fourth-quarter-diorama.png",
-  "faire-weekend": "faire-weekend-00-grounds-and-floor.png",
+  "faire-weekend": "faire-weekend-diorama.png",
   "closing-time": "closing-time-00-mls-board.png",
   "integer-foundry": "integer-foundry-00-line-running.png",
-  "absalom-inheritance": "absalom-inheritance-00-encounter.png",
+  "absalom-inheritance": "absalom-inheritance-diorama.png",
   "daredevil": "daredevil-00-origin-choice.png",
   "fracture-cycle": "fracture-cycle-00-ending.png",
-  "corner-and-kettle": "corner-and-kettle-00-first-shot.png",
+  "corner-and-kettle": "corner-and-kettle-diorama.png",
   "torchbearer": "torchbearer-00-vanguards-watch.png",
   "orbital": "orbital-00-deep-field-aim.png",
   "blue-hour": "blue-hour-diorama.png",
@@ -17,5 +17,6 @@
   "converter": "converter-00-dragon-converted.png",
   "skywings64": "skywings64-00-rings.png",
   "throneshard": "throneshard-00-teamfight.png",
-  "hearth": "hearth-00-village.png"
+  "hearth": "hearth-00-village.png",
+  "school-generator": "school-generator-diorama.png"
 }

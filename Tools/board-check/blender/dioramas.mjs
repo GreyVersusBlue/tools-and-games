@@ -94,6 +94,23 @@ for (const [card, c] of Object.entries(spec.cards)) {
     const last = [p.at[0] + step[0] * (n - 1), p.at[1] + step[1] * (n - 1)];
     ok(onTop(p.at) && onTop(last), `${card}: ${p.glb} stands on the plinth top`, JSON.stringify([p.at, last]));
   }
+  // a 2D game's own sprite builders (#848): the script and its common.py,
+  // and every call a function it defines or a frame of its BUILDERS
+  for (const b of c.build || []) {
+    const file = path.join(SITE, c.project, b.build);
+    if (ok(fs.existsSync(file), `${card}: ${b.build} exists`)) {
+      ok(fs.existsSync(path.join(path.dirname(file), 'common.py')), `${card}: ${b.build} has a common.py beside it`);
+      const src = fs.readFileSync(file, 'utf8');
+      const frames = src.match(/^BUILDERS = \{([\s\S]*?)^\}/m);
+      for (const [fn] of b.calls) {
+        ok(new RegExp(`^def ${fn}\\(`, 'm').test(src) || (frames && frames[1].includes(`'${fn}':`)),
+          `${card}: ${b.build} builds ${fn}`);
+      }
+    }
+    const step = b.step || [0, 0], n = b.count || 1;
+    const last = [b.at[0] + step[0] * (n - 1), b.at[1] + step[1] * (n - 1)];
+    ok(onTop(b.at) && onTop(last), `${card}: ${b.calls.map(x => x[0]).join('+')} stands on the plinth top`, JSON.stringify([b.at, last]));
+  }
 }
 
 // ---------------------------------------------------------------- the renders
