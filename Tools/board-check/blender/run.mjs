@@ -7,7 +7,10 @@
 // other Blender is running on the machine, because huginn renders one thing
 // at a time. With no arguments it runs calibrate.py and tavern.py, in that
 // order; with names it runs those. Anything after `--` goes to each script
-// (tavern.py takes --preview and --samples N). Exits with the first non-zero
+// (tavern.py takes --preview and --samples N; diorama.py takes card names,
+// --preview and --samples N). A run of diorama.py alone (`npm run dioramas`)
+// is checked by dioramas.mjs --rendered, with the same cards and --preview;
+// anything else by validate.mjs --rendered. Exits with the first non-zero
 // status it meets (#13).
 
 import { spawnSync } from 'node:child_process';
@@ -62,6 +65,11 @@ for (const s of runs) {
   console.log(`== ${path.basename(file)}: ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
-console.log('\n== validate.mjs --rendered');
-const v = spawnSync(process.execPath, [path.join(HERE, 'validate.mjs'), '--rendered'], { stdio: 'inherit' });
+const dioramas = runs.every(s => path.basename(s, '.py') === 'diorama');
+const check = dioramas
+  ? ['dioramas.mjs', '--rendered', ...extra.slice(1).filter((a, i, all) =>
+      a === '--preview' || (!a.startsWith('--') && all[i - 1] !== '--samples'))]
+  : ['validate.mjs', '--rendered'];
+console.log(`\n== ${check.join(' ')}`);
+const v = spawnSync(process.execPath, [path.join(HERE, check[0]), ...check.slice(1)], { stdio: 'inherit' });
 process.exit(v.status ?? 1);

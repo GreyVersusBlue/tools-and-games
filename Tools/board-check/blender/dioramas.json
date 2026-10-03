@@ -1,0 +1,136 @@
+{
+  "about": "The board cards' dioramas (BACKLOG.md 'The site itself: Blender dioramas'). `style` is the style sheet every card shares and common.py's diorama section builds from: the render size (2640 by 1600, the 33:20 promote-previews.mjs crops both outputs from), the plinth (its top, `top` metres wide by deep, is the plane Z = 0), the camera, the three lights and the backdrop. `frame` is what dioramas.mjs --rendered holds each render to: everything that is not backdrop inside `safe` (x0, y0, x1, y1 as fractions of the frame from its top left; y1 keeps it above the og card's crop, which loses the bottom 13%), spanning at least `minWidth` of the frame, with a pixel counted as backdrop when it is within `tolerance` (0-255, per channel) of its row's own colour at the frame's left edge. `machine` is the one machine every render in the set comes from (a lit render's pixels differ between machines). Each card is named as its preview is (index.html data-preview, promote-previews.mjs KNOWN) and lists what stands on its plinth: `ground` recolours the plinth top, `shapes` are built for the card (patch: a flat prism over a polygon; wall; pine; post), and `place` imports the game's own .glb files from `project`, at a point on the plinth top, `z` above it, `rot` degrees about Z and `scale`, repeated `count` times `step` apart. Castle Conundrum is out of scope (#491).",
+  "machine": "Devon's Windows machine: RTX 3070 Ti, Blender 5.2.2 LTS (Steam), Cycles on OptiX",
+  "style": {
+    "size": [2640, 1600],
+    "samples": 256,
+    "view": "AgX",
+    "plinth": {
+      "top": [4.0, 2.6], "height": 0.34, "bevel": 0.03,
+      "band": 0.035, "foot": 0.09, "footHeight": 0.09,
+      "wood": "3a2716", "ground": "6b5a44", "brass": "b08d3e", "footColour": "160f08"
+    },
+    "camera": { "lens": 70, "elevation": 28, "azimuth": 24, "distance": 15.0, "target": [0, -0.1, -0.05] },
+    "lights": {
+      "key":  { "at": [-5.5, -6.0, 7.5], "size": 5.0, "power": 2600, "colour": "ffe4bf" },
+      "fill": { "at": [7.0, -4.5, 3.0],  "size": 6.0, "power": 700,  "colour": "c9d6ff" },
+      "rim":  { "at": [1.5, 8.0, 5.5],   "size": 4.0, "power": 1800, "colour": "ffd9a0" }
+    },
+    "backdrop": { "top": "2e2114", "bottom": "0d0904", "ambient": "8a7a66", "ambientStrength": 0.25 },
+    "frame": { "safe": [0.04, 0.04, 0.96, 0.84], "minWidth": 0.6, "tolerance": 6 }
+  },
+  "cards": {
+    "golden-hour": {
+      "project": "Projects/golden-hour-beach",
+      "ground": "d8bd8a",
+      "shapes": [
+        { "kind": "patch", "colour": "b5976a", "z": 0.006, "roughness": 0.35,
+          "poly": [[-1.97, 0.3], [-0.6, 0.38], [0.6, 0.28], [1.97, 0.36], [1.97, 0.62], [-1.97, 0.62]] },
+        { "kind": "patch", "colour": "2c6a82", "z": 0.018, "roughness": 0.06,
+          "poly": [[-1.97, 0.52], [-0.8, 0.6], [0.5, 0.5], [1.97, 0.58], [1.97, 1.27], [-1.97, 1.27]] }
+      ],
+      "place": [
+        { "glb": "assets/models/props/boulder-1.glb", "at": [-1.5, 0.55], "rot": 20, "scale": 0.17 },
+        { "glb": "assets/models/props/boulder-3.glb", "at": [-1.05, 0.85], "rot": 70, "scale": 0.11 },
+        { "glb": "assets/models/props/boulder-2.glb", "at": [-1.75, 0.0], "rot": 0, "scale": 0.09 },
+        { "glb": "assets/models/props/driftwood-1.glb", "at": [0.15, -0.6], "rot": 18, "scale": 0.17 },
+        { "glb": "assets/models/props/sandcastle.glb", "at": [-0.75, -0.35], "rot": 10, "scale": 0.26 },
+        { "glb": "assets/models/props/pier-pile-1.glb", "at": [1.12, 0.35], "scale": 0.17, "step": [0, 0.45], "count": 3 },
+        { "glb": "assets/models/props/pier-pile-2.glb", "at": [1.68, 0.35], "scale": 0.17, "step": [0, 0.45], "count": 3 },
+        { "glb": "assets/models/props/pier-plank-1.glb", "at": [1.4, 0.2], "z": 0.49, "scale": 0.17, "step": [0, 0.09], "count": 12 },
+        { "glb": "assets/models/animals/heron.glb", "at": [0.75, 0.05], "rot": -35, "scale": 0.2 },
+        { "glb": "assets/models/animals/crab.glb", "at": [-0.2, 0.05], "rot": 30, "scale": 0.45 },
+        { "glb": "assets/models/animals/gull.glb", "at": [-0.3, 0.8], "z": 1.0, "rot": 15, "scale": 0.13 },
+        { "glb": "assets/models/props/whelk-1.glb", "at": [0.55, -0.85], "rot": 40, "scale": 0.45 },
+        { "glb": "assets/models/props/cockle-2.glb", "at": [-1.2, -0.8], "rot": 0, "scale": 0.4 },
+        { "glb": "assets/models/props/sand-dollar.glb", "at": [1.45, -0.7], "rot": 0, "scale": 0.4 }
+      ]
+    },
+    "blue-hour": {
+      "project": "Projects/blue-hour-trail",
+      "ground": "3a4636",
+      "shapes": [
+        { "kind": "patch", "colour": "7d6f5a", "z": 0.006, "roughness": 0.95,
+          "poly": [[-0.45, -1.27], [-0.05, -1.27], [0.1, -0.6], [0.45, 0.0], [0.4, 0.4], [0.1, 0.4], [0.12, 0.0], [-0.25, -0.6]] },
+        { "kind": "patch", "colour": "1d3550", "z": 0.012, "roughness": 0.05,
+          "poly": [[0.6, -1.27], [0.95, -1.27], [1.05, 0.0], [0.95, 1.27], [0.6, 1.27], [0.7, 0.0]] },
+        { "kind": "pine", "at": [-1.75, 0.95], "h": 0.95, "colour": "24372e" },
+        { "kind": "pine", "at": [-0.35, 1.05], "h": 1.0, "colour": "24372e" },
+        { "kind": "pine", "at": [0.25, 0.95], "h": 0.8, "colour": "2a3f33" },
+        { "kind": "pine", "at": [1.55, 1.0], "h": 0.98, "colour": "24372e" },
+        { "kind": "pine", "at": [1.75, 0.2], "h": 0.85, "colour": "2a3f33" },
+        { "kind": "pine", "at": [-1.8, -0.5], "h": 0.75, "colour": "2a3f33" }
+      ],
+      "place": [
+        { "glb": "assets/models/props/cabin.glb", "at": [-1.1, 0.55], "rot": 18, "scale": 0.17 },
+        { "glb": "assets/models/props/bridge.glb", "at": [0.82, -0.3], "rot": 90, "scale": 0.15 },
+        { "glb": "assets/models/animals/deer.glb", "at": [-0.6, -0.15], "rot": 65, "scale": 0.17 },
+        { "glb": "assets/models/animals/fox.glb", "at": [1.4, -0.55], "rot": -40, "scale": 0.25 },
+        { "glb": "assets/models/props/bench.glb", "at": [-1.05, -0.8], "rot": 15, "scale": 0.22 },
+        { "glb": "assets/models/props/marker-1.glb", "at": [0.3, -0.75], "rot": -10, "scale": 0.2 },
+        { "glb": "assets/models/props/cairn-stone-1.glb", "at": [1.55, -0.95], "scale": 0.22 },
+        { "glb": "assets/models/props/cairn-stone-2.glb", "at": [1.55, -0.95], "z": 0.08, "rot": 40, "scale": 0.16 },
+        { "glb": "assets/models/props/cairn-stone-3.glb", "at": [1.55, -0.95], "z": 0.14, "rot": 75, "scale": 0.15 },
+        { "glb": "assets/models/props/mushroom-glow.glb", "at": [-0.3, 0.3], "scale": 0.9, "step": [0.07, 0.05], "count": 3 },
+        { "glb": "assets/models/props/mushroom-glow.glb", "at": [1.3, 0.55], "scale": 0.9, "step": [0.06, -0.06], "count": 2 },
+        { "glb": "assets/models/animals/owl.glb", "at": [-1.6, -0.15], "rot": -20, "scale": 0.35 }
+      ]
+    },
+    "fourth-quarter": {
+      "project": "Projects/fourth-quarter",
+      "ground": "4a3121",
+      "shapes": [
+        { "kind": "wall", "from": [-2.0, 1.3], "to": [2.0, 1.3], "h": 1.1, "t": 0.06, "colour": "3d2c22" },
+        { "kind": "wall", "from": [-2.0, -1.3], "to": [-2.0, 1.3], "h": 1.1, "t": 0.06, "colour": "352720" },
+        { "kind": "patch", "colour": "5a2a22", "z": 0.004, "roughness": 0.9,
+          "poly": [[0.75, -1.1], [1.85, -1.1], [1.85, 0.05], [0.75, 0.05]] }
+      ],
+      "place": [
+        { "glb": "models/bar/counter-end.glb", "at": [-1.36, 0.45], "rot": 0, "scale": 0.55 },
+        { "glb": "models/bar/counter-mid.glb", "at": [-0.93, 0.45], "scale": 0.55, "step": [0.55, 0], "count": 3 },
+        { "glb": "models/bar/counter-end.glb", "at": [0.48, 0.45], "rot": 180, "scale": 0.55 },
+        { "glb": "models/bar/tap.glb", "at": [-0.6, 0.45], "z": 0.605, "scale": 0.55, "step": [0.08, 0], "count": 3 },
+        { "glb": "models/bar/can.glb", "at": [0.1, 0.4], "z": 0.605, "rot": 20, "scale": 0.55 },
+        { "glb": "models/bar/stool.glb", "at": [-1.15, -0.05], "scale": 0.55, "step": [0.48, 0], "count": 4 },
+        { "glb": "models/bar/shelf-back.glb", "at": [-0.9, 1.15], "z": 0.62, "scale": 0.55, "step": [0.55, 0], "count": 3 },
+        { "glb": "models/bar/shelf-back.glb", "at": [-0.9, 1.15], "z": 0.86, "scale": 0.55, "step": [0.55, 0], "count": 3 },
+        { "glb": "models/bar/bottle-amber.glb", "at": [-1.08, 1.15], "z": 0.665, "scale": 0.55, "step": [0.33, 0], "count": 5 },
+        { "glb": "models/bar/bottle-green.glb", "at": [-1.0, 1.15], "z": 0.665, "scale": 0.55, "step": [0.33, 0], "count": 5 },
+        { "glb": "models/bar/bottle-blue.glb", "at": [-0.92, 1.15], "z": 0.905, "scale": 0.55, "step": [0.27, 0], "count": 5 },
+        { "glb": "models/bar/bottle-violet.glb", "at": [-1.05, 1.15], "z": 0.905, "scale": 0.55, "step": [0.27, 0], "count": 5 },
+        { "glb": "models/bar/bottle-gold.glb", "at": [-0.96, 1.15], "z": 0.665, "scale": 0.55, "step": [0.33, 0], "count": 4 },
+        { "glb": "models/bar/tv-frame.glb", "at": [1.25, 1.24], "z": 0.75, "scale": 0.55 },
+        { "glb": "models/bar/door-frame.glb", "at": [-1.62, 1.24], "scale": 0.55 },
+        { "glb": "models/bar/corkboard.glb", "at": [-1.94, -0.3], "z": 0.55, "rot": -90, "scale": 0.55 },
+        { "glb": "models/bar/table.glb", "at": [1.3, -0.5], "scale": 0.55 },
+        { "glb": "models/bar/stool.glb", "at": [0.9, -0.75], "scale": 0.55 },
+        { "glb": "models/bar/stool.glb", "at": [1.7, -0.3], "scale": 0.55 },
+        { "glb": "models/bar/crate.glb", "at": [1.65, 0.75], "rot": 12, "scale": 0.55 },
+        { "glb": "models/bar/crate-wood.glb", "at": [1.65, 0.75], "z": 0.33, "rot": -8, "scale": 0.5 }
+      ]
+    },
+    "aphelion": {
+      "project": "Projects/aphelion",
+      "ground": "2a2f38",
+      "shapes": [
+        { "kind": "wall", "from": [-2.0, 1.3], "to": [2.0, 1.3], "h": 1.1, "t": 0.06, "colour": "4a5260" },
+        { "kind": "wall", "from": [-2.0, -1.3], "to": [-2.0, 1.3], "h": 1.1, "t": 0.06, "colour": "434a57" },
+        { "kind": "patch", "colour": "353b47", "z": 0.004, "roughness": 0.5,
+          "poly": [[-1.2, -1.15], [1.2, -1.15], [1.2, 0.6], [-1.2, 0.6]] },
+        { "kind": "window", "at": [0.0, 1.27], "z": 0.6, "w": 1.3, "h": 0.36, "colour": "0b1020", "stars": 40 }
+      ],
+      "place": [
+        { "glb": "models/ship/console.glb", "at": [0.0, 0.95], "scale": 0.5 },
+        { "glb": "models/ship/seat.glb", "at": [-0.45, 0.3], "rot": 180, "scale": 0.5, "step": [0.9, 0], "count": 2 },
+        { "glb": "models/ship/bed.glb", "at": [-1.7, -0.55], "rot": 90, "scale": 0.5 },
+        { "glb": "models/ship/workbench.glb", "at": [1.45, -0.2], "rot": 90, "scale": 0.5 },
+        { "glb": "models/ship/tray.glb", "at": [1.35, -0.95], "rot": 0, "scale": 0.5 },
+        { "glb": "models/ship/hatch-inner.glb", "at": [-1.95, 0.55], "rot": 90, "scale": 0.5 },
+        { "glb": "models/ship/panel.glb", "at": [-1.3, 1.25], "z": 0.4, "scale": 0.5 },
+        { "glb": "models/ship/panel.glb", "at": [1.3, 1.25], "z": 0.4, "scale": 0.5 },
+        { "glb": "models/ship/pipes.glb", "at": [0.0, 1.24], "z": 0.95, "scale": 0.5 },
+        { "glb": "models/ship/shelf.glb", "at": [-1.95, -0.55], "z": 0.75, "rot": 90, "scale": 0.5 }
+      ]
+    }
+  }
+}
