@@ -121,12 +121,15 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **TG-13, the site's
-diorama pipeline and its first four dioramas** (PR #506): the old rank 14 (½,
-Opus 5.5) and the first increment of the dioramas row, now rank 14 (2+, naming
-Sonnet 5), both run under Opus 5.5 on Devon's Windows machine as one PR by
-his instruction (#785). TG-13 is done only when that row is. The batches before
-it were the four sprite pipelines, each with its sheet and its wiring, all
+**The last batch of ranked work that shipped** is **TG-13's third
+increment, the dioramas for Orbital, Closing Time, Integer Foundry and
+Daredevil** (PR #514): rank 14 (2+, naming Sonnet 5), run under Opus 5.5 on
+Devon's Windows machine. Orbital stands `bodies.py`'s bodies on the plinth
+(#851); the three DOM games are built from five plain solids (#850, #852).
+TG-13 is done only when that row is (#785). Before it came TG-13's second
+increment, School Generator, Faire Weekend, The Absalom Inheritance and Corner
+& Kettle (PR #511), its first, the diorama pipeline and the first four cards
+(PR #506), and before that the four sprite pipelines, each with its sheet and its wiring, all
 committed locally on huginn for the nightly merge, so their PR number is the
 nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 8 to 10, TG-11), Faire Weekend's (old ranks 5 to 7, TG-10) and Absalom's (old
@@ -138,7 +141,7 @@ batch and does not belong in it.
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
 2026-09-25, Devon's instruction and his re-rank). Rank 14 is what is
 left of the Blender block: every project's pipeline, packs and wiring have
-shipped, the diorama pipeline has shipped, and 10 of the 14 dioramas are left.
+shipped, the diorama pipeline has shipped, and 2 of the 14 dioramas are left.
 **Blender runs on Devon's machines only, headless
 (`blender -b -P script.py`), never in a cloud container.** The table's
 `Gate` column says which rows need it and which machine (#644, #707): **no row
@@ -151,7 +154,7 @@ row, without parking it. The plan every Blender row shares is
 
 **Nothing is claimed.** Ranks 1 to 13 shipped and their rows are gone; the
 others keep their numbers until the next renumbering. **Pick up next**
-is rank 14, the next four dioramas (2+, naming Sonnet 5, gate `blender-gpu`):
+is rank 14, the last two dioramas, The Fracture Cycle and Torchbearer (2+, naming Sonnet 5, gate `blender-gpu`):
 **the Windows machine only**. A session on huginn skips it, and every
 row below it wants a GPU, a phone, ears or Devon's say-so.
 Below the Blender block, rank 22 (The Fracture Cycle's fourth prong) and rank
@@ -999,7 +1002,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **4 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion; TG-13); School Generator, Faire Weekend, The Absalom Inheritance and Corner & Kettle are next | `site` | 2+ | Sonnet 5 | blender-gpu | `claude/dioramas-2` | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **12 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion, School Generator, Faire Weekend, The Absalom Inheritance, Corner & Kettle, Orbital, Closing Time, Integer Foundry, Daredevil; TG-13); The Fracture Cycle and Torchbearer are next | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
 | 15 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
 | 16 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
 | 17 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
@@ -2405,7 +2408,8 @@ Castle Conundrum is out of scope: its card and images stay as they are (#491).
 `Tools/board-check/blender/dioramas.json`; `common.py`'s diorama section
 builds the plinth, camera, lights and backdrop from it, and `diorama.py` puts
 a card's scene on the plinth. **How to do a card:** add its entry to
-`dioramas.json` (the game's `.glb` files under `place`, anything the game
+`dioramas.json` (the game's `.glb` files under `place`, its sprite builders under
+`build` when it ships no `.glb` (#848), anything the game
 draws in code as `patch`, `wall`, `pine`, `window` or `post` shapes, or a new
 shape kind in `diorama.py`'s `SHAPES`), frame it with
 `npm run dioramas -- -- <card> --preview` (quarter size, 32 samples, into
@@ -2417,10 +2421,13 @@ machine (#786); a card that needs the style itself changed re-renders every
 done card with it.
 
 **D2. The dioramas (rank 14, 2+, Sonnet 5, gate `blender-gpu`: Devon's Windows machine only, #707), TG-13 (#785).** Four cards an
-increment, the 3D games first. **Done (4 of 14):** Golden Hour, Blue Hour, The Fourth Quarter,
-Aphelion. **Next:** School Generator (it ships `.glb` files too), Faire Weekend, The Absalom Inheritance,
-Corner & Kettle, Orbital, Closing Time, Integer Foundry, Daredevil, The
-Fracture Cycle and Torchbearer. Each increment rewrites this row to say which
+increment, the 3D games first. **Done (12 of 14):** Golden Hour, Blue Hour, The Fourth Quarter,
+Aphelion, School Generator, Faire Weekend, The Absalom Inheritance, Corner & Kettle, Orbital,
+Closing Time, Integer Foundry and Daredevil. **Next:** The Fracture Cycle and Torchbearer, the
+last increment. A game that ships no `.glb` but builds its sprites in Blender goes in as `build`
+calls to those builders (#848, #851); one with no Blender pipeline at all builds its scene from
+the five plain solids, `block`, `prism`, `ball`, `dots` and `ring` (#850), set where its story
+happens (#852). Each increment rewrites this row to say which
 cards are done. `npm run check` and `npm run social:check` stay green.
 
 ## Questions for Devon

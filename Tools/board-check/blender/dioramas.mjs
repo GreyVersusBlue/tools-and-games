@@ -13,7 +13,9 @@
 //     index.html's cards ask for (School Generator was missing from it until
 //     D1, so its card could not be promoted)
 //   - a card names a .glb that does not exist, a shape kind diorama.py does
-//     not build, or puts anything off the plinth's top
+//     not build, or puts anything off the plinth's top: a shape's whole
+//     footprint, at its first copy and its last (#850)
+//   - a block, prism, ball, dots or ring leaves out a field diorama.py reads
 //
 // With --rendered (`npm run dioramas` passes it after a render) it also reads
 // each card's candidates/<card>-diorama.png, untracked, so CI cannot, and
@@ -78,14 +80,53 @@ const kinds = new Set(shapeSrc ? [...shapeSrc[1].matchAll(/'([a-z]+)'/g)].map(m 
 const [tw, td] = style.plinth.top;
 const onTop = ([x, y]) => Math.abs(x) <= tw / 2 + 1e-9 && Math.abs(y) <= td / 2 + 1e-9;
 
+// The fields each of the five plain solids reads (#850): one missing is a
+// KeyError on Devon's machine, so it fails here, where CI sees it.
+const NEEDS = {
+  block: ['at', 'size', 'colour'], prism: ['at', 'size', 'colour'], ball: ['at', 'r', 'colour'],
+  dots: ['r', 'colour'], ring: ['at', 'r', 'w', 'h', 'colour'],
+};
+
+// Copy k of a shape with `count` and `step`, as diorama.py's repeat() moves it.
+const copy = (s, k) => {
+  const [dx, dy] = (s.step || [0, 0]).map(v => v * k);
+  const t = { ...s };
+  for (const key of ['at', 'from', 'to']) if (s[key]) t[key] = [s[key][0] + dx, s[key][1] + dy];
+  if (s.poly) t.poly = s.poly.map(([x, y]) => [x + dx, y + dy]);
+  if (s.path) t.path = s.path.map(([x, y, ...z]) => [x + dx, y + dy, ...z]);
+  return t;
+};
+
+// Every point of the plinth top a shape covers: its polygon, its ends, its
+// path, the corners of a `size` turned `rot`, a ball's radius and a ring's
+// outer edge or tick ends. A `scatter` keeps itself inside the top.
+const footprint = s => {
+  const pts = [...(s.poly || []), ...[s.at, s.from, s.to].filter(Boolean), ...(s.path || []).map(([x, y]) => [x, y])];
+  const around = (hw, hd, rot = 0) => {
+    const a = rot * Math.PI / 180, c = Math.cos(a), n = Math.sin(a);
+    for (const [u, v] of [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]) pts.push([s.at[0] + u * c - v * n, s.at[1] + u * n + v * c]);
+  };
+  if (s.at && s.size) around(s.size[0] / 2, s.size[1] / 2, s.rot);
+  if (s.at && s.kind === 'ball') { const r = [].concat(s.r); around(r[0], r[1 % r.length], s.rot); }
+  if (s.at && s.kind === 'ring') { const e = s.ticks ? s.r + s.w + s.tick : s.r + s.w / 2; around(e, e); }
+  return pts;
+};
+
 for (const [card, c] of Object.entries(spec.cards)) {
   ok(previews.has(card), `${card} is a preview name index.html asks for`);
   ok(card !== 'castle-conundrum', 'Castle Conundrum has no diorama (#491)');
   ok(fs.existsSync(path.join(SITE, c.project)), `${card}: project ${c.project} exists`);
   for (const [i, s] of (c.shapes || []).entries()) {
     ok(kinds.has(s.kind), `${card}: shape ${i} is a kind diorama.py builds`, s.kind);
-    const pts = s.poly || [s.at, s.from, s.to].filter(Boolean);
-    ok(pts.every(onTop), `${card}: shape ${i} (${s.kind}) is on the plinth top`, JSON.stringify(pts));
+    if (NEEDS[s.kind]) {
+      const want = [...NEEDS[s.kind], ...(s.kind === 'dots' ? [s.path ? 'gap' : 'scatter'] : []), ...(s.ticks ? ['tick'] : [])];
+      if (s.kind === 'dots' && !s.path) want.push('seed');
+      const missing = want.filter(f => !(f in s));
+      ok(!missing.length, `${card}: shape ${i} (${s.kind}) has the fields diorama.py reads`, `missing ${missing.join(', ')}`);
+    }
+    const n = s.count || 1;
+    const pts = [...footprint(copy(s, 0)), ...footprint(copy(s, n - 1))];
+    ok(pts.every(onTop), `${card}: shape ${i} (${s.kind}) is on the plinth top`, JSON.stringify(pts.filter(p => !onTop(p))));
   }
   for (const p of c.place || []) {
     const file = path.join(SITE, c.project, p.glb);
@@ -93,6 +134,23 @@ for (const [card, c] of Object.entries(spec.cards)) {
     const step = p.step || [0, 0], n = p.count || 1;
     const last = [p.at[0] + step[0] * (n - 1), p.at[1] + step[1] * (n - 1)];
     ok(onTop(p.at) && onTop(last), `${card}: ${p.glb} stands on the plinth top`, JSON.stringify([p.at, last]));
+  }
+  // a 2D game's own sprite builders (#848): the script and its common.py,
+  // and every call a function it defines or a frame of its BUILDERS
+  for (const b of c.build || []) {
+    const file = path.join(SITE, c.project, b.build);
+    if (ok(fs.existsSync(file), `${card}: ${b.build} exists`)) {
+      ok(fs.existsSync(path.join(path.dirname(file), 'common.py')), `${card}: ${b.build} has a common.py beside it`);
+      const src = fs.readFileSync(file, 'utf8');
+      const frames = src.match(/^BUILDERS = \{([\s\S]*?)^\}/m);
+      for (const [fn] of b.calls) {
+        ok(new RegExp(`^def ${fn}\\(`, 'm').test(src) || (frames && frames[1].includes(`'${fn}':`)),
+          `${card}: ${b.build} builds ${fn}`);
+      }
+    }
+    const step = b.step || [0, 0], n = b.count || 1;
+    const last = [b.at[0] + step[0] * (n - 1), b.at[1] + step[1] * (n - 1)];
+    ok(onTop(b.at) && onTop(last), `${card}: ${b.calls.map(x => x[0]).join('+')} stands on the plinth top`, JSON.stringify([b.at, last]));
   }
 }
 
