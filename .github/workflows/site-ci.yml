@@ -177,6 +177,8 @@ jobs:
             commands: |
               node Pathfinder/tests/converter.test.mjs
 
+          # validate.mjs holds the marker sheet to the style sheet in
+          # tools/blender/budget.json with no Blender (#645).
           - name: Faire Weekend
             dir: Projects/Ren-Faire-Claude
             install: Projects/Ren-Faire-Claude
@@ -185,6 +187,7 @@ jobs:
               node tests/guests.mjs
               node tests/mapview.mjs
               node tests/wiring.mjs
+              node tools/blender/validate.mjs
 
           # desktop-input.mjs fails on the first line of a touch or gamepad
           # scheme (#629): that scheme is Q40, Devon's call. gltf-loader.mjs

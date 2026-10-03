@@ -173,6 +173,7 @@ function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]
     ho:houses.map(h=>[h.x,h.y,h.r,h.owners]),fm:farms.map(f=>[f.x,f.y,+f.g.toFixed(2)]),
     tr:trees.map(t=>[+t.x.toFixed(2),+t.y.toFixed(2),+t.s.toFixed(2),t.hp,t.b?1:0,+t.a.toFixed(2),t.o?1:0]),
     su:stumps.map(t=>[+t.x.toFixed(1),+t.y.toFixed(1)]),
+    hp:plots.map(h=>[h.x,h.y,+h.prog.toFixed(1),h.forCouple||0]),   /* v17 (TG-26): a house half up keeps its frame, and its 18 wood */
     bl:bldg.map(b=>[b.kind,b.x,b.y]),bt:bldgTgt?[bldgTgt.kind,bldgTgt.x,bldgTgt.y,+bldgTgt.prog.toFixed(1)]:0,
     gv:graves.map(g=>[+g.x.toFixed(2),+g.y.toFixed(2),g.name,g.d,g.y2,g.age,g.vn||0]),
     sr:springs.map(s=>[+s.x.toFixed(2),+s.y.toFixed(2),+s.r.toFixed(2),+s.ph.toFixed(2)]),
@@ -184,7 +185,7 @@ function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]
 // SAVE_V is the shape pack() writes. SAVE_MIN is the oldest shape the ladder can still bring forward. Both readers — the link in the
 // address bar and the autosave at boot — used to carry their own copy of that range, and sprint 12 shipped with one of the two stale;
 // canLoad() is the only copy there is now.
-const SAVE_V=16, SAVE_MIN=5;
+const SAVE_V=17, SAVE_MIN=5;
 const canLoad=o=>!!(o&&o.v>=SAVE_MIN&&o.v<=SAVE_V&&o.pe);
 // One hop per version, in order. `up` takes a save shaped `from` and makes it shaped `to`, filling in exactly what unpack() used to
 // synthesize with a `||` at the point of reading; `down` is the same hop walked backwards, and is what the harness's `migrate` mode
@@ -215,7 +216,8 @@ const LADDER=[
               down:o=>{delete o.wa;delete o.wy;cutP(o,29)}},     /* v14: the short winter, and the one eating last through it */
  {from:14,to:15,up:o=>{if(o.iw===undefined)o.iw=0;growP(o,32)},
               down:o=>{delete o.iw;cutP(o,30)}},                /* v15: the wave of sickness, and each person's own clock inside it */
- {from:15,to:16,up:o=>{if(o.fd===undefined)o.fd=0},down:o=>{delete o.fd}}];   /* v16: the feud — the day, the two names, whether it outlived a thaw, how many nights at the store */
+ {from:15,to:16,up:o=>{if(o.fd===undefined)o.fd=0},down:o=>{delete o.fd}},
+ {from:16,to:17,up:o=>{if(!o.hp)o.hp=[]},down:o=>{delete o.hp}}];   /* v17: the houses going up, each with its frame's progress and who it is for */   /* v16: the feud — the day, the two names, whether it outlived a thaw, how many nights at the store */
 // Up the ladder, one hop at a time, in place. unpack() calls this first and then reads only the current shape, which is why there is
 // no `o.v` test left below this line. What a new field costs, in four lines: append the slot or key to pack(); add a hop here, with
 // its up and its down; add the version to FIXTURES in test/harness.mjs; bump SAVE_V.
@@ -293,6 +295,7 @@ function unpack(o){
     else if(b.kind==='bridge'){spots.push({l:'the bridge',x:b.x+.5,y:b.y+.5});bridgeUp=true}}
   works=o.wk.map(a=>({wk:a[0],x:a[1],y:a[2],y0:a[3],done:!!a[4],prog:a[5]||0,paid:a[6]?1:0,said:a[7]?1:0}));
   for(const w of works)if(w.done)applyWork(w);
+  plots=o.hp.map(a=>({x:a[0],y:a[1],prog:a[2],forCouple:a[3]||null}));   /* nobody is on them after a load; the next free adult picks each up */
   // the named places come back from the list of kinds alone: at() reads the rebuilt world, so no coordinates need saving (v9)
   lorePl=o.lp.filter(k=>LORE_PLACE[k]);walkP=null;
   for(const k of lorePl){const D=LORE_PLACE[k],pos=D.at();if(pos&&!spots.some(sp=>sp.l===D.l))spots.push({l:D.l,x:pos.x,y:pos.y,lore:1,k})}

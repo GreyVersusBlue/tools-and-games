@@ -45,7 +45,7 @@
 
 import { Registry } from "./registry.js";
 import { OPENERS } from "./downtime.js";
-import { Dice, skillMod, SIZES, sizeIndex, levelDC } from "./rules.js";
+import { Dice, skillMod, SIZES, sizeIndex, levelDC, kitAt, strikingDie } from "./rules.js";
 import { esc, cap } from "./text.js";
 
 /**
@@ -126,6 +126,16 @@ export const MANEUVERS = {
 };
 
 /**
+ * What a `restrained` combatant may still do: PF2e's "you can't use any
+ * actions with the attack or manipulate traits except to Escape". The engine
+ * does not carry traits on its actions, so this is the list of action ids
+ * that have neither — End Turn and Delay, Escape itself, the three senses-and-
+ * voice actions, and Cackle. Spells are left off: nearly every one in the
+ * pack has a somatic component, and the engine cannot tell which do not.
+ */
+export const RESTRAINED_OK = ["end", "delay", "escape", "demoralize", "recall", "seek", "hide", "cackle"];
+
+/**
  * Which skill a Recall Knowledge check about a creature uses, by the first of
  * its traits that names one. Occultism is the fallback, the same way it is at
  * the table for something nobody has a category for.
@@ -185,9 +195,15 @@ export const CombatCore = {
       // spends the same one reaction per turn everything else does.
       if(this.readyFires(cb,name,ctx)){
         if(ctx.dryRun){ ctx.fired.push({cb,rid:"readied"}); continue; }
-        cb.reactionUsed=true; cb.readied=null; ctx.fired.push({cb,rid:"readied"});
-        this.log(`<b>Readied Strike!</b> ${esc(cb.name)} was waiting for ${esc(ctx.actor.name)}.`);
-        this.reactiveStrike(cb,ctx.actor);
+        cb.reactionUsed=true; ctx.fired.push({cb,rid:"readied"});
+        if(cb.readied.kind==="spell"){
+          this.log(`<b>Readied spell!</b> ${esc(cb.name)} was waiting for ${esc(ctx.actor.name)}.`);
+          this.readiedCast(cb,ctx.actor);
+        } else {
+          this.log(`<b>Readied Strike!</b> ${esc(cb.name)} was waiting for ${esc(ctx.actor.name)}.`);
+          this.reactiveStrike(cb,ctx.actor,this.readiedAttack(cb));
+        }
+        cb.readied=null;
         if(ctx.actor.dead||(ctx.actor.dying||0)>0) break;
         continue;
       }
@@ -218,10 +234,11 @@ export const CombatCore = {
    * A Reactive Strike, from either side of the board. A monster's attacks are
    * flat data and go through `strikeMonster`; a hero's are weapons and go
    * through `strike`. Neither raises the striker's MAP: the reaction happens on
-   * somebody else's turn, and `mapCount` belongs to the striker's own.
+   * somebody else's turn, and `mapCount` belongs to the striker's own. `atk` is
+   * a readied Strike's weapon; a Reactive Strike swings the melee one.
    */
-  reactiveStrike(cb,target){
-    const atk=cb.attacks[this.meleeIdx(cb)];
+  reactiveStrike(cb,target,atk){
+    atk=atk||cb.attacks[this.meleeIdx(cb)];
     if(!atk) return;
     if(cb.side==="foe"){
       const map=cb.mapCount; cb.mapCount=0;
@@ -269,8 +286,15 @@ export const CombatCore = {
   },
   /** True when `obs` cannot see well enough to skip the flat check. */
   isHidden(obs,t){ const s=this.detectState(obs,t); return s==="hidden"||s==="undetected"; },
-  /** The DC of the flat check `obs` rolls to affect `t`. 0 means no check. */
-  flatCheckDC(obs,t){ const s=this.detectState(obs,t); return s==="observed"?0:s==="concealed"?5:11; },
+  /** The DC of the flat check `obs` rolls to affect `t`. 0 means no check.
+      Blind-Fight takes one step off: no check against concealed, DC 5 against
+      hidden. */
+  flatCheckDC(obs,t){
+    const s=this.detectState(obs,t);
+    if(s==="observed") return 0;
+    const blind=!!(obs&&obs.char&&obs.char.specials.includes("blind-fight"));
+    return s==="concealed"? (blind?0:5) : (blind?5:11);
+  },
   /**
    * The expiry rule, and the only one there is: a hidden creature that moves or
    * attacks gives the hiding place away. Every "hidden" override naming it is
@@ -350,17 +374,20 @@ export const CombatCore = {
    * comparison against the hunted prey only, not on the roll everyone sees.
    */
   doHide(cb){
-    const ch=cb.char; if(!ch) return;
+    // A monster Hides with its own `stealth` number, and one with none cannot
+    // Hide at all: falling back to Perception would hand every monster in the
+    // game a Stealth modifier nobody wrote.
+    const ch=cb.char; if(!ch&&cb.stealth===undefined) return false;
     const foes=this.cbs.filter(c=>c.side!==cb.side&&!c.dead);
     const eligible=foes.filter(f=>this.canHideFrom(cb,f));
-    if(!eligible.length){ this.toast("Nothing here to hide behind."); return; }
+    if(!eligible.length){ this.toast("Nothing here to hide behind."); return false; }
     this.spend(1);
-    const mod=skillMod(ch,"stealth");
+    const mod=ch? skillMod(ch,"stealth") : cb.stealth;
     const d20=Dice.d(20), total=d20+mod;
     this.seal(`${cb.name} Hides`,d20,`${d20}${mod>=0?"+":""}${mod} = ${total}`,2);
     let any=false;
     eligible.forEach(f=>{
-      const bonus=(ch.specials.includes("edge-outwit")&&f.id===this.huntPreyId)?2:0;
+      const bonus=(ch&&ch.specials.includes("edge-outwit")&&f.id===this.huntPreyId)?2:0;
       const dc=10+(f.perception||0);
       if(total+bonus>=dc){ this.setDetect(f,cb,"hidden"); any=true;
         this.log(`${esc(cb.name)} slips out of ${esc(f.name)}'s sight.`); }
@@ -368,6 +395,7 @@ export const CombatCore = {
     });
     if(any) cb.hideDC=total;
     this.armed=null; this.hint(""); this.renderAll();
+    return any;
   },
   /**
    * Whether `cb` has anything to hide behind, from `obs` specifically.
@@ -465,22 +493,27 @@ export const CombatCore = {
    *
    * Grapple's Escape DC is the total that made the grab, exactly the way
    * Hide's DC is the total that made the hiding place (Phase 4's `hideDC`).
-   * It is not PF2e's "the grabber's Class DC", and it is the reason a critical
-   * Grapple is harder to break than an ordinary one without needing a second
-   * condition value to carry the difference (locked #107).
+   * It is not PF2e's "the grabber's Class DC" (locked #107). A critical Grapple
+   * is `restrained` on top of `grabbed` as well, which is what stops the target
+   * doing anything but Escape (RESTRAINED_OK).
+   *
+   * A monster wrestles with its own `athletics` number, and one with none
+   * cannot. The defender's DC carries any conditional `maneuver-dc` bonus off
+   * its sheet whose `vs` names the maneuver — Rock Dwarf's +2 against Trip and
+   * Shove, which waited for a monster that could Trip to mean anything.
    */
   maneuver(cb,t,kind){
     const m=MANEUVERS[kind], ch=cb.char;
-    if(!m||!ch) return 1;
+    if(!m||(!ch&&cb.athletics===undefined)) return 1;
     if(!this.canWrestle(cb,t)){
       this.toast(`${t.name} is too big to ${m.name.toLowerCase()}.`);
       this.hint(`${t.name} is too big to ${m.name.toLowerCase()}.`);
       return null;
     }
     const mapPen=this.mapPenalty(cb,{traits:[]});
-    const mod=skillMod(ch,"athletics")+mapPen+this.consumeAid(cb)
+    const mod=(ch? skillMod(ch,"athletics") : cb.athletics)+mapPen+this.consumeAid(cb)
       -this.condVal(cb,"frightened")-this.condVal(cb,"sickened")-this.condVal(cb,"enfeebled");
-    const dc=10+this.saveMod(t,m.save);
+    const dc=10+this.saveMod(t,m.save)+(t.char? this.condBonus(t.char,"maneuver-dc",kind) : 0);
     const r=this.check(`${cb.name}: ${m.name} vs ${t.name}`,mod,dc);
     cb.mapCount++;
     if(kind==="trip"){
@@ -490,10 +523,10 @@ export const CombatCore = {
     } else if(kind==="shove"){
       if(r.deg>=2) this.push(cb,t,r.deg===3?2:1);
     } else if(kind==="grapple"){
-      if(r.deg>=2){ this.grab(cb,t,r.total); }
+      if(r.deg>=2){ this.grab(cb,t,r.total,r.deg===3); }
       else if(r.deg===0){ this.addCond(cb,"prone",1); this.log(`${esc(cb.name)} loses the grip and the footing with it.`); }
     } else if(kind==="disarm"){
-      if(r.deg>=2){ this.addCond(t,"disarmed",1,2);
+      if(r.deg>=2){ this.disarm(t);
         if(r.deg===3){ t.disarmDropped=true; this.log(`${esc(t.name)}'s weapon skitters away — it will cost an action to get back.`); } }
     }
     this.afterAttack(cb);
@@ -519,16 +552,40 @@ export const CombatCore = {
     return moved;
   },
   /** Take hold. `dc` is the total that made the grab, and is what an Escape
-      is rolled against. */
-  grab(grabber,t,dc){
+      is rolled against. `restrain` is a critical Grapple: the target is
+      restrained as well as grabbed, and one Escape ends both. */
+  grab(grabber,t,dc,restrain){
     t.grabbedBy=grabber.id; t.grabDC=dc;
     this.addCond(t,"grabbed",1);
-    this.log(`${esc(grabber.name)} has ${esc(t.name)} fast. <b>Escape DC ${dc}.</b>`);
+    if(restrain) this.addCond(t,"restrained",1);
+    this.log(`${esc(grabber.name)} has ${esc(t.name)} ${restrain?"pinned, able to do nothing but struggle":"fast"}. <b>Escape DC ${dc}.</b>`);
+  },
+  /**
+   * Disarm's success clause, aimed at one weapon: the target's first attack,
+   * which is the one it leads with. The condition carries the attack's name,
+   * and `disarmPenalty` reads it per attack, so a champion disarmed of its
+   * longsword still swings its gauntlet at full bonus.
+   */
+  disarm(t){
+    const w=(t.attacks||[])[0];
+    this.addCond(t,"disarmed",1,2,true);
+    const c=t.conditions.find(x=>x.c==="disarmed");
+    if(c&&w) c.weapon=w.name;
+    this.log(`${esc(t.name)} is <b>disarmed</b>${w?` — −2 with its ${esc(w.name)}`:""}.`);
+  },
+  /** What `disarmed` costs this attack: 2 per value on the weapon it names, 0
+      on any other. A condition naming no weapon is every attack, which is
+      what a hand-written test condition or an old one means. */
+  disarmPenalty(cb,attack){
+    const c=cb.conditions.find(x=>x.c==="disarmed");
+    if(!c) return 0;
+    if(c.weapon&&attack&&attack.name!==c.weapon) return 0;
+    return 2*c.v;
   },
   /** Let go, from either end. Safe to call on a combatant nothing is holding. */
   release(t,why){
     if(!this.condVal(t,"grabbed")&&!t.grabbedBy) return false;
-    t.conditions=t.conditions.filter(c=>c.c!=="grabbed");
+    t.conditions=t.conditions.filter(c=>c.c!=="grabbed"&&c.c!=="restrained");
     t.grabbedBy=null; t.grabDC=0;
     this.log(`${esc(t.name)} is free${why?", "+why:""}.`);
     return true;
@@ -540,13 +597,15 @@ export const CombatCore = {
   /**
    * Escape, one action, against the DC the grab was made with. Athletics or
    * Acrobatics, whichever the hero is better at; a companion or a monster uses
-   * its own Perception, which is the only general number a flat stat block has.
+   * its Athletics if its data carries one and its Perception if that is better
+   * or all it has.
    * Escape has the attack trait, so it takes and raises the MAP.
    */
   doEscape(cb){
     if(!this.condVal(cb,"grabbed")){ this.toast("Nothing has hold of you."); return null; }
     const ch=cb.char;
-    const base=ch? Math.max(skillMod(ch,"athletics"),skillMod(ch,"acrobatics")) : (cb.perception||0);
+    const base=ch? Math.max(skillMod(ch,"athletics"),skillMod(ch,"acrobatics"))
+      : Math.max(cb.perception||0, cb.athletics!==undefined?cb.athletics:-Infinity);
     const mod=base+this.mapPenalty(cb,{traits:[]})+this.consumeAid(cb);
     const dc=cb.grabDC||15;
     this.spend(1);
@@ -562,9 +621,11 @@ export const CombatCore = {
   doStand(cb){
     if(!this.condVal(cb,"prone")){ this.toast("You are already on your feet."); return false; }
     if(this.condVal(cb,"grabbed")){ this.toast("You are grabbed — Escape first."); return false; }
-    this.spend(1);
+    // Kip Up: standing is a free action.
+    const kip=!!(cb.char&&cb.char.specials.includes("kip-up"));
+    if(!kip) this.spend(1);
     cb.conditions=cb.conditions.filter(c=>c.c!=="prone");
-    this.log(`${esc(cb.name)} gets back up.`);
+    this.log(`${esc(cb.name)} ${kip?"kips up":"gets back up"}.`);
     this.armed=null; this.hint(""); this.renderAll();
     return true;
   },
@@ -697,35 +758,103 @@ export const CombatCore = {
     return true;
   },
   /**
-   * Ready: two actions to arm one Strike against a trigger from the Phase 3
-   * bus. The trigger is the same `move-out-of-reach` every Reactive Strike
-   * answers to, read the other way round — a readied Strike fires when a foe
-   * steps *into* reach, not out of it.
+   * Ready: two actions to arm one Strike, with any weapon the combatant
+   * carries, against a trigger from the Phase 3 bus. The trigger is the same
+   * `move-out-of-reach` every Reactive Strike answers to, read the other way
+   * round, and the weapon decides which reading:
+   *
+   *   melee  — fires when a foe steps *into* reach, not out of it.
+   *   ranged — fires when a foe steps into a square within range and line of
+   *            sight from one that was not: it came round the corner, or
+   *            through the door, or close enough.
+   *   spell  — a one-action spell aimed at a foe (the witch's hexes are the
+   *            ones the packs carry), on the ranged Strike's trigger and at
+   *            its own range. Ready holds a single action, which is why a
+   *            two-action spell is not offered. The slot or focus point is
+   *            spent when it fires, not when it is readied.
    *
    * A readied action is not a feat, so it is not in `REACTIONS` and not part of
-   * the content contract a monster's `"reactions"` field names. It lives on the
-   * combatant, it spends the same one reaction per turn everything else does,
-   * and it is dropped at the start of the readier's next turn whether it fired
-   * or not.
+   * the content contract a monster's `"reactions"` field names (locked #109).
+   * It lives on the combatant, it spends the same one reaction per turn
+   * everything else does, and it is dropped at the start of the readier's next
+   * turn whether it fired or not.
    */
-  doReady(cb){
+  readyOptions(cb){
+    const strikes=(cb.attacks||[]).map((a,i)=>({kind:"strike",atkIdx:i,name:a.name,ranged:!!a.ranged,
+      label:a.ranged? `${a.name}, at the first foe to come within range and sight`
+                    : `${a.name}, at the first foe to step within reach`}));
+    const spells=this.allSpellRows(cb).filter(r=>this.readiable(r)).map(r=>({kind:"spell",
+        spellId:r.sp.id,pool:r.pool,rank:r.rank,name:r.sp.name,ranged:true,range:Math.max(1,Math.floor((r.sp.range||0)/5)),
+        label:`${r.sp.name}, at the first foe to come within range and sight`}));
+    return [...strikes,...spells];
+  },
+  /** Every spell row a combatant has, slots and focus alike; none for anyone
+      without a sheet. */
+  allSpellRows(cb){
+    const ch=cb.char; if(!ch) return [];
+    return [...(ch.casting? this.spellRows(cb,false) : []),...(ch.focusSpells.length? this.spellRows(cb,true) : [])];
+  },
+  /** A spell row Ready can hold: one action, castable now, and aimed at a
+      single foe — the same test `armSpell` uses to decide a target is
+      friendly, read the other way. */
+  readiable(r){
+    const sp=r.sp;
+    if((sp.actions||2)!==1||r.spent||r.hexBlocked) return false;
+    if(sp.area||sp.partyBuff||sp.selfBuff||sp.allyBuff||sp.utility||sp.special||sp.healOrHarmUndead) return false;
+    if(sp.heal||Object.values(sp.rankEffects||{}).some(e=>e&&e.heal)) return false;
+    return !!(sp.save||sp.attackRoll||sp.autoHit);
+  },
+  /** The page puts the options in front of the player; with one option, or
+      with no view at all, the first weapon is the choice. */
+  chooseReady(cb){ return this.doReady(cb,0); },
+  doReady(cb,atkIdx){
     if(this.actions<2){ this.toast("Ready takes two actions."); return false; }
-    if(!cb.attacks||!cb.attacks.length){ this.toast("Nothing to Ready a Strike with."); return false; }
+    const opt=this.readyOptions(cb)[atkIdx||0];
+    if(!opt){ this.toast("Nothing to Ready a Strike with."); return false; }
     this.spend(2);
-    cb.readied={kind:"strike"};
-    this.log(`${esc(cb.name)} <b>Readies</b> a Strike, and waits for something to come within reach.`);
+    cb.readied= opt.kind==="spell"? {kind:"spell",spellId:opt.spellId,pool:opt.pool,rank:opt.rank,range:opt.range,ranged:true}
+      : {kind:"strike",atkIdx:opt.atkIdx,ranged:opt.ranged};
+    this.log(`${esc(cb.name)} <b>Readies</b> ${opt.kind==="spell"?"":"a Strike with "}${esc(opt.name)}, and waits for something to come ${opt.ranged?"into sight":"within reach"}.`);
     this.armed=null; this.hint(""); this.renderAll();
     return true;
   },
   /** True when `cb`'s readied Strike answers this trigger: an enemy that was
-      outside reach at `ctx.from` and is inside it at `ctx.to`. */
+      outside the readied weapon's zone at `ctx.from` and is inside it at
+      `ctx.to`. */
   readyFires(cb,name,ctx){
     if(!cb.readied||name!=="move-out-of-reach") return false;
     if(!ctx.actor||ctx.actor.side===cb.side||!ctx.from||!ctx.to) return false;
-    if(!cb.attacks||!cb.attacks.length) return false;
+    const spell=cb.readied.kind==="spell";
+    if(spell&&!this.readiedSpellRow(cb)) return false;
+    const atk=spell? {ranged:true,range:cb.readied.range} : this.readiedAttack(cb);
+    if(!atk) return false;
+    if(atk.ranged){
+      const R=atk.range||1;
+      const sees=p=>this.dist(cb,p)<=R&&this.losClear(cb,p);
+      return !sees(ctx.from)&&sees(ctx.to);
+    }
     const R=this.reachOf(cb);
     return this.dist(cb,ctx.from)>R&&this.dist(cb,ctx.to)<=R;
   },
+  /** The attack a readied Strike swings with. */
+  readiedAttack(cb){
+    const r=cb.readied; if(!r||r.kind==="spell"||!cb.attacks) return null;
+    return cb.attacks[r.atkIdx||0]||null;
+  },
+  /** A readied spell's row, if it can still be cast: the pool can have run
+      dry, or a hex been spent, since it was readied. */
+  readiedSpellRow(cb){
+    const r=cb.readied; if(!r||r.kind!=="spell") return null;
+    return this.allSpellRows(cb).find(x=>x.sp.id===r.spellId&&x.pool===r.pool&&!x.spent&&!x.hexBlocked)||null;
+  },
+  /** Cast it, off the readier's turn: no actions are spent, the pool is. */
+  readiedCast(cb,target){
+    const row=this.readiedSpellRow(cb); if(!row) return;
+    const armed=this.armed;
+    this.castAt(cb,{kind:"target",btn:"spell",mode:"spell-target",spell:row.sp,castRank:row.rank,pool:row.pool,cost:0,range:cb.readied.range},target);
+    this.armed=armed;
+  },
+
 
 
   /* ---------- the view and clock seams: no-ops here, overridden by the page ---------- */
@@ -786,10 +915,9 @@ export const CombatCore = {
     if(!attack.ranged) m-=this.condVal(cb,"enfeebled");
     m-=this.condVal(cb,"bane")+this.condVal(cb,"hexed")+this.condVal(cb,"night-shrouded");
     if(this.condVal(cb,"prone")) m-=2;
-    // Disarm's success clause: -2 with the weapon it was aimed at. The engine
-    // has one weapon per attack entry and no way to say "that one", so it is
-    // -2 on everything the target swings until the condition runs out.
-    m-=2*this.condVal(cb,"disarmed");
+    // Disarm's success clause: -2 with the weapon it was aimed at, and only
+    // that one (`disarm` names it on the condition).
+    m-=this.disarmPenalty(cb,attack);
     m+=this.buffSum(cb,"attack");
     return m;
   },
@@ -806,7 +934,7 @@ export const CombatCore = {
     if(this.condVal(target,"prone")) offGuard=true;
     // Grabbed is immobilized plus off-guard; the immobilized half is enforced
     // by the action bar and the AI refusing to move, not here.
-    if(this.condVal(target,"grabbed")) offGuard=true;
+    if(this.condVal(target,"grabbed")||this.condVal(target,"restrained")) offGuard=true;
     if(opts&&opts.forceOffGuard) offGuard=true;
     if(this.surprise&&target.side==="foe") offGuard=true;
     /* Surprise Attack (Rogue, level 1): "creatures that haven't acted [in round 1]
@@ -825,6 +953,11 @@ export const CombatCore = {
       offGuard=true; target.feint.usesLeft--;
     }
     if(attacker&&!attacker.ranged&&this.isFlanking(attacker,target)) offGuard=true;
+    /* Gang Up: flanking without the geometry. A target within reach of the
+       rogue and of any standing ally is off-guard to the rogue's melee. */
+    if(attacker&&!attacker.ranged&&attacker.char&&attacker.char.specials.includes("gang-up")&&attacker.x!==undefined
+       &&this.dist(attacker,target)<=1
+       &&this.cbs.some(a=>a.id!==attacker.id&&a.side===attacker.side&&!a.dead&&(a.dying||0)===0&&this.dist(a,target)<=this.reachOf(a))) offGuard=true;
     if(offGuard&&!(target.char&&target.char.specials.includes("deny-advantage"))) ac-=2;
     /* Cover. `opts.from` names the body the line is drawn from, because
        strikeMonster hands in a bare {id,ranged} stand-in with no coordinates
@@ -998,7 +1131,7 @@ export const CombatCore = {
   afterAttack(att){ att.takingCover=false; this.reveal(att,"striking out of it"); },
   strikeMonster(foe,t,atk){
     if(!this.flatCheck(foe,t)){ foe.mapCount++; this.afterAttack(foe); return; }
-    let mod=atk.bonus - this.condVal(foe,"frightened")-this.condVal(foe,"sickened")-this.condVal(foe,"enfeebled")-this.condVal(foe,"hexed")-this.condVal(foe,"night-shrouded")-2*this.condVal(foe,"disarmed");
+    let mod=atk.bonus - this.condVal(foe,"frightened")-this.condVal(foe,"sickened")-this.condVal(foe,"enfeebled")-this.condVal(foe,"hexed")-this.condVal(foe,"night-shrouded")-this.disarmPenalty(foe,atk);
     mod+= foe.mapCount===0?0: (atk.traits.includes("agile")? (foe.mapCount===1?-4:-8):(foe.mapCount===1?-5:-10));
     foe.mapCount++;
     const {ac,offGuard}=this.effAC(t,{id:foe.id,ranged:atk.ranged},{from:foe});
@@ -1086,7 +1219,7 @@ export const CombatCore = {
         x:f.x,y:f.y, hpMax:m.hp, hp:m.hp, tempHP:0, ac:m.ac, saves:{...m.saves}, perception:m.perception,
         speed:Math.floor(m.speed/5), attacks:m.attacks, powers:(m.powers||[]).map(p=>({...p,cd:0})),
         conditions:[], buffs:[], slowedBase:m.slowed||0, weaknesses:m.weaknesses||[], resistances:m.resistances||[], immunities:m.immunities||[], boss:m.boss,
-        reach:m.reach||1, reactions:m.reactions||[]};
+        reach:m.reach||1, reactions:m.reactions||[], stealth:m.stealth, athletics:m.athletics};
       this.cbs.push(cb);
     });
     // boss flags
@@ -1223,6 +1356,7 @@ export const CombatCore = {
     const cb=this.cur(); if(cb.side!=="pc") return;
     this.sel=null;
     const arm=(o,hint)=>{ this.armed={...o,btn:id}; this.hint(hint); this.renderAll(); };
+    if(!this.actionAllowed(cb,id)){ this.toast("You are restrained — Escape first."); return; }
     if(id==="end") return this.endTurn();
     if(id==="delay") return this.doDelay();
     // Grabbed is immobilized: the three ways to change square all refuse.
@@ -1231,7 +1365,7 @@ export const CombatCore = {
     if(id==="step") return arm({kind:"move",budget:1,cost:1,step:true},"Step one square (no reactions).");
     if(id==="escape") return this.doEscape(cb);
     if(id==="stand") return this.doStand(cb);
-    if(id==="ready") return this.doReady(cb);
+    if(id==="ready") return this.chooseReady(cb);
     if(id==="takecover"){
       if(!this.nearCover(cb)){ this.toast("Nothing here to duck behind."); return; }
       cb.takingCover=true; this.spend(1);
@@ -1267,6 +1401,12 @@ export const CombatCore = {
     if(id==="focus") return this.spellMenu(cb,true);
     if(id.startsWith("abil")) { const ab=cb.abilities[+id.slice(4)];
       return arm({kind:"target",range:ab.range,cost:ab.cost,mode:"companion-abil",abil:ab,friendly:ab.type==="heal",canDowned:true},ab.flavor||ab.name); }
+  },
+
+  /** Whether `cb` may take action `id` at all. Only `restrained` says no
+      today; the page greys out the same buttons off the same answer. */
+  actionAllowed(cb,id){
+    return !this.condVal(cb,"restrained")||RESTRAINED_OK.includes(id);
   },
 
   cellClick(x,y){
@@ -1638,6 +1778,11 @@ export const CombatCore = {
       this.seek(foe,{x:foe.x,y:foe.y},3);
       this.spend(1); this.renderAll(); return {action:"seek",wait:500};
     }
+    // Restrained: Escape is the only thing left to do with the turn, and a
+    // fleeing monster cannot run until it has done it either.
+    if(this.condVal(foe,"restrained")){
+      this.doEscape(foe); this.renderAll(); return {action:"escape",wait:500};
+    }
     if(this.condVal(foe,"fleeing")){ // run from nearest
       const near=pcs.sort((a,b)=>this.dist(foe,a)-this.dist(foe,b))[0];
       const reach=this.reachable(foe,this.moveBudget(foe));
@@ -1681,9 +1826,32 @@ export const CombatCore = {
     if(this.condVal(foe,"prone")&&!this.condVal(foe,"grabbed")&&this.doStand(foe)){
       this.renderAll(); return {action:"stand",wait:400};
     }
+    /* Hiding, for a monster whose data carries a Stealth number: once a turn,
+       when it is losing (at half its HP or below), when nothing is close
+       enough to hit it, and when it has something to hide behind from a hero
+       that can still see it. Having Hidden from everyone, it holds still —
+       moving or attacking would give the place away — until a hero comes
+       within reach or Seeks it out. */
+    if(this.aiWantsHide(foe,pcs)){
+      foe.hidRound=this.round; this.doHide(foe);
+      this.renderAll(); return {action:"hide",wait:500};
+    }
+    if(this.aiLurks(foe,standing)){
+      this.log(`${esc(foe.name)} holds still in the dark.`);
+      this.spend(this.actions); this.renderAll(); return {action:"lurk",wait:400};
+    }
     // target: nearest (prefer downed? no — nearest standing, prefer lowest HP among adjacent)
     const adjacent=pcs.filter(p=>this.dist(foe,p)<=1);
     if(adjacent.length){
+      /* A monster with an Athletics number opens with a Trip, at the heaviest
+         armour within reach that is still on its feet and not too big to
+         throw: everything after it swings at an off-guard target, and a hero on
+         the floor spends an action getting up. Only as the first attack of a
+         turn with an action left to follow it. */
+      if(foe.athletics!==undefined&&foe.mapCount===0&&this.actions>=2){
+        const mark=adjacent.filter(p=>!this.condVal(p,"prone")&&this.canWrestle(foe,p)).sort((a,b)=>b.ac-a.ac)[0];
+        if(mark){ this.maneuver(foe,mark,"trip"); this.spend(1); this.renderAll(); return {action:"trip",target:mark.id,wait:550}; }
+      }
       const t=adjacent.sort((a,b)=>a.hp-b.hp)[0];
       if(foe.mapCount>=2){ this.spend(this.actions); return {action:"pass",wait:300}; }
       const atk=foe.attacks[foe.mapCount%foe.attacks.length]||foe.attacks[0];
@@ -1722,6 +1890,18 @@ export const CombatCore = {
     }
     this.spend(this.actions); return {action:"pass",wait:300};
   },
+  /** Whether a monster Hides this step. See the comment where `aiStep` asks. */
+  aiWantsHide(foe,pcs){
+    if(foe.stealth===undefined||foe.hidRound===this.round||foe.hp*2>foe.hpMax) return false;
+    if(pcs.some(p=>this.dist(foe,p)<=1)) return false;
+    return pcs.some(p=>!this.isHidden(p,foe)&&this.canHideFrom(foe,p));
+  },
+  /** Whether a monster that has Hidden stays put: every standing hero has
+      lost it, and none is close enough to strike out of hiding at. */
+  aiLurks(foe,standing){
+    if(foe.stealth===undefined||!standing.length) return false;
+    return standing.every(p=>this.isHidden(p,foe)&&this.dist(foe,p)>1);
+  },
   /** A monster's whole turn: step, wait, step, until `aiStep` says it is over.
       With the page's `defer` that is one action every half-second or so; with
       the engine's own it is one synchronous call. */
@@ -1746,13 +1926,36 @@ export function heroCombatant(ch){
       focus:ch.focusMax,font:ch.casting&&ch.casting.font?ch.casting.font.uses:0,
       potions:Array((ch.consumables.find(c=>c.id==="healing-potion-minor")||{count:0}).count).fill("healing-potion-minor")}};
 }
-/** A companion as a combatant, from its Registry entry. */
-export function companionCombatant(id){
-  const c=Registry.companions[id];
-  return {id:"comp-"+id,side:"pc",name:c.name,subtitle:c.subtitle,hpMax:c.hp,hp:c.hp,tempHP:0,ac:c.ac,
+/** The level every companion is written at unless its data says otherwise:
+    all of them shipped beside level-3 adventures. */
+export const COMPANION_LEVEL = 3;
+/**
+ * A companion's numbers at `level`, from the stat block written at its own
+ * `level` (COMPANION_LEVEL if it names none). A companion walks with the hero
+ * and grows with the hero: +1 per level to AC, every save, Perception,
+ * initiative and every attack, HP by `hpPerLevel` a level (default: its HP
+ * spread over one more than its level, which is the ancestry's share plus the
+ * class's), and a striking rune on its weapons from 4th, the same level
+ * `kitAt` gives the hero one. Heals, sneak dice and ability uses are not
+ * scaled. `level` undefined is the stat block as written.
+ */
+export function companionAt(c, level){
+  const at=Number.isInteger(c.level)? c.level : COMPANION_LEVEL;
+  const L=Number.isInteger(level)? level : at, d=L-at;
+  const per=Number.isInteger(c.hpPerLevel)? c.hpPerLevel : Math.round(c.hp/(at+1));
+  const strike=kitAt(L).striking&&!kitAt(at).striking;
+  const saves={}; Object.keys(c.saves||{}).forEach(k=>{ saves[k]=c.saves[k]+d; });
+  return {level:L, ac:c.ac+d, hp:Math.max(1,c.hp+per*d), saves, perception:(c.perception||0)+d,
+    initSkill:c.initSkill===undefined? undefined : c.initSkill+d,
+    attacks:(c.attacks||[]).map(a=>({...a, bonus:a.bonus+d, damage:strike? strikingDie(a.damage) : a.damage}))};
+}
+/** A companion as a combatant, from its Registry entry, at the hero's level. */
+export function companionCombatant(id, level){
+  const c=Registry.companions[id], k=companionAt(c,level);
+  return {id:"comp-"+id,side:"pc",name:c.name,subtitle:c.subtitle,level:k.level,hpMax:k.hp,hp:k.hp,tempHP:0,ac:k.ac,
     reach:c.reach||1,reactions:c.reactions||[],
-    saves:{...c.saves},perception:c.perception,initSkill:c.initSkill,speed:Math.floor(c.speed/5),
-    attacks:c.attacks.map(a=>({...a,die:a.damage,dmgMod:0,traits:a.traits||[],ranged:a.range>1})),
+    saves:k.saves,perception:k.perception,initSkill:k.initSkill,speed:Math.floor(c.speed/5),
+    attacks:k.attacks.map(a=>({...a,die:a.damage,dmgMod:0,traits:a.traits||[],ranged:a.range>1})),
     abilities:(c.abilities||[]).map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,resources:{slots:{1:0,2:0},focus:0,font:0,potions:[]}};
 }
 

@@ -454,45 +454,20 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
 }
 
 {
-  // Phase 4, and the reason this row's six new scenes put their numbers on the
-  // choice rather than on the scene. A scene named by a choice's `goto` and
-  // carrying a `statUpdate` fires it TWICE: `handleChoice` triggers it before
-  // the scene and `afterScene` triggers it again at the end. Both calls apply
-  // `deltas`. Measured in a real browser on `fr2_danny_01` option B, which
-  // grants +1 showmanship on the choice and +1 on the target's statUpdate:
-  // showmanship 0 goes to 3, and the stat screen is shown twice.
-  //
-  // The standing backlog has carried this as "a doubled `> title — reason`
-  // line in every transcript" without a number. Thirty-three scenes do it.
-  // Fixing the engine moves every transcript and rebalances the game, so it
-  // is a row of its own; this freezes the inventory the way flags.mjs freezes
-  // its write-only list (#264), so the list can shrink and a thirty-fourth
-  // fails here. New content routes around it: numbers through `effects`, which
-  // `applyEffects` runs once, and relationship and flag writes on the
-  // `statUpdate`, which are idempotent.
-  const DOUBLE_APPLIES = [
-    'fr1_org_wait', 'fr2_danny_01_pro', 'fr2_danny_01_watch', 'fr2_danny_event_narrow',
-    'fr2_danny_headtohead_counter', 'fr2_danny_headtohead_silence', 'fr2_pete_measured',
-    'fr2_pete_soft', 'fr2_pete_why', 'fr2_ruthie_q_a', 'fr2_ruthie_q_d', 'fr3_eve_earl_cal',
-    'fr3_eve_earl_engage', 'fr3_eve_earl_read', 'fr3_press_sandra_accept',
-    'fr3_press_sandra_check', 'fr3_press_sandra_control', 'fr3_ruthie_ask',
-    'fr3_ruthie_honest', 'fr4_biographer_no', 'fr4_biographer_yes', 'fr4_california_close',
-    'fr4_earl_direct', 'm1_r4', 'm1_ruthie_a', 'm1_ruthie_b', 'm2_sign', 'm5_disappear',
-    'm5_keep_going', 'm5_mentor', 'm5_retire_clean', 'm5_symbolic_own', 'm5_walk_quiet',
-  ];
-  const reachedByChoice = new Set();
-  for (const sc of Object.values(SCENES)) for (const ch of sc.choices || []) if (ch.goto) reachedByChoice.add(ch.goto);
-  const doubling = [...reachedByChoice]
-    .filter(id => SCENES[id] && SCENES[id].statUpdate
-                  && Object.values(SCENES[id].statUpdate.deltas || {}).some(v => v))
-    .sort();
-  const added = doubling.filter(id => !DOUBLE_APPLIES.includes(id));
-  const fixed = DOUBLE_APPLIES.filter(id => !doubling.includes(id));
-  ok(added.length === 0,
-     `no new scene applies its stat deltas twice (new: ${added.join(', ') || 'none'})`);
-  ok(fixed.length === 0,
-     `every name on the doubling list still doubles (stale: ${fixed.join(', ') || 'none'})`);
-  console.log(`  double-apply: ${doubling.length} choice-reached scenes carry non-empty deltas`);
+  // A scene's statUpdate fires once, from afterScene, when its Continue is
+  // clicked. Until TG-08 `handleChoice` fired it too, before the scene, so a
+  // choice-reached scene with deltas paid them twice: `fr2_danny_01` option B
+  // took showmanship from 0 to 3 for a +1 choice and a +1 scene, and
+  // thirty-three scenes did it, `m2_sign` and six of the eight endings among
+  // them. That firing is gone, and smoke-page.mjs fails on a stat screen shown
+  // twice for one scene. What is left to check here is the precondition the
+  // fix leans on: afterScene never runs for a scene that ends in choices, so a
+  // statUpdate on one would now never fire at all.
+  const both = Object.entries(SCENES)
+    .filter(([, sc]) => sc.statUpdate && sc.choices && sc.choices.length)
+    .map(([id]) => id).sort();
+  ok(both.length === 0,
+     `no scene carries both a statUpdate and choices, which would never fire (${both.join(', ') || 'none'})`);
 }
 
 /* ------------------------------------------------- the hub economy (Phase 6) */
@@ -668,10 +643,9 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
 
   // 11. No accumulating number on a `statUpdate`, ever.
   //
-  // A scene reached by a choice fires its statUpdate twice — the double-apply
-  // frozen thirty-three scenes above — and the doubling is invisible for a
-  // flag or a relationship write, which are idempotent, and is not for a
-  // running total. This phase shipped its first version with the solo bank
+  // A scene reached by a choice used to fire its statUpdate twice (fixed in
+  // TG-08) — invisible for a flag or a relationship write, which are
+  // idempotent, and not for a running total. This phase shipped its first version with the solo bank
   // note's monthly on `m2_solo_bank_collateral`'s update, and the solo
   // transcripts came out at $74 a month against a prose line that says
   // thirty-seven. `triggerStatUpdate` no longer looks at either key; this

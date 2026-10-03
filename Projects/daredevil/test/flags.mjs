@@ -101,10 +101,11 @@ let plumbing = 0;
 for (const m of src.matchAll(/\bflags\s*:\s*/g)) {
   const at = m.index + m[0].length;
   if (src[at] === '{') { topLevelKeys(braceBody(src, at)).forEach(k => writes.add(k)); continue; }
-  // `flags: su.flags||{}` — triggerStatUpdate's two callers handing a scene's
-  // own bag straight through. Plumbing, not a declaration; the literal it came
-  // from was counted at its own site. Two of them, and a third has to be
-  // looked at rather than waved past.
+  // `flags: su.flags||{}` — afterScene handing a scene's own bag straight
+  // through to triggerStatUpdate. Plumbing, not a declaration; the literal it
+  // came from was counted at its own site. One of them since TG-08 took the
+  // second caller out of handleChoice, and another has to be looked at rather
+  // than waved past.
   if (/^[\w.]*\.flags\s*\|\|/.test(src.slice(at))) { plumbing++; continue; }
   const call = /^([A-Za-z_$][\w$]*)\s*\(/.exec(src.slice(at));
   if (!call) { unresolved.push(src.slice(at, at + 40).replace(/\s+/g, ' ')); continue; }
@@ -125,7 +126,7 @@ console.log(`\n  ${reads.size} flags read, ${writes.size} written, ${defaults.le
 
 ok(unresolved.length === 0,
    `every \`flags:\` in the source is an object literal or a resolvable helper (unresolved: ${unresolved.join(' | ') || 'none'})`);
-ok(plumbing === 2, `exactly two \`flags:\` sites are pass-through plumbing (found ${plumbing})`);
+ok(plumbing === 1, `exactly one \`flags:\` site is pass-through plumbing (found ${plumbing})`);
 
 // 1. A read of a name nothing writes and the save does not seed is a typo or a
 //    rename that only half happened.

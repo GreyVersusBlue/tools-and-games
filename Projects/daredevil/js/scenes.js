@@ -119,7 +119,7 @@ export const m4Gate = choice => M4_STUNT_GATES.find(g => g.choice === choice);
 // replaced two `if` ladders in goToScene() and one in `_m3_prestunt`, and the
 // rows are in the order those ladders asked in. The pre-stunt tables follow
 // the cast's order; Milestone 5's does not — the game has always let Ruthie
-// ask before Cal, and this row was not the one to change who asks. The one
+// ask before Cal, and Earl as mentor asks before Cal too (TG-08). The one
 // thing the table cannot say is Milestone 5's exception, which the engine
 // keeps: if Cal already asked the question in Free Roam 4
 // (`calAskedTheQuestion`), he comes first. The old ladder also tested Ruthie
@@ -136,10 +136,15 @@ export const M4_PRESTUNT_ROUTES = [
   { who: 'earl',   states: presentStates('earl'), scene: 'm4_prestunt_earl_m4' },
 ];
 export const M4_PRESTUNT_FALLBACK = 'm4_prestunt_nobody_m4';
+// Earl's row sits above Cal's (TG-08). The only road to `earl: 'mentor'` is
+// "I want Cal in the room" on `fr3_eve_earl`, which also writes `cal:
+// 'loyal'`, so with Cal's row first `m5_question_earl` was a written scene no
+// run could reach (#285). Mentor is the narrower state, earned on one evening,
+// and loyal Cal is most runs; the narrow row goes first.
 export const M5_QUESTION_ROUTES = [
   { who: 'ruthie', states: ['solid'],         scene: 'm5_question_ruthie' },
-  { who: 'cal',    states: ['loyal', 'warm'], scene: 'm5_question_cal' },
   { who: 'earl',   states: ['mentor'],        scene: 'm5_question_earl' },
+  { who: 'cal',    states: ['loyal', 'warm'], scene: 'm5_question_cal' },
 ];
 export const M5_QUESTION_FALLBACK = 'm5_question_nobody';
 
@@ -1173,17 +1178,11 @@ fr1_eve_bar: {
   // cards gated on him not being gone and a Free Roam 4 line read
   // `rels.tommy === 'ally'`. The track starts here: this is the first evening
   // in the game where Duke can ask Tommy a question about Tommy.
-  // The deltas are on the choices, not on the arms' `statUpdate`s, and that is
-  // deliberate: a scene reached by a choice and carrying a `statUpdate` fires
-  // it twice — once from `handleChoice` before the scene and once from
-  // `afterScene` at the end of it — so its deltas apply twice. Measured on
-  // `fr2_danny_01` option B: showmanship 0 goes to 3 for a choice that grants
-  // +1 and a scene that grants +1. That is a known engine bug, on the standing
-  // backlog, and it moves every transcript at once to fix, so this row routes
-  // around it instead: numbers through `effects`, which `applyEffects` runs
-  // exactly once, and the relationship and flag writes on the `statUpdate`,
-  // where the stat screen announces them (they are idempotent, so firing twice
-  // is harmless).
+  // The deltas are on the choices, not on the arms' `statUpdate`s. When this
+  // was written a choice-reached scene fired its `statUpdate` twice, so a
+  // number there applied twice (TG-08 fixed the engine); numbers on `effects`
+  // and relationship and flag writes on the `statUpdate` stayed the house
+  // pattern afterward.
   choices:[
     { label:'A', text:`"What have you been doing?"`,
       subtext:'He has been waiting eight months for somebody to ask.',

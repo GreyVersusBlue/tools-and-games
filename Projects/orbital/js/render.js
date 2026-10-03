@@ -63,9 +63,9 @@ function loadSprites() {
 }
 
 // The glow each body wears: its rgba and its reach in radii. The frame carries
-// none of it (#720), so drawBody lays it over the frame. The black hole is the
-// exception and keeps its glow behind: over the frame it turned the core
-// violet (#736).
+// none of it (#720), so drawBody lays it over the frame. The black hole and the
+// wormhole are the exceptions and keep theirs behind: over a dark core the
+// glow turns it violet or teal (#736).
 const GLOW = {
   planet: ["rgba(99,216,255,0.5)", 2.4], star: ["rgba(255,178,87,0.5)", 3.4],
   rock: ["rgba(154,160,184,0.5)", 2.4], repulse: ["rgba(255,94,200,0.5)", 2.4],
@@ -85,7 +85,7 @@ function bodyTurn(b, t) {
 function drawBody(b, t) {
   const [sx, sy] = W2S(b.x, b.y), f = SPRITES.atlas[b.type];
   const k = (b.r * view.s) / f.r, turn = bodyTurn(b, t);
-  const under = b.type === "blackhole";
+  const under = b.type === "blackhole" || b.type === "wormhole";
   if (under) glowCircle(b.x, b.y, b.r, GLOW[b.type][0], GLOW[b.type][1]);
   ctx.save(); ctx.translate(sx, sy); if (turn) ctx.rotate(turn);
   ctx.drawImage(SPRITES.img, f.x, f.y, f.w, f.h, -f.ax * k, -f.ay * k, f.w * k, f.h * k);

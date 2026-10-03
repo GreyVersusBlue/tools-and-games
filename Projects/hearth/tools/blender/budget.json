@@ -1,0 +1,28 @@
+{
+  "about": "Hearth's building sheet style sheet as data (HISTORY.md #805 to #807). validate.mjs reads all of it; buildings.py reads tiers, snow and the sheet. A frame is drawn at one frame pixel to one map pixel, so its sides and its anchor are whole tiles (T, read from js/core.js). Every opaque pixel is a js/render.js colour times one of the tiers (the side a face is turned to: #805), within tolerance levels (`lifted` holds the ones the wiring took out of render.js with the drawings that used them, read off js/render.js at 4786389; spec.mjs adds them to the palette), and every pixel is fully opaque or fully clear. `was` is the box, in map pixels from the building's tile corner, that render.js's procedural drawing covered, as [x0, y0, x1, y1] (the mill without its sails, which stay drawn); a frame's drawn box keeps its width and height within `scaleTolerance` of it and its foot on the same row (the common plan's scale rule, and draw() sorts by the foot). A snow frame is snow and nothing else, and only where its building is drawn. maxKiB is KiB x 1024, maxSide the longest side in pixels.",
+  "lifted": ["#2b2b3a", "#4a3a2a", "#5a5a60", "#b8a17e", "#c9c4b8", "#e6e2d8"],
+  "tolerance": 1,
+  "scaleTolerance": 0.1,
+  "tiers": { "south": 1.0, "top": 1.12, "west": 0.88, "east": 0.72, "north": 0.6 },
+  "snow": { "colour": "#eef2f4", "up": 0.3, "kinds": ["house", "hut", "well", "mill", "hall"] },
+  "was": {
+    "house": [-1, 0, 17, 16],
+    "hut": [0, -6, 16, 7],
+    "well": [0, -3, 8, 7],
+    "market": [2, 2, 24, 21],
+    "mill": [2, -2, 14, 16],
+    "smoke": [0, -6, 16, 7],
+    "bridge-h": [-1, 0, 9, 8],
+    "bridge-v": [0, -1, 8, 9],
+    "hall": [-1, -8, 25, 16],
+    "light": [0, -15, 8, 6]
+  },
+  "sheet": {
+    "png": "assets/sprites/buildings.png",
+    "atlas": "assets/sprites/buildings.js",
+    "width": 192,
+    "gap": 0,
+    "maxSide": 256,
+    "maxKiB": 16
+  }
+}

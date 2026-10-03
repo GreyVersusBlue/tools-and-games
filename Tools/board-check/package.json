@@ -12,6 +12,7 @@
     "tools": "node tools.mjs",
     "shoot": "node shoot-board.mjs",
     "previews": "node capture-previews.mjs",
+    "hearth": "node capture-hearth.mjs",
     "promote": "node promote-previews.mjs",
     "social": "node sync-social-tags.mjs",
     "social:check": "node sync-social-tags.mjs --check",

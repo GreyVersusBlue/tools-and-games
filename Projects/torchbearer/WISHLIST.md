@@ -8,8 +8,8 @@ hooks; `cooperative-nature`'s +4 is the third. Saves read conditional `bonus`
 entries off the sheet by trait, so Ancient-Blooded Dwarf and Gutsy Halfling do
 something for the first time. `prone` could be applied by nothing and removed
 by nothing before this phase, and now Trip applies it and Stand takes it off.
-`node Projects/torchbearer/test/smoke.mjs` is green at **1,531 passed, 0
-failed**, up from 947 — and it runs in CI, on
+`node Projects/torchbearer/test/smoke.mjs` was green at **1,531 passed, 0
+failed** at the end of Phase 5, up from 947 — and it runs in CI, on
 `.github/workflows/torchbearer-ci.yml`. **Phase 6 — A hero who levels** has
 shipped in two increments: level is a field on the build, every derived
 number hangs off it, the progression tables are data with checks on them,
@@ -36,8 +36,13 @@ lists the keys the engine will ignore, walks every adventure's scene graph and
 hands a clean pack straight to the game; and `packs/cold-harrow.json` plus
 `packs/harrowmoor-bestiary.json` are 20 scenes, 3 encounters and 15 stat blocks
 written entirely through that contract with **zero changes to
-`torchbearer.html` for the content**. `smoke.mjs` is at **1,531 passed, 0
-failed** and the browser recipe at **73 of 73**.
+`torchbearer.html` for the content**. **The engine holes after arc two are
+closed** (2026-10-02): a monster with a Stealth or Athletics number Hides and
+Trips, a critical Grapple restrains, Disarm aims at one weapon, Ready holds
+any weapon or a one-action spell, the level-up teaches a spell when a rank
+gains a slot, the core pack's feats reach 9th, and companions grow with the
+hero. `smoke.mjs` is at **1,642 passed, 0 failed** and the browser recipe was
+last at **73 of 73**.
 
 ## What it is
 
@@ -53,7 +58,7 @@ that this is a platform.
 
 It backs the claim with content that is *data*. `CORE_PACK` and
 `ADVENTURE_PACK` sit inline in the page (6 ancestries, 10 backgrounds, all 8
-Player Core classes, 73 feats, 42 spells, 28 items; 6 monsters, 2 companions,
+Player Core classes, 112 feats, 42 spells, 28 items; 6 monsters, 2 companions,
 the 25-scene Bell of Barrowmoor) and use the exact schema an external JSON pack
 uses. `packs/` ships two more — The Long Vigil at Thornwake Bridge (12 scenes,
 2 encounters) and Embers of the Hold, a worked example of every collection —
@@ -223,30 +228,12 @@ because it could not.
 Open and unclaimed. Add here rather than starting a new list.
 
 **Levelling**
-- **No spell step at level-up.** A caster's rank-2 slots grow from 2 to 3 at
-  4th (`spellSlotsAt`), but the prepared list and the repertoire do not: a
-  level-4 wizard casts the two rank-2 spells it knows three times between
-  them, and a bard's repertoire never grows. `grantsAt` says nothing about
-  spells, so the flow offers nothing. A `spells` step in level-up mode that
-  adds one known spell when a rank's slot count rises is the shape; ranks 3
-  and up are locked #114 and a bigger job.
-- **The core pack's feats stop at 2nd level, so slots run dry.** A Fighter
-  has five class feats in the pack, holds two at 3rd, and has nothing left
-  for `class10`; a Rogue's every-level skill feat slot runs out of feats with
-  met prerequisites sooner. The flow reads any feat at or below the slot's
-  level, so a pack of level 4 to 10 feats is content work, not engine work.
-  Until then a slot with nothing to offer is satisfied empty (locked #117),
-  and the screen says so.
 - **The adventure picker says "Level 3 adventure" and compares it to
   nothing.** A level-6 Sera walks into Barrowmoor at its level-3 DCs and
   foes; `minLevel` on individual foes is the only scaling, and none of the
   three shipped adventures uses it yet. The picker could warn when the hero
   is two or more levels off, or an adventure's checks could read `levelDC`
   relative to its `level`.
-- **Companions never level.** They are flat stat blocks at whatever number
-  they were written at, with no sheet for `minLevel` to read. By 6th the
-  hero has outgrown Brother Aldous. Phase 7's campaign record is where a
-  companion's level would live.
 - **XP past 10th goes nowhere.** `canLevelUp` stops at `MAX_LEVEL`, and the
   counter keeps climbing with nothing to spend it on; the title screen says
   "the road ends at 10th". Anything past 10 is the later arc.
@@ -258,16 +245,11 @@ Open and unclaimed. Add here rather than starting a new list.
   flat `+1` did before Phase 6. Pinned as-is.
 
 **Detection**
-- **No monster can Hide, because no monster carries a Stealth number.** The
-  schema has `perception` and nothing else, so `stealthDC` falls back to
-  `10 + perception` for a foe and the Hide action is gated on `cb.char`. A
-  `"stealth"` field on the monster schema plus an AI that Hides when it is
-  losing would make ambush creatures play like ambush creatures; today they
-  walk at you in the open like everything else.
-- **The AI never Takes Cover and never Hides.** It Seeks, which is the only
-  half of Phase 4 it uses, and only when it has lost every hero. A wisp that
-  put a body between itself and the archer would be reading `coverBonus`
-  backwards from what the archer reads it for, and nothing does that yet.
+- **The AI never Takes Cover.** It Seeks when it has lost every hero, and a
+  monster whose data carries a Stealth number Hides when it is losing; nothing
+  else of Phase 4 is in it. A wisp that put a body between itself and the
+  archer would be reading `coverBonus` backwards from what the archer reads it
+  for, and nothing does that yet.
 - **Cover has no corner rule.** It is read off the one Bresenham line between
   two squares, so a creature diagonally behind a pillar sometimes has +4 and
   sometimes nothing depending on which way the line rounds. Locked #101 says
@@ -275,28 +257,6 @@ Open and unclaimed. Add here rather than starting a new list.
   player will notice first.
 
 **The action economy**
-- **No monster uses an Athletics maneuver, because no monster carries an
-  Athletics number.** The four maneuvers are gated on `cb.char`, so a Trip is
-  something that happens *to* monsters and never *by* one — and Rock Dwarf's
-  "+2 DC vs Shove/Trip/prone" stays a note for exactly that reason. An
-  `"athletics"` field on the monster schema plus an AI that Trips the heaviest
-  armour in reach would make the ogre-shaped monsters play like ogres. It is
-  the same missing-number shape as the Stealth entry above, and the two want
-  one schema change between them.
-- **`restrained` is not modelled, so a critical Grapple is only a harder
-  Escape.** PF2e's crit clause is a condition that stops the target taking any
-  action but Escape, which is a real AI change and a real action-bar change, so
-  Phase 5 mapped the crit onto the higher Escape DC instead (locked #107). A
-  player who knows the book will notice.
-- **Disarm's −2 lands on every attack the target has.** The engine keeps one
-  weapon per attack entry and no notion of which one a maneuver was aimed at,
-  so a Skeletal Champion disarmed of its longsword also swings its gauntlet at
-  −2. Naming the attack would mean an index on the condition and a per-attack
-  read in `atkMod` and `strikeMonster`.
-- **Ready arms one thing: a Strike, against a foe entering reach.** The bus has
-  four triggers and Ready reads exactly one of them. "Ready a spell against the
-  next creature that opens the door" is the tabletop version, and it needs a
-  trigger picker in the UI more than it needs engine work.
 - **Aid rolls Athletics whatever it is aiding** (locked #108), so a wizard
   helping another wizard's Arcana check rolls the strongest arm in the party.
   Passing the skill through the six call sites that consume an Aid is the fix,
@@ -710,6 +670,7 @@ maneuvers — no monster in the game carries an Athletics number — which is wh
 Rock Dwarf's "+2 DC vs Shove/Trip/prone" is still a note: nothing can Shove or
 Trip a hero, so there is no DC for it to apply to. And Ready arms one Strike
 against one trigger rather than an arbitrary action against an arbitrary one.
+All four were closed on 2026-10-02 (locked #792 to #795).
 
 *Leans on:* Phases 2 and 3. *Save:* none. *Model:* **Claude Opus 5** — a table
 of skill checks against DCs the engine already computes, each a variation on an

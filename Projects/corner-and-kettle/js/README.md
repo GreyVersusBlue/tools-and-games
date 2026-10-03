@@ -9,7 +9,8 @@ redirect stub.
 content.js <- nothing          sim.js <- nothing           sound.js <- nothing
     ^                            ^                             ^
     |                            |    stations.js <- nothing   |
-draw.js <- content.js            |    chalkboard.js <- nothing |
+draw.js <- content.js,           |    chalkboard.js <- nothing |
+           ../assets/sprites/cups.js (the sheet's atlas)
     ^                            |          ^                  |
     |                            |          |                  |
 ui.js <- content.js, sim.js, draw.js, sound.js, stations.js, chalkboard.js,
@@ -60,9 +61,13 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   `test/smoke-save.mjs`, never by `sim.js`: the sim does not know it is saved.
 - **`draw.js`** — string builders: the customer sprite, the cup SVG, the order
   bubble, the ticket, and the customer's accessible name. **A leaf over
-  `content.js`**: no `state`, no sim, no DOM. It takes the order or cup it
-  draws, and the ticket takes its requirement lines as an argument rather than
-  asking the sim.
+  `content.js` and the sheet's atlas** (`assets/sprites/cups.js`): no `state`,
+  no sim, no DOM. It takes the order or cup it draws, and the ticket takes its
+  requirement lines as an argument rather than asking the sim. The cup is
+  frames of `assets/sprites/cups.png` stacked back to front (`cupLayers`), the
+  liquid and a drizzle tinted by an SVG multiply filter; a plate is one frame
+  (`foodSvg`). The sheet is drawn by `tools/blender/cups.py` (#808 to #810);
+  `ui.js` loads it once at boot and toasts if it cannot.
 - **`sound.js`** — `createSound(isMuted)`, every sound as a WebAudio beep.
   **Imports nothing.** `isMuted` is a function, asked on each beep, so the mute
   button works mid-shift.

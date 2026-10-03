@@ -997,6 +997,89 @@ section("15. the reopening is a trade now: beans, the Legacy tree, layouts (#360
   }
 }
 
+section("16. the cup and the plate are frames of one sheet, and draw.js is still a leaf (#808 to #810)");
+{
+  const DRAW = await mod("../js/draw.js");
+  const { CUP_SHEET, cupLayers, cupSvg, foodSvg, orderIconsHtml, orderCup, TOPPING_FRAMES } = DRAW;
+  const SPEC = await mod("../tools/blender/spec.mjs");
+  const { MILKS, SYRUPS, TOPPINGS, BASE_COLORS } = CONTENT;
+  const read = (...p) => readFileSync(join(here, "..", ...p), "utf8");
+
+  // A leaf: two imports, the tables and the atlas, and no page.
+  const src = read("js", "draw.js").replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const imports = [...src.matchAll(/^import\b[^;]*?from\s*"([^"]+)"/gm)].map(m => m[1]).sort();
+  eq(imports.join(" "), "../assets/sprites/cups.js ./content.js", "draw.js imports content.js and the atlas, nothing else");
+  ok(!/\bdocument\b|\bwindow\b|\bstate\b|\bfetch\s*\(|new Image/.test(src), "and reads no DOM, no window, no state, and loads nothing");
+
+  // The sheet is there, and the atlas is the one the pipeline wrote.
+  const png = readFileSync(join(here, "..", "assets", "sprites", "cups.png"));
+  ok(png.readUInt32BE(16) === CUP_SHEET.sheet.w && png.readUInt32BE(20) === CUP_SHEET.sheet.h,
+    `cups.png is the atlas's ${CUP_SHEET.sheet.w} x ${CUP_SHEET.sheet.h}`);
+
+  // Every cup the stations can build draws only frames the sheet has, in the
+  // order the pipeline rendered them for, and its tint is its liquid.
+  const order = SPEC.LAYERS.map(l => l.name);
+  const tinted = new Set(SPEC.LAYERS.filter(l => l.tint).map(l => l.name));
+  let cups = 0, missing = 0, outOfOrder = 0, badTint = 0;
+  const bases = [null, ...Object.keys(BASE_COLORS)], milks = [null, ...MILKS.map(m => m.id)];
+  const syrups = [null, ...SYRUPS.map(s => s.id)];
+  const tops = TOPPINGS.map(t => t.id);
+  for (const base of bases) for (const milk of milks) for (const milkSteamed of [false, true])
+  for (const syrup of syrups) for (const ice of [false, true]) for (const blended of [false, true])
+  for (let mask = 0; mask < (1 << tops.length); mask += 3) {
+    const cup = { base, shots: base === "espresso" ? 1 : 0, milk, milkSteamed, syrup, ice, blended,
+      toppings: tops.filter((_, i) => mask & (1 << i)) };
+    const layers = cupLayers(cup);
+    cups++;
+    let last = -1;
+    for (const l of layers) {
+      if (!(l.frame in CUP_SHEET.frames)) missing++;
+      const at = order.indexOf(l.frame);
+      if (at < last) outOfOrder++;
+      last = at;
+      if (!!l.tint !== tinted.has(l.frame)) badTint++;
+    }
+  }
+  ok(cups > 10000, `the sweep built ${cups} cups`);
+  eq(missing, 0, "every frame cupLayers names is in the atlas");
+  eq(outOfOrder, 0, "and they stack in spec.mjs LAYERS' order");
+  eq(badTint, 0, "and exactly the tinted frames carry a tint");
+  eq(JSON.stringify(TOPPING_FRAMES), JSON.stringify(SPEC.TOPPING_FRAMES), "draw.js and spec.mjs agree on each topping's frame and sauce");
+
+  // What the cup shows is what was built.
+  const latte = { base: "espresso", shots: 1, milk: "whole", milkSteamed: true, syrup: null, toppings: ["whip"], ice: false, blended: false };
+  const frames = cupLayers(latte).map(l => l.frame);
+  eq(frames.join(" "), "cup_back liquid_full foam whip cup_front", "a hot latte with whip is its glass, its liquid, its foam and its whip");
+  eq(cupLayers({ ...latte, base: null, milk: null, toppings: [] }).map(l => l.frame).join(" "),
+    "cup_back liquid_low cup_front", "an empty cup is the old pale puddle at the low level");
+  const low = cupLayers({ ...latte, base: null, milk: null, toppings: ["cinnamon"] }).find(l => l.frame === "cinnamon");
+  eq(low.dy, CUP_SHEET.sheet.levels.low, "and a topping on a low cup moves down by the sheet's low level");
+  const espresso = cupLayers({ ...latte, milk: null, toppings: [] })[1];
+  eq(espresso.tint, BASE_COLORS.espresso, "a straight espresso's liquid is BASE_COLORS.espresso exactly");
+  const svg = cupSvg(latte);
+  eq((svg.match(/<image /g) || []).length, 5, "the station's latte is five frames of the sheet");
+  ok(/class="steamg"/.test(svg) && !/class="steamg"/.test(cupSvg(latte, 22)), "it steams at the station and not in a bubble");
+
+  // Every plate is a frame, and a food order's bubble and station draw it.
+  for (const f of FOODS) {
+    if (!ok(`food_${f.id}` in CUP_SHEET.frames, `${f.name} has a frame`)) continue;
+    const html = orderIconsHtml({ isFood: true, foodId: f.id });
+    ok(html.includes(`aria-label="${f.name}"`) && html.includes("<image "), `${f.name}'s bubble is its plate`);
+    ok(!html.includes(f.icon), `and not its emoji`);
+  }
+  ok(foodSvg("cookie", 64).includes('width="64"'), "the station's plate is 64 px");
+
+  // A drink's bubble is the recipe's icon and the cup the ticket asks for.
+  const order1 = { isFood: false, recipeId: "icedvanilla", custom: { milk: "oat", syrup: "vanilla", toppings: ["sprinkles"], ice: true } };
+  const want = orderCup(order1);
+  ok(want.base === "espresso" && want.ice && !want.milkSteamed && want.toppings[0] === "sprinkles",
+    "orderCup is the recipe's base and the order's milk, syrup, toppings and ice");
+  const bubble = orderIconsHtml(order1);
+  ok(bubble.includes(RECIPES.find(r => r.id === "icedvanilla").icon) && /height="22"/.test(bubble),
+    "the bubble is the recipe's icon and a 22 px cup");
+  ok(!/🥛|💧|✨|🧊/.test(bubble), "and the old milk, syrup, topping and ice emoji are gone");
+}
+
 /* ---------- report ---------- */
 
 const total = passed + failures.length;

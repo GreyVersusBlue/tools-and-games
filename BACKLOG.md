@@ -125,34 +125,35 @@ row ranks above every other row.
 diorama pipeline and its first four dioramas** (PR #506): the old rank 14 (½,
 Opus 5.5) and the first increment of the dioramas row, now rank 14 (2+, naming
 Sonnet 5), both run under Opus 5.5 on Devon's Windows machine as one PR by
-his instruction (#785). TG-13 is done only when that row is. The batch before
-it was Signal City's car sheet wired in and the tavern's click targets
-(PR #500). That is the line to
+his instruction (#785). TG-13 is done only when that row is. The batches before
+it were the four sprite pipelines, each with its sheet and its wiring, all
+committed locally on huginn for the nightly merge, so their PR number is the
+nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
+8 to 10, TG-11), Faire Weekend's (old ranks 5 to 7, TG-10) and Absalom's (old
+ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**24 ranked items remain**, and **every one of them names a model.**
+**11 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need one of Devon's machines** (#642, #707,
-2026-09-25, Devon's instruction and his re-rank). Ranks 1 to 14 are
-Blender-made assets: a pipeline per project, then its GLTFLoader where it has
-none, then its packs, then the rows that wire each pack into the game, with
-the site's dioramas last. **Blender runs on Devon's machines only, headless
+2026-09-25, Devon's instruction and his re-rank). Rank 14 is what is
+left of the Blender block: every project's pipeline, packs and wiring have
+shipped, the diorama pipeline has shipped, and 10 of the 14 dioramas are left.
+**Blender runs on Devon's machines only, headless
 (`blender -b -P script.py`), never in a cloud container.** The table's
-`Gate` column says which rows need it and which machine (#644, #707): **9 rows
-read `blender`**, basic headless Blender that **huginn or the Windows machine**
-can run, and **1 reads `blender-gpu`** (rank 14, the dioramas), which
+`Gate` column says which rows need it and which machine (#644, #707): **no row
+reads `blender`** any more (basic headless Blender, huginn or the Windows
+machine), and **1 reads `blender-gpu`** (rank 14, the dioramas), which
 needs the full feature set on a GPU and so **the Windows machine only**. A
 session that cannot take a row skips it where it stands and takes the next
-row, without parking it. The other 4 in the block (every
-GLTFLoader row and every wiring row) are cloud work, because they read
-committed files (#645); a wiring row is taken only once the pack row above it
-has merged. The plan every Blender row shares is
+row, without parking it. The plan every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** **Pick up next**
-is rank 1, Absalom's sprite pipeline (¼, Opus 5.5, gate `blender`): **huginn or
-the Windows machine**. Every wiring row (ranks 4, 7, 10 and 13) waits on a pack
-that has not been built.
+**Nothing is claimed.** Ranks 1 to 13 shipped and their rows are gone; the
+others keep their numbers until the next renumbering. **Pick up next**
+is rank 14, the next four dioramas (2+, naming Sonnet 5, gate `blender-gpu`):
+**the Windows machine only**. A session on huginn skips it, and every
+row below it wants a GPU, a phone, ears or Devon's say-so.
 Below the Blender block, rank 22 (The Fracture Cycle's fourth prong) and rank
 24 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
 them, and a scope Devon has not asked for is not a judgement call a session
@@ -174,10 +175,7 @@ reason on the intro card (#735). `test/browser.mjs` is 65 checks, up from 48.
 Starting the loop without waiting ran green at 62/62 until the suite held the
 atlas fetch by hand from an init script (`evaluateOnNewDocument` under
 puppeteer, `addInitScript` under playwright) and counted
-`requestAnimationFrame` calls. And the black hole's and wormhole's cores are
-grey in the sheet, 69,70,75 where the game drew #05010f: Workbench lights
-them. A rerun of `bodies.py` with those two cores unlit would fix it and needs
-Blender, so it is B4 in the Orbital section, not ranked.
+`requestAnimationFrame` calls.
 
 **Signal City has a sprite pipeline and a car sheet** (#721 to #723, PR
 #478). `tools/blender/` renders each frame with Cycles on the CPU (128
@@ -860,8 +858,8 @@ quota — take the model the row names and say in the PR body which one you
 actually worked under. The split counts the names; under #638 the Opus 5.5,
 Opus 5 and Fable rows run on Opus 5.5 and the Sonnet rows on Sonnet 5.
 
-**`Projects/corner-and-kettle` has no open phase** apart from its three
-Blender rows (11 to 13). Arc one (Phases 1 to 4) and
+**`Projects/corner-and-kettle` has no open phase.** Its three Blender rows
+(old 11 to 13) shipped on 2026-10-02 (#808 to #810). Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
 leaves for a later arc" list — candidates, not a ranked arc, and the largest of
 them (reshaping the five recipes that are another recipe's requirement list,
@@ -1001,19 +999,6 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | The Absalom Inheritance's sprite pipeline: Signal City's renderer with a 2:1 isometric camera | `Projects/absalom-inheritance` | ¼ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B1 |
-| 2 | Absalom's tile sheet: floor, wall, door, pillar, gate, stairs and treasure, as `js/render.js` shades them | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B2 |
-| 3 | Absalom's figure sheet: the heirs, the foes and the boss, recoloured from each pack's palette | `Projects/absalom-inheritance` | ½ | Opus 5.5 | blender |  | `Projects/absalom-inheritance/WISHLIST.md` B3 |
-| 4 | Wire Absalom's two sheets in, once ranks 2 and 3 have merged | `Projects/absalom-inheritance` | ½ | Opus 5.5 |  |  | `Projects/absalom-inheritance/WISHLIST.md` B4 |
-| 5 | Faire Weekend's sprite pipeline, top-down, in the plat's ink | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B1 |
-| 6 | Faire Weekend's marker sheet: one drawing per plot kind, where a glyph stands on the plat today | `Projects/Ren-Faire-Claude` | ½ | Opus 5.5 | blender |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B2 |
-| 7 | Wire the marker sheet in, once rank 6 has merged | `Projects/Ren-Faire-Claude` | ¼ | Opus 5.5 |  |  | `Projects/Ren-Faire-Claude/WISHLIST.md` B3 |
-| 8 | Hearth's sprite pipeline, at the map's tile size | `Projects/hearth` | ¼ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B1 |
-| 9 | Hearth's building sheet: every kind in `BLD`; the faces stay procedural (#646) | `Projects/hearth` | ½ | Opus 5.5 | blender |  | `Projects/hearth/WISHLIST.md` B2 |
-| 10 | Wire the building sheet in, once rank 9 has merged | `Projects/hearth` | ¼ | Opus 5.5 |  |  | `Projects/hearth/WISHLIST.md` B3 |
-| 11 | Corner & Kettle's sprite pipeline | `Projects/corner-and-kettle` | ¼ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B1 |
-| 12 | Corner & Kettle's cup and food sheet: what `cupSvg` and the order icons draw today | `Projects/corner-and-kettle` | ½ | Opus 5.5 | blender |  | `Projects/corner-and-kettle/WISHLIST.md` B2 |
-| 13 | Wire the cup and food sheet in, once rank 12 has merged | `Projects/corner-and-kettle` | ¼ | Opus 5.5 |  |  | `Projects/corner-and-kettle/WISHLIST.md` B3 |
 | 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **4 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion; TG-13); School Generator, Faire Weekend, The Absalom Inheritance and Corner & Kettle are next | `site` | 2+ | Sonnet 5 | blender-gpu |  | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
 | 15 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
 | 16 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
@@ -1061,7 +1046,7 @@ Windows machine or a phone. Parked, not verified.
 
 ## Blender assets: the common plan
 
-Ranks 1 to 14 are governed by decisions #642 to #647, which reorganized the Blender rows: 47 new rows at ranks 1–47, and the previous 13 rows moved to ranks 48–60. This section is what every Blender row shares;
+Rank 14, the last of the Blender block, is governed by decisions #642 to #647, which reorganized the Blender rows: 47 new rows at ranks 1–47, and the previous 13 rows moved to ranks 48–60. This section is what every Blender row shares;
 each project's own plan (its `WISHLIST.md` "Blender assets" section, or a
 subsection of its section below) adds its style sheet and its list.
 
@@ -2166,16 +2151,9 @@ sheet 1024 x 512 at 170,695 bytes against a 256 KiB cap.
 `drawBody` draws the frame scaled to the body's radius, turned where the
 drawing turned: the black hole at `spin * 2`, the wormhole at `spin * 3`, the
 booster by `b.dir`, its chevrons a still. The glow is over the frame, except
-the black hole's, which stays behind it (#736). `game.js` waits for the sheet
+the black hole's and the wormhole's, which stay behind it (#736, #811). `game.js` waits for the sheet
 before the first frame and stops with the reason on the intro card when it
 will not load (#735). `test/browser.mjs` holds all of it, 70 checks, since the device-pixel section (#742).
-
-**B4. Unlit cores (not ranked; needs Blender).** The black hole's core and the
-wormhole's render grey, 69,70,75 and 65,73,75 at the centre, where the game
-drew #05010f and #04211d: Workbench lights them like the planets (#719). A
-rerun of `bodies.py` with those two cores flat, then `validate.mjs` and a
-look at `test/shots/07-bodies.png`. With a dark core the wormhole's glow
-could go back behind its frame too (#736).
 
 ## Signal City
 
@@ -2415,18 +2393,6 @@ Three of them are closed.
    inside its module script, `SyntaxError: HTML comments are not allowed in
    modules`, at line 290, from Phase 27 until September 2026. Decision #261
    made the marker a JavaScript comment.)
-
-One more, from Hearth's own wishlist rather than a site survey, recorded here
-because it is a board question: **Hearth is on the homepage (`index.html:492`,
-tagged Sim, `data-new`) with no `assets/previews/hearth.jpg`.** Phase 8
-decided against a `Tools/board-check/games.mjs` entry (#84, Q14 answered): the
-board's suite runs headed on a desk and would be a shallower copy of the
-harness's `save` mode, which `hearth-ci.yml` now runs on every PR. The
-330×200 capture is still wanted and is not a desk job (Hearth is a 2D canvas).
-The social block is no longer waiting on it: Hearth has one as of PR #278,
-pointing at the board's own `guild-board.png`. Promoting a real capture would
-write `assets/og/hearth.jpg` and the block would pick it up on the next
-`npm run social`.
 
 ### The site itself: Blender dioramas
 

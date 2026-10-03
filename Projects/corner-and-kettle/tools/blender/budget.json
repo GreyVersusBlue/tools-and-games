@@ -1,0 +1,41 @@
+{
+  "about": "Corner & Kettle's cup and food sheet, its style sheet as data (WISHLIST.md B1 and B2). validate.mjs reads it; cups.py reads scale, the frame sizes and the sheet. A cup layer is the old cupSvg viewBox (100 x 130) at scale pixels per unit, and every layer is that size so they stack by being drawn at one place; a food is food x scale on a side, food being the 64 px the station shows a plate at. maxKiB is KiB x 1024, maxSide the longest side in pixels. coverage bounds the share of a frame's pixels at alpha 128 or more, per class. boxTolerance is the share of the old cup's box (spec.mjs CUP_BOX) each edge of the new cup body may move by (style sheet item 1). minInk is the share of a frame's pixels at alpha 128 or more within inkTolerance of INK, for the frames drawn in INK (the cup's two halves and the foods); a tinted frame is drawn in greys instead and must be neutral to within neutralTolerance, so the multiply at draw time is the only colour it has.",
+  "scale": 2,
+  "food": 64,
+  "boxTolerance": 0.1,
+  "inkTolerance": 40,
+  "neutralTolerance": 2,
+  "sheet": {
+    "png": "assets/sprites/cups.png",
+    "atlas": "assets/sprites/cups.js",
+    "width": 1024,
+    "maxSide": 1024,
+    "maxKiB": 128
+  },
+  "classes": {
+    "glass": { "frames": ["cup_back", "cup_front"], "minCoverage": 0.05, "maxCoverage": 0.6, "minInk": 0.1 },
+    "fill": { "frames": ["liquid_low", "liquid_full", "foam"], "minCoverage": 0.03, "maxCoverage": 0.5 },
+    "topping": { "frames": ["ice", "cinnamon", "drizzle", "sprinkles", "whip", "straw"], "minCoverage": 0.003, "maxCoverage": 0.3 },
+    "food": { "frames": ["food_croissant", "food_bagel", "food_muffin", "food_cookie"], "minCoverage": 0.2, "maxCoverage": 0.85, "minInk": 0.12 }
+  },
+  "colours": {
+    "about": "The colours the old SVG did not have, and so are decisions (style sheet item 2, #809). The glass is the old cup's white at an alpha, ice and whip and the straw are the old SVG's own fills, and the foods are new: there was no food drawing, only an emoji.",
+    "glass": "#ffffff",
+    "glassBack": 0.42,
+    "glassFront": 0.07,
+    "ice": "#dff2f5",
+    "foam": "#fffdf6",
+    "whip": "#fffdf8",
+    "cinnamon": "#a5652b",
+    "sprinkles": ["#e15b64", "#f8b400", "#4bc0c8", "#845ec2"],
+    "straw": "#ff6b81",
+    "strawTip": "#e34d63",
+    "croissant": ["#e0a650", "#c98a3a"],
+    "bagel": "#c98a4a",
+    "seed": "#f3e6c4",
+    "muffinTop": "#a8692f",
+    "wrapper": ["#e8d9a8", "#d4c08a"],
+    "cookie": "#d6a15c",
+    "chip": "#4a2a1c"
+  }
+}

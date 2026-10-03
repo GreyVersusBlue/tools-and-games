@@ -184,13 +184,25 @@ this project does not use it.
   (`noindex`, `meta refresh`, `rel=canonical`, locked decision #46). The board
   card is `index.html`'s, edited in the same PR as the move now that the
   shared-file request queue is retired (#347).
+- **The cup and the plates are a sprite sheet** (#808 to #810).
+  `tools/blender/cups.py` draws every layer `cupLayers` stacks (the glass in
+  two halves, the liquid at two levels, ice, foam, each topping, the straw) and
+  one plate per `FOODS` entry into `assets/sprites/cups.png`, its atlas
+  `assets/sprites/cups.js` (`export const CUP_SHEET`), which `js/draw.js`
+  imports. Rerun it from this folder with
+  `blender -b --factory-startup -t 4 -P tools/blender/cups.py`, then
+  `node tools/blender/validate.mjs`; a second run is byte-identical. A new food
+  in `FOODS` or a new topping fails the validator and smoke-sim section 16
+  until it has a frame (and an entry in `TOPPING_FRAMES`, in both `draw.js` and
+  `spec.mjs`). A new milk, syrup or base needs nothing: the liquid is one grey
+  frame tinted to `liquidColor(cup)`.
 - **Windows is the dev machine** (v7 §7): absolute `import()` paths go through
   `pathToFileURL`, as both suites already do. **The invocations that work,
   from the repo root:**
-  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 175 passed, 0 failed;
-  `node Projects/corner-and-kettle/test/smoke-save.mjs` → 166 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 348 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/smoke-save.mjs` → 230 passed, 0 failed;
   `node Projects/corner-and-kettle/test/balance.mjs` → BALANCE OK, about 22 s;
-  `node Projects/corner-and-kettle/test/drive-save.mjs` → 99 checks, 0 failed;
+  `node Projects/corner-and-kettle/test/drive-save.mjs` → 161 checks, 0 failed;
   `node assets/js/gvb-save.test.mjs` → 50 passed, when you touch the save
   layer. `npm run games` does not cover this game.
 
@@ -698,38 +710,13 @@ outside CI on purpose (#353).
 
 *Leaned on:* `Tools/board-check/games.mjs`, `drive-save.mjs`. *Save:* none.
 
-## Blender assets (ranks 11 to 13)
-
-Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session
-without `blender` on PATH skips it and takes the next row.
-
-**B1. The sprite pipeline (rank 11, ¼, Opus 5.5, gate `blender`).** Corner &
-Kettle's own copy of Signal City's sprite renderer (#643), with a
-three-quarter camera for things on a counter. The palette is `BASE_COLORS`,
-`MILKS`, `SYRUPS` and `TOPPINGS` in `js/content.js`. Style sheet: a cup is a
-composite, since `cupSvg(cup)` builds it from a base, a milk, a syrup and a
-topping and every combination can come up, so the sheet holds a cup body and
-a frame per layer, tinted and stacked at draw time. The pixel customer
-(`SPRITE_PATTERN`, 10 by 14) stays pixel art unless this row decides
-otherwise and records why. The validator joins
-`.github/workflows/corner-kettle-ci.yml`.
-
-**B2. The cup and food sheet (rank 12, ½, Opus 5.5, gate `blender`).** The
-cup body and its layers, and one frame per entry in `FOODS`.
-
-**B3. Wiring the sheet (rank 13, ¼, Opus 5.5, no gate, after rank 12).**
-`cupSvg` and `orderIconsHtml` draw from the sheet; `js/draw.js` stays a leaf
-that reads no state and touches no DOM. The station keys and the
-`npm run games corner-and-kettle` section stay green.
-
 ## What this leaves for a later arc
 
 - **Touch.** The suite checks that 375×812 renders; nothing checks that a
   queue card and seven station tabs are actually thumb-sized at that width.
-- **Sound and art.** Every sound is a `beep()`; the customer is a 10×14 sprite
-  pattern and the cup is hand-built SVG. Both fine, both the cheapest visible
-  upgrade left.
+- **Sound.** Every sound is a `beep()`, the cheapest audible upgrade left. The
+  cup and the plates are a Blender sheet now (#808 to #810); the customer is
+  still the 10×14 sprite pattern, on purpose (#808).
 - **A second shop.** `franchise` costs $5,000, says "Second Location," and
   grants +10% income. There is no second location.
 - **Five recipes are another recipe's requirement list under a second name**

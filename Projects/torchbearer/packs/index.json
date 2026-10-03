@@ -27,7 +27,7 @@
       "id": "harrowmoor-bestiary",
       "name": "A Bestiary of the Harrowmoor",
       "type": "content",
-      "description": "Ten monsters for levels 1 to 6, written for the wet lead country around Cold Harrow and usable anywhere. Every one of them carries the two fields Phase 3 added — reach in cells, and the reactions the engine actually implements — and every one has the lore line a critical Recall Knowledge prints, written as the thing a player could act on. No adventure, no scenes: this is stock for somebody else's encounters."
+      "description": "Ten monsters for levels 1 to 6, written for the wet lead country around Cold Harrow and usable anywhere. Every one of them carries the two fields Phase 3 added — reach in cells, and the reactions the engine actually implements — six carry the Stealth or Athletics number a monster Hides or Trips with, and every one has the lore line a critical Recall Knowledge prints, written as the thing a player could act on. No adventure, no scenes: this is stock for somebody else's encounters."
     }
   ]
 }

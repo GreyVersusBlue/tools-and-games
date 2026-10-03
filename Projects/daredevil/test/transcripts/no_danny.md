@@ -233,8 +233,6 @@ He said the last part in the way that people say things they know aren't entirel
 
 **→ took:** Option A"I'd need a hundred and fifty."Counter high. See what he's actually got.
 
-> **$135 and a Name in Print** — You pushed. He moved. First real negotiation.
-
 ### `fr1_org_counter`
 **DUKE:** I'd need a hundred and fifty.
 Perkins wrote something on his clipboard.
@@ -276,9 +274,6 @@ He stopped himself and recalibrated.
 - Option C"This isn't something I can teach."Be straight with him.
 
 **→ took:** Option A"Show me what you've got."Go see. Doesn't cost you anything but an hour.
-
-> **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
-> - _Pete_ → **Hanger-On**
 
 ### `fr1_wannabe_look`
 **DUKE:** Show me what you've got.
@@ -367,8 +362,6 @@ The bar got louder around them. Tommy was three deep into a story Duke had heard
 - Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
 
 **→ took:** Option A"What have you been doing?"He has been waiting eight months for somebody to ask.
-
-> **Night at the Nail** — Good for Showmanship. Hard on Condition. He wrote it on a receipt.
 
 ### `fr1_eve_bar_him`
 **DUKE:** What have you been doing?
@@ -492,9 +485,6 @@ He stepped back. Earl had heard it. Earl was looking at Cal with something that 
 
 **→ took:** Option AAccept and shake.You've heard what you need to hear. Sign the deal.
 
-> **The Deal Is Signed** — Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.
-> - _Earl Maddox_ → **Business Partner**
-
 ### `m2_sign`
 Earl extended his hand. Duke shook it.
 **EARL:** Welcome to the bigger world, son.
@@ -595,8 +585,6 @@ Pete had the decency not to answer that.
 - Option D"Why'd you do it?"Pete's answer reveals his character. You learn something true.
 
 **→ took:** Option ACome down hard.Make the authority clear. Pete stops overstepping.
-
-> **Hard Lesson** — Pete understands now. He won't overstep again. He'll get good on earned terms.
 
 ### `fr2_pete_hard`
 **DUKE:** You told those kids you learned from me.
@@ -736,9 +724,6 @@ He also thought about the car show in October, and the forty minutes before the 
 
 **→ took:** Option A"Do the warm-up at the car show."Forty minutes before the gate. His name on the handbill.
 
-> **Night at the Bar** — Forty minutes and a handbill. He stopped being somebody who watches.
-> - _Tommy_ → **Ally**
-
 ### `fr2_eve_bar_hinkle`
 **DUKE:** The car show in October. There's forty minutes before the gate and nothing in it.
 **TOMMY:** So?
@@ -838,7 +823,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cars and landed dead level
+> **STUNT RESULT — SUCCESS / 96** — Cleared the cars and landed dead level
 
 ### `m3_triumph_clean`
 Clean arc. Clean landing. The back wheel kissed the ramp mat with the specific weight of something that had gone exactly right — every calculation confirmed in the same half-second.
@@ -935,8 +920,6 @@ He thought about the man from Los Angeles in the fourth row.
 
 **→ took:** Option A"I'm in. Set it up."Move fast. Control the narrative before Earl does.
 
-> **Regional TV Feature** — Thirty minutes, prime time. The profile ran. The man from LA made the call.
-
 ### `fr3_press_sandra_accept`
 **DUKE:** I'm in. Set it up.
 A pause.
@@ -976,8 +959,6 @@ He waited. Duke thought about the clause — the exclusivity clause, the thing f
 - Option C"Let me read it before we talk."The contract first. The conversation after.
 
 **→ took:** Option A"What's the new number?"Engage. See what he's actually offering.
-
-> **The New Numbers** — Sixty-forty. Five-year extension. Duke has the week to decide.
 
 ### `fr3_eve_earl_engage`
 **DUKE:** What's the new number.
@@ -1064,9 +1045,6 @@ He didn't say any of that. He had to say something.
 - Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
 
 **→ took:** Option A"That's a good thing to want."Say it flat. Let it be true.
-
-> **Something True** — Tommy said the thing he needed to say. Duke let him say it.
-> - _Tommy_ → **Ally**
 
 ### `fr3_eve_tommy_true`
 **DUKE:** That's a good thing to want.
@@ -1184,8 +1162,6 @@ He thought: Fisk had gotten there on his own.
 - Option C"No."Duke owns what happened. He doesn't need it in print.
 
 **→ took:** Option A"Let's talk."The story will be told. Duke can shape it.
-
-> **The Book Starts** — Fisk is writing it. Duke is shaping it. The story has a shape.
 
 ### `fr4_biographer_yes`
 **FISK:** Good. I want to start with the county fair.
@@ -1403,8 +1379,6 @@ Eight options. Not choices exactly — more like the eight things a man in his p
 - Option HDisappear.Duke leaves. No retirement, no announcement. Just gone.
 
 **→ took:** Option ARetire clean on top.Walk away while the name still means something. Classic ending.
-
-> **Clean Exit** — On top. The name means something. It always will.
 
 ### `m5_retire_clean`
 He made the call.

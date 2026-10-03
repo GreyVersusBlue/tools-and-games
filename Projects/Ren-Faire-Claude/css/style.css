@@ -448,7 +448,18 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
   font-family: var(--font-ui);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-.plot-marker.kind-stage { font-size: 2rem; }
+/* The drawing from the marker sheet (tools/blender/markers.py). ui.js's
+   markerArt() sets the frame's size and position in percent, so it fills
+   whatever box the marker is: a 1 x 1 plot, a 2 x 2 stage, the gate's cell.
+   The glyph it replaced is in the marker's title and accessible name. */
+.marker-art {
+  position: absolute;
+  inset: 0;
+  background-image: url('../assets/sprites/markers.png');
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.plot-marker.planning .marker-art { opacity: 0.6; }
 
 .plot-marker.built {
   background: linear-gradient(180deg, #F4DFAE, #D9BC7F);

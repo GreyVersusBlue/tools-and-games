@@ -217,6 +217,12 @@ export const Validator = {
     // at all — the schema has a `companion` def like everything else, and a
     // companion with no id renders a card for `undefined` on the offer screen.
     checkIds(pack.companions, "companions", extraRequired("companion"));
+    // added with companion levelling: `level` is what the stat block is grown
+    // from and `hpPerLevel` how fast. Either one wrong is NaN on the sheet.
+    (pack.companions || []).forEach(c => {
+      if (c.level !== undefined && (!Number.isInteger(c.level) || c.level < 1)) errs.push(`Companion "${c.id}": "level" must be a whole number of 1 or more.`);
+      if (c.hpPerLevel !== undefined && (!Number.isInteger(c.hpPerLevel) || c.hpPerLevel < 0)) errs.push(`Companion "${c.id}": "hpPerLevel" must be a whole number of 0 or more.`);
+    });
     checkIds(pack.adventures, "adventures", extraRequired("adventure"));
     checkIds(pack.campaigns, "campaigns", extraRequired("campaign"));
 
@@ -240,6 +246,12 @@ export const Validator = {
       if (m.size !== undefined && !SIZES.includes(m.size)) {
         errs.push(`Monster "${m.id}": unknown size "${m.size}" (known: ${SIZES.join(", ")}).`);
       }
+      // added for monster Hide and Trip: `stealth` and `athletics` are what a monster Hides and
+      // Trips with. Either one that is not a whole number reads as NaN on the
+      // roll and makes every check against it fail silently.
+      ["stealth", "athletics"].forEach(k => {
+        if (m[k] !== undefined && !Number.isInteger(m[k])) errs.push(`Monster "${m.id}": "${k}" is a modifier and must be a whole number.`);
+      });
       // added Phase 5: `lore` is the line a critical Recall Knowledge prints.
       if (m.lore !== undefined && typeof m.lore !== "string") {
         errs.push(`Monster "${m.id}": "lore" must be a string — the one line a critical Recall Knowledge prints.`);

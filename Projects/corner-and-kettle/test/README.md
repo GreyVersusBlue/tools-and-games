@@ -4,11 +4,15 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     318 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-sim.mjs     348 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    230 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands, ~88 s
-node Projects/corner-and-kettle/test/drive-save.mjs    156 checks, real browser
+node Projects/corner-and-kettle/test/drive-save.mjs    161 checks, real browser
 ```
+
+The cup and food sheet has its own check, `node tools/blender/validate.mjs`
+(290 checks, no Blender), which CI runs before the suites; smoke-sim's
+section 16 and drive-save's 2b are the sheet as the game draws it.
 
 ## `balance.mjs [runs] [--verbose] [--days N]`
 

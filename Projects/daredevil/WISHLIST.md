@@ -167,10 +167,11 @@ Nothing runs Daredevil's suite on a pull request.
   cannot pay for is `_disabled` too, which means a broke hub closes the same
   way — correctly, and on purpose.
 - **Dollars go on a choice's `effects`, never on a scene's `statUpdate`.** A
-  choice-reached scene fires its update twice (the double-apply frozen in
-  `smoke-save.mjs`), which does nothing to a flag or a relationship write and
-  doubles a running total. `triggerStatUpdate` no longer reads `money` or
-  `owePerMonth` at all, and the suite fails on a `statUpdate` that carries one.
+  choice-reached scene used to fire its update twice, which does nothing to a
+  flag or a relationship write and doubles a running total. TG-08 fixed the
+  engine (#790), and the rule stays: `triggerStatUpdate` does not read `money`
+  or `owePerMonth` at all, and the suite fails on a `statUpdate` that carries
+  one.
 - **An evening card needs a price.** `EVENING_COST` in `money.js` is the one
   place an evening's dollars and Condition live, `buildHubCard` prints it into
   the tag slot, and `smoke-save.mjs` fails on a card with no row and on a row
@@ -237,9 +238,13 @@ still being decided." after a run in which he backed every show.
 ## The standing backlog
 
 Everything below is open and unclaimed. Pull from here; add to it rather than
-starting a new list. **The list predates arc one and has not been swept since**
-— several entries under "Reachable content" were closed by Phases 1 to 4 and
-are still written here as open. Check a bullet against `HISTORY.md` before you
+starting a new list. **The list predates arc one and is only partly swept.**
+TG-08 (2026-10-02) was given eight bullets and took out seven: the stat
+double-apply and `m5_question_earl` it fixed (#790, #791), and `fr4_close`,
+`last_stunt_earl`, the mentor credit, the stat table's raw labels and the free
+Try Again had already shipped (#270, #272, #273, #291). The write-only flags
+stay, reworded below. Other bullets may
+still be closed by Phases 1 to 8; check one against `HISTORY.md` before you
 take it.
 
 **Story and state**
@@ -257,56 +262,19 @@ take it.
   Free Roam 2's deflection, and nothing downstream of it reads the flag or
   moves her off `'solid'`. `smoke-save.mjs` freezes the
   three so the list can shrink and not grow.
-- **`m5_question_earl` is a written scene no run can reach** — the first
-  thing Phase 5's walker found. It is Milestone 5's question asked by Earl,
-  behind the route table's `earl: mentor` row. The only way to `'mentor'` is
-  "I want Cal in the room" on `fr3_eve_earl`, and that choice writes
-  `cal: 'loyal'` twice (on the choice and on `fr3_eve_earl_cal`'s update);
-  Cal's row is above Earl's and nothing after Milestone 1 moves Cal off
-  loyal, so Cal asks on every run in which Earl could. A story call — who
-  asks, or a second road to a mentor — frozen on `UNREACHABLE_BY_RELS` in
-  `test/graph.mjs` until somebody makes it (#285).
-- 30 flags are written and never read, including `familyOrigin` (the cold
-  open's "what he came from" fork, whose only lasting effect is +1 Hustle on
-  one arm), `peteMistakeResponse` and `m5Decision`. `debtSource` came off
-  the list in Phase 1: `fr2_close`'s solo arm reads it, and the FR2 milestone
-  button routes the solo branch through `_chapter_fr2_end` so that arm is
-  actually reached.
+- 27 flags are written and never read (`flags.mjs`'s frozen list), including
+  `familyOrigin` (the cold open's "what he came from" fork, whose only lasting
+  effect is +1 Hustle on one arm) and `peteMistakeResponse`. None of them makes
+  the game do anything wrong; each is a record some later line could read, so
+  it is content work, not a bug, and TG-08 left it frozen. `debtSource` came
+  off the list in Phase 1 and `m5Decision` in Phase 2 (#272).
 - `GS.flags.pressAtFair` is read in `buildLines()` and set by nothing, so five
   lines of Earl noticing the press man are dead.
-- The stat-update screen's relationship table lacks `pete` and `hanger_on` and
-  renders both raw.
-- A scene reached by a choice and carrying a `statUpdate` shows its stat
-  screen twice: `handleChoice` fires it before the scene and `afterScene`
-  fires it again at the end. Visible in every transcript as a doubled
-  `> **title** — reason` line (`$135 and a Name in Print`, the fourteen
-  `m2_solo_*` updates). Found while diffing Phase 1's transcripts; not
-  fixed there, since it moves every transcript at once.
-  **Phase 4 measured it: both calls apply `deltas`.** `fr2_danny_01` option B
-  grants +1 showmanship on the choice and +1 on the target's `statUpdate`, and
-  a run that takes it goes from 0 to **3**. Thirty-three choice-reached scenes
-  carry non-empty deltas, `m2_sign` and six of the eight endings among them, so
-  the game is quietly paying double on all of them. `smoke-save.mjs` freezes
-  the list of thirty-three, checked from both ends: it can shrink, a
-  thirty-fourth fails, and a name that stops doubling fails too. Fixing the
-  engine is a row of its own — it rebalances the game and moves every
-  transcript — and until it happens new content puts its numbers on the
-  choice's `effects` and keeps only relationship and flag writes, which are
-  idempotent, on the `statUpdate`.
 
 **Reachable content**
-- `fr4_close` — a finished scene in which Duke calls Earl and takes the Vegas
-  date — is not named by any `goto`, `next`, hub card or route. It is the only
-  scene id in the file that appears nowhere else as a string.
 - `fr2_close` is reachable only through `_chapter_fr2_end`, which nothing
   names on the backer branch (Phase 1 routes the solo branch through it); `_chapter_fr2` is handled and never named either, so its "You signed."
   stat update never fires.
-- `m5Outcome` never takes the value `'last_stunt_earl'` — `m5_last_stunt_earl`
-  routes through the stunt run, which reports `last_stunt_win`/`_loss` — so
-  four pieces of epilogue keyed to it cannot render.
-- The mentor ending's headline and coda credit "Danny 'Diamondback' Reeves",
-  Duke's rival, for a thread whose apprentice is Pete Garland, both gated on
-  `GS.rels.pete` (`engine.js:916`, `:1006`).
 - 41 of 207 scene ids are never named by a `goto` or `next`; forty are reached
   through a card id or an outcome variable in `engine.js`, and nothing static
   tells those apart from the one that is not.
@@ -317,8 +285,6 @@ take it.
   identical for three cows, nine cars and thirteen buses.
 - The stunt-run screen still shows the test bed's Scale pill row (Cows ×3 /
   Cars ×9 / Buses ×13), so a player at the county fair can pick the bus stack.
-- "Try Again" on the result overlay restarts the run at no cost and no limit,
-  so every story-consequential stunt outcome is freely re-rollable.
 - `RecoveryCore.result()` computes SUCCESS/PARTIAL/FAIL and a score; both call
   sites discard the argument and route to a fixed scene.
 - Work the Crowd's PARTIAL and FAIL are identical in effect — only SUCCESS pays

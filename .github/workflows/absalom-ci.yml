@@ -8,10 +8,11 @@
 #
 # There is a third suite and it is deliberately not here: test/browser.mjs
 # boots the real page in real Chromium and asserts the hint bar, the log's
-# colours, the build's prism, the keyboard's refusals, the picker stacking to
+# colours, the build's colours on the heir, the keyboard's refusals, the picker stacking to
 # one column at 375px with four cards, a per-build satchel in the inventory
 # panel, the second buff's ring and readout, and ?pack= opening the second
-# adventure off the same HTML file under its own storage key. It is 51 checks,
+# adventure off the same HTML file under its own storage key, and a sprite
+# sheet that will not load stopping the boot. It is 54 checks,
 # and two of the things it has caught were invisible to smoke.mjs: a satchel
 # resolved on the wrong side of `selectPc`, and a board that sat frozen after a
 # save reopened on a creature's turn. It needs
@@ -46,6 +47,12 @@
 # batch is seeded so the comparison is exact rather than statistical. A red
 # check here names the fight that moved. If it is the change you meant, rerun
 # with --write-baseline and commit the file.
+#
+# tools/blender/validate.mjs is the sprite sheets' style sheet (WISHLIST.md
+# B1): every frame budget.json names, at the size and anchor of the square it
+# stands on, held to the box render.js's SOLIDS gives it and to PALETTE's
+# colours face by face. The sheets are rendered by Blender on Devon's machines
+# (#707); the check needs only Node, so it runs here.
 #
 # The job itself runs through suite.yml, the shared template. Site-wide checks
 # (Tools/board-check, gvb-save.test.mjs, the projects with no workflow of their
@@ -89,3 +96,4 @@ jobs:
       commands: |
         node test/smoke.mjs
         node test/balance.mjs 2000
+        node tools/blender/validate.mjs

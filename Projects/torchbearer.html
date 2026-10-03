@@ -555,9 +555,9 @@ import { mountSaveBar } from "../assets/js/gvb-save.js";
 import { Registry } from "./torchbearer/js/registry.js";
 import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, activeEffects, abilityMods,
          finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, advancesUpTo, grantsAt,
-         XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing, levelDC } from "./torchbearer/js/rules.js";
+         XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing, spellChoices, levelDC } from "./torchbearer/js/rules.js";
 import { createTorchSlot } from "./torchbearer/js/save.js";
-import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
+import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, companionAt, REACTIONS } from "./torchbearer/js/combat.js";
 import { esc, cap } from "./torchbearer/js/text.js";
 import { fetchLibrary, fetchPack } from "./torchbearer/js/library.js";
 import { flagOk, foldFlags, progress as campaignRows, nextAdventure, isComplete as campaignDone }
@@ -581,7 +581,7 @@ const CORE_PACK = {
  "traits":["dwarf","humanoid"],"languages":["Common","Dwarven"],"senses":["darkvision"],
  "desc":"Short, stocky, and stubborn as the mountains that birthed them. Dwarves remember every debt and every grudge.",
  "heritages":[
-  {"id":"rock-dwarf","name":"Rock Dwarf","desc":"Your feet are set like stone. +2 circumstance bonus to your DC against being Shoved, Tripped, or knocked prone.","effects":[{"note":"+2 DC vs Shove/Trip/prone"}]},
+  {"id":"rock-dwarf","name":"Rock Dwarf","desc":"Your feet are set like stone. +2 circumstance bonus to your DC against being Shoved, Tripped, or knocked prone.","effects":[{"bonus":{"target":"maneuver-dc","vs":"trip","value":2,"type":"circumstance"}},{"bonus":{"target":"maneuver-dc","vs":"shove","value":2,"type":"circumstance"}}]},
   {"id":"strong-blooded-dwarf","name":"Strong-Blooded Dwarf","desc":"Poison rolls off your blood. You gain poison resistance equal to half your level (minimum 1).","effects":[{"resist":{"type":"poison","value":"halfLevel"}}]},
   {"id":"ancient-blooded-dwarf","name":"Ancient-Blooded Dwarf","desc":"Old magic slides off you. +1 status bonus to saving throws against magic.","effects":[{"bonus":{"target":"save.all","value":1,"type":"status","vs":"magic"}}]}]},
 {"id":"elf","name":"Elf","hp":6,"size":"Medium","speed":30,"boosts":["dex","int","free"],"flaws":["con"],
@@ -787,6 +787,18 @@ const CORE_PACK = {
 {"id":"natural-ambition","name":"Natural Ambition","type":"ancestry","ancestry":"human","level":1,"desc":"You were born hungry for more. You gain an additional 1st-level class feat.","effects":[{"grantFeat":"class-1"}]},
 {"id":"general-training","name":"General Training","type":"ancestry","ancestry":"human","level":1,"desc":"Broad practice makes broad talent. You gain an additional general feat.","effects":[{"grantFeat":"general"}]},
 {"id":"cooperative-nature","name":"Cooperative Nature","type":"ancestry","ancestry":"human","level":1,"desc":"Teamwork comes naturally. +4 circumstance bonus when you Aid another.","effects":[{"special":"cooperative-nature"}]},
+{"id":"echoes-in-stone","name":"Echoes in Stone","type":"ancestry","ancestry":"dwarf","level":5,"desc":"You read the rock the way others read faces: you feel movement through the ground within 20 feet as imprecise tremorsense.","effects":[{"sense":"tremorsense (imprecise) 20 ft"}]},
+{"id":"mountains-stoutness","name":"Mountain's Stoutness","type":"ancestry","ancestry":"dwarf","level":9,"desc":"You are as hard to wear down as the peaks. Your maximum HP increases by your level, on top of Toughness if you have it.","effects":[{"special":"mountains-stoutness"}]},
+{"id":"elven-instincts","name":"Elven Instincts","type":"ancestry","ancestry":"elf","level":5,"desc":"Centuries of wariness answer before you do: +2 circumstance bonus to initiative.","effects":[{"bonus":{"target":"initiative","value":2,"type":"circumstance"}}]},
+{"id":"elf-step","name":"Elf Step","type":"ancestry","ancestry":"elf","level":9,"actions":1,"desc":"You move in a graceful dance: Step 5 feet twice. (Flavour only: the engine has no double Step yet.)","effects":[{"note":"Step twice as one action"}]},
+{"id":"energized-font","name":"Energized Font","type":"ancestry","ancestry":"gnome","level":5,"desc":"The magic in you wells back up unbidden. Your focus pool grows by 1 (if you have one), to the usual maximum of 3.","effects":[{"focusPoints":1}]},
+{"id":"life-giving-magic","name":"Life-Giving Magic","type":"ancestry","ancestry":"gnome","level":9,"desc":"When your innate magic flares, a little of it mends you. (Flavour only: innate spells are not modelled.)","effects":[{"note":"Innate spells heal you a little"}]},
+{"id":"tough-tumbler","name":"Tough Tumbler","type":"ancestry","ancestry":"goblin","level":5,"desc":"You have been thrown, kicked and dropped all your life, and it stopped hurting years ago. (Flavour only: Tumble Through is not an action yet.)","effects":[{"note":"Tumble Through without provoking"}]},
+{"id":"cave-climber","name":"Cave Climber","type":"ancestry","ancestry":"goblin","level":9,"desc":"Walls are just floors at a funny angle: you gain a climb Speed of 10 feet. (Flavour only: the map has no climbing.)","effects":[{"note":"Climb Speed 10 ft"}]},
+{"id":"shared-luck","name":"Shared Luck","type":"ancestry","ancestry":"halfling","level":5,"desc":"Your luck spills onto the people next to you. (Flavour only: Halfling Luck is the hero's alone in this engine.)","effects":[{"note":"Halfling Luck for an ally"}]},
+{"id":"irrepressible","name":"Irrepressible","type":"ancestry","ancestry":"halfling","level":9,"desc":"Fear and despair find no purchase: +1 circumstance bonus to saves against emotion effects, on top of anything else you have against them.","effects":[{"bonus":{"target":"save.all","vs":"emotion","value":1,"type":"circumstance"}}]},
+{"id":"cooperative-soul","name":"Cooperative Soul","type":"ancestry","ancestry":"human","level":5,"desc":"You never get in the way of a friend. (Flavour only: Aid's critical failure still counts here.)","effects":[{"note":"Aid never critically fails"}]},
+{"id":"incredible-improvisation","name":"Incredible Improvisation","type":"ancestry","ancestry":"human","level":9,"desc":"When you have no training, you have nerve: once a day, +4 to an untrained check. (Flavour only: scene checks do not offer it yet.)","effects":[{"note":"+4 to an untrained check, once a day"}]},
 
 /* --- Class feats: Fighter --- */
 {"id":"power-attack","name":"Power Attack","type":"class","classes":["fighter"],"level":1,"actions":2,"traits":["flourish"],"desc":"Two actions: make a melee Strike that counts as two attacks for your multiple attack penalty and deals an extra damage die on a hit.","effects":[{"special":"power-attack"}]},
@@ -831,6 +843,27 @@ const CORE_PACK = {
 {"id":"reach-spell","name":"Reach Spell","type":"class","classes":["bard","cleric","druid","witch","wizard"],"level":1,"actions":"free","desc":"Free action: your next spell's range increases by 30 feet.","effects":[{"special":"reach-spell"}]},
 {"id":"conceal-spell","name":"Conceal Spell","type":"class","classes":["wizard","bard","witch"],"level":2,"desc":"You cast with hidden gestures and murmured words, hiding your spellcasting from observers.","effects":[{"note":"Stealth casting"}]},
 
+/* --- Class feats, 4th to 8th: the slots past 2nd had nothing to draw on --- */
+{"id":"shielded-stride","name":"Shielded Stride","type":"class","classes":["fighter"],"level":4,"desc":"With your shield up you can give ground without giving openings: a half-speed Stride with your shield raised provokes nothing. (Flavour only: Mobility is the engine's half-speed rule, and this is not wired to it.)","effects":[{"note":"Half-speed Stride with a raised shield provokes nothing"}]},
+{"id":"reflexive-shield","name":"Reflexive Shield","type":"class","classes":["fighter"],"level":6,"desc":"You throw the shield at whatever is coming, not only at blades: a raised shield's bonus applies to Reflex saves. (Flavour only: saves do not read the raised shield yet.)","effects":[{"note":"Raised shield adds to Reflex saves"}]},
+{"id":"blind-fight","name":"Blind-Fight","type":"class","classes":["fighter","ranger","rogue"],"level":8,"desc":"You fight by sound, smell and the shift of air. You need no flat check against a concealed creature, and only DC 5 against a hidden one.","effects":[{"special":"blind-fight"}]},
+{"id":"sabotage","name":"Sabotage","type":"class","classes":["rogue"],"level":4,"actions":1,"desc":"A quick cut to a strap or a hinge, and the thing stops working. (Flavour only: items in a foe's hands are not modelled.)","effects":[{"note":"Damage a held item"}]},
+{"id":"gang-up","name":"Gang Up","type":"class","classes":["rogue"],"level":6,"desc":"You and your friends need not stand opposite each other. A foe within reach of you and of one of your allies is off-guard to your melee attacks.","effects":[{"special":"gang-up"}]},
+{"id":"nimble-roll","name":"Nimble Roll","type":"class","classes":["rogue"],"level":8,"desc":"You tumble away from blasts as well as blades. (Flavour only: Nimble Dodge does not reach saving throws yet.)","effects":[{"note":"Nimble Dodge against Reflex saves"}]},
+{"id":"scouts-warning","name":"Scout's Warning","type":"class","classes":["ranger"],"level":4,"desc":"You see the trouble before anyone else: +1 circumstance bonus to initiative. (The tabletop feat also warns your allies; here it is yours alone.)","effects":[{"bonus":{"target":"initiative","value":1,"type":"circumstance"}}]},
+{"id":"swift-tracker","name":"Swift Tracker","type":"class","classes":["ranger"],"level":6,"desc":"You follow a trail at a full stride. (Flavour only: tracking is a scene check, and its pace is the story's.)","effects":[{"note":"Track at full Speed"}]},
+{"id":"melodious-spell","name":"Melodious Spell","type":"class","classes":["bard"],"level":4,"actions":1,"desc":"You weave the casting into a performance so nobody notices it is one. (Flavour only: nothing in combat watches for spellcasting.)","effects":[{"note":"Hide spellcasting in a performance"}]},
+{"id":"know-it-all","name":"Know-It-All","type":"class","classes":["bard"],"level":8,"desc":"Ask you anything and you have read about it somewhere. (Flavour only: Recall Knowledge prints no extra detail yet.)","effects":[{"note":"Extra detail on Recall Knowledge"}]},
+{"id":"directed-channel","name":"Directed Channel","type":"class","classes":["cleric"],"level":4,"desc":"You shape your font's energy into a cone rather than a burst. (Flavour only: Heal's area forms are not modelled.)","effects":[{"note":"Font heals in a cone"}]},
+{"id":"advanced-domain","name":"Advanced Domain","type":"class","classes":["cleric"],"level":8,"desc":"Your god opens a second door. Learn a domain spell — the one you do not have, of the two the core pack carries — and your focus pool grows by 1.","effects":[{"grantFocusSpellChoice":["fire-ray","bit-of-luck"]},{"focusPoints":1}]},
+{"id":"order-magic","name":"Order Magic","type":"class","classes":["druid"],"level":4,"desc":"You learn another order's secret. Gain the order spell of a second order, and your focus pool grows by 1.","effects":[{"grantFocusSpellChoice":["cornucopia","tempest-surge","untamed-claw"]},{"focusPoints":1}]},
+{"id":"ferocious-shape","name":"Ferocious Shape","type":"class","classes":["druid"],"level":8,"desc":"You master the shapes of the great beasts. (Flavour only: battle forms are not modelled; Untamed Claw is the nearest thing.)","effects":[{"note":"Dinosaur battle forms"}]},
+{"id":"ceremonial-knife","name":"Ceremonial Knife","type":"class","classes":["witch"],"level":4,"desc":"You keep a knife for rites, and it remembers them. (Flavour only: the knife carries no spell.)","effects":[{"note":"A knife that stores a cantrip"}]},
+{"id":"greater-lesson","name":"Greater Lesson","type":"class","classes":["witch"],"level":6,"desc":"Your patron teaches you more. Learn a lesson hex you do not have, and your focus pool grows by 1.","effects":[{"grantFocusSpellChoice":["wilding-word","clinging-ice","shroud-of-night","discern-secrets"]},{"focusPoints":1}]},
+{"id":"witchs-bottle","name":"Witch's Bottle","type":"class","classes":["witch"],"level":8,"desc":"You stopper a hex in a bottle for someone else to break. (Flavour only: no item carries a spell yet.)","effects":[{"note":"Bottle a hex"}]},
+{"id":"silent-spell","name":"Silent Spell","type":"class","classes":["wizard"],"level":4,"actions":1,"desc":"You cast without a word. (Flavour only: nothing in the engine silences a caster.)","effects":[{"note":"Cast without verbal components"}]},
+{"id":"spell-penetration","name":"Spell Penetration","type":"class","classes":["wizard"],"level":8,"desc":"Wards thin in front of you. (Flavour only: status bonuses to saves are not tracked on monsters.)","effects":[{"note":"Foes' status bonus to saves against your spells drops by 1"}]},
+{"id":"steady-spellcasting","name":"Steady Spellcasting","type":"class","classes":["bard","cleric","druid","witch","wizard"],"level":6,"desc":"Nothing breaks your concentration once the words have begun. (Flavour only: spells are never disrupted in this engine.)","effects":[{"note":"Spells resist disruption"}]},
 /* --- Skill feats --- */
 {"id":"assurance-athletics","name":"Assurance (Athletics)","type":"skill","level":1,"desc":"Even at your worst, your Athletics holds: you can forgo the roll and take 10 + your proficiency bonus.","effects":[{"special":"assurance","skill":"athletics"}]},
 {"id":"assurance-arcana","name":"Assurance (Arcana)","type":"skill","level":1,"desc":"Even distracted, your fundamentals hold: forgo the roll and take 10 + your proficiency bonus on Arcana.","effects":[{"special":"assurance","skill":"arcana"}]},
@@ -847,6 +880,10 @@ const CORE_PACK = {
 {"id":"titan-wrestler","name":"Titan Wrestler","type":"skill","level":1,"prereq":{"skill":{"athletics":"T"}},"desc":"You can Disarm, Grapple, Shove, or Trip creatures up to two sizes larger than you.","effects":[{"special":"titan-wrestler"}]},
 {"id":"terrified-retreat","name":"Terrified Retreat","type":"skill","level":1,"prereq":{"skill":{"intimidation":"T"}},"desc":"When you critically Demoralize a lower-level foe, it flees for 1 round.","effects":[{"special":"terrified-retreat"}]},
 {"id":"group-impression","name":"Group Impression","type":"skill","level":1,"prereq":{"skill":{"diplomacy":"T"}},"desc":"Your first impressions land on whole rooms: Make an Impression on multiple targets at once.","effects":[{"note":"Crowd charmer"}]},
+{"id":"continual-recovery","name":"Continual Recovery","type":"skill","level":2,"prereq":{"skill":{"medicine":"T"}},"desc":"You can treat the same wounds again ten minutes later. (Flavour only: Treat Wounds is a downtime day here.)","effects":[{"note":"Treat Wounds again after 10 minutes"}]},
+{"id":"intimidating-prowess","name":"Intimidating Prowess","type":"skill","level":2,"prereq":{"skill":{"intimidation":"T"}},"desc":"Your bulk does the talking. (Flavour only: Demoralize does not read Strength.)","effects":[{"note":"Strength helps you Coerce and Demoralize"}]},
+{"id":"kip-up","name":"Kip Up","type":"skill","level":7,"prereq":{"skill":{"acrobatics":"T"}},"actions":"free","desc":"You are back on your feet before anyone sees you fall. Standing up costs you no action.","effects":[{"special":"kip-up"}]},
+{"id":"battle-cry","name":"Battle Cry","type":"skill","level":7,"prereq":{"skill":{"intimidation":"T"}},"desc":"You go into every fight shouting. (Flavour only: initiative does not open with a free Demoralize yet.)","effects":[{"note":"Demoralize as you roll initiative"}]},
 
 /* --- General feats --- */
 {"id":"toughness","name":"Toughness","type":"general","level":1,"desc":"You are hard to kill. Your maximum HP increases by your level, and your recovery DCs ease.","effects":[{"special":"toughness"}]},
@@ -854,7 +891,10 @@ const CORE_PACK = {
 {"id":"shield-block","name":"Shield Block","type":"general","level":1,"desc":"Reaction with a raised shield: reduce a physical hit's damage by the shield's hardness; you and the shield split what remains.","effects":[{"special":"shield-block"}]},
 {"id":"diehard","name":"Diehard","type":"general","level":1,"desc":"You do not go quietly: you die at dying 5, rather than dying 4.","effects":[{"special":"diehard"}]},
 {"id":"incredible-initiative","name":"Incredible Initiative","type":"general","level":1,"desc":"You react before thought. +2 circumstance bonus to initiative rolls.","effects":[{"bonus":{"target":"initiative","value":2,"type":"circumstance"}}]},
-{"id":"canny-acumen","name":"Canny Acumen (Will)","type":"general","level":1,"desc":"Your instincts sharpen where training lagged: your Will saves become expert.","effects":[{"profUp":{"target":"save.will","rank":"E"}}]}
+{"id":"canny-acumen","name":"Canny Acumen (Will)","type":"general","level":1,"desc":"Your instincts sharpen where training lagged: your Will saves become expert.","effects":[{"profUp":{"target":"save.will","rank":"E"}}]},
+{"id":"canny-acumen-fort","name":"Canny Acumen (Fortitude)","type":"general","level":1,"desc":"Your body learns what training did not teach it: your Fortitude saves become expert.","effects":[{"profUp":{"target":"save.fort","rank":"E"}}]},
+{"id":"canny-acumen-ref","name":"Canny Acumen (Reflex)","type":"general","level":1,"desc":"You flinch faster than you think: your Reflex saves become expert.","effects":[{"profUp":{"target":"save.ref","rank":"E"}}]},
+{"id":"canny-acumen-perception","name":"Canny Acumen (Perception)","type":"general","level":1,"desc":"You notice what others walk past: your Perception becomes expert.","effects":[{"profUp":{"target":"perception","rank":"E"}}]}
 ],
 
 /* ---------------- SPELLS ---------------- */
@@ -1071,12 +1111,12 @@ const ADVENTURE_PACK = {
 
 /* ---------------- COMPANIONS (pre-built allies) ---------------- */
 "companions":[
-{"id":"aldous","name":"Brother Aldous","subtitle":"Human Cleric of Sarenrae (Warpriest) 3",
+{"id":"aldous","name":"Brother Aldous","subtitle":"Human Cleric of Sarenrae (Warpriest)",
  "ac":19,"hp":44,"speed":20,"perception":9,"saves":{"fort":10,"ref":6,"will":11},"initSkill":9,
  "attacks":[{"name":"Blessed Mace","bonus":9,"damage":"1d6+3","damageType":"bludgeoning","range":1}],
  "abilities":[{"id":"c-heal","name":"Heal (Font)","cost":2,"type":"heal","heal":"2d8+16","range":6,"uses":3,"flavor":"Dawnlight pools in his cupped hands."}],
  "desc":"Round-faced, mule-stubborn, smells of candle smoke. Came to Lantern Cross to retire. The moor had other plans."},
-{"id":"wren","name":"Wren Thistledown","subtitle":"Halfling Rogue (Thief) 3",
+{"id":"wren","name":"Wren Thistledown","subtitle":"Halfling Rogue (Thief)",
  "ac":20,"hp":38,"speed":25,"perception":10,"saves":{"fort":7,"ref":12,"will":9},"initSkill":12,
  "attacks":[{"name":"Shortbow","bonus":11,"damage":"1d6","damageType":"piercing","range":12,"sneak":"1d6"},
             {"name":"Shortsword","bonus":11,"damage":"1d6+2","damageType":"piercing","range":1,"sneak":"1d6","traits":["agile"]}],
@@ -1303,7 +1343,7 @@ const Builder = {
     this.build=JSON.parse(JSON.stringify(cur));
     this.build.level=L;
     this.build.advances=this.build.advances||{};
-    this.build.advances[L]={feats:{},skillIncrease:null,boosts:[]};
+    this.build.advances[L]={feats:{},skillIncrease:null,boosts:[],spells:{r1:[],r2:[]}};
     this.mode="levelup"; this.target=L; this.step=0;
     App.show("builder"); this.render();
   },
@@ -1318,6 +1358,7 @@ const Builder = {
       if(g.boosts) s.push({id:"attributes",label:"Boosts"});
       if(g.skillIncrease) s.push({id:"skills",label:"Skill Increase"});
       if(g.feats.length) s.push({id:"feats",label:"Feats"});
+      if(g.spells[1]||g.spells[2]) s.push({id:"spells",label:"Spells"});
       s.push({id:"review",label:"Review"});
       return s;
     }
@@ -1412,7 +1453,8 @@ const Builder = {
       switch(id){
         case "attributes": return !miss.includes("boosts");
         case "skills": return !miss.includes("skillIncrease");
-        case "feats": return !miss.some(k=>k!=="boosts"&&k!=="skillIncrease");
+        case "feats": return !miss.some(k=>k!=="boosts"&&k!=="skillIncrease"&&k!=="spells");
+        case "spells": return !miss.includes("spells");
       }
       return true;
     }
@@ -1728,7 +1770,29 @@ const Builder = {
     });
   },
 
+  /* Levelling: one more spell for every slot the level adds at a rank
+     (`grantsAt(...).spells`), off `spellChoices`, which already leaves out
+     what the hero knows. Written into this level's entry alone. */
+  ui_spells_levelup(){
+    const b=this.build, L=this.target, g=grantsAt(Registry.classes[b.cls],L), e=this.advance();
+    const sc=Registry.classes[b.cls].spellcasting;
+    let html=`<div class="step-title">Spells</div>
+      <div class="step-hint">Level ${L} brings a new spell slot, and a new spell to fill it: ${sc.type==="spontaneous"?"it joins your repertoire":"it joins the list you prepare"}.</div>`;
+    [1,2].forEach(r=>{
+      const want=g.spells[r]; if(!want) return;
+      const key="r"+r, sel=e.spells[key], opts=spellChoices(b,L,r);
+      html+=`<div class="section-sub">Rank ${r} <span class="counter-pill">${sel.length} / ${want}</span>${r===2?` <span class="small">(rank-1 spells may be heightened)</span>`:""}</div>`;
+      if(!opts.length){ html+=`<div class="small" style="font-style:italic;margin-bottom:14px">Every rank-${r} spell of your tradition in the loaded content is already yours. Carry on without one.</div>`; return; }
+      html+=`<div class="card-grid">`+opts.map(sp=>{
+        const isSel=sel.includes(sp.id), full=!isSel&&sel.length>=want;
+        return `<div class="opt-card ${isSel?"selected":""} ${full?"disabled":""}" data-sp="${sp.id}" data-key="${key}">
+          <h3>${sp.name}</h3><div class="meta">rank ${sp.rank} · ${"◆".repeat(Math.min(3,sp.actions||2))}${sp.save?" · "+cap3(sp.save)+" save":sp.attackRoll?" · spell attack":""}</div>
+          <div class="desc">${sp.desc}</div></div>`; }).join("")+`</div>`;
+    });
+    return html;
+  },
   ui_spells(){
+    if(this.mode==="levelup") return this.ui_spells_levelup();
     const b=this.build, cls=Registry.classes[b.cls], sc=cls.spellcasting, ex=this.extras();
     let trad=sc.tradition;
     if(trad==="patron"){ const sub=(cls.subclass.options||[]).find(o=>o.id===b.subclass);
@@ -1759,7 +1823,7 @@ const Builder = {
     const b=this.build;
     document.querySelectorAll("#builder-body [data-sp]").forEach(el=>el.onclick=()=>{
       if(el.classList.contains("disabled")) return;
-      const key=el.dataset.key, id=el.dataset.sp, arr=b.spells[key];
+      const key=el.dataset.key, id=el.dataset.sp, arr=(this.mode==="levelup"? this.advance().spells : b.spells)[key];
       const i=arr.indexOf(id); if(i>=0) arr.splice(i,1); else arr.push(id);
       this.render();
     });
@@ -1811,6 +1875,7 @@ const Builder = {
       g.feats.forEach(sl=>{ const id=e.feats[sl.key]; lines.push(`${cap(sl.type)} feat: <b>${id?esc((Registry.feats[id]||{name:id}).name):"none available"}</b>`); });
       if(g.skillIncrease) lines.push(`Skill increase: <b>${cap(e.skillIncrease||"")}</b>`);
       if(g.boosts) lines.push(`Boosts: <b>${e.boosts.filter(Boolean).map(a=>a.toUpperCase()).join(", ")}</b>`);
+      [1,2].forEach(r=>{ if(g.spells[r]) lines.push(`Rank-${r} spell: <b>${e.spells["r"+r].map(id=>esc((Registry.spells[id]||{name:id}).name)).join(", ")||"none available"}</b>`); });
       return `<div class="step-title">Level ${L}</div>
       <div class="step-hint">${esc(ch.name)} goes from ${was.level} to ${L}: HP ${was.hpMax} → ${ch.hpMax}, AC ${was.ac} → ${ch.ac}. Taking the level spends ${XP_PER_LEVEL} XP.</div>
       <div class="small" style="margin-bottom:12px">${lines.join(" · ")}</div>
@@ -2032,10 +2097,13 @@ const Combat = Object.assign(newCombat(), {
     const cb=this.cur();
     st.innerHTML=`<b>${esc(cb.name)}</b> — HP ${cb.hp}/${cb.hpMax}${cb.tempHP?" (+"+cb.tempHP+" temp)":""}<br>
       MAP: ${cb.mapCount===0?"none":cb.mapCount===1?"–5 (–4 agile)":"–10 (–8 agile)"}${this.huntPreyId&&cb.char?"<br>Prey: "+esc((this.cbs.find(c=>c.id===this.huntPreyId)||{}).name||""):""}
-      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.condVal(cb,"grabbed")?"<br>grabbed — Escape DC "+(cb.grabDC||15):""}${cb.readied?"<br>Strike readied":""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
+      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.condVal(cb,"grabbed")?"<br>"+(this.condVal(cb,"restrained")?"restrained":"grabbed")+" — Escape DC "+(cb.grabDC||15):""}${cb.readied?"<br>readied: "+esc(cb.readied.kind==="spell"?((Registry.spells[cb.readied.spellId]||{name:"a spell"}).name):(this.readiedAttack(cb)||{name:"a Strike"}).name):""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
       ${cb.conditions.length?"<br>"+cb.conditions.map(c=>c.c+(c.v>1?" "+c.v:"")).join(", "):""}`;
     if(cb.side!=="pc"){ bar.innerHTML=`<div class="small" style="padding:8px">${esc(cb.name)} acts…</div>`; return; }
-    const B=[]; const btn=(id,label,cost,disabled,cls)=>B.push(`<button class="act-btn ${cls||""} ${this.armed&&this.armed.btn===id?"armed":""}" data-act="${id}" ${disabled?"disabled":""}>${label}${cost?` <span class="cost">${cost}</span>`:""}</button>`);
+    /* Restrained greys out everything but the handful of actions with neither
+       the attack nor the manipulate trait; the engine refuses the same list. */
+    const B=[]; const btn=(id,label,cost,disabled,cls)=>{ disabled=disabled||!this.actionAllowed(cb,id);
+      B.push(`<button class="act-btn ${cls||""} ${this.armed&&this.armed.btn===id?"armed":""}" data-act="${id}" ${disabled?"disabled":""}>${label}${cost?` <span class="cost">${cost}</span>`:""}</button>`); };
     const no=this.actions<=0;
     (cb.attacks||[]).forEach((a,i)=>{
       const mapPen=this.mapPenalty(cb,a);
@@ -2047,8 +2115,9 @@ const Combat = Object.assign(newCombat(), {
     if(cb.char) btn("hide","👤 Hide","◆",no);
     btn("seek","👁 Seek","◆",no);
     if(this.condVal(cb,"grabbed")) btn("escape","🪢 Escape","◆",no);
-    if(this.condVal(cb,"prone")) btn("stand","🧍 Stand","◆",no||this.condVal(cb,"grabbed")>0);
-    btn("ready","⏳ Ready a Strike","◆◆",no||this.actions<2||!(cb.attacks||[]).length);
+    const kip=!!(cb.char&&cb.char.specials.includes("kip-up"));
+    if(this.condVal(cb,"prone")) btn("stand","🧍 Stand",kip?"◇":"◆",(no&&!kip)||this.condVal(cb,"grabbed")>0);
+    btn("ready","⏳ Ready","◆◆",no||this.actions<2||!(cb.attacks||[]).length);
     if(cb.char&&cb.char.build.gear.shield) btn("raise","🛡 Raise Shield","◆",no||cb.shieldRaised);
     if(cb.attacks.some(a=>a.ranged&&(a.traits||[]).includes("reload-1"))) btn("reload","🔃 Reload","◆",no||cb.reloadedThisTurn);
     if(cb.char){
@@ -2086,6 +2155,18 @@ const Combat = Object.assign(newCombat(), {
     btn("end","⏭ End Turn","", false,"end-turn");
     bar.innerHTML=B.join("");
     bar.querySelectorAll(".act-btn").forEach(el=>el.onclick=()=>this.actionClick(el.dataset.act));
+  },
+
+  /* ---------- Ready's weapon picker; the options come from the engine ---------- */
+  chooseReady(cb){
+    const opts=this.readyOptions(cb);
+    if(opts.length<=1) return this.doReady(cb,0);
+    const body=opts.map((o,i)=>`<div class="opt-card" data-i="${i}"><h3>${o.kind==="spell"?"✦":o.ranged?"🏹":"⚔"} ${esc(o.name)}</h3>
+        <div class="desc">${esc(o.label)}.</div></div>`).join("");
+    App.modal("Ready",`<div class="card-grid">${body}</div>`,[{label:"Cancel"}]);
+    document.querySelectorAll("#modal-body .opt-card").forEach(el=>el.onclick=()=>{
+      App.closeModal(); this.doReady(cb,+el.dataset.i);
+    });
   },
 
   /* ---------- the spell menu's cards; the rows come from the engine ---------- */
@@ -2314,7 +2395,9 @@ const App = {
     this.heroCb=buildHero(ch);
     return this.heroCb;
   },
-  companionCombatant(id){ return buildCompanion(id); },
+  /* A companion grows with the hero (companionAt), so it is always built at
+     the hero's level; with no hero yet it is the stat block as written. */
+  companionCombatant(id){ return buildCompanion(id,this.hero?this.hero.level:undefined); },
   party(){ return [this.heroCombatant(),...this.companions]; },
 
   /* ---------- adventure flow ---------- */
@@ -2407,7 +2490,7 @@ const App = {
       const pct=Math.round(100*cb.hp/cb.hpMax);
       return `<div class="pc-card ${cur===cb?"active-turn":""}">
       <div class="pc-name">${esc(cb.name)}</div>
-      <div class="pc-sub">${esc(cb.char? `${cb.char.heritage||cb.char.ancestry} ${cb.char.className} ${cb.char.level} · AC ${cb.ac}`:(cb.subtitle||"")+" · AC "+cb.ac)}</div>
+      <div class="pc-sub">${esc(cb.char? `${cb.char.heritage||cb.char.ancestry} ${cb.char.className} ${cb.char.level} · AC ${cb.ac}`:(cb.subtitle||"")+(cb.level?" "+cb.level:"")+" · AC "+cb.ac)}</div>
       <div class="hp-bar"><div class="hp-fill" style="width:${pct}%"></div><div class="hp-txt">${cb.hp} / ${cb.hpMax}${cb.tempHP?" +"+cb.tempHP:""}</div></div>
       <div class="cond-row">${cb.dying?`<span class="cond-chip">DYING ${cb.dying}</span>`:""}
         ${cb.conditions.map(c=>`<span class="cond-chip">${c.c}${c.v>1?" "+c.v:""}</span>`).join("")}
@@ -2754,10 +2837,10 @@ const App = {
     const offered=(this.adv.companionsOffered||[]);
     return `<div class="section-sub" style="margin-top:18px">Traveling Companions</div>
       <div class="small" style="margin-bottom:8px">Choose who walks the moor with you. (Encounters scale to your party's size.)</div>
-      <div class="card-grid">${offered.map(id=>{ const c=Registry.companions[id];
+      <div class="card-grid">${offered.map(id=>{ const c=Registry.companions[id], k=companionAt(c,this.hero?this.hero.level:undefined);
         const sel=this.companions.some(x=>x.id==="comp-"+id);
         return `<div class="opt-card ${sel?"selected":""}" data-comp="${id}"><h3>${esc(c.name)}</h3>
-          <div class="meta">${esc(c.subtitle)} · AC ${c.ac} · HP ${c.hp}</div><div class="desc">${esc(c.desc)}</div></div>`; }).join("")}</div>`;
+          <div class="meta">${esc(c.subtitle)} ${k.level} · AC ${k.ac} · HP ${k.hp}</div><div class="desc">${esc(c.desc)}</div></div>`; }).join("")}</div>`;
   },
   bindCompanionPicker(){
     document.querySelectorAll("[data-comp]").forEach(el=>el.onclick=()=>{
@@ -2874,6 +2957,9 @@ const App = {
     this.hero=finalizeCharacter(build); this.heroCb=null;
     this.xp=Math.max(0,this.xp-XP_PER_LEVEL);
     if(old){ const cb=this.heroCombatant(); cb.resources.potions=old.resources.potions; cb.wounded=old.wounded; }
+    // The companions walking with the hero grow with it, and the level is a
+    // rest for them too.
+    this.companions=this.companions.map(c=>this.companionCombatant(c.id.replace("comp-","")));
     this.log(`<b>${esc(this.hero.name)}</b> reaches level ${this.hero.level}: HP ${was.hpMax} → ${this.hero.hpMax}, AC ${was.ac} → ${this.hero.ac}.`,"narr");
     this.toTitle(); this.toast(`${this.hero.name} is now level ${this.hero.level}`);
     this.autosave();

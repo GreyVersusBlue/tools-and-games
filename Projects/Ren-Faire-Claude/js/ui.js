@@ -4,6 +4,11 @@
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION, RENOWN, CARRYOVER, CREW, CREW_RULES } from './data.js';
 import { performerById, vendorById, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar, previewPlacement, crewCovers, gateCapacity, effectiveCrewCost } from './engine.js';
 import { canCloseSeason, seasonRecord, carryoverPreview } from './state.js';
+// The marker sheet (tools/blender/markers.py, WISHLIST.md B2). Imported, not
+// fetched: a missing atlas fails this module and with it the page, which is
+// the common plan's 'fail loud' for a wiring row, and render stays a pure
+// function of state with the sheet already in hand.
+import MARKER_SHEET from '../assets/sprites/markers.json' with { type: 'json' };
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -379,6 +384,22 @@ function renderCrewTable(state, negotiating) {
 }
 
 
+
+// One frame of the marker sheet as a span that fills its marker. Percent
+// sizes and positions, so the frame scales with --cell and with the
+// marker's span (a 2 x 2 stage is a 2 x 2 frame) and never needs a pixel
+// size from the page. A kind with no frame throws rather than falling back
+// to its glyph: a new STRUCTURE_TYPES kind wants a drawing, and
+// tools/blender/validate.mjs says so too.
+export function markerArt(name) {
+  const f = MARKER_SHEET.frames[name];
+  if (!f) throw new Error(`markers.json has no frame for "${name}"; rerun tools/blender/markers.py`);
+  const { w, h } = MARKER_SHEET.sheet;
+  const pos = (at, size, total) => (total === size ? 0 : (at / (total - size)) * 100);
+  const style = `background-size:${(w / f.w) * 100}% ${(h / f.h) * 100}%;`
+    + `background-position:${pos(f.x, f.w, w)}% ${pos(f.y, f.h, h)}%;`;
+  return `<span class="marker-art" aria-hidden="true" style="${style}"></span>`;
+}
 export function renderBackstage(state, warn, negotiating = null) {
   const rows = PERFORMERS.map(base => {
     const p = performerFor(state, base.id);
@@ -509,7 +530,8 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
   // in the grounds map below actually sit close to it.
   let gateMarker = '';
   if (ENTRANCE.y < size.rows && ENTRANCE.x < size.cols) {
-    gateMarker = `<div class="gate-marker" style="grid-column:${ENTRANCE.x + 1};grid-row:${ENTRANCE.y + 1};" title="Front Gate \u2014 every guest's walk starts here">\u26f2</div>`;
+    const gateTitle = "\u26f2 Front Gate \u2014 every guest's walk starts here";
+    gateMarker = `<div class="gate-marker" style="grid-column:${ENTRANCE.x + 1};grid-row:${ENTRANCE.y + 1};" title="${gateTitle}" role="img" aria-label="${gateTitle}">${markerArt('gate')}</div>`;
   }
 
   // Stage 12: occupancy now covers a plot's WHOLE footprint (a 2x2 stage
@@ -535,10 +557,12 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
     const reachNote = (p.status === 'built' && reachability && reachability[p.id])
       ? `, ${reachability[p.id].mult.toFixed(2)}x gate reach`
       : '';
-    const title = `${p.name} \u2014 ${statusWord} (sightline ${pct(attrs.sightline)}, shade ${pct(attrs.shade)}, traffic ${pct(attrs.traffic)}${footNote}${reachNote})`;
+    const title = `${glyph} ${p.name} \u2014 ${statusWord} (sightline ${pct(attrs.sightline)}, shade ${pct(attrs.shade)}, traffic ${pct(attrs.traffic)}${footNote}${reachNote})`;
     const statusClass = p.status === 'planning' ? 'planning' : 'built';
     const movingClass = movingPlot && movingPlot.id === p.id ? ' moving' : '';
-    return `<div class="plot-marker kind-${p.kind} ${statusClass}${movingClass}" style="${style}" title="${title}">${glyph}</div>`;
+    // The drawing is what shows; the glyph it replaced stays at the front of
+    // the title, which is also the accessible name (WISHLIST.md B3).
+    return `<div class="plot-marker kind-${p.kind} ${statusClass}${movingClass}" style="${style}" title="${title}" role="img" aria-label="${title}">${markerArt(p.kind)}</div>`;
   }).join('');
 
   let ghostMarkers = '';

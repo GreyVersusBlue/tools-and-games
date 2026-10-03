@@ -167,16 +167,13 @@ my_scene_id: {
   fails on a `_requires` that reads `GS.rels`.
 - **`_gateCheck: () => bool`** on a choice shows it disabled, with
   `_gateReason` as the lock note, when false.
-- **Stat numbers go on the choice, not on the scene the choice names.** A
-  scene reached by a `goto` and carrying a `statUpdate` fires it twice —
-  `handleChoice()` before the scene and `afterScene()` at the end — and both
-  calls apply `deltas`. Measured: `fr2_danny_01` option B takes showmanship
-  from 0 to 3 for +1 on the choice and +1 on the scene. So put `stats` in the
-  choice's `effects`, where `applyEffects()` runs them once, and keep `rels`
-  and `flags` on the `statUpdate`, where the stat screen announces the
-  relationship move and a second write changes nothing. `smoke-save.mjs`
-  freezes the thirty-three scenes that already do it and fails on a
-  thirty-fourth.
+- **A scene's `statUpdate` fires once, from `afterScene()`, when its
+  Continue is clicked.** Until TG-08 `handleChoice()` fired it too, before the
+  scene, so a choice-reached scene paid its `deltas` twice (#790). A scene that
+  ends in choices never reaches `afterScene()`, so it cannot carry a
+  `statUpdate`; `smoke-save.mjs` fails on one that does, and `smoke-page.mjs`
+  fails on a stat screen shown twice for one scene. Numbers can go on the
+  choice's `effects` or on the scene's `deltas`, and both now apply once.
 - **`_gateRoute: () => id | null`** on a scene redirects on entry when it
   returns a truthy id — see `fr3_eve_ruthie` for the pattern (splits on
   `GS.flags.ruthieAsked`).

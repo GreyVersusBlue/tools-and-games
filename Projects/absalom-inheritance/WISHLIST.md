@@ -102,7 +102,8 @@ test suites exist at all.
   schema 1) plus `makeRepair`, which resolves and clamps every field on every
   load. `migrate` exists and is empty.
 - **`js/render.js` (322)** — isometric canvas from diamonds and prisms, no art
-  assets, one `requestAnimationFrame` loop. **`js/ui.js` (677)** — panels, log,
+  assets, one `requestAnimationFrame` loop (since TG-09 it draws frames from two
+  Blender-rendered sheets; README.md "The sprite sheets"). **`js/ui.js` (677)** — panels, log,
   four modals, the keyboard cursor, the save bar, condition chips, and
   `pickCharacter`, built entirely from `content.pcOptions`. **`js/main.js`
   (101)** — boot: fetch the pack unresolved, load a save or run the picker,
@@ -1116,36 +1117,6 @@ canvas never needed focusing.
 
 *Model:* Claude Opus 5.
 
-## Blender assets (ranks 1 to 4)
-
-Blender-made assets rank above everything else (HISTORY.md #642). The shared
-plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` runs on huginn or Devon's Windows machine, and one gated `blender-gpu` on the Windows machine only (#707); a session
-without `blender` on PATH skips it and takes the next row.
-
-**B1. The sprite pipeline (rank 1, ¼, Opus 5.5, gate `blender`).**
-Absalom's own copy of Signal City's sprite renderer (#643), with an
-orthographic camera at the 2:1 isometric angle `js/render.js` draws at
-(`tw` 56 by `th` 28 at its largest; frames at 112 wide for a 2x screen). The
-lights are set so a block's three faces come out at `PALETTE`'s top, left and
-right values, which is the look the game has now. The validator joins
-`.github/workflows/absalom-ci.yml`.
-
-**B2. The tile sheet (rank 2, ½, Opus 5.5, gate `blender`).** The six
-`TILE_KINDS` in `js/world.js` (floor in its two shades, wall, gate shut and
-open, pillar, treasure, stairs) and the door.
-
-**B3. The figure sheet (rank 3, ½, Opus 5.5, gate `blender`).** The heir,
-the foe and the boss. **An heir's colours are content**, read from
-`content.pc.palette` per pack, so the heir is rendered neutral with its three
-faces as mask channels and tinted at draw time; a pack with new colours needs
-no new render.
-
-**B4. Wiring the sheets (rank 4, ½, Opus 5.5, no gate, after ranks 2 and
-3).** `render.js` draws frames where it draws faces, still reads state and
-never writes it, and its header stops saying "no assets". Every suite in
-`absalom-ci.yml` stays green; `test/browser.mjs` runs with its own Chromium
-path and is named in the PR body.
-
 ## What this leaves for a later arc
 
 - **Levelling, XP and treasure beyond the casket.** The adventure is a vignette
@@ -1156,6 +1127,7 @@ path and is named in the PR body.
   thing `heal-other` was actually asking for (#177).
 - **Sound, settings, difficulty selection**, and a visual regression harness for
   `render.js` — the last would need a golden-image pipeline this project has no
-  build step for.
+  build step for. The sprite sheets (README.md) are held by `validate.mjs`; the
+  board they are drawn into is not.
 - **Anything that requires a server**: every phase here runs
   entirely in the page, which is a property worth keeping.

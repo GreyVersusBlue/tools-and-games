@@ -41,10 +41,11 @@ const { createTorchSlot, repairSnapshot, repairBuild, repairHero, repairAdvances
 const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDiceSource, activeEffects, abilityMods,
         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, SIZES, sizeIndex, levelDC,
         FEAT_LEVELS, SKILL_INCREASE_LEVELS, BOOST_LEVELS, featLevelsFor, skillIncreaseLevels, grantsAt, spellSlotsAt,
-        XP_PER_LEVEL, canLevelUp, awardFor, kitAt, strikingDie, takenFeats, featChoices, skillIncreaseOptions, advanceMissing } = {
+        XP_PER_LEVEL, canLevelUp, awardFor, kitAt, strikingDie, takenFeats, featChoices, skillIncreaseOptions, advanceMissing,
+        spellGrantsAt, spellChoices } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
-const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
+const { newCombat, heroCombatant, companionCombatant, companionAt, COMPANION_LEVEL, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
 const { SCOPE, scopedFlag, isScoped, flagsSetBy, foldFlags, flagOk, entriesOf,
         progress: campaignRows, nextAdventure, isComplete: campaignDone } = await mod("js/campaign.js");
 const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LEVEL,
@@ -409,7 +410,7 @@ const goodSnap = () => ({
   const store3 = memStore(); store3.setItem(SAVE_KEY, JSON.stringify({ ...v2, __v: 3 }));
   const back3 = createTorchSlot(store3).load();
   eq([back3.build.level, back3.build.advances, back3.xp],
-    [7, { "4": { feats: { class4: "power-attack" }, skillIncrease: null, boosts: [] } }, 40],
+    [7, { "4": { feats: { class4: "power-attack" }, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } } }, 40],
     "…while a version-3 save keeps all three, repaired into shape");
 }
 
@@ -566,10 +567,10 @@ group("repair");
     [1, 10, 4, 3], "level is a whole number clamped to 1..10, and garbage is 3");
   eq(repairBuild({ advances: [] }).advances, {}, "an array of advances is an empty map");
   eq(repairBuild({ advances: { "3": {}, "4": { feats: { class4: "x" } }, "5.5": {}, "11": {}, "04": {} } }).advances,
-    { "4": { feats: { class4: "x" }, skillIncrease: null, boosts: [] } },
-    "only whole levels 4..10 survive as keys, and each entry gets its three fields");
-  eq(repairAdvances({ "5": { feats: "no", skillIncrease: 3, boosts: ["str", 7, null] } })["5"],
-    { feats: {}, skillIncrease: null, boosts: ["str"] }, "an entry's fields are shaped, not trusted");
+    { "4": { feats: { class4: "x" }, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } } },
+    "only whole levels 4..10 survive as keys, and each entry gets its four fields");
+  eq(repairAdvances({ "5": { feats: "no", skillIncrease: 3, boosts: ["str", 7, null], spells: { r1: "x", r2: ["magic-missile", 4] } } })["5"],
+    { feats: {}, skillIncrease: null, boosts: ["str"], spells: { r1: [], r2: ["magic-missile"] } }, "an entry's fields are shaped, not trusted");
   eq([repairSnapshot({ build: {} }).xp, repairSnapshot({ build: {}, xp: -5 }).xp, repairSnapshot({ build: {}, xp: "30" }).xp],
     [0, 0, 30], "xp is a number, never negative, and 0 when missing");
 }
@@ -844,9 +845,9 @@ eq(MAX_LEVEL, 10, "MAX_LEVEL is 10 — where the Player Core's tables stop being
   eq(skillIncreaseLevels(fighter, 10), [3, 5, 7, 9], "skill increases at 3, 5, 7 and 9");
   eq(skillIncreaseLevels(rogue, 6), [2, 3, 4, 5, 6], "a Rogue's are 2 and every level after");
   eq([FEAT_LEVELS.general, SKILL_INCREASE_LEVELS.at(-1), BOOST_LEVELS], [[3, 7, 11, 15, 19], 19, [5, 10, 15, 20]], "the standard rows read as the Player Core prints them");
-  eq(grantsAt(fighter, 4), { level: 4, feats: [{ key: "class4", type: "class", level: 4 }, { key: "skill4", type: "skill", level: 4 }], skillIncrease: false, boosts: 0 },
+  eq(grantsAt(fighter, 4), { level: 4, feats: [{ key: "class4", type: "class", level: 4 }, { key: "skill4", type: "skill", level: 4 }], skillIncrease: false, boosts: 0, spells: { 1: 0, 2: 0 } },
     "level 4 grants a Fighter a class feat and a skill feat");
-  eq(grantsAt(fighter, 5), { level: 5, feats: [{ key: "ancestry5", type: "ancestry", level: 5 }], skillIncrease: true, boosts: 4 },
+  eq(grantsAt(fighter, 5), { level: 5, feats: [{ key: "ancestry5", type: "ancestry", level: 5 }], skillIncrease: true, boosts: 4, spells: { 1: 0, 2: 0 } },
     "level 5 grants an ancestry feat, a skill increase and four boosts");
   eq(grantsAt(fighter, 7).feats.map(f => f.key), ["general7"], "level 7 grants a general feat");
   eq(grantsAt(rogue, 7).feats.map(f => f.key), ["skill7", "general7"], "…and a Rogue a skill feat with it");
@@ -905,13 +906,15 @@ eq([canLevelUp({ level: 3 }, 999), canLevelUp({ level: 3 }, 1000), canLevelUp({ 
 }
 /** Every fighter class feat in the core pack, lowest level first. */
 const FIGHTER_FEATS = Registry.list(Registry.feats, f => f.type === "class" && (f.classes || []).includes("fighter")).sort((a, b) => a.level - b.level).map(f => f.id);
-eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
+eq(FIGHTER_FEATS.length, 8, "the core pack has eight fighter class feats: five at 1st and 2nd, three from 4th to 8th");
 { // which feats a slot may hold
   const b4 = fighter({ level: 4, feats: { class1: FIGHTER_FEATS[0], class2: FIGHTER_FEATS[1] } }).build;
   const class4 = { key: "class4", type: "class", level: 4 };
-  eq(featChoices(b4, class4).map(f => f.id), FIGHTER_FEATS.slice(2), "a level-4 class slot offers the three fighter feats not yet taken");
-  eq(featChoices(b4, class4, FIGHTER_FEATS[0]).map(f => f.id), [FIGHTER_FEATS[0], ...FIGHTER_FEATS.slice(2)], "…plus the one already in the slot, so a pick can be changed");
-  eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).length, 3, "an ancestry slot offers the hero's own ancestry's feats");
+  const upTo4 = FIGHTER_FEATS.slice(2).filter(id => Registry.feats[id].level <= 4);
+  eq(upTo4.length, 4, "four fighter feats at 4th or below are left after two are taken");
+  eq(featChoices(b4, class4).map(f => f.id), upTo4, "a level-4 class slot offers exactly those");
+  eq(featChoices(b4, class4, FIGHTER_FEATS[0]).map(f => f.id), [FIGHTER_FEATS[0], ...upTo4], "…plus the one already in the slot, so a pick can be changed");
+  eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).length, 4, "an ancestry slot offers the hero's own ancestry's feats, the 5th-level one included");
   eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).every(f => f.ancestry === "human"), true, "…and only those");
   ok(!featChoices(b4, { key: "skill4", type: "skill", level: 4 }).some(f => f.id === "battle-medicine"), "a skill feat whose prerequisite is untrained is not offered");
   ok(featChoices(b4, { key: "skill4", type: "skill", level: 4 }).some(f => f.id === "titan-wrestler"), "…and one whose prerequisite Soldier trains is");
@@ -944,11 +947,14 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   eq(advanceMissing(b5, 5), ["boosts"], "…nor are three");
   b5.advances[5].boosts = ["str", "dex", "con", "wis"];
   eq(advanceMissing(b5, 5), [], "…four different attributes complete it");
-  // The empty slot: a fighter who has taken all five class feats by 8 has
-  // nothing to put in class10, and the level must not be stuck on it (#117).
+  // The empty slot: a fighter who already holds every fighter feat in the
+  // loaded content has nothing to put in class10, and the level must not be
+  // stuck on it (#117). The core pack no longer runs dry by 10th on its own,
+  // so the extra feats are written into the choice map under spare keys.
+  const extra = Object.fromEntries(FIGHTER_FEATS.slice(5).map((id, i) => ["spare" + i, id]));
   const b10 = fighter({ level: 10, feats: { class1: FIGHTER_FEATS[0], class2: FIGHTER_FEATS[1] },
-    advances: { 4: { feats: { class4: FIGHTER_FEATS[2] } }, 6: { feats: { class6: FIGHTER_FEATS[3] } }, 8: { feats: { class8: FIGHTER_FEATS[4] } } } }).build;
-  eq(featChoices(b10, { key: "class10", type: "class", level: 10 }), [], "at 10 the fifth class slot has nothing left to offer");
+    advances: { 4: { feats: { class4: FIGHTER_FEATS[2], ...extra } }, 6: { feats: { class6: FIGHTER_FEATS[3] } }, 8: { feats: { class8: FIGHTER_FEATS[4] } } } }).build;
+  eq(featChoices(b10, { key: "class10", type: "class", level: 10 }), [], "with every fighter feat taken, class10 has nothing left to offer");
   const m10 = advanceMissing(b10, 10);
   ok(!m10.includes("class10") && m10.includes("skill10") && m10.includes("boosts"), `…so it is satisfied empty, and the level still wants its skill feat and boosts — missing ${m10.join(", ")}`);
 }
@@ -956,7 +962,7 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   const slot = createTorchSlot(memStore());
   const sera = slot.deserialize(fs.readFileSync(path.join(PROJECT, "test", "sera-voss.torchsave.json"), "utf8")).build;
   const s3 = finalizeCharacter(sera);
-  const up = JSON.parse(JSON.stringify(sera)); up.level = 4; up.advances[4] = { feats: {}, skillIncrease: null, boosts: [] };
+  const up = JSON.parse(JSON.stringify(sera)); up.level = 4; up.advances[4] = { feats: {}, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } };
   const choices = grantsAt(Registry.classes[up.cls], 4).feats.map(sl => [sl.key, featChoices(up, sl)[0]]);
   ok(choices.length === 2 && choices.every(([, f]) => f), `level 4 offers Sera something in both slots — ${choices.map(([k, f]) => k + ": " + (f && f.id)).join(", ")}`);
   choices.forEach(([k, f]) => { up.advances[4].feats[k] = f.id; });
@@ -969,6 +975,83 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   const back = slot.deserialize(slot.serialize({ build: up, xp: 0 })).build;
   eq(back.advances, up.advances, "the level-4 entry survives a save round trip as written");
   eq(finalizeCharacter(back).hpMax, s4.hpMax, "…and the reloaded sheet is the same sheet");
+}
+{ // the level-up's spell step: the rank-2 slot that arrives at 4th brings a rank-2 spell to cast with it
+  const C = Registry.classes;
+  eq([spellGrantsAt(C.wizard, 4), spellGrantsAt(C.bard, 4), spellGrantsAt(C.wizard, 5), spellGrantsAt(C.wizard, 3), spellGrantsAt(C.fighter, 4)],
+    [{ 1: 0, 2: 1 }, { 1: 0, 2: 1 }, { 1: 0, 2: 0 }, { 1: 0, 2: 0 }, { 1: 0, 2: 0 }],
+    "a prepared and a spontaneous caster each learn one rank-2 spell at 4th; nothing after, nothing below, nothing for a Fighter");
+  eq(grantsAt(C.wizard, 4).spells, { 1: 0, 2: 1 }, "…and grantsAt says so beside the feats");
+  const arcane = r => Registry.list(Registry.spells, x => x.rank === r && !x.focus && x.traditions.includes("arcane")).map(x => x.id);
+  const [a1, a2] = [arcane(1), arcane(2)];
+  ok(a1.length >= 3 && a2.length >= 3, `the core pack has arcane spells to choose from — ${a1.length} at rank 1, ${a2.length} at rank 2`);
+  const w = forge("wizard", { spells: { cantrips: [], r1: a1.slice(0, 3), r2: a2.slice(0, 2) } }).build;
+  const up = JSON.parse(JSON.stringify(w)); up.level = 4;
+  up.advances = { 4: { feats: {}, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } } };
+  ok(advanceMissing(up, 4).includes("spells"), "level 4 wants the wizard's new spell");
+  const offered = spellChoices(up, 4, 2).map(x => x.id);
+  eq([offered.includes(a2[0]), offered.includes(a2[1]), offered.includes(a2[2]), offered.includes(a1[0])], [false, false, true, true],
+    "…offering a rank-2 spell it does not know, or a rank-1 spell to heighten, and not the two it already prepares");
+  ok(!offered.includes("heal"), "…from its own tradition only");
+  up.advances[4].spells.r2 = [a2[2]];
+  ok(!advanceMissing(up, 4).includes("spells"), "one pick completes it");
+  ok(spellChoices(up, 4, 2).some(x => x.id === a2[2]), "…and the pick stays offered, so it can be changed");
+  const s4 = finalizeCharacter(up);
+  eq([s4.casting.r2, s4.casting.slots[2]], [[...a2.slice(0, 2), a2[2]], 3], "the sheet prepares three rank-2 spells into three rank-2 slots");
+  eq(finalizeCharacter({ ...up, level: 3 }).casting.r2, a2.slice(0, 2), "…and a build read back at 3 carries the pick without applying it");
+  const slot = createTorchSlot(memStore());
+  eq(slot.deserialize(slot.serialize({ build: up, xp: 0 })).build.advances[4].spells, { r1: [], r2: [a2[2]] }, "the pick survives a save round trip");
+  // Nothing left to learn is satisfied short, like an empty feat slot (#117).
+  const full = JSON.parse(JSON.stringify(up));
+  full.spells.r2 = spellChoices(up, 4, 2).map(x => x.id).concat(a2.slice(0, 2));
+  full.advances[4].spells.r2 = [];
+  eq([spellChoices(full, 4, 2).length, advanceMissing(full, 4).includes("spells")], [0, false],
+    "a wizard who knows every rank-2 choice is not stuck on the step");
+}
+
+{ // the core pack's feats reach 10th: no class or ancestry slot from 1st to 10th runs dry
+  /** Walk a hero from 3 to 10 the way the level-up does, taking the first
+      offer in every slot, and return every slot that had nothing to offer. */
+  const climb = (cls, over = {}) => {
+    const b = forge(cls, over).build;
+    const dry = [];
+    for (const [key, type, level] of [["ancestry1", "ancestry", 1], ["class1", "class", 1], ["class2", "class", 2]]) {
+      const f = featChoices(b, { key, type, level })[0];
+      if (f) b.feats[key] = f.id; else dry.push(key);
+    }
+    b.advances = {};
+    for (let L = 4; L <= 10; L++) {
+      b.level = L; b.advances[L] = { feats: {}, skillIncrease: null, boosts: [], spells: { r1: [], r2: [] } };
+      for (const slot of grantsAt(Registry.classes[cls], L).feats) {
+        if (slot.type !== "class" && slot.type !== "ancestry") continue;
+        const f = featChoices(b, slot)[0];
+        if (f) b.advances[L].feats[slot.key] = f.id; else dry.push(slot.key);
+      }
+    }
+    return dry;
+  };
+  const classes = Object.keys(Registry.classes).filter(id => KEY[id]);
+  eq(classes.length, 8, "all eight core classes are walked");
+  eq(Object.fromEntries(classes.map(c => [c, climb(c)]).filter(([, d]) => d.length)), {},
+    "every core class has a class feat for every class slot from 1st to 10th");
+  const ancestries = Object.keys(Registry.ancestries).filter(id => Registry.ancestries[id].heritages.length && ["dwarf", "elf", "gnome", "goblin", "halfling", "human"].includes(id));
+  eq(Object.fromEntries(ancestries.map(a => [a, climb("fighter", { ancestry: a, heritage: Registry.ancestries[a].heritages[0].id }).filter(k => k.startsWith("ancestry"))])
+    .filter(([, d]) => d.length)), {}, "…and every core ancestry an ancestry feat for 1st, 5th and 9th");
+  ok(ancestries.every(a => Registry.list(Registry.feats, f => f.type === "ancestry" && f.ancestry === a && f.level === 9).length >= 1),
+    "every core ancestry has a 9th-level feat to offer, not just its 1st-level ones again");
+  // Mountain's Stoutness is +level HP, and stacks with Toughness.
+  const dwarf = (feats9, extra = {}) => forge("fighter", { ancestry: "dwarf", heritage: "rock-dwarf", level: 9,
+    advances: { 9: { feats: feats9 } }, ...extra });
+  const d0 = dwarf({}), d1 = dwarf({ ancestry9: "mountains-stoutness" });
+  eq(d1.hpMax - d0.hpMax, 9, "Mountain's Stoutness is +9 HP at 9th");
+  eq(dwarf({ ancestry9: "mountains-stoutness" }, { feats: { general3: "toughness" } }).hpMax - dwarf({}, { feats: { general3: "toughness" } }).hpMax, 9,
+    "…on top of Toughness, not instead of it");
+  // The three new real effects off the DSL.
+  const druid = forge("druid", { level: 4, subclass: "leaf", advances: { 4: { feats: { class4: "order-magic" } } }, focusChoices: { "Order Magic": "tempest-surge" } });
+  eq([druid.focusSpells.includes("tempest-surge"), druid.focusMax], [true, 2], "Order Magic teaches a second order's spell and a focus point");
+  eq(forge("fighter", { ancestry: "halfling", heritage: "nomadic-halfling", level: 9, advances: { 9: { feats: { ancestry9: "irrepressible" } } } }).condBonuses,
+    [{ target: "save.all", value: 1, type: "circumstance", vs: "emotion" }], "Irrepressible is +1 against emotion, read by every save");
+  eq(forge("fighter", { feats: { general3: "canny-acumen-ref" } }).prof.saves.ref, "E", "the three new Canny Acumens raise what they say");
 }
 
 /* ---------------- 8d. the campaign record (Phase 7, increment 1) ----------------
@@ -2259,6 +2342,31 @@ ok(Registry.hasPack("barrowmoor") || Registry.adventures.barrowmoor, "the advent
 const ADV = Registry.adventures.barrowmoor;
 // `fighter` — a longsword, a crossbow, a chain shirt and a shield — is defined
 // in section 8c, which needs it first.
+group("companions grow with the hero");
+{
+  const aldous = Registry.companions.aldous;
+  eq(COMPANION_LEVEL, 3, "a companion that names no level is written at 3, as every shipped one is");
+  const at3 = companionCombatant("aldous", 3), at6 = companionCombatant("aldous", 6);
+  eq([at3.level, at3.ac, at3.hpMax, at3.saves, at3.attacks[0].bonus, at3.attacks[0].die],
+    [3, aldous.ac, aldous.hp, aldous.saves, aldous.attacks[0].bonus, aldous.attacks[0].damage],
+    "at the level it is written at, a companion is its stat block");
+  eq(companionCombatant("aldous").hpMax, aldous.hp, "…and with no level at all, so is a companion built before a hero exists");
+  eq([at6.level, at6.ac, at6.perception, at6.initSkill, at6.saves, at6.attacks[0].bonus],
+    [6, aldous.ac + 3, aldous.perception + 3, aldous.initSkill + 3,
+      { fort: aldous.saves.fort + 3, ref: aldous.saves.ref + 3, will: aldous.saves.will + 3 }, aldous.attacks[0].bonus + 3],
+    "three levels up: +3 to AC, Perception, initiative, every save and every attack");
+  eq(at6.hpMax, aldous.hp + 3 * Math.round(aldous.hp / 4), "…HP by its own HP over one more than its level, per level: 44 + 3 × 11");
+  eq([at6.attacks[0].die, companionCombatant("wren", 4).attacks[1].die], ["2d6+3", "2d6+2"], "…and a striking rune from 4th, as the hero's kit gets");
+  eq([at6.abilities[0].heal, at6.abilities[0].uses], [aldous.abilities[0].heal, aldous.abilities[0].uses], "heals and uses are not scaled");
+  eq(companionAt({ ...aldous, level: 5, hpPerLevel: 5 }, 3).hp, aldous.hp - 10, "a pack's own `level` and `hpPerLevel` are read, downwards too");
+  // The validator knows both fields.
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const cerrs = c => Validator.validate({ ...base, companions: [{ id: "c", name: "C", ...c }] }, emptyRegistry());
+  eq(cerrs({ level: 0 }), ['Companion "c": "level" must be a whole number of 1 or more.'], "a companion's level is a whole number of 1 or more");
+  eq(cerrs({ hpPerLevel: "9" }), ['Companion "c": "hpPerLevel" must be a whole number of 0 or more.'], "…and so is its HP a level");
+  eq(cerrs({ level: 5, hpPerLevel: 9 }), [], "…and real ones pass");
+}
+
 /** An engine with the hooks a fight needs to end, and counters on each. */
 const fight = (over = {}) => {
   const h = { victory: 0, defeat: 0, saves: 0, mounts: 0, toasts: [], hints: [] };
@@ -4067,7 +4175,7 @@ group("Ready");
   };
   const { eng, hero, foe } = setup();
   eng.actionClick("ready");
-  eq([hero.readied, eng.actions], [{ kind: "strike" }, 1], "Ready is two actions and arms one Strike");
+  eq([hero.readied, eng.actions], [{ kind: "strike", atkIdx: 0, ranged: false }, 1], "Ready is two actions and arms one Strike");
   ok(eng.events.some(ev => /<b>Readies<\/b> a Strike/.test(ev.text)), "…and says what it is waiting for");
 
   // It fires on the step that brings a foe into reach, not before.
@@ -4082,7 +4190,7 @@ group("Ready");
   const s2 = setup();
   s2.eng.actionClick("ready");
   s2.eng.provokeAlong(s2.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }]);
-  eq([s2.hero.readied, s2.hero.reactionUsed], [{ kind: "strike" }, false], "a foe that stays out of reach does not set it off");
+  eq([s2.hero.readied, s2.hero.reactionUsed], [{ kind: "strike", atkIdx: 0, ranged: false }, false], "a foe that stays out of reach does not set it off");
 
   // Nor does one already inside it that merely shuffles: the trigger is
   // entering reach, which is both halves of the comparison and not just the
@@ -4091,7 +4199,7 @@ group("Ready");
   s2b.foe.x = 2; s2b.foe.y = 1;
   s2b.eng.actionClick("ready");
   s2b.eng.provokeAlong(s2b.foe, [{ x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]);
-  eq([s2b.hero.readied, s2b.foe.hp], [{ kind: "strike" }, 24],
+  eq([s2b.hero.readied, s2b.foe.hp], [{ kind: "strike", atkIdx: 0, ranged: false }, 24],
     "a foe already within reach that moves inside it does not set it off either");
 
   // It is not a reaction id, so content cannot name it and the validator does
@@ -4112,7 +4220,299 @@ group("Ready");
   s4.eng.cbs.push(ally); s4.eng.order.push(ally);
   s4.eng.actionClick("ready");
   s4.eng.provokeAlong(ally, [{ x: 6, y: 1 }, { x: 5, y: 1 }, { x: 2, y: 1 }]);
-  eq(s4.hero.readied, { kind: "strike" }, "a readied Strike is aimed at the other side only");
+  eq(s4.hero.readied, { kind: "strike", atkIdx: 0, ranged: false }, "a readied Strike is aimed at the other side only");
+}
+
+/* ---------------- the engine holes ----------------
+   A monster had no Stealth and no Athletics number, so it could neither Hide
+   nor Trip; a critical Grapple was an ordinary grab with a higher DC; Disarm's
+   −2 hit every attack the target had; and Ready armed exactly one thing, a
+   melee Strike. Each of these is the fix, pinned. */
+group("monsters Hide");
+{
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const errs = m => Validator.validate({ ...base, monsters: [{ id: "m", name: "M", ac: 10, hp: 10, attacks: [], saves: {}, ...m }] }, emptyRegistry());
+  eq(errs({ stealth: "8" }), ['Monster "m": "stealth" is a modifier and must be a whole number.'], "a Stealth number has to be a number");
+  eq(errs({ athletics: 7.5 }), ['Monster "m": "athletics" is a modifier and must be a whole number.'], "…and so does an Athletics one");
+  eq(errs({ stealth: 8, athletics: -1 }), [], "…and whole numbers, negative included, pass");
+
+  /** The fighter at (1,1), a foe at (5,1) behind a wall at (3,1), the foe's turn. */
+  const lair = (foeOver = {}, over = {}) => {
+    const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+    const foe = hound({ x: 5, y: 1, hp: 10, stealth: 8, ...foeOver });
+    const eng = stage([foe, hero], { order: [foe, hero], walls: ["3,1"], ...over });
+    return { eng, hero, foe };
+  };
+  {
+    const { eng, hero, foe } = lair();
+    pin([20, 12]);
+    eq(eng.doHide(foe), true, "a monster with a Stealth number Hides");
+    eq(rolls(eng).at(-1).math, "12+8 = 20", "…rolling its own Stealth, not its Perception");
+    eq([eng.detectState(hero, foe), foe.hideDC, eng.actions], ["hidden", 20, 2], "…is hidden from the hero at the total it rolled, for one action");
+  }
+  {
+    const { eng, foe } = lair({ stealth: undefined });
+    eq([eng.doHide(foe), rolls(eng).length, eng.actions], [false, 0, 3], "a monster with no Stealth number cannot Hide, and spends nothing trying");
+    eq(eng.stealthDC(lair().foe), 18, "a Seek for an unhidden monster rolls against 10 + its Stealth");
+    eq(eng.stealthDC(foe), 17, "…and against 10 + Perception when it has none");
+  }
+  {
+    // The AI: losing, nothing in reach, and a wall to get behind.
+    const { eng, hero, foe } = lair();
+    pin([20, 12]);
+    eq(eng.aiStep(foe), { action: "hide", wait: 500 }, "a losing monster with Stealth and a wall to use Hides");
+    eq(eng.detectState(hero, foe), "hidden", "…and gets away with it");
+    eq(eng.aiStep(foe), { action: "lurk", wait: 400 }, "hidden from every hero, it holds still rather than give the place away");
+    eq([eng.actions, foe.x], [0, 5], "…spending the rest of the turn where it is");
+    ok(eng.events.some(ev => /holds still in the dark/.test(ev.text)), "…and the Chronicle says so");
+  }
+  {
+    const { eng, foe } = lair({ hp: 24 });
+    eq(eng.aiStep(foe).action, "move", "a monster that is not losing comes on as it always did");
+    const s2 = lair({ stealth: undefined });
+    eq(s2.eng.aiStep(s2.foe).action, "move", "…and so does a losing one with no Stealth number");
+    const s3 = lair({}, { walls: [] });
+    eq(s3.eng.aiStep(s3.foe).action, "move", "…and one with nothing to hide behind");
+  }
+  {
+    // A failed Hide is not tried again the same turn.
+    const { eng, foe } = lair();
+    pin([20, 1]);
+    eq(eng.aiStep(foe).action, "hide", "a losing monster tries to Hide");
+    eq(eng.aiStep(foe).action, "move", "…and, seen, does not spend a second action on it that turn");
+  }
+  {
+    // Lurking ends when a hero comes within reach: it strikes out of hiding.
+    const { eng, hero, foe } = lair();
+    eng.setDetect(hero, foe, "hidden");
+    foe.x = 2; foe.y = 1;
+    pin([20, 12], [8, 4]);
+    eq(eng.aiStep(foe).action, "strike", "a hidden monster with a hero in reach strikes rather than lurks");
+    eq(eng.detectState(hero, foe), "observed", "…and gives the hiding place away doing it");
+  }
+}
+
+group("monsters Trip");
+{
+  /** A foe at (2,1) between the fighter at (1,1) and an ally at (3,1), the foe's turn. */
+  const pit = (foeOver = {}, heroOver = {}) => {
+    const hero = Object.assign(heroCombatant(fighter(heroOver)), { x: 1, y: 1 });
+    const ally = mk({ id: "a", side: "pc", name: "Bran", x: 3, y: 1, ac: 12, hp: 44, hpMax: 44 });
+    const foe = hound({ athletics: 10, ...foeOver });
+    const eng = stage([foe, hero, ally], { order: [foe, hero, ally] });
+    return { eng, hero, ally, foe };
+  };
+  {
+    const { eng, hero, ally, foe } = pit();
+    ok(hero.ac > ally.ac, "the fighter wears the heavier armour");
+    pin([20, 12]);
+    eq(eng.aiStep(foe), { action: "trip", target: "hero", wait: 550 }, "a monster with Athletics opens by Tripping the heaviest armour in reach");
+    eq(rolls(eng).at(-1).math, `12+10 = 22 vs DC ${10 + eng.saveMod(hero, "reflex")}`, "…with its own Athletics against 10 + the hero's Reflex");
+    eq([eng.condVal(hero, "prone"), foe.mapCount, eng.actions], [1, 1, 2], "…and the hero is down, the MAP is up, and an action is gone");
+    pin([20, 12], [8, 4]);
+    eq(eng.aiStep(foe).action, "strike", "…then it Strikes, and does not Trip twice");
+    eq(eng.effAC(hero, foe).offGuard, true, "…at a target that is off-guard on the floor");
+  }
+  {
+    const { eng, foe } = pit({ athletics: undefined });
+    pin([20, 12], [8, 4]);
+    eq(eng.aiStep(foe).action, "strike", "a monster with no Athletics number Strikes, as before");
+    const s2 = pit();
+    s2.eng.actions = 1;
+    pin([20, 12], [8, 4]);
+    eq(s2.eng.aiStep(s2.foe).action, "strike", "…and so does one with a single action left to follow a Trip with");
+    const s3 = pit({ size: "Tiny", monster: { level: 1, traits: ["beast"], size: "Tiny" } });
+    pin([20, 12], [8, 4]);
+    eq(s3.eng.aiStep(s3.foe).action, "strike", "…and one too small to throw anybody in reach");
+  }
+  {
+    // Rock Dwarf's +2 is on the DC the monster rolls against.
+    const { eng, hero, foe } = pit({}, { ancestry: "dwarf", heritage: "rock-dwarf" });
+    pin([20, 12]);
+    eng.maneuver(foe, hero, "trip");
+    eq(rolls(eng).at(-1).math, `12+10 = 22 vs DC ${12 + eng.saveMod(hero, "reflex")}`, "a Rock Dwarf is +2 harder to Trip");
+    const s2 = pit({}, { ancestry: "dwarf", heritage: "rock-dwarf" });
+    pin([20, 12]);
+    s2.eng.maneuver(s2.foe, s2.hero, "grapple");
+    eq(rolls(s2.eng).at(-1).math, `12+10 = 22 vs DC ${10 + s2.eng.saveMod(s2.hero, "fortitude")}`, "…and no harder to Grapple");
+  }
+}
+
+group("a critical Grapple restrains");
+{
+  {
+    const { eng, hero, foe } = duel();
+    pin([20, 20]);
+    eng.actionClick("grapple"); eng.tokenClick(foe);
+    eq([eng.condVal(foe, "grabbed"), eng.condVal(foe, "restrained")], [1, 1], "a critical Grapple is grabbed and restrained");
+    ok(eng.events.some(ev => /pinned, able to do nothing but struggle/.test(ev.text)), "…and the Chronicle says what that means");
+    const d2 = duel();
+    pin([20, 12]);
+    d2.eng.actionClick("grapple"); d2.eng.tokenClick(d2.foe);
+    eq([d2.eng.condVal(d2.foe, "grabbed"), d2.eng.condVal(d2.foe, "restrained")], [1, 0], "an ordinary success is grabbed alone");
+    // The AI: Escape first, even with a hero standing in reach to bite.
+    eng.order = [foe, hero]; eng.turnIdx = 0; eng.actions = 3;
+    pin([20, 1]);
+    eq(eng.aiStep(foe).action, "escape", "a restrained monster spends its action on Escape, not on the hero beside it");
+    pin([20, 20]);
+    eq(eng.aiStep(foe).action, "escape", "…every action, until it is free");
+    eq([eng.condVal(foe, "grabbed"), eng.condVal(foe, "restrained")], [0, 0], "one Escape ends both");
+    eq(eng.aiStep(foe).action, "pass", "…and two Escapes are MAP 2, so the last action is not worth a bite");
+    const d3 = duel();
+    pin([20, 20]);
+    d3.eng.actionClick("grapple"); d3.eng.tokenClick(d3.foe);
+    d3.eng.order = [d3.foe, d3.hero]; d3.eng.turnIdx = 0; d3.eng.actions = 3; d3.foe.mapCount = 0;
+    pin([20, 20]);
+    eq(d3.eng.aiStep(d3.foe).action, "escape", "a monster that breaks free first time…");
+    pin([20, 12], [8, 4]);
+    eq(d3.eng.aiStep(d3.foe).action, "strike", "…bites with what is left");
+  }
+  {
+    // A restrained hero can do nothing with the attack or manipulate trait.
+    const { eng, hero, foe } = duel();
+    eng.grab(foe, hero, 18, true);
+    eq(eng.effAC(hero, foe).offGuard, true, "restrained is off-guard");
+    eng.actionClick("strike0");
+    eq([eng.armed, eng.h.toasts.at(-1), eng.actions], [null, "You are restrained — Escape first.", 3], "a restrained hero cannot Strike, and it costs nothing");
+    eng.spellMenu = () => { eng.h.menu = true; };
+    eng.actionClick("spells");
+    eq(eng.h.menu, undefined, "…nor open the spell menu");
+    eq(["escape", "demoralize", "recall", "seek", "end", "delay"].every(id => eng.actionAllowed(hero, id)), true,
+      "…but may Escape, and do the things with neither trait");
+    eq(["strike0", "trip", "potion", "ready", "stride", "aid", "raise"].some(id => eng.actionAllowed(hero, id)), false,
+      "…and nothing else");
+    pin([20, 20]);
+    eng.actionClick("escape");
+    eq([eng.condVal(hero, "restrained"), eng.actionAllowed(hero, "strike0")], [0, true], "an Escape frees the hands as well as the feet");
+  }
+}
+
+group("Disarm aims at one weapon");
+{
+  const champ = { attacks: [{ name: "Longsword", bonus: 12, damage: "1d8+4", damageType: "slashing", range: 1 },
+    { name: "Gauntlet", bonus: 12, damage: "1d4+4", damageType: "bludgeoning", range: 1, traits: ["agile"] }] };
+  const { eng, hero, foe } = duel({}, champ);
+  pin([20, 12]);
+  eng.actionClick("disarm"); eng.tokenClick(foe);
+  eq(foe.conditions.find(c => c.c === "disarmed").weapon, "Longsword", "Disarm is aimed at the weapon the target leads with");
+  ok(eng.events.some(ev => /−2 with its Longsword/.test(ev.text)), "…and the Chronicle names it");
+  pin([20, 10]);
+  eng.strikeMonster(foe, hero, { name: "Longsword", bonus: 12, die: "1d8+4", damageType: "slashing", traits: [], range: 1 });
+  ok(rolls(eng).at(-1).math.startsWith("10+10 "), "the longsword swings at −2");
+  foe.mapCount = 0;
+  pin([20, 10]);
+  eng.strikeMonster(foe, hero, { name: "Gauntlet", bonus: 12, die: "1d4+4", damageType: "bludgeoning", traits: ["agile"], range: 1 });
+  ok(rolls(eng).at(-1).math.startsWith("10+12 "), "…and the gauntlet does not");
+  // The same per-weapon read on a hero's attack bonus.
+  hero.conditions.push({ c: "disarmed", v: 1, dur: 2, weapon: hero.attacks[0].name });
+  eq([eng.atkMod(hero, hero.attacks[0]), eng.atkMod(hero, hero.attacks[1])], [hero.attacks[0].bonus - 2, hero.attacks[1].bonus],
+    "a disarmed hero is −2 with that weapon and nothing else");
+}
+
+group("Ready, with any weapon");
+{
+  /** The fighter at (1,1), longsword and crossbow, a hound at (8,1) behind a wall at (5,1). */
+  const setup = () => {
+    const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+    const foe = hound({ x: 8, y: 1 });
+    const eng = stage([hero, foe], { walls: ["5,0", "5,1", "5,2"] });
+    return { eng, hero, foe };
+  };
+  const { eng, hero, foe } = setup();
+  eq(eng.readyOptions(hero).map(o => [o.name, o.ranged]), [["Longsword", false], ["Crossbow", true]],
+    "Ready offers every weapon the hero carries");
+  eng.actionClick("ready");
+  eq(hero.readied, { kind: "strike", atkIdx: 0, ranged: false }, "with no view to ask, Ready arms the first");
+  const s2 = setup();
+  eq(s2.eng.doReady(s2.hero, 1), true, "a ranged Strike can be readied");
+  eq([s2.hero.readied, s2.eng.actions], [{ kind: "strike", atkIdx: 1, ranged: true }, 1], "…for two actions");
+  ok(s2.eng.events.some(ev => /Readies<\/b> a Strike with Crossbow, and waits for something to come into sight/.test(ev.text)), "…and says what it waits for");
+  // Behind the wall and moving behind it: nothing.
+  s2.eng.provokeAlong(s2.foe, [{ x: 8, y: 1 }, { x: 7, y: 1 }, { x: 6, y: 1 }]);
+  eq([s2.hero.readied && s2.hero.readied.atkIdx, s2.foe.hp], [1, 24], "a foe moving behind the wall does not set it off");
+  // Round the end of the wall and into sight: the shot.
+  pin([20, 15], [8, 4]);
+  s2.eng.provokeAlong(s2.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  eq(rolls(s2.eng).length, 1, "a readied shot fires once, on the step that brings the foe into sight");
+  eq((rolls(s2.eng).at(-1) || {}).text, `${s2.hero.name}: Crossbow vs Hound`, "…with the crossbow");
+  eq([s2.hero.readied, s2.hero.reactionUsed, s2.foe.hp < 24], [null, true, true], "…it lands, is spent, and costs the reaction");
+  // A foe already in sight that closes in does not set a shot off: it was never out of it.
+  const s3 = setup();
+  s3.eng.walls = new Set();
+  s3.eng.doReady(s3.hero, 1);
+  s3.eng.provokeAlong(s3.foe, [{ x: 8, y: 1 }, { x: 7, y: 1 }, { x: 6, y: 1 }]);
+  eq(s3.hero.readied && s3.hero.readied.atkIdx, 1, "a foe already in range and sight that moves does not set off a readied shot");
+  // A readied melee Strike ignores a foe stepping into sight far away.
+  const s4 = setup();
+  s4.eng.doReady(s4.hero, 0);
+  s4.eng.provokeAlong(s4.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  eq(s4.hero.readied && s4.hero.readied.atkIdx, 0, "a readied melee Strike waits for reach, not sight");
+
+  // A one-action spell: a witch readies her hex for whatever comes round the wall.
+  const coven = () => {
+    const primal = r => Registry.list(Registry.spells, x => x.rank === r && !x.focus && x.traditions.includes("primal")).map(x => x.id);
+    const ch = forge("witch", { subclass: "wilding-steward", spells: { cantrips: primal(0).slice(0, 3), r1: primal(1).slice(0, 3), r2: [] },
+      gear: { weapon: "dagger", weapon2: null, ranged: null, armor: "explorers-clothing", shield: false } });
+    const hero = Object.assign(heroCombatant(ch), { x: 1, y: 1 });
+    const foe = hound({ x: 8, y: 1 });
+    const eng = stage([hero, foe], { walls: ["5,0", "5,1", "5,2"] });
+    return { eng, hero, foe, ch };
+  };
+  const w = coven();
+  const opts = w.eng.readyOptions(w.hero);
+  const hexAt = opts.findIndex(o => o.kind === "spell" && o.spellId === "wilding-word");
+  ok(hexAt >= 0, "a witch can Ready her one-action hex");
+  ok(w.eng.allSpellRows(w.hero).some(r => (r.sp.actions || 2) > 1 && (r.sp.save || r.sp.attackRoll)), "the witch under test has two-action attack spells too");
+  ok(opts.filter(o => o.kind === "spell").every(o => (Registry.spells[o.spellId].actions || 2) === 1), "…and only one-action spells are offered: Ready holds a single action");
+  ok(!opts.some(o => o.spellId === "shield"), "…aimed at a foe, so Shield is not one of them");
+  w.eng.doReady(w.hero, hexAt);
+  eq([w.hero.readied?.kind, w.hero.readied?.spellId, w.eng.actions, w.hero.resources.focus], ["spell", "wilding-word", 1, w.ch.focusMax],
+    "readying costs two actions and spends nothing from the pool yet");
+  pin([20, 3]);
+  w.eng.provokeAlong(w.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  ok(w.eng.events.some(ev => /<b>Readied spell!<\/b>/.test(ev.text)) && w.eng.events.some(ev => /casts <b>Wilding Word/.test(ev.text)),
+    "the hex goes off on the step that brings the foe into sight");
+  eq([w.eng.condVal(w.foe, "hexed"), w.hero.hexUsed, w.hero.readied, w.hero.reactionUsed, w.eng.actions], [1, true, null, true, 1],
+    "…it lands, it is the hex for the turn, it costs the reaction, and it spends no action");
+  const w2 = coven();
+  w2.eng.doReady(w2.hero, w2.eng.readyOptions(w2.hero).findIndex(o => o.spellId === "wilding-word"));
+  w2.hero.hexUsed = true;
+  w2.eng.provokeAlong(w2.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }, { x: 5, y: 3 }]);
+  eq([w2.hero.readied && w2.hero.readied.spellId, w2.hero.reactionUsed], ["wilding-word", false], "a hex already spent this turn does not fire, and the reaction is kept");
+}
+
+group("four feats past 2nd that the engine reads");
+{
+  // Blind-Fight: one step off every flat check.
+  const { eng, hero, foe, ch } = duel();
+  eng.setDetect(hero, foe, "concealed");
+  const before = eng.flatCheckDC(hero, foe);
+  eng.setDetect(hero, foe, "hidden");
+  const beforeHidden = eng.flatCheckDC(hero, foe);
+  ch.specials.push("blind-fight");
+  const afterHidden = eng.flatCheckDC(hero, foe);
+  eng.setDetect(hero, foe, "concealed");
+  eq([before, beforeHidden, eng.flatCheckDC(hero, foe), afterHidden], [5, 11, 0, 5], "Blind-Fight: no check against concealed, DC 5 against hidden");
+  // Gang Up: off-guard without standing opposite.
+  const g = duel();
+  const ally = mk({ id: "a", side: "pc", name: "Bran", x: 2, y: 2 });
+  g.eng.cbs.push(ally);
+  eq(g.eng.effAC(g.foe, g.hero).offGuard, false, "an ally beside the target but not opposite is not flanking");
+  g.ch.specials.push("gang-up");
+  eq(g.eng.effAC(g.foe, g.hero).offGuard, true, "…but Gang Up makes the target off-guard anyway");
+  eq(g.eng.effAC(g.foe, { ...g.hero, ranged: true }).offGuard, false, "…to melee only");
+  ally.dying = 1;
+  eq(g.eng.effAC(g.foe, g.hero).offGuard, false, "…and only while the ally is on its feet");
+  // Kip Up: Stand is free.
+  const k = duel();
+  k.eng.addCond(k.hero, "prone", 1, undefined, true);
+  k.ch.specials.push("kip-up");
+  k.eng.actionClick("stand");
+  eq([k.eng.condVal(k.hero, "prone"), k.eng.actions], [0, 3], "Kip Up stands for no action");
+  const k2 = duel();
+  k2.eng.addCond(k2.hero, "prone", 1, undefined, true);
+  k2.eng.actionClick("stand");
+  eq(k2.eng.actions, 2, "…where an ordinary Stand costs one");
 }
 
 group("conditional save bonuses off the sheet");
@@ -4174,11 +4574,11 @@ group("three feats stopped being note text");
   ok(withFeat("mountain-strategy").includes("bonus-dmg-vs-large"),
     "Mountain Strategy already carried `bonus-dmg-vs-large`; it just did nothing");
   ok(withFeat("titan-slinger").includes("bonus-dmg-vs-large"), "…as did Titan Slinger");
-  // Rock Dwarf stays a note on purpose: nothing in the game can Shove or Trip
-  // a hero, so there is no DC for its +2 to apply to.
-  ok(forge("fighter", { ancestry: "dwarf", heritage: "rock-dwarf" }).notes
-      .some(n => /\+2 DC vs Shove\/Trip\/prone/.test(n)),
-    "Rock Dwarf is still a note, because only heroes make maneuvers");
+  // Rock Dwarf was a note while nothing could Shove or Trip a hero. A monster
+  // with an Athletics number can, so the +2 is a conditional bonus now, read
+  // off the sheet by `maneuver` (and checked there, under "monsters Trip").
+  eq(forge("fighter", { ancestry: "dwarf", heritage: "rock-dwarf" }).condBonuses.filter(b => b.target === "maneuver-dc").map(b => b.vs),
+    ["trip", "shove"], "Rock Dwarf's +2 is a maneuver-dc bonus against Trip and Shove, not a note");
 }
 
 group("the monster schema grew two fields");

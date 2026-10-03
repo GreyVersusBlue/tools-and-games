@@ -1,0 +1,20 @@
+{
+  "about": "Faire Weekend's marker sheet style sheet as data (WISHLIST.md B1). validate.mjs reads it; markers.py reads cell, scale and the sheet. A frame is the cells a marker claims x cell x scale on a side: cell is the largest --cell style.css sets (48 px, a phone or a coarse pointer), and scale 2 is the plan's 'at 2x'. maxKiB is KiB x 1024, maxSide the longest side in pixels. minCoverage and maxCoverage bound the share of a frame's pixels at alpha 128 or more: under the floor is an empty or half-built drawing, over the ceiling is a drawing that has swallowed the token it sits on. minInk is the share of a frame's opaque pixels within inkTolerance levels of INK, so every drawing is line work in the plat's ink; minPalette the share within paletteTolerance of INK, a TERRAIN_FILL or PAPER, so it is drawn in the plat's colours and nothing else (an antialiased edge between two of them is what the rest is: the first sheet measured 69 to 85% within 6 levels, and 20 to 46% in INK within 24).",
+  "cell": 48,
+  "scale": 2,
+  "minInk": 0.15,
+  "inkTolerance": 24,
+  "minPalette": 0.6,
+  "paletteTolerance": 6,
+  "sheets": {
+    "markers": {
+      "png": "assets/sprites/markers.png",
+      "atlas": "assets/sprites/markers.json",
+      "width": 400,
+      "maxSide": 512,
+      "maxKiB": 96,
+      "minCoverage": 0.3,
+      "maxCoverage": 0.92
+    }
+  }
+}

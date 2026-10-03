@@ -7,8 +7,9 @@
 #
 # Two jobs:
 #
-#   gate  on every pull request and push to main — determinism, save, a
-#         twelve-day soak on the two fixed seeds, and `pinned`, which compares
+#   gate  on every pull request and push to main — the building sheet's
+#         validator, the Node unit suite, determinism, save, a twelve-day soak on the two fixed
+#         seeds, `sheet`, and `pinned`, which compares
 #         the forty-day pack() hashes of seeds 7 and 20260819 against
 #         test/hashes.json. About a minute of browser time; the install is the
 #         slow part.
@@ -67,7 +68,7 @@ defaults:
 
 jobs:
   gate:
-    name: determinism, save, 12-day soak, pinned hashes
+    name: sheet, determinism, save, 12-day soak, pinned hashes
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +79,16 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: Projects/hearth/test/package-lock.json
+
+      # The building sheet against its style sheet (tools/blender/budget.json), with no Blender and no
+      # install (#645): every kind in BLD and every roof has a frame, whole tiles, render.js's colours.
+      - name: Building sheet (tools/blender/validate.mjs)
+        run: node ../tools/blender/validate.mjs
+
+      # The functions on their own, in Node, before anything is installed (TG-26): test/load.mjs runs the
+      # real scripts in a vm context with a stub page, and unit.mjs calls into them one at a time.
+      - name: Unit (test/unit.mjs, no browser)
+        run: node unit.mjs
 
       - name: Install the pinned Playwright
         run: npm ci
@@ -104,6 +115,9 @@ jobs:
       - name: Pinned forty-day hashes (test/hashes.json)
         run: node harness.mjs pinned
 
+      - name: Sheet (every building drawn from its frame; no sheet, no island)
+        run: node harness.mjs sheet
+
   deep:
     name: deep · ${{ matrix.mode }}
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -127,6 +141,7 @@ jobs:
           - fifteen
           - sixteen
           - leftovers
+          - debt
     steps:
       - uses: actions/checkout@v4
 

@@ -109,7 +109,7 @@
   ],
 
   "companions": [
-    { "id": "grash", "name": "Grash One-Tusk", "subtitle": "Orc Fighter 3",
+    { "id": "grash", "name": "Grash One-Tusk", "subtitle": "Orc Fighter",
       "ac": 20, "hp": 50, "speed": 25, "perception": 9,
       "saves": { "fort": 11, "ref": 9, "will": 7 }, "initSkill": 9,
       "attacks": [ { "name": "Greataxe", "bonus": 11, "damage": "1d12+4", "damageType": "slashing", "range": 1 } ],

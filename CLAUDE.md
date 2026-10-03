@@ -119,7 +119,7 @@ There is no root `package.json`. Six `package.json` files exist, and only
 | `Numina/` | `build`, `clean`, `serve`, `test` |
 | `Numina/test/a11y/` | none — run `node axe.mjs` and `node layout.mjs` directly, after `npm install && npx playwright install chromium` in that folder |
 | `Projects/Ren-Faire-Claude/` | `test`, `shoot` (the layout camera), `touch` (the readout on a real touchscreen) |
-| `Projects/hearth/test/` | `soak`, `determinism`, `save`, `nan` |
+| `Projects/hearth/test/` | `soak`, `determinism`, `save`, `nan`, `pinned`, `unit` (Node only, no install) |
 | `Projects/bell-to-bell/` | none — run `node tests/smoke.mjs` and `node tests/balance.mjs` directly |
 
 Every other project's suite is a bare `node` invocation against a file under

@@ -11,6 +11,7 @@ npm run games        # regression suite for the games; opens real windows
 npm run tools        # sweep of the Tools/ pages no game suite ever opens; headless
 npm run shoot        # writes reviewable PNGs to ./shots/
 npm run previews     # plays every quest, screenshots gameplay to ./candidates/
+npm run hearth       # Hearth's one preview frame, headless (2D canvas, no GPU)
 npm run promote      # candidates/chosen.json -> assets/previews/ + assets/og/
 npm run social       # regenerate every page's favicon + og tags from the board
 npm run social:check # ...or just report which pages have drifted

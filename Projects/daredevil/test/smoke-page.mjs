@@ -596,6 +596,26 @@ try {
   eq(solo.flags && solo.flags.soloM2, true, 'the save records that the solo chapter was taken');
   ok(solo.seen.includes('m5_decision'), 'the solo run reaches the Milestone 5 decision');
 
+  // TG-08. A scene reached by a choice used to show its stat screen twice and
+  // apply its deltas twice: once from `handleChoice` before the scene, once
+  // from `afterScene` after it. The second copy of the headline came with the
+  // scene's own prose in between and nothing else, so that is the shape this
+  // looks for: two stat screens with the same text and no chapter card, hub,
+  // choice list or other stat screen between them. A hub between two Solo
+  // Practice screens is two evenings, not a double.
+  for (const [name, run] of [['clean', clean], ['rough', rough], ['solo', solo]]) {
+    const doubled = [];
+    let last = null;
+    for (const x of run.texts) {
+      if (x.where === 'stats') {
+        if (last && last.text === x.text) doubled.push(`${last.scene}→${x.scene}: ${x.text.slice(0, 40)}`);
+        last = x;
+      } else if (x.where !== 'panel') last = null;
+    }
+    ok(doubled.length === 0,
+       `the ${name} run shows no stat screen twice for one scene (${doubled.join('; ') || 'none'})`);
+  }
+
   // Phase 1, increment 2: Milestones 3 and 4, Free Roam 3 and 4 and the
   // endings on a run with no backer. Before it, the solo run read a sponsor's
   // logo on the ramp, Earl at the bottom of it, Earl's folder of proposals,

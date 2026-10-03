@@ -4,7 +4,7 @@
 
 import { fetchManifest, fetchPack, selectPc } from "./content.js";
 import { createGame } from "./game.js";
-import { createRenderer } from "./render.js";
+import { createRenderer, loadSprites } from "./render.js";
 import { mountUI, pickCharacter } from "./ui.js";
 import { makeSaveSlot, SAVE_KEY } from "./save.js";
 
@@ -35,6 +35,19 @@ const boot = async () => {
     console.error(e);
     return;
   }
+  // The sheets the board is drawn from, before anything is built on it. A
+  // sheet that will not load stops the boot with the reason in the hint bar,
+  // the way an unreadable pack does: a board drawn with holes in it would be
+  // a game that looks broken for a reason nobody is told (#802).
+  let sprites;
+  try {
+    sprites = await loadSprites();
+  } catch (e) {
+    status.textContent = "The vault's art would not load: " + e.message;
+    console.error(e);
+    return;
+  }
+
   // The page's own <title> is the game, and it stays the game for the pack the
   // game ships. A second adventure opened by hand says which one it is, because
   // the board is the only other thing that would, and two rooms of grey stone
@@ -61,7 +74,7 @@ const boot = async () => {
   const content = selectPc(pack, state.buildId);
 
   const game = createGame({ content, rng: Math.random, state });
-  const renderer = createRenderer(document.getElementById("game"), game);
+  const renderer = createRenderer(document.getElementById("game"), game, sprites);
 
   // Coalesced writes with a flush on tab hide, straight from the shared module.
   const autosave = slot.autosave(() => game.snapshot(), 1500);

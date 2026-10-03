@@ -100,7 +100,10 @@ function step(dt){
     // seen once in a long soak and never reproduced: a person whose position went non-finite walks forever and never arrives.
     // heal them at the hearth and leave a breadcrumb naming the task, so the next sighting identifies its cause.
     if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.tx)||!isFinite(p.ty)){
-      try{console.warn('hearth: non-finite position on',p.name,'during',p.task)}catch(e){}
+      // TG-26: and the crumb says which went first. A bad target with a good position is the task that set it (the task named, this
+      // step, is the one that last wrote tx/ty); a bad position with a good target is walk() or a teleport. Day and boat say the rest.
+      try{console.warn('hearth: non-finite position on',p.name,'during',p.task,'—',isFinite(p.x)&&isFinite(p.y)?'target':'position',
+        `x ${p.x} y ${p.y} tx ${p.tx} ty ${p.ty}`,'day',dayCount,p.inBoat?'in a boat':'',p.via?'via the bridge':'')}catch(e){}
       p.x=center.x;p.y=center.y;p.tx=center.x;p.ty=center.y;p.inBoat=false;p.inside=false;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.task='idle';p.t=1}
     // and, like the animals: anyone stranded in open water steps out at the nearest shore (deterministic — no rnd())
     if(!p.inBoat&&at(p.x|0,p.y|0)===WATER&&!canWade(p.x,p.y)&&!canWalk(p.x,p.y)){const sh=nearestShore(p.x,p.y);if(sh){p.x=sh.x+.5;p.y=sh.y+.5}else{p.x=center.x;p.y=center.y}}
@@ -236,11 +239,13 @@ function step(dt){
         const uw=works.find(w=>!w.done);
         const ripe=farms.filter(f=>f.g>=1&&!f.claimed), keen=needFood||s==='autumn'||(s==='summer'&&seaDay()>=3)||R()<.45+(p.craft===0?.3*p.cxp:0);
         const nb=wood>=8&&!p.child?nextBuild():null;
-        if(nb){wood-=BLD[nb.kind].wood;bldgTgt=nb;p.tgt=nb;p.tx=nb.x+nb.w/2;p.ty=nb.y+nb.h+.3;p.task='build';say(`${B(p)} paces out ground for ${BLD[nb.kind].name}, and explains the idea to anyone who will listen.`,true)}
+        const orphan=!isKid(p)&&plots.length?plots.find(h=>!people.some(q=>q.tgt===h&&q.task==='build')):null; /* no R(): an island with no dropped plot is on the stream it was */
+        if(orphan){p.tgt=orphan;p.tx=orphan.x+1;p.ty=orphan.y+2.2;p.task='build'}
+        else if(nb){wood-=BLD[nb.kind].wood;bldgTgt=nb;p.tgt=nb;p.tx=nb.x+nb.w/2;p.ty=nb.y+nb.h+.3;p.task='build';say(`${B(p)} paces out ground for ${BLD[nb.kind].name}, and explains the idea to anyone who will listen.`,true)}
         else if(bldgTgt&&!bldgTgt.done&&R()<.35){p.tgt=bldgTgt;p.tx=bldgTgt.x+bldgTgt.w/2+rnd(-.8,.8);p.ty=bldgTgt.y+bldgTgt.h+.3;p.task='build'}
         else{
         const site=canBuild?((ruin&&ruinSeen&&R()<.4&&freeSpotNear(ruin.x,ruin.y,4,7,2))||freeSpot(3,11,2)||freeSpot(3,15,2)):null;
-        if(site){const s=site;{wood-=18;p.tgt={x:s.x,y:s.y,prog:0,forCouple:p.wantHouse?[p.name,p.partner]:null};if(p.wantHouse){p.wantHouse=false;const q=byName(p.partner);if(q)q.wantHouse=false}p.tx=s.x+1;p.ty=s.y+2.2;p.task='build';const nearR=ruin&&Math.hypot(s.x-ruin.x,s.y-ruin.y)<8&&!ruin.built;if(nearR){ruin.built=true;p.hist.push({d:dayCount,s:'built the first house in the lee of the old stones'})}say(nearR?`${B(p)} paces out a plot in the lee of the old stones. It is out of the wind there, ${p.name} says, and it is not only that.`:p.wantHouse?`${B(p)} paces out a plot for a house of their own.`:`${B(p)} paces out a plot for a new house.`)}}
+        if(site){const s=site;{wood-=18;p.tgt={x:s.x,y:s.y,prog:0,forCouple:p.wantHouse?[p.name,p.partner]:null};plots.push(p.tgt);if(p.wantHouse){p.wantHouse=false;const q=byName(p.partner);if(q)q.wantHouse=false}p.tx=s.x+1;p.ty=s.y+2.2;p.task='build';const nearR=ruin&&Math.hypot(s.x-ruin.x,s.y-ruin.y)<8&&!ruin.built;if(nearR){ruin.built=true;p.hist.push({d:dayCount,s:'built the first house in the lee of the old stones'})}say(nearR?`${B(p)} paces out a plot in the lee of the old stones. It is out of the wind there, ${p.name} says, and it is not only that.`:p.wantHouse?`${B(p)} paces out a plot for a house of their own.`:`${B(p)} paces out a plot for a new house.`)}}
         else if(uw&&!isElder(p)&&wood>=4&&R()<.3){if(!uw.paid){uw.paid=1;wood-=4}p.tgt=uw;p.tx=uw.x+.5+rnd(-.6,.6);p.ty=uw.y+1.2;p.task='build';if(!uw.said){uw.said=1;say(`${B(p)} has decided ${V()} should have ${WORKS[uw.wk].name}, and starts on it before anyone can weigh in.`)}}
         else if(dry01>.6&&hasB('well')&&s!=='winter'&&farms.some(f=>f.g<1)&&R()<.3){const w=getB('well');p.wtgt=farms.filter(f=>f.g<1).sort((a,b)=>a.g-b.g)[0];p.waterSt=0;goTo(p,w.x+.5,w.y+1.4,'water',0)}
         else if(ripe.length&&!proud&&keen){const f=ripe.sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];f.claimed=true;p.tgt=f;p.tx=f.x+.5;p.ty=f.y+.5;p.task='harvest'}
@@ -287,7 +292,7 @@ function step(dt){
         p.swing=(p.swing||0)+dt;if(p.swing>.74){p.swing=0;hammer(p.x+.2,p.y-.2)}if(R()<dt*2)fx.push({x:p.tgt.x+rnd(0,p.tgt.w||2),y:p.tgt.y+rnd(0,p.tgt.h||2),vx:0,vy:-.6,c:'#ddd',l:.7});
         if(p.tgt.wk){if(p.tgt.prog>14){finishWork(p,p.tgt);craftUp(p,3);p.task='idle';p.t=2}break}
         if(p.tgt.kind){if(p.tgt.prog>p.tgt.work){finishBuilding(p,p.tgt);p.task='idle';p.t=2}break}
-        if(p.tgt.prog>12){const h={x:p.tgt.x,y:p.tgt.y,r:pick(['#8a3d2f','#6f4b32','#4c5f78']),owners:[]};houses.push(h);fires.push({x:center.x,y:center.y,t:0});craftUp(p,3);
+        if(p.tgt.prog>12){const h={x:p.tgt.x,y:p.tgt.y,r:pick(['#8a3d2f','#6f4b32','#4c5f78']),owners:[]};houses.push(h);p.tgt.done=true;plots=plots.filter(q=>q!==p.tgt);fires.push({x:center.x,y:center.y,t:0});craftUp(p,3);
           if(p.tgt.forCouple){for(const n of p.tgt.forCouple){const q=byName(n);if(q){if(q.home)q.home.owners=q.home.owners.filter(m=>m!==n);q.home=h;h.owners.push(n);q.wantHouse=false;q.hist.push({d:dayCount,s:`moved into the house they built with ${n===p.name?p.partner:p.name}`})}}
             say(`${B(p)} sets the last beam on the house for ${p.tgt.forCouple.join(' and ')}. Someone hangs a bit of green over the door.`)}
           else{say(`${B(p)} sets the last beam. ${houses.length===1?'The first house stands.':V()+' grows to '+houses.length+' houses.'}`);if(houses.length===1){addEvent('house','the raising of the first house',`${p.name} set the last beam on the first house. Before that everyone had slept beside the fire.`);p.hist.push({d:dayCount,s:'raised the first house'})}else if(R()<.5)p.hist.push({d:dayCount,s:`raised the ${['','','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth'][houses.length]||houses.length+'th'} house`})}
