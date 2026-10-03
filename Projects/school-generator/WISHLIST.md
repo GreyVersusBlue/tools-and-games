@@ -32,7 +32,7 @@ It draws a school in plan and walks through it in first person: storeys,
 graded site, a roof. The walkthrough has collision, gravity, footsteps, room
 acoustics, a positioned sun, and a school's worth of people walking their
 timetable. It reads what it has drawn — occupant load, travel distance,
-accessible route, glazing ratio, reverberation time, worst-first — and it will
+accessible route, glazing ratio, daylight factor, reverberation time, worst-first — and it will
 generate a whole building from a student count and a sentence. It reads the
 *school* too: a real or generated timetable, utilisation, passing-period
 travel. And it prices what it counts, against a rate table you supply — it
@@ -374,8 +374,13 @@ and add to this list rather than starting a new one.
   modelled, and the ceiling doesn't stop a body — only structure does.
 
 **Analysis**
-- Daylight is a glazing ratio, not a daylight factor — nothing knows about
-  orientation, overhangs or room depth.
+- The daylight factor is the BRE average and a rule of thumb (`daylight.js`,
+  #822): it knows the wing opposite, the storey above, a pitched roof's eave,
+  the room's depth and where the sun stands on its glass, and it is still not
+  an illuminance. Neighbours, trees and the terrain are not obstructions, a
+  curtain wall is read at its midpoint, one reflectance serves every room
+  whatever its finishes are, a rooflight does not exist, and none of it is
+  drawn on the plan: the numbers are in the report panel and the CSV only.
 - Common path of egress travel is measured (`commonpath.js`, Phase 41), but a
   pair of leaves is one doorway — right — and so is a 12ft cased opening, which
   is arguable; and a stair is a node, so two stairs off one landing count as

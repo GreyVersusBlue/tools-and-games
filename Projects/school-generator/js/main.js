@@ -4960,6 +4960,10 @@ function reportSections(r) {
     row('Glazing, whole building', `<b>${(d.ratio * 100).toFixed(1)}%</b> of floor`),
     row(`${plural(d.rooms, 'room')} held to 8%`, d.dark
       ? `<span class="warn">${d.dark} under</span>` : 'all over'),
+    d.rooms ? row('Daylight factor, middle room',
+      `<b>${d.adf.toFixed(1)}%</b>${d.dim ? ` · ${d.dim} under 2%` : ''}`) : '',
+    d.rooms ? row('Direct sun, 8 to 4',
+      d.sunless ? `${plural(d.sunless, 'glazed room')} get none` : 'every glazed room') : '',
     row('Rooms over the ANSI reverb limit',
       r.acoustics.summary.over ? `<b>${r.acoustics.summary.over}</b>` : 'none'),
     // ...and the ones the coefficients' range cannot clear: over at the

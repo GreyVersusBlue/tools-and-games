@@ -607,6 +607,7 @@ export function reportCSV(report) {
   const cpRows = new Map(((report.egress.common && report.egress.common.rows) || []).map((r) => [r.id, r]));
   rows.push(['Rooms', 'Level', 'Use', 'Use from', 'Area ft²', 'Occupants',
     'Load from', 'Travel ft', 'Common path ft', 'Doors', 'Clear door in', 'Glazing %',
+    'Daylight factor %', 'Sky seen °', 'Glass faces', 'Sun h 8 to 4',
     'RT60 s', 'RT60 low–high', 'Accessible']);
   for (const r of report.occupancy.rooms) {
     const e = eg.get(r.id);
@@ -631,6 +632,10 @@ export function reportCSV(report) {
       e ? e.doors : '',
       e ? round(e.doorWidth * 12) : '',
       d ? round(d.ratio * 100, 1) : '',
+      d ? round(d.adf, 1) : '',
+      d && d.glazed > 0 ? Math.round(d.sky) : '',
+      d && d.glazed > 0 ? (d.facing || 'several ways') : '',
+      d && d.glazed > 0 ? round(d.sunHours, 2) : '',
       a ? round(a.rt60, 2) : '',
       a ? fmtRange({ low: a.rt60Low, high: a.rt60High }, { fmt: (v) => round(v, 2) }) : '',
       x ? (x.rollable ? 'yes' : 'stairs only') : '',
