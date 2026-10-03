@@ -2388,18 +2388,6 @@ Three of them are closed.
    modules`, at line 290, from Phase 27 until September 2026. Decision #261
    made the marker a JavaScript comment.)
 
-One more, from Hearth's own wishlist rather than a site survey, recorded here
-because it is a board question: **Hearth is on the homepage (`index.html:492`,
-tagged Sim, `data-new`) with no `assets/previews/hearth.jpg`.** Phase 8
-decided against a `Tools/board-check/games.mjs` entry (#84, Q14 answered): the
-board's suite runs headed on a desk and would be a shallower copy of the
-harness's `save` mode, which `hearth-ci.yml` now runs on every PR. The
-330×200 capture is still wanted and is not a desk job (Hearth is a 2D canvas).
-The social block is no longer waiting on it: Hearth has one as of PR #278,
-pointing at the board's own `guild-board.png`. Promoting a real capture would
-write `assets/og/hearth.jpg` and the block would pick it up on the next
-`npm run social`.
-
 ### The site itself: Blender dioramas
 
 Ranks 14 and 15, last in the Blender block (#642). One consistent diorama per

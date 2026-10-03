@@ -26,6 +26,7 @@ are enforced by the promote step.
 | `daredevil.jpg` | Daredevil |
 | `fracture-cycle.jpg` | The Fracture Cycle |
 | `corner-and-kettle.jpg` | Corner & Kettle |
+| `hearth.jpg` | Hearth (captured by `npm run hearth`, not `npm run previews`) |
 | `converter.jpg` | Conversion Codex (a tool; `headless: true` in `games.mjs`) |
 
 Torchbearer is the one remaining quest with neither — see

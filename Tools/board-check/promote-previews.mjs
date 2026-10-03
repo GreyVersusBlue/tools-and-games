@@ -51,7 +51,7 @@ const KNOWN = new Set([
   'faire-weekend', 'closing-time', 'integer-foundry',
   'absalom-inheritance', 'daredevil', 'fracture-cycle', 'corner-and-kettle',
   'torchbearer', 'orbital', 'blue-hour', 'signal-city', 'converter',
-  'skywings64', 'throneshard',
+  'skywings64', 'throneshard', 'hearth',
 ]);
 
 const OUTPUTS = [

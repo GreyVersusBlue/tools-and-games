@@ -587,8 +587,9 @@
       </div>
       <!-- Three rows carry a sealed tile in markup: Blue Hour, Bell to Bell, Hearth.
            Set MEDIA.previews[slug] to a same-origin 330x200 still and the tile
-           becomes an image with no markup change. Blue Hour's is set (2026-09-24),
-           so its sealed tile is only what a visitor without JS sees. -->
+           becomes an image with no markup change. Blue Hour's (2026-09-24)
+           and Hearth's (2026-10-03) are set, so their sealed tiles are only what a
+           visitor without JS sees. -->
       <div class="rows">
         <a class="row reveal" href="Projects/absalom_inheritance.html" data-slug="absalom-inheritance" data-tags="CRPG" data-preview="assets/previews/absalom-inheritance.jpg" data-cursor="view">
           <span class="idx">01</span>
@@ -919,7 +920,7 @@ window.__gvbBooted = true;
 const MEDIA = {
   heroVideo: null,                 // { src: 'assets/landing/hero.mp4', poster: 'assets/landing/hero-poster.jpg' }
   featured: {},                    // { 'castle-conundrum': 'assets/landing/castle.jpg' } — replaces the og still
-  previews: { 'blue-hour-trail': 'assets/previews/blue-hour.jpg' }, // 330x200, replaces a sealed tile
+  previews: { 'blue-hour-trail': 'assets/previews/blue-hour.jpg', 'hearth': 'assets/previews/hearth.jpg' }, // 330x200, replaces a sealed tile
   backdrops: { chronicles: null, numina: null },
 };
 
