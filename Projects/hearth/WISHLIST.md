@@ -147,7 +147,7 @@ test file. Seventeen modes live in it as top-level `if (mode === '…')` blocks:
 `soak`, `nan`, `depth`, `determinism`, `save`, `decade`, `migrate`, `saga`,
 `wider`, `strain`, `leftovers`, and one per sprint, `eleven` through `sixteen`. It is a good harness. It is not a
 fast one, and it cannot tell you a function is wrong, only that an island is.
-(TG-26 added `test/unit.mjs`, which can, #815.)
+(TG-26 added `test/unit.mjs`, which can, #816.)
 
 ## Conventions a new builder must know
 
@@ -255,7 +255,7 @@ wrong, and the handoff that names it is cited.
   `[name, far]`; the v12→v13 hop widens it and its `down` narrows it again. A
   gone person who does not know which way they went cannot be brought back by
   the right boat.
-- **The buildings are a sprite sheet now** (#804 to #806). `tools/blender/buildings.py`
+- **The buildings are a sprite sheet now** (#805 to #807). `tools/blender/buildings.py`
   draws every kind in `BLD`, the house in each roof `sim.js` picks, both ways of
   the bridge and five snow frames into `assets/sprites/buildings.png`, with its
   atlas in `buildings.js` (`const BSHEET=`, a classic script before
@@ -326,7 +326,7 @@ and add to this list rather than starting a new one.
 
 Leftovers the thirteen sprint handoffs named and no phase in this file
 claims, carried here when those handoffs were retired into `HISTORY.md`. There
-were nine; TG-26 closed three (`HISTORY.md`, #811 to #815).
+were nine; TG-26 closed three (`HISTORY.md`, #812 to #816).
 
 - **The beached-boat pixel at the hut is crude** (sprints 5 and 6).
 - **Deer do not avoid water when fleeing across a narrow neck** — they retarget
@@ -796,7 +796,7 @@ went from 64 to 171 by asking both. It is also what stops `pick()` being handed
 an empty array, which the two hand-copied predicates it replaced were one edit
 away from. The other is not fixed and belongs to whoever takes Phase 7: **the
 teller has to be an elder, and this island rarely makes one.** (Phase 7 did not
-take it; TG-26 did, #811.)
+take it; TG-26 did, #812.)
 
 Broken on purpose, four times, each break watched to fail and then put back:
 
@@ -1122,7 +1122,7 @@ against an existing suite and an existing workflow to copy.
 - **Pure modules.** The short answer to "no test can tell you a function is
   wrong" shipped in TG-26: `test/unit.mjs` runs the real scripts in Node
   through `test/load.mjs` (a vm context and a stub page) and calls into them
-  one at a time (#815). The long answer is still extracting the rules engine
+  one at a time (#816). The long answer is still extracting the rules engine
   from `sim.js` and `life.js` into modules, a rewrite of the two files every
   phase above touches, and it should follow the arcs, not precede them.
 - **Art past the pixel budget.** Interiors, seasonal building states, a real

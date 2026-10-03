@@ -19,7 +19,7 @@
     "food": { "frames": ["food_croissant", "food_bagel", "food_muffin", "food_cookie"], "minCoverage": 0.2, "maxCoverage": 0.85, "minInk": 0.12 }
   },
   "colours": {
-    "about": "The colours the old SVG did not have, and so are decisions (style sheet item 2, #808). The glass is the old cup's white at an alpha, ice and whip and the straw are the old SVG's own fills, and the foods are new: there was no food drawing, only an emoji.",
+    "about": "The colours the old SVG did not have, and so are decisions (style sheet item 2, #809). The glass is the old cup's white at an alpha, ice and whip and the straw are the old SVG's own fills, and the foods are new: there was no food drawing, only an emoji.",
     "glass": "#ffffff",
     "glassBack": 0.42,
     "glassFront": 0.07,

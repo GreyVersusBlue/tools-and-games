@@ -997,7 +997,7 @@ section("15. the reopening is a trade now: beans, the Legacy tree, layouts (#360
   }
 }
 
-section("16. the cup and the plate are frames of one sheet, and draw.js is still a leaf (#807 to #809)");
+section("16. the cup and the plate are frames of one sheet, and draw.js is still a leaf (#808 to #810)");
 {
   const DRAW = await mod("../js/draw.js");
   const { CUP_SHEET, cupLayers, cupSvg, foodSvg, orderIconsHtml, orderCup, TOPPING_FRAMES } = DRAW;

@@ -149,7 +149,7 @@ try {
 
   /* ---------- 2b. the cup and food sheet ---------- */
 
-  t.section('2b. the cups and plates are drawn from the sheet (#809)');
+  t.section('2b. the cups and plates are drawn from the sheet (#810)');
   const sheetState = await waitFor(p, () => window.__CK_DEBUG__.sheet !== 'loading', { timeout: 10000 })
     .then(() => p.evaluate(() => window.__CK_DEBUG__.sheet), () => 'loading');
   t.ok(sheetState === 'loaded', 'the page loaded cups.png itself', sheetState);

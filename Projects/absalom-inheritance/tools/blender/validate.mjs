@@ -20,9 +20,9 @@
 //     entry, or its own ht and fp) by more than boxSlack: its top too high or
 //     too low, or its sides wider than the box (style sheet item 1)
 //   - a face whose centre is not the PALETTE colour budget.json names for it,
-//     within faceTolerance levels (the three-face light, #798); a mask frame
+//     within faceTolerance levels (the three-face light, #799); a mask frame
 //     where red, green or blue never leads, or with pixels no tint would
-//     light (#800); a figure whose median colour is not the hue of the
+//     light (#801); a figure whose median colour is not the hue of the
 //     PALETTE colour it names first
 //   - a SOLIDS entry a frame names that render.js does not have, or a PALETTE
 //     name it does not have
@@ -222,7 +222,7 @@ for (const [name, sheet] of Object.entries(budget.sheets)) {
       ok(got[3] === 255 && off <= budget.faceTolerance, `${name}: ${f}'s ${face} face is ${pal}`,
         `rgba(${got.join(',')}) against ${PALETTE[pal]}, ${off} off`);
     }
-    // A mask (#800): red, green and blue are how much of the build's top,
+    // A mask (#801): red, green and blue are how much of the build's top,
     // left and right colour a pixel takes, so each has to lead somewhere, and
     // a pixel any palette's render would show has some of at least one.
     if (item.mask) {

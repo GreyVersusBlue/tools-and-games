@@ -169,7 +169,7 @@ Nothing runs Daredevil's suite on a pull request.
 - **Dollars go on a choice's `effects`, never on a scene's `statUpdate`.** A
   choice-reached scene used to fire its update twice, which does nothing to a
   flag or a relationship write and doubles a running total. TG-08 fixed the
-  engine (#789), and the rule stays: `triggerStatUpdate` does not read `money`
+  engine (#790), and the rule stays: `triggerStatUpdate` does not read `money`
   or `owePerMonth` at all, and the suite fails on a `statUpdate` that carries
   one.
 - **An evening card needs a price.** `EVENING_COST` in `money.js` is the one
@@ -240,7 +240,7 @@ still being decided." after a run in which he backed every show.
 Everything below is open and unclaimed. Pull from here; add to it rather than
 starting a new list. **The list predates arc one and is only partly swept.**
 TG-08 (2026-10-02) was given eight bullets and took out seven: the stat
-double-apply and `m5_question_earl` it fixed (#789, #790), and `fr4_close`,
+double-apply and `m5_question_earl` it fixed (#790, #791), and `fr4_close`,
 `last_stunt_earl`, the mentor credit, the stat table's raw labels and the free
 Try Again had already shipped (#270, #272, #273, #291). The write-only flags
 stay, reworded below. Other bullets may
