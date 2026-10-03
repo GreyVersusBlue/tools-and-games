@@ -1000,7 +1000,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **8 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion, School Generator, Faire Weekend, The Absalom Inheritance, Corner & Kettle; TG-13); Orbital, Closing Time, Integer Foundry and Daredevil are next | `site` | 2+ | Sonnet 5 | blender-gpu | claude/dioramas-3 | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
+| 14 | A diorama for every board card, rendered into `candidates/` and promoted: four cards an increment. **12 of 14 done** (Golden Hour, Blue Hour, The Fourth Quarter, Aphelion, School Generator, Faire Weekend, The Absalom Inheritance, Corner & Kettle, Orbital, Closing Time, Integer Foundry, Daredevil; TG-13); The Fracture Cycle and Torchbearer are next | `site` | 2+ | Sonnet 5 | blender-gpu | claude/dioramas-3 | [The site itself: Blender dioramas](#the-site-itself-blender-dioramas) D2 |
 | 15 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
 | 16 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
 | 17 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
@@ -2419,12 +2419,13 @@ machine (#786); a card that needs the style itself changed re-renders every
 done card with it.
 
 **D2. The dioramas (rank 14, 2+, Sonnet 5, gate `blender-gpu`: Devon's Windows machine only, #707), TG-13 (#785).** Four cards an
-increment, the 3D games first. **Done (8 of 14):** Golden Hour, Blue Hour, The Fourth Quarter,
-Aphelion, School Generator, Faire Weekend, The Absalom Inheritance and Corner & Kettle. **Next:**
-Orbital, Closing Time, Integer Foundry and Daredevil, then The Fracture Cycle and Torchbearer.
-A game that ships no `.glb` but builds its sprites in Blender (Orbital's `bodies.py`) goes in
-as `build` calls to those builders (#848); one with no Blender pipeline at all builds its scene
-from `shapes`, adding a kind to `SHAPES` where it needs one. Each increment rewrites this row to say which
+increment, the 3D games first. **Done (12 of 14):** Golden Hour, Blue Hour, The Fourth Quarter,
+Aphelion, School Generator, Faire Weekend, The Absalom Inheritance, Corner & Kettle, Orbital,
+Closing Time, Integer Foundry and Daredevil. **Next:** The Fracture Cycle and Torchbearer, the
+last increment. A game that ships no `.glb` but builds its sprites in Blender goes in as `build`
+calls to those builders (#848, #851); one with no Blender pipeline at all builds its scene from
+the five plain solids, `block`, `prism`, `ball`, `dots` and `ring` (#850), set where its story
+happens (#852). Each increment rewrites this row to say which
 cards are done. `npm run check` and `npm run social:check` stay green.
 
 ## Questions for Devon
