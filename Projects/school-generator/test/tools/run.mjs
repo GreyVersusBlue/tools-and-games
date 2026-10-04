@@ -1574,6 +1574,195 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the check left its ramp on the design');
     },
   },
+  // The two controls of #832, driven the way a person drives them: the panel's
+  // own buttons, then a click on the plan. test/ramp-controls.test.mjs has the
+  // arithmetic; this is whether the page reaches it.
+  {
+    name: 'ramp-panel',
+    what: 'the stairs panel folds the next ramp and re-folds the selected one, and undo takes a step back',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      const press = async (id, times = 1) => {
+        for (let i = 0; i < times; i++) await q(`document.getElementById('${id}').click(); 1`);
+      };
+      const panel = () => q(`({
+        hidden: document.getElementById('ramp-fold').classList.contains('hidden'),
+        label: document.getElementById('ramp-fold-label').textContent,
+        runs: document.getElementById('ramp-runs').textContent,
+        side: document.getElementById('ramp-side').textContent,
+        sideOff: document.getElementById('ramp-side').disabled,
+        lessOff: document.getElementById('ramp-runs-less').disabled,
+        readout: document.getElementById('stair-readout').textContent,
+      })`);
+      const last = () => q(`(() => {
+        const l = window.app.state.links[window.app.state.links.length - 1];
+        return { id: l.id, type: l.type, data: { ...l.data }, selected: window.app.editor.stairSelectedId === l.id };
+      })()`);
+      await d.pick('stair');
+      await q(`document.querySelector('#stair-kinds [data-type="stair"]').click(); 1`);
+      const onStair = await panel();
+      await q(`document.querySelector('#stair-kinds [data-type="ramp"]').click(); 1`);
+      const straight = await panel();
+      await press('ramp-runs-more', 4);
+      await press('ramp-side');
+      const armed = await panel();
+      const links0 = (await d.fp()).links;
+      await d.assertClear([[100, 112]]);
+      await d.click(100, 112);
+      const placed = await last();
+      const links1 = (await d.fp()).links;
+      const picked = await panel();
+      await press('ramp-runs-less');
+      const fewer = { link: await last(), panel: await panel(), status: await d.status() };
+      await press('ramp-side');
+      const righted = await last();
+      await q(`document.getElementById('undo-btn').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const undone = await last();
+      // Leave the storey as it was found: later checks count its links.
+      await q(`window.app.editor.stairSelect(${placed.id}); 1`);
+      await press('stair-delete');
+      const next = await panel();
+      await press('ramp-runs-less', 4);
+      await press('ramp-side');
+      await q(`document.querySelector('#stair-kinds [data-type="stair"]').click(); 1`);
+      return { onStair, straight, armed, links0, links1, placed, picked, fewer, righted, undone, next };
+    },
+    expect: ({ ctx, before, after }) => {
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      if (!ctx.onStair.hidden) throw new Error('the fold row shows while a staircase is what the tool places');
+      if (ctx.straight.hidden) throw new Error('picking Ramp did not show the fold row');
+      if (ctx.straight.runs !== '1' || !ctx.straight.sideOff || !ctx.straight.lessOff) {
+        throw new Error(`a ramp starts as one run with nothing to hand: ${JSON.stringify(ctx.straight)}`);
+      }
+      if (!/over the 30in a run may rise/.test(ctx.straight.readout) || !/5 runs is the fewest/.test(ctx.straight.readout)) {
+        throw new Error(`one run up 12ft is not called out: ${ctx.straight.readout}`);
+      }
+      if (ctx.armed.runs !== '5' || ctx.armed.side !== 'Folds left' || ctx.armed.sideOff) {
+        throw new Error(`four presses and a flip should read 5, left: ${JSON.stringify(ctx.armed)}`);
+      }
+      if (!/5 runs of 28\.8ft, 29in of rise each, inside the 30in/.test(ctx.armed.readout)) {
+        throw new Error(`five runs are not read back as legal: ${ctx.armed.readout}`);
+      }
+      if (ctx.links1 !== ctx.links0 + 1) throw new Error('the click placed no ramp');
+      if (ctx.placed.type !== 'ramp' || !same(ctx.placed.data, { width: 4, slope: 12, runs: 5, side: -1 })) {
+        throw new Error(`the ramp placed is not the one the panel showed: ${JSON.stringify(ctx.placed)}`);
+      }
+      if (!ctx.placed.selected || ctx.picked.label !== "This ramp's runs") {
+        throw new Error(`the placed ramp is not what the row now edits: ${ctx.picked.label}`);
+      }
+      if (!same(ctx.fewer.link.data, { width: 4, slope: 12, runs: 4, side: -1 })) {
+        throw new Error(`one run fewer did not re-fold the selected ramp: ${JSON.stringify(ctx.fewer.link.data)}`);
+      }
+      if (ctx.fewer.panel.runs !== '4' || !/4 runs of 36\.0ft, 36in of rise each.*over the 30in/.test(ctx.fewer.status)) {
+        throw new Error(`four runs are not read back as over: ${ctx.fewer.panel.runs} | ${ctx.fewer.status}`);
+      }
+      if (!/4 runs of 36\.0ft, 36in of rise each: over the 30in a run may rise\. 5 runs is the fewest/.test(ctx.fewer.panel.readout)) {
+        throw new Error(`the panel does not call four runs out: ${ctx.fewer.panel.readout}`);
+      }
+      if (!same(ctx.righted.data, { width: 4, slope: 12, runs: 4 })) {
+        throw new Error(`folding right should drop the side field: ${JSON.stringify(ctx.righted.data)}`);
+      }
+      if (!same(ctx.undone.data, { width: 4, slope: 12, runs: 4, side: -1 })) {
+        throw new Error(`undo did not take the flip back alone: ${JSON.stringify(ctx.undone.data)}`);
+      }
+      // Re-folding the selected ramp is not a change to the next one placed.
+      if (ctx.next.label !== 'Ramp runs' || ctx.next.runs !== '5' || ctx.next.side !== 'Folds left') {
+        throw new Error(`with the ramp gone the row should be back on the next one, 5 and left: ${JSON.stringify(ctx.next)}`);
+      }
+      if (after.links !== before.links) throw new Error('the check left its ramp on the design');
+    },
+  },
+  {
+    name: 'accent-brush',
+    what: 'a swatch in the wall panel paints one face of one wall, the same click takes it off, and no wall is drawn',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      const swatch = (hex) => q(`document.querySelector('#accent-swatches [data-paint="${hex}"]').click(); 1`);
+      await d.pick('wall');
+      // A wall of a room with a foot of that room clear in front of it.
+      const aim = await q(`(async () => {
+        const { shapesOf, shapeAt, accentFaceAt } = await import('./js/shapes.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        for (const shape of shapesOf(floor)) {
+          const ring = shape.rings[0];
+          if (ring.accents) continue;
+          for (let i = 0; i < ring.pts.length; i++) {
+            const a = ring.pts[i], b = ring.pts[(i + 1) % ring.pts.length];
+            const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+            if (len < 8) continue;
+            for (const side of [1, -1]) {
+              const x = (a.x + b.x) / 2 - (dz / len) * side, z = (a.z + b.z) / 2 + (dx / len) * side;
+              if (shapeAt(floor, x, z) !== shape || !window.__clear(x, z)) continue;
+              const face = accentFaceAt(floor, x, z, 3);
+              if (!face || face.shape !== shape || face.ring !== 0 || face.seg !== i) continue;
+              return { x, z, id: shape.id, seg: i, n: ring.pts.length };
+            }
+          }
+        }
+        return null;
+      })()`);
+      if (!aim) throw new Error('no wall on this storey to aim at');
+      const read = () => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const ring = floor.shapes.find((sh) => sh.id === ${aim.id}).rings[0];
+        const lit = [...document.querySelectorAll('#accent-swatches .swatch[aria-pressed="true"]')].map((b) => b.dataset.paint);
+        const kinds = [...document.querySelectorAll('#wall-kinds .kind-item[aria-pressed="true"]')].length;
+        return {
+          accents: ring.accents ? ring.accents.slice() : null, lit, kinds,
+          armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
+          status: document.getElementById('status').textContent,
+        };
+      })()`);
+      const idle = await read();
+      await swatch('#2f5d8a');
+      const armed = await read();
+      await d.click(aim.x, aim.z);
+      const painted = await read();
+      await d.click(aim.x, aim.z);
+      const toggled = await read();
+      await d.click(aim.x, aim.z);
+      await swatch('');
+      await d.click(aim.x, aim.z);
+      const cleared = await read();
+      await d.page.keyboard.press('Escape');
+      const down = await read();
+      // A wall type is the other way down.
+      await swatch('#2f5d8a');
+      await q(`document.querySelector('#wall-kinds [data-kind="wall"]').click(); 1`);
+      const kinded = await read();
+      return { aim, idle, armed, painted, toggled, cleared, down, kinded };
+    },
+    expect: ({ ctx, before, after }) => {
+      const { aim } = ctx;
+      if (ctx.idle.armed !== 'off' || ctx.idle.lit.length || ctx.idle.kinds !== 1) {
+        throw new Error(`the wall tool should open drawing, with no swatch lit: ${JSON.stringify(ctx.idle)}`);
+      }
+      if (ctx.armed.armed !== '#2f5d8a' || ctx.armed.lit.join() !== '#2f5d8a' || ctx.armed.kinds !== 0) {
+        throw new Error(`a swatch did not arm the brush: ${JSON.stringify(ctx.armed)}`);
+      }
+      const want = new Array(aim.n).fill(null);
+      want[aim.seg] = '#2f5d8a';
+      if (JSON.stringify(ctx.painted.accents) !== JSON.stringify(want)) {
+        throw new Error(`the click should paint segment ${aim.seg} and no other: ${JSON.stringify(ctx.painted.accents)}`);
+      }
+      if (!/painted #2f5d8a/.test(ctx.painted.status)) throw new Error(`the tool did not say so: ${ctx.painted.status}`);
+      if (ctx.toggled.accents !== null) {
+        throw new Error(`the same colour again should take it off and drop the key: ${JSON.stringify(ctx.toggled.accents)}`);
+      }
+      if (ctx.cleared.accents !== null || ctx.cleared.armed !== null || ctx.cleared.lit.length !== 1 || ctx.cleared.lit[0] !== '') {
+        throw new Error(`the dashed swatch should clear a painted wall: ${JSON.stringify(ctx.cleared)}`);
+      }
+      if (ctx.down.armed !== 'off' || ctx.down.lit.length || ctx.down.kinds !== 1) {
+        throw new Error(`Esc should put the brush down and light a wall type: ${JSON.stringify(ctx.down)}`);
+      }
+      if (ctx.kinded.armed !== 'off' || ctx.kinded.lit.length || ctx.kinded.kinds !== 1) {
+        throw new Error(`picking a wall type should put the brush down: ${JSON.stringify(ctx.kinded)}`);
+      }
+      if (after.walls !== before.walls) throw new Error('four clicks with the brush up drew a wall');
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',

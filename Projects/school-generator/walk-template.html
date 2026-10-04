@@ -57278,6 +57278,29 @@ function setSegAccent(shape, ringIdx, seg, paint) {
   return true;
 }
 
+// Which face a click means (#832): the room the point is in, and the segment
+// of that room's own rings nearest to it. Not `nearestSegment`, which answers
+// across every room on the storey: two rooms that share a wall each have a
+// segment on its line at distance zero from each other, and the one found
+// first would take the paint whichever side was clicked. The side of the wall
+// the cursor is on is the room that is asked. A point in no room has no face
+// here: the outside of the building is the facade's, not a room's.
+// { shape, ring, seg, t, x, z, dist } or null.
+function accentFaceAt(floor, x, z, maxDist = Infinity) {
+  const shape = shapeAt(floor, x, z);
+  if (!shape) return null;
+  let best = null;
+  shape.rings.forEach((ring, ri) => {
+    for (let i = 0; i < ring.pts.length; i++) {
+      const [a, b] = segEnds(ring, i);
+      const p = projectOnSeg(a, b, x, z);
+      if (p.dist > maxDist || (best && p.dist >= best.dist)) continue;
+      best = { shape, ring: ri, seg: i, t: p.t, x: p.x, z: p.z, dist: p.dist };
+    }
+  });
+  return best;
+}
+
 // Reversing a ring renumbers its segments: new segment j is old segment
 // (n-2-j) walked backwards, so wall states and door positions move with it.
 function reverseRing(ring) {
@@ -58204,7 +58227,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -58880,7 +58903,7 @@ const __m_js_stairs_js = (() => {
 const { FLOOR_H, RAIL_H, CELL } = __m_js_grid_js;
 const { pointInRing, floorSolidAt } = __m_js_shapes_js;
 const { addLink, MAX_LINKS } = __m_js_props_js;
-const { switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE } = __m_js_switchback_js;
+const { switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS, MAX_RUN_RISE, minRuns, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE } = __m_js_switchback_js;
 // stairs.js — stairs, floor openings, and the geometry both imply.
 //
 // A stair is not a prop. A prop sits *on* a floor and the building doesn't
@@ -59015,6 +59038,38 @@ const rampRuns = (link) => {
 };
 const rampSide = (link) => (link && link.data && link.data.side === -1 ? -1 : 1);
 const isSwitchback = (link) => rampRuns(link) > 1;
+
+// What one run of this ramp climbs, in feet: the storey's rise over the lanes
+// it is folded into. A straight ramp is one run, so it climbs the whole storey.
+const rampRunRise = (link, metrics) => metrics.rise / rampRuns(link);
+// ADA 2010 405.6: a run rises 30in at most before a level landing. The same
+// tolerance `switchbackLayout`'s `legal` uses, so a 10ft storey in four runs
+// is on the line and not over it. Asked of every ramp, folded or not (#833).
+const rampOverRise = (link, metrics) =>
+  !!link && link.type === 'ramp' && rampRunRise(link, metrics) > MAX_RUN_RISE + 1e-9;
+// The fewest runs this storey can be climbed in under 405.6, capped at what a
+// link can hold: past MAX_RUNS no fold is legal and the report says so.
+const rampMinRuns = (metrics) => Math.min(MAX_RUNS, minRuns(metrics.rise));
+
+// Set how a ramp is folded (#832), the way `linkData` writes a new one: `runs` is
+// stored only above 1, `side` only as -1 and only on a fold, so a ramp taken
+// back to one run is field for field the record a straight ramp always was.
+// Returns true when the record changed. Anything but a ramp is left alone.
+function setRampFold(link, opts = {}) {
+  if (!link || link.type !== 'ramp') return false;
+  const runs = rampRuns({ type: 'ramp', data: { runs: 'runs' in opts ? opts.runs : rampRuns(link) } });
+  const side = ('side' in opts ? opts.side : rampSide(link)) === -1 ? -1 : 1;
+  const was = `${rampRuns(link)}|${rampSide(link)}|${link.data && 'runs' in link.data}|${link.data && 'side' in link.data}`;
+  if (!link.data) link.data = {};
+  if (runs > 1) {
+    link.data.runs = runs;
+    if (side === -1) link.data.side = -1; else delete link.data.side;
+  } else {
+    delete link.data.runs;
+    delete link.data.side;
+  }
+  return was !== `${rampRuns(link)}|${rampSide(link)}|${'runs' in link.data}|${'side' in link.data}`;
+}
 
 // The fold itself, from switchback.js, or null for anything that is one run.
 // Kept per link and rebuilt when any number it was built from moves: the
@@ -59628,7 +59683,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {

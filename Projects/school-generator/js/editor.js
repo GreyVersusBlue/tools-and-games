@@ -28,6 +28,7 @@ import {
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
+  accentFaceAt, setSegAccent, segAccent,
   moveOpening, openingsOnSeg, defaultOpeningWidth, isWindowOpening,
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
@@ -82,6 +83,10 @@ const ftLabel = (v) => (Math.abs(v - Math.round(v)) < 0.005
 // polygon handles, the stair tool's grab box and the drawing grid all do, and
 // the floor is the old constant so nothing gets *harder* to hit up close.
 const SEG_GRAB = 1.6;
+// How far inside a room a click may be from the wall it means, when painting
+// an accent. Wider than the grab above because the click is aimed at a side of
+// the wall, not at its line: a hand's width into the room is the gesture.
+const ACCENT_REACH = 3;
 
 // The wall tool builds one of three things. The table survives Phase 12 with
 // its `edge` column dropped: there is one way to spell a wall now.
@@ -107,7 +112,7 @@ const doorKindOf = (k) => DOOR_KINDS.find((d) => d.kind === k) || DOOR_KINDS[0];
 
 export function initEditor({
   canvas, renderApi, getState, onChange, onStatus, onHoleMode, onMeasure,
-  onLiveMeasure, onStairSelect, onAnnoSelect,
+  onLiveMeasure, onStairSelect, onAnnoSelect, onAccentMode,
 }) {
   // The status line teaches; the measurement rides the cursor. Everything a
   // tool says goes to the status line as it always has, and while a stroke
@@ -131,6 +136,11 @@ export function initEditor({
   let roomGroup = null;
   let roomLoad = null;
   let wallKind = 'wall';
+  // The wall tool's other job (#832): with a colour armed here a click paints
+  // one wall of the room it lands in instead of starting a run. `undefined` is
+  // "not painting"; null is the swatch that takes an accent off again. Tool
+  // state, like the kind above: what is saved is `ring.accents`.
+  let accentPaint;
   let doorKind = 'single';
   // The point-target wall (Phase 25). `wallAnchor` is the first click of a run,
   // in world feet, held until the second click builds it — tool state, never
@@ -769,7 +779,57 @@ export function initEditor({
   const HINT_WALL = 'Wall — click one end, then the other. ' +
     'S squares it to the grid, Alt draws off it, Esc stops the run.';
 
+  // --- the accent wall (#832) ---
+  //
+  // A click paints the face of one wall that the room under the cursor looks
+  // at, the same colour twice takes it off, and the clear swatch takes off
+  // whatever is there. `accentFaceAt` picks the face by the side of the wall
+  // the cursor is on, so the two faces of a partition are two clicks.
+  const HINT_ACCENT = 'Accent — click just inside a room, by the wall to paint. ' +
+    'The same colour again takes it off. Esc goes back to drawing walls.';
+
+  function accentTarget(p) {
+    const s = getState();
+    return accentFaceAt(activeFloor(s), p.x, p.z, Math.max(segGrab(), ACCENT_REACH));
+  }
+
+  function accentPointerDown(p) {
+    const face = accentTarget(p);
+    if (!face) {
+      say('Accent — no wall there. Click inside a room, within a couple of feet of the wall to paint.');
+      return;
+    }
+    const ring = face.shape.rings[face.ring];
+    const had = segAccent(ring, face.seg);
+    // The colour it already is, clicked again, is the way back.
+    const paint = accentPaint && had === accentPaint ? null : accentPaint;
+    pushUndo();
+    if (!setSegAccent(face.shape, face.ring, face.seg, paint)) {
+      dropUndo();
+      say('Accent — that wall has no accent to take off.');
+      return;
+    }
+    fire({ structural: true, commit: true });
+    const [a, b] = segEnds(ring, face.seg);
+    const name = face.shape.name || 'this room';
+    say(paint
+      ? `Accent — ${segLength(a, b).toFixed(1)}ft of ${name}'s wall painted ${paint}.`
+      : `Accent — ${name}'s wall is back to the room's own paint.`);
+  }
+
+  function setAccentPaint(v) {
+    accentPaint = v === undefined ? undefined
+      : v === null ? null
+      : (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : undefined);
+    if (accentPaint !== undefined) cancelWallRun(true);
+    refreshDraft();
+    updateCursor(null);
+    if (tool === 'wall') say(accentPaint === undefined ? HINT_WALL : HINT_ACCENT);
+    if (onAccentMode) onAccentMode(accentPaint);
+  }
+
   function wallPointerDown(p, e) {
+    if (accentPaint !== undefined) { accentPointerDown(p); return; }
     const target = targetAt(p, e);
     wallHover = target;
     if (!wallAnchor) {
@@ -810,6 +870,8 @@ export function initEditor({
   }
 
   function wallPointerMove(p, e) {
+    // Painting an accent has no run to preview; updateCursor lights the wall.
+    if (accentPaint !== undefined) return;
     wallHover = targetAt(p, e);
     refreshDraft();
     if (wallAnchor) sayRun();
@@ -1130,6 +1192,24 @@ export function initEditor({
     }
     // The wall tool draws its own overlay now — a dot on the grid and the run
     // to it — so it wants none of the segment highlight below.
+    if (tool === 'wall' && accentPaint !== undefined) {
+      // Painting: light the wall the click would paint, in the colour it
+      // would take, and none of the run overlay.
+      cellCursor.visible = openCursor.visible = false;
+      wallHover = null;
+      refreshDraft();
+      const face = accentTarget(p);
+      edgeCursor.visible = !!face;
+      if (face) {
+        const [a, b] = segEnds(face.shape.rings[face.ring], face.seg);
+        edgeCursor.material.color.set(accentPaint || '#f2f0ec');
+        edgeCursor.material.opacity = 0.7;
+        edgeCursor.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+        edgeCursor.scale.set(Math.max(0.2, segLength(a, b) / (CELL + WALL_T)), 1, 1);
+        edgeCursor.position.set((a.x + b.x) / 2, baseY + WALL_H + 0.5, (a.z + b.z) / 2);
+      }
+      return;
+    }
     if (tool === 'wall') {
       cellCursor.visible = edgeCursor.visible = openCursor.visible = false;
       wallHover = targetAt(p, e);
@@ -1317,6 +1397,7 @@ export function initEditor({
       return false;
     }
     if (tool !== 'wall') return false;
+    if (e.code === 'Escape' && accentPaint !== undefined) { setAccentPaint(undefined); return true; }
     if (e.code === 'KeyS') { setWallOrtho(!wallOrtho); return true; }
     if (e.code === 'Escape') return cancelWallRun();
     if (e.code === 'Period') return curveUnderCursor(CURVE_STEP);
@@ -2029,6 +2110,9 @@ export function initEditor({
     stairNudge: (dx, dz) => stairTool.nudgeSelected(dx, dz),
     stairList: () => stairTool.listHere(),
     get stairSelectedId() { return stairTool.selectedId; },
+    // How a ramp is folded: the selected one, or the next one placed (#832).
+    setRampFold: (opts) => stairTool.setFold(opts),
+    get rampFold() { return stairTool.fold; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
     // The prop tool's second knob (Phase 11): the paint. Same shape as the
@@ -2039,8 +2123,17 @@ export function initEditor({
     get propPreviewColor() { return propTool.previewColor(); },
     // What the wall tool builds — shared by the grid and the polygon rooms, so
     // it lives on the editor rather than inside either half.
-    setWallKind(k) { wallKind = wallKindOf(k).kind; refreshDraft(); updateCursor(null); },
+    // Picking a kind is picking "draw", so it puts the accent brush down.
+    setWallKind(k) {
+      wallKind = wallKindOf(k).kind;
+      if (accentPaint !== undefined) setAccentPaint(undefined);
+      refreshDraft(); updateCursor(null);
+    },
     get wallKind() { return wallKind; },
+    // The accent brush (#832): a hex to paint with, null to clear, undefined
+    // to go back to drawing walls.
+    setAccentPaint,
+    get accentPaint() { return accentPaint; },
     // Phase 25's two tool settings. Both are decisions about the editing
     // session rather than about the building, so both live here and neither is
     // ever written to a file — the same rule selections follow.

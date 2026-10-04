@@ -16,7 +16,7 @@ import { MAX_SHOVE } from './shove.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
-import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES } from './stairs.js';
+import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES, MAX_RUNS, rampMinRuns, rampRunRise, rampOverRise } from './stairs.js';
 import { FLOOR_FINISHES, DEFAULT_FINISH, FACADE_MATERIALS, DEFAULT_FACADE } from './finish.js';
 import {
   SITE_SURFACES, SITE_MARKINGS, SITE_KINDS, surfaceEntry, markingEntry, kindEntry,
@@ -433,7 +433,10 @@ const editor = initEditor({
   })(),
   // Phase 25: the vertical-link panel lists what is on the storey and lights
   // whichever one is selected, so a selection made on the plan has to reach it.
-  onStairSelect: () => { if (editor.tool === 'stair') renderStairList(); },
+  onStairSelect: () => { if (editor.tool === 'stair') { renderStairReadout(); renderRampFold(); } },
+  // #832: Esc and a wall type both put the accent brush down from inside the
+  // editor, and the swatch that was lit has to hear about it.
+  onAccentMode: () => renderAccentSwatches(),
   onHoleMode: (on) => {
     $('hole-btn').classList.toggle('on', on);
     $('hole-btn').setAttribute('aria-pressed', String(on));
@@ -1335,7 +1338,8 @@ function selectTool(t) {
   if (t === 'wall') renderWallModes();
   if (t === 'door') renderDoorModes();
   if (t === 'floor' || t === 'erase') renderFloorModes();
-  if (t === 'stair') renderStairReadout();
+  if (t === 'stair') { renderStairReadout(); renderRampFold(); }
+  if (t === 'wall') renderAccentSwatches();
   if (t === 'site') renderSitePanel();
   if (t === 'overlay') renderOverlayPanel();
   if (t === 'anno') renderAnnoPanel();
@@ -1839,6 +1843,46 @@ WALL_KINDS.forEach((k) => {
 });
 renderWallKinds();
 
+// --- the accent brush (#832) ---
+// One wall of a room in its own colour. A swatch arms the brush and the wall
+// tool paints with it instead of drawing; the lit swatch again, a wall type,
+// or Esc puts it down. The first swatch is not a colour but the way back: it
+// takes an accent off whatever wall is clicked. Deeper than the room paints
+// above on purpose, because an accent that is one step from the room's own
+// off-white does not read as one.
+const ACCENT_PAINTS = [null, '#2f5d8a', '#3f7d6b', '#8fb8a8', '#d9a441',
+  '#c2573a', '#a33b45', '#7a4e8a', '#4a4f57'];
+const accentSwatches = $('accent-swatches');
+function renderAccentSwatches() {
+  const armed = editor.accentPaint;
+  accentSwatches.querySelectorAll('.swatch').forEach((b) => {
+    const on = armed !== undefined && (b.dataset.paint || null) === armed;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  // While the brush is up no wall type is being built, and the panel says so.
+  wallKinds.querySelectorAll('.kind-item').forEach((b) => {
+    const on = armed === undefined && b.dataset.kind === editor.wallKind;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+}
+ACCENT_PAINTS.forEach((c) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'swatch';
+  b.dataset.paint = c || '';
+  b.style.background = c || 'transparent';
+  if (!c) b.style.border = '1px dashed rgba(255,255,255,0.45)';
+  b.title = c ? `Paint a wall ${c}` : 'Take an accent off a wall';
+  b.setAttribute('aria-label', c ? `Accent paint ${c}` : 'Remove accent');
+  b.setAttribute('aria-pressed', 'false');
+  b.addEventListener('click', () => {
+    editor.setAccentPaint(editor.accentPaint === c ? undefined : c);
+  });
+  accentSwatches.appendChild(b);
+});
+
 function cycleWallKind() {
   const i = WALL_KINDS.findIndex((k) => k.kind === editor.wallKind);
   const next = WALL_KINDS[(i + 1) % WALL_KINDS.length];
@@ -1922,7 +1966,7 @@ STAIR_KINDS.forEach((k) => {
   b.className = 'kind-item';
   b.dataset.type = k.type;
   b.innerHTML = `<span class="icon">${k.icon}</span>${k.label}`;
-  b.addEventListener('click', () => { editor.setStairType(k.type); renderStairKinds(); renderStairReadout(); });
+  b.addEventListener('click', () => { editor.setStairType(k.type); renderStairKinds(); renderStairReadout(); renderRampFold(); });
   stairKinds.appendChild(b);
 });
 renderStairKinds();
@@ -1977,8 +2021,43 @@ function renderStairList() {
 function afterStairEdit() {
   renderStairList();
   renderStairReadout();
+  renderRampFold();
   afterEdit();
 }
+
+// --- a ramp's fold (#832) ---
+//
+// How many runs the ramp is folded into and which hand they stack on: the two
+// numbers `data.runs` and `data.side` carry, which until now only a hand-edited
+// file could set. Shown while a ramp is what the tool places or what is
+// selected. With one selected the buttons re-fold it; otherwise they set the
+// next one placed. Nothing here refuses a count that is too few: a design
+// mid-edit may be wrong, and the report's finding and the line under the
+// stepper are where that is said.
+function renderRampFold() {
+  const fold = editor.rampFold;
+  const show = fold.selected || editor.stairType === 'ramp';
+  $('ramp-fold').classList.toggle('hidden', !show);
+  if (!show) return;
+  $('ramp-fold-label').textContent = fold.selected ? 'This ramp\'s runs' : 'Ramp runs';
+  $('ramp-runs').textContent = String(fold.runs);
+  $('ramp-runs-less').disabled = fold.runs <= 1;
+  $('ramp-runs-more').disabled = fold.runs >= MAX_RUNS;
+  const side = $('ramp-side');
+  side.textContent = fold.side === -1 ? 'Folds left' : 'Folds right';
+  side.setAttribute('aria-pressed', String(fold.side === -1));
+  // One run has no fold to hand, so the switch waits for a second.
+  side.disabled = fold.runs <= 1;
+}
+function stepRampFold(opts) {
+  const changed = editor.setRampFold(opts);
+  renderRampFold();
+  renderStairReadout();
+  if (changed) afterEdit();
+}
+$('ramp-runs-less').addEventListener('click', () => stepRampFold({ runs: editor.rampFold.runs - 1 }));
+$('ramp-runs-more').addEventListener('click', () => stepRampFold({ runs: editor.rampFold.runs + 1 }));
+$('ramp-side').addEventListener('click', () => stepRampFold({ side: editor.rampFold.side === -1 ? 1 : -1 }));
 
 $('stair-delete').addEventListener('click', () => {
   if (editor.stairDelete()) afterStairEdit();
@@ -2016,7 +2095,22 @@ function renderStairReadout() {
   let head;
   if (editor.stairType === 'ramp') {
     const run = m.rise * RAMP_SLOPES[0];
+    // #832: what the fold above makes of that run, and whether each lane is
+    // inside the 30in a run may rise. The fewest that are is named either way.
+    const runs = editor.rampFold.runs;
+    const need = rampMinRuns(m);
+    // Asked of stairs.js, which the report's finding asks too: one rule.
+    const probe = { type: 'ramp', data: { runs } };
+    const each = rampRunRise(probe, m) * 12;
+    const over = rampOverRise(probe, m);
+    const fold = runs > 1
+      ? `${runs} runs of ${(run / runs).toFixed(1)}ft, ${each.toFixed(0)}in of rise each`
+      : 'One straight run';
     head = `1:${RAMP_SLOPES[0]} over a ${m.rise}ft rise · ${run.toFixed(0)}ft of run<br />` +
+      (over
+        ? `<span class="warn">${fold}: over the 30in a run may rise. ` +
+          (rampOverRise({ type: 'ramp', data: { runs: need } }, m) ? 'No fold here is under it.' : `${need} runs is the fewest that is not.`) + '</span><br />'
+        : `${fold}, inside the 30in a run may rise.<br />`) +
       '<em>An elevator is the usual accessible route between storeys.</em>';
   } else if (editor.stairType === 'elevator') {
     head = 'Car stands on both levels · press <kbd>E</kbd> inside it to ride<br />' +

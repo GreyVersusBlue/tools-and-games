@@ -287,6 +287,29 @@ export function setSegAccent(shape, ringIdx, seg, paint) {
   return true;
 }
 
+// Which face a click means (#832): the room the point is in, and the segment
+// of that room's own rings nearest to it. Not `nearestSegment`, which answers
+// across every room on the storey: two rooms that share a wall each have a
+// segment on its line at distance zero from each other, and the one found
+// first would take the paint whichever side was clicked. The side of the wall
+// the cursor is on is the room that is asked. A point in no room has no face
+// here: the outside of the building is the facade's, not a room's.
+// { shape, ring, seg, t, x, z, dist } or null.
+export function accentFaceAt(floor, x, z, maxDist = Infinity) {
+  const shape = shapeAt(floor, x, z);
+  if (!shape) return null;
+  let best = null;
+  shape.rings.forEach((ring, ri) => {
+    for (let i = 0; i < ring.pts.length; i++) {
+      const [a, b] = segEnds(ring, i);
+      const p = projectOnSeg(a, b, x, z);
+      if (p.dist > maxDist || (best && p.dist >= best.dist)) continue;
+      best = { shape, ring: ri, seg: i, t: p.t, x: p.x, z: p.z, dist: p.dist };
+    }
+  });
+  return best;
+}
+
 // Reversing a ring renumbers its segments: new segment j is old segment
 // (n-2-j) walked backwards, so wall states and door positions move with it.
 function reverseRing(ring) {

@@ -360,35 +360,32 @@ Everything below is open and unclaimed — pull from here for the next phase,
 and add to this list rather than starting a new one.
 
 **Model and geometry**
-- Switchback ramps are wired but cannot be placed from the page. A ramp link
-  with `data.runs` of 2 to 12 (and `data.side: -1` for the other hand) is
-  folded by `switchback.js` (#824, #825): it loads, cuts the floor above in
-  one ring, carries a walker and a chair lane by lane behind guards, routes
-  through its turns, draws, and shows on the plan, the section, the takeoff,
-  the cost and the spec. A file without the fields is the straight ramp it
-  was, and the save version did not move. Left, in order: the run count and
-  the side in the tool rail, which is the only way to make one without
-  editing a file and which moves a `test/visual` baseline (`chrome-rail`);
-  a finding for a run that rises more than 30in, which every straight
-  floor-to-floor ramp does, so it changes the sample school's report and the
-  same baseline; the 4ft notch in front of the entry counted as footprint;
-  crowd agents walked up one in a browser, which nobody has watched. The
-  guards either side of the top landing stop a walker on the storey above
-  as well (#826). The straight ramp's top landing is 4ft (`LANDING`) and ADA
-  asks for 5.
+- Switchback ramps are placed and re-folded from the Stairs panel (#832): a
+  ramp link with `data.runs` of 2 to 12 (and `data.side: -1` for the other
+  hand) is folded by `switchback.js` (#824, #825), and a run that rises more
+  than 30in is a `ramp-rise` warning in the report (#833). Left: the 4ft
+  notch in front of the entry counted as footprint; crowd agents walked up
+  one in a browser, which nobody has watched; the straight ramp's top
+  landing is 4ft (`LANDING`) and ADA asks for 5; a ramp's width and slope
+  have no control (`data.width`, `data.slope`); a ramp over 30in a run still
+  counts as a way up on the accessible route, which is #833's call and
+  could be the other way; the plan does not mark the ramp a `ramp-rise`
+  finding names, though the finding carries its position.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
   the room in front of it, and a wall changes colour on the partition behind
   it. One wall of a room can be a different colour (#827): `ring.accents`,
   beside `walls`, is the colour of that room's own face of each segment, and
-  `setSegAccent` in `shapes.js` writes it. **Nothing on the page sets one**:
-  the control is chrome, moves `chrome-rail`, and goes with the ramp's run
-  count and the 30in finding. Also left: `designdiff.js` does not report an
-  accent that changed; a free-standing wall (`floor.walls`) has no ring and
-  so no accent; the paint brush's re-bake builds a new ring and drops the
-  accents of the room it redraws; paint is counted as one area, so an accent
-  is not a line of its own in the takeoff or the cost. The top and the ends
+  `setSegAccent` in `shapes.js` writes it, and the Wall panel's Accent wall
+  swatches set one with a click inside the room (#832). Left: nine fixed
+  colours and no free pick; `designdiff.js` does not report an accent that
+  changed; a free-standing wall (`floor.walls`) has no ring and so no
+  accent; the paint brush's re-bake builds a new ring and drops the accents
+  of the room it redraws; an accent on a segment with no wall anywhere on
+  its line is stored and paints nothing, and the tool does not say so;
+  paint is counted as one area, so an accent is not a line of its own in
+  the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
 - A pitched roof over a curve is a stepped rectangle; a straight skeleton
   would fix it.
