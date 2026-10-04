@@ -1675,15 +1675,26 @@ const CHECKS = [
   },
   {
     name: 'accent-brush',
-    what: 'a swatch in the wall panel paints one face of one wall, the same click takes it off, and no wall is drawn',
+    what: 'a swatch in the wall panel paints one face of one wall, the same click takes it off, a face with no wall is refused, and no wall is drawn',
     async run(d) {
       const q = (js) => d.page.evaluate(js);
       const swatch = (hex) => q(`document.querySelector('#accent-swatches [data-paint="${hex}"]').click(); 1`);
       await d.pick('wall');
       // A wall of a room with a foot of that room clear in front of it.
       const aim = await q(`(async () => {
-        const { shapesOf, shapeAt, accentFaceAt } = await import('./js/shapes.js');
+        const { shapesOf, shapeAt, accentFaceAt, isBuilt } = await import('./js/shapes.js');
+        const { wallAlongSeg } = await import('./js/wallrun.js');
         const s = window.app.state, floor = s.floors[s.currentFloor];
+        // The wall has to be the ring's own and the only one on its line, so
+        // taking it down below leaves a face with nothing to paint (#857).
+        const alone = (shape, ring, i) => {
+          const kind = ring.walls[i];
+          if (!isBuilt(kind)) return false;
+          ring.walls[i] = 0;
+          const other = wallAlongSeg(floor, shape, 0, i);
+          ring.walls[i] = kind;
+          return !other;
+        };
         for (const shape of shapesOf(floor)) {
           const ring = shape.rings[0];
           if (ring.accents) continue;
@@ -1696,6 +1707,7 @@ const CHECKS = [
               if (shapeAt(floor, x, z) !== shape || !window.__clear(x, z)) continue;
               const face = accentFaceAt(floor, x, z, 3);
               if (!face || face.shape !== shape || face.ring !== 0 || face.seg !== i) continue;
+              if (!alone(shape, ring, i)) continue;
               return { x, z, id: shape.id, seg: i, n: ring.pts.length };
             }
           }
@@ -1721,6 +1733,19 @@ const CHECKS = [
       const painted = await read();
       await d.click(aim.x, aim.z);
       const toggled = await read();
+      // The wall taken down behind the editor's back: the same click on the
+      // same face has nothing to paint now, and has to say so (#857).
+      const wall = (kind) => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const ring = floor.shapes.find((sh) => sh.id === ${aim.id}).rings[0];
+        const was = ring.walls[${aim.seg}];
+        ring.walls[${aim.seg}] = ${kind};
+        return was;
+      })()`);
+      const kind = await wall(0);
+      await d.click(aim.x, aim.z);
+      const refused = await read();
+      await wall(kind);
       await d.click(aim.x, aim.z);
       await swatch('');
       await d.click(aim.x, aim.z);
@@ -1731,7 +1756,7 @@ const CHECKS = [
       await swatch('#2f5d8a');
       await q(`document.querySelector('#wall-kinds [data-kind="wall"]').click(); 1`);
       const kinded = await read();
-      return { aim, idle, armed, painted, toggled, cleared, down, kinded };
+      return { aim, idle, armed, painted, toggled, refused, cleared, down, kinded };
     },
     expect: ({ ctx, before, after }) => {
       const { aim } = ctx;
@@ -1749,6 +1774,9 @@ const CHECKS = [
       if (!/painted #2f5d8a/.test(ctx.painted.status)) throw new Error(`the tool did not say so: ${ctx.painted.status}`);
       if (ctx.toggled.accents !== null) {
         throw new Error(`the same colour again should take it off and drop the key: ${JSON.stringify(ctx.toggled.accents)}`);
+      }
+      if (ctx.refused.accents !== null || !/has no wall on that side/.test(ctx.refused.status)) {
+        throw new Error(`a face with no wall on its line should be refused, out loud: ${JSON.stringify(ctx.refused)}`);
       }
       if (ctx.cleared.accents !== null || ctx.cleared.armed !== null || ctx.cleared.lit.length !== 1 || ctx.cleared.lit[0] !== '') {
         throw new Error(`the dashed swatch should clear a painted wall: ${JSON.stringify(ctx.cleared)}`);

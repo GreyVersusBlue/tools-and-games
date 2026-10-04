@@ -47,7 +47,7 @@ import {
 } from './gridref.js';
 import {
   drawWallRun, wallLineAt, eraseWallLineAt, toggleLineOpening,
-  moveLineOpening, lineOpenings, lineEnds, lineLength,
+  moveLineOpening, lineOpenings, lineEnds, lineLength, wallAlongSeg,
 } from './wallrun.js';
 import { step, apply, clone } from './history.js';
 import { applyFinish, DEFAULT_FINISH } from './finish.js';
@@ -803,6 +803,13 @@ export function initEditor({
     const had = segAccent(ring, face.seg);
     // The colour it already is, clicked again, is the way back.
     const paint = accentPaint && had === accentPaint ? null : accentPaint;
+    const name = face.shape.name || 'this room';
+    // An accent is a face of a wall (#857): with no wall on the line it would
+    // be stored and paint nothing. Taking one off is always allowed.
+    if (paint && !wallAlongSeg(activeFloor(getState()), face.shape, face.ring, face.seg)) {
+      say(`Accent — ${name} has no wall on that side to paint. Draw one there first.`);
+      return;
+    }
     pushUndo();
     if (!setSegAccent(face.shape, face.ring, face.seg, paint)) {
       dropUndo();
@@ -811,7 +818,6 @@ export function initEditor({
     }
     fire({ structural: true, commit: true });
     const [a, b] = segEnds(ring, face.seg);
-    const name = face.shape.name || 'this room';
     say(paint
       ? `Accent — ${segLength(a, b).toFixed(1)}ft of ${name}'s wall painted ${paint}.`
       : `Accent — ${name}'s wall is back to the room's own paint.`);

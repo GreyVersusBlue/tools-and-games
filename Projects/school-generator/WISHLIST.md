@@ -378,12 +378,14 @@ and add to this list rather than starting a new one.
   it. One wall of a room can be a different colour (#827): `ring.accents`,
   beside `walls`, is the colour of that room's own face of each segment, and
   `setSegAccent` in `shapes.js` writes it, and the Wall panel's Accent wall
-  swatches set one with a click inside the room (#832). Left: nine fixed
-  colours and no free pick; `designdiff.js` does not report an accent that
-  changed; a free-standing wall (`floor.walls`) has no ring and so no
-  accent; the paint brush's re-bake builds a new ring and drops the accents
-  of the room it redraws; an accent on a segment with no wall anywhere on
-  its line is stored and paints nothing, and the tool does not say so;
+  swatches set one with a click inside the room (#832). The floor brush's
+  re-bake puts each accent back on the wall it was on (#846), `designdiff.js`
+  reports one gained, lost or repainted (#856), and the brush refuses a face
+  with no wall on its line (#857). Left: nine fixed colours and no free
+  pick; a free-standing wall (`floor.walls`) has no ring and so no accent;
+  an accent whose wall is erased afterward stays in the file and paints
+  nothing; the brush's re-bake gives a straight wall back as one segment,
+  so two colours on one wall come back as the longer one;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.

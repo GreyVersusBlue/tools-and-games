@@ -17,6 +17,7 @@ import {
 import { serialize, deserialize } from '../js/save-load.js';
 import { DEFAULT_PAINT, wallFaceRuns, wallPaint } from '../js/finish.js';
 import { paintCells, reapplyAccents } from '../js/paint.js';
+import { wallAlongSeg, addWallLine } from '../js/wallrun.js';
 
 const GREEN = '#00aa00', GOLD = '#ccaa00';
 
@@ -492,4 +493,35 @@ test('two accents the redraw merges into one wall leave the colour that covered 
   assert.equal(reapplyAccents(R, [{ ax: 28, az: 4, bx: 4, bz: 4, paint: GREEN },
     { ax: 4, az: 4, bx: 28, bz: 4, paint: GREEN }]), 1, 'one of the two runs the ring\'s way');
   assert.equal(reapplyAccents(R, []), 0);
+});
+
+// ---------- is there a wall to paint (#857) ----------
+
+test('a face has a wall when its own ring, a neighbour\'s or a free-standing wall is on its line', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A'), B = named(s, 'B');
+  const north = segBetween(A, 4, 4, 16, 4);
+  assert.equal(wallAlongSeg(f, A, 0, north), true, 'its own wall');
+  // B's side of the partition: B's segment is empty and A's ring holds the wall.
+  const shared = segBetween(B, 16, 4, 16, 12);
+  assert.equal(B.rings[0].walls[shared], SEG_NONE);
+  assert.equal(wallAlongSeg(f, B, 0, shared), true, 'the neighbour\'s wall');
+  // A's north wall taken down. Its west and east walls still meet the line at
+  // its corners, and B's north wall carries on along the same line past x 16:
+  // none of them is a wall along this face.
+  setSegWall(A, 0, north, SEG_NONE);
+  assert.equal(wallAlongSeg(f, A, 0, north), false, 'nothing on the line');
+  // A free-standing wall six inches inside the room is not on the line: the
+  // wall tool would call that the same line (0.9ft), the painter would not.
+  assert.ok(addWallLine(s, 0, { x: 6, z: 4.5 }, { x: 14, z: 4.5 }));
+  assert.equal(wallAlongSeg(f, A, 0, north), false, 'a parallel wall six inches away');
+  // ...and one along part of it is: that part has a face.
+  assert.ok(addWallLine(s, 0, { x: 8, z: 4 }, { x: 12, z: 4 }));
+  assert.equal(wallAlongSeg(f, A, 0, north), true, 'a free-standing wall on the line');
+  // The partition taken down: A's segment and B's are both on the line and
+  // both empty, and two rooms open to each other have no wall between them.
+  setSegWall(A, 0, segBetween(A, 16, 4, 16, 12), SEG_NONE);
+  assert.equal(wallAlongSeg(f, B, 0, shared), false, 'an opening between two rooms');
+  assert.equal(wallAlongSeg(f, A, 0, 99), false);
+  assert.equal(wallAlongSeg(f, A, 3, 0), false);
+  assert.equal(wallAlongSeg(f, null, 0, 0), false);
 });
