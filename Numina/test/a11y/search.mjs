@@ -72,6 +72,19 @@ async function appears(locator, state = "visible", timeout = 15000) {
   }
 }
 
+// The same for a condition the page reaches a frame or two after the key that
+// asked for it, rather than an element coming or going. It polls the condition
+// and returns as soon as it holds, so a pass costs no time and a page that never
+// gets there is a failure with its own label, 5 seconds later.
+async function settles(condition, timeout = 5000) {
+  try {
+    await page.waitForFunction(condition, null, { timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const server = await serve();
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch();
@@ -164,8 +177,15 @@ try {
 
   await page.keyboard.press("Escape");
   ok(await appears(dialog, "hidden", 5000), "Escape closes it");
+  // The dialog is closed the moment close() returns, but Chromium fires its
+  // close event with the next frame, and that event is what clears the
+  // component's open flag and what this site's handler answers by focusing the
+  // trigger. Asked in between, focus is still where the browser left it and a
+  // Ctrl+K is thrown away as "already open": the two failures CI showed three
+  // times on 2026-10-04 and a rerun cleared each time. So this waits for the
+  // focus itself, which is the last thing the close handler does.
   ok(
-    await page.evaluate(() => document.activeElement?.matches("[data-search-open]") === true),
+    await settles(() => document.activeElement?.matches("[data-search-open]") === true),
     "and focus goes back to the trigger that opened it"
   );
   // Second open: the bundle is already in, so this is the path where the
