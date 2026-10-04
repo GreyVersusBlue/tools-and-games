@@ -447,6 +447,29 @@ by hand after touching it.
   and to All Skills. The page is `data-autolink="off"`: its lists are
   rendered client-side and the static prose already links what it names.
 
+## Notable Figures (`src/lore/notable-figures.md`)
+
+An index: a name in bold (or in a table's first column), one line, and the page
+that covers the person. `npm test` checks that each name is on a page its entry
+points at, in the built HTML: the pages the entry links, its section's
+"See [Page](…)" line, and for a table the paragraph that introduces it. A
+leading title comes off first (`Empress`, `King`, `The`; the list is `TITLE` in
+`test/smoke.mjs`), and the rest has to be there whole.
+
+So when you correct a name on a nation page, correct it here too, and when you
+add an entry for someone a page covers, link the page. An entry with no link
+and no "See" line above it is not checked; the test prints how many there are.
+Do not add a name to a nation page to make this pass. If the page an entry
+points at has never named the person, the entry goes in `KNOWN` in the test and
+in `WISHLIST.md`.
+
+## The social card (`src/assets/social-card.png`)
+
+Drawn by `npm run card` from the built Nations page, in the light theme. Change
+a token in the first `:root` block of `src/css/main.css`, or
+`src/_includes/partials/world-map.njk`, and `npm test` fails until the card is
+redrawn; README.md has the three commands.
+
 ## After adding content
 
 ```sh

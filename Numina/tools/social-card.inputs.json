@@ -1,0 +1,7 @@
+{
+  "inputs": [
+    "src/css/main.css (the first :root block)",
+    "src/_includes/partials/world-map.njk"
+  ],
+  "sha256": "d93c832d521e6b1693b515dc61bc40d3f4b38bff56dba70c36751ca8a56d2a46"
+}
