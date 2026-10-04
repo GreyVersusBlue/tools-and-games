@@ -1265,29 +1265,30 @@ three wait on Devon's go-ahead:
    abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
    the open question.
 3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
-4. **Two pairs sit on a per-monster bound, and both are investigated** (#829,
-   2026-10-03). The medusa's AC converts to 20 against Paizo's 25 (bound 5)
-   and the nalfeshnee's Will to 31 against 23 (bound 8). Neither is a wrong
-   table entry. The medusa's PF1e AC 15 is five under CR 7's 20 and Paizo
-   rebuilt her on high AC; the nalfeshnee's PF1e Will +21 is four over the
-   good save and Paizo printed it under moderate. Each sits on a clamp (the
-   lowest AC and the highest save the converter writes at that level), so no
-   anchor change pushes either over; a change to `bench`'s 4.5 cap or
-   `readRow`'s one step past the table can. `converter-convert.test.mjs`
+4. **Two pairs sat on a per-monster bound; both are investigated (#829,
+   2026-10-03) and saves now stop at extreme (#831, 2026-10-04).** The
+   medusa's AC converts to 20 against Paizo's 25 (bound 5), and the
+   nalfeshnee's Will to 30 against 23 (bound 8), one point off its bound.
+   Neither is a wrong table entry. The medusa's PF1e AC 15 is five under CR
+   7's 20 and Paizo rebuilt her on high AC; the nalfeshnee's PF1e Will +21 is
+   four over the good save and Paizo printed it under moderate. Each sits on
+   a clamp (the lowest AC and the highest save the converter writes at that
+   level), so no anchor change moves either. `converter-convert.test.mjs`
    names the eleven numbers on a bound or one short of it and fails when the
-   list moves. No conversion changed. Two rules were measured on the 48 pairs
-   and wait on Devon, since each is a tuning choice:
-   - **Cap saves at extreme, not half a step past it. Recommended.** Six saves
-     move, all toward print: gelatinous cube Fort 15 to 14 (print 12), owlbear
-     16 to 15 (13), troll 18 to 17 (17), balor 41 to 39 (39), nalfeshnee Fort
-     31 to 30 (28) and Will 31 to 30 (23). Mean save error 2.12 to 2.07. It
-     takes the nalfeshnee one point off its bound and no further: its Will is
-     Paizo's redesign, and no PF1e number predicts it.
-   - **Floor AC at low. Not recommended as it stands.** Medusa 20 to 22 (print
-     25) and lich 29 to 30 (31), but the gelatinous cube goes 14 to 16 against
-     10, past its bound. With oozes excepted the mean AC error goes 1.42 to
-     1.35, on two monsters.
-   - Or leave both: the suite is green and the clamps hold the two in place.
+   list moves.
+   - **Saves are capped at extreme. Done** (#831, Devon's decision of
+     2026-10-04). `bench` stops a save's tier at 4, where every other stat
+     stops at 4.5. Six saves moved, all toward print: gelatinous cube Fort 15
+     to 14 (print 12), owlbear 16 to 15 (13), troll 18 to 17 (17), balor 41
+     to 39 (39), nalfeshnee Fort 31 to 30 (28) and Will 31 to 30 (23). Mean
+     save error 2.12 to 2.07, and no other number of the 48 pairs changed.
+     The nalfeshnee's Will goes no further: it is Paizo's redesign, and no
+     PF1e number predicts it. The suite holds the rule on all 57 fixtures.
+   - **Floor AC at low. Not recommended as it stands, and not done.** Medusa
+     20 to 22 (print 25) and lich 29 to 30 (31), but the gelatinous cube goes
+     14 to 16 against 10, past its bound. With oozes excepted the mean AC
+     error goes 1.42 to 1.35, on two monsters. It waits on Devon; the suite is
+     green without it and the clamp holds the medusa in place.
    No pair from CR 15 to 19 exists yet; the balor at 20 is alone above the
    nalfeshnee.
 
