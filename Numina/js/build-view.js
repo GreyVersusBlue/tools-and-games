@@ -44,9 +44,12 @@ export function esc(text) {
   return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// Descriptions keep the chapter's `**bold**` markers; everything else is text.
+// Descriptions keep the chapter's `**bold**` and `*italic*` markers; everything
+// else is text. Bold goes first: its stars would otherwise pair up as italics.
 function prose(text) {
-  return esc(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
 }
 
 export function costLabel(cost) {

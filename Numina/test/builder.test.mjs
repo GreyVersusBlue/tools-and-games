@@ -418,6 +418,16 @@ for (const sel of [".builder-page .builder__form", ".builder-page .builder__verd
 ok(!hiddenSelectors.some((sel) => /\.sheet\b|\.builder__card$/.test(sel)), "and print.css does not hide the card");
 // The island's one hazard, checked with a value that has it: the built data
 // happens not to contain "</", so only a planted one can show the escape works.
+// A description's *italics* are an <em>, as its **bold** is a <strong>. Three
+// descriptions carry them (Quick Reflexes, Research, and Summon Light twice)
+// and the builder printed the stars. The stars a footnote marker leaves on a
+// name are not prose and stay.
+const everyStep = [1, 2, 3, 4, 5, 6, 7].map((n) => render(n, { excellencies: ["Tornado"] })).join("");
+const descs = everyStep.match(/<span class="builder__desc">[\s\S]*?<\/span>/g) ?? [];
+ok(/the effect\. <em>You can purchase this skill up to 3 times\.<\/em><\/span>/.test(render(7, {})), "Quick Reflexes' italic sentence is an <em> in step 7");
+ok(descs.length > 100 && descs.every((d) => !d.includes("*")), `no description in any step prints a star (${descs.filter((d) => d.includes("*")).length} of ${descs.length} do)`);
+ok(count(everyStep, /<em>/g) === 6 && count(everyStep, /<strong>/g) > 0, `the four italic spans are six <em>, Quick Reflexes being three boxes, and bold is still bold (${count(everyStep, /<em>/g)})`);
+
 const planted = jsonIsland({ d: "a </script> b" });
 ok(!planted.includes("</script>") && JSON.parse(planted).d === "a </script> b", "a description containing </script> cannot close the island early");
 
