@@ -61,6 +61,11 @@ function withDeadline(work, ms, label) {
   ]);
 }
 
+// The page draws at this many device pixels per CSS pixel. See where the
+// context is made for what it buys; `--headed` keeps 1, because a person
+// watching wants to see the school and not a quarter of its pixels.
+const RASTER_SCALE = process.argv.includes('--headed') ? 1 : 0.5;
+
 const HEADED = process.argv.includes('--headed');
 // `--only wall` runs one check; `--only floor-rect,prop` runs several, in the
 // order they are declared below rather than the order they are typed — some
@@ -1928,13 +1933,28 @@ let pageErrors = [];
 // Each check reports the moment it lands. The whole run takes minutes on a
 // software rasterizer, and a job that prints nothing for that long is
 // indistinguishable from a hung one.
+// ...and says how long it took, because the suite is twenty-odd minutes on a
+// CI runner and the only way to know which check to look at is to be told.
+let lapFrom = performance.now();
 function record(r) {
+  const now = performance.now();
+  r.seconds = (now - lapFrom) / 1000;
+  lapFrom = now;
   results.push(r);
-  console.log(`${r.status === 'FAIL' ? '✗' : '✓'} ${r.name}: ${r.status}${r.detail ? ` — ${r.detail}` : ''}`);
+  console.log(`${r.status === 'FAIL' ? '✗' : '✓'} ${r.name} (${r.seconds.toFixed(1)}s): ` +
+    `${r.status}${r.detail ? ` — ${r.detail}` : ''}`);
 }
 
 try {
-  const context = await browser.newContext({ viewport: { width: 1600, height: 950 } });
+  // The same 1600 by 950 page in CSS pixels, so every panel sits where it sat
+  // and every gesture lands where it landed, drawn into a canvas a quarter the
+  // size. The software rasterizer is fill-bound (measured: 970ms a frame at
+  // 1600x950, 640ms at 1280x760, 290ms at 800x475, the same scene), every
+  // round trip to the page queues behind one frame, and no check here reads a
+  // pixel: that is test/visual's job, at its own scale.
+  const context = await browser.newContext({
+    viewport: { width: 1600, height: 950 }, deviceScaleFactor: RASTER_SCALE,
+  });
   // A fresh context is a first visit, and a first visit gets the opening
   // moment (Phase 19) over the top of everything. Seed it away.
   await context.addInitScript(`try { localStorage.setItem('sg-welcome-seen', '1'); } catch {}`);
