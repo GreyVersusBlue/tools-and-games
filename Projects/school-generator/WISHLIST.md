@@ -380,10 +380,16 @@ and add to this list rather than starting a new one.
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
   the room in front of it, and a wall changes colour on the partition behind
-  it. What a face takes is still the *room's* one paint; there is no accent
-  wall, because nothing stores a colour against one segment of a ring. The
-  top and the ends keep the one-colour rule, and a glazed run's frame is not
-  painted at all.
+  it. One wall of a room can be a different colour (#827): `ring.accents`,
+  beside `walls`, is the colour of that room's own face of each segment, and
+  `setSegAccent` in `shapes.js` writes it. **Nothing on the page sets one**:
+  the control is chrome, moves `chrome-rail`, and goes with the ramp's run
+  count and the 30in finding. Also left: `designdiff.js` does not report an
+  accent that changed; a free-standing wall (`floor.walls`) has no ring and
+  so no accent; the paint brush's re-bake builds a new ring and drops the
+  accents of the room it redraws; paint is counted as one area, so an accent
+  is not a line of its own in the takeoff or the cost. The top and the ends
+  keep the one-colour rule, and a glazed run's frame is not painted at all.
 - A pitched roof over a curve is a stepped rectangle; a straight skeleton
   would fix it.
 - Site regions can be restyled and deleted but not re-shaped.

@@ -15,6 +15,7 @@
 //     pts:      [{x, z}, ...]        n vertices, implicitly closed
 //     walls:    [0|1, ...]           n entries; walls[i] covers pts[i] -> pts[i+1]
 //     openings: [{ seg, t, w }, ...] doorways: segment index, centre at 0..1, width ft
+//     accents:  ['#rrggbb'|null, ...] optional; n entries when present (#827)
 //   }
 //
 // Walls being a per-segment array on the boundary itself is the schema change
@@ -24,9 +25,9 @@
 // and a door is 3ft of it.
 //
 // Winding is normalized: the outer ring is CCW in (x, z), holes are CW.
-// Every mutation below keeps `walls` and `openings` aligned with `pts` — that
-// bookkeeping is the whole reason vertex editing lives here and not in the
-// tool that calls it.
+// Every mutation below keeps `walls`, `openings` and `accents` aligned with
+// `pts` — that bookkeeping is the whole reason vertex editing lives here and
+// not in the tool that calls it.
 //
 // Pure module: no three.js. Everything here is exercised by test/model.test.mjs.
 
@@ -239,6 +240,53 @@ const flipRunSign = (o, key) => {
   if (sign(o[key]) === -1) delete o[key]; else o[key] = -1;
 };
 
+// ---------- accent walls ----------
+//
+// #827. A room's paint is one colour (`shape.paint`), and an accent wall is
+// the one wall of the room that is not: `ring.accents[i]` is what this room's
+// face of segment i is painted, or null for the room's own paint. It is the
+// *room's* face only. The room is on a ring's left whichever ring it is (the
+// outer one runs CCW, a hole CW), so the far face of the same wall belongs to
+// whoever is over there, and their ring says what it is.
+//
+// It does not ask for a wall on the segment. Two rooms that share a wall keep
+// it on one ring and `SEG_NONE` on the other (lattice.js bakes them that way),
+// and the room whose segment is empty still has a face of that wall to paint.
+// An accent with no wall anywhere on its line paints nothing.
+//
+// The array is there only while some segment has a colour: a ring nobody has
+// accented carries no `accents` key, in memory or in a file, so a design saved
+// before this build is written back as the bytes it was read from.
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+const readAccent = (v) => (typeof v === 'string' && HEX6.test(v) ? v.toLowerCase() : null);
+
+export const segAccent = (ring, i) =>
+  (ring && Array.isArray(ring.accents) && readAccent(ring.accents[i])) || null;
+
+// Square the array up to the ring after a mutation, and drop it when it says
+// nothing.
+function tidyAccents(ring) {
+  if (!('accents' in ring)) return;
+  const n = ring.pts.length;
+  const acc = Array.isArray(ring.accents) ? ring.accents : [];
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(readAccent(acc[i]));
+  if (out.some(Boolean)) ring.accents = out; else delete ring.accents;
+}
+
+// Paint (or, with null, unpaint) this room's face of one segment.
+export function setSegAccent(shape, ringIdx, seg, paint) {
+  const ring = shape && shape.rings[ringIdx];
+  if (!ring || !Number.isInteger(seg) || seg < 0 || seg >= ring.pts.length) return false;
+  const v = paint == null ? null : readAccent(paint);
+  if (paint != null && !v) return false;
+  if (segAccent(ring, seg) === v) return false;
+  if (!Array.isArray(ring.accents)) ring.accents = new Array(ring.pts.length).fill(null);
+  ring.accents[seg] = v;
+  tidyAccents(ring);
+  return true;
+}
+
 // Reversing a ring renumbers its segments: new segment j is old segment
 // (n-2-j) walked backwards, so wall states and door positions move with it.
 function reverseRing(ring) {
@@ -246,6 +294,12 @@ function reverseRing(ring) {
   ring.pts.reverse();
   const w = ring.walls.slice();
   for (let j = 0; j < n; j++) ring.walls[j] = w[(n - 2 - j + n) % n];
+  // The room stays on the ring's left when the ring turns round, so an accent
+  // goes with its segment and nothing about it flips.
+  if (Array.isArray(ring.accents)) {
+    const c = ring.accents.slice();
+    for (let j = 0; j < n; j++) ring.accents[j] = c[(n - 2 - j + n) % n] ?? null;
+  }
   for (const o of ring.openings) {
     o.seg = (n - 2 - o.seg + n) % n;
     o.t = 1 - o.t;
@@ -599,6 +653,7 @@ export function insertVertex(shape, ringIdx, seg, x, z) {
   const at = seg + 1;
   ring.pts.splice(at, 0, { x, z });
   ring.walls.splice(at, 0, ring.walls[seg]);
+  if (Array.isArray(ring.accents)) ring.accents.splice(at, 0, ring.accents[seg] ?? null);
   for (const o of ring.openings) {
     if (o.seg > seg) { o.seg += 1; continue; }
     if (o.seg < seg) continue;
@@ -620,6 +675,12 @@ export function deleteVertex(shape, ringIdx, idx) {
   const keep = ring.walls[prev];
   ring.walls.splice(idx, 1);
   ring.walls[Math.min(prev, ring.walls.length - 1)] = keep;
+  // The merged segment keeps the incoming accent, as it keeps the wall: the
+  // entry that goes is the outgoing segment's.
+  if (Array.isArray(ring.accents)) {
+    ring.accents.splice(idx, 1);
+    tidyAccents(ring);
+  }
   ring.openings = ring.openings
     .filter((o) => o.seg !== idx && o.seg !== prev)
     .map((o) => (o.seg > idx ? { ...o, seg: o.seg - 1 } : o));
@@ -843,6 +904,10 @@ export function curveSegment(shape, ringIdx, seg, bulge, steps = 0) {
   const at = seg + 1;
   ring.pts.splice(at, 0, ...mid);
   ring.walls.splice(at, 0, ...new Array(mid.length).fill(ring.walls[seg]));
+  // Every chord of a curved accent wall is the accent wall.
+  if (Array.isArray(ring.accents)) {
+    ring.accents.splice(at, 0, ...new Array(mid.length).fill(ring.accents[seg] ?? null));
+  }
   ring.openings = ring.openings
     .filter((o) => o.seg !== seg)
     .map((o) => (o.seg > seg ? { ...o, seg: o.seg + mid.length } : o));
@@ -866,7 +931,11 @@ export function straightenRun(shape, ringIdx, seg, count) {
   for (let i = 1; i <= drop; i++) idx.push((seg + i) % n);
   const gone = new Set(idx);
   idx.sort((a, b) => b - a);
-  for (const i of idx) { ring.pts.splice(i, 1); ring.walls.splice(i, 1); }
+  for (const i of idx) {
+    ring.pts.splice(i, 1);
+    ring.walls.splice(i, 1);
+    if (Array.isArray(ring.accents)) ring.accents.splice(i, 1);
+  }
   ring.openings = ring.openings
     .filter((o) => !gone.has(o.seg))
     .map((o) => {
@@ -876,6 +945,9 @@ export function straightenRun(shape, ringIdx, seg, count) {
     });
   const keep = seg > n - 1 - drop ? seg - drop : seg;
   ring.walls[Math.min(keep, ring.walls.length - 1)] = kind;
+  // The run's first segment was never removed, so its accent is already the
+  // merged wall's. What is left may be an array of nothing.
+  tidyAccents(ring);
   return true;
 }
 
@@ -972,6 +1044,15 @@ function readRing(raw, extent, outer) {
         : (raw.walls[i] === undefined ? ring.walls[i] : SEG_WALL);
     }
   }
+  // #827's accents, read only when the ring came through `cleanRing` whole. A
+  // ring that lost a point there has renumbered its segments, and a colour on
+  // the wrong wall is worse than no colour. Anything that is not a hex is null
+  // and an array of nulls is no array, so a file without the key (every file
+  // before this build) is the ring it always was.
+  if (Array.isArray(raw.accents) && src.length === n) {
+    ring.accents = raw.accents.slice(0, n);
+    tidyAccents(ring);
+  }
   if (Array.isArray(raw.openings)) {
     for (const o of raw.openings.slice(0, MAX_RING_PTS)) {
       if (!o || typeof o !== 'object') continue;
@@ -1041,6 +1122,7 @@ export function cloneShape(shape) {
       pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
       walls: r.walls.slice(),
       openings: r.openings.map(copyOpening),
+      ...(Array.isArray(r.accents) ? { accents: r.accents.slice() } : {}),
     })),
   };
 }

@@ -190,6 +190,8 @@ export function duplicateFloor(s, index = s.currentFloor) {
         // Spread rather than pick: an opening carries optional door/window
         // fields (see shapes.js) and a duplicated floor has to keep all of them.
         openings: r.openings.map((o) => ({ ...o })),
+        // ...and its accent walls, when it has any (#827).
+        ...(Array.isArray(r.accents) ? { accents: r.accents.slice() } : {}),
       })),
     })),
   });

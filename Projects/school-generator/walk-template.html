@@ -55158,6 +55158,8 @@ function duplicateFloor(s, index = s.currentFloor) {
         // Spread rather than pick: an opening carries optional door/window
         // fields (see shapes.js) and a duplicated floor has to keep all of them.
         openings: r.openings.map((o) => ({ ...o })),
+        // ...and its accent walls, when it has any (#827).
+        ...(Array.isArray(r.accents) ? { accents: r.accents.slice() } : {}),
       })),
     })),
   });
@@ -57004,6 +57006,7 @@ const { CELL, DOOR_W, DOOR_H, DOUBLE_DOOR_W, WALL_H } = __m_js_grid_js;
 //     pts:      [{x, z}, ...]        n vertices, implicitly closed
 //     walls:    [0|1, ...]           n entries; walls[i] covers pts[i] -> pts[i+1]
 //     openings: [{ seg, t, w }, ...] doorways: segment index, centre at 0..1, width ft
+//     accents:  ['#rrggbb'|null, ...] optional; n entries when present (#827)
 //   }
 //
 // Walls being a per-segment array on the boundary itself is the schema change
@@ -57013,9 +57016,9 @@ const { CELL, DOOR_W, DOOR_H, DOUBLE_DOOR_W, WALL_H } = __m_js_grid_js;
 // and a door is 3ft of it.
 //
 // Winding is normalized: the outer ring is CCW in (x, z), holes are CW.
-// Every mutation below keeps `walls` and `openings` aligned with `pts` — that
-// bookkeeping is the whole reason vertex editing lives here and not in the
-// tool that calls it.
+// Every mutation below keeps `walls`, `openings` and `accents` aligned with
+// `pts` — that bookkeeping is the whole reason vertex editing lives here and
+// not in the tool that calls it.
 //
 // Pure module: no three.js. Everything here is exercised by test/model.test.mjs.
 
@@ -57228,6 +57231,53 @@ const flipRunSign = (o, key) => {
   if (sign(o[key]) === -1) delete o[key]; else o[key] = -1;
 };
 
+// ---------- accent walls ----------
+//
+// #827. A room's paint is one colour (`shape.paint`), and an accent wall is
+// the one wall of the room that is not: `ring.accents[i]` is what this room's
+// face of segment i is painted, or null for the room's own paint. It is the
+// *room's* face only. The room is on a ring's left whichever ring it is (the
+// outer one runs CCW, a hole CW), so the far face of the same wall belongs to
+// whoever is over there, and their ring says what it is.
+//
+// It does not ask for a wall on the segment. Two rooms that share a wall keep
+// it on one ring and `SEG_NONE` on the other (lattice.js bakes them that way),
+// and the room whose segment is empty still has a face of that wall to paint.
+// An accent with no wall anywhere on its line paints nothing.
+//
+// The array is there only while some segment has a colour: a ring nobody has
+// accented carries no `accents` key, in memory or in a file, so a design saved
+// before this build is written back as the bytes it was read from.
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+const readAccent = (v) => (typeof v === 'string' && HEX6.test(v) ? v.toLowerCase() : null);
+
+const segAccent = (ring, i) =>
+  (ring && Array.isArray(ring.accents) && readAccent(ring.accents[i])) || null;
+
+// Square the array up to the ring after a mutation, and drop it when it says
+// nothing.
+function tidyAccents(ring) {
+  if (!('accents' in ring)) return;
+  const n = ring.pts.length;
+  const acc = Array.isArray(ring.accents) ? ring.accents : [];
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(readAccent(acc[i]));
+  if (out.some(Boolean)) ring.accents = out; else delete ring.accents;
+}
+
+// Paint (or, with null, unpaint) this room's face of one segment.
+function setSegAccent(shape, ringIdx, seg, paint) {
+  const ring = shape && shape.rings[ringIdx];
+  if (!ring || !Number.isInteger(seg) || seg < 0 || seg >= ring.pts.length) return false;
+  const v = paint == null ? null : readAccent(paint);
+  if (paint != null && !v) return false;
+  if (segAccent(ring, seg) === v) return false;
+  if (!Array.isArray(ring.accents)) ring.accents = new Array(ring.pts.length).fill(null);
+  ring.accents[seg] = v;
+  tidyAccents(ring);
+  return true;
+}
+
 // Reversing a ring renumbers its segments: new segment j is old segment
 // (n-2-j) walked backwards, so wall states and door positions move with it.
 function reverseRing(ring) {
@@ -57235,6 +57285,12 @@ function reverseRing(ring) {
   ring.pts.reverse();
   const w = ring.walls.slice();
   for (let j = 0; j < n; j++) ring.walls[j] = w[(n - 2 - j + n) % n];
+  // The room stays on the ring's left when the ring turns round, so an accent
+  // goes with its segment and nothing about it flips.
+  if (Array.isArray(ring.accents)) {
+    const c = ring.accents.slice();
+    for (let j = 0; j < n; j++) ring.accents[j] = c[(n - 2 - j + n) % n] ?? null;
+  }
   for (const o of ring.openings) {
     o.seg = (n - 2 - o.seg + n) % n;
     o.t = 1 - o.t;
@@ -57588,6 +57644,7 @@ function insertVertex(shape, ringIdx, seg, x, z) {
   const at = seg + 1;
   ring.pts.splice(at, 0, { x, z });
   ring.walls.splice(at, 0, ring.walls[seg]);
+  if (Array.isArray(ring.accents)) ring.accents.splice(at, 0, ring.accents[seg] ?? null);
   for (const o of ring.openings) {
     if (o.seg > seg) { o.seg += 1; continue; }
     if (o.seg < seg) continue;
@@ -57609,6 +57666,12 @@ function deleteVertex(shape, ringIdx, idx) {
   const keep = ring.walls[prev];
   ring.walls.splice(idx, 1);
   ring.walls[Math.min(prev, ring.walls.length - 1)] = keep;
+  // The merged segment keeps the incoming accent, as it keeps the wall: the
+  // entry that goes is the outgoing segment's.
+  if (Array.isArray(ring.accents)) {
+    ring.accents.splice(idx, 1);
+    tidyAccents(ring);
+  }
   ring.openings = ring.openings
     .filter((o) => o.seg !== idx && o.seg !== prev)
     .map((o) => (o.seg > idx ? { ...o, seg: o.seg - 1 } : o));
@@ -57832,6 +57895,10 @@ function curveSegment(shape, ringIdx, seg, bulge, steps = 0) {
   const at = seg + 1;
   ring.pts.splice(at, 0, ...mid);
   ring.walls.splice(at, 0, ...new Array(mid.length).fill(ring.walls[seg]));
+  // Every chord of a curved accent wall is the accent wall.
+  if (Array.isArray(ring.accents)) {
+    ring.accents.splice(at, 0, ...new Array(mid.length).fill(ring.accents[seg] ?? null));
+  }
   ring.openings = ring.openings
     .filter((o) => o.seg !== seg)
     .map((o) => (o.seg > seg ? { ...o, seg: o.seg + mid.length } : o));
@@ -57855,7 +57922,11 @@ function straightenRun(shape, ringIdx, seg, count) {
   for (let i = 1; i <= drop; i++) idx.push((seg + i) % n);
   const gone = new Set(idx);
   idx.sort((a, b) => b - a);
-  for (const i of idx) { ring.pts.splice(i, 1); ring.walls.splice(i, 1); }
+  for (const i of idx) {
+    ring.pts.splice(i, 1);
+    ring.walls.splice(i, 1);
+    if (Array.isArray(ring.accents)) ring.accents.splice(i, 1);
+  }
   ring.openings = ring.openings
     .filter((o) => !gone.has(o.seg))
     .map((o) => {
@@ -57865,6 +57936,9 @@ function straightenRun(shape, ringIdx, seg, count) {
     });
   const keep = seg > n - 1 - drop ? seg - drop : seg;
   ring.walls[Math.min(keep, ring.walls.length - 1)] = kind;
+  // The run's first segment was never removed, so its accent is already the
+  // merged wall's. What is left may be an array of nothing.
+  tidyAccents(ring);
   return true;
 }
 
@@ -57961,6 +58035,15 @@ function readRing(raw, extent, outer) {
         : (raw.walls[i] === undefined ? ring.walls[i] : SEG_WALL);
     }
   }
+  // #827's accents, read only when the ring came through `cleanRing` whole. A
+  // ring that lost a point there has renumbered its segments, and a colour on
+  // the wrong wall is worse than no colour. Anything that is not a hex is null
+  // and an array of nulls is no array, so a file without the key (every file
+  // before this build) is the ring it always was.
+  if (Array.isArray(raw.accents) && src.length === n) {
+    ring.accents = raw.accents.slice(0, n);
+    tidyAccents(ring);
+  }
   if (Array.isArray(raw.openings)) {
     for (const o of raw.openings.slice(0, MAX_RING_PTS)) {
       if (!o || typeof o !== 'object') continue;
@@ -58030,6 +58113,7 @@ function cloneShape(shape) {
       pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
       walls: r.walls.slice(),
       openings: r.openings.map(copyOpening),
+      ...(Array.isArray(r.accents) ? { accents: r.accents.slice() } : {}),
     })),
   };
 }
@@ -58120,7 +58204,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -73828,7 +73912,7 @@ return { CELL_AREA, OVERHANG_NOTE, OVERHANG_WARN, floorBounds, unionBounds, foot
 // ---- js/finish.js ----
 const __m_js_finish_js = (() => {
 const { CELL } = __m_js_grid_js;
-const { shapesOf, shapeArea, shapeAt } = __m_js_shapes_js;
+const { shapesOf, shapeArea, shapeAt, segAccent } = __m_js_shapes_js;
 // finish.js — what a room is made of: floor material and wall paint.
 //
 // A room record has carried a `color` since v1, and that colour has always
@@ -74033,6 +74117,8 @@ function pickPaint(a, b) {
   return a || b || DEFAULT_PAINT;
 }
 
+const sideAt = (runs, t) => runs.find((r) => t >= r.t0 && t <= r.t1) || { room: false, paint: null };
+
 // ---------- one wall, two faces ----------
 //
 // `wallPaint` answers for the wall as one object, and until #823 that was the
@@ -74044,7 +74130,8 @@ function pickPaint(a, b) {
 // either side changes, the wall changes with it. Each stretch says what its
 // left face is painted, what its right face is painted, and what the rest of
 // it is — the top, the ends, a face with no room in front of it — which is
-// `wallPaint`'s old rule asked of that stretch alone.
+// `wallPaint`'s old rule asked of that stretch alone. Since #827 a face can be
+// an accent instead of its room's paint, and a stretch ends where one does.
 //
 //   { t0, t1, left, right, body }
 //
@@ -74090,13 +74177,75 @@ function sideRuns(floor, segs, ox, oz, dx, dz) {
     if (t1 - t0 < 1e-9) continue;
     const m = (t0 + t1) / 2;
     const shape = shapeAt(floor, ox + dx * m, oz + dz * m);
-    out.push({ t0, t1, room: !!shape, paint: shape ? readPaint(shape.paint) : null });
+    out.push({ t0, t1, shape, room: !!shape, paint: shape ? readPaint(shape.paint) : null });
   }
   return out;
 }
 
-const sideAt = (runs, t) => runs.find((r) => t >= r.t0 && t <= r.t1) || { room: false, paint: null };
+// ---------- one room, one wall a different colour ----------
+//
+// #827. A face is the room's paint unless the room has said otherwise about
+// that wall: `ring.accents[i]` (shapes.js) is the colour of the room's own
+// face of segment i, whichever ring the wall on it is stored on. It reaches a run the way a room does, by geometry: a
+// run lies along a segment or it does not, and the part of it that does is
+// the accent's. The room is on its ring's left, so a segment that runs the
+// run's way is on the run's left face and one that runs against it is on the
+// right.
+//
+// How far off the run's line a segment may sit and still be the same wall.
+// walls.js cuts its runs out of these same points, so this is rounding, and
+// it is well under the 0.1ft the probe stands off.
+const ON_RUN = 0.01;   // ft
+
+// Every accented segment on the storey: [{ shape, a, b, paint }].
+function accentSegs(floor) {
+  const out = [];
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings || []) {
+      if (!Array.isArray(ring.accents)) continue;
+      const n = ring.pts.length;
+      for (let i = 0; i < n; i++) {
+        const paint = segAccent(ring, i);
+        if (!paint) continue;
+        out.push({ shape, a: ring.pts[i], b: ring.pts[(i + 1) % n], paint });
+      }
+    }
+  }
+  return out;
+}
+
+// The accents lying along one run, by the face they are on:
+// { left: [{ t0, t1, shape, paint }], right: [...] }.
+function accentsOn(accents, ax, az, dx, dz, len) {
+  const out = { left: [], right: [] };
+  for (const s of accents) {
+    const pa = { x: s.a.x - ax, z: s.a.z - az }, pb = { x: s.b.x - ax, z: s.b.z - az };
+    if (Math.abs(pa.x * dz - pa.z * dx) / len > ON_RUN) continue;
+    if (Math.abs(pb.x * dz - pb.z * dx) / len > ON_RUN) continue;
+    const ta = (pa.x * dx + pa.z * dz) / (len * len);
+    const tb = (pb.x * dx + pb.z * dz) / (len * len);
+    // Clipped to the run, and an end within rounding of the run's own end is
+    // that end: a diagonal's projection comes back as 0.9999999999999999.
+    const clip = (t) => (t < 1e-9 ? 0 : t > 1 - 1e-9 ? 1 : t);
+    const t0 = clip(Math.min(ta, tb)), t1 = clip(Math.max(ta, tb));
+    if (t1 - t0 < 1e-9) continue;
+    (tb > ta ? out.left : out.right).push({ t0, t1, shape: s.shape, paint: s.paint });
+  }
+  return out;
+}
+
+// What one face of a stretch is painted: the accent of the room in front of
+// it if that room has one here, else that room's paint, else nobody's.
+function faceAt(runs, accents, t) {
+  const side = sideAt(runs, t);
+  if (!side.room) return null;
+  const acc = accents.find((a) => a.shape === side.shape && t >= a.t0 && t <= a.t1);
+  return acc ? acc.paint : side.paint || DEFAULT_PAINT;
+}
+
 const sameFace = (a, b) => a.left === b.left && a.right === b.right && a.body === b.body;
+
+const NO_ACCENTS = { left: [], right: [] };
 
 // A reader for one storey. Every room outline on it is gathered once, so a
 // rebuild that asks about a thousand walls walks the rings a thousand times
@@ -74109,6 +74258,7 @@ function facePainter(floor, probe = FACE_PROBE) {
       for (let i = 0; i < n; i++) segs.push([ring.pts[i], ring.pts[(i + 1) % n]]);
     }
   }
+  const accents = accentSegs(floor);
   return (ax, az, bx, bz) => {
     const dx = bx - ax, dz = bz - az;
     const len = Math.hypot(dx, dz);
@@ -74116,8 +74266,11 @@ function facePainter(floor, probe = FACE_PROBE) {
     const nx = (-dz / len) * probe, nz = (dx / len) * probe;
     const left = sideRuns(floor, segs, ax + nx, az + nz, dx, dz);
     const right = sideRuns(floor, segs, ax - nx, az - nz, dx, dz);
-    const cuts = [...new Set([...left, ...right].flatMap((r) => [r.t0, r.t1]))]
-      .sort((a, b) => a - b);
+    // An accent ends where its segment does, which is a corner of the room
+    // and need not be a place the probe line crosses anything.
+    const acc = accents.length ? accentsOn(accents, ax, az, dx, dz, len) : NO_ACCENTS;
+    const cuts = [...new Set([...left, ...right, ...acc.left, ...acc.right]
+      .flatMap((r) => [r.t0, r.t1]))].sort((a, b) => a - b);
     let runs = [];
     for (let i = 0; i + 1 < cuts.length; i++) {
       const t0 = cuts[i], t1 = cuts[i + 1];
@@ -74125,8 +74278,9 @@ function facePainter(floor, probe = FACE_PROBE) {
       const l = sideAt(left, (t0 + t1) / 2), r = sideAt(right, (t0 + t1) / 2);
       runs.push({
         t0, t1,
-        left: l.room ? l.paint || DEFAULT_PAINT : null,
-        right: r.room ? r.paint || DEFAULT_PAINT : null,
+        left: faceAt(left, acc.left, (t0 + t1) / 2),
+        right: faceAt(right, acc.right, (t0 + t1) / 2),
+        // The top and the ends are the rooms' own paint: an accent is a face.
         body: pickPaint(l.paint, r.paint),
       });
     }
