@@ -11,10 +11,12 @@ import { createState, duplicateFloor } from '../js/grid.js';
 import { sheet } from './build.mjs';
 import {
   addShape, cloneShape, orientRing, insertVertex, deleteVertex, setSegWall,
-  curveSegment, straightenRun, segAccent, setSegAccent, SEG_NONE, SEG_WALL,
+  curveSegment, straightenRun, segAccent, setSegAccent, accentSpans, spanOverlap,
+  SEG_NONE, SEG_WALL,
 } from '../js/shapes.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { DEFAULT_PAINT, wallFaceRuns, wallPaint } from '../js/finish.js';
+import { paintCells, reapplyAccents } from '../js/paint.js';
 
 const GREEN = '#00aa00', GOLD = '#ccaa00';
 
@@ -353,4 +355,141 @@ test('a plain room is off-white beside an accent, not the accent', () => {
   assert.deepEqual(runs.map((r) => r.right), ['#aa0000', '#0000aa']);
   setSegAccent(hall, 0, segBetween(hall, 4, 12, 28, 12), null);
   assert.deepEqual(wallFaceRuns(f, 4, 12, 28, 12).map((r) => r.left), [DEFAULT_PAINT, DEFAULT_PAINT]);
+});
+
+// ---------- the brush's re-bake (#846) ----------
+//
+// A stroke of the floor brush redraws every room on the storey that sits on
+// the lattice: new rings, new segment numbers. The fixture's cells are 4ft, so
+// A is cells x 1..3, B is x 4..6 (both y 1..2) and the hall is x 1..6, y 3..4.
+
+const allPlaces = (s) => Object.fromEntries(
+  s.floors[0].shapes.map((sh) => [sh.name, sh.rings.flatMap((r) => accentPlaces(r))]));
+
+test('an accent is found again by its line and its direction, not its number', () => {
+  const { shape } = roomWithASplitWall();
+  setSegAccent(shape, 0, segBetween(shape, 16, 4, 28, 4), GREEN);
+  const spans = accentSpans(shape);
+  assert.equal(spans.length, 1);
+  const [span] = spans;
+  assert.equal(span.paint, GREEN);
+  // The ring was turned to run CCW, so read the span's own direction.
+  const a = { x: span.ax, z: span.az }, b = { x: span.bx, z: span.bz };
+  assert.deepEqual([a.x, b.x].sort((p, q) => p - q), [16, 28]);
+  const at = (x) => ({ x, z: 4 });
+  const dir = Math.sign(b.x - a.x);
+  const lo = dir > 0 ? 16 : 28;           // the end the span starts from
+  assert.equal(spanOverlap(span, a, b), 12, 'itself');
+  assert.equal(spanOverlap(span, b, a), 0, 'the far face runs the other way');
+  assert.equal(spanOverlap(span, at(lo - dir * 6), at(lo + dir * 5)), 5, 'a segment half off its end');
+  assert.equal(spanOverlap(span, at(lo + dir * 2), at(lo + dir * 5)), 3, 'a segment inside it');
+  assert.equal(spanOverlap(span, at(lo - dir * 12), at(lo)), 0, 'the next wall along the same line');
+  assert.equal(spanOverlap(span, { x: a.x, z: 8 }, { x: b.x, z: 8 }), 0, 'a parallel wall');
+  assert.equal(spanOverlap(span, a, { x: a.x, z: 12 }), 0, 'a wall round the corner');
+  assert.deepEqual(accentSpans(null), []);
+  assert.deepEqual(accentSpans({ rings: [{ pts: shape.rings[0].pts }] }), []);
+});
+
+test('a brush stroke somewhere else leaves every accent on the wall it was on', () => {
+  const s = twoRoomsAndAHall(), A = named(s, 'A'), B = named(s, 'B');
+  setSegAccent(A, 0, segBetween(A, 4, 4, 16, 4), GREEN);
+  // B's face of the partition, which is on A's ring: B's own segment is empty.
+  const shared = segBetween(B, 16, 4, 16, 12);
+  assert.equal(B.rings[0].walls[shared], SEG_NONE);
+  setSegAccent(B, 0, shared, GOLD);
+  // A second colour on A, so "the room's accent" is not one answer.
+  setSegAccent(A, 0, segBetween(A, 4, 4, 4, 12), '#112233');
+  const before = allPlaces(s);
+  assert.deepEqual(before, {
+    A: [`16,4>4,4:${GREEN}`, '4,12>4,4:#112233'], B: [`16,12>16,4:${GOLD}`], Hall: [],
+  });
+  const out = paintCells(s, 0, [{ x: 12, y: 12 }], true);
+  assert.equal(out.changed, 1);
+  assert.notEqual(named(s, 'A'), A, 'the brush did redraw the room');
+  const after = allPlaces(s);
+  delete after.undefined;
+  assert.deepEqual({ A: after.A, B: after.B, Hall: after.Hall }, before);
+  // And the face is painted: the north wall of A, read toward +x, has A on
+  // its left.
+  assert.equal(wallFaceRuns(s.floors[0], 4, 4, 16, 4)[0].left, GREEN);
+  assert.equal('accents' in named(s, 'Hall').rings[0], false, 'no key on a ring with no accent');
+});
+
+test('a notch erased out of an accent wall keeps the accent on what is left of its line', () => {
+  const s = twoRoomsAndAHall();
+  setSegAccent(named(s, 'A'), 0, segBetween(named(s, 'A'), 4, 4, 16, 4), GREEN);
+  // The north-west cell of A goes: the north wall is x 8..16 now, and the
+  // notch's two new walls (x 4..8 at z 8, z 4..8 at x 8) were never accented.
+  assert.equal(paintCells(s, 0, [{ x: 1, y: 1 }], false).changed, 1);
+  assert.deepEqual(allPlaces(s).A, [`16,4>8,4:${GREEN}`]);
+});
+
+test('an accent wall erased whole takes its accent with it', () => {
+  const s = twoRoomsAndAHall();
+  setSegAccent(named(s, 'A'), 0, segBetween(named(s, 'A'), 4, 4, 16, 4), GREEN);
+  paintCells(s, 0, [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }], false);
+  // The room's north wall is at z 8 now: parallel to the old one, not on it.
+  const A = named(s, 'A');
+  segBetween(A, 4, 8, 16, 8);
+  assert.equal('accents' in A.rings[0], false);
+});
+
+test('a room the brush cuts in two keeps the accent on both halves', () => {
+  const s = twoRoomsAndAHall(), hall = named(s, 'Hall');
+  setSegAccent(hall, 0, segBetween(hall, 4, 20, 28, 20), GOLD);
+  paintCells(s, 0, [{ x: 3, y: 3 }, { x: 3, y: 4 }], false);
+  const halves = s.floors[0].shapes.filter((sh) => sh.name === 'Hall');
+  assert.equal(halves.length, 2);
+  assert.deepEqual(halves.flatMap((sh) => accentPlaces(sh.rings[0])).sort(),
+    [`12,20>4,20:${GOLD}`, `16,20>28,20:${GOLD}`]);
+});
+
+test('a wall the brush makes longer keeps its accent, and one mostly new does not take it', () => {
+  // One room, cells x 1..2, y 1..2 (x 4..12 ft), north wall accented.
+  const grow = (cellsX) => {
+    const s = createState(20, 20);
+    sheet(s, 0).box(1, 1, 2, 2, { name: 'R' }).bake();
+    const R = named(s, 'R');
+    // Open the east side so painted cells join R instead of starting a room,
+    // and the north side because the brush lays floor without walls and the
+    // trace ends a segment where the wall does: only an open edge gets longer.
+    setSegWall(R, 0, segBetween(R, 12, 4, 12, 12), SEG_NONE);
+    setSegWall(R, 0, segBetween(R, 4, 4, 12, 4), SEG_NONE);
+    setSegAccent(R, 0, segBetween(R, 4, 4, 12, 4), GREEN);
+    const cells = [];
+    for (const x of cellsX) cells.push({ x, y: 1 }, { x, y: 2 });
+    paintCells(s, 0, cells, true);
+    assert.equal(s.floors[0].shapes.length, 1);
+    return accentPlaces(named(s, 'R').rings[0]);
+  };
+  // 8ft of accent on a 12ft wall, then on a 16ft one: at least half, kept.
+  assert.deepEqual(grow([3]), [`16,4>4,4:${GREEN}`]);
+  assert.deepEqual(grow([3, 4]), [`20,4>4,4:${GREEN}`]);
+  // 8ft of a 20ft wall is not that wall's colour.
+  assert.deepEqual(grow([3, 4, 5]), []);
+});
+
+test('two accents the redraw merges into one wall leave the colour that covered half of it', () => {
+  const build = (cut) => {
+    const s = createState(20, 20);
+    sheet(s, 0).box(1, 1, 6, 2, { name: 'R' }).bake();
+    const R = named(s, 'R');
+    // A corner on the north wall (x 4..28) at `cut`, and a colour either side.
+    assert.notEqual(insertVertex(R, 0, segBetween(R, 4, 4, 28, 4), cut, 4), -1);
+    setSegAccent(R, 0, segBetween(R, 4, 4, cut, 4), GOLD);
+    setSegAccent(R, 0, segBetween(R, cut, 4, 28, 4), GREEN);
+    paintCells(s, 0, [{ x: 12, y: 12 }], true);
+    return accentPlaces(named(s, 'R').rings[0]);
+  };
+  // The lattice has no corner in a straight wall, so the trace gives one 24ft
+  // segment back. 16ft of green is the wall's colour; 8ft of gold is not.
+  assert.deepEqual(build(12), [`28,4>4,4:${GREEN}`]);
+  assert.deepEqual(build(20), [`28,4>4,4:${GOLD}`]);
+  // reapplyAccents says how many faces it painted.
+  const s = createState(20, 20);
+  sheet(s, 0).box(1, 1, 6, 2, { name: 'R' }).bake();
+  const R = named(s, 'R');
+  assert.equal(reapplyAccents(R, [{ ax: 28, az: 4, bx: 4, bz: 4, paint: GREEN },
+    { ax: 4, az: 4, bx: 28, bz: 4, paint: GREEN }]), 1, 'one of the two runs the ring\'s way');
+  assert.equal(reapplyAccents(R, []), 0);
 });
