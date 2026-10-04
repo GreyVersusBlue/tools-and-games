@@ -287,6 +287,42 @@ export function setSegAccent(shape, ringIdx, seg, paint) {
   return true;
 }
 
+// An accent by where it is rather than by its segment number, which is all
+// that is left of it once a ring is redrawn (the brush's re-bake in paint.js,
+// #846) or two designs are compared (designdiff.js, #856). The stretch runs
+// the way its segment ran, so the room is on its left.
+// [{ ax, az, bx, bz, paint }]
+export function accentSpans(shape) {
+  const out = [];
+  for (const ring of (shape && shape.rings) || []) {
+    if (!Array.isArray(ring.accents) || !Array.isArray(ring.pts)) continue;
+    for (let i = 0; i < ring.pts.length; i++) {
+      const paint = segAccent(ring, i);
+      if (!paint) continue;
+      const [a, b] = segEnds(ring, i);
+      if (segLength(a, b) < 1e-6) continue;
+      out.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, paint });
+    }
+  }
+  return out;
+}
+
+// How many feet of the segment a→b lie on a span: 0 unless the two are on one
+// line and run the same way. A segment on the same line running the other way
+// has its room on the other side, so it is the wall's far face and not this
+// accent's.
+export function spanOverlap(span, a, b, tol = 1e-3) {
+  const len = segLength(a, b);
+  if (len < 1e-6) return 0;
+  const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+  const off = (x, z) => Math.abs((x - a.x) * uz - (z - a.z) * ux);
+  if (off(span.ax, span.az) > tol || off(span.bx, span.bz) > tol) return 0;
+  const t0 = (span.ax - a.x) * ux + (span.az - a.z) * uz;
+  const t1 = (span.bx - a.x) * ux + (span.bz - a.z) * uz;
+  if (t1 <= t0) return 0;
+  return Math.max(0, Math.min(len, t1) - Math.max(0, t0));
+}
+
 // Which face a click means (#832): the room the point is in, and the segment
 // of that room's own rings nearest to it. Not `nearestSegment`, which answers
 // across every room on the storey: two rooms that share a wall each have a

@@ -228,6 +228,28 @@ export function ringCovers(floor, a, b, tol = ON_LINE_TOL) {
   return out;
 }
 
+// Whether a built wall stands anywhere along one ring segment: the ring's
+// own, a neighbour's on the same line (a shared wall is kept on one ring and
+// is `SEG_NONE` on the other), or a free-standing one. An accent (#827) is a
+// face of a wall, so this is whether there is anything for one to paint, and
+// the tolerance is the painter's (finish.js's `ON_RUN`), not the wall tool's:
+// a wall most of a foot off the line is not the wall this face is a face of.
+export const ON_FACE_TOL = 0.01;         // ft
+export function wallAlongSeg(floor, shape, ringIdx, seg, tol = ON_FACE_TOL) {
+  const ring = shape && shape.rings && shape.rings[ringIdx];
+  if (!ring || !Number.isInteger(seg) || seg < 0 || seg >= ring.pts.length) return false;
+  if (isBuilt(ring.walls[seg])) return true;
+  const [a, b] = segEnds(ring, seg);
+  const u = unitDir(a, b);
+  if (!u) return false;
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  if (ringCovers(floor, a, b, tol).some((c) => isBuilt(c.shape.rings[c.ring].walls[c.seg]))) return true;
+  return wallLinesOf(floor).some((line) => {
+    const [p, q] = lineEnds(line);
+    return !!coverOf(a, u, len, p, q, tol);
+  });
+}
+
 // The stretches of [0, len] that nothing covers. `spans` and the answer are
 // both [start, end] pairs measured from the start of the run.
 export function gapsOf(spans, len, min = MIN_RUN) {

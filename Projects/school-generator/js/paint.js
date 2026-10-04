@@ -58,6 +58,7 @@ import { gridOrigin } from './gridref.js';
 import {
   shapesOf, shapeBBox, pointInShape, segEnds, segLength, isBuilt, projectOnSeg,
   orientRing, takeId, writeOpening, openingSpec, isDoorOpening,
+  accentSpans, spanOverlap, setSegAccent,
   SEG_WALL, SEG_GLASS, SEG_RAIL, MAX_SHAPES, MAX_RING_PTS, LEAF_NONE,
 } from './shapes.js';
 
@@ -365,6 +366,33 @@ export function reapplyOpenings(shape, points, snap = OPENING_SNAP) {
   return { placed, lost };
 }
 
+// ---------- putting the accent walls back ----------
+
+// #846. An accent is the colour of a room's own face of one segment
+// (shapes.js), and a redrawn ring has new segments, so it goes back by where
+// it was, as a doorway does. A new segment takes the accent that lay along at
+// least half of it: a wall the stroke made a cell longer is still the accent
+// wall, a wall the stroke notched keeps it either side of the notch, and a
+// long wall does not turn the colour of a short one it swallowed. Half exactly
+// counts, so a wall doubled in one stroke keeps its colour.
+export function reapplyAccents(shape, spans) {
+  let placed = 0;
+  shape.rings.forEach((ring, ri) => {
+    for (let i = 0; i < ring.pts.length; i++) {
+      const [a, b] = segEnds(ring, i);
+      const len = segLength(a, b);
+      if (len < EPS) continue;
+      let best = null, most = 0;
+      for (const span of spans) {
+        const on = spanOverlap(span, a, b);
+        if (on > most) { most = on; best = span; }
+      }
+      if (best && most >= len / 2 - EPS && setSegAccent(shape, ri, i, best.paint)) placed++;
+    }
+  });
+  return placed;
+}
+
 // ---------- the brush ----------
 
 // A fresh record for a region the brush created out of nothing.
@@ -506,6 +534,15 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
     const points = openingPoints(record);
     if (!points.length) return;
     for (const shape of built.get(ri)) reapplyOpenings(shape, points);
+  });
+
+  // And the accent walls (#846), the same way: a room cut in two keeps the
+  // accent on whichever half the wall is now, or on both.
+  rooms.forEach((record, ri) => {
+    if (made.has(ri) || !built.has(ri)) return;
+    const spans = accentSpans(record);
+    if (!spans.length) return;
+    for (const shape of built.get(ri)) reapplyAccents(shape, spans);
   });
 
   // Rebuild the storey's room list in the order it was in, so a room drawn on
