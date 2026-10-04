@@ -267,6 +267,14 @@ const flags = (v) => v.provisional.map((p) => p.code);
 ok(flags(price({ excellencies: ["Deadeye"] })).includes("excellency-unlock"), "every Excellency must be unlocked in-game");
 ok(flags(price({ excellencies: ["Deadeye"] })).includes("hidden-approval"), "a hidden Excellency by name needs Staff approval");
 ok(!flags(price({ excellencies: ["Something Devon Invented"] })).includes("hidden-approval"), "a name the hidden table does not carry is not flagged as hidden");
+ok(!flags(price({ excellencies: ["Ballista"] })).includes("hidden-approval") && flags(price({ excellencies: ["Ballista"] })).includes("excellency-unlock"), "a chapter Excellency must be unlocked in-game and needs no Staff approval");
+// A save from when the name was typed (#306): any case, priced under the
+// book's spelling, and a name on no list priced as it was.
+const oldSave = price({ excellencies: ["deadeye", "tempest", "Something Devon Invented"] });
+ok(oldSave.purchases.filter((p) => p.step === 5).map((p) => `${p.name}:${p.cp}`).join(",") === "Deadeye:5,Tempest:6,Something Devon Invented:7", `typed names price under the book's spelling, and an unlisted one still prices (${oldSave.purchases.filter((p) => p.step === 5).map((p) => `${p.name}:${p.cp}`).join(",")})`);
+ok(oldSave.provisional.some((p) => p.code === "hidden-approval" && p.name === "Deadeye") && oldSave.provisional.filter((p) => p.code === "hidden-approval").length === 1, "and a hidden one typed in lower case is still flagged, under the name the purchase carries");
+const twice = price({ excellencies: ["Deadeye", "deadeye"] });
+ok(twice.problems.some((p) => p.code === "duplicate-selection" && p.step === 5) && twice.cp.spent === 5, `the same Excellency twice is a problem and is charged once (${twice.cp.spent})`);
 ok(flags(price({ expressions: ["performer"] })).includes("expression-unlock"), "every Expression must be unlocked in-game");
 const thirdFlag = price({ expressions: ["performer", "oracle", "savant"], excellencies: ["One", "Two"] }).provisional.find((p) => p.code === "third-expression");
 ok(thirdFlag?.email === "NuminaRules@gmail.com", `a third Expression carries the address to email (${thirdFlag?.email})`);
@@ -325,7 +333,18 @@ ok(steps[2].skills.length === 6 && steps[2].skills.every((s) => s.group === "Pla
 ok(offered({ ...base, foundation: "stargazer" }, catalog)[2].skills.every((s) => s.group === "Specialty Skills"), "a Specialty Foundation offers Specialty skills");
 ok(offered({ ...base, foundation: null }, catalog)[2].skills.length === 0, "no Foundation offers no Foundation skills");
 ok(steps[3].skills.length === 5, `step 3 offers the five purchasable Culture skills, not the Included one (${steps[3].skills.length})`);
-ok(steps[5].choices === null, "step 5 offers no list of Excellencies, because the book publishes none");
+// Step 5 (#839): the chapter's 30 and the hidden table's 18, under names with
+// the heading's brackets taken off, and the same list whatever the Domain.
+const five = steps[5].choices;
+ok(five.filter((x) => !x.hidden).length === 30 && five.filter((x) => x.hidden).length === 18, `step 5 offers the chapter's 30 Excellencies and the hidden table's 18 (${five.filter((x) => !x.hidden).length}, ${five.filter((x) => x.hidden).length})`);
+ok(new Set(five.map((x) => x.name.toLowerCase())).size === 48, "no two of them share a name, so a name finds one Excellency");
+ok(five.every((x) => x.hidden || (!/[()]/.test(x.name) && catalog.skillsOfGroup("Excellency", x.group).length > 0)), "a chapter Excellency's name carries no bracket, and its group still finds its skills");
+ok(five.find((x) => x.id === "alchemist")?.domains.join("/") === "Water/Fire" && five.find((x) => x.id === "arcaneer")?.domains.length === 6, "each carries the alignment the extractor read: Alchemist Water / Fire, Arcaneer all six");
+const fiveFor = (domain) => offered({ ...base, domain }, catalog)[5].choices.map((x) => x.id).join(",");
+ok(base.domain === "air" && five.some((x) => !x.domains.includes("Air")) && fiveFor("air") === fiveFor("water") && fiveFor("air") === fiveFor(null), "the Domain filters nothing: an Air character is offered Excellencies not aligned to Air");
+ok(steps[5].max === EXCELLENCY_MAX && steps[5].unlisted.length === 0, "step 5 reports the cap, and no unlisted name for a build that has none");
+const kept = offered({ ...base, excellencies: ["Homebrew", "deadeye", " homebrew ", "Homebrew"] }, catalog)[5].unlisted;
+ok(kept.length === 2 && kept[0] === "Homebrew" && kept[1] === "homebrew", `a name on neither list is offered back, once per spelling, and a listed one in any case is not (${JSON.stringify(kept)})`);
 ok(steps[6].choices.length === 15, `step 6 offers 15 Expressions (${steps[6].choices.length})`);
 // Step 7 is the Domain's eight, the owned Expressions' three each, and the 25
 // Open skills.

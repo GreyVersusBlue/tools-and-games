@@ -6,7 +6,7 @@
 // The form is the state. A build is read back out of the form's controls on
 // every input event, priced, and the result written to the page; a step's
 // body is re-rendered only when what it offers has changed, so a box is never
-// rebuilt under the pointer and a typed Excellency name keeps its focus.
+// rebuilt under the pointer.
 //
 // Load order: a build in the URL fragment wins over the saved one, because a
 // pasted link is a deliberate act and the save is a habit. The fragment is
@@ -35,8 +35,6 @@ function readBuild(form, catalog) {
       if (el.checked) raw[el.name] = el.value || null;
     } else if (el.type === "checkbox") {
       if (el.checked) push(el.name, el.value);
-    } else if (el.type === "text") {
-      push(el.name, el.value);
     }
   }
   return repair(raw, catalog);

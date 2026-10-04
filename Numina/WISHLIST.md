@@ -3,7 +3,7 @@
 **Status: Phase 8 shipped on 2026-09-12, and with it every phase in both arcs.
 There is no open phase left in this file — what is still wanted is the five
 items under "What this leaves for a later arc" at the foot, none of which is
-specified yet.** The site is built, deployed and green — 57 pages, 439
+specified yet.** The site is built, deployed and green — 57 pages, 466
 assertions in `npm test` and 78 more in `test/a11y/`'s browser suite (which is
 five files now, and one of them needs no browser), CI on every PR touching
 `Numina/**` and on every push to `main`, in two jobs — and the
@@ -255,11 +255,37 @@ its files, not repeated here; add to this list rather than starting a second.
   - **p58, `Empower Fire` and `Enhance Fire`** print `N/A` in the Verbal
     column where the other five Domains' Empower and Enhance rows print
     `Thread Skill`, so they alone carry `thread: false` in `skills.json`.
-- **The character builder still takes an Excellency as a typed name.** The
-  chapter it would pick from exists now (Phase 6), but offering the list means
-  pricing the skills inside a chosen Excellency, and `build-rules.js` does not
-  implement that. The comments in `build-rules.js` and `build-view.js` say so.
-  Wiring it up is a builder phase, not a content one.
+- **The character builder does not price the skills inside a chosen
+  Excellency.** Step 5 is a pick list since 2026-10-04 (#839, #840): the
+  chapter's 30 and the hidden table's 18, the same 48 whatever the Domain,
+  because the chapter says "You may take any Excellency regardless of your
+  chosen Domain". A build still holds its Excellencies by name, so a save or
+  a link from when the name was typed loads, and a name on neither list keeps
+  a box of its own. The Excellency itself is priced as before, 5, 6, 7. What
+  is left, and the step says so on the page:
+  - `offered()[7].skills` and `step7()` list nothing for a chosen Excellency.
+    The data is there: each record in `catalog.excellencies` carries `group`,
+    the heading its skills are filed under, and
+    `catalog.skillsOfGroup("Excellency", group)` returns them. 239 skills in
+    30 tables, 209 with a CP number and 30 `Included`, one per table. No
+    `See Description` cost among them.
+  - The `Included` row is granted with the Excellency, the way step 6 grants
+    an Expression's. It is the first row in 29 tables and the fourth in one;
+    read `cost.kind`, not the position.
+  - A build has no field for them. It needs a new list, a fragment key in
+    `build-state.js`'s `FRAGMENT_KEYS`, and `repair` to clean it. The storage
+    key does not change (#36).
+  - `priceBuild` needs the group check `expression-skill-group` already makes
+    for Expressions: a skill from an Excellency the build does not hold is a
+    problem.
+  - Read p60 to p75 for any rule on order or prerequisites inside a table
+    before pricing. One row states one in its own description (Combatant's
+    `Armored for War`, "a prerequisite of medium armor"); whether the builder
+    checks that or only prints it is the call the increment has to make.
+  - The 18 hidden Excellencies have no table in the book, so nothing inside
+    them can be listed or priced. That stays true after the increment.
+  - No suite covers `builder.js`. The page was driven in Chromium by hand for
+    #839, which is how the 509 px overflow from one hidden name was found.
 - **`notable-figures.md` names `Reach Lord Sarah Jackson` "of Hadley's Cove"
   and links the Principalities of the Reach, and that page names neither her
   nor Hadley's Cove.** Nor does any other page, either PDF or

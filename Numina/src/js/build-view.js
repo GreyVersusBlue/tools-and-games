@@ -11,7 +11,7 @@
 // What is listed is exactly what build-rules.js's offered() returns for the
 // build so far — the picker renders rules, it does not restate them. The one
 // thing added on top is the wording around the lists, which quotes the chapter.
-import { EXCELLENCY_MAX, EXPRESSION_MAX, PER_ASPECT_SKILL, offered } from "./build-rules.js";
+import { EXPRESSION_MAX, PER_ASPECT_SKILL, offered } from "./build-rules.js";
 
 export const STEP_TITLES = {
   1: "Choose 1 or 2 Aspects",
@@ -89,12 +89,12 @@ function skillList(skills, field, chosen, links, heading, cap = null) {
   );
 }
 
-function choiceItem(field, type, value, checked, label, detail, href = null) {
+function choiceItem(field, type, value, checked, label, detail, href = null, linkLabel = label) {
   return (
     `<li class="builder__choice"><label class="builder__pick"><input type="${type}" name="${field}" value="${esc(value)}"${checked ? " checked" : ""}> ` +
     `<span class="builder__name">${esc(label)}</span></label>` +
     (detail ? `<span class="builder__desc">${prose(detail)}</span>` : "") +
-    ruleLink(href, label) +
+    ruleLink(href, linkLabel) +
     `</li>`
   );
 }
@@ -170,19 +170,36 @@ function step4(build, catalog, offer, links) {
   return html;
 }
 
-// A name is typed rather than picked (#306). The Excellencies chapter stopped
-// being a stub in Phase 6, so a list exists now; what does not exist yet is the
-// pricing for the skills inside a chosen Excellency, and a picker that offers
-// the 30 without them would read as a promise the verdict cannot keep. Three
-// fields, blank ones ignored, and the hidden table is where a typed name gets
-// its Staff-approval flag.
-function step5(build) {
-  let html = `<ol class="builder__typed">`;
-  for (let i = 0; i < EXCELLENCY_MAX; i++) {
-    const value = build.excellencies[i] ?? "";
-    html += `<li><label class="builder__pick"><span class="builder__name">Excellency ${i + 1}</span> <input type="text" name="excellencies" data-index="${i}" value="${esc(value)}" autocomplete="off" spellcheck="false"></label></li>`;
+// The chapter's Excellencies, then the hidden table's, each a box whose value
+// is the Excellency's name, which is what a build has always held (#306, #839).
+// The alignment is shown and filters nothing: "You may take any Excellency
+// regardless of your chosen Domain". A name the build holds that is on neither
+// list was typed before there was a list; it gets a box of its own so the form
+// still carries it. The skills inside an Excellency are not offered in step 7
+// yet, and the step says so. A hidden Excellency's link is labelled for the
+// table it lands on, not for itself: the link does not wrap, and one hidden
+// name is a sentence 125 characters long, which put the page 509 px wider than
+// a phone.
+const sameName = (a, b) => String(a).trim().toLowerCase() === b.toLowerCase();
+function alignment(x, catalog) {
+  if (!x.domains.length) return "";
+  return x.domains.length === catalog.domains.size ? "Universal" : `Aligned to ${x.domains.join(" / ")}`;
+}
+function step5(build, catalog, offer, links) {
+  const item = (x) => {
+    const detail = [alignment(x, catalog), x.hidden ? `Primary skill: ${x.primarySkill}` : ""].filter(Boolean).join(". ");
+    return choiceItem("excellencies", "checkbox", x.name, build.excellencies.some((n) => sameName(n, x.name)), x.name, detail, pageHref(links, x.source), x.hidden ? "the hidden table" : x.name);
+  };
+  let html = `<ul class="builder__choices">${offer.choices.filter((x) => !x.hidden).map(item).join("")}</ul>`;
+  html += `<h3 class="builder__group">Hidden Excellencies <span class="builder__cap">require Staff approval</span></h3>`;
+  html += `<ul class="builder__choices">${offer.choices.filter((x) => x.hidden).map(item).join("")}</ul>`;
+  if (offer.unlisted.length) {
+    html += `<h3 class="builder__group">Typed into an earlier version of this page</h3><ul class="builder__choices" data-unlisted>`;
+    html += offer.unlisted.map((name) => choiceItem("excellencies", "checkbox", name, true, name, "Not on the rulebook's list or its hidden table. Priced as an Excellency all the same.", "")).join("");
+    html += `</ul>`;
   }
-  html += `</ol>`;
+  html += `<p class="builder__cap">up to ${offer.max}, whatever your Domain</p>`;
+  html += `<p class="builder__hint">The skills inside an Excellency are not listed or priced here yet. The total covers the Excellency itself, not what you buy from its table.</p>`;
   return html;
 }
 
@@ -238,8 +255,10 @@ function attributeStep(build, catalog, offer) {
 }
 
 // The signature of what a step offers. builder.js re-renders a step only when
-// this changes, so ticking a box never rebuilds the box under the pointer, and
-// a typed Excellency name keeps its focus.
+// this changes, so ticking a box never rebuilds the box under the pointer.
+// Step 5's does not move with the names it was handed from an old save: one of
+// those unticked stays on the page until the next load, so it can be ticked
+// back.
 export function stepSignature(step, build, catalog) {
   const offer = offered(build, catalog)[step];
   const ids = [...(offer.choices ?? []).map((c) => c.id), ...(offer.skills ?? []).map((s) => s.id)];
@@ -263,7 +282,7 @@ export function renderStep(step, build, catalog, links) {
     case 4:
       return step4(build, catalog, offer, links);
     case 5:
-      return step5(build);
+      return step5(build, catalog, offer, links);
     case 6:
       return step6(build, catalog, offer, links);
     case 7:
@@ -374,7 +393,7 @@ export function attributeCostLabel(attribute) {
 
 function cardRow(entry, catalog, verdict) {
   // An Excellency (step 5) or an Expression (step 6) is a purchase with no
-  // skill record behind it: the name is typed or is the Expression's own.
+  // skill record behind it: the name is the Excellency's or the Expression's.
   const skill = entry.id ? catalog.byId.get(entry.id) ?? null : null;
   const from = skill ? (FROM_LABEL[skill.groupKind] ?? (() => skill.group))(skill) : entry.step === 6 ? "Expression" : "Excellency";
   const cost = entry.cp === null ? "unpriced" : entry.cp === 0 ? "Included" : String(entry.cp);

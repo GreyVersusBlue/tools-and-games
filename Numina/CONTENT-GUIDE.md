@@ -418,8 +418,9 @@ by hand after touching it.
   writes (`name="aspectSkills" value="<skill id>"`, `name="attr:prowess"`),
   and a build is read back out of the form on every input. A step's body is
   re-rendered only when `stepSignature()` changes — what it offers, not what
-  is ticked — so a box is never rebuilt under the pointer and a typed
-  Excellency keeps its focus.
+  is ticked — so a box is never rebuilt under the pointer. An Excellency's box
+  carries its name as its value, because a build has held Excellencies by
+  name since they were typed.
 - **The data is inlined.** The page carries `skills.json` and one anchor URL
   per skill id as two `<script type="application/json">` islands, written by
   the `jsonIsland` and `skillLinks` filters in `eleventy.config.mjs`. The

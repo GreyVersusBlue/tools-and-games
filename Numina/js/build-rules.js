@@ -104,6 +104,21 @@ export function buildCatalog(data) {
       .map((t) => ({ id: slug(t.group), name: t.group, source: t.source }));
   const skillsOfGroup = (kind, group) => data.skills.filter((s) => s.groupKind === kind && s.group === group);
 
+  // Step 5's list: the chapter's Excellencies in the chapter's order, then the
+  // hidden table's. A chapter heading carries its alignment in brackets
+  // ("Alchemist (Water / Fire)"); the name is the heading without them, and
+  // `domains` is what tools/extract-skills.mjs already read out of it. `group`
+  // is the heading as printed, which is what the Excellency's skills are filed
+  // under. A hidden Excellency has no table, so it has no `group`.
+  const excellencies = new Map();
+  for (const t of data.tables.filter((t) => t.groupKind === "Excellency")) {
+    const name = t.group.replace(/\s*\([^)]*\)\s*$/, "");
+    excellencies.set(slug(name), { domains: t.domains, group: t.group, hidden: false, id: slug(name), name, source: t.source });
+  }
+  for (const h of data.hidden.filter((h) => h.kind === "Excellency")) {
+    excellencies.set(h.id, { domains: h.elements, group: null, hidden: true, id: h.id, name: h.name, primarySkill: h.primarySkill, source: h.source });
+  }
+
   return {
     aspects: new Map(data.aspects.map((a) => [a.id, a])),
     aspectSkills: data.skills.filter((s) => s.groupKind === "Aspect"),
@@ -113,12 +128,10 @@ export function buildCatalog(data) {
     cultures: new Map(data.cultures.map((c) => [c.id, c])),
     cultureSkills: data.skills.filter((s) => s.groupKind === "Culture"),
     domains: new Map(groupsOfKind("Domain").map((g) => [g.id, g])),
+    excellencies,
+    excellencyByName: new Map([...excellencies.values()].map((x) => [x.name.toLowerCase(), x])),
     expressions: new Map(groupsOfKind("Expression").map((g) => [g.id, g])),
     foundations: new Map(data.foundations.map((f) => [f.id, f])),
-    // Hidden Excellencies and Expressions, by lowercased name: an Excellency
-    // typed in by name is matched against these so the verdict can say it
-    // needs Staff approval.
-    hiddenByName: new Map(data.hidden.map((h) => [h.name.toLowerCase(), h])),
     openSkills: data.skills.filter((s) => s.groupKind === "Open"),
     skillsOfGroup,
   };
@@ -332,14 +345,20 @@ export function priceBuild(input, catalog) {
   charge(v, domainSkills.filter(isPurchase), 7);
 
   // --- Steps 5 and 6: Excellencies and Expressions -------------------------
-  // An Excellency is still a name the player types, priced by its tier and
-  // checked against the hidden table. The chapter it would be picked from is no
-  // longer a stub — Phase 6 ported all 30 Excellencies and their 239 skills out
-  // of the PDF — but wiring the list into this module means pricing the skills
-  // inside a chosen Excellency, and the rulebook's rules for that are not the
-  // ones this function already implements. Left as a free-text name until that
-  // is designed; see BACKLOG.md.
-  const excellencies = list(build.excellencies).map((name) => String(name).trim()).filter(Boolean);
+  // A build holds its Excellencies by name, which is what step 5 wrote when a
+  // name was typed (#306) and what the pick list writes now (#839). A name on
+  // the chapter's list or the hidden table is matched without regard to case
+  // and priced under the book's spelling; a name on neither is a save from
+  // before the list and is priced as it always was, by its tier. The same
+  // Excellency twice is one Excellency. What is still not priced is the skills
+  // inside a chosen Excellency: see WISHLIST.md.
+  const excellencies = [];
+  for (const typed of list(build.excellencies).map((name) => String(name).trim()).filter(Boolean)) {
+    const record = catalog.excellencyByName.get(typed.toLowerCase()) ?? null;
+    const name = record ? record.name : typed;
+    if (excellencies.some((x) => x.name.toLowerCase() === name.toLowerCase())) v.problem("duplicate-selection", 5, `${name} is chosen twice`);
+    else excellencies.push({ name, record });
+  }
   const expressionIds = list(build.expressions);
   const expressions = [];
   for (const id of expressionIds) {
@@ -366,12 +385,11 @@ export function priceBuild(input, catalog) {
 
   v.spent += tierTotal(excellencies.length);
   v.spent += tierTotal(expressions.length);
-  excellencies.forEach((name, i) => {
+  excellencies.forEach(({ name, record }, i) => {
     v.purchases.push({ cp: tierCost(i + 1), id: null, name, step: 5 });
     v.flag("excellency-unlock", `${name}: Excellency purchases must be unlocked in-game`, { name });
-    const hidden = catalog.hiddenByName.get(name.toLowerCase());
-    if (hidden && hidden.kind === "Excellency") {
-      v.flag("hidden-approval", `${hidden.name} is a hidden Excellency and requires Staff approval before it is unlocked`, { name: hidden.name });
+    if (record?.hidden) {
+      v.flag("hidden-approval", `${name} is a hidden Excellency and requires Staff approval before it is unlocked`, { name });
     }
   });
   expressions.forEach((expression, i) => {
@@ -481,6 +499,9 @@ export function offered(input, catalog) {
   const foundation = build.foundation ? catalog.foundations.get(build.foundation) : null;
   const domain = build.domain ? catalog.domains.get(build.domain) : null;
   const expressions = list(build.expressions).map((id) => catalog.expressions.get(id)).filter(Boolean);
+  // Names the build holds that are on neither list: typed before step 5 had
+  // one. Offered back so the form still carries them and they can be unticked.
+  const unlisted = [...new Set(list(build.excellencies).map((name) => String(name).trim()).filter((name) => name && !catalog.excellencyByName.has(name.toLowerCase())))];
   return {
     1: { choices: [...catalog.aspects.values()], max: ASPECT_MAX, skills: catalog.aspectSkills, skillMax: ASPECT_SKILL_MAX },
     2: {
@@ -491,7 +512,9 @@ export function offered(input, catalog) {
     },
     3: { choices: [...catalog.cultures.values()], max: 1, skills: catalog.cultureSkills.filter(isPurchase), skillMax: CULTURE_SKILL_MAX },
     4: { choices: [...catalog.domains.values()], max: 1, skills: [], skillMax: null },
-    5: { choices: null, max: EXCELLENCY_MAX, skills: [], skillMax: null },
+    // excellencies.md: "You may take any Excellency regardless of your chosen
+    // Domain", so the Domain filters nothing here.
+    5: { choices: [...catalog.excellencies.values()], max: EXCELLENCY_MAX, skills: [], skillMax: null, unlisted },
     6: { choices: [...catalog.expressions.values()], max: EXPRESSION_MAX, skills: [], skillMax: null },
     7: {
       choices: null,
