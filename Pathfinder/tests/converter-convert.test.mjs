@@ -143,22 +143,24 @@ ok(mae(err.strike) <= 2.5, 'top Strike: mean error at most 2.5', mae(err.strike)
 // Eleven numbers sit on a per-monster bound or one short of it. They are named
 // here so that a change to a tier table, an anchor or a clamp shows which of
 // them moved, in this line's detail, before the pair's own line goes red.
-// Moving one is not wrong; moving one without looking is. Two are on the bound
-// itself and neither is a table entry read wrong (HISTORY #829):
+// Moving one is not wrong; moving one without looking is. Two were on the bound
+// itself and neither is a table entry read wrong (HISTORY #829). The medusa
+// still is; the save cap took the nalfeshnee one point off (HISTORY #831):
 //   medusa AC 20 against 25. PF1e prints AC 15 at CR 7 (Dex +2, natural +3),
 //     five under Table 1-1's 20, where Paizo's PF2e medusa is on high. The
 //     source is the outlier. 20 is also the lowest AC the converter writes at
 //     level 7 (low less one step), so no AC anchor from 1.5 to 3 moves it.
-//   nalfeshnee Will 31 against 23. PF1e prints Will +21 at CR 14, four over
+//   nalfeshnee Will 30 against 23. PF1e prints Will +21 at CR 14, four over
 //     the good save (Wis 22 and Iron Will); Paizo printed Will as its worst
 //     save bar Reflex, a third of the way from low to moderate. The PF2e side
-//     is the outlier. 31 is the highest save the converter writes at level 14
-//     (bench's 4.5 cap), so no save anchor from 2.5 up moves it.
+//     is the outlier. 30 is the highest save the converter writes at level 14
+//     (bench stops a save at extreme), so no save anchor from 2.5 up moves it.
+//     It was 31, on the bound, while bench stopped saves at 4.5.
 console.log('the pairs on a bound');
 {
   const want = ['kobold strike +4', 'giant-centipede level +1', 'human-zombie level +1', 'homunculus level +1',
     'ogre ac +4', 'gelatinous-cube ac +4', 'doppelganger strike +4', 'gibbering-mouther hp -45%', 'lich strike -4',
-    'medusa ac -5', 'nalfeshnee will +8'];
+    'medusa ac -5', 'nalfeshnee will +7'];
   ok(JSON.stringify(nearBound) === JSON.stringify(want), 'the numbers on a bound or one short of it are the eleven named here',
     `now: ${nearBound.join(', ')}${want.filter((w) => !nearBound.includes(w)).length ? '\n        gone: ' + want.filter((w) => !nearBound.includes(w)).join(', ') : ''}`);
 
@@ -178,10 +180,32 @@ console.log('the pairs on a bound');
   ok(nal.saves.will - T.pf1Anchors(14).save === 4 && T.pf1TierOf('save', nal.saves.will, 14) === 5 && pn.will < row14.moderate && pn.will > row14.low,
     'nalfeshnee: PF1e Will +21 is four over CR 14\'s good save and reads a tier past extreme; the printed 23 is under moderate',
     `tier ${T.pf1TierOf('save', nal.saves.will, 14)}, printed ${pn.will} against moderate ${row14.moderate}`);
-  // bench caps a tier at 4.5, half a step past extreme. readRow would go on to 5.
-  ok(convert('nalfeshnee').saves.will.value === row14.extreme + 1 && convertWith('nalfeshnee', (c) => { c.saves.will = 30; }).saves.will.value === row14.extreme + 1,
-    'nalfeshnee: Will 31 is the highest save the converter writes at level 14, and a PF1e Will of +30 reads the same',
+  // bench stops a save's tier at extreme (#831). Every other stat stops at
+  // 4.5, half a step past it, and readRow would go on to 5.
+  ok(convert('nalfeshnee').saves.will.value === row14.extreme && convertWith('nalfeshnee', (c) => { c.saves.will = 30; }).saves.will.value === row14.extreme,
+    'nalfeshnee: Will 30 is the highest save the converter writes at level 14, and a PF1e Will of +30 reads the same',
     `${convert('nalfeshnee').saves.will.value}, ${convertWith('nalfeshnee', (c) => { c.saves.will = 30; }).saves.will.value}`);
+  // The rule itself (#831): no converted save is over the extreme column the
+  // GM Core prints for the creature's level. Read on every fixture as it
+  // stands, and again with all three PF1e saves set to +60, which is past
+  // extreme at every CR and so lands each one on the cap. The second half is
+  // what fails at CRs the 48 pairs do not reach.
+  const over = [];
+  let capped = 0, atCap = 0;
+  const names = fs.readdirSync(path.join(HERE, 'fixtures', 'pf1')).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
+  for (const n of names) {
+    for (const [how, o] of [['as printed', convert(n)], ['saves at +60', convertWith(n, (c) => { c.saves = { ...c.saves, fort: 60, ref: 60, will: 60 }; })]]) {
+      const extreme = T.PF2_SAVES[o.level.value].extreme;
+      for (const k of ['fort', 'ref', 'will']) {
+        const v = o.saves[k].value;
+        if (v > extreme) over.push(`${n} ${k} ${v} over ${extreme} (${how})`);
+        if (how === 'saves at +60') { capped++; if (v === extreme) atCap++; }
+      }
+    }
+  }
+  ok(names.length >= 48 && over.length === 0 && atCap === capped,
+    'no converted save is over the extreme column for its level, and a PF1e save of +60 lands on it',
+    `${names.length} fixtures, ${atCap} of ${capped} forced saves on extreme${over.length ? '\n        ' + over.slice(0, 8).join('; ') + (over.length > 8 ? `; and ${over.length - 8} more` : '') : ''}`);
 }
 
 // ---- rules -------------------------------------------------------------------

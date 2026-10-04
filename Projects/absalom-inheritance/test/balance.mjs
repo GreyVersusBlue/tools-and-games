@@ -22,9 +22,10 @@
 // the thirty lines of throwaway script every phase that touches balance has
 // written from scratch.
 //
-// Exits non-zero on four things (locked decision #13): a win rate outside
+// Exits non-zero on five things (locked decision #13): a win rate outside
 // BAND, a command or creature ability nothing ever used, a drift from
-// test/baseline.json past DRIFT, and a variant that will not load.
+// test/baseline.json past DRIFT, a variant that will not load, and a second
+// driver that never once ends a fight by breaking line of sight.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -32,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { loadPack, selectPc } from "../js/content.js";
 import { createGame } from "../js/game.js";
 import { makeRng } from "../js/rules.js";
-import { playThrough } from "./autopilot.mjs";
+import { playThrough, makeSkulkPolicy } from "./autopilot.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACK = path.join(HERE, "..", "content", "vault.json");
@@ -88,14 +89,18 @@ const crashed = message => ({
   encounters: [], areas: [], reactionsBy: {}, conditionsBy: {},
 });
 
-export function runBatch(content, runs, { verbose = false } = {}) {
+/**
+ * `policy` is a factory, called once per run, for a driver other than the
+ * autopilot's own. A policy that remembers anything remembers it for one run.
+ */
+export function runBatch(content, runs, { verbose = false, policy = null } = {}) {
   const results = [];
   for (let i = 0; i < runs; i++) {
     const rng = makeRng(0x5EED + i);
     const game = createGame({ content, rng });
     let r;
     try {
-      r = playThrough(game);
+      r = policy ? playThrough(game, { policy: policy() }) : playThrough(game);
     } catch (e) {
       r = crashed(e.message);
     }
@@ -104,6 +109,25 @@ export function runBatch(content, runs, { verbose = false } = {}) {
     if (verbose && i < 12) console.log(`  seed ${r.seed}  ${r.outcome.padEnd(10)} hp ${String(r.hp).padStart(2)}  lore ${r.lore}  slain ${r.slain}/${game.run.creatures.length}  rounds ${r.rounds}`);
   }
   return results;
+}
+
+/**
+ * The second driver's batch size. Its only job is to reach the ending the
+ * first driver cannot, and it reaches it in the first run, so this is a
+ * twentieth of the main batch rather than a second one.
+ */
+export const SKULK_RUNS = 100;
+
+/**
+ * The `settled` column, from a driver that can fill it.
+ *
+ * The main batch reads 0.0% on every row and that is the autopilot, not the
+ * engine: it never ends a turn out of sight of anything awake (see
+ * makeSkulkPolicy in autopilot.mjs). This plays a short batch with the driver
+ * that does, and reports the same encounter rows.
+ */
+export function skulkRows(content, runs = SKULK_RUNS) {
+  return encounterRows(content, runBatch(content, runs, { policy: makeSkulkPolicy }));
 }
 
 /* ========================================================================= *
@@ -464,6 +488,7 @@ function printReport(summary) {
   // run, so the column adds up to the defeat rate above it and the rows can
   // be read against each other: this is the "which fight killed you" number.
   console.log("    cleared and settled are shares of that fight; died is a share of all runs, and the column sums to the defeat rate");
+  console.log("    settled is 0.0% here because this driver never breaks line of sight; the second driver's table follows this report");
 
   const label = a => `${a.id} — ${a.name}`;
   const aw = widest("area", s.areas.map(label));
@@ -547,6 +572,15 @@ function printVariants(buildName, columns) {
   }
 }
 
+function printSkulk(rows, runs) {
+  const ew = widest("area / started by", rows.map(e => e.key));
+  console.log(`\n  second driver, ${runs} runs: steps out of sight of each construct once, then fights it`);
+  console.log(`    ${pad("area / started by", ew)}${num("per run", 8)}${num("cleared", 9)}${num("settled", 9)}`);
+  for (const e of rows) {
+    console.log(`    ${pad(e.key, ew)}${num(e.per.toFixed(2), 8)}${num(pct(e.cleared / e.n), 9)}${num(pct(e.settled / e.n), 9)}`);
+  }
+}
+
 /* ========================================================================= *
  * The command line                                                          *
  * ========================================================================= */
@@ -609,18 +643,29 @@ if (invokedDirectly) {
     printReport(shipped);
     if (columns.length > 1) printVariants(build.name, columns);
 
+    // The ending the batch above cannot reach, from the driver that can. Not
+    // compared to the baseline and not held to the band: nothing is tuned
+    // against this driver, and the one thing it can fail on is reaching
+    // nothing.
+    const skulkRuns = Math.min(runs, SKULK_RUNS);
+    const skulk = skulkRows(selectPc(basePack, build.id), skulkRuns);
+    const settledFights = skulk.reduce((a, e) => a + e.settled, 0);
+    printSkulk(skulk, skulkRuns);
+
     const inBand = shipped.rate >= BAND.min && shipped.rate <= BAND.max;
     const drift = comparable ? compareToBaseline(baseline, build.id, shipped) : [];
-    // Three ways to fail, and they say which. A rate outside the band means
+    // Four ways to fail, and they say which. A rate outside the band means
     // the adventure got unwinnable or free; a command nothing cast means the
-    // pack grew content the game never reaches; a drift means the numbers
-    // moved and nobody wrote down that they meant to.
+    // pack grew content the game never reaches; an ending nothing reached
+    // means checkDisengage() is back to being exercised by no playthrough; a
+    // drift means the numbers moved and nobody wrote down that they meant to.
     const verdict = !inBand ? `BALANCE OUT OF BAND — ${build.id}: ${pct(shipped.rate)}`
       : shipped.uncast.length ? `CONTENT NEVER REACHED — ${build.id}: ${shipped.uncast.join(", ")}`
+      : !settledFights ? `ENDING NEVER REACHED — ${build.id}: no fight settled in ${skulkRuns} runs of the driver that breaks line of sight`
       : drift.length ? `BASELINE DRIFT — ${drift.join("\n                 ")}\n(if you meant it, rerun with --write-baseline and commit the file)`
       : `BALANCE OK — ${build.id}: ${pct(shipped.rate)}`;
     console.log(`\n${verdict}\n`);
-    allOk = allOk && inBand && !shipped.uncast.length && !drift.length;
+    allOk = allOk && inBand && !shipped.uncast.length && !drift.length && settledFights > 0;
   }
   printMatrix(summaries);
 

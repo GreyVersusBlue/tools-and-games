@@ -318,7 +318,13 @@ new one.
   thing that would, and this project has no build step to put one in.
 - **`test/browser.mjs` is not in CI**, because it needs playwright-core and a
   browser on disk. That is the same arrangement Blue Hour has, and it means the
-  surface is checked when somebody remembers to check it.
+  surface is checked when somebody remembers to check it. Looked at again on
+  2026-10-04 and not wired: the suite imports `playwright-core`, which this
+  folder has no `package.json` to install, and launches Chromium from a fixed
+  path (`/opt/pw-browsers/chromium-1194`, or `$CHROME`). `suite.yml` gives a
+  job Puppeteer through `Tools/board-check`, so joining CI is a port of its
+  launch, page and input calls to that harness, the way Integer Foundry's was
+  done, and not a few lines in `absalom-ci.yml`.
 
 **Tests and the harness**
 - `balance.mjs` reports per encounter and per area, holds a baseline it
@@ -329,10 +335,19 @@ new one.
   baseline's "the batch never played it" line would say so. **The autopilot is
   still one policy**, so every number is the floor of competent play; there is
   no second driver that plays badly, or cautiously, to bracket it. **`settled`
-  reads 0.0% on every row**: `checkDisengage()`'s anti-cheese full heal has
-  never fired under the harness, because the autopilot never breaks line of
-  sight, so the one rule protecting against wear-down cheese is measured by
-  nothing. And **the baseline is per build and per encounter only** — a change
+  reads 0.0% on every row of the main batch, and that is the driver** (#830,
+  verified 2026-10-04): over the 8,000 seeded runs `combatPolicy` ended 43,413
+  turns in an encounter and not one of them out of sight of an awake construct,
+  so no `slept` event fired and `endCombat("lost")` was never called. The
+  counting was right all along. A second driver, `makeSkulkPolicy` in
+  `test/autopilot.mjs`, steps out of sight of each construct once and then
+  fights it; `balance.mjs` plays 100 runs of it per build, prints its own
+  `settled` column (about half of the vault's sentinel fights) and exits
+  non-zero if no fight settles. It reaches the ending and brackets nothing: it
+  is not a cautious player, and nothing is tuned against it. **Still measured
+  by nothing: whether the heal does its job**, which needs a driver that wears
+  a construct down across two engagements and a variant with the heal off to
+  compare against. And **the baseline is per build and per encounter only** — a change
   that moves damage between two commands inside the same fight passes it.
 - No suite covers `render.js` or `ui.js`; both are DOM-bound and untested.
 - The autopilot brawls everything and never uses the cover a player would, so
@@ -865,6 +880,12 @@ telling on the engine: `checkDisengage()`'s full-HP anti-cheese heal has never
 fired under the harness, because the autopilot never breaks line of sight. It
 is wired, validated, and exercised by nothing — the same shape as the three
 casualties on record, found in one line of a table rather than in a phase.
+
+**Closed on 2026-10-04 (#830), in the harness and not in the engine.** The
+column counts correctly and the autopilot cannot fill it; a second driver that
+breaks line of sight does, and `smoke.mjs` pins the ending from
+`checkDisengage()` through the `mode` event's `why` to the report's row. The
+"Tests and the harness" entry under known gaps has the numbers.
 
 **Nothing about the game moved.** 81.4% and 75.1%, the same figures to the
 decimal as the build before this, which is what a phase that only measures is
