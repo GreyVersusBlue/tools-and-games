@@ -255,27 +255,25 @@ its files, not repeated here; add to this list rather than starting a second.
   - **p58, `Empower Fire` and `Enhance Fire`** print `N/A` in the Verbal
     column where the other five Domains' Empower and Enhance rows print
     `Thread Skill`, so they alone carry `thread: false` in `skills.json`.
-- **The character builder sells a skill once, and three rows in the book
-  say otherwise or ask for something first.** Step 7 lists and prices the
-  skills inside each chapter Excellency a build holds since 2026-10-04 (#841,
-  #842, #843): 209 priced rows in 30 tables at the CP each prints, the
-  `Included` row granted with the Excellency, `Heat the Forge` and
-  `Extended Healing` twice because their rows say so. What is left:
-  - **`Quick Reflexes`** (Open skills, p83) says "You can purchase this skill
-    up to 3 times." The builder sells it once and reports a second as
-    `duplicate-selection`. `resolve()` in `build-rules.js` takes a `twice`
-    list now; this row needs a limit of 3 and three boxes in `step7()`.
-  - **Two prerequisites are printed and not checked** (#842): Combatant's
-    `Armored for War` and the Ice Domain's `Ice's Skill` want "medium armor",
-    and the book never says which skills grant it, so that one needs the rules
-    team. Tornado's `Bow and Sword` wants "the Archery skill", which is an
-    Open skill the builder knows; checking it is a few lines, and #842 says
-    how.
+- **Two rows in the book ask for "medium armor" and the character builder
+  does not check it.** Combatant's `Armored for War` (p70) and the Ice
+  Domain's `Ice's Skill` each state it as a prerequisite, and the book never
+  says which skills grant medium armor, so the builder prints the sentence
+  and leaves the check to Staff (#842). It needs the rules team to name the
+  skills; `PREREQUISITES` in `build-rules.js` then takes one line per row,
+  the way Tornado's `Bow and Sword` and `Archery` are there since 2026-10-04
+  (#845). `Quick Reflexes` is sold up to three times since the same day
+  (#844). Also standing on that page:
   - **The 18 hidden Excellencies have no table in the book**, so nothing
     inside them is listed or priced, and steps 5 and 7 say so on the page.
     That changes only if the rules team publishes their tables.
-  - No suite covers `builder.js`. It did not change for #841 (the form reads
-    any named checkbox), and the page was driven in Chromium by hand.
+  - **12 skill descriptions carry `*italics*` and the builder prints the
+    asterisks.** `prose()` in `build-view.js` renders `**bold**` only;
+    `Quick Reflexes` shows "*You can purchase this skill up to 3 times.*"
+    with its stars. The chapter pages render them.
+  - No suite covers `builder.js`. It did not change for #841, #844 or #845
+    (the form reads any named checkbox), and the page was driven in Chromium
+    by hand each time.
 - **`notable-figures.md` names `Reach Lord Sarah Jackson` "of Hadley's Cove"
   and links the Principalities of the Reach, and that page names neither her
   nor Hadley's Cove.** Nor does any other page, either PDF or

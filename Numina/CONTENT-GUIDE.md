@@ -428,6 +428,13 @@ by hand after touching it.
   in `TWICE_SKILLS` and gets two boxes with one value, the way Tongue of
   Aspect gets a box per Aspect; `npm test` fails if a new row says it and is
   not in the list. A hidden Excellency has no table and lists nothing.
+- **More than once, and something first.** `PURCHASE_LIMITS` is the number of
+  boxes a row gets: 2 for the `TWICE_SKILLS`, 3 for the Open skill
+  `Quick Reflexes` ("up to 3 times"), each purchase at the printed CP.
+  `PREREQUISITES` is the one printed prerequisite the builder checks:
+  Tornado's Included `Bow and Sword` wants `Archery`, so step 7 says so under
+  Tornado's heading and `priceBuild` reports `prerequisite-missing` without
+  it. `npm test` fails if a row starts or stops saying either.
 - **The data is inlined.** The page carries `skills.json` and one anchor URL
   per skill id as two `<script type="application/json">` islands, written by
   the `jsonIsland` and `skillLinks` filters in `eleventy.config.mjs`. The

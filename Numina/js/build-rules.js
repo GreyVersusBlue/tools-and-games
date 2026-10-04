@@ -74,6 +74,23 @@ export const PER_ASPECT_SKILL = "aspects/aspects/tongue-of-aspect";
 // say it and that no other Excellency row has started to.
 export const TWICE_SKILLS = ["excellencies/forge-fire/heat-the-forge", "excellencies/ordinator-water-earth/extended-healing"];
 
+// The Open skill whose row says "You can purchase this skill up to 3 times"
+// (p83). The row prints one Cost, 1, and no second price, so each purchase is
+// that 1 CP, the way a second Heat the Forge is its 3 again (#844).
+export const QUICK_REFLEXES = "open-skills/open-skills/quick-reflexes";
+
+// How many times a skill may be bought when its own row says more than once.
+// A skill not named here is bought once.
+export const PURCHASE_LIMITS = new Map([...TWICE_SKILLS.map((id) => [id, 2]), [QUICK_REFLEXES, 3]]);
+
+// A prerequisite one row states in its own description and the builder can
+// check, because the book has exactly one skill of the name it asks for.
+// Tornado's Included row: "(This skill has a pre-requisite of the Archery
+// skill.)" (p75); Archery is one Open skill at 3 CP with no tiers (p82). The
+// "medium armor" of Armored for War and Ice's Skill is not here: the book
+// never says which skills grant it (#842, #845).
+export const PREREQUISITES = [{ needs: "open-skills/open-skills/archery", skill: "excellencies/tornado-air-lightning/bow-and-sword" }];
+
 // The nth purchase of an escalating tier: 5, 6, 7. Costs the tiers, not the
 // count, so an over-cap build still gets a number rather than a blank.
 export function tierCost(n) {
@@ -202,7 +219,7 @@ const list = (v) => (Array.isArray(v) ? v : []);
 
 // Resolves selected ids against the catalog, rejecting unknown ids and
 // duplicates, and returns the records that survived.
-function resolve(verdict, ids, step, catalog, { allowRepeat = null, repeatLimit = 0, twice = [] } = {}) {
+function resolve(verdict, ids, step, catalog, { allowRepeat = null, repeatLimit = 0, limits = null } = {}) {
   const seen = new Map();
   const out = [];
   for (const id of ids) {
@@ -214,15 +231,16 @@ function resolve(verdict, ids, step, catalog, { allowRepeat = null, repeatLimit 
     const times = (seen.get(id) ?? 0) + 1;
     seen.set(id, times);
     if (times > 1) {
-      const allowed = (id === allowRepeat && times <= repeatLimit) || (twice.includes(id) && times <= 2);
+      const limit = limits?.get(id) ?? 1;
+      const allowed = (id === allowRepeat && times <= repeatLimit) || times <= limit;
       if (!allowed) {
         verdict.problem(
           "duplicate-selection",
           step,
           id === allowRepeat
             ? `${skill.name} is purchased per Aspect, and this build has ${repeatLimit} Aspect(s) to purchase it for`
-            : twice.includes(id)
-              ? `${skill.name} is selected ${times} times; its description allows it to be purchased twice`
+            : limit > 1
+              ? `${skill.name} is selected ${times} times; its description allows it to be purchased ${limit === 2 ? "twice" : `up to ${limit} times`}`
               : `${skill.name} is selected ${times} times; a skill is bought once`
         );
         continue;
@@ -430,9 +448,11 @@ export function priceBuild(input, catalog) {
   // Excellency's 5, 6 or 7: "Cost: The number of CP (Character Points) required
   // to purchase the skill" (p41). The book states no order inside a table and
   // no cap on how many rows are bought. Two rows state a prerequisite in their
-  // own description (Combatant's Armored for War, Tornado's Bow and Sword);
-  // the description is on the page and the prerequisite is not checked (#842).
-  const excellencySkills = resolve(v, list(build.excellencySkills), 7, catalog, { twice: TWICE_SKILLS });
+  // own description. Combatant's Armored for War wants "medium armor", which
+  // the book never ties to a skill, so the description is on the page and the
+  // prerequisite is not checked (#842). Tornado's Bow and Sword wants the
+  // Archery skill, which is checked below, once the Open skills are known.
+  const excellencySkills = resolve(v, list(build.excellencySkills), 7, catalog, { limits: PURCHASE_LIMITS });
   for (const skill of excellencySkills) {
     if (skill.groupKind !== "Excellency") v.problem("wrong-group", 7, `${skill.name} is not an Excellency skill`);
     else if (!excellencies.some((x) => x.record?.group === skill.group)) {
@@ -450,11 +470,22 @@ export function priceBuild(input, catalog) {
   }
   charge(v, expressionSkills.filter(isPurchase), 7);
 
-  const openSkills = resolve(v, list(build.openSkills), 7, catalog);
+  const openSkills = resolve(v, list(build.openSkills), 7, catalog, { limits: PURCHASE_LIMITS });
   for (const skill of openSkills) {
     if (skill.groupKind !== "Open") v.problem("wrong-group", 7, `${skill.name} is not an Open skill`);
   }
   charge(v, openSkills, 7);
+
+  // A skill the build has, bought or granted, whose row asks for another the
+  // build has not (#845). Reported under step 7, where the missing skill is
+  // sold.
+  const has = (id) => v.granted.some((g) => g.id === id) || v.purchases.some((p) => p.id === id);
+  for (const { needs, skill } of PREREQUISITES) {
+    if (!has(skill) || has(needs)) continue;
+    const wants = catalog.byId.get(skill);
+    const owner = wants.groupKind === "Excellency" ? `, which comes with the ${excellencyName(wants.group)} Excellency,` : "";
+    v.problem("prerequisite-missing", 7, `${wants.name}${owner} has a prerequisite of the ${catalog.byId.get(needs).name} skill, which this character does not have`);
+  }
 
   // --- Steps 8, 9 and 10: attributes and Vitality --------------------------
   // The chart's own order, which is the book's: Prowess, Insight, Fortitude,
