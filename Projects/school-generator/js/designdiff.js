@@ -16,7 +16,8 @@
 //             then by name for the ones left over on both sides — a room
 //             erased and redrawn under the same name is one room that
 //             changed, not two events. A matched room is *changed* when its
-//             name, outline, area, finish, use or openings differ.
+//             name, outline, area, finish, accent walls, use or openings
+//             differ.
 //   walls     free-standing walls, by id; endpoints and kind.
 //   props     by id; type, storey and position.
 //   links     stairs, ramps and lifts, by id; type, storeys and position.
@@ -35,7 +36,9 @@
 //
 // Pure module: no DOM, no three.js. Exercised by test/designdiff.test.mjs.
 
-import { shapesOf, shapeArea, ringCentroid, isWindowOpening } from './shapes.js';
+import {
+  shapesOf, shapeArea, ringCentroid, isWindowOpening, accentSpans, spanOverlap,
+} from './shapes.js';
 import { floorLabel } from './grid.js';
 import { wallLinesOf } from './wallrun.js';
 import { regionArea } from './site.js';
@@ -95,6 +98,26 @@ function openingCounts(shape) {
   return out;
 }
 
+// A room's accent walls (#827), compared by where they are (#856): a ring is
+// renumbered by any edit that reshapes it, so segment 3 before and segment 3
+// after are not the same wall. An accent after that lies along one before is
+// that accent, repainted when the colour differs; the ones left over on
+// either side were painted or taken off.
+function accentChanges(before, after) {
+  const A = accentSpans(before), B = accentSpans(after);
+  const out = { gained: 0, lost: 0, repainted: 0 };
+  const along = (s, t) => spanOverlap(s, { x: t.ax, z: t.az }, { x: t.bx, z: t.bz }) > MOVE_EPS_FT;
+  const kept = new Set();
+  for (const b of B) {
+    const was = A.filter((s) => along(s, b));
+    if (!was.length) { out.gained += 1; continue; }
+    for (const s of was) kept.add(s);
+    if (!was.some((s) => s.paint === b.paint)) out.repainted += 1;
+  }
+  out.lost = A.filter((s) => !kept.has(s)).length;
+  return out;
+}
+
 const byId = (list) => {
   const m = new Map();
   for (const x of list) if (x && Number.isFinite(x.id)) m.set(x.id, x);
@@ -124,6 +147,11 @@ function compareRoom(before, after, floor) {
   if ((before.fin || null) !== (after.fin || null) || (before.paint || null) !== (after.paint || null)) {
     whats.push('was refinished');
   }
+  const acc = accentChanges(before, after);
+  const walls = (n) => (n === 1 ? 'an accent wall' : `${n} accent walls`);
+  if (acc.gained) whats.push(`gained ${walls(acc.gained)}`);
+  if (acc.lost) whats.push(`lost ${walls(acc.lost)}`);
+  if (acc.repainted) whats.push(`had ${walls(acc.repainted)} repainted`);
   if ((before.group || null) !== (after.group || null) || (before.load || null) !== (after.load || null)) {
     whats.push('changed its use or occupant load');
   }

@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createState, addFloor } from '../js/grid.js';
 import { sheet } from './build.mjs';
-import { shapesOf } from '../js/shapes.js';
+import { shapesOf, setSegAccent, insertVertex } from '../js/shapes.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { clone } from '../js/history.js';
@@ -94,6 +94,56 @@ test('a rename, a refinish and a door are each their own clause', () => {
   assert.ok(c.whats.includes('gained a door'), c.whats.join(' | '));
   assert.ok(c.whats.includes('was refinished'), c.whats.join(' | '));
   assert.match(c.sentence, /^Art Room renamed from Room 101 to Art Room, gained a door, was refinished \(Level 1\)\.$/);
+});
+
+// #856. An accent wall is matched by where it is, not by its segment number.
+test('an accent wall painted, repainted and taken off are each a clause', () => {
+  const plain = twoRooms();
+  const room = (s) => shapesOf(s.floors[0]).find((x) => x.name === 'Room 101');
+  const withAccent = (seg, hex) => {
+    const s = clone(roundTrip(plain));
+    assert.equal(setSegAccent(room(s), 0, seg, hex), true);
+    return s;
+  };
+  const green = withAccent(0, '#00aa00'), gold = withAccent(0, '#ccaa00');
+  const one = (a, b) => {
+    const d = designDiff(roundTrip(a), roundTrip(b));
+    assert.equal(d.changes.length, 1, d.sentences.join(' | '));
+    assert.equal(d.changes[0].kind, 'room');
+    assert.equal(d.changes[0].change, 'changed');
+    assert.equal(d.marks.length, 1);
+    return d.changes[0];
+  };
+  assert.deepEqual(one(plain, green).whats, ['gained an accent wall']);
+  assert.equal(one(plain, green).sentence, 'Room 101 gained an accent wall (Level 1).');
+  assert.deepEqual(one(green, plain).whats, ['lost an accent wall']);
+  assert.deepEqual(one(green, gold).whats, ['had an accent wall repainted']);
+  // The accent moved to another wall of the room: one off, one on.
+  assert.deepEqual(one(green, withAccent(1, '#00aa00')).whats,
+    ['gained an accent wall', 'lost an accent wall']);
+  // Two at once are counted.
+  const two = withAccent(0, '#00aa00');
+  setSegAccent(room(two), 0, 2, '#00aa00');
+  assert.deepEqual(one(plain, two).whats, ['gained 2 accent walls']);
+  assert.equal(designDiff(roundTrip(green), roundTrip(green)).changes.length, 0);
+});
+
+test('an accent wall on a renumbered ring is the same accent wall', () => {
+  const before = clone(roundTrip(twoRooms()));
+  const room = (s) => shapesOf(s.floors[0]).find((x) => x.name === 'Room 101');
+  setSegAccent(room(before), 0, 2, '#00aa00');
+  // A corner put into segment 0's middle renumbers every segment after it,
+  // and one put into the accent wall makes it two segments on the same line.
+  const after = clone(roundTrip(before));
+  const mid = (ring, i) => {
+    const p = ring.pts[i], q = ring.pts[(i + 1) % ring.pts.length];
+    return [(p.x + q.x) / 2, (p.z + q.z) / 2];
+  };
+  const ring = room(after).rings[0];
+  assert.notEqual(insertVertex(room(after), 0, 2, ...mid(ring, 2)), -1);
+  assert.notEqual(insertVertex(room(after), 0, 0, ...mid(ring, 0)), -1);
+  const d = designDiff(roundTrip(before), roundTrip(after));
+  assert.deepEqual(d.changes.flatMap((c) => c.whats.filter((w) => /accent/.test(w))), []);
 });
 
 test('storeys, furniture, stairs and the sheet each read as a sentence', () => {
