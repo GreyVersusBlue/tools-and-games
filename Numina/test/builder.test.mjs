@@ -11,10 +11,14 @@
 //   - a fragment nothing wrote, a foreign save and an unversioned save all
 //     come back as a build rather than a throw (#37);
 //   - each step's markup lists what offered() offers and nothing else: the
-//     Foundation's own table, the Culture's purchasable rows, no list at all
-//     for Excellencies, a Tongue of Aspect box per chosen Aspect;
+//     Foundation's own table, the Culture's purchasable rows, the chapter's
+//     30 Excellencies and the hidden 18 whatever the Domain, a Tongue of
+//     Aspect box per chosen Aspect;
+//   - a save or a link that holds a typed Excellency name (#306) still loads:
+//     a listed name in any case ticks its box, a name on no list gets a box
+//     of its own (#839);
 //   - a step's signature moves only when its offering does, which is the
-//     guard that keeps a typed Excellency name focused;
+//     guard that keeps a box from being rebuilt under the pointer;
 //   - the verdict says "at least" and quotes the chart when a purchase is
 //     unpriced, and says the number when every purchase has one;
 //   - the card prints every granted and purchased skill with its verbal and
@@ -143,9 +147,39 @@ const s4 = render(4, { domain: "air" });
 ok(count(s4, /type="radio" name="domain"/g) === 7, `step 4 is 6 Domains plus "Not chosen yet" (${count(s4, /type="radio" name="domain"/g)})`);
 ok(/Included with Air: /.test(s4) && count(s4, /name="domainSkills"/g) === 0, "step 4 names the Domain's included skill and sells nothing (that is step 7)");
 
-const s5 = render(5, { excellencies: ["Deadeye", "Ritual Curse Removal"] });
-ok(count(s5, /type="text" name="excellencies"/g) === 3 && count(s5, /type="checkbox"/g) === 0, "step 5 is three text fields and no list (#306)");
-ok(/value="Deadeye"/.test(s5) && /value="Ritual Curse Removal"/.test(s5) && /data-index="2" value=""/.test(s5), "typed Excellencies fill the fields in order, the third blank");
+// Step 5 (#839). The boxes' values are names, because a build holds names.
+const boxes5 = (html) => [...html.matchAll(/<input type="checkbox" name="excellencies" value="([^"]*)"( checked)?>/g)].map((m) => ({ checked: Boolean(m[2]), value: m[1] }));
+const checked5 = (html) => boxes5(html).filter((b) => b.checked).map((b) => b.value).join("|");
+const s5none = render(5, empty);
+ok(boxes5(s5none).length === 48 && count(s5none, /type="text"/g) === 0 && checked5(s5none) === "", `step 5 is 48 boxes, none ticked, and no text field (${boxes5(s5none).length})`);
+ok(render(5, { domain: "air" }) === s5none && render(5, { domain: "water" }) === s5none, "and the same 48 whatever the Domain");
+const hiddenAt = s5none.indexOf("Hidden Excellencies");
+ok(hiddenAt > 0 && /require Staff approval/.test(s5none) && boxes5(s5none.slice(0, hiddenAt)).length === 30 && boxes5(s5none.slice(hiddenAt)).length === 18, "the chapter's 30 come first and the hidden 18 sit under a heading that says Staff approval");
+ok(/value="Ballista"> <span class="builder__name">Ballista<\/span><\/label><span class="builder__desc">Aligned to Air<\/span>/.test(s5none), "an Excellency shows its alignment");
+ok(/value="Alchemist"> <span class="builder__name">Alchemist<\/span><\/label><span class="builder__desc">Aligned to Water \/ Fire<\/span>/.test(s5none) && /value="Arcaneer">[\s\S]{0,80}<span class="builder__desc">Universal<\/span>/.test(s5none), "a two-Domain one shows both, under a name without the heading's brackets, and Arcaneer says Universal");
+ok(/value="Deadeye">[\s\S]{0,80}Aligned to Air\. Primary skill: Take ten seconds/.test(s5none), "a hidden Excellency shows the hidden table's primary skill");
+const links5 = [...s5none.matchAll(/class="builder__link" href="([^"]+)">Rules for /g)].map((m) => m[1]);
+const labels5 = [...s5none.matchAll(/class="builder__link" href="[^"]+">([^<]+)<\/a>/g)].map((m) => m[1]);
+ok(labels5.length === 48 && Math.max(...labels5.map((l) => l.length)) <= 30, `no link label in step 5 is long enough to widen the page, since .builder__link does not wrap (longest ${Math.max(...labels5.map((l) => l.length))})`);
+const lands = (href) => {
+  const [path, id] = href.slice(PREFIX.length).split("#");
+  const file = join(root, path, "index.html");
+  return Boolean(id) && existsSync(file) && readFileSync(file, "utf8").includes(` id="${id}"`);
+};
+ok(links5.length === 48 && new Set(links5.slice(0, 30)).size === 30 && links5.every(lands), `each links to a heading the built chapter carries, the chapter's 30 each to its own (${links5.length}, ${links5.filter((h) => !lands(h)).length} dead)`);
+ok(/up to 3, whatever your Domain/.test(s5none) && /The skills inside an Excellency are not listed or priced here yet/.test(s5none), "the step states the cap, and says the skills inside an Excellency are not priced");
+ok(!/data-unlisted/.test(s5none), "with nothing typed there is no group for typed names");
+// The old-save path: what a save or a pasted link from the typed-name page
+// holds, through the same loaders the page uses.
+const oldNames = ["deadeye", "TEMPEST", "Ritual Curse Removal"];
+const fromSave = deserialize(JSON.stringify({ v: 1, build: { excellencies: oldNames } }), catalog);
+const fromBare = deserialize(JSON.stringify({ excellencies: oldNames }), catalog);
+const fromLink = decodeBuild("x=deadeye,TEMPEST,Ritual%20Curse%20Removal", catalog);
+ok([fromSave, fromBare, fromLink].every((b) => b.excellencies.join("|") === oldNames.join("|")), "a versioned save, an unversioned one and a link all keep the names they were typed with");
+const s5 = renderStep(5, fromSave, catalog, links);
+ok(checked5(s5) === "Tempest|Deadeye|Ritual Curse Removal", `a typed name ticks its box in any case, and a name on no list gets a ticked box of its own (${checked5(s5)})`);
+ok(boxes5(s5).length === 49 && /<ul class="builder__choices" data-unlisted><li class="builder__choice"><label class="builder__pick"><input type="checkbox" name="excellencies" value="Ritual Curse Removal" checked>/.test(s5), "that box is the only one in the typed-names group");
+ok(priceBuild(fromSave, catalog).cp.spent === 18 && priceBuild(fromSave, catalog).legal === priceBuild({ excellencies: ["Deadeye", "Tempest", "X"] }, catalog).legal, "and the loaded build prices as three Excellencies, 18 CP");
 
 const s6 = render(6, { expressions: ["performer"] });
 ok(count(s6, /name="expressions"/g) === 15, `step 6 lists the 15 Expressions (${count(s6, /name="expressions"/g)})`);
@@ -183,14 +217,14 @@ ok(/<a class="builder__link" href="\/Numina\/mechanics\/skills\/aspects\/#arcane
 console.log("# escaping");
 ok(esc(`<a & "b">`) === "&lt;a &amp; &quot;b&quot;&gt;", "esc escapes the four characters that matter in markup");
 const hostile = render(5, { excellencies: [`"><script>alert(1)</script>`] });
-ok(!/<script>/.test(hostile) && /value="&quot;&gt;&lt;script&gt;/.test(hostile), "a typed Excellency cannot break out of its attribute");
+ok(!/<script>/.test(hostile) && /value="&quot;&gt;&lt;script&gt;/.test(hostile), "a typed Excellency cannot break out of its box's attribute or its label");
 
 // --- what re-renders ---------------------------------------------------------
 
 console.log("# signatures");
 const sig = (n, build) => stepSignature(n, repair(build, catalog), catalog);
 ok(sig(2, { foundation: "military" }) !== sig(2, { foundation: "mariner" }), "step 2's signature moves with the Foundation");
-ok(sig(5, { excellencies: ["a"] }) === sig(5, { excellencies: ["ab"] }), "step 5's signature does not move as a name is typed (the focus guard)");
+ok(sig(5, {}) === sig(5, { excellencies: ["Ballista"] }) && sig(5, {}) === sig(5, { excellencies: ["typed"] }) && sig(5, {}) === sig(5, { domain: "air" }), "step 5's signature does not move with a tick, a typed name or the Domain");
 ok(sig(7, { domain: "air" }) !== sig(7, { domain: "air", expressions: ["performer"] }), "step 7's signature moves with an Expression");
 ok(sig(7, { domain: "air", openSkills: ["open-skills/open-skills/agility"] }) === sig(7, { domain: "air" }), "but not with a purchase in the step");
 ok(sig(1, { aspects: ["arcane"] }) !== sig(1, { aspects: ["arcane", "shade"] }), "step 1's signature moves with the Aspects, which is what adds a Tongue box");
@@ -275,6 +309,7 @@ ok(/<script type="module" src="\/Numina\/js\/builder\.js"><\/script>/.test(page)
 for (const file of ["builder.js", "build-rules.js", "build-state.js", "build-view.js"]) {
   ok(existsSync(join(root, "js", file)), `js/${file} is in the build`);
 }
+ok(!/type the name/.test(page) && /you may take any Excellency regardless of your chosen Domain/.test(page), "step 5's note quotes the chapter on the Domain and no longer asks for a typed name");
 ok(/data-builder(="")? hidden(="")?/.test(page) && /data-builder-needs-js/.test(page), "the form ships hidden with a no-JS notice beside it");
 ok(/<body class="cardsheet">/.test(page) && /<main\b[^>]*\sclass="builder-page"/.test(page), "the page is on the cardsheet print treatment and its main is marked for print.css");
 ok(/<div class="builder__card" data-card(="")?><\/div>/.test(page) && /<p class="print-action"><button type="button" onclick="window\.print\(\)">Print this card<\/button><\/p>/.test(page), "the page has the card slot and a print button");
