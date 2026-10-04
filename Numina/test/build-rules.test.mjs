@@ -29,6 +29,7 @@ import {
   FOUNDATION_SKILL_MAX,
   PER_ASPECT_SKILL,
   THIRD_ASPECT_SKILL,
+  TWICE_SKILLS,
   buildCatalog,
   emptyBuild,
   offered,
@@ -324,6 +325,46 @@ const overInexact = priceBuild({ ...fifty, attributes: { prowess: 3 } }, catalog
 ok(!has(overInexact, "over-budget"), "an unpriced purchase on a 50 CP build is not called over budget");
 ok(overInexact.cp.exact === false, "but it is not called exact either");
 
+// --- the skills inside an Excellency (#841, #843) ---------------------------
+
+console.log("# Excellency skills");
+const B = (name) => `excellencies/ballista/${name}`;
+const HEAT = "excellencies/forge-fire/heat-the-forge";
+const inside = data.skills.filter((s) => s.groupKind === "Excellency");
+ok(inside.length === 239 && inside.filter((s) => s.cost.kind === "cp" && s.cost.cp > 0).length === 209 && inside.filter((s) => s.cost.kind === "included").length === 30, `239 skills in the Excellency tables: 209 with a CP number above zero, 30 Included (${inside.length})`);
+const spentOn = (over) => price(over).cp.spent;
+ok(spentOn({ excellencies: ["Ballista"], excellencySkills: [B("refresh-quiver"), B("extended-quiver")] }) === 5 + 4 + 2, `a skill inside an Excellency costs its printed CP on top of the Excellency: 5 + 4 + 2 (${spentOn({ excellencies: ["Ballista"], excellencySkills: [B("refresh-quiver"), B("extended-quiver")] })})`);
+const ballista = price({ excellencies: ["Ballista"], excellencySkills: [B("refresh-quiver")] });
+ok(ballista.legal && ballista.cp.exact && ballista.purchases.some((p) => p.id === B("refresh-quiver") && p.cp === 4 && p.step === 7), "and it is a legal, exactly priced step 7 purchase");
+ok(price({ excellencies: ["ballista"], excellencySkills: [B("refresh-quiver")] }).legal, "a held name in another case still owns its table");
+ok(ballista.granted.some((g) => g.id === B("trio-of-arrows") && g.cp === 0 && g.step === 5), "a chapter Excellency grants its Included skill at zero, in step 5");
+// Slayer's Included row is its fourth. Granting by position would hand over
+// Immolate, which costs CP.
+const slayer = price({ excellencies: ["Slayer"] });
+ok(slayer.granted.some((g) => g.id === "excellencies/slayer/char-the-flesh") && !slayer.granted.some((g) => g.id === "excellencies/slayer/immolate") && slayer.cp.spent === 5, "the grant is the row whose cost is Included, not the first row: Slayer's is its fourth");
+ok(spentOn({ excellencies: ["Ballista"], excellencySkills: [B("trio-of-arrows")] }) === 5 && price({ excellencies: ["Ballista"], excellencySkills: [B("trio-of-arrows")] }).granted.filter((g) => g.id === B("trio-of-arrows")).length === 1, "an Included skill in the list is not charged and not granted twice");
+const before = (v) => v.granted.filter((g) => g.step === 5).length;
+ok(before(price({ excellencies: ["Deadeye"] })) === 0 && before(price({ excellencies: ["Something Devon Invented"] })) === 0, "a hidden Excellency and a name on no list grant nothing: the book prints no table for either");
+const stray = price({ excellencies: ["Ballista"], excellencySkills: ["excellencies/stalker/first-blood"] });
+ok(stray.problems.some((p) => p.code === "excellency-skill-group" && p.step === 7 && /Stalker Excellency/.test(p.message)), "a skill from an Excellency the build does not hold is a problem, and names the Excellency");
+ok(has(price({ excellencySkills: [B("refresh-quiver")] }), "excellency-skill-group") && has(price({ excellencies: ["Deadeye"], excellencySkills: [B("refresh-quiver")] }), "excellency-skill-group"), "with no Excellency, or only a hidden one, the same");
+const alchemy = price({ excellencies: ["Ballista"], excellencySkills: ["excellencies/alchemist-water-fire/on-the-fly-alchemy"] });
+ok(alchemy.problems.some((p) => p.code === "excellency-skill-group" && /the Alchemist Excellency, which/.test(p.message)), "the message gives a multi-aligned Excellency its name without the heading's brackets");
+ok(has(price({ excellencies: ["Ballista"], excellencySkills: ["open-skills/open-skills/agility"] }), "wrong-group") && has(price({ excellencies: ["Ballista"], openSkills: [B("refresh-quiver")] }), "wrong-group"), "an Open skill in the Excellency list is in the wrong group, and an Excellency skill in the Open list");
+// "You can purchase this skill twice" is on two rows and no others.
+ok(TWICE_SKILLS.length === 2 && TWICE_SKILLS.every((id) => /You can purchase this skill twice/.test(catalog.byId.get(id)?.description ?? "")), "both twice-purchasable rows are in skills.json and still say so");
+const saysRepeat = data.skills.filter((s) => s.groupKind === "Excellency" && /purchase this skill/i.test(s.description)).map((s) => s.id);
+ok(saysRepeat.length === 2 && saysRepeat.every((id) => TWICE_SKILLS.includes(id)), `and no other Excellency row says anything about purchasing it again (${saysRepeat.length})`);
+const heat = (n) => price({ excellencies: ["Forge fire"], excellencySkills: Array(n).fill(HEAT) });
+ok(heat(1).cp.spent === 8 && heat(2).cp.spent === 11 && heat(2).legal, `Heat the Forge twice is legal and costs its 3 CP twice (${heat(2).cp.spent})`);
+ok(has(heat(3), "duplicate-selection") && heat(3).cp.spent === 11 && /purchased twice/.test(heat(3).problems[0].message), "a third is a problem and is not charged");
+const doubled = price({ excellencies: ["Ballista"], excellencySkills: [B("refresh-quiver"), B("refresh-quiver")] });
+ok(has(doubled, "duplicate-selection") && doubled.cp.spent === 9, "any other Excellency skill twice is a problem and is charged once");
+// The save from before the list existed: no excellencySkills at all.
+const old = priceBuild({ ...base, excellencies: ["Ballista", "Deadeye"], excellencySkills: undefined }, catalog);
+ok(old.cp.spent === 11 && old.legal && old.purchases.length === 2, `a build with no Excellency skill list prices as it did: two Excellencies, 11 CP (${old.cp.spent})`);
+ok("excellencySkills" in emptyBuild(catalog) && emptyBuild(catalog).excellencySkills.length === 0, "the empty build has the list, empty");
+
 // --- what the picker will offer -------------------------------------------
 
 console.log("# offered");
@@ -353,6 +394,12 @@ ok(
   offered({ ...base, expressions: ["performer"] }, catalog)[7].skills.length === 8 + 3 + 25,
   `buying the Performer Expression adds its three purchasable skills (${offered({ ...base, expressions: ["performer"] }, catalog)[7].skills.length})`
 );
+
+const seven = (excellencies) => offered({ ...base, excellencies }, catalog)[7].skills.filter((s) => s.groupKind === "Excellency");
+ok(seven(["Ballista"]).length === 7 && seven(["Ballista"]).every((s) => s.group === "Ballista" && s.cost.kind === "cp"), `holding Ballista adds its 7 purchasable skills to step 7, and not its Included one (${seven(["Ballista"]).length})`);
+ok(seven(["Deadeye", "Homebrew"]).length === 0 && seven([]).length === 0, "a hidden Excellency, a typed name and no Excellency add nothing");
+ok(seven(["Ballista", "ballista", " BALLISTA "]).length === 7, "the same Excellency held twice lists its table once");
+ok(seven(five.filter((x) => !x.hidden).map((x) => x.name)).length === 209, `all 30 chapter Excellencies together offer the 209 priced skills (${seven(five.filter((x) => !x.hidden).map((x) => x.name)).length})`);
 
 console.log(failures ? `\n${failures} FAILURE(S)` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

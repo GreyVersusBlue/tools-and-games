@@ -11,7 +11,7 @@
 // What is listed is exactly what build-rules.js's offered() returns for the
 // build so far — the picker renders rules, it does not restate them. The one
 // thing added on top is the wording around the lists, which quotes the chapter.
-import { EXPRESSION_MAX, PER_ASPECT_SKILL, offered } from "./build-rules.js";
+import { EXPRESSION_MAX, PER_ASPECT_SKILL, TWICE_SKILLS, excellencyName, heldExcellencies, offered } from "./build-rules.js";
 
 export const STEP_TITLES = {
   1: "Choose 1 or 2 Aspects",
@@ -32,7 +32,7 @@ const STEP_NOTES = {
   2: "This Foundation does not cost CP. You can purchase up to 2 Foundation skills from your Foundation.",
   3: "This Culture does not cost CP. You can purchase up to 2 Culture skills from your Culture.",
   4: "This Domain does not cost CP. Its Determination skill is included; its other skills are bought in step 7.",
-  5: "Your first Excellency costs five CP, each subsequent Excellency costs one additional CP. Three is a hard limit, and Excellency purchases must be unlocked in-game.",
+  5: "Your first Excellency costs five CP, each subsequent Excellency costs one additional CP. Three is a hard limit, and Excellency purchases must be unlocked in-game. Each Excellency's Included skill comes with it; its other skills are bought in step 7.",
   6: "Your first Expression costs five CP, each subsequent Expression costs one additional CP. Two at character creation; a third trades away the third Excellency slot. Each Expression's first skill is included.",
   7: "Skills come from all the different things you have selected previously and also include Open Skills.",
   8: "Spend these attributes to use skills.",
@@ -175,8 +175,9 @@ function step4(build, catalog, offer, links) {
 // The alignment is shown and filters nothing: "You may take any Excellency
 // regardless of your chosen Domain". A name the build holds that is on neither
 // list was typed before there was a list; it gets a box of its own so the form
-// still carries it. The skills inside an Excellency are not offered in step 7
-// yet, and the step says so. A hidden Excellency's link is labelled for the
+// still carries it. A chapter Excellency names the Included row of its table,
+// which comes with it; the rest of the table is step 7's. A hidden Excellency
+// has no table, and the step says so. A hidden Excellency's link is labelled for the
 // table it lands on, not for itself: the link does not wrap, and one hidden
 // name is a sentence 125 characters long, which put the page 509 px wider than
 // a phone.
@@ -187,7 +188,8 @@ function alignment(x, catalog) {
 }
 function step5(build, catalog, offer, links) {
   const item = (x) => {
-    const detail = [alignment(x, catalog), x.hidden ? `Primary skill: ${x.primarySkill}` : ""].filter(Boolean).join(". ");
+    const included = x.group ? catalog.skillsOfGroup("Excellency", x.group).filter((s) => s.cost.kind === "included") : [];
+    const detail = [alignment(x, catalog), x.hidden ? `Primary skill: ${x.primarySkill}` : "", included.length ? `Included: ${included.map((s) => s.name).join(", ")}` : ""].filter(Boolean).join(". ");
     return choiceItem("excellencies", "checkbox", x.name, build.excellencies.some((n) => sameName(n, x.name)), x.name, detail, pageHref(links, x.source), x.hidden ? "the hidden table" : x.name);
   };
   let html = `<ul class="builder__choices">${offer.choices.filter((x) => !x.hidden).map(item).join("")}</ul>`;
@@ -199,7 +201,7 @@ function step5(build, catalog, offer, links) {
     html += `</ul>`;
   }
   html += `<p class="builder__cap">up to ${offer.max}, whatever your Domain</p>`;
-  html += `<p class="builder__hint">The skills inside an Excellency are not listed or priced here yet. The total covers the Excellency itself, not what you buy from its table.</p>`;
+  html += `<p class="builder__hint">An Excellency's Included skill comes with it, and the rest of its table is bought in step 7. A hidden Excellency has no skill table in the rulebook, so nothing inside one is listed or priced on this page.</p>`;
   return html;
 }
 
@@ -221,6 +223,26 @@ function step7(build, catalog, offer, links) {
   const domainSkills = offer.skills.filter((s) => s.groupKind === "Domain");
   if (domain) html += skillList(domainSkills, "domainSkills", build.domainSkills, links, `${domain.name} Domain skills`);
   else html += `<p class="builder__hint">Choose a Domain in step 4 to see its skills.</p>`;
+  // An Excellency's table, less its Included row, which step 5 granted. A row
+  // whose description says it can be purchased twice is two boxes with one
+  // value, the way Tongue of Aspect is a box per Aspect. A hidden Excellency,
+  // or a name typed before step 5 had a list, has no table to show.
+  const held = heldExcellencies(build, catalog);
+  for (const x of held.filter((x) => x.group)) {
+    const skills = offer.skills.filter((s) => s.groupKind === "Excellency" && s.group === x.group);
+    html += `<h3 class="builder__group">${esc(x.name)} Excellency skills</h3><ul class="builder__skills">`;
+    for (const s of skills) {
+      const taken = count(build.excellencySkills, s.id);
+      html += skillItem(s, "excellencySkills", taken > 0, links);
+      if (TWICE_SKILLS.includes(s.id)) html += skillItem(s, "excellencySkills", taken > 1, links, { label: `${s.name} (second purchase)`, attrs: ` data-repeat="1"` });
+    }
+    html += `</ul>`;
+  }
+  const tableless = [...held.filter((x) => !x.group).map((x) => x.name), ...offered(build, catalog)[5].unlisted];
+  if (tableless.length) {
+    html += `<p class="builder__hint" data-no-table>No skill table in the rulebook for ${tableless.map(esc).join(", ")}, so nothing inside ${tableless.length === 1 ? "it" : "them"} is listed or priced here.</p>`;
+  }
+  if (!held.length && !tableless.length) html += `<p class="builder__hint">Choose an Excellency in step 5 to see its skills.</p>`;
   for (const e of expressions) {
     const skills = offer.skills.filter((s) => s.groupKind === "Expression" && s.group === e.name);
     html += skillList(skills, "expressionSkills", build.expressionSkills, links, `${e.name} Expression skills`);
@@ -266,7 +288,7 @@ export function stepSignature(step, build, catalog) {
   if (step === 2) ids.push(`foundation:${build.foundation}`);
   if (step === 3) ids.push(`culture:${build.culture}`);
   if (step === 4) ids.push(`domain:${build.domain}`);
-  if (step === 7) ids.push(`domain:${build.domain}`, `expressions:${build.expressions.join(",")}`);
+  if (step === 7) ids.push(`domain:${build.domain}`, `excellencies:${build.excellencies.map((n) => String(n).trim().toLowerCase()).join(",")}`, `expressions:${build.expressions.join(",")}`);
   return ids.join("|");
 }
 
@@ -341,7 +363,7 @@ export function renderVerdict(verdict) {
   }
   const granted = verdict.granted.filter((g) => g.step !== 0);
   html += `<h3>Included with your choices</h3>`;
-  html += granted.length ? `<p>${granted.map((g) => esc(g.name)).join(", ")}.</p>` : `<p class="builder__hint">Nothing yet; a Culture, a Domain and each Expression each include a skill.</p>`;
+  html += granted.length ? `<p>${granted.map((g) => esc(g.name)).join(", ")}.</p>` : `<p class="builder__hint">Nothing yet; a Culture, a Domain, each Excellency in the chapter and each Expression each include a skill.</p>`;
   const adventurer = verdict.granted.filter((g) => g.step === 0);
   html += `<h3>Adventurer skills, free to every character</h3><p>${adventurer.map((g) => esc(g.name)).join(", ")}.</p>`;
   return html;
@@ -371,6 +393,7 @@ const FROM_LABEL = {
   Aspect: () => "Aspect",
   Culture: () => "Culture",
   Domain: (skill) => `${skill.group} Domain`,
+  Excellency: (skill) => `${excellencyName(skill.group)} Excellency`,
   Expression: (skill) => `${skill.group} Expression`,
   "Foundation type": (skill) => `Foundation (${skill.group})`,
   Open: () => "Open",

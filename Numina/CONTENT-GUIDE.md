@@ -421,6 +421,13 @@ by hand after touching it.
   is ticked — so a box is never rebuilt under the pointer. An Excellency's box
   carries its name as its value, because a build has held Excellencies by
   name since they were typed.
+- **An Excellency's skills are step 7's.** `offered()[7]` lists the table of
+  each chapter Excellency the build holds, less its `Included` row, which
+  `priceBuild` grants. A build keeps them in `excellencySkills` (fragment key
+  `xs`). A row whose description says "You can purchase this skill twice" is
+  in `TWICE_SKILLS` and gets two boxes with one value, the way Tongue of
+  Aspect gets a box per Aspect; `npm test` fails if a new row says it and is
+  not in the list. A hidden Excellency has no table and lists nothing.
 - **The data is inlined.** The page carries `skills.json` and one anchor URL
   per skill id as two `<script type="application/json">` islands, written by
   the `jsonIsland` and `skillLinks` filters in `eleventy.config.mjs`. The

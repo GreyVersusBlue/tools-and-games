@@ -67,6 +67,13 @@ export const ASPECT_BOOST_SKILLS = ["aspects/aspects/extra-attribute", "aspects/
 // skill purchases." The only selection a build may hold twice.
 export const PER_ASPECT_SKILL = "aspects/aspects/tongue-of-aspect";
 
+// The two Excellency skills whose own row says "You can purchase this skill
+// twice" (Forge fire and Ordinator, p61 and p72). A second purchase costs the
+// printed CP again: the book's Cost column is "the number of CP required to
+// purchase the skill" (#843). test/build-rules.test.mjs checks both rows still
+// say it and that no other Excellency row has started to.
+export const TWICE_SKILLS = ["excellencies/forge-fire/heat-the-forge", "excellencies/ordinator-water-earth/extended-healing"];
+
 // The nth purchase of an escalating tier: 5, 6, 7. Costs the tiers, not the
 // count, so an over-cap build still gets a number rather than a blank.
 export function tierCost(n) {
@@ -80,11 +87,18 @@ export function tierTotal(count) {
 
 // A skill counts against a "purchase up to N" cap when buying it costs
 // something. The Culture table's Resource/Contacts, each Domain's
-// Determination and each Expression's first row are Included — granted with
+// Determination, each Expression's first row and one row of each Excellency's
+// table are Included — granted with
 // the choice, not purchased out of the allowance. A See Description cost is
 // counted: unknown is not free.
 function isPurchase(skill) {
   return skill.cost.kind === "cp" ? skill.cost.cp > 0 : skill.cost.kind !== "included";
+}
+
+// A chapter heading carries its alignment in brackets ("Alchemist (Water /
+// Fire)"); the Excellency's name is the heading without them.
+export function excellencyName(group) {
+  return group.replace(/\s*\([^)]*\)\s*$/, "");
 }
 
 function slug(text) {
@@ -112,7 +126,7 @@ export function buildCatalog(data) {
   // under. A hidden Excellency has no table, so it has no `group`.
   const excellencies = new Map();
   for (const t of data.tables.filter((t) => t.groupKind === "Excellency")) {
-    const name = t.group.replace(/\s*\([^)]*\)\s*$/, "");
+    const name = excellencyName(t.group);
     excellencies.set(slug(name), { domains: t.domains, group: t.group, hidden: false, id: slug(name), name, source: t.source });
   }
   for (const h of data.hidden.filter((h) => h.kind === "Excellency")) {
@@ -152,6 +166,7 @@ export function emptyBuild(catalog) {
     domain: null,
     domainSkills: [],
     excellencies: [],
+    excellencySkills: [],
     expressions: [],
     expressionSkills: [],
     foundation: null,
@@ -187,7 +202,7 @@ const list = (v) => (Array.isArray(v) ? v : []);
 
 // Resolves selected ids against the catalog, rejecting unknown ids and
 // duplicates, and returns the records that survived.
-function resolve(verdict, ids, step, catalog, { allowRepeat = null, repeatLimit = 0 } = {}) {
+function resolve(verdict, ids, step, catalog, { allowRepeat = null, repeatLimit = 0, twice = [] } = {}) {
   const seen = new Map();
   const out = [];
   for (const id of ids) {
@@ -199,14 +214,16 @@ function resolve(verdict, ids, step, catalog, { allowRepeat = null, repeatLimit 
     const times = (seen.get(id) ?? 0) + 1;
     seen.set(id, times);
     if (times > 1) {
-      const allowed = id === allowRepeat && times <= repeatLimit;
+      const allowed = (id === allowRepeat && times <= repeatLimit) || (twice.includes(id) && times <= 2);
       if (!allowed) {
         verdict.problem(
           "duplicate-selection",
           step,
           id === allowRepeat
             ? `${skill.name} is purchased per Aspect, and this build has ${repeatLimit} Aspect(s) to purchase it for`
-            : `${skill.name} is selected ${times} times; a skill is bought once`
+            : twice.includes(id)
+              ? `${skill.name} is selected ${times} times; its description allows it to be purchased twice`
+              : `${skill.name} is selected ${times} times; a skill is bought once`
         );
         continue;
       }
@@ -350,8 +367,10 @@ export function priceBuild(input, catalog) {
   // the chapter's list or the hidden table is matched without regard to case
   // and priced under the book's spelling; a name on neither is a save from
   // before the list and is priced as it always was, by its tier. The same
-  // Excellency twice is one Excellency. What is still not priced is the skills
-  // inside a chosen Excellency: see WISHLIST.md.
+  // Excellency twice is one Excellency. A chapter Excellency grants the
+  // Included row of its table, as an Expression does, and step 7 sells the
+  // rest. A hidden Excellency, or a name on no list, has no table in the book:
+  // nothing inside it is granted or sold (#841).
   const excellencies = [];
   for (const typed of list(build.excellencies).map((name) => String(name).trim()).filter(Boolean)) {
     const record = catalog.excellencyByName.get(typed.toLowerCase()) ?? null;
@@ -391,6 +410,7 @@ export function priceBuild(input, catalog) {
     if (record?.hidden) {
       v.flag("hidden-approval", `${name} is a hidden Excellency and requires Staff approval before it is unlocked`, { name });
     }
+    if (record?.group) grantIncluded(v, catalog.skillsOfGroup("Excellency", record.group), 5);
   });
   expressions.forEach((expression, i) => {
     v.purchases.push({ cp: tierCost(i + 1), id: expression.id, name: expression.name, step: 6 });
@@ -405,7 +425,22 @@ export function priceBuild(input, catalog) {
     }
   });
 
-  // --- Step 7: Expression and Open skills ----------------------------------
+  // --- Step 7: Excellency, Expression and Open skills ----------------------
+  // A skill inside an Excellency costs its printed CP on top of the
+  // Excellency's 5, 6 or 7: "Cost: The number of CP (Character Points) required
+  // to purchase the skill" (p41). The book states no order inside a table and
+  // no cap on how many rows are bought. Two rows state a prerequisite in their
+  // own description (Combatant's Armored for War, Tornado's Bow and Sword);
+  // the description is on the page and the prerequisite is not checked (#842).
+  const excellencySkills = resolve(v, list(build.excellencySkills), 7, catalog, { twice: TWICE_SKILLS });
+  for (const skill of excellencySkills) {
+    if (skill.groupKind !== "Excellency") v.problem("wrong-group", 7, `${skill.name} is not an Excellency skill`);
+    else if (!excellencies.some((x) => x.record?.group === skill.group)) {
+      v.problem("excellency-skill-group", 7, `${skill.name} belongs to the ${excellencyName(skill.group)} Excellency, which this character does not have`);
+    }
+  }
+  charge(v, excellencySkills.filter(isPurchase), 7);
+
   const expressionSkills = resolve(v, list(build.expressionSkills), 7, catalog);
   for (const skill of expressionSkills) {
     if (skill.groupKind !== "Expression") v.problem("wrong-group", 7, `${skill.name} is not an Expression skill`);
@@ -491,6 +526,13 @@ export function priceBuild(input, catalog) {
   };
 }
 
+// The catalog records of the Excellencies a build holds, each once, in the
+// build's order. A name on neither list has no record and is left out.
+export function heldExcellencies(build, catalog) {
+  const records = list(build.excellencies).map((name) => catalog.excellencyByName.get(String(name).trim().toLowerCase())).filter(Boolean);
+  return [...new Set(records)];
+}
+
 // What each step may offer, given what is chosen so far. The picker reads this
 // rather than re-deriving the groupings; the numbers it reports are the caps
 // above, so a rule changes in one place.
@@ -499,6 +541,7 @@ export function offered(input, catalog) {
   const foundation = build.foundation ? catalog.foundations.get(build.foundation) : null;
   const domain = build.domain ? catalog.domains.get(build.domain) : null;
   const expressions = list(build.expressions).map((id) => catalog.expressions.get(id)).filter(Boolean);
+  const excellencies = heldExcellencies(build, catalog);
   // Names the build holds that are on neither list: typed before step 5 had
   // one. Offered back so the form still carries them and they can be unticked.
   const unlisted = [...new Set(list(build.excellencies).map((name) => String(name).trim()).filter((name) => name && !catalog.excellencyByName.has(name.toLowerCase())))];
@@ -521,6 +564,8 @@ export function offered(input, catalog) {
       max: null,
       skills: [
         ...(domain ? catalog.skillsOfGroup("Domain", domain.name).filter(isPurchase) : []),
+        // A hidden Excellency's `group` is null, which no skill is filed under.
+        ...excellencies.flatMap((x) => catalog.skillsOfGroup("Excellency", x.group).filter(isPurchase)),
         ...expressions.flatMap((e) => catalog.skillsOfGroup("Expression", e.name).filter(isPurchase)),
         ...catalog.openSkills,
       ],
