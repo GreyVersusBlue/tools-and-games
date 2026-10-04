@@ -28,6 +28,9 @@ import {
   EXPRESSION_MAX,
   FOUNDATION_SKILL_MAX,
   PER_ASPECT_SKILL,
+  PREREQUISITES,
+  PURCHASE_LIMITS,
+  QUICK_REFLEXES,
   THIRD_ASPECT_SKILL,
   TWICE_SKILLS,
   buildCatalog,
@@ -360,6 +363,39 @@ ok(heat(1).cp.spent === 8 && heat(2).cp.spent === 11 && heat(2).legal, `Heat the
 ok(has(heat(3), "duplicate-selection") && heat(3).cp.spent === 11 && /purchased twice/.test(heat(3).problems[0].message), "a third is a problem and is not charged");
 const doubled = price({ excellencies: ["Ballista"], excellencySkills: [B("refresh-quiver"), B("refresh-quiver")] });
 ok(has(doubled, "duplicate-selection") && doubled.cp.spent === 9, "any other Excellency skill twice is a problem and is charged once");
+
+// --- more than once, and something first (#844, #845) -----------------------
+
+console.log("# purchase limits and prerequisites");
+const quickRow = catalog.byId.get(QUICK_REFLEXES);
+ok(/You can purchase this skill up to 3 times/.test(quickRow?.description ?? "") && quickRow.cost.kind === "cp" && quickRow.cost.cp === 1, "Quick Reflexes is in skills.json, prints one Cost of 1, and still says up to 3 times");
+const saysAgain = data.skills.filter((s) => /purchase this skill (twice|up to)/i.test(s.description)).map((s) => s.id).sort();
+ok(saysAgain.length === 3 && saysAgain.join() === [...PURCHASE_LIMITS.keys()].sort().join(), `the limits name every row in the book that says so, and no other (${saysAgain.length})`);
+ok(PURCHASE_LIMITS.get(QUICK_REFLEXES) === 3 && TWICE_SKILLS.every((id) => PURCHASE_LIMITS.get(id) === 2), "Quick Reflexes three times; Heat the Forge and Extended Healing stay at two");
+const quick = (n) => price({ openSkills: Array(n).fill(QUICK_REFLEXES) });
+ok(quick(1).cp.spent === 1 && quick(1).legal, `Quick Reflexes once is 1 CP and legal, as it was (${quick(1).cp.spent})`);
+ok(quick(2).cp.spent === 2 && quick(2).legal, `twice is legal and 2 CP (${quick(2).cp.spent})`);
+ok(quick(3).cp.spent === 3 && quick(3).legal && quick(3).cp.exact, `three times is legal and 3 CP (${quick(3).cp.spent})`);
+ok(quick(3).purchases.filter((p) => p.id === QUICK_REFLEXES && p.cp === 1 && p.step === 7).length === 3, "each purchase is its own step 7 line at the printed 1 CP");
+ok(has(quick(4), "duplicate-selection") && quick(4).cp.spent === 3 && quick(4).purchases.length === 3, `a fourth is a problem and is not charged (${quick(4).cp.spent})`);
+ok(quick(4).problems.some((p) => p.code === "duplicate-selection" && p.step === 7 && /Quick Reflexes is selected 4 times; its description allows it to be purchased up to 3 times/.test(p.message)), "and the message quotes the row's own limit");
+ok(has(price({ excellencies: ["Ordinator"], excellencySkills: Array(3).fill(TWICE_SKILLS[1]) }), "duplicate-selection") && price({ excellencies: ["Ordinator"], excellencySkills: Array(3).fill(TWICE_SKILLS[1]) }).cp.spent === 11, "Extended Healing a third time is still a problem: a limit of 3 is Quick Reflexes' alone");
+
+const [bowRule] = PREREQUISITES;
+const BOW = "excellencies/tornado-air-lightning/bow-and-sword";
+const ARCHERY = "open-skills/open-skills/archery";
+ok(PREREQUISITES.length === 1 && bowRule.skill === BOW && bowRule.needs === ARCHERY && /pre-requisite of the Archery skill/.test(catalog.byId.get(BOW)?.description ?? ""), "the one checked prerequisite is Bow and Sword's, and its row still says so");
+ok(data.skills.filter((s) => s.name === "Archery").length === 1 && catalog.byId.get(ARCHERY).groupKind === "Open", "the book has one skill named Archery, an Open skill");
+const asks = data.skills.filter((s) => /requisite/i.test(s.description)).map((s) => s.id).sort();
+ok(asks.join() === ["domains/ice/ices-skill", "excellencies/combatant-lightning-ice/armored-for-war", BOW].join(), `three rows state a prerequisite: this one and the two that want medium armor (${asks.length})`);
+const tornado = price({ excellencies: ["Tornado"] });
+ok(tornado.granted.some((g) => g.id === BOW) && !tornado.legal && has(tornado, "prerequisite-missing"), "Tornado without Archery is a problem");
+ok(tornado.problems.filter((p) => p.code === "prerequisite-missing").length === 1 && tornado.problems.some((p) => p.code === "prerequisite-missing" && p.step === 7 && p.message === "Bow and Sword, which comes with the Tornado Excellency, has a prerequisite of the Archery skill, which this character does not have"), "reported once, under step 7, naming both skills and the Excellency");
+ok(tornado.cp.spent === 5, `and the Excellency is charged as before (${tornado.cp.spent})`);
+const archer = price({ excellencies: ["tornado"], openSkills: [ARCHERY] });
+ok(archer.legal && !has(archer, "prerequisite-missing") && archer.cp.spent === 5 + 3, `Tornado with Archery is legal: 5 + 3 (${archer.cp.spent})`);
+ok(!has(price({ excellencies: ["Ballista", "Combatant"] }), "prerequisite-missing") && !has(price({ domain: "ice", domainSkills: ["domains/ice/ices-skill"] }), "prerequisite-missing") && !has(price(), "prerequisite-missing"), "no other build is asked for it, and medium armor is not checked");
+
 // The save from before the list existed: no excellencySkills at all.
 const old = priceBuild({ ...base, excellencies: ["Ballista", "Deadeye"], excellencySkills: undefined }, catalog);
 ok(old.cp.spent === 11 && old.legal && old.purchases.length === 2, `a build with no Excellency skill list prices as it did: two Excellencies, 11 CP (${old.cp.spent})`);

@@ -21,6 +21,10 @@
 //     its Included row, which step 5 names; a twice-purchasable row is two
 //     boxes; a hidden Excellency or a typed name lists nothing and the page
 //     says so (#841);
+//   - Quick Reflexes is three boxes and round-trips as up to three entries,
+//     a save holding it once loads as it did (#844), and Tornado's table says
+//     its Included row wants Archery, with the problem under step 7 when the
+//     build has none (#845);
 //   - the chosen Excellency skills round-trip through the fragment and the
 //     save, `repair` cleans the list, and a save or link without it loads and
 //     prices as it did;
@@ -39,7 +43,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { PER_ASPECT_SKILL, TWICE_SKILLS, buildCatalog, priceBuild } from "../src/js/build-rules.js";
+import { PER_ASPECT_SKILL, QUICK_REFLEXES, TWICE_SKILLS, buildCatalog, priceBuild } from "../src/js/build-rules.js";
 import { STORAGE_KEY, decodeBuild, deserialize, encodeBuild, isEmpty, repair, serialize } from "../src/js/build-state.js";
 import { attributeCostLabel, esc, renderCard, renderStep, renderStepProblems, renderSummary, renderVerdict, stepSignature } from "../src/js/build-view.js";
 import { jsonIsland } from "../tools/json-island.mjs";
@@ -110,6 +114,12 @@ ok(/&x=Forge%20fire,Ballista&xs=excellencies\/forge-fire\/heat-the-forge,excelle
 ok(decodeBuild(smithFragment, catalog).excellencySkills.join("|") === smith.excellencySkills.join("|"), "and round-trip, a twice-purchased skill as two entries");
 ok(!encodeBuild(fifty, catalog).includes("xs=") && decodeBuild(encodeBuild(fifty, catalog), catalog).excellencySkills.length === 0, "a build with none writes no xs key, and a link without one decodes to an empty list");
 ok(!isEmpty({ excellencySkills: [HEAT] }, catalog), "a build holding only an Excellency skill is not empty, so it is saved rather than cleared");
+// Quick Reflexes up to three times (#844): three entries under the key the
+// Open skills always had.
+const QR = QUICK_REFLEXES;
+const dodger = { aspects: ["arcane"], openSkills: [QR, "open-skills/open-skills/agility", QR, QR] };
+ok(encodeBuild(dodger, catalog) === `a=arcane&o=${QR},open-skills/open-skills/agility,${QR},${QR}`, `three purchases are three entries under o (${encodeBuild(dodger, catalog).slice(-50)})`);
+ok(decodeBuild(encodeBuild(dodger, catalog), catalog).openSkills.join("|") === dodger.openSkills.join("|"), "and round-trip through the fragment");
 
 console.log("# the save");
 const saved = serialize(fifty, catalog);
@@ -133,6 +143,16 @@ const preSave = deserialize(JSON.stringify({ v: 1, build: { ...fifty, excellenci
 const preLink = decodeBuild("a=arcane&x=Ballista", catalog);
 ok(Array.isArray(preSave.excellencySkills) && preSave.excellencySkills.length === 0 && preLink.excellencySkills.length === 0, "a save and a link from before the list load with it empty");
 ok(priceBuild(preSave, catalog).cp.spent === 50 && priceBuild(preSave, catalog).legal, `and the save prices as it did, 50 CP and legal (${priceBuild(preSave, catalog).cp.spent})`);
+// Quick Reflexes (#844) and the Archery prerequisite (#845).
+ok(deserialize(serialize(dodger, catalog), catalog).openSkills.join("|") === dodger.openSkills.join("|"), "Quick Reflexes three times round-trips through the save");
+ok(repair({ openSkills: [` ${QR} `, null, QR, "", QR, QR] }, catalog).openSkills.join("|") === [QR, QR, QR, QR].join("|"), "repair trims the entries and keeps every one: a fourth is priceBuild's to report, not repair's to drop");
+const onceBuild = { aspects: ["arcane"], culture: "aluvair", domain: "air", foundation: "military", openSkills: [QR] };
+const onceSave = deserialize(JSON.stringify({ v: 1, build: onceBuild }), catalog);
+const onceBare = deserialize(JSON.stringify(onceBuild), catalog);
+const onceLink = decodeBuild(`a=arcane&f=military&c=aluvair&d=air&o=${QR}`, catalog);
+ok([onceSave, onceBare, onceLink].every((b) => b.openSkills.join() === QR && priceBuild(b, catalog).legal && priceBuild(b, catalog).cp.spent === 1), "a save, an unversioned save and a link holding Quick Reflexes once load and price as they did: 1 CP, legal");
+const tornadoSave = deserialize(JSON.stringify({ v: 1, build: { ...onceBuild, excellencies: ["Tornado"] } }), catalog);
+ok(tornadoSave.excellencies.join() === "Tornado" && priceBuild(tornadoSave, catalog).cp.spent === 6 && priceBuild(tornadoSave, catalog).problems.map((p) => p.code).join() === "prerequisite-missing", "an old save holding Tornado without Archery loads, costs what it did, and now carries the one problem");
 
 // --- the steps ---------------------------------------------------------------
 
@@ -214,7 +234,8 @@ ok(/Included: /.test(s6), "each Expression names its included first skill");
 
 const s7none = render(7, empty);
 ok(count(s7none, /name="domainSkills"/g) === 0 && count(s7none, /name="expressionSkills"/g) === 0, "step 7 with nothing chosen sells no Domain or Expression skill");
-ok(count(s7none, /name="openSkills"/g) === catalog.openSkills.length, `but every Open skill (${count(s7none, /name="openSkills"/g)})`);
+const openValues = new Set([...s7none.matchAll(/name="openSkills" value="([^"]*)"/g)].map((m) => m[1]));
+ok(openValues.size === catalog.openSkills.length && catalog.openSkills.every((o) => openValues.has(o.id)), `but every Open skill (${openValues.size})`);
 const s7 = render(7, fifty);
 const airBuyable = catalog.skillsOfGroup("Domain", "Air").filter((s) => s.cost.kind === "cp" && s.cost.cp > 0).length;
 const performerBuyable = catalog.skillsOfGroup("Expression", "Performer").filter((s) => s.cost.kind !== "included").length;
@@ -240,6 +261,24 @@ ok(count(s7hidden, /Excellency skills<\/h3>/g) === 1 && !/Deadeye Excellency ski
 ok(!/data-no-table/.test(s7b) && !/Choose an Excellency in step 5/.test(render(7, { excellencies: ["Homebrew"] })) && !/Choose an Excellency in step 5/.test(render(7, { excellencies: ["Deadeye"] })), "that line is only there when there is such a name, and the choose-one hint only when the build holds no Excellency of any kind");
 const s7all = render(7, { excellencies: [...catalog.excellencies.values()].filter((x) => !x.hidden).map((x) => x.name) });
 ok(boxes7(s7all).length === 209 + TWICE_SKILLS.length && new Set(boxes7(s7all).map((b) => b.value)).size === 209, `across all 30 tables the boxes are the 209 priced skills plus a second box for each twice-purchasable one (${boxes7(s7all).length})`);
+// Quick Reflexes (#844).
+const openBoxes = (html) => [...html.matchAll(/<input type="checkbox" name="openSkills" value="([^"]*)"( checked)?( data-repeat="(\d)")?/g)].map((m) => ({ checked: Boolean(m[2]), repeat: m[4] ?? "", value: m[1] }));
+const quickBoxes = (n) => openBoxes(render(7, { openSkills: Array(n).fill(QR) })).filter((b) => b.value === QR).map((b) => b.checked).join();
+ok(quickBoxes(0) === "false,false,false" && quickBoxes(1) === "true,false,false" && quickBoxes(2) === "true,true,false" && quickBoxes(3) === "true,true,true", `Quick Reflexes is three boxes, ticked in order (${quickBoxes(2)})`);
+ok(quickBoxes(4) === "true,true,true", "a build holding a fourth still has three boxes");
+ok(openBoxes(s7none).length === catalog.openSkills.length + 2, `and it is the only Open skill with more than one (${openBoxes(s7none).length})`);
+ok(openBoxes(s7none).filter((b) => b.value === QR).map((b) => b.repeat).join() === ",1,2" && count(s7none, /<span class="builder__name">Quick Reflexes \(second purchase\)<\/span> <span class="builder__cost">1 CP<\/span>/g) === 1 && count(s7none, /<span class="builder__name">Quick Reflexes \(third purchase\)<\/span> <span class="builder__cost">1 CP<\/span>/g) === 1, "the second and third boxes say which they are, each at the printed 1 CP");
+ok(/<h3 class="builder__group">Open skills<\/h3>/.test(s7none) && count(render(7, fifty), /name="openSkills" value="[^"]+" checked/g) === 4, "the Open skills keep their heading, and the 50 CP build's four render checked");
+// The Archery prerequisite (#845). Bow and Sword is Included, so it has no
+// box in step 7: the line sits under Tornado's heading, and the problem under
+// the step's.
+const s7t = render(7, { excellencies: ["Tornado"] });
+ok(/<h3 class="builder__group">Tornado Excellency skills<\/h3><p class="builder__hint" data-prerequisite="excellencies\/tornado-air-lightning\/bow-and-sword">Bow and Sword, which comes with Tornado, has a prerequisite of the Archery skill\. It is under Open skills, below\.<\/p><ul/.test(s7t), "Tornado's table says its Included skill wants Archery, under its own heading");
+ok(count(s7all, /data-prerequisite=/g) === 1 && !/data-prerequisite/.test(s7b) && !/data-prerequisite/.test(s7none), "and no other table says it");
+const tornadoBuild = (open) => repair({ aspects: ["arcane"], culture: "aluvair", domain: "air", excellencies: ["Tornado"], foundation: "military", openSkills: open }, catalog);
+const noArchery = priceBuild(tornadoBuild([]), catalog);
+ok(/<li data-problem="prerequisite-missing">Bow and Sword, which comes with the Tornado Excellency, has a prerequisite of the Archery skill, which this character does not have<\/li>/.test(renderStepProblems(noArchery, 7)) && renderStepProblems(noArchery, 5) === "", "Tornado without Archery puts the problem under step 7, where Archery is sold");
+ok(renderStepProblems(priceBuild(tornadoBuild(["open-skills/open-skills/archery"]), catalog), 7) === "", "and with Archery the step has no problem");
 
 const s8 = render(8, { attributes: { prowess: 4 } });
 ok(count(s8, /type="number"/g) === 3 && /name="attr:prowess" value="4" min="2" max="10"/.test(s8), "step 8 is Prowess, Insight and Fortitude as number fields with the chart's start and cap");
@@ -272,6 +311,7 @@ ok(sig(7, { domain: "air" }) !== sig(7, { domain: "air", expressions: ["performe
 ok(sig(7, { domain: "air", openSkills: ["open-skills/open-skills/agility"] }) === sig(7, { domain: "air" }), "but not with a purchase in the step");
 ok(sig(7, { excellencies: ["Ballista"] }) !== sig(7, {}) && sig(7, { excellencies: ["Deadeye"] }) !== sig(7, {}), "step 7's signature moves with an Excellency, a hidden one too, since the step names it");
 ok(sig(7, { excellencies: ["Ballista"], excellencySkills: ["excellencies/ballista/refresh-quiver"] }) === sig(7, { excellencies: ["Ballista"] }), "and not with an Excellency skill bought");
+ok(sig(7, { excellencies: ["Tornado"], openSkills: [QR, QR, "open-skills/open-skills/archery"] }) === sig(7, { excellencies: ["Tornado"] }), "nor with Quick Reflexes or Archery ticked, so neither box is rebuilt under the pointer");
 ok(sig(1, { aspects: ["arcane"] }) !== sig(1, { aspects: ["arcane", "shade"] }), "step 1's signature moves with the Aspects, which is what adds a Tongue box");
 
 // --- the verdict ---------------------------------------------------------------
@@ -326,6 +366,7 @@ const cardSmith = cardOf(smith);
 ok(/<td class="sheet__skill">Trio of Arrows<\/td><td>Ballista Excellency<\/td><td class="sheet__cp">Included<\/td><td>1 Insight<\/td><td class="sheet__verbal">“3 Damage”<\/td>/.test(cardSmith), "an Excellency's Included skill is a row on the card, under the Excellency's name");
 ok(/<td class="sheet__skill">Refresh Quiver<\/td><td>Ballista Excellency<\/td><td class="sheet__cp">4<\/td>/.test(cardSmith) && count(cardSmith, /<td class="sheet__skill">Heat the Forge<\/td><td>Forge fire Excellency<\/td><td class="sheet__cp">3<\/td>/g) === 2, "a purchased Excellency skill prints its CP, and one bought twice is two rows");
 ok(/<td>Alchemist Excellency<\/td>/.test(cardOf({ excellencies: ["Alchemist"] })) && !/Excellency<\/td>[^\n]*\(Water/.test(cardOf({ excellencies: ["Alchemist"] })), "a multi-aligned Excellency's rows carry its name without the heading's brackets");
+ok(count(cardOf(dodger), /<td class="sheet__skill">Quick Reflexes<\/td><td>[^<]*<\/td><td class="sheet__cp">1<\/td>/g) === 3, "Quick Reflexes bought three times is three rows on the card at 1 CP each");
 const vSmith = renderVerdict(priceBuild(repair(smith, catalog), catalog));
 ok(/<strong>21 CP<\/strong> of 50 spent/.test(vSmith) && /<tr><td>7<\/td><td>Refresh Quiver<\/td><td>4<\/td><\/tr>/.test(vSmith), "the verdict's total includes the Excellency skills (5 + 6 + 3 + 4 + 3 = 21), each a row on the bill");
 

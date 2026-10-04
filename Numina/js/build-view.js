@@ -11,7 +11,7 @@
 // What is listed is exactly what build-rules.js's offered() returns for the
 // build so far — the picker renders rules, it does not restate them. The one
 // thing added on top is the wording around the lists, which quotes the chapter.
-import { EXPRESSION_MAX, PER_ASPECT_SKILL, TWICE_SKILLS, excellencyName, heldExcellencies, offered } from "./build-rules.js";
+import { EXPRESSION_MAX, PER_ASPECT_SKILL, PREREQUISITES, PURCHASE_LIMITS, excellencyName, heldExcellencies, offered } from "./build-rules.js";
 
 export const STEP_TITLES = {
   1: "Choose 1 or 2 Aspects",
@@ -78,6 +78,19 @@ function skillItem(skill, field, checked, links, extra = {}) {
     ruleLink(href, skill.name) +
     `</li>`
   );
+}
+
+// A skill's boxes: one, or one per purchase its row allows, all with the one
+// value, the way Tongue of Aspect is a box per Aspect. The form reads a build
+// as one entry per ticked box, so they tick in order on the next render.
+const NTH = ["", "", "second", "third"];
+function purchaseItems(skill, field, chosen, links) {
+  const taken = count(chosen, skill.id);
+  let html = skillItem(skill, field, taken > 0, links);
+  for (let n = 2; n <= (PURCHASE_LIMITS.get(skill.id) ?? 1); n++) {
+    html += skillItem(skill, field, taken >= n, links, { label: `${skill.name} (${NTH[n] ?? `purchase ${n}`} purchase)`, attrs: ` data-repeat="${n - 1}"` });
+  }
+  return html;
 }
 
 function skillList(skills, field, chosen, links, heading, cap = null) {
@@ -224,19 +237,20 @@ function step7(build, catalog, offer, links) {
   if (domain) html += skillList(domainSkills, "domainSkills", build.domainSkills, links, `${domain.name} Domain skills`);
   else html += `<p class="builder__hint">Choose a Domain in step 4 to see its skills.</p>`;
   // An Excellency's table, less its Included row, which step 5 granted. A row
-  // whose description says it can be purchased twice is two boxes with one
-  // value, the way Tongue of Aspect is a box per Aspect. A hidden Excellency,
-  // or a name typed before step 5 had a list, has no table to show.
+  // whose description says it can be purchased twice is two boxes. An Included
+  // row that asks for another skill has no box to say so beside, so the line
+  // goes under the heading (#845). A hidden Excellency, or a name typed before
+  // step 5 had a list, has no table to show.
   const held = heldExcellencies(build, catalog);
   for (const x of held.filter((x) => x.group)) {
     const skills = offer.skills.filter((s) => s.groupKind === "Excellency" && s.group === x.group);
-    html += `<h3 class="builder__group">${esc(x.name)} Excellency skills</h3><ul class="builder__skills">`;
-    for (const s of skills) {
-      const taken = count(build.excellencySkills, s.id);
-      html += skillItem(s, "excellencySkills", taken > 0, links);
-      if (TWICE_SKILLS.includes(s.id)) html += skillItem(s, "excellencySkills", taken > 1, links, { label: `${s.name} (second purchase)`, attrs: ` data-repeat="1"` });
+    html += `<h3 class="builder__group">${esc(x.name)} Excellency skills</h3>`;
+    for (const { needs, skill } of PREREQUISITES) {
+      const wants = catalog.byId.get(skill);
+      if (wants?.group !== x.group) continue;
+      html += `<p class="builder__hint" data-prerequisite="${esc(skill)}">${esc(wants.name)}, which comes with ${esc(x.name)}, has a prerequisite of the ${esc(catalog.byId.get(needs).name)} skill. It is under Open skills, below.</p>`;
     }
-    html += `</ul>`;
+    html += `<ul class="builder__skills">${skills.map((s) => purchaseItems(s, "excellencySkills", build.excellencySkills, links)).join("")}</ul>`;
   }
   const tableless = [...held.filter((x) => !x.group).map((x) => x.name), ...offered(build, catalog)[5].unlisted];
   if (tableless.length) {
@@ -249,7 +263,8 @@ function step7(build, catalog, offer, links) {
   }
   if (!expressions.length) html += `<p class="builder__hint">Choose an Expression in step 6 to see its skills.</p>`;
   const open = offer.skills.filter((s) => s.groupKind === "Open");
-  html += skillList(open, "openSkills", build.openSkills, links, "Open skills");
+  // Quick Reflexes is the one Open skill with more than one box (#844).
+  html += `<h3 class="builder__group">Open skills</h3><ul class="builder__skills">${open.map((s) => purchaseItems(s, "openSkills", build.openSkills, links)).join("")}</ul>`;
   return html;
 }
 
