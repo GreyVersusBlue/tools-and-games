@@ -9,7 +9,7 @@
 // Pagefind's, which is not stable across machines. It changes when the site
 // changes and only then, so an unchanged rebuild produces this file unchanged
 // and CI's rebuild check stays quiet.
-const VERSION = "bcf527101622";
+const VERSION = "2998b3ce5904";
 const CACHE = `numina-${VERSION}`;
 const SCOPE = "/Numina/";
 

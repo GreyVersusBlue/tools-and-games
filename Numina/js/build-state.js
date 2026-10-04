@@ -29,6 +29,7 @@ const FRAGMENT_KEYS = [
   ["d", "domain"],
   ["ds", "domainSkills"],
   ["x", "excellencies"],
+  ["xs", "excellencySkills"],
   ["e", "expressions"],
   ["es", "expressionSkills"],
   ["o", "openSkills"],

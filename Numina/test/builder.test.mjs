@@ -17,6 +17,13 @@
 //   - a save or a link that holds a typed Excellency name (#306) still loads:
 //     a listed name in any case ticks its box, a name on no list gets a box
 //     of its own (#839);
+//   - step 7 lists the table of each chapter Excellency the build holds, less
+//     its Included row, which step 5 names; a twice-purchasable row is two
+//     boxes; a hidden Excellency or a typed name lists nothing and the page
+//     says so (#841);
+//   - the chosen Excellency skills round-trip through the fragment and the
+//     save, `repair` cleans the list, and a save or link without it loads and
+//     prices as it did;
 //   - a step's signature moves only when its offering does, which is the
 //     guard that keeps a box from being rebuilt under the pointer;
 //   - the verdict says "at least" and quotes the chart when a purchase is
@@ -32,7 +39,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { PER_ASPECT_SKILL, buildCatalog, priceBuild } from "../src/js/build-rules.js";
+import { PER_ASPECT_SKILL, TWICE_SKILLS, buildCatalog, priceBuild } from "../src/js/build-rules.js";
 import { STORAGE_KEY, decodeBuild, deserialize, encodeBuild, isEmpty, repair, serialize } from "../src/js/build-state.js";
 import { attributeCostLabel, esc, renderCard, renderStep, renderStepProblems, renderSummary, renderVerdict, stepSignature } from "../src/js/build-view.js";
 import { jsonIsland } from "../tools/json-island.mjs";
@@ -93,6 +100,16 @@ ok(decodeBuild(encodeBuild(awkward, catalog), catalog).excellencies[0] === awkwa
 const raised = decodeBuild(encodeBuild({ ...fifty, attributes: { purpose: 7, prowess: 3 } }, catalog), catalog);
 ok(raised.attributes.purpose === 7 && raised.attributes.prowess === 3 && raised.attributes.void === 2, "raised attributes round-trip and untouched ones sit at their start");
 ok(decodeBuild("at=prowess:abc,purpose:9", catalog).attributes.prowess === 2, "a non-numeric attribute in the fragment falls back to its starting value");
+// The Excellency skills (#841). Heat the Forge is held twice, which the list
+// has to carry as two entries.
+const HEAT = TWICE_SKILLS[0];
+const smith = { aspects: ["arcane"], excellencies: ["Forge fire", "Ballista"], excellencySkills: [HEAT, "excellencies/ballista/refresh-quiver", HEAT] };
+const smithFragment = encodeBuild(smith, catalog);
+const smithAndMore = encodeBuild({ ...smith, expressions: ["performer"] }, catalog);
+ok(/&x=Forge%20fire,Ballista&xs=excellencies\/forge-fire\/heat-the-forge,excellencies\/ballista\/refresh-quiver,excellencies\/forge-fire\/heat-the-forge&e=performer$/.test(smithAndMore), `the Excellency skills are the fragment's xs key, between x and e (${smithAndMore.slice(-60)})`);
+ok(decodeBuild(smithFragment, catalog).excellencySkills.join("|") === smith.excellencySkills.join("|"), "and round-trip, a twice-purchased skill as two entries");
+ok(!encodeBuild(fifty, catalog).includes("xs=") && decodeBuild(encodeBuild(fifty, catalog), catalog).excellencySkills.length === 0, "a build with none writes no xs key, and a link without one decodes to an empty list");
+ok(!isEmpty({ excellencySkills: [HEAT] }, catalog), "a build holding only an Excellency skill is not empty, so it is saved rather than cleared");
 
 console.log("# the save");
 const saved = serialize(fifty, catalog);
@@ -108,6 +125,14 @@ ok(
 );
 ok(mangled.attributes.prowess === 3 && mangled.attributes.vitality === 2 && mangled.attributes.purpose === 5, "repair reads a numeric string, and puts a non-integer back to the chart's start");
 ok(!("unknownField" in repair({ unknownField: 1 }, catalog)), "repair drops a field the build does not have");
+ok(deserialize(serialize(smith, catalog), catalog).excellencySkills.join("|") === smith.excellencySkills.join("|"), "the Excellency skills round-trip through the save");
+const mangledX = repair({ excellencySkills: [null, " ", ` ${HEAT} `, 7] }, catalog).excellencySkills;
+ok(mangledX.join("|") === `${HEAT}|7` && repair({ excellencySkills: HEAT }, catalog).excellencySkills.length === 0, "repair trims the Excellency skill list, drops its blanks, and reads a string where the list should be as empty");
+// A save and a link from before the list existed.
+const preSave = deserialize(JSON.stringify({ v: 1, build: { ...fifty, excellencies: ["Ballista"] } }), catalog);
+const preLink = decodeBuild("a=arcane&x=Ballista", catalog);
+ok(Array.isArray(preSave.excellencySkills) && preSave.excellencySkills.length === 0 && preLink.excellencySkills.length === 0, "a save and a link from before the list load with it empty");
+ok(priceBuild(preSave, catalog).cp.spent === 50 && priceBuild(preSave, catalog).legal, `and the save prices as it did, 50 CP and legal (${priceBuild(preSave, catalog).cp.spent})`);
 
 // --- the steps ---------------------------------------------------------------
 
@@ -155,8 +180,9 @@ ok(boxes5(s5none).length === 48 && count(s5none, /type="text"/g) === 0 && checke
 ok(render(5, { domain: "air" }) === s5none && render(5, { domain: "water" }) === s5none, "and the same 48 whatever the Domain");
 const hiddenAt = s5none.indexOf("Hidden Excellencies");
 ok(hiddenAt > 0 && /require Staff approval/.test(s5none) && boxes5(s5none.slice(0, hiddenAt)).length === 30 && boxes5(s5none.slice(hiddenAt)).length === 18, "the chapter's 30 come first and the hidden 18 sit under a heading that says Staff approval");
-ok(/value="Ballista"> <span class="builder__name">Ballista<\/span><\/label><span class="builder__desc">Aligned to Air<\/span>/.test(s5none), "an Excellency shows its alignment");
-ok(/value="Alchemist"> <span class="builder__name">Alchemist<\/span><\/label><span class="builder__desc">Aligned to Water \/ Fire<\/span>/.test(s5none) && /value="Arcaneer">[\s\S]{0,80}<span class="builder__desc">Universal<\/span>/.test(s5none), "a two-Domain one shows both, under a name without the heading's brackets, and Arcaneer says Universal");
+ok(/value="Ballista"> <span class="builder__name">Ballista<\/span><\/label><span class="builder__desc">Aligned to Air\. Included: Trio of Arrows<\/span>/.test(s5none), "an Excellency shows its alignment and the skill that comes with it");
+ok(count(s5none, /Included: /g) === 30 && /value="Slayer">[\s\S]{0,120}Included: Char the Flesh<\/span>/.test(s5none), `each of the chapter's 30 names its Included skill, read from the cost and not the row order: Slayer's is its fourth (${count(s5none, /Included: /g)})`);
+ok(/value="Alchemist"> <span class="builder__name">Alchemist<\/span><\/label><span class="builder__desc">Aligned to Water \/ Fire\. Included: /.test(s5none) && /value="Arcaneer">[\s\S]{0,80}<span class="builder__desc">Universal\. Included: /.test(s5none), "a two-Domain one shows both, under a name without the heading's brackets, and Arcaneer says Universal");
 ok(/value="Deadeye">[\s\S]{0,80}Aligned to Air\. Primary skill: Take ten seconds/.test(s5none), "a hidden Excellency shows the hidden table's primary skill");
 const links5 = [...s5none.matchAll(/class="builder__link" href="([^"]+)">Rules for /g)].map((m) => m[1]);
 const labels5 = [...s5none.matchAll(/class="builder__link" href="[^"]+">([^<]+)<\/a>/g)].map((m) => m[1]);
@@ -167,7 +193,7 @@ const lands = (href) => {
   return Boolean(id) && existsSync(file) && readFileSync(file, "utf8").includes(` id="${id}"`);
 };
 ok(links5.length === 48 && new Set(links5.slice(0, 30)).size === 30 && links5.every(lands), `each links to a heading the built chapter carries, the chapter's 30 each to its own (${links5.length}, ${links5.filter((h) => !lands(h)).length} dead)`);
-ok(/up to 3, whatever your Domain/.test(s5none) && /The skills inside an Excellency are not listed or priced here yet/.test(s5none), "the step states the cap, and says the skills inside an Excellency are not priced");
+ok(/up to 3, whatever your Domain/.test(s5none) && /the rest of its table is bought in step 7\. A hidden Excellency has no skill table in the rulebook, so nothing inside one is listed or priced on this page/.test(s5none), "the step states the cap, sends the table to step 7, and says a hidden Excellency's skills are not priced");
 ok(!/data-unlisted/.test(s5none), "with nothing typed there is no group for typed names");
 // The old-save path: what a save or a pasted link from the typed-name page
 // holds, through the same loaders the page uses.
@@ -197,6 +223,23 @@ ok(count(s7, /name="expressionSkills"/g) === performerBuyable, `Performer's ${pe
 ok(!/name="domainSkills" value="domains\/air\/determination/.test(s7), "Air's Determination is not for sale in step 7");
 ok(count(s7, /name="(domainSkills|expressionSkills|openSkills)" value="[^"]+" checked/g) === 8, `the 50 CP build's 8 step 7 purchases render checked (${count(s7, /name="(domainSkills|expressionSkills|openSkills)" value="[^"]+" checked/g)})`);
 ok(/Verbal: “/.test(s7) && /class="builder__desc"/.test(s7), "skills show their verbal and description inline");
+// The Excellency tables (#841).
+const boxes7 = (html) => [...html.matchAll(/<input type="checkbox" name="excellencySkills" value="([^"]*)"( checked)?/g)].map((m) => ({ checked: Boolean(m[2]), value: m[1] }));
+ok(boxes7(s7none).length === 0 && /Choose an Excellency in step 5 to see its skills/.test(s7none), "step 7 with no Excellency sells no Excellency skill and says where to choose one");
+const s7b = render(7, { excellencies: ["ballista"], excellencySkills: ["excellencies/ballista/refresh-quiver"] });
+ok(boxes7(s7b).length === 7 && boxes7(s7b).every((b) => b.value.startsWith("excellencies/ballista/")) && /<h3 class="builder__group">Ballista Excellency skills<\/h3>/.test(s7b), `Ballista's 7 purchasable skills are listed under its name (${boxes7(s7b).length})`);
+ok(!boxes7(s7b).some((b) => b.value === "excellencies/ballista/trio-of-arrows"), "its Included skill is not for sale");
+ok(boxes7(s7b).filter((b) => b.checked).map((b) => b.value).join() === "excellencies/ballista/refresh-quiver", "a chosen Excellency skill renders checked, and only it");
+ok(/data-skill="excellencies\/ballista\/refresh-quiver"[\s\S]{0,260}<span class="builder__cost">4 CP<\/span>[\s\S]{0,400}Rules for Refresh Quiver<\/a>/.test(s7b), "with its printed cost and a link to its row");
+const heatBoxes = (n) => boxes7(render(7, { excellencies: ["Forge fire"], excellencySkills: Array(n).fill(HEAT) })).filter((b) => b.value === HEAT).map((b) => b.checked).join();
+ok(heatBoxes(0) === "false,false" && heatBoxes(1) === "true,false" && heatBoxes(2) === "true,true", `a twice-purchasable skill is two boxes, ticked in order (${heatBoxes(1)})`);
+ok(/Heat the Forge \(second purchase\)/.test(render(7, { excellencies: ["Forge fire"] })) && boxes7(render(7, { excellencies: ["Forge fire"] })).length === 6 + 1, "the second box says what it is, and no other Forge fire skill has one");
+const s7hidden = render(7, { excellencies: ["Deadeye", "Ritual Curse Removal", "Ballista"] });
+ok(boxes7(s7hidden).length === 7 && /data-no-table>No skill table in the rulebook for Deadeye, Ritual Curse Removal, so nothing inside them is listed or priced here/.test(s7hidden), "a hidden Excellency and a typed name list nothing, and the step names them and says so");
+ok(count(s7hidden, /Excellency skills<\/h3>/g) === 1 && !/Deadeye Excellency skills/.test(s7hidden), "and neither gets a heading over an empty list");
+ok(!/data-no-table/.test(s7b) && !/Choose an Excellency in step 5/.test(render(7, { excellencies: ["Homebrew"] })) && !/Choose an Excellency in step 5/.test(render(7, { excellencies: ["Deadeye"] })), "that line is only there when there is such a name, and the choose-one hint only when the build holds no Excellency of any kind");
+const s7all = render(7, { excellencies: [...catalog.excellencies.values()].filter((x) => !x.hidden).map((x) => x.name) });
+ok(boxes7(s7all).length === 209 + TWICE_SKILLS.length && new Set(boxes7(s7all).map((b) => b.value)).size === 209, `across all 30 tables the boxes are the 209 priced skills plus a second box for each twice-purchasable one (${boxes7(s7all).length})`);
 
 const s8 = render(8, { attributes: { prowess: 4 } });
 ok(count(s8, /type="number"/g) === 3 && /name="attr:prowess" value="4" min="2" max="10"/.test(s8), "step 8 is Prowess, Insight and Fortitude as number fields with the chart's start and cap");
@@ -227,6 +270,8 @@ ok(sig(2, { foundation: "military" }) !== sig(2, { foundation: "mariner" }), "st
 ok(sig(5, {}) === sig(5, { excellencies: ["Ballista"] }) && sig(5, {}) === sig(5, { excellencies: ["typed"] }) && sig(5, {}) === sig(5, { domain: "air" }), "step 5's signature does not move with a tick, a typed name or the Domain");
 ok(sig(7, { domain: "air" }) !== sig(7, { domain: "air", expressions: ["performer"] }), "step 7's signature moves with an Expression");
 ok(sig(7, { domain: "air", openSkills: ["open-skills/open-skills/agility"] }) === sig(7, { domain: "air" }), "but not with a purchase in the step");
+ok(sig(7, { excellencies: ["Ballista"] }) !== sig(7, {}) && sig(7, { excellencies: ["Deadeye"] }) !== sig(7, {}), "step 7's signature moves with an Excellency, a hidden one too, since the step names it");
+ok(sig(7, { excellencies: ["Ballista"], excellencySkills: ["excellencies/ballista/refresh-quiver"] }) === sig(7, { excellencies: ["Ballista"] }), "and not with an Excellency skill bought");
 ok(sig(1, { aspects: ["arcane"] }) !== sig(1, { aspects: ["arcane", "shade"] }), "step 1's signature moves with the Aspects, which is what adds a Tongue box");
 
 // --- the verdict ---------------------------------------------------------------
@@ -277,6 +322,13 @@ ok(/Needs Staff:<\/strong> Deadeye: Excellency purchases must be unlocked in-gam
 ok(/This build: https:\/\/example\.test\/Numina\/mechanics\/character-builder\/#a=arcane/.test(cardExact) && !/sheet__url/.test(cardOf(fifty)), "the share URL prints when the page gives one, and not otherwise");
 ok(/sheet__blank-label">Character<\/span>/.test(cardExact) && /sheet__blank-label">Player<\/span>/.test(cardExact), "the card leaves a Character and a Player line to write in");
 
+const cardSmith = cardOf(smith);
+ok(/<td class="sheet__skill">Trio of Arrows<\/td><td>Ballista Excellency<\/td><td class="sheet__cp">Included<\/td><td>1 Insight<\/td><td class="sheet__verbal">“3 Damage”<\/td>/.test(cardSmith), "an Excellency's Included skill is a row on the card, under the Excellency's name");
+ok(/<td class="sheet__skill">Refresh Quiver<\/td><td>Ballista Excellency<\/td><td class="sheet__cp">4<\/td>/.test(cardSmith) && count(cardSmith, /<td class="sheet__skill">Heat the Forge<\/td><td>Forge fire Excellency<\/td><td class="sheet__cp">3<\/td>/g) === 2, "a purchased Excellency skill prints its CP, and one bought twice is two rows");
+ok(/<td>Alchemist Excellency<\/td>/.test(cardOf({ excellencies: ["Alchemist"] })) && !/Excellency<\/td>[^\n]*\(Water/.test(cardOf({ excellencies: ["Alchemist"] })), "a multi-aligned Excellency's rows carry its name without the heading's brackets");
+const vSmith = renderVerdict(priceBuild(repair(smith, catalog), catalog));
+ok(/<strong>21 CP<\/strong> of 50 spent/.test(vSmith) && /<tr><td>7<\/td><td>Refresh Quiver<\/td><td>4<\/td><\/tr>/.test(vSmith), "the verdict's total includes the Excellency skills (5 + 6 + 3 + 4 + 3 = 21), each a row on the bill");
+
 const cardFloor = cardOf({ ...fifty, attributes: { prowess: 3, purpose: 6 } });
 ok(/data-exact="false"/.test(cardFloor) && /<strong>At least 54 CP<\/strong> of 50 spent, at most -4 remaining\./.test(cardFloor), "a raised Prowess makes the CP line a floor");
 ok(!/<strong>\d+ CP<\/strong> of/.test(cardFloor), "and the card prints no total anywhere (#305)");
@@ -310,6 +362,7 @@ for (const file of ["builder.js", "build-rules.js", "build-state.js", "build-vie
   ok(existsSync(join(root, "js", file)), `js/${file} is in the build`);
 }
 ok(!/type the name/.test(page) && /you may take any Excellency regardless of your chosen Domain/.test(page), "step 5's note quotes the chapter on the Domain and no longer asks for a typed name");
+ok(/the\s+rest of its table is bought in step 7 at the CP its row prints/.test(page) && !/not listed or priced here yet/.test(page), "and says an Excellency's table is bought in step 7 at its printed CP");
 ok(/data-builder(="")? hidden(="")?/.test(page) && /data-builder-needs-js/.test(page), "the form ships hidden with a no-JS notice beside it");
 ok(/<body class="cardsheet">/.test(page) && /<main\b[^>]*\sclass="builder-page"/.test(page), "the page is on the cardsheet print treatment and its main is marked for print.css");
 ok(/<div class="builder__card" data-card(="")?><\/div>/.test(page) && /<p class="print-action"><button type="button" onclick="window\.print\(\)">Print this card<\/button><\/p>/.test(page), "the page has the card slot and a print button");
