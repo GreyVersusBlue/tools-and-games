@@ -1572,6 +1572,8 @@ Generator.
 
 **#855. Torchbearer's diorama is Act II's "The Tower in the Water", from the bundled Bell of Barrowmoor.** The black mere in `--soot`, glossy, over all but the dry moor at the front left. Saint Verity's sunk to its shoulders with roof beams like ribs, the bell tower leaning ten degrees with a verdigris bell, the yard on its hummock with its stones tilted, the drowned causeway, two peat-black hounds and the rusted dead on the hummock, a knot of corpse-light over the graves, reeds, and the torchbearer at the causeway's foot in `--ember` with a `--brass` flame. The flame started in `--ember-hi` and read salmon under AgX; `--brass` and `--brass-hi` read as fire. The reeds started as `count` rows and read as combs, so each is its own shape from a seeded generator. Reverse a card by editing its entry. *The site, dioramas.*
 
+**#885. Reserved: #856 to #885 are held for sessions on Huginn (the Selector loop); anyone else numbers from #886.**
+
 # The log
 
 One paragraph per phase or batch, oldest first within each project. PR and
