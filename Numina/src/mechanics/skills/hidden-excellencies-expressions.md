@@ -21,7 +21,7 @@ The description of the Hidden Excellencies and Expressions are the name, For Exc
 | Guildsmember | Expression | Gain additional resources or special resources each event |
 | Lightfoot | Air/Ice | Gain additional damage and defenses by moving while you shoot |
 | Mindblade | Lightning | Melee strikes using mental and an increasing arsenal of traits |
-| Monsoon | Lighting/Water | Single Sword healer who can both attack and heal |
+| Monsoon | Lightning/Water | Single Sword healer who can both attack and heal |
 | Order Adherent | Expression | Specific to each unique Convocation |
 | Poison arrow | Air/Water | Create curative potions and venoms that can be affixed to your arrows |
 | Preserver | Ice | Once you are hit by a specific trait you become better at resisting that trait |
@@ -29,7 +29,7 @@ The description of the Hidden Excellencies and Expressions are the name, For Exc
 | Reservoir* | Earth/Water | You know how to create a place of healing that you and your companions can return to for beneficial effects. |
 | Scorpion, who mixes poisons at the point of centering to harm others while using the scorpion's chiton to protect themselves. | Fire / Ice | You mix poisons to strike your enemy and elixirs to protect yourself. You benefit from your own mixtures. |
 | Shadewalker | Expression | Gain knowledge of the shade and be better able to travel there |
-| Steelforge | Earth / Lighting | Without your five foot circle your defenses are greatly enhanced |
+| Steelforge | Earth / Lightning | Without your five foot circle your defenses are greatly enhanced |
 | Transgressor | Fire | Can cast detrimental effects against their foes |
 | Trick Shot | Fire/Air | Switch between spells and missile attacks. |
 | Vampire | Lightning / Water | When you strike your foes you heal |

@@ -504,9 +504,9 @@
       "source": "/mechanics/skills/hidden-excellencies-expressions/#hidden-excellencies-and-expressions"
     },
     {
-      "alignment": "Lighting/Water",
+      "alignment": "Lightning/Water",
       "elements": [
-        "Lighting",
+        "Lightning",
         "Water"
       ],
       "id": "monsoon",
@@ -594,10 +594,10 @@
       "source": "/mechanics/skills/hidden-excellencies-expressions/#hidden-excellencies-and-expressions"
     },
     {
-      "alignment": "Earth / Lighting",
+      "alignment": "Earth / Lightning",
       "elements": [
         "Earth",
-        "Lighting"
+        "Lightning"
       ],
       "id": "steelforge",
       "kind": "Excellency",
@@ -7910,7 +7910,7 @@
       "cost": {
         "kind": "included"
       },
-      "description": "and say 'Diagnose <Trait>' or 'Diagnose <Effect>'. You may only Diagnose a specific Trait and only Traits which are Elemental, Mental, Metabolic, or Physical. You may also diagnose any standard effect, but you may not diagnose inflicts. You may also 'Diagnose Damage' to determine how much damage someone has taken.",
+      "description": "and say 'Diagnose <Trait>' or 'Diagnose <Effect>'. You may only Diagnose a specific Trait and only Traits which are Elemental, Mental, Metabolic, or Physical. You may diagnose any standard effect, but you may not diagnose inflicts. You may also 'Diagnose Damage' to determine how much damage someone has taken.",
       "group": "Adventurer Skills",
       "groupKind": "Adventurer",
       "id": "index/adventurer-skills/diagnose",

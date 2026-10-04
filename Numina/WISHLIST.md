@@ -3,7 +3,7 @@
 **Status: Phase 8 shipped on 2026-09-12, and with it every phase in both arcs.
 There is no open phase left in this file — what is still wanted is the five
 items under "What this leaves for a later arc" at the foot, none of which is
-specified yet.** The site is built, deployed and green — 57 pages, 435
+specified yet.** The site is built, deployed and green — 57 pages, 439
 assertions in `npm test` and 78 more in `test/a11y/`'s browser suite (which is
 five files now, and one of them needs no browser), CI on every PR touching
 `Numina/**` and on every push to `main`, in two jobs — and the
@@ -219,39 +219,45 @@ its files, not repeated here; add to this list rather than starting a second.
   635-word glossary~~ and ~~no "come play" path~~ all landed in Phases 5 and 6.
 
 **Unclaimed**
-- Four things the skill data shows that the prose hid (Phase 1, not fixed
-  because the rule is not to invent facts): `Empower Fire` and `Enhance Fire`
-  are the only Empower/Enhance pair in six Domains whose Verbal cell is `N/A`
-  rather than `Thread Skill`, so they alone carry `thread: false`; the hidden
-  table spells `Lighting` twice (Mindblade, Steelforge); three Savant rows
-  have a blank Verbal; and `First Aid` and `Diagnose` in `index.md` have
-  descriptions that begin mid-sentence, a conversion artefact from the PDF.
-  Check each against `rules-2026-v3.51.pdf` and fix the markdown, then re-run
-  the extractor.
-- **Three defects in the Excellencies chapter as the PDF prints them**, left
-  faithful and flagged rather than patched, the same call the four below got.
-  `Healing Venom` (Poison Blade) has a description that begins "venom as your
-  base." — the first line of the sentence is missing from the book, exactly like
-  `First Aid` and `Diagnose` below. `Shift Loads` (Grenadier) begins "Attribute
-  to instantly change" and is missing a "Spend 1". `Take Ground` (Combatant)
-  ends mid-clause on a comma. Check each against a printed copy and fix the
-  markdown, then re-run the extractor.
-- **Two more, smaller, in the same chapter.** `Hand out Weapons` (Bladesmith)
-  has a Verbal of "Grant Melee Attack 2 Damage" over a description that says
-  "Gain one use of 'Grant Melee Attack 3 Damage.'" — 2 or 3, the book says both.
-  `Reverse Protection` (Beguiler) says "For Physical, choose Force or Force."
-- **The timeline and `rues.md` spell the empire differently.** The book's
-  Historical Timeline row says "Mecurian Empire" and `lore/nations/rues.md` says
-  "Mercurian Empire". `timeline.json` carries the book's spelling. One of them
-  is a typo and the PDF is the place to settle which.
+- **Confirmed in the book, needs the rules team** (TG-23 checked each against
+  `rules-2026-v3.51.pdf`, both its rendered page and its text layer, on
+  2026-10-04; the page number is the printed one and the PDF page). The site
+  prints what the book prints, so none of these is patched. A person with
+  the rules team's answer can fix the markdown and re-run
+  `node tools/extract-skills.mjs`.
+  - **p48, `First Aid` and `Diagnose`** (Adventurer Skills). First Aid's
+    description opens "who is unstable or repair a maimed limb on yourself or
+    another." and ends "You can touch an individual with a packet"; Diagnose's
+    opens "and say 'Diagnose \<Trait\>' or 'Diagnose \<Effect\>'." The first
+    half of the First Aid sentence is not in the book, and the sentence that
+    ends First Aid's cell belongs to Diagnose's.
+  - **p73, `Healing Venom`** (Poison Blade). The description opens "venom as
+    your base. With your knowledge of venom for use with blades, your crafted
+    elixirs, and healing skills from this header that are elixirs, are +1 in
+    effect." That second sentence is `Lingering Venom`'s, printed twice, and
+    has no subject.
+  - **p71, `Shift Loads`** (Grenadier). The description opens "Attribute to
+    instantly change one active Elemental Ammunition without the need for one
+    minute of roleplay." Nothing before "Attribute" is printed; the Cost cell
+    says 2.
+  - **p70, `Take Ground`** (Combatant). The description ends "you gain a Guard
+    versus melee attacks," on a comma; nothing follows it.
+  - **p69, `Hand out Weapons`** (Bladesmith). The Verbal is "Grant Melee Attack
+    2 Damage" and the description says "Gain one use of "Grant Melee Attack 3
+    Damage."" Two numbers, one skill.
+  - **p69, `Reverse Protection`** (Beguiler). "For Physical, choose Force or
+    Force."
+  - **p80, the three Savant rows** with a blank Verbal cell (`Skilled Learner`,
+    `Fast Learner`, `Multi-talented`); `Fast Learner`'s Attribute cell is blank
+    as well.
+  - **p58, `Empower Fire` and `Enhance Fire`** print `N/A` in the Verbal
+    column where the other five Domains' Empower and Enhance rows print
+    `Thread Skill`, so they alone carry `thread: false` in `skills.json`.
 - **The character builder still takes an Excellency as a typed name.** The
   chapter it would pick from exists now (Phase 6), but offering the list means
   pricing the skills inside a chosen Excellency, and `build-rules.js` does not
   implement that. The comments in `build-rules.js` and `build-view.js` say so.
   Wiring it up is a builder phase, not a content one.
-- `building-a-character.md` prints "Assign Your Attributes (Steps 8–10)"
-  above "Choosing Skills (Steps 1–7)". The book's order, presumably, but it
-  reads as a mistake.
 - `notable-figures.md` is 27 one-line entries pointing at the pages that
   actually cover those people. Nothing checks that the people it names are
   still named on the pages it points at.

@@ -220,5 +220,27 @@ const missingRow = data.skills.filter(
 );
 ok(missingRow.length === 0, `every All Skills row links its own anchor${missingRow.length ? `: ${missingRow.slice(0, 5).map((s) => s.id).join(", ")}` : ""}`);
 
+// Four fixes against rules-2026-v3.51.pdf and campaign-book-2025.pdf (TG-23). The
+// book prints other defects too (Take Ground ends on a comma, Hand out
+// Weapons says 2 and 3, and so on); those stay as printed and are listed in
+// WISHLIST.md with their page numbers, so nothing here pins them.
+console.log("# faithful to the book");
+const ELEMENTS = new Set(["Fire", "Ice", "Lightning", "Earth", "Air", "Water"]);
+const oddElements = data.hidden.flatMap((h) => h.elements.filter((e) => !ELEMENTS.has(e)).map((e) => `${h.name}: ${e}`));
+ok(oddElements.length === 0, `every hidden alignment is one of the six elements (the book's p96 and p97 print "Lighting" for Monsoon and Steelforge)${oddElements.length ? `: ${oddElements.join(", ")}` : ""}`);
+const diagnose = data.skills.find((s) => s.id === "index/adventurer-skills/diagnose");
+ok(
+  diagnose && diagnose.description.includes("Physical. You may diagnose any standard effect") && !diagnose.description.includes("You may also diagnose"),
+  "Diagnose says \"You may diagnose any standard effect\", as p48 prints it, not \"You may also diagnose\""
+);
+const timelineText = readFileSync(join(root, "src", "_data", "timeline.json"), "utf8");
+ok(!/Mecurian/.test(timelineText) && /Empress of the Mercurian Empire/.test(timelineText), "timeline.json says Mercurian Empire (campaign book p169 alone prints Mecurian; p85 and p87 print Mercurian eight times)");
+const steps = readFileSync(join(root, "src", "mechanics", "building-a-character.md"), "utf8");
+const at = (s) => steps.indexOf(s);
+ok(
+  at("**Step 1**") > 0 && at("**Step 1**") < at("**Step 4**") && at("**Step 4**") < at("**Step 7**") && at("**Step 7**") < at("**Step 8**") && at("**Step 8**") < at("**Step 10**"),
+  "building-a-character.md prints Steps 1 to 7 above Steps 8 to 10, as p34 and p35 do"
+);
+
 console.log(failures ? `\n${failures} FAILURE(S)` : "\nall checks passed");
 process.exit(failures ? 1 : 0);
