@@ -17,7 +17,9 @@ import {
 import { serialize, deserialize } from '../js/save-load.js';
 import { DEFAULT_PAINT, wallFaceRuns, wallPaint } from '../js/finish.js';
 import { paintCells, reapplyAccents } from '../js/paint.js';
-import { wallAlongSeg, addWallLine } from '../js/wallrun.js';
+import {
+  wallAlongSeg, addWallLine, pruneAccents, eraseSegWall, eraseWallLineAt,
+} from '../js/wallrun.js';
 
 const GREEN = '#00aa00', GOLD = '#ccaa00';
 
@@ -524,4 +526,88 @@ test('a face has a wall when its own ring, a neighbour\'s or a free-standing wal
   assert.equal(wallAlongSeg(f, A, 0, 99), false);
   assert.equal(wallAlongSeg(f, A, 3, 0), false);
   assert.equal(wallAlongSeg(f, null, 0, 0), false);
+});
+
+// ---------- an erased wall takes its accents with it (#859) ----------
+
+test('erasing a wall takes the accent off both of its faces and no other wall', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A'), B = named(s, 'B');
+  const mine = segBetween(A, 16, 4, 16, 12), theirs = segBetween(B, 16, 4, 16, 12);
+  const north = segBetween(A, 4, 4, 16, 4);
+  assert.equal(B.rings[0].walls[theirs], SEG_NONE);
+  setSegAccent(A, 0, mine, GREEN);
+  setSegAccent(A, 0, north, GOLD);
+  setSegAccent(B, 0, theirs, GOLD);
+  // The partition is on A's ring. B's face of it goes with it too, though
+  // B's own segment never had a wall to clear.
+  assert.equal(eraseSegWall(f, A, 0, mine), true);
+  assert.equal(A.rings[0].walls[mine], SEG_NONE);
+  assert.equal(segAccent(A.rings[0], mine), null);
+  assert.equal('accents' in B.rings[0], false, 'B\'s only accent went, and the key with it');
+  assert.equal(segAccent(A.rings[0], north), GOLD, 'a wall still standing keeps its accent');
+  // Nothing to erase the second time, and nothing more comes off.
+  assert.equal(eraseSegWall(f, A, 0, mine), false);
+  assert.equal(pruneAccents(f), 0);
+});
+
+test('an accent stays while any wall is left on its line, and goes with the last one', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A');
+  const north = segBetween(A, 4, 4, 16, 4);
+  setSegAccent(A, 0, north, GREEN);
+  assert.ok(addWallLine(s, 0, { x: 8, z: 4 }, { x: 12, z: 4 }));
+  assert.equal(eraseSegWall(f, A, 0, north), true);
+  assert.equal(segAccent(A.rings[0], north), GREEN, 'the free-standing wall is still a wall there');
+  // A miss erases nothing and prunes nothing.
+  assert.equal(eraseWallLineAt(f, 10, 9, 0.5), null);
+  assert.equal(segAccent(A.rings[0], north), GREEN);
+  assert.ok(eraseWallLineAt(f, 10, 4, 0.5));
+  assert.equal('accents' in A.rings[0], false);
+});
+
+test('pruneAccents counts what it took off and leaves an accent with a wall alone', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A'), B = named(s, 'B');
+  const mine = segBetween(A, 16, 4, 16, 12), theirs = segBetween(B, 16, 4, 16, 12);
+  setSegAccent(A, 0, mine, GREEN);
+  setSegAccent(B, 0, theirs, GOLD);
+  setSegAccent(B, 0, segBetween(B, 28, 4, 28, 12), GOLD);
+  assert.equal(pruneAccents(f), 0);
+  // The shapes.js call, which knows nothing of the storey, leaves both.
+  setSegWall(A, 0, mine, SEG_NONE);
+  assert.equal(segAccent(A.rings[0], mine), GREEN);
+  assert.equal(pruneAccents(f), 2);
+  assert.deepEqual(accentPlaces(B.rings[0]), [`28,12>28,4:${GOLD}`]);
+  assert.equal(pruneAccents(null), 0);
+});
+
+test('a file that holds an accent with no wall loads without it, and every other accent loads', () => {
+  const s = twoRoomsAndAHall(), A = named(s, 'A'), B = named(s, 'B');
+  const mine = segBetween(A, 16, 4, 16, 12), theirs = segBetween(B, 16, 4, 16, 12);
+  setSegAccent(A, 0, segBetween(A, 4, 4, 16, 4), GOLD);
+  setSegAccent(B, 0, theirs, GREEN);
+  // Every accent has a wall: the file is read back as the bytes it was.
+  const whole = serialize(s);
+  assert.equal(serialize(deserialize(whole)), whole);
+  // The file an older build wrote after the partition was erased.
+  setSegAccent(A, 0, mine, GREEN);
+  setSegWall(A, 0, mine, SEG_NONE);
+  const old = serialize(s);
+  assert.equal((old.match(/"accents"/g) || []).length, 2);
+  const back = deserialize(old);
+  const a = named(back, 'A'), b = named(back, 'B');
+  assert.deepEqual(accentPlaces(a.rings[0]), [`16,4>4,4:${GOLD}`]);
+  assert.equal('accents' in b.rings[0], false);
+  assert.equal(a.rings[0].walls[segBetween(a, 16, 4, 16, 12)], SEG_NONE);
+  // And it is stable: saved and loaded again it is the same file.
+  assert.equal(serialize(deserialize(serialize(back))), serialize(back));
+});
+
+test('a file whose accent leans on a free-standing wall keeps it on load', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A');
+  const north = segBetween(A, 4, 4, 16, 4);
+  setSegAccent(A, 0, north, GREEN);
+  assert.ok(addWallLine(s, 0, { x: 8, z: 4 }, { x: 12, z: 4 }));
+  setSegWall(A, 0, north, SEG_NONE);
+  assert.equal(pruneAccents(f), 0);
+  const back = deserialize(serialize(s));
+  assert.deepEqual(accentPlaces(named(back, 'A').rings[0]), [`16,4>4,4:${GREEN}`]);
 });
