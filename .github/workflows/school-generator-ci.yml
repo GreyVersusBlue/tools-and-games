@@ -97,6 +97,10 @@ jobs:
       - name: Visual regression
         run: node test/visual/run.mjs
 
+      # The long step: about 20 to 26 minutes at full scale, every run from
+      # 2026-09-04 to 2026-10-03, because the software rasterizer is fill-bound
+      # and every round trip waits for a frame. The suite draws at half scale
+      # now (#828) and prints each check's seconds.
       - name: Tool smoke test
         run: node test/tools/run.mjs
 
