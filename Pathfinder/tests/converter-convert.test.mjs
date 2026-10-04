@@ -85,6 +85,9 @@ const err = { level: [], ac: [], save: [], hp: [], perception: [], strike: [] };
 // hp error of the six CR 1/4 to 1/2 pairs (printed at level -1), the eleven at
 // CR 1 and 2, the thirty-one from CR 3 up, and the fourteen of those from CR 7 up.
 const lowHp = [], midHp = [], highHp = [], topHp = [];
+// Every number that lands on its per-monster bound or one short of it (hp:
+// within five points of the 50%), as "fixture stat difference".
+const nearBound = [];
 for (const [fx, name, shard] of PAIRS) {
   const p = printed(name, shard);
   ok(p && Object.values(p).every((v) => v === null || Number.isFinite(v)), `data/npcs has ${name} with every field this suite reads`);
@@ -100,6 +103,10 @@ for (const [fx, name, shard] of PAIRS) {
   err.level.push(d.level); err.ac.push(d.ac); err.save.push(d.fort, d.ref, d.will);
   const cr = fixture(fx).cr;
   err.hp.push(d.hp); (cr < 1 ? lowHp : cr < 3 ? midHp : highHp).push(d.hp); if (cr >= 7) topHp.push(d.hp); err.perception.push(d.perception); if (d.strike != null) err.strike.push(d.strike);
+  for (const [k, bound] of [['level', 1], ['ac', 5], ['fort', 8], ['ref', 8], ['will', 8], ['strike', 5]]) {
+    if (d[k] != null && Math.abs(d[k]) >= bound - (k === 'level' ? 0 : 1)) nearBound.push(`${fx} ${k} ${d[k] > 0 ? '+' : ''}${d[k]}`);
+  }
+  if (Math.abs(d.hp) >= 0.45 && !HP_OUTLIERS.has(fx)) nearBound.push(`${fx} hp ${d.hp > 0 ? '+' : ''}${Math.round(100 * d.hp)}%`);
   const detail = `level ${o.level.value}/${p.level}, AC ${o.ac.value}/${p.ac}, HP ${o.hp.value}/${p.hp}, saves ${o.saves.fort.value}/${p.fort} ${o.saves.ref.value}/${p.ref} ${o.saves.will.value}/${p.will}, strike ${top}/${p.strike}`;
   ok(Math.abs(d.level) <= 1 && Math.abs(d.ac) <= 5 && (Math.abs(d.hp) <= 0.5 || HP_OUTLIERS.has(fx))
     && [d.fort, d.ref, d.will].every((x) => Math.abs(x) <= 8) && (d.strike == null || Math.abs(d.strike) <= 5),
@@ -131,6 +138,51 @@ ok(Math.abs(bias(highHp)) <= 0.02, 'HP from CR 3 up: mean bias within 2% either 
 ok(Math.abs(bias(topHp)) <= 0.02, 'HP from CR 7 up: mean bias within 2% either way', (100 * bias(topHp)).toFixed(1) + '%');
 ok(mae(err.perception) <= 3.5, 'Perception: mean error at most 3.5', mae(err.perception).toFixed(2));
 ok(mae(err.strike) <= 2.5, 'top Strike: mean error at most 2.5', mae(err.strike).toFixed(2));
+
+// ---- the pairs on a bound ------------------------------------------------------
+// Eleven numbers sit on a per-monster bound or one short of it. They are named
+// here so that a change to a tier table, an anchor or a clamp shows which of
+// them moved, in this line's detail, before the pair's own line goes red.
+// Moving one is not wrong; moving one without looking is. Two are on the bound
+// itself and neither is a table entry read wrong (HISTORY #829):
+//   medusa AC 20 against 25. PF1e prints AC 15 at CR 7 (Dex +2, natural +3),
+//     five under Table 1-1's 20, where Paizo's PF2e medusa is on high. The
+//     source is the outlier. 20 is also the lowest AC the converter writes at
+//     level 7 (low less one step), so no AC anchor from 1.5 to 3 moves it.
+//   nalfeshnee Will 31 against 23. PF1e prints Will +21 at CR 14, four over
+//     the good save (Wis 22 and Iron Will); Paizo printed Will as its worst
+//     save bar Reflex, a third of the way from low to moderate. The PF2e side
+//     is the outlier. 31 is the highest save the converter writes at level 14
+//     (bench's 4.5 cap), so no save anchor from 2.5 up moves it.
+console.log('the pairs on a bound');
+{
+  const want = ['kobold strike +4', 'giant-centipede level +1', 'human-zombie level +1', 'homunculus level +1',
+    'ogre ac +4', 'gelatinous-cube ac +4', 'doppelganger strike +4', 'gibbering-mouther hp -45%', 'lich strike -4',
+    'medusa ac -5', 'nalfeshnee will +8'];
+  ok(JSON.stringify(nearBound) === JSON.stringify(want), 'the numbers on a bound or one short of it are the eleven named here',
+    `now: ${nearBound.join(', ')}${want.filter((w) => !nearBound.includes(w)).length ? '\n        gone: ' + want.filter((w) => !nearBound.includes(w)).join(', ') : ''}`);
+
+  const T = await imp('tables.js');
+  const convertWith = (n, edit) => { const c = fixture(n); edit(c); return C.convertCreature(c, { spellIndex: index }); };
+  const med = fixture('medusa'), row7 = T.PF2_AC[7];
+  ok(med.ac.total - T.pf1Anchors(7).ac === -5 && T.pf1TierOf('ac', med.ac.total, 7) === -0.25 && T.tierOf(printed('Medusa', '7').ac, row7) === T.TIERS.high,
+    'medusa: PF1e AC 15 is five under CR 7\'s 20 and reads a quarter tier under the bottom of the AC table; the printed 25 is high',
+    `tier ${T.pf1TierOf('ac', med.ac.total, 7)}`);
+  // The AC table has no terrible column, and readRow goes one step past the
+  // last column a row has and stops. bench's own floor of 0 is the same place
+  // on this table, so the end-to-end half of this line is held by readRow alone.
+  ok(C.readRow(row7, -3) === row7.low - 2 && convert('medusa').ac.value === row7.low - 2 && convertWith('medusa', (c) => { c.ac.total = 8; }).ac.value === row7.low - 2,
+    'medusa: AC 20 is the lowest the converter writes at level 7, and a PF1e AC of 8 reads the same',
+    `${convert('medusa').ac.value}, ${convertWith('medusa', (c) => { c.ac.total = 8; }).ac.value}`);
+  const nal = fixture('nalfeshnee'), row14 = T.PF2_SAVES[14], pn = printed('Nalfeshnee', '14');
+  ok(nal.saves.will - T.pf1Anchors(14).save === 4 && T.pf1TierOf('save', nal.saves.will, 14) === 5 && pn.will < row14.moderate && pn.will > row14.low,
+    'nalfeshnee: PF1e Will +21 is four over CR 14\'s good save and reads a tier past extreme; the printed 23 is under moderate',
+    `tier ${T.pf1TierOf('save', nal.saves.will, 14)}, printed ${pn.will} against moderate ${row14.moderate}`);
+  // bench caps a tier at 4.5, half a step past extreme. readRow would go on to 5.
+  ok(convert('nalfeshnee').saves.will.value === row14.extreme + 1 && convertWith('nalfeshnee', (c) => { c.saves.will = 30; }).saves.will.value === row14.extreme + 1,
+    'nalfeshnee: Will 31 is the highest save the converter writes at level 14, and a PF1e Will of +30 reads the same',
+    `${convert('nalfeshnee').saves.will.value}, ${convertWith('nalfeshnee', (c) => { c.saves.will = 30; }).saves.will.value}`);
+}
 
 // ---- rules -------------------------------------------------------------------
 console.log('rules');
