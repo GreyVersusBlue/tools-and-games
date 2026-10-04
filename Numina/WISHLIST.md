@@ -267,10 +267,6 @@ its files, not repeated here; add to this list rather than starting a second.
   - **The 18 hidden Excellencies have no table in the book**, so nothing
     inside them is listed or priced, and steps 5 and 7 say so on the page.
     That changes only if the rules team publishes their tables.
-  - **12 skill descriptions carry `*italics*` and the builder prints the
-    asterisks.** `prose()` in `build-view.js` renders `**bold**` only;
-    `Quick Reflexes` shows "*You can purchase this skill up to 3 times.*"
-    with its stars. The chapter pages render them.
   - No suite covers `builder.js`. It did not change for #841, #844 or #845
     (the form reads any named checkbox), and the page was driven in Chromium
     by hand each time.
