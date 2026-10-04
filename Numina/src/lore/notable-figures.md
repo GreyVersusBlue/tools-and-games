@@ -77,8 +77,8 @@ See [The Realms](/lore/realms/).
   seasonal aspects and a constellation, grouped into the Broken City, the
   Crossroads, the Faraway Isle, and the Killing Fields. They are set out in full
   on [The Realms](/lore/realms/) rather than repeated here.
-- **Stovaresk** — the most powerful secular Oracle in Rues, reached by way of
-  Symonovsk.
+- **Stovaresk** — the most powerful secular Oracle in
+  [Rues](/lore/nations/rues/), reached by way of Symonovsk.
 
 ### The Twelve Regional Spirits of the Vale
 

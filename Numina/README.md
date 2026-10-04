@@ -22,6 +22,7 @@ as-is with no CI build step.
 | `src/js/build-view.js`, `src/js/build-state.js`, `src/js/builder.js` | The character builder page: the steps and verdict as HTML strings, the `localStorage` record and URL fragment, and the one file that touches the DOM |
 | `test/builder.test.mjs` | The fragment and save round-trip, each step lists what `offered()` offers, the verdict says "at least" when a purchase is unpriced, the card prints every skill with its verbal and a CP line that is never a total when a purchase is unpriced, `print.css` hides the form and not the card, and the built page's JSON islands resolve (also `npm test`) |
 | `test/a11y/` | The checks that need a rendered page, in their own `package.json` because they need a browser and the site does not: axe-core over five pages in both themes (`axe.mjs`); the skip link moving focus, a table still computing to `display: table`, `aria-pressed` following the click, `--header-h` matching the header (`layout.mjs`); the packet assembly, the page counter and the offline kit (`packet.mjs`); the search modal, its focus trap and the `?q=` handoff (`search.mjs`); and `html-validate` over every built page, which needs no browser but lives here for the same reason (`html.mjs`) |
+| `tools/social-card.mjs` | Redraws `src/assets/social-card.png`, the og:image, from the built Nations page (`npm run card`). Not in the build: it needs a browser, and borrows the Playwright in `test/a11y/`. `tools/social-card-inputs.mjs` hashes the light palette and the map it is drawn from, and `npm test` fails when they no longer match the hash recorded in `tools/social-card.inputs.json` |
 | `index.html`, `lore/`, `mechanics/`, `search/`, `css/`, `js/`, `fonts/`, `assets/`, `pagefind/` | Generated — never edit by hand |
 | `CONTENT-GUIDE.md` | How to port book chapters into `src/` |
 
@@ -50,6 +51,19 @@ node html.mjs     # html-validate over every built page (no browser needed)
 
 All five run against the committed build, so `npm run build` first. All five
 run in CI on every PR that touches `Numina/**`, and on every push to `main`.
+
+The social card (`assets/social-card.png`, every page's og:image) is a
+screenshot and is redrawn by hand. `npm test` goes red when the light palette
+in `src/css/main.css` or `world-map.njk` has changed since it was drawn:
+
+```sh
+npm run build   # the card is drawn from the built Nations page
+npm run card    # needs the test/a11y install above; starts and stops its own server
+npm run build   # copies src/assets/social-card.png to assets/
+```
+
+Look at the card before committing it. A different Chromium sets the type a
+pixel or two differently, so the file changes even when the palette has not.
 
 **Every content or template change**: edit `src/`, run `npm run build`, run
 `npm test`, commit source + regenerated output together. Builds are

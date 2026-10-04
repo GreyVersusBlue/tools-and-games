@@ -82,9 +82,11 @@ Bottom-up, all paths relative to `Numina/`:
   breaks and shrinks to 7.5pt.
 - **`tools/clean.mjs`** (27) deletes eleven generated top-level entries before
   every build, its `GENERATED` list deliberately duplicated in the smoke test.
-  **`tools/social-card.mjs`** (109) is outside `npm run build`: it screenshots
-  the real `/lore/nations/` page in Playwright so the og:image inherits the
-  site's own fonts and map art.
+  **`tools/social-card.mjs`** is outside `npm run build`: `npm run card`
+  screenshots the real `/lore/nations/` page so the og:image inherits the
+  site's own fonts and map art, with the Playwright in `test/a11y/` and a
+  server of its own. `tools/social-card-inputs.mjs` hashes the light palette
+  and the map, and `npm test` fails when the card is older than either.
 - **`test/smoke.mjs`** (187) — the safety net: source pages have non-empty
   output; internal links and same-page `#fragment`s resolve; offsite hosts
   stay on a five-entry allowlist; Pagefind has at least as many fragments as
@@ -258,18 +260,35 @@ its files, not repeated here; add to this list rather than starting a second.
   pricing the skills inside a chosen Excellency, and `build-rules.js` does not
   implement that. The comments in `build-rules.js` and `build-view.js` say so.
   Wiring it up is a builder phase, not a content one.
-- `notable-figures.md` is 27 one-line entries pointing at the pages that
-  actually cover those people. Nothing checks that the people it names are
-  still named on the pages it points at.
+- **`notable-figures.md` names `Reach Lord Sarah Jackson` "of Hadley's Cove"
+  and links the Principalities of the Reach, and that page names neither her
+  nor Hadley's Cove.** Nor does any other page, either PDF or
+  `source-material/markdown/`. She is in the Vargoth War section, whose people
+  come from play, so the entry is probably right and the link is to her nation
+  rather than to a write-up. It is the one entry in `KNOWN` in
+  `test/smoke.mjs`. It needs somebody who was there to say whether the Reach
+  page should name her; the site does not invent it.
+- 63 of the 188 names on `notable-figures.md` point at no page and are not
+  checked: Figures of faith, most of Founders and legends and Figures of
+  history, and nearly all of the Vargoth War. Most are on a page already (the
+  Dovenost Arbiters, the L'Dahn founders) and would be checked the day their
+  entry links it.
 - `world.md` is 397 words for "The World of Aeledd", the first stop off the
-  home page's second hero button.
+  home page's second hero button, and it is the whole of what the campaign
+  book prints: the Introduction's first paragraph and all of p5 and the top of
+  p6 ("The World of Aeledd", "Fortune's Bend", "The Map is Not the Territory").
+  The book's own chapter is that short. A longer overview would have to be new
+  writing from the rules team, or a summary of the nation and history pages,
+  which the home page and `lore/index` already are.
 - `firebase.json` set `no-cache` on `**/sw.js` (gone with Firebase on 2026-09-23; `offline.js` relies on the default `updateViaCache` now). No service worker has ever
   existed. (Phase 7 would write one.)
-- `tools/social-card.mjs` needs a Playwright the project does not depend on
-  and a local server on port 8099, and is documented only in its own header
-  comment. Nothing re-runs it when the palette changes.
-- CI runs on pull requests only, never on `main`. It has an accessibility
-  check now (Phase 4's `a11y` job); it still has no HTML validation.
+- The committed social card was drawn by a different Chromium from the pinned
+  one (1.56.1, build 1194): a redraw on 2026-10-04 matched it in every colour
+  and shape and differed in 23,609 of 756,000 pixels, all of them glyph edges.
+  It was left as it is. The next redraw for a real reason will carry that
+  difference with it. The palette check sees the light token block and
+  `world-map.njk`; it does not see a `.map-region` rule, a font file or the
+  card's own layout in `tools/social-card.mjs`.
 
 ## Arc one — the rules as data
 

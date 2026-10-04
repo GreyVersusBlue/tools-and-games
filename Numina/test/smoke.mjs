@@ -7,6 +7,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { autolink, buildVocabulary, mainRegion } from "../tools/autolink.mjs";
 import { hashedFiles, precacheUrls, renderServiceWorker, versionFor } from "../tools/service-worker.mjs";
 import { eventAnchor } from "../tools/see-also.mjs";
+import { cardInputsHash, recordedHash } from "../tools/social-card-inputs.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PREFIX = "/Numina/";
@@ -308,6 +309,12 @@ const missingMeta = builtHtml.filter((f) => {
 ok(missingMeta.length === 0, `canonical + OG + twitter card on all ${builtHtml.length} pages${missingMeta.length ? `: ${missingMeta.slice(0, 3).map((f) => relative(root, f)).join(", ")}` : ""}`);
 ok(existsSync(join(root, "assets", "favicon.svg")), "favicon.svg published");
 ok(existsSync(join(root, "assets", "social-card.png")), "og:image social card published");
+// The card is a screenshot, redrawn by hand (`npm run card`), of a page that
+// takes its colours from the light token block and its map from world-map.njk.
+// The tool records a hash of both when it draws the card; a palette or map
+// edit without a redraw leaves the two apart, and this is the only thing that
+// says the og:image is now a picture of the old site.
+ok(cardInputsHash() === recordedHash(), "social card drawn from the current palette and map (if not: `npm run card`, then `npm run build`)");
 
 const sitemapPath = join(root, "sitemap.xml");
 ok(existsSync(sitemapPath), "sitemap.xml generated");
@@ -744,6 +751,88 @@ ok(
   eventsWithNations.length > 0 && missingEventLinks.length === 0,
   `every event links the nations it names (${eventsWithNations.length} events)${missingEventLinks.length ? `: ${missingEventLinks.join(", ")}` : ""}`
 );
+
+// Notable Figures is an index: a name, one line, and the page that covers the
+// person. The pages it points at are edited on their own, and a name that is
+// corrected or dropped over there leaves this page pointing a reader at a
+// write-up that is not there.
+//
+// An entry is a table row (the first cell is the name), a list item or a
+// paragraph (each **bold** run is a name). It points at the pages it links
+// itself and at its section's "See [Page](…)" line, and a ### inherits its
+// ##'s, and a table takes the links of the paragraph that introduces it. The
+// name has to be on one of those pages.
+//
+// Entries with no page to point at are not checked: Figures of faith, most of
+// the founders, and the Vargoth War section, whose people come from play and are
+// on no other page. The count is printed and the checked count has a floor, so
+// a "See" line deleted by accident does not quietly empty the check.
+console.log("# notable figures");
+{
+  const plain = (html) => html.replace(/<(script|style)[\s\S]*?<\/\1>/g, " ").replace(/<[^>]+>/g, " ")
+    .replace(/&#39;|&#x27;|&apos;|[‘’]/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ");
+  const pages = new Map();
+  const pageText = (url) => {
+    if (!pages.has(url)) {
+      const f = join(root, url, "index.html");
+      pages.set(url, existsSync(f) ? plain(readFileSync(f, "utf8")) : "");
+    }
+    return pages.get(url);
+  };
+  // "Empress Evenia Mercurio Pentratheron" here is "the current empress is
+  // Evenia Mercurio Pentratheron" on Rues, so a leading title or article comes
+  // off before the name is looked for. Nothing else does: the rest has to be
+  // there whole, or "Eviar Leonate" would pass on "Sawyer Leonate".
+  const TITLE = /^(?:The|Empress|Queen|King|Regent|Arbiter|Reach Lord) /;
+  const named = (name, text) => {
+    for (let rest = name; ; rest = rest.replace(TITLE, "")) {
+      const quoted = rest.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`(?<![\\w'])${quoted}(?!\\w)`).test(text)) return true;
+      if (!TITLE.test(rest)) return false;
+    }
+  };
+  const linksIn = (md) => [...md.matchAll(/\]\((\/[^)#]+\/)(?:#[^)]*)?\)/g)].map((m) => m[1]);
+  // Names whose entry points at a page that has never named them, each one
+  // written up in WISHLIST.md. An entry here that starts passing fails the
+  // check below, so the list cannot outlive its reason.
+  const KNOWN = new Set(["Reach Lord Sarah Jackson"]);
+
+  const source = readFileSync(join(root, "src", "lore", "notable-figures.md"), "utf8")
+    .replace(/\r\n/g, "\n").replace(/^---\n[\s\S]*?\n---\n/, "");
+  let seeH2 = [], seeH3 = [], level = 2, checked = 0, unpointed = 0;
+  const missing = [], stale = new Set(KNOWN);
+  let before = "";
+  for (const block of source.trim().split(/\n{2,}/)) {
+    if (/^## /.test(block)) { seeH2 = []; seeH3 = []; level = 2; before = ""; continue; }
+    if (/^### /.test(block)) { seeH3 = []; level = 3; before = ""; continue; }
+    if (/^>/.test(block)) continue;
+    // A table's own lead-in paragraph points for it ("Each of the twelve
+    // regions of the [Vale of Scyllina](…) has its own spirit").
+    const lead = /^\|/.test(block) ? linksIn(before) : [];
+    before = block;
+    const table = /^\|/.test(block), list = /^- /.test(block);
+    if (!table && !list && /\bSee \[/.test(block)) (level === 2 ? seeH2 : seeH3).push(...linksIn(block.slice(block.search(/\bSee \[/))));
+    // A paragraph that is one bold run and nothing else is a group label.
+    if (!table && !list && /^\*\*[^*]+\*\*$/.test(block)) continue;
+    const entries = table ? block.split("\n").slice(2) : list ? block.split(/\n(?=- )/) : [block];
+    for (const entry of entries) {
+      const flat = entry.replace(/\n\s*/g, " ");
+      const names = table ? [flat.split("|")[1].trim()] : [...flat.matchAll(/\*\*([^*]+)\*\*/g)].map((m) => m[1]);
+      const target = [...new Set([...linksIn(flat), ...lead, ...seeH3, ...seeH2])];
+      for (const raw of names) {
+        const name = raw.replace(/[‘’]/g, "'");
+        if (!target.length) { unpointed++; continue; }
+        checked++;
+        const found = target.some((url) => named(name, pageText(url)));
+        if (KNOWN.has(name)) { if (!found) stale.delete(name); continue; }
+        if (!found) missing.push(`"${name}" is not on ${target.join(" or ")}`);
+      }
+    }
+  }
+  ok(missing.length === 0, `notable-figures: all ${checked} pointed names are on the page their entry points at${missing.length ? `: ${missing.slice(0, 6).join("; ")}` : ""} (${unpointed} more point nowhere and are not checked)`);
+  ok(checked >= 120, `notable-figures: at least 120 names are checked (${checked})`);
+  ok(stale.size === 0, `notable-figures: every known gap is still a gap${stale.size ? `: ${[...stale].join(", ")} is on its page now, take it out of KNOWN and WISHLIST.md` : ""}`);
+}
 
 // 7. Output hygiene: clean manifest covers every generated top-level entry.
 console.log("# hygiene");
