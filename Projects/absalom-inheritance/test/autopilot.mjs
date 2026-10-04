@@ -286,13 +286,86 @@ function decide(game, use) {
   return false;
 }
 
+/**
+ * The nearest square the heir can Stride to this turn that nothing awake can
+ * see, or null. Explored squares only, the same refusal walkTo() makes.
+ *
+ * The answer comes from `world.hasLoS`, the call checkDisengage() makes, so a
+ * square this names as cover cannot be one the engine disagrees about.
+ */
+export function coverSquare(game) {
+  const pc = game.run.pc;
+  const live = game.awake();
+  const world = game.world;
+  const budget = game.content.pc.speed * game.actionsLeft;
+  const opts = {
+    gateOpen: game.run.gateOpen,
+    occupied: (x, y) => game.occupied(x, y, "pc"),
+  };
+  let best = null;
+  for (let y = 0; y < world.height; y++) {
+    for (let x = 0; x < world.width; x++) {
+      if (x === pc.x && y === pc.y) continue;
+      if (!game.explored.has(x + "," + y)) continue;
+      if (world.blocksMove(x, y, game.run.gateOpen) || game.occupied(x, y, "pc")) continue;
+      // Straight-line feet never exceed walked feet, so this only skips
+      // squares the path below would refuse anyway.
+      if (feetBetween(pc.x, pc.y, x, y) > budget) continue;
+      if (live.some(c => world.hasLoS(c.x, c.y, x, y))) continue;
+      const p = world.findPath(pc.x, pc.y, x, y, opts);
+      if (!p || p.length < 2) continue;
+      const feet = p[p.length - 1].g;
+      if (feet > budget) continue;
+      if (!best || feet < best.feet) best = { x, y, feet };
+    }
+  }
+  return best;
+}
+
+/**
+ * A second driver: combatPolicy's player, except that she steps out of sight
+ * of each construct once before she agrees to fight it.
+ *
+ * It exists because combatPolicy never ends a turn out of sight of anything
+ * awake. Measured over balance.mjs's 8,000 seeded runs: every one of her
+ * turns ended with every awake construct holding line of sight to her, so no
+ * `slept` event fired and no fight closed as "settled". The only move decide()
+ * makes is toward the nearest creature. checkDisengage()'s heal and
+ * endCombat("lost") were reached by no playthrough. This driver reaches them.
+ * It is not a better player and nothing is tuned against it.
+ *
+ * Once per creature, because a construct that settles reknits to full HP and
+ * notices her again on the way to the next goal: a driver that hid every time
+ * would walk in and out of the same doorway until playThrough() gave up.
+ *
+ * Returns a policy with the same shape as combatPolicy, and one per run: the
+ * set of creatures already slipped is the run's.
+ */
+export function makeSkulkPolicy() {
+  const slipped = new Set();
+  return function skulkPolicy(game, tally = null) {
+    const fresh = game.awake().filter(c => !slipped.has(c.key));
+    if (!fresh.length) return combatPolicy(game, tally);
+    const pc = game.run.pc;
+    const seen = () => game.awake().some(c => game.world.hasLoS(c.x, c.y, pc.x, pc.y));
+    // Already out of sight, or about to be: either way the turn ends here, and
+    // returning false is how fight() is told to end it.
+    if (seen()) {
+      const cover = coverSquare(game);
+      if (!cover || !game.walkTo(cover.x, cover.y).ok) return combatPolicy(game, tally);
+    }
+    for (const c of fresh) slipped.add(c.key);
+    return false;
+  };
+}
+
 /** Play an encounter out to its end. */
-export function fight(game, { maxTurns = 200, tally = null } = {}) {
+export function fight(game, { maxTurns = 200, tally = null, policy = combatPolicy } = {}) {
   let guard = 0;
   while (game.mode === "combat" && !game.run.outcome) {
     if (++guard > maxTurns) throw new Error("fight(): encounter did not terminate");
     if (game.isPCTurn()) {
-      const spent = combatPolicy(game, tally);
+      const spent = policy(game, tally);
       if (!spent || game.actionsLeft <= 0) {
         let r = game.endTurn();
         while (r && r.actor !== "pc") r = game.advance();
@@ -447,7 +520,7 @@ const tick = (bag, key) => { bag[key] = (bag[key] || 0) + 1; };
  * casket, fighting whatever wakes on the way. Returns how it ended and what
  * it cost.
  */
-export function playThrough(game, { maxPhases = 60 } = {}) {
+export function playThrough(game, { maxPhases = 60, policy = combatPolicy } = {}) {
   const goals = collectGoals(game.content);
   const cast = {};
   // What the *creatures* put on the board, counted the same way and for the
@@ -467,7 +540,7 @@ export function playThrough(game, { maxPhases = 60 } = {}) {
   for (const goal of goals) {
     while (!game.run.outcome) {
       if (++phases > maxPhases) return summarise(game, "stalled", cast, watch.close());
-      if (game.mode === "combat") { fight(game, { tally: cast }); continue; }
+      if (game.mode === "combat") { fight(game, { tally: cast, policy }); continue; }
 
       if (goal.kind === "pillar") {
         // Stand next to the pillar, not on it.

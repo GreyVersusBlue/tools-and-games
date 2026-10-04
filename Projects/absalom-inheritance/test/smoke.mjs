@@ -35,9 +35,9 @@ import {
   makeSaveSlot, makeRepair, validRun, freshRun, packRefusal, keyFor,
   SAVE_KEY, SAVE_VERSION, LEGACY_PACK_ID,
 } from "../js/save.js";
-import { playThrough, travel, fight, combatPolicy } from "./autopilot.mjs";
+import { playThrough, travel, fight, combatPolicy, makeSkulkPolicy } from "./autopilot.mjs";
 import {
-  BAND, DRIFT, runBatch, summarise, encounterRows, areaRows,
+  BAND, DRIFT, runBatch, summarise, encounterRows, areaRows, skulkRows,
   baselineOf, compareToBaseline, mergePatch, parseVariants,
 } from "./balance.mjs";
 
@@ -4374,6 +4374,72 @@ const enc = (area, starter, ended, taken = 0, rounds = 1, dealt = 0) => ({ area,
   ok(r.encounters.length > 0, "a save restored mid-encounter reports the encounter it was restored into");
   eq(r.encounters[0].starter, "reliquary-warden", "and names the creature that was already awake, rather than \"unknown\"");
   eq(r.encounters[0].area, "sanctum", "in the area the save was written in");
+}
+
+{
+  // The ending the report's `settled` column counts, end to end.
+  //
+  // The column read 0.0% on every row of every build from the day it shipped,
+  // and the counting was never the reason: combatPolicy ends none of its turns
+  // out of sight of an awake construct, so endCombat("lost") was reached by no
+  // playthrough and by no assertion either. The reknit test further up keeps
+  // the Keeper awake on purpose, which is checkDisengage()'s heal without the
+  // ending. Here the sentinel is the only thing awake and the heir starts her
+  // turn at (10,4), where it cannot see her.
+  const lostSight = () => createGame({
+    content: selectPc(content, "fighter"), rng: makeRng(4),
+    state: {
+      packId: content.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0, conditions: [] },
+      creatures: [{
+        key: "vault:shattered-sentinel@4,7", area: "vault", creature: "shattered-sentinel",
+        wakesOn: "notice", x: 4, y: 7, hp: 4, awake: true, dead: false, conditions: [],
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+      outcome: null,
+    },
+  });
+
+  // The engine's half. Broken on purpose by having checkDisengage() call
+  // endCombat("cleared"): the `why` assertion is the one that failed.
+  const g = lostSight();
+  const modes = [];
+  g.on(ev => { if (ev.type === "mode") modes.push(ev); });
+  g.begin();
+  eq(g.mode, "combat", "a save restored with a sentinel awake opens in an encounter");
+  g.endTurn();
+  eq(g.mode, "explore", "ending the turn out of its sight ends the encounter");
+  eq(modes[modes.length - 1].why, "lost", "and the mode event says it was lost, not cleared");
+  eq(g.run.creatures[0].awake, false, "the sentinel settles");
+  eq(g.run.creatures[0].hp, content.creatures["shattered-sentinel"].hp, "at full HP, which is the anti-cheese heal");
+  eq(g.run.stats.slain, 0, "and nothing died to end it");
+
+  // The harness's half: the watcher closes that fight as "settled" and the
+  // report's row counts it. Broken on purpose by closing every non-combat
+  // `mode` event as "cleared" in autopilot.mjs's watcher: the first assertion
+  // below read "cleared".
+  const r = playThrough(lostSight(), { policy: makeSkulkPolicy() });
+  eq(r.encounters[0].ended, "settled", "the watcher reports that fight as settled");
+  eq(r.encounters[0].starter, "shattered-sentinel", "started by the sentinel");
+  const row = encounterRows(content, [r]).find(e => e.key === "vault/shattered-sentinel");
+  ok(row.settled >= 1, `and the report's settled column is not zero for it (${row.settled} of ${row.n})`);
+}
+
+{
+  // The same ending off a fresh run, with nothing placed by hand: the second
+  // driver has to find its own cover in the shipped vault and walk to it.
+  // Broken on purpose by inverting coverSquare()'s line-of-sight test, so it
+  // names a square the construct can see: settled went to 0.
+  const rows = skulkRows(resolved, 12);
+  const settled = rows.reduce((a, e) => a + e.settled, 0);
+  ok(settled > 0, `twelve runs of the driver that breaks line of sight settle some fights (${settled})`);
+  ok(rows.every(e => e.cleared + e.settled + e.died + e.unfinished === e.n),
+    "and every fight it played ended one of the four ways the report has a name for");
+  // What the main batch's 0.0% is: the same twelve seeds under combatPolicy.
+  const plain = encounterRows(resolved, runBatch(resolved, 12));
+  eq(plain.reduce((a, e) => a + e.settled, 0), 0,
+    "combatPolicy settles none on those seeds, so the two drivers differ in the one way claimed");
 }
 
 {

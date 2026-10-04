@@ -30,9 +30,10 @@ absalom-inheritance/
                               and validate.mjs, the style sheet as a check (Node, no Blender)
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              1,370 assertions
+  test/smoke.mjs              1,382 assertions
   test/balance.mjs            Monte Carlo playthroughs; reports per encounter and per area, and exits
-                              non-zero out of band, on content nothing reaches, or on drift from the baseline
+                              non-zero out of band, on content nothing reaches, on drift from the baseline,
+                              or when its second driver (breaks line of sight) settles no fight
   test/baseline.json          the numbers the last commit measured, rewritten with --write-baseline
   test/autopilot.mjs          a competent player, shared by both suites
   test/browser.mjs            the surface, in real Chromium: the hint bar, the log's colours,
