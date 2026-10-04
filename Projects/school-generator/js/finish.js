@@ -23,7 +23,7 @@
 // Pure module: no three.js. Exercised by test/finish.test.mjs.
 
 import { CELL } from './grid.js';
-import { shapesOf, shapeArea, shapeAt } from './shapes.js';
+import { shapesOf, shapeArea, shapeAt, segAccent } from './shapes.js';
 
 // The finish table. `color` is the floor's own base colour — what the material
 // looks like, not the room's label tint — and `grain` tells render.js which
@@ -202,6 +202,8 @@ function pickPaint(a, b) {
   return a || b || DEFAULT_PAINT;
 }
 
+const sideAt = (runs, t) => runs.find((r) => t >= r.t0 && t <= r.t1) || { room: false, paint: null };
+
 // ---------- one wall, two faces ----------
 //
 // `wallPaint` answers for the wall as one object, and until #823 that was the
@@ -213,7 +215,8 @@ function pickPaint(a, b) {
 // either side changes, the wall changes with it. Each stretch says what its
 // left face is painted, what its right face is painted, and what the rest of
 // it is — the top, the ends, a face with no room in front of it — which is
-// `wallPaint`'s old rule asked of that stretch alone.
+// `wallPaint`'s old rule asked of that stretch alone. Since #827 a face can be
+// an accent instead of its room's paint, and a stretch ends where one does.
 //
 //   { t0, t1, left, right, body }
 //
@@ -259,13 +262,75 @@ function sideRuns(floor, segs, ox, oz, dx, dz) {
     if (t1 - t0 < 1e-9) continue;
     const m = (t0 + t1) / 2;
     const shape = shapeAt(floor, ox + dx * m, oz + dz * m);
-    out.push({ t0, t1, room: !!shape, paint: shape ? readPaint(shape.paint) : null });
+    out.push({ t0, t1, shape, room: !!shape, paint: shape ? readPaint(shape.paint) : null });
   }
   return out;
 }
 
-const sideAt = (runs, t) => runs.find((r) => t >= r.t0 && t <= r.t1) || { room: false, paint: null };
+// ---------- one room, one wall a different colour ----------
+//
+// #827. A face is the room's paint unless the room has said otherwise about
+// that wall: `ring.accents[i]` (shapes.js) is the colour of the room's own
+// face of segment i, whichever ring the wall on it is stored on. It reaches a run the way a room does, by geometry: a
+// run lies along a segment or it does not, and the part of it that does is
+// the accent's. The room is on its ring's left, so a segment that runs the
+// run's way is on the run's left face and one that runs against it is on the
+// right.
+//
+// How far off the run's line a segment may sit and still be the same wall.
+// walls.js cuts its runs out of these same points, so this is rounding, and
+// it is well under the 0.1ft the probe stands off.
+const ON_RUN = 0.01;   // ft
+
+// Every accented segment on the storey: [{ shape, a, b, paint }].
+function accentSegs(floor) {
+  const out = [];
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings || []) {
+      if (!Array.isArray(ring.accents)) continue;
+      const n = ring.pts.length;
+      for (let i = 0; i < n; i++) {
+        const paint = segAccent(ring, i);
+        if (!paint) continue;
+        out.push({ shape, a: ring.pts[i], b: ring.pts[(i + 1) % n], paint });
+      }
+    }
+  }
+  return out;
+}
+
+// The accents lying along one run, by the face they are on:
+// { left: [{ t0, t1, shape, paint }], right: [...] }.
+function accentsOn(accents, ax, az, dx, dz, len) {
+  const out = { left: [], right: [] };
+  for (const s of accents) {
+    const pa = { x: s.a.x - ax, z: s.a.z - az }, pb = { x: s.b.x - ax, z: s.b.z - az };
+    if (Math.abs(pa.x * dz - pa.z * dx) / len > ON_RUN) continue;
+    if (Math.abs(pb.x * dz - pb.z * dx) / len > ON_RUN) continue;
+    const ta = (pa.x * dx + pa.z * dz) / (len * len);
+    const tb = (pb.x * dx + pb.z * dz) / (len * len);
+    // Clipped to the run, and an end within rounding of the run's own end is
+    // that end: a diagonal's projection comes back as 0.9999999999999999.
+    const clip = (t) => (t < 1e-9 ? 0 : t > 1 - 1e-9 ? 1 : t);
+    const t0 = clip(Math.min(ta, tb)), t1 = clip(Math.max(ta, tb));
+    if (t1 - t0 < 1e-9) continue;
+    (tb > ta ? out.left : out.right).push({ t0, t1, shape: s.shape, paint: s.paint });
+  }
+  return out;
+}
+
+// What one face of a stretch is painted: the accent of the room in front of
+// it if that room has one here, else that room's paint, else nobody's.
+function faceAt(runs, accents, t) {
+  const side = sideAt(runs, t);
+  if (!side.room) return null;
+  const acc = accents.find((a) => a.shape === side.shape && t >= a.t0 && t <= a.t1);
+  return acc ? acc.paint : side.paint || DEFAULT_PAINT;
+}
+
 const sameFace = (a, b) => a.left === b.left && a.right === b.right && a.body === b.body;
+
+const NO_ACCENTS = { left: [], right: [] };
 
 // A reader for one storey. Every room outline on it is gathered once, so a
 // rebuild that asks about a thousand walls walks the rings a thousand times
@@ -278,6 +343,7 @@ export function facePainter(floor, probe = FACE_PROBE) {
       for (let i = 0; i < n; i++) segs.push([ring.pts[i], ring.pts[(i + 1) % n]]);
     }
   }
+  const accents = accentSegs(floor);
   return (ax, az, bx, bz) => {
     const dx = bx - ax, dz = bz - az;
     const len = Math.hypot(dx, dz);
@@ -285,8 +351,11 @@ export function facePainter(floor, probe = FACE_PROBE) {
     const nx = (-dz / len) * probe, nz = (dx / len) * probe;
     const left = sideRuns(floor, segs, ax + nx, az + nz, dx, dz);
     const right = sideRuns(floor, segs, ax - nx, az - nz, dx, dz);
-    const cuts = [...new Set([...left, ...right].flatMap((r) => [r.t0, r.t1]))]
-      .sort((a, b) => a - b);
+    // An accent ends where its segment does, which is a corner of the room
+    // and need not be a place the probe line crosses anything.
+    const acc = accents.length ? accentsOn(accents, ax, az, dx, dz, len) : NO_ACCENTS;
+    const cuts = [...new Set([...left, ...right, ...acc.left, ...acc.right]
+      .flatMap((r) => [r.t0, r.t1]))].sort((a, b) => a - b);
     let runs = [];
     for (let i = 0; i + 1 < cuts.length; i++) {
       const t0 = cuts[i], t1 = cuts[i + 1];
@@ -294,8 +363,9 @@ export function facePainter(floor, probe = FACE_PROBE) {
       const l = sideAt(left, (t0 + t1) / 2), r = sideAt(right, (t0 + t1) / 2);
       runs.push({
         t0, t1,
-        left: l.room ? l.paint || DEFAULT_PAINT : null,
-        right: r.room ? r.paint || DEFAULT_PAINT : null,
+        left: faceAt(left, acc.left, (t0 + t1) / 2),
+        right: faceAt(right, acc.right, (t0 + t1) / 2),
+        // The top and the ends are the rooms' own paint: an accent is a face.
         body: pickPaint(l.paint, r.paint),
       });
     }

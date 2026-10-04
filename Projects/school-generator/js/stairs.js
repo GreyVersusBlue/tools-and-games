@@ -548,6 +548,26 @@ export const rampGuardSegments = (link, metrics) =>
     a: localToWorld(link, g.a.x, g.a.z), b: localToWorld(link, g.b.x, g.b.z), kind: g.kind,
   }));
 
+// The guards a body on the storey *above* can walk into: the ones that stand
+// level at that floor's height, which are the two sides of the top landing
+// (#826). The far side of the hole is `openingRails`'s and the open end is the
+// way off; what was missing is the side that faces the next lane, where the
+// landing beside it is two runs lower and also inside the hole, so no edge of
+// the hole runs between them. A 4.8ft drop held a walker there, half a foot
+// past the guard that is drawn. With two or three runs the neighbour's ceiling
+// is still there and a 'step' rail already covers that side; the guard is
+// returned all the same, because it is the thing drawn. Empty for one run.
+export function rampTopGuardSegments(link, metrics) {
+  const layout = rampLayout(link, metrics);
+  if (!layout || !(layout.rise > 0)) return [];
+  const up = (y) => Math.abs(y - layout.rise) < 1e-6;
+  return rampGuards(link, metrics)
+    .filter((g) => up(g.a.y) && up(g.b.y))
+    .map((g) => ({
+      a: localToWorld(link, g.a.x, g.a.z), b: localToWorld(link, g.b.x, g.b.z), kind: g.kind,
+    }));
+}
+
 // ---------- walking on one ----------
 
 // Height of the stair surface above its *lower* floor's slab at (x, z), or

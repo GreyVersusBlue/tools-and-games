@@ -47,6 +47,7 @@ import { footprintOf } from './propplace.js';
 import {
   stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt,
   openingRails, elevatorsOn, elevatorWalls, rampSlope, rampGuardSegments,
+  rampTopGuardSegments,
 } from './stairs.js';
 import { wallProbe } from './walls.js';
 import { wallLinesOf, lineOpenings } from './wallrun.js';
@@ -328,12 +329,19 @@ export const GUARD_PAD = 0.1;     // ft
 // difference in their heights, and beside a turn landing that is a kerb a
 // walker steps over, which cuts the corner the landing is there to make.
 // A straight run has none and this returns nothing for it.
+//
+// The storey it climbs *to* gets the two that stand at its own height, either
+// side of the top landing (#826): the same `storeyAt` puts somebody who has
+// arrived on the upper storey, where the lower one's guards are not in the
+// collider, and the side of the landing that faces the next lane is inside the
+// hole, so no rail of the hole's stands there.
 export function rampGuardSegs(state, floorIndex) {
   const metrics = stairMetrics(state);
   const out = [];
   for (const link of stairsOf(state)) {
-    if (link.from !== floorIndex) continue;
-    for (const g of rampGuardSegments(link, metrics)) {
+    const guards = link.from === floorIndex ? rampGuardSegments(link, metrics)
+      : link.to === floorIndex ? rampTopGuardSegments(link, metrics) : [];
+    for (const g of guards) {
       out.push({ ax: g.a.x, az: g.a.z, bx: g.b.x, bz: g.b.z, t: 0.2, pad: GUARD_PAD });
     }
   }
