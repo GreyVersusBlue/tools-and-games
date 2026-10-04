@@ -43,6 +43,7 @@ import { addLink, MAX_LINKS } from './props.js';
 // Every caller still reads them from here.
 import {
   switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS,
+  MAX_RUN_RISE, minRuns,
   HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE,
 } from './switchback.js';
 
@@ -135,6 +136,38 @@ export const rampRuns = (link) => {
 };
 export const rampSide = (link) => (link && link.data && link.data.side === -1 ? -1 : 1);
 export const isSwitchback = (link) => rampRuns(link) > 1;
+
+// What one run of this ramp climbs, in feet: the storey's rise over the lanes
+// it is folded into. A straight ramp is one run, so it climbs the whole storey.
+export const rampRunRise = (link, metrics) => metrics.rise / rampRuns(link);
+// ADA 2010 405.6: a run rises 30in at most before a level landing. The same
+// tolerance `switchbackLayout`'s `legal` uses, so a 10ft storey in four runs
+// is on the line and not over it. Asked of every ramp, folded or not (#833).
+export const rampOverRise = (link, metrics) =>
+  !!link && link.type === 'ramp' && rampRunRise(link, metrics) > MAX_RUN_RISE + 1e-9;
+// The fewest runs this storey can be climbed in under 405.6, capped at what a
+// link can hold: past MAX_RUNS no fold is legal and the report says so.
+export const rampMinRuns = (metrics) => Math.min(MAX_RUNS, minRuns(metrics.rise));
+
+// Set how a ramp is folded (#832), the way `linkData` writes a new one: `runs` is
+// stored only above 1, `side` only as -1 and only on a fold, so a ramp taken
+// back to one run is field for field the record a straight ramp always was.
+// Returns true when the record changed. Anything but a ramp is left alone.
+export function setRampFold(link, opts = {}) {
+  if (!link || link.type !== 'ramp') return false;
+  const runs = rampRuns({ type: 'ramp', data: { runs: 'runs' in opts ? opts.runs : rampRuns(link) } });
+  const side = ('side' in opts ? opts.side : rampSide(link)) === -1 ? -1 : 1;
+  const was = `${rampRuns(link)}|${rampSide(link)}|${link.data && 'runs' in link.data}|${link.data && 'side' in link.data}`;
+  if (!link.data) link.data = {};
+  if (runs > 1) {
+    link.data.runs = runs;
+    if (side === -1) link.data.side = -1; else delete link.data.side;
+  } else {
+    delete link.data.runs;
+    delete link.data.side;
+  }
+  return was !== `${rampRuns(link)}|${rampSide(link)}|${'runs' in link.data}|${'side' in link.data}`;
+}
 
 // The fold itself, from switchback.js, or null for anything that is one run.
 // Kept per link and rebuilt when any number it was built from moves: the

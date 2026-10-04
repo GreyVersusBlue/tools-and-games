@@ -346,6 +346,19 @@
     #finish-row { margin-top: 12px; }
     #room-finish { width: 100%; }
     #paint-swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    /* #832: the accent brush in the wall panel, and a ramp's fold in the stairs panel. */
+    #accent-swatches { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 4px; }
+    #stair-readout .warn { color: var(--warn); }
+    #ramp-fold .fold-row { display: flex; gap: 4px; align-items: center; }
+    #ramp-fold button {
+      font-size: var(--fs-sm); padding: 5px 9px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border);
+      border-radius: 5px; color: var(--text-dim); cursor: pointer;
+    }
+    #ramp-fold button:hover:not(:disabled) { color: var(--text); }
+    #ramp-fold button:disabled { opacity: 0.4; cursor: default; }
+    #ramp-fold #ramp-side { flex: 1 1 0; }
+    #ramp-runs { min-width: 24px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: var(--fs-md); color: var(--text); }
     .kind-item {
       display: flex; align-items: center; gap: 8px;
       justify-content: flex-start; width: 100%; font-size: var(--fs-md); padding: 6px 8px;
@@ -1829,6 +1842,8 @@
   <div id="wall-panel" class="panel tool-slot hidden">
     <label>Wall type</label>
     <div id="wall-kinds"></div>
+    <label id="accent-label" style="margin-top:12px">Accent wall</label>
+    <div id="accent-swatches" role="group" aria-labelledby="accent-label"></div>
     <label style="margin-top:12px">Drawing</label>
     <div class="seg-toggle">
       <button id="wall-ortho" type="button" aria-pressed="true"
@@ -1850,6 +1865,11 @@
       A run drawn along a room's own boundary becomes that boundary's wall,
       split to exactly the length you drew. A run anywhere else is a
       free-standing wall you can still hang a door in.<br />
+      An accent wall is one wall of a room in its own colour. Pick a colour
+      under Accent wall, then click just inside the room beside the wall: the
+      face that room looks at takes it, and the other side stays the
+      neighbour's. The same colour again takes it off, and so does the dashed
+      swatch. Picking a wall type goes back to drawing.<br />
       Walls are drawn 0.4ft thick between two rooms and 0.8ft where the
       building meets the outside — that's read off the plan, not set here.
     </div></details>
@@ -1947,6 +1967,16 @@
   <div id="stair-panel" class="panel tool-slot hidden">
     <label>Place</label>
     <div id="stair-kinds"></div>
+    <div id="ramp-fold" class="hidden">
+      <label id="ramp-fold-label" style="margin-top:12px">Ramp runs</label>
+      <div class="fold-row" role="group" aria-labelledby="ramp-fold-label">
+        <button id="ramp-runs-less" type="button" title="One run fewer" aria-label="One run fewer">−</button>
+        <output id="ramp-runs" aria-live="polite">1</output>
+        <button id="ramp-runs-more" type="button" title="One run more" aria-label="One run more">+</button>
+        <button id="ramp-side" type="button" aria-pressed="false"
+                title="Which hand the later runs stack on, seen walking up the first">Folds right</button>
+      </div>
+    </div>
     <label style="margin-top:12px">On this level</label>
     <div id="stair-list"></div>
     <div id="stair-actions" class="hidden">

@@ -54,7 +54,7 @@ import {
 import {
   clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis,
 } from './clearance.js';
-import { rampSlope } from './stairs.js';
+import { rampSlope, rampRuns, rampRunRise, rampOverRise, rampMinRuns, stairMetrics } from './stairs.js';
 import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE, pathGrade } from './sitemesh.js';
 import { terrainField } from './terrain.js';
 import { buildingOccupancy } from './occupancy.js';
@@ -584,6 +584,11 @@ export function accessibleAnalysis(state, opts = {}) {
   // listed apart, and only the ones that roll count toward "there is a way up".
   const steepRamps = (state.links || []).filter((l) => l.type === 'ramp' && !rampRolls(l));
   const ramps = (state.links || []).filter((l) => l.type === 'ramp').length - steepRamps.length;
+  // ADA 405.6: a run that rises more than 30in before a landing. Its own list
+  // and its own finding (#833): the slope can be 1:12 and the chair route
+  // still uses it, so it does not come off the count above.
+  const metrics = stairMetrics(state);
+  const longRamps = (state.links || []).filter((l) => rampOverRise(l, metrics));
   const stairsOnly = rooms.filter((r) => r.stairsOnly);
 
   // Phase 40: the chair, once it has arrived. Only the rooms the route reaches
@@ -602,6 +607,7 @@ export function accessibleAnalysis(state, opts = {}) {
     lifts,
     ramps,
     steepRamps: steepRamps.length,
+    longRamps: longRamps.length,
     narrowDoors: narrowDoors.length,
     reachable: rooms.filter((r) => r.rollable).length,
     unreachable: stairsOnly.length,
@@ -625,11 +631,17 @@ export function accessibleAnalysis(state, opts = {}) {
     stairsOnly,
     narrowDoors: narrowDoors.map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w, leaf: p.leaf })),
     steepRamps: steepRamps.map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, slope: rampSlope(l) })),
+    longRamps: longRamps.map((l) => ({
+      id: l.id, floor: l.from, x: l.x, z: l.z, runs: rampRuns(l), runRise: rampRunRise(l, metrics),
+    })),
     turning,
     reach,
     summary,
     findings: [
-      ...accessibleFindings({ rooms: stairsOnly, entrances, summary, narrowDoors, steepRamps }),
+      ...accessibleFindings({
+        rooms: stairsOnly, entrances, summary, narrowDoors, steepRamps,
+        longRamps, rise: metrics.rise, minRuns: rampMinRuns(metrics),
+      }),
       ...turning.findings,
       ...reach.findings,
     ],
@@ -649,6 +661,7 @@ const ADA = {
   route: 'ADA 2010 · §206.2',
   door: 'ADA 2010 · §404.2.3',
   ramp: 'ADA 2010 · §405.2',
+  rampRise: 'ADA 2010 · §405.6',
   surface: 'ADA 2010 · §403.3',
 };
 
@@ -813,7 +826,9 @@ function egressFindings({ rooms, exits, stairs, summary, common, edition, occupa
   return out;
 }
 
-function accessibleFindings({ rooms, entrances, summary, narrowDoors, steepRamps = [] }) {
+function accessibleFindings({
+  rooms, entrances, summary, narrowDoors, steepRamps = [], longRamps = [], rise = 0, minRuns = 1,
+}) {
   const out = [];
   if (!entrances.length) {
     out.push(finding('fail', 'no-accessible-entrance', 'No accessible entrance',
@@ -852,6 +867,21 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors, steepRamps
       'these are off the accessible route and what they lead to counts as stairs-only. ' +
       'A longer run at 1:12 — or a lift — is the answer.',
       { doors: steepRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })), cite: ADA.ramp }));
+  }
+  if (longRamps.length) {
+    // The worst run on the page, and what would cure it. A storey so tall that
+    // twelve runs still each climb more than 30in has no cure in a fold, and
+    // the sentence must not promise one.
+    const worst = Math.max(...longRamps.map((l) => rampRunRise(l, { rise })));
+    const cure = rise / minRuns <= 2.5 + 1e-9
+      ? `A ${rise}ft storey wants ${minRuns} runs with a landing between each: ` +
+        'pick the ramp with the Stairs tool and raise Runs.'
+      : `A ${rise}ft storey is more than ${minRuns} runs can climb at 30in each; a lift is the answer.`;
+    out.push(finding('warn', 'ramp-rise',
+      `${longRamps.length} ramp${longRamps.length === 1 ? '' : 's'} with a run that rises more than 30in`,
+      `The longest run climbs ${inches(worst)} without a level landing, and 30in is the most ` +
+      `one run may rise (ADA 405.6). ${cure} The route above still counts it as a way up.`,
+      { doors: longRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })), cite: ADA.rampRise }));
   }
   return out;
 }

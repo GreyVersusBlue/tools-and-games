@@ -16,6 +16,7 @@ import { gridSnap } from './propplace.js';
 import {
   STAIR_TYPES, stairMetrics, footprintBox, rectCorners, cutBox, cutPolygon, rampLayout,
   linksFrom, linkAt, linkById, addStair, stairWidth, openingSize,
+  rampRuns, rampSide, setRampFold,
   elevatorSize, elevatorDoorWidth,
 } from './stairs.js';
 
@@ -71,6 +72,10 @@ export function initStairEdit({ getState, renderApi, host }) {
   let tool = null;            // 'stair' | null
   let currentType = 'stair';  // 'stair' | 'opening'
   let pendingRotationY = 0;
+  // How the next ramp is folded (#832). One run on the right hand until the
+  // panel says otherwise, which is the ramp this tool has always placed.
+  let pendingRuns = 1;
+  let pendingSide = 1;
   let selectedId = null;
   let hover = null;           // { x, z } snapped placement candidate
   let gesture = null;
@@ -169,7 +174,12 @@ export function initStairEdit({ getState, renderApi, host }) {
 
     const showGhost = tool === 'stair' && hover && (!gesture || gesture.mode === 'pending');
     if (showGhost) {
-      const probe = { type: currentType, x: hover.x, z: hover.z, rotationY: pendingRotationY, data: {} };
+      // The ghost is the footprint that gets built, so a ramp's carries its fold.
+      const probe = {
+        type: currentType, x: hover.x, z: hover.z, rotationY: pendingRotationY,
+        data: currentType === 'ramp' && pendingRuns > 1
+          ? { runs: pendingRuns, ...(pendingSide === -1 ? { side: -1 } : {}) } : {},
+      };
       const box = footprintBox(probe, metrics);
       ghostGroup.visible = true;
       ghostGroup.position.set(hover.x, baseY() - 0.3, hover.z);
@@ -282,6 +292,7 @@ export function initStairEdit({ getState, renderApi, host }) {
     host.pushUndo();
     const { link, reason } = addStair(s, s.currentFloor, {
       type: currentType, x: hover.x, z: hover.z, rotationY: pendingRotationY,
+      runs: pendingRuns, side: pendingSide,
     });
     if (!link) {
       host.dropUndo();
@@ -338,6 +349,45 @@ export function initStairEdit({ getState, renderApi, host }) {
     status(link);
     refresh();
     return link;
+  }
+
+  // --- the fold (#832) ---
+  //
+  // The panel's Runs stepper and its side switch. With a ramp selected they
+  // re-fold that ramp, one undo step each, and only the field that was
+  // pressed moves; with no ramp selected they set what the next one placed
+  // will be. The two are kept apart: re-folding a ramp does not change what
+  // the next click places.
+
+  function fold() {
+    const link = selected();
+    const ramp = link && link.type === 'ramp' ? link : null;
+    return {
+      runs: ramp ? rampRuns(ramp) : pendingRuns,
+      side: ramp ? rampSide(ramp) : pendingSide,
+      selected: !!ramp,
+    };
+  }
+
+  function setFold(opts = {}) {
+    const link = selected();
+    if (!link || link.type !== 'ramp') {
+      // Clamped by the same reader a file's `data.runs` goes through.
+      if ('runs' in opts) pendingRuns = rampRuns({ type: 'ramp', data: { runs: opts.runs } });
+      if ('side' in opts) pendingSide = opts.side === -1 ? -1 : 1;
+      refresh();
+      return false;
+    }
+    host.pushUndo();
+    if (!setRampFold(link, opts)) {
+      host.dropUndo();
+      refresh();
+      return false;
+    }
+    host.changed();
+    status(link);
+    refresh();
+    return true;
   }
 
   function deleteSelected() {
@@ -397,6 +447,8 @@ export function initStairEdit({ getState, renderApi, host }) {
     pointerDown, pointerMove, pointerUp, key,
     refresh,
     selectById, deleteSelected, rotateSelected, nudgeSelected, listHere,
+    setFold,
+    get fold() { return fold(); },
     get selectedId() { return selected() ? selectedId : null; },
     describeLink(link) { return describe(getState(), link, stairMetrics(getState())); },
     clearHover() { hover = null; refresh(); },
