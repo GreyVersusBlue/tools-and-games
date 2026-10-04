@@ -207,13 +207,16 @@ export function convertCreature(c, opts = {}) {
   // floor: the lowest tier the GM Core prints for this table. Strikes have no
   // terrible column, so a PF1e caster's feeble touch attack (the lich's +7 at
   // CR 12) lands on low rather than off the bottom of the table.
+  // The ceiling is half a step past extreme, except for saves, which stop at
+  // extreme: the highest save written is the one the GM Core prints for the
+  // level (HISTORY #831).
   function bench(stat, v1, table, label, fallbackTier = 2, floor = 0) {
     if (v1 == null || Number.isNaN(v1)) {
       const v = pf2At(table, level, fallbackTier);
       return { ...explain(v, `No PF1e ${label} given; ${tierWord(fallbackTier)} for level ${level}.`), tier: fallbackTier };
     }
     const t = T.pf1TierOf(stat, v1, crN);
-    const tier = clamp(t, floor, 4.5);
+    const tier = clamp(t, floor, stat === 'save' ? T.TIERS.extreme : 4.5);
     const v = pf2At(table, level, tier);
     // Below CR 1, PF2e's own creatures run low on hp, so a typical PF1e hp
     // lands low on purpose (HISTORY #712); say so rather than call it low.
