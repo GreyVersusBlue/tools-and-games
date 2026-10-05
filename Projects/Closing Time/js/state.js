@@ -1,5 +1,5 @@
 // state.js — canonical game state, persistence, career ladder, RNG helpers.
-import { DB } from "./data.js";
+import { DB, fmtMoney } from "./data.js";
 import { FINANCING, DEFAULT_FINANCING, financingFor } from "./engine/financing.js";
 import { clauseOf } from "./engine/escalation.js";
 // Relative, not "/assets/js/gvb-save.js": tools/smoke.mjs imports this module
@@ -241,8 +241,12 @@ export function repairCareer(s) {
   // quietly: each one leaves a Ledger line. Pushed onto s.log directly rather
   // than through log(), which writes to the live S this function may not be
   // operating on yet.
-  const note = text => {
-    s.log.unshift({ day: s.day, text, cls: "bad", kind: undefined, recId: undefined });
+  //
+  // The fourth argument is the client the line belongs to, the same tag log()
+  // takes: a contract that went void is that client's history, and the
+  // Ledger's per-client filter is where a player goes looking for it (#861).
+  const note = (text, recId = undefined) => {
+    s.log.unshift({ day: s.day, text, cls: "bad", kind: undefined, recId });
     if (s.log.length > 300) s.log.pop();
   };
 
@@ -260,16 +264,42 @@ export function repairCareer(s) {
   s.usedClients = s.usedClients.filter(id => id in DB.clients);
 
   // Deals pointing at a listing, an agent, or a client record that is gone.
+  //
+  // What the player is owed for one (#861): nothing, and nothing taken either.
+  // The sale cannot happen, so no commission, no XP and no closing are paid
+  // for it; and it is nobody's doing, so none of what killDeal() charges for a
+  // collapse applies: no reputation hit, no satisfaction hit. The buyer goes
+  // back to looking with the patience they had, and is told so in a line
+  // filed under their own name.
+  //
+  // Only a deal still on the table gets that line. A closed or dead deal on
+  // content that was deleted later is dropped too, since nothing can render
+  // it, but silently: its commission was earned and stays, and "a deal fell
+  // through" over a sale that closed in March is a false statement.
   const deadDealIds = new Set();
   s.deals = s.deals.filter(d => {
     if (!d || typeof d !== "object") return false;
-    const why = !(d.listingId in DB.listings) ? "the listing"
-      : !(d.agentId in DB.agents) ? "the other agent"
-      : goneRecIds.has(d.clientRecId) ? "the client"
+    const why = !(d.listingId in DB.listings) ? "listing"
+      : !(d.agentId in DB.agents) ? "agent"
+      : goneRecIds.has(d.clientRecId) ? "client"
       : null;
     if (!why) return true;
     deadDealIds.add(d.id);
-    note(`A deal fell through: ${why} is no longer in the game. The paperwork is void.`);
+    if (d.stage !== "offerPending" && d.stage !== "underContract") return false;
+    if (why === "client") {
+      note(`A deal fell through: the client is no longer in the game. The paperwork is void.`);
+      return false;
+    }
+    const rec = s.clients.find(r => r.recId === d.clientRecId);
+    const who = rec ? DB.clients[rec.clientId].name : "Your buyer";
+    const price = Number.isFinite(d.price) ? ` at ${fmtMoney(d.price)}` : "";
+    const cause = why === "listing"
+      ? "the listing was pulled and is not coming back"
+      : "the listing agent left the business and the file went with them";
+    note(d.stage === "underContract"
+      ? `Contract void${price}: ${cause}. No closing, no commission, and nobody's fault. Back to the MLS board with ${who}.`
+      : `Offer withdrawn${price}: ${cause}. Back to the MLS board with ${who}.`,
+      rec && rec.recId);
     return false;
   });
 
@@ -280,19 +310,57 @@ export function repairCareer(s) {
     if (!pl || typeof pl !== "object") return false;
     if (!goneRecIds.has(pl.clientRecId)) return true;
     deadDealIds.add(pl.id);
+    for (const o of Array.isArray(pl.offers) ? pl.offers : []) if (o) deadDealIds.add(o.id);
     note(`A listing agreement ended: its seller is no longer in the game.`);
     return false;
   });
+  // The seller side of the same void (#861). pl.acceptedOffer is its own
+  // object once a save has been through JSON, so filtering pl.offers does not
+  // reach it: a listing under contract to a deleted agent's buyers used to
+  // stay under contract, throw in sellerInspectionDecision() on agent.name,
+  // and then close and pay a commission on a sale to nobody. It goes back on
+  // the market instead, with the interest it had and none of what
+  // failSellerDeal() charges, because the seller has nothing to blame the
+  // player for.
+  const voidedPlIds = new Set();
   for (const pl of s.playerListings) {
-    if (Array.isArray(pl.offers)) pl.offers = pl.offers.filter(o => o && o.agentId in DB.agents);
+    if (Array.isArray(pl.offers)) {
+      // An offer's deadline is a schedule item whose ref is the offer's id.
+      for (const o of pl.offers) if (o && !(o.agentId in DB.agents)) deadDealIds.add(o.id);
+      pl.offers = pl.offers.filter(o => o && o.agentId in DB.agents);
+    }
+    const acc = pl.acceptedOffer;
+    if (pl.status === "underContract" && !(acc && acc.agentId in DB.agents)) {
+      pl.status = "live";
+      pl.acceptedOffer = null;
+      pl.milestones = [];
+      voidedPlIds.add(pl.id);
+      const addr = pl.listing && pl.listing.address ? pl.listing.address : "your listing";
+      note(`Back on market: ${addr}. The buyers' agent left the business and the contract went with them. No closing, no commission, and nobody's fault.`,
+        pl.clientRecId);
+    }
   }
 
   // Whatever pointed at what just went away. A schedule item's `ref` is a deal
-  // or player-listing id (deals.js:140, seller.js:140), and a client record's
-  // dealId is the same. A choice left in the queue for a dead deal would open
-  // a modal over a deal that is not there.
-  s.schedule = s.schedule.filter(it => !(it && deadDealIds.has(it.ref)));
-  s.choiceQueue = s.choiceQueue.filter(ch => !(ch && deadDealIds.has(ch.dealId)));
+  // id, a player-listing id or an offer id (deals.js acceptDeal, seller.js
+  // spawnNPCOffer and acceptSellerOffer), and a client record's dealId is one
+  // of the first two.
+  s.schedule = s.schedule.filter(it => !(it && (deadDealIds.has(it.ref) || voidedPlIds.has(it.ref))));
+  // A choice waiting in the queue opens a modal, and ui.js reads straight
+  // through whatever the choice names: deal.clientRecId, pl.clientRecId,
+  // DB.agents[ch.agentId].name. So a choice stays only if every id on it still
+  // resolves. The seller-side kinds carry `plId`, not `dealId`, which is how
+  // they got past the filter this replaces.
+  s.choiceQueue = s.choiceQueue.filter(ch => {
+    if (!ch || typeof ch !== "object") return false;
+    if (ch.dealId != null && !s.deals.some(d => d.id === ch.dealId)) return false;
+    if (ch.plId != null && (voidedPlIds.has(ch.plId) || !s.playerListings.some(pl => pl.id === ch.plId))) return false;
+    if (ch.recId != null && !s.clients.some(r => r.recId === ch.recId)) return false;
+    if (ch.agentId != null && !(ch.agentId in DB.agents)) return false;
+    if (ch.clientId != null && !(ch.clientId in DB.clients)) return false;
+    if (ch.brokerageId != null && !(ch.brokerageId in DB.brokerages)) return false;
+    return true;
+  });
   for (const rec of s.clients) {
     if (rec && deadDealIds.has(rec.dealId)) rec.dealId = null;
   }

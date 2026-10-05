@@ -262,17 +262,30 @@ New events are pure JSON composed from these handlers. New handler = one functio
   `data/`. Without that, `calendar.js`'s daily aging loop — `for (const id in S.listingsState)`,
   reading `DB.listings[id].address` on a price cut or an off-market roll — throws the first time
   that loop reaches an id whose content file is gone.
-- **A deal mid-contract on deleted content survives it now.** The purge above covers state keyed
-  BY a content id; this covers state that POINTS AT one, which was the piece left open. `repairCareer()`
-  drops a deal whose listing, other agent, or client record is gone, drops a client record whose
-  file is gone (and its ids out of `clientQueue` / `usedClients`), drops a player listing whose
-  seller is gone, drops offers naming a missing agent, and takes the dead deal's schedule items,
-  pending choices and `rec.dealId` with it. A listing left flagged `underContract` with no deal
-  behind it goes back on the market rather than staying unbuyable forever — conservatively, only
-  when no deal in any stage references it. Every dropped deal leaves a Ledger line, because
-  player progress disappearing silently is worse than the crash it replaces.
-  **None of this makes deleting a listing a save is mid-contract on a good idea.** It makes it
-  survivable rather than a throw on the next day advance, which is what it was.
+- **A deal mid-contract on deleted content is voided, and the rule is written down** (#861).
+  The purge above covers state keyed BY a content id; this covers state that POINTS AT one.
+  `repairCareer()` drops a deal whose listing, other agent, or client record is gone, drops a
+  client record whose file is gone (and its ids out of `clientQueue` / `usedClients`), drops a
+  player listing whose seller is gone, drops offers naming a missing agent, and takes the
+  schedule items, pending choices and `rec.dealId` with them. What the player is left holding:
+  - **Nothing is paid and nothing is charged.** No commission, XP or closing for a sale that
+    cannot happen, and none of the reputation or satisfaction `killDeal()` and
+    `failSellerDeal()` take for a collapse, because nobody caused this one.
+  - **The client is released and told.** A buyer goes back to looking with the patience they
+    had. A seller whose buyers' agent was deleted goes back to `live` with the interest the
+    listing had. Each gets one Ledger line filed under their own `recId`, written once.
+  - **A deal that already ended leaves silently.** A closing on a listing deleted later keeps
+    its commission and its place in `stats`; only an offer or contract still on the table gets
+    a line.
+  - **A choice in the queue stays only if every id on it resolves**: `dealId`, `plId`, `recId`,
+    `agentId`, `clientId`, `brokerageId`. `ui.js` reads straight through all of them.
+  A listing left flagged `underContract` with no deal behind it goes back on the market,
+  only when no deal in any stage references it.
+  **Convention: delete a listing or a client file whenever the content calls for it, and an
+  agent once no listing in `data/` names them; a save under contract on it loses the deal and
+  nothing else.** Not covered: deleting an agent or a neighborhood that a listing still in
+  `data/` names. That is a content error, and `ui.js` reads `DB.agents[l.listingAgentId].name`
+  on every flyer.
 - **`log(text, cls, kind, recId)`'s fourth argument tags a line as belonging to one client.** Any
   new call site that's about a specific client should pass that client's `rec.recId` — it's what
   the Ledger's per-client filter matches on. Leave it `undefined` for anything not about one client
@@ -284,5 +297,6 @@ New events are pure JSON composed from these handlers. New handler = one functio
   merged on import, the two members' files refusing each other) and the commercial tier (the
   ladder gate on all three doors clients come through, the income model, the loan constant
   amortized rather than re-derived, and the two assertions that the sizing branch consumes no
-  randomness). 359 assertions. It is blind to the wiring by design —
+  randomness), and what a contract on deleted content leaves behind (no payout, no
+  penalty, one line under the client's name). 397 assertions. It is blind to the wiring by design —
   `cd Tools/board-check && npm run games closing-time` drives the real page.

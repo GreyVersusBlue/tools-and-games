@@ -1494,13 +1494,18 @@ project's only plan and is being retired from that file:
   Per-client financing shipped in round 4, multi-offer escalation wars in
   round 5, the hall of past careers in round 6 and the commercial tier in
   round 7. **No next layer from that list is open.** The suite holding all of
-  it is at 359 assertions.
-- **The unhandled edge case.** `repairCareer()` makes adding and removing
-  content from a live career safe — it backfills and drops `listingsState`,
-  `market.nb` and `knowledge` entries against what's actually in `data/`. But
-  **a deal or listing still actively under contract on deleted content is a
-  separate, unhandled edge case: don't delete a listing a save might be
-  mid-contract on.**
+  it is at 397 assertions.
+- **Deleting content under a live contract is settled, not open** (#861,
+  2026-10-04). `repairCareer()` backfills and drops `listingsState`,
+  `market.nb` and `knowledge` against what is in `data/`, and it voids what was
+  on the table over deleted content: a buyer's offer or contract, commercial
+  included, and a seller's contract whose buyers' agent is gone. A void pays no
+  commission and charges no reputation or satisfaction, the client is released
+  with one Ledger line under their name, a deal that had already closed keeps
+  its commission and leaves without a line, and a queued choice naming anything
+  deleted is dropped. **Still not covered**: a listing whose own agent or
+  neighborhood file is deleted while the listing stays, which is a content
+  error and not a save repair.
 
 Two conventions that stay in the README rather than moving here: anything new
 added to `S` belongs in `repairCareer()` the same day it's added, especially if
