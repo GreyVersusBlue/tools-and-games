@@ -39,7 +39,7 @@ await p.evaluate(() => {
   const pos = h.position.clone();
   h.position.set(sh[0], 0, sh[1]);
   for (const id of ['lookout_ward', 'seeker_ward']) { const st = f.stock?.[h.team]?.[id]; if (st) st.count = 4; }
-  window.__buys = ['lookout_ward', 'seeker_ward', 'ascendant_scepter', 'bottle'].map((id) => id + ':' + JSON.stringify(f.buy(h, id).reason ?? 'ok'));
+  window.__buys = ['lookout_ward', 'seeker_ward', 'ascendant_scepter', 'flask'].map((id) => id + ':' + JSON.stringify(f.buy(h, id).reason ?? 'ok'));
   f.deliverStash?.(h);
   h.position.copy(pos);
   g.cameraCtl.focus(h.position.x, h.position.z, true);
