@@ -7,7 +7,7 @@ it, an AP whose visits are a calendar rather than a metronome, four subjects
 that are files rather than branches, an `Assets/` tree that knows what it
 weighs, a three.js that is vendored rather than fetched, tells that are objects
 in the room rather than boxes in a vision mode, and a room a thumb can walk,
-teach and rechart on a written-down frame budget. `tests/smoke.mjs` prints 631
+teach and rechart on a written-down frame budget. `tests/smoke.mjs` prints 718
 PASS lines and no FAIL, `tests/assets.mjs` audits the asset manifest against a
 budget, and `tests/balance.mjs` runs six styles through 4th period, one style
 across three seating charts, three styles through each later period, the whole
@@ -131,8 +131,8 @@ page load.
 intervention, beat, reaction, post-conference response, generated name, note or
 rung of admin's ladder is a JSON edit. The pure-module-plus-suite habit holds
 for the sixteen modules above and stops dead at the module boundary —
-`systems/tells.js` and `systems/withitness.js` are dependency-injected
-factories with no suite at all, and `world/`, `ui/` and `main.js` have never
+`systems/tells.js` and `systems/withitness.js` got their first assertions in
+Phase 7 and the rest on 2026-10-05 (TG-22), and `world/`, `ui/` and `main.js` have never
 been executed by anything but a browser and the one headless Playwright pass
 Phases 2 and 3 ran by hand (it is not committed; the proxy in that session
 blocked the three.js CDN and the pass answered the import map from Castle
@@ -231,33 +231,50 @@ And the working rules:
 
 ## Questions for Devon
 
-The T7 record left these open; nothing in this file resolves them.
+**None open.** Devon answered all seven on 2026-10-05 (root `HISTORY.md` #889);
+they stay here struck, with the answer, so nobody asks again.
 
-- **Authoring or generation?** Answered by shipping: Phase 1 authored a third
-  period and Phase 2 generated a fourth, so the day is three authored classes
-  and one drawn from a seed. The open version of the question is whether the
-  authored three should also become seeds (one JSON edit each, and their names
-  would go), or whether authored kids stay authored because the notes are
-  better. Nothing depends on the answer.
-- **Does the period need a fail state?** Answered "still no" three times.
-  Phase 3 designed without one: a bad week gets a growth plan, not a game over.
-- **Is suppression too strong?** Measured: in every 4th-period balance run
-  exactly one scheduled tell never happens (Priya in front of June); splitting
-  the pairs makes that "2 never happened, 2 found another way" and drops
-  restless from 72 to 44. The handoff's own fix, if it is too strong, is a
-  per-period cap on how much one kid absorbs, not a nerf to the effect.
-- **Is the Observation's ambient Mastery cost calibrated?**
-  `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by
-  design math and not by playtest. In the table it costs the good teacher
-  nothing visible (79 either way) and buys 10 Fidelity if performed.
-- **Mobile, on a real phone.** Phase 8 answered the design question and left
-  the measurement open. Everything in it was driven in a real browser at seven
-  viewports, and none of that is a mid-range Android: the frame budget is
-  33.3 ms and nothing in this repo has ever measured a phone against it.
-  `bellToBellFrames()` in the console on a device reports the median, the fps
-  and every drop the renderer took. That number is the one thing still wanted.
-- **An announced Observation variant** (treatment §6.1 has both)? The handoff
-  calls the surprise one funnier and rates this low; Phase 4 assumes yes.
+- ~~**Authoring or generation?**~~ Answered 2026-10-05: **the three authored
+  periods become seeds.** That is work now, and it is in the standing backlog
+  under Content.
+- ~~**Does the period need a fail state?**~~ Answered 2026-10-05: **still no.**
+- ~~**Is suppression too strong?**~~ Answered 2026-10-05: **it is not.** Leave
+  it; the per-period cap is not wanted.
+- ~~**Is the Observation's ambient Mastery cost calibrated?**~~ Answered
+  2026-10-05: **right as it is.** `CFG.observation.masteryDrainPerSec` stays
+  0.008.
+- ~~**Mobile, on a real phone.**~~ Answered 2026-10-05: **no mobile.** The
+  phone measurement is not wanted and there is no further touch work. See the
+  note at the top of Phase 8 for what that does and does not do to what
+  shipped.
+- ~~**An announced Observation variant?**~~ Answered 2026-10-05: **yes.**
+  Phase 4 built it (`visitFor` and `announcedAhead` in
+  `systems/observation.js`), so the answer confirms what ships.
+- ~~**Should Room Temp reveal direction at all?**~~ (Root `BACKLOG.md` Q13;
+  it was never repeated here.) Answered 2026-10-05: **yes.** It reads a
+  quadrant, which is what it does today. Locked constraint 8 stands: it never
+  names a kid.
+
+### Raised by the suites, 2026-10-05 (TG-22), not yet anybody's call
+
+Each is what the code does, pinned in `tests/smoke.mjs` as what the code does,
+and written here because the test could not say whether it is meant.
+
+- **An ignored false positive is charged as a missed tell.** A hypervigilance
+  phantom lives 150 seconds and then goes through the same `onExpire` a real
+  phone does: `state.missed` up one, `CFG.missedRestless`, `CFG.missedMastery`,
+  and a "Missed it" toast. The treatment's cost for the lie is the walk across
+  the room to a granola bar. Whether declining the walk should cost what
+  missing a phone costs is a design call; `balance.mjs` cannot weigh in,
+  because `simulate.js` never spawns one.
+- **A false positive never lands on seat 0, 1 or 11.** `spawnFalsePositive`
+  draws `2 + floor(random * (n - 3))`, seats 2 to 10 of twelve. Nothing says
+  why the front-left pair and the last seat are exempt. With fewer than four
+  students the same line can name a seat that does not exist.
+- **`simulate.js` carries its own copy of the toggle's costs.** Lines 166 to
+  174 repeat `withitness.tick()`'s four lines instead of calling it, so the
+  balance table and the game agree only while somebody keeps them the same by
+  hand. The new assertions pin `withitness.js` to `CFG`; nothing pins the copy.
 
 ## The standing backlog
 
@@ -306,6 +323,12 @@ new list.
   furniture. There is no confirmation beyond the browser's own `confirm()`.
 
 **Content**
+- **The three authored periods become seeds** (Devon, 2026-10-05, #889). 4th,
+  5th and 6th are `data/students.json`, `data/period5.json` and
+  `data/period6.json`; the 7th is a `generate` row in `data/periods.json`. The
+  question called the conversion one JSON edit each, and said what it costs:
+  the authored names and notes go. Not started. The suites that name authored
+  kids (Priya in front of June, the 4th-period balance table) move with it.
 - Beats are hand-authored and never vary, and the generated 7th period reads
   4th period's lesson. Generation stops at the roster and the schedule on
   purpose: voice is what it is worst at.
@@ -325,48 +348,47 @@ new list.
 - Of §6.1's eight bureaucracy minigames, one is built.
 
 **The room**
-- Tell meshes are placeholder boxes and spheres (`buildMesh` in
-  `systems/tells.js`).
-- The comprehension aura is a `TorusGeometry(0.19, 0.018, 6, 20)` over every
-  head. Fine at a glance, bad in a crowd of twelve.
-- Whisper audio does not exist (T8, next in the handoff's own order).
-- T5 does not check furniture against desks or the other occluder — you can
-  drag the cabinet onto a desk. Nothing breaks; it looks wrong.
 - The front row's advantage may be too small to notice. Do not decide without
   `SPREAD=1 node balance.mjs`.
-- **`poseIdle()` does not leave the students idling** (found 2026-09-24, #619).
-  It plays the Idle clip for 1.2 s, then `mixer.stopAllAction()`, and
-  deactivating an action makes three's AnimationMixer restore every binding's
-  original state. Every student stands in the file's rest pose, whatever clip
-  was sampled: keeping `Death` instead of `Idle` measures the same to 0.1 mm.
-  The comment's promise ("comes back standing naturally") is the rest pose
-  happening to look natural. Idle at 1.2 s would put the head up to 8.3 mm
-  higher. The fix is to drop the `stopAllAction()` (or `uncacheRoot` without
-  deactivating), and it moves the rest captures in `buildCharacterBody`, so
-  check `reactions.js`'s tweens against it. `tests/characters.mjs` already
-  baselines the clip's own bones for that day.
+- **Nobody has looked at the Idle pose in a window.** `poseIdle()` keeps its
+  pose now (#882, 2026-10-05): 35 to 42 of each student's 62 bones are off the
+  rest pose, the head sits up to 8.3 mm higher, and each is still 1.48 m tall
+  with its feet on the floor, all of it asserted in `tests/characters.mjs`.
+  How that reads from the front of the room is not something a headless run
+  can say (root `CLAUDE.md`, #53). The fingers move most (0.20 and 0.22 rad),
+  and the reaction tweens add to the new head and chest pitch the way they
+  added to the old one.
+- A drop that finds no free spot in six passes leaves the furniture where it
+  was. With chairs in the clamp (#884) that is 6.5% of random drops, up from
+  1.9%. Nothing tells the player why the cabinet did not move.
+
+*Shipped and struck from this list on 2026-10-05, having sat here since before
+Phases 6 and 7 did them:* real tell meshes, the aura off the head, whisper
+audio and furniture that stays off a desk (all Phase 7); the pose bug (#882)
+and furniture that stays off a chair (#884).
 
 **Weight and plumbing**
-- `Assets/` is 1,037 files and 142 MB, of which **932 files and 82 MB are
-  referenced by nothing** in `data/assets.json` — three causes, and the famous
-  one is the smallest. The Kenney kit ships 140 models in six formats
-  (`.stl/.obj/.mtl/.glb/.fbx/.dae`) and the game loads four `.glb`: 17 MB
-  total. `Props/` holds 20 props of which 11 are named, the nine unnamed ones
-  being 34 MB including a 21 MB pine sapling in a classroom game. `textures/`
-  carries three rug variants (19 MB) and two wall variants where one of each is
-  used — and those are listed under `_textureAlternates` / `_artAlternates` /
-  `_propAlternates`, a deliberate palette rather than an accident, so a prune
-  has to keep the catalog honest instead of just deleting.
-- three.js 0.160.0 hotlinks from `cdn.jsdelivr.net`. The site vendored its CDN
-  three.js copies in session 4 and has reported zero offsite requests since
-  (bar Golden Hour's sand texture); School Generator's import map points at
-  `./libs/three.module.js`. This is a regression no check catches.
-- No CI. `.github/workflows/` has three files and none runs these two suites.
-- `systems/tells.js` (160) and `systems/withitness.js` (39) are
-  dependency-injected factories with no test file.
+- `Assets/` is 266 files and 26.8 MB by `tests/assets.mjs` on 2026-10-05: 95
+  referenced (12.8 MB), 18 cataloged as alternates (10.3 MB) and **153
+  unreferenced (3.6 MB)**, inside a budget the suite enforces (13.1 and 4.8).
+  The 932 files and 82 MB this bullet used to count went in Phase 6. What is
+  left unreferenced is mostly the Kenney kit's 140 `.glb` files, of which the
+  game places four; Phase 6 left them standing as a catalog, and nothing in
+  `assets.json` says so.
 - The generator's band check runs two headless periods per attempt at boot,
   about 25 ms each in Node. At the reroll cap of 24 that is a second of boot on
   a bad seed; no seed in 1,400 tried needed more than 3.
+- Two breaks on purpose kill `smoke.mjs` with a TypeError before any assertion
+  speaks: a pair-anchored tell whose `seat2 != null` guard is removed, and
+  `withitness.set()` with its `audio.setDrone` call removed (Phase 7's own
+  assertion indexes the last audio call). The suite exits 1 either way; it does
+  not name the line.
+
+*Struck on 2026-10-05 as no longer true:* three.js is vendored and the import
+map points at `./libs/` (Phase 6); `site-ci.yml`'s Bell to Bell job runs
+`smoke`, `balance`, `assets`, `characters`, `props` and the Blender validator;
+`systems/tells.js` and `systems/withitness.js` are held by 125 assertions
+in `tests/smoke.mjs`, 78 of them written on 2026-10-05.
 
 ## Arc one — the school day
 
@@ -680,6 +702,15 @@ one module that turns the bare specifier into a path — and every file under
   SHIFT is down and is gone when it is up.
 
 ## Phase 8 — A thumb has never touched this — **SHIPPED**
+
+> **Devon, 2026-10-05 (root `HISTORY.md` #889): no mobile.** The question he
+> answered was written before this phase and said the answer would decide
+> whether Phase 8 exists. It had shipped by then. So: nothing below is to be
+> extended, the phone measurement this phase left open is not wanted, and no
+> ninth phase picks touch up. What shipped is still in the game and still
+> asserted (locked constraint 17, `smoke.mjs`'s Phase 8 block). Taking it out
+> is a deletion of working code and is Devon's to ask for; no session has been
+> asked.
 
 **`input.js` lets a phone look around the room and gives it no way to walk or
 to teach.**
