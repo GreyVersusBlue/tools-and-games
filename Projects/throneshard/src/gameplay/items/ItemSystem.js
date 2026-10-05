@@ -466,7 +466,7 @@ export class ItemSystem {
     if (hero.hasState('muted')) return fail('Muted');
     if (item.cooldownRemaining > 0) return fail('Item is on cooldown');
     if (hero.mana < item.getManaCost()) return fail('Not enough mana');
-    if ((d.consumable || d.keepAtZero) && item.charges <= 0 && d.id !== 'shifting_treads') return fail(d.id === 'bottle' ? 'Bottle is empty' : 'No charges');
+    if ((d.consumable || d.keepAtZero) && item.charges <= 0 && d.id !== 'shifting_treads') return fail(d.id === 'flask' ? 'Flask is empty' : 'No charges');
     if (d.active.channel && hero.hasModifier('item_tp_channel')) return fail('Already channeling');
     if (d.id === 'flicker_dagger' && this.game.time - (hero.data.lastHeroDamageTime ?? -99) < 3) return fail('Flicker Dagger is disabled');
     if (skipTarget) return ok();
@@ -581,10 +581,10 @@ export class ItemSystem {
         hero.heal(85, hero);
         vfx?.spawn?.('heal', { unit: hero, position: pos.clone(), color: 0xff80e0 });
         return true;
-      case 'bottle':
-        if (item.storedRune && g.runes?.activate) { const r = item.storedRune; item.storedRune = null; g.runes.activate(hero, r, { fromBottle: true }); return true; }
+      case 'flask':
+        if (item.storedRune && g.runes?.activate) { const r = item.storedRune; item.storedRune = null; g.runes.activate(hero, r, { fromFlask: true }); return true; }
         item.charges--;
-        hero.addModifier({ id: 'item_bottle', name: 'Bottle', icon: '🍾', duration: 2.5, bonus: { hpRegen: 44, manaRegen: 24 } });
+        hero.addModifier({ id: 'item_flask', name: 'Flask', icon: '🍾', duration: 2.5, bonus: { hpRegen: 44, manaRegen: 24 } });
         return true;
       case 'resonant_reed':
       case 'resonant_wand': {
@@ -1311,8 +1311,8 @@ export class ItemSystem {
     if (hero.alive && !hero.modifiers.some((m) => m.id === 'items_passive')) hero.data.itemsDirty = true;
     if (hero.data.itemsDirty && hero.alive) { hero.data.itemsDirty = false; this.recompute(hero); }
     if (!hero.alive) return;
-    // bottle refill at fountain
-    if (this.inFountain(hero)) for (const it of hero.inventory) if (it?.def.id === 'bottle') it.charges = it.def.maxCharges;
+    // flask refill at fountain
+    if (this.inFountain(hero)) for (const it of hero.inventory) if (it?.def.id === 'flask') it.charges = it.def.maxCharges;
     // stash delivery
     if (hero.stash.length) {
       if (this.inShopRange(hero) === 'base') this.deliverStash(hero);

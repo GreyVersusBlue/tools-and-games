@@ -639,7 +639,7 @@ export class VFX {
       case 'clarity': case 'honeyed_plum':
         this.spawn('mana', { unit: hero, color: id === 'clarity' ? 0x5aa0ff : 0x6ab0ff });
         break;
-      case 'bottle':
+      case 'flask':
         this.spawn('heal', { unit: hero, color: 0x60ffc0 });
         this.spawn('mana', { unit: hero, color: 0x5aa0ff });
         break;

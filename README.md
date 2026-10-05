@@ -91,6 +91,6 @@ requests that touch it.
 
 ## License
 
-Personal project, not licensed for reuse. Play and poke around, but please
+Personal project, for local, non-commercial use. Play and poke around, but please
 don't redistribute the code or assets. Pathfinder content belongs to Paizo Inc.
 and is used under the licences noted in `Pathfinder/data/README.md`.

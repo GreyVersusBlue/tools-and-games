@@ -5,8 +5,8 @@ import { du, TEAM } from '../../core/constants.js';
 // Timing (documented choice): power runes spawn every 2 minutes from 2:00 at ONE of the two river spots (random),
 // replacing an unclaimed one. Bounty runes spawn at 0:00 and every 2 minutes at the four jungle bounty spots.
 // Pickup: right-click the rune (the move order to it) or walk over it; bots use botWantsRune()/claim().
-// A hero carrying a Bottle stores power runes in it (player heroes only) instead of activating them.
-// Events: rune:spawned {rune}, rune:picked {hero, type, rune, bottled}, rune:activated {hero, type}.
+// A hero carrying a Flask stores power runes in it (player heroes only) instead of activating them.
+// Events: rune:spawned {rune}, rune:picked {hero, type, rune, stored}, rune:activated {hero, type}.
 export const RUNE_TYPES = {
   haste: { name: 'Haste', color: 0xff3a2a, icon: '👟', duration: 22, desc: 'Movement speed set to maximum.' },
   double_damage: { name: 'Double Damage', color: 0x3a7aff, icon: '⚔️', duration: 45, desc: '+100% base attack damage.' },
@@ -31,7 +31,7 @@ export class Runes {
     this.runes = []; // { id, type, pos: Vector3, spot, kind: 'power'|'bounty', mesh, spawnedAt }
     this.nextPower = POWER_RUNE_START;
     this.nextBounty = 0;
-    this.stats = { spawned: 0, picked: {}, bottled: 0 };
+    this.stats = { spawned: 0, picked: {}, stored: 0 };
     this._id = 1;
     this._t = 0;
     this.powerSpots = POWER_RUNE_SPOTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
@@ -120,21 +120,21 @@ export class Runes {
     this.remove(rune);
     this.stats.picked[rune.type] = (this.stats.picked[rune.type] ?? 0) + 1;
     if (hero.data) hero.data.runeClaim = null;
-    let bottled = false;
+    let stored = false;
     if (rune.kind === 'power' && !hero.isBot) {
-      const bottle = (hero.inventory ?? []).find((it) => it?.def?.id === 'bottle');
-      if (bottle && !bottle.storedRune) {
-        bottle.storedRune = rune.type;
-        bottle.storedAt = g.time;
-        bottle.charges = bottle.def.maxCharges ?? 3;
-        bottled = true;
-        this.stats.bottled++;
-        g.bus.emit('ui:message', { text: `${RUNE_TYPES[rune.type].name} rune bottled`, color: '#' + RUNE_TYPES[rune.type].color.toString(16).padStart(6, '0') });
+      const flask = (hero.inventory ?? []).find((it) => it?.def?.id === 'flask');
+      if (flask && !flask.storedRune) {
+        flask.storedRune = rune.type;
+        flask.storedAt = g.time;
+        flask.charges = flask.def.maxCharges ?? 3;
+        stored = true;
+        this.stats.stored++;
+        g.bus.emit('ui:message', { text: `${RUNE_TYPES[rune.type].name} rune stored`, color: '#' + RUNE_TYPES[rune.type].color.toString(16).padStart(6, '0') });
       }
     }
     g.audio?.play?.('rune', { position: rune.pos });
-    g.bus.emit('rune:picked', { hero, type: rune.type, rune, bottled });
-    if (!bottled) this.activate(hero, rune.type);
+    g.bus.emit('rune:picked', { hero, type: rune.type, rune, stored });
+    if (!stored) this.activate(hero, rune.type);
   }
 
   activate(hero, type, opts = {}) {
@@ -176,7 +176,7 @@ export class Runes {
         try { g.items?.spawnIllusions?.(hero, 2, def.duration); } catch (e) { console.warn('[runes] illusions', e); }
         break;
     }
-    g.bus.emit('rune:activated', { hero, type, fromBottle: !!opts.fromBottle });
+    g.bus.emit('rune:activated', { hero, type, fromFlask: !!opts.fromFlask });
     if (hero === g.player?.hero || hero.team === g.player?.team) g.bus.emit('ui:message', { text: `${hero.name} activated ${def.name}${type === 'bounty' ? '' : ' rune'}`, color: '#' + def.color.toString(16).padStart(6, '0') });
   }
 
@@ -218,10 +218,10 @@ export class Runes {
           if (this.canPick(h, r)) { this.pick(h, r); break; }
         }
       }
-      // bottled runes auto-activate after 90s
+      // stored runes auto-activate after 90s
       for (const h of g.heroes) {
         for (const it of h.inventory ?? []) {
-          if (it?.storedRune && g.time - (it.storedAt ?? g.time) > 90 && h.alive) { const t = it.storedRune; it.storedRune = null; this.activate(h, t, { fromBottle: true }); }
+          if (it?.storedRune && g.time - (it.storedAt ?? g.time) > 90 && h.alive) { const t = it.storedRune; it.storedRune = null; this.activate(h, t, { fromFlask: true }); }
         }
       }
     }
