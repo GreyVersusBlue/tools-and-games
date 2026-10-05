@@ -283,9 +283,21 @@ New events are pure JSON composed from these handlers. New handler = one functio
   only when no deal in any stage references it.
   **Convention: delete a listing or a client file whenever the content calls for it, and an
   agent once no listing in `data/` names them; a save under contract on it loses the deal and
-  nothing else.** Not covered: deleting an agent or a neighborhood that a listing still in
-  `data/` names. That is a content error, and `ui.js` reads `DB.agents[l.listingAgentId].name`
-  on every flyer.
+  nothing else.**
+- **A file that names an id nothing has is a content error, and the loader leaves it out**
+  (#879). `dropBrokenContent()` in `js/data.js` runs once at the end of `loadAll()`: a listing
+  whose `listingAgentId` or `neighborhood` is not in `data/` is dropped, a seller whose house
+  stands in a missing neighborhood is dropped with it, a buyer loses the missing area from
+  their list, and an event whose handler names a missing agent or brokerage is dropped. Each
+  one is a line in the console naming the file and the id, and the page shows one toast with
+  the count. A save that had a deal on a dropped listing meets `repairCareer()` as a listing
+  that is gone, so it takes #861's void. Before this the MLS board rendered no cards at all
+  (`ui.js` reads `DB.agents[l.listingAgentId].name` on every flyer), and a contract on such a
+  listing closed and paid. `tools/smoke.mjs` runs the same pass over `data/` before anything
+  else and exits 1 on any line, along with: every file the manifest names exists and parses,
+  no path listed twice, no id used twice, every file in a folder is on the manifest, every
+  agent's brokerage exists. **A file the manifest names and that is not there still stops the
+  page** ("Failed to load data/..."); the suite is what catches that one.
 - **`log(text, cls, kind, recId)`'s fourth argument tags a line as belonging to one client.** Any
   new call site that's about a specific client should pass that client's `rec.recId` — it's what
   the Ledger's per-client filter matches on. Leave it `undefined` for anything not about one client
@@ -298,5 +310,5 @@ New events are pure JSON composed from these handlers. New handler = one functio
   ladder gate on all three doors clients come through, the income model, the loan constant
   amortized rather than re-derived, and the two assertions that the sizing branch consumes no
   randomness), and what a contract on deleted content leaves behind (no payout, no
-  penalty, one line under the client's name). 405 assertions. It is blind to the wiring by design —
+  penalty, one line under the client's name), and the content check with a doctored copy of `data/` for each thing it can say (#879). 501 assertions. It is blind to the wiring by design —
   `cd Tools/board-check && npm run games closing-time` drives the real page.
