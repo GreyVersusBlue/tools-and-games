@@ -373,8 +373,16 @@ async function fetchJSON(path){
   if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
   return r.json();
 }
-async function loadCategory(type){
-  if (S.cache[type] || S.fetching.has(type)) return;
+/* A second caller for a file already in flight waits for that fetch. It used to
+   return at once with nothing loaded, so a category picked while the All scope
+   was still fetching it listed "0 of 0 entries" and stayed that way (#867). */
+const inFlight = new Map(); // type -> its fetch
+function loadCategory(type){
+  if (S.cache[type]) return Promise.resolve();
+  if (!inFlight.has(type)) inFlight.set(type, fetchCategory(type).finally(() => inFlight.delete(type)));
+  return inFlight.get(type);
+}
+async function fetchCategory(type){
   S.fetching.add(type);
   const meta = S.manifest[type];
   status(`Loading ${catLabel(type)} (${meta.sizeMB} MB)…`);
