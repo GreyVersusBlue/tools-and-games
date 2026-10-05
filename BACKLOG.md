@@ -1171,14 +1171,37 @@ If a future round finds something real:
    second suite, if this page gets more interaction logic. **The suite says
    when that happens now** (#626, 2026-09-24): its static section lists all 47
    ways the page takes input in `SURFACE` and fails on a new one. That failure
-   is this item coming true; it is not a ranked row until then. 41 of the 47
-   are listed with `''`, driven by nothing (the encounter builder, the
-   filters, deep search, bookmark import/export, keyboard navigation). The
+   is this item coming true; it is not a ranked row until then. **11 of the 47
+   are listed with `''`, driven by nothing** (TG-29, 2026-10-05, #867; it was
+   41): the encounter builder's ten (`#encToggle`, `#encbar` click and input,
+   `[data-enc]` and its `inc`, `dec`, `del` and `clear`, the row's `.encadd`
+   and the stat block's `.encaddbtn`) and the `window resize` listener. The
+   filters, deep search, the bookmark star with export and import, the keyboard,
+   the back button, list scrolling and an edited URL are driven now, by
+   `testFilters`, `testDeepSearch`, `testBookmarkRoundTrip` and
+   `testListNavigation`. The encounter builder is one more scenario of the same
+   shape: it lives in creature scope, so it costs one level shard, and its
+   budget line is arithmetic the scenario can state from GM Core without
+   reading the page's table. The
    `waitFor`/`clickCat`/`clickLevelChip` helpers and the `freshPage()` pattern
-   (fresh headless page per scenario, cheap since boot only fetches
-   `manifest.json` until a category is picked) should cover new
-   state-machine-shaped features without much new plumbing. Two things worth
-   knowing if you do: (a) `page.evaluate(fn, arg)` re-parses `fn`'s source in
+   (fresh headless page per scenario) should cover new
+   state-machine-shaped features without much new plumbing; `shows()` polls
+   for what the page displays and records a FAIL instead of throwing. Things
+   worth knowing if you do: (c) `freshPage(browser)` with no hash lands in the
+   All scope, which fetches every category but creatures, about 27 MB;
+   `freshPage(browser, '#condition')` fetches 44 entries and is what the new
+   scenarios start from. (d) On Linux the harness opens every page in one
+   browser context, so `localStorage` carries from one scenario to the next;
+   `cleanPage()` empties it first. (e) `#backbtn` is `display:none` above
+   900px, so the back button is driven on a 600px page; a desktop user has
+   Escape. (f) Break the page in a scratch copy, not in place:
+   `ANATHEMA_PAGE=<file beside the page> ANATHEMA_ONLY=<scenario>`. (g) Enter in
+   `#trait` is committed twice over: without the keydown listener Chrome's own
+   `change` on Enter does the same thing, so the suite cannot tell that
+   listener from none. (h) 80 breaks of the page were run against the new
+   scenarios and 79 caught; 22 of the 150 new checks, the starting states and
+   the steps that clear a filter again, failed under none of them and have
+   not been broken one by one. (a) `page.evaluate(fn, arg)` re-parses `fn`'s source in
    the browser, so it can't close over this file's Node-side variables — pass
    anything from here through the single `arg` parameter, or bake a literal
    directly into the function source; (b) the page's top-level `const`/`let`
