@@ -2148,11 +2148,44 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
    1,200-launch census judge, and the sector map rolls one at Easy, Medium or
    Hard. The census feeds the editor's Check since 2026-10-05 (#877): after
    the verdict it reads `1.4% of launches win (17 of 1,200).`, stepped one
-   launch at a time. One thing a later session might want, not ranked: the
-   tier bands are a first reading of 18 seeds against the 22 shipped levels, so
-   a session that rolls fifty and finds a pattern (one type overrepresented, a
-   tier that reads no harder than the one below) has the numbers to move a band
-   and the fixture in `test/generator.mjs` to say what it moved.
+   launch at a time. **The tier bands were measured on 2026-10-05 and left
+   alone** (#881): seeds 1 to 200 at each tier, every candidate's census kept.
+   Win share of the accepted levels, and what the judge refused on the way:
+
+   | | Band | min / q1 / median / q3 / max | Candidates | Refused | needle | loose | unwinnable | decoration |
+   | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+   | Easy | 1% to 8% | 1.00 / 1.33 / 1.63 / 2.25 / 5.25 | 280 | 28.6% | 35 | 0 | 34 | 11 |
+   | Medium | 0.8% to 5% | 0.83 / 1.33 / 2.00 / 2.52 / 4.83 | 261 | 23.4% | 28 | 11 | 16 | 6 |
+   | Hard | 0.5% to 3% | 0.50 / 1.08 / 1.67 / 2.17 / 3.00 | 304 | 34.2% | 17 | 71 | 10 | 6 |
+   | Basics, 10 shipped | | 0.83 / 1.35 / 1.63 / 1.96 / 2.67 | | | | | | |
+   | Deep Space, 12 shipped | | 0.75 / 2.02 / 3.92 / 5.27 / 12.67 | | | | | | |
+
+   No seed ran out of candidates: the most any spent was 6, 4 and 8 of 40.
+   What the table says. (a) By window width the three tiers are one
+   population. A Medium level is tighter than an Easy one 44 times in 100 and
+   a Hard one tighter than a Medium one 63 in 100; each middle half sits
+   mostly inside its neighbour's. The shipped packs run the other way, Deep
+   Space looser than Basics. (b) Only two band edges do much: Hard's 3% top
+   (71 of its 104 refusals) and Easy's 1% floor. Easy's 8% top refused nothing:
+   the widest of 280 Easy candidates was 5.25%, and an empty field is 0.75% to
+   2.25%. (c) No type crowds a tier and none is missing. The two that the
+   judge thins: a repulsor is 22% of the bodies Easy proposes and 9% of those
+   it accepts (25 of 83 candidates holding one pass, against 74% to 83% for the
+   other three types), and Hard's black holes go from 23% to 19%. (d) The mix
+   differs from the shipped levels in two ways no band touches: 72 of 200
+   Medium and 81 of 200 Hard levels hold an orbiting body against 1 of 22
+   shipped, and wormholes are in 62 of 200 Hard levels and no other tier
+   against 6 of the 12 in Deep Space. None of this is a defect by #402, which
+   says the census measures tolerance and the tiers are recipes, so no band
+   moved. **The question it leaves is Devon's:** should Hard have a narrower
+   window than Easy at all, or is "more bodies, stranger types" the whole
+   difference? If narrower, the bands that would separate the middle halves
+   are near Easy 2.25% and up, Hard 1.3% and down, and each refuses more than
+   half of what its recipe proposes. `test/generator.mjs` pins the 18 rolled
+   levels (candidates spent, wins, wins that win anyway) and the 22 shipped
+   levels' verdicts at all three bands, 310 checks, so whichever band moves
+   names the seeds and levels it moved. Not measured: whether a narrower
+   window plays as harder, which needs a person.
 
 6. **Draw the playfield in device pixels. Shipped 2026-09-30** (#742).
    `view` is in device pixels and `toWorld` multiplies the pointer by `DPR`.

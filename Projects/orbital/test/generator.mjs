@@ -15,8 +15,10 @@
 //      trips it, the CI search (findWinningShot, the budget the suite and the
 //      editor share, #399) finds a shot, and that shot re-flies to a WIN.
 //   3. The judge means what its words mean, held against the 22 shipped
-//      levels as the fixture: which are accepted at the medium band and which
-//      three are refused, each for the reason its numbers say.
+//      levels as the fixture, at each tier's band: which are accepted and
+//      which refused, each for the reason its numbers say. The 18 rolled
+//      levels are pinned too (candidates spent, wins, wins that win anyway),
+//      so a moved band or a changed recipe names the seed it moved.
 //   4. A recipe that cannot make a level inside the candidate cap hands back
 //      null rather than looping, and says how many it tried.
 //   5. The census the editor's Check prints (#877) is this one: the same
@@ -93,6 +95,20 @@ console.log("\n2. The census grid divides the search grid");
 // 3. Everything generated is a level, and a winnable one
 // ============================================================
 console.log("\n3. Generated levels: valid, round-trippable, winnable at the CI budget");
+// What each seed rolled on 2026-10-05, read off this generator and not
+// recomputed here: [candidates spent, census wins of 1,200, wins that also win
+// in an empty field]. A band that moves, or a proposer that draws one more
+// number from the stream, changes a row and this says which. The bands were
+// measured over 200 seeds a tier that day and left alone (BACKLOG.md, Orbital
+// item 5); these 18 are the part of that reading the suite can afford.
+const ROLLED = {
+  "easy seed 1": [1, 16, 0], "easy seed 2": [1, 13, 0], "easy seed 3": [1, 23, 2],
+  "easy seed 4": [1, 21, 5], "easy seed 5": [1, 13, 0], "easy seed 6": [2, 12, 0],
+  "medium seed 1": [1, 29, 0], "medium seed 2": [2, 18, 2], "medium seed 3": [1, 31, 0],
+  "medium seed 4": [1, 19, 0], "medium seed 5": [3, 27, 0], "medium seed 6": [1, 20, 0],
+  "hard seed 1": [1, 30, 1], "hard seed 2": [1, 17, 0], "hard seed 3": [1, 11, 0],
+  "hard seed 4": [3, 10, 0], "hard seed 5": [3, 27, 0], "hard seed 6": [1, 13, 0]
+};
 const made = {};
 const t0 = Date.now();
 for (const tier of TIERS) {
@@ -105,6 +121,9 @@ for (const tier of TIERS) {
     check(`${tag} produced a level`, !!lv, `null after ${r.tried} candidates: ${JSON.stringify(r.report)}`);
     if (!lv) continue;
     made[tag] = lv;
+    const got = [r.tried, lv.census.wins, lv.census.anyway], pin = ROLLED[tag];
+    check(`${tag} is the level pinned for it: candidate ${pin[0]}, ${pin[1]} wins, ${pin[2]} anyway`,
+      got.join() === pin.join(), `got candidate ${got[0]}, ${got[1]} wins, ${got[2]} anyway`);
     if (VERBOSE) console.log(`        ${tag}: ${r.tried} candidate${r.tried === 1 ? "" : "s"}, ${lv.bodies.length} bodies, ${lv.census.wins}/${lv.census.total} win, ${lv.census.anyway} anyway — "${lv.sub}"`);
 
     const bad = C.validate(lv);
@@ -131,26 +150,41 @@ if (VERBOSE) console.log(`  (generation and re-flights took ${Date.now() - t0}ms
 // ============================================================
 // 4. The judge, against the shipped levels
 // ============================================================
-// The medium band is [0.8%, 5%] of the grid winning, with at most a third of
-// those wins also winning in an empty field. Read against the 22 shipped
-// levels that is: First Light refused because it has no bodies at all (every
-// win would win anyway); The Long Way refused as a needle at 9 wins in 1200,
-// which is also the level where all 9 skip both portals; and First Portal,
-// Dark Slingshot, Twin Holes and Singularity Run refused as loose, at 12.7%,
-// 6.3%, 5.8% and 5.1%. The other 16 are accepted. Move a band and this table
-// says which shipped level changed sides.
-console.log("\n4. The judge's words, read against the shipped levels at the medium band");
+// Each band is a share of the grid winning, with at most a third of those
+// wins also winning in an empty field: Easy 1% to 8%, Medium 0.8% to 5%, Hard
+// 0.5% to 3%. Read against the 22 shipped levels at Medium that is: First
+// Light refused because it has no bodies at all (every win would win anyway);
+// The Long Way refused as a needle at 9 wins in 1200, which is also the level
+// where all 9 skip both portals; and First Portal, Dark Slingshot, Twin Holes
+// and Singularity Run refused as loose, at 12.7%, 6.3%, 5.8% and 5.1%. The
+// other 16 are accepted. Easy's wider top lets three of those four back in and
+// its higher floor turns The Gauntlet (0.83%) away, 18 accepted; Hard's 3% top
+// refuses seven of the twelve deep-space levels and its lower floor lets The
+// Long Way's 9 wins through to the decoration test, 13 accepted. One census a
+// level serves all three. Move a band and this table says which shipped level
+// changed sides, and at which tier.
+console.log("\n4. The judge's words, read against the shipped levels at each tier's band");
 const EXPECT = {
-  "basics#0": "decoration", "deepspace#7": "needle",
-  "deepspace#1": "loose", "deepspace#2": "loose", "deepspace#6": "loose", "deepspace#10": "loose"
+  easy: { "basics#0": "decoration", "basics#9": "needle", "deepspace#2": "loose", "deepspace#7": "needle" },
+  medium: {
+    "basics#0": "decoration", "deepspace#7": "needle",
+    "deepspace#1": "loose", "deepspace#2": "loose", "deepspace#6": "loose", "deepspace#10": "loose"
+  },
+  hard: {
+    "basics#0": "decoration", "deepspace#7": "decoration",
+    "deepspace#1": "loose", "deepspace#2": "loose", "deepspace#3": "loose", "deepspace#6": "loose",
+    "deepspace#9": "loose", "deepspace#10": "loose", "deepspace#11": "loose"
+  }
 };
 const t1 = Date.now();
 for (const lv of LEVELS) {
   const cen = G.census(lv);
-  const got = G.judge(lv, cen, "medium");
-  const want = EXPECT[lv.key] || null;
-  check(`${lv.key.padEnd(13)} "${lv.name}" is ${want || "accepted"}`, got === want,
-    `got ${got || "accepted"} at ${cen.wins}/${cen.total} wins, ${cen.anyway} would win anyway`);
+  for (const tier of TIERS) {
+    const got = G.judge(lv, cen, tier);
+    const want = EXPECT[tier][lv.key] || null;
+    check(`${lv.key.padEnd(13)} "${lv.name}" at ${tier} is ${want || "accepted"}`, got === want,
+      `got ${got || "accepted"} at ${cen.wins}/${cen.total} wins, ${cen.anyway} would win anyway`);
+  }
 }
 if (VERBOSE) console.log(`  (22 censuses took ${Date.now() - t1}ms)`);
 
