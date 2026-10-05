@@ -5,13 +5,13 @@ DONE: 1 (sort selector: level/name/price/source, priceCp helper, persists across
       3 (tradition + spelltype selects, spellFacetsActive()=spell scope or ALL-with-spells; non-spells excluded when facet set; "Rank:" level-bar label + "Rk" row label in spell contexts; Cantrip head label)
       4 (srcModeBtn toggle, isRemaster: publication.remaster flag else REMASTER_TITLES allowlist; persisted aa.remasterOnly)
       5 (star in headBlock, BOOK='bookmarks' pseudo-cat, stubs {_bm:true} resolved via openBookmark lazy category/shard load; export/import JSON in #bmbar; persisted aa.bookmarks; #bookmarks hash scope allowed)
-      6 (encounter panel #encbar in npc scope or when non-empty; row + buttons and stat-block button; XP_BY_DELTA table, budgets Trivial..Extreme with per-char adj 10/15/20/30/40; persisted aa.encounter)
+      6 (encounter panel #encbar in npc scope or when non-empty; row + buttons and stat-block button; XP_BY_DELTA table, budgets Trivial..Extreme with per-char adj 10/20/20/30/40; persisted aa.encounter)
       7 (deepBtn toggles S.deepSearch; descText() strips tags, cached e.__desc; 150ms debounce only when on; ALL scope triggers ensureAllLoaded)
       8 (rebrand: title + brand header "Anathema Archive", subtitle kept)
 IN PROGRESS: none — all eight roadmap items complete
 NEXT STEP: no roadmap remains; next session should adopt a new roadmap (proposals in session-1 closing summary) or polish
 NOTES: The "jsdom harness, 94 assertions" claim once here didn't match anything in the repo (checked across two rounds of review; no such file exists and never did as far as either round could tell). Replaced by a real one: Pathfinder/tests/anathema.test.mjs, a headless-browser suite against the real page and real data via Tools/board-check/harness.mjs, 33 assertions covering the level-bar anchor/range state machine, npc shard load/unload sync (including the open-detail-pane-just-unloaded case), hash-routing round trips (2- and 3-segment), and bookmark-stub resolution. `node "Pathfinder/tests/anathema.test.mjs"`, exits non-zero on failure.
-- Item 6: roadmap listed per-char budget adj "±20/±30/±40"; implemented full GM Core set 10/15/20/30/40 (Trivial/Low/Moderate/Severe/Extreme) since the roadmap's three numbers map to the top three tiers. Delta < -4 scores 0 XP; delta > +4 flags "Beyond Extreme".
+- Item 6: roadmap listed per-char budget adj "±20/±30/±40"; implemented the full set 10/20/20/30/40 (Trivial/Low/Moderate/Severe/Extreme) since the roadmap's three numbers map to the top three tiers; Low was the Core Rulebook's 15 until #869. Delta < -4 scores 0 XP; delta > +4 flags "Beyond Extreme".
 - Trait chip matching uses substring includes() like the original single filter (chip "fire" also matches "firearm"). Exact-match option noted for future polish.
 - Bookmarked entries hash as their real category (#equipment/Name etc.); #bookmarks is scope-only, mirroring the Runes convention.
 - Sort "Price" option is always visible (harmless no-op outside equipment-family: all-null prices fall back to name order).
@@ -462,8 +462,9 @@ async function openBookmark(b){
 /* ---- encounter XP calculator (PF2e GM Core budgets) ---- */
 const XP_BY_DELTA = {'-4':10,'-3':15,'-2':20,'-1':30,'0':40,'1':60,'2':80,'3':120,'4':160};
 const creatureXP = delta => delta < -4 ? 0 : delta > 4 ? null : XP_BY_DELTA[String(delta)];
-/* base budget for 4 characters + adjustment per character above/below 4 */
-const BUDGETS = [['Trivial',40,10],['Low',60,15],['Moderate',80,20],['Severe',120,30],['Extreme',160,40]];
+/* base budget for 4 characters + adjustment per character above/below 4.
+   Low's adjustment is GM Core's 20; the first-edition Core Rulebook's was 15 (#869). */
+const BUDGETS = [['Trivial',40,10],['Low',60,20],['Moderate',80,20],['Severe',120,30],['Extreme',160,40]];
 function loadEncounter(){
   try { const raw = JSON.parse(store.get('aa.encounter') || 'null');
         if (raw && Array.isArray(raw.list)) S.enc = {
