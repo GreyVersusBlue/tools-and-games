@@ -1494,7 +1494,7 @@ project's only plan and is being retired from that file:
   Per-client financing shipped in round 4, multi-offer escalation wars in
   round 5, the hall of past careers in round 6 and the commercial tier in
   round 7. **No next layer from that list is open.** The suite holding all of
-  it is at 397 assertions.
+  it is at 405 assertions.
 - **Deleting content under a live contract is settled, not open** (#861,
   2026-10-04). `repairCareer()` backfills and drops `listingsState`,
   `market.nb` and `knowledge` against what is in `data/`, and it voids what was
