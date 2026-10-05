@@ -140,17 +140,22 @@ export function findBone(root, names) {
   return null;
 }
 
-// Sample one frame of an idle animation into the skeleton's live pose, then
-// stop — no continuous ticking, no fighting with the per-frame head/torso
-// overrides reactions.js applies afterward. This just replaces "loaded in a
-// bind-pose T-stance" with "loaded standing naturally."
+// Sample one frame of an idle animation into the skeleton's live pose and
+// leave it there — no continuous ticking, no fighting with the per-frame
+// head/torso overrides reactions.js applies afterward. This replaces "loaded
+// in the file's rest pose" with "loaded standing in the Idle clip's pose."
+//
+// The action is never stopped, on purpose (#882). Until 2026-10-05 this ended
+// in mixer.stopAllAction(), and deactivating an action makes AnimationMixer
+// write every binding's original value back: all 62 bones returned to the rest
+// pose and the clip sampled made no difference at all. The mixer is local and
+// never updated again, so the sampled frame is the pose the bones keep.
 export function poseIdle(root, animations, seconds = 1.2) {
   if (!animations || !animations.length) return;
   const clip = animations.find(a => /idle/i.test(a.name)) || animations[0];
   const mixer = new THREE.AnimationMixer(root);
   mixer.clipAction(clip).play();
   mixer.update(seconds);
-  mixer.stopAllAction();
   // mixer.update() only sets each bone's LOCAL transform — nothing walks
   // those up into matrixWorld until something asks for it. Any bounding-box
   // measurement taken right after this (fitHeight, the floor-settle in

@@ -177,6 +177,14 @@ export const CFG = {
     // the room as authored broken. `clearance` is 4cm of daylight, enough that
     // two objects never render touching.
     deskFootprint: { halfW: 0.36, halfD: 0.26, offsetZ: 0 },
+    // #884: and the footprint of the chair behind it, where the student is.
+    // The desk's rectangle stops at the desk's back edge, so a cabinet dropped
+    // on a kid landed 9 cm off their spine and stayed there. The chair mesh's
+    // own half-extents again (world/students.js fits it to 0.44 x 0.42), at
+    // seatGrid.bodyOffsetZ behind the desk, and not the desk's width: the
+    // shipped cabinet stands beside a chair, 1.5 cm clear of this rectangle
+    // and well inside the desk's width.
+    chairFootprint: { halfW: 0.22, halfD: 0.21 },
     furnitureClearance: 0.04
   },
 

@@ -23,11 +23,16 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
   // Where the desks are. Built before the chart's own desk list because
   // clampOccluder needs them and the layout below runs first; the grid is a
   // function of seatGrid alone, so it is knowable this early.
-  const F = S.deskFootprint;
+  //
+  // #884: a desk is two rectangles, the desk and the chair behind it. The
+  // clamp below knew the first and not the second, so furniture it pushed off
+  // a desk top could come to rest on the student sitting at it.
+  const F = S.deskFootprint, K = S.chairFootprint;
   const deskRects = [];
-  for (let r = 0; r < rows.length && deskRects.length < roster.length; r++) {
-    for (let c = 0; c < cols.length && deskRects.length < roster.length; c++) {
+  for (let r = 0, n = 0; r < rows.length && n < roster.length; r++) {
+    for (let c = 0; c < cols.length && n < roster.length; c++, n++) {
       deskRects.push({ x: cols[c], z: rows[r] + F.offsetZ, halfW: F.halfW, halfD: F.halfD });
+      deskRects.push({ x: cols[c], z: rows[r] + seatGrid.bodyOffsetZ, halfW: K.halfW, halfD: K.halfD });
     }
   }
 
@@ -37,9 +42,10 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
   // A rectangle's centre may not leave the room, and the room's centre is not
   // yours to give away: everything is clamped to the room's own footprint.
   //
-  // Phase 7 (T5 gap 9): and not onto a desk, or onto the other cabinet. The
-  // clamp used to know about the walls and nothing else, so the storage
-  // cabinet could be dropped on top of a twelve-year-old's desk and the room
+  // Phase 7 (T5 gap 9): and not onto a desk, its chair (#884), or the other
+  // piece of furniture. The clamp used to know about the walls and nothing
+  // else, so the storage cabinet could be dropped on a twelve-year-old's desk
+  // and the room
   // would draw it there — furniture that overlaps is a bug you can see the
   // moment the plan view becomes a 3D room. Overlaps are resolved by pushing
   // along the axis of least penetration, walls re-applied after each push, and

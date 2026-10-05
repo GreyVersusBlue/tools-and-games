@@ -26,7 +26,11 @@ export function createWithitness({ scene, registry, tellSystem, audio, dom }) {
       state.bandwidth -= CFG.bandwidthDrainPerSec * dt;
       state.hyper += CFG.hyperGainPerSec * dt;
       state.withitnessSeconds += dt;
-      state.mastery -= CFG.scanMasteryDrainPerSec * dt;   // you are not teaching
+      // The Mastery this costs (locked constraint 1) is not taken here.
+      // lesson.tick() takes CFG.scanMasteryDrainPerSec off all twelve students
+      // while this flag is up; a line here subtracted it from state.mastery
+      // too, which constraint 7 forbids and the lesson overwrote the same
+      // frame (#887).
       state.restless += CFG.scanRestlessPerSec * dt;
     } else {
       state.hyper -= CFG.hyperDecayPerSec * dt;

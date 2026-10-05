@@ -2019,10 +2019,11 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     const { scene, camera, roster, occluders } = mkRoom();
     const registry = createRegistry();
     const built = [];
+    if (over.roster) roster.splice(0, roster.length, ...over.roster);
     const sys = createTellSystem({
-      scene, camera, students: roster, occluders,
-      data: { types: tData.types },
-      schedule: over.schedule ?? [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }],
+      scene, camera, students: roster, occluders: over.occluders ?? occluders,
+      data: over.data ?? { types: tData.types },
+      schedule: 'schedule' in over ? over.schedule : [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }],
       buildTellMesh: createTellMeshBuilder({
         mats: createTellMaterials(),
         register: m => { built.push(m); return registry.add(m); }
@@ -2196,7 +2197,11 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
 
     wi.tick(state, 1);
     check('looking costs Bandwidth (locked constraint 1)', state.bandwidth < 100);
-    check('and drains Mastery, because you are not teaching (locked constraint 1)', state.mastery < 60);
+    // Until #887 this line read `state.mastery < 60`, and withitness.js made it
+    // true by writing state.mastery itself, which locked constraint 7 forbids
+    // and lesson.tick() overwrote the same frame. The drain constraint 1 means
+    // is the lesson's, off twelve kids; it is asserted further down.
+    check('and does not write Mastery itself: that is the lesson\'s to spend (locked constraint 7)', state.mastery === 60);
     check('and builds hypervigilance', state.hyper > 0);
     check('and the room gets more restless while you stare', state.restless > 10);
     check('and the seconds are counted for the report', state.withitnessSeconds === 1);
@@ -2208,6 +2213,324 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     check('hypervigilance decays once you stop', state.hyper < hyperAfterOn);
     check('and never below zero', (state.hyper = 0.01, wi.tick(state, 100), state.hyper === 0));
     check('nor above 100', (state.withitness = true, state.hyper = 99, wi.tick(state, 100), state.hyper === 100));
+  }
+
+  // ---- tells.js and withitness.js, the rest of what they promise (TG-22) --
+  // The block above is the first execution. This is every exported function's
+  // stated behaviour and its edges, read off the code: what load() does to a
+  // schedule, where a tell is, when it is born and when it is gone, what kill()
+  // leaves behind, and each number the toggle costs.
+  {
+    const P = CFG.periodSeconds;
+    const twelve = () => mkStudents().map(s => ({ ...s }));
+    const quiet = { t: P, withitness: false };
+
+    // ---- load() ----------------------------------------------------------
+    {
+      const { sys } = mkTells({ schedule: [
+        { type: 'PHONE', seat: 0, atMinute: 1.5, life: 90 },
+        { type: 'NOTE', seat: 0, with: 1, atMinute: 2, life: 40 },
+        { type: 'NOTE', seat: 0, seat2: 1, with: 0, atMinute: 3, life: 40, substituted: 'NOTE' }
+      ] });
+      const [a, b, c] = sys.tells;
+      check('load() turns elapsed minutes into the countdown clock', a.at === P - 90 && b.at === P - 120);
+      check('load() reads the authored `with` as the second seat', b.seat2 === 1);
+      check('and prefers `seat2`, which is what the chart writes', c.seat2 === 1);
+      check('a row the chart substituted says so, and one it did not says null',
+        c.substituted === 'NOTE' && a.substituted === null);
+      check('a loaded tell is unborn, alive, unresolved and nowhere yet',
+        sys.tells.every(t => t.born === null && !t.dead && !t.resolved && t.pos === null && t.obj === null && t.el === null));
+      const list = sys.tells, lastId = c.id;
+      const back = sys.load([{ type: 'PHONE', seat: 1, atMinute: 4, life: 10 }]);
+      check('load() again replaces the schedule in the same array', back === list && sys.tells === list && list.length === 1);
+      check('and never hands out an id twice', list[0].id > lastId);
+      check('an empty schedule is an empty room, not an error', sys.load([]).length === 0);
+    }
+    {
+      const rows = [{ type: 'PHONE', seat: 1, atMinute: 5, life: 10 }];
+      const { sys } = mkTells({ schedule: undefined, data: { types: tData.types, schedule: rows } });
+      check('with no schedule handed in, the authored one in the data is loaded',
+        sys.tells.length === 1 && sys.tells[0].seat === 1 && sys.tells[0].at === P - 300);
+    }
+
+    // ---- where a tell is -------------------------------------------------
+    {
+      const roster = twelve();
+      const chart = mkChart();
+      const { sys } = mkTells({ roster, schedule: [
+        { type: 'PHONE', seat: 6, atMinute: 1, life: 900 },
+        { type: 'WHISPER', seat: 1, seat2: 2, atMinute: 1, life: 900 },
+        { type: 'NOTE', seat: 4, seat2: 5, atMinute: 1, life: 900 },
+        { type: 'NOTE', seat: 4, atMinute: 1, life: 900 },
+        { type: 'PHONE', seat: 3, atMinute: 2, life: 900 }
+      ] });
+      // T4: between load() and birth the player is on the chart screen.
+      roster[3].x += 1; roster[3].bodyZ += 2;
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      const [phone, whisper, note, lonely, later] = sys.tells;
+      const d = chart.deskOf(6);
+      check('a seat-anchored tell sits low at the student\'s thigh', phone.pos.y === 0.52
+        && Math.abs(phone.pos.x - (roster[6].x + 0.18)) < 1e-12 && Math.abs(phone.pos.z - (roster[6].bodyZ - 0.1)) < 1e-12);
+      check('which is the point the seating chart classified that desk\'s sightline against',
+        Math.abs(phone.pos.x - d.target.x) < 1e-12 && Math.abs(phone.pos.z - d.target.z) < 1e-12);
+      check('a pair-anchored tell is halfway between the two of them, at its type\'s height',
+        whisper.pos.y === tData.types.WHISPER.height
+        && Math.abs(whisper.pos.x - (roster[1].x + roster[2].x) / 2) < 1e-12
+        && Math.abs(whisper.pos.z - (roster[1].bodyZ + roster[2].bodyZ) / 2) < 1e-12
+        && note.pos.y === tData.types.NOTE.height);
+      check('a pair type with nobody on the other end falls back to the one seat',
+        lonely.pos.y === 0.52 && Math.abs(lonely.pos.x - (roster[4].x + 0.18)) < 1e-12);
+      check('a tell that is not due is still nowhere', later.born === null && later.pos === null);
+      sys.update({ t: P - 120, withitness: false }, () => {});
+      check('and its position is where the student is at birth, not where they were at load',
+        Math.abs(later.pos.x - (roster[3].x + 0.18)) < 1e-12 && Math.abs(later.pos.z - (roster[3].bodyZ - 0.1)) < 1e-12);
+    }
+    {
+      const types = { ...tData.types, BARE: { anchor: 'pair', mesh: 'note' } };
+      const { sys } = mkTells({ data: { types }, schedule: [{ type: 'BARE', seat: 0, seat2: 1, atMinute: 1, life: 9 }] });
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      check('a pair type that names no height gets 0.8', sys.tells[0].pos.y === 0.8);
+      check('and a type with no copy describes as nothing, without throwing', sys.describe(sys.tells[0]) === '');
+    }
+
+    // ---- birth and expiry, at the edges ----------------------------------
+    {
+      const born = [], expired = [];
+      const { sys } = mkTells({ onBorn: t => born.push(t), schedule: [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }] });
+      const t = sys.tells[0];
+      sys.update({ t: P - 59.999, withitness: false }, x => expired.push(x));
+      check('a tell is unborn a millisecond before its minute', t.born === null && born.length === 0);
+      sys.update({ t: P - 60, withitness: false }, x => expired.push(x));
+      check('and born on the tick the clock reaches it exactly', t.born === P - 60 && born[0] === t);
+      sys.update({ t: P - 61, withitness: false }, x => expired.push(x));
+      check('it is born once: a later tick does not rebuild it or call onBorn again', born.length === 1 && t.born === P - 60);
+      sys.update({ t: P - 60 - 90, withitness: false }, x => expired.push(x));
+      check('a tell exactly as old as its life is still alive', !t.dead && expired.length === 0);
+      sys.update({ t: P - 60 - 90.001, withitness: false }, x => expired.push(x));
+      check('and a millisecond older it is gone, handed to onExpire', t.dead && expired[0] === t);
+    }
+    {
+      // A frame can land well after the minute. Life counts from when the
+      // tell was actually born, not from when it was scheduled.
+      const expired = [];
+      const { sys } = mkTells({ schedule: [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }] });
+      sys.update({ t: P - 100, withitness: false }, x => expired.push(x));
+      check('a tell born late records when it was born', sys.tells[0].born === P - 100);
+      sys.update({ t: P - 100 - 90, withitness: false }, x => expired.push(x));
+      check('and gets its whole life from then', !sys.tells[0].dead);
+      sys.update({ t: P - 100 - 91, withitness: false }, x => expired.push(x));
+      check('and no more', sys.tells[0].dead && expired.length === 1);
+    }
+    {
+      const { sys } = mkTells({ schedule: [{ type: 'NOTE', seat: 0, seat2: 1, atMinute: 1, life: 900 }] });
+      sys.update({ t: P - 60, withitness: true }, () => {});
+      check('a tell born while SHIFT is down is born with its vision drawn',
+        sys.tells[0].obj.userData.vision.length > 0 && sys.tells[0].obj.userData.vision.every(g => g.visible));
+    }
+    {
+      const { sys } = mkTells();
+      let threw = false;
+      try { sys.update({ t: P - 60, withitness: false }, () => {}); sys.kill(sys.tells[0]); } catch { threw = true; }
+      check('onBorn and onGone are optional', !threw && sys.tells[0].dead);
+    }
+
+    // ---- kill() ----------------------------------------------------------
+    {
+      const gone = [];
+      const { sys, scene } = mkTells({ onGone: t => gone.push(t), schedule: [
+        { type: 'NOTE', seat: 0, seat2: 1, atMinute: 1, life: 900 },
+        { type: 'PHONE', seat: 1, atMinute: 30, life: 900 }
+      ] });
+      sys.update({ t: P - 60, withitness: true }, () => {});
+      const [note, unborn] = sys.tells;
+      let removed = 0;
+      note.el = { remove: () => removed++ };
+      sys.kill(note);
+      check('kill() hides the object and what the vision drew of it',
+        note.dead && note.obj.visible === false && note.obj.userData.vision.every(g => !g.visible));
+      check('and takes the annotation off the page', removed === 1 && note.el === null);
+      check('and leaves the object in the scene graph, hidden, rather than pulling it out', scene.children.includes(note.obj));
+      check('and says so once', gone.length === 1 && gone[0] === note);
+      sys.kill(note);
+      check('killing a dead tell does nothing', gone.length === 1 && removed === 1);
+      let threw = false;
+      try { sys.kill(unborn); } catch { threw = true; }
+      check('killing a tell that was never born does not throw', !threw && unborn.dead && gone.length === 2);
+      // #888: and it stays that way. It used to be born at its minute all the
+      // same, visible, announced, and already dead, so nothing ever ended it.
+      const expiredLate = [];
+      sys.update({ t: P - 30 * 60, withitness: false }, t => expiredLate.push(t));
+      sys.update({ t: 0, withitness: false }, t => expiredLate.push(t));
+      check('a tell killed before its minute is never born', unborn.born === null && unborn.obj === null && unborn.pos === null);
+      check('and is not counted as missed', !expiredLate.includes(unborn));
+      sys.setThermalVisible(true);
+      check('the vision does not draw a dead tell, or trip on an unborn one',
+        note.obj.userData.vision.every(g => !g.visible));
+    }
+
+    // ---- clearLabels() and describe() ------------------------------------
+    {
+      const { sys } = mkTells({ schedule: [
+        { type: 'PHONE', seat: 0, atMinute: 1, life: 900 },
+        { type: 'COPYING', seat: 0, seat2: 1, atMinute: 1, life: 900 }
+      ] });
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      const [phone, copying] = sys.tells;
+      let removed = 0;
+      phone.el = { remove: () => removed++ };
+      sys.clearLabels();
+      check('clearLabels() drops the annotations and leaves the tells alive',
+        removed === 1 && phone.el === null && !phone.dead && phone.obj.visible);
+      sys.clearLabels();
+      check('and is safe to call with nothing to clear', removed === 1);
+      check('describe() names the student', sys.describe(phone).startsWith('Ada has a phone'));
+      check('and both of them, the right way round, when there are two',
+        sys.describe(copying).startsWith("Bo's answers are arriving on Ada's paper"));
+      check('and leaves no placeholder behind', !/\{[ab]\}/.test(sys.describe(phone) + sys.describe(copying)));
+      check('the system hands back the type table it was given', sys.defs === tData.types);
+    }
+
+    // ---- line of sight, at the edges -------------------------------------
+    {
+      const box = (x, z, d = 0.2) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(1, 2, d), new THREE.MeshBasicMaterial());
+        m.position.set(x, 1, z); m.updateMatrixWorld(true); return m;
+      };
+      const target = new THREE.Vector3(0, 0.52, 2);       // the camera is at z = -2.4
+      const los = z => mkTells({ occluders: [box(0, z)] }).sys.hasLineOfSight(target);
+      check('furniture behind a tell does not hide it', los(2.5));
+      check('furniture in front of it does', !los(0));
+      // ray.far stops 12 cm short, so the desk a phone is under is not the
+      // thing that hides it.
+      check('nor does something within 12 cm of the tell itself', los(2.05));
+      check('with no furniture at all, everything has line of sight', mkTells({ occluders: [] }).sys.hasLineOfSight(target));
+
+      const { sys, camera } = mkTells({ occluders: [], schedule: [
+        { type: 'PHONE', seat: 0, atMinute: 1, life: 900 }, { type: 'PHONE', seat: 1, atMinute: 30, life: 900 }] });
+      check('an unborn tell is not visible', !sys.isVisible(sys.tells[0]));
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      const t = sys.tells[0];
+      camera.position.copy(t.pos).add(new THREE.Vector3(0, 0, -(CFG.withitnessRange - 0.01)));
+      check('a tell just inside Withitness range annotates', sys.isVisible(t));
+      camera.position.copy(t.pos).add(new THREE.Vector3(0, 0, -(CFG.withitnessRange + 0.01)));
+      check('and just outside it does not', !sys.isVisible(t));
+      check('a tell still waiting for its minute is not visible from anywhere', !sys.isVisible(sys.tells[1]));
+    }
+
+    // ---- the false positive, in a full room -----------------------------
+    {
+      const real = Math.random;
+      const seatAt = r => {
+        Math.random = () => r;
+        try { return mkTells({ roster: twelve() }).sys.spawnFalsePositive({ t: 400, withitness: false }).seat; }
+        finally { Math.random = real; }
+      };
+      // What the code does: seats 2 to 10 of 0 to 11. The front-left pair and
+      // the last seat are never accused. WISHLIST.md asks whether that is meant.
+      check('a false positive lands on seats 2 to 10 of twelve, never 0, 1 or 11',
+        seatAt(0) === 2 && seatAt(0.5) === 6 && seatAt(0.999999) === 10);
+
+      const born = [], expired = [];
+      const { sys } = mkTells({ roster: twelve(), onBorn: t => born.push(t) });
+      const before = sys.tells.length;
+      const fp = sys.spawnFalsePositive({ t: 400, withitness: true });
+      check('it is a FALSE tell with a 150-second life, added to the same list',
+        fp.type === 'FALSE' && fp.life === 150 && fp.at === 400 && sys.tells.length === before + 1 && sys.tells.at(-1) === fp);
+      check('it announces itself like any other birth', born.includes(fp));
+      check('spawned with SHIFT down, it is drawn at once: it is nothing but drawing',
+        fp.obj.userData.vision.every(g => g.visible));
+      check('it has a position at the accused student\'s thigh',
+        fp.pos.y === 0.52 && sys.describe(fp).includes('Confidence: HIGH'));
+      sys.update({ t: 400 - 150, withitness: false }, t => expired.push(t));
+      check('it outlives 150 seconds exactly', !fp.dead);
+      sys.update({ t: 400 - 150.01, withitness: false }, t => expired.push(t));
+      // What the code does. Whether ignoring a lie should cost what missing a
+      // phone costs is a question in WISHLIST.md; main.js's onExpire charges it.
+      check('and then expires through onExpire like a real one, if nobody crossed the room', fp.dead && expired.includes(fp));
+    }
+
+    // ---- withitness.js: every number, and every surface ------------------
+    {
+      const log = [];
+      const cl = name => ({ classList: { toggle: (c, on) => log.push(`${name}.${c}=${on}`) } });
+      const dom = { thermal: cl('thermal'), tint: cl('tint'), chip: cl('chip') };
+      const scene = { background: { set: c => log.push('bg=' + c.toString(16)) }, fog: { color: { set: c => log.push('fog=' + c.toString(16)) } } };
+      const registry = createRegistry();
+      const mat = createTellMaterials().case;
+      const mesh = registry.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), mat));
+      const audio = stubAudio();
+      const calls = [];
+      const tellSystem = { setThermalVisible: on => calls.push('vision=' + on), clearLabels: () => calls.push('clear') };
+      const wi = createWithitness({ scene, registry, tellSystem, audio, dom });
+      const fresh = () => ({ withitness: false, withitnessUses: 0, bandwidth: 50, hyper: 20,
+                             withitnessSeconds: 0, mastery: 60, masteryPending: 0, restless: 10 });
+      const state = fresh();
+
+      wi.set(state, true);
+      check('SHIFT down: the room goes dark, background and fog together',
+        log.includes('bg=60c15') && log.includes('fog=60c15'));
+      check('and the overlay, the tint and the HUD chip all light',
+        ['thermal.on=true', 'tint.on=true', 'chip.hot=true'].every(x => log.includes(x)));
+      check('and the registry swaps the room into thermal', mesh.material === mat.userData.thermal);
+      check('and labels are not cleared on the way in', calls.join() === 'vision=true');
+
+      log.length = 0;
+      wi.set(state, false);
+      check('SHIFT up: the room, the overlay, the tint and the chip all go back',
+        ['bg=b9bdb2', 'fog=b9bdb2', 'thermal.on=false', 'tint.on=false', 'chip.hot=false'].every(x => log.includes(x)));
+      check('and the registry swaps back, and the drone stops',
+        mesh.material === mat && audio.calls.at(-1)[0] === 'setDrone' && audio.calls.at(-1)[1] === false);
+      check('letting go does not count as a use', state.withitnessUses === 1);
+      wi.set(state, true);
+      check('pressing again does', state.withitnessUses === 2);
+
+      // The costs, to the number. dt is half a second so a cost applied twice,
+      // or without dt, does not land on the same value.
+      const on = { ...fresh(), withitness: true };
+      wi.tick(on, 0.5);
+      const near9 = (a, b) => Math.abs(a - b) < 1e-9;
+      check('a second of looking costs CFG.bandwidthDrainPerSec of Bandwidth', near9(on.bandwidth, 50 - CFG.bandwidthDrainPerSec * 0.5));
+      check('and CFG.hyperGainPerSec of hypervigilance', near9(on.hyper, 20 + CFG.hyperGainPerSec * 0.5));
+      check('and CFG.scanRestlessPerSec of the room\'s patience', near9(on.restless, 10 + CFG.scanRestlessPerSec * 0.5));
+      check('and is counted, in real seconds', on.withitnessSeconds === 0.5);
+      check('and neither Mastery nor the pending pool is written here (locked constraint 7)',
+        on.mastery === 60 && on.masteryPending === 0);
+
+      const off = fresh();
+      wi.tick(off, 0.5);
+      check('not looking costs nothing here: Bandwidth, Restlessness and the clock are untouched',
+        off.bandwidth === 50 && off.restless === 10 && off.withitnessSeconds === 0 && off.mastery === 60);
+      check('and hypervigilance comes down at CFG.hyperDecayPerSec', near9(off.hyper, 20 - CFG.hyperDecayPerSec * 0.5));
+      check('which is slower than it builds, or the lie would never arrive', CFG.hyperGainPerSec > CFG.hyperDecayPerSec);
+
+      // The tint is the only warning the player gets before the ability lies.
+      const tintAt = h => { log.length = 0; wi.tick({ ...fresh(), hyper: h + CFG.hyperDecayPerSec }, 1); return log.at(-1); };
+      check('the hyper tint is off at the threshold exactly', tintAt(CFG.hyperThreshold) === 'tint.hyper=false');
+      check('and on just past it', tintAt(CFG.hyperThreshold + 0.001) === 'tint.hyper=true');
+      check('Withitness never switches itself off: an empty Bandwidth is main.js\'s to read (locked constraint 2)',
+        (s => (wi.tick(s, 1), s.withitness === true && s.bandwidth < 0))({ ...fresh(), withitness: true, bandwidth: 0 }));
+    }
+
+    // ---- locked constraint 1, where it actually lives --------------------
+    // Looking drains Mastery by taking comprehension off every student in
+    // lesson.tick(), not by subtracting from a bar. Same room, same second,
+    // out of the teaching zone so nothing is being delivered either way: the
+    // only difference between the two runs is SHIFT.
+    {
+      const run = withit => {
+        const kids = mkStudents().map(s => ({ ...s }));
+        const L = createLesson({ data: lData, students: kids, tellSystem: { defs: tData.types, tells: [] }, toast: () => {}, rand: () => 0.5 });
+        const st = createState();
+        st.withitness = withit;
+        L.tick(st, 1, { teaching: false });
+        return { mastery: st.mastery, comps: kids.map(k => k.comp) };
+      };
+      const looking = run(true), idle = run(false);
+      check('a second of Withitness costs the room CFG.scanMasteryDrainPerSec of Mastery, through the lesson',
+        Math.abs((idle.mastery - looking.mastery) - CFG.scanMasteryDrainPerSec) < 1e-9);
+      check('and it comes off all twelve, evenly',
+        looking.comps.every((c, i) => Math.abs((idle.comps[i] - c) - CFG.scanMasteryDrainPerSec / 100) < 1e-12));
+    }
   }
 
   // ---- T5 gap 9: furniture that does not overlap -------------------------
@@ -2260,6 +2583,59 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     const repaired = c4.occluderLayout().find(o => o.id === 'cabinet');
     check('a saved layout from before the clamp is repaired, not trusted',
       !overlaps({ ...rectOf('cabinet'), x: target.x, z: target.z }, repaired));
+
+    // #884: the chair behind the desk, where the student is. The desk's own
+    // rectangle ends at the desk's back edge, and a cabinet dropped on the kid
+    // at desk 5 came to rest 9 cm from their spine, clear of the desk top.
+    const K = CFG.seating.chairFootprint;
+    const chairs = mkChart().desks.map(d => ({ x: d.x, z: d.bodyZ }));
+    const onChair = (id, p) => chairs.some(ch => Math.abs(p.x - ch.x) < rectOf(id).halfW + K.halfW + C - 1e-9
+                                              && Math.abs(p.z - ch.z) < rectOf(id).halfD + K.halfD + C - 1e-9);
+    const onDesk = (id, p) => allDesks.some(d => Math.abs(p.x - d.x) < rectOf(id).halfW + F.halfW + C - 1e-9
+                                             && Math.abs(p.z - d.z) < rectOf(id).halfD + F.halfD + C - 1e-9);
+    // The footprint is the chair world/students.js builds, read out of that
+    // file, because every line below measures against K and a K of nothing
+    // would pass them all.
+    const fit = fs.readFileSync('../src/world/students.js', 'utf8').match(/fitFootprint\(chair, ([\d.]+), ([\d.]+)\)/);
+    check('the chair footprint is the half-extents of the chair the room builds',
+      !!fit && K.halfW === fit[1] / 2 && K.halfD === fit[2] / 2);
+    check('the shipped furniture is clear of every chair too', shipped.every(o => !onChair(o.id, o)));
+    check('and the clamp leaves it exactly where room.json put it',
+      roomData.occluders.every(o => { const s = shipped.find(x => x.id === o.id); return s.x === o.pos[0] && s.z === o.pos[1]; }));
+
+    const c5 = mkChart();
+    const kid = c5.desks[5];
+    const sat = c5.moveOccluder('cabinet', kid.x, kid.bodyZ);
+    check('a cabinet dropped on a seated student does not stay on the chair', !onChair('cabinet', sat));
+    check('and does not get there by landing on the desk instead', !onDesk('cabinet', sat));
+    check('the bookshelf is held to the same rule',
+      (s => !onChair('bookshelf', s) && !onDesk('bookshelf', s))(mkChart().moveOccluder('bookshelf', kid.x, kid.bodyZ)));
+
+    const c6 = mkChart(null, [{ id: 'cabinet', x: kid.x, z: kid.bodyZ + 0.09 }]);
+    check('a saved layout with the cabinet on a chair is repaired on load',
+      !onChair('cabinet', c6.occluderLayout().find(o => o.id === 'cabinet')));
+
+    // Every place a drag can end, not six of them: 4,000 drops of either piece
+    // anywhere in the room and a metre past each wall, one chart, so each
+    // drop starts from wherever the last one left the furniture.
+    const rng = createRng(883).next;
+    const c7 = mkChart();
+    const BD = roomData.bounds;
+    let bad = 0, stayed = 0;
+    for (let i = 0; i < 4000; i++) {
+      const id = rng() < 0.5 ? 'cabinet' : 'bookshelf', other = id === 'cabinet' ? 'bookshelf' : 'cabinet';
+      const was = c7.occluderLayout().find(o => o.id === id);
+      const p = c7.moveOccluder(id, (rng() * 2 - 1) * (BD.x + 1), BD.zFront - 1 + rng() * (BD.zBack - BD.zFront + 2));
+      const o = c7.occluderLayout().find(x => x.id === other);
+      const r = rectOf(id), q = rectOf(other);
+      const onOther = Math.abs(p.x - o.x) < r.halfW + q.halfW + C - 1e-9 && Math.abs(p.z - o.z) < r.halfD + q.halfD + C - 1e-9;
+      const outside = Math.abs(p.x) + r.halfW > BD.x + 1e-9 || p.z - r.halfD < BD.zFront - 1e-9 || p.z + r.halfD > BD.zBack + 1e-9;
+      if (onDesk(id, p) || onChair(id, p) || onOther || outside) bad++;
+      if (p.x === was.x && p.z === was.z) stayed++;
+    }
+    check('4,000 drops anywhere: never on a desk, a chair, the other piece or through a wall', bad === 0);
+    // 259 measured. A clamp that refuses everything would pass the line above.
+    check(`and all but a few of them move the furniture (${stayed} stayed put)`, stayed < 400);
   }
 }
 
