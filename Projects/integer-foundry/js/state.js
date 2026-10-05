@@ -11,7 +11,7 @@
 // plain Node, which cannot resolve a site-absolute specifier. The relative form
 // resolves identically in the browser.
 import { createSaveSlot } from '../../../assets/js/gvb-save.js';
-import { rollTarget, boardPlan, isReachable, nearestReachable, MIN_TARGET } from './targets.js';
+import { rollTarget, clampOrders, MIN_TARGET } from './targets.js';
 
 /** Locked decision #36: this key does not change, ever. */
 export const SAVE_KEY = 'integer-foundry-save-v1';
@@ -183,12 +183,13 @@ export function repairState(s, rand = Math.random) {
   // before the target generator knew about the board can be carrying an order no
   // layout can fill, and that is the bug this whole change exists to remove — it
   // has to be fixed on load as well as on roll, or an affected save stays stuck.
-  const plan = boardPlan(s);
+  // The clamp itself is targets.js's `clampOrders`, the one the page runs when a
+  // sink is placed (#873), so a load and a live floor cannot disagree about it.
   for (const sink of s.sinks) {
     const t = Math.round(Number(sink.target));
-    if (Number.isFinite(t) && isReachable(t, plan)) { sink.target = t; continue; }
-    sink.target = Number.isFinite(t) && t >= MIN_TARGET ? nearestReachable(t, plan) : rollTarget(s, rand);
+    sink.target = Number.isFinite(t) && t >= MIN_TARGET ? t : rollTarget(s, rand);
   }
+  clampOrders(s);
 
   if (typeof s.tool !== 'string' || !(TILE_TYPES.includes(s.tool) || s.tool === 'erase')) s.tool = 'belt';
   return s;

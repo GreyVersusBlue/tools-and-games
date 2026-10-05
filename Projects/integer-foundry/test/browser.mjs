@@ -537,6 +537,54 @@ try {
     }
   }
 
+  group('A second sink cuts an order rolled for the whole floor (#873)');
+  {
+    // test/smoke-targets.mjs holds the arithmetic and 300 seeded careers; this is
+    // the one thing it cannot see, which is that the page's placeTile() runs the
+    // clamp at all. +1 alone, forty fills in, an order of 47: the whole floor,
+    // and legal while one sink stands. The second sink makes the share 22 tiles.
+    // Before #873 the first tile then read NEEDS 47 over "--" with a tooltip
+    // saying the floor could not build it, until a reload made it 23.
+    await p.evaluate(k => {
+      const set = localStorage.setItem.bind(localStorage);
+      const raw = JSON.parse(localStorage.getItem(k));
+      raw.unlocked = Object.fromEntries(Object.keys(raw.unlocked).map(key => [key, key === 'sink2']));
+      raw.grid = raw.grid.map(row => row.map(() =>
+        ({ type: null, dir: 'E', packet: null, mergeBuf: [], sourceTimer: 0, sinkIndex: null })));
+      raw.sinks = [{ target: 47 }];
+      raw.ordersFilled = 40;
+      raw.log = [];
+      localStorage.setItem = () => {};
+      set(k, JSON.stringify(raw));
+    }, KEY);
+    await p.reload({ waitUntil: 'load' });
+    await GAMES['integer-foundry'].open(p);
+
+    const readSink = (x, y) => p.evaluate(([cx, cy]) => {
+      const cell = document.querySelector(`#grid .cell[data-x="${cx}"][data-y="${cy}"]`);
+      const needs = cell.querySelector('.sink-target'), cost = cell.querySelector('.sink-cost');
+      return { needs: needs ? needs.textContent.trim() : null, cost: cost ? cost.textContent.trim() : null, title: cell.title };
+    }, [x, y]);
+
+    await place(p, 'sink', 7, 0);
+    const alone = await readSink(7, 0);
+    t.ok(alone.needs === 'NEEDS 47' && alone.cost === '46 tiles',
+      'one sink on the floor keeps its order of 47, a 46-tile line', `${alone.needs}, ${alone.cost}`);
+
+    await place(p, 'sink', 7, 5);
+    const first = await readSink(7, 0), second = await readSink(7, 5);
+    t.ok(first.needs === 'NEEDS 23', 'placing a second sink cuts the standing order to 23', String(first.needs));
+    t.ok(first.cost === '22 tiles' && !/cannot build/.test(first.title),
+      'and its tile says 22 tiles, not that the floor cannot build it', `${first.cost} | ${first.title}`);
+    const want = Number(String(second.needs).replace('NEEDS ', ''));
+    t.ok(want >= 20 && want <= 23 && second.cost === `${want - 1} tiles`,
+      'the new sink asks for something inside the same share', `${second.needs}, ${second.cost}`);
+    const log = await p.evaluate(() => [...document.querySelectorAll('#log div')].map(e => e.textContent.trim()));
+    t.ok(log.includes('Order 47 cut to 23: 2 sinks share the floor now.'),
+      'and the log says what happened to the 47', log.slice(0, 3).join(' | '));
+    await shot(p, 'second-sink-cut');
+  }
+
   group('A click the grid swallows is placed again (#532)');
   {
     // The guard-rail for place()'s read-back, and the only way to see it work:

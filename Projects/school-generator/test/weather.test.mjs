@@ -19,7 +19,7 @@ import {
   rainSound, glazeSegments, glazeDistance, nextThunder,
 } from '../js/weather.js';
 import { PATH_SLAB } from '../js/sound.js';
-import { SEG_GLASS, OP_WINDOW, addOpening, shapesOf } from '../js/shapes.js';
+import { SEG_GLASS, OP_WINDOW, addOpening, addShape, shapesOf } from '../js/shapes.js';
 import { createState } from '../js/grid.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { boxRoom } from './build.mjs';
@@ -260,6 +260,43 @@ test('exterior glass is found and interior glass is not', () => {
   // No storey, no glass, no throw.
   assert.deepEqual(glazeSegments(null, 0), []);
   assert.deepEqual(glazeSegments(state, 9), []);
+});
+
+test('glass is exterior where it stands, not where its wall\'s middle is', () => {
+  // A 40 ft wall along z 0, with a neighbour against x 10 to 30 of it (#874).
+  const build = () => {
+    const state = createState();
+    const hall = addShape(state, 0, [
+      { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 20 }, { x: 0, z: 20 },
+    ]);
+    addShape(state, 0, [
+      { x: 10, z: -20 }, { x: 30, z: -20 }, { x: 30, z: 0 }, { x: 10, z: 0 },
+    ]);
+    return { state, hall };
+  };
+  const spans = (state) => glazeSegments(state, 0)
+    .filter((g) => g.az === 0 && g.bz === 0)
+    .map((g) => [Math.min(g.ax, g.bx), Math.max(g.ax, g.bx)])
+    .sort((p, q) => p[0] - q[0]);
+
+  // A window on the open end: the wall's middle is against the neighbour.
+  const open = build();
+  assert.ok(addOpening(open.hall, 0, 0, 0.1, 4, { k: OP_WINDOW }));
+  assert.deepEqual(spans(open.state), [[2, 6]]);
+  // ...and one against the neighbour is borrowed light.
+  const shut = build();
+  assert.ok(addOpening(shut.hall, 0, 0, 0.5, 4, { k: OP_WINDOW }));
+  assert.deepEqual(spans(shut.state), []);
+  // A window across the neighbour's corner is exterior as far as the corner.
+  const across = build();
+  assert.ok(addOpening(across.hall, 0, 0, 0.3, 6, { k: OP_WINDOW }));
+  assert.deepEqual(spans(across.state), [[9, 10]]);
+  // A curtain wall is exterior at both open ends and not in between.
+  const wall = build();
+  wall.hall.rings[0].walls[0] = SEG_GLASS;
+  assert.deepEqual(spans(wall.state), [[0, 10], [30, 40]]);
+  // The rain is heard from the open glass, 5 ft off, not from 25.
+  assert.equal(glazeDistance(glazeSegments(wall.state, 0), 5, 5), 5);
 });
 
 test('glaze distance is a point-to-segment distance with an honest Infinity', () => {

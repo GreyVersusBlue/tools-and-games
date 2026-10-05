@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   OP_TILES, MERGE_TILES, STEP_TILES, HARD_CAP, MIN_TARGET, opBudget, countSinks, buildCosts, boardPlan,
-  minCells, isReachable, reachableMax, recipe, describeRecipe, nearestReachable, rollTarget,
+  minCells, isReachable, reachableMax, recipe, describeRecipe, nearestReachable, clampOrders, rollTarget,
 } from '../js/targets.js';
 import {
   BASE_COLS, BASE_ROWS, SAVE_KEY, freshState, makeEmptyGrid, validState, repairState, foundrySlot,
@@ -529,6 +529,170 @@ const stub = () => {
   eq(slot.deserialize(JSON.stringify({ format: 'gvb-save', game: 'closing-time', version: 1, state: s })), null,
     'a save from another game is refused');
   eq(slot.deserialize('not json at all'), null, 'and so is a file that is not a save');
+}
+
+/* ------------------------------- a sink placed after an order was rolled ---- */
+
+group('A sink placed after an order was rolled (#873)');
+
+{
+  const sinkAt = (s, x, y, index) => { s.grid[y][x].type = 'sink'; s.grid[y][x].sinkIndex = index; };
+  const board = (unlocked = {}, cols = BASE_COLS, rows = BASE_ROWS) =>
+    ({ cols, rows, unlocked, ordersFilled: 40, grid: makeEmptyGrid(cols, rows), sinks: [] });
+
+  // The share is two cells a line short of the floor, on every floor the shop
+  // sells. Multiplied out rather than divided, so this is not opBudget again.
+  const loose = [];
+  for (const [cols, rows] of [[8, 6], [10, 7], [12, 8]]) {
+    for (const sinks of [1, 2, 3]) {
+      const share = opBudget({ cols, rows, sinks });
+      if (sinks * (share + 2) > cols * rows) loose.push(`${cols}x${rows} with ${sinks}: ${sinks} lines of ${share + 2} on ${cols * rows} cells`);
+      if (sinks * (share + 3) <= cols * rows) loose.push(`${cols}x${rows} with ${sinks}: a share of ${share} leaves a whole tile a line unused`);
+    }
+  }
+  eq(loose.join('; '), '', 'every sink can have its full share built at once, with a source and a sink each, and no share is a tile short');
+  eq(opBudget({ cols: 10, rows: 7, sinks: 3 }), 21, 'a 10x7 floor with three sinks is 21 a line, not the 22 that needed 72 cells');
+
+  // The case in the backlog note, by hand. +1 alone, one sink, a dozen fills in:
+  // the order can be 47, which is the whole floor.
+  const s = board();
+  sinkAt(s, 7, 0, 0);
+  s.sinks = [{ target: 47 }];
+  eq(minCells(47, boardPlan(s)), 46, 'with one sink standing, 47 is a 46-tile order and the floor holds it');
+  eq(clampOrders(s).length, 0, 'so there is nothing to cut');
+  sinkAt(s, 7, 5, 1);
+  s.sinks[1] = { target: rollTarget(s, seq([0.99, 0.99])) };
+  eq(s.sinks[1].target, 23, 'the second sink is rolled into a two-way share, 23 at most');
+  eq(minCells(47, boardPlan(s)), Infinity, 'and the 47 is now more than its share: 46 tiles, 45 cells left on the floor');
+  const cut = clampOrders(s);
+  eq(JSON.stringify(cut), JSON.stringify([{ index: 0, from: 47, to: 23 }]), 'placing the sink cuts the standing order and reports it');
+  eq(s.sinks[0].target, 23, 'to the dearest order a two-way share can build');
+  eq(clampOrders(s).length, 0, 'once: a second pass changes nothing');
+  eq(s.sinks[1].target, 23, 'and the order that was already inside its share is not touched');
+
+  // An erased sink keeps its entry and gets it back when the tile returns, so an
+  // order with no tile is clamped as well.
+  const e = board();
+  sinkAt(e, 0, 0, 0); sinkAt(e, 1, 0, 2);
+  e.sinks = [{ target: 9 }, { target: 40 }, { target: 12 }];
+  eq(JSON.stringify(clampOrders(e)), JSON.stringify([{ index: 1, from: 40, to: 23 }]), 'an order whose sink is off the floor is cut too');
+
+  // A load and a live floor agree. Before #873 the save below came back with a
+  // different order from the one on screen when it was written.
+  const live = board();
+  sinkAt(live, 7, 0, 0); sinkAt(live, 7, 5, 1);
+  live.sinks = [{ target: 47 }, { target: 20 }];
+  const loaded = repairState(JSON.parse(JSON.stringify(live)), seq([0.5]));
+  clampOrders(live);
+  eq(loaded.sinks.map(k => k.target).join(','), live.sinks.map(k => k.target).join(','), 'a reload and a placement cut an order to the same number');
+  eq(loaded.sinks[0].target, 23, 'which is 23');
+
+  // What it costs in difficulty with a doubler owned: nothing. No order a
+  // one-sink roll can produce is outside a three-way share on any floor.
+  const touched = [];
+  for (const [cols, rows] of [[8, 6], [10, 7], [12, 8]]) {
+    for (const doubler of ['mul2', 'merge_add']) {
+      const one = board({ [doubler]: true }, cols, rows);
+      sinkAt(one, 0, 0, 0);
+      const values = [...boardPlan(one).cost.keys()].filter(v => v >= MIN_TARGET);
+      sinkAt(one, 1, 0, 1); sinkAt(one, 2, 0, 2);
+      one.sinks = values.map(target => ({ target }));
+      const n = clampOrders(one).length;
+      if (n) touched.push(`${cols}x${rows} ${doubler}: ${n} of ${values.length}`);
+    }
+  }
+  eq(touched.join('; '), '', 'with x2 or Merge + owned, a second or third sink cuts no order on any floor');
+
+  // Seeded careers. A player model, not the page: it fills an order, shops in a
+  // fixed order at the shop's prices, and places a sink the moment a slot is
+  // bought. The step that places the sink is the argument, so the same careers
+  // run with the clamp and without it.
+  const mulberry = a => () => {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let v = Math.imul(a ^ a >>> 15, 1 | a);
+    v = v + Math.imul(v ^ v >>> 7, 61 | v) ^ v;
+    return ((v ^ v >>> 14) >>> 0) / 4294967296;
+  };
+  const PRICE = { sub1: 30, mul2: 80, div2: 140, merge_add: 220, merge_mul: 420, split: 300, fastSource: 250, sink2: 350, sink3: 900, grid2: 500, grid3: 1600 };
+  const SHOPPERS = {
+    'never buys a doubler': ['sub1', 'div2', 'sink2', 'fastSource', 'split', 'grid2', 'sink3', 'grid3'],
+    'buys both sinks first': ['sink2', 'sink3', 'sub1', 'mul2', 'div2', 'merge_add', 'fastSource', 'split', 'merge_mul', 'grid2', 'grid3'],
+    'buys Merge x and no doubler': ['merge_mul', 'sink2', 'sink3', 'grid2', 'grid3'],
+    'buys the cheapest thing': Object.keys(PRICE).sort((a, b) => PRICE[a] - PRICE[b]),
+  };
+  const career = (seed, list, afterPlacing) => {
+    const rand = mulberry(seed);
+    const st = freshState(rand);
+    const placeSink = () => {
+      const cell = st.grid.flat().find(c => !c.type);
+      const used = new Set(st.grid.flat().filter(c => c.type === 'sink').map(c => c.sinkIndex));
+      let i = 0; while (used.has(i)) i++;
+      cell.type = 'sink'; cell.sinkIndex = i;
+      if (!st.sinks[i]) st.sinks[i] = { target: rollTarget(st, rand) };
+      afterPlacing(st);
+    };
+    const found = { overShare: 0, tooBigTogether: 0, movedByReload: 0, first: 0 };
+    const audit = () => {
+      const cells = st.cols * st.rows, plan = boardPlan(st), free = buildCosts(st.unlocked, cells);
+      let together = 0, bad = false;
+      for (const k of st.sinks) {
+        together += free.cost.get(k.target) + 2;
+        if (!isReachable(k.target, plan)) { found.overShare++; bad = true; }
+      }
+      if (together > cells) { found.tooBigTogether++; bad = true; }
+      const again = repairState(JSON.parse(JSON.stringify(st)), seq([0.5]));
+      if (again.sinks.some((k, i) => k.target !== st.sinks[i].target)) { found.movedByReload++; bad = true; }
+      if (bad && !found.first) found.first = st.ordersFilled;
+    };
+    placeSink();
+    for (let n = 0; n < 60; n++) {
+      const k = st.sinks[Math.floor(rand() * st.sinks.length)];
+      st.ingots += k.target * 2; st.ordersFilled++; k.target = rollTarget(st, rand);
+      for (;;) {
+        const key = list.find(q => !st.unlocked[q]);
+        if (!key || PRICE[key] > st.ingots) break;
+        st.ingots -= PRICE[key]; st.unlocked[key] = true;
+        if (key === 'grid2' || key === 'grid3') {
+          const g = makeEmptyGrid(st.cols + 2, st.rows + 1);
+          st.grid.forEach((row, y) => row.forEach((c, x) => { g[y][x] = c; }));
+          st.grid = g; st.cols += 2; st.rows += 1;
+        }
+        if (key === 'sink2' || key === 'sink3') placeSink();
+      }
+      audit();
+    }
+    return found;
+  };
+  const SEEDS = 300;
+  const sweep = afterPlacing => Object.entries(SHOPPERS).map(([name, list]) => {
+    const sum = { name, careers: 0, overShare: 0, tooBigTogether: 0, movedByReload: 0, first: Infinity };
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const f = career(seed, list, afterPlacing);
+      if (f.first) { sum.careers++; sum.first = Math.min(sum.first, f.first); }
+      for (const key of ['overShare', 'tooBigTogether', 'movedByReload']) sum[key] += f[key];
+    }
+    return sum;
+  });
+  const line = r => `${r.name}: ${r.careers} of ${SEEDS} careers, ${r.overShare} over share, ${r.tooBigTogether} too big together, ${r.movedByReload} moved by a reload`;
+
+  const fixed = sweep(clampOrders);
+  for (const r of fixed) {
+    eq(r.overShare, 0, `${SEEDS} careers, ${r.name}: no standing order outside its share after any fill or purchase`);
+    eq(r.tooBigTogether, 0, '...the standing orders all fit the floor at once, a source and a sink each');
+    eq(r.movedByReload, 0, '...and a reload at any point leaves every order as it was');
+  }
+
+  // The same careers with the placement step doing what it did before #873:
+  // nothing. If these read zero the sweep above proves nothing.
+  const old = sweep(() => {});
+  const byName = Object.fromEntries(old.map(r => [r.name, r]));
+  eq(byName['never buys a doubler'].careers, SEEDS, 'without the clamp, every career that never buys a doubler carries an order outside its share');
+  ok(byName['never buys a doubler'].first >= 9 && byName['never buys a doubler'].first <= 13,
+    '...from the fill that pays for the second sink', `first at fill ${byName['never buys a doubler'].first}`);
+  eq(byName['buys both sinks first'].careers, SEEDS, '...and so does every career that buys the sinks first');
+  ok(byName['buys both sinks first'].movedByReload > 0, '...where a reload moves the order the screen was showing', line(byName['buys both sinks first']));
+  ok(byName['buys Merge x and no doubler'].careers > 0, '...and Merge x alone is not a doubler for this', line(byName['buys Merge x and no doubler']));
+  eq(byName['buys the cheapest thing'].careers, 0, '...while a career that buys x2 on the way never met it, before or after');
 }
 
 /* ------------------------------------------- a save the OLD build wrote ------ */

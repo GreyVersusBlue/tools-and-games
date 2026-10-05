@@ -87,10 +87,20 @@ export const MIN_TARGET = 2;
  * depend on another's, and on a tree layout nothing here proves fits. It would
  * also buy nothing on most boards: with x2 or Merge + owned, the dearest order on
  * every floor costs no more than a third of it (smoke-targets.mjs holds that).
+ *
+ * Two cells a line, not one source for the floor: until #873 this read
+ * `cells - 1 - slots`, which is the same number on five of the six floor and sink
+ * counts the shop sells and one too many on the sixth. A 10x7 floor with three
+ * sinks got a share of 22, and three 22-tile lines with a source and a sink each
+ * are 72 cells on a floor of 70.
+ *
+ * The split is taken at the moment of a roll, from the sinks standing then. An
+ * order outlives that moment, so `clampOrders` is what keeps a standing order
+ * inside the share after another sink goes down (#873).
  */
 export function opBudget({ cols, rows, sinks = 1 }) {
   const slots = Math.max(1, Math.floor(sinks) || 1);
-  return Math.max(0, Math.floor((Math.floor(cols) * Math.floor(rows) - 1 - slots) / slots));
+  return Math.max(0, Math.floor((Math.floor(cols) * Math.floor(rows) - 2 * slots) / slots));
 }
 
 /** Sink tiles actually on the floor. 0 counts as 1: the player is about to place one. */
@@ -204,6 +214,37 @@ export function nearestReachable(n, plan) {
 }
 
 /**
+ * Bring every standing order back inside what the board can build right now.
+ *
+ * `rollTarget` prices an order against the floor as it stands at the roll, and
+ * `opBudget` divides that floor by the sinks on it. So the share is a fact about
+ * one moment, and the one thing in play that shrinks it is a sink going down: an
+ * order rolled into a whole 8x6 floor can cost 46 tiles, and the second sink
+ * makes the share 22. Before #873 that order stood. Its tile read `--`, its
+ * tooltip said the floor could not build it, a 46-tile order had 45 cells left
+ * to be built in, and the next reload moved it to 23 anyway, because
+ * `repairState` has always clamped on load. This is that same clamp, so a save
+ * and the screen it was written from agree.
+ *
+ * Every entry in `state.sinks` is checked, not only the ones with a tile: an
+ * erased sink keeps its order and gets it back when the tile is placed again.
+ * Unlocks and floor expansions only ever add reachable values, so nothing else
+ * needs to call this. Returns what it changed, `[{ index, from, to }]`, so the
+ * caller can say so.
+ */
+export function clampOrders(state) {
+  const plan = boardPlan(state);
+  const cut = [];
+  (Array.isArray(state.sinks) ? state.sinks : []).forEach((sink, index) => {
+    if (!sink || isReachable(sink.target, plan)) return;
+    const from = sink.target;
+    sink.target = nearestReachable(from, plan);
+    cut.push({ index, from, to: sink.target });
+  });
+  return cut;
+}
+
+/**
  * Roll the next order.
  *
  * The old ramp climbed the target's raw MAGNITUDE: a ceiling of 5 + 3 per order
@@ -260,4 +301,4 @@ export function rollTarget(state, rand = Math.random) {
 
 export default { OP_TILES, MERGE_TILES, STEP_TILES, HARD_CAP, MIN_TARGET, opBudget, countSinks, buildCosts,
   boardPlan, minCells, isReachable, reachableMax, recipe, describeRecipe,
-  nearestReachable, rollTarget };
+  nearestReachable, clampOrders, rollTarget };

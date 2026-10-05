@@ -426,3 +426,102 @@ test('two windows on one wall are each read where they stand', () => {
   assert.equal(row.borrowed, 6 * 4);
   assert.equal(roomRow(rows, 'Room 102').borrowed, 6 * 4);
 });
+
+// ---------- glass counted once, and where it stands (#874) ----------
+
+test('a window cut in a curtain wall comes out of the curtain wall', () => {
+  // 40 ft of glass 10 ft high is 400 ft². The renderer builds a window cut in
+  // it as wall, a 6 by 4 band of glass, and wall, so 6 ft of the run is no
+  // longer floor to ceiling: 34 x 10 + 6 x 4 = 364, where 424 was counted.
+  const { s, shape } = hall();
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  assert.equal(roomRow(daylightOnFloor(s, 0), 'Room 101').glazed, 40 * WALL_H);
+  assert.ok(addOpening(shape, 0, 0, 0.5, 6, { k: OP_WINDOW }));
+  const row = roomRow(daylightOnFloor(s, 0), 'Room 101');
+  assert.equal(row.glazed, 34 * WALL_H + 6 * WINDOW_H);
+  assert.ok(row.glazed <= 40 * WALL_H, 'no more glass than there is wall');
+  // A doorway beside it still comes off whole, as it did.
+  assert.ok(addOpening(shape, 0, 0, 0.2, 3));
+  assert.equal(roomRow(daylightOnFloor(s, 0), 'Room 101').glazed, 31 * WALL_H + 6 * WINDOW_H);
+});
+
+// The hall's north wall runs x 0 to 40; the neighbour stands against x 10 to 30.
+const passing = (x0 = 10, x1 = 30) => {
+  const built = hall();
+  addShape(built.s, 0, [
+    { x: x0, z: -20 }, { x: x1, z: -20 }, { x: x1, z: 0 }, { x: x0, z: 0 },
+  ], { name: 'Room 102' });
+  return built;
+};
+
+test('a curtain wall that runs past a neighbour is daylight where it is open', () => {
+  const { s, shape } = passing();
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  const rows = daylightOnFloor(s, 0);
+  const row = roomRow(rows, 'Room 101');
+  // 10 ft open at each end, 20 ft against Room 102.
+  near(row.glazed, 20 * WALL_H, 1e-6, 'glazed');
+  near(row.borrowed, 20 * WALL_H, 1e-6, 'borrowed');
+  near(roomRow(rows, 'Room 102').borrowed, 20 * WALL_H, 1e-6, 'the neighbour borrows the same glass');
+  assert.equal(roomRow(rows, 'Room 102').glazed, 0);
+  assert.equal(row.openings, 2, 'two open stretches');
+  assert.equal(row.facing, 'north');
+});
+
+test('a door and a window in a curtain wall come off the stretch they stand in', () => {
+  const { s, shape } = passing();
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  assert.ok(addOpening(shape, 0, 0, 0.125, 3));                    // a door at x 5, in the open
+  assert.ok(addOpening(shape, 0, 0, 0.5, 6, { k: OP_WINDOW }));    // a window at x 20, on the neighbour
+  const row = roomRow(daylightOnFloor(s, 0), 'Room 101');
+  near(row.glazed, (20 - 3) * WALL_H, 1e-6, 'glazed');
+  near(row.borrowed, (20 - 6) * WALL_H + 6 * WINDOW_H, 1e-6, 'borrowed');
+});
+
+test("a window across a neighbour's corner is split at the corner", () => {
+  // Six feet of window centred on x 12: x 9 to 10 is open, x 10 to 15 is on
+  // Room 102. Read whole at its centre it was all borrowed and the room
+  // windowless.
+  const { s, shape } = passing();
+  assert.ok(addOpening(shape, 0, 0, 0.3, 6, { k: OP_WINDOW }));
+  const rows = daylightOnFloor(s, 0);
+  const row = roomRow(rows, 'Room 101');
+  near(row.glazed, 1 * WINDOW_H, 1e-6, 'glazed');
+  near(row.borrowed, 5 * WINDOW_H, 1e-6, 'borrowed');
+  near(roomRow(rows, 'Room 102').borrowed, 5 * WINDOW_H, 1e-6, 'neighbour');
+  assert.equal(row.openings, 1);
+  // The piece that counts is read where it stands: x 9.5, not the window's x 12.
+  const analysis = daylightAnalysis(s);
+  assert.ok(!roomRow(analysis.rooms, 'Room 101').windowless);
+});
+
+test('a neighbour that only touches at a corner cuts nothing', () => {
+  // A wing leaving the hall's north-west corner at an angle, its own corner
+  // chamfered by a foot. The probe clips it for a foot and a half beside the
+  // corner; that is not shared wall, and the curtain wall is still one piece
+  // of glass, all of it open.
+  const { s, shape } = hall();
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  addShape(s, 0, [
+    { x: 0, z: 0 }, { x: 1, z: -0.5 }, { x: 20, z: -30 }, { x: -20, z: -20 },
+  ], { name: 'Wing' });
+  const nav = buildNav(s);
+  assert.equal(nav.roomIdAt(0, 0.5, -1.4), roomRow(daylightOnFloor(s, 0), 'Wing').id,
+    'the probe does land in the wing beside the corner');
+  const row = roomRow(daylightOnFloor(s, 0), 'Room 101');
+  assert.equal(row.glazed, 40 * WALL_H);
+  assert.equal(row.borrowed, 0);
+  assert.equal(row.openings, 1);
+});
+
+test('a wall end that changes nothing beside the glass cuts nothing', () => {
+  // A foot-deep case drawn against the inside of the glass, x 10 to 30. Its
+  // walls lie along the curtain wall and end at x 10 and x 30, and the far
+  // side of the glass is the open air the whole way: one piece of glass.
+  const { s, shape } = hall();
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  addShape(s, 0, [{ x: 10, z: 0 }, { x: 30, z: 0 }, { x: 30, z: 1 }, { x: 10, z: 1 }], { name: 'Case' });
+  const row = roomRow(daylightOnFloor(s, 0), 'Room 101');
+  assert.equal(row.glazed, 40 * WALL_H);
+  assert.equal(row.openings, 1);
+});
