@@ -307,6 +307,29 @@ export function accentSpans(shape) {
   return out;
 }
 
+// The corners in a straight wall where its accent changes: one colour to
+// another, or a colour to none. Such a corner turns nothing, so a redrawn ring
+// has no reason to have it (paint.js's trace gives a straight wall back as one
+// segment) and the two colours either side of it would have one wall between
+// them (#860). `ux, uz` is the way the wall runs, the room on its left.
+// [{ x, z, ux, uz }]
+export function accentBreaks(shape) {
+  const out = [];
+  for (const ring of (shape && shape.rings) || []) {
+    if (!Array.isArray(ring.accents) || !Array.isArray(ring.pts)) continue;
+    const n = ring.pts.length;
+    for (let i = 0; i < n; i++) {
+      const prev = (i + n - 1) % n;
+      if (segAccent(ring, prev) === segAccent(ring, i)) continue;
+      const u = segDir(ring, prev), v = segDir(ring, i);
+      if (!u || !v) continue;
+      if (Math.abs(u.x * v.z - u.z * v.x) > 1e-6 || u.x * v.x + u.z * v.z <= 0) continue;
+      out.push({ x: ring.pts[i].x, z: ring.pts[i].z, ux: v.x, uz: v.z });
+    }
+  }
+  return out;
+}
+
 // How many feet of the segment a→b lie on a span: 0 unless the two are on one
 // line and run the same way. A segment on the same line running the other way
 // has its room on the other side, so it is the wall's far face and not this
