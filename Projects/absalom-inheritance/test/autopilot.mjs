@@ -288,7 +288,20 @@ function decide(game, use) {
 
 /**
  * The nearest square the heir can Stride to this turn that nothing awake can
- * see, or null. Explored squares only, the same refusal walkTo() makes.
+ * see, or null. `leg` is the square to walk to for it: the cover itself when
+ * she has seen it, and otherwise the last explored square on the way there.
+ *
+ * A square she has explored wins over one she has not, however much further
+ * it is. Only when she knows of no cover at all does she make for one in the
+ * fog, and that reads the map where a player would be guessing that the far
+ * side of a pillar is floor. travel() paths through fog the same way and
+ * walks the explored part, which is the refusal walkTo() makes.
+ *
+ * The fog case is the Reliquary (#870). Its one sight-blocking square is the
+ * plaque pillar at (2,2), the one square behind it is (1,1), and from the
+ * landing the heir stands beside the Warden and so has never seen it either.
+ * Explored squares alone gave this function nothing to name in 4,485 sanctum
+ * fights, and the Warden's `settled` read 0.0% on every build.
  *
  * The answer comes from `world.hasLoS`, the call checkDisengage() makes, so a
  * square this names as cover cannot be one the engine disagrees about.
@@ -302,21 +315,27 @@ export function coverSquare(game) {
     gateOpen: game.run.gateOpen,
     occupied: (x, y) => game.occupied(x, y, "pc"),
   };
+  const known = (x, y) => game.explored.has(x + "," + y);
   let best = null;
   for (let y = 0; y < world.height; y++) {
     for (let x = 0; x < world.width; x++) {
       if (x === pc.x && y === pc.y) continue;
-      if (!game.explored.has(x + "," + y)) continue;
       if (world.blocksMove(x, y, game.run.gateOpen) || game.occupied(x, y, "pc")) continue;
       // Straight-line feet never exceed walked feet, so this only skips
       // squares the path below would refuse anyway.
       if (feetBetween(pc.x, pc.y, x, y) > budget) continue;
       if (live.some(c => world.hasLoS(c.x, c.y, x, y))) continue;
+      const seen = known(x, y);
+      if (best && best.seen && !seen) continue;
       const p = world.findPath(pc.x, pc.y, x, y, opts);
       if (!p || p.length < 2) continue;
       const feet = p[p.length - 1].g;
       if (feet > budget) continue;
-      if (!best || feet < best.feet) best = { x, y, feet };
+      if (best && best.seen === seen && feet >= best.feet) continue;
+      let leg = null;
+      for (const n of p.slice(1)) if (known(n.x, n.y)) leg = { x: n.x, y: n.y };
+      if (!leg) continue;
+      best = { x, y, feet, seen, leg };
     }
   }
   return best;
@@ -352,10 +371,35 @@ export function makeSkulkPolicy() {
     // returning false is how fight() is told to end it.
     if (seen()) {
       const cover = coverSquare(game);
-      if (!cover || !game.walkTo(cover.x, cover.y).ok) return combatPolicy(game, tally);
+      if (!cover || !game.walkTo(cover.leg.x, cover.leg.y).ok) return combatPolicy(game, tally);
+      // A leg toward cover she had not seen: the walk spent an action and
+      // lifted the fog, so ask again from here. Out of actions and still in
+      // sight is a slip that failed, and it still counts as her one try.
+      if (seen() && game.actionsLeft > 0) return true;
     }
     for (const c of fresh) slipped.add(c.key);
     return false;
+  };
+}
+
+/**
+ * A third driver, and the exploit checkDisengage()'s heal is there to stop:
+ * swing while there are actions to spare, step out of sight with the last of
+ * them, and come back when the construct has settled. Every turn, with no
+ * limit, which is why a run of it often ends "stalled".
+ *
+ * It measures the heal and nothing else (balance.mjs --wear). It is a worse
+ * player than combatPolicy and nothing is tuned against it.
+ */
+export function makeWearPolicy() {
+  return function wearPolicy(game, tally = null) {
+    const pc = game.run.pc;
+    if (!game.awake().some(c => game.world.hasLoS(c.x, c.y, pc.x, pc.y))) return false;
+    const cover = coverSquare(game);
+    // Leave when the Strides it takes are all the actions she has left.
+    if (cover && Math.ceil(cover.feet / game.content.pc.speed) >= game.actionsLeft
+        && game.walkTo(cover.leg.x, cover.leg.y).ok) return true;
+    return combatPolicy(game, tally);
   };
 }
 
