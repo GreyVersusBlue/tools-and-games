@@ -202,6 +202,17 @@ export function makeWorld(area) {
    *
    * `path[i].g` is cumulative feet, which is what the caller charges Strides
    * against.
+   *
+   * The open set is a `Map` for "is this node open, and at what g" and a binary
+   * heap for "which node is next". The heap orders on `f`, then on `seq`, the
+   * count at which the node's key first entered the open set. That second key
+   * is the tie-break the game has always had: until #864 the next node came
+   * from a linear scan of the `Map` for the first lowest `f`, and a `Map`
+   * iterates in first-insertion order, a `set` on a key it already holds
+   * leaving the key where it was. So a node reached again more cheaply keeps
+   * its `seq`. It goes into the heap a second time at its lower `f`; the dearer
+   * copy is still in there and is skipped when it surfaces, its key closed by
+   * then.
    */
   function findPath(sx, sy, tx, ty, { gateOpen, occupied }) {
     if (blocksMove(tx, ty, gateOpen) || occupied(tx, ty)) return null;
@@ -210,18 +221,52 @@ export function makeWorld(area) {
     const h = (x, y) => feetBetween(x, y, tx, ty);
     const open = new Map();
     const closed = new Set();
-    open.set(sx + "," + sy + ",0", { x: sx, y: sy, p: 0, g: 0, f: h(sx, sy), parent: null });
+    const heap = [];
+    let seq = 0;
+    const before = (a, b) => a.f < b.f || (a.f === b.f && a.seq < b.seq);
+    const push = (n) => {
+      let i = heap.length;
+      heap.push(n);
+      while (i > 0) {
+        const up = (i - 1) >> 1;
+        if (!before(n, heap[up])) break;
+        heap[i] = heap[up];
+        i = up;
+      }
+      heap[i] = n;
+    };
+    const pop = () => {
+      const top = heap[0], last = heap.pop();
+      const size = heap.length;
+      if (!size) return top;
+      let i = 0;
+      for (;;) {
+        let kid = 2 * i + 1;
+        if (kid >= size) break;
+        if (kid + 1 < size && before(heap[kid + 1], heap[kid])) kid++;
+        if (!before(heap[kid], last)) break;
+        heap[i] = heap[kid];
+        i = kid;
+      }
+      heap[i] = last;
+      return top;
+    };
+    const start = { x: sx, y: sy, p: 0, g: 0, f: h(sx, sy), parent: null, key: sx + "," + sy + ",0", seq: seq++ };
+    open.set(start.key, start);
+    push(start);
 
     const DIRS = [
       [1, 0, false], [-1, 0, false], [0, 1, false], [0, -1, false],
       [1, 1, true], [1, -1, true], [-1, 1, true], [-1, -1, true],
     ];
 
-    while (open.size) {
-      let cur = null, curKey = null;
-      for (const [k, n] of open) if (!cur || n.f < cur.f) { cur = n; curKey = k; }
-      open.delete(curKey);
-      closed.add(curKey);
+    while (heap.length) {
+      const cur = pop();
+      // The dearer copy of a node since reached more cheaply. Expanding it
+      // would change no path (it can only offer a worse g); this saves the work.
+      if (closed.has(cur.key)) continue;
+      open.delete(cur.key);
+      closed.add(cur.key);
 
       if (cur.x === tx && cur.y === ty) {
         const path = [];
@@ -241,7 +286,12 @@ export function makeWorld(area) {
         const g = cur.g + step;
         const existing = open.get(key);
         if (!existing || g < existing.g) {
-          open.set(key, { x: nx, y: ny, p: np, g, f: g + h(nx, ny), parent: cur });
+          const node = {
+            x: nx, y: ny, p: np, g, f: g + h(nx, ny), parent: cur,
+            key, seq: existing ? existing.seq : seq++,
+          };
+          open.set(key, node);
+          push(node);
         }
       }
     }

@@ -1,7 +1,7 @@
 # Checks for The Absalom Inheritance. Three rounds and a phase shipped, and
 # each of their pull requests said the same thing: no workflow in this repo
 # path-matches Projects/absalom-inheritance/**, so both suites ran in a
-# session's terminal and nowhere else. That is 1,382 assertions and 8,400
+# session's terminal and nowhere else. That is 1,386 assertions and 8,400
 # seeded playthroughs — four builds now, not two — about three minutes of Node
 # with no browser and no dependency, and both already exit non-zero on a
 # failure (locked #13).

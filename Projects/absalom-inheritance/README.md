@@ -30,7 +30,7 @@ absalom-inheritance/
                               and validate.mjs, the style sheet as a check (Node, no Blender)
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              1,382 assertions
+  test/smoke.mjs              1,386 assertions
   test/balance.mjs            Monte Carlo playthroughs; reports per encounter and per area, and exits
                               non-zero out of band, on content nothing reaches, on drift from the baseline,
                               or when its second driver (breaks line of sight) settles no fight
