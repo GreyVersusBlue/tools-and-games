@@ -305,7 +305,10 @@ did not change, because Main Street is one box and Two Blocks has no
 emergency vehicle. Both calibration tables match the pre-change tables
 exactly. Only the Free Play district moves: a called ambulance crosses 8
 boxes in 54.1 s against 64.3 s. Collisions on eight boxes went from 11 to 14
-and the cause was not traced (Known gaps). **Worth carrying forward**:
+over six seeds; traced on 2026-10-05 (TG-29, #876), that is the count's own
+swing and not the follow, which reads 32 against 40 over thirty. The same
+sitting made the corridor again after a blackout (#872) and gave the green a
+corridor ends its yellow (#875); what is left is in the WISHLIST's Known gaps. **Worth carrying forward**:
 `npm run check` counts 1,913 units in a fresh `git worktree` of `main` and
 1,920 in Devon's checkout with no diff, because `check-integrity.mjs` walks
 gitignored files too. The unit count is not a count of the site.

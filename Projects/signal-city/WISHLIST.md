@@ -391,6 +391,8 @@ stays "call it early". E and a click still call only a car nobody has
 called, and a car nobody called is held for nowhere. A ring or a blackout
 refuses the follow as it refuses E, and a box already holding the car's
 movement (a motorcade's lead got there first) is left to `_holdPriority`.
+When the power comes back the corridor is made again at the box each
+called car is on (`_resumePriority`, #872).
 `test/grid.mjs` calls an ambulance at box 1 of three in a row and reads
 each box's light off the World as the car's front reaches that box's stop
 line: held at all three, and uncalled at none. With the request cleared on
@@ -576,14 +578,24 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 
 ## Known gaps and decisions
 
-- The corridor follows its vehicle (#682), with two edges left as they
-  were. A follow a blackout refused is not retried when the power comes
-  back. A follow into a box already pre-empted for a conflicting movement
-  (two ambulances meeting) takes the box from the first, as E always has.
-  On eight-box districts, collisions over six seeds went from 11 to 14
-  with every ambulance called on spawn (four boxes: 4 and 4). The cause
-  was not traced. A district is a sandbox with no target (#615), so
-  nothing was tuned for it.
+- The corridor follows its vehicle (#682), and is made again at the box
+  its car is on when a blackout ends (#872). A follow into a box already
+  pre-empted for a conflicting movement (two ambulances meeting) takes
+  the box from the first, as E always has; the first one's leg gets its
+  yellow (#875). On eight-box districts #682 read collisions over six
+  seeds going from 11 to 14 with every ambulance called on spawn. That
+  was six seeds, not the follow (#876): over thirty, at #682's own
+  commit, 40 without it and 32 with it, and blocks of six swing from 3
+  to 13. A district is a sandbox with no target (#615), so nothing was
+  tuned for it. Two things are left. A corridor asked for on a leg that
+  is already green takes the rest of that phase to red with no yellow:
+  the opposing through gets no warning and the leg's permissive left
+  turns protected the same step. It wants a yellow and an all-red for
+  the movements it drops while the leg stays green, which the controller
+  has no stage for, and Rush Hour is tuned on the lights as they are
+  (#641). And a district locks more often with every ambulance followed:
+  5 of 30 seeds against 2 with the follow off and 1 with nobody called.
+  Not examined.
 
 - A grid's edge legs end in grass inside the district: a box whose
   neighbour cell is empty has a 110 m spawning leg that stops where cars
