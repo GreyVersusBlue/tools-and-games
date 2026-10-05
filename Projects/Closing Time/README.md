@@ -298,5 +298,5 @@ New events are pure JSON composed from these handlers. New handler = one functio
   ladder gate on all three doors clients come through, the income model, the loan constant
   amortized rather than re-derived, and the two assertions that the sizing branch consumes no
   randomness), and what a contract on deleted content leaves behind (no payout, no
-  penalty, one line under the client's name). 397 assertions. It is blind to the wiring by design —
+  penalty, one line under the client's name). 405 assertions. It is blind to the wiring by design —
   `cd Tools/board-check && npm run games closing-time` drives the real page.
