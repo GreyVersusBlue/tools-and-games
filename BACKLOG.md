@@ -2045,17 +2045,22 @@ shared operators, and it belongs to a pair of orders rather than to a floor, so
 costs more than a three-way share, so the credit would change no roll.
 `test/browser.mjs` builds a 290 through three one-line mergers in the real page.
 
-One thing the work turned up and did not build, because it is not the row:
+Two things the work turned up. The first is fixed, the second had shipped:
 
-1. **The even split is per roll, not per floor.** `opBudget` divides by the
-   sinks placed at the moment a roll happens, so an order rolled while one sink
-   stood keeps its whole-floor size after a second sink goes down. On +1 alone,
-   after about a dozen fills, sink 1 can want 46 tiles while sink 2 is rolled
-   into a 22-tile share: each is fillable, not both at once. It only binds with
-   no doubler owned (see #681's measurement), which is why it is a note and
-   not a ranked row. The fix, if anyone wants one, is to divide by sink slots
-   unlocked rather than sinks placed, which also stops the budget reading the
-   floor at all.
+1. **A second sink cuts an order rolled for the whole floor** (2026-10-05,
+   TG-29, #873). The even split was per roll: an order rolled while one sink
+   stood kept its whole-floor size after a second went down. Measured over
+   2,000 seeded careers a buying order: every career that reaches a second
+   sink with no doubler owned met it, between the 9th and 13th fill, and none
+   that bought x2 on the way did. The tile read `--`, the tooltip said the
+   floor could not build an order it could, and a reload moved it. Placing a
+   sink now runs the clamp a load always ran (`clampOrders`), and the log
+   says "Order 47 cut to 23". Dividing by slots unlocked, the fix this note
+   used to suggest, was not taken: it moves the same gap to the moment the
+   slot is bought. `opBudget` also allowed one tile too many on a 10x7 floor
+   with three sinks (22 a line, 72 cells on 70) and is 21 there now. With x2
+   or Merge + owned neither change moves any order. `smoke-targets.mjs` 119
+   to 151, `browser.mjs` 74 to 79. Q47 was not needed and is still Devon's.
 
 2. **The tile-cost hint. Shipped 2026-09-16, PR #335** (#531). The question was
    whether a three-digit `NEEDS` needs a cost beside it; the arithmetic says yes

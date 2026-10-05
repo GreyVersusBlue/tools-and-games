@@ -303,7 +303,7 @@ footer a{color:var(--copper); text-decoration:none;}
 
 <script type="module">
 import { mountSaveBar } from '../assets/js/gvb-save.js';
-import { OP_TILES, MERGE_TILES, boardPlan, minCells, recipe, describeRecipe, rollTarget }
+import { OP_TILES, MERGE_TILES, boardPlan, minCells, recipe, describeRecipe, rollTarget, clampOrders }
   from './integer-foundry/js/targets.js';
 import { DIRS, emptyCell, foundrySlot, makeEmptyGrid } from './integer-foundry/js/state.js';
 
@@ -722,6 +722,11 @@ function placeTile(x,y,tool){
     cell.type = 'sink';
     cell.sinkIndex = freeIndex;
     if(!state.sinks[freeIndex]) state.sinks[freeIndex] = {target: rollTarget(state)};
+    // One more sink is a smaller share of the floor for each of them, and an
+    // order rolled before this one went down was priced against the old share
+    // (#873). A reload would move it anyway; move it now and say so.
+    clampOrders(state).forEach(c =>
+      logMsg(`Order ${c.from} cut to ${c.to}: ${placed + 1} sinks share the floor now.`));
   } else if(tool === 'merge_add' || tool === 'merge_mul'){
     cell.type = tool; cell.dir = 'E'; cell.mergeBuf = [];
   } else {
