@@ -1144,6 +1144,10 @@ pagefind-results mark, pagefind-modal mark, pagefind-searchbox mark {
 }
 .builder__pick input[type="text"] { min-width: 14rem; }
 .builder__pick input[type="number"] { width: 4.5rem; }
+/* A typed Excellency name is whatever a link or an old save held, and one
+   unbroken 125-character token in a hint, a bill row or the card made the page
+   1,581 px wide at 390 px. */
+.builder, .sheet { overflow-wrap: anywhere; }
 .builder__name { font-weight: bold; }
 .builder__cost { font-family: var(--caps); font-size: 0.85rem; letter-spacing: 0.03em; color: var(--green); white-space: nowrap; }
 .builder__verbal { grid-column: 1; font-style: italic; color: var(--accent); font-size: 0.92rem; }

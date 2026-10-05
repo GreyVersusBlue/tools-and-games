@@ -5,7 +5,8 @@
   "description": "axe-core over four built Numina pages (see axe.mjs). Its own package so `npm ci` for the build job stays a two-package install.",
   "type": "module",
   "scripts": {
-    "axe": "node axe.mjs"
+    "axe": "node axe.mjs",
+    "builder": "node builder.mjs"
   },
   "dependencies": {
     "axe-core": "4.10.3",
