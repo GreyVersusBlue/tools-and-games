@@ -586,6 +586,123 @@ ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line 
   ok(around.every(n => world.tileAt(n.x, n.y) !== TILE.PILLAR), "no path node is inside a pillar");
 }
 
+/* -- findPath's heap against the scan it replaced (#864) ------------------ */
+{
+  // The open set was a Map scanned end to end for the lowest f, and is a
+  // binary heap now. This is that scan, kept word for word as the thing to
+  // agree with: a different tie-break is a different (equally short) path, a
+  // different square stood on, and a balance baseline that moves for no
+  // reason anyone could find. It also counts the two cases the tie-break is
+  // made of, so the comparison cannot go quiet by running out of them.
+  const seen = { ties: 0, cheaper: 0 };
+  function scanPath(w, sx, sy, tx, ty, { gateOpen, occupied }) {
+    if (w.blocksMove(tx, ty, gateOpen) || occupied(tx, ty)) return null;
+    const blocked = (x, y) => w.blocksMove(x, y, gateOpen) || occupied(x, y);
+    const h = (x, y) => feetBetween(x, y, tx, ty);
+    const open = new Map();
+    const closed = new Set();
+    open.set(sx + "," + sy + ",0", { x: sx, y: sy, p: 0, g: 0, f: h(sx, sy), parent: null });
+    const DIRS = [
+      [1, 0, false], [-1, 0, false], [0, 1, false], [0, -1, false],
+      [1, 1, true], [1, -1, true], [-1, 1, true], [-1, -1, true],
+    ];
+    while (open.size) {
+      let cur = null, curKey = null, tied = 0;
+      for (const [k, n] of open) {
+        if (!cur || n.f < cur.f) { cur = n; curKey = k; tied = 0; }
+        else if (n.f === cur.f) tied++;
+      }
+      if (tied) seen.ties++;
+      open.delete(curKey);
+      closed.add(curKey);
+      if (cur.x === tx && cur.y === ty) {
+        const out = [];
+        for (let n = cur; n; n = n.parent) out.unshift({ x: n.x, y: n.y, g: n.g });
+        return out;
+      }
+      for (const [dx, dy, diag] of DIRS) {
+        const nx = cur.x + dx, ny = cur.y + dy;
+        if (blocked(nx, ny)) continue;
+        if (diag && (blocked(cur.x + dx, cur.y) || blocked(cur.x, cur.y + dy))) continue;
+        const step = diag ? (cur.p === 0 ? 5 : 10) : 5;
+        const np = diag ? (cur.p ^ 1) : cur.p;
+        const key = nx + "," + ny + "," + np;
+        if (closed.has(key)) continue;
+        const g = cur.g + step;
+        const existing = open.get(key);
+        if (existing && g < existing.g) seen.cheaper++;
+        if (!existing || g < existing.g) {
+          open.set(key, { x: nx, y: ny, p: np, g, f: g + h(nx, ny), parent: cur });
+        }
+      }
+    }
+    return null;
+  }
+
+  let compared = 0, found = 0, differ = 0, first = "";
+  const compare = (w, name, sx, sy, tx, ty, opts) => {
+    const want = JSON.stringify(scanPath(w, sx, sy, tx, ty, opts));
+    const got = JSON.stringify(w.findPath(sx, sy, tx, ty, opts));
+    compared++;
+    if (want !== "null") found++;
+    if (got === want) return;
+    if (!differ++) first = `${name} (${sx},${sy}) to (${tx},${ty}): heap ${got}, scan ${want}`;
+  };
+
+  // 400 seeded grids, 6 to 30 squares a side, wall density 0 to 35%, a few
+  // gate squares, and up to six squares with somebody standing on them.
+  const rng = makeRng(864);
+  const pick = n => Math.floor(rng() * n);
+  for (let m = 0; m < 400; m++) {
+    const width = 6 + pick(25), height = 6 + pick(25), density = rng() * 0.35;
+    const tiles = [];
+    for (let y = 0; y < height; y++) {
+      const row = [];
+      for (let x = 0; x < width; x++) {
+        const r = rng();
+        row.push(r < density ? TILE.WALL : r > 0.98 ? TILE.GATE : TILE.FLOOR);
+      }
+      tiles.push(row);
+    }
+    const w = makeWorld({ width, height, tiles });
+    const taken = new Set();
+    for (let i = pick(7); i > 0; i--) taken.add(pick(width) + "," + pick(height));
+    const opts = { gateOpen: rng() < 0.5, occupied: (x, y) => taken.has(x + "," + y) };
+    for (let i = 0; i < 30; i++) {
+      compare(w, `grid ${m}`, pick(width), pick(height), pick(width), pick(height), opts);
+    }
+  }
+  const random = compared;
+  ok(found > random / 4, `the seeded grids are not mostly walled off (${found} of ${random} have a path)`);
+
+  // And the three rooms the game ships, gate shut and gate open, which is the
+  // only geometry balance.mjs ever walks.
+  for (const [name, area] of Object.entries(content.areas)) {
+    const w = makeWorld(area);
+    for (const gateOpen of [false, true]) {
+      const opts = { gateOpen, occupied: () => false };
+      for (let i = 0; i < 300; i++) {
+        compare(w, `${name}, gate ${gateOpen ? "open" : "shut"}`,
+          pick(area.width), pick(area.height), pick(area.width), pick(area.height), opts);
+      }
+    }
+  }
+
+  // Broken on purpose four ways, each caught by the first line below and by
+  // nothing else in the suite: the heap ordering on `f` alone; ties going to
+  // the newest node instead of the oldest; a node reached more cheaply taking
+  // a new `seq`; and that node not going back into the heap at its lower `f`.
+  // A fifth break is NOT caught and cannot be: delete the line that skips a
+  // closed node as it comes off the heap and every path is still the scan's,
+  // because the dearer copy only ever offers its neighbours a worse `g`. That
+  // line saves work and guards nothing. The two counts under it are floors on
+  // the corpus (571,997 and 115,196 as written), there so that a smaller or
+  // emptier set of grids cannot pass by having nothing to disagree about.
+  eq(differ, 0, `the heap returns the scan's path, node for node, on ${compared} pairs` + (first && `: ${first}`));
+  ok(seen.ties > 1000, `and the scan had a tie to break on the way (${seen.ties} times)`);
+  ok(seen.cheaper > 100, `and reached an open node more cheaply (${seen.cheaper} times)`);
+}
+
 {
   const fov = world.fieldOfView(10, 19, 30);
   ok(fov.has("10,19"), "you can see the square you are standing on");

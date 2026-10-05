@@ -269,8 +269,6 @@ new one.
   cone — but no creature *moves* to leave one, because nothing in this engine
   telegraphs a shape before it goes off. That needs an announced action a turn
   before it resolves, which is the same seam Ready wants.
-- `findPath`'s open set is a `Map` scanned linearly for the lowest `f` —
-  quadratic in the node count, and the first thing a larger area finds.
 
 **Content and the pack**
 - A third area cost one content file and a guide rewrite (Phase 6). What still
