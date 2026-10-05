@@ -1916,6 +1916,200 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
   },
+  // The other four gestures that settle (#862): a corner removed with
+  // Alt-click, R, M, and a copy laid down with Ctrl+D. Each is one call in
+  // polyedit.js that `accent-drag` does not reach. The face is picked per
+  // gesture, by doing the gesture to a copy of the storey with the pure
+  // transforms and keeping a face the gesture takes off its wall's line; the
+  // assertions read what the tool then did to the real one. M is the one
+  // exception: no room of the sample school mirrors a face off its wall (the
+  // side along x stays on its line, the side along z lands on the wall
+  // opposite), so its face is the room's own wall, taken down behind the
+  // editor's back the way \`accent-brush\` does it, which leaves M's settle the
+  // only thing that can take the accent off. Each gesture puts
+  // two undo steps on (the paint, the gesture) and takes two off, so
+  // `undo-redo` below finds the stack as long as it was.
+  {
+    name: 'accent-settle',
+    what: 'a corner removed, a room turned, a room mirrored and a room duplicated each take off the accent whose wall stayed behind, say so, and one undo brings it back',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      const find = (op) => q(`(async () => {
+        const { shapesOf, shapeAt, accentFaceAt, isBuilt, rotateShape90, mirrorShapeX, deleteVertex } =
+          await import('./js/shapes.js');
+        const { wallAlongSeg } = await import('./js/wallrun.js');
+        const { sectionBounds } = await import('./js/section.js');
+        const s = window.app.state, real = s.floors[s.currentFloor];
+        const mirror = ${JSON.stringify(op)} === 'mirror';
+        const shapes = shapesOf(real);
+        for (let k = 0; k < shapes.length; k++) {
+          const shape = shapes[k], ring = shape.rings[0], n = ring.pts.length;
+          if (ring.accents || shape.rings.length !== 1 || n < 4) continue;
+          for (let i = 0; i < n - 1; i++) {
+            const own = ring.walls[i];
+            if (mirror) {
+              // The ring's own wall, and the only one on its line.
+              if (!isBuilt(own)) continue;
+              ring.walls[i] = 0;
+              const other = wallAlongSeg(real, shape, 0, i);
+              ring.walls[i] = own;
+              if (other) continue;
+            } else if (isBuilt(own) || !wallAlongSeg(real, shape, 0, i)) continue;
+            const a = ring.pts[i], b = ring.pts[i + 1];
+            const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+            if (len < 8) continue;
+            for (const side of [1, -1]) {
+              const x = (a.x + b.x) / 2 - (dz / len) * side, z = (a.z + b.z) / 2 + (dx / len) * side;
+              if (shapeAt(real, x, z) !== shape || !window.__clear(x, z)) continue;
+              const face = accentFaceAt(real, x, z, 3);
+              if (!face || face.shape !== shape || face.ring !== 0 || face.seg !== i) continue;
+              if (${JSON.stringify(op)} === 'corner' && !window.__clear(b.x, b.z)) continue;
+              // The gesture, done to a copy: the face has to come off its line.
+              const floor = JSON.parse(JSON.stringify(real));
+              const copy = shapesOf(floor).find((sh) => sh.id === shape.id);
+              const tag = '#000001';
+              copy.rings[0].accents = new Array(n).fill(null);
+              copy.rings[0].accents[i] = tag;
+              // M's wall comes down first, as it will on the real one, and the
+              // face must not land on another wall: a side along z lands on
+              // the wall opposite, and half a split side lands on the other half.
+              const bb = sectionBounds([copy]), cx = (bb.x0 + bb.x1) / 2, cz = (bb.z0 + bb.z1) / 2;
+              if (mirror) { copy.rings[0].walls[i] = 0; mirrorShapeX(copy, cx); }
+              if (${JSON.stringify(op)} === 'corner') deleteVertex(copy, 0, i + 1);
+              if (${JSON.stringify(op)} === 'turn') rotateShape90(copy, cx, cz, true);
+              if (${JSON.stringify(op)} === 'dup') for (const p of copy.rings[0].pts) { p.x += 3; p.z += 3; }
+              const at = (copy.rings[0].accents || []).indexOf(tag);
+              if (at < 0 || isBuilt(copy.rings[0].walls[at]) || wallAlongSeg(floor, copy, 0, at)) continue;
+              return { x, z, id: shape.id, seg: i, n, corner: { x: b.x, z: b.z } };
+            }
+          }
+        }
+        return null;
+      })()`);
+      const read = (aim) => q(`(async () => {
+        const { wallAlongSeg } = await import('./js/wallrun.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const seen = (shape) => {
+          const ring = shape.rings[0];
+          const acc = ring.accents ? ring.accents.slice() : null;
+          return {
+            id: shape.id, n: ring.pts.length, accents: acc,
+            pts: ring.pts.map((p) => [p.x, p.z]),
+            // Every accent left has a wall on its line, or the settle missed it.
+            stranded: (acc || []).filter((c, i) => c && !wallAlongSeg(floor, shape, 0, i)).length,
+          };
+        };
+        return {
+          room: seen(floor.shapes.find((sh) => sh.id === ${aim.id})),
+          rooms: floor.shapes.map(seen),
+          report: !document.getElementById('report-panel').classList.contains('hidden'),
+          status: document.getElementById('status').textContent,
+        };
+      })()`);
+      const wall = (aim, kind) => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const ring = floor.shapes.find((sh) => sh.id === ${aim.id}).rings[0];
+        const was = ring.walls[${aim.seg}];
+        ring.walls[${aim.seg}] = ${kind};
+        return was;
+      })()`);
+      const gestures = {
+        corner: async (aim) => {
+          const c = await d.at(aim.corner.x, aim.corner.z);
+          await d.page.mouse.move(c.x, c.y);
+          await d.page.keyboard.down('Alt');
+          await d.click(aim.corner.x, aim.corner.z);
+          await d.page.keyboard.up('Alt');
+        },
+        turn: () => d.page.keyboard.press('r'),
+        mirror: () => d.page.keyboard.press('m'),
+        dup: () => d.page.keyboard.press('Control+d'),
+      };
+      const out = {};
+      for (const op of ['corner', 'turn', 'mirror', 'dup']) {
+        const aim = await find(op);
+        if (!aim) throw new Error(`no face on this storey that "${op}" takes off its neighbour's wall`);
+        await d.pick('wall');
+        await q(`document.querySelector('#accent-swatches [data-paint="#2f5d8a"]').click(); 1`);
+        await d.click(aim.x, aim.z);
+        const painted = await read(aim);
+        await d.page.keyboard.press('Escape');
+        await d.pick('vertex');
+        await d.click(aim.x, aim.z);              // select the room
+        if (op === 'mirror') await wall(aim, 0);
+        await gestures[op](aim);
+        await d.page.waitForTimeout(300);
+        const done = await read(aim);
+        await q('window.app.editor.undo(); 1');
+        const undone = await read(aim);
+        await q('window.app.editor.undo(); 1');
+        const bare = await read(aim);
+        await d.page.keyboard.press('Escape');
+        out[op] = { aim, painted, done, undone, bare };
+      }
+      return out;
+    },
+    expect: ({ ctx, before, after }) => {
+      const j = JSON.stringify;
+      // Each gesture is judged on its own, so one that fails does not hide
+      // the next.
+      const failed = [];
+      const judge = (op) => {
+        const { aim, painted, done, undone, bare } = ctx[op];
+        const want = new Array(aim.n).fill(null);
+        want[aim.seg] = '#2f5d8a';
+        if (j(painted.room.accents) !== j(want)) {
+          throw new Error(`${op}: the brush should paint segment ${aim.seg}: ${j(painted.room.accents)}`);
+        }
+        // The gesture happened: a corner fewer, the corners somewhere else,
+        // or a room more.
+        if (op === 'corner' && done.room.n !== aim.n - 1) {
+          throw new Error(`${op}: Alt-click should remove one corner of ${aim.n}: ${done.room.n} left`);
+        }
+        if (op === 'turn' && j(done.room.pts) === j(painted.room.pts)) {
+          throw new Error(`${op}: R did not move the room`);
+        }
+        // A rectangle mirrored about its own centre lands on its own corners,
+        // so the status line is the evidence that M was heard.
+        // With a room selected in the Shape tool M is the mirror and not the
+        // report panel, which had the key from Phase 7 until #866.
+        if (op === 'mirror' && (!/^Mirrored 1 room/.test(done.status) || done.report)) {
+          throw new Error(`${op}: M did not mirror the room${done.report ? ', it opened the report' : ''}: ${done.status}`);
+        }
+        if (op === 'dup' && done.rooms.length !== painted.rooms.length + 1) {
+          throw new Error(`${op}: Ctrl+D should add one room: ${painted.rooms.length} became ${done.rooms.length}`);
+        }
+        // The original of a duplicate has not moved and keeps its accent; the
+        // copy came with the accent and not with the neighbour's wall.
+        const held = done.rooms.filter((r) => r.accents);
+        if (op === 'dup') {
+          if (held.length !== 1 || held[0].id !== aim.id || j(held[0].accents) !== j(want)) {
+            throw new Error(`${op}: the accent should be on the original alone: ${j(held)}`);
+          }
+        } else if (held.length) {
+          throw new Error(`${op}: the accent should come off with its wall left behind: ${j(held)}`);
+        }
+        const stranded = done.rooms.reduce((k, r) => k + r.stranded, 0);
+        if (stranded) throw new Error(`${op}: ${stranded} accent left on a line with no wall`);
+        if (!/An accent came off/.test(done.status)) throw new Error(`${op}: the tool did not say so: ${done.status}`);
+        // M's undo goes back to the storey M found, wall down and accent on;
+        // the second undo is the one that stands the wall up again.
+        if (undone.room.stranded !== (op === 'mirror' ? 1 : 0)) {
+          throw new Error(`${op}: undo left ${undone.room.stranded} accent with no wall: ${j(undone.room)}`);
+        }
+        if (j(undone.room.accents) !== j(want) || j(undone.room.pts) !== j(painted.room.pts) ||
+            undone.rooms.length !== painted.rooms.length) {
+          throw new Error(`${op}: one undo should put the room and its accent back together: ${j(undone.room)}`);
+        }
+        if (bare.room.accents !== null || j(bare.room.pts) !== j(painted.room.pts)) throw new Error(`${op}: a second undo should take the paint off: ${j(bare.room)}`);
+      };
+      for (const op of ['corner', 'turn', 'mirror', 'dup']) {
+        try { judge(op); } catch (e) { failed.push(e.message); }
+      }
+      if (failed.length) throw new Error(failed.join(' | '));
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',
