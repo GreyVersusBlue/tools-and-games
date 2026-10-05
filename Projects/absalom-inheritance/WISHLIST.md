@@ -303,7 +303,8 @@ new one.
   10, 15 or 20. The skirmisher is the first thing in this pack that produces a
   middle distance at all, and only for the turn it takes to close again.
 - `checkDisengage()` heals a settled creature to full as anti-cheese. Nothing
-  can be worn down across two engagements. Three stat blocks, five placements,
+  can be worn down across two engagements (measured, #871: see "Tests and the
+  harness" below). Three stat blocks, five placements,
   one boss per area and one optional fight.
 
 **Surface and accessibility**
@@ -357,10 +358,22 @@ new one.
   (each construct is slipped once and fought the second time), the other
   three rows did not move by a fight, and a full batch with any row at zero
   exits non-zero. The engine was right: it settled the Warden every time she
-  got there. **Still measured
-  by nothing: whether the heal does its job**, which needs a driver that wears
-  a construct down across two engagements and a variant with the heal off to
-  compare against. And **the baseline is per build and per encounter only** — a change
+  got there. **Whether the heal does its job is measured now, on request**
+  (#871, 2026-10-05): `balance.mjs 2000 --wear 25` plays a third driver,
+  `makeWearPolicy`, that swings, hides with her last actions and comes back,
+  25 seeds per build with the heal as shipped and 25 with it undone from
+  outside the engine (`watchHeal` puts a settling construct's HP back). It
+  does its job. With the heal, no construct can die of damage from an
+  engagement that had ended, and that play wins 0.0% as Vesper, 16.0% as
+  Kessa, 8.0% as Isbeth and 0.0% as Nim. Without it the same seeds win 12.0%,
+  44.0%, 44.0% and 0.0%, with 2.08, 2.48, 2.44 and 0.76 constructs a run
+  killed on carried damage. What it does not show: that the exploit would
+  beat fighting. Even with the heal off this driver wins less than the plain
+  autopilot's 79.1%, 69.3%, 74.4% and 68.0%, because it is a crude player
+  that eats a swing on the way out, so "the heal is needed" is not proved,
+  only "the heal removes what it was written to remove". Report only: off by
+  default (it takes about two minutes), compared to no baseline, held to no
+  band. And **the baseline is per build and per encounter only** — a change
   that moves damage between two commands inside the same fight passes it.
 - No suite covers `render.js` or `ui.js`; both are DOM-bound and untested.
 - The autopilot brawls everything and never uses the cover a player would, so

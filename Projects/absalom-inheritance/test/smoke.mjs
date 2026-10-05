@@ -38,6 +38,7 @@ import {
 import { playThrough, travel, fight, combatPolicy, makeSkulkPolicy, coverSquare } from "./autopilot.mjs";
 import {
   BAND, DRIFT, runBatch, summarise, encounterRows, areaRows, skulkRows, neverSettled,
+  watchHeal, wearBatch,
   baselineOf, compareToBaseline, mergePatch, parseVariants,
 } from "./balance.mjs";
 
@@ -4642,6 +4643,48 @@ const enc = (area, starter, ended, taken = 0, rounds = 1, dealt = 0) => ({ area,
   eq(neverSettled(rows).join(" "), "", "and no row of that batch reads zero");
   eq(neverSettled([{ key: "a/x", n: 4, settled: 2 }, { key: "b/y", n: 3, settled: 0 }, { key: "c/z", n: 0, settled: 0 }]).join(" "),
     "b/y", "a row that fought and never settled is named; a row that never fought is not");
+}
+
+{
+  // Whether the full heal stops wear-down (balance.mjs --wear). The engine
+  // has no switch for the heal, so the harness undoes it from outside, and
+  // that undoing is the thing to pin: a sentinel at 4 of 11 HP, alone, with
+  // the heir out of its sight at (10,4).
+  const wounded = heal => {
+    const g = createGame({
+      content: selectPc(content, "fighter"), rng: makeRng(4),
+      state: {
+        packId: content.pack.id, buildId: "fighter", areaId: "vault",
+        pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0, conditions: [] },
+        creatures: [{
+          key: "vault:shattered-sentinel@4,7", area: "vault", creature: "shattered-sentinel",
+          wakesOn: "notice", x: 4, y: 7, hp: 4, awake: true, dead: false, conditions: [],
+        }],
+        loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+        stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+        outcome: null,
+      },
+    });
+    const seen = watchHeal(g, { heal });
+    g.begin();
+    g.endTurn();
+    const c = g.run.creatures[0];
+    return `${c.awake} hp ${c.hp} wiped ${seen.forgiven} carried ${seen.carried.size} settles ${seen.settles}`;
+  };
+  // Broken on purpose by restoring the HP whatever `heal` says: this read
+  // hp 4, carried 1.
+  eq(wounded(true), "false hp 11 wiped 7 carried 0 settles 1", "watched with the heal as shipped, a settled sentinel is at full HP and the 7 it lost are counted");
+  // Broken on purpose by dropping the line that puts the HP back: hp 11.
+  eq(wounded(false), "false hp 4 wiped 7 carried 1 settles 1", "watched with the heal taken away, it settles at the 4 HP it had");
+
+  // The measurement itself, four seeds each way. Broken on purpose twice:
+  // makeWearPolicy handing every decision to combatPolicy (settles 0, and the
+  // carried count with it), and wearBatch ignoring `heal` (carried 0).
+  const on = wearBatch(resolved, 4, { heal: true });
+  const off = wearBatch(resolved, 4, { heal: false });
+  ok(on.settles > 0 && on.forgiven > 0, `the third driver hides and comes back, and settling wipes damage (${on.settles} settles, ${on.forgiven} HP)`);
+  eq(on.slainCarried, 0, "with the heal as shipped no construct dies of damage from an engagement that had ended");
+  ok(off.slainCarried > 0, `with it taken away some do, on the same seeds (${off.slainCarried} of ${off.slain} slain)`);
 }
 
 {

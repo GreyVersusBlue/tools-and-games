@@ -382,6 +382,27 @@ export function makeSkulkPolicy() {
   };
 }
 
+/**
+ * A third driver, and the exploit checkDisengage()'s heal is there to stop:
+ * swing while there are actions to spare, step out of sight with the last of
+ * them, and come back when the construct has settled. Every turn, with no
+ * limit, which is why a run of it often ends "stalled".
+ *
+ * It measures the heal and nothing else (balance.mjs --wear). It is a worse
+ * player than combatPolicy and nothing is tuned against it.
+ */
+export function makeWearPolicy() {
+  return function wearPolicy(game, tally = null) {
+    const pc = game.run.pc;
+    if (!game.awake().some(c => game.world.hasLoS(c.x, c.y, pc.x, pc.y))) return false;
+    const cover = coverSquare(game);
+    // Leave when the Strides it takes are all the actions she has left.
+    if (cover && Math.ceil(cover.feet / game.content.pc.speed) >= game.actionsLeft
+        && game.walkTo(cover.leg.x, cover.leg.y).ok) return true;
+    return combatPolicy(game, tally);
+  };
+}
+
 /** Play an encounter out to its end. */
 export function fight(game, { maxTurns = 200, tally = null, policy = combatPolicy } = {}) {
   let guard = 0;
