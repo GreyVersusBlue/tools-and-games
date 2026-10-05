@@ -25,9 +25,10 @@
 //             glass. This is where orientation and the overhang count.
 //
 // What it still does not claim: neighbours, trees and terrain are not in the
-// model, a curtain wall is read at its midpoint, reflectance and transmittance
-// are one stated constant each, and none of it is an illuminance. The code's
-// line is still the glazing ratio; these are notes, never warnings.
+// model, a curtain wall is read at the middle of each stretch that has one
+// neighbour, reflectance and transmittance are one stated constant each, and
+// none of it is an illuminance. The code's line is still the glazing ratio;
+// these are notes, never warnings.
 //
 // **Only exterior glass counts.** A window into a corridor lights the room
 // from the corridor's borrowed light; a glazed office front is a lovely thing
@@ -39,6 +40,7 @@
 import { WALL_H, floorLabel, floorBaseY } from './grid.js';
 import {
   shapesOf, segEnds, openingSpec, isWindowOpening, SEG_GLASS,
+  crossingsAlong, sideRuns,
 } from './shapes.js';
 import { buildNav, PROBE } from './navgraph.js';
 import { buildingOccupancy } from './occupancy.js';
@@ -259,10 +261,10 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
         // One wall can run past a neighbour and on into the open, so the
         // far side is asked for at the pane's own place along the run: a
         // window on the open end is daylight, and one against the neighbour
-        // is borrowed, whichever of the two the midpoint happens to be. A
-        // window is read at its centre and a curtain wall at its midpoint
-        // still, so glass that straddles the neighbour's corner goes whole
-        // to one side.
+        // is borrowed, whichever of the two the midpoint happens to be.
+        // Glass that straddles the neighbour's corner is cut there (#874):
+        // the part past the corner is daylight and the part against the
+        // neighbour is borrowed, each read at its own middle.
         //
         // **Both sides of an interior pane are credited.** Since Phase 12 a
         // partition belongs to exactly one of the two rooms it divides, so
@@ -290,18 +292,51 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
           addGlazing(rows, id, area, exterior, pane);
           if (!exterior && other) addGlazing(rows, other, area, false);
         };
-        if (ring.walls[i] === SEG_GLASS) {
-          // A curtain wall is glazed for its whole length and height; a
-          // doorway through one is a hole in the glass, so it comes off.
-          const doors = ring.openings
-            .filter((o) => o.seg === i && !isWindowOpening(o))
-            .reduce((w, o) => w + (o.w || 0), 0);
-          lit(Math.max(0, len - doors) * WALL_H);
+        const here = ring.openings.filter((o) => o.seg === i);
+        const glass = ring.walls[i] === SEG_GLASS;
+        if (!glass && !here.some(isWindowOpening)) continue;
+        const cuts = crossingsAlong(floor, a, b, PROBE);
+        const farAt = (d) => {
+          const t = d / len;
+          const [s0, s1] = sides(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, -uz, ux);
+          return (s0 === id ? s1 : s0) || null;
+        };
+        // Where each opening stands along the run, in feet.
+        const spanOf = (o) => {
+          const c = (Number.isFinite(o.t) ? o.t : 0.5) * len, half = (o.w || 0) / 2;
+          return [Math.max(0, c - half), Math.min(len, c + half)];
+        };
+        if (glass) {
+          // A curtain wall is glazed for its whole length and height. A
+          // doorway through one is a hole in the glass, and a window cut in
+          // one is wall above and below its own band (the renderer builds it
+          // so), which the window's own line below counts: both come off.
+          const runs = sideRuns(0, len, cuts, farAt);
+          if (runs.length < 2) {
+            const holes = here.reduce((w, o) => w + (o.w || 0), 0);
+            lit(Math.max(0, len - holes) * WALL_H);
+          } else {
+            for (const run of runs) {
+              let clear = run.hi - run.lo;
+              for (const o of here) {
+                const [lo, hi] = spanOf(o);
+                clear -= Math.max(0, Math.min(hi, run.hi) - Math.max(lo, run.lo));
+              }
+              if (clear > 1e-6) lit(clear * WALL_H, (run.lo + run.hi) / 2 / len);
+            }
+          }
         }
-        for (const o of ring.openings) {
-          if (o.seg !== i || !isWindowOpening(o)) continue;
+        for (const o of here) {
+          if (!isWindowOpening(o)) continue;
           const spec = openingSpec(o);
-          lit(spec.w * spec.h, Number.isFinite(o.t) ? o.t : 0.5, spec.sill, spec.head);
+          const runs = sideRuns(...spanOf(o), cuts, farAt);
+          if (runs.length < 2) {
+            lit(spec.w * spec.h, Number.isFinite(o.t) ? o.t : 0.5, spec.sill, spec.head);
+            continue;
+          }
+          for (const run of runs) {
+            lit((run.hi - run.lo) * spec.h, (run.lo + run.hi) / 2 / len, spec.sill, spec.head);
+          }
         }
       }
     }

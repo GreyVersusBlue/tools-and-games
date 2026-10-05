@@ -9,7 +9,10 @@ import { createState, addFloor, CELL, WALL_H, FLOOR_H } from '../js/grid.js';
 import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW } from '../js/lattice.js';
 import { sheet } from './build.mjs';
 import { WALL_T_INT, WALL_T_EXT } from '../js/walls.js';
-import { addShape } from '../js/shapes.js';
+import { addShape, addOpening, setSegWall, OP_WINDOW, SEG_GLASS, WINDOW_H } from '../js/shapes.js';
+import { computeFloorPlan } from '../js/blueprint.js';
+import { addWallLine, addLineOpening } from '../js/wallrun.js';
+import { quantities } from '../js/cost.js';
 import { addProp } from '../js/props.js';
 import { addStair } from '../js/stairs.js';
 import { buildSampleSchool } from '../js/sample.js';
@@ -88,6 +91,62 @@ test('glass is measured as area and bought in bays', () => {
   assert.equal(row(t.walls, 'glass:ext').lf, 4 * CELL);
   assert.equal(t.glazing, 4 * CELL * WALL_H);
   assert.equal(t.bays, 4, '16ft of curtain wall at a 4ft mullion bay');
+});
+
+test('a window cut in a curtain wall is not bought twice', () => {
+  // A 40 by 10 face of glass is 400 ft². With a 6 by 4 window cut in it the
+  // renderer builds 34 ft of curtain wall and 6 ft of wall with a window in
+  // it: 340 + 24 = 364 ft² of glass, where 424 was counted (#874).
+  const build = (cut) => {
+    const s = createState(20, 20);
+    const shape = addShape(s, 0, [
+      { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 20 }, { x: 0, z: 20 },
+    ], { name: 'Room 101' });
+    setSegWall(shape, 0, 0, SEG_GLASS);
+    if (cut) assert.ok(addOpening(shape, 0, 0, 0.5, 6, { k: OP_WINDOW }));
+    return s;
+  };
+  const plain = floorTakeoff(build(false), 0);
+  assert.equal(plain.glazing, 40 * WALL_H);
+  assert.equal(row(plain.walls, 'glass:ext').lf, 40);
+  const t = floorTakeoff(build(true), 0);
+  assert.equal(t.glazing, 34 * WALL_H + 6 * WINDOW_H);
+  assert.equal(row(t.walls, 'glass:ext').lf, 34);
+  assert.equal(t.bays, 9, '34 ft of curtain wall at a 4 ft bay');
+  assert.equal(t.windows, 1);
+  // The 6 ft under and over the window is wall, as it is under any window.
+  assert.equal(row(t.walls, 'wall:ext').lf, plain.walls.find((w) => w.key === 'wall:ext').lf + 6);
+  // The length of wall is what it was: a window moves no wall.
+  const lf = (f) => f.walls.reduce((n, w) => n + w.lf, 0);
+  assert.equal(lf(t), lf(plain));
+
+  // The estimate reads the same runs, so it prices 340 ft² of curtain wall.
+  const glazed = (s) => quantities(s).all.get('glazing');
+  assert.equal(glazed(build(false)), 40 * WALL_H);
+  assert.equal(glazed(build(true)), 34 * WALL_H);
+});
+
+test('a free-standing glass wall with a window in it is cut the same way', () => {
+  const s = createState(20, 20);
+  const line = addWallLine(s, 0, { x: 0, z: 0 }, { x: 40, z: 0 }, SEG_GLASS);
+  assert.ok(addLineOpening(line, 0.5, 6, { k: OP_WINDOW }));
+  const t = floorTakeoff(s, 0);
+  const glass = t.walls.filter((w) => w.kind === 'glass').reduce((n, w) => n + w.lf, 0);
+  const wall = t.walls.filter((w) => w.kind === 'wall').reduce((n, w) => n + w.lf, 0);
+  assert.equal(glass, 34);
+  assert.equal(wall, 6);
+  assert.equal(t.glazing, 34 * WALL_H + 6 * WINDOW_H);
+});
+
+test('a window in a solid wall still leaves the wall run whole', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, [
+    { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 20 }, { x: 0, z: 20 },
+  ], { name: 'Room 101' });
+  assert.ok(addOpening(shape, 0, 0, 0.5, 6, { k: OP_WINDOW }));
+  const plan = computeFloorPlan(s, 0);
+  assert.equal(plan.walls.length, 4, 'four sides, four runs');
+  assert.equal(floorTakeoff(s, 0).glazing, 6 * WINDOW_H);
 });
 
 test('paint covers both faces of a partition and one face of an exterior wall', () => {
