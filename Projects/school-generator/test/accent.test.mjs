@@ -10,12 +10,13 @@ import assert from 'node:assert/strict';
 import { createState, duplicateFloor } from '../js/grid.js';
 import { sheet } from './build.mjs';
 import {
-  addShape, cloneShape, orientRing, insertVertex, deleteVertex, setSegWall,
+  addShape, cloneShape, orientRing, insertVertex, deleteVertex, moveVertex, setSegWall,
   curveSegment, straightenRun, segAccent, setSegAccent, accentSpans, spanOverlap,
   accentBreaks, addOpening,
   SEG_NONE, SEG_WALL,
 } from '../js/shapes.js';
 import { serialize, deserialize } from '../js/save-load.js';
+import { copySection, pasteSection } from '../js/section.js';
 import { DEFAULT_PAINT, wallFaceRuns, wallPaint } from '../js/finish.js';
 import { paintCells, reapplyAccents, splitAtBreaks } from '../js/paint.js';
 import {
@@ -736,4 +737,91 @@ test('a file whose accent leans on a free-standing wall keeps it on load', () =>
   assert.equal(pruneAccents(f), 0);
   const back = deserialize(serialize(s));
   assert.deepEqual(accentPlaces(named(back, 'A').rings[0]), [`16,4>4,4:${GREEN}`]);
+});
+
+// ---------- a corner dragged with the vertex tool (#862) ----------
+
+// polyedit.js moves the corner (`moveVertex`) on every sample of the drag and
+// calls `pruneAccents` once, when the corner is let go. These state what that
+// one call has to find; test/tools' `accent-drag` proves the tool makes it.
+const cornerAt = (shape, x, z) => {
+  const i = shape.rings[0].pts.findIndex((p) => p.x === x && p.z === z);
+  assert.ok(i >= 0, `no corner at ${x},${z}`);
+  return i;
+};
+
+test('a corner dragged off the neighbour\'s wall leaves that face\'s accent behind, and the room\'s own wall carries its own', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A'), B = named(s, 'B');
+  const theirs = segBetween(B, 16, 4, 16, 12), north = segBetween(B, 16, 4, 28, 4);
+  assert.equal(B.rings[0].walls[theirs], SEG_NONE);
+  assert.equal(B.rings[0].walls[north], SEG_WALL);
+  setSegAccent(B, 0, theirs, GREEN);
+  setSegAccent(B, 0, north, GOLD);
+  setSegAccent(A, 0, segBetween(A, 16, 4, 16, 12), GREEN);
+  // B's north-west corner pulled 4ft east. B's west side now runs 20,4 to
+  // 16,12 and the partition, which is A's, is where it was.
+  assert.ok(moveVertex(B, 0, cornerAt(B, 16, 4), 20, 4));
+  // The shapes.js call knows nothing of the storey and leaves all three.
+  assert.deepEqual(accentPlaces(B.rings[0]), [`16,12>20,4:${GREEN}`, `20,4>28,4:${GOLD}`]);
+  assert.equal(wallAlongSeg(f, B, 0, theirs), false);
+  assert.equal(pruneAccents(f), 1);
+  // The north wall is B's own: it went with the corner, 4ft shorter, and it
+  // is still that wall. The west face has nothing built on its new line.
+  assert.deepEqual(accentPlaces(B.rings[0]), [`20,4>28,4:${GOLD}`]);
+  assert.deepEqual(accentPlaces(A.rings[0]), [`16,12>16,4:${GREEN}`], 'the other face of the partition is untouched');
+});
+
+test('the neighbour\'s corner dragged away takes the wall out from under a face, and its accent with it', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A'), B = named(s, 'B');
+  const mine = segBetween(A, 16, 4, 16, 12), theirs = segBetween(B, 16, 4, 16, 12);
+  setSegAccent(A, 0, mine, GOLD);
+  setSegAccent(B, 0, theirs, GREEN);
+  // A's corner this time: the partition is on A's ring and leans over with it,
+  // 12,4 to 16,12. B has not moved, and its west face has no wall any more.
+  assert.ok(moveVertex(A, 0, cornerAt(A, 16, 4), 12, 4));
+  assert.equal(pruneAccents(f), 1);
+  assert.equal('accents' in B.rings[0], false);
+  assert.deepEqual(accentPlaces(A.rings[0]), [`12,4>16,12:${GOLD}`], 'A\'s wall carries A\'s accent');
+});
+
+test('a corner dragged along the wall\'s line keeps the accent, and one dragged off and back has lost nothing', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], B = named(s, 'B');
+  const theirs = segBetween(B, 16, 4, 16, 12), corner = cornerAt(B, 16, 4);
+  setSegAccent(B, 0, theirs, GREEN);
+  // Down the partition: 4ft of B's west side is still along 8ft of wall.
+  assert.ok(moveVertex(B, 0, corner, 16, 8));
+  assert.equal(pruneAccents(f), 0);
+  assert.deepEqual(accentPlaces(B.rings[0]), [`16,12>16,8:${GREEN}`]);
+  // Off the line and back again in one gesture. The tool asks when the corner
+  // is let go, not on the way: asked at 20,4 the answer would have been 1.
+  assert.ok(moveVertex(B, 0, corner, 20, 4));
+  assert.ok(moveVertex(B, 0, corner, 16, 4));
+  assert.equal(pruneAccents(f), 0);
+  assert.deepEqual(accentPlaces(B.rings[0]), [`16,12>16,4:${GREEN}`]);
+});
+
+test('a pasted room keeps the accent of a wall it brought and loses the one whose wall stayed behind', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], B = named(s, 'B');
+  const theirs = segBetween(B, 16, 4, 16, 12);
+  setSegAccent(B, 0, theirs, GREEN);
+  setSegAccent(B, 0, segBetween(B, 16, 4, 28, 4), GOLD);
+  const clip = copySection(s, 0, [B]);
+  const both = [`16,12>16,4:${GREEN}`, `16,4>28,4:${GOLD}`];
+  // A copy's accents, said where the room it was copied from has them.
+  const placesAt = (id, dx, dz) => {
+    const ring = f.shapes.find((sh) => sh.id === id).rings[0];
+    return accentPlaces({ ...ring, pts: ring.pts.map((p) => ({ x: p.x - dx, z: p.z - dz })) });
+  };
+  // 12ft east, butted against B: the copy's west side is along B's own east
+  // wall, so the face it accents has a wall and nothing comes off.
+  const beside = pasteSection(s, 0, clip, [{ dx: 12, dz: 0 }]).ids[0];
+  assert.deepEqual(placesAt(beside, 12, 0), both, 'the copy carries both (#827)');
+  assert.equal(pruneAccents(f), 0);
+  // 40ft south, on open ground. The partition was A's and did not come.
+  const alone = pasteSection(s, 0, clip, [{ dx: 0, dz: 40 }]).ids[0];
+  assert.deepEqual(placesAt(alone, 0, 40), both);
+  assert.equal(pruneAccents(f), 1);
+  assert.deepEqual(placesAt(alone, 0, 40), [`16,4>28,4:${GOLD}`]);
+  assert.deepEqual(accentPlaces(B.rings[0]), both, 'the room copied is as it was');
+  assert.deepEqual(placesAt(beside, 12, 0), both);
 });

@@ -1819,6 +1819,103 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
   },
+  // A corner dragged with the vertex tool (#862). test/accent.test.mjs states
+  // which accent the settle takes and which it leaves; this proves the tool
+  // settles at all, and only when the corner is let go. Two undo steps go on
+  // (the paint, the drag) and two come off, so `undo-redo` below finds the
+  // stack as long as `accent-brush` left it.
+  {
+    name: 'accent-drag',
+    what: 'a corner dragged off the neighbour\'s wall takes that face\'s accent off, says so, and one undo brings both back',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      // A face whose wall is another ring's: the segment itself is empty, a
+      // neighbour's wall is on its line, and the corner it starts at has 4ft
+      // of clear canvas inside the room to be dragged to.
+      const aim = await q(`(async () => {
+        const { shapesOf, shapeAt, accentFaceAt, isBuilt } = await import('./js/shapes.js');
+        const { wallAlongSeg } = await import('./js/wallrun.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        for (const shape of shapesOf(floor)) {
+          const ring = shape.rings[0];
+          if (ring.accents || shape.rings.length !== 1) continue;
+          for (let i = 0; i < ring.pts.length; i++) {
+            if (isBuilt(ring.walls[i]) || !wallAlongSeg(floor, shape, 0, i)) continue;
+            const a = ring.pts[i], b = ring.pts[(i + 1) % ring.pts.length];
+            const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+            if (len < 8) continue;
+            for (const side of [1, -1]) {
+              const nx = -(dz / len) * side, nz = (dx / len) * side;
+              const x = (a.x + b.x) / 2 + nx, z = (a.z + b.z) / 2 + nz;
+              if (shapeAt(floor, x, z) !== shape || !window.__clear(x, z)) continue;
+              const face = accentFaceAt(floor, x, z, 3);
+              if (!face || face.shape !== shape || face.ring !== 0 || face.seg !== i) continue;
+              // The corner goes 4ft into the room and 1ft along the wall, so
+              // the side it starts leans off the line whatever it snaps to.
+              const to = { x: a.x + nx * 4 + (dx / len), z: a.z + nz * 4 + (dz / len) };
+              if (shapeAt(floor, to.x, to.z) !== shape) continue;
+              if (!window.__clear(a.x, a.z) || !window.__clear(to.x, to.z)) continue;
+              return { x, z, id: shape.id, seg: i, n: ring.pts.length, from: { x: a.x, z: a.z }, to };
+            }
+          }
+        }
+        return null;
+      })()`);
+      if (!aim) throw new Error('no face on this storey whose wall is a neighbour\'s');
+      const read = () => q(`(async () => {
+        const { wallAlongSeg } = await import('./js/wallrun.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const shape = floor.shapes.find((sh) => sh.id === ${aim.id});
+        const ring = shape.rings[0], p = ring.pts[${aim.seg}];
+        return {
+          accents: ring.accents ? ring.accents.slice() : null,
+          corner: [p.x, p.z], n: ring.pts.length,
+          walled: wallAlongSeg(floor, shape, 0, ${aim.seg}),
+          status: document.getElementById('status').textContent,
+        };
+      })()`);
+      await d.pick('wall');
+      await q(`document.querySelector('#accent-swatches [data-paint="#2f5d8a"]').click(); 1`);
+      await d.click(aim.x, aim.z);
+      const painted = await read();
+      await d.page.keyboard.press('Escape');
+      await d.pick('vertex');
+      await d.click(aim.x, aim.z);              // select the room
+      await d.drag([[aim.from.x, aim.from.z], [aim.to.x, aim.to.z]]);
+      const dragged = await read();
+      await q('window.app.editor.undo(); 1');
+      const undone = await read();
+      await q('window.app.editor.undo(); 1');
+      const bare = await read();
+      await d.page.keyboard.press('Escape');
+      return { aim, painted, dragged, undone, bare };
+    },
+    expect: ({ ctx, before, after }) => {
+      const { aim } = ctx;
+      const want = new Array(aim.n).fill(null);
+      want[aim.seg] = '#2f5d8a';
+      if (JSON.stringify(ctx.painted.accents) !== JSON.stringify(want) || !ctx.painted.walled) {
+        throw new Error(`the brush should paint the face a neighbour's wall stands on: ${JSON.stringify(ctx.painted)}`);
+      }
+      const moved = Math.hypot(ctx.dragged.corner[0] - aim.from.x, ctx.dragged.corner[1] - aim.from.z);
+      if (ctx.dragged.n !== aim.n || moved < 1) {
+        throw new Error(`the drag should move the corner and add none: ${JSON.stringify(ctx.dragged)}`);
+      }
+      if (ctx.dragged.walled) {
+        throw new Error(`the drag left the face on its wall's line, so it proves nothing: ${JSON.stringify(ctx.dragged)}`);
+      }
+      if (ctx.dragged.accents !== null) {
+        throw new Error(`the accent should come off with the corner let go: ${JSON.stringify(ctx.dragged.accents)}`);
+      }
+      if (!/An accent came off/.test(ctx.dragged.status)) throw new Error(`the tool did not say so: ${ctx.dragged.status}`);
+      if (ctx.undone.corner[0] !== aim.from.x || ctx.undone.corner[1] !== aim.from.z ||
+          JSON.stringify(ctx.undone.accents) !== JSON.stringify(want)) {
+        throw new Error(`one undo should put the corner and the accent back together: ${JSON.stringify(ctx.undone)}`);
+      }
+      if (ctx.bare.accents !== null) throw new Error(`a second undo should take the paint off: ${JSON.stringify(ctx.bare)}`);
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',

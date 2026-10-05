@@ -423,8 +423,9 @@ export function initPolyEdit({ getState, renderApi, host }) {
         if (e.altKey) {
           host.pushUndo();
           if (deleteVertex(shape, hit.ring, hit.idx)) {
+            const off = settleAccents();
             host.changed();
-            host.status(`Removed a corner — ${Math.round(shapeArea(shape))} ft².`);
+            host.status(`Removed a corner — ${Math.round(shapeArea(shape))} ft².${off}`);
           } else {
             host.dropUndo();
             host.status('A ring needs at least three corners.');
@@ -590,10 +591,27 @@ export function initPolyEdit({ getState, renderApi, host }) {
     const moved = drag.moved;
     drag = null;
     if (!moved) { host.dropUndo(); return true; }
+    const off = settleAccents();
     host.changed({ commit: true });
-    if (shape) host.status(`${shape.name || 'Room'} — ${Math.round(shapeArea(shape))} ft².`);
+    if (shape) host.status(`${shape.name || 'Room'} — ${Math.round(shapeArea(shape))} ft².${off}`);
     refresh();
     return true;
+  }
+
+  // A corner let go somewhere else can leave a room's accent on a line its
+  // wall is no longer on (#862), and so can a room turned, mirrored or pasted. The ring's own wall goes where its corners go
+  // and keeps its accent; a face that leaned on a neighbour's wall or a
+  // free-standing one does not take that wall with it, so its accent comes
+  // off, by the rule the eraser and the load use (#859). Asked once the
+  // gesture is over, never while the corner is still in the hand: a corner
+  // dragged off the line and back has lost nothing. Returns the sentence the
+  // status line owes for it, or ''.
+  function settleAccents() {
+    const n = pruneAccents(activeFloor(getState()));
+    if (!n) return '';
+    return n === 1
+      ? ' An accent came off: its wall is not on that side any more.'
+      : ` ${n} accents came off: their walls are not on those sides any more.`;
   }
 
   // --- whole-section operations: rotate/mirror/copy/paste/duplicate a
@@ -636,8 +654,9 @@ export function initPolyEdit({ getState, renderApi, host }) {
       p.x = r.x; p.z = r.z;
       p.rotationY = wrapAngle(p.rotationY - phi);
     }
+    const off = settleAccents();
     host.changed();
-    host.status(`Rotated ${sectionLabel(shapes.length, props.length)}.`);
+    host.status(`Rotated ${sectionLabel(shapes.length, props.length)}.${off}`);
     refresh();
     return true;
   }
@@ -654,8 +673,9 @@ export function initPolyEdit({ getState, renderApi, host }) {
       p.x = mirrorPointX(p, c.x).x;
       p.rotationY = wrapAngle(-p.rotationY);
     }
+    const off = settleAccents();
     host.changed();
-    host.status(`Mirrored ${sectionLabel(shapes.length, props.length)}.`);
+    host.status(`Mirrored ${sectionLabel(shapes.length, props.length)}.${off}`);
     refresh();
     return true;
   }
@@ -684,10 +704,13 @@ export function initPolyEdit({ getState, renderApi, host }) {
       return true;
     }
     selectedIds = new Set(out.ids);
+    // A copy brings its accents (#827) and not the neighbour's wall one of
+    // them may have been a face of (#862).
+    const off = settleAccents();
     host.changed();
     const stamped = offsets.length > 1 ? `Stamped ${offsets.length} copies — ` : 'Pasted ';
     host.status(`${stamped}${sectionLabel(out.shapes, out.props)}` +
-      `${out.refused ? `; ${out.refused} more did not fit` : ''}.`);
+      `${out.refused ? `; ${out.refused} more did not fit` : ''}.${off}`);
     refresh();
     return true;
   }

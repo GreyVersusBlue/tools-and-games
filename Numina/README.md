@@ -21,7 +21,7 @@ as-is with no CI build step.
 | `test/build-rules.test.mjs` | Every cap, every escalating cost, one 50 CP build costed to the CP, and the two refusals (also `npm test`) |
 | `src/js/build-view.js`, `src/js/build-state.js`, `src/js/builder.js` | The character builder page: the steps and verdict as HTML strings, the `localStorage` record and URL fragment, and the one file that touches the DOM |
 | `test/builder.test.mjs` | The fragment and save round-trip, each step lists what `offered()` offers, the verdict says "at least" when a purchase is unpriced, the card prints every skill with its verbal and a CP line that is never a total when a purchase is unpriced, `print.css` hides the form and not the card, and the built page's JSON islands resolve (also `npm test`) |
-| `test/a11y/` | The checks that need a rendered page, in their own `package.json` because they need a browser and the site does not: axe-core over five pages in both themes (`axe.mjs`); the skip link moving focus, a table still computing to `display: table`, `aria-pressed` following the click, `--header-h` matching the header (`layout.mjs`); the packet assembly, the page counter and the offline kit (`packet.mjs`); the search modal, its focus trap and the `?q=` handoff (`search.mjs`); and `html-validate` over every built page, which needs no browser but lives here for the same reason (`html.mjs`) |
+| `test/a11y/` | The checks that need a rendered page, in their own `package.json` because they need a browser and the site does not: axe-core over five pages in both themes (`axe.mjs`); the skip link moving focus, a table still computing to `display: table`, `aria-pressed` following the click, `--header-h` matching the header (`layout.mjs`); the packet assembly, the page counter and the offline kit (`packet.mjs`); the search modal, its focus trap and the `?q=` handoff (`search.mjs`); the character builder page, which is the one file that touches storage and the URL fragment (`builder.mjs`); and `html-validate` over every built page, which needs no browser but lives here for the same reason (`html.mjs`) |
 | `tools/social-card.mjs` | Redraws `src/assets/social-card.png`, the og:image, from the built Nations page (`npm run card`). Not in the build: it needs a browser, and borrows the Playwright in `test/a11y/`. `tools/social-card-inputs.mjs` hashes the light palette and the map it is drawn from, and `npm test` fails when they no longer match the hash recorded in `tools/social-card.inputs.json` |
 | `index.html`, `lore/`, `mechanics/`, `search/`, `css/`, `js/`, `fonts/`, `assets/`, `pagefind/` | Generated — never edit by hand |
 | `CONTENT-GUIDE.md` | How to port book chapters into `src/` |
@@ -46,6 +46,7 @@ node axe.mjs      # axe-core, five pages, light and dark
 node layout.mjs   # the skip link, the tables, the toggle, --header-h
 node packet.mjs   # the packet assembly, the page counter, the offline kit
 node search.mjs   # the search modal, the focus trap, the ?q= handoff
+node builder.mjs  # the character builder: ticks, CP, save, link, old saves, 390 px
 node html.mjs     # html-validate over every built page (no browser needed)
 ```
 

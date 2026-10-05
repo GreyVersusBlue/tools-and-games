@@ -267,9 +267,6 @@ its files, not repeated here; add to this list rather than starting a second.
   - **The 18 hidden Excellencies have no table in the book**, so nothing
     inside them is listed or priced, and steps 5 and 7 say so on the page.
     That changes only if the rules team publishes their tables.
-  - No suite covers `builder.js`. It did not change for #841, #844 or #845
-    (the form reads any named checkbox), and the page was driven in Chromium
-    by hand each time.
 - **`notable-figures.md` names `Reach Lord Sarah Jackson` "of Hadley's Cove"
   and links the Principalities of the Reach, and that page names neither her
   nor Hadley's Cove.** Nor does any other page, either PDF or
@@ -290,8 +287,6 @@ its files, not repeated here; add to this list rather than starting a second.
   The book's own chapter is that short. A longer overview would have to be new
   writing from the rules team, or a summary of the nation and history pages,
   which the home page and `lore/index` already are.
-- `firebase.json` set `no-cache` on `**/sw.js` (gone with Firebase on 2026-09-23; `offline.js` relies on the default `updateViaCache` now). No service worker has ever
-  existed. (Phase 7 would write one.)
 - The committed social card was drawn by a different Chromium from the pinned
   one (1.56.1, build 1194): a redraw on 2026-10-04 matched it in every colour
   and shape and differed in 23,609 of 756,000 pixels, all of them glyph edges.

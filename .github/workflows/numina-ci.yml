@@ -142,6 +142,12 @@ jobs:
         working-directory: Numina/test/a11y
         run: node search.mjs
 
+      # The character builder page. builder.js is the one file that touches
+      # localStorage and the URL fragment, and nothing in `npm test` runs it.
+      - name: The character builder, its save, its links and a 390 px screen
+        working-directory: Numina/test/a11y
+        run: node builder.mjs
+
       # Phase 8. Not a browser check — html-validate reads the committed files —
       # but it belongs to this job rather than the build one for the same reason
       # axe does: it audits the finished document, and the build job's `npm ci`
