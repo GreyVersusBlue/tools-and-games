@@ -1,0 +1,1 @@
+huginn-rclone is a private tool used only by its owner (Devon Moore) to copy files from one Google Drive folder to his own home server. It has read-only access, collects no data from anyone else, and shares nothing with third parties.
