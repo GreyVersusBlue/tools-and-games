@@ -25,7 +25,8 @@
 // Exits non-zero on five things (locked decision #13): a win rate outside
 // BAND, a command or creature ability nothing ever used, a drift from
 // test/baseline.json past DRIFT, a variant that will not load, and a second
-// driver that never once ends a fight by breaking line of sight.
+// driver that never once ends a fight by breaking line of sight, in the whole
+// batch or in any one room of a full one.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -128,6 +129,21 @@ export const SKULK_RUNS = 100;
  */
 export function skulkRows(content, runs = SKULK_RUNS) {
   return encounterRows(content, runBatch(content, runs, { policy: makeSkulkPolicy }));
+}
+
+/**
+ * The second driver's rows that settled nothing, by key.
+ *
+ * The batch total hid one for a day: the vault's fights settled about half the
+ * time, so the total was never zero, and the Reliquary Warden's row read 0.0%
+ * under it on all four builds. That was the driver and not the fight (#870).
+ * coverSquare() named explored squares only, and the sanctum's one square out
+ * of the Warden's sight, (1,1) behind the plaque pillar, is in fog from the
+ * landing. A zero on one row is the same finding as a zero on all of them,
+ * so it is counted per row.
+ */
+export function neverSettled(rows) {
+  return rows.filter(e => e.n > 0 && !e.settled).map(e => e.key);
 }
 
 /* ========================================================================= *
@@ -579,6 +595,10 @@ function printSkulk(rows, runs) {
   for (const e of rows) {
     console.log(`    ${pad(e.key, ew)}${num(e.per.toFixed(2), 8)}${num(pct(e.cleared / e.n), 9)}${num(pct(e.settled / e.n), 9)}`);
   }
+  // About half is the driver and not the fight: she slips each construct
+  // once, it reknits and notices her again, and the second meeting is fought.
+  console.log("    about half is the ceiling: each construct is slipped once and fought the second time it wakes");
+  if (runs >= SKULK_RUNS) console.log("    a row at 0.0% is a room this driver found no cover in, and fails the build");
 }
 
 /* ========================================================================= *
@@ -650,6 +670,9 @@ if (invokedDirectly) {
     const skulkRuns = Math.min(runs, SKULK_RUNS);
     const skulk = skulkRows(selectPc(basePack, build.id), skulkRuns);
     const settledFights = skulk.reduce((a, e) => a + e.settled, 0);
+    // Per row only on a full batch: five runs can meet the Keeper once and
+    // die to it, and that is a short batch rather than a room with no cover.
+    const silentRows = skulkRuns >= SKULK_RUNS ? neverSettled(skulk) : [];
     printSkulk(skulk, skulkRuns);
 
     const inBand = shipped.rate >= BAND.min && shipped.rate <= BAND.max;
@@ -662,10 +685,11 @@ if (invokedDirectly) {
     const verdict = !inBand ? `BALANCE OUT OF BAND — ${build.id}: ${pct(shipped.rate)}`
       : shipped.uncast.length ? `CONTENT NEVER REACHED — ${build.id}: ${shipped.uncast.join(", ")}`
       : !settledFights ? `ENDING NEVER REACHED — ${build.id}: no fight settled in ${skulkRuns} runs of the driver that breaks line of sight`
+      : silentRows.length ? `ENDING NEVER REACHED — ${build.id}: ${silentRows.join(", ")} settled 0 of its fights in ${skulkRuns} runs of the driver that breaks line of sight`
       : drift.length ? `BASELINE DRIFT — ${drift.join("\n                 ")}\n(if you meant it, rerun with --write-baseline and commit the file)`
       : `BALANCE OK — ${build.id}: ${pct(shipped.rate)}`;
     console.log(`\n${verdict}\n`);
-    allOk = allOk && inBand && !shipped.uncast.length && !drift.length && settledFights > 0;
+    allOk = allOk && inBand && !shipped.uncast.length && !drift.length && settledFights > 0 && !silentRows.length;
   }
   printMatrix(summaries);
 

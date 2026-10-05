@@ -342,7 +342,22 @@ new one.
   fights it; `balance.mjs` plays 100 runs of it per build, prints its own
   `settled` column (about half of the vault's sentinel fights) and exits
   non-zero if no fight settles. It reaches the ending and brackets nothing: it
-  is not a cautious player, and nothing is tuned against it. **Still measured
+  is not a cautious player, and nothing is tuned against it. **The Reliquary
+  Warden's row read 0.0% under that driver on all four builds, and that was
+  the driver too** (#870, traced 2026-10-05): 4,485 sanctum fights over the
+  8,000 seeds, 4,480 cleared, 5 died, none settled. The sanctum has one
+  sight-blocking square, the plaque pillar at (2,2), so one square, (1,1), is
+  out of the Warden's sight (sometimes (1,2) as well once it has moved), 45
+  feet from the landing against a budget of 75. `coverSquare` named explored
+  squares only, and the heir on the landing stands beside the Warden and has
+  never seen (1,1) either: asked on 1,488 decisions in 800 of those runs, it
+  returned nothing every time. It now takes a square in fog when she knows of
+  no cover, and walks for it by the explored part of the path, the way
+  `travel()` does. The Warden settles in 50.0% of its fights on every build
+  (each construct is slipped once and fought the second time), the other
+  three rows did not move by a fight, and a full batch with any row at zero
+  exits non-zero. The engine was right: it settled the Warden every time she
+  got there. **Still measured
   by nothing: whether the heal does its job**, which needs a driver that wears
   a construct down across two engagements and a variant with the heal off to
   compare against. And **the baseline is per build and per encounter only** — a change
