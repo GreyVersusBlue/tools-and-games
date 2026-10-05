@@ -1,30 +1,32 @@
 # Checks for The Absalom Inheritance. Three rounds and a phase shipped, and
 # each of their pull requests said the same thing: no workflow in this repo
 # path-matches Projects/absalom-inheritance/**, so both suites ran in a
-# session's terminal and nowhere else. That is 1,386 assertions and 8,400
+# session's terminal and nowhere else. That is 1,404 assertions and 8,400
 # seeded playthroughs — four builds now, not two — about three minutes of Node
 # with no browser and no dependency, and both already exit non-zero on a
 # failure (locked #13).
 #
-# There is a third suite and it is deliberately not here: test/browser.mjs
-# boots the real page in real Chromium and asserts the hint bar, the log's
-# colours, the build's colours on the heir, the keyboard's refusals, the picker stacking to
+# The third suite is the `browser` job (#880). test/browser.mjs boots the real
+# page in headless Chromium and asserts the hint bar, the log's colours, the
+# build's colours on the heir, the keyboard's refusals, the picker stacking to
 # one column at 375px with four cards, a per-build satchel in the inventory
-# panel, the second buff's ring and readout, and ?pack= opening the second
+# panel, the second buff's ring and readout, ?pack= opening the second
 # adventure off the same HTML file under its own storage key, and a sprite
-# sheet that will not load stopping the boot. It is 54 checks,
-# and two of the things it has caught were invisible to smoke.mjs: a satchel
-# resolved on the wrong side of `selectPc`, and a board that sat frozen after a
-# save reopened on a creature's turn. It needs
-# playwright-core and a browser on disk, neither of which the game itself has
-# any use for, and it is run by hand — the same arrangement Blue Hour's
-# test/browser.mjs already has. Unlike the suites site-ci.yml runs, it launches its
-# own Chromium from a fixed path rather than borrowing Tools/board-check's
-# harness, so joining CI means porting it to the harness first.
+# sheet that will not load stopping the boot. It is 54 checks, and two of the
+# things it has caught were invisible to smoke.mjs: a satchel resolved on the
+# wrong side of `selectPc`, and a board that sat frozen after a save reopened
+# on a creature's turn. Until #880 it imported playwright-core and launched
+# Chromium from a fixed path, so it was run by hand; it borrows
+# Tools/board-check's harness now, the way Corner & Kettle's drive-save.mjs
+# does, and suite.yml's `install` gives the job that folder's `npm ci`. It
+# runs from the repo root and after the Node job, so a red engine is not also
+# reported as a red page.
 #
 # The shell page is in the path list because it carries the CSS and the element
 # ids ui.js reads, and a commit that edits it and not the folder still has to
-# run. gvb-save.js is there because save.js is a thin layer over it.
+# run. gvb-save.js is there because save.js is a thin layer over it. The three
+# Tools/board-check files are what the browser job borrows: the server and the
+# launch, the two-driver helpers, and the lockfile that pins the Chromium.
 #
 # balance.mjs is the one that matters most and the one most likely to be
 # skipped by hand: it is the file that found out the original single-file build
@@ -57,7 +59,7 @@
 # colours face by face. The sheets are rendered by Blender on Devon's machines
 # (#707); the check needs only Node, so it runs here.
 #
-# The job itself runs through suite.yml, the shared template. Site-wide checks
+# Both jobs run through suite.yml, the shared template. Site-wide checks
 # (Tools/board-check, gvb-save.test.mjs, the projects with no workflow of their
 # own) live in site-ci.yml and run on every pull request.
 
@@ -69,6 +71,9 @@ on:
       - "Projects/absalom-inheritance/**"
       - "Projects/absalom_inheritance.html"
       - "assets/js/gvb-save.js"
+      - "Tools/board-check/harness.mjs"
+      - "Tools/board-check/drive.mjs"
+      - "Tools/board-check/package-lock.json"
       - ".github/workflows/absalom-ci.yml"
   push:
     branches:
@@ -77,6 +82,9 @@ on:
       - "Projects/absalom-inheritance/**"
       - "Projects/absalom_inheritance.html"
       - "assets/js/gvb-save.js"
+      - "Tools/board-check/harness.mjs"
+      - "Tools/board-check/drive.mjs"
+      - "Tools/board-check/package-lock.json"
       - ".github/workflows/absalom-ci.yml"
 
 permissions:
@@ -100,3 +108,12 @@ jobs:
         node test/smoke.mjs
         node test/balance.mjs 2000
         node tools/blender/validate.mjs
+
+  browser:
+    name: browser.mjs in headless Chromium
+    needs: suite
+    uses: ./.github/workflows/suite.yml
+    with:
+      install: Tools/board-check
+      commands: |
+        node Projects/absalom-inheritance/test/browser.mjs

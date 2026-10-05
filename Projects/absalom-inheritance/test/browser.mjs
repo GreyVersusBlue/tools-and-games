@@ -6,53 +6,39 @@
 // after a stairway, the log's colours, the build's own prism on the board, and
 // a keyboard that answers when it refuses (locked decision #39).
 //
-//   node test/browser.mjs
+//   node Projects/absalom-inheritance/test/browser.mjs
 //
-// Needs playwright-core and a Chromium on disk — neither is a dependency of
-// the game itself, which has none, and neither is in CI. Point CHROME at a
-// binary if the default (the Playwright cache) is not where yours lives:
+// Borrows Tools/board-check's harness for the server and the browser rather
+// than carrying its own (#880): bare specifiers inside those files resolve
+// from THEIR folder, so the one install is `npm ci` in Tools/board-check and
+// nothing is installed under Projects/. On Linux that is puppeteer-core
+// driving @sparticuz/chromium, which is what CI has; elsewhere it is
+// Playwright driving the Chrome or Edge already on the machine. Until #880
+// this file imported playwright-core itself and launched Chromium from a fixed
+// path, and ran nowhere but a session's terminal.
 //
-//   npm i playwright-core
-//   CHROME=/path/to/chrome node test/browser.mjs
-//
-// Serves the site root itself, so the relative content fetch and
-// assets/js/gvb-save.js resolve exactly as they do in play.
+// The harness serves the site root, so the relative content fetch and
+// assets/js/gvb-save.js resolve exactly as they do in play. The port is
+// whatever the system hands out: nothing here needs to know it in advance.
 //
 // Nothing here is a frame-timing or motion assertion, so locked #53 does not
 // apply: this game draws on input and sits still between clicks (#29), and a
 // software-rendered Chromium reaches the same DOM and the same pixels a real
 // GPU does.
 
-import { chromium } from "playwright-core";
-import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { serve, launch, prepPage } from "../../../Tools/board-check/harness.mjs";
+import { waitFor, textContent, wait } from "../../../Tools/board-check/drive.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SITE = path.resolve(HERE, "..", "..", "..");
-const CHROME = process.env.CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const PACK = JSON.parse(fs.readFileSync(path.join(HERE, "..", "content", "vault.json"), "utf8"));
 const MANIFEST = JSON.parse(fs.readFileSync(path.join(HERE, "..", "content", "packs.json"), "utf8"));
 
-const TYPES = {
-  ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
-  ".css": "text/css", ".json": "application/json", ".png": "image/png",
-  ".svg": "image/svg+xml", ".webp": "image/webp", ".jpg": "image/jpeg",
-};
-
-const server = http.createServer((req, res) => {
-  let p = decodeURIComponent(req.url.split("?")[0]);
-  if (p.endsWith("/")) p += "index.html";
-  const file = path.join(SITE, p);
-  if (!file.startsWith(SITE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-    res.writeHead(404); return res.end("nope");
-  }
-  res.writeHead(200, { "Content-Type": TYPES[path.extname(file)] || "application/octet-stream" });
-  fs.createReadStream(file).pipe(res);
-});
-await new Promise(r => server.listen(0, r));
-const URL_ = `http://127.0.0.1:${server.address().port}/Projects/absalom_inheritance.html`;
+const server = await serve(0);
+const BASE = `http://127.0.0.1:${server.address().port}`;
+const URL_ = `${BASE}/Projects/absalom_inheritance.html`;
 
 let pass = 0, fail = 0;
 const ok = (label, cond, detail = "") => {
@@ -62,14 +48,33 @@ const ok = (label, cond, detail = "") => {
 const eq = (label, actual, want) => ok(label, actual === want, actual === want ? "" : `got ${JSON.stringify(actual)}, want ${JSON.stringify(want)}`);
 const group = t => console.log(`\n${t}`);
 
-const browser = await chromium.launch({
-  executablePath: CHROME,
-  args: ["--no-sandbox", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"],
-});
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
-const errors = [];
-page.on("pageerror", e => errors.push(String(e)));
-page.on("console", m => { if (m.type() === "error") errors.push("console: " + m.text()); });
+const browser = await launch();
+const VIEW = { width: 1280, height: 800, dsf: 1 };
+const page = await prepPage(browser, BASE, VIEW);
+// Page errors and console errors, as before the port, and the harness adds a
+// request that failed for any reason but a cancellation.
+const errors = page.__errs;
+
+/* The four calls the two drivers spell differently and drive.mjs has no word
+   for. `page.__engine` is the harness's own flag for which one is behind a
+   page. */
+const puppeteer = p => p.__engine === "puppeteer";
+const setSize = (p, width, height) => puppeteer(p)
+  ? p.setViewport({ width, height, deviceScaleFactor: VIEW.dsf })
+  : p.setViewportSize({ width, height });
+// Playwright's waitForSelector waits for an element that is showing;
+// Puppeteer's waits for one that exists unless it is told otherwise.
+const shown = (p, selector) => p.waitForSelector(selector, puppeteer(p) ? { visible: true } : undefined);
+const beforeEveryBoot = (p, fn) => puppeteer(p) ? p.evaluateOnNewDocument(fn) : p.addInitScript(fn);
+// The harness already answers every request a Puppeteer page makes, and a
+// request can be answered once, so a second handler cannot refuse one. The
+// browser's own block list sits below both.
+const refuse = async (p, glob) => {
+  if (!puppeteer(p)) return p.route("**" + glob, r => r.abort());
+  const cdp = await p.createCDPSession();
+  await cdp.send("Network.enable");
+  await cdp.send("Network.setBlockedURLs", { urls: ["*" + glob] });
+};
 
 const boot = async () => {
   await page.goto(URL_, { waitUntil: "load" });
@@ -87,7 +92,7 @@ const boot = async () => {
  * first is the whole fix.
  */
 const seedSave = async (mutate, arg) => {
-  await page.waitForTimeout(1700);
+  await wait(1700);
   await page.evaluate(([fnText, a]) => {
     const st = __absalom.game.snapshot();
     // eslint-disable-next-line no-new-func
@@ -95,7 +100,7 @@ const seedSave = async (mutate, arg) => {
     __absalom.slot.save(st);
   }, [mutate, arg]);
   await boot();
-  await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
+  await waitFor(page, () => !!window.__absalom, { timeout: 20000 });
 };
 
 /* ========================================================================= *
@@ -103,7 +108,7 @@ const seedSave = async (mutate, arg) => {
  * ========================================================================= */
 group("the character picker");
 await boot();
-await page.waitForSelector("#create-veil.open .pc-card");
+await shown(page, "#create-veil.open .pc-card");
 const cards = await page.$$("#create-grid .pc-card");
 eq("one card per build in the pack", cards.length, PACK.pcOptions.length);
 
@@ -128,17 +133,17 @@ eq("the fighter's card is where the pack puts her", names[fighterIdx], PACK.pcOp
 //
 // Broken on purpose by dropping minmax's floor to 100px, which put two columns
 // on a 375px screen and 24 px of blurb per line.
-await page.setViewportSize({ width: 375, height: 780 });
+await setSize(page, 375, 780);
 const lefts = await page.$$eval("#create-grid .pc-card", ns => ns.map(n => n.getBoundingClientRect().left));
 eq("four cards stack to one column at 375px", new Set(lefts.map(Math.round)).size, 1);
 const cardW = await page.$$eval("#create-grid .pc-card", ns => ns.map(n => Math.round(n.getBoundingClientRect().width)));
 ok("and each is the full width of the column", cardW.every(w => w > 240), cardW.join(", "));
 ok("with nothing running off the side of the page",
   await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-await page.setViewportSize({ width: 1280, height: 800 });
+await setSize(page, 1280, 800);
 
 await page.click(`#create-grid .pc-card:nth-of-type(${fighterIdx + 1}) .pc-begin`);
-await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
+await waitFor(page, () => !!window.__absalom, { timeout: 20000 });
 eq("beginning as Kessa boots the fighter", await page.evaluate(() => __absalom.content.pc.id), "fighter");
 ok("no page errors on the way in", errors.length === 0, errors.slice(0, 3).join(" | "));
 
@@ -196,7 +201,7 @@ group("a keyboard that answers");
 const say = async key => {
   await page.evaluate(() => { document.getElementById("live").textContent = ""; });
   await page.keyboard.press(key);
-  return page.textContent("#live");
+  return textContent(page, "#live");
 };
 // Kessa's list is Strike (1), Drink Healing Potion (2), Reactive Strike (3).
 const kessaCmds = await page.evaluate(() => __absalom.content.commands.map(c => ({ name: c.name, kind: c.kind })));
@@ -229,7 +234,7 @@ await seedSave(`
   for (const c of st.creatures) { c.dead = true; c.awake = false; }
 `, stairSquare);
 
-const loadedHint = await page.textContent("#hint");
+const loadedHint = await textContent(page, "#hint");
 ok("a loaded save comes back with a hint bar rather than an empty one", loadedHint.trim().length > 0, JSON.stringify(loadedHint));
 eq("and it is the vault's opening line, because the start area has no hint of its own",
   loadedHint.trim(), PACK.intro.hint);
@@ -239,11 +244,11 @@ eq("and it is the vault's opening line, because the start area has no hint of it
 // canvas first — the keydown listener is on the window, and a click on the
 // board is itself a move.
 await page.keyboard.press("ArrowUp");
-eq("the cursor is on the stairway", (await page.textContent("#live")).trim(), "A stairway onward.");
+eq("the cursor is on the stairway", (await textContent(page, "#live")).trim(), "A stairway onward.");
 await page.keyboard.press("Enter");
-await page.waitForFunction(() => __absalom.game.run.areaId === "undercroft", null, { timeout: 10000 });
+await waitFor(page, () => __absalom.game.run.areaId === "undercroft", { timeout: 10000 });
 eq("the stairway lands her in the undercroft", await page.evaluate(() => __absalom.game.run.areaId), "undercroft");
-eq("and the hint bar reads the room she is standing in", (await page.textContent("#hint")).trim(), PACK.areas.undercroft.hint);
+eq("and the hint bar reads the room she is standing in", (await textContent(page, "#hint")).trim(), PACK.areas.undercroft.hint);
 eq("with the board still out of combat", await page.evaluate(() => __absalom.game.mode), "explore");
 
 // The per-area tuning, in the browser rather than in a unit: the renderer
@@ -298,11 +303,11 @@ group("?pack= opens another adventure");
 // a different pack, a different save key. Nothing in js/ names either of them.
 const SMALL = JSON.parse(fs.readFileSync(path.join(HERE, "..", "content", "proving-ground.json"), "utf8"));
 await page.goto(URL_ + "?pack=proving-ground", { waitUntil: "load" });
-await page.waitForSelector("#create-veil.open .pc-card");
+await shown(page, "#create-veil.open .pc-card");
 eq("the proving ground's one build gets one card",
   (await page.$$("#create-grid .pc-card")).length, SMALL.pcOptions.length);
 await page.click("#create-grid .pc-card:nth-of-type(1) .pc-begin");
-await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
+await waitFor(page, () => !!window.__absalom, { timeout: 20000 });
 eq("and the page is playing it", await page.evaluate(() => __absalom.pack.pack.id), "proving-ground");
 eq("under its own storage key, so the vault run it did not touch is still there",
   await page.evaluate(() => __absalom.slot.key), "absalom-inheritance-save-v1:proving-ground");
@@ -322,9 +327,9 @@ await page.goto(URL_ + "?pack=not-a-pack", { waitUntil: "load" });
 // assertion attached to it. Broken on purpose by dropping main.js's `||`,
 // which left `entry` undefined — this line failed, carrying the sentence the
 // player would have been left staring at.
-const bootedAnyway = await page.waitForFunction(() => !!window.__absalom, null, { timeout: 8000 })
+const bootedAnyway = await waitFor(page, () => !!window.__absalom, { timeout: 8000 })
   .then(() => true, () => false);
-ok("an unknown ?pack= still boots the page", bootedAnyway, bootedAnyway ? "" : (await page.textContent("#hint")).trim());
+ok("an unknown ?pack= still boots the page", bootedAnyway, bootedAnyway ? "" : (await textContent(page, "#hint")).trim());
 eq("an unknown ?pack= falls back to the manifest's default",
   bootedAnyway ? await page.evaluate(() => __absalom.pack.pack.id) : "(never booted)", MANIFEST.default);
 eq("and the vault run that was there all along comes back with it",
@@ -339,28 +344,35 @@ group("a satchel and a ward per build");
 // accumulating through this file. Last group in the file for exactly that
 // reason: everything above needs that save to still be there.
 await page.goto(URL_, { waitUntil: "load" });
+// `load` fires before the module has fetched its pack and its sheets, and the
+// boot() below navigates again. A boot cut off mid-fetch says so with
+// console.error on its way out ("Failed to fetch", or a sheet that "would not
+// load"), which is the page being honest and was this file's one red line in
+// five runs of six before #880. The vault's save is still here, so this boot
+// reaches the board on its own: wait for it, then clear.
+await waitFor(page, () => !!window.__absalom, { timeout: 20000 });
 await page.evaluate(() => localStorage.clear());
 // The page rolls its dice on `Math.random`, not on a seed — main.js hands
 // createGame the real one — so a fight here is a different fight every run,
 // and the group below wants to be about the ward rather than about a d20.
 // Pinned to one stream before boot, which is the only place a page's own
 // Math.random can be replaced from outside it.
-await page.addInitScript(() => {
+await beforeEveryBoot(page, () => {
   let s = 20260907;
   Math.random = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
 });
 await boot();
-await page.waitForSelector("#create-veil.open .pc-card");
+await shown(page, "#create-veil.open .pc-card");
 const clericIdx = PACK.pcOptions.findIndex(p => p.id === "cleric");
 await page.click(`#create-grid .pc-card:nth-of-type(${clericIdx + 1}) .pc-begin`);
-await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
+await waitFor(page, () => !!window.__absalom, { timeout: 20000 });
 eq("beginning as Isbeth boots the cleric", await page.evaluate(() => __absalom.content.pc.id), "cleric");
 
 // The satchel is per build now, and the inventory panel is where a player
 // finds it out. Broken on purpose by dropping selectPc's per-build lookup:
 // the Cleric opened her bag on a longsword and a spellbook.
 await page.click("#btn-inv");
-await page.waitForSelector("#inv-veil.open .inv-item");
+await shown(page, "#inv-veil.open .inv-item");
 const carried = await page.$$eval("#inv-grid .inv-item .iname", ns => ns.map(n => n.textContent));
 ok("the Cleric's bag holds her own mace", carried.some(n => /Mace/.test(n)), carried.join(", "));
 ok("and the reliquary font", carried.some(n => /Font/.test(n)));
@@ -382,7 +394,7 @@ await seedSave(`
   st.creatures[0].awake = true;
   st.creatures[0].x = arg[0] + 1; st.creatures[0].y = arg[1];
 `, [PACK.areas.vault.rows[sentinel].indexOf("e") - 1, sentinel]);
-await page.waitForFunction(() => __absalom.game.mode === "combat", null, { timeout: 10000 });
+await waitFor(page, () => __absalom.game.mode === "combat", { timeout: 10000 });
 // Initiative is `Math.random` on the page, not a seed, so the sentinel wins it
 // about half the time and the renderer plays its turn back before the board
 // takes a keypress. Waiting for the heir's own turn is the difference between
@@ -392,9 +404,9 @@ await page.waitForFunction(() => __absalom.game.mode === "combat", null, { timeo
 // sentinel's turn sits frozen forever. Reported as a failure with the board's
 // own state rather than left to time out into a stack trace, because "the
 // board never moved" is the thing under test here and a trace says nothing.
-const hersToTake = await page.waitForFunction(
+const hersToTake = await waitFor(page,
   () => __absalom.game.isPCTurn() && __absalom.game.actionsLeft > 1,
-  null, { timeout: 20000 }).then(() => true, () => false);
+  { timeout: 20000 }).then(() => true, () => false);
 ok("the board plays the creatures' turns back and reaches the heir's", hersToTake,
   hersToTake ? "" : JSON.stringify(await page.evaluate(() => ({
     mode: __absalom.game.mode, pcTurn: __absalom.game.isPCTurn(),
@@ -420,11 +432,11 @@ const blueish = () => page.evaluate(() => {
 // rather than crashed when it is not: a group that dies here reports nothing
 // about the ward, which is what it was written to check.
 if (hersToTake) {
-const acBefore = (await page.textContent("#ac-val")).trim();
+const acBefore = (await textContent(page, "#ac-val")).trim();
 const ringBefore = await blueish();
 const litanyKey = String(await page.evaluate(() => __absalom.content.commands.findIndex(c => c.kind === "buff") + 1));
 await page.keyboard.press(litanyKey);
-const acAfter = (await page.textContent("#ac-val")).trim();
+const acAfter = (await textContent(page, "#ac-val")).trim();
 eq("with the ward on the sheet, not the disc",
   await page.evaluate(() => __absalom.game.conditionsOf("pc")[0].id), "warded");
 ok("the litany moves the AC number", acAfter !== acBefore, `${acBefore} → ${acAfter}`);
@@ -454,13 +466,13 @@ ok("no page errors, start to finish", errors.length === 0, errors.slice(0, 5).jo
 // that refuses the file cannot reach anything above.
 group("a sheet that will not load");
 {
-  const p2 = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
-  await p2.route("**/assets/sprites/tiles.png", r => r.abort());
+  const p2 = await prepPage(browser, BASE, VIEW);
+  await refuse(p2, "/assets/sprites/tiles.png");
   await p2.goto(URL_, { waitUntil: "load" });
-  const said = await p2.waitForFunction(() => /art would not load/.test(document.getElementById("hint").textContent),
-    null, { timeout: 20000 }).then(() => true, () => false);
-  ok("stops the boot and says so in the hint bar", said, JSON.stringify(await p2.textContent("#hint")));
-  ok("naming the file", /tiles\.png/.test(await p2.textContent("#hint")));
+  const said = await waitFor(p2, () => /art would not load/.test(document.getElementById("hint").textContent),
+    { timeout: 20000 }).then(() => true, () => false);
+  ok("stops the boot and says so in the hint bar", said, JSON.stringify(await textContent(p2, "#hint")));
+  ok("naming the file", /tiles\.png/.test(await textContent(p2, "#hint")));
   eq("and no game is built on it", await p2.evaluate(() => typeof window.__absalom), "undefined");
   await p2.close();
 }

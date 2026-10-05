@@ -888,10 +888,12 @@ files are meant to agree; change both.
 
 **Twelve areas that had no workflow now run in CI**, as a matrix in
 `site-ci.yml`; a new project's suite goes there, or in its own workflow calling
-`.github/workflows/suite.yml`. Not in CI, on purpose (#353): Blue Hour's
-`browser.mjs` (real-time movement, #53); Absalom's `browser.mjs` (its own fixed
-Chromium path); two browser suites that only speak Playwright while the
-harness is Puppeteer on Linux, both belonging to archived tools; and anything
+`.github/workflows/suite.yml`. Absalom's `browser.mjs` joined on 2026-10-05 as
+the `browser` job of `absalom-ci.yml`, ported from playwright-core and a fixed
+Chromium path to the harness (#880). Not in CI, on purpose (#353): Blue Hour's
+`browser.mjs` (real-time movement, #53); two browser suites that only speak
+Playwright while the harness is Puppeteer on Linux, both belonging to archived
+tools; and anything
 under `npm run games`/`play`/`previews`. Integer Foundry's was the third of
 those and is in the matrix now — its failure was a click race, not a missing
 method, and every click in it retries a re-query. **It had a second failure mode
