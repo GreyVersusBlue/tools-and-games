@@ -5889,7 +5889,21 @@ document.addEventListener('keydown', (e) => {
   // The report is the sixth panel and the last free letter next to them: M for
   // the measurements, in both modes, because a finding you read while walking
   // is a finding about the corridor you are standing in.
-  if (e.code === 'KeyM' && !typing && !e.ctrlKey && !e.metaKey) { $('report-btn').click(); return; }
+  // The Shape tool had M first (Phase 6: mirror the selection) and its hint
+  // still promises it, but this line took the key from Phase 7 on and the
+  // mirror could not be reached at all. With rooms selected in that tool the
+  // editor has the key; everywhere else M is the report (#866).
+  if (e.code === 'KeyM' && !typing && !e.ctrlKey && !e.metaKey) {
+    if (mode === 'edit' && editor.handleKey(e)) {
+      e.preventDefault();
+      autosave(state);
+      updateUndoButtons();
+      syncToolPanels();
+      return;
+    }
+    $('report-btn').click();
+    return;
+  }
   if (e.code === 'KeyK' && !typing && !e.ctrlKey && !e.metaKey) { lifeSetDrill(!life.drill); return; }
   if (e.code === 'KeyH' && !typing && !e.ctrlKey && !e.metaKey) { $('life-heat').click(); return; }
   if (e.code === 'KeyV' && !typing && !e.ctrlKey && !e.metaKey && mode === 'walk') {
