@@ -679,35 +679,79 @@ const paper = (id, price, extra = {}) => ({
 // guards is off by one day and only shows up on the deadline day itself, with a
 // reputation hit per offer for a deadline the player set on purpose.
 {
-  newGame("bk_hearthstone");
-  const rec2 = Clients.meetClient("cl_0101");
-  const pl2 = Seller.takeListing(rec2);
-  Seller.goLive(pl2, Seller.suggestedPrice(pl2), 1);
-  pl2.offers.push(
-    { id: "off_a", agentId: "ag_priya_natesan", price: Math.round(pl2.price * 0.97), status: "open", day: S.day,
-      financing: "conventional", inspection: true, closeDays: 28, escalation: null },
-    { id: "off_b", agentId: "ag_denny_kessler", price: Math.round(pl2.price * 0.96), status: "open", day: S.day,
-      financing: "cash", inspection: false, closeDays: 21, escalation: null });
-  // Age the field. An offer written today expires in two days and a call holds
-  // it for two days, so a same-day field cannot tell the two rules apart — the
-  // first version of this check passed against a calendar that ignored the call
-  // entirely. Two days old is a field whose own window closes first.
-  pl2.offers.forEach(o => { o.day = S.day - 2; });
+  // A fresh career with one live listing and a two-offer field on it.
+  const hbField = () => {
+    newGame("bk_hearthstone");
+    const pl = Seller.takeListing(Clients.meetClient("cl_0101"));
+    Seller.goLive(pl, Seller.suggestedPrice(pl), 1);
+    pl.offers.push(
+      { id: "off_a", agentId: "ag_priya_natesan", price: Math.round(pl.price * 0.97), status: "open", day: S.day,
+        financing: "conventional", inspection: true, closeDays: 28, escalation: null },
+      { id: "off_b", agentId: "ag_denny_kessler", price: Math.round(pl.price * 0.96), status: "open", day: S.day,
+        financing: "cash", inspection: false, closeDays: 21, escalation: null });
+    // Age the field. An offer written today expires in two days and a call holds
+    // it for two days, so a same-day field cannot tell the two rules apart — the
+    // first version of this check passed against a calendar that ignored the call
+    // entirely. Two days old is a field whose own window closes first.
+    pl.offers.forEach(o => { o.day = S.day - 2; });
+    return pl;
+  };
+  // What the calendar charges for an offer it expired, read off the Ledger by
+  // the reason addRep() was given. Counted rather than read off S.rep: a career
+  // starts at 5 reputation and clamps at 0, and the same days roll events.
+  const lapses = () => S.log.filter(e => e.kind === "rep" && e.text.includes("you let an offer deadline lapse")).length;
+
+  // The control: the same field with no call does lapse, and is charged for it.
+  // Without this the count above could match nothing and pass for ever.
+  {
+    const pl = hbField();
+    endDay();
+    eq(pl.offers.filter(o => o.status === "expired").length, 2, "a two-day-old field nobody answered expires overnight");
+    eq(lapses(), 2, "and each lapsed offer is charged to reputation by name");
+  }
+
+  const pl2 = hbField();
   ok(Esc.canCallHighestAndBest(pl2), "two open offers on a live listing is a field you can call");
   const call = Esc.callHighestAndBest(pl2);
   eq(call.offers, 2, "the call goes out to both");
   ok(!Esc.canCallHighestAndBest(pl2), "and you only get one call per listing");
 
-  const repBefore = S.rep;
   // Advance to the deadline. endDay() runs the expiry sweep and dailySellerTick.
   while (S.day < call.deadline) endDay();
   const expired = pl2.offers.filter(o => o.status === "expired");
   eq(expired.length, 0, "no offer expired while the call it was answering was still open",
     expired.map(o => o.id).join(","));
-  ok(S.rep >= repBefore, "and no reputation was lost to a deadline the player set", `${repBefore} -> ${S.rep}`);
+  // This read `S.rep >= repBefore` and failed 24 runs in 4,000 (and twice on
+  // `main`, 5 -> 3): Priya walks from a call at 0.10 and Denny at 0.06, both do
+  // in 0.6% of careers, and an emptied room costs 2 reputation on purpose. That
+  // charge is the call's, not the deadline's, and it has its own check below.
+  eq(lapses(), 0, "and no reputation was lost to a deadline the player set");
   eq(pl2.hbDeadline, null, "the call resolved on its deadline rather than hanging");
   ok(pl2.offers.every(o => o.status !== "open" || o.hbAnswered),
     "and every offer still standing actually answered");
+
+  // --- the room that empties. Both agents walk on about one seed in 170, so
+  // the suite looks for one with the engine's own roll rather than waiting for
+  // chance to bring it. Everything resolveHighestAndBest() draws comes off
+  // S.seed, so the first seed that empties the room is the same on every run
+  // (1982 on 2026-10-05; small seeds sit close together in this generator).
+  {
+    let pl = null, seed = 0;
+    while (seed < 50000) {
+      pl = hbField();
+      Esc.callHighestAndBest(pl);
+      S.rep = 50; S.seed = ++seed;
+      if (Esc.resolveHighestAndBest(pl).field.length === 0) break;
+    }
+    ok(pl.offers.every(o => o.status === "walked"), "a call can empty the room: some seed has both agents walk", `none in ${seed}`);
+    eq(S.rep, 48, "an emptied room costs 2 reputation, once");
+    eq(S.log.filter(e => e.kind === "rep" && e.text.includes("after you called for highest and best")).length, 1,
+      "and the Ledger says it was the call");
+    eq(pl.hbDeadline, null, "the call is over");
+    eq(pl.status, "live", "and the listing is still live with nothing on it");
+    endDay();
+    eq(lapses(), 0, "an offer that walked is not then charged as a lapsed deadline");
+  }
 }
 
 // --- the payoff: accepting resolves the clause BEFORE the field it beats is
