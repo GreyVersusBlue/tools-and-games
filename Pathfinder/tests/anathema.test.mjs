@@ -394,6 +394,10 @@ async function testFilters(browser) {
   await typeInto(page, '#trait', 'fire');
   await shows(page, 'typing a trait filters as you type', countText, countLine(nFire, N));
   ok(same(await chips(page), []), '...before any chip is committed');
+  /* Not a guard on the page's own keydown listener (#34, #147): with that
+     listener deleted Chrome fires `change` on Enter and the change listener
+     commits the chip just the same, so this passes either way. It holds the
+     behaviour, whichever of the two delivers it. */
   await page.keyboard.press('Enter');
   await shows(page, 'Enter in the trait box commits it as a chip', chips, ['fire']);
   ok(await page.$eval('#trait', el => el.value) === '', '...and empties the box');
@@ -637,19 +641,29 @@ async function testListNavigation(browser) {
   await page.keyboard.press('Escape');
   await shows(page, 'Escape steps back to the entry before', openName, FROM);
   ok(await backLabel(page) === '\u2190 Back to list', '...where the back button leads to the list again');
+
+  // an entry picked from the list starts a new trail
+  const NEXT = names[names.indexOf(TO) + 1];
+  await click(page, '#detail a.ref');
+  await shows(page, 'following the reference again', openName, TO);
+  await page.keyboard.press('ArrowDown');
+  await shows(page, 'Down from an open entry selects the row after it', selName, NEXT);
+  await page.keyboard.press('Enter');
+  await shows(page, 'Enter opens that row', openName, NEXT);
+  ok(await backLabel(page) === '\u2190 Back to list', '...and an entry picked from the list forgets the trail of references');
   await page.keyboard.press('Escape');
-  await shows(page, 'Escape on the first entry closes the stat block', openName, null);
+  await shows(page, 'Escape on an entry with no trail closes the stat block', openName, null);
   ok(await page.evaluate(() => location.hash) === '#condition', '...and the URL goes back to the bare category');
 
   // keys typed into a field belong to the field
   await page.keyboard.press('Enter');
-  await shows(page, 'Enter reopens the row that is still selected', openName, FROM);
+  await shows(page, 'Enter reopens the row that is still selected', openName, NEXT);
   await page.focus('#q');
   await page.keyboard.press('ArrowDown');
-  ok(await selName(page) === names[0], 'Down while the search box has focus does not move the selection');
+  ok(await selName(page) === NEXT, 'Down while the search box has focus does not move the selection');
   await page.keyboard.press('Escape');
   await shows(page, 'Escape in the search box only leaves the box', p => p.evaluate(() => document.activeElement?.id || ''), '');
-  ok(await openName(page) === FROM, '...and the stat block stays open');
+  ok(await openName(page) === NEXT, '...and the stat block stays open');
   await page.keyboard.press('Escape');
   await shows(page, 'a second Escape, outside the box, closes the stat block', openName, null);
 
@@ -737,7 +751,8 @@ const SURFACE = {
   'data-lvl clear': 'testFilters',
   '#rarity input': 'testFilters', '#trait input': 'testFilters', '#source input': 'testFilters', '#tradition input': 'testFilters',
   '#spelltype input': 'testFilters', '#sort input': 'testFilters', '#q input': 'testFilters',
-  '#trait change': 'testFilters', '#trait keydown': 'testFilters', '#traitchips click': 'testFilters',
+  '#trait change': 'testFilters', '#traitchips click': 'testFilters',
+  '#trait keydown': 'testFilters',        // pressed, not guarded: Chrome's change on Enter does the same job without it
   '#encToggle click': '', '#encbar click': '', '#encbar input': '',
   'closest [data-enc]': '', 'data-enc inc': '', 'data-enc dec': '', 'data-enc del': '', 'data-enc clear': '',
   'closest .encadd': '', 'closest .encaddbtn': '',
