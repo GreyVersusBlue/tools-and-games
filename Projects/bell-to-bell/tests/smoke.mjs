@@ -320,12 +320,183 @@ check('heat points at a quadrant, not a kid', typeof zone==='string' && !zone.in
 check('the quadrant is the one with the tells', zone==='back-left');
 tempTells.push({type:'PHONE', seat:3, born:1000, dead:false, resolved:false});
 tempTells.push({type:'PHONE', seat:7, born:1000, dead:false, resolved:false});
-check('an even spread reads as the middle', ['middle','back-left'].includes(rt.hotZone()));
+// Two in the back left, one front right, one back right: half the heat is in
+// one quadrant and nothing is level with it. (This line used to accept the
+// middle as well, under a name that said even; the level cases are below.)
+check('half the heat in one quadrant is still a direction', rt.hotZone()==='back-left');
 tempTells.length = 0;
 tempTells.push({type:'PHONE', seat:0, born:1000, dead:true, resolved:false});
 check('a dead tell is not heat', rt.hotZone()===null);
 
 check('every room temp band has a line', eData.roomTemp.every(r=>r.line && r.label));
+
+// ---- Q13 (#890): Room Temp reads a direction, and only a direction --------
+//
+// The seats below are written out by hand from the default chart (three rows
+// of four; the front row is the only one the rule calls the front), not
+// worked out with the rule's own arithmetic, so a flipped sign or a moved
+// row line in roomtemp.js cannot move this table with it.
+{
+  const QUAD = {
+    'front-left': [0, 1], 'front-right': [2, 3],
+    'back-left': [4, 5, 8, 9], 'back-right': [6, 7, 10, 11]
+  };
+  const R = eData.roomTempReading;
+  const heat = seat => ({ type: 'PHONE', seat, born: 1000, dead: false, resolved: false });
+  const mk = (kids = students) => {
+    const tells = [], said = [], pulses = [];
+    const temp = createRoomTemp({
+      data: eData, students: kids, tellSystem: { defs: tData.types, tells },
+      toast: (k, t, b) => said.push([k, t, b]), onPulse: (row, zone) => pulses.push([row, zone])
+    });
+    const set = seats => { tells.length = 0; for (const x of seats) tells.push(heat(x)); };
+    return { temp, tells, said, pulses, set };
+  };
+
+  // Every direction there is, from every desk that can produce it.
+  const A = mk();
+  for (const [quad, seats] of Object.entries(QUAD)) {
+    A.set(seats);
+    check(`a ${quad} full of trouble reads as the ${quad}`, A.temp.hotZone() === quad);
+    check(`and so does any one desk in the ${quad}, alone`,
+      seats.every(x => { A.set([x]); return A.temp.hotZone() === quad; }));
+    const st = createState();
+    A.set(seats);
+    const res = A.temp.read(st);
+    check(`the ${quad} reading says so in the room's words`,
+      res.zone === quad && A.said.at(-1)[2].endsWith(R.zoneTemplate.replace('{zone}', R.zoneNames[quad])));
+    check(`and the chip under the label says ${R.zoneNames[quad]}`,
+      A.temp.display(st).sub === R.zoneNames[quad] && st.tempZone === quad);
+    check('the pulse is handed the band and the direction',
+      A.pulses.at(-1)[1] === quad && A.pulses.at(-1)[0].label === res.label);
+  }
+  check('every direction it can give has words', ['middle', ...Object.keys(QUAD)].every(k => R.zoneNames[k]));
+
+  // The edge where there is none. Nothing live is `null`, which is a
+  // different sentence from "the middle": the room is even, not warm.
+  {
+    const st = createState();
+    A.set([]);
+    const res = A.temp.read(st);
+    check('nothing live is no direction at all', res.ok && res.zone === null && A.temp.hotZone() === null);
+    check('and it says evenly distributed, not a quadrant',
+      A.said.at(-1)[2].endsWith(R.zoneNone) && !Object.values(R.zoneNames).some(n => A.said.at(-1)[2].includes(n)));
+    check('and the chip reads even', A.temp.display(st).sub === 'even');
+  }
+  // Three things that are not heat, one at a time, each beside one that is,
+  // so a filter that went missing shows up as the wrong quadrant.
+  for (const [why, cold] of [
+    ['has not happened yet', { born: null }], ['is over', { dead: true }], ['was handled', { resolved: true }]
+  ]) {
+    A.set([0]);
+    A.tells.push({ ...heat(11), ...cold }, { ...heat(10), ...cold });
+    check(`a tell that ${why} does not pull the reading toward it`, A.temp.hotZone() === 'front-left');
+    A.tells.shift();
+    check(`and a room with only tells like that has no direction`, A.temp.hotZone() === null);
+  }
+  A.set([0]);
+  A.tells.push(heat(99));
+  {
+    let got = 'threw';
+    try { got = A.temp.hotZone(); } catch { /* the check below says so */ }
+    check('a tell on a seat nobody is in is ignored rather than thrown on', got === 'front-left');
+  }
+
+  // The middle. #890: two quadrants level at the top used to read as
+  // whichever one's tell happened to be born first, so the same room gave two
+  // answers. Level is the middle now, in either order.
+  A.set([0, 11]);
+  const oneWay = A.temp.hotZone();
+  A.set([11, 0]);
+  check('two corners level with each other read as the middle', oneWay === 'middle' && A.temp.hotZone() === 'middle');
+  A.set([0, 1, 10, 11]);
+  check('two against two is still the middle', A.temp.hotZone() === 'middle');
+  A.set([0, 2, 4, 6]);
+  check('one in every quadrant is the middle', A.temp.hotZone() === 'middle');
+  A.set([0, 1, 11]);
+  check('two against one is a direction', A.temp.hotZone() === 'front-left');
+  {
+    const st = createState();
+    A.set([0, 11]);
+    A.temp.read(st);
+    check('the middle has its own words',
+      A.said.at(-1)[2].endsWith(R.zoneTemplate.replace('{zone}', R.zoneNames.middle)));
+  }
+  // The share a quadrant needs, from both sides of the line. 4 of 9 is 0.444
+  // and 5 of 11 is 0.4545; CFG.roomTemp.quadrantMinShare is 0.45.
+  A.set([4, 5, 8, 9, 6, 7, 10, 2, 3]);
+  check('a clear leader with 4 of 9 is under the share, so the middle', A.temp.hotZone() === 'middle');
+  A.set([4, 5, 8, 9, 4, 6, 7, 10, 2, 3, 0]);
+  check('a leader with 5 of 11 is over it, so a direction', A.temp.hotZone() === 'back-left');
+
+  // Constraint 9: it reads where the chart put the kid, not who the kid is.
+  {
+    const c = mkChart();
+    c.swapDesks(0, 11);
+    const B = mk(mkStudents(c));
+    B.set([0]);
+    check('a kid moved to the back right is heat in the back right', B.temp.hotZone() === 'back-right');
+    B.set([11]);
+    check('and the kid who took the front left desk is heat there', B.temp.hotZone() === 'front-left');
+  }
+
+  // Constraint 8: a direction, never a name.
+  {
+    const names = sData.roster.map(r => r.name);
+    let named = false, extra = false;
+    for (let seat = 0; seat < 12; seat++) {
+      const st = createState();
+      A.set([seat]);
+      const res = A.temp.read(st);
+      const shown = [...A.said.at(-1), A.temp.display(st).label, A.temp.display(st).sub, JSON.stringify(res)].join(' ');
+      if (names.some(n => shown.includes(n))) named = true;
+      if (Object.keys(res).sort().join() !== 'label,ok,zone') extra = true;
+    }
+    check('no reading from any desk names a kid', !named);
+    check('and a reading hands back a band and a direction and nothing else', !extra);
+  }
+
+  // A reading is of the moment you took it.
+  {
+    const st = createState();
+    A.set([0, 1]);
+    A.temp.read(st);
+    A.set([10, 11]);
+    check('the chip keeps the direction you read, not the one the room has now',
+      A.temp.display(st).sub === R.zoneNames['front-left'] && A.temp.hotZone() === 'back-right');
+  }
+
+  // Nothing about what it costs or when it can be used moved with #890.
+  check('the numbers are the numbers it had',
+    R.cost.bandwidth === -0.4 && Object.keys(R.cost).length === 1 && R.cooldownSeconds === 9 &&
+    R.staleAfterSeconds === 55 && CFG.roomTemp.hotTellWeight === 9 && CFG.roomTemp.quadrantMinShare === 0.45);
+  {
+    const st = createState();
+    const before = { ...st };
+    A.set([0, 11]);
+    A.temp.read(st);
+    check('a reading costs its Bandwidth', Math.abs(before.bandwidth - st.bandwidth - 0.4) < 1e-9);
+    check('and moves no other meter', ['mastery', 'masteryPending', 'fidelity', 'rapport', 'restless']
+      .every(k => st[k] === before[k]));
+    check('and is counted once', st.tempUses === 1 && st.tempReadAt === st.t);
+
+    const paid = st.bandwidth;
+    st.t -= R.cooldownSeconds - 0.01;
+    A.set([10, 11]);
+    const refused = A.temp.read(st);
+    check('just inside the cooldown it is refused', refused.ok === false && refused.reason === 'cooldown');
+    check('a refused reading costs nothing and changes nothing',
+      st.bandwidth === paid && st.tempUses === 1 && st.tempZone === 'middle');
+    st.t -= 0.01;
+    check('at the cooldown exactly it reads again', A.temp.read(st).ok === true && st.tempUses === 2);
+
+    st.t -= R.staleAfterSeconds;
+    check('at the stale line exactly it is still fresh', A.temp.display(st).fresh === true);
+    st.t -= 0.01;
+    check('and just past it, stale, with no direction on the chip',
+      A.temp.display(st).fresh === false && A.temp.display(st).sub === R.staleLabel);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // T4 — the seating chart
@@ -751,7 +922,7 @@ check("checks for understanding is a real look-for key, not one you press direct
     msgs.some(m => m[1] === obsData.visit.announced.arrival.title));
   st.obsWindowRemaining = 0.001;
   obs.tick(st, 1 / 60);
-  check('the report knows it was on the calendar', st.obsResult.announced === true);
+  check('the report knows it was on the calendar', st.obsResult?.announced === true);
 }
 
 // An announced visit is readable before it happens, from the day it goes on
@@ -771,6 +942,167 @@ check("checks for understanding is a real look-for key, not one you press direct
   check('it is on the calendar the day it is announced', onDay(found.day - found.leadDays));
   check('and not the day before that', !onDay(found.day - found.leadDays - 1));
   check('and still on it the morning of', onDay(found.day));
+}
+
+// ---- Q12 (#891): the announced visit, beside the surprise one -------------
+//
+// Phase 4 built it. What follows holds the two side by side: what an
+// announcement changes (the countdown, her first line, one sentence in the
+// report) and what it does not (the window, the rubric, the cost of being
+// watched, what a look-for pays).
+{
+  const O = CFG.observation;
+  // One whole visit on the game clock, the way main.js drives it: 60 frames
+  // a real second, the period clock running timeScale times as fast.
+  const play = announced => {
+    const visit = { ...defaultVisit(obsData), announced, leadDays: announced ? 2 : 0 };
+    const { obs, dom, msgs } = mkObs(visit);
+    const st = createState();
+    st.t = CFG.periodSeconds - AT * 60;
+    const out = { obs, st, msgs, phases: new Set(), framesToActive: null, windowAtStart: null,
+      bannerDuringAlert: false, paid: null };
+    for (let f = 1; f < 200 * 60 && st.obsPhase !== 'done'; f++) {
+      obs.tick(st, 1 / 60);
+      st.t -= CFG.timeScale / 60;
+      out.phases.add(st.obsPhase);
+      if (st.obsPhase === 'alert' && dom.paTitle.textContent === obsData.alert.title) out.bannerDuringAlert = true;
+      if (st.obsPhase === 'active' && out.framesToActive === null) {
+        out.framesToActive = f;
+        out.windowAtStart = st.obsWindowRemaining;
+        const b = { fidelity: st.fidelity, bandwidth: st.bandwidth };
+        obs.satisfy(st, 'objective');
+        out.paid = { fidelity: st.fidelity - b.fidelity, bandwidth: st.bandwidth - b.bandwidth };
+      }
+    }
+    return out;
+  };
+  const surprise = play(false), known = play(true);
+
+  check('the surprise visit has its countdown', surprise.phases.has('alert') && surprise.bannerDuringAlert);
+  check('the announced one never has one', !known.phases.has('alert') && !known.bannerDuringAlert &&
+    !known.msgs.some(m => m[1] === obsData.alert.title));
+  check('she is in the room on the first frame of an announced visit', known.framesToActive === 1);
+  check('and nine real seconds later than that on a surprise',
+    O.alertSeconds === 9 && Math.abs(surprise.framesToActive - known.framesToActive - 9 * 60) <= 1);
+  check('each arrives in its own words',
+    known.msgs.some(m => m[1] === obsData.visit.announced.arrival.title) &&
+    !known.msgs.some(m => m[1] === obsData.arrival.title) &&
+    surprise.msgs.some(m => m[1] === obsData.arrival.title) &&
+    !surprise.msgs.some(m => m[1] === obsData.visit.announced.arrival.title));
+
+  check('the window is the same eleven minutes either way',
+    known.windowAtStart === surprise.windowAtStart && known.windowAtStart === O.windowMinutes * 60);
+  // Q10: 0.008 a game second, for the whole window, whoever knew she was coming.
+  const owed = O.masteryDrainPerSec * O.windowMinutes * 60;
+  check('being watched costs the same Mastery either way',
+    Math.abs(known.st.masteryPending - surprise.st.masteryPending) < 1e-6 &&
+    Math.abs(-known.st.masteryPending - owed) < 0.01);
+  check('and that cost is the one it had', O.masteryDrainPerSec === 0.008 && Math.abs(owed - 5.28) < 1e-9);
+  check('a look-for pays the same either way',
+    known.paid.fidelity === surprise.paid.fidelity && known.paid.bandwidth === surprise.paid.bandwidth &&
+    Math.abs(known.paid.fidelity - O.lookForFidelity) < 1e-9);
+  check('both end, with the same rubric, and only one says it was on the calendar',
+    known.st.obsPhase === 'done' && surprise.st.obsPhase === 'done' &&
+    known.st.obsResult.total === surprise.st.obsResult.total &&
+    known.st.obsResult.announced === true && surprise.st.obsResult.announced === false);
+  // Q8: there is no fail state, announced or not. A visit you ignored ends
+  // the way a visit you performed for ends: a line and a number.
+  check('a visit nobody performed for is still only a result',
+    play(true).st.obsResult.satisfied.length <= 1 && known.st.obsPhase === 'done');
+}
+
+// A seed's calendar is the calendar it had. visitFor draws in a fixed order
+// (does she come, when, was it announced, how far ahead, which five), so a
+// draw added or moved in front of another changes every saved semester's
+// week. These are the answers on 2026-10-05, written out. They move with
+// the two chances in data/observation.json as well, on purpose: retuning
+// either one rewrites a semester somebody is in the middle of.
+{
+  const ids = ['p4', 'p5', 'p6', 'p7'];
+  check('seed 4821, day 0, 6th: announced a day ahead',
+    JSON.stringify(visitFor(obsData, { seed: 4821, dayIndex: 0, periodId: 'p6' })) ===
+    '{"periodId":"p6","dayIndex":0,"atMinute":33.4,"announced":true,"leadDays":1,' +
+    '"rubric":["nonverbal","vocabulary","objective","modeling","question"]}');
+  check('seed 4821, day 3, 4th: a surprise',
+    JSON.stringify(visitFor(obsData, { seed: 4821, dayIndex: 3, periodId: 'p4' })) ===
+    '{"periodId":"p4","dayIndex":3,"atMinute":32.7,"announced":false,"leadDays":0,' +
+    '"rubric":["question","objective","check","vocabulary","evidence"]}');
+  check('seed 4821, day 10, 6th: she does not come',
+    visitFor(obsData, { seed: 4821, dayIndex: 10, periodId: 'p6' }) === null);
+  const announcedIn = seed => {
+    const rows = [];
+    for (let d = 0; d < 20; d++) for (const id of ids) {
+      const v = visitFor(obsData, { seed, dayIndex: d, periodId: id });
+      if (v && v.announced) rows.push(`${d}:${id}:${v.leadDays}@${v.atMinute}`);
+    }
+    return rows.join(' ');
+  };
+  check('seed 4821, every announced visit in its first four weeks', announcedIn(4821) ===
+    '0:p6:1@33.4 1:p6:1@25.5 9:p5:2@34 11:p6:2@30.6 12:p5:1@28.7 12:p6:1@28.1 13:p7:1@32.3 ' +
+    '15:p6:2@29.5 16:p4:3@28.7 16:p5:3@28.9 18:p4:2@30.5 19:p5:2@24.7');
+  // A version 1 record migrates forward with seed 0, and a caller that names
+  // no seed gets the same calendar.
+  check('seed 0, the calendar a pre-Phase 4 save plays', announcedIn(0) ===
+    '6:p6:3@24.9 6:p7:3@25 8:p5:2@33.9 9:p5:1@29.1 9:p7:1@28.2 13:p4:3@28.7 13:p6:3@33 ' +
+    '14:p6:1@33.7 15:p7:2@27.4 18:p4:2@26.4 19:p7:3@26.5');
+  check('and no seed at all is seed 0', ids.every(id => [0, 6, 13].every(d =>
+    JSON.stringify(visitFor(obsData, { dayIndex: d, periodId: id })) ===
+    JSON.stringify(visitFor(obsData, { seed: 0, dayIndex: d, periodId: id })))));
+
+  // How a seed chooses between the two: the chances in the data file, drawn
+  // per visit. 20,000 mornings of 4th period across 200 seeds.
+  let n = 0, came = 0, told = 0, leadOnSurprise = false;
+  for (let seed = 1; seed <= 200; seed++) for (let d = 0; d < 100; d++) {
+    n++;
+    const v = visitFor(obsData, { seed, dayIndex: d, periodId: 'p4' });
+    if (!v) continue;
+    came++;
+    if (v.announced) told++;
+    else if (v.leadDays !== 0) leadOnSurprise = true;
+  }
+  check('she comes about as often as the data says',
+    Math.abs(came / n - obsData.visit.chance) < 0.02);
+  check('and about that share of her visits are announced',
+    Math.abs(told / came - obsData.visit.announced.chance) < 0.02);
+  check('a surprise has no lead time', !leadOnSurprise);
+
+  // What the start screen is handed each morning. The first thing wrong is
+  // the one named. Two things this cannot tell apart, said out loud (#147):
+  // the horizon is 4 days and the longest lead is 3, so no row can reach the
+  // horizon and widening the loop changes nothing; and the loop already
+  // walks the days in order, so the sort at the end can be reversed (caught)
+  // but not removed (not caught). A period cannot have two rows either, the
+  // rows live in a Map; what can go wrong is keeping a later visit over a
+  // sooner one, and today's own visit going missing is how that shows.
+  let bad = '';
+  for (let seed = 1; seed <= 30 && !bad; seed++) for (let day = 0; day < 30 && !bad; day++) {
+    const rows = announcedAhead(obsData, { seed, dayIndex: day, periodIds: ids });
+    for (const r of rows) {
+      const real = visitFor(obsData, { seed, dayIndex: r.dayIndex, periodId: r.periodId });
+      if (!r.announced) bad ||= 'a surprise is on the calendar';
+      else if (r.dayIndex - r.leadDays > day) bad ||= 'a row shown before it was announced';
+      else if (r.inDays < 0 || r.dayIndex !== day + r.inDays) bad ||= 'a row that counts its days wrong';
+      else if (!real || real.atMinute !== r.atMinute) bad ||= 'a row that is not the visit';
+    }
+    if (rows.some((r, i) => i && rows[i - 1].inDays > r.inDays)) bad ||= 'rows out of order';
+    for (const id of ids) {
+      const today = visitFor(obsData, { seed, dayIndex: day, periodId: id });
+      if (today?.announced && !rows.some(r => r.periodId === id && r.inDays === 0)) bad ||= "today's own visit is missing";
+    }
+  }
+  check('the morning calendar holds only what was announced, the soonest for each period, soonest first' +
+    (bad ? ` (${bad})` : ''), bad === '');
+  check('with nothing to look across it is empty',
+    announcedAhead(obsData, { seed: 4821, dayIndex: 0, periodIds: [] }).length === 0);
+
+  // The words the announced variant needs, and the house voice on them.
+  const A = obsData.visit.announced;
+  const copy = [A.notice, A.today, A.lead, A.arrival.title, A.arrival.body, A.when['0'], A.when['1'], A.when.n,
+    obsData.report.announced];
+  check('every line the announced visit says is written', copy.every(x => typeof x === 'string' && x.length > 0));
+  check('and has its slots', A.notice.includes('{period}') && A.notice.includes('{when}') &&
+    A.today.includes('{period}') && A.lead.includes('{list}') && A.when.n.includes('{n}'));
+  check('and no exclamation points', copy.every(x => !x.includes('!')));
 }
 
 // ---- Phase 4: the rubric is drawn from a pool ----------------------------
