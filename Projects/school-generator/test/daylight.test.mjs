@@ -375,3 +375,54 @@ test('the room sheet carries the four new columns under their own headings', () 
   assert.equal(room[at + 2], 'north');
   assert.equal(room[at + 3], '0');
 });
+
+// ---------- a wall that runs past a neighbour ----------
+
+// Room 101's north wall is one 40ft segment. A neighbour stands against part
+// of it, and the rest of it faces the open.
+function partlyShared(x0, x1, t) {
+  const { s, shape } = hall();
+  addShape(s, 0, [{ x: x0, z: -20 }, { x: x1, z: -20 }, { x: x1, z: 0 }, { x: x0, z: 0 }], { name: 'Room 102' });
+  addOpening(shape, 0, 0, t, 4, { k: OP_WINDOW });
+  return s;
+}
+
+test('a window on the open end of a wall is daylight, though the neighbour holds the middle', () => {
+  // The neighbour is on x 10 to 30, the wall's midpoint is x 20, the window x 4.
+  const s = partlyShared(10, 30, 0.1);
+  const rows = daylightOnFloor(s, 0);
+  const row = roomRow(rows, 'Room 101');
+  assert.equal(row.glazed, 4 * 4);
+  assert.equal(row.openings, 1);
+  assert.equal(row.borrowed, 0);
+  // It looks north past nothing: the neighbour is beside it, not opposite.
+  assert.equal(row.sky, 90);
+  assert.equal(row.facing, 'north');
+  assert.equal(roomRow(rows, 'Room 102').borrowed, 0, 'the window is not on the neighbour\'s wall');
+  const a = daylightAnalysis(s);
+  assert.ok(!roomRow(a.rooms, 'Room 101').windowless);
+});
+
+test('a window against the neighbour is borrowed, though the middle of the wall is open', () => {
+  // The neighbour is on x 0 to 10, the wall's midpoint is x 20, the window x 5.
+  const s = partlyShared(0, 10, 0.125);
+  const rows = daylightOnFloor(s, 0);
+  const row = roomRow(rows, 'Room 101');
+  assert.equal(row.glazed, 0);
+  assert.equal(row.openings, 0);
+  assert.equal(row.borrowed, 4 * 4);
+  assert.equal(row.facing, null);
+  assert.equal(roomRow(rows, 'Room 102').borrowed, 4 * 4);
+  assert.ok(roomRow(daylightAnalysis(s).rooms, 'Room 101').windowless);
+});
+
+test('two windows on one wall are each read where they stand', () => {
+  const s = partlyShared(10, 30, 0.1);
+  const shape = s.floors[0].shapes.find((sh) => sh.name === 'Room 101');
+  assert.ok(addOpening(shape, 0, 0, 0.5, 6, { k: OP_WINDOW }));
+  const rows = daylightOnFloor(s, 0);
+  const row = roomRow(rows, 'Room 101');
+  assert.equal(row.glazed, 4 * 4);
+  assert.equal(row.borrowed, 6 * 4);
+  assert.equal(roomRow(rows, 'Room 102').borrowed, 6 * 4);
+});

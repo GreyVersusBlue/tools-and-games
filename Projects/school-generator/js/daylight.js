@@ -255,11 +255,15 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         if (len < 0.01) continue;
         const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
-        const mid = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
-        const [s0, s1] = sides(mid.x, mid.z, -uz, ux);
-        // The far side is whichever of the two probes isn't this room.
-        const other = s0 === id ? s1 : s0;
-        const exterior = !other;
+        // **A pane is read where it stands, not where its wall's middle is.**
+        // One wall can run past a neighbour and on into the open, so the
+        // far side is asked for at the pane's own place along the run: a
+        // window on the open end is daylight, and one against the neighbour
+        // is borrowed, whichever of the two the midpoint happens to be. A
+        // window is read at its centre and a curtain wall at its midpoint
+        // still, so glass that straddles the neighbour's corner goes whole
+        // to one side.
+        //
         // **Both sides of an interior pane are credited.** Since Phase 12 a
         // partition belongs to exactly one of the two rooms it divides, so
         // "whose glass is this?" has an owner and a neighbour rather than two
@@ -268,11 +272,15 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
         // An exterior pane also says where it is, which way is out and how
         // much sky that way holds. `t` is its place along the run, `sill` and
         // `head` its height off the floor.
-        const out = s0 ? -1 : 1;
         const lit = (area, t = 0.5, sill = 0, head = WALL_H) => {
+          const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+          const [s0, s1] = sides(x, z, -uz, ux);
+          // The far side is whichever of the two probes isn't this room.
+          const other = s0 === id ? s1 : s0;
+          const exterior = !other;
           let pane = null;
           if (exterior) {
-            const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+            const out = s0 ? -1 : 1;
             const nx = -uz * out, nz = ux * out;
             pane = {
               x, z, nx, nz, area, head,
