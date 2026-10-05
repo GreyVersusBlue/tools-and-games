@@ -1,6 +1,6 @@
 # The Conversion Codex's own data
 
-Three files, all owned by the Pathfinder Converter area. Neither lives in
+Four files, all owned by the Pathfinder Converter area. None lives in
 `Pathfinder/data/`, which the Anathema Archive owns and only
 `Pathfinder/fetch json data.py` writes (#350). The PF2e side of every spell
 lookup reads that folder under its README's contract, rather than copying it.
@@ -39,6 +39,20 @@ mechanics), `partial` (covers some of it) or `none`. `note` tells a GM what
 differs. `match-spells.py` shortlists candidates for whoever edits it; the map
 itself is hand-checked. Every `to` name must exist in `Pathfinder/data/spell.json`;
 `Pathfinder/tests/converter-spells.test.mjs` fails if one does not.
+
+## `spell-map-review.md`
+
+The review list of the weakest `partial` entries, written by
+`node Pathfinder/converter-assets/flag-partials.mjs` and never edited by hand
+(#886). The script scores all 1,087 partial entries on fourteen measured
+reasons (the mapped spell's text is far from the PF1e text, `to` names two
+spells, rank, casting time, save, tradition, damage, area, duration, a focus
+or legacy spell, the names, and two about the note) and prints the 47 that
+score 8 or more, each with the fields compared and the question to answer.
+It reads `spell-map.json` and does not write it: the answers go into the map
+by hand, and the list is regenerated afterwards. `--all` prints every entry's
+score as TSV; `--check` exits 1 when the file is stale, and so does
+`Pathfinder/tests/converter-spells.test.mjs`. The page does not read this file.
 
 ## `embeds.json`
 

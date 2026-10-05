@@ -1288,18 +1288,27 @@ and the one embedded action), and hp is anchored at low below CR 1 and at 2.2
 from CR 1 up (#712, #714, #716), measured on 48 printed pairs: six below CR 1,
 eleven at CR 1 and 2, seventeen at CR 3 to 6, fourteen from CR 7 up. A
 construct's Fort reads no lower than moderate (#715). Every parse fixture's
-special attacks are hand-checked. Open follow-ups, none ranked; the first
-three wait on Devon's go-ahead:
+special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
+all three questions that stood here on 2026-10-05: the flagging pass, go; the
+2e-style rewrite, go; Foundry, yes, he uses it, build the export.
 
-1. **The spell map's 1,087 "partial" entries** were written by a second pass
-   that fixed the first pass's misses; they have not been read by a person. The
-   next step is a pass that flags the weakest of them for Devon to review,
-   not one that rewrites them.
+1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
+   (#886, 2026-10-05), and the list is Devon's to read. They were written by a
+   second pass that fixed the first pass's misses and no person has read them.
+   `node Pathfinder/converter-assets/flag-partials.mjs` scores every one on
+   fourteen measured reasons and writes the 47 weakest (score 8 or more) to
+   `Pathfinder/converter-assets/data/spell-map-review.md`, each with the
+   fields compared and the question to answer. It changed no entry and cannot:
+   the suite compares the map's bytes across a run. What is left is the
+   reading. Answers go into `spell-map.json` by hand; rerun the script
+   afterwards, or `converter-spells.test.mjs` fails on a stale list. The next
+   73 (score 7) are one `CUT` away if the first 47 turn out worth it.
 2. **Special abilities keep their PF1e text** with DCs, action costs and
    condition names rewritten. Monster Core wording exists for eighteen universal
-   abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
-   the open question.
-3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
+   abilities (`UMR_TEXT` in `convert.js`). **A 2e-style rewrite of the rest is
+   go** (Devon, 2026-10-05) and not started.
+3. **A Foundry VTT actor export. Go** (Devon, 2026-10-05: he uses Foundry),
+   and not started.
 4. **Two pairs sat on a per-monster bound; both are investigated (#829,
    2026-10-03) and saves now stop at extreme (#831, 2026-10-04).** The
    medusa's AC converts to 20 against Paizo's 25 (bound 5), and the
@@ -1319,11 +1328,12 @@ three wait on Devon's go-ahead:
      save error 2.12 to 2.07, and no other number of the 48 pairs changed.
      The nalfeshnee's Will goes no further: it is Paizo's redesign, and no
      PF1e number predicts it. The suite holds the rule on all 57 fixtures.
-   - **Floor AC at low. Not recommended as it stands, and not done.** Medusa
-     20 to 22 (print 25) and lich 29 to 30 (31), but the gelatinous cube goes
-     14 to 16 against 10, past its bound. With oozes excepted the mean AC
-     error goes 1.42 to 1.35, on two monsters. It waits on Devon; the suite is
-     green without it and the clamp holds the medusa in place.
+   - **Floor AC at low. Closed: no floor** (2026-10-05; Devon left it to
+     the Selector, whose call it is, on #829's measurement). Medusa 20 to 22
+     (print 25) and lich 29 to 30 (31), but the gelatinous cube goes 14 to 16
+     against 10, past its bound. Reopen only with a rule that excepts oozes
+     and moves every changed AC toward print. The suite is green without it
+     and the clamp holds the medusa in place.
    No pair from CR 15 to 19 exists yet; the balor at 20 is alone above the
    nalfeshnee.
 
