@@ -888,10 +888,12 @@ files are meant to agree; change both.
 
 **Twelve areas that had no workflow now run in CI**, as a matrix in
 `site-ci.yml`; a new project's suite goes there, or in its own workflow calling
-`.github/workflows/suite.yml`. Not in CI, on purpose (#353): Blue Hour's
-`browser.mjs` (real-time movement, #53); Absalom's `browser.mjs` (its own fixed
-Chromium path); two browser suites that only speak Playwright while the
-harness is Puppeteer on Linux, both belonging to archived tools; and anything
+`.github/workflows/suite.yml`. Absalom's `browser.mjs` joined on 2026-10-05 as
+the `browser` job of `absalom-ci.yml`, ported from playwright-core and a fixed
+Chromium path to the harness (#880). Not in CI, on purpose (#353): Blue Hour's
+`browser.mjs` (real-time movement, #53); two browser suites that only speak
+Playwright while the harness is Puppeteer on Linux, both belonging to archived
+tools; and anything
 under `npm run games`/`play`/`previews`. Integer Foundry's was the third of
 those and is in the matrix now — its failure was a click race, not a missing
 method, and every click in it retries a re-query. **It had a second failure mode
@@ -1527,7 +1529,7 @@ project's only plan and is being retired from that file:
   Per-client financing shipped in round 4, multi-offer escalation wars in
   round 5, the hall of past careers in round 6 and the commercial tier in
   round 7. **No next layer from that list is open.** The suite holding all of
-  it is at 405 assertions.
+  it is at 501 assertions.
 - **Deleting content under a live contract is settled, not open** (#861,
   2026-10-04). `repairCareer()` backfills and drops `listingsState`,
   `market.nb` and `knowledge` against what is in `data/`, and it voids what was
@@ -1536,9 +1538,21 @@ project's only plan and is being retired from that file:
   commission and charges no reputation or satisfaction, the client is released
   with one Ledger line under their name, a deal that had already closed keeps
   its commission and leaves without a line, and a queued choice naming anything
-  deleted is dropped. **Still not covered**: a listing whose own agent or
-  neighborhood file is deleted while the listing stays, which is a content
-  error and not a save repair.
+  deleted is dropped.
+- **A listing whose own agent or neighborhood file is gone is left out by the
+  loader, not open** (#879, 2026-10-05). It was a content error with no
+  handling: the MLS board drew no cards, `writeOffer()` threw after pushing the
+  deal, `marketHeat()` threw, and a contract on the listing closed and paid.
+  `dropBrokenContent()` in `js/data.js` drops the listing (and a seller whose
+  house is in a missing neighborhood, and an event naming a missing agent or
+  brokerage), says which file names which id in the console, and a save holding
+  the listing takes #861's void. `tools/smoke.mjs` fails the build on the same
+  lines and on a manifest that disagrees with the folder. **Still open**: a
+  file the manifest names that is not on the server stops the page at "Failed
+  to load" (CI catches it, the page does not go on without it); the toast is
+  2.6 seconds and nothing on the desk says afterwards that content was left
+  out; a seller dropped this way gets #861's two anonymous deleted-client
+  lines, not one under their name.
 
 Two conventions that stay in the README rather than moving here: anything new
 added to `S` belongs in `repairCareer()` the same day it's added, especially if

@@ -8,7 +8,7 @@
 // is the one that drives the real page.
 import fs from "fs"; import path from "path";
 import { fileURLToPath } from "url";
-import { DB } from "../js/data.js";
+import { DB, loadAll, contentErrors, dropBrokenContent } from "../js/data.js";
 import { S, newGame, makeCareer, adoptState, careerSlot, save, loadSave, wipeSave,
          validCareer, repairCareer, rand, SAVE_KEY, SAVE_VERSION, DEFAULT_BROKERAGE,
          getClientRec, contentClient, activeClients, LEVELS,
@@ -22,7 +22,7 @@ import { maybeFireEvent } from "../js/engine/events.js";
 import { FINANCING, financingFor, financingType, closeDaysFor, DEFAULT_FINANCING } from "../js/engine/financing.js";
 import * as Esc from "../js/engine/escalation.js";
 import * as Com from "../js/engine/commercial.js";
-import { trueValue } from "../js/engine/market.js";
+import { trueValue, marketHeat } from "../js/engine/market.js";
 
 /* ------------------------------------------------------------------ harness */
 let passed = 0; const failures = [];
@@ -47,6 +47,71 @@ function memStore() {
 
 /* ------------------------------------------------------------------ content */
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data");
+
+/**
+ * The content check (#879). data/ is edited by hand and the manifest is a
+ * second list of the same files, so the two can disagree, and a file can name
+ * an id nothing has. Each line below is a sentence a person editing data/ can
+ * act on. `io.read(path)` returns a file's text or throws, `io.list(cat)` is
+ * what is in the folder: the suite hands it the real data/ here, and doctored
+ * copies at the bottom of this file to show each sentence can be said.
+ *
+ * The cross-references are not restated here. They go through
+ * dropBrokenContent(), the pass the loader itself runs, so what fails the
+ * build and what the game leaves out cannot drift apart. An agent's brokerage
+ * is the one reference the game never reads, and the only one checked here.
+ */
+function auditContent(io) {
+  const problems = [];
+  let manifest;
+  try { manifest = JSON.parse(io.read("manifest.json")); }
+  catch (e) { return [`data/manifest.json does not parse: ${e.message}`]; }
+  const db = {}, from = {};
+  for (const cat of Object.keys(DB)) {
+    db[cat] = {};
+    const listed = new Set();
+    if (!Array.isArray(manifest[cat])) problems.push(`data/manifest.json has no "${cat}" list`);
+    else for (const p of manifest[cat]) {
+      if (listed.has(p)) { problems.push(`data/manifest.json lists ${p} twice`); continue; }
+      listed.add(p);
+      let text, o;
+      try { text = io.read(p); }
+      catch { problems.push(`data/manifest.json names ${p}, and there is no such file`); continue; }
+      try { o = JSON.parse(text); }
+      catch (e) { problems.push(`data/${p} does not parse: ${e.message}`); continue; }
+      if (!o || typeof o.id !== "string" || !o.id) { problems.push(`data/${p} has no id`); continue; }
+      const key = cat + "/" + o.id;
+      // The loader files by id, so the second of these would replace the first.
+      if (key in from) { problems.push(`data/${p} and data/${from[key]} both have the id "${o.id}"`); continue; }
+      db[cat][o.id] = o; from[key] = p;
+    }
+    for (const f of io.list(cat)) {
+      if (!listed.has(cat + "/" + f)) problems.push(`data/${cat}/${f} is not in data/manifest.json, so the game never loads it`);
+    }
+  }
+  problems.push(...dropBrokenContent(db, (cat, id) => "data/" + from[cat + "/" + id]));
+  for (const a of Object.values(db.agents)) {
+    if (!(a.brokerageId in db.brokerages)) {
+      problems.push(`data/${from["agents/" + a.id]}: brokerageId is ${JSON.stringify(a.brokerageId)}, and no file listed under "brokerages" in data/manifest.json has that id`);
+    }
+  }
+  return problems;
+}
+const diskIO = {
+  read: p => fs.readFileSync(path.join(root, p), "utf8"),
+  list: cat => fs.readdirSync(path.join(root, cat)).filter(f => f.endsWith(".json")),
+};
+{
+  const problems = auditContent(diskIO);
+  if (problems.length) {
+    // Nothing below means anything on content that does not hold together, and
+    // most of it would die of a TypeError that names no file. Say it and stop.
+    console.log(`SMOKE FAILED: data/ has ${problems.length} content error${problems.length === 1 ? "" : "s"}`);
+    problems.forEach(x => console.log("  - " + x));
+    process.exit(1);
+  }
+  ok(true, "data/ holds together: every file the manifest names is there and parses, every id is unique, every file in a folder is listed, and every id a file names resolves");
+}
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json")));
 for (const cat of Object.keys(DB)) for (const p of manifest[cat]) {
   const o = JSON.parse(fs.readFileSync(path.join(root, p)));
@@ -1549,6 +1614,312 @@ console.log("\na contract on deleted content:");
       ok(left.includes("a poach that still resolves"), "while a choice whose every id still resolves stays in the queue", left.join(" | "));
     }));
   }
+}
+
+/* ------------------------- a listing whose agent or neighborhood is not there */
+// #879. The other half of #861: there the listing's file was deleted, here the
+// listing stays and a file it names is gone. Before this the flyer threw on
+// `DB.agents[l.listingAgentId].name`, writeOffer() threw after it had pushed
+// the deal, marketHeat() threw on `nb.buyerDemand`, and a contract on such a
+// listing closed and paid. The loader takes the listing out now, and a save
+// holding it meets #861's repair as a listing that is gone.
+console.log("\na listing whose own agent or neighborhood is gone:");
+const unlist = (cat, file) => m => { m[cat] = m[cat].filter(p => p !== cat + "/" + file); return m; };
+{
+  const store3 = memStore();
+  const AG = "ag_sal_dimeo", NB = "nb_carver_mill";
+  const SALS = ["ls_0001", "ls_0003", "ls_0011", "ls_0019", "ls_0103"];
+  const MILL = ["ls_0001", "ls_0002", "ls_0003", "ls_0004", "ls_0103"];
+  const sizes = () => JSON.stringify(Object.fromEntries(Object.entries(DB).map(([k, v]) => [k, Object.keys(v).length])));
+  const books = () => JSON.stringify([S.cash, S.rep, S.xp, S.stats.closed, S.stats.volume]);
+  const days = n => { try { for (let i = 0; i < n; i++) endDay(); return null; } catch (e) { return e.message; } };
+  /** Every id the engine and ui.js read straight through, read the way they read it. */
+  const reads = () => {
+    try {
+      for (const l of Object.values(DB.listings)) {
+        void DB.agents[l.listingAgentId].name;
+        void DB.neighborhoods[l.neighborhood].name;
+        if (!Number.isFinite(marketHeat(l.neighborhood))) return "marketHeat is not a number for " + l.id;
+      }
+      for (const c of Object.values(DB.clients)) {
+        if (c.sellerListing) void marketHeat(c.sellerListing.neighborhood);
+        for (const n of (c.statedReqs && c.statedReqs.neighborhoods) || []) void DB.neighborhoods[n].name;
+      }
+      for (const ev of Object.values(DB.events)) {
+        if (ev.effect.agentId) void DB.agents[ev.effect.agentId].name;
+        if (ev.effect.brokerageId) void DB.brokerages[ev.effect.brokerageId].name;
+      }
+      return null;
+    } catch (e) { return e.message; }
+  };
+  /**
+   * Run `fn` with one content file gone. `settle` is whether the loader's pass
+   * runs over what is left, which is the difference between the bug and the
+   * fix. Everything is put back afterwards, in its original order.
+   */
+  const fileGone = (cat, id, settle, fn) => {
+    const snap = Object.fromEntries(Object.keys(DB).map(c => [c, { ...DB[c] }]));
+    const areas = Object.values(DB.clients).filter(c => c.statedReqs).map(c => [c, c.statedReqs.neighborhoods]);
+    delete DB[cat][id];
+    try { return fn(settle ? dropBrokenContent(DB) : []); }
+    finally {
+      for (const c in snap) { for (const k of Object.keys(DB[c])) delete DB[c][k]; Object.assign(DB[c], snap[c]); }
+      for (const [c, a] of areas) c.statedReqs.neighborhoods = a;
+    }
+  };
+
+  eq(dropBrokenContent(DB).length, 0, "the loader's pass has nothing to say about the shipped content");
+  eq(sizes(), JSON.stringify(counts), "and leaves every file of it in");
+
+  // --- the bug, before the pass runs: one read per missing file.
+  newGame("bk_hearthstone");
+  fileGone("agents", AG, false, () => {
+    const threw = reads();
+    ok(threw !== null && threw.includes("'name'"), "confirms the bug: with an agent's file gone and the listing left in, the flyer's read of the agent's name throws", String(threw));
+  });
+  fileGone("neighborhoods", NB, false, () => {
+    let threw = null;
+    try { marketHeat(DB.listings["ls_0001"].neighborhood); } catch (e) { threw = e.message; }
+    ok(threw !== null && threw.includes("'buyerDemand'"), "and with a neighborhood's file gone, marketHeat() throws on the listing that stands in it", String(threw));
+  });
+
+  // --- what the pass says, and what it takes out.
+  fileGone("agents", AG, true, errors => {
+    eq(errors.map(x => x.split(":")[0]).sort().join(" "), SALS.map(id => `data/listings/${id}.json`).join(" "),
+      "an agent's file gone: one line for each of the five listings that name them, starting with the listing's own file");
+    ok(errors.every(x => x.includes('listingAgentId is "ag_sal_dimeo"') && x.includes('under "agents" in data/manifest.json') && x.includes("data/agents/ag_sal_dimeo.json")),
+      "each says which field, which id, which list in the manifest and where the file would be", errors[0]);
+    ok(errors.every(x => x.endsWith("The listing is left out of the game.")), "and what the game did about it", errors[0]);
+    eq(SALS.filter(id => id in DB.listings).length, 0, "those five are out of the game");
+    eq(Object.keys(DB.listings).length, counts.listings - 5, "and the other listings are all still in it");
+  });
+  fileGone("neighborhoods", NB, true, errors => {
+    const of = part => errors.filter(x => x.includes(part)).map(x => x.split(":")[0].replace(/^data\/\w+\/|\.json$/g, "")).sort().join(" ");
+    eq(of(": neighborhood is "), MILL.join(" "), "a neighborhood's file gone: one line for each of the five listings that stand in it");
+    eq(of(": sellerListing.neighborhood is "), "cl_0102", "one for the seller whose house is there");
+    eq(of(": an entry in statedReqs.neighborhoods is "), "cl_0001 cl_0004 cl_0008 cl_0202", "and one for each of the four buyers who asked for it");
+    eq(errors.length, 10, "and nothing else");
+    eq(MILL.filter(id => id in DB.listings).length, 0, "the five listings are out of the game");
+    ok(!("cl_0102" in DB.clients), "and so is the seller, whose listing is inside their file");
+    eq(Object.keys(DB.clients).length, counts.clients - 1, "the buyers all stay");
+    eq(JSON.stringify(DB.clients["cl_0004"].statedReqs.neighborhoods), '["nb_old_foundry"]', "with the missing area off their list and the other one on it");
+    eq(JSON.stringify(DB.clients["cl_0001"].statedReqs.neighborhoods), "[]", "a buyer who asked for nowhere else is left flexible");
+  });
+  fileGone("agents", "ag_denny_kessler", true, errors => {
+    ok(!("ev_poach_attempt" in DB.events) && errors.some(x => x.startsWith('data/events/ev_poach_attempt.json: effect.agentId is "ag_denny_kessler"')),
+      "an event whose handler names a missing agent is left out, in a line of its own", errors.join(" | "));
+    eq(Object.keys(DB.events).length, counts.events - 1, "and only that event");
+  });
+  fileGone("brokerages", "bk_axiom", true, errors => {
+    eq(errors.join(" | ").replace(/, and no file.*/, ""), 'data/events/ev_brokerage_recruit_axiom.json: effect.brokerageId is "bk_axiom"',
+      "a recruiting event for a brokerage whose file is gone is the one thing left out");
+    ok(!("ev_brokerage_recruit_axiom" in DB.events) && Object.keys(DB.events).length === counts.events - 1, "and it is out");
+  });
+
+  // --- the pass on a hand-built db: the file name it is told, and two missing ids on one listing.
+  {
+    const tiny = () => ({ listings: { ls_x: { id: "ls_x", listingAgentId: "ag_x", neighborhood: "nb_x" } },
+      agents: {}, neighborhoods: {}, clients: {}, brokerages: {}, events: {} });
+    const a = dropBrokenContent(tiny(), () => "data/listings/an-odd-name.json");
+    eq(a.length, 2, "a listing missing both its agent and its neighborhood gets a line for each");
+    ok(a.every(x => x.startsWith("data/listings/an-odd-name.json: ")), "under the path the loader read it from", a[0]);
+    const b = dropBrokenContent(tiny());
+    ok(b.every(x => x.startsWith("data/listings/ls_x.json: ")), "or the usual path for its id when nobody says", b[0]);
+    const c = tiny(); c.listings.ls_x.listingAgentId = undefined; c.neighborhoods.nb_x = { id: "nb_x" };
+    const cl = dropBrokenContent(c);
+    ok(cl.length === 1 && cl[0].includes("listingAgentId is undefined, and no file") && !("ls_x" in c.listings),
+      "a listing with no agent written on it at all is said as plainly, and is left out", cl.join(" | "));
+  }
+
+  // --- a fresh career on what is left, and a save that already held the listing.
+  for (const [cat, id, what, gone] of [["agents", AG, "an agent's file", SALS], ["neighborhoods", NB, "a neighborhood's file", MILL]]) {
+    fileGone(cat, id, true, () => {
+      newGame("bk_hearthstone");
+      eq(gone.filter(x => x in S.listingsState).length, 0, `${what} gone: a new career has no market state for the listings left out`);
+      eq(reads(), null, "and every agent and neighborhood the game reads through is there");
+      const rec = Clients.meetClient("cl_0005");
+      const l = DB.listings["ls_0009"];
+      Deals.startViewing(rec, l);
+      const d = Deals.writeOffer(rec, l, Math.round(S.listingsState[l.id].price * 0.97), { closeDays: 28 });
+      ok(["accept", "counter", "reject"].includes(Deals.agentRespond(d, d.price).verdict), "an offer on a listing still in the game is written and answered");
+      const threw = days(60);
+      ok(threw === null && Number.isFinite(S.cash) && Number.isFinite(S.rep), "and sixty days play on with finite books", threw || "");
+    });
+
+    // In the market, nothing of the player's on it.
+    newGame("bk_hearthstone");
+    let before = books(), logBefore = S.log.length;
+    save(store3);
+    fileGone(cat, id, true, () => {
+      ok(loadSave(store3), `${what} gone: a save with the listing only in the market loads`);
+      eq(gone.filter(x => x in S.listingsState).length, 0, "its market state leaves the save");
+      eq(S.log.length, logBefore, "with no Ledger line, since the player had nothing on it");
+      eq(books(), before, "and no number moved");
+    });
+
+    // An offer out on it.
+    newGame("bk_hearthstone");
+    let rec = Clients.meetClient("cl_0001");
+    Deals.writeOffer(rec, DB.listings["ls_0001"], 158000, { closeDays: 21 });
+    before = books(); logBefore = S.log.length;
+    save(store3);
+    fileGone(cat, id, true, () => {
+      loadSave(store3);
+      const lines = S.log.slice(0, S.log.length - logBefore);
+      ok(lines.length === 1 && lines[0].text.startsWith("Offer withdrawn at $158,000") && lines[0].recId === rec.recId,
+        `${what} gone: an offer out on the listing is withdrawn in one line under the buyer's name`, lines.map(x => x.text).join(" | "));
+      eq(S.deals.length, 0, "the offer is off the table");
+      eq(getClientRec(rec.recId).dealId, null, "and the buyer is free to write another");
+      eq(books(), before, "at no cost");
+    });
+
+    // Under contract on it. Before #879 this one closed and paid.
+    newGame("bk_hearthstone");
+    rec = Clients.meetClient("cl_0001");
+    Deals.acceptDeal(Deals.writeOffer(rec, DB.listings["ls_0001"], 160000, { closeDays: 21 }));
+    before = books(); logBefore = S.log.length;
+    const mood = JSON.stringify([rec.satisfaction, rec.patience]);
+    save(store3);
+    fileGone(cat, id, true, () => {
+      loadSave(store3);
+      const lines = S.log.slice(0, S.log.length - logBefore);
+      ok(lines.length === 1 && lines[0].text.startsWith("Contract void at $160,000") && lines[0].recId === rec.recId,
+        `${what} gone: a contract on the listing is void in one line under the buyer's name`, lines.map(x => x.text).join(" | "));
+      eq(books(), before, "it pays no commission and charges no reputation");
+      const r = getClientRec(rec.recId);
+      eq(JSON.stringify([r.satisfaction, r.patience]), mood, "the buyer is no less satisfied and no less patient");
+      eq(r.dealId, null, "and is released");
+      const threw = days(60);
+      ok(threw === null && S.stats.closed === 0, "sixty days on, the sale has not closed and nothing threw", threw || `closed ${S.stats.closed}`);
+    });
+  }
+
+  // --- the player's own listing, in a neighborhood whose file is gone. The
+  // house is inside the seller's file, so it leaves the way a deleted client
+  // does (#861): the agreement ends, and its closing never pays.
+  for (const stage of ["live", "underContract"]) {
+    newGame("bk_hearthstone");
+    const pl = Seller.takeListing(Clients.meetClient("cl_0102"));
+    Seller.goLive(pl, Seller.suggestedPrice(pl), 1);
+    if (stage === "underContract") { Seller.spawnNPCOffer(pl); Seller.respondToOffer(pl, pl.offers[0], "accept"); }
+    eq(pl.status, stage, `a listing of the player's in Carver Mill is ${stage}`);
+    const before = books(), logBefore = S.log.length;
+    save(store3);
+    fileGone("neighborhoods", NB, true, () => {
+      loadSave(store3);
+      eq(S.playerListings.length, 0, "the neighborhood's file gone: the listing agreement ends");
+      eq(S.clients.length, 0, "the seller is off the book");
+      eq(S.schedule.length, 0, "nothing of it is left on the calendar");
+      eq(S.log.slice(0, S.log.length - logBefore).map(x => x.text).join(" | "),
+        "A listing agreement ended: its seller is no longer in the game. | A client whose file is no longer in the game has been removed from your book.",
+        "and the Ledger says both, in the words a deleted client gets");
+      eq(books(), before, "with no number moved");
+      const threw = days(60);
+      ok(threw === null && S.stats.closed === 0 && books() === before.replace(/^\[[^,]*,[^,]*/, `[${S.cash},${S.rep}`),
+        "sixty days on, nothing closed, nothing was paid for it, and the daily seller tick did not throw", threw || `closed ${S.stats.closed}`);
+    });
+  }
+
+  // --- the loader itself, end to end, on a manifest that no longer lists Sal.
+  {
+    const realFetch = globalThis.fetch, realError = console.error;
+    const printed = [];
+    const serve = editManifest => async url => {
+      const rel = url.replace(/^data\//, "");
+      const text = rel === "manifest.json" ? JSON.stringify(editManifest(JSON.parse(diskIO.read(rel)))) : diskIO.read(rel);
+      return { ok: true, json: async () => JSON.parse(text) };
+    };
+    const emptyDB = () => { for (const c in DB) for (const k of Object.keys(DB[c])) delete DB[c][k]; };
+    console.error = (...a) => printed.push(a.join(" "));
+    try {
+      globalThis.fetch = serve(unlist("agents", AG + ".json"));
+      emptyDB();
+      await loadAll();
+      eq(contentErrors.length, 5, "loadAll() on a manifest without Sal's file keeps five lines for the page to count");
+      eq(printed.join("\n"), contentErrors.map(x => "Closing Time content error: " + x).join("\n"), "and prints each to the console once, under the game's name");
+      ok(contentErrors.every(x => /^data\/listings\/ls_\d+\.json: listingAgentId is "ag_sal_dimeo"/.test(x)), "naming the file it fetched", contentErrors[0]);
+      eq(SALS.filter(x => x in DB.listings).length + "/" + Object.keys(DB.listings).length, "0/" + (counts.listings - 5), "the five listings are not in what it loaded, and the rest are");
+      printed.length = 0;
+      globalThis.fetch = serve(m => m);
+      emptyDB();
+      await loadAll();
+      eq(contentErrors.length + "/" + printed.length, "0/0", "loadAll() on the shipped manifest keeps no line and prints none");
+      eq(sizes(), JSON.stringify(counts), "and loads every file");
+    } finally { globalThis.fetch = realFetch; console.error = realError; }
+  }
+}
+
+/* ------------------------------------------------ the content check's controls */
+// auditContent() passed on the real data/ at the top of this file, which shows
+// nothing unless it can also fail. Each copy below has one thing wrong with
+// it, and the check has to say that thing and nothing else.
+console.log("\nthe content check, on doctored copies of data/:");
+{
+  /** data/ with files replaced (text), deleted (null) or added, and the manifest edited. */
+  const doctored = (files = {}, editManifest = m => m) => {
+    const m = editManifest(JSON.parse(diskIO.read("manifest.json")));
+    return {
+      read: p => {
+        if (p === "manifest.json") return typeof m === "string" ? m : JSON.stringify(m);
+        if (!(p in files)) return diskIO.read(p);
+        if (files[p] === null) throw new Error("no such file");
+        return files[p];
+      },
+      list: cat => [...new Set([...diskIO.list(cat), ...Object.keys(files).filter(p => p.startsWith(cat + "/")).map(p => p.slice(cat.length + 1))])]
+        .filter(f => files[cat + "/" + f] !== null),
+    };
+  };
+  const edited = (p, fn) => ({ [p]: JSON.stringify(fn(JSON.parse(diskIO.read(p)))) });
+  const only = (problems, n, ...parts) => problems.length === n && problems.filter(x => parts.every(part => x.includes(part))).length === n;
+  const show = problems => problems.slice(0, 3).join(" | ") + (problems.length > 3 ? ` | and ${problems.length - 3} more` : "");
+
+  let p = auditContent(doctored());
+  eq(p.length, 0, "an untouched copy reads clean, so the doctoring adds nothing of its own");
+
+  p = auditContent(doctored({ "agents/ag_sal_dimeo.json": null }, unlist("agents", "ag_sal_dimeo.json")));
+  ok(only(p, 5, "data/listings/", 'listingAgentId is "ag_sal_dimeo"'), "an agent's file deleted and taken off the manifest: the five listings that still name them, by file", show(p));
+
+  p = auditContent(doctored({ "neighborhoods/nb_carver_mill.json": null }, unlist("neighborhoods", "nb_carver_mill.json")));
+  ok(only(p, 10, '"nb_carver_mill"', 'under "neighborhoods"') && p.filter(x => x.startsWith("data/listings/")).length === 5,
+    "a neighborhood's file deleted and taken off the manifest: five listings, a seller and four buyers", show(p));
+
+  p = auditContent(doctored({ "agents/ag_sal_dimeo.json": null }));
+  ok(p.length === 6 && p[0] === "data/manifest.json names agents/ag_sal_dimeo.json, and there is no such file",
+    "a file deleted and left on the manifest: said first, ahead of the five listings it strands", show(p));
+
+  p = auditContent(doctored({ "listings/ls_0002.json": "{ \"id\": \"ls_0002\", " }));
+  ok(only(p, 1, "data/listings/ls_0002.json does not parse: "), "a file that is not JSON: named, with the parser's reason", show(p));
+
+  p = auditContent(doctored({ "listings/ls_copy.json": diskIO.read("listings/ls_0001.json") }, m => { m.listings.push("listings/ls_copy.json"); return m; }));
+  ok(only(p, 1, 'data/listings/ls_copy.json and data/listings/ls_0001.json both have the id "ls_0001"'), "two files with one id: both named", show(p));
+
+  p = auditContent(doctored({}, m => { m.listings.push("listings/ls_0001.json"); return m; }));
+  ok(only(p, 1, "data/manifest.json lists listings/ls_0001.json twice"), "a path on the manifest twice", show(p));
+
+  p = auditContent(doctored({ "listings/ls_stray.json": "{\"id\":\"ls_stray\"}" }));
+  ok(only(p, 1, "data/listings/ls_stray.json is not in data/manifest.json"), "a file in the folder that the manifest does not list", show(p));
+
+  p = auditContent(doctored(edited("events/ev_rate_dip.json", o => { delete o.id; return o; })));
+  ok(only(p, 1, "data/events/ev_rate_dip.json has no id"), "a file with no id", show(p));
+
+  p = auditContent(doctored({}, m => { delete m.events; return m; }));
+  ok(p.length === 1 + counts.events && p[0] === 'data/manifest.json has no "events" list',
+    "a manifest missing a whole list: said, and then every file it orphans", show(p));
+
+  p = auditContent(doctored({}, () => "{ \"listings\": ["));
+  ok(only(p, 1, "data/manifest.json does not parse: "), "a manifest that is not JSON", show(p));
+
+  p = auditContent(doctored(edited("agents/ag_sal_dimeo.json", o => { o.brokerageId = "bk_nowhere"; return o; })));
+  ok(only(p, 1, 'data/agents/ag_sal_dimeo.json: brokerageId is "bk_nowhere"'), "an agent at a brokerage nothing has the id of", show(p));
+
+  p = auditContent(doctored(edited("events/ev_poach_attempt.json", o => { o.effect.agentId = "ag_nobody"; return o; })));
+  ok(only(p, 1, 'data/events/ev_poach_attempt.json: effect.agentId is "ag_nobody"'), "an event that sends an agent nothing has the id of", show(p));
+
+  p = auditContent(doctored(edited("listings/ls_0007.json", o => { o.neighborhood = "nb_elsewhere"; return o; })));
+  ok(only(p, 1, 'data/listings/ls_0007.json: neighborhood is "nb_elsewhere"'), "a listing in a neighborhood nothing has the id of", show(p));
+
+  p = auditContent(doctored(edited("clients/cl_0103.json", o => { o.sellerListing.neighborhood = "nb_elsewhere"; return o; })));
+  ok(only(p, 1, 'data/clients/cl_0103.json: sellerListing.neighborhood is "nb_elsewhere"'), "a seller's house in one", show(p));
 }
 
 /* ------------------------------------------------------------------- report */

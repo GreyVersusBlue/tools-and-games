@@ -27,7 +27,8 @@ guard-rails in `smoke.mjs` and three in `browser.mjs` were broken on purpose
 (#34), each failing at the assertion whose comment claims it — including two
 that did *not* fail first time and had to be written before they would. The
 Node suites run in CI, on `.github/workflows/absalom-ci.yml`; the browser one
-needs playwright-core and is run by hand. Arc two has one phase left: Phase 7,
+needed playwright-core and was run by hand until #880 ported it to
+`Tools/board-check`'s harness and gave it a job in the same workflow. Arc two has one phase left: Phase 7,
 two more heirs, on Claude Opus 5.
 
 Round one made an unwinnable vignette winnable and broke the single file into ES
@@ -315,15 +316,14 @@ new one.
   asserts DOM and counts pixels of a known colour, which is not the same as
   noticing that the board looks wrong. A golden-image pipeline is the only
   thing that would, and this project has no build step to put one in.
-- **`test/browser.mjs` is not in CI**, because it needs playwright-core and a
-  browser on disk. That is the same arrangement Blue Hour has, and it means the
-  surface is checked when somebody remembers to check it. Looked at again on
-  2026-10-04 and not wired: the suite imports `playwright-core`, which this
-  folder has no `package.json` to install, and launches Chromium from a fixed
-  path (`/opt/pw-browsers/chromium-1194`, or `$CHROME`). `suite.yml` gives a
-  job Puppeteer through `Tools/board-check`, so joining CI is a port of its
-  launch, page and input calls to that harness, the way Integer Foundry's was
-  done, and not a few lines in `absalom-ci.yml`.
+- **`test/browser.mjs` is in CI** (#880, 2026-10-05): the `browser` job of
+  `absalom-ci.yml`, after the Node job. It was ported from playwright-core and
+  a fixed Chromium path to `Tools/board-check`'s harness, check for check: the
+  same 54 names in the same order. What the port left open: the satchel has
+  two lines that resolve it, `save.js`'s `freshRun` and `content.js`'s
+  `selectPc`, and the suite goes red only for the first, so `selectPc`'s is
+  unguarded here; and the job's first real run is the pull request that
+  carries it, since a workflow cannot be run from a worktree.
 
 **Tests and the harness**
 - `balance.mjs` reports per encounter and per area, holds a baseline it

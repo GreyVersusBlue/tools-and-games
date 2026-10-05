@@ -38,7 +38,7 @@ absalom-inheritance/
                               table of a hit-and-hide driver with the settling heal on and off
   test/baseline.json          the numbers the last commit measured, rewritten with --write-baseline
   test/autopilot.mjs          a competent player, shared by both suites
-  test/browser.mjs            the surface, in real Chromium: the hint bar, the log's colours,
+  test/browser.mjs            the surface, in headless Chromium: the hint bar, the log's colours,
                               the build's own colours on the heir, a keyboard that answers when it refuses,
                               four picker cards stacking to one column at 375px, a per-build
                               satchel in the inventory panel, the second buff's ring and
@@ -77,19 +77,21 @@ numbers to the decimal and the comparison is exact rather than statistical. A de
 to the numbers fails here once; read the drift lines, decide they are what you meant, and rewrite
 the file in the same commit.
 
-There is a third suite, and it is not in CI because it needs a browser:
+There is a third suite, and it needs a browser. It borrows `Tools/board-check`'s harness for
+the server and the launch (#880), so the one install is that folder's, and CI runs it as the
+`browser` job of `.github/workflows/absalom-ci.yml`:
 
 ```
-npm i playwright-core
+cd Tools/board-check && npm ci --ignore-scripts && cd ../..
 node Projects/absalom-inheritance/test/browser.mjs
 ```
 
-It serves the site root, boots the real page in real Chromium and asserts what a player sees —
+It serves the site root, boots the real page in headless Chromium and asserts what a player sees —
 the hint bar after a stairway, the two new log colours, the chosen build's own colours on the
 heir on the canvas, the sentence the keyboard says when it refuses a command (locked #39), and `?pack=`
 opening the second adventure off the same HTML file under its own storage key, and a sprite
 sheet that will not load stopping the boot with the reason in the hint bar. 54 checks, about
-a minute. Nothing in it is a frame-timing assertion, so locked #53 does not apply:
+ten seconds. Nothing in it is a frame-timing assertion, so locked #53 does not apply:
 this game draws on input and sits still between clicks.
 
 To find out *why* a number moved, `--variant name={json}` patches the pack (RFC 7386 merge patch,
