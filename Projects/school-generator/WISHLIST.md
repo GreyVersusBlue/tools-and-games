@@ -383,10 +383,11 @@ and add to this list rather than starting a new one.
   reports one gained, lost or repainted (#856), and the brush refuses a face
   with no wall on its line (#857). An erased wall takes its accents with it,
   at the eraser and on load (#859), and the re-bake keeps two colours on one
-  straight wall (#860). Left: nine fixed colours and no free
+  straight wall (#860). The vertex tool settles them when a corner is let
+  go, a corner removed, a selection turned or mirrored, or a copy pasted: a
+  room's own wall keeps its accent and a face whose wall stayed behind loses
+  it (#862). Left: nine fixed colours and no free
   pick; a free-standing wall (`floor.walls`) has no ring and so no accent;
-  a wall dragged off its accent's line with the vertex tool keeps the accent
-  until the next load;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.

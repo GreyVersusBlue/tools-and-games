@@ -1325,6 +1325,188 @@ S.level = 4;
   DB.listings["ls_0101"] = stash;
 }
 
+/* ------------------------------------ a contract on content that was deleted */
+// #861. Every career here is built by the engine and round-tripped through the
+// real load path, and the content is removed the way a content edit removes
+// it: the file is not in DB when the save loads. The blocks further up pin
+// that this does not throw; these pin what the player is left holding.
+console.log("\na contract on deleted content:");
+{
+  const store2 = memStore();
+  /** Run `fn` with one content file missing, then put it back. */
+  const without = (cat, id, fn) => {
+    const stash = DB[cat][id];
+    delete DB[cat][id];
+    try { return fn(); } finally { DB[cat][id] = stash; }
+  };
+  const books = () => JSON.stringify([S.cash, S.rep, S.xp, S.stats.closed, S.stats.volume]);
+  const days = n => { try { for (let i = 0; i < n; i++) endDay(); return null; } catch (e) { return e.message; } };
+
+  // --- buyer side, under contract, and the listing's file is deleted.
+  {
+    newGame("bk_hearthstone");
+    const rec = Clients.meetClient("cl_0001");
+    const d = Deals.writeOffer(rec, DB.listings["ls_0001"], 160000, { closeDays: 21 });
+    Deals.acceptDeal(d);
+    const before = books(), logBefore = S.log.length;
+    const mood = JSON.stringify([rec.satisfaction, rec.patience]);
+    ok(save(store2), "a career under contract on ls_0001 saves");
+    without("listings", "ls_0001", () => {
+      ok(loadSave(store2), "and loads with ls_0001 gone from data/");
+      eq(books(), before, "the void pays nothing and charges nothing: cash, reputation, XP, closings and volume are what they were");
+      const r = getClientRec(rec.recId);
+      eq(r.dealId, null, "the buyer is released from the dead contract");
+      eq(JSON.stringify([r.satisfaction, r.patience]), mood, "and is not angrier or less patient for something nobody did");
+      const lines = S.log.slice(0, S.log.length - logBefore);
+      eq(lines.length, 1, "one Ledger line says so");
+      eq(lines[0] && lines[0].recId, rec.recId, "filed under the buyer, where the per-client filter finds it");
+      ok(!!lines[0] && lines[0].text.startsWith("Contract void at $160,000") && lines[0].text.includes(DB.clients["cl_0001"].name),
+        "and it names the price and the client, since the address went with the file", lines[0] && lines[0].text);
+      const logAfter = S.log.length;
+      ok(save(store2) && loadSave(store2), "the repaired career round-trips again");
+      eq(S.log.length, logAfter, "and the second load says nothing: the line is written once");
+      const r2 = getClientRec(rec.recId);
+      const next = Deals.writeOffer(r2, DB.listings["ls_0002"], 150000, { closeDays: 28 });
+      eq(r2.dealId, next.id, "the buyer can write a new offer on a listing that still exists");
+      const threw = days(30);
+      ok(threw === null && Number.isFinite(S.cash) && Number.isFinite(S.rep), "and thirty days play on with finite books", threw || "");
+    });
+  }
+
+  // --- an offer still out, not yet a contract: withdrawn, not voided.
+  {
+    newGame("bk_hearthstone");
+    const rec = Clients.meetClient("cl_0001");
+    Deals.writeOffer(rec, DB.listings["ls_0001"], 158000, { closeDays: 21 });
+    const logBefore = S.log.length;
+    save(store2);
+    without("listings", "ls_0001", () => {
+      loadSave(store2);
+      const lines = S.log.slice(0, S.log.length - logBefore);
+      ok(lines.length === 1 && lines[0].text.startsWith("Offer withdrawn at $158,000") && lines[0].recId === rec.recId,
+        "an offer that was only pending is withdrawn in its own words, under the buyer's name", lines.map(x => x.text).join(" | "));
+    });
+  }
+
+  // --- deals that already ended. One closed and paid, one dead, both on a
+  // listing deleted afterwards.
+  {
+    newGame("bk_hearthstone");
+    const rec = Clients.meetClient("cl_0001");
+    const d = Deals.writeOffer(rec, DB.listings["ls_0001"], 160000, { closeDays: 21 });
+    Deals.acceptDeal(d);
+    Deals.resolveMilestone(d, d.milestones.find(m => m.type === "closing"));
+    const other = Clients.meetClient("cl_0002");
+    Deals.killDeal(Deals.writeOffer(other, DB.listings["ls_0001"], 150000, {}), "a made-up reason.");
+    eq(S.stats.closed, 1, "a career closes on ls_0001 and is paid for it");
+    const before = books(), logBefore = S.log.length;
+    save(store2);
+    without("listings", "ls_0001", () => {
+      loadSave(store2);
+      eq(S.log.length, logBefore, "deleting the listing afterwards writes no Ledger line: nothing fell through");
+      eq(books(), before, "and the commission, the closing and the volume stay earned");
+      eq(S.deals.length, 0, "while both finished deals leave the save, since nothing can render them");
+    });
+  }
+
+  // --- the commercial tier is the buyer path with a lender's milestones, so
+  // it takes the same void. A loan-shortfall choice is waiting when it lands.
+  {
+    newGame("bk_hearthstone");
+    S.level = 4;
+    const rec = Clients.meetClient("cl_0201");
+    const d = Deals.writeOffer(rec, DB.listings["ls_0102"], 1050000, { closeDays: 45 });
+    Deals.acceptDeal(d);
+    S.choiceQueue.push({ kind: "loanShortfall", dealId: d.id, shortfall: 40000, sizingPrice: 1010000, text: "a made-up shortfall" });
+    const before = books(), logBefore = S.log.length;
+    save(store2);
+    without("listings", "ls_0102", () => {
+      loadSave(store2);
+      eq(books(), before, "a building deleted under contract pays no 2% and charges nothing");
+      eq(S.choiceQueue.length, 0, "the loan-shortfall choice waiting on it is gone with the deal");
+      const lines = S.log.slice(0, S.log.length - logBefore);
+      ok(lines.length === 1 && lines[0].recId === rec.recId && lines[0].text.includes("$1,050,000"),
+        "and the investor gets the same one line, under their name", lines.map(x => x.text).join(" | "));
+      const threw = days(60);
+      ok(threw === null && S.stats.closed === 0, "sixty days on, nothing closed and nothing threw", threw || `closed ${S.stats.closed}`);
+    });
+  }
+
+  // --- seller side. A listing under contract, built by the engine.
+  const sellerId = Object.values(DB.clients).find(c => c.type === "seller").id;
+  const underContract = () => {
+    newGame("bk_hearthstone");
+    const rec = Clients.meetClient(sellerId);
+    const pl = Seller.takeListing(rec);
+    Seller.goLive(pl, Seller.suggestedPrice(pl), 1);
+    Seller.spawnNPCOffer(pl);
+    const agentId = pl.offers[0].agentId;
+    Seller.respondToOffer(pl, pl.offers[0], "accept");
+    return { rec, pl, agentId };
+  };
+
+  // The seller's file is deleted: the listing lives inside it.
+  {
+    const { pl } = underContract();
+    eq(pl.status, "underContract", "a seller listing goes under contract");
+    S.choiceQueue.push({ kind: "coldFeetSeller", plId: pl.id, walkChance: 0.3, text: "a made-up wobble" });
+    const before = books();
+    save(store2);
+    without("clients", sellerId, () => {
+      loadSave(store2);
+      eq(S.playerListings.length, 0, "deleting the seller's file ends the listing agreement");
+      eq(books(), before, "with no listing commission paid on it");
+      eq(S.choiceQueue.length, 0, "and the seller-side choice that named it by plId is gone, where it used to open a modal on nothing");
+      eq(S.schedule.length, 0, "and so are its milestones on the calendar");
+    });
+  }
+
+  // The buyers' agent is deleted: the listing is fine, the contract is not.
+  {
+    const { rec, pl, agentId } = underContract();
+    S.choiceQueue.push({ kind: "sellerInspectionHit", plId: pl.id, cost: 4000, severity: "moderate", undisclosedRequired: false, text: "a made-up finding" });
+    const before = books(), logBefore = S.log.length, satBefore = rec.satisfaction, interestBefore = pl.interest;
+    save(store2);
+    without("agents", agentId, () => {
+      loadSave(store2);
+      const p = S.playerListings[0];
+      eq(p.status, "live", "a contract with a deleted agent's buyers puts the listing back on the market");
+      eq(p.acceptedOffer, null, "with no accepted offer left to close on");
+      eq(S.schedule.filter(it => it.ref === p.id).length, 0, "and no closing on the calendar");
+      eq(S.choiceQueue.length, 0, "and the inspection choice about that contract is gone");
+      eq(JSON.stringify([getClientRec(rec.recId).satisfaction, p.interest]), JSON.stringify([satBefore, interestBefore]),
+        "the seller is no less satisfied and the listing no less wanted: nobody did this");
+      const lines = S.log.slice(0, S.log.length - logBefore);
+      ok(lines.length === 1 && lines[0].recId === rec.recId && lines[0].text.includes(p.listing.address),
+        "one Ledger line under the seller's name, with the address", lines.map(x => x.text).join(" | "));
+      eq(books(), before, "and the load itself moves no money");
+      const cashBefore = S.cash;
+      const threw = days(60);
+      ok(threw === null && S.stats.closed === 0 && S.cash === cashBefore,
+        "sixty days on, the sale to nobody has not closed and has not paid", threw || `closed ${S.stats.closed}, cash ${S.cash}`);
+    });
+  }
+
+  // --- choices in the queue that name content by some other id.
+  {
+    newGame("bk_hearthstone");
+    const rec = Clients.meetClient("cl_0001");
+    S.choiceQueue.push({ kind: "poach", recId: rec.recId, agentId: "ag_sal_dimeo", resistBase: 0.5, text: "poach by a deleted agent" });
+    S.choiceQueue.push({ kind: "referralArrive", clientId: "cl_0003", referredBy: { name: "Made-Up Person", rel: "neighbour" }, text: "referral of a deleted client" });
+    S.choiceQueue.push({ kind: "poach", recId: "cr_nobody", agentId: "ag_ruth_okafor", resistBase: 0.5, text: "poach of a client not on the book" });
+    S.choiceQueue.push({ kind: "poach", recId: rec.recId, agentId: "ag_ruth_okafor", resistBase: 0.5, text: "a poach that still resolves" });
+    save(store2);
+    without("agents", "ag_sal_dimeo", () => without("clients", "cl_0003", () => {
+      loadSave(store2);
+      const left = S.choiceQueue.map(ch => ch.text);
+      ok(!left.includes("poach by a deleted agent"), "a queued choice naming a deleted agent is dropped", left.join(" | "));
+      ok(!left.includes("referral of a deleted client"), "and one naming a deleted client", left.join(" | "));
+      ok(!left.includes("poach of a client not on the book"), "and one naming a client record that is not there", left.join(" | "));
+      ok(left.includes("a poach that still resolves"), "while a choice whose every id still resolves stays in the queue", left.join(" | "));
+    }));
+  }
+}
+
 /* ------------------------------------------------------------------- report */
 console.log("");
 if (failures.length) {
