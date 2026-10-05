@@ -1171,18 +1171,25 @@ If a future round finds something real:
    second suite, if this page gets more interaction logic. **The suite says
    when that happens now** (#626, 2026-09-24): its static section lists all 47
    ways the page takes input in `SURFACE` and fails on a new one. That failure
-   is this item coming true; it is not a ranked row until then. **11 of the 47
-   are listed with `''`, driven by nothing** (TG-29, 2026-10-05, #867; it was
-   41): the encounter builder's ten (`#encToggle`, `#encbar` click and input,
-   `[data-enc]` and its `inc`, `dec`, `del` and `clear`, the row's `.encadd`
-   and the stat block's `.encaddbtn`) and the `window resize` listener. The
-   filters, deep search, the bookmark star with export and import, the keyboard,
-   the back button, list scrolling and an edited URL are driven now, by
+   is this item coming true; it is not a ranked row until then. **All 47 are
+   driven by a scenario** (TG-29, 2026-10-05, #867 and #869; it was 41 undriven,
+   then 11): the filters, deep search, the bookmark star with export and import,
+   the keyboard, the back button, list scrolling and an edited URL by
    `testFilters`, `testDeepSearch`, `testBookmarkRoundTrip` and
-   `testListNavigation`. The encounter builder is one more scenario of the same
-   shape: it lives in creature scope, so it costs one level shard, and its
-   budget line is arithmetic the scenario can state from GM Core without
-   reading the page's table. The
+   `testListNavigation`; the encounter builder's ten by `testEncounterBuilder`
+   (one level-0 shard and one level-6 shard, its XP and budgets as literals
+   worked by hand from GM Core's two tables, not from the page's); and the
+   `window resize` listener by `testWindowResize`, which grows a 420px window
+   to 1500px and asks that rows are drawn down to the bottom of the taller
+   list. So there is no `''` left in `SURFACE`, and the next one is a new entry
+   point. Not driven, because it is not an entry point: `loadEncounter`'s repair
+   of a stored encounter (a count under 1, a party level past 20, a line with no
+   `_id`), which would take a seeded `aa.encounter` and a reload. Seen and left:
+   a party level or size typed past its limit is held in the total and in
+   storage (20, 12) while the field goes on showing what was typed until the
+   builder is next redrawn. 59 breaks of the page were run against the
+   two new scenarios and all 59 failed the suite; of their 81 checks, 9 failed
+   under none (3 `fixture:` lines and 6 starting states). The
    `waitFor`/`clickCat`/`clickLevelChip` helpers and the `freshPage()` pattern
    (fresh headless page per scenario) should cover new
    state-machine-shaped features without much new plumbing; `shows()` polls

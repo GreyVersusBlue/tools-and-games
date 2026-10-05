@@ -11,7 +11,9 @@
 // and bookmark-stub resolution. Since 2026-10-05 it also drives the filters,
 // deep search, the bookmark export and import round trip, and the keyboard,
 // back button and edited-URL navigation, each through the control a user
-// would use, asserting what the page then shows. Exits non-zero on any failure.
+// would use, asserting what the page then shows, and the encounter builder
+// (with its XP arithmetic worked by hand from GM Core) and a resized window.
+// Exits non-zero on any failure.
 //
 // Two environment variables, both for breaking the page on purpose (#34):
 //   ANATHEMA_PAGE=<file>  drive a scratch copy sitting beside the page in
@@ -727,7 +729,226 @@ async function testCategoryDuringAllLoad(browser) {
   await page.close();
 }
 
-/* ============================ 10. the page's interaction surface ============================ */
+/* ============================ 10. the encounter builder ============================ */
+/* The expected XP and budgets below are literals worked out by hand from the
+   two tables in GM Core's "Building Encounters" (Archives of Nethys, Rules
+   2716 and 2717, read 2026-10-05), not read from the page and not computed by
+   a copy of its code:
+     a creature's XP by its level minus the party's:
+       -4: 10   -3: 15   -2: 20   -1: 30   0: 40   +1: 60   +2: 80   +3: 120   +4: 160
+       (lower than -4 is worth nothing; higher than +4 is off the table)
+     the budget for four characters, and what each character over or under four adds or takes:
+       Trivial 40 (10)   Low 60 (20)   Moderate 80 (20)   Severe 120 (30)   Extreme 160 (40)
+   The page names an encounter by the first budget its XP does not exceed.
+   Three parties are checked against the same five level-0 creatures, two of
+   one and three of another:
+     level 1, 5 characters: 5 x 30 = 150 XP; budgets 50, 80, 100, 150, 200; Severe
+     level 2, 6 characters: 5 x 20 = 100 XP; budgets 60, 100, 120, 180, 240; Low
+     level 4, 3 characters: 5 x 10 =  50 XP; budgets 30, 40, 60, 90, 120; Moderate
+   and every other row of the creature table is met once further down.
+   The second is the one that tells GM Core's Low adjustment (20) from the
+   first-edition Core Rulebook's (15), which the page used until #869: at 15
+   its Low budget for six is 90 and the same 100 XP reads Moderate. */
+const encRows = page => page.$$eval('#encBody .encrow', els => els.filter(el => el.querySelector('.nm')).map(el =>
+  [el.querySelector('.nm').textContent, el.querySelector('.lv').textContent, el.querySelector('[data-enc="dec"] + span').textContent]));
+const encHeadline = page => page.evaluate(() => {
+  const sum = document.querySelector('#encBody .encsum');
+  return sum ? [...sum.childNodes].filter(n => n.nodeName !== 'SPAN').map(n => n.textContent).join('') : null;
+});
+const encBudgets = page => textOf(page, '#encBody .encsum span');
+const encInStorage = page => page.evaluate(() => JSON.parse(localStorage.getItem('aa.encounter') || 'null'));
+const budgetLine = (...b) => ['Trivial', 'Low', 'Moderate', 'Severe', 'Extreme'].map((n, i) => `${n} ${b[i]}`).join(' · ');
+async function setNumber(page, selector, text) {
+  await clearField(page, selector);
+  await page.type(selector, text);
+}
+
+async function testEncounterBuilder(browser) {
+  console.log('\nthe encounter builder (creature scope): add, count, party level and size, remove, clear, reload');
+  const byName = l => JSON.parse(fs.readFileSync(path.join(HERE, '..', 'data', 'npcs', `npc-level-${l}.json`), 'utf8'))
+    .sort((a, b) => collate(a.name, b.name));
+  const [A, B] = byName(0), [C] = byName(6);
+  ok(A.level === 0 && B.level === 0 && C.level === 6 && A.name === OOZELET.name,
+    'fixture: the first two level-0 creatures and the first level-6 one', [A.name, B.name, C.name].join(', '));
+  const hidden = sel => p => p.$eval(sel, el => el.hidden);
+  const page = await cleanPage(browser, '#npc');
+  try {
+    await waitFor(page, () => S.cat === 'npc', { label: 'creature scope' });
+
+    // the panel and its toggle
+    await shows(page, 'the creature scope shows the Encounter bar', hidden('#encbar'), false);
+    ok(await page.$eval('#encBody', el => el.hidden), '...closed to begin with');
+    ok(await textOf(page, '#encN') === '', '...with no count beside its name');
+    await click(page, '#encToggle');
+    await shows(page, 'clicking Encounter opens the builder', hidden('#encBody'), false);
+    ok(await textOf(page, '#encCaret') === '▾', '...and turns the caret down');
+    ok(await textOf(page, '#encBody .encrow') === 'No creatures yet — use the + on a row or the button in a stat block.', '...which says it is empty');
+    ok(await encHeadline(page) === '0 XP — Trivial', '...and totals 0 XP', String(await encHeadline(page)));
+    ok(await encBudgets(page) === budgetLine(40, 60, 80, 120, 160), '...against the budgets for four characters', String(await encBudgets(page)));
+    ok(await page.$eval('#encLvl', el => el.value) === '1' && await page.$eval('#encSize', el => el.value) === '4', '...with the party at level 1, four strong');
+    ok(await page.$('#encBody [data-enc="clear"]') === null, '...and no Clear button while there is nothing to clear');
+
+    // the + on a list row
+    await clickLevelChip(page, 0);
+    await shows(page, 'the level-0 creatures are listed', async p => (await rowNames(p)).slice(0, 2), [A.name, B.name], 20000);
+    await click(page, '#vspacer .row[data-i="0"] .encadd');
+    await shows(page, 'the + on a row adds that creature to the encounter', encRows, [[A.name, 'Lv 0', '1']]);
+    ok(await statusText(page) === `Added ${A.name} to the encounter.`, '...and says so in the status line', await statusText(page));
+    ok(await openName(page) === null, '...without opening its stat block');
+    ok(await textOf(page, '#encN') === '(1)', '...and the bar counts 1');
+    ok(same((await encInStorage(page))?.list, [{ _id: A._id, name: A.name, level: 0, count: 1 }]), '...and it is stored at once', JSON.stringify((await encInStorage(page))?.list));
+    ok(await encHeadline(page) === '30 XP — Trivial', 'one creature a level under the party is 30 XP, Trivial', String(await encHeadline(page)));
+    await click(page, '#vspacer .row[data-i="0"] .encadd');
+    await shows(page, 'the + on the same row again makes it two of that creature, not a second line', encRows, [[A.name, 'Lv 0', '2']]);
+    ok(await encHeadline(page) === '60 XP — Low', 'two of them are 60 XP, which is exactly the Low budget', String(await encHeadline(page)));
+    await click(page, '#vspacer .row[data-i="1"] .encadd');
+    await shows(page, 'the + on another row adds a second line', encRows, [[A.name, 'Lv 0', '2'], [B.name, 'Lv 0', '1']]);
+    ok(await encHeadline(page) === '90 XP — Severe', 'three are 90 XP, past Moderate (80), so Severe', String(await encHeadline(page)));
+
+    // the count buttons
+    await click(page, '#encBody [data-enc="inc"][data-i="1"]');
+    await shows(page, 'the + beside a line adds one more of it', encRows, [[A.name, 'Lv 0', '2'], [B.name, 'Lv 0', '2']]);
+    ok(await encHeadline(page) === '120 XP — Severe', 'four are 120 XP, exactly the Severe budget', String(await encHeadline(page)));
+    await click(page, '#encBody [data-enc="inc"][data-i="1"]');
+    await shows(page, 'five are 150 XP, Extreme', encHeadline, '150 XP — Extreme');
+    await click(page, '#encBody [data-enc="inc"][data-i="1"]');
+    await shows(page, 'six are 180 XP, past the Extreme budget (160)', encHeadline, '180 XP — Beyond Extreme');
+    ok(await textOf(page, '#encN') === '(6)', 'the bar counts creatures, not lines', String(await textOf(page, '#encN')));
+    await click(page, '#encBody [data-enc="dec"][data-i="1"]');
+    await shows(page, 'the minus beside a line takes one away', encRows, [[A.name, 'Lv 0', '2'], [B.name, 'Lv 0', '3']]);
+    ok(await encHeadline(page) === '150 XP — Extreme', '...and the total follows', String(await encHeadline(page)));
+
+    // party size and level, three parties worked by hand (see the comment above)
+    await setNumber(page, '#encSize', '5');
+    await shows(page, 'party of 5 at level 1: the budgets grow by one character each', encBudgets, budgetLine(50, 80, 100, 150, 200));
+    ok(await encHeadline(page) === '150 XP — Severe', '...and the same 150 XP is now Severe', String(await encHeadline(page)));
+    ok(same(await encRows(page), [[A.name, 'Lv 0', '2'], [B.name, 'Lv 0', '3']]), '...with the lines untouched');
+    await setNumber(page, '#encSize', '6');
+    await setNumber(page, '#encLvl', '2');
+    await shows(page, 'party of 6 at level 2: budgets for two more characters', encBudgets, budgetLine(60, 100, 120, 180, 240));
+    await shows(page, '...and five creatures two levels under are 100 XP, Low by GM Core (#869)', encHeadline, '100 XP — Low');
+    ok(same(await encInStorage(page), { list: [{ _id: A._id, name: A.name, level: 0, count: 2 }, { _id: B._id, name: B.name, level: 0, count: 3 }], partyLevel: 2, partySize: 6 }),
+      '...and the encounter is stored with the party', JSON.stringify(await encInStorage(page)).slice(0, 200));
+    await setNumber(page, '#encSize', '3');
+    await setNumber(page, '#encLvl', '4');
+    await shows(page, 'party of 3 at level 4: budgets for one character fewer', encBudgets, budgetLine(30, 40, 60, 90, 120));
+    await shows(page, '...and five creatures four levels under are 50 XP, Moderate', encHeadline, '50 XP — Moderate');
+    await setNumber(page, '#encLvl', '3');
+    await shows(page, '...and at level 3, three levels under, 75 XP, Severe', encHeadline, '75 XP — Severe');
+    await setNumber(page, '#encLvl', '5');
+    await shows(page, 'a creature five levels under the party is worth nothing', encHeadline, '0 XP — Trivial');
+    await setNumber(page, '#encSize', '13');
+    await shows(page, 'a party size past 12 is held at 12', encBudgets, budgetLine(120, 220, 240, 360, 480));
+    ok((await encInStorage(page))?.partySize === 12, '...and stored as 12', String((await encInStorage(page))?.partySize));
+
+    // a reload
+    await setNumber(page, '#encSize', '6');
+    await setNumber(page, '#encLvl', '2');
+    await shows(page, 'back to the party of 6 at level 2', encHeadline, '100 XP — Low');
+    await page.reload({ waitUntil: 'load' });
+    await waitFor(page, () => typeof S !== 'undefined' && !!S.manifest && S.cat === 'npc', { label: 'reloaded with an encounter stored' });
+    await shows(page, 'after a reload the bar still counts the five creatures', p => textOf(p, '#encN'), '(5)');
+    ok(await page.$eval('#encBody', el => el.hidden), '...and the builder is closed again');
+    ok(await page.evaluate(() => location.hash) === '#npc', '...and the URL carries nothing of the encounter');
+    await click(page, '#encToggle');
+    await shows(page, 'reopened, it lists the same lines', encRows, [[A.name, 'Lv 0', '2'], [B.name, 'Lv 0', '3']]);
+    ok(await page.$eval('#encLvl', el => el.value) === '2' && await page.$eval('#encSize', el => el.value) === '6', '...the same party');
+    ok(await encHeadline(page) === '100 XP — Low', '...and the same total', String(await encHeadline(page)));
+
+    // the button in a stat block, and a creature too strong for the table
+    await clickLevelChip(page, 6);
+    await shows(page, 'the level-6 creatures are listed', async p => (await rowNames(p))[0], C.name, 30000);
+    await click(page, '#vspacer .row[data-i="0"]');
+    await shows(page, 'a level-6 creature opens', openName, C.name);
+    await click(page, '#detail .encaddbtn');
+    await shows(page, 'Add to encounter in the stat block adds the open creature', encRows, [[A.name, 'Lv 0', '2'], [B.name, 'Lv 0', '3'], [C.name, 'Lv 6', '1']]);
+    ok(await statusText(page) === `Added ${C.name} to the encounter.`, '...and says so', await statusText(page));
+    ok(await encHeadline(page) === '260 XP — Beyond Extreme', 'four levels over a level-2 party it is 160 XP, 260 in all', String(await encHeadline(page)));
+    await setNumber(page, '#encLvl', '1');
+    await shows(page, 'five levels over a level-1 party it is off the table: left out of the total and flagged', encHeadline,
+      '150 XP — Beyond Extreme (a creature is more than 4 levels above the party)');
+    await setNumber(page, '#encLvl', '6');
+    await shows(page, 'for a level-6 party it is 40 XP and the level-0 creatures nothing', encHeadline, '40 XP — Trivial');
+    await click(page, '#detail .encaddbtn');
+    await shows(page, 'the stat-block button again makes it two', encRows, [[A.name, 'Lv 0', '2'], [B.name, 'Lv 0', '3'], [C.name, 'Lv 6', '2']]);
+    ok(await encHeadline(page) === '80 XP — Low', '...80 XP, Low for six characters', String(await encHeadline(page)));
+
+    // removing
+    await click(page, '#encBody [data-enc="del"][data-i="0"]');
+    await shows(page, 'the x beside a line removes it whatever its count', encRows, [[B.name, 'Lv 0', '3'], [C.name, 'Lv 6', '2']]);
+    await click(page, '#encBody [data-enc="dec"][data-i="0"]');
+    await click(page, '#encBody [data-enc="dec"][data-i="0"]');
+    await shows(page, 'the minus counts a line down to one', encRows, [[B.name, 'Lv 0', '1'], [C.name, 'Lv 6', '2']]);
+    await click(page, '#encBody [data-enc="dec"][data-i="0"]');
+    await shows(page, '...and the minus on a line of one removes it', encRows, [[C.name, 'Lv 6', '2']]);
+    ok(same((await encInStorage(page))?.list, [{ _id: C._id, name: C.name, level: 6, count: 2 }]), '...in storage too', JSON.stringify((await encInStorage(page))?.list));
+
+    // the rest of the table, on the two level-6 creatures left, for six characters (60, 100, 120, 180, 240)
+    for (const [lvl, headline, why] of [
+      ['2', '320 XP — Beyond Extreme', 'four levels over, 2 x 160'], ['3', '240 XP — Extreme', 'three over, 2 x 120'],
+      ['4', '160 XP — Severe', 'two over, 2 x 80'], ['5', '120 XP — Moderate', 'one over, 2 x 60']]) {
+      await setNumber(page, '#encLvl', lvl);
+      await shows(page, `two level-6 creatures against a level-${lvl} party: ${why}`, encHeadline, headline);
+    }
+
+    // the encounter outlives the creature data and the creature scope
+    await clickLevelChip(page, 6); // the anchor again: unloads the level
+    await waitFor(page, () => S.npcLoaded.size === 0, { label: 'level 6 unloaded' });
+    ok(same(await encRows(page), [[C.name, 'Lv 6', '2']]), 'unloading the creature\'s level leaves it in the encounter');
+    await clickCat(page, 'condition');
+    await shows(page, 'outside the creature scope the bar stays while the encounter has something in it', hidden('#encbar'), false);
+    ok(await page.$('#vspacer .encadd') === null, '...though the rows there carry no +');
+    await click(page, '#encBody [data-enc="clear"]');
+    await shows(page, 'Clear empties the encounter, and the bar leaves a scope that has no creatures', hidden('#encbar'), true);
+    ok(same(await encInStorage(page), { list: [], partyLevel: 5, partySize: 6 }), '...emptying the stored list and keeping the party', JSON.stringify(await encInStorage(page)));
+    await clickCat(page, 'npc');
+    await shows(page, 'back in the creature scope the bar returns', hidden('#encbar'), false);
+    ok(await textOf(page, '#encN') === '', '...counting nothing');
+    ok(await encHeadline(page) === '0 XP — Trivial' && same(await encRows(page), []), '...and empty');
+    await click(page, '#encToggle');
+    await shows(page, 'clicking Encounter again closes the builder', hidden('#encBody'), true);
+    ok(await textOf(page, '#encCaret') === '▸', '...and turns the caret back');
+  } finally {
+    await page.evaluate(() => localStorage.clear());
+    await page.close();
+  }
+}
+
+/* ============================ 11. resizing the window ============================ */
+/* The list draws only the rows that fit its height, plus ten. The resize
+   listener promises one thing: when the window changes size the rows are
+   drawn again for the new height. So a window grown by more than those ten
+   spare rows has to end with rows down to the bottom of the list, not a blank
+   band under the last one drawn for the old height. */
+async function testWindowResize(browser) {
+  console.log('\nresizing the window (condition scope)');
+  const N = DATA('condition').length;
+  const resize = (page, width, height) => page.setViewportSize
+    ? page.setViewportSize({ width, height }) : page.setViewport({ width, height, deviceScaleFactor: 2 });
+  /* How far the last drawn row reaches past the bottom edge of the list (negative: a blank band). */
+  const drawn = page => page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#vspacer .row')];
+    const list = $('vlist').getBoundingClientRect();
+    return { rows: rows.length, listHeight: Math.round(list.height), covered: rows.length > 0 && rows[rows.length - 1].getBoundingClientRect().bottom >= list.bottom };
+  });
+  const page = await freshPage(browser, '#condition');
+  await shows(page, 'the condition scope is listed', countText, countLine(N, N), 20000);
+  await resize(page, 1280, 420);
+  await waitFor(page, () => innerHeight === 420, { label: 'the window is 420px tall' });
+  await shows(page, 'in a short window the rows drawn reach the bottom of the list', async p => (await drawn(p)).covered, true);
+  const short = await drawn(page);
+  ok(short.rows < N, 'fixture: the short window draws only some of the conditions', `${short.rows} of ${N}`);
+  await resize(page, 1280, 1500);
+  await waitFor(page, () => innerHeight === 1500, { label: 'the window is 1500px tall' });
+  const tallHeight = (await drawn(page)).listHeight;
+  ok(tallHeight > short.rows * 46 && tallHeight < N * 46, 'fixture: the taller list is deeper than the rows drawn for the short one, and shorter than all of them',
+    `${tallHeight}px against ${short.rows} rows of 46px, ${N} in all`);
+  await shows(page, 'growing the window draws more rows, down to the bottom of the taller list', async p => (await drawn(p)).covered, true);
+  ok((await drawn(page)).rows > short.rows, '...more of them than before', `${(await drawn(page)).rows} against ${short.rows}`);
+  await page.close();
+}
+
+/* ============================ 12. the page's interaction surface ============================ */
 /* Every way the page takes input, read out of its source, against the list
    below. No browser. A new listener, key, delegated target or data-* action
    fails here until it is listed, which is the moment BACKLOG.md's "extend this
@@ -738,8 +959,9 @@ async function testCategoryDuringAllLoad(browser) {
    The value is the scenario that drives the entry through the real page, or
    '' where nothing does. On 2026-09-24, 6 of 47 were driven: the first four
    scenarios were written for four hand-tested-only behaviours, not for
-   coverage. Scenarios 5 to 9 (2026-10-05) took it to 36. The 11 left are the
-   encounter builder (ten entries) and the window resize listener. */
+   coverage. Scenarios 5 to 9 (2026-10-05) took it to 36, and 10 and 11 (the
+   encounter builder's ten and the window resize listener, the same day) to
+   all 47. */
 const SURFACE = {
   '#cats click': 'testLevelBar',          // clickCat, in every scenario
   'closest .cat': 'testLevelBar',
@@ -753,12 +975,13 @@ const SURFACE = {
   '#spelltype input': 'testFilters', '#sort input': 'testFilters', '#q input': 'testFilters',
   '#trait change': 'testFilters', '#traitchips click': 'testFilters',
   '#trait keydown': 'testFilters',        // pressed, not guarded: Chrome's change on Enter does the same job without it
-  '#encToggle click': '', '#encbar click': '', '#encbar input': '',
-  'closest [data-enc]': '', 'data-enc inc': '', 'data-enc dec': '', 'data-enc del': '', 'data-enc clear': '',
-  'closest .encadd': '', 'closest .encaddbtn': '',
+  '#encToggle click': 'testEncounterBuilder', '#encbar click': 'testEncounterBuilder', '#encbar input': 'testEncounterBuilder',
+  'closest [data-enc]': 'testEncounterBuilder', 'data-enc inc': 'testEncounterBuilder', 'data-enc dec': 'testEncounterBuilder',
+  'data-enc del': 'testEncounterBuilder', 'data-enc clear': 'testEncounterBuilder',
+  'closest .encadd': 'testEncounterBuilder', 'closest .encaddbtn': 'testEncounterBuilder',
   '#detail click': 'testFilters', 'closest .star': 'testBookmarkRoundTrip', 'closest .trait[data-trait]': 'testFilters',
   'closest a.ref': 'testListNavigation',
-  '#vlist scroll': 'testListNavigation', 'window resize': '',
+  '#vlist scroll': 'testListNavigation', 'window resize': 'testWindowResize',
   '#scopeBtn click': 'testFilters', '#deepBtn click': 'testDeepSearch', '#srcModeBtn click': 'testFilters',
   '#bmExport click': 'testBookmarkRoundTrip', '#bmImport click': 'testBookmarkRoundTrip',
   '#bmFile change': 'testBookmarkRoundTrip', 'rd load': 'testBookmarkRoundTrip',
@@ -809,7 +1032,8 @@ async function testInteractionSurface() {
 
 /* ============================ run ============================ */
 const tests = [testLevelBar, testShardSync, testHashRouting, testBookmarkResolution,
-  testFilters, testDeepSearch, testBookmarkRoundTrip, testListNavigation, testCategoryDuringAllLoad];
+  testFilters, testDeepSearch, testBookmarkRoundTrip, testListNavigation, testCategoryDuringAllLoad,
+  testEncounterBuilder, testWindowResize];
 await testInteractionSurface();
 const only = (process.env.ANATHEMA_ONLY || '').split(',').filter(Boolean);
 if (only.length) {

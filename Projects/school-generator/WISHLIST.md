@@ -405,7 +405,12 @@ and add to this list rather than starting a new one.
 - The daylight factor is the BRE average and a rule of thumb (`daylight.js`,
   #822): it knows the wing opposite, the storey above, a pitched roof's eave,
   the room's depth and where the sun stands on its glass, and it is still not
-  an illuminance. Neighbours, trees and the terrain are not obstructions, a
+  an illuminance. A window is read where it stands on its wall (#868), so
+  one on the open end of a wall that runs past a neighbour is daylight;
+  glass that straddles the neighbour's corner still goes whole to one side,
+  a window cut in a curtain wall is counted twice (here and in
+  `takeoff.js`), and `weather.js`'s `glazeSegments` still asks at the
+  wall's midpoint. Neighbours, trees and the terrain are not obstructions, a
   curtain wall is read at its midpoint, one reflectance serves every room
   whatever its finishes are, a rooflight does not exist, and none of it is
   drawn on the plan: the numbers are in the report panel and the CSV only.

@@ -35,9 +35,10 @@ import {
   makeSaveSlot, makeRepair, validRun, freshRun, packRefusal, keyFor,
   SAVE_KEY, SAVE_VERSION, LEGACY_PACK_ID,
 } from "../js/save.js";
-import { playThrough, travel, fight, combatPolicy, makeSkulkPolicy } from "./autopilot.mjs";
+import { playThrough, travel, fight, combatPolicy, makeSkulkPolicy, coverSquare } from "./autopilot.mjs";
 import {
-  BAND, DRIFT, runBatch, summarise, encounterRows, areaRows, skulkRows,
+  BAND, DRIFT, runBatch, summarise, encounterRows, areaRows, skulkRows, neverSettled,
+  watchHeal, wearBatch,
   baselineOf, compareToBaseline, mergePatch, parseVariants,
 } from "./balance.mjs";
 
@@ -4557,6 +4558,133 @@ const enc = (area, starter, ended, taken = 0, rounds = 1, dealt = 0) => ({ area,
   const plain = encounterRows(resolved, runBatch(resolved, 12));
   eq(plain.reduce((a, e) => a + e.settled, 0), 0,
     "combatPolicy settles none on those seeds, so the two drivers differ in the one way claimed");
+}
+
+{
+  // The Reliquary Warden's row, which read 0.0% under the second driver on
+  // all four builds while the vault's rows read about half (#870). Not the
+  // fight and not the engine: the sanctum has one sight-blocking square, the
+  // plaque pillar at (2,2), so one square is out of the Warden's sight, and
+  // the heir on the landing beside it has not seen that square either.
+  // coverSquare() named explored squares only and had nothing to name.
+  const landing = () => {
+    const g = wardenFight("fighter", 3, [5, 8]);
+    return { g, warden: g.run.creatures[0] };
+  };
+  const { g, warden } = landing();
+  const unseen = [];
+  for (let y = 0; y < g.world.height; y++) {
+    for (let x = 0; x < g.world.width; x++) {
+      if (!g.world.blocksMove(x, y, true) && !g.world.hasLoS(warden.x, warden.y, x, y)) unseen.push(x + "," + y);
+    }
+  }
+  eq(unseen.join(" "), "1,1", "from where it wakes, the Warden sees every open square of the sanctum but the one behind the plaque");
+  ok(!g.explored.has("1,1"), "and the heir on the landing has not seen that square herself");
+
+  // Broken on purpose by putting the explored-squares-only line back in
+  // coverSquare(): this one read null, and the leg, the three after the
+  // fight and the two on the report's rows below failed with it.
+  const cover = coverSquare(g);
+  eq(cover && `${cover.x},${cover.y} seen ${cover.seen}`, "1,1 seen false", "the second driver names it as cover anyway, as a square in fog");
+  ok(cover && g.explored.has(cover.leg.x + "," + cover.leg.y) && !(cover.leg.x === 1 && cover.leg.y === 1),
+    "and walks for it by a square she has seen, which is all walkTo() takes");
+
+  // Broken on purpose by dropping the "ask again" return from skulkPolicy, so
+  // one leg is the whole slip: she stopped at (5,5) in plain sight, the
+  // Warden was fought to 0 HP, and all three of these failed.
+  const modes = [];
+  g.on(ev => { if (ev.type === "mode") modes.push(ev); });
+  fight(g, { policy: makeSkulkPolicy() });
+  eq(`${g.run.pc.x},${g.run.pc.y}`, "1,1", "two Strides put her behind the plaque");
+  eq(modes.length && modes[modes.length - 1].why, "lost", "and the encounter ends as lost, which the report counts as settled");
+  eq(`${warden.awake} ${warden.hp}`, `false ${content.creatures["reliquary-warden"].hp}`, "with the Warden asleep at full HP");
+
+  // Once she has seen it, it is cover like any other and the leg is the
+  // square itself.
+  const { g: lit } = landing();
+  lit.explored.add("1,1");
+  const litCover = coverSquare(lit);
+  eq(litCover && `${litCover.seen} ${litCover.leg.x},${litCover.leg.y}`, "true 1,1", "a square she has seen is walked to directly");
+
+  // A square she knows beats a nearer one she would be guessing at, which is
+  // what keeps the fog out of every fight that has explored cover. The vault,
+  // because the sanctum has one square to choose from: a sentinel at (7,8),
+  // the heir at (7,10), and behind the wall block (5,12) at 15 feet and
+  // (4,13) at 25. Broken on purpose by letting the nearest square win
+  // whatever its fog: the last assertion named 5,12, seen false. (The heir
+  // one square from the cover cannot show this: a fogged square with no
+  // explored square before it has no leg and is skipped either way.)
+  const vault = createGame({
+    content: selectPc(content, "fighter"), rng: makeRng(4),
+    state: {
+      packId: content.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 7, y: 10, hp: 18, slots: 0, focus: 0, conditions: [] },
+      creatures: [{
+        key: "vault:shattered-sentinel@7,8", area: "vault", creature: "shattered-sentinel",
+        wakesOn: "notice", x: 7, y: 8, hp: 11, awake: true, dead: false, conditions: [],
+      }],
+      loreRead: [], gateOpen: false, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+      outcome: null,
+    },
+  });
+  vault.begin();
+  const near = coverSquare(vault);
+  eq(near && `${near.x},${near.y} ${near.feet} ${near.seen}`, "5,12 15 true", "in the vault the nearest cover is fifteen feet off and explored");
+  vault.explored.delete("5,12");
+  const known = coverSquare(vault);
+  eq(known && `${known.x},${known.y} ${known.feet} ${known.seen}`, "4,13 25 true", "and with that square in fog she takes an explored one ten feet further rather than guess");
+
+  // The report's half. Broken on purpose with the same explored-only line:
+  // the Warden's row went back to 0 settled and neverSettled() named it.
+  const rows = skulkRows(resolved, 12);
+  const row = rows.find(e => e.key === "sanctum/reliquary-warden");
+  ok(row && row.settled > 0, `twelve runs of the second driver settle the Warden (${row ? row.settled : "no row"} of ${row ? row.n : 0})`);
+  eq(neverSettled(rows).join(" "), "", "and no row of that batch reads zero");
+  eq(neverSettled([{ key: "a/x", n: 4, settled: 2 }, { key: "b/y", n: 3, settled: 0 }, { key: "c/z", n: 0, settled: 0 }]).join(" "),
+    "b/y", "a row that fought and never settled is named; a row that never fought is not");
+}
+
+{
+  // Whether the full heal stops wear-down (balance.mjs --wear). The engine
+  // has no switch for the heal, so the harness undoes it from outside, and
+  // that undoing is the thing to pin: a sentinel at 4 of 11 HP, alone, with
+  // the heir out of its sight at (10,4).
+  const wounded = heal => {
+    const g = createGame({
+      content: selectPc(content, "fighter"), rng: makeRng(4),
+      state: {
+        packId: content.pack.id, buildId: "fighter", areaId: "vault",
+        pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0, conditions: [] },
+        creatures: [{
+          key: "vault:shattered-sentinel@4,7", area: "vault", creature: "shattered-sentinel",
+          wakesOn: "notice", x: 4, y: 7, hp: 4, awake: true, dead: false, conditions: [],
+        }],
+        loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+        stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+        outcome: null,
+      },
+    });
+    const seen = watchHeal(g, { heal });
+    g.begin();
+    g.endTurn();
+    const c = g.run.creatures[0];
+    return `${c.awake} hp ${c.hp} wiped ${seen.forgiven} carried ${seen.carried.size} settles ${seen.settles}`;
+  };
+  // Broken on purpose by restoring the HP whatever `heal` says: this read
+  // hp 4, carried 1.
+  eq(wounded(true), "false hp 11 wiped 7 carried 0 settles 1", "watched with the heal as shipped, a settled sentinel is at full HP and the 7 it lost are counted");
+  // Broken on purpose by dropping the line that puts the HP back: hp 11.
+  eq(wounded(false), "false hp 4 wiped 7 carried 1 settles 1", "watched with the heal taken away, it settles at the 4 HP it had");
+
+  // The measurement itself, four seeds each way. Broken on purpose twice:
+  // makeWearPolicy handing every decision to combatPolicy (settles 0, and the
+  // carried count with it), and wearBatch ignoring `heal` (carried 0).
+  const on = wearBatch(resolved, 4, { heal: true });
+  const off = wearBatch(resolved, 4, { heal: false });
+  ok(on.settles > 0 && on.forgiven > 0, `the third driver hides and comes back, and settling wipes damage (${on.settles} settles, ${on.forgiven} HP)`);
+  eq(on.slainCarried, 0, "with the heal as shipped no construct dies of damage from an engagement that had ended");
+  ok(off.slainCarried > 0, `with it taken away some do, on the same seeds (${off.slainCarried} of ${off.slain} slain)`);
 }
 
 {

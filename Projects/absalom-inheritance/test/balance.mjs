@@ -6,6 +6,7 @@
 //       node Projects/absalom-inheritance/test/balance.mjs 2000 \
 //         --variant 'no-cone={"creatures":{"vault-keeper":{"abilities":[]}}}' \
 //         --variant brawler=@test/variants/brawler.json
+//       node Projects/absalom-inheritance/test/balance.mjs 2000 --wear 25
 //
 // Why this exists: the shipped single-file build could not be won. Not "was
 // hard" — could not be won. Two Creature-0 constructs woke together and put six
@@ -25,7 +26,8 @@
 // Exits non-zero on five things (locked decision #13): a win rate outside
 // BAND, a command or creature ability nothing ever used, a drift from
 // test/baseline.json past DRIFT, a variant that will not load, and a second
-// driver that never once ends a fight by breaking line of sight.
+// driver that never once ends a fight by breaking line of sight, in the whole
+// batch or in any one room of a full one.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -33,7 +35,7 @@ import { fileURLToPath } from "node:url";
 import { loadPack, selectPc } from "../js/content.js";
 import { createGame } from "../js/game.js";
 import { makeRng } from "../js/rules.js";
-import { playThrough, makeSkulkPolicy } from "./autopilot.mjs";
+import { playThrough, makeSkulkPolicy, makeWearPolicy } from "./autopilot.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACK = path.join(HERE, "..", "content", "vault.json");
@@ -128,6 +130,82 @@ export const SKULK_RUNS = 100;
  */
 export function skulkRows(content, runs = SKULK_RUNS) {
   return encounterRows(content, runBatch(content, runs, { policy: makeSkulkPolicy }));
+}
+
+/**
+ * The second driver's rows that settled nothing, by key.
+ *
+ * The batch total hid one for a day: the vault's fights settled about half the
+ * time, so the total was never zero, and the Reliquary Warden's row read 0.0%
+ * under it on all four builds. That was the driver and not the fight (#870).
+ * coverSquare() named explored squares only, and the sanctum's one square out
+ * of the Warden's sight, (1,1) behind the plaque pillar, is in fog from the
+ * landing. A zero on one row is the same finding as a zero on all of them,
+ * so it is counted per row.
+ */
+export function neverSettled(rows) {
+  return rows.filter(e => e.n > 0 && !e.settled).map(e => e.key);
+}
+
+/**
+ * Take checkDisengage()'s heal away from one game, from the outside.
+ *
+ * The engine has no switch for it and this file may not add one, so the heal
+ * is undone as it happens: every event records the HP of whatever is awake,
+ * and on `slept` the construct is put back to what it had. A creature is
+ * marked asleep before it is healed, so the record still holds the old
+ * number when the event arrives. With `heal` true nothing is put back and the
+ * same counting runs, which is what makes the two columns one measurement.
+ *
+ * Returns the counters: `forgiven` is the damage settling wiped (or would
+ * have), `carried` the constructs that went back to stone still wounded.
+ */
+export function watchHeal(game, { heal = true } = {}) {
+  const hp = new Map();
+  const seen = { settles: 0, forgiven: 0, carried: new Set() };
+  game.on(ev => {
+    if (ev.type === "slept") {
+      const c = game.run.creatures.find(c => c.key === ev.key);
+      const before = hp.get(ev.key);
+      seen.settles++;
+      if (c && before !== undefined && before < c.hp) {
+        seen.forgiven += c.hp - before;
+        if (!heal) { c.hp = before; seen.carried.add(c.key); }
+      }
+    }
+    for (const c of game.run.creatures) if (c.awake && !c.dead) hp.set(c.key, c.hp);
+  });
+  return seen;
+}
+
+/**
+ * Does the full heal stop wear-down? The third driver, with the heal as
+ * shipped and with it taken away, on the same seeds.
+ *
+ * `slainCarried` is the number that answers it: constructs killed while
+ * carrying damage from an engagement that had already ended. With the heal on
+ * it is zero by construction, so the finding is the other column, and what
+ * the exploit buys there in kills and wins.
+ */
+export const WEAR_RUNS = 25;
+export function wearBatch(content, runs = WEAR_RUNS, { heal = true } = {}) {
+  const out = { heal, n: runs, tally: {}, wins: 0, slain: 0, slainCarried: 0, settles: 0, forgiven: 0, taken: 0 };
+  for (let i = 0; i < runs; i++) {
+    const game = createGame({ content, rng: makeRng(0x5EED + i) });
+    const seen = watchHeal(game, { heal });
+    let r;
+    try {
+      r = playThrough(game, { policy: makeWearPolicy() });
+    } catch (e) {
+      r = crashed(e.message);
+    }
+    out.tally[r.outcome] = (out.tally[r.outcome] || 0) + 1;
+    if (r.outcome === "victory") out.wins++;
+    out.slain += r.slain; out.taken += r.taken;
+    out.settles += seen.settles; out.forgiven += seen.forgiven;
+    out.slainCarried += game.run.creatures.filter(c => c.dead && seen.carried.has(c.key)).length;
+  }
+  return out;
 }
 
 /* ========================================================================= *
@@ -579,6 +657,21 @@ function printSkulk(rows, runs) {
   for (const e of rows) {
     console.log(`    ${pad(e.key, ew)}${num(e.per.toFixed(2), 8)}${num(pct(e.cleared / e.n), 9)}${num(pct(e.settled / e.n), 9)}`);
   }
+  // About half is the driver and not the fight: she slips each construct
+  // once, it reknits and notices her again, and the second meeting is fought.
+  console.log("    about half is the ceiling: each construct is slipped once and fought the second time it wakes");
+  if (runs >= SKULK_RUNS) console.log("    a row at 0.0% is a room this driver found no cover in, and fails the build");
+}
+
+function printWear(buildName, columns) {
+  const per = (x, n) => (x / (n || 1)).toFixed(2);
+  console.log(`\n  third driver, ${columns[0].n} runs each way — ${buildName}: swings, hides with her last actions, comes back`);
+  console.log(`    ${pad("heal on settling", 18)}${num("wins", 8)}${num("slain", 8)}${num("carried", 9)}${num("settles", 9)}${num("HP wiped", 10)}${num("taken", 8)}`);
+  for (const c of columns) {
+    console.log(`    ${pad(c.heal ? "as shipped" : "taken away", 18)}${num(pct(c.wins / (c.n || 1)), 8)}${num(per(c.slain, c.n), 8)}` +
+      `${num(per(c.slainCarried, c.n), 9)}${num(per(c.settles, c.n), 9)}${num(per(c.forgiven, c.n), 10)}${num(per(c.taken, c.n), 8)}`);
+  }
+  console.log("    per run; carried is constructs slain with damage from an engagement that had ended, and HP wiped is what settling healed (or would have)");
 }
 
 /* ========================================================================= *
@@ -592,6 +685,11 @@ if (invokedDirectly) {
   const runs = Number(process.argv[2]) || 2000;
   const verbose = process.argv.includes("--verbose");
   const writeBaseline = process.argv.includes("--write-baseline");
+  // Off unless asked for: the third driver asks for cover on every decision,
+  // and 25 runs each way over four builds take about two minutes. Report
+  // only, so nothing below reads it.
+  const wearAt = process.argv.indexOf("--wear");
+  const wearRuns = wearAt < 0 ? 0 : (Number(process.argv[wearAt + 1]) || WEAR_RUNS);
   let variants;
   try {
     variants = parseVariants(process.argv);
@@ -650,7 +748,14 @@ if (invokedDirectly) {
     const skulkRuns = Math.min(runs, SKULK_RUNS);
     const skulk = skulkRows(selectPc(basePack, build.id), skulkRuns);
     const settledFights = skulk.reduce((a, e) => a + e.settled, 0);
+    // Per row only on a full batch: five runs can meet the Keeper once and
+    // die to it, and that is a short batch rather than a room with no cover.
+    const silentRows = skulkRuns >= SKULK_RUNS ? neverSettled(skulk) : [];
     printSkulk(skulk, skulkRuns);
+    if (wearRuns) {
+      const c = selectPc(basePack, build.id);
+      printWear(build.name, [wearBatch(c, wearRuns, { heal: true }), wearBatch(c, wearRuns, { heal: false })]);
+    }
 
     const inBand = shipped.rate >= BAND.min && shipped.rate <= BAND.max;
     const drift = comparable ? compareToBaseline(baseline, build.id, shipped) : [];
@@ -662,10 +767,11 @@ if (invokedDirectly) {
     const verdict = !inBand ? `BALANCE OUT OF BAND — ${build.id}: ${pct(shipped.rate)}`
       : shipped.uncast.length ? `CONTENT NEVER REACHED — ${build.id}: ${shipped.uncast.join(", ")}`
       : !settledFights ? `ENDING NEVER REACHED — ${build.id}: no fight settled in ${skulkRuns} runs of the driver that breaks line of sight`
+      : silentRows.length ? `ENDING NEVER REACHED — ${build.id}: ${silentRows.join(", ")} settled 0 of its fights in ${skulkRuns} runs of the driver that breaks line of sight`
       : drift.length ? `BASELINE DRIFT — ${drift.join("\n                 ")}\n(if you meant it, rerun with --write-baseline and commit the file)`
       : `BALANCE OK — ${build.id}: ${pct(shipped.rate)}`;
     console.log(`\n${verdict}\n`);
-    allOk = allOk && inBand && !shipped.uncast.length && !drift.length && settledFights > 0;
+    allOk = allOk && inBand && !shipped.uncast.length && !drift.length && settledFights > 0 && !silentRows.length;
   }
   printMatrix(summaries);
 
