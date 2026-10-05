@@ -1739,16 +1739,18 @@ const CHECKS = [
       await d.click(aim.x, aim.z);
       const toggled = await read();
       // The wall rubbed out with the accent on it (#859): the accent goes with
-      // the wall, and one undo brings both back.
+      // the wall, and one undo brings both back. A second undo takes the paint
+      // off again, so this leaves the undo stack as long as it found it: the
+      // `undo-redo` check below counts on six undos reaching another design.
       await d.click(aim.x, aim.z);
       await d.pick('erase');
       await d.click(aim.wx, aim.wz);
       const erased = await read();
       await q('window.app.editor.undo(); 1');
       const undone = await read();
+      await q('window.app.editor.undo(); 1');
       await d.pick('wall');
       if ((await read()).armed !== '#2f5d8a') await swatch('#2f5d8a');
-      await d.click(aim.x, aim.z);
       const rearmed = await read();
       // The wall taken down behind the editor's back: the same click on the
       // same face has nothing to paint now, and has to say so (#857).
@@ -1799,7 +1801,7 @@ const CHECKS = [
         throw new Error(`one undo should bring the wall and its accent back: ${JSON.stringify(ctx.undone)}`);
       }
       if (ctx.rearmed.accents !== null || ctx.rearmed.armed !== '#2f5d8a') {
-        throw new Error(`back on the wall tool the brush should take the accent off again: ${JSON.stringify(ctx.rearmed)}`);
+        throw new Error(`a second undo should take the paint off, and the brush should be up again: ${JSON.stringify(ctx.rearmed)}`);
       }
       if (ctx.refused.accents !== null || !/has no wall on that side/.test(ctx.refused.status)) {
         throw new Error(`a face with no wall on its line should be refused, out loud: ${JSON.stringify(ctx.refused)}`);
