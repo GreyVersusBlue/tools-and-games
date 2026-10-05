@@ -2146,13 +2146,13 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
 5. **A level generator off the solver. Shipped 2026-09-14, PR #299** (#401 to
    #405). `js/generator.js` proposes from a tier and a seed, `validate` and a
    1,200-launch census judge, and the sector map rolls one at Easy, Medium or
-   Hard. Nothing is open against it. Two things a later session might want,
-   neither ranked: the census could feed the editor's Check (`Winnable, and
-   2.4% of launches win`) for one more stepped call, and the tier bands are a
-   first reading of 18 seeds against the 22 shipped levels, so a session that
-   rolls fifty and finds a pattern (one type overrepresented, a tier that reads
-   no harder than the one below) has the numbers to move a band and the fixture
-   in `test/generator.mjs` to say what it moved.
+   Hard. The census feeds the editor's Check since 2026-10-05 (#877): after
+   the verdict it reads `1.4% of launches win (17 of 1,200).`, stepped one
+   launch at a time. One thing a later session might want, not ranked: the
+   tier bands are a first reading of 18 seeds against the 22 shipped levels, so
+   a session that rolls fifty and finds a pattern (one type overrepresented, a
+   tier that reads no harder than the one below) has the numbers to move a band
+   and the fixture in `test/generator.mjs` to say what it moved.
 
 6. **Draw the playfield in device pixels. Shipped 2026-09-30** (#742).
    `view` is in device pixels and `toWorld` multiplies the pointer by `DPR`.

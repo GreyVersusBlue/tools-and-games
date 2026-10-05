@@ -1,6 +1,6 @@
 // browser.mjs — Orbital's committed browser layer.
 //
-//   node Projects/orbital/test/browser.mjs
+//   node Projects/orbital/test/browser.mjs [--only <part of a section's name>]
 //
 // Exits non-zero on any missed beat (locked decision #13). Screenshots in
 // ./shots/.
@@ -60,6 +60,11 @@ const PAGE_URL = '/Projects/orbital/';
 
 fs.mkdirSync(OUT, { recursive: true });
 
+// `--only <text>` runs the sections whose name holds the text, for working on
+// one. It is not a way to pass: CI runs the file bare.
+const ONLY = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : '';
+if (ONLY) console.log(`--only "${ONLY}": every other section is skipped`);
+
 let checks = 0, failures = 0, shotN = 0;
 const t = {
   ok(cond, label, detail = '') {
@@ -75,6 +80,7 @@ const t = {
    down with it. A suite that reports a second bug by not looking for it is
    worth less than one that reports one. */
 async function section(name, fn) {
+  if (ONLY && !name.includes(ONLY)) return;
   console.log('\n' + name);
   try { await fn(); }
   catch (err) {
@@ -501,6 +507,116 @@ try {
         detail || `${hits} of ${at.length}`);
       await shot(p2, 'dsf2-editor');
     } finally { await p2.close().catch(() => {}); }
+  });
+
+  await section('The editor\'s Check counts the launches that win', async () => {
+    // #877. After the verdict the Check flies the generator's census of the
+    // same draft and prints its share. The two Slingshot figures are the
+    // literals test/generator.mjs pins on the same census in Node; nothing
+    // here counts a win. What only a page can say is that the line is there,
+    // that it moves with the draft, and that the tab is alive while it counts.
+    // "Alive" is not a duration (#53): it is a click handled between two
+    // slices, and 1,200 separate steps where one call would have been none.
+    await boot(page, null);
+    await begin(page);
+    /* Arms a run: logs every text the status line holds, counts and times the
+       steps the Check asks OrbitalGen.makeCensus for, and at the first
+       "Counting" does `mid` from a timer of its own, between two slices. */
+    const arm = mid => page.evaluate(mid => {
+      const el = document.getElementById('edStatus');
+      const w = window.__cen = { texts: [], steps: 0, longest: 0, mid: null };
+      const state = () => ({ status: el.textContent, running: edSearch !== null, tool: edTool,
+        btn: document.getElementById('edCheck').textContent });
+      const act = {
+        click: () => document.querySelector('.ed-tool[data-tool="planet"]').click(),
+        edit: () => { const i = document.querySelector('#edInsp input[aria-label="Radius"]');
+          i.value = '60'; i.dispatchEvent(new Event('input', { bubbles: true })); },
+      }[mid];
+      if (window.__cenObs) window.__cenObs.disconnect();
+      window.__cenObs = new MutationObserver(() => {
+        const s = el.textContent;
+        if (w.texts[w.texts.length - 1] !== s) w.texts.push(s);
+        if (act && !w.armed && /Counting/.test(s)) { w.armed = true; setTimeout(() => { act(); w.mid = state(); }, 0); }
+      });
+      window.__cenObs.observe(el, { childList: true, characterData: true, subtree: true });
+      if (!OrbitalGen.__raw) {
+        OrbitalGen.__raw = OrbitalGen.makeCensus;
+        OrbitalGen.makeCensus = lv => {
+          const c = OrbitalGen.__raw(lv);
+          return { step(n) {
+            const t0 = performance.now(), r = c.step(n), d = performance.now() - t0;
+            window.__cen.steps++; if (d > window.__cen.longest) window.__cen.longest = d;
+            return r;
+          } };
+        };
+      }
+    }, mid);
+    const check = async () => {
+      await page.click('#edCheck');
+      await waitFor(page, () => edSearch === null, { timeout: 120000, polling: 100 });
+      return page.evaluate(() => ({ ...window.__cen, text: document.getElementById('edStatus').textContent,
+        cls: document.getElementById('edStatus').className, btn: document.getElementById('edCheck').textContent }));
+    };
+    const VERDICT = /^Winnable: \d+° at \d+% power, found in \d+ trial launches\./;
+    const counting = r => r.texts.filter(s => /Counting how many launches win… \d+%$/.test(s));
+
+    // Slingshot as it ships, with a click on a tool while the census runs.
+    await page.evaluate(() => edEnter(JSON.parse(JSON.stringify(LEVELS[2]))));
+    await arm('click');
+    const a = await check();
+    t.ok(VERDICT.test(a.text) && a.text.endsWith(' 1.4% of launches win (17 of 1,200).'),
+      'Slingshot reads its verdict and then 1.4%, 17 of 1,200', a.text);
+    t.ok(a.cls === 'ed-status good' && a.btn === 'Check', 'in the good colour, with the button back to Check',
+      `${a.cls}, ${a.btn}`);
+    const ca = counting(a);
+    t.ok(ca.length > 0 && ca.every(s => VERDICT.test(s) && s.startsWith(a.text.slice(0, a.text.indexOf(' 1.4%')))),
+      'the verdict is on the line while the census counts', ca[0] || a.texts.join(' | ').slice(0, 200));
+    t.ok(ca.length >= 3, 'and the count is shown moving, in slices', `${ca.length} different progress lines`);
+    t.ok(a.steps === 1200, 'it is the generator\'s census, one launch a step', `${a.steps} steps, longest ${a.longest.toFixed(1)} ms`);
+    t.ok(a.mid && a.mid.tool === 'planet' && a.mid.running && a.mid.btn === 'Cancel',
+      'a click on a tool lands while it is still counting', JSON.stringify(a.mid));
+
+    // The same draft with its marker widened from 40 to 60 on the slider.
+    await page.evaluate(() => edSelect({ kind: 'goal' }));
+    await arm(null);
+    const r60 = await page.evaluate(() => { const i = document.querySelector('#edInsp input[aria-label="Radius"]');
+      i.value = '60'; i.dispatchEvent(new Event('input', { bubbles: true })); return L.goal.r; });
+    const b = await check();
+    t.ok(r60 === 60 && b.text.endsWith(' 2.4% of launches win (29 of 1,200).'),
+      'a wider marker reads 2.4%, 29 of 1,200', `marker ${r60}: ${b.text}`);
+    await shot(page, 'check-census');
+
+    // An edit while it counts stops the count and says so. Clockwork's census
+    // is the longest of the 22 (4.5 s in Node), so there is room to land one.
+    await page.evaluate(() => { edEnter(JSON.parse(JSON.stringify(LEVELS[7]))); edSelect({ kind: 'goal' }); });
+    await arm('edit');
+    const c = await check();
+    await new Promise(r => setTimeout(r, 400));
+    const late = await page.evaluate(() => document.getElementById('edStatus').textContent);
+    t.ok(c.mid && !c.mid.running && c.mid.btn === 'Check' &&
+      c.mid.status === 'The draft changed, so the Check stopped. Check again.',
+      'an edit mid-count stops the Check and says why', JSON.stringify(c.mid));
+    t.ok(!!c.mid && late === c.mid.status && c.steps < 1200, 'and no figure for the old draft arrives after it',
+      `${c.steps} steps flown, then "${late}"`);
+
+    // Unwinnable: the search spends its budget and the census is not flown.
+    await page.evaluate(() => edEnter(OrbitalCode.decode('o1$Walled$$120,300$880,300,44$k,245,300,120,0')));
+    await arm(null);
+    const d = await check();
+    t.ok(/^No winning shot in \d+ trial launches\./.test(d.text) &&
+      d.text.endsWith(' No census: its 1,200 launches are among those.') && d.cls === 'ed-status bad',
+      'a draft with no winning shot says the census was not flown', d.text);
+    t.ok(d.steps === 0 && counting(d).length === 0, 'and does not fly it', `${d.steps} steps`);
+
+    // Winnable on an angle the census skips: a found shot beside a zero.
+    await page.evaluate(() => edEnter(OrbitalCode.decode('o1$Narrow$$100,300$950,322,20$')));
+    await arm(null);
+    const e = await check();
+    t.ok(VERDICT.test(e.text) && e.cls === 'ed-status good' &&
+      e.text.endsWith(' None of the census\'s 1,200 launches win, though: the window is narrower than its grid.'),
+      'a shot the census never finds reads as winnable with none of 1,200', e.text);
+    t.ok(e.steps === 1200, 'after flying all of it', `${e.steps} steps, longest ${e.longest.toFixed(1)} ms`);
+    await page.evaluate(() => { window.__cenObs.disconnect(); OrbitalGen.makeCensus = OrbitalGen.__raw; edLeave(); });
   });
 
   await section('Clean', async () => {
