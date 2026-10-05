@@ -106,7 +106,10 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
 
 ## Adding things
 
-- **A recipe, food, syrup or topping:** a row in `content.js`. If it needs a
+- **A recipe, food, syrup or topping:** a row in `content.js`. A recipe's row
+  must ask for a cup no other row asks for (#878): `smoke-sim.mjs` section 15
+  fails on two rows with one requirement list. `requiredSyrup` and
+  `requiredTopping` are written onto the order by `fillRecipeLines()`. If it needs a
   new kind of ticket line, add the line to `getOrderRequirements()` with its
   `station` and `apply`; the dot, the button, the barista and the scorer pick it
   up, and `smoke-sim.mjs` section 11 fails on a line whose station is not a tab

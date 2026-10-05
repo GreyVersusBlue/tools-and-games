@@ -865,9 +865,9 @@ Opus 5 and Fable rows run on Opus 5.5 and the Sonnet rows on Sonnet 5.
 **`Projects/corner-and-kettle` has no open phase.** Its three Blender rows
 (old 11 to 13) shipped on 2026-10-02 (#808 to #810). Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
-leaves for a later arc" list — candidates, not a ranked arc, and the largest of
-them (reshaping the five recipes that are another recipe's requirement list,
-#365) is a balance change with a sweep behind it. Nothing from it is in the
+leaves for a later arc" list — candidates, not a ranked arc. The five recipes
+that were another recipe's requirement list (#365) were reshaped on 2026-10-05
+(#878, TG-29); what that left is in the same list. Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
@@ -945,9 +945,9 @@ outside CI on purpose (#353) — so nothing there went red, and none of it is
 fixed.
 
 Two findings **Phase 7** left behind, both in the wishlist's later-arc list:
-**five recipes were already another recipe's requirement list** (Cappuccino is
-Latte's; Affogato and Doppio are Americano's — #365, named in an assertion
-rather than reshaped), and **the Legacy tree is measurably indistinguishable
+**five recipes were already another recipe's requirement list** (Cappuccino was
+Latte's; Affogato and Doppio were Americano's — #365, named in an assertion
+then, and each given a line of its own on 2026-10-05, #878), and **the Legacy tree is measurably indistinguishable
 from wasting the beans** at one pair of hands, because a shopper's income is
 the door and the door is the prestige level's spawn floor.
 

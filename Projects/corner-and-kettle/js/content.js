@@ -38,11 +38,16 @@ export const BASE_COLORS = {
   frappeBase:'#c7a679'
 };
 
+// No two rows ask for the same cup (#878, smoke-sim.mjs section 15). What a
+// row asks for is its base and shots, `needsMilk`, `ice`, `blended`,
+// `requiredSyrup` and `requiredTopping`; the last two must be day-one stock
+// (STARTING_UNLOCKS), because a reopening takes every other syrup and topping
+// off the shelf while a prestige- or bean-bought recipe stays on the menu.
 export const RECIPES = [
   {id:'drip', name:'House Drip', icon:'☕', category:'hot', base:'drip', shots:0, needsMilk:false, price:30, unlockCost:0},
   {id:'americano', name:'Americano', icon:'☕', category:'hot', base:'espresso', shots:2, needsMilk:false, price:38, unlockCost:0},
   {id:'latte', name:'Latte', icon:'🥛', category:'hot', base:'espresso', shots:1, needsMilk:true, price:45, unlockCost:0},
-  {id:'cappuccino', name:'Cappuccino', icon:'🫧', category:'hot', base:'espresso', shots:1, needsMilk:true, price:45, unlockCost:0},
+  {id:'cappuccino', name:'Cappuccino', icon:'🫧', category:'hot', base:'espresso', shots:1, needsMilk:true, requiredTopping:'cinnamon', price:45, unlockCost:0},
   {id:'icedcoffee', name:'Iced Coffee', icon:'🧊', category:'iced', base:'drip', shots:0, needsMilk:false, ice:true, price:38, unlockCost:0},
   {id:'mocha', name:'Mocha', icon:'🍫', category:'hot', base:'espresso', shots:1, needsMilk:true, requiredSyrup:'mocha', price:55, unlockCost:120},
   {id:'caramelmac', name:'Caramel Macchiato', icon:'🍮', category:'hot', base:'espresso', shots:1, needsMilk:true, requiredSyrup:'caramel', price:55, unlockCost:150},
@@ -50,12 +55,12 @@ export const RECIPES = [
   {id:'frappe', name:'Frappe', icon:'🥶', category:'blended', base:'frappeBase', shots:1, needsMilk:true, blended:true, price:65, unlockCost:250},
   {id:'chai', name:'Chai Latte', icon:'🍂', category:'hot', base:'tea', shots:0, needsMilk:true, price:48, unlockCost:200},
   // ---- Menu R&D chain: each requires the previous to already be unlocked ----
-  {id:'coldbrew', name:'Cold Brew', icon:'🧊', category:'iced', base:'drip', shots:0, needsMilk:false, ice:true, price:42, unlockCost:150},
-  {id:'nitrocoldbrew', name:'Nitro Cold Brew', icon:'🌫️', category:'iced', base:'drip', shots:0, needsMilk:false, ice:true, price:54, unlockCost:220, requires:'coldbrew'},
-  {id:'affogato', name:'Affogato', icon:'🍨', category:'hot', base:'espresso', shots:2, needsMilk:false, price:62, unlockCost:280, requires:'nitrocoldbrew'},
+  {id:'coldbrew', name:'Cold Brew', icon:'🧊', category:'iced', base:'drip', shots:0, needsMilk:true, ice:true, price:42, unlockCost:150},
+  {id:'nitrocoldbrew', name:'Nitro Cold Brew', icon:'🌫️', category:'iced', base:'drip', shots:0, needsMilk:false, ice:true, requiredTopping:'whip', price:54, unlockCost:220, requires:'coldbrew'},
+  {id:'affogato', name:'Affogato', icon:'🍨', category:'hot', base:'espresso', shots:2, needsMilk:false, requiredSyrup:'vanilla', requiredTopping:'whip', price:62, unlockCost:280, requires:'nitrocoldbrew'},
   // ---- Equipment-gated recipes: unlocked automatically by buying the matching machine tier ----
   {id:'ristretto', name:'Ristretto', icon:'🥃', category:'hot', base:'espresso', shots:1, needsMilk:false, price:42, unlockCost:0, equipmentGated:'espresso2'},
-  {id:'doppio', name:'Doppio', icon:'🥃', category:'hot', base:'espresso', shots:2, needsMilk:false, price:58, unlockCost:0, equipmentGated:'espresso3'},
+  {id:'doppio', name:'Doppio', icon:'🥃', category:'hot', base:'espresso', shots:2, needsMilk:false, requiredTopping:'whip', price:58, unlockCost:0, equipmentGated:'espresso3'},
   // ---- Prestige-gated recipes: on the menu from that reopening onward, free ----
   // The menu that grows across runs (Phase 7, #360). Money never buys these;
   // reaching the prestige level does, and sim.js's recipeAvailable() derives

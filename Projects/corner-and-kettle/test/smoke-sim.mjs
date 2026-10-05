@@ -831,21 +831,115 @@ section("15. the reopening is a trade now: beans, the Legacy tree, layouts (#360
     // the same requirement list are one drink at two prices: the player builds
     // the identical cup and the higher price is free money.
     //
-    // The menu already had five of those before Phase 7, and this is how that
-    // was found. Cappuccino is Latte's list exactly (espresso, one shot, milk);
-    // Cold Brew and Nitro Cold Brew are Iced Coffee's; Affogato and Doppio are
-    // Americano's. Reshaping five shipped recipes is a balance change, not this
-    // phase's, so they are named here instead of fixed — the list is the
-    // assertion, so reshaping one of them fails this line and gets read
-    // (locked decision #147: a claim worth keeping says out loud what it can
-    // and cannot distinguish). Phase 7's own four are held to the rule.
-    const shape = r => JSON.stringify([r.base, r.shots || 0, !!r.needsMilk, !!r.ice, !!r.blended, r.requiredSyrup || null]);
-    const shapes = RECIPES.map(shape);
-    const dupes = RECIPES.filter((r, i) => shapes.indexOf(shape(r)) !== i);
-    eq(dupes.map(r => r.name).join(","), "Cappuccino,Cold Brew,Nitro Cold Brew,Affogato,Doppio",
-      "the five recipes that were already another recipe's requirement list, and no more");
-    eq(dupes.filter(r => r.prestigeGated).map(r => r.name).join(","), "",
-      "no prestige-gated recipe repeats a list the menu already had");
+    // The menu had five of those before Phase 7 (#365), named here until
+    // #878 gave each a line of its own: Cappuccino was Latte's list, Cold Brew
+    // and Nitro Cold Brew were Iced Coffee's, Affogato and Doppio Americano's.
+    // The list is read off getOrderRequirements(), not off the table's fields:
+    // the first version compared six fields by name, so a seventh field
+    // (`requiredTopping`) would have been a difference it could not see.
+    // `plain` is the order with nothing on it but what the recipe asks for,
+    // through the same function a regular's stored favourite comes in by.
+    const plainOf = sim => r => sim.cloneOrderContent({ isFood: false, recipeId: r.id, price: r.price, custom: { toppings: [], ice: false } });
+    const listOf = sim => r => sim.getOrderRequirements(plainOf(sim)(r)).map(q => `${q.station}:${q.label}`).join(" | ");
+    const dupesOf = (sim, recipes) => {
+      const lists = recipes.map(listOf(sim));
+      return recipes.filter((r, i) => lists.indexOf(lists[i]) !== i).map(r => r.name).join(",");
+    };
+    // A recipe whose plain order cannot be read as a ticket at all (a milk
+    // recipe with no milk on the order) is a failure with a name, and the
+    // comparisons below, which would die on it, are skipped.
+    const unread = RECIPES.filter(r => { try { listOf(sim)(r); return false; } catch { return true; } }).map(r => r.name).join(",");
+    lists: {
+    if (!eq(unread, "", "every recipe's plain order reads as a ticket")) break lists;
+    eq(dupesOf(sim, RECIPES), "", `no two of the ${RECIPES.length} recipes on the menu share a requirement list`);
+    // The line above can fail: the same count on a menu whose Cappuccino has
+    // lost its cinnamon names it (#34, the way META_DISCOUNT_MAX is checked).
+    {
+      const recipes = RECIPES.map(r => r.id === "cappuccino" ? { ...r, requiredTopping: undefined } : r);
+      const content = { ...CONTENT, RECIPES: recipes };
+      const old = createSim({ content, rng: makeRng(58), state: freshState(content) });
+      eq(dupesOf(old, recipes), "Cappuccino", "and a Cappuccino with no line of its own is named by the same count");
+    }
+    // The free money itself, pair by pair: the cheaper recipe's finished cup
+    // used to complete the dearer ticket. Built by the barista's own steps.
+    const finished = r => { const slot = slotFor(order(r.id, plainOf(sim)(r).custom)); while (sim.autoAssistStep(slot)) {} return slot.cup; };
+    const completes = (cupOf, ticketOf) => {
+      const slot = slotFor(order(ticketOf.id, plainOf(sim)(ticketOf).custom)); slot.cup = finished(cupOf);
+      return sim.orderIsComplete(slot);
+    };
+    const R = id => RECIPES.find(r => r.id === id);
+    for (const [cheap, dear] of [["latte", "cappuccino"], ["icedcoffee", "coldbrew"], ["icedcoffee", "nitrocoldbrew"],
+      ["coldbrew", "nitrocoldbrew"], ["americano", "doppio"], ["americano", "affogato"], ["doppio", "affogato"]]) {
+      ok(completes(R(dear), R(dear)), `${R(dear).name}'s own cup completes its ticket`);
+      ok(!completes(R(cheap), R(dear)), `a finished ${R(cheap).name} is not a finished ${R(dear).name}`);
+    }
+    // What is left of it, named so a new one is read (#147): a cup still
+    // completes a dearer ticket where the dearer recipe is fewer shots, because
+    // the base line asks for at least its shots. An Americano's two are a
+    // Ristretto's one and four dollars more. That is less work for the Ristretto
+    // built honestly, so it is not the same drink at two prices, and it is not
+    // this decision's to change.
+    const over = [];
+    for (const a of RECIPES) for (const b of RECIPES) if (a !== b && b.price > a.price && completes(a, b)) over.push(`${a.name}>${b.name}`);
+    eq(over.join(","), "Americano>Ristretto", "the one cheaper cup that still completes a dearer ticket is two shots where one was asked");
+    // The five's new lines are day-one stock, so each can be made the moment
+    // its recipe unlocks and after any reopening: no syrup or topping to buy.
+    // (Mocha is not held to this and never was: its syrup is $35 on the board.)
+    const S = CONTENT.STARTING_UNLOCKS;
+    for (const id of ["cappuccino", "coldbrew", "nitrocoldbrew", "affogato", "doppio"]) {
+      const r = R(id);
+      ok(!r.requiredSyrup || S.syrups.includes(r.requiredSyrup), `${r.name} asks for no syrup a day-one shop lacks`);
+      ok(!r.requiredTopping || S.toppings.includes(r.requiredTopping), `${r.name} asks for no topping a day-one shop lacks`);
+    }
+    // The generator writes the recipe's lines onto the order, once each: 4,000
+    // orders off a full menu, every topping unlocked so the random one can
+    // collide with the required one.
+    {
+      const { sim: g, state: gs } = shop(59);
+      gs.unlockedRecipes = new Set(RECIPES.map(r => r.id)); gs.prestigeLevel = 5;
+      gs.unlockedToppings = new Set(CONTENT.TOPPINGS.map(t => t.id));
+      const seen = new Map(), bad = [];
+      for (let i = 0; i < 4000; i++) {
+        const o = g.generateOrderContent(CONTENT.PHASES[i % CONTENT.PHASES.length]);
+        if (o.isFood) continue;
+        const r = R(o.recipeId), c = o.custom;
+        seen.set(r.id, (seen.get(r.id) || 0) + 1);
+        if (r.needsMilk && !c.milk) bad.push(`${r.id}: no milk`);
+        if (r.requiredSyrup && c.syrup !== r.requiredSyrup) bad.push(`${r.id}: syrup ${c.syrup}`);
+        if (r.requiredTopping && c.toppings.filter(t => t === r.requiredTopping).length !== 1) bad.push(`${r.id}: toppings ${c.toppings}`);
+        if (new Set(c.toppings).size !== c.toppings.length) bad.push(`${r.id}: a topping twice`);
+        if (g.getOrderRequirements(o).length < g.getOrderRequirements(plainOf(g)(r)).length) bad.push(`${r.id}: fewer lines than the recipe's own`);
+      }
+      eq(seen.size, RECIPES.length, "4,000 generated orders reach every recipe on a full menu");
+      eq(bad.slice(0, 5).join("; "), "", "and each carries its recipe's milk, syrup and topping exactly once");
+    }
+    } // lists
+    // A regular's favourite saved before #878 has none of the new lines: a
+    // Cold Brew with no milk (getOrderRequirements() reads the milk's name, so
+    // this was a crash in the frame loop, not a wrong ticket), a Cappuccino
+    // with no cinnamon. They walk in asking for today's recipe, and what they
+    // had already chosen is kept.
+    {
+      const { sim: g, state: gs } = shop(60);
+      const rec = order => ({ order, visits: 3, lastDay: 1, satisfaction: 60, tolerance: 1, stopped: false });
+      for (const name of CONTENT.REGULAR_NAMES) gs.regulars[name] = rec({ isFood: false, recipeId: "coldbrew", price: 42, custom: { milk: undefined, syrup: undefined, toppings: [], ice: true } });
+      gs.unlockedRecipes.add("coldbrew");
+      let regular = null;
+      for (let i = 0; i < 400 && !regular; i++) { const o = g.generateOrder(); if (o.isRegular) regular = o; }
+      ok(!!regular, "a regular walks in within 400 customers");
+      eq(regular && regular.recipeId, "coldbrew", "wanting the Cold Brew they were saved with");
+      eq(regular && regular.custom.milk, "whole", "with a milk now, the first in the table");
+      let ticket; try { ticket = g.getOrderRequirements(regular).map(q => q.label).join(","); } catch (e) { ticket = `threw: ${e.message}`; }
+      eq(ticket, "Drip coffee,Whole Milk,Iced", "and a ticket that reads without throwing");
+      eq(gs.regulars[regular.regularName].order.custom.milk, undefined, "the stored favourite itself is not rewritten");
+      const capp = g.cloneOrderContent({ isFood: false, recipeId: "cappuccino", price: 45, custom: { milk: "oat", syrup: "caramel", toppings: ["whip"], ice: false } });
+      eq(JSON.stringify(capp.custom), JSON.stringify({ milk: "oat", syrup: "caramel", toppings: ["cinnamon", "whip"], ice: false }),
+        "an old Cappuccino favourite gains the cinnamon and keeps its oat milk, caramel and whip");
+      const twice = g.cloneOrderContent(capp);
+      eq(twice.custom.toppings.join(","), "cinnamon,whip", "and gains it once");
+      const latte = g.cloneOrderContent({ isFood: false, recipeId: "latte", price: 45, custom: { milk: "skim", syrup: undefined, toppings: [], ice: false } });
+      eq(JSON.stringify(latte.custom), JSON.stringify({ milk: "skim", syrup: undefined, toppings: [], ice: false }), "a Latte favourite is what it was");
+    }
   }
 
   // ---- the board discount ----
