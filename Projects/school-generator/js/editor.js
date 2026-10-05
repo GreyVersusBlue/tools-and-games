@@ -27,7 +27,7 @@ import {
 } from './grid.js';
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
-  nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
+  nearestSegment, shapeAt, toggleOpening, removeShape,
   accentFaceAt, setSegAccent, segAccent,
   moveOpening, openingsOnSeg, defaultOpeningWidth, isWindowOpening,
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
@@ -48,6 +48,7 @@ import {
 import {
   drawWallRun, wallLineAt, eraseWallLineAt, toggleLineOpening,
   moveLineOpening, lineOpenings, lineEnds, lineLength, wallAlongSeg,
+  eraseSegWall, pruneAccents,
 } from './wallrun.js';
 import { step, apply, clone } from './history.js';
 import { applyFinish, DEFAULT_FINISH } from './finish.js';
@@ -624,7 +625,8 @@ export function initEditor({
       if (seg) {
         // Erasing a wall takes its doorways with it — they were openings *in*
         // that wall, and there's nothing left to be an opening in.
-        if (setSegWall(seg.shape, seg.ring, seg.seg, SEG_NONE)) strokeChanged = true;
+        // ...and any accent it was the wall for (#859).
+        if (eraseSegWall(f, seg.shape, seg.ring, seg.seg)) strokeChanged = true;
         return;
       }
       // A whole free-drawn room is a lot to lose to a stray drag, so one only
@@ -633,6 +635,8 @@ export function initEditor({
       const frozen = isClick ? frozenAtPoint(s, s.currentFloor, wx, wz) : null;
       if (frozen) {
         removeShape(f, frozen.id);
+        // The room next door may have accented its face of this one's wall.
+        pruneAccents(f);
         strokeChanged = true;
         return;
       }
@@ -1116,7 +1120,8 @@ export function initEditor({
         // A doorway is an opening *in* this wall; with the wall gone there is
         // nothing left for it to be an opening in, so it goes too. That is
         // what `setSegWall(..., SEG_NONE)` has always done.
-        remove: () => setSegWall(seg.shape, seg.ring, seg.seg, SEG_NONE),
+        // An accent on it goes the same way (#859).
+        remove: () => eraseSegWall(f, seg.shape, seg.ring, seg.seg),
       };
     }
     // A vertical link. `linkAt` already knows that an elevator stands on both
@@ -1143,7 +1148,7 @@ export function initEditor({
     if (frozen) {
       return {
         what: `${frozen.name || 'Room'} — ${Math.round(shapeArea(frozen)).toLocaleString()} ft²`,
-        remove: () => removeShape(f, frozen.id),
+        remove: () => { const ok = removeShape(f, frozen.id); if (ok) pruneAccents(f); return ok; },
       };
     }
     return null;

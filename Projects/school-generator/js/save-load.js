@@ -123,7 +123,7 @@ import { EDGE_KINDS, createLattice, bake } from './lattice.js';
 import { normalizeCode, isDefaultCode } from './codes.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
-import { normalizeWallLines } from './wallrun.js';
+import { normalizeWallLines, pruneAccents } from './wallrun.js';
 import { readFinish, readPaint } from './finish.js';
 import { normalizeEnv, isDefaultEnv } from './sky.js';
 import { normalizeTerrain, packTerrain } from './terrain.js';
@@ -348,6 +348,12 @@ function readFloor(raw, w, h) {
     // it, and absent again from any design nobody has drawn one on.
     const lines = normalizeWallLines(raw.walls, Math.max(w, h) * CELL * 4);
     if (lines.length) f.walls = lines;
+    // #859: an accent whose wall was erased after it was painted, in a file
+    // written before the eraser took the accent with it, paints nothing and
+    // could never be clicked off a wall that is not there. It is dropped here,
+    // once the storey's rooms and wall lines are both read, the way a doorway
+    // on a segment with no wall is dropped in `readRing`.
+    pruneAccents(f);
     // ...and Phase 26's, on exactly the same terms: where a walk of this
     // storey starts, when somebody has said. A storey nobody has chosen a
     // start point on writes no `spawn` key.

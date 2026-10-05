@@ -57298,6 +57298,29 @@ function accentSpans(shape) {
   return out;
 }
 
+// The corners in a straight wall where its accent changes: one colour to
+// another, or a colour to none. Such a corner turns nothing, so a redrawn ring
+// has no reason to have it (paint.js's trace gives a straight wall back as one
+// segment) and the two colours either side of it would have one wall between
+// them (#860). `ux, uz` is the way the wall runs, the room on its left.
+// [{ x, z, ux, uz }]
+function accentBreaks(shape) {
+  const out = [];
+  for (const ring of (shape && shape.rings) || []) {
+    if (!Array.isArray(ring.accents) || !Array.isArray(ring.pts)) continue;
+    const n = ring.pts.length;
+    for (let i = 0; i < n; i++) {
+      const prev = (i + n - 1) % n;
+      if (segAccent(ring, prev) === segAccent(ring, i)) continue;
+      const u = segDir(ring, prev), v = segDir(ring, i);
+      if (!u || !v) continue;
+      if (Math.abs(u.x * v.z - u.z * v.x) > 1e-6 || u.x * v.x + u.z * v.z <= 0) continue;
+      out.push({ x: ring.pts[i].x, z: ring.pts[i].z, ux: v.x, uz: v.z });
+    }
+  }
+  return out;
+}
+
 // How many feet of the segment a→b lie on a span: 0 unless the two are on one
 // line and run the same way. A segment on the same line running the other way
 // has its room on the other side, so it is the wall's far face and not this
@@ -58263,7 +58286,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, accentSpans, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -59828,7 +59851,7 @@ return { PROBE, solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe,
 })();
 // ---- js/wallrun.js ----
 const __m_js_wallrun_js = (() => {
-const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId } = __m_js_shapes_js;
+const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE } = __m_js_shapes_js;
 // wallrun.js — a wall drawn from one point to another.
 //
 // Until this module the wall tool had no way to say how long a wall was. You
@@ -60076,6 +60099,34 @@ function wallAlongSeg(floor, shape, ringIdx, seg, tol = ON_FACE_TOL) {
   });
 }
 
+// An erased wall takes its accents with it (#859). An accent is a face of a
+// wall, and the wall may be on another ring or free-standing, so the question
+// is asked of the storey and not of the segment that was cleared: every accent
+// whose line no longer has a wall on it comes off, by the rule the brush
+// refuses one with (#857). Returns how many came off. A storey with no
+// accents is not walked past its rings' `accents` keys.
+function pruneAccents(floor) {
+  let n = 0;
+  for (const shape of shapesOf(floor)) {
+    shape.rings.forEach((ring, ri) => {
+      if (!Array.isArray(ring.accents)) return;
+      for (let i = ring.pts.length - 1; i >= 0; i--) {
+        if (!segAccent(ring, i) || wallAlongSeg(floor, shape, ri, i)) continue;
+        if (setSegAccent(shape, ri, i, null)) n++;
+      }
+    });
+  }
+  return n;
+}
+
+// Clear one ring segment's wall, the eraser's way: its doorways go
+// (`setSegWall`), and so does any accent the wall was the only wall for.
+function eraseSegWall(floor, shape, ringIdx, seg) {
+  if (!setSegWall(shape, ringIdx, seg, SEG_NONE)) return false;
+  pruneAccents(floor);
+  return true;
+}
+
 // The stretches of [0, len] that nothing covers. `spans` and the answer are
 // both [start, end] pairs measured from the start of the run.
 function gapsOf(spans, len, min = MIN_RUN) {
@@ -60264,6 +60315,8 @@ function eraseWallLineAt(floor, x, z, tol = ON_LINE_TOL) {
   const hit = wallLineAt(floor, x, z, tol);
   if (!hit) return null;
   removeWallLine(floor, hit.line.id);
+  // A room's face of this wall may have been an accent (#859).
+  pruneAccents(floor);
   return hit.line;
 }
 
@@ -60317,7 +60370,7 @@ function wallLineFootage(floor) {
   return ft;
 }
 
-return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
+return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, pruneAccents, eraseSegWall, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
 })();
 // ---- js/terrain.js ----
 const __m_js_terrain_js = (() => {
@@ -91769,7 +91822,7 @@ const { EDGE_KINDS, createLattice, bake } = __m_js_lattice_js;
 const { normalizeCode, isDefaultCode } = __m_js_codes_js;
 const { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } = __m_js_props_js;
 const { normalizeShape, MAX_SHAPES } = __m_js_shapes_js;
-const { normalizeWallLines } = __m_js_wallrun_js;
+const { normalizeWallLines, pruneAccents } = __m_js_wallrun_js;
 const { readFinish, readPaint } = __m_js_finish_js;
 const { normalizeEnv, isDefaultEnv } = __m_js_sky_js;
 const { normalizeTerrain, packTerrain } = __m_js_terrain_js;
@@ -92130,6 +92183,12 @@ function readFloor(raw, w, h) {
     // it, and absent again from any design nobody has drawn one on.
     const lines = normalizeWallLines(raw.walls, Math.max(w, h) * CELL * 4);
     if (lines.length) f.walls = lines;
+    // #859: an accent whose wall was erased after it was painted, in a file
+    // written before the eraser took the accent with it, paints nothing and
+    // could never be clicked off a wall that is not there. It is dropped here,
+    // once the storey's rooms and wall lines are both read, the way a doorway
+    // on a segment with no wall is dropped in `readRing`.
+    pruneAccents(f);
     // ...and Phase 26's, on exactly the same terms: where a walk of this
     // storey starts, when somebody has said. A storey nobody has chosen a
     // start point on writes no `spawn` key.

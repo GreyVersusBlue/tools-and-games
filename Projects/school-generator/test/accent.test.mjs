@@ -12,12 +12,15 @@ import { sheet } from './build.mjs';
 import {
   addShape, cloneShape, orientRing, insertVertex, deleteVertex, setSegWall,
   curveSegment, straightenRun, segAccent, setSegAccent, accentSpans, spanOverlap,
+  accentBreaks, addOpening,
   SEG_NONE, SEG_WALL,
 } from '../js/shapes.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { DEFAULT_PAINT, wallFaceRuns, wallPaint } from '../js/finish.js';
-import { paintCells, reapplyAccents } from '../js/paint.js';
-import { wallAlongSeg, addWallLine } from '../js/wallrun.js';
+import { paintCells, reapplyAccents, splitAtBreaks } from '../js/paint.js';
+import {
+  wallAlongSeg, addWallLine, pruneAccents, eraseSegWall, eraseWallLineAt,
+} from '../js/wallrun.js';
 
 const GREEN = '#00aa00', GOLD = '#ccaa00';
 
@@ -470,29 +473,154 @@ test('a wall the brush makes longer keeps its accent, and one mostly new does no
   assert.deepEqual(grow([3, 4, 5]), []);
 });
 
-test('two accents the redraw merges into one wall leave the colour that covered half of it', () => {
-  const build = (cut) => {
+// #860. Before it, the trace gave a straight wall back as one segment and the
+// longer colour took all of it.
+test('two colours on one straight wall are both still there after a stroke somewhere else', () => {
+  const build = (cut, left = GOLD, right = GREEN) => {
     const s = createState(20, 20);
     sheet(s, 0).box(1, 1, 6, 2, { name: 'R' }).bake();
     const R = named(s, 'R');
     // A corner on the north wall (x 4..28) at `cut`, and a colour either side.
     assert.notEqual(insertVertex(R, 0, segBetween(R, 4, 4, 28, 4), cut, 4), -1);
-    setSegAccent(R, 0, segBetween(R, 4, 4, cut, 4), GOLD);
-    setSegAccent(R, 0, segBetween(R, cut, 4, 28, 4), GREEN);
+    if (left) setSegAccent(R, 0, segBetween(R, 4, 4, cut, 4), left);
+    if (right) setSegAccent(R, 0, segBetween(R, cut, 4, 28, 4), right);
+    const before = JSON.stringify(R.rings);
     paintCells(s, 0, [{ x: 12, y: 12 }], true);
-    return accentPlaces(named(s, 'R').rings[0]);
+    return { s, R: named(s, 'R'), before };
   };
-  // The lattice has no corner in a straight wall, so the trace gives one 24ft
-  // segment back. 16ft of green is the wall's colour; 8ft of gold is not.
-  assert.deepEqual(build(12), [`28,4>4,4:${GREEN}`]);
-  assert.deepEqual(build(20), [`28,4>4,4:${GOLD}`]);
-  // reapplyAccents says how many faces it painted.
+  for (const cut of [12, 20, 8]) {
+    const { R, before } = build(cut);
+    const place = (x0, x1, hex) => `${[`${x0},4`, `${x1},4`].sort().join('>')}:${hex}`;
+    assert.deepEqual(accentPlaces(R.rings[0]), [place(cut, 28, GREEN), place(4, cut, GOLD)].sort());
+    // Not only the colours: the room is the ring it was, corner and all.
+    assert.equal(JSON.stringify(R.rings), before);
+  }
+  // A colour beside bare wall is the same case: the bare part stays bare, and
+  // the short colour is not lost for being under half of the wall.
+  assert.deepEqual(accentPlaces(build(20, null, GREEN).R.rings[0]), [`20,4>28,4:${GREEN}`]);
+  assert.deepEqual(accentPlaces(build(20, GOLD, null).R.rings[0]), [`20,4>4,4:${GOLD}`]);
+  // A second stroke finds the corner the first one put back.
+  const twice = build(12);
+  paintCells(twice.s, 0, [{ x: 13, y: 12 }], true);
+  assert.equal(JSON.stringify(named(twice.s, 'R').rings), twice.before);
+});
+
+test('a corner with one colour both sides of it is not kept, and reapplyAccents counts', () => {
   const s = createState(20, 20);
   sheet(s, 0).box(1, 1, 6, 2, { name: 'R' }).bake();
-  const R = named(s, 'R');
-  assert.equal(reapplyAccents(R, [{ ax: 28, az: 4, bx: 4, bz: 4, paint: GREEN },
-    { ax: 4, az: 4, bx: 28, bz: 4, paint: GREEN }]), 1, 'one of the two runs the ring\'s way');
+  let R = named(s, 'R');
+  assert.notEqual(insertVertex(R, 0, segBetween(R, 4, 4, 28, 4), 12, 4), -1);
+  setSegAccent(R, 0, segBetween(R, 4, 4, 12, 4), GREEN);
+  setSegAccent(R, 0, segBetween(R, 12, 4, 28, 4), GREEN);
+  assert.deepEqual(accentBreaks(R), []);
+  paintCells(s, 0, [{ x: 12, y: 12 }], true);
+  R = named(s, 'R');
+  assert.equal(R.rings[0].pts.length, 4);
+  assert.deepEqual(accentPlaces(R.rings[0]), [`28,4>4,4:${GREEN}`]);
+  // reapplyAccents says how many faces it painted.
+  assert.equal(reapplyAccents(R, [{ ax: 28, az: 4, bx: 4, bz: 4, paint: GOLD },
+    { ax: 4, az: 4, bx: 28, bz: 4, paint: GOLD }]), 1, 'one of the two runs the ring\'s way');
   assert.equal(reapplyAccents(R, []), 0);
+});
+
+test('accentBreaks is where a straight wall changes colour, and nowhere a wall turns', () => {
+  const { shape } = roomWithASplitWall();
+  // Ring: (4,4) (16,4) (28,4) (28,12) (4,12), or its reverse; find the two
+  // halves of the split wall by where they are.
+  const west = segBetween(shape, 4, 4, 16, 4), east = segBetween(shape, 16, 4, 28, 4);
+  assert.deepEqual(accentBreaks(shape), [], 'no accents, no breaks');
+  setSegAccent(shape, 0, west, GOLD);
+  const [a, b] = [shape.rings[0].pts[west], shape.rings[0].pts[(west + 1) % 5]];
+  const way = Math.sign(b.x - a.x);
+  // One break, at the split, though the gold wall also ends at a real corner.
+  assert.deepEqual(accentBreaks(shape), [{ x: 16, z: 4, ux: way, uz: 0 }]);
+  setSegAccent(shape, 0, east, GREEN);
+  assert.deepEqual(accentBreaks(shape), [{ x: 16, z: 4, ux: way, uz: 0 }]);
+  setSegAccent(shape, 0, east, GOLD);
+  assert.deepEqual(accentBreaks(shape), []);
+  // An accent on a wall round a real corner from another is no break.
+  setSegAccent(shape, 0, west, null);
+  setSegAccent(shape, 0, east, GOLD);
+  setSegAccent(shape, 0, segBetween(shape, 28, 4, 28, 12), GREEN);
+  assert.deepEqual(accentBreaks(shape), [{ x: 16, z: 4, ux: way, uz: 0 }]);
+  assert.deepEqual(accentBreaks(null), []);
+});
+
+test('splitAtBreaks cuts the segment that runs through a break the same way, once', () => {
+  const fresh = () => {
+    const s = createState(20, 20);
+    sheet(s, 0).box(1, 1, 6, 2, { name: 'R' }).bake();
+    return named(s, 'R');
+  };
+  // The north wall, x 4..28 at z 4, runs one way round the ring; `way` is it.
+  let R = fresh();
+  const n = segBetween(R, 4, 4, 28, 4);
+  const way = Math.sign(R.rings[0].pts[(n + 1) % 4].x - R.rings[0].pts[n].x);
+  assert.equal(splitAtBreaks(R, [{ x: 12, z: 4, ux: way, uz: 0 }]), 1);
+  assert.equal(R.rings[0].pts.length, 5);
+  segBetween(R, 4, 4, 12, 4); segBetween(R, 12, 4, 28, 4);
+  // The same break again finds a corner there already.
+  assert.equal(splitAtBreaks(R, [{ x: 12, z: 4, ux: way, uz: 0 }]), 0);
+  // The other way along the line is the far face: some other ring's business.
+  R = fresh();
+  assert.equal(splitAtBreaks(R, [{ x: 12, z: 4, ux: -way, uz: 0 }]), 0);
+  // Off the line, past the end of it, and on the wall's own corner: no cut.
+  assert.equal(splitAtBreaks(R, [{ x: 12, z: 4.5, ux: way, uz: 0 }]), 0);
+  assert.equal(splitAtBreaks(R, [{ x: 32, z: 4, ux: way, uz: 0 }]), 0);
+  assert.equal(splitAtBreaks(R, [{ x: 4, z: 4, ux: way, uz: 0 }]), 0);
+  assert.equal(splitAtBreaks(R, [{ x: 28, z: 4, ux: way, uz: 0 }]), 0);
+  assert.equal(R.rings[0].pts.length, 4);
+  // The south wall is parallel and runs the other way: a break aimed along
+  // the north wall's way does not cut it either.
+  assert.equal(splitAtBreaks(R, [{ x: 12, z: 12, ux: way, uz: 0 }]), 0);
+  assert.equal(splitAtBreaks(R, [{ x: 12, z: 12, ux: -way, uz: 0 }]), 1);
+});
+
+test('a door on a two-colour wall is on the same piece of it after a stroke', () => {
+  const s = createState(20, 20);
+  sheet(s, 0).box(1, 1, 6, 2, { name: 'R' }).bake();
+  let R = named(s, 'R');
+  assert.notEqual(insertVertex(R, 0, segBetween(R, 4, 4, 28, 4), 12, 4), -1);
+  const gold = segBetween(R, 4, 4, 12, 4), green = segBetween(R, 12, 4, 28, 4);
+  setSegAccent(R, 0, gold, GOLD);
+  setSegAccent(R, 0, green, GREEN);
+  // One door a foot and three quarters from the break on each side of it.
+  assert.ok(addOpening(R, 0, gold, R.rings[0].pts[gold].x === 4 ? 0.6875 : 0.3125, 3));
+  assert.ok(addOpening(R, 0, green, R.rings[0].pts[green].x === 12 ? 0.203125 : 0.796875, 3));
+  const doorsAt = (shape) => shape.rings[0].openings.map((o) => {
+    const a = shape.rings[0].pts[o.seg], b = shape.rings[0].pts[(o.seg + 1) % shape.rings[0].pts.length];
+    return `${a.x + (b.x - a.x) * o.t},${a.z + (b.z - a.z) * o.t} on ${[a.x, b.x].sort((p, q) => p - q).join('..')}`;
+  }).sort();
+  const before = doorsAt(R);
+  assert.deepEqual(before, ['15.25,4 on 12..28', '9.5,4 on 4..12']);
+  paintCells(s, 0, [{ x: 12, y: 12 }], true);
+  R = named(s, 'R');
+  assert.deepEqual(doorsAt(R), before);
+  assert.deepEqual(accentPlaces(R.rings[0]), [`12,4>28,4:${GREEN}`, `12,4>4,4:${GOLD}`]);
+});
+
+test('a two-colour wall the stroke makes longer keeps its break, and the half rule its new end', () => {
+  // R is cells x 1..4 (x 4..20 ft), north wall split at x 12, gold then green,
+  // open to the east and along the north so painted cells lengthen the wall.
+  const grow = (cellsX) => {
+    const s = createState(20, 20);
+    sheet(s, 0).box(1, 1, 4, 2, { name: 'R' }).bake();
+    const R = named(s, 'R');
+    setSegWall(R, 0, segBetween(R, 20, 4, 20, 12), SEG_NONE);
+    setSegWall(R, 0, segBetween(R, 4, 4, 20, 4), SEG_NONE);
+    assert.notEqual(insertVertex(R, 0, segBetween(R, 4, 4, 20, 4), 12, 4), -1);
+    setSegAccent(R, 0, segBetween(R, 4, 4, 12, 4), GOLD);
+    setSegAccent(R, 0, segBetween(R, 12, 4, 20, 4), GREEN);
+    const cells = [];
+    for (const x of cellsX) cells.push({ x, y: 1 }, { x, y: 2 });
+    paintCells(s, 0, cells, true);
+    assert.equal(s.floors[0].shapes.length, 1);
+    return accentPlaces(named(s, 'R').rings[0]);
+  };
+  // Green was 8ft; the piece east of the break is 12ft, then 16ft, then 20ft.
+  assert.deepEqual(grow([5]), [`12,4>24,4:${GREEN}`, `12,4>4,4:${GOLD}`]);
+  assert.deepEqual(grow([5, 6]), [`12,4>28,4:${GREEN}`, `12,4>4,4:${GOLD}`]);
+  assert.deepEqual(grow([5, 6, 7]), [`12,4>4,4:${GOLD}`]);
 });
 
 // ---------- is there a wall to paint (#857) ----------
@@ -524,4 +652,88 @@ test('a face has a wall when its own ring, a neighbour\'s or a free-standing wal
   assert.equal(wallAlongSeg(f, A, 0, 99), false);
   assert.equal(wallAlongSeg(f, A, 3, 0), false);
   assert.equal(wallAlongSeg(f, null, 0, 0), false);
+});
+
+// ---------- an erased wall takes its accents with it (#859) ----------
+
+test('erasing a wall takes the accent off both of its faces and no other wall', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A'), B = named(s, 'B');
+  const mine = segBetween(A, 16, 4, 16, 12), theirs = segBetween(B, 16, 4, 16, 12);
+  const north = segBetween(A, 4, 4, 16, 4);
+  assert.equal(B.rings[0].walls[theirs], SEG_NONE);
+  setSegAccent(A, 0, mine, GREEN);
+  setSegAccent(A, 0, north, GOLD);
+  setSegAccent(B, 0, theirs, GOLD);
+  // The partition is on A's ring. B's face of it goes with it too, though
+  // B's own segment never had a wall to clear.
+  assert.equal(eraseSegWall(f, A, 0, mine), true);
+  assert.equal(A.rings[0].walls[mine], SEG_NONE);
+  assert.equal(segAccent(A.rings[0], mine), null);
+  assert.equal('accents' in B.rings[0], false, 'B\'s only accent went, and the key with it');
+  assert.equal(segAccent(A.rings[0], north), GOLD, 'a wall still standing keeps its accent');
+  // Nothing to erase the second time, and nothing more comes off.
+  assert.equal(eraseSegWall(f, A, 0, mine), false);
+  assert.equal(pruneAccents(f), 0);
+});
+
+test('an accent stays while any wall is left on its line, and goes with the last one', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A');
+  const north = segBetween(A, 4, 4, 16, 4);
+  setSegAccent(A, 0, north, GREEN);
+  assert.ok(addWallLine(s, 0, { x: 8, z: 4 }, { x: 12, z: 4 }));
+  assert.equal(eraseSegWall(f, A, 0, north), true);
+  assert.equal(segAccent(A.rings[0], north), GREEN, 'the free-standing wall is still a wall there');
+  // A miss erases nothing and prunes nothing.
+  assert.equal(eraseWallLineAt(f, 10, 9, 0.5), null);
+  assert.equal(segAccent(A.rings[0], north), GREEN);
+  assert.ok(eraseWallLineAt(f, 10, 4, 0.5));
+  assert.equal('accents' in A.rings[0], false);
+});
+
+test('pruneAccents counts what it took off and leaves an accent with a wall alone', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A'), B = named(s, 'B');
+  const mine = segBetween(A, 16, 4, 16, 12), theirs = segBetween(B, 16, 4, 16, 12);
+  setSegAccent(A, 0, mine, GREEN);
+  setSegAccent(B, 0, theirs, GOLD);
+  setSegAccent(B, 0, segBetween(B, 28, 4, 28, 12), GOLD);
+  assert.equal(pruneAccents(f), 0);
+  // The shapes.js call, which knows nothing of the storey, leaves both.
+  setSegWall(A, 0, mine, SEG_NONE);
+  assert.equal(segAccent(A.rings[0], mine), GREEN);
+  assert.equal(pruneAccents(f), 2);
+  assert.deepEqual(accentPlaces(B.rings[0]), [`28,12>28,4:${GOLD}`]);
+  assert.equal(pruneAccents(null), 0);
+});
+
+test('a file that holds an accent with no wall loads without it, and every other accent loads', () => {
+  const s = twoRoomsAndAHall(), A = named(s, 'A'), B = named(s, 'B');
+  const mine = segBetween(A, 16, 4, 16, 12), theirs = segBetween(B, 16, 4, 16, 12);
+  setSegAccent(A, 0, segBetween(A, 4, 4, 16, 4), GOLD);
+  setSegAccent(B, 0, theirs, GREEN);
+  // Every accent has a wall: the file is read back as the bytes it was.
+  const whole = serialize(s);
+  assert.equal(serialize(deserialize(whole)), whole);
+  // The file an older build wrote after the partition was erased.
+  setSegAccent(A, 0, mine, GREEN);
+  setSegWall(A, 0, mine, SEG_NONE);
+  const old = serialize(s);
+  assert.equal((old.match(/"accents"/g) || []).length, 2);
+  const back = deserialize(old);
+  const a = named(back, 'A'), b = named(back, 'B');
+  assert.deepEqual(accentPlaces(a.rings[0]), [`16,4>4,4:${GOLD}`]);
+  assert.equal('accents' in b.rings[0], false);
+  assert.equal(a.rings[0].walls[segBetween(a, 16, 4, 16, 12)], SEG_NONE);
+  // And it is stable: saved and loaded again it is the same file.
+  assert.equal(serialize(deserialize(serialize(back))), serialize(back));
+});
+
+test('a file whose accent leans on a free-standing wall keeps it on load', () => {
+  const s = twoRoomsAndAHall(), f = s.floors[0], A = named(s, 'A');
+  const north = segBetween(A, 4, 4, 16, 4);
+  setSegAccent(A, 0, north, GREEN);
+  assert.ok(addWallLine(s, 0, { x: 8, z: 4 }, { x: 12, z: 4 }));
+  setSegWall(A, 0, north, SEG_NONE);
+  assert.equal(pruneAccents(f), 0);
+  const back = deserialize(serialize(s));
+  assert.deepEqual(accentPlaces(named(back, 'A').rings[0]), [`16,4>4,4:${GREEN}`]);
 });

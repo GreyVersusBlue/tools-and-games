@@ -1675,15 +1675,15 @@ const CHECKS = [
   },
   {
     name: 'accent-brush',
-    what: 'a swatch in the wall panel paints one face of one wall, the same click takes it off, a face with no wall is refused, and no wall is drawn',
+    what: 'a swatch in the wall panel paints one face of one wall, the same click takes it off, the eraser takes the accent with the wall, a face with no wall is refused, and no wall is drawn',
     async run(d) {
       const q = (js) => d.page.evaluate(js);
       const swatch = (hex) => q(`document.querySelector('#accent-swatches [data-paint="${hex}"]').click(); 1`);
       await d.pick('wall');
       // A wall of a room with a foot of that room clear in front of it.
       const aim = await q(`(async () => {
-        const { shapesOf, shapeAt, accentFaceAt, isBuilt } = await import('./js/shapes.js');
-        const { wallAlongSeg } = await import('./js/wallrun.js');
+        const { shapesOf, shapeAt, accentFaceAt, isBuilt, nearestSegment } = await import('./js/shapes.js');
+        const { wallAlongSeg, wallLineAt } = await import('./js/wallrun.js');
         const s = window.app.state, floor = s.floors[s.currentFloor];
         // The wall has to be the ring's own and the only one on its line, so
         // taking it down below leaves a face with nothing to paint (#857).
@@ -1708,7 +1708,11 @@ const CHECKS = [
               const face = accentFaceAt(floor, x, z, 3);
               if (!face || face.shape !== shape || face.ring !== 0 || face.seg !== i) continue;
               if (!alone(shape, ring, i)) continue;
-              return { x, z, id: shape.id, seg: i, n: ring.pts.length };
+              // ...and the one the eraser finds at its midpoint (#859).
+              const wx = (a.x + b.x) / 2, wz = (a.z + b.z) / 2;
+              const hit = nearestSegment(floor, wx, wz, 0.5);
+              if (!hit || hit.shape !== shape || hit.seg !== i || wallLineAt(floor, wx, wz, 0.5)) continue;
+              return { x, z, wx, wz, id: shape.id, seg: i, n: ring.pts.length };
             }
           }
         }
@@ -1722,6 +1726,7 @@ const CHECKS = [
         const kinds = [...document.querySelectorAll('#wall-kinds .kind-item[aria-pressed="true"]')].length;
         return {
           accents: ring.accents ? ring.accents.slice() : null, lit, kinds,
+          wall: ring.walls[${aim.seg}],
           armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
           status: document.getElementById('status').textContent,
         };
@@ -1733,6 +1738,20 @@ const CHECKS = [
       const painted = await read();
       await d.click(aim.x, aim.z);
       const toggled = await read();
+      // The wall rubbed out with the accent on it (#859): the accent goes with
+      // the wall, and one undo brings both back. A second undo takes the paint
+      // off again, so this leaves the undo stack as long as it found it: the
+      // `undo-redo` check below counts on six undos reaching another design.
+      await d.click(aim.x, aim.z);
+      await d.pick('erase');
+      await d.click(aim.wx, aim.wz);
+      const erased = await read();
+      await q('window.app.editor.undo(); 1');
+      const undone = await read();
+      await q('window.app.editor.undo(); 1');
+      await d.pick('wall');
+      if ((await read()).armed !== '#2f5d8a') await swatch('#2f5d8a');
+      const rearmed = await read();
       // The wall taken down behind the editor's back: the same click on the
       // same face has nothing to paint now, and has to say so (#857).
       const wall = (kind) => q(`(() => {
@@ -1756,7 +1775,7 @@ const CHECKS = [
       await swatch('#2f5d8a');
       await q(`document.querySelector('#wall-kinds [data-kind="wall"]').click(); 1`);
       const kinded = await read();
-      return { aim, idle, armed, painted, toggled, refused, cleared, down, kinded };
+      return { aim, idle, armed, painted, toggled, erased, undone, rearmed, refused, cleared, down, kinded };
     },
     expect: ({ ctx, before, after }) => {
       const { aim } = ctx;
@@ -1774,6 +1793,15 @@ const CHECKS = [
       if (!/painted #2f5d8a/.test(ctx.painted.status)) throw new Error(`the tool did not say so: ${ctx.painted.status}`);
       if (ctx.toggled.accents !== null) {
         throw new Error(`the same colour again should take it off and drop the key: ${JSON.stringify(ctx.toggled.accents)}`);
+      }
+      if (ctx.erased.wall !== 0 || ctx.erased.accents !== null) {
+        throw new Error(`the eraser should take the wall and its accent together: ${JSON.stringify(ctx.erased)}`);
+      }
+      if (ctx.undone.wall !== ctx.painted.wall || JSON.stringify(ctx.undone.accents) !== JSON.stringify(want)) {
+        throw new Error(`one undo should bring the wall and its accent back: ${JSON.stringify(ctx.undone)}`);
+      }
+      if (ctx.rearmed.accents !== null || ctx.rearmed.armed !== '#2f5d8a') {
+        throw new Error(`a second undo should take the paint off, and the brush should be up again: ${JSON.stringify(ctx.rearmed)}`);
       }
       if (ctx.refused.accents !== null || !/has no wall on that side/.test(ctx.refused.status)) {
         throw new Error(`a face with no wall on its line should be refused, out loud: ${JSON.stringify(ctx.refused)}`);

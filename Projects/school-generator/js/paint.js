@@ -58,7 +58,7 @@ import { gridOrigin } from './gridref.js';
 import {
   shapesOf, shapeBBox, pointInShape, segEnds, segLength, isBuilt, projectOnSeg,
   orientRing, takeId, writeOpening, openingSpec, isDoorOpening,
-  accentSpans, spanOverlap, setSegAccent,
+  accentSpans, accentBreaks, spanOverlap, setSegAccent, insertVertex,
   SEG_WALL, SEG_GLASS, SEG_RAIL, MAX_SHAPES, MAX_RING_PTS, LEAF_NONE,
 } from './shapes.js';
 
@@ -374,7 +374,8 @@ export function reapplyOpenings(shape, points, snap = OPENING_SNAP) {
 // least half of it: a wall the stroke made a cell longer is still the accent
 // wall, a wall the stroke notched keeps it either side of the notch, and a
 // long wall does not turn the colour of a short one it swallowed. Half exactly
-// counts, so a wall doubled in one stroke keeps its colour.
+// counts, so a wall doubled in one stroke keeps its colour. A straight wall in
+// two colours is two segments again by the time this runs (`splitAtBreaks`).
 export function reapplyAccents(shape, spans) {
   let placed = 0;
   shape.rings.forEach((ring, ri) => {
@@ -391,6 +392,35 @@ export function reapplyAccents(shape, spans) {
     }
   });
   return placed;
+}
+
+// #860. The trace turns a corner where the outline does or the wall changes
+// kind, and nowhere else, so a straight wall that was two colours comes back
+// as one segment with room for one. `accentBreaks` (shapes.js) is where the
+// old ring had a corner for that reason alone, and this puts each one back
+// into whichever new segment runs through it the same way. It runs before the
+// doorways and the accents go back, so both land on the piece they were on.
+// A corner the old wall ended at is not a break: a wall the stroke made longer
+// is still one wall, and `reapplyAccents`' half rule still decides it.
+export function splitAtBreaks(shape, breaks) {
+  let made = 0;
+  for (const br of breaks) {
+    shape.rings.forEach((ring, ri) => {
+      for (let i = 0; i < ring.pts.length; i++) {
+        const [a, b] = segEnds(ring, i);
+        const len = segLength(a, b);
+        if (len < EPS) continue;
+        const vx = (b.x - a.x) / len, vz = (b.z - a.z) / len;
+        // The same way only: the other way is the far face of the wall.
+        if (vx * br.ux + vz * br.uz < 1 - 1e-3) continue;
+        if (Math.abs((br.x - a.x) * vz - (br.z - a.z) * vx) > 1e-3) continue;
+        // `insertVertex` refuses a point at or past either end, which is a
+        // break the new segment already has a corner on, or does not reach.
+        if (insertVertex(shape, ri, i, br.x, br.z) >= 0) made++;
+      }
+    });
+  }
+  return made;
 }
 
 // ---------- the brush ----------
@@ -527,6 +557,15 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
     list.push(shape);
     built.set(region.owner, list);
   }
+
+  // A straight wall the room had in two colours gets its corner back (#860),
+  // before anything is put on a segment by number.
+  rooms.forEach((record, ri) => {
+    if (made.has(ri) || !built.has(ri)) return;
+    const breaks = accentBreaks(record);
+    if (!breaks.length) return;
+    for (const shape of built.get(ri)) splitAtBreaks(shape, breaks);
+  });
 
   // The doorways, put back where they are rather than where their index was.
   rooms.forEach((record, ri) => {

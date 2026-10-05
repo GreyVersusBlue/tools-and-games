@@ -42,6 +42,7 @@ import {
   sectionBounds, shapesInRect, propsInSection, copySection,
   sectionEmpty, cloneSection, rotateSection, pasteSection, stampRow,
 } from './section.js';
+import { pruneAccents } from './wallrun.js';
 
 const DRAFT_COLOR = 0x4da3ff;
 const SELECT_COLOR = 0xffcf5a;
@@ -777,6 +778,8 @@ export function initPolyEdit({ getState, renderApi, host }) {
         host.pushUndo();
         let n = 0;
         for (const id of ids) if (removeShape(floor, id)) n += 1;
+        // A deleted room's walls take the neighbours' accents on them (#859).
+        if (n) pruneAccents(floor);
         selectedIds = new Set();
         if (!n) { host.dropUndo(); return false; }
         host.changed();

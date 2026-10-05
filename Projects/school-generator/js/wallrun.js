@@ -48,7 +48,7 @@ import {
   MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen,
   MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec,
   shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg,
-  insertVertex, setSegWall, takeId,
+  insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE,
 } from './shapes.js';
 
 // Per floor. The same order of magnitude as MAX_SHAPES: a wall line is a
@@ -250,6 +250,34 @@ export function wallAlongSeg(floor, shape, ringIdx, seg, tol = ON_FACE_TOL) {
   });
 }
 
+// An erased wall takes its accents with it (#859). An accent is a face of a
+// wall, and the wall may be on another ring or free-standing, so the question
+// is asked of the storey and not of the segment that was cleared: every accent
+// whose line no longer has a wall on it comes off, by the rule the brush
+// refuses one with (#857). Returns how many came off. A storey with no
+// accents is not walked past its rings' `accents` keys.
+export function pruneAccents(floor) {
+  let n = 0;
+  for (const shape of shapesOf(floor)) {
+    shape.rings.forEach((ring, ri) => {
+      if (!Array.isArray(ring.accents)) return;
+      for (let i = ring.pts.length - 1; i >= 0; i--) {
+        if (!segAccent(ring, i) || wallAlongSeg(floor, shape, ri, i)) continue;
+        if (setSegAccent(shape, ri, i, null)) n++;
+      }
+    });
+  }
+  return n;
+}
+
+// Clear one ring segment's wall, the eraser's way: its doorways go
+// (`setSegWall`), and so does any accent the wall was the only wall for.
+export function eraseSegWall(floor, shape, ringIdx, seg) {
+  if (!setSegWall(shape, ringIdx, seg, SEG_NONE)) return false;
+  pruneAccents(floor);
+  return true;
+}
+
 // The stretches of [0, len] that nothing covers. `spans` and the answer are
 // both [start, end] pairs measured from the start of the run.
 export function gapsOf(spans, len, min = MIN_RUN) {
@@ -438,6 +466,8 @@ export function eraseWallLineAt(floor, x, z, tol = ON_LINE_TOL) {
   const hit = wallLineAt(floor, x, z, tol);
   if (!hit) return null;
   removeWallLine(floor, hit.line.id);
+  // A room's face of this wall may have been an accent (#859).
+  pruneAccents(floor);
   return hit.line;
 }
 

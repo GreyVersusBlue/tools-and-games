@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { createState, addFloor } from '../js/grid.js';
 import { sheet } from './build.mjs';
 import { shapesOf, setSegAccent, insertVertex } from '../js/shapes.js';
+import { eraseSegWall } from '../js/wallrun.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { clone } from '../js/history.js';
@@ -126,6 +127,20 @@ test('an accent wall painted, repainted and taken off are each a clause', () => 
   setSegAccent(room(two), 0, 2, '#00aa00');
   assert.deepEqual(one(plain, two).whats, ['gained 2 accent walls']);
   assert.equal(designDiff(roundTrip(green), roundTrip(green)).changes.length, 0);
+});
+
+// #859. Erasing a wall takes its accent, and the diff says so.
+test('a room whose accent wall was erased is said to have lost it', () => {
+  const before = clone(roundTrip(twoRooms()));
+  const room = (s) => shapesOf(s.floors[0]).find((x) => x.name === 'Room 101');
+  setSegAccent(room(before), 0, 0, '#00aa00');
+  setSegAccent(room(before), 0, 2, '#00aa00');
+  const after = clone(before);
+  assert.equal(eraseSegWall(after.floors[0], room(after), 0, 0), true);
+  const d = designDiff(roundTrip(before), roundTrip(after));
+  assert.equal(d.changes.length, 1, d.sentences.join(' | '));
+  assert.ok(d.changes[0].whats.includes('lost an accent wall'), d.changes[0].whats.join(' | '));
+  assert.ok(!d.changes[0].whats.some((w) => /gained|repainted/.test(w)), d.changes[0].whats.join(' | '));
 });
 
 test('an accent wall on a renumbered ring is the same accent wall', () => {
