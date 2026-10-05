@@ -3,9 +3,8 @@
 **Status: arc one has shipped, Phases 1 to 4; arc two has shipped too, Phases
 5 to 9. There is no open phase. What is left is the "What this leaves for a
 later arc" list at the bottom of this file, which is a list of candidates and
-not a ranked arc — the largest of them, reshaping the five recipes that are
-another recipe's requirement list (#365), is a balance change with a sweep
-behind it.** The game lives at `Projects/corner-and-kettle/index.html`
+not a ranked arc. The five recipes that were another recipe's requirement list
+(#365) each ask for a cup of their own since 2026-10-05 (#878).** The game lives at `Projects/corner-and-kettle/index.html`
 now. The paragraph below is Phase 1's and is kept for the record.
 The shop runs in Node now: `js/content.js` is the tables, `js/sim.js` is
 everything that happens to them behind `createSim({content, rng, state,
@@ -719,15 +718,27 @@ outside CI on purpose (#353).
   still the 10×14 sprite pattern, on purpose (#808).
 - **A second shop.** `franchise` costs $5,000, says "Second Location," and
   grants +10% income. There is no second location.
-- **Five recipes are another recipe's requirement list under a second name**
-  (#365). Cappuccino asks for exactly what Latte asks for; Cold Brew and Nitro
-  Cold Brew for what Iced Coffee asks for; Affogato and Doppio for what
-  Americano asks for. The player builds the identical cup and the higher price
-  is free money. Phase 7 found it while checking its own four were distinct, and
-  named the five in `smoke-sim.mjs` section 15 rather than reshaping shipped
-  recipes as a side effect. Fixing it means giving each a requirement the
-  others do not have — a steamed-milk step, a shot count, a syrup — which is a
-  balance change with a sweep behind it, not a content edit.
+- **What the five reshaped recipes left** (#878, 2026-10-05; the five are
+  done). Four things, none of them started:
+  - *An Americano completes a Ristretto's ticket.* The base line asks for at
+    least its shots (`slot.cup.shots>=r.shots` in `getOrderRequirements()`), so
+    two shots pass where one was asked and the Ristretto pays $4 more. It is
+    the only cheaper cup that completes a dearer ticket, and section 15 pins it
+    by name. Making the count exact would also fail a Latte with a second shot
+    pulled by mistake, which is a change to how forgiving the bar is.
+  - *Mocha can be on the menu with no mocha syrup on the shelf.* The recipe is
+    $120 (or 2 beans, in every run) and its syrup is a separate $35; with the
+    recipe bought and the syrup not, the Syrup tab has no button for the line
+    and the cup can only be served short. Seen while checking that the five's
+    new lines are day-one stock; not traced further and not changed.
+  - *The sweep does not play Cold Brew, Nitro Cold Brew or Affogato.* No
+    autopilot buys them (the loop's "spends badly" variant gets Cold Brew from
+    the beans). Their prices are unchanged and were not measured; only the
+    lines-per-dollar table in #878's log entry speaks for them.
+  - *The names are stand-ins.* The game has no foam, no steep time, no nitro
+    tap and no ice cream, so cinnamon, cold milk, whipped cream and vanilla do
+    those jobs. A Doppio with whipped cream is a doppio con panna. Each is one
+    field on one row of `content.js` if a better step ever exists.
 - **A Legacy tree that the loop sweep can hear.** Phase 7's is honest content
   and measurably worth about nothing to a shopper (see its entry). The lever
   with real leverage is the one the level already pulls: the door. An unlock

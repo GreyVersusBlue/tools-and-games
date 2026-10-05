@@ -4,7 +4,7 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     348 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-sim.mjs     384 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    230 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands, ~88 s
 node Projects/corner-and-kettle/test/drive-save.mjs    161 checks, real browser
@@ -112,10 +112,14 @@ Two assertions in section 15 exist because the first versions of them could not
 fail (#34). `META_DISCOUNT_MAX` is checked against a second sim built on a
 patched content object whose discount tiers sum to 90%, because the shipped
 tree sums to 20% under a 50% cap and asserting *that* is under the cap proves
-nothing. And the duplicate-requirement check names the five recipes that were
-already another recipe's list — Cappuccino, Cold Brew, Nitro Cold Brew,
-Affogato, Doppio (#365) — rather than asserting an empty list it could never
-satisfy; reshaping one of the five fails the line and gets read.
+nothing. And the duplicate-requirement check named the five recipes that were
+already another recipe's list (#365) until each was given a line of its own
+(#878). It asserts an empty list now, read off `getOrderRequirements()` for
+each recipe's plain order and not off the table's fields, and the same count is
+run on a menu whose Cappuccino has no cinnamon, where it has to say
+"Cappuccino". One exception is pinned by name beside it: an Americano's two
+shots complete a Ristretto's ticket, because the base line asks for at least
+its shots.
 
 ## `smoke-save.mjs`
 
