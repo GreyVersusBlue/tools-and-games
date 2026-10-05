@@ -263,26 +263,32 @@ group('the sandbox: Free Play grown into a district (M9, #614 to #618)');
   // the light shows is read off the World as the car's front reaches each
   // stop line: the box is the car's own path.node, not anything
   // _followPriority decided (#614).
-  const straight = () => {
+  const straight = (outage = null) => {
     const L = gridLevel(1, 3);
     L.network.cells = [0, 1, 2].map(c => ({ at: [c, 0], legs: ['N', 'E', 'S', 'W'] }));
     L.demand = [{ W: 300, N: 200, S: 200 }, { N: 200, S: 200 }, { E: 300, N: 200, S: 200 }];
     L.turns = { T: 1 };
     L.spawns = [{ t: 20, node: 0, leg: 'W', archetype: 'emergency', turn: 'T' }];
+    if (outage) L.events = (Array.isArray(outage[0]) ? outage : [outage]).map(o => ({ kind: 'outage', at: o[0], for: o[1] }));
     return L;
   };
-  const runStraight = call => {
-    const w = new World(straight(), 1);
+  const runStraight = (call, outage = null) => {
+    const w = new World(straight(outage), 1);
     let amb = null;
-    const at = {};
+    const at = {}, follows = [], handed = {};
     for (let i = 0; i < 120 * 60 && !(amb && amb.done); i++) {
       w.step();
       if (!amb && (amb = w.cars.find(c => c.archetype === 'emergency')) && call) w.requestPriority(amb);
+      for (const e of w.events) {
+        if (e.kind === 'priority' && e.follow) follows.push({ node: e.node, t: e.t, dark: w.powerOut });
+        if (e.kind === 'handoff' && amb && e.car === amb.id) handed[e.node] = { t: e.t, dark: w.powerOut };
+      }
+      w.events.length = 0;
       if (!amb || amb.done) continue;
       const n = amb.path.node, ctl = w.controllers[n];
       if (!at[n] && amb.front >= amb.path.stopLine) at[n] = { held: ctl.current.name === 'priority' && ctl.head(amb.path.movement) === 'green', light: `${ctl.current.name} ${ctl.head(amb.path.movement)}` };
     }
-    return { at, done: !!(amb && amb.done), read: [0, 1, 2].map(n => `box ${n + 1} ${at[n] ? at[n].light : 'never reached'}`).join(', ') };
+    return { at, follows, handed, done: !!(amb && amb.done), read: [0, 1, 2].map(n => `box ${n + 1} ${at[n] ? at[n].light : 'never reached'}`).join(', ') };
   };
   {
     const r = runStraight(true);
@@ -291,6 +297,54 @@ group('the sandbox: Free Play grown into a district (M9, #614 to #618)');
     ok(r.at[2] && r.at[2].held, 'and at box 3', r.read);
     const u = runStraight(false);
     ok(u.done && [0, 1, 2].every(n => u.at[n] && !u.at[n].held), 'one nobody called is held for at none of them: the corridor is still the player\'s call', u.read);
+  }
+
+  // the power comes back (#872). The ambulance, called at 20 s, is handed
+  // to box 2 at 39.4 s and reaches its line at 46.2 s with the power on.
+  // The same follows-per-box read as above, with a blackout laid over one
+  // part of the trip at a time; `follows` is every follow the World
+  // announced, and `dark` on one is whether the power was still out.
+  {
+    const said = r => r.follows.map(f => `box ${f.node + 1} at ${f1(f.t)} s${f.dark ? ' dark' : ''}`).join(', ') || 'no follow';
+    // out from 36 to 44 s: the handoff to box 2 is in the dark and refused
+    const a = runStraight(true, [36, 8]);
+    ok(a.done && a.handed[1] && a.handed[1].dark && !a.follows.some(f => f.dark), 'handed to box 2 in a blackout, the follow is refused as it was', `handed at ${a.handed[1] ? f1(a.handed[1].t) : '?'} s; ${said(a)}`);
+    ok(a.follows.filter(f => f.node === 1).length === 1 && Math.abs(a.follows.find(f => f.node === 1).t - 44) < 0.05, 'and made once, the step the power comes back', said(a));
+    ok(a.at[1] && a.at[1].held, 'so box 2 is holding its green when the ambulance reaches the line', a.read);
+    ok(a.at[2] && a.at[2].held && a.follows.filter(f => f.node === 2).length === 1, 'and box 3 follows at the handoff, as with no blackout', a.read);
+    // out from 22 to 26 s: the dark takes the hold at the box it was called on
+    const b = runStraight(true, [22, 4]);
+    ok(b.done && b.follows.length === 3 && b.follows[0].node === 0 && Math.abs(b.follows[0].t - 26) < 0.05 && b.at[0] && b.at[0].held, 'a blackout that took the hold at box 1 gives it back when it ends', `${said(b)}; ${b.read}`);
+    // out from 30 to 35 s: it is past box 1's exit when the power returns
+    const c = runStraight(true, [30, 5]);
+    ok(c.done && c.follows.map(f => f.node).join() === '1,2', 'one already through its box is not held for again there', said(c));
+    // out from 36 to 66 s: through box 2 in the dark, on box 3's leg when it ends
+    const d = runStraight(true, [36, 30]);
+    ok(d.done && d.at[1] && !d.at[1].held && d.follows.map(f => f.node).join() === '2' && d.at[2] && d.at[2].held, 'through box 2 in the dark and handed to box 3 in the dark, it is held for at box 3 alone', `${said(d)}; ${d.read}`);
+    // nobody called it: the power coming back calls nothing
+    const u = runStraight(false, [36, 8]);
+    ok(u.done && !u.follows.length && [0, 1, 2].every(n => u.at[n] && !u.at[n].held), 'and one nobody called is held for nowhere when the power comes back', `${said(u)}; ${u.read}`);
+    // two blackouts overlapping, 36 to 44 s and 40 to 50 s: the first one's
+    // end is not the power coming back
+    const o = runStraight(true, [[36, 8], [40, 10]]);
+    ok(o.done && !o.follows.some(f => f.dark) && o.follows.length && o.follows[0].node === 1 && Math.abs(o.follows[0].t - 50) < 0.05, 'under two blackouts that overlap the follow waits for the second to end', said(o));
+    // a motorcade called at box 1, out from 22 to 28 s with all five on
+    // box 1's leg: one hold for the leg, announced once
+    const L = straight([22, 6]);
+    L.spawns = [];
+    L.events.unshift({ kind: 'motorcade', at: 15, leg: 'W', node: 0 });
+    const w = new World(L, 1);
+    const back = [];
+    let onLeg = 0;
+    for (let i = 0; i < 29 * 60; i++) {
+      w.step();
+      const lead = w.cars.find(c => c.archetype === 'motorcade');
+      if (lead && !lead.priority) w.requestPriority(lead);
+      for (const e of w.events) if (e.kind === 'priority' && e.follow) { back.push(e); onLeg = w.cars.filter(c => c.archetype === 'motorcade' && c.priority && c.path.node === 0 && c.rear < c.path.boxExit).length; }
+      w.events.length = 0;
+    }
+    const pre = w.controllers[0].preemption;
+    ok(back.length === 1 && back[0].node === 0 && onLeg === 5 && pre && pre.movements.includes('W-T'), 'a motorcade of five on one leg gets its corridor back as one hold, said once', `${back.length} follows with ${onLeg} called cars on the leg`);
   }
 
   // the roundabout never converts a district (#613, #618); one box still converts

@@ -472,6 +472,45 @@ group('priority preemption');
   ok(c.stage === 'green' && c.head('N-T') === 'green', 'a corridor already green stays green with no clearance');
   ok(c.head('S-T') === 'red', 'and the rest of that phase drops to red');
 }
+{
+  // the way in (#875): the green a corridor ends gets its yellow and its
+  // all-red, and the corridor's own leg stays red until the box is clear
+  const c = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  run(c, 2);
+  const before = ['N-T', 'S-T', 'N-L', 'E-T', 'E-R', 'W-T'].map(m => c.head(m)).join();
+  c.preempt(['E-T', 'E-R'], 6);
+  const heads = () => ['N-T', 'S-T', 'N-L', 'E-T', 'E-R', 'W-T'].map(m => c.head(m)).join();
+  ok(before === 'green,green,green,red,red,red' && c.stage === 'yellow' && heads() === 'yellow,yellow,yellow,red,red,red', 'the green a corridor ends goes to yellow, not straight to red, and the corridor\'s leg is still red', heads());
+  ok(c.current.name === 'N-S' && c.current.permissive.includes('N-L') && c.preemption && !c.isGreen('E-T'), 'through that yellow the box is still showing the phase it is leaving, its permissive lefts included', c.current.name);
+  run(c, 1.9);
+  ok(c.stage === 'yellow' && heads() === 'yellow,yellow,yellow,red,red,red', 'for the whole yellow', heads());
+  run(c, 0.6);
+  ok(c.stage === 'allred' && heads() === 'red,red,red,red,red,red', 'then every head is red for the all-red', heads());
+  run(c, 0.6);
+  ok(c.stage === 'green' && c.current.name === 'priority' && heads() === 'red,red,red,green,green,red', 'and only then is the corridor green', heads());
+  // a second corridor across the first: the first one's leg gets the yellow
+  c.preempt(['N-T', 'N-L', 'N-R'], 6);
+  ok(c.stage === 'yellow' && heads() === 'red,red,red,yellow,yellow,red' && c.current.name === 'priority', 'a corridor that takes the box from another gives the first one\'s leg its yellow', heads());
+  run(c, 3.1);
+  ok(c.stage === 'green' && heads() === 'green,red,green-arrow,red,red,red', 'before its own leg is green', heads());
+  // a clone carries a corridor on its way in
+  const d = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  run(d, 2);
+  d.preempt(['E-T', 'E-R'], 6);
+  const k = d.clone();
+  const then = `${k.head('N-T')} ${k.head('E-T')}`;
+  run(k, 3.1);
+  ok(then === 'yellow red' && k.head('N-T') === 'red' && k.head('E-T') === 'green' && d.stage === 'yellow', 'and a clone taken in that yellow shows the same heads and arrives at the corridor on its own clock', `${then}, then ${k.head('N-T')} ${k.head('E-T')}`);
+  // asked for during another change's yellow: that yellow goes on
+  const e = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  run(e, 2);
+  e.requestPhase(1);
+  run(e, 0.5);
+  e.preempt(['S-T'], 6);
+  ok(e.stage === 'yellow' && e.head('N-T') === 'yellow' && e.head('S-T') === 'yellow' && e.head('E-T') === 'red', 'a corridor asked for in another change\'s yellow leaves that yellow as it is', `${e.head('N-T')} ${e.head('S-T')} ${e.head('E-T')}`);
+  run(e, 2.6);
+  ok(e.stage === 'green' && e.head('S-T') === 'green' && e.head('N-T') === 'red' && e.head('E-T') === 'red', 'and takes the green after the all-red');
+}
 
 group('the cause of a change (UI pass): read-only, for the page');
 

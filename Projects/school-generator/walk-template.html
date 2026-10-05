@@ -57521,6 +57521,66 @@ function shapeAt(floor, x, z) {
 
 const shapeById = (floor, id) => shapesOf(floor).find((s) => s.id === id) || null;
 
+// Two walls within about a degree of each other run along one another.
+const PARALLEL_SIN = 0.02;
+
+// Where along the run a→b the room beside it can change (#874). A wall is
+// asked "what is on your far side?" by probing `off` feet out from it, and one
+// wall can run past the corner of a neighbour, so the answer is good only as
+// far as the neighbour's own wall keeps it company. The ends of every wall
+// on the storey that lies along this one (parallel, and no further off than
+// the probe reaches), as feet from `a`, ascending.
+//
+// The distance test is an economy and no more: a far wall's ends would cut
+// the run into pieces with the same neighbour, and `sideRuns` puts those back
+// together. The parallel test is the rule.
+//
+// A neighbour that only touches at a corner, or leaves at an angle, is not
+// asked: the probe clips such a corner for about its own width, which is the
+// probe's size and not a foot of shared wall. Measured on the sample school,
+// where the Stair Hall meets the Learning Commons' slanted curtain wall at one
+// point and a version that cut at every crossing gave the hall half a foot of
+// that glass.
+function crossingsAlong(floor, a, b, off) {
+  const len = segLength(a, b);
+  if (len < 0.01) return [];
+  const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+  const out = [];
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (let i = 0; i < ring.pts.length; i++) {
+        const [c, e] = segEnds(ring, i);
+        const run = segLength(c, e);
+        if (run < 0.01) continue;
+        if (Math.abs(ux * (e.z - c.z) - uz * (e.x - c.x)) > run * PARALLEL_SIN) continue;
+        for (const p of [c, e]) {
+          const rx = p.x - a.x, rz = p.z - a.z;
+          if (Math.abs(rx * uz - rz * ux) > off + 1e-9) continue;
+          const d = rx * ux + rz * uz;
+          if (d > 1e-6 && d < len - 1e-6) out.push(d);
+        }
+      }
+    }
+  }
+  return out.sort((p, q) => p - q);
+}
+// The stretch lo..hi of a run, cut at `cuts` and put back together wherever
+// two neighbouring pieces have the same thing beside them. `sideAt(d)` names
+// what is beside the run at `d` feet along it, as anything `===` compares.
+function sideRuns(lo, hi, cuts, sideAt) {
+  const stops = [lo, ...cuts.filter((c) => c > lo + 1e-6 && c < hi - 1e-6), hi];
+  const runs = [];
+  for (let i = 0; i + 1 < stops.length; i++) {
+    const s = stops[i], e = stops[i + 1];
+    if (e - s < 1e-6) continue;
+    const side = sideAt((s + e) / 2);
+    const last = runs[runs.length - 1];
+    if (last && last.side === side) last.hi = e;
+    else runs.push({ lo: s, hi: e, side });
+  }
+  return runs;
+}
+
 // Is there anything to stand on at (x, z) on this storey? It lives here rather
 // than in stairs.js (where it started life) because it is the same question
 // the wall-thickness probe asks: "is there a room on this side?" — see
@@ -58286,7 +58346,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, crossingsAlong, sideRuns, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -62719,7 +62779,7 @@ return { REF_DIST, REF_DB, FLOOR_DB, COMPRESS, MAX_VOICES, STRIDE_FT, dbAt, gain
 // ---- js/weather.js ----
 const __m_js_weather_js = (() => {
 const { PATH_SLAB, PATH_SHELL, dbAt } = __m_js_sound_js;
-const { shapesOf, segEnds, shapeAt, isWindowOpening, SEG_GLASS } = __m_js_shapes_js;
+const { shapesOf, segEnds, shapeAt, isWindowOpening, SEG_GLASS, crossingsAlong, sideRuns } = __m_js_shapes_js;
 // weather.js — what the sky is doing, and what that costs, as numbers.
 //
 // Phase 29. Phase 20 gave the sky moods and clouds worth having; what the sky
@@ -62970,7 +63030,10 @@ const GLAZE_PROBE = 1.5;
 // their whole length, windows as their own spans — as bare segments the
 // mixer can measure a distance to. Exterior is decided the way daylight.js
 // decides it: probe both sides of the boundary, and if one of them is in no
-// room at all, the glass faces the weather.
+// room at all, the glass faces the weather. And where daylight.js asks: at
+// the glass's own place along the wall, not the wall's middle, cut wherever
+// the wall passes a neighbour's corner (#874). A wall that runs past the room
+// next door and on into the open is glass onto the rain for the open part.
 function glazeSegments(state, floorIndex) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   if (!floor) return [];
@@ -62985,23 +63048,34 @@ function glazeSegments(state, floorIndex) {
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         if (len < 0.01) continue;
         const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
-        const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
-        const s0 = shapeAt(floor, mx - uz * GLAZE_PROBE, mz + ux * GLAZE_PROBE);
-        const s1 = shapeAt(floor, mx + uz * GLAZE_PROBE, mz - ux * GLAZE_PROBE);
-        if (s0 && s1) continue;               // glass onto another room — borrowed light
+        const cuts = crossingsAlong(floor, a, b, GLAZE_PROBE);
+        const outside = (d) => {
+          const x = a.x + ux * d, z = a.z + uz * d;
+          return !(shapeAt(floor, x - uz * GLAZE_PROBE, z + ux * GLAZE_PROBE) &&
+            shapeAt(floor, x + uz * GLAZE_PROBE, z - ux * GLAZE_PROBE));
+        };
+        // The exterior parts of lo..hi. Glass onto another room is borrowed
+        // light, and is left out.
+        const push = (lo, hi) => {
+          for (const run of sideRuns(lo, hi, cuts, outside)) {
+            if (!run.side) continue;
+            out.push({
+              ax: run.lo === 0 ? a.x : a.x + ux * run.lo,
+              az: run.lo === 0 ? a.z : a.z + uz * run.lo,
+              bx: run.hi === len ? b.x : a.x + ux * run.hi,
+              bz: run.hi === len ? b.z : a.z + uz * run.hi,
+            });
+          }
+        };
         if (glassWall) {
-          out.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z });
+          push(0, len);
           continue;
         }
         for (const o of windows) {
           const t = clamp(Number.isFinite(o.t) ? o.t : 0.5, 0, 1);
           const half = Math.min((o.w || 3) / 2, len / 2);
           const c = t * len;
-          const lo = clamp(c - half, 0, len), hi = clamp(c + half, 0, len);
-          out.push({
-            ax: a.x + ux * lo, az: a.z + uz * lo,
-            bx: a.x + ux * hi, bz: a.z + uz * hi,
-          });
+          push(clamp(c - half, 0, len), clamp(c + half, 0, len));
         }
       }
     }
@@ -93729,6 +93803,24 @@ function pushWallRun(walls, kind, ax, az, bx, bz, t) {
   walls.push({ ax, az, bx, bz, kind, t });
 }
 
+// One boundary segment as the runs the plan draws, doorways cut out of it.
+//
+// **A window in a curtain wall is a stretch of wall** (#874). The renderer
+// fills it with wall under the sill, the window's own band of glass, and wall
+// over the head, so it is the same thing a window in a solid wall is. Left in
+// the glass run it was priced twice: floor to ceiling as curtain wall, and
+// again as a window (a 40 by 10 face with one 6 by 4 window came to 424 ft²
+// of glass).
+function pushCutRuns(walls, kind, a, ux, uz, len, here, t) {
+  const spanOf = (o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 });
+  const doors = here.filter((o) => !isWindowOpening(o)).map(spanOf);
+  const windows = kind === 'glass' ? here.filter(isWindowOpening).map(spanOf) : [];
+  const run = (as, s, e) =>
+    pushWallRun(walls, as, a.x + ux * s, a.z + uz * s, a.x + ux * e, a.z + uz * e, t);
+  for (const [s, e] of solidSpans(len, [...doors, ...windows], 0)) run(kind, s, e);
+  for (const w of windows) run('wall', Math.max(0, w.a), Math.min(len, w.b));
+}
+
 // An opening's plan symbol. Both kinds are the gap in the wall (the caller
 // never draws a wall across one) plus something drawn into it:
 //
@@ -93782,12 +93874,7 @@ function roomWalls(floor, walls, openings, thick) {
         // A window doesn't break the wall run: in plan the wall carries on
         // through it and the glazing is drawn over the top. Only a doorway is
         // a gap — the same rule the collider follows, from the same predicate.
-        const cuts = here
-          .filter((o) => !isWindowOpening(o))
-          .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
-        for (const [s, e] of solidSpans(len, cuts, 0)) {
-          pushWallRun(walls, kind, a.x + ux * s, a.z + uz * s, a.x + ux * e, a.z + uz * e, t);
-        }
+        pushCutRuns(walls, kind, a, ux, uz, len, here, t);
         for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
       }
     }
@@ -93808,12 +93895,7 @@ function roomWalls(floor, walls, openings, thick) {
       pushWallRun(walls, kind, a.x, a.z, b.x, b.z, t);
       continue;
     }
-    const cuts = here
-      .filter((o) => !isWindowOpening(o))
-      .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
-    for (const [s2, e2] of solidSpans(len, cuts, 0)) {
-      pushWallRun(walls, kind, a.x + ux * s2, a.z + uz * s2, a.x + ux * e2, a.z + uz * e2, t);
-    }
+    pushCutRuns(walls, kind, a, ux, uz, len, here, t);
     for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
   }
 }

@@ -288,7 +288,7 @@ export class Controller {
     this.heldT = 0;        // stageT at the last holdGreen: the elapsed rules count from here
     this.next = null;      // phase index queued during clearance, or null
     this.resumeAt = null;  // where 'next' goes after a queue rule jumped the sequence
-    this.preemption = null; // { movements, hold, resume } while a priority corridor holds the box
+    this.preemption = null; // { movements, hold, resume, from, done } while a priority corridor holds the box or is on its way in
     this.flash = null;
     this.pedCalls = new Set();   // legs with a call waiting, 'N' for P-N
     this.walk = null;            // { legs, stage: 'walk' | 'clear', t } while a walk runs
@@ -308,7 +308,15 @@ export class Controller {
 
   // ---- queries ------------------------------------------------------------
 
-  get current() { return this.preemption ? { name: 'priority', movements: this.preemption.movements, permissive: [], walks: [] } : this.phases[this.phase]; }
+  // What the heads are showing. A corridor still on its way in (the yellow
+  // and all-red before its hold) shows the green it is ending, `from`, so
+  // that green gets its yellow and the corridor's own leg stays red until
+  // the box is clear (#875).
+  get current() {
+    const p = this.preemption;
+    if (!p) return this.phases[this.phase];
+    return p.done ? { name: 'priority', movements: p.movements, permissive: [], walks: [] } : p.from;
+  }
 
   get hasPeds() { return this.phases.some(p => p.walks.length); }
 
@@ -615,7 +623,7 @@ export class Controller {
     if (!v.ok) throw new Error(`priority set conflicts: ${v.pair.join(' vs ')}`);
     const resume = this.next !== null ? this.next : this.phase;
     const already = this.stage === 'green' && movements.every(m => this.current.movements.includes(m));
-    this.preemption = { movements: movements.slice(), hold, resume };
+    this.preemption = { movements: movements.slice(), hold, resume, from: this.current, done: already };
     this.next = null;
     this.walk = null;   // an emergency cuts the walk short; walkers already on the road are the world's
     this._setCause('corridor');

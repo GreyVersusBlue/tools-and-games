@@ -52,7 +52,8 @@
 // into the new frame, and `newApproach()` so every once-per-approach
 // decision (the yellow, the red roll, the trust roll, the four-way order)
 // is made again at the second box. A car whose priority corridor was
-// called is pre-empted again at the box it is handed to (R6, #682).
+// called is pre-empted again at the box it is handed to (R6, #682), and
+// at the box it is on when a blackout ends (#872).
 //
 // The grid (M9). `network.cells` builds a box per cell (network.js
 // buildCells, js/grid.js growCells), joined north-south as well as
@@ -334,7 +335,9 @@ export class World {
       else if (e.kind === 'motorcade' || e.kind === 'procession') this._platoonTick(e);
       if (e.until !== null && this.t >= e.until && !e.ended) this._endEvent(e);
     }
+    const back = this.active.some(e => e.ended && e.kind === 'outage');
     this.active = this.active.filter(e => !e.ended);
+    if (back && !this.powerOut) this._resumePriority();
     // the school zone: every car's free speed, until it ends
     let sc = 1;
     for (const e of this.active) if (e.kind === 'school') sc *= e.scale;
@@ -694,13 +697,28 @@ export class World {
   // emergency pre-emption works, so the lesson stays "call it early". A
   // box already holding this movement for it (a motorcade's lead got
   // there first) is left to _holdPriority; a ring or a blackout refuses
-  // it, as they refuse E.
+  // it, as they refuse E, and _resumePriority makes it when the power
+  // comes back.
   _followPriority(car) {
     if (car.crashed || this.powerOut || this.nodes[car.path.node].roundabout) return;
     const pre = this.controllerFor(car).preemption;
     if (pre && pre.movements.includes(car.path.movement)) return;
     this._preemptFor(car);
     this.events.push({ t: this.t, kind: 'priority', car: car.id, node: car.path.node, follow: true });
+  }
+
+  // The power is back (#872): a blackout takes every box's hold with it
+  // (setDark) and refuses every follow, and a called car cannot be called
+  // again, so its corridor is made again here, at the box it is on now, if
+  // it is still short of that box's exit.
+  _resumePriority() {
+    for (const car of this.cars) {
+      if (car.done || !car.priority || car.crashed || car.rear >= car.path.boxExit || this.nodes[car.path.node].roundabout) continue;
+      const pre = this.controllerFor(car).preemption;
+      if (pre && pre.movements.includes(car.path.movement)) continue;
+      this._preemptFor(car);
+      this.events.push({ t: this.t, kind: 'priority', car: car.id, node: car.path.node, follow: true });
+    }
   }
 
   // The corridor holds until its vehicle is through the box, plus a margin

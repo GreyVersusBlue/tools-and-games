@@ -530,6 +530,66 @@ export function shapeAt(floor, x, z) {
 
 export const shapeById = (floor, id) => shapesOf(floor).find((s) => s.id === id) || null;
 
+// Two walls within about a degree of each other run along one another.
+const PARALLEL_SIN = 0.02;
+
+// Where along the run a→b the room beside it can change (#874). A wall is
+// asked "what is on your far side?" by probing `off` feet out from it, and one
+// wall can run past the corner of a neighbour, so the answer is good only as
+// far as the neighbour's own wall keeps it company. The ends of every wall
+// on the storey that lies along this one (parallel, and no further off than
+// the probe reaches), as feet from `a`, ascending.
+//
+// The distance test is an economy and no more: a far wall's ends would cut
+// the run into pieces with the same neighbour, and `sideRuns` puts those back
+// together. The parallel test is the rule.
+//
+// A neighbour that only touches at a corner, or leaves at an angle, is not
+// asked: the probe clips such a corner for about its own width, which is the
+// probe's size and not a foot of shared wall. Measured on the sample school,
+// where the Stair Hall meets the Learning Commons' slanted curtain wall at one
+// point and a version that cut at every crossing gave the hall half a foot of
+// that glass.
+export function crossingsAlong(floor, a, b, off) {
+  const len = segLength(a, b);
+  if (len < 0.01) return [];
+  const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+  const out = [];
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (let i = 0; i < ring.pts.length; i++) {
+        const [c, e] = segEnds(ring, i);
+        const run = segLength(c, e);
+        if (run < 0.01) continue;
+        if (Math.abs(ux * (e.z - c.z) - uz * (e.x - c.x)) > run * PARALLEL_SIN) continue;
+        for (const p of [c, e]) {
+          const rx = p.x - a.x, rz = p.z - a.z;
+          if (Math.abs(rx * uz - rz * ux) > off + 1e-9) continue;
+          const d = rx * ux + rz * uz;
+          if (d > 1e-6 && d < len - 1e-6) out.push(d);
+        }
+      }
+    }
+  }
+  return out.sort((p, q) => p - q);
+}
+// The stretch lo..hi of a run, cut at `cuts` and put back together wherever
+// two neighbouring pieces have the same thing beside them. `sideAt(d)` names
+// what is beside the run at `d` feet along it, as anything `===` compares.
+export function sideRuns(lo, hi, cuts, sideAt) {
+  const stops = [lo, ...cuts.filter((c) => c > lo + 1e-6 && c < hi - 1e-6), hi];
+  const runs = [];
+  for (let i = 0; i + 1 < stops.length; i++) {
+    const s = stops[i], e = stops[i + 1];
+    if (e - s < 1e-6) continue;
+    const side = sideAt((s + e) / 2);
+    const last = runs[runs.length - 1];
+    if (last && last.side === side) last.hi = e;
+    else runs.push({ lo: s, hi: e, side });
+  }
+  return runs;
+}
+
 // Is there anything to stand on at (x, z) on this storey? It lives here rather
 // than in stairs.js (where it started life) because it is the same question
 // the wall-thickness probe asks: "is there a room on this side?" — see

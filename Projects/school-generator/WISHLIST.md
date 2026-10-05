@@ -406,12 +406,18 @@ and add to this list rather than starting a new one.
   #822): it knows the wing opposite, the storey above, a pitched roof's eave,
   the room's depth and where the sun stands on its glass, and it is still not
   an illuminance. A window is read where it stands on its wall (#868), so
-  one on the open end of a wall that runs past a neighbour is daylight;
-  glass that straddles the neighbour's corner still goes whole to one side,
-  a window cut in a curtain wall is counted twice (here and in
-  `takeoff.js`), and `weather.js`'s `glazeSegments` still asks at the
-  wall's midpoint. Neighbours, trees and the terrain are not obstructions, a
-  curtain wall is read at its midpoint, one reflectance serves every room
+  one on the open end of a wall that runs past a neighbour is daylight, and
+  glass that runs past the end of a neighbour's wall is cut there, in
+  `daylight.js` and in `weather.js`'s `glazeSegments` (#874). The cut is
+  made only where a wall lying along the glass ends: a neighbour that meets
+  the glass at an angle is still read at the middle of the stretch, the
+  probe's width and all. A window cut in a curtain wall is counted once
+  (#874): the plan gives its width to a run of wall, which the takeoff and
+  the estimate read. The curtain wall is 10 ft of glass to the daylight and
+  the storey's own wall height to the takeoff, so the two disagree on a
+  storey that is not the top one, and the elevation's drawing of a window
+  in a curtain wall has not been looked at. Neighbours, trees and the
+  terrain are not obstructions, one reflectance serves every room
   whatever its finishes are, a rooflight does not exist, and none of it is
   drawn on the plan: the numbers are in the report panel and the CSV only.
 - Common path of egress travel is measured (`commonpath.js`, Phase 41), but a

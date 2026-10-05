@@ -25,7 +25,9 @@
 // test/weather.test.mjs.
 
 import { PATH_SLAB, PATH_SHELL, dbAt } from './sound.js';
-import { shapesOf, segEnds, shapeAt, isWindowOpening, SEG_GLASS } from './shapes.js';
+import {
+  shapesOf, segEnds, shapeAt, isWindowOpening, SEG_GLASS, crossingsAlong, sideRuns,
+} from './shapes.js';
 
 // ---------- the record ----------
 
@@ -248,7 +250,10 @@ export const GLAZE_PROBE = 1.5;
 // their whole length, windows as their own spans — as bare segments the
 // mixer can measure a distance to. Exterior is decided the way daylight.js
 // decides it: probe both sides of the boundary, and if one of them is in no
-// room at all, the glass faces the weather.
+// room at all, the glass faces the weather. And where daylight.js asks: at
+// the glass's own place along the wall, not the wall's middle, cut wherever
+// the wall passes a neighbour's corner (#874). A wall that runs past the room
+// next door and on into the open is glass onto the rain for the open part.
 export function glazeSegments(state, floorIndex) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   if (!floor) return [];
@@ -263,23 +268,34 @@ export function glazeSegments(state, floorIndex) {
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         if (len < 0.01) continue;
         const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
-        const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
-        const s0 = shapeAt(floor, mx - uz * GLAZE_PROBE, mz + ux * GLAZE_PROBE);
-        const s1 = shapeAt(floor, mx + uz * GLAZE_PROBE, mz - ux * GLAZE_PROBE);
-        if (s0 && s1) continue;               // glass onto another room — borrowed light
+        const cuts = crossingsAlong(floor, a, b, GLAZE_PROBE);
+        const outside = (d) => {
+          const x = a.x + ux * d, z = a.z + uz * d;
+          return !(shapeAt(floor, x - uz * GLAZE_PROBE, z + ux * GLAZE_PROBE) &&
+            shapeAt(floor, x + uz * GLAZE_PROBE, z - ux * GLAZE_PROBE));
+        };
+        // The exterior parts of lo..hi. Glass onto another room is borrowed
+        // light, and is left out.
+        const push = (lo, hi) => {
+          for (const run of sideRuns(lo, hi, cuts, outside)) {
+            if (!run.side) continue;
+            out.push({
+              ax: run.lo === 0 ? a.x : a.x + ux * run.lo,
+              az: run.lo === 0 ? a.z : a.z + uz * run.lo,
+              bx: run.hi === len ? b.x : a.x + ux * run.hi,
+              bz: run.hi === len ? b.z : a.z + uz * run.hi,
+            });
+          }
+        };
         if (glassWall) {
-          out.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z });
+          push(0, len);
           continue;
         }
         for (const o of windows) {
           const t = clamp(Number.isFinite(o.t) ? o.t : 0.5, 0, 1);
           const half = Math.min((o.w || 3) / 2, len / 2);
           const c = t * len;
-          const lo = clamp(c - half, 0, len), hi = clamp(c + half, 0, len);
-          out.push({
-            ax: a.x + ux * lo, az: a.z + uz * lo,
-            bx: a.x + ux * hi, bz: a.z + uz * hi,
-          });
+          push(clamp(c - half, 0, len), clamp(c + half, 0, len));
         }
       }
     }

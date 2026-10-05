@@ -53,6 +53,24 @@ function pushWallRun(walls, kind, ax, az, bx, bz, t) {
   walls.push({ ax, az, bx, bz, kind, t });
 }
 
+// One boundary segment as the runs the plan draws, doorways cut out of it.
+//
+// **A window in a curtain wall is a stretch of wall** (#874). The renderer
+// fills it with wall under the sill, the window's own band of glass, and wall
+// over the head, so it is the same thing a window in a solid wall is. Left in
+// the glass run it was priced twice: floor to ceiling as curtain wall, and
+// again as a window (a 40 by 10 face with one 6 by 4 window came to 424 ft²
+// of glass).
+function pushCutRuns(walls, kind, a, ux, uz, len, here, t) {
+  const spanOf = (o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 });
+  const doors = here.filter((o) => !isWindowOpening(o)).map(spanOf);
+  const windows = kind === 'glass' ? here.filter(isWindowOpening).map(spanOf) : [];
+  const run = (as, s, e) =>
+    pushWallRun(walls, as, a.x + ux * s, a.z + uz * s, a.x + ux * e, a.z + uz * e, t);
+  for (const [s, e] of solidSpans(len, [...doors, ...windows], 0)) run(kind, s, e);
+  for (const w of windows) run('wall', Math.max(0, w.a), Math.min(len, w.b));
+}
+
 // An opening's plan symbol. Both kinds are the gap in the wall (the caller
 // never draws a wall across one) plus something drawn into it:
 //
@@ -106,12 +124,7 @@ function roomWalls(floor, walls, openings, thick) {
         // A window doesn't break the wall run: in plan the wall carries on
         // through it and the glazing is drawn over the top. Only a doorway is
         // a gap — the same rule the collider follows, from the same predicate.
-        const cuts = here
-          .filter((o) => !isWindowOpening(o))
-          .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
-        for (const [s, e] of solidSpans(len, cuts, 0)) {
-          pushWallRun(walls, kind, a.x + ux * s, a.z + uz * s, a.x + ux * e, a.z + uz * e, t);
-        }
+        pushCutRuns(walls, kind, a, ux, uz, len, here, t);
         for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
       }
     }
@@ -132,12 +145,7 @@ function roomWalls(floor, walls, openings, thick) {
       pushWallRun(walls, kind, a.x, a.z, b.x, b.z, t);
       continue;
     }
-    const cuts = here
-      .filter((o) => !isWindowOpening(o))
-      .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
-    for (const [s2, e2] of solidSpans(len, cuts, 0)) {
-      pushWallRun(walls, kind, a.x + ux * s2, a.z + uz * s2, a.x + ux * e2, a.z + uz * e2, t);
-    }
+    pushCutRuns(walls, kind, a, ux, uz, len, here, t);
     for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
   }
 }
