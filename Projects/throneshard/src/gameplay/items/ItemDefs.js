@@ -70,10 +70,10 @@ const RAW = [
     stackable: true, consumable: true, charges: 1, maxCharges: 10,
     active: { name: 'Reveal', targetType: 'none', cooldown: 30, manaCost: 0, castPoint: 0, radius: du(1050) },
     description: 'Reveals invisible enemies within 1050 for 12 seconds and slows them by 20%.' },
-  { id: 'bottle', name: 'Bottle', icon: '🍾', color: '#4d9fb0', cost: 675, category: 'consumables',
+  { id: 'flask', name: 'Flask', icon: '🍾', color: '#4d9fb0', cost: 675, category: 'consumables',
     charges: 3, maxCharges: 3, keepAtZero: true,
     active: { name: 'Regenerate', targetType: 'none', cooldown: 0.5, manaCost: 0, castPoint: 0 },
-    description: 'Consume a charge to restore 110 HP and 60 mana over 2.5s. Refills at the fountain. Picking up a power rune stores it in the Bottle (refilling it); use the Bottle to activate the stored rune.' },
+    description: 'Consume a charge to restore 110 HP and 60 mana over 2.5s. Refills at the fountain. Picking up a power rune stores it in the Flask (refilling it); use the Flask to activate the stored rune.' },
 
   // ------------------------------------------------------------------ Attributes
   { id: 'oak_twig', name: 'Oak Twig', icon: '🌱', color: '#6b8e3a', cost: 50, category: 'attributes', bonus: { allStats: 1 } },

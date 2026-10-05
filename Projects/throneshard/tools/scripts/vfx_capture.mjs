@@ -84,7 +84,7 @@ const RUNES = ['haste', 'double_damage', 'regeneration', 'invisibility', 'arcane
 const ITEMS = {
   homeward_scroll: { mode: 'tp', shots: [0.5, 2.6] }, wayfarer_boots: { mode: 'tp', shots: [0.5, 2.6] },
   bark_ration: { mode: 'none' }, healing_salve: { mode: 'none' }, clarity: { mode: 'none' }, honeyed_plum: { mode: 'none' },
-  wisp_ember: { mode: 'none' }, bottle: { mode: 'none', charges: 3 }, resonant_reed: { mode: 'none', charges: 10 },
+  wisp_ember: { mode: 'none' }, flask: { mode: 'none', charges: 3 }, resonant_reed: { mode: 'none', charges: 10 },
   resonant_wand: { mode: 'none', charges: 15 }, lookout_ward: { mode: 'point' }, seeker_ward: { mode: 'point' },
   ashveil_powder: { mode: 'none' }, glimmerdust: { mode: 'none' }, flicker_dagger: { mode: 'blink', shots: [0.03, 0.25] },
   shifting_treads: { mode: 'none' }, surge_boots: { mode: 'none' }, tidecall_boots: { mode: 'none' },

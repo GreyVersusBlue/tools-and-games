@@ -27,7 +27,7 @@ export const RECOMMENDED = {
   },
   sera: {
     starting: ['bark_ration', 'wisp_ember', 'mantle', 'circlet', 'oak_twig', 'oak_twig'],
-    early: ['mind_talisman', 'bottle', 'resonant_wand', 'tidecall_boots'],
+    early: ['mind_talisman', 'flask', 'resonant_wand', 'tidecall_boots'],
     core: ['whirlwind_scepter', 'farsight_lens', 'flicker_dagger'],
     late: ['ascendant_scepter', 'morphing_scythe', 'renewal_orb'],
   },
@@ -63,7 +63,7 @@ export const RECOMMENDED = {
   },
   thalor: {
     starting: ['bark_ration', 'wisp_ember', 'mantle', 'circlet', 'oak_twig', 'oak_twig'],
-    early: ['mind_talisman', 'bottle', 'resonant_wand', 'tidecall_boots'],
+    early: ['mind_talisman', 'flask', 'resonant_wand', 'tidecall_boots'],
     core: ['farsight_lens', 'clearmind', 'ascendant_scepter'],
     late: ['windseer_blade', 'renewal_orb', 'morphing_scythe'],
   },
