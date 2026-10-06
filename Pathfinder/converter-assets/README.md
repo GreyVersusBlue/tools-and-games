@@ -182,8 +182,10 @@ more), the per-day and at-will limits as a Frequency line, and the burst that
 
 `Pathfinder/tests/converter-abilities.test.mjs` holds all of it: 21 real
 abilities to the letter, the DCs against the table, twelve made-up blocks one
-step away from a rule, and a hash of the 98 unrewritten abilities taken from
-the converter as it stood before the rules.
+step away from a rule, and a hash of everything no rule wrote, taken from the
+converter as it stood before the rules. That hash covers 98 entries: the 89 of
+the 111 above that no rule wrote (6, 76 and 7), and the 9 the count leaves out
+(seven Reactive Strikes, the troll's regeneration, the vampire's fast healing).
 
 ## The rest of the folder
 

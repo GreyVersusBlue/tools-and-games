@@ -170,6 +170,8 @@ jobs:
               node Pathfinder/tests/converter-tables.test.mjs
               node Pathfinder/tests/converter-spells.test.mjs
               node Pathfinder/tests/converter-convert.test.mjs
+              node Pathfinder/tests/converter-foundry.test.mjs
+              node Pathfinder/tests/converter-abilities.test.mjs
 
           - name: Pathfinder converter in a browser
             dir: .

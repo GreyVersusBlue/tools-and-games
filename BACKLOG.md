@@ -1333,9 +1333,12 @@ the third are built; the rewrite has its first increment (#894).
      whole, pull, rake, grab with a size.** One fixture each.
    - **Prose, 27.** No construction in them (Whip Mastery, Mimicry, Freeze).
      These stay PF1e wording unless somebody writes them by hand.
-   - **`converter-abilities.test.mjs` is not in `site-ci.yml`**, for the same
-     reason as the Foundry suite below. One line under "Pathfinder converter":
-     `node Pathfinder/tests/converter-abilities.test.mjs`.
+   - **`converter-abilities.test.mjs` is in `site-ci.yml` since 2026-10-06**,
+     under "Pathfinder converter" with the Foundry suite. Neither line has run
+     on GitHub yet: the first run is the next PR's, so read that job's log once.
+   - The suite's hash of "the 98 no rule wrote" is 89 of the 111 and the 9
+     entries the 111 leaves out (seven Reactive Strikes, a regeneration, a
+     fast healing). 22 and 98 are of 120, not of 111.
    - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
      listed twice, once as a bare aura and once as text (the balor's Flaming
      Body), and a defensive ability the same way (the mouther's Amorphous).
@@ -1358,10 +1361,9 @@ the third are built; the rewrite has its first increment (#894).
      partial) and says what the sheet shows. A refused import is most likely
      one of the fields left out for Foundry to default (`img`, `_stats`,
      `system.publication`, a migration version).
-   - **`converter-foundry.test.mjs` is not in `site-ci.yml`.** The batch
-     that built it could not touch that workflow. It needs one line under
-     "Pathfinder converter": `node Pathfinder/tests/converter-foundry.test.mjs`.
-     Until then it runs by hand only.
+   - **`converter-foundry.test.mjs` is in `site-ci.yml` since 2026-10-06**,
+     under "Pathfinder converter". It has not run on GitHub yet: the first run
+     is the next PR's.
    - No fixture is a troop, and no fixture's ranged attack parses with a
      range increment, so a ranged Strike imports as melee with a note; the
      suite covers the range by hand.
