@@ -91,7 +91,10 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
 
   function update(state, onExpire) {
     for (const t of tells) {
-      if (t.born === null && state.t <= t.at) {
+      // A tell killed before its minute stays unborn (#888). Without the
+      // `dead` test it was born anyway: an object in the room, an onBorn, a
+      // posture held with no onGone ever coming to release it.
+      if (t.born === null && !t.dead && state.t <= t.at) {
         t.born = state.t;
         t.pos = positionFor(t.type, t.seat, t.seat2);
         buildMesh(t);

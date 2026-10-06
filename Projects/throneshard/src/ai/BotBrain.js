@@ -15,8 +15,8 @@ export const DIFFICULTY = {
 
 const LANE_PHASE_END = 660; // seconds; laners keep last-hitting until then unless a kill or a big edge is on
 const LANE_ENGAGE_RATIO = 2.1;
-const HEAL_ITEM = /salve|healing|bark_ration|clarity|honeyed_plum|bottle|wisp_ember/i;
-const MANA_ITEM = /clarity|honeyed_plum|bottle|tidecall/i;
+const HEAL_ITEM = /salve|healing|bark_ration|clarity|honeyed_plum|flask|wisp_ember/i;
+const MANA_ITEM = /clarity|honeyed_plum|flask|tidecall/i;
 const _v = new THREE.Vector3();
 const v3 = (x, z) => new THREE.Vector3(x, 0, z);
 
@@ -453,7 +453,7 @@ export class BotBrain {
           want = h.healthPct < 0.7 && !fighting;
           target = items.findTree?.(h) ?? undefined;
           if (items.findTree && !target) want = false;
-        } else want = needHp || needMana || (/honeyed_plum|bottle/i.test(id) && h.healthPct < 0.35);
+        } else want = needHp || needMana || (/honeyed_plum|flask/i.test(id) && h.healthPct < 0.35);
         if (want && act.targetType === 'unit') target = h;
       } else if (fighting && this.fightTarget) {
         const t = this.fightTarget;

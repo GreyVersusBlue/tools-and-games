@@ -96,6 +96,23 @@
     for (;;) { const r = c.step(512); if (r.done) return r.result; }
   }
 
+  // What the editor's Check prints after its verdict (#877). One sentence per
+  // case, written here and not in editor.js so test/generator.mjs can read
+  // them without a DOM. `cen` is a finished census, or null when the search
+  // found no shot: the census is then not flown, because each of its launches
+  // is one the search's grid pass already flew (#401), and saying so is not
+  // the same as having counted. A zero beside a found shot is real and is the
+  // other half of that: the search flies four times the grid and then refines.
+  // The figure has no seed in it. The grid is fixed, so a level reads the same
+  // on every machine, which is the rule a generated level is held to.
+  const count = n => n.toLocaleString("en-US");
+  function share(cen) { return (100 * cen.wins / cen.total).toFixed(1) + "%"; }
+  function censusLine(cen) {
+    if (!cen) return `No census: its ${count(censusGrid().angles * censusGrid().powers)} launches are among those.`;
+    if (cen.wins === 0) return `None of the census's ${count(cen.total)} launches win, though: the window is narrower than its grid.`;
+    return `${share(cen)} of launches win (${count(cen.wins)} of ${count(cen.total)}).`;
+  }
+
   // ---- the judge ---------------------------------------------------------
   // Bands on the census, per tier. `win` is [min, max] as a fraction of the
   // grid: below it the level is a needle, above it a barn door. `anyway` is
@@ -270,6 +287,6 @@
     for (;;) { const r = gen.step(512); if (r.done) return r.level; }
   }
 
-  g.OrbitalGen = { TIERS, CENSUS, rng, seedName, censusGrid, makeCensus, census, judge,
+  g.OrbitalGen = { TIERS, CENSUS, rng, seedName, censusGrid, makeCensus, census, share, censusLine, judge,
                    propose, describe, makeGenerator, generate };
 })(typeof globalThis !== "undefined" ? globalThis : this);

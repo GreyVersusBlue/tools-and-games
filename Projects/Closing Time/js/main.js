@@ -1,5 +1,5 @@
 // main.js — bootstrap: load content, resume or start a new career.
-import { loadAll } from "./data.js";
+import { loadAll, contentErrors } from "./data.js";
 import { S, newGame, loadSave, wipeSave, careerSlot, adoptState, enrollFinishedCareer, loadHall, hallBests } from "./state.js";
 import { fmtMoney } from "./data.js";
 import { render, toast } from "./ui.js";
@@ -8,8 +8,12 @@ import { mountSaveBar } from "../../../assets/js/gvb-save.js";
 async function boot() {
   await loadAll();
   mountSave();
-  if (loadSave()) { render(); attachNewGame(); return; }
-  showStartScreen();
+  if (loadSave()) { render(); attachNewGame(); }
+  else showStartScreen();
+  // The console has the lines, one per file (see loadAll). This is for whoever
+  // is looking at the page instead: the game is running short of something.
+  const n = contentErrors.length;
+  if (n) toast(`${n} content error${n === 1 ? "" : "s"} in data/: what could not be loaded was left out. The console names each file.`);
 }
 
 /**

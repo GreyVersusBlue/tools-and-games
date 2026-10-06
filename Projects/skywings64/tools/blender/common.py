@@ -166,7 +166,7 @@ def setup_ao_bake_and_wire(obj, size=512, samples=24):
     img.pack()
     return img
 
-def export_glb(path, objects=None, apply_modifiers=True):
+def export_glb(path, objects=None, apply_modifiers=True, **extra):
     bpy.ops.object.select_all(action='DESELECT')
     if objects:
         for o in objects:
@@ -189,6 +189,7 @@ def export_glb(path, objects=None, apply_modifiers=True):
         export_tangents=False,
         export_animations=True,
         export_skins=False,
+        **extra,
     )
 
 def report_size(path):

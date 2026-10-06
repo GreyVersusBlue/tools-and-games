@@ -2,22 +2,17 @@
 
 A Pilotwings 64-style flight game in three.js r160: hang glider, gyrocopter and rocket belt, six
 scored missions and Free Flight over one island. `CONTRACT.md` has the module interfaces, URL
-parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (37 checks, about a
-minute, Tools/board-check's harness).
+parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (74 checks, about a
+minute, Tools/board-check's harness); its first 35 are `test/assets.mjs`, which reads
+`assets/models/` in Node alone and can be run by itself.
 
-Everything below is open. Item 2 was measured on a real GPU on 2026-10-03; the rest has not been seen on one.
+Both items below are open. Item 1 was measured on a real GPU on 2026-10-03; nothing else here has
+been seen on one, and that includes the carved heads, rebuilt on 2026-10-05 and judged from Blender
+renders and SwiftShader captures (`screenshots/heads_near.jpg`, `heads_far.jpg`; `HISTORY.md` #895).
+The glider's landing is not here any more: Devon flew it by hand on 2026-10-03, it works, and no
+tuning was asked for.
 
-## 1. The glider floats on landing (needs a person)
-
-The suite's autopilot lands the belt and gyrocopter within 3 m of the pad centre. The glider landed
-22 m out in early builds and 50 to 95 m out after the air brake and GLB swap, against a 42 m pad.
-The final-approach log shows why: with the brake held it still sinks only 3 to 4 m/s at 16 m/s, and
-ridge lift below 10 m carries it on (one run climbed from 4.3 m to 7.1 m with no input). Whether a
-person finds Sunrise Glide's pad too hard is the question; a hand playtest decides it before any
-tuning. Levers if it is: `CDx` and the lift dump in `hangGlider.js` (the air brake), the ridge-lift
-band in `world/index.js` `liftAt`, or the pad radius in `terrain.js` `LAYOUT.landing`.
-
-## 2. Draw-call cuts (measured on a real GPU, not yet tuned)
+## 1. Draw-call cuts (measured on a real GPU, not yet tuned)
 
 Measured on 2026-10-03 on Devon's Windows machine: an RTX 3070 Ti through Chrome's ANGLE on D3D11,
 Rotor Rally at quality high, by `node tools/gpu-profile.mjs` (it reports the WebGL renderer string and
@@ -79,13 +74,7 @@ stream in on game time, are still filling. Draws and triangles come from the sce
 the frame-time conclusions above are the GPU's alone. `perfReport` now finds 148 shader programs,
 not 71, after a run that has visited every landmark (not traced further).
 
-## 3. The carved heads model
-
-`assets/models/heads.glb` is a pale slab with four small faces; the procedural fallback
-(`?models=0`) reads better. Rebuild `tools/blender/world_heads.py` with the faces filling the cliff,
-or drop the swap in `landmarks.js` and keep the procedural one.
-
-## 4. Touch and gamepad on real devices (needs a phone and a pad)
+## 2. Touch and gamepad on real devices (needs a phone and a pad)
 
 Both are covered by the suite through synthetic events (a mocked `navigator.getGamepads`, and
 PointerEvents on the on-screen stick and buttons). Nobody has held a phone or a controller yet: stick

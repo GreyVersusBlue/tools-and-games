@@ -94,6 +94,19 @@ async function testCreature(browser) {
   await page.click('#parse-btn');
   await waitFor(page, () => /Creature 3/.test(document.getElementById('pf2-block').textContent), { label: 'pasted ogre' });
   ok(/greatclub/.test(await text(page, '#pf2-block')), 'a partial pasted block converts');
+
+  // An ability a rule rewrote reads in 2e form with its glyph; one no rule
+  // reads keeps its text and wears the mark (converter-abilities.test.mjs
+  // holds the wording).
+  await page.$eval('#pf1-paste', (el) => { el.value = 'Test Beast CR 4\nAC 17, touch 11, flat-footed 16\nhp 42 (5d10+15)\nFort +7, Ref +5, Will +2\nMelee 2 claws +8 (1d6+4)\nSpecial Attacks rend (2 claws, 1d6+4)\nSPECIAL ABILITIES\nPoison (Ex) Bite—injury; save Fort DC 15; frequency 1/round for 4 rounds; effect 1d2 Str; cure 1 save.\nLurk (Ex) A test beast gains a +4 bonus on Stealth checks in tall grass.'; });
+  await page.click('#parse-btn');
+  await waitFor(page, () => /Creature 4/.test(document.getElementById('pf2-block').textContent), { label: 'pasted test beast' });
+  const lines = await page.$$eval('#pf2-block .sb-line', (els) => els.map((el) => ({ name: el.querySelector('b')?.textContent, mark: el.querySelector('.sb-pf1')?.textContent || '', title: el.querySelector('.sb-pf1')?.title || '', act: el.querySelector('.act')?.textContent || '', text: el.textContent })));
+  const by = (n) => lines.find((l) => l.name === n);
+  ok(by('Rend')?.act === '◆' && !by('Rend').mark && /Stage 1 enfeebled 1 \(1 round\)/.test(by('Poison')?.text) && !by('Poison').mark,
+    'abilities a rule rewrote show in 2e form, unmarked', `${by('Rend')?.text.slice(0, 40)} | ${by('Poison')?.text.slice(0, 60)}`);
+  ok(by('Lurk')?.mark === 'PF1e wording' && /not rewritten/.test(by('Lurk').title) && /gains a \+4 bonus on Stealth checks in tall grass\./.test(by('Lurk').text) && lines.filter((l) => l.mark).length === 1,
+    'the one ability no rule reads keeps its text and is marked PF1e wording', by('Lurk')?.text);
   ok(errors.length === 0, 'no console errors while editing', errors.slice(0, 3).join(' | '));
   await page.close();
 }
@@ -166,6 +179,40 @@ async function testSpellCard(browser) {
   await page.close();
 }
 
+// The Foundry JSON button saves a file: an <a download> clicked on a JSON
+// blob. The click and the blob are caught in the page, so nothing lands on
+// disk and the check is the same under either browser engine.
+async function testFoundry(browser) {
+  console.log('\nFoundry export');
+  const { page, errors } = await freshPage(browser);
+  await page.evaluate(() => {
+    window.__saved = [];
+    const make = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => { window.__blob = blob; return make(blob); };
+    HTMLAnchorElement.prototype.click = function () { window.__saved.push({ name: this.download, href: this.href }); };
+  });
+  const row = await page.$$eval('#panel-creature .output-col .btn-row button', (bs) => bs.map((b) => b.id));
+  ok(row.join(' ') === 'copy-btn print-btn foundry-btn', 'the Foundry JSON button sits beside Copy and Print', row.join(' '));
+  await page.click('#foundry-btn');
+  ok(await page.evaluate(() => window.__saved.length) === 0, 'with nothing converted it saves nothing');
+  await page.click('#example-btn');
+  await waitFor(page, () => /Creature 10/.test(document.getElementById('pf2-block').textContent), { label: 'dragon converted' });
+  await page.click('#foundry-btn');
+  const saved = await page.evaluate(async () => ({ files: window.__saved, type: window.__blob?.type, text: await window.__blob?.text() }));
+  ok(saved.files.length === 1 && saved.files[0].name === 'young-red-dragon.foundry-npc.json' && saved.files[0].href.startsWith('blob:') && saved.type === 'application/json',
+    'on the example it saves young-red-dragon.foundry-npc.json, a JSON blob', JSON.stringify(saved.files));
+  let actor = null;
+  try { actor = JSON.parse(saved.text); } catch { /* reported below */ }
+  const shown = await page.$eval('#pf2-block', (el) => ({ ac: Number(el.textContent.match(/AC (\d+)/)[1]), hp: Number(el.textContent.match(/HP (\d+)/)[1]) }));
+  ok(actor?.type === 'npc' && actor.name === 'Young Red Dragon' && actor.system.details.level.value === 10 && actor.system.attributes.ac.value === shown.ac && actor.system.attributes.hp.max === shown.hp,
+    'the file is an npc with the AC and HP the page shows', actor ? `AC ${actor.system.attributes.ac.value} HP ${actor.system.attributes.hp.max} against ${JSON.stringify(shown)}` : 'not JSON');
+  const spells = (actor?.items || []).filter((i) => i.type === 'spell');
+  ok(spells.length > 1 && spells.every((s) => s.system.description?.value && s.system.time), 'its spells carry the Archive\'s spell data, so the page passed its spell index in', `${spells.length} spells`);
+  ok(/Saved young-red-dragon/.test(await text(page, '#copy-status')), 'and the status line says what was saved', await text(page, '#copy-status'));
+  ok(errors.length === 0, 'no console errors', errors.slice(0, 3).join(' | '));
+  await page.close();
+}
+
 async function testPhone(browser) {
   console.log('\nphone width');
   const { page } = await freshPage(browser, '', { width: 375, height: 800 });
@@ -181,7 +228,7 @@ async function testPhone(browser) {
 
 const server = await serve(PORT);
 const browser = await launch({ headed: false });
-for (const t of [testLoad, testCreature, testSpellCard, testSpells, testPhone]) {
+for (const t of [testLoad, testCreature, testSpellCard, testFoundry, testSpells, testPhone]) {
   try { await t(browser); }
   catch (err) { failures++; checks++; console.log(`  ABORTED  ${t.name}: ${String(err.message || err).slice(0, 300)}`); }
 }

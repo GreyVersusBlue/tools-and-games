@@ -865,9 +865,9 @@ Opus 5 and Fable rows run on Opus 5.5 and the Sonnet rows on Sonnet 5.
 **`Projects/corner-and-kettle` has no open phase.** Its three Blender rows
 (old 11 to 13) shipped on 2026-10-02 (#808 to #810). Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
-leaves for a later arc" list — candidates, not a ranked arc, and the largest of
-them (reshaping the five recipes that are another recipe's requirement list,
-#365) is a balance change with a sweep behind it. Nothing from it is in the
+leaves for a later arc" list — candidates, not a ranked arc. The five recipes
+that were another recipe's requirement list (#365) were reshaped on 2026-10-05
+(#878, TG-29); what that left is in the same list. Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
@@ -888,10 +888,12 @@ files are meant to agree; change both.
 
 **Twelve areas that had no workflow now run in CI**, as a matrix in
 `site-ci.yml`; a new project's suite goes there, or in its own workflow calling
-`.github/workflows/suite.yml`. Not in CI, on purpose (#353): Blue Hour's
-`browser.mjs` (real-time movement, #53); Absalom's `browser.mjs` (its own fixed
-Chromium path); two browser suites that only speak Playwright while the
-harness is Puppeteer on Linux, both belonging to archived tools; and anything
+`.github/workflows/suite.yml`. Absalom's `browser.mjs` joined on 2026-10-05 as
+the `browser` job of `absalom-ci.yml`, ported from playwright-core and a fixed
+Chromium path to the harness (#880). Not in CI, on purpose (#353): Blue Hour's
+`browser.mjs` (real-time movement, #53); two browser suites that only speak
+Playwright while the harness is Puppeteer on Linux, both belonging to archived
+tools; and anything
 under `npm run games`/`play`/`previews`. Integer Foundry's was the third of
 those and is in the matrix now — its failure was a click race, not a missing
 method, and every click in it retries a re-query. **It had a second failure mode
@@ -945,9 +947,9 @@ outside CI on purpose (#353) — so nothing there went red, and none of it is
 fixed.
 
 Two findings **Phase 7** left behind, both in the wishlist's later-arc list:
-**five recipes were already another recipe's requirement list** (Cappuccino is
-Latte's; Affogato and Doppio are Americano's — #365, named in an assertion
-rather than reshaped), and **the Legacy tree is measurably indistinguishable
+**five recipes were already another recipe's requirement list** (Cappuccino was
+Latte's; Affogato and Doppio were Americano's — #365, named in an assertion
+then, and each given a line of its own on 2026-10-05, #878), and **the Legacy tree is measurably indistinguishable
 from wasting the beans** at one pair of hands, because a shopper's income is
 the door and the door is the prestige level's spawn floor.
 
@@ -1032,14 +1034,16 @@ in the other repo can still be dropped into `candidates/` and promoted from
 here. What it is waiting on has not changed and is not this repo's: a machine
 with real GPU compositing.
 
-**SkyWings 64 on real hardware.** Two things, both in its `WISHLIST.md`: a
-hand playtest of the glider's landing (item 1: the autopilot lands it 50 to 95
-m off a 42 m pad, where the belt and gyrocopter land within 3 m), and a phone
-and a controller in hand (item 4). Not verified: those numbers came from
-SwiftShader. Item 2, the real-GPU profile, was measured on 2026-10-03 (TG-17
-part b, `HISTORY.md` #789): on an RTX 3070 Ti it costs 4.3 to 6.2 ms a frame,
-bound by draw calls rather than triangles. Its three suggested cuts are open
-work that needs no special hardware, but they are not ranked.
+**SkyWings 64 on real hardware.** One thing, in its `WISHLIST.md`: a phone
+and a controller in hand (item 2). The glider's landing is answered: Devon flew
+it by hand on 2026-10-03, it works, and no tuning was asked for. Item 1, the
+real-GPU profile, was measured on 2026-10-03 (TG-17 part b, `HISTORY.md`
+#789): on an RTX 3070 Ti it costs 4.3 to 6.2 ms a frame, bound by draw calls
+rather than triangles. Its three suggested cuts are open work that needs no
+special hardware, but they are not ranked. The carved heads were rebuilt on
+2026-10-05 (#895) and have been seen only in Blender renders and under
+SwiftShader; a look at them on a real GPU is worth having the next time one
+is on, and is not a row.
 
 **The tavern set on a real GPU at a device pixel ratio of 2.** The tavern
 plate, walker sheet and cast sheet have not been looked at on a real GPU at a
@@ -1286,18 +1290,87 @@ and the one embedded action), and hp is anchored at low below CR 1 and at 2.2
 from CR 1 up (#712, #714, #716), measured on 48 printed pairs: six below CR 1,
 eleven at CR 1 and 2, seventeen at CR 3 to 6, fourteen from CR 7 up. A
 construct's Fort reads no lower than moderate (#715). Every parse fixture's
-special attacks are hand-checked. Open follow-ups, none ranked; the first
-three wait on Devon's go-ahead:
+special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
+all three questions that stood here on 2026-10-05: the flagging pass, go; the
+2e-style rewrite, go; Foundry, yes, he uses it, build the export. The first and
+the third are built; the rewrite has its first increment (#894).
 
-1. **The spell map's 1,087 "partial" entries** were written by a second pass
-   that fixed the first pass's misses; they have not been read by a person. The
-   next step is a pass that flags the weakest of them for Devon to review,
-   not one that rewrites them.
-2. **Special abilities keep their PF1e text** with DCs, action costs and
-   condition names rewritten. Monster Core wording exists for eighteen universal
-   abilities (`UMR_TEXT` in `convert.js`); a 2e-style rewrite of the rest is
-   the open question.
-3. **A Foundry VTT actor export.** Only worth building if Devon uses Foundry.
+1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
+   (#886, 2026-10-05), and the list is Devon's to read. They were written by a
+   second pass that fixed the first pass's misses and no person has read them.
+   `node Pathfinder/converter-assets/flag-partials.mjs` scores every one on
+   fourteen measured reasons and writes the 47 weakest (score 8 or more) to
+   `Pathfinder/converter-assets/data/spell-map-review.md`, each with the
+   fields compared and the question to answer. It changed no entry and cannot:
+   the suite compares the map's bytes across a run. What is left is the
+   reading. Answers go into `spell-map.json` by hand; rerun the script
+   afterwards, or `converter-spells.test.mjs` fails on a stale list. The next
+   73 (score 7) are one `CUT` away if the first 47 turn out worth it.
+2. **The 2e-style rewrite of special abilities: first increment done (#894,
+   2026-10-05), 22 of 111 abilities.** Devon said go on 2026-10-05.
+   `converter-assets/js/abilities.js` rewrites an ability when a rule reads its
+   whole construction and leaves it byte for byte as it was otherwise, marked
+   **PF1e wording** on the page, in the copied text and in the Foundry file's
+   notes. Every DC and damage figure a rule writes is the converter's own for
+   that creature at its new level. Eight rules, counted over the 57 fixtures:
+   affliction (a poison or disease stat line, 6), constrict (4), throw-rock
+   (3), breath (2, and the hell hound's no longer reads "6d4 rounds damage"),
+   distraction (2), gaze (2), rend (2), trample (1). The table is
+   `converter-assets/data/ability-patterns.md`, written by
+   `measure-abilities.mjs`; `converter-assets/README.md` says where each
+   number comes from. What is left, 76 abilities in PF1e wording and 7 bare
+   names:
+   - **A save inside a sentence, 30 abilities.** "must succeed on a DC N save
+     or be [condition] for [duration]" is the next rule: 5 abilities hold it
+     (the gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus,
+     Paralytic Tentacles), each inside a longer paragraph, so the rule has to
+     decide what it does with the sentences around it.
+   - **A parenthesis no rule reads, 16.** `9/day`, `DC 18`, `2 levels, DC 22`,
+     `tongue, 5 feet`, the war priest's class features. A use limit as a
+     Frequency line covers the per-day ones; a name with only a DC has no
+     effect to write.
+   - **A burst with a save for half** (the balor's Death Throes), **swallow
+     whole, pull, rake, grab with a size.** One fixture each.
+   - **Prose, 27.** No construction in them (Whip Mastery, Mimicry, Freeze).
+     These stay PF1e wording unless somebody writes them by hand.
+   - **`converter-abilities.test.mjs` is in `site-ci.yml` since 2026-10-06**,
+     under "Pathfinder converter" with the Foundry suite. Neither line has run
+     on GitHub yet: the first run is the next PR's, so read that job's log once.
+   - The suite's hash of "the 98 no rule wrote" is 89 of the 111 and the 9
+     entries the 111 leaves out (seven Reactive Strikes, a regeneration, a
+     fast healing). 22 and 98 are of 120, not of 111.
+   - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
+     listed twice, once as a bare aura and once as text (the balor's Flaming
+     Body), and a defensive ability the same way (the mouther's Amorphous).
+     The succubus's "The DC is 22 for the Fortitude save" is not rescaled,
+     because the DC and its number are two words apart.
+3. **A Foundry VTT actor export: built (#892, 2026-10-05), and waiting on
+   Devon's import.** The **Foundry JSON** button beside Copy and Print saves
+   `<name>.foundry-npc.json`, a pf2e NPC for Import Data on an actor.
+   `converter-assets/js/foundry.js` is a pure function, the converter's
+   creature in and a plain object out, the same bytes every time. It targets
+   the shape of the pf2e system's own NPCs as `Pathfinder/data/npcs` held
+   them on 2026-09-09, writes a path only if one of the 3,048 Remaster NPCs
+   there has it and a slug only if one of them uses it, and puts everything
+   else in the actor's private notes. A partial spell match is marked in the
+   spell's name, at the top of its text and in the notes.
+   **It has not been imported into a real Foundry**: no machine here has one.
+   `converter-assets/README.md` lists which fields are sure, which are a best
+   reading, and five lines on how to check it. What is left:
+   - **Devon imports one** (the lich is the widest: 30 spells, two of them
+     partial) and says what the sheet shows. A refused import is most likely
+     one of the fields left out for Foundry to default (`img`, `_stats`,
+     `system.publication`, a migration version).
+   - **`converter-foundry.test.mjs` is in `site-ci.yml` since 2026-10-06**,
+     under "Pathfinder converter". It has not run on GitHub yet: the first run
+     is the next PR's.
+   - No fixture is a troop, and no fixture's ranged attack parses with a
+     range increment, so a ranged Strike imports as melee with a note; the
+     suite covers the range by hand.
+   - Seen while building, not fixed: a class caster's spell can be listed
+     twice at one rank (the storm sorcerer's Light), because `convertList`
+     compares a stored `''` frequency with an `undefined` one. It is the
+     converter's output, so the export carries both.
 4. **Two pairs sat on a per-monster bound; both are investigated (#829,
    2026-10-03) and saves now stop at extreme (#831, 2026-10-04).** The
    medusa's AC converts to 20 against Paizo's 25 (bound 5), and the
@@ -1317,11 +1390,12 @@ three wait on Devon's go-ahead:
      save error 2.12 to 2.07, and no other number of the 48 pairs changed.
      The nalfeshnee's Will goes no further: it is Paizo's redesign, and no
      PF1e number predicts it. The suite holds the rule on all 57 fixtures.
-   - **Floor AC at low. Not recommended as it stands, and not done.** Medusa
-     20 to 22 (print 25) and lich 29 to 30 (31), but the gelatinous cube goes
-     14 to 16 against 10, past its bound. With oozes excepted the mean AC
-     error goes 1.42 to 1.35, on two monsters. It waits on Devon; the suite is
-     green without it and the clamp holds the medusa in place.
+   - **Floor AC at low. Closed: no floor** (2026-10-05; Devon left it to
+     the Selector, whose call it is, on #829's measurement). Medusa 20 to 22
+     (print 25) and lich 29 to 30 (31), but the gelatinous cube goes 14 to 16
+     against 10, past its bound. Reopen only with a rule that excepts oozes
+     and moves every changed AC toward print. The suite is green without it
+     and the clamp holds the medusa in place.
    No pair from CR 15 to 19 exists yet; the balor at 20 is alone above the
    nalfeshnee.
 
@@ -1527,7 +1601,7 @@ project's only plan and is being retired from that file:
   Per-client financing shipped in round 4, multi-offer escalation wars in
   round 5, the hall of past careers in round 6 and the commercial tier in
   round 7. **No next layer from that list is open.** The suite holding all of
-  it is at 405 assertions.
+  it is at 501 assertions.
 - **Deleting content under a live contract is settled, not open** (#861,
   2026-10-04). `repairCareer()` backfills and drops `listingsState`,
   `market.nb` and `knowledge` against what is in `data/`, and it voids what was
@@ -1536,9 +1610,21 @@ project's only plan and is being retired from that file:
   commission and charges no reputation or satisfaction, the client is released
   with one Ledger line under their name, a deal that had already closed keeps
   its commission and leaves without a line, and a queued choice naming anything
-  deleted is dropped. **Still not covered**: a listing whose own agent or
-  neighborhood file is deleted while the listing stays, which is a content
-  error and not a save repair.
+  deleted is dropped.
+- **A listing whose own agent or neighborhood file is gone is left out by the
+  loader, not open** (#879, 2026-10-05). It was a content error with no
+  handling: the MLS board drew no cards, `writeOffer()` threw after pushing the
+  deal, `marketHeat()` threw, and a contract on the listing closed and paid.
+  `dropBrokenContent()` in `js/data.js` drops the listing (and a seller whose
+  house is in a missing neighborhood, and an event naming a missing agent or
+  brokerage), says which file names which id in the console, and a save holding
+  the listing takes #861's void. `tools/smoke.mjs` fails the build on the same
+  lines and on a manifest that disagrees with the folder. **Still open**: a
+  file the manifest names that is not on the server stops the page at "Failed
+  to load" (CI catches it, the page does not go on without it); the toast is
+  2.6 seconds and nothing on the desk says afterwards that content was left
+  out; a seller dropped this way gets #861's two anonymous deleted-client
+  lines, not one under their name.
 
 Two conventions that stay in the README rather than moving here: anything new
 added to `S` belongs in `repairCareer()` the same day it's added, especially if
@@ -2146,13 +2232,46 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
 5. **A level generator off the solver. Shipped 2026-09-14, PR #299** (#401 to
    #405). `js/generator.js` proposes from a tier and a seed, `validate` and a
    1,200-launch census judge, and the sector map rolls one at Easy, Medium or
-   Hard. Nothing is open against it. Two things a later session might want,
-   neither ranked: the census could feed the editor's Check (`Winnable, and
-   2.4% of launches win`) for one more stepped call, and the tier bands are a
-   first reading of 18 seeds against the 22 shipped levels, so a session that
-   rolls fifty and finds a pattern (one type overrepresented, a tier that reads
-   no harder than the one below) has the numbers to move a band and the fixture
-   in `test/generator.mjs` to say what it moved.
+   Hard. The census feeds the editor's Check since 2026-10-05 (#877): after
+   the verdict it reads `1.4% of launches win (17 of 1,200).`, stepped one
+   launch at a time. **The tier bands were measured on 2026-10-05 and left
+   alone** (#881): seeds 1 to 200 at each tier, every candidate's census kept.
+   Win share of the accepted levels, and what the judge refused on the way:
+
+   | | Band | min / q1 / median / q3 / max | Candidates | Refused | needle | loose | unwinnable | decoration |
+   | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+   | Easy | 1% to 8% | 1.00 / 1.33 / 1.63 / 2.25 / 5.25 | 280 | 28.6% | 35 | 0 | 34 | 11 |
+   | Medium | 0.8% to 5% | 0.83 / 1.33 / 2.00 / 2.52 / 4.83 | 261 | 23.4% | 28 | 11 | 16 | 6 |
+   | Hard | 0.5% to 3% | 0.50 / 1.08 / 1.67 / 2.17 / 3.00 | 304 | 34.2% | 17 | 71 | 10 | 6 |
+   | Basics, 10 shipped | | 0.83 / 1.35 / 1.63 / 1.96 / 2.67 | | | | | | |
+   | Deep Space, 12 shipped | | 0.75 / 2.02 / 3.92 / 5.27 / 12.67 | | | | | | |
+
+   No seed ran out of candidates: the most any spent was 6, 4 and 8 of 40.
+   What the table says. (a) By window width the three tiers are one
+   population. A Medium level is tighter than an Easy one 44 times in 100 and
+   a Hard one tighter than a Medium one 63 in 100; each middle half sits
+   mostly inside its neighbour's. The shipped packs run the other way, Deep
+   Space looser than Basics. (b) Only two band edges do much: Hard's 3% top
+   (71 of its 104 refusals) and Easy's 1% floor. Easy's 8% top refused nothing:
+   the widest of 280 Easy candidates was 5.25%, and an empty field is 0.75% to
+   2.25%. (c) No type crowds a tier and none is missing. The two that the
+   judge thins: a repulsor is 22% of the bodies Easy proposes and 9% of those
+   it accepts (25 of 83 candidates holding one pass, against 74% to 83% for the
+   other three types), and Hard's black holes go from 23% to 19%. (d) The mix
+   differs from the shipped levels in two ways no band touches: 72 of 200
+   Medium and 81 of 200 Hard levels hold an orbiting body against 1 of 22
+   shipped, and wormholes are in 62 of 200 Hard levels and no other tier
+   against 6 of the 12 in Deep Space. None of this is a defect by #402, which
+   says the census measures tolerance and the tiers are recipes, so no band
+   moved. **The question it leaves is Devon's:** should Hard have a narrower
+   window than Easy at all, or is "more bodies, stranger types" the whole
+   difference? If narrower, the bands that would separate the middle halves
+   are near Easy 2.25% and up, Hard 1.3% and down, and each refuses more than
+   half of what its recipe proposes. `test/generator.mjs` pins the 18 rolled
+   levels (candidates spent, wins, wins that win anyway) and the 22 shipped
+   levels' verdicts at all three bands, 310 checks, so whichever band moves
+   names the seeds and levels it moved. Not measured: whether a narrower
+   window plays as harder, which needs a person.
 
 6. **Draw the playfield in device pixels. Shipped 2026-09-30** (#742).
    `view` is in device pixels and `toWorld` multiplies the pointer by `DPR`.
@@ -2325,10 +2444,13 @@ copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): 
 A Pilotwings 64-style flight game Devon had built outside this repo and asked
 to move in on 2026-09-30 (#724): hang glider, gyrocopter and rocket belt, six
 scored missions with medals and unlocks, and Free Flight over one island.
-Folder `Projects/skywings64/`; `WISHLIST.md` there carries the four open
-items. Items 1 and 4 wait on a person (see Parked). Item 2 is three measured
-draw-call cuts, and item 3 is the heads model. Its suite is
-`node test/browser.mjs` from the project folder, in Site CI's matrix.
+Folder `Projects/skywings64/`; `WISHLIST.md` there carries the two open
+items. Item 1 is three measured draw-call cuts, none tried. Item 2, a phone
+and a controller in hand, waits on a person (see Parked). The glider landing
+and the heads model were the other two: Devon flew the landing on 2026-10-03
+and it works, and `heads.glb` was rebuilt on 2026-10-05 (#895). Its suite is
+`node test/browser.mjs` from the project folder, in Site CI's matrix (74
+checks; the first 35 are `test/assets.mjs`, Node only).
 
 ## Throneshard
 
@@ -2560,13 +2682,13 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q7 | **Should the authored three become seeds too?** Phase 2 answered "authoring or generation" by shipping both: 4th, 5th and 6th are authored and the 7th is drawn from a seed. Converting an authored period is one JSON edit each, and its kids' names and notes would go. Nothing depends on the answer. | 2, reframed after PR #106 | `Projects/bell-to-bell/WISHLIST.md` |
-| Q8 | **Does the period need a fail state?** Answered "still no" three times. Confirming it lets Phase 3 stop designing around the possibility. | 2 | wishlist, `docs/HANDOFF.md` |
-| Q9 | **Is suppression too strong?** Measured: in every 4th-period balance run exactly one scheduled tell never happens (Priya in front of June); splitting the pairs makes that "2 never happened, 2 found another way" and drops restless from 72 to 44. The handoff's own fix, if it is too strong, is a per-period cap on how much one kid absorbs, not a nerf to the effect — and now watch it across *two* rosters (Priya and Anh both), not just one. | 2 | wishlist, `docs/HANDOFF.md` |
-| Q10 | **Is the Observation's ambient Mastery cost calibrated?** `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by design math and not by playtest. In the table it costs the good teacher nothing visible (79 either way) and buys 10 Fidelity if performed. | 2 | wishlist, `docs/HANDOFF.md` |
-| Q11 | **Mobile.** Undecided, and the answer determines whether Phase 8 exists. `input.js` has `touchstart`/`touchmove` look and no way to walk or to press E, Q, R, T, O, H, G or F. | 2 | wishlist, `docs/HANDOFF.md` |
-| Q12 | **An announced Observation variant?** Treatment §6.1 has both announced and surprise; only unannounced is built. The handoff calls the surprise one funnier and rates this low; Phase 4 assumes yes. | 2 | wishlist, `docs/HANDOFF.md` |
-| Q13 | **Should Room Temp reveal direction at all?** "Still unchanged." Room Temp names bands and quadrants only; naming is what the Withitness mode is for. | 1 | `docs/HANDOFF.md` only |
+| ~~Q7~~ | ~~**Should the authored three become seeds too?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes. The three authored classes are seeds 1000004, 1000005 and 1000006 now, typed into 7th period's box (#893); 4th, 5th and 6th taking a seed of their own is what is left, in the WISHLIST's standing backlog. Phase 2 answered "authoring or generation" by shipping both: 4th, 5th and 6th are authored and the 7th is drawn from a seed. Converting an authored period is one JSON edit each, and its kids' names and notes would go. Nothing depends on the answer. | 2, reframed after PR #106 | `Projects/bell-to-bell/WISHLIST.md` |
+| ~~Q8~~ | ~~**Does the period need a fail state?**~~ Struck — answered by Devon, 2026-10-05 (#889): still no. Answered "still no" three times. Confirming it lets Phase 3 stop designing around the possibility. | 2 | wishlist, `docs/HANDOFF.md` |
+| ~~Q9~~ | ~~**Is suppression too strong?**~~ Struck — answered by Devon, 2026-10-05 (#889): it is not. Leave it. Measured: in every 4th-period balance run exactly one scheduled tell never happens (Priya in front of June); splitting the pairs makes that "2 never happened, 2 found another way" and drops restless from 72 to 44. The handoff's own fix, if it is too strong, is a per-period cap on how much one kid absorbs, not a nerf to the effect — and now watch it across *two* rosters (Priya and Anh both), not just one. | 2 | wishlist, `docs/HANDOFF.md` |
+| ~~Q10~~ | ~~**Is the Observation's ambient Mastery cost calibrated?**~~ Struck — answered by Devon, 2026-10-05 (#889): right as it is. `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by design math and not by playtest. In the table it costs the good teacher nothing visible (79 either way) and buys 10 Fidelity if performed. | 2 | wishlist, `docs/HANDOFF.md` |
+| ~~Q11~~ | ~~**Mobile.**~~ Struck — answered by Devon, 2026-10-05 (#889): no mobile. Phase 8 had already shipped when this was answered (this wording predates it), so the answer closes the phone measurement and any further touch work; taking the shipped touch layer out is Devon's call and has not been made. Undecided, and the answer determines whether Phase 8 exists. `input.js` has `touchstart`/`touchmove` look and no way to walk or to press E, Q, R, T, O, H, G or F. | 2 | wishlist, `docs/HANDOFF.md` |
+| ~~Q12~~ | ~~**An announced Observation variant?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes, and Phase 4 built it; #891 records its three choices and the suite holds it beside the surprise one. Treatment §6.1 has both announced and surprise; only unannounced is built. The handoff calls the surprise one funnier and rates this low; Phase 4 assumes yes. | 2 | wishlist, `docs/HANDOFF.md` |
+| ~~Q13~~ | ~~**Should Room Temp reveal direction at all?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes: the quadrant it already reads. It still never names a kid. Two quadrants level at the top read as the middle now (#890). "Still unchanged." Room Temp names bands and quadrants only; naming is what the Withitness mode is for. | 1 | `docs/HANDOFF.md` only |
 
 ### Hearth
 
@@ -2700,6 +2822,12 @@ live. Nothing in that column is a link to follow.
   Hearth Phase 8, locked decision #83: **`hearth-ci.yml`, two jobs.** A PR
   gate of `determinism` + `save` + a twelve-day `soak` + `pinned`, and a
   nightly matrix of the other fifteen modes that never runs on a PR.
+  **The deep modes run only nightly, so a red there is seen a day late** and
+  no merge is held by it: `deep · sixteen` was red for three nights from
+  2026-10-03 on a change that passed its PR gate (#896). A change that moves
+  the pinned hashes moves every seed-7 island the deep modes stand on, so run
+  them at the desk before it merges: `node harness.mjs <mode>` from
+  `Projects/hearth/test`, one at a time. The matrix is sixteen modes now.
 - **Does the population cap overshoot actually grate?** (was Q17) Answered by
   Hearth Phase 7, locked decision #82: **kept, and named.** The cap counts
   beds and a boat has to find one; a baby is born into its parents' house. The

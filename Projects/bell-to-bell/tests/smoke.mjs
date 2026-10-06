@@ -8,7 +8,9 @@ import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
 import { createObservation, visitFor, announcedAhead, defaultVisit } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
-import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor } from '../src/periods.js';
+import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor,
+  classSeeds, classSeedFor, classSeedProblems, isSeed, seedCopyFor } from '../src/periods.js';
+import crypto from 'crypto';
 import { contentFiles } from '../src/loader.js';
 import { subjectKey, subjectFor, applySubject, weightedMix, subjectEvents, subjectTells,
   subjectInterventions, tickHazard, hazardBand, isLabDay, stackFixtures, subjectRoom,
@@ -320,12 +322,183 @@ check('heat points at a quadrant, not a kid', typeof zone==='string' && !zone.in
 check('the quadrant is the one with the tells', zone==='back-left');
 tempTells.push({type:'PHONE', seat:3, born:1000, dead:false, resolved:false});
 tempTells.push({type:'PHONE', seat:7, born:1000, dead:false, resolved:false});
-check('an even spread reads as the middle', ['middle','back-left'].includes(rt.hotZone()));
+// Two in the back left, one front right, one back right: half the heat is in
+// one quadrant and nothing is level with it. (This line used to accept the
+// middle as well, under a name that said even; the level cases are below.)
+check('half the heat in one quadrant is still a direction', rt.hotZone()==='back-left');
 tempTells.length = 0;
 tempTells.push({type:'PHONE', seat:0, born:1000, dead:true, resolved:false});
 check('a dead tell is not heat', rt.hotZone()===null);
 
 check('every room temp band has a line', eData.roomTemp.every(r=>r.line && r.label));
+
+// ---- Q13 (#890): Room Temp reads a direction, and only a direction --------
+//
+// The seats below are written out by hand from the default chart (three rows
+// of four; the front row is the only one the rule calls the front), not
+// worked out with the rule's own arithmetic, so a flipped sign or a moved
+// row line in roomtemp.js cannot move this table with it.
+{
+  const QUAD = {
+    'front-left': [0, 1], 'front-right': [2, 3],
+    'back-left': [4, 5, 8, 9], 'back-right': [6, 7, 10, 11]
+  };
+  const R = eData.roomTempReading;
+  const heat = seat => ({ type: 'PHONE', seat, born: 1000, dead: false, resolved: false });
+  const mk = (kids = students) => {
+    const tells = [], said = [], pulses = [];
+    const temp = createRoomTemp({
+      data: eData, students: kids, tellSystem: { defs: tData.types, tells },
+      toast: (k, t, b) => said.push([k, t, b]), onPulse: (row, zone) => pulses.push([row, zone])
+    });
+    const set = seats => { tells.length = 0; for (const x of seats) tells.push(heat(x)); };
+    return { temp, tells, said, pulses, set };
+  };
+
+  // Every direction there is, from every desk that can produce it.
+  const A = mk();
+  for (const [quad, seats] of Object.entries(QUAD)) {
+    A.set(seats);
+    check(`a ${quad} full of trouble reads as the ${quad}`, A.temp.hotZone() === quad);
+    check(`and so does any one desk in the ${quad}, alone`,
+      seats.every(x => { A.set([x]); return A.temp.hotZone() === quad; }));
+    const st = createState();
+    A.set(seats);
+    const res = A.temp.read(st);
+    check(`the ${quad} reading says so in the room's words`,
+      res.zone === quad && A.said.at(-1)[2].endsWith(R.zoneTemplate.replace('{zone}', R.zoneNames[quad])));
+    check(`and the chip under the label says ${R.zoneNames[quad]}`,
+      A.temp.display(st).sub === R.zoneNames[quad] && st.tempZone === quad);
+    check('the pulse is handed the band and the direction',
+      A.pulses.at(-1)[1] === quad && A.pulses.at(-1)[0].label === res.label);
+  }
+  check('every direction it can give has words', ['middle', ...Object.keys(QUAD)].every(k => R.zoneNames[k]));
+
+  // The edge where there is none. Nothing live is `null`, which is a
+  // different sentence from "the middle": the room is even, not warm.
+  {
+    const st = createState();
+    A.set([]);
+    const res = A.temp.read(st);
+    check('nothing live is no direction at all', res.ok && res.zone === null && A.temp.hotZone() === null);
+    check('and it says evenly distributed, not a quadrant',
+      A.said.at(-1)[2].endsWith(R.zoneNone) && !Object.values(R.zoneNames).some(n => A.said.at(-1)[2].includes(n)));
+    check('and the chip reads even', A.temp.display(st).sub === 'even');
+  }
+  // Three things that are not heat, one at a time, each beside one that is,
+  // so a filter that went missing shows up as the wrong quadrant.
+  for (const [why, cold] of [
+    ['has not happened yet', { born: null }], ['is over', { dead: true }], ['was handled', { resolved: true }]
+  ]) {
+    A.set([0]);
+    A.tells.push({ ...heat(11), ...cold }, { ...heat(10), ...cold });
+    check(`a tell that ${why} does not pull the reading toward it`, A.temp.hotZone() === 'front-left');
+    A.tells.shift();
+    check(`and a room with only tells like that has no direction`, A.temp.hotZone() === null);
+  }
+  A.set([0]);
+  A.tells.push(heat(99));
+  {
+    let got = 'threw';
+    try { got = A.temp.hotZone(); } catch { /* the check below says so */ }
+    check('a tell on a seat nobody is in is ignored rather than thrown on', got === 'front-left');
+  }
+
+  // The middle. #890: two quadrants level at the top used to read as
+  // whichever one's tell happened to be born first, so the same room gave two
+  // answers. Level is the middle now, in either order.
+  A.set([0, 11]);
+  const oneWay = A.temp.hotZone();
+  A.set([11, 0]);
+  check('two corners level with each other read as the middle', oneWay === 'middle' && A.temp.hotZone() === 'middle');
+  A.set([0, 1, 10, 11]);
+  check('two against two is still the middle', A.temp.hotZone() === 'middle');
+  A.set([0, 2, 4, 6]);
+  check('one in every quadrant is the middle', A.temp.hotZone() === 'middle');
+  A.set([0, 1, 11]);
+  check('two against one is a direction', A.temp.hotZone() === 'front-left');
+  {
+    const st = createState();
+    A.set([0, 11]);
+    A.temp.read(st);
+    check('the middle has its own words',
+      A.said.at(-1)[2].endsWith(R.zoneTemplate.replace('{zone}', R.zoneNames.middle)));
+  }
+  // The share a quadrant needs, from both sides of the line. 4 of 9 is 0.444
+  // and 5 of 11 is 0.4545; CFG.roomTemp.quadrantMinShare is 0.45.
+  A.set([4, 5, 8, 9, 6, 7, 10, 2, 3]);
+  check('a clear leader with 4 of 9 is under the share, so the middle', A.temp.hotZone() === 'middle');
+  A.set([4, 5, 8, 9, 4, 6, 7, 10, 2, 3, 0]);
+  check('a leader with 5 of 11 is over it, so a direction', A.temp.hotZone() === 'back-left');
+
+  // Constraint 9: it reads where the chart put the kid, not who the kid is.
+  {
+    const c = mkChart();
+    c.swapDesks(0, 11);
+    const B = mk(mkStudents(c));
+    B.set([0]);
+    check('a kid moved to the back right is heat in the back right', B.temp.hotZone() === 'back-right');
+    B.set([11]);
+    check('and the kid who took the front left desk is heat there', B.temp.hotZone() === 'front-left');
+  }
+
+  // Constraint 8: a direction, never a name.
+  {
+    const names = sData.roster.map(r => r.name);
+    let named = false, extra = false;
+    for (let seat = 0; seat < 12; seat++) {
+      const st = createState();
+      A.set([seat]);
+      const res = A.temp.read(st);
+      const shown = [...A.said.at(-1), A.temp.display(st).label, A.temp.display(st).sub, JSON.stringify(res)].join(' ');
+      if (names.some(n => shown.includes(n))) named = true;
+      if (Object.keys(res).sort().join() !== 'label,ok,zone') extra = true;
+    }
+    check('no reading from any desk names a kid', !named);
+    check('and a reading hands back a band and a direction and nothing else', !extra);
+  }
+
+  // A reading is of the moment you took it.
+  {
+    const st = createState();
+    A.set([0, 1]);
+    A.temp.read(st);
+    A.set([10, 11]);
+    check('the chip keeps the direction you read, not the one the room has now',
+      A.temp.display(st).sub === R.zoneNames['front-left'] && A.temp.hotZone() === 'back-right');
+  }
+
+  // Nothing about what it costs or when it can be used moved with #890.
+  check('the numbers are the numbers it had',
+    R.cost.bandwidth === -0.4 && Object.keys(R.cost).length === 1 && R.cooldownSeconds === 9 &&
+    R.staleAfterSeconds === 55 && CFG.roomTemp.hotTellWeight === 9 && CFG.roomTemp.quadrantMinShare === 0.45);
+  {
+    const st = createState();
+    const before = { ...st };
+    A.set([0, 11]);
+    A.temp.read(st);
+    check('a reading costs its Bandwidth', Math.abs(before.bandwidth - st.bandwidth - 0.4) < 1e-9);
+    check('and moves no other meter', ['mastery', 'masteryPending', 'fidelity', 'rapport', 'restless']
+      .every(k => st[k] === before[k]));
+    check('and is counted once', st.tempUses === 1 && st.tempReadAt === st.t);
+
+    const paid = st.bandwidth;
+    st.t -= R.cooldownSeconds - 0.01;
+    A.set([10, 11]);
+    const refused = A.temp.read(st);
+    check('just inside the cooldown it is refused', refused.ok === false && refused.reason === 'cooldown');
+    check('a refused reading costs nothing and changes nothing',
+      st.bandwidth === paid && st.tempUses === 1 && st.tempZone === 'middle');
+    st.t -= 0.01;
+    check('at the cooldown exactly it reads again', A.temp.read(st).ok === true && st.tempUses === 2);
+
+    st.t -= R.staleAfterSeconds;
+    check('at the stale line exactly it is still fresh', A.temp.display(st).fresh === true);
+    st.t -= 0.01;
+    check('and just past it, stale, with no direction on the chip',
+      A.temp.display(st).fresh === false && A.temp.display(st).sub === R.staleLabel);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // T4 — the seating chart
@@ -751,7 +924,7 @@ check("checks for understanding is a real look-for key, not one you press direct
     msgs.some(m => m[1] === obsData.visit.announced.arrival.title));
   st.obsWindowRemaining = 0.001;
   obs.tick(st, 1 / 60);
-  check('the report knows it was on the calendar', st.obsResult.announced === true);
+  check('the report knows it was on the calendar', st.obsResult?.announced === true);
 }
 
 // An announced visit is readable before it happens, from the day it goes on
@@ -771,6 +944,167 @@ check("checks for understanding is a real look-for key, not one you press direct
   check('it is on the calendar the day it is announced', onDay(found.day - found.leadDays));
   check('and not the day before that', !onDay(found.day - found.leadDays - 1));
   check('and still on it the morning of', onDay(found.day));
+}
+
+// ---- Q12 (#891): the announced visit, beside the surprise one -------------
+//
+// Phase 4 built it. What follows holds the two side by side: what an
+// announcement changes (the countdown, her first line, one sentence in the
+// report) and what it does not (the window, the rubric, the cost of being
+// watched, what a look-for pays).
+{
+  const O = CFG.observation;
+  // One whole visit on the game clock, the way main.js drives it: 60 frames
+  // a real second, the period clock running timeScale times as fast.
+  const play = announced => {
+    const visit = { ...defaultVisit(obsData), announced, leadDays: announced ? 2 : 0 };
+    const { obs, dom, msgs } = mkObs(visit);
+    const st = createState();
+    st.t = CFG.periodSeconds - AT * 60;
+    const out = { obs, st, msgs, phases: new Set(), framesToActive: null, windowAtStart: null,
+      bannerDuringAlert: false, paid: null };
+    for (let f = 1; f < 200 * 60 && st.obsPhase !== 'done'; f++) {
+      obs.tick(st, 1 / 60);
+      st.t -= CFG.timeScale / 60;
+      out.phases.add(st.obsPhase);
+      if (st.obsPhase === 'alert' && dom.paTitle.textContent === obsData.alert.title) out.bannerDuringAlert = true;
+      if (st.obsPhase === 'active' && out.framesToActive === null) {
+        out.framesToActive = f;
+        out.windowAtStart = st.obsWindowRemaining;
+        const b = { fidelity: st.fidelity, bandwidth: st.bandwidth };
+        obs.satisfy(st, 'objective');
+        out.paid = { fidelity: st.fidelity - b.fidelity, bandwidth: st.bandwidth - b.bandwidth };
+      }
+    }
+    return out;
+  };
+  const surprise = play(false), known = play(true);
+
+  check('the surprise visit has its countdown', surprise.phases.has('alert') && surprise.bannerDuringAlert);
+  check('the announced one never has one', !known.phases.has('alert') && !known.bannerDuringAlert &&
+    !known.msgs.some(m => m[1] === obsData.alert.title));
+  check('she is in the room on the first frame of an announced visit', known.framesToActive === 1);
+  check('and nine real seconds later than that on a surprise',
+    O.alertSeconds === 9 && Math.abs(surprise.framesToActive - known.framesToActive - 9 * 60) <= 1);
+  check('each arrives in its own words',
+    known.msgs.some(m => m[1] === obsData.visit.announced.arrival.title) &&
+    !known.msgs.some(m => m[1] === obsData.arrival.title) &&
+    surprise.msgs.some(m => m[1] === obsData.arrival.title) &&
+    !surprise.msgs.some(m => m[1] === obsData.visit.announced.arrival.title));
+
+  check('the window is the same eleven minutes either way',
+    known.windowAtStart === surprise.windowAtStart && known.windowAtStart === O.windowMinutes * 60);
+  // Q10: 0.008 a game second, for the whole window, whoever knew she was coming.
+  const owed = O.masteryDrainPerSec * O.windowMinutes * 60;
+  check('being watched costs the same Mastery either way',
+    Math.abs(known.st.masteryPending - surprise.st.masteryPending) < 1e-6 &&
+    Math.abs(-known.st.masteryPending - owed) < 0.01);
+  check('and that cost is the one it had', O.masteryDrainPerSec === 0.008 && Math.abs(owed - 5.28) < 1e-9);
+  check('a look-for pays the same either way',
+    known.paid.fidelity === surprise.paid.fidelity && known.paid.bandwidth === surprise.paid.bandwidth &&
+    Math.abs(known.paid.fidelity - O.lookForFidelity) < 1e-9);
+  check('both end, with the same rubric, and only one says it was on the calendar',
+    known.st.obsPhase === 'done' && surprise.st.obsPhase === 'done' &&
+    known.st.obsResult.total === surprise.st.obsResult.total &&
+    known.st.obsResult.announced === true && surprise.st.obsResult.announced === false);
+  // Q8: there is no fail state, announced or not. A visit you ignored ends
+  // the way a visit you performed for ends: a line and a number.
+  check('a visit nobody performed for is still only a result',
+    play(true).st.obsResult.satisfied.length <= 1 && known.st.obsPhase === 'done');
+}
+
+// A seed's calendar is the calendar it had. visitFor draws in a fixed order
+// (does she come, when, was it announced, how far ahead, which five), so a
+// draw added or moved in front of another changes every saved semester's
+// week. These are the answers on 2026-10-05, written out. They move with
+// the two chances in data/observation.json as well, on purpose: retuning
+// either one rewrites a semester somebody is in the middle of.
+{
+  const ids = ['p4', 'p5', 'p6', 'p7'];
+  check('seed 4821, day 0, 6th: announced a day ahead',
+    JSON.stringify(visitFor(obsData, { seed: 4821, dayIndex: 0, periodId: 'p6' })) ===
+    '{"periodId":"p6","dayIndex":0,"atMinute":33.4,"announced":true,"leadDays":1,' +
+    '"rubric":["nonverbal","vocabulary","objective","modeling","question"]}');
+  check('seed 4821, day 3, 4th: a surprise',
+    JSON.stringify(visitFor(obsData, { seed: 4821, dayIndex: 3, periodId: 'p4' })) ===
+    '{"periodId":"p4","dayIndex":3,"atMinute":32.7,"announced":false,"leadDays":0,' +
+    '"rubric":["question","objective","check","vocabulary","evidence"]}');
+  check('seed 4821, day 10, 6th: she does not come',
+    visitFor(obsData, { seed: 4821, dayIndex: 10, periodId: 'p6' }) === null);
+  const announcedIn = seed => {
+    const rows = [];
+    for (let d = 0; d < 20; d++) for (const id of ids) {
+      const v = visitFor(obsData, { seed, dayIndex: d, periodId: id });
+      if (v && v.announced) rows.push(`${d}:${id}:${v.leadDays}@${v.atMinute}`);
+    }
+    return rows.join(' ');
+  };
+  check('seed 4821, every announced visit in its first four weeks', announcedIn(4821) ===
+    '0:p6:1@33.4 1:p6:1@25.5 9:p5:2@34 11:p6:2@30.6 12:p5:1@28.7 12:p6:1@28.1 13:p7:1@32.3 ' +
+    '15:p6:2@29.5 16:p4:3@28.7 16:p5:3@28.9 18:p4:2@30.5 19:p5:2@24.7');
+  // A version 1 record migrates forward with seed 0, and a caller that names
+  // no seed gets the same calendar.
+  check('seed 0, the calendar a pre-Phase 4 save plays', announcedIn(0) ===
+    '6:p6:3@24.9 6:p7:3@25 8:p5:2@33.9 9:p5:1@29.1 9:p7:1@28.2 13:p4:3@28.7 13:p6:3@33 ' +
+    '14:p6:1@33.7 15:p7:2@27.4 18:p4:2@26.4 19:p7:3@26.5');
+  check('and no seed at all is seed 0', ids.every(id => [0, 6, 13].every(d =>
+    JSON.stringify(visitFor(obsData, { dayIndex: d, periodId: id })) ===
+    JSON.stringify(visitFor(obsData, { seed: 0, dayIndex: d, periodId: id })))));
+
+  // How a seed chooses between the two: the chances in the data file, drawn
+  // per visit. 20,000 mornings of 4th period across 200 seeds.
+  let n = 0, came = 0, told = 0, leadOnSurprise = false;
+  for (let seed = 1; seed <= 200; seed++) for (let d = 0; d < 100; d++) {
+    n++;
+    const v = visitFor(obsData, { seed, dayIndex: d, periodId: 'p4' });
+    if (!v) continue;
+    came++;
+    if (v.announced) told++;
+    else if (v.leadDays !== 0) leadOnSurprise = true;
+  }
+  check('she comes about as often as the data says',
+    Math.abs(came / n - obsData.visit.chance) < 0.02);
+  check('and about that share of her visits are announced',
+    Math.abs(told / came - obsData.visit.announced.chance) < 0.02);
+  check('a surprise has no lead time', !leadOnSurprise);
+
+  // What the start screen is handed each morning. The first thing wrong is
+  // the one named. Two things this cannot tell apart, said out loud (#147):
+  // the horizon is 4 days and the longest lead is 3, so no row can reach the
+  // horizon and widening the loop changes nothing; and the loop already
+  // walks the days in order, so the sort at the end can be reversed (caught)
+  // but not removed (not caught). A period cannot have two rows either, the
+  // rows live in a Map; what can go wrong is keeping a later visit over a
+  // sooner one, and today's own visit going missing is how that shows.
+  let bad = '';
+  for (let seed = 1; seed <= 30 && !bad; seed++) for (let day = 0; day < 30 && !bad; day++) {
+    const rows = announcedAhead(obsData, { seed, dayIndex: day, periodIds: ids });
+    for (const r of rows) {
+      const real = visitFor(obsData, { seed, dayIndex: r.dayIndex, periodId: r.periodId });
+      if (!r.announced) bad ||= 'a surprise is on the calendar';
+      else if (r.dayIndex - r.leadDays > day) bad ||= 'a row shown before it was announced';
+      else if (r.inDays < 0 || r.dayIndex !== day + r.inDays) bad ||= 'a row that counts its days wrong';
+      else if (!real || real.atMinute !== r.atMinute) bad ||= 'a row that is not the visit';
+    }
+    if (rows.some((r, i) => i && rows[i - 1].inDays > r.inDays)) bad ||= 'rows out of order';
+    for (const id of ids) {
+      const today = visitFor(obsData, { seed, dayIndex: day, periodId: id });
+      if (today?.announced && !rows.some(r => r.periodId === id && r.inDays === 0)) bad ||= "today's own visit is missing";
+    }
+  }
+  check('the morning calendar holds only what was announced, the soonest for each period, soonest first' +
+    (bad ? ` (${bad})` : ''), bad === '');
+  check('with nothing to look across it is empty',
+    announcedAhead(obsData, { seed: 4821, dayIndex: 0, periodIds: [] }).length === 0);
+
+  // The words the announced variant needs, and the house voice on them.
+  const A = obsData.visit.announced;
+  const copy = [A.notice, A.today, A.lead, A.arrival.title, A.arrival.body, A.when['0'], A.when['1'], A.when.n,
+    obsData.report.announced];
+  check('every line the announced visit says is written', copy.every(x => typeof x === 'string' && x.length > 0));
+  check('and has its slots', A.notice.includes('{period}') && A.notice.includes('{when}') &&
+    A.today.includes('{period}') && A.lead.includes('{list}') && A.when.n.includes('{n}'));
+  check('and no exclamation points', copy.every(x => !x.includes('!')));
 }
 
 // ---- Phase 4: the rubric is drawn from a pool ----------------------------
@@ -2019,10 +2353,11 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     const { scene, camera, roster, occluders } = mkRoom();
     const registry = createRegistry();
     const built = [];
+    if (over.roster) roster.splice(0, roster.length, ...over.roster);
     const sys = createTellSystem({
-      scene, camera, students: roster, occluders,
-      data: { types: tData.types },
-      schedule: over.schedule ?? [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }],
+      scene, camera, students: roster, occluders: over.occluders ?? occluders,
+      data: over.data ?? { types: tData.types },
+      schedule: 'schedule' in over ? over.schedule : [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }],
       buildTellMesh: createTellMeshBuilder({
         mats: createTellMaterials(),
         register: m => { built.push(m); return registry.add(m); }
@@ -2196,7 +2531,11 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
 
     wi.tick(state, 1);
     check('looking costs Bandwidth (locked constraint 1)', state.bandwidth < 100);
-    check('and drains Mastery, because you are not teaching (locked constraint 1)', state.mastery < 60);
+    // Until #887 this line read `state.mastery < 60`, and withitness.js made it
+    // true by writing state.mastery itself, which locked constraint 7 forbids
+    // and lesson.tick() overwrote the same frame. The drain constraint 1 means
+    // is the lesson's, off twelve kids; it is asserted further down.
+    check('and does not write Mastery itself: that is the lesson\'s to spend (locked constraint 7)', state.mastery === 60);
     check('and builds hypervigilance', state.hyper > 0);
     check('and the room gets more restless while you stare', state.restless > 10);
     check('and the seconds are counted for the report', state.withitnessSeconds === 1);
@@ -2208,6 +2547,324 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     check('hypervigilance decays once you stop', state.hyper < hyperAfterOn);
     check('and never below zero', (state.hyper = 0.01, wi.tick(state, 100), state.hyper === 0));
     check('nor above 100', (state.withitness = true, state.hyper = 99, wi.tick(state, 100), state.hyper === 100));
+  }
+
+  // ---- tells.js and withitness.js, the rest of what they promise (TG-22) --
+  // The block above is the first execution. This is every exported function's
+  // stated behaviour and its edges, read off the code: what load() does to a
+  // schedule, where a tell is, when it is born and when it is gone, what kill()
+  // leaves behind, and each number the toggle costs.
+  {
+    const P = CFG.periodSeconds;
+    const twelve = () => mkStudents().map(s => ({ ...s }));
+    const quiet = { t: P, withitness: false };
+
+    // ---- load() ----------------------------------------------------------
+    {
+      const { sys } = mkTells({ schedule: [
+        { type: 'PHONE', seat: 0, atMinute: 1.5, life: 90 },
+        { type: 'NOTE', seat: 0, with: 1, atMinute: 2, life: 40 },
+        { type: 'NOTE', seat: 0, seat2: 1, with: 0, atMinute: 3, life: 40, substituted: 'NOTE' }
+      ] });
+      const [a, b, c] = sys.tells;
+      check('load() turns elapsed minutes into the countdown clock', a.at === P - 90 && b.at === P - 120);
+      check('load() reads the authored `with` as the second seat', b.seat2 === 1);
+      check('and prefers `seat2`, which is what the chart writes', c.seat2 === 1);
+      check('a row the chart substituted says so, and one it did not says null',
+        c.substituted === 'NOTE' && a.substituted === null);
+      check('a loaded tell is unborn, alive, unresolved and nowhere yet',
+        sys.tells.every(t => t.born === null && !t.dead && !t.resolved && t.pos === null && t.obj === null && t.el === null));
+      const list = sys.tells, lastId = c.id;
+      const back = sys.load([{ type: 'PHONE', seat: 1, atMinute: 4, life: 10 }]);
+      check('load() again replaces the schedule in the same array', back === list && sys.tells === list && list.length === 1);
+      check('and never hands out an id twice', list[0].id > lastId);
+      check('an empty schedule is an empty room, not an error', sys.load([]).length === 0);
+    }
+    {
+      const rows = [{ type: 'PHONE', seat: 1, atMinute: 5, life: 10 }];
+      const { sys } = mkTells({ schedule: undefined, data: { types: tData.types, schedule: rows } });
+      check('with no schedule handed in, the authored one in the data is loaded',
+        sys.tells.length === 1 && sys.tells[0].seat === 1 && sys.tells[0].at === P - 300);
+    }
+
+    // ---- where a tell is -------------------------------------------------
+    {
+      const roster = twelve();
+      const chart = mkChart();
+      const { sys } = mkTells({ roster, schedule: [
+        { type: 'PHONE', seat: 6, atMinute: 1, life: 900 },
+        { type: 'WHISPER', seat: 1, seat2: 2, atMinute: 1, life: 900 },
+        { type: 'NOTE', seat: 4, seat2: 5, atMinute: 1, life: 900 },
+        { type: 'NOTE', seat: 4, atMinute: 1, life: 900 },
+        { type: 'PHONE', seat: 3, atMinute: 2, life: 900 }
+      ] });
+      // T4: between load() and birth the player is on the chart screen.
+      roster[3].x += 1; roster[3].bodyZ += 2;
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      const [phone, whisper, note, lonely, later] = sys.tells;
+      const d = chart.deskOf(6);
+      check('a seat-anchored tell sits low at the student\'s thigh', phone.pos.y === 0.52
+        && Math.abs(phone.pos.x - (roster[6].x + 0.18)) < 1e-12 && Math.abs(phone.pos.z - (roster[6].bodyZ - 0.1)) < 1e-12);
+      check('which is the point the seating chart classified that desk\'s sightline against',
+        Math.abs(phone.pos.x - d.target.x) < 1e-12 && Math.abs(phone.pos.z - d.target.z) < 1e-12);
+      check('a pair-anchored tell is halfway between the two of them, at its type\'s height',
+        whisper.pos.y === tData.types.WHISPER.height
+        && Math.abs(whisper.pos.x - (roster[1].x + roster[2].x) / 2) < 1e-12
+        && Math.abs(whisper.pos.z - (roster[1].bodyZ + roster[2].bodyZ) / 2) < 1e-12
+        && note.pos.y === tData.types.NOTE.height);
+      check('a pair type with nobody on the other end falls back to the one seat',
+        lonely.pos.y === 0.52 && Math.abs(lonely.pos.x - (roster[4].x + 0.18)) < 1e-12);
+      check('a tell that is not due is still nowhere', later.born === null && later.pos === null);
+      sys.update({ t: P - 120, withitness: false }, () => {});
+      check('and its position is where the student is at birth, not where they were at load',
+        Math.abs(later.pos.x - (roster[3].x + 0.18)) < 1e-12 && Math.abs(later.pos.z - (roster[3].bodyZ - 0.1)) < 1e-12);
+    }
+    {
+      const types = { ...tData.types, BARE: { anchor: 'pair', mesh: 'note' } };
+      const { sys } = mkTells({ data: { types }, schedule: [{ type: 'BARE', seat: 0, seat2: 1, atMinute: 1, life: 9 }] });
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      check('a pair type that names no height gets 0.8', sys.tells[0].pos.y === 0.8);
+      check('and a type with no copy describes as nothing, without throwing', sys.describe(sys.tells[0]) === '');
+    }
+
+    // ---- birth and expiry, at the edges ----------------------------------
+    {
+      const born = [], expired = [];
+      const { sys } = mkTells({ onBorn: t => born.push(t), schedule: [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }] });
+      const t = sys.tells[0];
+      sys.update({ t: P - 59.999, withitness: false }, x => expired.push(x));
+      check('a tell is unborn a millisecond before its minute', t.born === null && born.length === 0);
+      sys.update({ t: P - 60, withitness: false }, x => expired.push(x));
+      check('and born on the tick the clock reaches it exactly', t.born === P - 60 && born[0] === t);
+      sys.update({ t: P - 61, withitness: false }, x => expired.push(x));
+      check('it is born once: a later tick does not rebuild it or call onBorn again', born.length === 1 && t.born === P - 60);
+      sys.update({ t: P - 60 - 90, withitness: false }, x => expired.push(x));
+      check('a tell exactly as old as its life is still alive', !t.dead && expired.length === 0);
+      sys.update({ t: P - 60 - 90.001, withitness: false }, x => expired.push(x));
+      check('and a millisecond older it is gone, handed to onExpire', t.dead && expired[0] === t);
+    }
+    {
+      // A frame can land well after the minute. Life counts from when the
+      // tell was actually born, not from when it was scheduled.
+      const expired = [];
+      const { sys } = mkTells({ schedule: [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }] });
+      sys.update({ t: P - 100, withitness: false }, x => expired.push(x));
+      check('a tell born late records when it was born', sys.tells[0].born === P - 100);
+      sys.update({ t: P - 100 - 90, withitness: false }, x => expired.push(x));
+      check('and gets its whole life from then', !sys.tells[0].dead);
+      sys.update({ t: P - 100 - 91, withitness: false }, x => expired.push(x));
+      check('and no more', sys.tells[0].dead && expired.length === 1);
+    }
+    {
+      const { sys } = mkTells({ schedule: [{ type: 'NOTE', seat: 0, seat2: 1, atMinute: 1, life: 900 }] });
+      sys.update({ t: P - 60, withitness: true }, () => {});
+      check('a tell born while SHIFT is down is born with its vision drawn',
+        sys.tells[0].obj.userData.vision.length > 0 && sys.tells[0].obj.userData.vision.every(g => g.visible));
+    }
+    {
+      const { sys } = mkTells();
+      let threw = false;
+      try { sys.update({ t: P - 60, withitness: false }, () => {}); sys.kill(sys.tells[0]); } catch { threw = true; }
+      check('onBorn and onGone are optional', !threw && sys.tells[0].dead);
+    }
+
+    // ---- kill() ----------------------------------------------------------
+    {
+      const gone = [];
+      const { sys, scene } = mkTells({ onGone: t => gone.push(t), schedule: [
+        { type: 'NOTE', seat: 0, seat2: 1, atMinute: 1, life: 900 },
+        { type: 'PHONE', seat: 1, atMinute: 30, life: 900 }
+      ] });
+      sys.update({ t: P - 60, withitness: true }, () => {});
+      const [note, unborn] = sys.tells;
+      let removed = 0;
+      note.el = { remove: () => removed++ };
+      sys.kill(note);
+      check('kill() hides the object and what the vision drew of it',
+        note.dead && note.obj.visible === false && note.obj.userData.vision.every(g => !g.visible));
+      check('and takes the annotation off the page', removed === 1 && note.el === null);
+      check('and leaves the object in the scene graph, hidden, rather than pulling it out', scene.children.includes(note.obj));
+      check('and says so once', gone.length === 1 && gone[0] === note);
+      sys.kill(note);
+      check('killing a dead tell does nothing', gone.length === 1 && removed === 1);
+      let threw = false;
+      try { sys.kill(unborn); } catch { threw = true; }
+      check('killing a tell that was never born does not throw', !threw && unborn.dead && gone.length === 2);
+      // #888: and it stays that way. It used to be born at its minute all the
+      // same, visible, announced, and already dead, so nothing ever ended it.
+      const expiredLate = [];
+      sys.update({ t: P - 30 * 60, withitness: false }, t => expiredLate.push(t));
+      sys.update({ t: 0, withitness: false }, t => expiredLate.push(t));
+      check('a tell killed before its minute is never born', unborn.born === null && unborn.obj === null && unborn.pos === null);
+      check('and is not counted as missed', !expiredLate.includes(unborn));
+      sys.setThermalVisible(true);
+      check('the vision does not draw a dead tell, or trip on an unborn one',
+        note.obj.userData.vision.every(g => !g.visible));
+    }
+
+    // ---- clearLabels() and describe() ------------------------------------
+    {
+      const { sys } = mkTells({ schedule: [
+        { type: 'PHONE', seat: 0, atMinute: 1, life: 900 },
+        { type: 'COPYING', seat: 0, seat2: 1, atMinute: 1, life: 900 }
+      ] });
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      const [phone, copying] = sys.tells;
+      let removed = 0;
+      phone.el = { remove: () => removed++ };
+      sys.clearLabels();
+      check('clearLabels() drops the annotations and leaves the tells alive',
+        removed === 1 && phone.el === null && !phone.dead && phone.obj.visible);
+      sys.clearLabels();
+      check('and is safe to call with nothing to clear', removed === 1);
+      check('describe() names the student', sys.describe(phone).startsWith('Ada has a phone'));
+      check('and both of them, the right way round, when there are two',
+        sys.describe(copying).startsWith("Bo's answers are arriving on Ada's paper"));
+      check('and leaves no placeholder behind', !/\{[ab]\}/.test(sys.describe(phone) + sys.describe(copying)));
+      check('the system hands back the type table it was given', sys.defs === tData.types);
+    }
+
+    // ---- line of sight, at the edges -------------------------------------
+    {
+      const box = (x, z, d = 0.2) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(1, 2, d), new THREE.MeshBasicMaterial());
+        m.position.set(x, 1, z); m.updateMatrixWorld(true); return m;
+      };
+      const target = new THREE.Vector3(0, 0.52, 2);       // the camera is at z = -2.4
+      const los = z => mkTells({ occluders: [box(0, z)] }).sys.hasLineOfSight(target);
+      check('furniture behind a tell does not hide it', los(2.5));
+      check('furniture in front of it does', !los(0));
+      // ray.far stops 12 cm short, so the desk a phone is under is not the
+      // thing that hides it.
+      check('nor does something within 12 cm of the tell itself', los(2.05));
+      check('with no furniture at all, everything has line of sight', mkTells({ occluders: [] }).sys.hasLineOfSight(target));
+
+      const { sys, camera } = mkTells({ occluders: [], schedule: [
+        { type: 'PHONE', seat: 0, atMinute: 1, life: 900 }, { type: 'PHONE', seat: 1, atMinute: 30, life: 900 }] });
+      check('an unborn tell is not visible', !sys.isVisible(sys.tells[0]));
+      sys.update({ t: P - 60, withitness: false }, () => {});
+      const t = sys.tells[0];
+      camera.position.copy(t.pos).add(new THREE.Vector3(0, 0, -(CFG.withitnessRange - 0.01)));
+      check('a tell just inside Withitness range annotates', sys.isVisible(t));
+      camera.position.copy(t.pos).add(new THREE.Vector3(0, 0, -(CFG.withitnessRange + 0.01)));
+      check('and just outside it does not', !sys.isVisible(t));
+      check('a tell still waiting for its minute is not visible from anywhere', !sys.isVisible(sys.tells[1]));
+    }
+
+    // ---- the false positive, in a full room -----------------------------
+    {
+      const real = Math.random;
+      const seatAt = r => {
+        Math.random = () => r;
+        try { return mkTells({ roster: twelve() }).sys.spawnFalsePositive({ t: 400, withitness: false }).seat; }
+        finally { Math.random = real; }
+      };
+      // What the code does: seats 2 to 10 of 0 to 11. The front-left pair and
+      // the last seat are never accused. WISHLIST.md asks whether that is meant.
+      check('a false positive lands on seats 2 to 10 of twelve, never 0, 1 or 11',
+        seatAt(0) === 2 && seatAt(0.5) === 6 && seatAt(0.999999) === 10);
+
+      const born = [], expired = [];
+      const { sys } = mkTells({ roster: twelve(), onBorn: t => born.push(t) });
+      const before = sys.tells.length;
+      const fp = sys.spawnFalsePositive({ t: 400, withitness: true });
+      check('it is a FALSE tell with a 150-second life, added to the same list',
+        fp.type === 'FALSE' && fp.life === 150 && fp.at === 400 && sys.tells.length === before + 1 && sys.tells.at(-1) === fp);
+      check('it announces itself like any other birth', born.includes(fp));
+      check('spawned with SHIFT down, it is drawn at once: it is nothing but drawing',
+        fp.obj.userData.vision.every(g => g.visible));
+      check('it has a position at the accused student\'s thigh',
+        fp.pos.y === 0.52 && sys.describe(fp).includes('Confidence: HIGH'));
+      sys.update({ t: 400 - 150, withitness: false }, t => expired.push(t));
+      check('it outlives 150 seconds exactly', !fp.dead);
+      sys.update({ t: 400 - 150.01, withitness: false }, t => expired.push(t));
+      // What the code does. Whether ignoring a lie should cost what missing a
+      // phone costs is a question in WISHLIST.md; main.js's onExpire charges it.
+      check('and then expires through onExpire like a real one, if nobody crossed the room', fp.dead && expired.includes(fp));
+    }
+
+    // ---- withitness.js: every number, and every surface ------------------
+    {
+      const log = [];
+      const cl = name => ({ classList: { toggle: (c, on) => log.push(`${name}.${c}=${on}`) } });
+      const dom = { thermal: cl('thermal'), tint: cl('tint'), chip: cl('chip') };
+      const scene = { background: { set: c => log.push('bg=' + c.toString(16)) }, fog: { color: { set: c => log.push('fog=' + c.toString(16)) } } };
+      const registry = createRegistry();
+      const mat = createTellMaterials().case;
+      const mesh = registry.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), mat));
+      const audio = stubAudio();
+      const calls = [];
+      const tellSystem = { setThermalVisible: on => calls.push('vision=' + on), clearLabels: () => calls.push('clear') };
+      const wi = createWithitness({ scene, registry, tellSystem, audio, dom });
+      const fresh = () => ({ withitness: false, withitnessUses: 0, bandwidth: 50, hyper: 20,
+                             withitnessSeconds: 0, mastery: 60, masteryPending: 0, restless: 10 });
+      const state = fresh();
+
+      wi.set(state, true);
+      check('SHIFT down: the room goes dark, background and fog together',
+        log.includes('bg=60c15') && log.includes('fog=60c15'));
+      check('and the overlay, the tint and the HUD chip all light',
+        ['thermal.on=true', 'tint.on=true', 'chip.hot=true'].every(x => log.includes(x)));
+      check('and the registry swaps the room into thermal', mesh.material === mat.userData.thermal);
+      check('and labels are not cleared on the way in', calls.join() === 'vision=true');
+
+      log.length = 0;
+      wi.set(state, false);
+      check('SHIFT up: the room, the overlay, the tint and the chip all go back',
+        ['bg=b9bdb2', 'fog=b9bdb2', 'thermal.on=false', 'tint.on=false', 'chip.hot=false'].every(x => log.includes(x)));
+      check('and the registry swaps back, and the drone stops',
+        mesh.material === mat && audio.calls.at(-1)[0] === 'setDrone' && audio.calls.at(-1)[1] === false);
+      check('letting go does not count as a use', state.withitnessUses === 1);
+      wi.set(state, true);
+      check('pressing again does', state.withitnessUses === 2);
+
+      // The costs, to the number. dt is half a second so a cost applied twice,
+      // or without dt, does not land on the same value.
+      const on = { ...fresh(), withitness: true };
+      wi.tick(on, 0.5);
+      const near9 = (a, b) => Math.abs(a - b) < 1e-9;
+      check('a second of looking costs CFG.bandwidthDrainPerSec of Bandwidth', near9(on.bandwidth, 50 - CFG.bandwidthDrainPerSec * 0.5));
+      check('and CFG.hyperGainPerSec of hypervigilance', near9(on.hyper, 20 + CFG.hyperGainPerSec * 0.5));
+      check('and CFG.scanRestlessPerSec of the room\'s patience', near9(on.restless, 10 + CFG.scanRestlessPerSec * 0.5));
+      check('and is counted, in real seconds', on.withitnessSeconds === 0.5);
+      check('and neither Mastery nor the pending pool is written here (locked constraint 7)',
+        on.mastery === 60 && on.masteryPending === 0);
+
+      const off = fresh();
+      wi.tick(off, 0.5);
+      check('not looking costs nothing here: Bandwidth, Restlessness and the clock are untouched',
+        off.bandwidth === 50 && off.restless === 10 && off.withitnessSeconds === 0 && off.mastery === 60);
+      check('and hypervigilance comes down at CFG.hyperDecayPerSec', near9(off.hyper, 20 - CFG.hyperDecayPerSec * 0.5));
+      check('which is slower than it builds, or the lie would never arrive', CFG.hyperGainPerSec > CFG.hyperDecayPerSec);
+
+      // The tint is the only warning the player gets before the ability lies.
+      const tintAt = h => { log.length = 0; wi.tick({ ...fresh(), hyper: h + CFG.hyperDecayPerSec }, 1); return log.at(-1); };
+      check('the hyper tint is off at the threshold exactly', tintAt(CFG.hyperThreshold) === 'tint.hyper=false');
+      check('and on just past it', tintAt(CFG.hyperThreshold + 0.001) === 'tint.hyper=true');
+      check('Withitness never switches itself off: an empty Bandwidth is main.js\'s to read (locked constraint 2)',
+        (s => (wi.tick(s, 1), s.withitness === true && s.bandwidth < 0))({ ...fresh(), withitness: true, bandwidth: 0 }));
+    }
+
+    // ---- locked constraint 1, where it actually lives --------------------
+    // Looking drains Mastery by taking comprehension off every student in
+    // lesson.tick(), not by subtracting from a bar. Same room, same second,
+    // out of the teaching zone so nothing is being delivered either way: the
+    // only difference between the two runs is SHIFT.
+    {
+      const run = withit => {
+        const kids = mkStudents().map(s => ({ ...s }));
+        const L = createLesson({ data: lData, students: kids, tellSystem: { defs: tData.types, tells: [] }, toast: () => {}, rand: () => 0.5 });
+        const st = createState();
+        st.withitness = withit;
+        L.tick(st, 1, { teaching: false });
+        return { mastery: st.mastery, comps: kids.map(k => k.comp) };
+      };
+      const looking = run(true), idle = run(false);
+      check('a second of Withitness costs the room CFG.scanMasteryDrainPerSec of Mastery, through the lesson',
+        Math.abs((idle.mastery - looking.mastery) - CFG.scanMasteryDrainPerSec) < 1e-9);
+      check('and it comes off all twelve, evenly',
+        looking.comps.every((c, i) => Math.abs((idle.comps[i] - c) - CFG.scanMasteryDrainPerSec / 100) < 1e-12));
+    }
   }
 
   // ---- T5 gap 9: furniture that does not overlap -------------------------
@@ -2260,6 +2917,59 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     const repaired = c4.occluderLayout().find(o => o.id === 'cabinet');
     check('a saved layout from before the clamp is repaired, not trusted',
       !overlaps({ ...rectOf('cabinet'), x: target.x, z: target.z }, repaired));
+
+    // #884: the chair behind the desk, where the student is. The desk's own
+    // rectangle ends at the desk's back edge, and a cabinet dropped on the kid
+    // at desk 5 came to rest 9 cm from their spine, clear of the desk top.
+    const K = CFG.seating.chairFootprint;
+    const chairs = mkChart().desks.map(d => ({ x: d.x, z: d.bodyZ }));
+    const onChair = (id, p) => chairs.some(ch => Math.abs(p.x - ch.x) < rectOf(id).halfW + K.halfW + C - 1e-9
+                                              && Math.abs(p.z - ch.z) < rectOf(id).halfD + K.halfD + C - 1e-9);
+    const onDesk = (id, p) => allDesks.some(d => Math.abs(p.x - d.x) < rectOf(id).halfW + F.halfW + C - 1e-9
+                                             && Math.abs(p.z - d.z) < rectOf(id).halfD + F.halfD + C - 1e-9);
+    // The footprint is the chair world/students.js builds, read out of that
+    // file, because every line below measures against K and a K of nothing
+    // would pass them all.
+    const fit = fs.readFileSync('../src/world/students.js', 'utf8').match(/fitFootprint\(chair, ([\d.]+), ([\d.]+)\)/);
+    check('the chair footprint is the half-extents of the chair the room builds',
+      !!fit && K.halfW === fit[1] / 2 && K.halfD === fit[2] / 2);
+    check('the shipped furniture is clear of every chair too', shipped.every(o => !onChair(o.id, o)));
+    check('and the clamp leaves it exactly where room.json put it',
+      roomData.occluders.every(o => { const s = shipped.find(x => x.id === o.id); return s.x === o.pos[0] && s.z === o.pos[1]; }));
+
+    const c5 = mkChart();
+    const kid = c5.desks[5];
+    const sat = c5.moveOccluder('cabinet', kid.x, kid.bodyZ);
+    check('a cabinet dropped on a seated student does not stay on the chair', !onChair('cabinet', sat));
+    check('and does not get there by landing on the desk instead', !onDesk('cabinet', sat));
+    check('the bookshelf is held to the same rule',
+      (s => !onChair('bookshelf', s) && !onDesk('bookshelf', s))(mkChart().moveOccluder('bookshelf', kid.x, kid.bodyZ)));
+
+    const c6 = mkChart(null, [{ id: 'cabinet', x: kid.x, z: kid.bodyZ + 0.09 }]);
+    check('a saved layout with the cabinet on a chair is repaired on load',
+      !onChair('cabinet', c6.occluderLayout().find(o => o.id === 'cabinet')));
+
+    // Every place a drag can end, not six of them: 4,000 drops of either piece
+    // anywhere in the room and a metre past each wall, one chart, so each
+    // drop starts from wherever the last one left the furniture.
+    const rng = createRng(883).next;
+    const c7 = mkChart();
+    const BD = roomData.bounds;
+    let bad = 0, stayed = 0;
+    for (let i = 0; i < 4000; i++) {
+      const id = rng() < 0.5 ? 'cabinet' : 'bookshelf', other = id === 'cabinet' ? 'bookshelf' : 'cabinet';
+      const was = c7.occluderLayout().find(o => o.id === id);
+      const p = c7.moveOccluder(id, (rng() * 2 - 1) * (BD.x + 1), BD.zFront - 1 + rng() * (BD.zBack - BD.zFront + 2));
+      const o = c7.occluderLayout().find(x => x.id === other);
+      const r = rectOf(id), q = rectOf(other);
+      const onOther = Math.abs(p.x - o.x) < r.halfW + q.halfW + C - 1e-9 && Math.abs(p.z - o.z) < r.halfD + q.halfD + C - 1e-9;
+      const outside = Math.abs(p.x) + r.halfW > BD.x + 1e-9 || p.z - r.halfD < BD.zFront - 1e-9 || p.z + r.halfD > BD.zBack + 1e-9;
+      if (onDesk(id, p) || onChair(id, p) || onOther || outside) bad++;
+      if (p.x === was.x && p.z === was.z) stayed++;
+    }
+    check('4,000 drops anywhere: never on a desk, a chair, the other piece or through a wall', bad === 0);
+    // 259 measured. A clamp that refuses everything would pass the line above.
+    check(`and all but a few of them move the furniture (${stayed} stayed put)`, stayed < 400);
   }
 }
 
@@ -2578,6 +3288,225 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     check('and a desk card cannot be mistaken for a scroll',
       /\.deskcard\{touch-action:none/.test(css));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Seed format 2 (#893) — the three authored classes, by number. A class seed
+// is a lookup in data/periods.json, above the range the generator draws from.
+// Every comparison below reads the authored files off disk again rather than
+// through the bundle, so a table pointing at the wrong file cannot agree with
+// itself.
+{
+  const AUTHORED = {
+    p4: { seed: 1000004, roster: D('students').roster, schedule: D('tells').schedule },
+    p5: { seed: 1000005, roster: D('period5').roster, schedule: D('period5').schedule },
+    p6: { seed: 1000006, roster: D('period6').roster, schedule: D('period6').schedule }
+  };
+  const clone = v => JSON.parse(JSON.stringify(v));
+
+  // ---- the table -------------------------------------------------------
+  check('the class seed table keeps its promises', classSeedProblems(bundle).length === 0);
+  check('the table is format 2', pData.classSeeds.format === 2);
+  check('there is one class seed per authored row, and no other',
+    classSeeds(bundle).length === 3 &&
+    pData.periods.filter(r => !isGenerated(r)).every(r => {
+      const mine = classSeeds(bundle).filter(c => c.of === r.id);
+      return mine.length === 1 && mine[0].roster === r.roster && mine[0].schedule === r.schedule &&
+        mine[0].seed === AUTHORED[r.id].seed;
+    }));
+
+  // ---- what a seed is --------------------------------------------------
+  check('a drawable seed is still a seed, to both ends of the range',
+    isSeed(bundle, 1) && isSeed(bundle, 4821) && isSeed(bundle, SEED_MAX));
+  check('the three class seeds are seeds',
+    isSeed(bundle, 1000004) && isSeed(bundle, 1000005) && isSeed(bundle, 1000006));
+  check('nothing else above the range is',
+    !isSeed(bundle, SEED_MAX + 1) && !isSeed(bundle, 1000003) && !isSeed(bundle, 1000007) && !isSeed(bundle, 9999999));
+  check('and nothing that is not a positive integer',
+    !isSeed(bundle, 0) && !isSeed(bundle, -4) && !isSeed(bundle, 12.5) && !isSeed(bundle, '1000004') &&
+    !isSeed(bundle, null) && !isSeed(bundle, undefined) && !isSeed(bundle, NaN));
+
+  // ---- field by field --------------------------------------------------
+  const ROSTER_FIELDS = ['name', 'aptitude', 'shirt', 'tension', 'steady', 'note'];
+  const ROW_FIELDS = ['type', 'seat', 'with', 'atMinute', 'life'];
+  for (const [id, a] of Object.entries(AUTHORED)) {
+    const p = periodFor('p7', bundle, { seed: a.seed, day: 0 });
+    let fields = 0, wrong = 0;
+    for (let i = 0; i < a.roster.length; i++) {
+      for (const k of new Set([...ROSTER_FIELDS, ...Object.keys(a.roster[i]), ...Object.keys(p.roster[i] || {})])) {
+        fields++;
+        if ((p.roster[i] || {})[k] !== a.roster[i][k]) wrong++;
+      }
+    }
+    check(`seed ${a.seed} is ${id}'s twelve, every field of every kid`,
+      p.roster.length === 12 && a.roster.length === 12 && fields === 72 && wrong === 0);
+    fields = 0; wrong = 0;
+    for (let i = 0; i < a.schedule.length; i++) {
+      for (const k of new Set([...ROW_FIELDS, ...Object.keys(a.schedule[i]), ...Object.keys(p.schedule[i] || {})])) {
+        fields++;
+        if ((p.schedule[i] || {})[k] !== a.schedule[i][k]) wrong++;
+      }
+    }
+    check(`seed ${a.seed} is ${id}'s tell schedule, every field of every row`,
+      p.schedule.length === a.schedule.length && fields === a.schedule.length * 5 && wrong === 0);
+    check(`seed ${a.seed} says whose class it is and that nothing was drawn`,
+      p.generated.seed === a.seed && p.generated.authored === id &&
+      p.generated.rerolls === 0 && p.generated.results === null);
+    // A drawn class is the seed plus the day. An authored one never was.
+    check(`seed ${a.seed} is the same schedule on Thursday`,
+      JSON.stringify(periodFor('p7', bundle, { seed: a.seed, day: 3 }).schedule) === JSON.stringify(a.schedule));
+    // The lesson and the chart copy belong to the row the seed is typed into.
+    check(`seed ${a.seed} in 7th period sits through 7th period's lesson`,
+      p.id === 'p7' && p.lessonData.beats === lData.beats && p.seatingCopy.sub.includes('7TH PERIOD'));
+  }
+  check('the three class seeds are three different classes',
+    new Set(Object.values(AUTHORED).map(a => periodFor('p7', bundle, { seed: a.seed }).roster[0].name)).size === 3);
+
+  // ---- a played-out period ---------------------------------------------
+  // Every style the headless runner has is a fixed input script: the same
+  // policy asked the same question every tick. Same class, same script, so
+  // the same tells born, swallowed and missed, and the same twelve numbers.
+  const played = (period, style) => {
+    const r = runPeriod({ period, data: bundle, style });
+    return JSON.stringify({
+      state: r.state, missed: r.missed,
+      rows: r.plan.rows, suppressed: r.plan.suppressed,
+      comp: r.students.map(s => [s.seat, s.desk, s.name, s.comp])
+    });
+  };
+  const styleKeys = Object.keys(STYLES);
+  check('there are scripts to play', styleKeys.length >= 5);
+  {
+    // 4th period's lesson is the one 7th period reads, so this is the whole
+    // period as the game builds it, nothing swapped in.
+    const own = periodFor('p4', bundle), seeded = periodFor('p7', bundle, { seed: 1000004 });
+    check('seed 1000004 in 7th period plays out as 4th period does, under every script',
+      styleKeys.every(k => played(seeded, STYLES[k]) === played(own, STYLES[k])));
+    check('and a script is not blind to the class', played(own, STYLES.good) !== played(periodFor('p5', bundle), STYLES.good));
+  }
+  for (const id of ['p5', 'p6']) {
+    // 5th and 6th have lessons of their own, and a seed does not carry a
+    // lesson. Held to the lesson they were authored for, the seed's class
+    // plays out as the row does.
+    const own = periodFor(id, bundle), a = AUTHORED[id];
+    const seeded = periodFor('p7', bundle, { seed: a.seed });
+    check(`seed ${a.seed} on ${id}'s own lesson plays out as ${id} does, under every script`,
+      styleKeys.every(k => played({ ...seeded, lessonData: own.lessonData }, STYLES[k]) === played(own, STYLES[k])));
+    check(`seed ${a.seed} in 7th period is not ${id}'s lesson, and the scores say so`,
+      played(seeded, STYLES.good) !== played(own, STYLES.good));
+  }
+
+  // ---- nothing that existed before moved -------------------------------
+  // Fingerprints taken from main before #893, by the same hash.
+  const OLD = { '1/0': '47068b1e51e62995', '4821/0': '065bf296cd263568', '4821/3': '66ba109738d55229',
+    '271828/1': 'bda92183126159db', '999999/0': 'f4d5e51432e6a8bf', '999999/4': 'd3a87d9d02e05516' };
+  const print = p => crypto.createHash('sha256').update(JSON.stringify([p.roster, p.schedule])).digest('hex').slice(0, 16);
+  check('six seeds from before the format changed draw the classes they drew then',
+    Object.entries(OLD).every(([k, want]) => {
+      const [seed, day] = k.split('/').map(Number);
+      return print(periodFor('p7', bundle, { seed, day })) === want;
+    }));
+  check('the authored rows are still authored, and still ignore a seed',
+    ['p4', 'p5', 'p6'].every(id => {
+      const p = periodFor(id, bundle, { seed: 1000006 });
+      return p.generated === null && JSON.stringify(p.roster) === JSON.stringify(AUTHORED[id].roster) &&
+        JSON.stringify(p.schedule) === JSON.stringify(AUTHORED[id].schedule);
+    }));
+  check('a table entry inside the drawable range is ignored, not obeyed', (() => {
+    const d = clone(bundle);
+    d.periods.classSeeds.classes.push({ seed: 4821, of: 'p4', roster: 'students.roster', schedule: 'tells.schedule' });
+    return classSeedFor(d, 4821) === null && isSeed(d, 4821) &&
+      print(periodFor('p7', d, { seed: 4821, day: 0 })) === OLD['4821/0'] &&
+      classSeedProblems(d).some(p => /4821 is a seed the generator can draw/.test(p));
+  })());
+  check('a data file with no table is the game before the table', (() => {
+    const d = clone(bundle);
+    delete d.periods.classSeeds;
+    return classSeeds(d).length === 0 && !isSeed(d, 1000004) && isSeed(d, 4821) &&
+      classSeedProblems(d).length === 0 && print(periodFor('p7', d, { seed: 4821, day: 0 })) === OLD['4821/0'];
+  })());
+
+  // ---- the promise list, broken one at a time --------------------------
+  const broken = (edit, re) => { const d = clone(bundle); edit(d.periods.classSeeds); return classSeedProblems(d).some(p => re.test(p)); };
+  check('a table of the wrong format is a problem', broken(cs => { cs.format = 1; }, /format 1, not 2/));
+  check('the same seed twice is a problem', broken(cs => { cs.classes[1].seed = 1000004; }, /1000004 is in the table twice/));
+  check('a class of no period is a problem', broken(cs => { cs.classes[0].of = 'p9'; }, /of "p9", which is not a period/));
+  check('a pointer at no roster is a problem', broken(cs => { cs.classes[2].roster = 'period6.rooster'; }, /1000006 points at no roster/));
+  check('a pointer at no schedule is a problem', broken(cs => { cs.classes[2].schedule = 'period6.lesson'; }, /1000006 points at no schedule/));
+  check('a schedule naming a seat the roster does not have is a problem', (() => {
+    const d = clone(bundle);
+    d.period5.schedule[2].with = 12;
+    return classSeedProblems(d).some(p => /1000005: NOTE at 7.8 names no real seat/.test(p));
+  })());
+
+  // ---- why it is a table and not a draw --------------------------------
+  // What the generator's own promise lists say about the authored classes.
+  // Every name is outside the pool, so no integer handed to roster.js is one
+  // of them; these are the rest of the reasons, pinned as measured.
+  const deps = { tellTypes: tData.types, seatGrid: sData.seatGrid, rules: seatData.rules, gen: genData };
+  const notePool = new Set([...genData.notes.stabiliser, ...genData.notes.edge, ...genData.notes.any]);
+  const notName = id => rosterProblems(AUTHORED[id].roster, genData).filter(p => !/is not in the name pool/.test(p));
+  check('all 36 authored kids fail the name pool, twelve a class',
+    Object.values(AUTHORED).every(a => rosterProblems(a.roster, genData).filter(p => /is not in the name pool/.test(p)).length === 12));
+  check('5th period has two names the generator would call alike, and the others none',
+    notName('p4').length === 0 && notName('p6').length === 0 &&
+    notName('p5').length === 1 && notName('p5')[0] === 'Deshawn and Devontae read alike on the chart');
+  check('three authored notes are in nobody\'s pool',
+    Object.values(AUTHORED).flatMap(a => a.roster).filter(s => s.note && !notePool.has(s.note)).length === 3);
+  check('two authored NOTEs are handoffs the scheduler would refuse',
+    scheduleProblems(AUTHORED.p4.schedule, AUTHORED.p4.roster, deps).length === 0 &&
+    scheduleProblems(AUTHORED.p5.schedule, AUTHORED.p5.roster, deps).join() === 'Deshawn to Odalys is a handoff, not a NOTE' &&
+    scheduleProblems(AUTHORED.p6.schedule, AUTHORED.p6.roster, deps).join() === 'Corinne to Elodie is a handoff, not a NOTE');
+
+  // ---- the semester knows them apart -----------------------------------
+  {
+    const roster = AUTHORED.p4.roster;
+    const kids = roster.map((r, i) => ({ ...r, seat: i, comp: 0.9 }));
+    const res = seed => ({ periodId: 'p7', seed, roster, students: kids, rapport: 71, fidelity: 64,
+      mastery: 90, missed: 0, caught: 0, sawCurveball: false, obsResult: null, known: { edges: [], steadies: [] } });
+    const rec = semester.repair(clone(semester.recordPeriod(semester.createRecord(7), res(1000004))), 7);
+    check('a class seed survives the record\'s repair', rec.classes.p7.seed === 1000004);
+    const back = semester.entering(rec, 'p7', { roster, seed: 1000004, admin: adminData });
+    check('the same class seed tomorrow is the same class', !back.firstDay && back.rapport === 71 && back.startComp.length === 12);
+    const other = semester.entering(rec, 'p7', { roster, seed: 4821, admin: adminData });
+    check('a drawn seed after a class seed is a new class', other.firstDay && other.startComp === null && other.rapport === CFG.start.rapport);
+    const old = semester.recordPeriod(semester.createRecord(7), res(4821));
+    check('a class seed after a drawn one is a new class too',
+      semester.entering(old, 'p7', { roster, seed: 1000004, admin: adminData }).firstDay &&
+      !semester.entering(old, 'p7', { roster, seed: 4821, admin: adminData }).firstDay);
+  }
+
+  // ---- the words, and the wiring ---------------------------------------
+  const copy = pData.copy.seed;
+  check('the start screen hint names every class seed', classSeeds(bundle).every(c => copy.hint.includes(String(c.seed))));
+  check('a drawn class keeps the report line it had', (() => {
+    const c = seedCopyFor(periodFor('p7', bundle, { seed: 4821 }), bundle);
+    return c === copy && /was not authored/.test(c.report);
+  })());
+  check('a class seed\'s report line says whose twelve they are, and does not say nobody wrote them', (() => {
+    const c = seedCopyFor(periodFor('p7', bundle, { seed: 1000005 }), bundle);
+    return c.report.includes("5th Period's twelve") && c.report.includes('{seed}') &&
+      !c.report.includes('{ordinal}') && !/not authored/.test(c.report) &&
+      c.label === copy.label && c.use === copy.use && c.hint === copy.hint;
+  })());
+  check('an authored row has no seed line at all', seedCopyFor(periodFor('p5', bundle), bundle) === copy &&
+    periodFor('p5', bundle).generated === null);
+  check('main.js asks isSeed() what to keep and what to take, and nothing else',
+    /isGenerated\(rowFor\(activePeriodId, data\)\) && !isSeed\(data, seed\)/.test(mainSrc) &&
+    /if \(!isSeed\(data, typed\)\) \{/.test(mainSrc) && !/SEED_MAX/.test(mainSrc));
+  check('main.js words the report through seedCopyFor()', /copy: seedCopyFor\(period, data\)/.test(mainSrc));
+  check('the seed box takes seven digits',
+    /id="seedInput"[^>]*maxlength="7"/.test(fs.readFileSync('../index.html', 'utf8')) &&
+    classSeeds(bundle).every(c => String(c.seed).length <= 7));
+  check('the loader fetches a class seed\'s files when no row names them', (() => {
+    const pf = clone(pData);
+    pf.periods = pf.periods.filter(r => r.id !== 'p5' && r.id !== 'p6');
+    const withTable = contentFiles(pf);
+    delete pf.classSeeds;
+    const without = contentFiles(pf);
+    return withTable.includes('period5') && withTable.includes('period6') &&
+      !without.includes('period5') && !without.includes('period6');
+  })());
 }
 
 

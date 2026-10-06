@@ -111,6 +111,9 @@ function edLeave() {
 // Called after every change: the address bar IS the draft.
 function edTouch() {
   edSetHash("e", edCode());
+  // A Check still running is about the draft as it was. Its last progress
+  // line would otherwise sit there at 40% for good.
+  if (edSearch) edStatus("The draft changed, so the Check stopped. Check again.", "");
   edStop();
   document.getElementById("lvlName").textContent = L.name || "Untitled";
   document.getElementById("lvlSub").textContent = L.sub || "";
@@ -169,18 +172,45 @@ function edCheck() {
     do { r = edSearch.step(8); } while (!r.done && !r.shot && now() - t0 < 12);
     if (r.shot) {
       const deg = ((r.shot.angle * 180 / Math.PI) % 360 + 360) % 360;
-      edStop();
-      edStatus(`Winnable: ${deg.toFixed(0)}° at ${(r.shot.power * 100) | 0}% power, found in ${r.tried} trial launches.`, "good");
+      edCensus(level, `Winnable: ${deg.toFixed(0)}° at ${(r.shot.power * 100) | 0}% power, found in ${r.tried} trial launches.`, now);
       return;
     }
     if (r.done) {
       edStop();
-      edStatus(`No winning shot in ${r.tried} trial launches. That is the budget CI uses, not a proof — but it is the same answer the suite would give.`, "bad");
+      edStatus(`No winning shot in ${r.tried} trial launches. That is the budget CI uses, not a proof — but it is the same answer the suite would give. ${OrbitalGen.censusLine(null)}`, "bad");
       return;
     }
     edStatus(`Checking… ${(r.progress * 100) | 0}%`, "");
     edSearchTimer = setTimeout(tick, 0);
   };
+  edSearchTimer = setTimeout(tick, 0);
+}
+
+// The second half of a Check that found a shot: the generator's census of the
+// same level, so the line says how wide the window is and not only that there
+// is one (#877). It is OrbitalGen.makeCensus and nothing else, in the same 12
+// millisecond slices, and it sits in edSearch so Cancel and an edit stop it
+// the way they stop the search. The verdict is already on the line while it
+// counts. One launch a step, not eight: a launch that never lands flies all
+// 5,200 substeps, and a win is flown twice, so one step measured 15 ms at its
+// longest over the 22 shipped levels and eight measured 45.
+function edCensus(level, verdict, now) {
+  const cen = OrbitalGen.makeCensus(level);
+  edSearch = cen;
+  const tick = () => {
+    if (edSearch !== cen) return;
+    const t0 = now();
+    let r;
+    do { r = cen.step(1); } while (!r.done && now() - t0 < 12);
+    if (r.done) {
+      edStop();
+      edStatus(`${verdict} ${OrbitalGen.censusLine(r.result)}`, "good");
+      return;
+    }
+    edStatus(`${verdict} Counting how many launches win… ${(r.progress * 100) | 0}%`, "good");
+    edSearchTimer = setTimeout(tick, 0);
+  };
+  edStatus(`${verdict} Counting how many launches win… 0%`, "good");
   edSearchTimer = setTimeout(tick, 0);
 }
 

@@ -13,7 +13,9 @@
 // tradition. Both fail here instead.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +51,12 @@ const FIELDS = {
   'system.time.value': (s) => s.system.time.value,
   'system.range.value': (s) => s.system.range.value,
   'system.duration.value': (s) => s.system.duration.value,
+  // flag-partials.mjs compares these four as well. defense and area are null
+  // on a spell that has neither, so the key is what is asserted.
+  'system.duration.sustained': (s) => s.system.duration.sustained,
+  'system.defense (the key)': (s) => ('defense' in s.system ? true : undefined),
+  'system.area (the key)': (s) => ('area' in s.system ? true : undefined),
+  'system.damage': (s) => s.system.damage,
 };
 for (const [f, get] of Object.entries(FIELDS)) {
   const missing = pf2.filter((s) => !has(s, get));
@@ -166,6 +174,84 @@ for (const [from, to] of Object.entries(EXPECT)) {
   const r = S.convertSpell(index, from);
   ok(r.targets.some((t) => t.name === to), `${from} -> ${to}`, `got ${r.fit}: ${r.targets.map((t) => t.name).join(', ') || '(none)'}`);
 }
+
+// ---- flag-partials.mjs: the review list of the weakest partial entries (#886) ----
+// The pass scores every partial entry and prints the weakest for Devon. It
+// must never write the map: the bytes are compared across a real run of it.
+console.log('flag-partials.mjs');
+const FLAG = path.join(PF, 'converter-assets', 'flag-partials.mjs');
+const F = await import(pathToFileURL(FLAG).href);
+const mapBytes = () => fs.readFileSync(F.MAP_PATH);
+const before = mapBytes();
+const tmpOut = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flag-partials-')), 'review.md');
+execFileSync(process.execPath, [FLAG, tmpOut]);
+ok(before.equals(mapBytes()), 'a run of flag-partials.mjs leaves spell-map.json byte for byte as it was');
+const deepFreeze = (o) => { if (o && typeof o === 'object') { Object.values(o).forEach(deepFreeze); Object.freeze(o); } return o; };
+let scored = [];
+try { scored = F.scorePartials({ pf1, pf2, map: deepFreeze(read('converter-assets/data/spell-map.json')) }); } catch (e) { scored = e; }
+ok(Array.isArray(scored), 'scorePartials scores a frozen map without writing to it', String(scored));
+if (!Array.isArray(scored)) scored = [];
+const partialCount = entries.filter(([, v]) => v.fit === 'partial').length;
+ok(partialCount === 1087 && scored.length === 1087, 'the map has 1,087 partial entries and every one is scored',
+  `${partialCount} in the map, ${scored.length} scored`);
+ok(scored.every((e, i) => i === 0 || scored[i - 1].score > e.score || (scored[i - 1].score === e.score && scored[i - 1].name < e.name)),
+  'the list runs weakest first, and by name inside a score');
+ok(scored.every((e) => e.score === e.reasons.reduce((n, r) => n + F.REASONS[r.key].weight, 0)), "an entry's score is the sum of its reasons' weights");
+// Five entries scored by hand from the two data files, at both ends and in
+// the middle. Reasons are in the order scorePartials tests them.
+const HAND = {
+  'Psychic Surgery': [10, 'text,two,rank,cast,name'],        // level 5, 10 minutes, onto two rank 2 spells of 2 actions
+  'Sea of Dust': [9, 'rank,cast,save,damage,targets,duration,name'], // level 9, 1 hour, permanent area, onto rank 5 Control Water
+  "Abadar's Truthtelling": [5, 'text,targets,name'],          // one creature touched, onto Ring of Truth's burst
+  'Web Bolt': [0, ''],                                         // level 1 Reflex onto rank 2 Reflex Web, and the note names it
+  'Wave Shield': [0, ''],
+};
+for (const [n, [score, why]] of Object.entries(HAND)) {
+  const e = scored.find((x) => x.name === n);
+  ok(e?.score === score && e.reasons.map((r) => r.key).join(',') === why, `${n} scores ${score}${why ? ` for ${why}` : ''}`,
+    `got ${e?.score} for ${e?.reasons.map((r) => r.key).join(',')}`);
+}
+ok(scored[0]?.name === 'Psychic Surgery' && scored.filter((e) => e.score >= F.CUT).length === 47,
+  `the cut of ${F.CUT} lets 47 entries through, Psychic Surgery first`, `${scored.filter((e) => e.score >= F.CUT).length}, ${scored[0]?.name} first`);
+const review = fs.readFileSync(F.REVIEW_PATH, 'utf8');
+ok(review === F.renderReview(scored) && review === fs.readFileSync(tmpOut, 'utf8'), 'spell-map-review.md is what flag-partials.mjs prints now',
+  'run node Pathfinder/converter-assets/flag-partials.mjs and commit the result');
+fs.rmSync(path.dirname(tmpOut), { recursive: true });
+// No rule text in the list: no run of eight words from either spell's
+// description may appear in it (the map's own notes aside, which it quotes).
+// Read from a fresh render, so this fails by itself and not behind the check above.
+const eight = (text) => { const w = text.toLowerCase().match(/[a-z']+/g) || []; const out = new Set(); for (let i = 0; i + 8 <= w.length; i++) out.add(w.slice(i, i + 8).join(' ')); return out; };
+const reviewRuns = eight(F.renderReview(scored).split('\n').filter((l) => !l.startsWith('- Note on file:')).join('\n'));
+const cutNames = new Set(scored.filter((e) => e.score >= F.CUT).flatMap((e) => [e.name, ...e.to]));
+const copied = [...pf1.filter((s) => cutNames.has(s.name)).map((s) => [s.name, s.description]),
+  ...pf2.filter((s) => cutNames.has(s.name)).map((s) => [s.name, s.system.description.value.replace(/<[^>]+>/g, ' ')])]
+  .filter(([, text]) => [...eight(text)].some((run) => reviewRuns.has(run)));
+ok(copied.length === 0, 'the review list copies no run of eight words from a spell it names', copied.map(([n]) => n).slice(0, 5).join(', '));
+
+// Each comparison, on made-up spells: Ember Lattice differs from Cinder Net
+// in everything the pass measures but text and the count of targets, and
+// Ember Net differs from it in nothing.
+const mk1 = (name, o = {}) => ({ name, level: 2, school: 'evocation', levels: { wizard: 2 }, castingTime: '1 standard action',
+  target: 'one creature', duration: '1 round/level', save: 'Reflex negates', description: 'A net of embers settles on one creature.', ...o });
+const mk2 = (name, o = {}) => ({ name, system: { level: { value: 2 }, time: { value: '2' }, duration: { value: '1 minute', sustained: false },
+  defense: { save: { statistic: 'reflex', basic: false } }, area: null, damage: {}, description: { value: '<p>A net of cinders.</p>' },
+  publication: { remaster: true, title: 'Made-Up Core' }, traits: { value: ['fire'], traditions: ['arcane'], rarity: 'common' }, ...o } });
+const fake = F.scorePartials({
+  pf1: [mk1('Ember Net', { descriptors: ['fire'] }),
+    mk1('Ember Lattice', { level: 1, descriptors: ['fire'], area: '20-ft.-radius burst', target: undefined, duration: 'instantaneous' })],
+  pf2: [mk2('Cinder Net'), mk2('Ash Pall', { level: { value: 5 }, time: { value: '10 minutes' }, duration: { value: '1 hour', sustained: false },
+    defense: { save: { statistic: 'will', basic: false } }, damage: { a: { type: 'cold', kinds: ['damage'] } },
+    publication: { remaster: false, title: 'Made-Up Legacy' }, traits: { value: ['focus'], traditions: ['primal'], rarity: 'common' } })],
+  map: { map: {
+    'Ember Net': { to: ['Cinder Net'], fit: 'partial', note: 'Cinder Net holds one creature the same way.' },
+    'Ember Lattice': { to: ['Ash Pall'], fit: 'partial', note: 'No lattice in PF2e.' },
+  } },
+});
+const reasonsOf = (n) => fake.find((e) => e.name === n)?.reasons.map((r) => r.key).join(',');
+ok(reasonsOf('Ember Net') === '', 'a made-up pair alike in every field compared is flagged for nothing', reasonsOf('Ember Net'));
+ok(reasonsOf('Ember Lattice') === 'rank,cast,focus,save,tradition,damage,targets,duration,legacy,name,silent',
+  'a made-up pair that differs in rank, casting time, save, tradition, damage, area, duration, book and name is flagged for each',
+  reasonsOf('Ember Lattice'));
 
 // ---- lookup helpers -----------------------------------------------------------
 console.log('lookup');

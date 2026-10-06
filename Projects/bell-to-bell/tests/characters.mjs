@@ -8,12 +8,17 @@
 // same, so a byte count cannot tell the difference. This can.
 //
 // Every outfit goes through the game's own loader (createModelLoader, the
-// decoder wiring included), poseIdle and findBone, then is measured: the whole
-// body's box, the Head and torso bones, a box and a vertex centroid per
-// material with the skinning applied, and the Head and torso again with the
-// Idle clip left applied (see measure() for why that is a separate number).
-// BASELINE is those numbers measured the same way from the original .gltf
-// files at afbcae9, before the pipeline ran.
+// decoder wiring included) and findBone, then is measured twice. In the file's
+// rest pose: the whole body's box, the Head and torso bones, a box and a
+// vertex centroid per material with the skinning applied. And after the game's
+// own poseIdle: the Head and torso again, and how many bones it left off the
+// rest pose (see measure() for why those are separate numbers). BASELINE is
+// the first six measured the same way from the original .gltf files at
+// afbcae9, before the pipeline ran.
+//
+// The last block builds the twelve students the way main.js does and holds
+// them to the same pose, because poseIdle keeping its pose is worth nothing if
+// buildCharacterBody or the reactions tween puts the rest pose back (#882).
 //
 //   node characters.mjs           check the outfits against BASELINE
 //   node characters.mjs --print   print what the current files measure
@@ -23,6 +28,9 @@ import fs from 'fs';
 
 const THREE = await import('../src/three.js');
 const { createModelLoader, poseIdle, findBone } = await import('../src/world/models.js');
+const { buildStudents, createReactions } = await import('../src/world/students.js');
+const { createMaterials, createRegistry } = await import('../src/world/materials.js');
+const { createChart } = await import('../src/systems/chart.js');
 
 // FileLoader builds a Request from the relative URL the game passes and
 // fetches it. Node refuses a relative Request, so both are answered from disk
@@ -46,8 +54,11 @@ const r4 = v => v.toArray().map(x => +x.toFixed(4));
 
 export async function measure(path) {
   const loader = createModelLoader();
+  // The rest pose, as the file has it. BASELINE's box, bones and materials
+  // were measured after a poseIdle() that put the rest pose back (see below),
+  // so this is the same skeleton they were measured on.
   const { root, animations } = await loader.loadRigged(path);
-  poseIdle(root, animations);
+  root.updateWorldMatrix(true, true);
   const byMat = {};
   const v = new THREE.Vector3();
   root.traverse(o => {
@@ -74,26 +85,34 @@ export async function measure(path) {
   }
   const box = new THREE.Box3().setFromObject(root);
 
-  // The clip, on its own. poseIdle() plays the Idle clip for 1.2 s and then
-  // calls stopAllAction(), and deactivating an action makes AnimationMixer
-  // restore every binding's original state: the student ends up in the file's
-  // rest pose, whichever clip it sampled. Everything measured above is
-  // therefore blind to the clip (keeping "Death" instead of "Idle" leaves it
-  // green to the tenth of a millimetre). This samples the clip the same way
-  // and leaves it applied, so a clip damaged by compression is still caught,
-  // and so is the day poseIdle is fixed to keep its pose (Bell to Bell's
-  // WISHLIST.md has the bug).
+  // The clip, through the game's own poseIdle(). Until #882 poseIdle played
+  // the Idle clip for 1.2 s and then called stopAllAction(), and deactivating
+  // an action makes AnimationMixer restore every binding's original state:
+  // the student ended up in the file's rest pose, whichever clip it sampled
+  // (keeping "Death" instead of "Idle" left everything above green to the
+  // tenth of a millimetre). clipHead and clipTorso were baselined for the day
+  // that was fixed, from a mixer this file drove itself. They are poseIdle's
+  // own output now, so a clip damaged by compression is still caught, and so
+  // is a poseIdle that goes back to ending in the rest pose.
   const again = await loader.loadRigged(path);
-  const mixer = new THREE.AnimationMixer(again.root);
-  mixer.clipAction(again.animations.find(a => /idle/i.test(a.name)) || again.animations[0]).play();
-  mixer.update(1.2);
-  again.root.updateWorldMatrix(true, true);
+  poseIdle(again.root, again.animations);
+
+  // How much of the skeleton the pose is. Local quaternions, bone by bone,
+  // against the rest pose above: 42 of the men's 62 bones and 37 of the
+  // women's are more than a milliradian off it at 1.2 s, the furthest by 0.20
+  // and 0.22 rad (a finger joint in both).
+  const local = r => { const o = {}; r.traverse(n => { if (n.isBone) o[n.name] = n.quaternion; }); return o; };
+  const restQ = local(root), posedQ = local(again.root);
+  const moved = Object.keys(restQ).filter(k => restQ[k].angleTo(posedQ[k]) > 1e-3).length;
+  const headPitch = findBone(again.root, ['Head']).rotation.x;
+  const torsoPitch = findBone(again.root, ['Chest', 'Spine1', 'Spine', 'Hips']).rotation.x;
 
   const bones = r => [findBone(r, ['Head']), findBone(r, ['Chest', 'Spine1', 'Spine', 'Hips'])]
     .map(b => r4(b.getWorldPosition(new THREE.Vector3())));
   const [head, torso] = bones(root);
   const [clipHead, clipTorso] = bones(again.root);
-  return { clips: animations.map(a => a.name), box: [r4(box.min), r4(box.max)], head, torso, clipHead, clipTorso, materials };
+  return { clips: animations.map(a => a.name), box: [r4(box.min), r4(box.max)], head, torso, clipHead, clipTorso,
+    moved, bones: Object.keys(restQ).length, headPitch, torsoPitch, materials };
 }
 
 if (process.argv.includes('--print')) {
@@ -251,6 +270,7 @@ function glbJson(p) {
 check('every outfit requires EXT_meshopt_compression, so the decoder is load-bearing',
   outfits.every(p => (glbJson(p).extensionsRequired || []).includes('EXT_meshopt_compression')));
 
+const idle = {};
 for (const p of outfits) {
   const k = keyOf(p);
   const want = BASELINE[k];
@@ -263,8 +283,13 @@ for (const p of outfits) {
   check(`${k} carries exactly one clip, Idle`, got.clips.length === 1 && got.clips[0] === 'Idle');
   check(`${k} stands in the same box`, near(got.box[0], want.box[0]) && near(got.box[1], want.box[1]));
   check(`${k} has its Head and torso where they were`, near(got.head, want.head) && near(got.torso, want.torso));
-  check(`${k}: the Idle clip still puts the Head and torso where it did`,
+  check(`${k}: poseIdle leaves the Head and torso where the Idle clip puts them`,
     near(got.clipHead, want.clipHead) && near(got.clipTorso, want.clipTorso));
+  // 37 and 42 measured; 30 is under both and nowhere near the 0 a pose that
+  // was put back measures.
+  check(`${k}: poseIdle leaves the skeleton in a pose, not in the rest pose (${got.moved} of ${got.bones} bones off it)`,
+    got.moved >= 30);
+  idle[p] = got;
   const names = Object.keys(got.materials).join();
   check(`${k} has the same materials`, names === Object.keys(want.materials).join());
   const off = Object.entries(want.materials).filter(([m, w]) => {
@@ -273,6 +298,71 @@ for (const p of outfits) {
   }).map(([m]) => m);
   check(`${k}: every material's vertices are where they were`, off.length === 0);
   if (off.length) console.log('        moved: ' + off.join(', '));
+}
+
+// ---------------------------------------------------------------------------
+// The room. Twelve students built by buildStudents, the way main.js builds
+// them, then one frame of the reactions tween with nothing playing. What a
+// headless run can say about a pose is where the bones are, so that is what
+// this says: nobody has looked at it in a window (root CLAUDE.md, #53).
+// ---------------------------------------------------------------------------
+{
+  const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`, 'utf8'));
+  const sData = D('students');
+  const chart = createChart({
+    seatGrid: sData.seatGrid, room: D('room'), roster: sData.roster,
+    tellTypes: D('tells').types, rules: D('seating').rules,
+    plan: D('seating').plan.furniture, saved: null, layout: null
+  });
+  const scene = new THREE.Scene();
+  // No `models` in the manifest handed over: the desks and chairs fall back
+  // to boxes, which is not what is being measured.
+  const students = await buildStudents(scene, createRegistry(), createMaterials(), sData, chart,
+    { loader: createModelLoader(), assets: { characters: manifest.characters } });
+  const camera = { position: new THREE.Vector3(0, 1.65, -2.4) };
+  const reactions = createReactions({ students, data: D('reactions'), camera });
+  const outfitOf = s => idle[outfits[s.seat % outfits.length]];
+
+  check('all twelve students get a rigged body', students.length === 12 && students.every(s => s.head.isBone && s.torso.isBone));
+
+  reactions.tick(0);
+  scene.updateMatrixWorld(true);
+  const EPS = 1e-6;
+  const off = (s, f) => { if (!f(s)) console.log(`        ${s.name}`); return f(s); };
+  check('the pitch a student rests at is the Idle clip\'s, head and chest',
+    students.every(s => off(s, s => outfitOf(s)
+      && Math.abs(s.headRestX - outfitOf(s).headPitch) < EPS && Math.abs(s.torsoRestX - outfitOf(s).torsoPitch) < EPS)));
+  check('and one frame of the tween with nothing playing leaves both there',
+    students.every(s => off(s, s => Math.abs(s.head.rotation.x - s.headRestX) < EPS && Math.abs(s.torso.rotation.x - s.torsoRestX) < EPS)));
+
+  // The bones reactions.js does not drive are the ones that would show a pose
+  // put back: an arm, a hand. Count them the way measure() does, against a
+  // fresh rest-pose copy of the same outfit.
+  const loader = createModelLoader();
+  const stillPosed = [];
+  for (const s of students) {
+    const rest = {};
+    (await loader.loadRigged(outfits[s.seat % outfits.length])).root.traverse(n => { if (n.isBone) rest[n.name] = n.quaternion; });
+    let moved = 0;
+    s.group.traverse(n => { if (n.isBone && n !== s.head && n !== s.torso && rest[n.name].angleTo(n.quaternion) > 1e-3) moved++; });
+    stillPosed.push(moved);
+  }
+  check(`and the rest of each skeleton is still off the rest pose (${Math.min(...stillPosed)} to ${Math.max(...stillPosed)} bones)`,
+    stillPosed.every(n => n >= 30));
+
+  // poseIdle runs before fitHeight and the floor settle, and both measure the
+  // posed body: a student is targetHeight tall in the pose it stands in, with
+  // its lowest vertex on the floor. The group's idle bob is taken back out.
+  const target = manifest.characters.targetHeight || 1.48;
+  check(`every student is ${target} m tall in the Idle pose and stands on the floor`,
+    students.every(s => off(s, s => {
+      // A SkinnedMesh caches the box it was first asked for, which is the
+      // one fitHeight took. Measured again here from the bones as they are,
+      // or this would read fitHeight's own answer back to it.
+      s.group.traverse(o => { if (o.isSkinnedMesh) o.computeBoundingBox(); });
+      const b = new THREE.Box3().setFromObject(s.group.children.find(c => c.type !== 'Mesh'));
+      return Math.abs((b.max.y - b.min.y) - target) < TOL && Math.abs(b.min.y - s.group.position.y) < TOL;
+    })));
 }
 
 console.log(fails ? `\n${fails} FAILURES` : '\nall green');

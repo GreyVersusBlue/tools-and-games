@@ -27,8 +27,15 @@ export function createRoomTemp({ data, students, tellSystem, toast, onPulse }) {
       total += CFG.roomTemp.hotTellWeight;
     }
     if (!total) return null;
-    let best = null, bestV = 0;
-    for (const [k, v] of Object.entries(buckets)) if (v > bestV) { best = k; bestV = v; }
+    // #890: two quadrants level at the top are not a direction. This used to
+    // hand back whichever one's tell was born first, so the same room read as
+    // the front left or the back right depending on who started it.
+    let best = null, bestV = 0, level = false;
+    for (const [k, v] of Object.entries(buckets)) {
+      if (v > bestV) { best = k; bestV = v; level = false; }
+      else if (v === bestV) level = true;
+    }
+    if (level) return 'middle';
     return bestV / total >= CFG.roomTemp.quadrantMinShare ? best : 'middle';
   }
 

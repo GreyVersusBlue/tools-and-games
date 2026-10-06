@@ -144,9 +144,9 @@ Tower protection: higher tiers are `invulnerable` until the previous tier in tha
 Registered through one subsystem, `game.extras` (`src/gameplay/GameplayExtras.js`), which exposes:
 - `game.runes` (`src/gameplay/runes/Runes.js`): power runes (haste, double damage, regeneration, invisibility, arcane,
   illusion) every 2 min from 2:00 at one of the two river spots; bounty runes at 0:00 and every 2 min at 4 jungle spots.
-  Pickup = right-click (move order onto the rune) or walking over it; player heroes with a Bottle store power runes in it
-  (`item.storedRune`, used via the Bottle). `markers(team)` feeds the minimap overlay. Events `rune:spawned`,
-  `rune:picked {hero, type, bottled}`, `rune:activated`.
+  Pickup = right-click (move order onto the rune) or walking over it; player heroes with a Flask store power runes in it
+  (`item.storedRune`, used via the Flask). `markers(team)` feeds the minimap overlay. Events `rune:spawned`,
+  `rune:picked {hero, type, stored}`, `rune:activated`.
 - `game.talents` (`src/gameplay/talents/`): talent trees at 10/15/20/25 (two options each, costs an ability point).
   Data in `TalentDefs.js`; effects are read by `Hero.bonusFromSources` (`hero.talentBonus`) and `Ability.v()/getCooldown/
   getManaCost/getCastRange/getRadius` (`hero.talentMods[abilityId][key]`, additive). Event `talent:chosen`.

@@ -495,11 +495,27 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       custom.toppings.push(rand(toppingsAvail));
     }
     custom.ice = !!recipe.ice;
+    fillRecipeLines(recipe, custom);
     if(dm && dm.id==='icedMonday' && !recipe.blended && !custom.ice && rng()<0.55){
       custom.ice = true;
     }
 
     return { isFood:false, recipeId: recipe.id, custom, price: recipe.price };
+  }
+
+  // What the recipe asks for by itself, written onto an order's `custom`, which
+  // is the one place the ticket, the bubble and the queue's label read (#878).
+  // generateOrderContent() ends with it; cloneOrderContent() runs it on a
+  // regular's stored favourite, so one saved before a recipe gained a line
+  // (a Cold Brew with no milk, a Cappuccino with no cinnamon) walks in asking
+  // for today's recipe. A milk the save's repair dropped comes back as the
+  // first in the table: getOrderRequirements() reads its name.
+  function fillRecipeLines(recipe, custom){
+    if(recipe.needsMilk && !MILKS.some(m=>m.id===custom.milk)) custom.milk = MILKS[0].id;
+    if(recipe.requiredSyrup) custom.syrup = recipe.requiredSyrup;
+    if(recipe.requiredTopping && !custom.toppings.includes(recipe.requiredTopping)) custom.toppings.unshift(recipe.requiredTopping);
+    if(recipe.ice) custom.ice = true;
+    return custom;
   }
 
   function cloneOrderContent(content){
@@ -508,12 +524,12 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       isFood:false,
       recipeId: content.recipeId,
       price: content.price,
-      custom: {
+      custom: fillRecipeLines(RECIPES.find(r=>r.id===content.recipeId), {
         milk: content.custom.milk,
         syrup: content.custom.syrup,
         toppings: [...content.custom.toppings],
         ice: content.custom.ice,
-      }
+      })
     };
   }
 
