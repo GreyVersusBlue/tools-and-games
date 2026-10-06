@@ -366,8 +366,10 @@ and add to this list rather than starting a new one.
   than 30in is a `ramp-rise` warning in the report (#833). Left: the 4ft
   notch in front of the entry counted as footprint; crowd agents walked up
   one in a browser, which nobody has watched; the straight ramp's top
-  landing is 4ft (`LANDING`) and becomes ADA's 5, ramps already placed
-  included (Devon, 2026-10-05; not built yet); a ramp's width and slope
+  landing is ADA's 5ft now, ramps already placed included, and one with no
+  room for it is a `ramp-landing` warning that moves nothing (#904), but
+  `render.js` draws no deck on it, props and a door's swing are not asked,
+  and a folded ramp's top landing is not asked; a ramp's width and slope
   have no control (`data.width`, `data.slope`; Devon allows the save field
   and the chrome); a ramp over 30in a run still counts as a way up on the
   accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`

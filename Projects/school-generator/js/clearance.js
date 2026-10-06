@@ -32,9 +32,13 @@ import { floorLabel } from './grid.js';
 import { LEAF_NONE, floorSolidAt, shapeAt } from './shapes.js';
 import {
   floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope,
+  rampLandingBox, localToWorld, worldToLocal, rectCorners, cutPolygon, footprintPolygon,
+  pointInPolygon, isElevator,
 } from './stairs.js';
 import { MAX_RAMP_GRADE } from './sitemesh.js';
-import { buildCollider, candidates } from './collide.js';
+import {
+  buildCollider, candidates, wallSegments, doorwaySegments, segsCross,
+} from './collide.js';
 import { emptyField } from './terrain.js';
 import { propsOnFloor } from './props.js';
 
@@ -104,6 +108,95 @@ export const GRADE_PROBE = 1;                       // ft
 // steeper.
 export const rampRolls = (link) =>
   !!link && link.type === 'ramp' && 1 / rampSlope(link) <= MAX_SEATED_GRADE + 1e-9;
+
+// ---------- the landing at the top of a ramp ----------
+//
+// ADA 405.7: a ramp ends on a level landing as wide as the ramp and 60in long
+// (#904). Nothing here refuses a ramp or moves one. This says whether the
+// landing a straight ramp is owed has the room it needs on the storey above,
+// read from the design as drawn, so a ramp placed when the landing was 4ft is
+// asked the same question as one placed today and no save field records it.
+//
+// Three things can be in its way, and `why` names each that is:
+//   'wall'  a wall or rail of the storey above runs through it, or a doorway
+//           stands inside it, or the wall along its far end leaves less than
+//           a doorway's 32in to leave by. A doorway *at* its far end is the
+//           way off and is allowed (405.7.5), jambs and all.
+//   'edge'  a corner of it, or the floor a foot past the middle of its far
+//           end, is off the storey above: there is nowhere to arrive.
+//   'link'  another link's hole in that floor, or a stair, ramp or lift that
+//           stands on it, overlaps it.
+// Props are not asked, and neither is the swing of a door beside it.
+// Null for a stair, a folded ramp (its landings are its layout's) and a ramp
+// whose landing is clear.
+const LANDING_EPS = 0.1;        // ft: flush against an edge is not in the way
+const LANDING_STEP_OFF = 1;     // ft of floor wanted past the far end
+const LANDING_LINK_INSET = 0.3; // ft: more than the slack a hole is cut with
+
+// The part of a local segment inside a local box, as a length.
+function lengthInBox(ax, az, bx, bz, box) {
+  let t0 = 0, t1 = 1;
+  const dx = bx - ax, dz = bz - az;
+  for (const [p, q] of [[-dx, ax - box.x0], [dx, box.x1 - ax], [-dz, az - box.z0], [dz, box.z1 - az]]) {
+    if (Math.abs(p) < 1e-12) { if (q < 0) return 0; continue; }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+  }
+  return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dz) : 0;
+}
+
+function polygonsOverlap(a, b) {
+  if (a.some((p) => pointInPolygon(b, p.x, p.z)) || b.some((p) => pointInPolygon(a, p.x, p.z))) return true;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) {
+      const u = b[j], v = b[(j + 1) % b.length];
+      if (segsCross(p.x, p.z, q.x, q.z, u.x, u.z, v.x, v.z)) return true;
+    }
+  }
+  return false;
+}
+
+export function rampLandingFit(state, link, metrics = stairMetrics(state)) {
+  const box = rampLandingBox(link, metrics);
+  const floor = box && state.floors[link.to];
+  if (!floor) return null;
+  const e = LANDING_EPS;
+  const why = [];
+
+  const local = (s) => {
+    const a = worldToLocal(link, s.ax, s.az), b = worldToLocal(link, s.bx, s.bz);
+    return [a.lx, a.lz, b.lx, b.lz];
+  };
+  const inside = { x0: box.x0 + e, x1: box.x1 - e, z0: box.z0 + e, z1: box.z1 - e };
+  const farEnd = { ...inside, z0: box.z1 - e, z1: box.z1 + e };
+  const walls = wallSegments(floor);
+  const shut = walls.reduce((sum, s) => sum + lengthInBox(...local(s), farEnd), 0);
+  if (walls.concat(doorwaySegments(floor)).some((s) => lengthInBox(...local(s), inside) > 1e-6)
+    || inside.x1 - inside.x0 - shut < MIN_CLEAR_W) why.push('wall');
+
+  const solid = (lx, lz) => { const p = localToWorld(link, lx, lz); return floorSolidAt(floor, p.x, p.z); };
+  const past = box.z1 + LANDING_STEP_OFF;
+  const asked = [
+    [inside.x0, inside.z0], [inside.x1, inside.z0], [inside.x0, inside.z1], [inside.x1, inside.z1],
+    [0, past],
+  ];
+  if (!asked.every(([lx, lz]) => solid(lx, lz))) why.push('edge');
+
+  const i = LANDING_LINK_INSET;
+  const mine = rectCorners(link, { x0: box.x0 + i, x1: box.x1 - i, z0: box.z0 + i, z1: box.z1 - i });
+  const others = stairsOf(state).filter((o) => o !== link).flatMap((o) => {
+    const polys = [];
+    if (o.to === link.to && !isElevator(o)) polys.push(cutPolygon(o, metrics));
+    if (o.from === link.to || (isElevator(o) && o.to === link.to)) polys.push(footprintPolygon(o, metrics));
+    return polys.filter(Boolean);
+  });
+  if (others.some((poly) => polygonsOverlap(mine, poly))) why.push('link');
+
+  if (!why.length) return null;
+  const at = localToWorld(link, 0, (box.z0 + box.z1) / 2);
+  return { id: link.id, floor: link.to, x: at.x, z: at.z, why };
+}
 
 // The seated walker, as `moveWalker` options. `extra` is the per-step state
 // the caller owns (`grounded`, `bodies`); everything about the body is here.

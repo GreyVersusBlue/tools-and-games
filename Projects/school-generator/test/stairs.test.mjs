@@ -11,7 +11,7 @@ import { addShape } from '../js/shapes.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { buildSampleSchool } from '../js/sample.js';
 import {
-  RISER_TARGET, TREAD, LANDING, HEADROOM, STAIR_W, CUT_MARGIN,
+  RISER_TARGET, TREAD, LANDING, RAMP_LANDING, HEADROOM, STAIR_W, CUT_MARGIN,
   stairRun, stairMetrics, stairWidth, openingSize, cutStart,
   localToWorld, worldToLocal, footprintBox, cutBox, rectCorners,
   footprintPolygon, cutPolygon, pointInPolygon,
@@ -422,7 +422,7 @@ test('a ramp is walkable end to end, as a continuous slope', () => {
   assert.equal(stairSurfaceAt(link, m, 20, 20), 0, 'at the bottom you are on the floor');
   assert.ok(near(stairSurfaceAt(link, m, 20, 20 + run / 2), m.rise / 2), 'halfway up, halfway');
   assert.equal(stairSurfaceAt(link, m, 20, 20 + run), m.rise, 'and at the top, arrived');
-  assert.equal(stairSurfaceAt(link, m, 20, 20 + run + LANDING + 1), null, 'past the landing, off it');
+  assert.equal(stairSurfaceAt(link, m, 20, 20 + run + RAMP_LANDING + 1), null, 'past the landing, off it');
   assert.equal(stairSurfaceAt(link, m, 20 + RAMP_W, 20 + run / 2), null, 'and off the side is off it');
 });
 
