@@ -13,6 +13,7 @@ import * as RG from "./regulars.js";
 import * as EV from "./events.js";
 import * as SUP from "./supply.js";
 import * as STF from "./staff.js";
+import * as SHF from "./shelf.js";
 import * as audio from "./audio.js";
 
 /** The Tonight panel's one line on the regulars: how many of them there are,
@@ -180,6 +181,7 @@ export class DayPhase {
     this.cart = {};
     for (const id in MENU) this.cart[id] = 0;
     this.houseArm = null;   // the house a second click would sign with, forfeiting loyalty
+    this.shelfArm = false;  // dating the shelf is one way, so it takes a second click
     this.renderStock();
   }
   /** The three supply houses under the order sheet: what each gives and takes,
@@ -209,6 +211,41 @@ export class DayPhase {
       <p class="hint">An account's bulk breaks, by the line: food ${breaks(SUP.BULK_FOOD)}; beer and soda ${breaks(SUP.BULK_DRINK)}. Every $${SUP.LOYALTY_STEP.toLocaleString()} of stock bought from one house is another ${pct(SUP.LOYALTY_PER)}% off, to ${pct(SUP.LOYALTY_MAX)}%. Switch houses and the loyalty dies at the door.</p>
       ${cards}`;
   }
+  /** The shelf under the supply houses: the card that dates it, or, once it
+   *  is dated, every lot with the nights it has left and the walk-in's card.
+   *  A lot on its last night is the one that goes at tonight's close. */
+  shelfHtml(c) {
+    const W = SHF.WALKIN;
+    if (!C.hasDates(c)) {
+      const armed = this.shelfArm;
+      return `<div class="sec">The Shelf</div>
+        <div class="promoCard house" id="shelfCard">
+          <b>No dates</b><span class="pill">how it is now</span>
+          <div class="hint">Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf at every close, whatever its age. Beer and soda never go off.</div>
+          <div class="hint">+ Date it and food stops rotting by the night: every delivery keeps whole until its date (${Object.keys(SHF.SHELF).filter(id => SHF.SHELF[id].cold).map(id => `${MENU[id].name.toLowerCase()} ${SHF.SHELF[id].nights} nights`).join(", ")}, the day it came in counted), and the oldest sells first. A shelf that turns over loses nothing. A ${W.name} ($${W.cost.toLocaleString()}, $${W.fee} a night) can then add ${W.nights} nights to the food.</div>
+          <div class="hint">− At its date, all of what is left of a delivery goes at once. Beer gets a date too: ${SHF.SHELF.beer.nights} nights. The inspector reads the dates, and one plate of food on its last night is a fine. What is on the shelf now is dated today. And the dates do not come back off.</div>
+          <button class="btn small ${armed ? "" : "ghost"}" data-dateshelf="1" style="margin-top:6px">${armed ? "Confirm: date it for good" : "Date the Shelf"}</button>
+        </div>`;
+    }
+    const nights = n => `${n} night${n === 1 ? "" : "s"}`;
+    const rows = Object.values(MENU).map(m => {
+      const lots = C.lotsOf(c, m.id), keeps = C.keeps(c, m.id);
+      const cells = !keeps ? `<span class="hint">never goes off</span>`
+        : !lots.length ? `<span class="hint">none on the shelf</span>`
+        : lots.map(l => `<span class="${l.left <= 1 ? "bad" : l.left === 2 ? "warn" : ""}" data-lot="${m.id}">${l.n} ${l.left <= 1 ? "go tonight" : `for ${nights(l.left)}`}</span>`).join(" · ");
+      return `<tr data-shelfrow="${m.id}"><td>${m.name}</td><td class="num">${keeps ? nights(keeps) : "—"}</td><td>${cells}</td></tr>`;
+    }).join("");
+    const on = C.hasWalkin(c);
+    return `<div class="sec">The Shelf</div>
+      <p class="hint">Dated. Each delivery keeps whole until its date and the oldest sells first; whatever is left of a lot on its last night goes at tonight's close. The flat ${Math.round(C.SPOILAGE_RATE * 100)}% a night is not charged on a dated shelf.</p>
+      <table id="shelfLots"><tr><th>Item</th><th class="num">Keeps</th><th>On the shelf, oldest first</th></tr>${rows}</table>
+      <div class="promoCard house ${on ? "on" : ""}" id="walkinCard">
+        <b>${W.name}</b>${on ? '<span class="pill">installed</span>' : `<span class="pill">$${W.cost.toLocaleString()}</span>`}
+        <div class="hint">+ ${W.pro}</div>
+        <div class="hint">− ${W.con}</div>
+        ${on ? "" : `<button class="btn small" data-buywalkin="1" style="margin-top:6px" ${c.cash < W.cost ? "disabled" : ""}>Install</button>`}
+      </div>`;
+  }
   renderStock() {
     const c = this.getC();
     const q = C.orderQuote(c, this.cart);
@@ -220,7 +257,7 @@ export class DayPhase {
         : next ? ` <span class="hint">${next[0]}+ for −${Math.round(next[1] * 100)}%</span>` : "";
       return `
       <tr><td>${m.name}<span class="hint"> $${C.unitPrice(c, m.id, qty).toFixed(2)}/serving</span>${note}</td>
-      <td class="num">${c.stock[m.id] || 0}</td>
+      <td class="num">${c.stock[m.id] || 0}${C.lastNight(c, m.id) ? ` <span class="bad" data-lastnight="${m.id}">(${C.lastNight(c, m.id)} go tonight)</span>` : ""}</td>
       <td class="num"><input class="par" type="number" min="0" max="${SUP.PAR_MAX}" step="1" data-par="${m.id}" value="${c.pars[m.id] || ""}" aria-label="Par level for ${m.name}"></td>
       <td><span class="stepper">
         <button data-cart="${m.id}" data-d="-10">-10</button>
@@ -236,10 +273,13 @@ export class DayPhase {
     if (q.drop) notes.push(`+$${q.drop} drop charge under $${house.minOrder}`);
     this.show("Stock Order",
       `<p class="hint">Delivered on the spot — the truck's out back. Sell out of something mid-rush and patrons order around it, or walk.</p>
-       <p class="hint">Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf every closed night — beer and soda don't. Order what you'll actually sell tonight, not a stockpile.</p>
+       <p class="hint" id="rotRule">${C.hasDates(c)
+         ? "The shelf is dated: a delivery keeps until its date and then all that is left of it goes. Order what you'll sell before the date, not a stockpile."
+         : `Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf every closed night — beer and soda don't. Order what you'll actually sell tonight, not a stockpile.`}</p>
        <table id="orderSheet"><tr><th>Item</th><th class="num">On hand</th><th class="num">Par</th><th>Add</th></tr>${rows}</table>
        <p class="hint">Par is what you want on the shelf at open. Fill to Par tops the cart up to it, counting what is on hand.</p>
-       ${this.housesHtml(c)}`,
+       ${this.housesHtml(c)}
+       ${this.shelfHtml(c)}`,
       `<span>Order total: <b class="money" id="orderTotal">$${q.total.toFixed(2)}</b>
         <span class="hint" id="orderNotes">${notes.length ? `(${notes.join(" · ")}) ` : ""}· Cash $${Math.round(c.cash)}</span></span>
        <span><button class="btn ghost" data-parfill="1">Fill to Par</button>
@@ -394,6 +434,8 @@ export class DayPhase {
     if (!C.hasCook(c)) warn.push("No cook — the kitchen's closed tonight.");
     if (!C.hasBartender(c)) warn.push("No bartender — servers cover the taps, badly.");
     if (Object.values(c.stock).every(v => !v)) warn.push("The shelves are BARE. Nobody can order anything.");
+    const going = Object.keys(MENU).reduce((n, id) => n + C.lastNight(c, id), 0);
+    if (going) warn.push(`${going} serving${going === 1 ? " is" : "s are"} on the last night of the date. What doesn't sell tonight goes at the close.`);
     if (c.cash < C.billsFor(c).total) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
     // the standing notice, on the last screen before the night that could spend it
     if (c.strikes > 0) warn.push(c.strikes === C.LEASE_STRIKES - 1
@@ -410,6 +452,7 @@ export class DayPhase {
       ["Wages + rent", `$${C.wageBill(c)} + $${C.rent(c)}`],
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],
       ...(C.accountFee(c) ? [["Supply account", `$${C.accountFee(c)} · ${C.distDef(c).name}, billed tonight`]] : []),
+      ...(C.walkinFee(c) ? [["Walk-in", `$${C.walkinFee(c)} · compressor power`]] : []),
       ["The lease", c.strikes ? `${c.strikes} of ${C.LEASE_STRIKES} nights in the red` : "in good standing"],
     ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
     this.show("Tonight",
@@ -568,6 +611,21 @@ export class DayPhase {
         if (r.ok) { this.cb.save(); this.renderStock(); this.cb.flash(`${r.house.name} runs your deliveries now.`, true); }
         else this.cb.flash(r.err);
       }
+    }
+    if (t.dataset.dateshelf) {
+      // one way, so not on one click
+      if (!this.shelfArm) { this.shelfArm = true; this.renderStock(); this.cb.flash("A dated shelf stays dated. Click again to put the labels on."); }
+      else {
+        const r = C.dateShelf(c);
+        this.shelfArm = false;
+        if (r.ok) { this.cb.save(); this.renderStock(); this.cb.flash("The shelf's dated. Everything on it is dated today.", true); }
+        else this.cb.flash(r.err);
+      }
+    }
+    if (t.dataset.buywalkin) {
+      const r = C.buyWalkin(c);
+      if (r.ok) { this.cb.save(); this.renderStock(); this.cb.flash(`${SHF.WALKIN.name} installed. Food keeps ${SHF.WALKIN.nights} nights longer.`, true); }
+      else this.cb.flash(r.err);
     }
     if (t.dataset.hire) { if (C.hire(c, t.dataset.hire)) { this.cb.save(); this.renderCrew(); } }
     if (t.dataset.fire) { if (C.fire(c, t.dataset.fire)) { this.cb.save(); this.renderCrew(); } }

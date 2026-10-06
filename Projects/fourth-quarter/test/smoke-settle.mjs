@@ -27,6 +27,12 @@
 // No campaign in the chain posts a rota, which is the old rule, so `old()`
 // takes those two out as well and the digest is still PIN. test/smoke-staff.mjs
 // is where a posted rota is settled.
+//
+// And the dated shelf (#909), a third time: `walkin` in every record (the
+// compressor's power, 0 with no walk-in) and `shelf` in every campaign. No
+// campaign in the chain dates its shelf, so every close in it is the flat
+// SPOILAGE_RATE, which is the old rule; `old()` takes the two out and the
+// digest is still PIN. test/smoke-shelf.mjs is where a dated shelf is closed.
 
 import { createHash } from "node:crypto";
 import * as C from "../js/campaign.js";
@@ -99,9 +105,9 @@ const PIN = "40adf11e76e63af8e9ea1126d097d54f198651737786976fa0b1fd6bb2f45631";
 const runs = chain(40, 60, 20261006);
 /** A run as the build before the supply house wrote it. */
 function old(x) {
-  const { account, crew: shift, ...books } = x.books;
+  const { account, walkin, crew: shift, ...books } = x.books;
   if (books.moments) { const { account: standing, ...moments } = books.moments; books.moments = moments; }
-  const { dist, pars, crew, ...after } = x.after;
+  const { dist, pars, crew, shelf, ...after } = x.after;
   return { dark: x.dark, books, after };
 }
 const digest = createHash("sha256").update(JSON.stringify(runs.map(old))).digest("hex");
@@ -113,6 +119,8 @@ ok(runs.every(x => x.books.account === 0 && (x.dark || x.books.moments.account =
 ok(runs.every(x => JSON.stringify(x.after.crew) === '{"rota":false,"book":{}}' && x.books.crew.rota === false
   && x.books.crew.off.length + x.books.crew.out.length + x.books.crew.call.length + x.books.crew.leveled.length + x.books.crew.quit.length + x.books.crew.poached.length === 0),
   "nor the rota's two: nobody posted one, so nobody was off, called out, levelled or walked in 2,400 nights");
+ok(runs.every(x => JSON.stringify(x.after.shelf) === '{"dated":false,"walkin":false,"lots":{}}' && x.books.walkin === 0 && !("dated" in x.books.spoilage)),
+  "nor the shelf's two: nobody dated one, so no walk-in was billed and all 2,400 closes were the flat rate's");
 ok(runs.some(x => C.weekday({ day: x.after.day - 1 }) === "Mon"), "the chain settled Mondays, the night an account would have been billed");
 
 // The sweep has to have gone where the two functions differed, or its
@@ -139,8 +147,8 @@ ok(runs.some(x => C.weekday({ day: x.after.day - 1 }) === "Mon"), "the chain set
   const bill = C.billsFor(base);
   const db = C.settleDarkNight(d, seeded(7));
   const ob = C.settleNight(o, { total: 0, revenue: 0, tips: 0, served: 0, walkouts: 0, mood: 0.6, serviceRate: 100 }, seeded(7));
-  ok(Object.keys(db).join() === "wages,rent,upgFees,account,net,spoilage,games,social,crew,lease", "a dark night's record has its ten fields, in order");
-  ok(Object.keys(ob).join() === "wages,rent,promoCost,upgFees,account,take,net,spoilage,games,social,moments,crew,lease", "an open night's has its thirteen");
+  ok(Object.keys(db).join() === "wages,rent,upgFees,account,walkin,net,spoilage,games,social,crew,lease", "a dark night's record has its eleven fields, in order");
+  ok(Object.keys(ob).join() === "wages,rent,promoCost,upgFees,account,walkin,take,net,spoilage,games,social,moments,crew,lease", "an open night's has its fourteen");
   ok(db.net === -bill.total && d.cash === base.cash - bill.total, `a dark night costs the bill and nothing else (${db.net})`);
   ok(ob.net === -bill.total - C.PROMOS.watchparty.cost && o.cash === base.cash - bill.total - C.PROMOS.watchparty.cost, "an open night that took nothing costs the bill and the promo");
   ok(d.promoTonight === "watchparty" && o.promoTonight === "none", "a dark night leaves tomorrow's promo standing; an open one spends it");

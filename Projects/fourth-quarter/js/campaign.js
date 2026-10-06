@@ -12,6 +12,7 @@ import * as R from "./regulars.js";
 import * as EV from "./events.js";
 import * as S from "./supply.js";
 import * as ST from "./staff.js";
+import * as SH from "./shelf.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export { DAYS };
@@ -106,7 +107,8 @@ export function prevVenue(c) {
  * differ between them is a number that can evict on one path and not the other.
  * A theme is not in here on purpose: it is an optional spend on an open night,
  * and a closed night cannot buy one. The supply account is in here: the house
- * bills on Monday whether the doors opened or not.
+ * bills on Monday whether the doors opened or not. So is the walk-in's
+ * compressor, which runs with the doors shut.
  */
 export function billsFor(c) {
   const wages = wageBill(c);
@@ -115,7 +117,10 @@ export function billsFor(c) {
   // the supply house's account, on the one night a week it is billed (#905);
   // nothing at County Line, which is every save from before there were houses
   const account = accountFee(c);
-  return { wages, rent: rentDue, upgFees, account, total: wages + rentDue + upgFees + account };
+  // the Commercial Walk-In's power (#909); nothing on a shelf without one,
+  // which is every save from before the shelf could be dated
+  const walkin = walkinFee(c);
+  return { wages, rent: rentDue, upgFees, account, walkin, total: wages + rentDue + upgFees + account + walkin };
 }
 // ---------- the lease: the night you can lose ----------
 //
@@ -253,12 +258,15 @@ export function runSummary(c) {
 // whether patrons came through the door. Beer and soda don't: kegs and cans don't
 // need a walk-in the way raw wings and ground beef do, which is exactly the
 // distinction the README's own roadmap already drew ("spoilage ... would unlock a
-// Commercial Walk-In-style upgrade" — that upgrade, when it exists, is the lever
-// that should cut this rate, not the rate itself changing here).
+// Commercial Walk-In-style upgrade"). That upgrade exists now (#909) and it does not cut this rate: it
+// belongs to the dated shelf, which replaces this rule outright for a campaign that
+// chooses it. The rate here is what an undated shelf pays, unchanged.
 export const SPOILAGE_RATE = 0.15;
 
 /** Rot whatever's left of the perishable menu after a night closes. Returns what
- *  was lost, by item and in wholesale dollars, so the box score can say so. */
+ *  was lost, by item and in wholesale dollars, so the box score can say so.
+ *  The undated shelf's rule, and only that: closeNight() calls this or
+ *  spoilDated(), never both (#909). */
 export function applySpoilage(c) {
   const byItem = {};
   let value = 0;
@@ -272,6 +280,53 @@ export function applySpoilage(c) {
     }
   }
   return { byItem, value: Math.round(value * 100) / 100 };
+}
+
+// ---------- the dated shelf ----------
+// shelf.js owns the arithmetic; these are the campaign's questions of it, and
+// the places the record moves: dating the shelf, the walk-in, an order and the
+// close. On an undated shelf every one of these answers what the flat rate
+// alone answered before there was a shelf.js (#909).
+
+/** The shelf is dated. Until it is, food rots SPOILAGE_RATE a night. */
+export function hasDates(c) { return SH.isDated(c.shelf); }
+export function hasWalkin(c) { return SH.hasWalkin(c.shelf); }
+/** The walk-in's nightly power, or 0. In billsFor(). */
+export function walkinFee(c) { return SH.walkinFee(c.shelf); }
+/** Nights `id` keeps on this shelf, the walk-in counted; 0 for never goes off. */
+export function keeps(c, id) { return SH.keeps(c.shelf, id); }
+/** The lots made to agree with the count: a no-op on an undated shelf. */
+function syncShelf(c) { c.shelf = SH.reconcile(c.shelf, c.stock, c.day); }
+/** Date the shelf. Free, and one way (shelf.js's header says why). */
+export function dateShelf(c) {
+  if (hasDates(c)) return { ok: false, err: "The shelf's already dated." };
+  c.shelf = SH.date(c.shelf, c.stock, c.day);
+  return { ok: true };
+}
+/** Install the Commercial Walk-In. Not in UPGRADES: it is the dated shelf's
+ *  own gear, it does nothing for an undated one, and it is refused there. */
+export function buyWalkin(c) {
+  if (!hasDates(c)) return { ok: false, err: "Date the shelf first. A walk-in keeps dated food longer and does nothing else." };
+  if (hasWalkin(c)) return { ok: false, err: "Already installed." };
+  if (c.cash < SH.WALKIN.cost) return { ok: false, err: "Can't cover the install." };
+  c.cash -= SH.WALKIN.cost;
+  c.shelf = SH.install(c.shelf);
+  return { ok: true };
+}
+/** One item's lots as they stand this minute, oldest first: [{ day, n, left }].
+ *  Read only; empty on an undated shelf and for an item that never goes off. */
+export function lotsOf(c, id) { return SH.lotsOf(SH.reconcile(c.shelf, c.stock, c.day), id, c.day); }
+/** Servings of `id` that go at tonight's close if nobody buys them. */
+export function lastNight(c, id) { return SH.lastNight(SH.reconcile(c.shelf, c.stock, c.day), id, c.day); }
+/** The dated shelf's close: the night's sales come off the oldest lots, then
+ *  every lot on its last night goes whole. Same record applySpoilage() gives,
+ *  with `dated` on it so a screen can say which rule it was. */
+function spoilDated(c) {
+  syncShelf(c);
+  const r = SH.spoil(c.shelf, c.day);
+  c.shelf = r.shelf;
+  for (const id in r.byItem) c.stock[id] = Math.max(0, (c.stock[id] || 0) - r.byItem[id]);
+  return { byItem: r.byItem, value: SH.valueOf(r.byItem, STOCK_COST), dated: true };
 }
 
 // ---------- dev/debug helpers — a debug menu only, never part of normal play ----------
@@ -492,6 +547,7 @@ export function newCampaign() {
     dist: S.newDist(),
     pars: {},
     crew: ST.newCrew(),
+    shelf: SH.newShelf(),
   };
   rollApplicants(c, Math.random);
   return c;
@@ -561,6 +617,9 @@ export function eventView(c) {
     rep: c.rep, buzz: c.rival.buzz,
     upgrades: c.upgrades.slice(),
     dist: distDef(c).id,
+    // the dated shelf's word for the inspector: food not on its last night
+    // at the open, by item; null where there is no date to read
+    fresh: SH.freshAtOpen(SH.reconcile(c.shelf, c.stock, c.day), c.day),
     // who is on the floor tonight, at their own skill: a card cannot poach
     // somebody on their night off (the whole payroll, with no rota)
     staff: onShift(c).map(s => ({ name: s.name, role: s.role, skill: s.skill, wage: s.wage })),
@@ -767,7 +826,11 @@ export function placeOrder(c, order) {
   if (cost <= 0) return { ok: false, err: "Nothing on the order sheet." };
   if (cost > c.cash) return { ok: false, err: "The distributor wants cash you don't have." };
   c.cash -= cost;
+  // a dated shelf reads the count on either side of the delivery, so what
+  // came in is a lot received today and nothing else is
+  syncShelf(c);
   for (const id in q.lines) c.stock[id] = (c.stock[id] || 0) + q.lines[id].qty;
+  syncShelf(c);
   c.dist = S.afterOrder(c.dist, q.goods);
   return { ok: true, cost, goods: q.goods, drop: q.drop };
 }
@@ -868,7 +931,7 @@ const RIVAL_TEAM = (LEAGUE_TEAMS.find(t => t.rival) || {}).id || null;
 function closeNight(c, summary, dark, rand) {
   // who worked tonight, read before a card or the calendar can move it
   const onDuty = duty(c);
-  const { wages, rent: rentDue, upgFees, account, total: bill } = billsFor(c);
+  const { wages, rent: rentDue, upgFees, account, walkin, total: bill } = billsFor(c);
   // a theme is an optional spend on an open night; a closed one cannot buy it
   const promoCost = dark ? 0 : promoDef(c).cost;
   const take = dark ? 0 : summary.total;
@@ -911,7 +974,9 @@ function closeNight(c, summary, dark, rand) {
   // the crew after the people: a good floor and an ugly one are the room's
   // verdict, and the End Zone's buzz is what it stands at after tonight
   const crew = settleCrew(c, onDuty, { dark, good: social.good, ugly: social.ugly, buzz: c.rival.buzz }, rand);
-  const spoilage = applySpoilage(c);
+  // one rule or the other, never both: the flat rate on an undated shelf,
+  // the dates on a dated one (#909)
+  const spoilage = hasDates(c) ? spoilDated(c) : applySpoilage(c);
   c.day++;
   syncLeague(c.league, c.day);
   if (dark) c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
@@ -921,8 +986,8 @@ function closeNight(c, summary, dark, rand) {
   // countdown it may overwrite is this night's and not the move's
   const lease = applyLease(c);
   return dark
-    ? { wages, rent: rentDue, upgFees, account, net, spoilage, games, social, crew, lease }
-    : { wages, rent: rentDue, promoCost, upgFees, account, take, net, spoilage, games, social, moments, crew, lease };
+    ? { wages, rent: rentDue, upgFees, account, walkin, net, spoilage, games, social, crew, lease }
+    : { wages, rent: rentDue, promoCost, upgFees, account, walkin, take, net, spoilage, games, social, moments, crew, lease };
 }
 
 /** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
@@ -944,8 +1009,9 @@ export function settleDarkNight(c, rand = Math.random) { return closeNight(c, nu
 // gvb-save reads as version 0.
 
 /** Bump when the shape changes. 0 means "written before this file used a slot".
- *  2 is the supply house (#905) and 3 the rota (#908): see migrateCampaign(). */
-export const SAVE_VERSION = 3;
+ *  2 is the supply house (#905), 3 the rota (#908) and 4 the dated shelf
+ *  (#909): see migrateCampaign(). */
+export const SAVE_VERSION = 4;
 
 /**
  * Version drift only (#37). One step so far: a save from before version 2 was
@@ -966,6 +1032,9 @@ export function migrateCampaign(c, from) {
   // version 3 wrote a `crew`, so a posted rota in an older file is nobody's
   // decision, and it is one that cannot be taken back.
   if (from < 3) c.crew = ST.newCrew();
+  // And for the dated shelf (#909): no build before version 4 wrote a
+  // `shelf`, so dates or a walk-in in an older file were paid for by nobody.
+  if (from < 4) c.shelf = SH.newShelf();
   return c;
 }
 
@@ -1122,6 +1191,10 @@ export function repairCampaign(c) {
   // which is what this game always did; a book keeps lines for names on the
   // payroll only, since a line is found by name.
   c.crew = ST.repairCrew(c.crew, c.staff.map(s => s.name));
+  // The shelf's one field (#909). An undated shelf is the flat rate, which is
+  // what this game always charged; a dated one's lots are held to the count
+  // above, since `stock` is what the night sells from.
+  c.shelf = SH.repairShelf(c.shelf, c.stock, c.day);
   return c;
 }
 

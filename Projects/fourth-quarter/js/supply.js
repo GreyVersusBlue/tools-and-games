@@ -18,9 +18,11 @@
 // - **Stock is counted in servings, not units.** The 2D build broke food at
 //   10, 25 and 100 units and kegs at 3, 6 and 12 (25 or more servings each).
 //   Here a line is servings, so food breaks at 25, 50 and 100 and drink at 75,
-//   150 and 300. Food rots SPOILAGE_RATE of the shelf a night and drink does
-//   not, so the top food break is a bet against the walk-in and the top drink
-//   break is only cash tied up.
+//   150 and 300. On an undated shelf food rots SPOILAGE_RATE a night and
+//   drink does not, so the top food break is a bet against the rot and the
+//   top drink break is only cash tied up. On a dated shelf (shelf.js, #909) a
+//   line is one lot: a hundred wings have three nights and then all that is
+//   left goes, and 300 beers have fourteen.
 // - **Gold Standard's edge is the plate's price.** The 2D build lifted food
 //   "appeal" eight points, which let a player raise prices without losing
 //   plates. This build has no price sheet, so the eight points are the price:
@@ -28,9 +30,8 @@
 //   Wall's `beerMult`).
 // - **No delivery days and no reliability number.** The truck is out back and
 //   an order lands when it is placed, as before. The 2D build has neither, the
-//   "Truck Breaks Down" card is already how a delivery fails, and inventing a
-//   lead time would change every stock read in the game for the session after
-//   this one (per-lot shelf life) to change again.
+//   "Truck Breaks Down" card is already how a delivery fails. So a dated
+//   shelf's lot is received the day its order is placed, at every house.
 
 export const DEFAULT_HOUSE = "county";
 

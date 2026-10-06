@@ -86,12 +86,18 @@ const bestStaff = view => {
 const raisedWage = s => Math.round(s.wage * 1.2 / 5) * 5;
 const FOOD = ["wings", "burger", "nachos", "fries"];
 const foodOnShelf = view => FOOD.reduce((n, id) => n + Math.max(0, (view.stock && view.stock[id]) || 0), 0);
-/** The inspector's nose. The 2D build checks lot dates; this build rots a
- *  flat 15% of whatever is left, so "near-spoiled" is a walk-in holding more
+/** The inspector's nose on an undated shelf. The 2D build checks lot dates;
+ *  an undated shelf rots a flat 15% of whatever is left, so "near-spoiled" is a walk-in holding more
  *  food than this crowd will eat in two and a half nights — the part that
  *  will rot before it sells. */
 export const INSPECT_OVERSTOCK = 2.5;
-export const inspectorRisky = view => foodOnShelf(view) > INSPECT_OVERSTOCK * Math.max(1, view.crowdTarget || 0);
+const overstocked = view => foodOnShelf(view) > INSPECT_OVERSTOCK * Math.max(1, view.crowdTarget || 0);
+/** On a dated shelf (#909) the inspector reads the dates, as the 2D build's
+ *  does: `view.fresh` is the food that was not on its last night at the open,
+ *  the oldest sells first, so anything the shelf holds over that is food on
+ *  its last night still unsold when the clipboard walks in. */
+const agingOnShelf = view => FOOD.some(id => Math.max(0, (view.stock && view.stock[id]) || 0) > (view.fresh[id] || 0));
+export const inspectorRisky = view => (view.fresh && typeof view.fresh === "object" ? agingOnShelf(view) : overstocked(view));
 
 const say = (fx, line, cls = "hl") => ({ fx, line, cls });
 

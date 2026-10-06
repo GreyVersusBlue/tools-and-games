@@ -157,10 +157,12 @@ function closedNight() {
   const books = C.settleDarkNight(campaign);
   lastSocial = books.social;
   save();
-  const billed = Math.round(books.wages + books.rent + books.upgFees + books.account);
+  const billed = Math.round(books.wages + books.rent + books.upgFees + books.account + books.walkin);
   tick(`Closed for the move. −$${billed} in bills, doors stay shut tonight.`, "b");
   const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
-  if (spoiled) tick(`${spoiled} serving${spoiled === 1 ? "" : "s"} spoiled in the walk-in while the doors stayed shut.`, "b");
+  if (spoiled) tick(books.spoilage.dated
+    ? `${spoiled} serving${spoiled === 1 ? "" : "s"} went past the date while the doors stayed shut.`
+    : `${spoiled} serving${spoiled === 1 ? "" : "s"} spoiled in the walk-in while the doors stayed shut.`, "b");
   if (campaign.darkNightsLeft === 0) tick(`Ready to open at ${C.venueDef(campaign).name} tomorrow.`, "hl");
   // A move can bankrupt you mid-move: bills land on a closed night and no
   // revenue does. The room can therefore change here, in the day phase, where
@@ -508,6 +510,7 @@ function showBoxScore() {
     ${books.promoCost ? `<div class="row"><span>Theme</span><span class="bad">−$${books.promoCost}</span></div>` : ""}
     ${books.upgFees ? `<div class="row"><span>Upgrade upkeep</span><span class="bad">−$${books.upgFees}</span></div>` : ""}
     ${books.account ? `<div class="row" id="boxAccount"><span>Supply account (weekly)</span><span class="bad">−$${books.account}</span></div>` : ""}
+    ${books.walkin ? `<div class="row" id="boxWalkin"><span>Walk-in power</span><span class="bad">−$${books.walkin}</span></div>` : ""}
     <div class="row total"><span>Net</span><span class="${books.net >= 0 ? "good" : "bad"}">${books.net >= 0 ? "+" : "−"}$${Math.abs(books.net)}</span></div>
     <div class="row"><span>Cash</span><span class="${campaign.cash >= 0 ? "money" : "bad"}">$${Math.round(campaign.cash)}</span></div>
     <div class="sec">The Floor</div>
@@ -516,7 +519,7 @@ function showBoxScore() {
     <div class="row"><span>Cooked/poured by hand</span><span class="${s.crafted ? "good" : ""}">${s.crafted}</span></div>
     <div class="row"><span>Walkouts</span><span class="${s.walkouts ? "bad" : ""}">${s.walkouts}${empt ? ` (${empt} found bare shelves)` : ""}</span></div>
     <div class="row"><span>Service rate</span><span class="${s.serviceRate >= 90 ? "good" : s.serviceRate >= 70 ? "warn" : "bad"}">${s.serviceRate}%</span></div>
-    <div class="row"><span>Spoiled overnight</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
+    <div class="row" id="boxSpoiled"><span>${books.spoilage.dated ? "Past the date at close" : "Spoiled overnight"}</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
     ${momentRows(books.moments, s.moments)}
     ${engine.gameNight ? `<div class="sec">The Game</div>
     <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}

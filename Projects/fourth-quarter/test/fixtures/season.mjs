@@ -14,6 +14,7 @@ export function seeded(seed, step) {
 
 /** Servings wanted on the shelf at open, per body the forecast expects. */
 export const PAR_PER_HEAD = { wings: 0.25, burger: 0.25, nachos: 0.25, fries: 0.25, beer: 1.3, soda: 0.4 };
+const FOOD_IDS = ["wings", "burger", "nachos", "fries"];
 
 /** One night under instant service: every ticket is carried the moment it is
  *  ready, two rounds a head, nobody walks unless the shelf is bare. */
@@ -49,9 +50,12 @@ function playNight(e) {
  * campaign.js, to hire or to set nights off. Returns the campaign and one row
  * a night; a night under a rota also carries `wages` and `crew`, which a row
  * from a build or a campaign without one does not, so the rows the pins were
- * taken over are unchanged.
+ * taken over are unchanged. `opts.dates` dates the shelf on day one if the
+ * build can (#909), and `opts.walkin` installs the walk-in with it; `opts.par`
+ * multiplies the bot's par for food, for a bot that overbuys. A night on a
+ * dated shelf carries `lost`, the servings that went by item.
  */
-export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = null, cash = null, rota = null } = {}) {
+export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = null, cash = null, rota = null, dates = false, walkin = false, par = 1 } = {}) {
   const { C, NightEngine, seed: seedEngine, mulberry32 } = mods;
   const real = Math.random;
   Math.random = seeded(seed ^ 0x9e3779b9, mulberry32);
@@ -63,6 +67,7 @@ export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = n
     if (cash !== null) c.cash = cash;
     if (house && C.signHouse) C.signHouse(c, house);
     if (rota && C.postRota) C.postRota(c);
+    if (dates && C.dateShelf) { C.dateShelf(c); if (walkin) C.buyWalkin(c); }
     for (let n = 0; n < nights && !c.failed; n++) {
       const rand = seeded((seed * 7919 + n) >>> 0, mulberry32);
       const day = c.day;
@@ -70,7 +75,7 @@ export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = n
       if (c.darkNightsLeft > 0) { const b = C.settleDarkNight(c, rand); rows.push({ day, dark: true, net: b.net, account: b.account || 0, cash: c.cash }); continue; }
       const heads = C.forecast(c);
       const order = {};
-      for (const id in PAR_PER_HEAD) order[id] = Math.max(0, Math.ceil(heads * PAR_PER_HEAD[id]) - (c.stock[id] || 0));
+      for (const id in PAR_PER_HEAD) order[id] = Math.max(0, Math.ceil(heads * PAR_PER_HEAD[id] * (par !== 1 && FOOD_IDS.includes(id) ? par : 1)) - (c.stock[id] || 0));
       const list = C.orderCost(order);
       const before = c.cash;
       const placed = C.placeOrder(c, order);
@@ -87,7 +92,8 @@ export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = n
       rows.push({ day, dark: false, order, ordered: !!placed.ok, list: placed.ok ? list : 0, paid, drop: placed.drop || 0,
         take: b.take, revenue: s.revenue, tips: s.tips, served: s.served, net: b.net, account: b.account || 0,
         spoiled: b.spoilage.value, cash: c.cash, evicted: !!b.lease.evicted,
-        ...(b.crew && b.crew.rota ? { wages: b.wages, crew: b.crew } : {}) });
+        ...(b.crew && b.crew.rota ? { wages: b.wages, crew: b.crew } : {}),
+        ...(b.spoilage.dated ? { lost: b.spoilage.byItem } : {}) });
     }
   } finally { Math.random = real; seedEngine(0); }
   return { c, rows };

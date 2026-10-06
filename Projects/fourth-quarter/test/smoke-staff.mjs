@@ -273,7 +273,7 @@ const night = (extra = {}) => ({ total: 500, revenue: 450, tips: 50, served: 40,
 {
   const mkStore = (seedData = {}) => ({ d: { ...seedData }, setItem(k, v) { this.d[k] = String(v); }, getItem(k) { return this.d[k] ?? null; }, removeItem(k) { delete this.d[k]; } });
   const raw = (c, v, extra = {}) => { const o = { ...clone(c), ...extra }; if (v === null) delete o.__v; else o.__v = v; return J(o); };
-  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 3, "the key is the key it always was (#36); the version is 3");
+  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 4, "the key is the key it always was (#36); the version is 4 (the rota was 3)");
   const base = C.newCampaign(); base.day = 23; base.cash = 4321.5; base.staff = crewOf(ANN, BO);
   const bare = clone(base); delete bare.crew;
   const stray = { rota: true, book: { [ANN]: line({ off: ["Mon"], fatigue: 90 }) } };
@@ -306,11 +306,11 @@ const night = (extra = {}) => ({ total: 500, revenue: 450, tips: 50, served: 40,
   const live = posted(ANN, BO); C.toggleDayOff(live, BO, "Wed"); live.crew.book[ANN] = line({ fatigue: 36, xp: 3, morale: 64 });
   C.saveCampaign(live, store);
   const back = C.loadCampaign(store);
-  ok(JSON.parse(store.getItem(C.SAVE_KEY)).__v === 3 && back.crew.rota === true && J(back.crew.book[ANN]) === J(live.crew.book[ANN]) && J(back.crew.book[BO]) === J(line({ off: ["Wed"] })) && J(C.duty(back)) === J(C.duty(live)), "a save written now round-trips the rota, the book and tonight's shift");
+  ok(JSON.parse(store.getItem(C.SAVE_KEY)).__v === C.SAVE_VERSION && back.crew.rota === true && J(back.crew.book[ANN]) === J(live.crew.book[ANN]) && J(back.crew.book[BO]) === J(line({ off: ["Wed"] })) && J(C.duty(back)) === J(C.duty(live)), "a save written now round-trips the rota, the book and tonight's shift");
   const slot = C.campaignSlot(store);
   const env = JSON.parse(slot.serialize(back));
   const old = { ...env, version: 2 };
-  ok(env.version === 3 && env.state.crew.rota === true && slot.deserialize(J(old)).crew.rota === false, "the export file carries it at version 3, and a version-2 file that claims a rota imports without one");
+  ok(env.version === C.SAVE_VERSION && env.state.crew.rota === true && slot.deserialize(J(old)).crew.rota === false, "the export file carries it at the build's version, and a version-2 file that claims a rota imports without one");
 }
 
 // ---- a season, four ways ----

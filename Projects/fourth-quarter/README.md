@@ -110,7 +110,8 @@ table and this week's fixtures.
   86'd items get ordered around; fully bare shelves send patrons back out the
   door. Food (wings, burgers, nachos, fries) rots 15% of whatever's left every
   closed night — a settled night or a dark night alike. Beer and soda don't
-  spoil. Stockpiling food against a slow night now has a real cost.
+  spoil. Stockpiling food against a slow night now has a real cost. (That is
+  an undated shelf, which every campaign starts with; see **The shelf**.)
 - **The rota** (in the Crew panel) — off until you post it, and it does not
   come back down. With no rota everyone on the payroll works every night,
   draws the wage every night, and never tires, improves or leaves on their
@@ -122,6 +123,18 @@ table and this week's fixtures.
   down, at 85 two, and a burnt-out staffer calls out about one night in
   three. Morale under 25 is a roll to quit every night, 15%, or 30% with the
   End Zone's buzz at 50 or over, which gets 3 busier for it.
+- **The shelf** (in the Stock panel, under the supply houses) — undated
+  until you date it, and dating it is one way. Undated, food rots 15% of
+  what is left at every close and drink never goes off, as it always did.
+  **Dated**, that rule stops and each delivery keeps whole until its date:
+  wings 3 nights, burgers 4, nachos 5, fries 7 and beer 14, the day it came
+  in counted, soda for ever. The oldest sells first. At the close of a lot's
+  last night all that is left of it goes at once. A night is closed under one
+  rule or the other, never both. What is on the shelf when you date it is
+  dated that day. The **Commercial Walk-In** ($1,000, $18 a night, open or
+  dark, dated shelves only) adds 2 nights to food, the food already there
+  included, and nothing to a keg. On a dated shelf the Health Inspector reads
+  the dates: one plate on its last night is the fine.
 - **The supply house** (in the Stock panel) — who the truck belongs to.
   **County Line** is list price with no strings. **Cask & Carton** is 10%
   under list for $110 a week, billed Mondays whether the doors opened or not,
@@ -223,11 +236,12 @@ table and this week's fixtures.
   `node test/smoke-events.mjs`, `node test/smoke-layout.mjs`,
   `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs`,
   `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs`,
-  `node test/smoke-supply.mjs`, `node test/smoke-staff.mjs` and
+  `node test/smoke-supply.mjs`, `node test/smoke-staff.mjs`,
+  `node test/smoke-shelf.mjs` and
   `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`).
   `test/crowd-floor.mjs` is the busy floor `smoke-crowd.mjs` runs and is not
   a suite; `test/fixtures/season.mjs` is the bot that plays a seeded season
-  for `smoke-supply.mjs` and `smoke-staff.mjs` and is not one either. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
+  for `smoke-supply.mjs`, `smoke-staff.mjs` and `smoke-shelf.mjs` and is not one either. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
   Chromium through `Tools/board-check/harness.mjs`, so it needs `npm ci` in
   that folder first; CI does that for the whole job.
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
@@ -401,7 +415,7 @@ bytes, which is this sandbox's timing, not the files.
    the event cards are moments on the floor (Phase 8), and the three
    supply houses with their two cards are in the Stock panel (2026-10-06),
    and the crew has a rota (the same day; designed here, since the 2D build
-   has no staff system to port).**
-   Still to port: per-lot shelf life with a
-   Commercial Walk-In upgrade, and a season that nudges rent and wages,
+   has no staff system to port), and the shelf can be dated, with the
+   Commercial Walk-In (the same day again, #909).**
+   Still to port: a season that nudges rent and wages,
    re-balanced for the 3D serving loop.

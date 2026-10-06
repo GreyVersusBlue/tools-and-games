@@ -1311,6 +1311,70 @@ ok("the box score paid one wage and has a Crew section: the cook's night off and
 ok("the server is skill 3 on $80 from tomorrow, 12 more tired, his count back to nothing; the cook rested", closed.server.skill === 3 && closed.server.wage === 80 && closed.line.fatigue === 12 && closed.line.xp === 0 && closed.cookLine.fatigue === 0 && String(closed.cookLine.off) === "Tue", JSON.stringify([closed.server, closed.line]));
 ok("no page errors through the rota", errors.length === 0, errors.join(" | "));
 
+// ---------------------------------------------------------------- the dated shelf (#909)
+// Wednesday morning, day 3. The Stock panel with an undated shelf, dating it
+// on the second click, the lots with their nights, the walk-in, and one night
+// to see the dates and not the flat rate close the shelf.
+await page.click("#nextDayBtn");
+const shelf0 = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  c.cash = 5000; c.stock = { wings: 10, burger: 0, nachos: 0, fries: 0, beer: 40, soda: 10 };
+  fq.day.stockPanel();
+  const label = sel => (q(sel) || {}).textContent ?? null;
+  const out = { day: c.day, card: !!q("#shelfCard"), table: !!q("#shelfLots"), walkin: !!q("#walkinCard"), btn: label("[data-dateshelf]"), rule: label("#rotRule") };
+  q("[data-dateshelf]").click();
+  out.armed = { dated: c.shelf.dated, btn: label("[data-dateshelf]") };
+  if (q("[data-dateshelf]")) q("[data-dateshelf]").click();
+  const row = id => (q(`[data-shelfrow="${id}"]`) || { textContent: "" }).textContent.replace(/\s+/g, " ");
+  out.dated = { dated: c.shelf.dated, disk: (JSON.parse(localStorage.getItem("fq3d-save")).shelf || {}).dated, v: JSON.parse(localStorage.getItem("fq3d-save")).__v, btn: label("[data-dateshelf]"), card: !!q("#shelfCard"),
+    rows: document.querySelectorAll("#shelfLots [data-shelfrow]").length, wings: row("wings"), beer: row("beer"), soda: row("soda"), fries: row("fries"), rule: label("#rotRule"),
+    install: label("[data-buywalkin]"), lots: JSON.stringify(c.shelf.lots), stock: c.stock.wings };
+  return out;
+});
+ok("the Stock panel with an undated shelf: the card that offers dates, no lots, no walk-in, and the 15% rule in words", shelf0.day === 3 && shelf0.card && !shelf0.table && !shelf0.walkin && shelf0.btn === "Date the Shelf" && /rots about 15%/.test(shelf0.rule), JSON.stringify(shelf0).slice(0, 200));
+ok("a shelf is not dated on one click: the button arms and no date is on anything", shelf0.armed.dated === false && shelf0.armed.btn === "Confirm: date it for good", JSON.stringify(shelf0.armed));
+ok("the second click dates it, on disk at save version 4, and the card is gone", shelf0.dated.dated === true && shelf0.dated.disk === true && shelf0.dated.v === 4 && shelf0.dated.btn === null && !shelf0.dated.card, JSON.stringify(shelf0.dated).slice(0, 160));
+ok("what was on the shelf is dated today, a row an item: wings for 3 nights, beer for 14, soda never, and a bare line says so", shelf0.dated.rows === 6 && /3 nights 10 for 3 nights/.test(shelf0.dated.wings) && /14 nights 40 for 14 nights/.test(shelf0.dated.beer) && /never goes off/.test(shelf0.dated.soda) && /none on the shelf/.test(shelf0.dated.fries)
+  && shelf0.dated.lots === '{"wings":[{"day":3,"n":10}],"beer":[{"day":3,"n":40}]}' && shelf0.dated.stock === 10, `${shelf0.dated.wings} / ${shelf0.dated.beer} / ${shelf0.dated.lots}`);
+ok("the order sheet's rule is the dates now, and the walk-in is offered", /The shelf is dated/.test(shelf0.dated.rule) && !/15%/.test(shelf0.dated.rule) && shelf0.dated.install === "Install", `${shelf0.dated.rule} / ${shelf0.dated.install}`);
+
+const cold = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  const row = id => q(`[data-shelfrow="${id}"]`).textContent.replace(/\s+/g, " ");
+  // the wings came in on Monday: tonight is their third night
+  c.shelf.lots.wings = [{ day: c.day - 2, n: 10 }];
+  fq.day.stockPanel();
+  const out = { last: row("wings"), sheet: (q('[data-lastnight="wings"]') || {}).textContent ?? null, lotClass: q('[data-lot="wings"]').className };
+  q("[data-buywalkin]").click();
+  out.walkin = { on: c.shelf.walkin, disk: JSON.parse(localStorage.getItem("fq3d-save")).shelf.walkin, cash: c.cash, btn: !!q("[data-buywalkin]"), card: q("#walkinCard").textContent.replace(/\s+/g, " "), wings: row("wings"), beer: row("beer"), sheet: !!q('[data-lastnight="wings"]'), upgrades: c.upgrades.includes("walkin") };
+  // and two days older still, so the walk-in's five nights are up tonight
+  c.shelf.lots.wings = [{ day: c.day - 4, n: 10 }];
+  fq.day.closePanel(); fq.day.doorPanel();
+  out.door = q("#panelBody").textContent;
+  fq.day.closePanel();
+  return out;
+});
+ok("wings on their third night read \"10 go tonight\" in red, in the lots and on the order sheet", /10 go tonight/.test(cold.last) && cold.sheet === "(10 go tonight)" && cold.lotClass === "bad", `${cold.last} / ${cold.sheet} / ${cold.lotClass}`);
+ok("Install puts the walk-in in for $1,000, on disk, once, and not among the upgrades", cold.walkin.on === true && cold.walkin.disk === true && cold.walkin.cash === 4000 && !cold.walkin.btn && /installed/.test(cold.walkin.card) && !cold.walkin.upgrades, JSON.stringify(cold.walkin).slice(0, 160));
+ok("and the same wings keep 5 nights and have 3 left, while the keg's 14 did not move", /5 nights 10 for 3 nights/.test(cold.walkin.wings) && /14 nights 40 for 14 nights/.test(cold.walkin.beer) && !cold.walkin.sheet, `${cold.walkin.wings} / ${cold.walkin.beer}`);
+ok("the Tonight panel bills the walk-in's $18 and warns what is on its last night", /Walk-in\$18/.test(cold.door) && /10 servings are on the last night of the date/.test(cold.door), cold.door.slice(cold.door.indexOf("Walk-in"), cold.door.indexOf("Walk-in") + 40));
+
+await page.evaluate(() => window.__fq.day.cb.openDoors());
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the dated night to open");
+await page.evaluate(() => { const e = window.__fq.engine; e.momentBudget = 0; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the dated night's box score");
+const gone = await page.evaluate(() => {
+  const c = window.__fq.campaign, q = sel => document.querySelector(sel);
+  const text = sel => (q(sel) || { textContent: "" }).textContent.replace(/\s+/g, " ");
+  return { walkin: text("#boxWalkin"), spoiled: text("#boxSpoiled"), wings: c.stock.wings, beer: c.stock.beer, lots: JSON.stringify(c.shelf.lots.wings || null), day: c.day };
+});
+const went = +(/(\d+) servings?/.exec(gone.spoiled) || [0, 0])[1];
+ok("the box score bills the walk-in's power on its own line", /Walk-in power\s?−\$18/.test(gone.walkin), gone.walkin);
+ok("the close took every wing past its date, all of the lot and not the flat rate's seventh, and said which rule it was", /Past the date at close/.test(gone.spoiled) && went >= 7 && went <= 10 && gone.wings === 0 && gone.lots === "null" && gone.beer > 0, `${gone.spoiled} / wings ${gone.wings} / beer ${gone.beer}`);
+ok("no page errors through the dated shelf", errors.length === 0, errors.join(" | "));
+
 await browser.close();
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);

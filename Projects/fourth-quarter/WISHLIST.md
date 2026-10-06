@@ -4,8 +4,9 @@
 Phase 9 closed the arc on 2026-09-08: the night you can lose, the landlord's
 three strikes, and an eviction that drops you a rung instead of ending the run.
 What is left is under "What is left of TG-25" in the standing backlog. The
-supply houses shipped on 2026-10-06 (#905) and the rota the same day (#908);
-per-lot shelf life has not, and none of it is ranked.
+supply houses shipped on 2026-10-06 (#905), the rota the same day (#908) and
+the dated shelf with its walk-in the same day (#909); a season that moves
+rent and wages has not, and none of it is ranked.
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -244,9 +245,9 @@ the phases below would need answered.
    on 2026-10-05 (HISTORY.md #902): all of it. Phases 6-9 ported the league,
    the regulars and the rival, the event cards and the losable lease; the
    distributors and their two event cards shipped on 2026-10-06 (#905) and
-   staff as a simulated system the same day (#908); per-lot shelf life is
-   wanted too. "What is left
-   of TG-25", below, has them in order.
+   staff as a simulated system the same day (#908), and per-lot shelf life
+   with the walk-in the same day (#909). "What is left
+   of TG-25", below, has what remains in order.
 4. ~~**Is 66 MB of texture on first paint acceptable?**~~ Answered by Phase 4
    on 2026-09-07 (HISTORY.md #201): no. A first visit now downloads 5.08 MB of
    1k JPEG; the 2k originals stay in place for `?tex=2k` and for a Retina-class
@@ -255,7 +256,9 @@ the phases below would need answered.
    own answer on 2026-10-05 (#902) was "cut it", which is this.
 5. ~~**Has `SPOILAGE_RATE = 0.15` actually been played yet?**~~ Answered by
    Devon on 2026-10-05 (#902): keep it for now. `test/smoke-settle.mjs` pins
-   2,400 settled nights at this rate, so changing it re-pins that file.
+   2,400 settled nights at this rate, so changing it re-pins that file. It
+   is still 0.15 and still what an undated shelf pays (#909); a campaign that
+   dates its shelf stops paying it.
 
 ## The standing backlog
 
@@ -264,8 +267,10 @@ starting a new list.
 
 **What is left of TG-25** (the audit's line for this project; its first
 increment shipped on 2026-10-06 as #898, #900 and #901, its second the
-same day as #905, the supply houses, and its third as #908, the rota). In the order to take it, each a session
-of its own:
+same day as #905, the supply houses, its third as #908, the rota, and its
+fourth as #909, the dated shelf). In the order to take it, each a session
+of its own: the season that moves rent and wages (the last of item 3), then
+the sound, then the texture pop.
 
 1. **The sound.** No crowd cheer on a Mules win (`audio.js` says so, and
    `main.js` plays the whistle sting alone), nothing in `audio/sfx/footsteps/`
@@ -303,13 +308,34 @@ of its own:
      rota cannot be taken down, on purpose. The "Poaching Call" card is
      unchanged apart from seeing only who is on shift; its raise is 15 of
      morale under a rota.
-   - **Per-lot shelf life** in days, next, and the Commercial Walk-In that adds
-     two. It replaces the flat `SPOILAGE_RATE`, which stays 0.15 until then
-     (Q26), and it changes every stock read in the game: the shelf becomes
-     dated lots. The inspector's `inspectorRisky()` and the bulk breaks'
-     top food tier (100 servings, a bet against the walk-in) both want
-     re-reading when it lands, and `test/smoke-settle.mjs`'s pin moves.
-   - **A season that moves rent and wages.**
+   - ~~Per-lot shelf life in days, and the Commercial Walk-In that adds
+     two.~~ Shipped 2026-10-06 (#909): `js/shelf.js`, "The Shelf" in the
+     Stock panel, `test/smoke-shelf.mjs` (131). Off until the shelf is dated,
+     and dating it is one way. A campaign that never dates it is the game as
+     it was: `SPOILAGE_RATE` is 0.15 (Q26) and `test/smoke-settle.mjs`'s pin
+     did not move, which is not what this item said would happen. It said
+     the lots would replace the flat rate and change every stock read;
+     instead `c.stock` is still the count, the lots are the same servings
+     with dates on, and `reconcile()` keeps the two agreeing, so the engine
+     did not change. A close is the flat rate or the dates, never both.
+     The inspector reads the dates on a dated shelf (the 2D build's rule)
+     and the overstock rule on an undated one. Left open by it, and small:
+     nothing has been played by a person. For the season bot, which stocks
+     to a par and sells nearly all of it, dates are worth $674 a season at
+     the Corner Tap ($722.70 of rot against ten wings), and the walk-in is
+     $2,764 spent for nothing; buying three times the food it needs, dates
+     still beat the flat rate ($3,440 lost against $5,032) and the walk-in
+     pays for itself at the flagship ($4,971 lost without it, $978 with,
+     $1,223 ahead). Whether a free, one-way switch that a careful player
+     always wants should cost something is the call to make after a played
+     week; `SHELF` and `WALKIN` in `shelf.js` are the numbers to turn. There
+     is no lot shown on the 3D shelf, no "use first" choice (oldest always
+     sells first), no price cut on last-night food, and Gold Standard's
+     food keeps no longer than anyone's, on purpose. Stock a card gives and
+     stock sold in the same night would be netted (no card gives stock
+     today). The walk-in is not in `UPGRADES`: adding a sixth id there moves
+     `smoke-settle.mjs`'s pin through the scramble's draws.
+   - **A season that moves rent and wages.** Next.
 
 Not looked at in that increment, because each needs a GPU window and a pair
 of eyes: whether bodies giving way to each other reads well on the floor,
@@ -389,7 +415,8 @@ it is like to be the boss the room walks round.
   levels. (All but the ads have shipped since: Phase 7, and #905.)
 - Spoilage is a flat 15% of the shelf; the 2D build tracks per-lot shelf life
   in days and lets a Commercial Walk-In add two. The 3D `UPGRADES` table has
-  five entries and no walk-in.
+  five entries and no walk-in. (Shipped since: #909. The walk-in is the
+  dated shelf's own gear, not a sixth upgrade.)
 - No fail state of any kind.
 
 **The night**
@@ -1170,9 +1197,9 @@ primitives made new geometry every time and never disposed it either.
 - ~~**Staff as a simulated system.**~~ Shipped 2026-10-06 (#908). Hire,
   schedule, skill growth, fatigue, poaching by the rival, all behind a rota
   that is off until it is posted. It is in the Crew panel.
-- **Per-lot shelf life.** The 2D build tracks stock as dated lots with a shelf
-  life the Commercial Walk-In extends by two days; the 3D build rots a flat
-  15%. The lot model is better and it changes every stock read in the game.
+- ~~**Per-lot shelf life.**~~ Shipped 2026-10-06 (#909). Dated lots, the 2D
+  build's nights, the Commercial Walk-In, behind a shelf that is undated
+  until it is dated. It is in the Stock panel.
 - **A performance pass.** Deliberately not phased: round 1 measured this in
   real headed Chrome (median 6.9-7.0 ms empty and at 29 patrons, p95 7.4 and
   21.1 ms, 24.6k triangles at peak) and the prompt file says not to re-measure.
