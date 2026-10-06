@@ -9,6 +9,7 @@
 import { parsePf1, formatPf1Section, SECTION_LABELS } from './parse-pf1.js';
 import { emptyCreature } from './pf1-schema.js';
 import { convertCreature, toText, ordinal } from './convert.js';
+import { toFoundryJson, foundryFileName } from './foundry.js';
 import { maxRankForLevel } from './spells.js';
 import { actionGlyph, pf2Card, FIT_TEXT } from './ui-spells.js';
 import { EXAMPLE } from './example.js';
@@ -276,5 +277,19 @@ export function initCreature(getIndex) {
     if (e.key === 'Escape' && $('spell-pop')) { e.preventDefault(); closeSpell(true); }
   });
   $('print-btn').addEventListener('click', () => window.print());
+  // A file, not the clipboard: Foundry's Import Data reads a .json from disk.
+  $('foundry-btn').addEventListener('click', () => {
+    if (!last) return;
+    const url = URL.createObjectURL(new Blob([toFoundryJson(last, { spellIndex: getIndex() })], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = foundryFileName(last);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    $('copy-status').textContent = `Saved ${a.download}`;
+    setTimeout(() => { $('copy-status').textContent = ''; }, 2500);
+  });
   return { rerun: run, load };
 }
