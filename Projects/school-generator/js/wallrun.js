@@ -52,6 +52,7 @@ import {
   MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec,
   shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg,
   insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE,
+  readAccentPaint, sameAccent,
   shapeAt,
 } from './shapes.js';
 
@@ -128,7 +129,7 @@ export function wallLineAt(floor, x, z, maxDist = ON_LINE_TOL) {
 //
 // #910. A room's accent wall (#827) is `ring.accents[i]`: the colour of that room's
 // own face of one segment. A free-standing wall has no ring to keep one on, so
-// it keeps its own: `line.accents` is `[left, right]`, each '#rrggbb' or null,
+// it keeps its own: `line.accents` is `[left, right]`, each a stored accent or null,
 // where left is the face on the run's left-hand normal going a to b
 // (finish.js's `left`, walls.js's `side: +1`). Per face and not per wall,
 // because that is what an accent already is on a room's wall, and a screen
@@ -144,8 +145,8 @@ export function wallLineAt(floor, x, z, maxDist = ON_LINE_TOL) {
 // The key is absent until a face is painted and absent again when the last
 // one is taken off, so a design without one is written as the bytes it was.
 export const LINE_LEFT = 0, LINE_RIGHT = 1;
-const HEX6 = /^#[0-9a-fA-F]{6}$/;
-const readHex = (v) => (typeof v === 'string' && HEX6.test(v) ? v.toLowerCase() : null);
+// A face holds what a room's does: a palette id or a hex (shapes.js, #912).
+const readHex = readAccentPaint;
 
 export const lineAccent = (line, side) =>
   (line && Array.isArray(line.accents) && readHex(line.accents[side])) || null;
@@ -163,7 +164,7 @@ export function setLineAccent(line, side, paint) {
   if (!line || (side !== LINE_LEFT && side !== LINE_RIGHT)) return false;
   const v = paint == null ? null : readHex(paint);
   if (paint != null && !v) return false;
-  if (lineAccent(line, side) === v) return false;
+  if (sameAccent(lineAccent(line, side), v)) return false;
   if (!Array.isArray(line.accents)) line.accents = [null, null];
   line.accents[side] = v;
   tidyLineAccents(line);

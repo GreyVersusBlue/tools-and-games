@@ -8,6 +8,7 @@ import {
 } from './grid.js';
 import {
   totalShapeArea, nextRoomName, shapesOf, shapeArea, interiorPoint,
+  ACCENT_PALETTE,
 } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS, PROP_CATALOG, registeredRows } from './catalog.js';
@@ -1850,13 +1851,16 @@ renderWallKinds();
 // takes an accent off whatever wall is clicked. Deeper than the room paints
 // above on purpose, because an accent that is one step from the room's own
 // off-white does not read as one.
-const ACCENT_PAINTS = [null, '#2f5d8a', '#3f7d6b', '#8fb8a8', '#d9a441',
-  '#c2573a', '#a33b45', '#7a4e8a', '#4a4f57'];
+// The colours are shapes.js's ACCENT_PALETTE and nowhere else (#912): a swatch
+// arms the brush with the colour's id, which is what the design stores, and
+// says its name. Buttons in palette order, so Tab walks them and Enter or
+// Space presses one.
+const ACCENT_PAINTS = [null, ...ACCENT_PALETTE];
 const accentSwatches = $('accent-swatches');
 function renderAccentSwatches() {
   const armed = editor.accentPaint;
   accentSwatches.querySelectorAll('.swatch').forEach((b) => {
-    const on = armed !== undefined && (b.dataset.paint || null) === armed;
+    const on = armed !== undefined && (b.dataset.accent || null) === armed;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
   });
@@ -1869,16 +1873,18 @@ function renderAccentSwatches() {
 }
 ACCENT_PAINTS.forEach((c) => {
   const b = document.createElement('button');
+  const id = c ? c.id : null;
   b.type = 'button';
   b.className = 'swatch';
-  b.dataset.paint = c || '';
-  b.style.background = c || 'transparent';
+  b.dataset.accent = id || '';
+  b.dataset.paint = c ? c.hex : '';
+  b.style.background = c ? c.hex : 'transparent';
   if (!c) b.style.border = '1px dashed rgba(255,255,255,0.45)';
-  b.title = c ? `Paint a wall ${c}` : 'Take an accent off a wall';
-  b.setAttribute('aria-label', c ? `Accent paint ${c}` : 'Remove accent');
+  b.title = c ? `Paint a wall ${c.name}` : 'Take an accent off a wall';
+  b.setAttribute('aria-label', c ? `Accent paint ${c.name}` : 'Remove accent');
   b.setAttribute('aria-pressed', 'false');
   b.addEventListener('click', () => {
-    editor.setAccentPaint(editor.accentPaint === c ? undefined : c);
+    editor.setAccentPaint(editor.accentPaint === id ? undefined : id);
   });
   accentSwatches.appendChild(b);
 });

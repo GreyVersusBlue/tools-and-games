@@ -29,6 +29,7 @@ import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, toggleOpening, removeShape,
   accentFaceAt, setSegAccent, segAccent,
+  readAccentPaint, accentHex, accentName, sameAccent,
   moveOpening, openingsOnSeg, defaultOpeningWidth, isWindowOpening,
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
@@ -793,6 +794,10 @@ export function initEditor({
   const HINT_ACCENT = 'Accent — click just inside a room, by the wall to paint; ' +
     'a free-standing wall takes one on each side. ' +
     'The same colour again takes it off. Esc goes back to drawing walls.';
+  // With a colour up the hint leads with its name (#912): two swatches a
+  // colour-blind eye cannot tell apart are told apart here.
+  const accentHint = () => (accentPaint
+    ? HINT_ACCENT.replace('Accent —', `Accent, ${accentName(accentPaint)} —`) : HINT_ACCENT);
 
   // The room's own wall, or a free-standing one if that is nearer the click:
   // a screen standing in a room is closer to a click beside it than any side
@@ -812,7 +817,7 @@ export function initEditor({
   function accentLineDown(face) {
     const { line, side } = face;
     const had = lineAccent(line, side);
-    const paint = accentPaint && had === accentPaint ? null : accentPaint;
+    const paint = accentPaint && sameAccent(had, accentPaint) ? null : accentPaint;
     // Refused for the reason #857 refuses a face with no wall: it would be
     // stored and paint nothing. Taking one off is always allowed.
     if (paint && lineKind(line) !== SEG_WALL) {
@@ -831,7 +836,7 @@ export function initEditor({
     }
     fire({ structural: true, commit: true });
     say(paint
-      ? `Accent — this side of the ${lineLength(line).toFixed(1)}ft free-standing wall painted ${paint}.`
+      ? `Accent — this side of the ${lineLength(line).toFixed(1)}ft free-standing wall painted ${accentName(paint)}.`
       : 'Accent — this side of the free-standing wall is back to the room\'s own paint.');
   }
 
@@ -845,7 +850,7 @@ export function initEditor({
     const ring = face.shape.rings[face.ring];
     const had = segAccent(ring, face.seg);
     // The colour it already is, clicked again, is the way back.
-    const paint = accentPaint && had === accentPaint ? null : accentPaint;
+    const paint = accentPaint && sameAccent(had, accentPaint) ? null : accentPaint;
     const name = face.shape.name || 'this room';
     // An accent is a face of a wall (#857): with no wall on the line it would
     // be stored and paint nothing. Taking one off is always allowed.
@@ -862,18 +867,18 @@ export function initEditor({
     fire({ structural: true, commit: true });
     const [a, b] = segEnds(ring, face.seg);
     say(paint
-      ? `Accent — ${segLength(a, b).toFixed(1)}ft of ${name}'s wall painted ${paint}.`
+      ? `Accent — ${segLength(a, b).toFixed(1)}ft of ${name}'s wall painted ${accentName(paint)}.`
       : `Accent — ${name}'s wall is back to the room's own paint.`);
   }
 
   function setAccentPaint(v) {
     accentPaint = v === undefined ? undefined
       : v === null ? null
-      : (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : undefined);
+      : (readAccentPaint(v) || undefined);
     if (accentPaint !== undefined) cancelWallRun(true);
     refreshDraft();
     updateCursor(null);
-    if (tool === 'wall') say(accentPaint === undefined ? HINT_WALL : HINT_ACCENT);
+    if (tool === 'wall') say(accentPaint === undefined ? HINT_WALL : accentHint());
     if (onAccentMode) onAccentMode(accentPaint);
   }
 
@@ -1253,7 +1258,7 @@ export function initEditor({
       if (face) {
         const [a, b] = face.line ? lineEnds(face.line)
           : segEnds(face.shape.rings[face.ring], face.seg);
-        edgeCursor.material.color.set(accentPaint || '#f2f0ec');
+        edgeCursor.material.color.set(accentHex(accentPaint) || '#f2f0ec');
         edgeCursor.material.opacity = 0.7;
         edgeCursor.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
         edgeCursor.scale.set(Math.max(0.2, segLength(a, b) / (CELL + WALL_T)), 1, 1);
@@ -2184,7 +2189,7 @@ export function initEditor({
       refreshDraft(); updateCursor(null);
     },
     get wallKind() { return wallKind; },
-    // The accent brush (#832): a hex to paint with, null to clear, undefined
+    // The accent brush (#832): a palette id (or a hex) to paint with, null to clear, undefined
     // to go back to drawing walls.
     setAccentPaint,
     get accentPaint() { return accentPaint; },
