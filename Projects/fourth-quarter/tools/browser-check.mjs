@@ -1202,9 +1202,12 @@ const armed = await page.evaluate(() => {
   fq.campaign.dist.spend = 3200; // 3% earned
   fq.day.stockPanel();
   const standing = q("#houseStanding").textContent;
+  // a button that is gone reads as no label, so a switch on the first click
+  // fails the line below by name instead of throwing here
+  const label = sel => (q(sel) || {}).textContent ?? null;
   q('[data-house="gold"]').click();
-  const first = { dist: fq.campaign.dist.id, spend: fq.campaign.dist.spend, label: q('[data-house="gold"]').textContent, other: q('[data-house="county"]').textContent };
-  q('[data-house="gold"]').click();
+  const first = { dist: fq.campaign.dist.id, spend: fq.campaign.dist.spend, label: label('[data-house="gold"]'), other: label('[data-house="county"]') };
+  if (q('[data-house="gold"]')) q('[data-house="gold"]').click();
   const second = { dist: fq.campaign.dist.id, spend: fq.campaign.dist.spend, wings: [...document.querySelectorAll("#orderSheet tr")][1].textContent };
   fq.campaign.dist = { id: "cask", spend: 0 };
   fq.day.closePanel();
