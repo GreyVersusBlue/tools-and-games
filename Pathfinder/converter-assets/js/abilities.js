@@ -18,10 +18,12 @@
 //   strike(name)     -> { name, damage, dice } of the converted Strike, or null
 //   strikeFor(pf1)   -> the same, for the Strike whose PF1e damage was `pf1`
 //   scale(pf1)       -> PF1e damage dice scaled the way Strike damage was, or null
+//   attack(pf1Bonus) -> the PF2e attack bonus at the same tier, for this level
+//   umr(name)        -> the converter's text for a universal ability, or ''
 //   tail(text)       -> trailing prose, converted the way unmatched text is
 // }
 
-export const RULES = Object.freeze(['affliction', 'gaze', 'constrict', 'trample', 'rend', 'throw-rock', 'distraction']);
+export const RULES = Object.freeze(['affliction', 'gaze', 'constrict', 'trample', 'rend', 'throw-rock', 'distraction', 'paralysis', 'pull', 'rake', 'grab', 'limit', 'channel']);
 
 const ABILITY_CONDITION = {
   str: 'enfeebled 1', strength: 'enfeebled 1', dex: 'clumsy 1', dexterity: 'clumsy 1',
@@ -40,17 +42,35 @@ const keepTail = (rest, ctx) => {
   return t ? ' ' + ctx.tail(t) : '';
 };
 
-// "1d3 Dex damage and 1d3 Con damage", "1d2 Str", "1d4 Constitution damage".
-function afflictionEffect(effect) {
+// A PF1e effect that is already a condition, and the PF2e condition for it.
+// Nauseated is sickened 1, as it is under Distraction (HISTORY #894).
+const EFFECT_CONDITION = {
+  sleep: 'unconscious', unconsciousness: 'unconscious', paralysis: 'paralyzed',
+  sickened: 'sickened 1', nauseated: 'sickened 1',
+};
+const SPAN = '\\d+(?:d\\d+(?:\\s*[+-]\\s*\\d+)?)?\\s+(?:rounds?|minutes?|hours?|days?)';
+const EFFECT_FOR = new RegExp(`^([a-z]+)(?:\\s+for\\s+(${SPAN}))?$`, 'i');
+
+// "1d3 Dex damage and 1d3 Con damage", "1d2 Str", "1d4 Constitution damage",
+// "sleep for 1 minute". A condition's own duration is written only when it is
+// not the stage's interval, which the stage line gives already.
+function afflictionEffect(effect, interval) {
   const parts = String(effect).trim().split(/\s+and\s+/);
   const out = [];
+  let conditionOnly = true;
   for (const p of parts) {
     const m = p.match(/^(?:\d+d\d+|\d+)\s+([A-Za-z]+)(?:\s+(?:damage|drain))?$/);
-    const cond = m && ABILITY_CONDITION[m[1].toLowerCase()];
+    let cond = m && ABILITY_CONDITION[m[1].toLowerCase()];
+    if (cond) conditionOnly = false;
+    else {
+      const e = p.match(EFFECT_FOR);
+      cond = e && EFFECT_CONDITION[e[1].toLowerCase()];
+      if (cond && e[2] && e[2].replace(/\s+/g, ' ') !== `1 ${interval}`) cond += ` for ${e[2].replace(/\s+/g, ' ')}`;
+    }
     if (!cond) return null;
     if (!out.includes(cond)) out.push(cond);
   }
-  return out.length ? out.join(' and ') : null;
+  return out.length ? { stage: out.join(' and '), conditionOnly } : null;
 }
 
 const AFFLICTION = /^(?:([A-Z][A-Za-z' -]*?):\s*)?([A-Za-z ]+?)\s*[—–-]+\s*injury;\s*save\s+(?:(Fort|Fortitude|Ref|Reflex|Will)\s+)?DC\s+(\d+);\s*(?:onset\s+([^;]+);\s*)?frequency\s+1\/(round|minute|hour|day)(?:\s+for\s+(\d+\s+(?:rounds|minutes|hours|days)))?;\s*effect\s+([^;]+);\s*cure\s+\d+\s+(?:consecutive\s+)?saves?\.?\s*([\s\S]*)$/;
@@ -61,8 +81,9 @@ function affliction(name, text, ctx) {
   const m = String(text).match(AFFLICTION);
   if (!m) return null;
   const [, title, source, save, dc1, onset, interval, max, effect, rest] = m;
-  const stage = afflictionEffect(effect);
-  if (!stage) return null;
+  const read = afflictionEffect(effect, interval);
+  if (!read) return null;
+  const { stage, conditionOnly } = read;
   const dc = ctx.dc(Number(dc1));
   const line = [
     `Saving Throw DC ${dc} ${SAVE[(save || 'fort').toLowerCase()]}`,
@@ -73,7 +94,7 @@ function affliction(name, text, ctx) {
   return {
     rule: 'affliction', name: title ? titleCase(title.trim()) : null, actions: '', traits: [kind],
     text: `A creature damaged by the monster's ${singular(source)} Strike is exposed. ${line}.${keepTail(rest, ctx)}`,
-    why: `PF1e ${kind} stat line: save DC ${dc1} rescaled for the level; ${effect.trim()} became ${stage}, the condition PF2e uses where PF1e damaged an ability score; the cure count is dropped, since a PF2e affliction ends by its stages.`,
+    why: `PF1e ${kind} stat line: save DC ${dc1} rescaled for the level; ${effect.trim()} became ${stage}, ${conditionOnly ? 'the PF2e condition of that name' : 'the condition PF2e uses where PF1e damaged an ability score'}; the cure count is dropped, since a PF2e affliction ends by its stages.`,
     numbers: { dc },
   };
 }
@@ -166,12 +187,114 @@ function distraction(params, ctx) {
   };
 }
 
-const LINE_RULES = { constrict, trample, rend, 'rock throwing': throwRock, distraction };
+const sentence = (s) => { const t = String(s).trim().replace(/\.$/, ''); return t ? ` ${t[0].toUpperCase()}${t.slice(1)}.` : ''; };
+const DURATION = new RegExp(`^${SPAN}$`, 'i');
+
+// "1d4+1 rounds, DC 13" and, on the ghoul, "elves are immune to this effect".
+// A third clause is carried as a sentence unless it holds a figure, which no
+// rule here could vouch for.
+function paralysis(params, ctx) {
+  const m = String(params).match(/^([^,]+),\s*DC\s+(\d+)(?:,\s*([^,\d]+))?$/i);
+  if (!m || !DURATION.test(m[1].trim())) return null;
+  const dc = ctx.dc(Number(m[2]));
+  return {
+    rule: 'paralysis', name: 'Paralysis', actions: '', traits: ['incapacitation'],
+    text: `A creature hit by a Strike that lists paralysis must succeed at a DC ${dc} Fortitude save or be paralyzed for ${m[1].trim().replace(/\s+/g, ' ')}.${m[3] ? sentence(ctx.tail(m[3])) : ''}`,
+    why: `PF1e paralysis (${params}): DC ${m[2]} rescaled for the level; the duration is kept, and the incapacitation trait is what PF2e puts on an effect that takes a creature out of the fight.`,
+    numbers: { dc },
+  };
+}
+
+// "tongue, 5 feet": Pull and Push name a Strike, and the creature must have it.
+const drag = (verb) => (params, ctx) => {
+  const m = String(params).match(/^([a-z ]+?),\s*(\d+)\s*(?:ft\.?|feet)$/i);
+  const s = m && ctx.strike(singular(m[1]));
+  if (!s) return null;
+  return {
+    rule: 'pull', name: titleCase(verb), actions: '1', traits: [],
+    text: `Requirements The monster's last action was a successful ${s.name} Strike. Effect The monster ${verb === 'pull' ? `pulls the target ${m[2]} feet toward itself` : `pushes the target ${m[2]} feet away from itself`}.`,
+    why: `PF1e ${verb} (${params}): the distance is kept; the Strike is the creature's own ${s.name}.`,
+    numbers: {},
+  };
+};
+
+// "2 claws +7, 1d4+3": extra claw attacks on a creature the monster holds.
+const COUNT = { 2: 'two', 3: 'three', 4: 'four' };
+function rake(params, ctx) {
+  const m = String(params).match(/^([234])\s+(claws|talons)\s+\+(\d+),\s*(\d+d\d+(?:\s*[+-]\s*\d+)?)$/i);
+  if (!m) return null;
+  const pf1 = m[4].replace(/\s+/g, '');
+  const from = ctx.strike(singular(m[2])) || ctx.strikeFor(pf1);
+  const dice = from ? from.dice : ctx.scale(pf1);
+  const bonus = ctx.attack(Number(m[3]));
+  if (!dice || bonus == null) return null;
+  const part = singular(m[2]);
+  return {
+    rule: 'rake', name: 'Rake', actions: '1', traits: [],
+    text: `Requirements The monster has a creature grabbed. Effect The monster makes ${COUNT[m[1]]} ${part} Strikes against that creature, each at +${bonus} for ${dice} slashing damage.`,
+    why: `PF1e rake (${params}): attack +${m[3]} rescaled for the level; ${from ? `the damage of the converted ${from.name} Strike` : 'the dice scaled as Strike damage was'}.`,
+    numbers: { attack: bonus, damage: dice },
+  };
+}
+
+// "Large", "any size": the biggest creature the monster can Grab.
+const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan', 'colossal'];
+function grab(params, ctx) {
+  const p = String(params).toLowerCase();
+  const base = ctx.umr('grab');
+  if (!base || !(p === 'any size' || SIZES.includes(p))) return null;
+  const size = p === 'colossal' ? 'Gargantuan' : titleCase(p);
+  return {
+    rule: 'grab', name: 'Grab', actions: '', traits: [],
+    text: `${base} It can Grab a creature of ${p === 'any size' ? 'any size' : `${size} size or smaller`}.`,
+    why: `PF1e grab (${params}): the size limit is kept${p === 'colossal' ? ', and Colossal is Gargantuan in PF2e' : ''}.`,
+    numbers: {},
+  };
+}
+
+const TIMES = (n) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`);
+
+// "channel negative energy 3/day (DC 11, 1d6)": the limit is in the name.
+function channel(name, params, ctx) {
+  const n = String(name).match(/^channel (negative|positive) energy (\d+)\/day$/);
+  const m = n && String(params).match(/^DC\s+(\d+),\s*(\d+d6)$/i);
+  if (!m) return null;
+  const dice = ctx.scale(m[2]);
+  if (!dice) return null;
+  const dc = ctx.dc(Number(m[1]));
+  const neg = n[1] === 'negative';
+  const [hurt, mend, type] = neg ? ['living', 'undead', 'void'] : ['undead', 'living', 'vitality'];
+  return {
+    rule: 'channel', name: `Channel ${titleCase(n[1])} Energy`, actions: '2', traits: [type],
+    text: `Frequency ${TIMES(Number(n[2]))} per day. Effect Each ${hurt} creature within 30 feet takes ${dice} ${type} damage (DC ${dc} basic Will save). The monster can instead restore that many Hit Points to each ${mend} creature there.`,
+    why: `PF1e channel energy (${params}): DC ${m[1]} rescaled for the level; the dice scaled as Strike damage was; 30 feet is the burst every PF1e channel has.`,
+    numbers: { dc, damage: dice },
+  };
+}
+
+// "9/day", "9/day, DC 18": a class feature the stat block names and gives no
+// text for. The limit is all there is to write, so that is what is written.
+function limit(name, params, ctx) {
+  const m = String(params).match(/^(\d+)\/day(?:,\s*DC\s+(\d+))?$/i);
+  if (!m || ctx.umr(name)) return null;
+  const dc = m[2] ? ctx.dc(Number(m[2])) : null;
+  return {
+    rule: 'limit', name: null, actions: '', traits: [],
+    text: `Frequency ${TIMES(Number(m[1]))} per day.${dc ? ` A save against it is DC ${dc}.` : ''}`,
+    why: `PF1e stat line (${params}): the use limit as a Frequency entry${dc ? `, DC ${m[2]} rescaled for the level` : ''}. The stat block names this ability and gives no text for it, so its effect is not here.`,
+    numbers: dc ? { dc } : {},
+  };
+}
+
+const LINE_RULES = { constrict, trample, rend, 'rock throwing': throwRock, distraction, paralysis, pull: drag('pull'), push: drag('push'), rake, grab };
 
 // A special attack with no text of its own: "rend (2 claws, 1d6+7)".
 export function rewriteLine(name, params, ctx) {
-  const fn = LINE_RULES[String(name).toLowerCase().trim()];
-  return (fn && params != null && fn(String(params).trim(), ctx)) || null;
+  if (params == null) return null;
+  const n = String(name).toLowerCase().trim(), p = String(params).trim();
+  const fn = LINE_RULES[n];
+  if (fn) return fn(p, ctx) || null;
+  return channel(n, p, ctx) || limit(n, p, ctx) || null;
 }
 
 // A special ability with a block of text under SPECIAL ABILITIES.
