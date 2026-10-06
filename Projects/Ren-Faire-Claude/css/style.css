@@ -404,6 +404,14 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
   padding: 0.45rem 0.1rem 0;
 }
 .plat-tools .btn { min-width: 2.4rem; }
+.plat-tools .postcard-btn { margin-right: auto; }
+.postcard-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0 0.7rem;
+}
 
 .grounds-map {
   position: relative;

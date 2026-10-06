@@ -118,11 +118,13 @@ account's other GitHub Pages projects.
 - `js/mapview.js` — Phase 6: the plat's geometry, pure. The tracks (`TRACK`, which is `.grounds-map`'s 1px gap and 1px border), the paper margin around them (`FRAME`, which `.plat-stage`'s padding copies), and a *view*: the content under one scale-then-translate transform into the stage. `createView`/`fit`/`restScale` (never above 1, never under the pointer's floor), `clampPan`/`panBy`, `zoomAt` (the point under the cursor stays put), `pinch`, `keyboardStep`, `cellToRect`/`screenToCell` (the 1px gap is nobody's), `trackTransform` (what the marker grid's CSS transform is), `stageHeight`, `edges`, and `minScaleFor`/`markerSize`, which is where the 44px touch guarantee lives now: on a coarse pointer the floor scale keeps a marker at 44px however the stage is sized. Nothing in it reads the document
 - `js/plat.js` — Phase 6: `paintPlat(ctx, view, opts)` draws the ground on the `.plat-canvas` under the view's transform: the double rule, the tracks' brown rule exactly `trackSize()` big, every unlocked cell in its terrain with the textures the old `.terrain-cell` CSS painted, a cartouche and a compass in the bottom band, and in screen space a shade on any edge the content runs past. The ctx is a parameter, so `tests/mapview.mjs` paints into a recorder and counts the cells
 - **Phase 6, increment 2** also added the readout: `ui.js` renders a `.plat-readout` live region under the sheet and exports `readoutDefault(placing)`, `previewLine(preview)` and `readoutFor(el, builtPlots)` — the three pure functions that decide what goes in it — and `main.js` writes it on `pointerover` and `focusin`. `title` is the only place this map has ever put a sentence and a touch screen has never shown one, so the refusal on a blocked cell, a built plot's stats and the preview all land there instead
+- `js/postcard.js` — the postcard (#914), pure: `postcardModel(state)` (the tier, season, weekend and day, the figures of the weekend the state is in, the gate and each built plot) and `paintPostcard(ctx, model, opts)`, which paints `plat.js`'s sheet under one view at a fixed 1200 x 800 with the marker sheet's frames on top and the figures in a column. `main.js`'s `savePostcard` paints it on a canvas that is never on the page and hands the browser a PNG; it reads the state and writes nothing
+- `tools/postcard-check.mjs` — the postcard's browser check, run by hand (`npm run postcard`): the real page in Chromium on a seeded save, the download taken and read (the PNG header's size, the same bytes on a second press and after a reload, six known pixels, no ink past the column, no offsite request, the save unchanged, the button on the zoom buttons' row at 1280 and 375). 24 checks, exits non-zero on failure, not in CI
 - `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test` runs it, `tests/guests.mjs`, `tests/mapview.mjs` and `tests/wiring.mjs`)
 - `tests/mapview.mjs` — Phase 6's suite, pure Node: every function in `mapview.js` round-tripped against its inverse or its invariant (cell ↔ screen at five scales and two cell sizes, the pan clamp, a zoom that does not slide the anchor, pinch, the keys, the 44px floor on every tier at five stage widths), and `plat.js` painted into a recording ctx: one fill per cell of the unlocked tier at `cellOrigin()` in its terrain's colour, the slab not a pixel wider, the edge shades only where the map runs past
 - `tests/wiring.mjs` — Phase 8's audit, pure Node and no DOM: reads `js/ui.js` and `js/main.js` as text and asserts that every `data-action` the page emits has a `case` in `handleAction` or a branch on the delegated change listener, that every case and branch has something that emits it, and that every one of them is reached by `tests/smoke.mjs` or `Tools/board-check/play-games.mjs` (read-only). The three contract actions are interpolated rather than written as literals, so it resolves them off `contractButtons`'s call sites (#263); the two actions reached by another selector and the one covered by only one suite carry their reasons in a list that fails once an entry stops being needed (#264). It is its own file because a text scan that lives inside a file it scans reads its own inventory back as coverage (#262)
 - `tools/shoot-states.mjs` — Phase 5's camera, run by hand (`npm run shoot`): a scripted season under Node, seventeen states written into the save slot, the real page in Chromium at 1280, 1080, 820 (touch) and 375 (touch), one full-page PNG per state per viewport in `Tools/board-check/shots/games/faire-weekend/` and a `measurements.json` of live rectangles beside them. Needs `playwright-core` (a devDependency) and a Chromium on disk; asserts nothing
-- `tests/guests.mjs` — Phase 1's suite, pure Node: the route tree, routes between cells, spawning, attractions, the walk's invariants (nobody off-grid, purse + spent is the purse they came with, arrivals sum every way), taste, heat, distance, the unreachable spur, the seam into `simulateDay`, a forty-seed event fingerprint pinned against the Stage 22 engine, and a 30-day run through the state layer
+- `tests/guests.mjs` — Phase 1's suite, pure Node: the route tree, routes between cells, spawning, attractions, the walk's invariants (nobody off-grid, purse + spent is the purse they came with, arrivals sum every way), taste, heat, distance, the unreachable spur (and, since #914, every path cell on the map against the route tree: the spur's six are the only ones the gate does not reach), the seam into `simulateDay`, a forty-seed event fingerprint pinned against the Stage 22 engine, and a 30-day run through the state layer
 - `package.json` / `package-lock.json` / `.gitignore` — dev-only. They exist
   solely so `npm test` can install jsdom; nothing in them runs on the static
   GitHub Pages deploy, and nothing in `index.html` imports from them. Keep
@@ -158,13 +160,15 @@ npm install
 npm test
 ```
 
-2,149 checks in `tests/smoke.mjs`, 168 in `tests/guests.mjs`, 172 in
-`tests/mapview.mjs` and 136 in `tests/wiring.mjs` (see the file list above
-for what the last three cover). Two more scripts need a real Chromium and are not part of `npm
-test`: `npm run shoot` (Phase 5's layout camera, `tools/shoot-states.mjs`)
-and `npm run touch` (Phase 6 increment 2's readout check,
+2,168 checks in `tests/smoke.mjs`, 170 in `tests/guests.mjs`, 223 in
+`tests/mapview.mjs` and 139 in `tests/wiring.mjs` (see the file list above
+for what the last three cover). Three more scripts need a real Chromium and are not part of `npm
+test`: `npm run shoot` (Phase 5's layout camera, `tools/shoot-states.mjs`),
+`npm run touch` (Phase 6 increment 2's readout check,
 `tools/touch-readout.mjs` — 24 checks on a real touchscreen at 375 and
-820, exits non-zero on failure). Both take `CHROME=/path/to/chrome`. The first: pure engine/state logic (RNG determinism, terrain/grid data
+820, exits non-zero on failure) and `npm run postcard` (the postcard's
+PNG, `tools/postcard-check.mjs` — 24 checks, exits non-zero on failure).
+All three take `CHROME=/path/to/chrome`. The first: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to

@@ -10,6 +10,7 @@ import { validateSchedule, summarizeWeekend, currentGridSize, terrainAt, preview
 import { CONFIG } from './data.js';
 import * as MapView from './mapview.js';
 import { paintPlat } from './plat.js';
+import { POSTCARD, POSTCARD_FONTS, postcardModel, postcardFileName, paintPostcard } from './postcard.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 
 // Phase 2: newGame(), not createInitialState() — the latter is deterministic
@@ -275,10 +276,63 @@ function wireMap() {
   window.addEventListener('resize', () => layoutMap(false));
 }
 
+// The postcard: the faire as it stands, painted by postcard.js onto a
+// canvas that is never on the page, and handed to the browser as a PNG.
+// It reads the state and writes nothing: no render, no save, no field. Its
+// answer is written straight into the page: the readout under the plat
+// while planning, the stub's own line on the weekend-end screen.
+let markerSheet = null;
+function loadMarkerSheet() {
+  if (!markerSheet) {
+    markerSheet = new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = new URL('../assets/sprites/markers.png', import.meta.url).href;
+    });
+  }
+  return markerSheet;
+}
+
+async function savePostcard(el) {
+  const note = (el.parentElement && el.parentElement.querySelector('.postcard-note')) || $('.plat-readout');
+  const say = (text) => { if (note) note.textContent = text; };
+  const model = postcardModel(state);
+  const canvas = document.createElement('canvas');
+  canvas.width = POSTCARD.w;
+  canvas.height = POSTCARD.h;
+  // jsdom, and any window with no 2D canvas, cannot paint one, and jsdom
+  // says so on stderr if it is asked (see applyView).
+  const ctx = typeof window.CanvasRenderingContext2D === 'function' ? canvas.getContext('2d') : null;
+  if (!ctx) { say('This browser cannot draw a postcard.'); return; }
+  // The faces are the page's own, but a face nothing on the page has used
+  // yet is not loaded, and a canvas does not wait for it.
+  if (document.fonts && document.fonts.load) {
+    await Promise.all(POSTCARD_FONTS.map(f => document.fonts.load(f).catch(() => null)));
+  }
+  paintPostcard(ctx, model, { terrainAt, sprite: await loadMarkerSheet() });
+  const name = postcardFileName(model);
+  canvas.toBlob((blob) => {
+    if (!blob) { say('The postcard could not be saved.'); return; }
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    say(`Saved ${name}.`);
+  }, 'image/png');
+}
+
 function handleAction(action, el) {
   const id = el.dataset.id;
   let res;
   switch (action) {
+    case 'savePostcard':
+      savePostcard(el);
+      return;
     // Phase 6: the three zoom buttons touch the view and nothing else, so
     // they apply it without a render (a render would drop nothing, but
     // it would repaint a map that only needed its transform changed).

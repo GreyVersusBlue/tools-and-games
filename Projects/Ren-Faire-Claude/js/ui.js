@@ -385,6 +385,16 @@ function renderCrewTable(state, negotiating) {
 
 
 
+// The postcard button (main.js's savePostcard; the picture is
+// postcard.js's). While planning it sits in the plat's tool row, at the
+// far end from the zoom buttons, and its answer goes to the readout: the
+// plat is a sticky panel about as tall as a laptop's window, and a row of
+// its own pushed the top of the map under the header at 1280 x 800. The
+// weekend-end stub has no readout, so there it brings its own line.
+export function renderPostcardButton() {
+  return `<button class="btn small postcard-btn" data-action="savePostcard" title="Save a picture of the grounds with this weekend's figures, as a PNG">Save a postcard</button>`;
+}
+
 // One frame of the marker sheet as a span that fills its marker. Percent
 // sizes and positions, so the frame scales with --cell and with the
 // marker's span (a 2 x 2 stage is a 2 x 2 frame) and never needs a pixel
@@ -613,6 +623,7 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
       </div>
     </div>
     <div class="plat-tools">
+      ${renderPostcardButton()}
       <button class="btn small" data-action="mapZoomOut" aria-label="Zoom the site plan out" title="Zoom out">\u2212</button>
       <button class="btn small" data-action="mapFit" aria-label="Fit the site plan to its sheet" title="Fit">Fit</button>
       <button class="btn small" data-action="mapZoomIn" aria-label="Zoom the site plan in" title="Zoom in">+</button>
@@ -1178,6 +1189,10 @@ export function renderWeekendEnd(state, summary) {
       ${renderRenownRows(state)}
       ${renderUnlockNotice(state)}
       ${renderSeasonClose(state)}
+      <div class="postcard-bar">
+        ${renderPostcardButton()}
+        <span class="postcard-note hint" role="status" aria-live="polite"></span>
+      </div>
       <button class="btn primary" data-action="startNextWeekend">Begin Weekend ${state.season + 1} \u2192</button>
     </div>
   `;

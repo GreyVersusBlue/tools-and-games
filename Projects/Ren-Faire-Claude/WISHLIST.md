@@ -341,7 +341,10 @@ Open and unclaimed. Add here rather than starting a new list.
 - The col-3 path spur is disconnected from the gate at row 3, found building
   Stage 17 and pinned by a `computePathDistances` assertion rather than fixed.
   Since Phase 1 increment 1 the day report names any built plot that fronts
-  it; the ruling is Phase 1's next increment.
+  it; the ruling is Phase 1's next increment. *Ruled, #227: the gap stays.
+  2026-10-06 (#914): `tests/guests.mjs` lists every path cell with no walk
+  from the gate and wants exactly the spur's six, so a second spur, or a
+  seventh cell on this one, fails by name.*
 - `simulateDay` is 260 undecomposed lines. A drag-to-reorder move for planning
   plots is still unbuilt too.
 
@@ -356,11 +359,13 @@ Open and unclaimed. Add here rather than starting a new list.
 - The relationship deltas (`RELATIONSHIP` in `data.js`) have not been played
   through a season. Reaching Devoted takes about eight good days on the
   bill; reaching Sour takes ten days benched. Whether that is the right pace
-  is a question for real play, like Q27's numbers.
+  is a question for real play. (Q27's numbers were one too; Devon answered
+  it on 2026-10-05: right as they are.)
 - More filler for `EVENT_POOL` (12), `AD_CAMPAIGNS` (4), and the quirk set
   (four quirks across fifteen performers, one of them blank).
 - ~~A second, deeper win track;~~ *Phase 4: renown, and the season that
-  closes on it.* A photo-mode/postcard export off `summarizeWeekend`; a
+  closes on it.* ~~A photo-mode/postcard export off `summarizeWeekend`~~
+  *(#914, 2026-10-06: Save a postcard, see the end of this file)*; a
   build-preview of a placement's effect on grounds draw.
 - More renown sources. Three lines pay today (mood, acts kept, grounds
   intact) and the kept line does most of the work: a first run lands 24–32
@@ -840,9 +845,15 @@ click. Both are real, neither is what round 2 and round 3 kept finding.
 ## What this leaves for a later arc
 
 - **Sound.** Nothing here makes a noise, and a faire is loud.
-- **A postcard.** The plat at poster size with `summarizeWeekend`'s figures
-  stamped on it, downloadable — cheap once Phase 6's canvas exists, awkward
-  before it.
+- ~~**A postcard.** The plat at poster size with `summarizeWeekend`'s figures
+  stamped on it, downloadable.~~ *Shipped 2026-10-06 (#914): a Save a
+  postcard button in the plat's tool row and on the weekend-end stub, a 1200 x 800
+  PNG from `js/postcard.js`. Left of it: nobody has judged the card by eye
+  (one was looked at once, by the session that built it); `npm run
+  postcard` reads the real PNG in Chromium and is not in CI, because the
+  workflow was not that session's to edit; the card has no weather, no act
+  names and no best day on it; a poster size was not built; and a faire has
+  no name of its own to print.*
 - **The `.json` swap `data.js`'s own header comment promises**, so a weekend's
   content could be authored without touching code; and a first run that
   teaches, since there is no tutorial and no start screen.

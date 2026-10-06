@@ -316,5 +316,139 @@ function recorder() {
   assert(cellFills.length === 140, `Deep Woods Trail paints 140 cells (${cellFills.length}), and no South Meadow row`);
 }
 
+// ---------------------------------------------------------------------
+// The postcard: one fixed-size picture of the faire, painted from a model
+// ---------------------------------------------------------------------
+{
+  const State = await import(mod('js/state.js'));
+  const { summarizeWeekend } = await import(mod('js/engine.js'));
+  const { CONFIG, ENTRANCE } = await import(mod('js/data.js'));
+  const P = await import(mod('js/postcard.js'));
+  const { PAPER } = await import(mod('js/plat.js'));
+  const fs = await import('node:fs');
+  const atlas = JSON.parse(fs.readFileSync(path.join(root, 'assets', 'sprites', 'markers.json'), 'utf8'));
+
+  // A recorder that also keeps what each call was drawn with: the paper
+  // is told from every other fill by its composite mode, and the text by
+  // its font.
+  const rec = () => {
+    const calls = [], st = { globalCompositeOperation: 'source-over' };
+    return new Proxy({}, {
+      get(_, name) {
+        if (name === 'calls') return calls;
+        if (name === 'createLinearGradient') return () => ({ addColorStop() {} });
+        return (...args) => { calls.push({ name, args, fill: st.fillStyle, stroke: st.strokeStyle, font: st.font, op: st.globalCompositeOperation, align: st.textAlign }); };
+      },
+      set(_, name, value) { st[name] = value; return true; },
+    });
+  };
+  const paint = (model, opts) => { const ctx = rec(); const view = P.paintPostcard(ctx, model, opts); return { calls: ctx.calls, view }; };
+  const SHEET = { sheet: true };
+  const figure = (m, label) => m.figures.find(f => f.label === label)?.value;
+
+  assert(P.POSTCARD.w === 1200 && P.POSTCARD.h === 800, 'a postcard is 1200 x 800, whatever the page');
+
+  // A fresh faire, before anything has happened.
+  const fresh = State.createInitialState();
+  const m0 = P.postcardModel(fresh);
+  assert(m0.title === 'Faire Weekend' && m0.tier === 'Home Grounds' && m0.cols === 10 && m0.rows === 7, 'the card names the game and the tier the faire has reached');
+  assert(m0.when === 'Season 1 · Weekend 1 · Friday', `and its season, weekend and day (${m0.when})`);
+  assert(m0.played === 0 && m0.heading === 'Before the gates open', 'a Friday morning card says no day has been played');
+  assert(figure(m0, 'Through the gate') === '—' && figure(m0, 'Crowd mood') === '—' && figure(m0, 'Weekend net') === '—', 'and prints a dash for the three figures a day would have filled');
+  assert(figure(m0, 'Reputation') === String(CONFIG.startingReputation) && figure(m0, 'Plots built') === '0', 'the standing figures are the state’s own');
+  assert(m0.plots.length === 0 && m0.gate.x === ENTRANCE.x && m0.gate.y === ENTRANCE.y, 'an empty grounds has the gate and no plots');
+  assert(P.postcardFileName(m0) === 'faire-weekend-season-1-weekend-1-friday.png', `the file is named for the season, weekend and day (${P.postcardFileName(m0)})`);
+
+  // A weekend played with fixed seeds.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 8, 5).state;
+  s = State.buildPlot(s, 'food', 6, 3).state;
+  s = State.buildPlot(s, 'vendor', 4, 3).state;
+  s = State.placePlot(s, 'food', 1, 3).state;
+  assert(s.builtPlots.length === 4 && s.builtPlots.filter(p => p.status === 'built').length === 3, 'sanity: three built plots and one still a plan');
+  const planned = P.postcardModel(s);
+  assert(planned.plots.length === 3 && !planned.plots.some(p => p.x === 1 && p.y === 3), 'a plot that is only a plan is not on the card');
+  assert(planned.plots.find(p => p.kind === 'stage').w === 2 && planned.plots.find(p => p.kind === 'stage').h === 2, 'a stage keeps its 2 x 2 footprint');
+
+  s = State.runDay(s, 4101).state;
+  const friday = s.history[0];
+  let m = P.postcardModel(s);
+  assert(m.played === 1 && m.dayName === 'Friday' && m.heading === 'The weekend so far, 1 of 3 days', `the report of Friday is Friday with one day played (${m.heading})`);
+  assert(figure(m, 'Through the gate') === friday.attendance.toLocaleString('en-US') && figure(m, 'Crowd mood') === `${friday.satisfaction}/100`,
+    'one day played prints that day’s gate and mood');
+  const net = Math.round(friday.cashDelta);
+  assert(figure(m, 'Weekend net') === `${net >= 0 ? '+' : ''}${net < 0 ? '-' : ''}$${Math.abs(net).toLocaleString('en-US')}`, `and its net, signed (${figure(m, 'Weekend net')})`);
+  s = State.nextDay(s).state;
+  m = P.postcardModel(s);
+  assert(m.played === 1 && m.dayName === 'Saturday', 'Saturday morning still counts one day, and says Saturday');
+  s = State.nextDay(State.runDay(s, 4102).state).state;
+  s = State.nextDay(State.runDay(s, 4103).state).state;
+  assert(s.phase === 'weekendEnd' || s.phase === 'victory', `sanity: three days in, the weekend has closed (${s.phase})`);
+  m = P.postcardModel(s);
+  const whole = summarizeWeekend(s.history, CONFIG.seasonLength);
+  assert(m.played === 3 && m.heading === 'The weekend, gates closed' && m.dayName === 'Sunday', 'a closed weekend counts all three days');
+  assert(figure(m, 'Through the gate') === whole.totalAttendance.toLocaleString('en-US') && figure(m, 'Crowd mood') === `${whole.avgSatisfaction}/100`,
+    'and its figures are summarizeWeekend’s, the ones the weekend-end stub prints');
+  const closed = s;
+  const next = State.startNextWeekend(s).state;
+  const mNext = P.postcardModel(next);
+  assert(next.history.length === 3 && mNext.played === 0 && figure(mNext, 'Through the gate') === '—' && mNext.when === 'Season 1 · Weekend 2 · Friday',
+    'the next Friday starts the count again: last weekend’s three days are not this weekend’s');
+
+  // The view: the whole plat inside its box, on every tier.
+  for (const tier of GRID_EXPANSIONS) {
+    const v = P.postcardView({ cols: tier.cols, rows: tier.rows });
+    const c = M.contentSize(tier.cols, tier.rows, P.POSTCARD_CELL);
+    const w = c.w * v.scale, h = c.h * v.scale, B = P.PLAT_BOX;
+    assert(v.tx >= B.x - 1e-9 && v.ty >= B.y - 1e-9 && v.tx + w <= B.x + B.w + 1e-9 && v.ty + h <= B.y + B.h + 1e-9, `${tier.label}: the plat sits inside the card’s box`);
+    assert(near(w, B.w) || near(h, B.h), `${tier.label}: and fills it on one axis (${w.toFixed(1)} x ${h.toFixed(1)})`);
+    // Every tier fills the box's width, so only the height can tell a
+    // centred plat from one pushed to the top.
+    assert(near(w, B.w) && h < B.h - 20 && near(v.ty - B.y, B.y + B.h - (v.ty + h)), `${tier.label}: as wide as the box, and centred in its height`);
+    assert(B.x + B.w < P.COLUMN.x && P.COLUMN.x + P.COLUMN.w < P.POSTCARD.w, 'the box and the column do not overlap');
+  }
+
+  // The paint.
+  const { calls, view } = paint(P.postcardModel(closed), { sprite: SHEET });
+  const cellFills = calls.filter(k => k.name === 'fillRect' && k.args[2] === 46 && k.args[3] === 46);
+  assert(cellFills.length === 70, `the card paints the plat’s 70 cells (${cellFills.length})`);
+  const paper = calls.filter(k => k.name === 'fillRect' && k.op === 'destination-over');
+  assert(paper.length === 1 && paper[0].fill === PAPER && paper[0].args.join() === '0,0,1200,800', 'one sheet of paper the size of the card, laid under everything already painted');
+  assert(calls.indexOf(paper[0]) > calls.indexOf(cellFills[69]), 'after the plat, which clears the whole canvas first');
+  const tokens = calls.filter(k => k.name === 'fillRect' && k.fill === P.TOKEN.fill);
+  assert(tokens.length === 3, `one token per built plot (${tokens.length})`);
+  const stageRect = M.cellToRect(view, 8, 5, 2, 2), inset = M.MARKER_MARGIN * view.scale;
+  const stageToken = tokens.find(k => near(k.args[0], stageRect.x + inset) && near(k.args[1], stageRect.y + inset));
+  assert(!!stageToken && near(stageToken.args[2], stageRect.w - 2 * inset) && near(stageToken.args[3], stageRect.h - 2 * inset), 'the stage’s token covers its four cells, less the marker margin');
+  const draws = calls.filter(k => k.name === 'drawImage');
+  assert(draws.length === 4 && draws.every(k => k.args[0] === SHEET), `the marker sheet is drawn once per built plot and once for the gate (${draws.length})`);
+  const frameOf = k => Object.entries(atlas.frames).find(([, f]) => f.x === k.args[1] && f.y === k.args[2] && f.w === k.args[3] && f.h === k.args[4])?.[0];
+  assert(draws.map(frameOf).join() === 'stage,food,vendor,gate', `each from its own frame of markers.json (${draws.map(frameOf).join()})`);
+  const gateRect = M.cellToRect(view, ENTRANCE.x, ENTRANCE.y);
+  assert(!!draws[3] && near(draws[3].args[5], gateRect.x) && near(draws[3].args[6], gateRect.y) && near(draws[3].args[7], gateRect.w), 'the gate is drawn on the gate’s cell');
+  const texts = calls.filter(k => k.name === 'fillText');
+  const said = t => texts.some(k => k.args[0] === t);
+  const mc = P.postcardModel(closed);
+  assert(said('Faire Weekend') && said('HOME GROUNDS') && said(mc.when) && said('THE WEEKEND, GATES CLOSED'), 'the card says the game, the tier, the day and what the figures cover');
+  assert(mc.figures.length === 7 && mc.figures.every(f => said(f.label) && said(f.value)), 'and every figure, label and value');
+  assert(texts.find(k => k.args[0] === 'Faire Weekend').font.includes('Grenze Gotisch'), 'the name is in the signboard face');
+  const column = texts.filter(k => /px 'Barlow/.test(k.font) && k.args[1] >= P.COLUMN.x);
+  assert(column.length >= 17 && column.every(k => k.args[1] <= P.COLUMN.x + P.COLUMN.w && k.args[2] < P.POSTCARD.h - 40), 'the column’s lines start inside the column and above the card’s rule');
+
+  // No sheet (it failed to load): tokens, no drawings, nothing thrown.
+  const bare = paint(P.postcardModel(closed), {});
+  assert(bare.calls.filter(k => k.name === 'drawImage').length === 0 && bare.calls.filter(k => k.name === 'fillRect' && k.fill === P.TOKEN.fill).length === 3,
+    'without the marker sheet the plots are their tokens and nothing is drawn from it');
+
+  // The same state is the same card, call for call; a different day is not.
+  const log = st => JSON.stringify(paint(P.postcardModel(st), { sprite: 'sheet' }).calls);
+  const again = JSON.parse(JSON.stringify(closed));
+  assert(log(closed) === log(again), 'the same state paints the same calls in the same order, through a save and back');
+  assert(log(closed) !== log(next), 'and the next Friday paints a different card');
+  const before = JSON.stringify(closed);
+  P.postcardModel(closed);
+  assert(JSON.stringify(closed) === before, 'reading a state for its card changes nothing in it');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
