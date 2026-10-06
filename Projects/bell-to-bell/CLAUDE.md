@@ -4,7 +4,9 @@
 `Bell to Bell`, a 3D browser game about teaching. Currently one vertical slice:
 a 47-minute class period, run four times a day (4th hands off into 5th into 6th
 into 7th, same room, different kids, one Bandwidth pool), five days a week. The
-7th period's twelve kids are generated from a seed; the other three are authored.
+7th period's twelve kids are generated from a seed; the other three are authored,
+and each of the three takes a seed in its own box in place of its authored class
+(root `HISTORY.md` #903).
 The semester record carries each class's comprehension, Rapport and Fidelity
 across nights, and admin escalates on sustained low Fidelity. Read
 `docs/BELL-TO-BELL-treatment.md` for the full design vision and `WISHLIST.md` for

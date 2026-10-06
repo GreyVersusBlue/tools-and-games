@@ -5,6 +5,7 @@ import { createRoomTemp } from './roomtemp.js';
 import { createChart } from './chart.js';
 import { createObservation, defaultVisit } from './observation.js';
 import { tickMeters } from './meters.js';
+import { scanCosts } from './withitness.js';
 import { applySubject, tickHazard, subjectEvents } from './subject.js';
 
 // Phase 2 — THE PERIOD, HEADLESS.
@@ -164,15 +165,7 @@ export function runPeriod({ period, data, style, opts = {} }) {
     }
 
     state.withitness = style.scan(state);
-    if (state.withitness) {
-      state.bandwidth -= CFG.bandwidthDrainPerSec * DT;
-      state.hyper += CFG.hyperGainPerSec * DT;
-      state.restless += CFG.scanRestlessPerSec * DT;
-      state.withitnessSeconds += DT;
-    } else {
-      state.hyper -= CFG.hyperDecayPerSec * DT;
-    }
-    state.hyper = Math.max(0, Math.min(100, state.hyper));
+    scanCosts(state, DT);
 
     const teaching = style.teaching(state);
     const live = tells.filter(t => t.born !== null && !t.dead && !t.resolved).length;

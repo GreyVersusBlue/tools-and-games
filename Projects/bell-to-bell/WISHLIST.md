@@ -231,12 +231,15 @@ And the working rules:
 
 ## Questions for Devon
 
-**None open.** Devon answered all seven on 2026-10-05 (root `HISTORY.md` #889);
-they stay here struck, with the answer, so nobody asks again.
+Devon answered all seven of the original questions on 2026-10-05 (root
+`HISTORY.md` #889); they stay here struck, with the answer, so nobody asks
+again. **Three are open, numbered, at the end of this section**, and each is
+a yes or a no.
 
 - ~~**Authoring or generation?**~~ Answered 2026-10-05: **the three authored
-  periods become seeds.** Built as three class seeds on 2026-10-05 (#893); what
-  is left of it is in the standing backlog under Content.
+  periods become seeds.** Built as three class seeds on 2026-10-05 (#893), and
+  4th, 5th and 6th got a seed box of their own on 2026-10-06 (#903). Nothing is
+  left of it.
 - ~~**Does the period need a fail state?**~~ Answered 2026-10-05: **still no.**
 - ~~**Is suppression too strong?**~~ Answered 2026-10-05: **it is not.** Leave
   it; the per-period cap is not wanted.
@@ -261,34 +264,43 @@ they stay here struck, with the answer, so nobody asks again.
   level at the top read as the middle, where they used to read as whichever
   one's tell was born first.
 
-### Raised by the suites, 2026-10-05 (TG-22), not yet anybody's call
+### Raised by the suites on 2026-10-05, sorted on 2026-10-06 (TG-22, #906)
 
-Each is what the code does, pinned in `tests/smoke.mjs` as what the code does,
-and written here because the test could not say whether it is meant.
+Five things the tests pinned as what the code does without being able to say
+whether it was meant. Three are closed. Two are Devon's, and a third question
+has been his since his own answer on mobile.
 
-- **An ignored false positive is charged as a missed tell.** A hypervigilance
-  phantom lives 150 seconds and then goes through the same `onExpire` a real
-  phone does: `state.missed` up one, `CFG.missedRestless`, `CFG.missedMastery`,
-  and a "Missed it" toast. The treatment's cost for the lie is the walk across
-  the room to a granola bar. Whether declining the walk should cost what
-  missing a phone costs is a design call; `balance.mjs` cannot weigh in,
-  because `simulate.js` never spawns one.
-- **A false positive never lands on seat 0, 1 or 11.** `spawnFalsePositive`
-  draws `2 + floor(random * (n - 3))`, seats 2 to 10 of twelve. Nothing says
-  why the front-left pair and the last seat are exempt. With fewer than four
-  students the same line can name a seat that does not exist.
-- **`simulate.js` carries its own copy of the toggle's costs.** Lines 166 to
-  174 repeat `withitness.tick()`'s four lines instead of calling it, so the
-  balance table and the game agree only while somebody keeps them the same by
-  hand. The new assertions pin `withitness.js` to `CFG`; nothing pins the copy.
-- **The calendar's horizon cannot bind.** `visit.announced.horizonDays` is 4
-  and the longest lead is 3, so no announced visit is ever more than 3 days
-  out when the start screen looks. Widening the loop by three days changed no
-  row in 900 mornings. Either number can move without the other noticing.
-- **Room Temp's front is one row of three.** The line is `z > 0.4`: desks 0 to
-  3 are the front and the other eight are the back, so "back left" covers
-  twice the desks "front left" does and wins a share more easily. It may be
-  meant (the back is where things happen); nothing says so.
+**Closed.**
+
+- ~~**`simulate.js` carries its own copy of the toggle's costs.**~~ Nobody's
+  answer was needed. `withitness.js` exports `scanCosts(state, dt)`; the game's
+  `tick()` and the headless period both call it, and `smoke.mjs` fails if
+  `simulate.js` names one of the four costs again. `balance.mjs` printed the
+  same 130 lines before and after.
+- ~~**The calendar's horizon cannot bind.**~~ Closed by Devon's yes to the
+  announced visit, which confirmed the 1 to 3 day lead as it ships (#891). A
+  horizon of 4 over a longest lead of 3 hides nothing, so the slack stays. The
+  direction that would hide a visit is a horizon shorter than a lead, and that
+  is asserted now, with a morning that loses a row when the horizon is cut to 2.
+- ~~**Room Temp's front is one row of three.**~~ Closed by Devon's yes to Room
+  Temp's direction: "the quadrant it already reads" is this one, `z > 0.4`,
+  desks 0 to 3 in front and eight behind. Nothing changed.
+
+**For Devon, each a yes or a no.**
+
+1. **Should ignoring a hypervigilance phantom cost what missing a real tell
+   costs?** Today it does: after 150 seconds it counts as a miss, takes
+   `CFG.missedRestless` and `CFG.missedMastery`, and toasts "Missed it". Yes
+   leaves it. No makes an ignored phantom cost nothing but the walk you did
+   not take.
+2. **Should a phantom be able to land on any of the twelve seats?** Today it
+   never lands on seat 0, 1 or 11 (`spawnFalsePositive` draws seats 2 to 10)
+   and nothing says why. Yes makes it all twelve. No leaves it. (The same line
+   would name a seat that does not exist in a class under four; every roster
+   is twelve, so that cannot happen today.)
+3. **Should the touch controls come out of the game, now that there is no
+   mobile?** Phase 8 shipped before the answer. Yes deletes working, tested
+   code. No leaves it where it is, unextended.
 
 ## The standing backlog
 
@@ -337,22 +349,25 @@ new list.
   furniture. There is no confirmation beyond the browser's own `confirm()`.
 
 **Content**
-- **The three authored classes are seeds now** (Devon's yes of 2026-10-05,
-  #889; built in #893). 1000004, 1000005 and 1000006 typed into 7th period's
-  seed box are 4th, 5th and 6th period's twelve kids and tell schedules, field
-  for field, by a lookup table in `data/periods.json` (`classSeeds`). They are
-  not draws: every authored name is outside the generator's pool, so no
-  six-digit seed could be one of them, and the six-digit seeds mean what they
-  did. A class seed carries the kids and their schedule; the lesson and the
-  chart copy stay with the row.
-  **Left:** 4th, 5th and 6th themselves are still rows with no seed box. The
-  question's own wording ("one JSON edit each, and their names would go") is
-  now three edits that lose nothing: give each row `"generate": true` and a
-  default of its own class seed, and `main.js` has to learn a row's default.
-  That moves what a save in those three slots means (the semester record
-  stores `seed: null` for them today), so it wants `semester.repair` to carry
-  null forward as the row's class seed, and the 4th-period balance table to
-  be read through the seed. Not started.
+- **The three authored classes are seeds, and every period has a seed box**
+  (Devon's yes of 2026-10-05, #889; built in #893 and #903). 1000004, 1000005
+  and 1000006 are 4th, 5th and 6th period's twelve kids and tell schedules,
+  field for field, by a lookup table in `data/periods.json` (`classSeeds`).
+  They are not draws: every authored name is outside the generator's pool.
+  4th, 5th and 6th have the box 7th has (#903). Empty, which is how every save
+  from before reads, is the class written for the period. A seed is twelve
+  other kids sat through that period's own lesson, and the period's authored
+  tell schedule does not play: every line of it names a seat, and a seat is a
+  kid (constraint 9), so the schedule goes with its class. A drawn seed's
+  schedule is held to the bands under the lesson of the period it is typed
+  into, so one seed can keep a different attempt in 5th than in 7th (3 of 500
+  seed-days measured; none of 1,500 across 4th, 5th and 6th failed to land).
+  A period's own class seed typed into it is the empty box. Changing the box
+  either way starts that period's chart, discoveries and carried
+  comprehension over, as it always has in 7th. The plan this row used to carry
+  (`"generate": true` on the three rows and `semester.repair` moving a stored
+  `seed: null`) was not needed: null still means the authored class, and no
+  save is migrated. **Nothing is left of this row.**
 - Beats are hand-authored and never vary, and the generated 7th period reads
   4th period's lesson. Generation stops at the roster and the schedule on
   purpose: voice is what it is worst at.
