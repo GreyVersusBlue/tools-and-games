@@ -47,6 +47,17 @@
     const q = window.__qa, g = q.game, W = g.world;
     const step = (sec) => q.sim(sec, null);
     try {
+      // ---- models: the carved heads arrive as assets/models/heads.glb, where the fallback stood.
+      // A load is not a frame, so waiting on it in real time is not a frame-rate assertion (#53).
+      const L = W.meshes.landmarks, host = L.getObjectByName('headsHost');
+      for (let n = 0; n < 150 && !L.getObjectByName('glb:heads'); n++) await new Promise((r) => setTimeout(r, 200));
+      const hg = L.getObjectByName('glb:heads'), st = W.landmarks.statue.position;
+      let tris = 0; const mats = [];
+      if (hg) hg.traverse((o) => { if (o.isMesh) { tris += o.geometry.index.count / 3; mats.push(o.material.name + (o.material.vertexColors ? ':vc' : '') + (o.material.aoMap ? ':ao' : '')); } });
+      ok(hg && hg.position.distanceTo(st) < 0.01 && hg.children[0].scale.x === 1 && host.children.every((c) => !c.visible),
+        'heads.glb swaps in at the statue, unscaled, and hides the fallback', hg && { at: hg.position.toArray().map(Math.round), fallback: host.children.map((c) => c.visible) });
+      ok(tris > 3000 && mats.join() === 'Heads_Rock:vc:ao,Heads_Gold:vc:ao,Heads_Helm:vc:ao', 'heads.glb draws as three meshes, vertex-coloured, with baked AO', { tris, mats });
+
       // ---- courses: every mission builds, and every ring can be flown through
       for (const m of q.MISSIONS) {
         q.start(m.id);
