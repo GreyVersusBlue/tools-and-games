@@ -111,32 +111,6 @@ export function billsFor(c) {
   const upgFees = upgradeFees(c);
   return { wages, rent: rentDue, upgFees, total: wages + rentDue + upgFees };
 }
-/** A closed "moving in" night: bills still land, no revenue, no patrons. */
-export function settleDarkNight(c, rand = Math.random) {
-  const { wages, rent: rentDue, upgFees, total } = billsFor(c);
-  const net = -total;
-  c.cash = Math.round((c.cash - total) * 100) / 100;
-  const spoilage = applySpoilage(c);
-  // the league plays on whether the doors were open or not
-  const games = settleLeagueNight(c.league, c.day, null);
-  const final = games.find(x => x.playoff === "final");
-  // A dark night is the worst night your regulars can have: nobody showed,
-  // because there was nothing to show up to. They all take the stay-home
-  // drift, the floor was neither good nor ugly so nothing offsets it, and Vic
-  // gets a free night. Move for long enough and you come back to an empty room.
-  const social = settleSocial(c, {
-    serviceRate: 1, mood: 0.6, arrivals: 0, postWin: false,
-    showing: [], champion: final ? final.winner : null, dark: true,
-  }, rand);
-  c.day++;
-  syncLeague(c.league, c.day);
-  c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
-  rollApplicants(c, rand);
-  // last, so the countdown it may overwrite is this night's, not the move's
-  const lease = applyLease(c);
-  return { wages, rent: rentDue, upgFees, net, spoilage, games, social, lease };
-}
-
 // ---------- the lease: the night you can lose ----------
 //
 // The gap this closes, in the README's words and this wishlist's: the cash
@@ -729,34 +703,60 @@ function settleSocial(c, { serviceRate, mood, arrivals, postWin, showing, champi
  *  read once rather than spelled "HCS" here. */
 const RIVAL_TEAM = (LEAGUE_TEAMS.find(t => t.rival) || {}).id || null;
 
-/** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
-export function settleNight(c, summary, rand = Math.random) {
+/**
+ * Close the books on a night, open or dark. The one settlement (#898).
+ *
+ * There were two, and they shared `billsFor()` and nothing else: each spelled
+ * out the till, the league, the people, the shelf, the calendar and the
+ * landlord for itself, in two orders. A dark night is an open one that took
+ * nothing, bought no promo, saw no moments and seated nobody, so it is this
+ * function with those four at zero and three lines of its own: the regulars'
+ * closed-doors verdict, the move's countdown, and the promo it does not reset.
+ * `test/smoke-settle.mjs` holds both paths to the numbers the two functions
+ * gave before they were one.
+ *
+ * The order is the open night's and it matters there: moments, then people,
+ * then spoilage, because a regular's usual is 86'd if the shelf was bare when
+ * they wanted it, not if the walk-in rotted it overnight. A dark night seats
+ * nobody, so nothing in it reads the shelf and the order cannot show.
+ */
+function closeNight(c, summary, dark, rand) {
   const { wages, rent: rentDue, upgFees, total: bill } = billsFor(c);
-  const promoCost = promoDef(c).cost;
-  const take = summary.total;
+  // a theme is an optional spend on an open night; a closed one cannot buy it
+  const promoCost = dark ? 0 : promoDef(c).cost;
+  const take = dark ? 0 : summary.total;
   const net = Math.round(take - bill - promoCost);
   c.cash = Math.round((c.cash + take - bill - promoCost) * 100) / 100;
-  c.stats.nights++;
-  c.stats.bestNight = Math.max(c.stats.bestNight, take);
-  c.stats.lifetimeNet += net;
-  // the moments first: a card moved your name, the End Zone or a regular
-  // during the night, and the night's own drift reads the moved number
-  const moments = settleMoments(c, summary.moments);
-  // people before spoilage: a regular's usual is 86'd if the shelf was bare
-  // when they wanted it, not if the walk-in rotted it overnight
-  const showing = regularsIn(c);
+  let moments = null, showing = [];
+  if (!dark) {
+    c.stats.nights++;
+    c.stats.bestNight = Math.max(c.stats.bestNight, take);
+    c.stats.lifetimeNet += net;
+    // the moments first: a card moved your name, the End Zone or a regular
+    // during the night, and the night's own drift reads the moved number
+    moments = settleMoments(c, summary.moments);
+    showing = regularsIn(c);
+  }
   // the Mules' result is the engine's, so the standings say what the room saw;
-  // the other games tonight are the league's own rolls
-  const g = summary.game;
+  // the other games tonight are the league's own rolls, and the league plays
+  // on whether the doors were open or not
+  const g = dark ? null : summary.game;
   const games = settleLeagueNight(c.league, c.day, g && g.finished && typeof g.win === "boolean" ? g.win : null);
   const final = games.find(x => x.playoff === "final");
-  const social = settleSocial(c, {
+  const champion = final ? final.winner : null;
+  // A dark night is the worst night your regulars can have: nobody showed,
+  // because there was nothing to show up to. They all take the stay-home
+  // drift, the floor was neither good nor ugly so nothing offsets it, and Vic
+  // gets a free night. Move for long enough and you come back to an empty room.
+  const social = settleSocial(c, dark ? {
+    serviceRate: 1, mood: 0.6, arrivals: 0, postWin: false, showing, champion, dark: true,
+  } : {
     serviceRate: (summary.serviceRate ?? 100) / 100,
     mood: summary.mood,
     arrivals: summary.arrivals ?? (summary.served + summary.walkouts),
     postWin: !!(g && g.finished && g.win === true),
     showing,
-    champion: final ? final.winner : null,
+    champion,
     // ids the boss comped on the floor; a summary without the field (the Node
     // suites' synthetic nights) comped nobody
     comped: new Set(Array.isArray(summary.comped) ? summary.comped : []),
@@ -764,12 +764,22 @@ export function settleNight(c, summary, rand = Math.random) {
   const spoilage = applySpoilage(c);
   c.day++;
   syncLeague(c.league, c.day);
-  c.promoTonight = "none";
+  if (dark) c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
+  else c.promoTonight = "none";
   rollApplicants(c, rand);
-  // the landlord counts last, on the cash the whole night left behind
+  // the landlord counts last, on the cash the whole night left behind, so the
+  // countdown it may overwrite is this night's and not the move's
   const lease = applyLease(c);
-  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social, moments, lease };
+  return dark
+    ? { wages, rent: rentDue, upgFees, net, spoilage, games, social, lease }
+    : { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social, moments, lease };
 }
+
+/** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
+export function settleNight(c, summary, rand = Math.random) { return closeNight(c, summary, false, rand); }
+
+/** A closed "moving in" night: bills still land, no revenue, no patrons. */
+export function settleDarkNight(c, rand = Math.random) { return closeNight(c, null, true, rand); }
 
 // ---- persistence: the shared save system ------------------------------------
 //
