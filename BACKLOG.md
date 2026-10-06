@@ -2822,6 +2822,12 @@ live. Nothing in that column is a link to follow.
   Hearth Phase 8, locked decision #83: **`hearth-ci.yml`, two jobs.** A PR
   gate of `determinism` + `save` + a twelve-day `soak` + `pinned`, and a
   nightly matrix of the other fifteen modes that never runs on a PR.
+  **The deep modes run only nightly, so a red there is seen a day late** and
+  no merge is held by it: `deep · sixteen` was red for three nights from
+  2026-10-03 on a change that passed its PR gate (#896). A change that moves
+  the pinned hashes moves every seed-7 island the deep modes stand on, so run
+  them at the desk before it merges: `node harness.mjs <mode>` from
+  `Projects/hearth/test`, one at a time. The matrix is sixteen modes now.
 - **Does the population cap overshoot actually grate?** (was Q17) Answered by
   Hearth Phase 7, locked decision #82: **kept, and named.** The cap counts
   beds and a boat has to find one; a baby is born into its parents' house. The

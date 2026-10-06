@@ -856,14 +856,41 @@ if (mode === 'sixteen') {
   });
   console.log(`chat: task glimpsed ${chat.chatSeen}, heard "${chat.h0}" / "${chat.h1}" (had it from: ${chat.f0 || 'was there'} / ${chat.f1 || 'was there'})`);
   if (chat.fail || !chat.h0 || !chat.h1 || !(chat.f0 || chat.f1)) { failed = true; console.log('FAIL: conversations did not carry the news'); }
+  // The fire collects the news from the people at it, and tellStory's guest list has left out anyone in a boat or on a voyage since
+  // sprint 12. This used to ask that nobody on the island still carried it, which held only while seed 7 had nobody fishing at this
+  // hour; #813 moved the island, Brasel was out with the news in a pocket, and the check went red on a fire that had done its job
+  // (#896). So both halves are asked by name now: everyone at the fire has let it go, and somebody at sea still has theirs, exactly
+  // as it was. The somebody is pinned: whoever is out with fresh news, else whoever is out (handed the first talker's), else a third
+  // adult held off the fire for the one call. A fire that swept the whole island would pass the first half and fail the second.
   const fire = await H(() => {
     const h = window.__hearth;
+    const atSea = p => p.task === 'boat' || p.task === 'voyage';
+    const fresh = p => !!(p.heard && p.heard.d >= h.dayCount - 3);
+    const src = h.people.find(p => !atSea(p) && fresh(p));
+    if (!src) return { fail: 'nobody ashore carries fresh news' };
+    let sea = h.people.find(p => atSea(p) && fresh(p)) || h.people.find(atSea), how = 'out fishing', was = null;
+    if (!sea) {
+      sea = h.people.find(p => !p.child && p !== src && !fresh(p)) || h.people.find(p => !p.child && p !== src);
+      if (!sea) return { fail: 'nobody to hold off the fire' };
+      was = sea.task; sea.task = 'boat'; how = 'held off the fire';
+    }
+    if (!fresh(sea)) sea.heard = { l: src.heard.l, d: src.heard.d, f: src.name };
+    const kept = JSON.stringify(sea.heard);
+    const guests = h.people.filter(p => !atSea(p)), carrying = guests.filter(fresh).length;
     const ok = h.tellStory();
+    if (was !== null) sea.task = was;
     const line = document.getElementById('log').textContent.includes('adds the news of');
-    return { ok, line, cleared: h.people.every(p => !p.heard || p.heard.d < h.dayCount - 4) };
+    return { ok, line, how, sea: sea.name, guests: guests.length, carrying,
+      cleared: guests.every(p => !p.heard), away: h.people.length - guests.length,
+      seaKept: JSON.stringify(sea.heard) === kept };
   });
-  console.log(`fire night: told ${fire.ok}, news line ${fire.line}, heard cleared ${fire.cleared}`);
-  if (!fire.ok || !fire.line || !fire.cleared) { failed = true; console.log('FAIL: the fire did not collect the news'); }
+  if (fire.fail) { failed = true; console.log(`FAIL: the fire night could not be set up (${fire.fail})`); }
+  else {
+    console.log(`fire night: told ${fire.ok}, news line ${fire.line}, ${fire.guests} at the fire (${fire.carrying} came with news) heard cleared ${fire.cleared}, ` +
+      `${fire.away} away, ${fire.sea} (${fire.how}) still has it ${fire.seaKept}`);
+    if (!fire.ok || !fire.line || fire.carrying < 1 || !fire.cleared) { failed = true; console.log('FAIL: the fire did not collect the news'); }
+    if (!fire.seaKept) { failed = true; console.log('FAIL: the fire took the news from somebody who was not at it'); }
+  }
 
   // ---- B-2: a grown, much-told story gets a tune, the tune teaches, and dies with its last knower ----
   await runDay(page, 1e9);
