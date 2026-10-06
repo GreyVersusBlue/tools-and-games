@@ -24,6 +24,7 @@
 
 import { CELL } from './grid.js';
 import { shapesOf, shapeArea, shapeAt, segAccent } from './shapes.js';
+import { wallLinesOf, lineEnds, lineAccent, LINE_LEFT, LINE_RIGHT } from './wallrun.js';
 
 // The finish table. `color` is the floor's own base colour — what the material
 // looks like, not the room's label tint — and `grain` tells render.js which
@@ -296,6 +297,17 @@ function accentSegs(floor) {
       }
     }
   }
+  // A free-standing wall's own two faces (#910, wallrun.js's `line.accents`), said
+  // the way a ring says one: a segment with the painted face on its left. So
+  // the left face runs a to b and the right face b to a, and `accentsOn` puts
+  // each on the right side of whatever run lies along the wall. `shape: null`
+  // is "whichever room stands in front": the wall is nobody's.
+  for (const line of wallLinesOf(floor)) {
+    const [a, b] = lineEnds(line);
+    const l = lineAccent(line, LINE_LEFT), r = lineAccent(line, LINE_RIGHT);
+    if (l) out.push({ shape: null, a, b, paint: l });
+    if (r) out.push({ shape: null, a: b, b: a, paint: r });
+  }
   return out;
 }
 
@@ -320,11 +332,16 @@ function accentsOn(accents, ax, az, dx, dz, len) {
 }
 
 // What one face of a stretch is painted: the accent of the room in front of
-// it if that room has one here, else that room's paint, else nobody's.
+// it if that room has one here, else the accent a free-standing wall carries
+// on that face, else that room's paint, else nobody's. The room's own word
+// comes first because it was the only word before a wall could carry one, and
+// a design painted then must not change.
 function faceAt(runs, accents, t) {
   const side = sideAt(runs, t);
   if (!side.room) return null;
-  const acc = accents.find((a) => a.shape === side.shape && t >= a.t0 && t <= a.t1);
+  const here = (a) => t >= a.t0 && t <= a.t1;
+  const acc = accents.find((a) => a.shape === side.shape && here(a)) ||
+    accents.find((a) => a.shape === null && here(a));
   return acc ? acc.paint : side.paint || DEFAULT_PAINT;
 }
 

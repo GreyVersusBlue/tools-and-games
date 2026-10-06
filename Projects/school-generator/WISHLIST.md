@@ -395,12 +395,26 @@ and add to this list rather than starting a new one.
   it (#862). M reaches the mirror now: the page gave the key to the report
   panel from Phase 7 on, and with rooms selected in the Shape tool the editor
   has it back (#866, and Devon confirmed on 2026-10-05 that M is the
-  mirror). Left, one session each, the two that remain of the three Devon's
-  answer of 2026-10-05 opened (the ramp's width and slope shipped as #907):
-  an accent on a free-standing wall (`floor.walls` has no ring and so no
-  accent; needs a save field on the wall line), and more accent colours
-  (nine fixed ones and no free pick; needs chrome, and `accents` already
-  takes any hex);
+  mirror). A free-standing wall carries its own (#910): `line.accents` on
+  the wall line is `[left, right]`, one colour a face, set by the same
+  swatches with a click on that side of the wall, read by the same
+  `facePainter`, and absent from a file until a face is painted. A room's
+  own accent on a face comes first; a face with no room in front of it, or
+  on glass or a railing, is refused by the brush and dropped by
+  `pruneAccents`. Left, one session, the last of the three Devon's answer of
+  2026-10-05 opened (the ramp's width and slope shipped as #907): more
+  accent colours (nine fixed ones and no free pick; needs chrome, and both
+  `accents` fields already take any hex). Left from #910: the click on the
+  plan is a pointer gesture, for a room's wall and a free-standing one alike
+  (the swatches take Tab and Enter, the plan has no keyboard cursor); a
+  free-standing wall's outdoor face cannot be painted, because the facade is
+  drawn over it; a wall drawn over another one of the same kind loses that
+  wall's doorways, as it did before, and keeps its paint; the floor brush
+  rubbing a room out from in front of a painted face leaves the accent in
+  the file until the next load or the next corner let go; `duplicateFloor`
+  copies no free-standing wall, painted or not; the brush's two refusals for
+  a free-standing wall are driven by a browser check for glass and by
+  nothing for the outdoor face; nobody has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
