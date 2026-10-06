@@ -792,7 +792,9 @@ section("15. the reopening is a trade now: beans, the Legacy tree, layouts (#360
     sim.purchase("meta", "menuMocha");
     ok(sim.recipeAvailable("mocha"), "the unlock puts it there at once");
     ok(!state.unlockedRecipes.has("mocha"), "without writing it into the run's own unlock set");
-    ok(sim.getUnlockedRecipeList().some(r => r.id === "mocha"), "so the order generator can ask for it");
+    ok(sim.getUnlockedRecipeList().some(r => r.id === "mocha"), "so it is on the list the menu is drawn from");
+    // On the menu is not ordered: the beans do not buy the $35 syrup (#913, section 17).
+    ok(!sim.getOfferedRecipeList().some(r => r.id === "mocha"), "and not on the list customers order from until its syrup is bought");
     state.day = 8; sim.prestige();
     ok(sim.recipeAvailable("mocha"), "and it is still there after a reopening cleared the run's unlocks");
     // The money purchase refuses it, since it is already on the menu.
@@ -873,15 +875,14 @@ section("15. the reopening is a trade now: beans, the Legacy tree, layouts (#360
       ok(completes(R(dear), R(dear)), `${R(dear).name}'s own cup completes its ticket`);
       ok(!completes(R(cheap), R(dear)), `a finished ${R(cheap).name} is not a finished ${R(dear).name}`);
     }
-    // What is left of it, named so a new one is read (#147): a cup still
-    // completes a dearer ticket where the dearer recipe is fewer shots, because
-    // the base line asks for at least its shots. An Americano's two are a
-    // Ristretto's one and four dollars more. That is less work for the Ristretto
-    // built honestly, so it is not the same drink at two prices, and it is not
-    // this decision's to change.
+    // What #878 left, closed by #913: the base line asked for at least its
+    // shots, so an Americano's two completed a Ristretto's one for four dollars
+    // more. The count is exact now, and no cheaper recipe's finished cup
+    // completes a dearer ticket. (A dearer cup on a cheaper ticket still can,
+    // where the extra is a syrup or a topping nobody asked about.)
     const over = [];
     for (const a of RECIPES) for (const b of RECIPES) if (a !== b && b.price > a.price && completes(a, b)) over.push(`${a.name}>${b.name}`);
-    eq(over.join(","), "Americano>Ristretto", "the one cheaper cup that still completes a dearer ticket is two shots where one was asked");
+    eq(over.join(","), "", "no cheaper recipe's finished cup completes a dearer ticket");
     // The five's new lines are day-one stock, so each can be made the moment
     // its recipe unlocks and after any reopening: no syrup or topping to buy.
     // (Mocha is not held to this and never was: its syrup is $35 on the board.)
@@ -898,6 +899,7 @@ section("15. the reopening is a trade now: beans, the Legacy tree, layouts (#360
       const { sim: g, state: gs } = shop(59);
       gs.unlockedRecipes = new Set(RECIPES.map(r => r.id)); gs.prestigeLevel = 5;
       gs.unlockedToppings = new Set(CONTENT.TOPPINGS.map(t => t.id));
+      gs.unlockedSyrups = new Set(CONTENT.SYRUPS.map(x => x.id)); // Mocha is not ordered without its syrup (#913)
       const seen = new Map(), bad = [];
       for (let i = 0; i < 4000; i++) {
         const o = g.generateOrderContent(CONTENT.PHASES[i % CONTENT.PHASES.length]);
@@ -1172,6 +1174,181 @@ section("16. the cup and the plate are frames of one sheet, and draw.js is still
   ok(bubble.includes(RECIPES.find(r => r.id === "icedvanilla").icon) && /height="22"/.test(bubble),
     "the bubble is the recipe's icon and a 22 px cup");
   ok(!/🥛|💧|✨|🧊/.test(bubble), "and the old milk, syrup, topping and ice emoji are gone");
+}
+
+section("17. a recipe is ordered once its own line is on the shelf, and a shot count is exact (#913)");
+{
+  const R = id => RECIPES.find(r => r.id === id);
+  const drinks = (sim, n) => { const out = []; for (let i = 0; i < n; i++) { const o = sim.generateOrderContent(PHASES[i % PHASES.length]); if (!o.isFood) out.push(o); } return out; };
+  const count = (orders, id) => orders.filter(o => o.recipeId === id).length;
+
+  // ---- Mocha bought, its syrup not: on the menu, said so, not ordered ----
+  {
+    const { sim, state } = shop(70);
+    state.money = 500;
+    const bought = sim.purchase("recipe", "mocha");
+    ok(bought.ok && sim.recipeAvailable("mocha") && !state.unlockedSyrups.has("mocha"), "Mocha is bought and its syrup is not");
+    eq(bought.text, "Mocha is on the menu! Nobody orders it until you buy Mocha syrup ($35).", "the purchase says what it still needs");
+    eq(JSON.stringify(sim.recipeStockMissing("mocha")), JSON.stringify([{ type: "syrup", id: "mocha", name: "Mocha syrup", cost: 35 }]), "recipeStockMissing names the syrup and the chalkboard's price");
+    ok(!sim.recipeOffered("mocha"), "so it is not offered");
+    const before = drinks(sim, 4000);
+    eq(count(before, "mocha"), 0, "none of 4,000 orders is a Mocha");
+    eq(before.filter(o => o.custom.syrup && !state.unlockedSyrups.has(o.custom.syrup)).length, 0, "and none asks for a syrup with no button");
+    const offered = new Set(sim.getOfferedRecipeList().map(r => r.id));
+    eq(before.filter(o => !offered.has(o.recipeId)).length, 0, "every one is off the offered list");
+    ok(sim.purchase("syrup", "mocha").ok, "the syrup buys");
+    ok(sim.recipeOffered("mocha") && sim.recipeStockMissing("mocha").length === 0, "and Mocha is offered at once");
+    const after = drinks(sim, 4000);
+    ok(count(after, "mocha") > 100, `and ordered (${count(after, "mocha")} of ${after.length})`);
+    ok(after.filter(o => o.recipeId === "mocha").every(o => o.custom.syrup === "mocha"), "each with its syrup on the ticket");
+    // A recipe whose line is day-one stock says nothing extra.
+    eq(sim.purchase("recipe", "caramelmac").text, "Caramel Macchiato is on the menu!", "a recipe with its syrup on the shelf says only that");
+    ok(sim.recipeOffered("caramelmac"), "and is offered");
+  }
+  // Offered is never more than the menu: a day-one shop is asked for its five.
+  {
+    const { sim } = shop(77);
+    const five = CONTENT.STARTING_UNLOCKS.recipes;
+    eq(sim.getOfferedRecipeList().map(r => r.id).join(","), five.join(","), "a day-one shop offers its five recipes and no other");
+    eq(drinks(sim, 4000).filter(o => !five.includes(o.recipeId)).length, 0, "and none of 4,000 orders is for anything else");
+  }
+  // Every recipe but Mocha is offered the moment it is on a day-one shelf.
+  {
+    const { sim, state } = shop(71);
+    state.unlockedRecipes = new Set(RECIPES.map(r => r.id)); state.prestigeLevel = 5;
+    eq(RECIPES.filter(r => !sim.recipeOffered(r.id)).map(r => r.name).join(","), "Mocha", "on a full menu with a day-one shelf, Mocha is the one recipe not offered");
+    eq(sim.recipeStockMissing("nosuchrecipe").length, 0, "an unknown id lacks nothing and does not throw");
+    ok(!sim.recipeOffered("nosuchrecipe"), "and is not offered");
+    // A required topping is held to the same rule as a required syrup.
+    state.unlockedToppings.delete("cinnamon");
+    eq(sim.recipeStockMissing("cappuccino").map(m => `${m.type}:${m.id}:${m.name}`).join(","), "topping:cinnamon:Cinnamon Dust", "a recipe whose topping is off the shelf names it");
+    eq(count(drinks(sim, 4000), "cappuccino"), 0, "and is not ordered either");
+  }
+  // ---- the beans' Mocha: on the board in every run, its syrup $35 in each ----
+  {
+    const { sim, state } = shop(72);
+    state.meta.beans = 50;
+    ok(sim.purchase("meta", "menuMocha").ok && sim.purchase("meta", "wholesale").ok, "Mocha on the Board and the wholesale discount, in beans");
+    eq(sim.recipeStockMissing("mocha")[0]?.cost, sim.canBuy("syrup", "mocha").cost, "the price named is the discounted one the Syrups row charges");
+    ok(sim.recipeStockMissing("mocha")[0]?.cost < 35, "which is under $35");
+    for (const name of CONTENT.REGULAR_NAMES) state.regulars[name] = { order: { isFood: false, recipeId: "latte", price: 45, custom: { milk: "oat", toppings: [], ice: false } }, visits: 2, lastDay: 1, satisfaction: 60, tolerance: 1, stopped: false };
+    state.day = 8; sim.prestige();
+    ok(sim.recipeAvailable("mocha") && !sim.recipeOffered("mocha"), "after a reopening it is on the board and not offered");
+    eq(Object.values(state.regulars).filter(r => r.order.recipeId === "mocha").length, 0, `none of the ${Object.keys(state.regulars).length} favourites the reopening re-rolled is a Mocha`);
+    eq(count(drinks(sim, 4000), "mocha"), 0, "and nobody orders one");
+  }
+  // ---- a save from before #913: Mocha bought, syrup not, regulars who want it ----
+  {
+    const { createCornerKettleSlot, buildCatalog, applyToState } = await mod("../js/save.js");
+    const C = CONTENT;
+    const catalog = buildCatalog({
+      recipes: C.RECIPES.map(r => r.id), foods: C.FOODS.map(f => f.id), syrups: C.SYRUPS.map(x => x.id),
+      toppings: C.TOPPINGS.map(t => t.id), milks: C.MILKS.map(m => m.id), bases: Object.keys(C.BASE_COLORS),
+      upgrades: [...C.EQUIPMENT_UPGRADES, ...C.AMBIANCE_UPGRADES, ...C.BUSINESS_UPGRADES].map(u => u.id),
+      modifiers: C.DAILY_MODIFIERS.filter(Boolean).map(m => m.id), baristaNames: C.BARISTA_NAMES,
+      starting: C.STARTING_UNLOCKS, shiftMs: C.SHIFT_MS, presetMax: C.PRESET_MAX,
+      metaUpgrades: C.META_UPGRADES.map(m => m.id), layouts: C.SHOP_LAYOUTS.map(l => l.id),
+    });
+    const mochaFav = () => ({ order: { isFood: false, recipeId: "mocha", price: 55, custom: { milk: "oat", syrup: "mocha", toppings: [], ice: false } },
+      visits: 4, lastDay: 3, satisfaction: 70, tolerance: 1.1, stopped: false });
+    const names = C.REGULAR_NAMES;
+    const load = seed => {
+      const data = createCornerKettleSlot(catalog).normalize({
+        day: 4, money: 300,
+        unlockedRecipes: [...C.STARTING_UNLOCKS.recipes, "mocha"], unlockedSyrups: [...C.STARTING_UNLOCKS.syrups],
+        regulars: Object.fromEntries(names.map(n => [n, mochaFav()])),
+      });
+      const state = freshState(CONTENT); applyToState(state, data);
+      return { state, sim: createSim({ content: CONTENT, rng: makeRng(seed), state }) };
+    };
+    const { sim, state } = load(73);
+    ok(state.unlockedRecipes.has("mocha") && !state.unlockedSyrups.has("mocha"), "the save loads with Mocha on the menu and no mocha syrup");
+    eq(Object.values(state.regulars).filter(r => r.order.recipeId === "mocha").length, names.length, `and all ${names.length} regulars' favourites still a Mocha: the load rewrites nothing`);
+    ok(!sim.orderOnShelf(state.regulars[names[0]].order), "orderOnShelf says that favourite cannot be finished");
+    // Walk customers in until three regulars have come.
+    const walked = [];
+    for (let i = 0; i < 400 && walked.length < 3; i++) { const o = sim.generateOrder(); if (o.isRegular && !walked.some(w => w.regularName === o.regularName)) walked.push(o); }
+    eq(walked.length, 3, "three different regulars walk in");
+    ok(walked.every(o => o.recipeId !== "mocha" && sim.orderOnShelf(o)), "each asks for something the shelf can finish, not the Mocha");
+    ok(walked.every(o => { const f = state.regulars[o.regularName].order; return f.recipeId !== "mocha" && (o.isFood ? f.foodId === o.foodId : f.recipeId === o.recipeId); }), "and that is their stored favourite now");
+    ok(walked.every(o => state.regulars[o.regularName].visits >= 5 && state.regulars[o.regularName].tolerance === 1.1 && state.regulars[o.regularName].satisfaction === 70),
+      "their visits went on counting, and tolerance and satisfaction were not touched");
+    const waiting = names.filter(n => !walked.some(w => w.regularName === n) && state.regulars[n].visits === 4);
+    ok(waiting.length > 0 && waiting.every(n => state.regulars[n].order.recipeId === "mocha"), `the ${waiting.length} who have not come yet still hold the Mocha: the re-roll is at the door`);
+    // Buy the syrup and one of those comes in for the Mocha after all.
+    state.money = 500; ok(sim.purchase("syrup", "mocha").ok, "the syrup is bought");
+    let late = null;
+    for (let i = 0; i < 2000 && !late; i++) { const o = sim.generateOrder(); if (o.isRegular && waiting.includes(o.regularName)) late = o; }
+    ok(late && late.recipeId === "mocha" && late.custom.syrup === "mocha" && late.custom.milk === "oat", "a regular who comes after the syrup is bought gets the Mocha they had, oat milk and all");
+    // The same save plays a whole shift: nothing throws, and nobody on the
+    // counter or in the line is holding a ticket with no button.
+    {
+      const { sim, state } = load(74);
+      const seen = [];
+      const steps = runShift(sim, state, STEP_MS, (sim, state) => { for (const c of [...state.queue, ...state.slots.filter(Boolean).map(x => x.customer)]) if (!seen.includes(c)) seen.push(c); autopilot(sim, state); });
+      ok(steps > 0 && !state.shiftRunning && seen.length > 10, `a shift on that save runs to its close (${seen.length} customers)`);
+      eq(seen.filter(c => !sim.orderOnShelf(c)).length, 0, "and no customer in it asked for anything off the shelf");
+      ok(seen.some(c => c.isRegular), "regulars among them");
+    }
+    // A favourite with an extra the shelf lacks is the same case; one the
+    // shelf can finish is left exactly as stored.
+    {
+      const { sim, state } = shop(75);
+      const fav = custom => ({ order: { isFood: false, recipeId: "latte", price: 45, custom }, visits: 1, lastDay: 1, satisfaction: 60, tolerance: 1, stopped: false });
+      for (const n of names) state.regulars[n] = fav({ milk: "almond", syrup: "vanilla", toppings: ["whip"], ice: false });
+      const kept = JSON.stringify(state.regulars[names[0]].order);
+      for (let i = 0; i < 300; i++) sim.generateOrder();
+      eq(names.filter(n => JSON.stringify(state.regulars[n].order) !== kept).length, 0, "300 walk-ins leave a favourite the shelf can finish byte for byte");
+      for (const n of names) state.regulars[n] = fav({ milk: "almond", toppings: ["sprinkles"], ice: false });
+      ok(!sim.orderOnShelf(state.regulars[names[0]].order), "a Latte with sprinkles, and no sprinkles bought, is off the shelf");
+      let reg = null; for (let i = 0; i < 400 && !reg; i++) { const o = sim.generateOrder(); if (o.isRegular) reg = o; }
+      ok(reg && !reg.custom?.toppings?.includes("sprinkles") && sim.orderOnShelf(state.regulars[reg.regularName].order), "and re-rolls at the door the same way");
+      ok(sim.orderOnShelf({ isFood: true, foodId: "bagel", price: 26 }), "a food order has no shelf to be off");
+    }
+  }
+
+  // ---- the shot count is exact ----
+  {
+    const { sim, state } = shop(76);
+    const plain = r => sim.cloneOrderContent({ isFood: false, recipeId: r.id, price: r.price, custom: { toppings: [], ice: false } });
+    const built = (r, shots) => { const slot = slotFor(order(r.id, plain(r).custom)); while (sim.autoAssistStep(slot)) {} slot.cup.shots = shots; return slot; };
+    const withShots = RECIPES.filter(r => r.shots);
+    ok(withShots.length >= 10, `${withShots.length} recipes ask for shots`);
+    for (const r of withShots) {
+      ok(sim.orderIsComplete(built(r, r.shots)), `${r.name}: ${r.shots} shot${r.shots > 1 ? "s" : ""} completes the ticket`);
+      const more = built(r, r.shots + 1);
+      ok(!sim.orderIsComplete(more) && sim.serveReadiness(more).missing.length === 1 && sim.stationsNeedingWork(more).has("base"),
+        `${r.name}: one shot more leaves the base line, and only it, unmet`);
+      ok(!sim.orderIsComplete(built(r, r.shots - 1)), `${r.name}: one shot fewer is short, as before`);
+      eq(sim.shotsOver(more), r.shots, `${r.name}: shotsOver names the ${r.shots} asked for`);
+      eq(sim.shotsOver(built(r, r.shots)), 0, `${r.name}: and is 0 on the right count`);
+    }
+    // By hand, at the Base station: the second pull is one too many, and Dump
+    // is the way back.
+    state.slots[0] = slotFor(order("ristretto", plain(R("ristretto")).custom));
+    const slot = state.slots[0];
+    sim.cupAction(slot, "pullShot");
+    ok(sim.orderIsComplete(slot), "one pull finishes a Ristretto");
+    sim.cupAction(slot, "pullShot");
+    ok(!sim.orderIsComplete(slot) && sim.shotsOver(slot) === 1, "a second pull makes it an Americano, which the ticket did not ask for");
+    eq(sim.serveReadiness(slot).done, 0, "served like that it is 0 of 1 lines");
+    ok(sim.discardCup(0) && state.slots[0].cup.shots === 0 && sim.shotsOver(state.slots[0]) === 0, "Dump empties the cup");
+    sim.cupAction(state.slots[0], "pullShot");
+    ok(sim.orderIsComplete(state.slots[0]), "and one pull finishes it again");
+    // A barista's step on an over-pulled cup sets the count, as apply() always did.
+    const fix = built(R("latte"), 2);
+    ok(sim.autoAssistStep(fix) && fix.cup.shots === 1 && sim.orderIsComplete(fix), "a barista's step on a two-shot Latte makes it one and finishes it");
+    // What the change costs the player: a Latte with a second shot is 1 of 2 lines.
+    const latte2 = built(R("latte"), 2);
+    eq(`${sim.serveReadiness(latte2).done}/${sim.serveReadiness(latte2).total}`, "1/2", "a Latte with a second shot pulled by mistake is 1 of 2 lines until it is dumped");
+    // shotsOver keeps quiet where there is nothing to say.
+    eq(sim.shotsOver(slotFor(foodOrder("bagel"))), 0, "shotsOver is 0 on a plate");
+    eq((() => { try { return sim.shotsOver(null); } catch { return "threw"; } })(), 0, "and on an empty station");
+    const drip = slotFor(order("drip")); drip.cup.base = "espresso"; drip.cup.shots = 3;
+    eq(sim.shotsOver(drip), 0, "and on a ticket that asks for no shots");
+    const wrongBase = slotFor(order("ristretto")); wrongBase.cup.base = "drip"; wrongBase.cup.shots = 2;
+    eq(sim.shotsOver(wrongBase), 0, "and on a cup whose base is wrong anyway");
+  }
 }
 
 /* ---------- report ---------- */

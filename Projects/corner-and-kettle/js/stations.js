@@ -109,7 +109,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
           <button class="actionbtn" id="btnDrip">🫖 Brew Drip Coffee</button>
           <button class="actionbtn" id="btnTea">🍵 Steep Tea</button>
         </div>
-        <div class="draghint">Shots in cup: ${cup.shots} ${cup.base? '· base: '+cup.base : ''}</div>
+        <div class="draghint">Shots in cup: ${cup.shots} ${cup.base? '· base: '+cup.base : ''}${sim.shotsOver(slot) ? ` · the ticket asks for ${sim.shotsOver(slot)}: 🗑️ Dump starts the cup over` : ''}</div>
         <div class="progresswrap"><div class="progressfill" id="baseProgress"></div></div>
       </div>`;
       case 'milk':

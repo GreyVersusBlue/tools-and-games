@@ -45,7 +45,10 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   chalkboard button — `canBuy` reports the price `purchase` will take, discount
   and all, plus which currency it comes out of (#362, #363). The reopening
   layer is derived rather than stored (#361): `recipeAvailable(id)` is the one
-  answer to "is this on the menu", `metaOwned`/`metaDiscount`/`boardCost` read
+  answer to "is this on the menu", `recipeOffered(id)` the one answer to "can a
+  customer ask for it" (on the menu, and its own syrup and topping on the
+  shelf, with `recipeStockMissing(id)` naming what is not, #913),
+  `metaOwned`/`metaDiscount`/`boardCost` read
   the bean tree, `currentLayout`/`layoutsFor` the configuration, and
   `reopenPreview()` is the kept/earned/lost ledger the page's confirmation
   renders. **It imports nothing and touches no DOM, timer or wall

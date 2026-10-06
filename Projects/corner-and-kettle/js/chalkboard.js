@@ -58,6 +58,15 @@ export function createChalkboard({ state, sim, buy }){
         }
         return;
       }
+      // On the menu with its own syrup or topping not bought (#913): nobody
+      // orders it, and the row says what to buy instead of a plain tick.
+      const lacks = unlocked ? sim.recipeStockMissing(r.id) : [];
+      if(lacks.length){
+        html += `<div class="chalk-item" data-recipe-short="${r.id}">
+          <span>${r.icon} ${r.name} <small>($${r.price}) — nobody orders it until you buy ${lacks.map(m=>`${m.name} ($${m.cost})`).join(' and ')}, below</small></span><span>⏳</span>
+        </div>`;
+        return;
+      }
       html += `<div class="chalk-item ${unlocked?'':'locked'}">
         <span>${r.icon} ${r.name} <small>($${r.price})${r.requires && !unlocked ? ` — requires ${RECIPES.find(x=>x.id===r.requires).name}` : ''}</small></span>
         ${unlocked ? '<span>✓</span>' : `<button data-unlock-recipe="${r.id}" ${dis('recipe', r.id)}>Unlock $${price('recipe', r.id)}</button>`}

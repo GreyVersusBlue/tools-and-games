@@ -245,6 +245,33 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     return false;
   }
 
+  /**
+   * What a recipe on the menu still lacks on the shelf (#913): the syrup or
+   * topping the recipe itself asks for, not yet bought. Only Mocha can be in
+   * this state (every other recipe's lines are day-one stock, #878): its
+   * recipe is $120, or two beans in every run, and its syrup is a separate
+   * $35 that a reopening takes back off the shelf. A recipe with anything
+   * here is on the menu and not ordered: nobody asks for a cup the player has
+   * no button to finish.
+   */
+  function recipeStockMissing(id){
+    const r = RECIPES.find(x => x.id === id);
+    const missing = [];
+    if(!r) return missing;
+    if(r.requiredSyrup && !state.unlockedSyrups.has(r.requiredSyrup)){
+      const s = SYRUPS.find(x => x.id === r.requiredSyrup);
+      missing.push({ type:'syrup', id:s.id, name:`${s.name} syrup`, cost:boardCost(s.cost) });
+    }
+    if(r.requiredTopping && !state.unlockedToppings.has(r.requiredTopping)){
+      const t = TOPPINGS.find(x => x.id === r.requiredTopping);
+      missing.push({ type:'topping', id:t.id, name:t.name, cost:boardCost(t.cost) });
+    }
+    return missing;
+  }
+  function recipeOffered(id){
+    return recipeAvailable(id) && recipeStockMissing(id).length === 0;
+  }
+
   /** The layout this run opened in, falling back to day one's. */
   function currentLayout(){
     return SHOP_LAYOUTS.find(l => l.id === state.layoutId) || SHOP_LAYOUTS[0];
@@ -426,6 +453,10 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   function getUnlockedRecipeList(){
     return RECIPES.filter(r=>recipeAvailable(r.id));
   }
+  /** The part of the menu a customer can ask for: on it, and stocked (#913). */
+  function getOfferedRecipeList(){
+    return RECIPES.filter(r=>recipeOffered(r.id));
+  }
   function getUnlockedFoodList(){
     return FOODS.filter(f=>state.unlockedFoods.has(f.id));
   }
@@ -473,7 +504,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       return { isFood:true, foodId: food.id, price: food.price };
     }
 
-    let pool = getUnlockedRecipeList();
+    let pool = getOfferedRecipeList();
     let simplePool = pool.filter(r=>!r.requiredSyrup && !r.blended);
     let specialtyPool = pool.filter(r=>r.requiredSyrup || r.blended);
     let recipe;
@@ -516,6 +547,15 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     if(recipe.requiredTopping && !custom.toppings.includes(recipe.requiredTopping)) custom.toppings.unshift(recipe.requiredTopping);
     if(recipe.ice) custom.ice = true;
     return custom;
+  }
+
+  // Can this order be finished with what is on the shelf? A drink's syrup and
+  // toppings each need their button (#913). Food has no shelf.
+  function orderOnShelf(content){
+    if(content.isFood) return true;
+    const c = content.custom || {};
+    if(c.syrup && !state.unlockedSyrups.has(c.syrup)) return false;
+    return (c.toppings || []).every(t => state.unlockedToppings.has(t));
   }
 
   function cloneOrderContent(content){
@@ -565,6 +605,13 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       rec.visits++;
       rec.lastDay = state.day;
       content = cloneOrderContent(rec.order);
+      // A favourite the shelf cannot finish (a Mocha stored while its syrup
+      // was not bought, before #913 stopped that order being made) re-rolls
+      // off today's menu, the way a reopening re-rolls every favourite.
+      if(!orderOnShelf(content)){
+        rec.order = generateOrderContent(phase);
+        content = cloneOrderContent(rec.order);
+      }
     } else {
       content = generateOrderContent(phase);
     }
@@ -612,7 +659,9 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     else if(r.base==='frappeBase') baseLabel = 'Blended base';
     else baseLabel = 'Base';
     reqs.push({label: baseLabel, station:'base',
-      check: slot => slot.cup.base===r.base && (r.shots ? slot.cup.shots>=r.shots : true),
+      // The count is exact (#913): a recipe asks for a cup of its own, and a
+      // second shot in a Ristretto's cup is an Americano. Dump is the way back.
+      check: slot => slot.cup.base===r.base && (r.shots ? slot.cup.shots===r.shots : true),
       apply: slot => {
         slot.cup.base = r.base;
         if(r.shots) slot.cup.shots = r.shots;
@@ -680,6 +729,15 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   // needed" dot. The same list the ticket and the scorer read.
   function stationsNeedingWork(slot){
     return new Set(getOrderRequirements(slot.customer).filter(req=>!req.check(slot)).map(req=>req.station));
+  }
+
+  // The shots the ticket asks for when the cup holds more, 0 otherwise. The
+  // count is exact (#913) and only Dump takes a shot back, so the Base tab
+  // says so in words.
+  function shotsOver(slot){
+    if(!slot) return 0;
+    const r = RECIPES.find(x=>x.id===slot.customer.recipeId);
+    return r && r.shots && slot.cup.base===r.base && slot.cup.shots>r.shots ? r.shots : 0;
   }
 
   /* ---------- accept / release / serve ---------- */
@@ -1263,7 +1321,11 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
         if(r.requires && !recipeAvailable(r.requires)) return `Unlock ${byId(RECIPES, r.requires).name} first.`;
         return need(r.unlockCost);
       },
-      apply(id){ state.unlockedRecipes.add(id); return `${byId(RECIPES, id).name} is on the menu!`; },
+      apply(id){
+        state.unlockedRecipes.add(id);
+        const lacks = recipeStockMissing(id).map(m => `${m.name} ($${m.cost})`).join(' and ');
+        return `${byId(RECIPES, id).name} is on the menu!${lacks ? ` Nobody orders it until you buy ${lacks}.` : ''}`;
+      },
     },
     food: unlockRow(FOODS, 'unlockedFoods', 'unlockCost', 'food'),
     syrup: unlockRow(SYRUPS, 'unlockedSyrups', 'cost', 'syrup'),
@@ -1485,6 +1547,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     reputationStars, adjustReputation,
     hasUpgrade, queueMax, espressoDurationMs, outageActive, stationDurationMult,
     metaOwned, beansHeld, beansFromRun, metaDiscount, boardCost, recipeAvailable,
+    recipeStockMissing, recipeOffered, getOfferedRecipeList, orderOnShelf, shotsOver,
     currentLayout, layoutsFor, reopenPreview, grantUpgrade,
     mistakeReduceFactor, shopPatienceMult, shopTipMult, shopSpawnFactorMult,
     wordOfMouthSignal, wordOfMouthSpawnMult, wordOfMouthRegularMult,
