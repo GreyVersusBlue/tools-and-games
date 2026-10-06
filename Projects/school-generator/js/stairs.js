@@ -43,7 +43,7 @@ import { addLink, MAX_LINKS } from './props.js';
 // Every caller still reads them from here.
 import {
   switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS,
-  MAX_RUN_RISE, minRuns,
+  MAX_RUN_RISE, minRuns, LANDING_D,
   HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE,
 } from './switchback.js';
 
@@ -62,6 +62,11 @@ export const MAX_STAIR_W = 12;
 // How far past the top step the opening runs, so you arrive somewhere rather
 // than onto the lip of the hole you just climbed through.
 export const LANDING = 4;             // ft
+// A ramp's is ADA 2010 405.7.3's 60in, the number a folded ramp's landings
+// already were, read from the one place it is written (#904). A ramp saved
+// when this was 4 loads with 5: the length is derived, never stored.
+export const RAMP_LANDING = LANDING_D;
+export const topLanding = (link) => (link && link.type === 'ramp' ? RAMP_LANDING : LANDING);
 // `HEADROOM`, the clear height a tread needs under the floor above, is
 // switchback.js's to define and this module's to hand out (see the imports).
 export const CUT_MARGIN = 0.25;       // ft of slack each side of the run
@@ -303,7 +308,7 @@ export function cutBox(link, metrics) {
   }
   const hw = stairWidth(link) / 2 + CUT_MARGIN;
   const run = runLength(link, metrics);
-  return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + LANDING };
+  return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + topLanding(link) };
 }
 
 // A folded ramp's hole, as one local box per lane, left to right, or null for
@@ -575,6 +580,15 @@ export function rampLandingArea(link, metrics) {
   return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
 }
 
+// The level landing at the top of a straight ramp, as a local box: the ramp's
+// own width, from the top of the run to the far edge of the hole. Null for a
+// stair and for a folded ramp, whose landings are its layout's.
+export function rampLandingBox(link, metrics) {
+  if (!link || link.type !== 'ramp' || isSwitchback(link)) return null;
+  const hw = stairWidth(link) / 2, run = runLength(link, metrics);
+  return { x0: -hw, x1: hw, z0: run, z1: run + RAMP_LANDING };
+}
+
 // The same guards as world segments on the plan, for the collider.
 export const rampGuardSegments = (link, metrics) =>
   rampGuards(link, metrics).map((g) => ({
@@ -621,7 +635,7 @@ export function stairSurfaceAt(link, metrics, x, z) {
     return switchbackSurfaceAt(layout, lx, 0) === null ? null : 0;
   }
   const hw = stairWidth(link) / 2;
-  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + LANDING) return null;
+  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + topLanding(link)) return null;
   if (lz > run) return metrics.rise;   // the landing at the top
   return clamp(lz / run, 0, 1) * metrics.rise;
 }

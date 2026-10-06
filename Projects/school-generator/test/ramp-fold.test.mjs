@@ -100,11 +100,12 @@ test('a save with no run count loads as the straight ramp it was, and saves back
   assert.deepEqual(link.data, { width: 4, slope: 12 });
   assert.equal(serialize(back), text);
   // The straight run, by the numbers it has always had: 144ft of it, cut
-  // from where 6.8ft of headroom runs out to 4ft past the top.
+  // from where 6.8ft of headroom runs out to 5ft past the top (4ft and 148
+  // until #904 gave a ramp ADA's 60in landing).
   const here = { ...link, x: 0, z: 0 };
   assert.deepEqual(footprintBox(here, M), { x0: -2, x1: 2, z0: 0, z1: 144 });
   const cut = cutBox(here, M);
-  assert.ok(near(cut.x0, -2.25) && near(cut.x1, 2.25) && near(cut.z0, 62.4) && near(cut.z1, 148));
+  assert.ok(near(cut.x0, -2.25) && near(cut.x1, 2.25) && near(cut.z0, 62.4) && near(cut.z1, 149));
   assert.equal(cutColumns(here, M), null);
   assert.deepEqual(openingRails(here, M).map((r) => r.side), ['near', 'right', 'left']);
   assert.ok(near(stairSurfaceAt(here, M, 0, 72), 6));
@@ -471,7 +472,7 @@ test('the top of a folded ramp is where its top landing opens, not straight ahea
   const two = runLandings(ramp({ runs: 2 }), M);
   assert.ok(near(two.head.x, 4) && near(two.head.z, -7), 'even: back at the near end, one lane over');
   const one = runLandings(ramp({}), M);
-  assert.ok(near(one.head.x, 0) && near(one.head.z, 150), 'straight: 144 + the 4ft landing + 2');
+  assert.ok(near(one.head.x, 0) && near(one.head.z, 151), 'straight: 144 + the 5ft landing + 2 (150 before #904)');
   assert.deepEqual(runTurns(ramp({}), M), []);
 });
 

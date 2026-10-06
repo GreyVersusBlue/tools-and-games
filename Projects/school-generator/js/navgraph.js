@@ -61,7 +61,7 @@ import { siteCurbs } from './site.js';
 import { MinHeap } from './heap.js';
 import {
   stairsOf, stairMetrics, runLength, runTravel, rampLayout, localToWorld, elevatorSize,
-  isRun, isElevator, LANDING,
+  isRun, isElevator, topLanding,
 } from './stairs.js';
 import { MIN_ACCESSIBLE_W, doorRolls, rampRolls } from './clearance.js';
 
@@ -611,7 +611,7 @@ export function runLandings(link, metrics) {
   const run = runLength(link, metrics);
   return {
     foot: localToWorld(link, 0, -2),
-    head: localToWorld(link, 0, run + LANDING + 2),
+    head: localToWorld(link, 0, run + topLanding(link) + 2),
   };
 }
 
