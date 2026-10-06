@@ -8,8 +8,19 @@
       "label": "Class seed",
       "report": "This class was not authored. Seed {seed} made them; type it into the start screen and you get the same twelve back.",
       "use": "Use this seed",
-      "hint": "Twelve kids out of one number. Same number, same kids."
+      "hint": "Twelve kids out of one number. Same number, same kids. 1000004, 1000005 and 1000006 are the 4th, 5th and 6th you already have.",
+      "reportAuthored": "Seed {seed} is {ordinal}'s twelve, the ones somebody did write down. Type it into the start screen and you get them back."
     }
+  },
+
+  "classSeeds": {
+    "_note": "Seed format 2 (#893). A seed from 1 to 999999 is format 1: the generator draws twelve kids from it, and nothing about any of those changed. A seed in this table is an authored class by name: the roster and schedule pointers below, read as they are, never drawn. No drawable seed can be one of these classes (every authored name is outside data/generation.json's pool, and an authored schedule is the same every day where a drawn one is the seed plus the day), so the table is a lookup and says so. Every seed here must be above 999999: src/periods.js ignores an entry that is not, so a row added here can never change what an old seed means. A class seed carries the kids and their tell schedule and nothing else: the lesson and the chart-screen copy belong to the row the seed is typed into, so 5th period's twelve in 7th period sit through 7th period's lesson. \"of\" is the row the class was authored for; it is read for the report's wording only.",
+    "format": 2,
+    "classes": [
+      { "seed": 1000004, "of": "p4", "roster": "students.roster", "schedule": "tells.schedule" },
+      { "seed": 1000005, "of": "p5", "roster": "period5.roster", "schedule": "period5.schedule" },
+      { "seed": 1000006, "of": "p6", "roster": "period6.roster", "schedule": "period6.schedule" }
+    ]
   },
 
   "periods": [

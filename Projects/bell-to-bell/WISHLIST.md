@@ -7,7 +7,7 @@ it, an AP whose visits are a calendar rather than a metronome, four subjects
 that are files rather than branches, an `Assets/` tree that knows what it
 weighs, a three.js that is vendored rather than fetched, tells that are objects
 in the room rather than boxes in a vision mode, and a room a thumb can walk,
-teach and rechart on a written-down frame budget. `tests/smoke.mjs` prints 795
+teach and rechart on a written-down frame budget. `tests/smoke.mjs` prints 851
 PASS lines and no FAIL, `tests/assets.mjs` audits the asset manifest against a
 budget, and `tests/balance.mjs` runs six styles through 4th period, one style
 across three seating charts, three styles through each later period, the whole
@@ -235,8 +235,8 @@ And the working rules:
 they stay here struck, with the answer, so nobody asks again.
 
 - ~~**Authoring or generation?**~~ Answered 2026-10-05: **the three authored
-  periods become seeds.** That is work now, and it is in the standing backlog
-  under Content.
+  periods become seeds.** Built as three class seeds on 2026-10-05 (#893); what
+  is left of it is in the standing backlog under Content.
 - ~~**Does the period need a fail state?**~~ Answered 2026-10-05: **still no.**
 - ~~**Is suppression too strong?**~~ Answered 2026-10-05: **it is not.** Leave
   it; the per-period cap is not wanted.
@@ -337,12 +337,22 @@ new list.
   furniture. There is no confirmation beyond the browser's own `confirm()`.
 
 **Content**
-- **The three authored periods become seeds** (Devon, 2026-10-05, #889). 4th,
-  5th and 6th are `data/students.json`, `data/period5.json` and
-  `data/period6.json`; the 7th is a `generate` row in `data/periods.json`. The
-  question called the conversion one JSON edit each, and said what it costs:
-  the authored names and notes go. Not started. The suites that name authored
-  kids (Priya in front of June, the 4th-period balance table) move with it.
+- **The three authored classes are seeds now** (Devon's yes of 2026-10-05,
+  #889; built in #893). 1000004, 1000005 and 1000006 typed into 7th period's
+  seed box are 4th, 5th and 6th period's twelve kids and tell schedules, field
+  for field, by a lookup table in `data/periods.json` (`classSeeds`). They are
+  not draws: every authored name is outside the generator's pool, so no
+  six-digit seed could be one of them, and the six-digit seeds mean what they
+  did. A class seed carries the kids and their schedule; the lesson and the
+  chart copy stay with the row.
+  **Left:** 4th, 5th and 6th themselves are still rows with no seed box. The
+  question's own wording ("one JSON edit each, and their names would go") is
+  now three edits that lose nothing: give each row `"generate": true` and a
+  default of its own class seed, and `main.js` has to learn a row's default.
+  That moves what a save in those three slots means (the semester record
+  stores `seed: null` for them today), so it wants `semester.repair` to carry
+  null forward as the row's class seed, and the 4th-period balance table to
+  be read through the seed. Not started.
 - Beats are hand-authored and never vary, and the generated 7th period reads
   4th period's lesson. Generation stops at the roster and the schedule on
   purpose: voice is what it is worst at.
