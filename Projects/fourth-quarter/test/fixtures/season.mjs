@@ -44,9 +44,14 @@ function playNight(e) {
  * Play `nights` nights. `mods` is { C, NightEngine, seed, mulberry32 } from
  * the build under test. `opts.house` signs with a supply house on day one if
  * the build has them; `opts.venue` starts on that rung; `opts.cash` is the
- * opening till. Returns the campaign and one row a night.
+ * opening till. `opts.rota` posts the rota on day one if the build has one
+ * (#908) and is then called every morning with the campaign and the build's
+ * campaign.js, to hire or to set nights off. Returns the campaign and one row
+ * a night; a night under a rota also carries `wages` and `crew`, which a row
+ * from a build or a campaign without one does not, so the rows the pins were
+ * taken over are unchanged.
  */
-export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = null, cash = null } = {}) {
+export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = null, cash = null, rota = null } = {}) {
   const { C, NightEngine, seed: seedEngine, mulberry32 } = mods;
   const real = Math.random;
   Math.random = seeded(seed ^ 0x9e3779b9, mulberry32);
@@ -57,9 +62,11 @@ export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = n
     if (venue) C.devWarpVenue(c, venue);
     if (cash !== null) c.cash = cash;
     if (house && C.signHouse) C.signHouse(c, house);
+    if (rota && C.postRota) C.postRota(c);
     for (let n = 0; n < nights && !c.failed; n++) {
       const rand = seeded((seed * 7919 + n) >>> 0, mulberry32);
       const day = c.day;
+      if (rota && C.postRota) rota(c, C);
       if (c.darkNightsLeft > 0) { const b = C.settleDarkNight(c, rand); rows.push({ day, dark: true, net: b.net, account: b.account || 0, cash: c.cash }); continue; }
       const heads = C.forecast(c);
       const order = {};
@@ -79,7 +86,8 @@ export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = n
       const b = C.settleNight(c, s, rand);
       rows.push({ day, dark: false, order, ordered: !!placed.ok, list: placed.ok ? list : 0, paid, drop: placed.drop || 0,
         take: b.take, revenue: s.revenue, tips: s.tips, served: s.served, net: b.net, account: b.account || 0,
-        spoiled: b.spoilage.value, cash: c.cash, evicted: !!b.lease.evicted });
+        spoiled: b.spoilage.value, cash: c.cash, evicted: !!b.lease.evicted,
+        ...(b.crew && b.crew.rota ? { wages: b.wages, crew: b.crew } : {}) });
     }
   } finally { Math.random = real; seedEngine(0); }
   return { c, rows };

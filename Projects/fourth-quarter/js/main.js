@@ -15,6 +15,7 @@ import { DevPanel } from "./dev.js";
 import * as C from "./campaign.js";
 import * as LG from "./league.js";
 import * as EV from "./events.js";
+import * as STF from "./staff.js";
 import { FloorMoment } from "./moments.js";
 import * as audio from "./audio.js";
 import { initTextures, textureStatus } from "./materials.js";
@@ -285,9 +286,11 @@ function beginNight() {
   // reachable — the old literals were the Corner Tap's and put a cook inside
   // the Fieldhouse's prep counter
   const room = currentLayout();
-  const floorStaff = campaign.staff.filter(s => s.role !== "cook");
+  // who is on shift, at tonight's skill: the whole payroll with no rota
+  const crewTonight = C.shiftCrew(campaign);
+  const floorStaff = crewTonight.filter(s => s.role !== "cook");
   servers = floorStaff.map((s, i) => new Server(scene, engine, s.name.split(" ")[0], crewHome(room, i), s.speed * C.speedMult(campaign, s.role), s.role));
-  cookMeshes = campaign.staff.filter(s => s.role === "cook").map((s, i) => {
+  cookMeshes = crewTonight.filter(s => s.role === "cook").map((s, i) => {
     const m = personMesh(0x8a6a42, true);
     const c = cookSpot(room, i);
     m.position.set(c.x, c.y, c.z);
@@ -295,8 +298,6 @@ function beginNight() {
     scene.add(m);
     return m;
   });
-  if (!C.hasCook(campaign)) tick("No cook on shift — the kitchen's closed tonight.", "b");
-  if (!C.hasBartender(campaign)) tick("No bartender — servers are covering the taps, badly.", "b");
   // Warm these five now, at the top of the night, rather than the first time
   // playSfx()/startLoop() builds their Audio element mid-event — the storm-out
   // clip in particular used to start fetching the moment a patron first gave up,
@@ -310,6 +311,12 @@ function beginNight() {
   tick(`Doors open. ${engine.gameNight ? `${tn.label} — kickoff 7 PM.` : tn.games.length ? `${tn.label}.` : "No game — just the regulars and the jukebox."}`, "hl");
   const pd = C.promoDef(campaign);
   if (pd.id !== "none") tick(`Tonight's theme: ${pd.name}.`, "hl");
+  // After the ticker is cleared for the night, not before it: these two lines
+  // were written above the clear until #908 and no night ever showed them.
+  const calledOut = C.duty(campaign).out;
+  if (calledOut.length) tick(`${calledOut.map(n => n.split(" ")[0]).join(", ")} called out tonight. Burnt out.`, "b");
+  if (!C.hasCook(campaign)) tick("No cook on shift — the kitchen's closed tonight.", "b");
+  if (!C.hasBartender(campaign)) tick("No bartender — servers are covering the taps, badly.", "b");
   audio.startLoop("barBed", 0.35);
   save();
   renderer.domElement.requestPointerLock(); // still inside the click gesture — no extra click needed
@@ -514,6 +521,7 @@ function showBoxScore() {
     ${engine.gameNight ? `<div class="sec">The Game</div>
     <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}
     ${socialRows(books.social)}
+    ${crewRows(books.crew)}
     ${leaseRows(books.lease)}
     ${campaign.failed ? runSummaryRows() : ""}`;
   // The one screen in the game that offers to erase a campaign, and it only
@@ -523,6 +531,22 @@ function showBoxScore() {
   $("#nextDayBtn").textContent = campaign.failed ? "Start a New Campaign" : "Tomorrow's Ledger";
   $("#boxOverlay").style.display = "flex";
   document.exitPointerLock();
+}
+
+/** The crew on the box score, once there is a rota: who had the night off,
+ *  who did not show, who earned a level and who is gone. Nothing without one,
+ *  and nothing on a night where none of that happened. */
+function crewRows(crew) {
+  if (!crew || !crew.rota) return "";
+  const first = a => a.map(n => n.split(" ")[0]).join(", ");
+  const rows = [];
+  if (crew.off.length) rows.push(`<div class="row"><span>Night off</span><span>${first(crew.off)}</span></div>`);
+  if (crew.out.length) rows.push(`<div class="row"><span>Called out</span><span class="bad">${first(crew.out)}</span></div>`);
+  if (crew.leveled.length) rows.push(`<div class="row"><span>Earned a skill level (+$${STF.LEVEL_RAISE}/night)</span><span class="good">${first(crew.leveled)}</span></div>`);
+  const walked = crew.quit.filter(n => !crew.poached.includes(n));
+  if (walked.length) rows.push(`<div class="row"><span>Quit</span><span class="bad">${first(walked)}</span></div>`);
+  if (crew.poached.length) rows.push(`<div class="row"><span>Gone to ${C.RIVAL.name}</span><span class="bad">${first(crew.poached)}</span></div>`);
+  return rows.length ? `<div class="sec" id="boxCrew">The Crew</div>${rows.join("")}` : "";
 }
 
 /** The landlord on the box score: the notice, or the eviction and what it cost.

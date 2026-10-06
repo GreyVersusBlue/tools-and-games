@@ -11,6 +11,7 @@ import { DAYS, MULES, TEAMS as LEAGUE_TEAMS, newLeague, validLeague, syncLeague,
 import * as R from "./regulars.js";
 import * as EV from "./events.js";
 import * as S from "./supply.js";
+import * as ST from "./staff.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export { DAYS };
@@ -388,7 +389,7 @@ export function mkStaff(role, skill, wage, name) {
  *  and has no fallback (cook only); bartender falls back to 0.55 (servers
  *  "cover the taps, badly") since drinks can never be fully 86'd this way. */
 export function roleMult(c, role) {
-  const crew = c.staff.filter(s => s.role === role);
+  const crew = shiftCrew(c).filter(s => s.role === role);
   let base;
   if (!crew.length) base = role === "bartender" ? 0.55 : 0;
   else base = crew.reduce((m, s) => m + (0.7 + s.skill * 0.14), 0);
@@ -397,8 +398,79 @@ export function roleMult(c, role) {
   if (role === "cook" && owned(c, "rushexp")) mult *= 1.3;
   return base * mult;
 }
-export function hasCook(c) { return c.staff.some(s => s.role === "cook"); }
-export function hasBartender(c) { return c.staff.some(s => s.role === "bartender"); }
+export function hasCook(c) { return shiftCrew(c).some(s => s.role === "cook"); }
+export function hasBartender(c) { return shiftCrew(c).some(s => s.role === "bartender"); }
+
+// ---------- the crew as people ----------
+// staff.js owns the arithmetic; these are the campaign's questions of it, and
+// the places the record moves: posting the rota, a night off, and the close.
+// With no rota every one of these answers what the payroll alone answered
+// before there was a staff.js (#908).
+
+/** The rota is posted. Until it is, the crew is the payroll and nothing else. */
+export function hasRota(c) { return ST.hasRota(c.crew); }
+/** How many the payroll holds: MAX_STAFF, or staff.js's roster under a rota. */
+export function staffCap(c) { return ST.rosterCap(c.crew); }
+/** Who is where tonight, by name: staff.js's tonight(). */
+export function duty(c) { return ST.tonight(c.crew, c.staff, weekday(c), c.day); }
+/** One staffer's line in the book, and what it means tonight. */
+export function crewLine(c, name) {
+  const e = ST.entry(c.crew, name);
+  const s = c.staff.find(x => x.name === name);
+  return { ...e, condition: ST.condition(e.fatigue), looking: e.morale < ST.LOOKING,
+    skill: s ? ST.effSkill(s.skill, e.fatigue) : 0, toLevel: s ? ST.xpToLevel(s.skill) : 0 };
+}
+/**
+ * The crew the night gets: who is on shift, at the skill they work at
+ * tonight. With no rota this is `c.staff` itself, the same array, which is
+ * every caller's old read. With one, a tired staffer is a copy a level down
+ * (two when burnt out), walking as fast as that level walks.
+ */
+export function shiftCrew(c) {
+  if (!hasRota(c)) return c.staff;
+  const on = new Set(duty(c).on);
+  return c.staff.filter(s => on.has(s.name)).map(s => {
+    const skill = ST.effSkill(s.skill, ST.entry(c.crew, s.name).fatigue);
+    if (skill === s.skill) return s;
+    const tired = { ...s, skill };
+    if (s.role !== "cook") tired.speed = Math.round((s.speed - (speedForSkill(s.skill) - speedForSkill(skill))) * 100) / 100;
+    return tired;
+  });
+}
+/** Post the rota. Free, and one way (staff.js's header says why). */
+export function postRota(c) {
+  if (hasRota(c)) return { ok: false, err: "The rota's already on the wall." };
+  c.crew = ST.postRota(c.crew);
+  return { ok: true };
+}
+/** Flip one weekday on a staffer's line of the rota. */
+export function toggleDayOff(c, name, day) {
+  if (!hasRota(c) || !DAYS.includes(day) || !c.staff.some(s => s.name === name)) return false;
+  c.crew = ST.toggleOff(c.crew, name, day);
+  return true;
+}
+/**
+ * The crew's half of the close: what tonight did to the people who worked it
+ * and the ones who did not. `onDuty` is duty() as it stood at the open. A
+ * level is a skill point, LEVEL_RAISE a night and the walking speed that goes
+ * with it; a quitter is off the payroll after tonight's wage, and one the End
+ * Zone took makes it that much better. Nothing moves, and `rand` is not
+ * drawn, without a rota.
+ */
+function settleCrew(c, onDuty, ctx, rand) {
+  const r = ST.after(c.crew, c.staff, onDuty, ctx, rand);
+  c.crew = r.crew;
+  for (const name of r.leveled) {
+    const s = c.staff.find(x => x.name === name);
+    s.skill += 1;
+    s.wage += ST.LEVEL_RAISE;
+    if (s.role !== "cook") s.speed = speedForSkill(s.skill);
+  }
+  if (r.quit.length) c.staff = c.staff.filter(s => !r.quit.includes(s.name));
+  if (r.poached.length) c.rival.buzz = Math.min(R.BUZZ_MAX, c.rival.buzz + ST.POACH_BUZZ_GAIN * r.poached.length);
+  return { rota: hasRota(c), on: onDuty.on, off: onDuty.off, out: onDuty.out, call: onDuty.call,
+    leveled: r.leveled, quit: r.quit, poached: r.poached };
+}
 
 export function newCampaign() {
   const c = {
@@ -419,6 +491,7 @@ export function newCampaign() {
     eventCd: {},
     dist: S.newDist(),
     pars: {},
+    crew: ST.newCrew(),
   };
   rollApplicants(c, Math.random);
   return c;
@@ -488,10 +561,18 @@ export function eventView(c) {
     rep: c.rep, buzz: c.rival.buzz,
     upgrades: c.upgrades.slice(),
     dist: distDef(c).id,
-    staff: c.staff.map(s => ({ name: s.name, role: s.role, skill: s.skill, wage: s.wage })),
+    // who is on the floor tonight, at their own skill: a card cannot poach
+    // somebody on their night off (the whole payroll, with no rota)
+    staff: onShift(c).map(s => ({ name: s.name, role: s.role, skill: s.skill, wage: s.wage })),
     regulars: c.regulars.map(r => ({ id: r.id, name: r.name, usual: r.usual, team: r.team, loyalty: r.loyalty })),
     regularsIn: regularsIn(c).map(r => r.id),
   };
+}
+/** The payroll's own records for whoever is on shift tonight. */
+function onShift(c) {
+  if (!hasRota(c)) return c.staff;
+  const on = new Set(duty(c).on);
+  return c.staff.filter(s => on.has(s.name));
 }
 /** What the engine needs to run tonight's moments — the three things its
  *  `moments` option takes, built here so main.js and a test hand it the same
@@ -538,8 +619,10 @@ function settleMoments(c, mo) {
     if (!ch || typeof ch.name !== "string") continue;
     const s = c.staff.find(x => x.name === ch.name);
     if (!s) continue;
+    // (their line in the rota's book goes at the close, with settleCrew(): the
+    // book is rebuilt from the payroll every night)
     if (ch.quit) { c.staff = c.staff.filter(x => x !== s); out.quit.push(s.name); }
-    else if (Number.isFinite(ch.wage)) { s.wage = Math.max(0, Math.round(ch.wage)); out.raised.push(s.name); }
+    else if (Number.isFinite(ch.wage)) { s.wage = Math.max(0, Math.round(ch.wage)); c.crew = ST.afterRaise(c.crew, s.name); out.raised.push(s.name); }
   }
   const fired = (Array.isArray(mo.resolved) ? mo.resolved : []).filter(m => m && typeof m.id === "string");
   out.resolved = fired.map(m => m.id);
@@ -622,7 +705,7 @@ export function rollApplicants(c, rand = Math.random) {
 
 export function hire(c, name) {
   const a = c.applicants.find(x => x.name === name);
-  if (!a || c.staff.length >= MAX_STAFF) return false;
+  if (!a || c.staff.length >= staffCap(c)) return false;
   c.applicants = c.applicants.filter(x => x !== a);
   c.staff.push(a);
   return true;
@@ -632,6 +715,7 @@ export function fire(c, name) {
   const s = c.staff.find(x => x.name === name);
   if (!s) return false;
   c.staff = c.staff.filter(x => x !== s);
+  c.crew = ST.without(c.crew, s.name);
   return true;
 }
 
@@ -695,7 +779,9 @@ export function orderCost(order) {
   return Math.round(t * 100) / 100;
 }
 
-export function wageBill(c) { return c.staff.reduce((s, x) => s + effWage(c, x), 0); }
+/** Tonight's wages: whoever is on shift. A night off is a night unpaid, and
+ *  with no rota nobody has one. */
+export function wageBill(c) { return shiftCrew(c).reduce((s, x) => s + effWage(c, x), 0); }
 
 /**
  * The half of settlement that is people rather than money.
@@ -780,6 +866,8 @@ const RIVAL_TEAM = (LEAGUE_TEAMS.find(t => t.rival) || {}).id || null;
  * nobody, so nothing in it reads the shelf and the order cannot show.
  */
 function closeNight(c, summary, dark, rand) {
+  // who worked tonight, read before a card or the calendar can move it
+  const onDuty = duty(c);
   const { wages, rent: rentDue, upgFees, account, total: bill } = billsFor(c);
   // a theme is an optional spend on an open night; a closed one cannot buy it
   const promoCost = dark ? 0 : promoDef(c).cost;
@@ -820,6 +908,9 @@ function closeNight(c, summary, dark, rand) {
     // suites' synthetic nights) comped nobody
     comped: new Set(Array.isArray(summary.comped) ? summary.comped : []),
   }, rand);
+  // the crew after the people: a good floor and an ugly one are the room's
+  // verdict, and the End Zone's buzz is what it stands at after tonight
+  const crew = settleCrew(c, onDuty, { dark, good: social.good, ugly: social.ugly, buzz: c.rival.buzz }, rand);
   const spoilage = applySpoilage(c);
   c.day++;
   syncLeague(c.league, c.day);
@@ -830,8 +921,8 @@ function closeNight(c, summary, dark, rand) {
   // countdown it may overwrite is this night's and not the move's
   const lease = applyLease(c);
   return dark
-    ? { wages, rent: rentDue, upgFees, account, net, spoilage, games, social, lease }
-    : { wages, rent: rentDue, promoCost, upgFees, account, take, net, spoilage, games, social, moments, lease };
+    ? { wages, rent: rentDue, upgFees, account, net, spoilage, games, social, crew, lease }
+    : { wages, rent: rentDue, promoCost, upgFees, account, take, net, spoilage, games, social, moments, crew, lease };
 }
 
 /** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
@@ -853,8 +944,8 @@ export function settleDarkNight(c, rand = Math.random) { return closeNight(c, nu
 // gvb-save reads as version 0.
 
 /** Bump when the shape changes. 0 means "written before this file used a slot".
- *  2 is the supply house (#905): see migrateCampaign(). */
-export const SAVE_VERSION = 2;
+ *  2 is the supply house (#905) and 3 the rota (#908): see migrateCampaign(). */
+export const SAVE_VERSION = 3;
 
 /**
  * Version drift only (#37). One step so far: a save from before version 2 was
@@ -871,6 +962,10 @@ export const SAVE_VERSION = 2;
  */
 export function migrateCampaign(c, from) {
   if (from < 2) { c.dist = S.newDist(); c.pars = {}; }
+  // The same step for the rota (#908), on the same argument: no build before
+  // version 3 wrote a `crew`, so a posted rota in an older file is nobody's
+  // decision, and it is one that cannot be taken back.
+  if (from < 3) c.crew = ST.newCrew();
   return c;
 }
 
@@ -1023,6 +1118,10 @@ export function repairCampaign(c) {
   // charged.
   c.dist = S.repairDist(c.dist);
   c.pars = S.repairPars(c.pars, Object.keys(MENU));
+  // The rota's one field (#908). No rota is the payroll working every night,
+  // which is what this game always did; a book keeps lines for names on the
+  // payroll only, since a line is found by name.
+  c.crew = ST.repairCrew(c.crew, c.staff.map(s => s.name));
   return c;
 }
 

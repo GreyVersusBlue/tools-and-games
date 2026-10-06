@@ -12,6 +12,7 @@ import * as LG from "./league.js";
 import * as RG from "./regulars.js";
 import * as EV from "./events.js";
 import * as SUP from "./supply.js";
+import * as STF from "./staff.js";
 import * as audio from "./audio.js";
 
 /** The Tonight panel's one line on the regulars: how many of them there are,
@@ -245,8 +246,46 @@ export class DayPhase {
        <button class="btn" data-placeorder="1">Place Order</button></span>`);
   }
 
+  /** The rota under the payroll: the card that posts it, or, once it is up,
+   *  a line a staffer with tonight's standing, how tired they are, how they
+   *  feel about the place, how far the next level is, and the week as seven
+   *  buttons. A lit day is a day worked. */
+  rotaHtml(c) {
+    if (!C.hasRota(c)) {
+      const armed = this.rotaArm;
+      return `<div class="sec">The Rota</div>
+        <div class="promoCard house" id="rotaCard">
+          <b>No rota</b><span class="pill">how it is now</span>
+          <div class="hint">Everyone on the payroll works every night and draws the wage every night. Nobody tires, nobody improves, nobody leaves unless somebody makes them an offer.</div>
+          <div class="hint">+ Post one and a night off is a night's wage you keep, the payroll holds ${STF.ROSTER_ROTA} instead of ${STF.ROSTER_OPEN} (${STF.SHIFT_MAX} work a night, the rest are on call), and a staffer who works fresh earns a skill level every ${STF.XP_PER_SKILL} shifts per level they hold.</div>
+          <div class="hint">− Every shift tires them and only a night off takes it back: five on and two off holds. Tired, they work a skill level down; burnt out, two, and some nights they do not show. A level is a $${STF.LEVEL_RAISE} raise. Morale that bottoms out walks, to the End Zone if it is hiring. And it does not come back down.</div>
+          <button class="btn small ${armed ? "" : "ghost"}" data-postrota="1" style="margin-top:6px">${armed ? "Confirm: post it for good" : "Post the Rota"}</button>
+        </div>`;
+    }
+    const d = C.duty(c), today = C.weekday(c);
+    const where = n => d.on.includes(n) ? '<span class="pill">on tonight</span>' : d.out.includes(n) ? '<span class="pill bad">called out</span>'
+      : d.call.includes(n) ? '<span class="pill">on call</span>' : '<span class="hint">off tonight</span>';
+    const rows = c.staff.map(s => {
+      const l = C.crewLine(c, s.name);
+      const cond = { fresh: "fresh", tired: `<span class="warn">tired, skill ${l.skill} tonight</span>`, burnt: `<span class="bad">burnt out, skill ${l.skill} tonight</span>` }[l.condition];
+      const mood = l.looking ? '<span class="bad">looking for the door</span>' : l.morale >= 75 ? '<span class="good">happy here</span>' : l.morale >= 45 ? "steady" : '<span class="warn">restless</span>';
+      const lvl = l.toLevel ? `${l.xp} of ${l.toLevel} shifts to skill ${s.skill + 1}` : "top of the trade";
+      const week = STF.WEEK.map(w => `<button class="rotaDay ${l.off.includes(w) ? "" : "on"} ${w === today ? "today" : ""}" data-rota="${s.name}" data-day="${w}" aria-pressed="${!l.off.includes(w)}" aria-label="${s.name} works ${w}">${w[0]}</button>`).join("");
+      return `<tr data-rotarow="${s.name}"><td>${s.name.split(" ")[0]} ${where(s.name)}<div class="hint">${cond} · ${mood} · ${lvl}</div></td>
+        <td><span class="rotaWeek">${week}</span><div class="hint">${7 - l.off.length} on, ${l.off.length} off</div></td></tr>`;
+    }).join("") || `<tr><td colspan="2" class="hint">Nobody to schedule.</td></tr>`;
+    return `<div class="sec">The Rota</div>
+      <p class="hint">A lit day is a shift, Monday first; click one to give the night off. Five on and two off holds: a shift is ${STF.FATIGUE_SHIFT} of fatigue and a night off takes back ${STF.FATIGUE_REST}. The first ${STF.SHIFT_MAX} scheduled work, anyone past that is on call, unpaid, and in if somebody calls out.</p>
+      <table id="rota"><tr><th>Tonight</th><th>The week</th></tr>${rows}</table>`;
+  }
+
   crewPanel() {
+    this.rotaArm = false;
+    this.renderCrew();
+  }
+  renderCrew() {
     const c = this.getC();
+    const cap = C.staffCap(c);
     const roleRow = s => `${C.ROLES[s.role].name}<span class="hint"> · skill ${s.skill}</span>`;
     const staff = c.staff.map(s => `
       <tr><td>${s.name}</td><td>${roleRow(s)}</td>
@@ -256,18 +295,21 @@ export class DayPhase {
     const apps = c.applicants.map(a => `
       <tr><td>${a.name}</td><td>${roleRow(a)}</td>
       <td class="num money">$${a.wage}/night</td>
-      <td><button class="btn small" data-hire="${a.name}" ${c.staff.length >= C.MAX_STAFF ? "disabled" : ""}>Hire</button></td></tr>`).join("")
+      <td><button class="btn small" data-hire="${a.name}" ${c.staff.length >= cap ? "disabled" : ""}>Hire</button></td></tr>`).join("")
       || `<tr><td colspan="4" class="hint">No applications today.</td></tr>`;
     const warn = [];
     if (!C.hasCook(c)) warn.push("No cook — the kitchen won't open tonight.");
     if (!C.hasBartender(c)) warn.push("No bartender — servers pour, badly.");
+    const out = C.duty(c).out;
+    if (out.length) warn.push(`${out.map(n => n.split(" ")[0]).join(", ")} called out tonight: burnt out.`);
     this.show("The Crew",
-      `<p class="hint">Cooks and bartenders push prep speed on their side of the ticket — no cook means no food sells at all. Servers walk the floor and fetch whatever's ready. Wages come out of the till at close — up to ${C.MAX_STAFF} on payroll. And the boss works free.</p>
+      `<p class="hint">Cooks and bartenders push prep speed on their side of the ticket — no cook means no food sells at all. Servers walk the floor and fetch whatever's ready. Wages come out of the till at close — up to ${cap} on payroll. And the boss works free.</p>
        ${warn.map(w => `<div class="row bad">⚠ ${w}</div>`).join("")}
-       <table><tr><th>On payroll</th><th>Role</th><th class="num">Wage</th><th></th></tr>${staff}</table>
+       <table id="payroll"><tr><th>On payroll</th><th>Role</th><th class="num">Wage</th><th></th></tr>${staff}</table>
+       ${this.rotaHtml(c)}
        <div class="sec">Applicants</div>
        <table><tr><th>Name</th><th>Role</th><th class="num">Wage</th><th></th></tr>${apps}</table>`,
-      `<span class="hint">Tonight's wage bill: <b class="money">$${C.wageBill(c)}</b></span>`);
+      `<span class="hint">Tonight's wage bill: <b class="money" id="wageBill">$${C.wageBill(c)}</b></span>`);
   }
 
   promoPanel() {
@@ -346,7 +388,9 @@ export class DayPhase {
     const game = !!tn.mules;
     const warn = [];
     if (game && (c.stock.beer || 0) < C.forecast(c) * 1.3) warn.push("Beer's thin for a game night.");
-    if (!c.staff.length) warn.push("No servers — you're running every order yourself.");
+    const onTonight = C.shiftCrew(c), duty = C.duty(c);
+    if (!onTonight.length) warn.push("No servers — you're running every order yourself.");
+    if (duty.out.length) warn.push(`${duty.out.map(n => n.split(" ")[0]).join(", ")} called out tonight: burnt out.`);
     if (!C.hasCook(c)) warn.push("No cook — the kitchen's closed tonight.");
     if (!C.hasBartender(c)) warn.push("No bartender — servers cover the taps, badly.");
     if (Object.values(c.stock).every(v => !v)) warn.push("The shelves are BARE. Nobody can order anything.");
@@ -362,7 +406,7 @@ export class DayPhase {
       ["Forecast", `~${C.forecast(c)} through the door`],
       ["Reputation", `${Math.round(c.rep)} / 100`],
       ["Regulars", regularsLine(c)],
-      ["Crew", c.staff.length ? c.staff.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
+      ["Crew", onTonight.length ? onTonight.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
       ["Wages + rent", `$${C.wageBill(c)} + $${C.rent(c)}`],
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],
       ...(C.accountFee(c) ? [["Supply account", `$${C.accountFee(c)} · ${C.distDef(c).name}, billed tonight`]] : []),
@@ -525,8 +569,19 @@ export class DayPhase {
         else this.cb.flash(r.err);
       }
     }
-    if (t.dataset.hire) { if (C.hire(c, t.dataset.hire)) { this.cb.save(); this.crewPanel(); } }
-    if (t.dataset.fire) { if (C.fire(c, t.dataset.fire)) { this.cb.save(); this.crewPanel(); } }
+    if (t.dataset.hire) { if (C.hire(c, t.dataset.hire)) { this.cb.save(); this.renderCrew(); } }
+    if (t.dataset.fire) { if (C.fire(c, t.dataset.fire)) { this.cb.save(); this.renderCrew(); } }
+    if (t.dataset.postrota) {
+      // one way, so not on one click
+      if (!this.rotaArm) { this.rotaArm = true; this.renderCrew(); this.cb.flash("A posted rota stays posted. Click again to put it on the wall."); }
+      else {
+        const r = C.postRota(c);
+        this.rotaArm = false;
+        if (r.ok) { this.cb.save(); this.renderCrew(); this.cb.flash("The rota's on the wall. Everyone's down for seven nights until you say otherwise.", true); }
+        else this.cb.flash(r.err);
+      }
+    }
+    if (t.dataset.rota) { if (C.toggleDayOff(c, t.dataset.rota, t.dataset.day)) { this.cb.save(); this.renderCrew(); } }
     if (t.dataset.promo !== undefined && t.classList.contains("promoCard")) {
       const p = C.PROMOS[t.dataset.promo];
       if (p.cost > c.cash) { this.cb.flash("Can't cover the theme's cost."); return; }

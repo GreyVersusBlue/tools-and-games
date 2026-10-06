@@ -1241,6 +1241,76 @@ const billed = await page.evaluate(() => {
 ok("Monday's box score carries the account: Supply account (weekly), −$110", billed.day === 2 && billed.row === "Supply account (weekly)−$110", String(billed.row));
 ok("no page errors through the supply house", errors.length === 0, errors.join(" | "));
 
+// ---------------------------------------------------------------- the rota (#908)
+// Tuesday morning, day 2, two on the payroll (the cook and the server every
+// campaign opens with). The Crew panel with no rota, posting one on the
+// second click, a night off, and one night to see it on the floor and the
+// box score.
+await page.click("#nextDayBtn");
+const crew0 = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  c.dist = { id: "county", spend: 0 };
+  c.staff = c.staff.slice(0, 2); c.staff[0].wage = 70; c.staff[1].wage = 60; c.staff[0].skill = 2; c.staff[1].skill = 2;
+  fq.day.crewPanel();
+  const label = sel => (q(sel) || {}).textContent ?? null;
+  const out = { day: c.day, roles: c.staff.map(s => s.role).join(), card: !!q("#rotaCard"), table: !!q("#rota"), btn: label("[data-postrota]"), bill: label("#wageBill"), payroll: document.querySelectorAll("#payroll [data-fire]").length, cap: /up to 3 on payroll/.test(q("#panelBody").textContent) };
+  q("[data-postrota]").click();
+  out.armed = { rota: c.crew.rota, btn: label("[data-postrota]") };
+  if (q("[data-postrota]")) q("[data-postrota]").click();
+  out.posted = { rota: c.crew.rota, disk: (JSON.parse(localStorage.getItem("fq3d-save")).crew || {}).rota, btn: label("[data-postrota]"), rows: document.querySelectorAll("#rota [data-rotarow]").length,
+    days: document.querySelectorAll("#rota .rotaDay").length, lit: document.querySelectorAll("#rota .rotaDay.on").length, today: [...document.querySelectorAll("#rota .rotaDay.today")].map(b => b.dataset.day).join(),
+    cap: /up to 5 on payroll/.test(q("#panelBody").textContent), bill: label("#wageBill") };
+  return out;
+});
+ok("the Crew panel with no rota: the card that offers one, no schedule, two on the payroll, $130 in wages", crew0.day === 2 && crew0.roles === "cook,server" && crew0.card && !crew0.table && crew0.btn === "Post the Rota" && crew0.bill === "$130" && crew0.payroll === 2 && crew0.cap, JSON.stringify(crew0).slice(0, 200));
+ok("a rota is not posted on one click: the button arms and nothing is on the wall", crew0.armed.rota === false && crew0.armed.btn === "Confirm: post it for good", JSON.stringify(crew0.armed));
+ok("the second click posts it, on disk, and the button is gone", crew0.posted.rota === true && crew0.posted.disk === true && crew0.posted.btn === null, JSON.stringify(crew0.posted));
+ok("the schedule is a row a staffer, seven days each, every one lit, today marked, and the payroll holds five", crew0.posted.rows === 2 && crew0.posted.days === 14 && crew0.posted.lit === 14 && crew0.posted.today === "Tue,Tue" && crew0.posted.cap && crew0.posted.bill === "$130", JSON.stringify(crew0.posted));
+
+const off = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign, cook = c.staff[0].name, server = c.staff[1].name;
+  const day = (n, d) => [...document.querySelectorAll("#rota .rotaDay")].find(b => b.dataset.rota === n && b.dataset.day === d);
+  day(cook, "Tue").click();
+  const out = { off: (c.crew.book[cook] || {}).off, disk: ((JSON.parse(localStorage.getItem("fq3d-save")).crew.book || {})[cook] || {}).off, lit: day(cook, "Tue").classList.contains("on"), pressed: day(cook, "Tue").getAttribute("aria-pressed"),
+    bill: q("#wageBill").textContent, body: q("#panelBody").textContent, row: document.querySelector("#rota [data-rotarow]").textContent.replace(/\s+/g, " ") };
+  // the server has worked himself into the ground, one shift short of a level he will not get tired
+  c.crew.book[server] = { off: [], fatigue: 60, xp: 11, morale: 60 };
+  fq.day.crewPanel();
+  out.tired = document.querySelectorAll("#rota [data-rotarow]")[1].textContent.replace(/\s+/g, " ");
+  fq.day.closePanel(); fq.day.doorPanel();
+  out.door = q("#panelBody").textContent;
+  fq.day.closePanel();
+  return out;
+});
+ok("a click on the cook's Tuesday gives the night off: on the campaign, on disk, and the button goes dark", String(off.off) === "Tue" && String(off.disk) === "Tue" && off.lit === false && off.pressed === "false", JSON.stringify([off.off, off.disk, off.lit]));
+ok("the wage bill drops to the server's $60, the panel warns the kitchen is shut, and the row says off tonight, 6 on, 1 off", off.bill === "$60" && /No cook/.test(off.body) && /off tonight/.test(off.row) && /6 on, 1 off/.test(off.row), `${off.bill} / ${off.row.slice(0, 110)}`);
+ok("a staffer at 60 of fatigue reads tired, a skill level down tonight, 11 of 12 shifts to the next", /tired, skill 1 tonight/.test(off.tired) && /11 of 12 shifts to skill 3/.test(off.tired), off.tired.slice(0, 120));
+ok("the Tonight panel's crew is who is on shift, and it warns about the kitchen", /Crew[A-Z][a-z]+Wages \+ rent\$60 \+ \$110/.test(off.door) && /No cook/.test(off.door), off.door.slice(off.door.indexOf("Crew"), off.door.indexOf("Crew") + 60));
+
+await page.evaluate(() => window.__fq.day.cb.openDoors());
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the rota night to open");
+const shift = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq, e = fq.engine, c = fq.campaign;
+  e.momentBudget = 0;
+  const out = { foodMult: e.foodMult, drinkMult: e.drinkMult, crew: C.shiftCrew(c).map(s => `${s.role}${s.skill}@${s.speed}`).join(), own: c.staff[1].speed, floor: fq.servers.map(x => `${x.name}@${x.speed}`).join(), first: c.staff[1].name.split(" ")[0], ticker: document.querySelector("#ticker").textContent };
+  // rested, so tonight is the twelfth fresh shift
+  c.crew.book[c.staff[1].name].fatigue = 0;
+  e.t = e.hourLenSec * 8 - 0.001;
+  return out;
+});
+ok("the night opens with the kitchen shut, the ticker saying so, and one tired server on the floor, a level slower on his feet", shift.foodMult === 0 && shift.crew === `server1@${Math.round((shift.own - 0.18) * 100) / 100}` && shift.floor === `${shift.first}@${Math.round((shift.own - 0.18) * 100) / 100}` && /kitchen's closed/.test(shift.ticker), JSON.stringify(shift).slice(0, 160));
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the rota night's box score");
+const closed = await page.evaluate(() => {
+  const c = window.__fq.campaign, box = document.querySelector("#boxBody").textContent.replace(/\s+/g, " ");
+  return { box: box.slice(box.indexOf("The Crew")), has: !!document.querySelector("#boxCrew"), wages: /Wages\s?−\$60\s?Rent/.test(box), server: c.staff[1], line: c.crew.book[c.staff[1].name], cookLine: c.crew.book[c.staff[0].name] };
+});
+ok("the box score paid one wage and has a Crew section: the cook's night off and the server's level", closed.has && closed.wages && /Night off\s?[A-Z][a-z]+/.test(closed.box) && /Earned a skill level \(\+\$20\/night\)\s?[A-Z][a-z]+/.test(closed.box), closed.box.slice(0, 120));
+ok("the server is skill 3 on $80 from tomorrow, 12 more tired, his count back to nothing; the cook rested", closed.server.skill === 3 && closed.server.wage === 80 && closed.line.fatigue === 12 && closed.line.xp === 0 && closed.cookLine.fatigue === 0 && String(closed.cookLine.off) === "Tue", JSON.stringify([closed.server, closed.line]));
+ok("no page errors through the rota", errors.length === 0, errors.join(" | "));
+
 await browser.close();
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);

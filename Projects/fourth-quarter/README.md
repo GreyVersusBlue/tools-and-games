@@ -24,8 +24,10 @@ save** put a campaign in a `.json` file and load it back, so it survives a clear
 browser or moves to another machine. Storage key is still `fq3d-save`, so a
 campaign from any older build loads exactly as it did; the oldest carry no version
 stamp, and `repairCampaign()` in `js/campaign.js` fills in everything added since.
-The save is at version 2: `migrateCampaign()` signs a file from before the supply
-houses with County Line, which charges what the game always charged.
+The save is at version 3: `migrateCampaign()` signs a file from before the supply
+houses with County Line, which charges what the game always charged, and gives
+a file from before the rota no rota, which is the crew working every night as
+it always did.
 
 The bar appears in three places, and it is one component mounted three times
 (`mountBar()` in `js/main.js`) rather than three bars that happen to look alike:
@@ -109,6 +111,17 @@ table and this week's fixtures.
   door. Food (wings, burgers, nachos, fries) rots 15% of whatever's left every
   closed night — a settled night or a dark night alike. Beer and soda don't
   spoil. Stockpiling food against a slow night now has a real cost.
+- **The rota** (in the Crew panel) — off until you post it, and it does not
+  come back down. With no rota everyone on the payroll works every night,
+  draws the wage every night, and never tires, improves or leaves on their
+  own. Post it and a night off is a wage you keep, the payroll holds five
+  (three work a night, the rest are on call), and a staffer who works a shift
+  fresh earns a skill level every six shifts per level they hold, with $20 a
+  night more. Against that, a shift is 12 of fatigue and only a night off
+  takes 30 back, so five on and two off holds: at 60 they work a skill level
+  down, at 85 two, and a burnt-out staffer calls out about one night in
+  three. Morale under 25 is a roll to quit every night, 15%, or 30% with the
+  End Zone's buzz at 50 or over, which gets 3 busier for it.
 - **The supply house** (in the Stock panel) — who the truck belongs to.
   **County Line** is list price with no strings. **Cask & Carton** is 10%
   under list for $110 a week, billed Mondays whether the doors opened or not,
@@ -175,6 +188,11 @@ table and this week's fixtures.
   order costs at each (`quote()`), the weekly fee, bulk breaks, loyalty, the
   par sheet and the repair for `c.dist` and `c.pars`. campaign.js owns the
   record and the cash.
+- `js/staff.js` — the crew as people, pure and import-free: who is on shift
+  tonight (`tonight()`), what a night does to fatigue, morale and the count
+  toward a level (`after()`), who calls out, and the repair for `c.crew`.
+  campaign.js owns the record, the payroll and the cash; `shiftCrew()` there
+  is what the night engine and the floor are handed.
 - `js/events.js` — the night's moments, pure. All 21 of the 2D build's
   event cards with their `when`/`cd`/`weight` shape, a picker over the
   save's cooldowns and a nightly budget, and resolution as data: a choice
@@ -205,11 +223,11 @@ table and this week's fixtures.
   `node test/smoke-events.mjs`, `node test/smoke-layout.mjs`,
   `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs`,
   `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs`,
-  `node test/smoke-supply.mjs` and
+  `node test/smoke-supply.mjs`, `node test/smoke-staff.mjs` and
   `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`).
   `test/crowd-floor.mjs` is the busy floor `smoke-crowd.mjs` runs and is not
   a suite; `test/fixtures/season.mjs` is the bot that plays a seeded season
-  for `smoke-supply.mjs` and is not one either. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
+  for `smoke-supply.mjs` and `smoke-staff.mjs` and is not one either. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
   Chromium through `Tools/board-check/harness.mjs`, so it needs `npm ci` in
   that folder first; CI does that for the whole job.
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
@@ -381,7 +399,9 @@ bytes, which is this sandbox's timing, not the files.
 3. **Full campaign port — the league is in (wishlist Phase 6), the
    regulars are (Phase 7, both increments: the books and the floor), and
    the event cards are moments on the floor (Phase 8), and the three
-   supply houses with their two cards are in the Stock panel (2026-10-06).**
-   Still to port: staff as a simulated system, per-lot shelf life with a
+   supply houses with their two cards are in the Stock panel (2026-10-06),
+   and the crew has a rota (the same day; designed here, since the 2D build
+   has no staff system to port).**
+   Still to port: per-lot shelf life with a
    Commercial Walk-In upgrade, and a season that nudges rent and wages,
    re-balanced for the 3D serving loop.

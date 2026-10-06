@@ -4,8 +4,8 @@
 Phase 9 closed the arc on 2026-09-08: the night you can lose, the landlord's
 three strikes, and an eviction that drops you a rung instead of ending the run.
 What is left is under "What is left of TG-25" in the standing backlog. The
-supply houses shipped on 2026-10-06 (#905); staff as a simulated system and
-per-lot shelf life have not, and none of it is ranked.
+supply houses shipped on 2026-10-06 (#905) and the rota the same day (#908);
+per-lot shelf life has not, and none of it is ranked.
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -243,8 +243,9 @@ the phases below would need answered.
 3. ~~**How much of the 2D campaign is actually wanted?**~~ Answered by Devon
    on 2026-10-05 (HISTORY.md #902): all of it. Phases 6-9 ported the league,
    the regulars and the rival, the event cards and the losable lease; the
-   distributors and their two event cards shipped on 2026-10-06 (#905); staff
-   as a simulated system and per-lot shelf life are wanted too. "What is left
+   distributors and their two event cards shipped on 2026-10-06 (#905) and
+   staff as a simulated system the same day (#908); per-lot shelf life is
+   wanted too. "What is left
    of TG-25", below, has them in order.
 4. ~~**Is 66 MB of texture on first paint acceptable?**~~ Answered by Phase 4
    on 2026-09-07 (HISTORY.md #201): no. A first visit now downloads 5.08 MB of
@@ -262,8 +263,8 @@ Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
 
 **What is left of TG-25** (the audit's line for this project; its first
-increment shipped on 2026-10-06 as #898, #900 and #901, and its second the
-same day as #905, the supply houses). In the order to take it, each a session
+increment shipped on 2026-10-06 as #898, #900 and #901, its second the
+same day as #905, the supply houses, and its third as #908, the rota). In the order to take it, each a session
 of its own:
 
 1. **The sound.** No crowd cheer on a Mules win (`audio.js` says so, and
@@ -287,11 +288,22 @@ of its own:
      `supply.js` is the number to turn); there are no delivery days and no
      reliability number, on purpose; "Truck Breaks Down" still says "the
      distributor's driver" rather than the house's name.
-   - **Staff as a simulated system.** Next. Hire, schedule, skill growth,
-     fatigue, poaching by the rival. Today a staffer is a role, a skill and a
-     wage. The "Poaching Call" card and `settleMoments()`'s raise and walkout
-     are the two places the books already move a staffer.
-   - **Per-lot shelf life** in days, and the Commercial Walk-In that adds
+   - ~~Staff as a simulated system: hire, schedule, skill growth, fatigue,
+     poaching by the rival.~~ Shipped 2026-10-06 (#908): `js/staff.js`, the
+     rota in the Crew panel, `test/smoke-staff.mjs` (116). Designed here,
+     not ported: the 2D build has a staffer as a role, a skill and a wage
+     and nothing more. A campaign that never posts the rota is the game as
+     it was. Left open by it, and small: nothing has been played by a
+     person, and the season bot serves a ticket the moment it is ready, so
+     a faster cook is worth nothing to it and every rota it ran lost to no
+     rota ($2,924 a season covered, $4,069 not, $6,131 neglected, at the
+     Corner Tap). Whether a level's $20 raise (`LEVEL_RAISE`) is the right
+     size against a night a person serves is the number to turn. There is
+     no wage paid for a night off, no overtime, no training spend, and the
+     rota cannot be taken down, on purpose. The "Poaching Call" card is
+     unchanged apart from seeing only who is on shift; its raise is 15 of
+     morale under a rota.
+   - **Per-lot shelf life** in days, next, and the Commercial Walk-In that adds
      two. It replaces the flat `SPOILAGE_RATE`, which stays 0.15 until then
      (Q26), and it changes every stock read in the game: the shelf becomes
      dated lots. The inspector's `inspectorRisky()` and the bulk breaks'
@@ -1155,10 +1167,9 @@ primitives made new geometry every time and never disposed it either.
   (#905). The 2D build's sprint 9: three supply houses that cut both ways,
   threshold discounts, loyalty spend. It is all in the Stock panel, which was
   already the busiest screen in the game and is busier.
-- **Staff as a simulated system.** Hire, schedule, skill growth, fatigue,
-  poaching by the rival. Today a staffer is a role, a skill and a wage, and the
-  floor NPCs derived from them do not tire, improve or quit. Phase 7's rival
-  makes poaching possible; the rest is a later arc.
+- ~~**Staff as a simulated system.**~~ Shipped 2026-10-06 (#908). Hire,
+  schedule, skill growth, fatigue, poaching by the rival, all behind a rota
+  that is off until it is posted. It is in the Crew panel.
 - **Per-lot shelf life.** The 2D build tracks stock as dated lots with a shelf
   life the Commercial Walk-In extends by two days; the 3D build rots a flat
   15%. The lot model is better and it changes every stock read in the game.

@@ -225,7 +225,7 @@ const view = (o = {}) => ({
 {
   const mkStore = (seedData = {}) => ({ d: { ...seedData }, setItem(k, v) { this.d[k] = String(v); }, getItem(k) { return this.d[k] ?? null; }, removeItem(k) { delete this.d[k]; } });
   const raw = (c, v, extra = {}) => { const o = { ...JSON.parse(JSON.stringify(c)), ...extra }; if (v === null) delete o.__v; else o.__v = v; return JSON.stringify(o); };
-  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 2, "the key is the key it always was (#36); the version is 2");
+  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 3, "the key is the key it always was (#36); the version is 3 (2 was the supply house, 3 the rota)");
   const base = C.newCampaign(); base.day = 23; base.cash = 4321.5; base.stock.wings = 37;
   const bare = JSON.parse(JSON.stringify(base)); delete bare.dist; delete bare.pars;
 
@@ -259,10 +259,10 @@ const view = (o = {}) => ({
   const live = fresh("cask", 2750); live.pars = { wings: 40, beer: 150 };
   C.saveCampaign(live, store);
   const back = C.loadCampaign(store);
-  ok(JSON.parse(store.getItem(C.SAVE_KEY)).__v === 2 && back.dist.id === "cask" && back.dist.spend === 2750 && back.pars.beer === 150, "a save written now round-trips the house, its standing and the par sheet");
+  ok(JSON.parse(store.getItem(C.SAVE_KEY)).__v === C.SAVE_VERSION && back.dist.id === "cask" && back.dist.spend === 2750 && back.pars.beer === 150, "a save written now round-trips the house, its standing and the par sheet");
   const slot = C.campaignSlot(store);
   const env = JSON.parse(slot.serialize(back));
-  ok(env.version === 2 && env.state.dist.id === "cask", "and the export file carries them at version 2");
+  ok(env.version === C.SAVE_VERSION && env.state.dist.id === "cask", "and the export file carries them at the build's version");
   const old = { ...env, version: 1, state: { ...env.state } };
   delete old.state.dist; delete old.state.pars;
   old.state.dist = { id: "gold", spend: 4000 }; // not a thing a version-1 export could hold
@@ -282,7 +282,7 @@ const SEASON_PIN = "3a3b783b56e06d942d18b66612b858c10f2ec0b7132978937093c24c2988
   const county = runSeason(mods, { seed: 1 }), cask = runSeason(mods, { seed: 1, house: "cask" }), gold = runSeason(mods, { seed: 1, house: "gold" });
   const tk = totals(county), tc = totals(cask), tg = totals(gold);
   // the season as the build before #905 would have written it
-  const asOld = JSON.stringify({ rows: county.rows.map(({ drop, account, ...r }) => r), c: (({ dist, pars, ...c }) => c)(county.c) });
+  const asOld = JSON.stringify({ rows: county.rows.map(({ drop, account, ...r }) => r), c: (({ dist, pars, crew, ...c }) => c)(county.c) });
   const digest = createHash("sha256").update(asOld).digest("hex");
   if (process.argv.includes("--digest")) { console.log(digest); process.exit(0); }
   ok(digest === SEASON_PIN, `feature off: a County Line season is the season the build before the supply house played (sha256 ${digest.slice(0, 12)}, pinned ${SEASON_PIN.slice(0, 12)})`);
