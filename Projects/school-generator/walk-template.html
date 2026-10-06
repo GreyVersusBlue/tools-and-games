@@ -59195,6 +59195,67 @@ function setRampFold(link, opts = {}) {
   return was !== `${rampRuns(link)}|${rampSide(link)}|${'runs' in link.data}|${'side' in link.data}`;
 }
 
+// ---------- a ramp's width and slope, from the panel (#907) ----------
+//
+// `data.width` and `data.slope` have been on a ramp since Phase 2 and every
+// reader takes them through `stairWidth` and `rampSlope` above, which clamp a
+// file to 3..12ft and 1:4..1:20: a file may hold a ramp that is wrong, and the
+// report says so (`steep-ramp`). The panel's two steppers are held tighter, to
+// what the tool itself calls a legal ramp, so nothing set from the page raises
+// that finding:
+//
+//   slope  1:12 to 1:20 in whole numbers. 1:12 is ADA 405.2's steepest and the
+//          line `rampRolls` draws; past 1:20 ADA stops calling it a ramp.
+//   width  4ft to 12ft in 6in steps. 4ft is `RAMP_W`, 36in clear (ADA 405.5)
+//          plus the rails; 12ft is the widest a link holds.
+//
+// A ramp a file made steeper or narrower than that is shown as it is. Its
+// stepper has one way to go, and the first press lands it on the limit.
+const RAMP_CTRL = Object.freeze({
+  minW: RAMP_W, maxW: MAX_RAMP_W, stepW: 0.5,
+  steepest: RAMP_SLOPE, gentlest: MAX_RAMP_SLOPE,
+});
+// One press: `dir` +1 is wider, -1 narrower.
+const stepRampWidth = (w, dir) =>
+  clamp(Math.round((w + (dir < 0 ? -1 : 1) * RAMP_CTRL.stepW) / RAMP_CTRL.stepW) * RAMP_CTRL.stepW,
+    RAMP_CTRL.minW, RAMP_CTRL.maxW);
+// One press: `dir` +1 is gentler (more run per foot of rise), -1 steeper.
+const stepRampSlope = (s, dir) =>
+  clamp(Math.round(s + (dir < 0 ? -1 : 1)), RAMP_CTRL.steepest, RAMP_CTRL.gentlest);
+
+// Write a ramp's width or slope, whichever `opts` names, held to the panel's
+// range. The field not named is not touched, so a ramp a file made 1:8 keeps
+// its slope while its width is stepped. Returns true when the record changed.
+// Anything but a ramp is left alone.
+function setRampSize(link, opts = {}) {
+  if (!link || link.type !== 'ramp') return false;
+  const was = `${stairWidth(link)}|${rampSlope(link)}`;
+  if (!link.data) link.data = {};
+  if (Number.isFinite(opts.width)) {
+    link.data.width = clamp(Math.round(opts.width / RAMP_CTRL.stepW) * RAMP_CTRL.stepW,
+      RAMP_CTRL.minW, RAMP_CTRL.maxW);
+  }
+  if (Number.isFinite(opts.slope)) {
+    link.data.slope = clamp(Math.round(opts.slope), RAMP_CTRL.steepest, RAMP_CTRL.gentlest);
+  }
+  return was !== `${stairWidth(link)}|${rampSlope(link)}`;
+}
+
+// What a run is, in the words the status line and the panel use: a stair's
+// risers, a ramp's slope and length. A straight ramp's length is its own
+// (`runLength`), not the staircase's the building's metrics carry: the status
+// line read `metrics.run` and called a 144ft ramp 19.3ft until #907.
+function runPhrase(link, metrics) {
+  const fold = rampLayout(link, metrics);
+  if (fold) {
+    return `${fold.n} runs of ${fold.runLen.toFixed(1)}ft at 1:${rampSlope(link)}, ` +
+      `${(fold.runRise * 12).toFixed(0)}in of rise each` +
+      (fold.legal ? '' : ' (over the 30in a run may rise)');
+  }
+  if (link.type === 'ramp') return `${runLength(link, metrics).toFixed(1)}ft of run at 1:${rampSlope(link)}`;
+  return `${metrics.steps} risers at ${(metrics.riser * 12).toFixed(1)}in, ${metrics.run.toFixed(1)}ft of run`;
+}
+
 // The fold itself, from switchback.js, or null for anything that is one run.
 // Kept per link and rebuilt when any number it was built from moves: the
 // walker asks for the surface under it every frame.
@@ -59816,7 +59877,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {

@@ -2124,6 +2124,9 @@ export function initEditor({
     // How a ramp is folded: the selected one, or the next one placed (#832).
     setRampFold: (opts) => stairTool.setFold(opts),
     get rampFold() { return stairTool.fold; },
+    // How wide and how steep: the selected ramp, or the next one placed (#907).
+    setRampSize: (opts) => stairTool.setSize(opts),
+    get rampSize() { return stairTool.size; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
     // The prop tool's second knob (Phase 11): the paint. Same shape as the
