@@ -1654,7 +1654,7 @@ const CHECKS = [
       if (!same(ctx.fewer.link.data, { width: 4, slope: 12, runs: 4, side: -1 })) {
         throw new Error(`one run fewer did not re-fold the selected ramp: ${JSON.stringify(ctx.fewer.link.data)}`);
       }
-      if (ctx.fewer.panel.runs !== '4' || !/4 runs of 36\.0ft, 36in of rise each.*over the 30in/.test(ctx.fewer.status)) {
+      if (ctx.fewer.panel.runs !== '4' || !/4 runs of 36\.0ft at 1:12, 36in of rise each.*over the 30in/.test(ctx.fewer.status)) {
         throw new Error(`four runs are not read back as over: ${ctx.fewer.panel.runs} | ${ctx.fewer.status}`);
       }
       if (!/4 runs of 36\.0ft, 36in of rise each: over the 30in a run may rise\. 5 runs is the fewest/.test(ctx.fewer.panel.readout)) {
@@ -1669,6 +1669,107 @@ const CHECKS = [
       // Re-folding the selected ramp is not a change to the next one placed.
       if (ctx.next.label !== 'Ramp runs' || ctx.next.runs !== '5' || ctx.next.side !== 'Folds left') {
         throw new Error(`with the ramp gone the row should be back on the next one, 5 and left: ${JSON.stringify(ctx.next)}`);
+      }
+      if (after.links !== before.links) throw new Error('the check left its ramp on the design');
+    },
+  },
+  {
+    name: 'ramp-size',
+    what: 'the stairs panel sets the next ramp\'s width and slope from the keyboard, re-sizes the selected one, stops at 4ft and 1:12, and undo takes a step back',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      const press = async (id, times = 1) => {
+        for (let i = 0; i < times; i++) await q(`document.getElementById('${id}').click(); 1`);
+      };
+      // The keyboard's way in: focus the button, press Enter. Nothing is clicked.
+      const keyOn = async (id, times = 1) => {
+        await d.page.focus(`#${id}`);
+        for (let i = 0; i < times; i++) await d.page.keyboard.press('Enter');
+      };
+      const off = (id) => `document.getElementById('${id}').disabled`;
+      const panel = () => q(`({
+        hidden: document.getElementById('ramp-fold').classList.contains('hidden'),
+        wLabel: document.getElementById('ramp-width-label').textContent,
+        sLabel: document.getElementById('ramp-slope-label').textContent,
+        width: document.getElementById('ramp-width').textContent,
+        slope: document.getElementById('ramp-slope').textContent,
+        lessOff: ${off('ramp-width-less')}, moreOff: ${off('ramp-width-more')},
+        steeperOff: ${off('ramp-slope-steeper')}, gentlerOff: ${off('ramp-slope-gentler')},
+        readout: document.getElementById('stair-readout').textContent,
+      })`);
+      const last = () => q(`(() => {
+        const l = window.app.state.links[window.app.state.links.length - 1];
+        return { id: l.id, type: l.type, data: { ...l.data }, selected: window.app.editor.stairSelectedId === l.id };
+      })()`);
+      await d.pick('stair');
+      await q(`document.querySelector('#stair-kinds [data-type="ramp"]').click(); 1`);
+      const fresh = await panel();
+      await keyOn('ramp-width-more', 4);
+      await keyOn('ramp-slope-gentler', 4);
+      const armed = await panel();
+      const links0 = (await d.fp()).links;
+      await d.assertClear([[100, 112]]);
+      await d.click(100, 112);
+      const placed = { link: await last(), panel: await panel(), status: await d.status() };
+      const links1 = (await d.fp()).links;
+      await press('ramp-width-less');
+      const narrower = await last();
+      await press('ramp-slope-steeper');
+      const steeper = { link: await last(), status: await d.status() };
+      await q(`document.getElementById('undo-btn').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const undone = await last();
+      // Leave the storey as it was found: later checks count its links.
+      await q(`window.app.editor.stairSelect(${placed.link.id}); 1`);
+      await press('stair-delete');
+      const next = await panel();
+      // Past either end: twenty presses each way stop on the limit.
+      await press('ramp-width-less', 20);
+      await press('ramp-slope-steeper', 20);
+      const floor = await panel();
+      await q(`document.querySelector('#stair-kinds [data-type="stair"]').click(); 1`);
+      return { fresh, armed, links0, links1, placed, narrower, steeper, undone, next, floor };
+    },
+    expect: ({ ctx, before, after }) => {
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      const f = ctx.fresh;
+      if (f.hidden || f.width !== '4ft' || f.slope !== '1:12' || f.wLabel !== 'Ramp width' || f.sLabel !== 'Ramp slope') {
+        throw new Error(`a ramp starts 4ft wide at 1:12: ${JSON.stringify(f)}`);
+      }
+      if (!f.lessOff || !f.steeperOff || f.moreOff || f.gentlerOff) {
+        throw new Error(`at 4ft and 1:12 only wider and gentler are live: ${JSON.stringify(f)}`);
+      }
+      if (ctx.armed.width !== '6ft' || ctx.armed.slope !== '1:16') {
+        throw new Error(`four Enters on each should read 6ft and 1:16: ${JSON.stringify(ctx.armed)}`);
+      }
+      if (!/1:16 over a 12ft rise · 192ft of run, 6ft wide/.test(ctx.armed.readout)) {
+        throw new Error(`the readout is not the ramp the steppers show: ${ctx.armed.readout}`);
+      }
+      if (ctx.links1 !== ctx.links0 + 1) throw new Error('the click placed no ramp');
+      if (ctx.placed.link.type !== 'ramp' || !same(ctx.placed.link.data, { width: 6, slope: 16 })) {
+        throw new Error(`the ramp placed is not the one the panel showed: ${JSON.stringify(ctx.placed.link)}`);
+      }
+      if (!ctx.placed.link.selected || ctx.placed.panel.wLabel !== "This ramp's width" || ctx.placed.panel.sLabel !== "This ramp's slope") {
+        throw new Error(`the placed ramp is not what the rows now edit: ${JSON.stringify(ctx.placed.panel)}`);
+      }
+      if (!/Ramp — 192\.0ft of run at 1:16, 6ft wide/.test(ctx.placed.status)) {
+        throw new Error(`the status line does not describe the ramp placed: ${ctx.placed.status}`);
+      }
+      if (!same(ctx.narrower.data, { width: 5.5, slope: 16 })) {
+        throw new Error(`one press narrower did not take 6in off the selected ramp alone: ${JSON.stringify(ctx.narrower.data)}`);
+      }
+      if (!same(ctx.steeper.link.data, { width: 5.5, slope: 15 }) || !/180\.0ft of run at 1:15, 5\.5ft wide/.test(ctx.steeper.status)) {
+        throw new Error(`one press steeper should read 1:15, 180ft: ${JSON.stringify(ctx.steeper)}`);
+      }
+      if (!same(ctx.undone.data, { width: 5.5, slope: 16 })) {
+        throw new Error(`undo did not take the slope back alone: ${JSON.stringify(ctx.undone.data)}`);
+      }
+      // Re-sizing the selected ramp is not a change to the next one placed.
+      if (ctx.next.wLabel !== 'Ramp width' || ctx.next.width !== '6ft' || ctx.next.slope !== '1:16') {
+        throw new Error(`with the ramp gone the rows should be back on the next one, 6ft at 1:16: ${JSON.stringify(ctx.next)}`);
+      }
+      if (ctx.floor.width !== '4ft' || ctx.floor.slope !== '1:12' || !ctx.floor.lessOff || !ctx.floor.steeperOff) {
+        throw new Error(`twenty presses down should stop at 4ft and 1:12: ${JSON.stringify(ctx.floor)}`);
       }
       if (after.links !== before.links) throw new Error('the check left its ramp on the design');
     },

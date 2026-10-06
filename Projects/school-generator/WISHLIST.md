@@ -370,8 +370,11 @@ and add to this list rather than starting a new one.
   room for it is a `ramp-landing` warning that moves nothing (#904), but
   `render.js` draws no deck on it, props and a door's swing are not asked,
   and a folded ramp's top landing is not asked; a ramp's width and slope
-  have no control (`data.width`, `data.slope`; Devon allows the save field
-  and the chrome); a ramp over 30in a run still counts as a way up on the
+  are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
+  1:20, the selected ramp's or the next one's, with no new save field
+  (`data.width` and `data.slope` were there since Phase 2), but
+  `designdiff.js` says nothing when a ramp's width, slope or fold changes
+  and a ramp a file made narrower than 4ft raises no finding; a ramp over 30in a run still counts as a way up on the
   accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`
   finding names, though the finding carries its position.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
@@ -392,9 +395,12 @@ and add to this list rather than starting a new one.
   it (#862). M reaches the mirror now: the page gave the key to the report
   panel from Phase 7 on, and with rooms selected in the Shape tool the editor
   has it back (#866, and Devon confirmed on 2026-10-05 that M is the
-  mirror). Left: nine fixed colours and no free
-  pick; a free-standing wall (`floor.walls`) has no ring and so no accent
-  (both may take a save field and new chrome now, Devon, 2026-10-05);
+  mirror). Left, one session each, the two that remain of the three Devon's
+  answer of 2026-10-05 opened (the ramp's width and slope shipped as #907):
+  an accent on a free-standing wall (`floor.walls` has no ring and so no
+  accent; needs a save field on the wall line), and more accent colours
+  (nine fixed ones and no free pick; needs chrome, and `accents` already
+  takes any hex);
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.

@@ -358,7 +358,7 @@
     #ramp-fold button:hover:not(:disabled) { color: var(--text); }
     #ramp-fold button:disabled { opacity: 0.4; cursor: default; }
     #ramp-fold #ramp-side { flex: 1 1 0; }
-    #ramp-runs { min-width: 24px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: var(--fs-md); color: var(--text); }
+    #ramp-runs, #ramp-width, #ramp-slope { min-width: 24px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: var(--fs-md); color: var(--text); }
     .kind-item {
       display: flex; align-items: center; gap: 8px;
       justify-content: flex-start; width: 100%; font-size: var(--fs-md); padding: 6px 8px;
@@ -1975,6 +1975,18 @@
         <button id="ramp-runs-more" type="button" title="One run more" aria-label="One run more">+</button>
         <button id="ramp-side" type="button" aria-pressed="false"
                 title="Which hand the later runs stack on, seen walking up the first">Folds right</button>
+      </div>
+      <label id="ramp-width-label" style="margin-top:8px">Ramp width</label>
+      <div class="fold-row" role="group" aria-labelledby="ramp-width-label">
+        <button id="ramp-width-less" type="button" title="Six inches narrower (4ft is the least)" aria-label="Six inches narrower">−</button>
+        <output id="ramp-width" aria-live="polite">4ft</output>
+        <button id="ramp-width-more" type="button" title="Six inches wider (12ft is the most)" aria-label="Six inches wider">+</button>
+      </div>
+      <label id="ramp-slope-label" style="margin-top:8px">Ramp slope</label>
+      <div class="fold-row" role="group" aria-labelledby="ramp-slope-label">
+        <button id="ramp-slope-steeper" type="button" title="Steeper (1:12 is the steepest a ramp may be)" aria-label="Steeper">−</button>
+        <output id="ramp-slope" aria-live="polite">1:12</output>
+        <button id="ramp-slope-gentler" type="button" title="Gentler (1:20 is the gentlest)" aria-label="Gentler">+</button>
       </div>
     </div>
     <label style="margin-top:12px">On this level</label>
