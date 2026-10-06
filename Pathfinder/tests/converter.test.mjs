@@ -94,6 +94,19 @@ async function testCreature(browser) {
   await page.click('#parse-btn');
   await waitFor(page, () => /Creature 3/.test(document.getElementById('pf2-block').textContent), { label: 'pasted ogre' });
   ok(/greatclub/.test(await text(page, '#pf2-block')), 'a partial pasted block converts');
+
+  // An ability a rule rewrote reads in 2e form with its glyph; one no rule
+  // reads keeps its text and wears the mark (converter-abilities.test.mjs
+  // holds the wording).
+  await page.$eval('#pf1-paste', (el) => { el.value = 'Test Beast CR 4\nAC 17, touch 11, flat-footed 16\nhp 42 (5d10+15)\nFort +7, Ref +5, Will +2\nMelee 2 claws +8 (1d6+4)\nSpecial Attacks rend (2 claws, 1d6+4)\nSPECIAL ABILITIES\nPoison (Ex) Bite—injury; save Fort DC 15; frequency 1/round for 4 rounds; effect 1d2 Str; cure 1 save.\nLurk (Ex) A test beast gains a +4 bonus on Stealth checks in tall grass.'; });
+  await page.click('#parse-btn');
+  await waitFor(page, () => /Creature 4/.test(document.getElementById('pf2-block').textContent), { label: 'pasted test beast' });
+  const lines = await page.$$eval('#pf2-block .sb-line', (els) => els.map((el) => ({ name: el.querySelector('b')?.textContent, mark: el.querySelector('.sb-pf1')?.textContent || '', title: el.querySelector('.sb-pf1')?.title || '', act: el.querySelector('.act')?.textContent || '', text: el.textContent })));
+  const by = (n) => lines.find((l) => l.name === n);
+  ok(by('Rend')?.act === '◆' && !by('Rend').mark && /Stage 1 enfeebled 1 \(1 round\)/.test(by('Poison')?.text) && !by('Poison').mark,
+    'abilities a rule rewrote show in 2e form, unmarked', `${by('Rend')?.text.slice(0, 40)} | ${by('Poison')?.text.slice(0, 60)}`);
+  ok(by('Lurk')?.mark === 'PF1e wording' && /not rewritten/.test(by('Lurk').title) && /gains a \+4 bonus on Stealth checks in tall grass\./.test(by('Lurk').text) && lines.filter((l) => l.mark).length === 1,
+    'the one ability no rule reads keeps its text and is marked PF1e wording', by('Lurk')?.text);
   ok(errors.length === 0, 'no console errors while editing', errors.slice(0, 3).join(' | '));
   await page.close();
 }

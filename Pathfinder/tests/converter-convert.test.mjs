@@ -274,7 +274,7 @@ ok(lich.spellNotes.some((n) => /metamagic/.test(n.note)), 'a metamagic spell in 
 const troll = convert('troll');
 const regen = troll.defAbilities.find((d) => /^Regeneration/.test(d.name));
 ok(regen && /acid or fire/.test(regen.text), 'regeneration keeps what deactivates it', regen?.name + ' ' + regen?.text);
-ok(troll.offAbilities.some((a) => a.name === 'Rend' && /two consecutive Strikes/.test(a.text)), 'rend becomes Rend with its Monster Core text');
+ok(troll.offAbilities.some((a) => a.name === 'Rend' && a.rule === 'rend' && /^claw\. Requirements /.test(a.text)), 'rend becomes Rend, naming its Strike (the wording is converter-abilities.test.mjs\'s)');
 ok(troll.skills.some((s) => s.name === 'Athletics'), 'Athletics comes from CMB when Climb and Swim are missing');
 
 // ---- options and output -------------------------------------------------------

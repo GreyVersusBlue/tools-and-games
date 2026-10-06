@@ -10,6 +10,9 @@ import { parsePf1, formatPf1Section, SECTION_LABELS } from './parse-pf1.js';
 import { emptyCreature } from './pf1-schema.js';
 import { convertCreature, toText, ordinal } from './convert.js';
 import { toFoundryJson, foundryFileName } from './foundry.js';
+
+// The mark on an ability no rule in abilities.js rewrote.
+const PF1E_WORDING = 'Kept in its First Edition wording: no rule reads this construction, so it was not rewritten. Its DCs and action costs are converted.';
 import { maxRankForLevel } from './spells.js';
 import { actionGlyph, pf2Card, FIT_TEXT } from './ui-spells.js';
 import { EXAMPLE } from './example.js';
@@ -145,7 +148,8 @@ function renderBlock(o) {
     }).join('; ');
     return `<p class="sb-line"><b>${esc(sc.name)}</b> ${why(`DC ${sc.dc}`, sc.why)}, attack ${signed(sc.attack)}; ${ranks}</p>`;
   };
-  const ability = (a) => `<p class="sb-line"><b>${esc(a.name)}</b>${a.actions ? ` <span class="act">${actionGlyph(a.actions)}</span>` : ''}${a.traits?.length ? ` (${esc(a.traits.join(', '))})` : ''} ${a.why ? why(esc(a.text), a.why) : esc(a.text)}</p>`;
+  const pf1Mark = (a) => (a.wording === 'pf1e' ? ` <span class="sb-pf1" title="${esc(PF1E_WORDING)}">PF1e wording</span>` : '');
+  const ability = (a) => `<p class="sb-line"><b>${esc(a.name)}</b>${pf1Mark(a)}${a.actions ? ` <span class="act">${actionGlyph(a.actions)}</span>` : ''}${a.traits?.length ? ` (${esc(a.traits.join(', '))})` : ''} ${a.why ? why(esc(a.text), a.why) : esc(a.text)}</p>`;
   const regen = o.defAbilities.filter((d) => /^(Regeneration|Fast Healing)/.test(d.name));
   const hpBits = [why(`${o.hp.value}`, o.hp.why),
     ...regen.map((r) => why(esc(`${r.name.toLowerCase()}${r.text ? ' ' + r.text : ''}`), r.why)),
