@@ -5,8 +5,10 @@ Phase 9 closed the arc on 2026-09-08: the night you can lose, the landlord's
 three strikes, and an eviction that drops you a rung instead of ending the run.
 What is left is under "What is left of TG-25" in the standing backlog. The
 supply houses shipped on 2026-10-06 (#905), the rota the same day (#908) and
-the dated shelf with its walk-in the same day (#909); a season that moves
-rent and wages has not, and none of it is ranked.
+the dated shelf with its walk-in the same day (#909) and season terms, the
+season that moves rent and wages, the same day (#911). **That is the whole
+back office: Q24's arc is complete.** What TG-25 has left is the sound and
+the texture pop, and neither is ranked.
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -246,8 +248,9 @@ the phases below would need answered.
    the regulars and the rival, the event cards and the losable lease; the
    distributors and their two event cards shipped on 2026-10-06 (#905) and
    staff as a simulated system the same day (#908), and per-lot shelf life
-   with the walk-in the same day (#909). "What is left
-   of TG-25", below, has what remains in order.
+   with the walk-in the same day (#909), and a season that moves rent and
+   wages the same day (#911). Nothing of the 2D build's back office is left
+   to port. "What is left of TG-25", below, has what remains.
 4. ~~**Is 66 MB of texture on first paint acceptable?**~~ Answered by Phase 4
    on 2026-09-07 (HISTORY.md #201): no. A first visit now downloads 5.08 MB of
    1k JPEG; the 2k originals stay in place for `?tex=2k` and for a Retina-class
@@ -268,9 +271,9 @@ starting a new list.
 **What is left of TG-25** (the audit's line for this project; its first
 increment shipped on 2026-10-06 as #898, #900 and #901, its second the
 same day as #905, the supply houses, its third as #908, the rota, and its
-fourth as #909, the dated shelf). In the order to take it, each a session
-of its own: the season that moves rent and wages (the last of item 3), then
-the sound, then the texture pop.
+fourth as #909, the dated shelf, and its fifth as #911, season terms, which
+closed item 3). In the order to take it, each a session of its own: the
+sound, then the texture pop.
 
 1. **The sound.** No crowd cheer on a Mules win (`audio.js` says so, and
    `main.js` plays the whistle sting alone), nothing in `audio/sfx/footsteps/`
@@ -282,7 +285,10 @@ the sound, then the texture pop.
    The order-of-magnitude cut itself is done (#201, #622); this is what Devon's
    "cut it" has left. It changes how the game looks, so it wants before-and-after
    sizes and a GPU window.
-3. **The back office** (Q24, all of it), a session each, in this order:
+3. ~~**The back office** (Q24, all of it), a session each, in this order.~~
+   **Complete on 2026-10-06**: all four systems below have shipped, each off
+   until the player turns it on, and a campaign that turns none of them on is
+   the game as it was. What each left open is small and is under it.
    - ~~The three distributors, bulk pricing and par levels, with the two
      event cards about them.~~ Shipped 2026-10-06 (#905): `js/supply.js`,
      the Stock panel, `test/smoke-supply.mjs` (113). A campaign at County
@@ -335,7 +341,40 @@ the sound, then the texture pop.
      stock sold in the same night would be netted (no card gives stock
      today). The walk-in is not in `UPGRADES`: adding a sixth id there moves
      `smoke-settle.mjs`'s pin through the scramble's draws.
-   - **A season that moves rent and wages.** Next.
+   - ~~A season that moves rent and wages.~~ Shipped 2026-10-06 (#911):
+     `js/season.js`, "Season Terms" in the Real Estate panel,
+     `test/smoke-season.mjs` (91). Off until the terms are signed, and
+     signing is one way. Month to month is the game as it was: rent is the
+     room's number and a wage the staffer's, for ever, both settle pins are
+     unmoved, and 180 seeded seasons hash the same on the old tree and the
+     new, at 98 nights and at 300. The 2D build's creep (rent 10 points a
+     season to 60 over, wages 6 to 40 over) was every campaign's; here it is
+     the cost of a deal, because a switch that only costs is a switch nobody
+     turns on. Signing buys rent 10% under the room's for the season it is
+     signed in and 75% of the season's rent through every off-season
+     fortnight. A season is the league's 126 nights, counted from the one the
+     terms were signed in. The player sees it coming three ways: the Real
+     Estate card's three dated rents, a row on the Tonight panel, and a
+     week's notice in the ticker and on the door before either date. How it
+     meets the other three: under a rota a night off is the raised wage not
+     paid and a level's $20 is raised with the rest; no price and no footfall
+     moves, so an order's quote at all three houses, the par sheet and a
+     lot's date read the same on terms and off them, and the supply account
+     and the walk-in's power are not on the terms. Left open by it, and
+     small: nothing has been played by a person. Same seed at the Corner Tap,
+     signing on day one is $1,736 ahead at the end of season 1, $1,106 ahead
+     after two and $1,750 behind after three ($7,084 after four); at the
+     flagship $4,088, $3,990 and $182 behind. A campaign has to run past
+     night 252 before the terms cost anything, and the bot banks about
+     $44,000 over a season's 126 nights at the Corner Tap, so nothing here
+     can hurt it;
+     whether a break this small is worth a signature to a person, and
+     whether the creep should start sooner, is the call to make after a
+     played season. `SIGN_BREAK`, `RENT_STEP`, `WAGE_STEP` and `OFF_RENT` in
+     `season.js` are the numbers to turn. There is no footfall or price by
+     season, no raise the crew notices (morale does not read it), no way off
+     the terms, and an eviction does not end them, on purpose. The Real
+     Estate panel's dark-night screen does not show the card.
 
 Not looked at in that increment, because each needs a GPU window and a pair
 of eyes: whether bodies giving way to each other reads well on the floor,
@@ -423,7 +462,9 @@ it is like to be the boss the room walks round.
 - No mid-night events. The 2D build has 21 with real choices.
 - A season does not move the economy. The 2D build nudges rent 10% and wages
   6% a season, capped; here season 2 costs what season 1 did. Phase 9's
-  difficulty curve is where it belongs.
+  difficulty curve is where it belongs. (Shipped since: #911, as season
+  terms a bar signs. Month to month, season 2 still costs what season 1
+  did.)
 - The Mules' game is on the local screens whoever they play; the 2D build's
   League Pass, which gates other teams' games, was not ported, so every
   league night is a 1.15× night. `CROWD` in `league.js` is the table.
@@ -1200,6 +1241,10 @@ primitives made new geometry every time and never disposed it either.
 - ~~**Per-lot shelf life.**~~ Shipped 2026-10-06 (#909). Dated lots, the 2D
   build's nights, the Commercial Walk-In, behind a shelf that is undated
   until it is dated. It is in the Stock panel.
+- ~~**A season that moves rent and wages.**~~ Shipped 2026-10-06 (#911). The
+  2D build's creep, behind season terms that are month to month until they
+  are signed. It is in the Real Estate panel. With it the back office is all
+  here.
 - **A performance pass.** Deliberately not phased: round 1 measured this in
   real headed Chrome (median 6.9-7.0 ms empty and at 29 patrons, p95 7.4 and
   21.1 ms, 24.6k triangles at peak) and the prompt file says not to re-measure.

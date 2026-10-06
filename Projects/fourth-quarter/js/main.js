@@ -167,12 +167,21 @@ function closedNight() {
   // A move can bankrupt you mid-move: bills land on a closed night and no
   // revenue does. The room can therefore change here, in the day phase, where
   // rebuilding it right away is safe.
+  tickTerms();
   tickLease(books.lease);
   if (books.lease.evicted) {
     if (books.lease.evicted.to) rebuildVenue(); // nothing moved on the bottom rung
     refreshStartTag();
   }
   updateHUD();
+}
+
+/** Season terms' week of notice (#911): the rent or the wages move within
+ *  seven nights. Read off the campaign, so a reload says it too; nothing
+ *  month to month. */
+function tickTerms() {
+  const line = C.termsNoticeLine(campaign);
+  if (line) tick(line, "hl");
 }
 
 /** The landlord's lines, in the ticker, from one settlement's record. Called
@@ -228,6 +237,7 @@ function enterDay() {
   // last, because it is the line that matters most on a morning that has one.
   // A reload has no record to print, so a standing notice is read off the
   // campaign's own strike count instead of being lost with lastLease.
+  tickTerms();
   if (lastLease) tickLease(lastLease);
   else if (campaign.strikes > 0) tick(`Notice on the door: ${campaign.strikes} of ${C.LEASE_STRIKES} nights in the red.`, "b");
   lastLease = null;

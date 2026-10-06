@@ -237,11 +237,11 @@ table and this week's fixtures.
   `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs`,
   `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs`,
   `node test/smoke-supply.mjs`, `node test/smoke-staff.mjs`,
-  `node test/smoke-shelf.mjs` and
+  `node test/smoke-shelf.mjs`, `node test/smoke-season.mjs` and
   `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`).
   `test/crowd-floor.mjs` is the busy floor `smoke-crowd.mjs` runs and is not
   a suite; `test/fixtures/season.mjs` is the bot that plays a seeded season
-  for `smoke-supply.mjs`, `smoke-staff.mjs` and `smoke-shelf.mjs` and is not one either. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
+  for `smoke-supply.mjs`, `smoke-staff.mjs`, `smoke-shelf.mjs` and `smoke-season.mjs` and is not one either. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
   Chromium through `Tools/board-check/harness.mjs`, so it needs `npm ci` in
   that folder first; CI does that for the whole job.
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
@@ -416,6 +416,9 @@ bytes, which is this sandbox's timing, not the files.
    supply houses with their two cards are in the Stock panel (2026-10-06),
    and the crew has a rota (the same day; designed here, since the 2D build
    has no staff system to port), and the shelf can be dated, with the
-   Commercial Walk-In (the same day again, #909).**
-   Still to port: a season that nudges rent and wages,
+   Commercial Walk-In (the same day again, #909), and a season moves rent
+   and wages for a bar that signs season terms in the Real Estate panel
+   (the same day, #911). The back office is all in.**
+   Each of the four is off until the player turns it on; none has been
+   played by a person, so their numbers are the 2D build's and not yet
    re-balanced for the 3D serving loop.

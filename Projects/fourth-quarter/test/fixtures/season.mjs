@@ -53,9 +53,11 @@ function playNight(e) {
  * taken over are unchanged. `opts.dates` dates the shelf on day one if the
  * build can (#909), and `opts.walkin` installs the walk-in with it; `opts.par`
  * multiplies the bot's par for food, for a bot that overbuys. A night on a
- * dated shelf carries `lost`, the servings that went by item.
+ * dated shelf carries `lost`, the servings that went by item. `opts.terms`
+ * signs season terms on day one if the build has them (#911); a night on
+ * terms carries `rent` and `wages`, which a month-to-month row does not.
  */
-export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = null, cash = null, rota = null, dates = false, walkin = false, par = 1 } = {}) {
+export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = null, cash = null, rota = null, dates = false, walkin = false, par = 1, terms = false } = {}) {
   const { C, NightEngine, seed: seedEngine, mulberry32 } = mods;
   const real = Math.random;
   Math.random = seeded(seed ^ 0x9e3779b9, mulberry32);
@@ -68,11 +70,13 @@ export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = n
     if (house && C.signHouse) C.signHouse(c, house);
     if (rota && C.postRota) C.postRota(c);
     if (dates && C.dateShelf) { C.dateShelf(c); if (walkin) C.buyWalkin(c); }
+    if (terms && C.signTerms) C.signTerms(c);
     for (let n = 0; n < nights && !c.failed; n++) {
       const rand = seeded((seed * 7919 + n) >>> 0, mulberry32);
       const day = c.day;
       if (rota && C.postRota) rota(c, C);
-      if (c.darkNightsLeft > 0) { const b = C.settleDarkNight(c, rand); rows.push({ day, dark: true, net: b.net, account: b.account || 0, cash: c.cash }); continue; }
+      const signed = !!(C.onTerms && C.onTerms(c));
+      if (c.darkNightsLeft > 0) { const b = C.settleDarkNight(c, rand); rows.push({ day, dark: true, net: b.net, account: b.account || 0, cash: c.cash, ...(signed ? { rent: b.rent, wages: b.wages } : {}) }); continue; }
       const heads = C.forecast(c);
       const order = {};
       for (const id in PAR_PER_HEAD) order[id] = Math.max(0, Math.ceil(heads * PAR_PER_HEAD[id] * (par !== 1 && FOOD_IDS.includes(id) ? par : 1)) - (c.stock[id] || 0));
@@ -93,7 +97,8 @@ export function runSeason(mods, { seed = 1, nights = 98, house = null, venue = n
         take: b.take, revenue: s.revenue, tips: s.tips, served: s.served, net: b.net, account: b.account || 0,
         spoiled: b.spoilage.value, cash: c.cash, evicted: !!b.lease.evicted,
         ...(b.crew && b.crew.rota ? { wages: b.wages, crew: b.crew } : {}),
-        ...(b.spoilage.dated ? { lost: b.spoilage.byItem } : {}) });
+        ...(b.spoilage.dated ? { lost: b.spoilage.byItem } : {}),
+        ...(signed ? { rent: b.rent, wages: b.wages } : {}) });
     }
   } finally { Math.random = real; seedEngine(0); }
   return { c, rows };

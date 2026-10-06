@@ -273,7 +273,7 @@ const night = (extra = {}) => ({ total: 500, revenue: 450, tips: 50, served: 40,
 {
   const mkStore = (seedData = {}) => ({ d: { ...seedData }, setItem(k, v) { this.d[k] = String(v); }, getItem(k) { return this.d[k] ?? null; }, removeItem(k) { delete this.d[k]; } });
   const raw = (c, v, extra = {}) => { const o = { ...clone(c), ...extra }; if (v === null) delete o.__v; else o.__v = v; return J(o); };
-  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 4, "the key is the key it always was (#36); the version is 4 (the rota was 3)");
+  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 5, "the key is the key it always was (#36); the version is 5 (the rota was 3)");
   const base = C.newCampaign(); base.day = 23; base.cash = 4321.5; base.staff = crewOf(ANN, BO);
   const bare = clone(base); delete bare.crew;
   const stray = { rota: true, book: { [ANN]: line({ off: ["Mon"], fatigue: 90 }) } };

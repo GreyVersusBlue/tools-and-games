@@ -1337,7 +1337,7 @@ const shelf0 = await page.evaluate(async () => {
 });
 ok("the Stock panel with an undated shelf: the card that offers dates, no lots, no walk-in, and the 15% rule in words", shelf0.day === 10 && shelf0.card && !shelf0.table && !shelf0.walkin && shelf0.btn === "Date the Shelf" && /rots about 15%/.test(shelf0.rule), JSON.stringify(shelf0).slice(0, 200));
 ok("a shelf is not dated on one click: the button arms and no date is on anything", shelf0.armed.dated === false && shelf0.armed.btn === "Confirm: date it for good", JSON.stringify(shelf0.armed));
-ok("the second click dates it, on disk at save version 4, and the card is gone", shelf0.dated.dated === true && shelf0.dated.disk === true && shelf0.dated.v === 4 && shelf0.dated.btn === null && !shelf0.dated.card, JSON.stringify(shelf0.dated).slice(0, 160));
+ok("the second click dates it, on disk at save version 5, and the card is gone", shelf0.dated.dated === true && shelf0.dated.disk === true && shelf0.dated.v === 5 && shelf0.dated.btn === null && !shelf0.dated.card, JSON.stringify(shelf0.dated).slice(0, 160));
 ok("what was on the shelf is dated today, a row an item: wings for 3 nights, beer for 14, soda never, and a bare line says so", shelf0.dated.rows === 6 && /3 nights\s?10 for 3 nights/.test(shelf0.dated.wings) && /14 nights\s?40 for 14 nights/.test(shelf0.dated.beer) && /never goes off/.test(shelf0.dated.soda) && /none on the shelf/.test(shelf0.dated.fries)
   && shelf0.dated.lots === '{"wings":[{"day":10,"n":10}],"beer":[{"day":10,"n":40}]}' && shelf0.dated.stock === 10, `${shelf0.dated.wings} / ${shelf0.dated.beer} / ${shelf0.dated.lots}`);
 ok("the order sheet's rule is the dates now, and the walk-in is offered", /The shelf is dated/.test(shelf0.dated.rule) && !/15%/.test(shelf0.dated.rule) && shelf0.dated.install === "Install", `${shelf0.dated.rule} / ${shelf0.dated.install}`);
@@ -1377,6 +1377,79 @@ const went = +(/(\d+) servings?/.exec(gone.spoiled) || [0, 0])[1];
 ok("the box score bills the walk-in's power on its own line", /Walk-in power\s?−\$18/.test(gone.walkin), gone.walkin);
 ok("the close took every wing past its date, all of the lot and not the flat rate's seventh, and said which rule it was", /Past the date at close/.test(gone.spoiled) && went >= 7 && went <= 10 && gone.wings === 0 && gone.lots === "null" && gone.beer > 0, `${gone.spoiled} / wings ${gone.wings} / beer ${gone.beer}`);
 ok("no page errors through the dated shelf", errors.length === 0, errors.join(" | "));
+
+// ---------------------------------------------------------------- season terms (#911)
+// Moved on to day 108, five nights before season 1's off-season. The Real
+// Estate panel month to month, signing on the second click, the Tonight
+// panel's row and its week of notice, an off-season night's rent in the box
+// score, the ticker the morning the new season is a week off, and the Crew
+// panel in season 2. Every dollar is asked against the room the run is in.
+await page.click("#nextDayBtn");
+const terms0 = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  const text = sel => (q(sel) || { textContent: "" }).textContent.replace(/\s+/g, " ").trim();
+  const disk = () => JSON.parse(localStorage.getItem("fq3d-save"));
+  C.devSetDay(c, 108);
+  c.cash = 5000; c.strikes = 0;
+  fq.day.realEstatePanel();
+  const out = { base: C.venueDef(c).rent, rentWas: C.rent(c), wagesWas: C.wageBill(c), card: text("#termsCard"), btn: text("[data-signterms]"),
+    now: text('[data-terms="now"]'), off: text('[data-terms="off"]'), next: text('[data-terms="next"]') };
+  q("[data-signterms]").click();
+  out.armed = { signed: c.terms.signed, btn: text("[data-signterms]") };
+  if (q("[data-signterms]")) q("[data-signterms]").click();
+  out.signed = { terms: JSON.stringify(c.terms), disk: JSON.stringify(disk().terms), v: disk().__v, btn: !!q("[data-signterms]"), card: text("#termsCard"), cash: c.cash,
+    now: text('[data-terms="now"]'), off: text('[data-terms="off"]'), next: text('[data-terms="next"]'), rent: C.rent(c), wages: C.wageBill(c) };
+  fq.day.closePanel(); fq.day.doorPanel();
+  out.door = text("#panelBody");
+  fq.day.closePanel();
+  return out;
+});
+const pct = (p, off = 100) => Math.round(terms0.base * p * off / 10000);
+ok("the Real Estate panel month to month: the card that offers season terms, with the three rents it would mean", /Month to month/.test(terms0.card) && terms0.btn === "Sign Season Terms" && terms0.rentWas === terms0.base
+  && terms0.now.includes(`From tonight $${pct(90)} wages as they are`) && terms0.off.includes(`Off-season, in 5 nights $${pct(90, 75)}`) && terms0.next.includes(`Season 2, in 19 nights $${terms0.base} wages at 106%`), `${terms0.now} / ${terms0.off} / ${terms0.next}`);
+ok("terms are not signed on one click: the button arms and the record is month to month", terms0.armed.signed === false && terms0.armed.btn === "Confirm: sign for good", JSON.stringify(terms0.armed));
+ok("the second click signs them in season 1, on disk at save version 5, for nothing, and the button is gone", terms0.signed.terms === '{"signed":true,"since":1}' && terms0.signed.disk === terms0.signed.terms && terms0.signed.v === 5 && !terms0.signed.btn && terms0.signed.cash === 5000 && /On season terms/.test(terms0.signed.card) && /signed in season 1/.test(terms0.signed.card), JSON.stringify(terms0.signed).slice(0, 200));
+ok("tonight's rent is 10% under the room's from that click, the wages did not move, and the card keeps the two dates", terms0.signed.rent === pct(90) && terms0.signed.wages === terms0.wagesWas && terms0.signed.now.includes(`Tonight $${pct(90)}`) && terms0.signed.off.includes(`$${pct(90, 75)}`) && terms0.signed.next.includes(`$${terms0.base} wages at 106%`), `${terms0.signed.rent} / ${terms0.signed.now} / ${terms0.signed.next}`);
+ok("the Tonight panel bills the terms' rent, has a Season terms row, and gives the off-season's notice five nights out", terms0.door.includes(`+ $${pct(90)}`) && terms0.door.includes(`Season terms rent $${pct(90)} · off-season in 5`) && terms0.door.includes(`the off-season starts in 5 nights. Rent drops to $${pct(90, 75)} a night from $${pct(90)}`), terms0.door.slice(terms0.door.indexOf("Season terms"), terms0.door.indexOf("Season terms") + 60));
+
+await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq;
+  C.devSetDay(fq.campaign, 119);
+  fq.campaign.cash = 5000;
+  fq.day.cb.openDoors();
+});
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the off-season night to open");
+await page.evaluate(() => { const e = window.__fq.engine; e.momentBudget = 0; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the off-season night's box score");
+const offBox = await page.evaluate(() => document.querySelector("#boxBody").textContent.replace(/\s+/g, " "));
+ok("an off-season night's box score bills three quarters of the season's rent", new RegExp(`Rent\\s?−\\$${pct(90, 75)}(?!\\d)`).test(offBox), offBox.slice(offBox.indexOf("Rent"), offBox.indexOf("Rent") + 20));
+await page.click("#nextDayBtn");
+const terms1 = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  const text = sel => (q(sel) || { textContent: "" }).textContent.replace(/\s+/g, " ").trim();
+  const out = { day: c.day, ticker: text("#ticker") };
+  C.devSetDay(c, 130);
+  fq.day.crewPanel();
+  const cells = t => [...t.querySelectorAll("td.num.money")].map(td => +(/\$(\d+)/.exec(td.textContent) || [0, 0])[1]);
+  const tables = [...document.querySelectorAll("#panelBody table")];
+  out.crew = { raise: text("#wageRaise"), bill: +text("#wageBill").replace("$", ""), payroll: cells(q("#payroll")), own: c.staff.map(s => s.wage), training: c.upgrades.includes("training"),
+    apps: cells(tables[tables.length - 1]), asking: c.applicants.map(a => a.wage), wageBill: C.wageBill(c) };
+  fq.day.closePanel(); fq.day.realEstatePanel();
+  out.estate = { now: text('[data-terms="now"]'), off: text('[data-terms="off"]'), next: text('[data-terms="next"]'), rent: C.rent(c) };
+  fq.day.closePanel();
+  return out;
+});
+ok("the morning the new season is a week off, the ticker says what the rent and the wages go to", terms1.day === 120 && terms1.ticker.includes(`Season terms: season 2 opens in 7 nights. Rent goes to $${terms0.base} a night from $${pct(90, 75)} and every wage goes to 106% of the staffer's own, from 100%.`), terms1.ticker.slice(terms1.ticker.indexOf("Season terms"), terms1.ticker.indexOf("Season terms") + 90));
+const up = w => Math.round(w * (terms1.crew.training ? 1.15 : 1) * 1.06);
+ok("in season 2 the Crew panel pays every wage at 106% and says so, the applicants' asking wages included", /every wage at 106%/.test(terms1.crew.raise) && terms1.crew.payroll.length > 0 && String(terms1.crew.payroll) === String(terms1.crew.own.map(up)) && terms1.crew.asking.length === 3
+  && String(terms1.crew.apps) === String(terms1.crew.asking.map(w => Math.round(w * 1.06))) && terms1.crew.bill === terms1.crew.wageBill, JSON.stringify(terms1.crew));
+ok("and the Real Estate card reads the room's own rent tonight, with season 3's 10% over and 112% wages to come", terms1.estate.rent === terms0.base && terms1.estate.now.includes(`Tonight $${terms0.base} wages at 106%`) && terms1.estate.off.includes(`$${pct(100, 75)}`) && terms1.estate.next.includes(`Season 3, in 123 nights $${pct(110)} wages at 112%`), `${terms1.estate.now} / ${terms1.estate.next}`);
+ok("no page errors through season terms", errors.length === 0, errors.join(" | "));
 
 await browser.close();
 server.close();

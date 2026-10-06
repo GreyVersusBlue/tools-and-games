@@ -33,6 +33,12 @@
 // campaign in the chain dates its shelf, so every close in it is the flat
 // SPOILAGE_RATE, which is the old rule; `old()` takes the two out and the
 // digest is still PIN. test/smoke-shelf.mjs is where a dated shelf is closed.
+//
+// And season terms (#911), a fourth: `terms` in every campaign and nothing in
+// a record, whose `rent` and `wages` are the numbers they always were. No
+// campaign in the chain signs, so every night in it is month to month, which
+// is the old rule; `old()` takes the one field out and the digest is still
+// PIN. test/smoke-season.mjs is where a night on terms is settled.
 
 import { createHash } from "node:crypto";
 import * as C from "../js/campaign.js";
@@ -107,7 +113,7 @@ const runs = chain(40, 60, 20261006);
 function old(x) {
   const { account, walkin, crew: shift, ...books } = x.books;
   if (books.moments) { const { account: standing, ...moments } = books.moments; books.moments = moments; }
-  const { dist, pars, crew, shelf, ...after } = x.after;
+  const { dist, pars, crew, shelf, terms, ...after } = x.after;
   return { dark: x.dark, books, after };
 }
 const digest = createHash("sha256").update(JSON.stringify(runs.map(old))).digest("hex");
@@ -121,6 +127,8 @@ ok(runs.every(x => JSON.stringify(x.after.crew) === '{"rota":false,"book":{}}' &
   "nor the rota's two: nobody posted one, so nobody was off, called out, levelled or walked in 2,400 nights");
 ok(runs.every(x => JSON.stringify(x.after.shelf) === '{"dated":false,"walkin":false,"lots":{}}' && x.books.walkin === 0 && !("dated" in x.books.spoilage)),
   "nor the shelf's two: nobody dated one, so no walk-in was billed and all 2,400 closes were the flat rate's");
+ok(runs.every(x => JSON.stringify(x.after.terms) === '{"signed":false,"since":0}' && Object.values(C.VENUES).some(v => v.rent === x.books.rent)),
+  "nor the terms' one: nobody signed, so all 2,400 nights paid a room's own rent");
 ok(runs.some(x => C.weekday({ day: x.after.day - 1 }) === "Mon"), "the chain settled Mondays, the night an account would have been billed");
 
 // The sweep has to have gone where the two functions differed, or its

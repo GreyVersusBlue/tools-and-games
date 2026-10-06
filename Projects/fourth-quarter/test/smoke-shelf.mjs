@@ -288,7 +288,7 @@ const close = (c, n = 1) => C.settleNight(c, night(), seeded(n, mulberry32));
 {
   const mkStore = (seedData = {}) => ({ d: { ...seedData }, setItem(k, v) { this.d[k] = String(v); }, getItem(k) { return this.d[k] ?? null; }, removeItem(k) { delete this.d[k]; } });
   const raw = (c, v, extra = {}) => { const o = { ...clone(c), ...extra }; if (v === null) delete o.__v; else o.__v = v; return J(o); };
-  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 4, "the key is the key it always was (#36); the version is 4");
+  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 5, "the key is the key it always was (#36); the version is 5 (the dated shelf was 4)");
   const base = C.newCampaign(); base.day = 23; base.cash = 4321.5;
   const bare = clone(base); delete bare.shelf;
   const stray = { dated: true, walkin: true, lots: { wings: [{ day: 20, n: 24 }] } };
@@ -322,10 +322,10 @@ const close = (c, n = 1) => C.settleNight(c, night(), seeded(n, mulberry32));
   const live = bar(9, { wings: 8, beer: 60 }, true); C.buyWalkin(live); close(live); C.placeOrder(live, { wings: 12 });
   C.saveCampaign(live, store);
   const back = C.loadCampaign(store);
-  ok(JSON.parse(store.getItem(C.SAVE_KEY)).__v === 4 && J(back.shelf) === J(live.shelf) && J(back.shelf.lots.wings) === J([{ day: 9, n: 8 }, { day: 10, n: 12 }]) && back.shelf.walkin === true && J(C.lotsOf(back, "wings")) === J(C.lotsOf(live, "wings")), "a save written now round-trips the dates, the walk-in and every lot");
+  ok(JSON.parse(store.getItem(C.SAVE_KEY)).__v === C.SAVE_VERSION && J(back.shelf) === J(live.shelf) && J(back.shelf.lots.wings) === J([{ day: 9, n: 8 }, { day: 10, n: 12 }]) && back.shelf.walkin === true && J(C.lotsOf(back, "wings")) === J(C.lotsOf(live, "wings")), "a save written now round-trips the dates, the walk-in and every lot");
   const slot = C.campaignSlot(store);
   const env = JSON.parse(slot.serialize(back));
-  ok(env.version === 4 && env.state.shelf.dated === true && slot.deserialize(J({ ...env, version: 3 })).shelf.dated === false, "the export file carries it at version 4, and a version-3 file that claims a dated shelf imports without one");
+  ok(env.version === C.SAVE_VERSION && env.state.shelf.dated === true && slot.deserialize(J({ ...env, version: 3 })).shelf.dated === false, "the export file carries it at the build's version, and a version-3 file that claims a dated shelf imports without one");
 }
 
 // ---- a season, on the dates and off them ----

@@ -14,11 +14,19 @@ import * as EV from "./events.js";
 import * as SUP from "./supply.js";
 import * as STF from "./staff.js";
 import * as SHF from "./shelf.js";
+import * as SNS from "./season.js";
 import * as audio from "./audio.js";
 
 /** The Tonight panel's one line on the regulars: how many of them there are,
  *  and how many of those the door expects. `regularsIn()` is deterministic on
  *  the day, so this number is the number the night actually gets. */
+/** Season terms in one line of the Tonight panel: tonight's rent, the wage
+ *  raise if there is one, and the next date either moves. */
+function termsRow(o) {
+  const next = o.off.in > 0 ? `off-season in ${o.off.in}` : `season ${o.next.season} in ${o.next.in}`;
+  return `rent $${o.rent}${o.wagePct > 100 ? ` · wages at ${o.wagePct}%` : ""} · ${next}`;
+}
+
 function regularsLine(c) {
   if (!c.regulars.length) return "none yet";
   const n = C.regularsIn(c).length;
@@ -334,7 +342,7 @@ export class DayPhase {
       || `<tr><td colspan="4" class="hint">Nobody on the floor but you.</td></tr>`;
     const apps = c.applicants.map(a => `
       <tr><td>${a.name}</td><td>${roleRow(a)}</td>
-      <td class="num money">$${a.wage}/night</td>
+      <td class="num money">$${C.termsWage(c, a.wage)}/night</td>
       <td><button class="btn small" data-hire="${a.name}" ${c.staff.length >= cap ? "disabled" : ""}>Hire</button></td></tr>`).join("")
       || `<tr><td colspan="4" class="hint">No applications today.</td></tr>`;
     const warn = [];
@@ -342,6 +350,7 @@ export class DayPhase {
     if (!C.hasBartender(c)) warn.push("No bartender — servers pour, badly.");
     const out = C.duty(c).out;
     if (out.length) warn.push(`${out.map(n => n.split(" ")[0]).join(", ")} called out tonight: burnt out.`);
+    const terms = C.termsOutlook(c), raise = terms ? terms.wagePct : 100;
     this.show("The Crew",
       `<p class="hint">Cooks and bartenders push prep speed on their side of the ticket — no cook means no food sells at all. Servers walk the floor and fetch whatever's ready. Wages come out of the till at close — up to ${cap} on payroll. And the boss works free.</p>
        ${warn.map(w => `<div class="row bad">⚠ ${w}</div>`).join("")}
@@ -349,7 +358,7 @@ export class DayPhase {
        ${this.rotaHtml(c)}
        <div class="sec">Applicants</div>
        <table><tr><th>Name</th><th>Role</th><th class="num">Wage</th><th></th></tr>${apps}</table>`,
-      `<span class="hint">Tonight's wage bill: <b class="money" id="wageBill">$${C.wageBill(c)}</b></span>`);
+      `<span class="hint">Tonight's wage bill: <b class="money" id="wageBill">$${C.wageBill(c)}</b>${raise > 100 ? ` <span id="wageRaise">· season terms: every wage at ${raise}% of the staffer's own</span>` : ""}</span>`);
   }
 
   promoPanel() {
@@ -437,6 +446,7 @@ export class DayPhase {
     const going = Object.keys(MENU).reduce((n, id) => n + C.lastNight(c, id), 0);
     if (going) warn.push(`${going} serving${going === 1 ? " is" : "s are"} on the last night of the date. What doesn't sell tonight goes at the close.`);
     if (c.cash < C.billsFor(c).total) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
+    if (C.termsNotice(c)) warn.push(C.termsNoticeLine(c));
     // the standing notice, on the last screen before the night that could spend it
     if (c.strikes > 0) warn.push(c.strikes === C.LEASE_STRIKES - 1
       ? `LAST WARNING: ${c.strikes} nights in the red. Close tonight below $0 and the landlord takes the lease.`
@@ -453,6 +463,7 @@ export class DayPhase {
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],
       ...(C.accountFee(c) ? [["Supply account", `$${C.accountFee(c)} · ${C.distDef(c).name}, billed tonight`]] : []),
       ...(C.walkinFee(c) ? [["Walk-in", `$${C.walkinFee(c)} · compressor power`]] : []),
+      ...(C.onTerms(c) ? [["Season terms", termsRow(C.termsOutlook(c))]] : []),
       ["The lease", c.strikes ? `${c.strikes} of ${C.LEASE_STRIKES} nights in the red` : "in good standing"],
     ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
     this.show("Tonight",
@@ -522,7 +533,43 @@ export class DayPhase {
   /** The venue ladder's door into the game. moveVenue()/nextVenue()/canMoveVenue()
    *  are all campaign.js, tested there — this is only the UI: show the next rung,
    *  sign it through cb.onMove() (already wired to rebuildVenue() in main.js). */
+  /** Season terms under the ladder: the offer and what it turns into, or,
+   *  once signed, where the terms stand and the two dates they move on. */
+  termsHtml(c) {
+    const signed = C.onTerms(c);
+    const o = signed ? C.termsOutlook(c) : C.termsOffer(c);
+    const base = C.venueDef(c).rent;
+    const nights = n => `${n} night${n === 1 ? "" : "s"}`;
+    const wage = p => (p === 100 ? "wages as they are" : `wages at ${p}%`);
+    const rows = `<table id="termsTable"><tr><th>When</th><th class="num">Rent</th><th>Wages</th></tr>
+        <tr data-terms="now"><td>${signed ? "Tonight" : "From tonight"}${o.phase === "offseason" ? " (off-season)" : ""}</td><td class="num money">$${o.rent}</td><td>${wage(o.wagePct)}</td></tr>
+        ${o.off.in > 0 ? `<tr data-terms="off"><td>Off-season, in ${nights(o.off.in)}</td><td class="num money">$${o.off.rent}</td><td>${wage(o.wagePct)}</td></tr>` : ""}
+        <tr data-terms="next"><td>Season ${o.next.season}, in ${nights(o.next.in)}</td><td class="num money">$${o.next.rent}</td><td>${wage(o.next.wagePct)}</td></tr></table>`;
+    if (signed) {
+      return `<div class="sec">Season Terms</div>
+        <div class="promoCard house on" id="termsCard">
+          <b>On season terms</b> <span class="pill">signed in season ${c.terms.since}</span>
+          <div class="hint">This room's own rent is $${base} a night. Each new season puts ${SNS.RENT_STEP} points on the rent (to ${100 + SNS.RENT_CAP}% of the room's) and ${SNS.WAGE_STEP} on every wage (to ${100 + SNS.WAGE_CAP}%); the off-season fortnight is ${SNS.OFF_RENT}% of the season's rent. The terms follow you to any room.</div>
+          ${rows}
+        </div>`;
+    }
+    const armed = this.termsArm;
+    return `<div class="sec">Season Terms</div>
+      <div class="promoCard house" id="termsCard">
+        <b>Month to month</b> <span class="pill">as it has always been</span>
+        <div class="hint">Rent is the room's number ($${base} a night here) and a wage is what you hired at, this season and every season.</div>
+        <div class="hint">+ Sign season terms and rent is ${SNS.SIGN_BREAK}% under the room's for the rest of this season, and every off-season fortnight is billed at ${SNS.OFF_RENT}% of that season's rent.</div>
+        <div class="hint">− Each season after this one puts ${SNS.RENT_STEP} points on the rent, to ${100 + SNS.RENT_CAP}% of the room's, and ${SNS.WAGE_STEP} on every wage, to ${100 + SNS.WAGE_CAP}%. The terms follow you to any room and cannot be torn up.</div>
+        ${rows}
+        <button class="btn small ${armed ? "" : "ghost"}" data-signterms="1" style="margin-top:6px">${armed ? "Confirm: sign for good" : "Sign Season Terms"}</button>
+      </div>`;
+  }
+
   realEstatePanel() {
+    this.termsArm = false;  // season terms are one way, so they take a second click
+    this.renderEstate();
+  }
+  renderEstate() {
     const c = this.getC();
     const cur = C.venueDef(c);
     if (c.darkNightsLeft > 0) {
@@ -534,7 +581,8 @@ export class DayPhase {
     const nv = C.nextVenue(c);
     if (!nv) {
       this.show("Real Estate",
-        `<p class="hint">You're already at <b>${cur.name}</b> — the top of the ladder. Nowhere left to climb.</p>`,
+        `<p class="hint">You're already at <b>${cur.name}</b> — the top of the ladder. Nowhere left to climb.</p>
+         ${this.termsHtml(c)}`,
         `<span class="hint">Cash $${Math.round(c.cash)}</span>`);
       return;
     }
@@ -545,9 +593,10 @@ export class DayPhase {
        <div class="promoCard">
          <b>${nv.name}</b> <span class="hint">$${nv.cost.toLocaleString()}</span>
          <div class="hint">${nv.desc}</div>
-         <div class="hint">+${draw}% more of a draw · $${nv.rent}/night rent (up from $${cur.rent}) · ${nv.darkNights} dark night${nv.darkNights === 1 ? "" : "s"} to move in</div>
+         <div class="hint">+${draw}% more of a draw · $${C.rentAt(c, nv.id)}/night rent (up from $${C.rent(c)}) · ${nv.darkNights} dark night${nv.darkNights === 1 ? "" : "s"} to move in</div>
          <button class="btn small" data-signlease="1" style="margin-top:6px" ${afford ? "" : "disabled"}>Sign the Lease</button>
-       </div>`,
+       </div>
+       ${this.termsHtml(c)}`,
       `<span class="hint">Cash $${Math.round(c.cash)}${afford ? "" : ` · need $${Math.round(nv.cost - c.cash).toLocaleString()} more`}</span>`);
   }
 
@@ -650,6 +699,16 @@ export class DayPhase {
     if (t.dataset.moment !== undefined) { this.closePanel(); if (this.cb.resolveMoment) this.cb.resolveMoment(+t.dataset.moment); }
     if (t.dataset.closednight) { this.closePanel(); this.cb.closedNight(); }
     if (t.dataset.newrun && this.cb.newRun) { this.closePanel(); this.cb.newRun(); }
+    if (t.dataset.signterms) {
+      // one way, so not on one click
+      if (!this.termsArm) { this.termsArm = true; this.renderEstate(); this.cb.flash("Season terms cannot be torn up. Click again to sign."); }
+      else {
+        const r = C.signTerms(c);
+        this.termsArm = false;
+        if (r.ok) { this.cb.save(); this.renderEstate(); this.cb.flash(`Signed. Rent is $${C.rent(c)} a night from tonight.`, true); }
+        else this.cb.flash(r.err);
+      }
+    }
     if (t.dataset.signlease) {
       const r = C.moveVenue(c);
       if (r.ok) {

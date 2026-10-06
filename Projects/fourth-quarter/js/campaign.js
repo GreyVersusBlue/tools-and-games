@@ -13,6 +13,7 @@ import * as EV from "./events.js";
 import * as S from "./supply.js";
 import * as ST from "./staff.js";
 import * as SH from "./shelf.js";
+import * as SN from "./season.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export { DAYS };
@@ -65,8 +66,10 @@ export function venueDef(c) { return VENUES[c.venue] ?? VENUES.cornerTap; }
  *  session-3 answer to "day 40 is strictly easier than day 4, and the venue
  *  ladder pays without a downside": rent still doesn't move with the calendar,
  *  but it moves with the tier, so climbing the ladder is a real tradeoff again
- *  instead of a one-way markup on revenue. See the notes file for the numbers. */
-export function rent(c) { return venueDef(c).rent; }
+ *  instead of a one-way markup on revenue. See the notes file for the numbers.
+ *  On season terms (#911) it moves with the calendar too: season.js's
+ *  rentFor(), which month to month is the room's number untouched. */
+export function rent(c) { return SN.rentFor(c.terms, venueDef(c).rent, c.day); }
 export function nextVenue(c) {
   const i = VENUE_ORDER.indexOf(c.venue);
   return (i >= 0 && i < VENUE_ORDER.length - 1) ? VENUES[VENUE_ORDER[i + 1]] : null;
@@ -122,6 +125,36 @@ export function billsFor(c) {
   const walkin = walkinFee(c);
   return { wages, rent: rentDue, upgFees, account, walkin, total: wages + rentDue + upgFees + account + walkin };
 }
+// ---------- season terms ----------
+// season.js owns the arithmetic; these are the campaign's questions of it, and
+// the one place the record moves: signing. Month to month every one of these
+// answers what the room's rent and the staffer's wage alone answered before
+// there was a season.js (#911).
+
+/** The bar is on season terms. Until it is, rent and wages never move. */
+export function onTerms(c) { return SN.onTerms(c.terms); }
+/** What `venueId`'s rent would be tonight on this bar's terms: the Real
+ *  Estate card's number for the room it is offering. */
+export function rentAt(c, venueId) { return SN.rentFor(c.terms, (VENUES[venueId] ?? venueDef(c)).rent, c.day); }
+/** A wage on tonight's terms, Staff Training not counted: what an applicant
+ *  is asking, as the payroll would pay it. */
+export function termsWage(c, wage) { return SN.wageFor(c.terms, wage, c.day); }
+/** Where the terms stand and the two dates they move on; null month to month. */
+export function termsOutlook(c) { return SN.outlook(c.terms, venueDef(c).rent, c.day); }
+/** What signing today would be, in the same shape. */
+export function termsOffer(c) { return SN.offer(venueDef(c).rent, c.day); }
+/** The change inside the week, for the ticker and the door; null otherwise. */
+export function termsNotice(c) { return SN.notice(c.terms, venueDef(c).rent, c.day); }
+/** The same notice as a sentence; "" when there is none. */
+export function termsNoticeLine(c) { return SN.noticeLine(termsNotice(c)); }
+/** Go on season terms. Free, and one way (season.js's header says why). */
+export function signTerms(c) {
+  const next = SN.sign(c.terms, c.day);
+  if (!next) return { ok: false, err: "You're already on season terms." };
+  c.terms = next;
+  return { ok: true };
+}
+
 // ---------- the lease: the night you can lose ----------
 //
 // The gap this closes, in the README's words and this wishlist's: the cash
@@ -401,8 +434,10 @@ export function buyUpgrade(c, id) {
   return { ok: true };
 }
 
-/** Wage multiplier from Staff Training — feeds wageBill/settleNight. */
-export function effWage(c, s) { return Math.round(s.wage * (owned(c, "training") ? 1.15 : 1)); }
+/** Wage multiplier from Staff Training — feeds wageBill/settleNight. On
+ *  season terms the season's raise is in it too (#911); the multiplier is
+ *  exactly 1 month to month. */
+export function effWage(c, s) { return Math.round(s.wage * (owned(c, "training") ? 1.15 : 1) * SN.wageMult(c.terms, c.day)); }
 /** Walking-speed multiplier for a floor role — POS (servers only) + Training (everyone). */
 export function speedMult(c, role) {
   let m = owned(c, "training") ? 1.15 : 1;
@@ -548,6 +583,7 @@ export function newCampaign() {
     pars: {},
     crew: ST.newCrew(),
     shelf: SH.newShelf(),
+    terms: SN.newTerms(),
   };
   rollApplicants(c, Math.random);
   return c;
@@ -1009,9 +1045,9 @@ export function settleDarkNight(c, rand = Math.random) { return closeNight(c, nu
 // gvb-save reads as version 0.
 
 /** Bump when the shape changes. 0 means "written before this file used a slot".
- *  2 is the supply house (#905), 3 the rota (#908) and 4 the dated shelf
- *  (#909): see migrateCampaign(). */
-export const SAVE_VERSION = 4;
+ *  2 is the supply house (#905), 3 the rota (#908), 4 the dated shelf (#909)
+ *  and 5 season terms (#911): see migrateCampaign(). */
+export const SAVE_VERSION = 5;
 
 /**
  * Version drift only (#37). One step so far: a save from before version 2 was
@@ -1035,6 +1071,10 @@ export function migrateCampaign(c, from) {
   // And for the dated shelf (#909): no build before version 4 wrote a
   // `shelf`, so dates or a walk-in in an older file were paid for by nobody.
   if (from < 4) c.shelf = SH.newShelf();
+  // And for season terms (#911): no build before version 5 wrote a `terms`,
+  // so signed terms in an older file are a rent break nobody signed for and
+  // a creep nobody agreed to.
+  if (from < 5) c.terms = SN.newTerms();
   return c;
 }
 
@@ -1195,6 +1235,10 @@ export function repairCampaign(c) {
   // what this game always charged; a dated one's lots are held to the count
   // above, since `stock` is what the night sells from.
   c.shelf = SH.repairShelf(c.shelf, c.stock, c.day);
+  // The terms' one field (#911). Month to month is the room's rent and the
+  // staffer's wage, which is what this game always charged; signed, the
+  // season they were signed in cannot be later than the one the save is in.
+  c.terms = SN.repairTerms(c.terms, c.day);
   return c;
 }
 
