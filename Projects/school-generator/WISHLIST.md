@@ -366,10 +366,11 @@ and add to this list rather than starting a new one.
   than 30in is a `ramp-rise` warning in the report (#833). Left: the 4ft
   notch in front of the entry counted as footprint; crowd agents walked up
   one in a browser, which nobody has watched; the straight ramp's top
-  landing is 4ft (`LANDING`) and ADA asks for 5; a ramp's width and slope
-  have no control (`data.width`, `data.slope`); a ramp over 30in a run still
-  counts as a way up on the accessible route, which is #833's call and
-  could be the other way; the plan does not mark the ramp a `ramp-rise`
+  landing is 4ft (`LANDING`) and becomes ADA's 5, ramps already placed
+  included (Devon, 2026-10-05; not built yet); a ramp's width and slope
+  have no control (`data.width`, `data.slope`; Devon allows the save field
+  and the chrome); a ramp over 30in a run still counts as a way up on the
+  accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`
   finding names, though the finding carries its position.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
@@ -388,8 +389,10 @@ and add to this list rather than starting a new one.
   room's own wall keeps its accent and a face whose wall stayed behind loses
   it (#862). M reaches the mirror now: the page gave the key to the report
   panel from Phase 7 on, and with rooms selected in the Shape tool the editor
-  has it back (#866). Left: nine fixed colours and no free
-  pick; a free-standing wall (`floor.walls`) has no ring and so no accent;
+  has it back (#866, and Devon confirmed on 2026-10-05 that M is the
+  mirror). Left: nine fixed colours and no free
+  pick; a free-standing wall (`floor.walls`) has no ring and so no accent
+  (both may take a save field and new chrome now, Devon, 2026-10-05);
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
@@ -413,10 +416,11 @@ and add to this list rather than starting a new one.
   the glass at an angle is still read at the middle of the stretch, the
   probe's width and all. A window cut in a curtain wall is counted once
   (#874): the plan gives its width to a run of wall, which the takeoff and
-  the estimate read. The curtain wall is 10 ft of glass to the daylight and
-  the storey's own wall height to the takeoff, so the two disagree on a
-  storey that is not the top one, and the elevation's drawing of a window
-  in a curtain wall has not been looked at. Neighbours, trees and the
+  the estimate read. A curtain wall is the storey's own wall height to the
+  daylight, the takeoff and the estimate alike (#897, Devon's answer of
+  2026-10-05; it was 10 ft to the daylight), and a section cut through a
+  window in one draws wall under the sill and over the head. The room's
+  surfaces in the daylight factor still stop at the 10 ft ceiling. Neighbours, trees and the
   terrain are not obstructions, one reflectance serves every room
   whatever its finishes are, a rooflight does not exist, and none of it is
   drawn on the plan: the numbers are in the report panel and the CSV only.

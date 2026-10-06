@@ -30,6 +30,12 @@
 // none of it is an illuminance. The code's line is still the glazing ratio;
 // these are notes, never warnings.
 //
+// **A curtain wall is as high as its storey's wall** (#897): `wallHeightOf`,
+// the one height the renderer builds it to, the takeoff buys it at and the
+// estimate prices it at. It was the 10 ft ceiling here, so a storey with one
+// above it (12 ft floor to floor) had 2 ft of glass bought and not counted.
+// The room's own surfaces still stop at the ceiling.
+//
 // **Only exterior glass counts.** A window into a corridor lights the room
 // from the corridor's borrowed light; a glazed office front is a lovely thing
 // and not a source of daylight. Both are measured, both are reported, and only
@@ -37,7 +43,7 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/daylight.test.mjs.
 
-import { WALL_H, floorLabel, floorBaseY } from './grid.js';
+import { WALL_H, floorLabel, floorBaseY, wallHeightOf } from './grid.js';
 import {
   shapesOf, segEnds, openingSpec, isWindowOpening, SEG_GLASS,
   crossingsAlong, sideRuns,
@@ -242,6 +248,8 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
   }
   const env = normalizeEnv(state.env);
   const track = sunTrack(env);
+  // How high a curtain wall on this storey stands (#897).
+  const glassH = wallHeightOf(state, floorIndex);
 
   // Which room is on each side of a boundary, as ids. `null` is the outside.
   const sides = (x, z, nx, nz) => [
@@ -274,7 +282,7 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
         // An exterior pane also says where it is, which way is out and how
         // much sky that way holds. `t` is its place along the run, `sill` and
         // `head` its height off the floor.
-        const lit = (area, t = 0.5, sill = 0, head = WALL_H) => {
+        const lit = (area, t = 0.5, sill = 0, head = glassH) => {
           const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
           const [s0, s1] = sides(x, z, -uz, ux);
           // The far side is whichever of the two probes isn't this room.
@@ -314,7 +322,7 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
           const runs = sideRuns(0, len, cuts, farAt);
           if (runs.length < 2) {
             const holes = here.reduce((w, o) => w + (o.w || 0), 0);
-            lit(Math.max(0, len - holes) * WALL_H);
+            lit(Math.max(0, len - holes) * glassH);
           } else {
             for (const run of runs) {
               let clear = run.hi - run.lo;
@@ -322,7 +330,7 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
                 const [lo, hi] = spanOf(o);
                 clear -= Math.max(0, Math.min(hi, run.hi) - Math.max(lo, run.lo));
               }
-              if (clear > 1e-6) lit(clear * WALL_H, (run.lo + run.hi) / 2 / len);
+              if (clear > 1e-6) lit(clear * glassH, (run.lo + run.hi) / 2 / len);
             }
           }
         }

@@ -1293,7 +1293,7 @@ construct's Fort reads no lower than moderate (#715). Every parse fixture's
 special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
 all three questions that stood here on 2026-10-05: the flagging pass, go; the
 2e-style rewrite, go; Foundry, yes, he uses it, build the export. The first and
-the third are built; the rewrite has its first increment (#894).
+the third are built; the rewrite has its second increment (#894, #899).
 
 1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
    (#886, 2026-10-05), and the list is Devon's to read. They were written by a
@@ -1306,39 +1306,50 @@ the third are built; the rewrite has its first increment (#894).
    reading. Answers go into `spell-map.json` by hand; rerun the script
    afterwards, or `converter-spells.test.mjs` fails on a stale list. The next
    73 (score 7) are one `CUT` away if the first 47 turn out worth it.
-2. **The 2e-style rewrite of special abilities: first increment done (#894,
-   2026-10-05), 22 of 111 abilities.** Devon said go on 2026-10-05.
+2. **The 2e-style rewrite of special abilities: second increment done (#894,
+   #899, 2026-10-06), 33 of 111 abilities (30%).** Devon said go on 2026-10-05.
    `converter-assets/js/abilities.js` rewrites an ability when a rule reads its
    whole construction and leaves it byte for byte as it was otherwise, marked
    **PF1e wording** on the page, in the copied text and in the Foundry file's
-   notes. Every DC and damage figure a rule writes is the converter's own for
-   that creature at its new level. Eight rules, counted over the 57 fixtures:
-   affliction (a poison or disease stat line, 6), constrict (4), throw-rock
-   (3), breath (2, and the hell hound's no longer reads "6d4 rounds damage"),
-   distraction (2), gaze (2), rend (2), trample (1). The table is
+   notes. Every DC, attack bonus and damage figure a rule writes is the
+   converter's own for that creature at its new level. Fourteen rules, counted
+   over the 57 fixtures, which are every PF1e stat block the repo has:
+   affliction (a poison or disease stat line, 7), constrict (4), limit (a name
+   and a per-day limit, 3), throw-rock (3), breath (2), channel (2),
+   distraction (2), gaze (2), grab with a size (2), rend (2), paralysis (1),
+   pull (1), rake (1), trample (1). The table is
    `converter-assets/data/ability-patterns.md`, written by
    `measure-abilities.mjs`; `converter-assets/README.md` says where each
-   number comes from. What is left, 76 abilities in PF1e wording and 7 bare
+   number comes from. What is left, 65 abilities in PF1e wording and 7 bare
    names:
-   - **A save inside a sentence, 30 abilities.** "must succeed on a DC N save
-     or be [condition] for [duration]" is the next rule: 5 abilities hold it
+   - **A save inside a sentence, 25 abilities. Needs a call before a rule.**
+     "must succeed on a DC N save or be [condition] for [duration]" is in 5
      (the gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus,
-     Paralytic Tentacles), each inside a longer paragraph, so the rule has to
-     decide what it does with the sentences around it.
-   - **A parenthesis no rule reads, 16.** `9/day`, `DC 18`, `2 levels, DC 22`,
-     `tongue, 5 feet`, the war priest's class features. A use limit as a
-     Frequency line covers the per-day ones; a name with only a DC has no
-     effect to write.
-   - **A burst with a save for half** (the balor's Death Throes), **swallow
-     whole, pull, rake, grab with a size.** One fixture each.
+     Paralytic Tentacles), each between sentences no rule reads. #899 left
+     them: rewriting one sentence would take the PF1e mark off the rest. The
+     call is a fourth wording, part by rule and part PF1e, and how the page,
+     the copied text and the Foundry notes show it.
+   - **A parenthesis no rule reads, 6.** `DC 18` and `DC 22` under a name
+     (no effect to write), `+1, 6/day` (the war priest's smite, twice),
+     `2 levels, DC 22`, and swallow whole's `1d4 bludgeoning damage, AC 10,
+     1 hp`, which needs a Rupture figure the tables do not have.
+   - **One or two fixtures each, readable whole:** a burst with a save for
+     half (the balor's Death Throes, both layouts), whirlwind, energy drain.
    - **Prose, 27.** No construction in them (Whip Mastery, Mimicry, Freeze).
      These stay PF1e wording unless somebody writes them by hand.
+   - **Four calls in #899 Devon may want back**, beside #894's three: a name
+     with only a per-day limit reads "Frequency 9 times per day." and loses
+     its mark with no effect text; channel damage follows the Strike ratio
+     (the war priest's 1d6 is 1d6-1); paralysis keeps PF1e's 1d4+1 rounds
+     with the incapacitation trait; a poison's sleep is unconscious. Nobody
+     has read the 33 at a table.
    - **`converter-abilities.test.mjs` is in `site-ci.yml` since 2026-10-06**,
      under "Pathfinder converter" with the Foundry suite. Neither line has run
      on GitHub yet: the first run is the next PR's, so read that job's log once.
-   - The suite's hash of "the 98 no rule wrote" is 89 of the 111 and the 9
-     entries the 111 leaves out (seven Reactive Strikes, a regeneration, a
-     fast healing). 22 and 98 are of 120, not of 111.
+   - The suite's hash is still of the 98 entries no rule wrote on 2026-10-05
+     (89 of the 111 and the 9 the 111 leaves out: seven Reactive Strikes, a
+     regeneration, a fast healing). #899's rules took 11; the suite writes
+     them back in as they stood, so 87 are held. 33 and 87 are of 120.
    - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
      listed twice, once as a bare aura and once as text (the balor's Flaming
      Body), and a defensive ability the same way (the mouther's Amorphous).

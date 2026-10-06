@@ -527,6 +527,8 @@ export function convertCreature(c, opts = {}) {
       const top = readRow(rowAt(T.PF2_STRIKE_DAMAGE, level), T.TIERS.extreme);
       return strikeRatio && avg ? diceFor(Math.min(avg * strikeRatio, top), firstDie(pf1) || 8) : null;
     },
+    attack: (b1) => bench('attack', b1, T.PF2_STRIKE_ATTACK, 'attack', 2, 1).value,
+    umr: (name) => umrText(name),
     tail: (text) => convertText(text),
   };
   // How an ability's text reads: 'rule' (rewritten by abilities.js), 'umr'

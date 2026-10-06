@@ -32,7 +32,7 @@ export const PATTERNS = [
   ['a condition with a duration ("paralyzed for 3d6 rounds")', /\b(?:paralyzed|confused|blinded|dazed|stunned|sickened|slowed|frightened|petrified) for \d/i],
   ['a poison or disease stat line', /;\s*frequency\s+\d\//i],
   ['a breath weapon', /\bbreath weapon\b/i],
-  ['only a parenthesis from the stat line ("PF1e: 9/day.")', /^(?:.*\. )?PF1e: [^.]*\.{1,2}$/],
+  ['only a parenthesis from the stat line ("PF1e: DC 29.")', /^(?:.*\. )?PF1e: [^.]*\.{1,2}$/],
 ];
 
 export async function measure() {
@@ -76,6 +76,9 @@ export function render({ files, rows }) {
   L.push(`already there: \`balor-collapsed\`, \`npc-war-priest-wrapped\`, \`d20pfsrd-owlbear\`), ${total} abilities on the`);
   L.push('converted creatures. Regeneration and fast healing are numbers on the HP line and Reactive');
   L.push('Strike comes from a feat, so none of the three is counted.', '');
+  L.push(`These ${files.length} are every PF1e stat block the repo holds: the converter ships spell data and PF2e`);
+  L.push('tables, and no creatures of its own, so there is no wider set to measure. A share here is a');
+  L.push('share of these fixtures and of nothing else.', '');
   L.push('| How the text was written | Abilities | Share |', '| --- | ---: | ---: |');
   L.push(`| A rule in \`js/abilities.js\`, or the breath weapon rule in \`js/convert.js\` | ${rule.length} | ${pct(rule.length, total)} |`);
   L.push(`| The converter's wording for a universal ability (\`UMR_TEXT\`) | ${umr.length} | ${pct(umr.length, total)} |`);
