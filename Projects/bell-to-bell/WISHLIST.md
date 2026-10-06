@@ -7,7 +7,7 @@ it, an AP whose visits are a calendar rather than a metronome, four subjects
 that are files rather than branches, an `Assets/` tree that knows what it
 weighs, a three.js that is vendored rather than fetched, tells that are objects
 in the room rather than boxes in a vision mode, and a room a thumb can walk,
-teach and rechart on a written-down frame budget. `tests/smoke.mjs` prints 718
+teach and rechart on a written-down frame budget. `tests/smoke.mjs` prints 795
 PASS lines and no FAIL, `tests/assets.mjs` audits the asset manifest against a
 budget, and `tests/balance.mjs` runs six styles through 4th period, one style
 across three seating charts, three styles through each later period, the whole
@@ -249,11 +249,17 @@ they stay here struck, with the answer, so nobody asks again.
   shipped.
 - ~~**An announced Observation variant?**~~ Answered 2026-10-05: **yes.**
   Phase 4 built it (`visitFor` and `announcedAhead` in
-  `systems/observation.js`), so the answer confirms what ships.
+  `systems/observation.js`), so the answer confirms what ships. #891 writes
+  down the three choices it made (on the start screen 1 to 3 school days
+  ahead; the warning buys no meter, only the missing countdown; 34% of visits,
+  drawn from the seed) and `smoke.mjs` plays one visit each way and compares
+  them. Nothing was added.
 - ~~**Should Room Temp reveal direction at all?**~~ (Root `BACKLOG.md` Q13;
   it was never repeated here.) Answered 2026-10-05: **yes.** It reads a
   quadrant, which is what it does today. Locked constraint 8 stands: it never
-  names a kid.
+  names a kid. One case changed on the way to testing it (#890): two quadrants
+  level at the top read as the middle, where they used to read as whichever
+  one's tell was born first.
 
 ### Raised by the suites, 2026-10-05 (TG-22), not yet anybody's call
 
@@ -275,6 +281,14 @@ and written here because the test could not say whether it is meant.
   174 repeat `withitness.tick()`'s four lines instead of calling it, so the
   balance table and the game agree only while somebody keeps them the same by
   hand. The new assertions pin `withitness.js` to `CFG`; nothing pins the copy.
+- **The calendar's horizon cannot bind.** `visit.announced.horizonDays` is 4
+  and the longest lead is 3, so no announced visit is ever more than 3 days
+  out when the start screen looks. Widening the loop by three days changed no
+  row in 900 mornings. Either number can move without the other noticing.
+- **Room Temp's front is one row of three.** The line is `z > 0.4`: desks 0 to
+  3 are the front and the other eight are the back, so "back left" covers
+  twice the desks "front left" does and wins a share more easily. It may be
+  meant (the back is where things happen); nothing says so.
 
 ## The standing backlog
 

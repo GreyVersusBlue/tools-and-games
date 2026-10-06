@@ -91,15 +91,19 @@ anything.** That is what the phone actually costs you, and it is why the seeing 
 
 **T** takes one cheap reading of the whole room — a band, a line, and roughly which quadrant
 the heat is in. It never names a kid; that is what the expensive ability is for. The readout
-is a snapshot, not a live feed, so it ages and then tells you it has aged.
+is a snapshot, not a live feed, so it ages and then tells you it has aged. Two corners as warm
+as each other read as the middle of the room, and a room with nothing going on reads as even.
 
 ## The Observation
 
-Every period, on no notice: an Admin Proximity Alert gives you nine real seconds, then AP Reyes
-is in the room with a clipboard and a rubric. For the next eleven minutes, five look-fors are
-worth performing — post the objective (**O**), ask a bigger question (**H**), let them talk to
-each other (**G**), hold still and call it wait time (**F**, five seconds) — and one of them,
-checking for understanding, you were probably already doing. Being watched costs you something
+A little over half your periods, usually on no notice: an Admin Proximity Alert gives you nine
+real seconds, then AP Reyes is in the room with a clipboard and a rubric. About a third of her
+visits are announced instead: the start screen has her on the calendar one to three school days
+ahead, and on the day she walks in with no alert. Knowing changes nothing else. She brings five
+look-fors out of nine, and for the next eleven minutes they are worth performing — post the
+objective (**O**), ask a bigger question (**H**), let them talk to each other (**G**), hold
+still and call it wait time (**F**, five seconds) — and one of them, checking for
+understanding, you were probably already doing. Being watched costs you something
 the whole time regardless of what you do about it; performing the rubric costs something else
 and pays out in Fidelity. Afterward, one exchange, three ways to answer it, and the "correct"
 one is usually not the cheap one.
