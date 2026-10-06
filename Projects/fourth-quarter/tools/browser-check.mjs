@@ -1312,13 +1312,16 @@ ok("the server is skill 3 on $80 from tomorrow, 12 more tired, his count back to
 ok("no page errors through the rota", errors.length === 0, errors.join(" | "));
 
 // ---------------------------------------------------------------- the dated shelf (#909)
-// Wednesday morning, day 3. The Stock panel with an undated shelf, dating it
-// on the second click, the lots with their nights, the walk-in, and one night
-// to see the dates and not the flat rate close the shelf.
+// Wednesday morning, moved on a week to day 10 so a lot can be five nights
+// old. The Stock panel with an undated shelf, dating it on the second click,
+// the lots with their nights, the walk-in, and one night to see the dates and
+// not the flat rate close the shelf.
 await page.click("#nextDayBtn");
-const shelf0 = await page.evaluate(() => {
+const shelf0 = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
   const fq = window.__fq, q = sel => document.querySelector(sel);
   const c = fq.campaign;
+  C.devSetDay(c, c.day + 7);
   c.cash = 5000; c.stock = { wings: 10, burger: 0, nachos: 0, fries: 0, beer: 40, soda: 10 };
   fq.day.stockPanel();
   const label = sel => (q(sel) || {}).textContent ?? null;
@@ -1332,11 +1335,11 @@ const shelf0 = await page.evaluate(() => {
     install: label("[data-buywalkin]"), lots: JSON.stringify(c.shelf.lots), stock: c.stock.wings };
   return out;
 });
-ok("the Stock panel with an undated shelf: the card that offers dates, no lots, no walk-in, and the 15% rule in words", shelf0.day === 3 && shelf0.card && !shelf0.table && !shelf0.walkin && shelf0.btn === "Date the Shelf" && /rots about 15%/.test(shelf0.rule), JSON.stringify(shelf0).slice(0, 200));
+ok("the Stock panel with an undated shelf: the card that offers dates, no lots, no walk-in, and the 15% rule in words", shelf0.day === 10 && shelf0.card && !shelf0.table && !shelf0.walkin && shelf0.btn === "Date the Shelf" && /rots about 15%/.test(shelf0.rule), JSON.stringify(shelf0).slice(0, 200));
 ok("a shelf is not dated on one click: the button arms and no date is on anything", shelf0.armed.dated === false && shelf0.armed.btn === "Confirm: date it for good", JSON.stringify(shelf0.armed));
 ok("the second click dates it, on disk at save version 4, and the card is gone", shelf0.dated.dated === true && shelf0.dated.disk === true && shelf0.dated.v === 4 && shelf0.dated.btn === null && !shelf0.dated.card, JSON.stringify(shelf0.dated).slice(0, 160));
-ok("what was on the shelf is dated today, a row an item: wings for 3 nights, beer for 14, soda never, and a bare line says so", shelf0.dated.rows === 6 && /3 nights 10 for 3 nights/.test(shelf0.dated.wings) && /14 nights 40 for 14 nights/.test(shelf0.dated.beer) && /never goes off/.test(shelf0.dated.soda) && /none on the shelf/.test(shelf0.dated.fries)
-  && shelf0.dated.lots === '{"wings":[{"day":3,"n":10}],"beer":[{"day":3,"n":40}]}' && shelf0.dated.stock === 10, `${shelf0.dated.wings} / ${shelf0.dated.beer} / ${shelf0.dated.lots}`);
+ok("what was on the shelf is dated today, a row an item: wings for 3 nights, beer for 14, soda never, and a bare line says so", shelf0.dated.rows === 6 && /3 nights\s?10 for 3 nights/.test(shelf0.dated.wings) && /14 nights\s?40 for 14 nights/.test(shelf0.dated.beer) && /never goes off/.test(shelf0.dated.soda) && /none on the shelf/.test(shelf0.dated.fries)
+  && shelf0.dated.lots === '{"wings":[{"day":10,"n":10}],"beer":[{"day":10,"n":40}]}' && shelf0.dated.stock === 10, `${shelf0.dated.wings} / ${shelf0.dated.beer} / ${shelf0.dated.lots}`);
 ok("the order sheet's rule is the dates now, and the walk-in is offered", /The shelf is dated/.test(shelf0.dated.rule) && !/15%/.test(shelf0.dated.rule) && shelf0.dated.install === "Install", `${shelf0.dated.rule} / ${shelf0.dated.install}`);
 
 const cold = await page.evaluate(() => {
@@ -1358,7 +1361,7 @@ const cold = await page.evaluate(() => {
 });
 ok("wings on their third night read \"10 go tonight\" in red, in the lots and on the order sheet", /10 go tonight/.test(cold.last) && cold.sheet === "(10 go tonight)" && cold.lotClass === "bad", `${cold.last} / ${cold.sheet} / ${cold.lotClass}`);
 ok("Install puts the walk-in in for $1,000, on disk, once, and not among the upgrades", cold.walkin.on === true && cold.walkin.disk === true && cold.walkin.cash === 4000 && !cold.walkin.btn && /installed/.test(cold.walkin.card) && !cold.walkin.upgrades, JSON.stringify(cold.walkin).slice(0, 160));
-ok("and the same wings keep 5 nights and have 3 left, while the keg's 14 did not move", /5 nights 10 for 3 nights/.test(cold.walkin.wings) && /14 nights 40 for 14 nights/.test(cold.walkin.beer) && !cold.walkin.sheet, `${cold.walkin.wings} / ${cold.walkin.beer}`);
+ok("and the same wings keep 5 nights and have 3 left, while the keg's 14 did not move", /5 nights\s?10 for 3 nights/.test(cold.walkin.wings) && /14 nights\s?40 for 14 nights/.test(cold.walkin.beer) && !cold.walkin.sheet, `${cold.walkin.wings} / ${cold.walkin.beer}`);
 ok("the Tonight panel bills the walk-in's $18 and warns what is on its last night", /Walk-in\$18/.test(cold.door) && /10 servings are on the last night of the date/.test(cold.door), cold.door.slice(cold.door.indexOf("Walk-in"), cold.door.indexOf("Walk-in") + 40));
 
 await page.evaluate(() => window.__fq.day.cb.openDoors());
