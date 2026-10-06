@@ -1290,7 +1290,8 @@ eleven at CR 1 and 2, seventeen at CR 3 to 6, fourteen from CR 7 up. A
 construct's Fort reads no lower than moderate (#715). Every parse fixture's
 special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
 all three questions that stood here on 2026-10-05: the flagging pass, go; the
-2e-style rewrite, go; Foundry, yes, he uses it, build the export.
+2e-style rewrite, go; Foundry, yes, he uses it, build the export. The first and
+the third are built; the rewrite is the one not started.
 
 1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
    (#886, 2026-10-05), and the list is Devon's to read. They were written by a
@@ -1307,8 +1308,34 @@ all three questions that stood here on 2026-10-05: the flagging pass, go; the
    condition names rewritten. Monster Core wording exists for eighteen universal
    abilities (`UMR_TEXT` in `convert.js`). **A 2e-style rewrite of the rest is
    go** (Devon, 2026-10-05) and not started.
-3. **A Foundry VTT actor export. Go** (Devon, 2026-10-05: he uses Foundry),
-   and not started.
+3. **A Foundry VTT actor export: built (#892, 2026-10-05), and waiting on
+   Devon's import.** The **Foundry JSON** button beside Copy and Print saves
+   `<name>.foundry-npc.json`, a pf2e NPC for Import Data on an actor.
+   `converter-assets/js/foundry.js` is a pure function, the converter's
+   creature in and a plain object out, the same bytes every time. It targets
+   the shape of the pf2e system's own NPCs as `Pathfinder/data/npcs` held
+   them on 2026-09-09, writes a path only if one of the 3,048 Remaster NPCs
+   there has it and a slug only if one of them uses it, and puts everything
+   else in the actor's private notes. A partial spell match is marked in the
+   spell's name, at the top of its text and in the notes.
+   **It has not been imported into a real Foundry**: no machine here has one.
+   `converter-assets/README.md` lists which fields are sure, which are a best
+   reading, and five lines on how to check it. What is left:
+   - **Devon imports one** (the lich is the widest: 30 spells, two of them
+     partial) and says what the sheet shows. A refused import is most likely
+     one of the fields left out for Foundry to default (`img`, `_stats`,
+     `system.publication`, a migration version).
+   - **`converter-foundry.test.mjs` is not in `site-ci.yml`.** The batch
+     that built it could not touch that workflow. It needs one line under
+     "Pathfinder converter": `node Pathfinder/tests/converter-foundry.test.mjs`.
+     Until then it runs by hand only.
+   - No fixture is a troop, and no fixture's ranged attack parses with a
+     range increment, so a ranged Strike imports as melee with a note; the
+     suite covers the range by hand.
+   - Seen while building, not fixed: a class caster's spell can be listed
+     twice at one rank (the storm sorcerer's Light), because `convertList`
+     compares a stored `''` frequency with an `undefined` one. It is the
+     converter's output, so the export carries both.
 4. **Two pairs sat on a per-monster bound; both are investigated (#829,
    2026-10-03) and saves now stop at extreme (#831, 2026-10-04).** The
    medusa's AC converts to 20 against Paizo's 25 (bound 5), and the
