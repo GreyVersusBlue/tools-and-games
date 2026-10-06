@@ -10,6 +10,7 @@ import { LAYOUTS, seatsFor } from "./layout.js";
 import { DAYS, MULES, TEAMS as LEAGUE_TEAMS, newLeague, validLeague, syncLeague, settleLeagueNight, tonight as leagueTonight, winProb } from "./league.js";
 import * as R from "./regulars.js";
 import * as EV from "./events.js";
+import * as S from "./supply.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export { DAYS };
@@ -103,13 +104,17 @@ export function prevVenue(c) {
  * result twice. The lease check reads it on both paths, so a number that can
  * differ between them is a number that can evict on one path and not the other.
  * A theme is not in here on purpose: it is an optional spend on an open night,
- * and a closed night cannot buy one.
+ * and a closed night cannot buy one. The supply account is in here: the house
+ * bills on Monday whether the doors opened or not.
  */
 export function billsFor(c) {
   const wages = wageBill(c);
   const rentDue = rent(c);
   const upgFees = upgradeFees(c);
-  return { wages, rent: rentDue, upgFees, total: wages + rentDue + upgFees };
+  // the supply house's account, on the one night a week it is billed (#905);
+  // nothing at County Line, which is every save from before there were houses
+  const account = accountFee(c);
+  return { wages, rent: rentDue, upgFees, account, total: wages + rentDue + upgFees + account };
 }
 // ---------- the lease: the night you can lose ----------
 //
@@ -412,6 +417,8 @@ export function newCampaign() {
     regularsLost: [],
     rival: R.newRival(),
     eventCd: {},
+    dist: S.newDist(),
+    pars: {},
   };
   rollApplicants(c, Math.random);
   return c;
@@ -480,6 +487,7 @@ export function eventView(c) {
     tier: venueDef(c).order,
     rep: c.rep, buzz: c.rival.buzz,
     upgrades: c.upgrades.slice(),
+    dist: distDef(c).id,
     staff: c.staff.map(s => ({ name: s.name, role: s.role, skill: s.skill, wage: s.wage })),
     regulars: c.regulars.map(r => ({ id: r.id, name: r.name, usual: r.usual, team: r.team, loyalty: r.loyalty })),
     regularsIn: regularsIn(c).map(r => r.id),
@@ -506,8 +514,14 @@ export function nightMoments(c, rand = Math.random) {
  * Returns what moved, for the box score.
  */
 function settleMoments(c, mo) {
-  const out = { net: 0, rep: 0, buzz: 0, loyalty: {}, raised: [], quit: [], resolved: [], auto: [] };
+  const out = { net: 0, rep: 0, buzz: 0, account: 0, loyalty: {}, raised: [], quit: [], resolved: [], auto: [] };
   if (!mo || typeof mo !== "object") return out;
+  // a card moved the house account's standing ("Warehouse Walkout", ridden
+  // out); what it reports is what actually came off, which is nothing at a
+  // house that keeps no account
+  const spendWas = c.dist.spend;
+  c.dist = S.afterStanding(c.dist, Math.round(num(mo.account, 0)));
+  out.account = Math.round((c.dist.spend - spendWas) * 100) / 100;
   out.net = Math.round(num(mo.net, 0));
   out.rep = Math.round(num(mo.rep, 0));
   c.rep = Math.max(0, Math.min(100, c.rep + out.rep));
@@ -621,15 +635,60 @@ export function fire(c, name) {
   return true;
 }
 
-/** Buy stock: order is {itemId: servings}. Deducts cash, adds servings. */
+// ---------- the supply house ----------
+// supply.js owns the arithmetic; these are the campaign's questions of it, and
+// the two places the record moves: an order builds the account's standing, and
+// signing with another house throws it away.
+
+/** What supply.js prices an order off: the list cost and the kind of every item. */
+const SUPPLY_ITEMS = Object.fromEntries(Object.keys(STOCK_COST).map(id => [id, { cost: STOCK_COST[id], kind: MENU[id].kind }]));
+
+/** The house the truck out back belongs to. */
+export function distDef(c) { return S.houseDef(c.dist); }
+/** The account's fee if tonight is the night it is billed, or 0. In billsFor(). */
+export function accountFee(c) { return S.weeklyFee(c.dist, weekday(c)); }
+/** What a plate of food sells for tonight, as a multiplier: the engine's `plateMult`. */
+export function plateMult(c) { return S.plateMult(c.dist); }
+/** What this order costs at the house you are signed with: supply.js's quote()
+ *  — `goods`, `list`, `drop`, `total` and a line apiece. */
+export function orderQuote(c, order) { return S.quote(c.dist, order, SUPPLY_ITEMS); }
+/** One serving of `id` on a line of `qty`, to the cent, for the order sheet. */
+export function unitPrice(c, id, qty = 0) {
+  return Math.round(S.unitCost(c.dist, MENU[id].kind, qty, STOCK_COST[id]) * 100) / 100;
+}
+/** Sign with another house. The account's loyalty dies at the door, which is
+ *  the whole cost of switching and the reason to stay. */
+export function signHouse(c, id) {
+  const next = S.switchHouse(c.dist, id);
+  if (!next) return { ok: false, err: S.HOUSES[id] ? "That's already your house." : "No such supply house." };
+  const forfeited = S.loyaltyOff(c.dist);
+  c.dist = next;
+  return { ok: true, house: distDef(c), forfeited };
+}
+/** Write one line of the par sheet; 0 or junk clears it. */
+export function setPar(c, id, servings) {
+  if (!(id in MENU)) return false;
+  const v = S.parValue(servings);
+  if (v > 0) c.pars[id] = v; else delete c.pars[id];
+  return true;
+}
+/** The cart topped up to the par sheet, counting the shelf and the cart. */
+export function fillToPar(c, cart) { return S.parFill(c.pars, c.stock, cart); }
+
+/** Buy stock: order is {itemId: servings}. Deducts cash, adds servings, and
+ *  builds the account's standing by what the goods cost (never by a fee). */
 export function placeOrder(c, order) {
-  const cost = orderCost(order);
+  const q = orderQuote(c, order);
+  const cost = q.total;
   if (cost <= 0) return { ok: false, err: "Nothing on the order sheet." };
   if (cost > c.cash) return { ok: false, err: "The distributor wants cash you don't have." };
   c.cash -= cost;
-  for (const id in order) if (order[id] > 0) c.stock[id] = (c.stock[id] || 0) + order[id];
-  return { ok: true, cost };
+  for (const id in q.lines) c.stock[id] = (c.stock[id] || 0) + q.lines[id].qty;
+  c.dist = S.afterOrder(c.dist, q.goods);
+  return { ok: true, cost, goods: q.goods, drop: q.drop };
 }
+/** An order at list price: County Line's, and what a quote's saving is
+ *  measured against. */
 export function orderCost(order) {
   let t = 0;
   for (const id in order) t += (order[id] || 0) * STOCK_COST[id];
@@ -721,7 +780,7 @@ const RIVAL_TEAM = (LEAGUE_TEAMS.find(t => t.rival) || {}).id || null;
  * nobody, so nothing in it reads the shelf and the order cannot show.
  */
 function closeNight(c, summary, dark, rand) {
-  const { wages, rent: rentDue, upgFees, total: bill } = billsFor(c);
+  const { wages, rent: rentDue, upgFees, account, total: bill } = billsFor(c);
   // a theme is an optional spend on an open night; a closed one cannot buy it
   const promoCost = dark ? 0 : promoDef(c).cost;
   const take = dark ? 0 : summary.total;
@@ -771,8 +830,8 @@ function closeNight(c, summary, dark, rand) {
   // countdown it may overwrite is this night's and not the move's
   const lease = applyLease(c);
   return dark
-    ? { wages, rent: rentDue, upgFees, net, spoilage, games, social, lease }
-    : { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social, moments, lease };
+    ? { wages, rent: rentDue, upgFees, account, net, spoilage, games, social, lease }
+    : { wages, rent: rentDue, promoCost, upgFees, account, take, net, spoilage, games, social, moments, lease };
 }
 
 /** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
@@ -793,8 +852,27 @@ export function settleDarkNight(c, rand = Math.random) { return closeNight(c, nu
 // previous build still loads. Those saves carry no version stamp at all, which
 // gvb-save reads as version 0.
 
-/** Bump when the shape changes. 0 means "written before this file used a slot". */
-export const SAVE_VERSION = 1;
+/** Bump when the shape changes. 0 means "written before this file used a slot".
+ *  2 is the supply house (#905): see migrateCampaign(). */
+export const SAVE_VERSION = 2;
+
+/**
+ * Version drift only (#37). One step so far: a save from before version 2 was
+ * written by a build with one truck and one price, so it is signed with County
+ * Line and an empty par sheet, which is what it was paying.
+ *
+ * It overwrites rather than fills in, and that is the difference from
+ * repairCampaign(), which also turns a missing `dist` into County Line. No
+ * build before version 2 wrote a `dist` or a `pars`, so one found in an older
+ * save was put there by hand or by another program and is not this system's
+ * record: a version-1 file carrying `dist: { id: "cask", spend: 5000 }` has
+ * not spent five thousand dollars with anyone. repair runs after this on
+ * every load and holds the shape; this runs once and decides whose it is.
+ */
+export function migrateCampaign(c, from) {
+  if (from < 2) { c.dist = S.newDist(); c.pars = {}; }
+  return c;
+}
 
 /** The gate on garbage: the three fields nothing downstream can work without. */
 function validCampaign(c) {
@@ -939,6 +1017,12 @@ export function repairCampaign(c) {
   // Phase 8's one field, additive: a save from before it has no cooldowns,
   // which is the same as every card being ready to fire.
   c.eventCd = EV.repairEventCd(c.eventCd);
+  // The supply house's two fields (#905). placeOrder() multiplies a price by
+  // the house's and settlement adds its fee to the bill, so a `dist` that is
+  // not one of the three is County Line, which charges what this game always
+  // charged.
+  c.dist = S.repairDist(c.dist);
+  c.pars = S.repairPars(c.pars, Object.keys(MENU));
   return c;
 }
 
@@ -954,6 +1038,7 @@ function buildSlot(storage) {
     version: SAVE_VERSION,
     storage,
     validate: validCampaign,
+    migrate: migrateCampaign,
     repair: repairCampaign,
     // newCampaign rolls three random applicants, so day one cannot be a literal.
     defaults: newCampaign,

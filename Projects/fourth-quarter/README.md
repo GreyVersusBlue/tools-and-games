@@ -22,8 +22,10 @@ This is the site's reference integration of the shared save system,
 `/assets/js/gvb-save.js` — see `assets/js/README.md`. **Export save** and **Import
 save** put a campaign in a `.json` file and load it back, so it survives a cleared
 browser or moves to another machine. Storage key is still `fq3d-save`, so a
-campaign from any older build loads exactly as it did; those saves carry no version
+campaign from any older build loads exactly as it did; the oldest carry no version
 stamp, and `repairCampaign()` in `js/campaign.js` fills in everything added since.
+The save is at version 2: `migrateCampaign()` signs a file from before the supply
+houses with County Line, which charges what the game always charged.
 
 The bar appears in three places, and it is one component mounted three times
 (`mountBar()` in `js/main.js`) rather than three bars that happen to look alike:
@@ -107,6 +109,15 @@ table and this week's fixtures.
   door. Food (wings, burgers, nachos, fries) rots 15% of whatever's left every
   closed night — a settled night or a dark night alike. Beer and soda don't
   spoil. Stockpiling food against a slow night now has a real cost.
+- **The supply house** (in the Stock panel) — who the truck belongs to.
+  **County Line** is list price with no strings. **Cask & Carton** is 10%
+  under list for $110 a week, billed Mondays whether the doors opened or not,
+  and $25 on any order under $120. **Gold Standard** is 12% over list, and
+  every plate of food sells for 8% more. The two accounts also give bulk
+  breaks by the line (food at 25, 50 and 100 servings, beer and soda at 75,
+  150 and 300, for 4, 6 and 10% off) and 1% off for every $1,000 of stock
+  bought, to 5%; switching houses forfeits it. A **par** on a line is what
+  you want on the shelf at open, and Fill to Par tops the cart up to it.
 - **Crew** — up to 3 staff, each a **cook**, **server**, or **bartender** with
   a skill (1–5) driving wage and effectiveness. Cooks/bartenders push prep
   speed on their side of the ticket (no cook on shift = kitchen's closed, no
@@ -160,11 +171,16 @@ table and this week's fixtures.
   regular's id and the campaign's day, so the answer is the same every time it
   is asked and nothing about it is stored. Also owns the reputation and buzz
   arithmetic, the loyalty drift, and the repair for all three fields.
-- `js/events.js` — the night's moments, pure. Nineteen of the 2D build's 21
+- `js/supply.js` — the three supply houses, pure and import-free: what an
+  order costs at each (`quote()`), the weekly fee, bulk breaks, loyalty, the
+  par sheet and the repair for `c.dist` and `c.pars`. campaign.js owns the
+  record and the cash.
+- `js/events.js` — the night's moments, pure. All 21 of the 2D build's
   event cards with their `when`/`cd`/`weight` shape, a picker over the
   save's cooldowns and a nightly budget, and resolution as data: a choice
   returns `{ fx, line, cls }` and the engine spends `fx` (cash, mood, crowd,
-  stock, rep, loyalty, buzz, a night flag, a raise, a walkout, a wager).
+  stock, rep, loyalty, buzz, the supply account's standing, a night flag, a
+  raise, a walkout, a wager).
   `js/moments.js` is the floor's half: a person who walks in from the door
   or a lit prop at the card's stand-point, answered with E.
 - `js/campaign.js` — the books between nights: cash, calendar, stock orders,
@@ -188,10 +204,12 @@ table and this week's fixtures.
   `node test/smoke-league.mjs`, `node test/smoke-regulars.mjs`,
   `node test/smoke-events.mjs`, `node test/smoke-layout.mjs`,
   `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs`,
-  `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs` and
+  `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs`,
+  `node test/smoke-supply.mjs` and
   `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`).
   `test/crowd-floor.mjs` is the busy floor `smoke-crowd.mjs` runs and is not
-  a suite. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
+  a suite; `test/fixtures/season.mjs` is the bot that plays a seeded season
+  for `smoke-supply.mjs` and is not one either. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
   Chromium through `Tools/board-check/harness.mjs`, so it needs `npm ci` in
   that folder first; CI does that for the whole job.
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
@@ -362,7 +380,8 @@ bytes, which is this sandbox's timing, not the files.
    has been played.
 3. **Full campaign port — the league is in (wishlist Phase 6), the
    regulars are (Phase 7, both increments: the books and the floor), and
-   the event cards are moments on the floor (Phase 8).** Still to port:
-   distributors (and the two event cards about them), a Commercial Walk-In
-   upgrade to cut the spoilage rate, and a season that nudges rent and
-   wages, re-balanced for the 3D serving loop.
+   the event cards are moments on the floor (Phase 8), and the three
+   supply houses with their two cards are in the Stock panel (2026-10-06).**
+   Still to port: staff as a simulated system, per-lot shelf life with a
+   Commercial Walk-In upgrade, and a season that nudges rent and wages,
+   re-balanced for the 3D serving loop.

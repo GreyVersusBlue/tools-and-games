@@ -45,9 +45,9 @@ const poorView = (o = {}) => richView({
 // ---- the table's shape ----
 {
   const ids = EV.EVENTS.map(e => e.id);
-  ok(EV.EVENTS.length === 19, `nineteen cards (${EV.EVENTS.length})`);
+  ok(EV.EVENTS.length === 21, `all twenty-one cards (${EV.EVENTS.length})`);
   ok(new Set(ids).size === ids.length, "every id is unique");
-  ok(!ids.includes("caskstrike") && !ids.includes("goldshortage"), "the two distributor cards are not on the table (#215)");
+  ok(ids.includes("caskstrike") && ids.includes("goldshortage"), "the two supply-house cards are on the table now that there are houses (#905; held back by #215)");
   ok(EV.EVENTS.every(e => Number.isInteger(e.cd) && e.cd > 0 && e.weight > 0), "every card has a whole cooldown and a positive weight");
   ok(EV.EVENTS.every(e => typeof e.when === "function" && e.choices.length >= 1 && e.choices.length <= 2), "every card has a when and one or two choices");
   ok(EV.EVENTS.every(e => e.choices.every(ch => typeof ch.resolve === "function" && (typeof ch.label === "string" || typeof ch.label === "function"))), "every choice has a label and a resolver");

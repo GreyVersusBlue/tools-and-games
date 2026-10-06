@@ -3,9 +3,9 @@
 **Status: all nine phases have shipped. This project has no ranked row left.**
 Phase 9 closed the arc on 2026-09-08: the night you can lose, the landlord's
 three strikes, and an eviction that drops you a rung instead of ending the run.
-What is left is under "What this leaves for a later arc" at the foot of this
-file — distributors, staff as a simulated system, per-lot shelf life — and none
-of it is ranked.
+What is left is under "What is left of TG-25" in the standing backlog. The
+supply houses shipped on 2026-10-06 (#905); staff as a simulated system and
+per-lot shelf life have not, and none of it is ranked.
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -243,9 +243,9 @@ the phases below would need answered.
 3. ~~**How much of the 2D campaign is actually wanted?**~~ Answered by Devon
    on 2026-10-05 (HISTORY.md #902): all of it. Phases 6-9 ported the league,
    the regulars and the rival, the event cards and the losable lease; the
-   distributors and their two event cards, staff as a simulated system and
-   per-lot shelf life are wanted too. "What is left of TG-25", below, has them
-   in order.
+   distributors and their two event cards shipped on 2026-10-06 (#905); staff
+   as a simulated system and per-lot shelf life are wanted too. "What is left
+   of TG-25", below, has them in order.
 4. ~~**Is 66 MB of texture on first paint acceptable?**~~ Answered by Phase 4
    on 2026-09-07 (HISTORY.md #201): no. A first visit now downloads 5.08 MB of
    1k JPEG; the 2k originals stay in place for `?tex=2k` and for a Retina-class
@@ -262,8 +262,9 @@ Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
 
 **What is left of TG-25** (the audit's line for this project; its first
-increment shipped on 2026-10-06 as #898, #900 and #901). In the order to take
-it, each a session of its own:
+increment shipped on 2026-10-06 as #898, #900 and #901, and its second the
+same day as #905, the supply houses). In the order to take it, each a session
+of its own:
 
 1. **The sound.** No crowd cheer on a Mules win (`audio.js` says so, and
    `main.js` plays the whistle sting alone), nothing in `audio/sfx/footsteps/`
@@ -275,11 +276,28 @@ it, each a session of its own:
    The order-of-magnitude cut itself is done (#201, #622); this is what Devon's
    "cut it" has left. It changes how the game looks, so it wants before-and-after
    sizes and a GPU window.
-3. **The back office** (Q24, all of it), several sessions: the three
-   distributors, bulk pricing and par levels, with the two event cards about
-   them; staff as a simulated system; per-lot shelf life in days and the
-   Commercial Walk-In that adds two; then a season that moves rent and wages.
-   `SPOILAGE_RATE` stays 0.15 until shelf life replaces it (Q26).
+3. **The back office** (Q24, all of it), a session each, in this order:
+   - ~~The three distributors, bulk pricing and par levels, with the two
+     event cards about them.~~ Shipped 2026-10-06 (#905): `js/supply.js`,
+     the Stock panel, `test/smoke-supply.mjs` (113). A campaign at County
+     Line is the game as it was. Left open by it, and small: nothing has
+     been played by a person, so whether Cask & Carton's $110 a week and Gold
+     Standard's 8% are the right size is not known (for a bot that sells all
+     it stocks both beat County Line in every room; `plateMult` in
+     `supply.js` is the number to turn); there are no delivery days and no
+     reliability number, on purpose; "Truck Breaks Down" still says "the
+     distributor's driver" rather than the house's name.
+   - **Staff as a simulated system.** Next. Hire, schedule, skill growth,
+     fatigue, poaching by the rival. Today a staffer is a role, a skill and a
+     wage. The "Poaching Call" card and `settleMoments()`'s raise and walkout
+     are the two places the books already move a staffer.
+   - **Per-lot shelf life** in days, and the Commercial Walk-In that adds
+     two. It replaces the flat `SPOILAGE_RATE`, which stays 0.15 until then
+     (Q26), and it changes every stock read in the game: the shelf becomes
+     dated lots. The inspector's `inspectorRisky()` and the bulk breaks'
+     top food tier (100 servings, a bet against the walk-in) both want
+     re-reading when it lands, and `test/smoke-settle.mjs`'s pin moves.
+   - **A season that moves rent and wages.**
 
 Not looked at in that increment, because each needs a GPU window and a pair
 of eyes: whether bodies giving way to each other reads well on the floor,
@@ -356,7 +374,7 @@ it is like to be the boss the room walks round.
 - No league, season, standings, playoffs or off-season. `gameNight` is
   `weekday() in ["Thu","Sun"]` and the result is a coin flip weighted 0.55.
 - No regulars, rival bar, reputation, ads, distributors, bulk pricing or par
-  levels.
+  levels. (All but the ads have shipped since: Phase 7, and #905.)
 - Spoilage is a flat 15% of the shelf; the 2D build tracks per-lot shelf life
   in days and lets a Commercial Walk-In add two. The 3D `UPGRADES` table has
   five entries and no walk-in.
@@ -848,9 +866,10 @@ through the door and standing in front of you, which is the whole argument for
 the 3D build existing.
 
 - [x] **`js/events.js`, pure, with its suite.** Nineteen cards ported with
-  the `when`/`cd`/`weight` shape intact; the two about distributors are not
+  the `when`/`cd`/`weight` shape intact; the two about distributors were not
   on the table, because a card whose condition names a system this build
-  does not have is a card that never fires (#215). `eligible()` respects the
+  does not have is a card that never fires (#215). They came back with the
+  supply houses on 2026-10-06 (#905), so the table is all 21. `eligible()` respects the
   save's cooldowns, tonight's fired list and every `when`; `rollMoment()` is
   the 2D build's hour roll (hours 1-6, a budget of 0-3 off the chaos roll, a
   40% coin, then a weighted pick); `resolveChoice()` returns effects as data
@@ -1132,10 +1151,10 @@ primitives made new geometry every time and never disposed it either.
 
 ## What this leaves for a later arc
 
-- **Distributors, bulk pricing and par levels.** The 2D build's sprint 9 —
-  three supply houses that cut both ways, threshold discounts, loyalty spend.
-  Real depth, entirely in a panel, and the Stock panel is already the busiest
-  screen in the game.
+- ~~**Distributors, bulk pricing and par levels.**~~ Shipped 2026-10-06
+  (#905). The 2D build's sprint 9: three supply houses that cut both ways,
+  threshold discounts, loyalty spend. It is all in the Stock panel, which was
+  already the busiest screen in the game and is busier.
 - **Staff as a simulated system.** Hire, schedule, skill growth, fatigue,
   poaching by the rival. Today a staffer is a role, a skill and a wage, and the
   floor NPCs derived from them do not tire, improve or quit. Phase 7's rival

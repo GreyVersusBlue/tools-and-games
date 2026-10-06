@@ -156,7 +156,7 @@ function closedNight() {
   const books = C.settleDarkNight(campaign);
   lastSocial = books.social;
   save();
-  const billed = Math.round(books.wages + books.rent + books.upgFees);
+  const billed = Math.round(books.wages + books.rent + books.upgFees + books.account);
   tick(`Closed for the move. −$${billed} in bills, doors stay shut tonight.`, "b");
   const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
   if (spoiled) tick(`${spoiled} serving${spoiled === 1 ? "" : "s"} spoiled in the walk-in while the doors stayed shut.`, "b");
@@ -268,6 +268,7 @@ function beginNight() {
     foodMult: C.roleMult(campaign, "cook"),
     drinkMult: C.roleMult(campaign, "bartender"),
     beerMult: C.beerMult(campaign),
+    plateMult: C.plateMult(campaign),
     // who is in tonight, by the day's coin; each comes through the door as a
     // spawn of their own during hours 1-3, so the seat cap and the crowd
     // number keep agreeing with the room
@@ -499,6 +500,7 @@ function showBoxScore() {
     <div class="row"><span>Rent</span><span class="bad">−$${books.rent}</span></div>
     ${books.promoCost ? `<div class="row"><span>Theme</span><span class="bad">−$${books.promoCost}</span></div>` : ""}
     ${books.upgFees ? `<div class="row"><span>Upgrade upkeep</span><span class="bad">−$${books.upgFees}</span></div>` : ""}
+    ${books.account ? `<div class="row" id="boxAccount"><span>Supply account (weekly)</span><span class="bad">−$${books.account}</span></div>` : ""}
     <div class="row total"><span>Net</span><span class="${books.net >= 0 ? "good" : "bad"}">${books.net >= 0 ? "+" : "−"}$${Math.abs(books.net)}</span></div>
     <div class="row"><span>Cash</span><span class="${campaign.cash >= 0 ? "money" : "bad"}">$${Math.round(campaign.cash)}</span></div>
     <div class="sec">The Floor</div>
@@ -569,6 +571,7 @@ function momentRows(mo, sm) {
   });
   if (mo.net) rows.push(`<div class="row"><span>Moments, in the till</span><span class="${mo.net > 0 ? "money" : "bad"}">${mo.net > 0 ? "+" : "−"}$${Math.abs(mo.net)}</span></div>`);
   if (mo.quit.length) rows.push(`<div class="row"><span>Walked mid-shift</span><span class="bad">${mo.quit.join(", ")}</span></div>`);
+  if (mo.account) rows.push(`<div class="row"><span>Standing with the supply house</span><span class="bad">−$${Math.abs(mo.account)} of loyalty spend</span></div>`);
   if (mo.raised.length) rows.push(`<div class="row"><span>Raise, from tomorrow</span><span>${mo.raised.join(", ")}</span></div>`);
   return `<div class="sec">The Night's Moments</div>${rows.join("")}`;
 }

@@ -12,6 +12,15 @@
 // before the change and unchanged by it. A deliberate change to the economy
 // (a rent, SPOILAGE_RATE, a loyalty drift) moves it and is meant to: re-pin
 // it in the commit that makes the change, and say which number moved.
+//
+// The supply house (#905) added four things to what the chain writes and
+// moved none of what was there: `account` in every record (the weekly fee, 0
+// at County Line), `account` in an open night's `moments` (what a card took
+// off the house account's standing) and `dist` and `pars` in every campaign. Every campaign in
+// the chain is at County Line, which is the old rule, so `old()` takes the
+// four out and the digest of the rest is still PIN, unchanged. A second
+// digest could pin the four; they are all the same value 2,400 times, and
+// the lines under the pin say so instead.
 
 import { createHash } from "node:crypto";
 import * as C from "../js/campaign.js";
@@ -82,10 +91,20 @@ export function chain(campaigns, nights, seed) {
 
 const PIN = "40adf11e76e63af8e9ea1126d097d54f198651737786976fa0b1fd6bb2f45631";
 const runs = chain(40, 60, 20261006);
-const digest = createHash("sha256").update(JSON.stringify(runs)).digest("hex");
+/** A run as the build before the supply house wrote it. */
+function old(x) {
+  const { account, ...books } = x.books;
+  if (books.moments) { const { account: standing, ...moments } = books.moments; books.moments = moments; }
+  const { dist, pars, ...after } = x.after;
+  return { dark: x.dark, books, after };
+}
+const digest = createHash("sha256").update(JSON.stringify(runs.map(old))).digest("hex");
 if (process.argv.includes("--digest")) { console.log(digest); process.exit(0); }
 ok(runs.length === 2400, "the chain is 40 campaigns of 60 nights");
 ok(digest === PIN, `2,400 settled nights give the records and campaigns the two-function build gave (sha256 ${digest.slice(0, 12)}, pinned ${PIN.slice(0, 12)})`);
+ok(runs.every(x => x.books.account === 0 && (x.dark || x.books.moments.account === 0) && JSON.stringify(x.after.dist) === '{"id":"county","spend":0}' && JSON.stringify(x.after.pars) === "{}"),
+  "and the four fields the pin leaves out are the same in all 2,400: no fee, no standing moved, County Line with nothing spent, an empty par sheet");
+ok(runs.some(x => C.weekday({ day: x.after.day - 1 }) === "Mon"), "the chain settled Mondays, the night an account would have been billed");
 
 // The sweep has to have gone where the two functions differed, or its
 // agreement says nothing.
@@ -111,8 +130,8 @@ ok(digest === PIN, `2,400 settled nights give the records and campaigns the two-
   const bill = C.billsFor(base);
   const db = C.settleDarkNight(d, seeded(7));
   const ob = C.settleNight(o, { total: 0, revenue: 0, tips: 0, served: 0, walkouts: 0, mood: 0.6, serviceRate: 100 }, seeded(7));
-  ok(Object.keys(db).join() === "wages,rent,upgFees,net,spoilage,games,social,lease", "a dark night's record has its eight fields, in order");
-  ok(Object.keys(ob).join() === "wages,rent,promoCost,upgFees,take,net,spoilage,games,social,moments,lease", "an open night's has its eleven");
+  ok(Object.keys(db).join() === "wages,rent,upgFees,account,net,spoilage,games,social,lease", "a dark night's record has its nine fields, in order");
+  ok(Object.keys(ob).join() === "wages,rent,promoCost,upgFees,account,take,net,spoilage,games,social,moments,lease", "an open night's has its twelve");
   ok(db.net === -bill.total && d.cash === base.cash - bill.total, `a dark night costs the bill and nothing else (${db.net})`);
   ok(ob.net === -bill.total - C.PROMOS.watchparty.cost && o.cash === base.cash - bill.total - C.PROMOS.watchparty.cost, "an open night that took nothing costs the bill and the promo");
   ok(d.promoTonight === "watchparty" && o.promoTonight === "none", "a dark night leaves tomorrow's promo standing; an open one spends it");

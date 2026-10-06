@@ -77,6 +77,7 @@ export class NightEngine {
    *  promo        — 'none'|'wingnight'|'happyhour'|'watchparty'
    *  foodMult     — cook prep-speed multiplier; 0 = kitchen's closed (no cook on shift)
    *  drinkMult    — bartender prep-speed multiplier; 0.55 default = servers cover the taps, badly
+   *  plateMult    — shelf-price multiplier for food, from the supply house's sourcing (1 if omitted)
    *  home         — the Mules are at home tonight (league.js says; a coin flip if omitted)
    *  winProb      — chance the Mules win tonight's game (league.js's odds; 0.55 if omitted)
    *  regulars     — campaign.js's regularsIn(): who is in tonight. Each comes
@@ -110,6 +111,8 @@ export class NightEngine {
     this.foodMult    = Math.max(0, fin(opts.foodMult, 1));
     this.drinkMult   = Math.max(0, fin(opts.drinkMult, 1));
     this.beerMult    = Math.max(0, fin(opts.beerMult, 1));
+    // the supply house's sourcing (supply.js): what a plate of food sells for
+    this.plateMult   = Math.max(0, fin(opts.plateMult, 1));
 
     this.t = 0;                 // sim seconds elapsed
     this.hour = 0;              // 0..8
@@ -151,9 +154,10 @@ export class NightEngine {
     this.momentRoll = mo && typeof mo.roll === "function" ? mo.roll : () => null;
     this.moment = null;            // { event, openedAt, hour } while one waits on the boss
     this.moments = [];             // resolved tonight: { id, choice, auto, hour }
-    this.flags = { tapBroken: false, tvBroken: false, soundBroken: false };
+    this.flags = { tapBroken: false, tvBroken: false, soundBroken: false, goldLapsed: false };
     this.eventNet = 0;             // signed dollars the moments moved, in the take
     this.eventRep = 0; this.eventBuzz = 0; this.eventLoyalty = {};
+    this.eventAccount = 0;         // signed dollars of standing with the supply house, for the books
     this.staffChanges = [];        // { name, wage } raises and { name, quit: true } walkouts, for the books
     this.wager = 0;                // dollars on the Mules tonight; settled at the final
   }
@@ -329,6 +333,7 @@ export class NightEngine {
       }
       if (Number.isFinite(f.rep)) this.eventRep += f.rep;
       if (Number.isFinite(f.buzz)) this.eventBuzz += f.buzz;
+      if (Number.isFinite(f.account)) this.eventAccount += f.account;
       if (Number.isFinite(f.loyalty) && Array.isArray(f.who)) for (const id of f.who) this.eventLoyalty[id] = (this.eventLoyalty[id] || 0) + f.loyalty;
       if (typeof f.flag === "string" && f.flag in this.flags) this.flags[f.flag] = true;
       if (f.staff && typeof f.staff === "object" && typeof f.staff.name === "string" && Number.isFinite(f.staff.wage)) this.staffChanges.push({ name: f.staff.name, wage: f.staff.wage });
@@ -345,6 +350,8 @@ export class NightEngine {
     if (this.promo === "wingnight" && itemId === "wings") p *= 0.6;
     if (this.promo === "happyhour" && item.kind === "drink" && this.hour < 2) p *= 0.75;
     if (itemId === "beer") p *= this.beerMult;
+    // premium sourcing, until "The Good Stuff Ran Out" is cooked around
+    if (item.kind === "food" && !this.flags.goldLapsed) p *= this.plateMult;
     return Math.round(p * 100) / 100;
   }
 
@@ -491,7 +498,7 @@ export class NightEngine {
       // the night's moments: what they moved in the till tonight (already in
       // `total`) and what the books move at settlement
       moments: {
-        net: Math.round(this.eventNet), rep: this.eventRep, buzz: this.eventBuzz,
+        net: Math.round(this.eventNet), rep: this.eventRep, buzz: this.eventBuzz, account: this.eventAccount,
         loyalty: { ...this.eventLoyalty }, staff: this.staffChanges.map(x => ({ ...x })),
         flags: { ...this.flags }, wager: this.wager,
         resolved: this.moments.map(m => ({ id: m.id, choice: m.choice, auto: m.auto, hour: m.hour })),

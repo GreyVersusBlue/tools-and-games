@@ -11,6 +11,7 @@ import * as C from "./campaign.js";
 import * as LG from "./league.js";
 import * as RG from "./regulars.js";
 import * as EV from "./events.js";
+import * as SUP from "./supply.js";
 import * as audio from "./audio.js";
 
 /** The Tonight panel's one line on the regulars: how many of them there are,
@@ -69,6 +70,12 @@ export class DayPhase {
     });
     $("#panelBody").addEventListener("click", e => this.panelClick(e));
     $("#panelFoot").addEventListener("click", e => this.panelClick(e));
+    // the par sheet is the one thing in a panel that is typed rather than clicked
+    $("#panelBody").addEventListener("change", e => {
+      const t = e.target;
+      if (!t || !t.dataset || !t.dataset.par) return;
+      if (C.setPar(this.getC(), t.dataset.par, t.value)) { this.cb.save(); this.renderStock(); }
+    });
   }
 
   setVisible(v) { this.group.visible = v; }
@@ -171,27 +178,71 @@ export class DayPhase {
   stockPanel() {
     this.cart = {};
     for (const id in MENU) this.cart[id] = 0;
+    this.houseArm = null;   // the house a second click would sign with, forfeiting loyalty
     this.renderStock();
+  }
+  /** The three supply houses under the order sheet: what each gives and takes,
+   *  which one is yours, and where the account stands. Signing away an
+   *  account that has earned loyalty takes a second click. */
+  housesHtml(c) {
+    const cur = C.distDef(c), off = SUP.loyaltyOff(c.dist), spend = Math.round(c.dist.spend);
+    const maxed = off >= SUP.LOYALTY_MAX;
+    const toNext = (Math.floor(c.dist.spend / SUP.LOYALTY_STEP) + 1) * SUP.LOYALTY_STEP - spend;
+    const standing = !cur.account ? `${cur.name} keeps no account: list price, every order.`
+      : `House account with <b>${cur.name}</b>: $${spend.toLocaleString()} spent`
+        + (off > 0 ? ` · <span class="good">−${Math.round(off * 100)}% loyalty</span>` : "")
+        + (maxed ? ` <span class="hint">(maxed)</span>` : ` <span class="hint">($${toNext.toLocaleString()} to the next 1%)</span>`);
+    const pct = x => Math.round(x * 100);
+    const breaks = t => t.map(([n, x]) => `${n}+ −${pct(x)}%`).join(", ");
+    const cards = SUP.HOUSE_ORDER.map(id => {
+      const h = SUP.HOUSES[id], on = h.id === cur.id, armed = this.houseArm === h.id;
+      return `<div class="promoCard house ${on ? "on" : ""}" data-housecard="${h.id}">
+        <b>${h.name}</b>${on ? '<span class="pill">your house</span>' : ""}
+        <div class="hint">+ ${h.pro}</div>
+        <div class="hint">− ${h.con}</div>
+        ${on ? "" : `<button class="btn small ${armed ? "" : "ghost"}" data-house="${h.id}" style="margin-top:6px">${armed ? "Confirm switch" : "Sign with them"}</button>`}
+      </div>`;
+    }).join("");
+    return `<div class="sec">The Supply House</div>
+      <p class="hint" id="houseStanding">${standing}</p>
+      <p class="hint">An account's bulk breaks, by the line: food ${breaks(SUP.BULK_FOOD)}; beer and soda ${breaks(SUP.BULK_DRINK)}. Every $${SUP.LOYALTY_STEP.toLocaleString()} of stock bought from one house is another ${pct(SUP.LOYALTY_PER)}% off, to ${pct(SUP.LOYALTY_MAX)}%. Switch houses and the loyalty dies at the door.</p>
+      ${cards}`;
   }
   renderStock() {
     const c = this.getC();
-    const rows = Object.values(MENU).map(m => `
-      <tr><td>${m.name}<span class="hint"> $${C.STOCK_COST[m.id].toFixed(2)}/serving</span></td>
+    const q = C.orderQuote(c, this.cart);
+    const house = C.distDef(c);
+    const rows = Object.values(MENU).map(m => {
+      const qty = this.cart[m.id], line = q.lines[m.id];
+      const next = SUP.nextBreak(c.dist, m.kind, qty);
+      const note = line && line.off ? ` <span class="good">−${Math.round(line.off * 100)}% bulk</span>`
+        : next ? ` <span class="hint">${next[0]}+ for −${Math.round(next[1] * 100)}%</span>` : "";
+      return `
+      <tr><td>${m.name}<span class="hint"> $${C.unitPrice(c, m.id, qty).toFixed(2)}/serving</span>${note}</td>
       <td class="num">${c.stock[m.id] || 0}</td>
+      <td class="num"><input class="par" type="number" min="0" max="${SUP.PAR_MAX}" step="1" data-par="${m.id}" value="${c.pars[m.id] || ""}" aria-label="Par level for ${m.name}"></td>
       <td><span class="stepper">
         <button data-cart="${m.id}" data-d="-10">-10</button>
         <button data-cart="${m.id}" data-d="-1">-1</button>
         <span class="qty">${this.cart[m.id]}</span>
         <button data-cart="${m.id}" data-d="1">+1</button>
         <button data-cart="${m.id}" data-d="10">+10</button>
-        <button data-cart="${m.id}" data-d="25">+25</button></span></td></tr>`).join("");
+        <button data-cart="${m.id}" data-d="25">+25</button></span></td></tr>`; }).join("");
+    const diff = Math.round((q.list - q.goods) * 100) / 100;
+    const notes = [];
+    if (diff >= 0.005) notes.push(`−$${diff.toFixed(2)} off list`);
+    if (diff <= -0.005) notes.push(`+$${(-diff).toFixed(2)} premium`);
+    if (q.drop) notes.push(`+$${q.drop} drop charge under $${house.minOrder}`);
     this.show("Stock Order",
       `<p class="hint">Delivered on the spot — the truck's out back. Sell out of something mid-rush and patrons order around it, or walk.</p>
        <p class="hint">Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf every closed night — beer and soda don't. Order what you'll actually sell tonight, not a stockpile.</p>
-       <table><tr><th>Item</th><th class="num">On hand</th><th>Add</th></tr>${rows}</table>`,
-      `<span>Order total: <b class="money">$${C.orderCost(this.cart).toFixed(2)}</b>
-        <span class="hint">· Cash $${Math.round(c.cash)}</span></span>
-       <button class="btn" data-placeorder="1">Place Order</button>`);
+       <table id="orderSheet"><tr><th>Item</th><th class="num">On hand</th><th class="num">Par</th><th>Add</th></tr>${rows}</table>
+       <p class="hint">Par is what you want on the shelf at open. Fill to Par tops the cart up to it, counting what is on hand.</p>
+       ${this.housesHtml(c)}`,
+      `<span>Order total: <b class="money" id="orderTotal">$${q.total.toFixed(2)}</b>
+        <span class="hint" id="orderNotes">${notes.length ? `(${notes.join(" · ")}) ` : ""}· Cash $${Math.round(c.cash)}</span></span>
+       <span><button class="btn ghost" data-parfill="1">Fill to Par</button>
+       <button class="btn" data-placeorder="1">Place Order</button></span>`);
   }
 
   crewPanel() {
@@ -314,6 +365,7 @@ export class DayPhase {
       ["Crew", c.staff.length ? c.staff.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
       ["Wages + rent", `$${C.wageBill(c)} + $${C.rent(c)}`],
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],
+      ...(C.accountFee(c) ? [["Supply account", `$${C.accountFee(c)} · ${C.distDef(c).name}, billed tonight`]] : []),
       ["The lease", c.strikes ? `${c.strikes} of ${C.LEASE_STRIKES} nights in the red` : "in good standing"],
     ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
     this.show("Tonight",
@@ -450,8 +502,28 @@ export class DayPhase {
     }
     if (t.dataset.placeorder) {
       const r = C.placeOrder(c, this.cart);
-      if (r.ok) { this.cb.save(); this.stockPanel(); this.cb.flash(`Delivery's in — $${r.cost.toFixed(2)}.`, true); }
+      if (r.ok) { this.cb.save(); this.stockPanel(); this.cb.flash(`Delivery's in — $${r.cost.toFixed(2)}${r.drop ? `, $${r.drop} of it the drop charge` : ""}.`, true); }
       else this.cb.flash(r.err);
+    }
+    if (t.dataset.parfill) {
+      const r = C.fillToPar(c, this.cart);
+      this.cart = r.cart;
+      this.renderStock();
+      this.cb.flash(r.added ? `Par fill: +${r.added} serving${r.added === 1 ? "" : "s"} in the cart.` : "Everything's at par, counting the cart.", !!r.added);
+    }
+    if (t.dataset.house) {
+      const id = t.dataset.house;
+      // an account that has earned something is not signed away on one click
+      if (SUP.loyaltyOff(c.dist) > 0 && this.houseArm !== id) {
+        this.houseArm = id;
+        this.renderStock();
+        this.cb.flash(`Switching forfeits your −${Math.round(SUP.loyaltyOff(c.dist) * 100)}% loyalty. Click again to sign with ${SUP.HOUSES[id].name}.`);
+      } else {
+        const r = C.signHouse(c, id);
+        this.houseArm = null;
+        if (r.ok) { this.cb.save(); this.renderStock(); this.cb.flash(`${r.house.name} runs your deliveries now.`, true); }
+        else this.cb.flash(r.err);
+      }
     }
     if (t.dataset.hire) { if (C.hire(c, t.dataset.hire)) { this.cb.save(); this.crewPanel(); } }
     if (t.dataset.fire) { if (C.fire(c, t.dataset.fire)) { this.cb.save(); this.crewPanel(); } }

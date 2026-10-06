@@ -1165,6 +1165,79 @@ ok("and the failed run is off the disk with it", fresh.saved && fresh.saved.fail
 sameRoom("the fresh campaign", await probe(), "cornerTap");
 ok("no page errors through an eviction, a demotion and an ending", errors.length === 0, errors.join(" | "));
 
+// ---------------------------------------------------------------- the supply house (#905)
+// The fresh campaign is day 1, a Monday, at the Corner Tap with 90 beers on
+// the shelf: the Stock panel's order sheet, par sheet and three houses, then
+// one Monday night to see the account on the box score.
+const sheet = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  fq.campaign.cash = 5000;
+  fq.day.stockPanel();
+  const cards = [...document.querySelectorAll("[data-housecard]")];
+  const out = { houses: cards.map(c => c.dataset.housecard).join(), mine: cards.filter(c => c.classList.contains("on")).map(c => c.dataset.housecard).join(),
+    buttons: [...document.querySelectorAll("[data-house]")].map(b => `${b.dataset.house}:${b.textContent}`).join(), pars: document.querySelectorAll("#orderSheet input.par").length,
+    standing: q("#houseStanding").textContent };
+  const par = q('input.par[data-par="beer"]');
+  par.value = "150"; par.dispatchEvent(new Event("change", { bubbles: true }));
+  out.parSaved = fq.campaign.pars.beer; out.parOnDisk = (JSON.parse(localStorage.getItem("fq3d-save")).pars || {}).beer; out.parShown = q('input.par[data-par="beer"]').value;
+  q("[data-parfill]").click();
+  out.cart = fq.day.cart.beer; out.total = q("#orderTotal").textContent; out.notes = q("#orderNotes").textContent;
+  q('[data-house="cask"]').click();
+  out.dist = fq.campaign.dist.id; out.caskTotal = q("#orderTotal").textContent; out.caskNotes = q("#orderNotes").textContent;
+  out.caskMine = [...document.querySelectorAll("[data-housecard].on")].map(c => c.dataset.housecard).join();
+  q("[data-placeorder]").click();
+  out.cash = fq.campaign.cash; out.beer = fq.campaign.stock.beer; out.spend = fq.campaign.dist.spend;
+  out.onDisk = JSON.parse(localStorage.getItem("fq3d-save")).dist;
+  return out;
+});
+ok("the Stock panel lists three supply houses and County Line is yours", sheet.houses === "county,cask,gold" && sheet.mine === "county" && /keeps no account/.test(sheet.standing), `${sheet.houses} / ${sheet.mine}`);
+ok("the other two each offer to sign, and every menu line has a par box", sheet.buttons === "cask:Sign with them,gold:Sign with them" && sheet.pars === 6, `${sheet.buttons} / ${sheet.pars}`);
+ok("a par typed into the sheet is on the campaign, on disk and still in the box after the re-render", sheet.parSaved === 150 && sheet.parOnDisk === 150 && sheet.parShown === "150", JSON.stringify([sheet.parSaved, sheet.parOnDisk, sheet.parShown]));
+ok("Fill to Par puts the 60 beers short of 150 in the cart, at County Line's list price", sheet.cart === 60 && sheet.total === "$111.00" && !/off list|premium|drop/.test(sheet.notes), `${sheet.cart} ${sheet.total} ${sheet.notes}`);
+ok("signing with Cask & Carton reprices the cart: 10% under, and a $25 drop charge for an order under $120", sheet.dist === "cask" && sheet.caskMine === "cask" && sheet.caskTotal === "$124.90" && /−\$11\.10 off list/.test(sheet.caskNotes) && /\+\$25 drop charge under \$120/.test(sheet.caskNotes), `${sheet.caskTotal} ${sheet.caskNotes}`);
+ok("placing it takes $124.90, shelves 150 beers and puts $99.90 on the account, on disk", sheet.cash === 5000 - 124.9 && sheet.beer === 150 && sheet.spend === 99.9 && sheet.onDisk.id === "cask" && sheet.onDisk.spend === 99.9, JSON.stringify(sheet.onDisk));
+
+const armed = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  fq.campaign.dist.spend = 3200; // 3% earned
+  fq.day.stockPanel();
+  const standing = q("#houseStanding").textContent;
+  q('[data-house="gold"]').click();
+  const first = { dist: fq.campaign.dist.id, spend: fq.campaign.dist.spend, label: q('[data-house="gold"]').textContent, other: q('[data-house="county"]').textContent };
+  q('[data-house="gold"]').click();
+  const second = { dist: fq.campaign.dist.id, spend: fq.campaign.dist.spend, wings: [...document.querySelectorAll("#orderSheet tr")][1].textContent };
+  fq.campaign.dist = { id: "cask", spend: 0 };
+  fq.day.closePanel();
+  fq.day.doorPanel();
+  const door = q("#panelBody").textContent;
+  fq.day.closePanel();
+  return { standing, first, second, door };
+});
+ok("an account with loyalty on it says so", /\$3,200 spent/.test(armed.standing) && /−3% loyalty/.test(armed.standing) && /\$800 to the next 1%/.test(armed.standing), armed.standing);
+ok("and is not signed away on one click: the button arms, and the account stands", armed.first.dist === "cask" && armed.first.spend === 3200 && armed.first.label === "Confirm switch" && armed.first.other === "Sign with them", JSON.stringify(armed.first));
+ok("the second click signs with Gold Standard, the loyalty gone, and wings are $3.58 a serving", armed.second.dist === "gold" && armed.second.spend === 0 && /\$3\.58\/serving/.test(armed.second.wings), armed.second.wings.replace(/\s+/g, " ").slice(0, 80));
+ok("on a Monday the Tonight panel names the account's bill", /Supply account\$110 · Cask & Carton Wholesale, billed tonight/.test(armed.door), armed.door.slice(armed.door.indexOf("Upgrade"), armed.door.indexOf("Upgrade") + 120));
+
+// one Monday night at Gold Standard's plate, then Cask & Carton's bill at the close
+await page.evaluate(() => { const fq = window.__fq; fq.campaign.dist = { id: "gold", spend: 0 }; fq.day.cb.openDoors(); });
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the supply night to open");
+const plate = await page.evaluate(() => {
+  const fq = window.__fq, e = fq.engine;
+  e.momentBudget = 0;
+  const out = { mult: e.plateMult, burger: e.price("burger"), beer: e.price("beer") };
+  fq.campaign.dist = { id: "cask", spend: 0 }; // the bill is the house's you are with at the close
+  e.t = e.hourLenSec * 8 - 0.001;
+  return out;
+});
+ok("the night opens with Gold Standard's plate: a burger is $11.88, a beer still $6", plate.mult === 1.08 && plate.burger === 11.88 && plate.beer === 6, JSON.stringify(plate));
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the supply night's box score");
+const billed = await page.evaluate(() => {
+  const row = document.querySelector("#boxAccount");
+  return { row: row ? row.textContent : null, day: window.__fq.campaign.day };
+});
+ok("Monday's box score carries the account: Supply account (weekly), −$110", billed.day === 2 && billed.row === "Supply account (weekly)−$110", String(billed.row));
+ok("no page errors through the supply house", errors.length === 0, errors.join(" | "));
+
 await browser.close();
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);
