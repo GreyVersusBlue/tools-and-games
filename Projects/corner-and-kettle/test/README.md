@@ -4,10 +4,10 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     384 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-sim.mjs     505 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    230 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands, ~88 s
-node Projects/corner-and-kettle/test/drive-save.mjs    161 checks, real browser
+node Projects/corner-and-kettle/test/drive-save.mjs    166 checks, real browser
 ```
 
 The cup and food sheet has its own check, `node tools/blender/validate.mjs`
@@ -137,6 +137,17 @@ Section 10 exists because of locked decision #34 — every guard-rail in `repair
 is asserted twice, once as "the repaired value is right" and once as "here is
 the arithmetic that goes wrong without it". Disable a line in `repairSave` and
 the failures name the bug rather than a number.
+
+Section 17 is #913: a recipe is ordered once its own syrup and topping are on
+the shelf (Mocha bought with its $35 syrup not bought is 0 of 4,000 orders, and
+more than 100 once it is), a regular's favourite the shelf cannot finish
+re-rolls at the door and nowhere else, a save in that state plays a shift, and
+a ticket's shot count is exact for all thirteen recipes that ask for shots.
+Twenty breaks of `sim.js` on purpose, each failing a line named for it; two
+first killed the suite with a `TypeError` and one (a guard for a plate in
+`shotsOver()`) stayed green because the guard did nothing, so it was deleted.
+The day-one check ("a day-one shop offers its five recipes and no other") was
+added because an offered list that ignored the menu failed only one line.
 
 ## `drive-save.mjs`
 

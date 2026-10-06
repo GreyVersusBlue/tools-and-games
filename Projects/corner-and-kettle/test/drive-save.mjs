@@ -804,6 +804,39 @@ try {
   await wait(120);
   t.ok((await slotFocus()).idx === 0, '] wraps from the last station to the first');
 
+  // A recipe bought without its own syrup says so on the board, and a cup
+  // with a shot too many says so at the Base station (#913). The rules are
+  // smoke-sim.mjs section 17's; this is the page drawing them.
+  const boardRow = () => p.evaluate(() => {
+    const short = document.querySelector('#chalkContent [data-recipe-short="mocha"]');
+    const row = [...document.querySelectorAll('#chalkContent .chalk-item')].find(el => /Mocha \(\$55\)/.test(el.textContent));
+    return { short: short ? short.textContent.replace(/\s+/g, ' ').trim() : null, row: row ? row.textContent.replace(/\s+/g, ' ').trim() : null,
+      button: !!(row && row.querySelector('button')) };
+  });
+  await p.evaluate(() => { const d = window.__CK_DEBUG__; d.state.money = 9999; d.renderAll(); });
+  const board0 = await boardRow();
+  await p.evaluate(() => { const d = window.__CK_DEBUG__; d.doUnlock('recipe', 'mocha'); d.renderAll(); });
+  await wait(150);
+  const board1 = await boardRow();
+  t.ok(board0.button && board0.short === null, 'before it is bought, Mocha is an Unlock button on the board', board0.row);
+  t.ok(board1.short !== null && /nobody orders it until you buy Mocha syrup \(\$35\), below/.test(board1.short) && !board1.button && !/✓/.test(board1.short),
+    'bought with its syrup not bought, the row says what to buy and carries no tick', board1.short);
+  const baseHint = async shots => p.evaluate(shots => {
+    const d = window.__CK_DEBUG__;
+    d.state.slots[0] = null; d.state.queue = [];
+    const o = d.generateOrder();
+    Object.assign(o, { isFood: false, recipeId: 'ristretto', price: 42, custom: { milk: undefined, syrup: undefined, toppings: [], ice: false } });
+    d.state.queue.push(o); d.tryAcceptCustomer(o.id);
+    d.state.focusedSlot = 0; d.state.stationTab = 'base';
+    Object.assign(d.state.slots[0].cup, { base: 'espresso', shots });
+    d.renderAll();
+    return [...document.querySelectorAll('.stationBlock .draghint')].map(el => el.textContent.replace(/\s+/g, ' ').trim()).find(x => /Shots in cup/.test(x)) || null;
+  }, shots);
+  const hint1 = await baseHint(1), hint2 = await baseHint(2);
+  t.ok(hint1 !== null && /Shots in cup: 1/.test(hint1) && !/the ticket asks for/.test(hint1), 'a Ristretto with its one shot has a plain Base hint', hint1);
+  t.ok(hint2 !== null && /Shots in cup: 2/.test(hint2) && /the ticket asks for 1: 🗑️ Dump starts the cup over/.test(hint2),
+    'a second shot in it says the ticket asked for 1 and that Dump is the way back', hint2);
+
   // An unlock is a button, a key and a legend row in one render. A syrup
   // bought mid-shift used to leave the legend saying what it said before.
   await p.evaluate(() => {
@@ -834,6 +867,8 @@ try {
   t.ok(syrup1.legendPairs.join(' · ') === pairsOf(syrup1) && /Mocha/.test(syrup1.legend[1]),
     'and the legend redrew with it, still naming exactly the keys the buttons hold',
     syrup1.legend[1]);
+  const board2 = await boardRow();
+  t.ok(board2.short === null && board2.row !== null && /✓/.test(board2.row), 'and with the syrup bought the Mocha row on the board is a tick again', board2.row);
 
   // The widest tab the game can build: six presets, each with a delete button
   // beside it. Thirteen controls, ten keys — the deleters opt out so that the
@@ -894,7 +929,10 @@ try {
   const rowText = await p.$eval('[data-prestige]', el => el.closest('.chalk-item').textContent.replace(/\s+/g, ' ').trim());
   t.ok(/\d+ beans?/.test(rowText), 'and the row says what closing now pays, before it is clicked', rowText.slice(0, 110));
 
-  await p.click('[data-prestige]');
+  // Through the panel's own scroll, like every other row down here: a bare
+  // click died "not clickable" on one run in two at load 5 to 6 (#878's run
+  // and #913's), with the row a third of the way down a sliding panel.
+  await clickInChalkboard(p, '[data-prestige]');
   await wait(300);
   const shown = await p.evaluate(() => {
     const o = document.getElementById('reopenOverlay');

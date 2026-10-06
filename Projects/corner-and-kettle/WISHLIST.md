@@ -198,10 +198,10 @@ this project does not use it.
 - **Windows is the dev machine** (v7 §7): absolute `import()` paths go through
   `pathToFileURL`, as both suites already do. **The invocations that work,
   from the repo root:**
-  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 348 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 505 passed, 0 failed;
   `node Projects/corner-and-kettle/test/smoke-save.mjs` → 230 passed, 0 failed;
   `node Projects/corner-and-kettle/test/balance.mjs` → BALANCE OK, about 22 s;
-  `node Projects/corner-and-kettle/test/drive-save.mjs` → 161 checks, 0 failed;
+  `node Projects/corner-and-kettle/test/drive-save.mjs` → 166 checks, 0 failed;
   `node assets/js/gvb-save.test.mjs` → 50 passed, when you touch the save
   layer. `npm run games` does not cover this game.
 
@@ -719,18 +719,24 @@ outside CI on purpose (#353).
 - **A second shop.** `franchise` costs $5,000, says "Second Location," and
   grants +10% income. There is no second location.
 - **What the five reshaped recipes left** (#878, 2026-10-05; the five are
-  done). Four things, none of them started:
-  - *An Americano completes a Ristretto's ticket.* The base line asks for at
-    least its shots (`slot.cup.shots>=r.shots` in `getOrderRequirements()`), so
-    two shots pass where one was asked and the Ristretto pays $4 more. It is
-    the only cheaper cup that completes a dearer ticket, and section 15 pins it
-    by name. Making the count exact would also fail a Latte with a second shot
-    pulled by mistake, which is a change to how forgiving the bar is.
-  - *Mocha can be on the menu with no mocha syrup on the shelf.* The recipe is
-    $120 (or 2 beans, in every run) and its syrup is a separate $35; with the
-    recipe bought and the syrup not, the Syrup tab has no button for the line
-    and the cup can only be served short. Seen while checking that the five's
-    new lines are day-one stock; not traced further and not changed.
+  done). Four things; the first two were closed on 2026-10-06 (#913), the
+  other two are not started:
+  - *An Americano completed a Ristretto's ticket.* Done: the shot count is
+    exact, so no cheaper recipe's finished cup completes a dearer ticket. The
+    cost is the one #878 named: a Latte with a second shot pulled by mistake is
+    1 of 2 lines until it is dumped, and the Base tab says so. Not judged by a
+    person: whether that reads as fair at the counter.
+  - *Mocha could be on the menu with no mocha syrup on the shelf.* Done: it is
+    not ordered until the syrup is bought, the board's row and the purchase
+    toast say what to buy, and a regular whose stored favourite the shelf
+    cannot finish re-rolls at the door. Left as it is: "Mocha on the Board"
+    (2 beans) still does not include the $35 syrup, in any run; its
+    description does not say so and only the board's row does.
+  - *A barista's hands do not check the shelf.* `apply()` on a syrup or
+    topping line writes it into the cup whether or not it is bought. Nothing
+    reaches that now (no order names an unbought line), and the balance
+    sweep's shopper was being paid in full for Mochas with no syrup until
+    #913; seen, not changed.
   - *The sweep does not play Cold Brew, Nitro Cold Brew or Affogato.* No
     autopilot buys them (the loop's "spends badly" variant gets Cold Brew from
     the beans). Their prices are unchanged and were not measured; only the
