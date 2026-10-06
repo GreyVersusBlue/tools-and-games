@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { NightEngine, hourName } from "./engine.js";
 import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, currentLayout } from "./world.js";
 import { cookSpot, crewHome, standPointsFor } from "./layout.js";
+import { separate } from "./walk.js";
 import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
@@ -76,6 +77,8 @@ let leavingMoments = [];  // ones answered, walking back out
 let tonightAtOpen = null; // league.js's tonight() as it stood when the doors opened; the box score reads it
 
 const player = new Player(camera, renderer.domElement, null);
+// the boss as walk.separate() sees them: a body that is there and is not moved
+const bossBody = { get pos() { return player.pos; }, walking: false, fixed: true };
 player.onInteract = () => {
   if (phase === "day") day.interact(player.pos);
   else if (phase === "night") {
@@ -787,6 +790,10 @@ renderer.setAnimationLoop(() => {
       for (const sv of servers) sv.update(simDt, patronsById);
       if (moment) moment.update(simDt);
       for (const m of leavingMoments) m.update(simDt);
+      // everybody has stepped; now nobody stands in anybody (#900). List order
+      // is the right of way in a doorway: guests, then the crew, and the boss
+      // is somebody the room walks round.
+      separate(currentLayout(), [...patrons, ...(moment ? [moment] : []), ...leavingMoments, ...servers, bossBody], simDt);
       leavingMoments = leavingMoments.filter(m => !m.gone);
       syncPassDisplays();
     } else if (phase === "day") {

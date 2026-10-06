@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import { flat, glow } from "./materials.js";
 import { seats, DOOR, DOOR_OUT, PASS_FOOD, PASS_DRINK, currentLayout, floorY } from "./world.js";
-import { pathToward, WALKER_R, SNAP_R } from "./layout.js";
+import { Route as PlannedRoute, EXIT_SNAP } from "./walk.js";
 import { MENU } from "./engine.js";
 import * as audio from "./audio.js";
 
@@ -18,6 +18,14 @@ const REGULAR_JACKET = 0x8a3548;   // a regular who is not a Mules fan still rea
 
 const WALK = 1.55, SERVER_WALK = 2.0;
 let _pid = 0;
+
+// Route, stepToward() and the rule that keeps two bodies apart are walk.js's
+// (#900), which is pure so Node can run them. This is that Route in tonight's
+// room; moments.js walks its visitors on the same one.
+export { EXIT_SNAP };
+export class Route extends PlannedRoute {
+  constructor(within) { super(currentLayout, within); }
+}
 
 /** An open stool the floor actually joins to the door. world.js hangs
  *  `reachable` on every seat from layout.js's nav grid; a stool walled off by
@@ -126,6 +134,10 @@ export class Patron {
   }
 
   get pos() { return this.mesh.position; }
+  // what walk.separate() asks of a body
+  get walking() { return this.state === "entering" || this.state === "leaving"; }
+  get solid() { return this.state !== "gone"; }
+  get speed() { return WALK; }
 
   wantsNext() {
     this.state = "deciding";
@@ -282,7 +294,13 @@ export class Server {
     this.ticket = null;
     this.carry = null;
     this.route = new Route();
+    this.atHome = true;
   }
+
+  get pos() { return this.mesh.position; }
+  // what walk.separate() asks of a body: a server standing at its post is
+  // furniture, one walking back to it is not
+  get walking() { return this.state !== "idle" || !this.atHome; }
 
   update(dt, patronsById) {
     const m = this.mesh;
@@ -295,11 +313,12 @@ export class Server {
           if (this.engine.claim(tk.id, "server:" + this.name)) {
             this.ticket = tk;
             this.route.clear();
+            this.atHome = false;
             this.state = "toPass";
           }
         } else {
           this.route.aim(m.position, this.home);
-          this.route.step(m.position, this.speed * dt);
+          this.atHome = this.route.step(m.position, this.speed * dt);
         }
         break;
       }
@@ -335,79 +354,4 @@ export class Server {
   }
 
   dropCarry() { if (this.carry) { this.mesh.remove(this.carry); this.carry = null; } }
-}
-
-// ----------------------------------------------------------------- routing
-// A queue of waypoints from layout.js's nav grid, replanned when the target
-// moves. stepToward() still walks each leg; what changed is that the legs go
-// round the furniture instead of through it. A route that cannot reach its
-// target is not an error and not a freeze — it ends at the nearest point the
-// floor does join to, and aim() returns false so the caller can decide.
-
-const REPATH_D = 0.6;          // a target that moved this far gets a new plan
-const WAYPOINT_R = 0.08;       // how close counts as "on" an intermediate corner
-export const EXIT_SNAP = 2.5;  // DOOR_OUT sits outside the room on purpose
-
-export class Route {
-  constructor(within = SNAP_R) {
-    this.pts = null; this.i = 0; this.to = null; this.complete = false; this.within = within;
-  }
-
-  /** Plan, or replan if the target has moved. False means the floor does not
-   *  join `pos` to `to`; the route still leads somewhere, just not there. */
-  aim(pos, to) {
-    if (this.pts && this.to && Math.hypot(to.x - this.to.x, to.z - this.to.z) < REPATH_D) return this.complete;
-    const res = pathToward(currentLayout(), pos, to, WALKER_R, this.within);
-    this.to = { x: to.x, z: to.z };
-    this.pts = res.pts.slice(1);
-    if (!this.pts.length) this.pts = [{ x: res.pts[0].x, z: res.pts[0].z }];
-    this.i = 0;
-    this.complete = res.complete;
-    return this.complete;
-  }
-
-  clear() { this.pts = null; this.to = null; this.i = 0; this.complete = false; }
-
-  /** The waypoint being walked to right now — what a body should face. */
-  head() { return this.pts && this.i < this.pts.length ? this.pts[this.i] : this.to; }
-
-  /** Walk `dist` along the route, spilling what is left of a step into the
-   *  next leg so a corner does not cost a frame. True once the last waypoint
-   *  is within `arrive`. */
-  step(pos, dist, arrive = 0.12) {
-    if (!this.pts || !this.pts.length) return true;
-    let left = dist;
-    while (this.i < this.pts.length) {
-      const last = this.i === this.pts.length - 1;
-      const wp = this.pts[this.i];
-      const stop = last ? arrive : WAYPOINT_R;
-      const d = Math.hypot(wp.x - pos.x, wp.z - pos.z);
-      if (d <= stop) { if (last) return true; this.i++; continue; }
-      if (!stepToward(pos, wp, left, stop)) return false;
-      if (last) return true;
-      left -= Math.max(0, d - stop);
-      this.i++;
-      if (left <= 0) return false;
-    }
-    return true;
-  }
-}
-
-// ---------------------------------------------------------------- movement
-// A body's y is never integrated: after every step it is read off the floor
-// under the body (world.floorY), so a patron climbing the flagship's stair
-// rises with the treads and one sitting down on the deck sits at the deck's
-// height. The planner already refuses any leg that is not a step.
-const velLook = new THREE.Vector3(0, 0, 1);
-const _dir = new THREE.Vector3();
-export function stepToward(pos, target, step, arrive = 0.12) {
-  _dir.set(target.x - pos.x, 0, target.z - pos.z);
-  const d = _dir.length();
-  if (d <= arrive) return true;
-  _dir.multiplyScalar(step / d);
-  if (step >= d) { pos.x = target.x; pos.z = target.z; pos.y = floorY(pos.x, pos.z); return true; }
-  pos.x += _dir.x; pos.z += _dir.z;
-  pos.y = floorY(pos.x, pos.z);
-  velLook.copy(_dir);
-  return false;
 }

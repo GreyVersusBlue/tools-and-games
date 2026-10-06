@@ -62,6 +62,10 @@ export class FloorMoment {
   }
 
   get pos() { return this.mesh.position; }
+  // what walk.separate() asks of a body; a moment that is a prop has none
+  get walking() { return !!this.who && (this.leaving || !this.arrived); }
+  get solid() { return !!this.who && !this.gone; }
+  get speed() { return NPC_WALK; }
 
   /** Is the boss close enough to answer it — the same reach as a station,
    *  against the person (or the prop) rather than the ring. */

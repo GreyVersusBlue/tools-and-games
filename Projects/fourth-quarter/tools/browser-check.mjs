@@ -652,6 +652,14 @@ ok("the night engine is on a game night with the league's home flag", opened.gam
 ok("and the league's odds, not the 0.55 coin", Math.abs(opened.winProb - cork.winProb) < 1e-9 && opened.winProb !== 0.55, `${opened.winProb}`);
 ok("the broadcast names the Mules and the opponent", opened.usName === "MULES" && opened.themName === cork.opp.toUpperCase() && opened.bHome === cork.home, `${opened.usName} / ${opened.themName}`);
 ok("the crowd target is the league-aware forecast", opened.crowdTarget === opened.forecast, `${opened.crowdTarget} vs ${opened.forecast}`);
+// the loop hands every body on the floor to walk.js's separate() (#900), which
+// leaves its record on a body the first frame it sees one; smoke-crowd.mjs
+// holds the rule itself, and this is the only check that the game calls it
+const crowded = await page.waitForFunction(() => {
+  const all = [...window.__fq.patrons, ...window.__fq.servers];
+  return all.length > 0 && all.every(b => b.crowd);
+}, null, { timeout: 60000 }).then(() => true).catch(() => false);
+ok("the night's loop runs local avoidance over the patrons and the crew", crowded);
 
 // kickoff, then halftime: the standings screen for the first third of hour 5
 await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 2 + 0.01; });
