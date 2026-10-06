@@ -91673,9 +91673,14 @@ function cutWall(a, b, openings, kind, u, thick, base, top, out) {
   const half = (thick.t / 2) / sin;
   const along = thick.s * len;
   let bands = [{ y0: base, y1: wallTop }];
+  // A window cut in a curtain wall has wall under its sill and over its head
+  // (#874: the renderer builds it so and the takeoff buys it so), so what the
+  // plane slices there is wall, not glass.
+  let glass = kind === SEG_GLASS;
   for (const o of openings) {
     const spec = openingSpec(o);
     if (Math.abs(along - spec.t * len) > spec.w / 2) continue;
+    if (spec.window) glass = false;
     const lo = base + spec.sill, hi = base + spec.head;
     bands = bands.flatMap(({ y0, y1 }) => {
       const keep = [];
@@ -91686,7 +91691,7 @@ function cutWall(a, b, openings, kind, u, thick, base, top, out) {
   }
   for (const bnd of bands) {
     if (bnd.y1 - bnd.y0 < 0.05) continue;
-    out.push({ poly: rect(u - half, u + half, bnd.y0, bnd.y1), glass: kind === SEG_GLASS });
+    out.push({ poly: rect(u - half, u + half, bnd.y0, bnd.y1), glass });
   }
 }
 
