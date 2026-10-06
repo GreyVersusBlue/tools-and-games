@@ -52,7 +52,7 @@ import {
   buildNav, egressField, pointField, dischargeField, dischargePath,
 } from './navgraph.js';
 import {
-  clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis,
+  clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis, rampLandingFit,
 } from './clearance.js';
 import { rampSlope, rampRuns, rampRunRise, rampOverRise, rampMinRuns, stairMetrics } from './stairs.js';
 import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE, pathGrade } from './sitemesh.js';
@@ -589,6 +589,9 @@ export function accessibleAnalysis(state, opts = {}) {
   // still uses it, so it does not come off the count above.
   const metrics = stairMetrics(state);
   const longRamps = (state.links || []).filter((l) => rampOverRise(l, metrics));
+  // ADA 405.7: a straight ramp's top landing with something in its 5ft
+  // (#904). The ramp stays where it is and stays in the count, as above.
+  const tightLandings = (state.links || []).map((l) => rampLandingFit(state, l, metrics)).filter(Boolean);
   const stairsOnly = rooms.filter((r) => r.stairsOnly);
 
   // Phase 40: the chair, once it has arrived. Only the rooms the route reaches
@@ -608,6 +611,7 @@ export function accessibleAnalysis(state, opts = {}) {
     ramps,
     steepRamps: steepRamps.length,
     longRamps: longRamps.length,
+    tightLandings: tightLandings.length,
     narrowDoors: narrowDoors.length,
     reachable: rooms.filter((r) => r.rollable).length,
     unreachable: stairsOnly.length,
@@ -634,13 +638,14 @@ export function accessibleAnalysis(state, opts = {}) {
     longRamps: longRamps.map((l) => ({
       id: l.id, floor: l.from, x: l.x, z: l.z, runs: rampRuns(l), runRise: rampRunRise(l, metrics),
     })),
+    tightLandings,
     turning,
     reach,
     summary,
     findings: [
       ...accessibleFindings({
         rooms: stairsOnly, entrances, summary, narrowDoors, steepRamps,
-        longRamps, rise: metrics.rise, minRuns: rampMinRuns(metrics),
+        longRamps, rise: metrics.rise, minRuns: rampMinRuns(metrics), tightLandings,
       }),
       ...turning.findings,
       ...reach.findings,
@@ -662,6 +667,7 @@ const ADA = {
   door: 'ADA 2010 · §404.2.3',
   ramp: 'ADA 2010 · §405.2',
   rampRise: 'ADA 2010 · §405.6',
+  rampLanding: 'ADA 2010 · §405.7',
   surface: 'ADA 2010 · §403.3',
 };
 
@@ -828,6 +834,7 @@ function egressFindings({ rooms, exits, stairs, summary, common, edition, occupa
 
 function accessibleFindings({
   rooms, entrances, summary, narrowDoors, steepRamps = [], longRamps = [], rise = 0, minRuns = 1,
+  tightLandings = [],
 }) {
   const out = [];
   if (!entrances.length) {
@@ -882,6 +889,20 @@ function accessibleFindings({
       `The longest run climbs ${inches(worst)} without a level landing, and 30in is the most ` +
       `one run may rise (ADA 405.6). ${cure} The route above still counts it as a way up.`,
       { doors: longRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })), cite: ADA.rampRise }));
+  }
+  if (tightLandings.length) {
+    const n = (why) => tightLandings.filter((l) => l.why.includes(why)).length;
+    const said = [
+      [n('wall'), 'a wall or a doorway stands in it'],
+      [n('edge'), 'it runs off the floor it arrives on'],
+      [n('link'), 'another stair, ramp, lift or floor opening is in it'],
+    ].filter(([count]) => count).map(([count, what]) => `${what} (${count})`).join('; ');
+    out.push(finding('warn', 'ramp-landing',
+      `${tightLandings.length} ramp${tightLandings.length === 1 ? '' : 's'} with no room for the top landing`,
+      'A ramp ends on a level landing as wide as the ramp and 5 ft long (ADA 405.7), measured ' +
+      `from the top of the run. Here ${said}. Nothing was moved: the ramp is where it was put, ` +
+      'so shift it, or what is in the way. The route above still counts it as a way up.',
+      { doors: tightLandings.slice(0, 8).map((l) => ({ id: l.id, floor: l.floor, x: l.x, z: l.z, w: 0 })), cite: ADA.rampLanding }));
   }
   return out;
 }

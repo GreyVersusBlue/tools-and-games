@@ -59022,7 +59022,7 @@ const __m_js_stairs_js = (() => {
 const { FLOOR_H, RAIL_H, CELL } = __m_js_grid_js;
 const { pointInRing, floorSolidAt } = __m_js_shapes_js;
 const { addLink, MAX_LINKS } = __m_js_props_js;
-const { switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS, MAX_RUN_RISE, minRuns, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE } = __m_js_switchback_js;
+const { switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS, MAX_RUN_RISE, minRuns, LANDING_D, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE } = __m_js_switchback_js;
 // stairs.js — stairs, floor openings, and the geometry both imply.
 //
 // A stair is not a prop. A prop sits *on* a floor and the building doesn't
@@ -59083,6 +59083,11 @@ const MAX_STAIR_W = 12;
 // How far past the top step the opening runs, so you arrive somewhere rather
 // than onto the lip of the hole you just climbed through.
 const LANDING = 4;             // ft
+// A ramp's is ADA 2010 405.7.3's 60in, the number a folded ramp's landings
+// already were, read from the one place it is written (#904). A ramp saved
+// when this was 4 loads with 5: the length is derived, never stored.
+const RAMP_LANDING = LANDING_D;
+const topLanding = (link) => (link && link.type === 'ramp' ? RAMP_LANDING : LANDING);
 // `HEADROOM`, the clear height a tread needs under the floor above, is
 // switchback.js's to define and this module's to hand out (see the imports).
 const CUT_MARGIN = 0.25;       // ft of slack each side of the run
@@ -59324,7 +59329,7 @@ function cutBox(link, metrics) {
   }
   const hw = stairWidth(link) / 2 + CUT_MARGIN;
   const run = runLength(link, metrics);
-  return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + LANDING };
+  return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + topLanding(link) };
 }
 
 // A folded ramp's hole, as one local box per lane, left to right, or null for
@@ -59596,6 +59601,15 @@ function rampLandingArea(link, metrics) {
   return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
 }
 
+// The level landing at the top of a straight ramp, as a local box: the ramp's
+// own width, from the top of the run to the far edge of the hole. Null for a
+// stair and for a folded ramp, whose landings are its layout's.
+function rampLandingBox(link, metrics) {
+  if (!link || link.type !== 'ramp' || isSwitchback(link)) return null;
+  const hw = stairWidth(link) / 2, run = runLength(link, metrics);
+  return { x0: -hw, x1: hw, z0: run, z1: run + RAMP_LANDING };
+}
+
 // The same guards as world segments on the plan, for the collider.
 const rampGuardSegments = (link, metrics) =>
   rampGuards(link, metrics).map((g) => ({
@@ -59642,7 +59656,7 @@ function stairSurfaceAt(link, metrics, x, z) {
     return switchbackSurfaceAt(layout, lx, 0) === null ? null : 0;
   }
   const hw = stairWidth(link) / 2;
-  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + LANDING) return null;
+  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + topLanding(link)) return null;
   if (lz > run) return metrics.rise;   // the landing at the top
   return clamp(lz / run, 0, 1) * metrics.rise;
 }
@@ -59802,7 +59816,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {
@@ -68066,9 +68080,9 @@ return { YARD_STEP, YARD_MARGIN, FACE_CLEAR, WALK_GRADE, ACCESSIBLE_GRADE, MAX_R
 const __m_js_clearance_js = (() => {
 const { floorLabel } = __m_js_grid_js;
 const { LEAF_NONE, floorSolidAt, shapeAt } = __m_js_shapes_js;
-const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope } = __m_js_stairs_js;
+const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope, rampLandingBox, localToWorld, worldToLocal, rectCorners, cutPolygon, footprintPolygon, pointInPolygon, isElevator } = __m_js_stairs_js;
 const { MAX_RAMP_GRADE } = __m_js_sitemesh_js;
-const { buildCollider, candidates } = __m_js_collide_js;
+const { buildCollider, candidates, wallSegments, doorwaySegments, segsCross } = __m_js_collide_js;
 const { emptyField } = __m_js_terrain_js;
 const { propsOnFloor } = __m_js_props_js;
 // clearance.js — the chair: what a seated body needs of a building, said once.
@@ -68175,6 +68189,95 @@ const GRADE_PROBE = 1;                       // ft
 // steeper.
 const rampRolls = (link) =>
   !!link && link.type === 'ramp' && 1 / rampSlope(link) <= MAX_SEATED_GRADE + 1e-9;
+
+// ---------- the landing at the top of a ramp ----------
+//
+// ADA 405.7: a ramp ends on a level landing as wide as the ramp and 60in long
+// (#904). Nothing here refuses a ramp or moves one. This says whether the
+// landing a straight ramp is owed has the room it needs on the storey above,
+// read from the design as drawn, so a ramp placed when the landing was 4ft is
+// asked the same question as one placed today and no save field records it.
+//
+// Three things can be in its way, and `why` names each that is:
+//   'wall'  a wall or rail of the storey above runs through it, or a doorway
+//           stands inside it, or the wall along its far end leaves less than
+//           a doorway's 32in to leave by. A doorway *at* its far end is the
+//           way off and is allowed (405.7.5), jambs and all.
+//   'edge'  a corner of it, or the floor a foot past the middle of its far
+//           end, is off the storey above: there is nowhere to arrive.
+//   'link'  another link's hole in that floor, or a stair, ramp or lift that
+//           stands on it, overlaps it.
+// Props are not asked, and neither is the swing of a door beside it.
+// Null for a stair, a folded ramp (its landings are its layout's) and a ramp
+// whose landing is clear.
+const LANDING_EPS = 0.1;        // ft: flush against an edge is not in the way
+const LANDING_STEP_OFF = 1;     // ft of floor wanted past the far end
+const LANDING_LINK_INSET = 0.3; // ft: more than the slack a hole is cut with
+
+// The part of a local segment inside a local box, as a length.
+function lengthInBox(ax, az, bx, bz, box) {
+  let t0 = 0, t1 = 1;
+  const dx = bx - ax, dz = bz - az;
+  for (const [p, q] of [[-dx, ax - box.x0], [dx, box.x1 - ax], [-dz, az - box.z0], [dz, box.z1 - az]]) {
+    if (Math.abs(p) < 1e-12) { if (q < 0) return 0; continue; }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+  }
+  return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dz) : 0;
+}
+
+function polygonsOverlap(a, b) {
+  if (a.some((p) => pointInPolygon(b, p.x, p.z)) || b.some((p) => pointInPolygon(a, p.x, p.z))) return true;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) {
+      const u = b[j], v = b[(j + 1) % b.length];
+      if (segsCross(p.x, p.z, q.x, q.z, u.x, u.z, v.x, v.z)) return true;
+    }
+  }
+  return false;
+}
+
+function rampLandingFit(state, link, metrics = stairMetrics(state)) {
+  const box = rampLandingBox(link, metrics);
+  const floor = box && state.floors[link.to];
+  if (!floor) return null;
+  const e = LANDING_EPS;
+  const why = [];
+
+  const local = (s) => {
+    const a = worldToLocal(link, s.ax, s.az), b = worldToLocal(link, s.bx, s.bz);
+    return [a.lx, a.lz, b.lx, b.lz];
+  };
+  const inside = { x0: box.x0 + e, x1: box.x1 - e, z0: box.z0 + e, z1: box.z1 - e };
+  const farEnd = { ...inside, z0: box.z1 - e, z1: box.z1 + e };
+  const walls = wallSegments(floor);
+  const shut = walls.reduce((sum, s) => sum + lengthInBox(...local(s), farEnd), 0);
+  if (walls.concat(doorwaySegments(floor)).some((s) => lengthInBox(...local(s), inside) > 1e-6)
+    || inside.x1 - inside.x0 - shut < MIN_CLEAR_W) why.push('wall');
+
+  const solid = (lx, lz) => { const p = localToWorld(link, lx, lz); return floorSolidAt(floor, p.x, p.z); };
+  const past = box.z1 + LANDING_STEP_OFF;
+  const asked = [
+    [inside.x0, inside.z0], [inside.x1, inside.z0], [inside.x0, inside.z1], [inside.x1, inside.z1],
+    [0, past],
+  ];
+  if (!asked.every(([lx, lz]) => solid(lx, lz))) why.push('edge');
+
+  const i = LANDING_LINK_INSET;
+  const mine = rectCorners(link, { x0: box.x0 + i, x1: box.x1 - i, z0: box.z0 + i, z1: box.z1 - i });
+  const others = stairsOf(state).filter((o) => o !== link).flatMap((o) => {
+    const polys = [];
+    if (o.to === link.to && !isElevator(o)) polys.push(cutPolygon(o, metrics));
+    if (o.from === link.to || (isElevator(o) && o.to === link.to)) polys.push(footprintPolygon(o, metrics));
+    return polys.filter(Boolean);
+  });
+  if (others.some((poly) => polygonsOverlap(mine, poly))) why.push('link');
+
+  if (!why.length) return null;
+  const at = localToWorld(link, 0, (box.z0 + box.z1) / 2);
+  return { id: link.id, floor: link.to, x: at.x, z: at.z, why };
+}
 
 // The seated walker, as `moveWalker` options. `extra` is the per-step state
 // the caller owns (`grounded`, `bodies`); everything about the body is here.
@@ -68718,7 +68821,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
   return out;
 }
 
-return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
+return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, rampLandingFit, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
 })();
 // ---- js/threshold.js ----
 const __m_js_threshold_js = (() => {
@@ -68941,7 +69044,7 @@ const { meshFloor, tileFor } = __m_js_navmesh_js;
 const { meshSite, yardTileFor } = __m_js_sitemesh_js;
 const { siteCurbs } = __m_js_site_js;
 const { MinHeap } = __m_js_heap_js;
-const { stairsOf, stairMetrics, runLength, runTravel, rampLayout, localToWorld, elevatorSize, isRun, isElevator, LANDING } = __m_js_stairs_js;
+const { stairsOf, stairMetrics, runLength, runTravel, rampLayout, localToWorld, elevatorSize, isRun, isElevator, topLanding } = __m_js_stairs_js;
 const { MIN_ACCESSIBLE_W, doorRolls, rampRolls } = __m_js_clearance_js;
 // navgraph.js — the building, read as somewhere to walk.
 //
@@ -69551,7 +69654,7 @@ function runLandings(link, metrics) {
   const run = runLength(link, metrics);
   return {
     foot: localToWorld(link, 0, -2),
-    head: localToWorld(link, 0, run + LANDING + 2),
+    head: localToWorld(link, 0, run + topLanding(link) + 2),
   };
 }
 
