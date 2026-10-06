@@ -128,6 +128,8 @@ details.form-details > summary{ cursor:pointer; font-family:'Oswald',sans-serif;
 .act{ font-family:'Oswald',sans-serif; font-size:.75rem; background:var(--ink); color:var(--parchment);
   padding:0 .25rem; margin:0 .15rem; border-radius:2px; }
 .why{ border-bottom:1px dotted var(--ink-soft); cursor:help; }
+.sb-pf1{ font-family:'Oswald',sans-serif; font-size:.62rem; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-soft);
+  border:1px solid var(--ink-soft); border-radius:2px; padding:0 .2rem; margin-left:.25rem; cursor:help; }
 button.spell-ref{ font:inherit; color:inherit; background:none; border:0; border-bottom:1px dotted var(--oxblood); padding:0; cursor:pointer; }
 button.spell-ref:hover, button.spell-ref[aria-expanded="true"]{ background:var(--parchment-dark); }
 button.spell-ref:focus-visible, .spell-pop:focus-visible, .spell-pop-close:focus-visible{ outline:2px solid var(--oxblood); outline-offset:2px; }

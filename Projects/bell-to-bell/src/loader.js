@@ -27,6 +27,13 @@ export function contentFiles(periodsFile) {
       if (row[field]) names.add(fileOf(row[field]));
     }
   }
+  // Seed format 2: a class seed points at a roster and a schedule too, and
+  // would still have to load if no row named that file any more.
+  for (const c of periodsFile.classSeeds?.classes || []) {
+    for (const field of ['roster', 'schedule']) {
+      if (c[field]) names.add(fileOf(c[field]));
+    }
+  }
   return [...names];
 }
 

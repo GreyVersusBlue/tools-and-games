@@ -1293,7 +1293,7 @@ construct's Fort reads no lower than moderate (#715). Every parse fixture's
 special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
 all three questions that stood here on 2026-10-05: the flagging pass, go; the
 2e-style rewrite, go; Foundry, yes, he uses it, build the export. The first and
-the third are built; the rewrite is the one not started.
+the third are built; the rewrite has its first increment (#894).
 
 1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
    (#886, 2026-10-05), and the list is Devon's to read. They were written by a
@@ -1306,10 +1306,41 @@ the third are built; the rewrite is the one not started.
    reading. Answers go into `spell-map.json` by hand; rerun the script
    afterwards, or `converter-spells.test.mjs` fails on a stale list. The next
    73 (score 7) are one `CUT` away if the first 47 turn out worth it.
-2. **Special abilities keep their PF1e text** with DCs, action costs and
-   condition names rewritten. Monster Core wording exists for eighteen universal
-   abilities (`UMR_TEXT` in `convert.js`). **A 2e-style rewrite of the rest is
-   go** (Devon, 2026-10-05) and not started.
+2. **The 2e-style rewrite of special abilities: first increment done (#894,
+   2026-10-05), 22 of 111 abilities.** Devon said go on 2026-10-05.
+   `converter-assets/js/abilities.js` rewrites an ability when a rule reads its
+   whole construction and leaves it byte for byte as it was otherwise, marked
+   **PF1e wording** on the page, in the copied text and in the Foundry file's
+   notes. Every DC and damage figure a rule writes is the converter's own for
+   that creature at its new level. Eight rules, counted over the 57 fixtures:
+   affliction (a poison or disease stat line, 6), constrict (4), throw-rock
+   (3), breath (2, and the hell hound's no longer reads "6d4 rounds damage"),
+   distraction (2), gaze (2), rend (2), trample (1). The table is
+   `converter-assets/data/ability-patterns.md`, written by
+   `measure-abilities.mjs`; `converter-assets/README.md` says where each
+   number comes from. What is left, 76 abilities in PF1e wording and 7 bare
+   names:
+   - **A save inside a sentence, 30 abilities.** "must succeed on a DC N save
+     or be [condition] for [duration]" is the next rule: 5 abilities hold it
+     (the gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus,
+     Paralytic Tentacles), each inside a longer paragraph, so the rule has to
+     decide what it does with the sentences around it.
+   - **A parenthesis no rule reads, 16.** `9/day`, `DC 18`, `2 levels, DC 22`,
+     `tongue, 5 feet`, the war priest's class features. A use limit as a
+     Frequency line covers the per-day ones; a name with only a DC has no
+     effect to write.
+   - **A burst with a save for half** (the balor's Death Throes), **swallow
+     whole, pull, rake, grab with a size.** One fixture each.
+   - **Prose, 27.** No construction in them (Whip Mastery, Mimicry, Freeze).
+     These stay PF1e wording unless somebody writes them by hand.
+   - **`converter-abilities.test.mjs` is not in `site-ci.yml`**, for the same
+     reason as the Foundry suite below. One line under "Pathfinder converter":
+     `node Pathfinder/tests/converter-abilities.test.mjs`.
+   - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
+     listed twice, once as a bare aura and once as text (the balor's Flaming
+     Body), and a defensive ability the same way (the mouther's Amorphous).
+     The succubus's "The DC is 22 for the Fortitude save" is not rescaled,
+     because the DC and its number are two words apart.
 3. **A Foundry VTT actor export: built (#892, 2026-10-05), and waiting on
    Devon's import.** The **Foundry JSON** button beside Copy and Print saves
    `<name>.foundry-npc.json`, a pf2e NPC for Import Data on an actor.
@@ -2649,7 +2680,7 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| ~~Q7~~ | ~~**Should the authored three become seeds too?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes. The three authored periods become seeds; the work is in the WISHLIST's standing backlog. Phase 2 answered "authoring or generation" by shipping both: 4th, 5th and 6th are authored and the 7th is drawn from a seed. Converting an authored period is one JSON edit each, and its kids' names and notes would go. Nothing depends on the answer. | 2, reframed after PR #106 | `Projects/bell-to-bell/WISHLIST.md` |
+| ~~Q7~~ | ~~**Should the authored three become seeds too?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes. The three authored classes are seeds 1000004, 1000005 and 1000006 now, typed into 7th period's box (#893); 4th, 5th and 6th taking a seed of their own is what is left, in the WISHLIST's standing backlog. Phase 2 answered "authoring or generation" by shipping both: 4th, 5th and 6th are authored and the 7th is drawn from a seed. Converting an authored period is one JSON edit each, and its kids' names and notes would go. Nothing depends on the answer. | 2, reframed after PR #106 | `Projects/bell-to-bell/WISHLIST.md` |
 | ~~Q8~~ | ~~**Does the period need a fail state?**~~ Struck — answered by Devon, 2026-10-05 (#889): still no. Answered "still no" three times. Confirming it lets Phase 3 stop designing around the possibility. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q9~~ | ~~**Is suppression too strong?**~~ Struck — answered by Devon, 2026-10-05 (#889): it is not. Leave it. Measured: in every 4th-period balance run exactly one scheduled tell never happens (Priya in front of June); splitting the pairs makes that "2 never happened, 2 found another way" and drops restless from 72 to 44. The handoff's own fix, if it is too strong, is a per-period cap on how much one kid absorbs, not a nerf to the effect — and now watch it across *two* rosters (Priya and Anh both), not just one. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q10~~ | ~~**Is the Observation's ambient Mastery cost calibrated?**~~ Struck — answered by Devon, 2026-10-05 (#889): right as it is. `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by design math and not by playtest. In the table it costs the good teacher nothing visible (79 either way) and buys 10 Fidelity if performed. | 2 | wishlist, `docs/HANDOFF.md` |

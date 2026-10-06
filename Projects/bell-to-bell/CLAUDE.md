@@ -87,6 +87,12 @@ through `semester.repair` on every load; a generated period's seed is the slot k
   is a function of the seed alone, and a schedule is accepted only after
   `systems/simulate.js` has played it through the banded styles. A band miss
   re-rolls the schedule and never the roster.
+- **A seed above 999999 is a lookup, never a draw** (seed format 2, #893).
+  `data/periods.json`'s `classSeeds` table names the three authored classes;
+  `src/periods.js` reads their roster and schedule as written and ignores any
+  table entry the generator could have drawn. Do not move a class seed into
+  the drawable range, and do not teach the generator to imitate an authored
+  class. `isSeed()` is the one place that says what `main.js` keeps and takes.
 - **The semester record is pure.** `systems/semester.js` takes a finished period
   and hands back what the next one opens with; `main.js` never does date
   arithmetic, never decays a number, and never decides what admin does.

@@ -10,6 +10,7 @@
 import * as T from './tables.js';
 import { convertSpell, maxRankForLevel, rankFor, cleanSpellName, findPf1, metamagicOf } from './spells.js';
 import { parseDiceAvg } from './parse-pf1.js';
+import { rewriteLine, rewriteBlock } from './abilities.js';
 
 const TIER_NAMES = ['terrible', 'low', 'moderate', 'high', 'extreme'];
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -184,6 +185,9 @@ export function diceOnly(avg, die = 6) {
   if (!DIE_AVG[die]) die = 6;
   return `${Math.max(1, Math.round(avg / DIE_AVG[die]))}d${die}`;
 }
+// Breath damage is dice followed by a damage word; "once every 2d4 rounds" is
+// the recharge, not the damage.
+const BREATH_DICE = /(\d+)d(\d+)\s+(?!rounds?\b|minutes?\b)([a-z]+)/i;
 const firstDie = (dmg) => Number(String(dmg || '').match(/\d*d(\d+)/)?.[1]) || null;
 
 // ---- the conversion ----------------------------------------------------------
@@ -337,7 +341,7 @@ export function convertCreature(c, opts = {}) {
       // did: troll 5 of 63 in PF1e, 20 of 115 in Monster Core.
       const v = Math.max(5, Math.round((Number(m[2]) * hpRatio * 2) / 5) * 5);
       defAbilities.push({
-        name: titleCase(m[1]) + ` ${v}`, text: m[3] ? `(deactivated by ${m[3].replace(/\bor\b/, 'or')})` : '',
+        wording: 'number', name: titleCase(m[1]) + ` ${v}`, text: m[3] ? `(deactivated by ${m[3].replace(/\bor\b/, 'or')})` : '',
         why: `PF1e ${m[1]} ${m[2]}, scaled by the Hit Point ratio (${c.hp?.total} to ${hp.value}) and doubled, as PF2e regeneration runs.`,
       });
     } else if (/traits$/i.test(s.trim())) {
@@ -345,7 +349,7 @@ export function convertCreature(c, opts = {}) {
     } else if (/channel resistance/i.test(s)) {
       note(`${s}: PF2e has no channel resistance; heal and harm target Fortitude or Will like anything else.`);
     } else {
-      defAbilities.push({ name: titleCase(s), text: umrText(s) });
+      defAbilities.push({ name: titleCase(s), text: umrText(s), wording: umrText(s) ? 'umr' : 'name' });
     }
   }
 
@@ -429,6 +433,9 @@ export function convertCreature(c, opts = {}) {
     return m ? Number(m[1]) : null;
   };
   const seen = new Set();
+  // What each Strike was converted from, for the ability rules that name one.
+  const strikeSrc = [];
+  let strikeRatio = null;
   const addStrikes = (list, kind) => {
     // Primary: the attack with the highest bonus in its group.
     const top = Math.max(-99, ...list.map((a) => (a.bonus || [])[0] ?? -99));
@@ -474,6 +481,8 @@ export function convertCreature(c, opts = {}) {
           riders.push(u || p);
         }
       }
+      strikeSrc.push({ name: nm.toLowerCase(), pf1: String(a.damage || '').replace(/\s+/g, ''), dice, damage: `${dice} ${dtype}` });
+      if (strikeRatio == null && avg1 && !secondary) strikeRatio = avg2 / avg1;
       strikes.push({
         kind, name: nm.replace(/^mwk\s+|^masterwork\s+/i, '').replace(/\+\d+\s*/, '').trim(), bonus: at.value,
         bonusWhy: at.why, traits: strikeTraits,
@@ -504,6 +513,27 @@ export function convertCreature(c, opts = {}) {
     .replace(/\b(Heal|Bluff|Climb|Swim|Escape Artist|Sense Motive|Spellcraft|Disable Device|Sleight of Hand|Knowledge \([a-z ]+\)) (check|DC)/g, (m, sk, w) => `${mapSkill(sk) || 'Perception'} ${w}`)
     .replace(/\bflat-footed\b/gi, 'off-guard').replace(/\bnegative energy\b/gi, 'void').replace(/\bpositive energy\b/gi, 'vitality');
 
+  // The converter's own numbers, handed to the ability rules: they write these
+  // and never a figure of their own.
+  const ruleCtx = {
+    dc: (dc1) => dcFor(dc1).value,
+    plainDc: pf2At(T.PF2_SPELL_DC, level, T.TIERS.moderate),
+    strike: (name) => strikeSrc.find((x) => x.name === name) || null,
+    strikeFor: (pf1) => strikeSrc.find((x) => x.pf1 === pf1) || null,
+    // Scaled by the ratio the creature's first primary Strike was, and no
+    // higher than extreme Strike damage for the level.
+    scale: (pf1) => {
+      const avg = parseDiceAvg(pf1);
+      const top = readRow(rowAt(T.PF2_STRIKE_DAMAGE, level), T.TIERS.extreme);
+      return strikeRatio && avg ? diceFor(Math.min(avg * strikeRatio, top), firstDie(pf1) || 8) : null;
+    },
+    tail: (text) => convertText(text),
+  };
+  // How an ability's text reads: 'rule' (rewritten by abilities.js), 'umr'
+  // (the converter's wording for a universal ability), 'pf1e' (PF1e text with
+  // DCs and action costs converted, not rewritten) or 'name' (no text at all).
+  const wordingOf = (text, umr) => (!text ? 'name' : umr && !/PF1e: /.test(text) ? 'umr' : 'pf1e');
+
   const offAbilities = [];
   const specialByName = new Map((c.specialAbilities || []).map((s) => [String(s.name).toLowerCase(), s]));
   const usedSpecial = new Set();
@@ -515,10 +545,10 @@ export function convertCreature(c, opts = {}) {
     if (detail) usedSpecial.add(detail.name.toLowerCase());
     // A breath that deals no dice (the gorgon's turns to stone) is not an area
     // damage ability, and falls through to keep its own text.
-    if (/^breath weapon/i.test(s) && /\d+d\d+/.test(s.match(/\((.*)\)/)?.[1] || '')) {
+    if (/^breath weapon/i.test(s) && BREATH_DICE.test(s.match(/\((.*)\)/)?.[1] || '')) {
       const m = s.match(/\((.*)\)/)?.[1] || '';
       const shape = m.match(/(\d+)-?ft\.?\s*(cone|line)/i);
-      const dice = m.match(/(\d+)d(\d+)\s+([a-z]+)/i);
+      const dice = m.match(BREATH_DICE);
       const dc = m.match(/DC\s*(\d+)/i);
       const lim = rowAt(T.PF2_AREA_DAMAGE, level).limited.avg;
       const die = dice ? Number(dice[2]) : 6;
@@ -529,28 +559,44 @@ export function convertCreature(c, opts = {}) {
         name: 'Breath Weapon', actions: '2', traits: [type, 'arcane'].filter(Boolean),
         text: `The creature breathes a ${shape ? `${shape[1]}-foot ${shape[2].toLowerCase()}` : 'cone'} that deals ${diceOnly(lim, die)} ${type} damage (DC ${d2.value} basic ${save} save). It can't use Breath Weapon again for 1d4 rounds.`,
         why: `PF1e ${m}; PF2e limited-use area damage at level ${level} averages ${Math.round(lim)}.`,
+        wording: 'rule', rule: 'breath',
       });
       continue;
     }
     const u = UMR[lower] || UMR[lower.replace(/\s+\d.*$/, '')];
+    // A rule that reads the whole construction writes the 2e form (abilities.js).
+    // A parenthesis cut off mid-way is not a whole construction.
+    const closed = s.match(/\(([^()]*)\)\s*$/);
+    const r = detail ? rewriteBlock(detail.name, detail.text, ruleCtx) : closed ? rewriteLine(lower, closed[1], ruleCtx) : null;
+    if (r) {
+      offAbilities.push({ name: r.name || u || titleCase(nameOnly), actions: r.actions, traits: r.traits, text: r.text, why: r.why, wording: 'rule', rule: r.rule, numbers: r.numbers });
+      continue;
+    }
+    const text = detail ? convertText(detail.text) : [umrText(lower), s.includes('(') ? `PF1e: ${convertText(s.match(/\((.*)\)|\((.*)$/).slice(1).find((x) => x !== undefined))}.` : ''].filter(Boolean).join(' ');
     offAbilities.push({
       name: u || titleCase(nameOnly), actions: '', traits: [],
-      text: detail ? convertText(detail.text) : [umrText(lower), s.includes('(') ? `PF1e: ${convertText(s.match(/\((.*)\)|\((.*)$/).slice(1).find((x) => x !== undefined))}.` : ''].filter(Boolean).join(' '),
+      text,
       why: /DC\s*\d+/.test(s + (detail?.text || '')) ? 'DCs rescaled against the PF1e ability DC benchmark for this CR.' : '',
+      wording: wordingOf(text, !detail && umrText(lower)),
     });
   }
   const otherAbilities = [];
   for (const sa of c.specialAbilities || []) {
     if (usedSpecial.has(String(sa.name).toLowerCase())) continue;
-    otherAbilities.push({ name: titleCase(sa.name), kind: sa.kind, text: convertText(sa.text), why: /DC\s*\d+/.test(sa.text) ? 'DCs rescaled against the PF1e ability DC benchmark for this CR.' : '' });
+    const r = rewriteBlock(sa.name, sa.text, ruleCtx);
+    if (r) {
+      otherAbilities.push({ name: r.name || titleCase(sa.name), kind: sa.kind, actions: r.actions, traits: r.traits, text: r.text, why: r.why, wording: 'rule', rule: r.rule, numbers: r.numbers });
+      continue;
+    }
+    otherAbilities.push({ name: titleCase(sa.name), kind: sa.kind, text: convertText(sa.text), why: /DC\s*\d+/.test(sa.text) ? 'DCs rescaled against the PF1e ability DC benchmark for this CR.' : '', wording: 'pf1e' });
   }
   for (const a of c.aura || []) {
     const extra = convertText(a.text || '').replace(/\([^)]*\)/g, '').trim();
-    offAbilities.unshift({ name: titleCase(a.name), actions: '', traits: ['aura'],
+    offAbilities.unshift({ name: titleCase(a.name), actions: '', traits: ['aura'], wording: umrText(a.name) ? 'umr' : a.range || a.dc ? 'pf1e' : 'name',
       text: [`${a.range ? a.range + ' feet' : ''}${a.dc ? `, DC ${dcFor(a.dc).value}` : ''}`.replace(/^, /, ''), extra.toLowerCase() === String(a.name).toLowerCase() ? '' : extra, umrText(a.name)].filter(Boolean).join('. '),
       why: a.dc ? `PF1e DC ${a.dc} rescaled.` : '' });
   }
-  if ((c.feats || []).some((f) => /combat reflexes/i.test(f))) defAbilities.push({ name: 'Reactive Strike', text: '', why: 'PF1e Combat Reflexes. Most PF2e creatures lack attacks of opportunity.' });
+  if ((c.feats || []).some((f) => /combat reflexes/i.test(f))) defAbilities.push({ name: 'Reactive Strike', text: '', wording: 'name', why: 'PF1e Combat Reflexes. Most PF2e creatures lack attacks of opportunity.' });
   if ((c.feats || []).length) note(`Feats don't carry over: ${c.feats.join(', ')}. Anything that defined how it fights (Power Attack, Vital Strike, Flyby Attack) is worth a one- or two-action ability.`);
 
   // ---- spellcasting ----
@@ -729,8 +775,9 @@ export function toText(o) {
   }
   for (const sc of o.spellcasting) L.push(spells(sc));
   for (const a of [...o.offAbilities, ...o.otherAbilities]) {
-    const act = a.actions === '2' ? ' [two-actions]' : a.actions === '1' ? ' [one-action]' : '';
-    L.push(`${a.name}${act}${a.traits?.length ? ` (${a.traits.join(', ')})` : ''} ${a.text}`.trim());
+    const act = a.actions === '3' ? ' [three-actions]' : a.actions === '2' ? ' [two-actions]' : a.actions === '1' ? ' [one-action]' : '';
+    const mark = a.wording === 'pf1e' ? ' [PF1e wording]' : '';
+    L.push(`${a.name}${mark}${act}${a.traits?.length ? ` (${a.traits.join(', ')})` : ''} ${a.text}`.trim());
   }
   return L.join('\n');
 }

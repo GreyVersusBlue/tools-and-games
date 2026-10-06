@@ -130,6 +130,12 @@ kids who can reach each other), and a period is accepted only after two crude
 teachers have played it headlessly and landed inside the band the authored periods
 set. Type a seed into the start screen and you get that class again.
 
+Three seven-digit seeds are not draws. 1000004, 1000005 and 1000006 are 4th, 5th
+and 6th period's own twelve and their tell schedules, looked up in
+`data/periods.json` and read as written: same kids, same names, same schedule
+every day. They bring the class and not its lesson, so 5th period's kids in 7th
+period sit through 7th period's lesson.
+
 ## Running it
 
 ES modules need a server — opening `index.html` from the filesystem will not work.

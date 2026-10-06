@@ -2,8 +2,8 @@ import * as THREE from './three.js';
 import { CFG } from './config.js';
 import { createState, clamp01to100, applyEffects } from './state.js';
 import { loadData } from './loader.js';
-import { periodFor, resolvePeriodId, firstPeriodId, periodIds, rowFor, isGenerated } from './periods.js';
-import { drawSeed, SEED_MAX } from './systems/rng.js';
+import { periodFor, resolvePeriodId, firstPeriodId, periodIds, rowFor, isGenerated, isSeed, seedCopyFor } from './periods.js';
+import { drawSeed } from './systems/rng.js';
 import * as semester from './systems/semester.js';
 import { createMaterials, createTellMaterials, createRegistry } from './world/materials.js';
 import { createTellMeshBuilder, setTellVision } from './world/tellmesh.js';
@@ -94,9 +94,11 @@ persist.save('semester', record);
 // lives in the period's own slot, drawn once and kept, so a refresh mid-7th is
 // the same 7th, and typed back in from the report screen it is that class
 // again. An authored period has no seed and ignores the one it is handed.
+// Seed format 2 (#893): a seed is one the generator can draw or one of the
+// class seeds data/periods.json names, and isSeed() is the one place that says so.
 const seedKey = persist.slot(activePeriodId, 'seed');
 let seed = persist.load(seedKey, null);
-if (isGenerated(rowFor(activePeriodId, data)) && !(Number.isInteger(seed) && seed > 0 && seed <= SEED_MAX)) {
+if (isGenerated(rowFor(activePeriodId, data)) && !isSeed(data, seed)) {
   seed = drawSeed();
   persist.save(seedKey, seed);
 }
@@ -689,7 +691,7 @@ function endPeriod() {
       seating: { plan, copy: data.seating.report, chart, learned },
       periodTag: `${dayTag} · ${period.periodTag}`,
       // Phase 2: a class nobody authored says which number made it.
-      seed: period.generated ? { value: period.generated.seed, copy: data.periods.copy.seed } : null,
+      seed: period.generated ? { value: period.generated.seed, copy: seedCopyFor(period, data) } : null,
       observation: state.obsResult ? {
         result: state.obsResult,
         labels: observation.lookFors.filter(l => state.obsSatisfied[l.key]).map(l => l.label),
@@ -783,7 +785,7 @@ if (period.generated) {
   dom.seedRow.classList.remove('hide');
   dom.seedBtn.addEventListener('click', () => {
     const typed = parseInt(dom.seedInput.value, 10);
-    if (!(Number.isInteger(typed) && typed > 0 && typed <= SEED_MAX)) {
+    if (!isSeed(data, typed)) {
       dom.seedInput.value = String(period.generated.seed);
       return;
     }

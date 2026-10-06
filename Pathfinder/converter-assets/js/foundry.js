@@ -277,6 +277,8 @@ export function toFoundry(o, opts = {}) {
   const notes = [`<p>Converted from a First Edition stat block by the Conversion Codex (greyversusblue.com). Target: ${esc(FOUNDRY_TARGET)}.</p>`];
   if (marked.length) notes.push(`<h3>Partial spell matches</h3><p>Each is marked [partial match] on the sheet. Read the PF2e spell before you cast it.</p>${ul(marked)}`);
   if (left.length) notes.push(`<h3>Not written into a field</h3>${ul(left)}`);
+  const pf1e = [...o.offAbilities, ...o.otherAbilities].filter((a) => a.wording === 'pf1e').map((a) => a.name);
+  if (pf1e.length) notes.push(`<h3>Kept in First Edition wording</h3><p>No rule rewrote these abilities. Their DCs and action costs are converted; the sentences are PF1e's.</p>${ul(pf1e)}`);
   if (renamed.length) notes.push(`<h3>Written under its Remaster name</h3>${ul(renamed)}`);
   const conv = [...o.notes.map((n) => n.text), ...o.spellNotes.map((s) => `${s.pf1}: ${s.note}`)];
   if (conv.length) notes.push(`<h3>Conversion notes</h3>${ul(conv)}`);

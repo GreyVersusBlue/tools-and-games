@@ -17,6 +17,7 @@
 // is still a pointer, because the lesson is still authored.
 import { generateClass } from './systems/generate.js';
 import { subjectFor, weightedMix } from './systems/subject.js';
+import { SEED_MAX } from './systems/rng.js';
 
 // The row fields that are pointers rather than literals. src/loader.js reads
 // this to work out which content files a day actually needs.
@@ -49,6 +50,63 @@ export const resolvePeriodId = (id, data) =>
 
 export const isGenerated = row => !!row?.generate;
 
+// Seed format 2 (#893): the three authored classes, reachable by number.
+//
+// A seed the generator draws from is 1..SEED_MAX and that is format 1; nothing
+// below changes what one of those means. data/periods.json's `classSeeds`
+// table names a handful of seeds above that range, and each is an authored
+// roster and schedule read as they are. It is a lookup, not a draw: no integer
+// fed to systems/roster.js comes out as Dorian, because Dorian is not in the
+// pool. An entry at or under SEED_MAX is ignored here rather than trusted, so
+// a bad row in the table cannot change a class somebody already has.
+export const classSeeds = data =>
+  (data.periods.classSeeds?.classes || []).filter(c => Number.isInteger(c.seed) && c.seed > SEED_MAX);
+
+export const classSeedFor = (data, seed) => classSeeds(data).find(c => c.seed === seed) || null;
+
+// What main.js will keep in a slot and take from the start screen: a drawable
+// seed or one the table names. Anything else is redrawn or put back.
+export const isSeed = (data, seed) =>
+  Number.isInteger(seed) && ((seed > 0 && seed <= SEED_MAX) || !!classSeedFor(data, seed));
+
+// Everything the table promises. Empty means it keeps every promise.
+export function classSeedProblems(data) {
+  const out = [];
+  const cs = data.periods.classSeeds;
+  if (!cs) return out;
+  if (cs.format !== 2) out.push(`classSeeds is format ${cs.format}, not 2`);
+  const seen = new Set();
+  for (const c of cs.classes || []) {
+    if (!Number.isInteger(c.seed) || c.seed <= SEED_MAX) {
+      out.push(`class seed ${c.seed} is a seed the generator can draw`); continue;
+    }
+    if (seen.has(c.seed)) out.push(`class seed ${c.seed} is in the table twice`);
+    seen.add(c.seed);
+    if (!rowFor(c.of, data)) out.push(`class seed ${c.seed} is of "${c.of}", which is not a period`);
+    const roster = c.roster ? deref(data, c.roster) : null;
+    const schedule = c.schedule ? deref(data, c.schedule) : null;
+    if (!Array.isArray(roster) || !roster.length) { out.push(`class seed ${c.seed} points at no roster`); continue; }
+    if (!Array.isArray(schedule) || !schedule.length) { out.push(`class seed ${c.seed} points at no schedule`); continue; }
+    for (const r of schedule) {
+      for (const i of [r.seat, r.with]) {
+        if (i != null && !(Number.isInteger(i) && i >= 0 && i < roster.length)) {
+          out.push(`class seed ${c.seed}: ${r.type} at ${r.atMinute} names no real seat`);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// The seed's copy deck for the report and the start screen. A drawn class
+// says nobody authored it; a class seed says whose twelve these are.
+export function seedCopyFor(period, data) {
+  const copy = data.periods.copy.seed;
+  const of = period.generated?.authored ? rowFor(period.generated.authored, data) : null;
+  if (!of) return copy;
+  return { ...copy, report: copy.reportAuthored.replace('{ordinal}', of.ordinal) };
+}
+
 export function periodFor(id, data, opts = {}) {
   const row = rowFor(id, data);
   if (!row) throw new Error(`No period "${id}" in data/periods.json`);
@@ -70,17 +128,26 @@ export function periodFor(id, data, opts = {}) {
       throw new Error(`Period "${id}" is generated and needs a seed`);
     }
     const day = Number.isInteger(opts.day) ? opts.day : 0;
-    // The subject leans on the mix weights rather than the promises: a
-    // COPYING-heavy room still gets its minimum WHISPER, because that
-    // minimum is a promise the schedule made to the seating chart.
-    const genData = {
-      ...data.generation,
-      schedule: { ...data.generation.schedule, mix: weightedMix(data.generation.schedule.mix, subject) }
-    };
-    const cls = generateClass({ seed: opts.seed, day, data: { ...data, generation: genData }, lessonData, seatGrid });
-    roster = cls.roster;
-    schedule = cls.schedule;
-    generated = { seed: cls.seed, day, rerolls: cls.rerolls, results: cls.results };
+    const named = classSeedFor(data, opts.seed);
+    if (named) {
+      // An authored class by number: the same twelve and the same schedule on
+      // every day, never drawn and never held to the bands.
+      roster = deref(data, named.roster);
+      schedule = deref(data, named.schedule);
+      generated = { seed: named.seed, day, rerolls: 0, results: null, authored: named.of };
+    } else {
+      // The subject leans on the mix weights rather than the promises: a
+      // COPYING-heavy room still gets its minimum WHISPER, because that
+      // minimum is a promise the schedule made to the seating chart.
+      const genData = {
+        ...data.generation,
+        schedule: { ...data.generation.schedule, mix: weightedMix(data.generation.schedule.mix, subject) }
+      };
+      const cls = generateClass({ seed: opts.seed, day, data: { ...data, generation: genData }, lessonData, seatGrid });
+      roster = cls.roster;
+      schedule = cls.schedule;
+      generated = { seed: cls.seed, day, rerolls: cls.rerolls, results: cls.results };
+    }
   } else {
     roster = deref(data, row.roster);
     schedule = deref(data, row.schedule);

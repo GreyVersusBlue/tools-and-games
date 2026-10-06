@@ -8,7 +8,9 @@ import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
 import { createObservation, visitFor, announcedAhead, defaultVisit } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
-import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor } from '../src/periods.js';
+import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor,
+  classSeeds, classSeedFor, classSeedProblems, isSeed, seedCopyFor } from '../src/periods.js';
+import crypto from 'crypto';
 import { contentFiles } from '../src/loader.js';
 import { subjectKey, subjectFor, applySubject, weightedMix, subjectEvents, subjectTells,
   subjectInterventions, tickHazard, hazardBand, isLabDay, stackFixtures, subjectRoom,
@@ -3286,6 +3288,225 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     check('and a desk card cannot be mistaken for a scroll',
       /\.deskcard\{touch-action:none/.test(css));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Seed format 2 (#893) — the three authored classes, by number. A class seed
+// is a lookup in data/periods.json, above the range the generator draws from.
+// Every comparison below reads the authored files off disk again rather than
+// through the bundle, so a table pointing at the wrong file cannot agree with
+// itself.
+{
+  const AUTHORED = {
+    p4: { seed: 1000004, roster: D('students').roster, schedule: D('tells').schedule },
+    p5: { seed: 1000005, roster: D('period5').roster, schedule: D('period5').schedule },
+    p6: { seed: 1000006, roster: D('period6').roster, schedule: D('period6').schedule }
+  };
+  const clone = v => JSON.parse(JSON.stringify(v));
+
+  // ---- the table -------------------------------------------------------
+  check('the class seed table keeps its promises', classSeedProblems(bundle).length === 0);
+  check('the table is format 2', pData.classSeeds.format === 2);
+  check('there is one class seed per authored row, and no other',
+    classSeeds(bundle).length === 3 &&
+    pData.periods.filter(r => !isGenerated(r)).every(r => {
+      const mine = classSeeds(bundle).filter(c => c.of === r.id);
+      return mine.length === 1 && mine[0].roster === r.roster && mine[0].schedule === r.schedule &&
+        mine[0].seed === AUTHORED[r.id].seed;
+    }));
+
+  // ---- what a seed is --------------------------------------------------
+  check('a drawable seed is still a seed, to both ends of the range',
+    isSeed(bundle, 1) && isSeed(bundle, 4821) && isSeed(bundle, SEED_MAX));
+  check('the three class seeds are seeds',
+    isSeed(bundle, 1000004) && isSeed(bundle, 1000005) && isSeed(bundle, 1000006));
+  check('nothing else above the range is',
+    !isSeed(bundle, SEED_MAX + 1) && !isSeed(bundle, 1000003) && !isSeed(bundle, 1000007) && !isSeed(bundle, 9999999));
+  check('and nothing that is not a positive integer',
+    !isSeed(bundle, 0) && !isSeed(bundle, -4) && !isSeed(bundle, 12.5) && !isSeed(bundle, '1000004') &&
+    !isSeed(bundle, null) && !isSeed(bundle, undefined) && !isSeed(bundle, NaN));
+
+  // ---- field by field --------------------------------------------------
+  const ROSTER_FIELDS = ['name', 'aptitude', 'shirt', 'tension', 'steady', 'note'];
+  const ROW_FIELDS = ['type', 'seat', 'with', 'atMinute', 'life'];
+  for (const [id, a] of Object.entries(AUTHORED)) {
+    const p = periodFor('p7', bundle, { seed: a.seed, day: 0 });
+    let fields = 0, wrong = 0;
+    for (let i = 0; i < a.roster.length; i++) {
+      for (const k of new Set([...ROSTER_FIELDS, ...Object.keys(a.roster[i]), ...Object.keys(p.roster[i] || {})])) {
+        fields++;
+        if ((p.roster[i] || {})[k] !== a.roster[i][k]) wrong++;
+      }
+    }
+    check(`seed ${a.seed} is ${id}'s twelve, every field of every kid`,
+      p.roster.length === 12 && a.roster.length === 12 && fields === 72 && wrong === 0);
+    fields = 0; wrong = 0;
+    for (let i = 0; i < a.schedule.length; i++) {
+      for (const k of new Set([...ROW_FIELDS, ...Object.keys(a.schedule[i]), ...Object.keys(p.schedule[i] || {})])) {
+        fields++;
+        if ((p.schedule[i] || {})[k] !== a.schedule[i][k]) wrong++;
+      }
+    }
+    check(`seed ${a.seed} is ${id}'s tell schedule, every field of every row`,
+      p.schedule.length === a.schedule.length && fields === a.schedule.length * 5 && wrong === 0);
+    check(`seed ${a.seed} says whose class it is and that nothing was drawn`,
+      p.generated.seed === a.seed && p.generated.authored === id &&
+      p.generated.rerolls === 0 && p.generated.results === null);
+    // A drawn class is the seed plus the day. An authored one never was.
+    check(`seed ${a.seed} is the same schedule on Thursday`,
+      JSON.stringify(periodFor('p7', bundle, { seed: a.seed, day: 3 }).schedule) === JSON.stringify(a.schedule));
+    // The lesson and the chart copy belong to the row the seed is typed into.
+    check(`seed ${a.seed} in 7th period sits through 7th period's lesson`,
+      p.id === 'p7' && p.lessonData.beats === lData.beats && p.seatingCopy.sub.includes('7TH PERIOD'));
+  }
+  check('the three class seeds are three different classes',
+    new Set(Object.values(AUTHORED).map(a => periodFor('p7', bundle, { seed: a.seed }).roster[0].name)).size === 3);
+
+  // ---- a played-out period ---------------------------------------------
+  // Every style the headless runner has is a fixed input script: the same
+  // policy asked the same question every tick. Same class, same script, so
+  // the same tells born, swallowed and missed, and the same twelve numbers.
+  const played = (period, style) => {
+    const r = runPeriod({ period, data: bundle, style });
+    return JSON.stringify({
+      state: r.state, missed: r.missed,
+      rows: r.plan.rows, suppressed: r.plan.suppressed,
+      comp: r.students.map(s => [s.seat, s.desk, s.name, s.comp])
+    });
+  };
+  const styleKeys = Object.keys(STYLES);
+  check('there are scripts to play', styleKeys.length >= 5);
+  {
+    // 4th period's lesson is the one 7th period reads, so this is the whole
+    // period as the game builds it, nothing swapped in.
+    const own = periodFor('p4', bundle), seeded = periodFor('p7', bundle, { seed: 1000004 });
+    check('seed 1000004 in 7th period plays out as 4th period does, under every script',
+      styleKeys.every(k => played(seeded, STYLES[k]) === played(own, STYLES[k])));
+    check('and a script is not blind to the class', played(own, STYLES.good) !== played(periodFor('p5', bundle), STYLES.good));
+  }
+  for (const id of ['p5', 'p6']) {
+    // 5th and 6th have lessons of their own, and a seed does not carry a
+    // lesson. Held to the lesson they were authored for, the seed's class
+    // plays out as the row does.
+    const own = periodFor(id, bundle), a = AUTHORED[id];
+    const seeded = periodFor('p7', bundle, { seed: a.seed });
+    check(`seed ${a.seed} on ${id}'s own lesson plays out as ${id} does, under every script`,
+      styleKeys.every(k => played({ ...seeded, lessonData: own.lessonData }, STYLES[k]) === played(own, STYLES[k])));
+    check(`seed ${a.seed} in 7th period is not ${id}'s lesson, and the scores say so`,
+      played(seeded, STYLES.good) !== played(own, STYLES.good));
+  }
+
+  // ---- nothing that existed before moved -------------------------------
+  // Fingerprints taken from main before #893, by the same hash.
+  const OLD = { '1/0': '47068b1e51e62995', '4821/0': '065bf296cd263568', '4821/3': '66ba109738d55229',
+    '271828/1': 'bda92183126159db', '999999/0': 'f4d5e51432e6a8bf', '999999/4': 'd3a87d9d02e05516' };
+  const print = p => crypto.createHash('sha256').update(JSON.stringify([p.roster, p.schedule])).digest('hex').slice(0, 16);
+  check('six seeds from before the format changed draw the classes they drew then',
+    Object.entries(OLD).every(([k, want]) => {
+      const [seed, day] = k.split('/').map(Number);
+      return print(periodFor('p7', bundle, { seed, day })) === want;
+    }));
+  check('the authored rows are still authored, and still ignore a seed',
+    ['p4', 'p5', 'p6'].every(id => {
+      const p = periodFor(id, bundle, { seed: 1000006 });
+      return p.generated === null && JSON.stringify(p.roster) === JSON.stringify(AUTHORED[id].roster) &&
+        JSON.stringify(p.schedule) === JSON.stringify(AUTHORED[id].schedule);
+    }));
+  check('a table entry inside the drawable range is ignored, not obeyed', (() => {
+    const d = clone(bundle);
+    d.periods.classSeeds.classes.push({ seed: 4821, of: 'p4', roster: 'students.roster', schedule: 'tells.schedule' });
+    return classSeedFor(d, 4821) === null && isSeed(d, 4821) &&
+      print(periodFor('p7', d, { seed: 4821, day: 0 })) === OLD['4821/0'] &&
+      classSeedProblems(d).some(p => /4821 is a seed the generator can draw/.test(p));
+  })());
+  check('a data file with no table is the game before the table', (() => {
+    const d = clone(bundle);
+    delete d.periods.classSeeds;
+    return classSeeds(d).length === 0 && !isSeed(d, 1000004) && isSeed(d, 4821) &&
+      classSeedProblems(d).length === 0 && print(periodFor('p7', d, { seed: 4821, day: 0 })) === OLD['4821/0'];
+  })());
+
+  // ---- the promise list, broken one at a time --------------------------
+  const broken = (edit, re) => { const d = clone(bundle); edit(d.periods.classSeeds); return classSeedProblems(d).some(p => re.test(p)); };
+  check('a table of the wrong format is a problem', broken(cs => { cs.format = 1; }, /format 1, not 2/));
+  check('the same seed twice is a problem', broken(cs => { cs.classes[1].seed = 1000004; }, /1000004 is in the table twice/));
+  check('a class of no period is a problem', broken(cs => { cs.classes[0].of = 'p9'; }, /of "p9", which is not a period/));
+  check('a pointer at no roster is a problem', broken(cs => { cs.classes[2].roster = 'period6.rooster'; }, /1000006 points at no roster/));
+  check('a pointer at no schedule is a problem', broken(cs => { cs.classes[2].schedule = 'period6.lesson'; }, /1000006 points at no schedule/));
+  check('a schedule naming a seat the roster does not have is a problem', (() => {
+    const d = clone(bundle);
+    d.period5.schedule[2].with = 12;
+    return classSeedProblems(d).some(p => /1000005: NOTE at 7.8 names no real seat/.test(p));
+  })());
+
+  // ---- why it is a table and not a draw --------------------------------
+  // What the generator's own promise lists say about the authored classes.
+  // Every name is outside the pool, so no integer handed to roster.js is one
+  // of them; these are the rest of the reasons, pinned as measured.
+  const deps = { tellTypes: tData.types, seatGrid: sData.seatGrid, rules: seatData.rules, gen: genData };
+  const notePool = new Set([...genData.notes.stabiliser, ...genData.notes.edge, ...genData.notes.any]);
+  const notName = id => rosterProblems(AUTHORED[id].roster, genData).filter(p => !/is not in the name pool/.test(p));
+  check('all 36 authored kids fail the name pool, twelve a class',
+    Object.values(AUTHORED).every(a => rosterProblems(a.roster, genData).filter(p => /is not in the name pool/.test(p)).length === 12));
+  check('5th period has two names the generator would call alike, and the others none',
+    notName('p4').length === 0 && notName('p6').length === 0 &&
+    notName('p5').length === 1 && notName('p5')[0] === 'Deshawn and Devontae read alike on the chart');
+  check('three authored notes are in nobody\'s pool',
+    Object.values(AUTHORED).flatMap(a => a.roster).filter(s => s.note && !notePool.has(s.note)).length === 3);
+  check('two authored NOTEs are handoffs the scheduler would refuse',
+    scheduleProblems(AUTHORED.p4.schedule, AUTHORED.p4.roster, deps).length === 0 &&
+    scheduleProblems(AUTHORED.p5.schedule, AUTHORED.p5.roster, deps).join() === 'Deshawn to Odalys is a handoff, not a NOTE' &&
+    scheduleProblems(AUTHORED.p6.schedule, AUTHORED.p6.roster, deps).join() === 'Corinne to Elodie is a handoff, not a NOTE');
+
+  // ---- the semester knows them apart -----------------------------------
+  {
+    const roster = AUTHORED.p4.roster;
+    const kids = roster.map((r, i) => ({ ...r, seat: i, comp: 0.9 }));
+    const res = seed => ({ periodId: 'p7', seed, roster, students: kids, rapport: 71, fidelity: 64,
+      mastery: 90, missed: 0, caught: 0, sawCurveball: false, obsResult: null, known: { edges: [], steadies: [] } });
+    const rec = semester.repair(clone(semester.recordPeriod(semester.createRecord(7), res(1000004))), 7);
+    check('a class seed survives the record\'s repair', rec.classes.p7.seed === 1000004);
+    const back = semester.entering(rec, 'p7', { roster, seed: 1000004, admin: adminData });
+    check('the same class seed tomorrow is the same class', !back.firstDay && back.rapport === 71 && back.startComp.length === 12);
+    const other = semester.entering(rec, 'p7', { roster, seed: 4821, admin: adminData });
+    check('a drawn seed after a class seed is a new class', other.firstDay && other.startComp === null && other.rapport === CFG.start.rapport);
+    const old = semester.recordPeriod(semester.createRecord(7), res(4821));
+    check('a class seed after a drawn one is a new class too',
+      semester.entering(old, 'p7', { roster, seed: 1000004, admin: adminData }).firstDay &&
+      !semester.entering(old, 'p7', { roster, seed: 4821, admin: adminData }).firstDay);
+  }
+
+  // ---- the words, and the wiring ---------------------------------------
+  const copy = pData.copy.seed;
+  check('the start screen hint names every class seed', classSeeds(bundle).every(c => copy.hint.includes(String(c.seed))));
+  check('a drawn class keeps the report line it had', (() => {
+    const c = seedCopyFor(periodFor('p7', bundle, { seed: 4821 }), bundle);
+    return c === copy && /was not authored/.test(c.report);
+  })());
+  check('a class seed\'s report line says whose twelve they are, and does not say nobody wrote them', (() => {
+    const c = seedCopyFor(periodFor('p7', bundle, { seed: 1000005 }), bundle);
+    return c.report.includes("5th Period's twelve") && c.report.includes('{seed}') &&
+      !c.report.includes('{ordinal}') && !/not authored/.test(c.report) &&
+      c.label === copy.label && c.use === copy.use && c.hint === copy.hint;
+  })());
+  check('an authored row has no seed line at all', seedCopyFor(periodFor('p5', bundle), bundle) === copy &&
+    periodFor('p5', bundle).generated === null);
+  check('main.js asks isSeed() what to keep and what to take, and nothing else',
+    /isGenerated\(rowFor\(activePeriodId, data\)\) && !isSeed\(data, seed\)/.test(mainSrc) &&
+    /if \(!isSeed\(data, typed\)\) \{/.test(mainSrc) && !/SEED_MAX/.test(mainSrc));
+  check('main.js words the report through seedCopyFor()', /copy: seedCopyFor\(period, data\)/.test(mainSrc));
+  check('the seed box takes seven digits',
+    /id="seedInput"[^>]*maxlength="7"/.test(fs.readFileSync('../index.html', 'utf8')) &&
+    classSeeds(bundle).every(c => String(c.seed).length <= 7));
+  check('the loader fetches a class seed\'s files when no row names them', (() => {
+    const pf = clone(pData);
+    pf.periods = pf.periods.filter(r => r.id !== 'p5' && r.id !== 'p6');
+    const withTable = contentFiles(pf);
+    delete pf.classSeeds;
+    const without = contentFiles(pf);
+    return withTable.includes('period5') && withTable.includes('period6') &&
+      !without.includes('period5') && !without.includes('period6');
+  })());
 }
 
 
