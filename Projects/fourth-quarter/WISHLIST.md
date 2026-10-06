@@ -240,23 +240,51 @@ the phases below would need answered.
    nothing else happens. Options that fit what exists: a bankruptcy threshold,
    a lease that can be lost (a downgrade rather than a game over), a bank that
    stops lending. Round 3 declined to invent one unprompted and was right to.
-3. **How much of the 2D campaign is actually wanted?** 21 event cards, a
-   14-week season with a 4-team bracket, regulars, a rival, three distributors.
-   All of it ports; none of it is small; a 3D floor game with a full back
-   office is a different game. Phases 6-9 assume "most of it, in that order."
+3. ~~**How much of the 2D campaign is actually wanted?**~~ Answered by Devon
+   on 2026-10-05 (HISTORY.md #902): all of it. Phases 6-9 ported the league,
+   the regulars and the rival, the event cards and the losable lease; the
+   distributors and their two event cards, staff as a simulated system and
+   per-lot shelf life are wanted too. "What is left of TG-25", below, has them
+   in order.
 4. ~~**Is 66 MB of texture on first paint acceptable?**~~ Answered by Phase 4
    on 2026-09-07 (HISTORY.md #201): no. A first visit now downloads 5.08 MB of
    1k JPEG; the 2k originals stay in place for `?tex=2k` and for a Retina-class
    screen with a GPU that can hold them. Devon can widen or narrow
-   `pickTier()`'s rule; the numbers it was set from are in the README.
-5. **Has `SPOILAGE_RATE = 0.15` actually been played yet?** One number in
-   `campaign.js`, tune by feel; no assertion depends on the exact value except
-   one asserting 15% of 20 rounds to 3.
+   `pickTier()`'s rule; the numbers it was set from are in the README. Devon's
+   own answer on 2026-10-05 (#902) was "cut it", which is this.
+5. ~~**Has `SPOILAGE_RATE = 0.15` actually been played yet?**~~ Answered by
+   Devon on 2026-10-05 (#902): keep it for now. `test/smoke-settle.mjs` pins
+   2,400 settled nights at this rate, so changing it re-pins that file.
 
 ## The standing backlog
 
 Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
+
+**What is left of TG-25** (the audit's line for this project; its first
+increment shipped on 2026-10-06 as #898, #900 and #901). In the order to take
+it, each a session of its own:
+
+1. **The sound.** No crowd cheer on a Mules win (`audio.js` says so, and
+   `main.js` plays the whistle sting alone), nothing in `audio/sfx/footsteps/`
+   or `audio/music/`, and `audio/sfx/events/crowd-groan.mp3` is the last
+   non-OGG file. Vendored CC0 only, with each file's source and licence
+   recorded beside it. It cannot be judged without speakers.
+2. **The texture pop, and a 512 px tier.** A texture that lands after "Take
+   the Floor" still pops in, and the 1k tier is one size for every surface.
+   The order-of-magnitude cut itself is done (#201, #622); this is what Devon's
+   "cut it" has left. It changes how the game looks, so it wants before-and-after
+   sizes and a GPU window.
+3. **The back office** (Q24, all of it), several sessions: the three
+   distributors, bulk pricing and par levels, with the two event cards about
+   them; staff as a simulated system; per-lot shelf life in days and the
+   Commercial Walk-In that adds two; then a season that moves rent and wages.
+   `SPOILAGE_RATE` stays 0.15 until shelf life replaces it (Q26).
+
+Not looked at in that increment, because each needs a GPU window and a pair
+of eyes: whether bodies giving way to each other reads well on the floor,
+whether `FOOT_RATE` (1.2) is the right stride over the stair's kerb, and what
+it is like to be the boss the room walks round.
 
 **The room**
 - `floorYAt()` is single-valued: one floor per (x, z), so the ground under
@@ -265,10 +293,12 @@ starting a new list.
   need two floors at one point, which is the nav grid keyed by (x, z),
   `levelOpen()`, the sweep and the player's slide all growing a level, and
   none of them wants to. Not needed until a room is authored that needs it.
-- A body's y is read off the floor after every step and never integrated
-  (#200), so stepping onto the stair's low side is one frame's pop of up to a
-  riser. Nothing animates a step; if a walk cycle ever lands, the pop is the
-  place to spend it.
+- A walker's y follows the floor at `FOOT_RATE`, 1.2 m of rise per metre
+  walked (#901), so the stair's low side is about four strides and not one
+  frame's pop. The player's camera is not on that rule: `player.js`'s
+  `slide()` still reads y straight off the floor, and stepping the same kerb
+  is a 15 cm jump of the view. Nothing animates a step; if a walk cycle ever
+  lands, the kerb is the place to spend it.
 - `STEP_H` (0.18) and `MAX_SLOPE` (0.75) are one pair of numbers for every
   walker and the player alike. A wheeled thing, if one is ever authored,
   wants a `STEP_H` of 0.
@@ -283,10 +313,15 @@ starting a new list.
   3.1 cm per texel where it was 2.5. Nothing looks wrong; a per-rectangle
   shadow pass or a tighter box that skips dead ground is the fix if it ever
   does.
-- Two bodies never see each other. `Route` plans against the furniture and
-  nothing else, so two patrons walking opposite ways down the same lane pass
-  through one another, and a server delivering to a seated patron stops
-  0.75 m short of a body it cannot feel. Local avoidance is its own phase.
+- Bodies give way to each other since #900 (`separate()` in `js/walk.js`),
+  and four things about it are open. The boss is walked round but is not
+  stopped by anybody: `player.js` still slides against the furniture alone, so
+  the player walks through a guest. Past the south wall there is no floor, so
+  two leavers on the 1.5 m to `DOOR_OUT` still merge. A body shoved for 1.2 s
+  walks through whatever is in its way, which a crowded floor needs one to
+  three times in two minutes. And a shoved body does not plan again: it walks
+  on to the corner it was heading for, which measured the same as replanning
+  on eight floors but is not proved for a room nobody has authored yet.
 - The nav grid is rebuilt from scratch per room and memoised per
   `(description, radius)` pair, and `navProblems()` runs inside `validate()`,
   which makes `smoke-layout.mjs` do the work twice. Nothing is slow enough to
@@ -301,8 +336,7 @@ starting a new list.
   spawn, rings and a stepped walk to every fourth stool, but not for
   `inBounds()` at named coordinates.
 - Nothing is ever occluded: three TVs, five pendants and a key light render
-  every frame regardless of where you stand. `velLook` in `patrons.js` is
-  written by `stepToward()` and read by nothing.
+  every frame regardless of where you stand.
 
 **Assets**
 - ~~The 2k originals are still 66 MiB on disk.~~ Re-encoded at q88 (4:4:4
@@ -315,8 +349,6 @@ starting a new list.
 - The 1k tier is one size for every surface. A 512 tier for phones, or a
   per-surface size (the leather and the table top repeat 1×1 and could go
   smaller), has not been looked at.
-- `audio/sfx/events/crowd-groan.mp3` is the last non-OGG file after round 2's
-  conversion.
 - The loading line is on the start overlay only; a texture that lands after
   "Take the Floor" still pops in. Nothing gates the button on the manager.
 
@@ -329,8 +361,6 @@ starting a new list.
   in days and lets a Commercial Walk-In add two. The 3D `UPGRADES` table has
   five entries and no walk-in.
 - No fail state of any kind.
-- `settleNight()` and `settleDarkNight()` duplicate the wages/rent/upkeep
-  arithmetic.
 
 **The night**
 - No mid-night events. The 2D build has 21 with real choices.

@@ -187,8 +187,11 @@ table and this week's fixtures.
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
   `node test/smoke-league.mjs`, `node test/smoke-regulars.mjs`,
   `node test/smoke-events.mjs`, `node test/smoke-layout.mjs`,
-  `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs` and
-  `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`). The last one drives
+  `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs`,
+  `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs` and
+  `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`).
+  `test/crowd-floor.mjs` is the busy floor `smoke-crowd.mjs` runs and is not
+  a suite. `smoke-crowd.mjs` takes about 20 s; the rest are under two. The last one drives
   Chromium through `Tools/board-check/harness.mjs`, so it needs `npm ci` in
   that folder first; CI does that for the whole job.
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
@@ -216,10 +219,14 @@ table and this week's fixtures.
   `seats`/`colliders` and re-aims the stand-points on every call, since a
   signed lease, a dev warp, or "New Game" all call it again on the same page
   load.
+- `js/walk.js` — how a body crosses the room, pure so Node runs it: `Route`,
+  the waypoint queue every walker follows (planned off `layout.js`'s nav
+  grid, replanned when the target moves 0.6 m, each leg walked with
+  `stepToward()`), `settleY()`, which brings a body's feet to the floor at a
+  walk, and `separate()`, the once-a-frame rule that keeps two bodies out of
+  each other. Its header states the rule whole.
 - `js/patrons.js` — patron + server NPC state machines (bartenders stick to
-  drink tickets), and `Route`, the waypoint queue both walk: planned off
-  `layout.js`'s nav grid, replanned when the target moves 0.6 m, each leg
-  walked with `stepToward()`. `freeSeat()` never offers a stool with no route
+  drink tickets), walking `walk.js`'s `Route` in tonight's room. `freeSeat()` never offers a stool with no route
   to it — `world.js` hangs `reachable` on every seat when it adopts a room.
 - `js/player.js` — pointer-lock movement, collision, pick-up/deliver, and the
   stove/tap timing-bar minigame.
