@@ -23,7 +23,7 @@
 // Pure module: no three.js. Exercised by test/finish.test.mjs.
 
 import { CELL } from './grid.js';
-import { shapesOf, shapeArea, shapeAt, segAccent } from './shapes.js';
+import { shapesOf, shapeArea, shapeAt, segAccent, accentHex } from './shapes.js';
 import { wallLinesOf, lineEnds, lineAccent, LINE_LEFT, LINE_RIGHT } from './wallrun.js';
 
 // The finish table. `color` is the floor's own base colour — what the material
@@ -291,7 +291,8 @@ function accentSegs(floor) {
       if (!Array.isArray(ring.accents)) continue;
       const n = ring.pts.length;
       for (let i = 0; i < n; i++) {
-        const paint = segAccent(ring, i);
+        // What is stored is a palette id or a hex (#912); what is drawn is a hex.
+        const paint = accentHex(segAccent(ring, i));
         if (!paint) continue;
         out.push({ shape, a: ring.pts[i], b: ring.pts[(i + 1) % n], paint });
       }
@@ -304,7 +305,7 @@ function accentSegs(floor) {
   // is "whichever room stands in front": the wall is nobody's.
   for (const line of wallLinesOf(floor)) {
     const [a, b] = lineEnds(line);
-    const l = lineAccent(line, LINE_LEFT), r = lineAccent(line, LINE_RIGHT);
+    const l = accentHex(lineAccent(line, LINE_LEFT)), r = accentHex(lineAccent(line, LINE_RIGHT));
     if (l) out.push({ shape: null, a, b, paint: l });
     if (r) out.push({ shape: null, a: b, b: a, paint: r });
   }

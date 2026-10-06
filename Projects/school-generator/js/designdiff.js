@@ -38,6 +38,7 @@
 
 import {
   shapesOf, shapeArea, ringCentroid, isWindowOpening, accentSpans, spanOverlap,
+  sameAccent,
 } from './shapes.js';
 import { floorLabel } from './grid.js';
 import { wallLinesOf, lineAccent } from './wallrun.js';
@@ -112,7 +113,7 @@ function accentChanges(before, after) {
     const was = A.filter((s) => along(s, b));
     if (!was.length) { out.gained += 1; continue; }
     for (const s of was) kept.add(s);
-    if (!was.some((s) => s.paint === b.paint)) out.repainted += 1;
+    if (!was.some((s) => sameAccent(s.paint, b.paint))) out.repainted += 1;
   }
   out.lost = A.filter((s) => !kept.has(s)).length;
   return out;
@@ -222,7 +223,7 @@ function diffWalls(fa, fb, floor, out) {
     const rekinded = (la.kind || 'wall') !== (lb.kind || 'wall');
     const doors = (la.openings || []).length !== (lb.openings || []).length;
     // A face painted, repainted or taken back (wallrun.js's `line.accents`).
-    const faces = [0, 1].some((i) => lineAccent(la, i) !== lineAccent(lb, i));
+    const faces = [0, 1].some((i) => !sameAccent(lineAccent(la, i), lineAccent(lb, i)));
     if (moved || rekinded || doors || faces) { changed += 1; marks.push(lineMark(lb, floor, 'changed')); }
   }
   for (const [id, lb] of B) if (!A.has(id)) { added += 1; marks.push(lineMark(lb, floor, 'added')); }

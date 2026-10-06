@@ -401,10 +401,18 @@ and add to this list rather than starting a new one.
   `facePainter`, and absent from a file until a face is painted. A room's
   own accent on a face comes first; a face with no room in front of it, or
   on glass or a railing, is refused by the brush and dropped by
-  `pruneAccents`. Left, one session, the last of the three Devon's answer of
-  2026-10-05 opened (the ramp's width and slope shipped as #907): more
-  accent colours (nine fixed ones and no free pick; needs chrome, and both
-  `accents` fields already take any hex). Left from #910: the click on the
+  `pruneAccents`. The colours are one list (#912): `ACCENT_PALETTE` in
+  `shapes.js`, seventeen of `{ id, name, hex }`, the first eight being the
+  hexes from before; a swatch stores the colour's id, an older file's hex is
+  still read and written back as it was, and `accentHex` is the one place an
+  id becomes a colour. That was the last of the three items Devon's answer
+  of 2026-10-05 opened (the ramp's width and slope shipped as #907). Left
+  from #912: to a protanope Harbor Blue and Plum are 1.19 apart in OKLab
+  times 100 and Cranberry and Charcoal 3.42 (they are in saved schools, so
+  the swatch's name tells them apart, not the colour); the nine new ones
+  were picked by arithmetic and nobody has looked at any of the seventeen on
+  a wall on a real display; there is no free pick of any hex, though both
+  fields take one. Left from #910: the click on the
   plan is a pointer gesture, for a room's wall and a free-standing one alike
   (the swatches take Tab and Enter, the plan has no keyboard cursor); a
   free-standing wall's outdoor face cannot be painted, because the facade is

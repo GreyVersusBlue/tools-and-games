@@ -57248,8 +57248,68 @@ const flipRunSign = (o, key) => {
 // The array is there only while some segment has a colour: a ring nobody has
 // accented carries no `accents` key, in memory or in a file, so a design saved
 // before this build is written back as the bytes it was read from.
+//
+// What is stored is a colour's name in the palette below ('harbor-blue') or,
+// from the builds before the palette had names, a '#rrggbb'. Both are read,
+// and neither is a place in a list (#912).
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
-const readAccent = (v) => (typeof v === 'string' && HEX6.test(v) ? v.toLowerCase() : null);
+
+// The accent colours, and the one place they are written down: the Wall
+// panel's swatches (main.js), the brush (editor.js), the painter (finish.js),
+// the design diff and the walk-through all read this. `id` is what a design
+// stores, so it is never changed and never reused, and a colour may be added
+// anywhere in the list without moving a saved choice. The first eight are the
+// hexes the brush stored before #912, value for value, so a design from then
+// is the colours it was. Each new one was taken from forty named paints as the
+// one furthest (OKLab distance, the least of normal sight and simulated
+// protanopia, deuteranopia and tritanopia) from every colour already in and
+// from the nine room paints, passing over any with less contrast against the
+// default wall paint than the palest old one has (Seafoam, 1.92 to 1);
+// test/accent-palette.test.mjs states the figures.
+const ACCENT_PALETTE = Object.freeze([
+  { id: 'harbor-blue', name: 'Harbor Blue', hex: '#2f5d8a' },
+  { id: 'spruce', name: 'Spruce', hex: '#3f7d6b' },
+  { id: 'seafoam', name: 'Seafoam', hex: '#8fb8a8' },
+  { id: 'goldenrod', name: 'Goldenrod', hex: '#d9a441' },
+  { id: 'terracotta', name: 'Terracotta', hex: '#c2573a' },
+  { id: 'cranberry', name: 'Cranberry', hex: '#a33b45' },
+  { id: 'plum', name: 'Plum', hex: '#7a4e8a' },
+  { id: 'charcoal', name: 'Charcoal', hex: '#4a4f57' },
+  { id: 'ink', name: 'Ink', hex: '#23262b' },
+  { id: 'periwinkle', name: 'Periwinkle', hex: '#8088d8' },
+  { id: 'pumpkin', name: 'Pumpkin', hex: '#d9772b' },
+  { id: 'aubergine', name: 'Aubergine', hex: '#4b2f55' },
+  { id: 'warm-gray', name: 'Warm Gray', hex: '#9a958c' },
+  { id: 'brick', name: 'Brick', hex: '#8a3324' },
+  { id: 'oxblood', name: 'Oxblood', hex: '#6b2633' },
+  { id: 'steel', name: 'Steel', hex: '#70808f' },
+  { id: 'indigo', name: 'Indigo', hex: '#3d3a7a' },
+].map(Object.freeze));
+const ACCENT_BY_ID = new Map(ACCENT_PALETTE.map((c) => [c.id, c]));
+const ACCENT_BY_HEX = new Map(ACCENT_PALETTE.map((c) => [c.hex, c]));
+
+// What may be stored on a face: a palette id, a hex (lower-cased), or null.
+const readAccent = (v) => (typeof v !== 'string' ? null
+  : ACCENT_BY_ID.has(v) ? v
+  : HEX6.test(v) ? v.toLowerCase() : null);
+const readAccentPaint = readAccent;
+
+// The '#rrggbb' a stored accent is drawn in, or null if it names nothing.
+function accentHex(v) {
+  const t = readAccent(v);
+  return t && (ACCENT_BY_ID.has(t) ? ACCENT_BY_ID.get(t).hex : t);
+}
+
+// What to call it: the palette's name, by id or by a hex the palette has, and
+// the hex itself for a colour the palette never had.
+function accentName(v) {
+  const hex = accentHex(v);
+  return hex && (ACCENT_BY_HEX.has(hex) ? ACCENT_BY_HEX.get(hex).name : hex);
+}
+
+// Two stored accents are the same paint when they are drawn the same, so a
+// face holding '#2f5d8a' from an old file and the Harbor Blue swatch agree.
+const sameAccent = (a, b) => accentHex(a) === accentHex(b);
 
 const segAccent = (ring, i) =>
   (ring && Array.isArray(ring.accents) && readAccent(ring.accents[i])) || null;
@@ -57271,7 +57331,7 @@ function setSegAccent(shape, ringIdx, seg, paint) {
   if (!ring || !Number.isInteger(seg) || seg < 0 || seg >= ring.pts.length) return false;
   const v = paint == null ? null : readAccent(paint);
   if (paint != null && !v) return false;
-  if (segAccent(ring, seg) === v) return false;
+  if (sameAccent(segAccent(ring, seg), v)) return false;
   if (!Array.isArray(ring.accents)) ring.accents = new Array(ring.pts.length).fill(null);
   ring.accents[seg] = v;
   tidyAccents(ring);
@@ -57311,7 +57371,7 @@ function accentBreaks(shape) {
     const n = ring.pts.length;
     for (let i = 0; i < n; i++) {
       const prev = (i + n - 1) % n;
-      if (segAccent(ring, prev) === segAccent(ring, i)) continue;
+      if (sameAccent(segAccent(ring, prev), segAccent(ring, i))) continue;
       const u = segDir(ring, prev), v = segDir(ring, i);
       if (!u || !v) continue;
       if (Math.abs(u.x * v.z - u.z * v.x) > 1e-6 || u.x * v.x + u.z * v.z <= 0) continue;
@@ -58346,7 +58406,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, crossingsAlong, sideRuns, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, ACCENT_PALETTE, readAccentPaint, accentHex, accentName, sameAccent, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, crossingsAlong, sideRuns, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -59986,7 +60046,7 @@ return { PROBE, solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe,
 })();
 // ---- js/wallrun.js ----
 const __m_js_wallrun_js = (() => {
-const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE, shapeAt } = __m_js_shapes_js;
+const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE, readAccentPaint, sameAccent, shapeAt } = __m_js_shapes_js;
 // wallrun.js — a wall drawn from one point to another.
 //
 // Until this module the wall tool had no way to say how long a wall was. You
@@ -60111,7 +60171,7 @@ function wallLineAt(floor, x, z, maxDist = ON_LINE_TOL) {
 //
 // #910. A room's accent wall (#827) is `ring.accents[i]`: the colour of that room's
 // own face of one segment. A free-standing wall has no ring to keep one on, so
-// it keeps its own: `line.accents` is `[left, right]`, each '#rrggbb' or null,
+// it keeps its own: `line.accents` is `[left, right]`, each a stored accent or null,
 // where left is the face on the run's left-hand normal going a to b
 // (finish.js's `left`, walls.js's `side: +1`). Per face and not per wall,
 // because that is what an accent already is on a room's wall, and a screen
@@ -60127,8 +60187,8 @@ function wallLineAt(floor, x, z, maxDist = ON_LINE_TOL) {
 // The key is absent until a face is painted and absent again when the last
 // one is taken off, so a design without one is written as the bytes it was.
 const LINE_LEFT = 0, LINE_RIGHT = 1;
-const HEX6 = /^#[0-9a-fA-F]{6}$/;
-const readHex = (v) => (typeof v === 'string' && HEX6.test(v) ? v.toLowerCase() : null);
+// A face holds what a room's does: a palette id or a hex (shapes.js, #912).
+const readHex = readAccentPaint;
 
 const lineAccent = (line, side) =>
   (line && Array.isArray(line.accents) && readHex(line.accents[side])) || null;
@@ -60146,7 +60206,7 @@ function setLineAccent(line, side, paint) {
   if (!line || (side !== LINE_LEFT && side !== LINE_RIGHT)) return false;
   const v = paint == null ? null : readHex(paint);
   if (paint != null && !v) return false;
-  if (lineAccent(line, side) === v) return false;
+  if (sameAccent(lineAccent(line, side), v)) return false;
   if (!Array.isArray(line.accents)) line.accents = [null, null];
   line.accents[side] = v;
   tidyLineAccents(line);
@@ -74460,7 +74520,7 @@ return { CELL_AREA, OVERHANG_NOTE, OVERHANG_WARN, floorBounds, unionBounds, foot
 // ---- js/finish.js ----
 const __m_js_finish_js = (() => {
 const { CELL } = __m_js_grid_js;
-const { shapesOf, shapeArea, shapeAt, segAccent } = __m_js_shapes_js;
+const { shapesOf, shapeArea, shapeAt, segAccent, accentHex } = __m_js_shapes_js;
 const { wallLinesOf, lineEnds, lineAccent, LINE_LEFT, LINE_RIGHT } = __m_js_wallrun_js;
 // finish.js — what a room is made of: floor material and wall paint.
 //
@@ -74755,7 +74815,8 @@ function accentSegs(floor) {
       if (!Array.isArray(ring.accents)) continue;
       const n = ring.pts.length;
       for (let i = 0; i < n; i++) {
-        const paint = segAccent(ring, i);
+        // What is stored is a palette id or a hex (#912); what is drawn is a hex.
+        const paint = accentHex(segAccent(ring, i));
         if (!paint) continue;
         out.push({ shape, a: ring.pts[i], b: ring.pts[(i + 1) % n], paint });
       }
@@ -74768,7 +74829,7 @@ function accentSegs(floor) {
   // is "whichever room stands in front": the wall is nobody's.
   for (const line of wallLinesOf(floor)) {
     const [a, b] = lineEnds(line);
-    const l = lineAccent(line, LINE_LEFT), r = lineAccent(line, LINE_RIGHT);
+    const l = accentHex(lineAccent(line, LINE_LEFT)), r = accentHex(lineAccent(line, LINE_RIGHT));
     if (l) out.push({ shape: null, a, b, paint: l });
     if (r) out.push({ shape: null, a: b, b: a, paint: r });
   }

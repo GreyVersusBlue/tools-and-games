@@ -1825,8 +1825,12 @@ const CHECKS = [
         const ring = floor.shapes.find((sh) => sh.id === ${aim.id}).rings[0];
         const lit = [...document.querySelectorAll('#accent-swatches .swatch[aria-pressed="true"]')].map((b) => b.dataset.paint);
         const kinds = [...document.querySelectorAll('#wall-kinds .kind-item[aria-pressed="true"]')].length;
+        const all = [...document.querySelectorAll('#accent-swatches button.swatch')];
         return {
           accents: ring.accents ? ring.accents.slice() : null, lit, kinds,
+          swatches: all.length,
+          named: new Set(all.map((b) => b.getAttribute('aria-label'))).size,
+          hexLabels: all.filter((b) => /#/.test(b.getAttribute('aria-label') + b.title)).length,
           wall: ring.walls[${aim.seg}],
           armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
           status: document.getElementById('status').textContent,
@@ -1851,7 +1855,7 @@ const CHECKS = [
       const undone = await read();
       await q('window.app.editor.undo(); 1');
       await d.pick('wall');
-      if ((await read()).armed !== '#2f5d8a') await swatch('#2f5d8a');
+      if ((await read()).armed !== 'harbor-blue') await swatch('#2f5d8a');
       const rearmed = await read();
       // The wall taken down behind the editor's back: the same click on the
       // same face has nothing to paint now, and has to say so (#857).
@@ -1883,15 +1887,25 @@ const CHECKS = [
       if (ctx.idle.armed !== 'off' || ctx.idle.lit.length || ctx.idle.kinds !== 1) {
         throw new Error(`the wall tool should open drawing, with no swatch lit: ${JSON.stringify(ctx.idle)}`);
       }
-      if (ctx.armed.armed !== '#2f5d8a' || ctx.armed.lit.join() !== '#2f5d8a' || ctx.armed.kinds !== 0) {
+      // The brush holds the colour's id in shapes.js's palette, which is what a
+      // design stores (#912); the swatch is still found by the colour it shows.
+      if (ctx.armed.armed !== 'harbor-blue' || ctx.armed.lit.join() !== '#2f5d8a' || ctx.armed.kinds !== 0) {
         throw new Error(`a swatch did not arm the brush: ${JSON.stringify(ctx.armed)}`);
       }
       const want = new Array(aim.n).fill(null);
-      want[aim.seg] = '#2f5d8a';
+      want[aim.seg] = 'harbor-blue';
       if (JSON.stringify(ctx.painted.accents) !== JSON.stringify(want)) {
         throw new Error(`the click should paint segment ${aim.seg} and no other: ${JSON.stringify(ctx.painted.accents)}`);
       }
-      if (!/painted #2f5d8a/.test(ctx.painted.status)) throw new Error(`the tool did not say so: ${ctx.painted.status}`);
+      // The way back and the palette's seventeen (#912), each a button with a
+      // name of its own and no hex in what it is called.
+      if (ctx.idle.swatches !== 18 || ctx.idle.named !== 18 || ctx.idle.hexLabels !== 0) {
+        throw new Error(`the panel should offer 18 named swatches: ${JSON.stringify(ctx.idle)}`);
+      }
+      if (!/^Accent, Harbor Blue — click just inside a room/.test(ctx.armed.status)) {
+        throw new Error(`the armed brush did not name its colour: ${ctx.armed.status}`);
+      }
+      if (!/painted Harbor Blue\./.test(ctx.painted.status)) throw new Error(`the tool did not say so: ${ctx.painted.status}`);
       if (ctx.toggled.accents !== null) {
         throw new Error(`the same colour again should take it off and drop the key: ${JSON.stringify(ctx.toggled.accents)}`);
       }
@@ -1901,7 +1915,7 @@ const CHECKS = [
       if (ctx.undone.wall !== ctx.painted.wall || JSON.stringify(ctx.undone.accents) !== JSON.stringify(want)) {
         throw new Error(`one undo should bring the wall and its accent back: ${JSON.stringify(ctx.undone)}`);
       }
-      if (ctx.rearmed.accents !== null || ctx.rearmed.armed !== '#2f5d8a') {
+      if (ctx.rearmed.accents !== null || ctx.rearmed.armed !== 'harbor-blue') {
         throw new Error(`a second undo should take the paint off, and the brush should be up again: ${JSON.stringify(ctx.rearmed)}`);
       }
       if (ctx.refused.accents !== null || !/has no wall on that side/.test(ctx.refused.status)) {
@@ -1977,7 +1991,8 @@ const CHECKS = [
       const armed = await read();
       await d.click(aim.x - 1, aim.z);
       const west = await read();
-      await swatch('#d9a441');
+      // Pumpkin, one of the nine colours #912 added: stored by id, drawn as its hex.
+      await swatch('#d9772b');
       await d.click(aim.x + 1, aim.z);
       const both = await read();
       // The two long faces of the screen, read out of the scene.
@@ -1987,7 +2002,7 @@ const CHECKS = [
         const s = window.app.state, fi = s.currentFloor;
         window.app.renderApi.buildFromState(s);
         const a = { x: ${aim.x}, z: ${aim.z - 4} }, len = 8, dx = 0, dz = 8, nx = -1, nz = 0;
-        const want = { left: new THREE.Color('#2f5d8a'), right: new THREE.Color('#d9a441') };
+        const want = { left: new THREE.Color('#2f5d8a'), right: new THREE.Color('#d9772b') };
         const out = { left: { n: 0, bad: [] }, right: { n: 0, bad: [] } };
         const y0 = floorBaseY(s, fi), y1 = floorBaseY(s, fi + 1);
         window.app.renderApi.scene.traverse((o) => {
@@ -2054,13 +2069,13 @@ const CHECKS = [
       if (ctx.drawn.line.az !== aim.z - 4 || ctx.drawn.line.bz !== aim.z + 4) {
         throw new Error(`the screen should run the way it was drawn: ${say(ctx.drawn.line)}`);
       }
-      if (ctx.armed.armed !== '#2f5d8a') throw new Error(`Enter on a focused swatch did not arm the brush: ${say(ctx.armed)}`);
+      if (ctx.armed.armed !== 'harbor-blue') throw new Error(`Enter on a focused swatch did not arm the brush: ${say(ctx.armed)}`);
       // The screen runs toward +z, so its left face looks west, at -x.
-      if (say(ctx.west.line.accents) !== say(['#2f5d8a', null]) || ctx.west.lines !== ctx.drawn.lines) {
+      if (say(ctx.west.line.accents) !== say(['harbor-blue', null]) || ctx.west.lines !== ctx.drawn.lines) {
         throw new Error(`a click west of the screen should paint its left face and draw nothing: ${say(ctx.west)}`);
       }
-      if (!/free-standing wall painted #2f5d8a/.test(ctx.west.status)) throw new Error(`the tool did not say so: ${ctx.west.status}`);
-      if (say(ctx.both.line.accents) !== say(['#2f5d8a', '#d9a441'])) {
+      if (!/free-standing wall painted Harbor Blue\./.test(ctx.west.status)) throw new Error(`the tool did not say so: ${ctx.west.status}`);
+      if (say(ctx.both.line.accents) !== say(['harbor-blue', 'pumpkin'])) {
         throw new Error(`a click east of it should paint the other face and leave the first: ${say(ctx.both)}`);
       }
       if (ctx.west.room || ctx.both.room) throw new Error('the room took an accent that was the screen\'s');
@@ -2073,10 +2088,10 @@ const CHECKS = [
             `are ${ctx.scene[side].bad[0]}, not that face's accent`);
         }
       }
-      if (say(ctx.refused.line.accents) !== say(['#2f5d8a', '#d9a441']) || !/glass and railings are not painted/.test(ctx.refused.status)) {
+      if (say(ctx.refused.line.accents) !== say(['harbor-blue', 'pumpkin']) || !/glass and railings are not painted/.test(ctx.refused.status)) {
         throw new Error(`glass should be refused, out loud: ${say(ctx.refused)}`);
       }
-      if (say(ctx.toggled.line.accents) !== say([null, '#d9a441'])) {
+      if (say(ctx.toggled.line.accents) !== say([null, 'pumpkin'])) {
         throw new Error(`the same colour again should take that face's accent off: ${say(ctx.toggled)}`);
       }
       if (!ctx.bare.line || ctx.bare.line.accents !== null) {
@@ -2160,7 +2175,7 @@ const CHECKS = [
     expect: ({ ctx, before, after }) => {
       const { aim } = ctx;
       const want = new Array(aim.n).fill(null);
-      want[aim.seg] = '#2f5d8a';
+      want[aim.seg] = 'harbor-blue';
       if (JSON.stringify(ctx.painted.accents) !== JSON.stringify(want) || !ctx.painted.walled) {
         throw new Error(`the brush should paint the face a neighbour's wall stands on: ${JSON.stringify(ctx.painted)}`);
       }
@@ -2324,7 +2339,7 @@ const CHECKS = [
       const judge = (op) => {
         const { aim, painted, done, undone, bare } = ctx[op];
         const want = new Array(aim.n).fill(null);
-        want[aim.seg] = '#2f5d8a';
+        want[aim.seg] = 'harbor-blue';
         if (j(painted.room.accents) !== j(want)) {
           throw new Error(`${op}: the brush should paint segment ${aim.seg}: ${j(painted.room.accents)}`);
         }
