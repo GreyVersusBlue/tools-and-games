@@ -1034,14 +1034,16 @@ in the other repo can still be dropped into `candidates/` and promoted from
 here. What it is waiting on has not changed and is not this repo's: a machine
 with real GPU compositing.
 
-**SkyWings 64 on real hardware.** Two things, both in its `WISHLIST.md`: a
-hand playtest of the glider's landing (item 1: the autopilot lands it 50 to 95
-m off a 42 m pad, where the belt and gyrocopter land within 3 m), and a phone
-and a controller in hand (item 4). Not verified: those numbers came from
-SwiftShader. Item 2, the real-GPU profile, was measured on 2026-10-03 (TG-17
-part b, `HISTORY.md` #789): on an RTX 3070 Ti it costs 4.3 to 6.2 ms a frame,
-bound by draw calls rather than triangles. Its three suggested cuts are open
-work that needs no special hardware, but they are not ranked.
+**SkyWings 64 on real hardware.** One thing, in its `WISHLIST.md`: a phone
+and a controller in hand (item 2). The glider's landing is answered: Devon flew
+it by hand on 2026-10-03, it works, and no tuning was asked for. Item 1, the
+real-GPU profile, was measured on 2026-10-03 (TG-17 part b, `HISTORY.md`
+#789): on an RTX 3070 Ti it costs 4.3 to 6.2 ms a frame, bound by draw calls
+rather than triangles. Its three suggested cuts are open work that needs no
+special hardware, but they are not ranked. The carved heads were rebuilt on
+2026-10-05 (#895) and have been seen only in Blender renders and under
+SwiftShader; a look at them on a real GPU is worth having the next time one
+is on, and is not a row.
 
 **The tavern set on a real GPU at a device pixel ratio of 2.** The tavern
 plate, walker sheet and cast sheet have not been looked at on a real GPU at a
@@ -2409,10 +2411,13 @@ copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): 
 A Pilotwings 64-style flight game Devon had built outside this repo and asked
 to move in on 2026-09-30 (#724): hang glider, gyrocopter and rocket belt, six
 scored missions with medals and unlocks, and Free Flight over one island.
-Folder `Projects/skywings64/`; `WISHLIST.md` there carries the four open
-items. Items 1 and 4 wait on a person (see Parked). Item 2 is three measured
-draw-call cuts, and item 3 is the heads model. Its suite is
-`node test/browser.mjs` from the project folder, in Site CI's matrix.
+Folder `Projects/skywings64/`; `WISHLIST.md` there carries the two open
+items. Item 1 is three measured draw-call cuts, none tried. Item 2, a phone
+and a controller in hand, waits on a person (see Parked). The glider landing
+and the heads model were the other two: Devon flew the landing on 2026-10-03
+and it works, and `heads.glb` was rebuilt on 2026-10-05 (#895). Its suite is
+`node test/browser.mjs` from the project folder, in Site CI's matrix (74
+checks; the first 35 are `test/assets.mjs`, Node only).
 
 ## Throneshard
 
