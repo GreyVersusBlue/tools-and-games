@@ -1920,6 +1920,172 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
   },
+  // An accent on a free-standing wall (#910, wallrun.js's `line.accents`).
+  // test/wall-accent.test.mjs states the rule; this draws a screen in a room
+  // with the wall tool, paints each side of it with the brush, and reads the
+  // two faces back out of the scene. Four undo steps go on (the wall, three
+  // clicks of paint) and four come off, so `undo-redo` finds the stack as
+  // long as `accent-brush` left it.
+  {
+    name: 'accent-line',
+    what: 'a free-standing wall takes an accent on each side from the same swatches, glass is refused, and the scene shows both',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      // An 8ft screen on the grid, running toward +z, with the same room all
+      // round it, no side of that room within 4ft, and no other wall near.
+      const aim = await q(`(async () => {
+        const { shapesOf, shapeAt, shapeBBox, accentFaceAt } = await import('./js/shapes.js');
+        const { wallLineAt } = await import('./js/wallrun.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        for (const shape of shapesOf(floor)) {
+          const bb = shapeBBox(shape);
+          for (let x = Math.ceil(bb.x0 / 4) * 4; x <= bb.x1; x += 4) {
+            for (let z = Math.ceil(bb.z0 / 4) * 4; z <= bb.z1; z += 4) {
+              const pts = [];
+              for (let k = -6; k <= 6; k += 2) for (const o of [-2, 0, 2]) pts.push([x + o, z + k]);
+              if (pts.some(([px, pz]) => shapeAt(floor, px, pz) !== shape)) continue;
+              if (pts.some(([px, pz]) => accentFaceAt(floor, px, pz, 4) || wallLineAt(floor, px, pz, 4))) continue;
+              if (![[x, z - 4], [x, z + 4], [x - 1, z], [x + 1, z]].every(([px, pz]) => window.__clear(px, pz))) continue;
+              return { x, z, id: shape.id, lines: (floor.walls || []).length };
+            }
+          }
+        }
+        return null;
+      })()`);
+      if (!aim) throw new Error('no room on this storey with space for a screen');
+      const read = () => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const line = (floor.walls || []).find((l) => l.ax === ${aim.x} && l.bx === ${aim.x}
+          && Math.min(l.az, l.bz) === ${aim.z - 4} && Math.max(l.az, l.bz) === ${aim.z + 4});
+        const room = floor.shapes.find((sh) => sh.id === ${aim.id});
+        return {
+          lines: (floor.walls || []).length,
+          line: line ? { az: line.az, bz: line.bz, kind: line.kind, accents: line.accents ? line.accents.slice() : null } : null,
+          room: room.rings.some((r) => r.accents),
+          armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
+          status: document.getElementById('status').textContent,
+        };
+      })()`);
+      const swatch = (hex) => q(`document.querySelector('#accent-swatches [data-paint="${hex}"]').click(); 1`);
+      await d.pick('wall');
+      await d.click(aim.x, aim.z - 4);
+      await d.click(aim.x, aim.z + 4);
+      const drawn = await read();
+      // The swatch by the keyboard: focus and Enter, as Tab would reach it.
+      await q(`document.querySelector('#accent-swatches [data-paint="#2f5d8a"]').focus(); 1`);
+      await d.page.keyboard.press('Enter');
+      const armed = await read();
+      await d.click(aim.x - 1, aim.z);
+      const west = await read();
+      await swatch('#d9a441');
+      await d.click(aim.x + 1, aim.z);
+      const both = await read();
+      // The two long faces of the screen, read out of the scene.
+      const scene = await q(`(async () => {
+        const THREE = await import('three');
+        const { floorBaseY } = await import('./js/grid.js');
+        const s = window.app.state, fi = s.currentFloor;
+        window.app.renderApi.buildFromState(s);
+        const a = { x: ${aim.x}, z: ${aim.z - 4} }, len = 8, dx = 0, dz = 8, nx = -1, nz = 0;
+        const want = { left: new THREE.Color('#2f5d8a'), right: new THREE.Color('#d9a441') };
+        const out = { left: { n: 0, bad: [] }, right: { n: 0, bad: [] } };
+        const y0 = floorBaseY(s, fi), y1 = floorBaseY(s, fi + 1);
+        window.app.renderApi.scene.traverse((o) => {
+          const g = o.isMesh && o.geometry;
+          if (!g || !g.attributes.color || !g.attributes.normal || !o.userData.baked) return;
+          const P = g.attributes.position, N = g.attributes.normal, C = g.attributes.color, I = g.index;
+          const tris = (I ? I.count : P.count) / 3;
+          for (let k = 0; k < tris; k++) {
+            const at = [0, 1, 2].map((j) => (I ? I.getX(k * 3 + j) : k * 3 + j)).map((i) => {
+              const rx = P.getX(i) - a.x, rz = P.getZ(i) - a.z;
+              return {
+                i, y: P.getY(i), facing: N.getX(i) * nx + N.getZ(i) * nz,
+                along: (rx * dx + rz * dz) / len, off: rx * nx + rz * nz,
+              };
+            });
+            if (at.some((v) => v.y < y0 - 0.01 || v.y > y1 + 0.01)) continue;
+            if (at.some((v) => Math.abs(v.facing) < 0.99 || Math.abs(v.off) > 0.6)) continue;
+            if (at.some((v) => Math.sign(v.off) !== Math.sign(v.facing))) continue;
+            const alongs = at.map((v) => v.along);
+            if (Math.min(...alongs) < -0.6 || Math.max(...alongs) > len + 0.6) continue;
+            if (Math.max(...alongs) - Math.min(...alongs) < len / 2) continue;
+            const side = at[0].facing > 0 ? 'left' : 'right';
+            for (const v of at) {
+              out[side].n++;
+              const c = [C.getX(v.i), C.getY(v.i), C.getZ(v.i)], w = want[side];
+              if (Math.abs(c[0] - w.r) + Math.abs(c[1] - w.g) + Math.abs(c[2] - w.b) > 0.003) {
+                out[side].bad.push(c.map((x) => x.toFixed(3)).join(' '));
+              }
+            }
+          }
+        });
+        return out;
+      })()`);
+      // The screen made glass behind the editor's back: a third colour on it
+      // has nothing to paint and has to say so.
+      const kind = (k) => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const line = floor.walls.find((l) => l.ax === ${aim.x} && l.bx === ${aim.x}
+          && Math.min(l.az, l.bz) === ${aim.z - 4} && Math.max(l.az, l.bz) === ${aim.z + 4});
+        const was = line.kind; line.kind = ${k}; return was;
+      })()`);
+      const was = await kind(2);
+      await swatch('#3f7d6b');
+      await d.click(aim.x - 1, aim.z);
+      const refused = await read();
+      await kind(was);
+      // The colour a face already is, clicked again, takes it off.
+      await swatch('#2f5d8a');
+      await d.click(aim.x - 1, aim.z);
+      const toggled = await read();
+      await d.page.keyboard.press('Escape');
+      for (let i = 0; i < 3; i++) await q('window.app.editor.undo(); 1');
+      const bare = await read();
+      await q('window.app.editor.undo(); 1');
+      const gone = await read();
+      return { aim, drawn, armed, west, both, scene, refused, toggled, bare, gone };
+    },
+    expect: ({ ctx, before, after }) => {
+      const { aim } = ctx;
+      const say = (o) => JSON.stringify(o);
+      if (ctx.drawn.lines !== aim.lines + 1 || !ctx.drawn.line || ctx.drawn.line.accents !== null) {
+        throw new Error(`two clicks should draw one unpainted screen: ${say(ctx.drawn)}`);
+      }
+      if (ctx.drawn.line.az !== aim.z - 4 || ctx.drawn.line.bz !== aim.z + 4) {
+        throw new Error(`the screen should run the way it was drawn: ${say(ctx.drawn.line)}`);
+      }
+      if (ctx.armed.armed !== '#2f5d8a') throw new Error(`Enter on a focused swatch did not arm the brush: ${say(ctx.armed)}`);
+      // The screen runs toward +z, so its left face looks west, at -x.
+      if (say(ctx.west.line.accents) !== say(['#2f5d8a', null]) || ctx.west.lines !== ctx.drawn.lines) {
+        throw new Error(`a click west of the screen should paint its left face and draw nothing: ${say(ctx.west)}`);
+      }
+      if (!/free-standing wall painted #2f5d8a/.test(ctx.west.status)) throw new Error(`the tool did not say so: ${ctx.west.status}`);
+      if (say(ctx.both.line.accents) !== say(['#2f5d8a', '#d9a441'])) {
+        throw new Error(`a click east of it should paint the other face and leave the first: ${say(ctx.both)}`);
+      }
+      if (ctx.west.room || ctx.both.room) throw new Error('the room took an accent that was the screen\'s');
+      for (const side of ['left', 'right']) {
+        if (ctx.scene[side].n < 6) {
+          throw new Error(`found ${ctx.scene[side].n} corners on the screen's ${side} face, and a face is two triangles`);
+        }
+        if (ctx.scene[side].bad.length) {
+          throw new Error(`${ctx.scene[side].bad.length} of ${ctx.scene[side].n} corners on the screen's ${side} face ` +
+            `are ${ctx.scene[side].bad[0]}, not that face's accent`);
+        }
+      }
+      if (say(ctx.refused.line.accents) !== say(['#2f5d8a', '#d9a441']) || !/glass and railings are not painted/.test(ctx.refused.status)) {
+        throw new Error(`glass should be refused, out loud: ${say(ctx.refused)}`);
+      }
+      if (say(ctx.toggled.line.accents) !== say([null, '#d9a441'])) {
+        throw new Error(`the same colour again should take that face's accent off: ${say(ctx.toggled)}`);
+      }
+      if (!ctx.bare.line || ctx.bare.line.accents !== null) {
+        throw new Error(`three undos should leave the screen unpainted: ${say(ctx.bare)}`);
+      }
+      if (ctx.gone.line || ctx.gone.lines !== aim.lines) throw new Error(`a fourth undo should take the screen away: ${say(ctx.gone)}`);
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   // A corner dragged with the vertex tool (#862). test/accent.test.mjs states
   // which accent the settle takes and which it leaves; this proves the tool
   // settles at all, and only when the corner is let go. Two undo steps go on

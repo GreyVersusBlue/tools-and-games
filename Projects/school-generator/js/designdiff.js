@@ -40,7 +40,7 @@ import {
   shapesOf, shapeArea, ringCentroid, isWindowOpening, accentSpans, spanOverlap,
 } from './shapes.js';
 import { floorLabel } from './grid.js';
-import { wallLinesOf } from './wallrun.js';
+import { wallLinesOf, lineAccent } from './wallrun.js';
 import { regionArea } from './site.js';
 import { same } from './history.js';
 
@@ -221,7 +221,9 @@ function diffWalls(fa, fb, floor, out) {
     const moved = la.ax !== lb.ax || la.az !== lb.az || la.bx !== lb.bx || la.bz !== lb.bz;
     const rekinded = (la.kind || 'wall') !== (lb.kind || 'wall');
     const doors = (la.openings || []).length !== (lb.openings || []).length;
-    if (moved || rekinded || doors) { changed += 1; marks.push(lineMark(lb, floor, 'changed')); }
+    // A face painted, repainted or taken back (wallrun.js's `line.accents`).
+    const faces = [0, 1].some((i) => lineAccent(la, i) !== lineAccent(lb, i));
+    if (moved || rekinded || doors || faces) { changed += 1; marks.push(lineMark(lb, floor, 'changed')); }
   }
   for (const [id, lb] of B) if (!A.has(id)) { added += 1; marks.push(lineMark(lb, floor, 'added')); }
   if (!added && !removed && !changed) return;

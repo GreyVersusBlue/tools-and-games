@@ -48,6 +48,7 @@ import {
 import {
   drawWallRun, wallLineAt, eraseWallLineAt, toggleLineOpening,
   moveLineOpening, lineOpenings, lineEnds, lineLength, wallAlongSeg,
+  lineFaceAt, lineAccent, setLineAccent, lineKind,
   eraseSegWall, pruneAccents,
 } from './wallrun.js';
 import { step, apply, clone } from './history.js';
@@ -789,12 +790,49 @@ export function initEditor({
   // at, the same colour twice takes it off, and the clear swatch takes off
   // whatever is there. `accentFaceAt` picks the face by the side of the wall
   // the cursor is on, so the two faces of a partition are two clicks.
-  const HINT_ACCENT = 'Accent — click just inside a room, by the wall to paint. ' +
+  const HINT_ACCENT = 'Accent — click just inside a room, by the wall to paint; ' +
+    'a free-standing wall takes one on each side. ' +
     'The same colour again takes it off. Esc goes back to drawing walls.';
 
+  // The room's own wall, or a free-standing one if that is nearer the click:
+  // a screen standing in a room is closer to a click beside it than any side
+  // of the room is. On a tie the room's wall has it, which is every click
+  // from before a free-standing wall could carry an accent. A free-standing
+  // target has `line` and `side`; a room's has `ring` and `seg`.
   function accentTarget(p) {
-    const s = getState();
-    return accentFaceAt(activeFloor(s), p.x, p.z, Math.max(segGrab(), ACCENT_REACH));
+    const f = activeFloor(getState());
+    const reach = Math.max(segGrab(), ACCENT_REACH);
+    const face = accentFaceAt(f, p.x, p.z, reach);
+    const on = lineFaceAt(f, p.x, p.z, reach);
+    if (on && (!face || on.dist < face.dist - 1e-6)) return on;
+    return face;
+  }
+
+  // One face of a free-standing wall (#910, wallrun.js's `line.accents`).
+  function accentLineDown(face) {
+    const { line, side } = face;
+    const had = lineAccent(line, side);
+    const paint = accentPaint && had === accentPaint ? null : accentPaint;
+    // Refused for the reason #857 refuses a face with no wall: it would be
+    // stored and paint nothing. Taking one off is always allowed.
+    if (paint && lineKind(line) !== SEG_WALL) {
+      say('Accent — glass and railings are not painted. Pick a solid wall.');
+      return;
+    }
+    if (paint && !face.shape) {
+      say('Accent — that side of the wall faces outside, and the facade covers it. Click from inside a room.');
+      return;
+    }
+    pushUndo();
+    if (!setLineAccent(line, side, paint)) {
+      dropUndo();
+      say('Accent — that wall has no accent to take off.');
+      return;
+    }
+    fire({ structural: true, commit: true });
+    say(paint
+      ? `Accent — this side of the ${lineLength(line).toFixed(1)}ft free-standing wall painted ${paint}.`
+      : 'Accent — this side of the free-standing wall is back to the room\'s own paint.');
   }
 
   function accentPointerDown(p) {
@@ -803,6 +841,7 @@ export function initEditor({
       say('Accent — no wall there. Click inside a room, within a couple of feet of the wall to paint.');
       return;
     }
+    if (face.line) { accentLineDown(face); return; }
     const ring = face.shape.rings[face.ring];
     const had = segAccent(ring, face.seg);
     // The colour it already is, clicked again, is the way back.
@@ -1212,7 +1251,8 @@ export function initEditor({
       const face = accentTarget(p);
       edgeCursor.visible = !!face;
       if (face) {
-        const [a, b] = segEnds(face.shape.rings[face.ring], face.seg);
+        const [a, b] = face.line ? lineEnds(face.line)
+          : segEnds(face.shape.rings[face.ring], face.seg);
         edgeCursor.material.color.set(accentPaint || '#f2f0ec');
         edgeCursor.material.opacity = 0.7;
         edgeCursor.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
