@@ -1041,7 +1041,7 @@ and #222 was closed unmerged an hour of suites later.
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13, pack 2's last named level: an outage on a timed corridor (its return wants `setOffset`'s shift). Market Ring, Boulevard (the two-lane corridor, #926, #928) and Cross Town (three boxes the ambulance crosses, #929) are in. Beside it, an engine unit of its own: a scripted vehicle keeps its turn past the first box, so Cross Town can take turns. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 26 | Three draw-call cuts in the order they were measured: vegetation batched and only the near tier casting shadows, small static meshes merged per material, fewer terrain draws. Draws can be counted in a container; the milliseconds want Devon's Windows GPU again afterwards | `Projects/skywings64` | 1 | Opus 5 |  |  | [SkyWings 64](#skywings-64); `WISHLIST.md` item 1 |
+| 26 | Two draw-call cuts left of three, in the order they were measured: small static meshes merged per material (43 to 258 scene draws a frame), then fewer terrain draws (60 to 181). The first, vegetation batched with only the near tier casting, shipped 2026-10-07 (#930): 116 to 281 fewer draws a frame, counted by `test/draws.mjs`, which pins them. Draws can be counted in a container; the milliseconds want Devon's Windows GPU, and cut 1 has not been timed either | `Projects/skywings64` | 1 | Opus 5 |  |  | [SkyWings 64](#skywings-64); `WISHLIST.md` item 1 |
 | 27 | Rift Wall gets a wall that stops enemies, as its tooltip says (Devon, 2026-10-05: collision, not a reworded tooltip) | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 28 | Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four abilities each, talents, a scepter upgrade, an item build, voice fallback and effects, under original names the session picks (Devon, 2026-10-05: go) | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
 | 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
@@ -1072,8 +1072,10 @@ and a controller in hand (item 2). The glider's landing is answered: Devon flew
 it by hand on 2026-10-03, it works, and no tuning was asked for. Item 1, the
 real-GPU profile, was measured on 2026-10-03 (TG-17 part b, `HISTORY.md`
 #789): on an RTX 3070 Ti it costs 4.3 to 6.2 ms a frame, bound by draw calls
-rather than triangles. Its three suggested cuts are open work that needs no
-special hardware, and are rank 26 since 2026-10-07. The carved heads were rebuilt on
+rather than triangles. Its three suggested cuts need no special hardware and
+are rank 26 since 2026-10-07: the first shipped that day (#930) and has been
+counted, 116 to 281 fewer draws a frame, but not timed, so the next time that
+GPU is on, `node Projects/skywings64/tools/gpu-profile.mjs` is worth a run. The carved heads were rebuilt on
 2026-10-05 (#895) and have been seen only in Blender renders and under
 SwiftShader; a look at them on a real GPU is worth having the next time one
 is on, and is not a row.
@@ -2519,13 +2521,15 @@ A Pilotwings 64-style flight game Devon had built outside this repo and asked
 to move in on 2026-09-30 (#724): hang glider, gyrocopter and rocket belt, six
 scored missions with medals and unlocks, and Free Flight over one island.
 Folder `Projects/skywings64/`; `WISHLIST.md` there carries the two open
-items. Item 1 is three measured draw-call cuts, none tried, **rank 26 since
-2026-10-07**. Item 2, a phone
+items. Item 1 is three measured draw-call cuts, **rank 26 since
+2026-10-07**; the first shipped that day (#930, vegetation in 20 batches, 116 to
+281 fewer draws a frame, counted and not yet timed) and two are left. Item 2, a phone
 and a controller in hand, waits on a person (see Parked). The glider landing
 and the heads model were the other two: Devon flew the landing on 2026-10-03
 and it works, and `heads.glb` was rebuilt on 2026-10-05 (#895). Its suite is
-`node test/browser.mjs` from the project folder, in Site CI's matrix (74
-checks; the first 35 are `test/assets.mjs`, Node only).
+`node test/browser.mjs` from the project folder, in Site CI's matrix (77
+checks; the first 35 are `test/assets.mjs`, Node only, and the last 3 hold a
+frame's draw calls to `test/draws.json`).
 
 ## Throneshard
 
