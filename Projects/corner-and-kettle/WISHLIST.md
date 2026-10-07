@@ -198,7 +198,7 @@ this project does not use it.
 - **Windows is the dev machine** (v7 §7): absolute `import()` paths go through
   `pathToFileURL`, as both suites already do. **The invocations that work,
   from the repo root:**
-  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 540 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 591 passed, 0 failed;
   `node Projects/corner-and-kettle/test/smoke-save.mjs` → 230 passed, 0 failed;
   `node Projects/corner-and-kettle/test/balance.mjs` → BALANCE OK, about 22 s;
   `node Projects/corner-and-kettle/test/drive-save.mjs` → 197 checks, 0 failed;
@@ -741,8 +741,9 @@ outside CI on purpose (#353).
 - **A second shop.** `franchise` costs $5,000, says "Second Location," and
   grants +10% income. There is no second location.
 - **What the five reshaped recipes left** (#878, 2026-10-05; the five are
-  done). Four things; the first two were closed on 2026-10-06 (#913), the
-  other two are not started:
+  done). Five things; the first two were closed on 2026-10-06 (#913), the
+  third and what the second left on 2026-10-07 (#921), the last two are not
+  started:
   - *An Americano completed a Ristretto's ticket.* Done: the shot count is
     exact, so no cheaper recipe's finished cup completes a dearer ticket. The
     cost is the one #878 named: a Latte with a second shot pulled by mistake is
@@ -751,14 +752,30 @@ outside CI on purpose (#353).
   - *Mocha could be on the menu with no mocha syrup on the shelf.* Done: it is
     not ordered until the syrup is bought, the board's row and the purchase
     toast say what to buy, and a regular whose stored favourite the shelf
-    cannot finish re-rolls at the door. Left as it is: "Mocha on the Board"
-    (2 beans) still does not include the $35 syrup, in any run; its
-    description does not say so and only the board's row does.
-  - *A barista's hands do not check the shelf.* `apply()` on a syrup or
-    topping line writes it into the cup whether or not it is bought. Nothing
-    reaches that now (no order names an unbought line), and the balance
-    sweep's shopper was being paid in full for Mochas with no syrup until
-    #913; seen, not changed.
+    cannot finish re-rolls at the door. "Mocha on the Board" (2 beans) still
+    does not include the $35 syrup, in any run, and since #921 its row says
+    so ("Mocha syrup is not included: buy it on this board, each run", no
+    price in it, because the wholesale unlocks move the price) and buying it
+    with the syrup not on the shelf answers in the recipe row's words, at the
+    board's price. No price or unlock moved. Read by no person: the row is
+    about twice as long and nobody has looked at how it wraps at 375px.
+  - *A barista's hands did not check the shelf.* Done (#921): a syrup or
+    topping line carries `stocked()`, its `apply()` writes nothing and
+    returns false when the button is not on the shelf, a barista's step
+    passes over such a line for the next one it can make, and a barista lets
+    go of an unfinished cup with nothing left it can make instead of
+    standing at it. A cup the player finishes by hand is still handed back on
+    the barista's interval, as before: a first draft let go of that at once
+    and `balance.mjs` moved on the shopper's rows (reopening edge 1.063 to
+    1.066), so the rule was narrowed and the sweep is line for line what it
+    was. Seen there in the code, not changed and not measured: that hand-back
+    rolls the barista's fumble on a cup the player made.
+    Still unreachable in play (no order names an unbought line since #913),
+    so nothing a player does changes. One line is unguarded alone:
+    `autoAssistStep`'s `!== false` cannot be broken by itself, because
+    `nextStep()` never hands it a line that refuses; with `stocked()`
+    removed as well the suite hangs in section 15 instead of failing, which
+    is what the comparison is there to stop.
   - *The sweep does not play Cold Brew, Nitro Cold Brew or Affogato.* No
     autopilot buys them (the loop's "spends badly" variant gets Cold Brew from
     the beans). Their prices are unchanged and were not measured; only the

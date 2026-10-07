@@ -73,6 +73,12 @@ function foodOrder(foodId, extra) {
     isRegular: false, regularName: null, ...extra };
 }
 function slotFor(o) { return { customer: o, cup: newCup(), food: !!o.isFood, foodPlated: null }; }
+/** Every syrup and topping bought. A hand-written order may name any of them,
+ *  and a line whose stock is not on the shelf is not made (#921, section 19). */
+function fullShelf(state) {
+  for (const s of CONTENT.SYRUPS) state.unlockedSyrups.add(s.id);
+  for (const t of CONTENT.TOPPINGS) state.unlockedToppings.add(t.id);
+}
 
 // The simplest player there is: take the first customer whenever a station is
 // free, work one ticket line per frame on every station, serve any cup the
@@ -127,7 +133,7 @@ section("3. one requirement list: ticket, barista and scorer agree");
   // works the ticket top to bottom; each step must satisfy at least one more
   // line and never undo one, and the scorer must see the same lines.
   let orders = 0, steps = 0;
-  const { sim } = shop(3);
+  const { sim } = shop(3, fullShelf);
   for (const r of RECIPES) {
     for (const custom of [
       {}, { milk: "oat" }, { milk: "oat", syrup: "vanilla" }, { milk: "skim", syrup: "caramel", toppings: ["whip", "cinnamon"] },
@@ -442,7 +448,7 @@ section("10. the page has no clock and no dice of its own, and owns no rule");
 
 section("11. the Serve gate and its cue (#341, #342)");
 {
-  const { sim } = shop(11);
+  const { sim } = shop(11, fullShelf);
   const TABS = ["base", "milk", "blend", "syrup", "toppings", "food"];
   // Every line names a real station tab, and its own apply() satisfies its own
   // check on an empty cup — so the dot, the barista and the ticket cannot
@@ -1309,7 +1315,7 @@ section("17. a recipe is ordered once its own line is on the shelf, and a shot c
 
   // ---- the shot count is exact ----
   {
-    const { sim, state } = shop(76);
+    const { sim, state } = shop(76, fullShelf);
     const plain = r => sim.cloneOrderContent({ isFood: false, recipeId: r.id, price: r.price, custom: { toppings: [], ice: false } });
     const built = (r, shots) => { const slot = slotFor(order(r.id, plain(r).custom)); while (sim.autoAssistStep(slot)) {} slot.cup.shots = shots; return slot; };
     const withShots = RECIPES.filter(r => r.shots);
@@ -1463,6 +1469,143 @@ section("18. what colour said is said in words, and motion is a stylesheet's bus
   // (section 6), a toast by the page's own timer.
   const everyJs = ["ui.js", "stations.js", "chalkboard.js", "draw.js", "sound.js", "sim.js", "content.js", "save.js"].map(f => uncommented(read("js", f))).join("\n");
   ok(!/matchMedia|prefers-reduced-motion|animationend|transitionend|getAnimations|\.animate\s*\(/.test(everyJs), "no module under js/ reads the media query or waits on an animation, so timing and scoring are the same with it on");
+}
+
+section("19. the hands obey the shelf, and a Legacy row says what it leaves out (#921)");
+{
+  const { META_UPGRADES, META_MENU, SYRUPS, TOPPINGS, STARTING_UNLOCKS } = CONTENT;
+  const lineOf = (sim, o, label) => sim.getOrderRequirements(o).find(q => q.label === label);
+  // A line without the field answers in words, so a build that lacks it fails
+  // the lines below by name instead of dying on a TypeError.
+  const stockedOf = q => typeof q.stocked === "function" ? q.stocked() : "no stocked()";
+
+  // ---- a syrup or topping line with no button is not made ----
+  {
+    const { sim, state } = shop(90);
+    ok(!state.unlockedSyrups.has("hazelnut") && !state.unlockedToppings.has("sprinkles"), "a day-one shelf has no hazelnut and no sprinkles");
+    const o = order("latte", { milk: "oat", syrup: "hazelnut", toppings: ["sprinkles", "whip"] });
+    const slot = slotFor(o);
+    const syrup = lineOf(sim, o, "Hazelnut syrup"), top = lineOf(sim, o, "Sprinkles"), whip = lineOf(sim, o, "Whipped Cream");
+    eq(stockedOf(syrup), false, "the hazelnut line says it is not stocked");
+    eq(syrup.apply(slot), false, "and its apply() refuses");
+    eq(slot.cup.syrup, null, "with no syrup written into the cup");
+    eq(stockedOf(top), false, "the sprinkles line says it is not stocked");
+    eq(top.apply(slot), false, "and its apply() refuses");
+    eq(slot.cup.toppings.length, 0, "with no topping written into the cup");
+    eq(stockedOf(whip), true, "whipped cream is day-one stock and its line says so");
+    ok(whip.apply(slot) !== false && slot.cup.toppings.join() === "whip", "so its apply() writes it, and only it");
+    slot.cup.toppings.length = 0;
+
+    // The barista works what the shelf can make, in ticket order, and stops.
+    const made = [];
+    for (let n = 0; n < 20 && sim.autoAssistStep(slot); n++) made.push(sim.getOrderRequirements(o).filter(q => q.check(slot)).length);
+    eq(made.join(), "1,2,3", "three steps, each satisfying one more line: the shot, the milk, the whipped cream");
+    eq(JSON.stringify([slot.cup.syrup, slot.cup.toppings]), JSON.stringify([null, ["whip"]]), "the cup has no hazelnut and no sprinkles in it");
+    eq(sim.autoAssistStep(slot), false, "a fourth step reports no work");
+    ok(!sim.orderIsComplete(slot), "and the ticket is not complete");
+    eq(`${sim.serveReadiness(slot).done}/${sim.serveReadiness(slot).total}`, "3/5", "it reads 3 of 5 lines, which is what the customer pays on");
+
+    // Bought, the same lines are made.
+    state.money = 500;
+    ok(sim.purchase("syrup", "hazelnut").ok && sim.purchase("topping", "sprinkles").ok, "hazelnut and sprinkles buy");
+    eq(`${stockedOf(syrup)} ${stockedOf(top)}`, "true true", "both lines are stocked the moment they are bought");
+    ok(sim.autoAssistStep(slot) && slot.cup.syrup === "hazelnut", "the next step is the hazelnut");
+    ok(sim.autoAssistStep(slot) && slot.cup.toppings.includes("sprinkles"), "then the sprinkles");
+    ok(sim.orderIsComplete(slot), "and the ticket is complete");
+  }
+
+  // ---- no other line carries a shelf: base, milk, ice, blend and food have none ----
+  {
+    const { sim } = shop(91, fullShelf);
+    const stations = new Set();
+    for (const r of RECIPES) for (const q of sim.getOrderRequirements(order(r.id, { milk: r.needsMilk ? "oat" : undefined, syrup: "peppermint", toppings: ["chocoDrizzle"], ice: true })))
+      if (q.stocked) stations.add(q.station);
+    for (const f of FOODS) if (sim.getOrderRequirements(foodOrder(f.id))[0].stocked) stations.add("food");
+    eq([...stations].sort().join(), "syrup,toppings", "only the Syrup and Toppings tabs' lines ask the shelf");
+  }
+
+  // ---- on the clock: a barista lets go of a cup it cannot advance and takes one it can ----
+  {
+    const { sim, state } = shop(92);
+    state.baristas.push({ id: "b1", name: "Pip", level: 2, targetSlot: null, acc: 0, spec: null, trained: false, working: true });
+    const iv = BARISTA_TIERS[2].intervalMs;
+    // Station 1: a drip with sprinkles, nothing bought. Station 2 is empty.
+    state.queue.push(order("drip", { toppings: ["sprinkles"] }, { id: 60, patience: 400, patienceMax: 400 }));
+    eq(sim.acceptCustomer(60), 0, "a drip with sprinkles goes to station 1");
+    sim.advance(iv + STEP_MS * 2);
+    eq(state.slots[0].cup.base, "drip", "the barista pours the drip");
+    sim.advance(iv * 2 + STEP_MS * 2);
+    eq(state.slots[0].cup.toppings.length, 0, "and puts no sprinkles on it, two intervals later");
+    eq(state.baristas[0].targetSlot, null, "and has let go of the station");
+    // A second order, less urgent than the stuck one, still gets the barista.
+    state.queue.push(order("drip", {}, { id: 61, patience: 900, patienceMax: 900 }));
+    eq(sim.acceptCustomer(61), 1, "a plain drip goes to station 2");
+    sim.advance(iv * 2 + STEP_MS * 2);
+    eq(state.slots[1] && state.slots[1].cup.base, "drip", "and is poured, though the cup at station 1 has waited longer");
+    eq(state.slots[0].cup.toppings.length, 0, "station 1 still has no sprinkles");
+  }
+
+  // ---- and a cup the player finishes by hand is NOT let go of early: the barista
+  //      hands it back on the interval, as before #921 (balance.mjs moved when a
+  //      first draft released it at once) ----
+  {
+    const { sim, state, events } = shop(95);
+    state.baristas.push({ id: "b1", name: "Pip", level: 2, targetSlot: null, acc: 0, spec: null, trained: false, working: true });
+    state.queue.push(order("drip", {}, { id: 62, patience: 400, patienceMax: 400 }));
+    sim.acceptCustomer(62);
+    sim.advance(STEP_MS * 2);
+    eq(state.baristas[0].targetSlot, 0, "the barista claims the station before the interval is up");
+    ok(sim.autoAssistStep(state.slots[0]) && sim.orderIsComplete(state.slots[0]), "the player pours the drip first");
+    sim.advance(STEP_MS * 2);
+    eq(state.baristas[0].targetSlot, 0, "the barista is still at the finished cup");
+    eq(events.filter(e => e.type === "toast" && /Pip/.test(e.text)).length, 0, "and has said nothing yet");
+    sim.advance(BARISTA_TIERS[2].intervalMs * 2);
+    eq(state.baristas[0].targetSlot, null, "on the interval it lets go");
+    eq(events.filter(e => e.type === "toast" && /Pip/.test(e.text)).length, 1, "with the one toast it always gave");
+  }
+
+  // ---- a menu unlock's description says when the shelf is not part of it ----
+  {
+    const extras = recipeId => {
+      const r = RECIPES.find(x => x.id === recipeId), out = [];
+      if (r.requiredSyrup && !STARTING_UNLOCKS.syrups.includes(r.requiredSyrup)) out.push(`${SYRUPS.find(s => s.id === r.requiredSyrup).name} syrup`);
+      if (r.requiredTopping && !STARTING_UNLOCKS.toppings.includes(r.requiredTopping)) out.push(TOPPINGS.find(t => t.id === r.requiredTopping).name);
+      return out;
+    };
+    const menuRows = META_UPGRADES.filter(m => META_MENU[m.id]);
+    eq(menuRows.map(m => `${m.id}:${extras(META_MENU[m.id]).join("+") || "-"}`).join(), "menuMocha:Mocha syrup,menuColdbrew:-", "of the two menu unlocks only Mocha's recipe needs stock that is not day-one");
+    for (const m of menuRows) {
+      const need = extras(META_MENU[m.id]);
+      if (need.length) {
+        ok(/not included/.test(m.desc) && need.every(n => m.desc.includes(n)), `"${m.name}" says ${need.join(" and ")} is not included — "${m.desc}"`);
+        ok(/each run/.test(m.desc), `and that it is bought each run`);
+        ok(!/\$\d/.test(m.desc), "and names no price, which the wholesale unlocks move");
+      } else ok(!/not included/.test(m.desc), `"${m.name}" needs nothing beyond day-one stock and does not claim otherwise`);
+    }
+    eq(META_UPGRADES.filter(m => !META_MENU[m.id] && /not included/.test(m.desc)).length, 0, "no other Legacy row says it");
+    eq(META_UPGRADES.find(m => m.id === "menuMocha").cost, 2, "Mocha on the Board is still 2 beans");
+    eq(SYRUPS.find(s => s.id === "mocha").cost, 35, "and the syrup is still $35");
+
+    // The description is true: bought with beans, no syrup comes with it, in
+    // this run or after a reopening that held the syrup.
+    const { sim, state } = shop(93, s => { s.meta.beans = 9; });
+    const bought = sim.purchase("meta", "menuMocha");
+    ok(bought.ok && sim.recipeAvailable("mocha") && !state.unlockedSyrups.has("mocha"), "the beans put Mocha on the menu and no syrup on the shelf");
+    eq(bought.text, "Mocha on the Board — yours for good. 🫘 Nobody orders it until you buy Mocha syrup ($35).", "the purchase says what it still needs, at the board's price");
+    ok(!sim.recipeOffered("mocha"), "so nobody orders it");
+    eq(sim.purchase("meta", "thirdCounter").text, "A Third Counter — yours for good. 🫘", "a Legacy row that is not a menu unlock adds no sentence, with the syrup still unbought");
+    state.money = 500;
+    ok(sim.purchase("syrup", "mocha").ok && sim.recipeOffered("mocha"), "the syrup buys and Mocha is offered");
+    const cold = sim.purchase("meta", "menuColdbrew");
+    eq(cold.text, "Cold Brew on the Board — yours for good. 🫘", "Cold Brew needs nothing more and its purchase adds no sentence");
+    ok(sim.recipeOffered("coldbrew"), "and it is offered at once");
+    // With the syrup already on the shelf the Mocha purchase adds no sentence either.
+    const b = shop(94, s => { s.meta.beans = 9; s.unlockedSyrups.add("mocha"); });
+    eq(b.sim.purchase("meta", "menuMocha").text, "Mocha on the Board — yours for good. 🫘", "bought with the syrup already on the shelf, the purchase adds no sentence");
+    ok(b.sim.recipeOffered("mocha"), "and Mocha is offered at once");
+    b.state.day = 8; b.sim.prestige();
+    ok(b.sim.recipeAvailable("mocha") && !b.state.unlockedSyrups.has("mocha") && !b.sim.recipeOffered("mocha"), "a reopening keeps Mocha on the menu and takes its syrup off the shelf, so \"each run\" is true");
+  }
 }
 
 /* ---------- report ---------- */

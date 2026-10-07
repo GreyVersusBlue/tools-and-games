@@ -4,7 +4,7 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     540 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-sim.mjs     591 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    230 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands, ~88 s
 node Projects/corner-and-kettle/test/drive-save.mjs    197 checks, real browser

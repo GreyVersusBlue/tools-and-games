@@ -643,6 +643,11 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   // tabs' "still needed" dot, the Serve button's cue, the barista's work queue
   // and the scorer all read this one list (#342). `station` is the tab the
   // line is made at; `apply` is the one step a barista takes to satisfy it.
+  // A syrup or topping line also carries `stocked()`: is its button on the
+  // shelf today. Its apply() writes nothing and returns false when it is not
+  // (#921), the way the Syrup and Toppings tabs draw no button for it. No
+  // order names an unbought line since #913, so nothing reaches the refusal;
+  // it is there so the hands and the tabs obey one shelf.
   function getOrderRequirements(order){
     if(order.isFood){
       const f = FOODS.find(x=>x.id===order.foodId);
@@ -681,13 +686,21 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       const s = SYRUPS.find(x=>x.id===order.custom.syrup);
       reqs.push({label: s.name+' syrup', station:'syrup',
         check: slot => slot.cup.syrup===order.custom.syrup,
-        apply: slot => { slot.cup.syrup = order.custom.syrup; }});
+        stocked: () => state.unlockedSyrups.has(order.custom.syrup),
+        apply: slot => {
+          if(!state.unlockedSyrups.has(order.custom.syrup)) return false;
+          slot.cup.syrup = order.custom.syrup;
+        }});
     }
     order.custom.toppings.forEach(t=>{
       const top = TOPPINGS.find(x=>x.id===t);
       reqs.push({label: top.name, station:'toppings',
         check: slot => slot.cup.toppings.includes(t),
-        apply: slot => { slot.cup.toppings.push(t); }});
+        stocked: () => state.unlockedToppings.has(t),
+        apply: slot => {
+          if(!state.unlockedToppings.has(t)) return false;
+          slot.cup.toppings.push(t);
+        }});
     });
     if(order.custom.ice || r.blended){
       // Ice is added at the milk station, where its button is; blending has its own.
@@ -902,11 +915,20 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   // of the ticket, in the order the ticket shows them, by that line's own
   // apply(). It used to re-derive every check by hand beside
   // getOrderRequirements(), which is where a new recipe field went unchecked.
+  // A line whose stock is not on the shelf is passed over for the next one
+  // (#921): the hands do what they can and report no work when that is nothing.
+  function nextStep(slot){
+    return getOrderRequirements(slot.customer)
+      .find(req=>!req.check(slot) && (!req.stocked || req.stocked()));
+  }
   function autoAssistStep(slot){
-    const next = getOrderRequirements(slot.customer).find(req=>!req.check(slot));
+    const next = nextStep(slot);
     if(!next) return false;
-    next.apply(slot);
-    return true;
+    // true means a step was taken. nextStep() never hands over a line that
+    // refuses, so the comparison is a belt behind it: without it a line that
+    // refused would read as work, and every caller that steps until false
+    // would never stop.
+    return next.apply(slot) !== false;
   }
 
   // A barista who fumbles gets one detail wrong right before serving —
@@ -960,14 +982,18 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   function ensureBaristaClaim(barista){
     if(barista.targetSlot!==null){
       const slot = state.slots[barista.targetSlot];
-      if(!slot || slot.serving){ barista.targetSlot = null; }
+      // An unfinished cup with nothing left the shelf can make is let go of
+      // (#921), or the barista would stand at it for the rest of the shift. A
+      // finished one is not: runBaristaTick() hands that back on the interval,
+      // as it always has.
+      if(!slot || slot.serving || (!orderIsComplete(slot) && !nextStep(slot))){ barista.targetSlot = null; }
     }
     if(barista.targetSlot===null){
       const claimed = claimedSlotIndexes(barista.id);
       let best = -1, bestPatience = Infinity;
       state.slots.forEach((slot, idx)=>{
         if(!slot || slot.serving || claimed.has(idx)) return;
-        if(orderIsComplete(slot)) return; // already prepped, waiting on a human to serve
+        if(!nextStep(slot)) return; // already prepped, or nothing left the shelf can make
         if(!baristaCanHandle(barista, slot.customer)) return;
         const p = slot.customer.patience;
         if(p < bestPatience){ bestPatience = p; best = idx; }
@@ -1486,7 +1512,13 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
         if(m.requires && !metaOwned(m.requires)) return `Buy ${metaById(m.requires).name} first.`;
         return needBeans(m.cost);
       },
-      apply(id){ metaUnlocks().add(id); return `${metaById(id).name} — yours for good. 🫘`; },
+      apply(id){
+        metaUnlocks().add(id);
+        // A menu unlock whose recipe needs stock the shelf lacks says so, in
+        // the recipe row's own words and at the board's price (#921).
+        const lacks = (META_MENU[id] ? recipeStockMissing(META_MENU[id]) : []).map(m => `${m.name} ($${m.cost})`).join(' and ');
+        return `${metaById(id).name} — yours for good. 🫘${lacks ? ` Nobody orders it until you buy ${lacks}.` : ''}`;
+      },
     },
     // Asking first is the page's job; prestige() toasts for itself. `id` is the
     // layout to reopen in; omitted means day one's, so a caller that has never
