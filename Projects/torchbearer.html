@@ -2074,8 +2074,7 @@ const Combat = Object.assign(newCombat(), {
       });
     } else if(a.kind==="cell"){ // AoE center pick
       for(let y=0;y<this.mapH;y++)for(let x=0;x<this.mapW;x++){
-        if(this.walls.has(this.key(x,y))) continue;
-        if(Math.max(Math.abs(x-cb.x),Math.abs(y-cb.y))<=a.range&&this.losClear(cb,{x,y})){
+        if(this.aimable(cb,a,x,y)){
           const el=g.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`); if(el) el.classList.add("hl-aoe");
         }
       }

@@ -14,7 +14,7 @@
 import { flagsSetBy, isScoped, SCOPE } from "./campaign.js";
 import { parseCoins, priceOf, treasureBudget, treasureIn, coinText } from "./shop.js";
 import { OPENER_FLAGS, EXPLORATION_IDS } from "./downtime.js";
-import { SCHEMA, SIZES, KNOWN_REACTIONS, SCENE_KINDS, extraRequired } from "./schema.js";
+import { SCHEMA, SIZES, KNOWN_REACTIONS, SCENE_KINDS, COND_BUCKETS, DICE_FORMULA, COLLECTIONS, extraRequired } from "./schema.js";
 
 /* ---------- Content Registry ---------- */
 export const Registry = {
@@ -564,6 +564,28 @@ export const Validator = {
     (pack.backgrounds || []).forEach(b => {
       if (b.feat && !known("feats", b.feat)) errs.push(`Background "${b.id}": feat "${b.feat}" does not exist.`);
     });
+
+    // added #923: persistent damage in a condition bucket. A bucket entry is
+    // {"c","v","dur"} everywhere else, and persistent damage is a formula and
+    // a type, so {"c":"persistent","v":1} validated, burned for nothing and
+    // was printed as "The undefined afflicting Sera ends." The buckets sit at
+    // five depths in four collections, so this walks the pack for their names
+    // rather than listing where they are today.
+    const walkBuckets = (node, where) => {
+      if (Array.isArray(node)) { node.forEach((n, i) => walkBuckets(n, `${where}[${i}]`)); return; }
+      if (!node || typeof node !== "object") return;
+      Object.entries(node).forEach(([k, v]) => {
+        const at = where ? `${where}.${k}` : k;
+        if (COND_BUCKETS.includes(k) && Array.isArray(v)) v.forEach((c, i) => {
+          if (!c || c.c !== "persistent") return;
+          const formulaOk = typeof c.formula === "string" && DICE_FORMULA.test(c.formula);
+          const typeOk = typeof c.type === "string" && c.type.trim() !== "";
+          if (!formulaOk || !typeOk) errs.push(`${at}[${i}]: a "persistent" condition needs a dice "formula" and a damage "type", as {"c":"persistent","formula":"1d6","type":"fire"}. "v" is not the damage: without the two it burns for nothing and the Chronicle cannot name it.`);
+        });
+        walkBuckets(v, at);
+      });
+    };
+    COLLECTIONS.forEach(coll => (pack[coll] || []).forEach((o, i) => walkBuckets(o, `${coll} "${(o && o.id) || i}"`)));
 
     return errs;
   }

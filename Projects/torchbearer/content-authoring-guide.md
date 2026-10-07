@@ -170,13 +170,13 @@ The engine treats slots as a per-rank pool (prepared casting is simplified to "y
 Resolution model — exactly **one** of these per spell:
 
 * `"attackRoll": true` — spell attack vs AC; crits double and apply `critPersistent` if present. Optional `"maxTargets": 2` (blazing-bolt style: nearest extra targets are included).
-* `"save": "reflex" | "fortitude" | "will"` — vs caster DC. Add `"basic": true` for basic-save damage. Condition buckets: `onCritFail` / `onFail` / `onSuccess`, each an array of `{"c":"frightened","v":2,"dur":3}` (`dur` in rounds; omit for standard decrement, `99` = whole fight). `persistent: {"formula":"1","type":"bleed"}` applies on failure.
+* `"save": "reflex" | "fortitude" | "will"` — vs caster DC. Add `"basic": true` for basic-save damage. Condition buckets: `onCritFail` / `onFail` / `onSuccess`, each an array of `{"c":"frightened","v":2,"dur":3}` (`dur` in rounds; omit for standard decrement, `99` = whole fight). `persistent: {"formula":"1","type":"bleed"}` applies on failure. Persistent damage can also ride in a bucket, as `{"c":"persistent","formula":"1d6","type":"fire"}` (§12).
 * `"autoHit": true` — force-barrage style, damage just happens.
 * Healing: put `"heal": "1d8+8"` inside the rank entry. `"healOrHarmUndead": true` makes it damage undead (Fort save) — the heal spell pattern. Its mirror is `"livingOnly": true` plus `"healsUndead": true`, which is how core's void spell hurts the living and heals the undead. `"tempHP": n` grants temporary HP.
 * Buffs: top-level `"selfBuff"`, `"allyBuff"`, or `"partyBuff"` — see core `shield`, `guidance`, `runic-weapon`, `bless`, `courageous-anthem`, `blur` (a `"flag":"blurred"` gives a 20% miss chance), `false-life`, `sure-strike` (`"fortune":"next-attack"`), `resist-energy` (`"resistChoice":5`), and `untamed-claw` (`"grantStrike"`).
 * `"utility": true` or `"special": "stabilize"` for the two odd ducks.
 
-Areas: `"area": {"shape":"burst","radius":20}` (pick a point) · `{"shape":"cone","length":15}` / `{"shape":"line","length":30}` (pick a direction) · `{"shape":"emanation","radius":10}` (centered on caster, hits enemies only).
+Areas: `"area": {"shape":"burst","radius":20}` (pick a point) · `{"shape":"cone","length":15}` / `{"shape":"line","length":30}` (pick a direction) · `{"shape":"emanation","radius":10}` (centered on caster, hits enemies only). **Every area stops at a wall**: a cone and an emanation reach the creatures the caster has a clear line to, a burst the creatures its centre has one to, and a line ends at the first wall square. A burst's point, and a cone's or line's direction, can be put only on a square the caster has a clear line to. A monster power's `radius` is held to the same rule, so a hero behind a `walls` square is not counted toward its two and takes nothing from it.
 
 `rankEffects` keys are castable ranks; the engine uses the **highest key ≤ the rank being cast**, so a rank-1 spell with entries at `"1"` and `"2"` heightens automatically when cast from a rank-2 slot. Cantrips (`"rank": 0`) should define `"1"` and `"2"`. Damage/heal numbers should follow Paizo's curves (cantrips ≈ 2 dice at rank 1, +1 die per rank; 2-action heal `1d8+8`/rank).
 
@@ -263,7 +263,8 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
                  "range": 1, "traits": [], "onCrit": [ { "c": "prone", "v": 1 } ] } ],
   "powers": [ { "name": "Rallying Roar", "cost": 2, "cooldown": 3, "type": "aoe",
                 "save": "will", "dc": 21, "radius": 3, "damage": "2d6", "damageType": "sonic",
-                "onFail": [ { "c": "frightened", "v": 1 } ],
+                "onFail": [ { "c": "frightened", "v": 1 },
+                            { "c": "persistent", "formula": "1d6", "type": "fire" } ],
                 "flavor": "One line the Chronicle prints when it fires." } ] }
 ```
 
@@ -427,6 +428,8 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 `frightened`, `sickened`, `enfeebled`, `clumsy`, `stunned`, `prone`, `fatigued`, `fleeing`, `off-guard` (situational, incl. flanking on exact-opposite squares), `concealed`, `invisible`, `grabbed`, `restrained`, `disarmed`, `dying`/`wounded` (heroes), persistent damage, temp HP, plus custom-but-mechanical `bane`, `hexed`, `night-shrouded`, `slowed-feet`, `gripped`.
 
 `grabbed` and `disarmed` are Phase 5's. `grabbed` is immobilized plus off-guard, comes with a `grabDC` on the same combatant, and is the only condition removed by an action of its own (Escape). `restrained` comes only from a critical Grapple, rides with `grabbed`, and leaves the creature nothing but the actions in `RESTRAINED_OK` (§8); the same Escape ends both. `disarmed` is −2 per value with the weapon it names — the target's first attack — and nothing else; a `disarmed` written by hand with no `weapon` field is −2 on everything, which is what it meant before. `prone` was implemented before Phase 5 and could not be applied by anything, and nothing removed it; Trip applies it and Stand takes it off. Anything else in a condition bucket will display as a chip and decrement, but won't do math — prefer the list above.
+
+**Persistent damage in a bucket is a formula and a type, not a value.** Write `{"c":"persistent","formula":"1d6","type":"fire"}` in any of the five buckets (`onCrit` on an attack, `onCritFail` / `onFail` / `onSuccess` on a spell rank or a monster power, `applyToBoss` on a boss flag). `v` and `dur` are not read on it: it burns for the formula at the top of each of the creature's turns and ends on a flat 15. **The validator rejects one with no `formula` or no `type`**, and one whose formula is not dice the engine reads (`1`, `1d4`, `2d6+3`), because `{"c":"persistent","v":1}` used to load, burn for nothing and print "The undefined afflicting Sera ends." A creature takes one persistent condition per damage type from a bucket: a second fire on a hero already burning adds nothing, and a creature immune to the type is not lit. A spell's own `persistent` and `critPersistent` (§7) are a separate path and stack as before.
 
 `concealed` and `invisible` are the two Phase 4 added, and they are the base of the detection state described in §8: `{"c":"concealed","v":1,"dur":3}` on a spell's `onFail` bucket makes the target cost every attacker a DC 5 flat check for three rounds, and `invisible` makes it untargetable until somebody Seeks it into being merely hidden. Both are ordinary conditions — they chip, they decrement, they come off a `dur` like anything else.
 

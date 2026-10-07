@@ -52,7 +52,7 @@ const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LE
         treasureBudget, treasureIn, buy, sell, addCoins } = await mod("js/shop.js");
 const { SCENE_KINDS, sceneEdges, sceneGraph } = await mod("js/registry.js");
 const { sliceLiteral, packsIn } = await mod("js/corepack.js");
-const { SCHEMA, COLLECTIONS, extraRequired, fieldsOf } = await mod("js/schema.js");
+const { SCHEMA, COLLECTIONS, COND_BUCKETS, DICE_FORMULA, extraRequired, fieldsOf } = await mod("js/schema.js");
 const { OPENERS, OPENER_FLAGS, EXPLORATION, EXPLORATION_IDS, explorationById, activitiesFor, openerFor,
         DOWNTIME, downtimeById, restHP, TREAT_DC, TREAT_BONUS, treatWounds, treatDC,
         INCOME_BY_LEVEL, earnIncome, CRAFT_DAYS, craftCost, craftDaysToFree } = await mod("js/downtime.js");
@@ -3059,10 +3059,10 @@ const sanctum = (ch, over = {}) => {
   eq(rolls(s3.eng).map(r => r.text), ["Hound: Will save vs Bane"], "…and the hound two squares off saves; the skeleton three off does not");
   const s4 = sanctum(WIZARD());
   const fireball = { id: "fireball", name: "Fireball", actions: 2, range: 500, area: { shape: "burst", radius: 20 }, save: "reflex", basic: true, rankEffects: { 3: { damage: [{ formula: "3", type: "fire" }] } } };
-  s4.eng.walls.add("3,2"); s4.eng.armSpell(s4.caster, { sp: fireball, rank: 3, pool: "r2" });
+  s4.eng.armSpell(s4.caster, { sp: fireball, rank: 3, pool: "r2" });
   pin([20, 5], [20, 5]); s4.eng.cellClick(4, 2);
   eq([s4.foe.hp, s4.skel.hp, s4.ally.hp, s4.caster.hp], [21, 6, 10, 32], "a burst hits every foe in its radius and no ally; the skeleton resists fire 1");
-  ok(s4.eng.walls.has("3,2") && s4.foe.hp === 21, "…through a wall: bursts never call losClear (standing backlog, pinned as-is)");
+  // What a wall does to each of these is its own group at the end (#924).
   const s5 = sanctum(WIZARD());
   s5.eng.armSpell(s5.caster, { sp: { ...fireball, friendlyFire: true }, rank: 3, pool: "r2" });
   pin([20, 5], [20, 5], [20, 5], [20, 5]); s5.eng.cellClick(3, 2);
@@ -4928,6 +4928,306 @@ group("guide §15 exists and says the standing rule");
   ok(guide.includes("packs/schema.json"), "…and names the schema file");
   ok(guide.includes("authoring.html"), "…and the workbench");
   ok(/the schema, the validator and the guide in one commit,\s+> or in none/.test(guide), "…and states the one-commit rule for a new field");
+}
+
+group("persistent damage out of a condition bucket (#923)");
+{
+  /* The Forge-Tyrant's Bellows Blast shipped as {"c":"persistent","v":1}. The
+     buckets handed c, v and dur to addCond, which stored a condition with no
+     formula and no type: it burned for 0 and ended as "The undefined
+     afflicting Testcase ends." Each of the five places a bucket is read is
+     driven below, because each is its own line in combat.js. */
+  const BURN = { c: "persistent", formula: "1d4", type: "fire" };
+  const LIT = [{ c: "persistent", formula: "1d4", dtype: "fire", dur: 99 }];
+  const said = (eng, re) => eng.events.some(ev => re.test(ev.text || ""));
+  const nothingUndefined = eng => !eng.events.some(ev => /undefined|NaN/.test(ev.text || ""));
+  const blast = (onFail, over = {}) => ({ name: "The Forge-Tyrant", x: 2, y: 1, hp: 62, hpMax: 62, ac: 21,
+    powers: [{ name: "Bellows Blast", cost: 2, cooldown: 3, type: "aoe", save: "reflex", dc: 21, radius: 3, damage: "2d6", damageType: "fire", onFail, cd: 0, ...over }],
+    attacks: [{ name: "Anvil Maul", bonus: 14, damage: "2d8+6", damageType: "bludgeoning", range: 1 }] });
+
+  // 1. A monster's power, the site the bug shipped at.
+  const { eng, hero, ally, foe } = kennel(blast([BURN]));
+  pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+  eq(eng.aiStep(foe).action, "power", "the Tyrant breathes on two heroes");
+  eq(hero.conditions, LIT, "a failed save leaves the hero burning: a formula and a type, no value");
+  eq(ally.conditions, [], "…and a hero who saved is not");
+  ok(said(eng, /Testcase takes <b>persistent fire<\/b> \(1d4 a turn\)\./), "…and the Chronicle says what was lit and for how much");
+  // The tick is the turn loop's own, at the top of the hero's turn.
+  const hp0 = hero.hp;
+  pin([4, 3], [20, 14]); eng.beginTurn(1);
+  eq(hp0 - hero.hp, 3, "at the top of the hero's turn it burns for the 1d4 rolled, here 3");
+  eq(hero.conditions, LIT, "…and a 14 on the flat check leaves it lit");
+  pin([4, 2], [20, 15]); eng.beginTurn(1);
+  eq([hp0 - hero.hp, hero.conditions], [5, []], "…it burns again for 2, and a 15 puts it out");
+  ok(said(eng, /The fire afflicting Testcase ends\./), "…with a line that names the fire");
+
+  // One fire at a time, by type.
+  const twice = kennel(blast([BURN, { c: "persistent", formula: "2d6", type: "fire" }, { c: "persistent", formula: "1", type: "bleed" }]));
+  pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+  twice.eng.aiStep(twice.foe);
+  eq(twice.hero.conditions.map(c => [c.formula, c.dtype]), [["1d4", "fire"], ["1", "bleed"]],
+    "a second fire on a hero already burning adds nothing, and a bleed beside it does");
+  // Immune: nothing is lit and the Chronicle says why. The blow is slashing
+  // and the persistent damage is bleed, so the line is not applyDamage's own.
+  {
+    const h = mk({ id: "h", side: "pc", name: "Cass", x: 1, y: 1, ac: 5, immunities: ["bleed"], char: { specials: [], resists: [] } });
+    const f = mk({ id: "f", name: "Ember", x: 2, y: 1 });
+    const e = arena([f, h]);
+    pin([20, 15], [6, 2]);
+    e.strikeMonster(f, h, { name: "Claw", bonus: 9, die: "1d6", traits: [], damageType: "slashing", onCrit: [{ c: "persistent", formula: "1d4", type: "bleed" }] });
+    eq([h.hp, h.conditions], [36, []], "a hero immune to bleed takes the claw and does not bleed");
+    ok(said(e, /Cass is immune to bleed\./), "…and is told so");
+  }
+  // The entry as it shipped, on a combatant no validator saw: nothing, quietly.
+  for (const bad of [{ c: "persistent", v: 1 }, { c: "persistent", formula: "1d4" }, { c: "persistent", type: "fire" }]) {
+    const old = kennel(blast([bad]));
+    pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+    old.eng.aiStep(old.foe);
+    eq(old.hero.conditions, [], `${JSON.stringify(bad)} lights nothing`);
+    // A 15 on the flat check is the roll that used to print the line.
+    pin([20, 15], [20, 15]); old.eng.beginTurn(1);
+    ok(nothingUndefined(old.eng), `…and ${JSON.stringify(bad)} leaves nothing behind to print \`undefined\``);
+  }
+  // Everything that is not persistent goes through as it always did.
+  const fear = kennel(blast([{ c: "frightened", v: 2, dur: 3 }, BURN]));
+  pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+  fear.eng.aiStep(fear.foe);
+  eq(fear.hero.conditions, [{ c: "frightened", v: 2, dur: 3 }, ...LIT], "frightened 2 for 3 rounds rides in the same bucket, value and duration kept");
+  // A critical failure with no bucket of its own takes the failure's.
+  const crit = kennel(blast([BURN]));
+  pin([20, 20], [6, 3], [6, 4], [20, 1], [6, 3], [6, 4]);
+  crit.eng.aiStep(crit.foe);
+  eq([crit.hero.conditions, crit.ally.conditions], [[], LIT], "a critical failure falls back to onFail and burns too");
+
+  // 2. A monster's attack, on a critical hit.
+  {
+    const h = mk({ id: "h", side: "pc", name: "Cass", x: 1, y: 1, ac: 5, char: { specials: [], resists: [] } });
+    const f = mk({ id: "f", name: "Ember", x: 2, y: 1 });
+    const e = arena([f, h]);
+    const maul = { name: "Brand", bonus: 9, die: "1d6", traits: [], damageType: "fire", onCrit: [BURN] };
+    pin([20, 15], [6, 2]); e.strikeMonster(f, h, maul);
+    eq(h.conditions, LIT, "a monster's critical hit with onCrit persistent fire lights the hero");
+    const h2 = mk({ id: "h", side: "pc", name: "Cass", x: 1, y: 1, ac: 22, char: { specials: [], resists: [] } });
+    const e2 = arena([f, h2]); f.mapCount = 0;
+    pin([20, 15], [6, 2]); e2.strikeMonster(f, h2, maul);
+    eq([h2.hp, h2.conditions], [38, []], "…and a plain hit does not");
+  }
+  // 3. A hero's weapon, on a critical hit.
+  {
+    const att = mk({ id: "hero", side: "pc", name: "Alis", x: 0, y: 0, char: { specials: [], resists: [] } });
+    const def = mk({ id: "t", name: "Ghoul", x: 3, y: 3, ac: 5, hp: 60, hpMax: 60 });
+    const e = arena([att, def]);
+    pin([20, 15], [8, 6]);
+    e.strike(att, def, weapon({ onCrit: [BURN] }));
+    eq(def.conditions, LIT, "a weapon's onCrit persistent fire lights the foe");
+    ok(said(e, /Ghoul takes <b>persistent fire<\/b>/), "…and says so");
+  }
+  // 4. A spell's save bucket.
+  {
+    const caster = Object.assign(heroCombatant(forge("wizard", { spells: { cantrips: [], r1: ["fear"], r2: [] } })), { x: 0, y: 0 });
+    const target = hound({ x: 1, y: 0, saves: { fort: 0, ref: 0, will: 0 } });
+    const e = stage([caster, target]);
+    const scorch = { id: "scorch", name: "Scorch", save: "will", traits: [], rankEffects: { 1: { onFail: [BURN], onSuccess: [{ c: "persistent", formula: "1", type: "fire" }] } } };
+    pin([20, 5]);
+    e.castAt(caster, { spell: scorch, castRank: 1, pool: "r1", cost: 2, kind: "target" }, target);
+    eq(target.conditions, LIT, "a spell's onFail persistent fire lights its target");
+  }
+  // 5. A boss flag, applied silently as Combat.start builds the board.
+  {
+    const enc = { name: "Lit", w: 8, h: 8, terrain: {}, pcStarts: [[0, 0]], foes: [{ monster: "bell-warden", x: 4, y: 4 }],
+      bossFlags: { doused: { applyToBoss: [BURN], log: "The oil catches." } } };
+    const e = fight(); pin([20, 10], [20, 10]);
+    begin(e, "lit", [heroCombatant(fighter())], { doused: true }, { encounters: { lit: enc } });
+    const boss = e.cbs.find(c => c.boss);
+    eq(boss.conditions.filter(c => c.c === "persistent"), LIT, "a boss flag's applyToBoss persistent fire opens the fight with the boss burning");
+    ok(!said(e, /takes <b>persistent/), "…silently, as a boss flag always was: the flag's own log line is the telling");
+    const e0 = fight(); pin([20, 10], [20, 10]);
+    begin(e0, "lit", [heroCombatant(fighter())], {}, { encounters: { lit: enc } });
+    eq(e0.cbs.find(c => c.boss).conditions, [], "…and without the flag it does not");
+  }
+
+  // The validator: the entry as it shipped is an error, wherever the bucket sits.
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const mon = over => ({ id: "m", name: "M", ac: 10, hp: 10, saves: {}, attacks: [], ...over });
+  const errs = pack => Validator.validate({ ...base, ...pack }, emptyRegistry());
+  const NEEDS = at => `${at}: a "persistent" condition needs a dice "formula" and a damage "type", as {"c":"persistent","formula":"1d6","type":"fire"}. "v" is not the damage: without the two it burns for nothing and the Chronicle cannot name it.`;
+  const power = onFail => ({ monsters: [mon({ powers: [{ name: "Blast", onFail }] })] });
+  eq(errs(power([{ c: "persistent", v: 1 }])), [NEEDS('monsters "m".powers[0].onFail[0]')],
+    "Bellows Blast as it shipped is rejected, with the path to the entry and the shape to write");
+  eq(errs(power([BURN])), [], "…and with a formula and a type it passes");
+  eq(errs(power([{ c: "frightened", v: 1 }, { c: "persistent", formula: "1d4" }])), [NEEDS('monsters "m".powers[0].onFail[1]')], "a formula with no type is rejected, at its own index");
+  eq(errs(power([{ c: "persistent", type: "fire" }])).length, 1, "…and a type with no formula");
+  eq(errs(power([{ c: "persistent", formula: "", type: "fire" }])).length, 1, "…and an empty formula");
+  eq(errs(power([{ c: "persistent", formula: "1d4", type: " " }])).length, 1, "…and a blank type");
+  eq(errs(power([{ c: "persistent", formula: 2, type: "fire" }])).length, 1, "…and a bare number, which the schema calls a string");
+  eq(["1", "1d4", "d6", "2d6+3", "1d4 + 1d6 + 2"].map(f => errs(power([{ c: "persistent", formula: f, type: "fire" }])).length), [0, 0, 0, 0, 0],
+    "every formula Dice.roll reads passes");
+  eq(["lots", "1d", "2d6-1", "1d4+", "fire"].map(f => errs(power([{ c: "persistent", formula: f, type: "fire" }])).length), [1, 1, 1, 1, 1],
+    "…and one it would read as 0, or as less than it says, does not");
+  // Every bucket name, at the depth it really sits.
+  eq(errs({ monsters: [mon({ attacks: [{ name: "A", bonus: 1, damage: "1d4", onCrit: [{ c: "persistent", v: 1 }] }] })] }),
+    [NEEDS('monsters "m".attacks[0].onCrit[0]')], "a monster attack's onCrit is read");
+  eq(errs({ monsters: [mon({ powers: [{ name: "B", onCritFail: [{ c: "persistent", v: 1 }], onSuccess: [{ c: "persistent", v: 1 }] }] })] }),
+    [NEEDS('monsters "m".powers[0].onCritFail[0]'), NEEDS('monsters "m".powers[0].onSuccess[0]')], "…and a power's other two buckets");
+  ok(errs({ companions: [{ id: "c", name: "C", attacks: [{ name: "A", bonus: 1, damage: "1d4", onCrit: [{ c: "persistent", v: 1 }] }] }] })
+    .includes(NEEDS('companions "c".attacks[0].onCrit[0]')), "…and a companion's attack");
+  ok(errs({ spells: [{ id: "s", name: "S", rankEffects: { 2: { onFail: [{ c: "persistent", v: 1 }] } } }] })
+    .includes(NEEDS('spells "s".rankEffects.2.onFail[0]')), "…and a spell's rank");
+  ok(errs({ adventures: [{ id: "a", name: "A", start: "one", scenes: { one: { title: "T", text: ["t"], choices: [{ label: "x", goto: "END" }] } },
+      encounters: { e: { bossFlags: { f: { applyToBoss: [{ c: "persistent", v: 1 }] } } } } }] })
+    .includes(NEEDS('adventures "a".encounters.e.bossFlags.f.applyToBoss[0]')), "…and a boss flag");
+  eq(COND_BUCKETS, ["onCrit", "onCritFail", "onFail", "onSuccess", "applyToBoss"], "five bucket names, and combat.js reads each of them once");
+  {
+    const code = fs.readFileSync(path.join(PROJECT, "js", "combat.js"), "utf8");
+    eq((code.match(/\.forEach\(c=>this\.applyCond\(/g) || []).length, 5, "…through applyCond, all five");
+    eq((code.match(/\.forEach\(c=>this\.addCond\(/g) || []).length, 1, "…and the one bucket still on addCond is the engine's own opener table");
+    ok(OPENERS && Object.values(OPENERS).every(o => (o.conditions || []).every(c => c.c !== "persistent")), "…which lights nobody");
+  }
+
+  // What ships.
+  const embers = readPack("embers-of-the-hold.json");
+  const tyrant = embers.monsters.find(m => m.id === "forge-tyrant");
+  eq(tyrant.powers[0].onFail, [{ c: "persistent", formula: "1", type: "fire" }], "Bellows Blast is persistent fire 1: the 1 its author wrote, where the engine reads it");
+  eq(Validator.validate(embers, Registry), [], "…and Embers of the Hold still validates");
+  const everyBucket = [];
+  const dig = node => { if (!node || typeof node !== "object") return;
+    for (const [k, v] of Object.entries(node)) { if (COND_BUCKETS.includes(k) && Array.isArray(v)) everyBucket.push(...v); dig(v); } };
+  dig(core); dig(advPack); fs.readdirSync(path.join(PROJECT, "packs")).filter(f => f.endsWith(".json") && !NOT_A_PACK.includes(f)).forEach(f => dig(readPack(f)));
+  ok(everyBucket.length >= 20, `the shipped packs carry condition bucket entries to read (${everyBucket.length})`);
+  eq(everyBucket.filter(c => c.c === "persistent").length, 1, "…one of them persistent, the Tyrant's");
+  ok(everyBucket.every(c => c.c !== "persistent" || (DICE_FORMULA.test(c.formula) && c.type)), "…and it has both halves");
+  // The contract in its three places (§15: schema, validator and guide in one commit).
+  const guide = fs.readFileSync(path.join(PROJECT, "content-authoring-guide.md"), "utf8");
+  eq(["formula", "type"].map(k => SCHEMA.$defs.condition.properties[k]?.type), ["string", "string"], "the schema's condition carries formula and type");
+  ok(guide.includes('{"c":"persistent","formula":"1d6","type":"fire"}'), "…and the guide shows the shape the validator's message names");
+}
+
+group("an area stops at a wall (#924)");
+{
+  const FIREBALL = { id: "fireball", name: "Fireball", actions: 2, range: 500, area: { shape: "burst", radius: 20 }, save: "reflex", basic: true, rankEffects: { 3: { damage: [{ formula: "3", type: "fire" }] } } };
+  const saves = eng => rolls(eng).map(r => r.text);
+  const REFUSED = "No clear line to that square.";
+
+  // The pillar: the caster at (2,2), stone at (3,2), the hound at (4,2) and the
+  // skeleton at (5,2) behind it, and a second hound at (3,1) in the open.
+  const pillar = (ch, walls = ["3,2"]) => {
+    const s = sanctum(ch, { walls });
+    s.near = hound({ id: "near", name: "Near Hound", x: 3, y: 1 }); s.eng.cbs.push(s.near);
+    return s;
+  };
+  {
+    // A cone. Aimed north-east it takes in the whole row east of the caster.
+    const open = pillar(WIZARD(), []);
+    open.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); open.eng.cellClick(3, 1);
+    eq(saves(open.eng).length, 3, "on open floor Breathe Fire aimed north-east reaches three foes");
+    const s = pillar(WIZARD());
+    s.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); s.eng.cellClick(3, 1);
+    eq(saves(s.eng), ["Near Hound: Reflex save vs Breathe Fire"], "with the pillar in the row only the hound in the open saves against the cone");
+    eq([s.near.hp, s.foe.hp, s.skel.hp], [20, 24, 8], "…and the two behind the stone are not burned");
+  }
+  {
+    // An emanation. Bane reaches two squares.
+    const open = pillar(CLERIC(), []);
+    open.arm("bane", 1, "r1");
+    eq(saves(open.eng), ["Hound: Will save vs Bane", "Near Hound: Will save vs Bane"], "on open floor Bane reaches both hounds");
+    const s = pillar(CLERIC());
+    s.arm("bane", 1, "r1");
+    eq(saves(s.eng), ["Near Hound: Will save vs Bane"], "an emanation does not pass the pillar: the hound behind it makes no save");
+  }
+  {
+    // A line, asked of castAt itself, because a click never aims one past a wall.
+    // The hound at (3,2), stone at (4,2), a second hound at (6,2).
+    const lane = walls => {
+      const s = sanctum(WIZARD(), { walls });
+      s.foe.x = 3; s.skel.x = 9; s.skel.y = 9;
+      s.far = hound({ id: "far", name: "Far Hound", x: 6, y: 2 }); s.eng.cbs.push(s.far);
+      const tendrils = () => ({ kind: "cell", wedge: "line", range: 6, spell: Registry.spells["grim-tendrils"], castRank: 1, pool: "r1", cost: 2 });
+      return { ...s, tendrils };
+    };
+    const open = lane([]);
+    pin([20, 5], [4, 2], [4, 3], [20, 5], [4, 2], [4, 3]); open.eng.castAt(open.caster, open.tendrils(), { x: 6, y: 2 });
+    eq([open.foe.hp, open.far.hp], [19, 19], "on open floor a 30-foot line reaches the hound at 5 feet and the one at 20");
+    const s = lane(["4,2"]);
+    pin([20, 5], [4, 2], [4, 3], [20, 5], [4, 2], [4, 3]); s.eng.castAt(s.caster, s.tendrils(), { x: 6, y: 2 });
+    eq([s.foe.hp, s.far.hp], [19, 24], "a line ends at the first wall: the hound before it is caught, the one beyond is not");
+    eq(saves(s.eng), ["Hound: Reflex save vs Grim Tendrils"], "…and makes no save");
+
+    // The click. A square past the stone, and the stone itself, are refused.
+    const c = lane(["4,2"]);
+    const before = () => [c.eng.actions, c.caster.resources.slots[1], !!c.eng.armed, saves(c.eng).length];
+    c.arm("grim-tendrils", 1, "r1");
+    const was = before();
+    c.eng.cellClick(6, 2);
+    eq([before(), c.eng.h.toasts.at(-1)], [was, REFUSED], "a click on a square behind a wall casts nothing, spends nothing, stays armed and says why");
+    c.eng.h.toasts.length = 0;
+    c.eng.cellClick(4, 2);
+    eq([before(), c.eng.h.toasts.at(-1)], [was, REFUSED], "…and so does a click on the wall");
+    c.eng.h.toasts.length = 0;
+    c.eng.cellClick(2, 9);
+    eq([before(), c.eng.h.toasts], [was, []], "a click out of range is passed over without a word, as before");
+    pin([20, 5], [4, 2], [4, 3]); c.eng.cellClick(3, 2);
+    eq([c.foe.hp, c.eng.actions, c.caster.resources.slots[1], c.eng.h.toasts], [19, 1, was[1] - 1, []], "a click on a square in the open casts");
+  }
+  {
+    // A burst reaches who its centre has a clear line to, not who the caster has.
+    // Stone at (4,3), the centre at (4,4): the hound at (4,2) and the skeleton at
+    // (5,2) are behind it, a third hound at (5,4) is not.
+    const yard = walls => {
+      const s = sanctum(WIZARD(), { walls });
+      s.open = hound({ id: "open", name: "Open Hound", x: 5, y: 4 }); s.eng.cbs.push(s.open);
+      s.eng.armSpell(s.caster, { sp: FIREBALL, rank: 3, pool: "r2" });
+      pin([20, 5], [20, 5], [20, 5]); s.eng.cellClick(4, 4);
+      return s;
+    };
+    const open = yard([]);
+    eq([open.foe.hp, open.skel.hp, open.open.hp], [21, 6, 21], "on open floor a 20-foot burst centred at (4,4) burns all three");
+    const s = yard(["4,3"]);
+    eq([s.foe.hp, s.skel.hp, s.open.hp], [24, 8, 21], "with stone between the centre and two of them it burns one");
+    eq(saves(s.eng), ["Open Hound: Reflex save vs Fireball"], "…and the two behind it make no save");
+    ok(s.eng.losClear(s.caster, s.foe), "…though the caster sees the hound: it is the centre's line that counts");
+    // The old pin's layout: stone at (3,2), the burst put on the hound behind it.
+    const old = sanctum(WIZARD(), { walls: ["3,2"] });
+    old.eng.armSpell(old.caster, { sp: FIREBALL, rank: 3, pool: "r2" });
+    old.eng.cellClick(4, 2);
+    eq([old.foe.hp, old.caster.resources.slots[2], old.eng.actions, old.eng.h.toasts.at(-1)], [24, 2, 3, REFUSED],
+      "a burst cannot be centred behind a wall: the click that used to burn the hound through it is refused");
+  }
+  {
+    // Seek picks its point off the same squares.
+    const hero = Object.assign(heroCombatant(fighter()), { x: 0, y: 0 });
+    const foe = hound({ x: 3, y: 0 });
+    const eng = stage([hero, foe], { walls: ["2,0"] });
+    eng.setDetect(hero, foe, "hidden"); foe.hideDC = 15;
+    eng.actionClick("seek"); eng.cellClick(3, 0);
+    eq([eng.actions, saves(eng).length, eng.h.toasts.at(-1)], [3, 0, REFUSED], "Seek cannot be pointed at a square behind a wall either");
+    pin([20, 10]); eng.cellClick(3, 1);
+    eq([eng.actions, eng.detectState(hero, foe)], [2, "observed"], "…but a point beside it in the open still takes in the square behind");
+  }
+  {
+    // A monster's power is held to the same rule. The Warden at (2,1), one hero
+    // beside it at (1,1), the other at (4,1) inside the bell's three squares.
+    const toll = { name: "Toll of the Deep", cost: 2, cooldown: 3, type: "aoe", save: "will", dc: 21, radius: 3, damage: "2d6", damageType: "sonic", cd: 0 };
+    const belfry = walls => {
+      const k = kennel({ name: "The Bell-Warden", hp: 62, hpMax: 62, ac: 21, powers: [{ ...toll }] }, null, { walls });
+      k.ally.x = 4; k.ally.y = 1;
+      pin([20, 12], [6, 3], [6, 4], [20, 12], [6, 3], [6, 4]);
+      return { ...k, r: k.eng.aiStep(k.foe) };
+    };
+    eq(belfry([]).r.action, "power", "with two heroes in reach and nothing between, the Warden rings the bell");
+    const b = belfry(["3,1"]);
+    eq([b.r.action, b.foe.powers[0].cd, b.ally.hp], ["strike", 0, 20], "with stone between it and one of them it counts one hero, keeps the power and bites");
+  }
+  {
+    // The squares the page lights are the squares the engine takes.
+    const { eng, caster } = sanctum(WIZARD(), { walls: ["3,2"] });
+    const lit = [];
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) if (eng.aimable(caster, { range: 1 }, x, y)) lit.push(x + "," + y);
+    eq(lit, ["1,1", "2,1", "3,1", "1,2", "2,2", "1,3", "2,3", "3,3"], "at range 1 beside a wall, eight of the nine squares can be aimed at");
+    eq([eng.aimable(caster, { range: 2 }, 4, 2), eng.aimable(caster, { range: 2 }, 4, 0), eng.aimable(caster, { range: 2 }, 5, 5)], [false, true, false],
+      "at range 2 the square behind the wall cannot, one up the open diagonal can, and one out of range cannot");
+    ok(/if\(this\.aimable\(cb,a,x,y\)\)\{/.test(html) && !/a\.range&&this\.losClear\(cb,\{x,y\}\)/.test(html),
+      "the page asks the engine which squares to light, and keeps no copy of the rule");
+  }
 }
 
 setDiceSource();

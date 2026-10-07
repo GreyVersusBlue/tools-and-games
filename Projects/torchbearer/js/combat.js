@@ -901,6 +901,28 @@ export const CombatCore = {
     else cb.conditions.push({c:name,v,dur});
     if(!silent) this.log(`${esc(cb.name)} is <b>${name} ${v>1||["frightened","enfeebled","sickened","clumsy","stunned"].includes(name)?v:""}</b>.`);
   },
+  /* One entry of a condition bucket, as a pack writes it (#923). Every bucket
+     used to hand `c`, `v` and `dur` to addCond, and persistent damage is none
+     of those: it is a formula and a damage type. A power that wrote
+     {"c":"persistent","v":1} stored a condition with neither, the tick rolled
+     `undefined` for 0, and the Chronicle closed it with "The undefined
+     afflicting Sera ends." */
+  applyCond(cb,c,silent){
+    if(c.c==="persistent") return this.addPersistent(cb,c.formula,c.type,silent);
+    this.addCond(cb,c.c,c.v,c.dur,silent);
+  },
+  /* The validator refuses an entry with no formula or no type, so the first
+     line is for a combatant built by hand. One fire at a time: a second
+     Bellows Blast on a hero already burning adds nothing. A spell's own
+     `persistent` and `critPersistent` do not come through here and stack as
+     they always have. */
+  addPersistent(cb,formula,dtype,silent){
+    if(!formula||!dtype) return;
+    if((cb.immunities||[]).includes(dtype)){ if(!silent) this.log(`${esc(cb.name)} is immune to ${esc(dtype)}.`); return; }
+    if(cb.conditions.some(x=>x.c==="persistent"&&x.dtype===dtype)) return;
+    cb.conditions.push({c:"persistent",formula:String(formula),dtype,dur:99});
+    if(!silent) this.log(`${esc(cb.name)} takes <b>persistent ${esc(dtype)}</b> (${esc(String(formula))} a turn).`);
+  },
   decCond(cb,name,by){ const c=cb.conditions.find(x=>x.c===name); if(!c) return;
     c.v-=by||1; if(c.v<=0) cb.conditions=cb.conditions.filter(x=>x!==c); },
   buffSum(cb,target){
@@ -1032,6 +1054,13 @@ export const CombatCore = {
     }
     return true;
   },
+  /** Whether `cb` may put the point of area action `a` on (x,y): in range,
+      not a wall, and with nothing solid on the way there. These are the
+      squares the page lights, and `cellClick` takes no other (#924). */
+  aimable(cb,a,x,y){
+    return Math.max(Math.abs(x-cb.x),Math.abs(y-cb.y))<=a.range
+      &&!this.walls.has(this.key(x,y))&&this.losClear(cb,{x,y});
+  },
   reachable(cb,budget){ // Dijkstra with 5-10-5 diagonals & difficult terrain; returns {key:{cost,prev}}
     const start={x:cb.x,y:cb.y}; const out={}; out[this.key(cb.x,cb.y)]={cost:0,prev:null,diag:0};
     const pq=[{x:cb.x,y:cb.y,cost:0,diag:0}];
@@ -1118,7 +1147,7 @@ export const CombatCore = {
       if(deg===3){ dmg*=2;
         const deadly=(wpn.traits||[]).find(t=>t.startsWith("deadly"));
         if(deadly) dmg+=Dice.roll("1"+deadly.split("-")[1]).total;
-        (wpn.onCrit||[]).forEach(c=>this.addCond(def,c.c,c.v,c.dur));
+        (wpn.onCrit||[]).forEach(c=>this.applyCond(def,c));
       }
       this.applyDamage(def,dmg,wpn.damageType,att);
       if(precision) this.log(`(${precision} precision damage within.)`);
@@ -1141,7 +1170,7 @@ export const CombatCore = {
     this.seal(`${foe.name}: ${atk.name} vs ${t.name}`,d20,`${d20}+${mod} = ${total} vs AC ${acFinal}`,deg);
     if(deg>=2){
       let dmg=Dice.roll(atk.die).total;
-      if(deg===3){ dmg*=2; (atk.onCrit||[]).forEach(c=>this.addCond(t,c.c,c.v,c.dur)); }
+      if(deg===3){ dmg*=2; (atk.onCrit||[]).forEach(c=>this.applyCond(t,c)); }
       this.applyDamage(t,dmg,atk.damageType,foe);
       if(atk.sneak&&offGuard) this.applyDamage(t,Dice.roll(atk.sneak).total,atk.damageType,foe);
     }
@@ -1225,7 +1254,7 @@ export const CombatCore = {
     // boss flags
     if(enc.bossFlags){ Object.entries(enc.bossFlags).forEach(([flag,fx])=>{
       if(flags[flag]){ const boss=this.cbs.find(c=>c.boss);
-        if(boss)(fx.applyToBoss||[]).forEach(c=>this.addCond(boss,c.c,c.v,c.dur,true));
+        if(boss)(fx.applyToBoss||[]).forEach(c=>this.applyCond(boss,c,true));
         if(fx.log) this.log(fx.log); } }); }
     /* Unseen: the hero opens the fight Hidden from every foe, which Phase 4's
        detection already knows how to spend — the first Strike out of it forces
@@ -1418,6 +1447,7 @@ export const CombatCore = {
       this.doMove(cb,x,y,reach,a);
     } else if(a.kind==="cell"){
       if(Math.max(Math.abs(x-cb.x),Math.abs(y-cb.y))>a.range) return;
+      if(!this.aimable(cb,a,x,y)){ this.toast("No clear line to that square."); return; }
       if(a.mode==="seek"){
         this.spend(a.cost); this.seek(cb,{x,y},a.radius);
         this.armed=null; this.hint(""); this.renderAll(); return this.checkEnd();
@@ -1623,6 +1653,9 @@ export const CombatCore = {
     const spellAtk=cb.char.casting? cb.char.casting.attack : 0;
     let victims=[];
     if(a.kind==="cell"){
+      // An area stops at a wall (#924): a line ends at the first one it meets,
+      // a cone and an emanation reach who the caster has a clear line to, and
+      // a burst reaches who its own centre has one to.
       if(a.wedge==="line"){
         // all cells along Bresenham to target
         let x0=cb.x,y0=cb.y; const x1=target.x,y1=target.y;
@@ -1630,6 +1663,7 @@ export const CombatCore = {
         const cells=[];
         while(!(x0===x1&&y0===y1)&&cells.length<=a.range){
           const e2=2*err; if(e2>-dy){err-=dy;x0+=sx;} if(e2<dx){err+=dx;y0+=sy;}
+          if(this.walls.has(this.key(x0,y0))) break;
           cells.push({x:x0,y:y0});
         }
         victims=this.cbs.filter(c=>!c.dead&&c.side!==cb.side&&cells.some(p=>p.x===c.x&&p.y===c.y));
@@ -1640,15 +1674,15 @@ export const CombatCore = {
           if(Math.max(Math.abs(rx),Math.abs(ry))>a.range||((rx===0)&&(ry===0))) return false;
           const okx=dirx===0||Math.sign(rx)===dirx||rx===0;
           const oky=diry===0||Math.sign(ry)===diry||ry===0;
-          return okx&&oky&&Math.abs(Math.abs(rx)-Math.abs(ry))<=Math.max(Math.abs(rx),Math.abs(ry));
+          return okx&&oky&&Math.abs(Math.abs(rx)-Math.abs(ry))<=Math.max(Math.abs(rx),Math.abs(ry))&&this.losClear(cb,c);
         });
       } else { // burst
-        victims=this.cbs.filter(c=>!c.dead&&Math.max(Math.abs(c.x-target.x),Math.abs(c.y-target.y))<=a.radius);
+        victims=this.cbs.filter(c=>!c.dead&&Math.max(Math.abs(c.x-target.x),Math.abs(c.y-target.y))<=a.radius&&this.losClear(target,c));
         if(!sp.friendlyFire) victims=victims.filter(c=>c.side!==cb.side);
       }
     } else if(sp.area&&sp.area.shape==="emanation"){
       const rad=Math.floor(sp.area.radius/5);
-      victims=this.cbs.filter(c=>!c.dead&&c!==cb&&c.side!==cb.side&&this.dist(c,cb)<=rad);
+      victims=this.cbs.filter(c=>!c.dead&&c!==cb&&c.side!==cb.side&&this.dist(c,cb)<=rad&&this.losClear(cb,c));
     } else victims=[target];
 
     // Multi-target attack spells (electric arc style handled via save; blazing bolt & needle etc single unless maxTargets)
@@ -1713,7 +1747,7 @@ export const CombatCore = {
           else this.log(`${esc(t.name)} evades entirely.`);
         }
         const bucket= deg===0? eff.onCritFail||eff.onFail : deg===1? eff.onFail : deg===2? eff.onSuccess:null;
-        (bucket||[]).forEach(c=>this.addCond(t,c.c==="bane"?"bane":c.c,c.v,c.dur));
+        (bucket||[]).forEach(c=>this.applyCond(t,c));
         if(eff.persistent&&deg<=1) t.conditions.push({c:"persistent",formula:eff.persistent.formula,dtype:eff.persistent.type,dur:99});
         return;
       }
@@ -1804,7 +1838,7 @@ export const CombatCore = {
     }
     // power?
     const pw=(foe.powers||[]).find(p=>p.cd<=0&&p.cost<=this.actions);
-    if(pw){ const inRad=pcs.filter(p=>this.dist(foe,p)<=pw.radius);
+    if(pw){ const inRad=pcs.filter(p=>this.dist(foe,p)<=pw.radius&&this.losClear(foe,p));
       if(inRad.length>=Math.min(2,pcs.length)){
         this.log(`<b>${esc(foe.name)}: ${pw.name}!</b> <i>${esc(pw.flavor||"")}</i>`);
         inRad.forEach(t=>{
@@ -1812,7 +1846,7 @@ export const CombatCore = {
           const mult=[2,1,0.5,0][deg];
           if(mult>0) this.applyDamage(t,Math.floor(Dice.roll(pw.damage).total*mult),pw.damageType,foe,pw.name);
           const bucket=deg===0?pw.onCritFail||pw.onFail:deg===1?pw.onFail:null;
-          (bucket||[]).forEach(c=>this.addCond(t,c.c,c.v,c.dur));
+          (bucket||[]).forEach(c=>this.applyCond(t,c));
         });
         pw.cd=pw.cooldown; this.spend(pw.cost); this.renderAll(); return {action:"power",name:pw.name,wait:600};
       } }

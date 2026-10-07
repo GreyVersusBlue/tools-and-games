@@ -41,8 +41,13 @@ closed** (2026-10-02): a monster with a Stealth or Athletics number Hides and
 Trips, a critical Grapple restrains, Disarm aims at one weapon, Ready holds
 any weapon or a one-action spell, the level-up teaches a spell when a rank
 gains a slot, the core pack's feats reach 9th, and companions grow with the
-hero. `smoke.mjs` is at **1,642 passed, 0 failed** and the browser recipe was
-last at **73 of 73**.
+hero. **Persistent damage in a condition bucket works** (2026-10-07, #923):
+the Forge-Tyrant's Bellows Blast burns for what its data says and the validator
+refuses the entry that used to burn for nothing. **An area stops at a wall**
+(2026-10-07, #924): a cone, an emanation, a burst, a line and a monster's power
+reach nobody behind stone, and an area's point can be put only on the squares
+the page lights. `smoke.mjs` is at **1,717 passed, 0 failed** and the browser
+recipe was last at **73 of 73**.
 
 ## What it is
 
@@ -277,15 +282,23 @@ Open and unclaimed. Add here rather than starting a new list.
 - No Ready, no Delay, and no reaction held for a specific trigger: the first
   trigger a combatant qualifies for takes its reaction for the turn (guide §13
   owns that one now).
-- **Bellows Blast writes a condition the Chronicle prints as "The undefined
-  afflicting Test ends."** The Forge-Tyrant's power carries
-  `"onFail": [{"c":"persistent","v":1}]`, and a `persistent` condition needs a
-  `dtype` and a `formula` — `addCond` stores it happily, `beginTurn` rolls
-  `undefined` damage off it, and the expiry line names nothing. Found by the
-  headless Embers fight this phase built to watch a reaction fire, and pinned
-  as-is rather than fixed inside Phase 3: it is a content bug in one pack and
-  the guide's §10 `powers` example does not show the persistent shape either,
-  so both want fixing together.
+- ~~**Bellows Blast writes a condition the Chronicle prints as "The undefined
+  afflicting Test ends."**~~ Fixed 2026-10-07 (#923, TG-29). The power carried
+  `"onFail": [{"c":"persistent","v":1}]`; every bucket handed `c`, `v` and
+  `dur` to `addCond`, which stored a condition with no formula and no type, so
+  it burned for 0 and ended under the name `undefined`. All five buckets go
+  through `applyCond` now, a persistent entry is
+  `{"c":"persistent","formula":"1d6","type":"fire"}`, the validator rejects one
+  with either half missing or a formula `Dice.roll` would not read, the schema
+  and guide §7, §10 and §12 show the shape, and Bellows Blast is persistent
+  fire 1 (the 1 its author wrote). Left: a spell's own `persistent` and
+  `critPersistent` still push straight onto the target, so they stack, skip
+  immunity and print no line when lit, unlike a bucket's; changing that
+  weakens two shipped spells and wants a balance look. And a shipped pack the
+  validator rejects ends `smoke.mjs` in `loadPack`'s throw at the scene-graph
+  group before the report prints, so the named line that caught it ("validates
+  against core") is never shown: exit 1 and the validator's message, but not a
+  FAIL line.
 - **A dead companion rises at the next fight.** `finish(true)` restores HP to
   every party member, dead or not (a companion who died at dying 4 leaves the
   field on 23 HP), and `start` sets `dead=false` and `dying=0` on the whole
@@ -304,10 +317,33 @@ Open and unclaimed. Add here rather than starting a new list.
   literal plus passing the real combatant into `effAC`; it needs a balance pass
   behind it, because it makes every paired melee encounter in every pack
   meaningfully harder.
-- Bursts, emanations and cones never call `losClear`: a Fireball rounds a
-  corner and goes through a wall.
-- `armSpell` gives `cone` and `line` the same `wedge`, and `castAt` resolves
-  both with one quadrant test. A line is not a line.
+- ~~Bursts, emanations and cones never call `losClear`: a Fireball rounds a
+  corner and goes through a wall.~~ Closed 2026-10-07 (#924). A cone and an
+  emanation reach who the caster has a clear line to, a burst who its centre
+  has one to, a line ends at the first wall, and a monster's power counts and
+  hits only the heroes it has a line to. `cellClick` refuses a wall and a
+  square behind one with "No clear line to that square." and spends nothing;
+  those are the squares the page never lit, and the page asks `aimable` now
+  instead of keeping its own copy. Left: `castAt` called directly with a
+  burst's centre on a wall square still reaches both sides (no click gets
+  there); a creature in a doorway between two wall squares is reached, since
+  `losClear` ignores its endpoints, which is the rule a Strike uses; nothing
+  in the Chronicle says a wall kept somebody out of an area, because naming
+  them would give away a hidden creature.
+- ~~`armSpell` gives `cone` and `line` the same `wedge`, and `castAt` resolves
+  both with one quadrant test. A line is not a line.~~ Stale when read on
+  2026-10-07: `a.wedge` is the shape's own name and a line is a Bresenham walk
+  from the caster to the clicked square (in `combat.js` since 8940aee, tested
+  by "Grim Tendrils along the row"). What is true beside it and open:
+  - **The cone is a half-plane.** Aimed due east it takes every foe within
+    its length whose column is the caster's or east of it, the squares due
+    north and south included, and the last clause of its test
+    (`||rx|-|ry|| <= max`) is always true. `smoke.mjs` pins it by name ("the
+    cone is a quadrant test"). The fix needs a template (which squares a
+    15-foot cone covers on a diagonal) and fewer victims is a balance change
+    for Breathe Fire.
+  - **A line ends at the clicked square**, not at its length: a click two
+    squares away is a 10-foot Grim Tendrils. Not pinned by any test.
 - The AI never Steps away, and retreats only while `fleeing` — and a flee now
   provokes, like every other Stride.
 - No Hide, Seek, Take Cover, Trip, Grapple, Shove (outside the `brutish-shove`
