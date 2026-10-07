@@ -5947,5 +5947,110 @@ function makeMemoryStorage() {
   assert(/no frame for "well"/.test(threw), `markerArt throws on a kind the sheet has no frame for (${threw || 'it did not throw'})`);
 }
 
+// ---------------------------------------------------------------------
+// Section 31: the postcard button. The picture is js/postcard.js's and
+// tests/mapview.mjs paints it into a recorder; what is here is the page:
+// where the button is, that pressing it hands the browser one PNG named
+// for the day, and that it writes nothing to the save. jsdom has no 2D
+// canvas, so the first boot is the refusal and the second stubs a canvas
+// just far enough to follow the handler to its download.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  const KEY = 'renn-faire-sim-save-v1';
+  const boot = async (save, prepare) => {
+    const storage = makeMemoryStorage();
+    storage.setItem(KEY, JSON.stringify({ ...save, __v: 2 }));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    if (prepare) prepare(dom.window);
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return { dom, doc: dom.window.document, storage };
+  };
+  const press = (doc) => {
+    const el = doc.querySelector('[data-action="savePostcard"]');
+    if (el) el.dispatchEvent(new el.ownerDocument.defaultView.Event('click', { bubbles: true }));
+    return el;
+  };
+  const settle = () => new Promise(r => setTimeout(r, 20));
+
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 8, 5).state;
+  s = State.buildPlot(s, 'food', 6, 3).state;
+
+  // No canvas: the button says so and nothing else happens.
+  {
+    const { doc, storage } = await boot(s);
+    const btn = doc.querySelector('#grounds .plat-tools > [data-action="savePostcard"]');
+    assert(!!btn && btn.textContent.trim() === 'Save a postcard', 'the planning desk has a Save a postcard button in the plat’s tool row');
+    assert(doc.querySelectorAll('#grounds .plat-tools > *').length === 4 && !doc.querySelector('#grounds .postcard-bar') && !doc.querySelector('#grounds .postcard-note'),
+      'in the row the zoom buttons already had, with no row or line of its own to make the sticky plat taller');
+    const saved = storage.getItem(KEY);
+    press(doc);
+    await settle();
+    assert(doc.querySelector('#grounds .plat-readout')?.textContent === 'This browser cannot draw a postcard.', 'a window with no 2D canvas is told so in the readout under the plat');
+    assert(storage.getItem(KEY) === saved, 'and the save is byte for byte what it was');
+  }
+
+  // A canvas that records: the handler paints one card and downloads it.
+  const stubCanvas = (win, seen) => {
+    win.CanvasRenderingContext2D = function CanvasRenderingContext2D() {};
+    win.HTMLCanvasElement.prototype.getContext = function () {
+      const canvas = this;
+      return new Proxy({}, {
+        get(_, name) {
+          if (name === 'createLinearGradient') return () => ({ addColorStop() {} });
+          return (...args) => { if (!canvas.classList.contains('plat-canvas')) seen.calls.push({ name, args, w: canvas.width, h: canvas.height }); };
+        },
+        set() { return true; },
+      });
+    };
+    win.HTMLCanvasElement.prototype.toBlob = function (cb, type) { seen.type = type; cb({ fake: 'blob' }); };
+    win.Image = function () { const img = this; setTimeout(() => img.onload && img.onload(), 0); };
+    win.URL.createObjectURL = (blob) => { seen.blob = blob; return 'blob:postcard'; };
+    win.URL.revokeObjectURL = () => {};
+    win.HTMLAnchorElement.prototype.click = function () { seen.downloads.push({ name: this.download, href: this.href }); };
+  };
+  {
+    const seen = { calls: [], downloads: [] };
+    const { doc, storage } = await boot(s, win => stubCanvas(win, seen));
+    const saved = storage.getItem(KEY);
+    press(doc);
+    await settle();
+    assert(seen.downloads.length === 1 && seen.downloads[0].name === 'faire-weekend-season-1-weekend-1-friday.png' && seen.downloads[0].href === 'blob:postcard',
+      `pressing it downloads one file, named for the day (${JSON.stringify(seen.downloads)})`);
+    assert(seen.type === 'image/png', 'as a PNG');
+    assert(seen.calls.length > 0 && seen.calls.every(k => k.w === 1200 && k.h === 800), 'painted on a 1200 x 800 canvas that is not the page’s plat');
+    assert(seen.calls.filter(k => k.name === 'drawImage').length === 3, 'with the marker sheet on it: two plots and the gate');
+    assert(seen.calls.some(k => k.name === 'fillText' && k.args[0] === 'Faire Weekend') && seen.calls.some(k => k.name === 'fillText' && k.args[0] === 'Season 1 · Weekend 1 · Friday'),
+      'and the faire’s name and day');
+    assert(doc.querySelector('#grounds .plat-readout').textContent === 'Saved faire-weekend-season-1-weekend-1-friday.png.', 'the readout names the file');
+    assert(!doc.querySelector('a[download]') && doc.querySelectorAll('canvas').length === 1, 'nothing is left on the page: no link, and the only canvas is the plat’s');
+    assert(storage.getItem(KEY) === saved, 'the save is byte for byte what it was');
+    assert(!!doc.querySelector('.plat-stage') && !!doc.querySelector('[data-action="openGates"]'), 'and the desk is still the planning desk');
+  }
+
+  // The weekend-end stub carries the same button, and a card of it.
+  {
+    let w = s;
+    for (const seed of [4101, 4102, 4103]) w = State.nextDay(State.runDay(w, seed).state).state;
+    assert(w.phase === 'weekendEnd', `sanity: the weekend has closed (${w.phase})`);
+    const seen = { calls: [], downloads: [] };
+    const { doc, storage } = await boot(w, win => stubCanvas(win, seen));
+    const saved = storage.getItem(KEY);
+    const btn = doc.querySelector('.weekend-summary [data-action="savePostcard"]');
+    assert(!!btn && !doc.querySelector('#grounds [data-action="savePostcard"]'), 'the weekend-end stub has the button, once');
+    press(doc);
+    await settle();
+    assert(seen.downloads.length === 1 && seen.downloads[0].name === 'faire-weekend-season-1-weekend-1-sunday.png', `it saves Sunday’s card (${JSON.stringify(seen.downloads.map(d => d.name))})`);
+    assert(seen.calls.some(k => k.name === 'fillText' && k.args[0] === 'THE WEEKEND, GATES CLOSED'), 'which says the weekend has closed');
+    assert(!!doc.querySelector('.weekend-summary .postcard-note')?.textContent.startsWith('Saved '), 'and says so beside the button');
+    assert(storage.getItem(KEY) === saved && !!doc.querySelector('[data-action="startNextWeekend"]'), 'the save and the screen are as they were');
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

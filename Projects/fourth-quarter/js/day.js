@@ -11,11 +11,22 @@ import * as C from "./campaign.js";
 import * as LG from "./league.js";
 import * as RG from "./regulars.js";
 import * as EV from "./events.js";
+import * as SUP from "./supply.js";
+import * as STF from "./staff.js";
+import * as SHF from "./shelf.js";
+import * as SNS from "./season.js";
 import * as audio from "./audio.js";
 
 /** The Tonight panel's one line on the regulars: how many of them there are,
  *  and how many of those the door expects. `regularsIn()` is deterministic on
  *  the day, so this number is the number the night actually gets. */
+/** Season terms in one line of the Tonight panel: tonight's rent, the wage
+ *  raise if there is one, and the next date either moves. */
+function termsRow(o) {
+  const next = o.off.in > 0 ? `off-season in ${o.off.in}` : `season ${o.next.season} in ${o.next.in}`;
+  return `rent $${o.rent}${o.wagePct > 100 ? ` · wages at ${o.wagePct}%` : ""} · ${next}`;
+}
+
 function regularsLine(c) {
   if (!c.regulars.length) return "none yet";
   const n = C.regularsIn(c).length;
@@ -69,6 +80,12 @@ export class DayPhase {
     });
     $("#panelBody").addEventListener("click", e => this.panelClick(e));
     $("#panelFoot").addEventListener("click", e => this.panelClick(e));
+    // the par sheet is the one thing in a panel that is typed rather than clicked
+    $("#panelBody").addEventListener("change", e => {
+      const t = e.target;
+      if (!t || !t.dataset || !t.dataset.par) return;
+      if (C.setPar(this.getC(), t.dataset.par, t.value)) { this.cb.save(); this.renderStock(); }
+    });
   }
 
   setVisible(v) { this.group.visible = v; }
@@ -171,31 +188,152 @@ export class DayPhase {
   stockPanel() {
     this.cart = {};
     for (const id in MENU) this.cart[id] = 0;
+    this.houseArm = null;   // the house a second click would sign with, forfeiting loyalty
+    this.shelfArm = false;  // dating the shelf is one way, so it takes a second click
     this.renderStock();
+  }
+  /** The three supply houses under the order sheet: what each gives and takes,
+   *  which one is yours, and where the account stands. Signing away an
+   *  account that has earned loyalty takes a second click. */
+  housesHtml(c) {
+    const cur = C.distDef(c), off = SUP.loyaltyOff(c.dist), spend = Math.round(c.dist.spend);
+    const maxed = off >= SUP.LOYALTY_MAX;
+    const toNext = (Math.floor(c.dist.spend / SUP.LOYALTY_STEP) + 1) * SUP.LOYALTY_STEP - spend;
+    const standing = !cur.account ? `${cur.name} keeps no account: list price, every order.`
+      : `House account with <b>${cur.name}</b>: $${spend.toLocaleString()} spent`
+        + (off > 0 ? ` · <span class="good">−${Math.round(off * 100)}% loyalty</span>` : "")
+        + (maxed ? ` <span class="hint">(maxed)</span>` : ` <span class="hint">($${toNext.toLocaleString()} to the next 1%)</span>`);
+    const pct = x => Math.round(x * 100);
+    const breaks = t => t.map(([n, x]) => `${n}+ −${pct(x)}%`).join(", ");
+    const cards = SUP.HOUSE_ORDER.map(id => {
+      const h = SUP.HOUSES[id], on = h.id === cur.id, armed = this.houseArm === h.id;
+      return `<div class="promoCard house ${on ? "on" : ""}" data-housecard="${h.id}">
+        <b>${h.name}</b>${on ? '<span class="pill">your house</span>' : ""}
+        <div class="hint">+ ${h.pro}</div>
+        <div class="hint">− ${h.con}</div>
+        ${on ? "" : `<button class="btn small ${armed ? "" : "ghost"}" data-house="${h.id}" style="margin-top:6px">${armed ? "Confirm switch" : "Sign with them"}</button>`}
+      </div>`;
+    }).join("");
+    return `<div class="sec">The Supply House</div>
+      <p class="hint" id="houseStanding">${standing}</p>
+      <p class="hint">An account's bulk breaks, by the line: food ${breaks(SUP.BULK_FOOD)}; beer and soda ${breaks(SUP.BULK_DRINK)}. Every $${SUP.LOYALTY_STEP.toLocaleString()} of stock bought from one house is another ${pct(SUP.LOYALTY_PER)}% off, to ${pct(SUP.LOYALTY_MAX)}%. Switch houses and the loyalty dies at the door.</p>
+      ${cards}`;
+  }
+  /** The shelf under the supply houses: the card that dates it, or, once it
+   *  is dated, every lot with the nights it has left and the walk-in's card.
+   *  A lot on its last night is the one that goes at tonight's close. */
+  shelfHtml(c) {
+    const W = SHF.WALKIN;
+    if (!C.hasDates(c)) {
+      const armed = this.shelfArm;
+      return `<div class="sec">The Shelf</div>
+        <div class="promoCard house" id="shelfCard">
+          <b>No dates</b><span class="pill">how it is now</span>
+          <div class="hint">Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf at every close, whatever its age. Beer and soda never go off.</div>
+          <div class="hint">+ Date it and food stops rotting by the night: every delivery keeps whole until its date (${Object.keys(SHF.SHELF).filter(id => SHF.SHELF[id].cold).map(id => `${MENU[id].name.toLowerCase()} ${SHF.SHELF[id].nights} nights`).join(", ")}, the day it came in counted), and the oldest sells first. A shelf that turns over loses nothing. A ${W.name} ($${W.cost.toLocaleString()}, $${W.fee} a night) can then add ${W.nights} nights to the food.</div>
+          <div class="hint">− At its date, all of what is left of a delivery goes at once. Beer gets a date too: ${SHF.SHELF.beer.nights} nights. The inspector reads the dates, and one plate of food on its last night is a fine. What is on the shelf now is dated today. And the dates do not come back off.</div>
+          <button class="btn small ${armed ? "" : "ghost"}" data-dateshelf="1" style="margin-top:6px">${armed ? "Confirm: date it for good" : "Date the Shelf"}</button>
+        </div>`;
+    }
+    const nights = n => `${n} night${n === 1 ? "" : "s"}`;
+    const rows = Object.values(MENU).map(m => {
+      const lots = C.lotsOf(c, m.id), keeps = C.keeps(c, m.id);
+      const cells = !keeps ? `<span class="hint">never goes off</span>`
+        : !lots.length ? `<span class="hint">none on the shelf</span>`
+        : lots.map(l => `<span class="${l.left <= 1 ? "bad" : l.left === 2 ? "warn" : ""}" data-lot="${m.id}">${l.n} ${l.left <= 1 ? "go tonight" : `for ${nights(l.left)}`}</span>`).join(" · ");
+      return `<tr data-shelfrow="${m.id}"><td>${m.name}</td><td class="num">${keeps ? nights(keeps) : "—"}</td><td>${cells}</td></tr>`;
+    }).join("");
+    const on = C.hasWalkin(c);
+    return `<div class="sec">The Shelf</div>
+      <p class="hint">Dated. Each delivery keeps whole until its date and the oldest sells first; whatever is left of a lot on its last night goes at tonight's close. The flat ${Math.round(C.SPOILAGE_RATE * 100)}% a night is not charged on a dated shelf.</p>
+      <table id="shelfLots"><tr><th>Item</th><th class="num">Keeps</th><th>On the shelf, oldest first</th></tr>${rows}</table>
+      <div class="promoCard house ${on ? "on" : ""}" id="walkinCard">
+        <b>${W.name}</b>${on ? '<span class="pill">installed</span>' : `<span class="pill">$${W.cost.toLocaleString()}</span>`}
+        <div class="hint">+ ${W.pro}</div>
+        <div class="hint">− ${W.con}</div>
+        ${on ? "" : `<button class="btn small" data-buywalkin="1" style="margin-top:6px" ${c.cash < W.cost ? "disabled" : ""}>Install</button>`}
+      </div>`;
   }
   renderStock() {
     const c = this.getC();
-    const rows = Object.values(MENU).map(m => `
-      <tr><td>${m.name}<span class="hint"> $${C.STOCK_COST[m.id].toFixed(2)}/serving</span></td>
-      <td class="num">${c.stock[m.id] || 0}</td>
+    const q = C.orderQuote(c, this.cart);
+    const house = C.distDef(c);
+    const rows = Object.values(MENU).map(m => {
+      const qty = this.cart[m.id], line = q.lines[m.id];
+      const next = SUP.nextBreak(c.dist, m.kind, qty);
+      const note = line && line.off ? ` <span class="good">−${Math.round(line.off * 100)}% bulk</span>`
+        : next ? ` <span class="hint">${next[0]}+ for −${Math.round(next[1] * 100)}%</span>` : "";
+      return `
+      <tr><td>${m.name}<span class="hint"> $${C.unitPrice(c, m.id, qty).toFixed(2)}/serving</span>${note}</td>
+      <td class="num">${c.stock[m.id] || 0}${C.lastNight(c, m.id) ? ` <span class="bad" data-lastnight="${m.id}">(${C.lastNight(c, m.id)} go tonight)</span>` : ""}</td>
+      <td class="num"><input class="par" type="number" min="0" max="${SUP.PAR_MAX}" step="1" data-par="${m.id}" value="${c.pars[m.id] || ""}" aria-label="Par level for ${m.name}"></td>
       <td><span class="stepper">
         <button data-cart="${m.id}" data-d="-10">-10</button>
         <button data-cart="${m.id}" data-d="-1">-1</button>
         <span class="qty">${this.cart[m.id]}</span>
         <button data-cart="${m.id}" data-d="1">+1</button>
         <button data-cart="${m.id}" data-d="10">+10</button>
-        <button data-cart="${m.id}" data-d="25">+25</button></span></td></tr>`).join("");
+        <button data-cart="${m.id}" data-d="25">+25</button></span></td></tr>`; }).join("");
+    const diff = Math.round((q.list - q.goods) * 100) / 100;
+    const notes = [];
+    if (diff >= 0.005) notes.push(`−$${diff.toFixed(2)} off list`);
+    if (diff <= -0.005) notes.push(`+$${(-diff).toFixed(2)} premium`);
+    if (q.drop) notes.push(`+$${q.drop} drop charge under $${house.minOrder}`);
     this.show("Stock Order",
       `<p class="hint">Delivered on the spot — the truck's out back. Sell out of something mid-rush and patrons order around it, or walk.</p>
-       <p class="hint">Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf every closed night — beer and soda don't. Order what you'll actually sell tonight, not a stockpile.</p>
-       <table><tr><th>Item</th><th class="num">On hand</th><th>Add</th></tr>${rows}</table>`,
-      `<span>Order total: <b class="money">$${C.orderCost(this.cart).toFixed(2)}</b>
-        <span class="hint">· Cash $${Math.round(c.cash)}</span></span>
-       <button class="btn" data-placeorder="1">Place Order</button>`);
+       <p class="hint" id="rotRule">${C.hasDates(c)
+         ? "The shelf is dated: a delivery keeps until its date and then all that is left of it goes. Order what you'll sell before the date, not a stockpile."
+         : `Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf every closed night — beer and soda don't. Order what you'll actually sell tonight, not a stockpile.`}</p>
+       <table id="orderSheet"><tr><th>Item</th><th class="num">On hand</th><th class="num">Par</th><th>Add</th></tr>${rows}</table>
+       <p class="hint">Par is what you want on the shelf at open. Fill to Par tops the cart up to it, counting what is on hand.</p>
+       ${this.housesHtml(c)}
+       ${this.shelfHtml(c)}`,
+      `<span>Order total: <b class="money" id="orderTotal">$${q.total.toFixed(2)}</b>
+        <span class="hint" id="orderNotes">${notes.length ? `(${notes.join(" · ")}) ` : ""}· Cash $${Math.round(c.cash)}</span></span>
+       <span><button class="btn ghost" data-parfill="1">Fill to Par</button>
+       <button class="btn" data-placeorder="1">Place Order</button></span>`);
+  }
+
+  /** The rota under the payroll: the card that posts it, or, once it is up,
+   *  a line a staffer with tonight's standing, how tired they are, how they
+   *  feel about the place, how far the next level is, and the week as seven
+   *  buttons. A lit day is a day worked. */
+  rotaHtml(c) {
+    if (!C.hasRota(c)) {
+      const armed = this.rotaArm;
+      return `<div class="sec">The Rota</div>
+        <div class="promoCard house" id="rotaCard">
+          <b>No rota</b><span class="pill">how it is now</span>
+          <div class="hint">Everyone on the payroll works every night and draws the wage every night. Nobody tires, nobody improves, nobody leaves unless somebody makes them an offer.</div>
+          <div class="hint">+ Post one and a night off is a night's wage you keep, the payroll holds ${STF.ROSTER_ROTA} instead of ${STF.ROSTER_OPEN} (${STF.SHIFT_MAX} work a night, the rest are on call), and a staffer who works fresh earns a skill level every ${STF.XP_PER_SKILL} shifts per level they hold.</div>
+          <div class="hint">− Every shift tires them and only a night off takes it back: five on and two off holds. Tired, they work a skill level down; burnt out, two, and some nights they do not show. A level is a $${STF.LEVEL_RAISE} raise. Morale that bottoms out walks, to the End Zone if it is hiring. And it does not come back down.</div>
+          <button class="btn small ${armed ? "" : "ghost"}" data-postrota="1" style="margin-top:6px">${armed ? "Confirm: post it for good" : "Post the Rota"}</button>
+        </div>`;
+    }
+    const d = C.duty(c), today = C.weekday(c);
+    const where = n => d.on.includes(n) ? '<span class="pill">on tonight</span>' : d.out.includes(n) ? '<span class="pill bad">called out</span>'
+      : d.call.includes(n) ? '<span class="pill">on call</span>' : '<span class="hint">off tonight</span>';
+    const rows = c.staff.map(s => {
+      const l = C.crewLine(c, s.name);
+      const cond = { fresh: "fresh", tired: `<span class="warn">tired, skill ${l.skill} tonight</span>`, burnt: `<span class="bad">burnt out, skill ${l.skill} tonight</span>` }[l.condition];
+      const mood = l.looking ? '<span class="bad">looking for the door</span>' : l.morale >= 75 ? '<span class="good">happy here</span>' : l.morale >= 45 ? "steady" : '<span class="warn">restless</span>';
+      const lvl = l.toLevel ? `${l.xp} of ${l.toLevel} shifts to skill ${s.skill + 1}` : "top of the trade";
+      const week = STF.WEEK.map(w => `<button class="rotaDay ${l.off.includes(w) ? "" : "on"} ${w === today ? "today" : ""}" data-rota="${s.name}" data-day="${w}" aria-pressed="${!l.off.includes(w)}" aria-label="${s.name} works ${w}">${w[0]}</button>`).join("");
+      return `<tr data-rotarow="${s.name}"><td>${s.name.split(" ")[0]} ${where(s.name)}<div class="hint">${cond} · ${mood} · ${lvl}</div></td>
+        <td><span class="rotaWeek">${week}</span><div class="hint">${7 - l.off.length} on, ${l.off.length} off</div></td></tr>`;
+    }).join("") || `<tr><td colspan="2" class="hint">Nobody to schedule.</td></tr>`;
+    return `<div class="sec">The Rota</div>
+      <p class="hint">A lit day is a shift, Monday first; click one to give the night off. Five on and two off holds: a shift is ${STF.FATIGUE_SHIFT} of fatigue and a night off takes back ${STF.FATIGUE_REST}. The first ${STF.SHIFT_MAX} scheduled work, anyone past that is on call, unpaid, and in if somebody calls out.</p>
+      <table id="rota"><tr><th>Tonight</th><th>The week</th></tr>${rows}</table>`;
   }
 
   crewPanel() {
+    this.rotaArm = false;
+    this.renderCrew();
+  }
+  renderCrew() {
     const c = this.getC();
+    const cap = C.staffCap(c);
     const roleRow = s => `${C.ROLES[s.role].name}<span class="hint"> · skill ${s.skill}</span>`;
     const staff = c.staff.map(s => `
       <tr><td>${s.name}</td><td>${roleRow(s)}</td>
@@ -204,19 +342,23 @@ export class DayPhase {
       || `<tr><td colspan="4" class="hint">Nobody on the floor but you.</td></tr>`;
     const apps = c.applicants.map(a => `
       <tr><td>${a.name}</td><td>${roleRow(a)}</td>
-      <td class="num money">$${a.wage}/night</td>
-      <td><button class="btn small" data-hire="${a.name}" ${c.staff.length >= C.MAX_STAFF ? "disabled" : ""}>Hire</button></td></tr>`).join("")
+      <td class="num money">$${C.termsWage(c, a.wage)}/night</td>
+      <td><button class="btn small" data-hire="${a.name}" ${c.staff.length >= cap ? "disabled" : ""}>Hire</button></td></tr>`).join("")
       || `<tr><td colspan="4" class="hint">No applications today.</td></tr>`;
     const warn = [];
     if (!C.hasCook(c)) warn.push("No cook — the kitchen won't open tonight.");
     if (!C.hasBartender(c)) warn.push("No bartender — servers pour, badly.");
+    const out = C.duty(c).out;
+    if (out.length) warn.push(`${out.map(n => n.split(" ")[0]).join(", ")} called out tonight: burnt out.`);
+    const terms = C.termsOutlook(c), raise = terms ? terms.wagePct : 100;
     this.show("The Crew",
-      `<p class="hint">Cooks and bartenders push prep speed on their side of the ticket — no cook means no food sells at all. Servers walk the floor and fetch whatever's ready. Wages come out of the till at close — up to ${C.MAX_STAFF} on payroll. And the boss works free.</p>
+      `<p class="hint">Cooks and bartenders push prep speed on their side of the ticket — no cook means no food sells at all. Servers walk the floor and fetch whatever's ready. Wages come out of the till at close — up to ${cap} on payroll. And the boss works free.</p>
        ${warn.map(w => `<div class="row bad">⚠ ${w}</div>`).join("")}
-       <table><tr><th>On payroll</th><th>Role</th><th class="num">Wage</th><th></th></tr>${staff}</table>
+       <table id="payroll"><tr><th>On payroll</th><th>Role</th><th class="num">Wage</th><th></th></tr>${staff}</table>
+       ${this.rotaHtml(c)}
        <div class="sec">Applicants</div>
        <table><tr><th>Name</th><th>Role</th><th class="num">Wage</th><th></th></tr>${apps}</table>`,
-      `<span class="hint">Tonight's wage bill: <b class="money">$${C.wageBill(c)}</b></span>`);
+      `<span class="hint">Tonight's wage bill: <b class="money" id="wageBill">$${C.wageBill(c)}</b>${raise > 100 ? ` <span id="wageRaise">· season terms: every wage at ${raise}% of the staffer's own</span>` : ""}</span>`);
   }
 
   promoPanel() {
@@ -295,11 +437,16 @@ export class DayPhase {
     const game = !!tn.mules;
     const warn = [];
     if (game && (c.stock.beer || 0) < C.forecast(c) * 1.3) warn.push("Beer's thin for a game night.");
-    if (!c.staff.length) warn.push("No servers — you're running every order yourself.");
+    const onTonight = C.shiftCrew(c), duty = C.duty(c);
+    if (!onTonight.length) warn.push("No servers — you're running every order yourself.");
+    if (duty.out.length) warn.push(`${duty.out.map(n => n.split(" ")[0]).join(", ")} called out tonight: burnt out.`);
     if (!C.hasCook(c)) warn.push("No cook — the kitchen's closed tonight.");
     if (!C.hasBartender(c)) warn.push("No bartender — servers cover the taps, badly.");
     if (Object.values(c.stock).every(v => !v)) warn.push("The shelves are BARE. Nobody can order anything.");
+    const going = Object.keys(MENU).reduce((n, id) => n + C.lastNight(c, id), 0);
+    if (going) warn.push(`${going} serving${going === 1 ? " is" : "s are"} on the last night of the date. What doesn't sell tonight goes at the close.`);
     if (c.cash < C.billsFor(c).total) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
+    if (C.termsNotice(c)) warn.push(C.termsNoticeLine(c));
     // the standing notice, on the last screen before the night that could spend it
     if (c.strikes > 0) warn.push(c.strikes === C.LEASE_STRIKES - 1
       ? `LAST WARNING: ${c.strikes} nights in the red. Close tonight below $0 and the landlord takes the lease.`
@@ -311,9 +458,12 @@ export class DayPhase {
       ["Forecast", `~${C.forecast(c)} through the door`],
       ["Reputation", `${Math.round(c.rep)} / 100`],
       ["Regulars", regularsLine(c)],
-      ["Crew", c.staff.length ? c.staff.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
+      ["Crew", onTonight.length ? onTonight.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
       ["Wages + rent", `$${C.wageBill(c)} + $${C.rent(c)}`],
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],
+      ...(C.accountFee(c) ? [["Supply account", `$${C.accountFee(c)} · ${C.distDef(c).name}, billed tonight`]] : []),
+      ...(C.walkinFee(c) ? [["Walk-in", `$${C.walkinFee(c)} · compressor power`]] : []),
+      ...(C.onTerms(c) ? [["Season terms", termsRow(C.termsOutlook(c))]] : []),
       ["The lease", c.strikes ? `${c.strikes} of ${C.LEASE_STRIKES} nights in the red` : "in good standing"],
     ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
     this.show("Tonight",
@@ -383,7 +533,43 @@ export class DayPhase {
   /** The venue ladder's door into the game. moveVenue()/nextVenue()/canMoveVenue()
    *  are all campaign.js, tested there — this is only the UI: show the next rung,
    *  sign it through cb.onMove() (already wired to rebuildVenue() in main.js). */
+  /** Season terms under the ladder: the offer and what it turns into, or,
+   *  once signed, where the terms stand and the two dates they move on. */
+  termsHtml(c) {
+    const signed = C.onTerms(c);
+    const o = signed ? C.termsOutlook(c) : C.termsOffer(c);
+    const base = C.venueDef(c).rent;
+    const nights = n => `${n} night${n === 1 ? "" : "s"}`;
+    const wage = p => (p === 100 ? "wages as they are" : `wages at ${p}%`);
+    const rows = `<table id="termsTable"><tr><th>When</th><th class="num">Rent</th><th>Wages</th></tr>
+        <tr data-terms="now"><td>${signed ? "Tonight" : "From tonight"}${o.phase === "offseason" ? " (off-season)" : ""}</td><td class="num money">$${o.rent}</td><td>${wage(o.wagePct)}</td></tr>
+        ${o.off.in > 0 ? `<tr data-terms="off"><td>Off-season, in ${nights(o.off.in)}</td><td class="num money">$${o.off.rent}</td><td>${wage(o.wagePct)}</td></tr>` : ""}
+        <tr data-terms="next"><td>Season ${o.next.season}, in ${nights(o.next.in)}</td><td class="num money">$${o.next.rent}</td><td>${wage(o.next.wagePct)}</td></tr></table>`;
+    if (signed) {
+      return `<div class="sec">Season Terms</div>
+        <div class="promoCard house on" id="termsCard">
+          <b>On season terms</b> <span class="pill">signed in season ${c.terms.since}</span>
+          <div class="hint">This room's own rent is $${base} a night. Each new season puts ${SNS.RENT_STEP} points on the rent (to ${100 + SNS.RENT_CAP}% of the room's) and ${SNS.WAGE_STEP} on every wage (to ${100 + SNS.WAGE_CAP}%); the off-season fortnight is ${SNS.OFF_RENT}% of the season's rent. The terms follow you to any room.</div>
+          ${rows}
+        </div>`;
+    }
+    const armed = this.termsArm;
+    return `<div class="sec">Season Terms</div>
+      <div class="promoCard house" id="termsCard">
+        <b>Month to month</b> <span class="pill">as it has always been</span>
+        <div class="hint">Rent is the room's number ($${base} a night here) and a wage is what you hired at, this season and every season.</div>
+        <div class="hint">+ Sign season terms and rent is ${SNS.SIGN_BREAK}% under the room's for the rest of this season, and every off-season fortnight is billed at ${SNS.OFF_RENT}% of that season's rent.</div>
+        <div class="hint">− Each season after this one puts ${SNS.RENT_STEP} points on the rent, to ${100 + SNS.RENT_CAP}% of the room's, and ${SNS.WAGE_STEP} on every wage, to ${100 + SNS.WAGE_CAP}%. The terms follow you to any room and cannot be torn up.</div>
+        ${rows}
+        <button class="btn small ${armed ? "" : "ghost"}" data-signterms="1" style="margin-top:6px">${armed ? "Confirm: sign for good" : "Sign Season Terms"}</button>
+      </div>`;
+  }
+
   realEstatePanel() {
+    this.termsArm = false;  // season terms are one way, so they take a second click
+    this.renderEstate();
+  }
+  renderEstate() {
     const c = this.getC();
     const cur = C.venueDef(c);
     if (c.darkNightsLeft > 0) {
@@ -395,7 +581,8 @@ export class DayPhase {
     const nv = C.nextVenue(c);
     if (!nv) {
       this.show("Real Estate",
-        `<p class="hint">You're already at <b>${cur.name}</b> — the top of the ladder. Nowhere left to climb.</p>`,
+        `<p class="hint">You're already at <b>${cur.name}</b> — the top of the ladder. Nowhere left to climb.</p>
+         ${this.termsHtml(c)}`,
         `<span class="hint">Cash $${Math.round(c.cash)}</span>`);
       return;
     }
@@ -406,9 +593,10 @@ export class DayPhase {
        <div class="promoCard">
          <b>${nv.name}</b> <span class="hint">$${nv.cost.toLocaleString()}</span>
          <div class="hint">${nv.desc}</div>
-         <div class="hint">+${draw}% more of a draw · $${nv.rent}/night rent (up from $${cur.rent}) · ${nv.darkNights} dark night${nv.darkNights === 1 ? "" : "s"} to move in</div>
+         <div class="hint">+${draw}% more of a draw · $${C.rentAt(c, nv.id)}/night rent (up from $${C.rent(c)}) · ${nv.darkNights} dark night${nv.darkNights === 1 ? "" : "s"} to move in</div>
          <button class="btn small" data-signlease="1" style="margin-top:6px" ${afford ? "" : "disabled"}>Sign the Lease</button>
-       </div>`,
+       </div>
+       ${this.termsHtml(c)}`,
       `<span class="hint">Cash $${Math.round(c.cash)}${afford ? "" : ` · need $${Math.round(nv.cost - c.cash).toLocaleString()} more`}</span>`);
   }
 
@@ -450,11 +638,57 @@ export class DayPhase {
     }
     if (t.dataset.placeorder) {
       const r = C.placeOrder(c, this.cart);
-      if (r.ok) { this.cb.save(); this.stockPanel(); this.cb.flash(`Delivery's in — $${r.cost.toFixed(2)}.`, true); }
+      if (r.ok) { this.cb.save(); this.stockPanel(); this.cb.flash(`Delivery's in — $${r.cost.toFixed(2)}${r.drop ? `, $${r.drop} of it the drop charge` : ""}.`, true); }
       else this.cb.flash(r.err);
     }
-    if (t.dataset.hire) { if (C.hire(c, t.dataset.hire)) { this.cb.save(); this.crewPanel(); } }
-    if (t.dataset.fire) { if (C.fire(c, t.dataset.fire)) { this.cb.save(); this.crewPanel(); } }
+    if (t.dataset.parfill) {
+      const r = C.fillToPar(c, this.cart);
+      this.cart = r.cart;
+      this.renderStock();
+      this.cb.flash(r.added ? `Par fill: +${r.added} serving${r.added === 1 ? "" : "s"} in the cart.` : "Everything's at par, counting the cart.", !!r.added);
+    }
+    if (t.dataset.house) {
+      const id = t.dataset.house;
+      // an account that has earned something is not signed away on one click
+      if (SUP.loyaltyOff(c.dist) > 0 && this.houseArm !== id) {
+        this.houseArm = id;
+        this.renderStock();
+        this.cb.flash(`Switching forfeits your −${Math.round(SUP.loyaltyOff(c.dist) * 100)}% loyalty. Click again to sign with ${SUP.HOUSES[id].name}.`);
+      } else {
+        const r = C.signHouse(c, id);
+        this.houseArm = null;
+        if (r.ok) { this.cb.save(); this.renderStock(); this.cb.flash(`${r.house.name} runs your deliveries now.`, true); }
+        else this.cb.flash(r.err);
+      }
+    }
+    if (t.dataset.dateshelf) {
+      // one way, so not on one click
+      if (!this.shelfArm) { this.shelfArm = true; this.renderStock(); this.cb.flash("A dated shelf stays dated. Click again to put the labels on."); }
+      else {
+        const r = C.dateShelf(c);
+        this.shelfArm = false;
+        if (r.ok) { this.cb.save(); this.renderStock(); this.cb.flash("The shelf's dated. Everything on it is dated today.", true); }
+        else this.cb.flash(r.err);
+      }
+    }
+    if (t.dataset.buywalkin) {
+      const r = C.buyWalkin(c);
+      if (r.ok) { this.cb.save(); this.renderStock(); this.cb.flash(`${SHF.WALKIN.name} installed. Food keeps ${SHF.WALKIN.nights} nights longer.`, true); }
+      else this.cb.flash(r.err);
+    }
+    if (t.dataset.hire) { if (C.hire(c, t.dataset.hire)) { this.cb.save(); this.renderCrew(); } }
+    if (t.dataset.fire) { if (C.fire(c, t.dataset.fire)) { this.cb.save(); this.renderCrew(); } }
+    if (t.dataset.postrota) {
+      // one way, so not on one click
+      if (!this.rotaArm) { this.rotaArm = true; this.renderCrew(); this.cb.flash("A posted rota stays posted. Click again to put it on the wall."); }
+      else {
+        const r = C.postRota(c);
+        this.rotaArm = false;
+        if (r.ok) { this.cb.save(); this.renderCrew(); this.cb.flash("The rota's on the wall. Everyone's down for seven nights until you say otherwise.", true); }
+        else this.cb.flash(r.err);
+      }
+    }
+    if (t.dataset.rota) { if (C.toggleDayOff(c, t.dataset.rota, t.dataset.day)) { this.cb.save(); this.renderCrew(); } }
     if (t.dataset.promo !== undefined && t.classList.contains("promoCard")) {
       const p = C.PROMOS[t.dataset.promo];
       if (p.cost > c.cash) { this.cb.flash("Can't cover the theme's cost."); return; }
@@ -465,6 +699,16 @@ export class DayPhase {
     if (t.dataset.moment !== undefined) { this.closePanel(); if (this.cb.resolveMoment) this.cb.resolveMoment(+t.dataset.moment); }
     if (t.dataset.closednight) { this.closePanel(); this.cb.closedNight(); }
     if (t.dataset.newrun && this.cb.newRun) { this.closePanel(); this.cb.newRun(); }
+    if (t.dataset.signterms) {
+      // one way, so not on one click
+      if (!this.termsArm) { this.termsArm = true; this.renderEstate(); this.cb.flash("Season terms cannot be torn up. Click again to sign."); }
+      else {
+        const r = C.signTerms(c);
+        this.termsArm = false;
+        if (r.ok) { this.cb.save(); this.renderEstate(); this.cb.flash(`Signed. Rent is $${C.rent(c)} a night from tonight.`, true); }
+        else this.cb.flash(r.err);
+      }
+    }
     if (t.dataset.signlease) {
       const r = C.moveVenue(c);
       if (r.ok) {

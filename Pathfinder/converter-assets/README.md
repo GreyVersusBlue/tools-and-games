@@ -111,7 +111,8 @@ is the converter's, and spell text is the Archive's.
 ## Special abilities: what is rewritten in 2e form
 
 `js/abilities.js` rewrites a special ability when one of its rules reads the
-ability's whole construction, and leaves it alone otherwise (HISTORY #894). An
+ability's whole construction, and leaves it alone otherwise (HISTORY #894, and
+#899 for the second set of rules). An
 ability left alone keeps the text it had before the rules existed, PF1e
 sentences with DCs and action costs converted, and wears a **PF1e wording**
 mark on the page, `[PF1e wording]` in the copied text, and a line in the
@@ -119,23 +120,31 @@ Foundry file's private notes. Nothing is rewritten on a guess.
 
 `data/ability-patterns.md` is the measurement, written by
 `node Pathfinder/converter-assets/measure-abilities.mjs` over the 57 stat
-blocks in `Pathfinder/tests/fixtures/pf1`. On 2026-10-05, of 111 abilities:
+blocks in `Pathfinder/tests/fixtures/pf1`. On 2026-10-06, of 111 abilities:
 
 | How the text was written | Abilities | Share |
 | --- | ---: | ---: |
-| By a rule | 22 | 20% |
+| By a rule | 33 | 30% |
 | The converter's wording for a universal ability (`UMR_TEXT`), with nothing left over | 6 | 5% |
-| PF1e wording, marked | 76 | 68% |
+| PF1e wording, marked | 65 | 59% |
 | A bare name, no text in the stat block | 7 | 6% |
 
 Before the rules it was 1, 6, 97 and 7: the one was the red dragon's breath,
-and the hell hound's breath read "6d4 rounds damage".
+and the hell hound's breath read "6d4 rounds damage". After the first set of
+rules (2026-10-05) it was 22, 6, 76 and 7.
+
+The 57 fixtures are every PF1e stat block in the repo. The converter ships
+spell data and PF2e tables and no creatures of its own, so there is no wider
+set to measure against, and 30% is a share of these 57 and nothing else. The
+second set of rules was picked to offset that: six of its seven read a
+construction PF1e writes on the stat line in one fixed form for every creature
+that has it, and the made-up blocks in the suite are not fixtures.
 
 The rules, and what each one reads:
 
 | Rule | PF1e construction | What it writes | Fixtures |
 | --- | --- | --- | ---: |
-| affliction | A poison or disease stat line delivered by injury, whose effect is ability damage: `Bite—injury; save Fort DC 13; frequency 1/round for 6 rounds; effect 1d3 Dex damage; cure 1 save` | The poison or disease trait, the Strike that delivers it, `Saving Throw DC`, `Onset`, `Maximum Duration`, one stage | 6 |
+| affliction | A poison or disease stat line delivered by injury, whose effect is ability damage, one of five conditions (`sleep`, `unconsciousness`, `paralysis`, `sickened`, `nauseated`, each with or without `for 1 minute`), or both: `Bite—injury; save Fort DC 13; frequency 1/round for 6 rounds; effect 1d3 Dex damage; cure 1 save` | The poison or disease trait, the Strike that delivers it, `Saving Throw DC`, `Onset`, `Maximum Duration`, one stage | 7 |
 | constrict | `constrict (1d4+3)`, `constrict (slam, 1d8+6)` | One action, damage, a basic Fortitude save | 4 |
 | throw-rock | `rock throwing (120 ft.)` | One action, a ranged Strike with that range increment | 3 |
 | breath (in `convert.js`) | `breath weapon (40-ft. cone, DC 19, 6d10 fire)` | Two actions, area, damage, a basic save, a 1d4-round recharge | 2 |
@@ -143,6 +152,12 @@ The rules, and what each one reads:
 | gaze | `Turn to stone permanently, 30 feet, Fortitude DC 16 negates.` | The visual trait, the range, a save at the start of a turn | 2 |
 | rend | `rend (2 claws, 1d6+7)` | One action, the Strike named, that Strike's damage | 2 |
 | trample | `trample (2d8+10, DC 21)` | Three actions, damage, a basic Reflex save | 1 |
+| limit | A name and a per-day limit, with or without a DC, and nothing else: `grave touch (9/day)`, `power over undead (9/day, DC 18)` | `Frequency 9 times per day.`, and the DC if there was one. No effect: the stat block gives none | 3 |
+| channel | `channel negative energy 3/day (DC 11, 1d6)`, positive the same | Two actions, the void or vitality trait, a Frequency, damage in 30 feet with a basic Will save, or healing instead | 2 |
+| grab | `grab (Large)`, `grab (any size)` | The text a bare Grab gets and one sentence on the size it can Grab | 2 |
+| paralysis | `paralysis (1d4+1 rounds, DC 13)`, and a third clause with no figure in it | The incapacitation trait, a Fortitude save or paralyzed for that long, the clause as a sentence | 1 |
+| pull | `pull (tongue, 5 feet)`, `push (arm, 10 feet)` | One action after a hit with the Strike named, the distance | 1 |
+| rake | `rake (2 claws +7, 1d4+3)`, talons the same | One action on a grabbed creature, that many Strikes, the attack bonus and the damage | 1 |
 
 Where the numbers come from:
 
@@ -159,33 +174,62 @@ Where the numbers come from:
   enfeebled 1, Dexterity clumsy 1, Constitution drained 1, and Intelligence,
   Wisdom or Charisma stupefied 1. A poison gets one stage. PF1e's "cure 2
   consecutive saves" is dropped, since a PF2e affliction ends by its stages.
+- **An attack bonus** (rake) is rescaled the way a Strike's is. The griffon's
+  rake and its talons are both +7 in PF1e and both +13 after.
+- **Channel damage** is scaled by the ratio the creature's first primary
+  Strike was. The war priest's 1d6 comes out 1d6-1, under PF1e's figure,
+  because its greatsword came down from 2d6+4 to 1d6+5. The 30 feet is the
+  burst every PF1e channel has; the stat line never writes it.
+- **A poison's condition**: sleep and unconsciousness are unconscious,
+  paralysis is paralyzed, sickened and nauseated are both sickened 1. Its own
+  duration is written only when it differs from the stage's interval.
 - **Carried as written**, because the converter has no figure of its own: a
-  range, an onset, a duration, an area.
+  range, an onset, a duration, an area, a use limit, a size. A PF1e paralysis
+  of 1d4+1 rounds is long for PF2e; the rule keeps it and adds the
+  incapacitation trait, and does not shorten it.
 - "The save DC is Constitution-based." is dropped from a rewritten ability.
   Any other sentence after the construction is kept as it was.
 
 What a rule will not read, on purpose: a poison delivered by contact or
-breath, a poison whose effect is anything but ability damage (the homunculus's
-sleep), a stat line in the middle of a paragraph (the iron golem's breath), a
-gaze whose effect is not petrification, a rend that names a Strike the creature
-does not have, and a parenthesis the stat block cut off.
+breath, a poison whose effect is a condition outside the five (dazed,
+staggered), a stat line in the middle of a paragraph (the iron golem's breath), a
+gaze whose effect is not petrification, a rend or a pull that names a Strike
+the creature does not have, a per-day limit with anything beside it but a DC
+(`+1, 6/day`), a limit that is not per day (`at will`, `1/10 minutes`), a limit
+on a universal ability, which keeps its own text, a rake with no attack bonus,
+a channel whose dice are not d6, and a parenthesis the stat block cut off.
 
-What is still PF1e wording, by how often it turns up in the 76 (an ability
-with two is counted twice): a save DC inside a sentence, 30; damage dice, 21;
-a parenthesis with no rule ("PF1e: 9/day."), 16; a use limit, 15; an action
-cost, 10; a radius or an area, 8; a condition with a duration, 5. 27 hold none
+**The save inside a sentence was looked at and not taken.** "must succeed on a
+DC N save or be [condition] for [duration]" is in five abilities (the
+gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus, Paralytic
+Tentacles), and in every one it sits between sentences no rule reads: what the
+slime is, when the nimbus bursts, what the tentacles do next. A rule that
+rewrote the one sentence would take the PF1e mark off the rest. It needs a
+fourth kind of wording first (part by rule, part PF1e, marked as such), which
+is a call for the page, the copied text and the Foundry notes together.
+
+What is still PF1e wording, by how often it turns up in the 65 (an ability
+with two is counted twice): a save DC inside a sentence, 25; damage dice, 17;
+a use limit, 11; an action cost, 10; a radius or an area, 8; a parenthesis
+with no rule ("PF1e: DC 29."), 6; a condition with a duration, 5. 27 hold none
 of these and are prose a rule cannot read (the balor's Whip Mastery, the
-doppelganger's Mimicry). The next rules worth writing, in order: "must succeed
-on a DC N save or be [condition] for [duration]" (5 abilities hold it, and it is part of
-more), the per-day and at-will limits as a Frequency line, and the burst that
-"deals N damage to anything within N feet (Reflex DC N halves)".
+doppelganger's Mimicry). What a next rule could take whole, one or two
+fixtures each: the burst that "deals N damage to anything within N feet
+(Reflex DC N halves)" (the balor's Death Throes, in both layouts);
+`swallow whole (1d4 bludgeoning damage, AC 10, 1 hp)`, which needs a Rupture
+figure the tables do not have; `whirlwind (1/10 minutes, 10-50 ft. tall,
+1d8+4 damage, DC 17)`; `energy drain (2 levels, DC 22)`. A name with only a
+DC (`dominate (DC 22)`) has no effect to write.
 
-`Pathfinder/tests/converter-abilities.test.mjs` holds all of it: 21 real
-abilities to the letter, the DCs against the table, twelve made-up blocks one
-step away from a rule, and a hash of everything no rule wrote, taken from the
-converter as it stood before the rules. That hash covers 98 entries: the 89 of
-the 111 above that no rule wrote (6, 76 and 7), and the 9 the count leaves out
-(seven Reactive Strikes, the troll's regeneration, the vampire's fast healing).
+`Pathfinder/tests/converter-abilities.test.mjs` holds all of it, 192 checks:
+32 real abilities to the letter, the DCs against the table, 29 made-up blocks
+one step away from a rule and 25 more a rule must read to the letter, and a
+hash of everything no rule wrote, taken from the converter as it stood before
+the rules. That hash still covers 98 entries: the 89 of the 111 that no rule
+wrote on 2026-10-05, and the 9 the count leaves out (seven Reactive Strikes,
+the troll's regeneration, the vampire's fast healing). The second set of
+rules took 11 of the 98. The suite writes those 11 back in as they stood and
+asks for the same hash, so the 87 left are held to the same bytes.
 
 ## The rest of the folder
 

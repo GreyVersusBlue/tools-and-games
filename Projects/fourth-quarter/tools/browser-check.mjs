@@ -652,6 +652,14 @@ ok("the night engine is on a game night with the league's home flag", opened.gam
 ok("and the league's odds, not the 0.55 coin", Math.abs(opened.winProb - cork.winProb) < 1e-9 && opened.winProb !== 0.55, `${opened.winProb}`);
 ok("the broadcast names the Mules and the opponent", opened.usName === "MULES" && opened.themName === cork.opp.toUpperCase() && opened.bHome === cork.home, `${opened.usName} / ${opened.themName}`);
 ok("the crowd target is the league-aware forecast", opened.crowdTarget === opened.forecast, `${opened.crowdTarget} vs ${opened.forecast}`);
+// the loop hands every body on the floor to walk.js's separate() (#900), which
+// leaves its record on a body the first frame it sees one; smoke-crowd.mjs
+// holds the rule itself, and this is the only check that the game calls it
+const crowded = await page.waitForFunction(() => {
+  const all = [...window.__fq.patrons, ...window.__fq.servers];
+  return all.length > 0 && all.every(b => b.crowd);
+}, null, { timeout: 60000 }).then(() => true).catch(() => false);
+ok("the night's loop runs local avoidance over the patrons and the crew", crowded);
 
 // kickoff, then halftime: the standings screen for the first third of hour 5
 await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 2 + 0.01; });
@@ -1156,6 +1164,292 @@ ok("it starts a new campaign: day 1, $900, no strikes, back at the Corner Tap",
 ok("and the failed run is off the disk with it", fresh.saved && fresh.saved.failed === false && fresh.saved.day === 1);
 sameRoom("the fresh campaign", await probe(), "cornerTap");
 ok("no page errors through an eviction, a demotion and an ending", errors.length === 0, errors.join(" | "));
+
+// ---------------------------------------------------------------- the supply house (#905)
+// The fresh campaign is day 1, a Monday, at the Corner Tap with 90 beers on
+// the shelf: the Stock panel's order sheet, par sheet and three houses, then
+// one Monday night to see the account on the box score.
+const sheet = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  fq.campaign.cash = 5000;
+  fq.day.stockPanel();
+  const cards = [...document.querySelectorAll("[data-housecard]")];
+  const out = { houses: cards.map(c => c.dataset.housecard).join(), mine: cards.filter(c => c.classList.contains("on")).map(c => c.dataset.housecard).join(),
+    buttons: [...document.querySelectorAll("[data-house]")].map(b => `${b.dataset.house}:${b.textContent}`).join(), pars: document.querySelectorAll("#orderSheet input.par").length,
+    standing: q("#houseStanding").textContent };
+  const par = q('input.par[data-par="beer"]');
+  par.value = "150"; par.dispatchEvent(new Event("change", { bubbles: true }));
+  out.parSaved = fq.campaign.pars.beer; out.parOnDisk = (JSON.parse(localStorage.getItem("fq3d-save")).pars || {}).beer; out.parShown = q('input.par[data-par="beer"]').value;
+  q("[data-parfill]").click();
+  out.cart = fq.day.cart.beer; out.total = q("#orderTotal").textContent; out.notes = q("#orderNotes").textContent;
+  q('[data-house="cask"]').click();
+  out.dist = fq.campaign.dist.id; out.caskTotal = q("#orderTotal").textContent; out.caskNotes = q("#orderNotes").textContent;
+  out.caskMine = [...document.querySelectorAll("[data-housecard].on")].map(c => c.dataset.housecard).join();
+  q("[data-placeorder]").click();
+  out.cash = fq.campaign.cash; out.beer = fq.campaign.stock.beer; out.spend = fq.campaign.dist.spend;
+  out.onDisk = JSON.parse(localStorage.getItem("fq3d-save")).dist;
+  return out;
+});
+ok("the Stock panel lists three supply houses and County Line is yours", sheet.houses === "county,cask,gold" && sheet.mine === "county" && /keeps no account/.test(sheet.standing), `${sheet.houses} / ${sheet.mine}`);
+ok("the other two each offer to sign, and every menu line has a par box", sheet.buttons === "cask:Sign with them,gold:Sign with them" && sheet.pars === 6, `${sheet.buttons} / ${sheet.pars}`);
+ok("a par typed into the sheet is on the campaign, on disk and still in the box after the re-render", sheet.parSaved === 150 && sheet.parOnDisk === 150 && sheet.parShown === "150", JSON.stringify([sheet.parSaved, sheet.parOnDisk, sheet.parShown]));
+ok("Fill to Par puts the 60 beers short of 150 in the cart, at County Line's list price", sheet.cart === 60 && sheet.total === "$111.00" && !/off list|premium|drop/.test(sheet.notes), `${sheet.cart} ${sheet.total} ${sheet.notes}`);
+ok("signing with Cask & Carton reprices the cart: 10% under, and a $25 drop charge for an order under $120", sheet.dist === "cask" && sheet.caskMine === "cask" && sheet.caskTotal === "$124.90" && /−\$11\.10 off list/.test(sheet.caskNotes) && /\+\$25 drop charge under \$120/.test(sheet.caskNotes), `${sheet.caskTotal} ${sheet.caskNotes}`);
+ok("placing it takes $124.90, shelves 150 beers and puts $99.90 on the account, on disk", sheet.cash === 5000 - 124.9 && sheet.beer === 150 && sheet.spend === 99.9 && sheet.onDisk.id === "cask" && sheet.onDisk.spend === 99.9, JSON.stringify(sheet.onDisk));
+
+const armed = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  fq.campaign.dist.spend = 3200; // 3% earned
+  fq.day.stockPanel();
+  const standing = q("#houseStanding").textContent;
+  // a button that is gone reads as no label, so a switch on the first click
+  // fails the line below by name instead of throwing here
+  const label = sel => (q(sel) || {}).textContent ?? null;
+  q('[data-house="gold"]').click();
+  const first = { dist: fq.campaign.dist.id, spend: fq.campaign.dist.spend, label: label('[data-house="gold"]'), other: label('[data-house="county"]') };
+  if (q('[data-house="gold"]')) q('[data-house="gold"]').click();
+  const second = { dist: fq.campaign.dist.id, spend: fq.campaign.dist.spend, wings: [...document.querySelectorAll("#orderSheet tr")][1].textContent };
+  fq.campaign.dist = { id: "cask", spend: 0 };
+  fq.day.closePanel();
+  fq.day.doorPanel();
+  const door = q("#panelBody").textContent;
+  fq.day.closePanel();
+  return { standing, first, second, door };
+});
+ok("an account with loyalty on it says so", /\$3,200 spent/.test(armed.standing) && /−3% loyalty/.test(armed.standing) && /\$800 to the next 1%/.test(armed.standing), armed.standing);
+ok("and is not signed away on one click: the button arms, and the account stands", armed.first.dist === "cask" && armed.first.spend === 3200 && armed.first.label === "Confirm switch" && armed.first.other === "Sign with them", JSON.stringify(armed.first));
+ok("the second click signs with Gold Standard, the loyalty gone, and wings are $3.58 a serving", armed.second.dist === "gold" && armed.second.spend === 0 && /\$3\.58\/serving/.test(armed.second.wings), armed.second.wings.replace(/\s+/g, " ").slice(0, 80));
+ok("on a Monday the Tonight panel names the account's bill", /Supply account\$110 · Cask & Carton Wholesale, billed tonight/.test(armed.door), armed.door.slice(armed.door.indexOf("Upgrade"), armed.door.indexOf("Upgrade") + 120));
+
+// one Monday night at Gold Standard's plate, then Cask & Carton's bill at the close
+await page.evaluate(() => { const fq = window.__fq; fq.campaign.dist = { id: "gold", spend: 0 }; fq.day.cb.openDoors(); });
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the supply night to open");
+const plate = await page.evaluate(() => {
+  const fq = window.__fq, e = fq.engine;
+  e.momentBudget = 0;
+  const out = { mult: e.plateMult, burger: e.price("burger"), beer: e.price("beer") };
+  fq.campaign.dist = { id: "cask", spend: 0 }; // the bill is the house's you are with at the close
+  e.t = e.hourLenSec * 8 - 0.001;
+  return out;
+});
+ok("the night opens with Gold Standard's plate: a burger is $11.88, a beer still $6", plate.mult === 1.08 && plate.burger === 11.88 && plate.beer === 6, JSON.stringify(plate));
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the supply night's box score");
+const billed = await page.evaluate(() => {
+  const row = document.querySelector("#boxAccount");
+  return { row: row ? row.textContent : null, day: window.__fq.campaign.day };
+});
+ok("Monday's box score carries the account: Supply account (weekly), −$110", billed.day === 2 && billed.row === "Supply account (weekly)−$110", String(billed.row));
+ok("no page errors through the supply house", errors.length === 0, errors.join(" | "));
+
+// ---------------------------------------------------------------- the rota (#908)
+// Tuesday morning, day 2, two on the payroll (the cook and the server every
+// campaign opens with). The Crew panel with no rota, posting one on the
+// second click, a night off, and one night to see it on the floor and the
+// box score.
+await page.click("#nextDayBtn");
+const crew0 = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  c.dist = { id: "county", spend: 0 };
+  c.staff = c.staff.slice(0, 2); c.staff[0].wage = 70; c.staff[1].wage = 60; c.staff[0].skill = 2; c.staff[1].skill = 2;
+  fq.day.crewPanel();
+  const label = sel => (q(sel) || {}).textContent ?? null;
+  const out = { day: c.day, roles: c.staff.map(s => s.role).join(), card: !!q("#rotaCard"), table: !!q("#rota"), btn: label("[data-postrota]"), bill: label("#wageBill"), payroll: document.querySelectorAll("#payroll [data-fire]").length, cap: /up to 3 on payroll/.test(q("#panelBody").textContent) };
+  q("[data-postrota]").click();
+  out.armed = { rota: c.crew.rota, btn: label("[data-postrota]") };
+  if (q("[data-postrota]")) q("[data-postrota]").click();
+  out.posted = { rota: c.crew.rota, disk: (JSON.parse(localStorage.getItem("fq3d-save")).crew || {}).rota, btn: label("[data-postrota]"), rows: document.querySelectorAll("#rota [data-rotarow]").length,
+    days: document.querySelectorAll("#rota .rotaDay").length, lit: document.querySelectorAll("#rota .rotaDay.on").length, today: [...document.querySelectorAll("#rota .rotaDay.today")].map(b => b.dataset.day).join(),
+    cap: /up to 5 on payroll/.test(q("#panelBody").textContent), bill: label("#wageBill") };
+  return out;
+});
+ok("the Crew panel with no rota: the card that offers one, no schedule, two on the payroll, $130 in wages", crew0.day === 2 && crew0.roles === "cook,server" && crew0.card && !crew0.table && crew0.btn === "Post the Rota" && crew0.bill === "$130" && crew0.payroll === 2 && crew0.cap, JSON.stringify(crew0).slice(0, 200));
+ok("a rota is not posted on one click: the button arms and nothing is on the wall", crew0.armed.rota === false && crew0.armed.btn === "Confirm: post it for good", JSON.stringify(crew0.armed));
+ok("the second click posts it, on disk, and the button is gone", crew0.posted.rota === true && crew0.posted.disk === true && crew0.posted.btn === null, JSON.stringify(crew0.posted));
+ok("the schedule is a row a staffer, seven days each, every one lit, today marked, and the payroll holds five", crew0.posted.rows === 2 && crew0.posted.days === 14 && crew0.posted.lit === 14 && crew0.posted.today === "Tue,Tue" && crew0.posted.cap && crew0.posted.bill === "$130", JSON.stringify(crew0.posted));
+
+const off = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign, cook = c.staff[0].name, server = c.staff[1].name;
+  const day = (n, d) => [...document.querySelectorAll("#rota .rotaDay")].find(b => b.dataset.rota === n && b.dataset.day === d);
+  day(cook, "Tue").click();
+  const out = { off: (c.crew.book[cook] || {}).off, disk: ((JSON.parse(localStorage.getItem("fq3d-save")).crew.book || {})[cook] || {}).off, lit: day(cook, "Tue").classList.contains("on"), pressed: day(cook, "Tue").getAttribute("aria-pressed"),
+    bill: q("#wageBill").textContent, body: q("#panelBody").textContent, row: document.querySelector("#rota [data-rotarow]").textContent.replace(/\s+/g, " ") };
+  // the server has worked himself into the ground, one shift short of a level he will not get tired
+  c.crew.book[server] = { off: [], fatigue: 60, xp: 11, morale: 60 };
+  fq.day.crewPanel();
+  out.tired = document.querySelectorAll("#rota [data-rotarow]")[1].textContent.replace(/\s+/g, " ");
+  fq.day.closePanel(); fq.day.doorPanel();
+  out.door = q("#panelBody").textContent;
+  fq.day.closePanel();
+  return out;
+});
+ok("a click on the cook's Tuesday gives the night off: on the campaign, on disk, and the button goes dark", String(off.off) === "Tue" && String(off.disk) === "Tue" && off.lit === false && off.pressed === "false", JSON.stringify([off.off, off.disk, off.lit]));
+ok("the wage bill drops to the server's $60, the panel warns the kitchen is shut, and the row says off tonight, 6 on, 1 off", off.bill === "$60" && /No cook/.test(off.body) && /off tonight/.test(off.row) && /6 on, 1 off/.test(off.row), `${off.bill} / ${off.row.slice(0, 110)}`);
+ok("a staffer at 60 of fatigue reads tired, a skill level down tonight, 11 of 12 shifts to the next", /tired, skill 1 tonight/.test(off.tired) && /11 of 12 shifts to skill 3/.test(off.tired), off.tired.slice(0, 120));
+ok("the Tonight panel's crew is who is on shift, and it warns about the kitchen", /Crew[A-Z][a-z]+Wages \+ rent\$60 \+ \$110/.test(off.door) && /No cook/.test(off.door), off.door.slice(off.door.indexOf("Crew"), off.door.indexOf("Crew") + 60));
+
+await page.evaluate(() => window.__fq.day.cb.openDoors());
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the rota night to open");
+const shift = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq, e = fq.engine, c = fq.campaign;
+  e.momentBudget = 0;
+  const out = { foodMult: e.foodMult, drinkMult: e.drinkMult, crew: C.shiftCrew(c).map(s => `${s.role}${s.skill}@${s.speed}`).join(), own: c.staff[1].speed, floor: fq.servers.map(x => `${x.name}@${x.speed}`).join(), first: c.staff[1].name.split(" ")[0], ticker: document.querySelector("#ticker").textContent };
+  // rested, so tonight is the twelfth fresh shift
+  c.crew.book[c.staff[1].name].fatigue = 0;
+  e.t = e.hourLenSec * 8 - 0.001;
+  return out;
+});
+ok("the night opens with the kitchen shut, the ticker saying so, and one tired server on the floor, a level slower on his feet", shift.foodMult === 0 && shift.crew === `server1@${Math.round((shift.own - 0.18) * 100) / 100}` && shift.floor === `${shift.first}@${Math.round((shift.own - 0.18) * 100) / 100}` && /kitchen's closed/.test(shift.ticker), JSON.stringify(shift).slice(0, 160));
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the rota night's box score");
+const closed = await page.evaluate(() => {
+  const c = window.__fq.campaign, box = document.querySelector("#boxBody").textContent.replace(/\s+/g, " ");
+  return { box: box.slice(box.indexOf("The Crew")), has: !!document.querySelector("#boxCrew"), wages: /Wages\s?−\$60\s?Rent/.test(box), server: c.staff[1], line: c.crew.book[c.staff[1].name], cookLine: c.crew.book[c.staff[0].name] };
+});
+ok("the box score paid one wage and has a Crew section: the cook's night off and the server's level", closed.has && closed.wages && /Night off\s?[A-Z][a-z]+/.test(closed.box) && /Earned a skill level \(\+\$20\/night\)\s?[A-Z][a-z]+/.test(closed.box), closed.box.slice(0, 120));
+ok("the server is skill 3 on $80 from tomorrow, 12 more tired, his count back to nothing; the cook rested", closed.server.skill === 3 && closed.server.wage === 80 && closed.line.fatigue === 12 && closed.line.xp === 0 && closed.cookLine.fatigue === 0 && String(closed.cookLine.off) === "Tue", JSON.stringify([closed.server, closed.line]));
+ok("no page errors through the rota", errors.length === 0, errors.join(" | "));
+
+// ---------------------------------------------------------------- the dated shelf (#909)
+// Wednesday morning, moved on a week to day 10 so a lot can be five nights
+// old. The Stock panel with an undated shelf, dating it on the second click,
+// the lots with their nights, the walk-in, and one night to see the dates and
+// not the flat rate close the shelf.
+await page.click("#nextDayBtn");
+const shelf0 = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  C.devSetDay(c, c.day + 7);
+  c.cash = 5000; c.stock = { wings: 10, burger: 0, nachos: 0, fries: 0, beer: 40, soda: 10 };
+  fq.day.stockPanel();
+  const label = sel => (q(sel) || {}).textContent ?? null;
+  const out = { day: c.day, card: !!q("#shelfCard"), table: !!q("#shelfLots"), walkin: !!q("#walkinCard"), btn: label("[data-dateshelf]"), rule: label("#rotRule") };
+  q("[data-dateshelf]").click();
+  out.armed = { dated: c.shelf.dated, btn: label("[data-dateshelf]") };
+  if (q("[data-dateshelf]")) q("[data-dateshelf]").click();
+  const row = id => (q(`[data-shelfrow="${id}"]`) || { textContent: "" }).textContent.replace(/\s+/g, " ");
+  out.dated = { dated: c.shelf.dated, disk: (JSON.parse(localStorage.getItem("fq3d-save")).shelf || {}).dated, v: JSON.parse(localStorage.getItem("fq3d-save")).__v, btn: label("[data-dateshelf]"), card: !!q("#shelfCard"),
+    rows: document.querySelectorAll("#shelfLots [data-shelfrow]").length, wings: row("wings"), beer: row("beer"), soda: row("soda"), fries: row("fries"), rule: label("#rotRule"),
+    install: label("[data-buywalkin]"), lots: JSON.stringify(c.shelf.lots), stock: c.stock.wings };
+  return out;
+});
+ok("the Stock panel with an undated shelf: the card that offers dates, no lots, no walk-in, and the 15% rule in words", shelf0.day === 10 && shelf0.card && !shelf0.table && !shelf0.walkin && shelf0.btn === "Date the Shelf" && /rots about 15%/.test(shelf0.rule), JSON.stringify(shelf0).slice(0, 200));
+ok("a shelf is not dated on one click: the button arms and no date is on anything", shelf0.armed.dated === false && shelf0.armed.btn === "Confirm: date it for good", JSON.stringify(shelf0.armed));
+ok("the second click dates it, on disk at save version 5, and the card is gone", shelf0.dated.dated === true && shelf0.dated.disk === true && shelf0.dated.v === 5 && shelf0.dated.btn === null && !shelf0.dated.card, JSON.stringify(shelf0.dated).slice(0, 160));
+ok("what was on the shelf is dated today, a row an item: wings for 3 nights, beer for 14, soda never, and a bare line says so", shelf0.dated.rows === 6 && /3 nights\s?10 for 3 nights/.test(shelf0.dated.wings) && /14 nights\s?40 for 14 nights/.test(shelf0.dated.beer) && /never goes off/.test(shelf0.dated.soda) && /none on the shelf/.test(shelf0.dated.fries)
+  && shelf0.dated.lots === '{"wings":[{"day":10,"n":10}],"beer":[{"day":10,"n":40}]}' && shelf0.dated.stock === 10, `${shelf0.dated.wings} / ${shelf0.dated.beer} / ${shelf0.dated.lots}`);
+ok("the order sheet's rule is the dates now, and the walk-in is offered", /The shelf is dated/.test(shelf0.dated.rule) && !/15%/.test(shelf0.dated.rule) && shelf0.dated.install === "Install", `${shelf0.dated.rule} / ${shelf0.dated.install}`);
+
+const cold = await page.evaluate(() => {
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  const row = id => q(`[data-shelfrow="${id}"]`).textContent.replace(/\s+/g, " ");
+  // the wings came in on Monday: tonight is their third night
+  c.shelf.lots.wings = [{ day: c.day - 2, n: 10 }];
+  fq.day.stockPanel();
+  const out = { last: row("wings"), sheet: (q('[data-lastnight="wings"]') || {}).textContent ?? null, lotClass: q('[data-lot="wings"]').className };
+  q("[data-buywalkin]").click();
+  out.walkin = { on: c.shelf.walkin, disk: JSON.parse(localStorage.getItem("fq3d-save")).shelf.walkin, cash: c.cash, btn: !!q("[data-buywalkin]"), card: q("#walkinCard").textContent.replace(/\s+/g, " "), wings: row("wings"), beer: row("beer"), sheet: !!q('[data-lastnight="wings"]'), upgrades: c.upgrades.includes("walkin") };
+  // and two days older still, so the walk-in's five nights are up tonight
+  c.shelf.lots.wings = [{ day: c.day - 4, n: 10 }];
+  fq.day.closePanel(); fq.day.doorPanel();
+  out.door = q("#panelBody").textContent;
+  fq.day.closePanel();
+  return out;
+});
+ok("wings on their third night read \"10 go tonight\" in red, in the lots and on the order sheet", /10 go tonight/.test(cold.last) && cold.sheet === "(10 go tonight)" && cold.lotClass === "bad", `${cold.last} / ${cold.sheet} / ${cold.lotClass}`);
+ok("Install puts the walk-in in for $1,000, on disk, once, and not among the upgrades", cold.walkin.on === true && cold.walkin.disk === true && cold.walkin.cash === 4000 && !cold.walkin.btn && /installed/.test(cold.walkin.card) && !cold.walkin.upgrades, JSON.stringify(cold.walkin).slice(0, 160));
+ok("and the same wings keep 5 nights and have 3 left, while the keg's 14 did not move", /5 nights\s?10 for 3 nights/.test(cold.walkin.wings) && /14 nights\s?40 for 14 nights/.test(cold.walkin.beer) && !cold.walkin.sheet, `${cold.walkin.wings} / ${cold.walkin.beer}`);
+ok("the Tonight panel bills the walk-in's $18 and warns what is on its last night", /Walk-in\$18/.test(cold.door) && /10 servings are on the last night of the date/.test(cold.door), cold.door.slice(cold.door.indexOf("Walk-in"), cold.door.indexOf("Walk-in") + 40));
+
+await page.evaluate(() => window.__fq.day.cb.openDoors());
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the dated night to open");
+await page.evaluate(() => { const e = window.__fq.engine; e.momentBudget = 0; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the dated night's box score");
+const gone = await page.evaluate(() => {
+  const c = window.__fq.campaign, q = sel => document.querySelector(sel);
+  const text = sel => (q(sel) || { textContent: "" }).textContent.replace(/\s+/g, " ");
+  return { walkin: text("#boxWalkin"), spoiled: text("#boxSpoiled"), wings: c.stock.wings, beer: c.stock.beer, lots: JSON.stringify(c.shelf.lots.wings || null), day: c.day };
+});
+const went = +(/(\d+) servings?/.exec(gone.spoiled) || [0, 0])[1];
+ok("the box score bills the walk-in's power on its own line", /Walk-in power\s?−\$18/.test(gone.walkin), gone.walkin);
+ok("the close took every wing past its date, all of the lot and not the flat rate's seventh, and said which rule it was", /Past the date at close/.test(gone.spoiled) && went >= 7 && went <= 10 && gone.wings === 0 && gone.lots === "null" && gone.beer > 0, `${gone.spoiled} / wings ${gone.wings} / beer ${gone.beer}`);
+ok("no page errors through the dated shelf", errors.length === 0, errors.join(" | "));
+
+// ---------------------------------------------------------------- season terms (#911)
+// Moved on to day 108, five nights before season 1's off-season. The Real
+// Estate panel month to month, signing on the second click, the Tonight
+// panel's row and its week of notice, an off-season night's rent in the box
+// score, the ticker the morning the new season is a week off, and the Crew
+// panel in season 2. Every dollar is asked against the room the run is in.
+await page.click("#nextDayBtn");
+const terms0 = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  const text = sel => (q(sel) || { textContent: "" }).textContent.replace(/\s+/g, " ").trim();
+  const disk = () => JSON.parse(localStorage.getItem("fq3d-save"));
+  C.devSetDay(c, 108);
+  c.cash = 5000; c.strikes = 0;
+  fq.day.realEstatePanel();
+  const out = { base: C.venueDef(c).rent, rentWas: C.rent(c), wagesWas: C.wageBill(c), card: text("#termsCard"), btn: text("[data-signterms]"),
+    now: text('[data-terms="now"]'), off: text('[data-terms="off"]'), next: text('[data-terms="next"]') };
+  q("[data-signterms]").click();
+  out.armed = { signed: c.terms.signed, btn: text("[data-signterms]") };
+  if (q("[data-signterms]")) q("[data-signterms]").click();
+  out.signed = { terms: JSON.stringify(c.terms), disk: JSON.stringify(disk().terms), v: disk().__v, btn: !!q("[data-signterms]"), card: text("#termsCard"), cash: c.cash,
+    now: text('[data-terms="now"]'), off: text('[data-terms="off"]'), next: text('[data-terms="next"]'), rent: C.rent(c), wages: C.wageBill(c) };
+  fq.day.closePanel(); fq.day.doorPanel();
+  out.door = text("#panelBody");
+  fq.day.closePanel();
+  return out;
+});
+const pct = (p, off = 100) => Math.round(terms0.base * p * off / 10000);
+ok("the Real Estate panel month to month: the card that offers season terms, with the three rents it would mean", /Month to month/.test(terms0.card) && terms0.btn === "Sign Season Terms" && terms0.rentWas === terms0.base
+  && terms0.now === `From tonight$${pct(90)}wages as they are` && terms0.off === `Off-season, in 5 nights$${pct(90, 75)}wages as they are` && terms0.next === `Season 2, in 19 nights$${terms0.base}wages at 106%`, `${terms0.now} / ${terms0.off} / ${terms0.next}`);
+ok("terms are not signed on one click: the button arms and the record is month to month", terms0.armed.signed === false && terms0.armed.btn === "Confirm: sign for good", JSON.stringify(terms0.armed));
+ok("the second click signs them in season 1, on disk at save version 5, for nothing, and the button is gone", terms0.signed.terms === '{"signed":true,"since":1}' && terms0.signed.disk === terms0.signed.terms && terms0.signed.v === 5 && !terms0.signed.btn && terms0.signed.cash === 5000 && /On season terms/.test(terms0.signed.card) && /signed in season 1/.test(terms0.signed.card), JSON.stringify(terms0.signed).slice(0, 200));
+ok("tonight's rent is 10% under the room's from that click, the wages did not move, and the card keeps the two dates", terms0.signed.rent === pct(90) && terms0.signed.wages === terms0.wagesWas && terms0.signed.now === `Tonight$${pct(90)}wages as they are` && terms0.signed.off === `Off-season, in 5 nights$${pct(90, 75)}wages as they are` && terms0.signed.next === `Season 2, in 19 nights$${terms0.base}wages at 106%`, `${terms0.signed.rent} / ${terms0.signed.now} / ${terms0.signed.next}`);
+ok("the Tonight panel bills the terms' rent, has a Season terms row, and gives the off-season's notice five nights out", terms0.door.includes(`+ $${pct(90)}Upgrade`) && terms0.door.includes(`Season termsrent $${pct(90)} · off-season in 5The lease`) && terms0.door.includes(`the off-season starts in 5 nights. Rent drops to $${pct(90, 75)} a night from $${pct(90)}`), terms0.door.slice(terms0.door.indexOf("Season terms"), terms0.door.indexOf("Season terms") + 60));
+
+await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq;
+  C.devSetDay(fq.campaign, 119);
+  fq.campaign.cash = 5000;
+  fq.day.cb.openDoors();
+});
+await settled(() => window.__fq.engine && !window.__fq.engine.done, "the off-season night to open");
+await page.evaluate(() => { const e = window.__fq.engine; e.momentBudget = 0; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the off-season night's box score");
+const offBox = await page.evaluate(() => document.querySelector("#boxBody").textContent.replace(/\s+/g, " "));
+ok("an off-season night's box score bills three quarters of the season's rent", new RegExp(`Rent\\s?−\\$${pct(90, 75)}(?!\\d)`).test(offBox), offBox.slice(offBox.indexOf("Rent"), offBox.indexOf("Rent") + 20));
+await page.click("#nextDayBtn");
+const terms1 = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const fq = window.__fq, q = sel => document.querySelector(sel);
+  const c = fq.campaign;
+  const text = sel => (q(sel) || { textContent: "" }).textContent.replace(/\s+/g, " ").trim();
+  const out = { day: c.day, ticker: text("#ticker") };
+  C.devSetDay(c, 130);
+  fq.day.crewPanel();
+  const cells = t => [...t.querySelectorAll("td.num.money")].map(td => +(/\$(\d+)/.exec(td.textContent) || [0, 0])[1]);
+  const tables = [...document.querySelectorAll("#panelBody table")];
+  out.crew = { raise: text("#wageRaise"), bill: +text("#wageBill").replace("$", ""), payroll: cells(q("#payroll")), own: c.staff.map(s => s.wage), training: c.upgrades.includes("training"),
+    apps: cells(tables[tables.length - 1]), asking: c.applicants.map(a => a.wage), wageBill: C.wageBill(c) };
+  fq.day.closePanel(); fq.day.realEstatePanel();
+  out.estate = { now: text('[data-terms="now"]'), off: text('[data-terms="off"]'), next: text('[data-terms="next"]'), rent: C.rent(c) };
+  fq.day.closePanel();
+  return out;
+});
+ok("the morning the new season is a week off, the ticker says what the rent and the wages go to", terms1.day === 120 && terms1.ticker.includes(`Season terms: season 2 opens in 7 nights. Rent goes to $${terms0.base} a night from $${pct(90, 75)} and every wage goes to 106% of the staffer's own, from 100%.`), terms1.ticker.slice(terms1.ticker.indexOf("Season terms"), terms1.ticker.indexOf("Season terms") + 90));
+const up = w => Math.round(w * (terms1.crew.training ? 1.15 : 1) * 1.06);
+ok("in season 2 the Crew panel pays every wage at 106% and says so, the applicants' asking wages included", /every wage at 106%/.test(terms1.crew.raise) && terms1.crew.payroll.length > 0 && String(terms1.crew.payroll) === String(terms1.crew.own.map(up)) && terms1.crew.asking.length === 3
+  && String(terms1.crew.apps) === String(terms1.crew.asking.map(w => Math.round(w * 1.06))) && terms1.crew.bill === terms1.crew.wageBill, JSON.stringify(terms1.crew));
+ok("and the Real Estate card reads the room's own rent tonight, with season 3's 10% over and 112% wages to come", terms1.estate.rent === terms0.base && terms1.estate.now === `Tonight$${terms0.base}wages at 106%` && terms1.estate.off === `Off-season, in 109 nights$${pct(100, 75)}wages at 106%` && terms1.estate.next === `Season 3, in 123 nights$${pct(110)}wages at 112%`, `${terms1.estate.now} / ${terms1.estate.next}`);
+ok("no page errors through season terms", errors.length === 0, errors.join(" | "));
 
 await browser.close();
 server.close();

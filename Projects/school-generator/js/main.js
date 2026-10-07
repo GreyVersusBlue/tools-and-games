@@ -8,6 +8,7 @@ import {
 } from './grid.js';
 import {
   totalShapeArea, nextRoomName, shapesOf, shapeArea, interiorPoint,
+  ACCENT_PALETTE,
 } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS, PROP_CATALOG, registeredRows } from './catalog.js';
@@ -16,7 +17,7 @@ import { MAX_SHOVE } from './shove.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
-import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES, MAX_RUNS, rampMinRuns, rampRunRise, rampOverRise } from './stairs.js';
+import { stairMetrics, linksFrom, elevatorsOn, MAX_RUNS, rampMinRuns, rampRunRise, rampOverRise, RAMP_CTRL, stepRampWidth, stepRampSlope } from './stairs.js';
 import { FLOOR_FINISHES, DEFAULT_FINISH, FACADE_MATERIALS, DEFAULT_FACADE } from './finish.js';
 import {
   SITE_SURFACES, SITE_MARKINGS, SITE_KINDS, surfaceEntry, markingEntry, kindEntry,
@@ -1850,13 +1851,16 @@ renderWallKinds();
 // takes an accent off whatever wall is clicked. Deeper than the room paints
 // above on purpose, because an accent that is one step from the room's own
 // off-white does not read as one.
-const ACCENT_PAINTS = [null, '#2f5d8a', '#3f7d6b', '#8fb8a8', '#d9a441',
-  '#c2573a', '#a33b45', '#7a4e8a', '#4a4f57'];
+// The colours are shapes.js's ACCENT_PALETTE and nowhere else (#912): a swatch
+// arms the brush with the colour's id, which is what the design stores, and
+// says its name. Buttons in palette order, so Tab walks them and Enter or
+// Space presses one.
+const ACCENT_PAINTS = [null, ...ACCENT_PALETTE];
 const accentSwatches = $('accent-swatches');
 function renderAccentSwatches() {
   const armed = editor.accentPaint;
   accentSwatches.querySelectorAll('.swatch').forEach((b) => {
-    const on = armed !== undefined && (b.dataset.paint || null) === armed;
+    const on = armed !== undefined && (b.dataset.accent || null) === armed;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
   });
@@ -1869,16 +1873,18 @@ function renderAccentSwatches() {
 }
 ACCENT_PAINTS.forEach((c) => {
   const b = document.createElement('button');
+  const id = c ? c.id : null;
   b.type = 'button';
   b.className = 'swatch';
-  b.dataset.paint = c || '';
-  b.style.background = c || 'transparent';
+  b.dataset.accent = id || '';
+  b.dataset.paint = c ? c.hex : '';
+  b.style.background = c ? c.hex : 'transparent';
   if (!c) b.style.border = '1px dashed rgba(255,255,255,0.45)';
-  b.title = c ? `Paint a wall ${c}` : 'Take an accent off a wall';
-  b.setAttribute('aria-label', c ? `Accent paint ${c}` : 'Remove accent');
+  b.title = c ? `Paint a wall ${c.name}` : 'Take an accent off a wall';
+  b.setAttribute('aria-label', c ? `Accent paint ${c.name}` : 'Remove accent');
   b.setAttribute('aria-pressed', 'false');
   b.addEventListener('click', () => {
-    editor.setAccentPaint(editor.accentPaint === c ? undefined : c);
+    editor.setAccentPaint(editor.accentPaint === id ? undefined : id);
   });
   accentSwatches.appendChild(b);
 });
@@ -2048,6 +2054,18 @@ function renderRampFold() {
   side.setAttribute('aria-pressed', String(fold.side === -1));
   // One run has no fold to hand, so the switch waits for a second.
   side.disabled = fold.runs <= 1;
+  // #907: how wide and how steep, the same selected-or-next rule. A ramp a
+  // file made narrower or steeper than the range reads as it is, with the one
+  // button that leads back into the range live.
+  const size = editor.rampSize;
+  $('ramp-width-label').textContent = size.selected ? 'This ramp\'s width' : 'Ramp width';
+  $('ramp-slope-label').textContent = size.selected ? 'This ramp\'s slope' : 'Ramp slope';
+  $('ramp-width').textContent = `${size.width}ft`;
+  $('ramp-slope').textContent = `1:${size.slope}`;
+  $('ramp-width-less').disabled = size.width <= RAMP_CTRL.minW;
+  $('ramp-width-more').disabled = size.width >= RAMP_CTRL.maxW;
+  $('ramp-slope-steeper').disabled = size.slope <= RAMP_CTRL.steepest;
+  $('ramp-slope-gentler').disabled = size.slope >= RAMP_CTRL.gentlest;
 }
 function stepRampFold(opts) {
   const changed = editor.setRampFold(opts);
@@ -2058,6 +2076,16 @@ function stepRampFold(opts) {
 $('ramp-runs-less').addEventListener('click', () => stepRampFold({ runs: editor.rampFold.runs - 1 }));
 $('ramp-runs-more').addEventListener('click', () => stepRampFold({ runs: editor.rampFold.runs + 1 }));
 $('ramp-side').addEventListener('click', () => stepRampFold({ side: editor.rampFold.side === -1 ? 1 : -1 }));
+function stepRampSize(opts) {
+  const changed = editor.setRampSize(opts);
+  renderRampFold();
+  renderStairReadout();
+  if (changed) afterEdit();
+}
+$('ramp-width-less').addEventListener('click', () => stepRampSize({ width: stepRampWidth(editor.rampSize.width, -1) }));
+$('ramp-width-more').addEventListener('click', () => stepRampSize({ width: stepRampWidth(editor.rampSize.width, 1) }));
+$('ramp-slope-steeper').addEventListener('click', () => stepRampSize({ slope: stepRampSlope(editor.rampSize.slope, -1) }));
+$('ramp-slope-gentler').addEventListener('click', () => stepRampSize({ slope: stepRampSlope(editor.rampSize.slope, 1) }));
 
 $('stair-delete').addEventListener('click', () => {
   if (editor.stairDelete()) afterStairEdit();
@@ -2094,7 +2122,9 @@ function renderStairReadout() {
   // whether the route is accessible.
   let head;
   if (editor.stairType === 'ramp') {
-    const run = m.rise * RAMP_SLOPES[0];
+    // #907: at the slope the panel shows, the selected ramp's or the next one's.
+    const { width, slope } = editor.rampSize;
+    const run = m.rise * slope;
     // #832: what the fold above makes of that run, and whether each lane is
     // inside the 30in a run may rise. The fewest that are is named either way.
     const runs = editor.rampFold.runs;
@@ -2106,7 +2136,9 @@ function renderStairReadout() {
     const fold = runs > 1
       ? `${runs} runs of ${(run / runs).toFixed(1)}ft, ${each.toFixed(0)}in of rise each`
       : 'One straight run';
-    head = `1:${RAMP_SLOPES[0]} over a ${m.rise}ft rise · ${run.toFixed(0)}ft of run<br />` +
+    head = `1:${slope} over a ${m.rise}ft rise · ${run.toFixed(0)}ft of run, ${width}ft wide<br />` +
+      (slope < RAMP_CTRL.steepest
+        ? `<span class="warn">Steeper than 1:${RAMP_CTRL.steepest}, the most a ramp may climb.</span><br />` : '') +
       (over
         ? `<span class="warn">${fold}: over the 30in a run may rise. ` +
           (rampOverRise({ type: 'ramp', data: { runs: need } }, m) ? 'No fold here is under it.' : `${need} runs is the fewest that is not.`) + '</span><br />'

@@ -10,6 +10,10 @@ import { LAYOUTS, seatsFor } from "./layout.js";
 import { DAYS, MULES, TEAMS as LEAGUE_TEAMS, newLeague, validLeague, syncLeague, settleLeagueNight, tonight as leagueTonight, winProb } from "./league.js";
 import * as R from "./regulars.js";
 import * as EV from "./events.js";
+import * as S from "./supply.js";
+import * as ST from "./staff.js";
+import * as SH from "./shelf.js";
+import * as SN from "./season.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export { DAYS };
@@ -62,8 +66,10 @@ export function venueDef(c) { return VENUES[c.venue] ?? VENUES.cornerTap; }
  *  session-3 answer to "day 40 is strictly easier than day 4, and the venue
  *  ladder pays without a downside": rent still doesn't move with the calendar,
  *  but it moves with the tier, so climbing the ladder is a real tradeoff again
- *  instead of a one-way markup on revenue. See the notes file for the numbers. */
-export function rent(c) { return venueDef(c).rent; }
+ *  instead of a one-way markup on revenue. See the notes file for the numbers.
+ *  On season terms (#911) it moves with the calendar too: season.js's
+ *  rentFor(), which month to month is the room's number untouched. */
+export function rent(c) { return SN.rentFor(c.terms, venueDef(c).rent, c.day); }
 export function nextVenue(c) {
   const i = VENUE_ORDER.indexOf(c.venue);
   return (i >= 0 && i < VENUE_ORDER.length - 1) ? VENUES[VENUE_ORDER[i + 1]] : null;
@@ -103,38 +109,50 @@ export function prevVenue(c) {
  * result twice. The lease check reads it on both paths, so a number that can
  * differ between them is a number that can evict on one path and not the other.
  * A theme is not in here on purpose: it is an optional spend on an open night,
- * and a closed night cannot buy one.
+ * and a closed night cannot buy one. The supply account is in here: the house
+ * bills on Monday whether the doors opened or not. So is the walk-in's
+ * compressor, which runs with the doors shut.
  */
 export function billsFor(c) {
   const wages = wageBill(c);
   const rentDue = rent(c);
   const upgFees = upgradeFees(c);
-  return { wages, rent: rentDue, upgFees, total: wages + rentDue + upgFees };
+  // the supply house's account, on the one night a week it is billed (#905);
+  // nothing at County Line, which is every save from before there were houses
+  const account = accountFee(c);
+  // the Commercial Walk-In's power (#909); nothing on a shelf without one,
+  // which is every save from before the shelf could be dated
+  const walkin = walkinFee(c);
+  return { wages, rent: rentDue, upgFees, account, walkin, total: wages + rentDue + upgFees + account + walkin };
 }
-/** A closed "moving in" night: bills still land, no revenue, no patrons. */
-export function settleDarkNight(c, rand = Math.random) {
-  const { wages, rent: rentDue, upgFees, total } = billsFor(c);
-  const net = -total;
-  c.cash = Math.round((c.cash - total) * 100) / 100;
-  const spoilage = applySpoilage(c);
-  // the league plays on whether the doors were open or not
-  const games = settleLeagueNight(c.league, c.day, null);
-  const final = games.find(x => x.playoff === "final");
-  // A dark night is the worst night your regulars can have: nobody showed,
-  // because there was nothing to show up to. They all take the stay-home
-  // drift, the floor was neither good nor ugly so nothing offsets it, and Vic
-  // gets a free night. Move for long enough and you come back to an empty room.
-  const social = settleSocial(c, {
-    serviceRate: 1, mood: 0.6, arrivals: 0, postWin: false,
-    showing: [], champion: final ? final.winner : null, dark: true,
-  }, rand);
-  c.day++;
-  syncLeague(c.league, c.day);
-  c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
-  rollApplicants(c, rand);
-  // last, so the countdown it may overwrite is this night's, not the move's
-  const lease = applyLease(c);
-  return { wages, rent: rentDue, upgFees, net, spoilage, games, social, lease };
+// ---------- season terms ----------
+// season.js owns the arithmetic; these are the campaign's questions of it, and
+// the one place the record moves: signing. Month to month every one of these
+// answers what the room's rent and the staffer's wage alone answered before
+// there was a season.js (#911).
+
+/** The bar is on season terms. Until it is, rent and wages never move. */
+export function onTerms(c) { return SN.onTerms(c.terms); }
+/** What `venueId`'s rent would be tonight on this bar's terms: the Real
+ *  Estate card's number for the room it is offering. */
+export function rentAt(c, venueId) { return SN.rentFor(c.terms, (VENUES[venueId] ?? venueDef(c)).rent, c.day); }
+/** A wage on tonight's terms, Staff Training not counted: what an applicant
+ *  is asking, as the payroll would pay it. */
+export function termsWage(c, wage) { return SN.wageFor(c.terms, wage, c.day); }
+/** Where the terms stand and the two dates they move on; null month to month. */
+export function termsOutlook(c) { return SN.outlook(c.terms, venueDef(c).rent, c.day); }
+/** What signing today would be, in the same shape. */
+export function termsOffer(c) { return SN.offer(venueDef(c).rent, c.day); }
+/** The change inside the week, for the ticker and the door; null otherwise. */
+export function termsNotice(c) { return SN.notice(c.terms, venueDef(c).rent, c.day); }
+/** The same notice as a sentence; "" when there is none. */
+export function termsNoticeLine(c) { return SN.noticeLine(termsNotice(c)); }
+/** Go on season terms. Free, and one way (season.js's header says why). */
+export function signTerms(c) {
+  const next = SN.sign(c.terms, c.day);
+  if (!next) return { ok: false, err: "You're already on season terms." };
+  c.terms = next;
+  return { ok: true };
 }
 
 // ---------- the lease: the night you can lose ----------
@@ -273,12 +291,15 @@ export function runSummary(c) {
 // whether patrons came through the door. Beer and soda don't: kegs and cans don't
 // need a walk-in the way raw wings and ground beef do, which is exactly the
 // distinction the README's own roadmap already drew ("spoilage ... would unlock a
-// Commercial Walk-In-style upgrade" — that upgrade, when it exists, is the lever
-// that should cut this rate, not the rate itself changing here).
+// Commercial Walk-In-style upgrade"). That upgrade exists now (#909) and it does not cut this rate: it
+// belongs to the dated shelf, which replaces this rule outright for a campaign that
+// chooses it. The rate here is what an undated shelf pays, unchanged.
 export const SPOILAGE_RATE = 0.15;
 
 /** Rot whatever's left of the perishable menu after a night closes. Returns what
- *  was lost, by item and in wholesale dollars, so the box score can say so. */
+ *  was lost, by item and in wholesale dollars, so the box score can say so.
+ *  The undated shelf's rule, and only that: closeNight() calls this or
+ *  spoilDated(), never both (#909). */
 export function applySpoilage(c) {
   const byItem = {};
   let value = 0;
@@ -292,6 +313,53 @@ export function applySpoilage(c) {
     }
   }
   return { byItem, value: Math.round(value * 100) / 100 };
+}
+
+// ---------- the dated shelf ----------
+// shelf.js owns the arithmetic; these are the campaign's questions of it, and
+// the places the record moves: dating the shelf, the walk-in, an order and the
+// close. On an undated shelf every one of these answers what the flat rate
+// alone answered before there was a shelf.js (#909).
+
+/** The shelf is dated. Until it is, food rots SPOILAGE_RATE a night. */
+export function hasDates(c) { return SH.isDated(c.shelf); }
+export function hasWalkin(c) { return SH.hasWalkin(c.shelf); }
+/** The walk-in's nightly power, or 0. In billsFor(). */
+export function walkinFee(c) { return SH.walkinFee(c.shelf); }
+/** Nights `id` keeps on this shelf, the walk-in counted; 0 for never goes off. */
+export function keeps(c, id) { return SH.keeps(c.shelf, id); }
+/** The lots made to agree with the count: a no-op on an undated shelf. */
+function syncShelf(c) { c.shelf = SH.reconcile(c.shelf, c.stock, c.day); }
+/** Date the shelf. Free, and one way (shelf.js's header says why). */
+export function dateShelf(c) {
+  if (hasDates(c)) return { ok: false, err: "The shelf's already dated." };
+  c.shelf = SH.date(c.shelf, c.stock, c.day);
+  return { ok: true };
+}
+/** Install the Commercial Walk-In. Not in UPGRADES: it is the dated shelf's
+ *  own gear, it does nothing for an undated one, and it is refused there. */
+export function buyWalkin(c) {
+  if (!hasDates(c)) return { ok: false, err: "Date the shelf first. A walk-in keeps dated food longer and does nothing else." };
+  if (hasWalkin(c)) return { ok: false, err: "Already installed." };
+  if (c.cash < SH.WALKIN.cost) return { ok: false, err: "Can't cover the install." };
+  c.cash -= SH.WALKIN.cost;
+  c.shelf = SH.install(c.shelf);
+  return { ok: true };
+}
+/** One item's lots as they stand this minute, oldest first: [{ day, n, left }].
+ *  Read only; empty on an undated shelf and for an item that never goes off. */
+export function lotsOf(c, id) { return SH.lotsOf(SH.reconcile(c.shelf, c.stock, c.day), id, c.day); }
+/** Servings of `id` that go at tonight's close if nobody buys them. */
+export function lastNight(c, id) { return SH.lastNight(SH.reconcile(c.shelf, c.stock, c.day), id, c.day); }
+/** The dated shelf's close: the night's sales come off the oldest lots, then
+ *  every lot on its last night goes whole. Same record applySpoilage() gives,
+ *  with `dated` on it so a screen can say which rule it was. */
+function spoilDated(c) {
+  syncShelf(c);
+  const r = SH.spoil(c.shelf, c.day);
+  c.shelf = r.shelf;
+  for (const id in r.byItem) c.stock[id] = Math.max(0, (c.stock[id] || 0) - r.byItem[id]);
+  return { byItem: r.byItem, value: SH.valueOf(r.byItem, STOCK_COST), dated: true };
 }
 
 // ---------- dev/debug helpers — a debug menu only, never part of normal play ----------
@@ -366,8 +434,10 @@ export function buyUpgrade(c, id) {
   return { ok: true };
 }
 
-/** Wage multiplier from Staff Training — feeds wageBill/settleNight. */
-export function effWage(c, s) { return Math.round(s.wage * (owned(c, "training") ? 1.15 : 1)); }
+/** Wage multiplier from Staff Training — feeds wageBill/settleNight. On
+ *  season terms the season's raise is in it too (#911); the multiplier is
+ *  exactly 1 month to month. */
+export function effWage(c, s) { return Math.round(s.wage * (owned(c, "training") ? 1.15 : 1) * SN.wageMult(c.terms, c.day)); }
 /** Walking-speed multiplier for a floor role — POS (servers only) + Training (everyone). */
 export function speedMult(c, role) {
   let m = owned(c, "training") ? 1.15 : 1;
@@ -409,7 +479,7 @@ export function mkStaff(role, skill, wage, name) {
  *  and has no fallback (cook only); bartender falls back to 0.55 (servers
  *  "cover the taps, badly") since drinks can never be fully 86'd this way. */
 export function roleMult(c, role) {
-  const crew = c.staff.filter(s => s.role === role);
+  const crew = shiftCrew(c).filter(s => s.role === role);
   let base;
   if (!crew.length) base = role === "bartender" ? 0.55 : 0;
   else base = crew.reduce((m, s) => m + (0.7 + s.skill * 0.14), 0);
@@ -418,8 +488,79 @@ export function roleMult(c, role) {
   if (role === "cook" && owned(c, "rushexp")) mult *= 1.3;
   return base * mult;
 }
-export function hasCook(c) { return c.staff.some(s => s.role === "cook"); }
-export function hasBartender(c) { return c.staff.some(s => s.role === "bartender"); }
+export function hasCook(c) { return shiftCrew(c).some(s => s.role === "cook"); }
+export function hasBartender(c) { return shiftCrew(c).some(s => s.role === "bartender"); }
+
+// ---------- the crew as people ----------
+// staff.js owns the arithmetic; these are the campaign's questions of it, and
+// the places the record moves: posting the rota, a night off, and the close.
+// With no rota every one of these answers what the payroll alone answered
+// before there was a staff.js (#908).
+
+/** The rota is posted. Until it is, the crew is the payroll and nothing else. */
+export function hasRota(c) { return ST.hasRota(c.crew); }
+/** How many the payroll holds: MAX_STAFF, or staff.js's roster under a rota. */
+export function staffCap(c) { return ST.rosterCap(c.crew); }
+/** Who is where tonight, by name: staff.js's tonight(). */
+export function duty(c) { return ST.tonight(c.crew, c.staff, weekday(c), c.day); }
+/** One staffer's line in the book, and what it means tonight. */
+export function crewLine(c, name) {
+  const e = ST.entry(c.crew, name);
+  const s = c.staff.find(x => x.name === name);
+  return { ...e, condition: ST.condition(e.fatigue), looking: e.morale < ST.LOOKING,
+    skill: s ? ST.effSkill(s.skill, e.fatigue) : 0, toLevel: s ? ST.xpToLevel(s.skill) : 0 };
+}
+/**
+ * The crew the night gets: who is on shift, at the skill they work at
+ * tonight. With no rota this is `c.staff` itself, the same array, which is
+ * every caller's old read. With one, a tired staffer is a copy a level down
+ * (two when burnt out), walking as fast as that level walks.
+ */
+export function shiftCrew(c) {
+  if (!hasRota(c)) return c.staff;
+  const on = new Set(duty(c).on);
+  return c.staff.filter(s => on.has(s.name)).map(s => {
+    const skill = ST.effSkill(s.skill, ST.entry(c.crew, s.name).fatigue);
+    if (skill === s.skill) return s;
+    const tired = { ...s, skill };
+    if (s.role !== "cook") tired.speed = Math.round((s.speed - (speedForSkill(s.skill) - speedForSkill(skill))) * 100) / 100;
+    return tired;
+  });
+}
+/** Post the rota. Free, and one way (staff.js's header says why). */
+export function postRota(c) {
+  if (hasRota(c)) return { ok: false, err: "The rota's already on the wall." };
+  c.crew = ST.postRota(c.crew);
+  return { ok: true };
+}
+/** Flip one weekday on a staffer's line of the rota. */
+export function toggleDayOff(c, name, day) {
+  if (!hasRota(c) || !DAYS.includes(day) || !c.staff.some(s => s.name === name)) return false;
+  c.crew = ST.toggleOff(c.crew, name, day);
+  return true;
+}
+/**
+ * The crew's half of the close: what tonight did to the people who worked it
+ * and the ones who did not. `onDuty` is duty() as it stood at the open. A
+ * level is a skill point, LEVEL_RAISE a night and the walking speed that goes
+ * with it; a quitter is off the payroll after tonight's wage, and one the End
+ * Zone took makes it that much better. Nothing moves, and `rand` is not
+ * drawn, without a rota.
+ */
+function settleCrew(c, onDuty, ctx, rand) {
+  const r = ST.after(c.crew, c.staff, onDuty, ctx, rand);
+  c.crew = r.crew;
+  for (const name of r.leveled) {
+    const s = c.staff.find(x => x.name === name);
+    s.skill += 1;
+    s.wage += ST.LEVEL_RAISE;
+    if (s.role !== "cook") s.speed = speedForSkill(s.skill);
+  }
+  if (r.quit.length) c.staff = c.staff.filter(s => !r.quit.includes(s.name));
+  if (r.poached.length) c.rival.buzz = Math.min(R.BUZZ_MAX, c.rival.buzz + ST.POACH_BUZZ_GAIN * r.poached.length);
+  return { rota: hasRota(c), on: onDuty.on, off: onDuty.off, out: onDuty.out, call: onDuty.call,
+    leveled: r.leveled, quit: r.quit, poached: r.poached };
+}
 
 export function newCampaign() {
   const c = {
@@ -438,6 +579,11 @@ export function newCampaign() {
     regularsLost: [],
     rival: R.newRival(),
     eventCd: {},
+    dist: S.newDist(),
+    pars: {},
+    crew: ST.newCrew(),
+    shelf: SH.newShelf(),
+    terms: SN.newTerms(),
   };
   rollApplicants(c, Math.random);
   return c;
@@ -506,10 +652,22 @@ export function eventView(c) {
     tier: venueDef(c).order,
     rep: c.rep, buzz: c.rival.buzz,
     upgrades: c.upgrades.slice(),
-    staff: c.staff.map(s => ({ name: s.name, role: s.role, skill: s.skill, wage: s.wage })),
+    dist: distDef(c).id,
+    // the dated shelf's word for the inspector: food not on its last night
+    // at the open, by item; null where there is no date to read
+    fresh: SH.freshAtOpen(SH.reconcile(c.shelf, c.stock, c.day), c.day),
+    // who is on the floor tonight, at their own skill: a card cannot poach
+    // somebody on their night off (the whole payroll, with no rota)
+    staff: onShift(c).map(s => ({ name: s.name, role: s.role, skill: s.skill, wage: s.wage })),
     regulars: c.regulars.map(r => ({ id: r.id, name: r.name, usual: r.usual, team: r.team, loyalty: r.loyalty })),
     regularsIn: regularsIn(c).map(r => r.id),
   };
+}
+/** The payroll's own records for whoever is on shift tonight. */
+function onShift(c) {
+  if (!hasRota(c)) return c.staff;
+  const on = new Set(duty(c).on);
+  return c.staff.filter(s => on.has(s.name));
 }
 /** What the engine needs to run tonight's moments — the three things its
  *  `moments` option takes, built here so main.js and a test hand it the same
@@ -532,8 +690,14 @@ export function nightMoments(c, rand = Math.random) {
  * Returns what moved, for the box score.
  */
 function settleMoments(c, mo) {
-  const out = { net: 0, rep: 0, buzz: 0, loyalty: {}, raised: [], quit: [], resolved: [], auto: [] };
+  const out = { net: 0, rep: 0, buzz: 0, account: 0, loyalty: {}, raised: [], quit: [], resolved: [], auto: [] };
   if (!mo || typeof mo !== "object") return out;
+  // a card moved the house account's standing ("Warehouse Walkout", ridden
+  // out); what it reports is what actually came off, which is nothing at a
+  // house that keeps no account
+  const spendWas = c.dist.spend;
+  c.dist = S.afterStanding(c.dist, Math.round(num(mo.account, 0)));
+  out.account = Math.round((c.dist.spend - spendWas) * 100) / 100;
   out.net = Math.round(num(mo.net, 0));
   out.rep = Math.round(num(mo.rep, 0));
   c.rep = Math.max(0, Math.min(100, c.rep + out.rep));
@@ -550,8 +714,10 @@ function settleMoments(c, mo) {
     if (!ch || typeof ch.name !== "string") continue;
     const s = c.staff.find(x => x.name === ch.name);
     if (!s) continue;
+    // (their line in the rota's book goes at the close, with settleCrew(): the
+    // book is rebuilt from the payroll every night)
     if (ch.quit) { c.staff = c.staff.filter(x => x !== s); out.quit.push(s.name); }
-    else if (Number.isFinite(ch.wage)) { s.wage = Math.max(0, Math.round(ch.wage)); out.raised.push(s.name); }
+    else if (Number.isFinite(ch.wage)) { s.wage = Math.max(0, Math.round(ch.wage)); c.crew = ST.afterRaise(c.crew, s.name); out.raised.push(s.name); }
   }
   const fired = (Array.isArray(mo.resolved) ? mo.resolved : []).filter(m => m && typeof m.id === "string");
   out.resolved = fired.map(m => m.id);
@@ -634,7 +800,7 @@ export function rollApplicants(c, rand = Math.random) {
 
 export function hire(c, name) {
   const a = c.applicants.find(x => x.name === name);
-  if (!a || c.staff.length >= MAX_STAFF) return false;
+  if (!a || c.staff.length >= staffCap(c)) return false;
   c.applicants = c.applicants.filter(x => x !== a);
   c.staff.push(a);
   return true;
@@ -644,25 +810,77 @@ export function fire(c, name) {
   const s = c.staff.find(x => x.name === name);
   if (!s) return false;
   c.staff = c.staff.filter(x => x !== s);
+  c.crew = ST.without(c.crew, s.name);
   return true;
 }
 
-/** Buy stock: order is {itemId: servings}. Deducts cash, adds servings. */
+// ---------- the supply house ----------
+// supply.js owns the arithmetic; these are the campaign's questions of it, and
+// the two places the record moves: an order builds the account's standing, and
+// signing with another house throws it away.
+
+/** What supply.js prices an order off: the list cost and the kind of every item. */
+const SUPPLY_ITEMS = Object.fromEntries(Object.keys(STOCK_COST).map(id => [id, { cost: STOCK_COST[id], kind: MENU[id].kind }]));
+
+/** The house the truck out back belongs to. */
+export function distDef(c) { return S.houseDef(c.dist); }
+/** The account's fee if tonight is the night it is billed, or 0. In billsFor(). */
+export function accountFee(c) { return S.weeklyFee(c.dist, weekday(c)); }
+/** What a plate of food sells for tonight, as a multiplier: the engine's `plateMult`. */
+export function plateMult(c) { return S.plateMult(c.dist); }
+/** What this order costs at the house you are signed with: supply.js's quote()
+ *  — `goods`, `list`, `drop`, `total` and a line apiece. */
+export function orderQuote(c, order) { return S.quote(c.dist, order, SUPPLY_ITEMS); }
+/** One serving of `id` on a line of `qty`, to the cent, for the order sheet. */
+export function unitPrice(c, id, qty = 0) {
+  return Math.round(S.unitCost(c.dist, MENU[id].kind, qty, STOCK_COST[id]) * 100) / 100;
+}
+/** Sign with another house. The account's loyalty dies at the door, which is
+ *  the whole cost of switching and the reason to stay. */
+export function signHouse(c, id) {
+  const next = S.switchHouse(c.dist, id);
+  if (!next) return { ok: false, err: S.HOUSES[id] ? "That's already your house." : "No such supply house." };
+  const forfeited = S.loyaltyOff(c.dist);
+  c.dist = next;
+  return { ok: true, house: distDef(c), forfeited };
+}
+/** Write one line of the par sheet; 0 or junk clears it. */
+export function setPar(c, id, servings) {
+  if (!(id in MENU)) return false;
+  const v = S.parValue(servings);
+  if (v > 0) c.pars[id] = v; else delete c.pars[id];
+  return true;
+}
+/** The cart topped up to the par sheet, counting the shelf and the cart. */
+export function fillToPar(c, cart) { return S.parFill(c.pars, c.stock, cart); }
+
+/** Buy stock: order is {itemId: servings}. Deducts cash, adds servings, and
+ *  builds the account's standing by what the goods cost (never by a fee). */
 export function placeOrder(c, order) {
-  const cost = orderCost(order);
+  const q = orderQuote(c, order);
+  const cost = q.total;
   if (cost <= 0) return { ok: false, err: "Nothing on the order sheet." };
   if (cost > c.cash) return { ok: false, err: "The distributor wants cash you don't have." };
   c.cash -= cost;
-  for (const id in order) if (order[id] > 0) c.stock[id] = (c.stock[id] || 0) + order[id];
-  return { ok: true, cost };
+  // a dated shelf reads the count on either side of the delivery, so what
+  // came in is a lot received today and nothing else is
+  syncShelf(c);
+  for (const id in q.lines) c.stock[id] = (c.stock[id] || 0) + q.lines[id].qty;
+  syncShelf(c);
+  c.dist = S.afterOrder(c.dist, q.goods);
+  return { ok: true, cost, goods: q.goods, drop: q.drop };
 }
+/** An order at list price: County Line's, and what a quote's saving is
+ *  measured against. */
 export function orderCost(order) {
   let t = 0;
   for (const id in order) t += (order[id] || 0) * STOCK_COST[id];
   return Math.round(t * 100) / 100;
 }
 
-export function wageBill(c) { return c.staff.reduce((s, x) => s + effWage(c, x), 0); }
+/** Tonight's wages: whoever is on shift. A night off is a night unpaid, and
+ *  with no rota nobody has one. */
+export function wageBill(c) { return shiftCrew(c).reduce((s, x) => s + effWage(c, x), 0); }
 
 /**
  * The half of settlement that is people rather than money.
@@ -729,47 +947,90 @@ function settleSocial(c, { serviceRate, mood, arrivals, postWin, showing, champi
  *  read once rather than spelled "HCS" here. */
 const RIVAL_TEAM = (LEAGUE_TEAMS.find(t => t.rival) || {}).id || null;
 
-/** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
-export function settleNight(c, summary, rand = Math.random) {
-  const { wages, rent: rentDue, upgFees, total: bill } = billsFor(c);
-  const promoCost = promoDef(c).cost;
-  const take = summary.total;
+/**
+ * Close the books on a night, open or dark. The one settlement (#898).
+ *
+ * There were two, and they shared `billsFor()` and nothing else: each spelled
+ * out the till, the league, the people, the shelf, the calendar and the
+ * landlord for itself, in two orders. A dark night is an open one that took
+ * nothing, bought no promo, saw no moments and seated nobody, so it is this
+ * function with those four at zero and three lines of its own: the regulars'
+ * closed-doors verdict, the move's countdown, and the promo it does not reset.
+ * `test/smoke-settle.mjs` holds both paths to the numbers the two functions
+ * gave before they were one.
+ *
+ * The order is the open night's and it matters there: moments, then people,
+ * then spoilage, because a regular's usual is 86'd if the shelf was bare when
+ * they wanted it, not if the walk-in rotted it overnight. A dark night seats
+ * nobody, so nothing in it reads the shelf and the order cannot show.
+ */
+function closeNight(c, summary, dark, rand) {
+  // who worked tonight, read before a card or the calendar can move it
+  const onDuty = duty(c);
+  const { wages, rent: rentDue, upgFees, account, walkin, total: bill } = billsFor(c);
+  // a theme is an optional spend on an open night; a closed one cannot buy it
+  const promoCost = dark ? 0 : promoDef(c).cost;
+  const take = dark ? 0 : summary.total;
   const net = Math.round(take - bill - promoCost);
   c.cash = Math.round((c.cash + take - bill - promoCost) * 100) / 100;
-  c.stats.nights++;
-  c.stats.bestNight = Math.max(c.stats.bestNight, take);
-  c.stats.lifetimeNet += net;
-  // the moments first: a card moved your name, the End Zone or a regular
-  // during the night, and the night's own drift reads the moved number
-  const moments = settleMoments(c, summary.moments);
-  // people before spoilage: a regular's usual is 86'd if the shelf was bare
-  // when they wanted it, not if the walk-in rotted it overnight
-  const showing = regularsIn(c);
+  let moments = null, showing = [];
+  if (!dark) {
+    c.stats.nights++;
+    c.stats.bestNight = Math.max(c.stats.bestNight, take);
+    c.stats.lifetimeNet += net;
+    // the moments first: a card moved your name, the End Zone or a regular
+    // during the night, and the night's own drift reads the moved number
+    moments = settleMoments(c, summary.moments);
+    showing = regularsIn(c);
+  }
   // the Mules' result is the engine's, so the standings say what the room saw;
-  // the other games tonight are the league's own rolls
-  const g = summary.game;
+  // the other games tonight are the league's own rolls, and the league plays
+  // on whether the doors were open or not
+  const g = dark ? null : summary.game;
   const games = settleLeagueNight(c.league, c.day, g && g.finished && typeof g.win === "boolean" ? g.win : null);
   const final = games.find(x => x.playoff === "final");
-  const social = settleSocial(c, {
+  const champion = final ? final.winner : null;
+  // A dark night is the worst night your regulars can have: nobody showed,
+  // because there was nothing to show up to. They all take the stay-home
+  // drift, the floor was neither good nor ugly so nothing offsets it, and Vic
+  // gets a free night. Move for long enough and you come back to an empty room.
+  const social = settleSocial(c, dark ? {
+    serviceRate: 1, mood: 0.6, arrivals: 0, postWin: false, showing, champion, dark: true,
+  } : {
     serviceRate: (summary.serviceRate ?? 100) / 100,
     mood: summary.mood,
     arrivals: summary.arrivals ?? (summary.served + summary.walkouts),
     postWin: !!(g && g.finished && g.win === true),
     showing,
-    champion: final ? final.winner : null,
+    champion,
     // ids the boss comped on the floor; a summary without the field (the Node
     // suites' synthetic nights) comped nobody
     comped: new Set(Array.isArray(summary.comped) ? summary.comped : []),
   }, rand);
-  const spoilage = applySpoilage(c);
+  // the crew after the people: a good floor and an ugly one are the room's
+  // verdict, and the End Zone's buzz is what it stands at after tonight
+  const crew = settleCrew(c, onDuty, { dark, good: social.good, ugly: social.ugly, buzz: c.rival.buzz }, rand);
+  // one rule or the other, never both: the flat rate on an undated shelf,
+  // the dates on a dated one (#909)
+  const spoilage = hasDates(c) ? spoilDated(c) : applySpoilage(c);
   c.day++;
   syncLeague(c.league, c.day);
-  c.promoTonight = "none";
+  if (dark) c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
+  else c.promoTonight = "none";
   rollApplicants(c, rand);
-  // the landlord counts last, on the cash the whole night left behind
+  // the landlord counts last, on the cash the whole night left behind, so the
+  // countdown it may overwrite is this night's and not the move's
   const lease = applyLease(c);
-  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social, moments, lease };
+  return dark
+    ? { wages, rent: rentDue, upgFees, account, walkin, net, spoilage, games, social, crew, lease }
+    : { wages, rent: rentDue, promoCost, upgFees, account, walkin, take, net, spoilage, games, social, moments, crew, lease };
 }
+
+/** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
+export function settleNight(c, summary, rand = Math.random) { return closeNight(c, summary, false, rand); }
+
+/** A closed "moving in" night: bills still land, no revenue, no patrons. */
+export function settleDarkNight(c, rand = Math.random) { return closeNight(c, null, true, rand); }
 
 // ---- persistence: the shared save system ------------------------------------
 //
@@ -783,8 +1044,39 @@ export function settleNight(c, summary, rand = Math.random) {
 // previous build still loads. Those saves carry no version stamp at all, which
 // gvb-save reads as version 0.
 
-/** Bump when the shape changes. 0 means "written before this file used a slot". */
-export const SAVE_VERSION = 1;
+/** Bump when the shape changes. 0 means "written before this file used a slot".
+ *  2 is the supply house (#905), 3 the rota (#908), 4 the dated shelf (#909)
+ *  and 5 season terms (#911): see migrateCampaign(). */
+export const SAVE_VERSION = 5;
+
+/**
+ * Version drift only (#37). One step so far: a save from before version 2 was
+ * written by a build with one truck and one price, so it is signed with County
+ * Line and an empty par sheet, which is what it was paying.
+ *
+ * It overwrites rather than fills in, and that is the difference from
+ * repairCampaign(), which also turns a missing `dist` into County Line. No
+ * build before version 2 wrote a `dist` or a `pars`, so one found in an older
+ * save was put there by hand or by another program and is not this system's
+ * record: a version-1 file carrying `dist: { id: "cask", spend: 5000 }` has
+ * not spent five thousand dollars with anyone. repair runs after this on
+ * every load and holds the shape; this runs once and decides whose it is.
+ */
+export function migrateCampaign(c, from) {
+  if (from < 2) { c.dist = S.newDist(); c.pars = {}; }
+  // The same step for the rota (#908), on the same argument: no build before
+  // version 3 wrote a `crew`, so a posted rota in an older file is nobody's
+  // decision, and it is one that cannot be taken back.
+  if (from < 3) c.crew = ST.newCrew();
+  // And for the dated shelf (#909): no build before version 4 wrote a
+  // `shelf`, so dates or a walk-in in an older file were paid for by nobody.
+  if (from < 4) c.shelf = SH.newShelf();
+  // And for season terms (#911): no build before version 5 wrote a `terms`,
+  // so signed terms in an older file are a rent break nobody signed for and
+  // a creep nobody agreed to.
+  if (from < 5) c.terms = SN.newTerms();
+  return c;
+}
 
 /** The gate on garbage: the three fields nothing downstream can work without. */
 function validCampaign(c) {
@@ -929,6 +1221,24 @@ export function repairCampaign(c) {
   // Phase 8's one field, additive: a save from before it has no cooldowns,
   // which is the same as every card being ready to fire.
   c.eventCd = EV.repairEventCd(c.eventCd);
+  // The supply house's two fields (#905). placeOrder() multiplies a price by
+  // the house's and settlement adds its fee to the bill, so a `dist` that is
+  // not one of the three is County Line, which charges what this game always
+  // charged.
+  c.dist = S.repairDist(c.dist);
+  c.pars = S.repairPars(c.pars, Object.keys(MENU));
+  // The rota's one field (#908). No rota is the payroll working every night,
+  // which is what this game always did; a book keeps lines for names on the
+  // payroll only, since a line is found by name.
+  c.crew = ST.repairCrew(c.crew, c.staff.map(s => s.name));
+  // The shelf's one field (#909). An undated shelf is the flat rate, which is
+  // what this game always charged; a dated one's lots are held to the count
+  // above, since `stock` is what the night sells from.
+  c.shelf = SH.repairShelf(c.shelf, c.stock, c.day);
+  // The terms' one field (#911). Month to month is the room's rent and the
+  // staffer's wage, which is what this game always charged; signed, the
+  // season they were signed in cannot be later than the one the save is in.
+  c.terms = SN.repairTerms(c.terms, c.day);
   return c;
 }
 
@@ -944,6 +1254,7 @@ function buildSlot(storage) {
     version: SAVE_VERSION,
     storage,
     validate: validCampaign,
+    migrate: migrateCampaign,
     repair: repairCampaign,
     // newCampaign rolls three random applicants, so day one cannot be a literal.
     defaults: newCampaign,

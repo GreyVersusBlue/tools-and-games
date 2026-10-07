@@ -57248,8 +57248,68 @@ const flipRunSign = (o, key) => {
 // The array is there only while some segment has a colour: a ring nobody has
 // accented carries no `accents` key, in memory or in a file, so a design saved
 // before this build is written back as the bytes it was read from.
+//
+// What is stored is a colour's name in the palette below ('harbor-blue') or,
+// from the builds before the palette had names, a '#rrggbb'. Both are read,
+// and neither is a place in a list (#912).
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
-const readAccent = (v) => (typeof v === 'string' && HEX6.test(v) ? v.toLowerCase() : null);
+
+// The accent colours, and the one place they are written down: the Wall
+// panel's swatches (main.js), the brush (editor.js), the painter (finish.js),
+// the design diff and the walk-through all read this. `id` is what a design
+// stores, so it is never changed and never reused, and a colour may be added
+// anywhere in the list without moving a saved choice. The first eight are the
+// hexes the brush stored before #912, value for value, so a design from then
+// is the colours it was. Each new one was taken from forty named paints as the
+// one furthest (OKLab distance, the least of normal sight and simulated
+// protanopia, deuteranopia and tritanopia) from every colour already in and
+// from the nine room paints, passing over any with less contrast against the
+// default wall paint than the palest old one has (Seafoam, 1.92 to 1);
+// test/accent-palette.test.mjs states the figures.
+const ACCENT_PALETTE = Object.freeze([
+  { id: 'harbor-blue', name: 'Harbor Blue', hex: '#2f5d8a' },
+  { id: 'spruce', name: 'Spruce', hex: '#3f7d6b' },
+  { id: 'seafoam', name: 'Seafoam', hex: '#8fb8a8' },
+  { id: 'goldenrod', name: 'Goldenrod', hex: '#d9a441' },
+  { id: 'terracotta', name: 'Terracotta', hex: '#c2573a' },
+  { id: 'cranberry', name: 'Cranberry', hex: '#a33b45' },
+  { id: 'plum', name: 'Plum', hex: '#7a4e8a' },
+  { id: 'charcoal', name: 'Charcoal', hex: '#4a4f57' },
+  { id: 'ink', name: 'Ink', hex: '#23262b' },
+  { id: 'periwinkle', name: 'Periwinkle', hex: '#8088d8' },
+  { id: 'pumpkin', name: 'Pumpkin', hex: '#d9772b' },
+  { id: 'aubergine', name: 'Aubergine', hex: '#4b2f55' },
+  { id: 'warm-gray', name: 'Warm Gray', hex: '#9a958c' },
+  { id: 'brick', name: 'Brick', hex: '#8a3324' },
+  { id: 'oxblood', name: 'Oxblood', hex: '#6b2633' },
+  { id: 'steel', name: 'Steel', hex: '#70808f' },
+  { id: 'indigo', name: 'Indigo', hex: '#3d3a7a' },
+].map(Object.freeze));
+const ACCENT_BY_ID = new Map(ACCENT_PALETTE.map((c) => [c.id, c]));
+const ACCENT_BY_HEX = new Map(ACCENT_PALETTE.map((c) => [c.hex, c]));
+
+// What may be stored on a face: a palette id, a hex (lower-cased), or null.
+const readAccent = (v) => (typeof v !== 'string' ? null
+  : ACCENT_BY_ID.has(v) ? v
+  : HEX6.test(v) ? v.toLowerCase() : null);
+const readAccentPaint = readAccent;
+
+// The '#rrggbb' a stored accent is drawn in, or null if it names nothing.
+function accentHex(v) {
+  const t = readAccent(v);
+  return t && (ACCENT_BY_ID.has(t) ? ACCENT_BY_ID.get(t).hex : t);
+}
+
+// What to call it: the palette's name, by id or by a hex the palette has, and
+// the hex itself for a colour the palette never had.
+function accentName(v) {
+  const hex = accentHex(v);
+  return hex && (ACCENT_BY_HEX.has(hex) ? ACCENT_BY_HEX.get(hex).name : hex);
+}
+
+// Two stored accents are the same paint when they are drawn the same, so a
+// face holding '#2f5d8a' from an old file and the Harbor Blue swatch agree.
+const sameAccent = (a, b) => accentHex(a) === accentHex(b);
 
 const segAccent = (ring, i) =>
   (ring && Array.isArray(ring.accents) && readAccent(ring.accents[i])) || null;
@@ -57271,7 +57331,7 @@ function setSegAccent(shape, ringIdx, seg, paint) {
   if (!ring || !Number.isInteger(seg) || seg < 0 || seg >= ring.pts.length) return false;
   const v = paint == null ? null : readAccent(paint);
   if (paint != null && !v) return false;
-  if (segAccent(ring, seg) === v) return false;
+  if (sameAccent(segAccent(ring, seg), v)) return false;
   if (!Array.isArray(ring.accents)) ring.accents = new Array(ring.pts.length).fill(null);
   ring.accents[seg] = v;
   tidyAccents(ring);
@@ -57311,7 +57371,7 @@ function accentBreaks(shape) {
     const n = ring.pts.length;
     for (let i = 0; i < n; i++) {
       const prev = (i + n - 1) % n;
-      if (segAccent(ring, prev) === segAccent(ring, i)) continue;
+      if (sameAccent(segAccent(ring, prev), segAccent(ring, i))) continue;
       const u = segDir(ring, prev), v = segDir(ring, i);
       if (!u || !v) continue;
       if (Math.abs(u.x * v.z - u.z * v.x) > 1e-6 || u.x * v.x + u.z * v.z <= 0) continue;
@@ -58346,7 +58406,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, crossingsAlong, sideRuns, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, ACCENT_PALETTE, readAccentPaint, accentHex, accentName, sameAccent, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, crossingsAlong, sideRuns, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -59022,7 +59082,7 @@ const __m_js_stairs_js = (() => {
 const { FLOOR_H, RAIL_H, CELL } = __m_js_grid_js;
 const { pointInRing, floorSolidAt } = __m_js_shapes_js;
 const { addLink, MAX_LINKS } = __m_js_props_js;
-const { switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS, MAX_RUN_RISE, minRuns, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE } = __m_js_switchback_js;
+const { switchbackLayout, switchbackSurfaceAt, switchbackCut, switchbackRails, MAX_RUNS, MAX_RUN_RISE, minRuns, LANDING_D, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE } = __m_js_switchback_js;
 // stairs.js — stairs, floor openings, and the geometry both imply.
 //
 // A stair is not a prop. A prop sits *on* a floor and the building doesn't
@@ -59083,6 +59143,11 @@ const MAX_STAIR_W = 12;
 // How far past the top step the opening runs, so you arrive somewhere rather
 // than onto the lip of the hole you just climbed through.
 const LANDING = 4;             // ft
+// A ramp's is ADA 2010 405.7.3's 60in, the number a folded ramp's landings
+// already were, read from the one place it is written (#904). A ramp saved
+// when this was 4 loads with 5: the length is derived, never stored.
+const RAMP_LANDING = LANDING_D;
+const topLanding = (link) => (link && link.type === 'ramp' ? RAMP_LANDING : LANDING);
 // `HEADROOM`, the clear height a tread needs under the floor above, is
 // switchback.js's to define and this module's to hand out (see the imports).
 const CUT_MARGIN = 0.25;       // ft of slack each side of the run
@@ -59188,6 +59253,67 @@ function setRampFold(link, opts = {}) {
     delete link.data.side;
   }
   return was !== `${rampRuns(link)}|${rampSide(link)}|${'runs' in link.data}|${'side' in link.data}`;
+}
+
+// ---------- a ramp's width and slope, from the panel (#907) ----------
+//
+// `data.width` and `data.slope` have been on a ramp since Phase 2 and every
+// reader takes them through `stairWidth` and `rampSlope` above, which clamp a
+// file to 3..12ft and 1:4..1:20: a file may hold a ramp that is wrong, and the
+// report says so (`steep-ramp`). The panel's two steppers are held tighter, to
+// what the tool itself calls a legal ramp, so nothing set from the page raises
+// that finding:
+//
+//   slope  1:12 to 1:20 in whole numbers. 1:12 is ADA 405.2's steepest and the
+//          line `rampRolls` draws; past 1:20 ADA stops calling it a ramp.
+//   width  4ft to 12ft in 6in steps. 4ft is `RAMP_W`, 36in clear (ADA 405.5)
+//          plus the rails; 12ft is the widest a link holds.
+//
+// A ramp a file made steeper or narrower than that is shown as it is. Its
+// stepper has one way to go, and the first press lands it on the limit.
+const RAMP_CTRL = Object.freeze({
+  minW: RAMP_W, maxW: MAX_RAMP_W, stepW: 0.5,
+  steepest: RAMP_SLOPE, gentlest: MAX_RAMP_SLOPE,
+});
+// One press: `dir` +1 is wider, -1 narrower.
+const stepRampWidth = (w, dir) =>
+  clamp(Math.round((w + (dir < 0 ? -1 : 1) * RAMP_CTRL.stepW) / RAMP_CTRL.stepW) * RAMP_CTRL.stepW,
+    RAMP_CTRL.minW, RAMP_CTRL.maxW);
+// One press: `dir` +1 is gentler (more run per foot of rise), -1 steeper.
+const stepRampSlope = (s, dir) =>
+  clamp(Math.round(s + (dir < 0 ? -1 : 1)), RAMP_CTRL.steepest, RAMP_CTRL.gentlest);
+
+// Write a ramp's width or slope, whichever `opts` names, held to the panel's
+// range. The field not named is not touched, so a ramp a file made 1:8 keeps
+// its slope while its width is stepped. Returns true when the record changed.
+// Anything but a ramp is left alone.
+function setRampSize(link, opts = {}) {
+  if (!link || link.type !== 'ramp') return false;
+  const was = `${stairWidth(link)}|${rampSlope(link)}`;
+  if (!link.data) link.data = {};
+  if (Number.isFinite(opts.width)) {
+    link.data.width = clamp(Math.round(opts.width / RAMP_CTRL.stepW) * RAMP_CTRL.stepW,
+      RAMP_CTRL.minW, RAMP_CTRL.maxW);
+  }
+  if (Number.isFinite(opts.slope)) {
+    link.data.slope = clamp(Math.round(opts.slope), RAMP_CTRL.steepest, RAMP_CTRL.gentlest);
+  }
+  return was !== `${stairWidth(link)}|${rampSlope(link)}`;
+}
+
+// What a run is, in the words the status line and the panel use: a stair's
+// risers, a ramp's slope and length. A straight ramp's length is its own
+// (`runLength`), not the staircase's the building's metrics carry: the status
+// line read `metrics.run` and called a 144ft ramp 19.3ft until #907.
+function runPhrase(link, metrics) {
+  const fold = rampLayout(link, metrics);
+  if (fold) {
+    return `${fold.n} runs of ${fold.runLen.toFixed(1)}ft at 1:${rampSlope(link)}, ` +
+      `${(fold.runRise * 12).toFixed(0)}in of rise each` +
+      (fold.legal ? '' : ' (over the 30in a run may rise)');
+  }
+  if (link.type === 'ramp') return `${runLength(link, metrics).toFixed(1)}ft of run at 1:${rampSlope(link)}`;
+  return `${metrics.steps} risers at ${(metrics.riser * 12).toFixed(1)}in, ${metrics.run.toFixed(1)}ft of run`;
 }
 
 // The fold itself, from switchback.js, or null for anything that is one run.
@@ -59324,7 +59450,7 @@ function cutBox(link, metrics) {
   }
   const hw = stairWidth(link) / 2 + CUT_MARGIN;
   const run = runLength(link, metrics);
-  return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + LANDING };
+  return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + topLanding(link) };
 }
 
 // A folded ramp's hole, as one local box per lane, left to right, or null for
@@ -59596,6 +59722,15 @@ function rampLandingArea(link, metrics) {
   return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
 }
 
+// The level landing at the top of a straight ramp, as a local box: the ramp's
+// own width, from the top of the run to the far edge of the hole. Null for a
+// stair and for a folded ramp, whose landings are its layout's.
+function rampLandingBox(link, metrics) {
+  if (!link || link.type !== 'ramp' || isSwitchback(link)) return null;
+  const hw = stairWidth(link) / 2, run = runLength(link, metrics);
+  return { x0: -hw, x1: hw, z0: run, z1: run + RAMP_LANDING };
+}
+
 // The same guards as world segments on the plan, for the collider.
 const rampGuardSegments = (link, metrics) =>
   rampGuards(link, metrics).map((g) => ({
@@ -59642,7 +59777,7 @@ function stairSurfaceAt(link, metrics, x, z) {
     return switchbackSurfaceAt(layout, lx, 0) === null ? null : 0;
   }
   const hw = stairWidth(link) / 2;
-  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + LANDING) return null;
+  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + topLanding(link)) return null;
   if (lz > run) return metrics.rise;   // the landing at the top
   return clamp(lz / run, 0, 1) * metrics.rise;
 }
@@ -59802,7 +59937,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {
@@ -59911,7 +60046,7 @@ return { PROBE, solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe,
 })();
 // ---- js/wallrun.js ----
 const __m_js_wallrun_js = (() => {
-const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE } = __m_js_shapes_js;
+const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE, readAccentPaint, sameAccent, shapeAt } = __m_js_shapes_js;
 // wallrun.js — a wall drawn from one point to another.
 //
 // Until this module the wall tool had no way to say how long a wall was. You
@@ -59946,6 +60081,9 @@ const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, 
 // The record, on `floor.walls`:
 //
 //   { id, ax, az, bx, bz, kind, openings?: [{ seg: 0, t, w, ... }] }
+//
+// A line may also carry `accents: [left, right]` (see "a free-standing wall's
+// two faces" below), absent until one of its faces is painted.
 //
 // `openings` is deliberately the same record `shapes.js` puts on a ring, with
 // `seg` pinned to 0 — a wall line is one segment, so every consumer that
@@ -60027,6 +60165,112 @@ function wallLineAt(floor, x, z, maxDist = ON_LINE_TOL) {
     best = { line, t: p.t, x: p.x, z: p.z, dist: p.dist };
   }
   return best;
+}
+
+// ---------- a free-standing wall's two faces ----------
+//
+// #910. A room's accent wall (#827) is `ring.accents[i]`: the colour of that room's
+// own face of one segment. A free-standing wall has no ring to keep one on, so
+// it keeps its own: `line.accents` is `[left, right]`, each a stored accent or null,
+// where left is the face on the run's left-hand normal going a to b
+// (finish.js's `left`, walls.js's `side: +1`). Per face and not per wall,
+// because that is what an accent already is on a room's wall, and a screen
+// with a reading corner on one side and a corridor on the other wants one of
+// them coloured.
+//
+// A face is painted where a room stands in front of it and the room has not
+// accented its own face of that line (finish.js's `facePainter` reads both).
+// With no room in front the face is the weather's and the facade covers it,
+// and glass and railings are not painted at all, so neither is stored: the
+// brush refuses them and `pruneAccents` takes them off.
+//
+// The key is absent until a face is painted and absent again when the last
+// one is taken off, so a design without one is written as the bytes it was.
+const LINE_LEFT = 0, LINE_RIGHT = 1;
+// A face holds what a room's does: a palette id or a hex (shapes.js, #912).
+const readHex = readAccentPaint;
+
+const lineAccent = (line, side) =>
+  (line && Array.isArray(line.accents) && readHex(line.accents[side])) || null;
+
+// Whatever a file or an edit left in `accents`, as [left, right] or no key.
+function tidyLineAccents(line) {
+  if (!line || !('accents' in line)) return;
+  const acc = Array.isArray(line.accents) ? line.accents : [];
+  const out = [readHex(acc[LINE_LEFT]), readHex(acc[LINE_RIGHT])];
+  if (out[0] || out[1]) line.accents = out; else delete line.accents;
+}
+
+// Paint one face (a hex) or take its accent off (null). True if it changed.
+function setLineAccent(line, side, paint) {
+  if (!line || (side !== LINE_LEFT && side !== LINE_RIGHT)) return false;
+  const v = paint == null ? null : readHex(paint);
+  if (paint != null && !v) return false;
+  if (sameAccent(lineAccent(line, side), v)) return false;
+  if (!Array.isArray(line.accents)) line.accents = [null, null];
+  line.accents[side] = v;
+  tidyLineAccents(line);
+  return true;
+}
+
+// A line's accents as they read going from `a` towards `u` instead: the same
+// two faces, named the other way round when the line runs against it.
+function accentsAlong(line, u) {
+  const l = lineAccent(line, LINE_LEFT), r = lineAccent(line, LINE_RIGHT);
+  if (!l && !r) return null;
+  const with_ = (line.bx - line.ax) * u.x + (line.bz - line.az) * u.z >= 0;
+  return with_ ? [l, r] : [r, l];
+}
+
+// Which face of which free-standing wall a click means: the nearest line
+// within `maxDist`, and the side of it the point is on. `shape` is the room
+// the point is in, null outside every room. A point on the line itself is on
+// neither side. { line, side, shape, t, x, z, dist } or null.
+function lineFaceAt(floor, x, z, maxDist = Infinity) {
+  const hit = wallLineAt(floor, x, z, maxDist);
+  if (!hit) return null;
+  const { line } = hit;
+  const c = (line.bx - line.ax) * (z - line.az) - (line.bz - line.az) * (x - line.ax);
+  if (Math.abs(c) < 1e-9) return null;
+  return {
+    line, side: c > 0 ? LINE_LEFT : LINE_RIGHT, shape: shapeAt(floor, x, z),
+    t: hit.t, x: hit.x, z: hit.z, dist: hit.dist,
+  };
+}
+
+// How far off a line its face is asked which room it looks at: finish.js's
+// `FACE_PROBE`, the distance the painter stands off to read the same face.
+const LINE_FACE_PROBE = 0.1;   // ft
+
+// Whether any room stands in front of one face of a line, anywhere along it.
+// Asked between the places the probe line crosses a room's outline, as the
+// painter asks, so a room that only reaches part of the wall still counts.
+function lineFaceInRoom(floor, line, side, probe = LINE_FACE_PROBE) {
+  const len = lineLength(line);
+  if (len < 1e-6) return false;
+  const dx = line.bx - line.ax, dz = line.bz - line.az;
+  const sgn = side === LINE_LEFT ? 1 : -1;
+  const ox = line.ax + (-dz / len) * probe * sgn, oz = line.az + (dx / len) * probe * sgn;
+  const ts = [0, 1];
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (let i = 0; i < ring.pts.length; i++) {
+        const [p, q] = segEnds(ring, i);
+        const ex = q.x - p.x, ez = q.z - p.z;
+        const den = dx * ez - dz * ex;
+        if (Math.abs(den) < 1e-9) continue;
+        const t = ((p.x - ox) * ez - (p.z - oz) * ex) / den;
+        if (t > 1e-9 && t < 1 - 1e-9) ts.push(t);
+      }
+    }
+  }
+  ts.sort((m, n) => m - n);
+  for (let i = 0; i + 1 < ts.length; i++) {
+    if (ts[i + 1] - ts[i] < 1e-9) continue;
+    const m = (ts[i] + ts[i + 1]) / 2;
+    if (shapeAt(floor, ox + dx * m, oz + dz * m)) return true;
+  }
+  return false;
 }
 
 // ---------- doorways in a wall line ----------
@@ -60165,8 +60409,20 @@ function wallAlongSeg(floor, shape, ringIdx, seg, tol = ON_FACE_TOL) {
 // whose line no longer has a wall on it comes off, by the rule the brush
 // refuses one with (#857). Returns how many came off. A storey with no
 // accents is not walked past its rings' `accents` keys.
+//
+// A free-standing wall's own accents (#910) go by the same rule turned round: the
+// wall is there by definition, so what can go missing is the room in front of
+// the face, or the wall having become glass or a railing.
 function pruneAccents(floor) {
   let n = 0;
+  for (const line of wallLinesOf(floor)) {
+    if (!('accents' in line)) continue;
+    for (const side of [LINE_LEFT, LINE_RIGHT]) {
+      if (!lineAccent(line, side)) continue;
+      if (lineKind(line) === SEG_WALL && lineFaceInRoom(floor, line, side)) continue;
+      if (setLineAccent(line, side, null)) n++;
+    }
+  }
   for (const shape of shapesOf(floor)) {
     shape.rings.forEach((ring, ri) => {
       if (!Array.isArray(ring.accents)) return;
@@ -60304,6 +60560,10 @@ function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {}) {
   const spans = covers.map((c) => [c.c0, c.c1]);
   let replaced = 0;
   let lo = 0, hi = len;
+  // The painted faces of a wall this run re-lays stay painted: a wall drawn
+  // longer is still that wall. Two absorbed walls with accents cannot both
+  // have them on one record, so the longer one's stand.
+  let carry = null, carryLen = 0;
   for (const line of [...wallLinesOf(floor)]) {
     const [p, q] = lineEnds(line);
     const on = alongRun(a, u, len, p, q, tol);
@@ -60319,6 +60579,8 @@ function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {}) {
       // alone, and counting it as covered would leave the wall deleted.
       lo = Math.min(lo, sp, sq);
       hi = Math.max(hi, sp, sq);
+      const had = accentsAlong(line, u);
+      if (had && lineLength(line) > carryLen) { carry = had; carryLen = lineLength(line); }
       removeWallLine(floor, line.id);
       replaced++;
       continue;
@@ -60329,6 +60591,13 @@ function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {}) {
     replaced++;
     for (const [ra, rb] of rest) {
       const kept = addWallLine(state, floorIndex, ra, rb, lineKind(line));
+      // What is left of a wall keeps its faces' paint. The pieces run the
+      // drawn run's way, which need not be the way the wall was drawn.
+      const had = kept && accentsAlong(line, u);
+      if (had) {
+        setLineAccent(kept, LINE_LEFT, had[LINE_LEFT]);
+        setLineAccent(kept, LINE_RIGHT, had[LINE_RIGHT]);
+      }
       if (kept && Array.isArray(line.openings)) {
         // A doorway only survives if it is still inside the piece it was cut
         // into — an opening halfway along a wall that has been cut in two has
@@ -60354,6 +60623,10 @@ function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {}) {
   const lines = [];
   for (const [s, e] of gaps) {
     const line = addWallLine(state, floorIndex, at(s), at(e), want);
+    if (line && carry) {
+      setLineAccent(line, LINE_LEFT, carry[LINE_LEFT]);
+      setLineAccent(line, LINE_RIGHT, carry[LINE_RIGHT]);
+    }
     if (line) lines.push(line);
   }
 
@@ -60417,6 +60690,12 @@ function normalizeWallLines(raw, extent = 4000, nextId = null) {
     const openings = Array.isArray(r.openings)
       ? r.openings.map(readOpening).filter(Boolean) : [];
     if (openings.length) line.openings = openings;
+    // A painted face: two hexes or nulls, and no key when neither reads. A
+    // file from before this field has none, so its walls load unpainted.
+    if (Array.isArray(r.accents)) {
+      line.accents = r.accents;
+      tidyLineAccents(line);
+    }
     out.push(line);
   }
   return out;
@@ -60430,7 +60709,7 @@ function wallLineFootage(floor) {
   return ft;
 }
 
-return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, pruneAccents, eraseSegWall, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
+return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, LINE_LEFT, lineAccent, setLineAccent, lineFaceAt, lineFaceInRoom, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, pruneAccents, eraseSegWall, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
 })();
 // ---- js/terrain.js ----
 const __m_js_terrain_js = (() => {
@@ -68066,9 +68345,9 @@ return { YARD_STEP, YARD_MARGIN, FACE_CLEAR, WALK_GRADE, ACCESSIBLE_GRADE, MAX_R
 const __m_js_clearance_js = (() => {
 const { floorLabel } = __m_js_grid_js;
 const { LEAF_NONE, floorSolidAt, shapeAt } = __m_js_shapes_js;
-const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope } = __m_js_stairs_js;
+const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope, rampLandingBox, localToWorld, worldToLocal, rectCorners, cutPolygon, footprintPolygon, pointInPolygon, isElevator } = __m_js_stairs_js;
 const { MAX_RAMP_GRADE } = __m_js_sitemesh_js;
-const { buildCollider, candidates } = __m_js_collide_js;
+const { buildCollider, candidates, wallSegments, doorwaySegments, segsCross } = __m_js_collide_js;
 const { emptyField } = __m_js_terrain_js;
 const { propsOnFloor } = __m_js_props_js;
 // clearance.js — the chair: what a seated body needs of a building, said once.
@@ -68175,6 +68454,95 @@ const GRADE_PROBE = 1;                       // ft
 // steeper.
 const rampRolls = (link) =>
   !!link && link.type === 'ramp' && 1 / rampSlope(link) <= MAX_SEATED_GRADE + 1e-9;
+
+// ---------- the landing at the top of a ramp ----------
+//
+// ADA 405.7: a ramp ends on a level landing as wide as the ramp and 60in long
+// (#904). Nothing here refuses a ramp or moves one. This says whether the
+// landing a straight ramp is owed has the room it needs on the storey above,
+// read from the design as drawn, so a ramp placed when the landing was 4ft is
+// asked the same question as one placed today and no save field records it.
+//
+// Three things can be in its way, and `why` names each that is:
+//   'wall'  a wall or rail of the storey above runs through it, or a doorway
+//           stands inside it, or the wall along its far end leaves less than
+//           a doorway's 32in to leave by. A doorway *at* its far end is the
+//           way off and is allowed (405.7.5), jambs and all.
+//   'edge'  a corner of it, or the floor a foot past the middle of its far
+//           end, is off the storey above: there is nowhere to arrive.
+//   'link'  another link's hole in that floor, or a stair, ramp or lift that
+//           stands on it, overlaps it.
+// Props are not asked, and neither is the swing of a door beside it.
+// Null for a stair, a folded ramp (its landings are its layout's) and a ramp
+// whose landing is clear.
+const LANDING_EPS = 0.1;        // ft: flush against an edge is not in the way
+const LANDING_STEP_OFF = 1;     // ft of floor wanted past the far end
+const LANDING_LINK_INSET = 0.3; // ft: more than the slack a hole is cut with
+
+// The part of a local segment inside a local box, as a length.
+function lengthInBox(ax, az, bx, bz, box) {
+  let t0 = 0, t1 = 1;
+  const dx = bx - ax, dz = bz - az;
+  for (const [p, q] of [[-dx, ax - box.x0], [dx, box.x1 - ax], [-dz, az - box.z0], [dz, box.z1 - az]]) {
+    if (Math.abs(p) < 1e-12) { if (q < 0) return 0; continue; }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+  }
+  return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dz) : 0;
+}
+
+function polygonsOverlap(a, b) {
+  if (a.some((p) => pointInPolygon(b, p.x, p.z)) || b.some((p) => pointInPolygon(a, p.x, p.z))) return true;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) {
+      const u = b[j], v = b[(j + 1) % b.length];
+      if (segsCross(p.x, p.z, q.x, q.z, u.x, u.z, v.x, v.z)) return true;
+    }
+  }
+  return false;
+}
+
+function rampLandingFit(state, link, metrics = stairMetrics(state)) {
+  const box = rampLandingBox(link, metrics);
+  const floor = box && state.floors[link.to];
+  if (!floor) return null;
+  const e = LANDING_EPS;
+  const why = [];
+
+  const local = (s) => {
+    const a = worldToLocal(link, s.ax, s.az), b = worldToLocal(link, s.bx, s.bz);
+    return [a.lx, a.lz, b.lx, b.lz];
+  };
+  const inside = { x0: box.x0 + e, x1: box.x1 - e, z0: box.z0 + e, z1: box.z1 - e };
+  const farEnd = { ...inside, z0: box.z1 - e, z1: box.z1 + e };
+  const walls = wallSegments(floor);
+  const shut = walls.reduce((sum, s) => sum + lengthInBox(...local(s), farEnd), 0);
+  if (walls.concat(doorwaySegments(floor)).some((s) => lengthInBox(...local(s), inside) > 1e-6)
+    || inside.x1 - inside.x0 - shut < MIN_CLEAR_W) why.push('wall');
+
+  const solid = (lx, lz) => { const p = localToWorld(link, lx, lz); return floorSolidAt(floor, p.x, p.z); };
+  const past = box.z1 + LANDING_STEP_OFF;
+  const asked = [
+    [inside.x0, inside.z0], [inside.x1, inside.z0], [inside.x0, inside.z1], [inside.x1, inside.z1],
+    [0, past],
+  ];
+  if (!asked.every(([lx, lz]) => solid(lx, lz))) why.push('edge');
+
+  const i = LANDING_LINK_INSET;
+  const mine = rectCorners(link, { x0: box.x0 + i, x1: box.x1 - i, z0: box.z0 + i, z1: box.z1 - i });
+  const others = stairsOf(state).filter((o) => o !== link).flatMap((o) => {
+    const polys = [];
+    if (o.to === link.to && !isElevator(o)) polys.push(cutPolygon(o, metrics));
+    if (o.from === link.to || (isElevator(o) && o.to === link.to)) polys.push(footprintPolygon(o, metrics));
+    return polys.filter(Boolean);
+  });
+  if (others.some((poly) => polygonsOverlap(mine, poly))) why.push('link');
+
+  if (!why.length) return null;
+  const at = localToWorld(link, 0, (box.z0 + box.z1) / 2);
+  return { id: link.id, floor: link.to, x: at.x, z: at.z, why };
+}
 
 // The seated walker, as `moveWalker` options. `extra` is the per-step state
 // the caller owns (`grounded`, `bodies`); everything about the body is here.
@@ -68718,7 +69086,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
   return out;
 }
 
-return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
+return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, rampLandingFit, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
 })();
 // ---- js/threshold.js ----
 const __m_js_threshold_js = (() => {
@@ -68941,7 +69309,7 @@ const { meshFloor, tileFor } = __m_js_navmesh_js;
 const { meshSite, yardTileFor } = __m_js_sitemesh_js;
 const { siteCurbs } = __m_js_site_js;
 const { MinHeap } = __m_js_heap_js;
-const { stairsOf, stairMetrics, runLength, runTravel, rampLayout, localToWorld, elevatorSize, isRun, isElevator, LANDING } = __m_js_stairs_js;
+const { stairsOf, stairMetrics, runLength, runTravel, rampLayout, localToWorld, elevatorSize, isRun, isElevator, topLanding } = __m_js_stairs_js;
 const { MIN_ACCESSIBLE_W, doorRolls, rampRolls } = __m_js_clearance_js;
 // navgraph.js — the building, read as somewhere to walk.
 //
@@ -69551,7 +69919,7 @@ function runLandings(link, metrics) {
   const run = runLength(link, metrics);
   return {
     foot: localToWorld(link, 0, -2),
-    head: localToWorld(link, 0, run + LANDING + 2),
+    head: localToWorld(link, 0, run + topLanding(link) + 2),
   };
 }
 
@@ -74152,7 +74520,8 @@ return { CELL_AREA, OVERHANG_NOTE, OVERHANG_WARN, floorBounds, unionBounds, foot
 // ---- js/finish.js ----
 const __m_js_finish_js = (() => {
 const { CELL } = __m_js_grid_js;
-const { shapesOf, shapeArea, shapeAt, segAccent } = __m_js_shapes_js;
+const { shapesOf, shapeArea, shapeAt, segAccent, accentHex } = __m_js_shapes_js;
+const { wallLinesOf, lineEnds, lineAccent, LINE_LEFT, LINE_RIGHT } = __m_js_wallrun_js;
 // finish.js — what a room is made of: floor material and wall paint.
 //
 // A room record has carried a `color` since v1, and that colour has always
@@ -74176,6 +74545,7 @@ const { shapesOf, shapeArea, shapeAt, segAccent } = __m_js_shapes_js;
 // every room happens to be VCT and off-white.
 //
 // Pure module: no three.js. Exercised by test/finish.test.mjs.
+
 
 
 
@@ -74445,11 +74815,23 @@ function accentSegs(floor) {
       if (!Array.isArray(ring.accents)) continue;
       const n = ring.pts.length;
       for (let i = 0; i < n; i++) {
-        const paint = segAccent(ring, i);
+        // What is stored is a palette id or a hex (#912); what is drawn is a hex.
+        const paint = accentHex(segAccent(ring, i));
         if (!paint) continue;
         out.push({ shape, a: ring.pts[i], b: ring.pts[(i + 1) % n], paint });
       }
     }
+  }
+  // A free-standing wall's own two faces (#910, wallrun.js's `line.accents`), said
+  // the way a ring says one: a segment with the painted face on its left. So
+  // the left face runs a to b and the right face b to a, and `accentsOn` puts
+  // each on the right side of whatever run lies along the wall. `shape: null`
+  // is "whichever room stands in front": the wall is nobody's.
+  for (const line of wallLinesOf(floor)) {
+    const [a, b] = lineEnds(line);
+    const l = accentHex(lineAccent(line, LINE_LEFT)), r = accentHex(lineAccent(line, LINE_RIGHT));
+    if (l) out.push({ shape: null, a, b, paint: l });
+    if (r) out.push({ shape: null, a: b, b: a, paint: r });
   }
   return out;
 }
@@ -74475,11 +74857,16 @@ function accentsOn(accents, ax, az, dx, dz, len) {
 }
 
 // What one face of a stretch is painted: the accent of the room in front of
-// it if that room has one here, else that room's paint, else nobody's.
+// it if that room has one here, else the accent a free-standing wall carries
+// on that face, else that room's paint, else nobody's. The room's own word
+// comes first because it was the only word before a wall could carry one, and
+// a design painted then must not change.
 function faceAt(runs, accents, t) {
   const side = sideAt(runs, t);
   if (!side.room) return null;
-  const acc = accents.find((a) => a.shape === side.shape && t >= a.t0 && t <= a.t1);
+  const here = (a) => t >= a.t0 && t <= a.t1;
+  const acc = accents.find((a) => a.shape === side.shape && here(a)) ||
+    accents.find((a) => a.shape === null && here(a));
   return acc ? acc.paint : side.paint || DEFAULT_PAINT;
 }
 
@@ -91673,9 +92060,14 @@ function cutWall(a, b, openings, kind, u, thick, base, top, out) {
   const half = (thick.t / 2) / sin;
   const along = thick.s * len;
   let bands = [{ y0: base, y1: wallTop }];
+  // A window cut in a curtain wall has wall under its sill and over its head
+  // (#874: the renderer builds it so and the takeoff buys it so), so what the
+  // plane slices there is wall, not glass.
+  let glass = kind === SEG_GLASS;
   for (const o of openings) {
     const spec = openingSpec(o);
     if (Math.abs(along - spec.t * len) > spec.w / 2) continue;
+    if (spec.window) glass = false;
     const lo = base + spec.sill, hi = base + spec.head;
     bands = bands.flatMap(({ y0, y1 }) => {
       const keep = [];
@@ -91686,7 +92078,7 @@ function cutWall(a, b, openings, kind, u, thick, base, top, out) {
   }
   for (const bnd of bands) {
     if (bnd.y1 - bnd.y0 < 0.05) continue;
-    out.push({ poly: rect(u - half, u + half, bnd.y0, bnd.y1), glass: kind === SEG_GLASS });
+    out.push({ poly: rect(u - half, u + half, bnd.y0, bnd.y1), glass });
   }
 }
 

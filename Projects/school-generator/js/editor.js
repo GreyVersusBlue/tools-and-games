@@ -29,6 +29,7 @@ import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, toggleOpening, removeShape,
   accentFaceAt, setSegAccent, segAccent,
+  readAccentPaint, accentHex, accentName, sameAccent,
   moveOpening, openingsOnSeg, defaultOpeningWidth, isWindowOpening,
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
@@ -48,6 +49,7 @@ import {
 import {
   drawWallRun, wallLineAt, eraseWallLineAt, toggleLineOpening,
   moveLineOpening, lineOpenings, lineEnds, lineLength, wallAlongSeg,
+  lineFaceAt, lineAccent, setLineAccent, lineKind,
   eraseSegWall, pruneAccents,
 } from './wallrun.js';
 import { step, apply, clone } from './history.js';
@@ -789,12 +791,53 @@ export function initEditor({
   // at, the same colour twice takes it off, and the clear swatch takes off
   // whatever is there. `accentFaceAt` picks the face by the side of the wall
   // the cursor is on, so the two faces of a partition are two clicks.
-  const HINT_ACCENT = 'Accent — click just inside a room, by the wall to paint. ' +
+  const HINT_ACCENT = 'Accent — click just inside a room, by the wall to paint; ' +
+    'a free-standing wall takes one on each side. ' +
     'The same colour again takes it off. Esc goes back to drawing walls.';
+  // With a colour up the hint leads with its name (#912): two swatches a
+  // colour-blind eye cannot tell apart are told apart here.
+  const accentHint = () => (accentPaint
+    ? HINT_ACCENT.replace('Accent —', `Accent, ${accentName(accentPaint)} —`) : HINT_ACCENT);
 
+  // The room's own wall, or a free-standing one if that is nearer the click:
+  // a screen standing in a room is closer to a click beside it than any side
+  // of the room is. On a tie the room's wall has it, which is every click
+  // from before a free-standing wall could carry an accent. A free-standing
+  // target has `line` and `side`; a room's has `ring` and `seg`.
   function accentTarget(p) {
-    const s = getState();
-    return accentFaceAt(activeFloor(s), p.x, p.z, Math.max(segGrab(), ACCENT_REACH));
+    const f = activeFloor(getState());
+    const reach = Math.max(segGrab(), ACCENT_REACH);
+    const face = accentFaceAt(f, p.x, p.z, reach);
+    const on = lineFaceAt(f, p.x, p.z, reach);
+    if (on && (!face || on.dist < face.dist - 1e-6)) return on;
+    return face;
+  }
+
+  // One face of a free-standing wall (#910, wallrun.js's `line.accents`).
+  function accentLineDown(face) {
+    const { line, side } = face;
+    const had = lineAccent(line, side);
+    const paint = accentPaint && sameAccent(had, accentPaint) ? null : accentPaint;
+    // Refused for the reason #857 refuses a face with no wall: it would be
+    // stored and paint nothing. Taking one off is always allowed.
+    if (paint && lineKind(line) !== SEG_WALL) {
+      say('Accent — glass and railings are not painted. Pick a solid wall.');
+      return;
+    }
+    if (paint && !face.shape) {
+      say('Accent — that side of the wall faces outside, and the facade covers it. Click from inside a room.');
+      return;
+    }
+    pushUndo();
+    if (!setLineAccent(line, side, paint)) {
+      dropUndo();
+      say('Accent — that wall has no accent to take off.');
+      return;
+    }
+    fire({ structural: true, commit: true });
+    say(paint
+      ? `Accent — this side of the ${lineLength(line).toFixed(1)}ft free-standing wall painted ${accentName(paint)}.`
+      : 'Accent — this side of the free-standing wall is back to the room\'s own paint.');
   }
 
   function accentPointerDown(p) {
@@ -803,10 +846,11 @@ export function initEditor({
       say('Accent — no wall there. Click inside a room, within a couple of feet of the wall to paint.');
       return;
     }
+    if (face.line) { accentLineDown(face); return; }
     const ring = face.shape.rings[face.ring];
     const had = segAccent(ring, face.seg);
     // The colour it already is, clicked again, is the way back.
-    const paint = accentPaint && had === accentPaint ? null : accentPaint;
+    const paint = accentPaint && sameAccent(had, accentPaint) ? null : accentPaint;
     const name = face.shape.name || 'this room';
     // An accent is a face of a wall (#857): with no wall on the line it would
     // be stored and paint nothing. Taking one off is always allowed.
@@ -823,18 +867,18 @@ export function initEditor({
     fire({ structural: true, commit: true });
     const [a, b] = segEnds(ring, face.seg);
     say(paint
-      ? `Accent — ${segLength(a, b).toFixed(1)}ft of ${name}'s wall painted ${paint}.`
+      ? `Accent — ${segLength(a, b).toFixed(1)}ft of ${name}'s wall painted ${accentName(paint)}.`
       : `Accent — ${name}'s wall is back to the room's own paint.`);
   }
 
   function setAccentPaint(v) {
     accentPaint = v === undefined ? undefined
       : v === null ? null
-      : (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : undefined);
+      : (readAccentPaint(v) || undefined);
     if (accentPaint !== undefined) cancelWallRun(true);
     refreshDraft();
     updateCursor(null);
-    if (tool === 'wall') say(accentPaint === undefined ? HINT_WALL : HINT_ACCENT);
+    if (tool === 'wall') say(accentPaint === undefined ? HINT_WALL : accentHint());
     if (onAccentMode) onAccentMode(accentPaint);
   }
 
@@ -1212,8 +1256,9 @@ export function initEditor({
       const face = accentTarget(p);
       edgeCursor.visible = !!face;
       if (face) {
-        const [a, b] = segEnds(face.shape.rings[face.ring], face.seg);
-        edgeCursor.material.color.set(accentPaint || '#f2f0ec');
+        const [a, b] = face.line ? lineEnds(face.line)
+          : segEnds(face.shape.rings[face.ring], face.seg);
+        edgeCursor.material.color.set(accentHex(accentPaint) || '#f2f0ec');
         edgeCursor.material.opacity = 0.7;
         edgeCursor.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
         edgeCursor.scale.set(Math.max(0.2, segLength(a, b) / (CELL + WALL_T)), 1, 1);
@@ -2124,6 +2169,9 @@ export function initEditor({
     // How a ramp is folded: the selected one, or the next one placed (#832).
     setRampFold: (opts) => stairTool.setFold(opts),
     get rampFold() { return stairTool.fold; },
+    // How wide and how steep: the selected ramp, or the next one placed (#907).
+    setRampSize: (opts) => stairTool.setSize(opts),
+    get rampSize() { return stairTool.size; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
     // The prop tool's second knob (Phase 11): the paint. Same shape as the
@@ -2141,7 +2189,7 @@ export function initEditor({
       refreshDraft(); updateCursor(null);
     },
     get wallKind() { return wallKind; },
-    // The accent brush (#832): a hex to paint with, null to clear, undefined
+    // The accent brush (#832): a palette id (or a hex) to paint with, null to clear, undefined
     // to go back to drawing walls.
     setAccentPaint,
     get accentPaint() { return accentPaint; },

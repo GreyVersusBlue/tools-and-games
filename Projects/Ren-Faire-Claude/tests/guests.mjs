@@ -100,6 +100,21 @@ const demo = (id, x, y) => ({ id, kind: 'demo', x, y, w: 1, h: 1, status: 'built
   assert(far.every((c, i) => i === 0 || orthogonal(far[i - 1], c)), 'a route is contiguous: every step is one orthogonal hop');
   assert(pathRouteTo(3, 4) === null, 'the col-3 spur below row 3 has no route from the gate (the pre-existing authoring gap, still pinned)');
   assert(pathRouteTo(0, 0) === null, 'a clearing cell has no route');
+
+  // Every path cell on the authored map, against the route tree. The six
+  // cells of the col-3 spur below its gap at (3,3) are the ones #227 ruled
+  // stay cut off; any other path cell with no walk from the gate is a new
+  // spur, and a seventh cell here means the ruled one grew.
+  const cutOff = [];
+  let pathCells = 0;
+  for (let y = 0; y < GRID.rows; y++) for (let x = 0; x < GRID.cols; x++) {
+    if (terrainAt(x, y) !== 'path') continue;
+    pathCells++;
+    if (!routes.has(key(x, y))) cutOff.push(key(x, y));
+  }
+  assert(pathCells === 36 && routes.size === 30, `the map has 36 path cells and the gate reaches 30 of them (${pathCells}, ${routes.size})`);
+  assert(cutOff.join(' ') === '3,4 3,5 3,6 3,7 3,8 3,9',
+    `the only path cells with no walk from the gate are the col-3 spur's six below (3,3), ruled by #227 (cut off: ${cutOff.join(' ') || 'none'})`);
   assert(pathRouteTo(ENTRANCE.x, ENTRANCE.y).length === 1, 'the route to the gate is the gate alone');
 }
 

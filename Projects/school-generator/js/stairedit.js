@@ -14,9 +14,9 @@ import { floorLabel, floorBaseY } from './grid.js';
 import { removeLink, wrapAngle } from './props.js';
 import { gridSnap } from './propplace.js';
 import {
-  STAIR_TYPES, stairMetrics, footprintBox, rectCorners, cutBox, cutPolygon, rampLayout,
+  STAIR_TYPES, stairMetrics, footprintBox, rectCorners, cutBox, cutPolygon,
   linksFrom, linkAt, linkById, addStair, stairWidth, openingSize,
-  rampRuns, rampSide, setRampFold,
+  rampRuns, rampSide, setRampFold, rampSlope, setRampSize, runPhrase, RAMP_W, RAMP_SLOPE,
   elevatorSize, elevatorDoorWidth,
 } from './stairs.js';
 
@@ -52,16 +52,9 @@ function describe(state, link, metrics) {
     return `Elevator — ${w} × ${d} ft car, ${elevatorDoorWidth(link).toFixed(1)}ft doors, ` +
       `serving ${floorLabel(link.from)} and ${upper}. Cuts no hole; you arrive on the slab.`;
   }
-  const inches = (metrics.riser * 12).toFixed(1);
   const cut = cutBox(link, metrics);
   const noun = link.type === 'ramp' ? 'Ramp' : 'Stair';
-  const fold = rampLayout(link, metrics);
-  const rise = fold
-    ? `${fold.n} runs of ${fold.runLen.toFixed(1)}ft, ${(fold.runRise * 12).toFixed(0)}in of rise each` +
-      (fold.legal ? '' : ' (over the 30in a run may rise)')
-    : link.type === 'ramp'
-    ? `${metrics.run.toFixed(1)}ft of run`
-    : `${metrics.steps} risers at ${inches}in, ${metrics.run.toFixed(1)}ft of run`;
+  const rise = runPhrase(link, metrics);
   const opens = cut
     ? ` Opens ${(cut.x1 - cut.x0).toFixed(1)} × ${(cut.z1 - cut.z0).toFixed(1)}ft of ${upper}.`
     : ` Rises to ${upper}.`;
@@ -76,6 +69,9 @@ export function initStairEdit({ getState, renderApi, host }) {
   // panel says otherwise, which is the ramp this tool has always placed.
   let pendingRuns = 1;
   let pendingSide = 1;
+  // ...and how wide and how steep (#907): 4ft at 1:12, the ramp it always was.
+  let pendingWidth = RAMP_W;
+  let pendingSlope = RAMP_SLOPE;
   let selectedId = null;
   let hover = null;           // { x, z } snapped placement candidate
   let gesture = null;
@@ -177,8 +173,10 @@ export function initStairEdit({ getState, renderApi, host }) {
       // The ghost is the footprint that gets built, so a ramp's carries its fold.
       const probe = {
         type: currentType, x: hover.x, z: hover.z, rotationY: pendingRotationY,
-        data: currentType === 'ramp' && pendingRuns > 1
-          ? { runs: pendingRuns, ...(pendingSide === -1 ? { side: -1 } : {}) } : {},
+        data: currentType === 'ramp'
+          ? { width: pendingWidth, slope: pendingSlope,
+            ...(pendingRuns > 1 ? { runs: pendingRuns, ...(pendingSide === -1 ? { side: -1 } : {}) } : {}) }
+          : {},
       };
       const box = footprintBox(probe, metrics);
       ghostGroup.visible = true;
@@ -293,6 +291,8 @@ export function initStairEdit({ getState, renderApi, host }) {
     const { link, reason } = addStair(s, s.currentFloor, {
       type: currentType, x: hover.x, z: hover.z, rotationY: pendingRotationY,
       runs: pendingRuns, side: pendingSide,
+      // A stair reads `width` too, and the panel's is the ramp's alone.
+      ...(currentType === 'ramp' ? { width: pendingWidth, slope: pendingSlope } : {}),
     });
     if (!link) {
       host.dropUndo();
@@ -390,6 +390,45 @@ export function initStairEdit({ getState, renderApi, host }) {
     return true;
   }
 
+  // --- width and slope (#907) ---
+  //
+  // The same two cases as the fold: the selected ramp, one undo step a press,
+  // or the next one placed. The range is stairs.js's `RAMP_CTRL`, and a
+  // value outside it never leaves here.
+
+  function size() {
+    const link = selected();
+    const ramp = link && link.type === 'ramp' ? link : null;
+    return {
+      width: ramp ? stairWidth(ramp) : pendingWidth,
+      slope: ramp ? rampSlope(ramp) : pendingSlope,
+      selected: !!ramp,
+    };
+  }
+
+  function setSize(opts = {}) {
+    const link = selected();
+    if (!link || link.type !== 'ramp') {
+      // Through the same writer a placed ramp goes through, on a stand-in.
+      const probe = { type: 'ramp', data: { width: pendingWidth, slope: pendingSlope } };
+      setRampSize(probe, opts);
+      pendingWidth = probe.data.width;
+      pendingSlope = probe.data.slope;
+      refresh();
+      return false;
+    }
+    host.pushUndo();
+    if (!setRampSize(link, opts)) {
+      host.dropUndo();
+      refresh();
+      return false;
+    }
+    host.changed();
+    status(link);
+    refresh();
+    return true;
+  }
+
   function deleteSelected() {
     const link = selected();
     if (!link) return false;
@@ -449,6 +488,8 @@ export function initStairEdit({ getState, renderApi, host }) {
     selectById, deleteSelected, rotateSelected, nudgeSelected, listHere,
     setFold,
     get fold() { return fold(); },
+    setSize,
+    get size() { return size(); },
     get selectedId() { return selected() ? selectedId : null; },
     describeLink(link) { return describe(getState(), link, stairMetrics(getState())); },
     clearHover() { hover = null; refresh(); },

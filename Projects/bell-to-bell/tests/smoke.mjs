@@ -9,7 +9,8 @@ import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/si
 import { createObservation, visitFor, announcedAhead, defaultVisit } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor,
-  classSeeds, classSeedFor, classSeedProblems, isSeed, seedCopyFor } from '../src/periods.js';
+  classSeeds, classSeedFor, classSeedProblems, isSeed, seedCopyFor,
+  slotSeed, seedTyped, seedBoxFor } from '../src/periods.js';
 import crypto from 'crypto';
 import { contentFiles } from '../src/loader.js';
 import { subjectKey, subjectFor, applySubject, weightedMix, subjectEvents, subjectTells,
@@ -26,7 +27,7 @@ import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/per
 import { auditAssets } from './assets.mjs';
 import * as THREE from '../src/three.js';
 import { createTellSystem } from '../src/systems/tells.js';
-import { createWithitness } from '../src/systems/withitness.js';
+import { createWithitness, scanCosts } from '../src/systems/withitness.js';
 import { createTellMaterials, createRegistry } from '../src/world/materials.js';
 import { createTellMeshBuilder, setTellVision, TELL_SHAPES } from '../src/world/tellmesh.js';
 import { createInput, moveVector, stickVector, wantsTouchUI } from '../src/input.js';
@@ -1427,7 +1428,7 @@ check('main.js carries Bandwidth across the bell through the day key',
 check('main.js keeps the seed in the period slot',
   /persist\.slot\(activePeriodId, 'seed'\)/.test(mainSrc));
 check('main.js draws a seed only for a generated period, and keeps it',
-  /isGenerated\(rowFor\(activePeriodId, data\)\)/.test(mainSrc) &&
+  /if \(isGenerated\(activeRow\) && seed === null\) \{/.test(mainSrc) &&
   /seed = drawSeed\(\);\s*persist\.save\(seedKey, seed\)/.test(mainSrc));
 check('main.js hands periodFor the seed', /periodFor\(activePeriodId, data, \{ seed/.test(mainSrc));
 check('main.js puts the seed on the report', /seed: period\.generated \? \{ value: period\.generated\.seed/.test(mainSrc));
@@ -3491,9 +3492,10 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   })());
   check('an authored row has no seed line at all', seedCopyFor(periodFor('p5', bundle), bundle) === copy &&
     periodFor('p5', bundle).generated === null);
-  check('main.js asks isSeed() what to keep and what to take, and nothing else',
-    /isGenerated\(rowFor\(activePeriodId, data\)\) && !isSeed\(data, seed\)/.test(mainSrc) &&
-    /if \(!isSeed\(data, typed\)\) \{/.test(mainSrc) && !/SEED_MAX/.test(mainSrc));
+  check('main.js asks slotSeed() what to keep and seedTyped() what to take, and nothing else',
+    /let seed = slotSeed\(activeRow, data, persist\.load\(seedKey, null\)\);/.test(mainSrc) &&
+    /const took = seedTyped\(activeRow, data, dom\.seedInput\.value, /.test(mainSrc) &&
+    !/SEED_MAX/.test(mainSrc) && !/isSeed/.test(mainSrc) && !/parseInt\(dom\.seedInput/.test(mainSrc));
   check('main.js words the report through seedCopyFor()', /copy: seedCopyFor\(period, data\)/.test(mainSrc));
   check('the seed box takes seven digits',
     /id="seedInput"[^>]*maxlength="7"/.test(fs.readFileSync('../index.html', 'utf8')) &&
@@ -3506,6 +3508,217 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     const without = contentFiles(pf);
     return withTable.includes('period5') && withTable.includes('period6') &&
       !without.includes('period5') && !without.includes('period6');
+  })());
+}
+
+
+// ---------------------------------------------------------------------------
+// #903 — a seed box on 4th, 5th and 6th. An empty slot is the class written
+// for the row; a seed is twelve other kids and their own schedule, sat through
+// the row's own lesson. Authored files are read off disk again here too.
+{
+  const AUTHORED = {
+    p4: { seed: 1000004, roster: D('students').roster, schedule: D('tells').schedule },
+    p5: { seed: 1000005, roster: D('period5').roster, schedule: D('period5').schedule },
+    p6: { seed: 1000006, roster: D('period6').roster, schedule: D('period6').schedule }
+  };
+  const J = JSON.stringify;
+  const row = id => rowFor(id, bundle);
+  const authoredIds = ['p4', 'p5', 'p6'];
+  const isAuthored = (p, id) => p.generated === null && J(p.roster) === J(AUTHORED[id].roster) &&
+    J(p.schedule) === J(AUTHORED[id].schedule);
+
+  // ---- what a slot's value comes to ------------------------------------
+  check('an empty or broken slot on an authored row is no seed',
+    authoredIds.every(id => [null, undefined, 0, -3, 12.5, '4821', NaN, {}, 1000007, SEED_MAX + 1]
+      .every(v => slotSeed(row(id), bundle, v) === null)));
+  check('a drawable seed in an authored row\'s slot is kept',
+    authoredIds.every(id => slotSeed(row(id), bundle, 4821) === 4821 && slotSeed(row(id), bundle, 1) === 1 &&
+      slotSeed(row(id), bundle, SEED_MAX) === SEED_MAX));
+  check('another row\'s class seed in an authored row\'s slot is kept',
+    slotSeed(row('p4'), bundle, 1000005) === 1000005 && slotSeed(row('p4'), bundle, 1000006) === 1000006 &&
+    slotSeed(row('p5'), bundle, 1000004) === 1000004 && slotSeed(row('p6'), bundle, 1000005) === 1000005);
+  check('a row\'s own class seed is the authored class, so it is no seed there',
+    authoredIds.every(id => slotSeed(row(id), bundle, AUTHORED[id].seed) === null));
+  check('the generated row keeps what it kept: any seed, class seeds included, and nothing else',
+    slotSeed(row('p7'), bundle, 4821) === 4821 && authoredIds.every(id => slotSeed(row('p7'), bundle, AUTHORED[id].seed) === AUTHORED[id].seed) &&
+    [null, 0, '4821', 1000007].every(v => slotSeed(row('p7'), bundle, v) === null));
+
+  // ---- what the button does with what was typed ------------------------
+  const took = (id, text, cur) => { const t = seedTyped(row(id), bundle, text, cur); return `${t.kind}:${t.seed}`; };
+  check('an empty box on an authored row that has no seed changes nothing',
+    took('p4', '', null) === 'same:null' && took('p5', '   ', null) === 'same:null' && took('p6', '', undefined) === 'same:null');
+  check('emptying the box on an authored row that has a seed clears the slot',
+    took('p4', '', 4821) === 'clear:null' && took('p5', '  ', 1000004) === 'clear:null');
+  check('a seed typed into an authored row is set', took('p4', '4821', null) === 'set:4821' &&
+    took('p5', ' 77 ', 4821) === 'set:77' && took('p6', '1000004', null) === 'set:1000004');
+  check('the seed the row already has changes nothing', took('p5', '4821', 4821) === 'same:4821');
+  check('a row\'s own class seed typed into it is the empty box',
+    took('p4', '1000004', null) === 'same:null' && took('p4', '1000004', 4821) === 'clear:null' &&
+    took('p6', '1000006', 1000005) === 'clear:null');
+  check('what is not a seed is put back, and the slot keeps what it had',
+    ['abc', '0', '-4', '1000007', '9999999'].every(t => took('p4', t, null) === 'bad:null' && took('p5', t, 4821) === 'bad:4821' &&
+      took('p7', t, 4821) === 'bad:4821'));
+  check('the generated row cannot be emptied', took('p7', '', 4821) === 'bad:4821' && took('p7', '  ', 1000005) === 'bad:1000005');
+  check('the generated row takes what it took', took('p7', '77', 4821) === 'set:77' && took('p7', '4821', 4821) === 'same:4821' &&
+    took('p7', '1000004', 4821) === 'set:1000004');
+
+  // ---- the period a slot builds ----------------------------------------
+  check('no seed, asked the way main.js asks, is the authored class on all three rows',
+    authoredIds.every(id => isAuthored(periodFor(id, bundle, { seed: null, day: 2, reseed: true }), id)));
+  check('a row\'s own class seed, asked the way main.js asks, is the authored class with no seed on it',
+    authoredIds.every(id => isAuthored(periodFor(id, bundle, { seed: AUTHORED[id].seed, day: 0, reseed: true }), id)));
+  check('a seed nobody said was the row\'s own is still ignored (the balance table\'s call)',
+    authoredIds.every(id => isAuthored(periodFor(id, bundle, { seed: 4821, day: 0 }), id) &&
+      isAuthored(periodFor(id, bundle, { seed: 4821, day: 0, reseed: 1 }), id)));
+  check('balance.mjs never says so', !/reseed/.test(fs.readFileSync('./balance.mjs', 'utf8')));
+
+  const seven = periodFor('p7', bundle, { seed: 4821, day: 0 });
+  const own5 = periodFor('p5', bundle), own4 = periodFor('p4', bundle), own6 = periodFor('p6', bundle);
+  const s5 = periodFor('p5', bundle, { seed: 4821, day: 0, reseed: true });
+  const names = id => new Set(AUTHORED[id].roster.map(r => r.name));
+  check('seed 4821 in 5th period is the twelve it is in 7th', J(s5.roster) === J(seven.roster) && s5.roster.length === 12);
+  check('none of them is one of 5th period\'s authored kids', s5.roster.every(r => !names('p5').has(r.name)));
+  check('they sit through 5th period\'s lesson, not 7th\'s',
+    J(s5.lessonData) === J(own5.lessonData) && J(s5.lessonData) !== J(seven.lessonData));
+  check('the row keeps its label, its chart copy and its place in the day',
+    s5.periodLabel === own5.periodLabel && s5.periodTag === own5.periodTag && J(s5.seatingCopy) === J(own5.seatingCopy) &&
+    s5.nextPeriodId === 'p6' && s5.id === 'p5');
+  check('the period says which seed made it, and that nobody authored it',
+    s5.generated.seed === 4821 && s5.generated.day === 0 && s5.generated.authored === undefined);
+  check('5th period\'s authored schedule is gone: not one authored line is in it',
+    s5.schedule.length > 0 && !s5.schedule.some(r => AUTHORED.p5.schedule.some(a => J(a) === J(r))));
+  check('the schedule that replaced it keeps the scheduler\'s promises for these twelve',
+    scheduleProblems(s5.schedule, s5.roster, { tellTypes: tData.types, seatGrid: sData.seatGrid, rules: seatData.rules, gen: genData }).length === 0);
+  check('and lands inside the bands on 5th period\'s own lesson, measured again here',
+    bandProblems(s5.generated.results, genData.bands).length === 0 &&
+    J(simulateBands({ period: { roster: s5.roster, schedule: s5.schedule, lessonData: own5.lessonData, seatGrid: s5.seatGrid },
+      data: bundle, bands: genData.bands })) === J(s5.generated.results));
+  check('the same seed on Tuesday is the same twelve doing something else',
+    (() => { const t = periodFor('p5', bundle, { seed: 4821, day: 1, reseed: true });
+      return J(t.roster) === J(s5.roster) && J(t.schedule) !== J(s5.schedule); })());
+  check('the same seed and day twice is the same period',
+    J(periodFor('p5', bundle, { seed: 4821, day: 0, reseed: true }).schedule) === J(s5.schedule));
+
+  // The bands are held under the row's lesson, so one seed can keep a
+  // different attempt in 5th than in 7th. Seed 150462 on a Monday: 5th's
+  // lesson takes the first draw, 4th's lesson (which 7th reads) turns two
+  // down. Same twelve kids either way. 3 of 500 seed-days measured did this
+  // in 5th, 0 of 500 in 6th, and 0 of 1,500 threw.
+  {
+    const a = periodFor('p5', bundle, { seed: 150462, day: 0, reseed: true });
+    const b = periodFor('p7', bundle, { seed: 150462, day: 0 });
+    const c = periodFor('p4', bundle, { seed: 150462, day: 0, reseed: true });
+    check('seed 150462 keeps its first schedule in 5th and its third in 7th, for the same twelve',
+      J(a.roster) === J(b.roster) && a.generated.rerolls === 0 && b.generated.rerolls === 2 && J(a.schedule) !== J(b.schedule));
+    check('and in 4th, which has 7th\'s lesson, it is 7th\'s schedule to the line',
+      J(c.schedule) === J(b.schedule) && c.generated.rerolls === 2 && J(c.lessonData) === J(b.lessonData));
+  }
+
+  {
+    const p = periodFor('p4', bundle, { seed: 1000006, day: 3, reseed: true });
+    check('6th period\'s class seed in 4th is 6th\'s kids and 6th\'s schedule on 4th\'s lesson',
+      J(p.roster) === J(AUTHORED.p6.roster) && J(p.schedule) === J(AUTHORED.p6.schedule) &&
+      J(p.lessonData) === J(own4.lessonData) && J(p.lessonData) !== J(own6.lessonData) &&
+      p.generated.seed === 1000006 && p.generated.authored === 'p6' && p.periodLabel === own4.periodLabel);
+    check('and its report line says whose twelve they are', seedCopyFor(p, bundle).report.includes("6th Period's twelve"));
+  }
+  check('a seeded 6th period plays to the bell under every script',
+    (() => { const p = periodFor('p6', bundle, { seed: 4821, day: 0, reseed: true });
+      return J(p.lessonData) === J(own6.lessonData) && Object.keys(STYLES).every(k => {
+        const r = runPeriod({ period: p, data: bundle, style: STYLES[k] });
+        return Number.isFinite(r.state.mastery) && r.students.length === 12 && r.students.every(s => Number.isFinite(s.comp));
+      }); })());
+
+  // ---- a save from before ----------------------------------------------
+  // Every save written before this has no `seed` in 4th to 6th's slots and
+  // `seed: null` on those classes in the record. Both still mean the
+  // authored class, so nothing is migrated and repair() is not touched.
+  {
+    const roster = AUTHORED.p4.roster;
+    const kids = (r, comp) => r.map((x, i) => ({ ...x, seat: i, comp }));
+    const res = (seed, r = roster) => ({ periodId: 'p4', seed, roster: r, students: kids(r, 0.9), rapport: 71, fidelity: 64,
+      mastery: 90, missed: 0, caught: 0, sawCurveball: false, obsResult: null, known: { edges: [], steadies: [] } });
+    const before = semester.repair(JSON.parse(J(semester.recordPeriod(semester.createRecord(7), res(null)))), 7);
+    const open = periodFor('p4', bundle, { seed: slotSeed(row('p4'), bundle, null), day: 1, reseed: true });
+    const back = semester.entering(before, 'p4', { roster: open.roster, seed: open.generated ? open.generated.seed : null, admin: adminData });
+    check('a 4th period recorded before this opens as the same class, with what it carried',
+      before.classes.p4.seed === null && isAuthored(open, 'p4') && !back.firstDay && back.rapport === 71 && back.startComp.length === 12);
+    const seeded = periodFor('p4', bundle, { seed: 4821, day: 1, reseed: true });
+    const fresh = semester.entering(before, 'p4', { roster: seeded.roster, seed: seeded.generated.seed, admin: adminData });
+    check('a seed typed into that 4th period is a new class to the record',
+      fresh.firstDay && fresh.startComp === null && fresh.rapport === CFG.start.rapport);
+    const after = semester.recordPeriod(before, res(4821, seeded.roster));
+    check('and the authored class after a seeded one is a new class again',
+      after.classes.p4.seed === 4821 && semester.entering(after, 'p4', { roster, seed: null, admin: adminData }).firstDay &&
+      !semester.entering(after, 'p4', { roster: seeded.roster, seed: 4821, admin: adminData }).firstDay);
+  }
+
+  // ---- the words, and the wiring ---------------------------------------
+  const copy = pData.copy.seed;
+  check('an authored row\'s box starts empty, with its own hint and placeholder',
+    authoredIds.every(id => { const b = seedBoxFor(periodFor(id, bundle), bundle);
+      return b.value === '' && b.hint === copy.hintAuthored && b.placeholder === copy.placeholderAuthored &&
+        b.label === copy.label && b.use === copy.use; }) &&
+    typeof copy.hintAuthored === 'string' && copy.hintAuthored.length > 40 && copy.hintAuthored !== copy.hint &&
+    typeof copy.placeholderAuthored === 'string' && copy.placeholderAuthored.length > 0);
+  check('a seeded authored row\'s box shows its seed and keeps the authored hint',
+    (() => { const b = seedBoxFor(s5, bundle); return b.value === '4821' && b.hint === copy.hintAuthored; })());
+  check('7th period\'s box says what it said', (() => { const b = seedBoxFor(seven, bundle);
+    return b.value === '4821' && b.hint === copy.hint && b.placeholder === '' && b.label === copy.label && b.use === copy.use; })());
+  check('main.js builds the period from its own slot and says the seed is the row\'s own',
+    /periodFor\(activePeriodId, data, \{ seed, day: semester\.dayIndexOf\(record\), reseed: true \}\)/.test(mainSrc));
+  check('main.js shows the box on every period', /const box = seedBoxFor\(period, data\);/.test(mainSrc) &&
+    /dom\.seedInput\.placeholder = box\.placeholder;/.test(mainSrc) && !/if \(period\.generated\) \{\s*const copy = data\.periods\.copy\.seed/.test(mainSrc));
+  check('main.js stores a set seed, clears a cleared one, and drops the chart either way',
+    /if \(took\.kind === 'bad' \|\| took\.kind === 'same'\) return;\s*if \(took\.kind === 'set'\) persist\.save\(seedKey, took\.seed\);\s*else persist\.clear\(seedKey\);[\s\S]{0,220}persist\.clear\(chartKey\);\s*persist\.clear\(knownKey\);\s*persist\.clear\(rapportKey\);\s*location\.reload\(\);/.test(mainSrc));
+}
+
+
+// ---------------------------------------------------------------------------
+// #906 — two of the five questions the suites raised on 2026-10-05, closed.
+{
+  // The balance table weighs the game's own toggle. simulate.js used to
+  // repeat withitness.tick()'s four lines; both call scanCosts() now.
+  const simSrc = fs.readFileSync('../src/systems/simulate.js', 'utf8');
+  const witSrc = fs.readFileSync('../src/systems/withitness.js', 'utf8');
+  const COSTS = ['bandwidthDrainPerSec', 'hyperGainPerSec', 'scanRestlessPerSec', 'hyperDecayPerSec'];
+  check('simulate.js has no copy of the toggle\'s costs',
+    COSTS.every(k => !simSrc.includes(k)) && !/withitnessSeconds \+=/.test(simSrc) &&
+    /state\.withitness = style\.scan\(state\);\s*scanCosts\(state, DT\);/.test(simSrc));
+  check('the game\'s tick() spends through the same function, and writes no meter itself',
+    /function tick\(state, dt\) \{\s*scanCosts\(state, dt\);/.test(witSrc) &&
+    COSTS.every(k => witSrc.split(k).length === 2));
+  const on = { withitness: true, bandwidth: 50, hyper: 10, restless: 20, withitnessSeconds: 3 };
+  scanCosts(on, 2);
+  check('scanCosts charges a held toggle what CFG says',
+    on.bandwidth === 50 - CFG.bandwidthDrainPerSec * 2 && on.hyper === 10 + CFG.hyperGainPerSec * 2 &&
+    on.restless === 20 + CFG.scanRestlessPerSec * 2 && on.withitnessSeconds === 5);
+  const off = { withitness: false, bandwidth: 50, hyper: 10, restless: 20, withitnessSeconds: 3 };
+  scanCosts(off, 2);
+  check('and a dropped one only cools', off.bandwidth === 50 && off.restless === 20 && off.withitnessSeconds === 3 &&
+    off.hyper === Math.max(0, 10 - CFG.hyperDecayPerSec * 2));
+  check('a simulated period that scans is charged for it', (() => {
+    const r = runPeriod({ period: periodFor('p4', bundle), data: bundle, style: STYLES.good });
+    return r.state.withitnessSeconds > 0;
+  })());
+
+  // The calendar's horizon is slack on purpose. Devon's yes to the announced
+  // visit (2026-10-05) confirmed the 1 to 3 day lead as it ships (#891), and a
+  // horizon longer than the longest lead hides nothing. The direction that
+  // would hide a visit is a horizon shorter than a lead, so that is pinned.
+  const A = obsData.visit.announced;
+  check('the calendar looks at least as far ahead as the longest lead', A.horizonDays >= A.leadDays.max);
+  check('a horizon shorter than the longest lead drops a visit you were told about', (() => {
+    const short = JSON.parse(JSON.stringify(obsData));
+    short.visit.announced.horizonDays = A.leadDays.max - 1;
+    const ids = periodIds(bundle);
+    for (let seed = 1; seed <= 30; seed++) for (let day = 0; day < 30; day++) {
+      const full = announcedAhead(obsData, { seed, dayIndex: day, periodIds: ids });
+      const cut = announcedAhead(short, { seed, dayIndex: day, periodIds: ids });
+      if (cut.length < full.length) return true;
+    }
+    return false;
   })());
 }
 

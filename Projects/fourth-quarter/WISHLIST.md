@@ -3,9 +3,12 @@
 **Status: all nine phases have shipped. This project has no ranked row left.**
 Phase 9 closed the arc on 2026-09-08: the night you can lose, the landlord's
 three strikes, and an eviction that drops you a rung instead of ending the run.
-What is left is under "What this leaves for a later arc" at the foot of this
-file — distributors, staff as a simulated system, per-lot shelf life — and none
-of it is ranked.
+What is left is under "What is left of TG-25" in the standing backlog. The
+supply houses shipped on 2026-10-06 (#905), the rota the same day (#908) and
+the dated shelf with its walk-in the same day (#909) and season terms, the
+season that moves rent and wages, the same day (#911). **That is the whole
+back office: Q24's arc is complete.** What TG-25 has left is the sound and
+the texture pop, and neither is ranked.
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -240,23 +243,143 @@ the phases below would need answered.
    nothing else happens. Options that fit what exists: a bankruptcy threshold,
    a lease that can be lost (a downgrade rather than a game over), a bank that
    stops lending. Round 3 declined to invent one unprompted and was right to.
-3. **How much of the 2D campaign is actually wanted?** 21 event cards, a
-   14-week season with a 4-team bracket, regulars, a rival, three distributors.
-   All of it ports; none of it is small; a 3D floor game with a full back
-   office is a different game. Phases 6-9 assume "most of it, in that order."
+3. ~~**How much of the 2D campaign is actually wanted?**~~ Answered by Devon
+   on 2026-10-05 (HISTORY.md #902): all of it. Phases 6-9 ported the league,
+   the regulars and the rival, the event cards and the losable lease; the
+   distributors and their two event cards shipped on 2026-10-06 (#905) and
+   staff as a simulated system the same day (#908), and per-lot shelf life
+   with the walk-in the same day (#909), and a season that moves rent and
+   wages the same day (#911). Nothing of the 2D build's back office is left
+   to port. "What is left of TG-25", below, has what remains.
 4. ~~**Is 66 MB of texture on first paint acceptable?**~~ Answered by Phase 4
    on 2026-09-07 (HISTORY.md #201): no. A first visit now downloads 5.08 MB of
    1k JPEG; the 2k originals stay in place for `?tex=2k` and for a Retina-class
    screen with a GPU that can hold them. Devon can widen or narrow
-   `pickTier()`'s rule; the numbers it was set from are in the README.
-5. **Has `SPOILAGE_RATE = 0.15` actually been played yet?** One number in
-   `campaign.js`, tune by feel; no assertion depends on the exact value except
-   one asserting 15% of 20 rounds to 3.
+   `pickTier()`'s rule; the numbers it was set from are in the README. Devon's
+   own answer on 2026-10-05 (#902) was "cut it", which is this.
+5. ~~**Has `SPOILAGE_RATE = 0.15` actually been played yet?**~~ Answered by
+   Devon on 2026-10-05 (#902): keep it for now. `test/smoke-settle.mjs` pins
+   2,400 settled nights at this rate, so changing it re-pins that file. It
+   is still 0.15 and still what an undated shelf pays (#909); a campaign that
+   dates its shelf stops paying it.
 
 ## The standing backlog
 
 Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
+
+**What is left of TG-25** (the audit's line for this project; its first
+increment shipped on 2026-10-06 as #898, #900 and #901, its second the
+same day as #905, the supply houses, its third as #908, the rota, and its
+fourth as #909, the dated shelf, and its fifth as #911, season terms, which
+closed item 3). In the order to take it, each a session of its own: the
+sound, then the texture pop.
+
+1. **The sound.** No crowd cheer on a Mules win (`audio.js` says so, and
+   `main.js` plays the whistle sting alone), nothing in `audio/sfx/footsteps/`
+   or `audio/music/`, and `audio/sfx/events/crowd-groan.mp3` is the last
+   non-OGG file. Vendored CC0 only, with each file's source and licence
+   recorded beside it. It cannot be judged without speakers.
+2. **The texture pop, and a 512 px tier.** A texture that lands after "Take
+   the Floor" still pops in, and the 1k tier is one size for every surface.
+   The order-of-magnitude cut itself is done (#201, #622); this is what Devon's
+   "cut it" has left. It changes how the game looks, so it wants before-and-after
+   sizes and a GPU window.
+3. ~~**The back office** (Q24, all of it), a session each, in this order.~~
+   **Complete on 2026-10-06**: all four systems below have shipped, each off
+   until the player turns it on, and a campaign that turns none of them on is
+   the game as it was. What each left open is small and is under it.
+   - ~~The three distributors, bulk pricing and par levels, with the two
+     event cards about them.~~ Shipped 2026-10-06 (#905): `js/supply.js`,
+     the Stock panel, `test/smoke-supply.mjs` (113). A campaign at County
+     Line is the game as it was. Left open by it, and small: nothing has
+     been played by a person, so whether Cask & Carton's $110 a week and Gold
+     Standard's 8% are the right size is not known (for a bot that sells all
+     it stocks both beat County Line in every room; `plateMult` in
+     `supply.js` is the number to turn); there are no delivery days and no
+     reliability number, on purpose; "Truck Breaks Down" still says "the
+     distributor's driver" rather than the house's name.
+   - ~~Staff as a simulated system: hire, schedule, skill growth, fatigue,
+     poaching by the rival.~~ Shipped 2026-10-06 (#908): `js/staff.js`, the
+     rota in the Crew panel, `test/smoke-staff.mjs` (116). Designed here,
+     not ported: the 2D build has a staffer as a role, a skill and a wage
+     and nothing more. A campaign that never posts the rota is the game as
+     it was. Left open by it, and small: nothing has been played by a
+     person, and the season bot serves a ticket the moment it is ready, so
+     a faster cook is worth nothing to it and every rota it ran lost to no
+     rota ($2,924 a season covered, $4,069 not, $6,131 neglected, at the
+     Corner Tap). Whether a level's $20 raise (`LEVEL_RAISE`) is the right
+     size against a night a person serves is the number to turn. There is
+     no wage paid for a night off, no overtime, no training spend, and the
+     rota cannot be taken down, on purpose. The "Poaching Call" card is
+     unchanged apart from seeing only who is on shift; its raise is 15 of
+     morale under a rota.
+   - ~~Per-lot shelf life in days, and the Commercial Walk-In that adds
+     two.~~ Shipped 2026-10-06 (#909): `js/shelf.js`, "The Shelf" in the
+     Stock panel, `test/smoke-shelf.mjs` (131). Off until the shelf is dated,
+     and dating it is one way. A campaign that never dates it is the game as
+     it was: `SPOILAGE_RATE` is 0.15 (Q26) and `test/smoke-settle.mjs`'s pin
+     did not move, which is not what this item said would happen. It said
+     the lots would replace the flat rate and change every stock read;
+     instead `c.stock` is still the count, the lots are the same servings
+     with dates on, and `reconcile()` keeps the two agreeing, so the engine
+     did not change. A close is the flat rate or the dates, never both.
+     The inspector reads the dates on a dated shelf (the 2D build's rule)
+     and the overstock rule on an undated one. Left open by it, and small:
+     nothing has been played by a person. For the season bot, which stocks
+     to a par and sells nearly all of it, dates are worth $674 a season at
+     the Corner Tap ($722.70 of rot against ten wings), and the walk-in is
+     $2,764 spent for nothing; buying three times the food it needs, dates
+     still beat the flat rate ($3,440 lost against $5,032) and the walk-in
+     pays for itself at the flagship ($4,971 lost without it, $978 with,
+     $1,223 ahead). Whether a free, one-way switch that a careful player
+     always wants should cost something is the call to make after a played
+     week; `SHELF` and `WALKIN` in `shelf.js` are the numbers to turn. There
+     is no lot shown on the 3D shelf, no "use first" choice (oldest always
+     sells first), no price cut on last-night food, and Gold Standard's
+     food keeps no longer than anyone's, on purpose. Stock a card gives and
+     stock sold in the same night would be netted (no card gives stock
+     today). The walk-in is not in `UPGRADES`: adding a sixth id there moves
+     `smoke-settle.mjs`'s pin through the scramble's draws.
+   - ~~A season that moves rent and wages.~~ Shipped 2026-10-06 (#911):
+     `js/season.js`, "Season Terms" in the Real Estate panel,
+     `test/smoke-season.mjs` (91). Off until the terms are signed, and
+     signing is one way. Month to month is the game as it was: rent is the
+     room's number and a wage the staffer's, for ever, both settle pins are
+     unmoved, and 180 seeded seasons hash the same on the old tree and the
+     new, at 98 nights and at 300. The 2D build's creep (rent 10 points a
+     season to 60 over, wages 6 to 40 over) was every campaign's; here it is
+     the cost of a deal, because a switch that only costs is a switch nobody
+     turns on. Signing buys rent 10% under the room's for the season it is
+     signed in and 75% of the season's rent through every off-season
+     fortnight. A season is the league's 126 nights, counted from the one the
+     terms were signed in. The player sees it coming three ways: the Real
+     Estate card's three dated rents, a row on the Tonight panel, and a
+     week's notice in the ticker and on the door before either date. How it
+     meets the other three: under a rota a night off is the raised wage not
+     paid and a level's $20 is raised with the rest; no price and no footfall
+     moves, so an order's quote at all three houses, the par sheet and a
+     lot's date read the same on terms and off them, and the supply account
+     and the walk-in's power are not on the terms. Left open by it, and
+     small: nothing has been played by a person. Same seed at the Corner Tap,
+     signing on day one is $1,736 ahead at the end of season 1, $1,106 ahead
+     after two and $1,750 behind after three ($7,084 after four); at the
+     flagship $4,088, $3,990 and $182 behind. A campaign has to run past
+     night 252 before the terms cost anything, and the bot banks about
+     $44,000 over a season's 126 nights at the Corner Tap, so nothing here
+     can hurt it;
+     whether a break this small is worth a signature to a person, and
+     whether the creep should start sooner, is the call to make after a
+     played season. `SIGN_BREAK`, `RENT_STEP`, `WAGE_STEP` and `OFF_RENT` in
+     `season.js` are the numbers to turn. There is no footfall or price by
+     season, no raise the crew notices (morale does not read it), no way off
+     the terms, and an eviction does not end them, on purpose. The Real
+     Estate panel's dark-night screen does not show the card.
+
+Not looked at in that increment, because each needs a GPU window and a pair
+of eyes: whether bodies giving way to each other reads well on the floor,
+whether `FOOT_RATE` (1.2) is the right stride over the stair's kerb, and what
+it is like to be the boss the room walks round.
 
 **The room**
 - `floorYAt()` is single-valued: one floor per (x, z), so the ground under
@@ -265,10 +388,12 @@ starting a new list.
   need two floors at one point, which is the nav grid keyed by (x, z),
   `levelOpen()`, the sweep and the player's slide all growing a level, and
   none of them wants to. Not needed until a room is authored that needs it.
-- A body's y is read off the floor after every step and never integrated
-  (#200), so stepping onto the stair's low side is one frame's pop of up to a
-  riser. Nothing animates a step; if a walk cycle ever lands, the pop is the
-  place to spend it.
+- A walker's y follows the floor at `FOOT_RATE`, 1.2 m of rise per metre
+  walked (#901), so the stair's low side is about four strides and not one
+  frame's pop. The player's camera is not on that rule: `player.js`'s
+  `slide()` still reads y straight off the floor, and stepping the same kerb
+  is a 15 cm jump of the view. Nothing animates a step; if a walk cycle ever
+  lands, the kerb is the place to spend it.
 - `STEP_H` (0.18) and `MAX_SLOPE` (0.75) are one pair of numbers for every
   walker and the player alike. A wheeled thing, if one is ever authored,
   wants a `STEP_H` of 0.
@@ -283,10 +408,15 @@ starting a new list.
   3.1 cm per texel where it was 2.5. Nothing looks wrong; a per-rectangle
   shadow pass or a tighter box that skips dead ground is the fix if it ever
   does.
-- Two bodies never see each other. `Route` plans against the furniture and
-  nothing else, so two patrons walking opposite ways down the same lane pass
-  through one another, and a server delivering to a seated patron stops
-  0.75 m short of a body it cannot feel. Local avoidance is its own phase.
+- Bodies give way to each other since #900 (`separate()` in `js/walk.js`),
+  and four things about it are open. The boss is walked round but is not
+  stopped by anybody: `player.js` still slides against the furniture alone, so
+  the player walks through a guest. Past the south wall there is no floor, so
+  two leavers on the 1.5 m to `DOOR_OUT` still merge. A body shoved for 1.2 s
+  walks through whatever is in its way, which a crowded floor needs one to
+  three times in two minutes. And a shoved body does not plan again: it walks
+  on to the corner it was heading for, which measured the same as replanning
+  on eight floors but is not proved for a room nobody has authored yet.
 - The nav grid is rebuilt from scratch per room and memoised per
   `(description, radius)` pair, and `navProblems()` runs inside `validate()`,
   which makes `smoke-layout.mjs` do the work twice. Nothing is slow enough to
@@ -301,8 +431,7 @@ starting a new list.
   spawn, rings and a stepped walk to every fourth stool, but not for
   `inBounds()` at named coordinates.
 - Nothing is ever occluded: three TVs, five pendants and a key light render
-  every frame regardless of where you stand. `velLook` in `patrons.js` is
-  written by `stepToward()` and read by nothing.
+  every frame regardless of where you stand.
 
 **Assets**
 - ~~The 2k originals are still 66 MiB on disk.~~ Re-encoded at q88 (4:4:4
@@ -315,8 +444,6 @@ starting a new list.
 - The 1k tier is one size for every surface. A 512 tier for phones, or a
   per-surface size (the leather and the table top repeat 1×1 and could go
   smaller), has not been looked at.
-- `audio/sfx/events/crowd-groan.mp3` is the last non-OGG file after round 2's
-  conversion.
 - The loading line is on the start overlay only; a texture that lands after
   "Take the Floor" still pops in. Nothing gates the button on the manager.
 
@@ -324,19 +451,20 @@ starting a new list.
 - No league, season, standings, playoffs or off-season. `gameNight` is
   `weekday() in ["Thu","Sun"]` and the result is a coin flip weighted 0.55.
 - No regulars, rival bar, reputation, ads, distributors, bulk pricing or par
-  levels.
+  levels. (All but the ads have shipped since: Phase 7, and #905.)
 - Spoilage is a flat 15% of the shelf; the 2D build tracks per-lot shelf life
   in days and lets a Commercial Walk-In add two. The 3D `UPGRADES` table has
-  five entries and no walk-in.
+  five entries and no walk-in. (Shipped since: #909. The walk-in is the
+  dated shelf's own gear, not a sixth upgrade.)
 - No fail state of any kind.
-- `settleNight()` and `settleDarkNight()` duplicate the wages/rent/upkeep
-  arithmetic.
 
 **The night**
 - No mid-night events. The 2D build has 21 with real choices.
 - A season does not move the economy. The 2D build nudges rent 10% and wages
   6% a season, capped; here season 2 costs what season 1 did. Phase 9's
-  difficulty curve is where it belongs.
+  difficulty curve is where it belongs. (Shipped since: #911, as season
+  terms a bar signs. Month to month, season 2 still costs what season 1
+  did.)
 - The Mules' game is on the local screens whoever they play; the 2D build's
   League Pass, which gates other teams' games, was not ported, so every
   league night is a 1.15× night. `CROWD` in `league.js` is the table.
@@ -818,9 +946,10 @@ through the door and standing in front of you, which is the whole argument for
 the 3D build existing.
 
 - [x] **`js/events.js`, pure, with its suite.** Nineteen cards ported with
-  the `when`/`cd`/`weight` shape intact; the two about distributors are not
+  the `when`/`cd`/`weight` shape intact; the two about distributors were not
   on the table, because a card whose condition names a system this build
-  does not have is a card that never fires (#215). `eligible()` respects the
+  does not have is a card that never fires (#215). They came back with the
+  supply houses on 2026-10-06 (#905), so the table is all 21. `eligible()` respects the
   save's cooldowns, tonight's fired list and every `when`; `rollMoment()` is
   the 2D build's hour roll (hours 1-6, a budget of 0-3 off the chaos roll, a
   40% coin, then a weighted pick); `resolveChoice()` returns effects as data
@@ -1102,17 +1231,20 @@ primitives made new geometry every time and never disposed it either.
 
 ## What this leaves for a later arc
 
-- **Distributors, bulk pricing and par levels.** The 2D build's sprint 9 —
-  three supply houses that cut both ways, threshold discounts, loyalty spend.
-  Real depth, entirely in a panel, and the Stock panel is already the busiest
-  screen in the game.
-- **Staff as a simulated system.** Hire, schedule, skill growth, fatigue,
-  poaching by the rival. Today a staffer is a role, a skill and a wage, and the
-  floor NPCs derived from them do not tire, improve or quit. Phase 7's rival
-  makes poaching possible; the rest is a later arc.
-- **Per-lot shelf life.** The 2D build tracks stock as dated lots with a shelf
-  life the Commercial Walk-In extends by two days; the 3D build rots a flat
-  15%. The lot model is better and it changes every stock read in the game.
+- ~~**Distributors, bulk pricing and par levels.**~~ Shipped 2026-10-06
+  (#905). The 2D build's sprint 9: three supply houses that cut both ways,
+  threshold discounts, loyalty spend. It is all in the Stock panel, which was
+  already the busiest screen in the game and is busier.
+- ~~**Staff as a simulated system.**~~ Shipped 2026-10-06 (#908). Hire,
+  schedule, skill growth, fatigue, poaching by the rival, all behind a rota
+  that is off until it is posted. It is in the Crew panel.
+- ~~**Per-lot shelf life.**~~ Shipped 2026-10-06 (#909). Dated lots, the 2D
+  build's nights, the Commercial Walk-In, behind a shelf that is undated
+  until it is dated. It is in the Stock panel.
+- ~~**A season that moves rent and wages.**~~ Shipped 2026-10-06 (#911). The
+  2D build's creep, behind season terms that are month to month until they
+  are signed. It is in the Real Estate panel. With it the back office is all
+  here.
 - **A performance pass.** Deliberately not phased: round 1 measured this in
   real headed Chrome (median 6.9-7.0 ms empty and at 29 patrons, p95 7.4 and
   21.1 ms, 24.6k triangles at peak) and the prompt file says not to re-measure.

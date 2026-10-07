@@ -33,6 +33,9 @@
 //
 //   { id, ax, az, bx, bz, kind, openings?: [{ seg: 0, t, w, ... }] }
 //
+// A line may also carry `accents: [left, right]` (see "a free-standing wall's
+// two faces" below), absent until one of its faces is painted.
+//
 // `openings` is deliberately the same record `shapes.js` puts on a ring, with
 // `seg` pinned to 0 — a wall line is one segment, so every consumer that
 // already filters a ring's openings by segment index reads a wall line's with
@@ -49,6 +52,8 @@ import {
   MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec,
   shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg,
   insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE,
+  readAccentPaint, sameAccent,
+  shapeAt,
 } from './shapes.js';
 
 // Per floor. The same order of magnitude as MAX_SHAPES: a wall line is a
@@ -118,6 +123,112 @@ export function wallLineAt(floor, x, z, maxDist = ON_LINE_TOL) {
     best = { line, t: p.t, x: p.x, z: p.z, dist: p.dist };
   }
   return best;
+}
+
+// ---------- a free-standing wall's two faces ----------
+//
+// #910. A room's accent wall (#827) is `ring.accents[i]`: the colour of that room's
+// own face of one segment. A free-standing wall has no ring to keep one on, so
+// it keeps its own: `line.accents` is `[left, right]`, each a stored accent or null,
+// where left is the face on the run's left-hand normal going a to b
+// (finish.js's `left`, walls.js's `side: +1`). Per face and not per wall,
+// because that is what an accent already is on a room's wall, and a screen
+// with a reading corner on one side and a corridor on the other wants one of
+// them coloured.
+//
+// A face is painted where a room stands in front of it and the room has not
+// accented its own face of that line (finish.js's `facePainter` reads both).
+// With no room in front the face is the weather's and the facade covers it,
+// and glass and railings are not painted at all, so neither is stored: the
+// brush refuses them and `pruneAccents` takes them off.
+//
+// The key is absent until a face is painted and absent again when the last
+// one is taken off, so a design without one is written as the bytes it was.
+export const LINE_LEFT = 0, LINE_RIGHT = 1;
+// A face holds what a room's does: a palette id or a hex (shapes.js, #912).
+const readHex = readAccentPaint;
+
+export const lineAccent = (line, side) =>
+  (line && Array.isArray(line.accents) && readHex(line.accents[side])) || null;
+
+// Whatever a file or an edit left in `accents`, as [left, right] or no key.
+function tidyLineAccents(line) {
+  if (!line || !('accents' in line)) return;
+  const acc = Array.isArray(line.accents) ? line.accents : [];
+  const out = [readHex(acc[LINE_LEFT]), readHex(acc[LINE_RIGHT])];
+  if (out[0] || out[1]) line.accents = out; else delete line.accents;
+}
+
+// Paint one face (a hex) or take its accent off (null). True if it changed.
+export function setLineAccent(line, side, paint) {
+  if (!line || (side !== LINE_LEFT && side !== LINE_RIGHT)) return false;
+  const v = paint == null ? null : readHex(paint);
+  if (paint != null && !v) return false;
+  if (sameAccent(lineAccent(line, side), v)) return false;
+  if (!Array.isArray(line.accents)) line.accents = [null, null];
+  line.accents[side] = v;
+  tidyLineAccents(line);
+  return true;
+}
+
+// A line's accents as they read going from `a` towards `u` instead: the same
+// two faces, named the other way round when the line runs against it.
+function accentsAlong(line, u) {
+  const l = lineAccent(line, LINE_LEFT), r = lineAccent(line, LINE_RIGHT);
+  if (!l && !r) return null;
+  const with_ = (line.bx - line.ax) * u.x + (line.bz - line.az) * u.z >= 0;
+  return with_ ? [l, r] : [r, l];
+}
+
+// Which face of which free-standing wall a click means: the nearest line
+// within `maxDist`, and the side of it the point is on. `shape` is the room
+// the point is in, null outside every room. A point on the line itself is on
+// neither side. { line, side, shape, t, x, z, dist } or null.
+export function lineFaceAt(floor, x, z, maxDist = Infinity) {
+  const hit = wallLineAt(floor, x, z, maxDist);
+  if (!hit) return null;
+  const { line } = hit;
+  const c = (line.bx - line.ax) * (z - line.az) - (line.bz - line.az) * (x - line.ax);
+  if (Math.abs(c) < 1e-9) return null;
+  return {
+    line, side: c > 0 ? LINE_LEFT : LINE_RIGHT, shape: shapeAt(floor, x, z),
+    t: hit.t, x: hit.x, z: hit.z, dist: hit.dist,
+  };
+}
+
+// How far off a line its face is asked which room it looks at: finish.js's
+// `FACE_PROBE`, the distance the painter stands off to read the same face.
+const LINE_FACE_PROBE = 0.1;   // ft
+
+// Whether any room stands in front of one face of a line, anywhere along it.
+// Asked between the places the probe line crosses a room's outline, as the
+// painter asks, so a room that only reaches part of the wall still counts.
+export function lineFaceInRoom(floor, line, side, probe = LINE_FACE_PROBE) {
+  const len = lineLength(line);
+  if (len < 1e-6) return false;
+  const dx = line.bx - line.ax, dz = line.bz - line.az;
+  const sgn = side === LINE_LEFT ? 1 : -1;
+  const ox = line.ax + (-dz / len) * probe * sgn, oz = line.az + (dx / len) * probe * sgn;
+  const ts = [0, 1];
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (let i = 0; i < ring.pts.length; i++) {
+        const [p, q] = segEnds(ring, i);
+        const ex = q.x - p.x, ez = q.z - p.z;
+        const den = dx * ez - dz * ex;
+        if (Math.abs(den) < 1e-9) continue;
+        const t = ((p.x - ox) * ez - (p.z - oz) * ex) / den;
+        if (t > 1e-9 && t < 1 - 1e-9) ts.push(t);
+      }
+    }
+  }
+  ts.sort((m, n) => m - n);
+  for (let i = 0; i + 1 < ts.length; i++) {
+    if (ts[i + 1] - ts[i] < 1e-9) continue;
+    const m = (ts[i] + ts[i + 1]) / 2;
+    if (shapeAt(floor, ox + dx * m, oz + dz * m)) return true;
+  }
+  return false;
 }
 
 // ---------- doorways in a wall line ----------
@@ -256,8 +367,20 @@ export function wallAlongSeg(floor, shape, ringIdx, seg, tol = ON_FACE_TOL) {
 // whose line no longer has a wall on it comes off, by the rule the brush
 // refuses one with (#857). Returns how many came off. A storey with no
 // accents is not walked past its rings' `accents` keys.
+//
+// A free-standing wall's own accents (#910) go by the same rule turned round: the
+// wall is there by definition, so what can go missing is the room in front of
+// the face, or the wall having become glass or a railing.
 export function pruneAccents(floor) {
   let n = 0;
+  for (const line of wallLinesOf(floor)) {
+    if (!('accents' in line)) continue;
+    for (const side of [LINE_LEFT, LINE_RIGHT]) {
+      if (!lineAccent(line, side)) continue;
+      if (lineKind(line) === SEG_WALL && lineFaceInRoom(floor, line, side)) continue;
+      if (setLineAccent(line, side, null)) n++;
+    }
+  }
   for (const shape of shapesOf(floor)) {
     shape.rings.forEach((ring, ri) => {
       if (!Array.isArray(ring.accents)) return;
@@ -395,6 +518,10 @@ export function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {})
   const spans = covers.map((c) => [c.c0, c.c1]);
   let replaced = 0;
   let lo = 0, hi = len;
+  // The painted faces of a wall this run re-lays stay painted: a wall drawn
+  // longer is still that wall. Two absorbed walls with accents cannot both
+  // have them on one record, so the longer one's stand.
+  let carry = null, carryLen = 0;
   for (const line of [...wallLinesOf(floor)]) {
     const [p, q] = lineEnds(line);
     const on = alongRun(a, u, len, p, q, tol);
@@ -410,6 +537,8 @@ export function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {})
       // alone, and counting it as covered would leave the wall deleted.
       lo = Math.min(lo, sp, sq);
       hi = Math.max(hi, sp, sq);
+      const had = accentsAlong(line, u);
+      if (had && lineLength(line) > carryLen) { carry = had; carryLen = lineLength(line); }
       removeWallLine(floor, line.id);
       replaced++;
       continue;
@@ -420,6 +549,13 @@ export function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {})
     replaced++;
     for (const [ra, rb] of rest) {
       const kept = addWallLine(state, floorIndex, ra, rb, lineKind(line));
+      // What is left of a wall keeps its faces' paint. The pieces run the
+      // drawn run's way, which need not be the way the wall was drawn.
+      const had = kept && accentsAlong(line, u);
+      if (had) {
+        setLineAccent(kept, LINE_LEFT, had[LINE_LEFT]);
+        setLineAccent(kept, LINE_RIGHT, had[LINE_RIGHT]);
+      }
       if (kept && Array.isArray(line.openings)) {
         // A doorway only survives if it is still inside the piece it was cut
         // into — an opening halfway along a wall that has been cut in two has
@@ -445,6 +581,10 @@ export function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {})
   const lines = [];
   for (const [s, e] of gaps) {
     const line = addWallLine(state, floorIndex, at(s), at(e), want);
+    if (line && carry) {
+      setLineAccent(line, LINE_LEFT, carry[LINE_LEFT]);
+      setLineAccent(line, LINE_RIGHT, carry[LINE_RIGHT]);
+    }
     if (line) lines.push(line);
   }
 
@@ -508,6 +648,12 @@ export function normalizeWallLines(raw, extent = 4000, nextId = null) {
     const openings = Array.isArray(r.openings)
       ? r.openings.map(readOpening).filter(Boolean) : [];
     if (openings.length) line.openings = openings;
+    // A painted face: two hexes or nulls, and no key when neither reads. A
+    // file from before this field has none, so its walls load unpainted.
+    if (Array.isArray(r.accents)) {
+      line.accents = r.accents;
+      tidyLineAccents(line);
+    }
     out.push(line);
   }
   return out;

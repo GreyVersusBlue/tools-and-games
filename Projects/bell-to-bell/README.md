@@ -136,6 +136,12 @@ and 6th period's own twelve and their tell schedules, looked up in
 every day. They bring the class and not its lesson, so 5th period's kids in 7th
 period sit through 7th period's lesson.
 
+4th, 5th and 6th have the same box. Leave it empty and the period is the twelve
+who were written for it. Type a seed and twelve other kids sit through that
+period's own lesson with their own tells; the period's written schedule goes
+with the class it was written for. Empty the box and the first twelve are back.
+Either change starts that period's chart and what you had learned over.
+
 ## Running it
 
 ES modules need a server — opening `index.html` from the filesystem will not work.

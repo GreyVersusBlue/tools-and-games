@@ -366,10 +366,16 @@ and add to this list rather than starting a new one.
   than 30in is a `ramp-rise` warning in the report (#833). Left: the 4ft
   notch in front of the entry counted as footprint; crowd agents walked up
   one in a browser, which nobody has watched; the straight ramp's top
-  landing is 4ft (`LANDING`) and ADA asks for 5; a ramp's width and slope
-  have no control (`data.width`, `data.slope`); a ramp over 30in a run still
-  counts as a way up on the accessible route, which is #833's call and
-  could be the other way; the plan does not mark the ramp a `ramp-rise`
+  landing is ADA's 5ft now, ramps already placed included, and one with no
+  room for it is a `ramp-landing` warning that moves nothing (#904), but
+  `render.js` draws no deck on it, props and a door's swing are not asked,
+  and a folded ramp's top landing is not asked; a ramp's width and slope
+  are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
+  1:20, the selected ramp's or the next one's, with no new save field
+  (`data.width` and `data.slope` were there since Phase 2), but
+  `designdiff.js` says nothing when a ramp's width, slope or fold changes
+  and a ramp a file made narrower than 4ft raises no finding; a ramp over 30in a run still counts as a way up on the
+  accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`
   finding names, though the finding carries its position.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
@@ -388,8 +394,35 @@ and add to this list rather than starting a new one.
   room's own wall keeps its accent and a face whose wall stayed behind loses
   it (#862). M reaches the mirror now: the page gave the key to the report
   panel from Phase 7 on, and with rooms selected in the Shape tool the editor
-  has it back (#866). Left: nine fixed colours and no free
-  pick; a free-standing wall (`floor.walls`) has no ring and so no accent;
+  has it back (#866, and Devon confirmed on 2026-10-05 that M is the
+  mirror). A free-standing wall carries its own (#910): `line.accents` on
+  the wall line is `[left, right]`, one colour a face, set by the same
+  swatches with a click on that side of the wall, read by the same
+  `facePainter`, and absent from a file until a face is painted. A room's
+  own accent on a face comes first; a face with no room in front of it, or
+  on glass or a railing, is refused by the brush and dropped by
+  `pruneAccents`. The colours are one list (#912): `ACCENT_PALETTE` in
+  `shapes.js`, seventeen of `{ id, name, hex }`, the first eight being the
+  hexes from before; a swatch stores the colour's id, an older file's hex is
+  still read and written back as it was, and `accentHex` is the one place an
+  id becomes a colour. That was the last of the three items Devon's answer
+  of 2026-10-05 opened (the ramp's width and slope shipped as #907). Left
+  from #912: to a protanope Harbor Blue and Plum are 1.19 apart in OKLab
+  times 100 and Cranberry and Charcoal 3.42 (they are in saved schools, so
+  the swatch's name tells them apart, not the colour); the nine new ones
+  were picked by arithmetic and nobody has looked at any of the seventeen on
+  a wall on a real display; there is no free pick of any hex, though both
+  fields take one. Left from #910: the click on the
+  plan is a pointer gesture, for a room's wall and a free-standing one alike
+  (the swatches take Tab and Enter, the plan has no keyboard cursor); a
+  free-standing wall's outdoor face cannot be painted, because the facade is
+  drawn over it; a wall drawn over another one of the same kind loses that
+  wall's doorways, as it did before, and keeps its paint; the floor brush
+  rubbing a room out from in front of a painted face leaves the accent in
+  the file until the next load or the next corner let go; `duplicateFloor`
+  copies no free-standing wall, painted or not; the brush's two refusals for
+  a free-standing wall are driven by a browser check for glass and by
+  nothing for the outdoor face; nobody has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
@@ -413,10 +446,11 @@ and add to this list rather than starting a new one.
   the glass at an angle is still read at the middle of the stretch, the
   probe's width and all. A window cut in a curtain wall is counted once
   (#874): the plan gives its width to a run of wall, which the takeoff and
-  the estimate read. The curtain wall is 10 ft of glass to the daylight and
-  the storey's own wall height to the takeoff, so the two disagree on a
-  storey that is not the top one, and the elevation's drawing of a window
-  in a curtain wall has not been looked at. Neighbours, trees and the
+  the estimate read. A curtain wall is the storey's own wall height to the
+  daylight, the takeoff and the estimate alike (#897, Devon's answer of
+  2026-10-05; it was 10 ft to the daylight), and a section cut through a
+  window in one draws wall under the sill and over the head. The room's
+  surfaces in the daylight factor still stop at the 10 ft ceiling. Neighbours, trees and the
   terrain are not obstructions, one reflectance serves every room
   whatever its finishes are, a rooflight does not exist, and none of it is
   drawn on the plan: the numbers are in the report panel and the CSV only.

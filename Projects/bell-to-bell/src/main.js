@@ -2,7 +2,7 @@ import * as THREE from './three.js';
 import { CFG } from './config.js';
 import { createState, clamp01to100, applyEffects } from './state.js';
 import { loadData } from './loader.js';
-import { periodFor, resolvePeriodId, firstPeriodId, periodIds, rowFor, isGenerated, isSeed, seedCopyFor } from './periods.js';
+import { periodFor, resolvePeriodId, firstPeriodId, periodIds, rowFor, isGenerated, slotSeed, seedTyped, seedBoxFor, seedCopyFor } from './periods.js';
 import { drawSeed } from './systems/rng.js';
 import * as semester from './systems/semester.js';
 import { createMaterials, createTellMaterials, createRegistry } from './world/materials.js';
@@ -93,18 +93,22 @@ persist.save('semester', record);
 // Phase 2: a generated period is twelve kids out of one integer. The integer
 // lives in the period's own slot, drawn once and kept, so a refresh mid-7th is
 // the same 7th, and typed back in from the report screen it is that class
-// again. An authored period has no seed and ignores the one it is handed.
+// again.
 // Seed format 2 (#893): a seed is one the generator can draw or one of the
-// class seeds data/periods.json names, and isSeed() is the one place that says so.
+// class seeds data/periods.json names. #903: an authored period has a slot
+// too, empty until somebody types a seed into its box, and empty is the class
+// that was written for it. slotSeed() is the one place that says what a slot's
+// value comes to.
 const seedKey = persist.slot(activePeriodId, 'seed');
-let seed = persist.load(seedKey, null);
-if (isGenerated(rowFor(activePeriodId, data)) && !isSeed(data, seed)) {
+const activeRow = rowFor(activePeriodId, data);
+let seed = slotSeed(activeRow, data, persist.load(seedKey, null));
+if (isGenerated(activeRow) && seed === null) {
   seed = drawSeed();
   persist.save(seedKey, seed);
 }
 // The day index reaches the tell scheduler, so a generated class does
 // something different on Tuesday and the same kids do it.
-const period = periodFor(activePeriodId, data, { seed, day: semester.dayIndexOf(record) });
+const period = periodFor(activePeriodId, data, { seed, day: semester.dayIndexOf(record), reseed: true });
 
 // What this class walks in with today: yesterday's twelve numbers minus a
 // night, admin's running opinion, whatever admin has scheduled, and how much
@@ -774,23 +778,23 @@ function beginPeriod() {
   }
 }
 
-// Phase 2: the seed, on the start screen, for a generated period only. Type a
-// different one in and the page reloads into that class.
-if (period.generated) {
-  const copy = data.periods.copy.seed;
-  dom.seedLabel.textContent = copy.label;
-  dom.seedBtn.textContent = copy.use;
-  dom.seedHint.textContent = copy.hint;
-  dom.seedInput.value = String(period.generated.seed);
+// Phase 2: the seed, on the start screen. Type a different one in and the
+// page reloads into that class. #903: every period has the box; on an authored
+// one it starts empty, and emptying it again brings the authored class back.
+{
+  const box = seedBoxFor(period, data);
+  dom.seedLabel.textContent = box.label;
+  dom.seedBtn.textContent = box.use;
+  dom.seedHint.textContent = box.hint;
+  dom.seedInput.value = box.value;
+  dom.seedInput.placeholder = box.placeholder;
   dom.seedRow.classList.remove('hide');
   dom.seedBtn.addEventListener('click', () => {
-    const typed = parseInt(dom.seedInput.value, 10);
-    if (!isSeed(data, typed)) {
-      dom.seedInput.value = String(period.generated.seed);
-      return;
-    }
-    if (typed === period.generated.seed) return;
-    persist.save(seedKey, typed);
+    const took = seedTyped(activeRow, data, dom.seedInput.value, period.generated ? period.generated.seed : null);
+    if (took.kind === 'bad') dom.seedInput.value = box.value;
+    if (took.kind === 'bad' || took.kind === 'same') return;
+    if (took.kind === 'set') persist.save(seedKey, took.seed);
+    else persist.clear(seedKey);
     // A different seed is a different class: nothing you learned about the
     // last one, and no chart they sat in, belongs to this one.
     persist.clear(chartKey);

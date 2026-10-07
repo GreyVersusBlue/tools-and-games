@@ -257,8 +257,68 @@ const flipRunSign = (o, key) => {
 // The array is there only while some segment has a colour: a ring nobody has
 // accented carries no `accents` key, in memory or in a file, so a design saved
 // before this build is written back as the bytes it was read from.
+//
+// What is stored is a colour's name in the palette below ('harbor-blue') or,
+// from the builds before the palette had names, a '#rrggbb'. Both are read,
+// and neither is a place in a list (#912).
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
-const readAccent = (v) => (typeof v === 'string' && HEX6.test(v) ? v.toLowerCase() : null);
+
+// The accent colours, and the one place they are written down: the Wall
+// panel's swatches (main.js), the brush (editor.js), the painter (finish.js),
+// the design diff and the walk-through all read this. `id` is what a design
+// stores, so it is never changed and never reused, and a colour may be added
+// anywhere in the list without moving a saved choice. The first eight are the
+// hexes the brush stored before #912, value for value, so a design from then
+// is the colours it was. Each new one was taken from forty named paints as the
+// one furthest (OKLab distance, the least of normal sight and simulated
+// protanopia, deuteranopia and tritanopia) from every colour already in and
+// from the nine room paints, passing over any with less contrast against the
+// default wall paint than the palest old one has (Seafoam, 1.92 to 1);
+// test/accent-palette.test.mjs states the figures.
+export const ACCENT_PALETTE = Object.freeze([
+  { id: 'harbor-blue', name: 'Harbor Blue', hex: '#2f5d8a' },
+  { id: 'spruce', name: 'Spruce', hex: '#3f7d6b' },
+  { id: 'seafoam', name: 'Seafoam', hex: '#8fb8a8' },
+  { id: 'goldenrod', name: 'Goldenrod', hex: '#d9a441' },
+  { id: 'terracotta', name: 'Terracotta', hex: '#c2573a' },
+  { id: 'cranberry', name: 'Cranberry', hex: '#a33b45' },
+  { id: 'plum', name: 'Plum', hex: '#7a4e8a' },
+  { id: 'charcoal', name: 'Charcoal', hex: '#4a4f57' },
+  { id: 'ink', name: 'Ink', hex: '#23262b' },
+  { id: 'periwinkle', name: 'Periwinkle', hex: '#8088d8' },
+  { id: 'pumpkin', name: 'Pumpkin', hex: '#d9772b' },
+  { id: 'aubergine', name: 'Aubergine', hex: '#4b2f55' },
+  { id: 'warm-gray', name: 'Warm Gray', hex: '#9a958c' },
+  { id: 'brick', name: 'Brick', hex: '#8a3324' },
+  { id: 'oxblood', name: 'Oxblood', hex: '#6b2633' },
+  { id: 'steel', name: 'Steel', hex: '#70808f' },
+  { id: 'indigo', name: 'Indigo', hex: '#3d3a7a' },
+].map(Object.freeze));
+const ACCENT_BY_ID = new Map(ACCENT_PALETTE.map((c) => [c.id, c]));
+const ACCENT_BY_HEX = new Map(ACCENT_PALETTE.map((c) => [c.hex, c]));
+
+// What may be stored on a face: a palette id, a hex (lower-cased), or null.
+const readAccent = (v) => (typeof v !== 'string' ? null
+  : ACCENT_BY_ID.has(v) ? v
+  : HEX6.test(v) ? v.toLowerCase() : null);
+export const readAccentPaint = readAccent;
+
+// The '#rrggbb' a stored accent is drawn in, or null if it names nothing.
+export function accentHex(v) {
+  const t = readAccent(v);
+  return t && (ACCENT_BY_ID.has(t) ? ACCENT_BY_ID.get(t).hex : t);
+}
+
+// What to call it: the palette's name, by id or by a hex the palette has, and
+// the hex itself for a colour the palette never had.
+export function accentName(v) {
+  const hex = accentHex(v);
+  return hex && (ACCENT_BY_HEX.has(hex) ? ACCENT_BY_HEX.get(hex).name : hex);
+}
+
+// Two stored accents are the same paint when they are drawn the same, so a
+// face holding '#2f5d8a' from an old file and the Harbor Blue swatch agree.
+export const sameAccent = (a, b) => accentHex(a) === accentHex(b);
 
 export const segAccent = (ring, i) =>
   (ring && Array.isArray(ring.accents) && readAccent(ring.accents[i])) || null;
@@ -280,7 +340,7 @@ export function setSegAccent(shape, ringIdx, seg, paint) {
   if (!ring || !Number.isInteger(seg) || seg < 0 || seg >= ring.pts.length) return false;
   const v = paint == null ? null : readAccent(paint);
   if (paint != null && !v) return false;
-  if (segAccent(ring, seg) === v) return false;
+  if (sameAccent(segAccent(ring, seg), v)) return false;
   if (!Array.isArray(ring.accents)) ring.accents = new Array(ring.pts.length).fill(null);
   ring.accents[seg] = v;
   tidyAccents(ring);
@@ -320,7 +380,7 @@ export function accentBreaks(shape) {
     const n = ring.pts.length;
     for (let i = 0; i < n; i++) {
       const prev = (i + n - 1) % n;
-      if (segAccent(ring, prev) === segAccent(ring, i)) continue;
+      if (sameAccent(segAccent(ring, prev), segAccent(ring, i))) continue;
       const u = segDir(ring, prev), v = segDir(ring, i);
       if (!u || !v) continue;
       if (Math.abs(u.x * v.z - u.z * v.x) > 1e-6 || u.x * v.x + u.z * v.z <= 0) continue;

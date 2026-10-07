@@ -13,11 +13,11 @@
 //   `choices[i].resolve(view, rand)` returns `{ fx, line, cls }`, and `fx` is a
 //   list of small records the engine understands (see EFFECT_KINDS). A test
 //   can read what a choice would do without a night running.
-// - **Two of the 21 cards are not here.** "Warehouse Walkout" and "The Good
-//   Stuff Ran Out" are about the 2D build's three distributors, which this
-//   build does not have. A card whose `when` names a system that does not
-//   exist would be a card that never fires, and a table is not the place to
-//   keep a promise (#215). They come back with the distributor arc.
+// - **All 21 cards are here.** "Warehouse Walkout" and "The Good Stuff Ran
+//   Out" are about the supply houses and waited for them (#215); supply.js
+//   brought the houses and these two came with it (#905). Each fires only for
+//   the house it is about: `view.dist` is the id of the one you are signed
+//   with.
 // - **A card knows where it happens.** `where` names a stand-point in the
 //   room (layout.js's stations), `who` names the person who walks in for it
 //   or is null for a lit prop. The floor layer (moments.js) reads both; this
@@ -34,8 +34,9 @@
 //   phase ("regular"|"playoffs"|"offseason"), rivalGame (the Mules play the
 //   End Zone's team tonight), crowd (bodies in the room now), crowdTarget,
 //   mood, stock ({itemId: servings}), tier (0-3), rep, buzz, upgrades ([ids]),
-//   staff ([{name, role, skill, wage}]), regulars (the roster), regularsIn
-//   ([ids in tonight]), flags ({tapBroken, tvBroken, soundBroken}), wager,
+//   dist (the supply house's id), staff ([{name, role, skill, wage}]),
+//   regulars (the roster), regularsIn ([ids in tonight]),
+//   flags ({tapBroken, tvBroken, soundBroken, goldLapsed}), wager,
 //   fired ([ids fired tonight]), budget (how many may fire tonight).
 
 export const RIVAL = { name: "The End Zone", owner: "Vic Marlowe" }; // regulars.js's, spelled again: this file imports nothing
@@ -52,12 +53,13 @@ export const EFFECT_KINDS = Object.freeze({
   rep:       "signed, onto reputation at settlement",
   loyalty:   "{n, who: [ids]}: signed, onto those regulars at settlement",
   buzz:      "signed, onto the End Zone's buzz at settlement",
-  flag:      "a night flag the engine reads: tapBroken, tvBroken, soundBroken",
+  account:   "signed dollars of standing with the supply house (its loyalty spend), at settlement",
+  flag:      "a night flag the engine reads: tapBroken, tvBroken, soundBroken, goldLapsed",
   staff:     "{name, wage}: a staffer's wage from tomorrow",
   staffQuit: "a staffer walks now: off the floor tonight, off the payroll at settlement",
   wager:     "dollars riding on the Mules tonight, settled at the final",
 });
-export const FLAGS = ["tapBroken", "tvBroken", "soundBroken"];
+export const FLAGS = ["tapBroken", "tvBroken", "soundBroken", "goldLapsed"];
 export const ANCHORS = ["door", "bar", "tap", "tv", "kitchen"];
 
 export const EVENT_HOURS = [1, 6];   // inclusive: never the doors opening, never last call's hour
@@ -84,12 +86,18 @@ const bestStaff = view => {
 const raisedWage = s => Math.round(s.wage * 1.2 / 5) * 5;
 const FOOD = ["wings", "burger", "nachos", "fries"];
 const foodOnShelf = view => FOOD.reduce((n, id) => n + Math.max(0, (view.stock && view.stock[id]) || 0), 0);
-/** The inspector's nose. The 2D build checks lot dates; this build rots a
- *  flat 15% of whatever is left, so "near-spoiled" is a walk-in holding more
+/** The inspector's nose on an undated shelf. The 2D build checks lot dates;
+ *  an undated shelf rots a flat 15% of whatever is left, so "near-spoiled" is a walk-in holding more
  *  food than this crowd will eat in two and a half nights — the part that
  *  will rot before it sells. */
 export const INSPECT_OVERSTOCK = 2.5;
-export const inspectorRisky = view => foodOnShelf(view) > INSPECT_OVERSTOCK * Math.max(1, view.crowdTarget || 0);
+const overstocked = view => foodOnShelf(view) > INSPECT_OVERSTOCK * Math.max(1, view.crowdTarget || 0);
+/** On a dated shelf (#909) the inspector reads the dates, as the 2D build's
+ *  does: `view.fresh` is the food that was not on its last night at the open,
+ *  the oldest sells first, so anything the shelf holds over that is food on
+ *  its last night still unsold when the clipboard walks in. */
+const agingOnShelf = view => FOOD.some(id => Math.max(0, (view.stock && view.stock[id]) || 0) > (view.fresh[id] || 0));
+export const inspectorRisky = view => (view.fresh && typeof view.fresh === "object" ? agingOnShelf(view) : overstocked(view));
 
 const say = (fx, line, cls = "hl") => ({ fx, line, cls });
 
@@ -221,6 +229,30 @@ export const EVENTS = [
           const cut = Math.max(1, Math.ceil(v.stock[id] * 0.3));
           return say([{ stock: { [id]: -cut } }], `You make do. ${id === "beer" ? "Beer" : id === "soda" ? "Soda" : "The " + id} runs thinner than planned tonight.`, "b");
         } },
+    ] },
+  // The two about the supply houses. The ids, cooldowns, weights and dollars
+  // are the 2D build's; the strike's "step back" is supply.js's STRIKE_SPEND,
+  // spelled again because this file imports nothing (smoke-supply.mjs holds
+  // the two equal).
+  { id: "caskstrike", cd: 9, weight: 1, where: "kitchen", who: "The rep",
+    title: "Warehouse Walkout",
+    body: "Cask & Carton's loading dock crew is picketing over hours. Your rep says deliveries could slip for weeks unless someone smooths things over.",
+    when: v => v.dist === "cask",
+    choices: [
+      { label: "Pay the solidarity surcharge — $150", sub: "Deliveries keep rolling on schedule.",
+        resolve: () => say([{ cash: -150 }], "The check clears and your truck keeps its slot at the dock.", "g") },
+      { label: "Ride it out", sub: "Deliveries slip. Your account standing takes a hit.",
+        resolve: () => say([{ account: -1000 }], "Your orders slip to the back of the queue. Loyalty standing takes a step back.", "b") },
+    ] },
+  { id: "goldshortage", cd: 7, weight: 1, where: "kitchen", who: "The rep",
+    title: "The Good Stuff Ran Out",
+    body: "Gold Standard's rep is at the back door: the premium cut that makes your menu sing didn't make tonight's truck. The kitchen's working with the backup case.",
+    when: v => v.dist === "gold" && !v.flags.goldLapsed,
+    choices: [
+      { label: "Overnight it in — $120", sub: "Menu tastes exactly like it's priced tonight.",
+        resolve: () => say([{ cash: -120 }], "A courier hands off a cooler at the back door. Nobody at the bar ever knows.", "g") },
+      { label: "Cook around it tonight", sub: "The kitchen makes do. The premium price is gone till tomorrow's truck.",
+        resolve: () => say([{ flag: "goldLapsed" }, { mood: -0.04 }], "The kitchen improvises. Good enough, but regulars can tell the difference.", "b") },
     ] },
   { id: "ticketholders", cd: 5, weight: 1, where: "door", who: "Ticket holders",
     title: "Ticket Holders Pregame Here",

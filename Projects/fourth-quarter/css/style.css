@@ -126,8 +126,17 @@ tr.us td{color:var(--amber);font-weight:bold} /* the Mules' row in the corkboard
 .promoCard{border:1px solid var(--line);border-radius:7px;padding:10px 14px;margin-bottom:8px;cursor:pointer}
 .promoCard:hover{border-color:#a5762f}
 .promoCard.on{border-color:var(--amber);background:var(--panel2)}
+.promoCard.house{cursor:default}
+input.par{width:54px;height:26px;padding:0 4px;border-radius:4px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--amber);font-family:var(--mono);font-size:13px;text-align:right}
 .pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;
   border:1px solid var(--line);color:var(--muted);margin-left:6px}
+.pill.bad{color:var(--red);border-color:var(--red)}
+.rotaWeek{display:inline-flex;gap:3px}
+.rotaDay{width:26px;height:26px;padding:0;border-radius:4px;border:1px solid var(--line);
+  background:transparent;color:var(--muted);font-family:var(--mono);font-size:12px;cursor:pointer}
+.rotaDay.on{background:var(--panel2);color:var(--amber);border-color:#a5762f}
+.rotaDay.today{outline:1px solid var(--amber);outline-offset:1px}
 .row{display:flex;justify-content:space-between;padding:4px 0;
   border-bottom:1px dotted #2b2115;font-size:14px}
 .row.bad{color:var(--red);border-bottom:none;font-size:13px}

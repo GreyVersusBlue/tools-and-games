@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node tests/smoke.mjs && node tests/guests.mjs && node tests/mapview.mjs && node tests/wiring.mjs",
     "shoot": "node tools/shoot-states.mjs",
-    "touch": "node tools/touch-readout.mjs"
+    "touch": "node tools/touch-readout.mjs",
+    "postcard": "node tools/postcard-check.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0",

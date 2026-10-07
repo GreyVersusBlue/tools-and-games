@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { NightEngine, hourName } from "./engine.js";
 import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, currentLayout } from "./world.js";
 import { cookSpot, crewHome, standPointsFor } from "./layout.js";
+import { separate } from "./walk.js";
 import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
@@ -14,6 +15,7 @@ import { DevPanel } from "./dev.js";
 import * as C from "./campaign.js";
 import * as LG from "./league.js";
 import * as EV from "./events.js";
+import * as STF from "./staff.js";
 import { FloorMoment } from "./moments.js";
 import * as audio from "./audio.js";
 import { initTextures, textureStatus } from "./materials.js";
@@ -76,6 +78,8 @@ let leavingMoments = [];  // ones answered, walking back out
 let tonightAtOpen = null; // league.js's tonight() as it stood when the doors opened; the box score reads it
 
 const player = new Player(camera, renderer.domElement, null);
+// the boss as walk.separate() sees them: a body that is there and is not moved
+const bossBody = { get pos() { return player.pos; }, walking: false, fixed: true };
 player.onInteract = () => {
   if (phase === "day") day.interact(player.pos);
   else if (phase === "night") {
@@ -153,20 +157,31 @@ function closedNight() {
   const books = C.settleDarkNight(campaign);
   lastSocial = books.social;
   save();
-  const billed = Math.round(books.wages + books.rent + books.upgFees);
+  const billed = Math.round(books.wages + books.rent + books.upgFees + books.account + books.walkin);
   tick(`Closed for the move. −$${billed} in bills, doors stay shut tonight.`, "b");
   const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
-  if (spoiled) tick(`${spoiled} serving${spoiled === 1 ? "" : "s"} spoiled in the walk-in while the doors stayed shut.`, "b");
+  if (spoiled) tick(books.spoilage.dated
+    ? `${spoiled} serving${spoiled === 1 ? "" : "s"} went past the date while the doors stayed shut.`
+    : `${spoiled} serving${spoiled === 1 ? "" : "s"} spoiled in the walk-in while the doors stayed shut.`, "b");
   if (campaign.darkNightsLeft === 0) tick(`Ready to open at ${C.venueDef(campaign).name} tomorrow.`, "hl");
   // A move can bankrupt you mid-move: bills land on a closed night and no
   // revenue does. The room can therefore change here, in the day phase, where
   // rebuilding it right away is safe.
+  tickTerms();
   tickLease(books.lease);
   if (books.lease.evicted) {
     if (books.lease.evicted.to) rebuildVenue(); // nothing moved on the bottom rung
     refreshStartTag();
   }
   updateHUD();
+}
+
+/** Season terms' week of notice (#911): the rent or the wages move within
+ *  seven nights. Read off the campaign, so a reload says it too; nothing
+ *  month to month. */
+function tickTerms() {
+  const line = C.termsNoticeLine(campaign);
+  if (line) tick(line, "hl");
 }
 
 /** The landlord's lines, in the ticker, from one settlement's record. Called
@@ -222,6 +237,7 @@ function enterDay() {
   // last, because it is the line that matters most on a morning that has one.
   // A reload has no record to print, so a standing notice is read off the
   // campaign's own strike count instead of being lost with lastLease.
+  tickTerms();
   if (lastLease) tickLease(lastLease);
   else if (campaign.strikes > 0) tick(`Notice on the door: ${campaign.strikes} of ${C.LEASE_STRIKES} nights in the red.`, "b");
   lastLease = null;
@@ -265,6 +281,7 @@ function beginNight() {
     foodMult: C.roleMult(campaign, "cook"),
     drinkMult: C.roleMult(campaign, "bartender"),
     beerMult: C.beerMult(campaign),
+    plateMult: C.plateMult(campaign),
     // who is in tonight, by the day's coin; each comes through the door as a
     // spawn of their own during hours 1-3, so the seat cap and the crowd
     // number keep agreeing with the room
@@ -281,9 +298,11 @@ function beginNight() {
   // reachable — the old literals were the Corner Tap's and put a cook inside
   // the Fieldhouse's prep counter
   const room = currentLayout();
-  const floorStaff = campaign.staff.filter(s => s.role !== "cook");
+  // who is on shift, at tonight's skill: the whole payroll with no rota
+  const crewTonight = C.shiftCrew(campaign);
+  const floorStaff = crewTonight.filter(s => s.role !== "cook");
   servers = floorStaff.map((s, i) => new Server(scene, engine, s.name.split(" ")[0], crewHome(room, i), s.speed * C.speedMult(campaign, s.role), s.role));
-  cookMeshes = campaign.staff.filter(s => s.role === "cook").map((s, i) => {
+  cookMeshes = crewTonight.filter(s => s.role === "cook").map((s, i) => {
     const m = personMesh(0x8a6a42, true);
     const c = cookSpot(room, i);
     m.position.set(c.x, c.y, c.z);
@@ -291,8 +310,6 @@ function beginNight() {
     scene.add(m);
     return m;
   });
-  if (!C.hasCook(campaign)) tick("No cook on shift — the kitchen's closed tonight.", "b");
-  if (!C.hasBartender(campaign)) tick("No bartender — servers are covering the taps, badly.", "b");
   // Warm these five now, at the top of the night, rather than the first time
   // playSfx()/startLoop() builds their Audio element mid-event — the storm-out
   // clip in particular used to start fetching the moment a patron first gave up,
@@ -306,6 +323,12 @@ function beginNight() {
   tick(`Doors open. ${engine.gameNight ? `${tn.label} — kickoff 7 PM.` : tn.games.length ? `${tn.label}.` : "No game — just the regulars and the jukebox."}`, "hl");
   const pd = C.promoDef(campaign);
   if (pd.id !== "none") tick(`Tonight's theme: ${pd.name}.`, "hl");
+  // After the ticker is cleared for the night, not before it: these two lines
+  // were written above the clear until #908 and no night ever showed them.
+  const calledOut = C.duty(campaign).out;
+  if (calledOut.length) tick(`${calledOut.map(n => n.split(" ")[0]).join(", ")} called out tonight. Burnt out.`, "b");
+  if (!C.hasCook(campaign)) tick("No cook on shift — the kitchen's closed tonight.", "b");
+  if (!C.hasBartender(campaign)) tick("No bartender — servers are covering the taps, badly.", "b");
   audio.startLoop("barBed", 0.35);
   save();
   renderer.domElement.requestPointerLock(); // still inside the click gesture — no extra click needed
@@ -496,6 +519,8 @@ function showBoxScore() {
     <div class="row"><span>Rent</span><span class="bad">−$${books.rent}</span></div>
     ${books.promoCost ? `<div class="row"><span>Theme</span><span class="bad">−$${books.promoCost}</span></div>` : ""}
     ${books.upgFees ? `<div class="row"><span>Upgrade upkeep</span><span class="bad">−$${books.upgFees}</span></div>` : ""}
+    ${books.account ? `<div class="row" id="boxAccount"><span>Supply account (weekly)</span><span class="bad">−$${books.account}</span></div>` : ""}
+    ${books.walkin ? `<div class="row" id="boxWalkin"><span>Walk-in power</span><span class="bad">−$${books.walkin}</span></div>` : ""}
     <div class="row total"><span>Net</span><span class="${books.net >= 0 ? "good" : "bad"}">${books.net >= 0 ? "+" : "−"}$${Math.abs(books.net)}</span></div>
     <div class="row"><span>Cash</span><span class="${campaign.cash >= 0 ? "money" : "bad"}">$${Math.round(campaign.cash)}</span></div>
     <div class="sec">The Floor</div>
@@ -504,11 +529,12 @@ function showBoxScore() {
     <div class="row"><span>Cooked/poured by hand</span><span class="${s.crafted ? "good" : ""}">${s.crafted}</span></div>
     <div class="row"><span>Walkouts</span><span class="${s.walkouts ? "bad" : ""}">${s.walkouts}${empt ? ` (${empt} found bare shelves)` : ""}</span></div>
     <div class="row"><span>Service rate</span><span class="${s.serviceRate >= 90 ? "good" : s.serviceRate >= 70 ? "warn" : "bad"}">${s.serviceRate}%</span></div>
-    <div class="row"><span>Spoiled overnight</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
+    <div class="row" id="boxSpoiled"><span>${books.spoilage.dated ? "Past the date at close" : "Spoiled overnight"}</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
     ${momentRows(books.moments, s.moments)}
     ${engine.gameNight ? `<div class="sec">The Game</div>
     <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}
     ${socialRows(books.social)}
+    ${crewRows(books.crew)}
     ${leaseRows(books.lease)}
     ${campaign.failed ? runSummaryRows() : ""}`;
   // The one screen in the game that offers to erase a campaign, and it only
@@ -518,6 +544,22 @@ function showBoxScore() {
   $("#nextDayBtn").textContent = campaign.failed ? "Start a New Campaign" : "Tomorrow's Ledger";
   $("#boxOverlay").style.display = "flex";
   document.exitPointerLock();
+}
+
+/** The crew on the box score, once there is a rota: who had the night off,
+ *  who did not show, who earned a level and who is gone. Nothing without one,
+ *  and nothing on a night where none of that happened. */
+function crewRows(crew) {
+  if (!crew || !crew.rota) return "";
+  const first = a => a.map(n => n.split(" ")[0]).join(", ");
+  const rows = [];
+  if (crew.off.length) rows.push(`<div class="row"><span>Night off</span><span>${first(crew.off)}</span></div>`);
+  if (crew.out.length) rows.push(`<div class="row"><span>Called out</span><span class="bad">${first(crew.out)}</span></div>`);
+  if (crew.leveled.length) rows.push(`<div class="row"><span>Earned a skill level (+$${STF.LEVEL_RAISE}/night)</span><span class="good">${first(crew.leveled)}</span></div>`);
+  const walked = crew.quit.filter(n => !crew.poached.includes(n));
+  if (walked.length) rows.push(`<div class="row"><span>Quit</span><span class="bad">${first(walked)}</span></div>`);
+  if (crew.poached.length) rows.push(`<div class="row"><span>Gone to ${C.RIVAL.name}</span><span class="bad">${first(crew.poached)}</span></div>`);
+  return rows.length ? `<div class="sec" id="boxCrew">The Crew</div>${rows.join("")}` : "";
 }
 
 /** The landlord on the box score: the notice, or the eviction and what it cost.
@@ -566,6 +608,7 @@ function momentRows(mo, sm) {
   });
   if (mo.net) rows.push(`<div class="row"><span>Moments, in the till</span><span class="${mo.net > 0 ? "money" : "bad"}">${mo.net > 0 ? "+" : "−"}$${Math.abs(mo.net)}</span></div>`);
   if (mo.quit.length) rows.push(`<div class="row"><span>Walked mid-shift</span><span class="bad">${mo.quit.join(", ")}</span></div>`);
+  if (mo.account) rows.push(`<div class="row"><span>Standing with the supply house</span><span class="bad">−$${Math.abs(mo.account)} of loyalty spend</span></div>`);
   if (mo.raised.length) rows.push(`<div class="row"><span>Raise, from tomorrow</span><span>${mo.raised.join(", ")}</span></div>`);
   return `<div class="sec">The Night's Moments</div>${rows.join("")}`;
 }
@@ -787,6 +830,10 @@ renderer.setAnimationLoop(() => {
       for (const sv of servers) sv.update(simDt, patronsById);
       if (moment) moment.update(simDt);
       for (const m of leavingMoments) m.update(simDt);
+      // everybody has stepped; now nobody stands in anybody (#900). List order
+      // is the right of way in a doorway: guests, then the crew, and the boss
+      // is somebody the room walks round.
+      separate(currentLayout(), [...patrons, ...(moment ? [moment] : []), ...leavingMoments, ...servers, bossBody], simDt);
       leavingMoments = leavingMoments.filter(m => !m.gone);
       syncPassDisplays();
     } else if (phase === "day") {

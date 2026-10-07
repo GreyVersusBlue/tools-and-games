@@ -43,6 +43,10 @@ export const BASE_COLORS = {
 // `requiredSyrup` and `requiredTopping`; the last two must be day-one stock
 // (STARTING_UNLOCKS), because a reopening takes every other syrup and topping
 // off the shelf while a prestige- or bean-bought recipe stays on the menu.
+// Mocha is the one row that breaks that, and always did: its syrup is $35 on
+// the board. sim.js's recipeOffered() keeps it out of every order until the
+// syrup is bought (#913), which is what any new row like it would get.
+// `shots` is an exact count (#913): two shots do not finish a one-shot ticket.
 export const RECIPES = [
   {id:'drip', name:'House Drip', icon:'☕', category:'hot', base:'drip', shots:0, needsMilk:false, price:30, unlockCost:0},
   {id:'americano', name:'Americano', icon:'☕', category:'hot', base:'espresso', shots:2, needsMilk:false, price:38, unlockCost:0},

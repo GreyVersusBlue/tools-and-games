@@ -532,7 +532,7 @@ ok(rCraft && e5.crafted === 1, "delivering a player-crafted ticket counts toward
   C.saveCampaign(c, stub);
   const back = C.loadCampaign(stub);
   ok(back && JSON.stringify(back.league) === JSON.stringify(c.league), "a saved league loads back identical");
-  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 1, "no key change, no version bump: the field is additive and repair fills it");
+  ok(C.SAVE_KEY === "fq3d-save", "no key change: the field is additive and repair fills it (the version has moved once since, for the supply house, #905)");
 }
 
 // ---- settlement: the standings say what the room saw ----
@@ -716,7 +716,7 @@ ok(rCraft && e5.crafted === 1, "delivering a player-crafted ticket counts toward
   ok(junk.stats.evictions === 0 && junk.stats.bestTier === 3, "NaN evictions repair to zero and a tier past the flagship clamps to it");
   const over = C.newCampaign(); over.strikes = 9; C.repairCampaign(over);
   ok(over.strikes === C.LEASE_STRIKES, "a strike count past the limit clamps to it rather than evicting on load");
-  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 1, "no key change, no version bump: the two fields are additive and repair fills them");
+  ok(C.SAVE_KEY === "fq3d-save", "no key change: the two fields are additive and repair fills them");
   // and they survive a round trip through the slot
   const storage = {}; const stub = { getItem: k => storage[k] ?? null, setItem: (k, v) => { storage[k] = v; }, removeItem: k => { delete storage[k]; } };
   const c = C.newCampaign(); c.cash = -1; C.settleNight(c, { total: 0, revenue: 0, tips: 0 }, Math.random);

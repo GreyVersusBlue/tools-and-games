@@ -98,6 +98,56 @@ export function classSeedProblems(data) {
   return out;
 }
 
+// A seed box on every row (#903). 7th period has had one since Phase 2; 4th,
+// 5th and 6th get the same box, and what it means there is one rule: an empty
+// slot is the class somebody wrote for that row, and a seed is twelve other
+// kids with their own tell schedule, sat through that row's own lesson. The
+// authored schedule does not carry over to them, because every line of it
+// names a seat, and a seat is a kid (constraint 9): Dorian's phone at minute 6
+// handed to a stranger is not a schedule, it is a coincidence.
+//
+// Which seed a slot's stored value comes to. null on a generated row means
+// "draw one"; null on an authored row means "the authored class". A row's own
+// class seed (1000004 in 4th) is the authored class, so it is null there too
+// and the semester record goes on calling that class `seed: null`, which is
+// what every save from before this says.
+export function slotSeed(row, data, stored) {
+  if (!isSeed(data, stored)) return null;
+  if (!isGenerated(row) && classSeedFor(data, stored)?.of === row.id) return null;
+  return stored;
+}
+
+// What "Use this seed" does with what was typed, given the seed the slot
+// holds now (null for none). `same` changes nothing, `bad` puts the box back,
+// `set` stores a seed and `clear` empties the slot; the last two are a
+// different class, so the caller drops the chart and what was learned.
+export function seedTyped(row, data, text, current = null) {
+  const raw = String(text ?? '').trim();
+  const typed = parseInt(raw, 10);
+  let next;
+  if (raw === '') {
+    if (isGenerated(row)) return { kind: 'bad', seed: current };
+    next = null;
+  } else {
+    if (!isSeed(data, typed)) return { kind: 'bad', seed: current };
+    next = slotSeed(row, data, typed);
+  }
+  if (next === (current ?? null)) return { kind: 'same', seed: next };
+  return next === null ? { kind: 'clear', seed: null } : { kind: 'set', seed: next };
+}
+
+// What the start screen's seed box says on this row.
+export function seedBoxFor(period, data) {
+  const copy = data.periods.copy.seed;
+  const authoredRow = !isGenerated(rowFor(period.id, data));
+  return {
+    label: copy.label, use: copy.use,
+    hint: authoredRow ? copy.hintAuthored : copy.hint,
+    placeholder: authoredRow ? copy.placeholderAuthored : '',
+    value: period.generated ? String(period.generated.seed) : ''
+  };
+}
+
 // The seed's copy deck for the report and the start screen. A drawn class
 // says nobody authored it; a class seed says whose twelve these are.
 export function seedCopyFor(period, data) {
@@ -122,8 +172,13 @@ export function periodFor(id, data, opts = {}) {
   // thing it reaches from in here is which tells are common.
   const subject = subjectFor(data, row);
 
+  // An authored row ignores the seed it is handed unless the caller says the
+  // seed is that row's own (`reseed`, which main.js sets and the balance table
+  // does not), and even then only one slotSeed() would keep.
+  const reseed = !isGenerated(row) && opts.reseed === true && slotSeed(row, data, opts.seed) !== null;
+
   let roster, schedule, generated = null;
-  if (isGenerated(row)) {
+  if (isGenerated(row) || reseed) {
     if (!Number.isInteger(opts.seed) || opts.seed <= 0) {
       throw new Error(`Period "${id}" is generated and needs a seed`);
     }

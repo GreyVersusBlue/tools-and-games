@@ -867,7 +867,9 @@ Opus 5 and Fable rows run on Opus 5.5 and the Sonnet rows on Sonnet 5.
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
 leaves for a later arc" list — candidates, not a ranked arc. The five recipes
 that were another recipe's requirement list (#365) were reshaped on 2026-10-05
-(#878, TG-29); what that left is in the same list. Nothing from it is in the
+(#878, TG-29); what that left is in the same list, and two of those four (an
+Americano completing a Ristretto's ticket, Mocha on the menu with its syrup
+not bought) were closed on 2026-10-06 (#913, TG-29). Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
@@ -1293,7 +1295,7 @@ construct's Fort reads no lower than moderate (#715). Every parse fixture's
 special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
 all three questions that stood here on 2026-10-05: the flagging pass, go; the
 2e-style rewrite, go; Foundry, yes, he uses it, build the export. The first and
-the third are built; the rewrite has its first increment (#894).
+the third are built; the rewrite has its second increment (#894, #899).
 
 1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
    (#886, 2026-10-05), and the list is Devon's to read. They were written by a
@@ -1306,39 +1308,50 @@ the third are built; the rewrite has its first increment (#894).
    reading. Answers go into `spell-map.json` by hand; rerun the script
    afterwards, or `converter-spells.test.mjs` fails on a stale list. The next
    73 (score 7) are one `CUT` away if the first 47 turn out worth it.
-2. **The 2e-style rewrite of special abilities: first increment done (#894,
-   2026-10-05), 22 of 111 abilities.** Devon said go on 2026-10-05.
+2. **The 2e-style rewrite of special abilities: second increment done (#894,
+   #899, 2026-10-06), 33 of 111 abilities (30%).** Devon said go on 2026-10-05.
    `converter-assets/js/abilities.js` rewrites an ability when a rule reads its
    whole construction and leaves it byte for byte as it was otherwise, marked
    **PF1e wording** on the page, in the copied text and in the Foundry file's
-   notes. Every DC and damage figure a rule writes is the converter's own for
-   that creature at its new level. Eight rules, counted over the 57 fixtures:
-   affliction (a poison or disease stat line, 6), constrict (4), throw-rock
-   (3), breath (2, and the hell hound's no longer reads "6d4 rounds damage"),
-   distraction (2), gaze (2), rend (2), trample (1). The table is
+   notes. Every DC, attack bonus and damage figure a rule writes is the
+   converter's own for that creature at its new level. Fourteen rules, counted
+   over the 57 fixtures, which are every PF1e stat block the repo has:
+   affliction (a poison or disease stat line, 7), constrict (4), limit (a name
+   and a per-day limit, 3), throw-rock (3), breath (2), channel (2),
+   distraction (2), gaze (2), grab with a size (2), rend (2), paralysis (1),
+   pull (1), rake (1), trample (1). The table is
    `converter-assets/data/ability-patterns.md`, written by
    `measure-abilities.mjs`; `converter-assets/README.md` says where each
-   number comes from. What is left, 76 abilities in PF1e wording and 7 bare
+   number comes from. What is left, 65 abilities in PF1e wording and 7 bare
    names:
-   - **A save inside a sentence, 30 abilities.** "must succeed on a DC N save
-     or be [condition] for [duration]" is the next rule: 5 abilities hold it
+   - **A save inside a sentence, 25 abilities. Needs a call before a rule.**
+     "must succeed on a DC N save or be [condition] for [duration]" is in 5
      (the gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus,
-     Paralytic Tentacles), each inside a longer paragraph, so the rule has to
-     decide what it does with the sentences around it.
-   - **A parenthesis no rule reads, 16.** `9/day`, `DC 18`, `2 levels, DC 22`,
-     `tongue, 5 feet`, the war priest's class features. A use limit as a
-     Frequency line covers the per-day ones; a name with only a DC has no
-     effect to write.
-   - **A burst with a save for half** (the balor's Death Throes), **swallow
-     whole, pull, rake, grab with a size.** One fixture each.
+     Paralytic Tentacles), each between sentences no rule reads. #899 left
+     them: rewriting one sentence would take the PF1e mark off the rest. The
+     call is a fourth wording, part by rule and part PF1e, and how the page,
+     the copied text and the Foundry notes show it.
+   - **A parenthesis no rule reads, 6.** `DC 18` and `DC 22` under a name
+     (no effect to write), `+1, 6/day` (the war priest's smite, twice),
+     `2 levels, DC 22`, and swallow whole's `1d4 bludgeoning damage, AC 10,
+     1 hp`, which needs a Rupture figure the tables do not have.
+   - **One or two fixtures each, readable whole:** a burst with a save for
+     half (the balor's Death Throes, both layouts), whirlwind, energy drain.
    - **Prose, 27.** No construction in them (Whip Mastery, Mimicry, Freeze).
      These stay PF1e wording unless somebody writes them by hand.
+   - **Four calls in #899 Devon may want back**, beside #894's three: a name
+     with only a per-day limit reads "Frequency 9 times per day." and loses
+     its mark with no effect text; channel damage follows the Strike ratio
+     (the war priest's 1d6 is 1d6-1); paralysis keeps PF1e's 1d4+1 rounds
+     with the incapacitation trait; a poison's sleep is unconscious. Nobody
+     has read the 33 at a table.
    - **`converter-abilities.test.mjs` is in `site-ci.yml` since 2026-10-06**,
      under "Pathfinder converter" with the Foundry suite. Neither line has run
      on GitHub yet: the first run is the next PR's, so read that job's log once.
-   - The suite's hash of "the 98 no rule wrote" is 89 of the 111 and the 9
-     entries the 111 leaves out (seven Reactive Strikes, a regeneration, a
-     fast healing). 22 and 98 are of 120, not of 111.
+   - The suite's hash is still of the 98 entries no rule wrote on 2026-10-05
+     (89 of the 111 and the 9 the 111 leaves out: seven Reactive Strikes, a
+     regeneration, a fast healing). #899's rules took 11; the suite writes
+     them back in as they stood, so 87 are held. 33 and 87 are of 120.
    - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
      listed twice, once as a bare aura and once as text (the balor's Flaming
      Body), and a defensive ability the same way (the mouther's Amorphous).
@@ -2636,8 +2649,8 @@ bankruptcy threshold is *how* the lease is lost, and a bank that stops lending
 is a screen nothing else in this build has. Three consecutive nights closing
 below $0 takes the room; losing it drops you a rung rather than ending the
 run, and only an eviction from the Corner Tap — where there is no rung below —
-ends one. The Fourth Quarter has three open questions left, none of them
-blocking anything ranked.
+ends one. The Fourth Quarter had three open questions left then, none of them
+blocking anything ranked; Devon answered all three on 2026-10-05 (#902).
 
 **Struck: Q44**, "Blue Hour's causeway: which of the three ways out?",
 answered by locked #523 while shipping the causeway: the first. The hill's
@@ -2682,7 +2695,7 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| ~~Q7~~ | ~~**Should the authored three become seeds too?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes. The three authored classes are seeds 1000004, 1000005 and 1000006 now, typed into 7th period's box (#893); 4th, 5th and 6th taking a seed of their own is what is left, in the WISHLIST's standing backlog. Phase 2 answered "authoring or generation" by shipping both: 4th, 5th and 6th are authored and the 7th is drawn from a seed. Converting an authored period is one JSON edit each, and its kids' names and notes would go. Nothing depends on the answer. | 2, reframed after PR #106 | `Projects/bell-to-bell/WISHLIST.md` |
+| ~~Q7~~ | ~~**Should the authored three become seeds too?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes. The three authored classes are seeds 1000004, 1000005 and 1000006 now, typed into 7th period's box (#893), and 4th, 5th and 6th have a seed box of their own (#903: empty is the authored class, a seed is twelve other kids on that period's lesson). Nothing is left of it. Phase 2 answered "authoring or generation" by shipping both: 4th, 5th and 6th are authored and the 7th is drawn from a seed. Converting an authored period is one JSON edit each, and its kids' names and notes would go. Nothing depends on the answer. | 2, reframed after PR #106 | `Projects/bell-to-bell/WISHLIST.md` |
 | ~~Q8~~ | ~~**Does the period need a fail state?**~~ Struck — answered by Devon, 2026-10-05 (#889): still no. Answered "still no" three times. Confirming it lets Phase 3 stop designing around the possibility. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q9~~ | ~~**Is suppression too strong?**~~ Struck — answered by Devon, 2026-10-05 (#889): it is not. Leave it. Measured: in every 4th-period balance run exactly one scheduled tell never happens (Priya in front of June); splitting the pairs makes that "2 never happened, 2 found another way" and drops restless from 72 to 44. The handoff's own fix, if it is too strong, is a per-period cap on how much one kid absorbs, not a nerf to the effect — and now watch it across *two* rosters (Priya and Anh both), not just one. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q10~~ | ~~**Is the Observation's ambient Mastery cost calibrated?**~~ Struck — answered by Devon, 2026-10-05 (#889): right as it is. `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by design math and not by playtest. In the table it costs the good teacher nothing visible (79 either way) and buys 10 Fidelity if performed. | 2 | wishlist, `docs/HANDOFF.md` |
@@ -2707,15 +2720,15 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q24 | **How much of the 2D campaign is actually wanted?** 21 event cards, a 14-week season with a 4-team bracket, regulars, a rival, three distributors. All of it ports; none of it is small; a 3D floor game with a full back office is a different game. Phases 6–9 assumed "most of it, in that order" and all four have now shipped — the league, the regulars and the rival, the event cards, and a losable lease. What is left unported is the distributors (and the two event cards about them), staff as a simulated system, and per-lot shelf life; none of it is ranked. | 2 | wishlist, README roadmap |
-| Q25 | **Is 66 MB of texture on first paint acceptable?** 27 JPEGs, 69,218,191 bytes, all 27 loaded by the first room. Uncompressed in GPU memory that is roughly 600 MB with mipmaps (2048² × 4 × 27 × 1.33 — arithmetic, not a measurement). Phase 4 cuts it by an order of magnitude at some visible cost. | 1 | wishlist |
-| Q26 | **Has `SPOILAGE_RATE = 0.15` actually been played yet?** One number in `campaign.js`, tune by feel; no assertion depends on the exact value except one asserting 15% of 20 rounds to 3. | 3 | wishlist, prompt 07, README roadmap |
+| ~~Q24~~ | ~~**How much of the 2D campaign is actually wanted?**~~ Struck — answered by Devon, 2026-10-05 (#902): all of it. The distributors and their two event cards shipped on 2026-10-06 (#905) and staff as a simulated system the same day (#908, a rota that is off until posted) and per-lot shelf life with the Commercial Walk-In the same day (#909, a shelf that is undated until it is dated; `SPOILAGE_RATE` is still 0.15 for one that is not) and a season that moves rent and wages the same day (#911, season terms that are month to month until signed). That is the whole back office; nothing of it is left and none of it was ranked. 21 event cards, a 14-week season with a 4-team bracket, regulars, a rival, three distributors. All of it ports; none of it is small; a 3D floor game with a full back office is a different game. Phases 6–9 assumed "most of it, in that order" and all four have now shipped — the league, the regulars and the rival, the event cards, and a losable lease. Nothing of the 2D build's back office is left unported as of #911. | 2 | wishlist, README roadmap |
+| ~~Q25~~ | ~~**Is 66 MB of texture on first paint acceptable?**~~ Struck — answered by Devon, 2026-10-05 (#902): cut it. Phase 4 already had (#201, a first visit downloads 5.08 MB of 1k; #622 took the 2k tier to 23.0 MB); what is left is a 512 px tier and the pop after "Take the Floor". 27 JPEGs, 69,218,191 bytes, all 27 loaded by the first room. Uncompressed in GPU memory that is roughly 600 MB with mipmaps (2048² × 4 × 27 × 1.33 — arithmetic, not a measurement). Phase 4 cuts it by an order of magnitude at some visible cost. | 1 | wishlist |
+| ~~Q26~~ | ~~**Has `SPOILAGE_RATE = 0.15` actually been played yet?**~~ Struck — answered by Devon, 2026-10-05 (#902): keep it for now. Kept: it is what an undated shelf pays, and a campaign that dates its shelf (#909) pays by the date instead, never both. One number in `campaign.js`, tune by feel; no assertion depends on the exact value except one asserting 15% of 20 rounds to 3. | 3 | wishlist, prompt 07, README roadmap |
 
 ### Faire Weekend
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q27 | **Are the four economy numbers right?** `perGuestCost: 5`, `upkeepRate: 0.07`, `bankruptcyFloor: -6000` and `winCondition`'s three thresholds have been flagged "most likely to need adjusting after real play" for four rounds running, and no round could answer it because nobody has played a full season. The `SIGNIFICANCE:` tests prove they are not degenerate, not that weekend 6 is a satisfying place to arrive. **Partly answered by Phase 1 increment 2:** `perGuestCost` stays at 5, ruled rather than assumed — it was tried as the counterweight for the walk-based stall economy and SIGNIFICANCE 3 refused it, because a per-head cost scales with the crowd whether or not anything is being sold and at $11 a head "charge the maximum" becomes correct again on a faire with no stalls (#228). `wristbandCut` moved instead, 0.28 → 0.12. `upkeepRate`, `bankruptcyFloor` and the three `winCondition` thresholds are still unanswered, and increment 2 added a check that pins one edge of the last one: a built-out faire cannot bank $25,000 in two weekends. **Phase 4 pinned the other edge, and it is the one that matters:** a scripted manager playing from a real start banked $28,000 to $104,000 by Weekend 6 across six seeds and a dozen builds and never took reputation past 63 from 50, because satisfaction sits in the 60s once the crowd outgrows the stages and attendance grows with the reputation the bar wants. The cash bar is trivial; the reputation bar is out of reach for any manager the suite could write. `minCash` and `minReputation` are the two to look at together. **Phase 7 moved the reputation half, and this is evidence rather than an answer:** the same scripted manager, staffing the grounds the morning after the first day anybody was turned away, finishes season one at reputation 74 — up from the 69-72 the same script reached before the crew existed, on a fixture that seeds reputation at 70. The bar may be reachable now. Nobody has played it. | **5** | `Projects/Ren-Faire-Claude/WISHLIST.md`, prompt 09, the project's notes, `HANDOFF.md` backlog |
+| ~~Q27~~ | ~~**Are the four economy numbers right?**~~ Struck — answered by Devon, 2026-10-05 (#914): right as they are. Nothing moved; what follows is the evidence the question stood on. `perGuestCost: 5`, `upkeepRate: 0.07`, `bankruptcyFloor: -6000` and `winCondition`'s three thresholds have been flagged "most likely to need adjusting after real play" for four rounds running, and no round could answer it because nobody has played a full season. The `SIGNIFICANCE:` tests prove they are not degenerate, not that weekend 6 is a satisfying place to arrive. **Partly answered by Phase 1 increment 2:** `perGuestCost` stays at 5, ruled rather than assumed — it was tried as the counterweight for the walk-based stall economy and SIGNIFICANCE 3 refused it, because a per-head cost scales with the crowd whether or not anything is being sold and at $11 a head "charge the maximum" becomes correct again on a faire with no stalls (#228). `wristbandCut` moved instead, 0.28 → 0.12. `upkeepRate`, `bankruptcyFloor` and the three `winCondition` thresholds are still unanswered, and increment 2 added a check that pins one edge of the last one: a built-out faire cannot bank $25,000 in two weekends. **Phase 4 pinned the other edge, and it is the one that matters:** a scripted manager playing from a real start banked $28,000 to $104,000 by Weekend 6 across six seeds and a dozen builds and never took reputation past 63 from 50, because satisfaction sits in the 60s once the crowd outgrows the stages and attendance grows with the reputation the bar wants. The cash bar is trivial; the reputation bar is out of reach for any manager the suite could write. `minCash` and `minReputation` are the two to look at together. **Phase 7 moved the reputation half, and this is evidence rather than an answer:** the same scripted manager, staffing the grounds the morning after the first day anybody was turned away, finishes season one at reputation 74 — up from the 69-72 the same script reached before the crew existed, on a fixture that seeds reputation at 70. The bar may be reachable now. Nobody has played it. | **5** | `Projects/Ren-Faire-Claude/WISHLIST.md`, prompt 09, the project's notes, `HANDOFF.md` backlog |
 | ~~Q28~~ | ~~**Should winning end the run?**~~ Struck — answered by #241 and #242 (Faire Weekend Phase 4): no; renown is the second track and closing the season is the player's call. | 1 | wishlist |
 | ~~Q29~~ | ~~**Is the 1080px breakpoint a touch device?**~~ Struck — answered by #249 (Faire Weekend Phase 5): a width is not a pointer. The 38px cell is gone at every width and the touch sizes (48px cell, 44px buttons, slider and `<select>`s) hang off `(pointer: coarse)`. Measured on a fine pointer and left there: slider 275×16, `<select>`s 175×31, 190×32 and 134×32. | 2 | wishlist, the project's notes |
 | ~~Q30~~ | ~~**Does the fixed `fit-content(710px)` board column bother you?**~~ Struck — answered by #246 and #247 (Faire Weekend Phase 5): `main.js` sets `--cols` on `#board` and the column is a `calc()` off it, 710 → 525px on the Home Grounds. The "~54px of empty mat" was 187px of the map's brown gap colour, not mat. | 3 | wishlist, prompt 09, the project's notes |
