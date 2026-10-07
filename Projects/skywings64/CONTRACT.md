@@ -5,6 +5,7 @@ Lives in tools-and-games at `Projects/skywings64/` (the repo root is served whol
 `three/addons/` maps to vendor/addons/, which holds ONLY the files the game imports (HISTORY.md #724): a new
 addon import means copying that one file from three.js r160. Zero offsite requests: textures, HDRs, fonts and
 GLBs are all under assets/. Suite: `node test/browser.mjs` from this folder (needs `npm install` in Tools/board-check).
+`node test/draws.mjs` counts a frame's draw calls from nine fixed views against test/draws.json (the suite runs its first three).
 Open work: WISHLIST.md. The file-ownership lists below are from the original multi-agent build and are historical.
 Style: N64-era chunky low-poly + vertex-colour/flat shading, bright saturated colours, fog, big readable HUD.
 World units = metres. Y is up. Island world roughly 4000x4000 centred at origin.
@@ -119,6 +120,8 @@ export function createTargetMarker / createLandingPadMesh(radius) -> Group
 - `src/game/replay.js`: `FlightRecorder` (20 Hz, last 40 s) + `ReplayDirector` cinematic camera used on the RESULTS screen.
 - `src/core/touch.js`: `TouchControls(input)` virtual stick + buttons -> `input.setTouch()`; shown only in FLIGHT.
 - `src/render/perf.js`: `perfReport(renderer, scene)` draw calls / tris / programs / texture MB / instancing candidates.
+- Shadows: the render system's scan turns `castShadow` on for every opaque mesh; `userData.noShadow` opts a mesh out of
+  casting and receiving, `userData.noCast` out of casting only (vegetation past the near tier, HISTORY.md #930).
 ### Mission fields
 - `fuelBurn` (rocket belt fuel multiplier, applied to `vehicle.fuelBurnScale` after reset).
 - Powered craft may land off-pad and relaunch while they have fuel; the glider's first landing ends the run.

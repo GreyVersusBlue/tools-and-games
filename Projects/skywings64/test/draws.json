@@ -3,57 +3,58 @@
  "views": {
   "pad": {
    "draws": {
-    "total": 527,
+    "total": 337,
     "shadow.terrain": 10,
     "shadow.statics": 29,
-    "shadow.vegetation": 99,
+    "shadow.vegetation": 9,
     "shadow.rest": 26,
     "scene.rest": 61,
     "scene.terrain": 80,
     "scene.statics": 84,
-    "scene.vegetation": 120,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 2908978,
+    "total": 4321148,
     "shadow.terrain": 54000,
     "shadow.statics": 19750,
-    "shadow.vegetation": 1444318,
+    "shadow.vegetation": 1610842,
     "shadow.rest": 3708,
     "scene.rest": 210868,
-    "scene.terrain": 90450,
+    "scene.terrain": 80460,
     "scene.statics": 30072,
-    "scene.vegetation": 1055794,
+    "scene.vegetation": 2311430,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 527,
-    "triangles": 2909002
+    "calls": 337,
+    "triangles": 4321172
    },
+   "uncastInBox": 0,
    "owners": [
-    "scene:landmarks/vegetation 120 draws 1056k tris",
-    "shadow:landmarks/vegetation 99 draws 1444k tris",
-    "scene:terrain 80 draws 90k tris",
+    "scene:terrain 80 draws 80k tris",
     "scene:Group 56 draws 27k tris",
     "shadow:Group 26 draws 4k tris",
+    "scene:landmarks/vegetation 20 draws 2311k tris",
     "scene:landmarks/glb:windmill 20 draws 3k tris",
     "scene:landmarks/Mesh 17 draws 2k tris",
     "scene:landmarks/props 14 draws 8k tris",
     "scene:landmarks/Sprite 12 draws 0k tris",
     "shadow:terrain 10 draws 54k tris",
+    "shadow:landmarks/vegetation 9 draws 1611k tris",
     "shadow:landmarks/Mesh 8 draws 0k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris",
     "scene:landmarks/glb:castle 5 draws 3k tris",
     "shadow:landmarks/props 4 draws 7k tris"
    ],
    "memory": {
-    "geometryMB": 21.72,
-    "meshes": 1420,
-    "instanced": 660,
-    "geometries": 522,
-    "textures": 53,
+    "geometryMB": 21.13,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 232,
+    "textures": 48,
     "textureMB": 127.1,
-    "programs": 127
+    "programs": 79
    },
    "camera": [
     54,
@@ -67,41 +68,42 @@
   },
   "castle": {
    "draws": {
-    "total": 449,
+    "total": 291,
     "shadow.terrain": 10,
     "shadow.statics": 20,
-    "shadow.vegetation": 89,
+    "shadow.vegetation": 9,
     "shadow.rest": 26,
     "scene.rest": 38,
     "scene.terrain": 71,
     "scene.statics": 79,
-    "scene.vegetation": 98,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 1971168,
+    "total": 2962588,
     "shadow.terrain": 54000,
     "shadow.statics": 18444,
-    "shadow.vegetation": 975482,
+    "shadow.vegetation": 1045368,
     "shadow.rest": 3708,
     "scene.rest": 188148,
-    "scene.terrain": 78290,
+    "scene.terrain": 74340,
     "scene.statics": 20198,
-    "scene.vegetation": 632880,
+    "scene.vegetation": 1558364,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 449,
-    "triangles": 1971184
+    "calls": 291,
+    "triangles": 2962604
    },
+   "uncastInBox": 0,
    "owners": [
-    "scene:landmarks/vegetation 98 draws 633k tris",
-    "shadow:landmarks/vegetation 89 draws 975k tris",
-    "scene:terrain 71 draws 78k tris",
+    "scene:terrain 71 draws 74k tris",
     "scene:landmarks/props 46 draws 8k tris",
     "scene:Group 33 draws 4k tris",
     "shadow:Group 26 draws 4k tris",
+    "scene:landmarks/vegetation 20 draws 1558k tris",
     "shadow:terrain 10 draws 54k tris",
+    "shadow:landmarks/vegetation 9 draws 1045k tris",
     "scene:landmarks/Sprite 8 draws 0k tris",
     "scene:landmarks/glb:castle 7 draws 3k tris",
     "scene:landmarks/Mesh 6 draws 0k tris",
@@ -111,13 +113,13 @@
     "shadow:landmarks/Mesh 2 draws 0k tris"
    ],
    "memory": {
-    "geometryMB": 20.85,
-    "meshes": 1430,
-    "instanced": 670,
-    "geometries": 563,
-    "textures": 52,
+    "geometryMB": 21.96,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 304,
+    "textures": 50,
     "textureMB": 127.1,
-    "programs": 122
+    "programs": 74
    },
    "camera": [
     400,
@@ -131,41 +133,42 @@
   },
   "heads": {
    "draws": {
-    "total": 386,
+    "total": 246,
     "shadow.terrain": 11,
-    "shadow.vegetation": 74,
+    "shadow.vegetation": 9,
     "shadow.statics": 21,
     "shadow.rest": 26,
     "scene.rest": 38,
     "scene.terrain": 60,
     "scene.statics": 43,
-    "scene.vegetation": 95,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 1126952,
+    "total": 1401490,
     "shadow.terrain": 59400,
-    "shadow.vegetation": 353198,
+    "shadow.vegetation": 340174,
     "shadow.statics": 24266,
     "shadow.rest": 3708,
     "scene.rest": 188148,
-    "scene.terrain": 78180,
+    "scene.terrain": 82130,
     "scene.statics": 24772,
-    "scene.vegetation": 395262,
+    "scene.vegetation": 678874,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 386,
-    "triangles": 1126952
+    "calls": 246,
+    "triangles": 1401490
    },
+   "uncastInBox": 4,
    "owners": [
-    "scene:landmarks/vegetation 95 draws 395k tris",
-    "shadow:landmarks/vegetation 74 draws 353k tris",
-    "scene:terrain 60 draws 78k tris",
+    "scene:terrain 60 draws 82k tris",
     "scene:Group 33 draws 4k tris",
     "shadow:Group 26 draws 4k tris",
     "scene:landmarks/props 24 draws 7k tris",
+    "scene:landmarks/vegetation 20 draws 679k tris",
     "shadow:terrain 11 draws 59k tris",
+    "shadow:landmarks/vegetation 9 draws 340k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris",
     "scene:landmarks/glb:castle 5 draws 3k tris",
     "shadow:landmarks/props 4 draws 7k tris",
@@ -175,13 +178,13 @@
     "scene:landmarks/glb:cabin:Cube_4 2 draws 1k tris"
    ],
    "memory": {
-    "geometryMB": 19.04,
-    "meshes": 1428,
-    "instanced": 668,
-    "geometries": 595,
-    "textures": 52,
+    "geometryMB": 21.1,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 344,
+    "textures": 50,
     "textureMB": 127.1,
-    "programs": 122
+    "programs": 74
    },
    "camera": [
     1500,
@@ -195,57 +198,58 @@
   },
   "lighthouse": {
    "draws": {
-    "total": 732,
+    "total": 595,
     "shadow.terrain": 10,
-    "shadow.vegetation": 17,
+    "shadow.vegetation": 9,
     "shadow.statics": 6,
     "shadow.rest": 26,
     "scene.rest": 67,
     "scene.terrain": 181,
     "scene.statics": 258,
-    "scene.vegetation": 149,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 868434,
+    "total": 919730,
     "shadow.terrain": 54000,
-    "shadow.vegetation": 90620,
+    "shadow.vegetation": 96552,
     "shadow.statics": 7336,
     "shadow.rest": 3708,
     "scene.rest": 217684,
     "scene.terrain": 107320,
     "scene.statics": 40272,
-    "scene.vegetation": 347476,
+    "scene.vegetation": 392840,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 732,
-    "triangles": 868524
+    "calls": 595,
+    "triangles": 919820
    },
+   "uncastInBox": 0,
    "owners": [
     "scene:terrain 181 draws 107k tris",
-    "scene:landmarks/vegetation 149 draws 347k tris",
     "scene:landmarks/props 100 draws 11k tris",
     "scene:Group 62 draws 33k tris",
     "scene:landmarks/Sprite 45 draws 0k tris",
     "scene:landmarks/glb:windmill 40 draws 6k tris",
     "scene:landmarks/Mesh 39 draws 3k tris",
     "shadow:Group 26 draws 4k tris",
-    "shadow:landmarks/vegetation 17 draws 91k tris",
+    "scene:landmarks/vegetation 20 draws 393k tris",
     "shadow:terrain 10 draws 54k tris",
     "scene:landmarks/glb:lighthouse 10 draws 2k tris",
+    "shadow:landmarks/vegetation 9 draws 97k tris",
     "scene:landmarks/glb:castle 7 draws 3k tris",
     "shadow:landmarks/props 4 draws 7k tris",
     "scene:sky 4 draws 4k tris"
    ],
    "memory": {
-    "geometryMB": 18.96,
-    "meshes": 1418,
-    "instanced": 658,
-    "geometries": 736,
+    "geometryMB": 21.31,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 531,
     "textures": 55,
     "textureMB": 127.1,
-    "programs": 129
+    "programs": 81
    },
    "camera": [
     650,
@@ -259,41 +263,42 @@
   },
   "mountain": {
    "draws": {
-    "total": 419,
+    "total": 303,
     "shadow.terrain": 14,
     "shadow.statics": 19,
-    "shadow.vegetation": 45,
+    "shadow.vegetation": 8,
     "shadow.rest": 26,
     "scene.rest": 38,
     "scene.terrain": 82,
     "scene.statics": 79,
-    "scene.vegetation": 98,
+    "scene.vegetation": 19,
     "post": 18
    },
    "tris": {
-    "total": 828888,
+    "total": 1545714,
     "shadow.terrain": 59800,
     "shadow.statics": 18364,
-    "shadow.vegetation": 332688,
+    "shadow.vegetation": 251514,
     "shadow.rest": 3708,
     "scene.rest": 188148,
     "scene.terrain": 93790,
     "scene.statics": 19836,
-    "scene.vegetation": 112536,
+    "scene.vegetation": 910536,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 419,
-    "triangles": 828904
+    "calls": 303,
+    "triangles": 1545730
    },
+   "uncastInBox": 67,
    "owners": [
-    "scene:landmarks/vegetation 98 draws 113k tris",
     "scene:terrain 82 draws 94k tris",
     "scene:landmarks/props 52 draws 8k tris",
-    "shadow:landmarks/vegetation 45 draws 333k tris",
     "scene:Group 33 draws 4k tris",
     "shadow:Group 26 draws 4k tris",
+    "scene:landmarks/vegetation 19 draws 911k tris",
     "shadow:terrain 14 draws 60k tris",
+    "shadow:landmarks/vegetation 8 draws 252k tris",
     "scene:landmarks/Sprite 8 draws 0k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris",
     "scene:landmarks/glb:castle 5 draws 3k tris",
@@ -303,13 +308,13 @@
     "scene:landmarks/glb:cabin:Cube_4 2 draws 1k tris"
    ],
    "memory": {
-    "geometryMB": 19.53,
-    "meshes": 1439,
-    "instanced": 679,
-    "geometries": 734,
+    "geometryMB": 21.91,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 541,
     "textures": 54,
     "textureMB": 127.1,
-    "programs": 124
+    "programs": 76
    },
    "camera": [
     -300,
@@ -323,57 +328,58 @@
   },
   "windmills": {
    "draws": {
-    "total": 686,
+    "total": 451,
     "shadow.terrain": 10,
-    "shadow.vegetation": 82,
+    "shadow.vegetation": 9,
     "shadow.statics": 34,
     "shadow.rest": 26,
     "scene.rest": 52,
     "scene.terrain": 127,
-    "scene.statics": 154,
-    "scene.vegetation": 183,
+    "scene.statics": 155,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 2410452,
+    "total": 3300366,
     "shadow.terrain": 54000,
-    "shadow.vegetation": 1095138,
+    "shadow.vegetation": 1121266,
     "shadow.statics": 20556,
     "shadow.rest": 3708,
     "scene.rest": 200644,
     "scene.terrain": 99740,
-    "scene.statics": 31836,
-    "scene.vegetation": 904812,
+    "scene.statics": 32000,
+    "scene.vegetation": 1768434,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 686,
-    "triangles": 2410484
+    "calls": 451,
+    "triangles": 3300398
    },
+   "uncastInBox": 6,
    "owners": [
-    "scene:landmarks/vegetation 183 draws 905k tris",
     "scene:terrain 127 draws 100k tris",
-    "shadow:landmarks/vegetation 82 draws 1095k tris",
     "scene:landmarks/props 73 draws 9k tris",
     "scene:Group 47 draws 16k tris",
     "shadow:Group 26 draws 4k tris",
-    "scene:landmarks/Mesh 23 draws 2k tris",
+    "scene:landmarks/Mesh 24 draws 2k tris",
+    "scene:landmarks/vegetation 20 draws 1768k tris",
     "scene:landmarks/glb:windmill 20 draws 3k tris",
     "scene:landmarks/Sprite 16 draws 0k tris",
     "shadow:terrain 10 draws 54k tris",
     "shadow:landmarks/props 10 draws 8k tris",
+    "shadow:landmarks/vegetation 9 draws 1121k tris",
     "shadow:landmarks/glb:windmill 9 draws 1k tris",
     "scene:landmarks/glb:castle 7 draws 3k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris"
    ],
    "memory": {
-    "geometryMB": 21.63,
-    "meshes": 1505,
-    "instanced": 745,
-    "geometries": 774,
+    "geometryMB": 22.12,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 583,
     "textures": 55,
     "textureMB": 127.1,
-    "programs": 129
+    "programs": 81
    },
    "camera": [
     425,
@@ -387,57 +393,58 @@
   },
   "cabins": {
    "draws": {
-    "total": 734,
+    "total": 467,
     "shadow.terrain": 11,
-    "shadow.vegetation": 108,
+    "shadow.vegetation": 9,
     "shadow.statics": 18,
     "shadow.rest": 26,
     "scene.rest": 49,
     "scene.terrain": 142,
     "scene.statics": 174,
-    "scene.vegetation": 188,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 2984242,
+    "total": 3804606,
     "shadow.terrain": 59400,
-    "shadow.vegetation": 1260076,
+    "shadow.vegetation": 1441544,
     "shadow.statics": 18284,
     "shadow.rest": 3708,
     "scene.rest": 197236,
     "scene.terrain": 102860,
     "scene.statics": 25718,
-    "scene.vegetation": 1316942,
+    "scene.vegetation": 1955838,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 734,
-    "triangles": 2984306
+    "calls": 467,
+    "triangles": 3804670
    },
+   "uncastInBox": 0,
    "owners": [
-    "scene:landmarks/vegetation 188 draws 1317k tris",
     "scene:terrain 142 draws 103k tris",
-    "shadow:landmarks/vegetation 108 draws 1260k tris",
     "scene:landmarks/props 82 draws 9k tris",
     "scene:Group 44 draws 13k tris",
     "scene:landmarks/Sprite 32 draws 0k tris",
     "shadow:Group 26 draws 4k tris",
     "scene:landmarks/Mesh 20 draws 1k tris",
+    "scene:landmarks/vegetation 20 draws 1956k tris",
     "scene:landmarks/glb:windmill 20 draws 3k tris",
     "shadow:terrain 11 draws 59k tris",
+    "shadow:landmarks/vegetation 9 draws 1442k tris",
     "scene:landmarks/glb:castle 7 draws 3k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris",
     "shadow:landmarks/props 4 draws 7k tris",
     "scene:sky 4 draws 4k tris"
    ],
    "memory": {
-    "geometryMB": 22.33,
-    "meshes": 1579,
-    "instanced": 819,
-    "geometries": 791,
+    "geometryMB": 22.06,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 605,
     "textures": 55,
     "textureMB": 127.1,
-    "programs": 129
+    "programs": 82
    },
    "camera": [
     -336,
@@ -451,57 +458,58 @@
   },
   "runway": {
    "draws": {
-    "total": 745,
+    "total": 464,
     "shadow.terrain": 10,
     "shadow.statics": 27,
-    "shadow.vegetation": 104,
+    "shadow.vegetation": 9,
     "shadow.rest": 26,
     "scene.rest": 52,
     "scene.terrain": 132,
     "scene.statics": 170,
-    "scene.vegetation": 206,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 3035024,
+    "total": 4185980,
     "shadow.terrain": 54000,
     "shadow.statics": 19378,
-    "shadow.vegetation": 1424150,
+    "shadow.vegetation": 1592760,
     "shadow.rest": 3708,
     "scene.rest": 200644,
     "scene.terrain": 100980,
     "scene.statics": 32016,
-    "scene.vegetation": 1200130,
+    "scene.vegetation": 2182476,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 745,
-    "triangles": 3035056
+    "calls": 464,
+    "triangles": 4186012
    },
+   "uncastInBox": 4,
    "owners": [
-    "scene:landmarks/vegetation 206 draws 1200k tris",
     "scene:terrain 132 draws 101k tris",
-    "shadow:landmarks/vegetation 104 draws 1424k tris",
     "scene:landmarks/props 89 draws 10k tris",
     "scene:Group 47 draws 16k tris",
     "shadow:Group 26 draws 4k tris",
     "scene:landmarks/Mesh 24 draws 2k tris",
+    "scene:landmarks/vegetation 20 draws 2182k tris",
     "scene:landmarks/glb:windmill 20 draws 3k tris",
     "scene:landmarks/Sprite 16 draws 0k tris",
     "shadow:terrain 10 draws 54k tris",
+    "shadow:landmarks/vegetation 9 draws 1593k tris",
     "shadow:landmarks/Mesh 7 draws 0k tris",
     "scene:landmarks/glb:castle 7 draws 3k tris",
     "shadow:landmarks/props 5 draws 7k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris"
    ],
    "memory": {
-    "geometryMB": 23.54,
-    "meshes": 1612,
-    "instanced": 852,
-    "geometries": 797,
+    "geometryMB": 22.24,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 612,
     "textures": 55,
     "textureMB": 127.1,
-    "programs": 129
+    "programs": 82
    },
    "camera": [
     155,
@@ -515,41 +523,42 @@
   },
   "bridge": {
    "draws": {
-    "total": 524,
+    "total": 342,
     "shadow.terrain": 10,
-    "shadow.vegetation": 80,
+    "shadow.vegetation": 9,
     "shadow.statics": 12,
     "shadow.rest": 26,
     "scene.rest": 38,
     "scene.terrain": 112,
     "scene.statics": 97,
-    "scene.vegetation": 131,
+    "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 1274940,
+    "total": 1978290,
     "shadow.terrain": 54000,
-    "shadow.vegetation": 415832,
+    "shadow.vegetation": 523362,
     "shadow.statics": 15320,
     "shadow.rest": 3708,
     "scene.rest": 188148,
     "scene.terrain": 98260,
     "scene.statics": 20078,
-    "scene.vegetation": 479576,
+    "scene.vegetation": 1075396,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 524,
-    "triangles": 1274956
+    "calls": 342,
+    "triangles": 1978306
    },
+   "uncastInBox": 0,
    "owners": [
-    "scene:landmarks/vegetation 131 draws 480k tris",
     "scene:terrain 112 draws 98k tris",
-    "shadow:landmarks/vegetation 80 draws 416k tris",
     "scene:landmarks/props 70 draws 8k tris",
     "scene:Group 33 draws 4k tris",
     "shadow:Group 26 draws 4k tris",
+    "scene:landmarks/vegetation 20 draws 1075k tris",
     "shadow:terrain 10 draws 54k tris",
+    "shadow:landmarks/vegetation 9 draws 523k tris",
     "scene:landmarks/Sprite 8 draws 0k tris",
     "scene:landmarks/glb:castle 5 draws 3k tris",
     "shadow:landmarks/props 4 draws 7k tris",
@@ -559,13 +568,13 @@
     "scene:landmarks/Group 2 draws 0k tris"
    ],
    "memory": {
-    "geometryMB": 20.19,
-    "meshes": 1609,
-    "instanced": 849,
-    "geometries": 813,
+    "geometryMB": 21.78,
+    "meshes": 792,
+    "instanced": 32,
+    "geometries": 630,
     "textures": 54,
     "textureMB": 127.1,
-    "programs": 125
+    "programs": 77
    },
    "camera": [
     -1110,
