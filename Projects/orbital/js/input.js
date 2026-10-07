@@ -42,6 +42,10 @@ function keyHandler(e) {
   if (edOn) return;
   if (e.key === "r" || e.key === "R") { if (mode !== "fly") { resetProbe(); mode = "aim"; } return; }
   if (e.key === "Escape") { toggleLevels(); return; }
+  // With the sector map up the keys belong to its buttons. Space on a focused
+  // one was swallowed below and never reached it, and with a shot already
+  // aimed it launched the probe behind the map.
+  if (lvlScrim.classList.contains("show")) return;
   if (mode === "done" && won && (e.key === " " || e.key === "Enter" || e.key === "n" || e.key === "N")) {
     advance(); e.preventDefault(); return;
   }

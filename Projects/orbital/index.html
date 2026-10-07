@@ -116,6 +116,9 @@
         <button data-tier="hard" title="Up to five bodies, wormholes and orbits included">Hard</button>
         <span class="gen-status" id="genStatus" role="status" aria-live="polite"></span>
       </div>
+      <!-- the site's save bar (assets/js/gvb-save.js): Export and Import, mounted
+           by game.js. Reset progress below stays the one button that wipes. -->
+      <div class="save" id="saveBar" role="group" aria-label="Save file"></div>
       <div class="row">
         <button id="btnWipe" title="Erase saved progress">Reset progress</button>
         <button id="btnDesign" title="Build a sector of your own">Design a sector</button>
@@ -125,17 +128,20 @@
   </div>
 </div>
 
-<!-- modules: physics + the codec + level packs, then render, input, the editor,
-     and the orchestrator, which is loaded last because it owns the state the
-     rest of them read. -->
-<script src="js/physics.js"></script>
-<script src="js/levels/pack-01-basics.js"></script>
-<script src="js/levels/pack-02-deepspace.js"></script>
-<script src="js/levelcode.js"></script>
-<script src="js/generator.js"></script>
-<script src="js/render.js"></script>
-<script src="js/input.js"></script>
-<script src="js/editor.js"></script>
-<script src="js/game.js"></script>
+<!-- modules: the save, then physics + the codec + level packs, then render,
+     input, the editor, and the orchestrator, which is loaded last because it
+     owns the state the rest of them read. save.mjs is an ES module, which a
+     browser runs after the page is parsed, so the classic scripts are `defer`
+     to keep their place in line behind it: game.js reads the save as it loads. -->
+<script type="module" src="js/save.mjs"></script>
+<script defer src="js/physics.js"></script>
+<script defer src="js/levels/pack-01-basics.js"></script>
+<script defer src="js/levels/pack-02-deepspace.js"></script>
+<script defer src="js/levelcode.js"></script>
+<script defer src="js/generator.js"></script>
+<script defer src="js/render.js"></script>
+<script defer src="js/input.js"></script>
+<script defer src="js/editor.js"></script>
+<script defer src="js/game.js"></script>
 </body>
 </html>

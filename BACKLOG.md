@@ -121,9 +121,14 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **TG-13's fourth and last
-increment, the dioramas for The Fracture Cycle and Torchbearer** (PR #518):
-rank 14 (2+, naming Sonnet 5), run under Opus 5.5 on Devon's Windows machine.
+**The last batch of ranked work that shipped** is **rank 24, Orbital's save
+bar** (#925, 2026-10-07; committed locally on huginn for the landing, so its PR
+number is the landing's): ½, naming Fable 5.1, run under Opus 5.5 on Devon's
+answer to Q52. Orbital's campaign goes through the site's `gvb-save.js` on the
+key it always had, and the sector map has Export and Import. Before it came
+**TG-13's fourth and last increment, the dioramas for The Fracture Cycle and
+Torchbearer** (PR #518): rank 14 (2+, naming Sonnet 5), run under Opus 5.5 on
+Devon's Windows machine.
 **TG-13 is done (#785)**: every board card but Castle Conundrum has a
 diorama, and rank 14 has left the table for `HISTORY.md`'s log. The two
 scenes are the seam (#854) and the drowned chapel (#855), and the rendered
@@ -138,7 +143,7 @@ nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**10 ranked items remain**, and **every one of them names a model.**
+**9 ranked items remain**, and **every one of them names a model.**
 
 **The Blender block is empty** (#642, #707, 2026-09-25, Devon's instruction
 and his re-rank, which put every Blender row first). Every project's
@@ -1026,7 +1031,6 @@ and #222 was closed unmerged an hour of suites later.
 | 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
 | 22 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 24 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -2259,13 +2263,20 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
    browser reports a fine pointer even at a 375×812 viewport, so
    `matchMedia("(pointer:coarse)")` never flips true here regardless of window
    size. Needs different hardware to actually see it trigger.
-3. **Revisit `gvb-save.js` adoption**, only if Devon wants save-bar UI
-   consistency with the other adopters. Round 1 looked at it seriously and
-   decided against: the current hand-rolled save (`orbital_progress_v2`, one
-   key, already migrating its own `v1` predecessor) has no bug `repair` would
-   fix, and the migration was proved to round-trip clean. Adopting would mainly
-   buy the shared save-bar UI and export/import-to-file — a real but different
-   kind of value.
+3. **The site's save bar. Shipped 2026-10-07** (#925), on Devon's yes to Q52
+   (2026-10-05). `js/save.mjs` holds one slot through `gvb-save.js` on
+   `orbital_progress_v2`, and the sector map has Export and Import; Reset
+   progress stays the one button that wipes. A save from before it has no
+   `__v`, reads as version 0 and loads key for key: `test/fixtures/progress-eb2806c.json`
+   is one, written by the old build's own `writeSave()`. Three things a session
+   should know. The page's scripts are `defer` now, because `save.mjs` is the
+   page's one ES module and `game.js` reads the save as it loads; a classic
+   script added without `defer` runs before all of them. The disk format gained
+   the stamp (`{"basics#0":1,"__v":2}`), which `Tools/board-check/games.mjs`'s
+   bare seed still loads through. And with the sector map up the game's key
+   handler stands down, so Space reaches a focused button. Not done: the
+   adopters lists in `assets/js/gvb-save.js`'s header and `assets/js/README.md`
+   do not name Orbital, because the worker could not edit the shared file.
 4. **A level editor with URL sharing. Shipped 2026-09-14, PR #296** (#396 to
    #400). `js/editor.js` is the rail, `js/levelcode.js` is the codec, and the
    draft lives in the address bar rather than in a save key. Nothing is open
@@ -2790,7 +2801,7 @@ live. Nothing in that column is a link to follow.
 | ~~Q47~~ | ~~**Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#920, TG-29): the cost line on the tile is copper and bold on any order cheaper than counting up, and every sink has a sentence under the floor with the count and the cheapest line. Judged by no person. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
 | Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
-| Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |
+| ~~Q52~~ | ~~**Does Orbital adopt `gvb-save.js` for save-bar UI consistency?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#925, TG-30): one slot on the key Orbital always had, Export and Import on the sector map, `assets/js/gvb-save.js` itself unchanged. | 2 | prompt 21, the project's notes |
 
 ### Answered, kept here so they are not re-asked
 

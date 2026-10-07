@@ -107,6 +107,12 @@ button:focus-visible{outline:2px solid var(--goal);outline-offset:2px}
 .gen button:disabled{opacity:.5;cursor:default}
 .gen-status{font-family:"Space Mono",monospace;font-size:11.5px;color:var(--faint);flex-basis:100%}
 .gen-status.bad{color:#ff8a6b}
+/* the site's save bar, in this page's own button colours */
+.save{margin-top:14px;--gvb-btn-bg:rgba(20,26,58,.7);--gvb-btn-fg:var(--ink);
+  --gvb-btn-border:rgba(140,160,255,.3);--gvb-btn-radius:10px}
+/* by id: the bar's own sheet is injected after this one and says font:inherit */
+#saveBar button{font-family:"Space Mono",monospace;font-size:12px;letter-spacing:.08em;padding:7px 12px}
+.save .gvb-save-msg{font-family:"Space Mono",monospace;font-size:11.5px;color:var(--faint);flex-basis:100%}
 .card .row{display:flex;justify-content:space-between;align-items:center;margin-top:20px;gap:12px;flex-wrap:wrap}
 .legend{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 2px;font-size:12.5px;color:var(--dim)}
 .legend span{display:inline-flex;align-items:center;gap:7px}

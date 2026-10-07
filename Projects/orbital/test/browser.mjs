@@ -328,7 +328,7 @@ try {
     await shot(page, 'won');
 
     // #39: the DOM for what just happened, the save for what a reload survives.
-    t.ok(await onDisk(page) === '{"basics#0":1}', 'the save records the attempt count, not the stars',
+    t.ok(await onDisk(page) === '{"basics#0":1,"__v":2}', 'the save records the attempt count, not the stars',
       String(await onDisk(page)));
   });
 
@@ -357,7 +357,7 @@ try {
     t.ok(mid.mode === 'fly' && mid.x > mid.startX + 40, 'a launched probe keeps flying',
       `${mid.mode}, x ${mid.x} of ${mid.startX}`);
     await waitFor(page, () => mode === 'done', { timeout: 60000, polling: 250 });
-    t.ok(await onDisk(page) === '{"basics#0":1}',
+    t.ok(await onDisk(page) === '{"basics#0":1,"__v":2}',
       'and a second win at two attempts does not overwrite a better record',
       String(await onDisk(page)));
   });
@@ -376,7 +376,7 @@ try {
 
     const askedB = await answering(page, true, () => page.click('#btnWipe'));
     t.ok(askedB, 'saying yes goes through the same confirm');
-    t.ok(await onDisk(page) === '{}', 'the save is emptied, not deleted',
+    t.ok(await onDisk(page) === '{"__v":2}', 'the save is emptied, not deleted',
       String(await onDisk(page)));
     const wiped = await cells(page);
     t.ok(wiped.every(c => c.stars === ''), 'every star is gone from the grid without a reload');
@@ -384,6 +384,100 @@ try {
     const h = await hud(page);
     t.ok(h.stars === '☆☆☆', 'the HUD loses its stars too', h.stars);
     await shot(page, 'wiped');
+  });
+
+  // The site's save bar (assets/js/gvb-save.js), Export and Import on the
+  // sector map. The file never touches a disk here: the page's own download
+  // and file-picker calls are caught on the way out and fed on the way in, so
+  // what is read is the text the bar wrote and what is imported is that text.
+  await section('The save bar: a file out, and the same file back', async () => {
+    const OLD = fs.readFileSync(path.join(HERE, 'fixtures/progress-eb2806c.json'), 'utf8');
+    // boot() would re-stringify it; the old build's bytes go in as they are.
+    await page.evaluate(([k, v]) => localStorage.setItem(k, v), [KEY, OLD]);
+    await page.reload({ waitUntil: 'load', timeout: 45000 });
+    await page.waitForSelector('#btnStart');
+    await begin(page);
+    await page.keyboard.press('ArrowRight');   // a shot is aimed before the map goes up
+    await openMap(page);
+    const old = await cells(page);
+    t.ok(old[0].stars === '★★★' && old[1].stars === '★☆☆' && old[9].stars === '★☆☆' && old[10].stars === '★★☆' && old[20].stars === '★★★',
+      'a save from the build before the bar draws the stars it always did',
+      [0, 1, 9, 10, 20].map(i => old[i].stars).join(' '));
+    t.ok(await onDisk(page) === OLD, 'and loading it writes nothing', String(await onDisk(page)));
+
+    const bar = await page.evaluate(() => {
+      const el = document.getElementById('saveBar');
+      return { role: el.getAttribute('role'), name: el.getAttribute('aria-label'),
+        buttons: [...el.querySelectorAll('button')].map(b => `${b.dataset.gvb}:${b.textContent}:${b.title ? 'titled' : 'bare'}:${b.tabIndex}`).join(' | '),
+        live: el.querySelector('.gvb-save-msg').getAttribute('aria-live') };
+    });
+    t.ok(bar.role === 'group' && bar.name === 'Save file', 'the bar is a named group', `${bar.role} "${bar.name}"`);
+    t.ok(bar.buttons === 'export:Export save:titled:0 | import:Import save:titled:0',
+      'holding Export and Import and no second wipe button', bar.buttons);
+    t.ok(bar.live === 'polite', 'and what it says is read out');
+
+    // Catch the download: the bar makes a Blob and clicks a link to it.
+    await page.evaluate(() => {
+      window.__blobs = [];
+      const make = URL.createObjectURL;
+      URL.createObjectURL = b => { window.__blobs.push(b); return make.call(URL, b); };
+    });
+    // By keyboard: Space on the focused button. Until the sector map took the
+    // keys, the game's own handler swallowed it, so the button never fired, and
+    // launched the shot aimed above from behind the map.
+    await page.focus('#saveBar [data-gvb="export"]');
+    await page.keyboard.press('Space');
+    // The download is synchronous inside the click, so by the next evaluate it
+    // has happened or it never will.
+    const key = await page.evaluate(() => ({
+      files: window.__blobs.length, said: document.querySelector('#saveBar .gvb-save-msg').textContent, mode, attempts,
+    }));
+    t.ok(key.files === 1 && /^Saved to orbital-save-\d{4}-\d\d-\d\d\.json$/.test(key.said),
+      'Space on Export downloads the save and says so', `${key.files} file, "${key.said}"`);
+    t.ok(key.mode === 'aim' && key.attempts === 0, 'and launches nothing behind the map', `${key.mode}, ${key.attempts} attempts`);
+    if (!key.files) await page.click('#saveBar [data-gvb="export"]');   // the rest reads the file either way
+    const out = await page.evaluate(async () => ({ text: await window.__blobs[0].text() }));
+    const env = JSON.parse(out.text);
+    t.ok(env.format === 'gvb-save' && env.game === 'orbital' && env.version === 2 && JSON.stringify(env.state) === OLD,
+      'the file holds the campaign, key for key', JSON.stringify(env.state));
+
+    // Wipe, then bring the file back through the picker the bar opens.
+    await answering(page, true, () => page.click('#btnWipe'));
+    t.ok(await onDisk(page) === '{"__v":2}' && (await cells(page)).every(c => c.stars === ''), 'wiped, the map is bare');
+    const feed = text => page.evaluate(text => {
+      const click = HTMLInputElement.prototype.click;
+      HTMLInputElement.prototype.click = function () {
+        if (this.type !== 'file') return click.call(this);
+        HTMLInputElement.prototype.click = click;
+        const dt = new DataTransfer();
+        dt.items.add(new File([text], 'orbital-save.json', { type: 'application/json' }));
+        this.files = dt.files;
+        this.dispatchEvent(new Event('change'));
+      };
+    }, text);
+    const said = () => page.evaluate(() => document.querySelector('#saveBar .gvb-save-msg').textContent);
+    await feed(out.text);
+    await page.focus('#saveBar [data-gvb="import"]');
+    await page.keyboard.press('Enter');
+    await waitFor(page, () => document.querySelector('#saveBar .gvb-save-msg').textContent === 'Save loaded.', { timeout: 5000 });
+    const back = await cells(page);
+    t.ok(JSON.stringify(back) === JSON.stringify(old), 'Enter on Import puts every star and every lock back without a reload');
+    t.ok(await onDisk(page) === OLD.slice(0, -1) + ',"__v":2}', 'and the save on disk is the old one plus the version stamp',
+      String(await onDisk(page)));
+    await page.reload({ waitUntil: 'load', timeout: 45000 });
+    await page.waitForSelector('#btnStart');
+    await begin(page);
+    await openMap(page);
+    t.ok(JSON.stringify(await cells(page)) === JSON.stringify(old), 'which a reload reads back to the same map');
+
+    // A file that is not an Orbital save changes nothing and says why.
+    const before = await onDisk(page);
+    await feed(JSON.stringify({ format: 'gvb-save', game: 'signal-city', version: 1, state: { 'basics#3': 1 } }));
+    await page.click('#saveBar [data-gvb="import"]');
+    await waitFor(page, () => /not a valid orbital save/.test(document.querySelector('#saveBar .gvb-save-msg').textContent), { timeout: 5000 });
+    t.ok(await onDisk(page) === before && JSON.stringify(await cells(page)) === JSON.stringify(old),
+      "another game's file is refused, and the campaign is as it was", await said());
+    await shot(page, 'save-bar');
   });
 
   await section('The body sheet is what draws a body', async () => {
