@@ -103,7 +103,7 @@
       "powers": [ { "name": "Bellows Blast", "cost": 2, "cooldown": 3, "type": "aoe",
                     "save": "reflex", "dc": 21, "radius": 3,
                     "damage": "2d6", "damageType": "fire",
-                    "onFail": [ { "c": "persistent", "v": 1 } ],
+                    "onFail": [ { "c": "persistent", "formula": "1", "type": "fire" } ],
                     "flavor": "The Tyrant inhales through its ribs and the whole room becomes a forge." } ],
       "desc": "The hold's master smith, dead a century, still working. It never liked apprentices." }
   ],

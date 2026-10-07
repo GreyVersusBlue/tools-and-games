@@ -41,8 +41,10 @@ closed** (2026-10-02): a monster with a Stealth or Athletics number Hides and
 Trips, a critical Grapple restrains, Disarm aims at one weapon, Ready holds
 any weapon or a one-action spell, the level-up teaches a spell when a rank
 gains a slot, the core pack's feats reach 9th, and companions grow with the
-hero. `smoke.mjs` is at **1,642 passed, 0 failed** and the browser recipe was
-last at **73 of 73**.
+hero. **Persistent damage in a condition bucket works** (2026-10-07, #923):
+the Forge-Tyrant's Bellows Blast burns for what its data says and the validator
+refuses the entry that used to burn for nothing. `smoke.mjs` is at **1,694
+passed, 0 failed** and the browser recipe was last at **73 of 73**.
 
 ## What it is
 
@@ -277,15 +279,23 @@ Open and unclaimed. Add here rather than starting a new list.
 - No Ready, no Delay, and no reaction held for a specific trigger: the first
   trigger a combatant qualifies for takes its reaction for the turn (guide §13
   owns that one now).
-- **Bellows Blast writes a condition the Chronicle prints as "The undefined
-  afflicting Test ends."** The Forge-Tyrant's power carries
-  `"onFail": [{"c":"persistent","v":1}]`, and a `persistent` condition needs a
-  `dtype` and a `formula` — `addCond` stores it happily, `beginTurn` rolls
-  `undefined` damage off it, and the expiry line names nothing. Found by the
-  headless Embers fight this phase built to watch a reaction fire, and pinned
-  as-is rather than fixed inside Phase 3: it is a content bug in one pack and
-  the guide's §10 `powers` example does not show the persistent shape either,
-  so both want fixing together.
+- ~~**Bellows Blast writes a condition the Chronicle prints as "The undefined
+  afflicting Test ends."**~~ Fixed 2026-10-07 (#923, TG-29). The power carried
+  `"onFail": [{"c":"persistent","v":1}]`; every bucket handed `c`, `v` and
+  `dur` to `addCond`, which stored a condition with no formula and no type, so
+  it burned for 0 and ended under the name `undefined`. All five buckets go
+  through `applyCond` now, a persistent entry is
+  `{"c":"persistent","formula":"1d6","type":"fire"}`, the validator rejects one
+  with either half missing or a formula `Dice.roll` would not read, the schema
+  and guide §7, §10 and §12 show the shape, and Bellows Blast is persistent
+  fire 1 (the 1 its author wrote). Left: a spell's own `persistent` and
+  `critPersistent` still push straight onto the target, so they stack, skip
+  immunity and print no line when lit, unlike a bucket's; changing that
+  weakens two shipped spells and wants a balance look. And a shipped pack the
+  validator rejects ends `smoke.mjs` in `loadPack`'s throw at the scene-graph
+  group before the report prints, so the named line that caught it ("validates
+  against core") is never shown: exit 1 and the validator's message, but not a
+  FAIL line.
 - **A dead companion rises at the next fight.** `finish(true)` restores HP to
   every party member, dead or not (a companion who died at dying 4 leaves the
   field on 23 HP), and `start` sets `dead=false` and `dying=0` on the whole

@@ -52,7 +52,7 @@ const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LE
         treasureBudget, treasureIn, buy, sell, addCoins } = await mod("js/shop.js");
 const { SCENE_KINDS, sceneEdges, sceneGraph } = await mod("js/registry.js");
 const { sliceLiteral, packsIn } = await mod("js/corepack.js");
-const { SCHEMA, COLLECTIONS, extraRequired, fieldsOf } = await mod("js/schema.js");
+const { SCHEMA, COLLECTIONS, COND_BUCKETS, DICE_FORMULA, extraRequired, fieldsOf } = await mod("js/schema.js");
 const { OPENERS, OPENER_FLAGS, EXPLORATION, EXPLORATION_IDS, explorationById, activitiesFor, openerFor,
         DOWNTIME, downtimeById, restHP, TREAT_DC, TREAT_BONUS, treatWounds, treatDC,
         INCOME_BY_LEVEL, earnIncome, CRAFT_DAYS, craftCost, craftDaysToFree } = await mod("js/downtime.js");
@@ -4928,6 +4928,178 @@ group("guide §15 exists and says the standing rule");
   ok(guide.includes("packs/schema.json"), "…and names the schema file");
   ok(guide.includes("authoring.html"), "…and the workbench");
   ok(/the schema, the validator and the guide in one commit,\s+> or in none/.test(guide), "…and states the one-commit rule for a new field");
+}
+
+group("persistent damage out of a condition bucket (#923)");
+{
+  /* The Forge-Tyrant's Bellows Blast shipped as {"c":"persistent","v":1}. The
+     buckets handed c, v and dur to addCond, which stored a condition with no
+     formula and no type: it burned for 0 and ended as "The undefined
+     afflicting Testcase ends." Each of the five places a bucket is read is
+     driven below, because each is its own line in combat.js. */
+  const BURN = { c: "persistent", formula: "1d4", type: "fire" };
+  const LIT = [{ c: "persistent", formula: "1d4", dtype: "fire", dur: 99 }];
+  const said = (eng, re) => eng.events.some(ev => re.test(ev.text || ""));
+  const nothingUndefined = eng => !eng.events.some(ev => /undefined|NaN/.test(ev.text || ""));
+  const blast = (onFail, over = {}) => ({ name: "The Forge-Tyrant", x: 2, y: 1, hp: 62, hpMax: 62, ac: 21,
+    powers: [{ name: "Bellows Blast", cost: 2, cooldown: 3, type: "aoe", save: "reflex", dc: 21, radius: 3, damage: "2d6", damageType: "fire", onFail, cd: 0, ...over }],
+    attacks: [{ name: "Anvil Maul", bonus: 14, damage: "2d8+6", damageType: "bludgeoning", range: 1 }] });
+
+  // 1. A monster's power, the site the bug shipped at.
+  const { eng, hero, ally, foe } = kennel(blast([BURN]));
+  pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+  eq(eng.aiStep(foe).action, "power", "the Tyrant breathes on two heroes");
+  eq(hero.conditions, LIT, "a failed save leaves the hero burning: a formula and a type, no value");
+  eq(ally.conditions, [], "…and a hero who saved is not");
+  ok(said(eng, /Testcase takes <b>persistent fire<\/b> \(1d4 a turn\)\./), "…and the Chronicle says what was lit and for how much");
+  // The tick is the turn loop's own, at the top of the hero's turn.
+  const hp0 = hero.hp;
+  pin([4, 3], [20, 14]); eng.beginTurn(1);
+  eq(hp0 - hero.hp, 3, "at the top of the hero's turn it burns for the 1d4 rolled, here 3");
+  eq(hero.conditions, LIT, "…and a 14 on the flat check leaves it lit");
+  pin([4, 2], [20, 15]); eng.beginTurn(1);
+  eq([hp0 - hero.hp, hero.conditions], [5, []], "…it burns again for 2, and a 15 puts it out");
+  ok(said(eng, /The fire afflicting Testcase ends\./), "…with a line that names the fire");
+
+  // One fire at a time, by type.
+  const twice = kennel(blast([BURN, { c: "persistent", formula: "2d6", type: "fire" }, { c: "persistent", formula: "1", type: "bleed" }]));
+  pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+  twice.eng.aiStep(twice.foe);
+  eq(twice.hero.conditions.map(c => [c.formula, c.dtype]), [["1d4", "fire"], ["1", "bleed"]],
+    "a second fire on a hero already burning adds nothing, and a bleed beside it does");
+  // Immune: nothing is lit and the Chronicle says why. The blow is slashing
+  // and the persistent damage is bleed, so the line is not applyDamage's own.
+  {
+    const h = mk({ id: "h", side: "pc", name: "Cass", x: 1, y: 1, ac: 5, immunities: ["bleed"], char: { specials: [], resists: [] } });
+    const f = mk({ id: "f", name: "Ember", x: 2, y: 1 });
+    const e = arena([f, h]);
+    pin([20, 15], [6, 2]);
+    e.strikeMonster(f, h, { name: "Claw", bonus: 9, die: "1d6", traits: [], damageType: "slashing", onCrit: [{ c: "persistent", formula: "1d4", type: "bleed" }] });
+    eq([h.hp, h.conditions], [36, []], "a hero immune to bleed takes the claw and does not bleed");
+    ok(said(e, /Cass is immune to bleed\./), "…and is told so");
+  }
+  // The entry as it shipped, on a combatant no validator saw: nothing, quietly.
+  for (const bad of [{ c: "persistent", v: 1 }, { c: "persistent", formula: "1d4" }, { c: "persistent", type: "fire" }]) {
+    const old = kennel(blast([bad]));
+    pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+    old.eng.aiStep(old.foe);
+    eq(old.hero.conditions, [], `${JSON.stringify(bad)} lights nothing`);
+    // A 15 on the flat check is the roll that used to print the line.
+    pin([20, 15], [20, 15]); old.eng.beginTurn(1);
+    ok(nothingUndefined(old.eng), `…and ${JSON.stringify(bad)} leaves nothing behind to print \`undefined\``);
+  }
+  // Everything that is not persistent goes through as it always did.
+  const fear = kennel(blast([{ c: "frightened", v: 2, dur: 3 }, BURN]));
+  pin([20, 2], [6, 3], [6, 4], [20, 20], [6, 3], [6, 4]);
+  fear.eng.aiStep(fear.foe);
+  eq(fear.hero.conditions, [{ c: "frightened", v: 2, dur: 3 }, ...LIT], "frightened 2 for 3 rounds rides in the same bucket, value and duration kept");
+  // A critical failure with no bucket of its own takes the failure's.
+  const crit = kennel(blast([BURN]));
+  pin([20, 20], [6, 3], [6, 4], [20, 1], [6, 3], [6, 4]);
+  crit.eng.aiStep(crit.foe);
+  eq([crit.hero.conditions, crit.ally.conditions], [[], LIT], "a critical failure falls back to onFail and burns too");
+
+  // 2. A monster's attack, on a critical hit.
+  {
+    const h = mk({ id: "h", side: "pc", name: "Cass", x: 1, y: 1, ac: 5, char: { specials: [], resists: [] } });
+    const f = mk({ id: "f", name: "Ember", x: 2, y: 1 });
+    const e = arena([f, h]);
+    const maul = { name: "Brand", bonus: 9, die: "1d6", traits: [], damageType: "fire", onCrit: [BURN] };
+    pin([20, 15], [6, 2]); e.strikeMonster(f, h, maul);
+    eq(h.conditions, LIT, "a monster's critical hit with onCrit persistent fire lights the hero");
+    const h2 = mk({ id: "h", side: "pc", name: "Cass", x: 1, y: 1, ac: 22, char: { specials: [], resists: [] } });
+    const e2 = arena([f, h2]); f.mapCount = 0;
+    pin([20, 15], [6, 2]); e2.strikeMonster(f, h2, maul);
+    eq([h2.hp, h2.conditions], [38, []], "…and a plain hit does not");
+  }
+  // 3. A hero's weapon, on a critical hit.
+  {
+    const att = mk({ id: "hero", side: "pc", name: "Alis", x: 0, y: 0, char: { specials: [], resists: [] } });
+    const def = mk({ id: "t", name: "Ghoul", x: 3, y: 3, ac: 5, hp: 60, hpMax: 60 });
+    const e = arena([att, def]);
+    pin([20, 15], [8, 6]);
+    e.strike(att, def, weapon({ onCrit: [BURN] }));
+    eq(def.conditions, LIT, "a weapon's onCrit persistent fire lights the foe");
+    ok(said(e, /Ghoul takes <b>persistent fire<\/b>/), "…and says so");
+  }
+  // 4. A spell's save bucket.
+  {
+    const caster = Object.assign(heroCombatant(forge("wizard", { spells: { cantrips: [], r1: ["fear"], r2: [] } })), { x: 0, y: 0 });
+    const target = hound({ x: 1, y: 0, saves: { fort: 0, ref: 0, will: 0 } });
+    const e = stage([caster, target]);
+    const scorch = { id: "scorch", name: "Scorch", save: "will", traits: [], rankEffects: { 1: { onFail: [BURN], onSuccess: [{ c: "persistent", formula: "1", type: "fire" }] } } };
+    pin([20, 5]);
+    e.castAt(caster, { spell: scorch, castRank: 1, pool: "r1", cost: 2, kind: "target" }, target);
+    eq(target.conditions, LIT, "a spell's onFail persistent fire lights its target");
+  }
+  // 5. A boss flag, applied silently as Combat.start builds the board.
+  {
+    const enc = { name: "Lit", w: 8, h: 8, terrain: {}, pcStarts: [[0, 0]], foes: [{ monster: "bell-warden", x: 4, y: 4 }],
+      bossFlags: { doused: { applyToBoss: [BURN], log: "The oil catches." } } };
+    const e = fight(); pin([20, 10], [20, 10]);
+    begin(e, "lit", [heroCombatant(fighter())], { doused: true }, { encounters: { lit: enc } });
+    const boss = e.cbs.find(c => c.boss);
+    eq(boss.conditions.filter(c => c.c === "persistent"), LIT, "a boss flag's applyToBoss persistent fire opens the fight with the boss burning");
+    ok(!said(e, /takes <b>persistent/), "…silently, as a boss flag always was: the flag's own log line is the telling");
+    const e0 = fight(); pin([20, 10], [20, 10]);
+    begin(e0, "lit", [heroCombatant(fighter())], {}, { encounters: { lit: enc } });
+    eq(e0.cbs.find(c => c.boss).conditions, [], "…and without the flag it does not");
+  }
+
+  // The validator: the entry as it shipped is an error, wherever the bucket sits.
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const mon = over => ({ id: "m", name: "M", ac: 10, hp: 10, saves: {}, attacks: [], ...over });
+  const errs = pack => Validator.validate({ ...base, ...pack }, emptyRegistry());
+  const NEEDS = at => `${at}: a "persistent" condition needs a dice "formula" and a damage "type", as {"c":"persistent","formula":"1d6","type":"fire"}. "v" is not the damage: without the two it burns for nothing and the Chronicle cannot name it.`;
+  const power = onFail => ({ monsters: [mon({ powers: [{ name: "Blast", onFail }] })] });
+  eq(errs(power([{ c: "persistent", v: 1 }])), [NEEDS('monsters "m".powers[0].onFail[0]')],
+    "Bellows Blast as it shipped is rejected, with the path to the entry and the shape to write");
+  eq(errs(power([BURN])), [], "…and with a formula and a type it passes");
+  eq(errs(power([{ c: "frightened", v: 1 }, { c: "persistent", formula: "1d4" }])), [NEEDS('monsters "m".powers[0].onFail[1]')], "a formula with no type is rejected, at its own index");
+  eq(errs(power([{ c: "persistent", type: "fire" }])).length, 1, "…and a type with no formula");
+  eq(errs(power([{ c: "persistent", formula: "", type: "fire" }])).length, 1, "…and an empty formula");
+  eq(errs(power([{ c: "persistent", formula: "1d4", type: " " }])).length, 1, "…and a blank type");
+  eq(errs(power([{ c: "persistent", formula: 2, type: "fire" }])).length, 1, "…and a bare number, which the schema calls a string");
+  eq(["1", "1d4", "d6", "2d6+3", "1d4 + 1d6 + 2"].map(f => errs(power([{ c: "persistent", formula: f, type: "fire" }])).length), [0, 0, 0, 0, 0],
+    "every formula Dice.roll reads passes");
+  eq(["lots", "1d", "2d6-1", "1d4+", "fire"].map(f => errs(power([{ c: "persistent", formula: f, type: "fire" }])).length), [1, 1, 1, 1, 1],
+    "…and one it would read as 0, or as less than it says, does not");
+  // Every bucket name, at the depth it really sits.
+  eq(errs({ monsters: [mon({ attacks: [{ name: "A", bonus: 1, damage: "1d4", onCrit: [{ c: "persistent", v: 1 }] }] })] }),
+    [NEEDS('monsters "m".attacks[0].onCrit[0]')], "a monster attack's onCrit is read");
+  eq(errs({ monsters: [mon({ powers: [{ name: "B", onCritFail: [{ c: "persistent", v: 1 }], onSuccess: [{ c: "persistent", v: 1 }] }] })] }),
+    [NEEDS('monsters "m".powers[0].onCritFail[0]'), NEEDS('monsters "m".powers[0].onSuccess[0]')], "…and a power's other two buckets");
+  ok(errs({ companions: [{ id: "c", name: "C", attacks: [{ name: "A", bonus: 1, damage: "1d4", onCrit: [{ c: "persistent", v: 1 }] }] }] })
+    .includes(NEEDS('companions "c".attacks[0].onCrit[0]')), "…and a companion's attack");
+  ok(errs({ spells: [{ id: "s", name: "S", rankEffects: { 2: { onFail: [{ c: "persistent", v: 1 }] } } }] })
+    .includes(NEEDS('spells "s".rankEffects.2.onFail[0]')), "…and a spell's rank");
+  ok(errs({ adventures: [{ id: "a", name: "A", start: "one", scenes: { one: { title: "T", text: ["t"], choices: [{ label: "x", goto: "END" }] } },
+      encounters: { e: { bossFlags: { f: { applyToBoss: [{ c: "persistent", v: 1 }] } } } } }] })
+    .includes(NEEDS('adventures "a".encounters.e.bossFlags.f.applyToBoss[0]')), "…and a boss flag");
+  eq(COND_BUCKETS, ["onCrit", "onCritFail", "onFail", "onSuccess", "applyToBoss"], "five bucket names, and combat.js reads each of them once");
+  {
+    const code = fs.readFileSync(path.join(PROJECT, "js", "combat.js"), "utf8");
+    eq((code.match(/\.forEach\(c=>this\.applyCond\(/g) || []).length, 5, "…through applyCond, all five");
+    eq((code.match(/\.forEach\(c=>this\.addCond\(/g) || []).length, 1, "…and the one bucket still on addCond is the engine's own opener table");
+    ok(OPENERS && Object.values(OPENERS).every(o => (o.conditions || []).every(c => c.c !== "persistent")), "…which lights nobody");
+  }
+
+  // What ships.
+  const embers = readPack("embers-of-the-hold.json");
+  const tyrant = embers.monsters.find(m => m.id === "forge-tyrant");
+  eq(tyrant.powers[0].onFail, [{ c: "persistent", formula: "1", type: "fire" }], "Bellows Blast is persistent fire 1: the 1 its author wrote, where the engine reads it");
+  eq(Validator.validate(embers, Registry), [], "…and Embers of the Hold still validates");
+  const everyBucket = [];
+  const dig = node => { if (!node || typeof node !== "object") return;
+    for (const [k, v] of Object.entries(node)) { if (COND_BUCKETS.includes(k) && Array.isArray(v)) everyBucket.push(...v); dig(v); } };
+  dig(core); dig(advPack); fs.readdirSync(path.join(PROJECT, "packs")).filter(f => f.endsWith(".json") && !NOT_A_PACK.includes(f)).forEach(f => dig(readPack(f)));
+  ok(everyBucket.length >= 20, `the shipped packs carry condition bucket entries to read (${everyBucket.length})`);
+  eq(everyBucket.filter(c => c.c === "persistent").length, 1, "…one of them persistent, the Tyrant's");
+  ok(everyBucket.every(c => c.c !== "persistent" || (DICE_FORMULA.test(c.formula) && c.type)), "…and it has both halves");
+  // The contract in its three places (§15: schema, validator and guide in one commit).
+  const guide = fs.readFileSync(path.join(PROJECT, "content-authoring-guide.md"), "utf8");
+  eq(["formula", "type"].map(k => SCHEMA.$defs.condition.properties[k]?.type), ["string", "string"], "the schema's condition carries formula and type");
+  ok(guide.includes('{"c":"persistent","formula":"1d6","type":"fire"}'), "…and the guide shows the shape the validator's message names");
 }
 
 setDiceSource();

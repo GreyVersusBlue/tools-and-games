@@ -2004,6 +2004,14 @@
           "type": "integer",
           "minimum": 1,
           "description": "Rounds. Omit for the standard decrement; 99 lasts the whole fight."
+        },
+        "formula": {
+          "type": "string",
+          "description": "\"c\": \"persistent\" only, and required there: the dice formula it burns for each turn, e.g. 1d6. v and dur are not read."
+        },
+        "type": {
+          "type": "string",
+          "description": "\"c\": \"persistent\" only, and required there: the damage type."
         }
       },
       "additionalProperties": true

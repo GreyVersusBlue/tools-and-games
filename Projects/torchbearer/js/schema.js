@@ -57,6 +57,13 @@ export const KNOWN_REACTIONS = ["reactive-strike", "shield-block", "nimble-dodge
  */
 export const SCENE_KINDS = ["shop", "explore"];
 
+/** Every key that holds a condition bucket, wherever it sits in a pack: a
+ *  monster's or companion's attack, a monster's power, a spell's rank, a
+ *  boss flag (#923). The validator walks the whole pack for these names. */
+export const COND_BUCKETS = ["onCrit", "onCritFail", "onFail", "onSuccess", "applyToBoss"];
+/** What Dice.roll reads: whole numbers and NdS terms joined by +. */
+export const DICE_FORMULA = /^\s*(\d*d\d+|\d+)(\s*\+\s*(\d*d\d+|\d+))*\s*$/;
+
 /** Proficiency ranks, and the one special value `attacks.martial` may take. */
 export const PROF_RANKS = ["U", "T", "E", "M", "L"];
 
@@ -129,11 +136,14 @@ const EFFECT = {
   }
 };
 
-/** A condition bucket entry: `{"c":"frightened","v":2,"dur":3}`. */
+/** A condition bucket entry: `{"c":"frightened","v":2,"dur":3}`, or
+ *  `{"c":"persistent","formula":"1d6","type":"fire"}` (#923). */
 const COND = obj("One condition applied by a spell, attack or power.", {
   c: str("The condition id. Guide §12 lists the ones the engine does math for."),
   v: int("The condition's value.", 0),
-  dur: int("Rounds. Omit for the standard decrement; 99 lasts the whole fight.", 1)
+  dur: int("Rounds. Omit for the standard decrement; 99 lasts the whole fight.", 1),
+  formula: str("\"c\": \"persistent\" only, and required there: the dice formula it burns for each turn, e.g. 1d6. v and dur are not read."),
+  type: str("\"c\": \"persistent\" only, and required there: the damage type.")
 }, ["c"]);
 
 const DAMAGE = obj("One damage entry.", {

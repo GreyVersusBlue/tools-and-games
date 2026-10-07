@@ -901,6 +901,28 @@ export const CombatCore = {
     else cb.conditions.push({c:name,v,dur});
     if(!silent) this.log(`${esc(cb.name)} is <b>${name} ${v>1||["frightened","enfeebled","sickened","clumsy","stunned"].includes(name)?v:""}</b>.`);
   },
+  /* One entry of a condition bucket, as a pack writes it (#923). Every bucket
+     used to hand `c`, `v` and `dur` to addCond, and persistent damage is none
+     of those: it is a formula and a damage type. A power that wrote
+     {"c":"persistent","v":1} stored a condition with neither, the tick rolled
+     `undefined` for 0, and the Chronicle closed it with "The undefined
+     afflicting Sera ends." */
+  applyCond(cb,c,silent){
+    if(c.c==="persistent") return this.addPersistent(cb,c.formula,c.type,silent);
+    this.addCond(cb,c.c,c.v,c.dur,silent);
+  },
+  /* The validator refuses an entry with no formula or no type, so the first
+     line is for a combatant built by hand. One fire at a time: a second
+     Bellows Blast on a hero already burning adds nothing. A spell's own
+     `persistent` and `critPersistent` do not come through here and stack as
+     they always have. */
+  addPersistent(cb,formula,dtype,silent){
+    if(!formula||!dtype) return;
+    if((cb.immunities||[]).includes(dtype)){ if(!silent) this.log(`${esc(cb.name)} is immune to ${esc(dtype)}.`); return; }
+    if(cb.conditions.some(x=>x.c==="persistent"&&x.dtype===dtype)) return;
+    cb.conditions.push({c:"persistent",formula:String(formula),dtype,dur:99});
+    if(!silent) this.log(`${esc(cb.name)} takes <b>persistent ${esc(dtype)}</b> (${esc(String(formula))} a turn).`);
+  },
   decCond(cb,name,by){ const c=cb.conditions.find(x=>x.c===name); if(!c) return;
     c.v-=by||1; if(c.v<=0) cb.conditions=cb.conditions.filter(x=>x!==c); },
   buffSum(cb,target){
@@ -1118,7 +1140,7 @@ export const CombatCore = {
       if(deg===3){ dmg*=2;
         const deadly=(wpn.traits||[]).find(t=>t.startsWith("deadly"));
         if(deadly) dmg+=Dice.roll("1"+deadly.split("-")[1]).total;
-        (wpn.onCrit||[]).forEach(c=>this.addCond(def,c.c,c.v,c.dur));
+        (wpn.onCrit||[]).forEach(c=>this.applyCond(def,c));
       }
       this.applyDamage(def,dmg,wpn.damageType,att);
       if(precision) this.log(`(${precision} precision damage within.)`);
@@ -1141,7 +1163,7 @@ export const CombatCore = {
     this.seal(`${foe.name}: ${atk.name} vs ${t.name}`,d20,`${d20}+${mod} = ${total} vs AC ${acFinal}`,deg);
     if(deg>=2){
       let dmg=Dice.roll(atk.die).total;
-      if(deg===3){ dmg*=2; (atk.onCrit||[]).forEach(c=>this.addCond(t,c.c,c.v,c.dur)); }
+      if(deg===3){ dmg*=2; (atk.onCrit||[]).forEach(c=>this.applyCond(t,c)); }
       this.applyDamage(t,dmg,atk.damageType,foe);
       if(atk.sneak&&offGuard) this.applyDamage(t,Dice.roll(atk.sneak).total,atk.damageType,foe);
     }
@@ -1225,7 +1247,7 @@ export const CombatCore = {
     // boss flags
     if(enc.bossFlags){ Object.entries(enc.bossFlags).forEach(([flag,fx])=>{
       if(flags[flag]){ const boss=this.cbs.find(c=>c.boss);
-        if(boss)(fx.applyToBoss||[]).forEach(c=>this.addCond(boss,c.c,c.v,c.dur,true));
+        if(boss)(fx.applyToBoss||[]).forEach(c=>this.applyCond(boss,c,true));
         if(fx.log) this.log(fx.log); } }); }
     /* Unseen: the hero opens the fight Hidden from every foe, which Phase 4's
        detection already knows how to spend — the first Strike out of it forces
@@ -1713,7 +1735,7 @@ export const CombatCore = {
           else this.log(`${esc(t.name)} evades entirely.`);
         }
         const bucket= deg===0? eff.onCritFail||eff.onFail : deg===1? eff.onFail : deg===2? eff.onSuccess:null;
-        (bucket||[]).forEach(c=>this.addCond(t,c.c==="bane"?"bane":c.c,c.v,c.dur));
+        (bucket||[]).forEach(c=>this.applyCond(t,c));
         if(eff.persistent&&deg<=1) t.conditions.push({c:"persistent",formula:eff.persistent.formula,dtype:eff.persistent.type,dur:99});
         return;
       }
@@ -1812,7 +1834,7 @@ export const CombatCore = {
           const mult=[2,1,0.5,0][deg];
           if(mult>0) this.applyDamage(t,Math.floor(Dice.roll(pw.damage).total*mult),pw.damageType,foe,pw.name);
           const bucket=deg===0?pw.onCritFail||pw.onFail:deg===1?pw.onFail:null;
-          (bucket||[]).forEach(c=>this.addCond(t,c.c,c.v,c.dur));
+          (bucket||[]).forEach(c=>this.applyCond(t,c));
         });
         pw.cd=pw.cooldown; this.spend(pw.cost); this.renderAll(); return {action:"power",name:pw.name,wait:600};
       } }
