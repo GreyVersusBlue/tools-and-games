@@ -308,7 +308,11 @@ boxes in 54.1 s against 64.3 s. Collisions on eight boxes went from 11 to 14
 over six seeds; traced on 2026-10-05 (TG-29, #876), that is the count's own
 swing and not the follow, which reads 32 against 40 over thirty. The same
 sitting made the corridor again after a blackout (#872) and gave the green a
-corridor ends its yellow (#875); what is left is in the WISHLIST's Known gaps. **Worth carrying forward**:
+corridor ends its yellow (#875). The two things that were left are closed (#918, 2026-10-07): a corridor on a leg
+already green clears the rest of that green through a yellow and an all-red, a corridor's own leg gets a yellow
+when its hold ends, and a district's "lock" with every ambulance followed is one driver's trip-long wait
+reaching 120 s, which is the design. Rush Hour's corridor crash at 1.5 s of all-red (#641) was the missing
+yellow; whether the level should ship a shorter all-red is Devon's, in the WISHLIST's Known gaps. **Worth carrying forward**:
 `npm run check` counts 1,913 units in a fresh `git worktree` of `main` and
 1,920 in Devon's checkout with no diff, because `check-integrity.mjs` walks
 gitignored files too. The unit count is not a count of the site.

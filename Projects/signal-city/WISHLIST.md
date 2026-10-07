@@ -587,15 +587,46 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   was six seeds, not the follow (#876): over thirty, at #682's own
   commit, 40 without it and 32 with it, and blocks of six swing from 3
   to 13. A district is a sandbox with no target (#615), so nothing was
-  tuned for it. Two things are left. A corridor asked for on a leg that
-  is already green takes the rest of that phase to red with no yellow:
-  the opposing through gets no warning and the leg's permissive left
-  turns protected the same step. It wants a yellow and an all-red for
-  the movements it drops while the leg stays green, which the controller
-  has no stage for, and Rush Hour is tuned on the lights as they are
-  (#641). And a district locks more often with every ambulance followed:
-  5 of 30 seeds against 2 with the follow off and 1 with nobody called.
-  Not examined.
+  tuned for it. Both things that were left are closed (#918, 2026-10-07).
+  A corridor asked for on a leg already green took the rest of that
+  phase to red with no yellow, and turned the leg's permissive left
+  protected the same step; and a corridor whose hold ended went to red
+  itself with no yellow while the phase it had interrupted, red all
+  along, showed three seconds of one. Now the movements a corridor drops
+  get a yellow and an all-red on a clock of their own while its leg stays
+  green, every permissive left of that green stays one until that clock
+  has run, and the way out shows the corridor through its own yellow.
+  This was Rush Hour's crash: on the 22 s rule the ambulance's call
+  always lands on its own leg already green, and the "W left's arrow
+  into an E through" of #641 (seeds 2 and 5 at 1.5 s of all-red) was the
+  missing yellow, not the all-red. With the corridor called 2 s in, none
+  of the six seeds collide at 1, 1.5 or 2.5 s now. A corridor called
+  across a green on 0.5 s of all-red still does (seed 3, called 9 s in,
+  the same before and after), so the hint's advice holds; whether the
+  level should ship a shorter all-red so that the advice bites at the
+  setting it ships with is Devon's, and nothing in the level was changed.
+
+- A district "locks" more often with every ambulance followed, and that
+  is the design, not a fault in the follow (#918). Thirty seeds, eight
+  boxes, before the lights were fixed: 5 locks with the follow, 2 with
+  it off, 1 with nobody called; after: 3 (seeds 7, 10, 19), 0 and 1.
+  Every one of those locks, on both trees, is the same thing: one
+  driver's waiting, added up over the whole trip, reaching the 120 s of
+  `gridlockWait` (`sim.js`, the gridlock line in `step`). No box was
+  stalled (the longest stall in a box at any of them was 7.6 s against
+  the 30 that ends a run) and nothing waited on anything in a ring. On
+  city 7 it is car 32, a student crossing four boxes: 14 s at the first,
+  58 s at the second behind a corridor across it (7 s of the other
+  street's green, 25 s of corridor, then that street's green again in full,
+  since a corridor hands the box back to the phase it interrupted), 17 s
+  at the third, 31 s at the fourth behind the second ambulance's. Each
+  followed box costs its cross street up to a minute, and a trip that
+  meets two is over the line. Following every ambulance is simply
+  expensive, a district has no target (#615), and the 120 s was set for
+  one box. Not changed and worth a decision some day: whether a district
+  should count a trip's waiting against 120 s, and whether a corridor
+  should hand the box to the street that waited instead of the one it
+  interrupted (Rush Hour is tuned on the second).
 
 - A grid's edge legs end in grass inside the district: a box whose
   neighbour cell is empty has a 110 m spawning leg that stops where cars

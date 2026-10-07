@@ -298,6 +298,39 @@ group('the sandbox: Free Play grown into a district (M9, #614 to #618)');
     const u = runStraight(false);
     ok(u.done && [0, 1, 2].every(n => u.at[n] && !u.at[n].held), 'one nobody called is held for at none of them: the corridor is still the player\'s call', u.read);
   }
+  // Free Play grown to eight boxes on city 1, World seed 1, its ambulance
+  // called the step it spawns (#918). On the old lights this run had three
+  // kinds of jump in its first 100 s: at 72.5 s the follow into box 6
+  // found the car's leg already green and the opposite leg, E, went green
+  // to red in one step; at 83.1 s box 4's hold ended and its W leg went
+  // green to red with a car 7 m from the line at 13 m/s, while N and S,
+  // red all along, showed three seconds of yellow; at 92.0 s box 6's E leg
+  // did the same. Every head of every box is read every step.
+  {
+    const L = districtLevel(levelById('free-play'), 1, 8);
+    const w = new World(L, 1);
+    const bad = [];
+    let onGreen = 0, ended = 0;
+    let was = w.controllers.map(c => c.movements.map(m => c.head(m)));
+    let held = w.controllers.map(c => !!c.preemption);
+    for (let i = 0; i < 100 * 60; i++) {
+      w.step();
+      for (const c of w.cars) if (!c.done && !c.priority && c.archetype === 'emergency') w.requestPriority(c);
+      w.events.length = 0;
+      w.controllers.forEach((c, n) => {
+        const now = c.movements.map(m => c.head(m));
+        now.forEach((h, k) => {
+          if (h === 'red' && /^green/.test(was[n][k])) bad.push(`box ${n + 1} ${c.movements[k]} green to red at ${f1(w.t)} s`);
+          if (/^yellow/.test(h) && was[n][k] === 'red') bad.push(`box ${n + 1} ${c.movements[k]} red to yellow at ${f1(w.t)} s`);
+        });
+        if (!held[n] && c.preemption && c.preemption.done && c.stage === 'green') onGreen++;
+        if (held[n] && !c.preemption) ended++;
+        was[n] = now; held[n] = !!c.preemption;
+      });
+    }
+    ok(onGreen >= 1 && ended >= 2, 'eight boxes on city 1, the ambulance called: a corridor lands on a leg already green and two holds end inside 100 s', `${onGreen} on a green leg, ${ended} ended`);
+    ok(bad.length === 0, 'and no head in the district goes green to red or red to yellow in one step', bad.length ? `${bad.length}: ${bad.slice(0, 3).join('; ')}` : '96 heads a step');
+  }
 
   // the power comes back (#872). The ambulance, called at 20 s, is handed
   // to box 2 at 39.4 s and reaches its line at 46.2 s with the power on.

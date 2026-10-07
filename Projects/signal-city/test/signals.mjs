@@ -465,12 +465,120 @@ group('priority preemption');
   try { c.preempt(['N-T', 'E-T']); } catch (e) { threw = e.message; }
   ok(threw && /conflicts/.test(threw), 'a conflicting corridor is refused', threw);
 }
+// Every head change a controller makes over `seconds`, read step by step:
+// the ones no light may make, a green straight to red and a red to yellow.
+// `at` is called with the step number before each step.
+const ALL = movementsFor(LEGS);
+const jumps = (c, seconds, at = () => {}) => {
+  const bad = [];
+  let was = ALL.map(m => c.head(m));
+  for (let i = 0, n = Math.round(seconds / 0.1); i < n; i++) {
+    at(i);
+    const mid = ALL.map(m => c.head(m));   // a command changes heads too, not only a step
+    c.step(0.1);
+    const now = ALL.map(m => c.head(m));
+    for (const [a, b] of [[was, mid], [mid, now]]) b.forEach((h, k) => {
+      if (h === 'red' && /^green/.test(a[k])) bad.push(`${ALL[k]} green to red at ${c.t.toFixed(1)}`);
+      if (/^yellow/.test(h) && a[k] === 'red') bad.push(`${ALL[k]} red to yellow at ${c.t.toFixed(1)}`);
+    });
+    was = now;
+  }
+  return bad;
+};
 {
+  // a corridor on a leg already green (#918): the leg stays green, and the
+  // rest of that green is cleared round it, yellow and all-red, before the
+  // leg's left turns protected
   const c = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
   run(c, 2);
-  c.preempt(['N-T'], 4);
-  ok(c.stage === 'green' && c.head('N-T') === 'green', 'a corridor already green stays green with no clearance');
-  ok(c.head('S-T') === 'red', 'and the rest of that phase drops to red');
+  const N = ['N-T', 'N-L', 'N-R'];
+  const heads = () => ['N-T', 'N-L', 'S-T', 'S-L', 'S-R', 'E-T'].map(m => c.head(m)).join();
+  c.preempt(N, 20);
+  ok(c.stage === 'green' && c.head('N-T') === 'green' && c.current.name === 'priority', 'a corridor already green stays green with no clearance of its own');
+  ok(heads() === 'green,green,yellow,yellow,yellow,red', 'and the rest of that phase goes to yellow, not straight to red', heads());
+  ok(c.current.permissive.includes('N-L') && c.current.permissive.includes('S-L') && !c.current.movements.includes('S-L') && !c.isGreen('S-T') && c.timeToYellow('S-T') === Infinity, 'through it both lefts are still permissive ones (the dropped one yields to a corridor that is not stopping), and what was dropped is no longer a green', c.current.permissive.join());
+  run(c, 1.9);
+  ok(heads() === 'green,green,yellow,yellow,yellow,red', 'for the whole yellow', heads());
+  run(c, 0.2);
+  ok(heads() === 'green,green,red,red,red,red' && c.current.permissive.includes('N-L'), 'then red for the all-red, the left still permissive', heads());
+  run(c, 1);
+  ok(heads() === 'green,green-arrow,red,red,red,red' && !c.current.permissive.length && c.preemption.clear === null, 'and only then is the corridor\'s left a protected one', heads());
+  // a hold shorter than the clearance does not end under it
+  const h = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  run(h, 2);
+  h.preempt(N, 0.5);
+  run(h, 2.8);
+  ok(h.preemption && h.stage === 'green' && h.head('N-T') === 'green' && h.head('S-T') === 'red', 'a hold that has run out waits for the clearance it started', `${h.stage} ${h.head('N-T')} ${h.head('S-T')}`);
+  run(h, 0.3);
+  ok(!h.preemption && h.stage === 'yellow', 'and ends when it is over', h.stage);
+  // a clone keeps the clearance's own clock
+  const d = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  run(d, 2);
+  d.preempt(N, 20);
+  run(d, 1);
+  const k = d.clone();
+  run(k, 1.1);
+  ok(k.head('S-T') === 'red' && d.head('S-T') === 'yellow' && d.preemption.clear.t < 1.05, 'a clone taken in that yellow runs it out on its own clock', `${k.head('S-T')} ${d.head('S-T')}`);
+  // a second corridor that drops more while the first is still clearing:
+  // what is clearing keeps its yellow, and the rest joins it
+  const n = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  run(n, 2);
+  n.preempt(N, 20);
+  run(n, 0.5);
+  n.preempt(['N-T'], 20);
+  const mid = ['N-T', 'N-L', 'S-T'].map(m => n.head(m)).join();
+  run(n, 1.4);
+  const late = ['N-T', 'N-L', 'S-T'].map(m => n.head(m)).join();
+  run(n, 0.2);
+  const after = ['N-T', 'N-L', 'S-T'].map(m => n.head(m)).join();
+  run(n, 1.6);
+  ok(mid === 'yellow,yellow,yellow' && late === 'yellow,yellow,yellow' && after === 'yellow,yellow,red' && n.stage === 'green' && n.head('N-T') === 'green' && n.head('N-L') === 'red',
+    'a corridor narrowed while it clears takes the box through a yellow, and what was clearing keeps its own', `${mid} | ${late} | ${after} | ${n.stage} ${n.head('N-T')}`);
+  // protected lefts: a dropped arrow clears as an arrow
+  const p = new Controller({ lefts: true, timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  const li = p.phases.findIndex(q => q.movements.includes('N-L') && q.movements.includes('S-L') && !q.permissive.length);
+  p.requestPhase(li);
+  run(p, 5);
+  const lit = p.head('N-L');
+  p.preempt(['N-L'], 20);
+  ok(li >= 0 && lit === 'green-arrow' && p.head('N-L') === 'green-arrow' && p.head('S-L') === 'yellow-arrow', 'a protected left dropped by a corridor clears on a yellow arrow', `${lit} ${p.head('N-L')} ${p.head('S-L')}`);
+}
+{
+  // the way out (#918): the corridor's own leg gets the yellow when its
+  // hold ends. It used to read red at once, and the phase the corridor
+  // had interrupted, red all along, showed a yellow.
+  const c = new Controller({ timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  run(c, 2);
+  c.preempt(['E-T', 'E-R'], 6);
+  run(c, 9.05);
+  const heads = () => ['N-T', 'S-T', 'N-L', 'E-T', 'E-R', 'W-T'].map(m => c.head(m)).join();
+  ok(c.stage === 'yellow' && c.preemption === null && heads() === 'red,red,red,yellow,yellow,red', 'a corridor whose hold ends goes to yellow, and the phase it interrupted stays red', heads());
+  run(c, 2.1);
+  ok(c.stage === 'allred' && heads() === 'red,red,red,red,red,red', 'then the all-red', heads());
+  run(c, 1);
+  ok(c.stage === 'green' && c.current.name === 'N-S' && c.leaving === null && heads() === 'green,green,green,red,red,red', 'then the phase it interrupted', heads());
+}
+{
+  // and no head anywhere goes green to red, or red to yellow, through
+  // corridors asked for at every point of a cycle: across the green, on
+  // it, on it and then narrowed while it clears, across one that is
+  // clearing, and through each one's end
+  const mk = () => new Controller({ rules: [{ when: 'elapsed', seconds: 9, then: 'next' }], timing: { yellow: 2, allRed: 1, minGreen: 1 } });
+  const N = ['N-T', 'N-L', 'N-R'], E = ['E-T', 'E-L', 'E-R'];
+  let bad = [], asked = 0;
+  for (let at = 0; at < 130; at++) {
+    for (const second of [null, ['N-T'], E, ['S-T', 'S-L', 'S-R']]) for (const gap of [5, 12, 25]) {
+      const c = mk();
+      const b = jumps(c, 40, i => { if (i === at) { c.preempt(N, 7); asked++; } if (second && i === at + gap) { c.preempt(second, 7); asked++; } });
+      if (b.length) bad.push(`N at step ${at}${second ? `, ${second[0]} ${gap} steps on` : ''}: ${b[0]}`);
+      if (!second) break;
+    }
+  }
+  ok(asked > 2000 && bad.length === 0, 'no head goes green to red or red to yellow through a corridor asked for anywhere in the cycle', bad.length ? `${bad.length} runs, first ${bad[0]}` : `${asked} corridors`);
+  // a control: the reading does see a light that jumps
+  const fake = { t: 0, step(dt) { this.t += dt; }, head(m) { return m === 'N-T' ? (this.t < 0.45 ? 'green' : 'red') : m === 'E-T' ? (this.t < 0.45 ? 'red' : 'yellow') : 'red'; } };
+  const seen = jumps(fake, 1);
+  ok(seen.length === 2 && /N-T green to red/.test(seen[0]) && /E-T red to yellow/.test(seen[1]), 'and the reading names a light that does jump', seen.join('; '));
 }
 {
   // the way in (#875): the green a corridor ends gets its yellow and its
