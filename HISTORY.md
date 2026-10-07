@@ -1708,6 +1708,8 @@ Generator.
 
 **#915. Reserved: #886 to #915 are held for sessions on Huginn (the Selector loop); anyone else numbers from #916.**
 
+**#945. Reserved: #916 to #945 are held for sessions on Huginn (the Selector loop); anyone else numbers from #946.**
+
 # The log
 
 One paragraph per phase or batch, oldest first within each project. PR and
