@@ -482,7 +482,7 @@ stand-in cars, because two boxes in a row cannot tell them apart: that the
 lane is the one a path leaves its box in and not the one it came in by,
 and that the leg it feeds is checked (a grid is one lane each way).
 
-### R13. More board: a second pack (in progress: Market Ring and Boulevard shipped, HISTORY.md #782, #926)
+### R13. More board: a second pack (in progress: Market Ring and Boulevard shipped, HISTORY.md #782, #926, #928)
 
 **Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
 eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
@@ -504,33 +504,47 @@ that carries the eastbound platoon carries the westbound one. It ships on
 one clock (#639's rule), opens on Market Ring's star, unlocks the phases
 and the offset and no timing slider (a slider moves one box, and two boxes
 on different cycles have no offset), and its second star is `progression`
-at 30%. R1's two tables, six seeds, `node tools/calibrate.mjs boulevard
---baseline --hand`:
+at 30%. One car in ten turns right at each box and none left (#928; it
+shipped with nobody turning, #926, until the lane change at the join was
+fixed, #927). R1's two tables, six seeds, `node tools/calibrate.mjs
+boulevard --baseline --hand`, as it ships and, under each, as #926 shipped
+it with nobody turning:
 
 | | cleared (target 88) | average wait | stopping again | three stars | locks |
 | --- | --- | --- | --- | --- | --- |
-| nothing pressed | 93 to 135 | 7 to 8 s | 77 to 91% | 0 of 6 (one star on all six) | 0 |
-| the hand: 16 s, the best of its sweep | 110 to 128 | 3 to 7 s | 4 to 11% | 6 of 6 | 0 |
+| nothing pressed | 100 to 131 | 7 to 10 s | 75 to 91% | 0 of 6 (one star on all six) | 0 |
+| (nobody turning) | 93 to 135 | 7 to 8 s | 77 to 91% | 0 of 6 (one star on all six) | 0 |
+| the hand: 16 s, the best of its sweep | 107 to 134 | 5 to 6 s | 7 to 27% | 5 of 6 | 0 |
+| (nobody turning) | 110 to 128 | 3 to 7 s | 4 to 11% | 6 of 6 | 0 |
 
-The hand's sweep in stars over six seeds, 0 to 32 s by fours: 6, 6, 6, 16,
-**18**, 13, 8, 6, 6. A finer sweep (a scratch script, six seeds an offset):
-12 to 18 s each meet the lesson on all six, 19 and 20 s on four, 8 s on
-none. A player does not set the slider at load, so the same 16 s was set
-late through `World.setOffset`: 20 s and 30 s into the run it meets the
-lesson on six seeds of six, 45 s in on four, a minute in on none, because
-the cars that stopped twice before the wave count. The hint says to set it
-early. It is not hard mode: R3's test (#641) wants no input clean on six
-seeds, and no input collides on seeds 4, 5 and 6. `test/stars.mjs` pins the
+The hand's sweep in stars over six seeds, 0 to 32 s by fours: 6, 6, 6, 15,
+**17**, 16, 8, 6, 6 (nobody turning: 6, 6, 6, 16, 18, 13, 8, 6, 6). The
+star the hand loses is seed 1's, to a crash in the east box at 220 s, a
+side-street car through its red into a boulevard car on its green; no
+crash on any of the six is within 1.5 s of a lane change. A finer sweep (a
+scratch script, six seeds an offset): 12, 14, 16, 18 and 20 s each meet
+the lesson on all six, 0 and 8 s on none, and three stars on six seeds are
+3, 6, 5, 4 and 4 of six, against 4, 4, 6, 2 and 3 with nobody turning: the
+boxes crash at about the same rate either way (13 collisions in those 30
+runs against 14), on different seeds. With nobody turning the same 16 s
+set late through `World.setOffset` met the lesson on six seeds of six 20 s
+and 30 s into the run, 45 s in on four, a minute in on none, because the
+cars that stopped twice before the wave count; that was not measured again
+with the turns. The hint says to set it early. It is not hard mode: R3's
+test (#641) wants no input clean on six seeds, and no input collides on
+seeds 3, 4 and 5. `test/stars.mjs` pins the
 table (WAVES), `test/wave.mjs` the geometry, `test/scoring.mjs` the data
 and one seed each way, `test/browser.mjs` the card, the tab and the slider.
 
-**Nobody turns on Boulevard, and that is a workaround** (Known gaps, the
-lane change at the join). **NOBODY HAS PLAYED IT.** What a person should
+**NOBODY HAS PLAYED IT**, with the turns or without. What a person should
 look at first: whether 30 to 45 s is long enough to read the diagram and
 find the offset on a first play, or whether the bar wants to be looser or
-the run longer; then whether a boulevard where no car turns reads as a
-street; then the hint, which says "half the cycle" and stops short of the
-number.
+the run longer; then whether one seed in six losing its third star at the
+right offset to a crash the player did not cause is fair (a longer all-red
+did not end it: 3 s with the boulevard's green cut to 12 read one crash in
+six at 14 s and one at 16 s); then the hint, which says "half the cycle"
+and stops short of the number. Nobody turns left: a left across two lanes
+on a two-phase plan was two clean seeds of six in #926's sweep.
 
 ### R14. Endless keeps a day that was left halfway: done (HISTORY.md #783)
 

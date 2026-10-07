@@ -76,7 +76,7 @@ group('the level pack');
   const trip = bv.network.spacing / WAVE.speed, cycle = wb.controllers[0].cycleLength();
   ok(cycle === 33 && wb.controllers[1].cycleLength() === 33 && Math.abs(cycle / 2 - trip) < 1, 'its plan is a 33 s cycle at both boxes, and the 15.7 s between them is half of it to the second', `${cycle} s, trip ${trip.toFixed(1)} s`);
   ok(wb.controllers.every(c => c.offset === 0) && bv.unlocks.join() === 'phases,offset' && bv.controller.timing.allRed === 2.5, 'it ships both boxes on one clock, with the offset and no timing sliders (a slider on one box would give the two different cycles), on 2.5 s of all-red', `${bv.unlocks.join()}, ${bv.controller.timing.allRed} s`);
-  ok(bv.turns.T === 1 && !bv.turns.L && !bv.turns.R && Array.isArray(bv.demand) && bv.demand.length === 2 && bv.mode === 'soft', 'nobody turns on it (the lane change at the join is not safe yet, WISHLIST Known gaps), demand is per box, and it is soft', JSON.stringify(bv.turns));
+  ok(bv.turns.T === 0.9 && bv.turns.R === 0.1 && !bv.turns.L && Array.isArray(bv.demand) && bv.demand.length === 2 && bv.mode === 'soft', 'one car in ten turns right on it and none left (#928), demand is per box, and it is soft', JSON.stringify(bv.turns));
   let bad = null;
   for (const l of LEVELS) { try { new World(l, 1); } catch (e) { bad = `${l.id}: ${e.message}`; } }
   ok(!bad, 'every level builds a world', bad || '');
@@ -382,7 +382,9 @@ group('the lesson decides a star (R2)');
   ok(share(b16.w) <= 0.3 && b16.r.lesson.met && b16.r.stars === 3, 'with the east box 16 s behind the platoons run through, the lesson is met and the run three-stars', `${pc(share(b16.w))}, ${starString(b16.r.stars)}`);
   ok(b16.east <= 0.3 && b16.west <= 0.3, 'and that is a wave both ways: the eastbound share and the westbound share are each under the bar', `east ${pc(b16.east)}, west ${pc(b16.west)}`);
   ok(/^\d+% of the cars one box sent on stopped again at the next, against 30%$/.test(b0.r.reasons.at(-1)), 'its reason line gives the share against 30%', b0.r.reasons.at(-1));
-  ok(b0.w.stats.laneChanges === 0 && b0.w.stats.laneGiveUps === 0 && b16.w.stats.laneChanges === 0 && b16.w.stats.collisions === 0, 'nobody changes lanes on it, and the 16 s run has no collision', `${b0.w.stats.laneChanges} and ${b16.w.stats.laneChanges} lane changes, ${b16.w.stats.collisions} collisions`);
+  const moved = w => w.stats.laneChanges + w.stats.laneGiveUps, rights = w => w.events.filter(e => e.kind === 'handoff' && /-R$/.test(e.to)).length + w.events.filter(e => e.kind === 'lane' && /-R$/.test(e.to)).length;
+  ok(moved(b0.w) > 0 && b16.w.stats.laneChanges > 0 && rights(b16.w) > 0 && rights(b16.w) < b16.w.stats.handoffs / 4, 'some of the cars handed on turn right at the next box, and the ones in the inner lane change lanes for it or give up (#928)', `${rights(b0.w)} and ${rights(b16.w)} rights of ${b0.w.stats.handoffs} and ${b16.w.stats.handoffs} handed on; ${b0.w.stats.laneChanges} and ${b16.w.stats.laneChanges} lane changes, ${b0.w.stats.laneGiveUps} and ${b16.w.stats.laneGiveUps} given up`);
+  ok(b16.w.stats.collisions === 0, 'and the 16 s run has no collision', `${b16.w.stats.collisions} collisions`);
   // walks: the World's longest served call, against its own walk events
   const l4 = levelById('crossing');
   const w4 = new World(withAuto(l4), 3).run(120);

@@ -482,7 +482,7 @@ try {
     await new Promise(r => setTimeout(r, 300));
     const b1 = await page.evaluate(() => { const w = window.__signalCity.world, s = w.stats; return { offset: w.offsetOf(), owed: w.controllers[1].shift, note: document.getElementById('offsetNote').textContent, handoffs: s.handoffs, lanesUsed: new Set(w.cars.filter(c => !c.done && (c.path.entry === 'W' || c.path.entry === 'E')).map(c => c.path.lane)).size, laneChanges: s.laneChanges, lock: s.gridlock }; });
     ok(b1.offset === 16 && Math.abs(b1.owed) < 1e-6 && /16 s behind the west one \(33 s cycle\)\.$/.test(b1.note), 'the slider at 16 puts the east box 16 s behind, paid in full two minutes on', b1.note);
-    ok(b1.handoffs > 15 && b1.lanesUsed === 2 && b1.laneChanges === 0 && !b1.lock, 'two minutes in, cars have crossed between the boxes in both lanes, none changed lanes, and nothing locked', `${b1.handoffs} handoffs, ${b1.laneChanges} lane changes`);
+    ok(b1.handoffs > 15 && b1.lanesUsed === 2 && !b1.lock, 'two minutes in, cars have crossed between the boxes in both lanes and nothing locked', `${b1.handoffs} handoffs, ${b1.laneChanges} lane changes`);
     await shot(page, 'boulevard');
     await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.slot.save(g.save); g.buildLevelSelect(); }, before);
     ok(errors.length === 0, 'no page errors on Boulevard', errors.join(' | '));
