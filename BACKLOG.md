@@ -2664,8 +2664,9 @@ answered by locked #523 while shipping the causeway: the first. The hill's
 climb follows the trail's arc-length height, read by z, and the trail itself
 does not move. Re-anchoring `trailYof` would have moved every altitude term in
 the piece with it; widening the bench would have kept the drop and argued with
-the blaze posts. Blue Hour has two open questions left, Q45 and Q46 (the
-phantom's pan), neither blocking anything ranked.
+the blaze posts. Blue Hour has one open question left, Q45 (Q46, the
+phantom's pan, was answered the way #634 had built it), and it blocks nothing
+ranked.
 
 **Struck: Q36**, "is a character builder welcome?", answered yes by locked
 #304 while shipping Numina Phase 3's first increment, on the one condition
@@ -2761,9 +2762,9 @@ live. Nothing in that column is a link to follow.
 | Q39 | **Should `characters.html` adopt `gvb-save.js` for in-browser editing?** Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. Its ranked row was retired here on 2026-09-24 (#628); `Pathfinder/tests/showcase.test.mjs` fails on the first line of the feature, so a yes means narrowing that check. | 4 | prompt 03, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | Q40 | **Does Aphelion ever need to run on a tablet or phone?** Four rounds re-derived "no evidence yet" from scratch rather than asking. The answer decides whether a touch/gamepad input scheme gets built. Nothing in the game reads a touch or a gamepad today, so on a phone without a keyboard it can be looked at and not played. Its ranked row was retired here on 2026-09-24 (#629); `Projects/aphelion/test/desktop-input.mjs` fails on the first line of the feature, so a yes means deleting the rule it trips. | 4 | prompt 04, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
-| Q43 | **If Golden Hour's night proves popular, should the owl hunt?** One swoop over the dunes, no kill shown; and the fireflies drifting toward the fire when it burns. | 1 | the project's notes |
+| ~~Q43~~ | ~~**If Golden Hour's night proves popular, should the owl hunt?**~~ Struck — answered by Devon, 2026-10-05: yes, one swoop, no kill shown, and the fireflies drift toward the fire. It was already built that way on 2026-09-24 (#633, PR #395, `js/creatures/nightpaths.js`); nothing moved. The timings are still unwatched, which is Golden Hour's item 1. | 1 | the project's notes |
 | Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
-| Q46 | **Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?** The second changes the eyes' drift and the shape's head-flip too, since all three read the same function — an argument for doing it deliberately or not at all. | 1 | prompt 24, session 6 |
+| ~~Q46~~ | ~~**Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?**~~ Struck — answered by Devon, 2026-10-05: point it at the fall line, knowing the eyes' drift and the head-flip move with it. It was already built that way on 2026-09-24 (#634, PR #395: `const downhillAt = fallLine` in `js/dread.js`); nothing moved. | 1 | prompt 24, session 6 |
 | Q47 | **Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?** The tooltip already explains the cheap recipe. A design question, not a bug. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
 | Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |

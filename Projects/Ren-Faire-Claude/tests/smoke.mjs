@@ -4088,6 +4088,78 @@ function makeMemoryStorage() {
       }
     }
   }
+  // --- every act has one, and the rules each row is written to (#919) ---
+  // Phase 3 shipped arcs for eight of the twenty-eight acts, so twenty of
+  // them could go Sour or Devoted and nothing ever happened. These read the
+  // table against the catalog; the last block plays every answer.
+  {
+    const without = [...allActIds].filter(id => !subjects.includes(id));
+    assert(without.length === 0, `every performer and every vendor has an arc (none: ${without.join(', ') || 'nobody'})`);
+    assert(ARCS.length === PERFORMERS.length + VENDORS.length, `one arc an act (${ARCS.length} arcs, ${PERFORMERS.length + VENDORS.length} acts)`);
+    // resolveBeat re-prices a vendor's contract on its own branch; with no
+    // vendor row carrying a rate, deleting that branch left this suite green.
+    assert(ARCS.some(a => VENDORS.some(v => v.id === a.subject) && a.beats.some(b => b.choices.some(c => 'rateMult' in c))), 'a vendor has an answer that moves its rate, so the vendor side of the re-pricing is played below');
+    const titles = ARCS.flatMap(a => a.beats.map(b => b.title));
+    assert(new Set(titles).size === titles.length, 'no two beats share a title');
+    const texts = ARCS.flatMap(a => a.beats.map(b => b.text));
+    assert(new Set(texts).size === texts.length, 'or a paragraph');
+    for (const arc of ARCS) {
+      const isPerformer = PERFORMERS.some(p => p.id === arc.subject);
+      const act = isPerformer ? PERFORMERS.find(p => p.id === arc.subject) : VENDORS.find(v => v.id === arc.subject);
+      assert(arc.beats.filter(b => b.when === 'sour').length === 1 && arc.beats.filter(b => b.when === 'devoted').length === 1 && arc.beats.length === 2,
+        `${arc.id} has exactly one beat at each edge, so pendingBeats never shows two cards for one act`);
+      for (const beat of arc.beats) {
+        assert(beat.choices.some(c => !('cash' in c)), `${beat.id} has an answer that costs nothing, since resolveBeat does not check the till`);
+        if (beat.when === 'sour') assert(beat.choices.some(c => c.relationship > 0), `${beat.id} has an answer that mends the mood`);
+        for (const c of beat.choices) {
+          if ('cash' in c) assert(c.cash < 0 && -c.cash <= 2 * act.cost, `${beat.id}/${c.id} costs the house money, and no more than two days of the act’s listed rate ($${-c.cash} against $${act.cost})`);
+          if ('cash' in c) assert(c.label.includes(`($${-c.cash}`), `${beat.id}/${c.id}’s label says its price ($${-c.cash})`);
+          else assert(!/\(\$\d/.test(c.label), `${beat.id}/${c.id} costs nothing and its label names no price`);
+          // A change the overlay would swallow is a button that lies.
+          if (c.quirk === null) assert(act.quirk !== null, `${beat.id}/${c.id} sheds a quirk only from an act that has one`);
+          if (typeof c.quirk === 'string') assert(act.quirk !== c.quirk, `${beat.id}/${c.id} hands over a quirk the act does not already have`);
+          const key = isPerformer ? 'popularity' : 'quality';
+          if (key in c) assert(c[key] !== 0 && act[key] + c[key] >= 1 && act[key] + c[key] <= 10, `${beat.id}/${c.id} moves ${key} by its whole amount inside 1 to 10 (${act[key]} ${c[key] > 0 ? '+' : ''}${c[key]})`);
+          if ('rateMult' in c) assert(c.rateMult !== 1 && c.rateMult >= 0.8 && c.rateMult <= 1.5, `${beat.id}/${c.id}’s rate change is a real one and between a fifth off and half again (${c.rateMult})`);
+        }
+      }
+    }
+    // Played: every act, both edges, every answer, from a contract at the
+    // listed rate. What the row says is what the save and the overlay hold.
+    let played = 0;
+    for (const arc of ARCS) {
+      const isPerformer = PERFORMERS.some(p => p.id === arc.subject);
+      const act = isPerformer ? PERFORMERS.find(p => p.id === arc.subject) : VENDORS.find(v => v.id === arc.subject);
+      const id = arc.subject;
+      for (const beat of arc.beats) {
+        const at = beat.when === 'sour' ? 10 : 90;
+        const base = { ...State.createInitialState(), cash: 5000, relationships: { [id]: at } };
+        if (isPerformer) { base.roster = [id]; base.contracts = { [id]: { contractId: 'open', dailyCost: act.cost, daysRemaining: 0 } }; }
+        else { base.hiredVendors = [id]; base.vendorContracts = { [id]: { contractId: 'open', dailyCost: act.cost, daysRemaining: 0 } }; }
+        const pend = pendingBeats(base);
+        assert(pend.length === 1 && pend[0].beat.id === beat.id && pend[0].subjectName === act.name, `${act.name} at ${at} has ${beat.id} pending and nothing else`);
+        for (const c of beat.choices) {
+          const r = State.resolveBeat(base, beat.id, c.id);
+          const n = r.state;
+          const seen = isPerformer ? performerFor(n, id) : vendorFor(n, id);
+          const contract = (isPerformer ? n.contracts : n.vendorContracts)[id];
+          const key = isPerformer ? 'popularity' : 'quality';
+          const good = !r.error
+            && n.arcBeats[beat.id] === c.id && Object.keys(n.arcBeats).length === 1
+            && n.cash === 5000 + (c.cash || 0)
+            && n.relationships[id] === at + (c.relationship || 0)
+            && seen[key] === act[key] + (c[key] || 0)
+            && (isPerformer ? seen.quirk === ('quirk' in c ? c.quirk : act.quirk) : true)
+            && traitRateMult(n, id) === (c.rateMult || 1)
+            && contract.dailyCost === Math.round(act.cost * (c.rateMult || 1))
+            && pendingBeats(n).every(p => p.beat.id !== beat.id);
+          assert(good, `${beat.id}/${c.id} does what its row says and no more: cash, mood, ${key}, quirk, rate, and the beat is answered`);
+          played++;
+        }
+      }
+    }
+    assert(played === ARCS.reduce((n, a) => n + a.beats.reduce((m, b) => m + b.choices.length, 0), 0) && played >= 2 * 2 * ARCS.length, `every answer in the table was played (${played})`);
+  }
   assert(beatById('ysolde_sour').arc.id === 'arc_ysolde' && beatById('nope') === null, 'beatById finds a beat by id and returns null for a stranger');
   assert(actNameOf('perf_jouster_2') === 'Dame Ysolde Ironback' && actNameOf('vend_glass') === "Gaffer's Glass" && actNameOf('zzz') === 'zzz', 'actNameOf names a performer, a vendor, or echoes an unknown id');
 
@@ -4434,7 +4506,10 @@ function makeMemoryStorage() {
     assert(tags.some(t => t.classList.contains('mood-sour') && /Sour/.test(t.textContent)), 'the cider’s reads Sour');
     assert(tags.some(t => t.classList.contains('mood-settled')), 'and Old Nettle’s reads Settled');
     const cards = [...doc.querySelectorAll('.beat-card')];
-    assert(cards.length === 1 && cards[0].dataset.beat === 'ysolde_devoted', 'the one pending beat is a card (the cider has no arc at Sour, since vend_cider has no arc at all)');
+    // Every act has an arc since #919, so the Sour cider is a card too; Old
+    // Nettle has one and is Settled, which is no beat's tier.
+    assert(cards.length === 2 && cards[0].dataset.beat === 'ysolde_devoted' && cards[1].dataset.beat === 'cider_sour', `each pending beat is a card, a performer’s and a vendor’s, and a Settled act has none (${cards.map(c => c.dataset.beat).join(', ')})`);
+    assert(/watering the cider/.test(cards[1].textContent) && /Hollow Barrel Cider/.test(cards[1].textContent) && cards[1].querySelectorAll('[data-action="resolveBeat"]').length === 2, 'the vendor’s card names its beat and its stall and has its own two buttons');
     assert(/Ironback rides/.test(cards[0].textContent) && /Dame Ysolde Ironback/.test(cards[0].textContent), 'the card names the beat and the act');
     const choiceBtns = cards[0].querySelectorAll('[data-action="resolveBeat"]');
     assert(choiceBtns.length === 2 && [...choiceBtns].every(b => b.title.length > 0), 'each choice is a button whose tooltip says what it moves');
@@ -4443,11 +4518,18 @@ function makeMemoryStorage() {
     const after = saved(storage);
     assert(after.arcBeats.ysolde_devoted === 'champion' && after.actTraits.perf_jouster_2.rateMult === 1.15, 'clicking it resolves the beat into the save');
     assert(after.contracts.perf_jouster_2.dailyCost === Math.round(costBefore * 1.15), 'and re-prices her contract');
-    assert(!doc.querySelector('.beat-card'), 'the card is gone');
+    const left = [...doc.querySelectorAll('.beat-card')];
+    assert(left.length === 1 && left[0].dataset.beat === 'cider_sour', 'her card is gone and the cider’s is still there');
     const row = [...doc.querySelectorAll('.roster-table tr')].find(tr => /Ysolde/.test(tr.textContent));
     assert(row && row.textContent.includes(`$${after.contracts.perf_jouster_2.dailyCost.toLocaleString()}/day`), 'the roster row shows the new rate');
     assert(row && row.querySelector('.stars').textContent.length === 5, 'and five stars for a draw of 10');
     assert(doc.querySelector('#content .warn') && /A bigger draw, at a bigger rate/.test(doc.querySelector('#content .warn').textContent), 'the flash carries the choice’s note');
+    const cashBefore = after.cash;
+    assert(click(doc, '[data-action="resolveBeat"][data-id="cider_sour"][data-choice="cask"]'), 'the vendor’s choice is clickable');
+    const after2 = saved(storage);
+    assert(after2.arcBeats.cider_sour === 'cask' && after2.cash === cashBefore - 220 && after2.relationships.vend_cider === 30, 'and it pays for the cask and mends the mood in the save');
+    assert(!doc.querySelector('.beat-card'), 'and then no card is left');
+    assert(/The next cask is honest/.test(doc.querySelector('#content .warn').textContent), 'and the flash carries the cider’s note now');
   }
 
   // --- negotiating an offer, through the change listener ---
