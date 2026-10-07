@@ -634,6 +634,7 @@ await (async () => {
     ["Projects/Ren-Faire-Claude/", "Faire Weekend"],
     ["Projects/golden-hour-beach/", "Golden Hour"],
     ["Projects/signal-city/", "Signal City"],
+    ["Projects/orbital/", "Orbital"],
   ];
 
   const SKIP = ["node_modules", "/.git/", "/libs/", "assets/js/gvb-save"];
