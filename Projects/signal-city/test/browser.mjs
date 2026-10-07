@@ -106,7 +106,7 @@ try {
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
-    ok(sel.cards.length === 12 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Market Ring,Boulevard,Cross Town,Free Play', 'with twelve cards, First Light first, Market Ring, Boulevard and Cross Town after Main Street (R13) and Free Play last', sel.cards.join(', '));
+    ok(sel.cards.length === 13 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Market Ring,Boulevard,Cross Town,Lights Out,Free Play', 'with thirteen cards, First Light first, Market Ring, Boulevard, Cross Town and Lights Out after Main Street (R13) and Free Play last', sel.cards.join(', '));
     ok(sel.endless, 'and after them Endless, shut (M9)');
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     const camp = await page.evaluate(() => ({
@@ -117,8 +117,8 @@ try {
       wallet: document.getElementById('wallet').textContent,
       shop: [...document.querySelectorAll('#shopList .shop-item')].map(e => `${e.dataset.item}:${e.querySelector('.buy').disabled ? 'off' : 'on'}`).join(),
     }));
-    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,cross-town' && camp.disabled === 10,
-      'a fresh save has ten cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
+    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,cross-town,lights-out' && camp.disabled === 11,
+      'a fresh save has eleven cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
     ok(camp.next === 'first-light' && camp.shut === 'A star on First Light opens it.', 'First Light is marked next and the Stem says what opens it', `${camp.next}; ${camp.shut}`);
     ok(camp.wallet === '0 to spend' && camp.shop === 'lefts:off,split:off,sensors:off,roundabout:off', 'the shop has four things on it and nothing to spend', `${camp.wallet}; ${camp.shop}`);
     await shot(page, 'select');
@@ -493,7 +493,7 @@ try {
     const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); delete g.save.levels['cross-town']; g.save.levels.boulevard = { stars: 0, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
     const card = () => page.evaluate(() => { const c = document.querySelector('.level-card[data-level="cross-town"]'); return c && { shut: c.classList.contains('locked') && c.disabled, why: c.querySelector('.lv-shut')?.textContent || '', lesson: c.querySelector('.lv-lesson')?.textContent || '', prev: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
     const shut = await card();
-    ok(shut && shut.shut && shut.why === 'A star on Boulevard opens it.' && shut.prev === 'boulevard' && shut.after === 'free-play', 'with no star on Boulevard its card is shut, after Boulevard and before Free Play, and says what opens it', JSON.stringify(shut));
+    ok(shut && shut.shut && shut.why === 'A star on Boulevard opens it.' && shut.prev === 'boulevard' && shut.after === 'lights-out', 'with no star on Boulevard its card is shut, after Boulevard and before Lights Out, and says what opens it', JSON.stringify(shut));
     await page.evaluate(() => { const g = window.__signalCity.game; g.save.levels.boulevard.stars = 1; g.slot.save(g.save); g.buildLevelSelect(); });
     const open = await card();
     ok(open && !open.shut && open.lesson === 'second star: the ambulance on time, on its corridor', 'one star on Boulevard opens it, and the card names its second star', JSON.stringify(open));
@@ -535,6 +535,52 @@ try {
     await shot(page, 'cross-town');
     await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.slot.save(g.save); g.buildLevelSelect(); }, before);
     ok(errors.length === 0, 'no page errors on Cross Town', errors.join(' | '));
+  });
+
+  await section('Lights Out: the wave is in, the power takes it, the slider brings it back (R13, #933)', async () => {
+    await page.keyboard.press('Escape');
+    const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); delete g.save.levels['lights-out']; g.save.levels['cross-town'] = { stars: 0, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
+    const card = () => page.evaluate(() => { const c = document.querySelector('.level-card[data-level="lights-out"]'); return c && { shut: c.classList.contains('locked') && c.disabled, why: c.querySelector('.lv-shut')?.textContent || '', lesson: c.querySelector('.lv-lesson')?.textContent || '', prev: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
+    const shut = await card();
+    ok(shut && shut.shut && shut.why === 'A star on Cross Town opens it.' && shut.prev === 'cross-town' && shut.after === 'free-play', 'with no star on Cross Town its card is shut, after Cross Town and before Free Play, and says what opens it', JSON.stringify(shut));
+    await page.evaluate(() => { const g = window.__signalCity.game; g.save.levels['cross-town'].stars = 1; g.slot.save(g.save); g.buildLevelSelect(); });
+    const open = await card();
+    ok(open && !open.shut && open.lesson === 'second star: at most 40% of cars stopping again at the next box', 'one star on Cross Town opens it, and the card names its second star', JSON.stringify(open));
+    await page.click('.level-card[data-level="lights-out"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'lights-out', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const panel = () => page.evaluate(() => {
+      const w = window.__signalCity.world, r = document.getElementById('offsetRange');
+      return {
+        t: w.t, out: w.powerOut, stages: w.controllers.map(c => c.stage).join(), phases: w.controllers.map(c => c.phase).join(), into: w.controllers.map(c => c.stageT.toFixed(2)).join(),
+        reads: w.offsetOf(), owed: w.controllers[1].shift, value: r.value, off: r.disabled, note: document.getElementById('offsetNote').textContent,
+        wave: !document.getElementById('waveBox').classList.contains('hidden'), sliders: !document.getElementById('timingBox').classList.contains('hidden'),
+        buttons: [...document.getElementById('phases').children].map(b => (b.disabled ? 'off' : 'on')).join(), lock: w.stats.gridlock, handoffs: w.stats.handoffs,
+      };
+    });
+    const l0 = await panel();
+    const tabL = await tabShown(page);
+    ok(tabL.tab === 'timing' && tabL.offered === 'phases,timing' && l0.wave && !l0.sliders, 'it opens on the Timing tab with the offset and the diagram, and no yellow or all-red slider', JSON.stringify(tabL));
+    ok(l0.reads === 16 && l0.value === '16' && /16 s behind the west one \(33 s cycle\)\.$/.test(l0.note), 'the slider starts at 16: the wave is already in', `${l0.value}: ${l0.note}`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 82);
+    await new Promise(r => setTimeout(r, 300));
+    const l1 = await panel();
+    ok(l1.out && l1.stages === 'dark,dark' && /^(off,?)+$/.test(l1.buttons), 'at 82 s the power is out: both boxes dark and every phase button off', `${l1.t.toFixed(1)} s, ${l1.stages}, ${l1.buttons}`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 12);
+    await new Promise(r => setTimeout(r, 300));
+    const l2 = await panel();
+    ok(!l2.out && l2.stages === 'green,green' && l2.phases === '0,0' && l2.into.split(',')[0] === l2.into.split(',')[1], 'at 94 s the lights are back, both boxes on the boulevard\'s green and in step', `${l2.t.toFixed(1)} s, ${l2.phases}, ${l2.into} s in`);
+    ok(l2.reads === 16 && l2.value === '16' && /16 s behind/.test(l2.note), 'and the slider still reads 16 (Known gaps: the hint says so, and the diagram shows the truth)', `${l2.value}: ${l2.note}`);
+    await page.evaluate(v => { const r = document.getElementById('offsetRange'); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); }, 32);
+    const l3 = await panel();
+    ok(l3.reads === 32 && Math.abs(Math.abs(l3.owed) - 16) < 1e-6 && /Re-aligning: 16 s still to/.test(l3.note), 'the slider to 32 queues 16 s on the east box, and the note says it is re-aligning', l3.note);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 110);
+    await new Promise(r => setTimeout(r, 300));
+    const l4 = await page.evaluate(() => { const w = window.__signalCity.world, L = w.controllers[0].cycleLength(); return { owed: w.controllers[1].shift, apart: (((w.controllers[1].cyclePosition() - w.controllers[0].cyclePosition()) % L) + L) % L, lock: w.stats.gridlock, handoffs: w.stats.handoffs, note: document.getElementById('offsetNote').textContent }; });
+    ok(Math.abs(l4.owed) < 1e-6 && Math.abs(l4.apart - 16) < 1.01 && !l4.lock && l4.handoffs > 40 && !/Re-aligning/.test(l4.note), 'two minutes on it is paid in full, the east box is 16 s on again, and nothing locked', `${l4.apart.toFixed(1)} s apart, ${l4.handoffs} handoffs`);
+    await shot(page, 'lights-out');
+    await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.slot.save(g.save); g.buildLevelSelect(); }, before);
+    ok(errors.length === 0, 'no page errors on Lights Out', errors.join(' | '));
   });
 
   await section('Stem and the all-red slider', async () => {
@@ -1225,7 +1271,7 @@ try {
     });
     const r0 = await row();
     ok(r0.after && r0.size === 'one box' && r0.less && !r0.more && !r0.reroll && r0.city === null, 'under Free Play\'s card a district row reads one box, with no city to reroll yet', JSON.stringify(r0));
-    ok(/clear 60$/.test(r0.meta) && r0.cards === 13, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
+    ok(/clear 60$/.test(r0.meta) && r0.cards === 14, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
     for (let i = 0; i < 5; i++) await page.click('#levelList .district [data-district="more"]');
     const r1 = await row();
     ok(r1.size === '6 boxes' && r1.city === '7' && r1.reroll && !r1.less && r1.focus === 'more', 'five presses of + make six boxes on city 7 (the debug seed), and the keyboard stays on +', `${r1.size}, city ${r1.city}, focus ${r1.focus}`);

@@ -482,16 +482,20 @@ stand-in cars, because two boxes in a row cannot tell them apart: that the
 lane is the one a path leaves its box in and not the one it came in by,
 and that the leg it feeds is checked (a grid is one lane each way).
 
-### R13. More board: a second pack (in progress: Market Ring, Boulevard and Cross Town shipped, HISTORY.md #782, #926, #928, #929)
+### R13. More board: a second pack (its named levels shipped: Market Ring, Boulevard, Cross Town and Lights Out, HISTORY.md #782, #926, #928, #929, #933)
 
 **Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
 eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
 Street. Shipped: **Market Ring** (2026-10-01), a ring whose east leg
 starves the north, its second star the entry meter (`lesson: { kind:
 'meter' }`), **Boulevard** (2026-10-07), the two-lane corridor with a
-green wave both ways, and **Cross Town** (2026-10-07), three boxes in a row
-that an ambulance crosses (R6). One candidate is still open: an outage on a
-timed corridor (its return wants `setOffset`'s shift, Known gaps). Each level gets R1's two tables and
+green wave both ways, **Cross Town** (2026-10-07), three boxes in a row
+that an ambulance crosses (R6), and **Lights Out** (2026-10-07), an outage
+on a timed corridor. No candidate is left on the list. What R13 leaves is
+three engine units and four levels nobody has played: a scripted vehicle
+keeping its turn past the first box (Cross Town), the slider reading true
+after an outage and a box coming back from dark without hitting the car
+still crossing (Lights Out), all in Known gaps. Each level gets R1's two tables and
 R2's rule from the first commit. One increment a session, a level or two at
 a time.
 
@@ -596,6 +600,81 @@ ambulance is at box 2 about 25 s after it is called), and whether the
 hint is enough to send them there; then whether 100 s reads as an
 ambulance's deadline when a clear road is 54 s and a blocked one 113;
 then a street where no car turns.
+
+**Lights Out** (#933) is Boulevard's street again, the same boxes, plan,
+33 s cycle, demand, mix and turns, with Boulevard's answer already in (the
+east box 16 s on, `controllers: [{ offset: 0 }, { offset: 16 }]`) and one
+event: an outage at 78 s for 12, in a run of 300 s. It is level data, one
+line of `main.js`'s tab table (it opens on Timing) and nothing else under
+`js/`: no engine file, no save field. What it teaches is what the engine
+does when the power comes back, which Known gaps had listed as a gap: a
+box comes back through one all-red to the top of the green it was in or
+was going to, so the two boxes' clocks are set by where each was when the
+dark began and not by the offset. The second is chosen. At 78 s the west
+box is 12 s into its cycle, on its boulevard green, and the east box 28 s
+into its own, on the yellow that ends its side street's green: both come
+back on the boulevard at the same instant, the street is on one clock, and
+the wave is gone both ways while the slider still reads 16. At 77 s or
+79 s they come back on different streets, 14.5 or 18.5 s apart, close
+enough to 16 that the wave survives and there is no level. The player
+slides the offset until the diagram's lines land in green again: the
+slider moves the east box on from where it stands by its value less what
+it read, so 32 (or 0, which is 17) is the half cycle. The hint says the
+slider no longer agrees with the street and to trust the diagram.
+
+R1's two tables, six seeds, `node tools/calibrate.mjs lights-out
+--baseline --hand`. The tool changed for it: on a corridor with an outage
+the hand's offset sweep moves the slider 10 s after the lights come back
+(`powerBack`, `BACK_DELAY`, `played`'s `at`) and not at load, where it
+would change what the boxes are doing when the power goes.
+
+| | cleared (target 110) | average wait | stopping again (bar 40%) | lesson | three stars | locks |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing pressed | 120 to 168 | 7 to 8 s | 60 to 70% | 0 of 6 (one star on all six) | 0 of 6 | 0 |
+| the slider to 32 at 100 s, 10 s after the lights | 135 to 158 | 5 to 7 s | 12 to 28% | 6 of 6 | 2 of 6 | 0 |
+| the hand: 4, the best of its sweep at that second | 144 to 179 | 5 to 7 s | not printed by the tool | 6 of 6 | 5 of 6 | 0 |
+
+The hand's sweep in stars over six seeds, the slider moved at 100 s, 0 to
+32 by fours: 14, **17**, 9, 6, 6, 6, 8, 16, 14 (16 is the slider left where
+it was). 17 can only be the lesson on six seeds and three stars on five.
+4 on the slider is the east box 21 s on and 32 is 16 s on: both carry the
+wave, and what separates their third stars is which seeds crash. This
+street crashes with nobody's help: with no outage and the wave running for
+300 s, two seeds of six collide once (a scratch run), so about a third of
+seeds lose the third star to a crash no slider prevents. Before the power
+goes the wave is running: 3 of the 64 handed-on cars off the map by 78 s
+had stopped again, six seeds together. Scratch runs, six seeds each: the
+slider to 32 at 5, 20 and 30 s after the lights reads 14 to 31%, 20 to 32%
+and 18 to 35% stopping again, the lesson on all six each time and three
+stars on four; to 24, a quarter of a cycle off, 32 to 58%, the lesson on
+one seed. The bar is 40%: 20 points under the best seed with nothing
+pressed, 5 over the worst seed with the slider moved 30 s late. Later than
+30 s was not measured. The target is under the worst run of any row, so
+nothing pressed keeps the survival star, as on every lesson level since
+#639, and cannot earn the second. Not hard mode: R3's test (#641) wants no
+input clean on six seeds, and seeds 2 and 3 collide. `test/stars.mjs` pins
+the table (RETURNS), `test/scoring.mjs` the data, the chosen second and
+seed 4 both ways, `test/wave.mjs` the diagram before, after and mended,
+`test/campaign.mjs` the shop and the save, `test/browser.mjs` the card,
+the dark, the stale slider and the slider's repair.
+
+Why 12 s of dark and not Rush Hour's 30: a box comes back through one
+all-red, and on a two-lane box a car still crossing on its four-way turn
+is hit by the first green. Counting crashes in the dark and the 10 s
+after it, on 24 seeds a 20 s outage read 8 or 9, a 25 s one 8, a 15 s one
+4 or 5; 12 s read 5, 6 and 5 on 48 seeds at three start times, none of
+them on seeds 1 to 6 at 78 s. It is in Known gaps as an engine unit.
+
+**NOBODY HAS PLAYED IT.** What a person should look at first: the slider.
+After the outage it reads 16 and its note says the east box is 16 s
+behind, which is no longer true, and the answer is 32 or 0, where the note
+says "the same clock". The hint owns up to it, but a person may read it as
+a bug and be right (Known gaps has the engine unit that would make the
+slider read true). Then whether a player notices the wave is gone at all:
+the board announces the outage and the return, and nothing says the lines
+have moved. Then whether 12 s of dark is long enough to register as an
+event, and whether a third of seeds losing the third star to a crash is
+fair on a level whose street is Boulevard's.
 
 ### R14. Endless keeps a day that was left halfway: done (HISTORY.md #783)
 
@@ -867,11 +946,28 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   corridor was widened to the whole entry leg, calling it early made the
   ambulance late on 3 of 6 seeds: a left turner at the head of the one
   lane sat on a red W-L through the whole hold (#569).
-- An outage on a timed plan (Two Blocks) is not scripted anywhere yet:
-  the box comes back to the phase it was in through an all-red, and its
-  offset drifts by however long the dark lasted, because `_alignToPlan`
-  is the constructor's and a jump (#563). If a corridor level ever gets
-  an outage, the return wants to go through `setOffset`'s shift.
+- An outage on a timed plan is scripted on one level now, Lights Out
+  (#933), and the level is built on what the engine does: each box comes
+  back through an all-red to the top of the green it was in or was going
+  to, so the offset on the street is whatever that makes it (0, 14.5 or
+  18.5 s on Boulevard's plan) while `Controller.offset`, the slider and
+  its note still give the number from before. Two engine changes are
+  possible and they are not the same. Writing the true offset back when
+  the lights return, so the slider reads 0 and the player sets 16 again,
+  keeps the level and makes its panel honest: that is the unit to do, and
+  it moves `test/stars.mjs`'s "the slider still reads 16" line and the
+  hint. Sending the return through `setOffset`'s shift, as this bullet
+  used to ask, mends the wave with nobody's help: broken on purpose in a
+  scratch copy, nothing pressed read 14 to 31% stopping again and three
+  stars on four seeds, and nine lines of `stars.mjs` failed by name. That
+  one deletes the level's lesson, so it is a decision, not a fix.
+- A box that comes back from dark runs one all-red and then its green,
+  and a car still crossing on its four-way turn is hit: on Boulevard's
+  two-lane boxes 5 or 6 crashes in 48 seeds in a 12 s outage and the 10 s
+  after it, 8 or 9 in 24 for a 20 s one (#933). The player cannot prevent it. Lights
+  Out keeps its outage to 12 s for that reason; Rush Hour's box is one
+  lane and was not measured. The return wants to wait for the box to be
+  empty, or a second all-red.
 - A platoon member obeys the light like anyone else: a funeral
   procession's follow-through on a red (a courtesy law in much of the
   world) is not built, because with it a procession could only be split

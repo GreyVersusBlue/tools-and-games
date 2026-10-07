@@ -17,7 +17,7 @@ const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { repair, fresh, recordResult, totalStars, SAVE_KEY } = await load('save.js');
 const { standardPhases } = await load('signals.js');
 const { WAVE } = await load('wave.js');
-const { holdPlatoon, handStep, handOffset, played: playedAs } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
+const { holdPlatoon, handStep, handOffset, powerBack, played: playedAs } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
 
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
@@ -34,7 +34,7 @@ const withAuto = (l, seconds = 22) => ({ ...l, controller: { ...l.controller, ru
 group('the level pack');
 
 {
-  ok(LEVELS.length === 12 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,cross-town,free-play', 'twelve levels: pack 1\'s eight, Market Ring, Boulevard and Cross Town from pack 2 (R13), then Free Play', LEVELS.map(l => l.id).join(', '));
+  ok(LEVELS.length === 13 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,cross-town,lights-out,free-play', 'thirteen levels: pack 1\'s eight, Market Ring, Boulevard, Cross Town and Lights Out from pack 2 (R13), then Free Play', LEVELS.map(l => l.id).join(', '));
   const l1 = levelById('first-light');
   ok(l1.duration === 180 && l1.target > 0 && l1.waitTarget > 0 && l1.mode === 'soft', 'level 1 is 3 minutes, soft, with a target and a wait target', `${l1.target} cars, ${l1.waitTarget} s`);
   ok(Object.keys(l1.mix).every(k => ['standard', 'granny'].includes(k)), 'and only standard and granny drive it', Object.keys(l1.mix).join(', '));
@@ -86,6 +86,26 @@ group('the level pack');
   ok(JSON.stringify(ct.turns) === '{"T":1}' && Array.isArray(ct.demand) && ct.demand.length === 3 && !ct.demand[1].W && !ct.demand[1].E && ct.demand[0].W === 380 && ct.demand[2].E === 380, 'nobody turns, so a car handed on goes straight on and the ambulance with it; demand is per box, the middle box fed from its side streets alone', JSON.stringify(ct.demand));
   ok(ct.unlocks.join() === 'phases,auto,allred,priority' && ct.mode === 'soft' && ct.target === 88 && ct.gridlockWait === 150 && ct.duration === 240 && /100 seconds/.test(ct.hint), 'it unlocks the phases, the rules, the sliders and the corridor, is soft, asks for 88 cars, and its hint gives the ambulance\'s 100 seconds', ct.unlocks.join());
   ok(handOffset(ct) === null && handOffset(levelById('rush-hour')) === null, 'the calibration\'s offset sweep leaves it alone: boxes on rules have no plan to shift');
+  // Lights Out (R13, #933): Boulevard's street with the wave in, and a power cut
+  const lo = levelById('lights-out');
+  const wl = new World(lo, 1);
+  const same = k => JSON.stringify(lo[k]) === JSON.stringify(bv[k]);
+  ok(['network', 'controller', 'demand', 'mix', 'turns', 'mode'].every(same) && lo.unlocks.join() === 'phases,offset', 'Lights Out (R13) is Boulevard\'s street: the same boxes, plan, timing, demand, mix and turns, the offset and no timing slider', ['network', 'controller', 'demand', 'mix', 'turns', 'mode'].filter(k => !same(k)).join() || lo.unlocks.join());
+  ok(wl.controllers[0].offset === 0 && wl.controllers[1].offset === 16 && wl.offsetOf() === 16 && wl.controllers.every(c => c.cycleLength() === 33 && c.shift === 0), 'it opens with Boulevard\'s answer in: the east box 16 s on, nothing owed', `${wl.controllers.map(c => c.offset).join()} of ${wl.controllers[0].cycleLength()} s`);
+  ok((lo.events || []).length === 1 && lo.events[0].kind === 'outage' && lo.events[0].at === 78 && lo.events[0].for === 12 && powerBack(lo) === 90 && powerBack(bv) === null && lo.duration === 300, 'its one event is an outage at 78 s for 12, in a run of 300 s, and the calibration reads the lights back at 90 s', JSON.stringify(lo.events));
+  ok(lo.target === 110 && lo.lesson.kind === 'progression' && lo.lesson.stops === 0.4 && /78 seconds/.test(lo.hint) && /slide/.test(lo.hint) && /diagram/.test(lo.hint), 'it asks for 110 cars and at most 40% stopping again, and its hint gives the second, the slider and the diagram', `${lo.target}, ${lo.lesson.stops}`);
+  // the second is chosen: what each box is doing the step before the power
+  // goes decides the phase it comes back to, and only at 78 s is that the
+  // boulevard's at both
+  const back = at => {
+    const w = new World({ ...lo, events: [{ kind: 'outage', at, for: 12 }] }, 1);
+    let was = null;
+    while (w.t < at + 12 + 4) { if (!w.powerOut && w.t < at) was = w.controllers.map(c => `${c.phase}${c.stage[0]}${c.next === null ? '' : c.next}`).join(); w.step(); }
+    return { was, phases: w.controllers.map(c => c.phase).join(), lit: w.controllers.every(c => c.stage === 'green'), into: w.controllers.map(c => c.stageT) };
+  };
+  const b77 = back(77), b78 = back(78), b79 = back(79);
+  ok(b78.was === '0g,1y0' && b78.lit && b78.phases === '0,0' && b78.into[0] === b78.into[1], 'at 78 s the west box is on its boulevard green and the east box on the yellow that ends its side street\'s, and both come back on the boulevard, in step', `${b78.was} to ${b78.phases}`);
+  ok(b77.lit && b77.phases === '0,1' && b79.lit && b79.phases === '1,0', 'a second either way they come back on different streets, half a cycle apart, and there is no level', `77 s: ${b77.was} to ${b77.phases}; 79 s: ${b79.was} to ${b79.phases}`);
   let bad = null;
   for (const l of LEVELS) { try { new World(l, 1); } catch (e) { bad = `${l.id}: ${e.message}`; } }
   ok(!bad, 'every level builds a world', bad || '');
@@ -348,7 +368,7 @@ group('the lesson decides a star (R2)');
 
 {
   const lessons = Object.fromEntries(LEVELS.filter(l => l.lesson).map(l => [l.id, l.lesson]));
-  ok(JSON.stringify(lessons) === JSON.stringify({ 'two-blocks': { kind: 'progression', stops: 0.5 }, 'rush-hour': { kind: 'ambulance' }, 'school-run': { kind: 'walks', within: 40 }, 'main-street': { kind: 'platoons' }, 'market-ring': { kind: 'meter', wait: 16 }, boulevard: { kind: 'progression', stops: 0.3 }, 'cross-town': { kind: 'ambulance' } }), 'the four levels with a default carry a lesson, and so do Market Ring, Boulevard and Cross Town (R13); levels 1 to 4 and Free Play keep the wait star', JSON.stringify(lessons));
+  ok(JSON.stringify(lessons) === JSON.stringify({ 'two-blocks': { kind: 'progression', stops: 0.5 }, 'rush-hour': { kind: 'ambulance' }, 'school-run': { kind: 'walks', within: 40 }, 'main-street': { kind: 'platoons' }, 'market-ring': { kind: 'meter', wait: 16 }, boulevard: { kind: 'progression', stops: 0.3 }, 'cross-town': { kind: 'ambulance' }, 'lights-out': { kind: 'progression', stops: 0.4 } }), 'the four levels with a default carry a lesson, and so do Market Ring, Boulevard, Cross Town and Lights Out (R13); levels 1 to 4 and Free Play keep the wait star', JSON.stringify(lessons));
   ok(Object.values(lessons).every(l => lessonName(l).length > 10) && lessonName(null) === '', 'every lesson has a name for the cards', Object.values(lessons).map(lessonName).join(' / '));
   // the meter (R13): Market Ring on seed 1 with the meter it offers, and with none
   const mr = levelById('market-ring');
@@ -394,6 +414,23 @@ group('the lesson decides a star (R2)');
   const moved = w => w.stats.laneChanges + w.stats.laneGiveUps, rights = w => w.events.filter(e => e.kind === 'handoff' && /-R$/.test(e.to)).length + w.events.filter(e => e.kind === 'lane' && /-R$/.test(e.to)).length;
   ok(moved(b0.w) > 0 && b16.w.stats.laneChanges > 0 && rights(b16.w) > 0 && rights(b16.w) < b16.w.stats.handoffs / 4, 'some of the cars handed on turn right at the next box, and the ones in the inner lane change lanes for it or give up (#928)', `${rights(b0.w)} and ${rights(b16.w)} rights of ${b0.w.stats.handoffs} and ${b16.w.stats.handoffs} handed on; ${b0.w.stats.laneChanges} and ${b16.w.stats.laneChanges} lane changes, ${b0.w.stats.laneGiveUps} and ${b16.w.stats.laneGiveUps} given up`);
   ok(b16.w.stats.collisions === 0, 'and the 16 s run has no collision', `${b16.w.stats.collisions} collisions`);
+  // Lights Out (R13, #933): seed 4 with nothing pressed, and with the
+  // slider moved to 32 ten seconds after the lights come back (on a 33 s
+  // cycle that is 16 s further on from where the east box stands)
+  const lo = levelById('lights-out');
+  const runL = slider => {
+    const w = new World(lo, 4);
+    let slid = slider === null;
+    for (let i = 0; i < lo.duration * 60 && !w.stats.gridlock; i++) { w.step(); if (!slid && w.t >= 100) { w.setOffset(slider); slid = true; } }
+    return { w, r: score(w) };
+  };
+  const l0 = runL(null), l32 = runL(32);
+  ok(l0.w.stats.outages === 1 && l0.w.stats.carried > 60 && share(l0.w) > 0.5 && !l0.r.lesson.met && l0.r.stars === 1 && l0.r.cleared >= lo.target, 'Lights Out with nothing pressed: the wave it opened on is gone after the outage, over half the handed-on cars stop again, and the run keeps one star', `${pc(share(l0.w))}, ${starString(l0.r.stars)}`);
+  ok(/^\d+% of the cars one box sent on stopped again at the next, against 40%$/.test(l0.r.reasons.at(-1)), 'its reason line gives the share against 40%', l0.r.reasons.at(-1));
+  // the calibration's own run of the same thing (tools/calibrate.mjs played, `at`): the same run, to the car
+  const tool = playedAs(lo, 4, { offset: 32, at: 100 });
+  ok(tool.cleared === l32.r.cleared && tool.stars === l32.r.stars && Math.abs(tool.wait - l32.r.avgWait) < 1e-9 && tool.cleared !== l0.r.cleared, 'and the calibration tool, told to move the slider at 100 s, plays that same run and not the no-input one', `${tool.cleared} cleared at ${tool.wait.toFixed(2)} s against ${l32.r.cleared} at ${l32.r.avgWait.toFixed(2)} s; nothing pressed ${l0.r.cleared}`);
+  ok(share(l32.w) <= 0.3 && l32.r.lesson.met && l32.r.stars === 3 && l32.w.controllers[1].shift === 0, 'with the slider moved half a cycle on once the lights are back the wave is back, the lesson is met and the run three-stars', `${pc(share(l32.w))}, ${starString(l32.r.stars)}`);
   // Cross Town (R13, #929): the ambulance across three boxes, seed 6, the
   // slowest of the six with the corridor alone. Three plays through the World's own commands, each
   // read off the World's events: when the ambulance came and left, which
@@ -512,7 +549,7 @@ group('the save');
   ok(r.unlocks.join() === 'phases,sensors' && r.settings.sound === false && r.lastLevel === 'first-light', 'keeps string unlocks, settings and the last level', r.unlocks.join());
   const seven = fresh();
   for (const l of LEVELS) recordResult(seven, l.id, { stars: 2, points: 100 });
-  ok(Object.keys(repair(seven).levels).length === LEVELS.length && repair(seven).levels['main-street'].stars === 2 && repair(seven).levels['market-ring'].stars === 2 && repair(seven).levels.boulevard.stars === 2 && repair(seven).levels['cross-town'].stars === 2, 'a record for every level, pack 2\'s too, comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
+  ok(Object.keys(repair(seven).levels).length === LEVELS.length && repair(seven).levels['main-street'].stars === 2 && repair(seven).levels['market-ring'].stars === 2 && repair(seven).levels.boulevard.stars === 2 && repair(seven).levels['cross-town'].stars === 2 && repair(seven).levels['lights-out'].stars === 2, 'a record for every level, pack 2\'s too, comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
   ok(JSON.stringify(repair(null)) === JSON.stringify(fresh()), 'repair of nothing is a fresh save');
   ok(JSON.stringify(repair(repair(r))) === JSON.stringify(repair(r)), 'repair is idempotent');
   const st = fresh();
