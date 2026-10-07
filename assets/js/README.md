@@ -291,7 +291,7 @@ express. `clear()` exists for a "wipe" control that shouldn't have to build
 
 ## Who uses it
 
-One adopter for four sessions, then eleven in the space of one round, and four
+One adopter for four sessions, then eleven in the space of one round, and five
 more since. Every hook below exists because a real adopter needed it;
 none were added speculatively.
 
@@ -311,13 +311,14 @@ none were added speculatively.
 | **Faire Weekend** | `renn-faire-sim-save-v1` | Adopted at Stage 22, replacing hand-rolled `localStorage` calls. Kept the key it already had (#36), so an existing save carries no `__v`, reads as version 0, and comes through `repair` rather than `migrate` |
 | **Golden Hour** | `gvb:golden-hour` | The only adopter that takes the default key rather than naming one, and the only one that saves a *subset* of its world on purpose: `journal.js` persists discoveries, and the sun's position and the player's are pointedly left out |
 | **Signal City** | `signal_city_v1` | Saves stars and best points per level and the unlock list, nothing mid-run: a level is three minutes and replayable. `repair` clamps stars to 3, floors bad numbers at 0 and drops null level records (#539) |
+| **Orbital** | `orbital_progress_v2` | Adopted on 2026-10-07 (#925), keeping the key the game always had (#36). One slot, Export and Import on the sector map; a save from before it loads key for key and the stored format gained `"__v":2` |
 | **Castle Conundrum** (moved out 2026-09-15, #491; vendored fork) | `castleConundrumSave_v1` | `repair` builds its id catalog from the game's own data files (`mystery.json`, `quest.json`) rather than a list kept beside them, so the ids a save may carry cannot drift from the ids the game renders (#413). The schema was written in full one phase before most of it is used, so no later phase adds a field |
 
-Fourteen of those fifteen are still in this repo; Castle Conundrum left on
+Fifteen of those sixteen are still in this repo; Castle Conundrum left on
 2026-09-15 with a vendored copy of the module (#491). Its row stays because
 what it taught this module did not leave with it.
 
-Common thread across all fourteen: nobody needed a hook that didn't already
+Common thread across all fifteen: nobody needed a hook that didn't already
 exist by the time they went looking, except the five gaps found this round
 (`load()`'s unguarded `getItem`, the `typeof localStorage` throw at
 construction, `fresh`/`reset` forwarding, `clear()`, and `mountSaveBar`'s

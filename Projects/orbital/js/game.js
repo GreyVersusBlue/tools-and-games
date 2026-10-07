@@ -16,20 +16,9 @@ PACKS.forEach(p => p.levels.forEach((lv, i) => {
 }));
 
 // ---- persistence (by stable key, so new packs never shift old progress) ----
-const SAVE_KEY = "orbital_progress_v2";
-function loadSave() {
-  try {
-    const v = JSON.parse(localStorage.getItem(SAVE_KEY)); if (v) return v;
-    const old = JSON.parse(localStorage.getItem("orbital_progress_v1") || "null");
-    if (old && typeof old === "object") {           // migrate old numeric saves
-      const mig = {}; for (const k in old) if (/^\d+$/.test(k)) mig["basics#" + k] = old[k];
-      return mig;
-    }
-  } catch (e) {}
-  return {};
-}
-function writeSave(o) { try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) {} }
-let progress = loadSave();
+// The slot, its key and the v1 carry-over are js/save.mjs, which index.html
+// runs ahead of this file. Only the two calls are here.
+let progress = OrbitalSave.load();
 const starsFor = a => a <= 1 ? 3 : a <= 3 ? 2 : 1;
 function starStr(n) { let s = ""; for (let i = 0; i < 3; i++) s += i < n ? "★" : "☆"; return s; }
 const starMarkup = n => starStr(n).replace(/☆/g, '<span class="off">☆</span>');
@@ -158,7 +147,7 @@ function stepFly() {
 }
 function win() {
   mode = "done"; won = true;
-  if (L.key && (!progress[L.key] || attempts < progress[L.key])) { progress[L.key] = attempts; writeSave(progress); }
+  if (L.key && (!progress[L.key] || attempts < progress[L.key])) { progress[L.key] = attempts; OrbitalSave.save(progress); }
   updateHUD(); burst(L.goal.x, L.goal.y, "goal");
   flash("MARKER REACHED", "win");
   document.getElementById("hint").style.opacity = "0";
@@ -274,12 +263,18 @@ document.getElementById("btnClose").addEventListener("click", closeLevels);
 document.getElementById("btnReset").addEventListener("click", () => { if (mode !== "fly") { resetProbe(); mode = "aim"; } });
 document.getElementById("btnWipe").addEventListener("click", () => {
   if (!confirm("Erase all saved progress? Every sector's stars will be reset. This can't be undone.")) return;
-  progress = {}; writeSave(progress); buildGrid(); updateHUD();
+  progress = {}; OrbitalSave.save(progress); buildGrid(); updateHUD();
 });
 document.getElementById("btnStart").addEventListener("click", () => {
   document.getElementById("introScrim").classList.remove("show"); loadLevel(0);
 });
 lvlScrim.addEventListener("click", e => { if (e.target === lvlScrim) closeLevels(); });
+// Export and Import, on the sector map beside the stars they carry. An
+// imported file replaces the campaign; the bar writes it once this returns.
+OrbitalSave.mountBar(document.getElementById("saveBar"), {
+  getState: () => progress,
+  setState: p => { progress = p; buildGrid(); updateHUD(); },
+});
 
 window.addEventListener("resize", () => { resize(); checkOrient(); });
 

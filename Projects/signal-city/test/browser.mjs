@@ -106,7 +106,7 @@ try {
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
-    ok(sel.cards.length === 10 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Market Ring,Free Play', 'with ten cards, First Light first, Market Ring after Main Street (R13) and Free Play last', sel.cards.join(', '));
+    ok(sel.cards.length === 12 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Market Ring,Boulevard,Cross Town,Free Play', 'with twelve cards, First Light first, Market Ring, Boulevard and Cross Town after Main Street (R13) and Free Play last', sel.cards.join(', '));
     ok(sel.endless, 'and after them Endless, shut (M9)');
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     const camp = await page.evaluate(() => ({
@@ -117,8 +117,8 @@ try {
       wallet: document.getElementById('wallet').textContent,
       shop: [...document.querySelectorAll('#shopList .shop-item')].map(e => `${e.dataset.item}:${e.querySelector('.buy').disabled ? 'off' : 'on'}`).join(),
     }));
-    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring' && camp.disabled === 8,
-      'a fresh save has eight cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
+    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,cross-town' && camp.disabled === 10,
+      'a fresh save has ten cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
     ok(camp.next === 'first-light' && camp.shut === 'A star on First Light opens it.', 'First Light is marked next and the Stem says what opens it', `${camp.next}; ${camp.shut}`);
     ok(camp.wallet === '0 to spend' && camp.shop === 'lefts:off,split:off,sensors:off,roundabout:off', 'the shop has four things on it and nothing to spend', `${camp.wallet}; ${camp.shop}`);
     await shot(page, 'select');
@@ -432,7 +432,7 @@ try {
     await page.keyboard.press('Escape');
     const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); g.save.levels['main-street'] = { stars: 1, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
     const c0 = await page.evaluate(() => { const c = document.querySelector('.level-card[data-level="market-ring"]'); return c && { lesson: c.querySelector('.lv-lesson')?.textContent || '', next: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
-    ok(c0 && /entry meter/.test(c0.lesson) && c0.next === 'main-street' && c0.after === 'free-play', 'its card follows Main Street, before Free Play, and names the meter as its second star', JSON.stringify(c0));
+    ok(c0 && /entry meter/.test(c0.lesson) && c0.next === 'main-street' && c0.after === 'boulevard', 'its card follows Main Street, before Boulevard, and names the meter as its second star', JSON.stringify(c0));
     await page.click('.level-card[data-level="market-ring"]');
     await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'market-ring', { timeout: 5000 });
     await page.evaluate(() => { window.__signalCity.game.paused = true; });
@@ -450,6 +450,91 @@ try {
     await shot(page, 'market-ring');
     await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.meterFor = {}; g.slot.save(g.save); g.buildLevelSelect(); }, before);
     ok(errors.length === 0, 'no page errors on Market Ring', errors.join(' | '));
+  });
+
+  await section('Boulevard: two lanes, two boxes, one offset for both ways (R13)', async () => {
+    await page.keyboard.press('Escape');
+    const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); delete g.save.levels.boulevard; g.save.levels['market-ring'] = { stars: 0, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
+    const card = () => page.evaluate(() => { const c = document.querySelector('.level-card[data-level="boulevard"]'); return c && { shut: c.classList.contains('locked') && c.disabled, why: c.querySelector('.lv-shut')?.textContent || '', lesson: c.querySelector('.lv-lesson')?.textContent || '', prev: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
+    const shut = await card();
+    ok(shut && shut.shut && shut.why === 'A star on Market Ring opens it.' && shut.prev === 'market-ring' && shut.after === 'cross-town', 'with no star on Market Ring its card is shut, after Market Ring and before Cross Town, and says what opens it', JSON.stringify(shut));
+    await page.evaluate(() => { const g = window.__signalCity.game; g.save.levels['market-ring'].stars = 1; g.slot.save(g.save); g.buildLevelSelect(); });
+    const open = await card();
+    ok(open && !open.shut && open.lesson === 'second star: at most 30% of cars stopping again at the next box', 'one star on Market Ring opens it, and the card names its second star', JSON.stringify(open));
+    await page.click('.level-card[data-level="boulevard"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'boulevard', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const b0 = await page.evaluate(() => {
+      const w = window.__signalCity.world, r = document.getElementById('offsetRange');
+      return {
+        nodes: w.nodes.length, lanes: w.nodes.map(n => n.lanesPerDir).join(), offsets: w.controllers.map(c => c.offset).join(','), cycle: w.controllers[0].cycleLength(),
+        max: r.max, value: r.value, note: document.getElementById('offsetNote').textContent,
+        wave: !document.getElementById('waveBox').classList.contains('hidden'), sliders: !document.getElementById('timingBox').classList.contains('hidden'),
+        onScreen: w.nodes.every(n => { const g = window.__signalCity.game.renderer, p = g.toScreen(n.origin[0], n.origin[1]); return p.x > 0 && p.x < g.width && p.y > 0 && p.y < g.height; }),
+      };
+    });
+    const tabB = await tabShown(page);
+    ok(b0.nodes === 2 && b0.lanes === '2,2' && b0.offsets === '0,0' && b0.onScreen, 'it plays as two boxes of two lanes each way, both on the board, on one clock', JSON.stringify(b0).slice(0, 110));
+    ok(tabB.tab === 'timing' && tabB.offered === 'phases,timing' && b0.wave && !b0.sliders, 'it opens on the Timing tab with the offset and the diagram, and no yellow or all-red slider', JSON.stringify(tabB));
+    ok(b0.cycle === 33 && b0.max === '32' && b0.value === '0' && /same clock \(33 s cycle\)/.test(b0.note), 'the slider runs 0 to 32 s of a 33 s cycle and starts at 0', `${b0.value} of ${b0.max}: ${b0.note}`);
+    await page.evaluate(v => { const r = document.getElementById('offsetRange'); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); }, 16);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 120);
+    await new Promise(r => setTimeout(r, 300));
+    const b1 = await page.evaluate(() => { const w = window.__signalCity.world, s = w.stats; return { offset: w.offsetOf(), owed: w.controllers[1].shift, note: document.getElementById('offsetNote').textContent, handoffs: s.handoffs, lanesUsed: new Set(w.cars.filter(c => !c.done && (c.path.entry === 'W' || c.path.entry === 'E')).map(c => c.path.lane)).size, laneChanges: s.laneChanges, lock: s.gridlock }; });
+    ok(b1.offset === 16 && Math.abs(b1.owed) < 1e-6 && /16 s behind the west one \(33 s cycle\)\.$/.test(b1.note), 'the slider at 16 puts the east box 16 s behind, paid in full two minutes on', b1.note);
+    ok(b1.handoffs > 15 && b1.lanesUsed === 2 && !b1.lock, 'two minutes in, cars have crossed between the boxes in both lanes and nothing locked', `${b1.handoffs} handoffs, ${b1.laneChanges} lane changes`);
+    await shot(page, 'boulevard');
+    await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.slot.save(g.save); g.buildLevelSelect(); }, before);
+    ok(errors.length === 0, 'no page errors on Boulevard', errors.join(' | '));
+  });
+
+  await section('Cross Town: three boxes in a row and an ambulance across all of them (R13, #929)', async () => {
+    await page.keyboard.press('Escape');
+    const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); delete g.save.levels['cross-town']; g.save.levels.boulevard = { stars: 0, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
+    const card = () => page.evaluate(() => { const c = document.querySelector('.level-card[data-level="cross-town"]'); return c && { shut: c.classList.contains('locked') && c.disabled, why: c.querySelector('.lv-shut')?.textContent || '', lesson: c.querySelector('.lv-lesson')?.textContent || '', prev: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
+    const shut = await card();
+    ok(shut && shut.shut && shut.why === 'A star on Boulevard opens it.' && shut.prev === 'boulevard' && shut.after === 'free-play', 'with no star on Boulevard its card is shut, after Boulevard and before Free Play, and says what opens it', JSON.stringify(shut));
+    await page.evaluate(() => { const g = window.__signalCity.game; g.save.levels.boulevard.stars = 1; g.slot.save(g.save); g.buildLevelSelect(); });
+    const open = await card();
+    ok(open && !open.shut && open.lesson === 'second star: the ambulance on time, on its corridor', 'one star on Boulevard opens it, and the card names its second star', JSON.stringify(open));
+    await page.click('.level-card[data-level="cross-town"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'cross-town', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const c0 = await page.evaluate(() => {
+      const w = window.__signalCity.world, r = window.__signalCity.game.renderer;
+      return {
+        nodes: w.nodes.length, buttons: [...document.querySelectorAll('#nodes .node')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(),
+        onScreen: w.nodes.every(n => { const p = r.toScreen(n.origin[0], n.origin[1]); return p.x > 20 && p.x < r.width - 20 && p.y > 20 && p.y < r.height - 20; }),
+        wave: !document.getElementById('waveBox').classList.contains('hidden'), stage: document.getElementById('stage').textContent, hint: document.getElementById('hint') ? document.getElementById('hint').textContent : '',
+      };
+    });
+    const tabC = await tabShown(page);
+    ok(c0.nodes === 3 && c0.buttons === 'Box 1*,Box 2,Box 3' && c0.onScreen, 'it plays as three boxes, all on the board, picked by number with the first selected', JSON.stringify(c0).slice(0, 120));
+    ok(tabC.tab === 'phases' && !c0.wave && /^Box 1: /.test(c0.stage), 'it opens on the Phases tab, with no offset diagram (the boxes run rules, not a plan), and the stage line reads the selected box', `${JSON.stringify(tabC)} ${c0.stage}`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 91);
+    await new Promise(r => setTimeout(r, 300));
+    const c1 = await page.evaluate(() => { const w = window.__signalCity.world; const e = w.activeEvent('ambulance'); return { amb: !!e, node: e ? e.car.path.node : -1, clock: w.ambulanceClock(), line: document.getElementById('eventLine').textContent, btn: document.getElementById('priorityBtn').classList.contains('show') }; });
+    ok(c1.amb && c1.node === 0 && c1.clock > 98 && c1.clock <= 100 && c1.btn && /Ambulance from W: (9[89]|100) s to get it through/.test(c1.line), 'at 91 s the ambulance is on box 1 with 100 s on the clock, the event line counts it down and the corridor button shows', `clock ${c1.clock && c1.clock.toFixed(1)} | ${c1.line}`);
+    await page.keyboard.press('e');
+    await page.click('#nodes .node[data-node="1"]');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 1);
+    const c2 = await page.evaluate(() => { const w = window.__signalCity.world; const e = w.activeEvent('ambulance'); return { priority: !!(e && e.car.priority), held: w.controllers.map(c => (c.preemption ? c.preemption.movements.join('+') : '-')).join(), node: window.__signalCity.game.node, stage: document.getElementById('stage').textContent }; });
+    ok(c2.priority && c2.held === 'W-L+W-T+W-R,-,-', 'E calls its corridor at box 1 and at no other box yet', c2.held);
+    ok(c2.node === 1 && /^Box 2: /.test(c2.stage), 'and Box 2 by its button is the box the panel drives next', c2.stage);
+    // run on until it has left box 1: the corridor has followed it
+    const c3 = await page.evaluate(() => {
+      const s = window.__signalCity, w = s.world, e = w.activeEvent('ambulance'), car = e.car;
+      let n = 0, followed = '';
+      while (car.path.node === 0 && !car.done && n < 60 * 120) { s.step(1); n++; }
+      const c = w.controllers[car.path.node];
+      if (!car.done && c.preemption) followed = `${car.path.node}:${c.preemption.movements.join('+')}`;
+      return { node: car.path.node, done: car.done, followed, t: w.t, lock: w.stats.gridlock };
+    });
+    ok(!c3.done && c3.node === 1 && c3.followed === '1:W-L+W-T+W-R' && !c3.lock, 'handed to box 2, the corridor is there with it: the box holds the W leg for it', `at ${c3.t.toFixed(1)} s, ${c3.followed}`);
+    await new Promise(r => setTimeout(r, 300));
+    await shot(page, 'cross-town');
+    await page.evaluate(b => { const g = window.__signalCity.game; g.save.levels = JSON.parse(b); g.slot.save(g.save); g.buildLevelSelect(); }, before);
+    ok(errors.length === 0, 'no page errors on Cross Town', errors.join(' | '));
   });
 
   await section('Stem and the all-red slider', async () => {
@@ -1140,7 +1225,7 @@ try {
     });
     const r0 = await row();
     ok(r0.after && r0.size === 'one box' && r0.less && !r0.more && !r0.reroll && r0.city === null, 'under Free Play\'s card a district row reads one box, with no city to reroll yet', JSON.stringify(r0));
-    ok(/clear 60$/.test(r0.meta) && r0.cards === 11, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
+    ok(/clear 60$/.test(r0.meta) && r0.cards === 13, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
     for (let i = 0; i < 5; i++) await page.click('#levelList .district [data-district="more"]');
     const r1 = await row();
     ok(r1.size === '6 boxes' && r1.city === '7' && r1.reroll && !r1.less && r1.focus === 'more', 'five presses of + make six boxes on city 7 (the debug seed), and the keyboard stays on +', `${r1.size}, city ${r1.city}, focus ${r1.focus}`);

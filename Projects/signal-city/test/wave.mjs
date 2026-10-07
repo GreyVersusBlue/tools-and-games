@@ -90,6 +90,31 @@ group('Two Blocks as shipped');
   ok(w.offsetOf() === 0 && agree === total, 'both boxes run the plan on one clock: the east column is the west column, at every quarter second', `offset ${w.offsetOf()}, ${agree} of ${total}`);
 }
 
+group('Boulevard: one offset lands both lines (R13)');
+
+{
+  // 220 m at 14 m/s is 15.7 s and the cycle is 33 s, so the trip is half a
+  // cycle: with the east box 16 s behind, a line east from the west box's
+  // green start lands 0.3 s before the east green, and a line west from the
+  // east box's green start lands 1.3 s before the west one (16 + 15.7 is
+  // 31.7 of 33)
+  const toGreen = (runs, t) => Math.min(...runs.filter(r => r.head === 'green').map(r => Math.abs(t - r.from)));
+  const landing = offset => {
+    const w = new World(levelById('boulevard'), 1);
+    if (offset) w.setOffset(offset);
+    w.run(100);   // the shift is paid over the greens to come
+    const m = waveModel(w, { ahead: 100 });
+    const east = m.lines.filter(l => l.dir === 'east' && l.t1 < m.ahead), west = m.lines.filter(l => l.dir === 'west' && l.t1 < m.ahead);
+    return { w, east: east.map(l => toGreen(m.nodes[1].east, l.t1)), west: west.map(l => toGreen(m.nodes[0].west, l.t1)) };
+  };
+  const one = landing(0), half = landing(16);
+  const said = r => `east ${r.east.map(f1).join(', ')} s; west ${r.west.map(f1).join(', ')} s off a green start`;
+  ok(one.w.offsetOf() === 0 && one.east.length >= 2 && one.west.length >= 2 && [...one.east, ...one.west].every(d => d > 10), 'as it ships, on one clock, every line each way lands more than 10 s from a green start', said(one));
+  ok(half.w.offsetOf() === 16 && Math.abs(half.w.controllers[1].shift) < 1e-6 && half.east.length >= 2 && half.west.length >= 2 && [...half.east, ...half.west].every(d => d < 2), 'with the east box 16 s behind, every line each way lands within 2 s of a green start: the one setting is a wave both ways', said(half));
+  const two = (() => { const w = new World({ ...levelById('two-blocks'), controllers: [{ offset: 0 }, { offset: 16 }] }, 1); w.run(30); const m = waveModel(w, { ahead: 100 }); return m.lines.filter(l => l.dir === 'east' && l.t1 < m.ahead).map(l => toGreen(m.nodes[1].east, l.t1)); })();
+  ok(two.length >= 2 && two.every(d => d > 8), 'which Two Blocks\' 43 s cycle cannot do: at its 16 s the eastbound lines land more than 8 s off', two.map(f1).join(', '));
+}
+
 group('the history');
 
 {

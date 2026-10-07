@@ -36,6 +36,7 @@ const TABS = ['phases', 'timing', 'rules', 'crossings', 'mode'];
 const LESSON_TAB = {
   'first-light': 'phases', stem: 'timing', 'four-ways': 'phases', crossing: 'crossings', 'two-blocks': 'timing',
   'rush-hour': 'phases', 'school-run': 'rules', 'main-street': 'phases', 'free-play': 'phases',
+  boulevard: 'timing',
   endless: 'rules',
 };
 const STRIP_SECONDS = 60;

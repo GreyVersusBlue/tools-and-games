@@ -778,6 +778,82 @@ group('lane changes on a corridor (R12, #781): a car handed on in the wrong lane
 }
 
 {
+  // the join (#927). A car changes lanes in its first step past the join,
+  // and the car alongside it in the lane it wants is still on box 1's exit
+  // path then, a metre short of being handed on beside it. Car A goes
+  // through box 1 in the inner lane and draws a right at box 2 (curb lane
+  // only); car B follows in the curb lane `behind` steps later
+  const C = { network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 }, demand: {}, duration: 120, turns: { R: 1 }, controller: { startPhase: 1 } };
+  const pair = behind => {
+    const w = new World(C, 2);
+    const a = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 1 });
+    let b = null, asked = null, changed = null;
+    for (let i = 0; i < 60 * 60 && !(a.done && b && b.done); i++) {
+      if (i === behind) b = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
+      const before = w.stats.laneChanges;
+      // the question _laneTick is about to put, in A's first step at box 2
+      if (!asked && a.path.node === 1) {
+        const curb = w.nodes[1].pathFor('W', 0, 'R');
+        asked = { lane: w._laneRoom(a, curb), zipper: w._roomFor(a, curb), at: w._alongLane(b, curb), aS: a.s, bNode: b.path.node, short: b.path.length - b.s, past: a.s - b.path.link.atS, want: a.laneWant && a.laneWant.lane };
+      }
+      w.step();
+      if (!changed && w.stats.laneChanges > before) changed = { tick: w.tick, bNode: b.path.node };
+    }
+    return { w, a, b, asked, changed };
+  };
+  const f2 = x => x.toFixed(2);
+  const near = pair(6);
+  ok(near.asked && near.asked.want === 0 && near.asked.bNode === 0 && near.asked.short > 0 && near.asked.short < 1.5 && near.asked.past < 1, 'a car that drew a right is handed on in the inner lane with the curb-lane car beside it not yet handed on', near.asked && `A ${f2(near.asked.past)} m past the join, B ${f2(near.asked.short)} m short of it on box ${near.asked.bNode + 1}`);
+  ok(near.asked && near.asked.at !== null && near.asked.at < near.asked.aS && Math.abs(near.asked.at + near.asked.short) < 1e-9, 'that car reads in the curb lane\'s own arc length as behind A, by its distance short of the join', near.asked && `${near.asked.at === null ? 'not read at all' : f2(near.asked.at) + ' m'} against A at ${f2(near.asked.aS)} m`);
+  ok(near.asked && near.asked.lane === false, 'the lane change\'s gap check counts that car across the join: no room (#927)', String(near.asked && near.asked.lane));
+  ok(near.asked && near.asked.zipper === false, 'and so does the zipper\'s, which reads the same lane', String(near.asked && near.asked.zipper));
+  ok(near.changed === null && near.w.stats.collisions === 0, 'so it does not move over onto it, and nobody is hit', `${near.w.stats.laneChanges} changes, ${near.w.stats.collisions} collisions`);
+  ok(near.a.done && near.b.done && near.w.stats.laneGiveUps === 1, 'side by side at one speed the gap never comes: it keeps its lane and its through, and both leave the map', `${near.w.stats.laneGiveUps} given up`);
+  // every car length of stagger up to the gap the change asks for
+  const sweep = [12, 18, 24, 36, 60].map(pair);
+  ok(sweep.every(r => r.asked.bNode === 0 && r.asked.lane === false && r.changed === null && r.w.stats.collisions === 0), 'the same with the curb-lane car 2 to 14 m short of the join: no change into it, no collision', sweep.map(r => `${f2(r.asked.short)} m: ${r.changed ? 'changed' : 'kept'}, ${r.w.stats.collisions}`).join('; '));
+  ok(sweep.at(-1).asked.zipper === true, 'the zipper asks for less room behind and has it at 14 m, so the two checks keep their own distances', `${f2(sweep.at(-1).asked.short)} m: lane ${sweep.at(-1).asked.lane}, zipper ${sweep.at(-1).asked.zipper}`);
+  // and which cars across the join are in a lane, on stand-in cars: the
+  // lane a path leaves its box in and the leg it feeds, not the lane it
+  // came in by or any path that feeds that box (two boxes in a row cannot
+  // tell these apart: a lane keeps its number through a box and a box has
+  // one neighbour a side)
+  {
+    const w = new World(C, 2), curb = w.nodes[1].pathFor('W', 0, 'R');
+    const on = (lane, exitLane, entry) => w._alongLane({ s: 95, rear: 93, path: { node: 0, lane, exitLane, length: 100, boxEnter: 50, link: { node: 1, entry, atS: 3 } } }, curb);
+    ok(on(1, 0, 'W') === -2 && on(0, 1, 'W') === null && on(0, 0, 'N') === null && w._alongLane({ s: 95, rear: 93, path: { node: 0, lane: 0, exitLane: 0, length: 100, boxEnter: 50, link: null } }, curb) === null, 'a car across the join is in a lane by the lane its path leaves in and the leg it feeds, placed from where the join lands on that leg', `${on(1, 0, 'W')}, ${on(0, 1, 'W')}, ${on(0, 0, 'N')}`);
+  }
+  // and a join is still a place to change lanes when the lane is clear
+  const far = pair(90);
+  ok(far.asked.bNode === 0 && far.asked.lane === true && far.changed && far.changed.bNode === 0 && far.a.path.turn === 'R' && far.w.stats.collisions === 0, 'with the curb-lane car 20 m short of the join there is room, and the change is made in the first step past it', `${f2(far.asked.short)} m short, changed ${far.changed && far.changed.tick - 972} step after the handoff, turn ${far.a.path.turn}`);
+}
+
+{
+  // the same thing found in traffic (#927): Boulevard's street as #926
+  // shipped it, with one car in ten turning right, seed 4. Before the gap
+  // check counted the car across the join, car 103 was handed to box 1's
+  // east approach in the inner lane at 177.92 s, moved to the curb lane at
+  // 177.93 s, and car 66 was handed on in the curb lane at 177.98 s
+  // underneath it: a sideswipe 6 to 8 m past the join at 178.50 s
+  const B = { network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 },
+    controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 13 }, { phase: 1, green: 9 }], timing: { yellow: 3, allRed: 2.5, minGreen: 4 } }, controllers: [{ offset: 0 }, { offset: 0 }],
+    demand: [{ W: 600, N: 220, S: 220 }, { E: 600, N: 220, S: 220 }], mix: { standard: 5, aggressive: 1.5, rideshare: 1.2, trucker: 0.6 }, turns: { T: 0.9, L: 0, R: 0.1 }, duration: 240 };
+  const w = new World(B, 4);
+  const lane = new Map(), swipes = [];
+  let read = 0;
+  for (let i = 0; i < 180 * 60; i++) {
+    w.step();
+    for (; read < w.events.length; read++) {
+      const e = w.events[read];
+      if (e.kind === 'lane') lane.set(e.car, e.t);
+      if (e.kind === 'collision' && e.cars.some(id => lane.has(id) && e.t - lane.get(id) < 1.5)) swipes.push(`cars ${e.cars.join(' and ')} at ${e.t.toFixed(2)} s (step ${w.tick}), fronts ${e.who.map(c => c.front).join(' and ')} m`);
+    }
+  }
+  ok(w.stats.handoffs > 30 && w.stats.laneChanges >= 1, 'a two-lane corridor with one car in ten turning right, seed 4, three minutes: cars are handed on and some change lanes', `${w.stats.handoffs} handoffs, ${w.stats.laneChanges} lane changes, ${w.stats.laneGiveUps} given up`);
+  ok(swipes.length === 0, 'and no car is hit within 1.5 s of changing lanes (it was cars 66 and 103 at step 10710)', swipes.join('; ') || 'none');
+}
+
+{
   // box 2's inner lane is a standing queue under its red: the gap never
   // comes, so the car keeps its lane and its through
   const C = { network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 }, demand: {}, duration: 120, turns: { L: 1 }, controller: { startPhase: 1 }, controllers: [{}, { startPhase: 0 }] };

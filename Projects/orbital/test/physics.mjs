@@ -13,16 +13,16 @@
 // brute-forces a launch vector for every one of them and fails loudly if it
 // can't find one. Exits non-zero on any failure (locked decision #13).
 //
-// The v1->v2 save-migration check extracts game.js's persistence block by its
-// own marker comments and evaluates it in isolation with a fake localStorage,
-// rather than reimplementing loadSave()/writeSave() here — that would drift
-// from the real code the moment either changed. If the markers move, this
-// test fails with a clear message instead of silently testing stale logic.
+// The save checks import js/save.mjs, the module the page itself loads, and
+// hand its slot a Map behind localStorage's three methods. Nothing of the slot
+// or of the v1 carry-over is rebuilt here. `test/fixtures/progress-eb2806c.json`
+// is what the build before the slot (eb2806c, 2026-10-07) wrote for a made-up
+// campaign, byte for byte: it was produced by running that build's own
+// writeSave(), and it is the old save every later build has to keep reading.
 
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -171,50 +171,103 @@ for (const type of ["planet", "star", "rock", "blackhole"]) {
 }
 
 // ============================================================
-// 5. Save migration: orbital_progress_v1 -> v2
+// 5. The save: the slot, an old save, and a file out and back
 // ============================================================
-console.log("\n5. Save migration v1 -> v2");
+console.log("\n5. The save");
 {
-  const gameSrc = fs.readFileSync(path.join(JS, "game.js"), "utf8");
-  const startMarker = "// ---- persistence (by stable key, so new packs never shift old progress) ----";
-  const endMarker = "// ---- canvas / view ----";
-  const si = gameSrc.indexOf(startMarker), ei = gameSrc.indexOf(endMarker);
+  const { SAVE_KEY, SAVE_VERSION, makeSlot, loadProgress, repair } =
+    await import(pathToFileURL(path.join(JS, "save.mjs")).href);
+  const store = () => {
+    const m = new Map();
+    return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
+  };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-  if (si === -1 || ei === -1) {
-    check("persistence block markers found in game.js", false,
-      "markers moved or renamed in game.js — update the marker strings in test/physics.mjs");
-  } else {
-    const block = gameSrc.slice(si, ei);
-    const fakeStore = new Map();
-    const fakeLocalStorage = {
-      getItem: k => (fakeStore.has(k) ? fakeStore.get(k) : null),
-      setItem: (k, v) => fakeStore.set(k, String(v)),
-    };
-    const sandbox = { localStorage: fakeLocalStorage, exports: {} };
-    vm.createContext(sandbox);
-    vm.runInContext(block + "\nexports.loadSave = loadSave; exports.writeSave = writeSave; exports.SAVE_KEY = SAVE_KEY;", sandbox);
-    const { loadSave, writeSave, SAVE_KEY } = sandbox.exports;
+  check("SAVE_KEY is unchanged (locked decision #36)", SAVE_KEY === "orbital_progress_v2", `SAVE_KEY="${SAVE_KEY}"`);
 
-    check("SAVE_KEY is unchanged (locked decision #36)", SAVE_KEY === "orbital_progress_v2", `SAVE_KEY="${SAVE_KEY}"`);
-
+  // --- the v1 key, carried over as it always was ---
+  {
+    const st = store(), slot = makeSlot({ storage: st });
     // Hand-built v1 fixture: the old flat object keyed by plain numeric index.
-    fakeStore.set("orbital_progress_v1", JSON.stringify({ "0": 3, "2": 1, "5": 2 }));
-    const migrated = loadSave();
+    st.m.set("orbital_progress_v1", JSON.stringify({ "0": 3, "2": 1, "5": 2 }));
+    const migrated = loadProgress(slot, st);
     check("v1 fixture migrates to basics#N keys",
-      migrated["basics#0"] === 3 && migrated["basics#2"] === 1 && migrated["basics#5"] === 2,
-      JSON.stringify(migrated));
+      same(migrated, { "basics#0": 3, "basics#2": 1, "basics#5": 2 }), JSON.stringify(migrated));
+    check("reading the v1 save writes nothing: it is carried over on the next win", !st.m.has(SAVE_KEY),
+      String(st.m.get(SAVE_KEY)));
 
-    writeSave(migrated);
-    const raw = fakeStore.get(SAVE_KEY);
-    check("migrated save round-trips under the v2 key", raw === JSON.stringify(migrated), raw);
+    slot.save(migrated);
+    check("migrated save round-trips under the v2 key", same(loadProgress(slot, st), migrated), st.m.get(SAVE_KEY));
 
     // Once a v2 key exists, it wins outright — no re-migration of stale v1 data.
-    fakeStore.set("orbital_progress_v1", JSON.stringify({ "0": 99 }));
-    fakeStore.set(SAVE_KEY, JSON.stringify({ "deepspace#1": 2 }));
-    const reload = loadSave();
-    check("an existing v2 key takes precedence over v1",
-      reload["deepspace#1"] === 2 && reload["basics#0"] === undefined, JSON.stringify(reload));
+    st.m.set("orbital_progress_v1", JSON.stringify({ "0": 99 }));
+    st.m.set(SAVE_KEY, JSON.stringify({ "deepspace#1": 2 }));
+    const reload = loadProgress(slot, st);
+    check("an existing v2 key takes precedence over v1", same(reload, { "deepspace#1": 2 }), JSON.stringify(reload));
+
+    // A wiped campaign is an empty object on disk, and it is still a v2 save.
+    slot.save({});
+    check("a wiped save is an empty record, not a missing key", st.m.get(SAVE_KEY) === `{"__v":${SAVE_VERSION}}`, st.m.get(SAVE_KEY));
+    check("and a wiped save does not bring the v1 one back", same(loadProgress(slot, st), {}),
+      JSON.stringify(loadProgress(slot, st)));
   }
+
+  // --- a save from the build before the slot ---
+  const OLD = fs.readFileSync(path.join(HERE, "fixtures", "progress-eb2806c.json"), "utf8");
+  const oldState = JSON.parse(OLD);
+  {
+    const st = store(), slot = makeSlot({ storage: st });
+    st.m.set(SAVE_KEY, OLD);
+    const got = loadProgress(slot, st);
+    check("an old save loads with every key and every count as it was written", same(got, oldState), JSON.stringify(got));
+    slot.save(got);
+    // The version stamp is the whole difference on disk.
+    check("and saved again it is the same bytes plus the version stamp",
+      st.m.get(SAVE_KEY) === OLD.slice(0, -1) + `,"__v":${SAVE_VERSION}}`, st.m.get(SAVE_KEY));
+    check("which loads to the same thing, with no stamp left in it", same(loadProgress(slot, st), oldState),
+      JSON.stringify(loadProgress(slot, st)));
+  }
+
+  // --- export to a file, import on another browser ---
+  {
+    const a = store(), slotA = makeSlot({ storage: a });
+    a.m.set(SAVE_KEY, OLD);
+    const state = loadProgress(slotA, a);
+    slotA.save(state);
+    const file = slotA.serialize(state);
+    const env = JSON.parse(file);
+    check("the exported file names the game and the version",
+      env.format === "gvb-save" && env.game === "orbital" && env.version === SAVE_VERSION, `${env.format} ${env.game} v${env.version}`);
+
+    const b = store(), slotB = makeSlot({ storage: b });
+    const back = slotB.deserialize(file);
+    check("the file imports", back !== null);
+    if (back) {
+      slotB.save(back);
+      check("and what it writes is byte for byte what the first browser had", b.m.get(SAVE_KEY) === a.m.get(SAVE_KEY),
+        `${b.m.get(SAVE_KEY)} vs ${a.m.get(SAVE_KEY)}`);
+      const stamp = t => t.replace(/"savedAt": "[^"]*"/, '"savedAt": ""');
+      check("and exported again it is the same file, the time it was saved aside",
+        stamp(slotB.serialize(back)) === stamp(file) && stamp(file) !== file);
+    }
+
+    const slot = makeSlot({ storage: store() });
+    check("another game's file is refused",
+      slot.deserialize(JSON.stringify({ format: "gvb-save", game: "signal-city", version: 1, state: { "basics#0": 1 } })) === null);
+    check("a list is refused, it is not a campaign", slot.deserialize("[1,2,3]") === null);
+    check("and so is a file that is not JSON", slot.deserialize("basics#0 = 1") === null);
+    const mended = slot.deserialize(JSON.stringify({ "basics#0": 2, "basics#1": "3", "basics#2": null, "basics#3": 0, "basics#4": -1, "later#7": 4, "basics#5": 2.9 }));
+    check("a hand-edited file keeps its attempt counts and drops what is not one",
+      same(mended, { "basics#0": 2, "later#7": 4, "basics#5": 2 }), JSON.stringify(mended));
+    check("repair leaves a real save exactly as it found it", same(repair(oldState), oldState), JSON.stringify(repair(oldState)));
+  }
+
+  // One writer. game.js asks the slot and holds no storage call of its own;
+  // a second one would write the bare shape back over the stamped one.
+  const gameSrc = fs.readFileSync(path.join(JS, "game.js"), "utf8");
+  check("game.js reads and writes through the slot and nothing else",
+    !/localStorage/.test(gameSrc) && gameSrc.includes("OrbitalSave.load()") &&
+    gameSrc.split("OrbitalSave.save(progress)").length === 3);
 }
 
 // ============================================================

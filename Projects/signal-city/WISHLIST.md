@@ -468,19 +468,134 @@ lane at a time, when the gap is long enough at its speed, the same path swap
 the zipper uses; 25 m before the line it gives up and takes its lane's turn.
 One lane each way draws exactly as before, so nothing shipped moved.
 
-### R13. More board: a second pack (in progress: Market Ring shipped, HISTORY.md #782)
+The gap it asks for counts the cars across the join (#927): a car changes
+lanes in its first step at the next box, when the car alongside it in the
+lane it wants is still on the last box's exit path, a metre short of being
+handed on. `_alongLane` in `sim.js` places such a car in the new lane's
+own arc length, by its distance short of the join, for `_laneRoom` and for
+the zipper's `_roomFor`. Before, the change was made onto that car: on a
+two-lane corridor with one car in ten turning right, seed 4 sideswiped 6
+to 8 m past the join at 178.5 s (`test/sim.mjs` keeps that street and
+that seed). A join is still a place to change lanes; a car waits for the
+gap as it does anywhere on the straight. Not guarded by a run, only by
+stand-in cars, because two boxes in a row cannot tell them apart: that the
+lane is the one a path leaves its box in and not the one it came in by,
+and that the leg it feeds is checked (a grid is one lane each way).
+
+### R13. More board: a second pack (in progress: Market Ring, Boulevard and Cross Town shipped, HISTORY.md #782, #926, #928, #929)
 
 **Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
 eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
 Street. Shipped: **Market Ring** (2026-10-01), a ring whose east leg
 starves the north, its second star the entry meter (`lesson: { kind:
-'meter' }`). Candidates still open: a two-lane corridor with a green wave
-both ways (the two-way wave wants travel time at half a cycle; Two Blocks'
-43 s cycle is not 31, so a new block length; R12's lane changes are what
-make two lanes work), a grid of three where the ambulance crosses every box
-(R6), an outage on a timed corridor (its return wants `setOffset`'s shift,
-Known gaps). Each level gets R1's two tables and R2's rule from the first
-commit. One increment a session, a level or two at a time.
+'meter' }`), **Boulevard** (2026-10-07), the two-lane corridor with a
+green wave both ways, and **Cross Town** (2026-10-07), three boxes in a row
+that an ambulance crosses (R6). One candidate is still open: an outage on a
+timed corridor (its return wants `setOffset`'s shift, Known gaps). Each level gets R1's two tables and
+R2's rule from the first commit. One increment a session, a level or two at
+a time.
+
+**Boulevard** (#926) is two boxes 220 m apart, two lanes each way, 600 an
+hour each way on the boulevard and 220 on each side street, 240 s, on a
+timed plan of 13 s and 9 s with 3 s of yellow and 2.5 s of all-red. That
+is a 33 s cycle, and it is the cycle that was changed and not the block:
+220 m at a standard car's 14 m/s is 15.7 s, half of 33, so the offset
+that carries the eastbound platoon carries the westbound one. It ships on
+one clock (#639's rule), opens on Market Ring's star, unlocks the phases
+and the offset and no timing slider (a slider moves one box, and two boxes
+on different cycles have no offset), and its second star is `progression`
+at 30%. One car in ten turns right at each box and none left (#928; it
+shipped with nobody turning, #926, until the lane change at the join was
+fixed, #927). R1's two tables, six seeds, `node tools/calibrate.mjs
+boulevard --baseline --hand`, as it ships and, under each, as #926 shipped
+it with nobody turning:
+
+| | cleared (target 88) | average wait | stopping again | three stars | locks |
+| --- | --- | --- | --- | --- | --- |
+| nothing pressed | 100 to 131 | 7 to 10 s | 75 to 91% | 0 of 6 (one star on all six) | 0 |
+| (nobody turning) | 93 to 135 | 7 to 8 s | 77 to 91% | 0 of 6 (one star on all six) | 0 |
+| the hand: 16 s, the best of its sweep | 107 to 134 | 5 to 6 s | 7 to 27% | 5 of 6 | 0 |
+| (nobody turning) | 110 to 128 | 3 to 7 s | 4 to 11% | 6 of 6 | 0 |
+
+The hand's sweep in stars over six seeds, 0 to 32 s by fours: 6, 6, 6, 15,
+**17**, 16, 8, 6, 6 (nobody turning: 6, 6, 6, 16, 18, 13, 8, 6, 6). The
+star the hand loses is seed 1's, to a crash in the east box at 220 s, a
+side-street car through its red into a boulevard car on its green; no
+crash on any of the six is within 1.5 s of a lane change. A finer sweep (a
+scratch script, six seeds an offset): 12, 14, 16, 18 and 20 s each meet
+the lesson on all six, 0 and 8 s on none, and three stars on six seeds are
+3, 6, 5, 4 and 4 of six, against 4, 4, 6, 2 and 3 with nobody turning: the
+boxes crash at about the same rate either way (13 collisions in those 30
+runs against 14), on different seeds. With nobody turning the same 16 s
+set late through `World.setOffset` met the lesson on six seeds of six 20 s
+and 30 s into the run, 45 s in on four, a minute in on none, because the
+cars that stopped twice before the wave count; that was not measured again
+with the turns. The hint says to set it early. It is not hard mode: R3's
+test (#641) wants no input clean on six seeds, and no input collides on
+seeds 3, 4 and 5. `test/stars.mjs` pins the
+table (WAVES), `test/wave.mjs` the geometry, `test/scoring.mjs` the data
+and one seed each way, `test/browser.mjs` the card, the tab and the slider.
+
+**NOBODY HAS PLAYED IT**, with the turns or without. What a person should
+look at first: whether 30 to 45 s is long enough to read the diagram and
+find the offset on a first play, or whether the bar wants to be looser or
+the run longer; then whether one seed in six losing its third star at the
+right offset to a crash the player did not cause is fair (a longer all-red
+did not end it: 3 s with the boulevard's green cut to 12 read one crash in
+six at 14 s and one at 16 s); then the hint, which says "half the cycle"
+and stops short of the number. Nobody turns left: a left across two lanes
+on a two-phase plan was two clean seeds of six in #926's sweep.
+
+**Cross Town** (#929) is three boxes in a row 220 m apart, one lane each
+way, every box on Rush Hour's 22 s rule with E-W as phase 1, 380 an hour
+in at each end of the street and 240 on every side street, 240 s. An
+ambulance comes in from the west of box 1 at 90 s and has 100 s to leave
+by the east of box 3. It is level data and nothing else: no engine file,
+no page file, no save field. The second star is Rush Hour's `ambulance`
+(on time, on its corridor), and what it teaches is new. The corridor
+follows the ambulance (R6), but a box is pre-empted only when the car is
+handed to it, 110 m out, and one lane means it is never faster than the
+car in front. So the call alone is not enough on every seed: the player
+picks the next box and gives its E-W phase before the ambulance gets
+there. Nobody turns (`turns: { T: 1 }`), because a car handed on draws its
+turn from the level's weights and the ambulance with it (Known gaps). It
+opens on Boulevard's star and takes lefts, split phases and sensors from
+the shop on all three boxes.
+
+R1's two tables, six seeds, `node tools/calibrate.mjs cross-town
+--baseline --hand`, and a third row, `--hand=phases,corridor`. The hand
+learned one move for this level (`clearAhead`, the part named `ahead`):
+at every box a called ambulance's through path leads on to, the phase
+carrying it is asked for once the minimum green has run and pressed again
+every 15 s. The offset sweep now leaves a row of boxes on rules alone
+(the tool died on it: no plan, no cycle to sweep).
+
+| | cleared (target 88) | average wait | ambulance on the map | on time | three stars | locks |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing pressed | 99 to 116 | 13 to 17 s | 99 to 136 s, or still there at the end on two seeds | 2 of 6, uncalled | 0 of 6 (one star on all six) | 0 |
+| the hand without the road ahead: the corridor as it arrives, the longest queue at each box | 93 to 113 | 12 to 22 s | 69, 95, 75, 105, 76, 113 s | 4 of 6 | 3 of 6 | 0 |
+| the hand in full | 97 to 119 | 13 to 21 s | 56, 61, 57, 80, 54, 76 s | 6 of 6 | 6 of 6 | 0 |
+
+100 s sits 5 s from the nearest seed on either side in the middle row (95
+and 105 s) and 20 s over the slowest seed of the last. A scratch sweep
+with the boxes left on their rule and no hand at the phases: the corridor
+called 5 s in is 75 to 116 s (four on time), called at once 70 to 116 s
+(three); with E-W asked for and held at each box ahead, 60 to 90 s called
+at once, 65 to 95 s called 5 s in, 70 to 100.1 s called 10 s in. The
+target is under the worst run of any row, so nothing pressed keeps the
+survival star, as on every lesson level since #639; it cannot earn the
+second, which needs the corridor called. Not hard mode: R3's test (#641)
+wants no input clean on six seeds, and seed 2 collides once.
+`test/stars.mjs` pins the table (CROSSINGS), `test/scoring.mjs` the data
+and seed 6 three ways, `test/campaign.mjs` the shop and the save,
+`test/browser.mjs` the card, the three boxes and the follow into box 2.
+
+**NOBODY HAS PLAYED IT.** What a person should look at first: whether a
+player finds the box picker and gets to box 2 and box 3 in time (the
+ambulance is at box 2 about 25 s after it is called), and whether the
+hint is enough to send them there; then whether 100 s reads as an
+ambulance's deadline when a clear road is 54 s and a blocked one 113;
+then a street where no car turns.
 
 ### R14. Endless keeps a day that was left halfway: done (HISTORY.md #783)
 
@@ -606,6 +721,21 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   level should ship a shorter all-red so that the advice bites at the
   setting it ships with is Devon's, and nothing in the level was changed.
 
+- An event's `turn` is the first box's only (#929). A car handed to the
+  next box draws its turn from the level's `turns` (`_handoff`, R12), an
+  ambulance or a motorcade car like any other, so on a row of boxes a
+  scripted vehicle crosses every box only where nobody turns. Cross Town
+  ships `turns: { T: 1 }` for that reason. Keeping a scripted car's turn
+  past the first box is an engine change, and then Cross Town can take
+  turns and is calibrated again.
+
+- An ambulance that crashes is off the map, and if it was called and not
+  yet late that reads as on time on its corridor (`_ambulanceTick` asks
+  only `car.done`). Seen in a scratch run of a lighter Cross Town (300 an
+  hour, seed 6, called 10 s in, a crash 14.3 s after it came); on no seed
+  of the level as it ships. The crash costs the third star and not the
+  second. Not changed.
+
 - A district "locks" more often with every ambulance followed, and that
   is the design, not a fault in the follow (#918). Thirty seeds, eight
   boxes, before the lights were fixed: 5 locks with the follow, 2 with
@@ -703,6 +833,11 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   never cuts a green below the minimum green, so a big cut can take two or
   three greens to pay; the panel's note says what is still owed until it is
   paid.
+- Boulevard's wave runs both ways because its cycle is 33 s (#926). It
+  has no timing slider on purpose: `setTiming` reaches the selected box
+  alone, and a longer all-red at one box would give the two boxes
+  different cycles and no offset at all. A slider that moved both boxes
+  would let the player break and remake the half-cycle, and is not built.
 - The wave on Two Blocks runs one way at a time. 220 m at a standard car's
   14 m/s is 15.7 s, so with the east box 16 s behind a platoon released at
   the east box's green start reaches the west box 0.3 s before its green

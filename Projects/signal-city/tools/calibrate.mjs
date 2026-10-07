@@ -42,7 +42,7 @@
 // 4, instead of the ramp as it ships (endless.js RAMP). #648 has the tables.
 // `--baseline` (R1) plays every level exactly as it ships with no input,
 // and `--hand` plays it with the reference hand (handStep below), or with
-// `--hand=phases,platoons,corridor,walks,offset` only the parts named; both at
+// `--hand=phases,platoons,corridor,ahead,walks,offset` only the parts named; both at
 // once add a table of the hand against no input. They print markdown tables
 // HISTORY.md can quote, one row a level: `node tools/calibrate.mjs all
 // --baseline --hand` is about 25 minutes in a cloud container, most of it
@@ -145,7 +145,8 @@ export function meterSweep(level, reds, bare, opts = {}) {
 // the corridor for every emergency vehicle or motorcade car the moment it
 // is on the map (priorityNearest, without waiting for E), and at the end
 // of each green the phase whose queue has waited longest, walk calls
-// counted as people waiting and answered first (answerWalks, R2). A timed plan is
+// counted as people waiting and answered first (answerWalks, R2), with the
+// boxes ahead of a called ambulance given their green (clearAhead). A timed plan is
 // left to run: on a corridor the plan is the lesson, and the hand's part
 // there is the offset, swept at load (handOffset).
 
@@ -220,10 +221,45 @@ function greedy(w, node, max = HAND_MAX, peds = false) {
   if (q[ctl.phase] === 0 || ctl.stageT >= max) w.requestPhase(other, node);
 }
 
-export function handStep(w, { platoons = true, corridor = true, phases = true, peds = true, max = HAND_MAX } = {}) {
+export const AHEAD_HOLD = 15;   // seconds into a green the hand presses it again for a called vehicle still a box or more away (#929)
+
+// The road ahead of a called vehicle (R13, #929). The corridor follows its
+// vehicle, but a box is only pre-empted when the car is handed to it, a
+// block away, and its queue is standing in the lane by then. A hand that
+// sees an ambulance coming gives the next boxes on its street their green
+// before it gets there: at every box the car's through path leads on to,
+// the phase carrying that movement is asked for once the minimum green has
+// run, and pressed again every AHEAD_HOLD seconds while it waits. A box
+// already holding a corridor, a ring, a timed plan and a blackout are left
+// alone. Returns the boxes it is holding, which the greedy then skips.
+export function clearAhead(w) {
+  const out = new Set();
+  if (w.powerOut) return out;
+  for (const car of w.cars) {
+    if (car.done || !car.priority || car.crashed || car.archetype !== 'emergency') continue;
+    let p = car.path;
+    for (let hop = 0; p.link && hop < w.nodes.length; hop++) {
+      const net = w.nodes[p.link.node], ctl = w.controllers[p.link.node];
+      const through = net.choicesFrom(p.link.entry, p.exitLane).find(q => q.turn === 'T');
+      if (!through) break;
+      p = through;
+      if (net.roundabout || ctl.mode === 'timed' || ctl.preemption || ctl.stage === 'flash') continue;
+      const want = ctl.phases.findIndex(ph => ph.movements.includes(through.movement));
+      if (want < 0) continue;
+      out.add(net.node);
+      if (ctl.stage !== 'green') continue;
+      if (ctl.phase !== want) { if (ctl.next !== want && ctl.stageT >= ctl.timing.minGreen) w.requestPhase(want, net.node); }
+      else if (ctl.next === null && ctl.stageT >= AHEAD_HOLD) w.holdGreen(net.node);
+    }
+  }
+  return out;
+}
+
+export function handStep(w, { platoons = true, corridor = true, phases = true, peds = true, ahead = true, max = HAND_MAX } = {}) {
   const held = platoons ? holdPlatoon(w) : -1;   // a box held under a platoon is the platoon's, not the greedy's
   if (corridor) for (const c of w.cars) if (!c.done && !c.priority && (c.archetype === 'emergency' || c.archetype === 'motorcade')) w.requestPriority(c);
-  if (phases) for (let n = 0; n < w.controllers.length; n++) if (n !== held) greedy(w, n, max, peds);
+  const road = ahead ? clearAhead(w) : new Set();   // and a box held for a called vehicle on its way is the vehicle's
+  if (phases) for (let n = 0; n < w.controllers.length; n++) if (n !== held && !road.has(n)) greedy(w, n, max, peds);
 }
 
 // One run of a level exactly as it ships: no input, or the hand. `offset`
@@ -243,9 +279,10 @@ export function played(level, seed, { hand = false, offset = null } = {}) {
 // The offset the hand plays a corridor at: every 4 s round the second box's
 // cycle, six seeds each, and the best kept (most stars, then most cleared,
 // then least wait). Every 2 s doubles a sweep that already costs Two Blocks
-// 66 runs. Null on a single box.
+// 66 runs. Null on a single box, and on boxes that run rules and no plan.
 export function handOffset(level, parts = {}) {
-  if (!isCorridor(level)) return null;
+  // a row of boxes on rules has no plan to shift (Cross Town, #929): only a timed corridor has an offset
+  if (!isCorridor(level) || (level.controller || {}).mode !== 'timed') return null;
   const L = new World(level, 1).controllers[1].cycleLength();
   let best = null;
   const sweep = [];
@@ -272,11 +309,11 @@ const tableHead = title => `\n${title}\n\n| Level | target, wait | ${seeds.map(s
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 const handFlag = flags.find(f => f === '--hand' || f.startsWith('--hand='));
 if (isMain && !flags.includes('--endless') && (flags.includes('--baseline') || handFlag)) {
-  // `--hand=phases,platoons,corridor,walks,offset` plays only the parts named; `--hand` is all five.
+  // `--hand=phases,platoons,corridor,ahead,walks,offset` plays only the parts named; `--hand` is all six.
   // walks rides on phases: it is the greedy's answer to a call (R2)
-  const named = handFlag && handFlag.includes('=') ? handFlag.split('=')[1].split(',') : ['phases', 'platoons', 'corridor', 'walks', 'offset'];
-  const parts = { phases: named.includes('phases'), platoons: named.includes('platoons'), corridor: named.includes('corridor'), peds: named.includes('walks') };
-  const partText = { phases: `the longest-waited queue at each green's end (held to ${HAND_MAX} s)`, platoons: 'holdPlatoon', corridor: 'the corridor on spawn', walks: `a walk call answered, its phase asked for after ${PED_ASK} s`, offset: "a corridor's offset swept at load" };
+  const named = handFlag && handFlag.includes('=') ? handFlag.split('=')[1].split(',') : ['phases', 'platoons', 'corridor', 'ahead', 'walks', 'offset'];
+  const parts = { phases: named.includes('phases'), platoons: named.includes('platoons'), corridor: named.includes('corridor'), ahead: named.includes('ahead'), peds: named.includes('walks') };
+  const partText = { phases: `the longest-waited queue at each green's end (held to ${HAND_MAX} s)`, platoons: 'holdPlatoon', corridor: 'the corridor on spawn', ahead: 'the green given at each box ahead of a called ambulance', walks: `a walk call answered, its phase asked for after ${PED_ASK} s`, offset: "a corridor's offset swept at load" };
   const list = which === 'all' ? LEVELS : [levelById(which)].filter(Boolean);
   if (!list.length) { console.log(`no level ${which}`); process.exit(1); }
   const mean = rows => ({ cleared: rows.reduce((a, r) => a + r.cleared, 0) / rows.length, wait: rows.reduce((a, r) => a + r.wait, 0) / rows.length });
@@ -286,7 +323,7 @@ if (isMain && !flags.includes('--endless') && (flags.includes('--baseline') || h
     for (const level of list) { const rows = seeds.map(s => played(level, s)); base.set(level.id, rows); console.log(tableRow(level, rows)); }
   }
   if (handFlag) {
-    console.log(tableHead(`The reference hand${named.length < 5 ? ', in part' : ''}: ${named.map(n => partText[n]).join('; ')}.`));
+    console.log(tableHead(`The reference hand${named.length < 6 ? ', in part' : ''}: ${named.map(n => partText[n]).join('; ')}.`));
     for (const level of list) {
       const sweep = named.includes('offset') ? handOffset(level, parts) : null;
       const rows = sweep ? sweep.rows : seeds.map(s => played(level, s, { hand: parts }));
