@@ -227,8 +227,16 @@ optional evening cards; `_chapter_m2` went to Earl's office regardless and
 `m2_solo_entry`, nothing sets Earl back, and Free Roam 2 opens on the debt.
 Reversible by rerouting one arm, if A turns out to be wanted after all.
 
-**Is the six-way Earl response at the fair the shape it should be?** Open since
-round 1. Only option 5, "I need to talk to someone first," reaches `m1_ruthie`
+**Is the six-way Earl response at the fair the shape it should be?** — *answered
+by Devon, 2026-10-05: the shape is as intended.* The second half of the
+question below, Earl `'unknown'` at the ending, was already closed when he
+answered: `m2_sign` has set `rels.earl = 'backer'` since Phase 2 (#271), and
+every run that did not say "Not interested" signs there. Checked 2026-10-07
+with `graph.mjs`'s relationship walk and `_chapter_m2` gated as the engine
+gates it: no scene after `m2_sign` is reached with Earl `'unknown'`, so the
+epilogue's "still being decided" line has no run that prints it. No suite
+plays option 5, which is the one thing here still unchecked. The question as
+it stood: Only option 5, "I need to talk to someone first," reaches `m1_ruthie`
 and sets `rels.ruthie = 'solid'`, so five of six answers lock Ruthie out of all
 four hubs and the epilogue for the whole game. Option 5 is also the only one
 that never sets `rels.earl`, so a Ruthie run carries Earl as `'unknown'` to the

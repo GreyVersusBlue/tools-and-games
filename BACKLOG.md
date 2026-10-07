@@ -2767,7 +2767,7 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q31 | **Is the six-way Earl response at the fair the shape it should be?** Open since round 1. Only option 5, "I need to talk to someone first," reaches `m1_ruthie` and sets `rels.ruthie = 'solid'`, so five of six answers lock Ruthie out of all four hubs and the epilogue for the whole game. Option 5 is also the only one that never sets `rels.earl`, so a Ruthie run carries Earl as `'unknown'` to the ending screen, where the epilogue prints "Earl Maddox. The relationship is still being decided." after a run in which he backed every show. | 3 | `Projects/daredevil/WISHLIST.md`, the project's notes (twice, rounds 2 and 3) |
+| ~~Q31~~ | ~~**Is the six-way Earl response at the fair the shape it should be?**~~ Struck — answered by Devon, 2026-10-05: the shape is as intended. The epilogue half of the question (a Ruthie run reaching the ending with Earl `'unknown'` and reading "still being decided") was already closed: `m2_sign` has set `rels.earl = 'backer'` since Phase 2 (#271), and every run that did not say "Not interested" signs there. Checked 2026-10-07 (TG-29) with `graph.mjs`'s relationship walk and `_chapter_m2` gated as the engine gates it: no scene after `m2_sign` is reached with Earl `'unknown'`. No suite plays option 5. | 3 | `Projects/daredevil/WISHLIST.md`, the project's notes (twice, rounds 2 and 3) |
 
 ### Numina
 

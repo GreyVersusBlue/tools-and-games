@@ -152,5 +152,79 @@ section(12, () => {
   check('non-finite: the crumb names the task and says it was the target', warns.some(w => w.includes('non-finite') && w.includes('gather') && w.includes('target')), warns.join(' | '));
 });
 
+// ---- the ground under a new way, and the morning walk out to it (TG-29, #922) ----
+// LORE_PLACE.way.at() finds its way by the words wayDay wrote into the chronicle, so each way here comes through the real wayDay
+// (its roll and its condition forced, the other three marked learned) and is then grown the way a third telling grows it.
+// Breaks, each watched: reword 'the sail' or 'the plough' in WAYS, or in WAY_AT; swap WAY_AT's two names; have at() take the
+// first grown way whatever it is (the old line).
+function wayRig(order, { hut = true, farm = false } = {}) {
+  const h = fresh(), { ev } = h;
+  ev(`(()=>{while(seaDay()!==3||dayCount<=YEAR)dayCount++;
+    ${hut ? "if(!getB('hut'))bldg.push({kind:'hut',x:shore[0].x,y:shore[0].y});" : "bldg=bldg.filter(b=>b.kind!=='hut');"}
+    ${farm ? 'if(!farms.length)farms.push({x:Math.round(center.x),y:Math.round(center.y)});' : ''}
+    const r=R;R=()=>0;
+    for(const i of ${JSON.stringify(order)}){const c=WAYS[i].cond;WAYS[i].cond=()=>true;ways=15&~(1<<i);wayYr=0;wayDay(900+i);WAYS[i].cond=c}
+    R=r;for(const e of chron)if(e.kind==='way')e.gr=1})()`);
+  return h;
+}
+section(14, () => {
+  const names = fresh().ev('WAYS.map(w=>w.n)');
+  check('the ways: there are four, and wayDay writes each one\'s name into its chronicle label', names.length === 4 &&
+    names.every((n, i) => { const l = wayRig([i]).ev("chron.filter(e=>e.kind==='way').map(e=>e.label)"); return l.length === 1 && l[0].includes(n); }));
+  const sail = wayRig([0]).ev("(()=>{const p=LORE_PLACE.way.at(),h=getB('hut'),s=nearestShore(h.x,h.y);return [p&&p.x,p&&p.y,s.x,s.y]})()");
+  check('the ways: the sail\'s ground is the shore by the fishing hut', sail[0] === sail[2] && sail[1] === sail[3] && sail[0] != null, JSON.stringify(sail));
+  check('the ways: and nowhere while there is no hut', wayRig([0], { hut: false }).ev('LORE_PLACE.way.at()') === null);
+  const plough = wayRig([1], { farm: true }).ev('(()=>{const p=LORE_PLACE.way.at();return [p&&p.x,p&&p.y,farms[0].x+.5,farms[0].y+.5]})()');
+  check('the ways: the plough\'s ground is the first field', plough[0] === plough[2] && plough[1] === plough[3], JSON.stringify(plough));
+  check('the ways: and nowhere while there is no field', wayRig([1]).ev('farms.length?0:LORE_PLACE.way.at()') === null);
+  check('the ways: the kiln and the book of days have no ground', wayRig([2], { farm: true }).ev('LORE_PLACE.way.at()') === null && wayRig([3], { farm: true }).ev('LORE_PLACE.way.at()') === null);
+  // the defect: `chron.find(x=>x.kind==='way'&&x.gr)` took the first grown way, so a kiln ahead of the sail answered null for good
+  const late = wayRig([2, 3, 0]).ev("(()=>{const p=LORE_PLACE.way.at(),h=getB('hut'),s=nearestShore(h.x,h.y);return [p&&p.x,p&&p.y,s.x,s.y]})()");
+  check('the ways: a kiln and a book learned first do not hide the sail\'s shore', late[0] === late[2] && late[1] === late[3] && late[0] != null, JSON.stringify(late));
+  const both = wayRig([1, 0], { farm: true }).ev('(()=>{const p=LORE_PLACE.way.at();return [p&&p.x,p&&p.y,farms[0].x+.5,farms[0].y+.5]})()');
+  check('the ways: of two with ground, the one the chronicle has first keeps it', both[0] === both[2] && both[1] === both[3], JSON.stringify(both));
+  check('the ways: the two with ground are named as WAYS names them', fresh().ev('WAY_AT.length===2&&WAY_AT.every(n=>WAYS.some(w=>w.n===n))'));
+});
+// queueStoryWalk() is the line newDay runs the morning after a fire night. `q` calls it with R() counted and, when `roll` is given,
+// forced. Breaks, each watched: put `un` back to the first unnamed story whatever its ground (the old line); drop the `named.length`
+// guard; pick the repeat from `cand`; take the call out of newDay, or make it two mornings after the fire.
+function q(h, roll) {
+  return h.ev(`(()=>{const r=R;let n=0;R=()=>{n++;return ${roll == null ? 'r()' : roll}};walkP=null;queueStoryWalk();R=r;
+    return {k:walkP&&walkP.k,named:walkP&&walkP.named,d:walkP&&walkP.d===dayCount,draws:n}})()`);
+}
+const grown = kind => `chron.push({d:dayCount,y:yearOf(dayCount),kind:'${kind}',label:'a made-up ${kind}',st:'told',gr:1,tl:3});`;
+section(15, () => {
+  let h = wayRig([2]);
+  let w = q(h);
+  check('story walk: a grown kiln alone queues nothing and rolls nothing', w.k === null && w.draws === 0, JSON.stringify(w));
+  h.ev(grown('rainscame'));
+  w = q(h);
+  check('story walk: a story with ground behind a grown kiln is walked', w.k === 'rainscame' && w.named === false && w.d && w.draws === 0, JSON.stringify(w));
+  h.ev("lorePl.push('rainscame')");
+  w = q(h, 0);
+  check('story walk: and once it is named it is walked again on a roll under one in four', w.k === 'rainscame' && w.named === true && w.draws === 2, JSON.stringify(w));
+  w = q(h, .25);
+  check('story walk: and not on a roll of one in four or over', w.k === null && w.draws === 1, JSON.stringify(w));
+  h.ev(grown('shoal'));
+  w = q(h, 0);
+  check('story walk: an unnamed story with ground goes before any repeat, and rolls nothing', w.k === 'shoal' && w.named === false && w.draws === 0, JSON.stringify(w));
+  // the repeat is drawn from the named stories only: three grown, the kiln first in the chronicle, and the roll that would land on it
+  h.ev("lorePl.push('shoal')");
+  w = q(h, 0);
+  check('story walk: the repeat never lands on the story with no ground', w.k === 'rainscame' && w.draws === 2, JSON.stringify(w));
+  w = q(h, .24);
+  check('story walk: the repeat is rolled across the named stories', w.k === 'rainscame' && w.draws === 2, JSON.stringify(w));
+  // an island with no such story makes the draws it always made: none for an unnamed story, one or two for a repeat
+  h = fresh(); h.ev('dayCount=30;' + grown('rainscame'));
+  w = q(h);
+  check('story walk: an island with no groundless story rolls nothing for its first walk', w.k === 'rainscame' && w.draws === 0, JSON.stringify(w));
+  check('story walk: no grown story, nothing queued', (w = q(fresh())).k === null && w.draws === 0, JSON.stringify(w));
+  // and newDay is what calls it: a fire night, the day turns, somebody walks out, and the ground has its name
+  h = wayRig([2]); h.ev(grown('rainscame') + 'storyDay=dayCount');
+  const out = h.ev(`(()=>{const d=dayCount;let i=0;for(;i<2800*3&&!lorePl.length;i++)step(.05);
+    return {days:dayCount-d,lp:lorePl.slice(),spot:spots.some(s=>s.lore&&s.k==='rainscame'),n:loreN.rainscame||0}})()`);
+  check('story walk: the morning after a fire, behind a grown kiln, the rain\'s ground gets its name', out.lp.join() === 'rainscame' && out.spot && out.n === 1 && out.days === 1, JSON.stringify(out));
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);
