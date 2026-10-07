@@ -253,8 +253,10 @@ export const BEANS_MAX = 9999;          // the save's clamp, not a game limit
 // live, so a purchase, a reopening and a reload cannot disagree about what an
 // owned unlock means. The four things Phase 7 named, plus a second discount
 // tier so the last stretch of the tree is not one item.
+// A menu unlock's `desc` says so when its recipe needs a syrup or topping that
+// is not day-one stock (#921): beans buy the row on the menu, not the shelf.
 export const META_UPGRADES = [
-  {id:'menuMocha',    name:'Mocha on the Board',     cost:2,  desc:'Mocha is on your menu in this run and every run after'},
+  {id:'menuMocha',    name:'Mocha on the Board',     cost:2,  desc:'Mocha is on your menu in this run and every run after. Mocha syrup is not included: buy it on this board, each run'},
   {id:'menuColdbrew', name:'Cold Brew on the Board', cost:3,  requires:'menuMocha', desc:'Cold Brew too, in every run'},
   {id:'thirdCounter', name:'A Third Counter',        cost:4,  desc:'Reopen with three station slots instead of two'},
   {id:'dayOneHire',   name:'A Hand on Day One',      cost:5,  desc:'Reopen with a Junior Barista already hired'},

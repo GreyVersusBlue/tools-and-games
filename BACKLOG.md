@@ -308,7 +308,11 @@ boxes in 54.1 s against 64.3 s. Collisions on eight boxes went from 11 to 14
 over six seeds; traced on 2026-10-05 (TG-29, #876), that is the count's own
 swing and not the follow, which reads 32 against 40 over thirty. The same
 sitting made the corridor again after a blackout (#872) and gave the green a
-corridor ends its yellow (#875); what is left is in the WISHLIST's Known gaps. **Worth carrying forward**:
+corridor ends its yellow (#875). The two things that were left are closed (#918, 2026-10-07): a corridor on a leg
+already green clears the rest of that green through a yellow and an all-red, a corridor's own leg gets a yellow
+when its hold ends, and a district's "lock" with every ambulance followed is one driver's trip-long wait
+reaching 120 s, which is the design. Rush Hour's corridor crash at 1.5 s of all-red (#641) was the missing
+yellow; whether the level should ship a shorter all-red is Devon's, in the WISHLIST's Known gaps. **Worth carrying forward**:
 `npm run check` counts 1,913 units in a fresh `git worktree` of `main` and
 1,920 in Devon's checkout with no diff, because `check-integrity.mjs` walks
 gitignored files too. The unit count is not a count of the site.
@@ -869,7 +873,13 @@ leaves for a later arc" list — candidates, not a ranked arc. The five recipes
 that were another recipe's requirement list (#365) were reshaped on 2026-10-05
 (#878, TG-29); what that left is in the same list, and two of those four (an
 Americano completing a Ristretto's ticket, Mocha on the menu with its syrup
-not bought) were closed on 2026-10-06 (#913, TG-29). Nothing from it is in the
+not bought) were closed on 2026-10-06 (#913, TG-29). "Accessibility past the
+keyboard" was done on 2026-10-07 (#916, #917, TG-29; judged by no person), the
+other two of the four the same day (#921, TG-29: the Legacy row "Mocha on the
+Board" says its syrup is not included, and a barista's step refuses a syrup or
+topping that is not on the shelf), and
+"Difficulty presets" was not built: its four open choices are in the
+wishlist's "Questions for Devon". Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
@@ -2162,7 +2172,8 @@ Two things the work turned up. The first is fixed, the second had shipped:
    slot is bought. `opBudget` also allowed one tile too many on a 10x7 floor
    with three sinks (22 a line, 72 cells on 70) and is 21 there now. With x2
    or Merge + owned neither change moves any order. `smoke-targets.mjs` 119
-   to 151, `browser.mjs` 74 to 79. Q47 was not needed and is still Devon's.
+   to 151, `browser.mjs` 74 to 79. Q47 was not needed for it; Devon answered
+   it on 2026-10-05 and item 3 is the answer built.
 
 2. **The tile-cost hint. Shipped 2026-09-16, PR #335** (#531). The question was
    whether a three-digit `NEEDS` needs a cost beside it; the arithmetic says yes
@@ -2175,6 +2186,24 @@ Two things the work turned up. The first is fixed, the second had shipped:
    still carries the recipe and is still nothing at all on a touchscreen, which
    is why this went on the tile. `test/smoke-targets.mjs` 104 → 109 holds both
    halves of the range, `test/browser.mjs` 57 → 68. Nothing is open against it.
+
+3. **The cost is the loud number once the order stops being the work. Shipped
+   2026-10-07** (TG-29, #920, Q47 answered yes by Devon on 2026-10-05). Loud
+   means fewer tiles than counting up from the source's 1, which +1, -1 and
+   halving never make and a doubler or a one-line merger makes for 297 of the
+   299 orders, every one from 4. On a loud order the tile's cost line is full
+   copper and bold (9 px on a cell of 48 px or more, the 8 px it had on a
+   phone cell, whose three rows are counted to the pixel). Under the floor
+   every sink has a sentence, loud or not, because the tooltip that held the
+   recipe is nothing on a touchscreen: `Order 231 takes 12 tiles, not 230.
+   Cheapest line: 2× +1, ×2, +1, 3× ×2, +1, ×2, +1, ×2, +1.` The rule and the
+   sentence are `costStandsOut` and `orderReadout` in `js/targets.js`; the
+   page's `LOUD_COSTS` constant turns both halves off. No save field, no key.
+   `smoke-targets.mjs` 151 to 175, `browser.mjs` 79 to 90. **Nobody looked at
+   it**: no person has judged whether copper and one pixel is loud enough,
+   or whether a sentence under the grid is where a player reads. Not built:
+   the sentence does not say which sink it belongs to when two orders are the
+   same number, and the tooltip keeps its older wording (`12 fabricators`).
 
 ## The Fracture Cycle
 
@@ -2657,8 +2686,9 @@ answered by locked #523 while shipping the causeway: the first. The hill's
 climb follows the trail's arc-length height, read by z, and the trail itself
 does not move. Re-anchoring `trailYof` would have moved every altitude term in
 the piece with it; widening the bench would have kept the drop and argued with
-the blaze posts. Blue Hour has two open questions left, Q45 and Q46 (the
-phantom's pan), neither blocking anything ranked.
+the blaze posts. Blue Hour has one open question left, Q45 (Q46, the
+phantom's pan, was answered the way #634 had built it), and it blocks nothing
+ranked.
 
 **Struck: Q36**, "is a character builder welcome?", answered yes by locked
 #304 while shipping Numina Phase 3's first increment, on the one condition
@@ -2737,7 +2767,7 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q31 | **Is the six-way Earl response at the fair the shape it should be?** Open since round 1. Only option 5, "I need to talk to someone first," reaches `m1_ruthie` and sets `rels.ruthie = 'solid'`, so five of six answers lock Ruthie out of all four hubs and the epilogue for the whole game. Option 5 is also the only one that never sets `rels.earl`, so a Ruthie run carries Earl as `'unknown'` to the ending screen, where the epilogue prints "Earl Maddox. The relationship is still being decided." after a run in which he backed every show. | 3 | `Projects/daredevil/WISHLIST.md`, the project's notes (twice, rounds 2 and 3) |
+| ~~Q31~~ | ~~**Is the six-way Earl response at the fair the shape it should be?**~~ Struck — answered by Devon, 2026-10-05: the shape is as intended. The epilogue half of the question (a Ruthie run reaching the ending with Earl `'unknown'` and reading "still being decided") was already closed: `m2_sign` has set `rels.earl = 'backer'` since Phase 2 (#271), and every run that did not say "Not interested" signs there. Checked 2026-10-07 (TG-29) with `graph.mjs`'s relationship walk and `_chapter_m2` gated as the engine gates it: no scene after `m2_sign` is reached with Earl `'unknown'`. No suite plays option 5. | 3 | `Projects/daredevil/WISHLIST.md`, the project's notes (twice, rounds 2 and 3) |
 
 ### Numina
 
@@ -2754,10 +2784,10 @@ live. Nothing in that column is a link to follow.
 | Q39 | **Should `characters.html` adopt `gvb-save.js` for in-browser editing?** Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. Its ranked row was retired here on 2026-09-24 (#628); `Pathfinder/tests/showcase.test.mjs` fails on the first line of the feature, so a yes means narrowing that check. | 4 | prompt 03, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | Q40 | **Does Aphelion ever need to run on a tablet or phone?** Four rounds re-derived "no evidence yet" from scratch rather than asking. The answer decides whether a touch/gamepad input scheme gets built. Nothing in the game reads a touch or a gamepad today, so on a phone without a keyboard it can be looked at and not played. Its ranked row was retired here on 2026-09-24 (#629); `Projects/aphelion/test/desktop-input.mjs` fails on the first line of the feature, so a yes means deleting the rule it trips. | 4 | prompt 04, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
-| Q43 | **If Golden Hour's night proves popular, should the owl hunt?** One swoop over the dunes, no kill shown; and the fireflies drifting toward the fire when it burns. | 1 | the project's notes |
+| ~~Q43~~ | ~~**If Golden Hour's night proves popular, should the owl hunt?**~~ Struck — answered by Devon, 2026-10-05: yes, one swoop, no kill shown, and the fireflies drift toward the fire. It was already built that way on 2026-09-24 (#633, PR #395, `js/creatures/nightpaths.js`); nothing moved. The timings are still unwatched, which is Golden Hour's item 1. | 1 | the project's notes |
 | Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
-| Q46 | **Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?** The second changes the eyes' drift and the shape's head-flip too, since all three read the same function — an argument for doing it deliberately or not at all. | 1 | prompt 24, session 6 |
-| Q47 | **Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?** The tooltip already explains the cheap recipe. A design question, not a bug. | 2 | prompt 14, the project's notes |
+| ~~Q46~~ | ~~**Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?**~~ Struck — answered by Devon, 2026-10-05: point it at the fall line, knowing the eyes' drift and the head-flip move with it. It was already built that way on 2026-09-24 (#634, PR #395: `const downhillAt = fallLine` in `js/dread.js`); nothing moved. | 1 | prompt 24, session 6 |
+| ~~Q47~~ | ~~**Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#920, TG-29): the cost line on the tile is copper and bold on any order cheaper than counting up, and every sink has a sentence under the floor with the count and the cheapest line. Judged by no person. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
 | Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |

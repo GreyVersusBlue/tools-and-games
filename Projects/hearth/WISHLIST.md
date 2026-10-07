@@ -307,8 +307,19 @@ and add to this list rather than starting a new one.
 - Only 8 of the 24 growable story kinds have ground under them
   (`LORE_PLACE`). `fever`, `hardwinter`, `heir` and the rest grow with nowhere
   to stand — some genuinely have no place, some do.
-- `LORE_PLACE.way.at()` matches on `includes('the sail')` against a grown
-  entry's label. Grep it before rewording any `WAYS` line.
+- `LORE_PLACE.way.at()` still finds its way by the words in a grown entry's
+  label, because the label is what a save keeps. Since #922 the two names with
+  ground are one list, `WAY_AT` in `core.js`, and `test/unit.mjs` section 14
+  fails if a `WAYS` line is reworded away from it, so the grep is no longer the
+  only guard. A reworded name would still orphan every old save's label; that
+  needs a migration, not a test.
+- **A story with no ground no longer holds up the morning walk** (#922). A
+  grown kiln or book of days used to be taken as the head of the queue every
+  morning after a fire and walked nowhere, so no story behind it was ever
+  named and no named place was walked again. Left: `way`'s place is whichever
+  grown way with ground the chronicle has first, so a sail that grows after a
+  plough moves the place on the next load but not in the running page (a
+  named place is put back from `at()` at load). Seen, not changed.
 - Made-thing names are per-seed (`MADE(ci)`, three variants per craft) but the
   variants are global constants, and small seeds all land on variant 0.
 - Grown stories still never change what anyone *wants* — only where they walk.

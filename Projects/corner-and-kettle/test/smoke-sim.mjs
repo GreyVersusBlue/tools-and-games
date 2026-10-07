@@ -73,6 +73,12 @@ function foodOrder(foodId, extra) {
     isRegular: false, regularName: null, ...extra };
 }
 function slotFor(o) { return { customer: o, cup: newCup(), food: !!o.isFood, foodPlated: null }; }
+/** Every syrup and topping bought. A hand-written order may name any of them,
+ *  and a line whose stock is not on the shelf is not made (#921, section 19). */
+function fullShelf(state) {
+  for (const s of CONTENT.SYRUPS) state.unlockedSyrups.add(s.id);
+  for (const t of CONTENT.TOPPINGS) state.unlockedToppings.add(t.id);
+}
 
 // The simplest player there is: take the first customer whenever a station is
 // free, work one ticket line per frame on every station, serve any cup the
@@ -127,7 +133,7 @@ section("3. one requirement list: ticket, barista and scorer agree");
   // works the ticket top to bottom; each step must satisfy at least one more
   // line and never undo one, and the scorer must see the same lines.
   let orders = 0, steps = 0;
-  const { sim } = shop(3);
+  const { sim } = shop(3, fullShelf);
   for (const r of RECIPES) {
     for (const custom of [
       {}, { milk: "oat" }, { milk: "oat", syrup: "vanilla" }, { milk: "skim", syrup: "caramel", toppings: ["whip", "cinnamon"] },
@@ -442,7 +448,7 @@ section("10. the page has no clock and no dice of its own, and owns no rule");
 
 section("11. the Serve gate and its cue (#341, #342)");
 {
-  const { sim } = shop(11);
+  const { sim } = shop(11, fullShelf);
   const TABS = ["base", "milk", "blend", "syrup", "toppings", "food"];
   // Every line names a real station tab, and its own apply() satisfies its own
   // check on an empty cup — so the dot, the barista and the ticket cannot
@@ -1309,7 +1315,7 @@ section("17. a recipe is ordered once its own line is on the shelf, and a shot c
 
   // ---- the shot count is exact ----
   {
-    const { sim, state } = shop(76);
+    const { sim, state } = shop(76, fullShelf);
     const plain = r => sim.cloneOrderContent({ isFood: false, recipeId: r.id, price: r.price, custom: { toppings: [], ice: false } });
     const built = (r, shots) => { const slot = slotFor(order(r.id, plain(r).custom)); while (sim.autoAssistStep(slot)) {} slot.cup.shots = shots; return slot; };
     const withShots = RECIPES.filter(r => r.shots);
@@ -1348,6 +1354,257 @@ section("17. a recipe is ordered once its own line is on the shelf, and a shot c
     eq(sim.shotsOver(drip), 0, "and on a ticket that asks for no shots");
     const wrongBase = slotFor(order("ristretto")); wrongBase.cup.base = "drip"; wrongBase.cup.shots = 2;
     eq(sim.shotsOver(wrongBase), 0, "and on a cup whose base is wrong anyway");
+  }
+}
+
+section("18. what colour said is said in words, and motion is a stylesheet's business (#916, #917)");
+{
+  const DRAW = await mod("../js/draw.js");
+  const { cupParts, cupWords, plateWords, orderWords, orderCup, customerLabel } = DRAW;
+  const read = (...p) => readFileSync(join(here, "..", ...p), "utf8").replace(/\r\n/g, "\n");
+  const uncommented = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // ---- the cup, in words ----
+  // A shop with every recipe, syrup and topping, so the sample holds every
+  // line a ticket can carry. The orders are the sim's own.
+  const { sim, state } = shop(180);
+  state.unlockedRecipes = new Set(RECIPES.map(r => r.id)); state.prestigeLevel = 5;
+  state.unlockedSyrups = new Set(CONTENT.SYRUPS.map(x => x.id));
+  state.unlockedToppings = new Set(CONTENT.TOPPINGS.map(x => x.id));
+  const orders = [];
+  for (let i = 0; i < 3000; i++) { const o = sim.generateOrderContent(PHASES[i % PHASES.length]); if (!o.isFood) orders.push(o); }
+  eq(new Set(orders.map(o => o.recipeId)).size, RECIPES.length, "the sample holds every recipe");
+  const slotOf = o => ({ customer: o, cup: newCup(), food: false, foodPlated: null });
+  const finish = (o, skip) => { const slot = slotOf(o); sim.getOrderRequirements(o).forEach((req, i) => { if (i !== skip) req.apply(slot); }); return slot; };
+
+  eq(cupWords(newCup()), "Empty cup", "an empty cup says so");
+  let unnamed = 0, lines = 0, silent = 0, same = 0, undone = 0;
+  for (const o of orders) {
+    const reqs = sim.getOrderRequirements(o);
+    const full = finish(o);
+    const words = cupWords(full.cup);
+    for (const req of reqs) { lines++; if (!words.includes(req.label)) unnamed++; }
+    reqs.forEach((req, i) => {
+      const short = finish(o, i);
+      if (req.check(short)) return;   // another line's step did this one too (a blended base is blended)
+      undone++;
+      if (cupParts(short.cup).includes(req.label) || cupParts(short.cup).some(part => part.startsWith(req.label))) silent++;
+      if (cupWords(short.cup) === words) same++;
+    });
+  }
+  ok(lines > 5000, `the finished cups carry ${lines} ticket lines`);
+  eq(unnamed, 0, "a finished cup's words hold every line of its ticket, in the ticket's own phrase");
+  ok(undone > 4000, `and ${undone} cups were left one line short`);
+  eq(silent, 0, "a cup one line short never names that line");
+  eq(same, 0, "and never reads the same as the finished cup");
+
+  // No two recipes' cups read alike: the words tell apart what #878 made distinct.
+  const byRecipe = new Map();
+  for (const r of RECIPES) {
+    const o = sim.cloneOrderContent({ isFood: false, recipeId: r.id, price: r.price, custom: { toppings: [], ice: false } });
+    byRecipe.set(r.id, cupWords(finish(o).cup));
+  }
+  eq(new Set(byRecipe.values()).size, RECIPES.length, "the 19 recipes' plain cups are 19 different sentences");
+  eq(byRecipe.get("ristretto") === byRecipe.get("americano"), false, "a Ristretto's cup and an Americano's differ, which the picture does not show (#913)");
+
+  // The things the picture says by tint alone, one at a time.
+  const cupWith = over => ({ ...newCup(), base: "espresso", shots: 1, ...over });
+  const all = (label, list) => eq(new Set(list.map(cupWords)).size, list.length, label);
+  all("each base reads differently", Object.keys(CONTENT.BASE_COLORS).map(base => cupWith({ base, shots: 0 })));
+  all("each shot count reads differently", [1, 2, 3].map(shots => cupWith({ shots })));
+  all("each milk reads differently, steamed or not", CONTENT.MILKS.flatMap(m => [cupWith({ milk: m.id }), cupWith({ milk: m.id, milkSteamed: true })]));
+  all("each syrup reads differently, and from none", [cupWith({}), ...CONTENT.SYRUPS.map(x => cupWith({ syrup: x.id }))]);
+  all("each topping reads differently, the two drizzles too", CONTENT.TOPPINGS.map(x => cupWith({ toppings: [x.id] })));
+  all("ice and a blend read differently from neither", [cupWith({}), cupWith({ ice: true }), cupWith({ blended: true })]);
+  eq(cupWords(cupWith({ shots: 2, milk: "oat", milkSteamed: true, syrup: "vanilla", toppings: ["whip"], ice: true })),
+    "2 espresso shots · Oat Milk, steamed · Vanilla syrup · Whipped Cream · Iced", "one cup, read out whole");
+
+  // The plate: the picture is the plate that was ordered, plated or not.
+  eq(plateWords(null), "Nothing plated yet", "an empty plate says so");
+  eq(plateWords("bagel"), `Plated: ${FOODS.find(f => f.id === "bagel").name}`, "a plate names what is on it");
+  all("every food reads differently", FOODS.map(f => ({ ...newCup(), base: plateWords(f.id) })));
+
+  // The queue card's hover text is the front of its accessible name.
+  const sample = orders.find(o => o.custom.syrup && o.custom.milk);
+  const cust = { ...sample, patience: 50, patienceMax: 100 };
+  ok(customerLabel(cust).includes(`waiting for ${orderWords(sample)}.`), "customerLabel says the order in orderWords' words");
+  ok(orderWords(sample).includes(CONTENT.SYRUPS.find(x => x.id === sample.custom.syrup).name + " syrup"), "which name the syrup the 22px cup shows as an 18% tint");
+  eq(orderWords({ isFood: true, foodId: "bagel" }), FOODS.find(f => f.id === "bagel").name, "and a food order by its name");
+
+  // The view writes them where the page shows them.
+  const ui = uncommented(read("js", "ui.js"));
+  const stationsSrc = uncommented(read("js", "stations.js"));
+  ok(/<div class="cupnote">\$\{ slot\.food \? plateWords\(slot\.foodPlated\) : cupWords\(slot\.cup\) \}<\/div>/.test(ui), "ui.js writes the line under every station's cup or plate");
+  ok(/div\.title = `Wants: \$\{orderWords\(c\)\}`/.test(ui), "and the order's words on the queue card");
+  ok(/idx===state\.focusedSlot\) div\.setAttribute\('aria-current', 'true'\)/.test(ui), "and marks the focused station for anything that reads it");
+  ok(/class="needdot" aria-hidden="true"><\/span><span class="sronly">, still needed<\/span>/.test(stationsSrc), "the tab's dot comes with its words");
+  eq((stationsSrc.match(/aria-pressed="\$\{/g) || []).length, 5, "the tabs and the four kinds of pick say which one is on");
+
+  // ---- reduced motion ----
+  // The rule the stylesheet has to keep: anything that declares an animation
+  // or a transition has a line under prefers-reduced-motion that turns that
+  // same property off. A new animation with no such line fails here.
+  const css = uncommented(read("index.html").match(/<style>([\s\S]*?)<\/style>/)[1]);
+  const at = css.indexOf("@media (prefers-reduced-motion: reduce){");
+  ok(at !== -1, "index.html has a prefers-reduced-motion block");
+  const end = (() => { let depth = 0; for (let i = css.indexOf("{", at); i < css.length; i++) { if (css[i] === "{") depth++; else if (css[i] === "}" && --depth === 0) return i; } return -1; })();
+  const reduced = css.slice(css.indexOf("{", at) + 1, end);
+  const outside = css.slice(0, at) + css.slice(end + 1);
+  const rules = src => [...src.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .flatMap(m => m[1].split(",").map(sel => ({ sel: sel.replace(/^@media[^{]*$/, "").trim().replace(/\s+/g, " "), body: m[2] })));
+  const off = rules(reduced);
+  const moving = rules(outside).flatMap(r => ["animation", "transition"].filter(prop => new RegExp(`(?:^|;|\\s)${prop}\\s*:`).test(r.body)).map(prop => ({ sel: r.sel, prop })));
+  eq(moving.length, 10, `the page declares ${moving.length} animations and transitions`);
+  const unanswered = moving.filter(m => !off.some(r => r.sel === m.sel && new RegExp(`${m.prop}\\s*:\\s*none`).test(r.body)));
+  eq(unanswered.map(m => `${m.sel} ${m.prop}`).join(" | "), "", "and every one is turned off under prefers-reduced-motion");
+  // An animation that ends on opacity 0 or starts from it needs its end state
+  // written out, or "off" leaves a toast invisible and a served card on screen.
+  const offBody = sel => (off.find(r => r.sel === sel) || { body: "" }).body;
+  ok(/opacity\s*:\s*1/.test(offBody(".toast")), "a toast with no animation is still visible (its own rule starts it at opacity 0)");
+  ok(/opacity\s*:\s*0\b/.test(offBody(".customer.served")), "a served customer with no walk-off is simply gone");
+  ok(/opacity\s*:\s*0\.\d/.test(offBody(".slot.serving")), "and a served station dims instead of floating away");
+  ok(/transform\s*:\s*none/.test(offBody(".customer:hover")) && /transform\s*:\s*none/.test(offBody(".customer:focus-visible")), "the queue card does not lift on hover or focus");
+  // And the shop cannot tell: nothing under js/ asks, and nothing waits on an
+  // animation to finish. A served station is cleared by the sim's clock
+  // (section 6), a toast by the page's own timer.
+  const everyJs = ["ui.js", "stations.js", "chalkboard.js", "draw.js", "sound.js", "sim.js", "content.js", "save.js"].map(f => uncommented(read("js", f))).join("\n");
+  ok(!/matchMedia|prefers-reduced-motion|animationend|transitionend|getAnimations|\.animate\s*\(/.test(everyJs), "no module under js/ reads the media query or waits on an animation, so timing and scoring are the same with it on");
+}
+
+section("19. the hands obey the shelf, and a Legacy row says what it leaves out (#921)");
+{
+  const { META_UPGRADES, META_MENU, SYRUPS, TOPPINGS, STARTING_UNLOCKS } = CONTENT;
+  const lineOf = (sim, o, label) => sim.getOrderRequirements(o).find(q => q.label === label);
+  // A line without the field answers in words, so a build that lacks it fails
+  // the lines below by name instead of dying on a TypeError.
+  const stockedOf = q => typeof q.stocked === "function" ? q.stocked() : "no stocked()";
+
+  // ---- a syrup or topping line with no button is not made ----
+  {
+    const { sim, state } = shop(90);
+    ok(!state.unlockedSyrups.has("hazelnut") && !state.unlockedToppings.has("sprinkles"), "a day-one shelf has no hazelnut and no sprinkles");
+    const o = order("latte", { milk: "oat", syrup: "hazelnut", toppings: ["sprinkles", "whip"] });
+    const slot = slotFor(o);
+    const syrup = lineOf(sim, o, "Hazelnut syrup"), top = lineOf(sim, o, "Sprinkles"), whip = lineOf(sim, o, "Whipped Cream");
+    eq(stockedOf(syrup), false, "the hazelnut line says it is not stocked");
+    eq(syrup.apply(slot), false, "and its apply() refuses");
+    eq(slot.cup.syrup, null, "with no syrup written into the cup");
+    eq(stockedOf(top), false, "the sprinkles line says it is not stocked");
+    eq(top.apply(slot), false, "and its apply() refuses");
+    eq(slot.cup.toppings.length, 0, "with no topping written into the cup");
+    eq(stockedOf(whip), true, "whipped cream is day-one stock and its line says so");
+    ok(whip.apply(slot) !== false && slot.cup.toppings.join() === "whip", "so its apply() writes it, and only it");
+    slot.cup.toppings.length = 0;
+
+    // The barista works what the shelf can make, in ticket order, and stops.
+    const made = [];
+    for (let n = 0; n < 20 && sim.autoAssistStep(slot); n++) made.push(sim.getOrderRequirements(o).filter(q => q.check(slot)).length);
+    eq(made.join(), "1,2,3", "three steps, each satisfying one more line: the shot, the milk, the whipped cream");
+    eq(JSON.stringify([slot.cup.syrup, slot.cup.toppings]), JSON.stringify([null, ["whip"]]), "the cup has no hazelnut and no sprinkles in it");
+    eq(sim.autoAssistStep(slot), false, "a fourth step reports no work");
+    ok(!sim.orderIsComplete(slot), "and the ticket is not complete");
+    eq(`${sim.serveReadiness(slot).done}/${sim.serveReadiness(slot).total}`, "3/5", "it reads 3 of 5 lines, which is what the customer pays on");
+
+    // Bought, the same lines are made.
+    state.money = 500;
+    ok(sim.purchase("syrup", "hazelnut").ok && sim.purchase("topping", "sprinkles").ok, "hazelnut and sprinkles buy");
+    eq(`${stockedOf(syrup)} ${stockedOf(top)}`, "true true", "both lines are stocked the moment they are bought");
+    ok(sim.autoAssistStep(slot) && slot.cup.syrup === "hazelnut", "the next step is the hazelnut");
+    ok(sim.autoAssistStep(slot) && slot.cup.toppings.includes("sprinkles"), "then the sprinkles");
+    ok(sim.orderIsComplete(slot), "and the ticket is complete");
+  }
+
+  // ---- no other line carries a shelf: base, milk, ice, blend and food have none ----
+  {
+    const { sim } = shop(91, fullShelf);
+    const stations = new Set();
+    for (const r of RECIPES) for (const q of sim.getOrderRequirements(order(r.id, { milk: r.needsMilk ? "oat" : undefined, syrup: "peppermint", toppings: ["chocoDrizzle"], ice: true })))
+      if (q.stocked) stations.add(q.station);
+    for (const f of FOODS) if (sim.getOrderRequirements(foodOrder(f.id))[0].stocked) stations.add("food");
+    eq([...stations].sort().join(), "syrup,toppings", "only the Syrup and Toppings tabs' lines ask the shelf");
+  }
+
+  // ---- on the clock: a barista lets go of a cup it cannot advance and takes one it can ----
+  {
+    const { sim, state } = shop(92);
+    state.baristas.push({ id: "b1", name: "Pip", level: 2, targetSlot: null, acc: 0, spec: null, trained: false, working: true });
+    const iv = BARISTA_TIERS[2].intervalMs;
+    // Station 1: a drip with sprinkles, nothing bought. Station 2 is empty.
+    state.queue.push(order("drip", { toppings: ["sprinkles"] }, { id: 60, patience: 400, patienceMax: 400 }));
+    eq(sim.acceptCustomer(60), 0, "a drip with sprinkles goes to station 1");
+    sim.advance(iv + STEP_MS * 2);
+    eq(state.slots[0].cup.base, "drip", "the barista pours the drip");
+    sim.advance(iv * 2 + STEP_MS * 2);
+    eq(state.slots[0].cup.toppings.length, 0, "and puts no sprinkles on it, two intervals later");
+    eq(state.baristas[0].targetSlot, null, "and has let go of the station");
+    // A second order, less urgent than the stuck one, still gets the barista.
+    state.queue.push(order("drip", {}, { id: 61, patience: 900, patienceMax: 900 }));
+    eq(sim.acceptCustomer(61), 1, "a plain drip goes to station 2");
+    sim.advance(iv * 2 + STEP_MS * 2);
+    eq(state.slots[1] && state.slots[1].cup.base, "drip", "and is poured, though the cup at station 1 has waited longer");
+    eq(state.slots[0].cup.toppings.length, 0, "station 1 still has no sprinkles");
+  }
+
+  // ---- and a cup the player finishes by hand is NOT let go of early: the barista
+  //      hands it back on the interval, as before #921 (balance.mjs moved when a
+  //      first draft released it at once) ----
+  {
+    const { sim, state, events } = shop(95);
+    state.baristas.push({ id: "b1", name: "Pip", level: 2, targetSlot: null, acc: 0, spec: null, trained: false, working: true });
+    state.queue.push(order("drip", {}, { id: 62, patience: 400, patienceMax: 400 }));
+    sim.acceptCustomer(62);
+    sim.advance(STEP_MS * 2);
+    eq(state.baristas[0].targetSlot, 0, "the barista claims the station before the interval is up");
+    ok(sim.autoAssistStep(state.slots[0]) && sim.orderIsComplete(state.slots[0]), "the player pours the drip first");
+    sim.advance(STEP_MS * 2);
+    eq(state.baristas[0].targetSlot, 0, "the barista is still at the finished cup");
+    eq(events.filter(e => e.type === "toast" && /Pip/.test(e.text)).length, 0, "and has said nothing yet");
+    sim.advance(BARISTA_TIERS[2].intervalMs * 2);
+    eq(state.baristas[0].targetSlot, null, "on the interval it lets go");
+    eq(events.filter(e => e.type === "toast" && /Pip/.test(e.text)).length, 1, "with the one toast it always gave");
+  }
+
+  // ---- a menu unlock's description says when the shelf is not part of it ----
+  {
+    const extras = recipeId => {
+      const r = RECIPES.find(x => x.id === recipeId), out = [];
+      if (r.requiredSyrup && !STARTING_UNLOCKS.syrups.includes(r.requiredSyrup)) out.push(`${SYRUPS.find(s => s.id === r.requiredSyrup).name} syrup`);
+      if (r.requiredTopping && !STARTING_UNLOCKS.toppings.includes(r.requiredTopping)) out.push(TOPPINGS.find(t => t.id === r.requiredTopping).name);
+      return out;
+    };
+    const menuRows = META_UPGRADES.filter(m => META_MENU[m.id]);
+    eq(menuRows.map(m => `${m.id}:${extras(META_MENU[m.id]).join("+") || "-"}`).join(), "menuMocha:Mocha syrup,menuColdbrew:-", "of the two menu unlocks only Mocha's recipe needs stock that is not day-one");
+    for (const m of menuRows) {
+      const need = extras(META_MENU[m.id]);
+      if (need.length) {
+        ok(/not included/.test(m.desc) && need.every(n => m.desc.includes(n)), `"${m.name}" says ${need.join(" and ")} is not included — "${m.desc}"`);
+        ok(/each run/.test(m.desc), `and that it is bought each run`);
+        ok(!/\$\d/.test(m.desc), "and names no price, which the wholesale unlocks move");
+      } else ok(!/not included/.test(m.desc), `"${m.name}" needs nothing beyond day-one stock and does not claim otherwise`);
+    }
+    eq(META_UPGRADES.filter(m => !META_MENU[m.id] && /not included/.test(m.desc)).length, 0, "no other Legacy row says it");
+    eq(META_UPGRADES.find(m => m.id === "menuMocha").cost, 2, "Mocha on the Board is still 2 beans");
+    eq(SYRUPS.find(s => s.id === "mocha").cost, 35, "and the syrup is still $35");
+
+    // The description is true: bought with beans, no syrup comes with it, in
+    // this run or after a reopening that held the syrup.
+    const { sim, state } = shop(93, s => { s.meta.beans = 9; });
+    const bought = sim.purchase("meta", "menuMocha");
+    ok(bought.ok && sim.recipeAvailable("mocha") && !state.unlockedSyrups.has("mocha"), "the beans put Mocha on the menu and no syrup on the shelf");
+    eq(bought.text, "Mocha on the Board — yours for good. 🫘 Nobody orders it until you buy Mocha syrup ($35).", "the purchase says what it still needs, at the board's price");
+    ok(!sim.recipeOffered("mocha"), "so nobody orders it");
+    eq(sim.purchase("meta", "thirdCounter").text, "A Third Counter — yours for good. 🫘", "a Legacy row that is not a menu unlock adds no sentence, with the syrup still unbought");
+    state.money = 500;
+    ok(sim.purchase("syrup", "mocha").ok && sim.recipeOffered("mocha"), "the syrup buys and Mocha is offered");
+    const cold = sim.purchase("meta", "menuColdbrew");
+    eq(cold.text, "Cold Brew on the Board — yours for good. 🫘", "Cold Brew needs nothing more and its purchase adds no sentence");
+    ok(sim.recipeOffered("coldbrew"), "and it is offered at once");
+    // With the syrup already on the shelf the Mocha purchase adds no sentence either.
+    const b = shop(94, s => { s.meta.beans = 9; s.unlockedSyrups.add("mocha"); });
+    eq(b.sim.purchase("meta", "menuMocha").text, "Mocha on the Board — yours for good. 🫘", "bought with the syrup already on the shelf, the purchase adds no sentence");
+    ok(b.sim.recipeOffered("mocha"), "and Mocha is offered at once");
+    b.state.day = 8; b.sim.prestige();
+    ok(b.sim.recipeAvailable("mocha") && !b.state.unlockedSyrups.has("mocha") && !b.sim.recipeOffered("mocha"), "a reopening keeps Mocha on the menu and takes its syrup off the shelf, so \"each run\" is true");
   }
 }
 

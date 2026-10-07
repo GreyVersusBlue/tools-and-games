@@ -222,6 +222,12 @@ body{
   border-color:var(--copper);
   box-shadow:0 0 0 3px rgba(181,101,29,0.25);
 }
+/* The corner mark (#916): the focused station is a border colour and a 25%
+   ring, which a greyscale screen nearly loses. A shape says it too. */
+.slot.focused::before{
+  content:"";position:absolute;top:8px;left:8px;
+  border:5px solid transparent;border-left:8px solid var(--espresso);border-right:0;
+}
 .slot.serving{
   animation:slotServed 0.5s ease forwards;
   pointer-events:none;
@@ -259,6 +265,12 @@ body{
   width:100px;height:120px;display:flex;align-items:flex-end;justify-content:center;
 }
 .cupwrap svg{max-width:100%;height:auto;}
+/* What is in the cup, in words (#916): the picture says the base, the milk,
+   the syrup and which drizzle by tint, and the shots not at all. */
+.cupnote{
+  width:100%;margin-top:4px;text-align:center;
+  font-size:0.68rem;line-height:1.25;color:#5b4a36;overflow-wrap:anywhere;
+}
 .slotbtnrow{display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:auto;padding-top:8px;}
 .slot .servebtn{
   flex:1 1 60px;
@@ -509,9 +521,16 @@ body{
   background:var(--espresso);
   color:var(--cream);
 }
+/* Ringed in the tab's own text colour (#916): copper alone is 3.3:1 on the
+   active tab and 3.7:1 on the others. The words beside it are .sronly. */
 .stationTab .needdot{
   display:inline-block;width:7px;height:7px;border-radius:50%;
-  background:var(--copper);margin-left:4px;vertical-align:middle;
+  background:var(--copper);margin-left:5px;vertical-align:middle;
+  box-shadow:0 0 0 1.5px currentColor;
+}
+.sronly{
+  position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;
 }
 
 /* ---------- KEYBOARD LEGEND ---------- */
@@ -541,6 +560,27 @@ body{
    it becomes usable. */
 #keyLegend .off{opacity:0.45;}
 #keyLegend .off .kk{background:var(--espresso-soft);}
+
+/* ---------- REDUCED MOTION ---------- */
+/* Every animation and transition above has a line here (#917), and
+   smoke-sim.mjs section 18 fails a new one that does not. What stays is the
+   station's progress bar, which is the wait itself and is drawn by
+   stations.js a frame at a time, and each end state: a served card and a
+   toast are removed by the clock, exactly as they are with motion on. Nothing
+   under js/ reads this media query, so the shop cannot tell. */
+@media (prefers-reduced-motion: reduce){
+  #clockbar-fill{transition:none;}
+  #skystrip{transition:none;}
+  .customer{transition:none;}
+  .customer:hover, .customer:focus-visible{transform:none;}
+  .customer.served{animation:none;opacity:0;}
+  .customer .patience-fill{transition:none;}
+  .slot.serving{animation:none;opacity:0.45;}
+  .slot.baristaWorking{animation:none;box-shadow:0 0 0 3px rgba(124,144,112,0.45);}
+  .progressfill{transition:none;}
+  #chalkboard{transition:none;}
+  .toast{animation:none;opacity:1;}
+}
 
 @media (max-width:640px){
   #chalkboard{width:88vw;right:-90vw;}

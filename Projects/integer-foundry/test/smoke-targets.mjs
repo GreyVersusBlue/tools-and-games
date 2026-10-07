@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   OP_TILES, MERGE_TILES, STEP_TILES, HARD_CAP, MIN_TARGET, opBudget, countSinks, buildCosts, boardPlan,
   minCells, isReachable, reachableMax, recipe, describeRecipe, nearestReachable, clampOrders, rollTarget,
+  costStandsOut, orderReadout,
 } from '../js/targets.js';
 import {
   BASE_COLS, BASE_ROWS, SAVE_KEY, freshState, makeEmptyGrid, validState, repairState, foundrySlot,
@@ -100,6 +101,67 @@ ok(opening.cost.get(reachableMax(opening)) === reachableMax(opening) - 1,
 
 eq(describeRecipe(recipe(12, opening)), '11× +1', 'a long run of one tile compresses');
 eq(describeRecipe(recipe(1, opening)), 'a source straight into the sink', 'and 1 needs no tiles at all');
+
+/* When the cost is the loud number (#920, Devon's answer to Q47).
+
+   The line above put the cost on the tile for every order. This is the rule for
+   when it is drawn loud and what the sentence under the floor says: the cost
+   stands out exactly when it is shorter than counting up, which no shelf of
+   +1, -1 and halving ever makes it, and a doubler or a one-line merger makes it
+   for every order from 4. The counts are worked here from `minCells` and the
+   two tables, not read back from `costStandsOut`. */
+group('When the cost is the loud number');
+
+{
+  const orders = plan => [...plan.cost.keys()].filter(v => v >= MIN_TARGET).sort((a, b) => a - b);
+  const loudIn = plan => orders(plan).filter(v => costStandsOut(v, plan));
+  const shelf = unlocked => boardPlan({ ...OPENING, unlocked });
+
+  for (const [name, unlocked] of [['+1 alone', {}], ['+1 and -1', { sub1: true }], ['+1, -1 and halving', { sub1: true, div2: true }]]) {
+    const plan = shelf(unlocked);
+    eq(loudIn(plan).length, 0, `${name}: no order of the ${orders(plan).length} is loud, the number is the work`);
+  }
+  for (const [name, unlocked] of [['x2', { mul2: true }], ['Merge + alone', { merge_add: true }], ['Merge x alone', { merge_mul: true }]]) {
+    const plan = shelf(unlocked), loud = loudIn(plan);
+    eq(loud.length, 297, `${name}: 297 of the 299 orders are loud`);
+    ok(loud[0] === 4 && !costStandsOut(2, plan) && !costStandsOut(3, plan),
+      '...from 4 up: 2 and 3 are still counted to', `first loud order ${loud[0]}`);
+    ok(orders(plan).every(v => costStandsOut(v, plan) === (plan.cost.get(v) < v - 1)),
+      '...and loud is "fewer tiles than counting up", order by order');
+  }
+  ok(!costStandsOut(48, opening), 'an order the floor cannot build is not loud: there is no cost to read');
+  ok(!costStandsOut(1, withDoubler), 'and neither is a bare source');
+
+  eq(orderReadout(47, opening).text, 'Order 47 takes 46 tiles. Cheapest line: 46\u00D7 +1.',
+    'the opening board\'s top order reads as its count and its line');
+  eq(orderReadout(231, withDoubler).text,
+    'Order 231 takes 12 tiles, not 230. Cheapest line: 2\u00D7 +1, \u00D72, +1, 3\u00D7 \u00D72, +1, \u00D72, +1, \u00D72, +1.',
+    'with x2, 231 reads as twelve tiles, not 230, with the line that makes it');
+  eq(orderReadout(2, withDoubler).text, 'Order 2 takes 1 tile. Cheapest line: +1.', 'one tile is not "1 tiles"');
+  eq(orderReadout(48, opening).text, 'Order 48: this floor cannot build it.', 'an unbuildable order says so and names no count');
+  eq(orderReadout(1, opening).text, 'Order 1: run a source straight into this sink.', 'and a bare source says that');
+  ok(orderReadout(231, withDoubler).loud === true && orderReadout(47, opening).loud === false
+    && orderReadout(48, opening).loud === false, 'the readout carries the same loud flag the tile does');
+
+  // Every order on four shelves: the count in the sentence is minCells, the
+  // "not N" clause is there exactly on a loud order and names n - 1, and the
+  // sentence ends with the recipe the solver prints for that order.
+  let wrongCount = 0, wrongNot = 0, wrongLine = 0, read = 0;
+  for (const plan of [opening, withDoubler, withSub, shelf({ mul2: true, sub1: true, div2: true, merge_add: true, merge_mul: true })]) {
+    for (const v of orders(plan)) {
+      const r = orderReadout(v, plan);
+      const m = /^Order (\d+) takes (\d+) tiles?(, not (\d+))?\. Cheapest line: (.+)\.$/.exec(r.text);
+      read++;
+      if (!m || +m[1] !== v || +m[2] !== plan.cost.get(v) || r.cells !== plan.cost.get(v)) wrongCount++;
+      if (!m || !!m[3] !== (plan.cost.get(v) < v - 1) || (m[3] && +m[4] !== v - 1)) wrongNot++;
+      if (!m || m[5] !== describeRecipe(recipe(v, plan))) wrongLine++;
+    }
+  }
+  eq(read, 46 + 299 * 3, 'every order on four shelves was read');
+  eq(wrongCount, 0, 'the count in every sentence is the solver\'s');
+  eq(wrongNot, 0, '"not N" is on the loud orders only, and N is the order less one');
+  eq(wrongLine, 0, 'and every sentence ends with that order\'s own recipe');
+}
 
 /* ------------------------------------------------------------- rolling one -- */
 

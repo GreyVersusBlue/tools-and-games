@@ -55,6 +55,9 @@ const t = {
   section(name) { process.stdout.write(`\n${name}\n`); },
 };
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// `--a11y` runs section 15 alone, on its own page: the cues and the reduced-
+// motion rules, about ten seconds instead of the whole file.
+const ONLY_A11Y = process.argv.includes('--a11y');
 
 /**
  * Click a control inside the chalkboard. The panel is a ~3,000 px scroll
@@ -116,6 +119,8 @@ const browser = await launch();
 const p = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
 
 try {
+  sections: {
+  if (ONLY_A11Y) break sections;
   /* ---------- 1. the page boots at all ---------- */
 
   t.section('1. the module script runs');
@@ -1072,6 +1077,198 @@ try {
   t.ok(mob.slots === 2 && mob.tabs === 7, 'both stations and all seven tabs render');
   t.ok(mob.barButtons === 2, 'and the save bar is reachable there too');
   await mp.close();
+  }
+
+  /* ---------- 15. without colour, and without motion ---------- */
+  // What the page used to say by hue alone (#916), read off the DOM as text,
+  // attributes and computed shapes, and prefers-reduced-motion (#917) on the
+  // page's real stylesheet. Its own page and a wiped save, so `--a11y` can run
+  // it alone.
+
+  t.section('15. without colour, and without motion (#916, #917)');
+  const ap = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(ap, { wipe: true });
+  const reduceMotion = on => ap.__engine === 'puppeteer'
+    ? ap.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: on ? 'reduce' : 'no-preference' }])
+    : ap.emulateMedia({ reducedMotion: on ? 'reduce' : 'no-preference' });
+  await reduceMotion(false);
+
+  // Two orders the test wrote: a Latte with oat milk and vanilla, and a bagel.
+  const ids = await ap.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.queue = [];
+    const a = d.generateOrder();
+    Object.assign(a, { isFood: false, isRegular: false, recipeId: 'latte', price: 45,
+      custom: { milk: 'oat', syrup: 'vanilla', toppings: [], ice: false } });
+    const b = d.generateOrder();
+    Object.assign(b, { isFood: true, isRegular: false, foodId: 'bagel', price: 26 });
+    d.state.queue.push(a, b);
+    d.renderAll();
+    return { a: a.id, b: b.id };
+  });
+  const titles = await ap.$$eval('.customer', els => els.map(e => e.title));
+  t.ok(titles[0] === 'Wants: Latte, Oat Milk, Vanilla syrup' && titles[1] === 'Wants: Bagel',
+    'a queue card says its order in words on hover, the syrup and the milk included', titles.join(' | '));
+
+  await ap.evaluate(id => window.__CK_DEBUG__.tryAcceptCustomer(id), ids.a);
+  await ap.waitForSelector('.slot .ticket');
+  /** Everything section 15 reads off the counter, in one pass. */
+  const counter = () => ap.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    const slot = d.state.slots[d.state.focusedSlot];
+    return {
+      notes: [...document.querySelectorAll('.slot')].map(el => el.querySelector('.cupnote')?.textContent ?? null),
+      current: [...document.querySelectorAll('.slot')].map(el => el.getAttribute('aria-current')),
+      marks: [...document.querySelectorAll('.slot')].map(el => {
+        const cs = getComputedStyle(el, '::before');
+        return cs.content === 'none' ? 0 : parseFloat(cs.borderLeftWidth) || 0;
+      }),
+      need: slot ? [...d.sim.stationsNeedingWork(slot)].sort().join(',') : '',
+      tabs: [...document.querySelectorAll('.stationTab')].map(el => ({
+        id: el.dataset.tab,
+        dot: !!el.querySelector('.needdot'),
+        ring: el.querySelector('.needdot') ? getComputedStyle(el.querySelector('.needdot')).boxShadow : 'none',
+        said: /, still needed$/.test(el.textContent),
+        hover: /still needs something here/.test(el.title),
+        hiddenWidth: el.querySelector('.sronly') ? el.querySelector('.sronly').getBoundingClientRect().width : 0,
+        pressed: el.getAttribute('aria-pressed'),
+        active: el.classList.contains('active'),
+      })),
+      lines: [...document.querySelectorAll('.slot.focused .ticket .want li')].map(li => ({
+        text: li.textContent, done: li.classList.contains('done'),
+        bullet: getComputedStyle(li, '::before').content, struck: getComputedStyle(li).textDecorationLine,
+      })),
+    };
+  });
+  const dotted = c => c.tabs.filter(x => x.dot).map(x => x.id).sort().join(',');
+
+  let c = await counter();
+  t.ok(c.notes[0] === 'Empty cup', 'an empty cup says so under its picture', String(c.notes[0]));
+  t.ok(c.current[0] === 'true' && c.current[1] === null, 'the focused station is marked aria-current, the other is not', c.current.join(' | '));
+  t.ok(c.marks[0] === 8 && c.marks[1] === 0, 'and carries a corner mark the other does not (a shape, not a border colour)', c.marks.join(' | '));
+  t.ok(c.need === 'base,milk,syrup' && dotted(c) === c.need, 'the dots are on the three tabs the ticket needs', `${dotted(c)} against ${c.need}`);
+  t.ok(c.tabs.every(x => x.said === x.dot && x.hover === x.dot), 'a tab with a dot says "still needed" in its name and on hover, and a tab without does not',
+    c.tabs.map(x => `${x.id}:${x.dot ? 'dot' : '-'}${x.said ? '+said' : ''}${x.hover ? '+hover' : ''}`).join(' '));
+  t.ok(c.tabs.filter(x => x.dot).every(x => x.ring !== 'none' && x.hiddenWidth <= 1), 'the dot is ringed, and its words take no room on screen',
+    c.tabs.filter(x => x.dot).map(x => `${x.ring} ${x.hiddenWidth}px`)[0]);
+  t.ok(c.tabs.every(x => x.pressed === String(x.active)) && c.tabs.filter(x => x.pressed === 'true').length === 1,
+    'aria-pressed is true on the open tab and false on the other six');
+
+  // A shot and cold oat milk through the sim's own action table.
+  await ap.evaluate(() => {
+    const d = window.__CK_DEBUG__, slot = d.state.slots[0];
+    d.sim.cupAction(slot, 'pullShot'); d.sim.cupAction(slot, 'pickMilk', 'oat');
+    d.state.stationTab = 'milk';
+    d.renderAll();
+  });
+  c = await counter();
+  t.ok(c.notes[0] === '1 espresso shot · Oat Milk', 'the line under the cup reads what is in it', String(c.notes[0]));
+  t.ok(dotted(c) === 'milk,syrup' && c.need === 'milk,syrup', 'the Base dot is gone with its words', dotted(c));
+  const doneLine = c.lines.find(l => l.done), openLine = c.lines.find(l => !l.done);
+  t.ok(doneLine && /✓/.test(doneLine.bullet) && /line-through/.test(doneLine.struck) && /espresso shot/.test(doneLine.text),
+    'a finished ticket line is ticked and struck through', doneLine ? `${doneLine.bullet} ${doneLine.struck}` : 'none done');
+  t.ok(openLine && /•/.test(openLine.bullet) && !/line-through/.test(openLine.struck), 'and an open one is a bullet, not struck',
+    openLine ? `${openLine.bullet} ${openLine.struck}` : 'none open');
+  const milks = await ap.$$eval('[data-milk]', els => els.map(e => `${e.dataset.milk}:${e.getAttribute('aria-pressed')}:${e.classList.contains('selected')}`).join(' '));
+  t.ok(/oat:true:true/.test(milks) && (milks.match(/:false:false/g) || []).length === 3, 'the picked milk is aria-pressed, the other three are not', milks);
+
+  // The plate's picture is the bagel either way; only the words change.
+  await ap.evaluate(id => window.__CK_DEBUG__.tryAcceptCustomer(id), ids.b);
+  await waitFor(ap, () => document.querySelectorAll('.slot .ticket').length === 2, { timeout: 3000 });
+  c = await counter();
+  const plateArt = () => ap.$eval('.slot.focused .cupwrap', el => el.innerHTML);
+  const artBefore = await plateArt();
+  t.ok(c.notes[1] === 'Nothing plated yet', 'an unplated food order says nothing is plated', String(c.notes[1]));
+  t.ok(c.current[0] === null && c.current[1] === 'true' && c.marks[0] === 0 && c.marks[1] === 8, 'the mark and aria-current moved with the focus', `${c.current.join(' | ')} / ${c.marks.join(' | ')}`);
+  await ap.evaluate(() => { const d = window.__CK_DEBUG__; d.sim.cupAction(d.state.slots[1], 'plateFood', 'bagel'); d.renderAll(); });
+  c = await counter();
+  t.ok(c.notes[1] === 'Plated: Bagel' && artBefore === await plateArt(), 'plated, the words change and the picture does not', String(c.notes[1]));
+  const foods = await ap.$$eval('[data-food]', els => els.map(e => `${e.dataset.food}:${e.getAttribute('aria-pressed')}`).join(' '));
+  t.ok(/bagel:true/.test(foods) && /croissant:false/.test(foods), 'and the plated food\'s button is aria-pressed', foods);
+
+  // ---- reduced motion ----
+  /** Put every animated state on screen at once and read what the stylesheet
+   *  makes of it, synchronously, so no redraw can take the classes away. */
+  const motion = () => ap.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.stationTab = 'base'; d.state.focusedSlot = 0;
+    d.state.queue.push(d.generateOrder());
+    d.renderAll();
+    const toast = document.createElement('div');
+    toast.className = 'toast'; toast.textContent = 'section 15';
+    document.getElementById('toastWrap').appendChild(toast);
+    const slots = document.querySelectorAll('.slot');
+    slots[0].classList.add('serving'); slots[1].classList.add('baristaWorking');
+    const cust = document.querySelector('.customer');
+    cust.classList.add('served');
+    const cs = (el) => getComputedStyle(el);
+    const secs = v => v.split(',').map(x => parseFloat(x) || 0).reduce((a, b) => Math.max(a, b), 0);
+    const moving = [...document.querySelectorAll('*')].filter(el =>
+      cs(el).animationName !== 'none' || secs(cs(el).transitionDuration) > 0)
+      .map(el => (el.id ? '#' + el.id : '.' + [...el.classList].join('.')));
+    const out = {
+      moving: [...new Set(moving)].sort(),
+      toast: { anim: cs(toast).animationName, opacity: cs(toast).opacity },
+      serving: { anim: cs(slots[0]).animationName, opacity: cs(slots[0]).opacity },
+      pulse: { anim: cs(slots[1]).animationName, ring: cs(slots[1]).boxShadow },
+      served: { anim: cs(cust).animationName, opacity: cs(cust).opacity },
+      chalk: secs(cs(document.getElementById('chalkboard')).transitionDuration),
+      bar: secs(cs(document.querySelector('.progressfill')).transitionDuration),
+    };
+    // The board opens instantly or it slides: read where it is in the same
+    // task as the click, before a frame can move it.
+    const board = document.getElementById('chalkboard');
+    document.getElementById('chalkToggle').click();
+    out.boardLeft = Math.round(board.getBoundingClientRect().left);
+    out.viewport = document.documentElement.clientWidth;
+    document.getElementById('chalkToggle').click();
+    toast.remove();
+    d.state.queue.pop();
+    d.renderAll();
+    return out;
+  });
+  const withMotion = await motion();
+  t.ok(withMotion.toast.anim === 'toastpop' && withMotion.serving.anim === 'slotServed' && withMotion.pulse.anim === 'baristaPulse'
+    && withMotion.served.anim === 'walkoff' && withMotion.chalk === 0.35,
+    'with motion wanted, the four animations and the board\'s slide are all there (the control)',
+    `${withMotion.toast.anim} ${withMotion.serving.anim} ${withMotion.pulse.anim} ${withMotion.served.anim} ${withMotion.chalk}s`);
+  t.ok(withMotion.moving.length >= 9 && withMotion.boardLeft >= withMotion.viewport, 'and the board is still off screen in the task that opened it',
+    `${withMotion.moving.length} kinds of moving element, board at ${withMotion.boardLeft} of ${withMotion.viewport}`);
+
+  await reduceMotion(true);
+  const still = await motion();
+  t.ok(still.moving.length === 0, 'under prefers-reduced-motion no element has an animation or a transition', still.moving.join(' ') || 'none');
+  t.ok(still.toast.anim === 'none' && still.toast.opacity === '1', 'a toast does not animate and is fully visible', `${still.toast.anim} opacity ${still.toast.opacity}`);
+  t.ok(still.serving.anim === 'none' && still.serving.opacity === '0.45', 'a served station dims in place', `${still.serving.anim} opacity ${still.serving.opacity}`);
+  t.ok(still.pulse.anim === 'none' && still.pulse.ring !== 'none', 'a barista\'s station keeps a steady ring instead of a pulse', still.pulse.ring);
+  t.ok(still.served.anim === 'none' && still.served.opacity === '0', 'a served customer is gone without the walk-off');
+  t.ok(still.chalk === 0 && still.bar === 0 && still.boardLeft < still.viewport, 'the board is open in the task that opened it',
+    `board at ${still.boardLeft} of ${still.viewport}`);
+
+  // And the shop plays the same: a timed button lands, a serve pays, the
+  // clock clears the station and the toast leaves on its timer.
+  await ap.evaluate(() => {
+    const d = window.__CK_DEBUG__, slot = d.state.slots[0];
+    d.state.focusedSlot = 0; d.state.stationTab = 'milk';
+    d.sim.cupAction(slot, 'pickSyrup', 'vanilla');
+    d.renderAll();
+  });
+  await ap.click('#btnSteam');
+  await waitFor(ap, () => window.__CK_DEBUG__.state.slots[0].cup.milkSteamed, { timeout: 5000 });
+  t.ok(true, 'Steam Milk still runs its bar to the end and lands');
+  c = await counter();
+  t.ok(c.notes[0] === '1 espresso shot · Oat Milk, steamed · Vanilla syrup' && dotted(c) === '', 'the finished cup reads as its ticket and no tab has a dot', String(c.notes[0]));
+  const moneyThen = await ap.evaluate(() => window.__CK_DEBUG__.state.money);
+  await ap.click('.slot.focused .servebtn');
+  const paid = await ap.evaluate(() => ({ money: window.__CK_DEBUG__.state.money,
+    toast: [...document.querySelectorAll('.toast')].map(e => `${e.textContent} @${getComputedStyle(e).opacity}`).join(' | ') }));
+  t.ok(paid.money > moneyThen && /Served! \+\d+.* @1/.test(paid.toast), 'the serve pays and its toast is readable at once', `$${moneyThen} -> $${paid.money}, ${paid.toast}`);
+  await waitFor(ap, () => window.__CK_DEBUG__.state.slots[0] === null, { timeout: 4000 });
+  t.ok(true, 'the clock clears the served station, with no animation to wait on');
+  await wait(2500);
+  t.ok(await ap.$$eval('.toast', els => els.filter(e => /Served!/.test(e.textContent)).length) === 0, 'and the toast leaves on its timer');
+  t.ok(ap.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', ap.__errs.join(' | ') || 'clean');
+  await ap.close();
 
 } finally {
   await p.close().catch(() => {});

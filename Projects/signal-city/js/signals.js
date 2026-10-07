@@ -288,7 +288,8 @@ export class Controller {
     this.heldT = 0;        // stageT at the last holdGreen: the elapsed rules count from here
     this.next = null;      // phase index queued during clearance, or null
     this.resumeAt = null;  // where 'next' goes after a queue rule jumped the sequence
-    this.preemption = null; // { movements, hold, resume, from, done } while a priority corridor holds the box or is on its way in
+    this.preemption = null; // { movements, hold, resume, from, done, clear } while a priority corridor holds the box or is on its way in
+    this.leaving = null;   // the corridor a hold has just ended, shown through its yellow and all-red (#918)
     this.flash = null;
     this.pedCalls = new Set();   // legs with a call waiting, 'N' for P-N
     this.walk = null;            // { legs, stage: 'walk' | 'clear', t } while a walk runs
@@ -311,11 +312,26 @@ export class Controller {
   // What the heads are showing. A corridor still on its way in (the yellow
   // and all-red before its hold) shows the green it is ending, `from`, so
   // that green gets its yellow and the corridor's own leg stays red until
-  // the box is clear (#875).
+  // the box is clear (#875). A corridor that kept a leg already green is
+  // clearing the rest of that green (`clear`): the leg's lefts stay
+  // permissive until the movements it dropped have had their yellow and
+  // all-red. And a corridor whose hold has ended (`leaving`) is what the
+  // box shows through the yellow and all-red out of it (#918): the phase
+  // it interrupted is still `phase`, and is not what is lit.
   get current() {
     const p = this.preemption;
-    if (!p) return this.phases[this.phase];
-    return p.done ? { name: 'priority', movements: p.movements, permissive: [], walks: [] } : p.from;
+    if (!p) return this.leaving || this.phases[this.phase];
+    return p.done ? { name: 'priority', movements: p.movements, permissive: p.clear ? p.clear.permissive : [], walks: [] } : p.from;
+  }
+
+  // The head of a movement a corridor dropped from a green it kept the
+  // rest of (#918): yellow for the yellow's length, then red for the
+  // all-red. null for any other movement, or once they are clear.
+  _clearing(movement) {
+    const k = this.preemption && this.preemption.clear;
+    if (!k || !k.movements.includes(movement)) return null;
+    if (k.t >= this.timing.yellow - EPS) return 'red';
+    return k.arrows.includes(movement) ? 'yellow-arrow' : 'yellow';
   }
 
   get hasPeds() { return this.phases.some(p => p.walks.length); }
@@ -331,6 +347,8 @@ export class Controller {
       const mv = parseMovement(movement);
       return f.major.includes(mv.ped ? mv.leg : mv.entry) ? 'flash-yellow' : 'flash-red';
     }
+    const clearing = this._clearing(movement);
+    if (clearing) return clearing;
     const cur = this.current;
     if (!cur.movements.includes(movement)) return 'red';
     const mv = parseMovement(movement);
@@ -549,7 +567,7 @@ export class Controller {
     c.pedCalls = new Set(this.pedCalls);
     c.calls = new Set(this.calls);
     c.walk = this.walk ? { ...this.walk } : null;
-    c.preemption = this.preemption ? { ...this.preemption } : null;
+    c.preemption = this.preemption ? { ...this.preemption, clear: this.preemption.clear ? { ...this.preemption.clear } : null } : null;
     c.log = [];
     return c;
   }
@@ -618,12 +636,27 @@ export class Controller {
 
   // Priority corridor: hold green for `movements` (an emergency vehicle's
   // path) for `hold` seconds, then go back to the phase that was running.
+  //
+  // A corridor whose movements are all green already keeps them green and
+  // clears the rest of that green around them (#918): the movements it
+  // drops get the yellow and the all-red any ended green gets, on a clock
+  // of their own (`clear`), and every permissive left of that green stays
+  // one until that clock has run: the corridor's own, so it does not turn
+  // across a through still on its yellow, and a dropped one, so it goes on
+  // yielding to a corridor that is not stopping. They used to read red the
+  // step the corridor was asked for. A second corridor that would drop more while the first is still
+  // clearing takes the whole box through a yellow instead.
   preempt(movements, hold = 15) {
     const v = phaseIsValid(movements);
     if (!v.ok) throw new Error(`priority set conflicts: ${v.pair.join(' vs ')}`);
     const resume = this.next !== null ? this.next : this.phase;
-    const already = this.stage === 'green' && movements.every(m => this.current.movements.includes(m));
-    this.preemption = { movements: movements.slice(), hold, resume, from: this.current, done: already };
+    const lit = this.current;
+    const clearing = this.preemption ? this.preemption.clear : null;
+    const dropped = lit.movements.filter(m => !movements.includes(m));
+    const already = this.stage === 'green' && movements.every(m => lit.movements.includes(m)) && !(clearing && dropped.length);
+    let clear = clearing;
+    if (already && dropped.length) clear = { movements: dropped, arrows: dropped.filter(m => parseMovement(m).turn === 'L' && !lit.permissive.includes(m)), permissive: lit.permissive.slice(), t: 0 };
+    this.preemption = { movements: movements.slice(), hold, resume, from: lit, done: already, clear };
     this.next = null;
     this.walk = null;   // an emergency cuts the walk short; walkers already on the road are the world's
     this._setCause('corridor');
@@ -643,13 +676,17 @@ export class Controller {
     this.t += dt;
     this.stageT += dt;
     const { yellow, allRed } = this.timing;
+    const k = this.preemption && this.preemption.clear;
+    if (k && (k.t += dt) >= yellow + allRed - EPS) this.preemption.clear = null;
     switch (this.stage) {
       case 'green':
         this._stepWalk(dt);
         if (this.pedCalls.size && this._walkFits()) this._startWalk();
         if (this.preemption) {
-          if (this.stageT >= this.preemption.hold - EPS) {
+          // a hold does not end under the clearance it started (#918)
+          if (this.stageT >= this.preemption.hold - EPS && !this.preemption.clear) {
             const back = this.preemption.resume;
+            this.leaving = this.current;
             this.preemption = null;
             this.next = back;
             this._setCause('corridor', { back: true });
@@ -683,6 +720,7 @@ export class Controller {
             this.phase = this.next;
             this.next = null;
           }
+          this.leaving = null;
           this.stage = 'green';
           this.stageT -= allRed;
           this.heldT = 0;

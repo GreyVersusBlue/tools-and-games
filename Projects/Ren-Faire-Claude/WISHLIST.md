@@ -48,7 +48,7 @@ season closes deliberately, banks a record, and the next one opens on
 renown carried whole, half the standing above the start, and the acts'
 stories. What it stopped being in Phase 3 is a faire whose acts are price
 lookups: every contracted
-act carries a relationship the day moves, eight of them have an arc, and a
+act carries a relationship the day moves, every one of them has an arc, and a
 contract is a negotiation the relationship prices. What it stopped being in Phase 1 is a
 spreadsheet with a plat drawn on it. The gate is still one number
 (`baseAttendance × priceMult × popularityFactor × adFactor ×
@@ -70,7 +70,8 @@ coefficient on the average.
   catalogs: 4 structure types, 16 performers, 12 vendors, 4 campaigns, 3
   contract options, 12 events — and, from Phase 3, `RELATIONSHIP` (the
   deltas and the five tiers), `NEGOTIATION` (the commitment and fee lists
-  every offer is priced off) and `ARCS` (eight subjects, sixteen beats).
+  every offer is priced off) and `ARCS` (twenty-eight subjects, one an act
+  since #919, and fifty-six beats).
   From Phase 4: the grid is 14×12 (two South Meadow rows), a fourth
   `GRID_EXPANSIONS` tier carries `unlockRenown`, the sixteenth performer
   carries one too, and `RENOWN` and `CARRYOVER` say what the second track
@@ -353,9 +354,17 @@ Open and unclaimed. Add here rather than starting a new list.
   weekend performer arcs; negotiation rather than a fixed rate.~~ *Phase 3:
   `ARCS` with a beat at each edge for eight acts, and `quoteContract` pricing
   every contract off a commitment, a fee and the relationship.*
-- More arcs: seven performers and ten vendors have none, and every arc has
-  exactly one beat per edge. The shape is in `data.js`; adding one is a row
-  and the integrity suite checks it.
+- ~~More arcs: seven performers and ten vendors have none.~~ *Shipped
+  2026-10-07 (#919). It was ten performers and ten vendors by then: every one
+  of the 28 acts has an arc, and the suite fails an act without one. Left of
+  it: every arc still has exactly one beat per edge, and the suite now
+  requires that (two beats at one edge would be two cards for one act), so a
+  longer story needs a third tier or a beat that waits on another beat;
+  nobody but the session that wrote them has read the forty new beats; the
+  prices follow the first eight's (a Sour beat mended for a third to a whole
+  day's rate, a Devoted one for about half a day's) and no season has been
+  played to see whether +2 quality for $90 at the trinket stall is too
+  cheap; `resolveBeat` still lets a paid answer take the till below zero.*
 - The relationship deltas (`RELATIONSHIP` in `data.js`) have not been played
   through a season. Reaching Devoted takes about eight good days on the
   bill; reaching Sour takes ten days benched. Whether that is the right pace

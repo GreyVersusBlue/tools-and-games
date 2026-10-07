@@ -140,10 +140,13 @@ const LORE_PLACE={
  stayed:{l:'the shore that faces the far island',at:()=>{if(!farIsle)return null;const fx=farIsle.x+farIsle.w/2;let b=null,bd=1e9;for(const s of shore){const d=Math.hypot(s.x-fx,s.y);if(d<bd){bd=d;b=s}}return b}},
  found:{l:'where the ground gave it up',at:()=>ruin?{x:ruin.x,y:ruin.y+1.6}:null},
  bread:{l:'the mill path',at:()=>{const m=getB('mill');return m?{x:m.x+1,y:m.y+2.6}:null}},
- way:{l:'where the new way was tried first',at:()=>{const e=chron.find(x=>x.kind==='way'&&x.gr);if(!e)return null;
-   if(e.label.includes('the sail')){const h=getB('hut');return h?nearestShore(h.x,h.y):null}
-   if(e.label.includes('the plough'))return farms.length?{x:farms[0].x+.5,y:farms[0].y+.5}:null;
-   return null}}}; /* the kiln and the book have no one place; that is allowed — some stories happen everywhere */
+ way:{l:'where the new way was tried first',at:()=>{const e=chron.find(x=>x.kind==='way'&&x.gr&&WAY_AT.some(n=>x.label.includes(n)));if(!e)return null;
+   if(e.label.includes(WAY_AT[0])){const h=getB('hut');return h?nearestShore(h.x,h.y):null}
+   return farms.length?{x:farms[0].x+.5,y:farms[0].y+.5}:null}}}; /* the kiln and the book have no one place; that is allowed — some stories happen everywhere */
+// The two ways that have ground, by the name wayDay writes into the chronicle's label (WAYS[].n in watcher.js; a save keeps the label,
+// so these are matched as text and unit.mjs fails if a WAYS line is reworded away from them). The place is the first grown way that
+// has one: a grown kiln or book ahead of the sail used to answer null for good (#922).
+const WAY_AT=['the sail','the plough'];
 let RM=false;try{const mq=matchMedia('(prefers-reduced-motion: reduce)');RM=mq.matches;
   if(mq.addEventListener)mq.addEventListener('change',e=>{RM=e.matches});else if(mq.addListener)mq.addListener(e=>{RM=e.matches})}catch(e){}
 const V=()=>village||'the village';

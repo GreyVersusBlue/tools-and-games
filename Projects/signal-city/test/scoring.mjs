@@ -235,11 +235,14 @@ group('Rush Hour: the events and what the corridor costs');
   // it is late on 3 of 6 and the board clears 65 to 83 at 10 to 17 s.
   // Target 56, waitTarget 20: the corridor is the level, and the second
   // star is what a good hand on the phases buys back. One seed of each
-  // (a 4-minute run is about 8 s). Rush Hour ships hard (R3, #641): at the
-  // shipped 1.5 s all-red the corridor, called this way, puts the W left's
-  // arrow into an E through still in the box on seeds 2, 5 and 6, and the
-  // run ends; at 2.5 s none of the six collide. So the lesson is played
-  // here with the slider at 2.5.
+  // (a 4-minute run is about 8 s). Rush Hour ships hard (R3, #641). On
+  // the 22 s rule this call always lands on the ambulance's own leg, W,
+  // already green; until #918 that dropped E to red in the same step and
+  // turned the W left into an arrow under it, into an E through still in
+  // the box on seeds 2 and 5 at 1.5 s of all-red (R3 read that as the
+  // all-red's lesson, and plays this at 2.5). E gets its yellow and
+  // all-red now: none of the six collide at 1, 1.5 or 2.5 s, and at 0.5 s
+  // only seed 5, 51 s after the call.
   const l6 = levelById('rush-hour');
   const run = (seed, allRed = 2.5) => {
     const lvl = withAuto(l6);
@@ -255,10 +258,20 @@ group('Rush Hour: the events and what the corridor costs');
   const { w, r } = run(2);
   ok(r.survived && r.cleared >= l6.target && w.stats.outages === 1 && w.stats.ambulances === 1, 'seed 2 with the corridor called survives, clears the target, and saw the outage and the ambulance', `${starString(r.stars)} ${r.cleared}/${r.avgWait.toFixed(0)}s/${r.collisions}x`);
   ok(r.ambulanceLate === 0 && r.ambulances === 1, 'the ambulance was on time', `${r.ambulances} on the map, ${r.ambulanceLate} late`);
-  // the all-red as a survival tool (R3): the same seed and the same call at
-  // the shipped 1.5 s is a collision the World counts, and hard mode ends it
+  // the same seed and the same call at the shipped 1.5 s (#918): on the
+  // old lights car 53's left arrow met an E through at 189.4 s, 2.4 s
+  // after the call, and hard mode ended the run
   const short = run(2, 1.5);
-  ok(short.w.stats.collisions > 0 && !short.r.survived && short.r.reasons[0] === 'a collision, and this level does not forgive one', 'at the shipped 1.5 s all-red the same run collides and hard mode ends it', `${short.w.stats.collisions}x: ${short.r.reasons.join('; ')}`);
+  ok(short.w.stats.collisions === 0 && short.r.survived && short.r.ambulanceLate === 0, 'at the shipped 1.5 s all-red the same call is clean: the leg the corridor drops gets its yellow before the left turns protected', `${starString(short.r.stars)} ${short.r.cleared}/${short.r.avgWait.toFixed(0)}s/${short.w.stats.collisions}x`);
+  // and the left on the dropped leg goes on yielding through that yellow:
+  // on seed 4 at 0.5 s, read as an ordinary yellow against a corridor that
+  // does not stop, an E left turned into a W through at 189.5 s
+  const trap = run(4, 0.5);
+  ok(trap.w.stats.collisions === 0 && trap.r.survived, 'and at 0.5 s on seed 4 the dropped leg\'s left still yields to the corridor through its yellow', `${trap.w.stats.collisions}x: ${trap.r.reasons.join('; ')}`);
+  // hard mode still ends a run on one collision
+  short.w.stats.collisions = 1;
+  const hr = score(short.w);
+  ok(!hr.survived && hr.reasons[0] === 'a collision, and this level does not forgive one', 'one collision still ends this level', hr.reasons.join('; '));
   const late = new World(withAuto(l6), 2);
   for (let i = 0; i < l6.duration * 60 && !late.stats.gridlock; i++) late.step();
   const rl = score(late);

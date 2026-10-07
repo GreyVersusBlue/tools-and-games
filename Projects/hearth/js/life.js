@@ -40,10 +40,7 @@ function newDay(){saidToday=new Set();
   wayDay(yr);faithDay();
   // the morning after a fire night, someone may walk out to stand where a grown story happens — and the first walk names the ground (sprint 13).
   // walkP only queues the errand; step() launches it once the light is up. An unnamed place is walked for certain; a named one, sometimes, again.
-  if(storyDay===dayCount-1){const cand=chron.filter(e=>e.gr&&LORE_PLACE[e.kind]);
-    if(cand.length){const un=cand.filter(e=>!lorePl.includes(e.kind));
-      const e=un.length?un[0]:(R()<.25?cand[(R()*cand.length)|0]:null);
-      if(e){const D=LORE_PLACE[e.kind],pos=D.at();if(pos)walkP={d:dayCount,k:e.kind,l:D.l,x:pos.x,y:pos.y,named:lorePl.includes(e.kind)}}}}
+  if(storyDay===dayCount-1)queueStoryWalk();
   // and once a year, in spring, with enough named ground and an elder to lead and children to show: the walking of the bounds (sprint 14)
   if(s==='spring'&&seaDay()===3&&yr!==boundsYr&&lorePl.length>=2&&people.some(p=>isElder(p)&&!p.dead)&&people.some(p=>isKid(p)&&ageOf(p)>=5)&&R()<.6){boundsYr=yr;boundsP={d:dayCount}}
   // paths where people walk; cobbles once the village is big
@@ -160,6 +157,15 @@ function newDay(){saidToday=new Set();
   for(const p of people)trimHist(p); /* a long life earns more lines than anyone reads; the first one and the last HIST_MAX-1 keep */
   autoSaveTick();
 }
+// The morning's story walk, split out of newDay so unit.mjs can call it. The first unnamed story that has ground today is walked for
+// certain; with none, a named one is walked again one morning in four. A story with no ground (a grown kiln or book of days, a mill
+// story with the mill gone) used to be taken as the head of the queue every morning and walked nowhere, so nothing behind it was
+// ever named and nothing named was ever walked again (#922). It is passed over now. No draw from R() that the old line did not make
+// on an island with no such story, so those islands are the same islands.
+function queueStoryWalk(){const cand=chron.filter(e=>e.gr&&LORE_PLACE[e.kind]);if(!cand.length)return;
+  const named=cand.filter(e=>lorePl.includes(e.kind)),un=cand.find(e=>!lorePl.includes(e.kind)&&LORE_PLACE[e.kind].at());
+  const e=un||(named.length&&R()<.25?named[(R()*named.length)|0]:null);
+  if(e){const D=LORE_PLACE[e.kind],pos=D.at();if(pos)walkP={d:dayCount,k:e.kind,l:D.l,x:pos.x,y:pos.y,named:lorePl.includes(e.kind)}}}
 // ---------- the short winter: the reckoning, the raid, the one who eats last, and the thaw (phase 6) ----------
 // Whoever keeps the store counts it. If nobody keeps the store the eldest does, because somebody has to, and the saying of the number
 // out loud is the whole point: hunger on this island used to be a stat that went up.

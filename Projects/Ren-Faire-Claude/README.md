@@ -160,7 +160,7 @@ npm install
 npm test
 ```
 
-2,168 checks in `tests/smoke.mjs`, 170 in `tests/guests.mjs`, 223 in
+3,590 checks in `tests/smoke.mjs`, 170 in `tests/guests.mjs`, 223 in
 `tests/mapview.mjs` and 139 in `tests/wiring.mjs` (see the file list above
 for what the last three cover). Three more scripts need a real Chromium and are not part of `npm
 test`: `npm run shoot` (Phase 5's layout camera, `tools/shoot-states.mjs`),
@@ -382,7 +382,10 @@ signing and release through the quote; the day's relationship deltas for
 every rule in the table, including a stage shrunk until it overflows and a
 stall walked onto the disconnected spur by hand; the two gated events across
 300 seeds each way; beats pending, resolved, refused and re-priced; and a
-pre-arc save coming through `repair` at neutral. **Section 26** is the same
+pre-arc save coming through `repair` at neutral. Since #919 the table has an
+arc for every one of the 28 acts, and Section 1j holds each row to the rules
+it was written to and plays every answer (see *Every act has an arc* below).
+**Section 26** is the same
 on screen: mood tags on every contracted row, a beat card whose choice button
 resolves into the save and re-prices the roster row, a negotiation row driven
 through the delegated `change` listener and signed at the rate it showed, the
@@ -487,3 +490,25 @@ answering false), 375 and 820, `page.touchscreen.tap` on a blocked cell
 and on a ghost, the live region read back, the page not scrolling
 sideways. It found the `min-height` that measured one line and a bit on a
 tablet, and a default sentence that said "Point at" to a phone.
+
+**Every act has an arc, 2,168 → 3,590 checks** (#919, 2026-10-07). Phase 3
+wrote arcs for eight acts; the other ten performers and ten vendors could go
+Sour or Devoted and nothing happened. `ARCS` in `js/data.js` has 28 rows now,
+one an act, 56 beats, 117 answers. Section 1j reads the table against the
+catalog: every act has exactly one arc with exactly one beat at each edge; no
+two beats share a title or a paragraph; every beat has an answer that costs
+nothing (`resolveBeat` does not check the till) and every Sour beat one that
+mends the mood; a price is money out, at most two days of the act's listed
+rate, and written in the button's label, because the tooltip that carries the
+rest is not there on a touchscreen; a quirk is shed only from an act that has
+one and handed only to an act that lacks it; popularity and quality move by
+their whole amount inside 1 to 10 (so nothing raises The Gilded Company, who
+are at 10); a rate change is real and between a fifth off and half again; and
+one vendor row moves a rate, because without it the vendor side of
+`resolveBeat`'s re-pricing was played by nothing. Then every answer of every
+beat is resolved from a contract at the listed rate and the save and the
+overlay are read back: cash, mood, popularity or quality, quirk, rate, the
+standing contract, and the beat no longer pending. Section 26's page fixture
+has two cards up at once, a performer's and a vendor's, and clicks both.
+Nobody has read the forty new beats but the session that wrote them, and no
+season has been played with them.

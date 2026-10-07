@@ -937,7 +937,7 @@ export const ARCS = [
     { id: 'corwin_sour', when: 'sour', title: 'Sir Corwin has stopped falling off',
       text: 'The Unhorsed is unhorsed for a living, and a man left off the bill for days on end starts to wonder what the joke is. He asks, politely, whether he is wanted.',
       choices: [
-        { id: 'bill', label: 'Swear he rides tomorrow, and pay a day in advance', cash: -650, relationship: 20, note: 'The advance is his usual rate, and it lands.' },
+        { id: 'bill', label: 'Swear he rides tomorrow, and pay a day in advance ($650)', cash: -650, relationship: 20, note: 'The advance is his usual rate, and it lands.' },
         { id: 'shrug', label: 'Tell him rides are earned', relationship: -5, quirk: null, note: 'He stops playing to the crowd. The crowd notices.' },
       ] },
     { id: 'corwin_devoted', when: 'devoted', title: 'Sir Corwin teaches the children to fall',
@@ -1029,6 +1029,298 @@ export const ARCS = [
       choices: [
         { id: 'rail', label: 'Build the rail ($180)', cash: -180, quality: 2, relationship: 5, note: 'The stall becomes a show.' },
         { id: 'no_fire', label: 'Not near the thatch', relationship: -3, note: 'The kiln stays shut.' },
+      ] },
+  ] },
+  // The other twenty acts. Same shape and the same prices as the eight above:
+  // a Sour beat that money mends or a refusal makes worse, a Devoted beat
+  // that buys a better act or leaves it alone. tests/smoke.mjs holds the
+  // rules every row here is written to (section 1j): every act has an arc,
+  // every beat has an answer that costs nothing, and no answer is a no-op.
+  { id: 'arc_tumbledown', subject: 'perf_musician_1', beats: [
+    { id: 'tumbledown_sour', when: 'sour', title: 'The Tumbledown Consort is down to three',
+      text: 'The crumhorn has gone home to help with the harvest, and the other three say that is what comes of playing to the back of a tent nobody was sent to. They want his wage made up or they follow him.',
+      choices: [
+        { id: 'wage', label: 'Make up the wage and send for him ($200)', cash: -200, relationship: 20, note: 'Four again by the next gate.' },
+        { id: 'trio', label: 'Three is a consort', relationship: -5, popularity: -1, note: 'They stay, thinner. The crowd can hear the gap.' },
+      ] },
+    { id: 'tumbledown_devoted', when: 'devoted', title: 'The Consort wants to play the crowd in',
+      text: 'They have worked up a marching set and would lead the first guests in from the gate every morning before their own slot. It needs four tabards in the house colours.',
+      choices: [
+        { id: 'tabards', label: 'Buy the tabards ($160)', cash: -160, popularity: 1, quirk: 'crowd_pleaser', relationship: 5, note: 'A bigger draw, and one that plays to the crowd.' },
+        { id: 'own_slot', label: 'Their slot is enough', relationship: 0, note: 'The marching set stays in the tent.' },
+      ] },
+  ] },
+  { id: 'arc_nettle', subject: 'perf_jester_2', beats: [
+    { id: 'nettle_sour', when: 'sour', title: 'Old Nettle is telling the old jokes at the gate',
+      text: 'He has been doing this for forty years and knows when a house has stopped listening. Left off the bill, he sits by the gate and tells arriving guests what the faire used to be like.',
+      choices: [
+        { id: 'stool', label: 'Give him a stool, a slot and a week’s ale ($90)', cash: -90, relationship: 20, note: 'He goes back to telling them on a stage.' },
+        { id: 'move_on', label: 'Move him along from the gate', relationship: -10, note: 'He moves. The stories do not improve.' },
+      ] },
+    { id: 'nettle_devoted', when: 'devoted', title: 'Old Nettle offers to take an apprentice',
+      text: 'There is a stable lad who can already do the voice. Nettle would train him between sets and split the act: two fools for a little more than the price of one.',
+      choices: [
+        { id: 'apprentice', label: 'Take the lad on', popularity: 2, rateMult: 1.2, relationship: 5, note: 'A bigger act at a bigger rate.' },
+        { id: 'alone', label: 'Nettle works alone', relationship: 0, note: 'The lad goes back to the stable.' },
+      ] },
+  ] },
+  { id: 'arc_coopers', subject: 'perf_livinghist_1', beats: [
+    { id: 'coopers_sour', when: 'sour', title: 'The Cooper’s Guild Camp has stopped making barrels',
+      text: 'A demonstration nobody is scheduled to watch is four men hitting hoops in a field. The guildmaster says the oak cost money and he would like to know who is paying for it.',
+      choices: [
+        { id: 'oak', label: 'Pay for the oak ($140)', cash: -140, relationship: 20, note: 'The hammers start again.' },
+        { id: 'their_trade', label: 'It is their trade, not yours', relationship: -10, popularity: -1, note: 'They bring half the staves next time.' },
+      ] },
+    { id: 'coopers_devoted', when: 'devoted', title: 'The Guild offers the house its own barrels',
+      text: 'They would cooper every cask on the grounds in front of the crowd and brand each one with the faire’s mark. People stop for a branding iron.',
+      choices: [
+        { id: 'brand', label: 'Commission the brand ($120)', cash: -120, popularity: 2, relationship: 5, note: 'The camp becomes worth stopping for.' },
+        { id: 'plain', label: 'Plain barrels will do', relationship: 0, note: 'The iron stays cold.' },
+      ] },
+  ] },
+  { id: 'arc_physick', subject: 'perf_livinghist_2', beats: [
+    { id: 'physick_sour', when: 'sour', title: 'The Physick has run out of patients',
+      text: 'The leeches are real and the volunteers were the act. With no slot there is no crowd to pull a volunteer from, and the Physick has started diagnosing the vendors instead.',
+      choices: [
+        { id: 'slot', label: 'Promise a slot and replace the leeches ($110)', cash: -110, relationship: 20, note: 'The tent has a queue again.' },
+        { id: 'stop', label: 'Tell the Physick to leave the vendors alone', relationship: -5, quirk: null, note: 'The diagnosing stops. So does the showmanship.' },
+      ] },
+    { id: 'physick_devoted', when: 'devoted', title: 'The Physick wants to pull a tooth a day',
+      text: 'A real one, from a paid volunteer, with pliers the length of a forearm. It is loud, it is quick, and nobody within earshot keeps walking.',
+      choices: [
+        { id: 'tooth', label: 'Pay the volunteers ($130)', cash: -130, popularity: 2, relationship: 5, note: 'A bigger draw. Louder, too.' },
+        { id: 'no_teeth', label: 'No teeth', relationship: -3, note: 'The pliers go back in the chest.' },
+      ] },
+  ] },
+  { id: 'arc_rosalind', subject: 'perf_musician_3', beats: [
+    { id: 'rosalind_sour', when: 'sour', title: 'Rosalind Quicksilver is playing for the inn instead',
+      text: 'She is an evening player and the inn down the road has evenings to spare. Twice this week she has come through the gate with her fiddle already warm from somebody else’s fire.',
+      choices: [
+        { id: 'retainer', label: 'Pay a retainer for her evenings ($280)', cash: -280, relationship: 25, note: 'The inn loses its fiddler.' },
+        { id: 'any_hour', label: 'Tell her to play when she is put', relationship: 5, quirk: null, popularity: -1, note: 'She plays any hour now, and none of them as well.' },
+        { id: 'both', label: 'Let her play both', relationship: -10, note: 'She arrives tired, and knows who let her.' },
+      ] },
+    { id: 'rosalind_devoted', when: 'devoted', title: 'Rosalind wants the lanterns lit',
+      text: 'She has a set that only works once the light goes, and she would close every day with it if the house strings lanterns over the stage.',
+      choices: [
+        { id: 'lanterns', label: 'String the lanterns ($220)', cash: -220, popularity: 2, relationship: 5, note: 'The last set of the day becomes the one people wait for.' },
+        { id: 'daylight', label: 'Daylight is free', relationship: 0, note: 'The set stays unplayed.' },
+      ] },
+  ] },
+  { id: 'arc_vesper', subject: 'perf_magician_2', beats: [
+    { id: 'vesper_sour', when: 'sour', title: 'Vesper Nightshade has stopped explaining the tricks',
+      text: 'The patter was half the act. Left in the wings, Vesper does the cabinet in silence, bows to nobody, and has been seen pacing out the stage at the rival faire.',
+      choices: [
+        { id: 'top_bill', label: 'Put the name at the top of the bill and reprint it ($240)', cash: -240, relationship: 20, note: 'The patter comes back.' },
+        { id: 'rate', label: 'Raise the rate a tenth', rateMult: 1.1, relationship: 15, note: 'Mollified, and dearer from tomorrow.' },
+        { id: 'silence', label: 'Silence suits a magician', relationship: -10, popularity: -1, note: 'A smaller act, and it knows why.' },
+      ] },
+    { id: 'vesper_devoted', when: 'devoted', title: 'Vesper offers to vanish the gatehouse',
+      text: 'One evening, with smoke, mirrors and the whole crowd watching. It would be talked about for a season. Vesper wants it written down that the trick belongs to this house.',
+      choices: [
+        { id: 'vanish', label: 'Sign for it', popularity: 2, rateMult: 1.15, relationship: 5, note: 'A much bigger name, at a bigger rate.' },
+        { id: 'keep_gate', label: 'The gatehouse stays where it is', relationship: -3, note: 'Vesper bows. The mirrors go back in the cart.' },
+      ] },
+  ] },
+  { id: 'arc_bramblewit', subject: 'perf_jester_3', beats: [
+    { id: 'bramblewit_sour', when: 'sour', title: 'Bramblewit has turned the act on the house',
+      text: 'An idle fool finds material. The new routine is about a faire that hires a jester and forgets where it put him, and the vendors have started quoting it.',
+      choices: [
+        { id: 'laugh', label: 'Put him on the bill and laugh at it in public ($100)', cash: -100, relationship: 20, note: 'The routine gets kinder.' },
+        { id: 'gag', label: 'Tell him the house is not a subject', relationship: -10, note: 'He drops the routine and keeps the grudge.' },
+      ] },
+    { id: 'bramblewit_devoted', when: 'devoted', title: 'Bramblewit wants to work the queue',
+      text: 'He would rather be among the crowd than above it: the gate line, the food line, anywhere people are stuck. Nobody who meets him there forgets it, and not all of them enjoy it.',
+      choices: [
+        { id: 'loose', label: 'Turn him loose', popularity: 1, quirk: 'chaos_prone', relationship: 5, note: 'A bigger draw, and the rowdier days that come with one.' },
+        { id: 'stage_only', label: 'Keep him on the stage', relationship: 0, note: 'The queue stays dull.' },
+      ] },
+  ] },
+  { id: 'arc_talon', subject: 'perf_falconer_2', beats: [
+    { id: 'talon_sour', when: 'sour', title: 'Talon of the Greenwood is flying the birds elsewhere',
+      text: 'A hawk that is not flown goes soft, so Talon has been taking the birds out over the common before the gates open. The common belongs to somebody, and the bill for a dozen hens has reached the office.',
+      choices: [
+        { id: 'hens', label: 'Pay for the hens and give Talon the field ($180)', cash: -180, relationship: 20, note: 'The birds fly here again.' },
+        { id: 'hoods', label: 'Hoods on until there is a slot', relationship: -10, popularity: -1, note: 'The birds go soft. The show does too.' },
+      ] },
+    { id: 'talon_devoted', when: 'devoted', title: 'Talon offers the eagle',
+      text: 'There is a golden eagle in the Greenwood mews that has never been shown. She needs a taller perch and a wider field, and Talon would bring her for this house and no other.',
+      choices: [
+        { id: 'eagle', label: 'Build the perch ($320)', cash: -320, popularity: 2, relationship: 5, note: 'An eagle on the bill.' },
+        { id: 'hawks', label: 'The hawks are enough', relationship: 0, note: 'The eagle stays in the Greenwood.' },
+      ] },
+  ] },
+  { id: 'arc_chandlers', subject: 'perf_livinghist_3', beats: [
+    { id: 'chandlers_sour', when: 'sour', title: 'The Chandler’s Row has let the tallow set',
+      text: 'Dipping candles for nobody is slow work, and the Row has stopped lighting the vats. The eldest chandler says they can sit idle at home for less.',
+      choices: [
+        { id: 'tallow', label: 'Buy the week’s candles for the house ($100)', cash: -100, relationship: 20, note: 'The vats are lit.' },
+        { id: 'idle', label: 'Then they can sit', relationship: -10, popularity: -1, note: 'Two of the Row go home.' },
+      ] },
+    { id: 'chandlers_devoted', when: 'devoted', title: 'The Row wants the children to dip their own',
+      text: 'A penny candle, dipped by the child who carries it home. It needs a low bench and a second vat, and the parents stand there the whole time.',
+      choices: [
+        { id: 'bench', label: 'Build the bench ($110)', cash: -110, popularity: 1, quirk: 'crowd_pleaser', relationship: 5, note: 'The Row becomes a stop, and one that plays to the crowd.' },
+        { id: 'watch', label: 'Watching is enough', relationship: 0, note: 'The children watch.' },
+      ] },
+  ] },
+  // Marrow is at the catalog's ceiling (draw 10), so no answer here raises
+  // popularity: performerFor would clamp it to nothing. A Devoted Company
+  // takes less a day instead, the one rateMult under 1 in the table.
+  { id: 'arc_marrow', subject: 'perf_troupe_1', beats: [
+    { id: 'marrow_sour', when: 'sour', title: 'The Gilded Company is rehearsing another house’s play',
+      text: 'Marrow does not sit idle. The Company has been running lines for a winter engagement in the city in full view of the stalls, and the leading player has asked whether this house still wants a headliner.',
+      choices: [
+        { id: 'benefit', label: 'Stage a benefit night in their name ($600)', cash: -600, relationship: 25, note: 'Costly, and the city can wait.' },
+        { id: 'terms', label: 'Remind them of the contract', relationship: 5, quirk: null, note: 'They play it as written, and not a line further.' },
+        { id: 'city', label: 'Wish them well in the city', relationship: -10, popularity: -1, note: 'Two of the Company leave early. It shows.' },
+      ] },
+    { id: 'marrow_devoted', when: 'devoted', title: 'The Company offers the house a play of its own',
+      text: 'A new piece, written for these grounds and played nowhere else, in exchange for a longer understanding. Marrow would take less a day for it.',
+      choices: [
+        { id: 'patron', label: 'Become their patron ($500)', cash: -500, rateMult: 0.9, relationship: 5, note: 'A tenth off their rate from tomorrow, for good.' },
+        { id: 'guests', label: 'Keep them as guests', relationship: 2, note: 'They bow. The play goes unwritten.' },
+      ] },
+  ] },
+  { id: 'arc_piepeddler', subject: 'vend_piepeddler', beats: [
+    { id: 'piepeddler_sour', when: 'sour', title: 'The Pie Peddler is selling yesterday’s pies',
+      text: 'A tray that does not sell goes back in the cart, and the cart comes back the next morning. The peddler says fresh pastry needs a pitch people walk past.',
+      choices: [
+        { id: 'fresh', label: 'Buy the stale trays and send for flour ($150)', cash: -150, relationship: 20, note: 'Fresh pies by the next gate.' },
+        { id: 'stale', label: 'A pie is a pie', relationship: -10, quality: -1, note: 'The trays keep coming back.' },
+      ] },
+    { id: 'piepeddler_devoted', when: 'devoted', title: 'The Peddler wants an oven on the grounds',
+      text: 'Baked here instead of carted in before dawn. The smell alone would do the selling, and the peddler will build it if the house buys the brick.',
+      choices: [
+        { id: 'oven', label: 'Buy the brick ($260)', cash: -260, quality: 2, relationship: 5, note: 'Hot pies, for good.' },
+        { id: 'cart', label: 'The cart has always worked', relationship: 0, note: 'The pies arrive cold, as ever.' },
+      ] },
+  ] },
+  { id: 'arc_cider', subject: 'vend_cider', beats: [
+    { id: 'cider_sour', when: 'sour', title: 'Hollow Barrel is watering the cider',
+      text: 'Nobody will say so, but the last cask was thin. A cidermaker who is not selling stretches what is left, and the regulars have noticed.',
+      choices: [
+        { id: 'cask', label: 'Buy a cask for the crew ($220)', cash: -220, relationship: 20, note: 'The next cask is honest.' },
+        { id: 'thin', label: 'Say nothing', relationship: -10, quality: -1, note: 'It stays thin.' },
+      ] },
+    { id: 'cider_devoted', when: 'devoted', title: 'Hollow Barrel offers the house a pressing',
+      text: 'They would bring the press itself and crush the apples in front of the stall, first cup to whoever turns the screw. It wants a cart of apples a weekend.',
+      choices: [
+        { id: 'press', label: 'Pay for the apples ($240)', cash: -240, quality: 2, relationship: 5, note: 'The best cup on the grounds.' },
+        { id: 'barrels', label: 'Barrels are less trouble', relationship: 0, note: 'The press stays in the orchard.' },
+      ] },
+  ] },
+  { id: 'arc_stew', subject: 'vend_stew', beats: [
+    { id: 'stew_sour', when: 'sour', title: 'The Widow has stopped tasting the kettle',
+      text: 'She makes one pot and it lasts until it is gone. On a slow weekend that is a long time, and she has given up pretending otherwise.',
+      choices: [
+        { id: 'crew', label: 'Feed the crew from her kettle ($130)', cash: -130, relationship: 20, note: 'The pot empties. A new one goes on.' },
+        { id: 'old_pot', label: 'Leave her to it', relationship: -10, quality: -1, note: 'The pot gets older.' },
+      ] },
+    { id: 'stew_devoted', when: 'devoted', title: 'The Widow will make her mother’s stew',
+      text: 'There is a second recipe she has never sold. It needs mutton rather than scraps, and she will not make it at her own cost.',
+      choices: [
+        { id: 'mutton', label: 'Stand her the mutton ($170)', cash: -170, quality: 2, relationship: 5, note: 'A better kettle, for good.' },
+        { id: 'scraps', label: 'The first stew sells', relationship: 0, note: 'The recipe stays in the family.' },
+      ] },
+  ] },
+  { id: 'arc_leather', subject: 'vend_leather', beats: [
+    { id: 'leather_sour', when: 'sour', title: 'Blackthorn has started selling off the tools',
+      text: 'A leatherworker with no customers sells what the next faire will buy, and a good awl is worth more than a belt nobody looked at. The bench is half empty.',
+      choices: [
+        { id: 'belts', label: 'Order belts for the gate crew ($160)', cash: -160, relationship: 20, note: 'The tools stay on the bench.' },
+        { id: 'sell', label: 'Let the tools go', relationship: -10, quality: -1, note: 'The work gets plainer.' },
+      ] },
+    { id: 'leather_devoted', when: 'devoted', title: 'Blackthorn offers to tool the faire’s mark',
+      text: 'Every belt, pouch and scabbard stamped with the house device, cut to order while the customer waits. The stamp has to be made first.',
+      choices: [
+        { id: 'stamp', label: 'Have the stamp cut ($140)', cash: -140, quality: 2, relationship: 5, note: 'Leather people come here for.' },
+        { id: 'unmarked', label: 'Unmarked is fine', relationship: 0, note: 'The leather stays plain.' },
+      ] },
+  ] },
+  { id: 'arc_blades', subject: 'vend_blades', beats: [
+    { id: 'blades_sour', when: 'sour', title: 'Ravensmoor has locked the good steel away',
+      text: 'The smith will not lay out the fine blades for a crowd that never reaches the stall. What is on the table now is what he would not mind losing.',
+      choices: [
+        { id: 'commission', label: 'Commission a blade for the house ($250)', cash: -250, relationship: 20, note: 'The chest is unlocked.' },
+        { id: 'dearer', label: 'Pay him a tenth more to lay it out', rateMult: 1.1, relationship: 15, note: 'The chest is unlocked, and he costs more from tomorrow.' },
+        { id: 'locked', label: 'His chest, his business', relationship: -10, quality: -1, note: 'The table stays dull.' },
+      ] },
+    { id: 'blades_devoted', when: 'devoted', title: 'Ravensmoor wants a forge at the stall',
+      text: 'A small one, for finishing and sharpening in front of the buyer. It needs a stone hearth so the thatch does not go up, and that is the house’s to build.',
+      choices: [
+        { id: 'hearth', label: 'Lay the hearth ($280)', cash: -280, quality: 2, relationship: 5, note: 'Steel finished while you watch.' },
+        { id: 'cold', label: 'Cold steel sells too', relationship: -3, note: 'He nods. The fine work stays at Ravensmoor.' },
+      ] },
+  ] },
+  { id: 'arc_trinkets', subject: 'vend_trinkets', beats: [
+    { id: 'trinkets_sour', when: 'sour', title: 'Pixie & Pauper are down to the pauper',
+      text: 'One of the two has gone to work a market that pays, and took the better half of the stock with her. What is left is ribbon and painted stones.',
+      choices: [
+        { id: 'fare', label: 'Send her fare back and a week’s pitch ($70)', cash: -70, relationship: 20, note: 'Both of them, by the next gate.' },
+        { id: 'ribbon', label: 'Ribbon sells', relationship: -10, quality: -1, note: 'It does, a little.' },
+      ] },
+    { id: 'trinkets_devoted', when: 'devoted', title: 'Pixie & Pauper want to sell the faire’s own token',
+      text: 'A pressed tin badge with the season on it, a new one each year. They would strike them at the stall if the house pays for the die.',
+      choices: [
+        { id: 'die', label: 'Pay for the die ($90)', cash: -90, quality: 2, relationship: 5, note: 'Something to take home with the faire’s name on it.' },
+        { id: 'no_token', label: 'No tokens', relationship: 0, note: 'They go on selling ribbon.' },
+      ] },
+  ] },
+  { id: 'arc_mead', subject: 'vend_mead', beats: [
+    { id: 'mead_sour', when: 'sour', title: 'Meadow’s Gold has stopped opening the good cask',
+      text: 'The old mead is for a busy day. On a quiet one the keeper pours the young stuff and saves the rest for a faire that sends a crowd his way.',
+      choices: [
+        { id: 'toast', label: 'Buy the gate toast from him ($190)', cash: -190, relationship: 20, note: 'The good cask is tapped.' },
+        { id: 'young', label: 'Young mead is mead', relationship: -10, quality: -1, note: 'The good cask leaves with him.' },
+      ] },
+    { id: 'mead_devoted', when: 'devoted', title: 'Meadow’s Gold offers a house mead',
+      text: 'A batch under the faire’s own name, poured here and nowhere else. The keeper has the casks and the patience. The honey has to be bought up front.',
+      choices: [
+        { id: 'honey', label: 'Buy the honey ($230)', cash: -230, quality: 2, relationship: 5, note: 'A mead with the house’s name on it.' },
+        { id: 'his_own', label: 'His own is good enough', relationship: 0, note: 'It is. It stays his.' },
+      ] },
+  ] },
+  { id: 'arc_pretzel', subject: 'vend_pretzel', beats: [
+    { id: 'pretzel_sour', when: 'sour', title: 'The Twisted Bread Cart has a wheel off',
+      text: 'It came off a week ago and nobody has mended it, because a cart that sells nothing does not need to move. The baker is waiting to see whether the house notices.',
+      choices: [
+        { id: 'wheel', label: 'Send the wheelwright ($95)', cash: -95, relationship: 20, note: 'The cart rolls, and the baker saw who paid.' },
+        { id: 'prop', label: 'Prop it on a block', relationship: -10, quality: -1, note: 'It leans. So does the bread.' },
+      ] },
+    { id: 'pretzel_devoted', when: 'devoted', title: 'The baker wants to salt them to order',
+      text: 'Pulled hot and salted in front of the buyer, with mustard from a crock. It is slower, so it needs a second pair of hands at the cart.',
+      choices: [
+        { id: 'hands', label: 'Pay the second pair of hands ($150)', cash: -150, quality: 2, relationship: 5, note: 'Hot bread, for good.' },
+        { id: 'as_is', label: 'They sell as they are', relationship: 0, note: 'They do.' },
+      ] },
+  ] },
+  { id: 'arc_woodcarve', subject: 'vend_woodcarve', beats: [
+    { id: 'woodcarve_sour', when: 'sour', title: 'Oakenshield is carving for himself',
+      text: 'The stall has a row of unsold spoons and a carver who has started on a chair for his own kitchen. He does not look up when someone stops.',
+      choices: [
+        { id: 'signs', label: 'Commission new signs for the stalls ($120)', cash: -120, relationship: 20, note: 'He looks up.' },
+        { id: 'chair', label: 'Let him finish the chair', relationship: -10, quality: -1, note: 'It is a good chair. The spoons are not.' },
+      ] },
+    { id: 'woodcarve_devoted', when: 'devoted', title: 'Oakenshield offers to carve the gate posts',
+      text: 'Both of them, top to bottom, over the season and in front of whoever is waiting to come in. He wants the oak supplied and his name on the left one.',
+      choices: [
+        { id: 'posts', label: 'Supply the oak ($130)', cash: -130, quality: 2, relationship: 5, note: 'A carver people have watched at work.' },
+        { id: 'bare', label: 'The posts are fine bare', relationship: -3, note: 'He goes back to spoons.' },
+      ] },
+  ] },
+  { id: 'arc_herbalist', subject: 'vend_herbalist', beats: [
+    { id: 'herbalist_sour', when: 'sour', title: 'The Herbwife’s basket is going to seed',
+      text: 'Cut herbs do not keep, and a weekend with no buyers is a basket on the midden. She has started bringing dried stock instead and saying nothing about it.',
+      choices: [
+        { id: 'kitchens', label: 'Buy the fresh basket for the kitchens ($80)', cash: -80, relationship: 20, note: 'She cuts fresh again.' },
+        { id: 'dried', label: 'Dried keeps', relationship: -10, quality: -1, note: 'It keeps. It does not sell.' },
+      ] },
+    { id: 'herbalist_devoted', when: 'devoted', title: 'The Herbwife wants a bed by the stall',
+      text: 'A strip of turned earth to grow what she sells, so the buyer can see it cut. She will tend it herself if the house fences it from the crowd.',
+      choices: [
+        { id: 'bed', label: 'Fence the bed ($100)', cash: -100, quality: 2, relationship: 5, note: 'Herbs cut while you wait.' },
+        { id: 'basket', label: 'The basket is enough', relationship: 0, note: 'The earth stays unturned.' },
       ] },
   ] },
 ];
