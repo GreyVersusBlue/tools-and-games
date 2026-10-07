@@ -3059,10 +3059,10 @@ const sanctum = (ch, over = {}) => {
   eq(rolls(s3.eng).map(r => r.text), ["Hound: Will save vs Bane"], "…and the hound two squares off saves; the skeleton three off does not");
   const s4 = sanctum(WIZARD());
   const fireball = { id: "fireball", name: "Fireball", actions: 2, range: 500, area: { shape: "burst", radius: 20 }, save: "reflex", basic: true, rankEffects: { 3: { damage: [{ formula: "3", type: "fire" }] } } };
-  s4.eng.walls.add("3,2"); s4.eng.armSpell(s4.caster, { sp: fireball, rank: 3, pool: "r2" });
+  s4.eng.armSpell(s4.caster, { sp: fireball, rank: 3, pool: "r2" });
   pin([20, 5], [20, 5]); s4.eng.cellClick(4, 2);
   eq([s4.foe.hp, s4.skel.hp, s4.ally.hp, s4.caster.hp], [21, 6, 10, 32], "a burst hits every foe in its radius and no ally; the skeleton resists fire 1");
-  ok(s4.eng.walls.has("3,2") && s4.foe.hp === 21, "…through a wall: bursts never call losClear (standing backlog, pinned as-is)");
+  // What a wall does to each of these is its own group at the end (#924).
   const s5 = sanctum(WIZARD());
   s5.eng.armSpell(s5.caster, { sp: { ...fireball, friendlyFire: true }, rank: 3, pool: "r2" });
   pin([20, 5], [20, 5], [20, 5], [20, 5]); s5.eng.cellClick(3, 2);
@@ -5100,6 +5100,134 @@ group("persistent damage out of a condition bucket (#923)");
   const guide = fs.readFileSync(path.join(PROJECT, "content-authoring-guide.md"), "utf8");
   eq(["formula", "type"].map(k => SCHEMA.$defs.condition.properties[k]?.type), ["string", "string"], "the schema's condition carries formula and type");
   ok(guide.includes('{"c":"persistent","formula":"1d6","type":"fire"}'), "…and the guide shows the shape the validator's message names");
+}
+
+group("an area stops at a wall (#924)");
+{
+  const FIREBALL = { id: "fireball", name: "Fireball", actions: 2, range: 500, area: { shape: "burst", radius: 20 }, save: "reflex", basic: true, rankEffects: { 3: { damage: [{ formula: "3", type: "fire" }] } } };
+  const saves = eng => rolls(eng).map(r => r.text);
+  const REFUSED = "No clear line to that square.";
+
+  // The pillar: the caster at (2,2), stone at (3,2), the hound at (4,2) and the
+  // skeleton at (5,2) behind it, and a second hound at (3,1) in the open.
+  const pillar = (ch, walls = ["3,2"]) => {
+    const s = sanctum(ch, { walls });
+    s.near = hound({ id: "near", name: "Near Hound", x: 3, y: 1 }); s.eng.cbs.push(s.near);
+    return s;
+  };
+  {
+    // A cone. Aimed north-east it takes in the whole row east of the caster.
+    const open = pillar(WIZARD(), []);
+    open.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); open.eng.cellClick(3, 1);
+    eq(saves(open.eng).length, 3, "on open floor Breathe Fire aimed north-east reaches three foes");
+    const s = pillar(WIZARD());
+    s.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); s.eng.cellClick(3, 1);
+    eq(saves(s.eng), ["Near Hound: Reflex save vs Breathe Fire"], "with the pillar in the row only the hound in the open saves against the cone");
+    eq([s.near.hp, s.foe.hp, s.skel.hp], [20, 24, 8], "…and the two behind the stone are not burned");
+  }
+  {
+    // An emanation. Bane reaches two squares.
+    const open = pillar(CLERIC(), []);
+    open.arm("bane", 1, "r1");
+    eq(saves(open.eng), ["Hound: Will save vs Bane", "Near Hound: Will save vs Bane"], "on open floor Bane reaches both hounds");
+    const s = pillar(CLERIC());
+    s.arm("bane", 1, "r1");
+    eq(saves(s.eng), ["Near Hound: Will save vs Bane"], "an emanation does not pass the pillar: the hound behind it makes no save");
+  }
+  {
+    // A line, asked of castAt itself, because a click never aims one past a wall.
+    // The hound at (3,2), stone at (4,2), a second hound at (6,2).
+    const lane = walls => {
+      const s = sanctum(WIZARD(), { walls });
+      s.foe.x = 3; s.skel.x = 9; s.skel.y = 9;
+      s.far = hound({ id: "far", name: "Far Hound", x: 6, y: 2 }); s.eng.cbs.push(s.far);
+      const tendrils = () => ({ kind: "cell", wedge: "line", range: 6, spell: Registry.spells["grim-tendrils"], castRank: 1, pool: "r1", cost: 2 });
+      return { ...s, tendrils };
+    };
+    const open = lane([]);
+    pin([20, 5], [4, 2], [4, 3], [20, 5], [4, 2], [4, 3]); open.eng.castAt(open.caster, open.tendrils(), { x: 6, y: 2 });
+    eq([open.foe.hp, open.far.hp], [19, 19], "on open floor a 30-foot line reaches the hound at 5 feet and the one at 20");
+    const s = lane(["4,2"]);
+    pin([20, 5], [4, 2], [4, 3], [20, 5], [4, 2], [4, 3]); s.eng.castAt(s.caster, s.tendrils(), { x: 6, y: 2 });
+    eq([s.foe.hp, s.far.hp], [19, 24], "a line ends at the first wall: the hound before it is caught, the one beyond is not");
+    eq(saves(s.eng), ["Hound: Reflex save vs Grim Tendrils"], "…and makes no save");
+
+    // The click. A square past the stone, and the stone itself, are refused.
+    const c = lane(["4,2"]);
+    const before = () => [c.eng.actions, c.caster.resources.slots[1], !!c.eng.armed, saves(c.eng).length];
+    c.arm("grim-tendrils", 1, "r1");
+    const was = before();
+    c.eng.cellClick(6, 2);
+    eq([before(), c.eng.h.toasts.at(-1)], [was, REFUSED], "a click on a square behind a wall casts nothing, spends nothing, stays armed and says why");
+    c.eng.h.toasts.length = 0;
+    c.eng.cellClick(4, 2);
+    eq([before(), c.eng.h.toasts.at(-1)], [was, REFUSED], "…and so does a click on the wall");
+    c.eng.h.toasts.length = 0;
+    c.eng.cellClick(2, 9);
+    eq([before(), c.eng.h.toasts], [was, []], "a click out of range is passed over without a word, as before");
+    pin([20, 5], [4, 2], [4, 3]); c.eng.cellClick(3, 2);
+    eq([c.foe.hp, c.eng.actions, c.caster.resources.slots[1], c.eng.h.toasts], [19, 1, was[1] - 1, []], "a click on a square in the open casts");
+  }
+  {
+    // A burst reaches who its centre has a clear line to, not who the caster has.
+    // Stone at (4,3), the centre at (4,4): the hound at (4,2) and the skeleton at
+    // (5,2) are behind it, a third hound at (5,4) is not.
+    const yard = walls => {
+      const s = sanctum(WIZARD(), { walls });
+      s.open = hound({ id: "open", name: "Open Hound", x: 5, y: 4 }); s.eng.cbs.push(s.open);
+      s.eng.armSpell(s.caster, { sp: FIREBALL, rank: 3, pool: "r2" });
+      pin([20, 5], [20, 5], [20, 5]); s.eng.cellClick(4, 4);
+      return s;
+    };
+    const open = yard([]);
+    eq([open.foe.hp, open.skel.hp, open.open.hp], [21, 6, 21], "on open floor a 20-foot burst centred at (4,4) burns all three");
+    const s = yard(["4,3"]);
+    eq([s.foe.hp, s.skel.hp, s.open.hp], [24, 8, 21], "with stone between the centre and two of them it burns one");
+    eq(saves(s.eng), ["Open Hound: Reflex save vs Fireball"], "…and the two behind it make no save");
+    ok(s.eng.losClear(s.caster, s.foe), "…though the caster sees the hound: it is the centre's line that counts");
+    // The old pin's layout: stone at (3,2), the burst put on the hound behind it.
+    const old = sanctum(WIZARD(), { walls: ["3,2"] });
+    old.eng.armSpell(old.caster, { sp: FIREBALL, rank: 3, pool: "r2" });
+    old.eng.cellClick(4, 2);
+    eq([old.foe.hp, old.caster.resources.slots[2], old.eng.actions, old.eng.h.toasts.at(-1)], [24, 2, 3, REFUSED],
+      "a burst cannot be centred behind a wall: the click that used to burn the hound through it is refused");
+  }
+  {
+    // Seek picks its point off the same squares.
+    const hero = Object.assign(heroCombatant(fighter()), { x: 0, y: 0 });
+    const foe = hound({ x: 3, y: 0 });
+    const eng = stage([hero, foe], { walls: ["2,0"] });
+    eng.setDetect(hero, foe, "hidden"); foe.hideDC = 15;
+    eng.actionClick("seek"); eng.cellClick(3, 0);
+    eq([eng.actions, saves(eng).length, eng.h.toasts.at(-1)], [3, 0, REFUSED], "Seek cannot be pointed at a square behind a wall either");
+    pin([20, 10]); eng.cellClick(3, 1);
+    eq([eng.actions, eng.detectState(hero, foe)], [2, "observed"], "…but a point beside it in the open still takes in the square behind");
+  }
+  {
+    // A monster's power is held to the same rule. The Warden at (2,1), one hero
+    // beside it at (1,1), the other at (4,1) inside the bell's three squares.
+    const toll = { name: "Toll of the Deep", cost: 2, cooldown: 3, type: "aoe", save: "will", dc: 21, radius: 3, damage: "2d6", damageType: "sonic", cd: 0 };
+    const belfry = walls => {
+      const k = kennel({ name: "The Bell-Warden", hp: 62, hpMax: 62, ac: 21, powers: [{ ...toll }] }, null, { walls });
+      k.ally.x = 4; k.ally.y = 1;
+      pin([20, 12], [6, 3], [6, 4], [20, 12], [6, 3], [6, 4]);
+      return { ...k, r: k.eng.aiStep(k.foe) };
+    };
+    eq(belfry([]).r.action, "power", "with two heroes in reach and nothing between, the Warden rings the bell");
+    const b = belfry(["3,1"]);
+    eq([b.r.action, b.foe.powers[0].cd, b.ally.hp], ["strike", 0, 20], "with stone between it and one of them it counts one hero, keeps the power and bites");
+  }
+  {
+    // The squares the page lights are the squares the engine takes.
+    const { eng, caster } = sanctum(WIZARD(), { walls: ["3,2"] });
+    const lit = [];
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) if (eng.aimable(caster, { range: 1 }, x, y)) lit.push(x + "," + y);
+    eq(lit, ["1,1", "2,1", "3,1", "1,2", "2,2", "1,3", "2,3", "3,3"], "at range 1 beside a wall, eight of the nine squares can be aimed at");
+    eq([eng.aimable(caster, { range: 2 }, 4, 2), eng.aimable(caster, { range: 2 }, 4, 0), eng.aimable(caster, { range: 2 }, 5, 5)], [false, true, false],
+      "at range 2 the square behind the wall cannot, one up the open diagonal can, and one out of range cannot");
+    ok(/if\(this\.aimable\(cb,a,x,y\)\)\{/.test(html) && !/a\.range&&this\.losClear\(cb,\{x,y\}\)/.test(html),
+      "the page asks the engine which squares to light, and keeps no copy of the rule");
+  }
 }
 
 setDiceSource();

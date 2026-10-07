@@ -176,7 +176,7 @@ Resolution model — exactly **one** of these per spell:
 * Buffs: top-level `"selfBuff"`, `"allyBuff"`, or `"partyBuff"` — see core `shield`, `guidance`, `runic-weapon`, `bless`, `courageous-anthem`, `blur` (a `"flag":"blurred"` gives a 20% miss chance), `false-life`, `sure-strike` (`"fortune":"next-attack"`), `resist-energy` (`"resistChoice":5`), and `untamed-claw` (`"grantStrike"`).
 * `"utility": true` or `"special": "stabilize"` for the two odd ducks.
 
-Areas: `"area": {"shape":"burst","radius":20}` (pick a point) · `{"shape":"cone","length":15}` / `{"shape":"line","length":30}` (pick a direction) · `{"shape":"emanation","radius":10}` (centered on caster, hits enemies only).
+Areas: `"area": {"shape":"burst","radius":20}` (pick a point) · `{"shape":"cone","length":15}` / `{"shape":"line","length":30}` (pick a direction) · `{"shape":"emanation","radius":10}` (centered on caster, hits enemies only). **Every area stops at a wall**: a cone and an emanation reach the creatures the caster has a clear line to, a burst the creatures its centre has one to, and a line ends at the first wall square. A burst's point, and a cone's or line's direction, can be put only on a square the caster has a clear line to. A monster power's `radius` is held to the same rule, so a hero behind a `walls` square is not counted toward its two and takes nothing from it.
 
 `rankEffects` keys are castable ranks; the engine uses the **highest key ≤ the rank being cast**, so a rank-1 spell with entries at `"1"` and `"2"` heightens automatically when cast from a rank-2 slot. Cantrips (`"rank": 0`) should define `"1"` and `"2"`. Damage/heal numbers should follow Paizo's curves (cantrips ≈ 2 dice at rank 1, +1 die per rank; 2-action heal `1d8+8`/rank).
 
