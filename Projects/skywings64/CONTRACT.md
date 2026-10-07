@@ -120,6 +120,9 @@ export function createTargetMarker / createLandingPadMesh(radius) -> Group
 - `src/game/replay.js`: `FlightRecorder` (20 Hz, last 40 s) + `ReplayDirector` cinematic camera used on the RESULTS screen.
 - `src/core/touch.js`: `TouchControls(input)` virtual stick + buttons -> `input.setTouch()`; shown only in FLIGHT.
 - `src/render/perf.js`: `perfReport(renderer, scene)` draw calls / tris / programs / texture MB / instancing candidates.
+- `src/world/herd.js`: `addHerd(copies, parent, name)` draws the copies of one GLB (boats, balloons, windmills, cabins) as one
+  InstancedMesh per primitive, named `name:<primitive>`. The copies stay in the scene graph, hidden, and are still what
+  moves; the herd packs their world matrices before each render and culls per copy (HISTORY.md #931).
 - Shadows: the render system's scan turns `castShadow` on for every opaque mesh; `userData.noShadow` opts a mesh out of
   casting and receiving, `userData.noCast` out of casting only (vegetation past the near tier, HISTORY.md #930).
 ### Mission fields

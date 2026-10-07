@@ -58,6 +58,30 @@
         'heads.glb swaps in at the statue, unscaled, and hides the fallback', hg && { at: hg.position.toArray().map(Math.round), fallback: host.children.map((c) => c.visible) });
       ok(tris > 3000 && mats.join() === 'Heads_Rock:vc:ao,Heads_Gold:vc:ao,Heads_Helm:vc:ao', 'heads.glb draws as three meshes, vertex-coloured, with baked AO', { tris, mats });
 
+      // ---- herds (src/world/herd.js, #931): the copies of one GLB are hidden and drawn as one
+      // InstancedMesh per primitive, packed before each render from what the camera or the sun's
+      // shadow box can see. Camera and aircraft are put by hand and one frame is rendered by hand,
+      // so this is a count of what that frame packed, not of what a frame rate allowed (#53).
+      const herd = (pre) => L.children.filter((c) => c.isInstancedMesh && c.name.startsWith(pre + ':'));
+      for (let n = 0; n < 150 && !(herd('glb:windmill').length && herd('glb:cabin').length); n++) await new Promise((r) => setTimeout(r, 200));
+      const wm = herd('glb:windmill'), cab = herd('glb:cabin'), wraps = L.children.filter((c) => c.name === 'glb:windmill');
+      ok(wm.length === 9 && wm.every((m) => m.instanceMatrix.count === 4) && cab.length === 7 && cab.every((m) => m.instanceMatrix.count === 11)
+        && wraps.length === 4 && wraps.every((w) => w.children[0].visible === false),
+        'windmills and cabins are herds: one InstancedMesh per GLB primitive, the copies hidden', { windmill: wm.map((m) => m.instanceMatrix.count), cabin: cab.length, hidden: wraps.map((w) => !w.children[0].visible) });
+      q.start('gc1');
+      const sw = window.__sw, cam = g.camera, mills = W.landmarks.windmills;
+      const look = (px, py, pz, tx, ty, tz) => { cam.position.set(px, py, pz); cam.lookAt(tx, ty, tz); cam.updateMatrixWorld(); sw.render(1 / 60); return wm.map((m) => (m.visible ? m.count : 0)); };
+      g.vehicle.position.set(-1900, 600, 1900);                       // the shadow box follows the aircraft: park it over the far sea
+      const none = look(-1900, 600, 1900, -3000, 600, 3000);         // and look out to sea
+      ok(none.every((n) => n === 0), 'no windmill in the view or the shadow box: the herd draws nothing', none);
+      const two = look(425, mills[0].y + 60, 540, 425, mills[0].y + 15, 420);   // 120 m south of the east pair
+      const body = wm.find((m) => m.name === 'glb:windmill:Cone'), e = body ? body.instanceMatrix.array : [];
+      const off = [0, 1].map((i) => Math.min(...mills.slice(0, 2).map((p) => Math.hypot(e[i * 16 + 12] - p.x, e[i * 16 + 14] - p.z))));
+      ok(two.every((n) => n === 2) && off.every((d) => d < 3) && Math.hypot(e[12] - e[28], e[14] - e[30]) > 50,
+        'two windmills in view: every primitive is packed twice, where those two mills stand', { packed: two, metresOff: off.map((d) => +d.toFixed(2)) });
+
+      if (window.__swOnly === 'models') return out;                  // test/browser.mjs --models
+
       // ---- courses: every mission builds, and every ring can be flown through
       for (const m of q.MISSIONS) {
         q.start(m.id);

@@ -1,6 +1,7 @@
 // browser.mjs — SkyWings 64's own suite.
 //
 //   node Projects/skywings64/test/browser.mjs
+//   node Projects/skywings64/test/browser.mjs --models    only the model and herd checks (a quick run while changing them)
 //
 // Runs test/assets.mjs first (Node only: what assets/models/ holds), then opens the game headless on the board-check harness, injects test/checks.js and runs it. The checks
 // step the game synchronously through window.__qa.sim, so nothing here waits on requestAnimationFrame
@@ -23,6 +24,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 // quality=low keeps the software renderer quick; touch=1 forces the on-screen controls on.
 const URL_ = `${BASE}/Projects/skywings64/index.html?quality=low&touch=1`;
 
+const MODELS_ONLY = process.argv.includes('--models');
 let failures = 0, results = [];
 const show = (r) => { if (!r.ok) failures++; console.log(`  ${r.ok ? 'ok  ' : 'FAIL'}  ${r.label}${r.detail ? '  ' + r.detail : ''}`); };
 const assets = checkAssets();
@@ -35,6 +37,7 @@ try {
   await page.goto(URL_, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__qa && window.__game, { timeout: 120000 });
   await page.addScriptTag({ path: path.join(HERE, 'checks.js') });
+  if (MODELS_ONLY) await page.evaluate(() => { window.__swOnly = 'models'; });
   results = await page.evaluate(() => window.__swChecks());
   results.forEach(show);
   // the AudioContext autoplay notice is a warning, not an error, so it never lands in __errs
@@ -49,6 +52,7 @@ try {
 }
 // ---- draw calls: the first three of draws.mjs's nine views (a view's count belongs to its place in
 // the order, so never a pick); `node test/draws.mjs` runs all nine
+if (MODELS_ONLY) { console.log(`\n${results.length} model checks only, ${failures} failure(s); the suite is the run without --models`); process.exit(failures ? 1 : 0); }
 const DRAW_VIEWS = Object.keys(VIEWS).slice(0, 3);
 const pinned = JSON.parse(fs.readFileSync(FIXTURE, 'utf8')).views;
 const now = await measure({ first: DRAW_VIEWS.length });
