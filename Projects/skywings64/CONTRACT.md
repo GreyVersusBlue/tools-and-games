@@ -5,6 +5,8 @@ Lives in tools-and-games at `Projects/skywings64/` (the repo root is served whol
 `three/addons/` maps to vendor/addons/, which holds ONLY the files the game imports (HISTORY.md #724): a new
 addon import means copying that one file from three.js r160. Zero offsite requests: textures, HDRs, fonts and
 GLBs are all under assets/. Suite: `node test/browser.mjs` from this folder (needs `npm install` in Tools/board-check).
+`node test/draws.mjs` counts a frame's draw calls from nine fixed views against test/draws.json (the suite runs its first three).
+`node test/browser.mjs --models` runs the model, herd and terrain checks alone (half a minute).
 Open work: WISHLIST.md. The file-ownership lists below are from the original multi-agent build and are historical.
 Style: N64-era chunky low-poly + vertex-colour/flat shading, bright saturated colours, fog, big readable HUD.
 World units = metres. Y is up. Island world roughly 4000x4000 centred at origin.
@@ -119,6 +121,14 @@ export function createTargetMarker / createLandingPadMesh(radius) -> Group
 - `src/game/replay.js`: `FlightRecorder` (20 Hz, last 40 s) + `ReplayDirector` cinematic camera used on the RESULTS screen.
 - `src/core/touch.js`: `TouchControls(input)` virtual stick + buttons -> `input.setTouch()`; shown only in FLIGHT.
 - `src/render/perf.js`: `perfReport(renderer, scene)` draw calls / tris / programs / texture MB / instancing candidates.
+- `src/world/herd.js`: `addHerd(copies, parent, name)` draws the copies of one GLB (boats, balloons, windmills, cabins) as one
+  InstancedMesh per primitive, named `name:<primitive>`. The copies stay in the scene graph, hidden, and are still what
+  moves; the herd packs their world matrices before each render and culls per copy (HISTORY.md #931).
+  `eachRender(fn)` runs `fn(camera, shadowBox)` before each render; `attachHerds(obj)` hooks the scene `obj` is in.
+- Terrain (`terrain.js`): 16x16 chunks, four levels of detail. A chunk at LOD 0 or 1 is its own mesh; chunks at LOD 2 or 3
+  are merged into one mesh (`name === 'far'`) per 1 km square of 4x4 chunks, their own meshes hidden (HISTORY.md #932).
+- Shadows: the render system's scan turns `castShadow` on for every opaque mesh; `userData.noShadow` opts a mesh out of
+  casting and receiving, `userData.noCast` out of casting only (vegetation past the near tier, HISTORY.md #930).
 ### Mission fields
 - `fuelBurn` (rocket belt fuel multiplier, applied to `vehicle.fuelBurnScale` after reset).
 - Powered craft may land off-pad and relaunch while they have fuel; the glider's first landing ends the run.

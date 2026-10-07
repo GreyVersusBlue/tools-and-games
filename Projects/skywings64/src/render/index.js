@@ -153,7 +153,7 @@ export function createRenderSystem({ app, scene, camera }) {
         return;
       }
       if (o.userData.noShadow) return;
-      if (o.castShadow === false || o.castShadow === undefined) o.castShadow = true;
+      if (!o.userData.noCast) o.castShadow = true;   // noCast: receives shadows, casts none (vegetation past the near tier)
       if (m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial) o.receiveShadow = true;
       if (m.isMeshStandardMaterial && m.userData.swEnv === undefined) { m.userData.swEnv = 1; m.envMapIntensity = Math.min(m.envMapIntensity, 0.6); }
     });

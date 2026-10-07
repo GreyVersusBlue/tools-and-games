@@ -3,6 +3,7 @@
 // API: createProps(terrain, { seed, lighthouse, runway }) -> { group, update(dt, elapsed), info }
 import * as THREE from 'three';
 import { loadModel } from '../core/models.js';
+import { addHerd } from './herd.js';
 import { GeoBuilder, makeRng, LAYOUT } from './terrain.js';
 import { shared } from './atmosphere.js';
 
@@ -206,11 +207,13 @@ export function createProps(terrain, opts = {}) {
     // hero GLB (same local frame as balloon()); the animated burner flame stays procedural
     loadModel('balloon').then((proto) => {
       if (!proto) return;
-      bs.forEach((o, i) => {
+      const copies = bs.map((o, i) => {
         for (const c of o.b.children) if (c !== o.b.userData.flame) { c.visible = false; c.userData.swProcedural = true; }
         const m = i === 0 ? proto : proto.clone(true);
         m.name = 'glb:balloon'; o.b.add(m);
+        return m;
       });
+      addHerd(copies, group, 'glb:balloon');   // six balloons, one draw per primitive (herd.js)
     }).catch(() => {});
   }
 
@@ -249,13 +252,14 @@ export function createProps(terrain, opts = {}) {
     for (const kind of ['sail', 'motor']) {
       loadModel(kind === 'sail' ? 'boat_sail' : 'boat_motor').then((proto) => {
         if (!proto) return;
-        let first = true;
+        const copies = [];
         for (const b of boats) {
           if (b.kind !== kind) continue;
           b.hull.visible = false; b.hull.userData.swProcedural = true;
-          const m = first ? proto : proto.clone(true); first = false;
-          m.name = 'glb:boat_' + kind; b.m.add(m);
+          const m = copies.length ? proto.clone(true) : proto;
+          m.name = 'glb:boat_' + kind; b.m.add(m); copies.push(m);
         }
+        addHerd(copies, group, 'glb:boat_' + kind);
       }).catch(() => {});
     }
 

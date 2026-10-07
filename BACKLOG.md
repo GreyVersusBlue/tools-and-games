@@ -121,9 +121,13 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **rank 24, Orbital's save
-bar** (#925, 2026-10-07; committed locally on huginn for the landing, so its PR
-number is the landing's): ½, naming Fable 5.1, run under Opus 5.5 on Devon's
+**The last batch of ranked work that shipped** is **rank 26, SkyWings 64's
+three draw-call cuts** (#930 to #932, 2026-10-07; committed locally on huginn
+for the landing, so its PR number is the landing's): 1, naming Opus 5, run
+under Opus 5.5 in two sessions. A frame is 204 to 352 draws from nine fixed
+views where it was 386 to 745, counted under software GL and not yet timed on
+a GPU. Before it came **rank 24, Orbital's save bar** (#925, 2026-10-07, the
+same landing): ½, naming Fable 5.1, run under Opus 5.5 on Devon's
 answer to Q52. Orbital's campaign goes through the site's `gvb-save.js` on the
 key it always had, and the sector map has Export and Import. Before it came
 **TG-13's fourth and last increment, the dioramas for The Fracture Cycle and
@@ -143,7 +147,7 @@ nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**17 ranked items remain**, and **every one of them names a model.**
+**16 ranked items remain**, and **every one of them names a model.**
 
 **The Blender block is empty** (#642, #707, 2026-09-25, Devon's instruction
 and his re-rank, which put every Blender row first). Every project's
@@ -156,11 +160,11 @@ all 14 dioramas. **Blender runs on Devon's machines only, headless
 every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** Ranks 1 to 14 and 24 shipped and their rows are gone;
+**Nothing is claimed.** Ranks 1 to 14, 24 and 26 shipped and their rows are gone;
 the others keep their numbers until the next renumbering. **Ranks 25 to 32
 are new on 2026-10-07** (Devon, 2026-10-01: rank the work the "next ranked
 rows" loop could not see): Signal City's second pack (25), SkyWings 64's
-draw-call cuts (26) and Throneshard's six open items (27 to 32). They are
+draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32). They are
 appended in the order Devon named the projects and not placed among the older
 rows, because re-ranking the list is not a session's call; inside Throneshard
 the two Devon has answered come first, then the two with a measured number,
@@ -854,9 +858,9 @@ tab doing nothing at all.
 
 **Three rows are 2+: rank 22 (The Fracture Cycle's fourth prong), rank 25
 (Signal City's second pack) and rank 28 (Throneshard's two heroes).** The
-seventeen rows left (15 to 23 and 25 to 32, recounted off the table on
+sixteen rows left (15 to 23, 25 and 27 to 32, recounted off the table on
 2026-10-07) are nine that want hardware nothing here has (15 to 21, 23 and
-32) and eight a container can take (22 and 25 to 31), none of them waiting
+32) and seven a container can take (22, 25 and 27 to 31), none of them waiting
 on a yes any more: Devon approved the fourth prong on 2026-10-01 and
 answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
@@ -868,12 +872,12 @@ same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
 the question it waited on is Devon's. Aphelion's touch/gamepad row left the
 same way the same day, for Q40 (#629).
 
-**The model split is 8 Opus 5, 5 Fable 5.1, 4 Sonnet 5.** Counted
+**The model split is 7 Opus 5, 5 Fable 5.1, 4 Sonnet 5.** Counted
 off the table rather than decremented, which is how the 15/14/9 drift was
-caught: 8 + 5 + 4 is 17, and the table has 17 rows. By size it is 7 ¼,
-6 ½, 1 of the 1 and 3 of the 2+, the same 17 (recounted 2026-10-07, after
-ranks 25 to 32 went in and 24 shipped). By gate it is 3 `GPU`, 3 `phone`,
-1 `GPU, phone`, 2 `ears` and 8 with none; no row names Opus 5.5 or reads
+caught: 7 + 5 + 4 is 16, and the table has 16 rows. By size it is 7 ¼,
+6 ½, none of the 1 and 3 of the 2+, the same 16 (recounted 2026-10-07, after
+ranks 25 to 32 went in and 24 and 26 shipped). By gate it is 3 `GPU`, 3 `phone`,
+1 `GPU, phone`, 2 `ears` and 7 with none; no row names Opus 5.5 or reads
 `blender` now that the Blender block is empty.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
@@ -1040,8 +1044,7 @@ and #222 was closed unmerged an hour of suites later.
 | 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 25 | R13, pack 2's last named level: an outage on a timed corridor (its return wants `setOffset`'s shift). Market Ring, Boulevard (the two-lane corridor, #926, #928) and Cross Town (three boxes the ambulance crosses, #929) are in. Beside it, an engine unit of its own: a scripted vehicle keeps its turn past the first box, so Cross Town can take turns. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 26 | Three draw-call cuts in the order they were measured: vegetation batched and only the near tier casting shadows, small static meshes merged per material, fewer terrain draws. Draws can be counted in a container; the milliseconds want Devon's Windows GPU again afterwards | `Projects/skywings64` | 1 | Opus 5 |  |  | [SkyWings 64](#skywings-64); `WISHLIST.md` item 1 |
+| 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
 | 27 | Rift Wall gets a wall that stops enemies, as its tooltip says (Devon, 2026-10-05: collision, not a reworded tooltip) | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 28 | Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four abilities each, talents, a scepter upgrade, an item build, voice fallback and effects, under original names the session picks (Devon, 2026-10-05: go) | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
 | 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
@@ -1072,8 +1075,11 @@ and a controller in hand (item 2). The glider's landing is answered: Devon flew
 it by hand on 2026-10-03, it works, and no tuning was asked for. Item 1, the
 real-GPU profile, was measured on 2026-10-03 (TG-17 part b, `HISTORY.md`
 #789): on an RTX 3070 Ti it costs 4.3 to 6.2 ms a frame, bound by draw calls
-rather than triangles. Its three suggested cuts are open work that needs no
-special hardware, and are rank 26 since 2026-10-07. The carved heads were rebuilt on
+rather than triangles. Its three suggested cuts needed no special hardware and
+all shipped on 2026-10-07 (old rank 26, #930 to #932): counted, 182 to 460
+fewer draws a frame, but not timed, so the next time that
+GPU is on, `node Projects/skywings64/tools/gpu-profile.mjs` is worth a run, and
+a weaker card is worth a look for the triangles the vegetation batches added. The carved heads were rebuilt on
 2026-10-05 (#895) and have been seen only in Blender renders and under
 SwiftShader; a look at them on a real GPU is worth having the next time one
 is on, and is not a row.
@@ -2437,7 +2443,7 @@ hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
 as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
 (#649, #650): a board-check recipe, the Rush Hour preview and the card
-copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. R13's second level shipped on 2026-10-07 (#926): Boulevard, the two-lane corridor with a green wave both ways, on a 33 s cycle so that the 15.7 s between its boxes is half of it; nobody turns on it, because R12's lane change at the join does not see the car alongside (`WISHLIST.md` Known gaps), and nobody has played it. The lane change was fixed and one car in ten turns right on Boulevard since (#927, #928), and R13's third level shipped the same day (#929): Cross Town, three boxes in a row that an ambulance crosses in 100 s, where the corridor follows it and the green given at each box ahead decides it; nobody has played it. What is open is R13's last named level, the outage on a timed corridor. **It is rank 25 since 2026-10-07**, the only one of R10 to R14 with anything left: R10 (#777, #778), R11 (#779, #780), R12 (#781) and R14 (#783) shipped whole. H1 to H4 have no row; they need a device, ears or a person and were not among the rows Devon asked for.
+copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. R13's second level shipped on 2026-10-07 (#926): Boulevard, the two-lane corridor with a green wave both ways, on a 33 s cycle so that the 15.7 s between its boxes is half of it; nobody turns on it, because R12's lane change at the join does not see the car alongside (`WISHLIST.md` Known gaps), and nobody has played it. The lane change was fixed and one car in ten turns right on Boulevard since (#927, #928), and R13's third level shipped the same day (#929): Cross Town, three boxes in a row that an ambulance crosses in 100 s, where the corridor follows it and the green given at each box ahead decides it; nobody has played it. R13's last named level shipped that evening (#933): Lights Out, Boulevard's street with its wave already in and a 12 s outage at 78 s that brings both boxes back on one clock while the slider still reads 16, so the player finds the wave again on the diagram; nobody has played it, and the stale slider is the first thing for a person to judge. What is open is three engine units the levels turned up (`WISHLIST.md` Known gaps). **It is rank 25 since 2026-10-07**, the only one of R10 to R14 with anything left: R10 (#777, #778), R11 (#779, #780), R12 (#781) and R14 (#783) shipped whole. H1 to H4 have no row; they need a device, ears or a person and were not among the rows Devon asked for.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
@@ -2519,13 +2525,17 @@ A Pilotwings 64-style flight game Devon had built outside this repo and asked
 to move in on 2026-09-30 (#724): hang glider, gyrocopter and rocket belt, six
 scored missions with medals and unlocks, and Free Flight over one island.
 Folder `Projects/skywings64/`; `WISHLIST.md` there carries the two open
-items. Item 1 is three measured draw-call cuts, none tried, **rank 26 since
-2026-10-07**. Item 2, a phone
+items. Item 1 was three measured draw-call cuts, rank 26 for a day: all three
+shipped on 2026-10-07 (#930 vegetation in 20 batches, #931 the copies of each
+GLB as herds, #932 far terrain one mesh a square; 182 to 460 fewer draws a
+frame, counted and not yet timed). What is open in it is Devon's timing run on
+the Windows GPU and a list of smaller cuts nobody has ranked. Item 2, a phone
 and a controller in hand, waits on a person (see Parked). The glider landing
 and the heads model were the other two: Devon flew the landing on 2026-10-03
 and it works, and `heads.glb` was rebuilt on 2026-10-05 (#895). Its suite is
-`node test/browser.mjs` from the project folder, in Site CI's matrix (74
-checks; the first 35 are `test/assets.mjs`, Node only).
+`node test/browser.mjs` from the project folder, in Site CI's matrix (82
+checks; the first 35 are `test/assets.mjs`, Node only, and the last 3 hold a
+frame's draw calls to `test/draws.json`).
 
 ## Throneshard
 

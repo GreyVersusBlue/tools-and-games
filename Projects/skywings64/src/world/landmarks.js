@@ -7,6 +7,7 @@ import { createVegetation } from './vegetation.js';
 import { createProps } from './props.js';
 import { shared, quality } from './atmosphere.js';
 import { loadModel, fitModel } from '../core/models.js';
+import { addHerd, attachHerds } from './herd.js';
 
 const heading = (ax, az, bx, bz) => Math.atan2(bx - ax, -(bz - az));
 
@@ -122,19 +123,22 @@ function detailGLB(model) {
   });
   return model;
 }
-function flagMaterial() {
+// Flags are merged per place into world-space meshes (mergeFlags), so the wave reads each vertex's
+// place on its own flag from aLocal and pushes along the one direction every flag's normal has.
+function flagMaterial(ry) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, side: THREE.DoubleSide });
+  const out = { value: new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry)) };
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = FLAG_TIME;
-    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+    sh.uniforms.uTime = FLAG_TIME; sh.uniforms.uFlagOut = out;
+    sh.vertexShader = 'uniform float uTime; uniform vec3 uFlagOut; attribute vec3 aLocal;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       float wv = uv.x;
-      transformed.z += sin(position.x * 1.7 - uTime * 6.0 + position.y * 0.6) * 0.32 * wv + sin(position.x * 3.1 - uTime * 9.0) * 0.08 * wv;
-      transformed.y += sin(position.x * 2.3 - uTime * 5.0) * 0.1 * wv;`);
+      transformed += uFlagOut * (sin(aLocal.x * 1.7 - uTime * 6.0 + aLocal.y * 0.6) * 0.32 * wv + sin(aLocal.x * 3.1 - uTime * 9.0) * 0.08 * wv);
+      transformed.y += sin(aLocal.x * 2.3 - uTime * 5.0) * 0.1 * wv;`);
   };
   return m;
 }
 const FLAG_TIME = { value: 0 };
-function makeFlag(w, h, colors, mat, vertical = false) {
+function flagGeo(w, h, colors, vertical = false) {
   const g = new THREE.PlaneGeometry(w, h, 10, 4);
   g.translate(w / 2, 0, 0);
   const pos = g.attributes.position, col = [];
@@ -145,6 +149,27 @@ function makeFlag(w, h, colors, mat, vertical = false) {
     col.push(cs[idx].r, cs[idx].g, cs[idx].b);
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+// list: [{ geo, x, y, z }], every flag turned ry about Y. One mesh for the lot, culled as one box, so
+// a list is one place (the castle, one landing zone), never the island.
+function mergeFlags(list, ry, mat) {
+  const P = [], N = [], C = [], U = [], A = [], I = [], s = Math.sin(ry), c = Math.cos(ry);
+  let base = 0;
+  for (const f of list) {
+    const p = f.geo.attributes.position, col = f.geo.attributes.color, uv = f.geo.attributes.uv, ix = f.geo.index;
+    for (let i = 0; i < p.count; i++) {
+      const lx = p.getX(i), ly = p.getY(i), lz = p.getZ(i);
+      P.push(f.x + lx * c + lz * s, f.y + ly, f.z - lx * s + lz * c); N.push(s, 0, c); A.push(lx, ly, lz);
+      C.push(col.getX(i), col.getY(i), col.getZ(i)); U.push(uv.getX(i), uv.getY(i));
+    }
+    for (let i = 0; i < ix.count; i++) I.push(base + ix.getX(i));
+    base += p.count; f.geo.dispose();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  g.setAttribute('aLocal', new THREE.Float32BufferAttribute(A, 3)); g.setIndex(I);
   return new THREE.Mesh(g, mat);
 }
 
@@ -186,7 +211,7 @@ export function createLandmarks(terrain, seed = 1337) {
   const W = LAYOUT.wind;
   const windRy = Math.atan2(-W.x, -W.z);       // windmill front faces into the wind
   const downRy = Math.atan2(-W.z, W.x);        // flags/windsocks point downwind
-  const flagMat = flagMaterial();
+  const flagMat = flagMaterial(downRy);
   const blockers = [];
   const flatBase = (b, x, z, w, d, color, ry = 0) => {   // plinth from lowest ground up to highest corner
     const hs = [H(x - w / 2, z - d / 2), H(x + w / 2, z - d / 2), H(x - w / 2, z + d / 2), H(x + w / 2, z + d / 2), H(x, z)];
@@ -194,11 +219,8 @@ export function createLandmarks(terrain, seed = 1337) {
     b.box(x, (lo + hi) / 2, z, w, hi - lo, d, color, ry);
     return hi;
   };
-  const addFlag = (x, y, z, w, h, colors, vertical) => {
-    const f = makeFlag(w, h, colors, flagMat, vertical);
-    f.position.set(x, y, z); f.rotation.y = downRy; group.add(f);
-    return f;
-  };
+  const flags = {};   // place -> the flags flying there, merged into one mesh each at the end (#931)
+  const addFlag = (place, x, y, z, w, h, colors, vertical) => { (flags[place] || (flags[place] = [])).push({ geo: flagGeo(w, h, colors, vertical), x, y, z }); };
 
   // ============================================================== lighthouse
   const lighthouseHost = new THREE.Group(); lighthouseHost.name = 'lighthouseHost';
@@ -350,6 +372,8 @@ export function createLandmarks(terrain, seed = 1337) {
       }
       glbHosts.push({ name: 'windmill', wrap, model });
     });
+    // the four mills as one draw per primitive; the blade pivots above still turn the hidden copies
+    addHerd(glbHosts.filter((h) => h.name === 'windmill').map((h) => h.model), group, 'glb:windmill');
   }).catch((e) => console.warn('[landmarks] windmill swap failed', e));
 
   // ============================================================== castle
@@ -387,7 +411,7 @@ export function createLandmarks(terrain, seed = 1337) {
       cpb.cone(tx, y0 + 36.5, tz, 6.8, 12.5, 14, roofCols[ti++]);
       cpb.cyl(tx, y0 + 44.5, tz, 0.12, 0.12, 5, 5, 0x555);
       cwb.box(tx + sx * 5.3, y0 + 18, tz, 0.4, 2.6, 1.2, 0x15121c); cwb.box(tx, y0 + 18, tz + sz * 5.3, 1.2, 2.6, 0.4, 0x15121c);
-      addFlag(tx, y0 + 46, tz, 5, 3, ti % 2 ? [0xffd23a, 0xc8342b] : [0x2f5fc8, 0xffffff]);
+      addFlag('castle', tx, y0 + 46, tz, 5, 3, ti % 2 ? [0xffd23a, 0xc8342b] : [0x2f5fc8, 0xffffff]);
     }
     // mid-wall towers
     for (const [tx, tz] of [[cx, cz - 40], [cx - 40, cz], [cx + 40, cz]]) {
@@ -401,7 +425,7 @@ export function createLandmarks(terrain, seed = 1337) {
     for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; csb.box(cx + Math.cos(a) * 10.6, y0 + 57.4, cz - 8 + Math.sin(a) * 10.6, 2.2, 2.2, 2.2, S2, -a); }
     cpb.cone(cx, y0 + 68, cz - 8, 11.5, 22, 16, 0xc8342b);
     cpb.cyl(cx, y0 + 82, cz - 8, 0.3, 0.3, 14, 5, 0x555);
-    addFlag(cx, y0 + 86, cz - 8, 8, 4.6, [0xffd23a, 0xc8342b, 0x2f5fc8]);
+    addFlag('castle', cx, y0 + 86, cz - 8, 8, 4.6, [0xffd23a, 0xc8342b, 0x2f5fc8]);
     for (const wx of [-9, 0, 9]) { cwb.box(cx + wx, y0 + 18, cz + 6.3, 2.2, 4.2, 0.5, 0xffd08a); cpb.box(cx + wx, y0 + 21.3, cz + 6.3, 3, 0.4, 0.8, S3); }
     for (const wx of [-9, 9]) cwb.box(cx + wx, y0 + 8, cz + 6.3, 1.6, 3, 0.5, 0xffd08a);
     cwb.box(cx, y0 + 26, cz + 6.3, 3.2, 3.2, 0.5, 0xffd08a);
@@ -417,7 +441,7 @@ export function createLandmarks(terrain, seed = 1337) {
     cpb.prism(cx + 6, y0 + 4, cz + 26, 4, 1.4, 2.2, 0xb5472e, Math.PI / 2);
     for (let i = 0; i < 3; i++) { const sx = cx - 8 + i * 8, sz = cz + 18; cpb.box(sx, y0 + 1.1, sz, 3.2, 0.2, 2, 0x8a5a34); cpb.box(sx, y0 + 3.6, sz, 3.6, 0.15, 2.4, [0xc8342b, 0xf2c94c, 0x2f5fc8][i]); cpb.box(sx - 1.6, y0 + 2, sz - 1, 0.15, 3.8, 0.15, 0x5a3a20); cpb.box(sx + 1.6, y0 + 2, sz - 1, 0.15, 3.8, 0.15, 0x5a3a20); }
     // banners on gate
-    addFlag(cx - 4.5, y0 + 21, cz + 45, 2.4, 6, [0xc8342b, 0xffd23a], true);
+    addFlag('castle', cx - 4.5, y0 + 21, cz + 45, 2.4, 6, [0xc8342b, 0xffd23a], true);
     info.castle = { position: new THREE.Vector3(cx, y0, cz), top: new THREE.Vector3(cx, y0 + 86, cz - 8) };
     blockers.push({ x: cx, z: cz, r: 75 });
     for (const [b, m, n] of [[csb, brickMat, 'castle-masonry'], [cpb, plainMat, 'castle-plain'], [cwb, brickMat, 'castle-win']]) {
@@ -522,23 +546,17 @@ export function createLandmarks(terrain, seed = 1337) {
     loadModel('cabin').then((proto) => {
       if (!proto) return;
       detailGLB(proto);
-      // one InstancedMesh per GLB primitive: 11 cabins become a handful of draw calls
-      proto.updateMatrixWorld(true);
-      const parts = [];
-      proto.traverse((o) => { if (o.isMesh) parts.push(o); });
-      if (!parts.length) return;
+      // a herd: 11 cabins are one draw per GLB primitive, and none where no cabin is in view
+      if (!proto.getObjectByProperty('isMesh', true)) return;
       for (const c of cabinHost.children) { c.visible = false; c.userData.swProcedural = true; }
-      const d = new THREE.Object3D(), m4 = new THREE.Matrix4();
-      for (const part of parts) {
-        const im = new THREE.InstancedMesh(part.geometry, part.material, spots.length);
-        im.name = 'glb:cabin:' + part.name; im.castShadow = true; im.receiveShadow = true;
-        spots.forEach((sp, i) => {
-          d.position.set(sp.x, sp.y0, sp.z); d.rotation.set(0, sp.ry, 0); d.updateMatrix();
-          im.setMatrixAt(i, m4.multiplyMatrices(d.matrix, part.matrixWorld));
-        });
-        im.computeBoundingSphere();
-        group.add(im);
-      }
+      const copies = spots.map((sp, i) => {
+        const model = i === 0 ? proto : proto.clone(true);
+        const wrap = new THREE.Group(); wrap.name = 'glb:cabin';
+        wrap.position.set(sp.x, sp.y0, sp.z); wrap.rotation.set(0, sp.ry, 0);
+        wrap.add(model); group.add(wrap);
+        return model;
+      });
+      addHerd(copies, group, 'glb:cabin');
     }).catch((e) => console.warn('[landmarks] cabin swap failed', e));
     updaters.push((dt, t) => {
       for (const s of smoke) {
@@ -614,8 +632,7 @@ export function createLandmarks(terrain, seed = 1337) {
       // windsock
       const wx = p.x + 20 * Math.cos(info.headings[k] + 2.2), wz = p.z + 20 * Math.sin(info.headings[k] + 2.2), wy = H(wx, wz);
       pb.cyl(wx, wy + 4, wz, 0.2, 0.28, 8, 6, 0xeeeeee);
-      const sock = makeFlag(3.4, 1.1, [0xff7a22, 0xffffff, 0xff7a22, 0xffffff], flagMat, true);
-      sock.position.set(wx, wy + 7.6, wz); sock.rotation.y = downRy; group.add(sock);
+      addFlag('sock-' + k, wx, wy + 7.6, wz, 3.4, 1.1, [0xff7a22, 0xffffff, 0xff7a22, 0xffffff], true);
     }
     // runway
     const len = Math.hypot(R.bx - R.ax, R.bz - R.az);
@@ -662,7 +679,7 @@ export function createLandmarks(terrain, seed = 1337) {
       for (let i = 0; i < 4; i++) {
         const a = i * Math.PI / 2 + Math.PI / 4, fx = l.x + Math.cos(a) * (l.r + 3), fz = l.z + Math.sin(a) * (l.r + 3), fy = H(fx, fz);
         pb.cyl(fx, fy + 3, fz, 0.2, 0.25, 6, 5, 0xeeeeee);
-        addFlag(fx, fy + 5.4, fz, 2.8, 1.7, i % 2 ? [0xe8302a, 0xffffff] : [0xffffff, 0xe8302a], true);
+        addFlag('zone-' + k, fx, fy + 5.4, fz, 2.8, 1.7, i % 2 ? [0xe8302a, 0xffffff] : [0xffffff, 0xe8302a], true);
       }
     }
     // hang glider launch ramp with railing
@@ -692,12 +709,14 @@ export function createLandmarks(terrain, seed = 1337) {
     [sb, brickMat, 'landmarks-masonry'], [pb, plainMat, 'landmarks-plain'], [rb, plainMat, 'landmarks-rock'],
   ];
   for (const [b, m, name] of meshes) { if (!b.pos.length) continue; const mesh = new THREE.Mesh(b.build(), m); mesh.name = name; group.add(mesh); }
+  for (const place in flags) { const mesh = mergeFlags(flags[place], downRy, flagMat); mesh.name = 'flags:' + place; group.add(mesh); }
   const winMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.3, emissive: new THREE.Color(1.0, 0.72, 0.35), emissiveIntensity: 0 });
   if (wb.pos.length) { const wm = new THREE.Mesh(wb.build(), winMat); wm.name = 'landmarks-windows'; group.add(wm); }
 
   return {
     group, info,
     update(dt, elapsed) {
+      attachHerds(group);
       FLAG_TIME.value = elapsed;
       winMat.emissiveIntensity = clamp((shared.night * 1.4 + shared.dusk * 0.6), 0, 1.4);
       for (let i = 0; i < updaters.length; i++) updaters[i](dt, elapsed);

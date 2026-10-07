@@ -38,9 +38,23 @@
 // is what makes the road ahead the level. What the ambulance did is read
 // off the World's events, not off scoring.js.
 //
+// R13's power cut rides here too (RETURNS below): Lights Out's calibration
+// (#933). The level opens on Boulevard's wave and loses it to an outage:
+// both boxes come back on the boulevard's green at the same instant while
+// the slider still reads 16 s. With nothing pressed no seed locks, every
+// seed clears the target for the one star, the wave ran until the power
+// went, and over the run more cars stop again than the bar allows. With the
+// slider moved ten seconds after the lights come back, by the half cycle
+// that puts the east box 16 s on again, every seed meets the lesson; moved
+// by a quarter cycle instead, none does. What the boxes did is read off the
+// controllers, not off scoring.js.
+//
 // Each level runs in a child process of this file, as many at once as
-// there are cores: the six seeds are 5 to 17 s each. Exits non-zero on any
-// FAIL (#13). Imports through pathToFileURL (Windows rule).
+// there are cores: the six seeds are 5 to 17 s each. `--jobs 2` runs two at
+// once instead, and `--only <level-id>` runs that level's children and
+// lines and nothing else (a break run on a shared machine; the lines about
+// the whole pack still print). Exits non-zero on any FAIL (#13). Imports
+// through pathToFileURL (Windows rule).
 
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -133,6 +147,38 @@ function runCross(level, mode) {
   });
 }
 
+// A timed corridor the power fails on (R13, #933): the slider value that
+// brings the wave back once the lights are on again (`slider`), and one a
+// quarter of a cycle from it (`wrong`). The slider moves the east box on by
+// its value less what it read before, from where the box stands, so on a
+// 33 s cycle 32 after 16 is 16 s on and 24 is 8.
+const RETURNS = { 'lights-out': { slider: 32, wrong: 24 } };
+const BACK = 10;   // seconds after the lights come back before the slider is moved: time to read the diagram
+
+// One such level, six seeds: nothing pressed (`slider` null), or the slider
+// moved BACK seconds after the outage ends and nothing else. `pre` is the
+// handed-on cars that left the map before the power went and how many of
+// them had waited again; `came` is the first step both boxes are lit again.
+function runBack(level, slider) {
+  const out = (level.events || []).find(e => e.kind === 'outage') || { at: Infinity, for: 0 }, back = out.at + out.for;
+  return SEEDS.map(seed => {
+    const w = new World(level, seed);
+    const pre = [0, 0], on = new Map();
+    let slid = slider === null, came = null, dark = null, read = 0;
+    for (let i = 0; i < level.duration * 60 && !w.stats.gridlock; i++) {
+      for (const c of w.cars) if (!c.done && c.waitAtHandoff !== undefined && !on.has(c.id)) on.set(c.id, c.waitAtHandoff);
+      w.step();
+      if (dark === null && w.powerOut) dark = { t: w.t, stages: w.controllers.map(c => c.stage).join() };
+      if (came === null && w.t > back && w.controllers.every(c => c.stage === 'green')) came = { t: w.t, phases: w.controllers.map(c => c.phase).join(), into: w.controllers.map(c => +c.stageT.toFixed(3)), reads: w.offsetOf() };
+      if (!slid && w.t >= back + BACK) { w.setOffset(slider); slid = true; }
+      for (; read < w.events.length; read++) { const e = w.events[read]; if (e.kind === 'cleared' && on.has(e.car) && e.t < out.at) { pre[0]++; if (e.wait > on.get(e.car)) pre[1]++; } }
+    }
+    const r = score(w), L = w.controllers[0].cycleLength();
+    const apart = (((w.controllers[1].cyclePosition() - w.controllers[0].cyclePosition()) % L) + L) % L;
+    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: w.stats.gridlock, carried: w.stats.carried, carriedStops: w.stats.carriedStops, pre, dark, came, reads: w.offsetOf(), owed: w.controllers[1].shift, apart, outages: w.stats.outages };
+  });
+}
+
 // One converted board as a ring, six seeds bare and six with its meter.
 function runMeter(level) {
   const ring = loadout(level, ['roundabout']);
@@ -169,22 +215,35 @@ if (crossChild > 0) {
   process.exit(0);
 }
 
+const backChild = process.argv.indexOf('--back');
+if (backChild > 0) {
+  const [id, slider] = process.argv[backChild + 1].split('@');
+  process.stdout.write(JSON.stringify(runBack(levelById(id), slider === 'idle' ? null : Number(slider))));
+  process.exit(0);
+}
+
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
   if (cond) { passed++; console.log(`  ok    ${what}${detail ? '  ' + detail : ''}`); }
   else { failed++; console.log(`  FAIL  ${what}${detail ? '  ' + detail : ''}`); }
 };
 
-const starred = LEVELS.filter(l => !l.sandbox);
+const argOf = flag => { const i = process.argv.indexOf(flag); return i > 0 ? process.argv[i + 1] : null; };
+const only = argOf('--only'), jobs = Number(argOf('--jobs')) || os.cpus().length;
+const mine = id => !only || id === only;
+const starredAll = LEVELS.filter(l => !l.sandbox);
+const starred = starredAll.filter(l => mine(l.id));
+if (!starred.length) { console.log(`no starred level ${only}`); process.exit(1); }
 const self = fileURLToPath(import.meta.url);
 const runChild = (id, flag = '--level') => new Promise((resolve, reject) => execFile(process.execPath, [self, flag, id], { maxBuffer: 1 << 20 }, (err, out, errOut) => (err ? reject(new Error(`${id}: ${errOut || err.message}`)) : resolve(JSON.parse(out)))));
-const results = new Map(), meters = new Map(), waves = new Map(), crosses = new Map();
-const metered = LEVELS.filter(l => convertible(l) && l.ring && l.ring.meter);
-const waved = Object.entries(WAVES).flatMap(([id, w]) => [`${id}@${w.at}`, `${id}@${w.off}`]);
-const crossed = CROSSINGS.flatMap(id => [`${id}@road`, `${id}@call`]);
-const queue = metered.map(l => ['--meter', l.id]).concat(starred.map(l => ['--level', l.id]), waved.map(k => ['--wave', k]), crossed.map(k => ['--cross', k]));
-await Promise.all(Array.from({ length: Math.max(1, Math.min(os.cpus().length, queue.length)) }, async () => {
-  while (queue.length) { const [flag, id] = queue.shift(); (flag === '--meter' ? meters : flag === '--wave' ? waves : flag === '--cross' ? crosses : results).set(id, await runChild(id, flag)); }
+const results = new Map(), meters = new Map(), waves = new Map(), crosses = new Map(), backs = new Map();
+const metered = LEVELS.filter(l => convertible(l) && l.ring && l.ring.meter && mine(l.id));
+const waved = Object.entries(WAVES).filter(([id]) => mine(id)).flatMap(([id, w]) => [`${id}@${w.at}`, `${id}@${w.off}`]);
+const crossed = CROSSINGS.filter(mine).flatMap(id => [`${id}@road`, `${id}@call`]);
+const returned = Object.entries(RETURNS).filter(([id]) => mine(id)).flatMap(([id, r]) => [`${id}@idle`, `${id}@${r.slider}`, `${id}@${r.wrong}`]);
+const queue = metered.map(l => ['--meter', l.id]).concat(starred.map(l => ['--level', l.id]), waved.map(k => ['--wave', k]), crossed.map(k => ['--cross', k]), returned.map(k => ['--back', k]));
+await Promise.all(Array.from({ length: Math.max(1, Math.min(jobs, queue.length)) }, async () => {
+  while (queue.length) { const [flag, id] = queue.shift(); (flag === '--meter' ? meters : flag === '--wave' ? waves : flag === '--cross' ? crosses : flag === '--back' ? backs : results).set(id, await runChild(id, flag)); }
 }));
 
 const cellText = r => `${r.lock ? 'LOCK' : r.cleared} ${r.wait.toFixed(0)}s ${starString(r.stars)}`;
@@ -230,10 +289,11 @@ for (const level of metered) {
 }
 
 console.log('\na corridor with two lanes carries its wave both ways, and only on its offset (R13)');
-const twoLane = starred.filter(l => (l.network.nodes || 1) > 1 && (l.network.lanesPerDir || 1) > 1 && l.lesson && l.lesson.kind === 'progression');
-ok(twoLane.length > 0 && twoLane.every(l => WAVES[l.id]), 'every two-lane corridor with a progression lesson has its wave pinned here', twoLane.map(l => l.id).join(', '));
+const lightsFail = l => (l.events || []).some(e => e.kind === 'outage');
+const twoLane = starredAll.filter(l => (l.network.nodes || 1) > 1 && (l.network.lanesPerDir || 1) > 1 && l.lesson && l.lesson.kind === 'progression' && !lightsFail(l));
+ok(twoLane.length > 0 && twoLane.every(l => WAVES[l.id]), 'every two-lane corridor with a progression lesson and no outage has its wave pinned here', twoLane.map(l => l.id).join(', '));
 const pc = x => `${Math.round(x * 100)}%`;
-for (const [id, wave] of Object.entries(WAVES)) {
+for (const [id, wave] of Object.entries(WAVES).filter(([k]) => mine(k))) {
   const level = levelById(id), bar = level.lesson.stops;
   const idle = results.get(id), on = waves.get(`${id}@${wave.at}`), off = waves.get(`${id}@${wave.off}`);
   const share = r => r.carriedStops / Math.max(1, r.carried);
@@ -248,9 +308,9 @@ for (const [id, wave] of Object.entries(WAVES)) {
 }
 
 console.log('\na row of boxes the ambulance crosses: the corridor follows it, and the road ahead decides it (R13)');
-const rows3 = starred.filter(l => (l.network.nodes || 1) > 2 && l.lesson && l.lesson.kind === 'ambulance');
+const rows3 = starredAll.filter(l => (l.network.nodes || 1) > 2 && l.lesson && l.lesson.kind === 'ambulance');
 ok(rows3.length > 0 && rows3.every(l => CROSSINGS.includes(l.id)), 'every row of three or more boxes with an ambulance lesson has its crossing pinned here', rows3.map(l => l.id).join(', '));
-for (const id of CROSSINGS) {
+for (const id of CROSSINGS.filter(mine)) {
   const level = levelById(id), amb = level.events.find(e => e.kind === 'ambulance'), last = (level.network.nodes || 1) - 1;
   const idle = results.get(id), road = crosses.get(`${id}@road`), call = crosses.get(`${id}@call`);
   const every = Array.from({ length: last }, (_, k) => k + 1).join(), all = Array.from({ length: last + 1 }, (_, k) => k).join();
@@ -267,6 +327,32 @@ for (const id of CROSSINGS) {
   ok(call.every(r => r.corridors === all) && made >= 3 && made <= 5, `${level.name}, the corridor called and the road ahead left alone: the corridor follows it on every seed, and it is on time on three to five of six, not all`, `${made} of 6: ${call.map(tripText).join(' | ')}`);
   const faster = road.filter((r, i) => r.trip !== null && (call[i].trip === null || r.trip < call[i].trip)).length;
   ok(faster >= 5, `${level.name}: the road ahead cleared gets the ambulance across sooner on at least five seeds of six`, road.map((r, i) => `${tripText(call[i])} to ${tripText(r)}`).join(' | '));
+}
+
+console.log('\na timed corridor the power fails on: the wave is there, the outage takes it, and the slider brings it back (R13)');
+const cut = starredAll.filter(l => (l.network.nodes || 1) > 1 && (l.controller || {}).mode === 'timed' && lightsFail(l));
+ok(cut.length > 0 && cut.every(l => RETURNS[l.id]) && Object.keys(RETURNS).every(id => cut.some(l => l.id === id)), 'every timed corridor with an outage has its return pinned here', cut.map(l => l.id).join(', '));
+for (const [id, ret] of Object.entries(RETURNS).filter(([k]) => mine(k))) {
+  const level = levelById(id);
+  if (!cut.includes(level)) continue;   // the line above has failed by name
+  const bar = level.lesson.stops, out = level.events.find(e => e.kind === 'outage'), set = level.controllers[1].offset;
+  const idle = results.get(id), dark = backs.get(`${id}@idle`), fixed = backs.get(`${id}@${ret.slider}`), wrong = backs.get(`${id}@${ret.wrong}`);
+  const share = r => r.carriedStops / Math.max(1, r.carried);
+  const near = (a, b, by) => Math.abs(a - b) <= by;
+  ok(idle.every(r => !r.lock), `${level.name}: no seed locks from the opening state with nothing pressed`, idle.map(r => (r.lock ? `seed ${r.seed} LOCK` : r.cleared)).join(' | '));
+  ok(idle.every(r => r.cleared >= level.target && r.stars === 1), `${level.name}: with nothing pressed every seed clears the target of ${level.target} and keeps exactly one star`, idle.map(cellText).join(' | '));
+  ok(dark.every((r, i) => r.cleared === idle[i].cleared && r.carriedStops === idle[i].carriedStops && r.outages === 1 && r.dark && near(r.dark.t, out.at, 0.02) && r.dark.stages === 'dark,dark'), `${level.name}: one outage, at ${out.at} s, and both boxes go dark on it (and this run is the no-input run above, seed for seed)`, dark.map(r => (r.dark ? `${r.dark.t.toFixed(2)} s ${r.dark.stages}` : 'never')).join(' | '));
+  const pre = dark.reduce((a, r) => [a[0] + r.pre[0], a[1] + r.pre[1]], [0, 0]);
+  ok(pre[0] >= 40 && pre[1] / pre[0] <= bar / 2 && dark.every(r => r.pre[0] >= 5), `${level.name}: until the power goes the wave it opens on is running: of the handed-on cars off the map by then, at most half the bar's share had stopped again, six seeds together`, `${pre[1]} of ${pre[0]} (${dark.map(r => `${r.pre[1]}/${r.pre[0]}`).join(' ')})`);
+  ok(dark.every(r => r.came && r.came.phases === '0,0' && r.came.into[0] === r.came.into[1] && near(r.came.t, out.at + out.for + level.controller.timing.allRed, 0.05)), `${level.name}: the lights come back through one all-red on the boulevard's green at both boxes, in the same step, on every seed`, dark.map(r => (r.came ? `${r.came.t.toFixed(2)} s ${r.came.phases}` : 'never')).join(' | '));
+  ok(dark.every(r => r.came && r.came.reads === set && r.reads === set && near(r.apart, 0, 0.01) && r.owed === 0), `${level.name}: so with nothing pressed the slider still reads ${set} s at the end and the two boxes are 0 s apart (Known gaps: the return is not through setOffset)`, dark.map(r => `reads ${r.reads}, ${r.apart.toFixed(1)} s apart`).join(' | '));
+  ok(dark.every(r => share(r) >= bar + 0.05), `${level.name}: and every seed stops again more than the bar's ${pc(bar)} of its handed-on cars, by 5 points or more`, dark.map(r => pc(share(r))).join(' | '));
+  ok(fixed.every(r => !r.lock && r.cleared >= level.target && r.carried > 40 && share(r) <= bar - 0.05), `${level.name}, the slider to ${ret.slider} ${BACK} s after the lights: every seed clears the target and meets the lesson by 5 points or more`, fixed.map(r => `${r.lock ? 'LOCK' : r.cleared} ${pc(share(r))}`).join(' | '));
+  ok(fixed.every(r => r.reads === ret.slider && r.owed === 0 && near(r.apart, set, 1.01)), `${level.name}, the slider to ${ret.slider}: it is paid in full by the end, and the east box is ${set} s on again`, fixed.map(r => `reads ${r.reads}, ${r.apart.toFixed(1)} s apart`).join(' | '));
+  const three = fixed.filter(r => r.stars === 3).length;
+  ok(three >= 2, `${level.name}, the slider to ${ret.slider}: three stars on at least two seeds of six (the street crashes on its own: Boulevard's 240 s cost one seed, these 300 s cost more)`, `${three} of 6: ${fixed.map(cellText).join(' | ')}`);
+  const lucky = wrong.filter(r => share(r) <= bar).length;
+  ok(lucky <= 2 && wrong.every((r, i) => share(r) > share(fixed[i]) + 0.05 && near(r.apart, set / 2, 1.01)), `${level.name}, the slider to ${ret.wrong}, a quarter of a cycle off: every seed stops more of its cars than at ${ret.slider}, by 5 points or more, and at most two seeds of six meet the lesson`, `${lucky} of 6: ${wrong.map(r => pc(share(r))).join(' | ')}`);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

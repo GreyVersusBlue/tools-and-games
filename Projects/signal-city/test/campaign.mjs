@@ -26,7 +26,7 @@ const withStars = pairs => { const s = fresh(); for (const [id, n] of pairs) s.l
 
 group('the order');
 
-ok(CAMPAIGN.join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,cross-town',
+ok(CAMPAIGN.join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,cross-town,lights-out',
   'the campaign is the starred levels in pack order, pack 2 after pack 1 (R13), Free Play out of it', CAMPAIGN.join());
 
 group('what is open');
@@ -77,7 +77,7 @@ group('loadout');
   const want = {
     'first-light': 'lefts+split+sensors', stem: 'lefts+split+sensors', 'four-ways': 'split+sensors', crossing: 'split',
     'two-blocks': '-', 'rush-hour': 'lefts+split+sensors', 'school-run': 'lefts+split+sensors', 'main-street': 'lefts+split+sensors', 'free-play': 'lefts+split+sensors',
-    'market-ring': '-', boulevard: '-', 'cross-town': 'lefts+split+sensors',
+    'market-ring': '-', boulevard: '-', 'cross-town': 'lefts+split+sensors', 'lights-out': '-',
   };
   const bad = Object.keys(want).filter(id => table[id] !== want[id]);
   ok(!bad.length, 'what each level takes: no arrows where the lefts are protected, no phases on a timed plan, sensors only where there are rules and no loops yet',
@@ -160,6 +160,13 @@ group('the roundabout (#594 to #599)');
   ok(!('cross-town' in prior.levels) && !isOpen(prior, 'cross-town') && nextLevel(prior) === 'boulevard', 'a save from before Cross Town loads with no record for it and shows it shut until Boulevard has a star', Object.keys(prior.levels).join());
   prior.levels.boulevard.stars = 1;
   ok(isOpen(prior, 'cross-town') && nextLevel(prior) === 'cross-town' && JSON.stringify(repair(prior)) === JSON.stringify(prior), 'one star on Boulevard opens it and points at it, and repair adds nothing to the save');
+  // Lights Out (R13, #933) is a timed corridor like Boulevard: the shop gives it nothing, and it opens on Cross Town's star
+  const lo = levelById('lights-out');
+  ok(!convertible(lo) && loadout(lo, ['roundabout', 'lefts', 'split', 'sensors']) === lo, 'Lights Out takes nothing from the shop: its plan is the lesson');
+  const sooner = repair({ levels: Object.fromEntries(CAMPAIGN.slice(0, 10).map(id => [id, { stars: 3, best: 500, plays: 2 }]).concat([['cross-town', { stars: 0, best: 40, plays: 1 }]])) });
+  ok(!('lights-out' in sooner.levels) && !isOpen(sooner, 'lights-out') && nextLevel(sooner) === 'cross-town', 'a save from before Lights Out loads with no record for it and shows it shut until Cross Town has a star', Object.keys(sooner.levels).join());
+  sooner.levels['cross-town'].stars = 1;
+  ok(isOpen(sooner, 'lights-out') && nextLevel(sooner) === 'lights-out' && JSON.stringify(repair(sooner)) === JSON.stringify(sooner), 'one star on Cross Town opens it and points at it, and repair adds nothing to the save');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

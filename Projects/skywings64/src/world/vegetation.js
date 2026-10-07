@@ -1,5 +1,6 @@
 // SkyWings 64 - vegetation: thousands of instanced trees (pine / broadleaf / palm), bushes, rocks, grass + flower tufts.
-// * per-cell InstancedMesh with 3-tier LOD (full mesh -> low mesh -> crossed-quad impostor), lazily built, distance culled
+// * 320 m cells with 3-tier LOD (full mesh -> low mesh -> crossed-quad impostor), distance culled; each kind and tier is ONE
+//   InstancedMesh across all the cells it is on in (test/draws.mjs pins the draw count)
 // * vertex-shader wind sway (shared uniforms, driven by atmosphere.shared.wind), PBR (MeshStandardMaterial)
 // * grass/flowers are generated lazily in small cells around the camera so ground level is dense but cheap.
 // Owner: agent S.  API: createVegetation(terrain, { seed, blockers:[{x,z,r}] }) -> { group, update(dt, elapsed, camPos), info }
@@ -294,63 +295,131 @@ export function createVegetation(terrain, opts = {}) {
     c.ground = n ? gy / n : 0; c.n = n;
   }
 
-  function makeMesh(geo, mat, list, withTint, scaleFn) {
-    const n = list.length / 7;
-    const im = new THREE.InstancedMesh(geo, mat, n);
-    for (let i = 0; i < n; i++) {
-      const o = i * 7;
-      dummy.position.set(list[o], list[o + 1], list[o + 2]); dummy.rotation.set(0, list[o + 3], 0);
-      if (scaleFn) scaleFn(dummy.scale, list[o + 4], list[o + 5], list[o + 6]); else dummy.scale.set(list[o + 4], list[o + 5], list[o + 4]);
-      dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix);
-      if (withTint) { const t = list[o + 6]; im.setColorAt(i, tint.setRGB(t, 0.9 + 0.2 * (list[o + 3] % 1), t * (0.85 + 0.3 * (list[o + 3] % 1)))); }
-    }
-    im.instanceMatrix.needsUpdate = true;
-    im.computeBoundingSphere(); im.computeBoundingBox && im.computeBoundingBox();
-    im.visible = false; im.matrixAutoUpdate = false;
-    group.add(im);
-    return im;
+  // ----- batches: one InstancedMesh per kind and tier across every cell that tier is on in (#930).
+  // A frame once drew one mesh per cell, kind and tier, 95 to 206 of them, and as many again into the
+  // shadow map. A batch holds its member cells' instances end to end; a cell that leaves is closed
+  // over and one that arrives is packed onto the end, on the LOD tick, so nothing is repacked whole.
+  // Only the near tier casts shadows: the sun's shadow box is 300 m and a cell leaves the near tier
+  // with every tree in it at least D.near from the camera.
+  const batches = [], B = {};
+  const stats = { batches: 0, instances: 0, bytes: 0, repacks: 0 };
+  group.userData.stats = stats; group.userData.batches = batches;
+  // writes one placement (7 floats at list[o]) as instance k of the arrays; scaleFn as makeMesh once took it
+  function put(b, k, list, o, sx, sy, sz, r, g, bl) {
+    dummy.position.set(list[o], list[o + 1], list[o + 2]); dummy.rotation.set(0, list[o + 3], 0);
+    dummy.scale.set(sx, sy, sz); dummy.updateMatrix(); dummy.matrix.toArray(b.mesh.instanceMatrix.array, k * 16);
+    if (b.tint) tint.setRGB(r, g, bl).toArray(b.mesh.instanceColor.array, k * 3);
   }
-  function ensureImp(c) {
-    if (c.imp !== null) return c.imp;
-    const total = c.lists.pine.length + c.lists.broad.length + c.lists.palm.length + c.lists.bush.length;
-    if (!total) return (c.imp = false);
-    const g = impGeo.clone();
-    const n = total / 7, types = new Float32Array(n), im = new THREE.InstancedMesh(g, impMat, n);
-    let k = 0;
-    for (const name of ['pine', 'broad', 'palm', 'bush']) {
-      const L = c.lists[name], t = T[name];
-      for (let i = 0; i < L.length; i += 7, k++) {
-        dummy.position.set(L[i], L[i + 1], L[i + 2]); dummy.rotation.set(0, L[i + 3], 0);
-        dummy.scale.set(L[i + 4] * t.w, L[i + 5] * t.hh, L[i + 4] * t.w); dummy.updateMatrix(); im.setMatrixAt(k, dummy.matrix);
-        im.setColorAt(k, tint.setRGB(L[i + 6], 0.95 + 0.1 * (L[i + 3] % 1), L[i + 6]));
-        types[k] = t.atlas;
+  // the plain kind: uniform x/z scale, the tint every tree, bush and grass tuft takes from its placement
+  const plain = (listOf, tinted) => ({
+    count: (s) => listOf(s).length / 7,
+    write(b, s, k) {
+      const L = listOf(s);
+      for (let o = 0; o < L.length; o += 7, k++) { const t = L[o + 6], f = L[o + 3] % 1; put(b, k, L, o, L[o + 4], L[o + 5], L[o + 4], t, 0.9 + 0.2 * f, t * (0.85 + 0.3 * f)); }
+    },
+    tint: tinted,
+  });
+  function batch(name, geo, mat, cast, kind, typed) {
+    const b = { name, geo, mat, cast, kind, typed: !!typed, tint: kind.tint, mesh: null, cap: 0, n: 0, members: [], has: new Set() };
+    batches.push(b); B[name] = b; stats.batches++;
+    return b;
+  }
+  function grow(b, need) {
+    const cap = Math.max(64, Math.ceil(need * 1.5)), old = b.mesh;
+    const g = b.typed ? b.geo.clone() : b.geo;
+    const im = new THREE.InstancedMesh(g, b.mat, cap);
+    im.name = 'veg:' + b.name;
+    if (b.tint) im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
+    if (b.typed) g.setAttribute('aType', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
+    if (old) {
+      im.instanceMatrix.array.set(old.instanceMatrix.array.subarray(0, b.n * 16));
+      if (b.tint) im.instanceColor.array.set(old.instanceColor.array.subarray(0, b.n * 3));
+      if (b.typed) g.attributes.aType.array.set(old.geometry.attributes.aType.array.subarray(0, b.n));
+      group.remove(old); old.dispose(); if (b.typed) old.geometry.dispose();
+    }
+    // the members lie all round the camera, so there is no one sphere to cull by
+    im.frustumCulled = false; im.matrixAutoUpdate = false;
+    // render/index.js's scan turns castShadow on for every mesh it has not been told to leave alone
+    im.castShadow = b.cast; im.receiveShadow = true; im.userData.noCast = !b.cast;
+    stats.bytes += (cap - b.cap) * (64 + (b.tint ? 12 : 0) + (b.typed ? 4 : 0));
+    b.cap = cap; b.mesh = im; im.count = b.n; im.visible = b.n > 0;
+    group.add(im);
+  }
+  // make the batch hold exactly `want` (cells, or grass tiles); returns true if it changed
+  function sync(b, want) {
+    const ws = new Set(want);
+    let gone = false, came = false;
+    for (const m of b.members) if (!ws.has(m.src)) { gone = true; break; }
+    for (const s of want) if (!b.has.has(s)) { came = true; break; }
+    if (!gone && !came) return false;
+    const im0 = b.mesh;
+    if (gone) {
+      const mA = im0.instanceMatrix.array, cA = b.tint && im0.instanceColor.array, tA = b.typed && im0.geometry.attributes.aType.array;
+      let w = 0, o = 0; const keep = [];
+      for (const m of b.members) {
+        if (ws.has(m.src)) {
+          if (w !== o) { mA.copyWithin(w * 16, o * 16, (o + m.n) * 16); if (cA) cA.copyWithin(w * 3, o * 3, (o + m.n) * 3); if (tA) tA.copyWithin(w, o, o + m.n); }
+          w += m.n; keep.push(m);
+        } else b.has.delete(m.src);
+        o += m.n;
       }
+      b.members = keep; b.n = w;
     }
-    g.setAttribute('aType', new THREE.InstancedBufferAttribute(types, 1));
-    im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); im.visible = false; im.matrixAutoUpdate = false;
-    group.add(im);
-    return (c.imp = im);
-  }
-  function ensureLod(c, type, lod) {
-    const key = type + lod;
-    if (c.meshes[key] !== undefined) return c.meshes[key];
-    const L = c.lists[type];
-    if (!L.length) return (c.meshes[key] = false);
-    let im;
-    if (type === 'rock') {
-      // split rocks by variant (3 geometries)
-      const parts = [[], [], []];
-      for (let i = 0; i < L.length; i += 7) parts[L[i + 6]].push(...L.slice(i, i + 7));
-      const g = new THREE.Group(); g.visible = false;
-      parts.forEach((p, v) => { if (p.length) { const m = makeMesh(rockGeos[v][lod], rockMat, p, false, (s, a, b) => s.set(a, b, a)); m.visible = true; g.add(m); group.remove(m); } });
-      group.add(g); im = g;
-    } else {
-      im = makeMesh(T[type].geo[Math.min(lod, T[type].geo.length - 1)], T[type].mat, L, true);
+    for (const s of want) {
+      if (b.has.has(s)) continue;
+      const n = b.kind.count(s);
+      if (b.n + n > b.cap) grow(b, b.n + n);
+      if (n) b.kind.write(b, s, b.n);
+      b.members.push({ src: s, n }); b.has.add(s); b.n += n;
     }
-    return (c.meshes[key] = im);
+    const im = b.mesh;
+    if (!im) return true;
+    stats.instances += b.n - im.count; stats.repacks++;
+    im.count = b.n; im.visible = b.n > 0;
+    const up = (a, size) => { a.clearUpdateRanges(); a.addUpdateRange(0, b.n * size); a.needsUpdate = true; };
+    up(im.instanceMatrix, 16); if (b.tint) up(im.instanceColor, 3); if (b.typed) up(im.geometry.attributes.aType, 1);
+    return true;
   }
 
-  // ----- grass/flower cells (lazy, around camera)
+  for (const type of ['pine', 'broad', 'palm']) {
+    const kind = plain((c) => c.lists[type], true);
+    batch(type + '0', T[type].geo[0], T[type].mat, true, kind);
+    batch(type + '1', T[type].geo[1], T[type].mat, false, kind);
+  }
+  { const kind = plain((c) => c.lists.bush, true); batch('bush0', T.bush.geo[0], T.bush.mat, true, kind); batch('bush0far', T.bush.geo[0], T.bush.mat, false, kind); }
+  // rocks come in three shapes (the placement's seventh float), untinted, each its own batch
+  for (const c of cells.values()) { c.rocks = [0, 0, 0]; const L = c.lists.rock; for (let i = 0; i < L.length; i += 7) c.rocks[L[i + 6]]++; }
+  for (let v = 0; v < 3; v++) {
+    const kind = {
+      count: (c) => c.rocks[v], tint: false,
+      write(b, c, k) { const L = c.lists.rock; for (let o = 0; o < L.length; o += 7) if (L[o + 6] === v) put(b, k++, L, o, L[o + 4], L[o + 5], L[o + 4]); },
+    };
+    batch('rock' + v + '_0', rockGeos[v][0], rockMat, true, kind);
+    batch('rock' + v + '_0far', rockGeos[v][0], rockMat, false, kind);
+    batch('rock' + v + '_1', rockGeos[v][1], rockMat, false, kind);
+  }
+  // the far tier: every tree and bush of a cell as a crossed quad, its atlas column in aType
+  const IMP = ['pine', 'broad', 'palm', 'bush'];
+  batch('imp', impGeo, impMat, false, {
+    count: (c) => (c.lists.pine.length + c.lists.broad.length + c.lists.palm.length + c.lists.bush.length) / 7, tint: true,
+    write(b, c, k) {
+      const types = b.mesh.geometry.attributes.aType.array;
+      for (const name of IMP) {
+        const L = c.lists[name], t = T[name];
+        for (let o = 0; o < L.length; o += 7, k++) { put(b, k, L, o, L[o + 4] * t.w, L[o + 5] * t.hh, L[o + 4] * t.w, L[o + 6], 0.95 + 0.1 * (L[o + 3] % 1), L[o + 6]); types[k] = t.atlas; }
+      }
+    },
+  }, true);
+  batch('grass', grassGeo, grassMat, true, plain((e) => e.gl, true));
+  batch('flower', grassGeo, flowerMat, true, {
+    count: (e) => e.fl.length / 7, tint: true,
+    write(b, e, k) {
+      const L = e.fl, col = b.mesh.instanceColor.array;
+      for (let o = 0; o < L.length; o += 7, k++) { put(b, k, L, o, L[o + 4], L[o + 5], L[o + 4], 0, 0, 0); const v = L[o + 6]; tint.setHSL(v < 0.33 ? 0.98 : v < 0.66 ? 0.12 : 0.75, 0.9, 0.75).toArray(col, k * 3); }
+    },
+  });
+
+  // ----- grass/flower tiles (lazy, around camera): placements only, drawn by the two batches above
   const GC = 80, grass = new Map();
   function buildGrass(gx, gz) {
     const r = makeRng((gx * 73856093) ^ (gz * 19349663) ^ seed);
@@ -368,21 +437,13 @@ export function createVegetation(terrain, opts = {}) {
       if (r() < 0.12 && cl > -0.05) fl.push(x, h - 0.05, z, r() * 6.28, s, s, r());
       else gl.push(x, h - 0.05, z, r() * 6.28, s, s * (0.8 + r() * 0.6), 0.75 + r() * 0.3);
     }
-    const e = { g: null, f: null, x: x0 + GC / 2, z: z0 + GC / 2, y: H(x0 + GC / 2, z0 + GC / 2) };
-    const mk = (list, mat, flower) => {
-      if (!list.length) return null;
-      const im = makeMesh(grassGeo, mat, list, true, (s, a, b) => s.set(a, b, a));
-      if (flower) for (let i = 0; i < list.length / 7; i++) { const v = list[i * 7 + 6]; im.setColorAt(i, tint.setHSL(v < 0.33 ? 0.98 : v < 0.66 ? 0.12 : 0.75, 0.9, 0.75)); }
-      im.instanceColor.needsUpdate = true; im.visible = true; return im;
-    };
-    e.g = mk(gl, grassMat, false); e.f = mk(fl, flowerMat, true);
-    return e;
+    return { gl, fl, x: x0 + GC / 2, z: z0 + GC / 2, y: H(x0 + GC / 2, z0 + GC / 2) };
   }
-  function dropGrass(e) { for (const m of [e.g, e.f]) if (m) { group.remove(m); m.dispose(); } }
 
   // ----- update / LOD selection
   let acc = 1, frame = 0;
   const R = CELL * 0.72;
+  const want = {}; for (const b of batches) want[b.name] = [];
   function update(dt, elapsed, camPos) {
     U.uTime.value = elapsed;
     U.uWind.value.set(shared.wind.x, shared.wind.z);
@@ -391,23 +452,21 @@ export function createVegetation(terrain, opts = {}) {
     if (acc < 0.12) return;
     acc = 0; frame++;
     const cp = camPos || shared.camPos;
+    for (const k in want) want[k].length = 0;
     for (const c of cells.values()) {
       const dx = c.cx - cp.x, dz = c.cz - cp.z, dy = c.ground - cp.y;
       const d = Math.sqrt(dx * dx + dz * dz + dy * dy) - R;
       const nearOn = d < D.near, midOn = d >= D.near && d < D.mid, impOn = d >= D.mid && d < D.imp;
       for (const type of ['pine', 'broad', 'palm']) {
-        const a = nearOn ? ensureLod(c, type, 0) : c.meshes[type + '0']; if (a) a.visible = nearOn;
-        const m = midOn ? ensureLod(c, type, 1) : c.meshes[type + '1']; if (m) m.visible = midOn;
+        if (!c.lists[type].length) continue;
+        if (nearOn) want[type + '0'].push(c); else if (midOn) want[type + '1'].push(c);
       }
-      const bushOn = d < D.mid * 0.45;
-      const bm = bushOn ? ensureLod(c, 'bush', 0) : c.meshes.bush0; if (bm) bm.visible = bushOn;
-      const im = impOn ? ensureImp(c) : c.imp;
-      if (im) im.visible = impOn;
-      // mid-range: trees use mid mesh; bushes beyond 0.55*mid disappear (too small)
+      // bushes beyond 0.45*mid disappear (too small)
+      if (c.lists.bush.length && d < D.mid * 0.45) want[nearOn ? 'bush0' : 'bush0far'].push(c);
+      if (impOn && c.n > c.lists.rock.length / 7) want.imp.push(c);
       if (c.lists.rock.length) {
-        const rOn0 = d < 420, rOn1 = d >= 420 && d < D.rock;
-        const r0 = rOn0 ? ensureLod(c, 'rock', 0) : c.meshes.rock0; if (r0) r0.visible = rOn0;
-        const r1 = rOn1 ? ensureLod(c, 'rock', 1) : c.meshes.rock1; if (r1) r1.visible = rOn1;
+        const tier = d < 420 ? (nearOn ? '_0' : '_0far') : d < D.rock ? '_1' : null;
+        if (tier) for (let v = 0; v < 3; v++) if (c.rocks[v]) want['rock' + v + tier].push(c);
       }
     }
     // grass streaming around the camera (only when low enough)
@@ -421,16 +480,16 @@ export function createVegetation(terrain, opts = {}) {
         if (Math.sqrt(ex * ex + ez * ez) > D.grass + GC * 0.7) continue;
         let e = grass.get(k);
         if (!e && built < 2) { e = buildGrass(i, j); grass.set(k, e); built++; }
-        if (e) { if (e.g) e.g.visible = true; if (e.f) e.f.visible = true; e.seen = frame; }
+        if (e) { e.seen = frame; if (e.gl.length) want.grass.push(e); if (e.fl.length) want.flower.push(e); }
       }
       for (const [k, e] of grass) {
         if (e.seen !== frame) {
           const ex = e.x - cp.x, ez = e.z - cp.z, far = Math.sqrt(ex * ex + ez * ez);
-          if (e.g) e.g.visible = false; if (e.f) e.f.visible = false;
-          if (far > D.grass * 2.2 || !low) { dropGrass(e); grass.delete(k); }
+          if (far > D.grass * 2.2 || !low) grass.delete(k);
         }
       }
     }
+    for (const b of batches) sync(b, want[b.name]);
   }
   update(1, 0, shared.camPos);
   info.total = info.pine + info.broad + info.palm + info.bush + info.rock;

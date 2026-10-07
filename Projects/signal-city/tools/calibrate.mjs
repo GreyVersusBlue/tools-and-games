@@ -148,7 +148,7 @@ export function meterSweep(level, reds, bare, opts = {}) {
 // counted as people waiting and answered first (answerWalks, R2), with the
 // boxes ahead of a called ambulance given their green (clearAhead). A timed plan is
 // left to run: on a corridor the plan is the lesson, and the hand's part
-// there is the offset, swept at load (handOffset).
+// there is the offset, swept at load, or after an outage (handOffset).
 
 export const HAND_MAX = 25;   // seconds a green is held for its own queue before the hand serves the next-longest: under boxStall, where a left waiting mid-box locks the board
 
@@ -262,16 +262,29 @@ export function handStep(w, { platoons = true, corridor = true, phases = true, p
   if (phases) for (let n = 0; n < w.controllers.length; n++) if (n !== held && !road.has(n)) greedy(w, n, max, peds);
 }
 
+export const BACK_DELAY = 10;   // seconds after the lights come back before the hand moves the slider
+
+// When a level's last outage ends, or null: on a timed corridor the boxes
+// come back from the top of a green each, not `offset` apart, and the
+// slider is moved after that, not at load.
+export function powerBack(level) {
+  const outs = (level.events || []).filter(e => e.kind === 'outage');
+  return outs.length ? Math.max(...outs.map(e => e.at + e.for)) : null;
+}
+
 // One run of a level exactly as it ships: no input, or the hand. `offset`
 // (a corridor) is set through World.setOffset right after load, the way the
-// Timing tab's slider sets it, each box after the first that much further on.
-export function played(level, seed, { hand = false, offset = null } = {}) {
+// Timing tab's slider sets it, each box after the first that much further on;
+// with `at`, at that second of the run instead.
+export function played(level, seed, { hand = false, offset = null, at = null } = {}) {
   const parts = typeof hand === 'object' ? hand : {};
   const w = new World(level, seed);
-  if (offset !== null) for (let n = 1; n < w.controllers.length; n++) w.setOffset(offset * n, n);
+  const slide = () => { for (let n = 1; n < w.controllers.length; n++) w.setOffset(offset * n, n); };
+  let slid = offset === null;
+  if (!slid && at === null) { slide(); slid = true; }
   // on a ring level the hand's move is the entry meter, set at load as the level offers it (R13)
   if (hand && level.ringMeter) w.setMeter(level.ringMeter.leg, level.ringMeter.red);
-  for (let i = 0; i < level.duration * 60; i++) { w.step(); if (hand) handStep(w, parts); if (w.stats.gridlock) break; }
+  for (let i = 0; i < level.duration * 60; i++) { w.step(); if (!slid && w.t >= at) { slide(); slid = true; } if (hand) handStep(w, parts); if (w.stats.gridlock) break; }
   const r = score(w);
   return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, ambulanceLate: w.stats.ambulanceLate, splits: r.splits, pedLate: r.pedLate };
 }
@@ -280,19 +293,22 @@ export function played(level, seed, { hand = false, offset = null } = {}) {
 // cycle, six seeds each, and the best kept (most stars, then most cleared,
 // then least wait). Every 2 s doubles a sweep that already costs Two Blocks
 // 66 runs. Null on a single box, and on boxes that run rules and no plan.
+// On a corridor with an outage the slider is moved BACK_DELAY seconds after
+// the lights come back (powerBack), and the number is the slider's.
 export function handOffset(level, parts = {}) {
   // a row of boxes on rules has no plan to shift (Cross Town, #929): only a timed corridor has an offset
   if (!isCorridor(level) || (level.controller || {}).mode !== 'timed') return null;
   const L = new World(level, 1).controllers[1].cycleLength();
   let best = null;
   const sweep = [];
+  const back = powerBack(level), at = back === null ? null : back + BACK_DELAY;
   for (let o = 0; o < L; o += 4) {
-    const rows = seeds.map(s => played(level, s, { hand: parts, offset: o }));
+    const rows = seeds.map(s => played(level, s, { hand: parts, offset: o, at }));
     const key = [rows.reduce((a, r) => a + r.stars, 0), rows.reduce((a, r) => a + r.cleared, 0), -rows.reduce((a, r) => a + r.wait, 0)];
     sweep.push(`${o} s: ${key[0]} stars, ${key[1]} cleared`);
     if (!best || key[0] > best.key[0] || (key[0] === best.key[0] && (key[1] > best.key[1] || (key[1] === best.key[1] && key[2] > best.key[2])))) best = { offset: o, key, rows };
   }
-  return { ...best, sweep };
+  return { ...best, sweep, at };
 }
 
 // A row's cells and its summary, as a markdown table row HISTORY.md can quote.
@@ -313,7 +329,7 @@ if (isMain && !flags.includes('--endless') && (flags.includes('--baseline') || h
   // walks rides on phases: it is the greedy's answer to a call (R2)
   const named = handFlag && handFlag.includes('=') ? handFlag.split('=')[1].split(',') : ['phases', 'platoons', 'corridor', 'ahead', 'walks', 'offset'];
   const parts = { phases: named.includes('phases'), platoons: named.includes('platoons'), corridor: named.includes('corridor'), ahead: named.includes('ahead'), peds: named.includes('walks') };
-  const partText = { phases: `the longest-waited queue at each green's end (held to ${HAND_MAX} s)`, platoons: 'holdPlatoon', corridor: 'the corridor on spawn', ahead: 'the green given at each box ahead of a called ambulance', walks: `a walk call answered, its phase asked for after ${PED_ASK} s`, offset: "a corridor's offset swept at load" };
+  const partText = { phases: `the longest-waited queue at each green's end (held to ${HAND_MAX} s)`, platoons: 'holdPlatoon', corridor: 'the corridor on spawn', ahead: 'the green given at each box ahead of a called ambulance', walks: `a walk call answered, its phase asked for after ${PED_ASK} s`, offset: `a corridor's offset swept at load, or ${BACK_DELAY} s after an outage ends` };
   const list = which === 'all' ? LEVELS : [levelById(which)].filter(Boolean);
   if (!list.length) { console.log(`no level ${which}`); process.exit(1); }
   const mean = rows => ({ cleared: rows.reduce((a, r) => a + r.cleared, 0) / rows.length, wait: rows.reduce((a, r) => a + r.wait, 0) / rows.length });
@@ -328,8 +344,8 @@ if (isMain && !flags.includes('--endless') && (flags.includes('--baseline') || h
       const sweep = named.includes('offset') ? handOffset(level, parts) : null;
       const rows = sweep ? sweep.rows : seeds.map(s => played(level, s, { hand: parts }));
       hand.set(level.id, rows);
-      console.log(tableRow(level, rows, sweep ? ` (offset ${sweep.offset} s)` : ''));
-      if (sweep) swept.push(`${level.name}'s offset sweep, the hand on six seeds: ${sweep.sweep.join('; ')}.`);
+      console.log(tableRow(level, rows, sweep ? ` (offset ${sweep.offset} s${sweep.at === null ? '' : `, the slider moved at ${sweep.at} s`})` : ''));
+      if (sweep) swept.push(`${level.name}'s offset sweep, the hand on six seeds${sweep.at === null ? '' : `, the slider moved at ${sweep.at} s`}: ${sweep.sweep.join('; ')}.`);
     }
   }
   if (swept.length) console.log('\n' + swept.join('\n'));

@@ -58,6 +58,59 @@
         'heads.glb swaps in at the statue, unscaled, and hides the fallback', hg && { at: hg.position.toArray().map(Math.round), fallback: host.children.map((c) => c.visible) });
       ok(tris > 3000 && mats.join() === 'Heads_Rock:vc:ao,Heads_Gold:vc:ao,Heads_Helm:vc:ao', 'heads.glb draws as three meshes, vertex-coloured, with baked AO', { tris, mats });
 
+      // ---- herds (src/world/herd.js, #931): the copies of one GLB are hidden and drawn as one
+      // InstancedMesh per primitive, packed before each render from what the camera or the sun's
+      // shadow box can see. Camera and aircraft are put by hand and one frame is rendered by hand,
+      // so this is a count of what that frame packed, not of what a frame rate allowed (#53).
+      const herd = (pre) => L.children.filter((c) => c.isInstancedMesh && c.name.startsWith(pre + ':'));
+      for (let n = 0; n < 150 && !(herd('glb:windmill').length && herd('glb:cabin').length); n++) await new Promise((r) => setTimeout(r, 200));
+      const wm = herd('glb:windmill'), cab = herd('glb:cabin'), wraps = L.children.filter((c) => c.name === 'glb:windmill');
+      ok(wm.length === 9 && wm.every((m) => m.instanceMatrix.count === 4) && cab.length === 7 && cab.every((m) => m.instanceMatrix.count === 11)
+        && wraps.length === 4 && wraps.every((w) => w.children[0].visible === false),
+        'windmills and cabins are herds: one InstancedMesh per GLB primitive, the copies hidden', { windmill: wm.map((m) => m.instanceMatrix.count), cabin: cab.length, hidden: wraps.map((w) => !w.children[0].visible) });
+      q.start('gc1');
+      const sw = window.__sw, cam = g.camera, mills = W.landmarks.windmills;
+      const look = (px, py, pz, tx, ty, tz) => { cam.position.set(px, py, pz); cam.lookAt(tx, ty, tz); cam.updateMatrixWorld(); sw.render(1 / 60); return wm.map((m) => (m.visible ? m.count : 0)); };
+      g.vehicle.position.set(-1900, 600, 1900);                       // the shadow box follows the aircraft: park it over the far sea
+      const none = look(-1900, 600, 1900, -3000, 600, 3000);         // and look out to sea
+      ok(none.every((n) => n === 0), 'no windmill in the view or the shadow box: the herd draws nothing', none);
+      const two = look(425, mills[0].y + 60, 540, 425, mills[0].y + 15, 420);   // 120 m south of the east pair
+      const body = wm.find((m) => m.name === 'glb:windmill:Cone'), e = body ? body.instanceMatrix.array : [];
+      const off = [0, 1].map((i) => Math.min(...mills.slice(0, 2).map((p) => Math.hypot(e[i * 16 + 12] - p.x, e[i * 16 + 14] - p.z))));
+      ok(two.every((n) => n === 2) && off.every((d) => d < 3) && Math.hypot(e[12] - e[28], e[14] - e[30]) > 50,
+        'two windmills in view: every primitive is packed twice, where those two mills stand', { packed: two, metresOff: off.map((d) => +d.toFixed(2)) });
+
+      // ---- terrain (#932): chunks at a far level of detail are merged into their square's mesh.
+      // Read from the triangles, not from a count: the 250 m cells the squares' ground triangles
+      // (skirts and unfilled index slots left out) fall in must be the cells whose own chunk is hidden.
+      q.sim(0.5, null);
+      const T = W.meshes.terrain.children, cellOf = (x, z) => Math.floor((x + 2000) / 250) + 16 * Math.floor((z + 2000) / 250);
+      const own = T.filter((m) => m.name !== 'far'), far = T.filter((m) => m.name === 'far' && m.visible);
+      const hidden = new Set(own.filter((m) => !m.visible).map((m) => { m.geometry.computeBoundingSphere(); const c = m.geometry.boundingSphere.center; return cellOf(c.x, c.z); }));
+      const covered = new Set();
+      for (const m of far) {
+        const p = m.geometry.attributes.position, ix = m.geometry.index;
+        for (let i = 0; i < ix.count; i += 3) {
+          const a = ix.getX(i), b = ix.getX(i + 1), c = ix.getX(i + 2), ax = p.getX(a), az = p.getZ(a), bx = p.getX(b), bz = p.getZ(b), cx = p.getX(c), cz = p.getZ(c);
+          if (Math.abs((bx - ax) * (cz - az) - (cx - ax) * (bz - az)) > 1e-6) covered.add(cellOf((ax + bx + cx) / 3, (az + bz + cz) / 3));
+        }
+      }
+      const holes = [...hidden].filter((k) => !covered.has(k)), twice = [...covered].filter((k) => !hidden.has(k));
+      ok(own.length === 256 && hidden.size > 0 && hidden.size < 256 && holes.length === 0 && twice.length === 0,
+        'terrain: every chunk is drawn once, in its own mesh or in its square\'s', { chunks: own.length, merged: hidden.size, squares: far.length, holes, twice });
+
+      // A square casts only while the sun's shadow box reaches one of its merged chunks. The box
+      // follows the aircraft, so park it over the merged chunk farthest from the camera and render.
+      const squares = T.filter((m) => m.name === 'far'), flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+      const spot = own.filter((m) => !m.visible).map((m) => m.geometry.boundingSphere.center).sort((a, b) => flat(b, cam.position) - flat(a, cam.position))[0];
+      g.vehicle.position.set(spot.x, spot.y + 50, spot.z); sw.render(1 / 60);
+      const under = squares[(cellOf(spot.x, spot.z) >> 6) * 4 + ((cellOf(spot.x, spot.z) & 15) >> 2)];
+      const away = squares.filter((m) => m.visible).sort((a, b) => flat(b.geometry.boundingSphere.center, spot) - flat(a.geometry.boundingSphere.center, spot))[0];
+      ok(under.visible && under.castShadow === true && away !== under && away.castShadow === false,
+        'terrain: the square under the shadow box casts, the one across the map does not', { under: under.castShadow, away: away.castShadow, metresApart: Math.round(flat(away.geometry.boundingSphere.center, spot)) });
+
+      if (window.__swOnly === 'models') return out;                  // test/browser.mjs --models
+
       // ---- courses: every mission builds, and every ring can be flown through
       for (const m of q.MISSIONS) {
         q.start(m.id);
