@@ -68,8 +68,12 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
     const bar = document.getElementById('stationTabs');
     const needs = slot ? sim.stationsNeedingWork(slot) : new Set();
     bar.innerHTML = STATION_TAB_DEFS.map((t,i)=>{
-      const dot = needs.has(t.id) ? '<span class="needdot"></span>' : '';
-      return `<button class="stationTab ${state.stationTab===t.id?'active':''}" data-tab="${t.id}" aria-keyshortcuts="${i+1}" title="Shortcut: ${i+1}">${t.label}${dot}</button>`;
+      // The dot is a ringed shape, and the same thing in words for anything
+      // that reads the button rather than looks at it (#916).
+      const need = needs.has(t.id);
+      const dot = need ? '<span class="needdot" aria-hidden="true"></span><span class="sronly">, still needed</span>' : '';
+      const on = state.stationTab===t.id;
+      return `<button class="stationTab ${on?'active':''}" data-tab="${t.id}" aria-pressed="${on}" aria-keyshortcuts="${i+1}" title="Shortcut: ${i+1}${need?' — the ticket still needs something here':''}">${t.label}${dot}</button>`;
     }).join('');
     bar.querySelectorAll('.stationTab').forEach(btn=>{
       btn.onclick = ()=> selectTab(btn.dataset.tab);
@@ -117,7 +121,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
       <div class="stationBlock">
         <h3>🥛 Milk</h3>
         <div class="btnrow">${MILKS.map(m=>
-          `<button class="actionbtn ${cup.milk===m.id?'selected':''}" data-milk="${m.id}">${m.name}</button>`
+          `<button class="actionbtn ${cup.milk===m.id?'selected':''}" aria-pressed="${cup.milk===m.id}" data-milk="${m.id}">${m.name}</button>`
         ).join('')}</div>
         <div class="btnrow" style="margin-top:8px;">
           <button class="actionbtn" id="btnSteam" ${!cup.milk?'disabled':''}>🔥 Steam Milk</button>
@@ -141,7 +145,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
       <div class="stationBlock">
         <h3>💧 Syrup</h3>
         <div class="btnrow">${SYRUPS.filter(s=>state.unlockedSyrups.has(s.id)).map(s=>
-          `<button class="actionbtn ${cup.syrup===s.id?'selected':''}" data-syrup="${s.id}">💧 ${s.name}</button>`
+          `<button class="actionbtn ${cup.syrup===s.id?'selected':''}" aria-pressed="${cup.syrup===s.id}" data-syrup="${s.id}">💧 ${s.name}</button>`
         ).join('')}${cup.syrup? `<button class="actionbtn" id="btnClearSyrup">✕ Remove Syrup</button>`:''}</div>
       </div>`;
       case 'toppings':
@@ -150,7 +154,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
         <h3>✨ Toppings</h3>
         <div class="draghint">Tap a topping to add it. Tap again to remove it.</div>
         <div class="btnrow" style="margin-top:6px;">${TOPPINGS.filter(t=>state.unlockedToppings.has(t.id)).map(t=>
-          `<button class="actionbtn ${cup.toppings.includes(t.id)?'selected':''}" data-topping="${t.id}">✨ ${t.name}</button>`
+          `<button class="actionbtn ${cup.toppings.includes(t.id)?'selected':''}" aria-pressed="${cup.toppings.includes(t.id)}" data-topping="${t.id}">✨ ${t.name}</button>`
         ).join('')}</div>
         <div class="draghint">On cup: ${cup.toppings.map(t=>TOPPINGS.find(x=>x.id===t).name).join(', ')||'none'}</div>
       </div>`;
@@ -159,7 +163,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
       <div class="stationBlock">
         <h3>🍪 Food</h3>
         <div class="btnrow">${sim.getUnlockedFoodList().map(f=>
-          `<button class="actionbtn ${slot.foodPlated===f.id?'selected':''}" data-food="${f.id}">${f.icon} Plate ${f.name}</button>`
+          `<button class="actionbtn ${slot.foodPlated===f.id?'selected':''}" aria-pressed="${slot.foodPlated===f.id}" data-food="${f.id}">${f.icon} Plate ${f.name}</button>`
         ).join('')}</div>
         <div class="draghint">Only useful when serving a food order.</div>
       </div>`;

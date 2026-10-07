@@ -133,6 +133,15 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   locked row for it; money will not buy it. Keep it buildable out of the
   day-one milks and syrups — a reopened shop has no button for anything else —
   and give it a requirement list the menu does not already have (#365).
+- **An animation or a transition** in `index.html`: a line for the same
+  selector under `@media (prefers-reduced-motion: reduce)` that turns it off,
+  with its end state written out if the animation ends or starts invisible
+  (#917). `smoke-sim.mjs` section 18 fails without one. No module reads the
+  media query, and none may: the shop plays the same with it on.
+- **Anything the page says by colour:** say it in words or a shape too (#916).
+  `draw.js`'s `cupWords(cup)` is the cup's picture as a sentence and is checked
+  against `getOrderRequirements()`'s labels, so a new ticket line needs its
+  phrase there.
 - **A station button:** a row in `CUP_ACTIONS` (`ms`, `run`), then the button in
   `stations.js`; a timed one also goes in its `TIMED` map with its bar and
   sound. It picks up a key and a legend row on its own, because both are read

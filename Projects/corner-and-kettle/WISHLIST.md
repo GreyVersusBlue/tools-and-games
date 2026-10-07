@@ -198,10 +198,10 @@ this project does not use it.
 - **Windows is the dev machine** (v7 §7): absolute `import()` paths go through
   `pathToFileURL`, as both suites already do. **The invocations that work,
   from the repo root:**
-  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 505 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 540 passed, 0 failed;
   `node Projects/corner-and-kettle/test/smoke-save.mjs` → 230 passed, 0 failed;
   `node Projects/corner-and-kettle/test/balance.mjs` → BALANCE OK, about 22 s;
-  `node Projects/corner-and-kettle/test/drive-save.mjs` → 166 checks, 0 failed;
+  `node Projects/corner-and-kettle/test/drive-save.mjs` → 197 checks, 0 failed;
   `node assets/js/gvb-save.test.mjs` → 50 passed, when you touch the save
   layer. `npm run games` does not cover this game.
 
@@ -237,6 +237,28 @@ button does not care, and round 2's hand-off change put that button in front of
 every order in the game instead of only hand-built ones. Phase 3 below builds
 the cue and is written so it can be swapped for the hard gate in one commit if
 that is the answer instead.
+
+**Difficulty presets, asked 2026-10-07 (TG-29), not answered.** The later-arc
+line wants "the Morning Rush without the reputation stakes" and says
+`spawnFactor()` and `patienceFactor()` are the only two dials that matter.
+Those two move how fast the door opens and how long a customer waits; neither
+is reputation. Nothing was built, because each of these changes what the game
+is:
+
+1. How many presets, and what are they called? Two (today's game and a gentler
+   one), or three with a harder one?
+2. Does a gentler preset touch reputation at all (a walk-out or a wrong cup
+   costing less, or nothing), or only the two dials? The line's own words ask
+   for the first and name the second.
+3. Does a preset change pay, tips or the beans a reopening earns? If it does
+   not, the gentler shop is simply the richer one, and the loop sweep's bands
+   stop describing it.
+4. Is it chosen once per shop (at New Game and at a reopening) or switchable
+   mid-run from the Menu Board? Mid-run makes it a pause button for the rush.
+
+What is settled without him: the default is exactly today's game, the choice
+would be one field in the save through `repair` with an old save loading as
+the default, and no storage key changes (#36).
 
 ## The standing backlog
 
@@ -755,6 +777,32 @@ outside CI on purpose (#353).
   prices.
 - **Difficulty presets** for players who want the Morning Rush without the
   reputation stakes, now that `spawnFactor()`/`patienceFactor()` are the only
-  two dials that matter.
-- **Accessibility past the keyboard** — colour-blind-safe cup rendering,
-  reduced motion, and a non-colour cue for the "still needed" dot.
+  two dials that matter. Not built (2026-10-07, TG-29): the line names two
+  dials and asks for something neither of them is (reputation), and four
+  choices under it are Devon's. They are the last entry under "Questions for
+  Devon" above.
+- **Accessibility past the keyboard.** Done on 2026-10-07 (#916, #917), and
+  judged by no person, with or without colour blindness:
+  - *The cup.* Its picture says the base, the milk, the syrup and which
+    drizzle by tint, and the shot count not at all: in grey, an oat latte with
+    hazelnut syrup is 124 of 255 and one with none is 124, and the four milks
+    span 124 to 135. A line under every station's cup now reads it out in the
+    ticket's own phrases ("2 espresso shots · Oat Milk, steamed · Vanilla
+    syrup"), and a food order's says whether anything is plated, which the
+    plate's picture never did. The Blender sheet was not touched and the cup
+    is drawn as before; the words are the cue. Not done: a pattern or mark in
+    the picture itself, and the 22px cup in a queue bubble, which has the
+    order in words on hover and in its accessible name and no other cue.
+  - *The "still needed" dot* is ringed in the tab's text colour and comes with
+    ", still needed" in the tab's name and on hover.
+  - *The focused station* has a corner mark and `aria-current`; the open tab
+    and a picked milk, syrup, topping or food are `aria-pressed`.
+  - *Reduced motion.* Under `prefers-reduced-motion: reduce` all ten
+    animations and transitions are off. The station's progress bar still
+    fills, since it is the wait. Nothing under `js/` reads the media query.
+  - *Looked at and left:* patience is a bar's width; a rating is a count of
+    stars and a number; a right or wrong serve is a toast's words and the
+    Serve button's text; a disabled button differs in lightness and is
+    `disabled`. None of these was colour alone. Left: the regular's bar is
+    copper against sage (the name badge says regular too), and nothing here
+    measures contrast.

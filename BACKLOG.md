@@ -869,7 +869,10 @@ leaves for a later arc" list — candidates, not a ranked arc. The five recipes
 that were another recipe's requirement list (#365) were reshaped on 2026-10-05
 (#878, TG-29); what that left is in the same list, and two of those four (an
 Americano completing a Ristretto's ticket, Mocha on the menu with its syrup
-not bought) were closed on 2026-10-06 (#913, TG-29). Nothing from it is in the
+not bought) were closed on 2026-10-06 (#913, TG-29). "Accessibility past the
+keyboard" was done on 2026-10-07 (#916, #917, TG-29; judged by no person), and
+"Difficulty presets" was not built: its four open choices are in the
+wishlist's "Questions for Devon". Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,

@@ -1351,6 +1351,120 @@ section("17. a recipe is ordered once its own line is on the shelf, and a shot c
   }
 }
 
+section("18. what colour said is said in words, and motion is a stylesheet's business (#916, #917)");
+{
+  const DRAW = await mod("../js/draw.js");
+  const { cupParts, cupWords, plateWords, orderWords, orderCup, customerLabel } = DRAW;
+  const read = (...p) => readFileSync(join(here, "..", ...p), "utf8").replace(/\r\n/g, "\n");
+  const uncommented = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // ---- the cup, in words ----
+  // A shop with every recipe, syrup and topping, so the sample holds every
+  // line a ticket can carry. The orders are the sim's own.
+  const { sim, state } = shop(180);
+  state.unlockedRecipes = new Set(RECIPES.map(r => r.id)); state.prestigeLevel = 5;
+  state.unlockedSyrups = new Set(CONTENT.SYRUPS.map(x => x.id));
+  state.unlockedToppings = new Set(CONTENT.TOPPINGS.map(x => x.id));
+  const orders = [];
+  for (let i = 0; i < 3000; i++) { const o = sim.generateOrderContent(PHASES[i % PHASES.length]); if (!o.isFood) orders.push(o); }
+  eq(new Set(orders.map(o => o.recipeId)).size, RECIPES.length, "the sample holds every recipe");
+  const slotOf = o => ({ customer: o, cup: newCup(), food: false, foodPlated: null });
+  const finish = (o, skip) => { const slot = slotOf(o); sim.getOrderRequirements(o).forEach((req, i) => { if (i !== skip) req.apply(slot); }); return slot; };
+
+  eq(cupWords(newCup()), "Empty cup", "an empty cup says so");
+  let unnamed = 0, lines = 0, silent = 0, same = 0, undone = 0;
+  for (const o of orders) {
+    const reqs = sim.getOrderRequirements(o);
+    const full = finish(o);
+    const words = cupWords(full.cup);
+    for (const req of reqs) { lines++; if (!words.includes(req.label)) unnamed++; }
+    reqs.forEach((req, i) => {
+      const short = finish(o, i);
+      if (req.check(short)) return;   // another line's step did this one too (a blended base is blended)
+      undone++;
+      if (cupParts(short.cup).includes(req.label) || cupParts(short.cup).some(part => part.startsWith(req.label))) silent++;
+      if (cupWords(short.cup) === words) same++;
+    });
+  }
+  ok(lines > 5000, `the finished cups carry ${lines} ticket lines`);
+  eq(unnamed, 0, "a finished cup's words hold every line of its ticket, in the ticket's own phrase");
+  ok(undone > 4000, `and ${undone} cups were left one line short`);
+  eq(silent, 0, "a cup one line short never names that line");
+  eq(same, 0, "and never reads the same as the finished cup");
+
+  // No two recipes' cups read alike: the words tell apart what #878 made distinct.
+  const byRecipe = new Map();
+  for (const r of RECIPES) {
+    const o = sim.cloneOrderContent({ isFood: false, recipeId: r.id, price: r.price, custom: { toppings: [], ice: false } });
+    byRecipe.set(r.id, cupWords(finish(o).cup));
+  }
+  eq(new Set(byRecipe.values()).size, RECIPES.length, "the 19 recipes' plain cups are 19 different sentences");
+  eq(byRecipe.get("ristretto") === byRecipe.get("americano"), false, "a Ristretto's cup and an Americano's differ, which the picture does not show (#913)");
+
+  // The things the picture says by tint alone, one at a time.
+  const cupWith = over => ({ ...newCup(), base: "espresso", shots: 1, ...over });
+  const all = (label, list) => eq(new Set(list.map(cupWords)).size, list.length, label);
+  all("each base reads differently", Object.keys(CONTENT.BASE_COLORS).map(base => cupWith({ base, shots: 0 })));
+  all("each shot count reads differently", [1, 2, 3].map(shots => cupWith({ shots })));
+  all("each milk reads differently, steamed or not", CONTENT.MILKS.flatMap(m => [cupWith({ milk: m.id }), cupWith({ milk: m.id, milkSteamed: true })]));
+  all("each syrup reads differently, and from none", [cupWith({}), ...CONTENT.SYRUPS.map(x => cupWith({ syrup: x.id }))]);
+  all("each topping reads differently, the two drizzles too", CONTENT.TOPPINGS.map(x => cupWith({ toppings: [x.id] })));
+  all("ice and a blend read differently from neither", [cupWith({}), cupWith({ ice: true }), cupWith({ blended: true })]);
+  eq(cupWords(cupWith({ shots: 2, milk: "oat", milkSteamed: true, syrup: "vanilla", toppings: ["whip"], ice: true })),
+    "2 espresso shots · Oat Milk, steamed · Vanilla syrup · Whipped Cream · Iced", "one cup, read out whole");
+
+  // The plate: the picture is the plate that was ordered, plated or not.
+  eq(plateWords(null), "Nothing plated yet", "an empty plate says so");
+  eq(plateWords("bagel"), `Plated: ${FOODS.find(f => f.id === "bagel").name}`, "a plate names what is on it");
+  all("every food reads differently", FOODS.map(f => ({ ...newCup(), base: plateWords(f.id) })));
+
+  // The queue card's hover text is the front of its accessible name.
+  const sample = orders.find(o => o.custom.syrup && o.custom.milk);
+  const cust = { ...sample, patience: 50, patienceMax: 100 };
+  ok(customerLabel(cust).includes(`waiting for ${orderWords(sample)}.`), "customerLabel says the order in orderWords' words");
+  ok(orderWords(sample).includes(CONTENT.SYRUPS.find(x => x.id === sample.custom.syrup).name + " syrup"), "which name the syrup the 22px cup shows as an 18% tint");
+  eq(orderWords({ isFood: true, foodId: "bagel" }), FOODS.find(f => f.id === "bagel").name, "and a food order by its name");
+
+  // The view writes them where the page shows them.
+  const ui = uncommented(read("js", "ui.js"));
+  const stationsSrc = uncommented(read("js", "stations.js"));
+  ok(/<div class="cupnote">\$\{ slot\.food \? plateWords\(slot\.foodPlated\) : cupWords\(slot\.cup\) \}<\/div>/.test(ui), "ui.js writes the line under every station's cup or plate");
+  ok(/div\.title = `Wants: \$\{orderWords\(c\)\}`/.test(ui), "and the order's words on the queue card");
+  ok(/idx===state\.focusedSlot\) div\.setAttribute\('aria-current', 'true'\)/.test(ui), "and marks the focused station for anything that reads it");
+  ok(/class="needdot" aria-hidden="true"><\/span><span class="sronly">, still needed<\/span>/.test(stationsSrc), "the tab's dot comes with its words");
+  eq((stationsSrc.match(/aria-pressed="\$\{/g) || []).length, 5, "the tabs and the four kinds of pick say which one is on");
+
+  // ---- reduced motion ----
+  // The rule the stylesheet has to keep: anything that declares an animation
+  // or a transition has a line under prefers-reduced-motion that turns that
+  // same property off. A new animation with no such line fails here.
+  const css = uncommented(read("index.html").match(/<style>([\s\S]*?)<\/style>/)[1]);
+  const at = css.indexOf("@media (prefers-reduced-motion: reduce){");
+  ok(at !== -1, "index.html has a prefers-reduced-motion block");
+  const end = (() => { let depth = 0; for (let i = css.indexOf("{", at); i < css.length; i++) { if (css[i] === "{") depth++; else if (css[i] === "}" && --depth === 0) return i; } return -1; })();
+  const reduced = css.slice(css.indexOf("{", at) + 1, end);
+  const outside = css.slice(0, at) + css.slice(end + 1);
+  const rules = src => [...src.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .flatMap(m => m[1].split(",").map(sel => ({ sel: sel.replace(/^@media[^{]*$/, "").trim().replace(/\s+/g, " "), body: m[2] })));
+  const off = rules(reduced);
+  const moving = rules(outside).flatMap(r => ["animation", "transition"].filter(prop => new RegExp(`(?:^|;|\\s)${prop}\\s*:`).test(r.body)).map(prop => ({ sel: r.sel, prop })));
+  eq(moving.length, 10, `the page declares ${moving.length} animations and transitions`);
+  const unanswered = moving.filter(m => !off.some(r => r.sel === m.sel && new RegExp(`${m.prop}\\s*:\\s*none`).test(r.body)));
+  eq(unanswered.map(m => `${m.sel} ${m.prop}`).join(" | "), "", "and every one is turned off under prefers-reduced-motion");
+  // An animation that ends on opacity 0 or starts from it needs its end state
+  // written out, or "off" leaves a toast invisible and a served card on screen.
+  const offBody = sel => (off.find(r => r.sel === sel) || { body: "" }).body;
+  ok(/opacity\s*:\s*1/.test(offBody(".toast")), "a toast with no animation is still visible (its own rule starts it at opacity 0)");
+  ok(/opacity\s*:\s*0\b/.test(offBody(".customer.served")), "a served customer with no walk-off is simply gone");
+  ok(/opacity\s*:\s*0\.\d/.test(offBody(".slot.serving")), "and a served station dims instead of floating away");
+  ok(/transform\s*:\s*none/.test(offBody(".customer:hover")) && /transform\s*:\s*none/.test(offBody(".customer:focus-visible")), "the queue card does not lift on hover or focus");
+  // And the shop cannot tell: nothing under js/ asks, and nothing waits on an
+  // animation to finish. A served station is cleared by the sim's clock
+  // (section 6), a toast by the page's own timer.
+  const everyJs = ["ui.js", "stations.js", "chalkboard.js", "draw.js", "sound.js", "sim.js", "content.js", "save.js"].map(f => uncommented(read("js", f))).join("\n");
+  ok(!/matchMedia|prefers-reduced-motion|animationend|transitionend|getAnimations|\.animate\s*\(/.test(everyJs), "no module under js/ reads the media query or waits on an animation, so timing and scoring are the same with it on");
+}
+
 /* ---------- report ---------- */
 
 const total = passed + failures.length;

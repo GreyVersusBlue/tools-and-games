@@ -4,11 +4,19 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     505 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-sim.mjs     540 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    230 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands, ~88 s
-node Projects/corner-and-kettle/test/drive-save.mjs    166 checks, real browser
+node Projects/corner-and-kettle/test/drive-save.mjs    197 checks, real browser
 ```
+
+`drive-save.mjs --a11y` runs its section 15 alone (31 checks, about six
+seconds, its own page and a wiped save): what the page used to say by colour
+alone, read off the DOM, and `prefers-reduced-motion` on the real stylesheet
+(#916, #917). smoke-sim's section 18 is the same two things without a browser:
+the cup in words against the sim's own ticket lines, and a rule that every
+animation or transition in `index.html` has a line turning it off under the
+media query. A new animation with no such line fails there.
 
 The cup and food sheet has its own check, `node tools/blender/validate.mjs`
 (290 checks, no Blender), which CI runs before the suites; smoke-sim's

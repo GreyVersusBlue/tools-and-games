@@ -86,23 +86,27 @@ export function orderCup(order){
   };
 }
 
+/** An order in words: the recipe and what the customer asked for in it, or
+ *  the plate. The queue card's hover text and the front of its accessible
+ *  name; the bubble's 22px cup says the milk and the syrup by tint alone. */
+export function orderWords(c){
+  if(c.isFood) return FOODS.find(f=>f.id===c.foodId).name;
+  const r = RECIPES.find(x=>x.id===c.recipeId);
+  const bits = [r.name];
+  if(c.custom.milk) bits.push(MILKS.find(m=>m.id===c.custom.milk).name);
+  if(c.custom.syrup) bits.push(SYRUPS.find(s=>s.id===c.custom.syrup).name+' syrup');
+  c.custom.toppings.forEach(t=> bits.push(TOPPINGS.find(x=>x.id===t).name));
+  if(c.custom.ice) bits.push('iced');
+  return bits.join(', ');
+}
+
 // Taking an order off the queue is the game's core verb, and it used to be a
 // click on a bare <div> with no role and no tab stop — so the one thing a
 // player has to do most was the one thing a keyboard could not do. Each
 // customer is a real button now, named with what they actually want, because
 // "customer" repeated five times is not a queue you can read out loud.
 export function customerLabel(c){
-  const what = c.isFood
-    ? FOODS.find(f=>f.id===c.foodId).name
-    : (()=>{
-        const r = RECIPES.find(x=>x.id===c.recipeId);
-        const bits = [r.name];
-        if(c.custom.milk) bits.push(MILKS.find(m=>m.id===c.custom.milk).name);
-        if(c.custom.syrup) bits.push(SYRUPS.find(s=>s.id===c.custom.syrup).name+' syrup');
-        c.custom.toppings.forEach(t=> bits.push(TOPPINGS.find(x=>x.id===t).name));
-        if(c.custom.ice) bits.push('iced');
-        return bits.join(', ');
-      })();
+  const what = orderWords(c);
   const who = c.isRegular ? `${c.regularName} (regular)` : 'Customer';
   const patience = Math.round((c.patience/c.patienceMax)*100);
   return `${who} waiting for ${what}. ${patience}% patience left. Take this order.`;
@@ -124,6 +128,40 @@ export function orderDescriptionHtml(order, reqs, slot){
     return `<li class="${done?'done':''}">${req.label}</li>`;
   }).join('');
   return `<b>${title}</b><ul class="want">${items}</ul>`;
+}
+
+/* ---------- the cup, in words ---------- */
+
+// The cup's picture says its base, its milk, its syrup and which drizzle by
+// tint alone, and its shot count not at all (#916). These are the same things
+// as words, in the ticket's own phrases where the ticket has one, so a line
+// on the ticket and the thing in the cup can be read against each other.
+const BASE_WORDS = { drip: 'Drip coffee', tea: 'Steeped tea', frappeBase: 'Blended base' };
+
+/** What is in a cup, one phrase a part, in the order the ticket lists them. */
+export function cupParts(cup){
+  const parts = [];
+  if(cup.base==='espresso') parts.push(cup.shots>0 ? `${cup.shots} espresso shot${cup.shots>1?'s':''}` : 'Espresso base');
+  else if(cup.base) parts.push(BASE_WORDS[cup.base] || cup.base);
+  if(cup.milk) parts.push(MILKS.find(m=>m.id===cup.milk).name + (cup.milkSteamed ? ', steamed' : ''));
+  if(cup.syrup) parts.push(SYRUPS.find(s=>s.id===cup.syrup).name+' syrup');
+  cup.toppings.forEach(t=> parts.push(TOPPINGS.find(x=>x.id===t).name));
+  if(cup.blended) parts.push('Blended');
+  else if(cup.ice) parts.push('Iced');
+  return parts;
+}
+
+/** The line under a station's cup or plate: what is in it, or that nothing is. */
+export function cupWords(cup){
+  const parts = cupParts(cup);
+  return parts.length ? parts.join(' · ') : 'Empty cup';
+}
+
+/** The same for a food order: the picture is always the plate that was
+ *  ordered, so only this line says whether anything is on it yet. */
+export function plateWords(foodPlated){
+  const f = FOODS.find(x=>x.id===foodPlated);
+  return f ? `Plated: ${f.name}` : 'Nothing plated yet';
 }
 
 /* ---------- the sheet ---------- */

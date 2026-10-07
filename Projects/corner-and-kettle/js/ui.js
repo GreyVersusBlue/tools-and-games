@@ -20,7 +20,7 @@ import { buildCatalog, createCornerKettleSlot, toSaveData, applyToState } from "
 // in Node with a seed.
 import * as CONTENT from "./content.js";
 import { createSim, freshState, freshDayStats } from "./sim.js";
-import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, cupSvg, foodSvg, regularMoodEmoji, SHEET_URL } from "./draw.js";
+import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, orderWords, cupWords, plateWords, cupSvg, foodSvg, regularMoodEmoji, SHEET_URL } from "./draw.js";
 import { createSound } from "./sound.js";
 import { STATION_TAB_DEFS, createStations } from "./stations.js";
 import { createChalkboard } from "./chalkboard.js";
@@ -122,6 +122,7 @@ function renderQueue(){
     if(c._servedAnim) div.className+=' served';
     if(c.isRegular) div.className += ' regular';
     div.setAttribute('aria-label', customerLabel(c));
+    div.title = `Wants: ${orderWords(c)}`;
     const pct = Math.max(0, (c.patience/c.patienceMax))*100;
     const rec = c.isRegular ? state.regulars[c.regularName] : null;
     div.innerHTML = `
@@ -143,6 +144,9 @@ function renderSlots(){
   state.slots.forEach((slot, idx)=>{
     const div = document.createElement('div');
     div.className = 'slot' + (idx===state.focusedSlot? ' focused':'') + (!slot? ' empty':'') + (slot && slot.serving? ' serving':'');
+    // Which station the keys go to is a border colour and a faint ring; the
+    // corner mark in index.html and this say it without either (#916).
+    if(idx===state.focusedSlot) div.setAttribute('aria-current', 'true');
     if(!slot){
       div.innerHTML = `Station ${idx+1}<br><small>tap a waiting customer</small>`;
       div.onclick = ()=>{ state.focusedSlot = idx; renderAll(); };
@@ -157,6 +161,7 @@ function renderSlots(){
       <button class="clearbtn" title="release order back to queue">release</button>
       <div class="ticket">${orderDescriptionHtml(order, sim.getOrderRequirements(order), slot)}</div>
       <div class="cupwrap">${ slot.food ? foodSvg(order.foodId, 64) : cupSvg(slot.cup) }</div>
+      <div class="cupnote">${ slot.food ? plateWords(slot.foodPlated) : cupWords(slot.cup) }</div>
       <div class="slotbtnrow">
         <button class="discardbtn" title="dump the cup and start over">🗑️ Dump</button>
         ${serveButtonHtml(slot)}
