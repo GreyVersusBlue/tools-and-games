@@ -26,7 +26,7 @@ const withStars = pairs => { const s = fresh(); for (const [id, n] of pairs) s.l
 
 group('the order');
 
-ok(CAMPAIGN.join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring',
+ok(CAMPAIGN.join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard',
   'the campaign is the starred levels in pack order, pack 2 after pack 1 (R13), Free Play out of it', CAMPAIGN.join());
 
 group('what is open');
@@ -77,7 +77,7 @@ group('loadout');
   const want = {
     'first-light': 'lefts+split+sensors', stem: 'lefts+split+sensors', 'four-ways': 'split+sensors', crossing: 'split',
     'two-blocks': '-', 'rush-hour': 'lefts+split+sensors', 'school-run': 'lefts+split+sensors', 'main-street': 'lefts+split+sensors', 'free-play': 'lefts+split+sensors',
-    'market-ring': '-',
+    'market-ring': '-', boulevard: '-',
   };
   const bad = Object.keys(want).filter(id => table[id] !== want[id]);
   ok(!bad.length, 'what each level takes: no arrows where the lefts are protected, no phases on a timed plan, sensors only where there are rules and no loops yet',
@@ -143,6 +143,14 @@ group('the roundabout (#594 to #599)');
   // a level built as a ring (R13) is not converted again, takes nothing from the shop, and opens on Main Street's star
   const mr = levelById('market-ring');
   ok(!convertible(mr) && loadout(mr, ['roundabout', 'lefts', 'split', 'sensors']) === mr, 'Market Ring is a ring already: the roundabout does not convert it and nothing else in the shop applies');
+  // Boulevard (R13) is a timed corridor like Two Blocks: the shop gives it nothing, and it opens on Market Ring's star
+  const bv = levelById('boulevard');
+  ok(!convertible(bv) && loadout(bv, ['roundabout', 'lefts', 'split', 'sensors']) === bv, 'Boulevard takes nothing from the shop: its plan is the lesson');
+  // a save from before the level existed: every pack 1 level starred, Market Ring played and not starred
+  const older = repair({ levels: Object.fromEntries(CAMPAIGN.slice(0, 8).map(id => [id, { stars: 3, best: 500, plays: 2 }]).concat([['market-ring', { stars: 0, best: 40, plays: 1 }]])) });
+  ok(!('boulevard' in older.levels) && !isOpen(older, 'boulevard') && nextLevel(older) === 'market-ring', 'a save from before Boulevard loads with no record for it and shows it shut until Market Ring has a star', Object.keys(older.levels).join());
+  older.levels['market-ring'].stars = 1;
+  ok(isOpen(older, 'boulevard') && nextLevel(older) === 'boulevard' && JSON.stringify(repair(older)) === JSON.stringify(older), 'one star on Market Ring opens it and points at it, and repair adds nothing to the save');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

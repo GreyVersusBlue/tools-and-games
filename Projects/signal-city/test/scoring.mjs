@@ -16,6 +16,7 @@ const { meters, score, failedEarly, starString, lessonMet, lessonName } = await 
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { repair, fresh, recordResult, totalStars, SAVE_KEY } = await load('save.js');
 const { standardPhases } = await load('signals.js');
+const { WAVE } = await load('wave.js');
 const { holdPlatoon } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
 
 let passed = 0, failed = 0;
@@ -33,7 +34,7 @@ const withAuto = (l, seconds = 22) => ({ ...l, controller: { ...l.controller, ru
 group('the level pack');
 
 {
-  ok(LEVELS.length === 10 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,free-play', 'ten levels: pack 1\'s eight, Market Ring from pack 2 (R13), then Free Play', LEVELS.map(l => l.id).join(', '));
+  ok(LEVELS.length === 11 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,market-ring,boulevard,free-play', 'eleven levels: pack 1\'s eight, Market Ring and Boulevard from pack 2 (R13), then Free Play', LEVELS.map(l => l.id).join(', '));
   const l1 = levelById('first-light');
   ok(l1.duration === 180 && l1.target > 0 && l1.waitTarget > 0 && l1.mode === 'soft', 'level 1 is 3 minutes, soft, with a target and a wait target', `${l1.target} cars, ${l1.waitTarget} s`);
   ok(Object.keys(l1.mix).every(k => ['standard', 'granny'].includes(k)), 'and only standard and granny drive it', Object.keys(l1.mix).join(', '));
@@ -68,6 +69,14 @@ group('the level pack');
   const l8 = levelById('main-street');
   ok(l8.network.lanesPerDir === 1 && l8.events.map(e => e.kind).join() === 'motorcade,procession' && l8.events[0].at === 50 && l8.events[0].leg === 'W' && l8.events[0].size === 5 && l8.events[1].at === 160 && l8.events[1].leg === 'N' && l8.events[1].size === 8, 'Main Street is one lane each way with a motorcade of 5 from W at 50 s and a procession of 8 from N at 160 s', l8.events.map(e => `${e.kind}@${e.at}`).join(' '));
   ok(l8.unlocks.includes('priority') && l8.controller.rules.length === 1 && l8.controller.rules[0].seconds === 22, 'it unlocks the corridor and cycles on a 22 s rule the player will have to hold', l8.unlocks.join());
+  const bv = levelById('boulevard');
+  const wb = new World(bv, 1);
+  ok(bv.network.nodes === 2 && bv.network.spacing === 220 && bv.network.lanesPerDir === 2 && !bv.network.leftLane && bv.controller.mode === 'timed' && bv.controller.main === 'EW', 'Boulevard (R13) is two boxes 220 m apart, two lanes each way, on a timed plan with E-W as phase 1', `${bv.network.nodes} nodes, ${bv.network.lanesPerDir} lanes`);
+  // the two-way wave is arithmetic: the trip between the boxes at a standard car's speed is half the cycle, to the second
+  const trip = bv.network.spacing / WAVE.speed, cycle = wb.controllers[0].cycleLength();
+  ok(cycle === 33 && wb.controllers[1].cycleLength() === 33 && Math.abs(cycle / 2 - trip) < 1, 'its plan is a 33 s cycle at both boxes, and the 15.7 s between them is half of it to the second', `${cycle} s, trip ${trip.toFixed(1)} s`);
+  ok(wb.controllers.every(c => c.offset === 0) && bv.unlocks.join() === 'phases,offset' && bv.controller.timing.allRed === 2.5, 'it ships both boxes on one clock, with the offset and no timing sliders (a slider on one box would give the two different cycles), on 2.5 s of all-red', `${bv.unlocks.join()}, ${bv.controller.timing.allRed} s`);
+  ok(bv.turns.T === 1 && !bv.turns.L && !bv.turns.R && Array.isArray(bv.demand) && bv.demand.length === 2 && bv.mode === 'soft', 'nobody turns on it (the lane change at the join is not safe yet, WISHLIST Known gaps), demand is per box, and it is soft', JSON.stringify(bv.turns));
   let bad = null;
   for (const l of LEVELS) { try { new World(l, 1); } catch (e) { bad = `${l.id}: ${e.message}`; } }
   ok(!bad, 'every level builds a world', bad || '');
@@ -330,7 +339,7 @@ group('the lesson decides a star (R2)');
 
 {
   const lessons = Object.fromEntries(LEVELS.filter(l => l.lesson).map(l => [l.id, l.lesson]));
-  ok(JSON.stringify(lessons) === JSON.stringify({ 'two-blocks': { kind: 'progression', stops: 0.5 }, 'rush-hour': { kind: 'ambulance' }, 'school-run': { kind: 'walks', within: 40 }, 'main-street': { kind: 'platoons' }, 'market-ring': { kind: 'meter', wait: 16 } }), 'the four levels with a default carry a lesson, and so does Market Ring (R13); levels 1 to 4 and Free Play keep the wait star', JSON.stringify(lessons));
+  ok(JSON.stringify(lessons) === JSON.stringify({ 'two-blocks': { kind: 'progression', stops: 0.5 }, 'rush-hour': { kind: 'ambulance' }, 'school-run': { kind: 'walks', within: 40 }, 'main-street': { kind: 'platoons' }, 'market-ring': { kind: 'meter', wait: 16 }, boulevard: { kind: 'progression', stops: 0.3 } }), 'the four levels with a default carry a lesson, and so do Market Ring and Boulevard (R13); levels 1 to 4 and Free Play keep the wait star', JSON.stringify(lessons));
   ok(Object.values(lessons).every(l => lessonName(l).length > 10) && lessonName(null) === '', 'every lesson has a name for the cards', Object.values(lessons).map(lessonName).join(' / '));
   // the meter (R13): Market Ring on seed 1 with the meter it offers, and with none
   const mr = levelById('market-ring');
@@ -350,6 +359,30 @@ group('the lesson decides a star (R2)');
   ok(shipped.w.stats.carried > 20 && share(shipped.w) > 0.5 && !shipped.r.lesson.met && shipped.r.stars === 1, 'Two Blocks on one clock: over half the handed-on cars stop again, and the star is not earned', `${shipped.w.stats.carriedStops} of ${shipped.w.stats.carried}, ${starString(shipped.r.stars)}`);
   ok(share(sixteen.w) <= 0.5 && sixteen.r.lesson.met && sixteen.r.stars === 3, 'at 16 s the platoon runs through and it is', `${sixteen.w.stats.carriedStops} of ${sixteen.w.stats.carried}, ${starString(sixteen.r.stars)}`);
   ok(/^\d+% of the cars one box sent on stopped again at the next, against 50%$/.test(shipped.r.reasons.at(-1)), 'the reason line gives the share', shipped.r.reasons.at(-1));
+  // Boulevard (R13): the wave both ways. Seed 2 as it ships and with the
+  // offset set to 16 s at load through World.setOffset, as the slider sets
+  // it; each direction's share is counted here off the World's `cleared`
+  // events, not read from the lesson helper
+  const bv = levelById('boulevard');
+  const runB = (offset, seed = 2) => {
+    const w = new World(bv, seed);
+    if (offset) w.setOffset(offset);
+    const dir = { east: [0, 0], west: [0, 0] }, on = new Map();
+    let read = 0;
+    for (let i = 0; i < bv.duration * 60 && !w.stats.gridlock; i++) {
+      for (const c of w.cars) if (!c.done && c.waitAtHandoff !== undefined && !on.has(c.id)) on.set(c.id, { way: c.path.entry === 'W' ? 'east' : 'west', at: c.waitAtHandoff });
+      w.step();
+      for (; read < w.events.length; read++) { const e = w.events[read], h = e.kind === 'cleared' && on.get(e.car); if (h) { dir[h.way][0]++; if (e.wait > h.at) dir[h.way][1]++; } }
+    }
+    return { w, r: score(w), east: dir.east[1] / dir.east[0], west: dir.west[1] / dir.west[0], n: dir.east[0] + dir.west[0] };
+  };
+  const b0 = runB(0), b16 = runB(16);
+  const pc = x => `${Math.round(x * 100)}%`;
+  ok(b0.w.stats.carried > 60 && b0.n === b0.w.stats.carried && share(b0.w) > 0.6 && b0.east > 0.6 && b0.west > 0.6 && !b0.r.lesson.met && b0.r.stars === 1, 'Boulevard on one clock: most of the handed-on cars stop again, both ways, and the run keeps one star', `${pc(share(b0.w))} (east ${pc(b0.east)}, west ${pc(b0.west)}), ${starString(b0.r.stars)}`);
+  ok(share(b16.w) <= 0.3 && b16.r.lesson.met && b16.r.stars === 3, 'with the east box 16 s behind the platoons run through, the lesson is met and the run three-stars', `${pc(share(b16.w))}, ${starString(b16.r.stars)}`);
+  ok(b16.east <= 0.3 && b16.west <= 0.3, 'and that is a wave both ways: the eastbound share and the westbound share are each under the bar', `east ${pc(b16.east)}, west ${pc(b16.west)}`);
+  ok(/^\d+% of the cars one box sent on stopped again at the next, against 30%$/.test(b0.r.reasons.at(-1)), 'its reason line gives the share against 30%', b0.r.reasons.at(-1));
+  ok(b0.w.stats.laneChanges === 0 && b0.w.stats.laneGiveUps === 0 && b16.w.stats.laneChanges === 0 && b16.w.stats.collisions === 0, 'nobody changes lanes on it, and the 16 s run has no collision', `${b0.w.stats.laneChanges} and ${b16.w.stats.laneChanges} lane changes, ${b16.w.stats.collisions} collisions`);
   // walks: the World's longest served call, against its own walk events
   const l4 = levelById('crossing');
   const w4 = new World(withAuto(l4), 3).run(120);
@@ -432,7 +465,7 @@ group('the save');
   ok(r.unlocks.join() === 'phases,sensors' && r.settings.sound === false && r.lastLevel === 'first-light', 'keeps string unlocks, settings and the last level', r.unlocks.join());
   const seven = fresh();
   for (const l of LEVELS) recordResult(seven, l.id, { stars: 2, points: 100 });
-  ok(Object.keys(repair(seven).levels).length === LEVELS.length && repair(seven).levels['main-street'].stars === 2 && repair(seven).levels['market-ring'].stars === 2, 'a record for every level, pack 2\'s too, comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
+  ok(Object.keys(repair(seven).levels).length === LEVELS.length && repair(seven).levels['main-street'].stars === 2 && repair(seven).levels['market-ring'].stars === 2 && repair(seven).levels.boulevard.stars === 2, 'a record for every level, pack 2\'s too, comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
   ok(JSON.stringify(repair(null)) === JSON.stringify(fresh()), 'repair of nothing is a fresh save');
   ok(JSON.stringify(repair(repair(r))) === JSON.stringify(repair(r)), 'repair is idempotent');
   const st = fresh();

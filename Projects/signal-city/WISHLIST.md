@@ -468,19 +468,55 @@ lane at a time, when the gap is long enough at its speed, the same path swap
 the zipper uses; 25 m before the line it gives up and takes its lane's turn.
 One lane each way draws exactly as before, so nothing shipped moved.
 
-### R13. More board: a second pack (in progress: Market Ring shipped, HISTORY.md #782)
+### R13. More board: a second pack (in progress: Market Ring and Boulevard shipped, HISTORY.md #782, #926)
 
 **Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
 eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
 Street. Shipped: **Market Ring** (2026-10-01), a ring whose east leg
 starves the north, its second star the entry meter (`lesson: { kind:
-'meter' }`). Candidates still open: a two-lane corridor with a green wave
-both ways (the two-way wave wants travel time at half a cycle; Two Blocks'
-43 s cycle is not 31, so a new block length; R12's lane changes are what
-make two lanes work), a grid of three where the ambulance crosses every box
-(R6), an outage on a timed corridor (its return wants `setOffset`'s shift,
-Known gaps). Each level gets R1's two tables and R2's rule from the first
-commit. One increment a session, a level or two at a time.
+'meter' }`), and **Boulevard** (2026-10-07), the two-lane corridor with a
+green wave both ways. Candidates still open: a grid of three where the
+ambulance crosses every box (R6), an outage on a timed corridor (its return
+wants `setOffset`'s shift, Known gaps). Each level gets R1's two tables and
+R2's rule from the first commit. One increment a session, a level or two at
+a time.
+
+**Boulevard** (#926) is two boxes 220 m apart, two lanes each way, 600 an
+hour each way on the boulevard and 220 on each side street, 240 s, on a
+timed plan of 13 s and 9 s with 3 s of yellow and 2.5 s of all-red. That
+is a 33 s cycle, and it is the cycle that was changed and not the block:
+220 m at a standard car's 14 m/s is 15.7 s, half of 33, so the offset
+that carries the eastbound platoon carries the westbound one. It ships on
+one clock (#639's rule), opens on Market Ring's star, unlocks the phases
+and the offset and no timing slider (a slider moves one box, and two boxes
+on different cycles have no offset), and its second star is `progression`
+at 30%. R1's two tables, six seeds, `node tools/calibrate.mjs boulevard
+--baseline --hand`:
+
+| | cleared (target 88) | average wait | stopping again | three stars | locks |
+| --- | --- | --- | --- | --- | --- |
+| nothing pressed | 93 to 135 | 7 to 8 s | 77 to 91% | 0 of 6 (one star on all six) | 0 |
+| the hand: 16 s, the best of its sweep | 110 to 128 | 3 to 7 s | 4 to 11% | 6 of 6 | 0 |
+
+The hand's sweep in stars over six seeds, 0 to 32 s by fours: 6, 6, 6, 16,
+**18**, 13, 8, 6, 6. A finer sweep (a scratch script, six seeds an offset):
+12 to 18 s each meet the lesson on all six, 19 and 20 s on four, 8 s on
+none. A player does not set the slider at load, so the same 16 s was set
+late through `World.setOffset`: 20 s and 30 s into the run it meets the
+lesson on six seeds of six, 45 s in on four, a minute in on none, because
+the cars that stopped twice before the wave count. The hint says to set it
+early. It is not hard mode: R3's test (#641) wants no input clean on six
+seeds, and no input collides on seeds 4, 5 and 6. `test/stars.mjs` pins the
+table (WAVES), `test/wave.mjs` the geometry, `test/scoring.mjs` the data
+and one seed each way, `test/browser.mjs` the card, the tab and the slider.
+
+**Nobody turns on Boulevard, and that is a workaround** (Known gaps, the
+lane change at the join). **NOBODY HAS PLAYED IT.** What a person should
+look at first: whether 30 to 45 s is long enough to read the diagram and
+find the offset on a first play, or whether the bar wants to be looser or
+the run longer; then whether a boulevard where no car turns reads as a
+street; then the hint, which says "half the cycle" and stops short of the
+number.
 
 ### R14. Endless keeps a day that was left halfway: done (HISTORY.md #783)
 
@@ -628,6 +664,28 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   should hand the box to the street that waited instead of the one it
   interrupted (Rush Hour is tuned on the second).
 
+- **A lane change in a car's first metres at the next box does not see the
+  car beside it** (found building Boulevard, #926; not fixed, an engine
+  change of its own). `_laneRoom` and `_roomFor` in `sim.js` count only
+  cars already on the next box's paths (`o.path.node !== next.node` is
+  skipped), and `_laneTick` moves a handed-on car over in the step it is
+  handed on, so a car alongside that reaches the join a few tenths of a
+  second later is not there to be seen. On a two-lane corridor with one
+  car in ten turning right and none left, 36 runs (six settings, six
+  seeds) read 9 collisions 4 to 8 m past the join; every one of the 13
+  such collisions in that batch of 48 runs was a car that had changed lanes
+  0.4 to 0.6 s before, within 0.6 s of its handoff, into a car handed on
+  0.2 to 0.6 s before the crash. With every car going straight, 114 runs
+  read none, and one lane each way has no lane to change to. No shipped
+  board had two lanes on a corridor before Boulevard (a district is one
+  lane, `grid.js`), so nothing shipped was ever exposed. The fix is in the
+  gap check: count the cars still on the previous box's exit path in the
+  target lane, by their distance to the join. Until then Boulevard ships
+  `turns: { T: 1 }`; with the fix it can take turns again, which moves its
+  calibration (lefts across two lanes cost more than rights: with one car
+  in ten turning right, four seeds of six ran clean at the wave, and two
+  with 4% turning left as well).
+
 - A grid's edge legs end in grass inside the district: a box whose
   neighbour cell is empty has a 110 m spawning leg that stops where cars
   appear. The generator fills the district compactly, so it reads as
@@ -703,6 +761,11 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   never cuts a green below the minimum green, so a big cut can take two or
   three greens to pay; the panel's note says what is still owed until it is
   paid.
+- Boulevard's wave runs both ways because its cycle is 33 s (#926). It
+  has no timing slider on purpose: `setTiming` reaches the selected box
+  alone, and a longer all-red at one box would give the two boxes
+  different cycles and no offset at all. A slider that moved both boxes
+  would let the player break and remake the half-cycle, and is not built.
 - The wave on Two Blocks runs one way at a time. 220 m at a standard car's
   14 m/s is 15.7 s, so with the east box 16 s behind a platoon released at
   the east box's green start reaches the west box 0.3 s before its green

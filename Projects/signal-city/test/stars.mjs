@@ -19,6 +19,15 @@
 // other input; and every board the roundabout converts says which meter
 // it sells, or null.
 //
+// R13's corridor rides here as well (WAVES below): Boulevard's calibration,
+// pinned so that an engine change that moves it fails by name. With no
+// input no seed locks and every seed clears the target for the one star;
+// with the offset set at load to the level's wave, through World.setOffset
+// as the slider sets it, every seed meets the lesson with each direction's
+// share under the bar, and at least five three-star; a quarter of a cycle
+// off the wave no seed meets it. Each direction is counted here, off the
+// World's `cleared` events, and has to add up to the World's own count.
+//
 // Each level runs in a child process of this file, as many at once as
 // there are cores: the six seeds are 5 to 17 s each. Exits non-zero on any
 // FAIL (#13). Imports through pathToFileURL (Windows rule).
@@ -54,6 +63,33 @@ function runLevel(level) {
   });
 }
 
+// A corridor's wave (R13): the offset each of a level's six seeds is played
+// at, set at load, and what the level's calibration says of it.
+//   at    the wave: every seed meets the lesson, each way
+//   off   a quarter of a cycle from it: no seed does
+const WAVES = { boulevard: { at: 16, off: 8 } };
+
+// One corridor level, six seeds, the offset set at load and nothing else
+// pressed. East and west are the shares of the cars handed on each way that
+// waited again.
+function runWave(level, offset) {
+  return SEEDS.map(seed => {
+    const w = new World(level, seed);
+    w.setOffset(offset);
+    // a car is dropped from `cars` on the step it leaves, so each handed-on
+    // car is remembered while it is on the map and counted at its `cleared` event
+    const dir = { east: [0, 0], west: [0, 0] }, on = new Map();
+    let read = 0;
+    for (let i = 0; i < level.duration * 60 && !w.stats.gridlock; i++) {
+      for (const c of w.cars) if (!c.done && c.waitAtHandoff !== undefined && !on.has(c.id)) on.set(c.id, { way: c.path.entry === 'W' ? 'east' : 'west', at: c.waitAtHandoff });
+      w.step();
+      for (; read < w.events.length; read++) { const e = w.events[read], h = e.kind === 'cleared' && on.get(e.car); if (h) { dir[h.way][0]++; if (e.wait > h.at) dir[h.way][1]++; } }
+    }
+    const r = score(w);
+    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: w.stats.gridlock, carried: w.stats.carried, carriedStops: w.stats.carriedStops, east: dir.east[1] / Math.max(1, dir.east[0]), west: dir.west[1] / Math.max(1, dir.west[0]), counted: dir.east[0] + dir.west[0] };
+  });
+}
+
 // One converted board as a ring, six seeds bare and six with its meter.
 function runMeter(level) {
   const ring = loadout(level, ['roundabout']);
@@ -76,6 +112,13 @@ if (meterChild > 0) {
   process.exit(0);
 }
 
+const waveChild = process.argv.indexOf('--wave');
+if (waveChild > 0) {
+  const [id, offset] = process.argv[waveChild + 1].split('@');
+  process.stdout.write(JSON.stringify(runWave(levelById(id), Number(offset))));
+  process.exit(0);
+}
+
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
   if (cond) { passed++; console.log(`  ok    ${what}${detail ? '  ' + detail : ''}`); }
@@ -85,11 +128,12 @@ const ok = (cond, what, detail = '') => {
 const starred = LEVELS.filter(l => !l.sandbox);
 const self = fileURLToPath(import.meta.url);
 const runChild = (id, flag = '--level') => new Promise((resolve, reject) => execFile(process.execPath, [self, flag, id], { maxBuffer: 1 << 20 }, (err, out, errOut) => (err ? reject(new Error(`${id}: ${errOut || err.message}`)) : resolve(JSON.parse(out)))));
-const results = new Map(), meters = new Map();
+const results = new Map(), meters = new Map(), waves = new Map();
 const metered = LEVELS.filter(l => convertible(l) && l.ring && l.ring.meter);
-const queue = metered.map(l => ['--meter', l.id]).concat(starred.map(l => ['--level', l.id]));
+const waved = Object.entries(WAVES).flatMap(([id, w]) => [`${id}@${w.at}`, `${id}@${w.off}`]);
+const queue = metered.map(l => ['--meter', l.id]).concat(starred.map(l => ['--level', l.id]), waved.map(k => ['--wave', k]));
 await Promise.all(Array.from({ length: Math.max(1, Math.min(os.cpus().length, queue.length)) }, async () => {
-  while (queue.length) { const [flag, id] = queue.shift(); (flag === '--meter' ? meters : results).set(id, await runChild(id, flag)); }
+  while (queue.length) { const [flag, id] = queue.shift(); (flag === '--meter' ? meters : flag === '--wave' ? waves : results).set(id, await runChild(id, flag)); }
 }));
 
 const cellText = r => `${r.lock ? 'LOCK' : r.cleared} ${r.wait.toFixed(0)}s ${starString(r.stars)}`;
@@ -132,6 +176,24 @@ for (const level of metered) {
   const { bare, meter } = meters.get(level.id);
   const wins = meter.filter((x, i) => x < bare[i] - 1e-9).length;
   ok(wins >= 4, `${level.name}: a meter on ${level.ring.meter.leg} at ${level.ring.meter.red} s beats the bare ring's wait on ${wins} seeds of six`, bare.map((b, i) => `${b.toFixed(1)} to ${meter[i].toFixed(1)} s`).join(' | '));
+}
+
+console.log('\na corridor with two lanes carries its wave both ways, and only on its offset (R13)');
+const twoLane = starred.filter(l => (l.network.nodes || 1) > 1 && (l.network.lanesPerDir || 1) > 1 && l.lesson && l.lesson.kind === 'progression');
+ok(twoLane.length > 0 && twoLane.every(l => WAVES[l.id]), 'every two-lane corridor with a progression lesson has its wave pinned here', twoLane.map(l => l.id).join(', '));
+const pc = x => `${Math.round(x * 100)}%`;
+for (const [id, wave] of Object.entries(WAVES)) {
+  const level = levelById(id), bar = level.lesson.stops;
+  const idle = results.get(id), on = waves.get(`${id}@${wave.at}`), off = waves.get(`${id}@${wave.off}`);
+  const share = r => r.carriedStops / Math.max(1, r.carried);
+  ok(idle.every(r => !r.lock), `${level.name}: no seed locks from the opening state with nothing pressed`, idle.map(r => (r.lock ? `seed ${r.seed} LOCK` : r.cleared)).join(' | '));
+  ok(idle.every(r => r.cleared >= level.target && r.stars === 1), `${level.name}: with nothing pressed every seed clears the target of ${level.target} and keeps exactly one star`, idle.map(cellText).join(' | '));
+  ok(idle.every(r => share(r) > 2 * bar), `${level.name}: and stops more than twice the bar's share of its handed-on cars`, idle.map(r => pc(share(r))).join(' | '));
+  ok(on.every(r => !r.lock && r.cleared >= level.target && r.carried > 40 && r.counted === r.carried && share(r) <= bar), `${level.name} at ${wave.at} s: every seed clears the target and meets the lesson (at most ${pc(bar)} stopping again)`, on.map(r => `${r.lock ? 'LOCK' : r.cleared} ${pc(share(r))}`).join(' | '));
+  ok(on.every(r => r.east <= bar && r.west <= bar), `${level.name} at ${wave.at} s: the eastbound share and the westbound share are each under the bar on every seed`, on.map(r => `${pc(r.east)}/${pc(r.west)}`).join(' | '));
+  const three = on.filter(r => r.stars === 3).length;
+  ok(three >= 5, `${level.name} at ${wave.at} s: three stars on at least five seeds of six`, `${three} of 6: ${on.map(cellText).join(' | ')}`);
+  ok(off.every(r => share(r) > bar && r.stars < 2), `${level.name} at ${wave.off} s, a quarter of a cycle off: no seed meets the lesson`, off.map(r => `${pc(share(r))} ${starString(r.stars)}`).join(' | '));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
