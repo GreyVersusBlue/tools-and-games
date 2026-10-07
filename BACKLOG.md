@@ -143,7 +143,7 @@ nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**9 ranked items remain**, and **every one of them names a model.**
+**17 ranked items remain**, and **every one of them names a model.**
 
 **The Blender block is empty** (#642, #707, 2026-09-25, Devon's instruction
 and his re-rank, which put every Blender row first). Every project's
@@ -156,18 +156,24 @@ all 14 dioramas. **Blender runs on Devon's machines only, headless
 every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** Ranks 1 to 14 shipped and their rows are gone; the
-others keep their numbers until the next renumbering. **Pick up next** is
-rank 15, the real-hardware pass on the site (½, naming Opus 5, so Opus 5.5
-under #638; gate `GPU, phone`): it needs a real GPU and a phone in a person's
-hand. Every row left wants a GPU, a phone, ears or Devon's say-so, so a
-session without one moves the row to Parked with its context (rule 2) and
-takes the next.
-Of those, rank 22 (The Fracture Cycle's fourth prong) and rank
-24 (Orbital's `gvb-save.js` adoption) are both written "only if Devon" wants
-them, and a scope Devon has not asked for is not a judgement call a session
-makes for him. Ranks 15 to 21 and 23 still want a real GPU, a real phone or a
-person listening for an hour, and their `Gate` cell says which.
+**Nothing is claimed.** Ranks 1 to 14 and 24 shipped and their rows are gone;
+the others keep their numbers until the next renumbering. **Ranks 25 to 32
+are new on 2026-10-07** (Devon, 2026-10-01: rank the work the "next ranked
+rows" loop could not see): Signal City's second pack (25), SkyWings 64's
+draw-call cuts (26) and Throneshard's six open items (27 to 32). They are
+appended in the order Devon named the projects and not placed among the older
+rows, because re-ranking the list is not a session's call; inside Throneshard
+the two Devon has answered come first, then the two with a measured number,
+then the two judged by eye. R13's Size and Model are its wishlist's; the
+other seven had none and are assigned here by Tier 1's three readings (#380).
+**Pick up next** for a session with no hardware is rank 22, The Fracture
+Cycle's fourth prong (2+, naming Fable 5.1, so Opus 5.5 under #638; no gate),
+which Devon approved on 2026-10-01; after it, ranks 25 to 31, none gated. The
+first row is still rank 15, the real-hardware pass on the site (½, naming
+Opus 5, so Opus 5.5 under #638; gate `GPU, phone`). Ranks 15 to 21, 23 and 32
+want a real GPU, a real phone or a person listening for an hour, and their
+`Gate` cell says which; a session without one moves the row to Parked with
+its context (rule 2) and takes the next.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
@@ -846,11 +852,13 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**One row is 2+: rank 22 (The Fracture Cycle's fourth prong).** The
-ten rows left (15 to 24,
-recounted off the table on 2026-10-03) are eight that
-want hardware nothing here has (15 to 21 and 23) and two written "only if
-Devon" (22 and 24); the
+**Three rows are 2+: rank 22 (The Fracture Cycle's fourth prong), rank 25
+(Signal City's second pack) and rank 28 (Throneshard's two heroes).** The
+seventeen rows left (15 to 23 and 25 to 32, recounted off the table on
+2026-10-07) are nine that want hardware nothing here has (15 to 21, 23 and
+32) and eight a container can take (22 and 25 to 31), none of them waiting
+on a yes any more: Devon approved the fourth prong on 2026-10-01 and
+answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
 2026-09-25, when 47 Blender rows went in above the thirteen. Signal City's row
 retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
@@ -860,12 +868,13 @@ same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
 the question it waited on is Devon's. Aphelion's touch/gamepad row left the
 same way the same day, for Q40 (#629).
 
-**The model split is 3 Opus 5, 4 Fable 5.1, 3 Sonnet 5.** Counted
+**The model split is 8 Opus 5, 5 Fable 5.1, 4 Sonnet 5.** Counted
 off the table rather than decremented, which is how the 15/14/9 drift was
-caught: 3 + 4 + 3 is 10, and the table has 10 rows. By size it is 5 ¼,
-4 ½ and 1 of the 2+, the same 10 (recounted 2026-10-03, after TG-13 finished). By
-gate it is 2 `GPU`, 3 `phone`, 1 `GPU, phone`, 2 `ears` and 2 with none; no row
-names Opus 5.5 or reads `blender` now that the Blender block is empty.
+caught: 8 + 5 + 4 is 17, and the table has 17 rows. By size it is 7 ¼,
+6 ½, 1 of the 1 and 3 of the 2+, the same 17 (recounted 2026-10-07, after
+ranks 25 to 32 went in and 24 shipped). By gate it is 3 `GPU`, 3 `phone`,
+1 `GPU, phone`, 2 `ears` and 8 with none; no row names Opus 5.5 or reads
+`blender` now that the Blender block is empty.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under. The split counts the names; under #638 the Opus 5.5,
@@ -1029,8 +1038,16 @@ and #222 was closed unmerged an hour of suites later.
 | 19 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
 | 20 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
 | 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 22 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
+| 25 | R13, pack 2's next levels, a level or two a session: a two-lane corridor with a green wave both ways, a grid of three the ambulance crosses, an outage on a timed corridor. Market Ring is in. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
+| 26 | Three draw-call cuts in the order they were measured: vegetation batched and only the near tier casting shadows, small static meshes merged per material, fewer terrain draws. Draws can be counted in a container; the milliseconds want Devon's Windows GPU again afterwards | `Projects/skywings64` | 1 | Opus 5 |  |  | [SkyWings 64](#skywings-64); `WISHLIST.md` item 1 |
+| 27 | Rift Wall gets a wall that stops enemies, as its tooltip says (Devon, 2026-10-05: collision, not a reworded tooltip) | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 28 | Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four abilities each, talents, a scepter upgrade, an item build, voice fallback and effects, under original names the session picks (Devon, 2026-10-05: go) | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
+| 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
 
 ## Parked — needs a person at a real device
 
@@ -1056,7 +1073,7 @@ it by hand on 2026-10-03, it works, and no tuning was asked for. Item 1, the
 real-GPU profile, was measured on 2026-10-03 (TG-17 part b, `HISTORY.md`
 #789): on an RTX 3070 Ti it costs 4.3 to 6.2 ms a frame, bound by draw calls
 rather than triangles. Its three suggested cuts are open work that needs no
-special hardware, but they are not ranked. The carved heads were rebuilt on
+special hardware, and are rank 26 since 2026-10-07. The carved heads were rebuilt on
 2026-10-05 (#895) and have been seen only in Blender renders and under
 SwiftShader; a look at them on a real GPU is worth having the next time one
 is on, and is not a row.
@@ -1446,7 +1463,8 @@ match. The merge question — this project's own headline item across two rounds
    first line of that feature on this page or `campaigns.html`: browser
    storage, `gvb-save.js`, an editable field, a script from a file. If Devon
    answers Q39 yes, record it, then narrow that check to the page that is
-   still a showcase.
+   still a showcase. **Devon answered Q39 no on 2026-10-05**: the page stays a
+   showcase and the check stays as it is.
 3. **Drift between this file and `campaigns.html` is a test now**, not a pass
    somebody has to remember to do: `tests/shared-chrome.test.mjs`, in CI
    (2026-09-13, #378, PR #284). There was none to find. If you add a `[shared]`
@@ -1486,7 +1504,8 @@ unsteerable (#383).
    orientation, a second file in `libs/`, a file named for touch or a
    gamepad, or a viewport other than the plain responsive one. If Devon
    answers Q40 yes, record it, then delete the rule the scheme needs in the
-   same edit.
+   same edit. **Devon answered Q40 never on 2026-10-05**: no scheme is built
+   and the rule stays.
 
 Two full audit rounds (fun, data-driven extension points, audio, performance,
 accessibility) plus a re-check found nothing else worth touching. Inventing a
@@ -2220,8 +2239,10 @@ passes. Don't invent busywork for a 799-line game with every ending reachable,
 a working save, no offsite requests, and no known accessibility or mobile
 issues.
 
-The list below is only for if Devon deliberately decides to expand scope —
-none of it is an obvious next step:
+The list below was only for if Devon deliberately decided to expand scope.
+**He did, for the first half of item 1: a fourth prong, approved on
+2026-10-01** (Q49, struck), and it is rank 22. Deeper side content was not
+asked for.
 
 1. **A 4th prong, or deeper side content.** The three existing prongs and the
    side-hub detour are each a complete beginning/middle/payoff shape, not
@@ -2416,7 +2437,7 @@ hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
 as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
 (#649, #650): a board-check recipe, the Rush Hour preview and the card
-copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. What is open is R13's next increment, the two-lane corridor with a green wave both ways, which R12's lane changes make possible.
+copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. What is open is R13's next increment, the two-lane corridor with a green wave both ways, which R12's lane changes make possible. **It is rank 25 since 2026-10-07**, the only one of R10 to R14 with anything left: R10 (#777, #778), R11 (#779, #780), R12 (#781) and R14 (#783) shipped whole. H1 to H4 have no row; they need a device, ears or a person and were not among the rows Devon asked for.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
@@ -2498,7 +2519,8 @@ A Pilotwings 64-style flight game Devon had built outside this repo and asked
 to move in on 2026-09-30 (#724): hang glider, gyrocopter and rocket belt, six
 scored missions with medals and unlocks, and Free Flight over one island.
 Folder `Projects/skywings64/`; `WISHLIST.md` there carries the two open
-items. Item 1 is three measured draw-call cuts, none tried. Item 2, a phone
+items. Item 1 is three measured draw-call cuts, none tried, **rank 26 since
+2026-10-07**. Item 2, a phone
 and a controller in hand, waits on a person (see Parked). The glider landing
 and the heads model were the other two: Devon flew the landing on 2026-10-03
 and it works, and `heads.glb` was rebuilt on 2026-10-05 (#895). Its suite is
@@ -2513,13 +2535,16 @@ on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
 Its suites are `node test/data.mjs` (916 checks) and `node test/browser.mjs`
 (14) from the project folder, in Site CI's matrix. Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
-Settings; `HISTORY.md` #749 to #755). Open, unranked, all Devon's to call:
+Settings; `HISTORY.md` #749 to #755). Open, and **ranked 27 to 32 since
+2026-10-07** in the order the table gives, not this list's:
 
 - Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four
   abilities each, talents, a scepter upgrade, an item build, voice fallback and
-  effects, with original names and kits. Not started.
+  effects, with original names and kits. Not started. Devon, 2026-10-05: go,
+  with no naming preference, so the session picks the names. Rank 28.
 - Rift Wall has no gameplay wall: the slabs are a picture and enemies walk
-  through, against its tooltip (#755).
+  through, against its tooltip (#755). Devon, 2026-10-05: add the collision,
+  do not reword the tooltip. Rank 27.
 - Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
   17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
 - Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
@@ -2715,7 +2740,7 @@ questions left (Q32, Q34 and Q35), none of them blocking anything ranked.
 **Struck: Q38**, "does `characters.html` get a commented-out `<template>`
 dossier block?", answered yes by locked #627 while shipping it on 2026-09-24,
 and struck from the table on the same day by the session that retired Q39's
-ranked row (#628). Q39 is still Devon's.
+ranked row (#628). Q39 was Devon's, and he answered it no on 2026-10-05.
 
 **Struck: Q1**, "is `Pathfinder/data/**` a published interface other projects
 may read?", answered **yes** by Devon on 2026-09-13, locked #350: it is public
@@ -2792,15 +2817,15 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q39 | **Should `characters.html` adopt `gvb-save.js` for in-browser editing?** Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. Its ranked row was retired here on 2026-09-24 (#628); `Pathfinder/tests/showcase.test.mjs` fails on the first line of the feature, so a yes means narrowing that check. | 4 | prompt 03, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
-| Q40 | **Does Aphelion ever need to run on a tablet or phone?** Four rounds re-derived "no evidence yet" from scratch rather than asking. The answer decides whether a touch/gamepad input scheme gets built. Nothing in the game reads a touch or a gamepad today, so on a phone without a keyboard it can be looked at and not played. Its ranked row was retired here on 2026-09-24 (#629); `Projects/aphelion/test/desktop-input.mjs` fails on the first line of the feature, so a yes means deleting the rule it trips. | 4 | prompt 04, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
+| ~~Q39~~ | ~~**Should `characters.html` adopt `gvb-save.js` for in-browser editing?**~~ Struck — answered by Devon, 2026-10-05: no. The page stays a showcase and nothing is built. Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. Its ranked row was retired here on 2026-09-24 (#628); `Pathfinder/tests/showcase.test.mjs` fails on the first line of the feature, so a yes means narrowing that check. | 4 | prompt 03, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
+| ~~Q40~~ | ~~**Does Aphelion ever need to run on a tablet or phone?**~~ Struck — answered by Devon, 2026-10-05: never. No touch or gamepad scheme is built and `test/desktop-input.mjs` keeps its rule. Four rounds re-derived "no evidence yet" from scratch rather than asking. The answer decides whether a touch/gamepad input scheme gets built. Nothing in the game reads a touch or a gamepad today, so on a phone without a keyboard it can be looked at and not played. Its ranked row was retired here on 2026-09-24 (#629); `Projects/aphelion/test/desktop-input.mjs` fails on the first line of the feature, so a yes means deleting the rule it trips. | 4 | prompt 04, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
 | ~~Q43~~ | ~~**If Golden Hour's night proves popular, should the owl hunt?**~~ Struck — answered by Devon, 2026-10-05: yes, one swoop, no kill shown, and the fireflies drift toward the fire. It was already built that way on 2026-09-24 (#633, PR #395, `js/creatures/nightpaths.js`); nothing moved. The timings are still unwatched, which is Golden Hour's item 1. | 1 | the project's notes |
 | Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
 | ~~Q46~~ | ~~**Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?**~~ Struck — answered by Devon, 2026-10-05: point it at the fall line, knowing the eyes' drift and the head-flip move with it. It was already built that way on 2026-09-24 (#634, PR #395: `const downhillAt = fallLine` in `js/dread.js`); nothing moved. | 1 | prompt 24, session 6 |
 | ~~Q47~~ | ~~**Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#920, TG-29): the cost line on the tile is copper and bold on any order cheaper than counting up, and every sink has a sentence under the floor with the count and the cheapest line. Judged by no person. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
-| Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
+| ~~Q49~~ | ~~**Does The Fracture Cycle get a 4th prong or deeper side content?**~~ Struck — answered by Devon, 2026-10-01: yes to a fourth prong, which is rank 22 and not built yet. Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | ~~Q52~~ | ~~**Does Orbital adopt `gvb-save.js` for save-bar UI consistency?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#925, TG-30): one slot on the key Orbital always had, Export and Import on the sector map, `assets/js/gvb-save.js` itself unchanged. | 2 | prompt 21, the project's notes |
 
 ### Answered, kept here so they are not re-asked
