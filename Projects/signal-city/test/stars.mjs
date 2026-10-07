@@ -28,6 +28,16 @@
 // off the wave no seed meets it. Each direction is counted here, off the
 // World's `cleared` events, and has to add up to the World's own count.
 //
+// R13's row of boxes rides here too (CROSSINGS below): Cross Town's
+// calibration (#929). With nothing pressed no seed locks, every seed clears
+// the target for the one star and nobody makes the corridor. Played by the
+// calibration's hand (tools/calibrate.mjs handStep: the corridor as the
+// ambulance arrives, the green given at each box ahead of it), every seed
+// gets the ambulance across all three boxes inside its time; with the
+// corridor and without the road ahead, some seeds do and some do not, which
+// is what makes the road ahead the level. What the ambulance did is read
+// off the World's events, not off scoring.js.
+//
 // Each level runs in a child process of this file, as many at once as
 // there are cores: the six seeds are 5 to 17 s each. Exits non-zero on any
 // FAIL (#13). Imports through pathToFileURL (Windows rule).
@@ -43,6 +53,7 @@ const { World } = await load('sim.js');
 const { score, starString } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { loadout, convertible } = await load('campaign.js');
+const { handStep } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
 
 const SEEDS = [1, 2, 3, 4, 5, 6];
 
@@ -90,6 +101,38 @@ function runWave(level, offset) {
   });
 }
 
+// A row of boxes an ambulance crosses (R13, #929): the levels whose six
+// seeds are played by the hand, in full and without the road ahead.
+const CROSSINGS = ['cross-town'];
+
+// One such level, six seeds, by the hand: `road` is the hand in full, `call`
+// the hand with the boxes ahead of the ambulance left to their rules. The
+// ambulance's trip is its `spawn` event to its `cleared` event; `handed` is
+// the boxes it was handed to and `corridors` the boxes that made its
+// corridor, the first by the call and the rest by the follow.
+function runCross(level, mode) {
+  return SEEDS.map(seed => {
+    const w = new World(level, seed);
+    let amb = null, came = null, left = null, read = 0;
+    const handed = [], corridors = [];
+    for (let i = 0; i < level.duration * 60 && !w.stats.gridlock; i++) {
+      w.step();
+      handStep(w, mode === 'road' ? {} : { ahead: false });
+      for (; read < w.events.length; read++) {
+        const e = w.events[read];
+        if (e.kind === 'spawn' && e.archetype === 'emergency') { amb = e.car; came = e.t; }
+        if (amb !== null && e.car === amb) {
+          if (e.kind === 'handoff') handed.push(e.node);
+          if (e.kind === 'priority') corridors.push(e.follow ? e.node : 0);
+          if (e.kind === 'cleared') left = e.t;
+        }
+      }
+    }
+    const r = score(w);
+    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: w.stats.gridlock, trip: left === null ? null : left - came, handed: handed.join(), corridors: corridors.join() };
+  });
+}
+
 // One converted board as a ring, six seeds bare and six with its meter.
 function runMeter(level) {
   const ring = loadout(level, ['roundabout']);
@@ -119,6 +162,13 @@ if (waveChild > 0) {
   process.exit(0);
 }
 
+const crossChild = process.argv.indexOf('--cross');
+if (crossChild > 0) {
+  const [id, mode] = process.argv[crossChild + 1].split('@');
+  process.stdout.write(JSON.stringify(runCross(levelById(id), mode)));
+  process.exit(0);
+}
+
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
   if (cond) { passed++; console.log(`  ok    ${what}${detail ? '  ' + detail : ''}`); }
@@ -128,12 +178,13 @@ const ok = (cond, what, detail = '') => {
 const starred = LEVELS.filter(l => !l.sandbox);
 const self = fileURLToPath(import.meta.url);
 const runChild = (id, flag = '--level') => new Promise((resolve, reject) => execFile(process.execPath, [self, flag, id], { maxBuffer: 1 << 20 }, (err, out, errOut) => (err ? reject(new Error(`${id}: ${errOut || err.message}`)) : resolve(JSON.parse(out)))));
-const results = new Map(), meters = new Map(), waves = new Map();
+const results = new Map(), meters = new Map(), waves = new Map(), crosses = new Map();
 const metered = LEVELS.filter(l => convertible(l) && l.ring && l.ring.meter);
 const waved = Object.entries(WAVES).flatMap(([id, w]) => [`${id}@${w.at}`, `${id}@${w.off}`]);
-const queue = metered.map(l => ['--meter', l.id]).concat(starred.map(l => ['--level', l.id]), waved.map(k => ['--wave', k]));
+const crossed = CROSSINGS.flatMap(id => [`${id}@road`, `${id}@call`]);
+const queue = metered.map(l => ['--meter', l.id]).concat(starred.map(l => ['--level', l.id]), waved.map(k => ['--wave', k]), crossed.map(k => ['--cross', k]));
 await Promise.all(Array.from({ length: Math.max(1, Math.min(os.cpus().length, queue.length)) }, async () => {
-  while (queue.length) { const [flag, id] = queue.shift(); (flag === '--meter' ? meters : flag === '--wave' ? waves : results).set(id, await runChild(id, flag)); }
+  while (queue.length) { const [flag, id] = queue.shift(); (flag === '--meter' ? meters : flag === '--wave' ? waves : flag === '--cross' ? crosses : results).set(id, await runChild(id, flag)); }
 }));
 
 const cellText = r => `${r.lock ? 'LOCK' : r.cleared} ${r.wait.toFixed(0)}s ${starString(r.stars)}`;
@@ -194,6 +245,28 @@ for (const [id, wave] of Object.entries(WAVES)) {
   const three = on.filter(r => r.stars === 3).length;
   ok(three >= 5, `${level.name} at ${wave.at} s: three stars on at least five seeds of six`, `${three} of 6: ${on.map(cellText).join(' | ')}`);
   ok(off.every(r => share(r) > bar && r.stars < 2), `${level.name} at ${wave.off} s, a quarter of a cycle off: no seed meets the lesson`, off.map(r => `${pc(share(r))} ${starString(r.stars)}`).join(' | '));
+}
+
+console.log('\na row of boxes the ambulance crosses: the corridor follows it, and the road ahead decides it (R13)');
+const rows3 = starred.filter(l => (l.network.nodes || 1) > 2 && l.lesson && l.lesson.kind === 'ambulance');
+ok(rows3.length > 0 && rows3.every(l => CROSSINGS.includes(l.id)), 'every row of three or more boxes with an ambulance lesson has its crossing pinned here', rows3.map(l => l.id).join(', '));
+for (const id of CROSSINGS) {
+  const level = levelById(id), amb = level.events.find(e => e.kind === 'ambulance'), last = (level.network.nodes || 1) - 1;
+  const idle = results.get(id), road = crosses.get(`${id}@road`), call = crosses.get(`${id}@call`);
+  const every = Array.from({ length: last }, (_, k) => k + 1).join(), all = Array.from({ length: last + 1 }, (_, k) => k).join();
+  const tripText = r => (r.trip === null ? 'never' : `${r.trip.toFixed(0)} s`);
+  const onTime = r => r.trip !== null && r.trip <= amb.within;
+  ok(idle.every(r => !r.lock), `${level.name}: no seed locks from the opening state with nothing pressed`, idle.map(r => (r.lock ? `seed ${r.seed} LOCK` : r.cleared)).join(' | '));
+  ok(idle.every(r => r.cleared >= level.target && r.stars === 1), `${level.name}: with nothing pressed every seed clears the target of ${level.target} and keeps exactly one star`, idle.map(cellText).join(' | '));
+  ok(road.every(r => !r.lock && r.cleared >= level.target), `${level.name}, the hand: no seed locks and every seed clears the target`, road.map(r => (r.lock ? 'LOCK' : r.cleared)).join(' | '));
+  ok(road.every(r => r.handed === every && r.corridors === all), `${level.name}, the hand: on every seed the ambulance is handed to every box after the first, and every box makes its corridor`, road.map(r => `${r.handed || '-'} / ${r.corridors || '-'}`).join(' | '));
+  ok(road.every(onTime), `${level.name}, the hand: the ambulance is off the map inside its ${amb.within} s on every seed`, road.map(tripText).join(' | '));
+  const three = road.filter(r => r.stars === 3).length;
+  ok(three >= 5, `${level.name}, the hand: three stars on at least five seeds of six`, `${three} of 6: ${road.map(cellText).join(' | ')}`);
+  const made = call.filter(onTime).length;
+  ok(call.every(r => r.corridors === all) && made >= 3 && made <= 5, `${level.name}, the corridor called and the road ahead left alone: the corridor follows it on every seed, and it is on time on three to five of six, not all`, `${made} of 6: ${call.map(tripText).join(' | ')}`);
+  const faster = road.filter((r, i) => r.trip !== null && (call[i].trip === null || r.trip < call[i].trip)).length;
+  ok(faster >= 5, `${level.name}: the road ahead cleared gets the ambulance across sooner on at least five seeds of six`, road.map((r, i) => `${tripText(call[i])} to ${tripText(r)}`).join(' | '));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

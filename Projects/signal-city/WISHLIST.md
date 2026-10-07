@@ -482,16 +482,16 @@ stand-in cars, because two boxes in a row cannot tell them apart: that the
 lane is the one a path leaves its box in and not the one it came in by,
 and that the leg it feeds is checked (a grid is one lane each way).
 
-### R13. More board: a second pack (in progress: Market Ring and Boulevard shipped, HISTORY.md #782, #926, #928)
+### R13. More board: a second pack (in progress: Market Ring, Boulevard and Cross Town shipped, HISTORY.md #782, #926, #928, #929)
 
 **Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
 eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
 Street. Shipped: **Market Ring** (2026-10-01), a ring whose east leg
 starves the north, its second star the entry meter (`lesson: { kind:
-'meter' }`), and **Boulevard** (2026-10-07), the two-lane corridor with a
-green wave both ways. Candidates still open: a grid of three where the
-ambulance crosses every box (R6), an outage on a timed corridor (its return
-wants `setOffset`'s shift, Known gaps). Each level gets R1's two tables and
+'meter' }`), **Boulevard** (2026-10-07), the two-lane corridor with a
+green wave both ways, and **Cross Town** (2026-10-07), three boxes in a row
+that an ambulance crosses (R6). One candidate is still open: an outage on a
+timed corridor (its return wants `setOffset`'s shift, Known gaps). Each level gets R1's two tables and
 R2's rule from the first commit. One increment a session, a level or two at
 a time.
 
@@ -545,6 +545,57 @@ did not end it: 3 s with the boulevard's green cut to 12 read one crash in
 six at 14 s and one at 16 s); then the hint, which says "half the cycle"
 and stops short of the number. Nobody turns left: a left across two lanes
 on a two-phase plan was two clean seeds of six in #926's sweep.
+
+**Cross Town** (#929) is three boxes in a row 220 m apart, one lane each
+way, every box on Rush Hour's 22 s rule with E-W as phase 1, 380 an hour
+in at each end of the street and 240 on every side street, 240 s. An
+ambulance comes in from the west of box 1 at 90 s and has 100 s to leave
+by the east of box 3. It is level data and nothing else: no engine file,
+no page file, no save field. The second star is Rush Hour's `ambulance`
+(on time, on its corridor), and what it teaches is new. The corridor
+follows the ambulance (R6), but a box is pre-empted only when the car is
+handed to it, 110 m out, and one lane means it is never faster than the
+car in front. So the call alone is not enough on every seed: the player
+picks the next box and gives its E-W phase before the ambulance gets
+there. Nobody turns (`turns: { T: 1 }`), because a car handed on draws its
+turn from the level's weights and the ambulance with it (Known gaps). It
+opens on Boulevard's star and takes lefts, split phases and sensors from
+the shop on all three boxes.
+
+R1's two tables, six seeds, `node tools/calibrate.mjs cross-town
+--baseline --hand`, and a third row, `--hand=phases,corridor`. The hand
+learned one move for this level (`clearAhead`, the part named `ahead`):
+at every box a called ambulance's through path leads on to, the phase
+carrying it is asked for once the minimum green has run and pressed again
+every 15 s. The offset sweep now leaves a row of boxes on rules alone
+(the tool died on it: no plan, no cycle to sweep).
+
+| | cleared (target 88) | average wait | ambulance on the map | on time | three stars | locks |
+| --- | --- | --- | --- | --- | --- | --- |
+| nothing pressed | 99 to 116 | 13 to 17 s | 99 to 136 s, or still there at the end on two seeds | 2 of 6, uncalled | 0 of 6 (one star on all six) | 0 |
+| the hand without the road ahead: the corridor as it arrives, the longest queue at each box | 93 to 113 | 12 to 22 s | 69, 95, 75, 105, 76, 113 s | 4 of 6 | 3 of 6 | 0 |
+| the hand in full | 97 to 119 | 13 to 21 s | 56, 61, 57, 80, 54, 76 s | 6 of 6 | 6 of 6 | 0 |
+
+100 s sits 5 s from the nearest seed on either side in the middle row (95
+and 105 s) and 20 s over the slowest seed of the last. A scratch sweep
+with the boxes left on their rule and no hand at the phases: the corridor
+called 5 s in is 75 to 116 s (four on time), called at once 70 to 116 s
+(three); with E-W asked for and held at each box ahead, 60 to 90 s called
+at once, 65 to 95 s called 5 s in, 70 to 100.1 s called 10 s in. The
+target is under the worst run of any row, so nothing pressed keeps the
+survival star, as on every lesson level since #639; it cannot earn the
+second, which needs the corridor called. Not hard mode: R3's test (#641)
+wants no input clean on six seeds, and seed 2 collides once.
+`test/stars.mjs` pins the table (CROSSINGS), `test/scoring.mjs` the data
+and seed 6 three ways, `test/campaign.mjs` the shop and the save,
+`test/browser.mjs` the card, the three boxes and the follow into box 2.
+
+**NOBODY HAS PLAYED IT.** What a person should look at first: whether a
+player finds the box picker and gets to box 2 and box 3 in time (the
+ambulance is at box 2 about 25 s after it is called), and whether the
+hint is enough to send them there; then whether 100 s reads as an
+ambulance's deadline when a clear road is 54 s and a blocked one 113;
+then a street where no car turns.
 
 ### R14. Endless keeps a day that was left halfway: done (HISTORY.md #783)
 
@@ -669,6 +720,21 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   the same before and after), so the hint's advice holds; whether the
   level should ship a shorter all-red so that the advice bites at the
   setting it ships with is Devon's, and nothing in the level was changed.
+
+- An event's `turn` is the first box's only (#929). A car handed to the
+  next box draws its turn from the level's `turns` (`_handoff`, R12), an
+  ambulance or a motorcade car like any other, so on a row of boxes a
+  scripted vehicle crosses every box only where nobody turns. Cross Town
+  ships `turns: { T: 1 }` for that reason. Keeping a scripted car's turn
+  past the first box is an engine change, and then Cross Town can take
+  turns and is calibrated again.
+
+- An ambulance that crashes is off the map, and if it was called and not
+  yet late that reads as on time on its corridor (`_ambulanceTick` asks
+  only `car.done`). Seen in a scratch run of a lighter Cross Town (300 an
+  hour, seed 6, called 10 s in, a crash 14.3 s after it came); on no seed
+  of the level as it ships. The crash costs the third star and not the
+  second. Not changed.
 
 - A district "locks" more often with every ambulance followed, and that
   is the design, not a fault in the follow (#918). Thirty seeds, eight
