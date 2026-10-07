@@ -201,6 +201,42 @@ export function describeRecipe(chain) {
   return runs.map(r => (r.n > 1 ? `${r.n}× ` : '') + STEP_TILES[r.op].label).join(', ');
 }
 
+/**
+ * Is the order's number a wrong guess at its work?
+ *
+ * Counting up from the source's 1 takes n - 1 tiles, and with only +1 and -1 on
+ * the shelf that is the cheapest line there is, so the number on the sink is
+ * the job. A doubler or a one-line merger makes a shorter line for every order
+ * from 4 up, and that is when the cost has to be the loud number (#920, Devon's
+ * answer to Q47): 231 reads as 230 tiles of work and is twelve.
+ */
+export function costStandsOut(n, plan) {
+  // An order the floor cannot build costs Infinity, which is never fewer.
+  return minCells(n, plan) < n - 1;
+}
+
+/**
+ * One standing order, as a sentence a player can read without a pointer.
+ *
+ * The page puts this under the floor for every sink, where a touchscreen can
+ * read it: the tooltip that used to be the only place the recipe was written is
+ * nothing at all without a pointer. `loud` is `costStandsOut`, and a loud line
+ * names the count the number suggests next to the one it takes.
+ */
+export function orderReadout(n, plan) {
+  const cells = minCells(n, plan);
+  const loud = costStandsOut(n, plan);
+  let text;
+  if (!Number.isFinite(cells)) text = `Order ${n}: this floor cannot build it.`;
+  else if (cells === 0) text = `Order ${n}: run a source straight into this sink.`;
+  else {
+    text = `Order ${n} takes ${cells} tile${cells === 1 ? '' : 's'}`
+         + (loud ? `, not ${n - 1}` : '')
+         + `. Cheapest line: ${describeRecipe(recipe(n, plan))}.`;
+  }
+  return { target: n, cells, loud, text };
+}
+
 /** The reachable value closest to `n`, ties going low. Used to rescue old saves. */
 export function nearestReachable(n, plan) {
   if (isReachable(n, plan)) return n;

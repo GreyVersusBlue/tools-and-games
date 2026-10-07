@@ -39,15 +39,17 @@ node Projects/integer-foundry/test/smoke-targets.mjs
 node Projects/integer-foundry/test/browser.mjs
 ```
 
-Both exit non-zero on failure. `smoke-targets.mjs` is plain Node — 151 checks
-over the reachable-range maths, the order generator, `repair`, the slot, and
+Both exit non-zero on failure. `smoke-targets.mjs` is plain Node — 175 checks
+over the reachable-range maths, the order generator, when an order's cost is
+the loud number and the sentence that says it (#920), `repair`, the slot, and
 300 seeded careers a buying order in which no standing order ever leaves its
 share of the floor (#873). It takes about 15 seconds, nearly all of it those
 careers. `browser.mjs` drives the real page through `Tools/board-check`'s
-harness — 79 checks over the vendored fonts, the save bar, autosave latency,
+harness — 90 checks over the vendored fonts, the save bar, autosave latency,
 export/import, an unfillable order being caught on load, building a line to
 whatever the sink asks for, a 290 built through three one-line mergers (#681),
-a second sink cutting an order rolled for the whole floor (#873), a save from
+a second sink cutting an order rolled for the whole floor (#873), the loud cost
+on the tile and the sentence under the floor at both sizes (#920), a save from
 the pre-`gvb-save` build, and the grid at 375x812.
 
 `npm run games integer-foundry` in `Tools/board-check` still owns "the production

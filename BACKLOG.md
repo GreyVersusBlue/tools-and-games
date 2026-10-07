@@ -2169,7 +2169,8 @@ Two things the work turned up. The first is fixed, the second had shipped:
    slot is bought. `opBudget` also allowed one tile too many on a 10x7 floor
    with three sinks (22 a line, 72 cells on 70) and is 21 there now. With x2
    or Merge + owned neither change moves any order. `smoke-targets.mjs` 119
-   to 151, `browser.mjs` 74 to 79. Q47 was not needed and is still Devon's.
+   to 151, `browser.mjs` 74 to 79. Q47 was not needed for it; Devon answered
+   it on 2026-10-05 and item 3 is the answer built.
 
 2. **The tile-cost hint. Shipped 2026-09-16, PR #335** (#531). The question was
    whether a three-digit `NEEDS` needs a cost beside it; the arithmetic says yes
@@ -2182,6 +2183,24 @@ Two things the work turned up. The first is fixed, the second had shipped:
    still carries the recipe and is still nothing at all on a touchscreen, which
    is why this went on the tile. `test/smoke-targets.mjs` 104 → 109 holds both
    halves of the range, `test/browser.mjs` 57 → 68. Nothing is open against it.
+
+3. **The cost is the loud number once the order stops being the work. Shipped
+   2026-10-07** (TG-29, #920, Q47 answered yes by Devon on 2026-10-05). Loud
+   means fewer tiles than counting up from the source's 1, which +1, -1 and
+   halving never make and a doubler or a one-line merger makes for 297 of the
+   299 orders, every one from 4. On a loud order the tile's cost line is full
+   copper and bold (9 px on a cell of 48 px or more, the 8 px it had on a
+   phone cell, whose three rows are counted to the pixel). Under the floor
+   every sink has a sentence, loud or not, because the tooltip that held the
+   recipe is nothing on a touchscreen: `Order 231 takes 12 tiles, not 230.
+   Cheapest line: 2× +1, ×2, +1, 3× ×2, +1, ×2, +1, ×2, +1.` The rule and the
+   sentence are `costStandsOut` and `orderReadout` in `js/targets.js`; the
+   page's `LOUD_COSTS` constant turns both halves off. No save field, no key.
+   `smoke-targets.mjs` 151 to 175, `browser.mjs` 79 to 90. **Nobody looked at
+   it**: no person has judged whether copper and one pixel is loud enough,
+   or whether a sentence under the grid is where a player reads. Not built:
+   the sentence does not say which sink it belongs to when two orders are the
+   same number, and the tooltip keeps its older wording (`12 fabricators`).
 
 ## The Fracture Cycle
 
@@ -2765,7 +2784,7 @@ live. Nothing in that column is a link to follow.
 | ~~Q43~~ | ~~**If Golden Hour's night proves popular, should the owl hunt?**~~ Struck — answered by Devon, 2026-10-05: yes, one swoop, no kill shown, and the fireflies drift toward the fire. It was already built that way on 2026-09-24 (#633, PR #395, `js/creatures/nightpaths.js`); nothing moved. The timings are still unwatched, which is Golden Hour's item 1. | 1 | the project's notes |
 | Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
 | ~~Q46~~ | ~~**Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?**~~ Struck — answered by Devon, 2026-10-05: point it at the fall line, knowing the eyes' drift and the head-flip move with it. It was already built that way on 2026-09-24 (#634, PR #395: `const downhillAt = fallLine` in `js/dread.js`); nothing moved. | 1 | prompt 24, session 6 |
-| Q47 | **Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?** The tooltip already explains the cheap recipe. A design question, not a bug. | 2 | prompt 14, the project's notes |
+| ~~Q47~~ | ~~**Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#920, TG-29): the cost line on the tile is copper and bold on any order cheaper than counting up, and every sink has a sentence under the floor with the count and the cheapest line. Judged by no person. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
 | Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |

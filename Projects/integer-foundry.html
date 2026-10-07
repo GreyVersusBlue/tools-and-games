@@ -163,6 +163,17 @@ body{
    sat straight through the cost line, not clipped and not readable either. The
    line-height:1 on all three is the other half of that 34 px. */
 .cell.sink.tight .icon{font-size:10px; line-height:1;}
+/* Once a doubler or a merger is owned the order's number is a wrong guess at
+   its work, and the cost is the number to read (#920). Colour and weight on
+   every cell; one more pixel only where the cell has it to give, since a phone
+   cell's three rows are already counted to the pixel above. */
+.sink-cost.loud{color:var(--copper); font-weight:700;}
+.cell.sink:not(.tight) .sink-cost.loud{font-size:9px;}
+/* The same thing in words, under the floor, one line a sink. */
+#order-costs{font-size:11px; line-height:1.5; color:var(--paper-dim); margin-top:10px;}
+#order-costs:empty{display:none;}
+#order-costs .order-cost.loud b{color:var(--copper);}
+#order-costs .order-cost b{color:var(--paper); font-weight:600;}
 .cell.blocked-flash{background:rgba(193,84,58,0.35) !important;}
 .cell.reward-flash{background:rgba(124,174,111,0.4) !important;}
 .cell.reject-flash{background:rgba(193,84,58,0.4) !important;}
@@ -269,6 +280,7 @@ footer a{color:var(--copper); text-decoration:none;}
     <div id="grid-frame">
       <div id="grid"></div>
     </div>
+    <div id="order-costs" class="mono"></div>
     <div id="palette">
       <h2>Fabricators</h2>
       <div id="tools"></div>
@@ -303,7 +315,8 @@ footer a{color:var(--copper); text-decoration:none;}
 
 <script type="module">
 import { mountSaveBar } from '../assets/js/gvb-save.js';
-import { OP_TILES, MERGE_TILES, boardPlan, minCells, recipe, describeRecipe, rollTarget, clampOrders }
+import { OP_TILES, MERGE_TILES, boardPlan, minCells, recipe, describeRecipe, rollTarget, clampOrders,
+         costStandsOut, orderReadout }
   from './integer-foundry/js/targets.js';
 import { DIRS, emptyCell, foundrySlot, makeEmptyGrid } from './integer-foundry/js/state.js';
 
@@ -582,10 +595,38 @@ function orderCost(cells, px){
   return px >= 48 ? `${cells} tile${cells === 1 ? '' : 's'}` : `${cells}t`;
 }
 
+/* The cost made loud (#920). The one switch for both halves of it: `false` puts
+   the page back to the quiet line on the tile and nothing under the floor. */
+const LOUD_COSTS = true;
+
+/* Every sink on the floor, in sink order, as a sentence under the grid: what
+   the order takes, and the cheapest line that makes it. The first clause is
+   bold and the rest is the recipe, so it is split at the first full stop.
+   Rewritten only when the words change, not on every 550 ms render. */
+let readoutKey = null;
+function renderOrderCosts(lines){
+  const box = document.getElementById('order-costs');
+  const key = lines.map(l => (l.loud ? '!' : '') + l.text).join('\n');
+  if(key === readoutKey) return;
+  readoutKey = key;
+  box.textContent = '';
+  for(const l of lines){
+    const row = document.createElement('div');
+    row.className = 'order-cost' + (l.loud ? ' loud' : '');
+    const cut = l.text.indexOf('. ') + 1;
+    const head = document.createElement('b');
+    head.textContent = cut ? l.text.slice(0, cut) : l.text;
+    row.appendChild(head);
+    if(cut) row.appendChild(document.createTextNode(l.text.slice(cut)));
+    box.appendChild(row);
+  }
+}
+
 function renderGrid(){
   const gridEl = document.getElementById('grid');
   gridEl.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
   gridEl.innerHTML = '';
+  const readout = [];
   // Lazily, and once per render rather than once per sink: boardPlan memoises on
   // the board's shape and unlock set, but countSinks still walks the grid.
   let plan = null;
@@ -622,12 +663,14 @@ function renderGrid(){
           const cost = document.createElement('div');
           cost.className = 'sink-cost';
           cost.textContent = orderCost(cells, cellPx);
+          if(LOUD_COSTS && costStandsOut(sink.target, getPlan())) cost.classList.add('loud');
           div.appendChild(cost);
           if(cellPx < 48) div.classList.add('tight');
         }
         // The order is guaranteed buildable now, so it is worth saying how. A
         // target of 11 is eleven +1 tiles and nothing on screen used to hint that.
         div.title = sink ? orderHint(sink.target, getPlan(), cells) : 'No order on this sink yet.';
+        if(sink && LOUD_COSTS) readout[cell.sinkIndex] = orderReadout(sink.target, getPlan());
         const icon = document.createElement('div');
         icon.className = 'icon'; icon.textContent = '\u25A3';
         div.appendChild(icon);
@@ -652,6 +695,7 @@ function renderGrid(){
       gridEl.appendChild(div);
     }
   }
+  renderOrderCosts(readout.filter(Boolean));
 }
 
 function onCellClick(x,y){

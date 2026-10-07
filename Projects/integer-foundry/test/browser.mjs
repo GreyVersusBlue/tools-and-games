@@ -57,6 +57,26 @@ async function setFiles(page, file, trigger) {
   await chooser.setFiles(file);
 }
 
+/** The sentences under the floor, and how the first sink's cost line is drawn (#920). */
+const readCosts = page => page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#order-costs .order-cost')];
+  const cost = document.querySelector('#grid .cell.sink .sink-cost');
+  const css = cost ? getComputedStyle(cost) : null;
+  const box = document.getElementById('order-costs');
+  const r = box ? box.getBoundingClientRect() : null;
+  return {
+    lines: rows.map(e => e.textContent.trim()),
+    loud: rows.map(e => e.classList.contains('loud')),
+    head: rows.map(e => { const b = e.querySelector('b'); return b ? b.textContent.trim() : null; }),
+    headColor: rows.map(e => { const b = e.querySelector('b'); return b ? getComputedStyle(b).color : null; }),
+    tileLoud: cost ? cost.classList.contains('loud') : null,
+    tileColor: css ? css.color : null, tileWeight: css ? css.fontWeight : null, tileSize: css ? css.fontSize : null,
+    left: r ? Math.round(r.left) : null, right: r ? Math.round(r.right) : null, height: r ? Math.round(r.height) : null,
+    winW: window.innerWidth, docW: document.documentElement.scrollWidth,
+  };
+});
+const COPPER = 'rgb(255, 122, 61)', COPPER_DIM = 'rgb(163, 78, 38)';
+
 const shot = async (page, label) =>
   page.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-${label}.png`) });
 
@@ -348,6 +368,14 @@ try {
       return el ? el.textContent.trim() : null;
     });
     t.ok(cost47 === '46 tiles', 'and says it on the tile, not only in the tooltip', String(cost47));
+    // With +1 alone the number is the work, so nothing is loud (#920): the tile's
+    // line stays dim, and the sentence under the floor has no "not N" in it.
+    const quiet = await readCosts(p);
+    t.ok(quiet.lines.length === 1 && quiet.lines[0] === 'Order 47 takes 46 tiles. Cheapest line: 46\u00D7 +1.',
+      'the floor says the same in words under the grid', quiet.lines.join(' | '));
+    t.ok(quiet.tileLoud === false && quiet.loud[0] === false && quiet.tileColor === COPPER_DIM && quiet.tileSize === '8px',
+      'and neither is loud while the order is its own cost',
+      `${quiet.tileLoud} ${quiet.loud[0]} ${quiet.tileColor} ${quiet.tileSize}`);
 
     // And no fresh roll produces one either — the same module the page runs,
     // loaded by the same browser, 2000 rolls at 400 orders filled.
@@ -401,6 +429,32 @@ try {
     t.ok(sink.cost === '12 tiles', 'and the tile says what it costs, which is twelve', String(sink.cost));
     t.ok(!sink.clipped, 'the cost line fits the cell');
     t.ok(/12 fabricators/.test(sink.title), 'the tooltip still carries the recipe', sink.title);
+
+    // Devon's answer to Q47 (#920): once x2 is owned the cost is the loud number.
+    const loud = await readCosts(p);
+    t.ok(loud.tileLoud === true && loud.tileColor === COPPER && Number(loud.tileWeight) >= 700 && loud.tileSize === '9px',
+      'the cost line on the tile is drawn loud: full copper, bold, 9 px',
+      `${loud.tileLoud} ${loud.tileColor} ${loud.tileWeight} ${loud.tileSize}`);
+    t.ok(loud.lines.length === 1 && loud.lines[0] ===
+      'Order 231 takes 12 tiles, not 230. Cheapest line: 2\u00D7 +1, \u00D72, +1, 3\u00D7 \u00D72, +1, \u00D72, +1, \u00D72, +1.',
+      'and the sentence under the floor says twelve, not 230, with the line that makes it', loud.lines.join(' | '));
+    t.ok(loud.loud[0] === true && loud.head[0] === 'Order 231 takes 12 tiles, not 230.' && loud.headColor[0] === COPPER,
+      'its first clause is the part in copper', `${loud.loud[0]} | ${loud.head[0]} | ${loud.headColor[0]}`);
+    t.ok(loud.height > 0 && loud.left >= 0 && loud.right <= loud.winW,
+      'it is on the page, inside the window', `${loud.left} to ${loud.right} of ${loud.winW}, ${loud.height} px tall`);
+    // The grid is rebuilt every 550 ms; the sentence is not, or a reader loses
+    // their place twice a second.
+    await p.evaluate(() => {
+      window.__row = document.querySelector('#order-costs .order-cost');
+      window.__cell = document.querySelector('#grid .cell.sink');
+    });
+    await wait(1300);
+    const kept = await p.evaluate(() => ({
+      same: !!window.__row && window.__row === document.querySelector('#order-costs .order-cost'),
+      gridRebuilt: !document.contains(window.__cell),
+    }));
+    t.ok(kept.same && kept.gridRebuilt, 'and it is the same node two renders later, while the grid was rebuilt',
+      `sentence kept ${kept.same}, grid rebuilt ${kept.gridRebuilt}`);
     await shot(p, 'order-cost');
   }
 
@@ -579,6 +633,11 @@ try {
     const want = Number(String(second.needs).replace('NEEDS ', ''));
     t.ok(want >= 20 && want <= 23 && second.cost === `${want - 1} tiles`,
       'the new sink asks for something inside the same share', `${second.needs}, ${second.cost}`);
+    // One sentence a sink, in sink order, and the cut order's sentence moved with it.
+    const both = await readCosts(p);
+    t.ok(both.lines.length === 2 && both.lines[0] === 'Order 23 takes 22 tiles. Cheapest line: 22\u00D7 +1.'
+      && both.lines[1] === `Order ${want} takes ${want - 1} tiles. Cheapest line: ${want - 1}\u00D7 +1.`,
+      'the floor has a sentence for each sink, first sink first', both.lines.join(' | '));
     const log = await p.evaluate(() => [...document.querySelectorAll('#log div')].map(e => e.textContent.trim()));
     t.ok(log.includes('Order 47 cut to 23: 2 sinks share the floor now.'),
       'and the log says what happened to the 47', log.slice(0, 3).join(' | '));
@@ -727,6 +786,45 @@ try {
     t.ok(/^\d+$/.test(label.text), 'the order reads as a bare number on a narrow cell', label.text);
     t.ok(!label.clipped, 'and it is not clipped');
     await shot(m, 'mobile');
+
+    // The loud line on a phone cell (#920): colour and weight only. The three
+    // rows above are counted to the pixel, so the extra pixel of size is for
+    // cells that are not `tight`, and the sentence has to wrap inside 375 px.
+    await wait(1500);
+    await m.evaluate(k => {
+      const set = localStorage.setItem.bind(localStorage);
+      const raw = JSON.parse(localStorage.getItem(k));
+      raw.unlocked.mul2 = true;
+      raw.sinks[0].target = 231;
+      raw.ordersFilled = 120;
+      localStorage.setItem = () => {};
+      set(k, JSON.stringify(raw));
+    }, KEY);
+    await m.reload({ waitUntil: 'load' });
+    await GAMES['integer-foundry'].open(m);
+    await m.evaluate(() => document.fonts.ready);
+    const phone = await readCosts(m);
+    const rows = await m.evaluate(() => {
+      const cell = document.querySelector('#grid .cell.sink');
+      if (!cell || !cell.querySelector('.sink-cost')) return null;
+      const box = sel => { const r = cell.querySelector(sel).getBoundingClientRect();
+                           return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+      const el = cell.querySelector('.sink-cost');
+      return { text: el.textContent.trim(), clipped: el.scrollWidth > el.clientWidth + 1,
+               order: box('.sink-target'), mark: box('.icon'), price: box('.sink-cost') };
+    });
+    t.ok(!!rows && rows.text === '12t' && phone.tileLoud === true && phone.tileColor === COPPER
+      && Number(phone.tileWeight) >= 700 && phone.tileSize === '8px',
+      'a loud cost on a phone cell is copper and bold at the size it had',
+      rows ? `${rows.text} ${phone.tileLoud} ${phone.tileColor} ${phone.tileWeight} ${phone.tileSize}` : 'no cost line');
+    t.ok(!!rows && !rows.clipped && rows.order.bottom <= rows.mark.top && rows.mark.bottom <= rows.price.top,
+      'still three rows and not clipped',
+      rows ? `${rows.order.top}-${rows.order.bottom} / ${rows.mark.top}-${rows.mark.bottom} / ${rows.price.top}-${rows.price.bottom}` : '');
+    t.ok(phone.lines.length === 1 && /^Order 231 takes 12 tiles, not 230\. Cheapest line: /.test(phone.lines[0])
+      && phone.left >= 0 && phone.right <= phone.winW && phone.docW <= phone.winW + 1,
+      'and the sentence wraps inside the phone, with no sideways scroll',
+      `${phone.left} to ${phone.right} of ${phone.winW}, doc ${phone.docW} | ${phone.lines.join(' | ')}`);
+    await shot(m, 'mobile-loud-cost');
     t.ok(m.__errs.length === 0, 'no errors on the phone layout', m.__errs.slice(0, 2).join(' | '));
     await m.close();
   }
