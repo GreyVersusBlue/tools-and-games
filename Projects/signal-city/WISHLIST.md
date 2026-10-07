@@ -468,6 +468,20 @@ lane at a time, when the gap is long enough at its speed, the same path swap
 the zipper uses; 25 m before the line it gives up and takes its lane's turn.
 One lane each way draws exactly as before, so nothing shipped moved.
 
+The gap it asks for counts the cars across the join (#927): a car changes
+lanes in its first step at the next box, when the car alongside it in the
+lane it wants is still on the last box's exit path, a metre short of being
+handed on. `_alongLane` in `sim.js` places such a car in the new lane's
+own arc length, by its distance short of the join, for `_laneRoom` and for
+the zipper's `_roomFor`. Before, the change was made onto that car: on a
+two-lane corridor with one car in ten turning right, seed 4 sideswiped 6
+to 8 m past the join at 178.5 s (`test/sim.mjs` keeps that street and
+that seed). A join is still a place to change lanes; a car waits for the
+gap as it does anywhere on the straight. Not guarded by a run, only by
+stand-in cars, because two boxes in a row cannot tell them apart: that the
+lane is the one a path leaves its box in and not the one it came in by,
+and that the leg it feeds is checked (a grid is one lane each way).
+
 ### R13. More board: a second pack (in progress: Market Ring and Boulevard shipped, HISTORY.md #782, #926)
 
 **Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
@@ -663,28 +677,6 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   should count a trip's waiting against 120 s, and whether a corridor
   should hand the box to the street that waited instead of the one it
   interrupted (Rush Hour is tuned on the second).
-
-- **A lane change in a car's first metres at the next box does not see the
-  car beside it** (found building Boulevard, #926; not fixed, an engine
-  change of its own). `_laneRoom` and `_roomFor` in `sim.js` count only
-  cars already on the next box's paths (`o.path.node !== next.node` is
-  skipped), and `_laneTick` moves a handed-on car over in the step it is
-  handed on, so a car alongside that reaches the join a few tenths of a
-  second later is not there to be seen. On a two-lane corridor with one
-  car in ten turning right and none left, 36 runs (six settings, six
-  seeds) read 9 collisions 4 to 8 m past the join; every one of the 13
-  such collisions in that batch of 48 runs was a car that had changed lanes
-  0.4 to 0.6 s before, within 0.6 s of its handoff, into a car handed on
-  0.2 to 0.6 s before the crash. With every car going straight, 114 runs
-  read none, and one lane each way has no lane to change to. No shipped
-  board had two lanes on a corridor before Boulevard (a district is one
-  lane, `grid.js`), so nothing shipped was ever exposed. The fix is in the
-  gap check: count the cars still on the previous box's exit path in the
-  target lane, by their distance to the join. Until then Boulevard ships
-  `turns: { T: 1 }`; with the fix it can take turns again, which moves its
-  calibration (lefts across two lanes cost more than rights: with one car
-  in ten turning right, four seeds of six ran clean at the wave, and two
-  with 4% turning left as well).
 
 - A grid's edge legs end in grass inside the district: a box whose
   neighbour cell is empty has a 110 m spawning leg that stops where cars

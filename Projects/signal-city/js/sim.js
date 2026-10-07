@@ -510,15 +510,32 @@ export class World {
     }
   }
 
+  // Where `o` is along `next`'s lane, in next's own arc length, or null when
+  // it is not in that lane's line: a car on the lane's approach reads by its
+  // own s (every path from one lane shares that geometry), and a car the
+  // box before has not handed on yet reads by how far it still is from the
+  // join, which is leaderOf's frame the other way round. The second half is
+  // what a gap check was missing: a car changes lanes in its first step
+  // past the join, when the car alongside it is still on the last box's
+  // exit path and a few tenths of a second from being handed on beside it.
+  _alongLane(o, next) {
+    const q = o.path;
+    if (q.node === next.node) return q.entry === next.entry && q.lane === next.lane && o.rear <= q.boxEnter ? o.s : null;
+    const link = q.link;
+    return link && link.node === next.node && link.entry === next.entry && q.exitLane === next.lane ? o.s - q.length + link.atS : null;
+  }
+
   // Room to change into `next` at speed: LANE_AHEAD metres plus LANE_HEAD
   // seconds of my speed (and of the speed I am closing at) to the car
   // ahead, and the same of its speed to the car behind.
   _laneRoom(car, next) {
     for (const o of this.cars) {
       if (o === car || o.done) continue;
-      if (o.path.node !== next.node || o.path.entry !== next.entry || o.path.lane !== next.lane || o.rear > o.path.boxEnter) continue;
-      if (o.s > car.s) { if (o.rear - car.front < LANE_AHEAD + LANE_HEAD * car.v + LANE_HEAD * Math.max(0, car.v - o.v)) return false; }
-      else if (car.rear - o.front < LANE_AHEAD + LANE_HEAD * o.v + LANE_HEAD * Math.max(0, o.v - car.v)) return false;
+      const at = this._alongLane(o, next);
+      if (at === null) continue;
+      const shift = at - o.s;   // 0 on next's own approach
+      if (at > car.s) { if (o.rear + shift - car.front < LANE_AHEAD + LANE_HEAD * car.v + LANE_HEAD * Math.max(0, car.v - o.v)) return false; }
+      else if (car.rear - (o.front + shift) < LANE_AHEAD + LANE_HEAD * o.v + LANE_HEAD * Math.max(0, o.v - car.v)) return false;
     }
     return true;
   }
@@ -526,9 +543,11 @@ export class World {
   _roomFor(car, next) {
     for (const o of this.cars) {
       if (o === car || o.done) continue;
-      if (o.path.node !== next.node || o.path.entry !== next.entry || o.path.lane !== next.lane || o.rear > o.path.boxEnter) continue;
-      if (o.s > car.s) { if (o.rear - car.front < MERGE_AHEAD) return false; }
-      else { const closing = Math.max(0, o.v - car.v); if (car.rear - o.front < MERGE_BEHIND + 0.4 * o.v + 1.2 * closing) return false; }
+      const at = this._alongLane(o, next);
+      if (at === null) continue;
+      const shift = at - o.s;
+      if (at > car.s) { if (o.rear + shift - car.front < MERGE_AHEAD) return false; }
+      else { const closing = Math.max(0, o.v - car.v); if (car.rear - (o.front + shift) < MERGE_BEHIND + 0.4 * o.v + 1.2 * closing) return false; }
     }
     return true;
   }
