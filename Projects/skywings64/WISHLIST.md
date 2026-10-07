@@ -2,27 +2,48 @@
 
 A Pilotwings 64-style flight game in three.js r160: hang glider, gyrocopter and rocket belt, six
 scored missions and Free Flight over one island. `CONTRACT.md` has the module interfaces, URL
-parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (77 checks, about a
+parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (82 checks, about a
 minute and a half, Tools/board-check's harness); its first 35 are `test/assets.mjs`, which reads
 `assets/models/` in Node alone and can be run by itself, and its last 3 hold a frame's draw calls to
 `test/draws.json` from the first three of `test/draws.mjs`'s nine views (`node test/draws.mjs` runs
-all nine, about three minutes).
+all nine, about three minutes). `node test/browser.mjs --models` runs the model, herd and terrain
+checks alone in half a minute.
 
-Both items below are open. Item 1 was measured on a real GPU on 2026-10-03 and the first of its three
-cuts shipped on 2026-10-07, counted in draws and not yet timed; nothing else here has
+Both items below are open. Item 1 was measured on a real GPU on 2026-10-03 and all three of its
+cuts shipped on 2026-10-07, counted in draws and not yet timed, so what is open in it is Devon's
+timing run and the smaller cuts it lists; nothing else here has
 been seen on a real GPU, and that includes the carved heads, rebuilt on 2026-10-05 and judged from Blender
 renders and SwiftShader captures (`screenshots/heads_near.jpg`, `heads_far.jpg`; `HISTORY.md` #895).
 The glider's landing is not here any more: Devon flew it by hand on 2026-10-03, it works, and no
 tuning was asked for.
 
-## 1. Draw-call cuts (one of three made; measured on a real GPU before, not after)
+## 1. Draw-call cuts (all three made; measured on a real GPU before, not after)
 
-**Devon: re-run `tools/gpu-profile.mjs` on the Windows GPU to see the milliseconds.** Cut 1 below
-took 116 to 281 draws out of a frame, counted under software GL. At the 4.7 to 5.8 µs a draw this
-section measured, that would be 0.5 to 1.6 ms, but nothing here has timed it, and the cut also draws
-more triangles (below), which cost nothing on the 3070 Ti and have not been tried anywhere slower.
+**Devon: re-run `node tools/gpu-profile.mjs` on the Windows GPU to see the milliseconds, and look at
+whether the extra triangles matter on a weaker card.** The three cuts below took 182 to 460 draws
+out of a frame, counted under software GL: a frame is 204 to 352 draws where it was 386 to 745. At
+the 4.7 to 5.8 µs a draw this section measured, that would be 0.9 to 2.7 ms of a 4.3 to 6.2 ms
+frame, but nothing here has timed it. Cut 1 also draws 0.05 to 1.42 M more triangles a frame, which
+cost nothing on the 3070 Ti and have not been tried anywhere slower; cuts 2 and 3 move triangles by
+under 7 thousand.
+
+One frame from each of `test/draws.mjs`'s nine views, Rotor Rally at quality high, 960x540:
+
+| View | Before any cut | After cut 1 | After cut 2 | After cut 3 | Saved in all |
+| --- | --- | --- | --- | --- | --- |
+| Pad | 527 | 337 | 316 | 264 | 263 |
+| Castle | 449 | 291 | 260 | 216 | 233 |
+| Heads | 386 | 246 | 240 | 204 | 182 |
+| Lighthouse | 732 | 595 | 493 | 352 | 380 |
+| Mountain | 419 | 303 | 272 | 222 | 197 |
+| Windmills | 687 | 451 | 384 | 291 | 396 |
+| Cabins | 734 | 467 | 403 | 299 | 435 |
+| Runway | 745 | 464 | 381 | 285 | 460 |
+| Bridge | 524 | 342 | 297 | 220 | 304 |
 
 ### Cut 1, shipped 2026-10-07: vegetation batched, only the near tier casts (`HISTORY.md` #930)
+
+Its table's "after" column is the frame before cuts 2 and 3.
 
 Each kind and tier of vegetation is one InstancedMesh across every 320 m cell that tier is on in: 20
 batches (three trees in two tiers, bushes near and far, three rock shapes in three, the impostors,
@@ -68,9 +89,85 @@ What it cost, and what it did not do:
   far down the slope. Every one is at least 260 m from the camera. The replay camera on the results
   screen can sit that far from the aircraft; nobody has looked at a replay for it.
 
-### Cuts 2 and 3, not made
+### Cut 2, shipped 2026-10-07: copies of a GLB are herds, flags one mesh a place (`HISTORY.md` #931)
 
-Neither was started: cut 2 could not be made whole in the session that made cut 1.
+This section used to call it "small static meshes merged per material". There was nothing to merge:
+every GLB primitive has a material of its own (a sailing boat is six), and what is static was one
+mesh per material already. What was costing draws was copies: seven sailing boats were 42 draws.
+`src/world/herd.js` draws the copies of one GLB as one InstancedMesh per primitive: 7 sailing boats,
+3 motor boats, 6 balloons, 4 windmills and the 11 cabins (instanced before, but drawn whole wherever
+any cabin's sphere reached). The copies stay in the scene graph, hidden, and are still what the
+boats' holders and the windmills' blade pivots move; before each render the herd packs their world
+matrices. It culls per copy with three's own test, so nothing that was culled is drawn: a copy's
+primitive is packed when its bounding sphere meets the camera's frustum or the sun's shadow box, and
+the herd casts only while one is in the box. The 21 flags and windsocks are 7 meshes, one a place.
+
+| View | Draws | Saved | Statics, scene | Statics, shadow | Triangles |
+| --- | --- | --- | --- | --- | --- |
+| Pad | 337 to 316 | 21 | 84 to 71 | 29 to 21 | -3,860 |
+| Castle | 291 to 260 | 31 | 79 to 56 | 20 to 12 | -4,936 |
+| Heads | 246 to 240 | 6 | 43 to 37 | 21 to 21 | -4,224 |
+| Lighthouse | 595 to 493 | 102 | 258 to 156 | 6 to 6 | 0 |
+| Mountain | 303 to 272 | 31 | 79 to 55 | 19 to 12 | -5,256 |
+| Windmills | 451 to 384 | 67 | 155 to 95 | 34 to 27 | -1,280 |
+| Cabins | 467 to 403 | 64 | 174 to 110 | 18 to 18 | -1,344 |
+| Runway | 464 to 381 | 83 | 170 to 97 | 27 to 17 | -2,784 |
+| Bridge | 342 to 297 | 45 | 97 to 59 | 12 to 5 | -5,256 |
+
+- **Triangles fell**, by up to 5,256 a frame: the cabins are no longer drawn where none is in view.
+- **Geometry memory** rose 0.02 MB (the instance matrices): 21.10-22.24 MB to 21.12-22.26 MB.
+- **The picture.** Castle, mountain and bridge are identical to the byte. The worst is the windmills
+  view: 759 of 518,400 pixels changed at all and 63 by more than 8 of 255 (most one channel moved, 56),
+  every one of them on the two windmills, which is 11 pixels over the 0.01 % `--compare` allows by
+  default. Zoomed crops show the same windmill: the changes are speckle in the masonry pattern and a
+  row of pixels at a shadow's edge. The masonry shader works its brick joints out from the screen
+  derivative of a world position near 500 m, so the last bit of a float moves a joint, and an
+  instanced vertex reaches the screen by a different product of the same matrices. Pad 132 changed
+  (6 over the threshold), heads 8 (3), lighthouse 69 (9), cabins 116 (22), runway 323 (41).
+- **Not looked at by a person** on a real GPU, and not in motion: blades turning, boats under way.
+
+### Cut 3, shipped 2026-10-07: far terrain is one mesh a square (`HISTORY.md` #932)
+
+The terrain is 16x16 chunks at four levels of detail and was a mesh per chunk. The chunks of one
+1 km square (4x4) that are at LOD 2 or 3 (280 or 90 triangles each) are one mesh now, rebuilt on the
+update in which one of them changes tier; a chunk at LOD 0 or 1 is still its own mesh. A square
+casts shadows only while the sun's shadow box reaches one of its merged chunks, tested per chunk.
+
+| View | Draws | Saved | Terrain, scene | Terrain, shadow | Triangles | Geometry MB |
+| --- | --- | --- | --- | --- | --- | --- |
+| Pad | 316 to 264 | 52 | 80 to 28 | 10 to 10 | +5,010 | 21.15 to 22.31 |
+| Castle | 260 to 216 | 44 | 71 to 27 | 10 to 10 | +5,010 | 21.99 to 23.21 |
+| Heads | 240 to 204 | 36 | 60 to 24 | 11 to 11 | +2,680 | 21.12 to 22.20 |
+| Lighthouse | 493 to 352 | 141 | 181 to 40 | 10 to 10 | +3,690 | 21.33 to 22.29 |
+| Mountain | 272 to 222 | 50 | 82 to 32 | 14 to 14 | +4,460 | 21.93 to 23.18 |
+| Windmills | 384 to 291 | 93 | 127 to 34 | 10 to 10 | +3,150 | 22.14 to 23.28 |
+| Cabins | 403 to 299 | 104 | 142 to 38 | 11 to 11 | +5,400 | 22.08 to 23.15 |
+| Runway | 381 to 285 | 96 | 132 to 36 | 10 to 10 | +6,150 | 22.26 to 23.41 |
+| Bridge | 297 to 220 | 77 | 112 to 35 | 10 to 10 | +2,870 | 21.80 to 22.78 |
+
+- **Triangles rose by 2,680 to 6,150 a frame** (0.1 to 0.4 % of a frame): a square is culled as one
+  box, so the far chunks of a square half in view are all drawn. Against 36 to 141 draws.
+- **Geometry memory rose 0.96 to 1.25 MB.** The figure counts the arrays the page holds: each far
+  chunk's own geometry is kept as the source its square is copied from. On the GPU the merged copy
+  stands where the chunk's own buffer did, since a hidden chunk's far geometry is never uploaded.
+- **The picture.** Against cut 2's captures: pad and castle identical to the byte; the most pixels
+  changed at all is 103 of 518,400 (lighthouse), none of them by more than 8 of 255; the most over
+  that threshold is 4 (runway), 1 over the bridge, most one channel moved 16. The triangles are the
+  same triangles: what moves is which of two coincident skirts wins where chunks meet.
+- A square's 16 chunks are at most 2,640 vertices, so its index stays 16-bit.
+
+### What is left
+
+Nothing of the three. Smaller, from the lighthouse view's 156 static draws, none started:
+- **Chimney smoke: 44 sprites, a material each, a draw each** wherever the cabins are in the frustum
+  at any distance (45 of the lighthouse view's draws with the lamp's glow). One instanced quad per
+  cabin cluster would be 4. It is transparent, so the order it is drawn in against the sea and the
+  boats' wakes has to be kept: that wants a person's eye on the result, not a pixel count.
+- **Wakes and burner flames, 18**: one geometry and one material each kind, transparent, same caution.
+- **The seven cars on the bridge** (a geometry each, one material) and the 6 pad and landing decals.
+- `lighthouse.glb` is 10 draws and `castle.glb` 7, one copy each: fewer means baking their materials
+  into one, which is a change to the models and the masonry shader, not to the scene.
+- If the triangles of cut 1 matter on a weaker card: sectors for the mid-tier vegetation batches.
 
 **The measurement of 2026-10-03, before any cut.**
 
@@ -111,8 +208,8 @@ draws and 1.53 M triangles, post 18.
 - Small static meshes: `landmarks/props` 89, `landmarks/Mesh` 24, `landmarks/Sprite` 16, the windmill
   GLB 20, and scene-level groups 47. That is about 200 draws for under 40 k triangles.
 
-**The two cuts left, in order**, each priced at 4.7 to 5.8 µs a draw. Counts are after cut 1, from
-`test/draws.json`; `node test/draws.mjs` prints the owners behind each bucket.
+**The two cuts as this section proposed them after cut 1** (both made since, above; kept for what
+they got wrong: cut 2 found nothing to merge per material). Counts are after cut 1.
 2. **Small static meshes merged per material.** `statics` is 43 to 258 scene draws and 6 to 34
    shadow draws (258 over the lighthouse: `landmarks/props` 100, `Sprite` 45, the windmill GLB 40,
    loose `Mesh` 39, the lighthouse GLB 10). `vendor/addons/utils/BufferGeometryUtils.js` is already
@@ -125,8 +222,8 @@ draws and 1.53 M triangles, post 18.
    per chunk whatever its LOD (`terrain.js`). Merge the chunks at the farthest LOD into a few larger
    meshes, rebuilt when a chunk changes tier. Terrain's shadow draws are already 10 to 14.
 
-Both would move `test/draws.json`: record it again with `node test/draws.mjs --write` in the same
-commit, and compare captures with `--shots` before and `--compare` after.
+Any further cut moves `test/draws.json`: record it again with `node test/draws.mjs --write` in the
+same commit, and compare captures with `--shots` before and `--compare` after.
 
 Not worth cutting on this evidence: triangles, render resolution, and texture size (127 MB, none over
 2048 px).
