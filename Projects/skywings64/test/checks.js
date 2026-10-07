@@ -80,6 +80,35 @@
       ok(two.every((n) => n === 2) && off.every((d) => d < 3) && Math.hypot(e[12] - e[28], e[14] - e[30]) > 50,
         'two windmills in view: every primitive is packed twice, where those two mills stand', { packed: two, metresOff: off.map((d) => +d.toFixed(2)) });
 
+      // ---- terrain (#932): chunks at a far level of detail are merged into their square's mesh.
+      // Read from the triangles, not from a count: the 250 m cells the squares' ground triangles
+      // (skirts and unfilled index slots left out) fall in must be the cells whose own chunk is hidden.
+      q.sim(0.5, null);
+      const T = W.meshes.terrain.children, cellOf = (x, z) => Math.floor((x + 2000) / 250) + 16 * Math.floor((z + 2000) / 250);
+      const own = T.filter((m) => m.name !== 'far'), far = T.filter((m) => m.name === 'far' && m.visible);
+      const hidden = new Set(own.filter((m) => !m.visible).map((m) => { m.geometry.computeBoundingSphere(); const c = m.geometry.boundingSphere.center; return cellOf(c.x, c.z); }));
+      const covered = new Set();
+      for (const m of far) {
+        const p = m.geometry.attributes.position, ix = m.geometry.index;
+        for (let i = 0; i < ix.count; i += 3) {
+          const a = ix.getX(i), b = ix.getX(i + 1), c = ix.getX(i + 2), ax = p.getX(a), az = p.getZ(a), bx = p.getX(b), bz = p.getZ(b), cx = p.getX(c), cz = p.getZ(c);
+          if (Math.abs((bx - ax) * (cz - az) - (cx - ax) * (bz - az)) > 1e-6) covered.add(cellOf((ax + bx + cx) / 3, (az + bz + cz) / 3));
+        }
+      }
+      const holes = [...hidden].filter((k) => !covered.has(k)), twice = [...covered].filter((k) => !hidden.has(k));
+      ok(own.length === 256 && hidden.size > 0 && hidden.size < 256 && holes.length === 0 && twice.length === 0,
+        'terrain: every chunk is drawn once, in its own mesh or in its square\'s', { chunks: own.length, merged: hidden.size, squares: far.length, holes, twice });
+
+      // A square casts only while the sun's shadow box reaches one of its merged chunks. The box
+      // follows the aircraft, so park it over the merged chunk farthest from the camera and render.
+      const squares = T.filter((m) => m.name === 'far'), flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+      const spot = own.filter((m) => !m.visible).map((m) => m.geometry.boundingSphere.center).sort((a, b) => flat(b, cam.position) - flat(a, cam.position))[0];
+      g.vehicle.position.set(spot.x, spot.y + 50, spot.z); sw.render(1 / 60);
+      const under = squares[(cellOf(spot.x, spot.z) >> 6) * 4 + ((cellOf(spot.x, spot.z) & 15) >> 2)];
+      const away = squares.filter((m) => m.visible).sort((a, b) => flat(b.geometry.boundingSphere.center, spot) - flat(a.geometry.boundingSphere.center, spot))[0];
+      ok(under.visible && under.castShadow === true && away !== under && away.castShadow === false,
+        'terrain: the square under the shadow box casts, the one across the map does not', { under: under.castShadow, away: away.castShadow, metresApart: Math.round(flat(away.geometry.boundingSphere.center, spot)) });
+
       if (window.__swOnly === 'models') return out;                  // test/browser.mjs --models
 
       // ---- courses: every mission builds, and every ring can be flown through

@@ -1,5 +1,6 @@
 // SkyWings 64 - terrain: noise utils, geometry builder, layout constants, heightfield mesh.
 import * as THREE from 'three';
+import { eachRender } from './herd.js';
 
 export const HALF = 2000, CELL = 5, N = 800, NV = 801, SEA_DEPTH = 38;
 
@@ -405,6 +406,19 @@ export function createTerrain(seed = 1337) {
   const material = createTerrainMaterial(Q);
   const group = new THREE.Group();
   group.name = 'terrain';
+  // Far tiers are merged (HISTORY.md #932). A chunk at LOD 2 or 3 is 280 or 90 triangles and was a
+  // draw of its own, 60 to 181 of them a frame. The chunks of one square (SQ x SQ chunks, 1 km a
+  // side) that are at a far tier are one mesh, rebuilt on the update in which one of them changes
+  // tier; a chunk at LOD 0 or 1 is still its own mesh. A square is culled as one box.
+  const SQ = 4, FAR = 2, SN = CH / SQ, EMPTY = new THREE.BufferGeometry();
+  const squares = [];
+  for (let k = 0; k < SN * SN; k++) {
+    const q = { chunks: [], far: [], dirty: true, mesh: new THREE.Mesh(EMPTY, material) };
+    q.mesh.name = 'far'; q.mesh.matrixAutoUpdate = false; q.mesh.receiveShadow = true; q.mesh.visible = false;
+    // castShadow is ours to set (below), not render/index.js's scan's: true until the first render says otherwise
+    q.mesh.castShadow = true; q.mesh.userData.noCast = true;
+    group.add(q.mesh); squares.push(q);
+  }
   const chunks = [];
   for (let cj = 0; cj < CH; cj++) for (let ci = 0; ci < CH; ci++) {
     const c = { ci, cj, cx: -HALF + (ci + 0.5) * CWORLD, cz: -HALF + (cj + 0.5) * CWORLD, geos: [null, null, null, null], lod: 3 };
@@ -412,9 +426,46 @@ export function createTerrain(seed = 1337) {
     c.mesh = new THREE.Mesh(c.geos[3], material);
     c.mesh.matrixAutoUpdate = false;
     c.mesh.receiveShadow = true;
+    c.mesh.visible = false;                  // every chunk starts at LOD 3, in its square's mesh
+    c.square = squares[((cj / SQ) | 0) * SN + ((ci / SQ) | 0)]; c.square.chunks.push(c);
     group.add(c.mesh);
     chunks.push(c);
   }
+  function setLod(c, lod) {
+    if (c.lod >= FAR || lod >= FAR) c.square.dirty = true;
+    c.lod = lod; c.mesh.geometry = c.geos[lod]; c.mesh.visible = lod < FAR;
+  }
+  function mergeSquare(q) {
+    q.dirty = false;
+    q.far = q.chunks.filter((c) => c.lod >= FAR);
+    if (q.mesh.geometry !== EMPTY) q.mesh.geometry.dispose();
+    q.mesh.geometry = EMPTY; q.mesh.visible = q.far.length > 0;
+    if (!q.far.length) return;
+    let nv = 0, ni = 0;
+    for (const c of q.far) { const g = c.geos[c.lod]; nv += g.attributes.position.count; ni += g.index.count; }
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), tint = new Float32Array(nv * 3), ao = new Float32Array(nv), idx = new Uint16Array(ni);
+    let v = 0, i = 0;
+    for (const c of q.far) {          // chunk vertices are in world space already, so this is a copy
+      const g = c.geos[c.lod], a = g.attributes, src = g.index.array;
+      pos.set(a.position.array, v * 3); nor.set(a.normal.array, v * 3); tint.set(a.tint.array, v * 3); ao.set(a.aoA.array, v);
+      for (let k = 0; k < src.length; k++) idx[i + k] = src[k] + v;
+      v += a.position.count; i += src.length;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('tint', new THREE.BufferAttribute(tint, 3));
+    g.setAttribute('aoA', new THREE.BufferAttribute(ao, 1));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeBoundingSphere();
+    q.mesh.geometry = g;
+  }
+  for (const q of squares) mergeSquare(q);
+  // A square casts while one of its far chunks would have: three's own test of that chunk's sphere
+  // against the sun's shadow box. Tested on the square's own sphere it would cast from most of the island.
+  eachRender((camera, box) => {
+    for (const q of squares) if (q.far.length) q.mesh.castShadow = box !== null && q.far.some((c) => box.intersectsSphere(c.geos[c.lod].boundingSphere));
+  });
   const lodOf = (d) => (d < LOD_DIST[0] ? 0 : d < LOD_DIST[1] ? 1 : d < LOD_DIST[2] ? 2 : 3);
   let firstUpdate = true;
   function update(cam, budget = 2) {
@@ -427,16 +478,17 @@ export function createTerrain(seed = 1337) {
       const d = Math.sqrt(dx * dx + dz * dz + dy * dy);
       const want = Math.min(Math.max(c.lod, lodOf(d * 0.92)), lodOf(d * 1.08));
       if (want === c.lod) continue;
-      if (c.geos[want]) { c.lod = want; c.mesh.geometry = c.geos[want]; } else cands.push([d, c, want]);
+      if (c.geos[want]) setLod(c, want); else cands.push([d, c, want]);
     }
     if (cands.length) {
       cands.sort((a, b) => a[0] - b[0]);
       for (let k = 0; k < cands.length && budget > 0; k++, budget--) {
         const [, c, want] = cands[k];
         c.geos[want] = buildGeo(c.ci, c.cj, want);
-        c.lod = want; c.mesh.geometry = c.geos[want];
+        setLod(c, want);
       }
     }
+    for (const q of squares) if (q.dirty) mergeSquare(q);
   }
 
   return { group, heightAt, slopeAt, surfaceAt, isBlocked, H, flats, peak, noise: nA, update, material };

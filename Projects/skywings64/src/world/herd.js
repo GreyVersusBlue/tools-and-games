@@ -9,7 +9,7 @@
 // three drew nothing, and a copy the camera cannot see costs no triangles unless its shadow can.
 import * as THREE from 'three';
 
-const herds = [];
+const herds = [], watchers = [];
 const _frustum = new THREE.Frustum(), _pm = new THREE.Matrix4(), _sphere = new THREE.Sphere(), _mid = new THREE.Vector3();
 let hooked = null, sun = null;
 
@@ -18,6 +18,7 @@ function pack(scene, camera) {
   if (!sun || !sun.parent) sun = scene.children.find((o) => o.isDirectionalLight && o.name === 'sw-sun') || null;
   let box = null;
   if (sun && sun.castShadow) { sun.shadow.updateMatrices(sun); box = sun.shadow.getFrustum(); }   // what the shadow pass is about to cull with
+  for (const fn of watchers) fn(camera, box);
   for (const h of herds) for (const p of h.parts) {
     const im = p.mesh, arr = im.instanceMatrix.array, bs = p.geometry.boundingSphere;
     let n = 0, cast = false;
@@ -34,13 +35,17 @@ function pack(scene, camera) {
   }
 }
 
+// fn(camera, box) runs before each render of the scene, once it is attached; box is the frustum the
+// sun's shadow pass will cull with, or null while the sun casts none. The terrain's far squares use it.
+export function eachRender(fn) { watchers.push(fn); }
+
 // Finds the scene above `obj` and packs before each of its renders. False until `obj` is in a scene.
 export function attachHerds(obj) {
   let s = obj; while (s.parent) s = s.parent;
   if (!s.isScene) return false;
   if (hooked === s) return true;
   const prev = s.onBeforeRender;
-  s.onBeforeRender = function (renderer, scene, camera, target) { prev.call(this, renderer, scene, camera, target); if (herds.length) pack(scene, camera); };
+  s.onBeforeRender = function (renderer, scene, camera, target) { prev.call(this, renderer, scene, camera, target); pack(scene, camera); };
   hooked = s;
   return true;
 }
