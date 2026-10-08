@@ -8,7 +8,9 @@ import { count } from '../components/words.js';
 import { acceptFinding, unacceptFinding } from '../../engine/actions.js';
 import { SEVERITIES } from '../../engine/findings.js';
 import { floorOfRoom } from '../../engine/schema.js';
-import { fill, apply, button, notYet, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
+import { fill, apply, button, keyed, notYet, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
+import { printButtons } from '../prints/index.js';
+import { printButton } from '../components/print-preview.js';
 
 const WHAT = 'Checks look through the schedule for problems, warnings and notes: two groups in one room, a teacher in two places, a walk too long for the passing time.';
 const FIX_REASON = 'Suggestions are not built yet';
@@ -172,7 +174,7 @@ export function mount(env) {
       h('p', { class: 'sch-lead' }, WHAT + ' Each finding says what was noticed and offers to show it.'),
       h('div', { class: 'sch-toolbar' },
         countsLine(model),
-        notYet('Print the checks report', 'The printed report is not built yet', 'print')),
+        keyed(printButton(ctx, printButtons.find((entry) => entry.output === 'checks')), 'checks-print')),
       model.walksKnown ? null : h('p', { class: 'sch-hint', data: { note: 'walks' } }, 'Walking times are worked out by the movement view. Until it has run, the two checks on walks that do not fit the passing time find nothing.'),
       model.findings.length === 0
         ? h('p', { class: 'sch-checks__none' }, 'Nothing found. ' + count(project.groups.length, 'group') + ' checked on every day type.')
