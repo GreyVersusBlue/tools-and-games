@@ -39,10 +39,18 @@ const GROUPS = {
     'engine/store.test.mjs',
     'engine/sample-school.test.mjs',
     'engine/csv.test.mjs',
-    'engine/presets.test.mjs',
-    'ui/progress.test.mjs',
-    'ui/helpers.test.mjs',
-    'a11y/contrast.mjs',
+    'engine/building.test.mjs', // SV2-04
+    'engine/graph.test.mjs', // SV2-04
+    'engine/building-checks.test.mjs', // SV2-04
+    'engine/teacher-day.test.mjs', // SV2-09
+    'engine/checks.test.mjs', // SV2-09
+    'engine/import-groups.test.mjs', // SV2-10
+    'engine/exports.test.mjs', // SV2-10
+    'engine/project-file.test.mjs', // SV2-10
+    'engine/presets.test.mjs', // SV2-02
+    'ui/progress.test.mjs', // SV2-02
+    'ui/helpers.test.mjs', // SV2-02
+    'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
     'browser/shell.mjs',

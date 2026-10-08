@@ -1,7 +1,21 @@
 # Schedule Visualizer 2: formats
 
-Every format the tool reads or writes is described here, with its version.
-So far that is one: the project object.
+Every format the tool reads or writes is described here, with its version:
+
+| Format | Name in the file | Version | Section |
+|---|---|---|---|
+| The project object | `sv2-project` | 1 | The project object |
+| The project file | `sv2-project` | 1 | The project file |
+| The building file | `sv2-building` | 1 | The building file |
+| The schedule file | `sv2-schedule` | 1 | The schedule file |
+| The groups CSV and its template | none (CSV) | | The groups CSV |
+| The other CSV exports | none (CSV) | | The CSV exports |
+
+Every JSON file says its `format` and `version` first. A file whose version
+is larger than the tool knows is refused whole, with: "This file was made by a
+newer Schedule Visualizer 2. Open it at greyversusblue.com, or ask for a file
+saved in format 1." A file is checked in full before anything in the project
+changes, and a file that fails changes nothing.
 
 ## The project object
 
@@ -279,3 +293,268 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 
 Routes, loads, crowd results, findings, teacher days and every count on
 screen are worked out from the project and never stored in it.
+
+## The project file
+
+Format name `sv2-project`, version **1**. Written and read by
+`engine/project-file.js` (`writeProjectFile`, `readProjectFile`).
+
+The project file is the project object above as JSON, in UTF-8, indented by
+two spaces, with one line ending after the closing brace. It differs from the
+object on the device in one way: traced images.
+
+**Traced images.** The device keeps a traced image's bytes apart from the
+project. In the file each floor's `image` carries two more fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `data` | text | The image's bytes as base64. They are the bytes the device holds, never encoded again, so export, import, export gives the same file. |
+| `type` | text | The image type, for example `image/png`. |
+
+A floor whose image is not on the exporting device has neither field, and its
+`missing` is `true`. On import the two fields are taken out of the project and
+handed to the device's image store; an image that arrived without bytes is
+marked `missing` and keeps its position.
+
+**Reading.** In this order, and the first that fails is the refusal:
+
+1. The text is JSON. Otherwise: "This file could not be read. It is not a
+   Schedule Visualizer 2 file, or it was cut short when it was saved or sent.
+   Export it again and choose the new file."
+2. It is an object whose `format` is `sv2-project`, or has no `format` and has
+   a `building`, `groups` or `dayTypes` (a file from before files carried a
+   version). A building, schedule or published file is refused by name:
+   "This is a building file, not a project file. It holds a building and no
+   schedule: import it as a building." Anything else: "This is not a Schedule
+   Visualizer 2 project. Choose a project file the tool exported."
+3. Its `version` is a whole number, 0 or more (missing reads as 0). A version
+   above 1 is refused with the newer-version sentence at the top of this page.
+4. Image bytes are base64 text with an image type.
+5. A version 1 file passes every rule on this page as it stands. Nothing is
+   repaired on the way in: a file that breaks a rule is refused with "This
+   project file cannot be imported, and nothing was changed. N things in it
+   are not as the format says. The first: `path`: what is wrong."
+6. An older file is migrated one version at a time, then filled in as on
+   every load (a missing field takes its default), and then has to pass every
+   rule.
+
+The reader returns the project, the images, the notes of anything it filled
+in, the version the file was in, and a count of what it holds. Putting it in
+place of the current project is one undo entry (`actions.replaceProject`).
+
+Round trip: writing a project, reading the file and writing again gives the
+same file, byte for byte. `test/fixtures/formats/project-v1.json` is a file
+written at version 1, kept to prove that later versions of the tool still
+read it and write it back unchanged.
+
+## The building file
+
+Format name `sv2-building`, version **1**. `writeBuildingFile`,
+`readBuildingFile`, `applyBuilding` in `engine/project-file.js`; the import is
+`actions.importBuilding`, one undo entry.
+
+```
+{
+  "format": "sv2-building",
+  "version": 1,
+  "building": Building,
+  "subjects": Subject[]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `building` | The Building of the project object, whole: floors, connections, zones. Traced images carry `data` and `type` as in the project file. |
+| `subjects` | The subjects the building's rooms use, as in the project object, in the school's order. May be left out. |
+
+A room in the file keeps its `teacherIds` and `subjectId` as they were in the
+project it came from.
+
+**Reading.** JSON; `format` is `sv2-building` (another of the tool's files is
+refused by name); `version` is 1 (larger is refused as newer); then the
+building has to pass every Building rule of the project object, and each
+subject every Subject rule. A room's `teacherIds` is a list of ids, each once.
+
+**Importing** replaces the project's building. The rules:
+
+- The file's ids are kept. An id in the file that this project already uses
+  for something that is not part of its building is a refusal.
+- A room keeps the teachers it lists who are teachers of this project, by id.
+  The others are left off. Every teacher's `roomIds` is worked out again from
+  the rooms.
+- A room's subject is matched to this project's subjects by id, then by code
+  and name together (without regard to capitals or surrounding spaces). A
+  subject the project does not have is added at the end of the list, with the
+  file's id when that id is free. A room whose subject is not in the file's
+  `subjects` and not in the project has no subject.
+- A schedule slot stays with its room when the new building has a room with
+  the same id. Otherwise it goes to the room with the same number. Otherwise
+  it becomes `{ room: null, roomText: <the old room's number> }` and reads
+  "not in the building".
+- A slot that already holds only a number (`room: null`, text in `roomText`)
+  is given the room with that number, if the new building has one.
+- Accepted findings and the scenario are left as they are.
+
+## The schedule file
+
+Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
+`readScheduleFile`, `applySchedule` in `engine/project-file.js`; the import is
+`actions.importSchedule`, one undo entry.
+
+```
+{
+  "format": "sv2-schedule",
+  "version": 1,
+  "settings": { "periods", "periodWord", "defaultPassingSeconds", "defaultHeadCount" },
+  "rooms": [{ "id", "number" }],
+  "subjects": Subject[],
+  "teachers": Teacher[],
+  "groups": Group[],
+  "dayTypes": DayType[]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `settings` | Those four settings of the project object, all present. |
+| `rooms` | The room index: one entry for each room a slot or a teacher names, with the number it had when the file was written. It is how the file is read against a building whose rooms have other ids. |
+| `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
+
+**Reading.** JSON; `format` is `sv2-schedule`; `version` is 1; every field
+above is present; then the settings, subjects, teachers, groups and day types
+have to pass every rule of the project object, with `rooms` standing for the
+building: a slot or a teacher naming a room that is not in the index is a
+refusal, and so are two index entries with one number.
+
+**Importing** brings the schedule into the project. The rules:
+
+- **Subjects, teachers and day types** are matched to this project's by id,
+  then by name (a subject by code and name together), without regard to
+  capitals or surrounding spaces. One that matches is left exactly as it is
+  here. One that does not is added, with the file's id when that id is free.
+- **Rooms** are matched by id, then by the number in the index. A slot whose
+  room is not in this building becomes `{ room: null, roomText: <the number> }`.
+  A new teacher's room that is not in this building is left off the teacher.
+- **Groups** are matched by name. A group that is not here is added, with the
+  file's id when that id is free. A clash is answered once for all or group
+  by group: **skip** (the default), **overwrite** (the group here keeps its
+  id and its name as typed here, and takes the file's grade, head count,
+  colour and days) or **rename** (imported as a new group under " (2)",
+  " (3)", or a name the user gives).
+- **The school day.** A file with more periods than the project makes the
+  project's day that long; nothing is cut. A file with fewer leaves the later
+  periods as they are.
+- **Bells.** A bell time already entered here is never changed. One that is
+  empty here is filled from the file.
+- **Day types.** A day type that has its own bells or rooms in the file and
+  is the same as the first day type here becomes its own copy here. A new
+  day type that is its own copy gives every group already here a copy of its
+  first day.
+- **Settings.** The period word and the two defaults are taken from the file
+  only when the user asks (`takeSettings`).
+
+Importing a project's own schedule file changes nothing and makes no undo
+entry.
+
+## The groups CSV
+
+Read by `engine/import-groups.js`, written by `engine/exports.js`
+(`groupsRows`, `templateRows`). CSV as `engine/csv.js` reads and writes it:
+quoted fields, line breaks inside quotes, a byte-order mark, any line ending.
+
+**What the tool writes.** UTF-8 with a byte-order mark, CRLF line endings.
+The first row is the header:
+
+```
+Group,Grade,Head count,Colour,A Day Period 1,…,A Day Period 8,B Day Period 1,…,B Day Period 8
+```
+
+The period columns are every period of every day type, in order, each named
+with the day type's name and the period's name in the school's word. With one
+day type the day type's name is left out ("Period 1"). The **template** is
+this header and no other row. The **groups export** adds one row per group:
+name, grade, head count (empty for none), colour as `#rrggbb`, then the room
+number of each period. A slot whose room is not in the building has its text.
+A day type that is the same as the first has empty cells.
+
+A cell holds the room's number and nothing else. The label and the teachers
+named for a slot are not in the CSV; the schedule file carries them.
+
+**What the tool reads.** The first row is the header. The tool guesses what
+each column is and the user can change every guess before importing:
+
+| Role | Headers guessed |
+|---|---|
+| name | Group, Group name, Groups, Name, Section, Class |
+| grade | Grade, Grade level, Year, Year group |
+| head count | Head count, Headcount, Students, Number of students, Size, Enrollment, Enrolment |
+| colour | Colour, Color |
+| day type | Day type, Daytype, Day |
+| period | The period's name in the school's word ("Period 3", "Mod 3", "Block C", "3rd Hour"), or Period / Per / Pd / P / Mod / Hour / Hr / Block / Blk with a number, or a number alone. A letter alone only in a school that letters its periods. A day type's name before or after it ("A Day Period 1", "Period 1 (B Day)") puts the column in that day type. |
+| ignore | Anything else. A column the tool does not understand is never taken for a period. A period past the end of the school day is ignored and says so. |
+
+Headers are compared without regard to capitals or spaces at the ends.
+
+More than one day type can be given three ways:
+
+- **Wide.** The period columns once per day type, as the tool writes them. A
+  second run of the same period headers with no day type named is the second
+  day type.
+- **A day column.** One row per group per day type, with the day type's name
+  in the day column. An empty day cell is the first day type.
+- **Blocks.** A row holding nothing but a day type's name starts that day
+  type's rows. A repeat of the header row is passed over.
+
+Rules for the rows:
+
+- A row with no group name is skipped, and the preview says so. So is a row
+  naming a day type the project does not have, and a second row giving the
+  same group the same day type.
+- A group's name and grade are kept exactly as typed.
+- A head count is a whole number from 1 to 999; a colour is `#rrggbb`,
+  `rrggbb` or `#rgb`. One that cannot be read is left out with a warning, and
+  the row is still imported.
+- A room number is matched to the building without regard to capitals or
+  surrounding spaces. A number that is not in the building is kept as typed
+  in `roomText`, and the preview lists it with the rows that name it.
+- An empty cell in a period column is an empty period.
+- Rooms for a day type that is the same as the first make it its own copy
+  (every group already here gets a copy of its first day). Empty cells for
+  such a day type leave it as it is.
+
+Name clashes with groups already in the project are answered as for the
+schedule file: skip (the default), overwrite, or rename. On overwrite a slot
+whose room does not change is left alone; one whose room changes keeps its
+label and loses the teachers that were named for the old room. Periods and
+day types the file has no column for are untouched.
+
+The import is `actions.importGroups`, one undo entry.
+
+## The CSV exports
+
+All written by `engine/exports.js`: UTF-8 with a byte-order mark, CRLF, the
+header first. Every name is written exactly as typed. With the `guard` option
+on, a cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a
+single quote in front so a spreadsheet does not run it; the option is off by
+default because it changes such a name, and a guarded file does not read back
+to the same names.
+
+| Export | Columns | Rows |
+|---|---|---|
+| Groups | as "The groups CSV" | one per group |
+| Groups template | the same header | none |
+| Teachers | Teacher, Subject code, Subject, Rooms, Notes | one per teacher. Rooms are room numbers joined by "; ". |
+| Rooms | Room, Floor, Teachers, Subject code, Subject, Wing, Capacity, Shared space, Doors | one per room, floor by floor. Teachers are names joined by "; ", main teacher first. Shared space is Yes or No. Doors is a count. |
+| Teachers by period | Teacher, Day type, then one column per period | one per teacher per day type. A cell is "group · room number" for each group taught, joined by "; ", or "Planning". |
+| Rooms by period | Room, Floor, Day type, then one column per period | one per room per day type. A cell is the groups in the room, joined by "; ". Room numbers that slots name and the building does not have come last, with "not in the building" as the floor. |
+
+The two grids come from the same rules as every screen: a teacher's day from
+`engine/teacher-day.js`, and a day type that is the same as the first reads
+the same as the first.
+
+**File names.** Every export is named `<school> - <what> - <date>.<ext>`,
+for example `Marrowby Middle School (sample) - groups - 2026-09-01.csv`. The
+school is the school name with the characters a file system refuses left out
+(`< > : " / \ | ? *` and control characters), or "Schedule Visualizer 2" when
+the project has no school name. The date is the day of the export on the
+user's device.
