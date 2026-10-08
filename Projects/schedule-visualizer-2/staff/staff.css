@@ -756,6 +756,263 @@ h1:focus {
   touch-action: pan-y;
 }
 
+/* ---------- SV2-21: the teacher, group, room, building map and staffing pages ----------
+
+    .facts                 the header card's lines: a dl of div > dt + dd
+    .days  .day            the day cards; side by side where there is room
+    .row__period  .row__time  .row__mark   inside .row__when
+    .part  .part__title    a titled part of a page
+    .actions               a row of buttons
+    .scroll                a table that may be wider than a phone
+    .table--figures  .table__under
+    .legend  .chip--none   the subject colours of a floor
+    .plain                 a list that links nowhere
+    .mapbox  .map__bar  .map__tabs  .map__zooms  .map__zoom
+    .map__plan  .map__pulse  .map__says  .map__which  .map__ask
+    .split__side           the map's place in .split
+*/
+
+.facts {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.facts > div {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: var(--s-3);
+  align-items: baseline;
+}
+
+.facts dt {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.day .row {
+  grid-template-columns: 6.75rem minmax(0, 1fr) auto;
+}
+
+.day .row__what,
+.day .row__where {
+  overflow-wrap: break-word;      /* a name breaks between its words before it breaks inside one */
+}
+
+.row__when {
+  display: flex;
+  flex-direction: column;
+}
+
+.row__period {
+  color: var(--ink);
+  font-weight: var(--w-semibold);
+}
+
+.row__mark {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  letter-spacing: 0.08em;
+  line-height: var(--lh-xs);
+  text-transform: uppercase;
+}
+
+.part > * + * {
+  margin-top: var(--s-2);
+}
+
+.part__title {
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  letter-spacing: 0.08em;
+  line-height: var(--lh-xs);
+  text-transform: uppercase;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scroll {
+  overflow-x: auto;
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.scroll:focus-visible {
+  outline-offset: 0;
+}
+
+.scroll .table th,
+.scroll .table td {
+  overflow-wrap: break-word;      /* a table wider than the phone scrolls; a word is not cut */
+}
+
+.scroll .table tr:last-child > * {
+  border-bottom: 0;
+}
+
+.table tbody th,
+.table tfoot th {
+  color: var(--ink);
+}
+
+.table tfoot > tr > * {
+  border-top: var(--border-width) solid var(--line-strong);
+  font-weight: var(--w-semibold);
+}
+
+.table__under {
+  display: block;
+  margin-top: var(--s-1);
+  font-weight: var(--w-regular);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.chip--none::before {
+  border: var(--border-width) solid var(--line-strong);
+  background: var(--room-default);
+}
+
+.plain {
+  padding: var(--s-2) var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.plain > li + li {
+  margin-top: var(--s-1);
+}
+
+.tab[aria-current="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+.mapbox > * + * {
+  margin-top: var(--s-2);
+}
+
+.map__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+
+.map__tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.map__zooms {
+  flex: none;
+  display: flex;
+  gap: var(--s-1);
+  margin-left: auto;
+}
+
+.map__zoom {
+  min-width: var(--tap);
+  padding: 0 var(--s-2);
+}
+
+.map__zoom[aria-disabled="true"] {
+  border-color: var(--line);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.map__plan {
+  display: block;
+  width: 100%;
+}
+
+.map__pulse {
+  position: absolute;
+  border: 3px solid var(--accent);
+  border-radius: var(--r-1);
+  opacity: 0;
+  pointer-events: none;
+  animation: map-pulse 900ms var(--ease) 1;
+}
+
+@keyframes map-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map__pulse {
+    animation: none;        /* the ring drawn on the plan stays */
+  }
+}
+
+.map__says {
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.map__which:empty {
+  display: none;
+}
+
+.map__which > * + * {
+  margin-top: var(--s-2);
+}
+
+.map__ask {
+  font-weight: var(--w-semibold);
+}
+
+.split > * + * {
+  margin-top: var(--s-4);
+}
+
+@media (min-width: 900px) {
+  .split > * {
+    grid-column: 1;
+    margin-top: 0;
+  }
+
+  .split > .split__side {
+    grid-column: 2;
+    position: sticky;
+    top: var(--s-4);
+  }
+}
+
+/* ---------- end of SV2-21 ---------- */
+
 /* ---------- The screens that are not a schedule: unlock, refusals ---------- */
 
 .gate {
