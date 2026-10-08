@@ -97,6 +97,15 @@ function facts(project) {
   return 'So far: ' + list([count(f.floors, 'floor'), count(f.rooms, 'room'), count(f.otherSpaces, 'other space'), count(f.connections, 'stairs connection'), count(f.exits, 'exit')]) + '.';
 }
 
+// The inspector's tabs as the shell's folded strip shows them: an icon each.
+const INSPECTOR_TABS = [
+  { id: 'properties', label: 'Properties', icon: 'properties' },
+  { id: 'rooms', label: 'Rooms', icon: 'rooms' },
+  { id: 'floor', label: 'Floor', icon: 'floor' },
+  { id: 'checks', label: 'Checks', icon: 'checks' },
+  { id: 'exits', label: 'Exits', icon: 'exits' },
+];
+
 // How many problems the building checks found on each floor.
 function problemsByFloor(project) {
   const byFloor = new Map();
@@ -221,8 +230,12 @@ export const section = {
         memory.view = view.save();
         memory.fitBox = fitted ? fitBox : null;
       }
-      // the shell's messages sit just above the status line, not over it
-      document.documentElement.style.setProperty('--bld-status-height', Math.round(status.element.getBoundingClientRect().height) + 'px');
+      // the shell's messages sit just above the status line and beside the
+      // strip, not over either (the strip is beside the plan only when wide)
+      const stripBox = strip.element.getBoundingClientRect();
+      const statusBox = status.element.getBoundingClientRect();
+      document.documentElement.style.setProperty('--bld-status-height', Math.round(statusBox.height) + 'px');
+      document.documentElement.style.setProperty('--bld-strip-width', (stripBox.bottom <= stage.getBoundingClientRect().top + 1 ? 0 : Math.round(stripBox.width)) + 'px');
       schedule();
     }
 
@@ -322,6 +335,7 @@ export const section = {
       select(ids) {
         selection = ids.filter((id) => floor.spaces.some((space) => space.id === id));
         inspector.update(project, floor, selection);
+        nameInspector();
         schedule();
       },
       setPreview(next) {
@@ -632,11 +646,21 @@ export const section = {
 
     const observer = new ResizeObserver(() => measure());
 
+    // The plan is drawn in the theme's colours, read when it is drawn (the
+    // renderer keeps them by theme). So a change of theme is a reason to
+    // draw: the switch in the top bar, and the device going dark or light
+    // while the planner follows it.
+    const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const onTheme = () => schedule();
+    const themeWatch = new MutationObserver(onTheme);
+
     // The shell calls this when the section leaves the page.
     function unmount() {
       document.removeEventListener('keydown', onDocumentKey);
       document.removeEventListener('keyup', onDocumentKeyUp);
       window.removeEventListener('blur', onWindowBlur);
+      darkQuery.removeEventListener('change', onTheme);
+      themeWatch.disconnect();
       observer.disconnect();
       input.detach();
       cursor.detach();
@@ -647,6 +671,8 @@ export const section = {
     document.addEventListener('keydown', onDocumentKey);
     document.addEventListener('keyup', onDocumentKeyUp);
     window.addEventListener('blur', onWindowBlur);
+    darkQuery.addEventListener('change', onTheme);
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     observer.observe(stage);
 
     // ------------------------------------------------------------ the selection
@@ -756,7 +782,14 @@ export const section = {
       sizeButton.textContent = 'Change the size (' + floor.name + ' is ' + floor.width + ' × ' + floor.height + ' squares)';
       canvas.setAttribute('aria-label', 'The floor plan of ' + floor.name);
       placeCard();
+      nameInspector();
       schedule();
+    }
+
+    // The inspector's handle says what it is about: the selection, or the floor.
+    function nameInspector() {
+      const chosen = selection.length === 1 ? nameOf(floor.spaces.find((space) => space.id === selection[0])) : selection.length > 1 ? countOf(selection.length, 'space') + ' selected' : floor.name;
+      ctx.setInspectorTitle('Inspector: ' + chosen);
     }
 
     // A project this section has not shown before: its first floor, the
@@ -802,7 +835,7 @@ export const section = {
     // ------------------------------------------------------------ go
 
     ctx.setSecondRow(tabs.element);
-    ctx.setInspector(inspector.element);
+    ctx.setInspector(inspector.element, { title: 'Inspector', tabs: INSPECTOR_TABS, openTab: (id) => inspector.showTab(id) });
 
     const addressed = parseBuildingRest(rest);
     const named = project.building.floors.find((each) => each.id === addressed.floorId);
@@ -845,6 +878,9 @@ export const section = {
         return true;
       },
       unmount,
+      // The section's surface is the plan: the keyboard goes there, with the
+      // cursor showing, when the shell is asked for the surface.
+      focus: () => toSurface(),
     };
   },
 };

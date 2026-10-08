@@ -1,8 +1,8 @@
 /* The building inspector's five tabs, and what goes with them: the connect
    banner over the plan and the results under the search box.
 
-   ui/building/inspector/sheet.js puts this sheet in the page; index.html
-   does not link it. Tokens only: nothing here names a colour. */
+   index.html links this sheet with the page's others. Tokens only: nothing
+   here names a colour. */
 
 /* ---------- The tabs: five in 320 px ---------- */
 

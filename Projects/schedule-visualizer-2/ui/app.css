@@ -493,13 +493,119 @@ kbd {
   min-width: 0;
 }
 
+/* The inspector: 320 px on the right, its handle across the top. Folded, it
+   is a 32 px strip: the handle, then an icon for each of its tabs. */
+
 .inspector {
   grid-column: 3;
   grid-row: 2;
+  display: flex;
+  flex-direction: column;
   width: 320px;
+  min-height: 0;
   background: var(--card);
   border-left: var(--border);
+  overflow: hidden;
+}
+
+.inspector__bar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  border-bottom: var(--border);
+}
+
+.inspector__toggle {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 var(--s-2) 0 var(--s-4);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+  line-height: var(--lh-sm);
+  text-align: left;
+}
+
+.inspector__toggle:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.inspector__toggle:focus-visible,
+.inspector__icon:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.inspector__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the arrow points the way the panel will go: away when open, back when folded */
+.inspector[data-open="false"] .inspector__toggle .icon {
+  transform: rotate(180deg);
+}
+
+.inspector__body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+}
+
+.inspector__icons {
+  display: flex;
+  flex-direction: column;
+}
+
+.inspector__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+}
+
+.inspector__icon:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.inspector[data-mode="wide"][data-open="false"] {
+  width: 32px;
+}
+
+.inspector[data-mode="wide"][data-open="false"] .inspector__bar {
+  flex-direction: column;
+  border-bottom: 0;
+}
+
+.inspector[data-mode="wide"][data-open="false"] .inspector__toggle {
+  justify-content: center;
+  width: 32px;
+  min-height: 36px;
+  padding: 0;
+  border-bottom: var(--border);
+}
+
+.inspector[data-mode="wide"][data-open="false"] .inspector__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 /* ---------- What a screen is made of ---------- */
@@ -753,6 +859,19 @@ kbd {
   border-color: transparent;
   background: none;
   color: var(--accent);
+}
+
+/* A button that cannot be used yet says why in its title; it keeps the focus
+   and looks set aside. */
+.btn[aria-disabled="true"] {
+  border-style: dashed;
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.btn[aria-disabled="true"]:hover {
+  background: var(--card);
+  border-color: var(--line-strong);
 }
 
 /* A field commits when it is left; a refusal sits under it in a sentence. */
@@ -1182,17 +1301,26 @@ kbd {
   max-width: 60rem;
 }
 
-/* The toast: bottom-left, one at a time. Ink on paper, turned over. */
+/* The toast: bottom-left of the surface, one at a time. Ink on paper, turned
+   over. Its host is a line of no height stuck to the bottom of the surface,
+   so a message is never over the rail, the inspector or the bottom bar,
+   whatever shape the window is, and the surface scrolls under it. */
 
 .toasts {
-  position: fixed;
-  left: calc(56px + var(--s-4));
+  position: sticky;
   bottom: var(--s-4);
   z-index: 40;
-  max-width: min(34rem, calc(100vw - 56px - var(--s-6)));
+  height: 0;
+  margin: 0 var(--s-4);
+  pointer-events: none;
 }
 
 .toast {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  max-width: min(34rem, 100%);
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: var(--s-3);
@@ -1272,6 +1400,20 @@ kbd {
   margin-top: var(--s-1);
 }
 
+/* The head: the title and the tally, and under 1000 px the button that
+   unfolds the steps. Wide, the steps always show and the button is away. */
+.getting-started__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.getting-started__toggle {
+  display: none;
+  flex: none;
+}
+
 .getting-started__tally {
   margin-top: var(--s-1);
   color: var(--ink-2);
@@ -1345,7 +1487,9 @@ kbd {
 
 /* ---------- Narrower windows ---------- */
 
-/* Under 1000 px the Getting started card goes above the section. */
+/* Under 1000 px the Getting started card goes above the section, folded to
+   its title and tally: one line, so the section keeps the window. Its button
+   unfolds the steps. */
 @media (max-width: 1000px) {
   .surface__layout:has(> .getting-started:not([hidden])) {
     grid-template-columns: minmax(0, 1fr);
@@ -1357,6 +1501,36 @@ kbd {
     width: 100%;
     max-width: 44rem;
     margin: 0 auto;
+    padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  }
+
+  .getting-started__toggle {
+    display: inline-flex;
+  }
+
+  .getting-started .eyebrow {
+    display: none;
+  }
+
+  .getting-started__words {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--s-3);
+    min-width: 0;
+  }
+
+  .getting-started .card__title,
+  .getting-started__tally {
+    margin-top: 0;
+  }
+
+  .getting-started:not(.getting-started--open) .getting-started__body {
+    display: none;
+  }
+
+  .getting-started--open {
+    padding-bottom: var(--s-4);
   }
 
   .surface__layout {
@@ -1364,7 +1538,8 @@ kbd {
   }
 }
 
-/* Under 900 px the rail is icons only. */
+/* Under 900 px the rail is icons only, and the inspector is a sheet along
+   the bottom: its handle always there, the panel opening above it. */
 @media (max-width: 900px) {
   .rail__label {
     position: absolute;
@@ -1383,9 +1558,28 @@ kbd {
     grid-column: 2 / 4;
     grid-row: 3;
     width: auto;
-    max-height: 45vh;
+    max-height: 50vh;
+    max-height: 50dvh;
     border-left: 0;
     border-top: var(--border);
+  }
+
+  .inspector__toggle {
+    min-height: 40px;
+    color: var(--ink);
+  }
+
+  /* the arrow points up to open the sheet and down to shut it */
+  .inspector[data-open="false"] .inspector__toggle .icon {
+    transform: rotate(-90deg);
+  }
+
+  .inspector[data-open="true"] .inspector__toggle .icon {
+    transform: rotate(90deg);
+  }
+
+  .inspector[data-open="false"] .inspector__bar {
+    border-bottom: 0;
   }
 
   .app {
@@ -1401,7 +1595,8 @@ kbd {
   }
 }
 
-/* Under 640 px the rail is a bar along the bottom. */
+/* Under 640 px the rail is a bar along the bottom, and the top bar is one
+   row: the name, the save mark, then undo, redo, search and help. */
 @media (max-width: 640px) {
   .app {
     grid-template-columns: minmax(0, 1fr);
@@ -1444,23 +1639,92 @@ kbd {
     display: none;
   }
 
+  .topbar {
+    position: relative;
+  }
+
   .topbar__row {
     flex-wrap: wrap;
-    gap: var(--s-1) var(--s-2);
-    padding: var(--s-1) var(--s-2) var(--s-1) var(--s-3);
+    gap: 0 var(--s-1);
+    padding: 0 var(--s-1) 0 var(--s-3);
+  }
+
+  .topbar__row2 {
+    padding: 0 var(--s-2);
+  }
+
+  .school {
+    flex: 1 1 0;
+  }
+
+  .school__input {
+    width: 100%;
+  }
+
+  /* Saving and saved are the mark alone here (the words are its title, and
+     are still read out); a save that failed keeps its words, on a line of
+     their own. */
+  .save:not([data-state="failed"]) {
+    width: 10px;
+    gap: 0;
+    overflow: hidden;
+    color: var(--ink-2);
+  }
+
+  .save:not([data-state="failed"])::before {
+    flex: none;
+  }
+
+  .save[data-state="failed"] {
+    order: 5;
+    flex: 1 1 100%;
+    padding-bottom: var(--s-1);
+    white-space: normal;
   }
 
   .topbar__tools {
-    flex: 1 1 100%;
-    margin-left: 0;
+    gap: 0;
   }
 
+  /* The theme is also a setting in the Project section; the switch gives
+     its place to the school's name. */
+  #theme {
+    display: none;
+  }
+
+  /* Search is its mark until it is used, then it lies across the row. */
   .search {
-    flex: 1 1 auto;
+    position: static;
+    margin: 0;
+  }
+
+  .search .icon {
+    left: auto;
+    margin-left: 14px;
   }
 
   .search__input {
+    width: 44px;
+    padding: 0 0 0 44px;
+    border-color: transparent;
+    background: none;
+    cursor: pointer;
+  }
+
+  .search:focus-within {
+    position: absolute;
+    top: 2px;
+    left: var(--s-2);
+    right: var(--s-2);
+    z-index: 5;
+  }
+
+  .search:focus-within .search__input {
     width: 100%;
+    padding: 0 var(--s-2) 0 44px;
+    border-color: var(--line-strong);
+    background: var(--card);
+    cursor: text;
   }
 
   .surface__layout {
@@ -1472,8 +1736,7 @@ kbd {
     padding: var(--s-5) var(--s-4);
   }
 
-  .card,
-  .getting-started {
+  .card {
     padding: var(--s-4);
   }
 
@@ -1486,10 +1749,8 @@ kbd {
   }
 
   .toasts {
-    left: var(--s-3);
-    right: var(--s-3);
-    bottom: calc(56px + var(--s-3) + env(safe-area-inset-bottom));
-    max-width: none;
+    bottom: var(--s-3);
+    margin: 0 var(--s-3);
   }
 }
 
@@ -1501,7 +1762,8 @@ kbd {
   .seg__label,
   .tabs__tab,
   .menu__item,
-  .school__name {
+  .school__name,
+  .inspector__toggle {
     min-height: 44px;
   }
 
@@ -1515,6 +1777,10 @@ kbd {
     width: 44px;
     height: 44px;
   }
+
+  .inspector__icon {
+    height: 44px;
+  }
 }
 
 /* ---------- The Building section's place in the shell ----------
@@ -1523,6 +1789,22 @@ kbd {
    the layout's padding and its faint grid go (the canvas draws the real one).
    These rules come last so that they win over the layout rules above, as they
    did when the section's own sheet carried them. */
+
+/* The plan has what is left of the surface under any banner (a second tab,
+   a save that failed), so the surface itself never scrolls here. */
+.surface:has(> .surface__layout[data-section="building"]) {
+  display: flex;
+  flex-direction: column;
+}
+
+.surface:has(> .surface__layout[data-section="building"]) > * {
+  flex: none;
+}
+
+.surface > .surface__layout[data-section="building"] {
+  flex: 1 1 0;
+  min-height: 0;
+}
 
 .surface__layout[data-section="building"] {
   height: 100%;
@@ -1546,36 +1828,52 @@ kbd {
   grid-template-columns: minmax(0, 1fr) calc(360px + var(--s-4) * 2);
 }
 
-/* The shell's messages are fixed to the bottom left of the window, which is
-   where the strip and the status line are: on this section they sit over the
-   plan's corner instead, clear of both. */
+/* The shell's messages sit at the bottom left of the surface, which is where
+   the strip and the status line are: on this section they sit over the
+   plan's corner instead, clear of both. The section measures its status line
+   (--bld-status-height) and says how wide its strip is (--bld-strip-width). */
 .surface__layout[data-section="building"] ~ .toasts {
-  left: calc(56px + 64px + var(--s-3));
   bottom: calc(var(--bld-status-height, 40px) + var(--s-3));
+  margin-left: calc(var(--bld-strip-width, 64px) + var(--s-3));
 }
 
-/* Under 1000 px the Getting started card goes above the section, and the
-   page scrolls so the plan keeps a height worth drawing in. */
+/* Under 1000 px Getting started is a line across the top of the plan, and
+   the plan has the rest of the window. Unfolded, the steps take what they
+   need up to half the window and scroll inside it: the page itself never
+   scrolls here, because a finger on the plan draws and could not scroll it
+   back. */
 @media (max-width: 1000px) {
   .surface__layout[data-section="building"]:has(> .getting-started:not([hidden])) {
-    height: auto;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .surface__layout[data-section="building"]:has(> .getting-started:not([hidden])) .bld {
-    height: 70vh;
+  .surface__layout[data-section="building"] > .getting-started {
+    max-width: none;
+    max-height: 50vh;
+    max-height: 50dvh;
+    margin: 0;
+    overflow: auto;
+    border-width: 0 0 var(--border-width);
+    border-radius: 0;
   }
 
-  .surface__layout[data-section="building"] > .getting-started {
-    margin: var(--s-3) auto;
+  .surface__layout[data-section="building"] .bld {
+    min-height: 0;
   }
 }
 
+/* A phone with the inspector's sheet open: the sheet is what is being used,
+   so the plan's status line gives its height to the plan until the sheet is
+   shut again. */
 @media (max-width: 640px) {
-  .surface__layout[data-section="building"] ~ .toasts {
-    left: var(--s-3);
-    bottom: calc(56px + var(--bld-status-height, 40px) + var(--s-3) + env(safe-area-inset-bottom));
+  .inspector {
+    max-height: 45vh;
+    max-height: 45dvh;
+  }
+
+  .app:has(> .inspector[data-open="true"]:not([hidden])) .bld-status {
+    display: none;
   }
 }
 
@@ -1595,5 +1893,34 @@ kbd {
 
   .surface {
     overflow: visible;
+  }
+
+  /* With a print sheet open, Ctrl+P asks for the sheet: the planner behind
+     it stays off the paper, and so do the sheet's own controls. What prints
+     is the preview. (The sheet's Print button prints the document itself,
+     every page of it, and is the better way.) */
+  body:has(dialog.preview[open]) > .app {
+    display: none;
+  }
+
+  dialog.preview[open] {
+    position: static;
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  dialog.preview[open]::backdrop {
+    display: none;
+  }
+
+  dialog.preview[open] .preview__head,
+  dialog.preview[open] .preview__foot {
+    display: none;
   }
 }

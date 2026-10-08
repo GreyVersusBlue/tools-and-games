@@ -51,7 +51,11 @@ export function buildingInspector(options) {
   });
   const element = h('div', { class: 'bld-inspector' }, view.element);
 
+  // A tab is asked for by name: a new room's number, an exit's door name,
+  // "Change the size". The shell's panel opens first when it is folded away
+  // or shut as a sheet, so the field that takes the focus is on the page.
   function open(id) {
+    if (options.ctx && options.ctx.openInspector) options.ctx.openInspector();
     view.select(id);
     draw();
   }

@@ -4,12 +4,15 @@
 //
 //   section = { id, label, name, key, icon, page, start(ctx), mount(ctx, rest) }
 //
-// where mount returns { element, update(project), route(rest), unmount() }.
+// where mount returns { element, update(project), route(rest), unmount(), focus() }.
 // `update` runs after every change to the project; `route` (optional) is asked
 // when the address changes inside the same section, and returns true when it
 // has shown it; `unmount` (optional) is called when the view leaves the page,
 // for another section or for a fresh mount of the same one, so a view can
-// take its listeners off the document. `start` (optional) runs once, before
+// take its listeners off the document; `focus` (optional) puts the keyboard
+// on the section's own surface (the plan, for Building), and is where F6, the
+// skip link and a closing dialog send the focus. A section without one gets
+// the focus on the surface region itself. `start` (optional) runs once, before
 // anything is mounted: a section lists its own keys for Help there, through
 // ctx.shortcuts. `ctx` is what a section may use of the shell; it is built in
 // boot().
@@ -135,7 +138,15 @@ async function boot() {
   const announcer = h('div', { class: 'vh', id: 'announcer', 'aria-live': 'polite' });
   const layout = h('div', { class: 'surface__layout' }, sectionHost);
   const main = h('main', { class: 'surface', id: 'surface', tabindex: '-1' }, layout, toastHost, announcer);
-  const inspector = h('aside', { class: 'inspector', id: 'inspector', 'aria-label': 'Inspector', tabindex: '-1', hidden: true });
+  // The inspector: a 320 px panel on the right that folds to a 32 px strip
+  // of its tabs' icons, and under 900 px a sheet along the bottom that opens
+  // from its handle (DESIGN 4). The section's panel goes in the body.
+  const inspectorTitle = h('span', { class: 'inspector__title' }, 'Inspector');
+  const inspectorToggle = h('button', { type: 'button', class: 'inspector__toggle', id: 'inspector-toggle', 'aria-expanded': 'true', 'aria-controls': 'inspector-body', on: { click: () => setInspectorOpen(!inspectorIsOpen(), true) } }, inspectorTitle, icon('right', 16));
+  const inspectorIcons = h('div', { class: 'inspector__icons', role: 'group', 'aria-label': 'Open the inspector at' });
+  const inspectorBody = h('div', { class: 'inspector__body', id: 'inspector-body' });
+  const inspector = h('aside', { class: 'inspector', id: 'inspector', 'aria-label': 'Inspector', tabindex: '-1', hidden: true, data: { open: 'true' } },
+    h('div', { class: 'inspector__bar' }, inspectorToggle, inspectorIcons), inspectorBody);
 
   // The skip link moves focus itself: the address belongs to the sections.
   const skip = h('a', {
@@ -144,15 +155,55 @@ async function boot() {
     on: {
       click: (event) => {
         event.preventDefault();
-        main.focus();
+        focusSurface();
       },
     },
   }, 'Skip to the section');
   root.replaceChildren(skip, rail, topbar, main, inspector);
 
-  const toasts = createToasts(toastHost);
+  // The keyboard goes to the section's own surface: the plan on Building,
+  // where the arrows and the tool letters are answered. A section that names
+  // no surface of its own gets the focus on the region.
+  function focusSurface() {
+    if (current && current.view.focus && current.view.focus() !== false) return;
+    main.focus();
+  }
+
+  const toasts = createToasts(toastHost, { back: focusSurface });
   const toast = (options) => toasts.show(options);
-  const focusSurface = () => main.focus();
+
+  // ------------------------------------------------------------ the inspector
+
+  // Wide, the panel starts open; as a sheet it starts shut, so the section
+  // has the height. Each keeps its own answer while the window changes shape.
+  const sheetQuery = window.matchMedia('(max-width: 900px)');
+  const inspectorOpen = { wide: true, sheet: false };
+  let inspectorTabs = null;
+  const inspectorMode = () => (sheetQuery.matches ? 'sheet' : 'wide');
+  const inspectorIsOpen = () => inspectorOpen[inspectorMode()];
+
+  function drawInspector() {
+    const open = inspectorIsOpen();
+    const mode = inspectorMode();
+    inspector.dataset.open = String(open);
+    inspector.dataset.mode = mode;
+    inspectorBody.hidden = !open;
+    inspectorToggle.setAttribute('aria-expanded', String(open));
+    inspectorToggle.title = open ? 'Fold the inspector away' : 'Open the inspector';
+    // folded to the strip, each tab is a button that opens the panel at it
+    inspectorIcons.hidden = open || mode === 'sheet' || !inspectorTabs;
+  }
+
+  function setInspectorOpen(open, byHand) {
+    if (inspectorIsOpen() === open) return;
+    inspectorOpen[inspectorMode()] = open;
+    const hadFocus = inspectorBody.contains(document.activeElement);
+    drawInspector();
+    if (hadFocus && !open) inspectorToggle.focus();
+    if (byHand) announcer.textContent = open ? 'The inspector is open.' : 'The inspector is folded away.';
+  }
+
+  sheetQuery.addEventListener('change', drawInspector);
 
   // ------------------------------------------------------------ the device
 
@@ -328,8 +379,9 @@ async function boot() {
 
   function showStarted() {
     store.apply(setOnboarding, { dismissed: false, neverShow: false });
+    started.unfold(true);
     started.element.scrollIntoView({ block: 'nearest' });
-    const link = focusables(started.element)[0];
+    const link = started.element.querySelector('.steps a') || focusables(started.element)[0];
     if (link) link.focus();
   }
 
@@ -362,9 +414,44 @@ async function boot() {
       secondRow.hidden = !element;
     },
     // The panel on the right of the surface. Pass null for none.
-    setInspector(element) {
-      inspector.replaceChildren(...(element ? [element] : []));
+    //   options.title            what the handle says ('Inspector' when none)
+    //   options.tabs             [{ id, label, icon }]: the strip's buttons
+    //   options.openTab(id)      show that tab (the strip opens the panel first)
+    setInspector(element, options) {
+      const opts = options || {};
+      inspectorBody.replaceChildren(...(element ? [element] : []));
       inspector.hidden = !element;
+      inspectorTitle.textContent = opts.title || 'Inspector';
+      inspectorTabs = element && opts.tabs && opts.openTab ? opts.tabs : null;
+      inspectorIcons.replaceChildren(...(inspectorTabs || []).map((tab) => h('button', {
+        type: 'button',
+        class: 'inspector__icon',
+        title: tab.label,
+        'aria-label': tab.label,
+        // not data-tab: that is the panel's own tabs
+        data: { openTab: tab.id },
+        on: {
+          click: () => {
+            setInspectorOpen(true);
+            opts.openTab(tab.id);
+          },
+        },
+      }, icon(tab.icon, 18))));
+      drawInspector();
+    },
+    // What the handle says: the inspector's name, then what it is about.
+    setInspectorTitle(text) {
+      inspectorTitle.textContent = text || 'Inspector';
+    },
+    // Open the panel (a field in it is about to take the focus), or fold it.
+    openInspector() {
+      setInspectorOpen(true);
+    },
+    closeInspector() {
+      setInspectorOpen(false);
+    },
+    get inspectorOpen() {
+      return inspectorIsOpen();
     },
     // 'off', 'saving', 'saved' or 'failed', and the words to show.
     setSaveState(state, text, title) {
@@ -467,7 +554,7 @@ async function boot() {
     const stops = [
       { has: (el) => rail.contains(el), go: () => rail.focus() },
       { has: (el) => topbar.contains(el), go: () => topbar.focus() },
-      { has: (el) => main.contains(el) && !toastHost.contains(el), go: () => main.focus() },
+      { has: (el) => main.contains(el) && !toastHost.contains(el), go: () => focusSurface() },
     ];
     if (!inspector.hidden) stops.push({ has: (el) => inspector.contains(el), go: () => inspector.focus() });
     if (toasts.showing) stops.push({ has: (el) => toastHost.contains(el), go: () => toasts.focus() });
