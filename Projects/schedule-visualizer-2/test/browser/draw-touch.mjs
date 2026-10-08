@@ -40,6 +40,13 @@ before(async () => {
   session = await openPlanner({ theme: 'light', width: 1000, height: 800, mobile: true });
   page = session.page;
   cdp = typeof page.createCDPSession === 'function' ? await page.createCDPSession() : await page.context().newCDPSession(page);
+  // Opening the planner empties the saved project through a protocol session
+  // of its own, and when that session goes this Chromium stops reporting a
+  // coarse pointer. Saying again that this is a touch device brings it back.
+  if (!(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) && typeof page.setViewport === 'function') {
+    await page.setViewport({ width: 1000, height: 800, deviceScaleFactor: 1 });
+    await page.setViewport({ width: 1000, height: 800, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+  }
   await planReady(page);
   await startEmpty(page);
   await page.evaluate(() => {

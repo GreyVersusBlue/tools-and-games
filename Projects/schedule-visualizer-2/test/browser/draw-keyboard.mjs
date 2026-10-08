@@ -144,7 +144,9 @@ test('the building is drawn by keys alone: one undo entry a gesture, each with t
 });
 
 test('the same building drawn with the mouse in another page is the same project', async () => {
-  const other = await openPlanner({ browser: session.browser, server: session.server, theme: 'light', width: 1280, height: 900 });
+  // a browser of its own: a second tab of this one would be the same saved
+  // project, open twice, and read-only
+  const other = await openPlanner({ server: session.server, theme: 'light', width: 1280, height: 900 });
   try {
     await planReady(other.page);
     await startEmpty(other.page);
