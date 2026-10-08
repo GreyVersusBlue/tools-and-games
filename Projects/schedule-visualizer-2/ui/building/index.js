@@ -30,25 +30,27 @@ import { toolStrip } from './strip.js';
 import { floorTabs } from './floors.js';
 import { statusLine } from './status.js';
 import { buildingInspector } from './inspector.js';
-import { ActionError, buildingOutcome, addFloor, deleteSpaces, pasteSpaces, describeSpaceDelete } from '../../engine/actions.js';
+import { ActionError, addFloor, deleteSpaces, pasteSpaces, describeSpaceDelete } from '../../engine/actions.js';
 import { counts, describeCell, copySpaces, isLoss } from '../../engine/building.js';
 import { buildingChecks } from '../../engine/building-checks.js';
 import { spaceOwners } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
 
-// The section's own stylesheet. index.html is the shell's, so the sheet is
-// linked from here, once, and the plan waits for it before it measures itself.
-const SHEET = new URL('./building.css', import.meta.url).href;
+// The section's own stylesheet, which index.html links. The plan waits for it
+// before it measures itself.
 let sheet = null;
 
 function stylesheet() {
   if (sheet) return sheet;
-  const link = h('link', { rel: 'stylesheet', href: SHEET, data: { sv2: 'building' } });
+  const link = document.querySelector('link[rel="stylesheet"][href$="ui/building/building.css"]');
   sheet = new Promise((resolve) => {
-    link.addEventListener('load', () => resolve(true));
-    link.addEventListener('error', () => resolve(false));
+    if (!link) resolve(false);
+    else if (link.sheet) resolve(true);
+    else {
+      link.addEventListener('load', () => resolve(true));
+      link.addEventListener('error', () => resolve(false));
+    }
   });
-  document.head.append(link);
   return sheet;
 }
 
@@ -61,8 +63,8 @@ const FIRST = 'Draw a corridor, then rooms along it. Give each room its number, 
 const FIRST_EMPTY = 'Draw a corridor, then rooms along it.';
 const KEYS = 'Arrow keys move the cursor one cell. Enter does what a click would. Hold Shift and press the arrows to drag; let go of Shift to finish. Hold Space and press the arrows to move the map. Escape cancels. Page Up and Page Down change floor.';
 
-// The keys of the plan, for whoever lists shortcuts: the plan answers them
-// itself, so the shell's list does not have them. Help needs them (spec 3.15).
+// The keys of the plan. The plan answers them itself, so they are listed for
+// Help only (spec 3.15): section.start, below, hands them to the shell's list.
 export const PLAN_KEYS = [
   ...TOOLS.map((tool) => ({ id: 'tool-' + tool.id, does: 'The ' + tool.name + ' tool', shown: tool.key.toUpperCase() })),
   { id: 'plan-arrows', does: 'Move the cursor one cell', shown: 'Arrows' },
@@ -102,6 +104,10 @@ export const section = {
   name: 'Building',
   key: '1',
   icon: 'building',
+  // Once, before anything is mounted: the plan's keys go on the shell's list.
+  start(ctx) {
+    for (const key of PLAN_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Building', does: key.does, shown: key.shown });
+  },
   mount(ctx, rest) {
     const store = ctx.store;
     let project = store.project;
@@ -341,12 +347,10 @@ export const section = {
         const before = store.project;
         let outcome = null;
         const done = ed.attempt(() => {
-          // the store keeps its own copy of the result, so what the change did
-          // is read from a run of the same pure action first
-          const trial = action(before, payload, { ids: ctx.ids, clock: ctx.clock });
-          if (trial === before) return false;
-          outcome = buildingOutcome(trial) || {};
-          store.apply(action, outcome.spaceId && payload.id === undefined ? { ...payload, id: outcome.spaceId } : payload);
+          // the action runs once, in the store; what it reported for the
+          // change (cells, loss, the new space's id) is on the undo entry
+          if (store.apply(action, payload) === before) return false;
+          outcome = store.undoOutcome || {};
           return true;
         });
         if (done === null) return null;
@@ -532,10 +536,6 @@ export const section = {
     // Every one goes through the single-key guard, so none fires while a
     // field has the focus or while Ctrl, Alt or Meta is held.
     function onDocumentKey(event) {
-      if (!element.isConnected) {
-        unmount();
-        return;
-      }
       if (event.defaultPrevented || dialogIsOpen()) return;
       if (event.target && event.target.closest && event.target.closest('[role="menu"]')) return;
       if (!singleKeyAllowed(event)) return;
@@ -576,8 +576,7 @@ export const section = {
 
     const observer = new ResizeObserver(() => measure());
 
-    // A section is not told when it leaves the page; its listeners go the
-    // first time one of them runs and finds the section gone.
+    // The shell calls this when the section leaves the page.
     function unmount() {
       document.removeEventListener('keydown', onDocumentKey);
       document.removeEventListener('keyup', onDocumentKeyUp);
@@ -781,6 +780,7 @@ export const section = {
         if (id !== '') showFloor(id);
         return true;
       },
+      unmount,
     };
   },
 };

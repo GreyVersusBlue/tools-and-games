@@ -41,8 +41,6 @@ export const USAGE_WARNING_SHARE = 0.8;
 const USAGE_EVERY_MS = 10000;
 const READ_ONLY_TOAST_EVERY_MS = 5000;
 
-const BANNER_EDGE = { problem: 'var(--problem)', warning: 'var(--warning)', note: 'var(--note)' };
-
 // What every project from format 1 on has, whatever is in it.
 const PARTS = [
   ['settings', (project) => isObject(project.settings)],
@@ -147,9 +145,9 @@ export function startStorage(ctx, options) {
   // ------------------------------------------------------------ banners
 
   // Lines across the top of the section that stay until their cause goes.
-  // (Their look is set here: ui/app.css has no banner yet.)
-  const bannerHost = h('div', { id: 'storage-banners' });
-  bannerHost.style.cssText = 'position:sticky;top:0;z-index:3;display:grid';
+  // Their look is ui/app.css's `.banner`, with an edge for each kind:
+  // problem, warning or note.
+  const bannerHost = h('div', { id: 'storage-banners', class: 'banners' });
   const banners = new Map();
 
   function mountBanners() {
@@ -164,13 +162,10 @@ export function startStorage(ctx, options) {
     banners.delete(id);
     if (!content) return;
     mountBanners();
-    const element = h('div', { id: 'banner-' + id, role: content.kind === 'problem' ? 'alert' : 'status', data: { banner: id, kind: content.kind } },
-      h('p', null, content.text),
+    const element = h('div', { id: 'banner-' + id, class: 'banner banner--' + content.kind, role: content.kind === 'problem' ? 'alert' : 'status', data: { banner: id, kind: content.kind } },
+      h('p', { class: 'banner__text' }, content.text),
       (content.buttons || []).map((button) => h('button', { type: 'button', class: 'btn', data: { action: button.action }, on: { click: button.run } }, button.label)),
     );
-    element.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-3);padding:var(--s-3) var(--s-5);'
-      + 'background:var(--card);color:var(--ink);border-bottom:var(--border-width) solid var(--line);border-left:4px solid ' + BANNER_EDGE[content.kind];
-    element.firstChild.style.cssText = 'margin:0;flex:1 1 20rem;max-width:60rem';
     banners.set(id, element);
     bannerHost.append(element);
   }

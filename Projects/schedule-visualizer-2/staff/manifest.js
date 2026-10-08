@@ -38,6 +38,7 @@ export const MODULES = [
   'staff/views/room.js',
   'staff/views/map.js',
   'staff/views/staffing.js',
+  'staff/clock.js', // SV2-22
   'staff/views/free.js',
   'staff/views/now.js',
   'staff/views/common.js',

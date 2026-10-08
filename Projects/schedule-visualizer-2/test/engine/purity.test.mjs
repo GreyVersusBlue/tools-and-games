@@ -1,6 +1,9 @@
 // The engine line (ARCHITECTURE 3): everything under engine/ imports only
 // other engine/ modules and uses no DOM, no storage, no timers, no clock and
-// no randomness of its own. Time and randomness are passed in.
+// no randomness of its own. Time and randomness are passed in. The modules
+// under data/ (the sample school, the starter subjects) are held to the same
+// line, since the engine tests and the published baseline are built on them;
+// they may import from engine/ and from each other.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ENGINE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'engine');
+const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
 
 const FORBIDDEN = [
   ['document', /\bdocument\b/],
@@ -23,6 +27,8 @@ const FORBIDDEN = [
   ['requestAnimationFrame', /\brequestAnimationFrame\b/],
   ['Date.now', /\bDate\s*\.\s*now\b/],
   ['new Date() with no argument', /\bnew\s+Date\s*(\(\s*\)|(?!\s*\())/],
+  // Date called without `new` gives the time now as text, whatever it is passed
+  ['Date() called without new', /(?<!\bnew\s+)(?<![\w$.])Date\s*\(/],
   ['performance.now', /\bperformance\s*\.\s*now\b/],
   ['Math.random', /\bMath\s*\.\s*random\b/],
   ['crypto.getRandomValues', /\bgetRandomValues\b/],
@@ -86,6 +92,9 @@ test('the scanner sees each forbidden name in code and in a string, and not in a
   assert.deepEqual(hits('const t = new Date();'), ['new Date() with no argument']);
   assert.deepEqual(hits('const t = new Date;'), ['new Date() with no argument']);
   assert.deepEqual(hits('const t = new Date(value);'), []);
+  assert.deepEqual(hits('const t = Date();'), ['Date() called without new']);
+  assert.deepEqual(hits('const t = String( Date (0) );'), ['Date() called without new']);
+  assert.deepEqual(hits('const t = new  Date(value); const u = Date.parse(text); const v = toDate(x); const w = clock.Date(1);'), []);
   assert.deepEqual(hits('const r = Math.random();'), ['Math.random']);
   assert.deepEqual(hits('setTimeout(run, 5);'), ['setTimeout']);
   assert.deepEqual(hits('const d = document.body;'), ['document']);
@@ -97,6 +106,28 @@ test('the scanner sees each forbidden name in code and in a string, and not in a
 test('there are engine modules to check', () => {
   assert.ok(files.length >= 10, 'expected the engine modules, found ' + files.length);
 });
+
+const dataFiles = readdirSync(DATA_DIR).filter((file) => file.endsWith('.js')).sort();
+
+test('there are data modules to check, the sample school among them', () => {
+  assert.ok(dataFiles.includes('sample-school.js') && dataFiles.includes('subjects-starter.js'), 'found ' + dataFiles.join(', '));
+});
+
+for (const file of dataFiles) {
+  const source = readFileSync(path.join(DATA_DIR, file), 'utf8');
+
+  test('data/' + file + ' uses no DOM, storage, timer, clock or randomness of its own', () => {
+    assert.deepEqual(hits(source), [], 'data/' + file + ' names something it may not use');
+    assert.doesNotMatch(stripComments(source), /\bcrypto\b/, 'data/' + file + ' names crypto');
+  });
+
+  test('data/' + file + ' imports only engine modules and other data modules', () => {
+    for (const specifier of imports(source)) {
+      assert.match(specifier, /^\.\.?\/(engine\/)?[a-z0-9-]+\.js$/, 'data/' + file + ' imports ' + specifier);
+      assert.equal(specifier.startsWith('./') || specifier.startsWith('../engine/'), true, 'data/' + file + ' imports ' + specifier);
+    }
+  });
+}
 
 for (const file of files) {
   const source = readFileSync(path.join(ENGINE_DIR, file), 'utf8');

@@ -17,7 +17,7 @@
 // `loss`, so nothing goes silently and validate() accepts every result.
 
 import { RANGES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CELL_EMPTY, CELL_CORRIDOR, CELL_STAIRS, DEFAULT_OTHER_COLOUR } from './schema.js';
-import { newRoom, newOtherSpace, neighbourCell, spaceOwners, cellKind, isEdgeCorridorCell, isWalkable, inRange, isHexColour, roomNumberKey, nextConnectionLabel } from './schema.js';
+import { newRoom, newOtherSpace, neighbourCell, spaceOwners, cellKind, isEdgeCorridorCell, isWalkable, inRange, isHexColour, roomNumberKey, nextConnectionLabel, nameOfRoom } from './schema.js';
 
 export class BuildingError extends Error {
   constructor(message, code) {
@@ -63,9 +63,10 @@ function needSpace(building, spaceId, kind) {
   return found;
 }
 
-// How a space is named in a sentence. The number or label goes in as typed.
+// How a space is named in a sentence. The number or label goes in as typed;
+// a room reads as schema.js nameOfRoom has it ("Room 204", "Gym").
 export function spaceName(space) {
-  if (space.kind === 'room') return space.number.trim() === '' ? 'an unnumbered room' : 'Room ' + space.number;
+  if (space.kind === 'room') return space.number.trim() === '' ? 'an unnumbered room' : nameOfRoom(space, false);
   return space.label.trim() === '' ? 'an unlabelled space' : space.label;
 }
 
@@ -312,7 +313,8 @@ function needFreeNumber(building, number, exceptId) {
   for (const floor of building.floors) {
     for (const space of floor.spaces) {
       if (space.kind === 'room' && space.id !== exceptId && space.number.trim() !== '' && roomNumberKey(space.number) === key) {
-        refuse('There is already a Room ' + space.number + ', on ' + floor.name + '. Room numbers are unique across the building, whatever the capitals or the spaces around them; type a different number.', 'duplicate-number');
+        const name = nameOfRoom(space, false);
+        refuse('There is already a ' + (name === space.number ? 'room called ' + name : name) + ', on ' + floor.name + '. Room numbers are unique across the building, whatever the capitals or the spaces around them; type a different number.', 'duplicate-number');
       }
     }
   }

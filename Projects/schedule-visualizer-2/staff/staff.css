@@ -1137,3 +1137,257 @@ h1:focus {
     padding: 0;
   }
 }
+
+/* ---------- SV2-22: free now, where now, common planning, coverage, the substitute plan, directions ---------- */
+
+/*
+    .controls  .controls--row   the pickers of a page, one under another or side by side
+    .pick  .pick__item          a choice of a few, one button each (the day type)
+    .check                      a tick box and its words
+    .stack                      cards one under another
+    .chips  .chips__item        the teachers picked, each with its Remove
+    .tag                        a word beside a name ("Same subject")
+    .scroll                     a table wider than a phone, scrolled sideways
+    .steps                      numbered directions
+    .plain                      a list with no frame
+    .notes                      a teacher's notes, line breaks kept
+    .reminder                   the line to check with the office
+    .row--plan                  a row of the substitute plan's day
+    .actions                    a row of buttons; .no-print: left off paper
+*/
+
+.controls,
+.stack {
+  display: grid;
+  gap: var(--s-4);
+}
+
+/* a grid's child is as wide as its widest word unless told otherwise */
+.controls > *,
+.stack > * {
+  min-width: 0;
+}
+
+.controls:empty,
+.stack:empty,
+.no-print:empty {
+  display: none;
+}
+
+.controls--row {
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  align-items: end;
+}
+
+select.field__input {
+  -webkit-appearance: menulist;
+  appearance: auto;
+}
+
+.pick {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pick > .field__label {
+  padding: 0;
+  margin-bottom: var(--s-1);
+}
+
+.pick__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.pick__item {
+  position: relative;
+  flex: 1 1 6rem;
+  display: flex;
+}
+
+.pick__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pick__name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-weight: var(--w-semibold);
+  text-align: center;
+}
+
+/* The chosen one is marked by a heavier edge as well as by colour. */
+.pick__input:checked + .pick__name {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.pick__input:focus-visible + .pick__name {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--tap);
+  cursor: pointer;
+}
+
+.check__input {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.chips[hidden] {
+  display: none;
+}
+
+.chips__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-left: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-weight: var(--w-semibold);
+}
+
+.chips__remove {
+  min-height: var(--tap);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-left: var(--border);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+  cursor: pointer;
+}
+
+.tag {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--accent);
+  border-radius: var(--r-1);
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semibold);
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+.card__when,
+.table__sub {
+  display: block;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: var(--w-regular);
+  line-height: var(--lh-sm);
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.scroll .table th,
+.scroll .table td {
+  min-width: 6.5rem;
+}
+
+.table__row--all th,
+.table__row--all td {
+  background: var(--accent-soft);
+}
+
+.steps {
+  padding-left: 1.75rem;
+  list-style: decimal;
+}
+
+.steps__step {
+  padding: var(--s-2) 0 var(--s-2) var(--s-1);
+  border-bottom: var(--border);
+}
+
+.steps__step::marker {
+  color: var(--ink-2);
+  font-variant-numeric: var(--numeric);
+  font-weight: var(--w-semibold);
+}
+
+/* every row of the plan starts its second column at the same place */
+.row--plan {
+  grid-template-columns: 10.5rem 1fr;
+}
+
+.plain > li + li {
+  margin-top: var(--s-2);
+}
+
+.notes {
+  white-space: pre-wrap;
+}
+
+.reminder {
+  padding: var(--s-3) var(--s-4);
+  border: var(--border);
+  border-left: var(--s-1) solid var(--warning);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.card > .results__heading {
+  margin-bottom: 0;
+}
+
+@media print {
+  .actions,
+  .no-print,
+  .page .tabs {
+    display: none;
+  }
+
+  .card {
+    break-inside: avoid;
+  }
+}
+
+/* ---------- SV2-22: end ---------- */

@@ -15,6 +15,7 @@
 
 import { roomNumberKey, CELL_STAIRS, neighbourCell, DOOR_SIDES } from './schema.js';
 import { buildGraph, reachable, components } from './graph.js';
+import { findingId } from './findings.js';
 
 // The kinds, in the order the findings come out.
 export const BUILDING_CHECK_KINDS = [
@@ -55,14 +56,17 @@ export function buildingChecks(project, graph) {
   const g = graph || buildGraph(project);
   const found = { };
   for (const kind of BUILDING_CHECK_KINDS) found[kind] = [];
-  const add = (kind, severity, id, text, where) => found[kind].push({ id: kind + ':' + id, kind, severity, text, where, fixable: false });
+  // `about` is the ids the finding is about (and a cell or "building" where
+  // that is what tells one from another), in the form findings.js gives
+  // every finding's id
+  const add = (kind, severity, about, text, where) => found[kind].push({ id: findingId(kind, ...about), kind, severity, text, where, fixable: false });
 
   const rooms = [];
   for (const floor of building.floors) for (const space of floor.spaces) if (space.kind === 'room') rooms.push({ room: space, floor });
 
   // rooms with no number
   for (const { room, floor } of rooms) {
-    if (room.number.trim() === '') add('room-no-number', 'warning', room.id, 'A room on ' + floor.name + ' has no number. Give it one so that groups can be scheduled into it.', { floorId: floor.id, roomId: room.id, cells: room.cells });
+    if (room.number.trim() === '') add('room-no-number', 'warning', [room.id], 'A room on ' + floor.name + ' has no number. Give it one so that groups can be scheduled into it.', { floorId: floor.id, roomId: room.id, cells: room.cells });
   }
 
   // duplicate numbers: the editor refuses them, an imported file may not
@@ -76,7 +80,7 @@ export function buildingChecks(project, graph) {
   for (const same of byNumber.values()) {
     if (same.length < 2) continue;
     const first = same[0];
-    add('room-duplicate-number', 'problem', same.map((entry) => entry.room.id).sort().join(':'), plural(same.length, 'room', 'rooms') + ' are numbered ' + first.room.number + ': on ' + list(same.map((entry) => entry.floor.name)) + '. Room numbers are unique across the building; change all but one.', { floorId: first.floor.id, roomId: first.room.id, roomIds: same.map((entry) => entry.room.id), cells: first.room.cells });
+    add('room-duplicate-number', 'problem', same.map((entry) => entry.room.id).sort(), plural(same.length, 'room', 'rooms') + ' are numbered ' + first.room.number + ': on ' + list(same.map((entry) => entry.floor.name)) + '. Room numbers are unique across the building; change all but one.', { floorId: first.floor.id, roomId: first.room.id, roomIds: same.map((entry) => entry.room.id), cells: first.room.cells });
   }
 
   // rooms that touch no corridor, and doors that lead nowhere
@@ -84,12 +88,12 @@ export function buildingChecks(project, graph) {
     const entry = g.rooms.get(room.id);
     const where = { floorId: floor.id, roomId: room.id, cells: room.cells };
     if (entry.doors === 0 && entry.entries.length === 0) {
-      add('room-no-corridor', 'problem', room.id, capital(roomName(room)) + ' on ' + floor.name + ' touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.', where);
+      add('room-no-corridor', 'problem', [room.id], capital(roomName(room)) + ' on ' + floor.name + ' touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.', where);
     } else if (entry.deadDoors.length > 0 && entry.entries.length === 0) {
-      add('door-nowhere', 'problem', room.id, (entry.deadDoors.length === 1 ? 'The door of ' : 'Every door of ') + roomName(room) + ' on ' + floor.name + ' leads nowhere, so nobody can walk to it or from it. Put a door on a side that faces a corridor or stairs.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
+      add('door-nowhere', 'problem', [room.id], (entry.deadDoors.length === 1 ? 'The door of ' : 'Every door of ') + roomName(room) + ' on ' + floor.name + ' leads nowhere, so nobody can walk to it or from it. Put a door on a side that faces a corridor or stairs.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
     } else if (entry.deadDoors.length > 0) {
       const sides = Array.from(new Set(entry.deadDoors.map((door) => SIDE_WORDS[door.side])));
-      add('door-nowhere', 'warning', room.id, capital(roomName(room)) + ' on ' + floor.name + ' has ' + (entry.deadDoors.length === 1 ? 'a door' : plural(entry.deadDoors.length, 'door', 'doors')) + ' on its ' + list(sides) + ' side that ' + (entry.deadDoors.length === 1 ? 'leads' : 'lead') + ' nowhere. Remove ' + (entry.deadDoors.length === 1 ? 'it' : 'them') + ', or paint a corridor there.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
+      add('door-nowhere', 'warning', [room.id], capital(roomName(room)) + ' on ' + floor.name + ' has ' + (entry.deadDoors.length === 1 ? 'a door' : plural(entry.deadDoors.length, 'door', 'doors')) + ' on its ' + list(sides) + ' side that ' + (entry.deadDoors.length === 1 ? 'leads' : 'lead') + ' nowhere. Remove ' + (entry.deadDoors.length === 1 ? 'it' : 'them') + ', or paint a corridor there.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
     }
   }
 
@@ -121,7 +125,7 @@ export function buildingChecks(project, graph) {
       if (connected) continue;
       const column = (start % floor.width) + 1;
       const row = Math.floor(start / floor.width) + 1;
-      add('stairs-unconnected', 'warning', floor.id + ':' + start, 'The stairs on ' + floor.name + ' at column ' + column + ', row ' + row + ' are not connected to other stairs, so nobody can use them. Connect them to the stairs they lead to.', { floorId: floor.id, cell: start, cells: run.sort((a, b) => a - b) });
+      add('stairs-unconnected', 'warning', [floor.id, start], 'The stairs on ' + floor.name + ' at column ' + column + ', row ' + row + ' are not connected to other stairs, so nobody can use them. Connect them to the stairs they lead to.', { floorId: floor.id, cell: start, cells: run.sort((a, b) => a - b) });
     }
   });
 
@@ -157,26 +161,26 @@ export function buildingChecks(project, graph) {
       const whole = [];
       for (const [f, cells] of onFloor[part]) if (cells.length === g.floors[f].count) whole.push(f);
       if (whole.length > 0) {
-        for (const f of whole) add('floor-unconnected', 'problem', g.floors[f].id, 'Nothing connects ' + g.floors[f].name + ' to the rest of the building. Connect stairs on it to stairs on another floor.', { floorId: g.floors[f].id, cells: onFloor[part].get(f) });
+        for (const f of whole) add('floor-unconnected', 'problem', [g.floors[f].id], 'Nothing connects ' + g.floors[f].name + ' to the rest of the building. Connect stairs on it to stairs on another floor.', { floorId: g.floors[f].id, cells: onFloor[part].get(f) });
         continue;
       }
       const [f, cells] = onFloor[part].entries().next().value;
       const names = roomsOf[part].map(roomName);
       const what = plural(size[part], 'corridor or stairs cell', 'corridor and stairs cells') + (names.length === 0 ? '' : names.length > 4 ? ' with ' + names.length + ' rooms' : ' with ' + list(names));
-      add('part-unreachable', 'problem', g.floors[f].id + ':' + cells[0], 'Part of ' + g.floors[f].name + ' cannot be reached from the rest of the building: ' + what + '. Join it with a corridor or a stairs connection.', { floorId: g.floors[f].id, cells, roomIds: roomsOf[part].map((room) => room.id) });
+      add('part-unreachable', 'problem', [g.floors[f].id, cells[0]], 'Part of ' + g.floors[f].name + ' cannot be reached from the rest of the building: ' + what + '. Join it with a corridor or a stairs connection.', { floorId: g.floors[f].id, cells, roomIds: roomsOf[part].map((room) => room.id) });
     }
   }
 
   // exits
   const drawn = g.count > 0 || rooms.length > 0;
   if (g.exits.length === 0) {
-    if (drawn) add('no-exit', 'warning', 'building', 'No exit is marked. Mark a corridor cell on the building\'s edge as an exit so that evacuation routes can be worked out.', { floorId: building.floors[0].id, cells: [] });
+    if (drawn) add('no-exit', 'warning', ['building'], 'No exit is marked. Mark a corridor cell on the building\'s edge as an exit so that evacuation routes can be worked out.', { floorId: building.floors[0].id, cells: [] });
   } else {
     const canLeave = reachable(g, g.exits.map((exit) => exit.node), { reverse: true });
     for (const { room, floor } of rooms) {
       const entries = g.rooms.get(room.id).entries;
       if (entries.length === 0 || entries.some((entry) => canLeave[entry.node])) continue;
-      add('room-no-exit-route', 'problem', room.id, capital(roomName(room)) + ' on ' + floor.name + ' has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.', { floorId: floor.id, roomId: room.id, cells: room.cells });
+      add('room-no-exit-route', 'problem', [room.id], capital(roomName(room)) + ' on ' + floor.name + ' has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.', { floorId: floor.id, roomId: room.id, cells: room.cells });
     }
   }
 

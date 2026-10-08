@@ -167,8 +167,8 @@ test('a room whose number is a name reads "by Gym"; a floor with no room at all 
   const cut = places(project);
   assert.equal(cut.places[0].name, 'by Gym');
   assert.deepEqual(cut.places[0].parts, [{ text: 'by ', name: false }, { text: 'Gym', name: true }]);
-  assert.equal(cut.places[2].name, 'by Room Gym 2');
-  assert.deepEqual(cut.places[2].parts, [{ text: 'by ', name: false }, { text: 'Room ', name: false }, { text: 'Gym 2', name: true }]);
+  assert.equal(cut.places[2].name, 'by Gym 2');
+  assert.deepEqual(cut.places[2].parts, [{ text: 'by ', name: false }, { text: 'Gym 2', name: true }]);
 
   const empty = planProject([['.#####.']]);
   empty.building.floors[0].name = 'Annexe';
@@ -186,7 +186,7 @@ test('names are data: whatever was typed comes through unchanged, as a typed par
   assert.equal(cut.places[0].name, hostile);
   assert.deepEqual(cut.places[0].parts, [{ text: hostile, name: true }]);
   assert.equal(cut.places[1].name, ' Wing & Co ', 'the junction: the wing as typed, spaces and all');
-  assert.equal(cut.places[2].name, 'by Room <i>9</i>');
+  assert.equal(cut.places[2].name, 'by <i>9</i>');
   assert.equal(cut.places[3].name, '1 <Floor>');
   for (const place of cut.places) assert.equal(place.parts.map((part) => part.text).join(''), place.name);
 });

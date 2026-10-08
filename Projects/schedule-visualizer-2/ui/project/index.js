@@ -1,6 +1,6 @@
-// The Project section: a page of cards. This unit brings three of them:
-// Settings, Sample school, and About and help. The cards about saving, files,
-// snapshots, recovery points, sending and clearing join the list as they are
+// The Project section: a page of cards, top to bottom: Saved on this device,
+// Recovery points, Settings, Sample school, and About and help. The cards
+// about files, snapshots, sending and clearing join the list as they are
 // built, in the order of DESIGN 5.7.
 
 import { h } from '../components/dom.js';
