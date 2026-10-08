@@ -77,6 +77,7 @@ const GROUPS = {
     'browser/worker.mjs', // SV2-16
     'browser/print.mjs', // SV2-14
     'browser/staff-shell.mjs', // SV2-20
+    'browser/staff-views-a.mjs', // SV2-21
     'a11y/axe.mjs',
   ],
   a11y: [
