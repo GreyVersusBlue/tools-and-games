@@ -63,6 +63,7 @@ const GROUPS = {
     'browser/storage.mjs', // SV2-03
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
+    'browser/schedule.mjs', // SV2-11
     'a11y/axe.mjs',
   ],
   a11y: [
