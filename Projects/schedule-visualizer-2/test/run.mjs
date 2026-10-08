@@ -31,6 +31,7 @@ const GROUPS = {
     'engine/history.test.mjs',
     'engine/store.test.mjs',
     'engine/sample-school.test.mjs',
+    'engine/csv.test.mjs',
   ],
   browser: [],
   a11y: [],
