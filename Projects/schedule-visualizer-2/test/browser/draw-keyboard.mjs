@@ -95,12 +95,23 @@ test('Tab goes from the tool strip to the plan; the cursor shows there and the k
   assert.equal(now.said, 'The floor plan of Floor 1. Corridor tool. Arrow keys move the cursor, Enter acts.');
   assert.match(await page.$eval('#plan-keys', (el) => el.textContent), /Hold Shift and press the arrows to drag/);
   assert.equal(await page.$eval('#plan', (el) => el.getAttribute('aria-describedby')), 'plan-keys plan-hint');
-  // the cursor is drawn: a dotted outline just inside the cell, gone when the focus goes
-  const side = 24 * now.zoom;
-  const onLine = await pixel(page, 20, 15, 1.5 / side, 0.5);
-  assert.ok(['#1f2328', '#fffdf8'].includes(onLine), 'no cursor is drawn on its cell: ' + onLine);
+  // the cursor is drawn: a dotted outline just inside the cell, dark dots on a
+  // light line, gone when the focus goes. The first few pixels of the cell's
+  // middle row are read, since where the line falls depends on the zoom.
+  const edge = () => page.evaluate(() => {
+    const editor = document.querySelector('.bld').editor;
+    editor.drawNow();
+    const at = editor.view.toScreen(20, 15.5);
+    const data = editor.canvas.getContext('2d').getImageData(Math.round(at.x), Math.round(at.y), 6, 1).data;
+    const found = [];
+    for (let i = 0; i < data.length; i += 4) found.push('#' + [data[i], data[i + 1], data[i + 2]].map((value) => value.toString(16).padStart(2, '0')).join(''));
+    return found;
+  });
+  const drawn = await edge();
+  assert.ok(drawn.includes('#1f2328') || drawn.includes('#fffdf8'), 'no cursor is drawn on its cell: ' + drawn.join(' '));
   await page.focus('.bld-tool[aria-pressed="true"]');
-  assert.equal(await pixel(page, 20, 15, 1.5 / side, 0.5), '#e8e3d8', 'the cursor is drawn while the plan does not have the focus');
+  const gone = await edge();
+  assert.ok(!gone.includes('#1f2328') && !gone.includes('#fffdf8'), 'the cursor is drawn while the plan does not have the focus: ' + gone.join(' '));
   await page.keyboard.press('Tab');
 });
 

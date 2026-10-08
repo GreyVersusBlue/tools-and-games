@@ -14,7 +14,8 @@ export function statusLine(options) {
   const cell = h('p', { class: 'bld-status__cell', id: 'plan-cell' });
   const counts = h('ul', { class: 'bld-status__counts', id: 'plan-counts', 'aria-label': 'The building so far' });
   const zoom = h('output', { class: 'bld-status__zoom-value', id: 'plan-zoom', 'aria-label': 'Zoom' });
-  const element = h('div', { class: 'bld-status' },
+  // the outer element is measured (a container query), the inner one is laid out
+  const element = h('div', { class: 'bld-status' }, h('div', { class: 'bld-status__in' },
     hint,
     cell,
     counts,
@@ -24,7 +25,7 @@ export function statusLine(options) {
       h('button', { type: 'button', class: 'bld-status__btn', title: 'Zoom in (=)', 'aria-label': 'Zoom in', 'aria-keyshortcuts': '=', data: { action: 'zoom-in' }, on: { click: options.zoomIn } }, '+'),
       h('button', { type: 'button', class: 'bld-status__btn bld-status__btn--fit', title: 'Fit the plan to the window (0)', 'aria-keyshortcuts': '0', data: { action: 'fit' }, on: { click: options.fit } }, 'Fit'),
     ),
-  );
+  ));
 
   return {
     element,

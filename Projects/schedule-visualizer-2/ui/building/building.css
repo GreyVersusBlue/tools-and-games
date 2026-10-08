@@ -203,13 +203,6 @@
   grid-column: 2;
   grid-row: 2;
   container-type: inline-size;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas:
-    "hint hint hint"
-    "cell counts zoom";
-  align-items: center;
-  gap: var(--s-1) var(--s-4);
   padding: var(--s-1) var(--s-3);
   background: var(--card);
   border-top: var(--border);
@@ -217,6 +210,16 @@
   font-size: var(--t-sm);
   font-variant-numeric: var(--numeric);
   line-height: var(--lh-sm);
+}
+
+.bld-status__in {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "hint hint hint"
+    "cell counts zoom";
+  align-items: center;
+  gap: var(--s-1) var(--s-4);
 }
 
 .bld-status p {
@@ -257,15 +260,18 @@
   white-space: nowrap;
 }
 
-@container (max-width: 760px) {
-  .bld-status {
+/* narrower than the counts and the cell side by side: the counts get a line of their own */
+@container (max-width: 1000px) {
+  .bld-status__in {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "hint hint"
       "counts counts"
       "cell zoom";
   }
+}
 
+@container (max-width: 760px) {
   .bld-status__hint {
     height: calc(var(--row) * 2);
   }
