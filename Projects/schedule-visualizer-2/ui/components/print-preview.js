@@ -275,11 +275,14 @@ export function openPrintPreview(ctx, outputId, options) {
   // figures included, when something is working them out; the first document
   // (the checks alone) is replaced when they arrive.
   if (output.id === 'checks' && store.derived && store.derived.engine) {
-    store.derived.results().then((result) => {
+    // only once the first document is laid out: replacing it while its
+    // stylesheets and faces are still awaited would leave that wait, and
+    // ready() with it, pending for good
+    store.derived.results().then((result) => first.then(() => {
       if (!alive || !result || !result.findings) return;
       derived = { findings: result.findings, walks: result.walks };
       show();
-    }).catch(() => { /* the document already on show stands */ });
+    })).catch(() => { /* the document already on show stands */ });
   }
 
   return {

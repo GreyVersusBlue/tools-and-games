@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as actions from '../../engine/actions.js';
 import { validate } from '../../engine/validate.js';
-import { GROUP_COLOUR_PRESETS, defaultSettings, roomName } from '../../engine/schema.js';
-import * as findings from '../../engine/findings.js';
+import { GROUP_COLOUR_PRESETS, defaultSettings, nameOfRoom } from '../../engine/schema.js';
+import { roomName } from '../../engine/findings.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
 import { emptyProject, school, ctx, clone, room, group, teacher, assertValid, PINNED } from './helpers.mjs';
 
@@ -875,11 +875,11 @@ test('roomName: a number that already starts with "room" never gets a second one
   assert.equal(roomName({ number: ' ROOM204' }, false), ' ROOM204');
 });
 
-test('roomName: a room with no number says so, and findings.js hands on the very same function', () => {
+test('roomName: a room with no number says so, and findings.js hands on schema.js\'s very function', () => {
   assert.equal(roomName({ number: '' }, true), 'A room with no number');
   assert.equal(roomName({ number: '  ' }, false), 'a room with no number');
   assert.equal(roomName(null, false), 'a room with no number');
-  assert.equal(findings.roomName, roomName);
+  assert.equal(roomName, nameOfRoom, 'findings.js roomName is schema.js nameOfRoom, not a second rule');
 });
 
 test('the building\'s labels name a room the way sentences do: "Delete Gym", "Edit Room 101", never "Room Gym"', () => {

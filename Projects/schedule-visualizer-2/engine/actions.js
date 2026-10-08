@@ -17,7 +17,7 @@
 // no undo entry.
 
 import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS } from './schema.js';
-import { defaultSettings, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, roomName } from './schema.js';
+import { defaultSettings, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom } from './schema.js';
 import { isOwnCopy, findDayType, baseDayType } from './day-types.js';
 import { periodName } from './bells.js';
 import { isId, collectIds } from './ids.js';
@@ -527,7 +527,7 @@ export const editTeacher = action(
 
 // The teachers based in a room, main teacher first. payload: { roomId, teacherIds }.
 export const setRoomTeachers = action(
-  { label: (before, payload) => 'Change the teachers of ' + roomName(findRoom(before, payload.roomId), false), bumps: [BUILDING, SCHEDULE], focus: (before, payload) => ({ section: 'building', roomId: payload.roomId }) },
+  { label: (before, payload) => 'Change the teachers of ' + nameOfRoom(findRoom(before, payload.roomId), false), bumps: [BUILDING, SCHEDULE], focus: (before, payload) => ({ section: 'building', roomId: payload.roomId }) },
   (project, payload) => {
     const room = findRoom(project, payload.roomId);
     if (!room) refuse('That room is no longer in the building.', 'missing');

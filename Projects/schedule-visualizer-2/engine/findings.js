@@ -186,9 +186,9 @@ export function periodWord(settings, many) {
 }
 
 // A room as a sentence names it: "Room 204", "Gym", "a room with no number".
-// The rule is schema.js's, so that the building's labels and a published file
-// use it without this module; it is handed on here, the very same function,
-// for the checks and the screens that already ask for it here.
+// The rule is schema.js's nameOfRoom, so that the building's labels use it
+// without this module; it is handed on here, the very same function, under
+// the name the checks and the screens ask for.
 export const roomName = nameOfRoom;
 
 // Seconds as a length of time: "45 s", "4 min", "4 min 35 s".

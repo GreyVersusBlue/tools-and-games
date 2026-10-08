@@ -150,11 +150,13 @@ test('the Project section\'s header comment names the five cards it has', () => 
 
 test('index.html links the Building section\'s stylesheet: it is there before the section has ever been on screen', async () => {
   const links = await page.$$eval('link[rel="stylesheet"]', (all) => all.map((link) => ({ href: link.getAttribute('href'), inHead: link.parentNode === document.head, injected: link.dataset.sv2 || null, loaded: Boolean(link.sheet) })));
-  assert.deepEqual(links, [
+  // the first three are index.html's own; a section may add its sheet after them
+  assert.deepEqual(links.slice(0, 3), [
     { href: 'ui/tokens.css', inHead: true, injected: null, loaded: true },
     { href: 'ui/app.css', inHead: true, injected: null, loaded: true },
     { href: 'ui/building/building.css', inHead: true, injected: null, loaded: true },
   ]);
+  assert.equal(links.filter((link) => /building\.css$/.test(link.href)).length, 1, 'the sheet is linked once');
   assert.match(source('index.html'), /<link rel="stylesheet" href="ui\/building\/building\.css">/);
   assert.doesNotMatch(source('ui/building/index.js'), /document\.head\.append/, 'the section no longer puts a link in the page');
 });

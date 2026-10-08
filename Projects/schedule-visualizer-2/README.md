@@ -27,7 +27,7 @@ are built and tested and wait for their screens.
 | Path | What it is |
 |---|---|
 | `index.html` | The planner |
-| `engine/schema.js` | The data model: constants, ranges, defaults, `newProject(ids, clock)`, `roomName` |
+| `engine/schema.js` | The data model: constants, ranges, defaults, `newProject(ids, clock)`, how a room is named |
 | `engine/ids.js` | Ids, from a random source that is passed in |
 | `engine/validate.js` | `validate(project)` gives a list of findings `{ path, message }` |
 | `engine/migrate.js` | Brings an older project up to the current version; refuses a newer one |
