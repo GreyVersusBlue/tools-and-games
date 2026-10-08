@@ -40,6 +40,9 @@ const GROUPS = {
     'engine/checks.test.mjs', // SV2-09
     'engine/routing.test.mjs', // SV2-05
     'engine/directions.test.mjs', // SV2-05
+    'engine/import-groups.test.mjs', // SV2-10
+    'engine/exports.test.mjs', // SV2-10
+    'engine/project-file.test.mjs', // SV2-10
   ],
   browser: [],
   a11y: [],

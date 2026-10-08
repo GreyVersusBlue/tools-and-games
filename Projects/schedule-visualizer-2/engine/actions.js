@@ -1399,3 +1399,80 @@ export const resizeFloor = action(
 );
 
 // ================================================================ SV2-04: the building (end)
+
+// ================================================================ SV2-10: imports (start)
+//
+// Every import is one action and one undo entry. The work is in
+// import-groups.js and project-file.js, which read and check the file in full
+// before any of these runs; each action here puts the result in place and
+// turns a refusal into an ActionError. (A project file is put in place with
+// replaceProject, above, after readProjectFile.) importOutcome(after) is the
+// summary of what an import did, for the project the action itself returned;
+// the store keeps a stamped copy, so the label carries the summary there.
+
+import { applyGroupImport, summaryText, ImportError } from './import-groups.js';
+import { applyBuilding, applySchedule, FileError } from './project-file.js';
+
+const importOutcomes = new WeakMap();
+
+function importing(project, run) {
+  let result;
+  try {
+    result = run();
+  } catch (error) {
+    if (error instanceof ImportError || error instanceof FileError) refuse(error.message, error.code);
+    throw error;
+  }
+  if (result.project !== project) importOutcomes.set(result.project, result.summary);
+  return result.project;
+}
+
+// The summary of the import that returned this project, or null.
+export function importOutcome(project) {
+  return importOutcomes.get(project) || null;
+}
+
+function importLabel(what) {
+  return (before, payload, after) => {
+    const summary = importOutcome(after);
+    return 'Import ' + what + (summary && summary.created ? ': ' + summaryText(summary) : '');
+  };
+}
+
+// Groups from a CSV file. payload: { rows, mapping, policy }: the rows
+// csv.js parsed, the column mapping the user settled on, and the answer to
+// name clashes, { all, per, names } (import-groups.js). Without a policy a
+// group whose name is already here is skipped.
+export const importGroups = action(
+  { label: importLabel('groups'), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
+  (project, payload, ctx) => importing(project, () => applyGroupImport(project, payload.rows, payload.mapping, payload.policy, ctx.ids)),
+);
+
+// A schedule file. payload: { file, policy, takeSettings }, where `file` is
+// what readScheduleFile returned.
+export const importSchedule = action(
+  { label: importLabel('a schedule file'), bumps: [BUILDING, SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
+  (project, payload, ctx) => {
+    if (!payload.file || typeof payload.file !== 'object') refuse('There is no schedule file to import.', 'bad-value');
+    return importing(project, () => applySchedule(project, payload.file, { policy: payload.policy, takeSettings: payload.takeSettings === true, ids: ctx.ids }));
+  },
+);
+
+// A building file, in place of the building here. payload: { file }, where
+// `file` is what readBuildingFile returned.
+export const importBuilding = action(
+  {
+    label: (before, payload, after) => {
+      const summary = importOutcome(after);
+      return 'Import a building file' + (summary ? ': ' + summary.floors + (summary.floors === 1 ? ' floor, ' : ' floors, ') + summary.rooms + (summary.rooms === 1 ? ' room' : ' rooms') : '');
+    },
+    bumps: [GEOMETRY, BUILDING, SCHEDULE],
+    focus: () => ({ section: 'building' }),
+  },
+  (project, payload, ctx) => {
+    if (!payload.file || typeof payload.file !== 'object') refuse('There is no building file to import.', 'bad-value');
+    return importing(project, () => applyBuilding(project, payload.file, { ids: ctx.ids, unnumberedText: UNNUMBERED_ROOM_TEXT }));
+  },
+);
+
+// ================================================================ SV2-10: imports (end)
