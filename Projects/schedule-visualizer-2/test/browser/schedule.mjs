@@ -115,7 +115,7 @@ test('the sample school shows its groups with completeness, marks and the findin
   assert.equal(await page.$eval('.sch-group[data-group="gsample06c"]', (el) => el.hasAttribute('aria-label')), false);
   assert.equal(await page.$eval('.sch-group[data-group="gsample06c"]', (el) => Array.from(el.querySelectorAll('.sch-group__name, .vh')).map((part) => part.textContent).join('')),
     '6C, grade . 1 problem1 noteA Day: 8 of 8 periods have a room. B Day: 8 of 8 periods have a room. ');
-  assert.deepEqual((await counts()).slice(0, 2), [1, 0]);
+  assert.deepEqual((await counts()).slice(0, 2), [1, 1]);
   assert.equal(await page.$eval('#inspector', (el) => el.hidden), false);
   assert.equal(await text('#inspector .sch-panel__scope'), 'About 6A');
   // a button that is not built yet says why, and can be reached to hear it

@@ -58,9 +58,41 @@ function loadSheet() {
 // What is chosen here. It outlives a visit to another section.
 const view = { groupId: null, filter: '', shown: null };
 
-// The walk results of the crowd model, when something has worked them out.
-function walkResults() {
-  return null;
+// The walk results of the crowd model for the store's project: the engine
+// client's (ui/engine-client.js, attached at boot), asked for once per state
+// of the project. Until the answer for a change comes, the last answer stands,
+// so the two walk checks do not blink off at every keystroke; the section is
+// drawn again when the new answer differs, and reads as pending
+// (`data-pending`) until then. Null where nothing is attached to work them
+// out, or it failed: the walk checks then find nothing, and the Checks tab
+// says so.
+const walked = { project: null, walks: null, text: '', waiting: false };
+function markWaiting() {
+  const section = document.querySelector('.sch');
+  if (section && walked.waiting) section.dataset.pending = 'true';
+}
+function walkResults(store) {
+  if (!store.derived || !store.derived.engine) return null;
+  const project = store.project;
+  if (walked.project !== project) {
+    walked.project = project;
+    walked.waiting = true;
+    const answer = (walks) => {
+      // an answer for a state the project has left is not for the screen
+      if (walked.project !== project || store.project !== project) return;
+      walked.waiting = false;
+      const text = walks ? JSON.stringify(walks) : '';
+      const changed = text !== walked.text;
+      if (changed) Object.assign(walked, { walks, text });
+      const section = document.querySelector('.sch');
+      if (live && changed) live.run();
+      else if (section && !(live && live.waiting)) delete section.dataset.pending;
+    };
+    store.derived.results().then((result) => answer(result && result.walks ? result.walks : null), () => answer(null));
+  }
+  // the section may not be on the page yet when it first asks
+  if (walked.waiting) Promise.resolve().then(markWaiting);
+  return walked.walks;
 }
 
 // One watch on the pointer for the whole page: `live` is the section on screen.
@@ -106,7 +138,7 @@ export const section = {
     const env = {
       ctx,
       view,
-      model: () => scheduleModel(ctx.store.project, walkResults()),
+      model: () => scheduleModel(ctx.store.project, walkResults(ctx.store)),
       tab: () => strip.selected,
       render(key) {
         if (key) wantFocus = key;
