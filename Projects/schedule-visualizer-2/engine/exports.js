@@ -22,7 +22,7 @@ import { effectiveSchedule } from './day-types.js';
 import { teacherDays } from './teacher-day.js';
 import { writeProjectFile, writeBuildingFile, writeScheduleFile } from './project-file.js';
 
-export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project'];
+export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project', 'subjects'];
 
 export const NOT_IN_BUILDING = 'not in the building';
 export const PLANNING = 'Planning';
@@ -213,7 +213,6 @@ const BUILDERS = {
   groups: { what: 'groups', extension: 'csv', mime: CSV, text: (project, options) => csvText(groupsRows(project), options) },
   'groups-template': { what: 'groups template', extension: 'csv', mime: CSV, text: (project, options) => csvText(templateRows(project), options) },
   teachers: { what: 'teachers', extension: 'csv', mime: CSV, text: (project, options) => csvText(teachersRows(project), options) },
-  // not in EXPORT_KINDS yet: test/engine/exports.test.mjs pins that list's file names one by one
   subjects: { what: 'subjects', extension: 'csv', mime: CSV, text: (project, options) => csvText(subjectsRows(project), options) },
   rooms: { what: 'rooms', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomsRows(project), options) },
   'teacher-grid': { what: 'teachers by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(teacherGridRows(project, options.dayTypeId), options) },

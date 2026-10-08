@@ -387,6 +387,30 @@ test('every export is a download named with the school and the date, and the CSV
   assert.equal(await undoOff(), 'true', 'an export changes nothing');
 });
 
+test('the two walk checks reach the Checks tab: the sample school\'s one late walk is a warning, and it goes when the walk does', async () => {
+  await go(page, '#schedule/checks');
+  await settled();
+  const walk = '.sch-checks .sch-findings tr[data-finding="group-walk:' + DAY_A + ':5:gsample08a"]';
+  assert.equal(await text(walk + ' td:nth-child(2)'), '8A needs 4 min 21 s to get from Gym to Room 303 after Period 6 on A Day, and the passing time is 4 min.');
+  assert.equal(await page.$eval(walk, (row) => row.dataset.severity), 'warning');
+  assert.equal(await page.$eval('#inspector .sch-counts', (el) => el.dataset.warning), '1');
+  assert.equal(await exists('.sch-checks [data-note="walks"]'), false, 'the tab no longer says walking times are not worked out');
+  assert.equal(await page.evaluate(async () => (await globalThis.sv2.store.derived.results()).where), 'worker', 'and the figures came from the worker');
+
+  // 8A stays in the Gym for Period 7: no walk, no warning; undo brings both back
+  await page.evaluate(async (day) => {
+    const actions = await import(new URL('engine/actions.js', location.href).href);
+    const { store } = globalThis.sv2;
+    const group = store.project.groups.find((each) => each.id === 'gsample08a');
+    store.apply(actions.setSlot, { groupId: group.id, dayTypeId: day, period: 6, slot: { ...group.days[day][5] } });
+  }, DAY_A);
+  await shows((selector) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector(selector) === null, walk);
+  assert.equal(await page.$eval('#inspector .sch-counts', (el) => el.dataset.warning), '0');
+  await click('#undo');
+  await page.waitForSelector(walk);
+  assert.equal(await page.$eval('#inspector .sch-counts', (el) => el.dataset.warning), '1');
+});
+
 test('the Checks tab prints the checks report from its own button', async () => {
   await go(page, '#schedule/checks');
   await settled();
