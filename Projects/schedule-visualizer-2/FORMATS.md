@@ -6,6 +6,7 @@ Every format the tool reads or writes is described here, with its version:
 |---|---|---|---|
 | The project object | `sv2-project` | 1 | The project object |
 | The project file | `sv2-project` | 1 | The project file |
+| A recovery point, exported | `sv2-project` | 1 | The recovery export |
 | The building file | `sv2-building` | 1 | The building file |
 | The schedule file | `sv2-schedule` | 1 | The schedule file |
 | The groups CSV and its template | none (CSV) | | The groups CSV |
@@ -346,6 +347,30 @@ Round trip: writing a project, reading the file and writing again gives the
 same file, byte for byte. `test/fixtures/formats/project-v1.json` is a file
 written at version 1, kept to prove that later versions of the tool still
 read it and write it back unchanged.
+
+## The recovery export
+
+Format name `sv2-project`, version **1**. Written by `storage/session.js`
+(`exportRecoveryPoint`) through `writeProjectFile`; read by `readProjectFile`.
+
+A recovery point exported from the Project section **is a project file**. It
+has no format of its own: the same fields, the same traced images as `data`
+and `type`, the same reader and the same refusals. It is named
+`<school> - recovery point - <the day the point was taken>.json`, so it can be
+told from an ordinary export on disk; nothing inside the file says it came
+from a recovery point.
+
+What is written is the point's project brought up to date first (migrated and
+repaired as it would be on load), so a point taken by an older version of the
+tool exports as a current file. The time the point was taken, the reason and
+its size stay on the device and are not in the file.
+
+On the device a recovery point is a record in the IndexedDB database
+`sv2-recovery`, store `recovery`: `{ takenAt, reason, summary, bytes, project,
+images }`, with `reason` one of `timer`, `leave`, `replace`, `import`,
+`restore`, `summary` as `{ floors, rooms, groups, teachers }`, and `images` as
+`{ [imageId]: Blob }`. That record is the device's own and is not a file
+format; no other tool should read it.
 
 ## The building file
 
