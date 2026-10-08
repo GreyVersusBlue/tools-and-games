@@ -54,6 +54,10 @@ const GROUPS = {
     'engine/project-file.test.mjs', // SV2-10
     'engine/publish-data.test.mjs', // SV2-20
     'engine/publish-crypto.test.mjs', // SV2-20
+    'publish/linker.test.mjs', // SV2-20
+    'publish/manifest.test.mjs', // SV2-20
+    'publish/staff.test.mjs', // SV2-20
+    'publish/baseline.mjs', // SV2-20
     'engine/presets.test.mjs', // SV2-02
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
