@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validate, isValid } from '../../engine/validate.js';
-import { emptyProject, school, clone, BREAKS } from './helpers.mjs';
+import { emptyProject, school, clone, room, BREAKS } from './helpers.mjs';
 
 test('the empty project and the sample school have no findings', () => {
   assert.deepEqual(validate(emptyProject()), []);
@@ -128,4 +128,65 @@ test('a published model, with its fewer fields, has no findings', () => {
   assert.deepEqual(validate(published), []);
   published.groups[0].colour = 'red';
   assert.deepEqual(validate(published).map((finding) => finding.path), ['groups[0].colour'], 'and it is still checked');
+});
+
+// ---- SV2-35: three rules the review of the first unit asked for
+
+test('finds two stair connections with one label', () => {
+  const project = school();
+  project.building.connections[1].label = 'A';
+  assert.deepEqual(validate(project).map((finding) => finding.path), ['building.connections[1].label']);
+  assert.match(validate(project)[0].message, /already used at building\.connections\[0\]/);
+});
+
+test('connection labels are compared as typed: "A" and "a" are two labels', () => {
+  const project = school();
+  project.building.connections[1].label = 'a';
+  assert.deepEqual(validate(project), []);
+});
+
+test('finds a check switched off that is not one of the checks', () => {
+  const project = school();
+  project.settings.checks.off = ['room-unused', 'room-on-fire'];
+  assert.deepEqual(validate(project).map((finding) => finding.path), ['settings.checks.off[1]']);
+  project.settings.checks.off = ['room-unused', 'empty-period'];
+  assert.deepEqual(validate(project), []);
+});
+
+const WRONG_IDS = [
+  ['the project', (p) => { p.id = 'my project'; }, 'project.id'],
+  ['a subject', (p) => { p.subjects.push({ id: 'DRAMA', code: 'DRA', name: 'Drama', colour: '#7a5aa6' }); }, 'subjects[9].id'],
+  ['a teacher', (p) => { p.teachers.push({ id: 'tsample01', name: 'Mx. Oakhollow', subjectId: null, roomIds: [], notes: '' }); }, 'teachers[12].id'],
+  ['a day type', (p) => { const id = p.dayTypes[1].id; p.dayTypes[1].id = 'dSample00b'; for (const g of p.groups) { g.days.dSample00b = g.days[id]; delete g.days[id]; } }, 'dayTypes[1].id'],
+  ['a floor', (p) => { p.building.floors.push({ ...clone(p.building.floors[2]), id: 'fsample0044', name: 'Roof', spaces: [], corridors: [], exits: [], cells: '.'.repeat(560) }); }, 'building.floors[3].id'],
+  ['an other space', (p) => { p.building.floors[0].spaces[5].id = 'office'; }, 'building.floors[0].spaces[5].id'],
+  ['a corridor name', (p) => { p.building.floors[0].corridors[0].id = 'k-sample01'; }, 'building.floors[0].corridors[0].id'],
+  ['an exit', (p) => { p.building.floors[0].exits[0].id = ' xsample01'; }, 'building.floors[0].exits[0].id'],
+  ['a connection', (p) => { p.building.connections[0].id = 'c'; }, 'building.connections[0].id'],
+  ['a zone', (p) => { p.building.zones[0].id = 'zsample00é'; }, 'building.zones[0].id'],
+  ['a group', (p) => { p.groups[7].id = '6a'; }, 'groups[7].id'],
+];
+
+for (const [name, mutate, path] of WRONG_IDS) {
+  test('finds an id of the wrong form on ' + name, () => {
+    const project = school();
+    mutate(project);
+    assert.deepEqual(validate(project).map((finding) => finding.path), [path]);
+    assert.match(validate(project)[0].message, /10 characters/);
+  });
+}
+
+test('finds an id that is another kind\'s: a group carrying a room\'s letter', () => {
+  const project = school();
+  project.groups[7].id = 'rsample999';
+  assert.deepEqual(validate(project).map((finding) => finding.path), ['groups[7].id']);
+  assert.match(validate(project)[0].message, /starts with "g"/);
+});
+
+test('a room that is not a rectangle is allowed: the eraser and a placement over part of a room make them', () => {
+  const project = school();
+  const space = room(project, '103');
+  const lost = space.cells.filter((cell) => !space.doors.some((door) => door.cell === cell))[0];
+  space.cells = space.cells.filter((cell) => cell !== lost);
+  assert.deepEqual(validate(project), []);
 });
