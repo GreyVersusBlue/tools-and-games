@@ -444,6 +444,9 @@ test('a save that fails says so at once in a banner, keeps the work, offers an e
   assert.equal(readProjectFile(file.text).project.settings.schoolName, 'Failing Save School', 'the export is a project file that reads back');
   assert.match(await page.$eval('#saved [data-line="exported"]', (el) => el.textContent), /^It was last exported to a file at /);
 
+  // noting the export asked for a save of its own; let that one fail too, so
+  // that what clears the banner below can only be the retry timer
+  await pause(900);
   await page.evaluate(() => {
     globalThis.sv2.storage.hooks.failWrite = null;
   });
