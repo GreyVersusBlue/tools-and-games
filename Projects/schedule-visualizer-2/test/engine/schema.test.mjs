@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as schema from '../../engine/schema.js';
 import { validate } from '../../engine/validate.js';
+import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { subjectsStarter } from '../../data/subjects-starter.js';
 import { emptyProject, school, room, clock, makeIds, PINNED } from './helpers.mjs';
 
@@ -65,9 +66,16 @@ test('newProject starts with the starter subjects, each with its own id', () => 
   assert.equal(new Set(subjectsStarter.map((s) => s.code)).size, subjectsStarter.length);
 });
 
-test('newProject has the default passcode, every view on and 60 days of staleness', () => {
+test('newProject takes its passcode from the caller, and has every view on and 60 days of staleness', () => {
   const { publish, onboarding, accepted, scenario } = emptyProject();
-  assert.equal(publish.passcode, 'bulldogs2015');
+  // schema.js knows no passcode (a published file carries its source): bare, protection is off
+  assert.equal(publish.passcode, '');
+  assert.equal(schema.defaultPublish().passcode, '');
+  assert.equal('DEFAULT_PASSCODE' in schema, false);
+  // the planner hands over the tool's default
+  assert.equal(DEFAULT_PASSCODE, 'bulldogs2015');
+  assert.equal(schema.newProject(makeIds(), clock, { passcode: DEFAULT_PASSCODE }).publish.passcode, 'bulldogs2015');
+  assert.equal(schema.defaultPublish(DEFAULT_PASSCODE).passcode, 'bulldogs2015');
   assert.equal(publish.stalenessDays, 60);
   assert.deepEqual(Object.keys(publish.views), schema.PUBLISH_VIEWS);
   assert.ok(Object.values(publish.views).every((on) => on === true));

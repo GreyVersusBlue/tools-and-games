@@ -36,6 +36,7 @@ import { section as project } from './project/index.js';
 import { createStore } from '../engine/store.js';
 import { createIds } from '../engine/ids.js';
 import { newProject, THEMES } from '../engine/schema.js';
+import { DEFAULT_PASSCODE } from '../engine/publish-defaults.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
@@ -281,7 +282,7 @@ async function boot() {
   function removeSample() {
     const now = store.project;
     if (now.id !== SAMPLE_PROJECT_ID) return;
-    const empty = newProject(ids, clock, { paperSize: devicePaper() });
+    const empty = newProject(ids, clock, { paperSize: devicePaper(), passcode: DEFAULT_PASSCODE });
     empty.settings.theme = now.settings.theme;
     store.apply(replaceProject, { project: empty, label: 'Remove the sample school' });
     toast({ text: 'Removed the sample school. This is an empty project.', action: { label: 'Undo', run: undo } });

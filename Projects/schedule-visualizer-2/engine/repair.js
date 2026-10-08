@@ -41,6 +41,7 @@
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
 import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel } from './schema.js';
+import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { createIds, seededRandom, collectIds, isId } from './ids.js';
 
 const FALLBACK_DATE = '1970-01-01T00:00:00.000Z';
@@ -866,7 +867,7 @@ export function repair(input, options) {
     }
 
     // ---- publish settings
-    const publishDefaults = defaultPublish();
+    const publishDefaults = defaultPublish(DEFAULT_PASSCODE);
     if (source.publish !== undefined && !isObject(source.publish)) note('The publish settings could not be read and were reset.');
     const publish = isObject(source.publish) ? { ...source.publish } : {};
     project.publish = publish;

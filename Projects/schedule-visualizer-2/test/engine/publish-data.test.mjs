@@ -16,6 +16,11 @@ import { routingGraph, route } from '../../engine/routing.js';
 import { directions } from '../../engine/directions.js';
 import { allRooms } from '../../engine/schema.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
+import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
+import { seededRandom } from '../../engine/ids.js';
+import { publishDocument } from '../../ui/staff/targets.js';
+import { MODULES } from '../../staff/manifest.js';
+import { diskReader, partsOf } from '../publish/reader.mjs';
 import { school, clock, clone, room, group, teacher } from './helpers.mjs';
 
 const keys = (value) => Object.keys(value).sort();
@@ -284,4 +289,19 @@ test('protection is on for any passcode and off for an empty one', () => {
   assert.equal(isProtected(project), true);
   project.publish.passcode = '';
   assert.equal(isProtected(project), false);
+});
+
+// SV2-36 item 9. A published file carries the source of every module on the
+// staff manifest. While the default passcode was a constant in schema.js,
+// every file locked with it spelt it out in its own script.
+test('a file locked with the default passcode does not hold that passcode in its code', async () => {
+  const project = school();
+  assert.equal(project.publish.passcode, DEFAULT_PASSCODE);
+  const made = await publishDocument(diskReader(), project, { clock, random: seededRandom('sv2-item-9'), iterations: 1000 });
+  assert.equal(made.locked, true);
+  const parts = partsOf(made.html);
+  assert.ok(parts.script.length > 100000, 'the script of the assembled file was read');
+  assert.equal(parts.script.includes(DEFAULT_PASSCODE), false, 'the default passcode can be read in the published file\'s script');
+  assert.equal(made.html.includes(DEFAULT_PASSCODE), false, 'the default passcode can be read somewhere in the published file');
+  assert.equal(MODULES.includes('engine/publish-defaults.js'), false, 'the module that holds the default is not one a published file carries');
 });

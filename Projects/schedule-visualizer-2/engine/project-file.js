@@ -24,6 +24,7 @@
 // it holds to a writer, and stores what a reader hands back.
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, roomNumberKey, nameKey, allRooms, findRoom } from './schema.js';
+import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { repair } from './repair.js';
 import { validate } from './validate.js';
@@ -242,7 +243,7 @@ function scaffold(parts) {
     dayTypes: parts.dayTypes || [{ id: 'dscaffold0', name: 'A Day', own: true, bells: emptyBells(defaultSettings().periods) }],
     accepted: [],
     scenario: null,
-    publish: defaultPublish(),
+    publish: defaultPublish(DEFAULT_PASSCODE),
     onboarding: defaultOnboarding(),
   };
 }
