@@ -95,7 +95,12 @@ test('the worker answers for the sample school, with typed arrays and the walk t
   assert.equal(seen.clientWhere, 'worker');
   assert.equal(seen.fallback, null);
   assert.equal(seen.generation, 1);
-  assert.deepEqual(seen.stats, { asked: 1, remembered: 0, sent: 1, answered: 1, dropped: 0, failed: 0 });
+  // One request reaches the worker however many screens ask: the Schedule
+  // section's walkResults() asks once too (SV2-13), and every ask after the
+  // first is answered from memory.
+  assert.deepEqual({ sent: seen.stats.sent, answered: seen.stats.answered, dropped: seen.stats.dropped, failed: seen.stats.failed }, { sent: 1, answered: 1, dropped: 0, failed: 0 });
+  assert.ok(seen.stats.asked >= 1, 'nothing asked');
+  assert.equal(seen.stats.remembered, seen.stats.asked - 1, 'every ask after the first should be answered from memory: ' + JSON.stringify(seen.stats));
   assert.deepEqual(seen.loud, ['group-walk:dsample00a:5:gsample08a', 'room-double:dsample00a:1:rsample203']);
   assert.equal(seen.text, '8A needs 4 min 21 s to get from Gym to Room 303 after Period 6 on A Day, and the passing time is 4 min.');
   assert.deepEqual(seen.walk, [261, 0, 261, true]);
