@@ -1,0 +1,299 @@
+/*
+  Schedule Visualizer 2: design tokens.
+
+  The clipboard: calm, flat, paper-coloured, one accent. Interface chrome uses ink,
+  paper and the accent. Colour that means something (subjects, groups, load bands,
+  severities) is data, never chrome, and always has a text or shape partner.
+
+  This file holds custom properties and the @font-face rules, and styles no element.
+  Layout and components are in app.css.
+
+  Themes
+    light                       :root, [data-theme="light"], [data-theme="auto"]
+    dark, chosen                [data-theme="dark"]
+    dark, following the device  @media (prefers-color-scheme: dark), for
+                                [data-theme="auto"] and for a root with no data-theme
+  The two dark blocks hold the same values. The contrast test fails when they differ.
+  data-theme works on any element, so a light island (a print preview) can sit in a
+  dark page.
+
+  Contrast
+    test/a11y/contrast.mjs reads the table below and checks every pair in it, in both
+    themes, at the ratio in the third column: 4.5 for text, 3 for the focus ring, for
+    outlines drawn on the plan and for the edge of a control. A surface cell may name
+    several tokens; each is a pair. To put text on a surface that is not listed with
+    it, add the pair here first. Every colour token must appear in this table; the
+    three that carry no text and edge no control (--line, --corridor-edge, --shadow)
+    are named in the test.
+
+    | Text or mark    | Surface                                                                  | Min | Where                                                   |
+    |-----------------|--------------------------------------------------------------------------|-----|---------------------------------------------------------|
+    | --ink           | --paper --card --accent-soft --grid --corridor --stairs --room-default   | 4.5 | body text; labels drawn on the plan                     |
+    | --ink-2         | --paper --card --accent-soft --grid --corridor --stairs --room-default   | 4.5 | secondary text; a teacher's surname under a room number |
+    | --accent        | --paper --card --accent-soft                                             | 4.5 | links, the active tab, the active rail item             |
+    | --accent-ink    | --accent                                                                 | 4.5 | text on a primary button                                |
+    | --problem       | --paper --card --accent-soft --stairs                                    | 4.5 | problems, as text and in a selected row; the "!" badge  |
+    | --warning       | --paper --card --accent-soft                                             | 4.5 | warnings, as text and in a selected row                 |
+    | --note          | --paper --card --accent-soft                                             | 4.5 | notes, as text and in a selected row                    |
+    | --focus         | --paper --card --accent-soft --grid --corridor --stairs --room-default   | 3   | the focus ring, and the keyboard cursor on the plan     |
+    | --accent        | --grid --corridor --stairs --room-default                                | 3   | the selection outline and the exit dash on the plan     |
+    | --line-strong   | --paper --card                                                           | 3   | the edge of a field, a checkbox, a switch               |
+
+  Data colours on the plan
+    The test also takes every group colour (--group-1 to --group-20) and every load
+    band (--load-1 to --load-5), in both themes, at full strength and laid over
+    --paper, --card and --grid at --room-strength, and checks the label drawn on it:
+      labelColour(fill, ink, paper)  at least 3:1    the better of ink and paper
+      labelOn(fill, ink, paper)      at least 4.5:1  the same, strengthened when short
+    Ink or paper alone cannot reach 4.5:1 on a mid-tone fill (the first preset, at
+    full strength, gets 3.94), so anything that writes small text on a data colour
+    asks ui/colour.js for labelOn. As text on a surface, a data colour goes through
+    readable(colour, surface) first.
+*/
+
+/* ---------- Typefaces: vendored in ../fonts, latin, OFL 1.1 ---------- */
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/public-sans-latin-400-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(../fonts/public-sans-latin-500-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/public-sans-latin-600-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/public-sans-latin-700-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(../fonts/barlow-semi-condensed-latin-500-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/barlow-semi-condensed-latin-600-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ---------- Everything that is the same in both themes ---------- */
+
+:root {
+  /* Type. Public Sans for the interface; Barlow Semi Condensed for labels drawn on
+     the plan and for big figures. The files are latin; a name in another script
+     falls through to the device's own face. */
+  --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-plan: "Barlow Semi Condensed", "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --numeric: tabular-nums;          /* font-variant-numeric, wherever a number can line up */
+
+  --base: 16px;                     /* the planner */
+  --base-phone: 17px;               /* the staff browser on a phone */
+
+  /* Size and line height, in pairs. */
+  --t-xs: 0.75rem;    --lh-xs: 1.2;     /* eyebrows, legends */
+  --t-sm: 0.875rem;   --lh-sm: 1.35;    /* table cells, secondary text */
+  --t-md: 1rem;       --lh-md: 1.5;     /* body, fields, buttons */
+  --t-lg: 1.25rem;    --lh-lg: 1.3;     /* section headings, card titles */
+  --t-xl: 1.75rem;    --lh-xl: 1.15;    /* the one headline per screen */
+  --t-fig: 2.5rem;    --lh-fig: 1;      /* big figures, in --font-plan */
+
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+  --w-bold: 700;
+
+  /* Spacing, on a 4 px grid. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  /* Radius. Nothing larger than --r-2. */
+  --r-1: 3px;                       /* fields and buttons */
+  --r-2: 6px;                       /* cards and dialogs */
+
+  /* Border and focus. */
+  --border-width: 1px;
+  --border: var(--border-width) solid var(--line);
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* Motion. Zeroed under prefers-reduced-motion at the foot of this file. */
+  --dur-1: 120ms;                   /* menus, panels, toasts */
+  --dur-2: 200ms;                   /* a dialog */
+  --ease: cubic-bezier(0, 0, 0.2, 1);
+
+  /* How strongly a data colour is laid over the surface on the plan. */
+  --room-strength: 0.7;             /* a room's subject colour */
+  --other-strength: 0.6;            /* an other space's own colour */
+
+  /* Group colours, offered in this order to each new group: ten, then the same ten
+     with each hue turned 30 degrees (the grey, having no hue, goes darker instead).
+     ui/colour.js presetFor(n) returns --group-(n+1); the test holds the two together.
+     The same hex is used in both themes. */
+  --group-1: #d1495b;
+  --group-2: #0072b2;
+  --group-3: #e69f00;
+  --group-4: #009e73;
+  --group-5: #cc79a7;
+  --group-6: #56b4e9;
+  --group-7: #8c6d31;
+  --group-8: #7b4ea3;
+  --group-9: #f0e442;
+  --group-10: #999999;
+  --group-11: #d17b49;
+  --group-12: #0019b2;
+  --group-13: #bae600;
+  --group-14: #007a9e;
+  --group-15: #cc797d;
+  --group-16: #566be9;
+  --group-17: #7e8c31;
+  --group-18: #a34ea1;
+  --group-19: #a5f042;
+  --group-20: #666666;
+
+  /* Load bands, quiet to busy. Each has a pattern partner in print. */
+  --load-1: #e9eef2;
+  --load-2: #bcd7e8;
+  --load-3: #7fb3d5;
+  --load-4: #d98a3e;
+  --load-5: #b3261e;
+}
+
+/* ---------- Light ---------- */
+
+:root,
+[data-theme="light"],
+[data-theme="auto"] {
+  color-scheme: light;
+
+  --paper: #f6f3ec;                 /* page background */
+  --card: #fffdf8;                  /* panels, cards, fields */
+  --ink: #1f2328;                   /* text */
+  --ink-2: #515761;                 /* secondary text */
+  --line: #d8d3c8;                  /* borders between things */
+  --line-strong: #857f73;           /* the edge of a control, 3:1 on paper and card */
+
+  --accent: #0f6e66;                /* primary buttons, links, the active rail item */
+  --accent-ink: #ffffff;            /* text on accent */
+  --accent-soft: #d9ece9;           /* selected rows, active tabs */
+  --focus: var(--accent);           /* a --focus-width outline at --focus-offset */
+
+  --problem: #b3261e;
+  --warning: #925d00;
+  --note: #3b5b8a;
+
+  --grid: #e8e3d8;                  /* the empty cell */
+  --corridor: #ffffff;              /* corridor cells */
+  --corridor-edge: var(--line);     /* their hairline */
+  --stairs: #d9ece9;                /* stairs cells, under a chevron */
+  --room-default: #e9e4d9;          /* a room with no subject */
+
+  --shadow: 0 6px 24px rgba(31, 35, 40, 0.18);   /* floating menus and dialogs only */
+}
+
+/* ---------- Dark, chosen ---------- */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #15181c;
+  --card: #1d2126;
+  --ink: #e8e6e1;
+  --ink-2: #a9adb4;
+  --line: #343a42;
+  --line-strong: #707a86;
+
+  --accent: #5fc2b8;
+  --accent-ink: #0b1a18;
+  --accent-soft: #163a37;
+  --focus: var(--accent);
+
+  --problem: #ff8a80;
+  --warning: #ffc86b;
+  --note: #8fb4ea;
+
+  --grid: #1a1e23;
+  --corridor: #2a2f36;
+  --corridor-edge: var(--line);
+  --stairs: #163a37;
+  --room-default: #2f343b;
+
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- Dark, following the device: the same values as the block above ---------- */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]),
+  [data-theme="auto"] {
+    color-scheme: dark;
+
+    --paper: #15181c;
+    --card: #1d2126;
+    --ink: #e8e6e1;
+    --ink-2: #a9adb4;
+    --line: #343a42;
+    --line-strong: #707a86;
+
+    --accent: #5fc2b8;
+    --accent-ink: #0b1a18;
+    --accent-soft: #163a37;
+    --focus: var(--accent);
+
+    --problem: #ff8a80;
+    --warning: #ffc86b;
+    --note: #8fb4ea;
+
+    --grid: #1a1e23;
+    --corridor: #2a2f36;
+    --corridor-edge: var(--line);
+    --stairs: #163a37;
+    --room-default: #2f343b;
+
+    --shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* ---------- Reduced motion: nothing moves ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+  }
+}
