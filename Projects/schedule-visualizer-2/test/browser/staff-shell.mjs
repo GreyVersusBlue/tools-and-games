@@ -531,7 +531,8 @@ test('every name is shown exactly as typed and never read as markup', async () =
     assert.deepEqual(await text(page, '.results a[data-result="teacher"] .list__name'), [HOSTILE + ' T']);
     assert.deepEqual(await text(page, '.results a[data-result="room"] .list__detail'), ['Floor 1 · ' + HOSTILE + ' T · Mathematics'], 'the teacher\'s room is found with them');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => location.hash === '#/teacher/tsample001');
+    // the address changes first and the page is drawn on the event that follows, so wait for the page
+    await page.waitForFunction(() => location.hash === '#/teacher/tsample001' && document.getElementById('find') === null);
     assert.equal(await heading(page), HOSTILE + ' T');
     assert.equal(await page.evaluate(() => globalThis.__pwned), undefined, 'a name ran as script');
     assert.equal(await page.evaluate(() => document.querySelectorAll('#app img, #app b').length), 0, 'a name became elements');
