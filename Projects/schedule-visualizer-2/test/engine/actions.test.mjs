@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as actions from '../../engine/actions.js';
 import { validate } from '../../engine/validate.js';
-import { GROUP_COLOUR_PRESETS, defaultSettings } from '../../engine/schema.js';
+import { GROUP_COLOUR_PRESETS, defaultSettings, nameOfRoom } from '../../engine/schema.js';
+import { roomName } from '../../engine/findings.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
 import { emptyProject, school, ctx, clone, room, group, teacher, assertValid, PINNED } from './helpers.mjs';
 
@@ -759,4 +760,149 @@ test('no action writes to the project it is given', () => {
   project = run(actions.resetSettings, project);
   assert.equal(JSON.stringify(first), original);
   assert.deepEqual(validate(project), []);
+});
+
+// ---------------------------------------------------------------- SV2-35: what the review of the first unit found
+
+test('addFloor after a middle floor was deleted gives a level no floor has: one above the highest', () => {
+  let project = run(actions.deleteFloor, school(), { id: 'fsample002' });
+  assert.deepEqual(project.building.floors.map((f) => f.level), [1, 3]);
+  project = run(actions.addFloor, project);
+  assert.deepEqual(project.building.floors.map((f) => f.level), [1, 3, 4], 'two floors on level 3 would make the stairs between them cost one flight');
+  assert.equal(new Set(project.building.floors.map((f) => f.level)).size, 3);
+});
+
+test('addFloor counts up from the highest level, wherever that floor is in the order, and from a basement', () => {
+  let project = run(actions.reorderFloor, school(), { id: 'fsample003', toIndex: 0 });
+  project = run(actions.addFloor, project);
+  assert.equal(project.building.floors[3].level, 4);
+  let low = run(actions.setFloorLevel, emptyProject(), { id: emptyProject().building.floors[0].id, level: -2 });
+  low = run(actions.addFloor, low);
+  assert.deepEqual(low.building.floors.map((f) => f.level), [-2, -1]);
+});
+
+const ADDS = [
+  ['addSubject', { code: 'DRA', name: 'Drama' }, 'id', 'ssample001', 'sdrama0001'],
+  ['addTeacher', { name: 'Mx. Oakhollow' }, 'id', 'tsample001', 'toakhollow'],
+  ['addGroup', { name: '8C' }, 'id', 'gsample06a', 'gsample08c'],
+  ['duplicateGroup', { id: 'gsample06a' }, 'newId', 'gsample06b', 'gsample06z'],
+  ['addFloor', {}, 'id', 'fsample001', 'fsample004'],
+  ['placeRoom', { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 } }, 'id', 'rsample101', 'rsample399'],
+  ['placeOtherSpace', { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 }, label: 'Store' }, 'id', 'osample001', 'osample399'],
+  ['connectStairs', { a: { floorId: 'fsample001', cell: 332 }, b: { floorId: 'fsample003', cell: 353 } }, 'id', 'csample00a', 'csample00c'],
+  ['nameCorridor', { floorId: 'fsample003', cells: [7 * 40 + 2, 7 * 40 + 3], name: 'Music Wing Hall' }, 'id', 'ksample001', 'ksample399'],
+  ['markExit', { floorId: 'fsample002', cell: 7 * 40 + 38, doorName: 'Door C' }, 'id', 'xsample00a', 'xsample00c'],
+  ['addZone', { floorId: 'fsample002', x: 1, y: 7, w: 2, h: 1 }, 'id', 'zsample001', 'zsample002'],
+];
+
+for (const [name, payload, key, taken, free] of ADDS) {
+  test(name + ' refuses an id the project already uses, and an id of another kind\'s, and takes a free one', () => {
+    const project = school();
+    if (name === 'nameCorridor') project.building.floors[2].corridors = [];
+    refused(actions[name], project, { ...payload, [key]: taken }, 'duplicate-id');
+    refused(actions[name], project, { ...payload, [key]: 'psample001' }, 'bad-id');
+    refused(actions[name], project, { ...payload, [key]: 'Not An Id' }, 'bad-id');
+    const after = run(actions[name], project, { ...payload, [key]: free });
+    assert.ok(JSON.stringify(after).includes('"' + free + '"'), 'the id given is the id used');
+  });
+}
+
+test('an id used anywhere in the project is refused, whatever kind of thing has it', () => {
+  // the project's own id has the right letter for nothing else; a traced image's id is found too
+  const project = school();
+  project.building.floors[0].image = { imageId: 'gsample999', opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 10, height: 10, missing: false };
+  refused(actions.addGroup, project, { name: '8C', id: 'gsample999' }, 'duplicate-id');
+});
+
+test('setSetting refuses to switch off a check that is not one of the checks', () => {
+  refused(actions.setSetting, school(), { key: 'checks.off', value: ['room-unused', 'room-on-fire'] }, 'bad-value');
+  const after = run(actions.setSetting, school(), { key: 'checks.off', value: ['room-unused', 'empty-period'] });
+  assert.deepEqual(after.settings.checks.off, ['room-unused', 'empty-period']);
+});
+
+test('setConnection refuses a label another stair connection has, and takes its own again', () => {
+  refused(actions.setConnection, school(), { connectionId: 'csample00b', label: 'A' }, 'duplicate-label');
+  assert.equal(actions.setConnection(school(), { connectionId: 'csample00b', label: 'B', direction: 'ab' }, ctx()).building.connections[1].direction, 'ab');
+  assert.equal(run(actions.setConnection, school(), { connectionId: 'csample00b', label: 'East stairs' }).building.connections[1].label, 'East stairs');
+});
+
+test('setOnboarding is a quiet action, and no other action is', () => {
+  assert.equal(actions.setOnboarding.quiet, true);
+  for (const [name, value] of Object.entries(actions)) {
+    if (typeof value === 'function' && 'label' in value && name !== 'setOnboarding') assert.equal(value.quiet, false, name);
+  }
+});
+
+test('describeAction carries what a building action and an import reported, and null for the rest', () => {
+  const before = school();
+  const placed = actions.placeRoom(before, { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 } }, ctx());
+  const told = info(actions.placeRoom, before, {}, placed);
+  assert.equal(told.outcome, actions.buildingOutcome(placed));
+  assert.match(told.outcome.spaceId, /^r[a-z0-9]{9}$/);
+  const renamed = actions.renameFloor(before, { id: 'fsample001', name: 'Ground' }, ctx());
+  assert.equal(info(actions.renameFloor, before, { id: 'fsample001', name: 'Ground' }, renamed).outcome, null);
+});
+
+// ---------------------------------------------------------------- SV2-35: how a room is named
+
+test('roomName: a number that starts with a digit reads "Room 204", in any script', () => {
+  assert.equal(roomName({ number: '204' }, true), 'Room 204');
+  assert.equal(roomName({ number: '12B' }, false), 'Room 12B');
+  assert.equal(roomName({ number: '٢٠٤' }, false), 'Room ٢٠٤', 'Arabic-Indic digits');
+  assert.equal(roomName({ number: '२०४' }, false), 'Room २०४', 'Devanagari digits');
+});
+
+test('roomName: one or two letters and then a digit is a number too: "B12", "A-7", "LL3"', () => {
+  assert.equal(roomName({ number: 'B12' }, false), 'Room B12');
+  assert.equal(roomName({ number: 'A-7' }, false), 'Room A-7');
+  assert.equal(roomName({ number: 'LL3' }, true), 'Room LL3');
+  assert.equal(roomName({ number: 'Б12' }, true), 'Room Б12', 'a Cyrillic letter');
+});
+
+test('roomName: a number that is a word is given as typed, with or without a digit after it', () => {
+  assert.equal(roomName({ number: 'Gym' }, true), 'Gym');
+  assert.equal(roomName({ number: 'Gym 2' }, false), 'Gym 2', 'this used to read "Room Gym 2"');
+  assert.equal(roomName({ number: 'Library' }, false), 'Library');
+  assert.equal(roomName({ number: 'Lab3' }, false), 'Lab3', 'three letters is a word');
+  assert.equal(roomName({ number: ' <i>Lab</i> ' }, false), ' <i>Lab</i> ');
+});
+
+// One rule does this, not a second one: "Room 204" starts with four letters,
+// so it is a word. Breaking the rule in schema.js fails this case with the others.
+test('roomName: a number that already starts with "room" never gets a second one', () => {
+  assert.equal(roomName({ number: 'Room 204' }, true), 'Room 204');
+  assert.equal(roomName({ number: 'room 204' }, false), 'room 204');
+  assert.equal(roomName({ number: ' ROOM204' }, false), ' ROOM204');
+});
+
+test('roomName: a room with no number says so, and findings.js hands on schema.js\'s very function', () => {
+  assert.equal(roomName({ number: '' }, true), 'A room with no number');
+  assert.equal(roomName({ number: '  ' }, false), 'a room with no number');
+  assert.equal(roomName(null, false), 'a room with no number');
+  assert.equal(roomName, nameOfRoom, 'findings.js roomName is schema.js nameOfRoom, not a second rule');
+});
+
+test('the building\'s labels name a room the way sentences do: "Delete Gym", "Edit Room 101", never "Room Gym"', () => {
+  const project = school();
+  const gym = room(project, 'Gym');
+  const deleted = actions.deleteSpaces(project, { spaceIds: [gym.id] }, ctx());
+  assert.equal(info(actions.deleteSpaces, project, { spaceIds: [gym.id] }, deleted).label, 'Delete Gym');
+  const edited = actions.setRoomFields(project, { roomId: 'rsample101', wing: 'North' }, ctx());
+  assert.equal(info(actions.setRoomFields, project, { roomId: 'rsample101', wing: 'North' }, edited).label, 'Edit Room 101');
+  const renumbered = actions.setRoomFields(project, { roomId: 'rsample101', number: 'Room 101' }, ctx());
+  assert.equal(info(actions.addDoor, renumbered, { roomId: 'rsample101' }, renumbered).label, 'Add a door to Room 101', 'not "Room Room 101"');
+  assert.equal(info(actions.setRoomTeachers, project, { roomId: gym.id }, project).label, 'Change the teachers of Gym');
+  assert.equal(info(actions.setRoomTeachers, project, { roomId: 'rsample101' }, project).label, 'Change the teachers of Room 101');
+});
+
+test('a room number in use is refused in a sentence that names the room as it is: "a room called Gym", "a Room 101"', () => {
+  assert.throws(() => actions.setRoomFields(school(), { roomId: 'rsample101', number: ' gym ' }, ctx()), /^ActionError: There is already a room called Gym, on Floor 1\. /);
+  assert.throws(() => actions.setRoomFields(school(), { roomId: 'rsample102', number: '101' }, ctx()), /^ActionError: There is already a Room 101, on Floor 1\. /);
+});
+
+test('what a placement would replace is named the same way', () => {
+  const project = school();
+  const gym = room(project, 'Gym');
+  const described = actions.describeSpaceDelete(project, { spaceIds: [gym.id, 'rsample101'] });
+  assert.deepEqual(described.loss.spaces.map((space) => space.name), ['Room 101', 'Gym']);
 });

@@ -13,21 +13,31 @@
 // an A Day and a B Day that is its own copy, each with bell times and four
 // minutes of passing time.
 //
-// There are exactly two deliberate problems, both on A Days, for a new user
-// to find. SAMPLE_PROBLEMS below names them for the tests and the help.
+// Two things are wrong on purpose, both on A Days, for a new user to find.
+// SAMPLE_PROBLEMS below names them for the tests and the help. The checks
+// (engine/checks.js) report them as one problem and one warning:
 //
-// 1. A room double-booking. Groups 6C and 7C are both in Room 203 in
-//    Period 2. Room 203 is not a shared space.
-// 2. A walk that is too long. Group 8A goes from the Gym in Period 6 to
-//    Room 303 in Period 7: along Floor 1 to stairs A, across Floor 2 to
-//    stairs B, then the length of Floor 3 to the Music Wing. That is 81 cells
-//    and two stair connections, about 259 seconds of plain walking at the
-//    default speeds, against 240 seconds of passing time.
+// 1. A problem: a room double-booking. Groups 6C and 7C are both in Room 203
+//    in Period 2. Room 203 is not a shared space, and the two groups together
+//    are 45 students in a room that seats 30.
+// 2. A warning: a walk that is too long. Group 8A goes from the Gym in
+//    Period 6 to Room 303 in Period 7: along Floor 1 to stairs A, across
+//    Floor 2 to stairs B, then the length of Floor 3 to the Music Wing. That
+//    is 81 cells and two stair connections: a route of 259 seconds at the
+//    default speeds, which the crowd model walks in 261, against 240 seconds
+//    of passing time. The warning is there once walk figures are (the
+//    movement engines have run); the schedule checks alone cannot see it.
+//
+// The checks also report two notes, and nothing else. Both are about the
+// Cafeteria, both are true of a lunch room, and they stay: it has no subject,
+// and it has groups scheduled into it and no teacher.
 //
 // Every other transition on both day types is 180 seconds of plain walking
 // or less, no teacher is in two rooms at once, no teacher teaches more than
-// four periods in a row, and every teacher has a planning period.
-// test/engine/sample-school.test.mjs checks each of those claims.
+// four periods in a row, every teacher has a planning period, and no room
+// but Room 203 in that one period holds more students than it seats, counting
+// every group in it. test/engine/sample-school.test.mjs checks each of those
+// claims, and that the checks report exactly the four findings above.
 //
 // sampleSchool() returns a fresh project every call. It is plain data in the
 // shape FORMATS.md describes, with fixed ids and fixed dates, so it is the
@@ -44,6 +54,8 @@ export const SAMPLE_SCHOOL_NAME = 'Marrowby Middle School (sample)';
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
 
+// The two things wrong on purpose: `roomDouble` is the problem, `longWalk` the
+// warning. The two notes on the Cafeteria are not listed: nothing is wrong.
 export const SAMPLE_PROBLEMS = {
   roomDouble: { dayTypeId: DAY_A, period: 1, roomId: 'rsample203', groupIds: ['gsample06c', 'gsample07c'] },
   longWalk: { dayTypeId: DAY_A, groupId: 'gsample08a', fromPeriod: 5, toPeriod: 6, fromRoomId: 'rsamplegym', toRoomId: 'rsample303' },

@@ -11,7 +11,10 @@
 //
 // The files are listed here by hand (`node --test dir/` fails on Node 22). A
 // test file on disk that is missing from the list is itself a failure, so a
-// suite cannot be forgotten. A file may be in two groups; it runs once however
+// suite cannot be forgotten: every *.test.mjs anywhere under test/, and every
+// .mjs in the folders whose files are all suites. A suite that runs and
+// reports no case at all is a failure too, since an empty file would
+// otherwise read as "ok". A file may be in two groups; it runs once however
 // many of its groups are asked for. The browser suites need
 // Tools/board-check installed (the site's harness); on a machine shared with
 // other browser jobs, run them under that machine's lock.
@@ -19,12 +22,12 @@
 import { spawnSync } from 'node:child_process';
 import { readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TOOL_DIR = path.dirname(TEST_DIR);
 
-const GROUPS = {
+export const GROUPS = {
   node: [
     'engine/purity.test.mjs',
     'engine/ids.test.mjs',
@@ -59,6 +62,10 @@ const GROUPS = {
     'publish/staff.test.mjs', // SV2-20
     'publish/baseline.mjs', // SV2-20
     'engine/presets.test.mjs', // SV2-02
+    'engine/worker.test.mjs', // SV2-16, moved here from timing/pipeline.mjs by SV2-35
+    'engine/runner.test.mjs', // SV2-35
+    'engine/import-teachers.test.mjs', // SV2-35
+    'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
@@ -67,6 +74,7 @@ const GROUPS = {
   browser: [
     'browser/shell.mjs',
     'browser/no-offsite.mjs',
+    'browser/shell-lines.mjs', // SV2-35
     'browser/draw-pointer.mjs', // SV2-06
     'browser/draw-keyboard.mjs', // SV2-06
     'browser/draw-touch.mjs', // SV2-06
@@ -91,94 +99,116 @@ const GROUPS = {
   ],
 };
 
-// Folders whose every *.test.mjs has to be in a group above.
-const LISTED_FOLDERS = ['engine', 'ui'];
 // Folders whose every .mjs is a suite and has to be in a group above, apart
-// from the helpers named here, which the suites import.
-const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [] };
+// from the helpers named here, which the suites import. A *.test.mjs has to
+// be in a group wherever under test/ it is.
+export const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [], timing: [] };
 // Groups whose suites take `--base <url>`.
 const TAKES_BASE = ['browser', 'a11y'];
 
-const flags = process.argv.slice(2);
-let base = null;
-const baseAt = flags.indexOf('--base');
-if (baseAt !== -1) {
-  base = flags[baseAt + 1];
-  if (!base || !/^https?:\/\//.test(base)) {
-    console.error('--base needs an address after it, for example --base http://127.0.0.1:8123');
-    process.exit(2);
+// Every file under `dir`, as paths from it with forward slashes, sorted.
+export function filesUnder(dir, prefix) {
+  const found = [];
+  if (!existsSync(dir)) return found;
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    const name = (prefix ? prefix + '/' : '') + entry.name;
+    if (entry.isDirectory()) found.push(...filesUnder(path.join(dir, entry.name), name));
+    else found.push(name);
   }
-  flags.splice(baseAt, 2);
+  return found;
 }
-const unknown = flags.filter((flag) => !flag.startsWith('--') || !(flag.slice(2) in GROUPS));
-if (unknown.length > 0) {
-  console.error('Unknown argument: ' + unknown.join(' ') + '. Use any of ' + Object.keys(GROUPS).map((name) => '--' + name).join(', ') + ', or nothing for every group.');
-  process.exit(2);
+
+// The suite files on disk that no group lists. `files` are paths from test/.
+export function unlisted(files, groups, suiteFolders) {
+  const listed = new Set(Object.values(groups).flat());
+  return files.filter((file) => {
+    if (listed.has(file)) return false;
+    if (file.endsWith('.test.mjs')) return true;
+    const slash = file.indexOf('/');
+    const folder = slash === -1 ? '' : file.slice(0, slash);
+    const rest = file.slice(slash + 1);
+    return file.endsWith('.mjs') && folder in suiteFolders && !rest.includes('/') && !suiteFolders[folder].includes(rest);
+  });
 }
-const chosen = flags.length === 0 ? Object.keys(GROUPS) : Object.keys(GROUPS).filter((name) => flags.includes('--' + name));
+
+// What one suite's run comes to: { ok, why }. `passed` and `failures` are the
+// counts its output gave, or null when it gave none.
+export function verdict(run, passed, failures) {
+  if (run.error) return { ok: false, why: run.error.message };
+  if (run.status !== 0) return { ok: false, why: 'exit ' + run.status + (failures ? ', ' + failures + ' failed' : '') };
+  if (!passed) return { ok: false, why: 'ran and reported no test case' };
+  return { ok: true, why: '' };
+}
 
 function tally(output, name) {
   const match = output.match(new RegExp('^# ' + name + ' (\\d+)$', 'm'));
   return match ? Number(match[1]) : null;
 }
 
-let failed = 0;
-let ran = 0;
-let cases = 0;
+function main(argv) {
+  const flags = argv.slice();
+  let base = null;
+  const baseAt = flags.indexOf('--base');
+  if (baseAt !== -1) {
+    base = flags[baseAt + 1];
+    if (!base || !/^https?:\/\//.test(base)) {
+      console.error('--base needs an address after it, for example --base http://127.0.0.1:8123');
+      return 2;
+    }
+    flags.splice(baseAt, 2);
+  }
+  const unknown = flags.filter((flag) => !flag.startsWith('--') || !(flag.slice(2) in GROUPS));
+  if (unknown.length > 0) {
+    console.error('Unknown argument: ' + unknown.join(' ') + '. Use any of ' + Object.keys(GROUPS).map((name) => '--' + name).join(', ') + ', or nothing for every group.');
+    return 2;
+  }
+  const chosen = flags.length === 0 ? Object.keys(GROUPS) : Object.keys(GROUPS).filter((name) => flags.includes('--' + name));
 
-const listed = new Set(Object.values(GROUPS).flat());
-for (const folder of LISTED_FOLDERS) {
-  const dir = path.join(TEST_DIR, folder);
-  if (!existsSync(dir)) continue;
-  for (const file of readdirSync(dir).sort()) {
-    if (!file.endsWith('.test.mjs') || listed.has(folder + '/' + file)) continue;
-    console.log('FAIL  ' + folder + '/' + file + '  is on disk and not listed in test/run.mjs');
+  let failed = 0;
+  let ran = 0;
+  let cases = 0;
+
+  for (const file of unlisted(filesUnder(TEST_DIR), GROUPS, SUITE_FOLDERS)) {
+    console.log('FAIL  ' + file + '  is on disk and not listed in test/run.mjs');
     failed += 1;
   }
-}
-for (const [folder, helpers] of Object.entries(SUITE_FOLDERS)) {
-  const dir = path.join(TEST_DIR, folder);
-  if (!existsSync(dir)) continue;
-  for (const file of readdirSync(dir).sort()) {
-    if (!file.endsWith('.mjs') || helpers.includes(file) || listed.has(folder + '/' + file)) continue;
-    console.log('FAIL  ' + folder + '/' + file + '  is on disk and not listed in test/run.mjs');
-    failed += 1;
-  }
-}
 
-const done = new Set();
+  const done = new Set();
 
-for (const group of chosen) {
-  for (const file of GROUPS[group]) {
-    if (done.has(file)) continue;
-    done.add(file);
-    const started = process.hrtime.bigint();
-    const args = ['--test-reporter=tap', path.join(TEST_DIR, ...file.split('/'))];
-    if (base && TAKES_BASE.includes(group)) args.push('--base', base);
-    const result = spawnSync(process.execPath, args, {
-      cwd: TOOL_DIR,
-      env: { ...process.env, TZ: 'UTC' },
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    const seconds = (Number(process.hrtime.bigint() - started) / 1e9).toFixed(1);
-    const output = (result.stdout || '') + (result.stderr || '');
-    const passed = tally(output, 'pass');
-    const failures = tally(output, 'fail');
-    const ok = result.status === 0 && !result.error;
-    ran += 1;
-    cases += passed === null ? 0 : passed;
-    if (ok) {
-      console.log('ok    ' + file + '  ' + (passed === null ? 'passed' : passed + ' passed') + '  ' + seconds + ' s');
-    } else {
-      failed += 1;
-      const why = result.error ? result.error.message : 'exit ' + result.status + (failures ? ', ' + failures + ' failed' : '');
-      console.log('FAIL  ' + file + '  ' + why + '  ' + seconds + ' s');
-      console.log(output.split(/\r?\n/).map((line) => '      ' + line).join('\n'));
+  for (const group of chosen) {
+    for (const file of GROUPS[group]) {
+      if (done.has(file)) continue;
+      done.add(file);
+      const started = process.hrtime.bigint();
+      const args = ['--test-reporter=tap', path.join(TEST_DIR, ...file.split('/'))];
+      if (base && TAKES_BASE.includes(group)) args.push('--base', base);
+      const result = spawnSync(process.execPath, args, {
+        cwd: TOOL_DIR,
+        env: { ...process.env, TZ: 'UTC' },
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      const seconds = (Number(process.hrtime.bigint() - started) / 1e9).toFixed(1);
+      const output = (result.stdout || '') + (result.stderr || '');
+      const passed = tally(output, 'pass');
+      const outcome = verdict(result, passed, tally(output, 'fail'));
+      ran += 1;
+      cases += passed === null ? 0 : passed;
+      if (outcome.ok) {
+        console.log('ok    ' + file + '  ' + passed + ' passed  ' + seconds + ' s');
+      } else {
+        failed += 1;
+        console.log('FAIL  ' + file + '  ' + outcome.why + '  ' + seconds + ' s');
+        console.log(output.split(/\r?\n/).map((line) => '      ' + line).join('\n'));
+      }
     }
   }
+
+  console.log('');
+  console.log(ran + ' test files, ' + cases + ' cases passed, ' + failed + ' failed (' + chosen.map((name) => '--' + name).join(' ') + ')');
+  return failed === 0 ? 0 : 1;
 }
 
-console.log('');
-console.log(ran + ' test files, ' + cases + ' cases passed, ' + failed + ' failed (' + chosen.map((name) => '--' + name).join(' ') + ')');
-process.exit(failed === 0 ? 0 : 1);
+// Run when this file is the program; test/engine/runner.test.mjs imports it
+// for the rules above and nothing runs then.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main(process.argv.slice(2)));

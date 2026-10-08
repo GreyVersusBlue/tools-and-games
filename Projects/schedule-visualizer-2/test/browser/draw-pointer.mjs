@@ -411,7 +411,7 @@ if (MAIN) {
     await page.keyboard.press('Enter');
     assert.equal(await entries(), before + 4);
     assert.deepEqual(await roomCells(page, 'Gym <b>2</b>'), [9 * 40 + 15]);
-    assert.equal(await text('#inspector-title'), 'Room Gym <b>2</b>');
+    assert.equal(await text('#inspector-title'), 'Gym <b>2</b>');
     assert.equal(await page.$('#inspector-title b'), null, 'a typed name was read as markup');
     assert.equal(await text('#plan-counts [data-count="rooms"]'), '3 of 3 rooms numbered');
   });
@@ -482,7 +482,7 @@ if (MAIN) {
   test('the status line says what a click will do, and names the cell under the pointer', async () => {
     await page.keyboard.press('e');
     assert.equal((await state(page)).hint, 'Eraser: click or drag over what to remove. Part of a room asks whether to take the whole room.');
-    const cells = [[6, 8, 'Column 7, row 9 · Room 101'], [7, 10, 'Column 8, row 11 · Corridor'], [21, 10, 'Column 22, row 11 · Stairs, not connected'], [30, 20, 'Column 31, row 21 · Empty'], [15, 9, 'Column 16, row 10 · Room Gym <b>2</b>']];
+    const cells = [[6, 8, 'Column 7, row 9 · Room 101'], [7, 10, 'Column 8, row 11 · Corridor'], [21, 10, 'Column 22, row 11 · Stairs, not connected'], [30, 20, 'Column 31, row 21 · Empty'], [15, 9, 'Column 16, row 10 · Gym <b>2</b>']];
     for (const [x, y, words] of cells) {
       const at = await point(page, x, y);
       await page.mouse.move(at.x, at.y);

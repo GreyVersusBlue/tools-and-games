@@ -74,8 +74,8 @@ test('a right-to-left room number is in the step exactly as typed, with nothing 
   const arrive = result.steps[result.steps.length - 1];
   assert.equal(arrive.text, hebrew + ' is on your right.');
   assert.deepEqual(arrive.parts, [{ text: hebrew, name: true }, { text: ' is on your right.', name: false }]);
-  assert.equal(result.steps[1].text, 'Walk 4 cells, past ' + digits + '.');
-  assert.deepEqual(result.steps[1].parts, [{ text: 'Walk 4 cells', name: false }, { text: ', past ', name: false }, { text: digits, name: true }, { text: '.', name: false }]);
+  assert.equal(result.steps[1].text, 'Walk 4 cells, past Room ' + digits + '.');
+  assert.deepEqual(result.steps[1].parts, [{ text: 'Walk 4 cells', name: false }, { text: ', past ', name: false }, { text: 'Room ', name: false }, { text: digits, name: true }, { text: '.', name: false }]);
   for (const step of result.steps) {
     assert.equal(step.text, step.parts.map((part) => part.text).join(''), 'the text is the parts and nothing else');
     assert.doesNotMatch(step.text, /[‎‏‪-‮⁦-⁩]/, 'no direction marks are slipped in');
@@ -97,7 +97,7 @@ test('a name that looks like markup is words, as typed: a room, a corridor, a fl
     'Walk 3 cells to stairs <A>.',
     'Take stairs <A> up to <Floor & "2">.',
     'Walk 2 cells to the end of the corridor.',
-    'Room ' + tag + ' 7 is on your right.',
+    tag + ' 7 is on your right.',
   ]);
   const out = directions(project, routeToExit(routingGraph(project), roomId('1A')));
   assert.equal(out.steps[out.steps.length - 1].text, 'Exit at ' + tag + '.');

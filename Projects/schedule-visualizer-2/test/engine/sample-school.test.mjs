@@ -1,7 +1,9 @@
 // The sample school's file comment makes claims. Each one is checked here
-// from the data alone, with a plain breadth-first walk over the cells: this
-// file does not use the routing or checks engines (they come later, and a
-// sample that only passed their tests would prove nothing about the sample).
+// from the data alone, with a plain breadth-first walk over the cells, and
+// without the routing or crowd engines (a sample that only passed their
+// tests would prove nothing about the sample). The one claim about the
+// checks themselves, that they report exactly four findings, is asked of
+// engine/checks.js at the end, with the long walk's figures handed to it.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,6 +15,7 @@ import { allRooms, findRoom, neighbourCell, isHexColour, GROUP_COLOUR_PRESETS } 
 import { bellsFor, bellFindings } from '../../engine/bells.js';
 import { isOwnCopy, effectiveSchedule } from '../../engine/day-types.js';
 import { isId } from '../../engine/ids.js';
+import { checkSchedule } from '../../engine/checks.js';
 
 const project = sampleSchool();
 const DAYS = ['dsample00a', 'dsample00b'];
@@ -277,6 +280,62 @@ test('no group is larger than the room it is in', () => {
     const size = group.headCount === null ? project.settings.defaultHeadCount : group.headCount;
     for (const dayTypeId of DAYS) for (const slot of group.days[dayTypeId]) assert.ok(size <= findRoom(project, slot.room).capacity);
   }
+});
+
+test('counting every group in a room together, the only room over what it seats is Room 203 in the double-booked period', () => {
+  const over = [];
+  let fullest = 0;
+  for (const dayTypeId of DAYS) {
+    for (let period = 0; period < 8; period += 1) {
+      const totals = new Map();
+      for (const group of project.groups) {
+        const roomId = group.days[dayTypeId][period].room;
+        totals.set(roomId, (totals.get(roomId) || 0) + (group.headCount === null ? project.settings.defaultHeadCount : group.headCount));
+      }
+      for (const [roomId, total] of totals) {
+        const capacity = findRoom(project, roomId).capacity;
+        assert.ok(Number.isInteger(capacity), findRoom(project, roomId).number + ' has a capacity');
+        if (total > capacity) over.push({ dayTypeId, period, roomId, total, capacity });
+        else fullest = Math.max(fullest, total);
+      }
+    }
+  }
+  assert.deepEqual(over, [{ dayTypeId: 'dsample00a', period: 1, roomId: 'rsample203', total: 45, capacity: 30 }]);
+  assert.equal(fullest, 127, 'the second lunch: five groups in the Cafeteria, which seats 150');
+});
+
+// What the walk-time checks are handed for the one walk that does not fit,
+// in the shape the crowd model gives it (261 s against 240 s of passing time).
+const LONG_WALK = { dayTypeId: SAMPLE_PROBLEMS.longWalk.dayTypeId, groupId: SAMPLE_PROBLEMS.longWalk.groupId, period: SAMPLE_PROBLEMS.longWalk.fromPeriod, fromRoomId: SAMPLE_PROBLEMS.longWalk.fromRoomId, toRoomId: SAMPLE_PROBLEMS.longWalk.toRoomId, passingSeconds: 240, total: 261, walking: 261, waiting: 0, late: true, arrived: true };
+
+test('the checks report exactly what the file comment says: one problem, one warning, two notes on the Cafeteria', () => {
+  const result = checkSchedule(project, { groups: [LONG_WALK], teachers: [] });
+  assert.deepEqual(result.findings.map((finding) => [finding.severity, finding.id]), [
+    ['problem', 'room-double:dsample00a:1:rsample203'],
+    ['warning', 'group-walk:dsample00a:5:gsample08a'],
+    ['note', 'room-no-subject:rsamplecaf'],
+    ['note', 'room-no-teacher:rsamplecaf'],
+  ]);
+  assert.deepEqual([result.accepted, result.gone], [[], []]);
+  const [double, walk] = result.findings;
+  assert.deepEqual([double.where.dayTypeId, double.where.period, double.where.roomId, double.where.groupIds], [SAMPLE_PROBLEMS.roomDouble.dayTypeId, SAMPLE_PROBLEMS.roomDouble.period, SAMPLE_PROBLEMS.roomDouble.roomId, SAMPLE_PROBLEMS.roomDouble.groupIds]);
+  assert.deepEqual([walk.where.dayTypeId, walk.where.period, walk.where.groupIds], [SAMPLE_PROBLEMS.longWalk.dayTypeId, SAMPLE_PROBLEMS.longWalk.fromPeriod, [SAMPLE_PROBLEMS.longWalk.groupId]]);
+  assert.equal(double.text, 'Room 203 has two groups in Period 2 on A Day: 6C and 7C. One of them needs another room or another period.');
+  assert.match(walk.text, /^8A needs 4 min 21 s to get from Gym to Room 303 after Period 6 on A Day/);
+});
+
+test('before any walk figures exist the warning is not there, and the other three are', () => {
+  assert.deepEqual(checkSchedule(project, null).findings.map((finding) => finding.id), ['room-double:dsample00a:1:rsample203', 'room-no-subject:rsamplecaf', 'room-no-teacher:rsamplecaf']);
+});
+
+test('the file comment says what the checks say: a problem, a warning, two notes, and no longer "exactly two problems"', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../../data/sample-school.js', import.meta.url), 'utf8');
+  const comment = source.slice(0, source.indexOf('const WIDTH'));
+  assert.doesNotMatch(comment, /exactly two deliberate problems/);
+  assert.match(comment, /one problem and one warning/);
+  assert.match(comment, /two notes/);
+  assert.match(comment, /261/, 'the time the crowd model gives the long walk');
 });
 
 test('the names are invented and include the characters that catch a careless renderer', () => {

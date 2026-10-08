@@ -2,12 +2,17 @@
 // shortcuts, undo and redo, toasts, and the Getting started card. Each section
 // is a module under ui/<name>/index.js exporting
 //
-//   section = { id, label, name, key, icon, page, mount(ctx, rest) }
+//   section = { id, label, name, key, icon, page, start(ctx), mount(ctx, rest) }
 //
-// where mount returns { element, update(project), route(rest) }. `update`
-// runs after every change to the project; `route` (optional) is asked when the
-// address changes inside the same section, and returns true when it has shown
-// it. `ctx` is what a section may use of the shell; it is built in boot().
+// where mount returns { element, update(project), route(rest), unmount() }.
+// `update` runs after every change to the project; `route` (optional) is asked
+// when the address changes inside the same section, and returns true when it
+// has shown it; `unmount` (optional) is called when the view leaves the page,
+// for another section or for a fresh mount of the same one, so a view can
+// take its listeners off the document. `start` (optional) runs once, before
+// anything is mounted: a section lists its own keys for Help there, through
+// ctx.shortcuts. `ctx` is what a section may use of the shell; it is built in
+// boot().
 
 import { h, focusables } from './components/dom.js';
 import { icon } from './components/icons.js';
@@ -34,24 +39,18 @@ import { newProject, THEMES } from '../engine/schema.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
+import { readDevice, writeDevice as storeDevice, DEVICE_KEY as STORED_DEVICE_KEY } from '../storage/device.js';
+import { engineFor } from './engine-client.js';
 
 export const TOOL_NAME = 'Schedule Visualizer 2';
 export const SECTIONS = [building, schedule, movement, scenarios, safety, staff, project];
 
-// Small device preferences. The name never changes (the storage module keeps
-// it): { theme, lastSection, playback, paper }.
-export const DEVICE_KEY = 'sv2:device';
+// Small device preferences: { theme, lastSection, playback, paper }. The name
+// never changes, and storage/device.js is the one place that reads and writes
+// it; this is that module's name for it, kept here for whoever imported it.
+export const DEVICE_KEY = STORED_DEVICE_KEY;
 
 const THEME_NAMES = { auto: 'Follow the device', light: 'Light', dark: 'Dark' };
-
-function readDevice() {
-  try {
-    const value = JSON.parse(localStorage.getItem(DEVICE_KEY));
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  } catch (error) {
-    return {};
-  }
-}
 
 // Does the project hold anything a person entered?
 export function hasContent(target) {
@@ -86,6 +85,9 @@ async function boot() {
   const first = sampleSchool();
   if (THEMES.includes(device.theme)) first.settings.theme = device.theme;
   const store = createStore({ project: first, clock, ids });
+  // Routes, crowd results, loads and findings for whatever the store holds,
+  // worked out in a worker: every screen reads store.derived.results().
+  engineFor(store);
 
   // ------------------------------------------------------------ the frame
 
@@ -150,10 +152,13 @@ async function boot() {
 
   // ------------------------------------------------------------ the device
 
+  // `device` is what this page last knew; what is stored is read again on
+  // every write (storage/device.js), so a choice another part of the page
+  // remembered since then is kept.
   function writeDevice(patch) {
     Object.assign(device, patch);
     try {
-      localStorage.setItem(DEVICE_KEY, JSON.stringify(device));
+      Object.assign(device, storeDevice(patch));
     } catch (error) {
       if (deviceWarned) return;
       deviceWarned = true;
@@ -395,6 +400,8 @@ async function boot() {
         ctx.setSecondRow(null);
         ctx.setInspector(null);
       }
+      // the view on screen leaves the page: it is told, so it can let go
+      if (current && current.view.unmount) current.view.unmount();
       const view = wanted.mount(ctx, rest);
       current = { section: wanted, view };
       sectionHost.replaceChildren(view.element);
@@ -436,6 +443,9 @@ async function boot() {
   shortcuts.add({ id: 'escape', group: 'Dialogs and menus', does: 'Close it, and go back to where you were', shown: 'Esc' });
   shortcuts.add({ id: 'field-enter', group: 'Fields', does: 'Keep what you typed. Leaving the field does the same', shown: 'Enter' });
   shortcuts.add({ id: 'field-escape', group: 'Fields', does: 'Put back what was there', shown: 'Esc' });
+  // A section's own keys, so that Help lists them whichever section is open.
+  ctx.shortcuts = shortcuts;
+  for (const each of SECTIONS) if (each.start) each.start(ctx);
 
   // F6: the page's regions in order. The toast counts when one is showing.
   function cycleRegions(back) {
