@@ -8,6 +8,16 @@
 // routing.mjs has their budget). The suite fails at twice the budget, to
 // leave room for a slow runner, and prints the measured number either way.
 // The clock is read here, in the test, never in the engine.
+//
+// The same run is where the fixture's figures are watched (SV2-37). With the
+// crossing rule as first written two opposing left-turners stopped each other
+// for good: 183 of the 1,313 walks did not arrive and 136,623 seconds were
+// waited. With the amended rule every walk arrives and 29,007 seconds are
+// waited. The suite fails on any walk that does not arrive and on waiting of
+// a quarter of the old figure or more. It cannot ask for a tenth: with no
+// crossing rule at all (CROSSING_WAIT_MAX set to 0) the fixture still waits
+// 28,010 seconds, queueing behind columns and at shared doors, so the
+// crossing rule's own share is 997 seconds.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,6 +29,7 @@ import { bigProject, BIG } from '../fixtures/big.mjs';
 
 const BUDGET = 500;
 const SLACK = 2;
+const WAITED_BEFORE = 136623; // SV2-15's measure, the crossing rule as first written
 
 function timed(run) {
   const started = performance.now();
@@ -50,11 +61,14 @@ test('the crowd model on the big fixture: the whole day of both day types under 
   }
   console.log('# crowd, cold: ' + cold.ms.toFixed(1) + ' ms (budget ' + BUDGET + ', fails at ' + BUDGET * SLACK + '): ' + walks + ' walks over ' + ticks + ' seconds of ' + (BIG.periods - 1) * BIG.dayTypes + ' transitions, ' + waited + ' s waited, ' + stopped + ' did not arrive');
   console.log('# crowd, again: ' + warm.ms.toFixed(1) + ' ms');
+  console.log('# crowd, did not arrive: ' + stopped + ' of ' + walks + ' walks; waited ' + waited + ' s, ' + (100 * waited / WAITED_BEFORE).toFixed(1) + '% of the ' + WAITED_BEFORE + ' s before the crossing rule was amended (fails at 25%)');
 
   assert.equal(cold.value.days.length, BIG.dayTypes);
   for (const day of cold.value.days) assert.equal(day.transitions.length, BIG.periods - 1);
   assert.ok(walks > 1000, 'the fixture really walks: ' + walks + ' walks');
   assert.ok(waited > 1000, 'and really crowds: ' + waited + ' s waited');
+  assert.equal(stopped, 0, stopped + ' walks did not arrive');
+  assert.ok(waited < WAITED_BEFORE / 4, waited + ' s waited, a quarter or more of ' + WAITED_BEFORE);
   assert.deepEqual(warm.value, cold.value, 'the second run gives the same figures');
   assert.ok(cold.ms < BUDGET * SLACK, 'the crowd model took ' + cold.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
 });
