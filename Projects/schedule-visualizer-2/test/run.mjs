@@ -68,6 +68,7 @@ export const GROUPS = {
     'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
     'engine/grid-edits.test.mjs', // SV2-12
+    'engine/import-subjects.test.mjs', // SV2-13
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
@@ -84,6 +85,8 @@ export const GROUPS = {
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
     'browser/grid.mjs', // SV2-12
+    'browser/import.mjs', // SV2-13
+    'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16
     'browser/print.mjs', // SV2-14
     'browser/staff-shell.mjs', // SV2-20
