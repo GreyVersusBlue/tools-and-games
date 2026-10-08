@@ -357,6 +357,7 @@
 }
 
 .sch-day__head {
+  min-height: 32px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -397,7 +398,7 @@
 }
 
 .sch-slots__period {
-  width: 7.25rem;
+  width: 8.75rem;
 }
 
 .sch-slots__more {
