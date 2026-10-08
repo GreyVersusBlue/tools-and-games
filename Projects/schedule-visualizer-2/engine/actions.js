@@ -1471,6 +1471,7 @@ export const resizeFloor = action(
 import { applyGroupImport, summaryText, ImportError } from './import-groups.js';
 import { applyBuilding, applySchedule, FileError } from './project-file.js';
 import { applyTeacherImport, teacherSummaryText } from './import-teachers.js';
+import { applySubjectImport, subjectSummaryText } from './import-subjects.js';
 
 const importOutcomes = new WeakMap();
 
@@ -1521,6 +1522,23 @@ export const importTeachers = action(
     focus: () => ({ section: 'schedule', tab: 'teachers' }),
   },
   (project, payload, ctx) => importing(project, () => applyTeacherImport(project, payload.rows, ctx.ids)),
+);
+
+// Subjects from a CSV file (import-subjects.js). payload: { rows }: the rows
+// csv.js parsed, the header row first. A code already on the list is that
+// subject, whatever the capitals, and keeps its id; any other is a new
+// subject at the end of the list. Nothing is deleted, and a file that changes
+// nothing makes no undo entry.
+export const importSubjects = action(
+  {
+    label: (before, payload, after) => {
+      const summary = importOutcome(after);
+      return 'Import subjects' + (summary ? ': ' + subjectSummaryText(summary) : '');
+    },
+    bumps: [BUILDING, SCHEDULE],
+    focus: () => ({ section: 'schedule', tab: 'subjects' }),
+  },
+  (project, payload, ctx) => importing(project, () => applySubjectImport(project, payload.rows, ctx.ids)),
 );
 
 // A schedule file. payload: { file, policy, takeSettings }, where `file` is
