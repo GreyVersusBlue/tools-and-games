@@ -1,0 +1,5 @@
+# Every byte of these files is the fixture: they stand for files already saved
+# on somebody's disk, and the JSON ones are read back and compared byte for
+# byte. A line ending changed on checkout would test something else.
+*.json -text
+*.csv -text

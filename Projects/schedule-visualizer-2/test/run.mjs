@@ -37,6 +37,9 @@ const GROUPS = {
     'engine/building-checks.test.mjs', // SV2-04
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/checks.test.mjs', // SV2-09
+    'engine/import-groups.test.mjs', // SV2-10
+    'engine/exports.test.mjs', // SV2-10
+    'engine/project-file.test.mjs', // SV2-10
   ],
   browser: [],
   a11y: [],
