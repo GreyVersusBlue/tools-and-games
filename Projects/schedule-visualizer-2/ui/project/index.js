@@ -5,12 +5,14 @@
 
 import { h } from '../components/dom.js';
 import { figures } from '../components/words.js';
+import { savedCard } from './saved.js';
+import { recoveryCard } from './recovery.js';
 import { settingsCard } from './settings.js';
 import { sampleCard } from './sample.js';
 import { aboutCard } from './about.js';
 
 // The cards, top to bottom. Each is a function (ctx) -> { element, update(project) }.
-export const CARDS = [settingsCard, sampleCard, aboutCard];
+export const CARDS = [savedCard, recoveryCard, settingsCard, sampleCard, aboutCard];
 
 const FIGURES = [
   ['floors', 'Floors'],
