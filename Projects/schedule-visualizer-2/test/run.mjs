@@ -60,6 +60,9 @@ const GROUPS = {
   browser: [
     'browser/shell.mjs',
     'browser/no-offsite.mjs',
+    'browser/draw-pointer.mjs', // SV2-06
+    'browser/draw-keyboard.mjs', // SV2-06
+    'browser/draw-touch.mjs', // SV2-06
     'browser/storage.mjs', // SV2-03
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
