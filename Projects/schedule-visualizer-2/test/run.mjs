@@ -46,6 +46,9 @@ const GROUPS = {
     'engine/checks.test.mjs', // SV2-09
     'engine/routing.test.mjs', // SV2-05
     'engine/directions.test.mjs', // SV2-05
+    'engine/load.test.mjs', // SV2-15
+    'engine/places.test.mjs', // SV2-15
+    'engine/crowd.test.mjs', // SV2-15
     'engine/import-groups.test.mjs', // SV2-10
     'engine/exports.test.mjs', // SV2-10
     'engine/project-file.test.mjs', // SV2-10
@@ -65,6 +68,7 @@ const GROUPS = {
   ],
   timing: [
     'timing/routing.mjs', // SV2-05
+    'timing/crowd.mjs', // SV2-15
   ],
 };
 
