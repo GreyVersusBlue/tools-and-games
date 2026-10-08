@@ -5,6 +5,7 @@
 //   node test/run.mjs --node     the plain-Node suites (no install, no browser)
 //   node test/run.mjs --browser  the journeys in Chromium, and the axe sweep
 //   node test/run.mjs --a11y     token contrast (Node) and the axe sweep (Chromium)
+//   node test/run.mjs --timing   the budgets at the promised size (plain Node too) // SV2-05
 //   node test/run.mjs --browser --base http://127.0.0.1:8123
 //                                against a server that is already running
 //
@@ -13,8 +14,7 @@
 // suite cannot be forgotten. A file may be in two groups; it runs once however
 // many of its groups are asked for. The browser suites need
 // Tools/board-check installed (the site's harness); on a machine shared with
-// other browser jobs, run them under that machine's lock. A later unit adds
-// the --timing group.
+// other browser jobs, run them under that machine's lock.
 
 import { spawnSync } from 'node:child_process';
 import { readdirSync, existsSync } from 'node:fs';
@@ -44,6 +44,8 @@ const GROUPS = {
     'engine/building-checks.test.mjs', // SV2-04
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/checks.test.mjs', // SV2-09
+    'engine/routing.test.mjs', // SV2-05
+    'engine/directions.test.mjs', // SV2-05
     'engine/import-groups.test.mjs', // SV2-10
     'engine/exports.test.mjs', // SV2-10
     'engine/project-file.test.mjs', // SV2-10
@@ -61,7 +63,9 @@ const GROUPS = {
     'a11y/contrast.mjs',
     'a11y/axe.mjs',
   ],
-  timing: [],
+  timing: [
+    'timing/routing.mjs', // SV2-05
+  ],
 };
 
 // Folders whose every *.test.mjs has to be in a group above.
