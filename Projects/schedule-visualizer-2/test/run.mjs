@@ -63,6 +63,7 @@ const GROUPS = {
     'browser/storage.mjs', // SV2-03
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
+    'browser/worker.mjs', // SV2-16
     'a11y/axe.mjs',
   ],
   a11y: [
@@ -72,6 +73,7 @@ const GROUPS = {
   timing: [
     'timing/routing.mjs', // SV2-05
     'timing/crowd.mjs', // SV2-15
+    'timing/pipeline.mjs', // SV2-16
   ],
 };
 

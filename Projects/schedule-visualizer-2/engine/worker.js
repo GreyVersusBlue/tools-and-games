@@ -295,6 +295,8 @@ export function unpack(answer, previous) {
     result.crowd = {
       days: answer.crowd.map((day) => {
         const was = previous ? previous.crowd.days.find((other) => other.dayTypeId === day.dayTypeId) : undefined;
+        // a day with nothing new in it is the day this side already has
+        if (was && was.transitions.length === day.transitions.length && day.transitions.every((transition) => transition === null)) return was;
         return {
           dayTypeId: day.dayTypeId,
           transitions: day.transitions.map((transition, period) => (transition === null ? need(was && was.transitions[period], 'a transition') : transition)),
