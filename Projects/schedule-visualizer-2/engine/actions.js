@@ -17,7 +17,8 @@
 // no undo entry.
 
 import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS } from './schema.js';
-import { defaultSettings, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom } from './schema.js';
+import { defaultSettings, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom, newAcceptedFinding } from './schema.js';
+import { checkSchedule } from './checks.js';
 import { isOwnCopy, findDayType, baseDayType } from './day-types.js';
 import { periodName } from './bells.js';
 import { isId, collectIds } from './ids.js';
@@ -1007,12 +1008,27 @@ export const deleteFloor = action(
 
 // ---------------------------------------------------------------- findings
 
-// payload: { findingId, reason }. The time comes from ctx.clock.
+// Who a finding names now, for acceptFinding: the `about` of the finding with
+// that id as the checks make it without walk figures. Empty when there is no
+// such finding. A walk finding is never found this way and needs no list: the
+// group or teacher it names is in its id.
+function aboutNow(project, findingId) {
+  const result = checkSchedule(project, null);
+  const finding = result.findings.concat(result.accepted).find((candidate) => candidate.id === findingId);
+  return finding ? finding.about : [];
+}
+
+// payload: { findingId, reason, about }. The time comes from ctx.clock.
+// `about` is the finding's own `about`, kept sorted on the record so that a
+// later run of the checks can tell the finding names somebody else. A caller
+// that leaves it out gets what the finding names now.
 export const acceptFinding = action(
   { label: 'Accept a finding', bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'checks' }) },
   (project, payload, ctx) => {
     if (typeof payload.findingId !== 'string' || payload.findingId === '') refuse('Pick a finding to accept.', 'bad-value');
-    const entry = { findingId: payload.findingId, reason: needText(payload.reason === undefined ? '' : payload.reason, 'A reason'), at: ctx.clock().toISOString() };
+    if (payload.about !== undefined && !(Array.isArray(payload.about) && payload.about.every((id) => typeof id === 'string'))) refuse('Who a finding is about is a list of ids.', 'bad-value');
+    const reason = needText(payload.reason === undefined ? '' : payload.reason, 'A reason');
+    const entry = newAcceptedFinding(payload.findingId, reason, ctx.clock().toISOString(), payload.about === undefined ? aboutNow(project, payload.findingId) : payload.about);
     return { ...project, accepted: project.accepted.filter((accepted) => accepted.findingId !== payload.findingId).concat([entry]) };
   },
 );

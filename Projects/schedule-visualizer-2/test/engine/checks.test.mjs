@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { checkSchedule } from '../../engine/checks.js';
 import { SEVERITIES, KIND_SEVERITY, FIXABLE_KINDS, severityOf, findingId, makeFinding, sortFindings, splitAccepted, countBySeverity, countWord, listWords, periodWord, roomName, formatDuration } from '../../engine/findings.js';
 import { CHECK_KINDS } from '../../engine/schema.js';
-import { acceptFinding, unacceptFinding } from '../../engine/actions.js';
+import { acceptFinding, unacceptFinding, setPeriods } from '../../engine/actions.js';
+import { repair } from '../../engine/repair.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { school, clone, ctx, assertValid, room, group, teacher, PINNED } from './helpers.mjs';
 
@@ -64,7 +65,9 @@ function withEmptyBDay(project) {
 }
 
 // The walk figures a later unit gets from the routes and the crowd model.
-const LONG_WALK = { dayTypeId: A, groupId: 'gsample08a', period: 5, total: 275, walking: 259, waiting: 16, late: true, arrived: true };
+const LONG_WALK = { dayTypeId: A, groupId: 'gsample08a', period: 5, fromRoomId: 'rsamplegym', toRoomId: 'rsample303', passingSeconds: 240, total: 275, walking: 259, waiting: 16, late: true, arrived: true };
+// The coach's walk once 6A's lunch names him: Gym to Cafeteria after Period 3.
+const COACH_WALK = { dayTypeId: A, teacherId: DUNMORE, period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, walking: 250, late: true };
 
 // One project that has every kind of finding in it.
 function everything() {
@@ -78,7 +81,7 @@ function everything() {
   for (const g of project.groups) {
     g.days[B] = g.days[B].map((s) => (s.room === 'rsample303' || s.room === 'rsamplecaf' ? emptySlot() : s)); // teacher-room-unused, room-unused
   }
-  const walks = { groups: [LONG_WALK], teachers: [{ dayTypeId: A, teacherId: DUNMORE, period: 2, walking: 250, late: true }] };
+  const walks = { groups: [LONG_WALK], teachers: [COACH_WALK] };
   return { project, walks };
 }
 
@@ -138,7 +141,7 @@ test('a teacher in two rooms: one problem naming the teacher, both rooms and who
   const result = checkSchedule(project, null);
   assert.deepEqual(ids(result.findings.filter((finding) => finding.severity === 'problem')), ['teacher-double:dsample00a:2:tsample001']);
   const found = result.findings[0];
-  assert.equal(found.text, 'Ms. Halloran is in two rooms in Period 3 on A Day: Room 101 with 6A and Room 103 with 6B. One of those groups needs another teacher or another period.');
+  assert.equal(found.text, 'Ms. Halloran is in two rooms in Period 3 on A Day: Room 101 with 6A; Room 103 with 6B. One of those groups needs another teacher or another period.');
   assert.deepEqual(found.where, { dayTypeId: A, period: 2, groupIds: ['gsample06a', 'gsample06b'], roomId: 'rsample101', teacherId: HALLORAN });
   assert.equal(found.fixable, true);
 });
@@ -403,17 +406,56 @@ test('a group that did not arrive says so, and the margin is in the sentence whe
   assert.equal(found[0].fixable, true);
 });
 
-test('the passing time in the sentence is the one from the bells', () => {
+// SV2-36 item 1
+test('a walk figure worked out for other rooms is passed over, for a group and for a teacher', () => {
   const project = clean();
+  slot(project, '6A', A, 3).teacherIds = [DUNMORE];
+  const both = (group, coach) => checkSchedule(project, { groups: [group], teachers: [coach] });
+  const walkIds = (result) => ids(ofKind(result, 'teacher-walk').concat(ofKind(result, 'group-walk')));
+  assert.deepEqual(walkIds(both(LONG_WALK, COACH_WALK)), ['teacher-walk:dsample00a:2:tsample004', 'group-walk:dsample00a:5:gsample08a'], 'both figures are for the walks as they are');
+  // each figure in turn says it was worked out from, or to, another room
+  assert.deepEqual(ofKind(both({ ...LONG_WALK, fromRoomId: 'rsample101' }, COACH_WALK), 'group-walk'), [], 'the group\'s, from another room');
+  assert.deepEqual(ofKind(both({ ...LONG_WALK, toRoomId: 'rsample302' }, COACH_WALK), 'group-walk'), [], 'the group\'s, to another room');
+  assert.deepEqual(ofKind(both(LONG_WALK, { ...COACH_WALK, fromRoomId: 'rsample101' }), 'teacher-walk'), [], 'the teacher\'s, from another room');
+  assert.deepEqual(ofKind(both(LONG_WALK, { ...COACH_WALK, toRoomId: 'rsample302' }), 'teacher-walk'), [], 'the teacher\'s, to another room');
+  // and the other way about: the schedule moves on and the figures stay behind
+  slot(project, '8A', A, 6).room = 'rsample302';
+  slot(project, '6A', A, 3).room = 'rsample302';
+  assert.deepEqual(walkIds(both(LONG_WALK, COACH_WALK)), [], 'a late walk to Room 303 says nothing about the walk to Room 302');
+  // a figure that does not say which rooms it is for is for no walk
+  const { fromRoomId, toRoomId, ...bare } = LONG_WALK;
+  assert.deepEqual(ofKind(checkSchedule(clean(), { groups: [bare] }), 'group-walk'), []);
+});
+
+// SV2-36 item 1. The figure's own passing time and the bells' are the same
+// number whenever a finding is made, because a figure for any other passing
+// time is passed over; so no sentence here can show which of the two was
+// printed, and this case does not claim to. What it pins is that `late` was
+// decided against the passing time the sentence states.
+test('a walk figure decided against another passing time is passed over; the sentence states the one the figure was decided against', () => {
+  const project = clean();
+  slot(project, '6A', A, 3).teacherIds = [DUNMORE];
+  // Period 7 starts a minute sooner: the passing time after Period 6 is 3 min
   project.dayTypes[0].bells[6] = { start: '13:11', end: '14:00' };
-  assert.match(ofKind(checkSchedule(project, { groups: [LONG_WALK], teachers: [] }), 'group-walk')[0].text, /the passing time is 3 min\.$/);
+  // and Period 4 a minute later: 5 min after Period 3
+  project.dayTypes[0].bells[3] = { ...project.dayTypes[0].bells[3], start: '10:37' };
+  assertValid(project);
+  const old = checkSchedule(project, { groups: [LONG_WALK], teachers: [COACH_WALK] });
+  assert.deepEqual(ofKind(old, 'group-walk'), [], 'late against 4 min says nothing now the bells give 3');
+  assert.deepEqual(ofKind(old, 'teacher-walk'), [], 'and late against 4 min says nothing now the bells give 5');
+  const fresh = checkSchedule(project, { groups: [{ ...LONG_WALK, passingSeconds: 180 }], teachers: [{ ...COACH_WALK, passingSeconds: 300, walking: 310 }] });
+  assert.match(ofKind(fresh, 'group-walk')[0].text, /, and the passing time is 3 min\.$/);
+  assert.match(ofKind(fresh, 'teacher-walk')[0].text, /^Coach Dunmore needs 5 min 10 s to walk .*, and the passing time is 5 min\.$/);
+  // a figure with no passing time on it was decided against nothing that is known
+  const { passingSeconds, ...bare } = LONG_WALK;
+  assert.deepEqual(ofKind(checkSchedule(clean(), { groups: [bare] }), 'group-walk'), []);
 });
 
 test('a teacher\'s walk: a warning naming both rooms, from the teacher\'s own day', () => {
   const project = clean();
   // the coach has 7C in the Gym in Period 3, and is named on 6A's lunch in Period 4
   slot(project, '6A', A, 3).teacherIds = [DUNMORE];
-  const walks = { groups: [], teachers: [{ dayTypeId: A, teacherId: DUNMORE, period: 2, walking: 250, late: true }] };
+  const walks = { groups: [], teachers: [{ ...COACH_WALK }] };
   const found = ofKind(checkSchedule(project, walks), 'teacher-walk');
   assert.deepEqual(found.map((f) => [f.id, f.severity, f.fixable, f.text]), [['teacher-walk:dsample00a:2:tsample004', 'warning', true, 'Coach Dunmore needs 4 min 10 s to walk from Gym to Cafeteria after Period 3 on A Day, before any crowding, and the passing time is 4 min.']]);
   assert.deepEqual(found[0].where, { dayTypeId: A, period: 2, groupIds: ['gsample06a'], roomId: 'rsamplecaf', teacherId: DUNMORE });
@@ -434,9 +476,9 @@ test('figures that are out of date are passed over', () => {
       null,
     ],
     teachers: [
-      { dayTypeId: A, teacherId: 'tnobody000', period: 2, walking: 250, late: true },
-      { dayTypeId: A, teacherId: DUNMORE, period: 4, walking: 250, late: true }, // the coach stays in the Gym then
-      { dayTypeId: A, teacherId: HALLORAN, period: 5, walking: 250, late: true }, // planning on both sides
+      { ...COACH_WALK, teacherId: 'tnobody000' },
+      { ...COACH_WALK, period: 4 }, // the coach stays in the Gym then
+      { ...COACH_WALK, teacherId: HALLORAN, period: 5 }, // planning on both sides
     ],
   };
   assert.deepEqual(ids(checkSchedule(project, stale).findings), CAFETERIA_NOTES);
@@ -461,7 +503,7 @@ test('a check that is switched off reports nothing, and the others carry on', ()
   assert.deepEqual(ids(some), ids(all).filter((id) => !id.startsWith('room-double:') && !id.startsWith('room-no-subject:')));
   assert.ok(some.length < all.length);
   project.settings.checks.off = CHECK_KINDS.slice();
-  assert.deepEqual(checkSchedule(project, walks), { findings: [], accepted: [], gone: [] });
+  assert.deepEqual(checkSchedule(project, walks), { findings: [], accepted: [], changed: [], off: [], gone: [] });
 });
 
 test('one project can hold every kind of finding, and each kind is the severity spec 5.7 gives it', () => {
@@ -480,7 +522,8 @@ test('one project can hold every kind of finding, and each kind is the severity 
     assert.equal(finding.severity, expected[finding.kind], finding.id);
     assert.equal(finding.fixable, FIXABLE_KINDS.includes(finding.kind), finding.id);
     assert.ok(finding.id.startsWith(finding.kind + ':'), finding.id);
-    assert.deepEqual(Object.keys(finding), ['id', 'kind', 'severity', 'text', 'where', 'fixable']);
+    assert.deepEqual(Object.keys(finding), ['id', 'kind', 'severity', 'text', 'where', 'fixable', 'about']);
+    assert.deepEqual(finding.about, finding.about.slice().sort(), finding.id + ' lists who it is about in order');
     assert.deepEqual(Object.keys(finding.where), ['dayTypeId', 'period', 'groupIds', 'roomId', 'teacherId']);
     assert.ok(Array.isArray(finding.where.groupIds));
   }
@@ -529,7 +572,8 @@ test('an accepted finding stays accepted through renames and reordering, and is 
   slot(project, '7C', A, 1).room = 'rsample201';
   const after = checkSchedule(project, null);
   assert.deepEqual(after.accepted, []);
-  assert.deepEqual(after.gone, [{ findingId: DOUBLE_ID, reason: 'Known', at: PINNED }]);
+  assert.deepEqual(after.gone, [{ findingId: DOUBLE_ID, reason: 'Known', at: PINNED, about: ['gsample06c', 'gsample07c'] }]);
+  assert.deepEqual([after.changed, after.off], [[], []]);
   assert.equal(project.accepted.length, 1, 'the record is still in the project');
 });
 
@@ -557,6 +601,257 @@ test('checkSchedule does not change the project, and gives the same answer twice
   assert.deepEqual(second, first);
 });
 
+// ---------------------------------------------------------------- SV2-36: what the review of these checks found
+
+// item 2
+test('an accepted finding that names another group now is listed as changed, and counts again', () => {
+  let project = acceptFinding(school(), { findingId: DOUBLE_ID, reason: 'Two half groups' }, ctx());
+  const record = project.accepted[0];
+  assert.deepEqual(record.about, ['gsample06c', 'gsample07c']);
+  project = clone(project);
+  // renaming a group changes nobody: the same two groups are there
+  group(project, '6C').name = 'Sixth C';
+  const same = checkSchedule(project, null);
+  assert.deepEqual([ids(same.accepted), same.changed], [[DOUBLE_ID], []]);
+
+  // a third group joins them in Room 203 in Period 2
+  const third = addGroup(project, '9Z', [null, '203', null, null, null, null, null, null], NOWHERE);
+  const result = checkSchedule(project, null);
+  assert.deepEqual(result.changed, [project.accepted[0]], 'the record, as the project holds it');
+  assert.deepEqual(result.accepted, [], 'it is no longer accepted');
+  assert.equal(result.findings[0].id, DOUBLE_ID, 'and the finding counts again');
+  assert.deepEqual(result.findings[0].about, ['gsample06c', 'gsample07c', third.id].sort());
+  assert.equal(countBySeverity(result.findings).problem, 1);
+  assert.deepEqual(result.gone, []);
+
+  // one of the two accepted groups swapped for another is a change as well, with the count the same
+  slot(project, '7C', A, 1).room = 'rsample201';
+  assert.deepEqual(checkSchedule(project, null).changed.map((r) => r.findingId), [DOUBLE_ID]);
+
+  // accepting it again as it stands is an acceptance of the three
+  project.groups.find((g) => g.name === '7C').days[A][1].room = 'rsample203';
+  project = acceptFinding(project, { findingId: DOUBLE_ID, reason: 'Three now' }, ctx());
+  const again = checkSchedule(project, null);
+  assert.deepEqual([ids(again.accepted), again.changed], [[DOUBLE_ID], []]);
+  assert.equal(again.accepted[0].accepted.reason, 'Three now');
+});
+
+// item 2
+test('a record with no list of who it was about never reads as changed, and repair gives an old record the empty list', () => {
+  const project = school();
+  project.accepted = [{ findingId: DOUBLE_ID, reason: 'From before', at: PINNED }];
+  addGroup(project, '9Z', [null, '203', null, null, null, null, null, null], NOWHERE);
+  const old = checkSchedule(project, null);
+  assert.deepEqual([ids(old.accepted), old.changed], [[DOUBLE_ID], []]);
+
+  const repaired = repair(project);
+  assert.deepEqual(repaired.project.accepted, [{ findingId: DOUBLE_ID, reason: 'From before', at: PINNED, about: [] }]);
+  assert.deepEqual(repaired.notes, [], 'a field an older record never had is not something that was repaired');
+  assert.deepEqual(ids(checkSchedule(repaired.project, null).accepted), [DOUBLE_ID]);
+
+  // a list that is kept in order is left as it is, the very same record
+  const kept = school();
+  kept.accepted = [{ findingId: DOUBLE_ID, reason: 'x', at: PINNED, about: ['gsample06c', 'gsample07c'] }];
+  assert.equal(repair(kept).project.accepted, kept.accepted);
+  // one out of order is sorted; one that is not a list is cleared, with a note
+  kept.accepted = [{ findingId: DOUBLE_ID, reason: 'x', at: PINNED, about: ['gsample07c', 7, 'gsample06c'] }];
+  assert.deepEqual(repair(kept).project.accepted[0].about, ['gsample06c', 'gsample07c']);
+  kept.accepted = [{ findingId: DOUBLE_ID, reason: 'x', at: PINNED, about: 'gsample06c' }];
+  const cleared = repair(kept);
+  assert.deepEqual(cleared.project.accepted[0].about, []);
+  assert.deepEqual(cleared.notes, ['Who an accepted finding was about could not be read and was cleared.']);
+});
+
+// item 3
+test('an accepted record whose check is switched off is listed as off, never as gone', () => {
+  let project = acceptFinding(school(), { findingId: DOUBLE_ID, reason: 'Known' }, ctx());
+  project = acceptFinding(project, { findingId: 'room-no-subject:rsamplecaf', reason: 'A lunch room' }, ctx());
+  project = clone(project);
+  project.settings.checks.off = ['room-double'];
+  assertValid(project);
+  const result = checkSchedule(project, null);
+  assert.deepEqual(result.gone, [], 'nothing was put right: the check is only not being run');
+  assert.deepEqual(result.off.map((record) => record.findingId), [DOUBLE_ID]);
+  assert.equal(result.off[0], project.accepted[0], 'the record, as the project holds it');
+  assert.deepEqual(ids(result.accepted), ['room-no-subject:rsamplecaf']);
+  // put right while the check was off, it is still "off": nothing is known either way
+  slot(project, '7C', A, 1).room = 'rsample201';
+  assert.deepEqual([checkSchedule(project, null).off.length, checkSchedule(project, null).gone.length], [1, 0]);
+  // switched back on, it is gone
+  project.settings.checks.off = [];
+  const on = checkSchedule(project, null);
+  assert.deepEqual([on.off, on.gone.map((record) => record.findingId)], [[], [DOUBLE_ID]]);
+});
+
+// item 4
+test('a teacher in a room of the building and, in the same period, in one that is not: a problem', () => {
+  const project = clean();
+  // Period 3 on A Days: Ms. Halloran has 6A in 101. 6B's room has gone and its slot names her
+  Object.assign(slot(project, '6B', A, 2), { room: null, roomText: '999', teacherIds: [HALLORAN] });
+  assertValid(project);
+  const hers = (result) => ofKind(result, 'teacher-double').filter((f) => f.where.teacherId === HALLORAN);
+  const found = ofKind(checkSchedule(project, null), 'teacher-double');
+  assert.deepEqual(ids(found), ['teacher-double:dsample00a:2:tsample001']);
+  assert.equal(found[0].text, 'Ms. Halloran is in two rooms in Period 3 on A Day: Room 101 with 6A; "999" (not in the building) with 6B. One of those groups needs another teacher or another period.');
+  assert.deepEqual(found[0].where, { dayTypeId: A, period: 2, groupIds: ['gsample06a', 'gsample06b'], roomId: 'rsample101', teacherId: HALLORAN });
+
+  // two groups in the one missing room are one place: with 101 that is still two
+  Object.assign(slot(project, '6C', A, 2), { room: null, roomText: '999', teacherIds: [HALLORAN] });
+  assert.match(hers(checkSchedule(project, null))[0].text, /is in two rooms .*; "999" \(not in the building\) with 6B and 6C\. One of those groups needs/);
+  // two missing rooms and no room of the building are two places as well
+  slot(project, '6A', A, 2).room = null;
+  slot(project, '6C', A, 2).roomText = '<998>';
+  const missing = hers(checkSchedule(project, null))[0];
+  assert.equal(missing.text, 'Ms. Halloran is in two rooms in Period 3 on A Day: "999" (not in the building) with 6B; "<998>" (not in the building) with 6C. One of those groups needs another teacher or another period.');
+  assert.equal(missing.where.roomId, null);
+  // the same missing room for both is one place, and no problem
+  slot(project, '6C', A, 2).roomText = '999';
+  assert.deepEqual(hers(checkSchedule(project, null)), []);
+});
+
+// item 5
+test('a consecutive acceptance follows the run when its first period moves, and not to another run, day or teacher', () => {
+  let project = clean();
+  // Room 101 has a group in Periods 2 and 3 on A Days; 9Z adds 4, 5 and 6: a run of five, Period 2 to 6
+  addGroup(project, '9Z', [null, null, null, '101', '101', '101', null, null], NOWHERE);
+  const RUN = 'consecutive:dsample00a:1:tsample001';
+  assert.deepEqual(ids(ofKind(checkSchedule(project, null), 'consecutive')), [RUN]);
+  project = clone(acceptFinding(project, { findingId: RUN, reason: 'Her own choice' }, ctx()));
+  assert.deepEqual(ids(checkSchedule(project, null).accepted), [RUN]);
+
+  // Period 2 becomes free and Period 7 is taught: the run is now Period 3 to 7, a new id
+  slot(project, '8B', A, 1).room = 'rsample201';
+  slot(project, '9Z', A, 6).room = 'rsample101';
+  const moved = checkSchedule(project, null);
+  assert.deepEqual(ofKind(moved, 'consecutive'), [], 'the run that overlaps the accepted one does not count');
+  assert.deepEqual(moved.accepted.map((f) => [f.id, f.where.period, f.accepted.reason]), [[RUN, 2, 'Her own choice']], 'it is listed under the id it was accepted as, so "Count it again" finds the record');
+  assert.match(moved.accepted[0].text, /^Ms\. Halloran teaches 5 periods in a row on A Day, Period 3 to Period 7\./);
+  assert.deepEqual([moved.gone, moved.changed], [[], []]);
+  assert.deepEqual(project.accepted[0].about, [HALLORAN], 'a run is about its teacher, whoever the groups are');
+  // taking it back by that id works
+  assert.deepEqual(ids(ofKind(checkSchedule(unacceptFinding(project, { findingId: moved.accepted[0].id }, ctx()), null), 'consecutive')), ['consecutive:dsample00a:2:tsample001']);
+
+  // with a limit of 2 a day holds two runs: Periods 1 to 3 and Periods 5 to 7
+  const two = clean();
+  two.settings.checks.consecutiveLimit = 2;
+  for (const g of two.groups) g.days[A] = g.days[A].map((s) => (s.room === 'rsample101' ? emptySlot() : s));
+  addGroup(two, '9Z', ['101', '101', '101', null, '101', '101', '101', null], ['101', '101', '101', null, null, null, null, null]);
+  const FIRST = 'consecutive:dsample00a:0:tsample001';
+  const SECOND = 'consecutive:dsample00a:4:tsample001';
+  const hers = (result) => ofKind(result, 'consecutive').filter((f) => f.where.teacherId === HALLORAN);
+  assert.deepEqual(ids(hers(checkSchedule(two, null))), [FIRST, SECOND, 'consecutive:dsample00b:0:tsample001']);
+  // the first is accepted and then put right: the second run and B Day's do not inherit the acceptance
+  two.accepted = [{ findingId: FIRST, reason: 'x', at: PINNED, about: [HALLORAN] }];
+  slot(two, '9Z', A, 1).room = null;
+  const after = checkSchedule(two, null);
+  assert.deepEqual(ids(hers(after)), [SECOND, 'consecutive:dsample00b:0:tsample001']);
+  assert.deepEqual([after.accepted, after.gone.map((r) => r.findingId)], [[], [FIRST]]);
+  // another teacher's run over the same periods does not take it either
+  two.accepted = [{ findingId: 'consecutive:dsample00a:0:tsample002', reason: 'x', at: PINNED, about: [BRIGHTWATER] }];
+  slot(two, '9Z', A, 1).room = 'rsample101';
+  assert.deepEqual(checkSchedule(two, null).accepted, []);
+  // a record accepts one run, never two: accepted at Period 3, the run there is split into two that both overlap it
+  const split = clean();
+  split.settings.checks.consecutiveLimit = 2;
+  for (const g of split.groups) g.days[A] = g.days[A].map((s) => (s.room === 'rsample101' ? emptySlot() : s));
+  addGroup(split, '9Z', ['101', '101', '101', null, '101', '101', '101', null], NOWHERE);
+  split.accepted = [{ findingId: 'consecutive:dsample00a:2:tsample001', reason: 'x', at: PINNED, about: [HALLORAN] }];
+  const halves = checkSchedule(split, null);
+  assert.deepEqual([halves.accepted.map((f) => f.where.period), ids(hers(halves))], [[0], [SECOND]]);
+});
+
+// item 6
+test('one empty room with two teachers based in it is one note naming both', () => {
+  const project = clean();
+  alsoBasedIn(project, 'Mr. Brightwater', '303');
+  assertValid(project);
+  for (const g of project.groups) g.days[B] = g.days[B].map((s) => (s.room === 'rsample303' ? emptySlot() : s));
+  const found = ofKind(checkSchedule(project, null), 'teacher-room-unused');
+  assert.deepEqual(found.map((f) => [f.id, f.text]), [['teacher-room-unused:dsample00b:tsample002:rsample303', 'Room 303, where Ms. O\'Fennimore and Mr. Brightwater are based, has no group in any period on B Day.']], 'the room\'s main teacher is named first; the id takes the teacher whose id sorts first');
+  assert.deepEqual(found[0].where, { dayTypeId: B, period: null, groupIds: [], roomId: 'rsample303', teacherId: BRIGHTWATER });
+  assert.deepEqual(found[0].about, [BRIGHTWATER, 'tsample012']);
+  // the order the room lists its teachers in changes the sentence and not the id
+  room(project, '303').teacherIds.reverse();
+  const swapped = ofKind(checkSchedule(project, null), 'teacher-room-unused');
+  assert.deepEqual(swapped.map((f) => [f.id, f.text]), [[found[0].id, 'Room 303, where Mr. Brightwater and Ms. O\'Fennimore are based, has no group in any period on B Day.']]);
+});
+
+// item 7
+test('the places of a teacher in two rooms are set apart by "; ", each with its own groups', () => {
+  const project = clean();
+  slot(project, '6B', A, 2).teacherIds = [HALLORAN];
+  addGroup(project, '9Z', [null, null, '101', null, null, null, null, null], NOWHERE);
+  slot(project, '7A', A, 2).teacherIds = [HALLORAN];
+  const found = ofKind(checkSchedule(project, null), 'teacher-double')[0];
+  assert.equal(found.text, 'Ms. Halloran is in three rooms in Period 3 on A Day: Room 101 with 6A and 9Z; Room 103 with 6B; ' + roomName(room(project, slotRoomNumber(project, '7A', A, 2)), false) + ' with 7A. All but one of those groups need another teacher or another period.');
+});
+
+function slotRoomNumber(project, groupName, dayTypeId, period) {
+  const id = slot(project, groupName, dayTypeId, period).room;
+  for (const floor of project.building.floors) for (const space of floor.spaces) if (space.id === id) return space.number;
+  throw new Error('no room for ' + groupName);
+}
+
+// item 8
+test('a teacher based in two rooms with a group in only one of them is not in two rooms', () => {
+  const project = clean();
+  alsoBasedIn(project, 'Ms. Halloran', '102');
+  // every slot in 102 names its own teacher, so 102's groups are never hers
+  for (const g of project.groups) for (const d of [A, B]) for (const s of g.days[d]) if (s.room === 'rsample102') s.teacherIds = [BRIGHTWATER];
+  assertValid(project);
+  const result = checkSchedule(project, null);
+  assert.deepEqual(ofKind(result, 'teacher-double'), []);
+  assert.deepEqual(ids(ofKind(result, 'teacher-multi-room')), ['teacher-multi-room:tsample001'], 'the note about two rooms stands; the problem does not');
+});
+
+// item 8
+test('finding ids are the same after periods per day goes up and comes back, and a cut keeps the ids of what is left', () => {
+  const { project } = everything();
+  const withAccepted = acceptFinding(project, { findingId: DOUBLE_ID, reason: 'Known' }, ctx());
+  const before = checkSchedule(withAccepted, null);
+  const dated = (id) => /^[a-z-]+:d[a-z0-9]+:(\d+):/.exec(id);
+
+  const ten = setPeriods(withAccepted, { periods: 10 }, ctx());
+  const up = checkSchedule(ten, null);
+  const added = ids(up.findings).filter((id) => !ids(before.findings).includes(id));
+  assert.deepEqual(ids(before.findings).filter((id) => !ids(up.findings).includes(id) && !id.startsWith('no-planning:') && !id.startsWith('empty-period:')), [], 'every finding of eight periods is a finding of ten, under the same id');
+  assert.ok(added.length > 0 && added.every((id) => /^empty-period:d[a-z0-9]+:[89]:g/.test(id)), 'and the only new ones are about the two new periods: ' + added.join(' '));
+  assert.deepEqual(ids(up.accepted), [DOUBLE_ID]);
+
+  const back = checkSchedule(setPeriods(ten, { periods: 8 }, ctx()), null);
+  assert.deepEqual(ids(back.findings), ids(before.findings));
+  assert.deepEqual(ids(back.accepted), [DOUBLE_ID]);
+
+  const six = checkSchedule(setPeriods(withAccepted, { periods: 6 }, ctx()), null);
+  const kept = ids(before.findings).filter((id) => dated(id) && Number(dated(id)[1]) < 6 && !id.startsWith('consecutive:'));
+  assert.ok(kept.length >= 4);
+  assert.deepEqual(kept.filter((id) => !ids(six.findings).includes(id)), [], 'a finding about one of the first six periods keeps its id');
+  assert.deepEqual(ids(six.findings).filter((id) => dated(id) && Number(dated(id)[1]) >= 6), [], 'and nothing is said about a period that is no longer there');
+  assert.deepEqual(ids(six.accepted), [DOUBLE_ID]);
+});
+
+// item 8
+test('a third day type that follows A Day while B Day is its own: "on A Day and C Day", and B Day alone', () => {
+  const project = school();
+  for (const g of project.groups) g.days[B] = clone(g.days[A]);
+  project.dayTypes.push({ id: 'dtestday0c', name: 'C Day', own: false, bells: project.dayTypes[0].bells.map(() => null) });
+  assertValid(project);
+  const result = checkSchedule(project, null);
+  assert.equal(byId(result, DOUBLE_ID).text, 'Room 203 has two groups in Period 2 on A Day and C Day: 6C and 7C. One of them needs another room or another period.');
+  assert.equal(byId(result, 'room-double:dsample00b:1:rsample203').text, 'Room 203 has two groups in Period 2 on B Day: 6C and 7C. One of them needs another room or another period.');
+  assert.ok(result.findings.every((finding) => finding.where.dayTypeId !== 'dtestday0c'), 'the followed day type has no findings of its own');
+  // a figure handed in for C Day is passed over, A Day's covers it
+  assert.deepEqual(ids(ofKind(checkSchedule(project, { groups: [{ ...LONG_WALK, dayTypeId: 'dtestday0c' }, LONG_WALK] }), 'group-walk')), ['group-walk:dsample00a:5:gsample08a']);
+});
+
+// item 8
+test('walk results of {} are no figures: nothing about a walk, and nothing else disturbed', () => {
+  const { project } = everything();
+  const none = checkSchedule(project, null);
+  for (const empty of [{}, { groups: null, teachers: undefined }, { groups: 7, teachers: 'no' }]) assert.deepEqual(checkSchedule(project, empty), none);
+  assert.deepEqual(ofKind(none, 'group-walk').concat(ofKind(none, 'teacher-walk')), []);
+});
+
 // ---------------------------------------------------------------- findings.js
 
 test('findingId joins the kind and the ids in the order given', () => {
@@ -569,8 +864,15 @@ test('findingId joins the kind and the ids in the order given', () => {
 test('makeFinding fills every key of where', () => {
   assert.deepEqual(makeFinding('room-unused', ['dabc', 'rxyz'], 'Room 9 has no group.', { dayTypeId: 'dabc', roomId: 'rxyz' }), {
     id: 'room-unused:dabc:rxyz', kind: 'room-unused', severity: 'note', text: 'Room 9 has no group.',
-    where: { dayTypeId: 'dabc', period: null, groupIds: [], roomId: 'rxyz', teacherId: null }, fixable: false,
+    where: { dayTypeId: 'dabc', period: null, groupIds: [], roomId: 'rxyz', teacherId: null }, fixable: false, about: [],
   });
+  // about: the groups when there are any, else the teacher, else what the check hands over; always sorted
+  assert.deepEqual(makeFinding('room-double', ['d', 0, 'r'], 'x.', { groupIds: ['gb', 'ga'], teacherId: 't' }).about, ['ga', 'gb']);
+  assert.deepEqual(makeFinding('no-planning', ['d', 't'], 'x.', { teacherId: 't' }).about, ['t']);
+  assert.deepEqual(makeFinding('consecutive', ['d', 0, 't'], 'x.', { groupIds: ['g'], teacherId: 't' }, ['tb', 'ta']).about, ['ta', 'tb']);
+  const groupIds = ['gb', 'ga'];
+  makeFinding('room-double', ['d', 0, 'r'], 'x.', { groupIds });
+  assert.deepEqual(groupIds, ['gb', 'ga'], 'the list handed in is not sorted in place');
 });
 
 test('sortFindings: severity, then kind, then day type, then period, then id', () => {
@@ -599,6 +901,7 @@ test('splitAccepted and countBySeverity', () => {
   assert.deepEqual(ids(split.findings), ['room-double:d:0:r', 'consecutive:d:0:t']);
   assert.deepEqual(split.accepted.map((f) => [f.id, f.accepted.reason]), [['room-unused:d:r', 'Store room']]);
   assert.deepEqual(split.gone, [{ findingId: 'no-planning:d:t', reason: 'Part time', at: PINNED }]);
+  assert.deepEqual([split.changed, split.off], [[], []]);
   assert.deepEqual(countBySeverity(findings), { problem: 1, warning: 1, note: 1 });
   assert.deepEqual(countBySeverity([]), { problem: 0, warning: 0, note: 0 });
   assert.deepEqual(splitAccepted(findings, undefined).findings, findings);

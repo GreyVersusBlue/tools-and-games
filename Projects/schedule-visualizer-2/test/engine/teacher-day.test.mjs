@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { teacherDay, teacherDays, slotTeacherIds, entryRoomIds, teacherMoves } from '../../engine/teacher-day.js';
+import { teacherDay, teacherDays, slotTeacherIds, entryRoomIds, entryPlaces, teacherMoves } from '../../engine/teacher-day.js';
 import { school, clone, assertValid, room, group, teacher } from './helpers.mjs';
 
 const A = 'dsample00a';
@@ -19,7 +19,8 @@ const OYELARAN = 'tsample005'; // based in 201
 const CASTELLANOS = 'tsample006'; // based in 202
 
 const planning = (period) => ({ period, groups: [], kind: 'planning' });
-const teaching = (period, ...pairs) => ({ period, groups: pairs.map(([groupId, roomId]) => ({ groupId, roomId })), kind: 'teaching' });
+// [group, room] for a room in the building; [group, null, '101'] for one that is not
+const teaching = (period, ...pairs) => ({ period, groups: pairs.map(([groupId, roomId, roomText]) => ({ groupId, roomId, roomText: roomText === undefined ? '' : roomText })), kind: 'teaching' });
 
 function slot(project, groupName, dayTypeId, period) {
   return group(project, groupName).days[dayTypeId][period];
@@ -64,7 +65,7 @@ test('in the sample school every teacher\'s day is their room\'s day, on both da
     for (const who of project.teachers) {
       const expected = [];
       for (let p = 0; p < 8; p += 1) {
-        const here = project.groups.filter((g) => g.days[dayTypeId][p].room === who.roomIds[0]).map((g) => ({ groupId: g.id, roomId: who.roomIds[0] }));
+        const here = project.groups.filter((g) => g.days[dayTypeId][p].room === who.roomIds[0]).map((g) => ({ groupId: g.id, roomId: who.roomIds[0], roomText: '' }));
         expected.push({ period: p, groups: here, kind: here.length > 0 ? 'teaching' : 'planning' });
       }
       assert.deepEqual(teacherDay(project, who.id, dayTypeId), expected, who.name);
@@ -153,11 +154,35 @@ test('a slot whose room is not in the building counts only for a teacher it name
   assert.deepEqual(teacherDay(project, HALLORAN, A)[1], planning(1));
   slot(project, '8B', A, 1).teacherIds = [HALLORAN];
   const entry = teacherDay(project, HALLORAN, A)[1];
-  assert.deepEqual(entry, teaching(1, ['gsample08b', null]));
+  assert.deepEqual(entry, teaching(1, ['gsample08b', null, '101']));
   assert.deepEqual(entryRoomIds(entry), []);
   // and the same for a room id that names nothing
   Object.assign(slot(project, '8B', A, 1), { room: 'rnowhere00', roomText: '101' });
-  assert.deepEqual(teacherDay(project, HALLORAN, A)[1], teaching(1, ['gsample08b', null]));
+  assert.deepEqual(teacherDay(project, HALLORAN, A)[1], teaching(1, ['gsample08b', null, '101']));
+});
+
+// SV2-36 item 4
+test('entryPlaces: a room that is not in the building is a place of its own, told apart by the number its slots kept', () => {
+  const project = school();
+  // Period 3 on A Days: Ms. Halloran has 6A in 101. Name her on 6B and 6C too,
+  // whose rooms have gone and left their numbers behind
+  Object.assign(slot(project, '6B', A, 2), { room: null, roomText: '999', teacherIds: [HALLORAN] });
+  Object.assign(slot(project, '6C', A, 2), { room: 'rnowhere00', roomText: ' 999', teacherIds: [HALLORAN] });
+  const entry = teacherDay(project, HALLORAN, A)[2];
+  assert.deepEqual(entryPlaces(entry), [
+    { roomId: 'rsample101', roomText: '', groupIds: ['gsample06a'] },
+    { roomId: null, roomText: '999', groupIds: ['gsample06b', 'gsample06c'] },
+  ], '"999" and " 999" are one place, as two room numbers that differ only by a space are one number');
+  assert.deepEqual(entryRoomIds(entry), ['rsample101'], 'entryRoomIds still gives the rooms in the building only');
+  // another number is another place
+  slot(project, '6C', A, 2).roomText = '998';
+  assert.deepEqual(entryPlaces(teacherDay(project, HALLORAN, A)[2]).map((place) => [place.roomId, place.roomText]), [['rsample101', ''], [null, '999'], [null, '998']]);
+  // a slot with no room and no number is nowhere: a teacher named on it is teaching, in no place
+  Object.assign(slot(project, '6C', A, 2), { room: null, roomText: '' });
+  const nowhere = teacherDay(project, HALLORAN, A)[2];
+  assert.equal(nowhere.groups.length, 3);
+  assert.deepEqual(entryPlaces(nowhere).map((place) => place.groupIds), [['gsample06a'], ['gsample06b']]);
+  assert.deepEqual(entryPlaces({ period: 0, groups: [], kind: 'planning' }), []);
 });
 
 test('a teacher or a day type that does not exist gives null, and a slot naming nobody known is passed over', () => {

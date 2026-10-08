@@ -245,8 +245,12 @@ slots that named it to `{ room: null, roomText: <its number> }`.
 
 ### AcceptedFinding
 
-`{ findingId, reason, at }`. `findingId` is the finding's id, built from its
-kind and the ids it is about. `reason` is text. `at` is a date.
+`{ findingId, reason, at, about }`. `findingId` is the finding's id, built from
+its kind and the ids it is about. `reason` is text. `at` is a date. `about` is
+the sorted list of group ids, or teacher ids, the finding named when it was
+accepted. When the finding later names somebody else the acceptance stops
+counting and the record is listed as changed. An empty list, the default for a
+record written before the field existed, never reads as changed.
 
 ### Scenario
 

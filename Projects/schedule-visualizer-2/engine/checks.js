@@ -1,11 +1,14 @@
 // The schedule checks of spec 5.7. checkSchedule(project, walkResults) runs
 // every kind over every day type that is its own copy and gives
 //
-//   { findings, accepted, gone }
+//   { findings, accepted, changed, off, gone }
 //
 // `findings` are the ones that count, in the order of the findings table;
 // `accepted` are the ones the school has accepted, set apart and never
-// dropped; `gone` are accepted records that match nothing in this run.
+// dropped. The other three are accepted records, as the project holds them:
+// `changed` when the finding is still there and names somebody else now (it
+// counts again), `off` when its check is switched off, `gone` when nothing
+// matches it in this run. findings.js's splitAccepted has the rule.
 // findings.js has the shape of a finding, the ids, and the shape of
 // `walkResults`, which is null until the routes and the crowd model have run.
 //
@@ -17,19 +20,23 @@
 //   room-double          two or more groups in one room in one period, unless
 //                        the room is a shared space.
 //   teacher-double       a teacher's day (teacher-day.js) puts them in two or
-//                        more rooms in one period.
+//                        more places in one period. A room that is not in the
+//                        building is a place too, told apart by the number
+//                        its slots kept.
 //   over-capacity        a group has more students than its room seats. In a
 //                        shared space the groups there together are counted.
 //   no-planning          a teacher has a group in every period of the day.
 //   consecutive          a teacher has a group in more periods in a row than
 //                        the school's limit.
-//   teacher-walk,        a walk the figures handed in call late.
-//   group-walk
+//   teacher-walk,        a walk the figures handed in call late, when the
+//   group-walk           figure is for the walk as it is now: the same two
+//                        rooms and the same passing time.
 //   room-missing         a slot names a room that is not in the building.
 //   empty-period         a slot with no room at all. A group with no room all
 //                        day gets one note, not one a period.
 //   teacher-multi-room   a teacher is based in two or more rooms.
 //   teacher-room-unused  a room a teacher is based in has no group all day.
+//                        One note a room, naming everybody based there.
 //   room-unused          a numbered room nobody is based in has no group all
 //                        day. (A room somebody is based in is the note above,
 //                        so one empty room is one note.)
@@ -42,7 +49,7 @@
 import { allRooms, findRoom, findById, resolveSlotRoom } from './schema.js';
 import { ownDayTypes, effectiveSchedule, isOwnCopy, findDayType } from './day-types.js';
 import { bellsFor, periodName } from './bells.js';
-import { teacherDays, slotTeacherIds, entryRoomIds, teacherMoves } from './teacher-day.js';
+import { teacherDays, slotTeacherIds, entryPlaces, teacherMoves } from './teacher-day.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
 
 // "on A Day", or "on A Day and B Day" when B Day is the same as A Day.
@@ -80,13 +87,16 @@ export function checkSchedule(project, walkResults) {
 
   const found = [];
   const ids = new Set();
-  const add = (kind, parts, text, where) => {
-    if (off.has(kind)) return;
-    const finding = makeFinding(kind, parts, text, where);
-    if (ids.has(finding.id)) return;
+  const add = (kind, parts, text, where, about) => {
+    if (off.has(kind)) return null;
+    const finding = makeFinding(kind, parts, text, where, about);
+    if (ids.has(finding.id)) return null;
     ids.add(finding.id);
     found.push(finding);
+    return finding;
   };
+  // finding id -> { start, end } of a consecutive run, for splitAccepted
+  const runs = new Map();
 
   // room id -> the first slot found there with no teacher, for room-no-teacher
   const untaught = new Map();
@@ -179,20 +189,24 @@ export function checkSchedule(project, walkResults) {
     }
 
     const days = teacherDays(project, d);
+    const basedIn = new Map();
     for (const teacher of project.teachers) {
       const day = days.get(teacher.id);
 
       for (const entry of day) {
-        const roomIds = entryRoomIds(entry);
-        if (roomIds.length < 2) continue;
-        const places = roomIds.map((roomId) => {
-          const names = entry.groups.filter((taught) => taught.roomId === roomId).map((taught) => findById(project.groups, taught.groupId).name);
-          return roomName(findRoom(project, roomId), false) + ' with ' + listWords(names);
+        const places = entryPlaces(entry);
+        if (places.length < 2) continue;
+        // each place already holds an "and", so the places are set apart by "; "
+        const named = places.map((place) => {
+          const names = place.groupIds.map((groupId) => findById(project.groups, groupId).name);
+          const where = place.roomId === null ? '"' + place.roomText + '" (not in the building)' : roomName(findRoom(project, place.roomId), false);
+          return where + ' with ' + listWords(names);
         });
+        const roomIds = places.filter((place) => place.roomId !== null).map((place) => place.roomId).sort();
         add('teacher-double', [d, entry.period, teacher.id],
-          teacher.name + ' is in ' + countWord(roomIds.length) + ' rooms in ' + periodName(settings, entry.period) + ' ' + on + ': ' + listWords(places) + '. '
-            + (roomIds.length === 2 ? 'One of those groups needs' : 'All but one of those groups need') + ' another teacher or another ' + word + '.',
-          { dayTypeId: d, period: entry.period, groupIds: entry.groups.map((taught) => taught.groupId), roomId: roomIds.slice().sort()[0], teacherId: teacher.id });
+          teacher.name + ' is in ' + countWord(places.length) + ' rooms in ' + periodName(settings, entry.period) + ' ' + on + ': ' + named.join('; ') + '. '
+            + (places.length === 2 ? 'One of those groups needs' : 'All but one of those groups need') + ' another teacher or another ' + word + '.',
+          { dayTypeId: d, period: entry.period, groupIds: places.flatMap((place) => place.groupIds), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id });
       }
 
       if (day.every((entry) => entry.kind === 'teaching')) {
@@ -211,20 +225,32 @@ export function checkSchedule(project, walkResults) {
         while (end + 1 < periods && day[end + 1].kind === 'teaching') end += 1;
         const length = end - start + 1;
         if (length > limit) {
-          add('consecutive', [d, start, teacher.id],
+          const run = add('consecutive', [d, start, teacher.id],
             teacher.name + ' teaches ' + length + ' ' + periodWord(settings, true) + ' in a row ' + on + ', ' + periodName(settings, start) + ' to ' + periodName(settings, end) + '. The limit set for this school is ' + limit + '.',
-            { dayTypeId: d, period: start, teacherId: teacher.id, groupIds: day[start].groups.map((taught) => taught.groupId) });
+            { dayTypeId: d, period: start, teacherId: teacher.id, groupIds: day[start].groups.map((taught) => taught.groupId) }, [teacher.id]);
+          if (run) runs.set(run.id, { start, end });
         }
         start = end + 1;
       }
 
       for (const roomId of Array.isArray(teacher.roomIds) ? teacher.roomIds : []) {
-        const room = findRoom(project, roomId);
-        if (!room || used.has(roomId)) continue;
-        add('teacher-room-unused', [d, teacher.id, roomId],
-          roomName(room, true) + ', where ' + teacher.name + ' is based, has no group in any ' + word + ' ' + on + '.',
-          { dayTypeId: d, roomId, teacherId: teacher.id });
+        if (used.has(roomId) || !findRoom(project, roomId)) continue;
+        if (!basedIn.has(roomId)) basedIn.set(roomId, []);
+        if (!basedIn.get(roomId).includes(teacher)) basedIn.get(roomId).push(teacher);
       }
+    }
+
+    // one empty room is one note, however many teachers are based in it:
+    // named with the room's main teacher first, as the room lists them
+    for (const [roomId, based] of basedIn) {
+      const room = findRoom(project, roomId);
+      const order = Array.isArray(room.teacherIds) ? room.teacherIds : [];
+      const place = (teacher) => (order.includes(teacher.id) ? order.indexOf(teacher.id) : order.length);
+      const named = based.map((teacher, index) => ({ teacher, index })).sort((a, b) => place(a.teacher) - place(b.teacher) || a.index - b.index).map((entry) => entry.teacher);
+      const teacherIds = based.map((teacher) => teacher.id).sort();
+      add('teacher-room-unused', [d, teacherIds[0], roomId],
+        roomName(room, true) + ', where ' + listWords(named.map((teacher) => teacher.name)) + (named.length === 1 ? ' is' : ' are') + ' based, has no group in any ' + word + ' ' + on + '.',
+        { dayTypeId: d, roomId, teacherId: teacherIds[0] }, teacherIds);
     }
 
     for (const room of rooms) {
@@ -270,7 +296,11 @@ export function checkSchedule(project, walkResults) {
       const from = resolveSlotRoom(project, day[walk.period]).room;
       const to = resolveSlotRoom(project, day[walk.period + 1]).room;
       if (!from || !to || from === to) continue;
-      const passing = bellsFor(project, dayType.id)[walk.period].passingAfter;
+      // a figure for other rooms, or decided against another passing time,
+      // is not a figure for this walk
+      if (walk.fromRoomId !== from.id || walk.toRoomId !== to.id) continue;
+      if (walk.passingSeconds !== bellsFor(project, dayType.id)[walk.period].passingAfter) continue;
+      const passing = walk.passingSeconds;
       const after = ' after ' + periodName(settings, walk.period) + ' ' + onDays(project, dayType);
       const text = walk.arrived === false
         ? group.name + ' did not arrive at ' + roomName(to, false) + ' from ' + roomName(from, false) + after + ': it was still on the way after ' + formatDuration(walk.total) + ', and ' + passingText(passing) + '.'
@@ -288,13 +318,14 @@ export function checkSchedule(project, walkResults) {
       if (!daysOf.has(dayType.id)) daysOf.set(dayType.id, teacherDays(project, dayType.id));
       const day = daysOf.get(dayType.id).get(teacher.id);
       const move = teacherMoves(day).find((candidate) => candidate.period === walk.period);
-      if (!move) continue;
+      if (!move || walk.fromRoomId !== move.fromRoomId || walk.toRoomId !== move.toRoomId) continue;
+      if (walk.passingSeconds !== bellsFor(project, dayType.id)[walk.period].passingAfter) continue;
       add('teacher-walk', [dayType.id, walk.period, teacher.id],
         teacher.name + ' needs ' + formatDuration(walk.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + ' to ' + roomName(findRoom(project, move.toRoomId), false)
-          + ' after ' + periodName(settings, walk.period) + ' ' + onDays(project, dayType) + ', before any crowding, and ' + passingText(bellsFor(project, dayType.id)[walk.period].passingAfter) + '.',
-        { dayTypeId: dayType.id, period: walk.period, groupIds: day[walk.period + 1].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id });
+          + ' after ' + periodName(settings, walk.period) + ' ' + onDays(project, dayType) + ', before any crowding, and ' + passingText(walk.passingSeconds) + '.',
+        { dayTypeId: dayType.id, period: walk.period, groupIds: day[walk.period + 1].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id }, [teacher.id]);
     }
   }
 
-  return splitAccepted(sortFindings(found, project), project.accepted);
+  return splitAccepted(sortFindings(found, project), project.accepted, { off, limit, runs });
 }

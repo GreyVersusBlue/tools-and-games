@@ -690,9 +690,17 @@ test('detachRooms keeps an unnumbered room\'s slots too, under a plain name', ()
 
 // ---------------------------------------------------------------- findings, replace
 
-test('acceptFinding records the reason and the time from the clock, once per finding', () => {
+test('acceptFinding records the reason, the time from the clock and who the finding is about, once per finding', () => {
   let project = run(actions.acceptFinding, school(), { findingId: 'room-double:dsample00a:1:rsample203', reason: 'Team taught' });
-  assert.deepEqual(project.accepted, [{ findingId: 'room-double:dsample00a:1:rsample203', reason: 'Team taught', at: PINNED }]);
+  // SV2-36 item 2: with no list handed over, `about` is the two groups the finding names now
+  assert.deepEqual(project.accepted, [{ findingId: 'room-double:dsample00a:1:rsample203', reason: 'Team taught', at: PINNED, about: ['gsample06c', 'gsample07c'] }]);
+  // a list handed over is kept, sorted, and the caller's own list is left alone
+  const handed = ['gsample07c', 'gsample06c', 'gsample06a'];
+  assert.deepEqual(run(actions.acceptFinding, school(), { findingId: 'room-double:dsample00a:1:rsample203', reason: 'x', about: handed }).accepted[0].about, ['gsample06a', 'gsample06c', 'gsample07c']);
+  assert.deepEqual(handed, ['gsample07c', 'gsample06c', 'gsample06a']);
+  // a finding the checks do not make now is about nobody that is known
+  assert.deepEqual(run(actions.acceptFinding, school(), { findingId: 'group-walk:dsample00a:5:gsample08a', reason: 'x' }).accepted[0].about, []);
+  for (const bad of ['gsample06c', [7], null]) refused(actions.acceptFinding, school(), { findingId: 'room-double:dsample00a:1:rsample203', reason: 'x', about: bad }, 'bad-value');
   project = run(actions.acceptFinding, project, { findingId: 'room-double:dsample00a:1:rsample203', reason: 'Both teachers present' });
   assert.equal(project.accepted.length, 1);
   assert.equal(project.accepted[0].reason, 'Both teachers present');

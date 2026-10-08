@@ -183,6 +183,14 @@ export function defaultPublish() {
   };
 }
 
+// An accepted finding as the project keeps it. `about` is who the finding
+// named when it was accepted: group ids, or teacher ids, sorted. An empty
+// list is the default, and means the list was not kept (a record made before
+// it was) or the finding names nobody; such a record never reads as changed.
+export function newAcceptedFinding(findingId, reason, at, about) {
+  return { findingId, reason, at, about: Array.isArray(about) ? about.slice().sort() : [] };
+}
+
 export function defaultOnboarding() {
   return { steps: {}, dismissed: false, neverShow: false };
 }
