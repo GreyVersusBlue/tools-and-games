@@ -760,3 +760,84 @@ test('no action writes to the project it is given', () => {
   assert.equal(JSON.stringify(first), original);
   assert.deepEqual(validate(project), []);
 });
+
+// ---------------------------------------------------------------- SV2-35: what the review of the first unit found
+
+test('addFloor after a middle floor was deleted gives a level no floor has: one above the highest', () => {
+  let project = run(actions.deleteFloor, school(), { id: 'fsample002' });
+  assert.deepEqual(project.building.floors.map((f) => f.level), [1, 3]);
+  project = run(actions.addFloor, project);
+  assert.deepEqual(project.building.floors.map((f) => f.level), [1, 3, 4], 'two floors on level 3 would make the stairs between them cost one flight');
+  assert.equal(new Set(project.building.floors.map((f) => f.level)).size, 3);
+});
+
+test('addFloor counts up from the highest level, wherever that floor is in the order, and from a basement', () => {
+  let project = run(actions.reorderFloor, school(), { id: 'fsample003', toIndex: 0 });
+  project = run(actions.addFloor, project);
+  assert.equal(project.building.floors[3].level, 4);
+  let low = run(actions.setFloorLevel, emptyProject(), { id: emptyProject().building.floors[0].id, level: -2 });
+  low = run(actions.addFloor, low);
+  assert.deepEqual(low.building.floors.map((f) => f.level), [-2, -1]);
+});
+
+const ADDS = [
+  ['addSubject', { code: 'DRA', name: 'Drama' }, 'id', 'ssample001', 'sdrama0001'],
+  ['addTeacher', { name: 'Mx. Oakhollow' }, 'id', 'tsample001', 'toakhollow'],
+  ['addGroup', { name: '8C' }, 'id', 'gsample06a', 'gsample08c'],
+  ['duplicateGroup', { id: 'gsample06a' }, 'newId', 'gsample06b', 'gsample06z'],
+  ['addFloor', {}, 'id', 'fsample001', 'fsample004'],
+  ['placeRoom', { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 } }, 'id', 'rsample101', 'rsample399'],
+  ['placeOtherSpace', { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 }, label: 'Store' }, 'id', 'osample001', 'osample399'],
+  ['connectStairs', { a: { floorId: 'fsample001', cell: 332 }, b: { floorId: 'fsample003', cell: 353 } }, 'id', 'csample00a', 'csample00c'],
+  ['nameCorridor', { floorId: 'fsample003', cells: [7 * 40 + 2, 7 * 40 + 3], name: 'Music Wing Hall' }, 'id', 'ksample001', 'ksample399'],
+  ['markExit', { floorId: 'fsample002', cell: 7 * 40 + 38, doorName: 'Door C' }, 'id', 'xsample00a', 'xsample00c'],
+  ['addZone', { floorId: 'fsample002', x: 1, y: 7, w: 2, h: 1 }, 'id', 'zsample001', 'zsample002'],
+];
+
+for (const [name, payload, key, taken, free] of ADDS) {
+  test(name + ' refuses an id the project already uses, and an id of another kind\'s, and takes a free one', () => {
+    const project = school();
+    if (name === 'nameCorridor') project.building.floors[2].corridors = [];
+    refused(actions[name], project, { ...payload, [key]: taken }, 'duplicate-id');
+    refused(actions[name], project, { ...payload, [key]: 'psample001' }, 'bad-id');
+    refused(actions[name], project, { ...payload, [key]: 'Not An Id' }, 'bad-id');
+    const after = run(actions[name], project, { ...payload, [key]: free });
+    assert.ok(JSON.stringify(after).includes('"' + free + '"'), 'the id given is the id used');
+  });
+}
+
+test('an id used anywhere in the project is refused, whatever kind of thing has it', () => {
+  // the project's own id has the right letter for nothing else; a traced image's id is found too
+  const project = school();
+  project.building.floors[0].image = { imageId: 'gsample999', opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 10, height: 10, missing: false };
+  refused(actions.addGroup, project, { name: '8C', id: 'gsample999' }, 'duplicate-id');
+});
+
+test('setSetting refuses to switch off a check that is not one of the checks', () => {
+  refused(actions.setSetting, school(), { key: 'checks.off', value: ['room-unused', 'room-on-fire'] }, 'bad-value');
+  const after = run(actions.setSetting, school(), { key: 'checks.off', value: ['room-unused', 'empty-period'] });
+  assert.deepEqual(after.settings.checks.off, ['room-unused', 'empty-period']);
+});
+
+test('setConnection refuses a label another stair connection has, and takes its own again', () => {
+  refused(actions.setConnection, school(), { connectionId: 'csample00b', label: 'A' }, 'duplicate-label');
+  assert.equal(actions.setConnection(school(), { connectionId: 'csample00b', label: 'B', direction: 'ab' }, ctx()).building.connections[1].direction, 'ab');
+  assert.equal(run(actions.setConnection, school(), { connectionId: 'csample00b', label: 'East stairs' }).building.connections[1].label, 'East stairs');
+});
+
+test('setOnboarding is a quiet action, and no other action is', () => {
+  assert.equal(actions.setOnboarding.quiet, true);
+  for (const [name, value] of Object.entries(actions)) {
+    if (typeof value === 'function' && 'label' in value && name !== 'setOnboarding') assert.equal(value.quiet, false, name);
+  }
+});
+
+test('describeAction carries what a building action and an import reported, and null for the rest', () => {
+  const before = school();
+  const placed = actions.placeRoom(before, { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 } }, ctx());
+  const told = info(actions.placeRoom, before, {}, placed);
+  assert.equal(told.outcome, actions.buildingOutcome(placed));
+  assert.match(told.outcome.spaceId, /^r[a-z0-9]{9}$/);
+  const renamed = actions.renameFloor(before, { id: 'fsample001', name: 'Ground' }, ctx());
+  assert.equal(info(actions.renameFloor, before, { id: 'fsample001', name: 'Ground' }, renamed).outcome, null);
+});

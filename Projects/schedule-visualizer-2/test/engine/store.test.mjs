@@ -40,12 +40,13 @@ test('apply runs the action, makes one undo entry and sets modified from the clo
   assert.deepEqual(validate(after), []);
 });
 
-test('an entry is { label, before, after, focus, bumps }', () => {
+test('an entry is { label, before, after, focus, bumps, outcome }', () => {
   const store = sampleStore();
   const before = store.project;
   store.apply(actions.setSlot, SLOT);
   const entry = store.history.past[0];
-  assert.deepEqual(Object.keys(entry), ['label', 'before', 'after', 'focus', 'bumps']);
+  assert.deepEqual(Object.keys(entry), ['label', 'before', 'after', 'focus', 'bumps', 'outcome']);
+  assert.equal(entry.outcome, null, 'a slot edit reports nothing');
   assert.equal(entry.before, before);
   assert.equal(entry.after, store.project);
   assert.deepEqual(entry.focus, { section: 'schedule', tab: 'groups', groupId: 'gsample06a', dayTypeId: 'dsample00a', period: 0 });
@@ -257,4 +258,64 @@ test('derived values are recomputed only when a counter they name has moved', ()
   store.undo();
   assert.equal(rooms(), 23);
   assert.equal(runs, 3);
+});
+
+// ---------------------------------------------------------------- SV2-35
+
+test('replaceProject as an action reserves the loaded project\'s ids, as replace does', () => {
+  const next = makeIds(11)('g'); // the id the store's source would hand out for the next group
+  const loaded = school();
+  loaded.groups[0].id = next;
+  const store = createStore({ project: emptyProject(), clock, ids: makeIds(11) });
+  store.apply(actions.replaceProject, { project: loaded, label: 'Load the sample school' });
+  store.apply(actions.addGroup, { name: '8C' });
+  assert.notEqual(store.project.groups[8].id, next, 'the new group was handed an id a loaded group already has');
+  assert.deepEqual(validate(store.project), []);
+});
+
+test('a quiet action changes the project, makes no undo entry and leaves modified alone', () => {
+  const store = sampleStore();
+  const changes = [];
+  store.subscribe((project, change) => changes.push(change));
+  const before = store.project;
+  store.apply(actions.setOnboarding, { dismissed: true });
+  assert.equal(store.project.onboarding.dismissed, true);
+  assert.equal(store.history.past.length, 0, 'no undo entry');
+  assert.deepEqual([store.canUndo, store.undoLabel], [false, null]);
+  assert.equal(store.project.modified, before.modified, 'modified is not stamped');
+  assert.deepEqual(changes, [{ kind: 'apply', label: 'Change getting started', focus: null, bumps: [], quiet: true }], 'subscribers still hear of it, so it is saved');
+  assert.equal(store.version, 1);
+  assert.equal(store.apply(actions.setOnboarding, { dismissed: true }), store.project, 'and the same again changes nothing');
+  assert.equal(changes.length, 1);
+});
+
+test('a quiet action is not taken back by undo or redo: the states in the history get it too', () => {
+  const store = sampleStore();
+  store.apply(actions.setSlot, SLOT);
+  store.apply(actions.addGroup, { name: '8C' });
+  store.undo();
+  // one entry to undo, one to redo; now the card is dismissed
+  store.apply(actions.setOnboarding, { dismissed: true });
+  assert.deepEqual([store.canUndo, store.canRedo], [true, true], 'a quiet action does not clear redo');
+  store.redo();
+  assert.equal(store.project.groups.length, 9);
+  assert.equal(store.project.onboarding.dismissed, true, 'redo did not bring the card back');
+  store.undo();
+  store.undo();
+  assert.equal(group(store.project, '6A').days.dsample00a[0].room, 'rsample201', 'the slot edit is undone');
+  assert.equal(store.project.onboarding.dismissed, true, 'undo did not bring the card back');
+  assert.equal(store.history.future[1].before.building, store.history.future[1].after.building, 'and the states still share what they shared');
+});
+
+test('the history entry keeps what a building action reported, so nobody runs the action twice to ask', () => {
+  const store = sampleStore();
+  assert.equal(store.undoOutcome, null);
+  store.apply(actions.placeRoom, { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 } });
+  const outcome = store.undoOutcome;
+  assert.equal(outcome, store.history.past[0].outcome);
+  const placed = store.project.building.floors[2].spaces.find((space) => space.id === outcome.spaceId);
+  assert.ok(placed, 'the outcome names the room that is in the store');
+  assert.equal(outcome.cells.length, 9);
+  store.apply(actions.renameFloor, { id: 'fsample001', name: 'Ground' });
+  assert.equal(store.undoOutcome, null, 'an action that reports nothing has none');
 });
