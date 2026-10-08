@@ -76,7 +76,7 @@ export function exitsPanel(env) {
             assembly.set(now.exit.assembly);
             where.textContent = now.floor.name + ', ' + cellWords(now.floor, now.exit.cell);
             const name = now.exit.doorName.trim() === '' ? 'the exit on ' + now.floor.name + ' at ' + cellWords(now.floor, now.exit.cell) : 'the exit ' + now.exit.doorName;
-            show.setAttribute('aria-label', 'Show ' + name);
+            show.setAttribute('aria-label', 'Show me: ' + name);
             remove.setAttribute('aria-label', 'Remove ' + name);
           },
         };

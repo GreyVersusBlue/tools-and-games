@@ -211,7 +211,7 @@ export function propertiesPanel(env) {
         h('span', { class: 'bi-person__name' }, teacher.name),
         index === 0
           ? h('span', { class: 'bi-person__main' }, 'Main teacher')
-          : h('button', { type: 'button', class: 'btn btn--quiet bi-small', data: { key: 'main:' + teacher.id, action: 'main' }, 'aria-label': 'Make ' + teacher.name + ' the main teacher', on: { click: () => {
+          : h('button', { type: 'button', class: 'btn btn--quiet bi-small', data: { key: 'main:' + teacher.id, action: 'main' }, 'aria-label': 'Make main: ' + teacher.name, on: { click: () => {
             const now = current();
             if (!now) return;
             store.apply(setRoomTeachers, { roomId: now.id, teacherIds: [teacher.id].concat(now.teacherIds.filter((id) => id !== teacher.id)) });

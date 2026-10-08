@@ -241,7 +241,7 @@ export function floorPanel(env) {
         label.input.dataset.key = 'connection:' + connection.id;
         const where = h('p', { class: 'bld-inspector__small' });
         const buttons = [
-          small('Show me', 'show-connection:' + connection.id, 'Show stairs ' + connection.label, () => {
+          small('Show me', 'show-connection:' + connection.id, 'Show me: stairs ' + connection.label, () => {
             const now = state.project.building.connections.find((each) => each.id === connection.id);
             const end = now.a.floorId === state.floor.id ? now.a : now.b;
             env.show({ floorId: end.floorId, cells: [end.cell] });
@@ -276,7 +276,7 @@ export function floorPanel(env) {
         name.input.dataset.key = 'corridor:' + corridor.id;
         const where = h('p', { class: 'bld-inspector__small' });
         const buttons = [
-          small('Show me', 'show-corridor:' + corridor.id, 'Show the corridor ' + corridor.name, () => {
+          small('Show me', 'show-corridor:' + corridor.id, 'Show me: the corridor ' + corridor.name, () => {
             const now = state.floor.corridors.find((each) => each.id === corridor.id);
             env.show({ floorId: state.floor.id, cells: now.cells });
           }),
@@ -316,7 +316,7 @@ export function floorPanel(env) {
         });
         const where = h('p', { class: 'bld-inspector__small' });
         const buttons = [
-          small('Show me', 'show-zone:' + zone.id, 'Show this area', () => {
+          small('Show me', 'show-zone:' + zone.id, 'Show me: this area', () => {
             const now = state.project.building.zones.find((each) => each.id === zone.id);
             const cells = [];
             for (let y = now.y; y < now.y + now.h; y += 1) for (let x = now.x; x < now.x + now.w; x += 1) cells.push(y * state.floor.width + x);

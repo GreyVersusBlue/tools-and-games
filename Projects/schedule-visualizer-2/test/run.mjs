@@ -80,6 +80,8 @@ export const GROUPS = {
     'browser/draw-keyboard.mjs', // SV2-06
     'browser/draw-touch.mjs', // SV2-06
     'browser/doors-stairs.mjs', // SV2-07
+    'browser/inspector.mjs', // SV2-07
+    'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03

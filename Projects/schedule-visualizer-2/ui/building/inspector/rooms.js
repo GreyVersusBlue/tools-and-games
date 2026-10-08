@@ -77,7 +77,7 @@ export function roomsPanel(env) {
       sortable: true,
       value: (room) => teacherName(room),
       render: (room) => {
-        // the main teacher: choosing another puts that one first and keeps the rest
+        // the main teacher: the one chosen takes that place, and the room's other teachers stay
         const made = selectField({
           key: room.id + ':teacher',
           name: 'teacher',
