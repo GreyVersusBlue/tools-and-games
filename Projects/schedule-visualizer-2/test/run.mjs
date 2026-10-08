@@ -3,6 +3,7 @@
 //
 //   node test/run.mjs            every group
 //   node test/run.mjs --node     the plain-Node suites (no install, no browser)
+//   node test/run.mjs --timing   the budgets at the promised size (plain Node too) // SV2-05
 //
 // The files are listed here by hand (`node --test dir/` fails on Node 22). A
 // test file on disk that is missing from the list is itself a failure, so a
@@ -37,10 +38,14 @@ const GROUPS = {
     'engine/building-checks.test.mjs', // SV2-04
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/checks.test.mjs', // SV2-09
+    'engine/routing.test.mjs', // SV2-05
+    'engine/directions.test.mjs', // SV2-05
   ],
   browser: [],
   a11y: [],
-  timing: [],
+  timing: [
+    'timing/routing.mjs', // SV2-05
+  ],
 };
 
 // Folders whose every *.test.mjs has to be in a group above.
