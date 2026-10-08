@@ -59,21 +59,27 @@ test('what counts as inside the origin: the server\'s own addresses and what the
   for (const url of ['http://127.0.0.1:81234/x', 'http://127.0.0.1:8124/x', 'https://127.0.0.1:8123/x', 'http://example.invalid/', 'https://fonts.googleapis.com/css?family=x', 'ws://127.0.0.1:8123/x']) assert.equal(sameOrigin(url, base), false, url);
 });
 
-test('a page that asks for an address outside its origin fails the session when it is closed', async () => {
+// localhost is not 127.0.0.1 to the site's harness: it refuses the request
+// before it is made. A page opened plain makes it, nothing is listening on
+// port 9, and it never leaves this machine. So where this request ends up
+// says which way the page was opened.
+const ELSEWHERE = 'http://localhost:9/offsite.json';
+
+test('a page opened by default is not intercepted: a request outside its origin is made, counted, and fails the session when it is closed', async () => {
   // keep: true, because emptying the saved project would take it from under the first page
   const other = await openPlanner({ hash: '#project', browser: session.browser, server: session.server, keep: true });
-  // an address nothing answers: the request is made, counted, and fails at once
-  await other.page.evaluate(() => fetch('http://127.0.0.1:9/offsite.json').catch(() => null));
-  assert.deepEqual(other.offsite, ['http://127.0.0.1:9/offsite.json']);
-  assert.ok(other.problems().errors.some((line) => line === 'offsite: http://127.0.0.1:9/offsite.json'), other.problems().errors.join(' | '));
-  await assert.rejects(() => other.close(), /asked for 1 address outside http:\/\/127\.0\.0\.1:\d+: http:\/\/127\.0\.0\.1:9\/offsite\.json/);
+  await other.page.evaluate((url) => fetch(url, { mode: 'no-cors' }).catch(() => null), ELSEWHERE);
+  assert.deepEqual(other.problems().blocked, [], 'the site\'s harness refused the request: the page was opened through its interception');
+  assert.deepEqual(other.offsite, [ELSEWHERE]);
+  assert.ok(other.problems().errors.includes('offsite: ' + ELSEWHERE), other.problems().errors.join(' | '));
+  await assert.rejects(() => other.close(), /asked for 1 address outside http:\/\/127\.0\.0\.1:\d+: http:\/\/localhost:9\/offsite\.json/);
 });
 
-test('with intercept: true the page is opened through the site\'s harness, as before', async () => {
+test('with intercept: true the page is opened through the site\'s harness, which refuses that request', async () => {
   const other = await openPlanner({ hash: '#project', browser: session.browser, server: session.server, keep: true, intercept: true });
-  await other.page.evaluate(() => fetch('http://example.invalid/offsite.json').catch(() => null));
-  assert.deepEqual(other.problems().blocked, ['http://example.invalid/offsite.json'], 'the harness refused it');
-  other.offsite.length = 0; // refused before it left; this session is closed clean
+  await other.page.evaluate((url) => fetch(url, { mode: 'no-cors' }).catch(() => null), ELSEWHERE);
+  assert.deepEqual(other.problems().blocked, [ELSEWHERE], 'the request was not refused: the page was opened plain');
+  other.offsite.length = 0; // refused before it was made, so this session closes clean
   await other.close();
 });
 
@@ -196,8 +202,6 @@ test('Help lists the plan\'s keys whichever section is open, registered through 
 test('a section is told when it leaves the page: the Building section takes its listeners off the document at once', async () => {
   await go(page, '#building');
   await page.waitForFunction(() => document.querySelector('.bld')?.dataset.styled === 'true');
-  await page.keyboard.press('c');
-  assert.equal(await page.evaluate(() => document.querySelector('.bld').editor.tool.id), 'corridor', 'the plan answers its keys while it is on the page');
   // count what is taken off the document while the section leaves, with no
   // key pressed: it used to wait for the next key to find itself gone
   await page.evaluate(() => {
@@ -215,7 +219,15 @@ test('a section is told when it leaves the page: the Building section takes its 
     return globalThis.sv2test.removed.slice().sort();
   });
   assert.deepEqual(removed.filter((type) => type === 'keydown' || type === 'keyup'), ['keydown', 'keyup'], 'the section was not told it had left: its key listeners are still on the document');
+});
+
+test('after leaving and coming back, the plan on screen is the one that answers its keys', async () => {
+  // a view that kept its listeners would take the key first and the plan on screen would never see it
   await go(page, '#building');
+  await page.waitForFunction(() => document.querySelector('.bld')?.dataset.styled === 'true');
+  await page.keyboard.press('v');
+  await page.keyboard.press('c');
+  assert.equal(await page.evaluate(() => document.querySelector('.bld').editor.tool.id), 'corridor');
 });
 
 test('a drawing gesture runs its action once: one id is taken for one room', async () => {
