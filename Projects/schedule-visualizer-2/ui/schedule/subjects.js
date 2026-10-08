@@ -82,7 +82,7 @@ export function mount(env) {
         const after = ctx.store.project.subjects;
         const next = after[Math.min(index, after.length - 1)];
         env.render(next ? 'subject:' + next.id + ':name' : 'subject-add');
-      }, { small: true, key: key + 'delete', action: 'delete', name: 'Delete ' + called + (use.rooms + use.teachers > 0 ? ', used by ' + useText(use) : '') })));
+      }, { small: true, key: key + 'delete', action: 'delete', more: ' ' + called + (use.rooms + use.teachers > 0 ? ', used by ' + useText(use) : '') })));
   }
 
   function draw(project) {

@@ -111,7 +111,10 @@ test('the sample school shows its groups with completeness, marks and the findin
   assert.equal(await count('.sch-group'), 8);
   assert.equal(await page.$eval('.sch-group[data-group="gsample06c"] .sch-bar[data-day="' + DAY_A + '"]', (el) => el.dataset.done), '8');
   assert.equal(await page.$eval('.sch-group[data-group="gsample06c"] .sch-mark--problem', (el) => el.title), '1 problem');
-  assert.match(await page.$eval('.sch-group[data-group="gsample06c"]', (el) => el.getAttribute('aria-label')), /^6C, grade 6\. A Day: 8 of 8 periods have a room\. .*1 problem\./);
+  // the button's name is its content: the short figures are hidden from a screen reader, the words are not
+  assert.equal(await page.$eval('.sch-group[data-group="gsample06c"]', (el) => el.hasAttribute('aria-label')), false);
+  assert.equal(await page.$eval('.sch-group[data-group="gsample06c"]', (el) => Array.from(el.querySelectorAll('.sch-group__name, .vh')).map((part) => part.textContent).join('')),
+    '6C, grade . 1 problem1 noteA Day: 8 of 8 periods have a room. B Day: 8 of 8 periods have a room. ');
   assert.deepEqual((await counts()).slice(0, 2), [1, 0]);
   assert.equal(await page.$eval('#inspector', (el) => el.hidden), false);
   assert.equal(await text('#inspector .sch-panel__scope'), 'About 6A');
@@ -191,7 +194,7 @@ test('a group is entered from scratch by keyboard, and focus is never lost on th
   assert.equal(await page.$eval(slot(DAY_A, 0, 'label'), (el) => el.value), 'Homeroom');
   assert.equal(await page.$eval('.sch-group[aria-current="true"] .sch-bar[data-day="' + DAY_A + '"]', (el) => el.dataset.done), '8');
   assert.equal(await text('.sch-group[aria-current="true"] .sch-group__name'), '8Z');
-  assert.equal(await text('.sch-group[aria-current="true"] .sch-group__grade'), '8');
+  assert.equal(await page.$eval('.sch-group[aria-current="true"] .sch-group__grade', (el) => Array.from(el.childNodes).filter((node) => node.nodeType === 3).map((node) => node.textContent).join('')), '8');
   assert.equal(await page.$eval('[data-key="group-head"]', (el) => el.value), '22');
 });
 
@@ -230,6 +233,26 @@ test('a name already in use is refused under the field, and what was typed stays
   assert.equal(await activeValue(), '6a');
   await page.keyboard.press('Escape');
   assert.equal(await activeValue(), '8Z');
+});
+
+test('a redraw does not take the text out from under someone typing', async () => {
+  // a name that will be refused, so nothing but the field holds it
+  await click('[data-key="group-name"]');
+  await selectAllAndType('6a');
+  // a change from somewhere else draws the tab again, which replaces the field
+  await page.evaluate(() => import('./engine/actions.js').then((actions) => {
+    const { store } = globalThis.sv2;
+    store.apply(actions.editGroup, { id: store.project.groups.find((group) => group.name === '8Z').id, headCount: 23 });
+  }));
+  await shows(() => document.querySelector('[data-key="group-head"]').value === '23');
+  await keyIs('group-name');
+  assert.equal(await activeValue(), '6a');
+  assert.equal(await text('.sch-editor__title'), '8Z', 'the taken name was not kept');
+  // and the new field knows what was there before the typing
+  await page.keyboard.press('Escape');
+  assert.equal(await activeValue(), '8Z');
+  await click('#undo');
+  await shows(() => document.querySelector('[data-key="group-head"]').value === '22');
 });
 
 test('Accept needs a reason, moves the finding to the Accepted list and out of the counts', async () => {
@@ -374,7 +397,7 @@ test('teachers: added by keyboard, a near-duplicate is flagged and merged, a tak
   await page.waitForSelector('.sch-flag');
   assert.match(await text('.sch-flag p'), /^“Ms\. Oyelaran” and “Ms Oyelaran” look like the same teacher\./);
   assert.equal(await count('.sch-edit-table .sch-teachers__name .sch-finding-line--warning'), 2, 'both rows carry the flag');
-  assert.equal(await text('.sch-flag [data-action="merge"]'), 'Merge into “Ms. Oyelaran”');
+  assert.equal(await text('.sch-flag [data-action="merge"]'), 'Merge into “Ms. Oyelaran”, and drop “Ms Oyelaran”');
   await click('.sch-flag [data-action="merge"]');
   await shows(() => document.querySelector('.sch-flag') === null && document.querySelectorAll('.sch-edit-table tbody tr').length === 12);
   assert.equal(await toastText(), 'Merged Ms Oyelaran into Ms. Oyelaran.');
@@ -500,7 +523,7 @@ test('day: B Day made the same as A Day is greyed everywhere, and "Make its own 
   await shows((selector) => document.querySelector(selector).classList.contains('sch-daytype--same'), card);
   assert.match(await toastText(), /^B Day is the same as A Day again\. Its own \d+ room entries in 9 groups and 8 bell times went with that\.$/);
   assert.equal(await page.$eval(card + ' .sch-day__line', (el) => el.firstChild.textContent), 'B Day: same as A Day · ');
-  assert.equal(await text(card + ' [data-action="make-own"]'), 'Make its own copy');
+  assert.equal(await text(card + ' [data-action="make-own"]'), 'Make its own copy: B Day');
   assert.equal(await count(card + ' .sch-bells input'), 0, 'its bells are A Day’s, shown and not editable');
   assert.equal(await page.$eval(card + ' .sch-bells tbody tr td', (el) => el.textContent), '8:00 AM');
   await go(page, '#schedule/groups');
@@ -509,7 +532,7 @@ test('day: B Day made the same as A Day is greyed everywhere, and "Make its own 
   assert.equal(await text(column + ' .sch-day__title'), 'B Day: same as A Day');
   assert.equal(await count(column + ' input'), 0);
   assert.equal(await exists('[data-action="copy-day"]'), false, 'Copy A Day to B Day waits until B Day is its own copy');
-  assert.equal(await text('.sch-group[aria-current="true"] .sch-bar--same'), 'B Day = A Day');
+  assert.equal(await text('.sch-group[aria-current="true"] .sch-bar--same [aria-hidden]'), 'B Day = A Day');
   await click(column + ' [data-action="make-own"]');
   await shows((selector) => !document.querySelector(selector).classList.contains('sch-day--same') && document.querySelector('[data-action="copy-day"]') !== null, column);
   assert.equal(await text('[data-action="copy-day"]'), 'Copy A Day to B Day');
@@ -569,7 +592,7 @@ test('an empty project: each tab says what the thing is and has one button', asy
   assert.match(await text('.sch-checks .sch-empty__text'), /^Nothing to check yet\. Checks look through the schedule/);
   assert.deepEqual(await page.$$eval('.sch-checks button, .sch-checks a', (all) => all.map((el) => el.textContent)), ['Add a group']);
   await click('.sch-checks [data-action="go-groups"]');
-  await shows(() => location.hash === '#schedule/groups');
+  await shows(() => location.hash === '#schedule/groups' && document.querySelector('.sch-groups [data-action="add-group"]') !== null);
   // the first group of a new project, and a room that is then missing from the building
   await click('[data-action="add-group"]');
   await keyIs('group-name');

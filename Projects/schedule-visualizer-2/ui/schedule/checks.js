@@ -89,9 +89,9 @@ function severityWord(severity) {
 function actions(env, finding, where) {
   const key = where + ':' + finding.id + ':';
   return h('div', { class: 'sch-finding__actions' },
-    button('Show', () => showFinding(env, finding), { small: true, key: key + 'show', action: 'show', name: 'Show: ' + finding.text }),
+    button('Show', () => showFinding(env, finding), { small: true, key: key + 'show', action: 'show', more: ': ' + finding.text }),
     notYet('Fix…', FIX_REASON, 'fix'),
-    button('Accept', (opener) => acceptWithReason(env, finding, opener), { small: true, key: key + 'accept', action: 'accept', name: 'Accept: ' + finding.text }));
+    button('Accept', (opener) => acceptWithReason(env, finding, opener), { small: true, key: key + 'accept', action: 'accept', more: ': ' + finding.text }));
 }
 
 export function countsLine(model) {
@@ -153,12 +153,12 @@ export function mount(env) {
           h('td', null, severityWord(finding.severity), ' ', finding.text),
           h('td', null, finding.accepted.reason),
           h('td', null, when(finding.accepted.at)),
-          h('td', null, button('Count it again', () => stop(finding.id), { small: true, key: 'accepted:' + finding.id, action: 'unaccept', name: 'Count it again: ' + finding.text })))),
+          h('td', null, button('Count it again', () => stop(finding.id), { small: true, key: 'accepted:' + finding.id, action: 'unaccept', more: ': ' + finding.text })))),
         model.gone.map((record) => h('tr', { class: 'sch-findings__gone', data: { finding: record.findingId } },
           h('td', null, 'No longer found. What this was about has been put right, or its check is switched off.'),
           h('td', null, record.reason),
           h('td', null, when(record.at)),
-          h('td', null, button('Remove', () => stop(record.findingId), { small: true, key: 'accepted:' + record.findingId, action: 'unaccept', name: 'Remove the accepted finding with the reason: ' + record.reason })))))));
+          h('td', null, button('Remove', () => stop(record.findingId), { small: true, key: 'accepted:' + record.findingId, action: 'unaccept', more: ' the accepted finding with the reason: ' + record.reason })))))));
   }
 
   function draw(project) {

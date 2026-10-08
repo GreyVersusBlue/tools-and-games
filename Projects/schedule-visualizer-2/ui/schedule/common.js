@@ -40,17 +40,18 @@ export function keyed(element, key) {
   return element;
 }
 
-// button('Add a group', run, { primary, key, action, title })
+// button('Delete', run, { primary, small, key, action, title, more })
+//   more   words for a screen reader after the label, so that one "Delete"
+//          among many says what it deletes: "Delete" + " 7-1"
 export function button(label, run, options) {
   const opts = options || {};
   const element = h('button', {
     type: 'button',
-    class: 'btn' + (opts.primary ? ' btn--primary' : '') + (opts.quiet ? ' btn--quiet' : '') + (opts.small ? ' sch-btn--small' : ''),
+    class: 'btn' + (opts.primary ? ' btn--primary' : '') + (opts.small ? ' sch-btn--small' : ''),
     title: opts.title,
-    'aria-label': opts.name,
     data: opts.action ? { action: opts.action } : null,
     on: { click: (event) => run(event.currentTarget) },
-  }, label);
+  }, label, opts.more ? h('span', { class: 'vh' }, opts.more) : null);
   if (opts.key) keyed(element, opts.key);
   return element;
 }

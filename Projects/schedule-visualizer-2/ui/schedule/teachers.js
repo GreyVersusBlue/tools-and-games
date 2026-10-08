@@ -41,7 +41,7 @@ export function mount(env) {
           if (!apply(env, mergeTeachers, { keepId: keep.id, mergeId: gone.id })) return;
           ctx.toast({ text: 'Merged ' + gone.name + ' into ' + keep.name + '.', action: { label: 'Undo', run: ctx.undo } });
           env.render('teacher:' + keep.id + ':name');
-        }, { small: true, key: 'merge:' + gone.id, action: 'merge', name: 'Merge ' + quote(gone.name) + ' into ' + quote(keep.name) }))));
+        }, { small: true, key: 'merge:' + gone.id, action: 'merge', more: ', and drop ' + quote(gone.name) }))));
     });
   }
 
@@ -105,7 +105,7 @@ export function mount(env) {
         const left = ctx.store.project.teachers;
         const next = left[Math.min(index, left.length - 1)];
         env.render(next ? 'teacher:' + next.id + ':name' : 'teacher-add');
-      }, { small: true, key: key + 'delete', action: 'delete', name: 'Delete ' + teacher.name })));
+      }, { small: true, key: key + 'delete', action: 'delete', more: ' ' + teacher.name })));
   }
 
   function draw(project) {
@@ -120,7 +120,7 @@ export function mount(env) {
       h('p', { class: 'sch-lead' }, WHAT + ' This project has ' + count(project.teachers.length, 'teacher') + '.'),
       h('div', { class: 'sch-toolbar' },
         addButton,
-        button('Export CSV', exportCsv, { key: 'teacher-export', action: 'export', name: 'Export the teachers as a CSV file' }),
+        button('Export CSV', exportCsv, { key: 'teacher-export', action: 'export', more: ' of the teachers' }),
         h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import' } }, 'Import CSV…')),
       duplicates(project),
       h('div', { class: 'sch-scroll' }, h('table', { class: 'table sch-edit-table' },

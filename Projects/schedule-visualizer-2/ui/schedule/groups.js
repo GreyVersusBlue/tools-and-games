@@ -51,39 +51,35 @@ export function mount(env) {
 
   // ------------------------------------------------------------ the list
 
+  // The button's name for a screen reader is what is in it: the shapes and
+  // the short figures are for the eye, and each has its words beside it.
   function listItem(project, model, group, selected) {
     const words = periodWords(project.settings);
     const periods = project.settings.periods;
     const base = baseDayType(project);
-    const said = [group.name + (group.grade === '' ? '' : ', grade ' + group.grade) + '.'];
+    const seen = (text) => h('span', { 'aria-hidden': 'true' }, text);
+    const said = (text) => h('span', { class: 'vh' }, text);
     const bars = project.dayTypes.map((dayType) => {
       if (!isOwnCopy(project, dayType.id)) {
-        said.push(dayType.name + ': same as ' + base.name + '.');
-        return h('span', { class: 'sch-bar sch-bar--same' }, h('span', { class: 'sch-bar__text' }, dayType.name + ' = ' + base.name));
+        return h('span', { class: 'sch-bar sch-bar--same' }, h('span', { class: 'sch-bar__text' }, seen(dayType.name + ' = ' + base.name), said(dayType.name + ': same as ' + base.name + '. ')));
       }
       const done = effectiveSchedule(project, group.id, dayType.id).filter(filled).length;
-      said.push(dayType.name + ': ' + done + ' of ' + count(periods, words.one, words.many) + ' have a room.');
       return h('span', { class: 'sch-bar', data: { day: dayType.id, done: String(done) } },
         h('span', { class: 'sch-bar__track' }, h('span', { class: 'sch-bar__fill', style: 'width:' + Math.round((100 * done) / periods) + '%' })),
-        h('span', { class: 'sch-bar__text' }, dayType.name + ' ' + done + '/' + periods));
+        h('span', { class: 'sch-bar__text' }, seen(dayType.name + ' ' + done + '/' + periods), said(dayType.name + ': ' + done + ' of ' + count(periods, words.one, words.many) + ' have a room. ')));
     });
     const found = model.byGroup.get(group.id) || [];
-    for (const severity of Object.keys(SEVERITY_WORDS)) {
-      const n = found.filter((finding) => finding.severity === severity).length;
-      if (n > 0) said.push(n + ' ' + (n === 1 ? SEVERITY_WORDS[severity].one : SEVERITY_WORDS[severity].many) + '.');
-    }
     return h('li', null, keyed(h('button', {
       type: 'button',
       class: 'sch-group',
       'aria-current': selected ? 'true' : null,
-      'aria-label': said.join(' '),
       data: { group: group.id },
       on: { click: () => select(group.id, 'group:' + group.id) },
     },
     h('span', { class: 'sch-group__top' },
       h('span', { class: 'sch-dot', style: 'background:' + group.colour }),
       h('span', { class: 'sch-group__name' }, group.name),
-      group.grade === '' ? null : h('span', { class: 'sch-group__grade' }, group.grade),
+      group.grade === '' ? said('. ') : h('span', { class: 'sch-group__grade' }, said(', grade '), group.grade, said('. ')),
       h('span', { class: 'sch-group__marks' }, marksFor(found))),
     h('span', { class: 'sch-group__bars' }, bars)), 'group:' + group.id));
   }
@@ -252,7 +248,7 @@ export function mount(env) {
       return h('section', { class: 'sch-day sch-day--same', 'aria-labelledby': titleId, data: { day: dayType.id } },
         h('h3', { class: 'sch-day__title', id: titleId }, dayType.name + ': same as ' + base.name),
         h('p', { class: 'sch-day__line' }, 'Whatever ' + base.name + ' holds, ' + dayType.name + ' holds too. ',
-          button('Make its own copy', () => apply(env, makeOwnCopy, { dayTypeId: dayType.id }), { small: true, key: 'own:' + dayType.id, action: 'make-own', name: 'Make ' + dayType.name + ' its own copy' })),
+          button('Make its own copy', () => apply(env, makeOwnCopy, { dayTypeId: dayType.id }), { small: true, key: 'own:' + dayType.id, action: 'make-own', more: ': ' + dayType.name })),
         h('table', { class: 'table sch-slots sch-slots--same' },
           h('caption', { class: 'vh' }, group.name + ' on ' + dayType.name + ', the same as ' + base.name),
           h('thead', null, h('tr', null, h('th', { scope: 'col' }, words.One), h('th', { scope: 'col' }, 'Room'))),
@@ -291,14 +287,14 @@ export function mount(env) {
           button('Duplicate', () => {
             if (!apply(env, duplicateGroup, { id: group.id })) return;
             select(ctx.store.project.groups[index + 1].id, 'group-name');
-          }, { small: true, key: 'group-duplicate', action: 'duplicate', name: 'Duplicate ' + group.name }),
+          }, { small: true, key: 'group-duplicate', action: 'duplicate', more: ' ' + group.name }),
           button('Delete', () => {
             if (!apply(env, deleteGroup, { id: group.id })) return;
             const left = ctx.store.project.groups;
             ctx.toast({ text: 'Deleted group ' + group.name + '.', action: { label: 'Undo', run: ctx.undo } });
             const next = left[Math.min(index, left.length - 1)];
             select(next ? next.id : null, next ? 'group:' + next.id : 'group-add');
-          }, { small: true, key: 'group-delete', action: 'delete', name: 'Delete ' + group.name }))),
+          }, { small: true, key: 'group-delete', action: 'delete', more: ' ' + group.name }))),
       headFields(project, group),
       h('div', { class: 'sch-days' }, project.dayTypes.map((dayType) => dayColumn(project, model, group, dayType))));
   }

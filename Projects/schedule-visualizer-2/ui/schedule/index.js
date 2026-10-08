@@ -159,8 +159,9 @@ export const section = {
       const inSection = element.contains(active);
       const inInspector = inspector.element.contains(active);
       const had = keyOf(active);
-      // text typed into the field focus is in, since the change that brought
-      // this drawing, goes with the focus
+      // Text being typed goes with the focus. (Taking the old field away
+      // makes it commit, as leaving it does; text it could not keep, a taken
+      // name or half a room number, is put in the new field to be fixed.)
       const typing = had && active.tagName === 'INPUT' && ['text', 'search'].includes(active.type);
       const typed = typing ? active.value : null;
       const caret = typing ? [active.selectionStart, active.selectionEnd] : null;

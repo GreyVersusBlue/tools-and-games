@@ -163,7 +163,7 @@ export function mount(env) {
     let line = null;
     if (!own) {
       line = h('p', { class: 'sch-day__line' }, type.name + ': same as ' + base.name + ' · ',
-        button('Make its own copy', () => apply(env, makeOwnCopy, { dayTypeId: type.id }), { small: true, key: 'own:' + type.id, action: 'make-own', name: 'Make ' + type.name + ' its own copy' }));
+        button('Make its own copy', () => apply(env, makeOwnCopy, { dayTypeId: type.id }), { small: true, key: 'own:' + type.id, action: 'make-own', more: ': ' + type.name }));
     } else if (type !== base) {
       line = h('p', { class: 'sch-day__line' }, type.name + ' is its own copy, with its own bell times and its own rooms for every group. ',
         button('Make it the same as ' + base.name, () => {
@@ -173,7 +173,7 @@ export function mount(env) {
           if (info.slots > 0) lost.push(count(info.slots, 'room entry', 'room entries') + ' in ' + count(info.groups, 'group'));
           if (info.bells > 0) lost.push(count(info.bells, 'bell time'));
           ctx.toast({ text: type.name + ' is the same as ' + base.name + ' again.' + (lost.length > 0 ? ' Its own ' + list(lost) + ' went with that.' : ''), action: { label: 'Undo', run: ctx.undo } });
-        }, { small: true, key: 'revert:' + type.id, action: 'revert', name: 'Make ' + type.name + ' the same as ' + base.name }));
+        }, { small: true, key: 'revert:' + type.id, action: 'revert', more: ': ' + type.name }));
     }
     return h('section', { class: 'sch-daytype' + (own ? '' : ' sch-daytype--same'), 'aria-labelledby': titleId, data: { day: type.id } },
       h('h2', { class: 'sch-daytype__title', id: titleId }, type.name),
