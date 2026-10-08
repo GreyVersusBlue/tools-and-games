@@ -25,4 +25,8 @@ Put the token in the light block and in both dark blocks of `tokens.css`, then a
 
 ## The axe sweep
 
-`test/vendor/axe-core/` holds axe-core for the sweep of every screen in both themes, which needs a browser and arrives with the page shell.
+```
+node test/a11y/axe.mjs
+```
+
+`test/vendor/axe-core/` holds axe-core. `axe.mjs` opens every screen in `test/browser/screens.mjs`, once with the device asking for light and once for dark, and fails on any violation of WCAG 2.0 and 2.1 at A and AA and of axe's best practices. It needs a browser: the site's harness, so `Tools/board-check` has to be installed. `node test/run.mjs --browser` runs it with the journeys.

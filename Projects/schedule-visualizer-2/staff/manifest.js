@@ -32,11 +32,13 @@ export const MODULES = [
   'staff/page.js',
   'staff/passcode.js',
   'staff/search.js',
+  'staff/map.js', // SV2-21
   'staff/views/teacher.js',
   'staff/views/group.js',
   'staff/views/room.js',
   'staff/views/map.js',
   'staff/views/staffing.js',
+  'staff/clock.js', // SV2-22
   'staff/views/free.js',
   'staff/views/now.js',
   'staff/views/common.js',

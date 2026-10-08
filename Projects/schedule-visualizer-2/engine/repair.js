@@ -14,7 +14,21 @@
 // - A day type marked "same as the first" that carries bell times or group
 //   days of its own becomes its own copy, so nothing entered disappears.
 // - When `settings.periods` is missing or out of range it becomes the longest
-//   day present (else 8), so a bad setting never truncates a day.
+//   day present (else 8), and when it is in range and a day or a bell
+//   schedule is longer, it rises to that length, so the setting never
+//   truncates a day. Only a day past 16 periods, the most there are, is cut.
+// - An id is 10 characters with its kind's letter first (ids.js). A thing
+//   with any other id, or with an id something earlier of its kind has, gets
+//   a new one, and everything that named it by the old id follows: slots,
+//   lists of teachers and rooms, a group's days, stair connections, zones,
+//   scenario changes, accepted findings. So an id that a teacher and a room
+//   both carry stays with the room, and nothing that pointed at either is
+//   emptied.
+// - A project with no day types gets them from the days its groups have, in
+//   the order the keys first appear, each its own copy; A Day and B Day only
+//   when there are none.
+// - A floor's missing or fractional width or height is worked out from its
+//   cells when the other side divides them exactly.
 // - A scenario's changes are checked for shape only. Whether they still point
 //   at things that exist is for the scenario module, which tells the user
 //   what it dropped.
@@ -25,9 +39,9 @@
 // images this device holds; with it, each floor's image is marked missing or
 // not.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
 import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel } from './schema.js';
-import { createIds, seededRandom, collectIds } from './ids.js';
+import { createIds, seededRandom, collectIds, isId } from './ids.js';
 
 const FALLBACK_DATE = '1970-01-01T00:00:00.000Z';
 const FALLBACK_SUBJECT_COLOUR = '#5a6b7b';
@@ -57,19 +71,32 @@ export function repair(input, options) {
 
   // ---- small helpers
 
+  // An id is kept by the first thing of its own kind that carries it. A
+  // thing whose id is not an id of its kind gets a new one, and `renamed`
+  // remembers old -> new for that kind, so whatever named the thing by the old
+  // id can follow it. The old id is never an id of that kind, so it cannot
+  // also be the id of a thing of that kind that kept its own.
   const seenIds = new Set();
+  const renamed = { s: new Map(), t: new Map(), d: new Map(), f: new Map(), r: new Map(), g: new Map() };
   const claimId = (thing, prefix, what) => {
     const id = thing.id;
-    if (typeof id === 'string' && id !== '' && !seenIds.has(id)) {
+    if (isId(id, prefix) && !seenIds.has(id)) {
       seenIds.add(id);
       return id;
     }
     const fresh = ids(prefix);
     seenIds.add(fresh);
-    if (typeof id === 'string' && id !== '') note(what + ' shared the id "' + id + '" with something earlier and was given a new one.');
-    else note(what + ' had no id and was given one.');
+    if (typeof id !== 'string' || id === '') {
+      note(what + ' had no id and was given one.');
+    } else if (!isId(id, prefix)) {
+      if (renamed[prefix] && !renamed[prefix].has(id)) renamed[prefix].set(id, fresh);
+      note(what + ' had the id "' + id + '", which is not the id of such a thing, and was given a new one. What named it by that id follows it.');
+    } else {
+      note(what + ' shared the id "' + id + '" with something earlier and was given a new one.');
+    }
     return fresh;
   };
+  const follow = (prefix, id) => (typeof id === 'string' && renamed[prefix].has(id) ? renamed[prefix].get(id) : id);
 
   // The objects of a list; anything that is not an object is dropped.
   const objects = (list, what) => {
@@ -152,16 +179,21 @@ export function repair(input, options) {
   const settings = isObject(source.settings) ? { ...source.settings } : {};
   project.settings = settings;
   text(settings, 'schoolName', defaults.schoolName, 'The school name');
+  let longest = 0;
+  for (const group of rawGroups) {
+    if (!isObject(group.days)) continue;
+    for (const day of Object.values(group.days)) if (Array.isArray(day)) longest = Math.max(longest, day.length);
+  }
+  for (const dayType of rawDayTypes) if (Array.isArray(dayType.bells)) longest = Math.max(longest, dayType.bells.length);
   if (!inRange(settings.periods, RANGES.periods)) {
-    let longest = 0;
-    for (const group of rawGroups) {
-      if (!isObject(group.days)) continue;
-      for (const day of Object.values(group.days)) if (Array.isArray(day)) longest = Math.max(longest, day.length);
-    }
-    for (const dayType of rawDayTypes) if (Array.isArray(dayType.bells)) longest = Math.max(longest, dayType.bells.length);
     const had = settings.periods;
     settings.periods = longest === 0 ? defaults.periods : Math.min(RANGES.periods[1], longest);
     if (had !== undefined) note('Periods per day was not a number from ' + RANGES.periods[0] + ' to ' + RANGES.periods[1] + ' and is now ' + settings.periods + ', the longest day in the schedule.');
+  } else if (longest > settings.periods) {
+    // in range, and a day or a bell schedule runs past it: the setting gives way
+    const had = settings.periods;
+    settings.periods = Math.min(RANGES.periods[1], longest);
+    note('Periods per day was ' + had + ' and a day in the schedule has ' + longest + ', so it is now ' + settings.periods + '.');
   }
   const periods = settings.periods;
   choice(settings, 'periodWord', PERIOD_WORDS, defaults.periodWord, 'The period word');
@@ -189,9 +221,9 @@ export function repair(input, options) {
       if (checks.off !== undefined) note('The list of checks switched off could not be read and was emptied.');
       checks.off = [];
     } else {
-      const off = Array.from(new Set(checks.off.filter((kind) => typeof kind === 'string')));
+      const off = Array.from(new Set(checks.off.filter((kind) => CHECK_KINDS.includes(kind))));
       if (off.length !== checks.off.length) {
-        note('The list of checks switched off had entries that could not be read; they were removed.');
+        note('The list of checks switched off had entries that are not a check, or the same one twice; they were removed.');
         checks.off = off;
       }
     }
@@ -218,6 +250,7 @@ export function repair(input, options) {
     return subject;
   });
   const subjectRef = (thing, what) => {
+    if (renamed.s.has(thing.subjectId)) thing.subjectId = renamed.s.get(thing.subjectId);
     if (thing.subjectId === null || subjectIds.has(thing.subjectId)) return;
     if (thing.subjectId !== undefined) note(what + ' named a subject that is not on the list and now has no subject.');
     thing.subjectId = null;
@@ -251,8 +284,9 @@ export function repair(input, options) {
       if (list !== undefined) note(what + ' had a list of teachers that could not be read; it was emptied.');
       return [];
     }
-    const kept = Array.from(new Set(list.filter((id) => teacherIds.has(id))));
-    if (kept.length === list.length) return list;
+    const named = list.some((id) => renamed.t.has(id)) ? list.map((id) => follow('t', id)) : list;
+    const kept = Array.from(new Set(named.filter((id) => teacherIds.has(id))));
+    if (kept.length === list.length) return named;
     note(what + ' named ' + plural(list.length - kept.length, 'teacher', 'teachers') + ' not on the list, or the same one twice; ' + (list.length - kept.length === 1 ? 'that entry was' : 'those entries were') + ' removed.');
     return kept;
   };
@@ -260,12 +294,25 @@ export function repair(input, options) {
   // ---- day types
   let dayTypes = objects(source.dayTypes, 'day types').map((raw) => ({ ...raw }));
   if (dayTypes.length === 0) {
-    if (source.dayTypes !== undefined) note('The project had no day types, so ' + DEFAULT_DAY_TYPE_NAMES.join(' and ') + ' were added.');
-    dayTypes = DEFAULT_DAY_TYPE_NAMES.map((name, i) => newDayType(ids('d'), name, i === 0, periods));
+    // the days the groups have say which day types there were: one for each
+    // key, in the order the keys first appear, the first of them the base
+    const keys = [];
+    for (const group of rawGroups) {
+      if (!isObject(group.days)) continue;
+      for (const key of Object.keys(group.days)) if (Array.isArray(group.days[key]) && !keys.includes(key)) keys.push(key);
+    }
+    if (keys.length > 0) {
+      note('The project had no day types, so ' + plural(keys.length, 'day type was', 'day types were') + ' made from the days the groups have.');
+      dayTypes = keys.map((key, i) => ({ id: key, name: DEFAULT_DAY_TYPE_NAMES[i] || 'Day ' + (i + 1), own: true, bells: [] }));
+    } else {
+      if (source.dayTypes !== undefined) note('The project had no day types, so ' + DEFAULT_DAY_TYPE_NAMES.join(' and ') + ' were added.');
+      dayTypes = DEFAULT_DAY_TYPE_NAMES.map((name, i) => newDayType(ids('d'), name, i === 0, periods));
+    }
   }
   const ownIds = new Set();
   const promoted = new Set();
   dayTypes.forEach((dayType, i) => {
+    const rawId = dayType.id;
     dayType.id = claimId(dayType, 'd', 'A day type');
     text(dayType, 'name', DEFAULT_DAY_TYPE_NAMES[i] || 'Day ' + (i + 1), 'A day type name');
     let bells = dayType.bells;
@@ -287,7 +334,7 @@ export function repair(input, options) {
     while (fixed.length < periods) fixed.push(null);
     const changed = bad > 0 || fixed.length !== bells.length || !Array.isArray(dayType.bells);
     const hasBells = fixed.some((bell) => bell !== null);
-    const hasDays = rawGroups.some((group) => isObject(group.days) && Array.isArray(group.days[dayType.id]));
+    const hasDays = rawGroups.some((group) => isObject(group.days) && (Array.isArray(group.days[dayType.id]) || (typeof rawId === 'string' && renamed.d.get(rawId) === dayType.id && Array.isArray(group.days[rawId]))));
     if (i === 0) {
       if (dayType.own !== true) {
         if (dayType.own !== undefined) note('The first day type, ' + dayType.name + ', is always its own copy.');
@@ -330,6 +377,17 @@ export function repair(input, options) {
       if (floor.level !== undefined) note('The level of ' + floor.name + ' was not a whole number and is now ' + (f + 1) + '.');
       floor.level = f + 1;
     }
+    // one side missing or not a whole number, and the other divides the
+    // cells exactly: the cells say what the side was
+    if (typeof floor.cells === 'string') {
+      for (const [key, other] of [['width', 'height'], ['height', 'width']]) {
+        if (Number.isInteger(floor[key]) || !inRange(floor[other], RANGES.floorSize)) continue;
+        const side = floor.cells.length / floor[other];
+        if (!inRange(side, RANGES.floorSize)) continue;
+        note('The ' + key + ' of ' + floor.name + ' ' + (floor[key] === undefined || floor[key] === null ? 'was missing' : 'was not a whole number') + ' and was worked out from its cells: ' + side + '.');
+        floor[key] = side;
+      }
+    }
     whole(floor, 'width', RANGES.floorSize, DEFAULT_FLOOR_WIDTH, 'The width of ' + floor.name);
     whole(floor, 'height', RANGES.floorSize, DEFAULT_FLOOR_HEIGHT, 'The height of ' + floor.name);
     const count = floor.width * floor.height;
@@ -356,11 +414,11 @@ export function repair(input, options) {
     const spaces = [];
     for (const rawSpace of objects(floor.spaces, 'spaces on ' + floor.name)) {
       const space = { ...rawSpace };
-      space.id = claimId(space, space.kind === 'other' ? 'o' : 'r', 'A space on ' + floor.name);
       if (space.kind !== 'room' && space.kind !== 'other') {
         space.kind = 'otherKind' in space || ('label' in space && !('number' in space)) ? 'other' : 'room';
         note('A space on ' + floor.name + ' did not say what it is and is now ' + (space.kind === 'room' ? 'a room' : 'an other space') + '.');
       }
+      space.id = claimId(space, space.kind === 'other' ? 'o' : 'r', 'A space on ' + floor.name);
       const label = space.kind === 'room' ? 'Room "' + (typeof space.number === 'string' ? space.number : '') + '"' : 'The other space "' + (typeof space.label === 'string' ? space.label : '') + '"';
       const rawCells = Array.isArray(space.cells) ? space.cells : [];
       const own = [];
@@ -532,9 +590,11 @@ export function repair(input, options) {
   // connections
   const rawConnections = objects(building.connections, 'stair connections');
   const labels = rawConnections.map((connection) => ({ label: typeof connection.label === 'string' ? connection.label : '' }));
+  const usedLabels = new Set();
   const connections = [];
   for (const rawConnection of rawConnections) {
     const connection = { ...rawConnection };
+    for (const key of ['a', 'b']) if (isObject(connection[key]) && renamed.f.has(connection[key].floorId)) connection[key] = { ...connection[key], floorId: renamed.f.get(connection[key].floorId) };
     const endOk = (end) => isObject(end) && floorById.has(end.floorId) && Number.isInteger(end.cell) && floorById.get(end.floorId).cells[end.cell] === CELL_STAIRS;
     const label = typeof connection.label === 'string' && connection.label.trim() !== '' ? connection.label : null;
     if (!endOk(connection.a) || !endOk(connection.b) || (connection.a.floorId === connection.b.floorId && connection.a.cell === connection.b.cell)) {
@@ -546,7 +606,15 @@ export function repair(input, options) {
       connection.label = nextConnectionLabel(labels);
       labels.push({ label: connection.label });
       note('A stair connection had no letter and is now ' + connection.label + '.');
+    } else {
+      const unique = uniqueText(connection.label, (value) => value, new Set(usedLabels));
+      if (unique !== connection.label) {
+        note('Two stair connections were both labelled "' + connection.label + '". The later is now "' + unique + '".');
+        connection.label = unique;
+        labels.push({ label: unique });
+      }
     }
+    usedLabels.add(connection.label);
     choice(connection, 'direction', CONNECTION_DIRECTIONS, 'both', 'The direction of stair connection ' + connection.label);
     connections.push(connection);
   }
@@ -558,6 +626,7 @@ export function repair(input, options) {
     for (const rawZone of objects(building.zones, 'zones')) {
       const zone = { ...rawZone };
       text(zone, 'label', '', 'A zone label');
+      if (renamed.f.has(zone.floorId)) zone.floorId = renamed.f.get(zone.floorId);
       const floor = floorById.get(zone.floorId);
       const sound = floor && [zone.x, zone.y, zone.w, zone.h].every(Number.isInteger);
       if (sound) {
@@ -584,6 +653,9 @@ export function repair(input, options) {
   }
 
   // ---- teachers and rooms say the same thing: the union of both lists
+  if (renamed.r.size > 0) {
+    for (const [teacherId, rooms] of teacherRawRooms) teacherRawRooms.set(teacherId, rooms.map((roomId) => follow('r', roomId)));
+  }
   const addedToRooms = new Map();
   for (const teacher of project.teachers) {
     for (const roomId of teacherRawRooms.get(teacher.id)) {
@@ -605,7 +677,8 @@ export function repair(input, options) {
     for (const roomId of listed) if (!rooms.includes(roomId)) rooms.push(roomId);
     const same = Array.isArray(teacher.roomIds) && rooms.length === teacher.roomIds.length && rooms.every((roomId, i) => roomId === teacher.roomIds[i]);
     if (!same) {
-      if (teacher.roomIds !== undefined) note('The rooms of teacher "' + teacher.name + '" did not match the rooms that list the teacher and were brought into line.');
+      const followed = Array.isArray(teacher.roomIds) && rooms.length === teacher.roomIds.length && rooms.every((roomId, i) => roomId === follow('r', teacher.roomIds[i]));
+      if (teacher.roomIds !== undefined && !followed) note('The rooms of teacher "' + teacher.name + '" did not match the rooms that list the teacher and were brought into line.');
       teacher.roomIds = rooms;
     }
   }
@@ -640,10 +713,20 @@ export function repair(input, options) {
       group.colour = nextGroupColour(groups);
     }
 
-    const rawDays = isObject(group.days) ? group.days : {};
+    let rawDays = isObject(group.days) ? group.days : {};
     if (group.days !== undefined && !isObject(group.days)) note('The days of group "' + group.name + '" could not be read and were emptied.');
     const days = {};
     let daysChanged = !isObject(group.days);
+    if (Object.keys(rawDays).some((key) => renamed.d.has(key))) {
+      // a day type that was given a new id takes its days with it
+      const moved = {};
+      for (const key of Object.keys(rawDays)) {
+        const to = follow('d', key);
+        if (!(to in moved) || to === key) moved[to] = rawDays[key];
+      }
+      rawDays = moved;
+      daysChanged = true;
+    }
     const fixDay = (rawDay, dayName) => {
       let changed = false;
       let lost = 0;
@@ -662,6 +745,7 @@ export function repair(input, options) {
         };
         if (typeof slot.roomText !== 'string') set('roomText', '');
         if (typeof slot.label !== 'string') set('label', '');
+        if (renamed.r.has(slot.room)) set('room', renamed.r.get(slot.room));
         if (slot.room !== null && !roomById.has(slot.room)) {
           if (slot.room !== undefined) {
             unknown += 1;
@@ -718,9 +802,15 @@ export function repair(input, options) {
     const accepted = objects(source.accepted, 'accepted findings');
     const keptAccepted = accepted.filter((entry) => typeof entry.findingId === 'string' && entry.findingId !== '');
     if (keptAccepted.length !== accepted.length) note(plural(accepted.length - keptAccepted.length, 'accepted finding', 'accepted findings') + ' did not name a finding and ' + (accepted.length - keptAccepted.length === 1 ? 'was' : 'were') + ' removed.');
+    // a finding's id is its kind and the ids it is about, joined by colons;
+    // a part that is the old id of exactly one renamed thing follows it
+    const renamedParts = new Map();
+    for (const map of Object.values(renamed)) for (const [from, to] of map) renamedParts.set(from, renamedParts.has(from) ? null : to);
+    const followFinding = (findingId) => (renamedParts.size === 0 ? findingId : findingId.split(':').map((part) => (renamedParts.get(part) ? renamedParts.get(part) : part)).join(':'));
     project.accepted = keptAccepted.map((raw) => {
-      if (typeof raw.reason === 'string' && isIsoDate(raw.at)) return raw;
-      const entry = { ...raw };
+      const findingId = followFinding(raw.findingId);
+      if (typeof raw.reason === 'string' && isIsoDate(raw.at) && findingId === raw.findingId) return raw;
+      const entry = { ...raw, findingId };
       text(entry, 'reason', '', 'The reason on an accepted finding');
       if (!isIsoDate(entry.at)) entry.at = now;
       return entry;
@@ -742,9 +832,21 @@ export function repair(input, options) {
         if (change.kind === 'swapPeriods') return isText(change.groupId) && wholePeriod(change.periodA) && wholePeriod(change.periodB);
         return isText(change.groupA) && isText(change.groupB) && wholePeriod(change.period);
       });
-      if (!Array.isArray(scenario.changes) || changes.length !== scenario.changes.length) {
+      // a change follows a day type, group or room that was given a new id
+      const REFERS = { dayTypeId: 'd', groupId: 'g', groupA: 'g', groupB: 'g', roomId: 'r' };
+      const followed = changes.map((change) => {
+        let next = change;
+        for (const [key, prefix] of Object.entries(REFERS)) {
+          if (!renamed[prefix].has(change[key])) continue;
+          if (next === change) next = { ...change };
+          next[key] = renamed[prefix].get(change[key]);
+        }
+        return next;
+      });
+      const moved = followed.some((change, i) => change !== changes[i]);
+      if (!Array.isArray(scenario.changes) || changes.length !== scenario.changes.length || moved) {
         if (Array.isArray(scenario.changes) && scenario.changes.filter(isObject).length !== changes.length) note(plural(scenario.changes.filter(isObject).length - changes.length, 'scenario change', 'scenario changes') + ' could not be read and ' + (scenario.changes.filter(isObject).length - changes.length === 1 ? 'was' : 'were') + ' removed.');
-        scenario.changes = changes;
+        scenario.changes = followed;
       }
       const compared = scenario.compared;
       const names = (list) => Array.isArray(list) && list.every(isText);

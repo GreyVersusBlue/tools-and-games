@@ -75,7 +75,7 @@ test('no file the page can load names an address outside the tool', () => {
 let session;
 
 before(async () => {
-  session = await openPlanner();
+  session = await openPlanner({ intercept: true });
 });
 
 after(async () => {

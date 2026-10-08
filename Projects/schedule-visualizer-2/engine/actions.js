@@ -7,16 +7,20 @@
 //   bumps  which of the store's counters the change moves: a list of
 //          GEOMETRY, BUILDING, SCHEDULE, or (before, payload, after) → list
 //   focus  optional (before, payload, after) → where the change was, for "Show"
+//   quiet  true for a change that is not the user's work on the school (the
+//          getting-started card): the store makes no undo entry for it and
+//          does not set `modified`, and undo and redo never take it back
 //
 // An action that cannot be done throws an ActionError whose message says what
 // was wrong and what to do; the interface shows it as it is. An action that
 // changes nothing returns the project it was given, and the store then makes
 // no undo entry.
 
-import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS } from './schema.js';
-import { defaultSettings, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour } from './schema.js';
+import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS } from './schema.js';
+import { defaultSettings, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom } from './schema.js';
 import { isOwnCopy, findDayType, baseDayType } from './day-types.js';
 import { periodName } from './bells.js';
+import { isId, collectIds } from './ids.js';
 
 export const GEOMETRY = 'geometry';
 export const BUILDING = 'building';
@@ -40,13 +44,17 @@ export function action(spec, run) {
   run.label = spec.label;
   run.bumps = spec.bumps || [];
   run.focus = spec.focus || null;
+  run.quiet = spec.quiet === true;
   return run;
 }
 
-// What the store needs to know about one run of an action.
+// What the store needs to know about one run of an action. `outcome` is what
+// a building action or an import reported for the project it returned
+// (buildingOutcome, importOutcome), or null; the store keeps it on the undo
+// entry, because the project the store holds afterwards is a stamped copy.
 export function describeAction(act, before, payload, after) {
   const read = (value, fallback) => (typeof value === 'function' ? value(before, payload, after) : value === undefined || value === null ? fallback : value);
-  return { label: read(act.label, 'Change'), bumps: read(act.bumps, []), focus: read(act.focus, null) };
+  return { label: read(act.label, 'Change'), bumps: read(act.bumps, []), focus: read(act.focus, null), outcome: buildingOutcome(after) || importOutcome(after) };
 }
 
 // ---------------------------------------------------------------- sharing
@@ -140,9 +148,26 @@ function needColour(value) {
   return value.toLowerCase();
 }
 
-function newId(payload, ctx, prefix) {
-  if (payload && typeof payload.id === 'string' && payload.id !== '') return payload.id;
+// An id a caller gives for the thing an action adds has to be an id of that
+// kind that nothing in the project has. Anything else is refused: two things
+// with one id cannot be told apart by what names them.
+function needFreeId(project, id, prefix) {
+  if (!isId(id, prefix)) refuse('"' + id + '" cannot be the id of this: an id is 10 lowercase letters and digits and starts with "' + prefix + '". Leave the id out and one is made.', 'bad-id');
+  if (collectIds(project).includes(id)) refuse('The id "' + id + '" is already used in this project. Leave the id out and a new one is made.', 'duplicate-id');
+  return id;
+}
+
+// The id for the thing an add action makes: the one the payload gives under
+// `key` when it gives one, else a new one.
+function newId(project, payload, ctx, prefix, key) {
+  const given = payload ? payload[key || 'id'] : undefined;
+  if (typeof given === 'string' && given !== '') return needFreeId(project, given, prefix);
   return ctx.ids(prefix);
+}
+
+// The same check for the actions whose thing engine/building.js makes.
+function checkGivenId(project, payload, prefix) {
+  if (payload && typeof payload.id === 'string' && payload.id !== '') needFreeId(project, payload.id, prefix);
 }
 
 // ---------------------------------------------------------------- settings
@@ -173,7 +198,11 @@ const SETTINGS = {
   'checks.off': {
     label: 'Change which checks are switched off',
     bumps: [SCHEDULE],
-    check: (value) => (Array.isArray(value) && value.every((kind) => typeof kind === 'string') && new Set(value).size === value.length ? null : 'The checks switched off are a list of check kinds, each once.'),
+    check: (value) => {
+      if (!Array.isArray(value) || !value.every((kind) => typeof kind === 'string') || new Set(value).size !== value.length) return 'The checks switched off are a list of check kinds, each once.';
+      const unknown = value.find((kind) => !CHECK_KINDS.includes(kind));
+      return unknown === undefined ? null : '"' + unknown + '" is not one of the checks, so it cannot be switched off.';
+    },
   },
   timeFormat: { label: 'Change the time format', bumps: [], check: choiceRule(TIME_FORMATS, 'The time format') },
   'paper.size': { label: 'Change the paper size', bumps: [], check: choiceRule(PAPER_SIZES, 'The paper size') },
@@ -321,9 +350,11 @@ export const setPublishSetting = action(
   },
 );
 
-// Getting started. payload: any of { step, dismissed, neverShow }.
+// Getting started. payload: any of { step, dismissed, neverShow }. Quiet:
+// ticking a step or hiding the card is not a change to the school, so it is
+// not an undo step and does not count as the project being modified.
 export const setOnboarding = action(
-  { label: 'Change getting started', bumps: [] },
+  { label: 'Change getting started', bumps: [], quiet: true },
   (project, payload) => {
     let onboarding = project.onboarding;
     if (typeof payload.step === 'string' && payload.step !== '' && onboarding.steps[payload.step] !== true) onboarding = { ...onboarding, steps: { ...onboarding.steps, [payload.step]: true } };
@@ -351,7 +382,7 @@ export const addSubject = action(
   },
   (project, payload, ctx) => {
     const subject = {
-      id: newId(payload, ctx, 's'),
+      id: newId(project, payload, ctx, 's'),
       code: needText(payload.code === undefined ? '' : payload.code, 'A subject code'),
       name: needText(payload.name === undefined ? '' : payload.name, 'A subject name'),
       colour: needColour(payload.colour === undefined ? '#5a6b7b' : payload.colour),
@@ -463,7 +494,7 @@ export const addTeacher = action(
   { label: (before, payload) => 'Add teacher ' + payload.name, bumps: [BUILDING, SCHEDULE], focus: (before, payload, after) => ({ section: 'schedule', tab: 'teachers', teacherId: after.teachers[after.teachers.length - 1].id }) },
   (project, payload, ctx) => {
     const teacher = {
-      id: newId(payload, ctx, 't'),
+      id: newId(project, payload, ctx, 't'),
       name: needFreeTeacherName(project, payload.name, null),
       subjectId: needSubjectRef(project, payload.subjectId === undefined ? null : payload.subjectId),
       roomIds: needRoomRefs(project, payload.roomIds === undefined ? [] : payload.roomIds),
@@ -496,7 +527,7 @@ export const editTeacher = action(
 
 // The teachers based in a room, main teacher first. payload: { roomId, teacherIds }.
 export const setRoomTeachers = action(
-  { label: (before, payload) => 'Change the teachers of Room ' + (findRoom(before, payload.roomId) || { number: '' }).number, bumps: [BUILDING, SCHEDULE], focus: (before, payload) => ({ section: 'building', roomId: payload.roomId }) },
+  { label: (before, payload) => 'Change the teachers of ' + nameOfRoom(findRoom(before, payload.roomId), false), bumps: [BUILDING, SCHEDULE], focus: (before, payload) => ({ section: 'building', roomId: payload.roomId }) },
   (project, payload) => {
     const room = findRoom(project, payload.roomId);
     if (!room) refuse('That room is no longer in the building.', 'missing');
@@ -584,7 +615,7 @@ export const addGroup = action(
     const days = {};
     for (const dayTypeId of ownDayTypeIds(project)) days[dayTypeId] = emptyDay(project.settings.periods);
     const group = {
-      id: newId(payload, ctx, 'g'),
+      id: newId(project, payload, ctx, 'g'),
       name: needFreeGroupName(project, payload.name, null),
       grade: needText(payload.grade === undefined ? '' : payload.grade, 'A grade'),
       headCount: needHeadCount(payload.headCount === undefined ? null : payload.headCount),
@@ -629,7 +660,7 @@ export const duplicateGroup = action(
     const group = need(project.groups, payload.id, 'group');
     const copy = {
       ...group,
-      id: typeof payload.newId === 'string' && payload.newId !== '' ? payload.newId : ctx.ids('g'),
+      id: newId(project, payload, ctx, 'g', 'newId'),
       name: copyName(project, group.name),
       colour: nextGroupColour(project.groups),
     };
@@ -886,7 +917,9 @@ export function detachRooms(project, rooms) {
   return next;
 }
 
-// A new floor at the end, the size of the floor being looked at.
+// A new floor at the end, the size of the floor being looked at, one level
+// above the highest floor there is: counting the floors would give a level
+// twice once a floor in the middle has been deleted.
 // payload: { likeFloorId, name } and optionally id; all may be left out.
 export const addFloor = action(
   { label: (before, payload, after) => 'Add ' + after.building.floors[after.building.floors.length - 1].name, bumps: [GEOMETRY], focus: (before, payload, after) => ({ section: 'building', floorId: after.building.floors[after.building.floors.length - 1].id }) },
@@ -903,7 +936,7 @@ export const addFloor = action(
         }
       }
     }
-    const floor = newFloor(newId(payload || {}, ctx, 'f'), name, floors.length + 1, like.width, like.height);
+    const floor = newFloor(newId(project, payload, ctx, 'f'), name, Math.max(...floors.map((candidate) => candidate.level)) + 1, like.width, like.height);
     return patch(project, ['building', 'floors'], (list) => list.concat([floor]));
   },
 );
@@ -1114,13 +1147,19 @@ export function describePlace(project, payload) {
 // default), 'skip' or 'refuse'. buildingOutcome(after).spaceId is the room.
 export const placeRoom = action(
   { label: (before, payload, after) => 'Place a room' + onFloor(before, payload, after) + replacing(after), bumps: geometryBumps, focus: buildingFocus },
-  (project, payload, ctx) => inBuilding(project, (building) => geometry.placeRoom(building, payload, ctx.ids)),
+  (project, payload, ctx) => {
+    checkGivenId(project, payload, 'r');
+    return inBuilding(project, (building) => geometry.placeRoom(building, payload, ctx.ids));
+  },
 );
 
 // payload as placeRoom, with label, otherKind and colour.
 export const placeOtherSpace = action(
   { label: (before, payload, after) => 'Place other space' + onFloor(before, payload, after) + replacing(after), bumps: geometryBumps, focus: buildingFocus },
-  (project, payload, ctx) => inBuilding(project, (building) => geometry.placeOtherSpace(building, payload, ctx.ids)),
+  (project, payload, ctx) => {
+    checkGivenId(project, payload, 'o');
+    return inBuilding(project, (building) => geometry.placeOtherSpace(building, payload, ctx.ids));
+  },
 );
 
 // payload: { floorId } with cells, or from and to for a straight line; over.
@@ -1280,7 +1319,10 @@ export const connectStairs = action(
     bumps: [GEOMETRY],
     focus: (before, payload) => ({ section: 'building', floorId: payload.b.floorId }),
   },
-  (project, payload, ctx) => inBuilding(project, (building) => geometry.connectStairs(building, payload, ctx.ids)),
+  (project, payload, ctx) => {
+    checkGivenId(project, payload, 'c');
+    return inBuilding(project, (building) => geometry.connectStairs(building, payload, ctx.ids));
+  },
 );
 
 function connectionLabel(project, connectionId) {
@@ -1294,10 +1336,17 @@ export const disconnectStairs = action(
   (project, payload) => inBuilding(project, (building) => geometry.disconnectStairs(building, payload)),
 );
 
-// payload: { connectionId } and any of { label, direction }.
+// payload: { connectionId } and any of { label, direction }. A label another
+// connection already has is refused: two stairs called A cannot be told apart
+// in directions or on the plan.
 export const setConnection = action(
   { label: (before, payload) => 'Change stairs connection ' + connectionLabel(before, payload.connectionId), bumps: [GEOMETRY], focus: buildingFocus },
-  (project, payload) => inBuilding(project, (building) => geometry.setConnection(building, payload)),
+  (project, payload) => {
+    if (typeof payload.label === 'string' && project.building.connections.some((other) => other.id !== payload.connectionId && other.label === payload.label)) {
+      refuse('There is already a stairs connection ' + payload.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
+    }
+    return inBuilding(project, (building) => geometry.setConnection(building, payload));
+  },
 );
 
 // ---- corridor names
@@ -1307,7 +1356,10 @@ export const setConnection = action(
 // avoid a named corridor, and this changes which cells that is.
 export const nameCorridor = action(
   { label: (before, payload, after) => (payload.name === '' ? 'Take the corridor name off cells' : 'Name a corridor ' + payload.name) + onFloor(before, payload, after), bumps: [GEOMETRY], focus: buildingFocus },
-  (project, payload, ctx) => inBuilding(project, (building) => geometry.nameCorridor(building, payload, ctx.ids)),
+  (project, payload, ctx) => {
+    checkGivenId(project, payload, 'k');
+    return inBuilding(project, (building) => geometry.nameCorridor(building, payload, ctx.ids));
+  },
 );
 
 function corridorLabel(project, payload) {
@@ -1340,7 +1392,10 @@ function exitLabel(project, payload) {
 // corridor cell on the building's edge; anything else is refused with the reason.
 export const markExit = action(
   { label: (before, payload, after) => 'Mark an exit' + (payload.doorName ? ', ' + payload.doorName + ',' : '') + onFloor(before, payload, after), bumps: [GEOMETRY], focus: buildingFocus },
-  (project, payload, ctx) => inBuilding(project, (building) => geometry.markExit(building, payload, ctx.ids)),
+  (project, payload, ctx) => {
+    checkGivenId(project, payload, 'x');
+    return inBuilding(project, (building) => geometry.markExit(building, payload, ctx.ids));
+  },
 );
 
 // payload: { floorId, exitId } and any of { doorName, assembly }.
@@ -1360,7 +1415,10 @@ export const unmarkExit = action(
 // payload: { floorId, x, y, w, h } and optionally label, id.
 export const addZone = action(
   { label: (before, payload, after) => 'Add an exclusion zone' + onFloor(before, payload, after), bumps: [BUILDING], focus: buildingFocus },
-  (project, payload, ctx) => inBuilding(project, (building) => geometry.addZone(building, payload, ctx.ids)),
+  (project, payload, ctx) => {
+    checkGivenId(project, payload, 'z');
+    return inBuilding(project, (building) => geometry.addZone(building, payload, ctx.ids));
+  },
 );
 
 // payload: { zoneId } and any of { label, x, y, w, h }.
@@ -1412,6 +1470,7 @@ export const resizeFloor = action(
 
 import { applyGroupImport, summaryText, ImportError } from './import-groups.js';
 import { applyBuilding, applySchedule, FileError } from './project-file.js';
+import { applyTeacherImport, teacherSummaryText } from './import-teachers.js';
 
 const importOutcomes = new WeakMap();
 
@@ -1446,6 +1505,22 @@ function importLabel(what) {
 export const importGroups = action(
   { label: importLabel('groups'), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload, ctx) => importing(project, () => applyGroupImport(project, payload.rows, payload.mapping, payload.policy, ctx.ids)),
+);
+
+// Teachers from a CSV file (import-teachers.js). payload: { rows }: the rows
+// csv.js parsed, the header row first. A name already on the list is that
+// teacher, whatever the capitals; any other is a new teacher. Nothing is
+// deleted, and a file that changes nothing makes no undo entry.
+export const importTeachers = action(
+  {
+    label: (before, payload, after) => {
+      const summary = importOutcome(after);
+      return 'Import teachers' + (summary ? ': ' + teacherSummaryText(summary) : '');
+    },
+    bumps: [BUILDING, SCHEDULE],
+    focus: () => ({ section: 'schedule', tab: 'teachers' }),
+  },
+  (project, payload, ctx) => importing(project, () => applyTeacherImport(project, payload.rows, ctx.ids)),
 );
 
 // A schedule file. payload: { file, policy, takeSettings }, where `file` is

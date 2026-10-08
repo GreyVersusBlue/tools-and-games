@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { repair, UNKNOWN_ROOM_TEXT } from '../../engine/repair.js';
 import { validate } from '../../engine/validate.js';
-import { seededRandom } from '../../engine/ids.js';
+import { seededRandom, isId } from '../../engine/ids.js';
 import { emptyProject, school, clone, clock, makeIds, room, group, PINNED, BREAKS } from './helpers.mjs';
 
 test('a valid project comes back as the same object with no notes', () => {
@@ -122,15 +122,38 @@ test('a longest day past 16 is capped at 16, and says what it removed', () => {
   assert.ok(result.notes.some((note) => /2 slots past the last period/.test(note)), result.notes.join(' | '));
 });
 
-test('with a sound periods setting, days are sized to it: short ones padded, long ones cut with a note', () => {
+test('a periods setting in range and below the longest day never cuts: it rises to that day, and short days are padded', () => {
   const project = school();
   group(project, '6A').days.dsample00a.pop();
-  group(project, '6B').days.dsample00a.push({ room: 'rsample101', roomText: '', label: '', teacherIds: [] });
+  group(project, '6B').days.dsample00a.push({ room: 'rsample101', roomText: '', label: 'ninth', teacherIds: [] });
   const result = repair(project);
-  assert.equal(group(result.project, '6A').days.dsample00a.length, 8);
-  assert.deepEqual(group(result.project, '6A').days.dsample00a[7], { room: null, roomText: '', label: '', teacherIds: [] });
-  assert.equal(group(result.project, '6B').days.dsample00a.length, 8);
-  assert.ok(result.notes.some((note) => /6B.*1 slot past the last period/.test(note)));
+  assert.equal(result.project.settings.periods, 9, 'periods per day rose from 8 to the nine-slot day');
+  assert.equal(group(result.project, '6B').days.dsample00a[8].label, 'ninth', 'the ninth slot is still there');
+  assert.equal(group(result.project, '6A').days.dsample00a.length, 9);
+  assert.deepEqual(group(result.project, '6A').days.dsample00a[8], { room: null, roomText: '', label: '', teacherIds: [] });
+  assert.ok(result.project.dayTypes.every((dayType) => dayType.bells.length === 9), 'the bell schedules follow');
+  assert.ok(result.notes.some((note) => /Periods per day was 8 .* is now 9/.test(note)), result.notes.join(' | '));
+  assert.ok(!result.notes.some((note) => /past the last period/.test(note)), 'nothing was cut: ' + result.notes.join(' | '));
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a periods setting in range and below the longest bell schedule rises to it too', () => {
+  const project = school();
+  project.settings.periods = 6;
+  const result = repair(project);
+  assert.equal(result.project.settings.periods, 8);
+  assert.deepEqual(result.project.dayTypes[0].bells, project.dayTypes[0].bells, 'no bell time was removed');
+  assert.deepEqual(result.project.groups, project.groups, 'no day lost a slot');
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a periods setting in range with a day of 18 slots rises to 16, the most there is, and says what it removed', () => {
+  const project = school();
+  const day = group(project, '6A').days.dsample00a;
+  while (day.length < 18) day.push({ room: 'rsample101', roomText: '', label: '', teacherIds: [] });
+  const result = repair(project);
+  assert.equal(result.project.settings.periods, 16);
+  assert.ok(result.notes.some((note) => /2 slots past the last period/.test(note)), result.notes.join(' | '));
 });
 
 // ---- floors
@@ -407,4 +430,205 @@ test('a published model is accepted and stays a published model', () => {
   for (const absent of ['accepted', 'scenario', 'onboarding', 'created']) assert.equal(absent in result.project, false, absent);
   assert.equal('headCount' in result.project.groups[0], false);
   assert.equal('passcode' in result.project.publish, false);
+});
+
+// ---- SV2-35: what the review of the first unit found
+
+test('a version-0 object with groups and no day types keeps every day: the day types are built from the days\' keys', () => {
+  const project = school();
+  delete project.dayTypes;
+  delete project.version;
+  const result = repair(project, { ids: makeIds(5) });
+  assert.deepEqual(result.project.dayTypes.map((dayType) => [dayType.id, dayType.name, dayType.own]), [['dsample00a', 'A Day', true], ['dsample00b', 'B Day', true]]);
+  assert.deepEqual(result.project.groups, project.groups, 'every group keeps both of its days');
+  assert.ok(result.notes.some((note) => /2 day types were made from the days the groups have/.test(note)), result.notes.join(' | '));
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('day types built from the days\' keys: the first key is the base, a third is "Day 3", and a key that is not an id is replaced with the days following', () => {
+  const project = school();
+  delete project.dayTypes;
+  for (const g of project.groups) {
+    g.days = { regular: g.days.dsample00a, dsample00b: g.days.dsample00b };
+  }
+  group(project, '8B').days.dhalfday00 = group(project, '8B').days.regular.map((slot) => ({ ...slot, label: 'half' }));
+  const result = repair(project, { ids: makeIds(5) });
+  const [base, second, third] = result.project.dayTypes;
+  assert.equal(result.project.dayTypes.length, 3);
+  assert.ok(isId(base.id, 'd') && base.id !== 'regular', 'the key "regular" is not an id; the day type got one');
+  assert.deepEqual([base.name, base.own, second.id, second.name, third.id, third.name, third.own], ['A Day', true, 'dsample00b', 'B Day', 'dhalfday00', 'Day 3', true]);
+  for (const g of result.project.groups) assert.deepEqual(g.days[base.id], school().groups.find((one) => one.id === g.id).days.dsample00a, g.name + ' keeps its first day under the new id');
+  assert.equal(group(result.project, '8B').days.dhalfday00[0].label, 'half');
+  assert.deepEqual(group(result.project, '6A').days.dhalfday00, Array.from({ length: 8 }, () => ({ room: null, roomText: '', label: '', teacherIds: [] })), 'a group with no day for the third gets an empty one');
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a project with no day types and no group days still gets A Day and B Day', () => {
+  const project = emptyProject();
+  delete project.dayTypes;
+  const result = repair(project, { ids: makeIds(5) });
+  assert.deepEqual(result.project.dayTypes.map((dayType) => [dayType.name, dayType.own]), [['A Day', true], ['B Day', false]]);
+});
+
+test('an id shared by a teacher and a room goes to the room, whose prefix it has; the teacher\'s new id is followed by every list that named the teacher', () => {
+  const project = school();
+  // teachers are read before rooms, so the teacher used to keep the id and the room lost its slots
+  project.teachers[0].id = 'rsample101';
+  room(project, '101').teacherIds = ['rsample101'];
+  group(project, '6A').days.dsample00a[2].teacherIds = ['rsample101'];
+  const slotsBefore = project.groups.flatMap((g) => Object.values(g.days).flat()).filter((slot) => slot.room === 'rsample101').length;
+  const result = repair(project, { ids: makeIds(5) });
+  const teacherId = result.project.teachers[0].id;
+  assert.ok(isId(teacherId, 't'), 'the teacher has a teacher id now: ' + teacherId);
+  assert.equal(room(result.project, '101').id, 'rsample101', 'the room keeps its id');
+  assert.deepEqual(room(result.project, '101').teacherIds, [teacherId]);
+  assert.deepEqual(result.project.teachers[0].roomIds, ['rsample101']);
+  assert.deepEqual(group(result.project, '6A').days.dsample00a[2], { room: 'rsample101', roomText: '', label: '', teacherIds: [teacherId] });
+  const slotsAfter = result.project.groups.flatMap((g) => Object.values(g.days).flat()).filter((slot) => slot.room === 'rsample101').length;
+  assert.ok(slotsBefore > 0);
+  assert.equal(slotsAfter, slotsBefore, 'no slot in Room 101 was blanked');
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a room carrying a teacher\'s id gets a new one, and slots, teachers\' rooms and scenario changes follow it', () => {
+  const project = school();
+  const moved = room(project, '102');
+  moved.id = 'tsample001';
+  project.teachers[1].roomIds = ['tsample001'];
+  for (const g of project.groups) for (const day of Object.values(g.days)) for (const slot of day) if (slot.room === 'rsample102') slot.room = 'tsample001';
+  project.scenario = { name: 'Try', changes: [{ kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample06a', period: 0, roomId: 'tsample001' }], compared: null };
+  const result = repair(project, { ids: makeIds(5) });
+  const roomId = room(result.project, '102').id;
+  assert.ok(isId(roomId, 'r'), roomId);
+  assert.equal(result.project.teachers[0].id, 'tsample001');
+  assert.deepEqual(result.project.teachers[1].roomIds, [roomId]);
+  const before = school();
+  for (const g of result.project.groups) {
+    for (const [dayTypeId, day] of Object.entries(g.days)) {
+      day.forEach((slot, p) => {
+        const was = before.groups.find((one) => one.id === g.id).days[dayTypeId][p];
+        assert.deepEqual(slot, was.room === 'rsample102' ? { ...was, room: roomId } : was, g.name + ' ' + dayTypeId + ' ' + p);
+      });
+    }
+  }
+  assert.equal(result.project.scenario.changes[0].roomId, roomId);
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a floor, a day type and a group with ids of the wrong form get new ones, and connections, zones, days and scenario changes follow', () => {
+  const project = school();
+  project.building.floors[1].id = 'Floor-2';
+  for (const connection of project.building.connections) for (const end of [connection.a, connection.b]) if (end.floorId === 'fsample002') end.floorId = 'Floor-2';
+  project.building.zones.push({ id: 'zsample002', floorId: 'Floor-2', label: 'Landing', x: 1, y: 7, w: 2, h: 1 });
+  project.dayTypes[1].id = 'B';
+  for (const g of project.groups) {
+    g.days.B = g.days.dsample00b;
+    delete g.days.dsample00b;
+  }
+  project.groups[0].id = '6a';
+  project.scenario = { name: 'Try', changes: [{ kind: 'swapRooms', dayTypeId: 'B', groupA: '6a', groupB: 'gsample06b', period: 0 }, { kind: 'swapPeriods', dayTypeId: 'B', groupId: '6a', periodA: 0, periodB: 1 }], compared: null };
+  project.accepted = [{ findingId: 'room-double:B:1:rsample203', reason: 'known', at: PINNED }];
+  const result = repair(project, { ids: makeIds(5) });
+  const floorId = result.project.building.floors[1].id;
+  const dayTypeId = result.project.dayTypes[1].id;
+  const groupId = result.project.groups[0].id;
+  assert.ok(isId(floorId, 'f') && isId(dayTypeId, 'd') && isId(groupId, 'g'), [floorId, dayTypeId, groupId].join(' '));
+  assert.equal(result.project.building.connections.length, 2, 'both stair connections are still there');
+  assert.deepEqual(result.project.building.connections.map((connection) => [connection.a.floorId, connection.b.floorId]), [['fsample001', floorId], [floorId, 'fsample003']]);
+  assert.equal(result.project.building.zones[1].floorId, floorId);
+  for (const g of result.project.groups) assert.deepEqual(g.days[dayTypeId], school().groups.find((one) => one.name === g.name).days.dsample00b, g.name + ' keeps its B Day');
+  assert.deepEqual(result.project.scenario.changes, [{ kind: 'swapRooms', dayTypeId, groupA: groupId, groupB: 'gsample06b', period: 0 }, { kind: 'swapPeriods', dayTypeId, groupId, periodA: 0, periodB: 1 }]);
+  assert.equal(result.project.accepted[0].findingId, 'room-double:' + dayTypeId + ':1:rsample203', 'an accepted finding stays accepted');
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a subject with an id of the wrong form: rooms and teachers keep the subject under its new id', () => {
+  const project = school();
+  project.subjects[0].id = 'MATH';
+  for (const teacher of project.teachers) if (teacher.subjectId === 'ssample001') teacher.subjectId = 'MATH';
+  for (const floor of project.building.floors) for (const space of floor.spaces) if (space.subjectId === 'ssample001') space.subjectId = 'MATH';
+  const result = repair(project, { ids: makeIds(5) });
+  const subjectId = result.project.subjects[0].id;
+  assert.ok(isId(subjectId, 's'));
+  assert.equal(result.project.teachers[0].subjectId, subjectId);
+  assert.equal(room(result.project, '101').subjectId, subjectId);
+  assert.ok(!result.notes.some((note) => /now has no subject/.test(note)), result.notes.join(' | '));
+});
+
+test('a floor with no width takes it from its cells when the height divides them exactly', () => {
+  const project = school();
+  const before = clone(project.building.floors[0]);
+  delete project.building.floors[0].width;
+  const result = repair(project);
+  const floor = result.project.building.floors[0];
+  assert.equal(floor.width, 40, 'worked out from 560 cells and a height of 14, not the default 40 by luck: see the next case');
+  assert.deepEqual(floor, before);
+  assert.ok(result.notes.some((note) => /width of Floor 1 .* worked out from its cells/.test(note)), 'no note says the width was worked out from the cells; the notes were: [' + result.notes.join(' | ') + ']');
+});
+
+test('a floor of 12 by 9 with a fractional or missing side is worked out from its cells, never clamped or defaulted', () => {
+  for (const [key, value] of [['width', 12.4], ['width', undefined], ['width', '12'], ['height', 8.5], ['height', undefined], ['height', null]]) {
+    const project = emptyProject();
+    const floor = project.building.floors[0];
+    floor.width = 12;
+    floor.height = 9;
+    floor.cells = ('#'.repeat(12) + '.'.repeat(96)).slice(0, 108);
+    floor.exits = [{ id: 'xexit00001', cell: 0, doorName: 'Door A', assembly: '' }];
+    assert.deepEqual(validate(project), []);
+    const sound = clone(floor);
+    if (value === undefined) delete floor[key];
+    else floor[key] = value;
+    const result = repair(project);
+    assert.deepEqual(result.project.building.floors[0], sound, key + ' = ' + String(value) + ': ' + result.notes.join(' | '));
+    assert.deepEqual(validate(result.project), []);
+  }
+});
+
+test('a floor side that cannot be worked out from the cells is still clamped or defaulted as before', () => {
+  const project = emptyProject();
+  const floor = project.building.floors[0];
+  floor.width = 12.4;
+  floor.height = 9;
+  floor.cells = '.'.repeat(100); // 100 is not a whole number of rows of 9
+  const result = repair(project);
+  assert.equal(result.project.building.floors[0].width, 12);
+  assert.equal(result.project.building.floors[0].cells.length, 108);
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('two stair connections with one letter: the later becomes "A (2)" and both stay', () => {
+  const project = school();
+  project.building.connections[1].label = 'A';
+  assert.notDeepEqual(validate(project), []);
+  const result = repair(project);
+  assert.deepEqual(result.project.building.connections.map((connection) => connection.label), ['A', 'A (2)']);
+  assert.ok(result.notes.some((note) => /Two stair connections were both labelled "A"/.test(note)), result.notes.join(' | '));
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a check switched off that is not a check is taken off the list, and the real ones stay', () => {
+  const project = school();
+  project.settings.checks.off = ['room-unused', 'room-on-fire', 'empty-period'];
+  assert.notDeepEqual(validate(project), []);
+  const result = repair(project);
+  assert.deepEqual(result.project.settings.checks.off, ['room-unused', 'empty-period']);
+  assert.ok(result.notes.some((note) => /checks switched off/.test(note)));
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('an exit, a corridor name, a connection, a zone and an other space with ids of the wrong form are each given one', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  floor.exits[0].id = 'exit-1';
+  floor.corridors[0].id = 'k1';
+  floor.spaces[5].id = 'office';
+  project.building.connections[0].id = 'c_a';
+  project.building.zones[0].id = 'Z';
+  project.id = 'my project';
+  assert.equal(validate(project).length, 6);
+  const result = repair(project);
+  const fixed = result.project.building.floors[0];
+  assert.ok(isId(fixed.exits[0].id, 'x') && isId(fixed.corridors[0].id, 'k') && isId(fixed.spaces[5].id, 'o'));
+  assert.ok(isId(result.project.building.connections[0].id, 'c') && isId(result.project.building.zones[0].id, 'z') && isId(result.project.id, 'p'));
+  assert.deepEqual(validate(result.project), []);
 });

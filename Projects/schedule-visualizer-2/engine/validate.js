@@ -7,9 +7,11 @@
 // point at things that exist (engine/scenario.js reconciles a scenario and
 // tells the user what it dropped), what an accepted finding's id means, and
 // whether a bell schedule makes sense (bells.js warns about that inline; a
-// warning never blocks).
+// warning never blocks), and the form of a traced image's id (it is the key
+// the image is stored under on the device, so nothing here could replace it).
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY } from './schema.js';
+import { isId, ID_LENGTH } from './ids.js';
 import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell } from './schema.js';
 
 function isObject(value) {
@@ -46,17 +48,21 @@ export function validate(project) {
   }
 
   const seenIds = new Map();
-  const checkId = (path, thing) => {
+  // `prefix` is the letter the ids of this kind of thing start with (ids.js).
+  // An id of another form is found here and still returned, so that what
+  // names the thing by it is not reported a second time as naming nothing.
+  const checkId = (path, thing, prefix) => {
     const id = isObject(thing) ? thing.id : undefined;
     if (!isString(id) || id === '') {
       add(path + '.id', 'An id is a string that is not empty.');
       return null;
     }
+    if (!isId(id, prefix)) add(path + '.id', 'An id is ' + ID_LENGTH + ' characters, lowercase letters and digits' + (prefix ? ', and this one starts with "' + prefix + '"' : '') + '. "' + id + '" is not.');
     if (seenIds.has(id)) add(path + '.id', 'The id "' + id + '" is already used at ' + seenIds.get(id) + '.');
     else seenIds.set(id, path);
     return id;
   };
-  checkId('project', project);
+  checkId('project', project, 'p');
 
   // ---- settings
   const settings = project.settings;
@@ -89,6 +95,9 @@ export function validate(project) {
         if (!inRange(checks.consecutiveLimit, RANGES.consecutiveLimit)) add('settings.checks.consecutiveLimit', 'The consecutive-periods limit is a whole number from ' + rangeText(RANGES.consecutiveLimit) + '.');
         if (!inRange(checks.passingMarginSeconds, RANGES.passingMarginSeconds)) add('settings.checks.passingMarginSeconds', 'The passing margin is a whole number of seconds from ' + rangeText(RANGES.passingMarginSeconds) + '.');
         if (!Array.isArray(checks.off) || !checks.off.every(isString) || new Set(checks.off).size !== checks.off.length) add('settings.checks.off', 'The checks switched off are a list of check kinds, each once.');
+        else checks.off.forEach((kind, k) => {
+          if (!CHECK_KINDS.includes(kind)) add('settings.checks.off[' + k + ']', '"' + kind + '" is not one of the checks: ' + CHECK_KINDS.join(', ') + '.');
+        });
       }
       const paper = settings.paper;
       if (!isObject(paper)) {
@@ -110,7 +119,7 @@ export function validate(project) {
     project.subjects.forEach((subject, i) => {
       const path = 'subjects[' + i + ']';
       if (!isObject(subject)) return add(path, 'A subject is an object.');
-      const id = checkId(path, subject);
+      const id = checkId(path, subject, 's');
       if (id) subjectIds.add(id);
       if (!isString(subject.code)) add(path + '.code', 'A subject code is text.');
       if (!isString(subject.name)) add(path + '.name', 'A subject name is text.');
@@ -127,7 +136,7 @@ export function validate(project) {
   } else {
     project.teachers.forEach((teacher, i) => {
       if (!isObject(teacher)) return add('teachers[' + i + ']', 'A teacher is an object.');
-      const id = checkId('teachers[' + i + ']', teacher);
+      const id = checkId('teachers[' + i + ']', teacher, 't');
       if (id) teacherIds.add(id);
       return undefined;
     });
@@ -142,7 +151,7 @@ export function validate(project) {
     project.dayTypes.forEach((dayType, i) => {
       const path = 'dayTypes[' + i + ']';
       if (!isObject(dayType)) return add(path, 'A day type is an object.');
-      const id = checkId(path, dayType);
+      const id = checkId(path, dayType, 'd');
       if (id) dayTypeIds.add(id);
       if (!isString(dayType.name)) add(path + '.name', 'A day type name is text.');
       if (typeof dayType.own !== 'boolean') add(path + '.own', 'A day type says whether it is its own copy, true or false.');
@@ -178,7 +187,7 @@ export function validate(project) {
       building.floors.forEach((floor, f) => {
         const path = 'building.floors[' + f + ']';
         if (!isObject(floor)) return add(path, 'A floor is an object.');
-        const floorId = checkId(path, floor);
+        const floorId = checkId(path, floor, 'f');
         if (!isString(floor.name)) add(path + '.name', 'A floor name is text.');
         if (!Number.isInteger(floor.level)) add(path + '.level', 'A floor level is a whole number.');
         const sizeOk = inRange(floor.width, RANGES.floorSize) && inRange(floor.height, RANGES.floorSize);
@@ -206,7 +215,7 @@ export function validate(project) {
           floor.spaces.forEach((space, s) => {
             const sp = path + '.spaces[' + s + ']';
             if (!isObject(space)) return add(sp, 'A space is an object.');
-            const spaceId = checkId(sp, space);
+            const spaceId = checkId(sp, space, space.kind === 'room' ? 'r' : space.kind === 'other' ? 'o' : undefined);
             const own = new Set();
             if (!Array.isArray(space.cells) || space.cells.length === 0) {
               add(sp + '.cells', 'A space has at least one cell.');
@@ -283,7 +292,7 @@ export function validate(project) {
           floor.corridors.forEach((corridor, k) => {
             const kp = path + '.corridors[' + k + ']';
             if (!isObject(corridor)) return add(kp, 'A corridor name is an object.');
-            checkId(kp, corridor);
+            checkId(kp, corridor, 'k');
             if (!isString(corridor.name)) add(kp + '.name', 'A corridor name is text.');
             if (!Array.isArray(corridor.cells) || corridor.cells.length === 0) {
               add(kp + '.cells', 'A corridor name covers at least one cell.');
@@ -307,7 +316,7 @@ export function validate(project) {
           floor.exits.forEach((exit, x) => {
             const xp = path + '.exits[' + x + ']';
             if (!isObject(exit)) return add(xp, 'An exit is an object.');
-            checkId(xp, exit);
+            checkId(xp, exit, 'x');
             if (!isString(exit.doorName)) add(xp + '.doorName', 'A door name is text.');
             if (!isString(exit.assembly)) add(xp + '.assembly', 'An assembly point is text.');
             if (cellsOk) {
@@ -351,11 +360,14 @@ export function validate(project) {
     if (!Array.isArray(building.connections)) {
       add('building.connections', 'The connections are a list.');
     } else {
+      const labels = new Map();
       building.connections.forEach((connection, c) => {
         const path = 'building.connections[' + c + ']';
         if (!isObject(connection)) return add(path, 'A connection is an object.');
-        checkId(path, connection);
+        checkId(path, connection, 'c');
         if (isBlank(connection.label)) add(path + '.label', 'A connection has a letter or a name.');
+        else if (labels.has(connection.label)) add(path + '.label', 'The label "' + connection.label + '" is already used at ' + labels.get(connection.label) + '. Each stair connection has its own.');
+        else labels.set(connection.label, path);
         if (!CONNECTION_DIRECTIONS.includes(connection.direction)) add(path + '.direction', 'A connection\'s direction is both, ab or ba.');
         const ends = [];
         for (const key of ['a', 'b']) {
@@ -385,7 +397,7 @@ export function validate(project) {
       building.zones.forEach((zone, z) => {
         const path = 'building.zones[' + z + ']';
         if (!isObject(zone)) return add(path, 'A zone is an object.');
-        checkId(path, zone);
+        checkId(path, zone, 'z');
         if (!isString(zone.label)) add(path + '.label', 'A zone label is text.');
         const floor = floorById.get(zone.floorId);
         if (!floor) {
@@ -440,7 +452,7 @@ export function validate(project) {
     project.groups.forEach((group, i) => {
       const path = 'groups[' + i + ']';
       if (!isObject(group)) return add(path, 'A group is an object.');
-      checkId(path, group);
+      checkId(path, group, 'g');
       if (isBlank(group.name)) {
         add(path + '.name', 'A group has a name.');
       } else {

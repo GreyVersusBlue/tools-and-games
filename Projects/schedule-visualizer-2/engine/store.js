@@ -3,6 +3,9 @@
 //
 //   store.project              the current project (never changed in place)
 //   store.apply(action, payload)   run an action from actions.js; one undo entry
+//                              (none for a quiet action; see apply below)
+//   store.undoOutcome          what the action undo would take back reported
+//                              (actions.js buildingOutcome, importOutcome), or null
 //   store.undo(), store.redo()     { label, focus } of what was undone or redone, or null
 //   store.subscribe(fn)        fn(project, change) after every change; returns an unsubscribe
 //   store.replace(project)     a freshly loaded project; history starts again
@@ -17,7 +20,7 @@
 // move the same ones. `modified` is set from the clock on every change.
 
 import { createHistory, record, undo as undoHistory, redo as redoHistory, peekUndo, peekRedo, HISTORY_LIMIT } from './history.js';
-import { describeAction, GEOMETRY, BUILDING, SCHEDULE } from './actions.js';
+import { describeAction, ActionError, GEOMETRY, BUILDING, SCHEDULE } from './actions.js';
 import { collectIds } from './ids.js';
 
 export function createStore(options) {
@@ -117,18 +120,52 @@ export function createStore(options) {
       const entry = peekRedo(history);
       return entry ? entry.label : null;
     },
+    get undoOutcome() {
+      const entry = peekUndo(history);
+      return entry && entry.outcome ? entry.outcome : null;
+    },
     derived,
 
     // Run an action. An ActionError from the action comes straight through
     // and nothing changes. An action that changes nothing makes no entry.
+    // The entry keeps what the action reported for its result (`outcome`),
+    // since the project kept here is a stamped copy of that result.
+    //
+    // A quiet action (action.quiet) is not the user's work on the school: it
+    // makes no entry, does not clear redo and does not set `modified`. So
+    // that undo and redo do not take it back, it is run on every state the
+    // history holds as well; a state it refuses is left as it is.
     apply(action, payload) {
       const given = payload === undefined ? {} : payload;
       const before = project;
       const result = action(before, given, ctx);
       if (result === before) return before;
       const info = describeAction(action, before, given, result);
+      // whatever the action brought in, its ids are never handed out again
+      if (typeof ids.reserve === 'function') ids.reserve(collectIds(result));
+      if (action.quiet === true) {
+        const done = new Map([[before, result]]);
+        const through = (state) => {
+          if (!done.has(state)) {
+            let next = state;
+            try {
+              next = action(state, given, ctx);
+            } catch (error) {
+              if (!(error instanceof ActionError)) throw error;
+            }
+            done.set(state, next);
+          }
+          return done.get(state);
+        };
+        const carry = (entries) => entries.map((entry) => ({ ...entry, before: through(entry.before), after: through(entry.after) }));
+        history = { past: carry(history.past), future: carry(history.future) };
+        project = result;
+        bump(info.bumps);
+        notify({ kind: 'apply', label: info.label, focus: info.focus, bumps: info.bumps, quiet: true });
+        return project;
+      }
       const after = stamped(result);
-      history = record(history, { label: info.label, before, after, focus: info.focus, bumps: info.bumps }, limit);
+      history = record(history, { label: info.label, before, after, focus: info.focus, bumps: info.bumps, outcome: info.outcome }, limit);
       project = after;
       bump(info.bumps);
       notify({ kind: 'apply', label: info.label, focus: info.focus, bumps: info.bumps });
