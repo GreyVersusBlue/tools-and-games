@@ -34,6 +34,7 @@ const GROUPS = {
     'engine/csv.test.mjs',
     'engine/building.test.mjs', // SV2-04
     'engine/graph.test.mjs', // SV2-04
+    'engine/building-checks.test.mjs', // SV2-04
   ],
   browser: [],
   a11y: [],
