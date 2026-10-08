@@ -57,6 +57,9 @@ const GROUPS = {
   browser: [
     'browser/shell.mjs',
     'browser/no-offsite.mjs',
+    'browser/storage.mjs', // SV2-03
+    'browser/recovery.mjs', // SV2-03
+    'browser/tabs.mjs', // SV2-03
     'a11y/axe.mjs',
   ],
   a11y: [

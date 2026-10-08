@@ -55,9 +55,20 @@ export async function waitForSection(page, id) {
   );
 }
 
-// openPlanner({ hash, width, height, theme, mobile, device })
+// Empty this origin's IndexedDB, so a page load starts as a new device does:
+// with no saved project and no recovery points. localStorage is left alone
+// (the theme a test chose is meant to last). Without this, one screen's edits
+// would be the next screen's saved project.
+export async function clearSaved(page, base) {
+  const client = typeof page.createCDPSession === 'function' ? await page.createCDPSession() : await page.context().newCDPSession(page);
+  await client.send('Storage.clearDataForOrigin', { origin: base, storageTypes: 'indexeddb' });
+  await client.detach();
+}
+
+// openPlanner({ hash, width, height, theme, mobile, device, keep })
 //   theme    'light' or 'dark': what the device prefers (prefers-color-scheme)
 //   device   an object to put in localStorage under sv2:device before the page loads
+//   keep     true: load whatever project this browser has saved (a second tab, a reload)
 export async function openPlanner(options) {
   const opts = options || {};
   const server = opts.server || (await startServer());
@@ -75,6 +86,7 @@ export async function openPlanner(options) {
   }
   const url = (hash) => server.base + TOOL_PATH + (hash || '');
   const hash = opts.hash || '';
+  if (opts.keep !== true) await clearSaved(page, server.base);
   await page.goto(url(hash), { waitUntil: 'load' });
   await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
   await page.evaluate(() => document.fonts.ready);
@@ -104,11 +116,13 @@ export async function go(page, hash) {
   await waitForSection(page, hash.replace(/^#/, '').split('/')[0]);
 }
 
-// Load one screen of screens.mjs from scratch: a fresh page load, then
-// whatever the screen needs opened.
+// Load one screen of screens.mjs from scratch: a fresh page load with no
+// saved project (unless the screen says `keep: true`), then whatever the
+// screen needs opened.
 export async function visit(session, screen) {
   const { page } = session;
   await page.goto('about:blank');
+  if (screen.keep !== true) await clearSaved(page, session.base);
   await page.goto(session.url(screen.hash), { waitUntil: 'load' });
   await waitForSection(page, screen.hash.replace(/^#/, '').split('/')[0]);
   await page.evaluate(() => document.fonts.ready);
