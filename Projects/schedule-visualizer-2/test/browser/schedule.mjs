@@ -44,7 +44,10 @@ const click = async (selector) => {
   await page.click(selector);
 };
 
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function selectAllAndType(value) {
+  await settled();
   await page.keyboard.down('Control');
   await page.keyboard.press('a');
   await page.keyboard.up('Control');
@@ -211,7 +214,19 @@ test('the double-booking appears on the slot, on the group and in the panel as i
 test('a button clicked while a field still holds an uncommitted change gets its click', async () => {
   await click('[data-key="group-name"]');
   await selectAllAndType('8Y');
-  await click('[data-action="duplicate"]');
+  // Pressing the button takes focus from the field, which commits, which
+  // would draw the tab again and replace the button under the pointer. The
+  // drawing has to wait until the pointer is up.
+  const box = await (await page.$('[data-action="duplicate"]')).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  try {
+    await pause(150);
+    assert.equal(await page.$eval('.sch', (el) => el.dataset.pending), 'true', 'the drawing waits while the pointer is down');
+    assert.equal(await text('.sch-editor__title'), '8Z', 'nothing has been drawn again yet');
+  } finally {
+    await page.mouse.up();
+  }
   await shows(() => document.querySelector('.sch-editor__title')?.textContent === '8Y (Copy)');
   assert.equal(await count('.sch-group'), 10);
   await click('[data-action="delete"]');
