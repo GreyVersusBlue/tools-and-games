@@ -432,6 +432,7 @@ async function boot() {
   shortcuts.add({ id: 'redo-y', group: 'Anywhere', does: 'Redo what was undone', chord: { key: 'y', mod: true }, textFields: false, only: 'other', run: redo });
   shortcuts.add({ id: 'search', group: 'Anywhere', does: 'Go to the search box', chord: { key: 'f', mod: true }, run: () => searchInput.focus() });
   shortcuts.add({ id: 'search-slash', group: 'Anywhere', does: 'Go to the search box', key: '/', run: () => searchInput.focus() });
+  import('./building/search.js').then((found) => found.attachSearch(searchInput, ctx)); // SV2-07: the results under the box
   shortcuts.add({ id: 'help', group: 'Anywhere', does: 'Open this list', key: '?', run: () => openHelp(document.activeElement === document.body ? helpButton : document.activeElement) });
   shortcuts.add({
     id: 'regions',
