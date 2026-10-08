@@ -1,0 +1,5 @@
+Group,Note
+=SUM(A1:A2),+1
+-5,@home
+=A1&B1,'=already quoted
+	starts with a tab,ends plain

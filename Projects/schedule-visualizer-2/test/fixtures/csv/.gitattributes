@@ -1,0 +1,3 @@
+# Every byte of these files is the fixture: a line ending or a byte-order mark
+# changed on checkout would test something else.
+*.csv -text
