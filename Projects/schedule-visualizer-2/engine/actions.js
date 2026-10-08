@@ -1001,3 +1001,401 @@ export const replaceProject = action(
     return payload.project;
   },
 );
+
+// ================================================================ SV2-04: the building (start)
+//
+// The building editor's actions. The geometry is engine/building.js, which
+// works on the Building object alone; each action here runs one of its
+// functions, turns its refusal into an ActionError, and rewrites the slots
+// of any room the change took out of the building (detachRooms), so that is
+// one undo step. A placement that goes over something replaces it, and the
+// label says what it replaced.
+
+import * as geometry from './building.js';
+
+// What the building.js function reported for the project an action returned,
+// so the label and the focus can read it (the store calls them with that
+// very object).
+const outcomes = new WeakMap();
+
+function inBuilding(project, run) {
+  let result;
+  try {
+    result = run(project.building);
+  } catch (error) {
+    if (error instanceof geometry.BuildingError) refuse(error.message, error.code);
+    throw error;
+  }
+  if (result.building === project.building) return project;
+  let next = { ...project, building: result.building };
+  if (result.removedRooms && result.removedRooms.length > 0) next = detachRooms(next, result.removedRooms);
+  outcomes.set(next, result);
+  return next;
+}
+
+// What building.js reported for a project an action here returned: the loss,
+// the new space's id, the cells. Null for any other project.
+export function buildingOutcome(project) {
+  return outcomes.get(project) || null;
+}
+
+function replacing(after, word) {
+  const outcome = outcomes.get(after);
+  const text = outcome && outcome.loss ? geometry.lossText(outcome.loss) : '';
+  return text === '' ? '' : ', ' + (word || 'replacing') + ' ' + text;
+}
+
+function onFloor(before, payload, after) {
+  const outcome = outcomes.get(after);
+  const name = floorName(before, (outcome && outcome.floorId) || payload.floorId);
+  return name === '' ? '' : ' on ' + name;
+}
+
+// Geometry always; the schedule too when the change took a room away.
+function geometryBumps(before, payload, after) {
+  return before.groups !== after.groups || before.teachers !== after.teachers ? [GEOMETRY, SCHEDULE] : [GEOMETRY];
+}
+
+function buildingFocus(before, payload, after) {
+  const outcome = outcomes.get(after) || {};
+  const focus = { section: 'building', floorId: outcome.floorId || payload.floorId };
+  const spaceId = outcome.spaceId || (outcome.spaceIds && outcome.spaceIds[0]) || payload.roomId || payload.spaceId;
+  if (spaceId) focus.roomId = spaceId;
+  return focus;
+}
+
+function spaceLabel(project, spaceId) {
+  const found = geometry.findSpace(project.building, spaceId);
+  return found ? geometry.spaceName(found.space) : 'a space';
+}
+
+function spacesLabel(project, spaceIds) {
+  if (!Array.isArray(spaceIds) || spaceIds.length === 0) return 'nothing';
+  return spaceIds.length === 1 ? spaceLabel(project, spaceIds[0]) : spaceIds.length + ' spaces';
+}
+
+// How many slots name these rooms, and how many groups those are in.
+function slotUse(project, roomIds) {
+  const wanted = new Set(roomIds);
+  let slots = 0;
+  let groups = 0;
+  for (const group of project.groups) {
+    let own = 0;
+    for (const day of Object.values(group.days)) own += day.filter((slot) => slot.room !== null && wanted.has(slot.room)).length;
+    slots += own;
+    if (own > 0) groups += 1;
+  }
+  return { slots, groups };
+}
+
+function withSlots(project, part) {
+  return { ...part, ...slotUse(project, part.removedRooms.map((room) => room.id)) };
+}
+
+function describing(run) {
+  try {
+    return run();
+  } catch (error) {
+    if (error instanceof geometry.BuildingError) refuse(error.message, error.code);
+    throw error;
+  }
+}
+
+// ---- place and paint
+
+// What drawing on these cells would replace: { cells, loss, removedRooms,
+// slots, groups }. payload: { floorId } with cells, rect or from/to.
+export function describePlace(project, payload) {
+  return describing(() => withSlots(project, geometry.describePlace(project.building, payload)));
+}
+
+// A room on one cell or a rectangle. payload: { floorId } with rect
+// { x, y, w, h } or cells; optionally id, number, and over: 'replace' (the
+// default), 'skip' or 'refuse'. buildingOutcome(after).spaceId is the room.
+export const placeRoom = action(
+  { label: (before, payload, after) => 'Place a room' + onFloor(before, payload, after) + replacing(after), bumps: geometryBumps, focus: buildingFocus },
+  (project, payload, ctx) => inBuilding(project, (building) => geometry.placeRoom(building, payload, ctx.ids)),
+);
+
+// payload as placeRoom, with label, otherKind and colour.
+export const placeOtherSpace = action(
+  { label: (before, payload, after) => 'Place other space' + onFloor(before, payload, after) + replacing(after), bumps: geometryBumps, focus: buildingFocus },
+  (project, payload, ctx) => inBuilding(project, (building) => geometry.placeOtherSpace(building, payload, ctx.ids)),
+);
+
+// payload: { floorId } with cells, or from and to for a straight line; over.
+export const paintCorridor = action(
+  { label: (before, payload, after) => 'Paint corridor' + onFloor(before, payload, after) + replacing(after), bumps: geometryBumps, focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.paintCorridor(building, payload)),
+);
+
+export const placeStairs = action(
+  { label: (before, payload, after) => 'Place stairs' + onFloor(before, payload, after) + replacing(after), bumps: geometryBumps, focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.placeStairs(building, payload)),
+);
+
+// ---- erase and delete
+
+// What erasing these cells would do, as the whole space and as the cells
+// only: { ambiguous, spaces, whole, cellsOnly }, each of the two with its
+// loss and the slots and groups that would be left "not in the building".
+// Ask when `ambiguous`; the default is the whole space.
+export function describeErase(project, payload) {
+  return describing(() => {
+    const described = geometry.describeErase(project.building, payload);
+    return { ...described, whole: withSlots(project, described.whole), cellsOnly: withSlots(project, described.cellsOnly) };
+  });
+}
+
+// payload: { floorId, cells } and whole (default true): a cell of a room or
+// other space takes the whole space, or with whole: false only that cell.
+// Erasing a stairs cell removes its connection in the same step.
+export const eraseCells = action(
+  {
+    label: (before, payload, after) => {
+      const outcome = outcomes.get(after);
+      const text = outcome ? geometry.lossText(outcome.loss) : '';
+      return 'Erase' + (text === '' ? '' : ' ' + text) + onFloor(before, payload, after);
+    },
+    bumps: geometryBumps,
+    focus: buildingFocus,
+  },
+  (project, payload) => inBuilding(project, (building) => geometry.erase(building, payload)),
+);
+
+// What deleting these rooms and spaces takes with it.
+export function describeSpaceDelete(project, payload) {
+  return describing(() => {
+    const result = geometry.deleteSpaces(project.building, payload);
+    return withSlots(project, { loss: result.loss, removedRooms: result.removedRooms });
+  });
+}
+
+// payload: { spaceIds }. Slots in a deleted room keep its number as text and
+// show as "not in the building".
+export const deleteSpaces = action(
+  { label: (before, payload) => 'Delete ' + spacesLabel(before, payload.spaceIds), bumps: geometryBumps, focus: (before, payload) => ({ section: 'building', floorId: (geometry.findSpace(before.building, payload.spaceIds[0]) || { floor: {} }).floor.id }) },
+  (project, payload) => inBuilding(project, (building) => geometry.deleteSpaces(building, payload)),
+);
+
+// ---- move, paste
+
+// payload: { spaceIds, dx, dy } and optionally toFloorId, over ('refuse' by
+// default, or 'replace'). Every moved space keeps its id, so its number,
+// teachers, subject and every slot that names it stay as they were.
+export const moveSpaces = action(
+  {
+    label: (before, payload, after) => {
+      const to = payload.toFloorId !== undefined && (geometry.findSpace(before.building, payload.spaceIds[0]) || { floor: {} }).floor.id !== payload.toFloorId ? ' to ' + floorName(before, payload.toFloorId) : '';
+      return 'Move ' + spacesLabel(before, payload.spaceIds) + to + replacing(after, 'removing');
+    },
+    bumps: geometryBumps,
+    focus: buildingFocus,
+  },
+  (project, payload) => inBuilding(project, (building) => geometry.moveSpaces(building, payload)),
+);
+
+// payload: { floorId, clip, x, y } and over; clip is from
+// building.js copySpaces(project.building, { spaceIds }). A subject the clip
+// names that is no longer on the list is left empty.
+export const pasteSpaces = action(
+  {
+    label: (before, payload, after) => {
+      const count = payload.clip && Array.isArray(payload.clip.spaces) ? payload.clip.spaces.length : 0;
+      return 'Paste ' + (count === 1 ? '1 space' : count + ' spaces') + onFloor(before, payload, after) + replacing(after);
+    },
+    bumps: geometryBumps,
+    focus: buildingFocus,
+  },
+  (project, payload, ctx) => {
+    let clip = payload.clip;
+    if (clip && Array.isArray(clip.spaces)) {
+      const known = new Set(project.subjects.map((subject) => subject.id));
+      clip = { ...clip, spaces: clip.spaces.map((space) => (space.kind === 'room' && space.subjectId !== null && !known.has(space.subjectId) ? { ...space, subjectId: null } : space)) };
+    }
+    return inBuilding(project, (building) => geometry.pasteSpaces(building, { ...payload, clip }, ctx.ids));
+  },
+);
+
+// ---- fields
+
+const roomBumps = [BUILDING, SCHEDULE];
+
+// payload: { roomId } and any of { number, subjectId, wing, capacity, shared }.
+// The teachers of a room are setRoomTeachers.
+export const setRoomFields = action(
+  { label: (before, payload) => 'Edit ' + spaceLabel(before, payload.roomId), bumps: roomBumps, focus: buildingFocus },
+  (project, payload) => {
+    if (payload.subjectId !== undefined && payload.subjectId !== null) need(project.subjects, payload.subjectId, 'subject');
+    return inBuilding(project, (building) => geometry.setRoomFields(building, payload));
+  },
+);
+
+// Clearing a room's details keeps the room, its cells and its doors, and
+// every slot that names it. payload: { roomId }.
+export const clearRoomDetails = action(
+  { label: (before, payload) => 'Clear the details of ' + spaceLabel(before, payload.roomId), bumps: roomBumps, focus: buildingFocus },
+  (project, payload, ctx) => {
+    const cleared = inBuilding(project, (building) => geometry.setRoomFields(building, { roomId: payload.roomId, number: '', subjectId: null, wing: '', capacity: null, shared: false }));
+    return setRoomTeachers(cleared, { roomId: payload.roomId, teacherIds: [] }, ctx);
+  },
+);
+
+// payload: { spaceId } and any of { label, otherKind, colour }.
+export const setOtherSpaceFields = action(
+  { label: (before, payload) => 'Edit ' + spaceLabel(before, payload.spaceId), bumps: [BUILDING], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.setOtherSpaceFields(building, payload)),
+);
+
+// ---- doors
+
+// payload: { roomId, cell, side }. Refused, with the side named and what is
+// there, when the edge faces nothing that can be walked on.
+export const addDoor = action(
+  { label: (before, payload) => 'Add a door to ' + spaceLabel(before, payload.roomId), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.addDoor(building, payload)),
+);
+
+export const removeDoor = action(
+  { label: (before, payload) => 'Remove a door from ' + spaceLabel(before, payload.roomId), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.removeDoor(building, payload)),
+);
+
+// ---- stairs connections
+
+// Whether two stairs cells can be connected, and whether they are on one
+// floor, which the interface confirms first: { sameFloor, fromFloor,
+// toFloor, label }. payload: { a: { floorId, cell }, b: { floorId, cell } }.
+export function describeConnect(project, payload) {
+  return describing(() => geometry.describeConnect(project.building, payload));
+}
+
+export const connectStairs = action(
+  {
+    label: (before, payload, after) => {
+      const outcome = outcomes.get(after);
+      if (!outcome) return 'Connect stairs';
+      return 'Connect stairs ' + outcome.label + ': ' + (outcome.sameFloor ? 'two places on ' + outcome.fromFloor : outcome.fromFloor + ' to ' + outcome.toFloor);
+    },
+    bumps: [GEOMETRY],
+    focus: (before, payload) => ({ section: 'building', floorId: payload.b.floorId }),
+  },
+  (project, payload, ctx) => inBuilding(project, (building) => geometry.connectStairs(building, payload, ctx.ids)),
+);
+
+function connectionLabel(project, connectionId) {
+  const connection = project.building.connections.find((candidate) => candidate.id === connectionId);
+  return connection ? connection.label : '';
+}
+
+// payload: { connectionId }.
+export const disconnectStairs = action(
+  { label: (before, payload) => 'Disconnect stairs ' + connectionLabel(before, payload.connectionId), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.disconnectStairs(building, payload)),
+);
+
+// payload: { connectionId } and any of { label, direction }.
+export const setConnection = action(
+  { label: (before, payload) => 'Change stairs connection ' + connectionLabel(before, payload.connectionId), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.setConnection(building, payload)),
+);
+
+// ---- corridor names
+
+// payload: { floorId, cells, name } and optionally id. An empty name takes
+// the name off those cells. Bumps geometry because a route can be asked to
+// avoid a named corridor, and this changes which cells that is.
+export const nameCorridor = action(
+  { label: (before, payload, after) => (payload.name === '' ? 'Take the corridor name off cells' : 'Name a corridor ' + payload.name) + onFloor(before, payload, after), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload, ctx) => inBuilding(project, (building) => geometry.nameCorridor(building, payload, ctx.ids)),
+);
+
+function corridorLabel(project, payload) {
+  const floor = project.building.floors.find((candidate) => candidate.id === payload.floorId);
+  const corridor = floor ? floor.corridors.find((candidate) => candidate.id === payload.corridorId) : null;
+  return corridor ? corridor.name : '';
+}
+
+// payload: { floorId, corridorId, name }.
+export const renameCorridor = action(
+  { label: (before, payload) => 'Rename the corridor ' + corridorLabel(before, payload) + ' to ' + payload.name, bumps: [BUILDING], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.renameCorridor(building, payload)),
+);
+
+// payload: { floorId, corridorId }. The cells stay corridor.
+export const removeCorridorName = action(
+  { label: (before, payload) => 'Remove the corridor name ' + corridorLabel(before, payload), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.removeCorridorName(building, payload)),
+);
+
+// ---- exits
+
+function exitLabel(project, payload) {
+  const floor = project.building.floors.find((candidate) => candidate.id === payload.floorId);
+  const exit = floor ? floor.exits.find((candidate) => (payload.exitId !== undefined ? candidate.id === payload.exitId : candidate.cell === payload.cell)) : null;
+  return exit && exit.doorName.trim() !== '' ? 'the exit ' + exit.doorName : 'an exit';
+}
+
+// payload: { floorId, cell } and optionally doorName, assembly, id. Only a
+// corridor cell on the building's edge; anything else is refused with the reason.
+export const markExit = action(
+  { label: (before, payload, after) => 'Mark an exit' + (payload.doorName ? ', ' + payload.doorName + ',' : '') + onFloor(before, payload, after), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload, ctx) => inBuilding(project, (building) => geometry.markExit(building, payload, ctx.ids)),
+);
+
+// payload: { floorId, exitId } and any of { doorName, assembly }.
+export const setExit = action(
+  { label: (before, payload) => 'Edit ' + exitLabel(before, payload), bumps: [BUILDING], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.setExit(building, payload)),
+);
+
+// payload: { floorId } and exitId or cell.
+export const unmarkExit = action(
+  { label: (before, payload) => 'Remove ' + exitLabel(before, payload), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.unmarkExit(building, payload)),
+);
+
+// ---- exclusion zones
+
+// payload: { floorId, x, y, w, h } and optionally label, id.
+export const addZone = action(
+  { label: (before, payload, after) => 'Add an exclusion zone' + onFloor(before, payload, after), bumps: [BUILDING], focus: buildingFocus },
+  (project, payload, ctx) => inBuilding(project, (building) => geometry.addZone(building, payload, ctx.ids)),
+);
+
+// payload: { zoneId } and any of { label, x, y, w, h }.
+export const setZone = action(
+  { label: 'Edit an exclusion zone', bumps: [BUILDING], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.setZone(building, payload)),
+);
+
+export const removeZone = action(
+  { label: 'Remove an exclusion zone', bumps: [BUILDING], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.removeZone(building, payload)),
+);
+
+// ---- resize
+
+// What resizing a floor would cut, before it happens: { width, height, loss,
+// removedRooms, losesData, slots, groups }. loss.spaces lists each room and
+// space removed or cut, with how many of its cells go. payload as resizeFloor.
+export function describeResize(project, payload) {
+  return describing(() => withSlots(project, geometry.describeResize(project.building, payload)));
+}
+
+// Resize a floor from any edge. payload: { floorId } and any of { left,
+// right, top, bottom }: cells added at that edge, or taken away when
+// negative. Call describeResize first and ask when it loses data.
+export const resizeFloor = action(
+  {
+    label: (before, payload, after) => {
+      const outcome = outcomes.get(after);
+      return 'Resize ' + floorName(before, payload.floorId) + (outcome ? ' to ' + outcome.width + ' by ' + outcome.height : '') + replacing(after, 'removing');
+    },
+    bumps: geometryBumps,
+    focus: buildingFocus,
+  },
+  (project, payload) => inBuilding(project, (building) => geometry.resizeFloor(building, payload)),
+);
+
+// ================================================================ SV2-04: the building (end)
