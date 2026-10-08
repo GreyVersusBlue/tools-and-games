@@ -57,6 +57,9 @@ const GROUPS = {
   browser: [
     'browser/shell.mjs',
     'browser/no-offsite.mjs',
+    'browser/draw-pointer.mjs', // SV2-06
+    'browser/draw-keyboard.mjs', // SV2-06
+    'browser/draw-touch.mjs', // SV2-06
     'a11y/axe.mjs',
   ],
   a11y: [
