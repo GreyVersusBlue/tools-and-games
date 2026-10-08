@@ -68,6 +68,7 @@ const GROUPS = {
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
     'browser/worker.mjs', // SV2-16
+    'browser/print.mjs', // SV2-14
     'a11y/axe.mjs',
   ],
   a11y: [

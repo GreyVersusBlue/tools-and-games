@@ -137,4 +137,15 @@ export const SCREENS = [
       await page.waitForSelector('#erase-dialog[open]');
     },
   },
+  { // SV2-14: the print preview sheet, on the checks report
+    id: 'print-preview',
+    hash: '#building',
+    open: async (page) => {
+      await page.evaluate(async () => {
+        const { openPrintPreview } = await import(new URL('ui/components/print-preview.js', location.href).href);
+        await openPrintPreview(globalThis.sv2.ctx, 'checks').ready();
+      });
+      await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
 ];
