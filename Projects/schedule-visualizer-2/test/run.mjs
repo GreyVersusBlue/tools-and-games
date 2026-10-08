@@ -60,6 +60,7 @@ const GROUPS = {
     'publish/baseline.mjs', // SV2-20
     'engine/presets.test.mjs', // SV2-02
     'engine/prints.test.mjs', // SV2-14
+    'engine/grid-edits.test.mjs', // SV2-12
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
