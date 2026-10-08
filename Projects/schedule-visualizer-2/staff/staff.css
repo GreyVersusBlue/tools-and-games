@@ -1,0 +1,882 @@
+/*
+  Schedule Visualizer 2: the staff browser.
+
+  One stylesheet, and the only one a published file carries: the assembler
+  puts this file inside the page with each font below turned into data, so it
+  may name nothing but ../fonts/*.woff2. It imports nothing.
+
+  The tokens are the planner's (ui/tokens.css), copied here because a published
+  file cannot reach that file. test/publish/staff.test.mjs fails when a token
+  here and the token of the same name there differ. The band papers, the bar
+  and the column are this file's own.
+
+  Phone first: 17 px base, every field at 16 px or more, a bar along the bottom
+  that leaves while a field has focus. From 900 px the bar is a rail on the
+  left and a page sits in a 720 px column.
+
+  What a view can use (staff/views.js has the contract):
+
+    .page__body            the article pageOf() returns
+    .page__title           the one headline of the page (pageOf makes it)
+    .lede                  the sentence a page starts with
+    .card  .card__title    a panel; a day type's day is one card
+    .rows  .row            a day, a row a period:
+                           .row__when  .row__what  .row__where   .row--now
+    .chip                  a subject or group mark: a dot in --chip and a word
+    .list  .list__link     a list of links: .list__name  .list__detail
+    .btn  .btn--primary  .btn--wide
+    .field  .field__label  .field__input  .field__says
+    .tabs  .tab            floor tabs, day-type tabs (aria-selected or aria-current)
+    .table                 a plain table
+    .figure                a big number, in the plan face
+    .split                 page and map side by side from 900 px
+    .map                   the frame a floor plan is drawn in
+    .band  .band--stale  .band--note
+    .muted                 secondary text
+    .plan                  text in the plan face (room numbers on a map)
+*/
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/public-sans-latin-400-normal.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/public-sans-latin-600-normal.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/public-sans-latin-700-normal.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(../fonts/barlow-semi-condensed-latin-600-normal.woff2) format("woff2");
+}
+
+/* ---------- Tokens: the same in both themes ---------- */
+
+:root {
+  --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-plan: "Barlow Semi Condensed", "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --numeric: tabular-nums;
+
+  --base: 16px;
+  --base-phone: 17px;
+
+  --t-xs: 0.75rem;    --lh-xs: 1.2;
+  --t-sm: 0.875rem;   --lh-sm: 1.35;
+  --t-md: 1rem;       --lh-md: 1.5;
+  --t-lg: 1.25rem;    --lh-lg: 1.3;
+  --t-xl: 1.75rem;    --lh-xl: 1.15;
+  --t-fig: 2.5rem;    --lh-fig: 1;
+
+  --w-regular: 400;
+  --w-semibold: 600;
+  --w-bold: 700;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  --r-1: 3px;
+  --r-2: 6px;
+
+  --border-width: 1px;
+  --border: var(--border-width) solid var(--line);
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  --dur-1: 120ms;
+  --ease: cubic-bezier(0, 0, 0.2, 1);
+
+  --room-strength: 0.7;
+
+  /* This file's own. */
+  --bar-height: 56px;
+  --rail-width: 88px;
+  --column: 720px;
+  --tap: 44px;
+}
+
+/* ---------- Light ---------- */
+
+:root,
+[data-theme="light"],
+[data-theme="auto"] {
+  color-scheme: light;
+
+  --paper: #f6f3ec;
+  --card: #fffdf8;
+  --ink: #1f2328;
+  --ink-2: #515761;
+  --line: #d8d3c8;
+  --line-strong: #857f73;
+
+  --accent: #0f6e66;
+  --accent-ink: #ffffff;
+  --accent-soft: #d9ece9;
+  --focus: var(--accent);
+
+  --problem: #b3261e;
+  --warning: #925d00;
+  --note: #3b5b8a;
+
+  --grid: #e8e3d8;
+  --corridor: #ffffff;
+  --corridor-edge: var(--line);
+  --stairs: #d9ece9;
+  --room-default: #e9e4d9;
+
+  --shadow: 0 6px 24px rgba(31, 35, 40, 0.18);
+
+  --stale-paper: #f8ebbd;           /* the yellow band of an old copy; --ink on it */
+  --note-paper: #e3eaf4;            /* the band of a quiet notice; --ink on it */
+}
+
+/* ---------- Dark, chosen ---------- */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #15181c;
+  --card: #1d2126;
+  --ink: #e8e6e1;
+  --ink-2: #a9adb4;
+  --line: #343a42;
+  --line-strong: #707a86;
+
+  --accent: #5fc2b8;
+  --accent-ink: #0b1a18;
+  --accent-soft: #163a37;
+  --focus: var(--accent);
+
+  --problem: #ff8a80;
+  --warning: #ffc86b;
+  --note: #8fb4ea;
+
+  --grid: #1a1e23;
+  --corridor: #2a2f36;
+  --corridor-edge: var(--line);
+  --stairs: #163a37;
+  --room-default: #2f343b;
+
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+
+  --stale-paper: #3d3210;
+  --note-paper: #1c2a3d;
+}
+
+/* ---------- Dark, following the device: the same values as the block above ---------- */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]),
+  [data-theme="auto"] {
+    color-scheme: dark;
+
+    --paper: #15181c;
+    --card: #1d2126;
+    --ink: #e8e6e1;
+    --ink-2: #a9adb4;
+    --line: #343a42;
+    --line-strong: #707a86;
+
+    --accent: #5fc2b8;
+    --accent-ink: #0b1a18;
+    --accent-soft: #163a37;
+    --focus: var(--accent);
+
+    --problem: #ff8a80;
+    --warning: #ffc86b;
+    --note: #8fb4ea;
+
+    --grid: #1a1e23;
+    --corridor: #2a2f36;
+    --corridor-edge: var(--line);
+    --stairs: #163a37;
+    --room-default: #2f343b;
+
+    --shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+
+    --stale-paper: #3d3210;
+    --note-paper: #1c2a3d;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+  }
+}
+
+/* ---------- The page ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: var(--base-phone);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  line-height: var(--lh-md);
+  -webkit-tap-highlight-color: transparent;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 0.15em;
+}
+
+:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--r-1);
+}
+
+h1:focus {
+  outline: none;
+}
+
+.icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.muted {
+  color: var(--ink-2);
+}
+
+.plan {
+  font-family: var(--font-plan);
+  font-weight: var(--w-semibold);
+}
+
+.row,
+.table,
+.figure {
+  font-variant-numeric: var(--numeric);   /* where numbers line up, and only there */
+}
+
+.figure {
+  font-family: var(--font-plan);
+  font-weight: var(--w-semibold);
+  font-size: var(--t-fig);
+  line-height: var(--lh-fig);
+}
+
+/* ---------- The frame of an open schedule ---------- */
+
+.app[data-state="open"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));
+}
+
+.app[data-state="open"][data-typing="true"] {
+  padding-bottom: 0;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: max(var(--s-1), env(safe-area-inset-top, 0px)) max(var(--s-4), env(safe-area-inset-right, 0px)) var(--s-1) max(var(--s-4), env(safe-area-inset-left, 0px));
+  border-bottom: var(--border);
+  background: var(--card);
+}
+
+.top__school {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+
+.bands:empty {
+  display: none;
+}
+
+.band {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) max(var(--s-4), env(safe-area-inset-right, 0px)) var(--s-3) max(var(--s-4), env(safe-area-inset-left, 0px));
+  border-bottom: var(--border);
+  border-left: var(--s-1) solid var(--note);
+  background: var(--note-paper);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.band--stale {
+  border-left-color: var(--warning);
+  background: var(--stale-paper);
+}
+
+.band__text {
+  flex: 1;
+}
+
+.band__close {
+  flex: none;
+  min-height: var(--tap);
+  padding: 0 var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: var(--w-semibold);
+  cursor: pointer;
+}
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: var(--s-5) max(var(--s-4), env(safe-area-inset-right, 0px)) var(--s-6) max(var(--s-4), env(safe-area-inset-left, 0px));
+}
+
+.page__body > * + * {
+  margin-top: var(--s-4);
+}
+
+.page__title {
+  font-size: var(--t-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--w-bold);
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  color: var(--ink-2);
+  font-size: var(--t-md);
+}
+
+.page__title + .lede {
+  margin-top: var(--s-2);
+}
+
+.foot {
+  width: 100%;
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: var(--s-4) max(var(--s-4), env(safe-area-inset-right, 0px)) var(--s-5) max(var(--s-4), env(safe-area-inset-left, 0px));
+  border-top: var(--border);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  line-height: var(--lh-sm);
+}
+
+/* ---------- The bar ---------- */
+
+.bar {
+  position: fixed;
+  z-index: 10;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  height: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));
+  padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  border-top: var(--border);
+  background: var(--card);
+}
+
+.app[data-typing="true"] .bar {
+  display: none;
+}
+
+.bar__item {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: var(--tap);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semibold);
+  line-height: var(--lh-xs);
+  text-decoration: none;
+}
+
+.bar__item:focus-visible {
+  outline-offset: calc(0px - var(--focus-width) - 2px);
+}
+
+.bar__item[aria-current="page"] {
+  color: var(--accent);
+}
+
+/* The current item is marked by a rule as well as by colour. */
+.bar__item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 22%;
+  right: 22%;
+  height: 3px;
+  border-radius: 0 0 var(--r-1) var(--r-1);
+  background: var(--accent);
+}
+
+/* ---------- Cards, rows, lists ---------- */
+
+.card {
+  padding: var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.card > * + * {
+  margin-top: var(--s-3);
+}
+
+.card__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--w-semibold);
+}
+
+.rows {
+  border-top: var(--border);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, auto) 1fr auto;
+  gap: var(--s-1) var(--s-3);
+  align-items: baseline;
+  min-height: var(--tap);
+  padding: var(--s-2) 0;
+  border-bottom: var(--border);
+}
+
+.row__when {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.row__what {
+  font-weight: var(--w-semibold);
+}
+
+.row__where {
+  text-align: right;
+}
+
+.row--now {
+  margin: 0 calc(0px - var(--s-2));
+  padding-right: var(--s-2);
+  padding-left: calc(var(--s-2) - var(--s-1));
+  border-left: var(--s-1) solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 2px var(--s-2);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.chip::before {
+  content: "";
+  flex: none;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 2px;
+  background: var(--chip, var(--line-strong));
+}
+
+.list {
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.list > li + li {
+  border-top: var(--border);
+}
+
+.list__link {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: var(--s-2) var(--s-4);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.list__link:focus-visible {
+  outline-offset: calc(0px - var(--focus-width) - 1px);
+  background: var(--accent-soft);
+}
+
+@media (hover: hover) {
+  .list__link:hover {
+    background: var(--accent-soft);
+  }
+}
+
+.list__name {
+  font-weight: var(--w-semibold);
+}
+
+.list__detail {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.results > * + *,
+.more {
+  margin-top: var(--s-5);
+}
+
+.results:empty {
+  display: none;
+}
+
+.results__heading {
+  margin-bottom: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  letter-spacing: 0.08em;
+  line-height: var(--lh-xs);
+  text-transform: uppercase;
+}
+
+.results__count {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.results__count:empty {
+  display: none;
+}
+
+/* ---------- Fields and buttons ---------- */
+
+.field {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.field__label {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.field__input {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: max(16px, 1rem);       /* iOS zooms the page on a smaller field */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field__input:focus-visible {
+  outline-offset: 0;
+}
+
+.field__says {
+  color: var(--problem);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.field__says:empty {
+  display: none;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: var(--s-2) var(--s-4);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: var(--w-semibold);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn--wide {
+  width: 100%;
+  min-height: 48px;
+}
+
+.btn[aria-disabled="true"] {
+  cursor: progress;
+}
+
+/* ---------- Tabs, tables, the map frame ---------- */
+
+.tabs {
+  display: flex;
+  gap: var(--s-1);
+  overflow-x: auto;
+  border-bottom: var(--border);
+}
+
+.tab {
+  flex: none;
+  min-height: var(--tap);
+  padding: var(--s-2) var(--s-4);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-weight: var(--w-semibold);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"],
+.tab[aria-current="page"] {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--s-2);
+  border-bottom: var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--ink-2);
+  font-weight: var(--w-semibold);
+}
+
+.map {
+  position: relative;
+  overflow: hidden;
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--grid);
+  touch-action: pan-y;
+}
+
+/* ---------- The screens that are not a schedule: unlock, refusals ---------- */
+
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: max(var(--s-5), env(safe-area-inset-top, 0px)) max(var(--s-4), env(safe-area-inset-right, 0px)) max(var(--s-5), env(safe-area-inset-bottom, 0px)) max(var(--s-4), env(safe-area-inset-left, 0px));
+}
+
+.gate__card {
+  width: 100%;
+  max-width: 24rem;
+  padding: var(--s-5);
+  border: var(--border);
+  border-top: var(--s-1) solid var(--accent);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.gate__card > * + * {
+  margin-top: var(--s-4);
+}
+
+.gate__title {
+  font-size: var(--t-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--w-bold);
+  letter-spacing: -0.01em;
+}
+
+.gate__title + .lede {
+  margin-top: var(--s-2);
+}
+
+.gate__form {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.gate__foot {
+  padding-top: var(--s-4);
+  border-top: var(--border);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ---------- From a tablet up: 16 px. From 900 px the bar is a rail. ---------- */
+
+@media (min-width: 640px) {
+  html {
+    font-size: var(--base);
+  }
+}
+
+@media (min-width: 900px) {
+  .app[data-state="open"],
+  .app[data-state="open"][data-typing="true"] {
+    padding-bottom: 0;
+    padding-left: var(--rail-width);
+  }
+
+  .bar,
+  .app[data-typing="true"] .bar {
+    top: 0;
+    right: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--s-1);
+    width: var(--rail-width);
+    height: auto;
+    padding: var(--s-4) 0;
+    border-top: 0;
+    border-right: var(--border);
+  }
+
+  .bar__item {
+    flex: none;
+    min-height: 64px;
+  }
+
+  .bar__item[aria-current="page"]::before {
+    top: 18%;
+    right: auto;
+    bottom: 18%;
+    left: 0;
+    width: 3px;
+    height: auto;
+    border-radius: 0 var(--r-1) var(--r-1) 0;
+  }
+
+  .page {
+    padding-top: var(--s-6);
+  }
+
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, var(--column)) minmax(0, 1fr);
+    gap: var(--s-5);
+    align-items: start;
+  }
+
+  .page:has(.split) {
+    max-width: none;
+  }
+}
+
+/* ---------- Paper: the frame is left off. Page layouts are staff/print.css's. ---------- */
+
+@media print {
+  .bar,
+  .bands,
+  .top {
+    display: none;
+  }
+
+  .app[data-state="open"] {
+    padding: 0;
+  }
+}

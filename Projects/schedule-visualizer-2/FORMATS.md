@@ -583,3 +583,105 @@ school is the school name with the characters a file system refuses left out
 (`< > : " / \ | ? *` and control characters), or "Schedule Visualizer 2" when
 the project has no school name. The date is the day of the export on the
 user's device.
+
+## The published data
+
+Format name `sv2-published`, version **1**. Made by `publishedModel(project,
+{ clock })` in `engine/publish-data.js`. It is what the staff browser reads: a
+subset of the project in the project's own shape, so the engine's functions
+run on it unchanged, and `validate` and `repair` accept it.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `format` | text | `"sv2-published"` |
+| `version` | integer | `1` |
+| `id` | id | The project's id. The staff browser keeps a reader's settings under it. |
+| `publishedAt` | date | When it was published, in UTC. Shown in the reader's own time zone. |
+| `staleAfter` | date | `publishedAt` plus the project's `publish.stalenessDays`. After it the staff browser shows a notice and goes on working. |
+| `settings` | object | `schoolName`, `periods`, `periodWord`, `defaultPassingSeconds`, `secondsPerCell`, `secondsPerStair`, `timeFormat`, as in the project. |
+| `building` | object | `floors` and `connections`. A floor has `id`, `name`, `level`, `width`, `height`, `cells`, `spaces`, `corridors`, `exits`. A room and an other space have every field they have in the project. |
+| `subjects` | list | As in the project. |
+| `teachers` | list | As in the project: `id`, `name`, `subjectId`, `roomIds`, `notes`. |
+| `dayTypes` | list | As in the project. |
+| `groups` | list | `id`, `name`, `grade`, `colour`, `days`. |
+| `publish` | object | `views` (one true or false for each view) and `teacherNamesOnMap`. |
+
+Never in it: a group's `headCount`, `settings.defaultHeadCount`, a floor's
+`image`, `building.zones`, `scenario`, `accepted`, `onboarding`,
+`publish.passcode`, `publish.stalenessDays`, `publish.lastPublishedAt`,
+`created`, `modified`, the settings only the planner uses (`colourScale`,
+`checks`, `paper`, `theme`), and anything worked out (routes, loads, travel
+times, findings). The model is built by naming each field that goes in, so a
+field the project gains later is not published until it is named.
+
+Nothing that is named is dropped: a double-booked room, a teacher with two
+rooms and a slot whose room is not in the building are published as they are.
+A view switched off in `publish.views` is hidden by the staff browser; the
+teachers, groups and rooms are all still in the data.
+
+## The locked published data
+
+Format name `sv2-published-locked`, version **1**. Made by `lockPublished` and
+opened by `unlockPublished` and `unlockWithKey` in `engine/publish-crypto.js`.
+When the project has a passcode, this is published in place of the data above.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `format` | text | `"sv2-published-locked"` |
+| `version` | integer | `1` |
+| `schoolId` | id | The project's id. |
+| `publishedAt` | date | As above. It is the one thing about the schedule that can be read without the passcode. |
+| `kdf` | object | `{ name: "PBKDF2", hash: "SHA-256", iterations: 310000, salt }`. `salt` is 16 bytes as base64. |
+| `cipher` | object | `{ name: "AES-GCM", iv }`. `iv` is 12 bytes as base64. |
+| `data` | text | The published data above as JSON in UTF-8, encrypted, with the 16-byte tag at the end, as base64. |
+
+The key is 32 bytes from PBKDF2 over the passcode as UTF-8. The additional
+data of the encryption is the text `sv2-published-locked`, `1`, `schoolId` and
+`publishedAt` on four lines, so a file whose date or school was edited does
+not open. The salt is the first 16 bytes of SHA-256 over
+`sv2-published-salt:` and the school's id, the same for every publish of a
+school; the IV is new for every publish. A reader's device keeps the key, not
+the passcode, so the passcode is asked once per device, and a kept key opens
+every later file published with the same passcode.
+
+## The published file
+
+One HTML file, made by `assemble(read, data)` in `ui/staff/assemble.js` from
+`staff/index.html`. It asks for nothing when opened. Inside it:
+
+- the stylesheet `staff/staff.css` in a `<style>` element, each font it names
+  as a `data:font/woff2;base64,` address;
+- the data in `<script type="application/json" id="sv2-published">`: either
+  format above, as JSON with every `<` written `<` and the characters
+  U+2028 and U+2029 written as escapes;
+- one `<script type="module">` holding the modules listed in
+  `staff/manifest.js`, joined by the linker rule at the top of
+  `ui/staff/assemble.js`.
+
+The file is named `<school> - staff schedule - <date>.html`.
+
+**Reading.** The staff browser (`readPublished` in `staff/source.js`) sorts
+what it finds, in this order:
+
+1. Not an object, or a `format` that is neither of the two above: "This is not
+   a staff schedule. Ask the office for the file again."
+2. A `version` above 1: "This schedule was made for a newer staff browser than
+   the one in this file. Ask the office for a new copy."
+3. A `version` that is not 1, a locked form whose `kdf`, `cipher` or `data` is
+   not as above, or data missing a part the pages need: "This file is damaged:
+   part of it is missing or was changed. Ask the office for a new copy."
+4. A locked form asks for the passcode, unless the device holds a key that
+   opens it. A key that does not open it is deleted and the passcode asked
+   again. A wrong passcode: "That passcode did not open this schedule. Check
+   it and try again."
+
+**On the reader's device**, in localStorage, per school, and never changed:
+`sv2staff:<schoolId>:me`, `:notes`, `:day`, `:key` (the key, base64) and
+`:seen` (the newest `publishedAt` opened there). Where the browser keeps
+nothing, the values last as long as the page is open and the staff browser
+says once: "This browser does not keep settings for files opened this way."
+
+**The recorded baseline.** `test/publish/baseline/` holds the sample school
+published at a fixed clock: `published.json`, `locked.json` and the hashes of
+the file's code in `code.txt`. `node test/publish/baseline.mjs` fails when
+what staff receive differs from it; `--update` records it again, on purpose.

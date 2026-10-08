@@ -1,0 +1,563 @@
+/*
+  Schedule Visualizer 2: print layouts, and the preview sheet that shows them.
+
+  Two parts, kept apart by their first class:
+
+    .print-doc   the root of a print document (ui/prints/document.js). A
+                 document is its own page, shown in the preview sheet's frame
+                 and sent to the printer from there. It loads tokens.css and
+                 this file, and its root carries data-theme="light": paper is
+                 light whatever the screen's theme.
+    .preview     the preview sheet in the planner (ui/components/print-preview.js),
+                 which loads this file once, the first time a preview opens.
+
+  Nothing here styles a bare element outside those two, so loading it in the
+  planner changes nothing else.
+
+  Paper. The sheet's size and orientation are the one rule the document
+  carries itself (<style id="page-size">@page { size: letter portrait; }</style>);
+  the margins and the running footer are here. On screen a .page is drawn as
+  the sheet: --page-w by --page-h (set on the root), padded by the margins.
+*/
+
+/* ---------- The document ---------- */
+
+@page {
+  margin: 12mm 12mm 16mm;
+
+  @bottom-left {
+    content: "Schedule Visualizer 2";
+    font: 400 8pt "Public Sans", system-ui, sans-serif;
+    color: #515761;
+  }
+
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font: 400 8pt "Public Sans", system-ui, sans-serif;
+    color: #515761;
+  }
+}
+
+.print-doc {
+  --sheet: #ffffff;                 /* paper is white, not the screen's cream */
+  font-size: 10pt;
+  background: var(--sheet);
+  color: var(--ink);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-doc body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 10pt;
+  line-height: 1.4;
+  font-variant-numeric: var(--numeric);
+  overflow-wrap: anywhere;
+}
+
+.print-doc .page {
+  break-after: page;
+}
+
+.print-doc .page:last-of-type {
+  break-after: auto;
+}
+
+.print-doc .doc-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 8mm;
+  align-items: baseline;
+  padding-bottom: 2.5mm;
+  margin-bottom: 5mm;
+  border-bottom: 0.5mm solid var(--ink);
+}
+
+.print-doc .doc-head__school {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 9pt;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.print-doc .doc-head__what {
+  margin: 0;
+  font-size: 18pt;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.print-doc .doc-head__date {
+  margin: 0;
+  font-size: 9pt;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* The footer. A browser that prints the page boxes above puts the tool's name
+   and the page number on every sheet, and the preview sheet marks the root so
+   this line is not printed twice. Any other browser prints this line once, at
+   the end. */
+.print-doc .doc-foot {
+  margin-top: 6mm;
+  padding-top: 2mm;
+  border-top: 0.2mm solid var(--line);
+  font-size: 8pt;
+  color: var(--ink-2);
+}
+
+.print-doc h2 {
+  margin: 0 0 1.5mm;
+  font-size: 12pt;
+  line-height: 1.25;
+  font-weight: 700;
+  break-after: avoid;
+}
+
+.print-doc p {
+  margin: 0 0 2.5mm;
+}
+
+.print-doc .doc-lead {
+  font-size: 11pt;
+  max-width: 170mm;
+}
+
+.print-doc .doc-meaning,
+.print-doc .doc-none {
+  color: var(--ink-2);
+  font-size: 9pt;
+  break-after: avoid;
+}
+
+.print-doc .doc-section {
+  margin-top: 6mm;
+}
+
+.print-doc .doc-section:first-child {
+  margin-top: 0;
+}
+
+.print-doc .doc-count {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.print-doc .doc-figures {
+  display: flex;
+  gap: 8mm;
+  margin: 0 0 3mm;
+  padding: 0;
+  list-style: none;
+}
+
+.print-doc .doc-figure {
+  padding-left: 2.5mm;
+  border-left: 1mm solid var(--ink);
+}
+
+.print-doc .doc-figure--problem { border-left-style: solid; }
+.print-doc .doc-figure--warning { border-left-style: double; }
+.print-doc .doc-figure--note { border-left-style: dotted; }
+
+.print-doc .doc-figure__n {
+  font-family: var(--font-plan);
+  font-size: 18pt;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Tables */
+
+.print-doc .doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+.print-doc .doc-table thead {
+  display: table-header-group;      /* the head repeats on every sheet */
+}
+
+.print-doc .doc-table tr {
+  break-inside: avoid;
+}
+
+.print-doc .doc-table th,
+.print-doc .doc-table td {
+  padding: 1.2mm 2mm;
+  border: 0.2mm solid var(--line-strong);
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+
+.print-doc .doc-table thead th {
+  font-size: 8pt;
+  font-weight: 600;
+  background: #f1eee7;
+}
+
+.print-doc .doc-table tbody th {
+  font-weight: 600;
+}
+
+.print-doc .doc-table .is-number {
+  text-align: right;
+}
+
+.print-doc .doc-table .is-missing {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.print-doc .doc-table--findings th:first-child {
+  width: 11mm;
+  white-space: nowrap;
+}
+
+.print-doc .doc-when {
+  width: 34mm;
+  color: var(--ink-2);
+}
+
+/* A finding's reference. The letter says the severity; the edge says it again
+   in shape: solid for a problem, double for a warning, dotted for a note. */
+
+.print-doc .mark {
+  display: inline-block;
+  min-width: 5mm;
+  padding: 0 1mm;
+  font-family: var(--font-plan);
+  font-size: 8pt;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  border: 0.35mm solid currentColor;
+  border-radius: 0.6mm;
+  background: var(--sheet);
+}
+
+.print-doc .mark--problem {
+  color: var(--sheet);
+  background: var(--problem);
+  border-color: var(--problem);
+}
+
+.print-doc .mark--warning {
+  color: var(--warning);
+  border-style: double;
+  border-width: 0.7mm;
+}
+
+.print-doc .mark--note {
+  color: var(--note);
+  border-style: dotted;
+}
+
+.print-doc .marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6mm;
+  margin-top: 0.8mm;
+}
+
+/* The teacher-by-period grid */
+
+/* Anything that starts a new sheet of paper inside a .page. The preview sheet
+   counts these when it says how many sheets a document takes. */
+.print-doc .new-sheet {
+  break-before: page;
+}
+
+.print-doc .doc-grid {
+  table-layout: fixed;
+  font-size: 8pt;
+}
+
+.print-doc .doc-grid th:first-child {
+  width: 26mm;
+}
+
+.print-doc .doc-grid th,
+.print-doc .doc-grid td {
+  padding: 1mm;
+}
+
+.print-doc .doc-grid__time {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.print-doc .doc-grid__group {
+  display: block;
+  font-weight: 600;
+}
+
+.print-doc .doc-grid__room {
+  margin-left: 1mm;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.print-doc .doc-grid__planning {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.print-doc .doc-grid .is-marked {
+  background: #f1eee7;
+  box-shadow: inset 0 0 0 0.5mm var(--ink);
+}
+
+/* The floor plan */
+
+.print-doc .plan-figure {
+  margin: 0;
+  break-inside: avoid;
+}
+
+.print-doc .plan-figure__plan {
+  margin: 0 auto;
+}
+
+.print-doc .plan-figure__caption {
+  margin-top: 3mm;
+  font-size: 9pt;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.print-doc .plan {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-plan);
+}
+
+.print-doc .plan text {
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.print-doc .plan__corridor { fill: var(--corridor); }
+.print-doc .plan__stairs { fill: var(--stairs); }
+
+.print-doc .plan__wall {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 0.6;
+  stroke-linecap: square;
+}
+
+.print-doc .plan__chevron {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+
+.print-doc .plan__letter {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.print-doc .plan__outline {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-linecap: square;
+}
+
+.print-doc .plan__space--other .plan__outline {
+  stroke: var(--line-strong);
+  stroke-width: 0.7;
+}
+
+.print-doc .plan__space--unnumbered .plan__outline {
+  stroke-dasharray: 3 2.5;
+}
+
+.print-doc .plan__number { font-weight: 600; }
+.print-doc .plan__label,
+.print-doc .plan__teacher { font-weight: 500; }
+
+.print-doc .plan__corridor-name {
+  fill: var(--ink-2);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.print-doc .plan__exit {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3.2;
+}
+
+.print-doc .plan__exit-name {
+  fill: var(--accent);
+  font-weight: 600;
+}
+
+.print-doc .plan .plan__exit-name--w { text-anchor: end; }
+.print-doc .plan .plan__exit-name--e { text-anchor: start; }
+
+/* On screen, in the preview's frame: each .page is drawn as its sheet. */
+
+@media screen {
+  .print-doc {
+    background: var(--paper);       /* the desk the sheets lie on */
+  }
+
+  .print-doc body {
+    display: grid;
+    gap: 6mm;
+    justify-items: start;
+    padding: 8px;                   /* the room print-preview.js leaves around the sheets */
+  }
+
+  .print-doc .page {
+    box-sizing: border-box;
+    width: var(--page-w);
+    min-height: var(--page-h);
+    padding: 12mm 12mm 16mm;
+    background: var(--sheet);
+    outline: 1px solid var(--line-strong);
+  }
+
+  .print-doc .doc-foot {
+    display: none;
+  }
+
+  .print-doc .new-sheet {
+    margin-top: 10mm;
+    padding-top: 6mm;
+    border-top: 1px dashed var(--line-strong);   /* where the next sheet starts */
+  }
+}
+
+@media print {
+  .print-doc.has-page-boxes .doc-foot {
+    display: none;
+  }
+}
+
+/* ---------- The preview sheet (in the planner) ---------- */
+
+.preview {
+  width: min(1040px, calc(100vw - var(--s-5)));
+  height: calc(100vh - var(--s-5));
+  max-height: calc(100vh - var(--s-5));
+  padding: 0;
+  background: var(--card);
+  color: var(--ink);
+  border: var(--border, 1px solid var(--line));
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.preview[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.preview::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.preview__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-3) var(--s-5);
+  padding: var(--s-4) var(--s-5) var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.preview__title {
+  flex: 1 1 14rem;
+  margin: 0;
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+}
+
+.preview__control {
+  display: grid;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+}
+
+.preview__label {
+  color: var(--ink-2);
+}
+
+.preview__select {
+  min-height: 2.25rem;
+  padding: 0 var(--s-2);
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-1);
+}
+
+.preview__stage {
+  overflow: auto;
+  padding: var(--s-4);
+  background: var(--paper);
+}
+
+.preview__fit {
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.preview__frame {
+  display: block;
+  border: 0;
+  background: transparent;
+  transform-origin: 0 0;
+}
+
+.preview__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  border-top: 1px solid var(--line);
+}
+
+.preview__status {
+  flex: 1 1 12rem;
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+@media (max-width: 640px) {
+  .preview {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .preview__head,
+  .preview__foot {
+    padding-left: var(--s-3);
+    padding-right: var(--s-3);
+  }
+}

@@ -55,11 +55,18 @@ export const GROUPS = {
     'engine/import-groups.test.mjs', // SV2-10
     'engine/exports.test.mjs', // SV2-10
     'engine/project-file.test.mjs', // SV2-10
+    'engine/publish-data.test.mjs', // SV2-20
+    'engine/publish-crypto.test.mjs', // SV2-20
+    'publish/linker.test.mjs', // SV2-20
+    'publish/manifest.test.mjs', // SV2-20
+    'publish/staff.test.mjs', // SV2-20
+    'publish/baseline.mjs', // SV2-20
     'engine/presets.test.mjs', // SV2-02
     'engine/worker.test.mjs', // SV2-16, moved here from timing/pipeline.mjs by SV2-35
     'engine/runner.test.mjs', // SV2-35
     'engine/import-teachers.test.mjs', // SV2-35
     'engine/finding-ids.test.mjs', // SV2-35
+    'engine/prints.test.mjs', // SV2-14
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
@@ -74,7 +81,10 @@ export const GROUPS = {
     'browser/storage.mjs', // SV2-03
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
+    'browser/schedule.mjs', // SV2-11
     'browser/worker.mjs', // SV2-16
+    'browser/print.mjs', // SV2-14
+    'browser/staff-shell.mjs', // SV2-20
     'a11y/axe.mjs',
   ],
   a11y: [
