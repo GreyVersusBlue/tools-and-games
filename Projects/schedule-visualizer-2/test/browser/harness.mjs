@@ -119,6 +119,13 @@ async function plainPage(browser, { width, height, mobile }) {
 }
 
 // openPlanner({ hash, width, height, theme, mobile, device, keep, intercept })
+//   hash       the address to open; '#building' when none is given. The bare
+//              address is not the same thing: the planner then opens the
+//              section this browser was last on (sv2:device), so a session
+//              that follows a sweep ending on Project would wait for a
+//              Building that never comes. `hash: ''` asks for the bare
+//              address, for a test of exactly that; it waits for Building,
+//              which is where a browser with nothing remembered opens.
 //   theme      'light' or 'dark': what the device prefers (prefers-color-scheme)
 //   device     an object to put in localStorage under sv2:device before the page loads
 //   keep       true: load whatever project this browser has saved (a second tab, a reload)
@@ -149,7 +156,7 @@ export async function openPlanner(options) {
     }, JSON.stringify(opts.device));
   }
   const url = (hash) => server.base + TOOL_PATH + (hash || '');
-  const hash = opts.hash || '';
+  const hash = typeof opts.hash === 'string' ? opts.hash : '#building';
   if (opts.keep !== true) await clearSaved(page, server.base);
   await page.goto(url(hash), { waitUntil: 'load' });
   await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');

@@ -37,6 +37,7 @@ import { createStore } from '../engine/store.js';
 import { createIds } from '../engine/ids.js';
 import { newProject, THEMES } from '../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../engine/publish-defaults.js';
+import { gridEditsPending, watchGridEdits } from './schedule/grid/index.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
@@ -104,7 +105,9 @@ async function boot() {
       icon(each.icon),
       // the rail shows one word; the rest of a longer name is there for a screen reader
       h('span', { class: 'rail__label' }, each.label, each.name.startsWith(each.label + ' ') ? h('span', { class: 'vh' }, each.name.slice(each.label.length)) : null),
-      h('span', { class: 'rail__key', 'aria-hidden': 'true' }, each.key))))));
+      h('span', { class: 'rail__key', 'aria-hidden': 'true' }, each.key),
+      // Schedule carries a dot while the grid holds edits that are not applied
+      each.id === 'schedule' ? h('span', { class: 'rail__dot', hidden: true }, h('span', { class: 'vh' }, ', grid edits not applied')) : null)))));
 
   const schoolText = h('span', { class: 'school__text' });
   const schoolMore = h('span', { class: 'vh' });
@@ -444,6 +447,16 @@ async function boot() {
   shortcuts.add({ id: 'escape', group: 'Dialogs and menus', does: 'Close it, and go back to where you were', shown: 'Esc' });
   shortcuts.add({ id: 'field-enter', group: 'Fields', does: 'Keep what you typed. Leaving the field does the same', shown: 'Enter' });
   shortcuts.add({ id: 'field-escape', group: 'Fields', does: 'Put back what was there', shown: 'Esc' });
+  // The dot on Schedule: the grid's staged edits belong to a project, so it
+  // is drawn again when they change and when another project is opened.
+  const railDot = rail.querySelector('.rail__dot');
+  const drawRailDot = () => {
+    railDot.hidden = !gridEditsPending(store.project.id);
+  };
+  watchGridEdits(drawRailDot);
+  store.subscribe(drawRailDot);
+  drawRailDot();
+
   // A section's own keys, so that Help lists them whichever section is open.
   ctx.shortcuts = shortcuts;
   for (const each of SECTIONS) if (each.start) each.start(ctx);

@@ -244,6 +244,23 @@ kbd {
   font-weight: var(--w-medium);
 }
 
+/* Schedule's dot: the grid holds edits that are not applied. In the corner
+   the digit does not use, ringed so it reads on the active item too. */
+.rail__dot {
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--card);
+}
+
+.rail__dot[hidden] {
+  display: none;
+}
+
 /* The top bar: the school, saving, undo and redo, search, help, the theme. */
 
 .topbar {
