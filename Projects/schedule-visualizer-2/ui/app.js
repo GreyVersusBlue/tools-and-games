@@ -33,6 +33,7 @@ import { createIds } from '../engine/ids.js';
 import { newProject, THEMES } from '../engine/schema.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
+import { startStorage } from '../storage/session.js';
 
 export const TOOL_NAME = 'Schedule Visualizer 2';
 export const SECTIONS = [building, schedule, movement, scenarios, safety, staff, project];
@@ -71,7 +72,7 @@ export function hashForFocus(focus) {
   return '#' + focus.section;
 }
 
-function boot() {
+async function boot() {
   const root = document.getElementById('app');
   const device = readDevice();
   let deviceWarned = false;
@@ -80,8 +81,8 @@ function boot() {
   const ids = createIds(Math.random);
   const devicePaper = () => paperForRegion(navigator.language || 'en-US');
 
-  // Until the storage module arrives the project is the sample school on
-  // every load. The theme is the one thing this device already remembers.
+  // The sample school stands in until storage has looked for a saved project
+  // (below, before anything is drawn), and stays on a device that has none.
   const first = sampleSchool();
   if (THEMES.includes(device.theme)) first.settings.theme = device.theme;
   const store = createStore({ project: first, clock, ids });
@@ -107,7 +108,7 @@ function boot() {
   const schoolButton = h('button', { type: 'button', class: 'school__name', id: 'school-name', title: 'Change the school name' }, schoolText, schoolMore);
   const schoolSlot = h('div', { class: 'school' }, schoolButton);
   const sampleChip = h('a', { class: 'sample-chip', id: 'sample-chip', href: '#project', title: 'This is the sample school. Remove it in the Project section.' }, 'Sample');
-  const saveIndicator = h('span', { class: 'save', id: 'save-indicator', data: { state: 'off' }, title: 'Nothing is kept on this device yet: a reload starts again from the sample school.' }, 'Not saving yet');
+  const saveIndicator = h('span', { class: 'save', id: 'save-indicator', data: { state: 'off' } }, 'Opening…');
   const undoButton = h('button', { type: 'button', class: 'icon-btn', id: 'undo', on: { click: () => undo() } }, icon('undo'));
   const redoButton = h('button', { type: 'button', class: 'icon-btn', id: 'redo', on: { click: () => redo() } }, icon('redo'));
   const searchInput = h('input', { type: 'search', class: 'search__input', id: 'search', placeholder: 'Search', 'aria-label': 'Search rooms, teachers and groups', autocomplete: 'off', spellcheck: 'false' });
@@ -464,6 +465,11 @@ function boot() {
     if (current && current.view.update) current.view.update(now);
   }
 
+  // Storage: the saved project goes into the store before the first draw,
+  // and from here every change is saved (storage/session.js).
+  ctx.storage = startStorage(ctx);
+  await ctx.storage.ready;
+
   store.subscribe(draw);
   window.addEventListener('hashchange', route);
   route();
@@ -471,7 +477,7 @@ function boot() {
   document.documentElement.dataset.ready = 'true';
 
   // For the tests and for the console.
-  globalThis.sv2 = { store, navigate, shortcuts, ctx };
+  globalThis.sv2 = { store, navigate, shortcuts, ctx, storage: ctx.storage };
 }
 
 boot();
