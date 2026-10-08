@@ -292,6 +292,10 @@ test('a circular wait ends with "did not arrive" at the cap', () => {
   const short = run(project, [['g1', '1A', '1C', 6], ['g2', '1B', '1D', 6]], { passingSeconds: 100 });
   assert.equal(short.byId.g1.total, 600, 'never before 600 seconds');
   assert.equal(short.byId.g1.arrived, false);
+
+  // a stopped group is late whatever the margin: here 600 is not more than 100 + 600
+  const forgiving = run(project, [['g1', '1A', '1C', 6], ['g2', '1B', '1D', 6]], { passingSeconds: 100, marginSeconds: 600 });
+  assert.deepEqual([forgiving.byId.g1.total, forgiving.byId.g1.arrived, forgiving.byId.g1.late], [600, false, true]);
 });
 
 test('"did not arrive" reaches the checks as a group-walk finding that says so', () => {
