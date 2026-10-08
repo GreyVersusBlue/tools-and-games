@@ -177,7 +177,22 @@ test('a name with markup or another script goes into the sentence exactly as typ
   const project = planProject([['AA...', 'AA...', '.....', '..###', '.....']], { numbers: { '1A': number }, exits: [[1, 4, 3, 'Door']] });
   project.building.floors[0].name = 'Étage <1>';
   const [finding] = buildingChecks(project);
-  assert.equal(finding.text, 'Room ' + number + ' on Étage <1> touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.');
+  assert.equal(finding.text, number + ' on Étage <1> touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.');
+});
+
+// SV2-36 item 11: the building checks name a room by the one rule
+// (schema.js nameOfRoom), as the schedule checks and the plan's labels do.
+test('a room is named as every other sentence names it: "Gym", never "Room Gym"; "Room 204" once; "a room with no number"', () => {
+  const texts = (number) => {
+    const project = planProject([['AA...', 'AA...', '.....', '..###', '.....']], { numbers: { '1A': number }, exits: [[1, 4, 3, 'Door']] });
+    return buildingChecks(project).filter((finding) => finding.kind === 'room-no-corridor').map((finding) => finding.text);
+  };
+  const rest = ' on Floor 1 touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.';
+  assert.deepEqual(texts('Gym'), ['Gym' + rest]);
+  assert.deepEqual(texts('204'), ['Room 204' + rest]);
+  assert.deepEqual(texts('Room 204'), ['Room 204' + rest]);
+  assert.deepEqual(texts('B12'), ['Room B12' + rest]);
+  assert.deepEqual(texts(''), ['A room with no number' + rest]);
 });
 
 test('the checks are the same run twice, and the same with a graph passed in', () => {

@@ -1,8 +1,22 @@
 // Undo and redo over immutable project states. A history is
 // { past: Entry[], future: Entry[] } and an entry is
-// { label, before, after, focus, bumps }: the project before and after one
-// user action. States share every branch the action left alone, so an entry
-// costs only what changed. These functions never change what they are given.
+//
+//   { label, before, after, focus, bumps, outcome }
+//
+//   label     what the action was, for "Undid: …".
+//   before,   the project before and after one user action. States share
+//   after     every branch the action left alone, so an entry costs only
+//             what changed.
+//   focus     where the change was, so the page can offer to show it.
+//   bumps     which of the store's counters the action moved (geometry,
+//             building, schedule). Undo and redo move the same ones.
+//   outcome   what the action reported about its own run (what a placement
+//             replaced, what an import did), kept so the page reads it here
+//             and never runs an action a second time to find out. Undefined
+//             for an action that reports nothing.
+//
+// The store (store.js) builds the entries; this module only keeps them, and
+// never looks inside one. These functions never change what they are given.
 
 export const HISTORY_LIMIT = 200;
 
