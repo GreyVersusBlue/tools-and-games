@@ -407,11 +407,12 @@ test('the Menu key and Shift+F10 ask for the menu of the cell the cursor is on',
   });
 });
 
-test('Help lists the plan\'s keys', async () => {
-  const rows = await page.evaluate(() => globalThis.sv2.shortcuts.list().filter((row) => row.group === 'Building plan').map((row) => row.keys + ' ' + row.does));
+test('the plan\'s keys are listed for Help to show, one for every tool', async () => {
+  const rows = await page.evaluate(async () => (await import('./ui/building/index.js')).PLAN_KEYS.map((row) => row.shown + ' ' + row.does));
   for (const wanted of ['V The Select tool', 'C The Corridor tool', 'R The Room tool', 'E The Eraser tool', 'H The Pan tool', 'L The Line tool', 'S The Stairs tool', 'O The Other space tool', 'Arrows Move the cursor one cell', 'Shift+Arrows Drag: let go of Shift to finish', 'Space+Arrows Move the map', '0 Fit the plan to the window']) {
-    assert.ok(rows.includes(wanted), 'Help does not list "' + wanted + '"');
+    assert.ok(rows.includes(wanted), 'the list has no "' + wanted + '"');
   }
+  assert.equal(await page.$$eval('.bld-tool', (all) => all.length), rows.filter((row) => / tool$/.test(row)).length);
 });
 
 test('after all of that the page has logged no error', () => {

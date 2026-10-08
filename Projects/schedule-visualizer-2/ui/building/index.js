@@ -61,31 +61,23 @@ const FIRST = 'Draw a corridor, then rooms along it. Give each room its number, 
 const FIRST_EMPTY = 'Draw a corridor, then rooms along it.';
 const KEYS = 'Arrow keys move the cursor one cell. Enter does what a click would. Hold Shift and press the arrows to drag; let go of Shift to finish. Hold Space and press the arrows to move the map. Escape cancels. Page Up and Page Down change floor.';
 
-let helpListed = false;
-
-// The shortcuts of the plan, for the Help list. The plan answers the keys itself.
-function listInHelp() {
-  const shortcuts = globalThis.sv2 && globalThis.sv2.shortcuts;
-  if (helpListed || !shortcuts) return;
-  helpListed = true;
-  const group = 'Building plan';
-  for (const tool of TOOLS) shortcuts.add({ id: 'tool-' + tool.id, group, does: 'The ' + tool.name + ' tool', shown: tool.key.toUpperCase() });
-  const rows = [
-    ['plan-arrows', 'Move the cursor one cell', 'Arrows'],
-    ['plan-enter', 'Do what a click would, with the tool in hand', 'Enter'],
-    ['plan-drag', 'Drag: let go of Shift to finish', 'Shift+Arrows'],
-    ['plan-pan', 'Move the map', 'Space+Arrows'],
-    ['plan-escape', 'Cancel a drag, or select nothing', 'Esc'],
-    ['plan-floors', 'The next floor, and the one before', 'Page Down, Page Up'],
-    ['plan-zoom-in', 'Zoom in', '='],
-    ['plan-zoom-out', 'Zoom out', '-'],
-    ['plan-fit', 'Fit the plan to the window', '0'],
-    ['plan-delete', 'Delete the selected rooms and spaces', 'Delete'],
-    ['plan-copy', 'Copy the selected rooms and spaces', IS_MAC ? '⌘C' : 'Ctrl+C'],
-    ['plan-paste', 'Paste the copy at the cursor, on any floor', IS_MAC ? '⌘V' : 'Ctrl+V'],
-  ];
-  for (const [id, does, shown] of rows) shortcuts.add({ id, group, does, shown });
-}
+// The keys of the plan, for whoever lists shortcuts: the plan answers them
+// itself, so the shell's list does not have them. Help needs them (spec 3.15).
+export const PLAN_KEYS = [
+  ...TOOLS.map((tool) => ({ id: 'tool-' + tool.id, does: 'The ' + tool.name + ' tool', shown: tool.key.toUpperCase() })),
+  { id: 'plan-arrows', does: 'Move the cursor one cell', shown: 'Arrows' },
+  { id: 'plan-enter', does: 'Do what a click would, with the tool in hand', shown: 'Enter' },
+  { id: 'plan-drag', does: 'Drag: let go of Shift to finish', shown: 'Shift+Arrows' },
+  { id: 'plan-pan', does: 'Move the map', shown: 'Space+Arrows' },
+  { id: 'plan-escape', does: 'Cancel a drag, or select nothing', shown: 'Esc' },
+  { id: 'plan-floors', does: 'The next floor, and the one before', shown: 'Page Down, Page Up' },
+  { id: 'plan-zoom-in', does: 'Zoom in', shown: '=' },
+  { id: 'plan-zoom-out', does: 'Zoom out', shown: '-' },
+  { id: 'plan-fit', does: 'Fit the plan to the window', shown: '0' },
+  { id: 'plan-delete', does: 'Delete the selected rooms and spaces', shown: 'Delete' },
+  { id: 'plan-copy', does: 'Copy the selected rooms and spaces', shown: IS_MAC ? '⌘C' : 'Ctrl+C' },
+  { id: 'plan-paste', does: 'Paste the copy at the cursor, on any floor', shown: IS_MAC ? '⌘V' : 'Ctrl+V' },
+];
 
 function facts(project) {
   const f = figures(project);
@@ -779,7 +771,6 @@ export const section = {
     if (document.fonts && document.fonts.load) {
       Promise.all([document.fonts.load('600 12px "Barlow Semi Condensed"'), document.fonts.load('500 12px "Barlow Semi Condensed"')]).then(() => schedule(), () => {});
     }
-    setTimeout(listInHelp, 0);
 
     return {
       element,

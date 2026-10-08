@@ -17,6 +17,28 @@ async function removeSample(page) {
   await page.waitForFunction(() => document.getElementById('sample-chip').hidden);
 }
 
+// SV2-06: the plan is drawn once its own stylesheet has loaded.
+async function planReady(page) {
+  await page.waitForFunction(() => {
+    const section = document.querySelector('.bld');
+    return Boolean(section) && section.dataset.styled === 'true' && section.editor.view.width > 0;
+  });
+}
+
+// SV2-06: click the first room of the floor on screen, with the tool whose key is given.
+async function clickRoom(page, key) {
+  await planReady(page);
+  await page.keyboard.press(key);
+  const at = await page.evaluate(() => {
+    const editor = document.querySelector('.bld').editor;
+    const room = editor.floor.spaces.find((space) => space.kind === 'room');
+    const box = editor.canvas.getBoundingClientRect();
+    const place = editor.view.toScreen((room.cells[0] % editor.floor.width) + 0.5, Math.floor(room.cells[0] / editor.floor.width) + 0.5);
+    return { x: box.left + place.x, y: box.top + place.y };
+  });
+  await page.mouse.click(at.x, at.y);
+}
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -96,6 +118,23 @@ export const SCREENS = [
         location.hash = '#building';
       });
       await page.waitForFunction(() => document.querySelector('.surface__layout').dataset.section === 'building');
+    },
+  },
+  { id: 'building-second-floor', hash: '#building/fsample002', open: planReady }, // SV2-06
+  { // SV2-06
+    id: 'building-room-selected',
+    hash: '#building',
+    open: async (page) => {
+      await clickRoom(page, 'v');
+      await page.waitForSelector('#room-number');
+    },
+  },
+  { // SV2-06
+    id: 'building-eraser-question',
+    hash: '#building',
+    open: async (page) => {
+      await clickRoom(page, 'e');
+      await page.waitForSelector('#erase-dialog[open]');
     },
   },
 ];

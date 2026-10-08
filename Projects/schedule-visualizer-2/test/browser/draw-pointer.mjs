@@ -493,6 +493,24 @@ if (MAIN) {
     await page.keyboard.press('v');
   });
 
+  test('the plan keeps its size whatever the status line says: every tool, the pointer on a cell and off', async () => {
+    const size = () => page.evaluate(() => {
+      const stage = document.querySelector('.bld-stage').getBoundingClientRect();
+      return stage.width + ' by ' + stage.height;
+    });
+    const first = await size();
+    const at = await point(page, 6, 8);
+    for (const key of ['v', 'c', 'r', 'e', 'h', 'l', 's', 'o']) {
+      await page.keyboard.press(key);
+      await page.mouse.move(at.x, at.y);
+      assert.equal(await size(), first, 'the plan changed size with the tool on ' + key);
+      await page.mouse.move(5, 5);
+      assert.equal(await size(), first);
+    }
+    assert.equal(await page.$eval('#plan-hint', (el) => el.scrollHeight <= el.clientHeight + 1), true, 'the status line cuts its sentence short');
+    await page.keyboard.press('v');
+  });
+
   test('a tool letter does nothing while Ctrl, Alt or Meta is held, or while a field has the focus', async () => {
     await page.keyboard.press('v');
     for (const modifier of ['Control', 'Alt', 'Meta']) {
