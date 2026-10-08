@@ -1,0 +1,301 @@
+/*
+  The Grid tab of the Schedule section (DESIGN.md 5.2). Tokens come from
+  ui/tokens.css, shared components from ui/app.css and the section's own from
+  ui/schedule/schedule.css; everything here is prefixed grd-.
+  What colour says here is also said in words or a shape: a staged cell has a
+  corner mark, an unknown room a dotted line, a finding its shape.
+*/
+
+.grd-above,
+.grd-below {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.grd-toolbar__label {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+  color: var(--ink-2);
+}
+
+/* The bar that says edits are waiting. Yellow, with the words doing the work. */
+
+.grd-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: color-mix(in srgb, #ffd43b 28%, var(--card));
+  border: var(--border-width) solid var(--warning);
+  border-radius: var(--r-1);
+  color: var(--ink);
+}
+
+.grd-bar__text {
+  flex: 1 1 16rem;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* The sheet. */
+
+.grd-sheet {
+  position: relative;
+  margin-top: var(--s-3);
+}
+
+.grd-sheet[hidden] {
+  display: none;
+}
+
+.grd-scroll {
+  max-height: min(70vh, 48rem);
+  overflow: auto;
+  scroll-padding-left: 9rem;
+  border: var(--border);
+  border-radius: var(--r-1);
+}
+
+.grd-scroll:focus-visible {
+  outline: var(--focus-width, 2px) solid var(--focus);
+  outline-offset: var(--focus-offset, 2px);
+}
+
+.grd-below > .grd-scroll {
+  margin-top: var(--s-2);
+}
+
+.grd-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.grd-head,
+.grd-cell,
+.grd-grade th {
+  border-right: var(--border);
+  border-bottom: var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.grd-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--s-1) var(--s-2);
+  background: var(--paper);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  color: var(--ink-2);
+  vertical-align: bottom;
+}
+
+.grd-head--period {
+  top: 1.6rem;
+  min-width: 4.5rem;
+}
+
+.grd-head--day,
+.grd-head--first,
+.grd-cell[data-col$=":0"] {
+  border-left: var(--border-width) solid var(--line-strong);
+}
+
+.grd-head--day {
+  height: 1.6rem;
+  color: var(--ink);
+}
+
+.grd-head--name,
+.grd-head--name ~ .grd-head {
+  z-index: 2;
+}
+
+.grd-head--name,
+.grd-cell.grd-cell--name {
+  position: sticky;
+  left: 0;
+}
+
+.grd-head--name {
+  z-index: 3;
+}
+
+.grd-grade th {
+  position: sticky;
+  left: 0;
+  padding: var(--s-2);
+  background: var(--paper);
+  font-weight: var(--w-semibold);
+}
+
+.grd-grade__count {
+  font-weight: var(--w-regular);
+  color: var(--ink-2);
+}
+
+.grd-cell {
+  position: relative;
+  height: 2.25rem;
+  min-width: 4.5rem;
+  max-width: 14rem;
+  padding: 0 var(--s-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--card);
+  font-weight: var(--w-regular);
+  cursor: cell;
+}
+
+.grd-cell--name {
+  z-index: 1;
+  min-width: 9rem;
+  font-weight: var(--w-semibold);
+}
+
+.grd-cell--headCount {
+  text-align: right;
+}
+
+.grd-cell--colour .sch-dot {
+  margin-right: var(--s-1);
+  vertical-align: middle;
+}
+
+.grd-cell--actions {
+  min-width: 0;
+  padding: var(--s-1) var(--s-2);
+  cursor: default;
+}
+
+.grd-cell--read {
+  cursor: default;
+  white-space: normal;
+  min-width: 6rem;
+}
+
+.grd-cell--read.is-free {
+  background: var(--paper);
+}
+
+.grd-cell[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.grd-cell:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.grd-cell[data-editing] {
+  padding: 0;
+  overflow: visible;
+}
+
+/* Staged: a corner, top left. */
+.grd-cell.is-staged::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 4px solid transparent;
+  border-top-color: var(--warning);
+  border-left-color: var(--warning);
+}
+
+/* A room that is not in the building, as it was typed. */
+.grd-cell.is-unknown .grd-cell__text,
+.grd-input.is-unknown {
+  text-decoration: underline dotted var(--ink);
+  text-underline-offset: 3px;
+}
+
+.grd-cell__mark {
+  margin-left: var(--s-1);
+}
+
+.grd-cell[data-severity="problem"] {
+  box-shadow: inset 0 -2px 0 var(--problem);
+}
+
+.grd-cell[data-severity="warning"] {
+  box-shadow: inset 0 -2px 0 var(--warning);
+}
+
+.grd-row.is-removed .grd-cell__text {
+  text-decoration: line-through;
+  color: var(--ink-2);
+}
+
+.grd-tag {
+  margin-left: var(--s-2);
+  padding: 0 var(--s-1);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  font-size: var(--t-xs);
+  font-weight: var(--w-regular);
+  color: var(--ink-2);
+}
+
+.grd-input {
+  display: block;
+  width: 100%;
+  min-width: 4.5rem;
+  height: 2.25rem;
+  padding: 0 var(--s-2);
+  border: 2px solid var(--accent);
+  border-radius: 0;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+.grd-input[aria-invalid="true"] {
+  border-color: var(--problem);
+}
+
+.grd-colour {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-left: var(--s-1);
+  padding: 0;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: none;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.grd-list {
+  right: auto;
+  width: 18rem;
+  max-width: calc(100vw - var(--s-6));
+  margin-top: 0;
+}
+
+.grd-status {
+  min-height: 1.35em;
+  margin-top: var(--s-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  color: var(--ink-2);
+}
+
+@media (pointer: coarse) {
+  .grd-cell,
+  .grd-input {
+    height: 2.75rem;
+  }
+
+  .grd-colour {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+}
