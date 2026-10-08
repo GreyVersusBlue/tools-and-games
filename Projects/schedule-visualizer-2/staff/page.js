@@ -6,7 +6,7 @@ import { h } from './dom.js';
 
 export const NOT_BUILT_SENTENCE = 'This page is not built yet.';
 
-// pageOf('Ms. Halloran', 'Teaches 5 classes.', ...more)
+// pageOf(typed(teacher.name), 'Teaches 5 classes.', ...more)
 // `title` and `lede` are text or nodes; a name somebody typed goes in through
 // typed() from dom.js.
 export function pageOf(title, lede, ...children) {

@@ -250,7 +250,6 @@ body {
   font-family: var(--font-ui);
   font-size: var(--t-md);
   line-height: var(--lh-md);
-  font-variant-numeric: var(--numeric);
   -webkit-tap-highlight-color: transparent;
   overflow-wrap: anywhere;
 }
@@ -301,6 +300,12 @@ h1:focus {
 .plan {
   font-family: var(--font-plan);
   font-weight: var(--w-semibold);
+}
+
+.row,
+.table,
+.figure {
+  font-variant-numeric: var(--numeric);   /* where numbers line up, and only there */
 }
 
 .figure {

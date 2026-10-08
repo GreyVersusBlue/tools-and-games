@@ -115,9 +115,9 @@ export const searchView = {
 
     const more = MORE.filter(([view]) => school.has(view));
     draw();
-    return pageOf(typed(school.name), 'Find a teacher, a group or a room. Type a name, a room number or a subject.',
+    return pageOf('Search', 'Find a teacher, a group or a room.',
       h('div', { class: 'field field--search', role: 'search' },
-        h('label', { class: 'field__label', for: 'find' }, 'Search'),
+        h('label', { class: 'field__label', for: 'find' }, 'Name, room number or subject'),
         input),
       count,
       results,

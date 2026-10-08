@@ -537,6 +537,8 @@ function originOf(win) {
 // The planner's side of the preview (ARCHITECTURE 8): answer the frame's
 // "ready" with the data, and send it again whenever asked. Both sides check
 // who is talking: only this frame's window, only this page's own origin.
+// `getData()` gives what to show (a published model or a locked one), or null
+// while there is nothing yet.
 //
 //   const feed = feedPreview(window, iframe, () => data);
 //   feed.send();   after the project changed
@@ -547,7 +549,10 @@ export function feedPreview(win, frame, getData) {
   let ready = false;
   const send = () => {
     if (!ready || !frame.contentWindow) return false;
-    frame.contentWindow.postMessage({ type: PREVIEW_DATA, data: getData() }, target);
+    const data = getData();
+    // with nothing to show yet the frame is left asking, and is answered when there is
+    if (data === null || data === undefined) return false;
+    frame.contentWindow.postMessage({ type: PREVIEW_DATA, data }, target);
     return true;
   };
   const listen = (event) => {

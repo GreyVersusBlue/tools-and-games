@@ -40,7 +40,7 @@ export function mountShell(root, env) {
   const backend = env.storage || (() => win.localStorage);
 
   let turn = 0; // each show() is a turn; an answer from an earlier turn is dropped
-  let open = null; // { data, school, store, main, bar, bands, notKept }
+  let open = null; // { data, school, store, main, bar, bands, top, foot, notKept }
   let gate = null; // the unlock screen in hand: { schoolId, envelope }
   let firstOpen = true;
 
@@ -158,19 +158,16 @@ export function mountShell(root, env) {
       const main = h('main', { class: 'page', id: 'page' });
       const bands = h('div', { class: 'bands', role: 'region', 'aria-label': 'Notices' });
       const bar = h('nav', { class: 'bar', 'aria-label': 'Sections' });
-      open = { data, school, store, main, bar, bands, notKept: open && open.notKept ? open.notKept : null };
+      const top = h('a', { class: 'top__school', href: '#/search' });
+      const foot = h('p', null);
+      open = { data, school, store, main, bar, bands, top, foot, notKept: open && open.notKept ? open.notKept : null };
       root.dataset.state = 'open';
-      root.replaceChildren(
-        h('header', { class: 'top' }, h('a', { class: 'top__school', href: '#/search' }, typed(school.name))),
-        bands,
-        main,
-        h('footer', { class: 'foot' }, h('p', null, typed(school.name), ' · published ' + momentText(data.publishedAt) + '.')),
-        bar,
-      );
+      root.replaceChildren(h('header', { class: 'top' }, top), bands, main, h('footer', { class: 'foot' }, foot), bar);
     }
     gate = null;
+    open.top.replaceChildren(typed(school.name));
+    open.foot.replaceChildren(typed(school.name), ' · published ' + momentText(data.publishedAt) + '.');
     open.bar.replaceChildren(...BAR.filter((item) => item.shown(school)).map((item) => h('a', { class: 'bar__item', href: item.hash(school), dataset: { item: item.id } }, icon(item.id), h('span', { class: 'bar__label' }, item.label))));
-    root.querySelector('.top__school').replaceChildren(typed(school.name));
 
     drawBands();
     const seen = store.get('seen');
