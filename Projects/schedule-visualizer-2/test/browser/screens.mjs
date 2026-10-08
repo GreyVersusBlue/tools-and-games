@@ -90,6 +90,14 @@ async function clickRoom(page, key) {
   await page.mouse.click(at.x, at.y);
 }
 
+// SV2-07: a tab of the building inspector.
+const inspectorTab = (tab) => async (page) => {
+  await planReady(page);
+  await page.click('#inspector [data-tab="' + tab + '"]');
+  await page.waitForSelector('#inspector-' + tab);
+  await page.waitForFunction(() => document.querySelector('link[data-sheet="building-inspector"]').sheet !== null);
+};
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -340,6 +348,58 @@ export const SCREENS = [
         await openPrintPreview(globalThis.sv2.ctx, 'checks').ready();
       });
       await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
+  { id: 'building-inspector-rooms', hash: '#building', open: inspectorTab('rooms') }, // SV2-07
+  { id: 'building-inspector-floor', hash: '#building', open: inspectorTab('floor') }, // SV2-07
+  { id: 'building-inspector-checks', hash: '#building', open: inspectorTab('checks') }, // SV2-07
+  { id: 'building-inspector-exits', hash: '#building', open: inspectorTab('exits') }, // SV2-07
+  { // SV2-07: an image traced over that this device does not hold
+    id: 'building-trace-image-missing',
+    hash: '#building',
+    open: async (page) => {
+      await inspectorTab('floor')(page);
+      await page.evaluate(async () => {
+        const { setTraceImage } = await import(new URL('ui/building/trace.js', location.href).href);
+        const { store } = globalThis.sv2;
+        store.apply(setTraceImage, { floorId: store.project.building.floors[0].id, image: { imageId: 'iscreen0001', width: 800, height: 600, scale: 0.02, missing: true } });
+      });
+      await page.waitForSelector('#trace-missing:not([hidden])');
+    },
+  },
+  { // SV2-07: the menu of a room cell
+    id: 'building-cell-menu',
+    hash: '#building',
+    open: async (page) => {
+      await clickRoom(page, 'v');
+      await page.focus('#plan');
+      await page.keyboard.down('Shift');
+      await page.keyboard.press('F10');
+      await page.keyboard.up('Shift');
+      await page.waitForSelector('.menu[role="menu"]');
+    },
+  },
+  { // SV2-07: connect mode's banner
+    id: 'building-connect-mode',
+    hash: '#building',
+    open: async (page) => {
+      await planReady(page);
+      await page.evaluate(() => {
+        const editor = document.querySelector('.bld').editor;
+        editor.connect.start({ floorId: editor.floor.id, cell: editor.floor.cells.indexOf('S') });
+      });
+      await page.waitForSelector('#connect-banner:not([hidden])');
+    },
+  },
+  { // SV2-07: what the search box found
+    id: 'search-results',
+    // on Building: the last screen of the list decides where the next session opens
+    hash: '#building',
+    open: async (page) => {
+      await page.waitForSelector('#search[data-search="ready"]');
+      await page.click('#search');
+      await page.keyboard.type('10');
+      await page.waitForSelector('#search-results [role="option"]');
     },
   },
 ];
