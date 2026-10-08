@@ -282,7 +282,7 @@ test('text with a hostile group name: every name a user typed is in the sentence
   project.dayTypes[0].name = 'A "Day" <i>';
   assertValid(project);
   const double = byId(checkSchedule(project, null), DOUBLE_ID);
-  assert.equal(double.text, 'Room <b>203</b> has two groups in Period 2 on A "Day" <i>: ' + hostile + ' and 七年级 C组. One of them needs another room or another period.');
+  assert.equal(double.text, '<b>203</b> has two groups in Period 2 on A "Day" <i>: ' + hostile + ' and 七年级 C组. One of them needs another room or another period.');
 
   const withTeacher = clean();
   const who = teacher(withTeacher, 'Ms. Halloran');

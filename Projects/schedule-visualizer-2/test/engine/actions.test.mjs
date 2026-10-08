@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as actions from '../../engine/actions.js';
 import { validate } from '../../engine/validate.js';
-import { GROUP_COLOUR_PRESETS, defaultSettings } from '../../engine/schema.js';
+import { GROUP_COLOUR_PRESETS, defaultSettings, roomName } from '../../engine/schema.js';
+import * as findings from '../../engine/findings.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
 import { emptyProject, school, ctx, clone, room, group, teacher, assertValid, PINNED } from './helpers.mjs';
 
@@ -840,4 +841,66 @@ test('describeAction carries what a building action and an import reported, and 
   assert.match(told.outcome.spaceId, /^r[a-z0-9]{9}$/);
   const renamed = actions.renameFloor(before, { id: 'fsample001', name: 'Ground' }, ctx());
   assert.equal(info(actions.renameFloor, before, { id: 'fsample001', name: 'Ground' }, renamed).outcome, null);
+});
+
+// ---------------------------------------------------------------- SV2-35: how a room is named
+
+test('roomName: a number that starts with a digit reads "Room 204", in any script', () => {
+  assert.equal(roomName({ number: '204' }, true), 'Room 204');
+  assert.equal(roomName({ number: '12B' }, false), 'Room 12B');
+  assert.equal(roomName({ number: '٢٠٤' }, false), 'Room ٢٠٤', 'Arabic-Indic digits');
+  assert.equal(roomName({ number: '२०४' }, false), 'Room २०४', 'Devanagari digits');
+});
+
+test('roomName: one or two letters and then a digit is a number too: "B12", "A-7", "LL3"', () => {
+  assert.equal(roomName({ number: 'B12' }, false), 'Room B12');
+  assert.equal(roomName({ number: 'A-7' }, false), 'Room A-7');
+  assert.equal(roomName({ number: 'LL3' }, true), 'Room LL3');
+  assert.equal(roomName({ number: 'Б12' }, true), 'Room Б12', 'a Cyrillic letter');
+});
+
+test('roomName: a number that is a word is given as typed, with or without a digit after it', () => {
+  assert.equal(roomName({ number: 'Gym' }, true), 'Gym');
+  assert.equal(roomName({ number: 'Gym 2' }, false), 'Gym 2', 'this used to read "Room Gym 2"');
+  assert.equal(roomName({ number: 'Library' }, false), 'Library');
+  assert.equal(roomName({ number: 'Lab3' }, false), 'Lab3', 'three letters is a word');
+  assert.equal(roomName({ number: ' <i>Lab</i> ' }, false), ' <i>Lab</i> ');
+});
+
+test('roomName: a number that already starts with "room" never gets a second one', () => {
+  assert.equal(roomName({ number: 'Room 204' }, true), 'Room 204');
+  assert.equal(roomName({ number: 'room 204' }, false), 'room 204');
+  assert.equal(roomName({ number: ' ROOM204' }, false), ' ROOM204');
+});
+
+test('roomName: a room with no number says so, and findings.js hands on the very same function', () => {
+  assert.equal(roomName({ number: '' }, true), 'A room with no number');
+  assert.equal(roomName({ number: '  ' }, false), 'a room with no number');
+  assert.equal(roomName(null, false), 'a room with no number');
+  assert.equal(findings.roomName, roomName);
+});
+
+test('the building\'s labels name a room the way sentences do: "Delete Gym", "Edit Room 101", never "Room Gym"', () => {
+  const project = school();
+  const gym = room(project, 'Gym');
+  const deleted = actions.deleteSpaces(project, { spaceIds: [gym.id] }, ctx());
+  assert.equal(info(actions.deleteSpaces, project, { spaceIds: [gym.id] }, deleted).label, 'Delete Gym');
+  const edited = actions.setRoomFields(project, { roomId: 'rsample101', wing: 'North' }, ctx());
+  assert.equal(info(actions.setRoomFields, project, { roomId: 'rsample101', wing: 'North' }, edited).label, 'Edit Room 101');
+  const renumbered = actions.setRoomFields(project, { roomId: 'rsample101', number: 'Room 101' }, ctx());
+  assert.equal(info(actions.addDoor, renumbered, { roomId: 'rsample101' }, renumbered).label, 'Add a door to Room 101', 'not "Room Room 101"');
+  assert.equal(info(actions.setRoomTeachers, project, { roomId: gym.id }, project).label, 'Change the teachers of Gym');
+  assert.equal(info(actions.setRoomTeachers, project, { roomId: 'rsample101' }, project).label, 'Change the teachers of Room 101');
+});
+
+test('a room number in use is refused in a sentence that names the room as it is: "a room called Gym", "a Room 101"', () => {
+  assert.throws(() => actions.setRoomFields(school(), { roomId: 'rsample101', number: ' gym ' }, ctx()), /^ActionError: There is already a room called Gym, on Floor 1\. /);
+  assert.throws(() => actions.setRoomFields(school(), { roomId: 'rsample102', number: '101' }, ctx()), /^ActionError: There is already a Room 101, on Floor 1\. /);
+});
+
+test('what a placement would replace is named the same way', () => {
+  const project = school();
+  const gym = room(project, 'Gym');
+  const described = actions.describeSpaceDelete(project, { spaceIds: [gym.id, 'rsample101'] });
+  assert.deepEqual(described.loss.spaces.map((space) => space.name), ['Room 101', 'Gym']);
 });

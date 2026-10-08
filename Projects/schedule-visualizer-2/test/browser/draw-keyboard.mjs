@@ -321,7 +321,7 @@ test('Select by keys: Enter selects, Shift and the arrows move the room, a drag 
   await page.keyboard.press('Delete');
   now = await state(page);
   assert.equal(now.entries, before + 2);
-  assert.equal(now.label, 'Delete Room Gym <b>2</b>');
+  assert.equal(now.label, 'Delete Gym <b>2</b>');
   for (let i = 0; i < 2; i += 1) {
     await page.keyboard.down('Control');
     await page.keyboard.press('z');

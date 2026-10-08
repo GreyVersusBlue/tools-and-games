@@ -388,7 +388,7 @@ test('a room\'s fields are set one or several at a time, and the number is store
 
 test('a room number already in the building is refused whatever the capitals or spaces, and its own number is not a clash', () => {
   const before = school();
-  refused(actions.setRoomFields, before, { roomId: 'rsample101', number: ' gym ' }, 'duplicate-number', /already a Room Gym, on Floor 1/);
+  refused(actions.setRoomFields, before, { roomId: 'rsample101', number: ' gym ' }, 'duplicate-number', /already a room called Gym, on Floor 1/);
   run(actions.setRoomFields, before, { roomId: 'rsample101', number: ' 101 ' });
   refused(actions.setRoomFields, before, { roomId: 'rsample101', capacity: 1000 }, 'bad-value');
   refused(actions.setRoomFields, before, { roomId: 'rsample101', subjectId: 'snothing00' }, 'missing');

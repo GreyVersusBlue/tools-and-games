@@ -402,6 +402,25 @@ export function resolveSlotRoom(project, slot) {
   return { room: null, text, missing: text !== '' };
 }
 
+// A room as a sentence names it (DESIGN 2). A number reads "Room 204": one
+// that starts with a digit, in any script, or with one or two letters and
+// then a digit ("B12", "A-7", "LL3"). A number that is a word is given as
+// typed ("Gym", "Gym 2", "Library"), and so is one that already starts with
+// "room", so nothing ever reads "Room Gym" or "Room Room 204". A room with no
+// number says so. `start` is for the first word of a sentence. What was typed
+// goes in as it is, never trimmed.
+export function roomName(room, start) {
+  const number = room && typeof room.number === 'string' ? room.number : '';
+  if (number.trim() === '') return start ? 'A room with no number' : 'a room with no number';
+  if (/^\s*room/i.test(number)) return number;
+  return /^\s*(\p{L}{1,2}[-. ]?)?\p{Nd}/u.test(number) ? 'Room ' + number : number;
+}
+
+// roomName under a second name, for a module that exports a `roomName` of
+// its own to hand this one on (findings.js): a module a published file may
+// carry has no re-export and no `as`, so it cannot import the name it exports.
+export const nameOfRoom = roomName;
+
 // The next preset no group uses yet; when all are used, the one used least,
 // earliest first.
 export function nextGroupColour(groups) {

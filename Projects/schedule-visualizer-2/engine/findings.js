@@ -59,7 +59,7 @@
 // An entry may be in any order and may be out of date: one that names a day
 // type, group, teacher or walk the project no longer has is passed over.
 
-import { CHECK_KINDS } from './schema.js';
+import { CHECK_KINDS, nameOfRoom } from './schema.js';
 
 export const SEVERITIES = ['problem', 'warning', 'note'];
 
@@ -185,14 +185,11 @@ export function periodWord(settings, many) {
   return String(settings.periodWord).toLowerCase() + (many ? 's' : '');
 }
 
-// A room as a sentence names it. A number with a digit in it reads "Room
-// 204"; a number that is a name ("Gym", "Library") is given as typed; a room
-// with no number says so. `start` is for the first word of a sentence.
-export function roomName(room, start) {
-  const number = room && typeof room.number === 'string' ? room.number : '';
-  if (number.trim() === '') return start ? 'A room with no number' : 'a room with no number';
-  return /[0-9]/.test(number) ? 'Room ' + number : number;
-}
+// A room as a sentence names it: "Room 204", "Gym", "a room with no number".
+// The rule is schema.js's, so that the building's labels and a published file
+// use it without this module; it is handed on here, the very same function,
+// for the checks and the screens that already ask for it here.
+export const roomName = nameOfRoom;
 
 // Seconds as a length of time: "45 s", "4 min", "4 min 35 s".
 export function formatDuration(seconds) {
