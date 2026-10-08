@@ -69,6 +69,7 @@ export const GROUPS = {
     'engine/prints.test.mjs', // SV2-14
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
+    'ui/building-inspector.test.mjs', // SV2-07
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -78,6 +79,7 @@ export const GROUPS = {
     'browser/draw-pointer.mjs', // SV2-06
     'browser/draw-keyboard.mjs', // SV2-06
     'browser/draw-touch.mjs', // SV2-06
+    'browser/doors-stairs.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
