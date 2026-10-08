@@ -4,16 +4,49 @@
 // corridor, draws a box and selects what it touches. A drag that starts on
 // empty floor moves the map (DESIGN 5.1), and a click there selects nothing.
 //
+// Doors (spec 4.4): a click on an outer edge of the one selected room adds a
+// door there, and a click on a door removes it. An edge that leads nowhere is
+// refused, and the refusal says why. From the keyboard a door is added from
+// the cell's menu.
+//
 // From the keyboard: Enter selects what the cursor is on; Shift and the
 // arrows move it when the cursor is on a space, and draw a box when it is not.
 
-import { moveSpaces } from '../../../engine/actions.js';
-import { moveSpaces as tryMove, BuildingError } from '../../../engine/building.js';
+import { moveSpaces, addDoor, removeDoor } from '../../../engine/actions.js';
+import { moveSpaces as tryMove, BuildingError, SIDE_WORDS } from '../../../engine/building.js';
 import { cellKind } from '../../../engine/schema.js';
 import { count, shiftWords, capital, replaced, nameOf } from './words.js';
 
 // A finger can grab a selection from this far outside it (DESIGN 6).
 export const HANDLE_MARGIN = 40;
+// A click this near an outer edge of the selected room, as a part of a cell
+// (and never under 6 px), is a click on the edge: a door.
+export const DOOR_REACH = 0.22;
+
+// The outer edge of `space` that the pointer is on, or null: { cell, side }.
+export function edgeAt(ed, space, ev) {
+  if (ev.source !== 'pointer' || !space || space.kind !== 'room') return null;
+  const at = ed.view.toCell(ev.sx, ev.sy);
+  const fx = at.x - ev.x;
+  const fy = at.y - ev.y;
+  const reach = Math.max(DOOR_REACH, 6 / ed.view.size);
+  const width = ed.floor.width;
+  const inside = new Set(space.cells);
+  const sides = [
+    { side: 'n', far: fy, outer: !inside.has(ev.index - width) },
+    { side: 's', far: 1 - fy, outer: !inside.has(ev.index + width) },
+    { side: 'w', far: fx, outer: ev.x === 0 || !inside.has(ev.index - 1) },
+    { side: 'e', far: 1 - fx, outer: ev.x === width - 1 || !inside.has(ev.index + 1) },
+  ].filter((each) => each.outer && each.far <= reach).sort((a, b) => a.far - b.far);
+  return sides.length > 0 ? { cell: ev.index, side: sides[0].side } : null;
+}
+
+function toggleDoor(ed, space, edge) {
+  const where = 'on the ' + SIDE_WORDS[edge.side] + ' edge of ' + nameOf(space);
+  const has = space.doors.some((door) => door.cell === edge.cell && door.side === edge.side);
+  if (has) ed.commit(removeDoor, { roomId: space.id, cell: edge.cell, side: edge.side }, { done: () => 'Removed the door ' + where + '.' });
+  else ed.commit(addDoor, { roomId: space.id, cell: edge.cell, side: edge.side }, { done: () => 'Added a door ' + where + '.' });
+}
 
 function names(ed, ids) {
   if (ids.length !== 1) return count(ids.length, 'space');
@@ -63,11 +96,13 @@ export const tool = {
     }
     const grabbed = space || (ev.pointerType === 'touch' && ed.nearSelection(ev.sx, ev.sy, HANDLE_MARGIN) ? 'selection' : null);
     if (grabbed) {
+      // an edge of the room that is already the one selected: a door, if the click ends where it began
+      const edge = space && ed.selection.length === 1 && ed.selection[0] === space.id ? edgeAt(ed, space, ev) : null;
       if (space && !ed.selection.includes(space.id)) {
         ed.select([space.id]);
         ed.say('Selected ' + nameOf(space) + '.');
       }
-      ed.gesture = { mode: 'move', x: ev.x, y: ev.y, ids: ed.selection.slice(), dx: 0, dy: 0 };
+      ed.gesture = { mode: 'move', x: ev.x, y: ev.y, ids: ed.selection.slice(), dx: 0, dy: 0, edge, spaceId: space ? space.id : null };
       return undefined;
     }
     if (keyboard && !ev.shift) {
@@ -100,7 +135,11 @@ export const tool = {
     if (gesture.mode === 'move') {
       const dx = ev.x - gesture.x;
       const dy = ev.y - gesture.y;
-      if (dx === 0 && dy === 0) return;
+      if (dx === 0 && dy === 0) {
+        const room = gesture.edge ? ed.floor.spaces.find((each) => each.id === gesture.spaceId) : null;
+        if (room) toggleDoor(ed, room, gesture.edge);
+        return;
+      }
       ed.commit(moveSpaces, { spaceIds: gesture.ids, dx, dy }, {
         done: (outcome) => 'Moved ' + names(ed, gesture.ids) + ' ' + shiftWords(dx, dy) + replaced(outcome).replace(', replaced ', ', which took away ') + '.',
       });

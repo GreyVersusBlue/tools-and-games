@@ -5,7 +5,7 @@
 //
 // A finding is
 //
-//   { id, kind, severity, text, where, fixable }
+//   { id, kind, severity, text, where, fixable, about }
 //
 //   id        a stable string: the kind, then the ids the finding is about in
 //             a fixed order, joined by ":". The same problem has the same id
@@ -22,6 +22,10 @@
 //             Enough for "Show" to jump to the slot.
 //   fixable   true when a change to the schedule of the kinds in spec 5.8
 //             could clear it, so "Fix…" has something to offer.
+//   about     the ids of who the sentence names, sorted: the groups when it
+//             names groups, else the teachers, else nothing. Accepting a
+//             finding keeps this list, and the acceptance stops counting
+//             when the list is no longer the same (splitAccepted below).
 //
 // The ids, kind by kind (d is a day type id, p a period index from 0):
 //
@@ -33,6 +37,8 @@
 //   room-missing:d:p:<group>           empty-period:d:p:<group>
 //   empty-period:d:<group>             (the group has no room all day)
 //   teacher-multi-room:<teacher>       teacher-room-unused:d:<teacher>:<room>
+//                                      (one a room; of the teachers based
+//                                      there, the one whose id sorts first)
 //   room-unused:d:<room>               room-no-subject:<room>
 //   room-no-teacher:<room>
 //
@@ -42,12 +48,15 @@
 // checks report nothing) or
 //
 //   {
-//     groups:   [{ dayTypeId, groupId, period, total, walking, waiting, late, arrived }],
-//     teachers: [{ dayTypeId, teacherId, period, walking, late }],
+//     groups:   [{ dayTypeId, groupId, period, fromRoomId, toRoomId, passingSeconds, total, walking, waiting, late, arrived }],
+//     teachers: [{ dayTypeId, teacherId, period, fromRoomId, toRoomId, passingSeconds, walking, late }],
 //   }
 //
 //   period    the period walked out of: the walk is from `period` into
 //             `period + 1`.
+//   fromRoomId, toRoomId, passingSeconds   what the figure was worked out
+//             against: the two rooms, and the passing time `late` was decided
+//             with. The sentence prints this passing time.
 //   total, walking, waiting   whole seconds, as the crowd model gives them. A
 //             teacher's walk is the plain walking time, with no crowd.
 //   late      whether it fits the passing time plus the school's margin,
@@ -57,7 +66,10 @@
 //             there; the sentence then says it did not arrive.
 //
 // An entry may be in any order and may be out of date: one that names a day
-// type, group, teacher or walk the project no longer has is passed over.
+// type, group, teacher or walk the project no longer has is passed over, and
+// so is one whose rooms or passing time are not the schedule's and the bells'
+// as they are now. A figure for a walk that has since changed says nothing
+// about the walk there is.
 
 import { CHECK_KINDS, nameOfRoom } from './schema.js';
 
@@ -92,8 +104,12 @@ export function findingId(kind, ...parts) {
   return [kind].concat(parts.map((part) => String(part))).join(':');
 }
 
-export function makeFinding(kind, parts, text, where) {
+// `about` is given by a check whose sentence names more than `where` holds;
+// otherwise it is where's groups, or its teacher when there are none.
+export function makeFinding(kind, parts, text, where, about) {
   const at = where || {};
+  const groupIds = at.groupIds === undefined ? [] : at.groupIds;
+  const named = Array.isArray(about) ? about : groupIds.length > 0 ? groupIds : at.teacherId === undefined || at.teacherId === null ? [] : [at.teacherId];
   return {
     id: findingId(kind, ...parts),
     kind,
@@ -107,6 +123,7 @@ export function makeFinding(kind, parts, text, where) {
       teacherId: at.teacherId === undefined ? null : at.teacherId,
     },
     fixable: FIXABLE_KINDS.includes(kind),
+    about: named.slice().sort(),
   };
 }
 
@@ -132,28 +149,96 @@ export function sortFindings(findings, project) {
   return keyed.map((entry) => entry.finding);
 }
 
-// Sets the accepted findings apart. `findings` keeps the ones that count;
-// `accepted` holds the ones the school has accepted, each with its
-// `accepted: { reason, at }`; `gone` holds the accepted records that match no
-// finding of this run (the thing they were about has been put right, or a
-// check is switched off). Nothing is dropped from the project here.
-export function splitAccepted(findings, acceptedRecords) {
+// Sets the accepted findings apart. Five lists come back, and nothing is
+// dropped from the project here:
+//
+//   findings  the ones that count.
+//   accepted  the ones the school has accepted, each with its
+//             `accepted: { reason, at }`.
+//   changed   accepted records whose finding is still found and now names
+//             somebody else: the record's `about` is not the finding's. The
+//             finding counts again and is in `findings`; the record is here
+//             so the screen can say "changed since accepted". A record with
+//             an empty `about` was made before the list was kept (or is
+//             about nobody) and never reads as changed.
+//   off       accepted records of a kind in `options.off`: the check is
+//             switched off, so nothing can be said about them either way.
+//   gone      accepted records that match no finding of this run: what they
+//             were about has been put right.
+//
+// A record matches the finding with its id. One kind has a second way: a
+// teacher's run of periods is `consecutive:d:p:<teacher>` with p the run's
+// first period, so a run that starts one period later would be a new finding
+// and the acceptance lost. A consecutive record with no finding of its own id
+// is matched to the first run of the same teacher and day that overlaps the
+// accepted one. Only the accepted run's first period is kept, so its extent
+// is taken as the shortest it can have been: `options.limit` + 1 periods from
+// there. `options.runs` is a Map of finding id to { start, end }. The finding
+// is then listed under the id it was accepted as, so taking the acceptance
+// back finds the record. A record accepts one finding, never two.
+function sameIds(a, b) {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
+function recordAbout(record) {
+  return Array.isArray(record.about) ? record.about.filter((id) => typeof id === 'string').sort() : [];
+}
+
+function kindOfId(findingId) {
+  return String(findingId).split(':')[0];
+}
+
+export function splitAccepted(findings, acceptedRecords, options) {
+  const opts = options || {};
+  const off = new Set(Array.isArray(opts.off) || opts.off instanceof Set ? opts.off : []);
+  const runs = opts.runs instanceof Map ? opts.runs : new Map();
+  const limit = Number.isInteger(opts.limit) ? opts.limit : 0;
   const records = new Map();
   for (const record of Array.isArray(acceptedRecords) ? acceptedRecords : []) records.set(record.findingId, record);
+  const foundIds = new Set(findings.map((finding) => finding.id));
+
+  // finding id -> the consecutive record it is accepted under, by overlap
+  const moved = new Map();
+  for (const record of records.values()) {
+    const parts = String(record.findingId).split(':');
+    if (parts[0] !== 'consecutive' || parts.length !== 4 || foundIds.has(record.findingId) || !/^\d+$/.test(parts[2])) continue;
+    const start = Number(parts[2]);
+    const match = findings.find((finding) => {
+      if (finding.kind !== 'consecutive' || records.has(finding.id) || moved.has(finding.id)) return false;
+      if (finding.where.dayTypeId !== parts[1] || finding.where.teacherId !== parts[3]) return false;
+      const run = runs.get(finding.id);
+      return Boolean(run) && run.start <= start + limit && run.end >= start;
+    });
+    if (match) moved.set(match.id, record);
+  }
+
   const open = [];
   const accepted = [];
+  const changed = [];
   const seen = new Set();
   for (const finding of findings) {
-    const record = records.get(finding.id);
-    if (record) {
-      seen.add(finding.id);
-      accepted.push({ ...finding, accepted: { reason: record.reason, at: record.at } });
-    } else {
+    const record = records.get(finding.id) || moved.get(finding.id);
+    if (!record) {
       open.push(finding);
+      continue;
+    }
+    seen.add(record.findingId);
+    const about = recordAbout(record);
+    if (about.length > 0 && !sameIds(about, Array.isArray(finding.about) ? finding.about : [])) {
+      open.push(finding);
+      changed.push(record);
+    } else {
+      accepted.push({ ...finding, id: record.findingId, accepted: { reason: record.reason, at: record.at } });
     }
   }
-  const gone = Array.from(records.values()).filter((record) => !seen.has(record.findingId));
-  return { findings: open, accepted, gone };
+  const rest = Array.from(records.values()).filter((record) => !seen.has(record.findingId));
+  return {
+    findings: open,
+    accepted,
+    changed,
+    off: rest.filter((record) => off.has(kindOfId(record.findingId))),
+    gone: rest.filter((record) => !off.has(kindOfId(record.findingId))),
+  };
 }
 
 // { problem, warning, note } for the counts on the findings panel.

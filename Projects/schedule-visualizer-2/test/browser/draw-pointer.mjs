@@ -280,7 +280,7 @@ if (MAIN) {
 
   test('the tool strip has the tools in order, each with its word and its key, and a divider after Pan', async () => {
     const strip = await page.$$eval('.bld-strip > *', (all) => all.map((el) => (el.getAttribute('role') === 'separator' ? '|' : el.dataset.tool + ':' + el.querySelector('.bld-tool__label').firstChild.textContent + ':' + el.querySelector('.bld-tool__key').textContent)));
-    assert.deepEqual(strip, ['select:Select:V', 'corridor:Corridor:C', 'room:Room:R', 'eraser:Eraser:E', 'pan:Pan:H', '|', 'line:Line:L', 'stairs:Stairs:S', 'other:Other:O']);
+    assert.deepEqual(strip, ['select:Select:V', 'corridor:Corridor:C', 'room:Room:R', 'eraser:Eraser:E', 'pan:Pan:H', '|', 'line:Line:L', 'stairs:Stairs:S', 'other:Other:O', 'name:Name:N', 'exit:Exit:X', 'zone:Leave out:Z']);
     assert.equal(await page.$eval('.bld-strip', (el) => Math.round(el.getBoundingClientRect().width)), 64);
     assert.equal(await page.$$eval('.bld-strip [tabindex="0"]', (all) => all.length), 1, 'the strip is one Tab stop');
     await page.click('.bld-tool[data-tool="room"]');

@@ -403,10 +403,14 @@ test('the Menu key and Shift+F10 ask for the menu of the cell the cursor is on',
   await page.focus('#plan');
   await wholeFloor(page);
   await walk(page, 6, 8);
-  // without a menu to open, nothing happens
+  // the cell's own menu opens (SV2-07), and Escape closes it and gives the plan the focus back
   await page.keyboard.down('Shift');
   await page.keyboard.press('F10');
   await page.keyboard.up('Shift');
+  await page.waitForSelector('.menu[role="menu"]');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$('.menu[role="menu"]'), null, 'Escape left the menu open');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'plan', 'the focus did not go back to the plan');
   await page.evaluate(() => {
     globalThis.asked = [];
     document.querySelector('.bld').editor.menu = (ev) => globalThis.asked.push([ev.x, ev.y, ev.source]);

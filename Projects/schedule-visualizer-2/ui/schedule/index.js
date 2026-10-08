@@ -30,7 +30,7 @@ import { periodWords } from '../components/words.js';
 import { scheduleModel } from './model.js';
 import { findingsPanel } from './checks.js';
 import { mount as groups } from './groups.js';
-import { mount as grid } from './grid/index.js';
+import { mount as grid, GRID_KEYS } from './grid/index.js';
 import { mount as teachers } from './teachers.js';
 import { mount as subjects } from './subjects.js';
 import { mount as day } from './day.js';
@@ -47,8 +47,8 @@ export const SCHEDULE_TABS = [
   { id: 'import', label: 'Import', mount: importTab },
 ];
 
-// The section's own stylesheet, asked for once. (A line in index.html beside
-// ui/app.css would load it before the first draw.)
+// The section's own stylesheet. index.html links it (with data-sheet, which
+// is how it is found here), so this adds it only on a page that does not.
 const SHEET = new URL('./schedule.css', import.meta.url).href;
 function loadSheet() {
   if (document.querySelector('link[data-sheet="schedule"]')) return;
@@ -91,6 +91,11 @@ export const section = {
   name: 'Schedule',
   key: '2',
   icon: 'schedule',
+  // Once, before anything is mounted: the grid's keys go on the shell's list,
+  // so Help has them whichever section is open.
+  start(ctx) {
+    for (const key of GRID_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Schedule grid', does: key.does, shown: key.shown });
+  },
   mount(ctx, rest) {
     loadSheet();
     watchPointer();

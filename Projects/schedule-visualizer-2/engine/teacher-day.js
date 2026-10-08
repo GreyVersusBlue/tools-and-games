@@ -14,7 +14,7 @@
 // module is one of those a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
-import { findRoom, findById } from './schema.js';
+import { findRoom, findById, roomNumberKey } from './schema.js';
 import { effectiveSchedule, findDayType } from './day-types.js';
 
 // The teachers a slot counts for, by the rule above. Ids as stored; the
@@ -27,10 +27,11 @@ export function slotTeacherIds(project, slot) {
 }
 
 // Every teacher's day on day type D in one pass: a Map of teacher id to one
-// entry per period, { period, groups: [{ groupId, roomId }], kind }, where
-// kind is "teaching" or "planning". Groups are in the school's own order.
-// roomId is null when the slot's room is not in the building. Null when D is
-// not a day type of this project.
+// entry per period, { period, groups: [{ groupId, roomId, roomText }], kind },
+// where kind is "teaching" or "planning". Groups are in the school's own
+// order. When the slot's room is not in the building roomId is null and
+// roomText is the number the slot kept; otherwise roomText is "". Null when D
+// is not a day type of this project.
 export function teacherDays(project, dayTypeId) {
   if (!findDayType(project, dayTypeId)) return null;
   const periods = project.settings.periods;
@@ -47,12 +48,13 @@ export function teacherDays(project, dayTypeId) {
       const teacherIds = slotTeacherIds(project, slot);
       if (teacherIds.length === 0) continue;
       const roomId = slot.room && findRoom(project, slot.room) ? slot.room : null;
+      const roomText = roomId === null && typeof slot.roomText === 'string' ? slot.roomText : '';
       for (const teacherId of teacherIds) {
         const day = days.get(teacherId);
         if (!day) continue;
         const entry = day[period];
         if (entry.groups.some((taught) => taught.groupId === group.id)) continue;
-        entry.groups.push({ groupId: group.id, roomId });
+        entry.groups.push({ groupId: group.id, roomId, roomText });
         entry.kind = 'teaching';
       }
     }
@@ -76,6 +78,25 @@ export function entryRoomIds(entry) {
     if (taught.roomId !== null && !roomIds.includes(taught.roomId)) roomIds.push(taught.roomId);
   }
   return roomIds;
+}
+
+// The places a teacher is in during one period, in the order met: each room
+// in the building once, and each room that is not in the building once, told
+// apart by the number its slots kept (compared the way room numbers are, so
+// "204" and " 204" are one place). Each is { roomId, roomText, groupIds };
+// roomId is null for a room that is not in the building. A slot with no room
+// and no number is nowhere, and adds nothing. Two or more places in one
+// period is what "a teacher in two rooms" means.
+export function entryPlaces(entry) {
+  const places = new Map();
+  for (const taught of entry.groups) {
+    const text = typeof taught.roomText === 'string' ? taught.roomText : '';
+    if (taught.roomId === null && roomNumberKey(text) === '') continue;
+    const key = taught.roomId === null ? 'text:' + roomNumberKey(text) : 'room:' + taught.roomId;
+    if (!places.has(key)) places.set(key, { roomId: taught.roomId, roomText: taught.roomId === null ? text : '', groupIds: [] });
+    places.get(key).groupIds.push(taught.groupId);
+  }
+  return Array.from(places.values());
 }
 
 // The walks in a teacher's day: from one period straight into the next, when

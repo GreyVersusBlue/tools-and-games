@@ -41,6 +41,7 @@
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
 import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel } from './schema.js';
+import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { createIds, seededRandom, collectIds, isId } from './ids.js';
 
 const FALLBACK_DATE = '1970-01-01T00:00:00.000Z';
@@ -807,12 +808,20 @@ export function repair(input, options) {
     const renamedParts = new Map();
     for (const map of Object.values(renamed)) for (const [from, to] of map) renamedParts.set(from, renamedParts.has(from) ? null : to);
     const followFinding = (findingId) => (renamedParts.size === 0 ? findingId : findingId.split(':').map((part) => (renamedParts.get(part) ? renamedParts.get(part) : part)).join(':'));
+    // `about` is who the finding named when it was accepted. A record made
+    // before the list was kept has none and gets the empty default, which
+    // never reads as changed; that is not worth a note. The ids follow a
+    // renamed thing as the finding's own id does.
+    const followAbout = (about) => about.filter((id) => typeof id === 'string').map((id) => (renamedParts.get(id) ? renamedParts.get(id) : id)).sort();
+    const aboutIsKept = (about) => Array.isArray(about) && about.every((id, index) => typeof id === 'string' && !renamedParts.get(id) && (index === 0 || about[index - 1] <= id));
     project.accepted = keptAccepted.map((raw) => {
       const findingId = followFinding(raw.findingId);
-      if (typeof raw.reason === 'string' && isIsoDate(raw.at) && findingId === raw.findingId) return raw;
+      if (typeof raw.reason === 'string' && isIsoDate(raw.at) && findingId === raw.findingId && aboutIsKept(raw.about)) return raw;
       const entry = { ...raw, findingId };
       text(entry, 'reason', '', 'The reason on an accepted finding');
       if (!isIsoDate(entry.at)) entry.at = now;
+      if (raw.about !== undefined && !Array.isArray(raw.about)) note('Who an accepted finding was about could not be read and was cleared.');
+      if (!aboutIsKept(raw.about)) entry.about = Array.isArray(raw.about) ? followAbout(raw.about) : [];
       return entry;
     });
     if (Array.isArray(source.accepted) && project.accepted.length === source.accepted.length && project.accepted.every((entry, i) => entry === source.accepted[i])) project.accepted = source.accepted;
@@ -858,7 +867,7 @@ export function repair(input, options) {
     }
 
     // ---- publish settings
-    const publishDefaults = defaultPublish();
+    const publishDefaults = defaultPublish(DEFAULT_PASSCODE);
     if (source.publish !== undefined && !isObject(source.publish)) note('The publish settings could not be read and were reset.');
     const publish = isObject(source.publish) ? { ...source.publish } : {};
     project.publish = publish;

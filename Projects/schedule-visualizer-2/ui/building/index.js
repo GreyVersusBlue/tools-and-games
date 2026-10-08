@@ -11,9 +11,14 @@
 // Where a later unit plugs in:
 //   ui/surface/tools/index.js   the list of tools; the strip draws what is there
 //   ed.menu = (ev) => {}        the menu for a cell: right-click, long-press,
-//                               the Menu key and Shift+F10 all call it
-//   ed.underlay, ed.overlays    drawn under and over the plan (a traced image)
+//                               the Menu key and Shift+F10 all call it (./menu.js)
+//   ed.underlay, ed.overlays    drawn under and over the plan (./trace.js draws
+//                               the traced image; connect mode and "Show me"
+//                               each lay a mark over the plan)
 //   ./inspector.js              the panel on the right
+//   ed.show(where)              bring a room or cells onto the plan and mark
+//                               them (./search.js); #building/f…?room=r… does
+//                               the same from an address
 // The editor of the section on screen is at document.querySelector('.bld').editor.
 
 import { h } from '../components/dom.js';
@@ -30,6 +35,10 @@ import { toolStrip } from './strip.js';
 import { floorTabs } from './floors.js';
 import { statusLine } from './status.js';
 import { buildingInspector } from './inspector.js';
+import { buildingMenu } from './menu.js';
+import { createConnect } from './connect.js';
+import { createTrace } from './trace.js';
+import { createFinder, parseBuildingRest } from './search.js';
 import { ActionError, addFloor, deleteSpaces, pasteSpaces, describeSpaceDelete } from '../../engine/actions.js';
 import { counts, describeCell, copySpaces, isLoss } from '../../engine/building.js';
 import { buildingChecks } from '../../engine/building-checks.js';
@@ -145,7 +154,6 @@ export const section = {
     const strip = toolStrip({ tools: TOOLS, pick: (id) => setTool(id) });
     const status = statusLine({ zoomIn: () => zoomBy(ZOOM_STEP), zoomOut: () => zoomBy(1 / ZOOM_STEP), fit: () => fit() });
     const tabs = floorTabs({ panelId: 'plan', open: (id) => ctx.navigate('#building/' + id), add: () => addAFloor() });
-    const inspector = buildingInspector({ store, toSurface: () => toSurface() });
     const stage = h('div', { class: 'bld-stage' }, canvas, card);
     const element = h('div', { class: 'bld', data: { styled: 'false' } }, intro, strip.element, stage, status.element);
 
@@ -197,6 +205,12 @@ export const section = {
       // the fit follows the window: the same part of the floor, at the new size
       if (fitted && fitBox) view.fit(fitBox);
       settle();
+      // the room the address asked for, now that the plan has a size
+      if (asked && !needsFit) {
+        const where = asked;
+        asked = null;
+        finder.show(where);
+      }
       drawNow();
     }
 
@@ -370,6 +384,25 @@ export const section = {
         ed.select([spaceId]);
         if (ev.pointerType !== 'touch') inspector.focusNumber();
       },
+      // The same for a new exit's door name and a new left-out area's label.
+      markedExit(exitId, ev) {
+        if (ev.pointerType !== 'touch') inspector.focusExit(exitId);
+      },
+      placedZone(zoneId, ev) {
+        if (ev.pointerType !== 'touch') inspector.focusZone(zoneId);
+      },
+      // Another floor, at once, with the address following (Back returns).
+      openFloor(id) {
+        if (!project.building.floors.some((each) => each.id === id) || id === floor.id) return;
+        history.pushState(null, '', '#building/' + id);
+        showFloor(id, true);
+      },
+      // Bring a place on the floor (in cells) to the middle of the window.
+      centreOn(x, y) {
+        const at = view.toScreen(x, y);
+        view.panBy(view.width / 2 - at.x, view.height / 2 - at.y);
+        viewChanged();
+      },
       // Is this place on the canvas within `margin` pixels of the selection's box?
       nearSelection(sx, sy, margin) {
         if (selection.length === 0) return false;
@@ -394,6 +427,23 @@ export const section = {
       },
     };
     element.editor = ed;
+
+    // ------------------------------------------------------------ the inspector, the menu, finding
+
+    const trace = createTrace(ed, ctx);
+    const connect = createConnect(ed, { stage });
+    const finder = createFinder(ed);
+    const inspector = buildingInspector({ ctx, store, editor: () => ed, trace, show: finder.show, toSurface: () => toSurface() });
+    ed.underlay = trace.underlay;
+    ed.overlays.push(connect.overlay, finder.overlay);
+    ed.menu = buildingMenu(ed, { connect: () => connect, inspector: () => inspector });
+    ed.show = finder.show;
+    ed.finder = finder;
+    ed.inspector = inspector;
+    ed.connect = connect;
+    ed.trace = trace;
+    // the room an address asked for (#building/f…?room=r…), until the plan has a size
+    let asked = null;
 
     // ------------------------------------------------------------ the tool in hand
 
@@ -424,6 +474,7 @@ export const section = {
       down(ev) {
         lastSource = ev.source;
         dismissCard();
+        finder.clear();
         if (ev.source === 'pointer') {
           cursor.moveTo(ev.x, ev.y, false);
           hover = null;
@@ -470,6 +521,11 @@ export const section = {
         schedule();
       },
       escape() {
+        if (finder.marked) {
+          finder.clear();
+          say('The mark is off the plan.');
+          return true;
+        }
         if (tool.onLeave && tool.onLeave(ed)) {
           preview = null;
           say('Cancelled. Nothing was changed.');
@@ -584,6 +640,8 @@ export const section = {
       observer.disconnect();
       input.detach();
       cursor.detach();
+      trace.detach();
+      connect.detach();
     }
 
     document.addEventListener('keydown', onDocumentKey);
@@ -648,6 +706,7 @@ export const section = {
       const next = project.building.floors.find((each) => each.id === id);
       if (!next || (floor && next.id === floor.id)) return;
       if (tool && tool.onLeave) tool.onLeave(ed);
+      trace.stopMoving();
       input.reset();
       cursor.reset();
       ed.gesture = null;
@@ -735,7 +794,8 @@ export const section = {
         floor = floors.find((each) => each.id === floor.id);
       }
       // the address no longer names a floor of this building
-      if (location.hash.startsWith('#building/') && !floors.some((each) => '#building/' + each.id === location.hash)) history.replaceState(null, '', '#building');
+      if (location.hash.startsWith('#building/') && !floors.some((each) => '#building/' + each.id === location.hash.split('?')[0])) history.replaceState(null, '', '#building');
+      connect.update(project);
       refresh();
     }
 
@@ -744,7 +804,9 @@ export const section = {
     ctx.setSecondRow(tabs.element);
     ctx.setInspector(inspector.element);
 
-    const named = project.building.floors.find((each) => each.id === String(rest || '').split('/')[0]);
+    const addressed = parseBuildingRest(rest);
+    const named = project.building.floors.find((each) => each.id === addressed.floorId);
+    if (addressed.roomId) asked = { floorId: addressed.floorId, roomId: addressed.roomId };
     if (memory.projectId === project.id) {
       floor = named || project.building.floors.find((each) => each.id === memory.floorId) || project.building.floors[0];
       memory.floorId = floor.id;
@@ -775,9 +837,11 @@ export const section = {
       element,
       update,
       // #building/f…: that floor. #building alone keeps the floor on screen.
+      // #building/f…?room=r…: that room, in the middle of the plan and marked.
       route(next) {
-        const id = String(next || '').split('/')[0];
-        if (id !== '') showFloor(id);
+        const wanted = parseBuildingRest(next);
+        if (wanted.floorId !== '') showFloor(wanted.floorId);
+        if (wanted.roomId) finder.show({ floorId: floor.id, roomId: wanted.roomId });
         return true;
       },
       unmount,

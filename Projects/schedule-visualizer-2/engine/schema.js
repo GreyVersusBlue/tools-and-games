@@ -64,7 +64,6 @@ export const CELL_STAIRS = 'S';
 export const DEFAULT_FLOOR_WIDTH = 40;
 export const DEFAULT_FLOOR_HEIGHT = 30;
 export const DEFAULT_OTHER_COLOUR = '#9aa3ad';
-export const DEFAULT_PASSCODE = 'bulldogs2015';
 export const DEFAULT_DAY_TYPE_NAMES = ['A Day', 'B Day'];
 
 const BASE_GROUP_COLOURS = ['#d1495b', '#0072b2', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#8c6d31', '#7b4ea3', '#f0e442', '#999999'];
@@ -171,16 +170,29 @@ export function defaultSettings() {
   };
 }
 
-export function defaultPublish() {
+// The publish settings a project starts with. `passcode` is the caller's:
+// the planner hands over the tool's default from publish-defaults.js. This
+// module knows no passcode, because a published file carries its source;
+// with none handed over protection is off, which is a state a project can
+// be in.
+export function defaultPublish(passcode) {
   const views = {};
   for (const view of PUBLISH_VIEWS) views[view] = true;
   return {
-    passcode: DEFAULT_PASSCODE,
+    passcode: typeof passcode === 'string' ? passcode : '',
     stalenessDays: 60,
     views,
     teacherNamesOnMap: true,
     lastPublishedAt: null,
   };
+}
+
+// An accepted finding as the project keeps it. `about` is who the finding
+// named when it was accepted: group ids, or teacher ids, sorted. An empty
+// list is the default, and means the list was not kept (a record made before
+// it was) or the finding names nobody; such a record never reads as changed.
+export function newAcceptedFinding(findingId, reason, at, about) {
+  return { findingId, reason, at, about: Array.isArray(about) ? about.slice().sort() : [] };
 }
 
 export function defaultOnboarding() {
@@ -248,7 +260,8 @@ export function newDayType(id, name, own, periods) {
 // newProject(ids, clock) is a valid empty project: one floor of 40 by 30, an
 // A Day and a B Day that is the same as A Day, the starter subjects, and the
 // settings of spec 16. `options.paperSize` is how the page passes the device's
-// region; `options.subjects` replaces the starter list.
+// region; `options.subjects` replaces the starter list; `options.passcode` is
+// the staff passcode the project starts with (none, and protection is off).
 export function newProject(ids, clock, options) {
   const opts = options || {};
   const now = clock().toISOString();
@@ -276,7 +289,7 @@ export function newProject(ids, clock, options) {
     ],
     accepted: [],
     scenario: null,
-    publish: defaultPublish(),
+    publish: defaultPublish(opts.passcode),
     onboarding: defaultOnboarding(),
   };
 }

@@ -245,8 +245,12 @@ slots that named it to `{ room: null, roomText: <its number> }`.
 
 ### AcceptedFinding
 
-`{ findingId, reason, at }`. `findingId` is the finding's id, built from its
-kind and the ids it is about. `reason` is text. `at` is a date.
+`{ findingId, reason, at, about }`. `findingId` is the finding's id, built from
+its kind and the ids it is about. `reason` is text. `at` is a date. `about` is
+the sorted list of group ids, or teacher ids, the finding named when it was
+accepted. When the finding later names somebody else the acceptance stops
+counting and the record is listed as changed. An empty list, the default for a
+record written before the field existed, never reads as changed.
 
 ### Scenario
 
@@ -554,6 +558,63 @@ label and loses the teachers that were named for the old room. Periods and
 day types the file has no column for are untouched.
 
 The import is `actions.importGroups`, one undo entry.
+
+## The teachers CSV
+
+Read by `engine/import-teachers.js`, written by `engine/exports.js`
+(`teachersRows`). CSV as `engine/csv.js` reads and writes it. The file the
+tool writes is the file it reads: export the teachers, change the file in a
+spreadsheet, and import it.
+
+**What the tool writes.** UTF-8 with a byte-order mark, CRLF line endings.
+The first row is the header, then one row per teacher in the list's order:
+
+```
+Teacher,Subject code,Subject,Rooms,Notes
+```
+
+| Column | Holds |
+|---|---|
+| Teacher | The teacher's name, exactly as typed. |
+| Subject code | The code of the teacher's subject, or empty. |
+| Subject | The name of that subject, or empty. |
+| Rooms | The numbers of the rooms the teacher is based in, joined by "; ", main room first. A room with no number is an empty entry. |
+| Notes | The teacher's notes. |
+
+**What the tool reads.** The columns are found by their headers, in any order,
+whatever the capitals, with spaces, hyphens and underscores read alike. There
+is no mapping step. A column the file does not have changes nothing.
+
+| Column | Headers that are read as it |
+|---|---|
+| Teacher | Teacher, Teachers, Teacher name, Name |
+| Subject code | Subject code, Code |
+| Subject | Subject, Subject name, Department |
+| Rooms | Rooms, Room, Home room, Home rooms |
+| Notes | Notes, Note |
+
+Only the name column is needed. A file with no rows, or with no column headed
+as a name, is refused and nothing changes. Otherwise, row by row:
+
+- A row is matched to a teacher on the list by name, without regard to
+  capitals or surrounding spaces, and the teacher keeps the name the list
+  has. A name that is not on the list is a new teacher, with the name exactly
+  as the file has it.
+- A subject is found by its code, else by its name, compared the same way. A
+  subject that is not on the subject list is left out, and the row says so.
+- "Rooms" is room numbers separated by semicolons. Each is matched to the
+  building without regard to capitals or surrounding spaces. A number that is
+  not in the building is left out, and the row says so.
+- Nothing is deleted. A teacher who is not in the file stays. An empty cell
+  changes nothing. The rooms in the file are added to the rooms the teacher
+  already has and never taken from them. A subject or notes in the file take
+  the place of what the teacher had.
+- A blank row, a row with no name, the header row repeated, and a second row
+  for a name already seen in the file are skipped.
+
+The import is `actions.importTeachers`, one undo entry, labelled with what it
+did ("1 teacher added, 1 teacher updated, 1 teacher left unchanged"). A file that changes
+nothing makes no entry.
 
 ## The subjects CSV
 

@@ -12,8 +12,11 @@ import { tool as pan } from './pan.js';
 import { tool as line } from './line.js';
 import { tool as stairs } from './stairs.js';
 import { tool as other } from './other.js';
+import { tool as name } from './name.js';
+import { tool as exit } from './exit.js';
+import { tool as zone } from './zone.js';
 
-export const TOOLS = [select, corridor, room, eraser, pan, line, stairs, other];
+export const TOOLS = [select, corridor, room, eraser, pan, line, stairs, other, name, exit, zone]; // SV2-07: name, exit, zone
 
 export function toolById(id) {
   return TOOLS.find((tool) => tool.id === id) || null;

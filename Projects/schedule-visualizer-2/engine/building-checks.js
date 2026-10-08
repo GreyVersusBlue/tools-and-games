@@ -13,7 +13,7 @@
 // graph too: a room has a route to an exit exactly when one of the cells it
 // is entered through can reach an exit cell.
 
-import { roomNumberKey, CELL_STAIRS, neighbourCell, DOOR_SIDES } from './schema.js';
+import { roomNumberKey, CELL_STAIRS, neighbourCell, DOOR_SIDES, nameOfRoom } from './schema.js';
 import { buildGraph, reachable, components } from './graph.js';
 import { findingId } from './findings.js';
 
@@ -31,14 +31,6 @@ export const BUILDING_CHECK_KINDS = [
 ];
 
 const SIDE_WORDS = { n: 'north', e: 'east', s: 'south', w: 'west' };
-
-function roomName(room) {
-  return room.number.trim() === '' ? 'an unnumbered room' : 'Room ' + room.number;
-}
-
-function capital(text) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 function list(parts) {
   if (parts.length <= 1) return parts.join('');
@@ -88,12 +80,12 @@ export function buildingChecks(project, graph) {
     const entry = g.rooms.get(room.id);
     const where = { floorId: floor.id, roomId: room.id, cells: room.cells };
     if (entry.doors === 0 && entry.entries.length === 0) {
-      add('room-no-corridor', 'problem', [room.id], capital(roomName(room)) + ' on ' + floor.name + ' touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.', where);
+      add('room-no-corridor', 'problem', [room.id], nameOfRoom(room, true) + ' on ' + floor.name + ' touches no corridor or stairs, so nobody can walk to it or from it. Paint a corridor up to one of its sides.', where);
     } else if (entry.deadDoors.length > 0 && entry.entries.length === 0) {
-      add('door-nowhere', 'problem', [room.id], (entry.deadDoors.length === 1 ? 'The door of ' : 'Every door of ') + roomName(room) + ' on ' + floor.name + ' leads nowhere, so nobody can walk to it or from it. Put a door on a side that faces a corridor or stairs.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
+      add('door-nowhere', 'problem', [room.id], (entry.deadDoors.length === 1 ? 'The door of ' : 'Every door of ') + nameOfRoom(room, false) + ' on ' + floor.name + ' leads nowhere, so nobody can walk to it or from it. Put a door on a side that faces a corridor or stairs.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
     } else if (entry.deadDoors.length > 0) {
       const sides = Array.from(new Set(entry.deadDoors.map((door) => SIDE_WORDS[door.side])));
-      add('door-nowhere', 'warning', [room.id], capital(roomName(room)) + ' on ' + floor.name + ' has ' + (entry.deadDoors.length === 1 ? 'a door' : plural(entry.deadDoors.length, 'door', 'doors')) + ' on its ' + list(sides) + ' side that ' + (entry.deadDoors.length === 1 ? 'leads' : 'lead') + ' nowhere. Remove ' + (entry.deadDoors.length === 1 ? 'it' : 'them') + ', or paint a corridor there.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
+      add('door-nowhere', 'warning', [room.id], nameOfRoom(room, true) + ' on ' + floor.name + ' has ' + (entry.deadDoors.length === 1 ? 'a door' : plural(entry.deadDoors.length, 'door', 'doors')) + ' on its ' + list(sides) + ' side that ' + (entry.deadDoors.length === 1 ? 'leads' : 'lead') + ' nowhere. Remove ' + (entry.deadDoors.length === 1 ? 'it' : 'them') + ', or paint a corridor there.', { ...where, cells: entry.deadDoors.map((door) => door.cell) });
     }
   }
 
@@ -165,7 +157,7 @@ export function buildingChecks(project, graph) {
         continue;
       }
       const [f, cells] = onFloor[part].entries().next().value;
-      const names = roomsOf[part].map(roomName);
+      const names = roomsOf[part].map((room) => nameOfRoom(room, false));
       const what = plural(size[part], 'corridor or stairs cell', 'corridor and stairs cells') + (names.length === 0 ? '' : names.length > 4 ? ' with ' + names.length + ' rooms' : ' with ' + list(names));
       add('part-unreachable', 'problem', [g.floors[f].id, cells[0]], 'Part of ' + g.floors[f].name + ' cannot be reached from the rest of the building: ' + what + '. Join it with a corridor or a stairs connection.', { floorId: g.floors[f].id, cells, roomIds: roomsOf[part].map((room) => room.id) });
     }
@@ -180,7 +172,7 @@ export function buildingChecks(project, graph) {
     for (const { room, floor } of rooms) {
       const entries = g.rooms.get(room.id).entries;
       if (entries.length === 0 || entries.some((entry) => canLeave[entry.node])) continue;
-      add('room-no-exit-route', 'problem', [room.id], capital(roomName(room)) + ' on ' + floor.name + ' has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.', { floorId: floor.id, roomId: room.id, cells: room.cells });
+      add('room-no-exit-route', 'problem', [room.id], nameOfRoom(room, true) + ' on ' + floor.name + ' has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.', { floorId: floor.id, roomId: room.id, cells: room.cells });
     }
   }
 

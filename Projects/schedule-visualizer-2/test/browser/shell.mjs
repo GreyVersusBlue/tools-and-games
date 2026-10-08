@@ -317,7 +317,7 @@ test('Help lists every shortcut, holds focus, ignores shortcuts behind it, and g
   assert.equal(await page.$eval('#help-dialog th', (el) => el.getAttribute('aria-sort')), 'ascending');
   await page.click('#help-dialog th button');
   assert.equal(await page.$eval('#help-dialog th', (el) => el.getAttribute('aria-sort')), 'descending');
-  assert.equal(await page.$eval('#help-dialog tbody tr', (row) => row.cells[0].textContent), 'V', 'sorted from the end, the first row is the Select tool\'s key now that Help lists the plan\'s keys');
+  assert.equal(await page.$eval('#help-dialog tbody tr', (row) => row.cells[0].textContent), 'Z', 'sorted from the end, the first row is the Leave out tool\'s key now that Help lists the plan\'s keys');
   await page.keyboard.press('Escape');
   assert.equal(await exists('#help-dialog'), false);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'help', 'focus did not return to the opener');
