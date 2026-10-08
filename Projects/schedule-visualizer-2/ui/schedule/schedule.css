@@ -1,0 +1,730 @@
+/*
+  The Schedule section (DESIGN.md 5.2). Tokens come from ui/tokens.css and the
+  shared components from ui/app.css; everything here is prefixed sch-.
+  Colour that means something (a group's dot, a subject's swatch, a severity)
+  always has words or a shape beside it.
+*/
+
+.sch {
+  container-type: inline-size;
+  padding: var(--s-5);
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--r-2);
+}
+
+.sch .intro__first {
+  margin-top: var(--s-2);
+  font-size: var(--t-md);
+  color: var(--ink-2);
+}
+
+.sch .tabs {
+  margin-top: var(--s-4);
+}
+
+.sch-lead {
+  max-width: 46rem;
+}
+
+.sch-hint {
+  margin-top: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sch-btn--small {
+  min-height: 30px;
+  padding: 0 var(--s-2);
+  font-size: var(--t-sm);
+}
+
+.btn[aria-disabled="true"] {
+  border-style: dashed;
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.btn[aria-disabled="true"]:hover {
+  background: var(--card);
+  border-color: var(--line-strong);
+}
+
+.sch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.sch-scroll {
+  margin-top: var(--s-4);
+  overflow-x: auto;
+}
+
+.sch-empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--s-4);
+  max-width: 34rem;
+  padding: var(--s-5) 0;
+}
+
+.sch-empty__text {
+  font-size: var(--t-lg);
+  line-height: 1.4;
+}
+
+.sch-coming .sch-hint {
+  margin-top: var(--s-3);
+}
+
+/* Marks and findings: a shape, a number and the word. */
+
+.sch-mark {
+  font-weight: var(--w-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sch-mark--problem,
+.sch-finding-line--problem .sch-finding-line__word {
+  color: var(--problem);
+}
+
+.sch-mark--warning,
+.sch-finding-line--warning {
+  color: var(--warning);
+}
+
+.sch-mark--note,
+.sch-finding-line--note .sch-finding-line__word {
+  color: var(--note);
+}
+
+.sch-finding-line {
+  margin-top: var(--s-1);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sch-finding-line--warning {
+  color: var(--ink);
+}
+
+.sch-finding-line--warning::before {
+  content: "▲ ";
+  color: var(--warning);
+}
+
+.sch-slot__findings .sch-finding-line--warning::before {
+  content: none;
+}
+
+.sch-finding-line--warning .sch-finding-line__word {
+  color: var(--warning);
+}
+
+.sch-finding-line__word {
+  font-weight: var(--w-semibold);
+}
+
+.sch-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+}
+
+.sch-dot {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: var(--border-width) solid var(--line-strong);
+}
+
+/* Groups: the list, then the editor. */
+
+.sch-groups__cols {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-5);
+  margin-top: var(--s-4);
+}
+
+.sch-groups__side {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.sch-groups__tally {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.sch-groups__list {
+  display: grid;
+  gap: var(--s-1);
+  max-height: 60vh;
+  padding: 2px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.sch-group {
+  display: grid;
+  gap: var(--s-1);
+  width: 100%;
+  padding: var(--s-2);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+}
+
+.sch-group:hover {
+  border-color: var(--accent);
+}
+
+.sch-group[aria-current="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.sch-group__top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.sch-group__name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--w-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sch-group__grade {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.sch-group__marks {
+  display: flex;
+  gap: var(--s-2);
+  margin-left: auto;
+  font-size: var(--t-xs);
+}
+
+.sch-group__bars {
+  display: grid;
+  gap: 2px;
+}
+
+.sch-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.sch-bar--same {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sch-bar__track {
+  height: 6px;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.sch-bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.sch-editor {
+  min-width: 0;
+}
+
+.sch-editor__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.sch-editor__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+}
+
+.sch-editor__actions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.sch-editor__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--s-3) var(--s-4);
+  margin-top: var(--s-3);
+}
+
+.sch-editor__fields > .field:first-child {
+  flex: 1 1 12rem;
+}
+
+.sch-colour__row,
+.sch-colour__presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.sch-colour__row {
+  max-width: 24rem;
+}
+
+.sch-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+}
+
+.sch-swatch__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.sch-swatch:has(:checked) {
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--ink);
+}
+
+.sch-swatch:has(:focus-visible) {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: 4px;
+}
+
+.sch-colour__custom {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  vertical-align: middle;
+}
+
+.sch-days {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-5);
+  margin-top: var(--s-5);
+}
+
+.sch-day {
+  min-width: 0;
+}
+
+.sch-day__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.sch-day__title,
+.sch-daytype__title,
+.sch-checks__heading,
+.sch-panel__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+}
+
+.sch-day__line {
+  margin-top: var(--s-1);
+  font-size: var(--t-sm);
+}
+
+/* "Same as A Day": shown, greyed, and not editable until it is its own copy. */
+.sch-day--same,
+.sch-daytype--same {
+  padding: var(--s-3);
+  border: var(--border-width) dashed var(--line-strong);
+  border-radius: var(--r-2);
+  background: var(--paper);
+}
+
+.sch-slots--same,
+.sch-bells--same {
+  color: var(--ink-2);
+}
+
+.sch-slots {
+  margin-top: var(--s-2);
+  table-layout: fixed;
+}
+
+.sch-slots__period {
+  width: 7.25rem;
+}
+
+.sch-slots__more {
+  width: 2.5rem;
+}
+
+.sch-slots th,
+.sch-slots td,
+.sch-edit-table td,
+.sch-bells td,
+.sch-bells th {
+  padding: var(--s-1) var(--s-1);
+  vertical-align: top;
+}
+
+.sch-slots .field__input,
+.sch-edit-table .field__input,
+.sch-bells .field__input {
+  height: 32px;
+  font-size: var(--t-sm);
+}
+
+.sch-slot__period {
+  font-weight: var(--w-semibold);
+}
+
+.sch-slot__name {
+  display: inline-block;
+  line-height: 32px;
+}
+
+.sch-slot__time {
+  display: block;
+  margin-left: 22px;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-regular);
+}
+
+.sch-slot__extra {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: start;
+  gap: var(--s-1);
+  margin-top: var(--s-1);
+}
+
+.sch-slot__extra .field__input {
+  height: 28px;
+  font-size: var(--t-xs);
+}
+
+.sch-slots tbody th {
+  font-size: var(--t-sm);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sch-slot__menu {
+  width: 32px;
+  height: 32px;
+  font-weight: var(--w-bold);
+}
+
+.sch-slot .chips {
+  margin-bottom: var(--s-1);
+}
+
+.sch-room--missing {
+  border-style: dashed;
+  border-color: var(--warning);
+}
+
+.sch-slot[data-shown="true"] > *,
+.sch-edit-table tr[data-shown="true"] > * {
+  background: var(--accent-soft);
+  box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent);
+}
+
+.sch-slot.is-dragging > *,
+.sch-edit-table tr.is-dragging > * {
+  opacity: 0.5;
+}
+
+.sch-slot.is-drop > *,
+.sch-edit-table tr.is-drop > * {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.sch-grip {
+  display: inline-block;
+  width: 18px;
+  margin-right: var(--s-1);
+  color: var(--ink-2);
+  line-height: 32px;
+  text-align: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sch-grip--button {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--r-1);
+  background: none;
+}
+
+.sch-grip--button:hover {
+  border-color: var(--line-strong);
+}
+
+/* Teachers and subjects: tables edited in place. */
+
+.sch-edit-table {
+  min-width: 40rem;
+}
+
+.sch-teachers__name {
+  min-width: 12rem;
+}
+
+.sch-teachers__marks {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+  font-size: var(--t-xs);
+}
+
+.sch-edit-table .picker {
+  min-width: 8rem;
+}
+
+.sch-edit-table .chips {
+  margin-bottom: var(--s-1);
+}
+
+.sch-flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border-width) solid var(--warning);
+  border-left-width: 4px;
+  border-radius: var(--r-1);
+}
+
+.sch-flag__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.sch-subjects__hex {
+  margin-left: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.sch-subjects__use {
+  color: var(--ink-2);
+  white-space: nowrap;
+  line-height: 32px;
+}
+
+/* Day. */
+
+.sch-daytab__basics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4) var(--s-6);
+  margin-top: var(--s-4);
+}
+
+.sch-daytypes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+  align-items: start;
+  gap: var(--s-5);
+  margin-top: var(--s-5);
+}
+
+.sch-daytype {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.sch-daytype .sch-scroll {
+  margin-top: 0;
+}
+
+.sch-bells td,
+.sch-bells th {
+  line-height: 32px;
+}
+
+.sch-bells__found {
+  min-width: 10rem;
+  line-height: var(--lh-sm);
+}
+
+.sch-bells .sch-finding-line,
+.sch-bells .sch-hint {
+  margin-top: 0;
+  line-height: var(--lh-sm);
+}
+
+/* Checks, and the findings panel in the inspector. */
+
+.sch-checks__heading {
+  margin-top: var(--s-6);
+}
+
+.sch-checks__none {
+  margin-top: var(--s-4);
+  font-weight: var(--w-medium);
+}
+
+.sch-findings td {
+  vertical-align: top;
+}
+
+.sch-finding__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.sch-findings .sch-finding__actions {
+  flex-wrap: nowrap;
+}
+
+.sch-panel {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+.sch-panel .sch-counts {
+  flex-direction: column;
+}
+
+.sch-panel__scope {
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+}
+
+.sch-panel__none,
+.sch-panel__more {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.sch-panel__list {
+  display: grid;
+  gap: var(--s-3);
+  list-style: none;
+}
+
+.sch-finding {
+  display: grid;
+  gap: var(--s-2);
+  padding-left: var(--s-3);
+  border-left: 3px solid var(--line-strong);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sch-finding--problem {
+  border-left-color: var(--problem);
+}
+
+.sch-finding--warning {
+  border-left-color: var(--warning);
+}
+
+.sch-finding--note {
+  border-left-color: var(--note);
+}
+
+/* Narrow: the list above the editor, the day types one under another. */
+
+@container (max-width: 58rem) {
+  .sch-days {
+    grid-auto-flow: row;
+  }
+}
+
+@container (max-width: 44rem) {
+  .sch-groups__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sch-groups__list {
+    max-height: 14rem;
+  }
+
+  .sch-daytypes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .sch {
+    padding: var(--s-3);
+  }
+}
+
+@media (pointer: coarse) {
+  .sch-btn--small,
+  .sch-slot__menu,
+  .sch-grip--button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .sch-swatch {
+    width: 44px;
+    height: 44px;
+  }
+}
