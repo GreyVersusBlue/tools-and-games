@@ -312,6 +312,7 @@ test('the history entry keeps what a building action reported, so nobody runs th
   assert.equal(store.undoOutcome, null);
   store.apply(actions.placeRoom, { floorId: 'fsample003', rect: { x: 1, y: 9, w: 3, h: 3 } });
   const outcome = store.undoOutcome;
+  assert.notEqual(outcome, null, 'the entry kept nothing of what placeRoom reported');
   assert.equal(outcome, store.history.past[0].outcome);
   const placed = store.project.building.floors[2].spaces.find((space) => space.id === outcome.spaceId);
   assert.ok(placed, 'the outcome names the room that is in the store');

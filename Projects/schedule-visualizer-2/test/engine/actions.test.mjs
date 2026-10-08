@@ -867,6 +867,8 @@ test('roomName: a number that is a word is given as typed, with or without a dig
   assert.equal(roomName({ number: ' <i>Lab</i> ' }, false), ' <i>Lab</i> ');
 });
 
+// One rule does this, not a second one: "Room 204" starts with four letters,
+// so it is a word. Breaking the rule in schema.js fails this case with the others.
 test('roomName: a number that already starts with "room" never gets a second one', () => {
   assert.equal(roomName({ number: 'Room 204' }, true), 'Room 204');
   assert.equal(roomName({ number: 'room 204' }, false), 'room 204');

@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { unlisted, verdict, filesUnder } from '../run.mjs';
+import { unlisted, verdict, filesUnder, GROUPS as REAL_GROUPS, SUITE_FOLDERS as REAL_FOLDERS } from '../run.mjs';
 
 const GROUPS = { node: ['engine/a.test.mjs', 'a11y/contrast.mjs'], browser: ['browser/shell.mjs'], timing: ['timing/routing.mjs'] };
 const SUITE_FOLDERS = { browser: ['harness.mjs'], a11y: [], timing: [] };
@@ -43,4 +43,15 @@ test('filesUnder walks the real test folder into its folders, with forward slash
   const files = filesUnder(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
   assert.ok(files.includes('engine/runner.test.mjs') && files.includes('fixtures/big.mjs'), 'the walk goes into folders and uses forward slashes');
   assert.ok(files.filter((file) => file.endsWith('.test.mjs')).length > 25);
+});
+
+test('the runner\'s own lists: every suite on disk is listed, and browser/, a11y/ and timing/ are each policed', () => {
+  const files = filesUnder(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
+  assert.deepEqual(unlisted(files, REAL_GROUPS, REAL_FOLDERS), []);
+  for (const folder of ['browser', 'a11y', 'timing']) {
+    assert.deepEqual(unlisted([folder + '/a-new-suite.mjs'], REAL_GROUPS, REAL_FOLDERS), [folder + '/a-new-suite.mjs'], 'a new file in test/' + folder + '/ would not have to be listed');
+  }
+  assert.ok(REAL_GROUPS.node.includes('engine/worker.test.mjs'), 'the pipeline\'s correctness cases run with the plain-Node suites');
+  assert.deepEqual(REAL_GROUPS.timing, ['timing/routing.mjs', 'timing/crowd.mjs', 'timing/pipeline.mjs']);
+  for (const helper of REAL_FOLDERS.browser) assert.ok(files.includes('browser/' + helper), helper + ' is named as a helper and is not on disk');
 });

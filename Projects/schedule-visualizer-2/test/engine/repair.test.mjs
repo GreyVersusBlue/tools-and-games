@@ -563,7 +563,7 @@ test('a floor with no width takes it from its cells when the height divides them
   const floor = result.project.building.floors[0];
   assert.equal(floor.width, 40, 'worked out from 560 cells and a height of 14, not the default 40 by luck: see the next case');
   assert.deepEqual(floor, before);
-  assert.ok(result.notes.some((note) => /width of Floor 1 .* worked out from its cells/.test(note)), result.notes.join(' | '));
+  assert.ok(result.notes.some((note) => /width of Floor 1 .* worked out from its cells/.test(note)), 'no note says the width was worked out from the cells; the notes were: [' + result.notes.join(' | ') + ']');
 });
 
 test('a floor of 12 by 9 with a fractional or missing side is worked out from its cells, never clamped or defaulted', () => {

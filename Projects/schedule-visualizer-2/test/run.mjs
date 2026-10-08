@@ -27,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TOOL_DIR = path.dirname(TEST_DIR);
 
-const GROUPS = {
+export const GROUPS = {
   node: [
     'engine/purity.test.mjs',
     'engine/ids.test.mjs',
@@ -91,7 +91,7 @@ const GROUPS = {
 // Folders whose every .mjs is a suite and has to be in a group above, apart
 // from the helpers named here, which the suites import. A *.test.mjs has to
 // be in a group wherever under test/ it is.
-const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [], timing: [] };
+export const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [], timing: [] };
 // Groups whose suites take `--base <url>`.
 const TAKES_BASE = ['browser', 'a11y'];
 
