@@ -90,6 +90,90 @@ async function clickRoom(page, key) {
   await page.mouse.click(at.x, at.y);
 }
 
+// SV2-13: hand a file to one of the page's file inputs, as the picker would.
+async function chooseFile(page, selector, name, body) {
+  await page.evaluate((which, fileName, contents) => {
+    const input = document.querySelector(which);
+    const data = new DataTransfer();
+    data.items.add(new File([contents], fileName));
+    input.files = data.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, selector, name, body);
+}
+
+// SV2-13: the Import tab once its own stylesheet has loaded.
+async function importDrawn(page) {
+  await scheduleDrawn(page);
+  await page.waitForFunction(() => document.querySelector('link[data-sheet="import"]')?.sheet && document.querySelector('.imp'));
+}
+
+// SV2-13: one of the tool's own files for the project on screen, as text.
+const fileText = (page, kind) => page.evaluate(async (which) => {
+  const { buildExport } = await import(new URL('engine/exports.js', location.href).href);
+  return buildExport(globalThis.sv2.store.project, which, {}).text;
+}, kind);
+
+// SV2-13: a groups CSV read, with a column to correct, a room that is not in
+// the building, a group that is already here and a new name being asked for.
+async function importGroupsRead(page) {
+  await importDrawn(page);
+  await chooseFile(page, '.imp input[data-file="groups"]', 'groups.csv', 'Group,Grade,Students,Third,Period 1\r\n6A,6,24,101,201\r\n9Z,9,twenty,999,Annex 4\r\n,,,,102\r\n');
+  await page.waitForSelector('.imp-mapping');
+  await scheduleDrawn(page);
+  await page.click('[data-key="imp-groups:all:rename"]');
+  await page.waitForSelector('[data-key="imp-groups:name:6a"]');
+  await scheduleDrawn(page);
+}
+
+// SV2-13: a mapping that cannot be used, a teachers file with no Teacher
+// column, a subjects preview, and a schedule file that is not one.
+async function importRefused(page) {
+  await importDrawn(page);
+  await chooseFile(page, '.imp input[data-file="groups"]', 'no names.csv', 'Room,Period 1\r\n101,201\r\n');
+  await page.waitForSelector('.imp [data-problems="mapping"]');
+  await scheduleDrawn(page);
+  await chooseFile(page, '.imp input[data-file="teachers"]', 'rooms.csv', 'Staff,Rooms\r\nMs. Halloran,101\r\n');
+  await page.waitForSelector('.imp [data-problems="teachers"]');
+  await scheduleDrawn(page);
+  await chooseFile(page, '.imp input[data-file="subjects"]', 'subjects.csv', 'Code,Subject,Colour\r\nMATH,Maths,teal\r\nDRAMA,Drama,#26f\r\n,,\r\n');
+  await page.waitForSelector('.imp [data-panel="subjects"] .imp-preview');
+  await scheduleDrawn(page);
+  await chooseFile(page, '.imp input[data-file="schedule"]', 'not a schedule.json', '{"format":"sv2-building","version":1}');
+  await page.waitForSelector('.imp [data-refused="schedule"]');
+  await scheduleDrawn(page);
+}
+
+// SV2-13: a schedule file read, with every group already here answered for one by one.
+async function importScheduleRead(page) {
+  await importDrawn(page);
+  await chooseFile(page, '.imp input[data-file="schedule"]', 'schedule.json', await fileText(page, 'schedule'));
+  await page.waitForSelector('.imp [data-clash="imp-schedule"] table');
+  await scheduleDrawn(page);
+}
+
+// SV2-13: an import that has been done, with its line on the tab and its toast.
+async function importDone(page) {
+  await importDrawn(page);
+  await chooseFile(page, '.imp input[data-file="teachers"]', 'staff.csv', 'Teacher,Notes\r\nMx. Oakhollow,Part time\r\n');
+  await page.waitForSelector('.imp [data-action="import-teachers"]');
+  await scheduleDrawn(page);
+  await page.click('.imp [data-action="import-teachers"]');
+  await page.waitForSelector('.imp [data-done="teachers"]');
+  await scheduleDrawn(page);
+}
+
+// SV2-13: the Project file card asking before it replaces the project.
+async function projectImportQuestion(page) {
+  await chooseFile(page, '#project-file input[data-file="project"]', 'school.json', await fileText(page, 'project'));
+  await page.waitForSelector('dialog.dialog[open]');
+}
+
+// SV2-13: the Project file card after a file it refused.
+async function projectImportRefused(page) {
+  await chooseFile(page, '#project-file input[data-file="project"]', 'cut short.json', (await fileText(page, 'project')).slice(0, 500));
+  await page.waitForSelector('#project-file [data-result="refused"]');
+}
+
 // SV2-07: a tab of the building inspector.
 const inspectorTab = (tab) => async (page) => {
   await planReady(page);
@@ -336,6 +420,12 @@ export const SCREENS = [
       await page.waitForSelector('dialog[open]');
     },
   },
+  { id: 'schedule-import-groups-read', hash: '#schedule/import', open: importGroupsRead }, // SV2-13
+  { id: 'schedule-import-refused', hash: '#schedule/import', open: importRefused }, // SV2-13
+  { id: 'schedule-import-schedule-read', hash: '#schedule/import', open: importScheduleRead }, // SV2-13
+  { id: 'schedule-import-done', hash: '#schedule/import', open: importDone }, // SV2-13
+  { id: 'project-import-question', hash: '#project', open: projectImportQuestion }, // SV2-13
+  { id: 'project-import-refused', hash: '#project', open: projectImportRefused }, // SV2-13
   { // SV2-14: the print preview sheet, on the checks report
     id: 'print-preview',
     hash: '#building',

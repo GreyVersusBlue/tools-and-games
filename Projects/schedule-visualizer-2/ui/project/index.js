@@ -1,18 +1,19 @@
 // The Project section: a page of cards, top to bottom: Saved on this device,
-// Recovery points, Settings, Sample school, and About and help. The cards
+// Project file, Recovery points, Settings, Sample school, and About and help. The cards
 // about files, snapshots, sending and clearing join the list as they are
 // built, in the order of DESIGN 5.7.
 
 import { h } from '../components/dom.js';
 import { figures } from '../components/words.js';
 import { savedCard } from './saved.js';
+import { filesCard } from './files.js';
 import { recoveryCard } from './recovery.js';
 import { settingsCard } from './settings.js';
 import { sampleCard } from './sample.js';
 import { aboutCard } from './about.js';
 
 // The cards, top to bottom. Each is a function (ctx) -> { element, update(project) }.
-export const CARDS = [savedCard, recoveryCard, settingsCard, sampleCard, aboutCard];
+export const CARDS = [savedCard, filesCard, recoveryCard, settingsCard, sampleCard, aboutCard];
 
 const FIGURES = [
   ['floors', 'Floors'],

@@ -113,6 +113,13 @@ export function roomsRows(project) {
   return rows;
 }
 
+// The subject list, in its order. import-subjects.js reads this file back.
+export function subjectsRows(project) {
+  const rows = [['Code', 'Subject', 'Colour']];
+  for (const subject of project.subjects) rows.push([subject.code, subject.name, subject.colour]);
+  return rows;
+}
+
 // ---------------------------------------------------------------- the grids
 
 function gridHeader(project, first) {
@@ -206,6 +213,8 @@ const BUILDERS = {
   groups: { what: 'groups', extension: 'csv', mime: CSV, text: (project, options) => csvText(groupsRows(project), options) },
   'groups-template': { what: 'groups template', extension: 'csv', mime: CSV, text: (project, options) => csvText(templateRows(project), options) },
   teachers: { what: 'teachers', extension: 'csv', mime: CSV, text: (project, options) => csvText(teachersRows(project), options) },
+  // not in EXPORT_KINDS yet: test/engine/exports.test.mjs pins that list's file names one by one
+  subjects: { what: 'subjects', extension: 'csv', mime: CSV, text: (project, options) => csvText(subjectsRows(project), options) },
   rooms: { what: 'rooms', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomsRows(project), options) },
   'teacher-grid': { what: 'teachers by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(teacherGridRows(project, options.dayTypeId), options) },
   'room-grid': { what: 'rooms by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomGridRows(project, options.dayTypeId), options) },

@@ -616,6 +616,48 @@ The import is `actions.importTeachers`, one undo entry, labelled with what it
 did ("1 teacher added, 1 teacher updated, 1 teacher left unchanged"). A file that changes
 nothing makes no entry.
 
+## The subjects CSV
+
+Read by `engine/import-subjects.js`, written by `engine/exports.js`
+(`subjectsRows`). CSV as `engine/csv.js` reads and writes it.
+
+**What the tool writes.** UTF-8 with a byte-order mark, CRLF line endings.
+The first row is the header, then one row per subject in the list's order:
+
+```
+Code,Subject,Colour
+MATH,Mathematics,#2a6f97
+```
+
+**What the tool reads.** The first row is the header. The columns are found
+by their headers, in any order, without regard to capitals; there is no
+mapping step. A file needs a code column or a name column.
+
+| Column | Headers read |
+|---|---|
+| code | Code, Subject code |
+| name | Subject, Subject name, Name, Department |
+| colour | Colour, Color |
+
+Rules for the rows:
+
+- A row is matched to a subject on the list by its code, without regard to
+  capitals or surrounding spaces. A row with no code is matched by its name
+  the same way, and the name on the list stays as it is. A row with neither
+  is skipped, and so is a second row for a subject already seen in the file.
+- A code (or, with no code, a name) that is not on the list is a new subject,
+  added after the ones already there in the file's order, with the code and
+  name exactly as typed.
+- Nothing is deleted and nothing is reordered. An empty cell changes nothing.
+  A name or colour in the file takes the place of what the subject had. A
+  subject keeps its id, so the rooms and teachers that use it still do.
+- A colour is `#rrggbb`, `rrggbb` or `#rgb`. One that cannot be read is left
+  out with a warning, and the row is still imported. A new subject with no
+  colour gets `#5a6b7b`.
+
+The import is `actions.importSubjects`, one undo entry. A file that changes
+nothing makes no entry.
+
 ## The CSV exports
 
 All written by `engine/exports.js`: UTF-8 with a byte-order mark, CRLF, the
@@ -630,6 +672,7 @@ to the same names.
 | Groups | as "The groups CSV" | one per group |
 | Groups template | the same header | none |
 | Teachers | Teacher, Subject code, Subject, Rooms, Notes | one per teacher. Rooms are room numbers joined by "; ". |
+| Subjects | Code, Subject, Colour | one per subject, in the list's order. Colour is `#rrggbb`. |
 | Rooms | Room, Floor, Teachers, Subject code, Subject, Wing, Capacity, Shared space, Doors | one per room, floor by floor. Teachers are names joined by "; ", main teacher first. Shared space is Yes or No. Doors is a count. |
 | Teachers by period | Teacher, Day type, then one column per period | one per teacher per day type. A cell is "group · room number" for each group taught, joined by "; ", or "Planning". |
 | Rooms by period | Room, Floor, Day type, then one column per period | one per room per day type. A cell is the groups in the room, joined by "; ". Room numbers that slots name and the building does not have come last, with "not in the building" as the floor. |
