@@ -352,7 +352,8 @@ export function createTrace(ed, ctx) {
   canvas.addEventListener('pointermove', onMove, true);
   canvas.addEventListener('pointerup', onUp, true);
   canvas.addEventListener('pointercancel', onUp, true);
-  document.addEventListener('keydown', onKey, true);
+  // on the window, ahead of everything in the page: Escape here is this mode's
+  window.addEventListener('keydown', onKey, true);
 
   // ---------------------------------------------------------- the controls
 
@@ -488,7 +489,7 @@ export function createTrace(ed, ctx) {
       canvas.removeEventListener('pointermove', onMove, true);
       canvas.removeEventListener('pointerup', onUp, true);
       canvas.removeEventListener('pointercancel', onUp, true);
-      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keydown', onKey, true);
     },
   };
 }
