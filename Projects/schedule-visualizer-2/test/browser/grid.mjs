@@ -155,6 +155,10 @@ test('typing a room number into a cell stages it: the cell is marked, the bar sa
   await focusCell(slot(A6, DAY_A, 0));
   // "2" is the Schedule section's own key, and a digit of a room number here
   await page.keyboard.type('202');
+  // The shell's single keys are kept off a cell twice over: the grid takes
+  // the key for itself, and the cell says it is being edited. Either alone
+  // is enough, so this line fails only when both are gone.
+  assert.equal(await page.evaluate(() => location.hash), '#schedule/grid', 'the digit did not change the section');
   assert.equal(await page.$eval(slot(A6, DAY_A, 0), (el) => el.dataset.editing), 'true');
   await page.keyboard.press('Enter');
   await stagedIs(true);
@@ -164,7 +168,6 @@ test('typing a room number into a cell stages it: the cell is marked, the bar sa
   assert.equal(await barText(), 'Not applied yet: 1 group changed');
   assert.equal(await activeKey(), 'grid:' + B6 + ':' + DAY_A + ':0', 'Enter moves down, as in a spreadsheet');
   assert.equal(await inSchedule(A6, DAY_A, 0), '201', 'nothing reached the schedule');
-  assert.equal(await text('#surface [role="tab"][aria-selected="true"]'), 'Grid', 'and the digit did not change the section');
 });
 
 test('the list under the cell offers the building\'s rooms as "204 — Mme. Dufrêne" and narrows as you type', async () => {

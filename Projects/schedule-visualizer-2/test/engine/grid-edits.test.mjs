@@ -266,7 +266,7 @@ test('a cell reads a room by its number whatever the capitals, keeps an unknown 
   const { model } = staged(project);
   const row = model.rows.find((each) => each.group.name === '6A');
   const column = model.columns.find((each) => each.id === DAY_A + ':1');
-  assert.deepEqual(readCell(model, row, column, ' gym ').op.fields, { room: room(project, 'Gym').id, roomText: '' });
+  assert.deepEqual(readCell(model, row, column, ' GYM ').op.fields, { room: room(project, 'Gym').id, roomText: '' });
   assert.deepEqual(readCell(model, row, column, '999').op.fields, { room: null, roomText: '999' });
   assert.deepEqual(readCell(model, row, column, '  ').op.fields, { room: null, roomText: '' });
 });
