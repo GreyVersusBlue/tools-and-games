@@ -274,8 +274,10 @@ test('the pen\'s barrel button moves the map, and a palm that rests while the pe
   const view = await state(page);
   await pen('mouseMoved', a, 'none', 0);
   await pen('mousePressed', a, 'left', 1);
+  // a palm is seldom one point: two land, and slide apart as two fingers would to zoom
   await touch('touchStart', [{ ...palm, id: 7 }]);
-  await touch('touchMove', [{ x: palm.x + 30, y: palm.y + 30, id: 7 }]);
+  await touch('touchStart', [{ ...palm, id: 7 }, { x: palm.x + 40, y: palm.y, id: 8 }]);
+  await touch('touchMove', [{ x: palm.x - 30, y: palm.y + 30, id: 7 }, { x: palm.x + 90, y: palm.y + 30, id: 8 }]);
   assert.equal((await state(page)).preview, 'cells', 'the palm called off the pen\'s stroke');
   await pen('mouseMoved', b, 'left', 1);
   await touch('touchEnd', []);

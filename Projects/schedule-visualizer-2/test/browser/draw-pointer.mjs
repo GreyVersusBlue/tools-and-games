@@ -508,7 +508,21 @@ if (MAIN) {
       assert.equal(await size(), first);
     }
     assert.equal(await page.$eval('#plan-hint', (el) => el.scrollHeight <= el.clientHeight + 1), true, 'the status line cuts its sentence short');
-    await page.keyboard.press('v');
+    // in a narrow window the sentence takes two lines for some tools and one
+    // for others; the line keeps room for two either way
+    await page.setViewport({ width: 1000, height: 900 });
+    await planReady(page);
+    const narrow = await size();
+    assert.notEqual(narrow, first);
+    for (const key of ['h', 'r', 'e', 'v']) {
+      await page.keyboard.press(key);
+      assert.equal(await size(), narrow, 'in a narrow window the plan changed size with the tool on ' + key);
+      assert.equal(await page.$eval('#plan-hint', (el) => el.scrollHeight <= el.clientHeight + 1), true, 'in a narrow window the status line cuts the sentence short for ' + key);
+    }
+    await page.setViewport({ width: 1280, height: 900 });
+    await planReady(page);
+    assert.equal(await size(), first);
+    await wholeFloor(page);
   });
 
   test('a tool letter does nothing while Ctrl, Alt or Meta is held, or while a field has the focus', async () => {
