@@ -179,8 +179,10 @@ test('every word typed has to match, an exact number comes first, and nothing ty
   assert.ok(ones.length > 1);
   assert.ok(ones.every((entry) => entry.words.some((word) => word.includes('10'))));
   assert.equal(searchResults(project, '101')[0].name, 'Room 101');
-  const both = searchResults(project, 'floor nothing');
-  assert.deepEqual(both, [], 'two words, one of them nowhere');
+  assert.equal(searchResults(project, '101 zzzz').length, 0, 'two words, one of them nowhere, still found something');
+  const room = project.building.floors[0].spaces.find((space) => space.kind === 'room' && space.number === '101');
+  const surname = project.teachers.find((teacher) => teacher.id === room.teacherIds[0]).name.split(' ').pop();
+  assert.deepEqual(searchResults(project, surname + ' 101').map((entry) => entry.id), [room.id], 'two words, both in the one room');
 });
 
 test('what is typed is matched as text, never as a pattern or as markup', () => {
