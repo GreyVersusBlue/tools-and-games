@@ -1551,3 +1551,89 @@ export const importBuilding = action(
 );
 
 // ================================================================ SV2-10: imports (end)
+
+// ================================================================ SV2-12: the grid editor (start)
+
+// How two states of the schedule differ, counted in groups: { changed, added,
+// removed }. A group counts as changed when anything about it differs: its
+// name, grade, head count, colour or any slot.
+export function countGroupChanges(before, after) {
+  const was = new Map(before.groups.map((group) => [group.id, group]));
+  const counts = { changed: 0, added: 0, removed: 0 };
+  for (const group of after.groups) {
+    if (!was.has(group.id)) counts.added += 1;
+    else if (was.get(group.id) !== group) counts.changed += 1;
+    was.delete(group.id);
+  }
+  counts.removed = was.size;
+  return counts;
+}
+
+// "3 groups changed, 1 added, 1 removed". The first part that is there says
+// "group"; the rest go without. Nothing at all is "no changes".
+export function groupChangesText(counts) {
+  const parts = [];
+  for (const word of ['changed', 'added', 'removed']) {
+    const n = counts[word];
+    if (n === 0) continue;
+    parts.push(n + (parts.length === 0 ? (n === 1 ? ' group ' : ' groups ') : ' ') + word);
+  }
+  return parts.length === 0 ? 'no changes' : parts.join(', ');
+}
+
+// New names for several groups at once. One at a time would refuse a trade
+// (7-1 becomes 7-2 while 7-2 becomes 7-1), so a group whose new name is still
+// held by another group that is about to give it up waits its turn, and a
+// ring of them is opened by parking one under a name nobody has.
+function renameGroups(project, edits) {
+  let next = project;
+  let waiting = edits.filter((edit) => edit.name !== undefined);
+  const parked = new Set();
+  const holder = (edit) => next.groups.find((group) => group.id !== edit.id && nameKey(group.name) === nameKey(edit.name));
+  while (waiting.length > 0) {
+    const free = waiting.filter((edit) => !holder(edit));
+    if (free.length > 0) {
+      for (const edit of free) next = editGroup(next, { id: edit.id, name: edit.name });
+      waiting = waiting.filter((edit) => !free.includes(edit));
+      continue;
+    }
+    const stuck = waiting.find((edit) => !parked.has(edit.id) && waiting.some((other) => other.id === holder(edit).id));
+    // held by a group that is keeping its name: the refusal is editGroup's
+    if (!stuck) return editGroup(next, { id: waiting[0].id, name: waiting[0].name });
+    let spare = stuck.id;
+    while (next.groups.some((group) => nameKey(group.name) === nameKey(spare))) spare += ' (moving)';
+    next = editGroup(next, { id: stuck.id, name: spare });
+    parked.add(stuck.id);
+  }
+  return next;
+}
+
+// Everything the grid editor staged, as one step. payload:
+//   removed  [groupId]
+//   groups   [{ id } with any of { name, grade, headCount, colour }]
+//   added    [{ id, name, grade, headCount, colour }]
+//   slots    [{ groupId, dayTypeId, period, slot }], slot as setSlot takes it
+// Each part runs the action that does that one thing (deleteGroup, editGroup,
+// addGroup, setSlot), in that order, so a removed group's name is free for an
+// added one and a slot can be in a group added here. Any refusal refuses the
+// whole step and nothing changes.
+export const applyGridEdits = action(
+  {
+    label: (before, payload, after) => 'Apply grid edits: ' + groupChangesText(countGroupChanges(before, after)),
+    bumps: [SCHEDULE],
+    focus: () => ({ section: 'schedule', tab: 'grid' }),
+  },
+  (project, payload, ctx) => {
+    if (!payload || typeof payload !== 'object') refuse('There are no grid edits to apply.', 'bad-value');
+    const list = (key) => (Array.isArray(payload[key]) ? payload[key] : []);
+    let next = project;
+    for (const id of list('removed')) next = deleteGroup(next, { id }, ctx);
+    next = renameGroups(next, list('groups'));
+    for (const edit of list('groups')) next = editGroup(next, { id: edit.id, grade: edit.grade, headCount: edit.headCount, colour: edit.colour }, ctx);
+    for (const group of list('added')) next = addGroup(next, group, ctx);
+    for (const change of list('slots')) next = setSlot(next, change, ctx);
+    return next;
+  },
+);
+
+// ================================================================ SV2-12: the grid editor (end)

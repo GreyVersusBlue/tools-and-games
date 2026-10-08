@@ -32,6 +32,42 @@ const scheduleEmpty = (tab) => async (page) => {
   await scheduleDrawn(page);
 };
 
+// SV2-12: the Grid tab once its own stylesheet has loaded.
+async function gridDrawn(page) {
+  await scheduleDrawn(page);
+  await page.waitForFunction(() => document.querySelector('link[data-sheet="grid"]')?.sheet && document.querySelector('.grd'));
+}
+
+// SV2-12: stage a block in the grid as a spreadsheet's paste would. Staged
+// edits make the browser ask before the page is left, so the question is
+// answered here for the sweep's next page load: leave.
+async function gridStaged(page) {
+  if (!page.sv2LeavesStagedEdits) {
+    page.sv2LeavesStagedEdits = true;
+    page.on('dialog', (dialog) => {
+      if (dialog.type() === 'beforeunload') dialog.accept();
+    });
+  }
+  await gridDrawn(page);
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData('text/plain', '301\t302\tPortable 4\r\n101\t203\tGym\r\n');
+    const cell = document.querySelector('.grd-cell--slot');
+    cell.focus();
+    cell.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await page.waitForSelector('.grd-bar');
+  await scheduleDrawn(page);
+}
+
+// SV2-12: the grid read by teacher or by room.
+const gridRows = (rows) => async (page) => {
+  await gridDrawn(page);
+  await page.evaluate((value) => document.querySelector('.grd-toolbar input[value="' + value + '"]').click(), rows);
+  await page.waitForFunction((value) => document.querySelector('.grd').dataset.rows === value && document.querySelector('.grd-table--read'), {}, rows);
+  await scheduleDrawn(page);
+};
+
 // SV2-06: the plan is drawn once its own stylesheet has loaded.
 async function planReady(page) {
   await page.waitForFunction(() => {
@@ -275,6 +311,32 @@ export const SCREENS = [
     open: async (page) => {
       await clickRoom(page, 'e');
       await page.waitForSelector('#erase-dialog[open]');
+    },
+  },
+  // SV2-12: the grid's screens sit before the last one on purpose. The sweep's next
+  // session opens with no address and waits for Building, and the page goes back to
+  // the section it was last on, so the last screen here has to be a Building one.
+  { id: 'schedule-grid-staged', hash: '#schedule/grid', open: gridStaged }, // SV2-12
+  { id: 'schedule-grid-empty', hash: '#project', open: scheduleEmpty('grid') }, // SV2-12
+  { id: 'schedule-grid-teachers', hash: '#schedule/grid', open: gridRows('teachers') }, // SV2-12
+  { id: 'schedule-grid-rooms', hash: '#schedule/grid', open: gridRows('rooms') }, // SV2-12
+  { // SV2-12: a cell being edited, with the rooms listed under it
+    id: 'schedule-grid-editing',
+    hash: '#schedule/grid',
+    open: async (page) => {
+      await gridDrawn(page);
+      await page.focus('.grd-cell--slot');
+      await page.keyboard.type('20');
+      await page.waitForSelector('.grd-list:not([hidden]) .picker__option');
+    },
+  },
+  { // SV2-12: Discard asks first
+    id: 'schedule-grid-discard-dialog',
+    hash: '#schedule/grid',
+    open: async (page) => {
+      await gridStaged(page);
+      await page.evaluate(() => document.querySelector('.grd-bar [data-action="discard"]').click());
+      await page.waitForSelector('dialog[open]');
     },
   },
   { // SV2-14: the print preview sheet, on the checks report
