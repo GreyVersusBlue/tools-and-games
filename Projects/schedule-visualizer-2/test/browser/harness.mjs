@@ -6,9 +6,23 @@
 //   session.page        the page, loaded and ready
 //   session.url(hash)   the planner's address
 //   session.requests    every request the page made, as URLs
-//   session.problems()  page errors, console errors, failed requests; and what
-//                       the harness refused or shimmed (offsite requests)
-//   await session.close()
+//   session.offsite     the ones that left the page's own origin
+//   session.problems()  { errors, blocked, shimmed }: page errors, console
+//                       errors, failed requests and every offsite request;
+//                       and, with `intercept`, what the site's harness
+//                       refused or answered itself
+//   await session.close()   throws when the page asked for anything offsite
+//
+// A page is opened plain by default: nothing stands between it and the
+// server. The site's harness answers every request itself so that it can
+// refuse an offsite one, and under Puppeteer that leaves a module worker's
+// imports waiting for ever, so a page opened that way never gets its worker
+// and every screen would be tested on the main-thread fallback. So this file
+// counts the requests instead (`page.on('request')`), and a session that saw
+// one outside its own origin fails when it is closed, whatever the suite
+// went on to check. `intercept: true` opens the page through the site's
+// harness as before; no-offsite.mjs does, because its job is to see what the
+// harness had to refuse.
 //
 // `--base http://127.0.0.1:8123` on the command line (or SV2_BASE in the
 // environment) uses a server that is already running instead of starting one.
@@ -65,17 +79,67 @@ export async function clearSaved(page, base) {
   await client.detach();
 }
 
-// openPlanner({ hash, width, height, theme, mobile, device, keep })
-//   theme    'light' or 'dark': what the device prefers (prefers-color-scheme)
-//   device   an object to put in localStorage under sv2:device before the page loads
-//   keep     true: load whatever project this browser has saved (a second tab, a reload)
+// Is this address inside the page's own origin? What the page makes itself
+// (blob:, data:, about:blank) counts as inside.
+export function sameOrigin(url, base) {
+  return url === base || url.startsWith(base + '/') || /^(blob|data|about):/.test(url);
+}
+
+// A page with nothing between it and the server: the size asked for, and the
+// same record of what went wrong that the site's harness keeps (page.__errs).
+async function plainPage(browser, { width, height, mobile }) {
+  let page;
+  if (browser.__engine === 'playwright') {
+    const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, hasTouch: mobile, isMobile: mobile });
+    page = await context.newPage();
+    const closePage = page.close.bind(page);
+    page.close = async (how) => {
+      await closePage(how);
+      await context.close();
+    };
+  } else {
+    page = await browser.newPage();
+    await page.setViewport({ width, height, deviceScaleFactor: 1, hasTouch: mobile, isMobile: mobile });
+  }
+  const errs = [];
+  page.on('pageerror', (error) => errs.push('pageerror: ' + error.message));
+  // a cancelled request (a reload, a page closing) is not a failure
+  page.on('requestfailed', (request) => {
+    const why = (request.failure() || {}).errorText || '';
+    if (why !== 'net::ERR_ABORTED') errs.push('reqfail: ' + (why || '?') + ' ' + request.url().slice(0, 120));
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') errs.push('console: ' + message.text().slice(0, 160));
+  });
+  page.__errs = errs;
+  page.__blocked = [];
+  page.__shimmed = [];
+  page.__engine = browser.__engine;
+  return page;
+}
+
+// openPlanner({ hash, width, height, theme, mobile, device, keep, intercept })
+//   theme      'light' or 'dark': what the device prefers (prefers-color-scheme)
+//   device     an object to put in localStorage under sv2:device before the page loads
+//   keep       true: load whatever project this browser has saved (a second tab, a reload)
+//   intercept  true: open the page through the site harness's request
+//              interception (no module worker will load; see the top of this file)
 export async function openPlanner(options) {
   const opts = options || {};
   const server = opts.server || (await startServer());
   const browser = opts.browser || (await launch());
-  const page = await prepPage(browser, server.base, { width: opts.width || 1280, height: opts.height || 900, dsf: 1, mobile: opts.mobile === true });
+  const size = { width: opts.width || 1280, height: opts.height || 900, mobile: opts.mobile === true };
+  const page = opts.intercept === true ? await prepPage(browser, server.base, { ...size, dsf: 1 }) : await plainPage(browser, size);
   const requests = [];
-  page.on('request', (request) => requests.push(request.url()));
+  const offsite = [];
+  page.on('request', (request) => {
+    const url = request.url();
+    requests.push(url);
+    if (!sameOrigin(url, server.base)) {
+      offsite.push(url);
+      page.__errs.push('offsite: ' + url.slice(0, 160));
+    }
+  });
   if (opts.theme) await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: opts.theme }]);
   if (opts.device) {
     await page.evaluateOnNewDocument((value) => {
@@ -97,6 +161,7 @@ export async function openPlanner(options) {
     base: server.base,
     url,
     requests,
+    offsite,
     problems() {
       return { errors: page.__errs.slice(), blocked: page.__blocked.slice(), shimmed: page.__shimmed.slice() };
     },
@@ -104,6 +169,7 @@ export async function openPlanner(options) {
       await page.close();
       if (!opts.browser) await browser.close();
       if (!opts.server) await server.close();
+      if (offsite.length > 0) throw new Error('The page asked for ' + offsite.length + ' ' + (offsite.length === 1 ? 'address' : 'addresses') + ' outside ' + server.base + ': ' + offsite.slice(0, 5).join(', '));
     },
   };
 }

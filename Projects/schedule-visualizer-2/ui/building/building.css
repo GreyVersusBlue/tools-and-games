@@ -2,32 +2,9 @@
    down the left edge of the surface, the status line along its bottom, and
    the canvas takes everything else.
 
-   This sheet is linked by ui/building/index.js, because index.html and
-   ui/app.css belong to the shell. The first rules below reach the shell's own
-   layout element, for this section only: the plan goes edge to edge, so the
-   page's padding and its faint grid (the canvas draws the real one) go. */
-
-.surface__layout[data-section="building"] {
-  height: 100%;
-  padding: 0;
-  gap: 0;
-  align-items: stretch;
-  grid-template-rows: minmax(0, 1fr);
-  background-image: none;
-}
-
-.surface__layout[data-section="building"] > .surface__section {
-  min-height: 0;
-}
-
-.surface__layout[data-section="building"] > .getting-started {
-  align-self: start;
-  margin: var(--s-4);
-}
-
-.surface__layout[data-section="building"]:has(> .getting-started:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) calc(360px + var(--s-4) * 2);
-}
+   index.html links this sheet. What this section asks of the shell's own
+   layout element and of its messages (the plan goes edge to edge, the toast
+   moves clear of the strip) is in ui/app.css, with the shell's other rules. */
 
 .bld {
   position: relative;
@@ -317,14 +294,6 @@
   border-color: var(--accent);
 }
 
-/* The shell's messages are fixed to the bottom left of the window, which is
-   where the strip and the status line are: on this section they sit over the
-   plan's corner instead, clear of both. */
-.surface__layout[data-section="building"] ~ .toasts {
-  left: calc(56px + 64px + var(--s-3));
-  bottom: calc(var(--bld-status-height, 40px) + var(--s-3));
-}
-
 /* ---------- The floor tabs, in the top bar's second row ---------- */
 
 .bld-floors {
@@ -432,30 +401,7 @@
 
 /* ---------- Narrower windows ---------- */
 
-/* Under 1000 px the Getting started card goes above the section, and the
-   page scrolls so the plan keeps a height worth drawing in. */
-@media (max-width: 1000px) {
-  .surface__layout[data-section="building"]:has(> .getting-started:not([hidden])) {
-    height: auto;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .surface__layout[data-section="building"]:has(> .getting-started:not([hidden])) .bld {
-    height: 70vh;
-  }
-
-  .surface__layout[data-section="building"] > .getting-started {
-    margin: var(--s-3) auto;
-  }
-}
-
 @media (max-width: 640px) {
-  .surface__layout[data-section="building"] ~ .toasts {
-    left: var(--s-3);
-    bottom: calc(56px + var(--bld-status-height, 40px) + var(--s-3) + env(safe-area-inset-bottom));
-  }
-
   .bld {
     grid-template-columns: 56px minmax(0, 1fr);
   }

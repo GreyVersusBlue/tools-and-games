@@ -250,7 +250,7 @@ test('a tool letter typed into the room number is a letter, and does nothing wit
   await page.keyboard.press('Enter');
   now = await state(page);
   assert.equal(now.entries, before + 3);
-  assert.equal(now.label, 'Erase Room Chorus 0=- on Floor 1');
+  assert.equal(now.label, 'Erase Chorus 0=- on Floor 1');
   assert.deepEqual(await snapshot(page), expectedPlan());
 });
 
