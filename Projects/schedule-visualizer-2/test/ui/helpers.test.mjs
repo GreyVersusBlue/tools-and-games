@@ -15,6 +15,7 @@ import { sortRows, compareValues } from '../../ui/components/table.js';
 import { count, list, periodWords, figures } from '../../ui/components/words.js';
 import { CHECK_KINDS } from '../../engine/schema.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { scheduleModel } from '../../ui/schedule/model.js';
 
 // The least of an element the guard looks at.
 function element(tagName, extra) {
@@ -157,4 +158,34 @@ test('counts and lists read as a sentence would', () => {
 
 test('the figures of the sample school are counted from its data', () => {
   assert.deepEqual(figures(sampleSchool()), { floors: 3, rooms: 13, otherSpaces: 10, exits: 2, connections: 2, teachers: 12, groups: 8, subjects: 9, dayTypes: 2 });
+});
+
+// ---------------------------------------------------------------- SV2-08: the Accepted table's model
+
+test('the schedule model lists an accepted record that changed beside its finding, and one whose check is off by its kind', () => {
+  const start = sampleSchool();
+  const clash = scheduleModel(start, null).findings.find((finding) => finding.kind === 'room-double');
+  assert.ok(clash && clash.about.length > 0, 'the sample school has two groups in one room');
+  const note = scheduleModel(start, null).findings.find((finding) => finding.severity === 'note');
+  assert.ok(note, 'the sample school has a note');
+  const at = '2026-09-01T12:00:00.000Z';
+  // a new project object, as an action gives: the model is kept per project
+  const project = { ...start, accepted: [
+    { findingId: clash.id, reason: 'Two half-classes', at, about: ['gsomebody1'] },
+    { findingId: note.id, reason: 'Known', at, about: note.about },
+    { findingId: 'room-unused:dsample00a:rnothere01', reason: 'Was a store room', at, about: [] },
+  ] };
+  const before = scheduleModel(project, null);
+  assert.deepEqual(before.changed, [{ record: project.accepted[0], finding: before.findings.find((finding) => finding.id === clash.id) }]);
+  assert.ok(before.changed[0].finding, 'a changed record\'s finding is back in the findings, and counts');
+  assert.deepEqual(before.accepted.map((finding) => finding.id), [note.id]);
+  assert.deepEqual(before.off, []);
+  assert.deepEqual(before.gone, [project.accepted[2]]);
+
+  const off = { ...project, settings: { ...project.settings, checks: { ...project.settings.checks, off: [note.kind, 'room-unused'] } } };
+  const after = scheduleModel(off, null);
+  assert.deepEqual(after.off, [{ record: project.accepted[1], kind: note.kind }, { record: project.accepted[2], kind: 'room-unused' }]);
+  assert.deepEqual(after.accepted, []);
+  assert.deepEqual(after.gone, [], 'a record whose check is off is not called gone');
+  assert.equal(after.changed.length, 1);
 });

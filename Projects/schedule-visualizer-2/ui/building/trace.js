@@ -17,15 +17,17 @@
 // tracePlacement(image) turns those into a box in cells; the plan on screen
 // draws from it (the renderer's underlay hook), and a plan on paper can too.
 //
-// The first part of this file is pure and has no DOM in it: the action that
-// sets a floor's TraceImage, and the arithmetic. It is here, and not in
-// engine/actions.js with every other action, only because the engine had no
-// action for the image when the inspector was built; it belongs there.
+// The first part of this file is pure and has no DOM in it: the arithmetic.
+// The action that sets a floor's TraceImage is setTraceImage in
+// engine/actions.js, with the other building actions; it is handed on from
+// here so what imported it from this file still finds it.
 
-import { action, ActionError, BUILDING, patch, mapShared } from '../../engine/actions.js';
+import { setTraceImage, DEFAULT_TRACE_OPACITY } from '../../engine/actions.js';
 import { h } from '../components/dom.js';
 import { field } from '../components/field.js';
 import { checkField, decimal, heading } from './inspector/controls.js';
+
+export { setTraceImage };
 
 // ---------------------------------------------------------------- pure
 
@@ -33,22 +35,9 @@ import { checkField, decimal, heading } from './inspector/controls.js';
 // pixels. A 200-cell floor drawn at 100% is 4,800 pixels across, and an
 // underlay at 40% opacity needs a third of that at most.
 export const MAX_SIDE = 1600;
-export const DEFAULT_OPACITY = 0.4;
+export const DEFAULT_OPACITY = DEFAULT_TRACE_OPACITY;
 // What shows through the clear parts of a transparent image.
 export const BACKING = '#ffffff';
-
-const NUMBERS = ['opacity', 'scale', 'rotation', 'x', 'y'];
-const FLAGS = ['visible', 'locked', 'missing'];
-const SIZES = ['width', 'height'];
-
-function refuse(message, code) {
-  throw new ActionError(message, code || 'bad-value');
-}
-
-function floorNamed(project, floorId) {
-  const floor = project.building.floors.find((candidate) => candidate.id === floorId);
-  return floor ? floor.name : 'the floor';
-}
 
 // The size an image is stored at: { width, height, reduced }. The shape is
 // kept; neither side goes under one pixel.
@@ -75,52 +64,6 @@ export function tracePlacement(image) {
   const hgt = image.height * image.scale;
   return { x: image.x, y: image.y, w, h: hgt, cx: image.x + w / 2, cy: image.y + hgt / 2, rotation: image.rotation, opacity: image.opacity };
 }
-
-// Set, adjust or remove a floor's traced image.
-// payload: { floorId, image }
-//   image: null             take the image off the floor
-//   image: { … }            these fields over the ones the floor has. A floor
-//                           with no image needs imageId, width and height;
-//                           the rest take their defaults
-// The bytes are not this action's business: they are stored before it runs.
-export const setTraceImage = action(
-  {
-    label: (before, payload) => {
-      const floor = before.building.floors.find((candidate) => candidate.id === payload.floorId);
-      const name = floorNamed(before, payload.floorId);
-      if (payload.image === null) return 'Remove the traced image from ' + name;
-      if (!floor || !floor.image || (payload.image.imageId !== undefined && payload.image.imageId !== floor.image.imageId)) return 'Trace over an image on ' + name;
-      return 'Adjust the traced image on ' + name;
-    },
-    bumps: [BUILDING],
-    focus: (before, payload) => ({ section: 'building', floorId: payload.floorId }),
-  },
-  (project, payload) => {
-    const floors = project.building.floors;
-    const floor = floors.find((candidate) => candidate.id === payload.floorId);
-    if (!floor) refuse('That floor is no longer in the building.', 'missing');
-    let next;
-    if (payload.image === null) {
-      next = null;
-    } else {
-      const given = payload.image;
-      if (!given || typeof given !== 'object') refuse('A traced image is null or an object.');
-      const base = floor.image || { imageId: '', opacity: DEFAULT_OPACITY, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 0, height: 0, missing: false };
-      next = base;
-      for (const key of ['imageId', ...NUMBERS, ...FLAGS, ...SIZES]) {
-        if (given[key] !== undefined && given[key] !== next[key]) next = { ...next, [key]: given[key] };
-      }
-      if (typeof next.imageId !== 'string' || next.imageId === '') refuse('A traced image names its stored image.');
-      if (typeof next.opacity !== 'number' || !(next.opacity >= 0 && next.opacity <= 1)) refuse('Opacity is from 0% to 100%.');
-      if (typeof next.scale !== 'number' || !Number.isFinite(next.scale) || !(next.scale > 0)) refuse('The image needs a width above 0 squares.');
-      for (const key of ['rotation', 'x', 'y']) if (!Number.isFinite(next[key])) refuse('The ' + key + ' of a traced image is a number.');
-      for (const key of FLAGS) if (typeof next[key] !== 'boolean') refuse('The ' + key + ' flag of a traced image is on or off.');
-      for (const key of SIZES) if (!Number.isInteger(next[key]) || next[key] < 1) refuse('The ' + key + ' of a traced image is a whole number of pixels.');
-    }
-    if (next === floor.image) return project;
-    return patch(project, ['building', 'floors'], (list) => mapShared(list, (candidate) => (candidate === floor ? { ...floor, image: next } : candidate)));
-  },
-);
 
 // ---------------------------------------------------------------- on the page
 

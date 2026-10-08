@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validate, isValid } from '../../engine/validate.js';
-import { emptyProject, school, clone, room, BREAKS } from './helpers.mjs';
+import { emptyProject, school, clone, room, BREAKS, PINNED } from './helpers.mjs';
 
 test('the empty project and the sample school have no findings', () => {
   assert.deepEqual(validate(emptyProject()), []);
@@ -189,4 +189,22 @@ test('a room that is not a rectangle is allowed: the eraser and a placement over
   const lost = space.cells.filter((cell) => !space.doors.some((door) => door.cell === cell))[0];
   space.cells = space.cells.filter((cell) => cell !== lost);
   assert.deepEqual(validate(project), []);
+});
+
+test('an accepted finding\'s `about` is a list of ids when it is there, and a record without one is still valid', () => {
+  const record = (about) => {
+    const project = school();
+    project.accepted = [{ findingId: 'no-planning:dsample00a:tsample001', reason: 'Part time', at: PINNED }];
+    if (about !== undefined) project.accepted[0].about = about;
+    return validate(project).map((finding) => finding.path);
+  };
+  assert.deepEqual(record(undefined), [], 'a file written before the field existed');
+  assert.deepEqual(record([]), []);
+  assert.deepEqual(record(['gsample001', 'gsample002']), []);
+  for (const about of ['gsample001', null, 5, {}, [''], ['gsample001', 7], [null], [['gsample001']]]) {
+    assert.deepEqual(record(about), ['accepted[0].about'], JSON.stringify(about));
+  }
+  const project = school();
+  project.accepted = [{ findingId: 'no-planning:dsample00a:tsample001', reason: 'Part time', at: PINNED, about: [''] }];
+  assert.match(validate(project)[0].message, /list of ids\.$/);
 });

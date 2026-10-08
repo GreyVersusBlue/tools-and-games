@@ -417,6 +417,115 @@ test('printed to PDF: the sheet is the size the page rule names, and a floor pla
   }
 });
 
+test('the sheet\'s rules come from the print.css link the page already has: opening a preview adds no second one', async () => {
+  const links = () => page.$$eval('link[rel="stylesheet"]', (all) => all.filter((link) => new URL(link.href).pathname.endsWith('ui/print.css')).map((link) => ({ marked: link.dataset.sheet || null, loaded: Boolean(link.sheet) })));
+  await openPreview('room-list');
+  assert.deepEqual(await links(), [{ marked: 'print', loaded: true }], 'one link to ui/print.css, the one index.html carries');
+  await closePreview();
+  await openPreview('floor-plan');
+  assert.equal((await links()).length, 1, 'and a second preview adds none');
+  await closePreview();
+});
+
+test('the floor plan offers the traced image only when a floor has one to show; it is off until ticked, and is drawn from the bytes on the device where the screen has it', async () => {
+  const control = '#print-preview [data-control="trace"]';
+  const box = control + ' input[type="checkbox"]';
+  const inFrame = () => page.evaluate(() => {
+    const doc = document.querySelector('#print-preview iframe').contentDocument;
+    return Array.from(doc.querySelectorAll('image')).map((image) => ({
+      turn: image.parentNode.getAttribute('transform'),
+      box: ['x', 'y', 'width', 'height'].map((name) => image.getAttribute(name)).join(' '),
+      opacity: image.getAttribute('opacity'),
+      kind: image.getAttribute('href').slice(0, 23),
+      under: image.closest('svg').querySelector('.plan__trace + path') !== null && image.closest('svg').firstElementChild === image.parentNode,
+      floor: image.closest('.page').querySelector('.doc-head__what').textContent,
+    }));
+  });
+  const laidOut = (images) => page.waitForFunction((wanted) => {
+    const sheet = document.querySelector('#print-preview');
+    return sheet.dataset.ready === 'true' && sheet.querySelector('iframe').contentDocument.querySelectorAll('image').length === wanted;
+  }, { timeout: 10000 }, images);
+
+  const choose = (value) => page.$eval('#print-preview .preview__select', (select, wanted) => {
+    select.value = wanted;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+
+  // the sample school has no traced image: nothing is offered
+  await openPreview('floor-plan');
+  assert.notEqual(await page.$(control), null, 'the floor plan\'s sheet has the control');
+  assert.equal(await page.$eval(control, (el) => el.hidden), true);
+  await closePreview();
+  await openPreview('room-list');
+  assert.equal(await page.$(control), null, 'no other output has it');
+  await closePreview();
+
+  // an invented picture for Floor 1, kept on the device the way an imported one is: turned, scaled, half clear
+  await page.evaluate(async () => {
+    const { ctx, store } = globalThis.sv2;
+    const canvas = new OffscreenCanvas(80, 40);
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, 80, 40);
+    g.fillStyle = '#204080';
+    g.fillRect(10, 10, 60, 20);
+    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+    await ctx.storage.putImage('iprinted01', { blob, type: blob.type, width: 80, height: 40 });
+    const { setTraceImage } = await import(new URL('engine/actions.js', location.href).href);
+    store.apply(setTraceImage, { floorId: store.project.building.floors[0].id, image: { imageId: 'iprinted01', width: 80, height: 40, scale: 0.25, x: 4, y: 2, rotation: 15, opacity: 0.5 } });
+  });
+  try {
+    await openPreview('floor-plan');
+    assert.equal(await page.$eval(control, (el) => el.hidden), false, 'a floor has an image to show, so the tick is offered');
+    assert.equal(await page.$eval(control + ' label', (el) => el.textContent), 'Show the traced image under the plan');
+    assert.equal(await page.$eval(box, (el) => el.checked), false, 'off by default');
+    assert.deepEqual(await inFrame(), [], 'and so not on the paper');
+
+    await page.click(box);
+    await laidOut(1);
+    // 80 by 40 pixels at 0.25 cells a pixel is 20 by 10 cells at (4, 2); a cell is 20 units; the middle is cell (14, 7)
+    assert.deepEqual(await inFrame(), [{ turn: 'rotate(15 280 140)', box: '80 40 400 200', opacity: '0.5', kind: 'data:image/jpeg;base64,', under: true, floor: 'Floor plan: Floor 1' }]);
+    assert.equal(await page.evaluate(() => globalThis.sv2test.sheet.state.traceImage), true);
+    // the bytes in the document are the picture that was kept
+    assert.deepEqual(await page.evaluate(async () => {
+      const href = document.querySelector('#print-preview iframe').contentDocument.querySelector('image').getAttribute('href');
+      const bitmap = await createImageBitmap(await (await fetch(href)).blob());
+      return [bitmap.width, bitmap.height];
+    }), [80, 40]);
+    assert.match(await page.$eval('.preview__status', (el) => el.textContent), /^US Letter, portrait\. About 3 sheets\.$/);
+
+    // a floor with no image: the tick goes, and comes back with the floor
+    await choose(await page.evaluate(() => globalThis.sv2.store.project.building.floors[1].id));
+    await laidOut(0);
+    assert.equal(await page.$eval(control, (el) => el.hidden), true);
+    await choose('all');
+    await laidOut(1);
+    assert.equal(await page.$eval(control, (el) => el.hidden), false);
+
+    await page.click(box);
+    await laidOut(0);
+    assert.equal(await page.$eval(box, (el) => el.checked), false);
+    await closePreview();
+
+    // hidden on screen is not offered on paper
+    await page.evaluate(async () => {
+      const { store } = globalThis.sv2;
+      const { setTraceImage } = await import(new URL('engine/actions.js', location.href).href);
+      store.apply(setTraceImage, { floorId: store.project.building.floors[0].id, image: { visible: false } });
+    });
+    await openPreview('floor-plan');
+    assert.equal(await page.$eval(control, (el) => el.hidden), true);
+    await closePreview();
+    await page.evaluate(() => globalThis.sv2.store.undo());
+  } finally {
+    await page.evaluate(() => {
+      const { store } = globalThis.sv2;
+      while (store.project.building.floors[0].image !== null && store.history.past.length > 0) store.undo();
+    });
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].image), null, 'the school is as it was for the cases after this one');
+});
+
 test('the previews asked for nothing outside the tool and nothing went wrong on the page', async () => {
   const problems = session.problems();
   assert.deepEqual(problems.errors, []);

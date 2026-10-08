@@ -5,7 +5,8 @@ import { validate } from '../../engine/validate.js';
 import { GROUP_COLOUR_PRESETS, defaultSettings, nameOfRoom } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
-import { emptyProject, school, ctx, clone, room, group, teacher, assertValid, PINNED } from './helpers.mjs';
+import { createStore } from '../../engine/store.js';
+import { emptyProject, school, ctx, clock, makeIds, clone, room, group, teacher, assertValid, PINNED } from './helpers.mjs';
 
 const { ActionError, GEOMETRY, BUILDING, SCHEDULE } = actions;
 
@@ -913,4 +914,74 @@ test('what a placement would replace is named the same way', () => {
   const gym = room(project, 'Gym');
   const described = actions.describeSpaceDelete(project, { spaceIds: [gym.id, 'rsample101'] });
   assert.deepEqual(described.loss.spaces.map((space) => space.name), ['Room 101', 'Gym']);
+});
+
+// ---------------------------------------------------------------- SV2-08: the traced image
+
+const TRACED = { imageId: 'itraced001', width: 800, height: 600 };
+
+function traced(project) {
+  return run(actions.setTraceImage, project, { floorId: project.building.floors[0].id, image: { ...TRACED, scale: 0.05, x: 2, y: 1 } });
+}
+
+test('setTraceImage sets an image on a floor with defaults', () => {
+  const before = emptyProject();
+  const after = traced(before);
+  assert.deepEqual(after.building.floors[0].image, { imageId: 'itraced001', opacity: actions.DEFAULT_TRACE_OPACITY, scale: 0.05, rotation: 0, x: 2, y: 1, visible: true, locked: false, width: 800, height: 600, missing: false });
+  assert.equal(actions.DEFAULT_TRACE_OPACITY, 0.4);
+  assert.equal(before.building.floors[0].image, null, 'the project it was given is untouched');
+  assert.equal(after.subjects, before.subjects, 'what it did not change is the same object');
+  assert.deepEqual(actions.setTraceImage.bumps, [BUILDING], 'an image changes no route and no schedule');
+  assert.equal(info(actions.setTraceImage, before, { floorId: before.building.floors[0].id, image: TRACED }, after).label, 'Trace over an image on Floor 1');
+});
+
+test('setTraceImage adjusts one field keeping the rest', () => {
+  const before = traced(emptyProject());
+  const floorId = before.building.floors[0].id;
+  const after = run(actions.setTraceImage, before, { floorId, image: { rotation: -12.5 } });
+  assert.deepEqual(after.building.floors[0].image, { ...before.building.floors[0].image, rotation: -12.5 });
+  assert.equal(info(actions.setTraceImage, before, { floorId, image: { rotation: -12.5 } }, after).label, 'Adjust the traced image on Floor 1');
+});
+
+test('setTraceImage removes it, and only that floor changes', () => {
+  const start = school();
+  const [first, second] = start.building.floors;
+  const before = run(actions.setTraceImage, start, { floorId: second.id, image: { ...TRACED, scale: 0.05 } });
+  const after = run(actions.setTraceImage, before, { floorId: second.id, image: null });
+  assert.equal(after.building.floors[1].image, null);
+  assert.equal(after.building.floors[0], first, 'another floor is the same object');
+  assert.equal(info(actions.setTraceImage, before, { floorId: second.id, image: null }, after).label, 'Remove the traced image from ' + second.name);
+});
+
+test('setTraceImage refuses a floor that is gone', () => {
+  refused(actions.setTraceImage, traced(emptyProject()), { floorId: 'fnotafloor', image: null }, 'missing');
+  refused(actions.setTraceImage, emptyProject(), { floorId: 'fnotafloor', image: TRACED }, 'missing');
+});
+
+test('setTraceImage refuses opacity out of range', () => {
+  const before = traced(emptyProject());
+  const floorId = before.building.floors[0].id;
+  for (const opacity of [1.5, -0.1, NaN, '0.5']) refused(actions.setTraceImage, before, { floorId, image: { opacity } }, 'bad-value');
+  assert.throws(() => actions.setTraceImage(before, { floorId, image: { opacity: 1.5 } }, ctx()), /Opacity is from 0% to 100%\./);
+  for (const opacity of [0, 1]) assert.equal(run(actions.setTraceImage, before, { floorId, image: { opacity } }).building.floors[0].image.opacity, opacity);
+});
+
+test('setTraceImage: a no-op returns the same project', () => {
+  const before = traced(emptyProject());
+  const floorId = before.building.floors[0].id;
+  assert.equal(actions.setTraceImage(before, { floorId, image: { opacity: actions.DEFAULT_TRACE_OPACITY, visible: true, x: 2 } }, ctx()), before);
+  assert.equal(actions.setTraceImage(before, { floorId, image: {} }, ctx()), before);
+  const none = emptyProject();
+  assert.equal(actions.setTraceImage(none, { floorId: none.building.floors[0].id, image: null }, ctx()), none);
+});
+
+test('setTraceImage is one undo entry in the store, and undo takes the image off again', () => {
+  const store = createStore({ project: emptyProject(), clock, ids: makeIds(3) });
+  const floorId = store.project.building.floors[0].id;
+  store.apply(actions.setTraceImage, { floorId, image: { ...TRACED, scale: 0.05 } });
+  assert.equal(store.history.past.length, 1);
+  assert.equal(store.undoLabel, 'Trace over an image on Floor 1');
+  store.undo();
+  assert.equal(store.project.building.floors[0].image, null);
+  assert.equal(store.history.past.length, 0);
 });

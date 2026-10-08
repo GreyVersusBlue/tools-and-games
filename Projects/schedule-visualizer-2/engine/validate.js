@@ -516,6 +516,8 @@ export function validate(project) {
       if (!isString(accepted.findingId) || accepted.findingId === '') add(path + '.findingId', 'An accepted finding names the finding.');
       if (!isString(accepted.reason)) add(path + '.reason', 'A reason is text.');
       if (!isIsoDate(accepted.at)) add(path + '.at', 'The time a finding was accepted is an ISO date in UTC.');
+      // absent in a file written before the field existed, and that stays valid
+      if (accepted.about !== undefined && !(Array.isArray(accepted.about) && accepted.about.every((id) => isString(id) && id !== ''))) add(path + '.about', 'Who an accepted finding is about is a list of ids.');
       return undefined;
     });
   }

@@ -1,10 +1,14 @@
 // The Checks tab and the findings panel beside every tab. Both show what
 // engine/checks.js found; neither decides anything. Show jumps to the slot or
 // the teacher and marks it; Accept asks for a one-line reason and moves the
-// finding to the Accepted list, out of the counts.
+// finding to the Accepted list, out of the counts. The Accepted list also
+// holds the records that no longer stand as they were: one whose finding has
+// changed since (it counts again), one whose check is switched off, and one
+// whose finding is gone.
 
 import { h, uid } from '../components/dom.js';
-import { count } from '../components/words.js';
+import { count, periodWords } from '../components/words.js';
+import { checkLabel } from '../project/settings.js';
 import { acceptFinding, unacceptFinding } from '../../engine/actions.js';
 import { SEVERITIES } from '../../engine/findings.js';
 import { floorOfRoom } from '../../engine/schema.js';
@@ -76,7 +80,7 @@ export function acceptWithReason(env, finding, opener) {
   input.focus();
   return dialog.closed.then((value) => {
     if (value !== 'accept') return false;
-    if (!apply(env, acceptFinding, { findingId: finding.id, reason: input.value.trim() })) return false;
+    if (!apply(env, acceptFinding, { findingId: finding.id, reason: input.value.trim(), about: finding.about })) return false;
     ctx.toast({ text: 'Accepted. It is in the Accepted list on the Checks tab.', action: { label: 'Undo', run: ctx.undo } });
     return true;
   });
@@ -143,8 +147,9 @@ export function mount(env) {
     if (apply(env, unacceptFinding, { findingId })) ctx.toast({ text: 'It counts again.', action: { label: 'Undo', run: ctx.undo } });
   }
 
-  function acceptedTable(model) {
-    if (model.accepted.length + model.gone.length === 0) return h('p', { class: 'sch-hint' }, 'Nothing has been accepted. Accept a finding and it waits here with its reason.');
+  function acceptedTable(model, project) {
+    const words = periodWords(project.settings);
+    if (model.accepted.length + model.changed.length + model.off.length + model.gone.length === 0) return h('p', { class: 'sch-hint' }, 'Nothing has been accepted. Accept a finding and it waits here with its reason.');
     return h('div', { class: 'sch-scroll' }, h('table', { class: 'table sch-findings sch-findings--accepted' },
       h('caption', { class: 'vh' }, 'Accepted findings'),
       h('thead', null, h('tr', null, ['What was noticed', 'Why it is all right', 'Accepted'].map((label) => h('th', { scope: 'col' }, label)), h('th', { scope: 'col' }, h('span', { class: 'vh' }, 'Bring back')))),
@@ -154,8 +159,20 @@ export function mount(env) {
           h('td', null, finding.accepted.reason),
           h('td', null, when(finding.accepted.at)),
           h('td', null, button('Count it again', () => stop(finding.id), { small: true, key: 'accepted:' + finding.id, action: 'unaccept', more: ': ' + finding.text })))),
-        model.gone.map((record) => h('tr', { class: 'sch-findings__gone', data: { finding: record.findingId } },
-          h('td', null, 'No longer found. What this was about has been put right, or its check is switched off.'),
+        // back in the findings above and counting: the record is kept so its
+        // reason is not lost, and "Count it again" takes the record away
+        model.changed.map(({ record, finding }) => h('tr', { class: 'sch-findings__changed', data: { finding: record.findingId, state: 'changed' } },
+          h('td', null, h('strong', null, 'Changed since accepted.'), ' It no longer names who it named then, so it is in the findings again.', finding ? [' ', severityWord(finding.severity), ' ', finding.text] : null),
+          h('td', null, record.reason),
+          h('td', null, when(record.at)),
+          h('td', null, button('Count it again', () => stop(record.findingId), { small: true, key: 'accepted:' + record.findingId, action: 'unaccept', more: finding ? ': ' + finding.text : ': the changed finding with the reason: ' + record.reason })))),
+        model.off.map(({ record, kind }) => h('tr', { class: 'sch-findings__off', data: { finding: record.findingId, state: 'off' } },
+          h('td', null, 'Its check is switched off: ' + checkLabel(kind, words) + '. The reason is kept in case the check is switched on again.'),
+          h('td', null, record.reason),
+          h('td', null, when(record.at)),
+          h('td', null, button('Remove', () => stop(record.findingId), { small: true, key: 'accepted:' + record.findingId, action: 'unaccept', more: ' the accepted finding with the reason: ' + record.reason })))),
+        model.gone.map((record) => h('tr', { class: 'sch-findings__gone', data: { finding: record.findingId, state: 'gone' } },
+          h('td', null, 'No longer found. What this was about has been put right.'),
           h('td', null, record.reason),
           h('td', null, when(record.at)),
           h('td', null, button('Remove', () => stop(record.findingId), { small: true, key: 'accepted:' + record.findingId, action: 'unaccept', more: ' the accepted finding with the reason: ' + record.reason })))))));
@@ -163,7 +180,7 @@ export function mount(env) {
 
   function draw(project) {
     const model = env.model();
-    const nothing = model.findings.length + model.accepted.length + model.gone.length === 0;
+    const nothing = model.findings.length + model.accepted.length + model.changed.length + model.off.length + model.gone.length === 0;
     if (nothing && project.groups.length === 0) {
       fill(element, emptyState('Nothing to check yet. ' + WHAT, h('a', { class: 'btn btn--primary', href: '#schedule/groups', data: { action: 'go-groups' } }, 'Add a group')));
       return;
@@ -184,7 +201,7 @@ export function mount(env) {
             h('td', null, finding.text),
             h('td', null, actions(env, finding, 'tab'))))))),
       h('h2', { class: 'sch-checks__heading' }, 'Accepted'),
-      acceptedTable(model));
+      acceptedTable(model, project));
   }
 
   draw(ctx.store.project);

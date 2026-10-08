@@ -377,6 +377,85 @@ test('the traced image is not on paper, and neither is any mark of the editor', 
   }
 });
 
+// A one-pixel PNG: what the preview sheet hands the plan is a data URL like it.
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+// Turned and scaled, so every number of the placement is its own.
+const TRACED = { imageId: 'itraced001', opacity: 0.35, scale: 0.05, rotation: 30, x: 2, y: 3, visible: true, locked: false, width: 800, height: 400, missing: false };
+
+function tracedSchool(change) {
+  const project = school();
+  project.building.floors[0].image = { ...TRACED, ...change };
+  return project;
+}
+
+test('the traced image is off by default: bytes handed in are not drawn unless it is asked for', () => {
+  const project = tracedSchool();
+  for (const options of [{ ...NOW, traceImages: { itraced001: PIXEL } }, { ...NOW, traceImage: false, traceImages: { itraced001: PIXEL } }, { ...NOW, traceImage: 'yes', traceImages: { itraced001: PIXEL } }]) {
+    const { html } = renderOutput('floor-plan', project, null, options);
+    assert.equal(countOf(html, '<image'), 0);
+    assert.equal(countOf(html, 'data:'), 0);
+  }
+  assert.equal(planSvg(project, project.building.floors[0]).traced, false);
+  assert.equal(countOf(planSvg(project, project.building.floors[0], { traceImages: { itraced001: PIXEL } }).svg, '<image'), 0);
+});
+
+test('asked for and given its bytes, the traced image is under the plan where the screen has it: box, turn about its middle, opacity', () => {
+  const project = tracedSchool();
+  const floor = project.building.floors[0];
+  const plan = planSvg(project, floor, { traceImage: true, traceImages: { itraced001: PIXEL } });
+  assert.equal(plan.traced, true);
+  assert.equal(countOf(plan.svg, '<image'), 1);
+  // 800 by 400 pixels at 0.05 cells a pixel is 40 by 20 cells; a cell is 20 units; the middle is cell (22, 13)
+  const box = ' x="40" y="60" width="800" height="400"';
+  assert.ok(plan.svg.includes('<g class="plan__trace" transform="rotate(30 440 260)">'
+    + '<rect class="plan__trace-backing"' + box + ' fill="#ffffff"/>'
+    + '<image class="plan__trace-image"' + box + ' opacity="0.35" preserveAspectRatio="none" href="' + PIXEL + '"/></g>'), plan.svg.slice(0, 600));
+  assert.ok(plan.svg.indexOf('<image') < plan.svg.indexOf('<path'), 'under the cells: it is drawn first');
+  assert.equal(countOf(plan.svg, 'itraced001'), 0, 'the id of the stored image is not printed');
+  // the picture is still cropped to the cells, image or no image
+  const plain = planSvg(project, floor);
+  assert.deepEqual([plan.width, plan.height], [plain.width, plain.height]);
+  assert.equal(plan.svg.replace(/<g class="plan__trace".*?<\/g>\n/, ''), plain.svg, 'nothing else in the plan changes');
+  // through the document: one image, on the one floor that has one
+  const { html } = renderOutput('floor-plan', project, null, { ...NOW, traceImage: true, traceImages: { itraced001: PIXEL } });
+  assert.equal(countOf(html, '<image'), 1);
+  assert.equal(countOf(html, 'rotate(30 440 260)'), 1);
+  assert.deepEqual(tagsOf(html).filter((tag) => !TAGS.has(tag) && tag !== 'image' && tag !== 'rect'), []);
+});
+
+test('asked for, the traced image is still not drawn without its bytes, when it is hidden, when it is missing, or on a floor with nothing drawn', () => {
+  const on = { traceImage: true, traceImages: { itraced001: PIXEL } };
+  const none = (project, options, why) => {
+    const { html } = renderOutput('floor-plan', project, null, { ...NOW, ...options });
+    assert.equal(countOf(html, '<image'), 0, why);
+    assert.equal(countOf(html, 'plan__trace'), 0, why);
+    assert.equal(countOf(html, 'data:'), 0, why);
+  };
+  none(tracedSchool(), { traceImage: true }, 'no bytes at all');
+  none(tracedSchool(), { traceImage: true, traceImages: {} }, 'no bytes for this image');
+  none(tracedSchool(), { traceImage: true, traceImages: { iother00001: PIXEL } }, 'another image\'s bytes');
+  none(tracedSchool({ visible: false }), on, 'hidden on screen');
+  none(tracedSchool({ missing: true }), on, 'not on this device');
+  none(tracedSchool({ imageId: 'toString' }), { traceImage: true, traceImages: {} }, 'an id that is a word every object knows');
+  const bare = planProject([['....', '....']]);
+  bare.building.floors[0].image = { ...TRACED };
+  none(bare, on, 'nothing is drawn on the floor');
+});
+
+test('only the bytes of an image are drawn: an address, or anything that is not a data URL of an image, is left out, and the URL is written as text', () => {
+  const project = tracedSchool();
+  for (const url of ['https://example.invalid/plan.png', '//example.invalid/plan.png', 'plan.png', 'javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', '', null, 5, { toString: () => PIXEL }]) {
+    const { html } = renderOutput('floor-plan', project, null, { ...NOW, traceImage: true, traceImages: { itraced001: url } });
+    assert.equal(countOf(html, '<image'), 0, String(url));
+    assert.equal(countOf(html, 'example.invalid'), 0, String(url));
+  }
+  const nasty = 'data:image/png;base64,AAAA"><script>alert(1)</script>';
+  const { html } = renderOutput('floor-plan', project, null, { ...NOW, traceImage: true, traceImages: { itraced001: nasty } });
+  assert.equal(countOf(html, '<image'), 1);
+  assert.equal(countOf(html, '<script'), 0);
+  assert.ok(html.includes('href="' + esc(nasty) + '"'));
+});
+
 test('the plan\'s own ink and room colour are the light theme\'s', () => {
   const css = readFileSync(path.join(TOOL_DIR, 'ui', 'tokens.css'), 'utf8');
   const light = /\[data-theme="light"\],\s*\[data-theme="auto"\]\s*\{([^}]*)\}/.exec(css)[1];

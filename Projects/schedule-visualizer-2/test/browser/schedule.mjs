@@ -300,6 +300,83 @@ test('Accept needs a reason, moves the finding to the Accepted list and out of t
   assert.equal(await exists('.sch-findings--accepted tr[data-finding="' + id + '"]'), true);
 });
 
+test('the Accepted list says which records no longer stand: changed since accepted, check switched off, no longer found', async () => {
+  await go(page, '#schedule/checks');
+  const id = await page.$eval('.sch-findings--accepted tr[data-finding^="room-double:' + DAY_A + ':2:"]', (tr) => tr.dataset.finding);
+  const open = '.sch-findings:not(.sch-findings--accepted) tr[data-finding="' + id + '"]';
+  const kept = (state) => '.sch-findings--accepted tr[data-finding="' + id + '"]' + (state ? '[data-state="' + state + '"]' : '');
+  const act = (fn, ...args) => page.evaluate(fn, ...args);
+  assert.equal(await exists(open), false, 'accepted, so not in the findings');
+
+  // a third group in the room: the finding names somebody else now
+  await act((dayId, findingId) => {
+    const { store } = globalThis.sv2;
+    const roomId = findingId.split(':')[3];
+    const third = store.project.groups.find((group) => group.name === '6B');
+    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: third.id, dayTypeId: dayId, period: 2, slot: { room: roomId } }));
+  }, DAY_A, id);
+  await shows((selector) => document.querySelector(selector) !== null, open);
+  await settled();
+  assert.match(await text(open), /6A, 6B and 8Z/, 'it counts again, as it is now');
+  assert.equal(await exists(kept('changed')), true, 'the record is listed as changed since accepted');
+  assert.match(await text(kept('changed')), /^Changed since accepted\..*6A, 6B and 8Z.*Two half-classes share it/);
+  assert.match(await text(kept('changed') + ' [data-action="unaccept"]'), /^Count it again/);
+  await click(kept('changed') + ' [data-action="unaccept"]');
+  await shows((selector) => document.querySelector(selector) === null, kept());
+  assert.equal(await exists(open), true);
+  assert.equal(await page.evaluate((findingId) => globalThis.sv2.store.project.accepted.some((record) => record.findingId === findingId), id), false, 'Count it again takes the record away');
+  await click('#undo');
+  await shows((selector) => document.querySelector(selector) !== null, kept('changed'));
+  await click('#undo');
+  await shows((selector) => document.querySelector(selector) === null, open);
+  assert.equal(await exists(kept('changed')), false);
+
+  // its check switched off: kept, and not called put right
+  await act(() => {
+    const { store } = globalThis.sv2;
+    return import('./engine/actions.js').then((actions) => store.apply(actions.setSetting, { key: 'checks.off', value: ['room-double'] }));
+  });
+  await shows(() => document.querySelector('.sch-findings tr[data-finding^="room-double:"]:not([data-state])') === null);
+  await settled();
+  assert.equal(await exists(kept('off')), true, 'the record is listed with its check switched off');
+  assert.match(await text(kept('off')), /^Its check is switched off: Two groups in one room\..*Two half-classes share it/);
+  assert.doesNotMatch(await text(kept('off')), /put right/);
+  assert.match(await text(kept('off') + ' [data-action="unaccept"]'), /^Remove/);
+  await click('#undo');
+  await shows((selector) => document.querySelector(selector) !== null, kept() + ':not([data-state])');
+
+  // put right: gone, and the sentence does not speak of a check switched off
+  await act((dayId) => {
+    const { store } = globalThis.sv2;
+    const group = store.project.groups.find((each) => each.name === '8Z');
+    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 2, slot: { room: null, roomText: '' } }));
+  }, DAY_A);
+  await shows((selector) => document.querySelector(selector) !== null, kept('gone'));
+  assert.equal(await page.$eval(kept('gone') + ' td', (td) => td.textContent), 'No longer found. What this was about has been put right.');
+  await click('#undo');
+  await shows((selector) => document.querySelector(selector) !== null, kept() + ':not([data-state])');
+});
+
+test('Accept hands the engine who the finding names, so a walk finding (which the engine cannot look up) keeps its list', async () => {
+  // No walk figures reach this section yet, so no walk finding can be clicked.
+  // The dialog is the real one; the store is a stand-in that keeps the payload.
+  const payload = await page.evaluate(async () => {
+    const { ctx } = globalThis.sv2;
+    const { acceptWithReason } = await import('./ui/schedule/checks.js');
+    let given = null;
+    const env = { ctx: { ...ctx, openDialog: ctx.openDialog, toast() {}, undo() {}, store: { apply: (action, sent) => { given = sent; } } } };
+    const finding = { id: 'group-walk:dsample00a:3:gsample06a', kind: 'group-walk', severity: 'warning', text: 'An invented walk that does not fit.', about: ['gsample06a'], where: { dayTypeId: 'dsample00a', period: 3, groupIds: ['gsample06a'], roomId: null, teacherId: null } };
+    const done = acceptWithReason(env, finding, document.body);
+    const input = document.querySelector('#accept-dialog [name="acceptReason"]');
+    input.value = 'The corridor is short';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await done;
+    return given;
+  });
+  assert.deepEqual(payload, { findingId: 'group-walk:dsample00a:3:gsample06a', reason: 'The corridor is short', about: ['gsample06a'] });
+  await shows(() => document.querySelector('#accept-dialog') === null);
+});
+
 test('Show jumps to the slot, marks it and puts focus in it', async () => {
   await go(page, '#schedule/checks');
   await click('.sch-findings tr[data-finding^="room-double:' + DAY_A + ':1:"] [data-action="show"]');

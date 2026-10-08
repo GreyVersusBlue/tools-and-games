@@ -1,6 +1,7 @@
 // What the checks say about the schedule, arranged for the screen: the open
-// findings in table order, the accepted ones, and which findings are about
-// each group, slot, teacher and room. The rule is engine/checks.js; nothing is
+// findings in table order, the accepted ones (with the records that no longer
+// stand: changed, switched off, gone), and which findings are about each
+// group, slot, teacher and room. The rule is engine/checks.js; nothing is
 // decided here. It is worked out once per project state and kept until the
 // project changes.
 
@@ -27,6 +28,12 @@ export function scheduleModel(project, walks) {
   const model = {
     findings,
     accepted: sortFindings(result.accepted, project),
+    // an accepted record whose finding names somebody else now, beside that
+    // finding as it stands (null when it has moved to another id: a run of
+    // periods that starts somewhere else)
+    changed: result.changed.map((record) => ({ record, finding: findings.find((finding) => finding.id === record.findingId) || null })),
+    // an accepted record whose check is switched off, and which check that is
+    off: result.off.map((record) => ({ record, kind: String(record.findingId).split(':')[0] })),
     gone: result.gone,
     counts: countBySeverity(findings),
     walksKnown: Boolean(walks),
