@@ -139,13 +139,13 @@ test('the school name is edited in place, and a digit typed into it does not swi
   // 7 is Project's shortcut and 2 is Schedule's; `/` and `?` are shortcuts too
   const typed = '7 Oaks <b>Academy</b> 2 / "Ünïon"?';
   await page.keyboard.type(typed);
+  await pause(200);
   assert.equal(await sectionShown(), 'building', 'a digit typed into the school-name field switched sections');
   assert.equal(await exists('dialog[open]'), false, '? typed into a field opened Help');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'school-name-field', '/ typed into a field moved focus to search');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#school-name-field', { hidden: true });
-  assert.equal(await schoolShown(), typed, 'the name is shown exactly as typed');
-  assert.equal(await exists('#school-name b'), false, 'a name is text, never markup');
+  assert.equal(await schoolShown(), typed, 'the name is not shown exactly as typed: it is text, never markup');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'school-name', 'focus is back on the name');
   assert.equal(await page.$eval('#undo', (el) => el.getAttribute('aria-label')), 'Undo: Change the school name');
   assert.equal(await page.$eval('#undo', (el) => el.getAttribute('aria-disabled')), 'false');
@@ -214,6 +214,9 @@ test('inside a text field Ctrl+Z belongs to the field, not to the project', asyn
 
 test('/ and Ctrl+F go to the search box', async () => {
   await blurAll();
+  // axe takes a placeholder for a name; a placeholder goes away when you type
+  assert.equal(await page.$eval('#search', (el) => el.getAttribute('aria-label')), 'Search rooms, teachers and groups', 'the search box has no name of its own');
+  assert.equal(await page.$eval('#search', (el) => el.closest('[role="search"]') !== null), true);
   await page.keyboard.press('/');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'search');
   assert.equal(await page.$eval('#search', (el) => el.value), '', 'the / itself is not typed');
@@ -293,6 +296,8 @@ test('Help lists every shortcut, holds focus, ignores shortcuts behind it, and g
   await page.click('#help');
   await page.waitForSelector('#help-dialog[open]');
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close help', 'the safe button is last and focused');
+  // axe has no rule for the name of a native <dialog>, so it is checked here
+  assert.equal(await page.$eval('#help-dialog', (el) => document.getElementById(el.getAttribute('aria-labelledby'))?.textContent), 'These are the keyboard shortcuts.', 'the dialog is not named by its title');
   assert.equal(await page.$eval('#help-dialog .dialog__buttons button:last-child', (el) => el.textContent), 'Close help');
   const listed = await page.$$eval('#help-dialog tbody tr', (rows) => rows.map((row) => row.dataset.key));
   const registered = await page.evaluate(() => globalThis.sv2.shortcuts.list().map((entry) => entry.id));
@@ -304,6 +309,8 @@ test('Help lists every shortcut, holds focus, ignores shortcuts behind it, and g
     assert.equal(await page.evaluate(() => document.activeElement.closest('dialog') !== null), true, 'Tab left the dialog');
   }
   await page.keyboard.press('3');
+  // a section change arrives a moment after the key, so give it the moment
+  await pause(200);
   assert.equal(await sectionShown(), 'building', 'a shortcut fired behind an open dialog');
   await page.click('#help-dialog th button');
   assert.equal(await page.$eval('#help-dialog th', (el) => el.getAttribute('aria-sort')), 'ascending');
