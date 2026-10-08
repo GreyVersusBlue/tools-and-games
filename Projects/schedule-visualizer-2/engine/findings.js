@@ -224,7 +224,7 @@ export function splitAccepted(findings, acceptedRecords, options) {
     }
     seen.add(record.findingId);
     const about = recordAbout(record);
-    if (about.length > 0 && !sameIds(about, finding.about)) {
+    if (about.length > 0 && !sameIds(about, Array.isArray(finding.about) ? finding.about : [])) {
       open.push(finding);
       changed.push(record);
     } else {

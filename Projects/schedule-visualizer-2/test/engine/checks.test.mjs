@@ -905,6 +905,10 @@ test('splitAccepted and countBySeverity', () => {
   assert.deepEqual(countBySeverity(findings), { problem: 1, warning: 1, note: 1 });
   assert.deepEqual(countBySeverity([]), { problem: 0, warning: 0, note: 0 });
   assert.deepEqual(splitAccepted(findings, undefined).findings, findings);
+  // a finding made by hand with no `about` is about nobody: a record that names somebody has changed
+  const bare = { id: 'room-double:d:0:r', kind: 'room-double', severity: 'problem', text: 'x.', where: { dayTypeId: 'd', period: 0, groupIds: [], roomId: 'r', teacherId: null }, fixable: true };
+  assert.deepEqual(splitAccepted([bare], [{ findingId: bare.id, reason: 'x', at: PINNED, about: ['ga'] }]).changed.length, 1);
+  assert.deepEqual(splitAccepted([bare], [{ findingId: bare.id, reason: 'x', at: PINNED }]).accepted.length, 1);
 });
 
 test('the words: counts, lists, the period word, room names and lengths of time', () => {
