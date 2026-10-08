@@ -5,6 +5,11 @@
 //
 // The figures asserted here are worked out by hand from the rules in the
 // comment beside them, not read back from a run.
+//
+// Rule 4, the left turn across the oncoming lane, was amended on 2026-10-08
+// (SV2-37). Its clauses each have a test of their own below: steady traffic
+// is waited for, 6 seconds at most; a standing group is walked around; two
+// groups in each other's way go lower id first.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +17,7 @@ import { buildGraph, nodeAt } from '../../engine/graph.js';
 import { route, routesForSchedule, routingGraph } from '../../engine/routing.js';
 import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
 import { checkSchedule } from '../../engine/checks.js';
-import { isLate, crowdCap, columnLength, routePath, walkingSeconds, simulateTransition, simulateDayTransition, simulateDay, simulateSchedule, teacherWalks, walkResults, CAP_MINIMUM_SECONDS } from '../../engine/crowd.js';
+import { isLate, crowdCap, columnLength, routePath, walkingSeconds, simulateTransition, simulateDayTransition, simulateDay, simulateSchedule, teacherWalks, walkResults, CAP_MINIMUM_SECONDS, CROSSING_WAIT_MAX } from '../../engine/crowd.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { school, clone, assertValid } from './helpers.mjs';
 import { planProject, threeFloors, splitLevel, twoRooms, cellAt, floorId, roomId } from '../fixtures/buildings/plans.mjs';
@@ -179,16 +184,24 @@ test('perpendicular flows at a crossing do not block each other', () => {
   assert.deepEqual(figures(byId.g2), { walking: 9, waiting: 0, total: 9, late: false, arrived: true });
 });
 
-test('a left turn across a flow waits, and a right turn does not', () => {
+test('a left turn across steady oncoming traffic waits, 6 seconds at most, and a right turn does not wait', () => {
+  assert.equal(CROSSING_WAIT_MAX, 6);
   const project = planProject([CROSS]);
-  // The flow walks west: its column of 5 takes the middle cell on tick 6 and its tail leaves it on tick 21.
-  // The turner walks east, is on the middle cell from tick 6, and wants to turn on tick 9.
+  // The traffic walks west: its column of 5 takes the middle cell on tick 6 and its tail leaves it on tick 21,
+  // never refused a step. The turner walks east, is on the middle cell from tick 6, and wants to turn on tick 9.
+  // It is refused on ticks 9 to 14, has then waited its 6 seconds, and crosses on tick 15 with the column still passing.
   const left = run(project, [['g1', '1B', '1A', 25], ['g2', '1A', '1C', 6]]);
-  assert.deepEqual(figures(left.byId.g1), { walking: 15, waiting: 0, total: 15, late: false, arrived: true }, 'the flow is not held up');
-  assert.deepEqual(figures(left.byId.g2), { walking: 12, waiting: 13, total: 25, late: false, arrived: true }, 'refused on ticks 9 to 21, turns on tick 22');
+  assert.deepEqual(figures(left.byId.g1), { walking: 15, waiting: 0, total: 15, late: false, arrived: true }, 'the traffic is not held up');
+  assert.deepEqual(figures(left.byId.g2), { walking: 12, waiting: 6, total: 18, late: false, arrived: true }, 'refused on ticks 9 to 14, turns on tick 15');
+  assert.equal(left.byId.g2.positions[14], 2, 'still on the middle cell after 6 seconds of asking');
+  assert.equal(left.byId.g2.positions[15], 3);
   const north = nodeAt(left.graph, F1, cellAt(project, 1, 3, 1));
-  assert.equal(left.result.cellDelay[north], 13, 'the wait is charged to the cell it was turning into');
-  assert.equal(left.result.cellDelay.reduce((sum, value) => sum + value, 0), 13);
+  assert.equal(left.result.cellDelay[north], 6, 'the wait is charged to the cell it was turning into');
+  assert.equal(left.result.cellDelay.reduce((sum, value) => sum + value, 0), 6);
+
+  // a group of 6 coming the other way is one slot: it leaves the middle cell on tick 9, and the turner reads the lane clear on tick 10
+  const brief = run(project, [['g1', '1B', '1A', 6], ['g2', '1A', '1C', 6]]);
+  assert.deepEqual(figures(brief.byId.g2), { walking: 12, waiting: 1, total: 13, late: false, arrived: true }, 'a gap that comes sooner is taken sooner');
 
   const right = run(project, [['g1', '1B', '1A', 25], ['g2', '1A', '1D', 6]]);
   assert.deepEqual(figures(right.byId.g2), { walking: 12, waiting: 0, total: 12, late: false, arrived: true });
@@ -197,19 +210,117 @@ test('a left turn across a flow waits, and a right turn does not', () => {
   assert.equal(alone.byId.g2.waiting, 0, 'a left turn with nobody coming does not wait');
 });
 
+test('the 6 seconds are counted afresh at each crossing', () => {
+  // The turner walks east from A, turns left at (4,3) across g1 walking west, walks north, and turns left
+  // again at (4,1) across g2 walking south out of E.
+  const project = planProject([[
+    '....E...',
+    'D####...',
+    '....#...',
+    'A######B',
+  ]]);
+  // g1, 5 slots, holds the westward lane of (4,3) from tick 6 to tick 21: the turner wants its turn on tick 12,
+  // is refused on ticks 12 to 17 and turns on tick 18. It takes (4,1) on tick 21 and wants the second turn on
+  // tick 24. g2, 60 students and 10 slots, holds the southward lane of (4,1) from tick 0 to tick 30: refused on
+  // ticks 24 to 29, the turner turns on tick 30.
+  const { byId } = run(project, [['g1', '1B', '1A', 25], ['g2', '1E', '1B', 60], ['g3', '1A', '1D', 6]]);
+  assert.equal(byId.g2.length, 10);
+  assert.deepEqual([byId.g1.waiting, byId.g2.waiting], [0, 0], 'both flows walk on unhindered');
+  assert.deepEqual(figures(byId.g3), { walking: 27, waiting: 12, total: 39, late: false, arrived: true });
+});
+
+test('seconds refused because the cell ahead is taken are not seconds waited for the crossing', () => {
+  const project = planProject([CROSS]);
+  // g1 walks north from D to C, 5 slots: it holds the northward lane of (3,1), the cell the turner wants, from
+  // tick 6 to tick 21. g2, 10 slots, walks west and holds the oncoming lane of the middle cell from tick 6 to
+  // tick 36. The turner asks on tick 9: the cell ahead is taken until tick 21 (13 seconds), and only from tick 22
+  // is it the crossing that refuses it, on ticks 22 to 27. It turns on tick 28.
+  const { byId } = run(project, [['g1', '1D', '1C', 25], ['g2', '1B', '1A', 60], ['g3', '1A', '1C', 6]]);
+  assert.deepEqual([byId.g1.waiting, byId.g2.waiting], [0, 0]);
+  assert.deepEqual(figures(byId.g3), { walking: 12, waiting: 19, total: 31, late: false, arrived: true });
+});
+
+test('a standing group in the oncoming lane is walked around, and the same group walking is waited for', () => {
+  const project = planProject([[
+    '.....C...',
+    '.....#...',
+    'A#######B',
+  ]]);
+  // g1, 5 slots, comes south out of C and turns west: it takes (4,2) on tick 6 and its tail leaves it on tick 21.
+  // g2 walks west from B, takes (5,2) on tick 6 and wants (4,2) on tick 9: refused on ticks 9 to 21, it stands
+  // on (5,2) in the westward lane. g3 walks east from A, takes (5,2) on tick 12 and wants to turn left, north,
+  // on tick 15. The lane it has to cross is held by g2, which was refused on tick 14: it is standing, and g3
+  // walks around it without waiting.
+  const standing = run(project, [['g1', '1C', '1A', 25], ['g2', '1B', '1A', 6], ['g3', '1A', '1C', 6]]);
+  assert.deepEqual(figures(standing.byId.g2), { walking: 21, waiting: 13, total: 34, late: false, arrived: true }, 'g2 does stand: 13 seconds behind g1');
+  assert.deepEqual(figures(standing.byId.g3), { walking: 18, waiting: 0, total: 18, late: false, arrived: true });
+  assert.equal(standing.byId.g3.positions[15], 5, 'it turns on the tick it asks');
+
+  // Without g1 nothing stops the westward group. As 10 slots it holds the westward lane of (5,2) from tick 6 to
+  // tick 36, stepping every 3 seconds: g3 is refused on ticks 15 to 20 and crosses on tick 21.
+  const walking = run(project, [['g2', '1B', '1A', 60], ['g3', '1A', '1C', 6]]);
+  assert.equal(walking.byId.g2.waiting, 0);
+  assert.deepEqual(figures(walking.byId.g3), { walking: 18, waiting: 6, total: 24, late: false, arrived: true }, 'a group between two steps is walking, not standing');
+});
+
+test('two left-turners in each other\'s way: the lower id goes first, and both arrive', () => {
+  // Both groups reach the middle cell on tick 6, one walking east and one west, and both want to turn left
+  // there on tick 9: each stands in the lane the other has to cross. As the rule was first written this was a
+  // wait with no end, stopped at 720 seconds. Now g1 turns on tick 9; g2, refused that once, reads the lane
+  // clear on tick 10.
+  const project = planProject([CROSS]);
+  const { byId, result } = run(project, [['g1', '1A', '1C', 6], ['g2', '1B', '1D', 6]]);
+  assert.deepEqual(figures(byId.g1), { walking: 12, waiting: 0, total: 12, late: false, arrived: true });
+  assert.deepEqual(figures(byId.g2), { walking: 12, waiting: 1, total: 13, late: false, arrived: true });
+  assert.deepEqual([byId.g1.positions[9], byId.g2.positions[9], byId.g2.positions[10]], [3, 2, 3]);
+  assert.equal(result.seconds, 13, 'the transition is over when g2 is in its room');
+
+  const swapped = run(project, [['g2', '1A', '1C', 6], ['g1', '1B', '1D', 6]]);
+  assert.deepEqual([swapped.byId.g1.waiting, swapped.byId.g2.waiting], [0, 1], 'the id decides, not the room');
+  assert.equal(swapped.byId.g1.fromRoomId, roomId('1B'));
+  const given = run(project, [['g2', '1B', '1D', 6], ['g1', '1A', '1C', 6]]);
+  assert.deepEqual([given.byId.g1.waiting, given.byId.g2.waiting], [0, 1], 'the order of the list changes nothing');
+
+  // As columns of 5: g1 turns on tick 9 and its body is on the middle cell until tick 21, stepping all the
+  // while, so to g2 it is steady traffic: refused on ticks 9 to 14, g2 turns on tick 15.
+  const columns = run(project, [['g1', '1A', '1C', 25], ['g2', '1B', '1D', 25]]);
+  assert.deepEqual(figures(columns.byId.g1), { walking: 12, waiting: 0, total: 12, late: false, arrived: true });
+  assert.deepEqual(figures(columns.byId.g2), { walking: 12, waiting: 6, total: 18, late: false, arrived: true });
+});
+
+test('the lower id goes first only when both became ready on the same tick', () => {
+  const project = planProject([[
+    '...C....',
+    '...#....',
+    'A######B',
+    '...#....',
+    '...D....',
+  ]]);
+  // g1 leaves A first and walks straight on to B, so g3 behind it waits 4 seconds at the door: g3 takes the
+  // middle cell (3,2) on tick 10 and is ready to turn left, north, on tick 13. g2 walks west from B, takes the
+  // middle cell on tick 9 and is ready to turn left, south, on tick 12. Each is in the lane the other crosses.
+  // Tick 12: g2 asks alone; g3 is between two steps, so g2 is refused. Tick 13: g3 asks, g2 was refused the
+  // tick before and is standing, so g3 walks around it; g2 asks again and g3 was not refused on tick 12, so g2
+  // is refused though its id is the lower. Tick 14: g3 has left the cell and g2 turns.
+  const { byId } = run(project, [['g1', '1A', '1B', 6], ['g2', '1B', '1D', 6], ['g3', '1A', '1C', 6]]);
+  assert.equal(byId.g1.waiting, 0);
+  assert.deepEqual(figures(byId.g2), { walking: 15, waiting: 2, total: 17, late: false, arrived: true }, 'refused on ticks 12 and 13');
+  assert.deepEqual(figures(byId.g3), { walking: 12, waiting: 4, total: 16, late: false, arrived: true }, 'only the 4 seconds at the door');
+});
+
 test('a group that is waiting holds up the group behind it', () => {
   const project = planProject([CROSS]);
-  // g2 turns left and waits for the flow as above, standing on the middle cell until tick 22.
+  // g2 turns left and waits for the traffic as above, standing on the middle cell until tick 15.
   // g3 follows it out of the same room, going straight on east: 4 seconds at the door (g2 has it first),
-  // then it reaches the cell behind g2 on tick 7, wants the middle cell on tick 10 and is refused until g2 has left: 13 more.
+  // then it reaches the cell behind g2 on tick 7, wants the middle cell on tick 10 and is refused until g2 has left: 6 more.
   const { byId, result } = run(project, [['g1', '1B', '1A', 25], ['g2', '1A', '1C', 6], ['g3', '1A', '1B', 6]]);
-  assert.deepEqual(figures(byId.g2), { walking: 12, waiting: 13, total: 25, late: false, arrived: true });
-  assert.deepEqual(figures(byId.g3), { walking: 15, waiting: 17, total: 32, late: false, arrived: true });
+  assert.deepEqual(figures(byId.g2), { walking: 12, waiting: 6, total: 18, late: false, arrived: true });
+  assert.deepEqual(figures(byId.g3), { walking: 15, waiting: 10, total: 25, late: false, arrived: true });
   const middle = nodeAt(routingGraph(project), F1, cellAt(project, 1, 3, 2));
-  assert.equal(result.cellDelay[middle], 13, 'g3 was refused the middle cell 13 times');
+  assert.equal(result.cellDelay[middle], 6, 'g3 was refused the middle cell 6 times');
 
   const free = run(project, [['g2', '1A', '1C', 6], ['g3', '1A', '1B', 6]]);
-  assert.equal(free.byId.g3.waiting, 4, 'without the flow it only waits at the door');
+  assert.equal(free.byId.g3.waiting, 4, 'without the traffic it only waits at the door');
 });
 
 test('stairs take k slots, k = round(stairs seconds × floors ÷ seconds per cell), at least 1', () => {
@@ -277,36 +388,17 @@ test('groups going up and down through the middle landing of a chain do not stop
   assert.deepEqual(figures(byId.g2), { walking: 33, waiting: 0, total: 33, late: false, arrived: true });
 });
 
-test('a circular wait ends with "did not arrive" at the cap', () => {
-  // Both groups reach the middle cell on tick 6, one walking east and one west, and both want to turn left
-  // there on tick 9: each stands in the lane the other has to cross.
-  const project = planProject([CROSS]);
-  const { byId, result } = run(project, [['g1', '1A', '1C', 6], ['g2', '1B', '1D', 6]]);
-  for (const group of [byId.g1, byId.g2]) {
-    assert.deepEqual(figures(group), { walking: 12, waiting: 712, total: 720, late: true, arrived: false }, 'refused on every tick from 9 to 720');
-    assert.equal(group.positions[720], 2, 'still on the middle cell');
-  }
-  assert.equal(result.cap, 720);
-  assert.equal(result.seconds, 720);
-
-  const short = run(project, [['g1', '1A', '1C', 6], ['g2', '1B', '1D', 6]], { passingSeconds: 100 });
-  assert.equal(short.byId.g1.total, 600, 'never before 600 seconds');
-  assert.equal(short.byId.g1.arrived, false);
-
-  // a stopped group is late whatever the margin: here 600 is not more than 100 + 600
-  const forgiving = run(project, [['g1', '1A', '1C', 6], ['g2', '1B', '1D', 6]], { passingSeconds: 100, marginSeconds: 600 });
-  assert.deepEqual([forgiving.byId.g1.total, forgiving.byId.g1.arrived, forgiving.byId.g1.late], [600, false, true]);
-});
-
 test('"did not arrive" reaches the checks as a group-walk finding that says so', () => {
-  const project = withSchedule(planProject([CROSS]), { North: ['1A', '1C'], South: ['1B', '1D'] }, { North: 6, South: 6 });
+  // 73 cells at 10 seconds is 730 seconds of walking against a cap of 3 × 240 = 720
+  const project = planProject([['A' + '#'.repeat(73) + 'B']]);
+  project.settings.secondsPerCell = 10;
+  withSchedule(project, { North: ['1A', '1B'] }, { North: 6 });
   const { graph, crowd } = everything(project);
   const walks = walkResults(project, crowd, graph);
-  assert.equal(walks.groups.length, 2);
-  assert.deepEqual(walks.groups.map((walk) => [walk.arrived, walk.late, walk.total]), [[false, true, 720], [false, true, 720]]);
+  assert.deepEqual(walks.groups.map((walk) => [walk.arrived, walk.late, walk.total, walk.waiting]), [[false, true, 720, 0]]);
   const findings = checkSchedule(project, walks).findings.filter((finding) => finding.kind === 'group-walk');
-  assert.equal(findings.length, 2);
-  for (const finding of findings) assert.match(finding.text, /did not arrive/);
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].text, /did not arrive/);
 });
 
 test('a walk longer than the cap is stopped without having waited; one that steps in on the cap tick arrived', () => {
@@ -318,6 +410,20 @@ test('a walk longer than the cap is stopped without having waited; one that step
   sixty.settings.secondsPerCell = 10;
   const just = run(sixty, [['g1', '1A', '1B', 6]], { passingSeconds: 100 });
   assert.deepEqual(figures(just.byId.g1), { walking: 600, waiting: 0, total: 600, late: true, arrived: true });
+
+  // the cap is three times the passing time: 73 cells at 10 seconds against 3 × 240
+  const long = planProject([['A' + '#'.repeat(73) + 'B']]);
+  long.settings.secondsPerCell = 10;
+  const stopped = run(long, [['g1', '1A', '1B', 6]]);
+  assert.deepEqual(figures(stopped.byId.g1), { walking: 730, waiting: 0, total: 720, late: true, arrived: false });
+  assert.deepEqual([stopped.result.cap, stopped.result.seconds], [720, 720]);
+  assert.equal(stopped.byId.g1.positions[720], 72, 'stopped on the last cell, one step from the door');
+
+  // a stopped group is late whatever the margin: here 600 is not more than 100 + 600
+  const forgiving = run(sixtyOne, [['g1', '1A', '1B', 6]], { passingSeconds: 100, marginSeconds: 600 });
+  assert.deepEqual([forgiving.byId.g1.total, forgiving.byId.g1.arrived, forgiving.byId.g1.late], [600, false, true]);
+  const inTime = run(sixty, [['g1', '1A', '1B', 6]], { passingSeconds: 100, marginSeconds: 600 });
+  assert.deepEqual([inTime.byId.g1.arrived, inTime.byId.g1.late], [true, false], 'and one that arrived is judged by the margin');
 });
 
 test('a route that is the same room, or failed, takes no part and has no figures', () => {

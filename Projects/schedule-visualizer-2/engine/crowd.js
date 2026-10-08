@@ -5,39 +5,56 @@
 // secondsPerCell. Groups keep right, so two groups going opposite ways along
 // a corridor are in different slots and pass each other; a group behind a
 // slower or waiting group waits; a group turning left across the oncoming
-// lane waits for that lane to clear. The model is deterministic: it reads the
-// project and the routes, never the screen, and commits moves in group id
-// order, so the same project gives the same numbers on every machine.
+// lane waits for a gap in it, 6 seconds at most, and walks around a group
+// that is standing there. The model is deterministic: it reads the project
+// and the routes, never the screen, and commits moves in group id order, so
+// the same project gives the same numbers on every machine.
 //
-// The rules are ARCHITECTURE 6.3, numbered 1 to 9 there, and the comments
-// below name the rule each piece of code is. Where those rules left a
-// question open, this is what was chosen (each has a test in
-// test/engine/crowd.test.mjs):
+// The rules are ARCHITECTURE 6.3, numbered 1 to 9 there with 4a, and the
+// comments below name the rule each piece of code is. Rules 4, 4a, 6 and 8
+// were amended on 2026-10-08 and this file follows the amended text.
 //
-//   a. Arrival. Rule 6 calls arrival "the tick on which the head takes the
-//      last path slot", and rule 8 says total = arrival tick and walking =
-//      slots × secondsPerCell. Read literally, a group nobody hinders would
-//      have total = walking − secondsPerCell and a negative wait. So arrival
-//      is the tick on which the head steps off the last slot into the room:
-//      the tick it took that slot plus secondsPerCell. An unhindered group
-//      then has total = walking and waiting = 0, and waiting is exactly the
-//      seconds it spent refused.
+// Rule 4, the crossing. A left turn (north to west, west to south, south to
+// east, east to north) also needs the oncoming lane of the cell the head
+// stands on, the crossing slot, to be clear. It is clear when any of these
+// holds:
+//
+//   - nobody is in it;
+//   - the group in it is standing, and is walked around;
+//   - this group has already been refused CROSSING_WAIT_MAX = 6 seconds at
+//     this crossing (people cross a gap in oncoming traffic after a few
+//     seconds);
+//   - the two groups each hold the other's crossing slot, both became ready
+//     on the same tick, and this one has the lower id.
+//
+// A right turn, straight on, the step out of the room and the step off a
+// stairs connection ask nothing more.
+//
+// Where the rules leave a question open, this is what was chosen (each has a
+// test in test/engine/crowd.test.mjs). Choices a to d as SV2-15 made them are
+// the text of rules 6, 4a and 8 now, and are kept here for what they add:
+//
+//   a. Arrival (rule 6) is the tick on which the head steps off the last
+//      slot into the room: the tick it took that slot plus secondsPerCell.
+//      An unhindered group then has total = walking and waiting = 0, and
+//      waiting is exactly the seconds it spent refused.
 //   b. The step into the room takes no slot (rule 3), so it is never refused,
 //      and rule 4 is not applied to it even when the door is on the left.
-//   c. The slot of the cell a stairs connection lands on. The step onto it
-//      has no heading, so its slot takes the heading of the next real step
-//      on the route: the step off it, or the step into the room. One case
-//      differs: a walker who came down onto the cell and leaves it at once
-//      by another connection (the middle floor of a stairwell drawn as a
-//      chain) takes the heading of the last real step before the stairs
-//      instead. Without that, the walkers going up through a middle landing
-//      and those coming down through it hold the same slot on every floor
-//      and stop each other for good; measured on the timing fixture, 522 of
-//      1,313 walks did not arrive, against 183 with it. Rule 4 asks nothing
-//      of the step off a landing cell (h1 is none).
-//   d. Waiting for a stopped group is the seconds it was refused, not
-//      total − walking: a walk longer than the cap is stopped without having
-//      waited at all, and the subtraction would go negative.
+//   c. The slot of the cell a stairs connection lands on (rule 4a). The step
+//      onto it has no heading, so its slot takes the heading of the next real
+//      step on the route: the step off it, or the step into the room. A
+//      walker who lands and leaves at once by another connection (the middle
+//      floor of a stairwell drawn as a chain) takes the heading of the last
+//      real step before the stairs instead, when it came down onto the cell;
+//      one going up keeps the next real heading. Rule 4a does not say which
+//      way, and applying it both ways puts the walkers going up through a
+//      middle landing and those coming down through it in one slot whenever
+//      the floors are drawn alike, which is what the rule is there to
+//      prevent. Rule 4 asks nothing of the step off a landing cell (h1 is
+//      none).
+//   d. Waiting for a stopped group (rule 8) is the seconds it was refused,
+//      not total − walking: a walk longer than the cap is stopped without
+//      having waited at all, and the subtraction would go negative.
 //   e. The cap. A group whose head is not in the room after tick `cap` has
 //      been played is stopped there; one that steps in on tick `cap` itself
 //      arrived. A stopped column stays where it is. Nobody is left to want
@@ -53,6 +70,24 @@
 //      Int16Array unless a path is too long for one, then an Int32Array.
 //   i. A head count that is missing or not a whole number from 1 up uses the
 //      school default.
+//   j. Standing (rule 4, added by SV2-37). The rule's words are "did not move
+//      in the previous tick", but a tick is one second and a step takes
+//      secondsPerCell of them, so a column walking at full pace does not move
+//      in two ticks of every three. A group is standing when it was due a
+//      step in the previous tick and was refused it (rule 5). A group between
+//      two steps is walking and is waited for. At one second a cell the two
+//      readings are the same.
+//   k. Waited for this crossing (rule 4, SV2-37) counts the seconds the
+//      crossing itself refused the turn at this cell. A second refused
+//      because the cell ahead was taken, or lost to a lower id, is not one of
+//      the 6. The count starts again at every crossing.
+//   l. Each hold the other's crossing slot (rule 4, SV2-37): by the head or
+//      by any part of the column, and the other group must be asking for a
+//      left turn of its own on this tick. "Became ready the same tick" is the
+//      two groups' readyAt being equal. When they differ the one that asked
+//      first has been refused a second by the time the other asks, is
+//      standing, and is walked around; it turns once the other has gone or
+//      its own 6 seconds are up.
 //
 // What this module gives:
 //
@@ -94,6 +129,7 @@ import { teacherDays, teacherMoves } from './teacher-day.js';
 
 export const CAP_FACTOR = 3;
 export const CAP_MINIMUM_SECONDS = 600;
+export const CROSSING_WAIT_MAX = 6;
 
 const NONE = 4;
 const OPPOSITE = [2, 3, 0, 1];
@@ -163,8 +199,8 @@ function headingBetween(graph, from, to) {
 //
 //   { length,   how many slots
 //     slots,    Int32Array: the slot numbers
-//     cross,    Int32Array: the slot that also has to be clear for the step
-//               from index i to i + 1 (rule 4), or −1
+//     cross,    Int32Array: the crossing slot of the step from index i to
+//               i + 1 when that step is a left turn (rule 4), or −1
 //     nodes,    Int32Array: the graph node of a cell slot, −1 on the stairs
 //     links,    Int32Array: the index into graph.links of a stairs slot, −1 on a cell
 //     part }    Int32Array: 0 … k − 1 along a stairs connection, 0 on a cell
@@ -229,7 +265,7 @@ export function routePath(graph, found) {
   for (let i = 0; i < count; i += 1) {
     slots[p] = nodeOf[i] * 4 + lane[i];
     nodes[p] = nodeOf[i];
-    // rule 4: a left turn from the heading walked in on needs the oncoming lane of this cell clear
+    // rule 4: a left turn from the heading walked in on asks about the oncoming lane of this cell
     if (i + 1 < count && linkAfter[i] === -1 && stepIn[i] !== NONE && stepIn[i + 1] === LEFT[stepIn[i]]) {
       cross[p] = nodeOf[i] * 4 + OPPOSITE[stepIn[i]];
     }
@@ -294,6 +330,8 @@ export function simulateTransition(graph, walkers, options) {
   const head = new Int32Array(count).fill(-1);
   const readyAt = new Int32Array(count);
   const waited = new Int32Array(count);
+  const refusedAt = new Int32Array(count).fill(-2); // the last tick each group was refused a step
+  const crossingWaited = new Int32Array(count); // seconds rule 4 has refused the turn the head is at
   const arrivedAt = new Int32Array(count).fill(-1);
   const over = new Uint8Array(count); // 1: tail in the room, 2: stopped
   const want = new Int32Array(count);
@@ -301,6 +339,7 @@ export function simulateTransition(graph, walkers, options) {
   const IDLE = -2;
   const FREE = -1;
   const REFUSED = -3;
+  const CROSSING = -4; // refused by rule 4 alone
 
   let active = count;
   let tick = 0;
@@ -316,9 +355,24 @@ export function simulateTransition(graph, walkers, options) {
         continue;
       }
       const slot = path.slots[at + 1];
-      let allowed = occupancy[slot] === -1; // rule 3
-      if (allowed && at >= 0 && path.cross[at] !== -1 && occupancy[path.cross[at]] !== -1) allowed = false; // rule 4
-      want[g] = allowed ? slot : REFUSED;
+      if (occupancy[slot] !== -1) {
+        want[g] = REFUSED; // rule 3
+        continue;
+      }
+      want[g] = slot;
+      // rule 4: a left turn needs the oncoming lane of this cell clear
+      const crossing = at >= 0 ? path.cross[at] : -1;
+      const other = crossing === -1 ? -1 : occupancy[crossing];
+      if (other === -1 || other === g) continue;
+      if (refusedAt[other] === tick - 1) continue; // a standing group is walked around (choice j)
+      if (crossingWaited[g] >= CROSSING_WAIT_MAX) continue; // it has waited its 6 seconds (choice k)
+      if (g < other && readyAt[other] === readyAt[g] && !over[other]) {
+        // each holds the other's crossing slot and both became ready on this tick: the lower id goes first (choice l)
+        const theirs = taking[other].path;
+        const there = head[other];
+        if (there >= 0 && there < theirs.length - 1 && theirs.cross[there] !== -1 && occupancy[theirs.cross[there]] === g) continue;
+      }
+      want[g] = CROSSING;
     }
     // rule 1, commit: in group id order
     for (let g = 0; g < count; g += 1) {
@@ -327,9 +381,11 @@ export function simulateTransition(graph, walkers, options) {
       const walker = taking[g];
       const path = walker.path;
       const at = head[g];
-      if (wanted === REFUSED || (wanted >= 0 && occupancy[wanted] !== -1)) {
+      if (wanted === REFUSED || wanted === CROSSING || (wanted >= 0 && occupancy[wanted] !== -1)) {
         // rule 5: a second of waiting, charged to the slot the head was refused
         waited[g] += 1;
+        refusedAt[g] = tick;
+        if (wanted === CROSSING) crossingWaited[g] += 1;
         const refused = path.slots[at + 1];
         if (refused < numbering.stairsStart) cellDelay[refused >> 2] += 1;
         else connectionDelay[numbering.linkOfSlot[refused - numbering.stairsStart]] += 1;
@@ -340,6 +396,7 @@ export function simulateTransition(graph, walkers, options) {
       if (tail >= 0 && tail < path.length) occupancy[path.slots[tail]] = -1;
       head[g] = at + 1;
       readyAt[g] = tick + step;
+      crossingWaited[g] = 0;
       if (head[g] === path.length) arrivedAt[g] = tick; // choice a
       if (head[g] >= path.length + walker.length - 1) {
         over[g] = 1;
