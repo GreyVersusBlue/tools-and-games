@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Schedule Visualizer 2">
+  <rect width="64" height="64" rx="6" fill="#0f6e66"/>
+  <rect x="10" y="10" width="44" height="44" fill="#f6f3ec"/>
+  <path d="M10 27h44v10H10z M27 37h10v17H27z" fill="#ffffff"/>
+  <path d="M10 10h17v17H10z" fill="#d1495b"/>
+  <path d="M27 10h13v17H27z" fill="#e69f00"/>
+  <path d="M40 10h14v17H40z" fill="#0072b2"/>
+  <path d="M10 37h17v17H10z" fill="#009e73"/>
+  <path d="M37 37h17v17H37z" fill="#cc79a7"/>
+  <path d="M10 10h44v44H10z M10 27h44 M10 37h17 M37 37h17 M27 10v17 M40 10v17 M27 37v17 M37 37v17" fill="none" stroke="#1f2328" stroke-width="1.5"/>
+  <path d="M16 32h26 M38 28.5 42 32l-4 3.5" fill="none" stroke="#0f6e66" stroke-width="2.5"/>
+</svg>

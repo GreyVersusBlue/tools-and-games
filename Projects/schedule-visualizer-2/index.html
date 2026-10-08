@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Schedule Visualizer 2</title>
+<meta name="description" content="Draw the school, enter who is where each period, and watch the hallways: where the crowds form, who cannot make it in time, and how every room gets out.">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/public-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/public-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="ui/tokens.css">
+<link rel="stylesheet" href="ui/app.css">
+<script>
+// The theme this device chose, set before anything is drawn so the page never
+// flashes the other one. ui/app.js keeps the key (sv2:device) up to date.
+(function () {
+  var theme = 'auto';
+  try {
+    var device = JSON.parse(localStorage.getItem('sv2:device'));
+    if (device && (device.theme === 'light' || device.theme === 'dark' || device.theme === 'auto')) theme = device.theme;
+  } catch (error) { /* no storage, or nothing kept yet: follow the device */ }
+  document.documentElement.setAttribute('data-theme', theme);
+})();
+</script>
+<script type="module" src="ui/app.js"></script>
+</head>
+<body>
+<div id="app" class="app">
+  <main class="boot">
+    <h1>Schedule Visualizer 2</h1>
+    <p class="boot__loading">Opening the planner.</p>
+    <noscript><p>Schedule Visualizer 2 needs JavaScript to draw the building and work out the walks. Turn JavaScript on for this page, then reload it.</p></noscript>
+  </main>
+</div>
+</body>
+</html>
