@@ -66,6 +66,22 @@ export function createStore(options) {
     clear() {
       cache.clear();
     },
+    // Everything worked out from the project that takes real time: routes,
+    // crowd results, loads, places, walk results and findings (the result of
+    // engine/worker.js). results() is a promise for the project as it is
+    // now; asking twice between two changes gives the same promise. The
+    // store does not run the engines itself: the page hands it something
+    // that does, with use({ results() }) (ui/engine-client.js, which runs
+    // them in a worker, or on the main thread where there is none).
+    engine: null,
+    use(engine) {
+      if (engine !== null && (!engine || typeof engine.results !== 'function')) throw new TypeError('derived.use needs { results() } or null.');
+      derived.engine = engine;
+    },
+    results() {
+      if (!derived.engine) return Promise.reject(new Error('Nothing is attached to work out routes and findings. Call engineFor(store) from ui/engine-client.js first.'));
+      return derived.engine.results();
+    },
   };
 
   const store = {
