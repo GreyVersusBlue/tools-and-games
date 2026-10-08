@@ -60,10 +60,14 @@ const GROUPS = {
   browser: [
     'browser/shell.mjs',
     'browser/no-offsite.mjs',
+    'browser/draw-pointer.mjs', // SV2-06
+    'browser/draw-keyboard.mjs', // SV2-06
+    'browser/draw-touch.mjs', // SV2-06
     'browser/storage.mjs', // SV2-03
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
+    'browser/worker.mjs', // SV2-16
     'a11y/axe.mjs',
   ],
   a11y: [
@@ -73,6 +77,7 @@ const GROUPS = {
   timing: [
     'timing/routing.mjs', // SV2-05
     'timing/crowd.mjs', // SV2-15
+    'timing/pipeline.mjs', // SV2-16
   ],
 };
 

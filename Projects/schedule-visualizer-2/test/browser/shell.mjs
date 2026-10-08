@@ -166,13 +166,14 @@ test('Undo from the button puts the name back and says so in a toast with Show',
 test('F6 walks the regions and reaches the toast; Show goes to where the change was', async () => {
   await blurAll();
   const seen = [];
-  for (let i = 0; i < 4; i += 1) {
+  // Building has an inspector (SV2-06), which comes before the toast
+  for (let i = 0; i < 5; i += 1) {
     await page.keyboard.press('F6');
     seen.push(await page.evaluate(() => (document.activeElement.closest('#toasts') ? 'toast:' + document.activeElement.textContent : document.activeElement.id)));
   }
-  assert.deepEqual(seen, ['rail', 'topbar', 'surface', 'toast:Show']);
+  assert.deepEqual(seen, ['rail', 'topbar', 'surface', 'inspector', 'toast:Show']);
   await chord(['Shift'], 'F6');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'surface', 'Shift+F6 goes back');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'inspector', 'Shift+F6 goes back');
   await page.keyboard.press('F6');
   await page.keyboard.press('Enter');
   await waitForSection(page, 'project');
