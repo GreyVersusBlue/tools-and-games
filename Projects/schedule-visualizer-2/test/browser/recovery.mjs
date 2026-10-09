@@ -33,16 +33,35 @@ async function prepare(target) {
   });
 }
 
+// After a crash, or a reload, the page that follows can start read-only: the
+// tab lock the old document held is not always free by the time the new one
+// asks, and the new one asks again every 5 s (storage/tabs.js). A slow CI
+// runner showed this: a rename made in that window was refused with a toast,
+// waitSaved saw the indicator from the load, and the case failed two steps
+// later with the wrong name in the saved copy. So every page is waited for
+// until it is the editing tab before a test changes anything on it.
+const editable = (target) => (target || page).waitForFunction(
+  () => globalThis.sv2 && globalThis.sv2.storage && globalThis.sv2.storage.state.available && !globalThis.sv2.storage.state.readOnly,
+  { timeout: 15000 },
+);
+
 // A page on a device with nothing saved (or, with keep, on what the last page left).
 async function open(options) {
   const next = await openPlanner({ hash: '#project', server, browser, ...options });
+  await editable(next.page);
   await prepare(next.page);
   return next;
 }
 
-const rename = (name) => page.evaluate((value) => {
-  globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'schoolName', value });
-}, name);
+// A rename that was refused (a read-only tab says so with a toast and applies
+// nothing) fails here, where the cause is, not later where its absence shows.
+const rename = async (name) => {
+  const shown = await page.evaluate((value) => {
+    globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'schoolName', value });
+    return globalThis.sv2.store.project.settings.schoolName;
+  }, name);
+  assert.equal(shown, name, 'the rename was refused (is the tab read-only?)');
+};
 const schoolShown = () => page.$eval('#school-name .school__text', (el) => el.textContent);
 const waitSaved = () => page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved' && !globalThis.sv2.storage.pending, { timeout: 10000 });
 const take = (reason) => page.evaluate((why) => globalThis.sv2.storage.takeRecoveryPoint(why), reason);
@@ -425,6 +444,7 @@ test('a crash while saves were failing: the next start offers the recovery point
   await page.keyboard.press('Escape');
   await waitForSection(page, 'building');
   assert.equal(await schoolShown(), 'Only the recovery point has this', 'Escape is the safe answer: the later work');
+  await editable();
   await page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved', { timeout: 10000 });
   assert.equal((await stored(page, 'sv2', 'project', 'current')).project.settings.schoolName, 'Only the recovery point has this');
   await page.close();
@@ -450,6 +470,7 @@ test('a device that cannot keep recovery points says so once and carries on savi
     });
     await opened.page.reload({ waitUntil: 'load' });
     await waitForSection(opened.page, 'project');
+    await editable(opened.page);
     await prepare(opened.page);
     return opened;
   }));

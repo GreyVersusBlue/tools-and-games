@@ -37,6 +37,15 @@ after(async () => {
   if (server) await server.close();
 });
 
+// A screen's opening motion (a dialog rises over 200 ms with its opacity going
+// from 0 to 1) is not the page a reader uses. CI's runner once caught a danger
+// button at 80% opacity and read its red as 4.31 to 1 against the card; the
+// page at rest is 4.5 or better. So axe runs after every animation on the
+// page has finished.
+async function atRest(page) {
+  await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+}
+
 function describe(violation) {
   const where = violation.nodes.map((node) => '      ' + node.target.join(' ') + '\n        ' + String(node.failureSummary || '').replace(/\n\s*/g, ' ')).join('\n');
   return '  ' + violation.id + ' (' + violation.impact + '): ' + violation.help + '\n' + where;
@@ -49,6 +58,7 @@ for (const theme of ['light', 'dark']) {
       for (const screen of SCREENS) {
         await t.test(screen.id, async () => {
           await visit(session, screen);
+          await atRest(session.page);
           const scheme = await session.page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
           assert.equal(scheme, theme, 'the page should be following the device into the ' + theme + ' theme');
           await session.page.addScriptTag({ path: AXE });
