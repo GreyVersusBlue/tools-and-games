@@ -108,7 +108,8 @@ for (const screen of SCREENS) {
     assert.deepEqual(blocked, [], 'offsite requests the harness refused');
     assert.deepEqual(shimmed, [], 'font requests the harness answered itself; a real visit sends these offsite');
     const own = session.base + TOOL_PATH;
-    const made = session.requests.filter((url) => url !== 'about:blank');
+    // an address the page made itself is no request to anywhere: the staff preview's frame is a blob: page, and each font inside it a data: one
+    const made = session.requests.filter((url) => url !== 'about:blank' && !/^(blob|data):/.test(url));
     assert.ok(made.length > 0, 'the page made no request at all, so nothing was counted');
     assert.deepEqual(made.filter((url) => !url.startsWith(own)), [], 'requests outside ' + own);
     assert.deepEqual(errors, [], 'errors on the page');
