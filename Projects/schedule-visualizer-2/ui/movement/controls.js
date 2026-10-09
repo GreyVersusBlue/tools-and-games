@@ -47,8 +47,9 @@ export function controls(options) {
     listLabel: 'Groups',
     placeholder: 'Add a group',
     describedBy: reasonId,
-    emptyText: 'No group matches.',
-    options: () => (project ? project.groups.filter((group) => !picture.choice.groupIds.includes(group.id)).map((group) => ({ id: group.id, label: group.name, detail: group.grade === '' ? '' : 'Grade ' + group.grade })) : []),
+    emptyText: 'No group to add.',
+    // at the limit there is nothing to pick
+    options: () => (project && picture.choice.groupIds.length < COMPARE_LIMIT ? project.groups.filter((group) => !picture.choice.groupIds.includes(group.id)).map((group) => ({ id: group.id, label: group.name, detail: group.grade === '' ? '' : 'Grade ' + group.grade })) : []),
     onPick: (option) => options.add(option.id),
   });
   pick.input.setAttribute('aria-label', 'Add a group to compare');

@@ -72,6 +72,7 @@ export const GROUPS = {
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
+    'ui/movement.test.mjs', // SV2-17
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -97,6 +98,7 @@ export const GROUPS = {
     'browser/staff-shell.mjs', // SV2-20
     'browser/staff-views-a.mjs', // SV2-21
     'browser/staff-views-b.mjs', // SV2-22
+    'browser/movement.mjs', // SV2-17
     'a11y/axe.mjs',
   ],
   a11y: [

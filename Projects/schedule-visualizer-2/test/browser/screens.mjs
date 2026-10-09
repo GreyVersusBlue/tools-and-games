@@ -182,6 +182,23 @@ const inspectorTab = (tab) => async (page) => {
   await page.waitForFunction(() => document.querySelector('link[data-sheet="building-inspector"]').sheet !== null);
 };
 
+// SV2-17: the movement view once it has the routes and has drawn them.
+async function movementDrawn(page) {
+  await page.waitForFunction(() => {
+    const section = document.querySelector('.mov');
+    if (!section || section.dataset.styled !== 'true' || section.dataset.pending === 'true') return false;
+    const movement = section.movement;
+    return movement.state !== null && movement.state.results !== null && movement.state.project === globalThis.sv2.store.project && Number(movement.canvas.dataset.drawn || 0) > 0;
+  });
+}
+
+// SV2-17: the movement view with something chosen on it.
+const movementShowing = (patch) => async (page) => {
+  await movementDrawn(page);
+  await page.evaluate((next) => document.querySelector('.mov').movement.change(next), patch);
+  await movementDrawn(page);
+};
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -440,6 +457,60 @@ export const SCREENS = [
       await page.waitForSelector('#print-preview[open][data-ready="true"]');
     },
   },
+  { id: 'movement-map', hash: '#movement', open: movementDrawn }, // SV2-17: every group, the legend, the summary
+  { // SV2-17: four chosen groups, with the reason there can be no fifth
+    id: 'movement-four-groups',
+    hash: '#movement',
+    open: movementShowing({ who: 'groups', groupIds: ['gsample06a', 'gsample06b', 'gsample07a', 'gsample08a'], transition: 3 }),
+  },
+  { id: 'movement-one-group', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: ['gsample08a'], floors: 'fsample001' }) }, // SV2-17
+  { id: 'movement-cleared', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: [] }) }, // SV2-17
+  { // SV2-17: the card of the corridor cell the keyboard cursor rests on
+    id: 'movement-cell-card',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      const steps = await page.evaluate(() => {
+        const movement = document.querySelector('.mov').movement;
+        const busiest = movement.picture.busiest;
+        const slot = movement.world.slots.find((each) => each.floor.id === busiest.floorId);
+        return { right: slot.x + (busiest.cell % slot.floor.width) - slot.box.x, down: slot.y + Math.floor(busiest.cell / slot.floor.width) - slot.box.y };
+      });
+      await page.focus('#movement-plan');
+      for (let i = 0; i < steps.down; i += 1) await page.keyboard.press('ArrowDown');
+      for (let i = 0; i < steps.right; i += 1) await page.keyboard.press('ArrowRight');
+      await page.waitForSelector('.mov-card:not([hidden])');
+    },
+  },
+  { // SV2-17: route health with routes that failed, and "Show me" on the first line
+    id: 'movement-route-failed',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.evaluate(async () => {
+        const { setSlot } = await import(new URL('engine/actions.js', location.href).href);
+        globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 2, slot: { room: null } });
+      });
+      await page.waitForSelector('#inspector [data-summary="health"] li');
+      await movementDrawn(page);
+    },
+  },
+  { // SV2-17: a tab of the inspector that another unit fills
+    id: 'movement-inspector-hotspots',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="hotspots"]');
+      await page.waitForSelector('#inspector [data-panel="hotspots"]');
+    },
+  },
+  { id: 'movement-empty', hash: '#project', open: async (page) => { // SV2-17: no groups, so no map
+    await removeSample(page);
+    await page.evaluate(() => {
+      location.hash = '#movement';
+    });
+    await page.waitForFunction(() => document.querySelector('.mov-empty') && !document.querySelector('.mov-empty').hidden);
+  } },
   { id: 'building-inspector-rooms', hash: '#building', open: inspectorTab('rooms') }, // SV2-07
   { id: 'building-inspector-floor', hash: '#building', open: inspectorTab('floor') }, // SV2-07
   { id: 'building-inspector-checks', hash: '#building', open: inspectorTab('checks') }, // SV2-07

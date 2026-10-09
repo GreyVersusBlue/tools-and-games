@@ -216,7 +216,8 @@ export const section = {
       change,
       add(groupId) {
         const answer = addGroup(choice, groupId);
-        if (answer.refused) ctx.toast({ text: answer.refused });
+        // the reason is on screen under the chips already: it is said, not put up again
+        if (answer.refused) ctx.announce(answer.refused);
         else change(answer.choice);
       },
       remove: (groupId) => change({ groupIds: choice.groupIds.filter((id) => id !== groupId) }),

@@ -84,7 +84,8 @@ test('groups sharing a stretch are parallel lanes in the project\'s order, and t
   assert.equal(Number((y(all, 'g0') - 1.5).toFixed(6)), Number(laneOffset(all, 0).toFixed(6)));
   const fewer = buildLanes(project, [0, 2].map((rank) => ({ groupId: 'g' + rank, rank, route: found })));
   assert.ok(y(fewer, 'g0') < y(fewer, 'g2'), 'g0 is still inside g2');
-  assert.equal(y(fewer, 'g0'), y(all, 'g0'), 'and the innermost lane has not moved');
+  assert.equal(Number((y(fewer, 'g0') - 1.5).toFixed(6)), Number(laneOffset(fewer, 0).toFixed(6)), 'and g0 is still the innermost lane');
+  assert.equal(Number((y(fewer, 'g2') - 1.5).toFixed(6)), Number(laneOffset(fewer, 1).toFixed(6)), 'with g2 beside it: no gap is left where g1 was');
   // drawn in the project's order whatever order they were given in
   assert.deepEqual(all.floors.get(floorId(1)).map((lane) => lane.groupId), ['g0', 'g1', 'g2']);
 });

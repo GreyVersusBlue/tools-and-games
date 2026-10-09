@@ -335,9 +335,9 @@ test('Getting started has the five steps as links, ticks what the project has, h
     ['rooms', '#building', 'true'],
     ['teachers', '#schedule/teachers', 'true'],
     ['groups', '#schedule/groups', 'true'],
-    ['movement', '#movement', 'false'],
+    ['movement', '#movement', 'true'], // SV2-17: the cases above opened the movement view, and it ticks its own step
   ]);
-  assert.equal(await text('#getting-started .getting-started__tally'), '4 of 5 done.');
+  assert.equal(await text('#getting-started .getting-started__tally'), 'All five are done.');
   await page.click('#getting-started .steps__step[data-step="teachers"] a');
   await waitForSection(page, 'schedule');
   assert.equal(await text('#surface [role="tab"][aria-selected="true"]'), 'Teachers');
