@@ -255,6 +255,7 @@ test('a fifth group is refused, and the reason is on screen', async () => {
   assert.equal(await visible('[data-reason="limit"]'), true);
   assert.equal(await text('[data-reason="limit"]'), 'Four groups at most are compared at once: with more, the lines are too thin to tell apart. Take one off to add another, or show a grade or every group.');
   assert.equal(await page.$eval('[data-control="add-group"]', (el) => el.getAttribute('aria-disabled') + ' ' + el.readOnly), 'true true');
+  assert.equal(await page.$eval('[data-control="add-group"]', (el) => el.placeholder), 'Four groups are shown');
   // the picker's own way in is shut, and the view's refuses too
   const before = await view(() => document.querySelector('.mov').movement.choice.groupIds.slice());
   await page.click('[data-control="add-group"]');
@@ -507,14 +508,15 @@ test('route health lists a failed route by name with why, and its link opens the
     globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 2, slot: { room: null } });
   });
   await settled();
-  assert.equal(await line(), 'Showing 8 groups on A Day, all transitions. 2 routes failed. The first: 7A, Period 2, No room is set for this period.');
+  assert.equal(await line(), 'Showing 8 groups on A Day, all transitions. 2 routes failed. The first: 7A, Period 3, no room is set for this period.');
   assert.equal(await text('#inspector [data-figure="failed"] .mov-figure__value'), '2');
   assert.equal(await text('#inspector [data-figure="routes"] .mov-figure__value'), '54');
   assert.equal(await text('#inspector [data-summary="health-line"]'), '2 routes failed, of every group on all 2 day types. Each is a transition nobody can be drawn walking.');
   const items = await page.$$eval('#inspector [data-summary="health"] li', (all) => all.map((li) => [li.dataset.group, li.dataset.day, li.dataset.period, li.dataset.reason, li.querySelector('.mov-health__text').textContent, li.querySelector('button').textContent]));
   assert.deepEqual(items, [
-    ['gsample07a', 'dsample00a', '1', 'no-room', '7A, Period 2 on A Day, No room is set for this period.', 'Fix it in the schedule'],
-    ['gsample07a', 'dsample00a', '2', 'no-room', '7A, Period 3 on A Day, No room is set for this period.', 'Fix it in the schedule'],
+    // the walk into Period 3 and the walk out of it: both name the period with no room (SV2-39 item 1)
+    ['gsample07a', 'dsample00a', '1', 'no-room', '7A, Period 3 on A Day, no room is set for this period.', 'Fix it in the schedule'],
+    ['gsample07a', 'dsample00a', '2', 'no-room', '7A, Period 3 on A Day, no room is set for this period.', 'Fix it in the schedule'],
   ]);
   assert.equal(await text('#inspector [data-summary="groups"] tr[data-group="gsample07a"] .mov-groups__failed'), '2 failed routes');
   // B Day shows no failure of its own, and says where the others are
@@ -590,6 +592,205 @@ test('a group\'s name is shown exactly as typed, on the chips, in the line, on t
   assert.deepEqual(dialogs, [], 'the name ran as script');
   await view(() => globalThis.sv2.store.undo());
   await change({ who: 'all', groupIds: [] });
+});
+
+// ---------------------------------------------------------------- SV2-39: the review of SV2-17
+
+// Stand something else in for the engine, by the store's own way in
+// (store.derived.use), and put the real one back.
+const standIn = (kind) => view((which) => {
+  const derived = globalThis.sv2.store.derived;
+  if (!globalThis.sv2Kept) globalThis.sv2Kept = derived.engine;
+  const real = globalThis.sv2Kept;
+  // The failure comes in a later task, as a worker's does. (A promise already
+  // rejected when it is handed over, inside the page call that changes the
+  // project, makes Chromium report that call's own promise as collected.)
+  if (which === 'fails') derived.use({ results: () => new Promise((resolve, reject) => { setTimeout(() => reject(new Error('The engine stopped')), 0); }) });
+  else if (which === 'waits') {
+    // answers only once it is let go
+    const gate = new Promise((resolve) => { globalThis.sv2LetGo = resolve; });
+    derived.use({ results: () => gate.then(() => real.results()) });
+  } else derived.use(real);
+}, kind);
+
+test('SV2-39 item 2: when the routes cannot be worked out after a change, the first line says so and the old picture is marked as from before the change', async () => {
+  await change(OPEN);
+  assert.equal(await page.$eval('.mov', (el) => el.dataset.stale || null), null);
+  await standIn('fails');
+  await view(async () => {
+    const { editGroup } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(editGroup, { id: 'gsample07a', name: '7A East' });
+  });
+  await page.waitForFunction(() => document.querySelector('.mov').dataset.stale === 'true', { timeout: 5000 });
+  const said = 'The routes could not be worked out: The engine stopped. The map and the figures are from before your last change.';
+  assert.equal(await line(), said);
+  assert.equal(await text('#announcer'), said, 'it is said as well as shown');
+  assert.equal(await page.$eval('#movement-line [data-action="show-me"]', (el) => el.hidden), true);
+  const seen = await view(() => {
+    const section = document.querySelector('.mov');
+    const movement = section.movement;
+    return {
+      pending: section.dataset.pending || null,
+      old: movement.state.project !== globalThis.sv2.store.project,
+      results: movement.state.results !== null,
+      drawn: movement.picture.drawn,
+      name: movement.state.project.groups.find((group) => group.id === 'gsample07a').name,
+      now: globalThis.sv2.store.project.groups.find((group) => group.id === 'gsample07a').name,
+      map: document.querySelector('.mov-map').hidden,
+    };
+  });
+  assert.deepEqual(seen, { pending: null, old: true, results: true, drawn: 56, name: '7A', now: '7A East', map: false }, 'the last good picture is still drawn, against its own project');
+  assert.equal(await text('#inspector [data-figure="routes"] .mov-figure__value'), '56');
+  // a choice made meanwhile still draws from the old answer, and is still marked
+  await view(() => document.querySelector('.mov').movement.change({ transition: 5 }));
+  assert.equal(await page.$eval('.mov', (el) => el.dataset.stale), 'true');
+  assert.equal(await line(), said);
+  assert.equal(await text('#inspector [data-figure="routes"] .mov-figure__value'), '8');
+  // the engine back and the project changed again: an answer comes, and nothing is stale
+  await standIn('real');
+  await view(() => globalThis.sv2.store.undo());
+  await settled();
+  assert.equal(await page.$eval('.mov', (el) => el.dataset.stale || null), null);
+  await change(OPEN);
+  assert.equal(await line(), 'Showing 8 groups on A Day, all transitions. No route failed.');
+});
+
+test('SV2-39 item 3: while the answer for a new scale is awaited, the legend\'s toggle shows the scale just chosen', async () => {
+  await change(OPEN);
+  const scale = () => view(() => ({
+    checked: document.querySelector('.mov-legend input[name="movement-scale"]:checked').value,
+    setting: globalThis.sv2.store.project.settings.colourScale.mode,
+    picture: document.querySelector('.mov-legend').dataset.mode,
+    pending: document.querySelector('.mov').dataset.pending || null,
+    last: document.querySelectorAll('.mov-legend__range')[4].textContent,
+  }));
+  assert.deepEqual(await scale(), { checked: 'relative', setting: 'relative', picture: 'relative', pending: null, last: '142–177' });
+  await standIn('waits');
+  await page.click('.mov-legend input[name="movement-scale"][value="absolute"]');
+  await page.waitForFunction(() => globalThis.sv2.store.project.settings.colourScale.mode === 'absolute' && document.querySelector('.mov').dataset.pending === 'true', { timeout: 5000 });
+  await view(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  // the numbers are still the old picture's; the toggle is not put back to them
+  assert.deepEqual(await scale(), { checked: 'absolute', setting: 'absolute', picture: 'relative', pending: 'true', last: '142–177' });
+  // a choice made while waiting redraws the legend: the toggle stays where it was put
+  await view(() => document.querySelector('.mov').movement.change({ labels: false }));
+  assert.equal((await scale()).checked, 'absolute');
+  await view(() => globalThis.sv2LetGo());
+  await settled();
+  assert.deepEqual(await scale(), { checked: 'absolute', setting: 'absolute', picture: 'absolute', pending: null, last: '100+' });
+  await standIn('real');
+  await view(() => globalThis.sv2.store.undo());
+  await settled();
+  assert.deepEqual(await scale(), { checked: 'relative', setting: 'relative', picture: 'relative', pending: null, last: '142–177' });
+  await change(OPEN);
+});
+
+test('SV2-39 items 4 and 5: the legend counts the zones of the floors on screen, and a group chosen twice is one chip', async () => {
+  await change(OPEN);
+  assert.equal(await text('.mov-legend [data-legend="zones"]'), '1 exclusion zone is left out of the scale.');
+  await change({ ...OPEN, floors: 'fsample003' });
+  assert.equal(await text('.mov-legend [data-legend="zones"]'), 'No exclusion zones.', 'the one zone is on Floor 1, which is not on screen');
+  await change({ ...OPEN, who: 'groups', groupIds: ['gsample06a', 'gsample06a', 'gsample07a', 'gsample06a'] });
+  assert.deepEqual(await page.$$eval('.mov-chips .chip', (all) => all.map((chip) => chip.dataset.group)), ['gsample06a', 'gsample07a']);
+  assert.deepEqual(await view(() => document.querySelector('.mov').movement.choice.groupIds), ['gsample06a', 'gsample07a']);
+  assert.equal(await page.$eval('[data-control="add-group"]', (el) => el.getAttribute('aria-disabled')), 'false', 'two groups are not the limit');
+  await change(OPEN);
+});
+
+test('SV2-39 item 6: a pointer moving inside one cell does not work the card out again', async () => {
+  await change(OPEN);
+  await view(() => document.querySelector('.mov').movement.fit());
+  const at = await view(() => {
+    const movement = document.querySelector('.mov').movement;
+    const busiest = movement.picture.busiest;
+    const box = movement.canvas.getBoundingClientRect();
+    const place = movement.cellAt(busiest.floorId, busiest.cell);
+    return { x: box.left + place.x, y: box.top + place.y, size: movement.view.size, cell: busiest.cell };
+  });
+  assert.ok(at.size >= 6, 'a cell is ' + at.size + ' px: too small to move inside');
+  await page.mouse.move(at.x, at.y);
+  await page.waitForSelector('.mov-card:not([hidden])');
+  // every change to the card from here on is counted
+  await view(() => {
+    globalThis.sv2CardChanges = 0;
+    globalThis.sv2CardWatch = new MutationObserver((records) => { globalThis.sv2CardChanges += records.length; });
+    globalThis.sv2CardWatch.observe(document.querySelector('.mov-card'), { childList: true, subtree: true, characterData: true, attributes: true });
+  });
+  const drawnBefore = await view(() => Number(document.querySelector('#movement-plan').dataset.drawn));
+  const nudge = Math.max(1, Math.floor(at.size / 4));
+  for (const [dx, dy] of [[nudge, 0], [nudge, nudge], [0, nudge], [-nudge, 0], [0, -nudge], [0, 0]]) await page.mouse.move(at.x + dx, at.y + dy);
+  await view(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const still = await view(() => ({ changes: globalThis.sv2CardChanges + globalThis.sv2CardWatch.takeRecords().length, cell: document.querySelector('.mov-card').dataset.cell, hidden: document.querySelector('.mov-card').hidden, drawn: Number(document.querySelector('#movement-plan').dataset.drawn) }));
+  assert.deepEqual(still, { changes: 0, cell: String(at.cell), hidden: false, drawn: drawnBefore }, 'six moves inside the cell changed the card or painted the map');
+  // into the next cell: a new card, as before
+  await page.mouse.move(at.x + at.size, at.y);
+  await page.waitForFunction((cell) => document.querySelector('.mov-card').dataset.cell !== String(cell) || document.querySelector('.mov-card').hidden, {}, at.cell);
+  assert.ok(await view(() => globalThis.sv2CardChanges + globalThis.sv2CardWatch.takeRecords().length) > 0, 'the watch saw nothing when the card did change');
+  // back, and the picture changes under a pointer that then moves inside the cell: the card follows
+  await page.mouse.move(at.x, at.y);
+  await page.waitForFunction((cell) => !document.querySelector('.mov-card').hidden && document.querySelector('.mov-card').dataset.cell === String(cell), {}, at.cell);
+  assert.equal(await text('.mov-card__load'), '177 students at its busiest, Period 4 to Period 5.');
+  const first = await page.$eval('.mov-card__groups li[data-group]', (li) => li.dataset.group);
+  await view(async (id) => {
+    const { editGroup } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(editGroup, { id, name: 'Renamed' });
+  }, first);
+  await settled();
+  await page.mouse.move(at.x + nudge, at.y);
+  await page.waitForFunction((id) => document.querySelector('.mov-card__groups li[data-group="' + id + '"] bdi').textContent === 'Renamed', { timeout: 5000 }, first);
+  await view(() => globalThis.sv2.store.undo());
+  await settled();
+  await view(() => { globalThis.sv2CardWatch.disconnect(); });
+  await page.mouse.move(2, 2);
+});
+
+test('SV2-39 item 7: the graph the view draws on is the one the store keeps for the building', async () => {
+  await change(OPEN);
+  const same = () => view(() => {
+    const movement = document.querySelector('.mov').movement;
+    let made = 0;
+    const kept = globalThis.sv2.store.derived.get('graph', ['building'], () => {
+      made += 1;
+      return null;
+    });
+    return { same: kept === movement.state.graph, made, count: movement.state.graph.count, loads: movement.state.results.loads[0].cells.busiest.length };
+  });
+  let now = await same();
+  assert.equal(now.made, 0, 'the store had no graph for this building: the view keeps its own');
+  assert.equal(now.same, true);
+  assert.equal(now.count, now.loads);
+  // a change to the schedule leaves the building, and its graph, as they are
+  const before = await view(() => { globalThis.sv2Graph = document.querySelector('.mov').movement.state.graph; return true; });
+  assert.equal(before, true);
+  await view(async () => {
+    const { editGroup } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(editGroup, { id: 'gsample07a', name: '7A East' });
+  });
+  await settled();
+  assert.equal(await view(() => document.querySelector('.mov').movement.state.graph === globalThis.sv2Graph), true, 'a renamed group built the graph again');
+  await view(() => globalThis.sv2.store.undo());
+  await settled();
+  // a change to the building: until its answer comes the old picture keeps the old graph; then both are new
+  await standIn('waits');
+  await view(async () => {
+    const { paintCorridor } = await import(new URL('engine/actions.js', location.href).href);
+    // the top left corner of Floor 3, which is empty
+    globalThis.sv2.store.apply(paintCorridor, { floorId: 'fsample003', cells: [0] });
+  });
+  await page.waitForFunction(() => document.querySelector('.mov').dataset.pending === 'true', { timeout: 5000 });
+  const waiting = await view(() => {
+    const movement = document.querySelector('.mov').movement;
+    return { old: movement.state.graph === globalThis.sv2Graph, fits: movement.state.graph.count === movement.state.results.loads[0].cells.busiest.length, building: movement.state.project.building !== globalThis.sv2.store.project.building };
+  });
+  assert.deepEqual(waiting, { old: true, fits: true, building: true }, 'the old answer is drawn on the old building\'s graph');
+  await view(() => globalThis.sv2LetGo());
+  await settled();
+  now = await same();
+  assert.deepEqual([now.made, now.same, now.count === now.loads], [0, true, true]);
+  assert.equal(await view(() => document.querySelector('.mov').movement.state.graph !== globalThis.sv2Graph), true, 'a new building, a new graph');
+  await standIn('real');
+  await view(() => globalThis.sv2.store.undo());
+  await settled();
+  assert.equal(await line(), 'Showing 8 groups on A Day, all transitions. No route failed.');
 });
 
 test('with no groups there is no map: the screen says what the view is and what to do first', async () => {

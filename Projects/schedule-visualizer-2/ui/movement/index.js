@@ -18,7 +18,10 @@
 // (store.derived.results(): routes, crowd, loads, places, walks). They are
 // asked for once per state of the project. Until the answer for a change
 // comes the last answer stays on the map, drawn against the project it was
-// worked out for, and the section reads as pending (`data-pending`).
+// worked out for, and the section reads as pending (`data-pending`). When an
+// answer cannot be worked out the first line says so; a last answer that is
+// still on the map is then from before the change, and the section reads as
+// stale (`data-stale`) until an answer comes.
 //
 // Where a later unit plugs in. A panel of the inspector and the playback bar
 // are each a function of `env` returning { element, update(state) }:
@@ -54,7 +57,7 @@ import { parse, readable } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
 import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js';
 import { MOVEMENT_STEP } from '../help/progress.js';
-import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard } from './model.js';
+import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence } from './model.js';
 import { layoutFloors, bestLayout, slotAt, placeOf } from './layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
@@ -108,18 +111,6 @@ function loadSheet() {
 // project that is open.
 const memory = { projectId: null, choice: null, tab: 'summary', legendFolded: false };
 
-// One graph a building, kept by the building object: a change to the
-// schedule gives a new project with the same building.
-const graphs = new WeakMap();
-function graphOf(project) {
-  let graph = graphs.get(project.building);
-  if (!graph) {
-    graph = buildGraph(project);
-    graphs.set(project.building, graph);
-  }
-  return graph;
-}
-
 function first(project) {
   const one = periodWords(project.settings).one;
   return 'It draws every group’s walk between one ' + one + ' and the next, so you can see where the corridors fill and who cannot make it in time. Draw the building and give a group its rooms first.';
@@ -170,8 +161,10 @@ export const section = {
   mount(ctx) {
     const store = ctx.store;
     let choice = settleChoice(store.project, memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project));
-    // the last answer, and the project it was worked out for
-    let derived = { asked: null, project: null, results: null, failed: null };
+    // the last answer, the project it was worked out for, and that project's graph
+    let derived = { asked: null, project: null, results: null, graph: null, failed: null };
+    // The graph of the building as it is: the store keeps one a building (ARCHITECTURE 16, SV2-16).
+    const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
     let state = null;
     let picture = null;
     let world = null;
@@ -327,9 +320,11 @@ export const section = {
       const settle = (results, failed) => {
         // an answer for a state the project has left is not for the screen
         if (gone || derived.asked !== project || store.project !== project) return;
-        derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, failed };
+        // store.project is `project` here, so the store's graph is this answer's
+        derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, graph: results ? graphNow() : derived.graph, failed };
         refresh();
         delete element.dataset.pending;
+        if (failed) ctx.announce(failedSentence(standingOf(project, derived)).parts.map((part) => part.text).join(''));
       };
       store.derived.results().then((results) => settle(results, null), (error) => settle(null, error && error.message ? error.message : String(error)));
     }
@@ -351,6 +346,7 @@ export const section = {
         ctx.setInspector(null);
         ctx.setSecondRow(null);
         state = null;
+        delete element.dataset.stale;
         return;
       }
       if (empty.firstChild) {
@@ -358,20 +354,23 @@ export const section = {
         ctx.setInspector(inspector.element.parentElement);
         ctx.setSecondRow(floorsRow);
       }
-      // the last answer is drawn against the project it was worked out for
-      const shown = derived.results && derived.project ? derived.project : project;
-      const graph = graphOf(shown);
-      picture = pictureOf(shown, derived.results, graph, choice);
-      const health = routeHealth(shown, derived.results);
-      const sentence = derived.failed && !derived.results
-        ? { parts: [{ text: 'The routes could not be worked out: ' + derived.failed }], showMe: false }
-        : sentenceOf(shown, picture, health);
-      state = { project: shown, results: derived.results, graph, picture, health };
+      // the last answer is drawn against the project it was worked out for,
+      // on that project's graph; after a derive that failed it is stale
+      const standing = standingOf(project, derived);
+      const shown = standing.project;
+      const graph = standing.results && derived.graph ? derived.graph : graphNow();
+      picture = pictureOf(shown, standing.results, graph, choice);
+      const health = routeHealth(shown, standing.results);
+      const sentence = standing.failed ? failedSentence(standing) : sentenceOf(shown, picture, health);
+      state = { project: shown, results: standing.results, graph, picture, health };
+      if (standing.stale) element.dataset.stale = 'true';
+      else delete element.dataset.stale;
       lineColours.clear();
       element.dataset.mode = picture.mode;
       element.dataset.groups = String(picture.groups.length);
       top.update(project, picture, sentence);
-      key.update(shown, picture);
+      // the scale's toggle shows the setting as it is now, not as the picture on screen had it
+      key.update(shown, picture, { mode: project.settings.colourScale && project.settings.colourScale.mode === 'absolute' ? 'absolute' : 'relative' });
       bar.update(state);
       drawPanel();
       arrange();
@@ -586,7 +585,7 @@ export const section = {
         clearPoint();
         return { found, info: null };
       }
-      point = { floorId: found.slot.floor.id, cell: found.cell, source };
+      point = { floorId: found.slot.floor.id, cell: found.cell, source, picture };
       const at = view.toScreen(x, y);
       card.show(info, { x: at.x, y: at.y, size: view.size }, picture, state.project.settings);
       card.element.dataset.floor = point.floorId;
@@ -612,8 +611,14 @@ export const section = {
       },
       hover(ev) {
         if (point && point.source === 'tap') return;
-        if (!ev || !ev.inside) clearPoint();
-        else pointAt(ev.x, ev.y, 'hover');
+        if (!ev || !ev.inside) {
+          clearPoint();
+          return;
+        }
+        // still in the cell whose card is up, over the same picture: nothing to work out again
+        const found = point && point.source === 'hover' && point.picture === picture && world ? slotAt(world, ev.x, ev.y) : null;
+        if (found && found.slot.floor.id === point.floorId && found.cell === point.cell) return;
+        pointAt(ev.x, ev.y, 'hover');
       },
       hasMenu: () => false,
       menu() {},

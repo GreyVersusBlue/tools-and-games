@@ -3,7 +3,11 @@
 // the picture is the busiest moment or the total over the day, whether the
 // scale is relative or absolute, and how many exclusion zones are left out.
 //
-//   legend({ measure(value), scale(value), folded, fold(folded) }) -> { element, update(project, picture) }
+//   legend({ measure(value), scale(value), folded, fold(folded) }) -> { element, update(project, picture, chosen) }
+//
+// `chosen` is { mode }, the colour scale as the project has it now. While the
+// answer for a change of scale is awaited the picture, and so the numbers,
+// are still the old scale's; the toggle shows what was just chosen.
 //
 // With one group on screen there is no load colouring, and the card says so.
 
@@ -64,7 +68,7 @@ export function legend(options) {
 
   return {
     element,
-    update(project, picture) {
+    update(project, picture, chosen) {
       element.hidden = picture.mode === 'empty';
       if (picture.mode === 'empty') return;
       const group = picture.mode === 'single' ? picture.groups[0] : null;
@@ -92,7 +96,7 @@ export function legend(options) {
         h('span', { class: 'mov-legend__range', 'aria-hidden': 'true' }, bandText(edge, false)))));
       measureBox.hidden = load.measure === 'transition';
       measure.set(load.measure === 'total' ? 'total' : 'busiest');
-      scale.set(load.mode);
+      scale.set(chosen && (chosen.mode === 'absolute' || chosen.mode === 'relative') ? chosen.mode : load.mode);
       scaleNote.textContent = load.mode === 'absolute'
         ? 'Absolute: fixed loads, set in Project, so two pictures compare.'
         : load.max > 0 ? 'Relative: fifths of the busiest cell on screen, ' + load.max + '.' : 'Relative: fifths of the busiest cell on screen. Nobody crosses a corridor here.';
