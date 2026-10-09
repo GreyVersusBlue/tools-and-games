@@ -451,6 +451,7 @@ test('a corridor cell under the pointer, tapped, or under the keyboard cursor sh
   let shown = await card();
   assert.equal(shown.place, 'Main Corridor, by Door B · Floor 1');
   assert.equal(shown.load, '177 students at its busiest, Period 4 to Period 5.');
+  assert.equal(await page.$eval('.mov-card__groups', (el) => Array.from(el.childNodes).every((node) => node.nodeName === 'LI')), true, 'the list holds something that is not an item');
   assert.ok(shown.groups.length >= 4 && shown.groups.every((words) => /^\d[A-C](once|twice|\d+ times)$/.test(words)), 'the groups and how many times: ' + shown.groups.join(' | '));
   // over a room there is no card
   await page.mouse.move(at.left + at.room.x, at.top + at.room.y);

@@ -50,7 +50,7 @@ export function cellCardView() {
       const shown = card.groups.slice(0, SHOWN);
       groups.replaceChildren(
         ...shown.map((each) => h('li', { data: { group: each.group.id } }, h('span', { class: 'mov-swatch', style: 'background:' + each.group.colour }), h('bdi', null, each.group.name), h('span', { class: 'mov-card__times' }, times(each.times)))),
-        card.groups.length > shown.length ? h('li', { class: 'mov-card__more' }, 'and ' + (card.groups.length - shown.length) + ' more') : null,
+        ...(card.groups.length > shown.length ? [h('li', { class: 'mov-card__more' }, 'and ' + (card.groups.length - shown.length) + ' more')] : []),
       );
       groups.hidden = card.groups.length === 0;
       element.hidden = false;
