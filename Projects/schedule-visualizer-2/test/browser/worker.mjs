@@ -148,14 +148,22 @@ test('the worker and the main thread say the same for the same project', async (
 });
 
 test('one changed slot: the worker runs two transitions and sends back only what changed', async () => {
-  const seen = await page.evaluate(async () => {
+  // The answer is kept on the page and read in a second evaluate: a promise
+  // awaited across one long evaluate was once garbage-collected on CI's runner
+  // ("Protocol error (Runtime.callFunctionOn): Promise was collected").
+  await page.evaluate(() => {
     const { store } = globalThis.sv2;
     const t = globalThis.sv2test;
-    const first = t.kept.first;
+    t.kept.second = null;
     // 7C leaves Room 203 in Period 2 on A Day: the double booking goes
     store.apply(t.actions.setSlot, { groupId: 'gsample07c', dayTypeId: 'dsample00a', period: 1, slot: { room: null } });
-    const result = await store.derived.results();
-    t.kept.second = result;
+    store.derived.results().then((result) => { t.kept.second = result; });
+  });
+  await page.waitForFunction(() => globalThis.sv2test.kept.second !== null, { timeout: 15000 });
+  const seen = await page.evaluate(() => {
+    const t = globalThis.sv2test;
+    const first = t.kept.first;
+    const result = t.kept.second;
     const dayA = result.crowd.days[0];
     return {
       where: result.where,

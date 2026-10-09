@@ -382,13 +382,30 @@ test('with no point to offer, the dialog says so and the sample school opens', a
 // ---------------------------------------------------------------- a crash
 
 // Kill the page's process. Nothing in the page runs again: no pagehide, no flush.
+//
+// Then make sure the dead page is gone. CI's runner kept a crashed page's tab
+// lock (`sv2:project`, storage/tabs.js) for longer than 15 s, so every page
+// opened after it was read-only: no recovery dialog, no save, and the cases
+// that followed failed for that reason alone. Here the lock frees at once. So
+// the crashed target is closed by name, and a probe page on the same origin
+// watches `navigator.locks.query()` until the lock is free. The probe has to
+// see the lock held before the crash, or it is not looking at the right thing.
 async function crash() {
   const client = await page.createCDPSession();
+  const { targetInfo } = await client.send('Target.getTargetInfo');
+  const probe = await browser.newPage();
+  await probe.goto(server.base + TOOL_PATH + 'icon.svg', { waitUntil: 'load' });
+  const lockHeld = () => probe.evaluate(async () => (await navigator.locks.query()).held.some((lock) => lock.name === 'sv2:project'));
+  assert.equal(await lockHeld(), true, 'the probe sees the editing tab holding the lock');
   client.send('Page.crash').catch(() => {});
   await pause(500);
   // closing a dead page may never answer; do not wait on it for long
   await Promise.race([session.close().catch(() => {}), pause(3000)]);
   session = null;
+  const connection = (await probe.createCDPSession()).connection();
+  await connection.send('Target.closeTarget', { targetId: targetInfo.targetId }).catch(() => {});
+  await probe.waitForFunction(async () => !(await navigator.locks.query()).held.some((lock) => lock.name === 'sv2:project'), { timeout: 15000, polling: 250 });
+  await probe.close();
 }
 
 test('a crash after the save keeps the work: the page is killed with no pagehide and the edit is there', async () => {
