@@ -12,7 +12,10 @@ import { wordsJoined, partsToNodes, countOf, linkToTeacher, linkToRoom, subjectC
 
 const isEmpty = (slot) => !slot || (!slot.room && !slot.roomText && !slot.label);
 
-// "Period 3" → "3", "Block C" → "C", "3rd Hour" → "3rd": what fits on a room.
+// "Period 3" → "3", "Block C" → "C", "3rd Hour" → "3rd". The page asks the
+// school for this now (school.periodLabel, the engine's own); this copy is
+// here only until the case in test/browser/staff-views-a.mjs that imports it
+// asks the school too.
 export function shortPeriod(name) {
   return String(name).replace(/^(Period|Mod|Block)\s+/, '').replace(/\s+Hour$/, '');
 }
@@ -97,7 +100,7 @@ function groupMap(ctx, group, kinds, at) {
   if (seen.length === 0) return null;
   const bells = school.bells(kind.first.id);
   const timeOf = (period) => (bells[period].start ? school.time(bells[period].start) : '');
-  const shorts = (visit) => visit.periods.map((period) => shortPeriod(school.periodName(period))).join(', ');
+  const shorts = (visit) => visit.periods.map((period) => school.periodLabel(period)).join(', ');
   const box = h('div', { class: 'part', dataset: { kind: String(at) } });
   const tabs = kinds.length > 1 ? h('div', { class: 'tabs' }, kinds.map((each, index) => h('button', {
     class: 'tab',

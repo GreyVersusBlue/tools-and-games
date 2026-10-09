@@ -9,7 +9,8 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf } from '../page.js';
-import { clockNow, dayTypeFor, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, periodPicker, viewLink, nowTabs, shareRow, entryWords } from '../clock.js';
+import { aroundRoom } from '../map.js';
+import { clockNow, dayTypeFor, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, periodPicker, viewLink, nowTabs, entryWords } from '../clock.js';
 
 // The teachers who have a group in a period, by the engine's rule.
 function teachersOf(school, groupId, dayTypeId, period) {
@@ -29,13 +30,19 @@ function names(school, view, items, nameOf) {
   return pieces;
 }
 
-// Where a room is, in words, with the way to its floor on the map.
-function whereRoom(school, room) {
+// Where a room is: in words, with the way to its floor on the map, and then
+// the room and what is near it as a picture.
+function whereRoom(ctx, room) {
+  const school = ctx.school;
   const floor = school.floorOfRoom(room.id);
   if (!floor) return null;
-  return h('p', { dataset: { where: 'floor' } },
-    typed(school.roomName(room, true)), ' is on ', typed(floor.name), room.wing ? [', ', typed(room.wing)] : null, '. ',
-    school.has('map') ? h('a', { href: makeHash('map', floor.id) }, 'Show ', typed(floor.name), ' on the map') : null);
+  const near = aroundRoom(ctx, room);
+  return [
+    h('p', { dataset: { where: 'floor' } },
+      typed(school.roomName(room, true)), ' is on ', typed(floor.name), room.wing ? [', ', typed(room.wing)] : null, '. ',
+      school.has('map') ? h('a', { href: makeHash('map', floor.id) }, 'Show ', typed(floor.name), ' on the map') : null),
+    near ? h('div', { dataset: { where: 'map' } }, near) : null,
+  ];
 }
 
 export const nowView = {
@@ -82,7 +89,7 @@ export const nowView = {
       return [
         h('p', { class: 'card__title', dataset: { where: 'sentence' } }, sentence),
         slot && slot.label ? h('p', { class: 'muted' }, typed(slot.label)) : null,
-        room ? whereRoom(school, room) : null,
+        room ? whereRoom(ctx, room) : null,
       ];
     };
 
@@ -95,13 +102,13 @@ export const nowView = {
         const rooms = entry.groups.map((taught) => taught.roomId).filter((id, index, all) => id !== null && all.indexOf(id) === index).map((id) => school.room(id));
         return [
           h('p', { class: 'card__title', dataset: { where: 'sentence' } }, name, ' has ', entryWords(school, entry), when, '.'),
-          rooms.map((room) => whereRoom(school, room)),
+          rooms.map((room) => whereRoom(ctx, room)),
         ];
       }
       return [
         h('p', { class: 'card__title', dataset: { where: 'sentence' } }, name, ' has no group', when, ': it is planning.'),
         based.length > 0 ? h('p', null, 'Based in ', names(school, 'room', based, (room) => school.roomName(room)), '.') : null,
-        based.map((room) => whereRoom(school, room)),
+        based.map((room) => whereRoom(ctx, room)),
       ];
     };
 
@@ -163,7 +170,7 @@ export const nowView = {
     draw();
     const page = pageOf('Where right now', null, says, nowTabs(school, 'now'),
       h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'now-who' }, 'Group or teacher'), who),
-      out, pickers, shareRow(() => 'Where right now · ' + school.name));
+      out, pickers);
     watchClock(page, () => {
       if (state.period !== '') return;
       if (momentKey(state.dayType.id, momentOf(school, state.dayType.id, clockNow(ctx))) !== lastKey) draw();

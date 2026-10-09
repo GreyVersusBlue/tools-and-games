@@ -8,7 +8,8 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf } from '../page.js';
-import { everyTeacherDay, periodTimes, sameDayTypes, dayTypeNames, viewLink, shareRow, entryWords } from '../clock.js';
+import { everyTeacherDay, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
+import { dayKindsOf } from './teacher.js';
 
 function chosenFrom(school, text) {
   const ids = [];
@@ -108,10 +109,7 @@ export const commonView = {
         out.replaceChildren();
         return;
       }
-      const sets = sameDayTypes(school, (dayType) => JSON.stringify([
-        chosen.map((id) => everyTeacherDay(school, dayType.id).get(id)),
-        school.bells(dayType.id).map((bell) => [bell.start, bell.end]),
-      ]));
+      const sets = dayKindsOf(school, (dayType) => chosen.map((id) => everyTeacherDay(school, dayType.id).get(id)));
       const found = sets.map((set) => ({ set, periods: commonPeriods(school, chosen, set.first.id) })).filter((part) => part.periods.length > 0);
       says.replaceChildren(h('span', null, found.length === 0
         ? (chosen.length === 2 ? 'These two teachers are' : 'These ' + chosen.length + ' teachers are') + ' never all free in the same ' + school.data.settings.periodWord.toLowerCase() + '.'
@@ -134,6 +132,6 @@ export const commonView = {
     draw();
     return pageOf('Common planning', null, says,
       h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'common-add' }, 'Add a teacher'), adder),
-      picked, out, shareRow(() => 'Common planning · ' + school.name));
+      picked, out);
   },
 };

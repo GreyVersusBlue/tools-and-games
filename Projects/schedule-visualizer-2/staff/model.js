@@ -6,9 +6,9 @@
 
 import { findById, findRoom, floorOfRoom, allRooms, findFloor } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule } from '../engine/day-types.js';
-import { bellsFor, periodName, formatTime } from '../engine/bells.js';
+import { bellsFor, periodName, periodLabel, parseTime, formatTime } from '../engine/bells.js';
 import { teacherDay } from '../engine/teacher-day.js';
-import { roomName } from '../engine/findings.js';
+import { roomName, formatDuration } from '../engine/findings.js';
 import { buildGraph } from '../engine/graph.js';
 import { routingGraph, route } from '../engine/routing.js';
 import { directions } from '../engine/directions.js';
@@ -63,8 +63,20 @@ export function openSchool(data) {
     periodName(index) {
       return periodName(data.settings, index);
     },
+    // The period without its word, for a badge on a room: "3", "C", "3rd".
+    periodLabel(index) {
+      return periodLabel(data.settings, index);
+    },
     time(value) {
       return formatTime(value, data.settings.timeFormat);
+    },
+    // A bell time as minutes after midnight, or null when it is not one.
+    parseTime(value) {
+      return parseTime(value);
+    },
+    // A length of time in the engine's words: "45 s", "4 min 19 s".
+    formatDuration(seconds) {
+      return formatDuration(seconds);
     },
     bells(dayTypeId) {
       return bellsFor(data, dayTypeId);

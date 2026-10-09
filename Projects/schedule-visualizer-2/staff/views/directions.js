@@ -11,7 +11,8 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf } from '../page.js';
-import { viewLink, sectionHeading, shareRow } from '../clock.js';
+import { viewLink, sectionHeading } from '../clock.js';
+import { floorMap } from '../map.js';
 
 // "under a minute", "about 1 minute", "about 4 minutes".
 function about(seconds) {
@@ -108,18 +109,38 @@ export const directionsView = {
 
       const floors = routeFloors(school, found);
       const stairs = found.connections.length;
+      const stairsOf = (letter) => (letter ? ['stairs ', typed(letter)] : 'the stairs');
+      // the line on each floor, in words: the picture's alternative
+      const lineOn = (floor) => {
+        const here = floors.map((part, index) => ({ part, index })).filter((each) => each.part.floorId === floor.id);
+        if (here.length === 0) return [h('span', null, 'The way does not cross ', typed(floor.name), '.')];
+        return [h('span', null, here.map(({ part, index }, at) => [
+          at > 0 ? ' Then from ' : ['On ', typed(floor.name), ' the line runs from '],
+          index === 0 ? typed(school.roomName(start)) : stairsOf(floors[index - 1].stairs),
+          ' to ',
+          part.stairs === null ? typed(school.roomName(end)) : stairsOf(part.stairs),
+          '.',
+        ]))];
+      };
       says.replaceChildren(h('span', null, ends, ': ', about(found.seconds), stairs === 0 ? ', all on one floor' : ', ' + stairs + (stairs === 1 ? ' flight' : ' flights') + ' of stairs', state.stepFree ? ', step-free' : null, '.'));
       out.replaceChildren(
         h('section', { class: 'card', dataset: { directions: 'steps' } },
           sectionHeading('The way', written.steps.length),
           h('ol', { class: 'steps' }, written.steps.map((step) => h('li', { class: 'steps__step', dataset: { kind: step.kind } },
             step.parts.map((part) => (part.name ? typed(part.text) : part.text))))),
-          h('p', { class: 'muted' }, 'The time is for an empty corridor. Distances are in squares of the floor plan.')),
+          h('p', { class: 'muted', dataset: { directions: 'time' } }, 'The walk is ' + school.formatDuration(found.seconds) + ' at the school\'s walking pace, for an empty corridor. Distances are in squares of the floor plan.')),
         h('section', { class: 'card', dataset: { directions: 'floors' } },
           sectionHeading('Floors on the way', floors.length),
           h('ol', { class: 'plain' }, floors.map((part) => h('li', null,
             school.has('map') && part.floor ? h('a', { href: makeHash('map', part.floorId) }, typed(part.floor.name)) : typed(part.floor ? part.floor.name : 'a floor'),
-            part.stairs === null ? ', where the walk ends' : [', then stairs ', typed(part.stairs)])))));
+            part.stairs === null ? ', where the walk ends' : [', then stairs ', typed(part.stairs)]))),
+          school.has('map') ? floorMap(ctx, {
+            floorId: floors[0].floorId,
+            label: 'The way on the map',
+            route: found,
+            marks: [{ roomId: start.id, ring: true }, { roomId: end.id, ring: true }],
+            says: lineOn,
+          }) : null));
     };
 
     const address = () => ctx.replace(makeHash('directions', '', { from: state.from, to: state.to, stepfree: state.stepFree ? '1' : '' }));
@@ -147,6 +168,6 @@ export const directionsView = {
         to.field,
         h('label', { class: 'check', for: 'directions-stepfree' }, stepFree, h('span', null, 'Step-free: a way with no stairs')),
         h('p', { class: 'actions' }, swap)),
-      out, shareRow(() => 'Directions · ' + school.name));
+      out);
   },
 };

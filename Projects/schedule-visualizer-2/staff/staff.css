@@ -34,6 +34,33 @@
     .band  .band--stale  .band--note
     .muted                 secondary text
     .plan                  text in the plan face (room numbers on a map)
+
+  From SV2-21 (the teacher, group, room, building map and staffing pages):
+
+    .facts                 the header card's lines: a dl of div > dt + dd
+    .days  .day            the day cards; side by side where there is room
+    .row__period  .row__time  .row__mark   inside .row__when
+    .part  .part__title    a titled part of a page
+    .actions               a row of buttons
+    .scroll                a table that may be wider than a phone
+    .table--figures  .table__under
+    .legend  .chip--none   the subject colours of a floor
+    .plain                 a list that links nowhere
+    .mapbox  .map__bar  .map__tabs  .map__zooms  .map__zoom
+    .map__plan  .map__pulse  .map__says  .map__which  .map__ask
+    .split__side           the map's place in .split
+
+  From SV2-23 (my schedule, notes, what a page hands over, the door sign, paper):
+
+    .print-only            on paper only; .no-print (SV2-22) is its opposite
+    .page__printed         the "Printed 1 September" line pageOf() makes
+    .page__outputs         Print and Share, under every page (pageOf makes it)
+    .outputs  .outputs__row   under a teacher's day: print, image, door sign, "This is me"
+    .row__note  .note      a note under a period: .note__paper  .note__input
+    .sheet                 a sheet of paper on screen (the door sign's preview)
+    .sign                  the door sign: .sign__word  .sign__number
+                           .sign__teacher  .sign__subject  .sign__school
+                           .sign__day  .sign__kind  .sign__kindname  .sign__table
 */
 
 @font-face {
@@ -1391,3 +1418,413 @@ select.field__input {
 }
 
 /* ---------- SV2-22: end ---------- */
+
+/* ---------- SV2-23: my schedule, notes, what a page hands over, the door sign, and paper ---------- */
+
+/*
+    The classes are listed at the top of this file. The screen first; every
+    rule for paper is in the one print block at the end, which changes nothing
+    on screen.
+*/
+
+.print-only {
+  display: none;
+}
+
+/* the printed-date line is not on screen, so the heading is still the page's first line */
+.page__printed + .page__title {
+  margin-top: 0;
+}
+
+.page__outputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.outputs > * + * {
+  margin-top: var(--s-2);
+}
+
+.outputs__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.outputs [role="status"]:empty {
+  display: none;
+}
+
+/* a note sits under its period, across the row */
+.row__note {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.note[data-empty="true"],
+.days[data-notes="read"] .note__input,
+.days[data-notes="edit"] .note__paper {
+  display: none;
+}
+
+.days[data-notes="edit"] .note[data-empty="true"] {
+  display: block;
+}
+
+.note__paper {
+  display: block;
+  padding-left: var(--s-2);
+  border-left: 3px solid var(--accent);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  white-space: pre-wrap;          /* a note is shown as typed */
+}
+
+.note__input {
+  min-height: var(--tap);
+}
+
+.note__input::placeholder {
+  color: var(--ink-2);
+  opacity: 1;
+}
+
+/* The door sign's preview: the printable part of a sheet, every size a share
+   of the sheet's own width, so a phone shows the sheet whole and small. On a
+   US Letter sheet with this file's margins, 22.5% of the width is 120 pt. */
+.sheet {
+  container-type: inline-size;
+  max-width: 34rem;
+  aspect-ratio: 7.4 / 9.9;
+  border: var(--border-width) solid var(--line-strong);
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.sign {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100%;
+  padding: 9cqw 6cqw 5cqw;
+  text-align: center;
+}
+
+.sign__word {
+  color: var(--ink-2);
+  font-family: var(--font-plan);
+  font-size: 4.1cqw;
+  font-weight: var(--w-semibold);
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.sign__number {
+  font-family: var(--font-plan);
+  font-size: calc(22.5cqw * var(--sign-fit, 1));
+  font-weight: var(--w-semibold);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.sign__teacher {
+  margin-top: 4cqw;
+  font-size: 6cqw;
+  font-weight: var(--w-bold);
+  line-height: 1.15;
+}
+
+.sign__subject {
+  margin-top: 1.5cqw;
+  color: var(--ink-2);
+  font-size: 4.1cqw;
+  line-height: 1.2;
+}
+
+.sign > [data-sign="slot"] {
+  width: 100%;
+}
+
+.sign__day {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(42%, 1fr));
+  gap: 3cqw;
+  margin-top: 5cqw;
+  text-align: left;
+}
+
+.sign__kindname {
+  font-size: 2.6cqw;
+  font-weight: var(--w-bold);
+  line-height: 1.3;
+}
+
+.sign__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 2.06cqw;
+  font-variant-numeric: var(--numeric);
+  line-height: 1.3;
+}
+
+.sign__table th,
+.sign__table td {
+  padding: 0.6cqw 1.2cqw 0.6cqw 0;
+  border-top: 1px solid var(--line);
+  font-weight: var(--w-regular);
+  text-align: left;
+  vertical-align: top;
+}
+
+.sign__table th {
+  font-weight: var(--w-semibold);
+  white-space: nowrap;
+}
+
+.sign__school {
+  margin-top: auto;
+  padding-top: 5cqw;
+  color: var(--ink-2);
+  font-size: 2.3cqw;
+  line-height: 1.3;
+}
+
+/* ---- Paper. A page is headed by the school (the frame's own line), what the
+   page is (its heading) and the date it was printed; everything a finger
+   presses is left off; a page is one plain column. Two pages have a layout of
+   their own: a teacher's schedule (the day types side by side, on one sheet)
+   and the door sign (the sheet and nothing else). The substitute plan keeps
+   the single column SV2-22 gave it. ---- */
+
+@page {
+  margin: 14mm;
+}
+
+@media print {
+  /* paper is light whatever the screen is */
+  :root,
+  [data-theme] {
+    color-scheme: light;
+    --paper: #ffffff;
+    --card: #ffffff;
+    --ink: #1f2328;
+    --ink-2: #515761;
+    --line: #d8d3c8;
+    --line-strong: #857f73;
+    --accent: #0f6e66;
+    --accent-ink: #ffffff;
+    --accent-soft: #d9ece9;
+    --problem: #b3261e;
+    --warning: #925d00;
+    --note: #3b5b8a;
+    --grid: #e8e3d8;
+    --corridor: #ffffff;
+    --stairs: #d9ece9;
+    --room-default: #e9e4d9;
+  }
+
+  html {
+    font-size: 11pt;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  .app[data-state="open"] {
+    display: block;
+    min-height: 0;
+  }
+
+  /* the header: the school, then (in the page) the date and the heading */
+  .top {
+    display: block;
+    min-height: 0;
+    padding: 0 0 1mm;
+    border: 0;
+    background: none;
+  }
+
+  .top__school {
+    display: inline;
+    min-height: 0;
+    font-size: 10pt;
+  }
+
+  .page__printed {
+    color: var(--ink-2);
+    font-size: 9pt;
+  }
+
+  .page__printed + .page__title {
+    margin-top: 2mm;
+  }
+
+  .page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .foot {
+    max-width: none;
+    margin-top: 6mm;
+    padding: 2mm 0 0;
+    font-size: 8pt;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* nothing a finger presses, and no mark of what the screen was doing */
+  button,
+  .btn,
+  .page__outputs,
+  .outputs,
+  .controls,
+  .page__body > .field,
+  .page__body > .pick,
+  .field--search,
+  .map__bar,
+  .map__which,
+  .map__pulse,
+  .row__mark,
+  .chips__remove {
+    display: none;
+  }
+
+  /* the substitute plan's date line is part of the page */
+  .page[data-view="sub"] .controls {
+    display: grid;
+  }
+
+  .row--now {
+    margin: 0;
+    padding-right: 0;
+    padding-left: 0;
+    border-left: 0;
+    background: none;
+  }
+
+  /* one plain column */
+  .split {
+    display: block;
+  }
+
+  .split > * + * {
+    margin-top: var(--s-4);
+  }
+
+  .split > .split__side {
+    position: static;
+  }
+
+  .days {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scroll {
+    overflow: visible;
+    border: 0;
+  }
+
+  .row {
+    min-height: 0;
+    padding: 1.2mm 0;
+  }
+
+  .card {
+    padding: 3mm;
+  }
+
+  /* a note prints as it was typed, and only when there is one */
+  .days[data-notes] .note__input,
+  .days[data-notes] .note[data-empty="true"] {
+    display: none;
+  }
+
+  .days[data-notes] .note__paper {
+    display: block;
+  }
+
+  /* a teacher's schedule: the day types side by side, and only the schedule */
+  .page[data-view="teacher"] .days,
+  .page[data-view="me"] .days {
+    grid-template-columns: none;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 5mm;
+  }
+
+  .page[data-view="teacher"] .split__side,
+  .page[data-view="me"] .split__side,
+  .page[data-view="teacher"] .part,
+  .page[data-view="me"] .part {
+    display: none;
+  }
+
+  /* the door sign: the sheet and nothing else, the number at 120 pt */
+  .app:has(.page[data-view="door"] .sheet) .top,
+  .app:has(.page[data-view="door"] .sheet) .foot,
+  .page[data-view="door"] .page__body > :not(.sheet) {
+    display: none;
+  }
+
+  .sheet {
+    max-width: none;
+    aspect-ratio: auto;
+    border: 0;
+    break-inside: avoid;
+  }
+
+  .sign {
+    padding: 16mm 0 0;
+  }
+
+  .sign__word {
+    font-size: 22pt;
+  }
+
+  .sign__number {
+    font-size: calc(120pt * var(--sign-fit, 1));
+  }
+
+  .sign__teacher {
+    margin-top: 8mm;
+    font-size: 32pt;
+  }
+
+  .sign__subject {
+    margin-top: 3mm;
+    font-size: 22pt;
+  }
+
+  .sign__day {
+    gap: 6mm;
+    margin-top: 12mm;
+  }
+
+  .sign__kindname {
+    font-size: 14pt;
+  }
+
+  .sign__table {
+    font-size: 11pt;
+  }
+
+  .sign__table th,
+  .sign__table td {
+    padding: 1mm 2mm 1mm 0;
+  }
+
+  .sign__school {
+    padding-top: 12mm;
+    font-size: 12pt;
+  }
+}
+
+/* ---------- SV2-23: end ---------- */

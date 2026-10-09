@@ -3,7 +3,9 @@
 // Name, subject and room; a sentence about the day; the day period by period
 // for each day type (one card when the day types are the same, side by side
 // when they differ); a small map with the teacher's room ringed; the groups
-// taught; and the other teachers who share those groups.
+// taught; and the other teachers who share those groups. On the reader's own
+// page the day cards carry the reader's notes (staff/notes.js), and under
+// every teacher's day are the things to take away (staff/outputs.js).
 //
 // The pieces the group and room pages are made of as well are here too: the
 // day cards, the links, the subject chip, and who teaches a group in a period.
@@ -13,6 +15,9 @@ import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
 import { floorMap, besideMap } from '../map.js';
+import { everyTeacherDay } from '../clock.js';
+import { isMe, noteFields } from '../notes.js';
+import { teacherOutputs } from '../outputs.js';
 
 // ---- words
 
@@ -74,18 +79,8 @@ export function listPart(label, items) {
 const indexes = new WeakMap();
 
 function indexOf(school) {
-  if (!indexes.has(school)) indexes.set(school, { days: new Map(), groups: null });
+  if (!indexes.has(school)) indexes.set(school, { groups: null });
   return indexes.get(school);
-}
-
-// Every teacher's day on one day type: a Map of teacher id to the engine's
-// entries.
-export function teacherDaysOn(school, dayTypeId) {
-  const index = indexOf(school);
-  if (!index.days.has(dayTypeId)) {
-    index.days.set(dayTypeId, new Map(school.teachers.map((teacher) => [teacher.id, school.teacherDay(teacher.id, dayTypeId) || []])));
-  }
-  return index.days.get(dayTypeId);
 }
 
 // The groups each teacher has on any day type: a Map of teacher id to a Set.
@@ -94,7 +89,7 @@ function groupsTaught(school) {
   if (index.groups === null) {
     index.groups = new Map(school.teachers.map((teacher) => [teacher.id, new Set()]));
     for (const dayType of school.dayTypes) {
-      for (const [teacherId, day] of teacherDaysOn(school, dayType.id)) {
+      for (const [teacherId, day] of everyTeacherDay(school, dayType.id)) {
         for (const entry of day) {
           for (const taught of entry.groups) index.groups.get(teacherId).add(taught.groupId);
         }
@@ -106,7 +101,7 @@ function groupsTaught(school) {
 
 // Who has this group in this period, by the engine's rule for a teacher's day.
 export function teachersOfSlot(school, dayTypeId, groupId, period) {
-  const days = teacherDaysOn(school, dayTypeId);
+  const days = everyTeacherDay(school, dayTypeId);
   return school.teachers.filter((teacher) => {
     const entry = days.get(teacher.id)[period];
     return Boolean(entry) && entry.groups.some((taught) => taught.groupId === groupId);
@@ -131,11 +126,6 @@ export function dayKindsOf(school, describe) {
   return kinds;
 }
 
-function minutesOf(bellTime) {
-  const match = /^(\d\d):(\d\d)$/.exec(bellTime || '');
-  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
-}
-
 // The period the clock is in on this kind of day, or -1. It is only known
 // when the day is: every day type is the same, or the reader has said which
 // day type today is (kept on the device under `day`).
@@ -145,8 +135,8 @@ export function nowPeriodOf(ctx, kinds, kind) {
   const now = ctx.now();
   const minute = now.getHours() * 60 + now.getMinutes();
   return ctx.school.bells(kind.first.id).findIndex((bell) => {
-    const start = minutesOf(bell.start);
-    const end = minutesOf(bell.end);
+    const start = ctx.school.parseTime(bell.start);
+    const end = ctx.school.parseTime(bell.end);
     return start !== null && end !== null && minute >= start && minute < end;
   });
 }
@@ -248,6 +238,80 @@ export function sharersOf(school, teacherId) {
   return out;
 }
 
+// A teacher's page. `heading` is for the reader's own ("My schedule"): the
+// name then starts the sentence under it. Left out, the heading is the name.
+export function teacherPageOf(ctx, teacher, heading) {
+  const school = ctx.school;
+  const rooms = (teacher.roomIds || []).map((id) => school.room(id)).filter(Boolean);
+
+  const header = h('section', { class: 'card', 'aria-label': 'About' },
+    h('dl', { class: 'facts' },
+      h('div', null, h('dt', null, 'Subject'), h('dd', null, subjectChipOf(school.subject(teacher.subjectId)))),
+      h('div', null, h('dt', null, rooms.length > 1 ? 'Rooms' : 'Room'),
+        h('dd', null, rooms.length === 0 ? h('span', { class: 'muted' }, 'No room of their own') : wordsJoined(rooms.map((room) => {
+          const floor = school.floorOfRoom(room.id);
+          return h('span', null, linkToRoom(school, room, true), floor ? [' · ', typed(floor.name)] : null);
+        }))))));
+
+  const slotOf = (dayType, taught, period) => school.groupDay(taught.groupId, dayType.id)[period];
+  const kinds = dayKindsOf(school, (dayType) => (school.teacherDay(teacher.id, dayType.id) || []).map((entry) => entry.groups.map((taught) => {
+    const slot = slotOf(dayType, taught, entry.period);
+    return [taught.groupId, taught.roomId, slot.label, slot.roomText];
+  })));
+  const days = dayCardsOf(ctx, kinds, (dayType, period) => {
+    const entry = school.teacherDay(teacher.id, dayType.id)[period];
+    if (entry.kind === 'planning') return { what: h('span', { class: 'muted' }, 'Planning'), where: null };
+    const what = [];
+    const where = [];
+    const seen = new Set();
+    for (const taught of entry.groups) {
+      const group = school.group(taught.groupId);
+      const slot = slotOf(dayType, taught, period);
+      what.push(h('span', null, linkToGroup(school, group), slot.label ? [' ', h('span', { class: 'muted' }, typed(slot.label))] : null));
+      const key = taught.roomId || 'text:' + slot.roomText;
+      if (!seen.has(key)) where.push(slotWhere(school, slot));
+      seen.add(key);
+    }
+    return { what: wordsJoined(what), where: wordsJoined(where) };
+  });
+
+  const map = rooms.length > 0 && school.has('map') ? floorMap(ctx, {
+    floorId: school.floorOfRoom(rooms[0].id).id,
+    label: 'Where ' + teacher.name + ' is',
+    marks: rooms.map((room) => ({ roomId: room.id, ring: true })),
+    says: (floor) => {
+      const here = rooms.filter((room) => school.floorOfRoom(room.id).id === floor.id);
+      if (here.length === 0) return [typed(teacher.name), ' has no room on ', typed(floor.name), '.'];
+      return [...wordsJoined(here.map((room) => linkToRoom(school, room, true))), here.length === 1 ? ' is ringed.' : ' are ringed.'];
+    },
+  }) : null;
+
+  const taught = groupsTaught(school).get(teacher.id);
+  const groups = school.groups.filter((group) => taught.has(group.id));
+  const sharers = sharersOf(school, teacher.id);
+  const more = [
+    school.has('coverage') ? h('a', { class: 'btn', href: makeHash('coverage', teacher.id) }, 'Coverage') : null,
+    school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', teacher.id) }, 'Substitute plan') : null,
+  ].filter(Boolean);
+
+  const after = [
+    groups.length > 0 ? listPart('Groups taught', groups.map((group) => h('li', null,
+      h(school.has('group') ? 'a' : 'span', { class: 'list__link', href: school.has('group') ? makeHash('group', group.id) : null },
+        h('span', { class: 'list__name' }, typed(group.name)),
+        group.grade ? h('span', { class: 'list__detail' }, 'Grade ', typed(group.grade)) : null)))) : null,
+    sharers.length > 0 ? listPart('Teachers who share these groups', sharers.map((sharer) => h('li', null,
+      h('a', { class: 'list__link', href: makeHash('teacher', sharer.teacher.id) },
+        h('span', { class: 'list__name' }, typed(sharer.teacher.name)),
+        h('span', { class: 'list__detail' }, 'Shares ', wordsJoined(sharer.groups.map((group) => typed(group.name)))))))) : null,
+    more.length > 0 ? h('p', { class: 'actions' }, more) : null,
+    teacherOutputs(ctx, teacher, kinds),
+  ];
+  const notes = isMe(ctx, teacher.id) ? noteFields(ctx, days) : null;
+  const summary = partsToNodes(teacherSummaryOf(school, teacher.id));
+  return pageOf(heading || typed(teacher.name), heading ? [typed(teacher.name), '. ', summary] : summary,
+    map ? besideMap([header, days, notes], map, after) : [header, days, notes, after]);
+}
+
 export const teacherView = {
   id: 'teacher',
   flag: 'teacher',
@@ -257,73 +321,7 @@ export const teacherView = {
     return found ? found.name : 'Teacher';
   },
   render(ctx, route) {
-    const school = ctx.school;
-    const teacher = school.teacher(route.id);
-    if (!teacher) return missingPage('teacher');
-    const rooms = (teacher.roomIds || []).map((id) => school.room(id)).filter(Boolean);
-
-    const header = h('section', { class: 'card', 'aria-label': 'About' },
-      h('dl', { class: 'facts' },
-        h('div', null, h('dt', null, 'Subject'), h('dd', null, subjectChipOf(school.subject(teacher.subjectId)))),
-        h('div', null, h('dt', null, rooms.length > 1 ? 'Rooms' : 'Room'),
-          h('dd', null, rooms.length === 0 ? h('span', { class: 'muted' }, 'No room of their own') : wordsJoined(rooms.map((room) => {
-            const floor = school.floorOfRoom(room.id);
-            return h('span', null, linkToRoom(school, room, true), floor ? [' · ', typed(floor.name)] : null);
-          }))))));
-
-    const slotOf = (dayType, taught, period) => school.groupDay(taught.groupId, dayType.id)[period];
-    const kinds = dayKindsOf(school, (dayType) => (school.teacherDay(teacher.id, dayType.id) || []).map((entry) => entry.groups.map((taught) => {
-      const slot = slotOf(dayType, taught, entry.period);
-      return [taught.groupId, taught.roomId, slot.label, slot.roomText];
-    })));
-    const days = dayCardsOf(ctx, kinds, (dayType, period) => {
-      const entry = school.teacherDay(teacher.id, dayType.id)[period];
-      if (entry.kind === 'planning') return { what: h('span', { class: 'muted' }, 'Planning'), where: null };
-      const what = [];
-      const where = [];
-      const seen = new Set();
-      for (const taught of entry.groups) {
-        const group = school.group(taught.groupId);
-        const slot = slotOf(dayType, taught, period);
-        what.push(h('span', null, linkToGroup(school, group), slot.label ? [' ', h('span', { class: 'muted' }, typed(slot.label))] : null));
-        const key = taught.roomId || 'text:' + slot.roomText;
-        if (!seen.has(key)) where.push(slotWhere(school, slot));
-        seen.add(key);
-      }
-      return { what: wordsJoined(what), where: wordsJoined(where) };
-    });
-
-    const map = rooms.length > 0 && school.has('map') ? floorMap(ctx, {
-      floorId: school.floorOfRoom(rooms[0].id).id,
-      label: 'Where ' + teacher.name + ' is',
-      marks: rooms.map((room) => ({ roomId: room.id, ring: true })),
-      says: (floor) => {
-        const here = rooms.filter((room) => school.floorOfRoom(room.id).id === floor.id);
-        if (here.length === 0) return [typed(teacher.name), ' has no room on ', typed(floor.name), '.'];
-        return [...wordsJoined(here.map((room) => linkToRoom(school, room, true))), here.length === 1 ? ' is ringed.' : ' are ringed.'];
-      },
-    }) : null;
-
-    const taught = groupsTaught(school).get(teacher.id);
-    const groups = school.groups.filter((group) => taught.has(group.id));
-    const sharers = sharersOf(school, teacher.id);
-    const more = [
-      school.has('coverage') ? h('a', { class: 'btn', href: makeHash('coverage', teacher.id) }, 'Coverage') : null,
-      school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', teacher.id) }, 'Substitute plan') : null,
-    ].filter(Boolean);
-
-    const after = [
-      groups.length > 0 ? listPart('Groups taught', groups.map((group) => h('li', null,
-        h(school.has('group') ? 'a' : 'span', { class: 'list__link', href: school.has('group') ? makeHash('group', group.id) : null },
-          h('span', { class: 'list__name' }, typed(group.name)),
-          group.grade ? h('span', { class: 'list__detail' }, 'Grade ', typed(group.grade)) : null)))) : null,
-      sharers.length > 0 ? listPart('Teachers who share these groups', sharers.map((sharer) => h('li', null,
-        h('a', { class: 'list__link', href: makeHash('teacher', sharer.teacher.id) },
-          h('span', { class: 'list__name' }, typed(sharer.teacher.name)),
-          h('span', { class: 'list__detail' }, 'Shares ', wordsJoined(sharer.groups.map((group) => typed(group.name)))))))) : null,
-      more.length > 0 ? h('p', { class: 'actions' }, more) : null,
-    ];
-    return pageOf(typed(teacher.name), partsToNodes(teacherSummaryOf(school, teacher.id)),
-      map ? besideMap([header, days], map, after) : [header, days, after]);
+    const teacher = ctx.school.teacher(route.id);
+    return teacher ? teacherPageOf(ctx, teacher, null) : missingPage('teacher');
   },
 };
