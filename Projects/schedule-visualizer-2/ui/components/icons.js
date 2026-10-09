@@ -20,6 +20,12 @@ const PATHS = {
   up: 'M5 12l5-5 5 5',
   down: 'M5 8l5 5 5-5',
   right: 'M8 5l5 5-5 5',
+  // the building inspector's tabs, for the folded strip
+  properties: 'M3 6h14 M3 14h14 M6.5 4v4 M13.5 12v4',
+  rooms: 'M3 5h2 M8 5h9 M3 10h2 M8 10h9 M3 15h2 M8 15h9',
+  floor: 'M10 3 3 7l7 4 7-4z M3 11l7 4 7-4',
+  checks: 'M3 3h14v14H3z M6.5 10.5 9 13l4.5-6',
+  exits: 'M4 17V3h8v14 M2 17h16 M9.5 10h.5',
 };
 
 const SVG = 'http://www.w3.org/2000/svg';

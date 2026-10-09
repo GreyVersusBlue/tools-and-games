@@ -39,17 +39,19 @@ export function statusLine(options) {
     },
     // total: what engine/building.js counts(building) returns.
     setCounts(total) {
+      // each count in full, and in the few words a phone has room for
+      // (building.css shows data-short under 480 px)
       const items = [
-        ['rooms', total.rooms === 0 ? 'No rooms' : total.numberedRooms + ' of ' + plural(total.rooms, 'room', 'rooms') + ' numbered'],
-        ['corridor', plural(total.corridorCells, 'corridor cell', 'corridor cells')],
-        ['connections', plural(total.connections, 'stairs connection', 'stairs connections')],
-        ['exits', plural(total.exits, 'exit', 'exits')],
-        ['floors', plural(total.floors, 'floor', 'floors')],
+        ['rooms', total.rooms === 0 ? 'No rooms' : total.numberedRooms + ' of ' + plural(total.rooms, 'room', 'rooms') + ' numbered', total.rooms === 0 ? 'No rooms' : total.numberedRooms + ' of ' + plural(total.rooms, 'room', 'rooms')],
+        ['corridor', plural(total.corridorCells, 'corridor cell', 'corridor cells'), total.corridorCells + ' corridor'],
+        ['connections', plural(total.connections, 'stairs connection', 'stairs connections'), total.connections + ' stairs'],
+        ['exits', plural(total.exits, 'exit', 'exits'), plural(total.exits, 'exit', 'exits')],
+        ['floors', plural(total.floors, 'floor', 'floors'), plural(total.floors, 'floor', 'floors')],
       ];
       const text = items.map((item) => item[1]).join('|');
       if (counts.dataset.text === text) return;
       counts.dataset.text = text;
-      counts.replaceChildren(...items.map(([id, words]) => h('li', { data: { count: id } }, words)));
+      counts.replaceChildren(...items.map(([id, words, short]) => h('li', { data: { count: id, short } }, words)));
     },
     setZoom(value) {
       const text = Math.round(value * 100) + '%';

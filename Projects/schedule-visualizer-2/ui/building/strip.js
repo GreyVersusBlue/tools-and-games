@@ -2,6 +2,8 @@
 // surface, each button an icon with a one-word label under it and its single
 // key in the corner, with a divider between the five tools used most and the
 // rest. It is a toolbar: one Tab stop, and the arrow keys move inside it.
+// On a phone the same buttons lie in two rows across the top of the plan
+// (building.css, under 640 px), and the toolbar says it runs across.
 
 import { h } from '../components/dom.js';
 
@@ -46,6 +48,12 @@ export function toolStrip(options) {
     buttons.set(tool.id, button);
     element.append(button);
   }
+
+  // which way the strip runs, for whoever is told rather than shown
+  const across = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 640px)') : null;
+  const turn = () => element.setAttribute('aria-orientation', across && across.matches ? 'horizontal' : 'vertical');
+  if (across) across.addEventListener('change', turn);
+  turn();
 
   element.addEventListener('keydown', (event) => {
     const list = Array.from(buttons.values());

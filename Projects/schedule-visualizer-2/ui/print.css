@@ -500,6 +500,25 @@
   color: var(--ink-2);
 }
 
+.preview__control[hidden] {
+  display: none;
+}
+
+.preview__check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.25rem;
+  color: var(--ink);
+}
+
+.preview__check-box {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .preview__select {
   min-height: 2.25rem;
   padding: 0 var(--s-2);

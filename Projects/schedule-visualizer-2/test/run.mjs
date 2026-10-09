@@ -80,6 +80,7 @@ export const GROUPS = {
     'browser/no-offsite.mjs',
     'browser/shell-lines.mjs', // SV2-35
     'browser/shell-owed.mjs', // SV2-36
+    'browser/m1-pass.mjs', // SV2-08
     'browser/draw-pointer.mjs', // SV2-06
     'browser/draw-keyboard.mjs', // SV2-06
     'browser/draw-touch.mjs', // SV2-06

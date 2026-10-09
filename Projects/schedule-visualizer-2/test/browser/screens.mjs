@@ -414,9 +414,6 @@ export const SCREENS = [
       await page.waitForSelector('#erase-dialog[open]');
     },
   },
-  // SV2-12: the grid's screens sit before the last one on purpose. The sweep's next
-  // session opens with no address and waits for Building, and the page goes back to
-  // the section it was last on, so the last screen here has to be a Building one.
   { id: 'schedule-grid-staged', hash: '#schedule/grid', open: gridStaged }, // SV2-12
   { id: 'schedule-grid-empty', hash: '#project', open: scheduleEmpty('grid') }, // SV2-12
   { id: 'schedule-grid-teachers', hash: '#schedule/grid', open: gridRows('teachers') }, // SV2-12
@@ -554,7 +551,6 @@ export const SCREENS = [
   },
   { // SV2-07: what the search box found
     id: 'search-results',
-    // on Building: the last screen of the list decides where the next session opens
     hash: '#building',
     open: async (page) => {
       await page.waitForSelector('#search[data-search="ready"]');

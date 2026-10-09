@@ -50,6 +50,7 @@ are built and tested and wait for their screens.
 | `engine/import-groups.js`, `engine/import-teachers.js` | Groups and teachers from a CSV file |
 | `engine/exports.js`, `engine/project-file.js` | Every export, and the project, building and schedule files |
 | `engine/worker.js` | Everything derived from the project, worked out in a worker |
+| `engine/publish-defaults.js` | The staff passcode a new project starts with, in a module the published file never carries |
 | `storage/` | The project on this device: autosave, recovery points, a second tab |
 | `ui/` | The planner's shell, its sections and the drawing surface |
 | `data/sample-school.js` | Marrowby Middle School, an invented school with a problem and a warning to find |

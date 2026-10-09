@@ -2,14 +2,16 @@
 // the pointer is over one or focus is inside it. The host is a `role="status"`
 // element that is always in the page, so a screen reader hears each one.
 //
-// createToasts(host) -> { show({ text, action: { label, run }, duration }), dismiss(), focus(), showing }
+// createToasts(host, { back }) -> { show({ text, action: { label, run }, duration }), dismiss(), focus(), showing }
+//   back()   where the focus goes when a toast that held it leaves the page
 
 import { h } from './dom.js';
 import { icon } from './icons.js';
 
 export const TOAST_MS = 6000;
 
-export function createToasts(host) {
+export function createToasts(host, options) {
+  const back = options && options.back;
   let element = null;
   let timer = null;
   let remaining = 0;
@@ -48,10 +50,7 @@ export function createToasts(host) {
     element.remove();
     element = null;
     held = 0;
-    if (hadFocus) {
-      const surface = document.getElementById('surface');
-      if (surface) surface.focus();
-    }
+    if (hadFocus && back) back();
   }
 
   function show(options) {

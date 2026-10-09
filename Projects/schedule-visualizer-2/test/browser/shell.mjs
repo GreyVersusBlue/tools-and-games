@@ -171,7 +171,8 @@ test('F6 walks the regions and reaches the toast; Show goes to where the change 
     await page.keyboard.press('F6');
     seen.push(await page.evaluate(() => (document.activeElement.closest('#toasts') ? 'toast:' + document.activeElement.textContent : document.activeElement.id)));
   }
-  assert.deepEqual(seen, ['rail', 'topbar', 'surface', 'inspector', 'toast:Show']);
+  // on Building the section's stop is the plan itself, where the keys are answered (SV2-08)
+  assert.deepEqual(seen, ['rail', 'topbar', 'plan', 'inspector', 'toast:Show']);
   await chord(['Shift'], 'F6');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'inspector', 'Shift+F6 goes back');
   await page.keyboard.press('F6');

@@ -40,17 +40,6 @@
   font-size: var(--t-sm);
 }
 
-.btn[aria-disabled="true"] {
-  border-style: dashed;
-  color: var(--ink-2);
-  cursor: default;
-}
-
-.btn[aria-disabled="true"]:hover {
-  background: var(--card);
-  border-color: var(--line-strong);
-}
-
 .sch-toolbar {
   display: flex;
   flex-wrap: wrap;

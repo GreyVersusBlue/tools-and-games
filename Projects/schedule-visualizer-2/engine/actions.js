@@ -1472,6 +1472,63 @@ export const resizeFloor = action(
   (project, payload) => inBuilding(project, (building) => geometry.resizeFloor(building, payload)),
 );
 
+// ---- the traced image
+
+// The opacity a traced image starts at: faint enough to draw over.
+export const DEFAULT_TRACE_OPACITY = 0.4;
+
+const TRACE_NUMBERS = ['opacity', 'scale', 'rotation', 'x', 'y'];
+const TRACE_FLAGS = ['visible', 'locked', 'missing'];
+const TRACE_SIZES = ['width', 'height'];
+
+// Set, adjust or remove a floor's traced image (the TraceImage of
+// ARCHITECTURE 4; ui/building/trace.js says what its numbers mean).
+// payload: { floorId, image }
+//   image: null             take the image off the floor
+//   image: { … }            these fields over the ones the floor has. A floor
+//                           with no image needs imageId, width and height;
+//                           the rest take their defaults
+// The bytes are not this action's business: they are stored before it runs.
+export const setTraceImage = action(
+  {
+    label: (before, payload) => {
+      const floor = before.building.floors.find((candidate) => candidate.id === payload.floorId);
+      const name = floor ? floor.name : 'the floor';
+      if (payload.image === null) return 'Remove the traced image from ' + name;
+      if (!floor || !floor.image || (payload.image.imageId !== undefined && payload.image.imageId !== floor.image.imageId)) return 'Trace over an image on ' + name;
+      return 'Adjust the traced image on ' + name;
+    },
+    bumps: [BUILDING],
+    focus: (before, payload) => ({ section: 'building', floorId: payload.floorId }),
+  },
+  (project, payload) => {
+    const floors = project.building.floors;
+    const floor = floors.find((candidate) => candidate.id === payload.floorId);
+    if (!floor) refuse('That floor is no longer in the building.', 'missing');
+    const bad = (message) => refuse(message, 'bad-value');
+    let next;
+    if (payload.image === null) {
+      next = null;
+    } else {
+      const given = payload.image;
+      if (!given || typeof given !== 'object') bad('A traced image is null or an object.');
+      const base = floor.image || { imageId: '', opacity: DEFAULT_TRACE_OPACITY, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 0, height: 0, missing: false };
+      next = base;
+      for (const key of ['imageId', ...TRACE_NUMBERS, ...TRACE_FLAGS, ...TRACE_SIZES]) {
+        if (given[key] !== undefined && given[key] !== next[key]) next = { ...next, [key]: given[key] };
+      }
+      if (typeof next.imageId !== 'string' || next.imageId === '') bad('A traced image names its stored image.');
+      if (typeof next.opacity !== 'number' || !(next.opacity >= 0 && next.opacity <= 1)) bad('Opacity is from 0% to 100%.');
+      if (typeof next.scale !== 'number' || !Number.isFinite(next.scale) || !(next.scale > 0)) bad('The image needs a width above 0 squares.');
+      for (const key of ['rotation', 'x', 'y']) if (!Number.isFinite(next[key])) bad('The ' + key + ' of a traced image is a number.');
+      for (const key of TRACE_FLAGS) if (typeof next[key] !== 'boolean') bad('The ' + key + ' flag of a traced image is on or off.');
+      for (const key of TRACE_SIZES) if (!Number.isInteger(next[key]) || next[key] < 1) bad('The ' + key + ' of a traced image is a whole number of pixels.');
+    }
+    if (next === floor.image) return project;
+    return patch(project, ['building', 'floors'], (list) => mapShared(list, (candidate) => (candidate === floor ? { ...floor, image: next } : candidate)));
+  },
+);
+
 // ================================================================ SV2-04: the building (end)
 
 // ================================================================ SV2-10: imports (start)

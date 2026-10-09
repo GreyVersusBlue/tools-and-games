@@ -6,17 +6,30 @@
 // It is drawn for paper. The colours are the light theme's, whatever the
 // screen shows; the picture is cropped to what is drawn; and nothing of the
 // editor is in it, because nothing here ever sees the editor: no selection,
-// no hovered cell, no keyboard cursor, no tool preview. The traced image is
-// not drawn either.
+// no hovered cell, no keyboard cursor, no tool preview.
 //
-//   planSvg(project, floor) → { svg, drawn, width, height, rooms, exits, letters }
+// The traced image is under the plan only when it is asked for and its bytes
+// are handed in; this module reads no storage. It lies where the screen has
+// it (tracePlacement of ui/building/trace.js: the same box, turn and
+// opacity), on a white backing, under everything drawn, and is cut off at the
+// edge of the picture like anything else: the picture is still cropped to
+// the cells that are drawn.
+//
+//   planSvg(project, floor, options) → { svg, drawn, traced, width, height, rooms, exits, letters }
+//     options.traceImage    true to draw the floor's traced image. Off by default.
+//     options.traceImages   { [imageId]: 'data:image/…' }: the bytes, as data
+//                           URLs. An image with no entry here, one that is
+//                           hidden (visible: false) or missing, and an entry
+//                           that is not a data URL of an image are not drawn.
 //     svg      the markup, or '' when nothing is drawn on the floor
+//     traced   whether the traced image is in the picture
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
 //     rooms, exits, letters   what the caption under the plan counts
 
 import { mix, labelOn, parse, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
 import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, spaceOwners } from '../../engine/schema.js';
 import { esc } from './document.js';
+import { tracePlacement } from '../building/trace.js';
 
 // The light theme's ink and room-default (tokens.css), and white paper. They
 // are written out because a data colour has to be mixed and measured here, as
@@ -156,7 +169,31 @@ function text(x, y, size, cls, value, more) {
   return '<text class="' + cls + '" x="' + n(x) + '" y="' + n(y) + '" font-size="' + n(size) + '"' + (more || '') + '>' + esc(value) + '</text>';
 }
 
-export function planSvg(project, floor) {
+// The data URL to draw for a floor's traced image, or null: asked for, shown
+// on screen, on this device, and handed in as an image's bytes. Anything but
+// a data URL would be an address the printed document went and fetched.
+export function traceSource(floor, options) {
+  const opts = options || {};
+  const image = floor.image;
+  if (opts.traceImage !== true || !image || image.visible !== true || image.missing === true) return null;
+  const given = opts.traceImages;
+  if (!given || typeof given !== 'object' || !Object.prototype.hasOwnProperty.call(given, image.imageId)) return null;
+  const url = given[image.imageId];
+  return typeof url === 'string' && /^data:image\/[a-z0-9.+-]+[;,]/i.test(url) ? url : null;
+}
+
+// The traced image as markup: a white box where it lies, and the image over
+// it at its opacity, both turned about the image's middle.
+function traceMarkup(image, url) {
+  const place = tracePlacement(image);
+  const box = ' x="' + n(place.x * U) + '" y="' + n(place.y * U) + '" width="' + n(place.w * U) + '" height="' + n(place.h * U) + '"';
+  return '<g class="plan__trace" transform="rotate(' + n(place.rotation) + ' ' + n(place.cx * U) + ' ' + n(place.cy * U) + ')">'
+    + '<rect class="plan__trace-backing"' + box + ' fill="' + PLAN_PAPER + '"/>'
+    + '<image class="plan__trace-image"' + box + ' opacity="' + n(place.opacity) + '" preserveAspectRatio="none" href="' + esc(url) + '"/>'
+    + '</g>';
+}
+
+export function planSvg(project, floor, options) {
   const width = floor.width;
   const height = floor.height;
   const owners = spaceOwners(floor);
@@ -183,12 +220,16 @@ export function planSvg(project, floor) {
   corridor.forEach(take);
   stairs.forEach(take);
   for (const space of floor.spaces) space.cells.forEach(take);
-  if (x1 === -1) return { svg: '', drawn: false, width: 0, height: 0, rooms: 0, exits: 0, letters: [] };
+  if (x1 === -1) return { svg: '', drawn: false, traced: false, width: 0, height: 0, rooms: 0, exits: 0, letters: [] };
 
   const walkable = (x, y) => x >= 0 && y >= 0 && x < width && y < height && (floor.cells[y * width + x] === CELL_CORRIDOR || floor.cells[y * width + x] === CELL_STAIRS);
   const outside = (x, y) => x < 0 || y < 0 || x >= width || y >= height || (floor.cells[y * width + x] === CELL_EMPTY && !owners.has(y * width + x));
 
   const out = [];
+
+  // the traced image, under everything
+  const traceUrl = traceSource(floor, options);
+  if (traceUrl !== null) out.push(traceMarkup(floor.image, traceUrl));
 
   // corridors and stairs, then the line where a walkable cell meets anything else
   if (corridor.length > 0) out.push('<path class="plan__corridor" d="' + cellsPath(corridor, width) + '"/>');
@@ -313,5 +354,5 @@ export function planSvg(project, floor) {
   const vh = (y1 - y0 + 1 + pad * 2) * U;
   const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg" viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + esc('Floor plan of ' + floor.name) + '">\n'
     + out.join('\n') + '\n</svg>';
-  return { svg, drawn: true, width: vw / U, height: vh / U, rooms, exits, letters };
+  return { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
 }

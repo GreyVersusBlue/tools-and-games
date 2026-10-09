@@ -6,9 +6,12 @@
 //
 // render(project, derived, options) → { title, html }
 //   options.floorId     a floor's id, or 'all' (the default)
-//   options.traceImage  false by default. Drawing the traced image on paper
-//                       waits for the unit that defines how it is placed;
-//                       until then it is never drawn, whatever this says.
+//   options.traceImage  false by default. True draws each floor's traced
+//                       image under its plan, where the screen has it.
+//   options.traceImages { [imageId]: 'data:image/…' }: the bytes of the
+//                       images, as data URLs. This module reads no storage,
+//                       so a floor whose image is not in here prints without
+//                       it, as does one whose image is hidden or missing.
 //   and what every output takes (document.js)
 
 import { count, list } from '../components/words.js';
@@ -38,12 +41,19 @@ export function floorsFor(project, options) {
   return one.length > 0 ? one : floors;
 }
 
+// The floors of this output that have a traced image a print could show:
+// one that is shown on screen and is on this device. The preview sheet asks,
+// to know whether to offer the image and which bytes to fetch.
+export function tracedFloors(project, options) {
+  return floorsFor(project, options).filter((floor) => floor.image && floor.image.visible === true && floor.image.missing !== true);
+}
+
 export function render(project, derived, options) {
   const opts = options || {};
   const box = printableBox(paperOf(project, opts));
   const room = { width: box.width, height: box.height - HEADER_MM - CAPTION_MM };
   const pages = floorsFor(project, opts).map((floor) => {
-    const plan = planSvg(project, floor);
+    const plan = planSvg(project, floor, { traceImage: opts.traceImage === true, traceImages: opts.traceImages });
     const what = name + ': ' + floor.name;
     if (!plan.drawn) {
       return { what, body: '<p class="doc-lead">' + esc('Nothing is drawn on ' + floor.name + ' yet.') + '</p>' };

@@ -167,18 +167,22 @@ test('what the Building section asks of the shell\'s layout and of the toasts is
   assert.doesNotMatch(own, /\.toasts/, 'building.css moves the shell\'s toasts');
   const shell = source('ui/app.css');
   assert.match(shell, /\.surface__layout\[data-section="building"\] \{\n  height: 100%;\n  padding: 0;/);
-  assert.match(shell, /\.surface__layout\[data-section="building"\] ~ \.toasts \{\n  left: calc\(56px \+ 64px \+ var\(--s-3\)\);/);
+  assert.match(shell, /\.surface__layout\[data-section="building"\] ~ \.toasts \{\n  bottom: calc\(var\(--bld-status-height, 40px\) \+ var\(--s-3\)\);/);
   await go(page, '#building');
   await page.waitForFunction(() => document.querySelector('.bld')?.dataset.styled === 'true');
+  // the toasts are a line stuck to the bottom of the surface (SV2-08): where
+  // one sits is asked of the page, beside the strip and above the status line
   const drawn = await page.evaluate(() => {
     const layout = getComputedStyle(document.querySelector('.surface__layout'));
-    const toasts = getComputedStyle(document.getElementById('toasts'));
-    return { padding: layout.padding, grid: layout.backgroundImage, gap: layout.rowGap, left: toasts.left };
+    const toasts = document.getElementById('toasts').getBoundingClientRect();
+    const strip = document.querySelector('.bld-strip').getBoundingClientRect();
+    const status = document.querySelector('.bld-status').getBoundingClientRect();
+    return { padding: layout.padding, grid: layout.backgroundImage, gap: layout.rowGap, left: Math.round(toasts.left - strip.right), above: Math.round(status.top - toasts.bottom) };
   });
-  assert.deepEqual(drawn, { padding: '0px', grid: 'none', gap: '0px', left: '132px' });
+  assert.deepEqual(drawn, { padding: '0px', grid: 'none', gap: '0px', left: 12, above: 12 });
   await go(page, '#schedule');
-  const elsewhere = await page.evaluate(() => getComputedStyle(document.getElementById('toasts')).left);
-  assert.equal(elsewhere, '72px', 'and on another section the toasts are where the shell puts them');
+  const elsewhere = await page.evaluate(() => Math.round(document.getElementById('toasts').getBoundingClientRect().left));
+  assert.equal(elsewhere, 72, 'and on another section the toasts are where the shell puts them');
 });
 
 test('Help lists the plan\'s keys whichever section is open, registered through ctx.shortcuts', async () => {

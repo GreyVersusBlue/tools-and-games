@@ -232,8 +232,16 @@ test('a cancelled touch calls off the drawing', async () => {
   const at = await point(page, 30, 22);
   await touch('touchStart', [{ ...at, id: 1 }]);
   await touch('touchMove', [{ x: at.x + 40, y: at.y, id: 1 }]);
-  assert.equal((await state(page)).preview, 'cells');
+  // The browser hands the page each touch when it gets to it, not when the
+  // test sent it: on a busy machine the cancel had not always arrived when
+  // the state was read. Wait for what the page shows, then read.
+  const previewIs = (wanted) => page.waitForFunction((kind) => {
+    const preview = document.querySelector('.bld').editor.preview;
+    return (preview ? preview.kind : null) === kind;
+  }, { timeout: 5000 }, wanted).then(() => true, () => false);
+  assert.equal(await previewIs('cells'), true, 'the drag never showed what it would draw');
   await touch('touchCancel', []);
+  assert.equal(await previewIs(null), true, 'the preview is still there five seconds after the touch was cancelled');
   const now = await state(page);
   assert.equal(now.preview, null);
   assert.equal(now.entries, before);

@@ -1,5 +1,6 @@
-// The Floor tab: what the floor on screen is and what it carries. Its name
-// and place among the floors, its size (with what a new size would cut off,
+// The Floor tab: what the floor on screen is and what it carries. Its name,
+// its level (which storey it is: the stairs cost a walk for each level they
+// change, whatever order the tabs are in) and place among the floors, its size (with what a new size would cut off,
 // said before anything is cut), the image traced over, and the things drawn
 // on it that are not rooms: stairs connections, corridor names and the areas
 // left out of the colour scale. Deleting the floor is at the bottom.
@@ -8,7 +9,7 @@ import { h } from '../../components/dom.js';
 import { field } from '../../components/field.js';
 import { choice } from '../../components/choice.js';
 import { count } from '../../components/words.js';
-import { ActionError, renameFloor, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
+import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
 import { lossText } from '../../../engine/building.js';
 import { RANGES } from '../../../engine/schema.js';
 import { keyedList, heading, cellWords } from './controls.js';
@@ -113,6 +114,27 @@ export function floorPanel(env) {
 
   function build(floor) {
     const name = field({ id: 'floor-name', label: 'Floor name', name: 'floorName', value: floor.name, commit: (value) => store.apply(renameFloor, { id: state.floor.id, name: value }) });
+    // The storey: a whole number, typed. The words under it say what it is for.
+    const level = field({
+      id: 'floor-level',
+      label: 'Level',
+      name: 'floorLevel',
+      inputMode: 'numeric',
+      describedBy: 'floor-level-hint',
+      value: floor.level,
+      parse: (text) => {
+        const typed = text.trim().replace(/^\u2212/, '-');
+        if (!/^-?\d+$/.test(typed)) throw new Error('A level is a whole number: 1 for the ground floor, 2 for the one above, 0 or -1 for a basement.');
+        return Number(typed);
+      },
+      commit: (value) => {
+        const before = state.floor.level;
+        store.apply(setFloorLevel, { id: state.floor.id, level: value });
+        if (value !== before) ctx.announce(state.floor.name + ' is now level ' + value + '.');
+      },
+    });
+    level.input.dataset.key = 'level';
+    const levelHint = h('p', { class: 'bld-inspector__small', id: 'floor-level-hint' }, 'Which storey this is: 1 for the ground floor, 2 for the one above. Stairs take longer for each level they change, so two floors on the same level are a walk across, not a climb.');
     const about = h('p', { id: 'floor-about' });
     const earlier = h('button', { type: 'button', class: 'btn', id: 'floor-earlier', data: { key: 'earlier' }, on: { click: () => move(-1) } }, 'Move it earlier');
     const later = h('button', { type: 'button', class: 'btn', id: 'floor-later', data: { key: 'later' }, on: { click: () => move(1) } }, 'Move it later');
@@ -164,6 +186,8 @@ export function floorPanel(env) {
     element.replaceChildren(
       h('h2', { class: 'bld-inspector__title', id: 'floor-title' }),
       name.element,
+      level.element,
+      levelHint,
       about,
       h('div', { class: 'bi-buttons' }, earlier, later),
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-size-heading' },
@@ -183,7 +207,7 @@ export function floorPanel(env) {
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-delete-heading' }, heading('Delete', 'floor-delete-heading'), lastNote, h('div', { class: 'bi-buttons' }, remove)),
     );
     parts = {
-      name, about, earlier, later, width, height, preview: previewLine, resize: resizeButton, sideX: 'right', sideY: 'bottom',
+      name, level, about, earlier, later, width, height, preview: previewLine, resize: resizeButton, sideX: 'right', sideY: 'bottom',
       connections: keyedList(connections), connectionsHost: connections, noConnections,
       corridors: keyedList(corridors), corridorsHost: corridors, noCorridors,
       zones: keyedList(zones), zonesHost: zones, noZones,
@@ -349,6 +373,7 @@ export function floorPanel(env) {
     const title = element.querySelector('#floor-title');
     if (title.textContent !== floor.name) title.textContent = floor.name;
     parts.name.set(floor.name);
+    parts.level.set(floor.level);
     parts.about.textContent = floor.name + ' is ' + floor.width + ' × ' + floor.height + ' squares.' + (floors.length > 1 ? ' It is floor ' + (at + 1) + ' of ' + floors.length + ' in the tabs.' : '');
     parts.earlier.disabled = at === 0;
     parts.later.disabled = at === floors.length - 1;
