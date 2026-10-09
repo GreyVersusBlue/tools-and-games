@@ -55,7 +55,22 @@ export function offsiteAddresses(text) {
   return found;
 }
 
+// The site writes a block of share-card tags into index.html between these
+// markers (Tools/board-check/sync-social-tags.mjs): og:url and og:image name
+// the page's own public address on greyversusblue.com. They are the values of
+// <meta content="…">, which no browser loads, and the site's own integrity
+// sweep checks that block. Everything outside the block is scanned as before.
+const SOCIAL_BLOCK = /<!-- gvb:social:start[\s\S]*?<!-- gvb:social:end -->/;
+
+export function scannedText(file, text) {
+  return path.basename(file) === 'index.html' ? text.replace(SOCIAL_BLOCK, '') : text;
+}
+
 test('the scanner sees an address in each place one can hide', () => {
+  const block = '<!-- gvb:social:start x -->\n<meta property="og:url" content="https://greyversusblue.com/Projects/schedule-visualizer-2/">\n<!-- gvb:social:end -->\n';
+  assert.deepEqual(offsiteAddresses(scannedText('a/index.html', block)), []);
+  assert.deepEqual(offsiteAddresses(scannedText('a/index.html', block + '<link href="https://greyversusblue.com/x.css">')), ['https://greyversusblue.com/x.css']);
+  assert.deepEqual(offsiteAddresses(scannedText('a/main.js', block)), ['https://greyversusblue.com/Projects/schedule-visualizer-2/']);
   assert.deepEqual(offsiteAddresses('<link href="https://fonts.googleapis.com/css2?family=Inter">'), ['https://fonts.googleapis.com/css2?family=Inter']);
   assert.deepEqual(offsiteAddresses('background: url(//cdn.example.com/a.png)'), ['//cdn.example.com/a.png']);
   assert.deepEqual(offsiteAddresses("import x from 'http://example.com/x.js'"), ['http://example.com/x.js']);
@@ -67,7 +82,7 @@ test('no file the page can load names an address outside the tool', () => {
   assert.ok(files.length > 20, 'expected to read the tool\'s files, found ' + files.length);
   const hits = [];
   for (const file of files) {
-    for (const address of offsiteAddresses(readFileSync(file, 'utf8'))) hits.push(path.relative(TOOL_DIR, file) + ': ' + address);
+    for (const address of offsiteAddresses(scannedText(file, readFileSync(file, 'utf8')))) hits.push(path.relative(TOOL_DIR, file) + ': ' + address);
   }
   assert.deepEqual(hits, []);
 });

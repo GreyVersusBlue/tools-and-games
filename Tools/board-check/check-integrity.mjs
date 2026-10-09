@@ -110,6 +110,12 @@ const CSS_URL = /\burl\(\s*['"]?https?:\/\/([^"')\s]+)/gi;
 // request, not just a URL-shaped string sitting in a comment or a data value.
 const JS_RESOURCE_CALL = /\.(?:src|href)\s*=\s*["']https?:\/\/([^"'/]+)|\b(?:fetch|import)\(\s*["']https?:\/\/([^"'/]+)/gi;
 const OWN_HOST = /^(www\.)?greyversusblue\.com$/i;
+// A host under the reserved top-level domain `.invalid` (RFC 2606) can never
+// resolve, so a reference to one is never a request: it is a test's refusal
+// case. Schedule Visualizer 2's linker test feeds its linker
+// `https://example.invalid/a.js` to prove web addresses are refused, and that
+// is the one shape of offsite string a test cannot do without.
+const RESERVED_HOST = /\.invalid$/i;
 
 for (const p of files.filter(f => f.endsWith('.html'))) {
   checked++;
@@ -120,7 +126,7 @@ for (const p of files.filter(f => f.endsWith('.html'))) {
     if (m) hosts.add(m[1].split('/')[0].split(':')[0]);
   }
   for (const m of src.matchAll(CSS_URL)) hosts.add(m[1].split('/')[0].split(':')[0]);
-  for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
+  for (const h of [...hosts]) if (OWN_HOST.test(h) || RESERVED_HOST.test(h)) hosts.delete(h);
   if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
 }
 
@@ -225,7 +231,7 @@ for (const p of files.filter(f => f.endsWith('.html'))) {
       const h = u.match(/^https?:\/\/([^/]+)/i);
       if (h) hosts.add(h[1].split(':')[0]);
     }
-    for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
+    for (const h of [...hosts]) if (OWN_HOST.test(h) || RESERVED_HOST.test(h)) hosts.delete(h);
     if (hosts.size) fail(p, `import map points offsite: ${[...hosts].join(', ')}`);
 
     // A local target that does not exist is the other way an import map goes
@@ -259,7 +265,7 @@ for (const p of files.filter(f => /\.(js|mjs|css)$/.test(f))) {
     const host = m[1] || m[2];
     hosts.add(host.split('/')[0].split(':')[0]);
   }
-  for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
+  for (const h of [...hosts]) if (OWN_HOST.test(h) || RESERVED_HOST.test(h)) hosts.delete(h);
   if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
 }
 
