@@ -13,14 +13,17 @@ import {
   COMPARE_LIMIT, COMPARE_REASON, defaultChoice, settleChoice, shownGroups, addGroup, gradesOf, transitionsOf,
   pictureOf, sentenceOf, groupRows, routeHealth, cellCard, failurePeriod,
 } from '../../ui/movement/model.js';
+import * as model from '../../ui/movement/model.js';
 import { layoutFloors, bestLayout, slotAt, placeOf, FLOOR_GAP, TITLE_ROWS } from '../../ui/movement/layout.js';
 import { bandText } from '../../ui/movement/legend.js';
 import { fixFor } from '../../ui/movement/summary.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createPipeline } from '../../engine/worker.js';
 import { buildGraph } from '../../engine/graph.js';
 import { routingGraph, route } from '../../engine/routing.js';
 import { loads } from '../../engine/load.js';
-import { planProject, roomId, floorId, threeFloors } from '../fixtures/buildings/plans.mjs';
+import { planProject, roomId, floorId, threeFloors, disconnectedWing } from '../fixtures/buildings/plans.mjs';
 import { school, group, clone } from './../engine/helpers.mjs';
 
 const DAY_A = 'dsample00a';
@@ -413,11 +416,11 @@ test('the first line counts the failed routes on screen and names the first', ()
   assert.equal(shown.failed.length, 2);
   assert.equal(shown.drawn, 54);
   const sentence = sentenceOf(world.project, shown, health);
-  assert.equal(words(sentence), 'Showing 8 groups on A Day, all transitions. 2 routes failed. The first: 7A, Period 2, No room is set for this period.');
+  assert.equal(words(sentence), 'Showing 8 groups on A Day, all transitions. 2 routes failed. The first: 7A, Period 3, no room is set for this period.');
   assert.equal(sentence.showMe, true);
   // one failure reads as DESIGN 5.3 has it
   const one = picture(world, { transition: 1 });
-  assert.equal(words(sentenceOf(world.project, one, health)), 'Showing 8 groups on A Day, Period 2 to Period 3 (9:40 to 9:44). 1 route failed: 7A, Period 2, No room is set for this period.');
+  assert.equal(words(sentenceOf(world.project, one, health)), 'Showing 8 groups on A Day, Period 2 to Period 3 (9:40 to 9:44). 1 route failed: 7A, Period 3, no room is set for this period.');
   // nothing failed among what is shown, but something did elsewhere
   const others = picture(world, { who: 'grade', grade: '8' });
   const quiet = sentenceOf(world.project, others, health);
@@ -460,7 +463,7 @@ test('a name is handed on exactly as typed, marked as a name, never as markup', 
   const sentence = sentenceOf(project, one, routeHealth(project, world.results));
   assert.ok(sentence.parts.some((part) => part.text === hostile && part.name === true));
   assert.ok(sentence.parts.some((part) => part.text === '<b>A</b> Day' && part.name === true));
-  assert.equal(words(sentence), 'Showing ' + hostile + ' on <b>A</b> Day, all transitions. 2 routes failed. The first: ' + hostile + ', Period 2, No room is set for this period.');
+  assert.equal(words(sentence), 'Showing ' + hostile + ' on <b>A</b> Day, all transitions. 2 routes failed. The first: ' + hostile + ', Period 3, no room is set for this period.');
 });
 
 // ---------------------------------------------------------------- where the floors sit
@@ -496,4 +499,303 @@ test('a place on the map is a cell of a floor, and back again; between floors th
   assert.equal(slotAt(layout, 0, 0), null, 'the row of the floors\' names');
   assert.equal(placeOf(layout, 'fnowhere00', 0), null);
   assert.equal(placeOf(layoutFloors(floors.slice(0, 1), 'side'), 'fsample002', cell), null, 'a floor that is not on screen');
+});
+
+// ---------------------------------------------------------------- SV2-39: the review of SV2-17
+
+const failureWords = (project, failure, withDay) => model.failureParts(project, failure, withDay).map((part) => part.text).join('');
+
+// A plan project with one group that is in `first` for Period 1 and `second`
+// for Period 2, on a two-period day.
+function twoPeriods(project, first, second) {
+  project.settings.periods = 2;
+  const slot = (number) => ({ room: number ? roomId(number) : null, roomText: '', label: '', teacherIds: [] });
+  project.groups = [{ id: 'gplan00001', name: 'P1', grade: '5', headCount: null, colour: '#d1495b', days: { [project.dayTypes[0].id]: [slot(first), slot(second)] } }];
+  return project;
+}
+
+// A room no corridor touches, across the floor from one that opens onto one.
+function shutRoom() {
+  return planProject([[
+    'AA...BB',
+    'AA...BB',
+    '####...',
+  ]]);
+}
+
+test('SV2-39 item 1: a failure at the end walked into names that period, and the reason is spliced in without a capital of its own', () => {
+  const world = broken();
+  const health = routeHealth(world.project, world.results);
+  // the walk out of Period 2 fails because Period 3 has no room: Period 3 is what is wrong
+  assert.equal(health[0].route.end, 'to');
+  assert.equal(failureWords(world.project, health[0], false), '7A, Period 3, no room is set for this period');
+  assert.equal(failureWords(world.project, health[0], true), '7A, Period 3 on A Day, no room is set for this period');
+  // the walk out of Period 3 fails at the end it starts from: still Period 3
+  assert.equal(health[1].route.end, 'from');
+  assert.equal(failureWords(world.project, health[1], false), '7A, Period 3, no room is set for this period');
+  // a room is named as typed: what was typed keeps its capital, whatever it begins with
+  assert.equal(failureWords(world.project, health[2], true), '6B, Period 1 on B Day, Annex 9 is not in the building');
+  for (const typed of ['The Annex', 'No way', 'There']) {
+    const project = clone(sample.project);
+    group(project, '6B').days[DAY_B][0] = { room: null, roomText: typed, label: '', teacherIds: [] };
+    const other = derive(project);
+    assert.equal(failureWords(project, routeHealth(project, other.results)[0], false), '6B, Period 1, ' + typed + ' is not in the building');
+  }
+});
+
+test('SV2-39 items 1 and 9: route health from real routing, a room nothing reaches and a room that opens onto nothing', () => {
+  const apart = derive(twoPeriods(disconnectedWing(), '1A', '1C'));
+  const lost = routeHealth(apart.project, apart.results);
+  assert.deepEqual(lost.map((failure) => [failure.groupId, failure.period, failure.fixPeriod, failure.route.reason, failure.route.end, failure.reason]), [
+    ['gplan00001', 0, 1, 'unreachable', 'to', 'There is no way through from Room 1A to Room 1C on Floor 1.'],
+  ]);
+  assert.equal(failureWords(apart.project, lost[0], false), 'P1, Period 2, there is no way through from Room 1A to Room 1C on Floor 1');
+  assert.deepEqual(fixFor(apart.project, lost[0]), { label: 'Show the room', hash: '#building/' + floorId(1) + '?room=' + roomId('1C'), slot: null });
+
+  const shut = derive(twoPeriods(shutRoom(), '1A', '1B'));
+  const closed = routeHealth(shut.project, shut.results);
+  assert.deepEqual(closed.map((failure) => [failure.period, failure.fixPeriod, failure.route.reason, failure.route.roomId]), [[0, 1, 'no-entry', roomId('1B')]]);
+  assert.equal(failureWords(shut.project, closed[0], false), 'P1, Period 2, Room 1B on Floor 1 does not open onto a corridor', 'a room\'s name keeps its capital');
+  const shown = picture(shut);
+  assert.equal(words(sentenceOf(shut.project, shown, closed)), 'Showing P1 on A Day, Period 1 to Period 2. 1 route failed: P1, Period 2, Room 1B on Floor 1 does not open onto a corridor.'.replace('Period 1 to Period 2', 'all transitions'));
+});
+
+test('SV2-39 item 9: route health drops a deleted group\'s routes and passes over a day type that follows another', () => {
+  const world = broken();
+  assert.equal(routeHealth(world.project, world.results).length, 3);
+  // 7A is deleted and the answer for that has not come: its failed routes are nobody's
+  const fewer = clone(world.project);
+  fewer.groups = fewer.groups.filter((each) => each.name !== '7A');
+  assert.deepEqual(routeHealth(fewer, world.results).map((failure) => failure.groupId), ['gsample06b']);
+  // B Day becomes "same as A Day": its routes in the old answer are no day of its own
+  const copy = clone(world.project);
+  copy.dayTypes[1].own = false;
+  assert.deepEqual(routeHealth(copy, world.results).map((failure) => [failure.groupId, failure.dayTypeId]), [['gsample07a', DAY_A], ['gsample07a', DAY_A]]);
+  assert.deepEqual(routeHealth(world.project, null), []);
+});
+
+test('SV2-39 items 2 and 9: after a derive that fails the last good answer stands, marked as from before the change, and the first line says what went wrong', () => {
+  assert.equal(typeof model.standingOf, 'function', 'model.js has no standingOf');
+  const before = sample.project;
+  const after = clone(before);
+  group(after, '7A').name = '7A East';
+  // nothing yet: the project as it is, no results, nothing stale
+  assert.deepEqual(model.standingOf(after, { project: null, results: null, failed: null }), { project: after, results: null, failed: null, stale: false });
+  // the first derive of all fails: nothing to keep
+  const never = model.standingOf(after, { project: null, results: null, failed: 'The engine stopped.' });
+  assert.deepEqual(never, { project: after, results: null, failed: 'The engine stopped.', stale: false });
+  assert.equal(words(model.failedSentence(never)), 'The routes could not be worked out: The engine stopped.');
+  // a good answer, then a change whose derive fails
+  const good = model.standingOf(before, { project: before, results: sample.results, failed: null });
+  assert.deepEqual([good.project, good.results, good.failed, good.stale], [before, sample.results, null, false]);
+  const standing = model.standingOf(after, { project: before, results: sample.results, failed: 'The engine stopped' });
+  assert.equal(standing.project, before, 'the picture is drawn against the project it was worked out for');
+  assert.equal(standing.results, sample.results);
+  assert.equal(standing.stale, true);
+  const sentence = model.failedSentence(standing);
+  assert.equal(words(sentence), 'The routes could not be worked out: The engine stopped. The map and the figures are from before your last change.');
+  assert.equal(sentence.showMe, false);
+  assert.ok(sentence.parts.some((part) => part.text === 'The engine stopped' && part.name === true), 'the message is handed on as text, never as markup');
+  // the picture and route health of what stands are the old ones, whole
+  const shown = pictureOf(standing.project, standing.results, sample.graph, defaultChoice(after));
+  assert.equal(shown.drawn, 56);
+  assert.equal(shown.groups.find((each) => each.id === 'gsample07a').name, '7A');
+  assert.deepEqual(routeHealth(standing.project, standing.results), []);
+});
+
+test('SV2-39 item 4: the exclusion zones counted are those on the floors on screen that cover a cell someone can walk on', () => {
+  assert.equal(picture(sample).load.zones, 1);
+  assert.equal(picture(sample, { floors: 'fsample001' }).load.zones, 1);
+  assert.equal(picture(sample, { floors: 'fsample003' }).load.zones, 0, 'the one zone is on Floor 1, which is not on screen');
+  // a zone drawn over rooms and empty cells leaves nothing out of the scale
+  const project = clone(sample.project);
+  const room = project.building.floors[1].spaces.find((space) => space.kind === 'room');
+  project.building.zones.push({ id: 'zsample002', floorId: 'fsample002', label: 'Over a room', x: room.cells[0] % 40, y: Math.floor(room.cells[0] / 40), w: 1, h: 1 });
+  project.building.zones.push({ id: 'zsample003', floorId: 'fsample003', label: 'A corridor', x: 0, y: 0, w: 40, h: 30 });
+  const world = derive(project);
+  assert.equal(world.results.loads[0].zones, 3, 'the engine counts the building\'s zones');
+  assert.equal(picture(world).load.zones, 2, 'two of the three cover a walkable cell');
+  assert.equal(picture(world, { floors: 'fsample002' }).load.zones, 0);
+  assert.equal(picture(world, { floors: 'fsample003' }).load.zones, 1);
+});
+
+test('SV2-39 item 5: a group chosen twice is compared once, and the words of the limit come from the limit', () => {
+  const ids = sample.project.groups.map((each) => each.id);
+  const settled = settleChoice(sample.project, { who: 'groups', groupIds: [ids[0], ids[0], ids[1], ids[0], ids[2], ids[3], ids[4]] });
+  assert.deepEqual(settled.groupIds, ids.slice(0, 4), 'four different groups, not one group in three of the four places');
+  assert.equal(shownGroups(sample.project, settleChoice(sample.project, { who: 'groups', groupIds: [ids[0], ids[0], ids[1]] })).length, 2);
+  assert.deepEqual(settleChoice(sample.project, { who: 'groups', groupIds: [ids[0], ids[0], ids[1]] }).groupIds, [ids[0], ids[1]]);
+  assert.equal(typeof model.compareReason, 'function', 'model.js has no compareReason');
+  assert.equal(COMPARE_REASON, model.compareReason(COMPARE_LIMIT));
+  assert.match(model.compareReason(3), /^Three groups at most are compared at once: /);
+  assert.match(model.compareReason(6), /^Six groups at most are compared at once: /);
+  assert.match(model.compareReason(1), /^One group at most is compared at once: /);
+  assert.match(model.compareReason(40), /^40 groups at most are compared at once: /);
+  assert.equal(model.compareFull(COMPARE_LIMIT), 'Four groups are shown');
+  assert.equal(model.compareFull(5), 'Five groups are shown');
+  assert.equal(model.compareFull(1), 'One group is shown');
+  // the controls say it in model.js's words: neither file spells the number out
+  for (const file of ['controls.js', 'model.js']) {
+    const source = readFileSync(fileURLToPath(new URL('../../ui/movement/' + file, import.meta.url)), 'utf8');
+    const lines = source.split('\n').filter((line) => /\bFour\b/.test(line) && !/^\s*\/\//.test(line) && !/NUMBER_WORDS/.test(line));
+    assert.deepEqual(lines, [], file + ' spells the limit out');
+  }
+});
+
+test('SV2-39 items 8 and 9: the relative maximum is of what is drawn: a connection joins it only when its link is on the map', () => {
+  // one floor on screen, and a stairs connection with one end on it: the
+  // link is drawn (it leaves the floor), and the maximum is still the floor's
+  const first = picture(sample, { floors: 'fsample001' });
+  assert.deepEqual(first.links.map((link) => [link.id, link.a.floorId, link.b.floorId]), [['csample00a', 'fsample001', 'fsample002'], ['csample00b', 'fsample002', 'fsample003']], 'every connection in use is listed; the map draws those with an end on screen');
+  const floor = sample.graph.floors[0];
+  const whole = sample.results.loads[0];
+  let max = 0;
+  for (let node = floor.offset; node < floor.offset + floor.count; node += 1) if (!whole.excluded[node]) max = Math.max(max, whole.cells.busiest[node]);
+  assert.equal(first.load.max, max);
+  assert.equal(first.busiest.cell !== null, true, 'the busiest is a cell');
+  // By the load rule a connection never carries more than the stairs cell at
+  // either end (whoever takes it crosses both), so real loads cannot tell
+  // the rule below from its absence. That is checked here, and the rule is
+  // then shown on an answer made up for it.
+  for (const load of sample.results.loads) {
+    sample.graph.links.forEach((link, index) => {
+      for (const measure of ['busiest', 'total']) {
+        assert.ok(load.connections[measure][index] <= load.cells[measure][link.a] && load.connections[measure][index] <= load.cells[measure][link.b], link.id + ' carries more than its stairs');
+      }
+    });
+  }
+  const linkOf = (id) => sample.graph.links.findIndex((link) => link.id === id);
+  const made = (id, value) => {
+    const kept = sample.results.loads[0];
+    const busiest = Int32Array.from(kept.connections.busiest);
+    busiest[linkOf(id)] = value;
+    return { ...sample.results, loads: [{ ...kept, connections: { ...kept.connections, busiest } }, sample.results.loads[1]] };
+  };
+  // Floor 3 alone: connection A (Floor 1 to Floor 2) has no end on screen and is not drawn
+  const third = picture(sample, { floors: 'fsample003' }).load.max;
+  assert.equal(pictureOf(sample.project, made('csample00a', 9000), sample.graph, { ...defaultChoice(sample.project), floors: 'fsample003' }).load.max, third);
+  // a walk along one floor of three: both stairs connections have ends on
+  // screen and nobody takes either, so neither link is drawn, whatever
+  // figure the answer holds for one
+  const quiet = derive(twoPeriods(threeFloors(), '1A', '1B'));
+  const still = picture(quiet);
+  assert.deepEqual(still.links, []);
+  assert.equal(still.load.max, 1, 'one group, counted as one');
+  const held = quiet.results.loads[0];
+  const loud = Int32Array.from(held.connections.busiest);
+  loud[0] = 9000;
+  const answer = { ...quiet.results, loads: [{ ...held, connections: { ...held.connections, busiest: loud } }] };
+  const after = pictureOf(quiet.project, answer, quiet.graph, defaultChoice(quiet.project));
+  assert.equal(after.load.source, answer.loads[0], 'the made-up answer is the one read');
+  assert.equal(after.load.max, 1, 'a connection that is not on the map set the scale');
+  assert.equal(after.busiest.cell !== null, true);
+  // a connection that is drawn does join: it is on the map, with its load
+  const joined = pictureOf(sample.project, made('csample00b', 9000), sample.graph, { ...defaultChoice(sample.project), floors: 'fsample003' });
+  assert.equal(joined.load.max, 9000);
+  assert.equal(joined.busiest.cell, null, 'the busiest is the connection');
+});
+
+test('SV2-39 item 9: some of the groups on a day type that is "same as" another, and a grade that holds every group', () => {
+  const project = clone(sample.project);
+  project.dayTypes[1].own = false;
+  for (const each of project.groups) delete each.days[DAY_B];
+  const world = derive(project);
+  assert.equal(world.results.loads.length, 1, 'one own day type, one load');
+  const ids = ['gsample06a', 'gsample07a'];
+  const two = picture(world, { dayTypeId: DAY_B, who: 'groups', groupIds: ids });
+  assert.equal(two.dayTypeId, DAY_A, 'the routes and loads are A Day\'s');
+  assert.equal(two.dayTypeName, 'B Day', 'under the name that was chosen');
+  assert.equal(two.drawn, 14);
+  const onA = picture(world, { dayTypeId: DAY_A, who: 'groups', groupIds: ids });
+  assert.equal(two.load.max, 51);
+  assert.deepEqual(Array.from(two.load.cells), Array.from(onA.load.cells));
+  assert.deepEqual(Array.from(two.lanes.at.entries()), Array.from(onA.lanes.at.entries()));
+  assert.equal(words(sentenceOf(project, two, [])), 'Showing 2 groups on B Day, all transitions. No route failed.');
+  // every group in one grade: the grade's picture is the whole school's, from the answer's own loads
+  const one = clone(sample.project);
+  for (const each of one.groups) each.grade = '7';
+  const school7 = derive(one);
+  const grade = picture(school7, { who: 'grade', grade: '7' });
+  const all = picture(school7);
+  assert.equal(grade.groups.length, 8);
+  assert.equal(grade.load.source, school7.results.loads[0], 'not counted a second time');
+  assert.equal(grade.load.max, all.load.max);
+  assert.equal(grade.drawn, all.drawn);
+  assert.equal(words(sentenceOf(one, grade, [])), 'Showing 8 groups of grade 7 on A Day, all transitions. No route failed.');
+});
+
+// A walk made by hand, for the shapes a found route does not take.
+function byHand(project, id, from, cells, to) {
+  const place = (cell) => ({ floorId: floorId(1), cell });
+  return { ok: true, fromRoomId: 'r' + id + 'from', toRoomId: 'r' + id + 'to', from: place(from), to: place(to), cells: cells.map(place), connections: [], connectionAt: [] };
+}
+
+test('SV2-39 item 9: where a bundle grows or thins on a straight, a lane moves over inside the one cell; a walk that doubles back returns on the other side', () => {
+  const project = hall();
+  const at = (x, y) => y * 11 + x;
+  const row = (from, to) => Array.from({ length: Math.abs(to - from) + 1 }, (unused, i) => at(from + (to > from ? i : -i), 1));
+  // g0 walks the first half of the corridor east and leaves it; g1 walks all of it
+  const lanes = buildLanes(project, [
+    { groupId: 'g1', rank: 1, route: byHand(project, 'b', at(0, 0), row(0, 10), at(10, 0)) },
+    { groupId: 'g0', rank: 0, route: byHand(project, 'a', at(0, 0), row(0, 5), at(5, 0)) },
+  ]);
+  assert.equal(lanes.most, 2);
+  const inner = laneOffset(lanes, 0);
+  const outer = laneOffset(lanes, 1);
+  const round = (n) => Number(n.toFixed(6));
+  const line = lanes.floors.get(floorId(1)).find((lane) => lane.groupId === 'g1').points;
+  const pairs = [];
+  for (let i = 0; i < line.length; i += 2) pairs.push([round(line[i]), round(line[i + 1])]);
+  // beside g0 as far as cell 4, the outer lane; from cell 6 on, alone, the inner one
+  assert.deepEqual(lanePoint(lanes, 'g1', floorId(1), at(4, 1)).map(round), [4.5, round(1.5 + outer)]);
+  assert.deepEqual(lanePoint(lanes, 'g1', floorId(1), at(6, 1)).map(round), [6.5, round(1.5 + inner)]);
+  // the move is inside cell 5: two points, a quarter of a cell either side of its middle
+  const inFive = pairs.filter(([x]) => x > 5 && x < 6);
+  assert.deepEqual(inFive, [[5.25, round(1.5 + outer)], [5.75, round(1.5 + inner)]]);
+  assert.deepEqual(lanePoint(lanes, 'g1', floorId(1), at(5, 1)).map(round), [5.25, round(1.5 + outer)], 'the cell\'s lane point is where the lane comes in');
+  // and the other way about: the bundle grows where a second group joins
+  const grows = buildLanes(project, [
+    { groupId: 'g0', rank: 0, route: byHand(project, 'c', at(5, 0), row(5, 10), at(10, 0)) },
+    { groupId: 'g1', rank: 1, route: byHand(project, 'b', at(0, 0), row(0, 10), at(10, 0)) },
+  ]);
+  const wider = grows.floors.get(floorId(1)).find((lane) => lane.groupId === 'g1').points;
+  const joins = [];
+  for (let i = 0; i < wider.length; i += 2) if (wider[i] > 5 && wider[i] < 6) joins.push([round(wider[i]), round(wider[i + 1])]);
+  assert.deepEqual(joins, [[5.25, round(1.5 + laneOffset(grows, 0))], [5.75, round(1.5 + laneOffset(grows, 1))]], 'g1 moves out in cell 5, where g0 steps in and turns east');
+  assert.ok(pairs.every(([, y]) => y > 1.5 || y < 1), 'walking east it never crosses to the north side: ' + JSON.stringify(pairs));
+
+  // out along the corridor to cell 6 and straight back to cell 2
+  const back = buildLanes(project, [{ groupId: 'g', rank: 0, route: byHand(project, 'u', at(0, 0), row(0, 6).concat(row(5, 2)), at(2, 0)) }]);
+  const off = laneOffset(back, 0);
+  const turn = [];
+  const path = back.floors.get(floorId(1))[0].points;
+  for (let i = 0; i < path.length; i += 2) if (path[i] > 6 && path[i] < 7) turn.push([round(path[i]), round(path[i + 1])]);
+  assert.deepEqual(turn, [[6.5, round(1.5 + off)], [6.5, round(1.5 - off)]], 'in the cell it turns in, the line crosses from the south side to the north');
+  assert.deepEqual(lanePoint(back, 'g', floorId(1), at(6, 1)).map(round), [6.5, round(1.5 + off)]);
+  for (let i = 2; i < path.length; i += 2) {
+    assert.ok(Math.abs(path[i] - path[i - 2]) < 1e-9 || Math.abs(path[i + 1] - path[i - 1]) < 1e-9, 'piece ' + i / 2 + ' of the walk back is not straight');
+  }
+});
+
+test('SV2-39 item 9: the lanes are the same whatever order the routes come in, and after a transition is taken off and put back', () => {
+  const day = sample.results.routes.days.find((each) => each.dayTypeId === DAY_A);
+  const rank = new Map(sample.project.groups.map((each, index) => [each.id, index]));
+  const entries = [];
+  for (const entry of day.groups) entry.routes.forEach((found, t) => entries.push({ t, groupId: entry.groupId, rank: rank.get(entry.groupId), route: found }));
+  const flat = (lanes) => ({
+    pitch: lanes.pitch,
+    most: lanes.most,
+    at: Array.from(lanes.at.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1)),
+    floors: Array.from(lanes.floors.entries()).map(([id, list]) => [id, list.map((lane) => [lane.groupId, lane.points])]),
+    links: Array.from(lanes.links.entries()).map(([id, list]) => [id, list.slice().sort()]).sort((a, b) => (a[0] < b[0] ? -1 : 1)),
+  });
+  const first = flat(buildLanes(sample.project, entries));
+  assert.ok(first.at.length > 100);
+  assert.deepEqual(flat(buildLanes(sample.project, entries.slice().reverse())), first, 'the routes given last to first');
+  // Period 4 to Period 5 taken off the picture and put back: its routes now come last
+  const toggled = entries.filter((entry) => entry.t !== 3).concat(entries.filter((entry) => entry.t === 3));
+  assert.deepEqual(flat(buildLanes(sample.project, toggled)), first, 'a transition taken off and put back');
+  // by group last to first, as a project listed the other way round would give them
+  const regrouped = entries.slice().sort((a, b) => b.rank - a.rank || b.t - a.t);
+  assert.deepEqual(flat(buildLanes(sample.project, regrouped)), first);
 });

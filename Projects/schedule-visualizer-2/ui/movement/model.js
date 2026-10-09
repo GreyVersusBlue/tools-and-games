@@ -16,8 +16,11 @@
 //
 //   defaultChoice(project)             every group, the first day type, all transitions
 //   settleChoice(project, choice)      the same choice with whatever the project no longer has put right
+//   compareReason(limit), compareFull(limit)   the words for the limit on compared groups, from the limit
+//   standingOf(project, derived)       what is on screen while an answer is awaited, or after one failed
+//   failedSentence(standing)           the first line when the routes could not be worked out
 //   shownGroups(project, choice)       the groups on screen, in the project's order
-//   addGroup(choice, groupId)          -> { choice, refused } (four at most; COMPARE_REASON says why)
+//   addGroup(choice, groupId)          -> { choice, refused } (COMPARE_LIMIT at most; COMPARE_REASON says why)
 //   gradesOf(project)                  the grades there are, as typed, sorted
 //   transitionsOf(project, dayTypeId)  [{ period, name, short, from, to, times, seconds }]
 //   pictureOf(project, results, graph, choice)   everything the map and the legend draw
@@ -35,7 +38,24 @@ import { placeAt } from '../../engine/places.js';
 import { buildLanes, BAND_EXCLUDED } from '../surface/overlays/lanes.js';
 
 export const COMPARE_LIMIT = 4;
-export const COMPARE_REASON = 'Four groups at most are compared at once: with more, the lines are too thin to tell apart. Take one off to add another, or show a grade or every group.';
+
+// The limit in words, so that changing COMPARE_LIMIT changes every place it is said.
+const NUMBER_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
+function numberWord(n) {
+  return NUMBER_WORDS[n] || String(n);
+}
+
+// Why a group more is refused, under the chips.
+export function compareReason(limit) {
+  return numberWord(limit) + (limit === 1 ? ' group at most is' : ' groups at most are') + ' compared at once: with more, the lines are too thin to tell apart. Take one off to add another, or show a grade or every group.';
+}
+
+// What the field for adding a group says once the limit is reached.
+export function compareFull(limit) {
+  return numberWord(limit) + (limit === 1 ? ' group is shown' : ' groups are shown');
+}
+
+export const COMPARE_REASON = compareReason(COMPARE_LIMIT);
 
 export function defaultChoice(project) {
   return { who: 'all', grade: '', groupIds: [], dayTypeId: project.dayTypes[0].id, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
@@ -50,7 +70,8 @@ export function settleChoice(project, choice) {
   const next = { ...defaultChoice(project), ...choice };
   if (!findDayType(project, next.dayTypeId)) next.dayTypeId = project.dayTypes[0].id;
   const known = new Set(project.groups.map((group) => group.id));
-  next.groupIds = (Array.isArray(next.groupIds) ? next.groupIds : []).filter((id) => known.has(id)).slice(0, COMPARE_LIMIT);
+  // each group once, in the order chosen
+  next.groupIds = Array.from(new Set((Array.isArray(next.groupIds) ? next.groupIds : []).filter((id) => known.has(id)))).slice(0, COMPARE_LIMIT);
   if (!['all', 'grade', 'groups'].includes(next.who)) next.who = 'all';
   const grades = gradesOf(project);
   if (next.who === 'grade' && !grades.includes(next.grade)) {
@@ -165,6 +186,26 @@ function loadFor(project, results, graph, dayType, groups, routes) {
   return loads(project, { days: [{ dayTypeId: dayType.id, groups: routes.groups.filter((entry) => wanted.has(entry.groupId)) }] }, dayType.id, graph);
 }
 
+// How many exclusion zones leave something out of the scale on screen: the
+// zones on these floors that cover a cell someone can walk on. (The engine's
+// own `zones` is every zone the building has.)
+function zonesOnScreen(project, graph, floorIds) {
+  let found = 0;
+  for (const zone of Array.isArray(project.building.zones) ? project.building.zones : []) {
+    const f = floorIds.has(zone.floorId) ? graph.floorIndex.get(zone.floorId) : undefined;
+    if (f === undefined) continue;
+    const floor = graph.floors[f];
+    let covers = false;
+    for (let y = Math.max(0, zone.y); y < Math.min(floor.height, zone.y + zone.h) && !covers; y += 1) {
+      for (let x = Math.max(0, zone.x); x < Math.min(floor.width, zone.x + zone.w) && !covers; x += 1) {
+        if (floor.nodeOfCell[y * floor.width + x] !== -1) covers = true;
+      }
+    }
+    if (covers) found += 1;
+  }
+  return found;
+}
+
 export function pictureOf(project, results, graph, input) {
   const choice = settleChoice(project, input);
   const dayType = effectiveDayType(project, choice.dayTypeId);
@@ -272,7 +313,10 @@ export function pictureOf(project, results, graph, input) {
   const cells = choice.transition !== null ? load.cells.byTransition[choice.transition] : choice.measure === 'total' ? load.cells.total : load.cells.busiest;
   const links = choice.transition !== null ? load.connections.byTransition[choice.transition] : choice.measure === 'total' ? load.connections.total : load.connections.busiest;
   if (!cells || !links) return picture;
-  // the busiest of what is on screen and not in an exclusion zone
+  // the busiest of what is on screen and not in an exclusion zone: the cells
+  // of the floors shown, and a stairs connection only when its link is drawn
+  // (someone on screen takes it, and an end of it is on a floor shown)
+  const drawnLinks = new Set(picture.links.filter((link) => floorIds.has(link.a.floorId) || floorIds.has(link.b.floorId)).map((link) => link.id));
   let max = 0;
   let maxNode = -1;
   let maxLink = -1;
@@ -285,8 +329,7 @@ export function pictureOf(project, results, graph, input) {
     }
   }
   graph.links.forEach((link, index) => {
-    if (load.excludedConnections[index] || links[index] <= max) return;
-    if (!floorIds.has(graph.floors[graph.nodeFloor[link.a]].id) && !floorIds.has(graph.floors[graph.nodeFloor[link.b]].id)) return;
+    if (!drawnLinks.has(link.id) || load.excludedConnections[index] || links[index] <= max) return;
     max = links[index];
     maxLink = index;
     maxNode = -1;
@@ -305,7 +348,7 @@ export function pictureOf(project, results, graph, input) {
   }
   picture.load = {
     unit: load.unit,
-    zones: load.zones,
+    zones: zonesOnScreen(project, graph, floorIds),
     mode: scale && scale.mode === 'absolute' ? 'absolute' : 'relative',
     measure: choice.transition !== null ? 'transition' : choice.measure,
     max,
@@ -343,15 +386,29 @@ export function unitWord(unit, n) {
   return n === 1 ? 'student' : 'students';
 }
 
+// Does describeFailure's sentence for this route open with a word of the
+// tool's own, not with a room as it was typed? "No room is set…", "There is
+// no way through…", "The room…" do; "Room 105…", "Gym…", "Annex 9…" do not.
+function opensWithOwnWord(project, route) {
+  if (route.reason === 'no-room' || route.reason === 'unreachable') return true;
+  if (route.reason === 'room-missing') return !(typeof route.text === 'string' && route.text.trim() !== '');
+  if (route.reason === 'no-entry') return !project.building.floors.some((floor) => floor.spaces.some((space) => space.kind === 'room' && space.id === route.roomId));
+  return false;
+}
+
 // The words for one failed route: "7-2, Period 3, Room 105 does not open onto a corridor"
-// in pieces, with the group's name marked as typed.
+// in pieces, with the group's name marked as typed. The period is the one
+// that has to be put right (failurePeriod): the period walked into when the
+// route failed at that end. The reason comes after a comma, so a sentence
+// that opens with a word of the tool's own loses its capital there.
 export function failureParts(project, failure, withDay) {
   const group = project.groups.find((each) => each.id === failure.groupId);
   const dayType = withDay ? findDayType(project, failure.dayTypeId) : null;
-  const text = describeFailure(project, failure.route).replace(/\.$/, '');
+  const sentence = describeFailure(project, failure.route).replace(/\.$/, '');
+  const text = opensWithOwnWord(project, failure.route) ? sentence[0].toLowerCase() + sentence.slice(1) : sentence;
   return [
     { text: group ? group.name : 'A group', name: true },
-    { text: ', ' + periodName(project.settings, failure.period) + (dayType ? ' on ' : '') },
+    { text: ', ' + periodName(project.settings, failurePeriod(failure)) + (dayType ? ' on ' : '') },
     ...(dayType ? [{ text: dayType.name, name: true }] : []),
     { text: ', ' },
     // the sentence names rooms as typed, so the whole of it is set as typed
@@ -363,6 +420,29 @@ export function failureParts(project, failure, withDay) {
 // router named, or the period walked out of.
 export function failurePeriod(failure) {
   return failure.route && failure.route.end === 'to' ? failure.period + 1 : failure.period;
+}
+
+// What the screen stands on. `derived` is what the view keeps of the engine's
+// answers: { project, results, failed }, the last good results, the project
+// they were worked out for, and the message of a derive that failed since.
+//   { project, results, failed, stale }
+//   project, results   what is drawn: the last good answer against its own
+//                      project, or the project as it is with no results yet
+//   failed             the message, or null
+//   stale              a derive failed and an older answer is still drawn:
+//                      the picture is from before the change
+export function standingOf(project, derived) {
+  const kept = Boolean(derived && derived.results && derived.project);
+  const failed = derived && derived.failed ? String(derived.failed) : null;
+  return { project: kept ? derived.project : project, results: kept ? derived.results : null, failed, stale: kept && failed !== null };
+}
+
+// The first line when the routes could not be worked out, in pieces. The
+// message is somebody else's text: it is handed on as typed.
+export function failedSentence(standing) {
+  const parts = [{ text: 'The routes could not be worked out: ' }, { text: standing.failed, name: true }];
+  if (standing.stale) parts.push({ text: (/[.!?]$/.test(standing.failed) ? '' : '.') + ' The map and the figures are from before your last change.' });
+  return { parts, showMe: false };
 }
 
 // The screen's first line (DESIGN 5.3), in pieces: [{ text, name }], and

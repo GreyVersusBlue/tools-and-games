@@ -14,7 +14,7 @@ import { choice as segmented } from '../components/choice.js';
 import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { formatDuration } from '../../engine/findings.js';
-import { COMPARE_LIMIT, COMPARE_REASON, gradesOf } from './model.js';
+import { COMPARE_LIMIT, COMPARE_REASON, compareFull, gradesOf } from './model.js';
 
 function label(text, id) {
   return h('span', { class: 'mov-ctl__label', id }, text);
@@ -109,7 +109,7 @@ export function controls(options) {
     // at the limit the field says why and takes nothing; it keeps the focus
     pick.input.readOnly = full;
     pick.input.setAttribute('aria-disabled', String(full));
-    pick.input.placeholder = full ? 'Four groups are shown' : shown.length === 0 ? 'Choose a group' : 'Add a group';
+    pick.input.placeholder = full ? compareFull(COMPARE_LIMIT) : shown.length === 0 ? 'Choose a group' : 'Add a group';
     if (full) pick.close();
     // a chip that was taken off took the focus with it
     if (focused && !chips.contains(document.activeElement)) pick.input.focus();
