@@ -53,6 +53,10 @@
       "owns": ["Projects/school-generator/", ".github/workflows/school-generator-ci.yml"]
     },
     "Numina": { "owns": ["Numina/"] },
+    "Schedule Visualizer 2": {
+      "owns": ["Projects/schedule-visualizer-2/", ".github/workflows/schedule-visualizer-2-ci.yml"],
+      "note": "Built from its own plan outside the ranked backlog (the Foreman loop, from 2026-10-07): no row in BACKLOG.md's table, no HISTORY.md entries. The planner, the staff browser and their suites live in the one folder; the suites run through Tools/board-check's harness read-only."
+    },
 
     "Prompt Builder": {
       "owns": ["Tools/prompt-builder.html", "Tools/prompt-builder/"],
