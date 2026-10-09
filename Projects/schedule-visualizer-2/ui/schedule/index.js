@@ -1,0 +1,269 @@
+// The Schedule section: who is where, period by period. Sub-tabs across the
+// top (Groups, Grid, Teachers, Subjects, Day, Checks, Import), each with its
+// own address (#schedule/groups and the rest), and the findings panel in the
+// inspector beside all of them.
+//
+// A tab is a module exporting
+//
+//   mount(env) -> { element, update(project) }
+//
+// `update` runs after every change to the project, and whenever something the
+// tab shows is chosen (env.render). `env` is what a tab may use:
+//
+//   ctx            the shell's (store, toast, confirm, openDialog, navigate, announce, undo…)
+//   view           what is chosen in this section, kept while the page is open:
+//                  { groupId, filter, shown } and anything a tab adds
+//   model()        the findings, arranged (model.js)
+//   tab()          the id of the tab on screen
+//   render(key)    draw again; `key` names the control to put focus on after
+//   focusAfter(key) the same, for the drawing a change to the project brings
+//
+// Drawing again replaces the tab's elements, so every control that can hold
+// focus carries a `data-key`, and focus goes back to the control with the same
+// key. Drawing waits for a pointer that is down to come up, so the button
+// under it is still there for its click.
+
+import { h } from '../components/dom.js';
+import { intro } from '../components/card.js';
+import { tabs } from '../components/tabs.js';
+import { periodWords } from '../components/words.js';
+import { scheduleModel } from './model.js';
+import { findingsPanel } from './checks.js';
+import { mount as groups } from './groups.js';
+import { mount as grid, GRID_KEYS } from './grid/index.js';
+import { mount as teachers } from './teachers.js';
+import { mount as subjects } from './subjects.js';
+import { mount as day } from './day.js';
+import { mount as checks } from './checks.js';
+import { mount as importTab } from './import/index.js';
+
+export const SCHEDULE_TABS = [
+  { id: 'groups', label: 'Groups', mount: groups },
+  { id: 'grid', label: 'Grid', mount: grid },
+  { id: 'teachers', label: 'Teachers', mount: teachers },
+  { id: 'subjects', label: 'Subjects', mount: subjects },
+  { id: 'day', label: 'Day', mount: day },
+  { id: 'checks', label: 'Checks', mount: checks },
+  { id: 'import', label: 'Import', mount: importTab },
+];
+
+// The section's own stylesheet. index.html links it (with data-sheet, which
+// is how it is found here), so this adds it only on a page that does not.
+const SHEET = new URL('./schedule.css', import.meta.url).href;
+function loadSheet() {
+  if (document.querySelector('link[data-sheet="schedule"]')) return;
+  document.head.append(h('link', { rel: 'stylesheet', href: SHEET, data: { sheet: 'schedule' } }));
+}
+
+// What is chosen here. It outlives a visit to another section.
+const view = { groupId: null, filter: '', shown: null };
+
+// The walk results of the crowd model for the store's project: the engine
+// client's (ui/engine-client.js, attached at boot), asked for once per state
+// of the project. Until the answer for a change comes, the last answer stands,
+// so the two walk checks do not blink off at every keystroke; the section is
+// drawn again when the new answer differs, and reads as pending
+// (`data-pending`) until then. Null where nothing is attached to work them
+// out, or it failed: the walk checks then find nothing, and the Checks tab
+// says so.
+const walked = { project: null, walks: null, text: '', waiting: false };
+function markWaiting() {
+  const section = document.querySelector('.sch');
+  if (section && walked.waiting) section.dataset.pending = 'true';
+}
+function walkResults(store) {
+  if (!store.derived || !store.derived.engine) return null;
+  const project = store.project;
+  if (walked.project !== project) {
+    walked.project = project;
+    walked.waiting = true;
+    const answer = (walks) => {
+      // an answer for a state the project has left is not for the screen
+      if (walked.project !== project || store.project !== project) return;
+      walked.waiting = false;
+      const text = walks ? JSON.stringify(walks) : '';
+      const changed = text !== walked.text;
+      if (changed) Object.assign(walked, { walks, text });
+      const section = document.querySelector('.sch');
+      if (live && changed) live.run();
+      else if (section && !(live && live.waiting)) delete section.dataset.pending;
+    };
+    store.derived.results().then((result) => answer(result && result.walks ? result.walks : null), () => answer(null));
+  }
+  // the section may not be on the page yet when it first asks
+  if (walked.waiting) Promise.resolve().then(markWaiting);
+  return walked.walks;
+}
+
+// One watch on the pointer for the whole page: `live` is the section on screen.
+let live = null;
+let pointerDown = false;
+function settle() {
+  pointerDown = false;
+  if (live && live.waiting) setTimeout(() => live && live.run(), 0);
+}
+function watchPointer() {
+  if (watchPointer.done) return;
+  watchPointer.done = true;
+  document.addEventListener('pointerdown', () => {
+    pointerDown = true;
+  }, true);
+  document.addEventListener('pointerup', settle, true);
+  document.addEventListener('pointercancel', settle, true);
+}
+
+function tabId(rest) {
+  const first = String(rest || '').split('/')[0];
+  return SCHEDULE_TABS.some((tab) => tab.id === first) ? first : 'groups';
+}
+
+export const section = {
+  id: 'schedule',
+  label: 'Schedule',
+  name: 'Schedule',
+  key: '2',
+  icon: 'schedule',
+  // Once, before anything is mounted: the grid's keys go on the shell's list,
+  // so Help has them whichever section is open.
+  start(ctx) {
+    for (const key of GRID_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Schedule grid', does: key.does, shown: key.shown });
+  },
+  mount(ctx, rest) {
+    loadSheet();
+    watchPointer();
+    let panel = null;
+    let timer = null;
+    let wantFocus = null;
+
+    const env = {
+      ctx,
+      view,
+      model: () => scheduleModel(ctx.store.project, walkResults(ctx.store)),
+      tab: () => strip.selected,
+      render(key) {
+        if (key) wantFocus = key;
+        schedule();
+      },
+      focusAfter(key) {
+        wantFocus = key;
+      },
+    };
+
+    const strip = tabs({
+      label: 'Parts of the schedule',
+      selected: tabId(rest),
+      onSelect: (id) => ctx.navigate('#schedule/' + id),
+      items: SCHEDULE_TABS.map((tab) => ({
+        id: tab.id,
+        label: tab.label,
+        panel: () => {
+          panel = tab.mount(env);
+          panel.element.dataset.tab = tab.id;
+          return panel.element;
+        },
+      })),
+    });
+    const inspector = findingsPanel(env);
+    const words = periodWords(ctx.store.project.settings);
+    const element = h('div', { class: 'sch' },
+      intro({
+        headline: 'This is the schedule.',
+        first: 'It says which room each group is in, ' + words.one + ' by ' + words.one + '. Add teachers, then groups.',
+      }),
+      strip.element);
+    ctx.setInspector(inspector.element);
+
+    function keyOf(node) {
+      const holder = node && node.closest ? node.closest('[data-key]') : null;
+      return holder && (element.contains(holder) || inspector.element.contains(holder)) ? holder.dataset.key : null;
+    }
+
+    function find(key) {
+      const escaped = CSS.escape(key);
+      return element.querySelector('[data-key="' + escaped + '"]') || inspector.element.querySelector('[data-key="' + escaped + '"]');
+    }
+
+    function run() {
+      timer = null;
+      handle.waiting = false;
+      if (!element.isConnected) return;
+      if (pointerDown) {
+        handle.waiting = true;
+        return;
+      }
+      delete element.dataset.pending;
+      const active = document.activeElement;
+      const inSection = element.contains(active);
+      const inInspector = inspector.element.contains(active);
+      const had = keyOf(active);
+      // Text being typed goes with the focus. (Taking the old field away
+      // makes it commit, as leaving it does; text it could not keep, a taken
+      // name or half a room number, is put in the new field to be fixed.)
+      const typing = had && active.tagName === 'INPUT' && ['text', 'search'].includes(active.type);
+      const typed = typing ? active.value : null;
+      const caret = typing ? [active.selectionStart, active.selectionEnd] : null;
+      const project = ctx.store.project;
+      panel.update(project);
+      inspector.update(project);
+
+      const fresh = view.shown && view.shown.fresh;
+      const marked = fresh ? element.querySelector('[data-shown="true"]') : null;
+      if (fresh) view.shown.fresh = false;
+      if (marked) {
+        marked.scrollIntoView({ block: 'center' });
+        const first = marked.querySelector('input, select, button');
+        if (first) first.focus({ preventScroll: true });
+        wantFocus = null;
+        return;
+      }
+      const asked = wantFocus && wantFocus !== had ? find(wantFocus) : null;
+      const target = asked || (had && find(had));
+      wantFocus = null;
+      if (target) {
+        if (document.activeElement !== target) target.focus();
+        const text = target.tagName === 'INPUT' && ['text', 'search'].includes(target.type);
+        // a control that was asked for has its text selected, ready to be
+        // typed over; the one focus was already in keeps its caret
+        if (text && asked) {
+          target.select();
+        } else if (text && caret) {
+          if (target.value !== typed) {
+            target.value = typed;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          target.setSelectionRange(caret[0], caret[1]);
+        }
+      } else if (had && inSection) {
+        element.querySelector('[role="tabpanel"]').focus();
+      } else if (had && inInspector) {
+        document.getElementById('inspector').focus();
+      }
+    }
+
+    // `data-pending` is on the section from a change until it is drawn.
+    function schedule() {
+      element.dataset.pending = 'true';
+      if (timer === null) timer = setTimeout(run, 0);
+    }
+
+    const handle = { run, waiting: false };
+    live = handle;
+
+    return {
+      element,
+      update() {
+        schedule();
+      },
+      // the same section, another tab
+      route(next) {
+        const same = strip.selected === tabId(next);
+        strip.select(tabId(next));
+        // a tab that was just put up has drawn itself; the same tab asked
+        // for again, or one with something to show, is drawn (and scrolled)
+        if (same || (view.shown && view.shown.fresh)) schedule();
+        else inspector.update(ctx.store.project);
+        return true;
+      },
+    };
+  },
+};

@@ -1,0 +1,58 @@
+# Checks for Schedule Visualizer 2: a planner for a school building and its
+# schedule, with a published read-only staff browser. Build-free static files
+# under Projects/schedule-visualizer-2/, so nothing in the deploy path runs a
+# line of its JavaScript; this job is what does.
+#
+# Three groups, through the repo's suite template:
+#   --node     the engines (model, routing, crowd, checks, files, publishing),
+#              named cases in node:test, no browser, about a minute
+#   --timing   the budgets of ARCHITECTURE 14 on a 4-floor, 150-room fixture
+#   --browser  the journeys and the axe sweep in the harness's Chromium
+#              (install: Tools/board-check), about twenty minutes
+#
+# Path-filtered on purpose: site-ci.yml runs every PR with no filter, and this
+# suite is long. Tools/board-check/harness.mjs is in the filter because the
+# browser group borrows it.
+name: Schedule Visualizer 2 CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/schedule-visualizer-2/**"
+      - "Tools/board-check/harness.mjs"
+      - ".github/workflows/schedule-visualizer-2-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/schedule-visualizer-2/**"
+      - "Tools/board-check/harness.mjs"
+      - ".github/workflows/schedule-visualizer-2-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schedule-visualizer-2-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engines:
+    name: engines and timing
+    uses: ./.github/workflows/suite.yml
+    with:
+      working-directory: Projects/schedule-visualizer-2
+      commands: |
+        node test/run.mjs --node
+        node test/run.mjs --timing
+
+  browser:
+    name: journeys and axe
+    uses: ./.github/workflows/suite.yml
+    with:
+      working-directory: Projects/schedule-visualizer-2
+      install: Tools/board-check
+      timeout-minutes: 45
+      commands: |
+        node test/run.mjs --browser

@@ -1,0 +1,13 @@
+{
+  "name": "Schedule Visualizer 2",
+  "short_name": "Schedule 2",
+  "description": "Draw the school, enter who is where each period, and watch the hallways.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#0f6e66",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

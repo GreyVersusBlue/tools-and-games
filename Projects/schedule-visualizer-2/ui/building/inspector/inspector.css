@@ -1,0 +1,358 @@
+/* The building inspector's five tabs, and what goes with them: the connect
+   banner over the plan and the results under the search box.
+
+   index.html links this sheet with the page's others. Tokens only: nothing
+   here names a colour. */
+
+/* ---------- The tabs: five in 320 px ---------- */
+
+.bld-inspector .tabs__tab {
+  padding: 0 4px;
+  font-size: var(--t-sm);
+}
+
+.bld-inspector .tabs__panel:focus-visible {
+  outline-offset: var(--focus-offset);
+}
+
+.bi-heading {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+  line-height: var(--lh-md);
+}
+
+.bi-part {
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.bi-part > * + * {
+  margin-top: var(--s-3);
+}
+
+.bi-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.bi-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+  align-items: end;
+}
+
+.bi-side {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.bi-small {
+  min-height: 32px;
+  padding: 0 var(--s-2);
+  font-size: var(--t-sm);
+}
+
+.bld-inspector .btn:disabled,
+.bld-inspector .btn[aria-disabled="true"] {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.bld-inspector .field__input:disabled {
+  background: var(--paper);
+  color: var(--ink-2);
+}
+
+/* ---------- A select, a checkbox, a slider, a colour ---------- */
+
+.bi-select {
+  width: 100%;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.bi-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--s-2);
+  row-gap: var(--s-1);
+  align-items: center;
+}
+
+.bi-check__box {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.bi-check__label {
+  font-weight: var(--w-semibold);
+}
+
+.bi-check__hint,
+.bi-check .field__refusal {
+  grid-column: 2;
+  margin: 0;
+}
+
+.bi-range {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: var(--s-3);
+  row-gap: var(--s-1);
+  align-items: center;
+}
+
+.bi-range .field__label {
+  grid-column: 1 / -1;
+}
+
+.bi-range__input {
+  width: 100%;
+  min-height: 28px;
+  accent-color: var(--accent);
+}
+
+.bi-range__value {
+  min-width: 3.5ch;
+  text-align: right;
+  font-variant-numeric: var(--numeric);
+}
+
+.bi-colour {
+  width: 64px;
+  height: 36px;
+  padding: 2px;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.bi-notice {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: var(--border);
+  border-left: 4px solid var(--line-strong);
+  background: var(--paper);
+}
+
+.bi-notice--problem {
+  border-left-color: var(--problem);
+}
+
+.bi-notice p {
+  margin: 0;
+}
+
+.bi-preview {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-left: 4px solid var(--line-strong);
+  background: var(--paper);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.bi-preview[data-loss="true"] {
+  border-left-color: var(--problem);
+}
+
+/* ---------- Lists: teachers, doors, connections, names, areas, exits ---------- */
+
+.bi-people,
+.bi-rows,
+.bi-findings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bi-person,
+.bi-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) 0;
+  border-bottom: var(--border);
+}
+
+.bi-person:first-child,
+.bi-row:first-child {
+  border-top: var(--border);
+}
+
+.bi-person__name,
+.bi-row__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bi-person__main {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.bi-person .chip__remove {
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  flex: none;
+}
+
+.bi-row--stack {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+}
+
+.bi-row--stack p {
+  margin: 0;
+}
+
+.bi-row__where {
+  font-weight: var(--w-semibold);
+}
+
+.bi-row__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* ---------- The room list ---------- */
+
+.bi-scroll {
+  overflow-x: auto;
+}
+
+.bi-scroll .table {
+  min-width: 30rem;
+}
+
+.bi-scroll .table td {
+  padding: var(--s-1);
+  vertical-align: top;
+}
+
+.bi-scroll .table td.table__num .field__input {
+  width: 4.5rem;
+  text-align: right;
+}
+
+/* ---------- The checks ---------- */
+
+.bi-finding {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  padding: var(--s-3) 0 var(--s-3) var(--s-3);
+  border-bottom: var(--border);
+  border-left: 4px solid var(--line-strong);
+}
+
+.bi-finding:first-child {
+  border-top: var(--border);
+}
+
+.bi-finding--problem {
+  border-left-color: var(--problem);
+}
+
+.bi-finding--warning {
+  border-left-color: var(--warning);
+}
+
+.bi-finding--note {
+  border-left-color: var(--note);
+}
+
+.bi-finding__text {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.bi-finding--problem .bi-finding__severity {
+  color: var(--problem);
+}
+
+.bi-finding--warning .bi-finding__severity {
+  color: var(--warning);
+}
+
+.bi-finding--note .bi-finding__severity {
+  color: var(--note);
+}
+
+/* ---------- Connect mode: the banner across the top of the plan ---------- */
+
+.bld-connect {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.bld-connect__text {
+  flex: 1 1 16rem;
+  margin: 0;
+  font-weight: var(--w-semibold);
+}
+
+.bld-plan[data-connecting="true"] {
+  cursor: pointer !important;
+}
+
+.bld-plan[data-tracing="true"] {
+  cursor: move !important;
+}
+
+/* ---------- Search: the results under the box ---------- */
+
+.bld-search__list {
+  left: auto;
+  right: 0;
+  width: min(26rem, calc(100vw - var(--s-5)));
+}
+
+.bld-search__name {
+  font-weight: var(--w-semibold);
+}
+
+@media (pointer: coarse) {
+  .bi-small {
+    min-height: 44px;
+  }
+
+  .bi-check__box {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@media print {
+  .bld-connect {
+    display: none;
+  }
+}

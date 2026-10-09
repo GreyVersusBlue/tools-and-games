@@ -1,0 +1,1926 @@
+/*
+  Schedule Visualizer 2: layout and components.
+
+  Every colour, size, space and duration here is a token from tokens.css. Chrome is
+  ink, paper and the accent; nothing glows and nothing is rounded past --r-2.
+
+  Order: base, the frame (rail, top bar, surface, inspector), the screens a section is
+  made of (intro, card, figures, settings), then the components in ui/components/.
+*/
+
+/* ---------- Base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: var(--base);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  line-height: var(--lh-md);
+  font-weight: var(--w-regular);
+  font-variant-numeric: var(--numeric);
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.eyebrow {
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.75em;
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  font-family: var(--font-plan);
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ---------- The frame ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+}
+
+.boot {
+  grid-column: 1 / -1;
+  padding: var(--s-7) var(--s-6);
+}
+
+.boot h1 {
+  font-size: var(--t-xl);
+  line-height: var(--lh-xl);
+}
+
+.boot__loading {
+  color: var(--ink-2);
+}
+
+.skip {
+  position: absolute;
+  left: var(--s-2);
+  top: -100px;
+  z-index: 60;
+  padding: var(--s-2) var(--s-3);
+  background: var(--card);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+}
+
+.skip:focus {
+  top: var(--s-2);
+}
+
+/* The rail: seven sections, an icon with one word under it. */
+
+.rail {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  background: var(--card);
+  border-right: var(--border);
+  overflow-y: auto;
+}
+
+.rail:focus-visible,
+.topbar:focus-visible,
+.surface:focus-visible,
+.inspector:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.rail__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.rail__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 56px;
+  color: var(--ink-2);
+  text-decoration: none;
+  border-bottom: var(--border);
+}
+
+.rail__item:hover {
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.rail__item:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.rail__item[aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.rail__label {
+  font-family: var(--font-plan);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.01em;
+}
+
+.rail__item[aria-current="page"] .rail__label {
+  font-weight: var(--w-semibold);
+}
+
+.rail__key {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  font-family: var(--font-plan);
+  font-size: var(--t-xs);
+  line-height: 1;
+  font-weight: var(--w-medium);
+}
+
+/* Schedule's dot: the grid holds edits that are not applied. In the corner
+   the digit does not use, ringed so it reads on the active item too. */
+.rail__dot {
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--card);
+}
+
+.rail__dot[hidden] {
+  display: none;
+}
+
+/* The top bar: the school, saving, undo and redo, search, help, the theme. */
+
+.topbar {
+  grid-column: 2 / 4;
+  grid-row: 1;
+  background: var(--card);
+  border-bottom: var(--border);
+  min-width: 0;
+}
+
+.topbar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  padding: 0 var(--s-3) 0 var(--s-4);
+}
+
+.topbar__row2 {
+  display: flex;
+  align-items: stretch;
+  min-height: 36px;
+  padding: 0 var(--s-4);
+  border-top: var(--border);
+}
+
+.topbar__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-left: auto;
+}
+
+.school {
+  min-width: 0;
+  flex: 0 1 auto;
+  margin-left: calc(var(--s-2) * -1);
+}
+
+.school__name {
+  display: block;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--r-1);
+  background: none;
+  font-weight: var(--w-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.school__name:hover {
+  border-color: var(--line-strong);
+  background: var(--paper);
+}
+
+.school__name--unset {
+  color: var(--ink-2);
+}
+
+.school__input {
+  width: min(28rem, 50vw);
+  font-weight: var(--w-semibold);
+}
+
+.sample-chip {
+  flex: none;
+  padding: 2px var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.sample-chip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.save {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  white-space: nowrap;
+}
+
+.save::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border: var(--border-width) solid currentColor;
+}
+
+.save[data-state="saved"]::before {
+  background: currentColor;
+}
+
+.save[data-state="saving"]::before {
+  border-style: dashed;
+}
+
+.save[data-state="failed"] {
+  color: var(--problem);
+  font-weight: var(--w-semibold);
+}
+
+.save[data-state="failed"]::before {
+  background: currentColor;
+  transform: rotate(45deg);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--r-1);
+  background: none;
+  color: var(--ink);
+}
+
+.icon-btn:hover {
+  background: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.icon-btn[aria-disabled="true"] {
+  color: var(--ink-2);
+  opacity: 0.55;
+  cursor: default;
+}
+
+.icon-btn[aria-disabled="true"]:hover {
+  background: none;
+  border-color: transparent;
+}
+
+.icon-btn[aria-expanded="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.icon-btn--glyph {
+  font-family: var(--font-plan);
+  font-size: var(--t-lg);
+  font-weight: var(--w-semibold);
+  line-height: 1;
+}
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 var(--s-1);
+}
+
+.search .icon {
+  position: absolute;
+  left: var(--s-2);
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.search__input {
+  width: 13rem;
+  height: 36px;
+  padding: 0 var(--s-2) 0 calc(var(--s-2) + 16px + var(--s-2));
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.search__input::placeholder,
+.field__input::placeholder {
+  color: var(--ink-2);
+  opacity: 1;
+}
+
+/* The surface: everything a section shows. */
+
+.surface {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  min-width: 0;
+  overflow: auto;
+}
+
+.surface__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-5);
+  min-height: 100%;
+  padding: var(--s-6);
+}
+
+/* With the Getting started card showing, it takes a column on the right. */
+.surface__layout:has(> .getting-started:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
+/* The sections that draw the plan sit on its grid, faintly. */
+.surface__layout[data-section="building"],
+.surface__layout[data-section="movement"],
+.surface__layout[data-section="safety"],
+.surface__layout[data-section="scenarios"] {
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.surface__section {
+  min-width: 0;
+}
+
+/* The inspector: 320 px on the right, its handle across the top. Folded, it
+   is a 32 px strip: the handle, then an icon for each of its tabs. */
+
+.inspector {
+  grid-column: 3;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  min-height: 0;
+  background: var(--card);
+  border-left: var(--border);
+  overflow: hidden;
+}
+
+.inspector__bar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  border-bottom: var(--border);
+}
+
+.inspector__toggle {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 var(--s-2) 0 var(--s-4);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+  line-height: var(--lh-sm);
+  text-align: left;
+}
+
+.inspector__toggle:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.inspector__toggle:focus-visible,
+.inspector__icon:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.inspector__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the arrow points the way the panel will go: away when open, back when folded */
+.inspector[data-open="false"] .inspector__toggle .icon {
+  transform: rotate(180deg);
+}
+
+.inspector__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.inspector__icons {
+  display: flex;
+  flex-direction: column;
+}
+
+.inspector__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+}
+
+.inspector__icon:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.inspector[data-mode="wide"][data-open="false"] {
+  width: 32px;
+}
+
+.inspector[data-mode="wide"][data-open="false"] .inspector__bar {
+  flex-direction: column;
+  border-bottom: 0;
+}
+
+.inspector[data-mode="wide"][data-open="false"] .inspector__toggle {
+  justify-content: center;
+  width: 32px;
+  min-height: 36px;
+  padding: 0;
+  border-bottom: var(--border);
+}
+
+.inspector[data-mode="wide"][data-open="false"] .inspector__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* ---------- What a screen is made of ---------- */
+
+.stub {
+  max-width: 44rem;
+  margin: var(--s-6) auto 0;
+  padding: var(--s-6);
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--r-2);
+}
+
+.intro__headline {
+  font-size: var(--t-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--w-bold);
+  letter-spacing: -0.01em;
+}
+
+.intro__first {
+  margin-top: var(--s-3);
+  font-size: var(--t-lg);
+  line-height: 1.4;
+  max-width: 38rem;
+}
+
+.intro__facts {
+  margin-top: var(--s-5);
+  padding-left: var(--s-3);
+  border-left: 3px solid var(--accent);
+  font-weight: var(--w-medium);
+}
+
+.intro__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-5);
+}
+
+.intro__note {
+  margin-top: var(--s-5);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.stub .tabs {
+  margin-top: var(--s-5);
+}
+
+.stub__panel p + p {
+  margin-top: var(--s-2);
+  color: var(--ink-2);
+}
+
+.page {
+  display: grid;
+  gap: var(--s-5);
+  max-width: 50rem;
+  margin: 0 auto;
+}
+
+.card,
+.getting-started {
+  padding: var(--s-5);
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--r-2);
+  min-width: 0;
+}
+
+.card__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--w-semibold);
+}
+
+.card > p,
+.card__lead {
+  margin-top: var(--s-2);
+  max-width: 40rem;
+}
+
+.card__small {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.card__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.card__buttons + p {
+  margin-top: var(--s-4);
+}
+
+/* The project in numbers: the figure large, its name small beneath. */
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.figures__item {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--s-1);
+  padding: var(--s-4);
+  border-right: var(--border);
+}
+
+.figures__item:last-child {
+  border-right: 0;
+}
+
+.figures dt {
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.figures dd {
+  font-family: var(--font-plan);
+  font-size: var(--t-fig);
+  line-height: var(--lh-fig);
+  font-weight: var(--w-semibold);
+}
+
+/* Settings: the name and its one line on the left, the control on the right. */
+
+.settings__group {
+  margin-top: var(--s-5);
+}
+
+.settings__title {
+  padding-bottom: var(--s-2);
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 19rem);
+  gap: var(--s-2) var(--s-5);
+  align-items: start;
+  padding: var(--s-3) 0;
+  border-top: var(--border);
+}
+
+.setting__label {
+  display: block;
+  font-weight: var(--w-semibold);
+}
+
+.setting__hint {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.setting__control {
+  min-width: 0;
+}
+
+.setting__see {
+  display: grid;
+  gap: 2px;
+}
+
+.setting__see a {
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.setting__wish {
+  color: var(--ink-2);
+}
+
+.setting__stack {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.settings__reset {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  margin-top: var(--s-2);
+  padding-top: var(--s-4);
+  border-top: var(--border);
+}
+
+/* ---------- Components ---------- */
+
+/* Buttons name the action. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  padding: var(--s-1) var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  font-weight: var(--w-medium);
+  line-height: var(--lh-lg);
+  text-align: center;
+}
+
+.btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn--primary:hover {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-ink);
+}
+
+.btn--danger {
+  border-color: var(--problem);
+  color: var(--problem);
+}
+
+.btn--danger:hover {
+  background: var(--card);
+  border-color: var(--problem);
+  box-shadow: inset 0 0 0 1px var(--problem);
+}
+
+.btn--quiet {
+  border-color: transparent;
+  background: none;
+  color: var(--accent);
+}
+
+/* A button that cannot be used yet says why in its title; it keeps the focus
+   and looks set aside. */
+.btn[aria-disabled="true"] {
+  border-style: dashed;
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.btn[aria-disabled="true"]:hover {
+  background: var(--card);
+  border-color: var(--line-strong);
+}
+
+/* A field commits when it is left; a refusal sits under it in a sentence. */
+
+.field {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.field__label {
+  font-weight: var(--w-semibold);
+}
+
+.field__input {
+  width: 100%;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.field__input[aria-invalid="true"] {
+  border-color: var(--problem);
+  box-shadow: inset 0 0 0 1px var(--problem);
+}
+
+.field__refusal {
+  color: var(--problem);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-medium);
+}
+
+/* A choice between a few things: joined buttons over a group of radios. */
+
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  row-gap: var(--s-1);
+}
+
+.seg__option {
+  position: relative;
+  margin-left: calc(var(--border-width) * -1);
+  cursor: pointer;
+}
+
+.seg__option:first-child {
+  margin-left: 0;
+}
+
+.seg__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.seg__label {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  background: var(--card);
+  font-weight: var(--w-medium);
+  white-space: nowrap;
+}
+
+.seg__option:first-child .seg__label {
+  border-radius: var(--r-1) 0 0 var(--r-1);
+}
+
+.seg__option:last-child .seg__label {
+  border-radius: 0 var(--r-1) var(--r-1) 0;
+}
+
+.seg__input:hover + .seg__label {
+  background: var(--paper);
+}
+
+/* The chosen one: the soft accent, and a bar under it so it does not rest on colour. */
+.seg__input:checked + .seg__label {
+  position: relative;
+  z-index: 1;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.seg__input:focus-visible + .seg__label {
+  z-index: 2;
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+
+/* Chips: a list of things that can each be taken away. */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding-left: var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-left: var(--border);
+  background: none;
+}
+
+.chip__remove:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* The picker: a field with a list that narrows as you type. */
+
+.picker {
+  position: relative;
+  display: grid;
+  gap: var(--s-1);
+}
+
+.picker__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 15rem;
+  margin-top: var(--s-1);
+  padding: var(--s-1);
+  overflow: auto;
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow);
+  animation: rise var(--dur-1) var(--ease);
+}
+
+.picker__option,
+.picker__empty {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-1);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.picker__option {
+  cursor: pointer;
+}
+
+.picker__option:hover,
+.picker__option[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.picker__option[aria-selected="true"] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.picker__empty,
+.picker__detail {
+  color: var(--ink-2);
+}
+
+/* Tabs. */
+
+.tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: var(--border);
+}
+
+.tabs__tab {
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: calc(var(--border-width) * -1);
+  background: none;
+  color: var(--ink-2);
+  font-weight: var(--w-medium);
+}
+
+.tabs__tab:hover {
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.tabs__tab[aria-selected="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-bottom-color: var(--accent);
+}
+
+.tabs__tab:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.tabs__panel {
+  padding: var(--s-4) 0 0;
+}
+
+/* Tables. */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.table th {
+  padding: var(--s-2) var(--s-3);
+  text-align: left;
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--s-2) var(--s-3);
+  border-top: var(--border);
+  vertical-align: top;
+}
+
+.table__num {
+  text-align: right;
+}
+
+.table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
+.table__sort:hover,
+.table th[aria-sort] .table__sort {
+  color: var(--accent);
+}
+
+.table__arrow {
+  display: inline-flex;
+}
+
+/* The dialog: a sentence, the body, buttons that name the action. */
+
+.dialog {
+  width: min(560px, calc(100vw - var(--s-6)));
+  max-height: calc(100vh - var(--s-6));
+  padding: var(--s-5);
+  background: var(--card);
+  color: var(--ink);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.dialog[open] {
+  animation: rise var(--dur-2) var(--ease);
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.dialog__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--w-semibold);
+}
+
+.dialog__body {
+  display: grid;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+
+.dialog__scroll {
+  max-height: 50vh;
+  overflow: auto;
+  border: var(--border);
+  border-radius: var(--r-1);
+}
+
+.dialog__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-5);
+}
+
+/* The menu. */
+
+.menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 12rem;
+  max-width: calc(100vw - var(--s-4));
+  padding: var(--s-1);
+  background: var(--card);
+  color: var(--ink);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow);
+  animation: rise var(--dur-1) var(--ease);
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--s-3) 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-1);
+  background: none;
+  text-align: left;
+}
+
+.menu__item:hover,
+.menu__item:focus-visible {
+  background: var(--accent-soft);
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.menu__item[aria-disabled="true"] {
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.menu__item--danger {
+  color: var(--problem);
+}
+
+.menu__mark {
+  width: 1em;
+  color: var(--accent);
+  font-size: var(--t-xs);
+  text-align: center;
+}
+
+.menu__separator {
+  height: 1px;
+  margin: var(--s-1) 0;
+  background: var(--line);
+}
+
+/* A banner: a line across the top of the section that stays until its cause
+   goes (the project is not being saved, another tab has it, the device is
+   nearly full). The edge says which kind it is. */
+
+.banners {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  background: var(--card);
+  color: var(--ink);
+  border-bottom: var(--border);
+  border-left: 4px solid var(--line-strong);
+}
+
+.banner--problem {
+  border-left-color: var(--problem);
+}
+
+.banner--warning {
+  border-left-color: var(--warning);
+}
+
+.banner--note {
+  border-left-color: var(--note);
+}
+
+.banner__text {
+  margin: 0;
+  flex: 1 1 20rem;
+  max-width: 60rem;
+}
+
+/* The toast: bottom-left of the surface, one at a time. Ink on paper, turned
+   over. Its host is a line of no height stuck to the bottom of the surface,
+   so a message is never over the rail, the inspector or the bottom bar,
+   whatever shape the window is, and the surface scrolls under it. */
+
+.toasts {
+  position: sticky;
+  bottom: var(--s-4);
+  z-index: 40;
+  height: 0;
+  margin: 0 var(--s-4);
+  pointer-events: none;
+}
+
+.toast {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  max-width: min(34rem, 100%);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow);
+  animation: rise var(--dur-1) var(--ease);
+}
+
+.toast__text {
+  padding: var(--s-1) 0;
+  overflow-wrap: anywhere;
+}
+
+.toast__action {
+  flex: none;
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border: var(--border-width) solid var(--paper);
+  border-radius: var(--r-1);
+  background: none;
+  color: var(--paper);
+  font-weight: var(--w-semibold);
+}
+
+.toast__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-1);
+  background: none;
+  color: var(--paper);
+}
+
+.toast__action:hover,
+.toast__close:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.toast :focus-visible {
+  outline-color: var(--paper);
+}
+
+.toast--problem {
+  background: var(--card);
+  color: var(--ink);
+  border: 2px solid var(--problem);
+}
+
+.toast--problem .toast__action,
+.toast--problem .toast__close {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.toast--problem :focus-visible {
+  outline-color: var(--focus);
+}
+
+/* Getting started: five steps, ticked as the project gains what each needs. */
+
+.getting-started {
+  position: sticky;
+  top: 0;
+  border-top: 3px solid var(--accent);
+}
+
+.getting-started .card__title {
+  margin-top: var(--s-1);
+}
+
+/* The head: the title and the tally, and under 1000 px the button that
+   unfolds the steps. Wide, the steps always show and the button is away. */
+.getting-started__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.getting-started__toggle {
+  display: none;
+  flex: none;
+}
+
+.getting-started__tally {
+  margin-top: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.steps {
+  display: grid;
+  margin-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.steps__step {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-2) 0;
+  border-bottom: var(--border);
+}
+
+.steps__box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.steps__step--done .steps__box {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.steps__box .icon {
+  stroke-width: 2.5;
+}
+
+.steps__text a {
+  font-weight: var(--w-medium);
+}
+
+.steps__where {
+  display: block;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  line-height: var(--lh-sm);
+}
+
+.getting-started__sample-row {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  margin-top: var(--s-4);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.getting-started__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin: var(--s-3) 0 0 calc(var(--s-3) * -1);
+}
+
+/* ---------- Narrower windows ---------- */
+
+/* Under 1000 px the Getting started card goes above the section, folded to
+   its title and tally: one line, so the section keeps the window. Its button
+   unfolds the steps. */
+@media (max-width: 1000px) {
+  .surface__layout:has(> .getting-started:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .getting-started {
+    position: static;
+    order: -1;
+    width: 100%;
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  }
+
+  .getting-started__toggle {
+    display: inline-flex;
+  }
+
+  .getting-started .eyebrow {
+    display: none;
+  }
+
+  .getting-started__words {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--s-3);
+    min-width: 0;
+  }
+
+  .getting-started .card__title,
+  .getting-started__tally {
+    margin-top: 0;
+  }
+
+  .getting-started:not(.getting-started--open) .getting-started__body {
+    display: none;
+  }
+
+  .getting-started--open {
+    padding-bottom: var(--s-4);
+  }
+
+  .surface__layout {
+    padding: var(--s-5);
+  }
+}
+
+/* Under 900 px the rail is icons only, and the inspector is a sheet along
+   the bottom: its handle always there, the panel opening above it. */
+@media (max-width: 900px) {
+  .rail__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .search__input {
+    width: 9rem;
+  }
+
+  .inspector {
+    grid-column: 2 / 4;
+    grid-row: 3;
+    width: auto;
+    max-height: 50vh;
+    max-height: 50dvh;
+    border-left: 0;
+    border-top: var(--border);
+  }
+
+  .inspector__toggle {
+    min-height: 40px;
+    color: var(--ink);
+  }
+
+  /* the arrow points up to open the sheet and down to shut it */
+  .inspector[data-open="false"] .inspector__toggle .icon {
+    transform: rotate(-90deg);
+  }
+
+  .inspector[data-open="true"] .inspector__toggle .icon {
+    transform: rotate(90deg);
+  }
+
+  .inspector[data-open="false"] .inspector__bar {
+    border-bottom: 0;
+  }
+
+  .app {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .rail {
+    grid-row: 1 / 4;
+  }
+
+  .surface {
+    grid-column: 2 / 4;
+  }
+}
+
+/* Under 640 px the rail is a bar along the bottom, and the top bar is one
+   row: the name, the save mark, then undo, redo, search and help. */
+@media (max-width: 640px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+  }
+
+  .topbar,
+  .surface,
+  .inspector {
+    grid-column: 1;
+  }
+
+  .rail {
+    grid-column: 1;
+    grid-row: 4;
+    border-right: 0;
+    border-top: var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow: visible;
+  }
+
+  .rail__list {
+    flex-direction: row;
+  }
+
+  .rail__list li {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .rail__item {
+    border-bottom: 0;
+  }
+
+  .rail__item[aria-current="page"] {
+    box-shadow: inset 0 3px 0 var(--accent);
+  }
+
+  .rail__key {
+    display: none;
+  }
+
+  .topbar {
+    position: relative;
+  }
+
+  .topbar__row {
+    flex-wrap: wrap;
+    gap: 0 var(--s-1);
+    padding: 0 var(--s-1) 0 var(--s-3);
+  }
+
+  .topbar__row2 {
+    padding: 0 var(--s-2);
+  }
+
+  .school {
+    flex: 1 1 0;
+  }
+
+  .school__input {
+    width: 100%;
+  }
+
+  /* Saving and saved are the mark alone here (the words are its title, and
+     are still read out); a save that failed keeps its words, on a line of
+     their own. */
+  .save:not([data-state="failed"]) {
+    width: 10px;
+    gap: 0;
+    overflow: hidden;
+    color: var(--ink-2);
+  }
+
+  .save:not([data-state="failed"])::before {
+    flex: none;
+  }
+
+  .save[data-state="failed"] {
+    order: 5;
+    flex: 1 1 100%;
+    padding-bottom: var(--s-1);
+    white-space: normal;
+  }
+
+  .topbar__tools {
+    gap: 0;
+  }
+
+  /* The theme is also a setting in the Project section; the switch gives
+     its place to the school's name. */
+  #theme {
+    display: none;
+  }
+
+  /* Search is its mark until it is used, then it lies across the row. */
+  .search {
+    position: static;
+    margin: 0;
+  }
+
+  .search .icon {
+    left: auto;
+    margin-left: 14px;
+  }
+
+  .search__input {
+    width: 44px;
+    padding: 0 0 0 44px;
+    border-color: transparent;
+    background: none;
+    cursor: pointer;
+  }
+
+  .search:focus-within {
+    position: absolute;
+    top: 2px;
+    left: var(--s-2);
+    right: var(--s-2);
+    z-index: 5;
+  }
+
+  .search:focus-within .search__input {
+    width: 100%;
+    padding: 0 var(--s-2) 0 44px;
+    border-color: var(--line-strong);
+    background: var(--card);
+    cursor: text;
+  }
+
+  .surface__layout {
+    padding: var(--s-4) var(--s-3);
+  }
+
+  .stub {
+    margin-top: 0;
+    padding: var(--s-5) var(--s-4);
+  }
+
+  .card {
+    padding: var(--s-4);
+  }
+
+  .setting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .figures__item {
+    padding: var(--s-3);
+  }
+
+  .toasts {
+    bottom: var(--s-3);
+    margin: 0 var(--s-3);
+  }
+}
+
+/* A finger needs more room than a pointer. */
+@media (pointer: coarse) {
+  .btn,
+  .field__input,
+  .search__input,
+  .seg__label,
+  .tabs__tab,
+  .menu__item,
+  .school__name,
+  .inspector__toggle {
+    min-height: 44px;
+  }
+
+  .field__input,
+  .search__input,
+  .school__name {
+    height: 44px;
+  }
+
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .inspector__icon {
+    height: 44px;
+  }
+}
+
+/* ---------- The Building section's place in the shell ----------
+
+   The plan is the page (DESIGN 5.1): it goes edge to edge, so on this section
+   the layout's padding and its faint grid go (the canvas draws the real one).
+   These rules come last so that they win over the layout rules above, as they
+   did when the section's own sheet carried them. */
+
+/* The plan has what is left of the surface under any banner (a second tab,
+   a save that failed), so the surface itself never scrolls here. */
+.surface:has(> .surface__layout[data-section="building"]) {
+  display: flex;
+  flex-direction: column;
+}
+
+.surface:has(> .surface__layout[data-section="building"]) > * {
+  flex: none;
+}
+
+.surface > .surface__layout[data-section="building"] {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.surface__layout[data-section="building"] {
+  height: 100%;
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
+  background-image: none;
+}
+
+.surface__layout[data-section="building"] > .surface__section {
+  min-height: 0;
+}
+
+.surface__layout[data-section="building"] > .getting-started {
+  align-self: start;
+  margin: var(--s-4);
+}
+
+.surface__layout[data-section="building"]:has(> .getting-started:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) calc(360px + var(--s-4) * 2);
+}
+
+/* The shell's messages sit at the bottom left of the surface, which is where
+   the strip and the status line are: on this section they sit over the
+   plan's corner instead, clear of both. The section measures its status line
+   (--bld-status-height) and says how wide its strip is (--bld-strip-width). */
+.surface__layout[data-section="building"] ~ .toasts {
+  bottom: calc(var(--bld-status-height, 40px) + var(--s-3));
+  margin-left: calc(var(--bld-strip-width, 64px) + var(--s-3));
+}
+
+/* Under 1000 px Getting started is a line across the top of the plan, and
+   the plan has the rest of the window. Unfolded, the steps take what they
+   need up to half the window and scroll inside it: the page itself never
+   scrolls here, because a finger on the plan draws and could not scroll it
+   back. */
+@media (max-width: 1000px) {
+  .surface__layout[data-section="building"]:has(> .getting-started:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .surface__layout[data-section="building"] > .getting-started {
+    max-width: none;
+    max-height: 50vh;
+    max-height: 50dvh;
+    margin: 0;
+    overflow: auto;
+    border-width: 0 0 var(--border-width);
+    border-radius: 0;
+  }
+
+  .surface__layout[data-section="building"] .bld {
+    min-height: 0;
+  }
+}
+
+/* A phone with the inspector's sheet open: the sheet is what is being used,
+   so the plan's status line gives its height to the plan until the sheet is
+   shut again. */
+@media (max-width: 640px) {
+  .inspector {
+    max-height: 45vh;
+    max-height: 45dvh;
+  }
+
+  .app:has(> .inspector[data-open="true"]:not([hidden])) .bld-status {
+    display: none;
+  }
+}
+
+@media print {
+  .rail,
+  .topbar,
+  .toasts,
+  .skip,
+  .inspector {
+    display: none;
+  }
+
+  .app {
+    display: block;
+    height: auto;
+  }
+
+  .surface {
+    overflow: visible;
+  }
+
+  /* With a print sheet open, Ctrl+P asks for the sheet: the planner behind
+     it stays off the paper, and so do the sheet's own controls. What prints
+     is the preview. (The sheet's Print button prints the document itself,
+     every page of it, and is the better way.) */
+  body:has(dialog.preview[open]) > .app {
+    display: none;
+  }
+
+  dialog.preview[open] {
+    position: static;
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  dialog.preview[open]::backdrop {
+    display: none;
+  }
+
+  dialog.preview[open] .preview__head,
+  dialog.preview[open] .preview__foot {
+    display: none;
+  }
+}

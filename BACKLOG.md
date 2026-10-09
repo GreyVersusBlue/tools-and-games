@@ -2965,6 +2965,7 @@ now.
 | Bell to Bell | `Projects/bell-to-bell/` — and its own `CLAUDE.md` governs inside it | the four shared |
 | School Generator | `Projects/school-generator/`, `.github/workflows/school-generator-ci.yml` | the four shared |
 | Numina | `Numina/` — **but see the constraint below** | the four shared |
+| Schedule Visualizer 2 | `Projects/schedule-visualizer-2/`, `.github/workflows/schedule-visualizer-2-ci.yml` — built from its own plan outside this table (the Foreman loop, from 2026-10-07); no ranked row, no HISTORY.md entries | the four shared |
 | Prompt Builder | `Tools/prompt-builder.html`, `Tools/prompt-builder/` | the four shared |
 | Archived teaching tools | the five #206 closed and their folders: `Tools/Name Picker.html` + `name-picker/`, `Tools/Seating Chart Generator.html` + `seating-chart/`, `Tools/final_grade_checker.html` + `final-grade-checker/`, `Tools/image-to-pdf.html` + `image-to-pdf/`, `Tools/schedule-visualizer.html` / `schedule-browser.html` / `schedule/` and the two dated Schedule pages | **no work opens against these** (#206) |
 | The site | `index.html`, `404.html`, `newindex.html`, `landing.html`, `assets/` (including `assets/fonts/`), `Tools/board-check/` (except `play-castle.mjs` and any project's own test folder), `CNAME` | — |

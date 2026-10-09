@@ -1,0 +1,2364 @@
+{
+  "format": "sv2-project",
+  "version": 2,
+  "id": "psample001",
+  "created": "2026-09-01T12:00:00.000Z",
+  "modified": "2026-09-01T12:00:00.000Z",
+  "settings": {
+    "schoolName": "Marrowby Middle School (sample)",
+    "periods": 8,
+    "periodWord": "Period",
+    "defaultPassingSeconds": 240,
+    "defaultHeadCount": 25,
+    "secondsPerCell": 3,
+    "secondsPerStair": 8,
+    "colourScale": {
+      "mode": "relative",
+      "bands": [
+        10,
+        25,
+        50,
+        100
+      ]
+    },
+    "checks": {
+      "consecutiveLimit": 4,
+      "passingMarginSeconds": 0,
+      "off": []
+    },
+    "timeFormat": "12h",
+    "paper": {
+      "size": "letter",
+      "orientation": "portrait"
+    },
+    "theme": "auto"
+  },
+  "building": {
+    "floors": [
+      {
+        "id": "fsample001",
+        "name": "Floor 1",
+        "level": 1,
+        "width": 40,
+        "height": 14,
+        "cells": ".........................................................................................................................................................................................................................................................................................#######################################............S.......#.......................................#.......................................#.......................................#.......................................#.......................................#...................",
+        "spaces": [
+          {
+            "id": "rsample101",
+            "kind": "room",
+            "cells": [
+              121,
+              122,
+              123,
+              124,
+              125,
+              161,
+              162,
+              163,
+              164,
+              165,
+              201,
+              202,
+              203,
+              204,
+              205,
+              241,
+              242,
+              243,
+              244,
+              245
+            ],
+            "number": "101",
+            "teacherIds": [
+              "tsample001"
+            ],
+            "subjectId": "ssample001",
+            "wing": "West",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 243,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsample102",
+            "kind": "room",
+            "cells": [
+              127,
+              128,
+              129,
+              130,
+              131,
+              167,
+              168,
+              169,
+              170,
+              171,
+              207,
+              208,
+              209,
+              210,
+              211,
+              247,
+              248,
+              249,
+              250,
+              251
+            ],
+            "number": "102",
+            "teacherIds": [
+              "tsample002"
+            ],
+            "subjectId": "ssample001",
+            "wing": "West",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 249,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsample103",
+            "kind": "room",
+            "cells": [
+              133,
+              134,
+              135,
+              136,
+              137,
+              173,
+              174,
+              175,
+              176,
+              177,
+              213,
+              214,
+              215,
+              216,
+              217,
+              253,
+              254,
+              255,
+              256,
+              257
+            ],
+            "number": "103",
+            "teacherIds": [
+              "tsample003"
+            ],
+            "subjectId": "ssample003",
+            "wing": "West",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 255,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsamplecaf",
+            "kind": "room",
+            "cells": [
+              99,
+              100,
+              101,
+              102,
+              103,
+              104,
+              105,
+              106,
+              107,
+              139,
+              140,
+              141,
+              142,
+              143,
+              144,
+              145,
+              146,
+              147,
+              179,
+              180,
+              181,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              259,
+              260,
+              261,
+              262,
+              263,
+              264,
+              265,
+              266,
+              267
+            ],
+            "number": "Cafeteria",
+            "teacherIds": [],
+            "subjectId": null,
+            "wing": "",
+            "capacity": 150,
+            "shared": true,
+            "doors": [
+              {
+                "cell": 261,
+                "side": "s"
+              },
+              {
+                "cell": 265,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsamplegym",
+            "kind": "room",
+            "cells": [
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              110,
+              111,
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              150,
+              151,
+              152,
+              153,
+              154,
+              155,
+              156,
+              157,
+              158,
+              190,
+              191,
+              192,
+              193,
+              194,
+              195,
+              196,
+              197,
+              198,
+              230,
+              231,
+              232,
+              233,
+              234,
+              235,
+              236,
+              237,
+              238,
+              270,
+              271,
+              272,
+              273,
+              274,
+              275,
+              276,
+              277,
+              278
+            ],
+            "number": "Gym",
+            "teacherIds": [
+              "tsample004"
+            ],
+            "subjectId": "ssample008",
+            "wing": "East",
+            "capacity": 120,
+            "shared": true,
+            "doors": [
+              {
+                "cell": 276,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "osample001",
+            "kind": "other",
+            "cells": [
+              321,
+              322,
+              323,
+              324,
+              325,
+              326,
+              361,
+              362,
+              363,
+              364,
+              365,
+              366,
+              401,
+              402,
+              403,
+              404,
+              405,
+              406,
+              441,
+              442,
+              443,
+              444,
+              445,
+              446
+            ],
+            "label": "Office",
+            "otherKind": "office",
+            "colour": "#b9a58c"
+          },
+          {
+            "id": "osample002",
+            "kind": "other",
+            "cells": [
+              334,
+              335,
+              336,
+              337,
+              374,
+              375,
+              376,
+              377,
+              414,
+              415,
+              416,
+              417
+            ],
+            "label": "Bathrooms",
+            "otherKind": "bathroom",
+            "colour": "#9aa3ad"
+          },
+          {
+            "id": "osample003",
+            "kind": "other",
+            "cells": [
+              342,
+              343,
+              344,
+              345,
+              346,
+              347,
+              382,
+              383,
+              384,
+              385,
+              386,
+              387,
+              422,
+              423,
+              424,
+              425,
+              426,
+              427
+            ],
+            "label": "Kitchen",
+            "otherKind": "utility",
+            "colour": "#a9a9a0"
+          },
+          {
+            "id": "osample004",
+            "kind": "other",
+            "cells": [
+              390,
+              391,
+              392,
+              393,
+              394,
+              395,
+              396,
+              397,
+              398,
+              430,
+              431,
+              432,
+              433,
+              434,
+              435,
+              436,
+              437,
+              438,
+              470,
+              471,
+              472,
+              473,
+              474,
+              475,
+              476,
+              477,
+              478,
+              510,
+              511,
+              512,
+              513,
+              514,
+              515,
+              516,
+              517,
+              518
+            ],
+            "label": "Courtyard",
+            "otherKind": "outdoor",
+            "colour": "#a8c29a"
+          }
+        ],
+        "corridors": [
+          {
+            "id": "ksample001",
+            "name": "Main Corridor",
+            "cells": [
+              281,
+              282,
+              283,
+              284,
+              285,
+              286,
+              287,
+              288,
+              289,
+              290,
+              291,
+              292,
+              293,
+              294,
+              295,
+              296,
+              297,
+              298,
+              299,
+              300,
+              301,
+              302,
+              303,
+              304,
+              305,
+              306,
+              307,
+              308,
+              309,
+              310,
+              311,
+              312,
+              313,
+              314,
+              315,
+              316,
+              317,
+              318,
+              319
+            ]
+          },
+          {
+            "id": "ksample002",
+            "name": "Front Hall",
+            "cells": [
+              340,
+              380,
+              420,
+              460,
+              500,
+              540
+            ]
+          }
+        ],
+        "exits": [
+          {
+            "id": "xsample00a",
+            "cell": 540,
+            "doorName": "Door A",
+            "assembly": "Front lawn by the flagpole"
+          },
+          {
+            "id": "xsample00b",
+            "cell": 319,
+            "doorName": "Door B",
+            "assembly": "East field by the backstop"
+          }
+        ],
+        "image": null
+      },
+      {
+        "id": "fsample002",
+        "name": "Floor 2",
+        "level": 2,
+        "width": 40,
+        "height": 14,
+        "cells": ".........................................................................................................................................................................................................................................................................................######################################.............S....................S..............................................................................................................................................................................................................",
+        "spaces": [
+          {
+            "id": "rsample201",
+            "kind": "room",
+            "cells": [
+              121,
+              122,
+              123,
+              124,
+              125,
+              126,
+              161,
+              162,
+              163,
+              164,
+              165,
+              166,
+              201,
+              202,
+              203,
+              204,
+              205,
+              206,
+              241,
+              242,
+              243,
+              244,
+              245,
+              246
+            ],
+            "number": "201",
+            "teacherIds": [
+              "tsample005"
+            ],
+            "subjectId": "ssample002",
+            "wing": "West",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 243,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsample202",
+            "kind": "room",
+            "cells": [
+              128,
+              129,
+              130,
+              131,
+              132,
+              133,
+              168,
+              169,
+              170,
+              171,
+              172,
+              173,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              248,
+              249,
+              250,
+              251,
+              252,
+              253
+            ],
+            "number": "202",
+            "teacherIds": [
+              "tsample006"
+            ],
+            "subjectId": "ssample002",
+            "wing": "West",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 250,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsample203",
+            "kind": "room",
+            "cells": [
+              135,
+              136,
+              137,
+              138,
+              139,
+              140,
+              175,
+              176,
+              177,
+              178,
+              179,
+              180,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              255,
+              256,
+              257,
+              258,
+              259,
+              260
+            ],
+            "number": "203",
+            "teacherIds": [
+              "tsample007"
+            ],
+            "subjectId": "ssample004",
+            "wing": "",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 257,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsample204",
+            "kind": "room",
+            "cells": [
+              142,
+              143,
+              144,
+              145,
+              146,
+              147,
+              182,
+              183,
+              184,
+              185,
+              186,
+              187,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              262,
+              263,
+              264,
+              265,
+              266,
+              267
+            ],
+            "number": "204",
+            "teacherIds": [
+              "tsample008"
+            ],
+            "subjectId": "ssample005",
+            "wing": "East",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 264,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsamplelib",
+            "kind": "room",
+            "cells": [
+              109,
+              110,
+              111,
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              149,
+              150,
+              151,
+              152,
+              153,
+              154,
+              155,
+              156,
+              157,
+              158,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              195,
+              196,
+              197,
+              198,
+              229,
+              230,
+              231,
+              232,
+              233,
+              234,
+              235,
+              236,
+              237,
+              238,
+              269,
+              270,
+              271,
+              272,
+              273,
+              274,
+              275,
+              276,
+              277,
+              278
+            ],
+            "number": "Library",
+            "teacherIds": [
+              "tsample009"
+            ],
+            "subjectId": "ssample009",
+            "wing": "East",
+            "capacity": 60,
+            "shared": true,
+            "doors": [
+              {
+                "cell": 271,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "osample005",
+            "kind": "other",
+            "cells": [
+              334,
+              335,
+              336,
+              337,
+              374,
+              375,
+              376,
+              377,
+              414,
+              415,
+              416,
+              417
+            ],
+            "label": "Bathrooms",
+            "otherKind": "bathroom",
+            "colour": "#9aa3ad"
+          },
+          {
+            "id": "osample006",
+            "kind": "other",
+            "cells": [
+              339,
+              340,
+              341,
+              342,
+              343,
+              344,
+              345,
+              379,
+              380,
+              381,
+              382,
+              383,
+              384,
+              385,
+              419,
+              420,
+              421,
+              422,
+              423,
+              424,
+              425,
+              459,
+              460,
+              461,
+              462,
+              463,
+              464,
+              465
+            ],
+            "label": "Staff Room",
+            "otherKind": "office",
+            "colour": "#b9a58c"
+          },
+          {
+            "id": "osample007",
+            "kind": "other",
+            "cells": [
+              347,
+              348,
+              349,
+              350,
+              387,
+              388,
+              389,
+              390,
+              427,
+              428,
+              429,
+              430
+            ],
+            "label": "Book Store",
+            "otherKind": "storage",
+            "colour": "#a9a9a0"
+          }
+        ],
+        "corridors": [
+          {
+            "id": "ksample003",
+            "name": "Upper Corridor",
+            "cells": [
+              281,
+              282,
+              283,
+              284,
+              285,
+              286,
+              287,
+              288,
+              289,
+              290,
+              291,
+              292,
+              293,
+              294,
+              295,
+              296,
+              297,
+              298,
+              299,
+              300,
+              301,
+              302,
+              303,
+              304,
+              305,
+              306,
+              307,
+              308,
+              309,
+              310,
+              311,
+              312,
+              313,
+              314,
+              315,
+              316,
+              317,
+              318
+            ]
+          }
+        ],
+        "exits": [],
+        "image": null
+      },
+      {
+        "id": "fsample003",
+        "name": "Floor 3",
+        "level": 3,
+        "width": 40,
+        "height": 14,
+        "cells": ".........................................................................................................................................................................................................................................................................................######################################..................................S..............................................................................................................................................................................................................",
+        "spaces": [
+          {
+            "id": "rsample303",
+            "kind": "room",
+            "cells": [
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              121,
+              122,
+              123,
+              124,
+              125,
+              126,
+              127,
+              161,
+              162,
+              163,
+              164,
+              165,
+              166,
+              167,
+              201,
+              202,
+              203,
+              204,
+              205,
+              206,
+              207,
+              241,
+              242,
+              243,
+              244,
+              245,
+              246,
+              247
+            ],
+            "number": "303",
+            "teacherIds": [
+              "tsample012"
+            ],
+            "subjectId": "ssample007",
+            "wing": "Music Wing",
+            "capacity": 40,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 244,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsample302",
+            "kind": "room",
+            "cells": [
+              138,
+              139,
+              140,
+              141,
+              142,
+              143,
+              144,
+              178,
+              179,
+              180,
+              181,
+              182,
+              183,
+              184,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              258,
+              259,
+              260,
+              261,
+              262,
+              263,
+              264
+            ],
+            "number": "302",
+            "teacherIds": [
+              "tsample011"
+            ],
+            "subjectId": "ssample006",
+            "wing": "East",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 261,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "rsample301",
+            "kind": "room",
+            "cells": [
+              146,
+              147,
+              148,
+              149,
+              150,
+              151,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              226,
+              227,
+              228,
+              229,
+              230,
+              231,
+              266,
+              267,
+              268,
+              269,
+              270,
+              271
+            ],
+            "number": "301",
+            "teacherIds": [
+              "tsample010"
+            ],
+            "subjectId": "ssample003",
+            "wing": "East",
+            "capacity": 30,
+            "shared": false,
+            "doors": [
+              {
+                "cell": 269,
+                "side": "s"
+              }
+            ]
+          },
+          {
+            "id": "osample008",
+            "kind": "other",
+            "cells": [
+              129,
+              130,
+              131,
+              132,
+              169,
+              170,
+              171,
+              172,
+              209,
+              210,
+              211,
+              212,
+              249,
+              250,
+              251,
+              252
+            ],
+            "label": "Instrument Store",
+            "otherKind": "storage",
+            "colour": "#a9a9a0"
+          },
+          {
+            "id": "osample009",
+            "kind": "other",
+            "cells": [
+              334,
+              335,
+              336,
+              337,
+              374,
+              375,
+              376,
+              377,
+              414,
+              415,
+              416,
+              417
+            ],
+            "label": "Bathrooms",
+            "otherKind": "bathroom",
+            "colour": "#9aa3ad"
+          },
+          {
+            "id": "osample010",
+            "kind": "other",
+            "cells": [
+              155,
+              156,
+              157,
+              158,
+              195,
+              196,
+              197,
+              198,
+              235,
+              236,
+              237,
+              238,
+              275,
+              276,
+              277,
+              278
+            ],
+            "label": "Plant Room",
+            "otherKind": "utility",
+            "colour": "#8f979f"
+          }
+        ],
+        "corridors": [
+          {
+            "id": "ksample004",
+            "name": "Music Wing",
+            "cells": [
+              281,
+              282,
+              283,
+              284,
+              285,
+              286,
+              287,
+              288,
+              289,
+              290,
+              291,
+              292,
+              293,
+              294,
+              295,
+              296
+            ]
+          },
+          {
+            "id": "ksample005",
+            "name": "Top Corridor",
+            "cells": [
+              297,
+              298,
+              299,
+              300,
+              301,
+              302,
+              303,
+              304,
+              305,
+              306,
+              307,
+              308,
+              309,
+              310,
+              311,
+              312,
+              313,
+              314,
+              315,
+              316,
+              317,
+              318
+            ]
+          }
+        ],
+        "exits": [],
+        "image": null
+      }
+    ],
+    "connections": [
+      {
+        "id": "csample00a",
+        "label": "A",
+        "a": {
+          "floorId": "fsample001",
+          "cell": 332
+        },
+        "b": {
+          "floorId": "fsample002",
+          "cell": 332
+        },
+        "direction": "both"
+      },
+      {
+        "id": "csample00b",
+        "label": "B",
+        "a": {
+          "floorId": "fsample002",
+          "cell": 353
+        },
+        "b": {
+          "floorId": "fsample003",
+          "cell": 353
+        },
+        "direction": "both"
+      }
+    ],
+    "zones": [
+      {
+        "id": "zsample001",
+        "floorId": "fsample001",
+        "label": "Cafeteria doors",
+        "x": 19,
+        "y": 7,
+        "w": 9,
+        "h": 1
+      }
+    ]
+  },
+  "subjects": [
+    {
+      "id": "ssample001",
+      "code": "MATH",
+      "name": "Mathematics",
+      "colour": "#2a6f97"
+    },
+    {
+      "id": "ssample002",
+      "code": "ENG",
+      "name": "English",
+      "colour": "#b5524a"
+    },
+    {
+      "id": "ssample003",
+      "code": "SCI",
+      "name": "Science",
+      "colour": "#3f8f5b"
+    },
+    {
+      "id": "ssample004",
+      "code": "SOC",
+      "name": "Social Studies",
+      "colour": "#b7791f"
+    },
+    {
+      "id": "ssample005",
+      "code": "LANG",
+      "name": "World Languages",
+      "colour": "#7a5aa6"
+    },
+    {
+      "id": "ssample006",
+      "code": "ART",
+      "name": "Art",
+      "colour": "#c0568f"
+    },
+    {
+      "id": "ssample007",
+      "code": "MUS",
+      "name": "Music",
+      "colour": "#2f8f9d"
+    },
+    {
+      "id": "ssample008",
+      "code": "PE",
+      "name": "Physical Education",
+      "colour": "#5b6f2a"
+    },
+    {
+      "id": "ssample009",
+      "code": "LIB",
+      "name": "Library",
+      "colour": "#5a6b7b"
+    }
+  ],
+  "teachers": [
+    {
+      "id": "tsample001",
+      "name": "Ms. Halloran",
+      "subjectId": "ssample001",
+      "roomIds": [
+        "rsample101"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample002",
+      "name": "Mr. Brightwater",
+      "subjectId": "ssample001",
+      "roomIds": [
+        "rsample102"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample003",
+      "name": "Dr. Quillfeather",
+      "subjectId": "ssample003",
+      "roomIds": [
+        "rsample103"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample004",
+      "name": "Coach Dunmore",
+      "subjectId": "ssample008",
+      "roomIds": [
+        "rsamplegym"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample005",
+      "name": "Ms. Oyelaran",
+      "subjectId": "ssample002",
+      "roomIds": [
+        "rsample201"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample006",
+      "name": "Mr. Castellanos",
+      "subjectId": "ssample002",
+      "roomIds": [
+        "rsample202"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample007",
+      "name": "Ms. Vandermeer",
+      "subjectId": "ssample004",
+      "roomIds": [
+        "rsample203"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample008",
+      "name": "Mme. Dufrêne",
+      "subjectId": "ssample005",
+      "roomIds": [
+        "rsample204"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample009",
+      "name": "Mr. Pennywhistle",
+      "subjectId": "ssample009",
+      "roomIds": [
+        "rsamplelib"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample010",
+      "name": "Ms. Thistlewood",
+      "subjectId": "ssample003",
+      "roomIds": [
+        "rsample301"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample011",
+      "name": "Mr. Larkspur",
+      "subjectId": "ssample006",
+      "roomIds": [
+        "rsample302"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "tsample012",
+      "name": "Ms. O'Fennimore",
+      "subjectId": "ssample007",
+      "roomIds": [
+        "rsample303"
+      ],
+      "notes": ""
+    }
+  ],
+  "groups": [
+    {
+      "id": "gsample06a",
+      "name": "6A",
+      "grade": "6",
+      "headCount": 24,
+      "colour": "#d1495b",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample101",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample301",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "gsample06b",
+      "name": "6B",
+      "grade": "6",
+      "headCount": 26,
+      "colour": "#0072b2",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample202",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "gsample06c",
+      "name": "6C",
+      "grade": "6",
+      "headCount": 23,
+      "colour": "#e69f00",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsample301",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample202",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample202",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "gsample07a",
+      "name": "7A",
+      "grade": "7",
+      "headCount": 27,
+      "colour": "#009e73",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample301",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample101",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample202",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "gsample07b",
+      "name": "7B",
+      "grade": "7",
+      "headCount": 25,
+      "colour": "#cc79a7",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample101",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample301",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "gsample07c",
+      "name": "7C",
+      "grade": "7",
+      "headCount": 22,
+      "colour": "#56b4e9",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample301",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "gsample08a",
+      "name": "8A",
+      "grade": "8",
+      "headCount": 28,
+      "colour": "#8c6d31",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample202",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample101",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "gsample08b",
+      "name": "8B",
+      "grade": "8",
+      "headCount": null,
+      "colour": "#7b4ea3",
+      "days": {
+        "dsample00a": [
+          {
+            "room": "rsamplegym",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample101",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample204",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample103",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample202",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ],
+        "dsample00b": [
+          {
+            "room": "rsamplelib",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample203",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample303",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample301",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsamplecaf",
+            "roomText": "",
+            "label": "Lunch",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample102",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample302",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          },
+          {
+            "room": "rsample201",
+            "roomText": "",
+            "label": "",
+            "teacherIds": []
+          }
+        ]
+      }
+    }
+  ],
+  "dayTypes": [
+    {
+      "id": "dsample00a",
+      "name": "A Day",
+      "own": true,
+      "bells": [
+        {
+          "start": "08:00",
+          "end": "08:48"
+        },
+        {
+          "start": "08:52",
+          "end": "09:40"
+        },
+        {
+          "start": "09:44",
+          "end": "10:32"
+        },
+        {
+          "start": "10:36",
+          "end": "11:24"
+        },
+        {
+          "start": "11:28",
+          "end": "12:16"
+        },
+        {
+          "start": "12:20",
+          "end": "13:08"
+        },
+        {
+          "start": "13:12",
+          "end": "14:00"
+        },
+        {
+          "start": "14:04",
+          "end": "14:52"
+        }
+      ]
+    },
+    {
+      "id": "dsample00b",
+      "name": "B Day",
+      "own": true,
+      "bells": [
+        {
+          "start": "08:20",
+          "end": "09:08"
+        },
+        {
+          "start": "09:12",
+          "end": "10:00"
+        },
+        {
+          "start": "10:04",
+          "end": "10:52"
+        },
+        {
+          "start": "10:56",
+          "end": "11:44"
+        },
+        {
+          "start": "11:48",
+          "end": "12:36"
+        },
+        {
+          "start": "12:40",
+          "end": "13:28"
+        },
+        {
+          "start": "13:32",
+          "end": "14:20"
+        },
+        {
+          "start": "14:24",
+          "end": "15:12"
+        }
+      ]
+    }
+  ],
+  "accepted": [],
+  "scenario": null,
+  "publish": {
+    "passcode": "bulldogs2015",
+    "stalenessDays": 60,
+    "views": {
+      "teacher": true,
+      "group": true,
+      "room": true,
+      "map": true,
+      "free": true,
+      "now": true,
+      "common": true,
+      "coverage": true,
+      "sub": true,
+      "directions": true,
+      "staffing": true
+    },
+    "teacherNamesOnMap": true,
+    "lastPublishedAt": null
+  },
+  "onboarding": {
+    "steps": {},
+    "dismissed": false,
+    "neverShow": false
+  },
+  "somethingNew": {
+    "shape": "unknown"
+  }
+}
