@@ -580,3 +580,158 @@
     padding-right: var(--s-3);
   }
 }
+
+/* ---------- SV2-24: batch sheets (ui/prints/batch.js) ----------
+   Every teacher's schedule, or every door sign, as one document: a cover
+   sheet that lists what follows, then one .new-sheet each. */
+
+.print-doc .batch-cover__list {
+  margin: 4mm 0 0;
+  padding-left: 6mm;
+  columns: 2;
+  column-gap: 10mm;
+}
+
+.print-doc .batch-cover__list li {
+  break-inside: avoid;
+  padding: 0.5mm 0;
+}
+
+.print-doc .batch-cover__detail {
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sheet {
+  break-inside: avoid;
+}
+
+.print-doc .batch-sheet__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 6mm;
+  margin: 0;
+  font-size: 8pt;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sheet__name {
+  margin: 2mm 0 0;
+  font-size: 20pt;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.print-doc .batch-sheet__facts {
+  margin: 1mm 0 0;
+}
+
+.print-doc .batch-sheet__says {
+  margin: 1mm 0 0;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-days {
+  display: grid;
+  grid-template-columns: repeat(var(--batch-days, 1), minmax(0, 1fr));
+  gap: 6mm;
+  margin-top: 5mm;
+  align-items: start;
+}
+
+.print-doc .batch-day__name {
+  margin: 0 0 1.5mm;
+  font-size: 11pt;
+  font-weight: 600;
+}
+
+.print-doc .batch-day__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+.print-doc .batch-day__table th,
+.print-doc .batch-day__table td {
+  padding: 1.4mm 1.5mm;
+  border-top: 0.2mm solid var(--line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+
+.print-doc .batch-day__table tr:last-child th,
+.print-doc .batch-day__table tr:last-child td {
+  border-bottom: 0.2mm solid var(--line-strong);
+}
+
+.print-doc .batch-day__table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.print-doc .batch-day__time {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-2);
+  font-size: 8pt;
+}
+
+.print-doc .batch-day__quiet {
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sign {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.print-doc .batch-sign__word {
+  margin: 8mm 0 0;
+  font-size: 24pt;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sign__number {
+  margin: 0;
+  font-family: var(--font-plan, var(--font-ui));
+  font-weight: 600;
+  font-size: calc(120pt * var(--sign-fit, 1));
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.print-doc .batch-sign__word + .batch-sign__number {
+  margin-top: 0;
+}
+
+.print-doc .batch-sign__number:first-child {
+  margin-top: 8mm;
+}
+
+.print-doc .batch-sign__teacher {
+  margin: 6mm 0 0;
+  font-size: 28pt;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.print-doc .batch-sign__subject {
+  margin: 2mm 0 0;
+  font-size: 18pt;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sign .batch-days {
+  width: 100%;
+  text-align: left;
+}
+
+.print-doc .batch-sign__school {
+  margin: 8mm 0 0;
+  font-size: 10pt;
+  color: var(--ink-2);
+}

@@ -13,8 +13,9 @@
 import * as floorPlan from './floor-plan.js';
 import * as roomList from './room-list.js';
 import * as checksReport from './checks-report.js';
+import { BATCHES } from './batch.js';
 
-export const OUTPUTS = [floorPlan, roomList, checksReport];
+export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES];
 
 export function outputFor(id) {
   return OUTPUTS.find((output) => output.id === id) || null;
