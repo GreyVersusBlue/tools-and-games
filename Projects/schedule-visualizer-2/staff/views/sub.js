@@ -10,7 +10,8 @@ import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
 import { dayText } from '../dates.js';
-import { clockNow, dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, shareRow, teacherDetail, entryWords } from '../clock.js';
+import { aroundRoom } from '../map.js';
+import { clockNow, dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -81,8 +82,9 @@ export const subView = {
             ? h('p', { class: 'muted' }, 'This teacher has no room of their own in this schedule. The day above names the room for each period.')
             : based.map((room) => {
               const floor = school.floorOfRoom(room.id);
-              return h('p', null, viewLink(school, 'room', room.id, typed(school.roomName(room, true))), ' is on ', typed(floor ? floor.name : 'no floor'), room.wing ? [', ', typed(room.wing)] : null, '. ',
-                floor && school.has('map') ? h('a', { class: 'no-print', href: makeHash('map', floor.id) }, 'Show ', typed(floor.name), ' on the map') : null);
+              return [h('p', null, viewLink(school, 'room', room.id, typed(school.roomName(room, true))), ' is on ', typed(floor ? floor.name : 'no floor'), room.wing ? [', ', typed(room.wing)] : null, '. ',
+                floor && school.has('map') ? h('a', { class: 'no-print', href: makeHash('map', floor.id) }, 'Show ', typed(floor.name), ' on the map') : null),
+              aroundRoom(ctx, room)];
             })),
 
         h('section', { class: 'card', dataset: { sub: 'notes' } },
@@ -107,7 +109,6 @@ export const subView = {
         h('div', { class: 'no-print' }, picker)),
       out,
       h('p', { class: 'actions no-print' },
-        h('button', { class: 'btn btn--primary', type: 'button', dataset: { sub: 'print' }, onclick: () => globalThis.print() }, 'Print this page')),
-      shareRow(() => 'Substitute plan: ' + absent.name + ' · ' + school.name));
+        h('button', { class: 'btn btn--primary', type: 'button', dataset: { sub: 'print', print: 'page' }, onclick: () => globalThis.print() }, 'Print this page')));
   },
 };

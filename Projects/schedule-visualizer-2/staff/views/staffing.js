@@ -5,7 +5,8 @@
 
 import { h, typed } from '../dom.js';
 import { pageOf } from '../page.js';
-import { countOf, linkToTeacher, subjectChipOf, wordsJoined, teacherDaysOn } from './teacher.js';
+import { countOf, linkToTeacher, subjectChipOf, wordsJoined } from './teacher.js';
+import { everyTeacherDay } from '../clock.js';
 
 // One row a subject, in the school's own order, then a row for teachers with
 // no subject when there are any:
@@ -18,7 +19,7 @@ export function staffingRows(school) {
     subject,
     teachers,
     taught: dayTypes.map((dayType) => {
-      const days = teacherDaysOn(school, dayType.id);
+      const days = everyTeacherDay(school, dayType.id);
       return teachers.reduce((sum, teacher) => sum + days.get(teacher.id).filter((entry) => entry.kind === 'teaching').length, 0);
     }),
   });

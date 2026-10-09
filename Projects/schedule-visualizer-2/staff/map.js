@@ -5,7 +5,7 @@
 // planner's drawing surface and shares no code with it: a published file
 // carries this and nothing of the editor.
 //
-//   floorMap(ctx, { floorId, marks, says, floorHref, label })
+//   floorMap(ctx, { floorId, marks, says, floorHref, label, route, around })
 //
 //   marks       [{ roomId, ring, badge, short }]: rooms to ring, and what to
 //               write on them (`badge` when it fits the room, else `short`)
@@ -13,6 +13,11 @@
 //               in words what is marked on that floor
 //   floorHref   (floor) => an address: the tabs are links (the map page);
 //               without it they are buttons and the floor changes in place
+//   route       a route the engine found (school.route): its line is drawn on
+//               each floor it crosses, a dot where it starts and a ring where
+//               it ends
+//   around      a room id: the picture is that room and what is near it on
+//               its own floor (MAP_REACH cells each way), with no floor tabs
 //
 // One finger on the picture still scrolls the page (touch-action: pan-y, in
 // staff.css) and a pinch is the browser's own. A drag sideways moves a
@@ -30,6 +35,8 @@ export const MAP_TAP_SLACK = 11;
 export const MAP_ZOOMS = [1, 1.5, 2, 3];
 // A small building is not blown up to fill a wide window.
 export const MAP_MAX_CELL = 26;
+// How far "around a room" reaches from the room's own cells, in cells.
+export const MAP_REACH = 7;
 
 const ROOM_STRENGTH = 0.7; // DESIGN 3: a subject colour on the plan
 const OTHER_STRENGTH = 0.6;
@@ -120,6 +127,54 @@ export function floorExtentOf(floor) {
   return { x: x0 - 1, y: y0 - 1, w: x1 - x0 + 3, h: y1 - y0 + 3 };
 }
 
+// The part of a floor around one room: the room's own cells and `reach` cells
+// each way, never beyond what is drawn on the floor. Null when the room is not
+// on this floor.
+export function aroundExtentOf(floor, roomId, reach) {
+  const room = floor.spaces.find((space) => space.id === roomId);
+  if (!room || room.cells.length === 0) return null;
+  const whole = floorExtentOf(floor);
+  const xs = room.cells.map((cell) => cell % floor.width);
+  const ys = room.cells.map((cell) => Math.floor(cell / floor.width));
+  const far = Number.isFinite(reach) ? reach : MAP_REACH;
+  const x0 = Math.max(whole.x, Math.min(...xs) - far);
+  const y0 = Math.max(whole.y, Math.min(...ys) - far);
+  const x1 = Math.min(whole.x + whole.w, Math.max(...xs) + 1 + far);
+  const y1 = Math.min(whole.y + whole.h, Math.max(...ys) + 1 + far);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+// The part of a route that is on one floor, as lines of cells in the order
+// walked: [{ cells, starts, ends }]. `starts` marks the line that leaves the
+// first room and `ends` the one that reaches the last; a route that comes back
+// to a floor has a line for each visit. The room cells at the two ends are
+// part of the line, so it is seen to leave one door and reach the other.
+export function routeOnFloor(found, floorId) {
+  if (!found || !found.ok || found.same) return [];
+  const lines = [];
+  let last = null;
+  found.cells.forEach((step, index) => {
+    if (step.floorId !== floorId) {
+      last = null;
+      return;
+    }
+    if (last === null) {
+      last = { cells: [], starts: false, ends: false };
+      if (index === 0 && found.from && found.from.floorId === floorId) {
+        last.cells.push(found.from.cell);
+        last.starts = true;
+      }
+      lines.push(last);
+    }
+    last.cells.push(step.cell);
+    if (index === found.cells.length - 1 && found.to && found.to.floorId === floorId) {
+      last.cells.push(found.to.cell);
+      last.ends = true;
+    }
+  });
+  return lines;
+}
+
 // A space's cells as rows of touching cells, in cells.
 function runsOf(floor, cells) {
   const runs = [];
@@ -135,9 +190,10 @@ function runsOf(floor, cells) {
 
 // Where everything on a floor falls in a picture `width` px wide: the size of
 // a cell, the picture's height, how far a zoomed floor can be moved sideways,
-// and each space's rectangles and bounding box in px.
-export function planOf(floor, width, zoom, pan) {
-  const extent = floorExtentOf(floor);
+// and each space's rectangles and bounding box in px. `part` is the piece of
+// the floor to show (aroundExtentOf); left out, it is everything drawn.
+export function planOf(floor, width, zoom, pan, part) {
+  const extent = part || floorExtentOf(floor);
   const fit = Math.min(MAP_MAX_CELL, width / extent.w);
   const cell = fit * zoom;
   const wide = extent.w * cell;
@@ -214,7 +270,56 @@ function surnameOf(name) {
   return words[words.length - 1];
 }
 
-function paint(canvas, school, floor, plan, theme, marks) {
+// A route's lines on the floor shown: a pale edge under the accent so the line
+// reads on a corridor and across a room alike.
+function paintRoute(g, floor, plan, theme, lines) {
+  const cell = plan.cell;
+  const at = (index) => [plan.px(index % floor.width) + cell / 2, plan.py(Math.floor(index / floor.width)) + cell / 2];
+  const wide = Math.max(3, Math.min(7, cell * 0.3));
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  for (const [colour, width] of [[theme.paper, wide + 3], [theme.accent, wide]]) {
+    g.strokeStyle = colour;
+    g.lineWidth = width;
+    for (const line of lines) {
+      g.beginPath();
+      line.cells.forEach((index, step) => {
+        const [x, y] = at(index);
+        if (step === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      });
+      if (line.cells.length === 1) g.lineTo(...at(line.cells[0]));
+      g.stroke();
+    }
+  }
+  const dot = Math.max(5, wide * 1.2);
+  for (const line of lines) {
+    if (line.starts) {
+      const [x, y] = at(line.cells[0]);
+      g.fillStyle = theme.paper;
+      g.beginPath();
+      g.arc(x, y, dot + 1.5, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = theme.accent;
+      g.beginPath();
+      g.arc(x, y, dot, 0, Math.PI * 2);
+      g.fill();
+    }
+    if (line.ends) {
+      const [x, y] = at(line.cells[line.cells.length - 1]);
+      g.fillStyle = theme.accent;
+      g.beginPath();
+      g.arc(x, y, dot + 1.5, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = theme.paper;
+      g.beginPath();
+      g.arc(x, y, dot - 2, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+}
+
+function paint(canvas, school, floor, plan, theme, marks, lines) {
   const ratio = Math.max(1, globalThis.devicePixelRatio || 1);
   canvas.width = Math.max(1, Math.round(plan.width * ratio));
   canvas.height = Math.max(1, Math.round(plan.height * ratio));
@@ -361,6 +466,8 @@ function paint(canvas, school, floor, plan, theme, marks) {
       g.fillText(long, box.x + box.w / 2, by + 8.5);
     }
   });
+
+  if (lines.length > 0) paintRoute(g, floor, plan, theme, lines);
 }
 
 // ---- the frame: tabs, zoom, the picture, the line under it, the short list
@@ -369,7 +476,8 @@ export function floorMap(ctx, options) {
   const school = ctx.school;
   const opts = options || {};
   const marks = new Map((opts.marks || []).map((mark) => [mark.roomId, mark]));
-  const state = { floor: school.floor(opts.floorId) || school.floors[0], zoom: 0, pan: 0, plan: null };
+  const near = opts.around ? school.floorOfRoom(opts.around) : null;
+  const state = { floor: near || school.floor(opts.floorId) || school.floors[0], zoom: 0, pan: 0, plan: null };
   if (!state.floor) return h('p', { class: 'muted' }, 'This schedule has no floor plan.');
 
   const canvas = h('canvas', { class: 'map__plan', role: 'img' });
@@ -385,10 +493,13 @@ export function floorMap(ctx, options) {
   function draw() {
     const width = frame.clientWidth;
     if (width === 0) return;
-    state.plan = planOf(state.floor, width, MAP_ZOOMS[state.zoom], state.pan);
+    const lines = routeOnFloor(opts.route, state.floor.id);
+    state.plan = planOf(state.floor, width, MAP_ZOOMS[state.zoom], state.pan, near ? aroundExtentOf(state.floor, opts.around, opts.reach) : null);
     state.pan = state.plan.pan;
-    paint(canvas, school, state.floor, state.plan, themeOf(frame), marks);
+    paint(canvas, school, state.floor, state.plan, themeOf(frame), marks, lines);
     frame.dataset.floor = state.floor.id;
+    if (opts.route) frame.dataset.route = String(lines.reduce((sum, line) => sum + line.cells.length, 0));
+    if (near) frame.dataset.around = opts.around;
     frame.dataset.zoom = String(MAP_ZOOMS[state.zoom]);
     frame.dataset.cell = String(state.plan.cell);
     const ringed = state.plan.shapes.find((shape) => marks.has(shape.id) && marks.get(shape.id).ring);
@@ -404,7 +515,7 @@ export function floorMap(ctx, options) {
   function chrome() {
     const floor = state.floor;
     canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.');
-    tabs.replaceChildren(...school.floors.map((each) => {
+    tabs.replaceChildren(...(near ? [] : school.floors).map((each) => {
       const current = each.id === floor.id;
       if (opts.floorHref) return h('a', { class: 'tab', href: opts.floorHref(each), 'aria-current': current ? 'page' : null, dataset: { floor: each.id } }, typed(each.name));
       return h('button', { class: 'tab', type: 'button', 'aria-current': current ? 'true' : null, dataset: { floor: each.id }, onclick: () => show(each) }, typed(each.name));
@@ -499,26 +610,42 @@ export function floorMap(ctx, options) {
   });
 
   // drawn again when the frame changes width, when the plan face has loaded,
-  // and when the device changes between light and dark
+  // when the device changes between light and dark, and when the page goes to
+  // paper and comes back (paper is light whatever the screen is)
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => draw()).observe(frame);
   if (document.fonts && document.fonts.load) {
     document.fonts.load('600 12px "Barlow Semi Condensed"').then(() => draw(), () => {});
   }
   if (typeof matchMedia === 'function') {
-    const dark = matchMedia('(prefers-color-scheme: dark)');
+    const watched = [matchMedia('(prefers-color-scheme: dark)'), matchMedia('print')];
     const again = () => {
       if (canvas.isConnected) draw();
-      else dark.removeEventListener('change', again);
+      else watched.forEach((query) => query.removeEventListener('change', again));
     };
-    dark.addEventListener('change', again);
+    watched.forEach((query) => query.addEventListener('change', again));
   }
 
   chrome();
   return h('section', { class: 'mapbox', 'aria-label': opts.label || 'Floor plan' },
-    h('div', { class: 'map__bar' }, tabs, h('div', { class: 'map__zooms' }, out, into, fit)),
+    h('div', { class: 'map__bar' }, near ? null : tabs, h('div', { class: 'map__zooms' }, out, into, fit)),
     frame,
     says,
     which);
+}
+
+// A room and what is near it, for a page that says where a room is. Null
+// where the publisher left the map out, or the room is on no floor.
+export function aroundRoom(ctx, room) {
+  const school = ctx.school;
+  const floor = school.floorOfRoom(room.id);
+  if (!floor || !school.has('map')) return null;
+  const name = school.roomName(room, true);
+  return floorMap(ctx, {
+    around: room.id,
+    label: 'Around ' + name,
+    marks: [{ roomId: room.id, ring: true }],
+    says: () => [typed(name), ' is ringed, with what is near it on ', typed(floor.name), '.'],
+  });
 }
 
 // A page with its map: on a phone the map sits in the page where it is given;
