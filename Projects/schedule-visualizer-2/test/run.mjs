@@ -113,6 +113,7 @@ export const GROUPS = {
     'timing/routing.mjs', // SV2-05
     'timing/crowd.mjs', // SV2-15
     'timing/pipeline.mjs', // SV2-16
+    'timing/movement.mjs', // SV2-39
   ],
 };
 
