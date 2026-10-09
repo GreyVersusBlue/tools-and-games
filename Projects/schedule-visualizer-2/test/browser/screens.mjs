@@ -17,6 +17,11 @@ async function removeSample(page) {
   await page.waitForFunction(() => document.getElementById('sample-chip').hidden);
 }
 
+// SV2-24: the Staff browser section once its preview frame has been fed.
+async function staffLive(page) {
+  await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'live', { timeout: 30000 });
+}
+
 // SV2-11: the Schedule section draws again a moment after a change.
 async function scheduleDrawn(page) {
   await page.waitForFunction(() => document.querySelector('.sch') && document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('link[data-sheet="schedule"]').sheet !== null);
@@ -557,6 +562,16 @@ export const SCREENS = [
       await page.click('#search');
       await page.keyboard.type('10');
       await page.waitForSelector('#search-results [role="option"]');
+    },
+  },
+  { id: 'staff-preview', hash: '#staff', open: staffLive }, // SV2-24: the preview frame fed, the publish form beside it
+  { // SV2-24: batch printing, in the preview sheet
+    id: 'staff-batch-print',
+    hash: '#staff',
+    open: async (page) => {
+      await staffLive(page);
+      await page.click('.pub [data-print="door-signs-day"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]');
     },
   },
 ];

@@ -67,6 +67,7 @@ export const GROUPS = {
     'engine/import-teachers.test.mjs', // SV2-35
     'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
+    'engine/prints-batch.test.mjs', // SV2-24
     'engine/grid-edits.test.mjs', // SV2-12
     'engine/import-subjects.test.mjs', // SV2-13
     'ui/progress.test.mjs', // SV2-02
@@ -100,6 +101,7 @@ export const GROUPS = {
     'browser/staff-views-a.mjs', // SV2-21
     'browser/staff-views-b.mjs', // SV2-22
     'browser/staff-outputs.mjs', // SV2-23
+    'browser/publish.mjs', // SV2-24
     'browser/movement.mjs', // SV2-17
     'a11y/axe.mjs',
   ],
