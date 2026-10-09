@@ -22,6 +22,8 @@ import { school, emptyProject, clone, clock, makeIds, tickingClock, assertValid,
 
 const FORMATS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'formats');
 const fixture = (name) => readFileSync(path.join(FORMATS_DIR, name), 'utf8');
+// project-malformed.txt is cut-off JSON on purpose; it is not named .json because
+// the site's integrity sweep parses every .json it serves and would report it.
 
 // The sentence ARCHITECTURE 5 gives, written out here so a change to it in
 // the code is a failure here.
@@ -147,7 +149,7 @@ test('project file: a file from before files carried a version is migrated', () 
 });
 
 test('project file: a file cut short is refused, and the refusal says what to do', () => {
-  assert.throws(() => readProjectFile(fixture('project-malformed.json')), refusal('not-json', NOT_JSON_MESSAGE));
+  assert.throws(() => readProjectFile(fixture('project-malformed.txt')), refusal('not-json', NOT_JSON_MESSAGE));
   assert.match(NOT_JSON_MESSAGE, /Export it again/);
   for (const text of ['', 'PK\u0003\u0004', '{"format": "sv2-project",', undefined, null, 42]) assert.throws(() => readProjectFile(text), refusal('not-json'));
 });
@@ -220,7 +222,7 @@ test('fileKind tells the files apart without reading them in full', () => {
   assert.equal(fileKind(writeBuildingFile(school())), 'building');
   assert.equal(fileKind(writeScheduleFile(school())), 'schedule');
   assert.equal(fileKind('{"format":"sv2-published","version":1}'), 'published');
-  for (const text of [fixture('project-malformed.json'), '{}', '[]', 'Group,Grade\n6A,6\n']) assert.equal(fileKind(text), null);
+  for (const text of [fixture('project-malformed.txt'), '{}', '[]', 'Group,Grade\n6A,6\n']) assert.equal(fileKind(text), null);
 });
 
 test('summarise counts what a project holds', () => {
