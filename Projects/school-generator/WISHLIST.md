@@ -411,8 +411,17 @@ and add to this list rather than starting a new one.
   times 100 and Cranberry and Charcoal 3.42 (they are in saved schools, so
   the swatch's name tells them apart, not the colour); the nine new ones
   were picked by arithmetic and nobody has looked at any of the seventeen on
-  a wall on a real display; there is no free pick of any hex, though both
-  fields take one. Left from #910: the click on the
+  a wall on a real display (Devon looked on 2026-10-07: "Everything seems
+  fine to me"). The free pick shipped as #944 (Devon, 2026-10-07: "yes free
+  color picker"): under the swatches a colour input, a hex field and a chip,
+  the colour stored as the `#rrggbb` both fields already took, called by its
+  hex, with black or white ink by luminance on the chip and on the brush's
+  hover bar. Left from #944: the custom colour is tool state, so a reload
+  starts the field at `#808080` and a colour used earlier is typed again or
+  read off the status line; the panel does not list the custom colours a
+  school already has; the hover bar's outline is one pixel; nobody has
+  looked at a custom colour on a wall or a free-standing wall in the lit
+  scene on a GPU. Left from #910: the click on the
   plan is a pointer gesture, for a room's wall and a free-standing one alike
   (the swatches take Tab and Enter, the plan has no keyboard cursor); a
   free-standing wall's outdoor face cannot be painted, because the facade is

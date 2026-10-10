@@ -29,7 +29,7 @@ import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, toggleOpening, removeShape,
   accentFaceAt, setSegAccent, segAccent,
-  readAccentPaint, accentHex, accentName, sameAccent,
+  readAccentPaint, accentHex, accentName, sameAccent, accentInk,
   moveOpening, openingsOnSeg, defaultOpeningWidth, isWindowOpening,
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
@@ -240,6 +240,19 @@ export function initEditor({
   );
   edgeCursor.renderOrder = 501;
   edgeCursor.visible = false;
+  // #944: the accent brush lights a wall in the colour it would take, and that
+  // colour can be any hex now, the ground's or the backdrop's among them. So
+  // the bar gets an outline in black or white, whichever reads on the colour.
+  // A child, so it rides the bar's place, turn and length; shown only while
+  // the brush is up.
+  const accentRim = new THREE.LineSegments(
+    new THREE.EdgesGeometry(edgeCursor.geometry),
+    new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false })
+  );
+  accentRim.name = 'accent-rim';
+  accentRim.renderOrder = 502;
+  accentRim.visible = false;
+  edgeCursor.add(accentRim);
 
   // The door tool's own ghost: the opening itself, at the spot on the wall a
   // click would cut it, riding the snapped point while the whole-segment
@@ -1222,6 +1235,7 @@ export function initEditor({
     const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
     if (p) hoverWorld = p;
+    accentRim.visible = false;
     if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' ||
         tool === 'stair' || tool === 'template' || tool === 'site' || tool === 'anno') {
       cellCursor.visible = edgeCursor.visible = openCursor.visible = rectCursor.visible = false;
@@ -1260,6 +1274,8 @@ export function initEditor({
           : segEnds(face.shape.rings[face.ring], face.seg);
         edgeCursor.material.color.set(accentHex(accentPaint) || '#f2f0ec');
         edgeCursor.material.opacity = 0.7;
+        accentRim.material.color.set(accentInk(accentPaint) || '#000000');
+        accentRim.visible = true;
         edgeCursor.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
         edgeCursor.scale.set(Math.max(0.2, segLength(a, b) / (CELL + WALL_T)), 1, 1);
         edgeCursor.position.set((a.x + b.x) / 2, baseY + WALL_H + 0.5, (a.z + b.z) / 2);

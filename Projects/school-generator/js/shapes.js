@@ -320,6 +320,46 @@ export function accentName(v) {
 // face holding '#2f5d8a' from an old file and the Harbor Blue swatch agree.
 export const sameAccent = (a, b) => accentHex(a) === accentHex(b);
 
+// The free pick (#944). What a colour input gave or someone typed, as the
+// '#rrggbb' a face stores: six digits or the three-digit short form, with or
+// without the '#', any case, spaces round it ignored. Anything else is null,
+// a colour with an alpha among them (a wall has none).
+const HEX_TYPED = /^#?(?:([0-9a-f]{6})|([0-9a-f])([0-9a-f])([0-9a-f]))$/i;
+export function parseAccentHex(text) {
+  const m = typeof text === 'string' && HEX_TYPED.exec(text.trim());
+  if (!m) return null;
+  return `#${m[1] || m[2] + m[2] + m[3] + m[3] + m[4] + m[4]}`.toLowerCase();
+}
+
+// What the brush holds for a pick: the palette's id when the palette has that
+// very colour, so the named swatch lights and the design says 'harbor-blue',
+// and the hex otherwise. Null for what `parseAccentHex` refuses.
+export function accentPick(text) {
+  const hex = parseAccentHex(text);
+  return hex && (ACCENT_BY_HEX.has(hex) ? ACCENT_BY_HEX.get(hex).id : hex);
+}
+
+// True for a stored accent that is in the palette, by id or by hex.
+export const isNamedAccent = (v) => ACCENT_BY_HEX.has(accentHex(v));
+
+// Ink to write or outline with on a colour that can be anything: black or
+// white, whichever has the higher WCAG contrast against it. The worst case is
+// a colour of luminance 0.179, where both give 4.58 to 1, so it clears 4.5.
+const chan = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+export function accentLuminance(v) {
+  const hex = accentHex(v) || parseAccentHex(v);
+  if (!hex) return null;
+  const [r, g, b] = [1, 3, 5].map((i) => chan(parseInt(hex.slice(i, i + 2), 16) / 255));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+export const INK_DARK = '#000000';
+export const INK_LIGHT = '#ffffff';
+export function accentInk(v) {
+  const l = accentLuminance(v);
+  if (l == null) return null;
+  return 1.05 / (l + 0.05) >= (l + 0.05) / 0.05 ? INK_LIGHT : INK_DARK;
+}
+
 export const segAccent = (ring, i) =>
   (ring && Array.isArray(ring.accents) && readAccent(ring.accents[i])) || null;
 
