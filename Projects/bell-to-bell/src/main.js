@@ -11,7 +11,7 @@ import { createModelLoader } from './world/models.js';
 import { buildRoom } from './world/room.js';
 import { buildStudents, placeStudents, createReactions } from './world/students.js';
 import { createChart, learnFrom } from './systems/chart.js';
-import { createTellSystem } from './systems/tells.js';
+import { createTellSystem, phantomRand } from './systems/tells.js';
 import { createWithitness } from './systems/withitness.js';
 import { createInterventions } from './systems/interventions.js';
 import { createEvents } from './systems/events.js';
@@ -322,6 +322,9 @@ const tellSystem = createTellSystem({
   // a folded note.
   buildTellMesh: createTellMeshBuilder({ mats: tellMats, register: m => registry.add(m) }),
   setVision: setTellVision,
+  // #939: the phantom's seat comes off the semester seed, the day and the
+  // period, like the visit above.
+  rand: phantomRand({ seed: record.seed, dayIndex: carry.dayIndex, periodId: period.id }),
   // T1: a tell arriving changes how the kid sits. Subtle enough to be deniable,
   // which is the point — the posture is a Tier 1 tell and the phone is Tier 2.
   onBorn: t => {

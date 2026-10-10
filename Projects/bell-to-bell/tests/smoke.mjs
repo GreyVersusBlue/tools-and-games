@@ -6,7 +6,7 @@ import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
-import { createObservation, visitFor, announcedAhead, defaultVisit } from '../src/systems/observation.js';
+import { createObservation, visitFor, announcedAhead, defaultVisit, hashId } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor,
   classSeeds, classSeedFor, classSeedProblems, isSeed, seedCopyFor,
@@ -26,7 +26,7 @@ import * as persist from '../src/persist.js';
 import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/persist.js';
 import { auditAssets } from './assets.mjs';
 import * as THREE from '../src/three.js';
-import { createTellSystem } from '../src/systems/tells.js';
+import { createTellSystem, phantomRand } from '../src/systems/tells.js';
 import { createWithitness, scanCosts } from '../src/systems/withitness.js';
 import { createTellMaterials, createRegistry } from '../src/world/materials.js';
 import { createTellMeshBuilder, setTellVision, TELL_SHAPES } from '../src/world/tellmesh.js';
@@ -2364,7 +2364,8 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
         register: m => { built.push(m); return registry.add(m); }
       }),
       setVision: setTellVision,
-      onBorn: over.onBorn, onGone: over.onGone
+      onBorn: over.onBorn, onGone: over.onGone,
+      ...(over.rand ? { rand: over.rand } : {})
     });
     return { sys, scene, camera, roster, registry, built };
   };
@@ -2754,16 +2755,95 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
 
     // ---- the false positive, in a full room -----------------------------
     {
-      const real = Math.random;
-      const seatAt = r => {
-        Math.random = () => r;
-        try { return mkTells({ roster: twelve() }).sys.spawnFalsePositive({ t: 400, withitness: false }).seat; }
-        finally { Math.random = real; }
-      };
-      // What the code does: seats 2 to 10 of 0 to 11. The front-left pair and
-      // the last seat are never accused. WISHLIST.md asks whether that is meant.
-      check('a false positive lands on seats 2 to 10 of twelve, never 0, 1 or 11',
-        seatAt(0) === 2 && seatAt(0.5) === 6 && seatAt(0.999999) === 10);
+      // #939, Devon 2026-10-07: "any seat". It used to draw seats 2 to 10.
+      // Every spawn below goes through the tell system itself; nothing in here
+      // works a seat out of a number on its own.
+      const at = { t: 400, withitness: false };
+      const spawn = rand => mkTells({ roster: twelve(), rand }).sys.spawnFalsePositive(at);
+      const seatAt = r => spawn(() => r).seat;
+      check('a false positive lands on any of the twelve seats: the draw starts at seat 0 and ends at seat 11',
+        seatAt(0) === 0 && seatAt(0.999999) === 11);
+      // Twelve bins of one twelfth each, read just inside both edges of every
+      // one. That is what "each seat as likely as the next" means for a draw.
+      const edges = twelve().map((_, k) => [seatAt(k / 12 + 1e-9), seatAt((k + 1) / 12 - 1e-9)]);
+      check('and every seat owns exactly one twelfth of the draw',
+        edges.every(([lo, hi], k) => lo === k && hi === k));
+      {
+        // three.js draws its UUIDs from Math.random, so it cannot be counted
+        // or poisoned here; pinned to each end instead, the seat must not move.
+        const real = Math.random;
+        const under = r => { Math.random = () => r; try { return seatAt(0.5); } finally { Math.random = real; } };
+        check('handed a stream, the phantom does not take its seat from Math.random',
+          under(0) === 6 && under(0.999999) === 6);
+      }
+
+      // The stream main.js hands it: semester seed, day, period. One phantom a
+      // period, so the first draw is the seat. 2,400 semesters' first Monday
+      // in 7th, through the tell system: all twelve seats, and flat. The
+      // counts are fixed numbers (the stream is seeded), so the bound cannot
+      // flake: chi-square on 11 degrees of freedom is over 31.3 one time in a
+      // thousand for a flat draw, and the range this replaced scores 800.
+      const SWEEP = 2400;
+      const counts = new Array(12).fill(0);
+      for (let seed = 1; seed <= SWEEP; seed++) {
+        counts[spawn(phantomRand({ seed, dayIndex: 0, periodId: 'p7' })).seat]++;
+      }
+      const chi2 = counts.reduce((a, n) => a + (n - SWEEP / 12) ** 2 / (SWEEP / 12), 0);
+      check(`over ${SWEEP} semester seeds a phantom reaches every one of the twelve seats`,
+        counts.every(n => n > 0));
+      check('and no seat is favoured: the sweep is flat (chi-square under 31.3 on 11 degrees of freedom)',
+        chi2 < 31.3);
+      check('the three seats it never used to accuse get their twelfth each',
+        [0, 1, 11].every(k => counts[k] > SWEEP / 12 * 0.75 && counts[k] < SWEEP / 12 * 1.25));
+      // One semester, every period of forty days: the seat moves with the day
+      // and with the period, and each period sees all twelve.
+      const perPeriod = ['p4', 'p5', 'p6', 'p7'].map(periodId => {
+        const seen = new Set();
+        for (let dayIndex = 0; dayIndex < 120; dayIndex++) {
+          seen.add(spawn(phantomRand({ seed: 4821, dayIndex, periodId })).seat);
+        }
+        return seen.size;
+      });
+      check('one semester seed reaches all twelve seats in each of the four periods',
+        perPeriod.every(n => n === 12));
+      const week = id => [0, 1, 2, 3, 4].map(dayIndex =>
+        spawn(phantomRand({ seed: 4821, dayIndex, periodId: id })).seat).join(',');
+      check('the same seed, day and period is the same seat (a refresh is the same phantom)',
+        week('p7') === week('p7') && week('p4') === week('p4'));
+      check('and another period, or another seed, is another week of seats',
+        week('p7') !== week('p4') &&
+        week('p7') !== [0, 1, 2, 3, 4].map(dayIndex => spawn(phantomRand({ seed: 4822, dayIndex, periodId: 'p7' })).seat).join(','));
+      // The visit is drawn from the same three numbers. If the phantom shared
+      // its stream, the seat would be the visit's own first roll re-read.
+      {
+        let same = 0;
+        for (let seed = 1; seed <= 200; seed++) {
+          const a = phantomRand({ seed, dayIndex: 0, periodId: 'p7' })();
+          const b = createRng(mixSeed(seed, 1, hashId('p7'))).next();
+          if (a === b) same++;
+        }
+        check('the phantom\'s stream is not the visit\'s', same === 0);
+      }
+      check('main.js hands the tell system that stream, off the semester seed, the day and the period',
+        /rand:\s*phantomRand\(\{\s*seed:\s*record\.seed,\s*dayIndex:\s*carry\.dayIndex,\s*periodId:\s*period\.id\s*\}\)/
+          .test(fs.readFileSync('../src/main.js', 'utf8')));
+
+      // What the three seats could have been kept out of, and are not: the
+      // room. In the August chart every seat's phantom is inside the walls,
+      // within Withitness range of the front, and close enough to somewhere
+      // you can stand for Proximity (which is the trap).
+      {
+        const kids = twelve();
+        const front = new THREE.Vector3(roomData.spawn.x, CFG.eyeHeight, roomData.spawn.z);
+        const placed = kids.map((_, k) => mkTells({ roster: twelve(), rand: () => (k + 0.5) / 12 })
+          .sys.spawnFalsePositive(at));
+        check('a phantom on each of the twelve seats is drawn at that kid, inside the room',
+          placed.every((t, k) => t.seat === k &&
+            Math.abs(t.pos.x - (kids[k].x + 0.18)) < 1e-9 && Math.abs(t.pos.z - (kids[k].bodyZ - 0.1)) < 1e-9 &&
+            Math.abs(t.pos.x) < roomData.bounds.x && t.pos.z > roomData.bounds.zFront && t.pos.z < roomData.bounds.zBack));
+        check('and each is inside Withitness range of the front of the room',
+          placed.every(t => front.distanceTo(t.pos) < CFG.withitnessRange));
+      }
 
       const born = [], expired = [];
       const { sys } = mkTells({ roster: twelve(), onBorn: t => born.push(t) });

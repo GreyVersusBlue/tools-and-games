@@ -295,12 +295,17 @@ has been his since his own answer on mobile.
    leaves it. No makes an ignored phantom cost nothing but the walk you did
    not take.
 2. ~~**Should a phantom be able to land on any of the twelve seats?**~~
-   **Answered by Devon, 2026-10-07: "any seat".** The change to all twelve is a
-   build and this tidy did not make it. Today it
-   never lands on seat 0, 1 or 11 (`spawnFalsePositive` draws seats 2 to 10)
-   and nothing says why. Yes makes it all twelve. No leaves it. (The same line
-   would name a seat that does not exist in a class under four; every roster
-   is twelve, so that cannot happen today.)
+   **Answered by Devon, 2026-10-07: "any seat". Built 2026-10-10 (root
+   `HISTORY.md` #939).** It drew seats 2 to 10 from the project's first commit
+   and no decision or comment ever said why. Nothing depended on it: a seat is
+   who a kid is and not where they sit (locked constraint 9), so the range kept
+   three kids from being accused and no desk, and the chart could already put
+   a phantom at any of the twelve. It is one seat in twelve now, each as
+   likely as the next, and the draw is off the semester seed, the day and the
+   period (the AP's visit is drawn the same way), so a refresh is the same
+   phantom on the same kid. `smoke.mjs` sweeps 2,400 semester seeds through
+   the tell system and holds the counts flat. `balance.mjs` did not move and
+   could not: the headless period has never spawned a phantom.
 3. ~~**Should the touch controls come out of the game, now that there is no
    mobile?**~~ **Answered by Devon, 2026-10-07: "no touch controls".** The
    removal is a build and this tidy did not make it; his later word that
