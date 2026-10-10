@@ -121,9 +121,16 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **the second increment of
-rank 28, Throneshard's sixteenth hero** (#943, 2026-10-10; committed locally on
-huginn for the landing, so its PR number is the landing's): a 2+ row naming
+**The last batch of ranked work that shipped** is **the first increment of
+rank 29, Throneshard's hard bots in the lane** (#946, 2026-10-10; committed
+locally on huginn for the landing, so its PR number is the landing's): ½,
+naming Opus 5, run under Opus 5.5, and the row stays with its text rewritten.
+Hard melee heroes take 16.9 last hits at 10 minutes in a hard-against-hard
+match where they took 14.9, against normal's 18.6: a hard bot no longer walks
+in and out of an enemy tower's range after a healthy hero, and a laner the
+enemy out-fights stands off from the creep clash. Before it the same day came
+**the second increment of rank 28, Throneshard's sixteenth hero** (#943;
+committed locally on huginn the same way): a 2+ row naming
 Fable 5.1, run under Opus 5.5, and with it the row is finished and gone.
 Tobren the Lotcaster, a ranged support on the spare model `bone_shaman` whose
 four abilities work through his allies, is in the game whole. The first
@@ -1058,7 +1065,7 @@ and #222 was closed unmerged an hour of suites later.
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 16.9 against 18.6 at 10 minutes over 12 seeds, from 14.9 (#946). What is left is one seat, the melee core in a lane against two ranged heroes, who still dies 3.0 to 4.5 times in 10 minutes where normal's dies 1.7 to 2.5. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
@@ -2567,7 +2574,8 @@ A 3D lane battler Devon had built outside this repo and asked to move in on
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
 Its suites are `node test/data.mjs` (1,211 checks, 38 of them `test/wall.mjs`'s,
 69 `test/ormund.mjs`'s and 63 `test/tobren.mjs`'s) and `node test/browser.mjs`
-(33) from the project folder, in Site CI's matrix.
+(43; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 13
+checks) from the project folder, in Site CI's matrix.
 Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
 Settings; `HISTORY.md` #749 to #755). Rift Wall got its gameplay wall on
@@ -2576,17 +2584,32 @@ Settings; `HISTORY.md` #749 to #755). Rift Wall got its gameplay wall on
 and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
 32** in the order the table gives, not this list's:
 
-- Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
-  17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
+- Hard melee heroes still last-hit below normal in a hard-versus-hard match:
+  16.9 against 18.6 at 10 minutes over 12 seeds, from 14.9 on the same seeds
+  before #946 (ranged 10.6 against 10.3; all ten heroes 13.8 against 14.5).
+  #946 fixed two things: a hard bot walked in and out of an enemy tower's range
+  after a healthy hero, and a laner the enemy heroes out-fought stood at the
+  creep clash inside their reach. What is left is one seat. With mid and top
+  level with normal, the melee core in the bottom lane against two hard ranged
+  heroes takes 14.8 to 16.7 last hits and dies 3.0 to 4.5 times in 10 minutes
+  (normal: 15.2 to 28.0 and 1.7 to 2.5); the support beside him is seldom
+  within 14 units when he dies. Tried and not it: harass at normal's rate.
+  Not tried: the support standing with its core, and leaving the lane sooner
+  than half health when out-fought. One thing found and left: `diveOk`'s push
+  clause reads `mode`, and `tryFight` sets `mode` to `fight`, so a dive allowed
+  for a push is refused on the next think (55 of 357 thinks under a tower in
+  one seed). Measure with the harness in `HISTORY.md`'s log for #946; a 12-seed
+  mean moves by about 1 from noise alone.
 - Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
   a match (#751).
 - The card preview is a SwiftShader draft (#749), and the every-second-frame
   shadow map was judged from a frame sequence, not a recording (#753); both
   want one look on real hardware.
 - Piercing Gale's spiral and the rune auras read faint from the game camera.
-  The capture tool for this, `tools/scripts/vfx_capture.mjs`, lists fourteen
-  heroes and has no mode for a spell cast on another ally, so Ormund's Stand
-  Surety and Tobren's Twice Told cannot be captured until it has one.
+  The capture tool for this, `tools/scripts/vfx_capture.mjs`, lists all sixteen
+  heroes now and has a mode `ally` for a spell cast on another hero (Ormund's
+  Stand Surety, Tobren's Twice Told), written on huginn and never run: it needs
+  Playwright and a real GPU.
 
 ## Tools/board-check
 

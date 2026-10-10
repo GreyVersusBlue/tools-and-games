@@ -15,6 +15,7 @@ export const DIFFICULTY = {
 
 const LANE_PHASE_END = 660; // seconds; laners keep last-hitting until then unless a kill or a big edge is on
 const LANE_ENGAGE_RATIO = 2.1;
+const LANE_STANDOFF_RATIO = 0.8; // the fight ratio under which shouldRetreat already leaves at half health
 const HEAL_ITEM = /salve|healing|bark_ration|clarity|honeyed_plum|flask|wisp_ember/i;
 const MANA_ITEM = /clarity|honeyed_plum|flask|tidecall/i;
 const _v = new THREE.Vector3();
@@ -626,10 +627,10 @@ export class BotBrain {
     }
     return false;
   }
-  diveOk(tower) {
+  // `ft` is the hero the dive is for: the one being fought, or the one tryFight is weighing.
+  diveOk(tower, ft = this.fightTarget) {
     // Hard bots dive a nearly dead hero if healthy; everyone may hit a nearly dead tower with support
     const h = this.hero;
-    const ft = this.fightTarget;
     if (ft?.alive && ft.healthPct < 0.2 && h.healthPct > 0.6 && this.diff.dive) return true;
     if (tower.healthPct < 0.15 && h.healthPct > 0.5 && this.ctx.allyHeroes.length >= 1) return true;
     return h.healthPct > 0.7 && this.ctx.allyHeroes.length >= 3 && this.mode === 'push';
@@ -689,8 +690,13 @@ export class BotBrain {
     if (laning && !killable && ratio < laneBar && !committed) engage = false;
     // Being attacked by a hero in lane: fight back if not losing
     if (!engage && target.attackTarget === h && ratio > 0.9 && h.distanceTo(target) < h.getStat('attackRange') + 3) engage = true;
-    // Don't chase under enemy towers
-    if (engage && !this.diff.dive && this.underEnemyTower(target.position) && !(target.healthPct < 0.12 && h.healthPct > 0.6)) engage = false;
+    // Don't chase under enemy towers. A bot that dives may, on the terms handleTowerDanger will let it stay on and no
+    // others: `dive` used to wave every engage through, so a hard bot walked in after a healthy hero, was turned out
+    // on its next think, and walked in again, 6.9% of a melee laner's first ten minutes against normal's 2.1%.
+    if (engage && this.underEnemyTower(target.position)) {
+      if (this.diff.dive) { if (!this.towersOver(target.position).every((t) => t.subtype !== 'fountain' && this.diveOk(t, target))) engage = false; }
+      else if (!(target.healthPct < 0.12 && h.healthPct > 0.6)) engage = false;
+    }
     if (engage && h.distanceTo(target) > 22 && !killable) engage = false;
     if (!engage) {
       this.fightTarget = null;
@@ -727,6 +733,9 @@ export class BotBrain {
 
   underEnemyTower(pos) {
     return this.ctx.enemyTowers.some((t) => t.alive && t.distanceTo(pos) < t.getStat('attackRange') + 2);
+  }
+  towersOver(pos) {
+    return this.ctx.enemyTowers.filter((t) => t.alive && t.distanceTo(pos) < t.getStat('attackRange') + 2);
   }
 
   tryHarass(target) {
@@ -775,6 +784,22 @@ export class BotBrain {
     return true;
   }
 
+  // How far behind the clash a laner stands when the enemy heroes in sight out-fight it and its allies: just outside
+  // the reach of an enemy standing where a ranged laner stands (0.6 of its range behind the clash). 0 when it need
+  // not. tryLastHit still walks it in for a creep it can kill, so it is in their reach for the hit and not between hits.
+  laneStandoff() {
+    const h = this.hero;
+    if (!this.diff.smart || this.game.time >= LANE_PHASE_END) return 0;
+    let near = null, reach = 0;
+    for (const e of this.ctx.enemyHeroes) {
+      if (!e.alive || e.distanceTo(h) > 20) continue;
+      if (!near || e.distanceTo(h) < near.distanceTo(h)) near = e;
+      reach = Math.max(reach, e.getStat('attackRange'));
+    }
+    if (!near || this.fightRatio(near) >= LANE_STANDOFF_RATIO) return 0;
+    return reach * 0.4 + 2;
+  }
+
   doLane(lane) {
     const h = this.hero;
     if (this.avoidCreepAggro(lane)) return;
@@ -784,7 +809,7 @@ export class BotBrain {
     const ownTower = this.d.structures.frontTower(this.team, lane);
     const towerS = ownTower ? path.project(ownTower.position.x, ownTower.position.z).s : 10;
     const ranged = !h.isMelee;
-    const back = ranged ? Math.max(4, h.getStat('attackRange') * 0.6) : 2.5;
+    const back = Math.max(ranged ? Math.max(4, h.getStat('attackRange') * 0.6) : 2.5, this.laneStandoff());
     let s;
     if (f.myN > 0) {
       const clash = f.enN > 0 ? Math.min(f.my, f.en) : f.my;
