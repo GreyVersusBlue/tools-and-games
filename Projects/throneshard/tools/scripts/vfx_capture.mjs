@@ -80,7 +80,7 @@ const ABIL = {
   liora_tailwind: { mode: 'none', shots: [0.2, 1.0] },
   liora_arrow_storm: { mode: 'enemy', shots: [0.2, 0.8] },
 };
-const RUNES = ['haste', 'double_damage', 'regeneration', 'invisibility', 'arcane', 'illusion', 'bounty'];
+const RUNES = ['haste', 'double_damage', 'regeneration', 'invisibility', 'arcane', 'illusion', 'windfall'];
 const ITEMS = {
   homeward_scroll: { mode: 'tp', shots: [0.5, 2.6] }, wayfarer_boots: { mode: 'tp', shots: [0.5, 2.6] },
   bark_ration: { mode: 'none' }, healing_salve: { mode: 'none' }, clarity: { mode: 'none' }, honeyed_plum: { mode: 'none' },
@@ -330,7 +330,7 @@ async function captureRune(p, type) {
     for (const m of [...h.modifiers]) if (m.rune) h.removeModifier(m);
     for (const r of [...g.runes.runes]) g.runes.remove(r);
     const spot = h.position.clone().add({ x: 3, y: 0, z: 1 });
-    const rune = g.runes.spawn(type, spot, type === 'bounty' ? 'bounty' : 'power');
+    const rune = g.runes.spawn(type, spot, type === 'windfall' ? 'windfall' : 'boon');
     rune.pos.copy(spot);
     rune.mesh.position.copy(spot);
     cap.rune = rune;

@@ -3,7 +3,7 @@ import { Talents } from './talents/Talents.js';
 import { WardVisuals } from './items/WardVisuals.js';
 
 // Groups the gameplay subsystems added after the initial build so Game.js needs a single registration:
-//   game.runes (power/bounty runes), game.talents (talent trees), ward vision rings.
+//   game.runes (boon/windfall runes), game.talents (talent trees), ward vision rings.
 export class GameplayExtras {
   constructor(game) {
     this.game = game;

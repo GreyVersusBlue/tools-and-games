@@ -2542,7 +2542,7 @@ frame's draw calls to `test/draws.json`).
 A 3D lane battler Devon had built outside this repo and asked to move in on
 2026-09-30 under a name of its own (#738): fourteen heroes, three lanes, bots
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
-Its suites are `node test/data.mjs` (916 checks) and `node test/browser.mjs`
+Its suites are `node test/data.mjs` (945 checks) and `node test/browser.mjs`
 (14) from the project folder, in Site CI's matrix. Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
 Settings; `HISTORY.md` #749 to #755). Open, and **ranked 27 to 32 since

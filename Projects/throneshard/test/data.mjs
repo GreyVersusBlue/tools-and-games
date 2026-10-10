@@ -103,5 +103,39 @@ console.log(`storage keys: ${keys.size}`);
 ok(keys.size > 0, 'found the storage keys');
 for (const k of keys) ok(k.startsWith('throneshard'), `storage key ${k} starts with "throneshard"`);
 
+// Runes and Grimmaw's drop. A rune's kind and type are bare strings compared in
+// four files, and the drop's event is emitted in one file and heard in another:
+// a rename that misses one of them leaves a bot that walks past a rune, a
+// minimap marker of the wrong shape, or an announcement that never shows.
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const { RUNE_TYPES, BOON_RUNE_SPOTS, WINDFALL_RUNE_SPOTS } = await load('src/gameplay/runes/Runes.js');
+const runesSrc = read('src/gameplay/runes/Runes.js');
+const runeTypes = Object.keys(RUNE_TYPES);
+const runeKinds = new Set([...runesSrc.matchAll(/this\.spawn\([^;]*,\s*'(\w+)'\)/g)].map((m) => m[1]));
+console.log(`runes: ${runeTypes.length} types, ${runeKinds.size} kinds`);
+ok(runeTypes.length === 7, 'seven rune types', `got ${runeTypes.length}`);
+ok(runeKinds.size === 2, 'Runes.js spawns two kinds of rune', `got ${[...runeKinds]}`);
+ok(BOON_RUNE_SPOTS?.length === 2 && WINDFALL_RUNE_SPOTS?.length === 4, 'two river spots and four jungle spots');
+for (const t of [...runesSrc.matchAll(/this\.spawn\('(\w+)'/g)]) ok(!!RUNE_TYPES[t[1]], `Runes.js spawns a defined type ${t[1]}`);
+for (const t of [...runesSrc.matchAll(/case '(\w+)':/g)]) ok(!!RUNE_TYPES[t[1]], `Runes.activate handles a defined type ${t[1]}`);
+const kindRe = /\b(?:r|m|x|rune)\.kind === '(\w+)'/g;
+for (const rel of ['src/gameplay/runes/Runes.js', 'src/ai/BotBrain.js', 'src/ui/hud/MinimapMarkers.js', 'tools/scripts/ws5_shots.mjs']) {
+  const found = [...read(rel).matchAll(kindRe)].map((m) => m[1]).filter((k) => k !== 'hero');
+  ok(found.length > 0, `${rel}: compares a rune's kind`);
+  for (const k of found) ok(runeKinds.has(k), `${rel}: rune kind ${k} is one Runes.js spawns`);
+}
+const colKeys = [...read('src/vfx/effects/runes.js').match(/const COL = \{([\s\S]*?)\n\};/)[1].matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
+ok(colKeys.join() === runeTypes.join(), 'the rune effects have a colour pair for each type, in order', `got ${colKeys}`);
+const captured = [...read('tools/scripts/vfx_capture.mjs').match(/const RUNES = \[([^\]]*)\]/)[1].matchAll(/'(\w+)'/g)].map((m) => m[1]);
+ok(captured.join() === runeTypes.join(), 'vfx_capture.mjs lists the same rune types', `got ${captured}`);
+const coinRe = read('src/audio/AudioSystem.js').match(/if \((\/[^/]+\/i)\.test\(reason/)[1];
+for (const m of runesSrc.matchAll(/addGold\(gold, '(\w+)'\)/g)) ok(new RegExp(coinRe.slice(1, -2), 'i').test(m[1]), `the coin sound hears the gold reason ${m[1]}`);
+// Every rune:, lantern: and grimmaw: event something listens for is emitted somewhere.
+const srcText = walk(path.join(ROOT, 'src')).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+const emitted = new Set([...srcText.matchAll(/\.emit\('([\w:]+)'/g)].map((m) => m[1]));
+const heard = new Set([...srcText.matchAll(/\.on\('((?:rune|lantern|grimmaw):[\w]+)'/g)].map((m) => m[1]));
+ok(heard.has('lantern:consumed') && heard.size >= 4, 'found the rune, lantern and grimmaw listeners', `got ${[...heard]}`);
+for (const e of heard) ok(emitted.has(e), `event ${e} is emitted somewhere`);
+
 console.log(`\n${checks - failures}/${checks} checks passed`);
 process.exit(failures ? 1 : 0);
