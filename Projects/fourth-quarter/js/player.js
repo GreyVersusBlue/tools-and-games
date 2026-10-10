@@ -82,7 +82,7 @@ export class Player {
     this.qteZoneEl.style.left = (this.qte.zoneStart * 100) + "%";
     this.qteZoneEl.style.width = ((this.qte.zoneEnd - this.qte.zoneStart) * 100) + "%";
     this.qteEl.style.display = "flex";
-    audio.startLoop(station === "stove" ? "sizzle" : "pour", 0.55);
+    audio.startLoop(station === "stove" ? "sizzle" : "pour");
   }
   cancelQte() {
     if (this.qte) audio.stopLoop(this.qte.station === "stove" ? "sizzle" : "pour", 0.3);

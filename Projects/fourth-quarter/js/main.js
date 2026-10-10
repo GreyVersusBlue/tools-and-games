@@ -329,7 +329,7 @@ function beginNight() {
   if (calledOut.length) tick(`${calledOut.map(n => n.split(" ")[0]).join(", ")} called out tonight. Burnt out.`, "b");
   if (!C.hasCook(campaign)) tick("No cook on shift — the kitchen's closed tonight.", "b");
   if (!C.hasBartender(campaign)) tick("No bartender — servers are covering the taps, badly.", "b");
-  audio.startLoop("barBed", 0.35);
+  audio.startLoop("barBed");
   save();
   renderer.domElement.requestPointerLock(); // still inside the click gesture — no extra click needed
 }
