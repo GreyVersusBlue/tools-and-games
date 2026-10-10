@@ -60,7 +60,7 @@ try {
   await page.screenshot({ path: path.join(OUT, '1-menu.png') });
 
   if (booted) {
-    console.log('\nmatch');
+    console.log('\nstart');
     const start = await page.evaluate((heroId) => {
       const g = window.game;
       g.startMatch({ heroId });
@@ -80,6 +80,59 @@ try {
       g.composer = null;
       g.fixedDt = 0.05;
     });
+    // Rift Wall in the real match, on the real map, before the lanes meet (test/wall.mjs has the open-map cases).
+    // A slow enemy creep is sent straight across the line of a wall cast through Ondur's own ability definition.
+    console.log('\nrift wall');
+    const wall = await page.evaluate(async () => {
+      const g = window.game, w = g.world, nav = w.nav;
+      const { RIFT_WALL: T, riftWallSlabs } = await import('./src/gameplay/abilities/riftWall.js');
+      const def = g.abilities.getAbilityDef('ondur_rift_wall');
+      const len = def.values.length, V = (x, z) => g.player.hero.position.clone().set(x, 0, z);
+      // First stretch of open ground among these: a start point, a direction, and a walker 5 units to either side of the middle.
+      const spots = [];
+      for (const [x, z] of [[-12, 12], [-30, 30], [10, -10], [-20, 0], [0, 20], [-40, 20], [20, -40]]) for (const a of [-Math.PI / 4, 0, Math.PI / 2, Math.PI / 4, 3 * Math.PI / 4]) spots.push({ x, z, dx: Math.cos(a), dz: Math.sin(a) });
+      const spot = spots.find((s) => {
+        const mx = s.x + s.dx * (1 + len / 2), mz = s.z + s.dz * (1 + len / 2);
+        s.a = { x: mx + s.dz * 5, z: mz - s.dx * 5 }; s.b = { x: mx - s.dz * 5, z: mz + s.dx * 5 };
+        s.slabs = riftWallSlabs({ x: s.x + s.dx, z: s.z + s.dz }, { x: s.dx, z: s.dz }, len);
+        return w.isWalkable(s.x, s.z) && s.slabs.every((b) => w.isWalkable(b.x, b.z)) && nav.los(s.a.x, s.a.z, s.b.x, s.b.z);
+      });
+      if (!spot) return { spot: null };
+      const before = nav.dyn.slice();
+      const caster = g.spawnUnit({ kind: 'creep', team: 'sunward', position: V(spot.x, spot.z), immobile: true, stats: { attackRange: 0, damageMin: 0, damageMax: 0, maxHp: 9000 } });
+      const walker = g.spawnUnit({ kind: 'creep', team: 'duskward', position: V(spot.a.x, spot.a.z), stats: { moveSpeed: 3.5, maxHp: 9000 } });
+      walker.issueOrder({ type: 'move', point: V(spot.b.x, spot.b.z) });
+      const ab = { hero: caster, game: g, level: 1, def, v: (k) => (Array.isArray(def.values[k]) ? def.values[k][0] : def.values[k]), getRadius: () => def.radius };
+      const t0 = g.time;
+      def.cast(ab, V(spot.x + spot.dx * 10, spot.z + spot.dz * 10));
+      const side = (u) => (u.position.x - spot.x) * spot.dz - (u.position.z - spot.z) * spot.dx;
+      const s0 = Math.sign(side(walker)), gone = spot.slabs[spot.slabs.length - 1].t1;
+      const r = { spot: [spot.x, spot.z, +spot.dx.toFixed(2), +spot.dz.toFixed(2)], gone, crossedAt: null, arrivedAt: null, off: 0, blockedMid: false, hp: walker.hp };
+      for (let n = 0; n < 400 && r.arrivedAt === null; n++) {
+        g.tick();
+        const t = g.time - t0;
+        if (Math.abs(t - gone / 2) < 0.03) r.blockedMid = spot.slabs.every((b) => !w.isWalkable(b.circles[0].x, b.circles[0].z));
+        if (!w.isWalkable(walker.position.x, walker.position.z)) r.off++;
+        if (r.crossedAt === null && Math.sign(side(walker)) === -s0) { r.crossedAt = t; r.along = (walker.position.x - spot.x) * spot.dx + (walker.position.z - spot.z) * spot.dz; }
+        if (walker.order.type === 'idle') r.arrivedAt = t;
+      }
+      r.miss = Math.hypot(walker.position.x - spot.b.x, walker.position.z - spot.b.z);
+      r.restored = nav.dyn.every((v, i) => v === before[i]);
+      r.len = len; r.lead = T.lead;
+      g.removeUnit(walker); g.removeUnit(caster);
+      return r;
+    });
+    ok(!!wall.spot, 'there is open ground on the map for a full-length wall', JSON.stringify(wall.spot));
+    if (wall.spot) {
+      ok(wall.blockedMid, 'halfway through its life every slab blocks the map\'s nav grid');
+      ok(wall.off === 0, 'the creep sent across it never stands in a blocked cell', `${wall.off} ticks`);
+      ok(wall.crossedAt !== null && wall.crossedAt >= wall.gone, 'the creep does not cross while the wall stands', `crossed at ${wall.crossedAt?.toFixed(2)} s, wall gone at ${wall.gone.toFixed(2)} s`);
+      ok(wall.along > 1 + wall.lead && wall.along < wall.len, 'it crosses where the wall stood, not round an end', `${wall.along?.toFixed(1)} units along a ${wall.len}-unit wall`);
+      ok(wall.arrivedAt !== null && wall.miss <= 0.5, 'and reaches the point it was sent to', `${wall.arrivedAt?.toFixed(2)} s, ${wall.miss.toFixed(2)} units off`);
+      ok(wall.restored, 'every nav cell the wall blocked is released');
+    }
+
+    console.log('\nmatch');
     let state = { time: 0, over: false };
     const capTicks = CAP_MINUTES * 60 * 20;
     for (let done = 0; done < capTicks && !state.over; done += 2400) {

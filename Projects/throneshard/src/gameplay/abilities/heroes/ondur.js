@@ -1,4 +1,5 @@
 import { du, fx, damage, enemiesIn, stun, dirTo, unitsOnLine, chest } from '../util.js';
+import { RIFT_WALL, raiseRiftWall } from '../riftWall.js';
 
 // Ondur (WS5). Tremor is a passive hooked on ability:cast; Deep Quake scales with units around.
 function tremor(ab) {
@@ -25,11 +26,14 @@ export default [
       const from = h.position.clone().addScaledVector(dir, 1);
       const len = ab.v('length');
       // Visual wall climbs at the same 60 units/s pace the old per-point blasts used.
-      fx(g, 'rift_wall', { position: from, direction: dir, length: len, delayPerUnit: 1 / 60 });
+      const { per, rise, hold, sink, stagger } = RIFT_WALL;
+      fx(g, 'rift_wall', { position: from, direction: dir, length: len, delayPerUnit: 1 / 60, per, rise, hold, sink, stagger });
       for (const e of unitsOnLine(g, h, from, dir, len, ab.getRadius() * 0.5)) {
         damage(e, ab.v('damage'), 'magical', h, ab);
         stun(e, ab.v('stun'), h);
       }
+      // The wall itself: each slab blocks walking from the tick it breaks ground until it starts to crumble.
+      raiseRiftWall(g, { from, dir, length: len, delayPerUnit: 1 / 60 });
     },
   },
   {

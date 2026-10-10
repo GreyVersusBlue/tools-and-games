@@ -121,7 +121,12 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **rank 26, SkyWings 64's
+**The last batch of ranked work that shipped** is **rank 27, Throneshard's
+Rift Wall** (#938, 2026-10-10; committed locally on huginn for the landing, so
+its PR number is the landing's): ½, naming Opus 5, run under Opus 5.5. The
+slabs block walking for every unit from the tick each breaks ground to the
+tick it starts to crumble, 2.88 to 3.26 s a slab; nobody has seen it on a
+real graphics card. Before it came **rank 26, SkyWings 64's
 three draw-call cuts** (#930 to #932, 2026-10-07; committed locally on huginn
 for the landing, so its PR number is the landing's): 1, naming Opus 5, run
 under Opus 5.5 in two sessions. A frame is 204 to 352 draws from nine fixed
@@ -147,7 +152,7 @@ nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**16 ranked items remain**, and **every one of them names a model.**
+**15 ranked items remain**, and **every one of them names a model.**
 
 **The Blender block is empty** (#642, #707, 2026-09-25, Devon's instruction
 and his re-rank, which put every Blender row first). Every project's
@@ -160,11 +165,11 @@ all 14 dioramas. **Blender runs on Devon's machines only, headless
 every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** Ranks 1 to 14, 24 and 26 shipped and their rows are gone;
+**Nothing is claimed.** Ranks 1 to 14, 24, 26 and 27 shipped and their rows are gone;
 the others keep their numbers until the next renumbering. **Ranks 25 to 32
 are new on 2026-10-07** (Devon, 2026-10-01: rank the work the "next ranked
 rows" loop could not see): Signal City's second pack (25), SkyWings 64's
-draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32). They are
+draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32; 27, Rift Wall, shipped on 2026-10-10, #938). They are
 appended in the order Devon named the projects and not placed among the older
 rows, because re-ranking the list is not a session's call; inside Throneshard
 the two Devon has answered come first, then the two with a measured number,
@@ -858,9 +863,9 @@ tab doing nothing at all.
 
 **Three rows are 2+: rank 22 (The Fracture Cycle's fourth prong), rank 25
 (Signal City's second pack) and rank 28 (Throneshard's two heroes).** The
-sixteen rows left (15 to 23, 25 and 27 to 32, recounted off the table on
-2026-10-07) are nine that want hardware nothing here has (15 to 21, 23 and
-32) and seven a container can take (22, 25 and 27 to 31), none of them waiting
+fifteen rows left (15 to 23, 25 and 28 to 32, recounted off the table on
+2026-10-10) are nine that want hardware nothing here has (15 to 21, 23 and
+32) and six a container can take (22, 25 and 28 to 31), none of them waiting
 on a yes any more: Devon approved the fourth prong on 2026-10-01 and
 answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
@@ -1047,7 +1052,6 @@ and #222 was closed unmerged an hour of suites later.
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 27 | Rift Wall gets a wall that stops enemies, as its tooltip says (Devon, 2026-10-05: collision, not a reworded tooltip) | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 28 | Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four abilities each, talents, a scepter upgrade, an item build, voice fallback and effects, under original names the session picks (Devon, 2026-10-05: go) | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
 | 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
@@ -2544,19 +2548,18 @@ frame's draw calls to `test/draws.json`).
 A 3D lane battler Devon had built outside this repo and asked to move in on
 2026-09-30 under a name of its own (#738): fourteen heroes, three lanes, bots
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
-Its suites are `node test/data.mjs` (945 checks) and `node test/browser.mjs`
-(14) from the project folder, in Site CI's matrix. Its first polish pass
+Its suites are `node test/data.mjs` (983 checks, 38 of them `test/wall.mjs`'s)
+and `node test/browser.mjs` (21) from the project folder, in Site CI's matrix.
+Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
-Settings; `HISTORY.md` #749 to #755). Open, and **ranked 27 to 32 since
-2026-10-07** in the order the table gives, not this list's:
+Settings; `HISTORY.md` #749 to #755). Rift Wall got its gameplay wall on
+2026-10-10 (#938, old rank 27). Open, and **ranked 28 to 32** in the order the
+table gives, not this list's:
 
 - Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four
   abilities each, talents, a scepter upgrade, an item build, voice fallback and
   effects, with original names and kits. Not started. Devon, 2026-10-05: go,
   with no naming preference, so the session picks the names. Rank 28.
-- Rift Wall has no gameplay wall: the slabs are a picture and enemies walk
-  through, against its tooltip (#755). Devon, 2026-10-05: add the collision,
-  do not reword the tooltip. Rank 27.
 - Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
   17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
 - Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts

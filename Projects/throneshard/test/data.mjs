@@ -137,5 +137,9 @@ const heard = new Set([...srcText.matchAll(/\.on\('((?:rune|lantern|grimmaw):[\w
 ok(heard.has('lantern:consumed') && heard.size >= 4, 'found the rune, lantern and grimmaw listeners', `got ${[...heard]}`);
 for (const e of heard) ok(emitted.has(e), `event ${e} is emitted somewhere`);
 
+// Rift Wall's gameplay wall: its lifetime, the push-out, and seeded walks through and round it (wall.mjs).
+const { wallChecks } = await import('./wall.mjs');
+await wallChecks({ ok, load });
+
 console.log(`\n${checks - failures}/${checks} checks passed`);
 process.exit(failures ? 1 : 0);
