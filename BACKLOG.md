@@ -896,8 +896,10 @@ keyboard" was done on 2026-10-07 (#916, #917, TG-29; judged by no person), the
 other two of the four the same day (#921, TG-29: the Legacy row "Mocha on the
 Board" says its syrup is not included, and a barista's step refuses a syrup or
 topping that is not on the shelf), and
-"Difficulty presets" was not built: its four open choices are in the
-wishlist's "Questions for Devon". Nothing from it is in the
+"Difficulty presets" was not built: its four choices were asked on
+2026-10-07 and Devon answered them the same evening (two presets, door and
+patience only, no pay change, switchable mid-run; the wishlist's "Questions
+for Devon" has his words). Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
@@ -2630,8 +2632,13 @@ Three of them are closed.
    `tests/props.mjs`), and Fourth Quarter's two texture tiers (2k 69.2 to
    23.0 MB, 1k byte for byte). Bell to Bell's referenced bytes went from 62.1
    MB to 13.4. `--check` holds every texture to its error against the
-   original. The host gzips `.gltf` and `.glb` (measured 2026-10-03, #821), so
-   the raw-under-gzipped rule is the conservative one and stays.
+   original. GitHub Pages gzipped `.gltf` and `.glb` (measured 2026-10-03, #821);
+   the public host since then, Devon's own server behind Cloudflare, does not
+   (measured 2026-10-10, #934: Horse.glb 181,808 bytes sent, window.gltf
+   2,508), so the raw-under-gzipped rule is not a conservative rule any more
+   but the one that matches what a visitor downloads, and #704's slack for a
+   host that does not gzip is a live case again. Whether the host is meant
+   to compress them is Q61.
    Castle Conundrum was the third game and is doing its own version of this in
    its own repo (#491). Not touched: Bell to Bell's four paintings (1.78 MB).
 3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and
@@ -2756,6 +2763,15 @@ ranked row (#628). Q39 was Devon's, and he answered it no on 2026-10-05.
 may read?", answered **yes** by Devon on 2026-09-13, locked #350: it is public
 reference data copied into the site, and any project may read it.
 
+**Struck 2026-10-10 (#935): Q16, Q20, Q21, Q32, Q34, Q35, Q42 and Q45**, all
+eight answered by Devon on 2026-10-05 and left standing as open here and in
+three wishlists until now. The rows below carry his words; two parts are
+not his to have answered and stay open, and say so (Q35's HTTPS half, and
+that Q42 was answered after the hall of past careers shipped). The questions
+his answers of 2026-10-07 closed in the wishlists are moved the same way
+there. **New 2026-10-10: Q59 to Q63**, about the host, in their own table at
+the foot of the list.
+
 **The `Where` column names files that no longer exist.** The prompts, the
 notes files and the ten handoffs were deleted in this consolidation; they are
 cited by name so a raise count can be checked, and `git log` is where they
@@ -2783,14 +2799,14 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q16 | **Does the name-recycling quirk stay a feature?** Songs live on names (`songs[].kn` is a list of strings) and the ancestor-naming rule can hand a newborn a dead knower's name, so that child "knows" every song the ancestor knew and can resurrect a lost one. Rare; reads as poetry; fixing it means packing knower identity beyond names. Keep, or pay for identity? | 2 | wishlist, sprint 16 handoff |
+| ~~Q16~~ | ~~**Does the name-recycling quirk stay a feature?** Songs live on names (`songs[].kn` is a list of strings) and the ancestor-naming rule can hand a newborn a dead knower's name, so that child "knows" every song the ancestor knew and can resurrect a lost one. Rare; reads as poetry; fixing it means packing knower identity beyond names. Keep, or pay for identity?~~ Struck — answered by Devon, 2026-10-05: **"keep it"**. The name-recycling quirk stays a feature. Nothing to build. | 2 | wishlist, sprint 16 handoff |
 
 ### The Absalom Inheritance
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q20 | **Is the split between builds the design, or a tuning debt?** Round 3 called the asymmetry deliberate at 53.6% / 79.8%. Phase 1 narrowed it to **64.5% / 79.8%** without meaning to — Shield Block is worth about eleven points to the Wizard and Reactive Strike is worth nothing measurable to the Fighter — and Phase 2's two condition sources moved it again, to **65.3% / 79.3%**, so the gap is 14 points rather than 26 and the question is live rather than settled. Neither phase was aimed at it; both narrowed it, which is itself an argument that the 26 points were tuning debt. If the two builds are meant to be comparable challenges, `balance.mjs` needs a band per build rather than one shared 45–90% window; if they are an easy mode and a hard mode, the picker should say so, since a player choosing Kessa Vane cannot tell. **Measured again after Phase 6 (PR #164): 79.5% / 69.3%, a gap of 10.2 points**, and the thing that moved it was content rather than a build — the undercroft's boon pays Vesper 5.2 points and Kessa 1.4, against a fight that costs them 4.5 and 6.3. That is the first evidence in this question's history that the gap is content-shaped rather than kit-shaped, and it argues for the per-build band. **Measured again after Phase 7 (PR #166), and the question changed shape: there are four builds now — 79.1% / 74.4% / 69.3% / 68.0% — so "the split between builds" is a spread of 11.1 points across four rather than a gap between two, and the two new ones landed in the middle of it on their second tuning pass.** A per-build band is a bigger ask at four than it was at two; a single 45–90% window that all four sit comfortably inside is also now evidence that the window is doing less work than it looks like. Still unanswered, and still Devon's. | 2 | `Projects/absalom-inheritance/WISHLIST.md`, PRs #151, #153, #164 and #166 |
-| Q21 | **Does the adventure grow, or does the engine deepen?** Twelve to sixteen minutes, two rooms, four fights. Arc one deepens the engine on the rooms that exist; arc two spends the same effort on more rooms. A taste question, not a technical one. | 1 | wishlist |
+| ~~Q20~~ | ~~**Is the split between builds the design, or a tuning debt?** Round 3 called the asymmetry deliberate at 53.6% / 79.8%. Phase 1 narrowed it to **64.5% / 79.8%** without meaning to — Shield Block is worth about eleven points to the Wizard and Reactive Strike is worth nothing measurable to the Fighter — and Phase 2's two condition sources moved it again, to **65.3% / 79.3%**, so the gap is 14 points rather than 26 and the question is live rather than settled. Neither phase was aimed at it; both narrowed it, which is itself an argument that the 26 points were tuning debt. If the two builds are meant to be comparable challenges, `balance.mjs` needs a band per build rather than one shared 45–90% window; if they are an easy mode and a hard mode, the picker should say so, since a player choosing Kessa Vane cannot tell. **Measured again after Phase 6 (PR #164): 79.5% / 69.3%, a gap of 10.2 points**, and the thing that moved it was content rather than a build — the undercroft's boon pays Vesper 5.2 points and Kessa 1.4, against a fight that costs them 4.5 and 6.3. That is the first evidence in this question's history that the gap is content-shaped rather than kit-shaped, and it argues for the per-build band. **Measured again after Phase 7 (PR #166), and the question changed shape: there are four builds now — 79.1% / 74.4% / 69.3% / 68.0% — so "the split between builds" is a spread of 11.1 points across four rather than a gap between two, and the two new ones landed in the middle of it on their second tuning pass.** A per-build band is a bigger ask at four than it was at two; a single 45–90% window that all four sit comfortably inside is also now evidence that the window is doing less work than it looks like. Still unanswered, and still Devon's.~~ Struck — answered by Devon, 2026-10-05: **"it is the design"**. The split between builds is the design, not a tuning debt. The Selector recorded the consequence as: the picker should say which build is the easier and which the harder; that is a build and this tidy did not do it. | 2 | `Projects/absalom-inheritance/WISHLIST.md`, PRs #151, #153, #164 and #166 |
+| ~~Q21~~ | ~~**Does the adventure grow, or does the engine deepen?** Twelve to sixteen minutes, two rooms, four fights. Arc one deepens the engine on the rooms that exist; arc two spends the same effort on more rooms. A taste question, not a technical one.~~ Struck — answered by Devon, 2026-10-05: **"deepen the engine"**, not more rooms.  | 1 | wishlist |
 
 ### The Fourth Quarter
 
@@ -2819,9 +2835,9 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q32 | **What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? **This no longer blocks the builder:** `build-rules.js` leaves those purchases in `cp.unpriced` and flips `cp.exact` false (#305), so a build that raises an attribute comes back with a floor rather than a total. An answer here turns that floor into a number. | 1 | `Numina/WISHLIST.md` |
-| Q34 | **Do the eight nations with a blank `capital` have one?** Kindaria, Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are `demonym: ""` (the Five Duchies' entry says outright that it has none). If the book does not name them, the infobox should collapse rather than render a flag chip over one "See also" row. | 2 | wishlist, audit A4 |
-| Q35 | **Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`, and `test/a11y/packet.mjs` hardcodes the prefix too (Phase 7). **The HTTPS half now needs one person and one page load, and nothing else.** Batch 1 could not verify it from its sandbox, and neither could Phase 5, which was refused at the environment's network egress before a request left the box — that says nothing about the host. The links stay `http://` until somebody can load it, because an `http://` link to a host that redirects still works and a `https://` link to a host that does not serve it fails outright (locked #319); the reasoning is a `websiteSchemeNote` key in `site.json` now rather than a checklist line. | 3 | wishlist, audit D4, Numina Phase 5 |
+| ~~Q32~~ | ~~**What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? **This no longer blocks the builder:** `build-rules.js` leaves those purchases in `cp.unpriced` and flips `cp.exact` false (#305), so a build that raises an attribute comes back with a floor rather than a total. An answer here turns that floor into a number.~~ Struck — answered by Devon, 2026-10-05: **"ignore it"**. Recorded as: leave those purchases unpriced as #305 does, and do not ask again. | 1 | `Numina/WISHLIST.md` |
+| ~~Q34~~ | ~~**Do the eight nations with a blank `capital` have one?** Kindaria, Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are `demonym: ""` (the Five Duchies' entry says outright that it has none). If the book does not name them, the infobox should collapse rather than render a flag chip over one "See also" row.~~ Struck — answered by Devon, 2026-10-05: **"they have none"**. The eight nations have no capital, so the infobox collapses rather than rendering an empty row. | 2 | wishlist, audit A4 |
+| ~~Q35~~ | ~~**Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`, and `test/a11y/packet.mjs` hardcodes the prefix too (Phase 7). **The HTTPS half now needs one person and one page load, and nothing else.** Batch 1 could not verify it from its sandbox, and neither could Phase 5, which was refused at the environment's network egress before a request left the box — that says nothing about the host. The links stay `http://` until somebody can load it, because an `http://` link to a host that redirects still works and a `https://` link to a host that does not serve it fails outright (locked #319); the reasoning is a `websiteSchemeNote` key in `site.json` now rather than a checklist line.~~ **Half struck** — answered by Devon, 2026-10-05: the custom-domain move is **"not any time soon"**; the prefix, the origin and the `http://` links stay as they are. **Left open: whether `numinalarp.com` serves HTTPS.** His answer does not address it and nothing here has loaded the page; the links stay `http://` until somebody can say (#319). | 3 | wishlist, audit D4, Numina Phase 5 |
 
 ### The projects with no wishlist
 
@@ -2829,16 +2845,40 @@ live. Nothing in that column is a link to follow.
 | --- | --- | --- | --- |
 | ~~Q39~~ | ~~**Should `characters.html` adopt `gvb-save.js` for in-browser editing?**~~ Struck — answered by Devon, 2026-10-05: no. The page stays a showcase and nothing is built. Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. Its ranked row was retired here on 2026-09-24 (#628); `Pathfinder/tests/showcase.test.mjs` fails on the first line of the feature, so a yes means narrowing that check. | 4 | prompt 03, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | ~~Q40~~ | ~~**Does Aphelion ever need to run on a tablet or phone?**~~ Struck — answered by Devon, 2026-10-05: never. No touch or gamepad scheme is built and `test/desktop-input.mjs` keeps its rule. Four rounds re-derived "no evidence yet" from scratch rather than asking. The answer decides whether a touch/gamepad input scheme gets built. Nothing in the game reads a touch or a gamepad today, so on a phone without a keyboard it can be looked at and not played. Its ranked row was retired here on 2026-09-24 (#629); `Projects/aphelion/test/desktop-input.mjs` fails on the first line of the feature, so a yes means deleting the rule it trips. | 4 | prompt 04, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
-| Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
+| ~~Q42~~ | ~~**Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same.~~ Struck — answered by Devon, 2026-10-05: **"no"**. Multi-career history was not wanted. It had shipped on 2026-09-16 (the hall of past careers, #503 to #507) before he answered; he was not asked whether to take it out and nothing here removes it. | 3 | prompt 06's notes across three rounds |
 | ~~Q43~~ | ~~**If Golden Hour's night proves popular, should the owl hunt?**~~ Struck — answered by Devon, 2026-10-05: yes, one swoop, no kill shown, and the fireflies drift toward the fire. It was already built that way on 2026-09-24 (#633, PR #395, `js/creatures/nightpaths.js`); nothing moved. The timings are still unwatched, which is Golden Hour's item 1. | 1 | the project's notes |
-| Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
+| ~~Q45~~ | ~~**Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking.~~ Struck — answered by Devon, 2026-10-05: **"dread"**: keep pushing into `dread.js`, and lock "no save, no verbs, no collection" for Blue Hour. Golden Hour parity is not adopted. | 2 | prompt 24, the notes' sessions 2 and 4 |
 | ~~Q46~~ | ~~**Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?**~~ Struck — answered by Devon, 2026-10-05: point it at the fall line, knowing the eyes' drift and the head-flip move with it. It was already built that way on 2026-09-24 (#634, PR #395: `const downhillAt = fallLine` in `js/dread.js`); nothing moved. | 1 | prompt 24, session 6 |
 | ~~Q47~~ | ~~**Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#920, TG-29): the cost line on the tile is copper and bold on any order cheaper than counting up, and every sink has a sentence under the floor with the count and the cheapest line. Judged by no person. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
 | ~~Q49~~ | ~~**Does The Fracture Cycle get a 4th prong or deeper side content?**~~ Struck — answered by Devon, 2026-10-01: yes to a fourth prong, which is rank 22 and not built yet. Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | ~~Q52~~ | ~~**Does Orbital adopt `gvb-save.js` for save-bar UI consistency?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#925, TG-30): one slot on the key Orbital always had, Export and Import on the sector map, `assets/js/gvb-save.js` itself unchanged. | 2 | prompt 21, the project's notes |
 
+### The host (raised 2026-10-10, #934)
+
+The public site moved to Devon's own server behind Cloudflare (his words of
+2026-10-07: "We recently swapped over to my private server, tunneling through
+cloudflare"). What was measured is in #934. These are what cannot be read from
+outside; none blocks anything ranked.
+
+| # | Question | Raised | Where |
+| --- | --- | --- | --- |
+| Q59 | **How does a commit on `main` reach the server, and how long does it take?** A pull on a timer, a webhook, a deploy job, or by hand? On 2026-10-10 the site and `main` were the same commit (`b1f9a3c`) and the server's `last-modified` for `index.html` was four minutes after GitHub Pages' build of it (01:45:17 against 01:41:07 UTC on 2026-10-09), which is one sample and says nothing about the usual lag. A PR here cannot say "live" until this is known. | 1 | #934 |
+| Q60 | **Which machine is it, and who restarts what?** This session's machine (huginn) runs `cloudflared` and an `nginx` in containers whose configuration it cannot read, which suggests it and does not show it. Is huginn the origin, or only where sessions run? What happens to the public site when it reboots, and is the tunnel watched? | 1 | #934 |
+| Q61 | **Should `.glb` and `.gltf` be compressed on the public host?** They are not: `Horse.glb` and `window.gltf` come back at 181,808 and 2,508 bytes with `content-type: application/octet-stream` and no `content-encoding`, where GitHub Pages sent 68,939 and 774. HTML is brotli. The repo cannot change this; it is the origin's or Cloudflare's setting. `Horse.glb` is 2.6 times what it was on the wire; the models that are meshopt-packed were not measured. | 1 | #934 |
+| Q62 | **Should responses carry `cache-control`, and should Cloudflare cache the assets?** None of the responses measured (the page, one `.glb`, one `.gltf`) has a `cache-control`, and `cf-cache-status` is `DYNAMIC` on all of them, so those requests reached his server. Fonts, textures and models are the heavy ones; none of them was measured. | 1 | #934 |
+| Q63 | **Is GitHub Pages meant to stay on as a second copy?** `https://greyversusblue.github.io/tools-and-games/` still answers from GitHub, with the same `index.html` and a gzipped `.glb`, last modified one minute after `b1f9a3c`'s merge. Also listed for him, because deleting is his: `.nojekyll` (404 on the public host, so dotfiles are not served from there, which says nothing about `.git/`, not probed), `.firebaserc`, and the three places that still name `CNAME`, deleted on 2026-10-06 (the "site itself" and Ownership rows in this file, and `Tools/board-check/ownership.json`, which this PR may not touch). Several project READMEs still say "GitHub Pages" for how to host a copy; those are true of any static host and were left. | 1 | #934 |
+
 ### Answered, kept here so they are not re-asked
+
+- **Eight questions Devon answered on 2026-10-05 were recorded here on
+  2026-10-10** (#935), in their rows above, which keep the text of the
+  question beside the answer: Q16, "keep it"; Q20, "it is the design";
+  Q21, "deepen the engine"; Q32, "ignore it"; Q34, "they have none"; Q35,
+  "not any time soon" (its HTTPS half is not answered and stays open); Q42,
+  "no"; Q45, "dread". They were taken from the Selector's record of his
+  answers to the list sent that day (`BACKLOG-AUDIT-2026-10-01.md`, TG-23,
+  TG-26 and TG-29's notes), where only the words in bold are his.
 
 - **Four Castle Conundrum questions were answered here and moved with the
   project on 2026-09-15** (#491): whether the fourth bell forces the accusation

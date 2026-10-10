@@ -170,12 +170,12 @@ hand-maintained duplication.
 
 ## Questions for Devon
 
-- **What is the attribute cost curve?** `skills/attributes-vitality.md` gives
-  "Cost to Increase: *Cost of next attribute*" for Prowess, Insight,
+- ~~**What is the attribute cost curve?**~~ **Answered by Devon, 2026-10-05:
+  "ignore it"** (recorded as: leave those purchases unpriced as #305 does and
+  do not ask again). The original question: `skills/attributes-vitality.md`
+  gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight,
   Fortitude and Vitality — circular, and the escalating numbers appear
-  nowhere in `src/` or `source-material/markdown/`. A CP calculator cannot be
-  written without them. Are they in the PDF's chart and the conversion
-  dropped it, or genuinely unpublished?
+  nowhere in `src/` or `source-material/markdown/`.
 - ~~**Should the Excellencies chapter be ported at all?**~~ **Answered by
   Phase 6, 2026-09-12: just unconverted, and it is ported now** (locked #318).
   The chapter is 16 pages of `rules-2026-v3.51.pdf`, printed in full with 30
@@ -183,16 +183,18 @@ hand-maintained duplication.
   chapter uses. Nothing about it reads as withheld; there was simply no
   `source-material/markdown/` file, which is a gap in the conversion and not a
   decision by staff. The hidden table stays a separate, still-hidden thing.
-- **Do the eight nations with a blank `capital` have one?** Kindaria,
-  Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach,
-  Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are
-  `demonym: ""` (the Five Duchies' entry says outright that it has none). If
-  the book does not name them, the infobox should collapse rather than render
-  a flag chip over one "See also" row.
-- **Is the custom-domain move happening, and when?** README calls it a
+- ~~**Do the eight nations with a blank `capital` have one?**~~ **Answered by
+  Devon, 2026-10-05: "they have none"**, so the infobox collapses rather than
+  rendering an empty row. Kindaria, Merrigor, Mists of Eltiel, Myos Islands,
+  the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are
+  `capital: ""`; five are `demonym: ""`. Whether the infobox already collapses
+  is not checked here.
+- **Is the custom-domain move happening, and when?** ~~README calls it a
   one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every
-  absolute URL — but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`.
-  **And does `numinalarp.com` serve HTTPS?** Batch 1 could not verify from its
+  absolute URL — but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`.~~
+  **Answered by Devon, 2026-10-05: "not any time soon"**; the prefix, the
+  origin and the `http://` links stay. **And does `numinalarp.com` serve
+  HTTPS?** *Not answered, still open.* Batch 1 could not verify from its
   sandbox and neither could Phase 5, which was refused at the network egress
   before a request left the box. The links stay `http://` until somebody with
   a browser can say (locked #319); this half of the question needs one person
