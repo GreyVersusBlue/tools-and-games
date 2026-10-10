@@ -13,7 +13,7 @@ const COL = {
   invisibility: [0xb070ff, 0xefe0ff],
   arcane: [0xff60d0, 0xffe0f6],
   illusion: [0xffd040, 0xfff6cc],
-  bounty: [0xffc830, 0xfff0a0],
+  windfall: [0xffc830, 0xfff0a0],
 };
 
 const X4 = [V(1, 0, 0), V(-1, 0, 0), V(0, 0, 1), V(0, 0, -1)];
@@ -21,7 +21,7 @@ const D4 = [V(0.7, 0, 0.7), V(-0.7, 0, 0.7), V(0.7, 0, -0.7), V(-0.7, 0, -0.7)];
 
 export const RUNE_EFFECTS = {
   rune_pickup(vfx, o) {
-    const type = o.type, [c, c2] = COL[type] ?? COL.bounty;
+    const type = o.type, [c, c2] = COL[type] ?? COL.windfall;
     const g = vfx.ground(o.position), p = V(g.x, g.y + 1.1, g.z);
     vfx.emit(1, { position: p, life: 0.3, size: [4.5, 0.5], color: c2, frame: FRAME.FLARE, fadeIn: 0 });
     vfx.flash(p, c, 28, 0.35, 16);
@@ -47,7 +47,7 @@ export const RUNE_EFFECTS = {
         vfx.ring({ position: g, r0: 3.4, r1: 0.3, color: c, duration: 0.45, ease: 1 });
         vfx.emit(14, { position: p, spread: 0.9, life: [0.4, 0.8], size: [0.4, 0.02], color: c2, color2: c, frame: FRAME.FLAKE, rotSpeed: 4 });
         break;
-      case 'arcane': // spinning sigil
+      case 'arcane': // spinning glyph
         vfx.decal({ position: g, radius: 2.6, tex: vfx.tex.rune, color: c, duration: 1.1, spin: 3, opacity: 1, grow: 0.5, fadeOut: 0.4, lift: 0.1 });
         vfx.emit(22, { position: V(g.x, g.y + 0.2, g.z), shape: 'ring', radius: 2, up: [2, 5], life: [0.6, 1], size: [0.4, 0.05], color: c2, color2: c, frame: FRAME.SPARK, fadeIn: 0.1 });
         vfx.ring({ position: g, r0: 0.5, r1: 4, color: c, duration: 0.5 });
@@ -60,7 +60,7 @@ export const RUNE_EFFECTS = {
         vfx.ring({ position: g, r0: 0.3, r1: 4, color: c, duration: 0.5 });
         vfx.ring({ position: g, r0: 0.2, r1: 2.6, color: c2, duration: 0.4, tex: vfx.tex.ring });
         break;
-      default: // bounty: coin shower
+      default: // windfall: coin shower
         vfx.emitAlpha(12, { position: p, speed: [1.5, 4], up: [5, 9], life: [0.7, 1.1], size: [0.28, 0.24], color: 0xd8a020, color2: c, frame: FRAME.CHUNK, gravity: 18, rotSpeed: 10, fadeIn: 0 });
         vfx.emit(14, { position: p, spread: 0.3, speed: [2, 5], up: [3, 6], life: [0.5, 0.9], size: [0.45, 0.05], color: c2, color2: c, frame: FRAME.FLARE, gravity: 9 });
         vfx.ring({ position: g, r0: 0.4, r1: 3.5, color: c, duration: 0.5 });
@@ -70,7 +70,7 @@ export const RUNE_EFFECTS = {
 
   // One-shot flourish on the hero (the lasting aura, where there is one, is the modifier's RUNE_ATTACH entry).
   rune_activate(vfx, o) {
-    const u = o.unit, type = o.type, [c, c2] = COL[type] ?? COL.bounty;
+    const u = o.unit, type = o.type, [c, c2] = COL[type] ?? COL.windfall;
     if (!u) return null;
     const g = vfx.ground(u.position), h = vfx.unitHeight(u), mid = vfx.unitPoint(u, 0.55);
     vfx.glow({ position: mid, follow: u, yOff: 0.55, size: h * 2.4, color: c, duration: 0.8, opacity: 0.7 });
@@ -170,7 +170,7 @@ export const RUNE_ATTACH = {
   rune_regeneration: aura('regeneration', 1.8, 0.35, 18, (vfx, n, b) => {
     vfx.emit(n, { position: b, shape: 'disc', radius: 0.7, up: [1, 2.2], life: [0.7, 1.2], size: [0.5, 0.08], color: 0x80ff80, color2: 0xeaffee, frame: FRAME.FLARE, fadeIn: 0.2 });
   }),
-  // a magenta sigil turning under the hero, sparks lifting off it
+  // a magenta glyph turning under the hero, sparks lifting off it
   rune_arcane(vfx, fx, u) {
     const mat = fx.own(addMat(0xff60d0, vfx.tex.rune, 0.5));
     const ring = fx.add(new THREE.Mesh(GEO.ground, mat));

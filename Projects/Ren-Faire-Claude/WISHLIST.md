@@ -251,7 +251,9 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
 The prompt file carries no "Questions for Devon" block. These are what the
 notes and handoff have deferred rather than answered.
 
-- **Are the four economy numbers right?** `perGuestCost: 5`, `upkeepRate:
+- ~~**Are the four economy numbers right?**~~ **Answered by Devon,
+  2026-10-05: "right as they are"** (root `HISTORY.md` #914; nothing moved).
+  The evidence the question stood on follows. `perGuestCost: 5`, `upkeepRate:
   0.07`, `bankruptcyFloor: -6000` and `winCondition`'s three thresholds have
   been flagged "most likely to need adjusting after real play" for four rounds
   running, and no round could answer it because nobody has played a full

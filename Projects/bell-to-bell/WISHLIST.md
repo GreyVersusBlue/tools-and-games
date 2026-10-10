@@ -233,8 +233,8 @@ And the working rules:
 
 Devon answered all seven of the original questions on 2026-10-05 (root
 `HISTORY.md` #889); they stay here struck, with the answer, so nobody asks
-again. **Three are open, numbered, at the end of this section**, and each is
-a yes or a no.
+again. **The three numbered at the end of this section were answered by him on
+2026-10-07 and are struck there with his words.**
 
 - ~~**Authoring or generation?**~~ Answered 2026-10-05: **the three authored
   periods become seeds.** Built as three class seeds on 2026-10-05 (#893), and
@@ -288,18 +288,24 @@ has been his since his own answer on mobile.
 
 **For Devon, each a yes or a no.**
 
-1. **Should ignoring a hypervigilance phantom cost what missing a real tell
-   costs?** Today it does: after 150 seconds it counts as a miss, takes
+1. ~~**Should ignoring a hypervigilance phantom cost what missing a real tell
+   costs?**~~ **Answered by Devon, 2026-10-07: "yes".** An ignored phantom
+   keeps its cost; nothing to build. Today it does: after 150 seconds it counts as a miss, takes
    `CFG.missedRestless` and `CFG.missedMastery`, and toasts "Missed it". Yes
    leaves it. No makes an ignored phantom cost nothing but the walk you did
    not take.
-2. **Should a phantom be able to land on any of the twelve seats?** Today it
+2. ~~**Should a phantom be able to land on any of the twelve seats?**~~
+   **Answered by Devon, 2026-10-07: "any seat".** The change to all twelve is a
+   build and this tidy did not make it. Today it
    never lands on seat 0, 1 or 11 (`spawnFalsePositive` draws seats 2 to 10)
    and nothing says why. Yes makes it all twelve. No leaves it. (The same line
    would name a seat that does not exist in a class under four; every roster
    is twelve, so that cannot happen today.)
-3. **Should the touch controls come out of the game, now that there is no
-   mobile?** Phase 8 shipped before the answer. Yes deletes working, tested
+3. ~~**Should the touch controls come out of the game, now that there is no
+   mobile?**~~ **Answered by Devon, 2026-10-07: "no touch controls".** The
+   removal is a build and this tidy did not make it; his later word that
+   touch code in the other games stays if it causes no problems names Bell to
+   Bell's removal as the exception. Phase 8 shipped before the answer. Yes deletes working, tested
    code. No leaves it where it is, unextended.
 
 ## The standing backlog

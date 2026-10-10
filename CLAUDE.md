@@ -5,10 +5,15 @@ games under `Projects/`, classroom tools under `Tools/`, the Numina rules site
 under `Numina/`, PF2e Remaster reference data under `Pathfinder/`, and shared
 media and JS under `assets/` and `Audio/`. The repo root is served whole
 (Firebase Hosting was dropped on 2026-09-23 and `firebase.json` with it; the
-`CNAME` and `.nojekyll` files are the host's config now; the domain's DNS is
-Cloudflare's, and the responses measured on 2026-10-03 came from GitHub Pages, #821), so **every file here
-is a live URL**, markdown included, and nothing can be hidden from the web by
-an ignore rule any more.
+`CNAME` file went on 2026-10-06. Since then the public domain is Devon's own
+server behind Cloudflare: measured on 2026-10-10 every response is
+`server: cloudflare` with a `cf-ray`, and the files are the same bytes as
+`main`, #934. GitHub Pages still answers at
+`greyversusblue.github.io/tools-and-games/` and is not the public host),
+so **every file here is a live URL**, markdown included, and nothing can be
+hidden from the web by an ignore rule any more. **The public host does not
+compress `.glb` or `.gltf`** (#934; GitHub Pages did, #821), so what a visitor
+downloads of a model is its raw size.
 
 **`BACKLOG.md` is the entry point. `HISTORY.md` is the record. `ARCHIVE.md`
 is work that will not be done.** Open work is ranked in `BACKLOG.md`; the

@@ -1084,8 +1084,8 @@ export class BotBrain {
     const maxD = early ? 50 : lane ? 30 : 38;
     const r = runes.runeFor(h, maxD);
     if (!r) { h.data.runeClaim = null; this.runeRoll = Math.random(); return false; }
-    // Opening bounty runes: supports / non-mid heroes only (mid goes to lane)
-    if (early && r.kind === 'bounty' && h.lane === 'mid') return false;
+    // Opening windfall runes: supports / non-mid heroes only (mid goes to lane)
+    if (early && r.kind === 'windfall' && h.lane === 'mid') return false;
     const foes = this.ctx.enemyHeroes.filter((e) => e.distanceTo(r.pos) < 14).length;
     const friends = 1 + this.ctx.allyHeroes.filter((a) => a.distanceTo(r.pos) < 18).length;
     if (foes > friends || (foes && h.healthPct < 0.5)) { h.data.runeClaim = null; return false; }

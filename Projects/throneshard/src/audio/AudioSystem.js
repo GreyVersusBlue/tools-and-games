@@ -683,7 +683,7 @@ export class AudioSystem {
     });
     bus.on('hero:gold', ({ hero, amount, reason }) => {
       if (!isPlayer(hero) || !(amount > 0)) return;
-      if (/last|kill|bounty|assist|creep|deny|structure|grimmaw/i.test(reason ?? '')) this.play('coin', { volume: amount > 100 ? 1 : 0.8 });
+      if (/last|kill|windfall|assist|creep|deny|structure|grimmaw/i.test(reason ?? '')) this.play('coin', { volume: amount > 100 ? 1 : 0.8 });
     });
     bus.on('hero:respawn', ({ hero }) => { if (isPlayer(hero)) this.play('respawn'); });
 

@@ -299,7 +299,8 @@ Open and unclaimed. Add here rather than starting a new list.
   group before the report prints, so the named line that caught it ("validates
   against core") is never shown: exit 1 and the validator's message, but not a
   FAIL line.
-- **A dead companion rises at the next fight.** `finish(true)` restores HP to
+- **A dead companion rises at the next fight.** (**Devon, 2026-10-07, asked
+  what death should mean: "leave it"**, so it stays as pinned.) `finish(true)` restores HP to
   every party member, dead or not (a companion who died at dying 4 leaves the
   field on 23 HP), and `start` sets `dead=false` and `dying=0` on the whole
   party. Found by the headless Causeway fight in Phase 2 and pinned as-is in
@@ -307,7 +308,8 @@ Open and unclaimed. Add here rather than starting a new list.
   dead companion means for the scene graph.
 
 **Combat rules**
-- **Monsters cannot flank.** Foe combatants are built in `Combat.start` with no
+- **Monsters cannot flank.** (**Devon, 2026-10-07, asked whether monsters
+  should flank: "leave it"**, so it stays as pinned.) Foe combatants are built in `Combat.start` with no
   `dying` field, so `isFlanking`'s `a.dying===0` partner test is
   `undefined===0` and never passes; and `strikeMonster` hands `effAC` a bare
   `{id, ranged}` with no `x` or `y`, so the geometry is `NaN` first. PF2e's
@@ -335,7 +337,9 @@ Open and unclaimed. Add here rather than starting a new list.
   2026-10-07: `a.wedge` is the shape's own name and a line is a Bresenham walk
   from the caster to the clicked square (in `combat.js` since 8940aee, tested
   by "Grim Tendrils along the row"). What is true beside it and open:
-  - **The cone is a half-plane.** Aimed due east it takes every foe within
+  - **The cone is a half-plane.** (**Devon, 2026-10-07: "real cone as far as
+    ttrpg cones go"**; the template is the build and has not been done.)
+    Aimed due east it takes every foe within
     its length whose column is the caster's or east of it, the squares due
     north and south included, and the last clause of its test
     (`||rx|-|ry|| <= max`) is always true. `smoke.mjs` pins it by name ("the
@@ -344,6 +348,8 @@ Open and unclaimed. Add here rather than starting a new list.
     for Breathe Fire.
   - **A line ends at the clicked square**, not at its length: a click two
     squares away is a 10-foot Grim Tendrils. Not pinned by any test.
+    **Devon, 2026-10-07: "full line"**, so it should run its full length; not
+    built.
 - The AI never Steps away, and retreats only while `fleeing` — and a flee now
   provokes, like every other Stride.
 - No Hide, Seek, Take Cover, Trip, Grapple, Shove (outside the `brutish-shove`

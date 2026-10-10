@@ -17,11 +17,11 @@ await p.evaluate(() => {
 });
 await p.waitForTimeout(1500);
 const settle = async (ms = 1500) => p.waitForTimeout(ms);
-// 1. runes: fast-forward to 2:05 with autoplay, then look at the power rune
+// 1. runes: fast-forward to 2:05 with autoplay, then look at the boon rune
 await p.evaluate(() => { const g = window.game; g.ai.setPlayerAutoplay(true); window.__ff(126); g.ai.setPlayerAutoplay(false); });
 const rune = await p.evaluate(() => {
   const g = window.game;
-  const r = g.runes.runes.find((x) => x.kind === 'power') ?? g.runes.runes[0];
+  const r = g.runes.runes.find((x) => x.kind === 'boon') ?? g.runes.runes[0];
   if (!r) return null;
   const h = g.player.hero;
   h.position.set(r.pos.x + 3, 0, r.pos.z + 3); h.issueOrder({ type: 'stop' });
