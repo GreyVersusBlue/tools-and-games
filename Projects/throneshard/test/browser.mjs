@@ -21,6 +21,10 @@
 // 33.1 game minutes, so no check here may lean on an exact figure. The bots
 // playing the two have to cast each one's three active abilities, and each
 // one's passive has to reach somebody.
+//
+// After it, two more pages play the first ten minutes of a hard-against-hard
+// match each (about a minute of wall clock a page) for the two rules that keep
+// a hard laner alive. THRONESHARD_ONLY=hard runs those two alone.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -34,6 +38,7 @@ const PORT = 8171; // see Tools/board-check/README.md for the ports already in u
 const BASE = `http://127.0.0.1:${PORT}`;
 const PAGE_URL = '/Projects/throneshard/';
 const HERO = 'tobren';
+const ONLY_HARD = process.env.THRONESHARD_ONLY === 'hard'; // skip the whole match and run the two ten-minute hard ones
 const ALLY = 'ormund';
 const SEED = 7;
 const CAP_MINUTES = 70;
@@ -69,7 +74,7 @@ try {
   ok(title === 'Throneshard', 'the page is titled Throneshard', JSON.stringify(title));
   await page.screenshot({ path: path.join(OUT, '1-menu.png') });
 
-  if (booted) {
+  if (booted && !ONLY_HARD) {
     console.log('\nstart');
     const start = await page.evaluate(({ heroId, allyId, seed }) => {
       const g = window.game;
@@ -236,6 +241,81 @@ try {
   console.log('\nconsole');
   ok(problems.length === 0, 'no page errors, console errors or warnings', problems.slice(0, 5).join(' | '));
   await page.close();
+
+  // Hard against hard, the first ten minutes, two seeded matches on the two line-ups tools/scripts/lh_test.mjs
+  // uses. A hard bot may follow a fight under an enemy tower only on the terms its own tower rule lets it stay
+  // there on (diveOk); when the fight rule waved every engage through, a bot walked in, was turned out on its next
+  // think and walked in again, and hard melee laners took 14.9 last hits in ten minutes where normal's took 18.6.
+  // tryFight is wrapped, not rewritten: the count is of what it decided, judged by the tower rule's own diveOk.
+  // And a laner the enemy heroes in sight out-fight (laneStandoff() above 0) is sent to stand that far behind the
+  // creep clash, not at it: at the clash a lone melee core in a lane against two ranged heroes died 5.7 times in
+  // ten minutes. doLane is wrapped the same way, and the place it sent the hero is read from its own debug line.
+  // Last hits are printed and not checked, because one seed's mean runs from 9 to 21.
+  for (const [seed, lu] of [
+    [1, { heroId: 'kenshar', allies: ['brakka', 'aldric', 'isolde', 'vashkar'], enemies: ['sable', 'gorrow', 'pell', 'morvane', 'thalor'] }],
+    [2, { heroId: 'sable', allies: ['gorrow', 'kenshar', 'morvane', 'thalor'], enemies: ['brakka', 'aldric', 'vesna', 'sera', 'isolde'] }],
+  ]) {
+    console.log(`\nhard against hard, seed ${seed}`);
+    const hp = await prepPage(browser, BASE, { width: 640, height: 360, dsf: 1 });
+    const hardProblems = [];
+    hp.on('pageerror', (e) => hardProblems.push('pageerror: ' + (e?.message ?? e)));
+    await hp.goto(BASE + PAGE_URL, { waitUntil: 'load', timeout: 60000 });
+    await waitFor(hp, () => !!(window.game?.ui && document.querySelector('.btn-play')), { timeout: 180000 });
+    await hp.evaluate(async ({ seed, lu }) => {
+      const g = window.game;
+      const { BotBrain } = await import('./src/ai/BotBrain.js');
+      const T = (window.__dive = { chances: 0, under: 0, unsanctioned: 0, turnedOut: 0, thinks: 0, stoodOff: 0, tooClose: 0, worst: 0 });
+      const tryFight = BotBrain.prototype.tryFight, towerDanger = BotBrain.prototype.handleTowerDanger, doLane = BotBrain.prototype.doLane;
+      BotBrain.prototype.doLane = function (lane) {
+        doLane.call(this, lane);
+        const m = /^lane \S+ s=(-?\d+)$/.exec(this.debug ?? ''), off = this.laneStandoff();
+        if (!m || !(off > 0)) return;
+        const f = this.laneFront(lane);
+        if (!(f.myN > 0)) return;
+        const clash = f.enN > 0 ? Math.min(f.my, f.en) : f.my, short = +m[1] - (clash - off); // the debug line rounds s
+        T.stoodOff++;
+        if (short > 0.51) { T.tooClose++; T.worst = Math.max(T.worst, short); }
+      };
+      BotBrain.prototype.tryFight = function () {
+        const modeWas = this.mode; // tryFight sets it to 'fight', and diveOk's push clause reads it
+        const r = tryFight.call(this);
+        const over = (u) => this.ctx.enemyTowers.filter((t) => t.alive && t.subtype !== 'fountain' && t.distanceTo(u.position) < t.getStat('attackRange') + 2);
+        T.thinks++;
+        if (this.ctx.enemyHeroes.some((e) => over(e).length)) T.chances++;
+        const ft = this.fightTarget, towers = ft ? over(ft) : [];
+        if (towers.length) {
+          const modeNow = this.mode;
+          this.mode = modeWas;
+          T.under++; if (!towers.every((t) => this.diveOk(t, ft))) T.unsanctioned++;
+          this.mode = modeNow;
+        }
+        return r;
+      };
+      BotBrain.prototype.handleTowerDanger = function () { const r = towerDanger.call(this); if (r) T.turnedOut++; return r; };
+      let a = seed * 7919;
+      Math.random = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+      g.startMatch({ ...lu, difficulty: 'hard' });
+      g.ai.setPlayerAutoplay?.(true);
+      g.renderer.setAnimationLoop(null); g.renderer.render = () => {}; g.composer = null; g.fixedDt = 0.05;
+    }, { seed, lu });
+    let hard = null;
+    for (let done = 0; done < 12000; done += 2400) {
+      hard = await hp.evaluate((n) => {
+        const g = window.game;
+        for (let i = 0; i < n; i++) g.tick();
+        const melee = g.heroes.filter((h) => h.isMelee);
+        return { ...window.__dive, minutes: g.time / 60, lh: melee.map((h) => h.lastHits), deaths: g.heroes.reduce((s, h) => s + h.deaths, 0) };
+      }, 2400);
+    }
+    const share = (100 * hard.turnedOut / Math.max(1, hard.thinks + hard.turnedOut)).toFixed(1);
+    console.log(`        ${hard.minutes.toFixed(1)} min: melee last hits ${hard.lh.join(' ')} (mean ${(hard.lh.reduce((x, y) => x + y, 0) / hard.lh.length).toFixed(1)}), ${hard.deaths} deaths, turned out of tower range on ${hard.turnedOut} thinks (${share}%)`);
+    ok(hard.chances > 0, 'an enemy hero stood under its own tower in a hard bot\'s sight', `${hard.chances} of ${hard.thinks} thinks`);
+    ok(hard.unsanctioned === 0, 'no hard bot fought a hero under an enemy tower that its tower rule would turn it out for', `${hard.unsanctioned} thinks of ${hard.under} under a tower`);
+    ok(hard.stoodOff > 0, 'a laner was out-fought by the enemy heroes in its lane', `${hard.stoodOff} thinks`);
+    ok(hard.tooClose === 0, 'and was sent to stand off from the clash by the full distance every time', `${hard.tooClose} thinks short, by up to ${hard.worst.toFixed(1)} units`);
+    ok(hardProblems.length === 0, 'no page errors', hardProblems.slice(0, 3).join(' | '));
+    await hp.close();
+  }
 } finally {
   await browser.close();
   srv.close();

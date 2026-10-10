@@ -1,4 +1,4 @@
-// VFX capture harness: casts every hero ability (12 heroes x 4) and every item active in the REAL renderer from
+// VFX capture harness: casts every hero ability (16 heroes x 4) and every item active in the REAL renderer from
 // the gameplay camera and screenshots two frames per effect (mid-cast + near impact), plus per-effect pair sheets
 // and an overall contact sheet.
 //
@@ -18,9 +18,14 @@ const tag = process.argv[4] || 'shot';
 const filter = (process.argv[5] || '').split(',').filter(Boolean);
 fs.mkdirSync(outDir, { recursive: true });
 
-const HEROES = ['brakka', 'kenshar', 'isolde', 'pell', 'sera', 'gorrow', 'vesna', 'aldric', 'morvane', 'sable', 'thalor', 'vashkar', 'ondur', 'liora'];
+const HEROES = ['brakka', 'kenshar', 'isolde', 'pell', 'sera', 'gorrow', 'vesna', 'aldric', 'morvane', 'sable', 'thalor', 'vashkar', 'ondur', 'liora', 'ormund', 'tobren'];
 // mode: enemy | point | none | self (unit-target on self) | toggle | attack (passive proc on hero attacks)
 //       attacked (dummy attacks hero) | idle (just stand) | kill (dummy creep dies next to hero)
+//       ally (unit-target on an allied hero, who is stood beside the caster). With `strikes` the ally then attacks
+//       the first dummy and the trigger is that attack landing; with `struck` a creep attacks the ally and the
+//       trigger is its hit landing. Either way the trigger waits for the ally to carry a modifier from the caster.
+// allyNear: stand the allied hero beside the caster for a spell that is not cast on him (an aura, a shove toward him).
+// turned: face the first dummy away from the caster and bring it to 2.5 units.  bruise: damage dealt to the caster first.
 // shots: seconds after the trigger (cast / first attack landed) for frame a and b.  pre: extra shot during cast point.
 const ABIL = {
   brakka_taunting_roar: { mode: 'none', shots: [0.08, 0.35] },
@@ -79,6 +84,14 @@ const ABIL = {
   liora_piercing_gale: { mode: 'point', shots: [0.08, 0.2] },
   liora_tailwind: { mode: 'none', shots: [0.2, 1.0] },
   liora_arrow_storm: { mode: 'enemy', shots: [0.2, 0.8] },
+  ormund_stand_surety: { mode: 'ally', struck: true, shots: [0.03, 0.4] },
+  ormund_confiscate: { mode: 'enemy', shots: [0.1, 0.5] },
+  ormund_no_free_passage: { mode: 'idle', turned: true, shots: [0.3, 1.0] },
+  ormund_called_to_account: { mode: 'none', bruise: 600, shots: [0.1, 0.5] },
+  tobren_twice_told: { mode: 'ally', strikes: true, shots: [0.03, 0.4] },
+  tobren_beat_the_brush: { mode: 'enemy', allyNear: true, shots: [0.1, 0.35] },
+  tobren_good_counsel: { mode: 'idle', allyNear: true, shots: [0.3, 1.0] },
+  tobren_throw_again: { mode: 'none', allyNear: true, shots: [0.1, 0.5] },
 };
 const RUNES = ['haste', 'double_damage', 'regeneration', 'invisibility', 'arcane', 'illusion', 'windfall'];
 const ITEMS = {
@@ -126,6 +139,8 @@ const PAGE_LIB = () => {
     const enemies = g.heroes.filter((x) => x.team !== h.team);
     for (const x of g.heroes) if (x !== h) { x.controller = null; x.issueOrder({ type: 'hold' }); }
     cap.dummies = enemies.slice(0, 3);
+    cap.ally = g.heroes.find((x) => x !== h && x.team === h.team); // parked at the fountain until a capture asks for him
+    if (cap.ally) { cap.ally.baseStats.maxHp = 50000; cap.ally.hp = cap.ally.getStat('maxHp'); }
     if (window.__enemyView) g.player.team = enemies[0].team; // judge indicators as the enemy team sees them
     for (const d of cap.dummies) { d.baseStats.maxHp = 1e6; d.hp = d.getStat('maxHp'); d.baseStats.magicResist = 0; }
     for (const u of g.units) if (u.isStructure) u.addModifier({ id: 'cap_disarm', hidden: true, disarm: true, duration: 1e9 });
@@ -163,6 +178,16 @@ const PAGE_LIB = () => {
     for (const u of [...g.units]) if (u.data?.capTemp) { u.alive = false; g.removeUnit(u); }
     for (const x of g.heroes) if (x !== h && !cap.dummies.includes(x)) { const f = x.team === 'sunward' ? [-92, 92] : [92, -92]; cap.place(x, f[0], f[1]); }
     cap.focus();
+  };
+  // Stand the allied hero beside the caster, on the side away from the camera's crop edge, facing the dummies.
+  cap.bringAlly = () => {
+    const a = cap.ally, h = cap.h;
+    if (!a) return null;
+    if (!a.alive) a.respawn();
+    a.hp = a.getStat('maxHp'); a.mana = a.getStat('maxMana');
+    cap.place(a, h.position.x + 1.5, h.position.z + 3, Math.PI / 2);
+    a.issueOrder({ type: 'hold' });
+    return a;
   };
   cap.focus = () => { g.cameraCtl?.focus?.(cap.SP.x - 1, cap.SP.z + 1, true); if (g.cameraCtl) g.cameraCtl._shakes = []; };
   cap.spawnCreep = (x, z, hp = 400, team) => {
@@ -226,10 +251,28 @@ async function captureAbility(p, heroId, idx) {
       cap.place(cap.dummies[1], target.position.x + d.x * 4, target.position.z + d.z * 4);
     }
     const pt = cfg.near ? h.position.clone().add({ x: 3, y: 0, z: 1.5 }) : target.position.clone();
+    const ally = cfg.mode === 'ally' || cfg.allyNear ? cap.bringAlly() : null;
+    if (cfg.turned) cap.place(E, h.position.x + 2.5, h.position.z, Math.PI / 2);
+    if (cfg.bruise) h.takeDamage(cfg.bruise, 'physical', E, {});
+    if (ally || cfg.turned || cfg.bruise) cap.step(0.05);
     cap.watch('ability:cast', (e) => e.hero === h && e.ability === ab);
     switch (cfg.mode) {
       case 'enemy': h.issueOrder({ type: 'cast', ability: ab, target }); break;
       case 'self': h.issueOrder({ type: 'cast', ability: ab, target: h }); break;
+      case 'ally': {
+        if (!ally) return { id: ab.def.id, error: 'no allied hero in the match' };
+        h.issueOrder({ type: 'cast', ability: ab, target: ally });
+        const marked = () => ally.modifiers.some((m) => m.source === h);
+        if (cfg.strikes) {
+          cap.watch('unit:attackLanded', (e) => e.unit === ally && marked());
+          ally.issueOrder({ type: 'attack', target });
+        } else if (cfg.struck) {
+          const c = cap.spawnCreep(ally.position.x + 2, ally.position.z + 0.5, 5000);
+          c.issueOrder({ type: 'attack', target: ally });
+          cap.watch('unit:attackLanded', (e) => e.unit === c && marked());
+        }
+        break;
+      }
       case 'point': h.issueOrder({ type: 'cast', ability: ab, point: pt }); break;
       case 'none': h.issueOrder({ type: 'cast', ability: ab }); break;
       case 'toggle': ab.cast(); cap.triggered = true; break;
@@ -261,6 +304,7 @@ async function captureAbility(p, heroId, idx) {
     }
     return { id: ab.def.id, castPoint: ab.def.castPoint ?? 0 };
   }, { idx, cfg });
+  if (res.error) console.log('  !!', id, res.error);
   if (cfg.pre) {
     await p.evaluate((s) => window.__cap.step(s), cfg.pre);
     await snap(p, `${tag}_${id}_pre`);

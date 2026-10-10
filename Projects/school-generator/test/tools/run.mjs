@@ -2101,6 +2101,180 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
   },
+  // Any other colour (#944). test/accent-free.test.mjs states what is parsed
+  // and where it is stored; this types a hex into the Wall panel with the
+  // keyboard, paints a wall with it, opens the design in a second page from
+  // the autosave, types something that is not a colour, tries black and white
+  // for the ink, and goes back to a named swatch. One undo step goes on (the
+  // paint) and one comes off, so `undo-redo` finds the stack as it was.
+  {
+    name: 'accent-free',
+    what: 'a hex typed under the swatches paints a wall and survives a reload, a bad one is refused with the old colour kept, black and white get the other ink, and a named swatch still works',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      await d.pick('wall');
+      // A face of a room with a wall on its line and a clear foot in front.
+      const aim = await q(`(async () => {
+        const { shapesOf, shapeAt, accentFaceAt } = await import('./js/shapes.js');
+        const { wallAlongSeg } = await import('./js/wallrun.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        for (const shape of shapesOf(floor)) {
+          const ring = shape.rings[0];
+          if (ring.accents) continue;
+          for (let i = 0; i < ring.pts.length; i++) {
+            const a = ring.pts[i], b = ring.pts[(i + 1) % ring.pts.length];
+            const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+            if (len < 8) continue;
+            for (const side of [1, -1]) {
+              const x = (a.x + b.x) / 2 - (dz / len) * side, z = (a.z + b.z) / 2 + (dx / len) * side;
+              if (shapeAt(floor, x, z) !== shape || !window.__clear(x, z)) continue;
+              const face = accentFaceAt(floor, x, z, 3);
+              if (!face || face.line || face.shape !== shape || face.ring !== 0 || face.seg !== i) continue;
+              if (!wallAlongSeg(floor, shape, 0, i)) continue;
+              return { x, z, id: shape.id, seg: i, floor: s.currentFloor };
+            }
+          }
+        }
+        return null;
+      })()`);
+      if (!aim) throw new Error('no wall on this storey to aim at');
+      const READ = `(() => {
+        const s = window.app.state, floor = s.floors[${aim.floor}];
+        const ring = floor.shapes.find((sh) => sh.id === ${aim.id}).rings[0];
+        const el = (id) => document.getElementById(id);
+        const chip = el('accent-chip'), field = el('accent-hex'), msg = el('accent-hex-msg');
+        const rim = window.app.renderApi ? window.app.renderApi.scene.getObjectByName('accent-rim') : null;
+        const armed = window.app.editor.accentPaint;
+        return {
+          face: ring.accents ? ring.accents[${aim.seg}] : null,
+          armed: armed === undefined ? 'off' : armed,
+          field: field.value, invalid: field.getAttribute('aria-invalid') === 'true',
+          picker: el('accent-color').value,
+          chip: chip.textContent, pressed: chip.getAttribute('aria-pressed'),
+          chipLabel: chip.getAttribute('aria-label'),
+          chipInk: getComputedStyle(chip).color, chipBack: getComputedStyle(chip).backgroundColor,
+          msg: msg.textContent, warn: msg.classList.contains('warn'),
+          lit: [...document.querySelectorAll('#accent-swatches .swatch[aria-pressed="true"]')].map((b) => b.dataset.accent),
+          rim: rim ? { on: rim.visible && rim.parent.visible, ink: rim.material.color.getHexString(), bar: rim.parent.material.color.getHexString() } : null,
+          focus: document.activeElement && document.activeElement.id,
+          status: document.getElementById('status').textContent,
+        };
+      })()`;
+      const read = () => q(READ);
+      // The way a keyboard does it: into the field, over what is there, Enter.
+      const type = async (text) => {
+        await d.page.focus('#accent-hex');
+        await d.page.keyboard.press('Control+A');
+        await d.page.keyboard.type(text);
+        await d.page.keyboard.press('Enter');
+        await d.page.waitForTimeout(120);
+      };
+      const hover = async () => {
+        const c = await d.at(aim.x, aim.z);
+        await d.page.mouse.move(c.x + 3, c.y + 3);
+        await d.page.mouse.move(c.x, c.y);
+        await d.page.waitForTimeout(150);
+      };
+      const idle = await read();
+      await type(' 3A7F5C');
+      const typed = await read();
+      await d.click(aim.x, aim.z);
+      const painted = await read();
+      // The design as a fresh page finds it: the autosave, opened in a second
+      // tab of the same profile. This page and its undo stack stay as they are.
+      let saved = false;
+      for (let i = 0; i < 40 && !saved; i++) {
+        saved = await q(`(localStorage.getItem('school-generator-autosave-v1') || '').includes('"#3a7f5c"')`);
+        if (!saved) await d.page.waitForTimeout(250);
+      }
+      let reloaded = null;
+      if (saved) {
+        const tab = await d.page.context().newPage();
+        try {
+          await tab.goto(d.page.url(), { waitUntil: 'load' });
+          await tab.waitForFunction('window.app && window.app.state && window.app.renderApi', { timeout: 120000 });
+          reloaded = await tab.evaluate(`(async () => {
+            const { wallFaceRuns } = await import('./js/finish.js');
+            const s = window.app.state, floor = s.floors[${aim.floor}];
+            const ring = floor.shapes.find((sh) => sh.id === ${aim.id}).rings[0];
+            const a = ring.pts[${aim.seg}], b = ring.pts[(${aim.seg} + 1) % ring.pts.length];
+            const runs = wallFaceRuns(floor, a.x, a.z, b.x, b.z);
+            return {
+              face: ring.accents ? ring.accents[${aim.seg}] : null,
+              drawn: runs.some((r) => r.left === '#3a7f5c' || r.right === '#3a7f5c'),
+              field: document.getElementById('accent-hex').value,
+            };
+          })()`);
+        } finally { await tab.close(); }
+        await d.page.bringToFront();
+      }
+      // Not a colour: said so, and nothing moves.
+      await type('zzz');
+      const refused = await read();
+      // The two ends, on the chip and on the bar over the wall.
+      await type('#000');
+      await hover();
+      const black = await read();
+      await type('FFFFFF');
+      await hover();
+      const white = await read();
+      // The colour input gives a '#rrggbb' and an input event.
+      await q(`(() => { const c = document.getElementById('accent-color'); c.value = '#123456'; c.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      const picked = await read();
+      // A palette colour typed is that swatch.
+      await type('2f5d8a');
+      const named = await read();
+      await q(`document.querySelector('#accent-swatches [data-accent="spruce"]').click(); 1`);
+      const swatch = await read();
+      await q(`document.getElementById('accent-chip').click(); 1`);
+      const chipOn = await read();
+      await q(`document.getElementById('accent-chip').click(); 1`);
+      await hover();
+      const chipOff = await read();
+      await q('window.app.editor.undo(); 1');
+      const undone = await read();
+      return { aim, idle, typed, painted, saved, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, undone };
+    },
+    expect: ({ ctx, before, after }) => {
+      const say = (what, v) => { throw new Error(`${what}: ${JSON.stringify(v)}`); };
+      const { idle, typed, painted, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, undone } = ctx;
+      if (idle.armed !== 'off' || idle.field !== '#808080' || idle.picker !== '#808080' || idle.chip !== '#808080' ||
+          idle.pressed !== 'false' || idle.invalid || idle.msg) say('the free pick should open at mid grey, not armed', idle);
+      if (typed.armed !== '#3a7f5c' || typed.field !== '#3a7f5c' || typed.picker !== '#3a7f5c' || typed.chip !== '#3a7f5c' ||
+          typed.pressed !== 'true' || typed.chipLabel !== 'Accent paint #3a7f5c' || typed.lit.length || typed.invalid) {
+        say('a hex typed and entered should arm the brush with it, normalised, and light no swatch', typed);
+      }
+      if (typed.chipBack !== 'rgb(58, 127, 92)') say('the chip is not the colour', typed.chipBack);
+      if (!/^Accent, #3a7f5c — click just inside a room/.test(typed.status)) say('the armed brush did not say the hex', typed.status);
+      if (painted.face !== '#3a7f5c' || !/painted #3a7f5c\./.test(painted.status)) say('the click should store the hex on the face and say so', painted);
+      if (!ctx.saved) throw new Error('the autosave never held the custom colour');
+      if (!reloaded || reloaded.face !== '#3a7f5c' || !reloaded.drawn) say('a fresh page should load the wall in its colour', reloaded);
+      if (!refused.invalid || !refused.warn || !/"zzz" is not a colour\..*Still #3a7f5c\./.test(refused.msg) ||
+          refused.field !== 'zzz' || refused.armed !== '#3a7f5c' || refused.chip !== '#3a7f5c' ||
+          refused.picker !== '#3a7f5c' || refused.face !== '#3a7f5c') {
+        say('what is not a colour should be refused out loud with the colour before it kept', refused);
+      }
+      if (black.armed !== '#000000' || black.field !== '#000000' || black.invalid || black.msg ||
+          black.chipInk !== 'rgb(255, 255, 255)' || black.chipBack !== 'rgb(0, 0, 0)') say('black should be written on in white', black);
+      if (!black.rim || !black.rim.on || black.rim.ink !== 'ffffff' || black.rim.bar !== '000000') say('a black bar over the wall should be outlined in white', black.rim);
+      if (white.armed !== '#ffffff' || white.chipInk !== 'rgb(0, 0, 0)' || white.chipBack !== 'rgb(255, 255, 255)') say('white should be written on in black', white);
+      if (!white.rim || !white.rim.on || white.rim.ink !== '000000' || white.rim.bar !== 'ffffff') say('a white bar over the wall should be outlined in black', white.rim);
+      if (black.face !== '#3a7f5c' || white.face !== '#3a7f5c') say('arming a colour painted a wall', white);
+      if (picked.armed !== '#123456' || picked.field !== '#123456' || picked.chip !== '#123456' || picked.pressed !== 'true') {
+        say('the colour input should arm the brush with what it gives', picked);
+      }
+      if (named.armed !== 'harbor-blue' || named.lit.join() !== 'harbor-blue' || named.pressed !== 'false' ||
+          named.chip !== '#123456' || !/is Harbor Blue/.test(named.msg) || named.warn) say('a palette colour typed should be its swatch', named);
+      if (swatch.armed !== 'spruce' || swatch.lit.join() !== 'spruce' || swatch.pressed !== 'false' || swatch.chip !== '#123456') {
+        say('a named swatch should still arm its own colour and leave the custom one be', swatch);
+      }
+      if (chipOn.armed !== '#123456' || chipOn.pressed !== 'true' || chipOn.lit.length) say('the chip should arm the custom colour', chipOn);
+      if (chipOff.armed !== 'off' || chipOff.pressed !== 'false' || (chipOff.rim && chipOff.rim.on)) say('the chip again should put the brush down, outline and all', chipOff);
+      if (undone.face !== null) say('one undo should take the paint off', undone);
+      if (after.walls !== before.walls) throw new Error('the brush drew a wall');
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   // A corner dragged with the vertex tool (#862). test/accent.test.mjs states
   // which accent the settle takes and which it leaves; this proves the tool
   // settles at all, and only when the corner is let go. Two undo steps go on
