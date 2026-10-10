@@ -13,6 +13,13 @@
 // The player's hero is put on autoplay, so all ten heroes are bots. A match
 // that has not ended by 70 game minutes is a failure: bot matches here end
 // between roughly 25 and 50.
+//
+// The player's hero is Ormund, the newest, and Math.random is reseeded in the
+// page at the moment the match starts, so the draft is the same on every run
+// whatever order the assets loaded in. The match is not: nine runs of this
+// file on one machine ended between 21.6 and 33.1 game minutes, so no check
+// here may lean on an exact figure. The bot playing him has to cast his three
+// active abilities and his passive has to slow somebody.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,7 +32,8 @@ const OUT = path.join(HERE, 'shots');
 const PORT = 8171; // see Tools/board-check/README.md for the ports already in use
 const BASE = `http://127.0.0.1:${PORT}`;
 const PAGE_URL = '/Projects/throneshard/';
-const HERO = 'sera';
+const HERO = 'ormund';
+const SEED = 7;
 const CAP_MINUTES = 70;
 
 fs.mkdirSync(OUT, { recursive: true });
@@ -61,25 +69,35 @@ try {
 
   if (booted) {
     console.log('\nstart');
-    const start = await page.evaluate((heroId) => {
+    const start = await page.evaluate(({ heroId, seed }) => {
       const g = window.game;
+      let a = seed * 2654435761;
+      Math.random = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
       g.startMatch({ heroId });
       g.ai.setPlayerAutoplay?.(true);
-      return { heroes: g.heroes.length, player: g.player.hero?.heroId, name: g.player.hero?.name };
-    }, HERO);
-    ok(start.heroes === 10, 'ten heroes take the field', `got ${start.heroes}`);
-    ok(start.player === HERO, `the player is ${HERO}`, `got ${start.player} (${start.name})`);
-
-    // Step in chunks so one evaluate never runs long enough to trip a protocol timeout.
-    await page.evaluate(() => {
-      const g = window.game;
+      // Stepped from the first tick, so no frame of the page's own loop runs on the wall clock in between.
       g.renderer.setAnimationLoop(null);
       g.__render = g.renderer.render.bind(g.renderer);
       g.__composer = g.composer;
       g.renderer.render = () => {};
       g.composer = null;
       g.fixedDt = 0.05;
-    });
+      // What the bot does with the player's hero: casts by ability, and the two debuffs his kit hands out.
+      const me = g.player.hero, K = (window.__kit = { casts: {}, slowed: 0, disarmed: 0, shared: 0 });
+      g.bus.on('ability:cast', ({ hero, ability }) => { if (hero === me && !ability?.isItem) K.casts[ability.def.id] = (K.casts[ability.def.id] ?? 0) + 1; });
+      g.bus.on('modifier:added', ({ modifier }) => {
+        if (modifier.source !== me) return;
+        if (modifier.id === 'no_free_passage') K.slowed++;
+        if (modifier.id === 'confiscated') K.disarmed++;
+        if (modifier.id === 'stand_surety') K.shared++;
+      });
+      return { heroes: g.heroes.length, player: me?.heroId, name: me?.name, model: me?.modelKind, abilities: me?.abilities.map((ab) => ab.def.id), team: g.heroes.filter((h) => h.team === me.team).map((h) => h.heroId) };
+    }, { heroId: HERO, seed: SEED });
+    ok(start.heroes === 10, 'ten heroes take the field', `got ${start.heroes}`);
+    ok(start.player === HERO, `the player is ${HERO}`, `got ${start.player} (${start.name})`);
+    ok(start.model === 'rift_stalker' && start.abilities?.length === 4, 'he wears the model rift_stalker and has four abilities', `${start.model}; ${start.abilities}`);
+    console.log(`        with ${start.team?.slice(1).join(', ')}`);
+
     // Rift Wall in the real match, on the real map, before the lanes meet (test/wall.mjs has the open-map cases).
     // A slow enemy creep is sent straight across the line of a wall cast through Ondur's own ability definition.
     console.log('\nrift wall');
@@ -132,6 +150,7 @@ try {
       ok(wall.restored, 'every nav cell the wall blocked is released');
     }
 
+    // Step in chunks so one evaluate never runs long enough to trip a protocol timeout.
     console.log('\nmatch');
     let state = { time: 0, over: false };
     const capTicks = CAP_MINUTES * 60 * 20;
@@ -166,6 +185,9 @@ try {
         kills: (sc.sunward ?? 0) + (sc.duskward ?? 0),
         levels: g.heroes.map((h) => h.level),
         items: g.heroes.map((h) => h.inventory.filter(Boolean).length),
+        kit: window.__kit,
+        minutes: +(g.time / 60).toFixed(2),
+        me: ((h) => ({ level: h.level, kda: `${h.kills}/${h.deaths}/${h.assists}`, lh: h.lastHits, learned: h.abilities.map((ab) => ab.level), talents: Object.keys(h.talents).length }))(g.player.hero),
       };
     });
     ok(after.endShown, 'the victory/defeat screen is shown');
@@ -173,6 +195,13 @@ try {
     ok(after.kills > 0, 'heroes died along the way', `${after.kills} kills`);
     ok(Math.min(...after.levels) >= 6, 'every hero reached level 6', `levels ${after.levels.join(',')}`);
     ok(Math.min(...after.items) >= 3, 'every hero holds at least three items', `items ${after.items.join(',')}`);
+    const [w, q, e, r] = start.abilities ?? [], c = after.kit?.casts ?? {};
+    console.log(`        ${HERO}: level ${after.me.level}, ${after.me.kda}, ${after.me.lh} last hits, abilities ${after.me.learned.join('/')}, ${after.me.talents} talents`);
+    ok(after.me.learned.every((n) => n > 0), 'the bot learned all four of his abilities', after.me.learned.join('/'));
+    ok(c[q] > 0 && after.kit.disarmed > 0, 'the bot cast Confiscate and it disarmed somebody', `${c[q] ?? 0} casts, ${after.kit?.disarmed} disarms`);
+    ok(c[w] > 0 && after.kit.shared === c[w], 'the bot cast Stand Surety and every cast bonded an ally', `${c[w] ?? 0} casts, ${after.kit?.shared} bonds`);
+    ok(after.kit?.slowed > 0 && !(e in c), 'No Free Passage slowed somebody without being cast', `${after.kit?.slowed} slows`);
+    ok(c[r] > 0, 'the bot cast Called to Account', `${c[r] ?? 0} casts`);
     await page.evaluate(() => window.game.renderer.render(window.game.scene, window.game.camera));
     await page.screenshot({ path: path.join(OUT, '2-end.png') });
   }

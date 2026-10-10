@@ -121,12 +121,15 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **rank 27, Throneshard's
-Rift Wall** (#938, 2026-10-10; committed locally on huginn for the landing, so
-its PR number is the landing's): ½, naming Opus 5, run under Opus 5.5. The
-slabs block walking for every unit from the tick each breaks ground to the
-tick it starts to crumble, 2.88 to 3.26 s a slab; nobody has seen it on a
-real graphics card. Before it came **rank 26, SkyWings 64's
+**The last batch of ranked work that shipped** is **the first increment of
+rank 28, Throneshard's fifteenth hero** (#941, 2026-10-10; committed locally on
+huginn for the landing, so its PR number is the landing's): a 2+ row naming
+Fable 5.1, run under Opus 5.5. Ormund the Tollkeeper, a melee guardian on the
+spare model `rift_stalker`, is in the game whole; the row stays for the second
+hero, on `bone_shaman`. Nobody has seen him on a real graphics card. Before it
+the same day came **rank 27, Throneshard's Rift Wall** (#938): the slabs block
+walking for every unit from the tick each breaks ground to the tick it starts
+to crumble, 2.88 to 3.26 s a slab. Before that came **rank 26, SkyWings 64's
 three draw-call cuts** (#930 to #932, 2026-10-07; committed locally on huginn
 for the landing, so its PR number is the landing's): 1, naming Opus 5, run
 under Opus 5.5 in two sessions. A frame is 204 to 352 draws from nine fixed
@@ -862,7 +865,7 @@ hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
 **Three rows are 2+: rank 22 (The Fracture Cycle's fourth prong), rank 25
-(Signal City's second pack) and rank 28 (Throneshard's two heroes).** The
+(Signal City's second pack) and rank 28 (Throneshard's second new hero; the first shipped on 2026-10-10, #941).** The
 fifteen rows left (15 to 23, 25 and 28 to 32, recounted off the table on
 2026-10-10) are nine that want hardware nothing here has (15 to 21, 23 and
 32) and six a container can take (22, 25 and 28 to 31), none of them waiting
@@ -1052,7 +1055,7 @@ and #222 was closed unmerged an hour of suites later.
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 28 | Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four abilities each, talents, a scepter upgrade, an item build, voice fallback and effects, under original names the session picks (Devon, 2026-10-05: go) | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
+| 28 | One new hero from the spare model `bone_shaman`: four abilities, talents, a scepter upgrade, an item build, voice fallback and effects, under an original name the session picks (Devon, 2026-10-05: go). The first of the two, Ormund on `rift_stalker`, shipped on 2026-10-10 (#941); the section below says what the second needs | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
 | 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
@@ -2558,20 +2561,60 @@ frame's draw calls to `test/draws.json`).
 ## Throneshard
 
 A 3D lane battler Devon had built outside this repo and asked to move in on
-2026-09-30 under a name of its own (#738): fourteen heroes, three lanes, bots
+2026-09-30 under a name of its own (#738): fifteen heroes, three lanes, bots
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
-Its suites are `node test/data.mjs` (983 checks, 38 of them `test/wall.mjs`'s)
-and `node test/browser.mjs` (21) from the project folder, in Site CI's matrix.
+Its suites are `node test/data.mjs` (1,100 checks, 38 of them `test/wall.mjs`'s
+and 69 `test/ormund.mjs`'s) and `node test/browser.mjs` (27) from the project
+folder, in Site CI's matrix.
 Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
 Settings; `HISTORY.md` #749 to #755). Rift Wall got its gameplay wall on
-2026-10-10 (#938, old rank 27). Open, and **ranked 28 to 32** in the order the
-table gives, not this list's:
+2026-10-10 (#938, old rank 27), and the fifteenth hero, Ormund the Tollkeeper
+on the spare model `rift_stalker`, went in the same day (#941, the first half
+of rank 28). Open, and **ranked 28 to 32** in the order the table gives, not
+this list's:
 
-- Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four
-  abilities each, talents, a scepter upgrade, an item build, voice fallback and
-  effects, with original names and kits. Not started. Devon, 2026-10-05: go,
-  with no naming preference, so the session picks the names. Rank 28.
+- One more new hero, from the spare model `bone_shaman`: four abilities,
+  talents, a scepter upgrade, an item build, voice fallback and effects, with an
+  original name and kit. Not started. Devon, 2026-10-05: go, with no naming
+  preference, so the session picks the name. Rank 28. What Ormund's session
+  learned that this one needs:
+  - The model's clips are the caster set (`Idle_Loop`, `Jog_Fwd_Loop`,
+    `Death01`, `SpellShot` to attack, `OverhandThrow` to cast) and it carries a
+    skull-topped staff, a mask and a green foot aura, so the hero is ranged.
+    Its attack projectile needs a `projectileKind` an existing hero has
+    (`vashkar`, say), as Liora borrows Vesna's.
+  - The Blender recipe (`tools/blender/characters/defs_units.py`) shows the
+    model was drawn after one commercial game's masked healer and curser, so
+    the kit must have none of that hero's four: no bouncing stun, no toggled
+    heal aura with upkeep, no curse that bursts for the damage taken under it,
+    no channelled turret. #941 says how Ormund's kit was kept clear of the
+    hero `rift_stalker` was drawn after; do the same, by mechanism, without
+    writing those games' names.
+  - A hero needs no model file of its own: set `model: 'bone_shaman'` in
+    `HeroDefs.js` and add no `CHARACTERS` entry under the new id.
+    `test/data.mjs` resolves the file the way `ModelFactory._heroOwn` does.
+  - Every ability value is printed in the tooltip under its key's name, so a
+    new key needs a line in `VALUE_LABELS` (`src/ui/Tooltip.js`), a key ending
+    `Pct` to print as a percent, and `jumpTime` or another `SKIP_VALUES` key to
+    stay out.
+  - Bots use an ability only through its `hint`, and try slots in the order R,
+    Q, W, E, casting the first that fits, so a situational spell behind a
+    spammable one is starved: Stand Surety was cast once in 32 minutes from the
+    second slot and 5 to 27 times a match from the first. `allyBelow` on an
+    ally-target hint sets the health share it waits for (0.9 for his).
+  - `test/ormund.mjs` is the pattern for the pure-Node checks (the game's own
+    `Hero`, `AbilitySystem` and `Talents` on an open map), and
+    `test/browser.mjs` names the player's hero in one constant, `HERO`, with
+    the checks on his casts reading `start.abilities` by slot. The seed fixes
+    the draft and not the match there (#941's log entry), so ask for one cast
+    or more, never a figure. Eight seeded matches fit in one browser in about
+    six minutes as eight pages at once, and those do repeat.
+  - Not updated, because they are outside the project folder or need a GPU:
+    the board card in `index.html` ("Pick one of fourteen") and the root
+    `README.md` ("fourteen heroes") still say fourteen, and
+    `tools/scripts/vfx_capture.mjs` lists fourteen heroes and has no mode for
+    a spell cast on another ally.
 - Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
   17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
 - Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
@@ -2806,7 +2849,7 @@ live. Nothing in that column is a link to follow.
 | ~~Q8~~ | ~~**Does the period need a fail state?**~~ Struck — answered by Devon, 2026-10-05 (#889): still no. Answered "still no" three times. Confirming it lets Phase 3 stop designing around the possibility. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q9~~ | ~~**Is suppression too strong?**~~ Struck — answered by Devon, 2026-10-05 (#889): it is not. Leave it. Measured: in every 4th-period balance run exactly one scheduled tell never happens (Priya in front of June); splitting the pairs makes that "2 never happened, 2 found another way" and drops restless from 72 to 44. The handoff's own fix, if it is too strong, is a per-period cap on how much one kid absorbs, not a nerf to the effect — and now watch it across *two* rosters (Priya and Anh both), not just one. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q10~~ | ~~**Is the Observation's ambient Mastery cost calibrated?**~~ Struck — answered by Devon, 2026-10-05 (#889): right as it is. `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by design math and not by playtest. In the table it costs the good teacher nothing visible (79 either way) and buys 10 Fidelity if performed. | 2 | wishlist, `docs/HANDOFF.md` |
-| ~~Q11~~ | ~~**Mobile.**~~ Struck — answered by Devon, 2026-10-05 (#889): no mobile. Phase 8 had already shipped when this was answered (this wording predates it), so the answer closes the phone measurement and any further touch work; taking the shipped touch layer out is Devon's call and has not been made. Undecided, and the answer determines whether Phase 8 exists. `input.js` has `touchstart`/`touchmove` look and no way to walk or to press E, Q, R, T, O, H, G or F. | 2 | wishlist, `docs/HANDOFF.md` |
+| ~~Q11~~ | ~~**Mobile.**~~ Struck — answered by Devon, 2026-10-05 (#889): no mobile. Phase 8 had already shipped when this was answered (this wording predates it), so the answer closes the phone measurement and any further touch work. Devon, 2026-10-07: "no touch controls"; the shipped touch layer came out on 2026-10-10 (#940), and keys and the mouse are the game's only input. Undecided, and the answer determines whether Phase 8 exists. `input.js` has `touchstart`/`touchmove` look and no way to walk or to press E, Q, R, T, O, H, G or F. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q12~~ | ~~**An announced Observation variant?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes, and Phase 4 built it; #891 records its three choices and the suite holds it beside the surprise one. Treatment §6.1 has both announced and surprise; only unannounced is built. The handoff calls the surprise one funnier and rates this low; Phase 4 assumes yes. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q13~~ | ~~**Should Room Temp reveal direction at all?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes: the quadrant it already reads. It still never names a kid. Two quadrants level at the top read as the middle now (#890). "Still unchanged." Room Temp names bands and quadrants only; naming is what the Withitness mode is for. | 1 | `docs/HANDOFF.md` only |
 

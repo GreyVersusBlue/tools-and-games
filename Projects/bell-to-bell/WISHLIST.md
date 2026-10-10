@@ -247,9 +247,10 @@ again. **The three numbered at the end of this section were answered by him on
   2026-10-05: **right as it is.** `CFG.observation.masteryDrainPerSec` stays
   0.008.
 - ~~**Mobile, on a real phone.**~~ Answered 2026-10-05: **no mobile.** The
-  phone measurement is not wanted and there is no further touch work. See the
-  note at the top of Phase 8 for what that does and does not do to what
-  shipped.
+  phone measurement is not wanted and there is no further touch work. On
+  2026-10-07 he added "no touch controls", and the touch layer Phase 8 had
+  shipped came out on 2026-10-10 (#940). The note at the top of Phase 8 says
+  what went and what stayed.
 - ~~**An announced Observation variant?**~~ Answered 2026-10-05: **yes.**
   Phase 4 built it (`visitFor` and `announcedAhead` in
   `systems/observation.js`), so the answer confirms what ships. #891 writes
@@ -295,18 +296,22 @@ has been his since his own answer on mobile.
    leaves it. No makes an ignored phantom cost nothing but the walk you did
    not take.
 2. ~~**Should a phantom be able to land on any of the twelve seats?**~~
-   **Answered by Devon, 2026-10-07: "any seat".** The change to all twelve is a
-   build and this tidy did not make it. Today it
-   never lands on seat 0, 1 or 11 (`spawnFalsePositive` draws seats 2 to 10)
-   and nothing says why. Yes makes it all twelve. No leaves it. (The same line
-   would name a seat that does not exist in a class under four; every roster
-   is twelve, so that cannot happen today.)
+   **Answered by Devon, 2026-10-07: "any seat". Built 2026-10-10 (root
+   `HISTORY.md` #939).** It drew seats 2 to 10 from the project's first commit
+   and no decision or comment ever said why. Nothing depended on it: a seat is
+   who a kid is and not where they sit (locked constraint 9), so the range kept
+   three kids from being accused and no desk, and the chart could already put
+   a phantom at any of the twelve. It is one seat in twelve now, each as
+   likely as the next, and the draw is off the semester seed, the day and the
+   period (the AP's visit is drawn the same way), so a refresh is the same
+   phantom on the same kid. `smoke.mjs` sweeps 2,400 semester seeds through
+   the tell system and holds the counts flat. `balance.mjs` did not move and
+   could not: the headless period has never spawned a phantom.
 3. ~~**Should the touch controls come out of the game, now that there is no
-   mobile?**~~ **Answered by Devon, 2026-10-07: "no touch controls".** The
-   removal is a build and this tidy did not make it; his later word that
-   touch code in the other games stays if it causes no problems names Bell to
-   Bell's removal as the exception. Phase 8 shipped before the answer. Yes deletes working, tested
-   code. No leaves it where it is, unextended.
+   mobile?**~~ **Answered by Devon, 2026-10-07: "no touch controls". Built
+   2026-10-10 (root `HISTORY.md` #940).** His later word that touch code in
+   the other games stays if it causes no problems names Bell to Bell's removal
+   as the exception. The Phase 8 section below says what went and what stayed.
 
 ## The standing backlog
 
@@ -746,16 +751,44 @@ one module that turns the bare specifier into a path — and every file under
   the scene, twelve desk auras, and a tell whose vision bucket appears while
   SHIFT is down and is gone when it is up.
 
-## Phase 8 — A thumb has never touched this — **SHIPPED**
+## Phase 8 — A thumb has never touched this — **SHIPPED, then its touch controls WITHDRAWN 2026-10-10**
 
-> **Devon, 2026-10-05 (root `HISTORY.md` #889): no mobile.** The question he
-> answered was written before this phase and said the answer would decide
-> whether Phase 8 exists. It had shipped by then. So: nothing below is to be
-> extended, the phone measurement this phase left open is not wanted, and no
-> ninth phase picks touch up. What shipped is still in the game and still
-> asserted (locked constraint 17, `smoke.mjs`'s Phase 8 block). Taking it out
-> is a deletion of working code and is Devon's to ask for; no session has been
-> asked.
+> **Devon, 2026-10-05 (root `HISTORY.md` #889): no mobile. Devon, 2026-10-07:
+> "no touch controls".** The first answer closed the phone measurement and any
+> ninth phase; the second took out what this phase had shipped. Removed on
+> 2026-10-10 (root `HISTORY.md` #940). The record of what was built is kept
+> below as it was written, and every `[x]` in it is true of the code up to that
+> day and no later.
+>
+> **What went:** `src/ui/touch.js` and `data/controls.json` (both deleted);
+> the stick, the two-finger tracking, `stickVector`, `wantsTouchUI`, the
+> `press`/`setHold`/`onStickMove` seam and the one-finger drag-look that
+> predated the phase, all out of `input.js`; `CFG.touch`; `?touch=on` and
+> `?touch=off`; the `#touch` layer, the phone's key list and the touch hint in
+> `index.html`; every `body.touch` rule, the chips, pads, tray and stick in
+> `styles/main.css`, and the `pointer:coarse` pass over the seating chart; the
+> wider desk card and the `touch` flag in `ui/seating.js`; the `short` chip
+> label on each of the nine look-fors; locked constraint 17, whose number is
+> kept in `CLAUDE.md` as withdrawn; and the 40 assertions that held all of it.
+>
+> **What stayed, and why:** the frame budget, the boot tiers and
+> `bellToBellFrames()` (`quality.js`, `CFG.quality`), because a slow laptop
+> gives up resolution the same way a phone would have, and `pickTier` still
+> reads the pointer because that is a fact about the device and not a control;
+> the small-viewport media queries at 880 by 560 and 460, because a small
+> browser window had the same collisions; `moveVector` as an exported pure
+> function and `createInput`'s `root` argument, because that is how the suite
+> executes the keyboard and the mouse; and the blur handler that lets go of
+> every key. The two `touch-action:none` rules on the plan and its furniture are T5's and
+> were not this phase's to take.
+>
+> **How it was held:** `smoke.mjs` lists the listeners `createInput`
+> registers (a mouse button on the canvas; keys, mouse and blur on the
+> window; nothing else) and fails if the files, the layer, a `body.touch`
+> rule or a chip label comes back. A 4th period was played to the bell in
+> headless Chromium by mouse and keys on the code before and after, off a
+> fixed clock and a seeded `Math.random`, and the two transcripts were
+> compared line by line (the root `HISTORY.md` log has the result).
 
 **`input.js` lets a phone look around the room and gives it no way to walk or
 to teach.**

@@ -300,7 +300,7 @@ export class BotBrain {
           allies.sort((a, b) => a.healthPct - b.healthPct);
           const a = allies[0];
           if (!a) break;
-          if (info.defensive || info.healing) { if (a.healthPct < 0.55 && (enemies.length || info.healing)) cast = { target: a }; }
+          if (info.defensive || info.healing) { if (a.healthPct < (info.allyBelow ?? 0.55) && (enemies.length || info.healing)) cast = { target: a }; }
           else if (fighting) {
             // Offensive buff: best right-clicker near the fight
             const best = allies.filter((x) => x.kind === 'hero').sort((x, y) => this.heroDps(y) - this.heroDps(x))[0];

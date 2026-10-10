@@ -1,10 +1,22 @@
 import * as THREE from '../three.js';
 import { CFG } from '../config.js';
+import { createRng, mixSeed } from './rng.js';
+import { hashId } from './observation.js';
+
+// Which seat a hypervigilance phantom accuses is drawn from this (#939): one
+// stream per semester seed, day and period, the way the AP's visit is, so a
+// refresh mid-period is the same phantom on the same kid. The last part keeps
+// it off the visit's own stream, which mixes the first three.
+const PHANTOM_STREAM = 0xFA15E;
+export function phantomRand({ seed, dayIndex, periodId }) {
+  return createRng(mixSeed(seed, dayIndex + 1, hashId(periodId), PHANTOM_STREAM)).next;
+}
 
 // A tell is something true about the room that a normal glance would miss.
 // It has a birth, a lifespan, a world position, and a line of sight that the
 // furniture is allowed to break.
-export function createTellSystem({ scene, camera, students, data, occluders, schedule, buildTellMesh, setVision, onBorn, onGone }) {
+export function createTellSystem({ scene, camera, students, data, occluders, schedule, buildTellMesh, setVision, onBorn, onGone,
+                                  rand = Math.random }) {
   const defs = data.types;
   const tells = [];
   const ray = new THREE.Raycaster();
@@ -109,8 +121,13 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
     }
   }
 
+  // Any seat, each as likely as the next (#939, Devon 2026-10-07: "any seat").
+  // It drew seats 2 to 10 from the first commit on and nothing ever said why.
+  // A seat is who a kid is and not where they sit (locked constraint 9), so
+  // the old range kept three kids from being accused and no desk: the chart
+  // could already put a phantom at any of the twelve.
   function spawnFalsePositive(state) {
-    const seat = 2 + Math.floor(Math.random() * (students.length - 3));
+    const seat = Math.floor(rand() * students.length);
     const t = create('FALSE', seat, undefined, state.t, 150);
     t.born = state.t;
     t.pos = positionFor(t.type, t.seat, t.seat2);

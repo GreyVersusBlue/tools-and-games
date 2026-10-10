@@ -107,6 +107,11 @@ Player/bots use it as: `hero.issueOrder({type:'cast', ability, target|point})` (
 no-target after canCast). UI reads `def.icon` (emoji or image URL), `def.name`, `description`, cooldown/mana.
 `game.abilities.getAbilityDef(id)` also used by UI tooltips.
 
+A hero need not own a model file: Ormund's def says `model: 'rift_stalker'` and has no `CHARACTERS.ormund`, so
+`ModelFactory._heroOwn` leaves him on that rig, and `test/data.mjs` looks for the file the same way. Bots read an
+ability's `hint` and nothing else about it; `allyBelow` (default 0.55) is the health share under which a `defensive`
+or `healing` ally-target spell is cast. Ormund's four abilities are checked in `test/ormund.mjs`, run by `test/data.mjs`.
+
 Temporary obstacles: `world.blockCircle(x, z, r)` / `unblockCircle` count into the nav grid's `dyn` layer, which
 `isWalkable`, `findPath` and `Unit.tryStep` all read. Rift Wall is the one ability that uses it
 (`src/gameplay/abilities/riftWall.js`): a slab blocks from the tick it breaks ground to the tick it starts to crumble,

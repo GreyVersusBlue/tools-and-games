@@ -23,8 +23,9 @@ import thalor from './heroes/thalor.js';
 import vashkar from './heroes/vashkar.js';
 import ondur from './heroes/ondur.js';
 import liora from './heroes/liora.js';
+import ormund from './heroes/ormund.js';
 
-const ALL_SPECS = [brakka, kenshar, isolde, pell, sera, gorrow, vesna, aldric, morvane, sable, thalor, vashkar, ondur, liora].flat();
+const ALL_SPECS = [brakka, kenshar, isolde, pell, sera, gorrow, vesna, aldric, morvane, sable, thalor, vashkar, ondur, liora, ormund].flat();
 // Tooltips (ui/Tooltip.js) render def.scepterDescription in their own "Ascendant Scepter" box.
 for (const s of ALL_SPECS) if (s.scepter?.description) s.scepterDescription = s.scepter.description;
 export const ABILITY_DEFS = Object.fromEntries(ALL_SPECS.map((s) => [s.id, s]));
