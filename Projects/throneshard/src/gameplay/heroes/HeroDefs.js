@@ -137,6 +137,15 @@ export const HERO_DEFS = {
     abilities: ['ormund_stand_surety', 'ormund_confiscate', 'ormund_no_free_passage', 'ormund_called_to_account'],
     lore: "Ormund keeps the gate where the rift meets the road and takes a toll from everything that crosses it. He writes every blow he is owed in a ledger, and he has never let a debt go.",
   }),
+  // Wears the spare model bone_shaman (src/models/configs.js); there is no tobren.glb, and his bolt is Vashkar's.
+  tobren: hero({
+    id: 'tobren', name: 'Tobren', title: 'the Lotcaster', primary: 'int', icon: '🦴', color: '#6fae3c', model: 'bone_shaman',
+    attackType: 'ranged', roles: ['Support', 'Enabler'], projectileKind: 'vashkar',
+    str: 19, agi: 15, int: 23, strGain: 2.1, agiGain: 1.4, intGain: 3.0,
+    baseArmor: 0, baseDamage: [24, 30], moveSpeed: 290, attackRange: 575, bat: 1.7, attackPoint: 0.4, projectileSpeed: 1000,
+    abilities: ['tobren_twice_told', 'tobren_beat_the_brush', 'tobren_good_counsel', 'tobren_throw_again'],
+    lore: "Tobren casts lots for anyone who asks and tells them what fell, which is always the same thing: strike again. He has been right often enough that warlords pay him to stand behind them.",
+  }),
 };
 
 export const HERO_IDS = Object.keys(HERO_DEFS);

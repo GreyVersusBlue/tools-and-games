@@ -111,6 +111,11 @@ A hero need not own a model file: Ormund's def says `model: 'rift_stalker'` and 
 `ModelFactory._heroOwn` leaves him on that rig, and `test/data.mjs` looks for the file the same way. Bots read an
 ability's `hint` and nothing else about it; `allyBelow` (default 0.55) is the health share under which a `defensive`
 or `healing` ally-target spell is cast. Ormund's four abilities are checked in `test/ormund.mjs`, run by `test/data.mjs`.
+Tobren is the second such hero (`model: 'bone_shaman'`, attack projectile borrowed with `projectileKind: 'vashkar'`),
+checked in `test/tobren.mjs`. A `hint` may be a function of the ability: Throw Again's asks for one enemy hero in its
+radius only while three basic abilities around him have over 5 s of cooldown left, and for 99 otherwise. An aura's
+`modifier(ab, unit)` is not re-made on a unit that never leaves the aura, so Good Counsel writes a gained level into
+the modifier its target already holds.
 
 Temporary obstacles: `world.blockCircle(x, z, r)` / `unblockCircle` count into the nav grid's `dyn` layer, which
 `isWalkable`, `findPath` and `Unit.tryStep` all read. Rift Wall is the one ability that uses it

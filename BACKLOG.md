@@ -121,12 +121,14 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **the first increment of
-rank 28, Throneshard's fifteenth hero** (#941, 2026-10-10; committed locally on
+**The last batch of ranked work that shipped** is **the second increment of
+rank 28, Throneshard's sixteenth hero** (#943, 2026-10-10; committed locally on
 huginn for the landing, so its PR number is the landing's): a 2+ row naming
-Fable 5.1, run under Opus 5.5. Ormund the Tollkeeper, a melee guardian on the
-spare model `rift_stalker`, is in the game whole; the row stays for the second
-hero, on `bone_shaman`. Nobody has seen him on a real graphics card. Before it
+Fable 5.1, run under Opus 5.5, and with it the row is finished and gone.
+Tobren the Lotcaster, a ranged support on the spare model `bone_shaman` whose
+four abilities work through his allies, is in the game whole. The first
+increment the same day was Ormund the Tollkeeper, a melee guardian on
+`rift_stalker` (#941). Nobody has seen either on a real graphics card. Before it
 the same day came **rank 27, Throneshard's Rift Wall** (#938): the slabs block
 walking for every unit from the tick each breaks ground to the tick it starts
 to crumble, 2.88 to 3.26 s a slab. Before that came **rank 26, SkyWings 64's
@@ -168,11 +170,11 @@ all 14 dioramas. **Blender runs on Devon's machines only, headless
 every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** Ranks 1 to 14, 24, 26 and 27 shipped and their rows are gone;
+**Nothing is claimed.** Ranks 1 to 14, 24 and 26 to 28 shipped and their rows are gone;
 the others keep their numbers until the next renumbering. **Ranks 25 to 32
 are new on 2026-10-07** (Devon, 2026-10-01: rank the work the "next ranked
 rows" loop could not see): Signal City's second pack (25), SkyWings 64's
-draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32; 27, Rift Wall, shipped on 2026-10-10, #938). They are
+draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32; 27, Rift Wall, shipped on 2026-10-10, #938, and 28, the two new heroes, the same day, #941 and #943). They are
 appended in the order Devon named the projects and not placed among the older
 rows, because re-ranking the list is not a session's call; inside Throneshard
 the two Devon has answered come first, then the two with a measured number,
@@ -864,11 +866,11 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Three rows are 2+: rank 22 (The Fracture Cycle's fourth prong), rank 25
-(Signal City's second pack) and rank 28 (Throneshard's second new hero; the first shipped on 2026-10-10, #941).** The
-fifteen rows left (15 to 23, 25 and 28 to 32, recounted off the table on
+**Two rows are 2+: rank 22 (The Fracture Cycle's fourth prong) and rank 25
+(Signal City's second pack).** The
+fourteen rows left (15 to 23, 25 and 29 to 32, recounted off the table on
 2026-10-10) are nine that want hardware nothing here has (15 to 21, 23 and
-32) and six a container can take (22, 25 and 28 to 31), none of them waiting
+32) and five a container can take (22, 25 and 29 to 31), none of them waiting
 on a yes any more: Devon approved the fourth prong on 2026-10-01 and
 answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
@@ -880,12 +882,13 @@ same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
 the question it waited on is Devon's. Aphelion's touch/gamepad row left the
 same way the same day, for Q40 (#629).
 
-**The model split is 7 Opus 5, 5 Fable 5.1, 4 Sonnet 5.** Counted
+**The model split is 6 Opus 5, 4 Fable 5.1, 4 Sonnet 5.** Counted
 off the table rather than decremented, which is how the 15/14/9 drift was
-caught: 7 + 5 + 4 is 16, and the table has 16 rows. By size it is 7 ¼,
-6 ½, none of the 1 and 3 of the 2+, the same 16 (recounted 2026-10-07, after
-ranks 25 to 32 went in and 24 and 26 shipped). By gate it is 3 `GPU`, 3 `phone`,
-1 `GPU, phone`, 2 `ears` and 7 with none; no row names Opus 5.5 or reads
+caught: 6 + 4 + 4 is 14, and the table has 14 rows. By size it is 7 ¼,
+5 ½, none of the 1 and 2 of the 2+, the same 14 (recounted 2026-10-10, after
+ranks 27 and 28 shipped; the 16 this line read until then had not been taken
+down for rank 27). By gate it is 3 `GPU`, 3 `phone`,
+1 `GPU, phone`, 2 `ears` and 5 with none; no row names Opus 5.5 or reads
 `blender` now that the Blender block is empty.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
@@ -1055,7 +1058,6 @@ and #222 was closed unmerged an hour of suites later.
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 28 | One new hero from the spare model `bone_shaman`: four abilities, talents, a scepter upgrade, an item build, voice fallback and effects, under an original name the session picks (Devon, 2026-10-05: go). The first of the two, Ormund on `rift_stalker`, shipped on 2026-10-10 (#941); the section below says what the second needs | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
 | 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
@@ -2561,60 +2563,19 @@ frame's draw calls to `test/draws.json`).
 ## Throneshard
 
 A 3D lane battler Devon had built outside this repo and asked to move in on
-2026-09-30 under a name of its own (#738): fifteen heroes, three lanes, bots
+2026-09-30 under a name of its own (#738): sixteen heroes, three lanes, bots
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
-Its suites are `node test/data.mjs` (1,100 checks, 38 of them `test/wall.mjs`'s
-and 69 `test/ormund.mjs`'s) and `node test/browser.mjs` (27) from the project
-folder, in Site CI's matrix.
+Its suites are `node test/data.mjs` (1,211 checks, 38 of them `test/wall.mjs`'s,
+69 `test/ormund.mjs`'s and 63 `test/tobren.mjs`'s) and `node test/browser.mjs`
+(33) from the project folder, in Site CI's matrix.
 Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
 Settings; `HISTORY.md` #749 to #755). Rift Wall got its gameplay wall on
-2026-10-10 (#938, old rank 27), and the fifteenth hero, Ormund the Tollkeeper
-on the spare model `rift_stalker`, went in the same day (#941, the first half
-of rank 28). Open, and **ranked 28 to 32** in the order the table gives, not
-this list's:
+2026-10-10 (#938, old rank 27), and the two new heroes went in the same day
+(old rank 28): Ormund the Tollkeeper on the spare model `rift_stalker` (#941)
+and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
+32** in the order the table gives, not this list's:
 
-- One more new hero, from the spare model `bone_shaman`: four abilities,
-  talents, a scepter upgrade, an item build, voice fallback and effects, with an
-  original name and kit. Not started. Devon, 2026-10-05: go, with no naming
-  preference, so the session picks the name. Rank 28. What Ormund's session
-  learned that this one needs:
-  - The model's clips are the caster set (`Idle_Loop`, `Jog_Fwd_Loop`,
-    `Death01`, `SpellShot` to attack, `OverhandThrow` to cast) and it carries a
-    skull-topped staff, a mask and a green foot aura, so the hero is ranged.
-    Its attack projectile needs a `projectileKind` an existing hero has
-    (`vashkar`, say), as Liora borrows Vesna's.
-  - The Blender recipe (`tools/blender/characters/defs_units.py`) shows the
-    model was drawn after one commercial game's masked healer and curser, so
-    the kit must have none of that hero's four: no bouncing stun, no toggled
-    heal aura with upkeep, no curse that bursts for the damage taken under it,
-    no channelled turret. #941 says how Ormund's kit was kept clear of the
-    hero `rift_stalker` was drawn after; do the same, by mechanism, without
-    writing those games' names.
-  - A hero needs no model file of its own: set `model: 'bone_shaman'` in
-    `HeroDefs.js` and add no `CHARACTERS` entry under the new id.
-    `test/data.mjs` resolves the file the way `ModelFactory._heroOwn` does.
-  - Every ability value is printed in the tooltip under its key's name, so a
-    new key needs a line in `VALUE_LABELS` (`src/ui/Tooltip.js`), a key ending
-    `Pct` to print as a percent, and `jumpTime` or another `SKIP_VALUES` key to
-    stay out.
-  - Bots use an ability only through its `hint`, and try slots in the order R,
-    Q, W, E, casting the first that fits, so a situational spell behind a
-    spammable one is starved: Stand Surety was cast once in 32 minutes from the
-    second slot and 5 to 27 times a match from the first. `allyBelow` on an
-    ally-target hint sets the health share it waits for (0.9 for his).
-  - `test/ormund.mjs` is the pattern for the pure-Node checks (the game's own
-    `Hero`, `AbilitySystem` and `Talents` on an open map), and
-    `test/browser.mjs` names the player's hero in one constant, `HERO`, with
-    the checks on his casts reading `start.abilities` by slot. The seed fixes
-    the draft and not the match there (#941's log entry), so ask for one cast
-    or more, never a figure. Eight seeded matches fit in one browser in about
-    six minutes as eight pages at once, and those do repeat.
-  - Not updated, because they are outside the project folder or need a GPU:
-    the board card in `index.html` ("Pick one of fourteen") and the root
-    `README.md` ("fourteen heroes") still say fourteen, and
-    `tools/scripts/vfx_capture.mjs` lists fourteen heroes and has no mode for
-    a spell cast on another ally.
 - Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
   17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
 - Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
@@ -2623,6 +2584,9 @@ this list's:
   shadow map was judged from a frame sequence, not a recording (#753); both
   want one look on real hardware.
 - Piercing Gale's spiral and the rune auras read faint from the game camera.
+  The capture tool for this, `tools/scripts/vfx_capture.mjs`, lists fourteen
+  heroes and has no mode for a spell cast on another ally, so Ormund's Stand
+  Surety and Tobren's Twice Told cannot be captured until it has one.
 
 ## Tools/board-check
 

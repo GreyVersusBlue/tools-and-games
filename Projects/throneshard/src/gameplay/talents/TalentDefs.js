@@ -101,6 +101,12 @@ export const TALENT_DEFS = {
     20: T({ name: '+0.75s Confiscate Duration', ability: 'ormund_confiscate', values: { duration: 0.75 } }, { name: '-4s Stand Surety Cooldown', ability: 'ormund_stand_surety', cooldown: 4 }),
     25: T({ name: '+150 Called to Account Cap', ability: 'ormund_called_to_account', values: { cap: 150 } }, { name: '+10% Stand Surety Share', ability: 'ormund_stand_surety', values: { sharePct: 0.1 } }),
   },
+  tobren: {
+    10: T({ name: '+60 Beat the Brush Damage', ability: 'tobren_beat_the_brush', values: { damage: 60 } }, { name: '+1.5 Mana Regen', bonus: { manaRegen: 1.5 } }),
+    15: T({ name: '+2s Twice Told Duration', ability: 'tobren_twice_told', values: { duration: 2 } }, { name: '+100 Attack Range', bonus: { attackRange: du(100) } }),
+    20: T({ name: '-4s Beat the Brush Cooldown', ability: 'tobren_beat_the_brush', cooldown: 4 }, { name: '+4% Good Counsel Cooldown Cut', ability: 'tobren_good_counsel', values: { cdrPct: 0.04 } }),
+    25: T({ name: '+15% Twice Told Second Strike', ability: 'tobren_twice_told', values: { echoPct: 0.15 } }, { name: '-25s Throw Again Cooldown', ability: 'tobren_throw_again', cooldown: 25 }),
+  },
 };
 
 // Generic fallback tree for heroes without a hand-written one (e.g. new heroes before their tree exists).
