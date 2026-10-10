@@ -284,11 +284,12 @@ wrong, and the handoff that names it is cited.
 - ~~**Does Hearth get a CI workflow?**~~ Answered by Phase 8 (#83):
   `hearth-ci.yml`, a PR gate of `determinism` + `save` + a twelve-day `soak` +
   `pinned`, and a nightly matrix of the other fifteen modes.
-- **Does the name-recycling quirk stay a feature?** Songs live on names
-  (`songs[].kn` is a list of strings) and the ancestor-naming rule can hand a
-  newborn a dead knower's name, so that child "knows" every song the ancestor
-  knew and can resurrect a lost one. Rare; reads as poetry; fixing it means
-  packing knower identity beyond names. Keep, or pay for identity?
+- ~~**Does the name-recycling quirk stay a feature?**~~ **Answered by Devon,
+  2026-10-05: "keep it".** Songs live on names (`songs[].kn` is a list of
+  strings) and the ancestor-naming rule can hand a newborn a dead knower's
+  name, so that child "knows" every song the ancestor knew and can resurrect a
+  lost one. Rare; reads as poetry; fixing it would mean packing knower
+  identity beyond names, which is not wanted.
 - ~~**Does the population cap overshoot actually grate?**~~ Answered by
   Phase 7 (#82): kept, and named `BIRTH_OVER` with the reason beside it. A
   boat has to find a bed; a baby is born into its parents' house.

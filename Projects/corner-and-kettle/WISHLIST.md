@@ -238,7 +238,8 @@ every order in the game instead of only hand-built ones. Phase 3 below builds
 the cue and is written so it can be swapped for the hard gate in one commit if
 that is the answer instead.
 
-**Difficulty presets, asked 2026-10-07 (TG-29), not answered.** The later-arc
+**Difficulty presets, asked 2026-10-07 (TG-29); Devon answered all four the
+same evening and they are buildable, not built (words after each question).** The later-arc
 line wants "the Morning Rush without the reputation stakes" and says
 `spawnFactor()` and `patienceFactor()` are the only two dials that matter.
 Those two move how fast the door opens and how long a customer waits; neither
@@ -246,15 +247,17 @@ is reputation. Nothing was built, because each of these changes what the game
 is:
 
 1. How many presets, and what are they called? Two (today's game and a gentler
-   one), or three with a harder one?
+   one), or three with a harder one? **Devon: "two".** The names were not
+   given.
 2. Does a gentler preset touch reputation at all (a walk-out or a wrong cup
    costing less, or nothing), or only the two dials? The line's own words ask
-   for the first and name the second.
+   for the first and name the second. **Devon: "door and patience".**
 3. Does a preset change pay, tips or the beans a reopening earns? If it does
    not, the gentler shop is simply the richer one, and the loop sweep's bands
-   stop describing it.
+   stop describing it. **Devon: "no, as you suggest".**
 4. Is it chosen once per shop (at New Game and at a reopening) or switchable
    mid-run from the Menu Board? Mid-run makes it a pause button for the rush.
+   **Devon: "mid run changeable".**
 
 What is settled without him: the default is exactly today's game, the choice
 would be one field in the save through `repair` with an old save loading as

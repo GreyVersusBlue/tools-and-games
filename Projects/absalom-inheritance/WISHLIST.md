@@ -200,15 +200,18 @@ node Projects/absalom-inheritance/test/balance.mjs 400 --verbose   (a fast spot 
   Devon, locked #350 (2026-09-13): **published.** Any project may read it.
   `content/vault.json`'s three hand-written stat blocks and seven commands can
   come from there instead; the contract is `Pathfinder/data/README.md`.
-- **Is the 53.6% / 79.8% split between builds the design, or a tuning debt?**
-  Round three called the asymmetry deliberate. If the two builds are meant to be
-  comparable challenges, `balance.mjs` needs a band per build rather than one
-  shared 45–90% window; if they are an easy mode and a hard mode, the picker
-  should say so, since a player choosing Kessa Vane cannot tell.
-- **Does the adventure grow, or does the engine deepen?** Twelve to twenty
-  minutes, three rooms, five fights, one of them optional. Arc one deepened the
-  engine on the rooms that existed; arc two spends the same effort on more
-  rooms. The order is a taste question, not a technical one.
+- ~~**Is the 53.6% / 79.8% split between builds the design, or a tuning
+  debt?**~~ **Answered by Devon, 2026-10-05: "it is the design".** The
+  Selector recorded the consequence as: the picker should say which build is
+  the easier and which the harder; nothing here has built that. Round three
+  called the asymmetry deliberate. The two ways it could have gone: a band per
+  build in `balance.mjs`, or an easy mode and a hard mode the picker names,
+  since a player choosing Kessa Vane cannot tell.
+- ~~**Does the adventure grow, or does the engine deepen?**~~ **Answered by
+  Devon, 2026-10-05: "deepen the engine".** Twelve to twenty minutes, three
+  rooms, five fights, one of them optional. Arc one deepened the engine on the
+  rooms that existed; arc two was to spend the same effort on more rooms, and
+  he chose the first.
 
 ## The standing backlog
 
@@ -216,7 +219,9 @@ Everything here is open and unclaimed. Add to this list rather than starting a
 new one.
 
 **The turn loop**
-- Reactions exist and there are two of them. What there is not: **Delay, Ready,
+- Reactions exist and there are two of them. **Devon, 2026-10-07, asked whether
+  to ask before using a reaction and add Delay and Ready: "automatic".**
+  Reactions stay automatic. What there is not: **Delay, Ready,
   or declining a reaction.** Every reaction fires automatically, which is right
   for the two that ship (Shield Block's disc lapses at the start of your next
   turn either way, so declining only wastes it) and wrong for the first one that
@@ -239,7 +244,8 @@ new one.
 
 **Rules and conditions**
 - Conditions exist and there are eight, through two funnels (Phase 2). What
-  there is not: **no dying/wounded, and no flanking, cover or concealment**. The
+  there is not: **no dying/wounded, and no flanking, cover or concealment**
+  (**Devon, 2026-10-07, asked whether enemies should flank: "no flanking"**). The
   grid answers two yes-or-no questions now (`hasLoS` and `hasLoE`, Phase 3) and
   neither of them is a degree, so there is still nowhere for a circumstance
   modifier from the *board* to come from — which is the half of the same-type
@@ -283,7 +289,8 @@ new one.
   cost is now the same question as what a new command kind costs**, and after
   Phase 7 the Cleric's answer was "nothing" — a statline, four command ids and
   a `startingInventory`. No shops, no levelling, no XP, no downtime —
-  deliberately. **Nothing targets an ally, because there are none**: `sideOf()`
+  deliberately (**Devon, 2026-10-07, asked whether the heir ever gains XP or
+  levels: "no"**). **Nothing targets an ally, because there are none**: `sideOf()`
   answers `"pc"` or `"foe"` and a party is a different game (#177).
 - **A `buff` still only targets the heir and a `debuff` only a creature.**
   Neither takes an area, so there is no "everything in the cone is off-guard";
