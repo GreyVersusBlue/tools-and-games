@@ -111,8 +111,8 @@ is the converter's, and spell text is the Archive's.
 ## Special abilities: what is rewritten in 2e form
 
 `js/abilities.js` rewrites a special ability when one of its rules reads the
-ability's whole construction, and leaves it alone otherwise (HISTORY #894, and
-#899 for the second set of rules). An
+ability's whole construction, and leaves it alone otherwise (HISTORY #894,
+#899 for the second set of rules and #937 for the third). An
 ability left alone keeps the text it had before the rules existed, PF1e
 sentences with DCs and action costs converted, and wears a **PF1e wording**
 mark on the page, `[PF1e wording]` in the copied text, and a line in the
@@ -120,22 +120,23 @@ Foundry file's private notes. Nothing is rewritten on a guess.
 
 `data/ability-patterns.md` is the measurement, written by
 `node Pathfinder/converter-assets/measure-abilities.mjs` over the 57 stat
-blocks in `Pathfinder/tests/fixtures/pf1`. On 2026-10-06, of 111 abilities:
+blocks in `Pathfinder/tests/fixtures/pf1`. On 2026-10-10, of 111 abilities:
 
 | How the text was written | Abilities | Share |
 | --- | ---: | ---: |
-| By a rule | 33 | 30% |
+| By a rule | 37 | 33% |
 | The converter's wording for a universal ability (`UMR_TEXT`), with nothing left over | 6 | 5% |
-| PF1e wording, marked | 65 | 59% |
+| PF1e wording, marked | 61 | 55% |
 | A bare name, no text in the stat block | 7 | 6% |
 
 Before the rules it was 1, 6, 97 and 7: the one was the red dragon's breath,
 and the hell hound's breath read "6d4 rounds damage". After the first set of
-rules (2026-10-05) it was 22, 6, 76 and 7.
+rules (2026-10-05) it was 22, 6, 76 and 7, and after the second (2026-10-06)
+33, 6, 65 and 7.
 
 The 57 fixtures are every PF1e stat block in the repo. The converter ships
 spell data and PF2e tables and no creatures of its own, so there is no wider
-set to measure against, and 30% is a share of these 57 and nothing else. The
+set to measure against, and 33% is a share of these 57 and nothing else. The
 second set of rules was picked to offset that: six of its seven read a
 construction PF1e writes on the stat line in one fixed form for every creature
 that has it, and the made-up blocks in the suite are not fixtures.
@@ -158,6 +159,9 @@ The rules, and what each one reads:
 | paralysis | `paralysis (1d4+1 rounds, DC 13)`, and a third clause with no figure in it | The incapacitation trait, a Fortitude save or paralyzed for that long, the clause as a sentence | 1 |
 | pull | `pull (tongue, 5 feet)`, `push (arm, 10 feet)` | One action after a hit with the Strike named, the distance | 1 |
 | rake | `rake (2 claws +7, 1d4+3)`, talons the same | One action on a grabbed creature, that many Strikes, the attack bonus and the damage | 1 |
+| death-burst | `When killed, a balor explodes in a blinding flash of fire that deals 100 points of damage (half fire, half unholy damage) to anything within 100 feet (Reflex DC 33 halves).` The amount may be dice, the type may be written once (`6d8 points of cold damage`) | No action, the damage type as a trait and `holy` or `unholy` beside it, the level's limited-use area damage in an emanation of that radius, a basic save | 2 |
+| whirlwind | `whirlwind (1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 17)` | Two actions, the air trait, a Frequency, the height, a length in rounds, damage with a basic Reflex save once a round, smaller creatures picked up | 1 |
+| energy-drain | `energy drain (2 levels, DC 22)`, one level the same | Drain Life: temporary Hit Points, a Fortitude save or drained 1 or 2, a cap of drained 4 | 1 |
 
 Where the numbers come from:
 
@@ -187,6 +191,25 @@ Where the numbers come from:
   range, an onset, a duration, an area, a use limit, a size. A PF1e paralysis
   of 1d4+1 rounds is long for PF2e; the rule keeps it and adds the
   incapacitation trait, and does not shorten it.
+- **A burst on death** deals the limited-use area damage for the level, the
+  figure the breath rule uses, in d6s unless PF1e wrote dice of another size.
+  PF1e's own amount is not carried: the balor's flat 100 points come out as
+  21d6 (average 74; the printed PF2e balor deals 16d10, average 88). PF2e has
+  no holy or unholy damage, so "half fire, half unholy" is all fire with the
+  unholy trait.
+- **A whirlwind's damage** is the converted damage of the Strike PF1e wrote
+  the same dice for (the djinni's slam), or scaled like constrict's. Its
+  **length in rounds** is not on the stat line: it is half the block's Hit
+  Dice, rounded down, which is PF1e's universal whirlwind rule (Bestiary
+  pg. 306, read on aonprd.com 2026-10-10). The same rule is where "a creature
+  smaller than the monster" comes from. PF1e asks for one Reflex save against
+  the damage and a second against being picked up; here it is one basic save.
+- **Drain Life's temporary Hit Points** are the creature's level, which is
+  what every printed Drain Life in `Pathfinder/data/npcs` gives (PF1e gave 5
+  a level drained). **Its DC** is PF1e's rescaled, and it moves: PF1e's is the
+  save a day later to shed the level, PF2e's is the save when the Strike
+  lands. A negative level is drained 1, two are drained 2, and the cap of
+  drained 4 is the printed ability's.
 - "The save DC is Constitution-based." is dropped from a rewritten ability.
   Any other sentence after the construction is kept as it was.
 
@@ -195,41 +218,46 @@ breath, a poison whose effect is a condition outside the five (dazed,
 staggered), a stat line in the middle of a paragraph (the iron golem's breath), a
 gaze whose effect is not petrification, a rend or a pull that names a Strike
 the creature does not have, a per-day limit with anything beside it but a DC
-(`+1, 6/day`), a limit that is not per day (`at will`, `1/10 minutes`), a limit
+(`+1, 6/day`), a limit that is not per day (`at will`), a limit
 on a universal ability, which keeps its own text, a rake with no attack bonus,
-a channel whose dice are not d6, and a parenthesis the stat block cut off.
+a channel whose dice are not d6, a parenthesis the stat block cut off, a burst
+on death with no damage type, with two energies, with a save that negates or
+with a sentence before it, a whirlwind missing its limit, its height or its
+DC, or on a creature with fewer than 2 Hit Dice, and an energy drain of three
+levels or more, or written as a paragraph (the succubus's kiss).
 
-**The save inside a sentence was looked at and not taken.** "must succeed on a
+**The save inside a sentence stays PF1e wording. Devon decided it on
+2026-10-07: "no, keep the 1e wording".** "must succeed on a
 DC N save or be [condition] for [duration]" is in five abilities (the
 gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus, Paralytic
 Tentacles), and in every one it sits between sentences no rule reads: what the
 slime is, when the nimbus bursts, what the tentacles do next. A rule that
-rewrote the one sentence would take the PF1e mark off the rest. It needs a
-fourth kind of wording first (part by rule, part PF1e, marked as such), which
-is a call for the page, the copied text and the Foundry notes together.
+rewrote the one sentence would take the PF1e mark off the rest, and there is
+no fourth kind of wording (part by rule, part PF1e) and will not be one. These
+five are not a next rule.
 
-What is still PF1e wording, by how often it turns up in the 65 (an ability
-with two is counted twice): a save DC inside a sentence, 25; damage dice, 17;
-a use limit, 11; an action cost, 10; a radius or an area, 8; a parenthesis
-with no rule ("PF1e: DC 29."), 6; a condition with a duration, 5. 27 hold none
+What is still PF1e wording, by how often it turns up in the 61 (an ability
+with two is counted twice): a save DC inside a sentence, 21; damage dice, 16;
+a use limit, 10; an action cost, 10; a radius or an area, 6; a parenthesis
+with no rule ("PF1e: DC 29."), 5; a condition with a duration, 5. 27 hold none
 of these and are prose a rule cannot read (the balor's Whip Mastery, the
-doppelganger's Mimicry). What a next rule could take whole, one or two
-fixtures each: the burst that "deals N damage to anything within N feet
-(Reflex DC N halves)" (the balor's Death Throes, in both layouts);
+doppelganger's Mimicry). The third set of rules (2026-10-10) took the three
+kinds that could be read whole: the burst on death, the whirlwind and the
+energy drain. One is left that a rule could read whole and does not:
 `swallow whole (1d4 bludgeoning damage, AC 10, 1 hp)`, which needs a Rupture
-figure the tables do not have; `whirlwind (1/10 minutes, 10-50 ft. tall,
-1d8+4 damage, DC 17)`; `energy drain (2 levels, DC 22)`. A name with only a
-DC (`dominate (DC 22)`) has no effect to write.
+figure the tables do not have. A name with only a DC (`dominate (DC 22)`) has
+no effect to write.
 
-`Pathfinder/tests/converter-abilities.test.mjs` holds all of it, 192 checks:
-32 real abilities to the letter, the DCs against the table, 29 made-up blocks
-one step away from a rule and 25 more a rule must read to the letter, and a
+`Pathfinder/tests/converter-abilities.test.mjs` holds all of it, 234 checks:
+36 real abilities to the letter, the DCs against the table, 42 made-up blocks
+one step away from a rule and 28 more a rule must read to the letter, and a
 hash of everything no rule wrote, taken from the converter as it stood before
 the rules. That hash still covers 98 entries: the 89 of the 111 that no rule
 wrote on 2026-10-05, and the 9 the count leaves out (seven Reactive Strikes,
 the troll's regeneration, the vampire's fast healing). The second set of
-rules took 11 of the 98. The suite writes those 11 back in as they stood and
-asks for the same hash, so the 87 left are held to the same bytes.
+rules took 11 of the 98 and the third took 4. The suite writes those 15 back
+in as they stood and asks for the same hash, so the 83 left are held to the
+same bytes.
 
 ## The rest of the folder
 
