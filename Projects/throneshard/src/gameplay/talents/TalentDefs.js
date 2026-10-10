@@ -95,6 +95,12 @@ export const TALENT_DEFS = {
     20: T({ name: '-4s Tether Shot Cooldown', ability: 'liora_tether_shot', cooldown: 4 }, { name: '+100 Attack Range', bonus: { attackRange: du(100) } }),
     25: T({ name: '-15% Arrow Storm Damage Reduction', ability: 'liora_arrow_storm', values: { damageReduction: -0.15 } }, { name: '-15s Arrow Storm Cooldown', ability: 'liora_arrow_storm', cooldown: 15 }),
   },
+  ormund: {
+    10: T({ name: '+60 Confiscate Damage', ability: 'ormund_confiscate', values: { damage: 60 } }, { name: '+250 Health', bonus: { maxHp: 250 } }),
+    15: T({ name: '+8% No Free Passage Slow', ability: 'ormund_no_free_passage', values: { slow: 0.08 } }, { name: '+6 Armor', bonus: { armor: 6 } }),
+    20: T({ name: '+0.75s Confiscate Duration', ability: 'ormund_confiscate', values: { duration: 0.75 } }, { name: '-4s Stand Surety Cooldown', ability: 'ormund_stand_surety', cooldown: 4 }),
+    25: T({ name: '+150 Called to Account Cap', ability: 'ormund_called_to_account', values: { cap: 150 } }, { name: '+10% Stand Surety Share', ability: 'ormund_stand_surety', values: { sharePct: 0.1 } }),
+  },
 };
 
 // Generic fallback tree for heroes without a hand-written one (e.g. new heroes before their tree exists).

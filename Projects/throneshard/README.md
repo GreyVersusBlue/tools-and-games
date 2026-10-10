@@ -1,8 +1,8 @@
 # Throneshard
 
-Two thrones, three lanes, 14 heroes. A 5v5 MOBA against bots in three.js: Sunward vs Duskward, towers, barracks and
+Two thrones, three lanes, 15 heroes. A 5v5 MOBA against bots in three.js: Sunward vs Duskward, towers, barracks and
 a Throneshard crystal at the heart of each base, creep waves, neutral camps, Grimmaw and the Lantern of Second Dawn,
-14 heroes with 4 abilities each, items with recipes/shop/courier, fog of war, day/night and a full HUD.
+15 heroes with 4 abilities each, items with recipes/shop/courier, fog of war, day/night and a full HUD.
 
 ## Play
 No build step: serve the repo root statically (for example `python3 -m http.server`) and open

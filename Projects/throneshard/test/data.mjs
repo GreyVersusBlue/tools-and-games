@@ -35,6 +35,7 @@ const { ABILITY_DEFS } = await load('src/gameplay/abilities/AbilitySystem.js');
 const { TALENT_DEFS, TALENT_TIERS } = await load('src/gameplay/talents/TalentDefs.js');
 const { ITEM_DEFS } = await load('src/gameplay/items/ItemDefs.js');
 const { RECOMMENDED } = await load('src/gameplay/items/ItemBuilds.js');
+const { CHARACTERS } = await load('src/models/configs.js');
 
 let checks = 0, failures = 0;
 function ok(cond, label, detail = '') {
@@ -46,7 +47,7 @@ function ok(cond, label, detail = '') {
 
 const heroes = Object.values(HERO_DEFS);
 console.log(`heroes: ${heroes.length}`);
-ok(heroes.length === 14, 'fourteen heroes', `got ${heroes.length}`);
+ok(heroes.length === 15, 'fifteen heroes', `got ${heroes.length}`);
 
 const usedAbilities = new Set();
 for (const h of heroes) {
@@ -79,10 +80,12 @@ for (const h of heroes) {
     for (const item of build?.[phase] ?? []) ok(!!ITEM_DEFS[item], `${h.id} build ${phase}: item ${item} exists`);
   }
 
-  const glb = path.join(ROOT, 'assets/models/chars', `${h.id}.glb`);
+  // A hero wears the rig under its own id when there is one, else the model its def names (ModelFactory._heroOwn).
+  const kind = CHARACTERS[h.id] ? h.id : h.model;
+  const glb = path.join(ROOT, 'assets/models/chars', `${CHARACTERS[kind]?.rig}.glb`);
   ok(fs.existsSync(glb), `${h.id}: model file exists`, path.relative(ROOT, glb));
 }
-ok(usedAbilities.size === 56, 'fifty-six distinct hero abilities', `got ${usedAbilities.size}`);
+ok(usedAbilities.size === 60, 'sixty distinct hero abilities', `got ${usedAbilities.size}`);
 
 const items = Object.values(ITEM_DEFS);
 console.log(`items: ${items.length}`);
@@ -140,6 +143,10 @@ for (const e of heard) ok(emitted.has(e), `event ${e} is emitted somewhere`);
 // Rift Wall's gameplay wall: its lifetime, the push-out, and seeded walks through and round it (wall.mjs).
 const { wallChecks } = await import('./wall.mjs');
 await wallChecks({ ok, load });
+
+// Ormund's four abilities against the game's own heroes, units and ability system (ormund.mjs).
+const { ormundChecks } = await import('./ormund.mjs');
+await ormundChecks({ ok, load });
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
 process.exit(failures ? 1 : 0);

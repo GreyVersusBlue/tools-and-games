@@ -72,6 +72,7 @@ const VALUE_LABELS = {
   threshold: 'Kill Threshold', jumps: 'Bounces', bounces: 'Bounces', targets: 'Max Targets', waves: 'Waves', arrows: 'Arrows',
   slashes: 'Slashes', attacks: 'Attacks', maxStacks: 'Max Stacks', drain: 'Health Drain per Second', creepDuration: 'Creep Duration',
   speedDuration: 'Speed Duration', agiPct: 'Agility Bonus', speedPerTarget: 'Speed per Target', selfMult: 'Self Multiplier',
+  sharePct: 'Damage Taken for the Ally', floorPct: 'Health Floor', returnPct: 'Ledger Returned', cap: 'Ledger Damage Cap', window: 'Ledger Seconds',
 };
 const SKIP_VALUES = new Set(['angle', 'jumpDelay', 'bounceDelay', 'jumpTime', 'tick', 'airTime', 'cooldown', 'rangeMult', 'strMult', 'pull']);
 const TIME_KEYS = /^(duration|stun|delay|interval|silence|slowDuration|creepDuration|speedDuration)$/;

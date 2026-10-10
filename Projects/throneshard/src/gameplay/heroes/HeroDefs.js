@@ -128,6 +128,15 @@ export const HERO_DEFS = {
     abilities: ['liora_tether_shot', 'liora_piercing_gale', 'liora_tailwind', 'liora_arrow_storm'],
     lore: "Liora was found as a baby in the eye of a storm and raised by the wind that left her there. She moves like a squall and never wastes an arrow.",
   }),
+  // Wears the spare model rift_stalker (src/models/configs.js); there is no ormund.glb.
+  ormund: hero({
+    id: 'ormund', name: 'Ormund', title: 'the Tollkeeper', primary: 'str', icon: '🗝️', color: '#7a5aa8', model: 'rift_stalker',
+    attackType: 'melee', roles: ['Guardian', 'Durable', 'Disabler'],
+    str: 24, agi: 14, int: 18, strGain: 3.1, agiGain: 1.5, intGain: 1.8,
+    baseArmor: 1, baseDamage: [28, 34], moveSpeed: 300, attackRange: 150, bat: 1.7, attackPoint: 0.4, baseHpRegen: 1.5,
+    abilities: ['ormund_stand_surety', 'ormund_confiscate', 'ormund_no_free_passage', 'ormund_called_to_account'],
+    lore: "Ormund keeps the gate where the rift meets the road and takes a toll from everything that crosses it. He writes every blow he is owed in a ledger, and he has never let a debt go.",
+  }),
 };
 
 export const HERO_IDS = Object.keys(HERO_DEFS);

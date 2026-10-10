@@ -141,6 +141,7 @@ const HERO_AUDIO = {
   sera: { voice: 'fem2', attack: 'atk_fire' },
   vesna: { voice: 'fem3', attack: 'bow' },
   sable: { voice: 'fem2', castCat: 'grunt', attack: 'atk_dagger', rate: 1.1 },
+  ormund: { voice: 'male3', attack: 'atk_heavy', rate: 0.88 },
 };
 const MALE_FALLBACK = ['male0', 'male1', 'male2', 'male3', 'orc'];
 const FEMALE_FALLBACK = ['fem1', 'fem2', 'fem3'];
