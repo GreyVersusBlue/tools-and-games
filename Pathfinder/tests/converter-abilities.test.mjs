@@ -96,6 +96,11 @@ const EXPECT = [
   ["npc-battle-mage", "Hand Of The Apprentice", "limit", "", "", null, "Frequency 6 times per day."],
   ["npc-war-priest", "Channel Negative Energy", "channel", "2", "void", 11, "Frequency 3 times per day. Effect Each living creature within 30 feet takes 1d6-1 void damage (DC 15 basic Will save). The monster can instead restore that many Hit Points to each undead creature there."],
   ["npc-war-priest-wrapped", "Channel Negative Energy", "channel", "2", "void", 11, "Frequency 3 times per day. Effect Each living creature within 30 feet takes 1d6-1 void damage (DC 15 basic Will save). The monster can instead restore that many Hit Points to each undead creature there."],
+  // The third increment's rules (HISTORY #937).
+  ["balor", "Death Throes", "death-burst", "", "fire,unholy", 33, "When the monster dies, it explodes, dealing 21d6 fire damage to each creature and object in a 100-foot emanation (DC 47 basic Reflex save)."],
+  ["balor-collapsed", "Death Throes", "death-burst", "", "fire,unholy", 33, "When the monster dies, it explodes, dealing 21d6 fire damage to each creature and object in a 100-foot emanation (DC 47 basic Reflex save)."],
+  ["djinni", "Whirlwind", "whirlwind", "2", "air", 17, "Frequency once per 10 minutes. Effect The monster becomes a whirlwind 10 to 50 feet tall for 3 rounds or until it Dismisses the effect. In this form it can't make Strikes and can move through other creatures' spaces. Each creature whose space it enters takes 1d8+8 bludgeoning damage (DC 24 basic Reflex save); a creature takes this damage only once per round. A creature smaller than the monster that fails the save is also picked up and moves with the whirlwind, and it can spend an action to attempt the save again and get free."],
+  ["vampire", "Drain Life", "energy-drain", "", "", 22, "When the monster damages a living creature with a Strike that lists Drain Life, the monster gains 9 temporary Hit Points and the creature must succeed at a DC 32 Fortitude save or become drained 2. Further damage from such a Strike increases the drained value by 2 on a failed save, to a maximum of drained 4."],
 ];
 for (const [fx, name, rule, actions, traits, , text] of EXPECT) {
   const a = find(CREATURES[fx], name);
@@ -174,6 +179,28 @@ for (const [fx, name] of [['choker', 'Constrict'], ['chuul', 'Constrict'], ['mim
     'lich: Grave Touch (9/day) writes the limit and no DC; Power Over Undead (9/day, DC 18) writes the table\'s', `${gt.text} | ${pu.text}`);
 }
 {
+  // The third increment (HISTORY #937). A burst on death deals the level's
+  // limited-use area damage, whatever PF1e's flat figure was.
+  const b = CREATURES.balor, dt = find(b, 'Death Throes'), b15 = find(convert('balor', { level: 15 }), 'Death Throes');
+  const lim = (lv, die) => C.diceOnly(T.PF2_AREA_DAMAGE[lv].limited.avg, die);
+  ok(dt.numbers?.damage === lim(b.level.value, 6) && dt.text.includes(`dealing ${lim(b.level.value, 6)} fire damage`) && !/\b100 points\b|unholy damage/.test(dt.text)
+    && b15.numbers?.damage === lim(15, 6) && b15.numbers.damage !== dt.numbers.damage && b15.numbers.dc < dt.numbers.dc,
+    `balor: Death Throes deals the limited-use area damage for its level (${lim(b.level.value, 6)}), not PF1e's 100 points, and it and the DC move with the level`, `${dt.numbers?.damage} DC ${dt.numbers?.dc}; at 15: ${b15.numbers?.damage} DC ${b15.numbers?.dc}`);
+  // The whirlwind's damage is the slam's, which PF1e wrote the same dice for;
+  // its rounds are half the fixture's own Hit Dice.
+  const dj = CREATURES.djinni, ww = find(dj, 'Whirlwind'), slam = dj.strikes.find((x) => x.name === 'slam');
+  const hd = Number(raw('djinni').match(/^hp \d+ \((\d+)d/m)?.[1]);
+  ok(slam && ww.numbers?.damage === slam.damage.split(' ')[0] && ww.text.includes(`takes ${ww.numbers.damage} bludgeoning damage`) && !ww.text.includes('1d8+4'),
+    `djinni: Whirlwind deals ${ww.numbers?.damage}, its own slam Strike's dice, and PF1e's 1d8+4 is gone`, dj.strikes.map((x) => `${x.name} ${x.damage}`).join('; '));
+  ok(hd === 7 && ww.text.includes(`for ${Math.floor(hd / 2)} rounds or until`), 'djinni: 7 Hit Dice make the whirlwind last 3 rounds, PF1e\'s 1 round for each 2', `hp line gives ${hd} HD`);
+  // Drain Life: the temporary Hit Points are the level, and the Strike that
+  // carried "plus energy drain" lists it.
+  const v = CREATURES.vampire, dl = find(v, 'Drain Life'), v12 = find(convert('vampire', { level: 12 }), 'Drain Life');
+  ok(dl.text.includes(`gains ${v.level.value} temporary Hit Points`) && v12.text.includes('gains 12 temporary Hit Points') && v12.numbers?.dc > dl.numbers?.dc
+    && v.strikes.some((x) => x.riders.includes('Drain Life')),
+    `vampire: Drain Life gives temporary Hit Points equal to its level (${v.level.value}; 12 at level 12), and its slam lists Drain Life`, v.strikes.map((x) => `${x.name} plus ${x.riders.join(', ')}`).join('; '));
+}
+{
   const hh = find(CREATURES['hell-hound'], 'Breath Weapon');
   const lim = T.PF2_AREA_DAMAGE[CREATURES['hell-hound'].level.value].limited.avg;
   ok(hh.text.includes(`${C.diceOnly(lim, 6)} fire damage`) && !hh.traits.includes('rounds'),
@@ -186,9 +213,9 @@ const KEEP = [
   ['iron-golem', 'Breath Weapon', null, 'an inhaled poison written inside a paragraph'],
   ['gorgon', 'Breath Weapon', null, 'a breath weapon that deals no dice'],
   ['gelatinous-cube', 'Paralysis', 'A gelatinous cube secretes an anesthetizing slime. A target hit by a cube\'s melee or engulf attack must succeed on a DC 23 Fortitude or be paralyzed for 3d6 rounds. The cube can automatically engulf a paralyzed opponent. The save DC is Constitution-based.', 'a save in a sentence'],
-  ['djinni', 'Whirlwind', 'PF1e: 1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 24.', 'a limit that is not per day, with three more figures'],
   ['npc-war-priest', 'Destructive Smite', 'PF1e: +1, 6/day.', 'a per-day limit after a bonus'],
-  ['vampire', 'Drain Life', null, 'energy drain (2 levels, DC 22)'],
+  ['succubus', 'Drain Life', null, 'an energy drain written as a paragraph, with a second save in it'],
+  ['vampire', 'Dominate', 'PF1e: DC 32.', 'a name and a DC, beside the energy drain a rule reads'],
   ['crocodile', 'Sprint', 'Once per minute a crocodile may sprint, increasing its land speed to 40 feet for 1 round.', 'a limit in a sentence'],
   ['chuul', 'Paralytic Tentacles', null, 'a save or a condition, in the middle of a paragraph'],
   ['gibbering-mouther', 'Gibbering', null, 'the same, with a free action before it'],
@@ -247,6 +274,22 @@ const NOT = [
   ['a channel with no dice', made('', 'channel negative energy 3/day (DC 15)')[0]],
   ['a channel with no limit in its name', made('', 'channel positive energy (DC 15, 1d6)')[0]],
   ['a channel whose dice are not d6', made('', 'channel negative energy 1/day (DC 15, 2d8)')[0]],
+  // The third increment's rules, one step away (HISTORY #937).
+  // Two lines hold the first: a type must be written once, and no type word
+  // is no PF2e type. It fails only with both gone (broken that way once).
+  ['a burst on death with no damage type', made('Death Throes (Su) When killed, a test beast explodes that deals 50 points of damage to anything within 20 feet (Reflex DC 15 halves).')[0]],
+  ['a burst on death split between two energies', made('Death Throes (Su) When killed, a test beast explodes that deals 50 points of damage (half fire, half cold damage) to anything within 20 feet (Reflex DC 15 halves).')[0]],
+  ['a burst on death whose type no rule knows', made('Death Throes (Su) When killed, a test beast explodes that deals 6d6 points of shadow damage to anything within 20 feet (Reflex DC 15 halves).')[0]],
+  ['a burst on death whose save negates', made('Death Throes (Su) When killed, a test beast explodes that deals 6d6 points of fire damage to anything within 20 feet (Reflex DC 15 negates).')[0]],
+  ['a burst on death after a sentence of its own', made('Death Throes (Su) The beast is unstable. When killed, a test beast explodes that deals 6d6 points of fire damage to anything within 20 feet (Reflex DC 15 halves).')[0]],
+  ['a burst on death that names a type twice', made('Death Throes (Su) When killed, a test beast explodes that deals 50 points of fire damage (half fire, half unholy damage) to anything within 20 feet (Reflex DC 15 halves).')[0]],
+  ['a whirlwind with no DC', made('', 'whirlwind (1/10 minutes, 10-30 ft. tall, 1d6+3 damage)')[0]],
+  ['a whirlwind with no height', made('', 'whirlwind (1/10 minutes, 1d6+3 damage, DC 15)')[0]],
+  ['a whirlwind with no limit', made('', 'whirlwind (10-30 ft. tall, 1d6+3 damage, DC 15)')[0]],
+  ['a whirlwind used more than once in its span', made('', 'whirlwind (3/day, 10-30 ft. tall, 1d6+3 damage, DC 15)')[0]],
+  ['an energy drain of three levels', made('', 'energy drain (3 levels, DC 15)')[0]],
+  ['an energy drain with no DC', made('', 'energy drain (1 level)')[0]],
+  ['an energy drain with a figure after the DC', made('', 'energy drain (1 level, DC 15, 1 hour)')[0]],
 ];
 for (const [what, a] of NOT) ok(a && a.wording !== 'rule' && !a.rule && !a.numbers, `not rewritten: ${what}`, a ? `${a.name}: ${a.text.slice(0, 80)}` : 'the block made no ability');
 {
@@ -271,11 +314,25 @@ for (const [what, a] of NOT) ok(a && a.wording !== 'rule' && !a.rule && !a.numbe
     ['wild shape (2/day)', 'limit', 'Frequency twice per day.'],
     ['quivering palm (1/day, DC 16)', 'limit', 'Frequency once per day. A save against it is DC 22.'],
     ['channel positive energy 5/day (DC 15, 3d6)', 'channel', 'Frequency 5 times per day. Effect Each undead creature within 30 feet takes 3d6+8 vitality damage (DC 21 basic Will save). The monster can instead restore that many Hit Points to each living creature there.'],
+    // The third increment (HISTORY #937). Test Beast has 5 Hit Dice, so 2 rounds;
+    // 1d6+3 is its bite's PF1e dice, so the whirlwind deals the bite Strike's.
+    ['whirlwind (1/day, 10-30 ft. tall, 1d6+3 damage, DC 15)', 'whirlwind', "Frequency once per day. Effect The monster becomes a whirlwind 10 to 30 feet tall for 2 rounds or until it Dismisses the effect. In this form it can't make Strikes and can move through other creatures' spaces. Each creature whose space it enters takes 2d6+9 bludgeoning damage (DC 21 basic Reflex save); a creature takes this damage only once per round. A creature smaller than the monster that fails the save is also picked up and moves with the whirlwind, and it can spend an action to attempt the save again and get free."],
+    ['energy drain (1 level, DC 15)', 'energy-drain', 'When the monster damages a living creature with a Strike that lists Drain Life, the monster gains 4 temporary Hit Points and the creature must succeed at a DC 21 Fortitude save or become drained 1. Further damage from such a Strike increases the drained value by 1 on a failed save, to a maximum of drained 4.'],
   ];
   for (const [sa, rule, text] of MADE) {
     const a = made('', sa)[0];
     ok(a && a.rule === rule && a.text === text, `made up: ${sa} reads as written here`, a ? `${a.rule || a.wording}: ${a.text}` : 'no ability');
   }
+  // The whirlwind row's dice are the block's own bite Strike's. This reads the
+  // Strike, not the rule.
+  const wb = convertText(block('', 'whirlwind (1/day, 10-30 ft. tall, 1d6+3 damage, DC 15)')).strikes.find((x) => x.name === 'bite');
+  ok(wb && wb.damage === '2d6+9 piercing', 'made up: Test Beast\'s own bite Strike is 2d6+9, the dice the whirlwind row above wrote', wb ? `bite ${wb.damage}` : 'no bite');
+  // A burst on death written with dice keeps their size, and a type written
+  // once is the damage's; level 4's limited-use area damage is 5d6 in print.
+  const burst = made('Death Throes (Su) When killed, a test beast explodes in a cloud of frost that deals 6d8 points of cold damage to anything within 20 feet (Fortitude DC 15 halves). The save DC is Constitution-based.')[0];
+  ok(burst?.rule === 'death-burst' && burst.text === 'When the monster dies, it explodes, dealing 4d8 cold damage to each creature and object in a 20-foot emanation (DC 21 basic Fortitude save).' && burst.traits.join(',') === 'cold'
+    && T.PF2_AREA_DAMAGE[4].limited.dice === '5d6',
+    'made up: a burst on death of 6d8 cold, Fortitude, 20 feet reads as written here, in d8s and with no trait but cold', burst ? `${burst.rule || burst.wording} [${(burst.traits || []).join(',')}]: ${burst.text}` : 'no ability');
   // The rake's two claws are the block's own claw Strike: same bonus, same dice.
   // This reads the Strike, not the rule: it holds the row above to the creature.
   const tb = convertText(block('', 'rake (2 claws +5, 1d4+3)')), claw = tb.strikes.find((x) => x.name === 'claw');
@@ -295,10 +352,10 @@ for (const [what, a] of NOT) ok(a && a.wording !== 'rule' && !a.rule && !a.numbe
 
 // Every ability no rule wrote, in all 57 fixtures, against the converter as it
 // was before abilities.js: [key, name, actions, traits, text], hashed. The
-// hash is still the one taken then, over 98 abilities. The second increment's
-// rules took the eleven below (HISTORY #899); written back in as they stood,
-// in their old places, the list must still come to that hash, so the 87 left
-// are held to the same bytes as before and so is the claim about these eleven.
+// hash is still the one taken then, over 98 abilities. The increments since: second
+// and third took the fifteen below (HISTORY #899, #937); written back in as they stood,
+// in their old places, the list must still come to that hash, so the 83 left
+// are held to the same bytes as before and so is the claim about these fifteen.
 const BEFORE = { count: 98, sha: '881993a460f08cd4618962d2515099240302e4435d97f0348bc781d59bb9e0af' };
 const TAKEN = [
   ["choker.txt|off|2", "Grab", "", "", "Requirements The monster's last action was a success with a Strike that lists Grab in its damage. Effect The monster automatically Grabs the target until the end of its next turn. The creature is grabbed by whichever body part the monster attacked with, and that body part can't be used to Strike until the grab ends. PF1e: Large."],
@@ -312,6 +369,11 @@ const TAKEN = [
   ["npc-battle-mage.txt|off|0", "Hand Of The Apprentice", "", "", "PF1e: 6/day."],
   ["npc-war-priest-wrapped.txt|off|1", "Channel Negative Energy 3/Day", "", "", "PF1e: DC 15, 1d6."],
   ["npc-war-priest.txt|off|1", "Channel Negative Energy 3/Day", "", "", "PF1e: DC 15, 1d6."],
+  // Taken by the third increment (HISTORY #937).
+  ["balor-collapsed.txt|oth|0", "Death Throes", "", "", "When killed, a balor explodes in a blinding flash of fire that deals 100 points of damage (half fire, half unholy damage) to anything within 100 feet (Reflex DC 47 halves). The save DC is Constitution-based."],
+  ["balor.txt|oth|0", "Death Throes", "", "", "When killed, a balor explodes in a blinding flash of fire that deals 100 points of damage (half fire, half unholy damage) to anything within 100 feet (Reflex DC 47 halves). The save DC is Constitution-based."],
+  ["djinni.txt|off|1", "Whirlwind", "", "", "PF1e: 1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 24."],
+  ["vampire.txt|off|4", "Drain Life", "", "", "On a hit, the target becomes drained 1 (drained 2 on a critical hit), and the monster gains temporary Hit Points equal to its level. PF1e: 2 levels, DC 32."],
 ];
 const kept = [];
 let restSame = true;
@@ -331,21 +393,30 @@ const keep = kept.filter((r) => !TAKEN.includes(r));
 ok(kept.length === BEFORE.count && sha(kept) === BEFORE.sha && keep.length === BEFORE.count - TAKEN.length,
   `the ${BEFORE.count - TAKEN.length} abilities no rule wrote are byte for byte what the converter gave before the rules, and the ${TAKEN.length} taken since are the ones named`, `${keep.length} left, ${kept.length} with the taken, ${sha(kept).slice(0, 12)}`);
 ok(TAKEN.every(([key]) => { const [f, k, i] = key.split('|'); const o = CREATURES[f.replace(/\.txt$/, '')]; return ({ def: o.defAbilities, off: o.offAbilities, oth: o.otherAbilities })[k][Number(i)]?.wording === 'rule'; }),
-  'each of the eleven taken is a rule\'s now, in the place it had');
+  'each of the fifteen taken is a rule\'s now, in the place it had');
 ok(restSame, 'every ability says how it is worded: rule, umr, pf1e, name, or number for regeneration and fast healing');
 const ruled = FILES.flatMap((f) => all(CREATURES[f]).filter((a) => a.wording === 'rule').map((a) => [f, a]));
-ok(ruled.length === 33 && ruled.length === EXPECT.length + 1, 'rules wrote 33 abilities in the fixtures, and all but the third giant\'s Throw Rock are spelled out above', `${ruled.length} written, ${EXPECT.length} above`);
+ok(ruled.length === 37 && ruled.length === EXPECT.length + 1, 'rules wrote 37 abilities in the fixtures, and all but the third giant\'s Throw Rock are spelled out above', `${ruled.length} written, ${EXPECT.length} above`);
 
 // ---- running a rule on its own output ----------------------------------------
 console.log('twice changes nothing more');
-const stub = { dc: () => 99, plainDc: 99, strike: () => ({ name: 'claw', dice: '9d9', damage: '9d9 slashing' }), strikeFor: () => null, scale: () => '9d9', attack: () => 99, umr: (n) => (n === 'grab' ? 'Grab.' : ''), tail: (t) => t };
+const stub = { dc: () => 99, plainDc: 99, strike: () => ({ name: 'claw', dice: '9d9', damage: '9d9 slashing' }), strikeFor: () => null, scale: () => '9d9', attack: () => 99, umr: (n) => (n === 'grab' ? 'Grab.' : ''), tail: (t) => t, area: () => '9d9', energy: (w) => (w === 'fire' ? 'fire' : null), level: 99, hitDice: 8 };
 ok(ruled.every(([, a]) => A.rewriteBlock(a.name, a.text, stub) === null && A.rewriteLine(a.name, a.text, stub) === null
   && A.rewriteBlock(a.rule, a.text, stub) === null && A.rewriteLine(a.rule === 'throw-rock' ? 'rock throwing' : a.rule, a.text, stub) === null
-  && A.rewriteLine('push', a.text, stub) === null && A.rewriteLine('channel negative energy 3/day', a.text, stub) === null && A.rewriteLine('grave touch', a.text, stub) === null),
-  'no rule reads any rule\'s output: all 33 come back null, under their own name, their rule\'s, and the names the limit and channel rules answer to');
+  && A.rewriteLine('push', a.text, stub) === null && A.rewriteLine('channel negative energy 3/day', a.text, stub) === null && A.rewriteLine('grave touch', a.text, stub) === null
+  && A.rewriteLine('energy drain', a.text, stub) === null && A.rewriteLine('whirlwind', a.text, stub) === null),
+  'no rule reads any rule\'s output: all 37 come back null, under their own name, their rule\'s, and the names the limit and channel rules answer to');
 ok(A.rewriteLine('rake', '2 claws +7, 1d4+3', stub)?.text.includes('+99 for 9d9') && A.rewriteLine('grave touch', '9/day, DC 18', stub)?.text.includes('DC 99') && A.rewriteLine('grab', 'Large', stub)?.text.startsWith('Grab. ')
   && A.rewriteLine('paralysis', '1d4 rounds, DC 13', stub)?.text.includes('DC 99') && A.rewriteLine('pull', 'claw, 5 feet', stub)?.text.includes('claw Strike') && A.rewriteLine('channel negative energy 3/day', 'DC 11, 1d6', stub)?.text.includes('9d9 void'),
   'and that stub makes each of the six new rules fire on PF1e text');
+ok(A.rewriteLine('whirlwind', '1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 17', stub)?.text.includes('for 4 rounds') && A.rewriteLine('energy drain', '2 levels, DC 22', stub)?.text.includes('gains 99 temporary')
+  && A.rewriteBlock('Death Throes', 'When killed, a balor explodes that deals 100 points of fire damage to anything within 100 feet (Reflex DC 33 halves).', stub)?.text.includes('9d9 fire'),
+  'and each of the three newest rules, on PF1e text');
+// The whirlwind's rounds come from Hit Dice, and a creature with 1 has none;
+// Drain Life's temporary Hit Points are a level, and level 0 has none to give.
+ok(A.rewriteLine('whirlwind', '1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 17', { ...stub, hitDice: 1 }) === null && A.rewriteLine('whirlwind', '1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 17', { ...stub, hitDice: null }) === null
+  && A.rewriteLine('energy drain', '2 levels, DC 22', { ...stub, level: 0 }) === null,
+  'a whirlwind with under 2 Hit Dice or none read, and an energy drain below level 1, are not rewritten');
 ok(A.rewriteLine('constrict', '1d4+3', stub)?.text.includes('9d9') && A.rewriteBlock('Poison', 'Bite—injury; save Fort DC 13; frequency 1/round for 6 rounds; effect 1d3 Dex damage; cure 1 save.', stub)?.text.includes('DC 99'),
   'and the stub those calls used does make a rule fire on PF1e text');
 ok(FILES.every((f) => sha(convert(f)) === sha(CREATURES[f])), 'converting a stat block twice gives the same creature, all 57');
@@ -357,11 +428,17 @@ console.log('copy text and Foundry');
   ok(text.includes("Poison (poison) A creature damaged by the monster's bite Strike is exposed.") && text.includes('All-Around Vision [PF1e wording] A medusa'),
     'the copied stat block carries the rewritten poison, and marks the ability left in PF1e wording');
   ok(C.toText(CREATURES.gorgon).includes('Trample [three-actions] The monster Strides'), 'a three-action ability copies with its cost');
+  const copied = (fx) => C.toText(CREATURES[fx]);
+  ok(copied('balor').includes('Death Throes (fire, unholy) When the monster dies, it explodes') && copied('djinni').includes('Whirlwind [two-actions] (air) Frequency once per 10 minutes.')
+    && copied('vampire').includes('Drain Life When the monster damages a living creature') && ![copied('balor'), copied('djinni'), copied('vampire')].some((t) => /^(Death Throes|Whirlwind|Drain Life) \[PF1e wording\]/m.test(t))
+    && copied('succubus').includes('Drain Life [PF1e wording] A succubus') && copied('djinni').includes('Air Mastery [PF1e wording]'),
+    'the copied balor, djinni and vampire carry the three newest rules\' text unmarked; the succubus\'s Drain Life and the djinni\'s Air Mastery keep the mark');
   const lich = C.toText(CREATURES.lich);
   ok(lich.includes('Grave Touch Frequency 9 times per day.') && !lich.includes('Grave Touch [PF1e wording]') && lich.includes('Paralyzing Touch [PF1e wording] PF1e: DC 29.'),
     'the copied lich carries Grave Touch\'s Frequency unmarked, and still marks Paralyzing Touch', lich.split('\n').filter((l) => /Touch/.test(l)).join(' / ').slice(0, 160));
 }
 for (const [fx, name, actions] of [['medusa', 'Poison', null], ['medusa', 'Petrifying Gaze', null], ['gorgon', 'Trample', 3], ['troll', 'Rend', 1], ['chuul', 'Constrict', 1], ['dire-rat', 'Filth Fever', null],
+  ['balor', 'Death Throes', null], ['balor-collapsed', 'Death Throes', null], ['djinni', 'Whirlwind', 2], ['vampire', 'Drain Life', null],
   ['griffon', 'Rake', 1], ['ghoul', 'Paralysis', null], ['giant-frog', 'Pull', 1], ['npc-war-priest', 'Channel Negative Energy', 2], ['lich', 'Grave Touch', null], ['choker', 'Grab', null], ['homunculus', 'Poison', null]]) {
   const o = CREATURES[fx], a = find(o, name);
   const item = F.toFoundry(o, { spellIndex: index }).items.find((i) => i.type === 'action' && i.name === name);
@@ -382,6 +459,11 @@ for (const [fx, name, actions] of [['medusa', 'Poison', null], ['medusa', 'Petri
   const lichKept = F.toFoundry(CREATURES.lich, { spellIndex: index }).system.details.privateNotes.match(/<h3>Kept in First Edition wording<\/h3>.*?<ul>(.*?)<\/ul>/s)?.[1] || '';
   ok(lichKept.includes('<li>Paralyzing Touch</li>') && !lichKept.includes('Grave Touch') && !lichKept.includes('Power Over Undead'),
     'Foundry: the lich\'s notes still name Paralyzing Touch as PF1e wording, and no longer its two limits', lichKept);
+  ok(['fire', 'unholy'].every((t) => item('balor', 'Death Throes')?.system.traits.value.includes(t)) && item('djinni', 'Whirlwind')?.system.traits.value.includes('air'),
+    'Foundry: the fire, unholy and air traits the newest rules add are written as traits');
+  const keptOf = (fx) => F.toFoundry(CREATURES[fx], { spellIndex: index }).system.details.privateNotes.match(/<h3>Kept in First Edition wording<\/h3>.*?<ul>(.*?)<\/ul>/s)?.[1] || '';
+  ok(keptOf('vampire') === '<li>Dominate</li>' && keptOf('djinni') === '<li>Air Mastery</li>' && !keptOf('balor').includes('Death Throes') && keptOf('balor').includes('<li>Whip Mastery</li>') && keptOf('succubus').includes('<li>Drain Life</li>'),
+    'Foundry: the notes no longer name the vampire\'s Drain Life, the djinni\'s Whirlwind or the balor\'s Death Throes as PF1e wording, and still name the succubus\'s Drain Life', `${keptOf('vampire')} | ${keptOf('djinni')}`);
   ok(!/Kept in First Edition wording/.test(F.toFoundry(CREATURES.wolf, { spellIndex: index }).system.details.privateNotes), 'Foundry: a creature with nothing in PF1e wording has no such note');
 }
 
@@ -392,8 +474,8 @@ console.log('the table');
   const have = fs.readFileSync(path.join(PF, 'converter-assets', 'data', 'ability-patterns.md'), 'utf8');
   ok(M.render(m) === have, 'data/ability-patterns.md is what measure-abilities.mjs writes today');
   const n = (w) => m.rows.filter((r) => r.wording === w).length;
-  ok(m.rows.length === 111 && n('rule') === 33 && n('umr') === 6 && n('pf1e') === 65 && n('name') === 7,
-    '111 abilities: 33 by rule, 6 universal, 65 in PF1e wording, 7 bare names', `${m.rows.length}: ${n('rule')}/${n('umr')}/${n('pf1e')}/${n('name')}`);
+  ok(m.rows.length === 111 && n('rule') === 37 && n('umr') === 6 && n('pf1e') === 61 && n('name') === 7,
+    '111 abilities: 37 by rule, 6 universal, 61 in PF1e wording, 7 bare names', `${m.rows.length}: ${n('rule')}/${n('umr')}/${n('pf1e')}/${n('name')}`);
 }
 
 console.log(`\n${checks} checks, ${failures ? failures + ' FAILED' : 'all passed'}`);

@@ -107,6 +107,14 @@ Player/bots use it as: `hero.issueOrder({type:'cast', ability, target|point})` (
 no-target after canCast). UI reads `def.icon` (emoji or image URL), `def.name`, `description`, cooldown/mana.
 `game.abilities.getAbilityDef(id)` also used by UI tooltips.
 
+Temporary obstacles: `world.blockCircle(x, z, r)` / `unblockCircle` count into the nav grid's `dyn` layer, which
+`isWalkable`, `findPath` and `Unit.tryStep` all read. Rift Wall is the one ability that uses it
+(`src/gameplay/abilities/riftWall.js`): a slab blocks from the tick it breaks ground to the tick it starts to crumble,
+on the timings the effect is handed, and the file's header lists what the wall does to a unit under it, to allies, to
+blinks, forced moves and projectiles, and to units already walking through. A unit only re-plans a path when its goal
+moves or its path runs out, so anything that blocks the grid has to clear `unit.path` for the units it cuts off, as
+that file does, and again when it unblocks. Checks: `test/wall.mjs`, run by `test/data.mjs`.
+
 ## Items contract (`game.items`)
 `ITEM_DEFS` exported from `src/gameplay/items/ItemDefs.js`: `{id, name, icon, cost, bonus{}, components?[], recipeCost?,
 active? {targetType, cooldown, manaCost, castRange, castPoint}, description, category, shop:'base'|'secret'|'side'}`.

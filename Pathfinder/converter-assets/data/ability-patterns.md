@@ -14,9 +14,9 @@ share of these fixtures and of nothing else.
 
 | How the text was written | Abilities | Share |
 | --- | ---: | ---: |
-| A rule in `js/abilities.js`, or the breath weapon rule in `js/convert.js` | 33 | 30% |
+| A rule in `js/abilities.js`, or the breath weapon rule in `js/convert.js` | 37 | 33% |
 | The converter's wording for a universal ability (`UMR_TEXT`) | 6 | 5% |
-| PF1e wording, DCs and action costs converted, marked "PF1e wording" | 65 | 59% |
+| PF1e wording, DCs and action costs converted, marked "PF1e wording" | 61 | 55% |
 | A name with no text in the stat block | 7 | 6% |
 
 ## By rule
@@ -29,29 +29,32 @@ share of these fixtures and of nothing else.
 | throw-rock | 3 | fire-giant, frost-giant, hill-giant |
 | breath | 2 | hell-hound, young-red-dragon |
 | channel | 2 | npc-war-priest-wrapped, npc-war-priest |
+| death-burst | 2 | balor-collapsed, balor |
 | distraction | 2 | army-ant-swarm, bat-swarm |
 | gaze | 2 | basilisk, medusa |
 | grab | 2 | choker, darkmantle |
 | rend | 2 | glabrezu, troll |
+| energy-drain | 1 | vampire |
 | paralysis | 1 | ghoul |
 | pull | 1 | giant-frog |
 | rake | 1 | griffon |
 | trample | 1 | gorgon |
+| whirlwind | 1 | djinni |
 
 ## What the PF1e wording holds
 
-The 65 abilities no rule rewrote, by the constructions in their text. An ability with two
+The 61 abilities no rule rewrote, by the constructions in their text. An ability with two
 constructions is counted under both.
 
 | Construction | Abilities |
 | --- | ---: |
-| a save DC in a sentence | 25 |
-| damage dice | 17 |
-| a use limit ("3/day", "once per day", "once every 1d4+1 rounds") | 11 |
+| a save DC in a sentence | 21 |
+| damage dice | 16 |
+| a use limit ("3/day", "once per day", "once every 1d4+1 rounds") | 10 |
 | an action cost ("as 2 actions", "as a free action") | 10 |
-| a radius or an area ("within 60 feet", "10-foot cube") | 8 |
-| only a parenthesis from the stat line ("PF1e: DC 29.") | 6 |
+| a radius or an area ("within 60 feet", "10-foot cube") | 6 |
 | a condition with a duration ("paralyzed for 3d6 rounds") | 5 |
+| only a parenthesis from the stat line ("PF1e: DC 29.") | 5 |
 | a breath weapon | 2 |
 | a poison or disease stat line | 1 |
 | none of these | 27 |
@@ -69,9 +72,7 @@ PF1e wording and bare names together, most frequent first.
 | All-Around Vision | 2 | gibbering-mouther, medusa |
 | Amorphous | 2 | gibbering-mouther, gibbering-mouther |
 | Breath Weapon | 2 | gorgon, iron-golem |
-| Death Throes | 2 | balor-collapsed, balor |
 | Destructive Smite | 2 | npc-war-priest-wrapped, npc-war-priest |
-| Drain Life | 2 | succubus, vampire |
 | Engulf | 2 | gelatinous-cube, gibbering-mouther |
 | Immunity To Magic | 2 | iron-golem, stone-golem |
 | Vorpal Strike | 2 | balor-collapsed, balor |
@@ -86,6 +87,7 @@ PF1e wording and bare names together, most frequent first.
 | Create Spawn | 1 | vampire |
 | Death Roll | 1 | crocodile |
 | Dominate | 1 | vampire |
+| Drain Life | 1 | succubus |
 | Drink Blood | 1 | gibbering-mouther |
 | Fear | 1 | lich |
 | Freeze | 1 | gargoyle |
@@ -114,5 +116,4 @@ PF1e wording and bare names together, most frequent first.
 | Tongue | 1 | giant-frog |
 | Transparent | 1 | gelatinous-cube |
 | Unholy Nimbus | 1 | nalfeshnee |
-| Whirlwind | 1 | djinni |
 | Wounding | 1 | bat-swarm |

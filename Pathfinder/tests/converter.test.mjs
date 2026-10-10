@@ -107,6 +107,17 @@ async function testCreature(browser) {
     'abilities a rule rewrote show in 2e form, unmarked', `${by('Rend')?.text.slice(0, 40)} | ${by('Poison')?.text.slice(0, 60)}`);
   ok(by('Lurk')?.mark === 'PF1e wording' && /not rewritten/.test(by('Lurk').title) && /gains a \+4 bonus on Stealth checks in tall grass\./.test(by('Lurk').text) && lines.filter((l) => l.mark).length === 1,
     'the one ability no rule reads keeps its text and is marked PF1e wording', by('Lurk')?.text);
+  // The third set of rules (HISTORY #937) on the page: a whirlwind, an energy
+  // drain and a burst on death show in 2e form with no mark, and the one line
+  // beside them no rule reads still wears it.
+  await page.$eval('#pf1-paste', (el) => { el.value = 'Gale Beast CR 6\nAC 19, touch 12, flat-footed 17\nhp 76 (8d10+32)\nFort +10, Ref +7, Will +4\nMelee slam +11 (1d8+6 plus energy drain)\nSpecial Attacks energy drain (1 level, DC 16), whirlwind (1/10 minutes, 10-40 ft. tall, 1d8+6 damage, DC 17)\nSPECIAL ABILITIES\nDeath Throes (Su) When killed, a gale beast explodes in a burst of sparks that deals 8d6 points of electricity damage to anything within 30 feet (Reflex DC 17 halves).\nLurk (Ex) A gale beast gains a +4 bonus on Stealth checks in tall grass.'; });
+  await page.click('#parse-btn');
+  await waitFor(page, () => /Creature 6/.test(document.getElementById('pf2-block').textContent), { label: 'pasted gale beast' });
+  const lines3 = await page.$$eval('#pf2-block .sb-line', (els) => els.map((el) => ({ name: el.querySelector('b')?.textContent, mark: el.querySelector('.sb-pf1')?.textContent || '', act: el.querySelector('.act')?.textContent || '', text: el.textContent })));
+  const by3 = (n) => lines3.find((l) => l.name === n);
+  ok(by3('Whirlwind')?.act === '◆◆' && /for 4 rounds or until it Dismisses/.test(by3('Whirlwind').text) && /gains 6 temporary Hit Points .* or become drained 1\./.test(by3('Drain Life')?.text)
+    && /When the monster dies, it explodes, dealing \d+d6 electricity damage .* 30-foot emanation/.test(by3('Death Throes')?.text) && lines3.filter((l) => l.mark).map((l) => l.name).join() === 'Lurk',
+    'a whirlwind, an energy drain and a burst on death show in 2e form, unmarked, and only Lurk wears the mark', `${by3('Whirlwind')?.text.slice(0, 50)} | ${by3('Drain Life')?.text.slice(0, 50)} | ${by3('Death Throes')?.text.slice(0, 50)} | marked: ${lines3.filter((l) => l.mark).map((l) => l.name).join()}`);
   ok(errors.length === 0, 'no console errors while editing', errors.slice(0, 3).join(' | '));
   await page.close();
 }
