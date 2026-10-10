@@ -1334,7 +1334,7 @@ construct's Fort reads no lower than moderate (#715). Every parse fixture's
 special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
 all three questions that stood here on 2026-10-05: the flagging pass, go; the
 2e-style rewrite, go; Foundry, yes, he uses it, build the export. The first and
-the third are built; the rewrite has its second increment (#894, #899).
+the third are built; the rewrite has its third increment (#894, #899, #937).
 
 1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
    (#886, 2026-10-05), and the list is Devon's to read. They were written by a
@@ -1347,57 +1347,72 @@ the third are built; the rewrite has its second increment (#894, #899).
    reading. Answers go into `spell-map.json` by hand; rerun the script
    afterwards, or `converter-spells.test.mjs` fails on a stale list. The next
    73 (score 7) are one `CUT` away if the first 47 turn out worth it.
-2. **The 2e-style rewrite of special abilities: second increment done (#894,
-   #899, 2026-10-06), 33 of 111 abilities (30%).** Devon said go on 2026-10-05.
+2. **The 2e-style rewrite of special abilities: third increment done (#894,
+   #899, #937, 2026-10-10), 37 of 111 abilities (33%).** Devon said go on
+   2026-10-05.
    `converter-assets/js/abilities.js` rewrites an ability when a rule reads its
    whole construction and leaves it byte for byte as it was otherwise, marked
    **PF1e wording** on the page, in the copied text and in the Foundry file's
    notes. Every DC, attack bonus and damage figure a rule writes is the
-   converter's own for that creature at its new level. Fourteen rules, counted
+   converter's own for that creature at its new level. Seventeen rules, counted
    over the 57 fixtures, which are every PF1e stat block the repo has:
    affliction (a poison or disease stat line, 7), constrict (4), limit (a name
    and a per-day limit, 3), throw-rock (3), breath (2), channel (2),
-   distraction (2), gaze (2), grab with a size (2), rend (2), paralysis (1),
-   pull (1), rake (1), trample (1). The table is
-   `converter-assets/data/ability-patterns.md`, written by
+   death-burst (the balor's Death Throes, both layouts, 2), distraction (2),
+   gaze (2), grab with a size (2), rend (2), energy-drain (the vampire's, 1),
+   paralysis (1), pull (1), rake (1), trample (1), whirlwind (the djinni's, 1).
+   The table is `converter-assets/data/ability-patterns.md`, written by
    `measure-abilities.mjs`; `converter-assets/README.md` says where each
-   number comes from. What is left, 65 abilities in PF1e wording and 7 bare
+   number comes from. What is left, 61 abilities in PF1e wording and 7 bare
    names:
-   - **A save inside a sentence, 25 abilities. Needs a call before a rule.**
-     "must succeed on a DC N save or be [condition] for [duration]" is in 5
-     (the gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus,
-     Paralytic Tentacles), each between sentences no rule reads. #899 left
-     them: rewriting one sentence would take the PF1e mark off the rest. The
-     call is a fourth wording, part by rule and part PF1e, and how the page,
-     the copied text and the Foundry notes show it.
-   - **A parenthesis no rule reads, 6.** `DC 18` and `DC 22` under a name
-     (no effect to write), `+1, 6/day` (the war priest's smite, twice),
-     `2 levels, DC 22`, and swallow whole's `1d4 bludgeoning damage, AC 10,
-     1 hp`, which needs a Rupture figure the tables do not have.
-   - **One or two fixtures each, readable whole:** a burst with a save for
-     half (the balor's Death Throes, both layouts), whirlwind, energy drain.
+   - **A save inside a sentence, 21 abilities. Closed: these stay PF1e
+     wording.** Devon, 2026-10-07, asked whether an ability may be shown part
+     by rule and part PF1e: "no, keep the 1e wording". So there is no fourth
+     display state, and the five "must succeed on a DC N save or be
+     [condition] for [duration]" abilities (the gelatinous cube's Paralysis,
+     Gibbering, Spittle, Unholy Nimbus, Paralytic Tentacles) are not a next
+     rule. Do not propose it again.
+   - **A parenthesis no rule reads, 5.** `DC 18` and `DC 22` under a name
+     (no effect to write), `+1, 6/day` (the war priest's smite, twice), and
+     swallow whole's `1d4 bludgeoning damage, AC 10, 1 hp`, which needs a
+     Rupture figure the tables do not have. Swallow whole is the one
+     construction left that a rule could read whole, and it waits on that
+     figure: do not invent one.
    - **Prose, 27.** No construction in them (Whip Mastery, Mimicry, Freeze).
-     These stay PF1e wording unless somebody writes them by hand.
-   - **Four calls in #899 Devon may want back**, beside #894's three: a name
-     with only a per-day limit reads "Frequency 9 times per day." and loses
-     its mark with no effect text; channel damage follows the Strike ratio
-     (the war priest's 1d6 is 1d6-1); paralysis keeps PF1e's 1d4+1 rounds
-     with the incapacitation trait; a poison's sleep is unconscious. Nobody
-     has read the 33 at a table.
+     These stay PF1e wording unless somebody writes them by hand. The
+     succubus's Drain Life is one: her energy drain is a kiss and a
+     suggestion in a paragraph, and the energy-drain rule reads the stat-line
+     form only.
+   - **With the three kinds of #937 taken, no rule is queued.** The next
+     increment, if there is one, starts from `data/ability-patterns.md` and
+     has to find a construction first. The 57 fixtures hold none that a rule
+     could read whole but swallow whole.
+   - **Devon kept all seven wording calls of #894 and #899** (2026-10-07:
+     "keep all seven"). **Four calls in #937 he may want back**: a burst on
+     death deals the level's limited-use area damage and PF1e's amount is not
+     carried (the balor's 100 points are 21d6, average 74; print is 16d10);
+     "half fire, half unholy" is all fire with the unholy trait; a
+     whirlwind's rounds are half the block's Hit Dice, from PF1e's universal
+     rule and not the stat line, and PF1e's two Reflex saves are one basic
+     save; two negative levels are drained 2 a hit, capped at drained 4, with
+     temporary Hit Points equal to the level and the DC moved to the hit.
+     Nobody has read the 37 at a table.
    - **`converter-abilities.test.mjs` is in `site-ci.yml` since 2026-10-06**,
      under "Pathfinder converter" with the Foundry suite. Neither line has run
      on GitHub yet: the first run is the next PR's, so read that job's log once.
    - The suite's hash is still of the 98 entries no rule wrote on 2026-10-05
      (89 of the 111 and the 9 the 111 leaves out: seven Reactive Strikes, a
-     regeneration, a fast healing). #899's rules took 11; the suite writes
-     them back in as they stood, so 87 are held. 33 and 87 are of 120.
+     regeneration, a fast healing). #899's rules took 11 and #937's took 4;
+     the suite writes them back in as they stood, so 83 are held. 37 and 83
+     are of 120.
    - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
      listed twice, once as a bare aura and once as text (the balor's Flaming
      Body), and a defensive ability the same way (the mouther's Amorphous).
      The succubus's "The DC is 22 for the Fortitude save" is not rescaled,
      because the DC and its number are two words apart.
-3. **A Foundry VTT actor export: built (#892, 2026-10-05), and waiting on
-   Devon's import.** The **Foundry JSON** button beside Copy and Print saves
+3. **A Foundry VTT actor export: built (#892, 2026-10-05), and imported by
+   Devon (2026-10-07: "The foundry import seems to work fine").** The
+   **Foundry JSON** button beside Copy and Print saves
    `<name>.foundry-npc.json`, a pf2e NPC for Import Data on an actor.
    `converter-assets/js/foundry.js` is a pure function, the converter's
    creature in and a plain object out, the same bytes every time. It targets
@@ -1406,13 +1421,10 @@ the third are built; the rewrite has its second increment (#894, #899).
    there has it and a slug only if one of them uses it, and puts everything
    else in the actor's private notes. A partial spell match is marked in the
    spell's name, at the top of its text and in the notes.
-   **It has not been imported into a real Foundry**: no machine here has one.
+   No machine here has a Foundry, so his report is the only import there has
+   been, and it does not say which creature or which fields he looked at.
    `converter-assets/README.md` lists which fields are sure, which are a best
    reading, and five lines on how to check it. What is left:
-   - **Devon imports one** (the lich is the widest: 30 spells, two of them
-     partial) and says what the sheet shows. A refused import is most likely
-     one of the fields left out for Foundry to default (`img`, `_stats`,
-     `system.publication`, a migration version).
    - **`converter-foundry.test.mjs` is in `site-ci.yml` since 2026-10-06**,
      under "Pathfinder converter". It has not run on GitHub yet: the first run
      is the next PR's.
