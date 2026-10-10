@@ -2601,13 +2601,15 @@ this list's:
   - Bots use an ability only through its `hint`, and try slots in the order R,
     Q, W, E, casting the first that fits, so a situational spell behind a
     spammable one is starved: Stand Surety was cast once in 32 minutes from the
-    second slot and 7 to 20 times a match from the first. `allyBelow` on an
-    ally-target hint sets the health share it waits for.
+    second slot and 5 to 27 times a match from the first. `allyBelow` on an
+    ally-target hint sets the health share it waits for (0.9 for his).
   - `test/ormund.mjs` is the pattern for the pure-Node checks (the game's own
     `Hero`, `AbilitySystem` and `Talents` on an open map), and
     `test/browser.mjs` names the player's hero in one constant, `HERO`, with
-    the checks on his casts reading `start.abilities` by slot. Six seeded
-    matches fit in one browser in under six minutes as six pages at once.
+    the checks on his casts reading `start.abilities` by slot. The seed fixes
+    the draft and not the match there (#941's log entry), so ask for one cast
+    or more, never a figure. Eight seeded matches fit in one browser in about
+    six minutes as eight pages at once, and those do repeat.
   - Not updated, because they are outside the project folder or need a GPU:
     the board card in `index.html` ("Pick one of fourteen") and the root
     `README.md` ("fourteen heroes") still say fourteen, and

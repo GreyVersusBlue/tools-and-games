@@ -25,7 +25,7 @@ export default [
     description: "Ormund vouches for another allied hero. While the bond holds and Ormund is above 30% health, he takes a share of all damage dealt to that ally in its place. The bond breaks if the two move more than 900 apart or either dies. Cannot be cast at or below 30% health.",
     cooldown: [22, 20, 18, 16], manaCost: [60, 70, 80, 90], castRange: [du(700)],
     values: { sharePct: [0.3, 0.4, 0.5, 0.6], duration: 7, breakRange: du(900), floorPct: 0.3 },
-    hint: { type: 'ally', defensive: true, allyBelow: 0.8 },
+    hint: { type: 'ally', defensive: true, allyBelow: 0.9 },
     canCast(ab) {
       return ab.hero.healthPct > ab.v('floorPct') ? { ok: true } : { ok: false, reason: 'Too wounded to stand surety' };
     },
