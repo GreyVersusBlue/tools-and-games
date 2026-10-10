@@ -91,6 +91,12 @@ export const RECOMMENDED = {
     core: ['unbroken_standard', 'crimson_bulwark', 'flicker_dagger'],
     late: ['behemoth_heart', 'ascendant_scepter', 'frostguard_mail'],
   },
+  tobren: {
+    starting: ['bark_ration', 'bark_ration', 'clarity', 'lookout_ward', 'seeker_ward', 'oak_twig', 'oak_twig', 'honeyed_plum'],
+    early: ['resonant_wand', 'tidecall_boots'],
+    core: ['thrust_staff', 'farsight_lens', 'siege_cuirass'],
+    late: ['ascendant_scepter', 'shimmer_cloak', 'whirlwind_scepter'],
+  },
 };
 
 // Fallbacks by primary attribute / attack type for heroes not listed above.

@@ -35,7 +35,42 @@ const LOOPS = {
   pour:   "sfx/qte/qte-pour-loop.ogg",
 };
 
-let masterVol = 0.8;
+// The mix (#942). Every sound is played at TRIM[key] times the master volume
+// times whatever the call site passes, which is 1 everywhere but the staff's
+// cash register. The trims are what level the files against each other: the
+// files as vendored sit 22.6 dB apart (the final whistle's loudest 400 ms
+// reads -4.0 LUFS and the UI click's -26.6), and an <audio> element can only
+// turn a file down. audio/levels.json holds each file's measured loudness,
+// test/smoke-mix.mjs multiplies it by gainFor() and fails when a role leaves
+// its band, and the README's "The mix" has the table before and after.
+// Nobody had listened to these numbers when they were written.
+export const MASTER = 0.8;
+
+export const TRIM = {
+  // order and ticket cues, the QTE result, the two stingers: 26 LUFS under
+  // full scale at the master above, each within 1 dB
+  orderDing:      0.28,
+  ticketReady:    0.60,
+  cashRegister:   0.25,
+  qteHit:         0.18,
+  qteMiss:        0.56,
+  stingerKickoff: 0.85,
+  stingerFinal:   0.10,
+  // the panels and buttons, 4 dB under the cues
+  uiClick:        0.85,
+  uiOpen:         0.14,
+  uiClose:        0.14,
+  // the crowd, each of the three 12 to 13 dB down on what it was. A walkout
+  // is 13 seconds long and three can be sounding at once.
+  crowdGroan:     0.25,
+  stormOut:       0.22,
+  barBed:         0.08,
+  // the two QTE loops, level with each other and as they were (0.55)
+  sizzle:         0.60,
+  pour:           0.60,
+};
+
+let masterVol = MASTER;
 let muted = false;
 
 const oneShotCache = {};   // key -> template Audio element (cloned on play)
@@ -43,7 +78,20 @@ const loopState = {};      // key -> { el, vol, playing }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
-/** Fire a one-shot sound. vol is a 0-1 multiplier on top of master volume. */
+/** The volume an element is set to for this key: the one place it is worked out. */
+export function gainFor(key, vol = 1, master = masterVol) {
+  return clamp01(vol * (TRIM[key] ?? 1) * master);
+}
+
+/** Every key that has a file, and the file. For the measuring tool and the suite. */
+export function files() {
+  const out = {};
+  for (const k in SFX) out[k] = { file: BASE + SFX[k], loop: false };
+  for (const k in LOOPS) out[k] = { file: BASE + LOOPS[k], loop: true };
+  return out;
+}
+
+/** Fire a one-shot sound. vol is a 0-1 multiplier on top of the key's trim and the master volume. */
 export function playSfx(key, vol = 1) {
   if (muted || !SFX[key]) return;
   if (!oneShotCache[key]) {
@@ -52,7 +100,7 @@ export function playSfx(key, vol = 1) {
     oneShotCache[key] = a;
   }
   const node = oneShotCache[key].cloneNode(true);
-  node.volume = clamp01(vol * masterVol);
+  node.volume = gainFor(key, vol);
   node.play().catch(() => {}); // ignore autoplay-policy rejections
 }
 
@@ -77,13 +125,13 @@ export function preload(...keys) {
     } else if (LOOPS[key] && !loopState[key]) {
       const el = new Audio(BASE + LOOPS[key]);
       el.loop = true; el.preload = "auto";
-      loopState[key] = { el, vol: 0.5, playing: false };
+      loopState[key] = { el, vol: 1, playing: false };
     }
   }
 }
 
 /** Start a looped bed/QTE loop. Safe to call repeatedly — no-ops if already playing. */
-export function startLoop(key, vol = 0.5) {
+export function startLoop(key, vol = 1) {
   if (!LOOPS[key]) return;
   let st = loopState[key];
   if (!st) {
@@ -92,7 +140,7 @@ export function startLoop(key, vol = 0.5) {
     st = loopState[key] = { el, vol, playing: false };
   }
   st.vol = vol;
-  st.el.volume = muted ? 0 : clamp01(vol * masterVol);
+  st.el.volume = muted ? 0 : gainFor(key, vol);
   if (!st.playing) {
     st.el.currentTime = 0;
     st.el.play().catch(() => {});
@@ -127,7 +175,7 @@ export function setMuted(v) {
   muted = v;
   for (const key in loopState) {
     const st = loopState[key];
-    if (st.playing) st.el.volume = muted ? 0 : clamp01(st.vol * masterVol);
+    if (st.playing) st.el.volume = muted ? 0 : gainFor(key, st.vol);
   }
 }
 export function isMuted() { return muted; }
@@ -136,6 +184,6 @@ export function setMasterVolume(v) {
   masterVol = clamp01(v);
   for (const key in loopState) {
     const st = loopState[key];
-    if (st.playing) st.el.volume = muted ? 0 : clamp01(st.vol * masterVol);
+    if (st.playing) st.el.volume = muted ? 0 : gainFor(key, st.vol);
   }
 }

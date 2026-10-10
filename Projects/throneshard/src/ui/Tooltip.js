@@ -73,8 +73,9 @@ const VALUE_LABELS = {
   slashes: 'Slashes', attacks: 'Attacks', maxStacks: 'Max Stacks', drain: 'Health Drain per Second', creepDuration: 'Creep Duration',
   speedDuration: 'Speed Duration', agiPct: 'Agility Bonus', speedPerTarget: 'Speed per Target', selfMult: 'Self Multiplier',
   sharePct: 'Damage Taken for the Ally', floorPct: 'Health Floor', returnPct: 'Ledger Returned', cap: 'Ledger Damage Cap', window: 'Ledger Seconds',
+  echoPct: 'Second Strike Damage', allyRange: 'Ally Search Range', cdrPct: 'Cooldown Cut', mana: 'Mana Restored',
 };
-const SKIP_VALUES = new Set(['angle', 'jumpDelay', 'bounceDelay', 'jumpTime', 'tick', 'airTime', 'cooldown', 'rangeMult', 'strMult', 'pull']);
+const SKIP_VALUES = new Set(['angle', 'jumpDelay', 'bounceDelay', 'jumpTime', 'tick', 'airTime', 'cooldown', 'rangeMult', 'strMult', 'pull', 'ultPct']);
 const TIME_KEYS = /^(duration|stun|delay|interval|silence|slowDuration|creepDuration|speedDuration)$/;
 const DIST_KEYS = /(range|Range|distance|knockback|Radius|radius)$/;
 const PCT_KEYS = /(slow|Slow|chance|evasion|Pct|pct|reduction|magicResist|cleave|moveSpeed|walkSpeed|agiPct|speedPerTarget|attackFactor)$/;

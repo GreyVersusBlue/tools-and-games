@@ -1,0 +1,141 @@
+{
+  "what": "Loudness of every file js/audio.js plays, written by tools/measure-audio.mjs. LUFS by ITU-R BS.1770 (tools/loudness.mjs): integrated is the gated programme loudness and is null under 400 ms, momentary is the loudest 400 ms, peak is the sample peak in dBFS. A mono file is counted on both speakers. test/smoke-mix.mjs reads this and fails if a file's hash is not the one here.",
+  "decoder": "gst-launch-1.0",
+  "files": {
+    "audio/ambience/bar-bed-crowded-pub-loop.ogg": {
+      "sha256": "f320a01dccfd7d6acd929a708866a897947ef8e6d56069c0922486cd174ccc12",
+      "seconds": 56,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": -26.03,
+      "momentary": -17.5,
+      "peak": -1.5
+    },
+    "audio/cash-register.ogg": {
+      "sha256": "7d8b05c07a37f74c8bb881053f733844e4e2f87ad1a9402228b732ce7c5febc1",
+      "seconds": 1.92,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": -16.72,
+      "momentary": -11.9,
+      "peak": -1.39
+    },
+    "audio/sfx/events/crowd-groan.mp3": {
+      "sha256": "a29781254e67480b2b2ec52cf5a4154dd7f5782bc32e097599929ae93bf8cd13",
+      "seconds": 2.52,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": -23.63,
+      "momentary": -19.82,
+      "peak": -11.13
+    },
+    "audio/sfx/events/patron-storm-out.ogg": {
+      "sha256": "fd9cbb3b52f555a6930ae340dc424a274e36e5a08d855968a8998ccc8717be0f",
+      "seconds": 13.21,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": -23.56,
+      "momentary": -21.11,
+      "peak": -11.41
+    },
+    "audio/sfx/events/stinger-final-whistle.ogg": {
+      "sha256": "fb313d1eaf501cc65f060a95937c32ac012454bb99fe65537887789c2c3216c8",
+      "seconds": 3.33,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": -6.12,
+      "momentary": -4.02,
+      "peak": -3.94
+    },
+    "audio/sfx/events/stinger-kickoff.ogg": {
+      "sha256": "e359d8d414c27092778fd920bd58c5a5bcd1099eb02a588f642c512e4dfc32ad",
+      "seconds": 6.34,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": -27.5,
+      "momentary": -23.57,
+      "peak": -0.97
+    },
+    "audio/sfx/order-ding.ogg": {
+      "sha256": "9a612fd2f513d52a296906b41071c990f75defe56be3bee60d2d4e2423b51b8b",
+      "seconds": 0.38,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -13.01,
+      "peak": -0.82
+    },
+    "audio/sfx/qte/qte-hit-perfect.ogg": {
+      "sha256": "33b17a9a9a2397c62b285c52c33a907fdffb476909c99e42dde603f6a7a8b12c",
+      "seconds": 0.54,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": -10.24,
+      "momentary": -8.99,
+      "peak": -0.96
+    },
+    "audio/sfx/qte/qte-miss.ogg": {
+      "sha256": "0b574cea597d96507e782ae9764f88482ce49f46e931e57054bf7150047f2d69",
+      "seconds": 0.1,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -19.04,
+      "peak": -1.25
+    },
+    "audio/sfx/qte/qte-pour-loop.ogg": {
+      "sha256": "3fa9b0e4b544741b006f5d6dda39d2802397350a8022640c2a249e77d4a26f15",
+      "seconds": 12.38,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": -36.56,
+      "momentary": -29.91,
+      "peak": -8.39
+    },
+    "audio/sfx/qte/qte-sizzle-loop.ogg": {
+      "sha256": "ad1e41c7ae84a57142840d9f22afc5874a8d3ea6f5d27380d20ff7032754628d",
+      "seconds": 23.32,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": -39.1,
+      "momentary": -26.82,
+      "peak": -4.54
+    },
+    "audio/sfx/ticket-ready-bell.ogg": {
+      "sha256": "d21d0f0b782445db579d11e2506b24cd1ac9d664ee33aeaf807761aa7b6fd710",
+      "seconds": 0.12,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -19.6,
+      "peak": -0.89
+    },
+    "audio/sfx/ui/ui-click.ogg": {
+      "sha256": "2fa929138bc3a0f432696588f66eac94b8f6d463905ec8808c6461ce4b054292",
+      "seconds": 0.01,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -26.63,
+      "peak": -1.36
+    },
+    "audio/sfx/ui/ui-station-close.ogg": {
+      "sha256": "bc4279d2bb2bf86592473eab6a8eab55e51b54a8619315000dbd780a83b102d8",
+      "seconds": 0.31,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -11.19,
+      "peak": -1.03
+    },
+    "audio/sfx/ui/ui-station-open.ogg": {
+      "sha256": "24ff224fe2c09c6aed1b41249825382dc74cf324b887ff279d8494912ce2beee",
+      "seconds": 0.31,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -11.18,
+      "peak": -0.92
+    }
+  }
+}

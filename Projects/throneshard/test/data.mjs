@@ -47,7 +47,7 @@ function ok(cond, label, detail = '') {
 
 const heroes = Object.values(HERO_DEFS);
 console.log(`heroes: ${heroes.length}`);
-ok(heroes.length === 15, 'fifteen heroes', `got ${heroes.length}`);
+ok(heroes.length === 16, 'sixteen heroes', `got ${heroes.length}`);
 
 const usedAbilities = new Set();
 for (const h of heroes) {
@@ -85,7 +85,7 @@ for (const h of heroes) {
   const glb = path.join(ROOT, 'assets/models/chars', `${CHARACTERS[kind]?.rig}.glb`);
   ok(fs.existsSync(glb), `${h.id}: model file exists`, path.relative(ROOT, glb));
 }
-ok(usedAbilities.size === 60, 'sixty distinct hero abilities', `got ${usedAbilities.size}`);
+ok(usedAbilities.size === 64, 'sixty-four distinct hero abilities', `got ${usedAbilities.size}`);
 
 const items = Object.values(ITEM_DEFS);
 console.log(`items: ${items.length}`);
@@ -147,6 +147,10 @@ await wallChecks({ ok, load });
 // Ormund's four abilities against the game's own heroes, units and ability system (ormund.mjs).
 const { ormundChecks } = await import('./ormund.mjs');
 await ormundChecks({ ok, load });
+
+// Tobren's four abilities, on the same kind of stage (tobren.mjs).
+const { tobrenChecks } = await import('./tobren.mjs');
+await tobrenChecks({ ok, load });
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
 process.exit(failures ? 1 : 0);

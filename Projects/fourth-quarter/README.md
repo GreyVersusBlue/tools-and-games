@@ -84,7 +84,8 @@ python3 -m http.server 8000
   They are DOM buttons, so pointer lock has to be released (Esc) before one is
   clickable — worth knowing if you ever drive this page from a script.
 - The 🔊 next to the speed buttons mutes everything — one-shots and the bar-bed
-  loop alike (`setMuted()`/`isMuted()` in `js/audio.js`).
+  loop alike (`setMuted()`/`isMuted()` in `js/audio.js`). How loud each
+  sound is against the others is "The mix", below.
 - **`** (backquote) opens the dev menu from any phase. "Skip to last call" ends a
   running night immediately through the normal closing path, which is the only
   quick way to reach the box score: a night is eight sim hours at 45 real seconds
@@ -237,7 +238,8 @@ table and this week's fixtures.
   `node test/smoke-nav.mjs`, `node test/smoke-textures.mjs`,
   `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs`,
   `node test/smoke-supply.mjs`, `node test/smoke-staff.mjs`,
-  `node test/smoke-shelf.mjs`, `node test/smoke-season.mjs` and
+  `node test/smoke-shelf.mjs`, `node test/smoke-season.mjs`,
+  `node test/smoke-mix.mjs` (the mix, below) and
   `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`).
   `test/crowd-floor.mjs` is the busy floor `smoke-crowd.mjs` runs and is not
   a suite; `test/fixtures/season.mjs` is the bot that plays a seeded season
@@ -292,6 +294,92 @@ table and this week's fixtures.
   that one util and `three`, so the map needs nothing new.
   `test/gltf-loader.mjs` proves it loads a hand-built GLB, a triangle strip
   included, in a real browser. Nothing in the game imports it yet.
+
+## The mix
+
+Devon listened on 2026-10-07 and said "Sound levels are a bit all over the
+place, crowd is loud." This is what was measured about that and what was
+changed (#942). **Nobody has listened to the new mix.** It was set by
+arithmetic on a machine with no speakers, and it wants Devon's ears before
+any of it is called right.
+
+No file was re-encoded. `js/audio.js` has a trim per sound (`TRIM`) and one
+function, `gainFor()`, that sets every element's volume: the trim, times the
+master volume (0.8, unchanged), times the call site's own number, which is 1
+everywhere but the staff's cash register at 0.7. An `<audio>` element can only
+turn a file down, so the mix is anchored on the quiet files.
+
+How it was measured: `tools/measure-audio.mjs` decodes each file (GStreamer
+here; `ffmpeg` if it is on the PATH) and `tools/loudness.mjs` reads it by
+ITU-R BS.1770, K-weighted and gated. A one-shot is judged by its loudest
+400 ms and a loop by its programme loudness (marked I), both in LUFS, and a
+mono file is counted on both speakers. "Heard before" and "Now" are the file's
+figure plus the gain. The measurements are committed as `audio/levels.json`
+with each file's SHA-256, because CI has no decoder.
+
+| Sound | Role | Fires | File | File, LUFS | Peak, dBFS | Gain before | Heard before | Gain now | Now, LUFS | Change |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `orderDing` | cue | every order, and each event card | `sfx/order-ding.ogg` | -13.0 | -0.8 | 0.8 | -14.9 | 0.224 | -26.0 | -11.1 dB |
+| `ticketReady` | cue | every ticket the kitchen finishes | `sfx/ticket-ready-bell.ogg` | -19.6 | -0.9 | 0.8 | -21.5 | 0.48 | -26.0 | -4.4 dB |
+| `cashRegister` | cue | every sale | `cash-register.ogg` | -11.9 | -1.4 | 0.8 | -13.8 | 0.2 | -25.9 | -12.0 dB |
+| `cashRegister` × 0.7 | cue, staff | every sale, by staff | `cash-register.ogg` | -11.9 | -1.4 | 0.56 | -16.9 | 0.14 | -29.0 | -12.0 dB |
+| `uiClick` | ui | buttons, mostly by day | `sfx/ui/ui-click.ogg` | -26.6 | -1.4 | 0.8 | -28.6 | 0.68 | -30.0 | -1.4 dB |
+| `uiOpen` | ui | a panel opened | `sfx/ui/ui-station-open.ogg` | -11.2 | -0.9 | 0.8 | -13.1 | 0.112 | -30.2 | -17.1 dB |
+| `uiClose` | ui | a panel closed | `sfx/ui/ui-station-close.ogg` | -11.2 | -1.0 | 0.8 | -13.1 | 0.112 | -30.2 | -17.1 dB |
+| `qteHit` | cue | a QTE landed | `sfx/qte/qte-hit-perfect.ogg` | -9.0 | -1.0 | 0.8 | -10.9 | 0.144 | -25.8 | -14.9 dB |
+| `qteMiss` | cue | a QTE missed | `sfx/qte/qte-miss.ogg` | -19.0 | -1.3 | 0.8 | -21.0 | 0.448 | -26.0 | -5.0 dB |
+| `crowdGroan` | crowd | once, on a loss, with the whistle | `sfx/events/crowd-groan.mp3` | -19.8 | -11.1 | 0.8 | -21.8 | 0.2 | -33.8 | -12.0 dB |
+| `stormOut` | crowd | every walkout, 13 s each, several at once on a bad night | `sfx/events/patron-storm-out.ogg` | -21.1 | -11.4 | 0.8 | -23.0 | 0.176 | -36.2 | -13.2 dB |
+| `stingerKickoff` | cue | once a night | `sfx/events/stinger-kickoff.ogg` | -23.6 | -1.0 | 0.8 | -25.5 | 0.68 | -26.9 | -1.4 dB |
+| `stingerFinal` | cue | once a night | `sfx/events/stinger-final-whistle.ogg` | -4.0 | -3.9 | 0.8 | -6.0 | 0.08 | -26.0 | -20.0 dB |
+| `barBed` | bed | the whole night | `ambience/bar-bed-crowded-pub-loop.ogg` | -26.0 I | -1.5 | 0.28 | -37.1 | 0.064 | -49.9 | -12.8 dB |
+| `sizzle` | work | while searing | `sfx/qte/qte-sizzle-loop.ogg` | -39.1 I | -4.5 | 0.44 | -46.2 | 0.48 | -45.5 | +0.8 dB |
+| `pour` | work | while pouring | `sfx/qte/qte-pour-loop.ogg` | -36.6 I | -8.4 | 0.44 | -43.7 | 0.48 | -42.9 | +0.8 dB |
+
+What the table says about 2026-10-07:
+
+- **The one-shots sat 22.6 dB apart as played** (the final whistle at -6.0,
+  the UI click at -28.6) and the seven gameplay cues 19.6 dB apart. The cues
+  are now within 1.1 dB of each other at -26, the three UI sounds within 0.2
+  at -30, and a panel opening is no longer as loud as the register.
+- **The crowd is three sounds and each is down 12 to 13 dB**: the bed 12.8
+  (0.35 to a trim of 0.08), the groan 12.0, a walkout 13.2. Why that number:
+  to level the cues the order ding had to come down 11.1 dB and the register
+  12.0, so a crowd brought down by less than 12 would have ended louder
+  against them than it was when Devon called it loud. At 12 to 13 it has not
+  gained on either, and it is 7 to 9 dB lower against the ticket bell and a
+  missed QTE.
+- **The bed was 9.1 dB over the sizzle it plays under and is now 4.4 dB
+  under it** (7.0 under the pour). Its loudest 400 ms was level with the UI
+  click and is now 11.2 dB under the quietest UI sound and 5.2 under a single
+  walkout.
+- **A walkout is a 13-second clip**, not a door slam, and nothing stops three
+  from sounding at once. Three were -18.2 LUFS, louder than the ticket bell,
+  a missed QTE and the kickoff sting; three are now -31.4, 5 dB under a cue.
+- **Headroom.** The files peak within 1.5 dB of full scale, so sample peaks
+  are what limit the level. For what the code fires on one tick over the
+  loops (kickoff mid-sear is the worst) the peaks summed to +1.7 dBFS and now
+  sum to -0.5. For the loudest pile worth calling plausible (bed, sear,
+  kickoff, three walkouts, a ding, a bell and a sale) the loudest 400 ms sum
+  to -19.6 LUFS where they were -10.0; the bound on its sample peaks is +5.6
+  dBFS where it was +12.0. That bound is over full scale and is left there on
+  purpose: it needs nine one-sample peaks on the same sample, and taking it
+  under 0 would cost every sound another 6 dB.
+
+What a gain cannot fix, left as it is: `stinger-kickoff.ogg` peaks at -1.0
+dBFS over a body of -23.6 LUFS, so it is the file that sets the ceiling and
+it plays at 0.85; `ui-click.ogg` is 10 ms long. The loud cues (the ding, the
+register, a landed QTE, a panel) are 11 to 17 dB quieter at the same knob
+than they were, which is the price of levelling to the quiet files: turn the
+speakers up. There is still no volume slider, only
+the mute, and the mute is not saved (it never was).
+
+`test/smoke-mix.mjs` (111) recomputes the table from `levels.json`, from
+`gainFor()` and from the call sites it reads out of `js/`, and fails when a
+role leaves its band, when a file's hash is not the measured one, or when a
+call site passes a volume it does not know about. After replacing or adding a
+sound, run `node tools/measure-audio.mjs` where a decoder is, then
+`node test/smoke-mix.mjs --table` for this table.
 
 ## Textures
 

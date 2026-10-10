@@ -14,12 +14,13 @@
 // that has not ended by 70 game minutes is a failure: bot matches here end
 // between roughly 25 and 50.
 //
-// The player's hero is Ormund, the newest, and Math.random is reseeded in the
-// page at the moment the match starts, so the draft is the same on every run
-// whatever order the assets loaded in. The match is not: nine runs of this
-// file on one machine ended between 21.6 and 33.1 game minutes, so no check
-// here may lean on an exact figure. The bot playing him has to cast his three
-// active abilities and his passive has to slow somebody.
+// The player's hero is Tobren, the newest, with Ormund drafted beside him, and
+// Math.random is reseeded in the page at the moment the match starts, so the
+// draft is the same on every run whatever order the assets loaded in. The
+// match is not: nine runs of this file on one machine ended between 21.6 and
+// 33.1 game minutes, so no check here may lean on an exact figure. The bots
+// playing the two have to cast each one's three active abilities, and each
+// one's passive has to reach somebody.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,7 +33,8 @@ const OUT = path.join(HERE, 'shots');
 const PORT = 8171; // see Tools/board-check/README.md for the ports already in use
 const BASE = `http://127.0.0.1:${PORT}`;
 const PAGE_URL = '/Projects/throneshard/';
-const HERO = 'ormund';
+const HERO = 'tobren';
+const ALLY = 'ormund';
 const SEED = 7;
 const CAP_MINUTES = 70;
 
@@ -69,11 +71,11 @@ try {
 
   if (booted) {
     console.log('\nstart');
-    const start = await page.evaluate(({ heroId, seed }) => {
+    const start = await page.evaluate(({ heroId, allyId, seed }) => {
       const g = window.game;
       let a = seed * 2654435761;
       Math.random = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-      g.startMatch({ heroId });
+      g.startMatch({ heroId, allies: [allyId] });
       g.ai.setPlayerAutoplay?.(true);
       // Stepped from the first tick, so no frame of the page's own loop runs on the wall clock in between.
       g.renderer.setAnimationLoop(null);
@@ -82,20 +84,34 @@ try {
       g.renderer.render = () => {};
       g.composer = null;
       g.fixedDt = 0.05;
-      // What the bot does with the player's hero: casts by ability, and the two debuffs his kit hands out.
-      const me = g.player.hero, K = (window.__kit = { casts: {}, slowed: 0, disarmed: 0, shared: 0 });
-      g.bus.on('ability:cast', ({ hero, ability }) => { if (hero === me && !ability?.isItem) K.casts[ability.def.id] = (K.casts[ability.def.id] ?? 0) + 1; });
-      g.bus.on('modifier:added', ({ modifier }) => {
-        if (modifier.source !== me) return;
-        if (modifier.id === 'no_free_passage') K.slowed++;
-        if (modifier.id === 'confiscated') K.disarmed++;
-        if (modifier.id === 'stand_surety') K.shared++;
+      // What the bots do with the two newest heroes: casts by ability, and what each kit hands out.
+      const me = g.player.hero, ally = g.heroes.find((h) => h.team === me.team && h.heroId === allyId);
+      const K = (window.__kit = { casts: {}, allyCasts: {}, told: 0, shoved: 0, counselled: 0, slowed: 0, disarmed: 0, shared: 0 });
+      g.bus.on('ability:cast', ({ hero, ability }) => {
+        if (ability?.isItem || (hero !== me && hero !== ally)) return;
+        const c = hero === me ? K.casts : K.allyCasts;
+        c[ability.def.id] = (c[ability.def.id] ?? 0) + 1;
       });
-      return { heroes: g.heroes.length, player: me?.heroId, name: me?.name, model: me?.modelKind, abilities: me?.abilities.map((ab) => ab.def.id), team: g.heroes.filter((h) => h.team === me.team).map((h) => h.heroId) };
-    }, { heroId: HERO, seed: SEED });
+      g.bus.on('modifier:added', ({ unit, modifier }) => {
+        // The shove's own modifier names no source, so it is counted on the heroes and creeps of the other team.
+        if (modifier.id === 'beat_the_brush' && unit.team !== me.team) K.shoved++;
+        if (modifier.source === me) {
+          if (modifier.id === 'twice_told') K.told++;
+          if (modifier.id === 'good_counsel' && unit !== me) K.counselled++;
+        }
+        if (modifier.source === ally) {
+          if (modifier.id === 'no_free_passage') K.slowed++;
+          if (modifier.id === 'confiscated') K.disarmed++;
+          if (modifier.id === 'stand_surety') K.shared++;
+        }
+      });
+      const kit = (h) => h?.abilities.map((ab) => ab.def.id);
+      return { heroes: g.heroes.length, player: me?.heroId, name: me?.name, model: me?.modelKind, abilities: kit(me), ally: ally?.heroId, allyModel: ally?.modelKind, allyAbilities: kit(ally), team: g.heroes.filter((h) => h.team === me.team).map((h) => h.heroId) };
+    }, { heroId: HERO, allyId: ALLY, seed: SEED });
     ok(start.heroes === 10, 'ten heroes take the field', `got ${start.heroes}`);
     ok(start.player === HERO, `the player is ${HERO}`, `got ${start.player} (${start.name})`);
-    ok(start.model === 'rift_stalker' && start.abilities?.length === 4, 'he wears the model rift_stalker and has four abilities', `${start.model}; ${start.abilities}`);
+    ok(start.model === 'bone_shaman' && start.abilities?.length === 4, 'he wears the model bone_shaman and has four abilities', `${start.model}; ${start.abilities}`);
+    ok(start.ally === ALLY && start.allyModel === 'rift_stalker' && start.allyAbilities?.length === 4, `${ALLY} is on his team, on the model rift_stalker, with four abilities`, `${start.ally}; ${start.allyModel}`);
     console.log(`        with ${start.team?.slice(1).join(', ')}`);
 
     // Rift Wall in the real match, on the real map, before the lanes meet (test/wall.mjs has the open-map cases).
@@ -173,7 +189,7 @@ try {
     try { await waitFor(page, () => !!document.querySelector('.scr-end'), { timeout: 20000 }); }
     catch { endAppeared = false; }
     ok(endAppeared, 'the end screen appears within 20 s of the match ending');
-    const after = await page.evaluate(() => {
+    const after = await page.evaluate((allyId) => {
       const g = window.game;
       g.renderer.render = g.__render;
       g.composer = g.__composer;
@@ -187,21 +203,32 @@ try {
         items: g.heroes.map((h) => h.inventory.filter(Boolean).length),
         kit: window.__kit,
         minutes: +(g.time / 60).toFixed(2),
-        me: ((h) => ({ level: h.level, kda: `${h.kills}/${h.deaths}/${h.assists}`, lh: h.lastHits, learned: h.abilities.map((ab) => ab.level), talents: Object.keys(h.talents).length }))(g.player.hero),
+        ...((line) => ({ me: line(g.player.hero), ally: line(g.heroes.find((h) => h.team === g.player.hero.team && h.heroId === allyId)) }))((h) => ({ level: h.level, kda: `${h.kills}/${h.deaths}/${h.assists}`, lh: h.lastHits, learned: h.abilities.map((ab) => ab.level), talents: Object.keys(h.talents).length, renewed: h.abilities[3].data.renewed ?? 0 })),
       };
-    });
+    }, ALLY);
     ok(after.endShown, 'the victory/defeat screen is shown');
     ok(/Victory|Defeat/.test(after.endText), 'the end screen says Victory or Defeat');
     ok(after.kills > 0, 'heroes died along the way', `${after.kills} kills`);
     ok(Math.min(...after.levels) >= 6, 'every hero reached level 6', `levels ${after.levels.join(',')}`);
     ok(Math.min(...after.items) >= 3, 'every hero holds at least three items', `items ${after.items.join(',')}`);
-    const [w, q, e, r] = start.abilities ?? [], c = after.kit?.casts ?? {};
-    console.log(`        ${HERO}: level ${after.me.level}, ${after.me.kda}, ${after.me.lh} last hits, abilities ${after.me.learned.join('/')}, ${after.me.talents} talents`);
-    ok(after.me.learned.every((n) => n > 0), 'the bot learned all four of his abilities', after.me.learned.join('/'));
-    ok(c[q] > 0 && after.kit.disarmed > 0, 'the bot cast Confiscate and it disarmed somebody', `${c[q] ?? 0} casts, ${after.kit?.disarmed} disarms`);
-    ok(c[w] > 0 && after.kit.shared === c[w], 'the bot cast Stand Surety and every cast bonded an ally', `${c[w] ?? 0} casts, ${after.kit?.shared} bonds`);
-    ok(after.kit?.slowed > 0 && !(e in c), 'No Free Passage slowed somebody without being cast', `${after.kit?.slowed} slows`);
-    ok(c[r] > 0, 'the bot cast Called to Account', `${c[r] ?? 0} casts`);
+    const k = after.kit ?? {};
+    for (const [id, h] of [[HERO, after.me], [ALLY, after.ally]]) console.log(`        ${id}: level ${h.level}, ${h.kda}, ${h.lh} last hits, abilities ${h.learned.join('/')}, ${h.talents} talents`);
+    {
+      const [told, brush, counsel, again] = start.abilities ?? [], c = k.casts ?? {};
+      ok(after.me.learned.every((n) => n > 0), `the bot learned all four of ${HERO}'s abilities`, after.me.learned.join('/'));
+      ok(c[told] > 0 && k.told > 0, 'the bot cast Twice Told and a hero carried it', `${c[told] ?? 0} casts, ${k.told} heroes told`);
+      ok(c[brush] > 0 && k.shoved > 0, 'the bot cast Beat the Brush and an enemy was shoved toward an ally', `${c[brush] ?? 0} casts, ${k.shoved} shoves`);
+      ok(k.counselled > 0 && !(counsel in c), 'Good Counsel reached an allied hero without being cast', `${k.counselled} times`);
+      ok(c[again] > 0 && after.me.renewed > 0, 'the bot cast Throw Again and it handed abilities back', `${c[again] ?? 0} casts, ${after.me.renewed} abilities`);
+    }
+    {
+      const [surety, confiscate, passage, account] = start.allyAbilities ?? [], c = k.allyCasts ?? {};
+      ok(after.ally.learned.every((n) => n > 0), `the bot learned all four of ${ALLY}'s abilities`, after.ally.learned.join('/'));
+      ok(c[confiscate] > 0 && k.disarmed > 0, 'the bot cast Confiscate and it disarmed somebody', `${c[confiscate] ?? 0} casts, ${k.disarmed} disarms`);
+      ok(c[surety] > 0 && k.shared === c[surety], 'the bot cast Stand Surety and every cast bonded an ally', `${c[surety] ?? 0} casts, ${k.shared} bonds`);
+      ok(k.slowed > 0 && !(passage in c), 'No Free Passage slowed somebody without being cast', `${k.slowed} slows`);
+      ok(c[account] > 0, 'the bot cast Called to Account', `${c[account] ?? 0} casts`);
+    }
     await page.evaluate(() => window.game.renderer.render(window.game.scene, window.game.camera));
     await page.screenshot({ path: path.join(OUT, '2-end.png') });
   }
