@@ -6,7 +6,7 @@ import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
-import { createObservation, visitFor, announcedAhead, defaultVisit } from '../src/systems/observation.js';
+import { createObservation, visitFor, announcedAhead, defaultVisit, hashId } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor,
   classSeeds, classSeedFor, classSeedProblems, isSeed, seedCopyFor,
@@ -26,11 +26,11 @@ import * as persist from '../src/persist.js';
 import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/persist.js';
 import { auditAssets } from './assets.mjs';
 import * as THREE from '../src/three.js';
-import { createTellSystem } from '../src/systems/tells.js';
+import { createTellSystem, phantomRand } from '../src/systems/tells.js';
 import { createWithitness, scanCosts } from '../src/systems/withitness.js';
 import { createTellMaterials, createRegistry } from '../src/world/materials.js';
 import { createTellMeshBuilder, setTellVision, TELL_SHAPES } from '../src/world/tellmesh.js';
-import { createInput, moveVector, stickVector, wantsTouchUI } from '../src/input.js';
+import { createInput, moveVector } from '../src/input.js';
 import { pickTier, tierSettings, median, createFrameBudget } from '../src/quality.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
@@ -38,7 +38,6 @@ const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
 const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
 const genData = D('generation'), adminData = D('admin');
-const ctrlData = D('controls');
 
 const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
@@ -2364,7 +2363,8 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
         register: m => { built.push(m); return registry.add(m); }
       }),
       setVision: setTellVision,
-      onBorn: over.onBorn, onGone: over.onGone
+      onBorn: over.onBorn, onGone: over.onGone,
+      ...(over.rand ? { rand: over.rand } : {})
     });
     return { sys, scene, camera, roster, registry, built };
   };
@@ -2754,16 +2754,95 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
 
     // ---- the false positive, in a full room -----------------------------
     {
-      const real = Math.random;
-      const seatAt = r => {
-        Math.random = () => r;
-        try { return mkTells({ roster: twelve() }).sys.spawnFalsePositive({ t: 400, withitness: false }).seat; }
-        finally { Math.random = real; }
-      };
-      // What the code does: seats 2 to 10 of 0 to 11. The front-left pair and
-      // the last seat are never accused. WISHLIST.md asks whether that is meant.
-      check('a false positive lands on seats 2 to 10 of twelve, never 0, 1 or 11',
-        seatAt(0) === 2 && seatAt(0.5) === 6 && seatAt(0.999999) === 10);
+      // #939, Devon 2026-10-07: "any seat". It used to draw seats 2 to 10.
+      // Every spawn below goes through the tell system itself; nothing in here
+      // works a seat out of a number on its own.
+      const at = { t: 400, withitness: false };
+      const spawn = rand => mkTells({ roster: twelve(), rand }).sys.spawnFalsePositive(at);
+      const seatAt = r => spawn(() => r).seat;
+      check('a false positive lands on any of the twelve seats: the draw starts at seat 0 and ends at seat 11',
+        seatAt(0) === 0 && seatAt(0.999999) === 11);
+      // Twelve bins of one twelfth each, read just inside both edges of every
+      // one. That is what "each seat as likely as the next" means for a draw.
+      const edges = twelve().map((_, k) => [seatAt(k / 12 + 1e-9), seatAt((k + 1) / 12 - 1e-9)]);
+      check('and every seat owns exactly one twelfth of the draw',
+        edges.every(([lo, hi], k) => lo === k && hi === k));
+      {
+        // three.js draws its UUIDs from Math.random, so it cannot be counted
+        // or poisoned here; pinned to each end instead, the seat must not move.
+        const real = Math.random;
+        const under = r => { Math.random = () => r; try { return seatAt(0.5); } finally { Math.random = real; } };
+        check('handed a stream, the phantom does not take its seat from Math.random',
+          under(0) === 6 && under(0.999999) === 6);
+      }
+
+      // The stream main.js hands it: semester seed, day, period. One phantom a
+      // period, so the first draw is the seat. 2,400 semesters' first Monday
+      // in 7th, through the tell system: all twelve seats, and flat. The
+      // counts are fixed numbers (the stream is seeded), so the bound cannot
+      // flake: chi-square on 11 degrees of freedom is over 31.3 one time in a
+      // thousand for a flat draw, and the range this replaced scores 800.
+      const SWEEP = 2400;
+      const counts = new Array(12).fill(0);
+      for (let seed = 1; seed <= SWEEP; seed++) {
+        counts[spawn(phantomRand({ seed, dayIndex: 0, periodId: 'p7' })).seat]++;
+      }
+      const chi2 = counts.reduce((a, n) => a + (n - SWEEP / 12) ** 2 / (SWEEP / 12), 0);
+      check(`over ${SWEEP} semester seeds a phantom reaches every one of the twelve seats`,
+        counts.every(n => n > 0));
+      check('and no seat is favoured: the sweep is flat (chi-square under 31.3 on 11 degrees of freedom)',
+        chi2 < 31.3);
+      check('the three seats it never used to accuse get their twelfth each',
+        [0, 1, 11].every(k => counts[k] > SWEEP / 12 * 0.75 && counts[k] < SWEEP / 12 * 1.25));
+      // One semester, every period of forty days: the seat moves with the day
+      // and with the period, and each period sees all twelve.
+      const perPeriod = ['p4', 'p5', 'p6', 'p7'].map(periodId => {
+        const seen = new Set();
+        for (let dayIndex = 0; dayIndex < 120; dayIndex++) {
+          seen.add(spawn(phantomRand({ seed: 4821, dayIndex, periodId })).seat);
+        }
+        return seen.size;
+      });
+      check('one semester seed reaches all twelve seats in each of the four periods',
+        perPeriod.every(n => n === 12));
+      const week = id => [0, 1, 2, 3, 4].map(dayIndex =>
+        spawn(phantomRand({ seed: 4821, dayIndex, periodId: id })).seat).join(',');
+      check('the same seed, day and period is the same seat (a refresh is the same phantom)',
+        week('p7') === week('p7') && week('p4') === week('p4'));
+      check('and another period, or another seed, is another week of seats',
+        week('p7') !== week('p4') &&
+        week('p7') !== [0, 1, 2, 3, 4].map(dayIndex => spawn(phantomRand({ seed: 4822, dayIndex, periodId: 'p7' })).seat).join(','));
+      // The visit is drawn from the same three numbers. If the phantom shared
+      // its stream, the seat would be the visit's own first roll re-read.
+      {
+        let same = 0;
+        for (let seed = 1; seed <= 200; seed++) {
+          const a = phantomRand({ seed, dayIndex: 0, periodId: 'p7' })();
+          const b = createRng(mixSeed(seed, 1, hashId('p7'))).next();
+          if (a === b) same++;
+        }
+        check('the phantom\'s stream is not the visit\'s', same === 0);
+      }
+      check('main.js hands the tell system that stream, off the semester seed, the day and the period',
+        /rand:\s*phantomRand\(\{\s*seed:\s*record\.seed,\s*dayIndex:\s*carry\.dayIndex,\s*periodId:\s*period\.id\s*\}\)/
+          .test(fs.readFileSync('../src/main.js', 'utf8')));
+
+      // What the three seats could have been kept out of, and are not: the
+      // room. In the August chart every seat's phantom is inside the walls,
+      // within Withitness range of the front, and close enough to somewhere
+      // you can stand for Proximity (which is the trap).
+      {
+        const kids = twelve();
+        const front = new THREE.Vector3(roomData.spawn.x, CFG.eyeHeight, roomData.spawn.z);
+        const placed = kids.map((_, k) => mkTells({ roster: twelve(), rand: () => (k + 0.5) / 12 })
+          .sys.spawnFalsePositive(at));
+        check('a phantom on each of the twelve seats is drawn at that kid, inside the room',
+          placed.every((t, k) => t.seat === k &&
+            Math.abs(t.pos.x - (kids[k].x + 0.18)) < 1e-9 && Math.abs(t.pos.z - (kids[k].bodyZ - 0.1)) < 1e-9 &&
+            Math.abs(t.pos.x) < roomData.bounds.x && t.pos.z > roomData.bounds.zFront && t.pos.z < roomData.bounds.zBack));
+        check('and each is inside Withitness range of the front of the room',
+          placed.every(t => front.distanceTo(t.pos) < CFG.withitnessRange));
+      }
 
       const born = [], expired = [];
       const { sys } = mkTells({ roster: twelve(), onBorn: t => born.push(t) });
@@ -2976,71 +3055,40 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
 
 
 // ---------------------------------------------------------------------------
-// Phase 8 — A THUMB HAS NEVER TOUCHED THIS. input.js could look around the
-// room on a phone and could not walk, teach, or hold anything. Everything
-// below exists to hold one line true: a touch source never gets its own
-// branch downstream. The stick makes the same vector WASD makes, an on-screen
-// chip pushes the same action a keydown pushes, and a pad sets the same flag
-// SHIFT sets.
+// Phase 8, without the thumb (#940). Devon, 2026-10-07: "no touch controls".
+// The stick, the chips, the hold pads and the one-finger look are gone, and
+// the block below holds two lines true instead of one: the keyboard and the
+// mouse still do everything they did, and nothing listens for a finger.
 //
 // The event wiring is executed here, not just the math. createInput takes its
-// listener target as an argument for exactly that reason, and the stub below
-// is the whole reason two fingers at once can be tested at all.
+// listener target as an argument for exactly that reason.
 // ---------------------------------------------------------------------------
 {
   // ---- the math, on its own -------------------------------------------
   {
-    const w = moveVector({ KeyW: true }, { x: 0, y: 0 });
-    check('W alone is a unit vector forward', Math.abs(w.fz - 1) < 1e-9 && w.fx === 0 && w.mag === 1);
+    const w = moveVector({ KeyW: true });
+    check('W alone is a unit vector forward', Math.abs(w.fz - 1) < 1e-9 && w.fx === 0);
 
-    const wd = moveVector({ KeyW: true, KeyD: true }, { x: 0, y: 0 });
+    const wd = moveVector({ KeyW: true, KeyD: true });
     check('W and D together are still unit length',
       Math.abs(Math.hypot(wd.fx, wd.fz) - 1) < 1e-9);
 
-    check('nothing held is nothing to do', moveVector({}, { x: 0, y: 0 }) === null);
-
-    // A thumb on the pad is a deliberate act; a stuck key is not.
-    const both = moveVector({ KeyS: true }, { x: 1, y: 0 });
-    check('the stick wins over a held key', both.fx === 1 && both.fz === 0);
-
-    // Half a tilt is half a step, which a key cannot express at all.
-    const half = moveVector({}, { x: 0, y: -0.5 });
-    check('a half-tilted stick walks at half speed', Math.abs(half.mag - 0.5) < 1e-9);
-    check('and still points somewhere unit-length',
-      Math.abs(Math.hypot(half.fx, half.fz) - 1) < 1e-9);
-  }
-
-  {
-    const dead = stickVector(100, 100, 100 + CFG.touch.deadZone - 1, 100);
-    check('a thumb inside the deadzone is not a step', dead.x === 0 && dead.y === 0);
-
-    const full = stickVector(100, 100, 100 + CFG.touch.stickRadius * 3, 100);
-    check('a thumb past the radius clamps to full tilt', Math.abs(full.x - 1) < 1e-9);
-
-    const up = stickVector(100, 100, 100, 100 - CFG.touch.stickRadius);
-    check('stick space is screen space: up is negative y', up.y < 0 && up.x === 0);
-  }
-
-  {
-    check('a coarse pointer gets the on-screen controls', wantsTouchUI({ coarse: true }));
-    check('a mouse does not', !wantsTouchUI({ coarse: false, hasTouch: false }));
-    check('a browser that only admits to ontouchstart still does',
-      wantsTouchUI({ coarse: false, hasTouch: true }));
-    check('?touch=off is how you look at the desktop branch from a phone',
-      !wantsTouchUI({ coarse: true, hasTouch: true, override: 'off' }));
-    check('?touch=on is how you look at the phone branch from a desktop',
-      wantsTouchUI({ override: 'on' }));
+    check('nothing held is nothing to do', moveVector({}) === null);
+    check('opposite keys cancel', moveVector({ KeyW: true, KeyS: true }) === null &&
+      moveVector({ KeyA: true, KeyD: true }) === null);
+    // The stick used to be the second argument and to win over the keys.
+    check('the walk has one source: a second argument is not a stick',
+      moveVector({}, { x: 1, y: 0 }) === null && moveVector({ KeyS: true }, { x: 1, y: 0 }).fz === -1);
   }
 
   // ---- the wiring, executed -------------------------------------------
   //
-  // A stub that records handlers and lets the test fire them, because the
-  // interesting case — walking while looking — is two touch identifiers alive
-  // at the same moment and nothing short of real dispatch proves it works.
+  // A stub that records handlers and lets the test fire them.
   const mkTarget = () => {
     const handlers = new Map();
     return {
       innerWidth: 800,
+      handlers,
       addEventListener(type, fn) {
         if (!handlers.has(type)) handlers.set(type, []);
         handlers.get(type).push(fn);
@@ -3048,8 +3096,6 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
       fire(type, ev) { for (const fn of (handlers.get(type) || [])) fn(ev); }
     };
   };
-  const touches = (...list) => ({ changedTouches: list.map(([identifier, clientX, clientY]) =>
-    ({ identifier, clientX, clientY })) });
   const mkInput = () => {
     const root = mkTarget(), canvas = mkTarget();
     return { root, canvas, input: createInput(canvas, { yaw: 0 }, { root }) };
@@ -3057,154 +3103,103 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   const bounds = roomData.bounds;
   const mkCam = () => ({ position: { x: 0, y: CFG.eyeHeight, z: 1.0 } });
   const walk = (input, cam, seconds) => input.move(cam, seconds, bounds, [], []);
+  const key = (root, type, code) => root.fire(type, { code, preventDefault() {} });
 
   {
-    // The claim the whole phase rests on: full-tilt stick forward and W held
-    // move the camera the same distance in the same direction.
-    const a = mkInput(), b = mkInput();
-    const camStick = mkCam(), camKeys = mkCam();
-
-    a.canvas.fire('touchstart', touches([1, 120, 300]));
-    a.canvas.fire('touchmove', touches([1, 120, 300 - CFG.touch.stickRadius * 2]));
-    walk(a.input, camStick, 0.1);
-
-    b.root.fire('keydown', { code: 'KeyW', preventDefault() {} });
-    walk(b.input, camKeys, 0.1);
-
-    check('a full-tilt stick and a held W walk the same way',
-      Math.abs(camStick.position.x - camKeys.position.x) < 1e-9 &&
-      Math.abs(camStick.position.z - camKeys.position.z) < 1e-9);
-    check('and it actually moved somewhere', Math.abs(camKeys.position.z - 1.0) > 1e-6);
-  }
-
-  {
-    // Two fingers. The left half walks, the right half looks, and neither
-    // takes the other's identifier.
-    const { canvas, input } = mkInput();
+    // A held W walks at CFG.moveSpeed, the speed it walked at before the
+    // stick's `mag` came and went.
+    const { root, input } = mkInput();
     const cam = mkCam();
-    const yaw0 = input.look.yaw;
-
-    canvas.fire('touchstart', touches([7, 100, 320], [8, 600, 200]));
-    canvas.fire('touchmove', touches([7, 100 + CFG.touch.stickRadius * 2, 320], [8, 660, 200]));
+    key(root, 'keydown', 'KeyW');
     walk(input, cam, 0.1);
-
-    check('the left-half finger walks', Math.abs(cam.position.x) > 1e-6);
-    check('the right-half finger looks at the same time', input.look.yaw !== yaw0);
-
-    // Lifting the look finger must not take the stick with it.
-    const x = cam.position.x;
-    canvas.fire('touchend', touches([8, 660, 200]));
+    check('and it actually moved somewhere', Math.abs(cam.position.z - 1.0) > 1e-6);
+    check('a held W covers CFG.moveSpeed times the frame, straight ahead',
+      Math.abs(Math.hypot(cam.position.x, cam.position.z - 1.0) - CFG.moveSpeed * 0.1) < 1e-9 &&
+      Math.abs(cam.position.x) < 1e-9);
+    const z = cam.position.z;
+    key(root, 'keyup', 'KeyW');
     walk(input, cam, 0.1);
-    check('lifting the look finger leaves the stick alone', cam.position.x > x);
-
-    canvas.fire('touchend', touches([7, 700, 320]));
-    const stopped = cam.position.x;
-    walk(input, cam, 0.1);
-    check('lifting the walk finger stops the walk', cam.position.x === stopped);
+    check('letting go of W stops the walk', cam.position.z === z);
   }
 
   {
-    // A finger that lands on the right first must not become the stick, or
-    // looking around the room walks you across it.
-    const { canvas, input } = mkInput();
-    const cam = mkCam();
-    const yaw0 = input.look.yaw;
-    canvas.fire('touchstart', touches([5, 700, 200]));
-    canvas.fire('touchmove', touches([5, 700, 100]));
-    walk(input, cam, 0.2);
-    check('a finger that lands on the right looks and does not walk',
-      input.look.pitch !== -0.04 && cam.position.x === 0 && cam.position.z === 1.0);
-    check('and the walk half is still free for the other thumb',
-      (canvas.fire('touchstart', touches([6, 100, 300])),
-       canvas.fire('touchmove', touches([6, 100 + CFG.touch.stickRadius * 2, 300])),
-       walk(input, cam, 0.1), Math.abs(cam.position.x) > 1e-6));
+    // The mouse: drag on the canvas looks, and only while the button is down.
+    const { root, canvas, input } = mkInput();
+    const yaw0 = input.look.yaw, pitch0 = input.look.pitch;
+    root.fire('mousemove', { clientX: 400, clientY: 300 });
+    check('a mouse that moves without the button down does not look',
+      input.look.yaw === yaw0 && input.look.pitch === pitch0);
+    canvas.fire('mousedown', { clientX: 400, clientY: 300 });
+    root.fire('mousemove', { clientX: 500, clientY: 250 });
+    check('a drag on the canvas looks: 100 px is 0.32 rad of yaw, 50 px is 0.14 of pitch',
+      Math.abs(input.look.yaw - (yaw0 - 0.32)) < 1e-9 && Math.abs(input.look.pitch - (pitch0 + 0.14)) < 1e-9);
+    root.fire('mouseup', {});
+    const yaw1 = input.look.yaw;
+    root.fire('mousemove', { clientX: 900, clientY: 250 });
+    check('and letting go of the button stops it', input.look.yaw === yaw1);
   }
 
   {
-    // A second finger landing in the walk half while the stick is taken looks
-    // rather than fighting over it.
-    const { canvas, input } = mkInput();
-    const cam = mkCam();
-    canvas.fire('touchstart', touches([1, 100, 300]));
-    const yaw0 = input.look.yaw;
-    canvas.fire('touchstart', touches([2, 140, 300]));
-    canvas.fire('touchmove', touches([2, 240, 300]));
-    walk(input, cam, 0.1);
-    check('a second finger in the walk half looks instead of stealing the stick',
-      input.look.yaw !== yaw0 && cam.position.x === 0);
-  }
-
-  {
-    // The chips and the pads. Same actions, same flags, no second path.
+    // The keys. Actions, and the two holds.
     const { root, input } = mkInput();
 
-    root.fire('keydown', { code: CFG.keys.advance, preventDefault() {} });
+    key(root, 'keydown', CFG.keys.advance);
     check('a keydown queues its action', (input.takeActions() || []).includes('advance'));
-
-    input.press('advance');
-    check('and an on-screen chip queues the same one',
-      (input.takeActions() || []).includes('advance'));
     check('actions drain once per frame', input.takeActions() === null);
+    key(root, 'keydown', CFG.keys.advance);
+    check('a held key does not repeat its action', input.takeActions() === null);
 
     check('nothing is held to start with', !input.wantsWithitness() && !input.wantsWait());
-    input.setHold('withitness', true);
-    check('the Withitness pad is SHIFT', input.wantsWithitness());
-    // The interesting case: the five-second wait-time hold under a pad that
-    // is already down.
-    input.setHold('wait', true);
-    check('the wait pad works while Withitness is already held',
+    key(root, 'keydown', 'ShiftLeft');
+    check('SHIFT is Withitness', input.wantsWithitness() && !input.wantsWait());
+    // The interesting case: the five-second wait-time hold with SHIFT
+    // already down.
+    key(root, 'keydown', 'KeyF');
+    check('F is wait time, and it works while SHIFT is already held',
       input.wantsWithitness() && input.wantsWait());
-    input.setHold('withitness', false);
+    key(root, 'keyup', 'ShiftLeft');
     check('and releasing one does not release the other',
       !input.wantsWithitness() && input.wantsWait());
 
+    key(root, 'keydown', 'ShiftRight');
+    key(root, 'keydown', 'KeyW');
     root.fire('blur', {});
-    check('losing the window releases every pad', !input.wantsWithitness() && !input.wantsWait());
-    input.setHold('nonsense', true);
-    check('an unknown hold name is ignored rather than invented',
-      !input.wantsWithitness() && !input.wantsWait());
-  }
-
-  {
-    // A pad stuck down after the window blurs would leave the room in thermal
-    // view with nobody touching anything; the stick stuck down would walk the
-    // teacher into a wall.
-    const { root, canvas, input } = mkInput();
     const cam = mkCam();
-    canvas.fire('touchstart', touches([3, 90, 300]));
-    canvas.fire('touchmove', touches([3, 300, 300]));
-    root.fire('blur', {});
-    const at = cam.position.x;
     walk(input, cam, 0.2);
-    check('losing the window releases the stick too', cam.position.x === at);
+    check('losing the window releases every key: no hold, no walk',
+      !input.wantsWithitness() && !input.wantsWait() && cam.position.z === 1.0);
   }
 
-  // ---- the strip is generated, not written down ------------------------
+  // ---- nothing listens for a finger (#940) -----------------------------
   {
-    // main.js builds one chip per row of CFG.keys. Adding a key must not need
-    // an edit anywhere else, and a key with no label must still get a button.
-    const lookCopy = Object.fromEntries(obsData.lookFors.map(l => [l.key, l]));
-    const chipFor = action => {
-      const c = action.startsWith('look:') ? lookCopy[action.slice(5)] : ctrlData.labels[action];
-      return { action, short: (c?.short || action).toUpperCase(), long: c?.long || c?.label || '' };
-    };
-    const chips = Object.keys(CFG.keys).map(chipFor);
-    check('every key in CFG.keys becomes exactly one chip', chips.length === Object.keys(CFG.keys).length);
-    check('and every chip has words on it', chips.every(c => c.short.length > 0));
-    check('a key nobody wrote a label for still gets a chip',
-      chipFor('somethingNew').short === 'SOMETHINGNEW');
+    const { root, canvas, input } = mkInput();
+    const types = t => [...t.handlers.keys()].sort().join(',');
+    check('the canvas listens for the mouse button and nothing else', types(canvas) === 'mousedown');
+    check('the window listens for keys, the mouse and blur, and nothing else',
+      types(root) === 'blur,keydown,keyup,mousemove,mouseup');
+    check('the input hands back no way to press, hold or steer from the screen',
+      Object.keys(input).sort().join(',') === 'keys,look,move,takeActions,wantsWait,wantsWithitness');
 
-    // The look-for chips must read data/observation.json rather than spelling
-    // the same rubric line out a second time in data/controls.json.
-    const lookActions = Object.keys(CFG.keys).filter(a => a.startsWith('look:'));
-    check('every look-for key has a row in observation.json',
-      lookActions.every(a => lookCopy[a.slice(5)]));
-    check('and observation.json is where its words are',
-      lookActions.every(a => !(a in ctrlData.labels)));
-    check('every look-for row carries a chip-length short form',
-      obsData.lookFors.every(l => typeof l.short === 'string' && l.short.length && l.short.length <= 10));
-    check('both hold pads are named in controls.json',
-      !!ctrlData.holds.withitness?.short && !!ctrlData.holds.wait?.short);
+    const src = f => fs.readFileSync(f, 'utf8');
+    const html = src('../index.html'), css = src('../styles/main.css');
+    const js = ['main.js', 'input.js', 'config.js', 'loader.js', 'ui/dom.js', 'ui/seating.js']
+      .map(f => [f, src('../src/' + f)]);
+    check('ui/touch.js and data/controls.json are gone',
+      !fs.existsSync('../src/ui/touch.js') && !fs.existsSync('../data/controls.json'));
+    check('no module names a touch event, the touch layer or its copy deck',
+      js.every(([, t]) => !/touchstart|touchmove|touchend|touchcancel|changedTouches|createTouchControls|wantsTouchUI|stickVector|touchMode|ui\/touch|['"]controls['"]/.test(t)));
+    check('CFG has no touch block', !('touch' in CFG));
+    check('index.html has no touch layer, no phone key list and no touch hint',
+      !/id="touch"|id="touchKeys"|id="touchHint"|THUMB|TAP<|STRIP</.test(html));
+    // The start card tells a desktop player to rotate or tap nothing.
+    check('and the one key list it shows is the keyboard\'s',
+      (html.match(/class="keys[^"]*"/g) || []).length === 1 && /<kbd>W A S D<\/kbd>/.test(html));
+    check('the stylesheet has no on-screen controls and no touch mode',
+      !/#touch|body\.touch|\.tchip|\.tpad|#stickPad|pointer:coarse/.test(css));
+    check('no look-for carries a chip label any more', obsData.lookFors.every(l => !('short' in l)));
+    // What the seating screen draws a desk at, whoever is pointing.
+    check('the seating screen takes no touch flag',
+      !/touch/.test(src('../src/ui/seating.js').replace(/\/\/.*$/gm, '')));
   }
 
   // ---- the frame budget ------------------------------------------------
@@ -3268,26 +3263,13 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
       capped.report().pixelRatio === 0.75 && capped.report().drops.length === 1);
   }
 
-  // ---- the document the controls are drawn into ------------------------
+  // ---- the small-viewport pass, which stayed --------------------------
   {
-    const html = fs.readFileSync('../index.html', 'utf8');
     const css = fs.readFileSync('../styles/main.css', 'utf8');
-    check('index.html has somewhere to put the on-screen controls', /id="touch"/.test(html));
-    check('and both halves of the start screen key list',
-      /id="kbdKeys"/.test(html) && /id="touchKeys"/.test(html));
-    check('the touch layer is styled', /#touch\.on\{display:block\}/.test(css));
-    // The layer covers the whole viewport. If it is not inert, it eats every
-    // touch meant for the room and the game stops taking input at all.
-    check('the touch layer itself is inert', /#touch\{[^}]*pointer-events:none/.test(css));
-    check('and its controls are not', /#touch > \*\{pointer-events:auto\}/.test(css));
-    check('a chip is at least 44px of fingertip', /\.tchip\{[^}]*min-height:44px/.test(css));
-    check('a hold pad is bigger than that', /\.tpad\{[^}]*min-height:56px/.test(css));
     // The rubric panel sat at a fixed top:336px, which is past the bottom of a
-    // landscape phone. The media-query pass is the fix, so assert it exists.
+    // short window. The media-query pass is the fix, so assert it exists.
     check('the readouts have a small-viewport pass',
       /@media \(max-width:880px\),\(max-height:560px\)/.test(css));
-    check('and a desk card cannot be mistaken for a scroll',
-      /\.deskcard\{touch-action:none/.test(css));
   }
 }
 

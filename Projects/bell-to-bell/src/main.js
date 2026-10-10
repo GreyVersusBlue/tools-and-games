@@ -11,7 +11,7 @@ import { createModelLoader } from './world/models.js';
 import { buildRoom } from './world/room.js';
 import { buildStudents, placeStudents, createReactions } from './world/students.js';
 import { createChart, learnFrom } from './systems/chart.js';
-import { createTellSystem } from './systems/tells.js';
+import { createTellSystem, phantomRand } from './systems/tells.js';
 import { createWithitness } from './systems/withitness.js';
 import { createInterventions } from './systems/interventions.js';
 import { createEvents } from './systems/events.js';
@@ -21,7 +21,7 @@ import { createObservation, visitFor, announcedAhead } from './systems/observati
 import { inTeachingZone, tickMeters } from './systems/meters.js';
 import { applySubject, tickHazard, hazardBand, isLabDay, subjectEvents, subjectTells,
   subjectInterventions, subjectRoom, stackBand } from './systems/subject.js';
-import { createInput, wantsTouchUI } from './input.js';
+import { createInput } from './input.js';
 import { pickTier, tierSettings, createFrameBudget } from './quality.js';
 import { createAudio } from './audio.js';
 import { dom } from './ui/dom.js';
@@ -33,7 +33,6 @@ import { showReport } from './ui/report.js';
 import { showConference } from './ui/conference.js';
 import { showWeek } from './ui/week.js';
 import { createSeatingScreen } from './ui/seating.js';
-import { createTouchControls } from './ui/touch.js';
 import * as persist from './persist.js';
 
 // If anything below throws — a bad fetch, a data-shape mismatch, whatever —
@@ -153,22 +152,15 @@ const carriedBandwidth = persist.load(persist.dayKey('bandwidth'), null);
 if (carriedBandwidth != null) state.bandwidth = clamp01to100(carriedBandwidth);
 
 // ---------- the device ----------
-// Phase 8. Two questions asked once, before anything is built: is this a
-// thumb, and what can it afford. Both answers are pure functions of what the
-// browser will admit to, and `?touch=on` / `?touch=off` is how you look at
-// either answer's other branch from a desktop.
+// What it can afford, asked once, before anything is built. A pure function
+// of what the browser will admit to; `?tier=` is how you look at another
+// answer. (Phase 8 also asked whether this was a thumb. #940: it no longer
+// does, and there are no on-screen controls to show.)
 const query = new URLSearchParams(location.search);
 const coarse = !!(globalThis.matchMedia && matchMedia('(pointer: coarse)').matches);
-const touchMode = wantsTouchUI({
-  coarse, hasTouch: 'ontouchstart' in globalThis, override: query.get('touch')
-});
 const tier = tierSettings(query.get('tier') || pickTier({
   coarse, cores: navigator.hardwareConcurrency ?? null, memory: navigator.deviceMemory ?? null
 }));
-document.body.classList.toggle('touch', touchMode);
-dom.touchKeys.classList.toggle('hide', !touchMode);
-dom.kbdKeys.classList.toggle('hide', touchMode);
-dom.touchHint.classList.toggle('hide', !touchMode);
 
 // ---------- renderer ----------
 const scene = new THREE.Scene();
@@ -273,40 +265,6 @@ const reactions = createReactions({ students, data: data.reactions, camera });
 const audio = createAudio();
 const input = createInput(renderer.domElement, room.spawn);
 
-// Phase 8: the same actions, on screen. The chip list is generated from
-// CFG.keys, so a key added to that table shows up here without an edit in this
-// file or in ui/touch.js. Where the words come from is the one thing worth
-// being careful about: a look-for's words already exist in
-// data/observation.json, so the chips read them from there rather than
-// spelling the same rubric line out a second time in data/controls.json.
-const lookForCopy = Object.fromEntries(data.observation.lookFors.map(l => [l.key, l]));
-const touchChips = Object.entries(CFG.keys).map(([action, code]) => {
-  const c = action.startsWith('look:') ? lookForCopy[action.slice(5)] : data.controls.labels[action];
-  return {
-    action,
-    code: code.replace(/^Key/, ''),
-    short: (c?.short || action).toUpperCase(),
-    long: c?.long || c?.label || ''
-  };
-});
-const touch = touchMode ? createTouchControls({
-  copy: data.controls,
-  chips: touchChips,
-  // Order matters on a phone: the pad your thumb reaches first is the one you
-  // hold for five seconds, and Withitness is the one you tap in and out of.
-  holds: [
-    { name: 'wait', ...data.controls.holds.wait },
-    { name: 'withitness', ...data.controls.holds.withitness }
-  ],
-  onPress: action => input.press(action),
-  onHold: (name, on) => input.setHold(name, on)
-}) : null;
-if (touch) {
-  input.onStickMove(at => touch.setStick(at));
-  touch.show(true);
-  dom.touchHint.textContent = data.controls.hint;
-}
-
 // Phase 8: the frame budget. CFG.quality.budgetMs is the number; this is the
 // thing that measures against it and gives up resolution when the room misses
 // it for four seconds straight. `bellToBellFrames()` in the console is how a
@@ -322,6 +280,9 @@ const tellSystem = createTellSystem({
   // a folded note.
   buildTellMesh: createTellMeshBuilder({ mats: tellMats, register: m => registry.add(m) }),
   setVision: setTellVision,
+  // #939: the phantom's seat comes off the semester seed, the day and the
+  // period, like the visit above.
+  rand: phantomRand({ seed: record.seed, dayIndex: carry.dayIndex, periodId: period.id }),
   // T1: a tell arriving changes how the kid sits. Subtle enough to be deniable,
   // which is the point — the posture is a Tier 1 tell and the phone is Tier 2.
   onBorn: t => {
@@ -498,9 +459,6 @@ function frame(now) {
   if (state.t <= 0) { state.t = 0; endPeriod(); }
 
   withitness.set(state, input.wantsWithitness() && state.bandwidth > 0);
-  // SHIFT on a laptop with a touchscreen still has to leave the pad agreeing
-  // with the room.
-  if (touch) touch.setHoldState('withitness', state.withitness);
   input.move(camera, dt, room.bounds, students, room.occluders);
   camera.rotation.set(input.look.pitch, input.look.yaw, 0, 'YXZ');
 
@@ -741,9 +699,7 @@ const seating = createSeatingScreen({
   // ui/seating.js patches in place rather than re-rendering, so this hands
   // back a fresh view model rather than calling redrawChart() itself.
   onMoveOccluder: (id, x, z) => (chart.moveOccluder(id, x, z) ? chart.viewModel(known) : null),
-  onConfirm: () => beginPeriod(),
-  // Phase 8: a fingertip needs a bigger desk card than a mouse pointer does.
-  touch: touchMode
+  onConfirm: () => beginPeriod()
 });
 
 function redrawChart() {

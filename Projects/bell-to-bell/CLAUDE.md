@@ -117,13 +117,10 @@ through `semester.repair` on every load; a generated period's seed is the slot k
   it cannot be loaded by a test. That is why `systems/tells.js` went its whole
   life unexecuted.
 - **`src/ui/` never imports from `src/systems/`.** UI takes data in and calls back out.
-- **The on-screen controls are generated from `CFG.keys`.** Adding a key must put a
-  chip on the phone without an edit in `main.js` or `ui/touch.js`. Its words come from
-  `data/controls.json`, except a look-for's, which live in `data/observation.json` and
-  are read from there — the rubric line is written down once.
-- **`#touch` covers the viewport and must stay `pointer-events:none`**, with the
-  controls inside it `auto`. Without that the layer eats every touch meant for the room
-  and the game takes no input at all. `smoke.mjs` asserts it.
+- **There are no touch controls** (root `HISTORY.md` #940; Devon, 2026-10-07:
+  "no touch controls"). Keys and the mouse are the only input, `src/input.js`
+  registers no touch listener, and `smoke.mjs` fails if a touch layer, a
+  `body.touch` rule or a stick comes back. Do not add one without asking.
 - **The frame budget is `CFG.quality.budgetMs`, and `src/quality.js` is the only thing
   that decides what to give up.** Resolution is the only lever that may move
   mid-period; antialiasing and the rigged characters are boot decisions, because WebGL
@@ -181,12 +178,12 @@ These are locked. Do not "improve" them without asking.
     week six. The tell schedule is the seed plus the day. A class the band check
     cannot fit is a loud error, not a quiet easy period, and nothing re-rolls the
     roster to make the numbers land.
-17. **A touch source never gets its own branch downstream.** The virtual stick
-    produces the same `{fx, fz}` pair WASD produces and hands it to the same
-    clamp-and-collide walk; an on-screen chip pushes the same action string a keydown
-    pushes; a hold pad sets the same flag SHIFT sets. There is no second movement path
-    and there is not to be one. Withitness and wait time stay two independent flags:
-    the five-second hold has to work with Withitness already down.
+17. *Withdrawn 2026-10-10 (root `HISTORY.md` #940).* It read "a touch source
+    never gets its own branch downstream" and governed Phase 8's stick, chips
+    and hold pads, which are out of the game. The number is not reused. Its
+    last sentence is a fact about the keyboard and still holds: Withitness
+    (SHIFT) and wait time (F) are two independent holds, and the five-second
+    one has to work with SHIFT already down.
 
 ## Voice
 Flavor text is deadpan, specific, and written for someone who has actually taught.
