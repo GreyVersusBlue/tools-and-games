@@ -82,9 +82,10 @@ group('the level pack');
   const wc = new World(ct, 1);
   ok(ct.network.nodes === 3 && ct.network.spacing === 220 && ct.network.lanesPerDir === 1 && !ct.network.cells && wc.nodes.length === 3 && wc.controllers.length === 3, 'Cross Town (R13) is three boxes in a row 220 m apart, one lane each way', `${wc.nodes.length} boxes at x ${wc.nodes.map(n => n.origin[0]).join(', ')}`);
   ok(wc.controllers.every(c => c.mode !== 'timed' && c.rules.length === 1 && c.rules[0].when === 'elapsed' && c.rules[0].seconds === 22 && c.phases[0].movements.includes('W-T') && c.timing.allRed === 1.5), 'every box runs a 22 s rule with E-W, the ambulance\'s street, as phase 1, on 1.5 s of all-red', wc.controllers.map(c => `${c.phases[0].name} ${c.rules[0] ? c.rules[0].seconds : 'no rule'} s`).join(' | '));
-  ok(ct.events.length === 1 && ct.events[0].kind === 'ambulance' && ct.events[0].at === 90 && ct.events[0].leg === 'W' && ct.events[0].turn === 'T' && ct.events[0].within === 100 && !ct.events[0].node, 'its one event is an ambulance from the west of the first box at 90 s, straight on, with 100 s to leave the map', JSON.stringify(ct.events));
+  ok(ct.events.length === 1 && ct.events[0].kind === 'ambulance' && ct.events[0].at === 90 && ct.events[0].leg === 'W' && ct.events[0].turn === 'T' && ct.events[0].within === 150 && !ct.events[0].node, 'its one event is an ambulance from the west of the first box at 90 s, straight on, with 150 s to leave the map (#949)', JSON.stringify(ct.events));
   ok(JSON.stringify(ct.turns) === '{"T":1}' && Array.isArray(ct.demand) && ct.demand.length === 3 && !ct.demand[1].W && !ct.demand[1].E && ct.demand[0].W === 380 && ct.demand[2].E === 380, 'nobody turns, so a car handed on goes straight on and the ambulance with it; demand is per box, the middle box fed from its side streets alone', JSON.stringify(ct.demand));
-  ok(ct.unlocks.join() === 'phases,auto,allred,priority' && ct.mode === 'soft' && ct.target === 88 && ct.gridlockWait === 150 && ct.duration === 240 && /100 seconds/.test(ct.hint), 'it unlocks the phases, the rules, the sliders and the corridor, is soft, asks for 88 cars, and its hint gives the ambulance\'s 100 seconds', ct.unlocks.join());
+  ok(ct.unlocks.join() === 'phases,auto,allred,priority' && ct.mode === 'soft' && ct.target === 99 && ct.gridlockWait === 150 && /150 seconds/.test(ct.hint) && !/\b100\b/.test(ct.hint + ct.blurb), 'it unlocks the phases, the rules, the sliders and the corridor, is soft, asks for 99 cars, and its hint gives the ambulance\'s 150 seconds and no other figure for it', ct.unlocks.join());
+  ok(ct.duration === 270 && ct.events[0].at + ct.events[0].within === ct.duration - 30, 'it runs 270 s, so the ambulance\'s clock runs out 30 s before the run does and a late one is seen late (#949)', `${ct.events[0].at} + ${ct.events[0].within} against ${ct.duration} s`);
   ok(handOffset(ct) === null && handOffset(levelById('rush-hour')) === null, 'the calibration\'s offset sweep leaves it alone: boxes on rules have no plan to shift');
   // Lights Out (R13, #933): Boulevard's street with the wave in, and a power cut
   const lo = levelById('lights-out');
@@ -431,16 +432,18 @@ group('the lesson decides a star (R2)');
   const tool = playedAs(lo, 4, { offset: 32, at: 100 });
   ok(tool.cleared === l32.r.cleared && tool.stars === l32.r.stars && Math.abs(tool.wait - l32.r.avgWait) < 1e-9 && tool.cleared !== l0.r.cleared, 'and the calibration tool, told to move the slider at 100 s, plays that same run and not the no-input one', `${tool.cleared} cleared at ${tool.wait.toFixed(2)} s against ${l32.r.cleared} at ${l32.r.avgWait.toFixed(2)} s; nothing pressed ${l0.r.cleared}`);
   ok(share(l32.w) <= 0.3 && l32.r.lesson.met && l32.r.stars === 3 && l32.w.controllers[1].shift === 0, 'with the slider moved half a cycle on once the lights are back the wave is back, the lesson is met and the run three-stars', `${pc(share(l32.w))}, ${starString(l32.r.stars)}`);
-  // Cross Town (R13, #929): the ambulance across three boxes, seed 6, the
-  // slowest of the six with the corridor alone. Three plays through the World's own commands, each
-  // read off the World's events: when the ambulance came and left, which
-  // boxes it was handed to, which boxes made its corridor.
+  // Cross Town (R13, #929; its clock and its length, #949): the ambulance
+  // across three boxes. Plays through the World's own commands, each read
+  // off the World's events: when the ambulance came and left, when it was
+  // called late, which boxes it was handed to, which made its corridor.
+  // Seed 4 is the slowest of the six with nothing pressed, seed 6 the
+  // slowest with the corridor alone.
   const ct = levelById('cross-town');
   const runC = (parts, seed = 6, lvl = ct) => {
     const w = new World(lvl, seed);
-    let amb = null, came = null, left = null, read = 0;
+    let amb = null, came = null, left = null, lateAt = null, read = 0;
     const handed = [], corridors = [];
-    for (let i = 0; i < ct.duration * 60 && !w.stats.gridlock; i++) {
+    for (let i = 0; i < lvl.duration * 60 && !w.stats.gridlock; i++) {
       w.step();
       if (parts) handStep(w, parts);
       for (; read < w.events.length; read++) {
@@ -450,23 +453,30 @@ group('the lesson decides a star (R2)');
           if (e.kind === 'handoff') handed.push(e.node);
           if (e.kind === 'priority') corridors.push(e.follow ? e.node : 0);
           if (e.kind === 'cleared') left = e.t;
+          if (e.kind === 'ambulance-late') lateAt = e.t;
         }
       }
     }
-    return { w, r: score(w), trip: left === null ? Infinity : left - came, came, handed: handed.join(), corridors: corridors.join(), turned: w.events.filter(e => e.kind === 'handoff' && !/-T$/.test(e.to)).length };
+    return { w, r: score(w), trip: left === null ? Infinity : left - came, came, lateAt, handed: handed.join(), corridors: corridors.join(), turned: w.events.filter(e => e.kind === 'handoff' && !/-T$/.test(e.to)).length };
   };
   const tripText = c => (c.trip === Infinity ? 'still on the map at the end' : `${c.trip.toFixed(1)} s on the map`);
-  const idle = runC(null), called = runC({ ahead: false }), road = runC({});
-  ok(Math.abs(idle.came - 90) < 0.05 && idle.corridors === '' && idle.trip > ct.events[0].within && idle.r.lesson && !idle.r.lesson.met && idle.r.stars === 1 && idle.r.cleared >= ct.target, 'Cross Town with nothing pressed: the ambulance comes at 90 s, nobody makes its corridor, it is late, and the run keeps one star', `${tripText(idle)}, ${idle.r.cleared} cleared, ${starString(idle.r.stars)}`);
+  const amb0 = ct.events[0];
+  const idle = runC(null, 4), called = runC({ ahead: false }), road = runC({});
+  ok(Math.abs(idle.came - 90) < 0.05 && idle.corridors === '' && idle.trip > amb0.within && idle.trip < ct.duration - amb0.at && idle.r.lesson && !idle.r.lesson.met && idle.r.stars === 1 && idle.r.cleared >= ct.target, 'Cross Town with nothing pressed, seed 4: the ambulance comes at 90 s, nobody makes its corridor, it leaves the map late, and the run keeps one star', `${tripText(idle)}, ${idle.r.cleared} cleared, ${starString(idle.r.stars)}`);
+  ok(idle.lateAt !== null && Math.abs(idle.lateAt - (idle.came + amb0.within)) < 0.05 && idle.lateAt < ct.duration - 29 && idle.w.stats.ambulanceLate === 1, 'it is called late the moment its 150 s are up, half a minute before the run ends', `late at ${idle.lateAt === null ? 'no time' : idle.lateAt.toFixed(2) + ' s'} of ${ct.duration}`);
   ok(/^the ambulance was \d+ s late$/.test(idle.r.reasons.at(-1)), 'and the reason line says how late', idle.r.reasons.at(-1));
-  ok(called.corridors === '0,1,2' && called.handed === '1,2' && called.trip > ct.events[0].within && called.trip < idle.trip && called.r.lesson && !called.r.lesson.met && called.r.stars === 1, 'the corridor called as it arrives follows it to boxes 2 and 3, and on this seed that alone is still late', `${tripText(called)} against ${ct.events[0].within} s, corridors at boxes ${called.corridors}`);
-  ok(road.corridors === '0,1,2' && road.handed === '1,2' && road.trip <= ct.events[0].within && road.trip < called.trip - 5 && road.r.lesson && road.r.lesson.met && road.r.stars === 3, 'called, and the green given at each box ahead of it: it crosses all three on time, the lesson is met and the run three-stars', `${tripText(road)}, ${starString(road.r.stars)}`);
+  // why the run is 270 s (#949): cut back to 240 the clock runs out on the
+  // last frame, the same ambulance is still on the map with nothing
+  // counted against it, and the end card says it made it
+  const cut = runC(null, 4, { ...ct, duration: 240 });
+  ok(cut.trip === Infinity && cut.lateAt === null && cut.w.stats.ambulanceLate === 0 && cut.r.reasons.at(-1) === 'the ambulance made it without its corridor', 'the same run cut to 240 s ends with the ambulance on the map, never late, and a reason line that says it made it: the run has to outlast the clock', `${tripText(cut)}: ${cut.r.reasons.at(-1)}`);
+  ok(called.corridors === '0,1,2' && called.handed === '1,2' && called.trip <= amb0.within - 30 && called.lateAt === null && called.r.lesson && called.r.lesson.met && called.r.stars === 3, 'seed 6, the corridor called as it arrives: it follows the ambulance to boxes 2 and 3, and that alone is on time with half a minute in hand, the lesson met', `${tripText(called)} against ${amb0.within} s, corridors at boxes ${called.corridors}`);
+  ok(road.corridors === '0,1,2' && road.handed === '1,2' && road.trip <= amb0.within && road.trip < called.trip - 25 && road.r.lesson && road.r.lesson.met && road.r.stars === 3, 'called, and the green given at each box ahead of it: it crosses all three more than 25 s sooner, the lesson is met and the run three-stars', `${tripText(road)}, ${starString(road.r.stars)}`);
   ok(idle.turned === 0 && road.turned === 0 && road.w.stats.handoffs > 60, 'and every car handed on, the ambulance among them, goes straight on', `${road.w.stats.handoffs} handed on`);
   // an ambulance on time that nobody called is not the lesson: seed 1 with
-  // nothing pressed is 99.7 s on the map, so it is given 120 s here to be
-  // on time by a margin a later change will not eat
-  const lucky = runC(null, 1, { ...ct, events: [{ ...ct.events[0], within: 120 }] });
-  ok(lucky.trip < 115 && lucky.w.stats.ambulanceLate === 0 && lucky.corridors === '' && lucky.r.lesson && !lucky.r.lesson.met && lucky.r.reasons.at(-1) === 'the ambulance made it without its corridor' && lucky.r.stars === 1, 'given 120 s, seed 1\'s ambulance gets across on time with nothing pressed, and that is not the lesson', `${tripText(lucky)}: ${lucky.r.reasons.at(-1)}`);
+  // nothing pressed is 99.7 s on the map, on time by 50 s
+  const lucky = runC(null, 1);
+  ok(lucky.trip < 115 && lucky.lateAt === null && lucky.w.stats.ambulanceLate === 0 && lucky.corridors === '' && lucky.r.lesson && !lucky.r.lesson.met && lucky.r.reasons.at(-1) === 'the ambulance made it without its corridor' && lucky.r.stars === 1, 'seed 1\'s ambulance gets across on time with nothing pressed, and that is not the lesson: one star', `${tripText(lucky)}: ${lucky.r.reasons.at(-1)}`);
   // walks: the World's longest served call, against its own walk events
   const l4 = levelById('crossing');
   const w4 = new World(withAuto(l4), 3).run(120);
