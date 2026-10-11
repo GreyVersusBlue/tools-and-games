@@ -121,14 +121,17 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **the first increment of
-rank 29, Throneshard's hard bots in the lane** (#946, 2026-10-10; committed
+**The last batch of ranked work that shipped** is **the second increment of
+rank 29, Throneshard's hard bots in the lane** (#948, 2026-10-10; committed
 locally on huginn for the landing, so its PR number is the landing's): ½,
 naming Opus 5, run under Opus 5.5, and the row stays with its text rewritten.
-Hard melee heroes take 16.9 last hits at 10 minutes in a hard-against-hard
-match where they took 14.9, against normal's 18.6: a hard bot no longer walks
-in and out of an enemy tower's range after a healthy hero, and a laner the
-enemy out-fights stands off from the creep clash. Before it the same day came
+A hard laner left alone against enemy heroes who would commit on it waits at
+its own tower. The melee core of a lane against two ranged heroes dies 2.2
+times in 10 minutes where it died 3.1, level with normal's 2.5, and takes 16.7
+last hits where it took 13.8, against normal's 19.7; hard melee heroes take
+17.9 against normal's 18.8. The first increment the same day (#946) stopped a
+hard bot walking in and out of an enemy tower's range after a healthy hero and
+stood a laner the enemy out-fights off from the creep clash. Before it the same day came
 **the second increment of rank 28, Throneshard's sixteenth hero** (#943;
 committed locally on huginn the same way): a 2+ row naming
 Fable 5.1, run under Opus 5.5, and with it the row is finished and gone.
@@ -1065,7 +1068,7 @@ and #222 was closed unmerged an hour of suites later.
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 16.9 against 18.6 at 10 minutes over 12 seeds, from 14.9 (#946). What is left is one seat, the melee core in a lane against two ranged heroes, who still dies 3.0 to 4.5 times in 10 minutes where normal's dies 1.7 to 2.5. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 17.9 against 18.8 at 10 minutes over 12 seeds (#948), about what two such means differ by from noise. The melee core in a lane against two ranged heroes dies as often as normal's now (2.2 against 2.5) and takes 16.7 last hits against normal's 19.7; the melee heroes in the middle lane take 18.5 against 21.3, not looked into. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
@@ -2574,7 +2577,7 @@ A 3D lane battler Devon had built outside this repo and asked to move in on
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
 Its suites are `node test/data.mjs` (1,211 checks, 38 of them `test/wall.mjs`'s,
 69 `test/ormund.mjs`'s and 63 `test/tobren.mjs`'s) and `node test/browser.mjs`
-(43; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 13
+(49; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 19
 checks) from the project folder, in Site CI's matrix.
 Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
@@ -2585,21 +2588,34 @@ and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
 32** in the order the table gives, not this list's:
 
 - Hard melee heroes still last-hit below normal in a hard-versus-hard match:
-  16.9 against 18.6 at 10 minutes over 12 seeds, from 14.9 on the same seeds
-  before #946 (ranged 10.6 against 10.3; all ten heroes 13.8 against 14.5).
-  #946 fixed two things: a hard bot walked in and out of an enemy tower's range
-  after a healthy hero, and a laner the enemy heroes out-fought stood at the
-  creep clash inside their reach. What is left is one seat. With mid and top
-  level with normal, the melee core in the bottom lane against two hard ranged
-  heroes takes 14.8 to 16.7 last hits and dies 3.0 to 4.5 times in 10 minutes
-  (normal: 15.2 to 28.0 and 1.7 to 2.5); the support beside him is seldom
-  within 14 units when he dies. Tried and not it: harass at normal's rate.
-  Not tried: the support standing with its core, and leaving the lane sooner
-  than half health when out-fought. One thing found and left: `diveOk`'s push
-  clause reads `mode`, and `tryFight` sets `mode` to `fight`, so a dive allowed
-  for a push is refused on the next think (55 of 357 thinks under a tower in
-  one seed). Measure with the harness in `HISTORY.md`'s log for #946; a 12-seed
-  mean moves by about 1 from noise alone.
+  17.9 against 18.8 at 10 minutes over 12 seeds, each match in a fresh browser
+  (16.2 before #948 on the same seeds; ranged 11.1 against 9.6; all ten heroes
+  14.5 against 14.2). A second run of the old code and of normal, as pages of
+  one browser, gave 17.3 and 19.2, so a 12-seed mean moves by about 1 from
+  noise alone and the 0.9 left is inside it. #946 fixed the tower walk and
+  stood an out-fought laner off from the clash. #948 found what killed the
+  melee core of the lane against two ranged heroes: it stayed at the clash
+  alone. Three seconds before 60 of its 75 fatal retreats its support was dead
+  (21), going home (18) or not back yet (21), and it turned for home at 41% of
+  its health, 3.2 s before it died. A hard laner alone against enemy heroes
+  who would commit on it waits at its own tower now. That seat: 13.8 last
+  hits and 3.1 deaths in 10 minutes before, 16.7 and 2.2 after, normal's 19.7
+  and 2.5; its support dies 2.3 times where it died 3.3. What is left, in
+  order of size: the melee heroes in the middle lane take 18.5 where normal's
+  take 21.3 (18.3 before #948, so not the yield rule's doing, and #946 had
+  measured them level); the seat is 3.0 last hits under normal's, and of its
+  26 deaths left its support stood within 20 units in 11 and was going home in
+  10, so the pair loses the trade together (the two ranged heroes put 4,725
+  spell damage on it in 10 minutes, normal's 4,007). Tried and not kept:
+  counting the sides with `fightRatio`, which made the seat 20.3 last hits and
+  1.3 deaths but had the two ranged heroes yielding 24.5% of their first ten
+  minutes, because it does not count a lane partner standing across the wave.
+  Measured and not it: the support wandering off (it is within 14 units of its
+  core for 70 to 78% of their time in the lane at either difficulty), and the
+  push-dive leftover (1 of the seat's 37 deaths was under an enemy tower). That
+  leftover is still there: `diveOk`'s push clause reads `mode`, and `tryFight`
+  sets `mode` to `fight`, so a dive allowed for a push is refused on the next
+  think. Measure with the harness in `HISTORY.md`'s log for #948.
 - Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
   a match (#751).
 - The card preview is a SwiftShader draft (#749), and the every-second-frame

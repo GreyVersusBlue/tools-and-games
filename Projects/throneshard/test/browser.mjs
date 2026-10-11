@@ -23,7 +23,7 @@
 // one's passive has to reach somebody.
 //
 // After it, two more pages play the first ten minutes of a hard-against-hard
-// match each (about a minute of wall clock a page) for the two rules that keep
+// match each (about a minute of wall clock a page) for the three rules that keep
 // a hard laner alive. THRONESHARD_ONLY=hard runs those two alone.
 
 import fs from 'node:fs';
@@ -250,6 +250,10 @@ try {
   // And a laner the enemy heroes in sight out-fight (laneStandoff() above 0) is sent to stand that far behind the
   // creep clash, not at it: at the clash a lone melee core in a lane against two ranged heroes died 5.7 times in
   // ten minutes. doLane is wrapped the same way, and the place it sent the hero is read from its own debug line.
+  // And a laner standing alone against enemy heroes who would commit on it (laneYield(), kept by think() as `yielding`) is sent to wait at its own
+  // front tower and takes no creep outside that tower's reach: left at the clash, the melee core of a lane against
+  // two ranged heroes died 3.1 times in ten minutes, its partner dead, going home or not back in 60 of 75 deaths.
+  // doLane's destination is read from its debug line again, and tryLastHit is wrapped for the creep it picks.
   // Last hits are printed and not checked, because one seed's mean runs from 9 to 21.
   for (const [seed, lu] of [
     [1, { heroId: 'kenshar', allies: ['brakka', 'aldric', 'isolde', 'vashkar'], enemies: ['sable', 'gorrow', 'pell', 'morvane', 'thalor'] }],
@@ -264,10 +268,16 @@ try {
     await hp.evaluate(async ({ seed, lu }) => {
       const g = window.game;
       const { BotBrain } = await import('./src/ai/BotBrain.js');
-      const T = (window.__dive = { chances: 0, under: 0, unsanctioned: 0, turnedOut: 0, thinks: 0, stoodOff: 0, tooClose: 0, worst: 0 });
-      const tryFight = BotBrain.prototype.tryFight, towerDanger = BotBrain.prototype.handleTowerDanger, doLane = BotBrain.prototype.doLane;
+      const T = (window.__dive = { chances: 0, under: 0, unsanctioned: 0, turnedOut: 0, thinks: 0, stoodOff: 0, tooClose: 0, worst: 0, yielded: 0, tooFar: 0, farthest: 0, picked: 0, strayed: 0 });
+      const tryFight = BotBrain.prototype.tryFight, towerDanger = BotBrain.prototype.handleTowerDanger, doLane = BotBrain.prototype.doLane, tryLastHit = BotBrain.prototype.tryLastHit;
       BotBrain.prototype.doLane = function (lane) {
         doLane.call(this, lane);
+        const y = /^(?:lane|yield) \S+ s=(-?\d+)$/.exec(this.debug ?? ''), tower = this.d.structures.frontTower(this.team, lane);
+        if (y && tower && this.yielding) { // the flag think() set from laneYield() before it came here
+          const past = +y[1] - this.laneFront(lane).path.project(tower.position.x, tower.position.z).s; // the debug line rounds s
+          T.yielded++;
+          if (past > 3.51) { T.tooFar++; T.farthest = Math.max(T.farthest, past); }
+        }
         const m = /^lane \S+ s=(-?\d+)$/.exec(this.debug ?? ''), off = this.laneStandoff();
         if (!m || !(off > 0)) return;
         const f = this.laneFront(lane);
@@ -275,6 +285,14 @@ try {
         const clash = f.enN > 0 ? Math.min(f.my, f.en) : f.my, short = +m[1] - (clash - off); // the debug line rounds s
         T.stoodOff++;
         if (short > 0.51) { T.tooClose++; T.worst = Math.max(T.worst, short); }
+      };
+      BotBrain.prototype.tryLastHit = function () {
+        const was = this.lhTarget, r = tryLastHit.call(this), c = this.lhTarget; // a hit already on its way when the yield began is let finish
+        if (r && c && c !== was && c.team !== this.team && this.yielding) {
+          T.picked++;
+          if (!this.ctx.allyTowers.some((t) => t.alive && t.distanceTo(c.position) < t.getStat('attackRange'))) T.strayed++;
+        }
+        return r;
       };
       BotBrain.prototype.tryFight = function () {
         const modeWas = this.mode; // tryFight sets it to 'fight', and diveOk's push clause reads it
@@ -313,6 +331,9 @@ try {
     ok(hard.unsanctioned === 0, 'no hard bot fought a hero under an enemy tower that its tower rule would turn it out for', `${hard.unsanctioned} thinks of ${hard.under} under a tower`);
     ok(hard.stoodOff > 0, 'a laner was out-fought by the enemy heroes in its lane', `${hard.stoodOff} thinks`);
     ok(hard.tooClose === 0, 'and was sent to stand off from the clash by the full distance every time', `${hard.tooClose} thinks short, by up to ${hard.worst.toFixed(1)} units`);
+    ok(hard.yielded > 0, 'a laner stood alone against enemy heroes who would commit on it', `${hard.yielded} thinks`);
+    ok(hard.tooFar === 0, 'and was sent to wait at its own front tower every time', `${hard.tooFar} thinks past it, by up to ${hard.farthest.toFixed(1)} units`);
+    ok(hard.strayed === 0, 'and went for no creep outside that tower\'s reach', `${hard.strayed} of ${hard.picked} creeps picked while alone`);
     ok(hardProblems.length === 0, 'no page errors', hardProblems.slice(0, 3).join(' | '));
     await hp.close();
   }
