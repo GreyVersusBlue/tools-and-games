@@ -28,7 +28,8 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
 
 - **`content.js`** — the tables: recipes, foods, milks, syrups, toppings,
   phases, staff tiers, every upgrade and its price, daily modifiers, random
-  events, the starting unlocks, sprite palettes, and the reopening layer —
+  events, the starting unlocks, sprite palettes, the two paces (`PACES`, #947:
+  the first row is the game as it was) and the reopening layer —
   the bean rates, `META_UPGRADES`, `SHOP_LAYOUTS` (Phase 7, #360). **It reads no `state`**, and
   section 10 checks that it never does; a tuning function that needs the shop
   belongs in `sim.js`. A new recipe is one row here, and joins the save catalog
@@ -60,7 +61,9 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   `migrate`, `repair`, `toSaveData`, `applyToState`, `buildCatalog`. Key
   `cornerKettleSave_v1`, which never changes (#36). `meta: {beans, unlocks}`
   and `layoutId` are the permanent layer, outside every field a reopening
-  resets, both clamped in `repair` the way `loyaltyLevel` and `upgrades` are. Imported by `ui.js` and
+  resets, both clamped in `repair` the way `loyaltyLevel` and `upgrades` are.
+  `pace` (#947) is a setting beside them: a save without it, or naming a pace
+  this build lacks, reads as the first. Imported by `ui.js` and
   `test/smoke-save.mjs`, never by `sim.js`: the sim does not know it is saved.
 - **`draw.js`** — string builders: the customer sprite, the cup SVG, the order
   bubble, the ticket, and the customer's accessible name. **A leaf over
@@ -89,8 +92,10 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   the same button and **clicks it** — the bar, the sound and the `disabled`
   refusal are the click's, and re-checking `disabled` here would be a branch
   that can never run (#369).
-- **`chalkboard.js`** — `createChalkboard({state, sim, buy})`: the Menu Board,
-  including the Legacy section and the reopen row. **Imports nothing**, for the
+- **`chalkboard.js`** — `createChalkboard({state, sim, buy, setPace})`: the Menu Board,
+  including the Legacy section, the reopen row and the pace switch (#947),
+  whose two buttons sit in `#paceRows`, are built once and are never rebuilt,
+  so the keyboard's focus stays on them through a redraw. **Imports nothing**, for the
   same reason. Every button's `disabled` is `sim.canBuy()`, **and so is every
   price it prints** (#363), and every click is `buy` — so the rule that enables
   a button, the number on its face and the rule that takes the money are one

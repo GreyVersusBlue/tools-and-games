@@ -12,14 +12,15 @@
  * @param {object} ctx
  *   state, sim             the shop
  *   buy(type, id, extra)   make a purchase (ui.js: confirm, sim.purchase, toast, save, redraw)
+ *   setPace(id)            switch the pace (ui.js: sim.setPace, toast, save, redraw)
  */
-export function createChalkboard({ state, sim, buy }){
+export function createChalkboard({ state, sim, buy, setPace }){
   const {
     RECIPES, FOODS, SYRUPS, TOPPINGS, STATION_UPGRADES, EQUIPMENT_UPGRADES,
     AMBIANCE_UPGRADES, BUSINESS_UPGRADES, MARKETING_COST, MARKETING_DURATION_MS,
     PRESTIGE_MIN_DAY, BARISTA_TIERS, BARISTA_MAX, BARISTA_PROMOTE_COST,
     TRAINING, TRAINING_GROUPS, MORALE_RAISE_COST, LOYALTY_UPGRADES, SHIELD_MAX_HELD, RANDOM_EVENTS,
-    META_UPGRADES,
+    META_UPGRADES, PACES,
   } = sim.content;
 
   // `disabled`, or nothing, straight from the purchase table.
@@ -30,7 +31,39 @@ export function createChalkboard({ state, sim, buy }){
   // $280 is the #344 bug again, one layer down.
   const price = (type, id, extra) => sim.canBuy(type, id, extra).cost;
 
+  // The pace switch (#947): Busy Corner or Quiet Corner, changeable at any
+  // moment of a shift. Its two buttons are built once and then only their
+  // state is rewritten, unlike everything in #chalkContent below, which is
+  // replaced on every redraw and drops the keyboard's focus with it: a player
+  // who tabbed here stays here. Which one is on is said three ways and none
+  // of them is colour: the button's words, aria-pressed, and the note under.
+  let paceBuilt = false;
+  function renderPace(){
+    const rows = document.getElementById('paceRows');
+    if(!rows) return;
+    if(!paceBuilt){
+      rows.innerHTML = PACES.map(p=>`<div class="chalk-item">
+        <span>🚪 ${p.name} <small>${p.desc}</small></span>
+        <button type="button" data-pace="${p.id}"></button>
+      </div>`).join('');
+      rows.querySelectorAll('[data-pace]').forEach(b=> b.onclick = ()=> setPace(b.dataset.pace));
+      paceBuilt = true;
+    }
+    const on = sim.currentPace();
+    rows.querySelectorAll('[data-pace]').forEach(b=>{
+      const isOn = b.dataset.pace === on.id;
+      b.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+      b.textContent = isOn ? '✓ On' : 'Switch';
+      // The visible word first, so a voice command for what is printed finds it.
+      const p = PACES.find(x=>x.id===b.dataset.pace);
+      b.setAttribute('aria-label', `${isOn ? 'On' : 'Switch'}: ${p.name}. ${p.desc}`);
+    });
+    document.getElementById('paceNote').textContent =
+      `${on.name} is on. A switch starts with the next customer. Prices, tips, reputation and beans are worked out the same on both.`;
+  }
+
   function render(){
+    renderPace();
     const el = document.getElementById('chalkContent');
     const stars = sim.reputationStars();
     let html = `<div class="chalk-section">Reputation: ${'⭐'.repeat(stars)}${'☆'.repeat(5-stars)} <small>(${Math.round(state.reputation)}/100)</small></div>`;

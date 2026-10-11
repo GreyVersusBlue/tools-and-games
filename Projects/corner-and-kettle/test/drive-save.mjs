@@ -58,6 +58,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 // `--a11y` runs section 15 alone, on its own page: the cues and the reduced-
 // motion rules, about ten seconds instead of the whole file.
 const ONLY_A11Y = process.argv.includes('--a11y');
+// `--pace` runs section 16 alone the same way: the pace switch on the board.
+const ONLY_PACE = process.argv.includes('--pace');
 
 /**
  * Click a control inside the chalkboard. The panel is a ~3,000 px scroll
@@ -120,7 +122,7 @@ const p = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
 
 try {
   sections: {
-  if (ONLY_A11Y) break sections;
+  if (ONLY_A11Y || ONLY_PACE) break sections;
   /* ---------- 1. the page boots at all ---------- */
 
   t.section('1. the module script runs');
@@ -1085,6 +1087,8 @@ try {
   // page's real stylesheet. Its own page and a wiped save, so `--a11y` can run
   // it alone.
 
+  a11y: {
+  if (ONLY_PACE) break a11y;
   t.section('15. without colour, and without motion (#916, #917)');
   const ap = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(ap, { wipe: true });
@@ -1269,6 +1273,151 @@ try {
   t.ok(await ap.$$eval('.toast', els => els.filter(e => /Served!/.test(e.textContent)).length) === 0, 'and the toast leaves on its timer');
   t.ok(ap.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', ap.__errs.join(' | ') || 'clean');
   await ap.close();
+  }
+
+  /* ---------- 16. the pace switch ---------- */
+  // Busy Corner and Quiet Corner on the Menu Board (#947). What the two paces
+  // do to the door and the wait is smoke-sim.mjs section 20; this is the
+  // wiring only a page has: the control, the keyboard, the save, a reload, an
+  // old save, a file out and back, and New Game. Its own page and a wiped
+  // save, so `--pace` can run it alone.
+
+  pace: {
+  if (ONLY_A11Y) break pace;
+  t.section('16. the pace switch on the Menu Board (#947)');
+  const pp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(pp, { wipe: true });
+  const board = () => pp.evaluate(() => {
+    const d = window.__CK_DEBUG__, box = document.getElementById('paceBox');
+    const btns = [...document.querySelectorAll('#paceRows [data-pace]')];
+    return {
+      pace: d.state.pace, door: d.sim.spawnFactor(), wait: d.sim.patienceFactor(),
+      role: box && box.getAttribute('role'),
+      groupName: box && document.getElementById(box.getAttribute('aria-labelledby'))?.textContent.trim(),
+      inContent: !!document.querySelector('#chalkContent [data-pace]'),
+      btns: btns.map(b => ({ id: b.dataset.pace, tag: b.tagName, pressed: b.getAttribute('aria-pressed'), text: b.textContent.trim(),
+        label: b.getAttribute('aria-label'), keys: b.getAttribute('aria-keyshortcuts'), tabindex: b.tabIndex, marked: !!b.__mark,
+        row: b.closest('.chalk-item').textContent.replace(/\s+/g, ' ').trim(),
+        anim: getComputedStyle(b).animationName, trans: getComputedStyle(b).transitionDuration })),
+      note: document.getElementById('paceNote')?.textContent || '',
+      focus: document.activeElement?.dataset?.pace || document.activeElement?.tagName,
+      toasts: [...document.querySelectorAll('.toast')].map(e => e.textContent),
+      queue: JSON.stringify(d.state.queue.map(c => [c.id, c.patienceMax])),
+    };
+  });
+  const btn = (b, id) => b.btns.find(x => x.id === id) || {};
+
+  let b = await board();
+  t.ok(b.role === 'group' && b.groupName === 'Pace', 'the board has a group named Pace', `${b.role} "${b.groupName}"`);
+  t.ok(b.btns.length === 2 && b.btns.every(x => x.tag === 'BUTTON' && x.tabindex === 0), 'holding two real buttons, both in the tab order');
+  t.ok(!b.inContent, 'outside the part of the board that is rebuilt on every redraw');
+  t.ok(b.pace === 'busy' && (await savedState(pp)).pace === 'busy', 'a wiped browser opens on Busy Corner, in the state and in the save');
+  t.ok(btn(b, 'busy').pressed === 'true' && btn(b, 'busy').text === '✓ On' && btn(b, 'quiet').pressed === 'false' && btn(b, 'quiet').text === 'Switch',
+    'which one is on is the button\'s words and aria-pressed, not a colour', `${btn(b, 'busy').text} / ${btn(b, 'quiet').text}`);
+  t.ok(/Quiet Corner Customers come about a quarter less often and wait half again as long\./.test(btn(b, 'quiet').row), 'the Quiet Corner row says in words what it changes', btn(b, 'quiet').row);
+  t.ok(/^Switch: Quiet Corner\. Customers come/.test(btn(b, 'quiet').label || '') && /^On: Busy Corner\./.test(btn(b, 'busy').label || ''), 'each button is named for its pace, starting with the word printed on it', btn(b, 'quiet').label);
+  t.ok(/^Busy Corner is on\./.test(b.note) && /next customer/.test(b.note) && /Prices, tips, reputation and beans/.test(b.note), 'the note says which is on, when a switch starts and what no pace changes', b.note);
+  t.ok(b.btns.every(x => x.keys === null), 'neither button claims a shortcut key');
+  t.ok(b.btns.every(x => x.anim === 'none' && x.trans === '0s'), 'and neither animates or transitions, with motion on');
+
+  // Mid-shift, by keyboard. The three customers boot seated are in line.
+  await pp.click('#chalkToggle');
+  await wait(500);
+  await pp.evaluate(() => { const q = document.querySelector('[data-pace="quiet"]'); q.__mark = true; q.focus(); });
+  const lineBefore = b.queue, doorBefore = b.door, waitBefore = b.wait;
+  t.ok(JSON.parse(lineBefore).length >= 3, 'three customers are in line before the switch', lineBefore);
+  await pp.keyboard.press('Enter');
+  await wait(200);
+  b = await board();
+  t.ok(b.pace === 'quiet', 'Enter on the focused button switches to Quiet Corner', b.pace);
+  t.ok(btn(b, 'quiet').pressed === 'true' && btn(b, 'quiet').text === '✓ On' && btn(b, 'busy').pressed === 'false' && btn(b, 'busy').text === 'Switch', 'both buttons say so');
+  t.ok(/^Quiet Corner is on\./.test(b.note), 'and so does the note', b.note);
+  t.ok(b.focus === 'quiet' && btn(b, 'quiet').marked, 'the keyboard is still on the same button, which was not rebuilt', String(b.focus));
+  t.ok(b.toasts.some(x => x === 'Quiet Corner from the next customer on. Customers come about a quarter less often and wait half again as long.'), 'a toast says when it starts and what it changes', b.toasts.join(' | '));
+  t.ok(JSON.parse(b.queue).slice(0, 3).every((c, i) => JSON.stringify(c) === JSON.stringify(JSON.parse(lineBefore)[i])), 'nobody already in line had their patience rewritten', b.queue);
+  t.ok(Math.abs(b.door / doorBefore - 1.3) < 1e-9 && Math.abs(b.wait / waitBefore - 1.5) < 1e-9, 'the page\'s own sim has the door 1.3 times slower and the wait 1.5 times longer',
+    `door ${doorBefore} -> ${b.door}, wait ${waitBefore} -> ${b.wait}`);
+  t.ok((await savedState(pp)).pace === 'quiet', 'and the switch was written to storage at once');
+
+  // Pressing it again changes nothing, and no key anywhere else is a pace key.
+  await pp.keyboard.press('Enter');
+  await wait(150);
+  b = await board();
+  t.ok(b.pace === 'quiet' && b.toasts.some(x => x === 'Quiet Corner is already on'), 'Enter on the pace already on is refused in words', b.toasts.join(' | '));
+  await pp.evaluate(() => document.activeElement.blur());
+  for (const k of 'abcdefghijklmnopqrstuvwxyz0123456789[]'.split('')) await pp.keyboard.press(k);
+  await wait(150);
+  t.ok((await board()).pace === 'quiet', 'no letter, digit or bracket typed at the shop switches the pace');
+
+  // A reload keeps it.
+  await boot(pp);
+  b = await board();
+  t.ok(b.pace === 'quiet' && btn(b, 'quiet').pressed === 'true' && /^Quiet Corner is on\./.test(b.note), 'after a reload the shop is still on Quiet Corner and the board says so', `${b.pace}, ${b.note}`);
+
+  // A file out, and back into a browser that is on the other pace.
+  await hookExport(pp);
+  await pp.click('#chalkToggle');
+  await wait(400);
+  await pp.click('#save-bar [data-gvb="export"]');
+  await waitFor(pp, () => window.__exports && window.__exports.length > 0, { timeout: 5000 });
+  const paceText = await pp.evaluate(() => window.__exports[0]);
+  let paceEnv = null;
+  try { paceEnv = JSON.parse(paceText); } catch (e) { /* asserted below */ }
+  t.ok(paceEnv?.state?.pace === 'quiet', 'an exported file carries the pace', String(paceEnv?.state?.pace));
+  const quietFile = path.join(OUT, 'ck-pace-quiet.json');
+  fs.writeFileSync(quietFile, paceText);
+  // The same file as a build before the field would have written it.
+  const oldFile = path.join(OUT, 'ck-pace-old.json');
+  const oldEnv = JSON.parse(paceText); delete oldEnv.state.pace; oldEnv.state.day = 4;
+  fs.writeFileSync(oldFile, JSON.stringify(oldEnv));
+  await setFiles(pp, oldFile, () => pp.click('#save-bar [data-gvb="import"]'));
+  await wait(900);
+  b = await board();
+  t.ok(await pp.evaluate(() => window.__CK_DEBUG__.state.day) === 4, 'a file with no pace field imports');
+  t.ok(b.pace === 'busy' && btn(b, 'busy').pressed === 'true' && /^Busy Corner is on\./.test(b.note), 'as Busy Corner, over a shop that was on Quiet Corner, and the board follows', `${b.pace}, ${b.note}`);
+  t.ok((await savedState(pp)).pace === 'busy', 'and that is what was written to storage');
+  await setFiles(pp, quietFile, () => pp.click('#save-bar [data-gvb="import"]'));
+  await wait(900);
+  b = await board();
+  t.ok(b.pace === 'quiet' && btn(b, 'quiet').pressed === 'true', 'the file exported on Quiet Corner imports as Quiet Corner', b.pace);
+
+  // A save from before the field, in storage: the game it was saved in.
+  await pp.evaluate(k => localStorage.setItem(k, JSON.stringify({ day: 5, money: 700, unlockedRecipes: ['drip', 'latte'] })), KEY);
+  await boot(pp);
+  b = await board();
+  t.ok(await pp.evaluate(() => window.__CK_DEBUG__.state.day) === 5 && b.pace === 'busy' && btn(b, 'busy').text === '✓ On', 'an old save in storage loads as Busy Corner', `${b.pace}`);
+  t.ok(b.door === 1 - 4 * 0.05 && b.wait === 1 - 4 * 0.03, 'with day five\'s door and wait as they have always been', `door ${b.door}, wait ${b.wait}`);
+
+  // New Game keeps the pace the player has on. Switched with the mouse here.
+  await pp.evaluate(() => { window.confirm = () => true; });
+  await pp.click('#chalkToggle');
+  await wait(500);
+  await pp.click('[data-pace="quiet"]');
+  await wait(150);
+  t.ok((await board()).pace === 'quiet', 'a click switches it too');
+  // New Game seats three customers. Which pace the state was on at each of
+  // those three calls is read off the sim's own generateOrder.
+  await pp.evaluate(() => {
+    const d = window.__CK_DEBUG__, gen = d.sim.generateOrder;
+    window.__paceAtSeat = [];
+    d.sim.generateOrder = () => { window.__paceAtSeat.push(d.state.pace); return gen(); };
+  });
+  await pp.click('#newGameBtn');
+  await wait(600);
+  b = await board();
+  const seated = await pp.evaluate(() => window.__paceAtSeat.slice(0, 3).join(','));
+  t.ok(await pp.evaluate(() => window.__CK_DEBUG__.state.day) === 1 && b.pace === 'quiet', 'New Game opens day one on the pace that was on', `${b.pace}`);
+  t.ok(b.toasts.some(x => x === 'New shop, day one ☕ (Quiet Corner)'), 'and its toast names it', b.toasts.join(' | '));
+  t.ok(seated === 'quiet,quiet,quiet', 'the three customers New Game seats walk into a shop already on Quiet Corner', seated);
+  t.ok((await savedState(pp)).pace === 'quiet' && (await savedState(pp)).day === 1, 'the new shop was saved on it');
+  const quietDoor = b.door;
+  await pp.click('[data-pace="busy"]');
+  await wait(150);
+  b = await board();
+  t.ok(b.pace === 'busy' && (await savedState(pp)).pace === 'busy' && Math.abs(quietDoor / b.door - 1.3) < 1e-9, 'and a click on Busy Corner puts the new shop back on today\'s game', `${b.pace}, door ${quietDoor} -> ${b.door}`);
+  t.ok(pp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', pp.__errs.join(' | ') || 'clean');
+  await pp.close();
+  }
 
 } finally {
   await p.close().catch(() => {});

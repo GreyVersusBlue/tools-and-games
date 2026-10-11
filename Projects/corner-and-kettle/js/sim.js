@@ -84,6 +84,7 @@ export function freshState(content) {
     upgrades: new Set(), // purchased equipment/ambiance/business upgrade ids
     marketingRemaining: 0,
     prestigeLevel: 0,
+    pace: content.PACES[0].id, // which row of PACES the shop runs at
     // The permanent layer (Phase 7, #360). `meta` is the only part of the
     // state a reopening does not touch: beans earned and the tree they bought.
     // `layoutId` is the configuration this run opened in, picked at the last
@@ -138,7 +139,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX, WORD_OF_MOUTH_REP_SPAN, WORD_OF_MOUTH_REGULAR_SPAN,
     HISTORY_WINDOW, HISTORY_WEIGHT,
     BEANS_PER_DAYS, BEANS_PER_REPUTATION, BEANS_MAX, META_UPGRADES, META_MENU,
-    META_DISCOUNT, META_DISCOUNT_MAX, SHOP_LAYOUTS,
+    META_DISCOUNT, META_DISCOUNT_MAX, SHOP_LAYOUTS, PACES,
   } = content;
   const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -152,15 +153,36 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   // Day 1 stays exactly at baseline tuning; each following day nudges spawn
   // rate up and patience down slightly, capped at a floor so it never becomes
   // impossible.
+  //
+  // The pace multiplies last, outside the door's 0.25 floor, so the gentler
+  // row is gentler by the same share on the hardest day as on the first. The
+  // first row's two multipliers are 1, and x*1 is x to the last bit: that row
+  // is the game as it was.
+  function currentPace(){
+    return PACES.find(p => p.id === state.pace) || PACES[0];
+  }
   function spawnFactor(){
     const floor = Math.max(0.30, 0.6 - 0.06*state.prestigeLevel);
     const base = Math.max(floor, 1 - (state.day-1)*0.05);
-    return Math.max(0.25, base * shopSpawnFactorMult());
+    return Math.max(0.25, base * shopSpawnFactorMult()) * currentPace().doorMult;
   }
   function patienceFactor(){
     const floor = Math.max(0.45, 0.75 - 0.06*state.prestigeLevel);
     const base = Math.max(floor, 1 - (state.day-1)*0.03);
-    return base * shopPatienceMult();
+    return base * shopPatienceMult() * currentPace().patienceMult;
+  }
+  // The switch itself. Nothing already in the shop is rewritten: a customer's
+  // patience was set when they walked in and the door's own count is kept, so
+  // the new pace is the next customer's, and only how long the door waits for
+  // them changes at once. Returns the words for the toast; an unknown id or the
+  // pace already on is refused and changes nothing.
+  function setPace(id){
+    const pace = PACES.find(p => p.id === id);
+    if(!pace) return { ok:false, reason:'No such pace' };
+    if(pace.id === currentPace().id) return { ok:false, reason:`${pace.name} is already on` };
+    state.pace = pace.id;
+    render('all');
+    return { ok:true, text:`${pace.name} from the next customer on. ${pace.desc}` };
   }
 
   // Juniors can only be trusted with straightforward drinks; Seniors handle anything.
@@ -1574,7 +1596,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   return {
     state, content,
     rand, randInt,
-    spawnFactor, patienceFactor, orderComplexity, baristaCanHandle, baristaFatigueFactor,
+    spawnFactor, patienceFactor, currentPace, setPace, orderComplexity, baristaCanHandle, baristaFatigueFactor,
     effectiveSpec, moraleSpeedMult, moraleMistakeMult, baristaIntervalMs, wagesDue,
     reputationStars, adjustReputation,
     hasUpgrade, queueMax, espressoDurationMs, outageActive, stationDurationMult,

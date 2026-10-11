@@ -315,6 +315,22 @@ export const STARTING_UNLOCKS = {
 
 export const QUEUE_MAX = 5;
 
+// How hard the shop leans on the player: the first row is the game as it has
+// always been and what a save without the field loads as. `doorMult` multiplies
+// the time between customers and `patienceMult` how long each one waits; a row
+// changes nothing else, so prices, tips, reputation and beans are the same
+// arithmetic on both. sim.js's spawnFactor() and patienceFactor() read the row
+// each time they are called, which is what makes it switchable mid-shift.
+// 1.3 is the Quiet Day modifier's own share. Measured by test/balance.mjs's
+// pace section, which also fails the build if the second row stops being the
+// gentler one or stops being a game.
+export const PACES = [
+  {id:'busy', name:'Busy Corner', doorMult:1, patienceMult:1,
+    desc:'The shop as it has always run.'},
+  {id:'quiet', name:'Quiet Corner', doorMult:1.3, patienceMult:1.5,
+    desc:'Customers come about a quarter less often and wait half again as long.'},
+];
+
 // The customer sprite's palette. The sim picks a customer's colours when it
 // generates the order (so the pick comes off the seeded rng); the page draws
 // them. The pixel pattern itself stays with the drawing code.

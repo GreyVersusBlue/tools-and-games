@@ -28,7 +28,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeShop, playRun, playDay, patient, eager, shopper, spendBeans, bestLayout, DEFAULT_PRIORITY, HAND_MS } from "./autopilot.mjs";
-import { BARISTA_TIERS, SHOP_LAYOUTS, META_UPGRADES } from "../js/content.js";
+import { BARISTA_TIERS, SHOP_LAYOUTS, META_UPGRADES, PACES } from "../js/content.js";
 import { STEP_MS } from "../js/sim.js";
 
 const DEFAULT_RUNS = 100;
@@ -507,6 +507,109 @@ export function loopSweep({ runs = LOOP.runs, days = LOOP.days, prestigeAfter = 
   };
 }
 
+/**
+ * The two paces, side by side (#947). Every batch above plays Busy Corner,
+ * the first row of PACES, which is why none of their numbers moved when the
+ * second row was added. This plays both on the same seeds, at three speeds of
+ * hand, over two stretches: the first ten days with nothing bought, and the
+ * stress batch's hardest day.
+ *
+ * Three hands because the patient player at HAND_MS keeps up with anything
+ * before day ten, and a pace is for the player who does not: 1600 ms and
+ * 2400 ms are that player. The columns the other tables lack are the ones a
+ * pace is felt in. `queue` is the mean line at the door over every step of
+ * the shift, `jammed` the share of steps the line was at its cap (when the
+ * door turns people away), and `ranOut` the customers a day whose patience
+ * reached zero in line: nobody walks in this game, so that is a customer
+ * who will not tip.
+ *
+ * What it found, and the rails say so: Quiet Corner is the POORER shop
+ * wherever the hands keep up, because a slower door sells fewer cups and
+ * nothing else about the money changed; on the hardest day, where the queue
+ * cap throttles both doors alike, it is level or a few percent ahead on tips.
+ */
+export const PACE = { runs: 20, days: 10, hands: [HAND_MS, 1600, 2400], slowHand: 1600 };
+
+function watchedDay(sim, state, handMs, counters) {
+  let steps = 0, queueSum = 0, jammed = 0, ranOut = 0;
+  const seen = new Set();
+  const advance = sim.advance;
+  sim.advance = dt => {
+    steps++; queueSum += state.queue.length;
+    if (state.queue.length >= sim.queueMax()) jammed++;
+    for (const c of state.queue) if (c.patience <= 0 && !seen.has(c.id)) { seen.add(c.id); ranOut++; }
+    return advance(dt);
+  };
+  try { return { ...playDay(sim, state, patient, { handMs, counters }), steps, queueSum, jammed, ranOut, repAtClose: state.reputation }; }
+  finally { sim.advance = advance; }
+}
+
+function paceRow(paceId, handMs, { runs, days, mutate = null }) {
+  const rows = [];
+  let rep = 0;
+  for (let i = 0; i < runs; i++) {
+    const { sim, state, counters } = makeShop(0x5EED + i, s => { if (mutate) mutate(s); s.pace = paceId; });
+    for (let d = 0; d < days; d++) {
+      rows.push(watchedDay(sim, state, handMs, counters));
+      if (d < days - 1) sim.startNextDay();
+    }
+    rep += state.reputation;
+  }
+  const t = totals(rows), n = rows.length, steps = sum(rows, r => r.steps);
+  return {
+    pace: paceId, handMs,
+    offered: t.offered / n, served: t.served / n, unserved: t.unserved / n,
+    queue: sum(rows, r => r.queueSum) / steps, jammed: sum(rows, r => r.jammed) / steps,
+    ranOut: sum(rows, r => r.ranOut) / n,
+    patienceAtServe: t.served ? t.patienceSum / t.served : 0,
+    net: t.net / n, repAtClose: rep / runs,
+  };
+}
+
+export function paceSweep({ runs = PACE.runs, days = PACE.days, hands = PACE.hands, paces = PACES } = {}) {
+  const stretch = opts => hands.flatMap(handMs => paces.map(p => paceRow(p.id, handMs, opts)));
+  return {
+    runs, days, hands, paces: paces.map(p => ({ id: p.id, name: p.name, doorMult: p.doorMult, patienceMult: p.patienceMult })),
+    early: stretch({ runs, days }),
+    hardest: stretch({ runs: STRESS.runs, days: 1, mutate: s => { s.day = STRESS.day; s.prestigeLevel = STRESS.prestigeLevel; } }),
+  };
+}
+
+/**
+ * The rails on it, as failing lines (empty when none fail). Two claims.
+ *
+ *   gentler     in every row of both stretches the line at the door is
+ *               shorter on the second pace, and on the hardest day its
+ *               customers are served with at least 0.05 more of their
+ *               patience left at every hand. The first is the door's
+ *               multiplier and the second the patience's: each was verified
+ *               by setting that multiplier alone to 1 (#34).
+ *   still a game  on the hardest day at the slow hand the second pace's door
+ *               is still jammed for a quarter of the shift and customers are
+ *               still left at close; and over the first ten days at the quick
+ *               hand it nets less than the first pace, so switching to it is
+ *               never free money.
+ */
+export function checkPace(sweep) {
+  const out = [];
+  const [first, second] = sweep.paces;
+  const pair = (rows, handMs) => [rows.find(r => r.handMs === handMs && r.pace === first.id), rows.find(r => r.handMs === handMs && r.pace === second.id)];
+  for (const [label, rows] of [["first ten days", sweep.early], ["hardest day", sweep.hardest]]) for (const handMs of sweep.hands) {
+    const [a, b] = pair(rows, handMs);
+    if (!(b.queue < a.queue)) out.push(`${label}, hands every ${handMs} ms: ${second.name}'s line (${b.queue.toFixed(2)}) is not shorter than ${first.name}'s (${a.queue.toFixed(2)})`);
+  }
+  for (const handMs of sweep.hands) {
+    const [a, b] = pair(sweep.hardest, handMs);
+    if (!(b.patienceAtServe - a.patienceAtServe >= 0.05)) out.push(`hardest day, hands every ${handMs} ms: ${second.name}'s patience at serve (${b.patienceAtServe.toFixed(3)}) is not 0.05 above ${first.name}'s (${a.patienceAtServe.toFixed(3)})`);
+  }
+  const [, slow] = pair(sweep.hardest, PACE.slowHand);
+  if (!(slow.jammed >= 0.25)) out.push(`hardest day, hands every ${PACE.slowHand} ms: ${second.name}'s door is jammed ${pct(slow.jammed)} of the shift, under a quarter, so the hardest day has stopped pressing`);
+  if (!(slow.unserved >= 3)) out.push(`hardest day, hands every ${PACE.slowHand} ms: ${second.name} leaves ${slow.unserved.toFixed(1)} at close, under 3`);
+  const [quickA, quickB] = pair(sweep.early, sweep.hands[0]);
+  if (!(quickB.net < quickA.net)) out.push(`first ten days, hands every ${sweep.hands[0]} ms: ${second.name} nets ${money(quickB.net)} a day against ${first.name}'s ${money(quickA.net)}, so the slower door costs nothing`);
+  return out;
+}
+
 /* ========================================================================= *
  * Printing                                                                  *
  * ========================================================================= */
@@ -619,6 +722,21 @@ function printWordOfMouth(w) {
   console.log("  a good shop's door should open faster than a bad one's; the multiplier's own bound is pinned in smoke-sim.mjs section 14");
 }
 
+function printPace(sw) {
+  const [a, b] = sw.paces;
+  console.log(`\nthe two paces — ${a.name} (door ×${a.doorMult}, patience ×${a.patienceMult}) against ${b.name} (door ×${b.doorMult}, patience ×${b.patienceMult}), patient hands at three speeds (#947)`);
+  const head = `  ${pad("hands", 9)}${pad("pace", 14)}${num("offered", 8)}${num("served", 8)}${num("left", 6)}${num("queue", 7)}${num("jammed", 8)}${num("ranOut", 8)}${num("pat@serve", 11)}${num("net/day", 9)}${num("rep@close", 11)}`;
+  const line = r => `  ${pad(r.handMs + " ms", 9)}${pad(sw.paces.find(p => p.id === r.pace).name, 14)}${num(r.offered.toFixed(1), 8)}${num(r.served.toFixed(1), 8)}${num(r.unserved.toFixed(1), 6)}${num(r.queue.toFixed(2), 7)}${num(pct(r.jammed), 8)}${num(r.ranOut.toFixed(2), 8)}${num(r.patienceAtServe.toFixed(3), 11)}${num(money(r.net), 9)}${num(r.repAtClose.toFixed(1), 11)}`;
+  console.log(`  days 1 to ${sw.days}, nothing bought, ${sw.runs} seeds`);
+  console.log(head); sw.early.forEach(r => console.log(line(r)));
+  console.log(`  day ${STRESS.day} at prestige ${STRESS.prestigeLevel}, ${STRESS.runs} seeds`);
+  console.log(head); sw.hardest.forEach(r => console.log(line(r)));
+  const net = (rows, h, id) => rows.find(r => r.handMs === h && r.pace === id).net;
+  const delta = rows => sw.hands.map(h => `${((net(rows, h, b.id) / net(rows, h, a.id) - 1) * 100).toFixed(1)}%`).join(", ");
+  console.log(`  ${b.name}'s net against ${a.name}'s, by hand: days 1 to ${sw.days} ${delta(sw.early)}; hardest day ${delta(sw.hardest)}`);
+  console.log("  per day; left = in line or on a station at close; queue = mean line at the door; jammed = share of the shift the line was at its cap; ranOut = customers whose patience reached zero in line");
+}
+
 /* ========================================================================= *
  * The command line                                                          *
  * ========================================================================= */
@@ -674,6 +792,9 @@ if (invokedDirectly) {
   // ten-minute job for a rail that does not move past a dozen seeds.
   const loopS = loopSweep();
   printLoop(loopS);
+  // Both paces, on fixed seed counts of their own for the same reason.
+  const paceS = paceSweep();
+  printPace(paceS);
 
   const bad = [
     ...checkBand(patientS, BAND.run).map(l => `run: ${l}`),
@@ -682,6 +803,7 @@ if (invokedDirectly) {
     ...(loopS.paybackDay ? [] : [`loop: a reopening never pays back inside ${loopS.days} days`]),
     ...(hire.worthIt ? [] : [`staff: a junior barista's extra gross (${money(hire.extraGross)}) does not beat its wage (${money(hire.wages)}) by day 3`]),
     ...(wom.good.offeredPerDay > wom.bad.offeredPerDay ? [] : [`word of mouth: a good shop (${wom.good.offeredPerDay.toFixed(1)}/day) does not outdraw a bad one (${wom.bad.offeredPerDay.toFixed(1)}/day)`]),
+    ...checkPace(paceS).map(l => `pace: ${l}`),
   ];
   const rails = [
     ...Object.entries(BAND.run).map(([k, b]) => `run ${k} ${show(k, patientS[k])} (band ${show(k, b.min)}–${show(k, b.max)})`),
