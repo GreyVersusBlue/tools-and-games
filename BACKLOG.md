@@ -121,7 +121,14 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **the second increment of
+**The last batch of ranked work that shipped** is **an increment of rank 30,
+Throneshard's Grimmaw contests** (#950, 2026-10-11; committed locally on
+huginn for the landing, so its PR number is the landing's): ½, naming Opus 5,
+run under Opus 5.5, and the row stays with its text rewritten. Measured over 24
+seeded matches, 29 of 48 attempts that hurt Grimmaw are contested; the old
+count took in plans dropped before he was touched, and `stats.grimmawEngaged`
+counts the real ones. No contest rule changed: two were measured and not kept.
+What is left is that a contest between hard bots is lost. Before it came **the second increment of
 rank 29, Throneshard's hard bots in the lane** (#948, 2026-10-10; committed
 locally on huginn for the landing, so its PR number is the landing's): ½,
 naming Opus 5, run under Opus 5.5, and the row stays with its text rewritten.
@@ -1069,7 +1076,7 @@ and #222 was closed unmerged an hour of suites later.
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
 | 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 17.9 against 18.8 at 10 minutes over 12 seeds (#948), about what two such means differ by from noise. The melee core in a lane against two ranged heroes dies as often as normal's now (2.2 against 2.5) and takes 16.7 last hits against normal's 19.7; the melee heroes in the middle lane take 18.5 against 21.3, not looked into. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 30 | A contest of Grimmaw between hard bots is lost: over 12 seeds the defenders came out ahead in 1 of 10 and lost 19 heroes for 5 (#950). The count was never the trouble: 29 of 48 real attempts are contested, and #751's 0.8 to 3.2 counted plans dropped before he was touched. Two rules tried and not kept. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
 
@@ -2577,7 +2584,7 @@ A 3D lane battler Devon had built outside this repo and asked to move in on
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
 Its suites are `node test/data.mjs` (1,211 checks, 38 of them `test/wall.mjs`'s,
 69 `test/ormund.mjs`'s and 63 `test/tobren.mjs`'s) and `node test/browser.mjs`
-(49; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 19
+(51; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 21
 checks) from the project folder, in Site CI's matrix.
 Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
@@ -2616,8 +2623,24 @@ and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
   leftover is still there: `diveOk`'s push clause reads `mode`, and `tryFight`
   sets `mode` to `fight`, so a dive allowed for a push is refused on the next
   think. Measure with the harness in `HISTORY.md`'s log for #948.
-- Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
-  a match (#751).
+- A contest of Grimmaw between hard bots is lost (#950). Counted by attempts
+  that hurt him (`stats.grimmawEngaged`; a third of the plans #751 counted were
+  dropped for a tower first), 29 of 48 were contested over 24 seeded matches,
+  and none of the other 19 was a team that could have gone and stayed away.
+  What a contest gets: hard defenders against normal attackers ahead in 5 of
+  8 with 5 steals, normal against hard 5 of 11, hard against hard 1 of 10 with
+  19 heroes lost for 5. In 14 of the 29 the nearest contester set out from
+  93 units or more, and in 3 of the 9 lost at the pit one contester at most
+  stood there. Tried and not kept, with figures in `HISTORY.md`'s log for #950: a
+  party of only those who can arrive inside 60% of the life he has left (it
+  ended nearly every contest, the 80-to-145-unit group steals with them), and
+  holding contesters 30 units out until three stand together (ahead in 6 of
+  21 where `main` had 10 of 19). Not tried: weighing the party against the
+  attackers by health and damage as `fightRatio` does, or by net worth, before
+  going; breaking a contest off when the first hero falls. The team that
+  starts an attempt is ahead by its own test, so an even-numbers contest
+  starts behind. The harness is described in that log; 12 matches cannot tell
+  a small gain from none, so plan on 24 a side.
 - The card preview is a SwiftShader draft (#749), and the every-second-frame
   shadow map was judged from a frame sequence, not a recording (#753); both
   want one look on real hardware.

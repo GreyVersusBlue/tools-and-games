@@ -24,7 +24,8 @@
 //
 // After it, two more pages play the first ten minutes of a hard-against-hard
 // match each (about a minute of wall clock a page) for the three rules that keep
-// a hard laner alive. THRONESHARD_ONLY=hard runs those two alone.
+// a hard laner alive, and the first then stages a Grimmaw attempt for the count of attempts really made.
+// THRONESHARD_ONLY=hard runs those two alone.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -334,6 +335,33 @@ try {
     ok(hard.yielded > 0, 'a laner stood alone against enemy heroes who would commit on it', `${hard.yielded} thinks`);
     ok(hard.tooFar === 0, 'and was sent to wait at its own front tower every time', `${hard.tooFar} thinks past it, by up to ${hard.farthest.toFixed(1)} units`);
     ok(hard.strayed === 0, 'and went for no creep outside that tower\'s reach', `${hard.strayed} of ${hard.picked} creeps picked while alone`);
+    if (seed === 1) {
+      // A staged Grimmaw attempt on the same page, after its ten minutes, for the count of attempts really made
+      // (stats.grimmawEngaged). Duskward's plan is set to take him and he is put at 90% health: with the five at their
+      // fountain that is a plan and not an attempt, and with them stood at the pit it is one attempt, counted once.
+      console.log('\nGrimmaw attempts, staged');
+      const st = await hp.evaluate(async () => {
+        const g = window.game, ai = g.ai, nav = g.world.nav;
+        const { FOUNTAIN } = await import('./src/core/constants.js');
+        const grim = ai.neutrals.grimmaw, pit = grim.position, dusk = g.heroes.filter((h) => h.team === 'duskward');
+        const put = (h, x, z) => {
+          if (!h.alive) { h.respawnTimer = 0; h.respawn(); }
+          const p = nav.nearestWalkable(x, z, 12);
+          h.position.set(p.x, 0, p.z); h.issueOrder({ type: 'stop' });
+          h.hp = h.getStat('maxHp');
+        };
+        const run = (seconds, plan) => { for (let n = 0; n < seconds * 20; n++) { ai.teams.duskward.plan = plan; grim.hp = grim.getStat('maxHp') * 0.9; g.tick(); } };
+        const count = () => ai.stats.grimmawEngaged ?? 0, c0 = count();
+        dusk.forEach((h, i) => put(h, FOUNTAIN.duskward[0] + (i - 2) * 2, FOUNTAIN.duskward[1] + 3));
+        run(3, { type: 'grimmaw', since: g.time, count: 5 });
+        const far = { counted: count() - c0, nearest: Math.min(...dusk.map((h) => h.distanceTo(pit))) };
+        dusk.forEach((h, i) => put(h, pit.x + Math.cos(i * 1.257) * 5, pit.z + Math.sin(i * 1.257) * 5));
+        run(5, { type: 'grimmaw', since: g.time, count: 5 });
+        return { far, counted: count() - c0 - far.counted, there: dusk.filter((h) => h.alive && h.distanceTo(pit) < 16).length };
+      });
+      ok(st.far.counted === 0 && st.far.nearest > 16, 'a plan to take Grimmaw with nobody at the pit is not counted as an attempt', `${st.far.counted} counted, nearest hero ${st.far.nearest.toFixed(0)} units off`);
+      ok(st.counted === 1 && st.there > 0, 'with the team at the pit and Grimmaw hurt it is counted, once', `${st.counted} counted over 5 s, ${st.there} heroes at the pit`);
+    }
     ok(hardProblems.length === 0, 'no page errors', hardProblems.slice(0, 3).join(' | '));
     await hp.close();
   }
