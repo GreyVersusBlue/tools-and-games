@@ -29,14 +29,16 @@
 // World's `cleared` events, and has to add up to the World's own count.
 //
 // R13's row of boxes rides here too (CROSSINGS below): Cross Town's
-// calibration (#929). With nothing pressed no seed locks, every seed clears
-// the target for the one star and nobody makes the corridor. Played by the
-// calibration's hand (tools/calibrate.mjs handStep: the corridor as the
-// ambulance arrives, the green given at each box ahead of it), every seed
-// gets the ambulance across all three boxes inside its time; with the
-// corridor and without the road ahead, some seeds do and some do not, which
-// is what makes the road ahead the level. What the ambulance did is read
-// off the World's events, not off scoring.js.
+// calibration (#929, and again at #949 on 150 s and a 270 s run). With
+// nothing pressed no seed locks, every seed clears the target for the one
+// star, nobody makes the corridor, and the ambulance is late on some seeds
+// and not on others. Played by the calibration's hand (tools/calibrate.mjs
+// handStep: the corridor as the ambulance arrives, the green given at each
+// box ahead of it), every seed gets the ambulance across all three boxes
+// inside its time. With the corridor and without the road ahead every seed
+// does too, with half a minute in hand at the slowest: at 150 s the call is
+// the second star, and the road ahead is the time it saves. What the
+// ambulance did is read off the World's events, not off scoring.js.
 //
 // R13's power cut rides here too (RETURNS below): Lights Out's calibration
 // (#933). The level opens on Boulevard's wave and loses it to an outage:
@@ -84,7 +86,7 @@ function runLevel(level) {
     for (const calls of w.pedCalls) for (const c of Object.values(calls)) if (c) longestCall = Math.max(longestCall, w.t - c.since);
     const escorted = w.events.filter(e => e.kind === 'priority').length;
     const meterFired = w.meters.reduce((n, m) => n + (m ? m.fired : 0), 0);
-    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: s.gridlock, splits: s.platoonSplits, ambulances: s.ambulances, escorted, carried: s.carried, carriedStops: s.carriedStops, longestCall, meterFired };
+    return { seed, stars: r.stars, cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, lock: s.gridlock, splits: s.platoonSplits, ambulances: s.ambulances, ambulanceLate: s.ambulanceLate, escorted, carried: s.carried, carriedStops: s.carriedStops, longestCall, meterFired };
   });
 }
 
@@ -307,7 +309,7 @@ for (const [id, wave] of Object.entries(WAVES).filter(([k]) => mine(k))) {
   ok(off.every(r => share(r) > bar && r.stars < 2), `${level.name} at ${wave.off} s, a quarter of a cycle off: no seed meets the lesson`, off.map(r => `${pc(share(r))} ${starString(r.stars)}`).join(' | '));
 }
 
-console.log('\na row of boxes the ambulance crosses: the corridor follows it, and the road ahead decides it (R13)');
+console.log('\na row of boxes the ambulance crosses: the corridor follows it and is the second star, and the road ahead is the time it saves (R13, #949)');
 const rows3 = starredAll.filter(l => (l.network.nodes || 1) > 2 && l.lesson && l.lesson.kind === 'ambulance');
 ok(rows3.length > 0 && rows3.every(l => CROSSINGS.includes(l.id)), 'every row of three or more boxes with an ambulance lesson has its crossing pinned here', rows3.map(l => l.id).join(', '));
 for (const id of CROSSINGS.filter(mine)) {
@@ -318,15 +320,21 @@ for (const id of CROSSINGS.filter(mine)) {
   const onTime = r => r.trip !== null && r.trip <= amb.within;
   ok(idle.every(r => !r.lock), `${level.name}: no seed locks from the opening state with nothing pressed`, idle.map(r => (r.lock ? `seed ${r.seed} LOCK` : r.cleared)).join(' | '));
   ok(idle.every(r => r.cleared >= level.target && r.stars === 1), `${level.name}: with nothing pressed every seed clears the target of ${level.target} and keeps exactly one star`, idle.map(cellText).join(' | '));
+  const lates = idle.filter(r => r.ambulanceLate > 0).length;
+  ok(lates >= 1 && lates <= 5 && idle.every(r => r.ambulances === 1), `${level.name}: with nothing pressed the ambulance is late on some seeds and on time by luck on others, so its clock runs out inside the run`, `late on ${lates} of 6`);
+  const floor = Math.min(...idle.concat(road, call).map(r => r.cleared));
+  ok(floor - level.target >= 3 && floor - level.target <= 12, `${level.name}: the target of ${level.target} sits just under the worst run of any row, so the first star is surviving`, `worst ${floor}`);
   ok(road.every(r => !r.lock && r.cleared >= level.target), `${level.name}, the hand: no seed locks and every seed clears the target`, road.map(r => (r.lock ? 'LOCK' : r.cleared)).join(' | '));
   ok(road.every(r => r.handed === every && r.corridors === all), `${level.name}, the hand: on every seed the ambulance is handed to every box after the first, and every box makes its corridor`, road.map(r => `${r.handed || '-'} / ${r.corridors || '-'}`).join(' | '));
   ok(road.every(onTime), `${level.name}, the hand: the ambulance is off the map inside its ${amb.within} s on every seed`, road.map(tripText).join(' | '));
   const three = road.filter(r => r.stars === 3).length;
   ok(three >= 5, `${level.name}, the hand: three stars on at least five seeds of six`, `${three} of 6: ${road.map(cellText).join(' | ')}`);
-  const made = call.filter(onTime).length;
-  ok(call.every(r => r.corridors === all) && made >= 3 && made <= 5, `${level.name}, the corridor called and the road ahead left alone: the corridor follows it on every seed, and it is on time on three to five of six, not all`, `${made} of 6: ${call.map(tripText).join(' | ')}`);
+  const slowest = rows => Math.max(...rows.map(r => (r.trip === null ? Infinity : r.trip)));
+  ok(call.every(r => r.corridors === all) && call.every(onTime) && slowest(call) <= amb.within - 30, `${level.name}, the corridor called and the road ahead left alone: the corridor follows it on every seed, and it is on time on all six with half a minute in hand`, call.map(tripText).join(' | '));
+  const two = call.filter(r => r.stars >= 2).length, clean = call.filter(r => r.stars === 3).length;
+  ok(two === 6 && clean >= 4, `${level.name}, the corridor called and the road ahead left alone: the lesson on every seed, three stars on at least four`, `${clean} of 6: ${call.map(cellText).join(' | ')}`);
   const faster = road.filter((r, i) => r.trip !== null && (call[i].trip === null || r.trip < call[i].trip)).length;
-  ok(faster >= 5, `${level.name}: the road ahead cleared gets the ambulance across sooner on at least five seeds of six`, road.map((r, i) => `${tripText(call[i])} to ${tripText(r)}`).join(' | '));
+  ok(faster >= 5 && slowest(road) <= slowest(call) - 25, `${level.name}: the road ahead cleared gets the ambulance across sooner on at least five seeds of six, and by 25 s on the slowest`, road.map((r, i) => `${tripText(call[i])} to ${tripText(r)}`).join(' | '));
 }
 
 console.log('\na timed corridor the power fails on: the wave is there, the outage takes it, and the slider brings it back (R13)');
