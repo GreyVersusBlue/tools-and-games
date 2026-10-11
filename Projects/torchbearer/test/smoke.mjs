@@ -45,7 +45,8 @@ const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDic
         spellGrantsAt, spellChoices } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
-const { newCombat, heroCombatant, companionCombatant, companionAt, COMPANION_LEVEL, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
+const { newCombat, heroCombatant, companionCombatant, companionAt, COMPANION_LEVEL, REACTIONS, MANEUVERS, LORE_SKILL,
+        gridSteps, aimOf, coneCells, lineCells } = await mod("js/combat.js");
 const { SCOPE, scopedFlag, isScoped, flagsSetBy, foldFlags, flagOk, entriesOf,
         progress: campaignRows, nextAdventure, isComplete: campaignDone } = await mod("js/campaign.js");
 const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LEVEL,
@@ -62,6 +63,7 @@ let pass = 0; const fails = [];
 const ok = (cond, label) => { if (cond) pass++; else fails.push(label); };
 const eq = (got, want, label) =>
   ok(JSON.stringify(got) === JSON.stringify(want), `${label} — got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+const eq2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const group = name => console.log("\n── " + name);
 
 /** An in-memory stand-in for localStorage. */
@@ -3052,7 +3054,7 @@ const sanctum = (ch, over = {}) => {
   s2.eng.cbs.push(south, behind);
   s2.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); s2.eng.cellClick(4, 2);
   eq([s2.foe.hp, behind.hp, s2.ally.hp], [20, 24, 10], "Breathe Fire east catches the hound ahead, not the one behind, and never an ally");
-  eq(south.hp, 20, "…and also a hound due south two squares away: the cone is a quadrant test (standing backlog, pinned as-is)");
+  eq(south.hp, 24, "…and not a hound due south two squares away: the cone is a quarter circle, not a quadrant test (#951)");
   const s3 = sanctum(CLERIC());
   s3.arm("bane", 1, "r1");
   eq(s3.eng.armed, null, "an emanation casts at once, centred on the caster");
@@ -5116,14 +5118,21 @@ group("an area stops at a wall (#924)");
     return s;
   };
   {
-    // A cone. Aimed north-east it takes in the whole row east of the caster.
-    const open = pillar(WIZARD(), []);
-    open.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); open.eng.cellClick(3, 1);
+    // A cone aimed north-east from (2,2): a hound at (4,1), the skeleton at
+    // (4,0) and a second hound at (3,0). Stone at (3,1) is on the skeleton's
+    // line and on nobody else's.
+    const nook = walls => {
+      const s = sanctum(WIZARD(), { walls });
+      s.foe.x = 4; s.foe.y = 1; s.skel.x = 4; s.skel.y = 0;
+      s.near = hound({ id: "near", name: "Near Hound", x: 3, y: 0 }); s.eng.cbs.push(s.near);
+      s.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); s.eng.cellClick(4, 1);
+      return s;
+    };
+    const open = nook([]);
     eq(saves(open.eng).length, 3, "on open floor Breathe Fire aimed north-east reaches three foes");
-    const s = pillar(WIZARD());
-    s.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); s.eng.cellClick(3, 1);
-    eq(saves(s.eng), ["Near Hound: Reflex save vs Breathe Fire"], "with the pillar in the row only the hound in the open saves against the cone");
-    eq([s.near.hp, s.foe.hp, s.skel.hp], [20, 24, 8], "…and the two behind the stone are not burned");
+    const s = nook(["3,1"]);
+    eq(saves(s.eng), ["Hound: Reflex save vs Breathe Fire", "Near Hound: Reflex save vs Breathe Fire"], "with stone on the skeleton's line only the two hounds in the open save against the cone");
+    eq([s.near.hp, s.foe.hp, s.skel.hp], [20, 20, 8], "…and the one behind the stone is not burned");
   }
   {
     // An emanation. Bane reaches two squares.
@@ -5227,6 +5236,237 @@ group("an area stops at a wall (#924)");
       "at range 2 the square behind the wall cannot, one up the open diagonal can, and one out of range cannot");
     ok(/if\(this\.aimable\(cb,a,x,y\)\)\{/.test(html) && !/a\.range&&this\.losClear\(cb,\{x,y\}\)/.test(html),
       "the page asks the engine which squares to light, and keeps no copy of the rule");
+  }
+}
+
+group("a cone is a quarter circle and a line runs its length (#951)");
+{
+  const saves = eng => rolls(eng).map(r => r.text);
+  const AIMS = { E: [1, 0], SE: [1, 1], S: [0, 1], SW: [-1, 1], W: [-1, 0], NW: [-1, -1], N: [0, -1], NE: [1, -1] };
+  const keys = cells => cells.map(p => `${p.x},${p.y}`).sort();
+  /** A drawn template to offsets from its `C`. */
+  const drawn = art => {
+    const rows = art.trim().split("\n").map(r => r.trim());
+    const cy = rows.findIndex(r => r.includes("C")), cx = rows[cy].indexOf("C"), out = [];
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch === "X") out.push({ x: x - cx, y: y - cy }); }));
+    return out;
+  };
+  const quarter = p => ({ x: -p.y, y: p.x });        // a quarter turn clockwise on the screen: east to south
+  const mirror = p => ({ x: p.x, y: -p.y });
+  const turned = (cells, n) => { let c = cells; for (let i = 0; i < n; i++) c = c.map(quarter); return c; };
+
+  // The templates, drawn by hand from the rule and the 5-10-5 count, east and
+  // south-east; the other six aims are these turned.
+  const DRAWN = {
+    3: { E: `
+      ..XX
+      CXXX
+      ..XX`, SE: `
+      C...
+      .XXX
+      .XX.
+      .X..` },
+    6: { E: `
+      ....XX.
+      ...XXX.
+      ..XXXXX
+      CXXXXXX
+      ..XXXXX
+      ...XXX.
+      ....XX.`, SE: `
+      C......
+      .XXXXXX
+      .XXXXX.
+      .XXXXX.
+      .XXXX..
+      .XXX...
+      .X.....` }
+  };
+  eq([3, 6].map(n => [drawn(DRAWN[n].E).length, drawn(DRAWN[n].SE).length]), [[7, 6], [26, 24]],
+    "the drawn templates: a 15-foot cone is 7 squares straight and 6 on a diagonal, a 30-foot one 26 and 24");
+  for (const len of [3, 6]) {
+    ["E", "S", "W", "N"].forEach((name, n) =>
+      eq(keys(coneCells(AIMS[name], len)), keys(turned(drawn(DRAWN[len].E), n)), `a ${len * 5}-foot cone aimed ${name} is the drawn template, square by square`));
+    ["SE", "SW", "NW", "NE"].forEach((name, n) =>
+      eq(keys(coneCells(AIMS[name], len)), keys(turned(drawn(DRAWN[len].SE), n)), `a ${len * 5}-foot cone aimed ${name} is the drawn template, square by square`));
+  }
+  // 60 feet, by its columns out from the caster and by its rows on the diagonal.
+  const byColumn = (cells, k) => { const n = {}; cells.forEach(p => { n[p[k]] = (n[p[k]] || 0) + 1; }); return Object.keys(n).map(Number).sort((a, b) => a - b).map(i => n[i]); };
+  eq(byColumn(coneCells([1, 0], 12), "x"), [1, 3, 5, 7, 9, 11, 13, 15, 15, 11, 7, 3], "a 60-foot cone aimed east, column by column: 100 squares");
+  eq(byColumn(coneCells([1, 1], 12), "x"), [12, 11, 11, 10, 10, 9, 9, 8, 7, 5, 3, 1], "a 60-foot cone aimed south-east, column by column: 96 squares");
+  // What holds at every length and aim.
+  for (const len of [3, 6, 12]) {
+    const all = Object.values(AIMS).map(a => coneCells(a, len));
+    ok(all.every(c => c.every(p => (p.x || p.y) && gridSteps(p.x, p.y) <= len)), `no ${len * 5}-foot cone holds the caster's square or a square past its length`);
+    ok(Object.values(AIMS).every((a, i) => eq2(keys(coneCells([-a[1], a[0]], len)), keys(all[i].map(quarter)))),
+      `a ${len * 5}-foot cone turned a quarter is the cone of the aim turned a quarter`);
+    ok(Object.values(AIMS).every((a, i) => eq2(keys(coneCells([a[0], -a[1]], len)), keys(all[i].map(mirror)))),
+      `…and mirrored is the cone of the aim mirrored`);
+    ok(["E", "S", "W", "N"].every(n => { const [ax, ay] = AIMS[n], c = coneCells(AIMS[n], len);
+        return c.filter(p => Math.max(Math.abs(p.x), Math.abs(p.y)) === 1).length === 1 && c.some(p => p.x === ax && p.y === ay); }),
+      `a straight ${len * 5}-foot cone starts with the one square that shares the caster's edge`);
+    ok(["SE", "SW", "NW", "NE"].every(n => { const [ax, ay] = AIMS[n], c = coneCells(AIMS[n], len);
+        return c.every(p => p.x !== 0 && p.y !== 0) && c.filter(p => Math.max(Math.abs(p.x), Math.abs(p.y)) === 1).length === 1 && c.some(p => p.x === ax && p.y === ay); }),
+      `a diagonal ${len * 5}-foot cone starts at the square on the caster's corner and holds none of the caster's row or column`);
+  }
+  eq([[1, 0], [1, 1], [2, 1], [2, 2], [3, 1], [3, 2], [3, 3], [4, 4], [6, 1], [6, 2]].map(([x, y]) => gridSteps(x, y)), [1, 1, 2, 3, 3, 4, 4, 6, 6, 7],
+    "a length is counted 5-10-5: the second diagonal step costs two squares");
+
+  // The eight aims from a click.
+  const aimName = (dx, dy) => { const a = aimOf(dx, dy); return a && Object.keys(AIMS).find(k => AIMS[k][0] === a[0] && AIMS[k][1] === a[1]); };
+  eq([[1, 0], [3, 1], [5, 2], [2, 1], [5, 3], [3, 3], [1, 2], [1, 3], [0, -2], [-3, -1], [-2, -1], [-1, 1], [12, 5], [12, 4]].map(([x, y]) => aimName(x, y)),
+    ["E", "E", "E", "SE", "SE", "SE", "SE", "S", "N", "W", "NW", "SW", "SE", "E"], "a click names the nearest of the eight aims");
+  eq(aimOf(0, 0), null, "the caster's own square names no aim");
+  {
+    let outside = 0, n = 0;
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+      if ((!dx && !dy) || gridSteps(dx, dy) > 6) continue; n++;
+      if (!coneCells(aimOf(dx, dy), 6).some(p => p.x === dx && p.y === dy)) outside++;
+    }
+    eq([n > 100, outside], [true, 0], "a click on any square within the cone's length is in the cone it aims");
+  }
+
+  // The engine, all eight aims: a hound on every square within three of the
+  // caster, and the ones that save are the template's.
+  const ringed = (walls = []) => {
+    const caster = Object.assign(heroCombatant(WIZARD()), { x: 4, y: 4 });
+    const cbs = [caster];
+    for (let y = 1; y <= 7; y++) for (let x = 1; x <= 7; x++) if ((x !== 4 || y !== 4) && !walls.includes(`${x},${y}`)) cbs.push(hound({ id: `h${x}_${y}`, name: `H${x},${y}`, x, y, hp: 500, hpMax: 500 }));
+    const eng = stage(cbs, { walls, mapW: 9, mapH: 9 });
+    return { eng, caster, arm: (id, rank, pool) => eng.armSpell(caster, { sp: Registry.spells[id], rank, pool }) };
+  };
+  const saved = eng => saves(eng).map(t => t.split(":")[0].slice(1)).sort();
+  for (const [name, [ax, ay]] of Object.entries(AIMS)) {
+    const r = ringed(); setDiceSource(() => 0.5);
+    r.arm("breathe-fire", 1, "r1"); r.eng.cellClick(4 + ax, 4 + ay);
+    eq(saved(r.eng), keys(coneCells([ax, ay], 3).map(p => ({ x: 4 + p.x, y: 4 + p.y }))), `Breathe Fire aimed ${name} on a full board burns the template's ${ax && ay ? 6 : 7} squares and no other`);
+  }
+  {
+    // A click anywhere on a bearing aims the same cone.
+    const far = ringed(); setDiceSource(() => 0.5); far.arm("breathe-fire", 1, "r1"); far.eng.cellClick(7, 5);
+    const nearby = ringed(); nearby.arm("breathe-fire", 1, "r1"); nearby.eng.cellClick(5, 4);
+    eq(saved(far.eng), saved(nearby.eng), "a click three out and one down aims the cone east, the same seven as a click on the next square");
+    // Stone in the cone: the squares behind it are dark, the rest still burn.
+    const w = ringed(["6,4"]); w.arm("breathe-fire", 1, "r1"); w.eng.cellClick(5, 4);
+    eq(saved(w.eng), ["5,4", "6,3", "6,5", "7,3", "7,5"], "a wall in the cone shelters the square behind it and nothing else (#924 kept)");
+    // The caster's own square.
+    const own = ringed(); own.arm("breathe-fire", 1, "r1");
+    const was = [own.eng.actions, own.caster.resources.slots[1]];
+    own.eng.cellClick(4, 4);
+    eq([[own.eng.actions, own.caster.resources.slots[1]], saves(own.eng).length, !!own.eng.armed], [was, 0, true],
+      "a click on the caster's own square aims nothing, spends nothing and stays armed (it used to burn every square in reach)");
+    eq(own.eng.h.toasts, [], "…without a word: it is not a square behind a wall");
+    eq(own.eng.aimable(own.caster, own.eng.armed, 4, 4), false, "…and the page does not light it");
+    eq(own.eng.h.hints.at(-1), "Casting Breathe Fire — choose a direction.", "the hint asks for a direction");
+    // A cone never burns the caster's side, whatever the spell says of bursts.
+    const ff = sanctum(WIZARD()); setDiceSource(() => 0.5);
+    ff.ally.x = 3; ff.ally.y = 2;
+    ff.eng.armSpell(ff.caster, { sp: { ...Registry.spells["breathe-fire"], friendlyFire: true }, rank: 1, pool: "r1" }); ff.eng.cellClick(3, 2);
+    eq([ff.ally.hp, saves(ff.eng).length], [10, 2], "an ally standing in the cone is not burned, as before");
+  }
+
+  // The line.
+  const oldWalk = (dx, dy) => { // the walk to the clicked square, as it stood before #951
+    let x0 = 0, y0 = 0; const adx = Math.abs(dx), ady = Math.abs(dy), sx = 0 < dx ? 1 : -1, sy = 0 < dy ? 1 : -1; let err = adx - ady; const cells = [];
+    while (!(x0 === dx && y0 === dy)) { const e2 = 2 * err; if (e2 > -ady) { err -= ady; x0 += sx; } if (e2 < adx) { err += adx; y0 += sy; } cells.push({ x: x0, y: y0 }); }
+    return cells;
+  };
+  {
+    let n = 0, short = 0, notPrefix = 0, drift = 0, gap = 0;
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+      if (!dx && !dy) continue; n++;
+      const line = lineCells(dx, dy, 6), was = oldWalk(dx, dy);
+      if (line.length !== 6 || Math.max(Math.abs(line[5].x), Math.abs(line[5].y)) !== 6) short++;
+      if (JSON.stringify(line.slice(0, was.length)) !== JSON.stringify(was)) notPrefix++;
+      const g = (a, b) => { while (b) [a, b] = [b, a % b]; return a; }, d = g(Math.abs(dx), Math.abs(dy));
+      if (JSON.stringify(lineCells(dx / d, dy / d, 6)) !== JSON.stringify(line)) drift++;
+      if (line.some((p, i) => Math.max(Math.abs(p.x - (i ? line[i - 1].x : 0)), Math.abs(p.y - (i ? line[i - 1].y : 0))) !== 1)) gap++;
+    }
+    eq([n, short], [168, 0], "a 30-foot line is six squares long and ends six squares out, whichever of 168 squares was clicked");
+    eq(notPrefix, 0, "…it starts with the walk to the clicked square that the code had, step for step");
+    eq(drift, 0, "…and a click nearer or farther on one bearing is the same line");
+    eq(gap, 0, "…with no square skipped");
+    eq(lineCells(0, 0, 6), [], "the caster's own square is no line");
+    eq(keys(lineCells(2, 1, 6)), keys([[1, 0], [2, 1], [3, 1], [4, 2], [5, 2], [6, 3]].map(([x, y]) => ({ x, y }))), "a line aimed two across and one down, square by square");
+  }
+  // In the engine: the caster at (2,2), hounds along the row at 1, 4 and 6 squares, one at 7.
+  const row = (walls = []) => {
+    const s = sanctum(WIZARD(), { walls, mapW: 12, mapH: 12 });
+    s.foe.x = 3; s.skel.x = 11; s.skel.y = 11;
+    [[6, "Fourth"], [8, "Sixth"], [9, "Seventh"]].forEach(([x, name]) => { s[name] = hound({ id: name, name: `${name} Hound`, x, y: 2 }); s.eng.cbs.push(s[name]); });
+    return s;
+  };
+  {
+    const s = row(); setDiceSource(() => 0.5);
+    s.arm("grim-tendrils", 1, "r1"); s.eng.cellClick(4, 2);
+    eq(saves(s.eng).map(t => t.split(":")[0]), ["Hound", "Fourth Hound", "Sixth Hound"],
+      "a click two squares away is the whole 30-foot line: the hounds at 5, 20 and 30 feet save");
+    eq(s.Seventh.hp, 24, "…and the one at 35 feet is past its end");
+    const w = row(["7,2"]); setDiceSource(() => 0.5);
+    w.arm("grim-tendrils", 1, "r1"); w.eng.cellClick(4, 2);
+    eq(saves(w.eng).map(t => t.split(":")[0]), ["Hound", "Fourth Hound"], "a wall past the clicked square still ends the line (#924 kept)");
+    const edge = sanctum(WIZARD()); setDiceSource(() => 0.5);
+    edge.arm("grim-tendrils", 1, "r1"); edge.eng.cellClick(1, 2);
+    eq([saves(edge.eng).length, edge.eng.areaCells(edge.caster, { wedge: "line", range: 6 }, { x: 1, y: 2 })], [0, [{ x: 1, y: 2 }, { x: 0, y: 2 }]], "a line ends at the edge of the map");
+    const own = row(); own.arm("grim-tendrils", 1, "r1"); own.eng.cellClick(2, 2);
+    eq([own.eng.actions, saves(own.eng).length, !!own.eng.armed], [3, 0, true], "a click on the caster's own square aims no line");
+    // On a diagonal the line is six squares too, by the engine's own count.
+    const diag = sanctum(WIZARD(), { mapW: 12, mapH: 12 }); setDiceSource(() => 0.5);
+    diag.foe.x = 8; diag.foe.y = 8; diag.skel.x = 9; diag.skel.y = 9;
+    diag.arm("grim-tendrils", 1, "r1"); diag.eng.cellClick(3, 3);
+    eq(saves(diag.eng).map(t => t.split(":")[0]), ["Hound"], "on a diagonal a 30-foot line reaches the sixth square and not the seventh");
+  }
+
+  // The preview is the hit list: every square a click is taken on, for each
+  // shape, lights exactly the squares whose hounds then save.
+  {
+    const FIREBALL = { id: "fireball", name: "Fireball", actions: 2, range: 20, area: { shape: "burst", radius: 5 }, save: "reflex", basic: true, rankEffects: { 3: { damage: [{ formula: "3", type: "fire" }] } } };
+    const WALLS = ["6,4", "3,2", "5,6"];
+    const cast = { cone: r => r.arm("breathe-fire", 1, "r1"), line: r => r.arm("grim-tendrils", 1, "r1"), burst: r => r.eng.armSpell(r.caster, { sp: FIREBALL, rank: 3, pool: "r2" }) };
+    for (const [shape, armIt] of Object.entries(cast)) {
+      let clicks = 0, wrong = 0, lit = 0, dark = 0, stone = 0;
+      for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) {
+        const r = ringed(WALLS); setDiceSource(() => 0.5); armIt(r);
+        const a = r.eng.armed, shown = r.eng.previewCells(r.caster, a, x, y);
+        if (shown.some(p => p.x < 0 || p.y < 0 || p.x > 8 || p.y > 8 || WALLS.includes(`${p.x},${p.y}`))) stone++;
+        const want = keys(shown.filter(p => r.eng.cbs.some(c => c.side === "foe" && c.x === p.x && c.y === p.y)));
+        r.eng.cellClick(x, y);
+        const cast1 = !r.eng.armed;
+        if (cast1) { clicks++; lit += shown.length; } else if (shown.length) dark++;
+        if (JSON.stringify(saved(r.eng)) !== JSON.stringify(cast1 ? want : [])) wrong++;
+      }
+      ok(clicks >= 20 && lit > clicks, `${shape}: the sweep casts from ${clicks} squares and lights squares under them`);
+      eq(stone, 0, `${shape}: no wall and no square off the map is lit`);
+      eq([wrong, dark], [0, 0], `${shape}: what lights under the pointer is who saves, on every square of a walled board, and a refused square lights nothing`);
+    }
+    const r = ringed(); r.eng.armed = { kind: "cell", mode: "seek", range: 6, radius: 1, cost: 1 };
+    eq(r.eng.previewCells(r.caster, r.eng.armed, 5, 4), [], "Seek's point lights no hit list");
+    eq(r.eng.previewCells(r.caster, null, 5, 4), [], "…and nothing armed lights none");
+  }
+
+  // One copy of each shape, and nobody else with an idea of their own.
+  {
+    const src = fs.readFileSync(path.join(PROJECT, "js", "combat.js"), "utf8");
+    const castAtSrc = src.slice(src.indexOf("\n  castAt(cb,a,target){"), src.indexOf("\n  castAt(cb,a,target){") + 1400);
+    ok(/const cells=this\.areaCells\(cb,a,target\);/.test(castAtSrc) && !/Math\.sign|sx=|err=/.test(castAtSrc), "castAt takes its squares from areaCells and walks no shape itself");
+    eq([(src.match(/coneCells\(/g) || []).length, (src.match(/lineCells\(/g) || []).length], [2, 2], "the engine defines each template once and calls it once");
+    ok(!/coneCells|lineCells|gridSteps|aimOf|SQRT2/.test(html), "the page holds no template of its own");
+    ok(/this\.previewCells\(cb,this\.armed,x,y\)/.test(html) && /\.cell\.hl-hit\{/.test(html), "…it paints the engine's preview list");
+    // Monsters: a power is a radius about the monster (#924). None is a cone
+    // or a line; the day one is, it goes through areaCells and this line moves.
+    const powers = [];
+    const dig = o => { if (Array.isArray(o)) o.forEach(dig); else if (o && typeof o === "object") { if (Array.isArray(o.powers)) powers.push(...o.powers); Object.values(o).forEach(dig); } };
+    const shipped = [core, advPack, ...fs.readdirSync(path.join(PROJECT, "packs")).filter(f => f.endsWith(".json") && !NOT_A_PACK.includes(f)).map(readPack)];
+    shipped.forEach(dig);
+    ok(powers.length >= 1 && powers.every(p => p.radius > 0 && !p.shape && !p.length && !p.area), `no monster power aims a cone or a line (${powers.length} powers, each a radius)`);
+    // Every cone and line in the shipped data, with its length: the tables
+    // above cover them.
+    const shaped = [];
+    shipped.forEach(p => (p.spells || []).forEach(sp => { if (sp.area && (sp.area.shape === "cone" || sp.area.shape === "line")) shaped.push(`${sp.id} ${sp.area.shape} ${sp.area.length}`); }));
+    eq(shaped.sort(), ["breathe-fire cone 15", "grim-tendrils line 30"], "the shipped data has one cone, 15 feet, and one line, 30 feet");
+    const guide = fs.readFileSync(path.join(PROJECT, "content-authoring-guide.md"), "utf8");
+    ok(guide.includes("| 15 | 7 | 1, 3, 3 | 6 | 3, 2, 1 |") && guide.includes("| 30 | 26 | 1, 3, 5, 7, 7, 3 | 24 | 6, 5, 5, 4, 3, 1 |") && guide.includes("| 60 | 100 |"),
+      "the guide's table of cone templates carries the three lengths");
   }
 }
 
