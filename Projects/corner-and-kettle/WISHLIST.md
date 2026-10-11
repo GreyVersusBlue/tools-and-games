@@ -239,16 +239,18 @@ the cue and is written so it can be swapped for the hard gate in one commit if
 that is the answer instead.
 
 **Difficulty presets, asked 2026-10-07 (TG-29); Devon answered all four the
-same evening and they are buildable, not built (words after each question).** The later-arc
+same evening (words after each question) and they were built to his answers
+on 2026-10-10 (#947): see "Difficulty presets" under "What this leaves for a
+later arc".** The later-arc
 line wants "the Morning Rush without the reputation stakes" and says
 `spawnFactor()` and `patienceFactor()` are the only two dials that matter.
 Those two move how fast the door opens and how long a customer waits; neither
-is reputation. Nothing was built, because each of these changes what the game
-is:
+is reputation. Nothing was built then, because each of these changes what the
+game is:
 
 1. How many presets, and what are they called? Two (today's game and a gentler
    one), or three with a harder one? **Devon: "two".** The names were not
-   given.
+   given; the session picked Busy Corner and Quiet Corner.
 2. Does a gentler preset touch reputation at all (a walk-out or a wrong cup
    costing less, or nothing), or only the two dials? The line's own words ask
    for the first and name the second. **Devon: "door and patience".**
@@ -259,9 +261,9 @@ is:
    mid-run from the Menu Board? Mid-run makes it a pause button for the rush.
    **Devon: "mid run changeable".**
 
-What is settled without him: the default is exactly today's game, the choice
-would be one field in the save through `repair` with an old save loading as
-the default, and no storage key changes (#36).
+What was settled without him, and is how it was built: the default is exactly
+today's game, the choice is one field in the save through `repair` with an old
+save loading as the default, and no storage key changed (#36).
 
 ## The standing backlog
 
@@ -795,12 +797,35 @@ outside CI on purpose (#353).
   why this phase did not reach for one.
 - **A tutorial.** The first shift explains nothing; the chalkboard is a wall of
   prices.
-- **Difficulty presets** for players who want the Morning Rush without the
-  reputation stakes, now that `spawnFactor()`/`patienceFactor()` are the only
-  two dials that matter. Not built (2026-10-07, TG-29): the line names two
-  dials and asks for something neither of them is (reputation), and four
-  choices under it are Devon's. They are the last entry under "Questions for
-  Devon" above.
+- **Difficulty presets.** Done on 2026-10-10 (#947) to Devon's four answers
+  of 2026-10-07, and played by no person:
+  - *Two paces.* Busy Corner is the game as it was and what every save
+    written before loads as. Quiet Corner multiplies the time between
+    customers by 1.3 (the Quiet Day modifier's own share, about a quarter
+    fewer arrivals) and each customer's patience by 1.5. They are two rows of
+    `PACES` in `js/content.js`; `spawnFactor()` and `patienceFactor()` read
+    the row last, outside the door's 0.25 floor. Prices, tips, reputation and
+    beans are the same arithmetic on both.
+  - *The switch.* A group named Pace at the top of the Menu Board, two
+    buttons, changeable at any moment of a shift. It starts with the next
+    customer: nobody in line is rewritten and the door's own count is kept,
+    so only how long the door waits for the next one changes at once. Saved
+    as one field (`pace`), carried by export and import, kept by a reopening
+    and by New Game.
+  - *What it costs.* Quiet Corner is the poorer shop wherever the hands keep
+    up, because a slower door sells fewer cups: over days 1 to 10 with
+    nothing bought it nets 23.3% less at a hand every 800 ms, 11.8% less at
+    1600 ms and 2.5% less at 2400 ms. On the hardest day (day 30, prestige 5)
+    the queue cap throttles both doors alike and the longer patience tips
+    better, so it nets 0.9%, 4.8% and 6.5% more. `test/balance.mjs` prints
+    the table and fails the build if Quiet Corner stops being gentler or the
+    hardest day stops pressing on it.
+  - *Left.* Nobody has played either pace since the switch went in. The
+    mean line at the door is what the sweep calls pressure; whether a person
+    feels 1.3 and 1.5 as gentle enough is unjudged. The board says nothing
+    about the money difference. The rest of the Menu Board is still rebuilt
+    on every redraw and drops the keyboard's focus; only the pace buttons
+    are not.
 - **Accessibility past the keyboard.** Done on 2026-10-07 (#916, #917), and
   judged by no person, with or without colour blindness:
   - *The cup.* Its picture says the base, the milk, the syrup and which

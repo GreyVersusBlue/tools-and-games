@@ -917,10 +917,10 @@ keyboard" was done on 2026-10-07 (#916, #917, TG-29; judged by no person), the
 other two of the four the same day (#921, TG-29: the Legacy row "Mocha on the
 Board" says its syrup is not included, and a barista's step refuses a syrup or
 topping that is not on the shelf), and
-"Difficulty presets" was not built: its four choices were asked on
-2026-10-07 and Devon answered them the same evening (two presets, door and
-patience only, no pay change, switchable mid-run; the wishlist's "Questions
-for Devon" has his words). Nothing from it is in the
+"Difficulty presets" was built on 2026-10-10 to Devon's four answers of
+2026-10-07 (#947, TG-29: Busy Corner is the game as it was, Quiet Corner
+slows the door by 1.3 and lengthens patience by 1.5, switchable from the Menu
+Board mid-shift, one save field; played by no person). Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
