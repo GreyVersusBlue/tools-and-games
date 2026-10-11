@@ -98,6 +98,23 @@ function runShift(sim, state, stepMs = STEP_MS, work = autopilot) {
   return steps;
 }
 
+// Every section below plays the first row of PACES and was written when it
+// was the only game there was (#947). A first row that is not exactly that
+// game, or a fresh shop that does not open on it, moves every door time and
+// patience those sections lean on, and they die of a TypeError long before
+// section 20 can say why. So it is said here, by name, and the run stops.
+{
+  const first = (CONTENT.PACES || [])[0] || {};
+  const bad = [];
+  if (!(first.doorMult === 1 && first.patienceMult === 1)) bad.push(`the first pace's multipliers are exactly 1 — got door ${first.doorMult}, patience ${first.patienceMult}`);
+  if (freshState(CONTENT).pace !== first.id) bad.push(`a fresh shop opens on the first pace — got ${JSON.stringify(freshState(CONTENT).pace)}`);
+  if (bad.length) {
+    process.stdout.write(`\n0 passed, ${bad.length} failed (stopped before section 1)\n`);
+    for (const f of bad) process.stdout.write(`  FAIL  ${f}\n`);
+    process.exit(1);
+  }
+}
+
 /* ================================================================== */
 
 section("1. makeRng — the shape from absalom-inheritance");
@@ -1605,6 +1622,170 @@ section("19. the hands obey the shelf, and a Legacy row says what it leaves out 
     ok(b.sim.recipeOffered("mocha"), "and Mocha is offered at once");
     b.state.day = 8; b.sim.prestige();
     ok(b.sim.recipeAvailable("mocha") && !b.state.unlockedSyrups.has("mocha") && !b.sim.recipeOffered("mocha"), "a reopening keeps Mocha on the menu and takes its syrup off the shelf, so \"each run\" is true");
+  }
+}
+
+section("20. two paces: Busy Corner is the game as it was, Quiet Corner slows the door and lengthens the wait (#947)");
+{
+  const { PACES } = CONTENT;
+  const busyRow = PACES[0], quietRow = PACES.find(p => p.id === "quiet") || {};
+  // A build without the switch answers in words, so the lines below fail by
+  // name instead of the section dying on a TypeError.
+  const setPace = (sim, id) => typeof sim.setPace === "function" ? sim.setPace(id) : { ok: false, reason: "no setPace()" };
+  const noEvent = s => { s.eventFiredThisShift = true; };
+
+  // ---- the table ----
+  eq(PACES.length, 2, "there are two paces and no harder one");
+  eq(busyRow.id, "busy", "the first row is Busy Corner's");
+  ok(busyRow.doorMult === 1 && busyRow.patienceMult === 1, "and both its multipliers are exactly 1");
+  ok(quietRow.doorMult > 1 && quietRow.patienceMult > 1, "Quiet Corner's are both above 1: a slower door and a longer wait");
+  eq(Object.keys(quietRow).sort().join(","), "desc,doorMult,id,name,patienceMult", "and a row carries nothing else: no price, tip, reputation or bean field");
+  eq(freshState(CONTENT).pace, "busy", "a fresh shop opens on Busy Corner");
+
+  // ---- Busy Corner is the two dials as they were ----
+  {
+    const a = shop(1);
+    eq(a.sim.spawnFactor(), 1, "day one's door factor on Busy Corner is 1");
+    eq(a.sim.patienceFactor(), 1, "and day one's patience factor is 1");
+    const hard = shop(1, s => { s.day = 30; s.prestigeLevel = 5; });
+    eq(hard.sim.spawnFactor(), 0.30, "the hardest day's door factor is its floor, 0.30");
+    eq(hard.sim.patienceFactor(), 0.45, "and its patience factor is its floor, 0.45");
+    const bare = shop(1, s => { delete s.pace; });
+    eq(bare.sim.currentPace && bare.sim.currentPace().id, "busy", "a state with no pace at all runs on Busy Corner");
+    const odd = shop(1, s => { s.pace = "frantic"; });
+    eq(odd.sim.currentPace && odd.sim.currentPace().id, "busy", "and so does one naming a pace this build lacks");
+    eq(odd.sim.spawnFactor(), 1, "with the door at 1");
+  }
+
+  // ---- Quiet Corner scales exactly those two, on every day ----
+  {
+    let doorOff = 0, waitOff = 0, n = 0;
+    for (const day of [1, 4, 9, 15, 30]) for (const level of [0, 2, 5]) for (const ups of [[], ["sign"], ["pos2", "music"]]) {
+      const mk = pace => shop(3, s => { s.day = day; s.prestigeLevel = level; s.upgrades = new Set(ups); s.pace = pace; });
+      const b = mk("busy").sim, q = mk("quiet").sim;
+      if (!Object.is(q.spawnFactor(), b.spawnFactor() * quietRow.doorMult)) doorOff++;
+      if (!Object.is(q.patienceFactor(), b.patienceFactor() * quietRow.patienceMult)) waitOff++;
+      n++;
+    }
+    eq(doorOff, 0, `Quiet Corner's door factor is Busy Corner's times ${quietRow.doorMult} on all ${n} shops tried`);
+    eq(waitOff, 0, `and its patience factor is Busy Corner's times ${quietRow.patienceMult}`);
+    // The door's own floor is 0.25. The pace multiplies outside it, so the
+    // gentler shop is still gentler on a day the floor has caught.
+    const floored = pace => shop(3, s => { s.day = 30; s.prestigeLevel = 5; s.upgrades = new Set(["sign"]); s.marketingRemaining = 5000; s.activeEvent = { id: "rush", until: 1e9 }; s.pace = pace; }).sim.spawnFactor();
+    eq(floored("busy"), 0.25, "with the sign, a campaign and a rush on the hardest day the door is on its 0.25 floor");
+    eq(floored("quiet"), 0.25 * quietRow.doorMult, "and Quiet Corner is that floor times its multiplier, not the floor itself");
+  }
+
+  // ---- the same customers, waiting longer ----
+  {
+    const B = shop(11), Q = shop(11, s => { s.pace = "quiet"; });
+    let same = 0, scaled = 0, longer = 0;
+    const N = 300;
+    for (let i = 0; i < N; i++) {
+      const b = B.sim.generateOrder(), q = Q.sim.generateOrder();
+      const strip = o => JSON.stringify({ ...o, patience: 0, patienceMax: 0 });
+      if (strip(b) === strip(q)) same++;
+      if (Math.abs(q.patienceMax - b.patienceMax * quietRow.patienceMult) <= 1) scaled++;
+      if (q.patienceMax > b.patienceMax && q.patience === q.patienceMax) longer++;
+    }
+    eq(same, N, "on one seed both paces seat the same 300 customers with the same orders: the pace takes no draw");
+    eq(scaled, N, `each waits Busy Corner's patience times ${quietRow.patienceMult}, to the nearest tick`);
+    eq(longer, N, "which is longer, every time, and they arrive with all of it");
+  }
+
+  // ---- the door, counted over a whole shift ----
+  {
+    const offered = pace => {
+      const { sim, state } = shop(21, s => { s.pace = pace; noEvent(s); });
+      runShift(sim, state, STEP_MS, (_, st) => { st.queue.length = 0; });
+      return state.nextCustomerId - 1;
+    };
+    const b = offered("busy"), q = offered("quiet");
+    ok(q < b, `a shift with the line kept empty seats fewer on Quiet Corner (${q} against ${b})`);
+    const share = q / b, want = 1 / quietRow.doorMult;
+    ok(Math.abs(share - want) < 0.05, `by the door's share: ${share.toFixed(3)} of Busy Corner's, against 1/${quietRow.doorMult} = ${want.toFixed(3)}`);
+  }
+
+  // ---- a switch mid-shift is the next customer's ----
+  {
+    const mk = () => shop(31, noEvent);
+    const A = mk(), T = mk();   // T is the twin left on Busy Corner
+    const dawn = PHASES[0].spawnMs;
+    const until = (x, ms) => { while (x.state.shiftElapsed < ms - 1e-6) x.sim.advance(STEP_MS); };
+    until(A, dawn + 100); until(T, dawn + 100);
+    eq(A.state.queue.length, 1, "one customer has come through the door on Busy Corner");
+    const firstAt = A.state.queue[0], before = JSON.stringify(A.state.queue);
+    A.sim.advance(1000 - (A.state.shiftElapsed % 1000) + 2500);   // let her wait a while
+    const waited = JSON.stringify(A.state.queue);
+    const renders = A.events.filter(e => e.type === "render" && e.scope === "all").length;
+    const r = setPace(A.sim, "quiet");
+    ok(r.ok === true, "switching to Quiet Corner is accepted");
+    eq(A.state.pace, "quiet", "and the state says so");
+    eq(r.text, `Quiet Corner from the next customer on. ${quietRow.desc}`, "the toast says when it starts and what it changes");
+    ok(/less often/.test(quietRow.desc || "") && /wait/.test(quietRow.desc || ""), "and those words name the door and the wait");
+    eq(JSON.stringify(A.state.queue), waited, "the customer already in line is not rewritten: same patience left, same patience she came with");
+    ok(waited !== before && firstAt.patience < firstAt.patienceMax, "(she had been waiting, so a rewrite would have shown)");
+    eq(A.events.filter(e => e.type === "render" && e.scope === "all").length, renders + 1, "the switch asks for one redraw");
+
+    // The door's count is kept. The second customer is due one Quiet interval
+    // after the first, not one interval after the switch and not one Busy
+    // interval after the first.
+    const quietGap = dawn * quietRow.doorMult;
+    const secondDue = (dawn + STEP_MS) + quietGap;   // the first came on the step after the interval ran out
+    until(A, 2 * dawn + 2 * STEP_MS + 50);
+    eq(A.state.queue.length, 1, "a Busy interval after the first customer the door has not opened again");
+    until(T, 2 * dawn + 2 * STEP_MS + 50);
+    eq(T.state.queue.length, 2, "(on the twin left on Busy Corner it has)");
+    until(A, secondDue - 50);
+    eq(A.state.queue.length, 1, "nor just short of a Quiet interval");
+    until(A, secondDue + 2 * STEP_MS);
+    eq(A.state.queue.length, 2, "it opens one Quiet interval after the first customer, so the count from before the switch was kept");
+    const second = A.state.queue[1] || {}, twinSecond = T.state.queue[1] || {};
+    eq(second.recipeId || second.foodId, twinSecond.recipeId || twinSecond.foodId, "the second customer is the one the twin got");
+    eq(second.patienceMax, Math.round(twinSecond.patienceMax * quietRow.patienceMult), "waiting Quiet Corner's patience");
+
+    // Refusals change nothing.
+    const frozen = JSON.stringify(A.state.queue) + A.state.pace;
+    const again = setPace(A.sim, "quiet");
+    ok(again.ok === false && /already on/.test(again.reason || ""), "switching to the pace already on is refused, in words");
+    const nope = setPace(A.sim, "frantic");
+    ok(nope.ok === false && typeof nope.reason === "string", "and so is a pace that does not exist");
+    eq(JSON.stringify(A.state.queue) + A.state.pace, frozen, "neither refusal moved anything");
+
+    // And back again, the same way.
+    ok(setPace(A.sim, "busy").ok === true, "switching back to Busy Corner is accepted");
+    eq(JSON.stringify(A.state.queue), frozen.slice(0, -"quiet".length), "with nobody in line rewritten");
+    const o = A.sim.generateOrder(), t = T.sim.generateOrder();
+    eq(o.patienceMax, t.patienceMax, "and the next customer waits Busy Corner's patience");
+  }
+
+  // ---- what a pace does not touch ----
+  {
+    const receipt = pace => {
+      const { sim, state } = shop(41, s => { s.pace = pace; s.reputation = 62; });
+      fullShelf(state);
+      const o = order("latte", { milk: "oat", syrup: "vanilla" }, { patienceMax: 50, patience: 30 });
+      const slot = slotFor(o);
+      sim.getOrderRequirements(o).forEach(q => { while (!q.check(slot)) q.apply(slot); });
+      const good = sim.scoreServe(slot);
+      const bad = sim.scoreServe(slotFor(order("latte", { milk: "oat" }, { patienceMax: 50, patience: 30 })));
+      state.day = 12;
+      return JSON.stringify({ good, bad, money: state.money, rep: state.reputation, beans: sim.beansFromRun(), stars: sim.reputationStars(), board: sim.canBuy("station", 3).cost });
+    };
+    const b = receipt("busy");
+    ok(JSON.parse(b).good.tip > 0 && JSON.parse(b).bad.repDelta < 0, "a right cup tips and a wrong one costs reputation");
+    eq(receipt("quiet"), b, "the same two serves pay, tip and cost reputation the same on Quiet Corner, and a close pays the same beans");
+  }
+
+  // ---- it stays with the shop ----
+  {
+    const { sim, state } = shop(51, s => { s.pace = "quiet"; s.day = 9; });
+    const twin = shop(51, s => { s.day = 9; });
+    sim.prestige(); twin.sim.prestige();
+    eq(state.pace, "quiet", "a reopening keeps the pace");
+    eq(sim.spawnFactor(), twin.sim.spawnFactor() * quietRow.doorMult, "and the reopened shop's first day runs on it");
+    runShift(sim, state); sim.startNextDay();
+    eq(state.pace, "quiet", "so does the next day");
   }
 }
 

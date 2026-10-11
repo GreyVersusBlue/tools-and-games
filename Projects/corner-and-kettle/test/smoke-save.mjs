@@ -65,6 +65,7 @@ const CATALOG = buildCatalog({
   presetMax: 6,
   metaUpgrades: ["menuMocha","menuColdbrew","thirdCounter","dayOneHire","wholesale","distributor"],
   layouts: ["corner","kiosk","roastery","grandcafe"],
+  paces: ["busy","quiet"],
 });
 
 // The fixture above is a hand copy of the ids in content.js, and a hand copy
@@ -86,6 +87,7 @@ const CATALOG = buildCatalog({
     ["metaUpgrades", CONTENT.META_UPGRADES.map(m => m.id), [...CATALOG.metaUpgrades]],
     ["layouts", CONTENT.SHOP_LAYOUTS.map(l => l.id), CATALOG.layouts],
     ["baristaNames", CONTENT.BARISTA_NAMES, CATALOG.baristaNames],
+    ["paces", CONTENT.PACES.map(p => p.id), CATALOG.paces || []],
   ];
   for (const [name, real, fixture] of drift) {
     eq([...fixture].sort().join(","), [...real].sort().join(","), `the ${name} fixture matches content.js`);
@@ -554,6 +556,67 @@ section("11. beans and the layout round-trip through the live state (#360)");
   // field prestige() resets, so a reload mid-run cannot hand the beans back.
   const fields = Object.keys(freshSaveData(CATALOG));
   ok(fields.includes("meta") && fields.includes("layoutId"), "both are fields the save knows, so repair's unknown-field sweep keeps them");
+}
+
+section("12. the pace is one field, and a save without it is the game it was written in (#947)");
+{
+  const slot = newSlot();
+  const base = { day: 6, money: 1200, unlockedRecipes: ["drip", "latte"] };
+  eq(CATALOG.paces && CATALOG.paces[0], CONTENT.PACES[0].id, "the pace fallback is the first pace, the one whose multipliers are 1");
+  eq(slot.fresh().pace, "busy", "a fresh shop is on Busy Corner");
+
+  // ---- the old save ----
+  const old = slot.normalize({ ...base });
+  eq(old.pace, "busy", "a save written before the field existed loads as Busy Corner");
+  eq(old.day, 6, "with its day");
+  eq(old.money, 1200, "and its money");
+  // Through the real door too: an unversioned blob in storage, as every save
+  // before versioning was, and a version-1 envelope written before this build.
+  {
+    const store = memStore();
+    store.setItem(SAVE_KEY, JSON.stringify({ ...base, baristaLevel: 1 }));
+    const s = createCornerKettleSlot(CATALOG, { storage: store, rng: () => 0.5 }).load();
+    eq(s && s.pace, "busy", "an unversioned save in storage loads as Busy Corner");
+    eq(s && s.baristas.length, 1, "with the one barista its migration owes it");
+  }
+  {
+    const store = memStore();
+    const s1 = createCornerKettleSlot(CATALOG, { storage: store, rng: () => 0.5 });
+    const blob = toSaveData(applyToState(blankState(), s1.normalize({ ...base })));
+    delete blob.pace;
+    s1.save(blob);
+    ok(!/"pace"/.test(store.getItem(SAVE_KEY)), "a current-version save can be written with the field cut out");
+    eq(createCornerKettleSlot(CATALOG, { storage: store, rng: () => 0.5 }).load().pace, "busy", "and it reads back from storage as Busy Corner");
+  }
+
+  // ---- garbage ----
+  for (const bad of ["frantic", "", 7, null, true, ["quiet"], { id: "quiet" }]) {
+    eq(slot.normalize({ ...base, pace: bad }).pace, "busy", `a pace of ${JSON.stringify(bad)} reads as Busy Corner`);
+  }
+  eq(slot.normalize({ ...base, pace: "quiet" }).pace, "quiet", "and Quiet Corner survives a load");
+
+  // ---- the round trip: live state, storage, file ----
+  {
+    const store = memStore();
+    const s2 = createCornerKettleSlot(CATALOG, { storage: store, rng: () => 0.5 });
+    const state = applyToState(blankState(), s2.normalize({ ...base, pace: "quiet" }));
+    eq(state.pace, "quiet", "applyToState hands the pace to the live state");
+    const back = toSaveData(state);
+    eq(back.pace, "quiet", "toSaveData writes it back");
+    ok(s2.save(back), "the save sticks");
+    eq(s2.load().pace, "quiet", "and a reload reads Quiet Corner");
+    const text = s2.serialize(back);
+    ok(/"pace":\s*"quiet"/.test(text), "an exported file carries the field in so many words");
+    eq(s2.deserialize(text).pace, "quiet", "and an import reads it");
+    store._raw.clear();
+    s2.save(s2.deserialize(text));
+    eq(s2.load().pace, "quiet", "a wiped browser gets its pace back from the file");
+    state.pace = "busy";
+    eq(s2.deserialize(s2.serialize(toSaveData(state))).pace, "busy", "and Busy Corner round-trips as itself, not as a missing field");
+  }
+  ok(Object.keys(freshSaveData(CATALOG)).includes("pace"), "the field is one the save knows, so repair's unknown-field sweep keeps it");
+  eq(SAVE_KEY, "cornerKettleSave_v1", "the storage key did not move (#36)");
+  eq(SAVE_VERSION, 1, "and neither did the version: a missing field is repair's, not migrate's (#37)");
 }
 
 /* ---------- report ---------- */

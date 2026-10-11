@@ -79,6 +79,9 @@ export function freshSaveData(catalog) {
     // resets everything above this and nothing below it (Phase 7, #360).
     meta: { beans: 0, unlocks: [] },
     layoutId: catalog.layouts[0],
+    // Busy Corner or Quiet Corner: a row of content.js's PACES. A reopening
+    // does not touch it, and the page's New Game carries it into the new shop.
+    pace: catalog.paces[0],
     dailyModifierId: null,
     eventFiredThisShift: false,
     // Rolled by repairSave, which every fresh state goes through too — so
@@ -287,6 +290,9 @@ export function repairSave(s, catalog, rng = Math.random) {
   // The layout a run opened in. An unknown id reads as day one's rather than
   // leaving currentLayout() to fall back on every call.
   s.layoutId = catalog.layouts.includes(s.layoutId) ? s.layoutId : catalog.layouts[0];
+  // The pace. Every save written before the field existed has none, and reads
+  // as the first: the game it was saved in. So does an id this build lacks.
+  s.pace = catalog.paces.includes(s.pace) ? s.pace : catalog.paces[0];
 
   s.dailyModifierId = catalog.modifiers.has(s.dailyModifierId) ? s.dailyModifierId : null;
   s.eventFiredThisShift = !!s.eventFiredThisShift;
@@ -352,6 +358,7 @@ export function toSaveData(state) {
     prestigeLevel: state.prestigeLevel,
     meta: { beans: state.meta.beans, unlocks: [...state.meta.unlocks] },
     layoutId: state.layoutId,
+    pace: state.pace,
     dailyModifierId: state.dailyModifierId,
     eventFiredThisShift: state.eventFiredThisShift,
     eventTriggerAt: state.eventTriggerAt,
@@ -386,6 +393,7 @@ export function applyToState(state, data) {
   state.prestigeLevel = data.prestigeLevel;
   state.meta = { beans: data.meta.beans, unlocks: new Set(data.meta.unlocks) };
   state.layoutId = data.layoutId;
+  state.pace = data.pace;
   state.dailyModifierId = data.dailyModifierId;
   state.eventFiredThisShift = data.eventFiredThisShift;
   state.eventTriggerAt = data.eventTriggerAt;
@@ -423,7 +431,7 @@ export function createCornerKettleSlot(catalog, { storage = null, rng = Math.ran
 }
 
 /** Turn the game's own data tables into the id sets `repair` needs. */
-export function buildCatalog({ recipes, foods, syrups, toppings, milks, bases, upgrades, modifiers, baristaNames, starting, shiftMs, presetMax, metaUpgrades = [], layouts = ["corner"] }) {
+export function buildCatalog({ recipes, foods, syrups, toppings, milks, bases, upgrades, modifiers, baristaNames, starting, shiftMs, presetMax, metaUpgrades = [], layouts = ["corner"], paces = ["busy"] }) {
   return {
     recipes: new Set(recipes),
     foods: new Set(foods),
@@ -436,6 +444,8 @@ export function buildCatalog({ recipes, foods, syrups, toppings, milks, bases, u
     metaUpgrades: new Set(metaUpgrades),
     // A list, not a Set: repairSave needs its first entry as the fallback.
     layouts: [...layouts],
+    // A list for the same reason: its first entry is today's game.
+    paces: [...paces],
     baristaNames,
     starting,
     shiftMs,

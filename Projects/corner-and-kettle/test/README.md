@@ -4,10 +4,10 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     591 assertions, no browser, seeded
-node Projects/corner-and-kettle/test/smoke-save.mjs    230 assertions, no browser
-node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands, ~88 s
-node Projects/corner-and-kettle/test/drive-save.mjs    197 checks, real browser
+node Projects/corner-and-kettle/test/smoke-sim.mjs     638 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-save.mjs    261 assertions, no browser
+node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands and the two paces, about 3.5 minutes
+node Projects/corner-and-kettle/test/drive-save.mjs    233 checks, real browser
 ```
 
 `drive-save.mjs --a11y` runs its section 15 alone (31 checks, about six
@@ -17,6 +17,23 @@ alone, read off the DOM, and `prefers-reduced-motion` on the real stylesheet
 the cup in words against the sim's own ticket lines, and a rule that every
 animation or transition in `index.html` has a line turning it off under the
 media query. A new animation with no such line fails there.
+
+`drive-save.mjs --pace` runs its section 16 alone the same way (36 checks):
+the pace switch on the Menu Board (#947), by keyboard mid-shift and by mouse,
+through a reload, an old save, a file out and back, and New Game. What the two
+paces do to the door and the wait is smoke-sim's section 20; the field in the
+save is smoke-save's section 12; and `balance.mjs` ends with both paces side
+by side at three speeds of hand, with rails of their own (`checkPace`): Quiet
+Corner's line is shorter in every row, its customers are served with 0.05 more
+of their patience on the hardest day, that day still jams its door for a
+quarter of the shift at a slow hand, and it nets less than Busy Corner while
+the hands keep up. Every other batch in that file plays Busy Corner, and its
+output from before the switch existed and after is the same but for the new
+table.
+
+smoke-sim stops before section 1, with a named line, if the first row of
+`PACES` is not exactly the old game or a fresh shop does not open on it: every
+section after was written on that row and dies of a `TypeError` otherwise.
 
 The cup and food sheet has its own check, `node tools/blender/validate.mjs`
 (290 checks, no Blender), which CI runs before the suites; smoke-sim's
