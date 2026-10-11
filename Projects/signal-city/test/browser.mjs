@@ -514,7 +514,7 @@ try {
     await page.evaluate(n => window.__signalCity.step(n), 60 * 91);
     await new Promise(r => setTimeout(r, 300));
     const c1 = await page.evaluate(() => { const w = window.__signalCity.world; const e = w.activeEvent('ambulance'); return { amb: !!e, node: e ? e.car.path.node : -1, clock: w.ambulanceClock(), line: document.getElementById('eventLine').textContent, btn: document.getElementById('priorityBtn').classList.contains('show') }; });
-    ok(c1.amb && c1.node === 0 && c1.clock > 98 && c1.clock <= 100 && c1.btn && /Ambulance from W: (9[89]|100) s to get it through/.test(c1.line), 'at 91 s the ambulance is on box 1 with 100 s on the clock, the event line counts it down and the corridor button shows', `clock ${c1.clock && c1.clock.toFixed(1)} | ${c1.line}`);
+    ok(c1.amb && c1.node === 0 && c1.clock > 148 && c1.clock <= 150 && c1.btn && /Ambulance from W: (149|150) s to get it through/.test(c1.line), 'at 91 s the ambulance is on box 1 with 150 s on the clock (#949), the event line counts it down and the corridor button shows', `clock ${c1.clock && c1.clock.toFixed(1)} | ${c1.line}`);
     await page.keyboard.press('e');
     await page.click('#nodes .node[data-node="1"]');
     await page.evaluate(n => window.__signalCity.step(n), 60 * 1);

@@ -99,6 +99,17 @@ class TeamAI {
     return grim.hp < maxHp * 0.85 && Math.random() < chance;
   }
 
+  // An attempt is counted as made (stats.grimmawEngaged) once the team planning Grimmaw has a hero at the pit and he
+  // is hurt, the test noticeGrimmaw makes. stats.grimmawAttempts counts every plan, and a third of those were dropped
+  // for a tower before anybody reached him (24 of 72 over 24 seeded matches), which nobody could have contested.
+  noteEngaged(grim) {
+    const p = this.plan;
+    if (p.type !== 'grimmaw' || p.contest || p.engaged || !grim?.alive || grim.hp > grim.getStat('maxHp') * 0.97) return;
+    if (!this.heroes().some((h) => h.alive && h.distanceTo(grim.position) < 16)) return;
+    p.engaged = true;
+    this.d.stats.grimmawEngaged = (this.d.stats.grimmawEngaged ?? 0) + 1;
+  }
+
   heroes() { return this.game.heroes.filter((h) => h.team === this.team); }
 
   update() {
@@ -109,6 +120,7 @@ class TeamAI {
     this.threat = this.findThreat();
     this.updateWarders();
     this.considerBuybacks();
+    this.noteEngaged(this.d.neutrals.grimmaw);
 
     // Defend structures under hero pressure (always for base, from 10 min for outer towers)
     const th = this.threat;

@@ -121,7 +121,14 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **the second increment of
+**The last batch of ranked work that shipped** is **an increment of rank 30,
+Throneshard's Grimmaw contests** (#950, 2026-10-11; committed locally on
+huginn for the landing, so its PR number is the landing's): ½, naming Opus 5,
+run under Opus 5.5, and the row stays with its text rewritten. Measured over 24
+seeded matches, 29 of 48 attempts that hurt Grimmaw are contested; the old
+count took in plans dropped before he was touched, and `stats.grimmawEngaged`
+counts the real ones. No contest rule changed: two were measured and not kept.
+What is left is that a contest between hard bots is lost. Before it came **the second increment of
 rank 29, Throneshard's hard bots in the lane** (#948, 2026-10-10; committed
 locally on huginn for the landing, so its PR number is the landing's): ½,
 naming Opus 5, run under Opus 5.5, and the row stays with its text rewritten.
@@ -1067,9 +1074,9 @@ and #222 was closed unmerged an hour of suites later.
 | 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
 | 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
+| 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929; 150 s on its clock and a 270 s run since #949, on Devon's answer) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. A fourth, small, from #949: an ambulance still on the map when a run ends is not counted late and the end card says it made it (`WISHLIST.md` Known gaps; Cross Town goes round it by running 30 s past its clock). Nobody has played Cross Town at 150 s, where the call alone earns the second star. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
 | 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 17.9 against 18.8 at 10 minutes over 12 seeds (#948), about what two such means differ by from noise. The melee core in a lane against two ranged heroes dies as often as normal's now (2.2 against 2.5) and takes 16.7 last hits against normal's 19.7; the melee heroes in the middle lane take 18.5 against 21.3, not looked into. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 30 | A contest of Grimmaw between hard bots is lost: over 12 seeds the defenders came out ahead in 1 of 10 and lost 19 heroes for 5 (#950). The count was never the trouble: 29 of 48 real attempts are contested, and #751's 0.8 to 3.2 counted plans dropped before he was touched. Two rules tried and not kept. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
 
@@ -2476,7 +2483,7 @@ hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
 as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
 (#649, #650): a board-check recipe, the Rush Hour preview and the card
-copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. R13's second level shipped on 2026-10-07 (#926): Boulevard, the two-lane corridor with a green wave both ways, on a 33 s cycle so that the 15.7 s between its boxes is half of it; nobody turns on it, because R12's lane change at the join does not see the car alongside (`WISHLIST.md` Known gaps), and nobody has played it. The lane change was fixed and one car in ten turns right on Boulevard since (#927, #928), and R13's third level shipped the same day (#929): Cross Town, three boxes in a row that an ambulance crosses in 100 s, where the corridor follows it and the green given at each box ahead decides it; nobody has played it. R13's last named level shipped that evening (#933): Lights Out, Boulevard's street with its wave already in and a 12 s outage at 78 s that brings both boxes back on one clock while the slider still reads 16, so the player finds the wave again on the diagram; nobody has played it, and the stale slider is the first thing for a person to judge. What is open is three engine units the levels turned up (`WISHLIST.md` Known gaps). **It is rank 25 since 2026-10-07**, the only one of R10 to R14 with anything left: R10 (#777, #778), R11 (#779, #780), R12 (#781) and R14 (#783) shipped whole. H1 to H4 have no row; they need a device, ears or a person and were not among the rows Devon asked for.
+copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. R13's second level shipped on 2026-10-07 (#926): Boulevard, the two-lane corridor with a green wave both ways, on a 33 s cycle so that the 15.7 s between its boxes is half of it; nobody turns on it, because R12's lane change at the join does not see the car alongside (`WISHLIST.md` Known gaps), and nobody has played it. The lane change was fixed and one car in ten turns right on Boulevard since (#927, #928), and R13's third level shipped the same day (#929): Cross Town, three boxes in a row that an ambulance crosses in 100 s, where the corridor follows it and the green given at each box ahead decides it. Its clock is 150 s and its run 270 s since 2026-10-11 (#949, Devon's "add about 50% more time"): the call alone is on time on six seeds of six now, and the green ahead is 13 to 37 s and the clean run; nobody has played it at 150 s. R13's last named level shipped that evening (#933): Lights Out, Boulevard's street with its wave already in and a 12 s outage at 78 s that brings both boxes back on one clock while the slider still reads 16, so the player finds the wave again on the diagram; nobody has played it, and the stale slider is the first thing for a person to judge. What is open is three engine units the levels turned up (`WISHLIST.md` Known gaps). **It is rank 25 since 2026-10-07**, the only one of R10 to R14 with anything left: R10 (#777, #778), R11 (#779, #780), R12 (#781) and R14 (#783) shipped whole. H1 to H4 have no row; they need a device, ears or a person and were not among the rows Devon asked for.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
@@ -2577,7 +2584,7 @@ A 3D lane battler Devon had built outside this repo and asked to move in on
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
 Its suites are `node test/data.mjs` (1,211 checks, 38 of them `test/wall.mjs`'s,
 69 `test/ormund.mjs`'s and 63 `test/tobren.mjs`'s) and `node test/browser.mjs`
-(49; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 19
+(51; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 21
 checks) from the project folder, in Site CI's matrix.
 Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
@@ -2616,8 +2623,24 @@ and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
   leftover is still there: `diveOk`'s push clause reads `mode`, and `tryFight`
   sets `mode` to `fight`, so a dive allowed for a push is refused on the next
   think. Measure with the harness in `HISTORY.md`'s log for #948.
-- Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
-  a match (#751).
+- A contest of Grimmaw between hard bots is lost (#950). Counted by attempts
+  that hurt him (`stats.grimmawEngaged`; a third of the plans #751 counted were
+  dropped for a tower first), 29 of 48 were contested over 24 seeded matches,
+  and none of the other 19 was a team that could have gone and stayed away.
+  What a contest gets: hard defenders against normal attackers ahead in 5 of
+  8 with 5 steals, normal against hard 5 of 11, hard against hard 1 of 10 with
+  19 heroes lost for 5. In 14 of the 29 the nearest contester set out from
+  93 units or more, and in 3 of the 9 lost at the pit one contester at most
+  stood there. Tried and not kept, with figures in `HISTORY.md`'s log for #950: a
+  party of only those who can arrive inside 60% of the life he has left (it
+  ended nearly every contest, the 80-to-145-unit group steals with them), and
+  holding contesters 30 units out until three stand together (ahead in 6 of
+  21 where `main` had 10 of 19). Not tried: weighing the party against the
+  attackers by health and damage as `fightRatio` does, or by net worth, before
+  going; breaking a contest off when the first hero falls. The team that
+  starts an attempt is ahead by its own test, so an even-numbers contest
+  starts behind. The harness is described in that log; 12 matches cannot tell
+  a small gain from none, so plan on 24 a side.
 - The card preview is a SwiftShader draft (#749), and the every-second-frame
   shadow map was judged from a frame sequence, not a recording (#753); both
   want one look on real hardware.

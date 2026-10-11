@@ -482,7 +482,7 @@ stand-in cars, because two boxes in a row cannot tell them apart: that the
 lane is the one a path leaves its box in and not the one it came in by,
 and that the leg it feeds is checked (a grid is one lane each way).
 
-### R13. More board: a second pack (its named levels shipped: Market Ring, Boulevard, Cross Town and Lights Out, HISTORY.md #782, #926, #928, #929, #933)
+### R13. More board: a second pack (its named levels shipped: Market Ring, Boulevard, Cross Town and Lights Out, HISTORY.md #782, #926, #928, #929, #933; Cross Town's clock, #949)
 
 **Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels taught
 eight ideas. Pack 2 lives in `js/levels/pack-02.js` and runs on from Main
@@ -550,56 +550,108 @@ six at 14 s and one at 16 s); then the hint, which says "half the cycle"
 and stops short of the number. Nobody turns left: a left across two lanes
 on a two-phase plan was two clean seeds of six in #926's sweep.
 
-**Cross Town** (#929) is three boxes in a row 220 m apart, one lane each
-way, every box on Rush Hour's 22 s rule with E-W as phase 1, 380 an hour
-in at each end of the street and 240 on every side street, 240 s. An
-ambulance comes in from the west of box 1 at 90 s and has 100 s to leave
-by the east of box 3. It is level data and nothing else: no engine file,
-no page file, no save field. The second star is Rush Hour's `ambulance`
-(on time, on its corridor), and what it teaches is new. The corridor
-follows the ambulance (R6), but a box is pre-empted only when the car is
-handed to it, 110 m out, and one lane means it is never faster than the
-car in front. So the call alone is not enough on every seed: the player
-picks the next box and gives its E-W phase before the ambulance gets
-there. Nobody turns (`turns: { T: 1 }`), because a car handed on draws its
-turn from the level's weights and the ambulance with it (Known gaps). It
-opens on Boulevard's star and takes lefts, split phases and sensors from
-the shop on all three boxes.
+**Cross Town** (#929, its clock and length #949) is three boxes in a row
+220 m apart, one lane each way, every box on Rush Hour's 22 s rule with
+E-W as phase 1, 380 an hour in at each end of the street and 240 on every
+side street, 270 s. An ambulance comes in from the west of box 1 at 90 s
+and has 150 s to leave by the east of box 3. It is level data and nothing
+else: no engine file, no page file, no save field. The second star is
+Rush Hour's `ambulance` (on time, on its corridor). The corridor follows
+the ambulance (R6), but a box is pre-empted only when the car is handed to
+it, 110 m out, and one lane means it is never faster than the car in
+front, so the player who picks the next box and gives its E-W phase before
+the ambulance gets there has it across 13 to 37 s sooner. Nobody turns
+(`turns: { T: 1 }`), because a car handed on draws its turn from the
+level's weights and the ambulance with it (Known gaps). It opens on
+Boulevard's star and takes lefts, split phases and sensors from the shop
+on all three boxes.
+
+**The clock was 100 s and the run 240 s until 2026-10-11 (#949).** Devon,
+asked on 2026-10-07 whether a player can reach box 2 and box 3 inside
+100 s, said "add about 50% more time": 150 s. Two things moved with it.
+The run is 270 s, because 90 + 150 is 240: on a 240 s run the clock ran
+out on the last frame, an ambulance still on the map then was never
+counted late, and the end card said "the ambulance made it without its
+corridor" of one that had not left (seeds 4 and 6 with nothing pressed;
+see Known gaps). The clock now runs out 30 s before the run does; Rush
+Hour's runs out 15 s before. The ambulance still comes at 90 s, so every
+trip below is the same trip #929 measured and only what counts as on time
+changed; moving it to 60 s instead was measured and passed over (it
+changes every trip, and a call a minute late then clears 85 of 88 on one
+seed). The target is 99, #929's 88 at the longer run's length.
+
+**What the longer clock costs, said plainly:** at 100 s the call alone
+was on time on four seeds of six and the road ahead was what made the
+other two. At 150 s the call alone is on time on all six with 37 s in
+hand at the slowest, and so is a call made a minute late with the boxes
+left on their rule (139 s at the slowest). The second star is now calling
+the corridor at all. The road ahead is no longer needed for a star; it is
+the faster crossing and the cleaner run (three stars on six of six
+against five).
 
 R1's two tables, six seeds, `node tools/calibrate.mjs cross-town
 --baseline --hand`, and a third row, `--hand=phases,corridor`. The hand
 learned one move for this level (`clearAhead`, the part named `ahead`):
 at every box a called ambulance's through path leads on to, the phase
 carrying it is asked for once the minimum green has run and pressed again
-every 15 s. The offset sweep now leaves a row of boxes on rules alone
-(the tool died on it: no plan, no cycle to sweep).
+every 15 s. The offset sweep leaves a row of boxes on rules alone.
 
-| | cleared (target 88) | average wait | ambulance on the map | on time | three stars | locks |
-| --- | --- | --- | --- | --- | --- | --- |
-| nothing pressed | 99 to 116 | 13 to 17 s | 99 to 136 s, or still there at the end on two seeds | 2 of 6, uncalled | 0 of 6 (one star on all six) | 0 |
-| the hand without the road ahead: the corridor as it arrives, the longest queue at each box | 93 to 113 | 12 to 22 s | 69, 95, 75, 105, 76, 113 s | 4 of 6 | 3 of 6 | 0 |
-| the hand in full | 97 to 119 | 13 to 21 s | 56, 61, 57, 80, 54, 76 s | 6 of 6 | 6 of 6 | 0 |
+Before, 100 s and a 240 s run, target 88 (#929):
 
-100 s sits 5 s from the nearest seed on either side in the middle row (95
-and 105 s) and 20 s over the slowest seed of the last. A scratch sweep
-with the boxes left on their rule and no hand at the phases: the corridor
-called 5 s in is 75 to 116 s (four on time), called at once 70 to 116 s
-(three); with E-W asked for and held at each box ahead, 60 to 90 s called
-at once, 65 to 95 s called 5 s in, 70 to 100.1 s called 10 s in. The
-target is under the worst run of any row, so nothing pressed keeps the
-survival star, as on every lesson level since #639; it cannot earn the
-second, which needs the corridor called. Not hard mode: R3's test (#641)
-wants no input clean on six seeds, and seed 2 collides once.
-`test/stars.mjs` pins the table (CROSSINGS), `test/scoring.mjs` the data
-and seed 6 three ways, `test/campaign.mjs` the shop and the save,
-`test/browser.mjs` the card, the three boxes and the follow into box 2.
+| | cleared | average wait | ambulance on the map | on time | lesson | three stars | locks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing pressed | 99 to 116 | 13 to 17 s | 100, 99, 136, still there, 105, still there | 2 of 6, uncalled | 0 of 6 | 0 of 6 (one star on all six) | 0 |
+| the hand without the road ahead | 93 to 113 | 12 to 22 s | 69, 95, 75, 105, 76, 113 s | 4 of 6 | 4 of 6 | 3 of 6 | 0 |
+| the hand in full | 97 to 119 | 13 to 21 s | 56, 61, 57, 80, 54, 76 s | 6 of 6 | 6 of 6 | 6 of 6 | 0 |
 
-**NOBODY HAS PLAYED IT.** What a person should look at first: whether a
-player finds the box picker and gets to box 2 and box 3 in time (the
-ambulance is at box 2 about 25 s after it is called), and whether the
-hint is enough to send them there; then whether 100 s reads as an
-ambulance's deadline when a clear road is 54 s and a blocked one 113;
-then a street where no car turns.
+After, 150 s and a 270 s run, target 99 (#949):
+
+| | cleared | average wait | ambulance on the map | on time | lesson | three stars | locks |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nothing pressed | 127 to 144 | 13 to 19 s | 100, 99, 136, 159, 105, 151 s | 4 of 6, uncalled | 0 of 6 | 0 of 6 (one star on all six) | 0 |
+| the hand without the road ahead: the corridor as it arrives, the longest queue at each box | 105 to 138 | 12 to 22 s | 69, 95, 75, 105, 76, 113 s | 6 of 6 | 6 of 6 | 5 of 6 (seed 5 collides once) | 0 |
+| the hand in full | 116 to 141 | 13 to 21 s | 56, 61, 57, 80, 54, 76 s | 6 of 6 | 6 of 6 | 6 of 6 | 0 |
+
+A plain player, by a scratch probe on the same six seeds: the corridor
+called and every box left on its rule, nothing else pressed. Called at
+once the ambulance is 70 to 116 s on the map; 5 s in, 75 to 116; 10 s in,
+80 to 125; 20 s in, 82 to 133; 40 s in, 83 to 127; a minute in, 95 to
+139. The lesson on six of six in every row, three stars on four to six
+(the crashes are none to two seeds a row and not the same seeds). Twelve
+more seeds, 7 to 18, the same probe: nothing pressed is on time on all
+twelve (47 to 145 s) and one star on all twelve; called, on time on every
+seed of every row (117 s at the slowest), except that a call a minute in
+finds one ambulance already gone; the fewest cleared in any row is 103.
+Over the eighteen, nothing pressed misses the clock on two.
+The first star: the target is 6 under the worst run of any row (105), so
+nothing pressed keeps the survival star, as on every lesson level since
+#639, and cannot earn the second, which needs the corridor called: four
+of its six ambulances are on time and none is the lesson. The third is a
+clean run: the hand in full is clean on all six, a call alone crashes on
+none to two seeds of six. Not hard mode: R3's test (#641) wants no input
+clean on six seeds, and seed 2 collides once.
+`test/stars.mjs` pins the table (CROSSINGS), `test/scoring.mjs` the data,
+the clock against the run's length and four plays (seed 4 with nothing
+pressed, late; the same cut to 240 s, not counted; seed 6 called, and
+with the road ahead; seed 1 on time uncalled), `test/campaign.mjs` the
+shop and the save, `test/browser.mjs` the card, the three boxes, the
+150 s on the clock and the follow into box 2.
+
+**A best from before #949 stays as it is.** Stars and best points are
+kept as the most ever earned (`recordResult`), no save field or key
+changed, and nothing is rewritten on load. A 270 s run clears 19 to 28
+more cars than a 240 s one at 10 points a car, so an old best is beaten
+by an ordinary run now; one star earned on the old target of 88 is still
+one star.
+
+**NOBODY HAS PLAYED IT AT 150 s.** What to look
+at first: whether the second star is now too easy (it is the call, at any
+time in the first minute), and if so whether the answer is a figure
+between (at 120 s the hand's call alone is on time on all six with 7 s
+in hand, and a call a minute late on the boxes' own rule is late on two
+seeds); whether the last 30 s
+after the clock read as an ending or as dead time; then a street where no
+car turns.
 
 **Lights Out** (#933) is Boulevard's street again, the same boxes, plan,
 33 s cycle, demand, mix and turns, with Boulevard's answer already in (the
@@ -807,6 +859,18 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   ships `turns: { T: 1 }` for that reason. Keeping a scripted car's turn
   past the first box is an engine change, and then Cross Town can take
   turns and is calibrated again.
+
+- An ambulance still on the map when the run ends, with time left on its
+  clock or none spent past it, is not late (#949): `stats.ambulanceLate`
+  counts at the step the clock runs out, `lessonMet` asks only for a
+  negative clock, and the end card then reads "the ambulance made it
+  without its corridor" of one that never left. Seen on Cross Town at
+  90 + 150 = 240 s on a 240 s run (seeds 4 and 6, nothing pressed; the
+  clock read 0.017 s at the end because the ambulance came a step after
+  90 s). The level goes round it in data: its run is 270 s, so the clock
+  runs out 30 s before the end. `test/scoring.mjs` pins the cut run as it
+  reads today. The engine unit is one sentence: an ambulance on the map
+  at the end has not made it, called or not.
 
 - An ambulance that crashes is off the map, and if it was called and not
   yet late that reads as on time on its corridor (`_ambulanceTick` asks
