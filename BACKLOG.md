@@ -121,7 +121,15 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **rank 31, Throneshard's
+**The last batch of ranked work that shipped** is **rank 22, The Fracture
+Cycle's fourth prong** (#958, 2026-10-12; committed locally on huginn for the
+landing, so its PR number is the landing's): 2+, naming Fable 5.1, run under
+Opus 5.5 in one sitting, and the row has left the table. The fourth choice at
+the seam is to take no road: the walker finds the count of everyone who woke
+before, takes a name, and has two endings of their own at the socket. 32
+nodes, 7 endings and 519 paths where there were 25, 5 and 171, and the 171
+play as they did, pinned by hash. Nobody has read it. Before it came **rank
+31, Throneshard's
 Piercing Gale and rune auras** (#952, 2026-10-11; committed locally on huginn
 for the landing, so its PR number is the landing's): ¼, naming Opus 5, run
 under Opus 5.5, and the row stays as "wants a person's look". The gale's
@@ -179,7 +187,7 @@ nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**15 ranked items remain**, and **every one of them names a model.**
+**13 ranked items remain** (counted off the table on 2026-10-12), and **every one of them names a model.**
 
 **The Blender block is empty** (#642, #707, 2026-09-25, Devon's instruction
 and his re-rank, which put every Blender row first). Every project's
@@ -202,9 +210,10 @@ rows, because re-ranking the list is not a session's call; inside Throneshard
 the two Devon has answered come first, then the two with a measured number,
 then the two judged by eye. R13's Size and Model are its wishlist's; the
 other seven had none and are assigned here by Tier 1's three readings (#380).
-**Pick up next** for a session with no hardware is rank 22, The Fracture
-Cycle's fourth prong (2+, naming Fable 5.1, so Opus 5.5 under #638; no gate),
-which Devon approved on 2026-10-01; after it, ranks 25 to 31, none gated. The
+**Pick up next** for a session with no hardware is rank 25, Signal City's
+second pack (2+, naming Fable 5.1, so Opus 5.5 under #638; no gate); after
+it, ranks 29 to 31, none gated. Rank 22, The Fracture Cycle's fourth prong,
+shipped on 2026-10-12 (#958). The
 first row is still rank 15, the real-hardware pass on the site (½, naming
 Opus 5, so Opus 5.5 under #638; gate `GPU, phone`). Ranks 15 to 21, 23 and 32
 want a real GPU, a real phone or a person listening for an hour, and their
@@ -888,13 +897,12 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Two rows are 2+: rank 22 (The Fracture Cycle's fourth prong) and rank 25
-(Signal City's second pack).** The
-fourteen rows left (15 to 23, 25 and 29 to 32, recounted off the table on
-2026-10-10) are nine that want hardware nothing here has (15 to 21, 23 and
-32) and five a container can take (22, 25 and 29 to 31), none of them waiting
-on a yes any more: Devon approved the fourth prong on 2026-10-01 and
-answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
+**One row is 2+: rank 25 (Signal City's second pack).** The
+thirteen rows left (15 to 21, 23, 25 and 29 to 32, recounted off the table on
+2026-10-12, when rank 22, The Fracture Cycle's fourth prong, shipped as #958)
+are nine that want hardware nothing here has (15 to 21, 23 and 32) and four a
+container can take (25 and 29 to 31), none of them waiting on a yes any more:
+Devon answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
 2026-09-25, when 47 Blender rows went in above the thirteen. Signal City's row
 retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
@@ -1077,7 +1085,6 @@ and #222 was closed unmerged an hour of suites later.
 | 19 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
 | 20 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
 | 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929; 150 s on its clock and a 270 s run since #949, on Devon's answer) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. Three of its engine units shipped on 2026-10-12: an ambulance still on the map when a run ends is late and the end card says where it was (#955; Cross Town keeps its 270 s); the true offset is written back when the lights return, so Lights Out's slider drops to 0 and its answer is 16 again (#959: no run moved, the pinned slider values did, 32 to 16 and 24 to 8); and a scripted vehicle takes a `route`, one turn a box (#960: no shipped level names one, so nothing moved). What it leaves is one engine unit and one level call, each about a half (the Size cell is R13's and was not re-sized). The engine unit, a box coming back from dark: traced on 2026-10-12 and written, not shipped. The cars the four-way stop held at the box's edge read as committed on the returning red and all go at once (13 crashes in 48 runs of a 20 s outage, 0 with the fix); the fix is commit afc8f07 on `wave/2026-10-12-TG-29-signalengine` under the claimed #957 and was held back because it moves Rush Hour's pinned runs (nothing pressed one star on 4 seeds of 6 and not 6, the hand three stars on 5 and not 6, one `scoring.mjs` line), so what is left is tracing Rush Hour's seeds 3 and 5 and re-pinning it, on Devon's word. The level call, Cross Town with turning traffic: `route: ['T', 'T', 'T']` on its ambulance and weights in `turns`, then its two tables and its stars again, since every car ahead of the ambulance may now turn across it. All in `WISHLIST.md` Known gaps. Nobody has played Cross Town at 150 s, where the call alone earns the second star, and nobody has watched Lights Out's slider drop by itself. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
 | 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 17.9 against 18.8 at 10 minutes over 12 seeds (#948), about what two such means differ by from noise. The melee core in a lane against two ranged heroes dies as often as normal's now (2.2 against 2.5) and takes 16.7 last hits against normal's 19.7; the melee heroes in the middle lane take 18.5 against 21.3, not looked into. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
@@ -2313,27 +2320,38 @@ Two things the work turned up. The first is fixed, the second had shipped:
 
 `Projects/the-fracture-cycle.html`, `Projects/the-fracture-cycle/`.
 
-**Two rounds running with nothing outstanding.** The one real bug (the
-unreachable ending) is fixed, the save question is answered and implemented,
-the fonts are vendored, the accessibility issues are fixed, and the test suite
-passes. Don't invent busywork for a 799-line game with every ending reachable,
-a working save, no offsite requests, and no known accessibility or mobile
-issues.
+**Nothing outstanding but a read.** The one real bug (the unreachable ending)
+is fixed, the save question is answered and implemented, the fonts are
+vendored, the accessibility issues are fixed, and the test suite passes. Don't
+invent busywork for a game with every ending reachable, a working save, no
+offsite requests, and no known accessibility or mobile issues.
 
-The list below was only for if Devon deliberately decided to expand scope.
-**He did, for the first half of item 1: a fourth prong, approved on
-2026-10-01** (Q49, struck), and it is rank 22. Deeper side content was not
-asked for.
+**The fourth prong is in and playable (#958, 2026-10-12)**, on Devon's yes of
+2026-10-01 (Q49, struck); it was rank 22. The fourth choice at the seam is to
+take no road. Its outline, and what was measured before and after, is
+`Projects/the-fracture-cycle/DESIGN-fourth-prong.md`: 32 nodes, 48 choices, 7
+endings, 519 paths and 3,775 words where there were 25, 36, 5, 171 and 2,591.
+Deeper side content was not asked for and was not written.
 
-1. **A 4th prong, or deeper side content.** The three existing prongs and the
-   side-hub detour are each a complete beginning/middle/payoff shape, not
-   truncated. Adding more would be new content Devon chooses to commission, not
-   a gap being filled. If you do this, replay every existing path afterward —
-   a narrative game that silently loses a branch gives no error, the choice
-   just isn't there.
-2. **Re-verify the branch map after any future edit.** If a later round touches
-   the story logic at all, rerun `node Projects/the-fracture-cycle/test/smoke.mjs`
-   and replay by hand.
+1. **NOBODY HAS READ IT.** Devon should play the seam through once (the fourth
+   choice on the first screen; both of its endings are reachable in two runs,
+   "The Last Waking" only with a name of your own and nothing picked up at
+   Roseleaf) and say whether it sounds like his game. Every word of it is
+   between the `THE SEAM` comment and the `HUB` comment, in `seam_answer`, and
+   in the last two endings. To take it out: `git revert` the four commits of
+   #958; a save that had seen one of its two endings loads with that ending
+   dropped by `repair` and the rest kept.
+2. **A walker is told nothing about why "The Last Waking" is not on offer**
+   when they come to the hollow with a piece or a borne name. The prose hints
+   at it twice; the game's unused `.locked-note` style would say it outright.
+   Left as a choice for whoever reads it.
+3. **The preview and the social card still show the game as it was.** The
+   capture takes the first choice every time, so it never walks the seam and
+   needs no re-take; the board's description does not count endings.
+4. **Re-verify after any future edit.** `node
+   Projects/the-fracture-cycle/test/smoke.mjs` walks every path and pins the
+   171 old ones by hash; `--paths` prints the figures. An edit to an old
+   node's words moves that hash on purpose and says so in the file.
 
 Deliberately not done, twice, and still valid: no restructuring (still one
 file, still small enough to hold in one read); no mid-story save (the
@@ -2985,7 +3003,7 @@ live. Nothing in that column is a link to follow.
 | ~~Q46~~ | ~~**Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?**~~ Struck — answered by Devon, 2026-10-05: point it at the fall line, knowing the eyes' drift and the head-flip move with it. It was already built that way on 2026-09-24 (#634, PR #395: `const downhillAt = fallLine` in `js/dread.js`); nothing moved. | 1 | prompt 24, session 6 |
 | ~~Q47~~ | ~~**Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#920, TG-29): the cost line on the tile is copper and bold on any order cheaper than counting up, and every sink has a sentence under the floor with the count and the cheapest line. Judged by no person. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
-| ~~Q49~~ | ~~**Does The Fracture Cycle get a 4th prong or deeper side content?**~~ Struck — answered by Devon, 2026-10-01: yes to a fourth prong, which is rank 22 and not built yet. Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
+| ~~Q49~~ | ~~**Does The Fracture Cycle get a 4th prong or deeper side content?**~~ Struck — answered by Devon, 2026-10-01: yes to a fourth prong, which was rank 22 and was built on 2026-10-12 (#958). Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | ~~Q52~~ | ~~**Does Orbital adopt `gvb-save.js` for save-bar UI consistency?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#925, TG-30): one slot on the key Orbital always had, Export and Import on the sector map, `assets/js/gvb-save.js` itself unchanged. | 2 | prompt 21, the project's notes |
 
 ### The host (raised 2026-10-10, #934)
