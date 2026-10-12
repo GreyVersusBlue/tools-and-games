@@ -166,6 +166,7 @@ row names a file it does not run.
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
 | `test/ui/movement.test.mjs` | The movement view's plain functions: lanes, the choice, the legend |
 | `test/ui/playback.test.mjs` | Playback's plain functions: what the device keeps, where a marker is |
+| `test/ui/room-picker.test.mjs` | The room picker's rules and the Groups tab's addresses, with no browser |
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
