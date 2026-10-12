@@ -463,6 +463,11 @@ before(async () => {
     project.teachers[0].name = LONG_TEACHER;
     project.groups[0].name = LONG_GROUP;
   });
+  // and two that no sheet can hold whole: they meet in one row of Room 101's day
+  await write('longword', (project) => {
+    project.teachers[0].name = WORD_TEACHER;
+    project.groups[0].name = WORD_GROUP;
+  });
   browser = await launch();
 });
 
@@ -622,6 +627,9 @@ const PRINTED = /^Printed (1 September 2026|September 1, 2026)$/;
 // Thirty letters each, with nowhere to break.
 const LONG_TEACHER = 'Featherstonehaughcholmondeleys';
 const LONG_GROUP = 'Humanitiesaccelerationcohortab';
+// Sixty letters each: longer than a sheet can give a name (SV2-49 item 8).
+const WORD_TEACHER = 'Featherstonehaughcholmondeleymarjoribanksworthingtonsmythebe';
+const WORD_GROUP = 'Humanitiesaccelerationcohortforthesecondsemesterofyearsevenb';
 
 // Where the sign's day stands against its sheet: nothing of a table past the
 // sheet's edge unless the table's own frame scrolls it.
@@ -635,6 +643,7 @@ const dayFit = (page) => page.evaluate(() => {
       return edge.right > sheet.right + 0.5 || edge.left < sheet.left - 0.5;
     }).length,
     scrolled: Array.from(document.querySelectorAll('.sign__kind')).filter((kind) => kind.scrollWidth > kind.clientWidth + 1).length,
+    frames: Array.from(document.querySelectorAll('.sign__kind')).filter((kind) => getComputedStyle(kind).overflowX !== 'visible').length,
     sideBySide: Array.from(document.querySelectorAll('.sign__kind')).filter((kind) => Math.abs(kind.getBoundingClientRect().top - document.querySelector('.sign__kind').getBoundingClientRect().top) < 1).length,
     wide: document.documentElement.scrollWidth <= window.innerWidth,
     names: Array.from(document.querySelectorAll('.sign__table td')).map((cell) => cell.textContent).filter((text) => text.length >= 30).length,
@@ -660,8 +669,9 @@ test('the sign\'s day never cuts a word and never runs past the sheet: thirty-le
       assert.deepEqual(await cutWords(page), [], name + ': a word of the day table is cut in two');
       assert.equal(fit.past, 0, name + ': a table runs past the sheet');
       assert.equal(fit.wide, true, name + ': the page scrolls sideways');
-      // on a phone a table too wide for it moves inside its own frame; on paper and on a desktop the kinds stand one under another instead
-      if (media === 'print' || width === 1280) assert.equal(fit.scrolled, 0, name + ': nothing is hidden behind a scroll');
+      // nothing is moved sideways to be read, on a phone either (SV2-49 item 8): there a period's names have lines of their own, and elsewhere the kinds stand one under another
+      assert.equal(fit.scrolled, 0, name + ': nothing is hidden behind a scroll');
+      assert.equal(fit.frames, 0, name + ': no kind of day is a frame that scrolls');
       if (media === 'print') assert.equal(fit.sideBySide, 1, name + ': with names this long the two kinds of day are one under another');
       assert.deepEqual(session.errors, []);
     } finally {
@@ -680,6 +690,118 @@ test('the sign\'s day never cuts a word and never runs past the sheet: thirty-le
     assert.deepEqual(await cutWords(session.page), []);
   } finally {
     await session.close();
+  }
+});
+
+// SV2-49 item 8. Never past the sheet wins over never cut (DECISIONS
+// 2026-10-12 18:15): a name of sixty letters is the one word the day breaks.
+// Where each name of the day stands against the sheet, and which words are cut.
+const namesFit = (page) => page.evaluate(() => {
+  const sheet = document.querySelector('.sheet, .batch-sign').getBoundingClientRect();
+  const day = document.querySelector('.sign__day').getBoundingClientRect();
+  const names = Array.from(document.querySelectorAll('.sign__table td span'));
+  return {
+    names: names.length,
+    past: names.filter((name) => {
+      const box = name.getBoundingClientRect();
+      return box.right > Math.min(sheet.right, day.right) + 0.5 || box.left < Math.max(sheet.left, day.left) - 0.5;
+    }).map((name) => name.textContent.slice(0, 12)),
+    lines: names.filter((name) => name.textContent.length >= 60).map((name) => Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight))),
+  };
+});
+
+test('a word no sheet can hold is broken at the sheet\'s edge and nothing else is: two names of sixty letters in one row, at 390 px, at 1280 px, on paper and in the batch', async () => {
+  const room = 'rsample101';
+  const check = async (page, name) => {
+    const fit = await dayFit(page);
+    const names = await namesFit(page);
+    assert.ok(names.lines.length >= 2, name + ': both long names are in the day: ' + names.lines.length);
+    assert.deepEqual(names.past, [], name + ': a name runs past the sheet');
+    assert.equal(fit.past, 0, name + ': a table runs past the sheet');
+    assert.equal(fit.wide, true, name + ': the page scrolls sideways');
+    assert.equal(fit.scrolled, 0, name + ': something is hidden behind a scroll');
+    assert.equal(fit.frames, 0, name + ': a kind of day is a frame that scrolls, which a keyboard cannot reach');
+    // the two names are cut, each onto a second line or more, and no other word of the day is
+    const cut = Array.from(new Set(await cutWords(page))).sort();
+    assert.deepEqual(cut, [WORD_TEACHER, WORD_GROUP].sort(), name + ': the words cut in two');
+    assert.ok(names.lines.every((lines) => lines >= 2 && lines <= 4), name + ': the lines each long name takes: ' + names.lines.join(' '));
+  };
+  for (const [name, width, height, media] of [['a phone', 390, 844, 'screen'], ['a narrow phone', 320, 640, 'screen'], ['a desktop', 1280, 900, 'screen'], ['US Letter', 710, 950, 'print'], ['A4', 688, 1017, 'print']]) {
+    const session = await openPage({ width, height });
+    try {
+      const { page } = session;
+      await goto(page, files.longword.url + '#/door/' + room + '?day=1');
+      if (media === 'print') {
+        await page.emulateMediaType('print');
+        await page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
+      }
+      await check(page, name);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+  // the planner's batch sets the same sign from print.css
+  const project = sampleSchool();
+  project.teachers[0].name = WORD_TEACHER;
+  project.groups[0].name = WORD_GROUP;
+  for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
+    const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
+    const file = path.join(scratch, 'batch-word-' + size + '.html');
+    writeFileSync(file, html);
+    const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
+    try {
+      const { page } = session;
+      await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+      await page.emulateMediaType('print');
+      await page.waitForFunction(() => matchMedia('print').matches);
+      // the sheet of the room where the two names meet
+      await page.evaluate((id) => {
+        for (const sheet of Array.from(document.querySelectorAll('[data-sheet="door"]'))) if (sheet.dataset.id !== id) sheet.remove();
+      }, room);
+      await check(page, 'the batch on ' + size);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// SV2-49 item 7. The reader's print dialog may say landscape; the sign's
+// sheet is on a page of its own name, which is upright. Asked of the printer
+// itself, as the paper rules case above asks it.
+test('printed for real with landscape asked, a door sign is still one upright sheet of the paper chosen, and a teacher\'s schedule is on its side as asked', async () => {
+  const read = (pdf) => {
+    const text = Buffer.from(pdf).toString('latin1');
+    return {
+      pages: (text.match(/\/Type\s*\/Page\b(?!s)/g) || []).length,
+      boxes: Array.from(new Set(Array.from(text.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g), (match) => Math.round(Number(match[3])) + ' by ' + Math.round(Number(match[4]))))),
+    };
+  };
+  for (const [format, upright, onItsSide] of [['Letter', '612 by 792', '792 by 612'], ['A4', '596 by 842', '842 by 596']]) {
+    for (const address of ['#/door/rsample101', '#/door/rsample101?day=1', '#/door/rsamplecaf?day=1']) {
+      const session = await openPage({ width: 1000, height: 800 });
+      try {
+        const { page } = session;
+        await goto(page, files.open.url + address);
+        // a print dialog set to landscape, in a browser that lets the page's own rule speak
+        const printed = read(await page.pdf({ format, landscape: true, preferCSSPageSize: true, printBackground: true }));
+        assert.deepEqual(printed, { pages: 1, boxes: [upright] }, address + ' on ' + format + ', landscape asked');
+        assert.deepEqual(session.errors, []);
+      } finally {
+        await session.close();
+      }
+    }
+    // no other page is turned: the named page is the sign's alone
+    const session = await openPage({ width: 1000, height: 800 });
+    try {
+      await goto(session.page, files.open.url + '#/teacher/tsample004');
+      const printed = read(await session.page.pdf({ format, landscape: true, preferCSSPageSize: true, printBackground: true }));
+      assert.deepEqual(printed.boxes, [onItsSide], 'a teacher\'s schedule on ' + format + ', landscape asked');
+    } finally {
+      await session.close();
+    }
   }
 });
 
