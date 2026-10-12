@@ -679,59 +679,115 @@
   color: var(--ink-2);
 }
 
+/* A door sign's sheet. What is on it is the staff browser's own sign
+   (doorSignMarkup, staff/views/door-sign.js), so the rules below it are the
+   sign's paper rules from staff/staff.css, said again because a print
+   document does not load that file; test/engine/prints-batch.test.mjs holds
+   the two together. A print document has no reset, so each line of the sign
+   takes its own margin off here (one rule for every p in the sign would
+   outrank the lines' own margins). The sheet is as tall as the paper inside its margins,
+   less a little, so the school's name stands at its foot. */
 .print-doc .batch-sign {
   display: flex;
   flex-direction: column;
+  min-height: calc(var(--page-h) - 40mm);
+}
+
+.print-doc .sign {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   align-items: center;
+  padding: 16mm 0 0;
   text-align: center;
 }
 
-.print-doc .batch-sign__word {
-  margin: 8mm 0 0;
-  font-size: 24pt;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-2);
+.print-doc .sign__card {
+  display: contents;
 }
 
-.print-doc .batch-sign__number {
+.print-doc .sign__word {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-plan, var(--font-ui));
+  font-size: 22pt;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.print-doc .sign__number {
+  max-width: 100%;
   margin: 0;
   font-family: var(--font-plan, var(--font-ui));
-  font-weight: 600;
   font-size: calc(120pt * var(--sign-fit, 1));
-  line-height: 1.05;
-  white-space: nowrap;
-}
-
-.print-doc .batch-sign__word + .batch-sign__number {
-  margin-top: 0;
-}
-
-.print-doc .batch-sign__number:first-child {
-  margin-top: 8mm;
-}
-
-.print-doc .batch-sign__teacher {
-  margin: 6mm 0 0;
-  font-size: 28pt;
-  line-height: 1.15;
   font-weight: 600;
+  line-height: 1;
+  overflow-wrap: anywhere;          /* a number too long for one line at the smallest size wraps */
 }
 
-.print-doc .batch-sign__subject {
-  margin: 2mm 0 0;
-  font-size: 18pt;
+.print-doc .sign__teacher {
+  margin: 0;
+  margin-top: 8mm;
+  font-size: 32pt;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.print-doc .sign__subject {
+  margin: 0;
+  margin-top: 3mm;
   color: var(--ink-2);
+  font-size: 22pt;
+  line-height: 1.2;
 }
 
-.print-doc .batch-sign .batch-days {
+.print-doc .sign__day {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(42%, 1fr));
+  gap: 6mm;
+  order: 1;
   width: 100%;
+  margin-top: 12mm;
   text-align: left;
 }
 
-.print-doc .batch-sign__school {
-  margin: 8mm 0 0;
-  font-size: 10pt;
+.print-doc .sign__kindname {
+  margin: 0;
+  font-size: 14pt;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.print-doc .sign__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11pt;
+  line-height: 1.3;
+}
+
+.print-doc .sign__table th,
+.print-doc .sign__table td {
+  padding: 1mm 2mm 1mm 0;
+  border-top: 0.2mm solid var(--line);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;        /* a word is never cut: a column is as wide as its longest */
+}
+
+.print-doc .sign__table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.print-doc .sign__school {
+  order: 2;
+  margin: 0;
+  margin-top: auto;
+  padding-top: 12mm;
   color: var(--ink-2);
+  font-size: 12pt;
+  line-height: 1.3;
 }

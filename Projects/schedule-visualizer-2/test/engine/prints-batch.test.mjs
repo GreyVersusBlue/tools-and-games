@@ -1,7 +1,9 @@
 // Batch printing (ui/prints/batch.js): every teacher's schedule and every
 // door sign as one print document each, rendered in plain Node from the
 // sample school, from a school with nothing in it, and from a school whose
-// every name is hostile.
+// every name is hostile. A door sign in the batch is the staff browser's own
+// sign (doorSignMarkup, staff/views/door-sign.js), made from the published
+// model: the cases at the end hold the two together.
 //
 //   node test/engine/prints-batch.test.mjs
 
@@ -12,6 +14,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { render, BATCHES, batchCount, batchWords } from '../../ui/prints/batch.js';
+import * as doorModule from '../../staff/views/door-sign.js';
+import { openSchool } from '../../staff/model.js';
+import { publishedModel } from '../../engine/publish-data.js';
 import { outputFor } from '../../ui/prints/index.js';
 import { esc, TOOL_NAME } from '../../ui/prints/document.js';
 import { teacherDay } from '../../engine/teacher-day.js';
@@ -46,6 +51,12 @@ function tablesOf(sheet) {
   return Array.from(sheet.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr>([\s\S]*?)<\/tr>/g))
     .map((row) => Array.from(row[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)).map((cell) => cell[1].replace(/<span class="batch-day__time">[\s\S]*?<\/span>/, '').replace(/<[^>]+>/g, ''))));
 }
+
+// A line of a sign as the builder writes it: a name somebody typed is kept
+// apart from the words around it, in a span with dir="auto".
+const typedName = (text) => '<span dir="auto">' + esc(text) + '</span>';
+const signLine = (part, text) => '<p class="sign__' + part + '" data-sign="' + part + '">' + typedName(text) + '</p>';
+const signNumber = (fit, text, plain) => '<p class="sign__number" style="--sign-fit: ' + fit + '" data-sign="number">' + (plain ? esc(text) : typedName(text)) + '</p>';
 
 const HOSTILE = [
   '<script>alert("s")</script>',
@@ -178,7 +189,7 @@ test('every room gets one door sign, in the order of the building, after a cover
   assert.ok(html.includes('<p class="doc-lead">13 door signs follow, one sheet each, in the order of the building’s floors.</p>'));
   assert.equal(countOf(html.slice(0, html.indexOf('new-sheet')), '<li>'), 13);
   assert.equal(countOf(html, '<table'), 0, 'no day on a sign unless it is asked for');
-  assert.equal(countOf(html, '<p class="batch-sign__school">' + esc(SAMPLE_SCHOOL_NAME) + '</p>'), 13, 'the school at the foot of every sign');
+  assert.equal(countOf(html, signLine('school', SAMPLE_SCHOOL_NAME)), 13, 'the school at the foot of every sign');
 });
 
 test('a sign: "Room" over a number, a named room alone, the teacher and the subject, a long name set smaller', () => {
@@ -187,24 +198,24 @@ test('a sign: "Room" over a number, a named room alone, the teacher and the subj
   const byId = (id) => sheets.find((sheet) => sheet.id === id).html;
 
   const numbered = byId(room(project, '203').id);
-  assert.ok(numbered.includes('<p class="batch-sign__word">Room</p>\n<p class="batch-sign__number" style="--sign-fit: 1;">203</p>'));
-  assert.ok(numbered.includes('<p class="batch-sign__teacher">Ms. Vandermeer</p>'));
-  assert.ok(numbered.includes('<p class="batch-sign__subject">Social Studies</p>'));
+  assert.ok(numbered.includes('<p class="sign__word">Room</p>' + signNumber(1, '203')));
+  assert.ok(numbered.includes(signLine('teacher', 'Ms. Vandermeer')));
+  assert.ok(numbered.includes(signLine('subject', 'Social Studies')));
 
   const gym = byId(room(project, 'Gym').id);
-  assert.equal(countOf(gym, 'batch-sign__word'), 0, 'a room with a name is not "Room Gym"');
-  assert.ok(gym.includes('<p class="batch-sign__number" style="--sign-fit: 1;">Gym</p>'));
+  assert.equal(countOf(gym, 'sign__word'), 0, 'a room with a name is not "Room Gym"');
+  assert.ok(gym.includes(signNumber(1, 'Gym')));
 
   // nine letters at 120 pt would run off the sheet: seven fit, so it is set at 7/9 of the size
   const cafeteria = byId(room(project, 'Cafeteria').id);
-  assert.ok(cafeteria.includes('<p class="batch-sign__number" style="--sign-fit: ' + String(7 / 9) + ';">Cafeteria</p>'));
-  assert.equal(countOf(cafeteria, 'batch-sign__teacher'), 0, 'no teacher is based in the Cafeteria, so no line for one');
+  assert.ok(cafeteria.includes(signNumber(String(7 / 9), 'Cafeteria')));
+  assert.equal(countOf(cafeteria, 'sign__teacher'), 0, 'no teacher is based in the Cafeteria, so no line for one');
 
   // a room with no number still gets a sign, and it does not invent one
   room(project, '101').number = '  ';
   const blank = sheetsOf(doors(project)).find((sheet) => sheet.id === allRooms(project)[0].id).html;
-  assert.ok(blank.includes('<p class="batch-sign__number" style="--sign-fit: 1;">Room</p>'));
-  assert.equal(countOf(blank, 'batch-sign__word'), 0);
+  assert.ok(blank.includes(signNumber(1, 'Room', true)));
+  assert.equal(countOf(blank, 'sign__word'), 0);
 });
 
 test('with the room\'s day, a sign shows who is there each period, and a double-booked room shows both groups', () => {
@@ -215,16 +226,16 @@ test('with the room\'s day, a sign shows who is there each period, and a double-
   const [aDay, bDay] = tablesOf(sign);
   assert.equal(aDay.length, 8);
   assert.equal(bDay.length, 8);
-  assert.deepEqual(aDay[0], ['Period 1', '6B', 'Ms. Vandermeer']);
-  assert.deepEqual(aDay[1], ['Period 2', '6C and 7C', 'Ms. Vandermeer'], 'the sample\'s double-booking: neither group is dropped');
-  assert.deepEqual(aDay[4], ['Period 5', 'Empty', '']);
+  assert.deepEqual(aDay[0], ['Period 1', '8:00 AM to 8:48 AM', '6B', 'Ms. Vandermeer'], 'the four columns of the staff browser\'s own sign');
+  assert.deepEqual(aDay[1], ['Period 2', '8:52 AM to 9:40 AM', '6C and 7C', 'Ms. Vandermeer'], 'the sample\'s double-booking: neither group is dropped');
+  assert.deepEqual(aDay[4], ['Period 5', '11:28 AM to 12:16 PM', 'Empty', '']);
   // against the schedule itself, for every room and period: a group is on the sign exactly when its slot names the room
   for (const each of allRooms(project)) {
     const tables = tablesOf(sheets.find((sheet) => sheet.id === each.id).html);
     project.dayTypes.forEach((dayType, d) => {
       for (let period = 0; period < project.settings.periods; period += 1) {
         const here = project.groups.filter((candidate) => effectiveSchedule(project, candidate.id, dayType.id)[period].room === each.id).map((candidate) => candidate.name);
-        const cell = tables[d][period][1];
+        const cell = tables[d][period][2];
         if (here.length === 0) assert.equal(cell, 'Empty', each.number + ' period ' + period);
         else for (const name of here) assert.ok(cell.split(/, | and /).includes(name), each.number + ' period ' + period + ' on ' + dayType.name + ' has ' + name + ': ' + cell);
       }
@@ -282,7 +293,7 @@ test('a school with no name prints under the tool\'s name on every sheet', () =>
   const project = school();
   project.settings.schoolName = '  ';
   assert.equal(countOf(teachers(project), '<span>' + TOOL_NAME + ' · Teacher schedule</span>'), 12);
-  assert.equal(countOf(doors(project), '<p class="batch-sign__school">' + TOOL_NAME + '</p>'), 13);
+  assert.equal(countOf(doors(project), signLine('school', TOOL_NAME)), 13);
 });
 
 // ---------------------------------------------------------------- hostile names
@@ -321,8 +332,8 @@ test('hostile names come through every batch as text, never as markup', () => {
   // a long hostile room number is a number like any other: on the sign once, escaped, and sized by its length
   const sign = sheetsOf(doors(project))[0].html;
   const number = allRooms(project)[0].number;
-  assert.equal(countOf(sign, '>' + esc(number) + '</p>'), 1);
-  assert.match(sign, /style="--sign-fit: 0\.\d+;"/);
+  assert.equal(countOf(sign, typedName(number) + '</p>'), 1);
+  assert.match(sign, /style="--sign-fit: 0\.\d+"/);
 });
 
 // ---------------------------------------------------------------- the sheets' rules
@@ -332,13 +343,117 @@ test('every class a batch sheet uses has a rule in print.css, under the document
   const used = new Set();
   for (const batch of BATCHES) {
     for (const match of batch.render(school(), null, NOW).html.matchAll(/class="([^"]*)"/g)) {
-      for (const name of match[1].split(/\s+/)) if (name.startsWith('batch-')) used.add(name);
+      for (const name of match[1].split(/\s+/)) if (name.startsWith('batch-') || name.startsWith('sign')) used.add(name);
     }
   }
-  assert.ok(used.size >= 15, 'the sheets are made of batch- classes: ' + used.size);
+  assert.ok(used.size >= 20, 'the sheets are made of batch- classes and the sign\'s own: ' + used.size);
   for (const name of used) {
-    if (name === 'batch-sheet--teacher' || name === 'batch-day') continue; // a hook for a later rule, and a plain section
+    if (name === 'batch-sheet--teacher' || name === 'batch-day' || name === 'sign__kind') continue; // a hook for a later rule, and two plain sections
     assert.match(css, new RegExp('\\.print-doc \\.' + name + '(?![a-zA-Z0-9_-])'), name);
   }
-  assert.match(css, /\.print-doc \.batch-sign__number \{[^}]*font-size: calc\(120pt \* var\(--sign-fit, 1\)\)/, 'the number at 120 pt (DESIGN 7), times the fit');
+  assert.match(css, /\.print-doc \.sign__number \{[^}]*font-size: calc\(120pt \* var\(--sign-fit, 1\)\)/, 'the number at 120 pt (DESIGN 7), times the fit');
+  // the batch has no sign of its own any more: what is left for it is the sheet
+  assert.deepEqual(Array.from(used).filter((name) => name.startsWith('batch-sign')), ['batch-sign']);
+  assert.equal(countOf(css, '.batch-sign__'), 0, 'a rule for a second door sign');
+});
+
+// ---------------------------------------------------------------- one door sign (SV2-41)
+
+const model = (project) => openSchool(publishedModel(project, { clock: () => new Date(PINNED) }));
+
+// The declarations of every rule in `css` whose selector starts with `prefix`
+// then ".sign": { '.sign__number': { 'font-size': '…' } }.
+function signRules(css, prefix) {
+  const rules = {};
+  for (const match of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    for (const selector of match[1].split(',').map((each) => each.trim())) {
+      if (!selector.startsWith(prefix + '.sign')) continue;
+      const name = selector.slice(prefix.length);
+      rules[name] = rules[name] || {};
+      for (const line of match[2].split(';')) {
+        const at = line.indexOf(':');
+        if (at !== -1) rules[name][line.slice(0, at).trim()] = line.slice(at + 1).trim();
+      }
+    }
+  }
+  return rules;
+}
+
+test('a door sign in the batch is the staff browser\'s own sign for that room, row for row', () => {
+  const build = doorModule.doorSignMarkup;
+  assert.equal(typeof build, 'function', 'staff/views/door-sign.js has no string-returning builder of the sign');
+  const project = school();
+  for (const day of [false, true]) {
+    const sheets = sheetsOf(doors(project, { day }));
+    for (const each of allRooms(project)) {
+      const own = build(model(project), model(project).room(each.id), { day, school: SAMPLE_SCHOOL_NAME });
+      const sheet = sheets.find((candidate) => candidate.id === each.id).html;
+      assert.deepEqual(tablesOf(sheet), tablesOf(own), each.number + ': the rows of the room\'s day');
+      assert.ok(sheet.includes(own), each.number + ': the batch sheet holds the sign whole');
+      assert.equal(countOf(sheet, 'class="sign"'), 1, each.number);
+    }
+  }
+  const rows = tablesOf(build(model(project), model(project).room('rsample203'), { day: true }))[0];
+  assert.equal(rows.length, 8);
+  assert.ok(rows.every((row) => row.length === 4), 'period, time, group, teacher');
+  // the builder is text in and text out: it stands in plain Node, where there is no page
+  assert.equal(typeof globalThis.document, 'undefined');
+});
+
+test('a room whose teachers are of different subjects names no subject; teachers of one subject name theirs', () => {
+  const project = school();
+  const shared = room(project, '203');
+  const sign = () => sheetsOf(doors(project)).find((sheet) => sheet.id === shared.id).html;
+  assert.ok(sign().includes(signLine('subject', 'Social Studies')), 'the room\'s own subject');
+  const first = project.teachers[0];
+  const second = project.teachers.find((teacher) => teacher.subjectId !== first.subjectId);
+  assert.notEqual(first.subjectId, second.subjectId, 'the fixture this case stands on');
+  shared.subjectId = null;
+  shared.teacherIds = [first.id, second.id];
+  assert.equal(countOf(sign(), 'sign__subject'), 0, 'the first teacher\'s subject is not the room\'s: ' + sign());
+  assert.ok(sign().includes(signLine('teacher', first.name).replace('</p>', ' and ' + typedName(second.name) + '</p>')), 'both teachers are named');
+  second.subjectId = first.subjectId;
+  assert.ok(sign().includes(signLine('subject', 'Mathematics')), 'two teachers of one subject');
+  shared.teacherIds = [first.id];
+  assert.ok(sign().includes(signLine('subject', 'Mathematics')), 'one teacher: theirs');
+});
+
+test('the batch is made from the published model: the project\'s own objects are read once, by the publisher', () => {
+  const project = school();
+  const watched = room(project, '203');
+  let reads = 0;
+  Object.defineProperty(watched, 'number', { enumerable: true, get: () => { reads += 1; return '203'; } });
+  const html = doors(project, { day: true });
+  assert.ok(sheetsOf(html).find((sheet) => sheet.id === watched.id).html.includes(signNumber(1, '203')));
+  assert.equal(reads, 1, 'the room\'s number was read ' + reads + ' times: a sheet is asking the project, not the copy the staff browser gets');
+  // and a field the published file does not carry cannot be on a sheet
+  const marked = school();
+  marked.teachers[0].planner = 'PLANNER-ONLY';
+  for (const each of marked.groups) each.headCount = 987;
+  for (const batch of BATCHES) assert.equal(batch.render(marked, null, NOW).html, batch.render(school(), null, NOW).html, batch.id);
+  // no date given is no date read: the publisher's clock is not the machine's
+  assert.equal(doors(school(), { now: undefined }), render(school(), null, { batch: 'doors' }).html);
+});
+
+test('the sign\'s paper rules say the same in the staff browser\'s sheet and in the print document\'s', () => {
+  const staff = readFileSync(path.join(TOOL_DIR, 'staff', 'staff.css'), 'utf8').replace(/\r\n?/g, '\n');
+  const block = staff.slice(staff.indexOf('/* ---------- SV2-23:'), staff.indexOf('/* ---------- SV2-23: end'));
+  const paper = signRules(block.slice(block.indexOf('@media print')), '');
+  const batch = signRules(readFileSync(path.join(TOOL_DIR, 'ui', 'print.css'), 'utf8').replace(/\r\n?/g, '\n'), '.print-doc ');
+  assert.ok(Object.keys(paper).length >= 8, 'the staff sheet\'s paper rules for the sign: ' + Object.keys(paper).join(' '));
+  for (const [selector, declared] of Object.entries(paper)) {
+    assert.ok(batch[selector], 'print.css has no rule for ' + selector);
+    for (const [property, value] of Object.entries(declared)) {
+      assert.equal(batch[selector][property], value, selector + ' { ' + property + ' } on paper');
+    }
+  }
+});
+
+test('a number too long for one line wraps on the sheet: nothing keeps it on one line', () => {
+  const css = readFileSync(path.join(TOOL_DIR, 'ui', 'print.css'), 'utf8');
+  const rules = signRules(css, '.print-doc ');
+  assert.ok(rules['.sign__number'], 'print.css has no rule for the number');
+  assert.equal(rules['.sign__number']['white-space'], undefined);
+  assert.equal(rules['.sign__number']['overflow-wrap'], 'anywhere');
+  assert.equal(countOf(css.slice(css.indexOf('SV2-24: batch sheets')), 'nowrap'), 2, 'only the period column of a day table is kept on one line: a teacher schedule\'s, and the sign\'s');
 });

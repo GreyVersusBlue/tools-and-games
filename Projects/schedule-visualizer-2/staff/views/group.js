@@ -12,14 +12,6 @@ import { wordsJoined, partsToNodes, countOf, linkToTeacher, linkToRoom, subjectC
 
 const isEmpty = (slot) => !slot || (!slot.room && !slot.roomText && !slot.label);
 
-// "Period 3" → "3", "Block C" → "C", "3rd Hour" → "3rd". The page asks the
-// school for this now (school.periodLabel, the engine's own); this copy is
-// here only until the case in test/browser/staff-views-a.mjs that imports it
-// asks the school too.
-export function shortPeriod(name) {
-  return String(name).replace(/^(Period|Mod|Block)\s+/, '').replace(/\s+Hour$/, '');
-}
-
 // Who teaches the group: one row for each teacher in each room, in the order
 // the day meets them, with the periods on each kind of day.
 // [{ teacher, room, text, label, periods: [[period, …] per kind] }]

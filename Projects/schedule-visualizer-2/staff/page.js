@@ -5,7 +5,8 @@
 //
 // On paper a page is headed by the school (the shell's own line), what the
 // page is (the heading) and the date it was printed (the line made here,
-// which the screen never shows). staff/print.css lays the paper out.
+// which the screen never shows). The @media print block of staff/staff.css
+// lays the paper out.
 
 import { h } from './dom.js';
 import { dayText } from './dates.js';
