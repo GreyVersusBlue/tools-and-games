@@ -1096,7 +1096,6 @@ test('a card the reader tapped open is put beside its cell again once playbackâ€
   await change({ transition: TRANSITION });
   await pinFrames();
   await set({ speed: 1, pace: 'real', loop: 'day', order: 'together', style: 'tail', size: 'small' });
-  await bar((el) => el.playback.seek(0));
   await pointerAway().catch(() => {});
   const cell = (await walkOf(EARLY_GROUP)).cells[0];
   // the cell near the foot of the map, so that its card has to stand above it
@@ -1113,23 +1112,32 @@ test('a card the reader tapped open is put beside its cell again once playbackâ€
     const rect = el.getBoundingClientRect();
     return { x: rect.left, y: rect.top };
   });
+  // playback is started, so a card that comes up is given its line of who is here a moment after it is shown
+  await scrubTo(30);
+  const cardBox = () => view(() => {
+    const card = document.querySelector('.mov-card').getBoundingClientRect();
+    const stage = document.querySelector('.mov-stage').getBoundingClientRect();
+    return { top: card.top - stage.top, bottom: card.bottom - stage.top, height: card.height, size: document.querySelector('.mov').movement.view.size };
+  });
+  // the pointer comes onto the cell: the card, then playback's line in it, which makes it a line taller
+  await page.mouse.move(plan.x + middle.x, plan.y + middle.y);
+  await page.waitForFunction((floor, wanted) => {
+    const card = document.querySelector('.mov-card');
+    return !card.hidden && card.dataset.floor === floor && card.dataset.cell === String(wanted) && card.querySelector('[data-part="now"]') !== null;
+  }, { timeout: 5000 }, cell.floorId, cell.cell);
+  const hovered = await cardBox();
+  // above the cell, its foot 10 px over the cell's top edge: not hanging down over the cell it is about
+  assert.ok(Math.abs(hovered.bottom - (middle.y - hovered.size / 2 - 10)) <= 1.5, 'the card was left where it stood before playbackâ€™s line made it taller: ' + JSON.stringify({ hovered, cellTop: middle.y - hovered.size / 2 }));
+  assert.ok(hovered.top >= 8, 'the card runs out of the top of the map');
+  // a click keeps it
   await page.mouse.click(plan.x + middle.x, plan.y + middle.y);
   await page.waitForFunction((floor, wanted) => {
     const card = document.querySelector('.mov-card');
     const point = document.querySelector('.mov').movement.point;
     return !card.hidden && card.dataset.floor === floor && card.dataset.cell === String(wanted) && point !== null && point.source === 'tap';
   }, { timeout: 5000 }, cell.floorId, cell.cell);
-  // playback starts: its line goes into the card, which is a line taller
-  await scrubTo(30);
-  await page.waitForFunction(() => document.querySelector('.mov-card [data-part="now"]') !== null);
-  const placed = await view(() => {
-    const card = document.querySelector('.mov-card').getBoundingClientRect();
-    const stage = document.querySelector('.mov-stage').getBoundingClientRect();
-    return { top: card.top - stage.top, bottom: card.bottom - stage.top, height: card.height, size: document.querySelector('.mov').movement.view.size };
-  });
-  // above the cell, its foot 10 px over the cell's top edge: not hanging down over the cell it is about
-  assert.ok(Math.abs(placed.bottom - (middle.y - placed.size / 2 - 10)) <= 1.5, 'the card was left where it stood before it grew: ' + JSON.stringify({ placed, cellTop: middle.y - placed.size / 2 }));
-  assert.ok(placed.top >= 8, 'the card runs out of the top of the map');
+  const placed = await cardBox();
+  assert.ok(Math.abs(placed.bottom - (middle.y - placed.size / 2 - 10)) <= 1.5, JSON.stringify({ placed, cellTop: middle.y - placed.size / 2 }));
 
   // the whole day: at the transition's end playback goes on to the next, and the card is still up on its cell
   await bar((el) => el.playback.seek(el.playback.end - 1));

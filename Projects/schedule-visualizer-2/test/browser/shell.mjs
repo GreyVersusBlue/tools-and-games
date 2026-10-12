@@ -230,13 +230,26 @@ test('/ and Ctrl+F go to the search box', async () => {
 
 test('a toast stays while the pointer is on it and goes six seconds after', async () => {
   assert.equal(await page.evaluate(() => import('./ui/components/toast.js').then((m) => m.TOAST_MS)), 6000);
-  await page.evaluate(() => globalThis.sv2.ctx.toast({ text: 'A short one.', duration: 300 }));
-  await page.hover('.toast .toast__text');
+  // The pointer comes onto the message in the turn that shows it: a real
+  // pointer takes its time to get there, and under load a message of 300 ms
+  // had gone before it arrived ("Node is detached from document", SV2-45's
+  // full run). What is held is the timer, so the wait while the pointer is on
+  // it is a wait on the clock; its going afterwards is waited for as a state.
+  await page.evaluate(() => {
+    globalThis.sv2.ctx.toast({ text: 'A short one.', duration: 300 });
+    document.querySelector('.toast').dispatchEvent(new PointerEvent('pointerenter'));
+  });
   await pause(700);
   assert.equal(await exists('.toast'), true, 'the toast left while the pointer was on it');
+  await page.evaluate(() => document.querySelector('.toast').dispatchEvent(new PointerEvent('pointerleave')));
+  await page.waitForFunction(() => document.querySelector('.toast') === null, { timeout: 5000 });
+  // and a real pointer over a message that has the time to be reached holds it the same way
+  await page.evaluate(() => globalThis.sv2.ctx.toast({ text: 'A long one.', duration: 4000 }));
+  await page.hover('.toast .toast__text');
+  await pause(4300);
+  assert.equal(await exists('.toast'), true, 'the toast left while a real pointer was on it');
   await page.mouse.move(640, 300);
-  await pause(600);
-  assert.equal(await exists('.toast'), false, 'the toast stayed after the pointer left');
+  await page.waitForFunction(() => document.querySelector('.toast') === null, { timeout: 8000 });
   await page.evaluate(() => {
     globalThis.sv2.ctx.toast({ text: 'First.' });
     globalThis.sv2.ctx.toast({ text: 'Second.' });

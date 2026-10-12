@@ -602,6 +602,12 @@ test('W2: the legend never covers a floor: its card lies on no floor’s drawn b
   assert.ok(seen.card > 0 && seen.line > 0, 'the case saw ' + seen.card + ' cards and ' + seen.line + ' lines: one of the two was never tested');
 });
 
+// On the sample school at 390 px the card would lie on a floor whichever
+// floors are shown (it is 224 px of the 390), so this case stays green with
+// the phone's rule taken out and the measure left to decide: it holds what
+// the phone shows, and the rule itself is held by reading it (index.js,
+// dockLegend: `phone.matches ||`). Said here so that nobody takes the case
+// for a guard on that line.
 test('W2: under 640 px the legend is always the line; Scale brings the card out over the map until its own button puts it away', async () => {
   await on('#movement', PHONE, async (p) => {
     await dismissStarted(p);
@@ -828,6 +834,10 @@ test('W7: the keyboard cursor is a ring never under 14 px, a 2 px line in the fo
 test('W8: zoomed far out the rings of two places lie over one another: the busiest place’s is on top, and every rank is on a spot of its own with no line through it', async () => {
   await on('#movement', DESK, async (p) => {
     await dismissStarted(p);
+    // the rings as they stand: the ring that travels out of each would be drawn over the very lines read here
+    await p.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
+    await p.evaluate(() => document.querySelector('.mov').movement.change({ transition: null, measure: 'busiest' }));
+    await shows(p, () => document.querySelector('#inspector [data-panel="hotspots"]').dataset.pulse === 'still');
     const seen = await p.evaluate(async () => {
       const movement = document.querySelector('.mov').movement;
       movement.view.zoomAbout(0.25, movement.view.width / 2, movement.view.height / 2);
@@ -865,6 +875,7 @@ test('W8: zoomed far out the rings of two places lie over one another: the busie
     const accent = hex(seen.accent);
     const isAccent = (got) => got[3] === 255 && got.slice(0, 3).every((value, index) => Math.abs(value - accent[index]) <= 30);
     assert.equal(Math.round(seen.zoom * 100), 25);
+    assert.equal(seen.pulse, 'still', 'a ring is travelling: the lines read are not the rings’ own');
     assert.deepEqual(seen.rings.map((ring) => ring.rank).filter((rank, index, all) => all.indexOf(rank) === index), [1, 2, 3]);
     const overlapping = seen.rings.some((a, i) => seen.rings.some((b, j) => j > i && Math.hypot(a.x - b.x, a.y - b.y) < a.r + b.r));
     assert.ok(overlapping, 'no two rings lie over one another at 25 %: the case tests nothing. ' + JSON.stringify(seen.rings));
@@ -946,8 +957,9 @@ const mapView = (page) => page.evaluate(() => {
   return { zoom: movement.view.zoom, x: movement.view.x, y: movement.view.y, fitted: movement.fitted, plan: { left: plan.left, top: plan.top, width: plan.width, height: plan.height } };
 });
 
-test('W10: on the movement map two fingers pinch about the point between them, and one finger moves the map and leaves the zoom alone', async () => {
-  await on('#movement', { ...TABLET, mobile: true }, async (p) => {
+for (const [name, size] of [['768 by 1024', { ...TABLET, mobile: true }], ['390 by 844', PHONE]]) {
+  test('W10 and item 4, at ' + name + ': on the movement map two fingers pinch about the point between them, and one finger moves the map and leaves the zoom alone', async () => {
+  await on('#movement', size, async (p) => {
     await dismissStarted(p);
     const cdp = await p.createCDPSession();
     try {
@@ -988,7 +1000,8 @@ test('W10: on the movement map two fingers pinch about the point between them, a
       await cdp.detach();
     }
   });
-});
+  });
+}
 
 test('item 4: at 390 px a tap on a corridor cell opens its card and keeps it; a tap on the same cell, or off the corridors, puts it away', async () => {
   await on('#movement', PHONE, async (p) => {

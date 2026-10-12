@@ -18,7 +18,7 @@ import { layoutFloors, bestLayout, slotAt, placeOf, FLOOR_GAP, TITLE_ROWS } from
 import { bandText } from '../../ui/movement/legend.js';
 import { fixFor } from '../../ui/movement/summary.js';
 import { heldScale, canvasHolds, isBlank, LOWEST_SCALE } from '../../ui/movement/export.js';
-import { hotspotRows, hotspotsCsv, groupHeadings } from '../../ui/movement/hotspots.js';
+import { hotspotRows, hotspotsCsv, groupHeadings, placeRanks, RANK_RADIUS } from '../../ui/movement/hotspots.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createPipeline } from '../../engine/worker.js';
@@ -1001,4 +1001,38 @@ test('SV2-43 item 2: two failures that one change puts right are one line of rou
   assert.deepEqual(model.foldHealth(list).map((failure) => [failure.fixPeriod, failure.periods]), [[2, [1, 2]], [3, [3]]]);
   assert.equal(model.foldHealth(list).reduce((sum, failure) => sum + failure.count, 0), list.length, 'every failed route is in one line or another');
   assert.deepEqual(model.foldHealth([]), []);
+});
+
+// ---------------------------------------------------------------- SV2-43 W8: the ranks of rings that lie over one another
+
+test('SV2-43 W8: a ring’s rank stands on its upper right unless another rank is there already; then on the next place round its ring that is free, so no two lie on one another', () => {
+  const apart = (rings) => rings.every((a, i) => rings.every((b, j) => j <= i || Math.hypot(a.bx - b.bx, a.by - b.by) >= RANK_RADIUS * 2 + 1));
+  const onRing = (rings) => rings.every((ring) => Math.abs(Math.hypot(ring.bx - ring.x, ring.by - ring.y) - ring.r) < 0.01);
+  const upperRight = (ring) => Math.abs(ring.bx - ring.x - ring.r * Math.SQRT1_2) < 0.01 && Math.abs(ring.by - ring.y + ring.r * Math.SQRT1_2) < 0.01;
+  // rings well apart: each rank on its own ring's upper right
+  const far = placeRanks([{ rank: 1, x: 100, y: 100, r: 10 }, { rank: 2, x: 200, y: 100, r: 10 }, { rank: 3, x: 100, y: 200, r: 10 }]);
+  assert.ok(far.every(upperRight), JSON.stringify(far));
+  // two places a few pixels apart, a ring's width apart, and one on the other: the busiest keeps the upper right, the second stands clear
+  for (const [dx, dy] of [[4, 2], [12, 0], [0, 0], [-9, 9], [16, 0]]) {
+    const two = placeRanks([{ rank: 1, x: 100, y: 100, r: 10 }, { rank: 2, x: 100 + dx, y: 100 + dy, r: 10 }]);
+    assert.ok(upperRight(two[0]), 'the busiest place’s rank moved for the second: ' + JSON.stringify(two));
+    assert.ok(apart(two) && onRing(two), dx + ', ' + dy + ': ' + JSON.stringify(two));
+    assert.equal(upperRight(two[1]), false, dx + ', ' + dy + ': the second rank lies on the first');
+  }
+  // 17 px apart, the two ranks clear one another where they are: nothing moves
+  assert.ok(placeRanks([{ rank: 1, x: 100, y: 100, r: 10 }, { rank: 2, x: 117, y: 100, r: 10 }]).every(upperRight));
+  // three on one spot, the smallest rings there are: three places a third of the way round from one another
+  const stacked = placeRanks([{ rank: 1, x: 50, y: 50, r: 10 }, { rank: 2, x: 50, y: 50, r: 10 }, { rank: 3, x: 50, y: 50, r: 10 }]);
+  assert.ok(upperRight(stacked[0]) && apart(stacked) && onRing(stacked), JSON.stringify(stacked));
+  // the sample school's three at 25 %: 19 px between the first and the third
+  const sample25 = placeRanks([{ rank: 1, x: 425, y: 137, r: 10 }, { rank: 2, x: 437, y: 239, r: 10 }, { rank: 3, x: 407, y: 143, r: 10 }]);
+  assert.ok(apart(sample25) && onRing(sample25));
+  // six rings of 10 px on one spot have no six free places: every rank is still on its ring, and the first three stand clear
+  const crowd = placeRanks(Array.from({ length: 6 }, (unused, index) => ({ rank: index + 1, x: 30, y: 30, r: 10 })));
+  assert.ok(onRing(crowd) && apart(crowd.slice(0, 3)), JSON.stringify(crowd));
+  // a ring is left where it was, and the list is the one given
+  const given = [{ rank: 1, x: 7, y: 9, r: 12 }];
+  assert.equal(placeRanks(given), given);
+  assert.deepEqual([given[0].x, given[0].y, given[0].r], [7, 9, 12]);
+  assert.deepEqual(placeRanks([]), []);
 });

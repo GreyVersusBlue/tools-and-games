@@ -252,18 +252,21 @@ function stateNow(last) {
 
 // A ring's rank is a small disc on the ring's line. Its place is the upper
 // right; where another ring's rank is already there (two places a few cells
-// apart, the map zoomed far out) it takes the next corner that is free, so
-// every number can be read. The rings themselves stay on their cells.
+// apart, the map zoomed far out) it takes the next place round the ring that
+// is free, so every number can be read. The rings themselves stay on their
+// cells. The places are tried a third of the way round first, since three
+// discs of this size are the most that stand clear of one another on the
+// smallest ring, and then the places between.
 //   rings   [{ rank, x, y, r }] in rank order; each gains { bx, by }
 export const RANK_RADIUS = 8;
-const RANK_CORNERS = [[0.71, -0.71], [-0.71, -0.71], [0.71, 0.71], [-0.71, 0.71], [0, -1], [0, 1], [1, 0], [-1, 0]];
+const RANK_PLACES = [-45, -165, 75, 135, -105, 15, -135, 45, 180, 0, 90, -90].map((degrees) => [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)]);
 export function placeRanks(rings) {
   const placed = [];
   const clear = RANK_RADIUS * 2 + 1;
   for (const ring of rings) {
     let best = null;
     let room = -1;
-    for (const [dx, dy] of RANK_CORNERS) {
+    for (const [dx, dy] of RANK_PLACES) {
       const at = { x: ring.x + ring.r * dx, y: ring.y + ring.r * dy };
       const nearest = placed.reduce((least, other) => Math.min(least, Math.hypot(other.x - at.x, other.y - at.y)), Infinity);
       if (nearest >= clear) {
