@@ -167,6 +167,7 @@ row names a file it does not run.
 | `test/ui/movement.test.mjs` | The movement view's plain functions: lanes, the choice, the legend |
 | `test/ui/playback.test.mjs` | Playback's plain functions: what the device keeps, where a marker is |
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
+| `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
