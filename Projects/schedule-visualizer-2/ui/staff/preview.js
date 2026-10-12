@@ -20,11 +20,15 @@
 //   view.element                the bar and the frame
 //   view.update(project)        the project changed: feed the frame again, soon
 //   view.stop()                 the section is leaving
-//   view.state                  { loaded, live, sent, width, locked }, for the tests
+//   view.state                  { loaded, opened, live, sent, width, locked }, for the tests
 //
 // A frame that was given its page and has not asked for the data after
 // PREVIEW_TIMES.open says so, with "Try again": the page is made anew and the
-// address of the one before is let go.
+// address of the one before is let go. The wait ends when the page asks, not
+// when it is first answered: a page that opened and could not be given its
+// data keeps the sentence that says why. The feed counts a page as having
+// asked only while the frame holds its address (feedPreview), so a change
+// that lands after "Try again" waits for the new page.
 //
 // The frame is told again 250 ms after the last change, and only when
 // something the published file holds has changed: of the settings, the seven
@@ -68,7 +72,7 @@ function sameParts(a, b) {
 }
 
 export function preview(ctx) {
-  const state = { loaded: false, live: false, sent: 0, width: 'phone', locked: false };
+  const state = { loaded: false, opened: false, live: false, sent: 0, width: 'phone', locked: false };
   let data = null;
   let shown = null;
   let timer = null;
@@ -126,11 +130,15 @@ export function preview(ctx) {
   observer.observe(stage);
 
   const feed = feedPreview(window, frame, () => {
+    // The feed asks only once the frame's page has asked, so the page has
+    // opened, whether or not there is anything to give it yet: the wait for
+    // it to open ends here, and "has not opened" never replaces the reason
+    // the data could not be made.
+    waitToOpen(false);
+    state.opened = true;
     if (data === null) return null;
     state.live = true;
     state.sent += 1;
-    if (openTimer !== null) clearTimeout(openTimer);
-    openTimer = null;
     again.hidden = true;
     element.dataset.preview = 'live';
     element.dataset.sent = String(state.sent);
@@ -143,6 +151,24 @@ export function preview(ctx) {
     forgetNext = false;
     return flags;
   });
+
+  // The wait for the frame's page to ask for its data: data-waiting="open"
+  // while it runs, so a test can tell a wait that ended from one that ran out.
+  function waitToOpen(on) {
+    if (openTimer !== null) clearTimeout(openTimer);
+    openTimer = null;
+    delete element.dataset.waiting;
+    if (!on) return;
+    element.dataset.waiting = 'open';
+    openTimer = setTimeout(() => {
+      openTimer = null;
+      delete element.dataset.waiting;
+      if (stopped || state.live) return;
+      element.dataset.preview = 'failed';
+      says.textContent = PREVIEW_NOT_OPEN;
+      again.hidden = false;
+    }, PREVIEW_TIMES.open);
+  }
 
   // Work out what the frame should hold now, and hand it over.
   async function refresh() {
@@ -207,16 +233,10 @@ export function preview(ctx) {
       address = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
       frame.src = address;
       state.loaded = true;
+      state.opened = false;
       state.live = false;
       says.textContent = 'Opening the preview.';
-      if (openTimer !== null) clearTimeout(openTimer);
-      openTimer = setTimeout(() => {
-        openTimer = null;
-        if (stopped || state.live) return;
-        element.dataset.preview = 'failed';
-        says.textContent = PREVIEW_NOT_OPEN;
-        again.hidden = false;
-      }, PREVIEW_TIMES.open);
+      waitToOpen(true);
     } catch (error) {
       if (stopped) return;
       element.dataset.preview = 'failed';
