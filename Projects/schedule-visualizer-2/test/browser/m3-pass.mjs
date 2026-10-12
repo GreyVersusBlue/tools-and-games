@@ -532,3 +532,520 @@ test('a page too short to scroll is not moved by a tall message', async () => {
     assert.equal(up.top, 0, 'a page that did not scroll was scrolled to its new end');
   });
 });
+
+// ---------------------------------------------------------------- W2: the legend never covers a floor
+
+// The drawn box of every floor on the map, the legend's card (null when it is
+// away) and its line (null when the card stands), in the page's pixels.
+const legendAndFloors = (page) => page.evaluate(() => {
+  const movement = document.querySelector('.mov').movement;
+  const plan = document.getElementById('movement-plan').getBoundingClientRect();
+  const size = movement.view.size;
+  const rect = (el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+  };
+  const card = document.querySelector('.mov-legend');
+  const line = document.querySelector('.mov-legend-line');
+  return {
+    floors: movement.world.slots.map((slot) => ({ name: slot.floor.name, left: plan.left + movement.view.x + slot.x * size, top: plan.top + movement.view.y + slot.y * size, right: plan.left + movement.view.x + (slot.x + slot.w) * size, bottom: plan.top + movement.view.y + (slot.y + slot.h) * size })),
+    how: movement.world.how,
+    fitted: movement.fitted,
+    zoom: Math.round(movement.view.zoom * 100),
+    card: card.getClientRects().length > 0 && getComputedStyle(card).visibility === 'visible' ? rect(card) : null,
+    laidOut: card.getClientRects().length > 0 ? rect(card) : null,
+    docked: card.dataset.docked,
+    line: line.getClientRects().length > 0 ? { ...rect(line), text: line.querySelector('[data-legend="line"]').textContent } : null,
+    stage: rect(document.querySelector('.mov-stage')),
+  };
+});
+
+const changeMap = async (page, patch) => {
+  await page.evaluate((next) => document.querySelector('.mov').movement.change(next), patch);
+  await drawn(page);
+};
+
+test('W2: the legend never covers a floor: its card lies on no floor’s drawn box at the fitted zoom, or it is one line under the map', async () => {
+  const seen = { card: 0, line: 0 };
+  for (const [name, size] of [['768 by 1024', TABLET], ['1280 by 800', DESK], ['1440 by 900', WIDE]]) {
+    await on('#movement', size, async (p) => {
+      await dismissStarted(p);
+      for (const floors of ['auto', 'stacked', 'side', 'fsample002']) {
+        await changeMap(p, { floors });
+        const at = await legendAndFloors(p);
+        const what = name + ', ' + floors + ' (' + at.how + ', ' + at.zoom + ' %)';
+        assert.equal(at.fitted, true, what + ': the map is not at its fitted zoom');
+        if (at.card) {
+          seen.card += 1;
+          assert.equal(at.line, null, what + ': the card and the line are both up');
+          for (const floor of at.floors) assert.equal(overlap(at.card, floor), false, what + ': the legend’s card lies on ' + floor.name + ': ' + JSON.stringify({ card: at.card, floor }));
+          assert.ok(at.card.right <= at.stage.right && at.card.bottom <= at.stage.bottom, what + ': the card is out of the stage');
+        } else {
+          seen.line += 1;
+          assert.ok(at.line, what + ': neither the card nor the line is on screen');
+          assert.equal(at.docked, 'true');
+          assert.match(at.line.text, /^Load · 1 to \d+ · Relative$/, what);
+          assert.ok(at.line.top >= at.stage.bottom - 1, what + ': the line is not under the stage: ' + JSON.stringify({ line: at.line, stage: at.stage }));
+          for (const floor of at.floors) assert.equal(overlap(at.line, floor), false, what + ': the line lies on ' + floor.name);
+          // it was docked for a reason: where the card would stand is on a floor (the stage is a line's height shorter than it was measured at)
+          const grown = { left: at.laidOut.left - at.line.height, top: at.laidOut.top - at.line.height, right: at.laidOut.right + at.line.height, bottom: at.laidOut.bottom + at.line.height };
+          assert.ok(at.floors.some((floor) => overlap(grown, floor)), what + ': the card was docked though it would lie on no floor: ' + JSON.stringify({ card: at.laidOut, floors: at.floors }));
+        }
+      }
+      if (size === TABLET) {
+        // the walk-through's own measure: stacked at 768, the card covered the right third of Floors 2 and 3
+        await changeMap(p, { floors: 'stacked' });
+        assert.equal((await legendAndFloors(p)).docked, 'true', '768 by 1024 stacked: the card stands on the map');
+      }
+    });
+  }
+  assert.ok(seen.card > 0 && seen.line > 0, 'the case saw ' + seen.card + ' cards and ' + seen.line + ' lines: one of the two was never tested');
+});
+
+test('W2: under 640 px the legend is always the line; Scale brings the card out over the map until its own button puts it away', async () => {
+  await on('#movement', PHONE, async (p) => {
+    await dismissStarted(p);
+    for (const floors of ['auto', 'fsample003']) {
+      await changeMap(p, { floors });
+      const at = await legendAndFloors(p);
+      assert.equal(at.card, null, floors + ': the card stands on a phone’s map');
+      assert.match(at.line.text, /^Load · 1 to \d+ · Relative$/);
+    }
+    await changeMap(p, { floors: 'auto' });
+    // Scale: the card, with its choices, over the map
+    assert.equal(await p.$eval('[data-action="scale"]', (el) => el.getAttribute('aria-expanded')), 'false');
+    await p.tap('[data-action="scale"]');
+    await shows(p, () => getComputedStyle(document.querySelector('.mov-legend')).visibility === 'visible');
+    assert.equal(await p.$eval('[data-action="scale"]', (el) => el.getAttribute('aria-expanded')), 'true');
+    assert.equal(await p.evaluate(() => document.activeElement.dataset.action), 'fold-legend', 'the focus goes into the card');
+    assert.deepEqual(await p.$$eval('.mov-legend__range', (all) => all.map((each) => each.textContent)), ['1–35', '36–70', '71–106', '107–141', '142–177']);
+    // a choice made in it is made: the line follows
+    await p.evaluate(() => document.querySelector('.mov-legend input[name="movement-measure"][value="total"]').click());
+    await shows(p, () => document.querySelector('.mov-legend').dataset.measure === 'total');
+    assert.equal(await text(p, '[data-legend="line"]'), 'Load · 1 to 800 · Relative');
+    assert.equal(await p.$eval('.mov-legend', (el) => getComputedStyle(el).visibility), 'visible', 'the card went away on a choice');
+    // its own button puts it away; the focus goes back to Scale
+    assert.equal(await text(p, '.mov-legend [data-action="fold-legend"]'), 'Hide');
+    await p.tap('.mov-legend [data-action="fold-legend"]');
+    await shows(p, () => getComputedStyle(document.querySelector('.mov-legend')).visibility === 'hidden');
+    assert.equal(await p.evaluate(() => document.activeElement.dataset.action), 'scale');
+    assert.ok(await box(p, '.mov-legend-line'), 'the line went with the card');
+    // away, nothing of the card can be reached
+    assert.equal(await p.$eval('.mov-legend', (el) => el.inert), true);
+    // one group: no load to give
+    await changeMap(p, { who: 'groups', groupIds: ['gsample08a'], measure: 'busiest' });
+    assert.equal(await text(p, '[data-legend="line"]'), 'One group · its own colour');
+  });
+});
+
+// ---------------------------------------------------------------- W3: the inspector on a phone
+
+test('W3: on a phone the inspector is a sheet over the lower 55 % with the map’s top above it, and "Show its N cells" shuts it and moves the map to the place', async () => {
+  await on('#movement', PHONE, async (p) => {
+    await dismissStarted(p);
+    await p.tap('#inspector-toggle');
+    await shows(p, () => document.getElementById('inspector').dataset.open === 'true' && document.querySelectorAll('#inspector .mov-hot__row').length > 0);
+    const sheet = await box(p, '#inspector');
+    const rail = await box(p, '.rail');
+    assert.ok(Math.abs(sheet.height - 844 * 0.55) <= 2, 'the sheet is ' + sheet.height + ' px of 844');
+    assert.ok(Math.abs(sheet.bottom - rail.top) <= 1, 'the sheet does not stand on the bottom bar');
+    // above it: the first line, and the top of the map
+    const line = await box(p, '#movement-line');
+    const stage = await box(p, '.mov-stage');
+    assert.ok(line.bottom <= sheet.top, 'the first line is under the sheet');
+    assert.ok(sheet.top - stage.top >= 150, 'only ' + (sheet.top - stage.top) + ' px of the map show above the sheet');
+    assert.ok(stage.height >= 379, 'the map was squeezed to ' + stage.height + ' px, not kept');
+    assert.equal(await p.evaluate(() => document.scrollingElement.scrollHeight === document.scrollingElement.clientHeight), true, 'the page scrolls');
+
+    // the link of the second place: not a disclosure here
+    const link = '#inspector .mov-hot__row[data-rank="2"] [data-action="cells"]';
+    assert.match(await text(p, link), /^Show its \d+ cells$/);
+    assert.equal(await p.$eval(link, (el) => el.getAttribute('aria-expanded')), null);
+    const place = await p.$eval('#inspector .mov-hot__row[data-rank="2"]', (el) => el.dataset.place);
+    await p.$eval(link, (el) => el.scrollIntoView({ block: 'center' }));
+    const at = await box(p, link);
+    await p.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+    // the sheet is shut, the place is chosen, and it is in the middle of the map as the map is now
+    await shows(p, (wanted) => {
+      const panel = document.querySelector('#inspector [data-panel="hotspots"]');
+      const movement = document.querySelector('.mov').movement;
+      const stageNow = document.querySelector('.mov-stage');
+      if (document.getElementById('inspector').dataset.open !== 'false' || panel.hotspots.selected !== wanted) return false;
+      if (movement.view.height !== stageNow.clientHeight || movement.view.width !== stageNow.clientWidth) return false;
+      const row = panel.hotspots.rows.find((each) => each.id === wanted);
+      const points = row.ends.map((end) => movement.cellAt(end.floorId, end.cell)).filter(Boolean);
+      const x = points.reduce((sum, each) => sum + each.x, 0) / points.length;
+      const y = points.reduce((sum, each) => sum + each.y, 0) / points.length;
+      return Math.abs(x - movement.view.width / 2) < 1 && Math.abs(y - movement.view.height / 2) < 1;
+    }, place);
+    assert.ok((await box(p, '.mov-stage')).height > stage.height - 1, 'the map did not get its height back');
+    assert.equal(await p.$eval('#inspector [data-panel="hotspots"]', (el) => el.dataset.pulse), 'moving', 'the rings are not pulsing');
+    assert.equal(await p.$$eval('#inspector .mov-hot__cells:not([hidden])', (all) => all.length), 0, 'the list of cells was opened in the shut sheet');
+    assert.equal(await p.evaluate(() => document.activeElement.id), 'movement-plan', 'the focus was left in the shut sheet');
+    assert.match(await text(p, '#announcer'), /^The map moved to /);
+  });
+  // wider than a phone the same link is the disclosure it was: the cells, in the panel
+  await on('#movement', DESK, async (p) => {
+    const link = '#inspector .mov-hot__row[data-rank="2"] [data-action="cells"]';
+    assert.equal(await p.$eval(link, (el) => el.getAttribute('aria-expanded')), 'false');
+    await p.evaluate((selector) => document.querySelector(selector).click(), link);
+    await shows(p, () => document.querySelectorAll('#inspector .mov-hot__cells:not([hidden]) li').length > 0);
+    assert.equal(await p.$eval('#inspector', (el) => el.dataset.open), 'true');
+    assert.match(await text(p, link), /^Hide its \d+ cells$/);
+  });
+});
+
+test('the inspector’s four tabs are one row at 1280 px', async () => {
+  await on('#movement', DESK, async (p) => {
+    const tops = await p.$$eval('#inspector [role="tab"]', (all) => all.map((tab) => Math.round(tab.getBoundingClientRect().top)));
+    assert.equal(tops.length, 4);
+    assert.equal(new Set(tops).size, 1, 'the tabs are on ' + new Set(tops).size + ' rows: ' + tops);
+    const right = await p.$$eval('#inspector [role="tab"]', (all) => Math.max(...all.map((tab) => tab.getBoundingClientRect().right)));
+    assert.ok(right <= (await box(p, '#inspector')).right, 'the row of tabs runs out of the panel');
+  });
+});
+
+// ---------------------------------------------------------------- W6: the transition strip is one Tab stop
+
+// Tab from the Who control until the map has the focus: what took it on the way.
+async function tabsToMap(page) {
+  await page.focus('input[name="movement-who"]:checked');
+  const stops = [];
+  for (let n = 0; n < 40; n += 1) {
+    await page.keyboard.press('Tab');
+    const stop = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el.id === 'movement-plan' ? 'the map' : el.dataset.control || el.dataset.action || (el.dataset.transition !== undefined ? 'transition ' + el.dataset.transition : el.tagName);
+    });
+    stops.push(stop);
+    if (stop === 'the map') break;
+  }
+  return stops;
+}
+
+test('W6: from Who to the map is six Tabs whatever the number of periods: the transition strip is a radio group with one Tab stop, arrows, Home and End', async () => {
+  await on('#movement', DESK, async (p) => {
+    assert.deepEqual(await tabsToMap(p), ['day', 'transition all', 'labels', 'constant-width', 'clear', 'the map']);
+    const strip = () => p.evaluate(() => ({
+      role: document.querySelector('[data-control="transition"]').getAttribute('role'),
+      roles: Array.from(new Set(Array.from(document.querySelectorAll('.mov-strip__item')).map((item) => item.getAttribute('role')))),
+      stops: Array.from(document.querySelectorAll('.mov-strip__item')).filter((item) => item.tabIndex === 0).map((item) => item.dataset.transition),
+      checked: Array.from(document.querySelectorAll('.mov-strip__item[aria-checked="true"]')).map((item) => item.dataset.transition),
+      focus: document.activeElement.dataset.transition || null,
+      chosen: document.querySelector('.mov').movement.picture.choice.transition,
+      count: document.querySelectorAll('.mov-strip__item').length,
+    }));
+    assert.deepEqual(await strip(), { role: 'radiogroup', roles: ['radio'], stops: ['all'], checked: ['all'], focus: null, chosen: null, count: 8 });
+    // the arrows move the choice, and the focus stays on the strip while the map changes
+    await p.focus('.mov-strip__item[aria-checked="true"]');
+    for (const [key, to, chosen] of [['ArrowRight', '0', 0], ['ArrowRight', '1', 1], ['ArrowDown', '2', 2], ['ArrowLeft', '1', 1], ['End', '6', 6], ['ArrowRight', 'all', null], ['ArrowUp', '6', 6], ['Home', 'all', null]]) {
+      await p.keyboard.press(key);
+      await drawn(p);
+      assert.deepEqual(await strip(), { role: 'radiogroup', roles: ['radio'], stops: [to], checked: [to], focus: to, chosen, count: 8 }, 'after ' + key);
+    }
+    // with a transition chosen it is that one the Tab lands on, and still six Tabs
+    await p.keyboard.press('ArrowRight');
+    await drawn(p);
+    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
+    // a day of twelve periods: eleven transitions and All, and six Tabs
+    await p.evaluate(async () => {
+      const actions = await import('./engine/actions.js');
+      globalThis.sv2.store.apply(actions.setSetting, { key: 'periods', value: 12 });
+    });
+    await drawn(p);
+    assert.equal((await strip()).count, 12);
+    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
+  });
+});
+
+// ---------------------------------------------------------------- W7: the keyboard cursor reads at any zoom
+
+test('W7: the keyboard cursor is a ring never under 14 px, a 2 px line in the focus colour between two lines of the surface’s: read at 25 % and at 100 %', async () => {
+  await on('#movement', DESK, async (p) => {
+    await dismissStarted(p);
+    await p.focus('#movement-plan');
+    for (let n = 0; n < 8; n += 1) await p.keyboard.press('ArrowRight');
+    await shows(p, () => document.querySelector('.mov-marks').dataset.cursor !== undefined);
+    const colours = await p.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      return { accent: style.getPropertyValue('--accent').trim(), card: style.getPropertyValue('--card').trim() };
+    });
+    const hex = (value) => [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
+    const near = (got, want) => got[3] === 255 && got.slice(0, 3).every((value, index) => Math.abs(value - want[index]) <= 14);
+    for (const zoom of [0.25, 1]) {
+      const seen = await p.evaluate(async (wanted) => {
+        const movement = document.querySelector('.mov').movement;
+        const layer = movement.env.layer;
+        const was = layer.dataset.cursor.split(',').map(Number);
+        // zoom about the cursor, so that it stays on screen
+        movement.view.zoomAbout(wanted, was[0] + was[2] / 2, was[1] + was[2] / 2);
+        const drawnBefore = Number(movement.canvas.dataset.drawn);
+        movement.env.paint();
+        await new Promise((resolve) => {
+          const wait = () => (Number(movement.canvas.dataset.drawn) > drawnBefore ? resolve() : requestAnimationFrame(wait));
+          wait();
+        });
+        const [x, y, side] = layer.dataset.cursor.split(',').map(Number);
+        const g = layer.getContext('2d');
+        const at = (px, py) => Array.from(g.getImageData(Math.round(px), Math.round(py), 1, 1).data);
+        const mid = side / 2;
+        return {
+          size: movement.view.size,
+          zoom: movement.view.zoom,
+          side,
+          cell: [movement.cursor.x, movement.cursor.y],
+          corner: movement.view.toScreen(movement.cursor.x, movement.cursor.y),
+          x,
+          y,
+          // the middle of each of the four lines; the line is 2 px wide, centred a pixel inside the ring's box
+          lines: [at(x + 1, y + mid), at(x + side - 1.5, y + mid), at(x + mid, y + 1), at(x + mid, y + side - 1.5)],
+          // the pixel either side of the line's two: the surface's colour
+          outside: [at(x - 1, y + mid), at(x + mid, y - 1)],
+          inside: [at(x + 2, y + mid), at(x + mid, y + 2)],
+          // and the pixel beyond those is the map's again: the halo is one pixel, not a slab
+          beyond: [at(x - 2, y + mid), at(x + 3, y + mid)],
+          middle: at(x + mid, y + mid),
+        };
+      }, zoom);
+      const what = 'at ' + Math.round(seen.zoom * 100) + ' % (a cell is ' + seen.size + ' px)';
+      assert.equal(seen.side, Math.max(14, Math.round(seen.size) - 2), what + ': the ring is ' + seen.side + ' px across');
+      assert.ok(seen.side >= 14, what);
+      // round the cursor's own cell
+      assert.ok(Math.abs(seen.x + seen.side / 2 - (seen.corner.x + seen.size / 2)) <= 1 && Math.abs(seen.y + seen.side / 2 - (seen.corner.y + seen.size / 2)) <= 1, what + ': the ring is not round the cursor’s cell: ' + JSON.stringify(seen));
+      for (const got of seen.lines) assert.ok(near(got, hex(colours.accent)), what + ': the ring’s line is ' + got + ', not the focus colour ' + colours.accent);
+      for (const got of [...seen.outside, ...seen.inside]) assert.ok(near(got, hex(colours.card)), what + ': beside the line is ' + got + ', not the surface’s ' + colours.card);
+      for (const got of seen.beyond) assert.equal(got[3], 0, what + ': the light edge is wider than a pixel: ' + got);
+      assert.equal(seen.middle[3], 0, what + ': the ring is filled in: ' + seen.middle);
+    }
+    // it goes with the focus
+    await p.evaluate(() => document.getElementById('movement-plan').blur());
+    await shows(p, () => document.querySelector('.mov-marks').dataset.cursor === undefined);
+  });
+});
+
+// ---------------------------------------------------------------- W8: rings that lie over one another
+
+test('W8: zoomed far out the rings of two places lie over one another: the busiest place’s is on top, and every rank is on a spot of its own with no line through it', async () => {
+  await on('#movement', DESK, async (p) => {
+    await dismissStarted(p);
+    const seen = await p.evaluate(async () => {
+      const movement = document.querySelector('.mov').movement;
+      movement.view.zoomAbout(0.25, movement.view.width / 2, movement.view.height / 2);
+      const drawnBefore = Number(movement.canvas.dataset.drawn);
+      movement.env.paint();
+      await new Promise((resolve) => {
+        const wait = () => (Number(movement.canvas.dataset.drawn) > drawnBefore ? resolve() : requestAnimationFrame(wait));
+        wait();
+      });
+      const panel = document.querySelector('#inspector [data-panel="hotspots"]');
+      // the rings as they stand, without the ring that travels
+      const rings = panel.hotspots.rings.map((ring) => ({ rank: ring.rank, x: ring.x, y: ring.y, r: ring.r, bx: ring.bx, by: ring.by }));
+      const layer = movement.env.layer;
+      const g = layer.getContext('2d');
+      const at = (px, py) => Array.from(g.getImageData(Math.round(px), Math.round(py), 1, 1).data);
+      // round each rank's disc, 6 px from its middle (the number is inside that)
+      const discs = rings.map((ring) => [0, 45, 90, 135, 180, 225, 270, 315].map((angle) => at(ring.bx + 6 * Math.cos((angle * Math.PI) / 180), ring.by + 6 * Math.sin((angle * Math.PI) / 180))));
+      // on the first ring's line, where the line of a ring it overlaps would put its light edge
+      const first = rings[0];
+      const under = [];
+      for (const other of rings.slice(1)) {
+        if (Math.hypot(other.x - first.x, other.y - first.y) >= first.r + other.r) continue;
+        for (let angle = 0; angle < 360; angle += 0.5) {
+          const px = first.x + first.r * Math.cos((angle * Math.PI) / 180);
+          const py = first.y + first.r * Math.sin((angle * Math.PI) / 180);
+          const off = Math.abs(Math.hypot(px - other.x, py - other.y) - other.r);
+          // inside the other's 5 px light line and clear of its 3 px dark one; and clear of every rank's disc
+          if (off >= 1.9 && off <= 2.2 && rings.every((ring) => Math.hypot(px - ring.bx, py - ring.by) > 9.5)) under.push({ angle, other: other.rank, got: at(px, py) });
+        }
+      }
+      const style = getComputedStyle(document.documentElement);
+      return { rings, discs, under, zoom: movement.view.zoom, accent: style.getPropertyValue('--accent').trim(), pulse: panel.dataset.pulse };
+    });
+    const hex = (value) => [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
+    const accent = hex(seen.accent);
+    const isAccent = (got) => got[3] === 255 && got.slice(0, 3).every((value, index) => Math.abs(value - accent[index]) <= 30);
+    assert.equal(Math.round(seen.zoom * 100), 25);
+    assert.deepEqual(seen.rings.map((ring) => ring.rank).filter((rank, index, all) => all.indexOf(rank) === index), [1, 2, 3]);
+    const overlapping = seen.rings.some((a, i) => seen.rings.some((b, j) => j > i && Math.hypot(a.x - b.x, a.y - b.y) < a.r + b.r));
+    assert.ok(overlapping, 'no two rings lie over one another at 25 %: the case tests nothing. ' + JSON.stringify(seen.rings));
+    // every rank on a spot of its own
+    seen.rings.forEach((a, i) => seen.rings.forEach((b, j) => {
+      if (j > i) assert.ok(Math.hypot(a.bx - b.bx, a.by - b.by) >= 17, 'the ranks of ' + a.rank + ' and ' + b.rank + ' lie on one another: ' + JSON.stringify([a, b]));
+    }));
+    // and whole: its disc is its own colour all the way round, with no ring's light edge through it
+    seen.rings.forEach((ring, index) => {
+      for (const got of seen.discs[index]) assert.ok(isAccent(got), 'a line runs through the rank of place ' + ring.rank + ': ' + got);
+    });
+    // the busiest place's ring is over the others
+    assert.ok(seen.under.length > 0, 'no spot was found where ring 1 crosses another ring’s light edge: the case tests nothing');
+    for (const spot of seen.under) assert.ok(isAccent(spot.got), 'ring ' + spot.other + ' is drawn over ring 1 at ' + spot.angle + '°: ' + spot.got);
+  });
+});
+
+// ---------------------------------------------------------------- W9: a finger's targets
+
+// Every control of the movement surface that is on screen, with the smaller
+// side of what a finger has to hit: the control, or the label a box or a
+// radio button sits in.
+const targets = (page) => page.evaluate(() => {
+  const found = [];
+  const seen = new Set();
+  for (const root of document.querySelectorAll('.mov, .mov-floors')) {
+    for (const el of root.querySelectorAll('button, select, input, [role="radio"]')) {
+      const target = el.matches('input[type="radio"], input[type="checkbox"]') ? el.closest('label') : el;
+      if (!target || seen.has(target)) continue;
+      seen.add(target);
+      if (target.getClientRects().length === 0 || getComputedStyle(target).visibility !== 'visible' || target.closest('[inert]')) continue;
+      const rect = target.getBoundingClientRect();
+      found.push({ what: (el.dataset.action || el.dataset.control || el.name || el.getAttribute('aria-label') || el.dataset.transition || el.className || el.tagName) + ' "' + target.textContent.trim().slice(0, 24) + '"', width: Math.round(rect.width * 10) / 10, height: Math.round(rect.height * 10) / 10 });
+    }
+  }
+  return found;
+});
+
+for (const [name, size] of [['under 640 px (390 by 844)', PHONE], ['with a coarse pointer at 768 by 1024', { ...TABLET, mobile: true }]]) {
+  test('W9: ' + name + ' every control of the movement surface is at least 44 px in its smaller dimension', async () => {
+    await on('#movement', size, async (p) => {
+      // openPlanner's own protocol session can leave this Chromium saying the pointer is fine: say again that it is a touch device
+      if (!(await p.evaluate(() => matchMedia('(pointer: coarse)').matches))) {
+        await p.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1 });
+        await p.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+        await drawn(p);
+      }
+      assert.equal(await p.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'this page is not a touch device, so the sizes prove nothing');
+      await dismissStarted(p);
+      // everything out: the controls, a chosen group with its chip and the picker, More, the legend
+      if (await p.$eval('.mov-top', (el) => el.dataset.folded === 'true')) await p.evaluate(() => document.querySelector('[data-action="change"]').click());
+      await changeMap(p, { who: 'groups', groupIds: ['gsample06a', 'gsample07a'], transition: 5 });
+      await p.evaluate(() => document.querySelector('[data-action="more"]').click());
+      const docked = await p.$eval('.mov-legend', (el) => el.dataset.docked === 'true');
+      if (docked) await p.evaluate(() => document.querySelector('[data-action="scale"]').click());
+      await shows(p, () => !document.querySelector('[data-part="more"]').hidden && getComputedStyle(document.querySelector('.mov-legend')).visibility === 'visible' && document.querySelectorAll('.mov-chips .chip').length === 2);
+      const all = await targets(p);
+      // the case names what it looked at: every kind the design lists is among them
+      const names = all.map((each) => each.what).join(' | ');
+      for (const wanted of ['change', 'movement-who', 'day', 'labels', 'constant-width', 'clear', 'add-group', 'Take 6A off the map', 'play', 'previous', 'next', 'scrubber', 'speed', 'loop', 'more', 'playback-pace', 'playback-size', 'zoom-in', 'zoom-out', 'fit', 'fold-legend', 'movement-scale', 'movement-floors', 'movement-arrange']) {
+        assert.ok(names.includes(wanted), wanted + ' was not measured: ' + names);
+      }
+      assert.ok(all.filter((each) => each.what.startsWith('5 ') || /^\d+ "/.test(each.what) || each.what.startsWith('all "')).length >= 8, 'the transition strip’s segments were not measured: ' + names);
+      const small = all.filter((each) => Math.min(each.width, each.height) < 43.5);
+      assert.deepEqual(small, [], small.length + ' of ' + all.length + ' controls are under 44 px');
+    });
+  });
+}
+
+// ---------------------------------------------------------------- W10 and item 4: touch
+
+function touch(cdp, type, fingers) {
+  return cdp.send('Input.dispatchTouchEvent', { type, touchPoints: fingers.map((finger) => ({ x: Math.round(finger.x), y: Math.round(finger.y), id: finger.id, radiusX: 4, radiusY: 4, force: 1 })) });
+}
+
+const mapView = (page) => page.evaluate(() => {
+  const movement = document.querySelector('.mov').movement;
+  const plan = document.getElementById('movement-plan').getBoundingClientRect();
+  return { zoom: movement.view.zoom, x: movement.view.x, y: movement.view.y, fitted: movement.fitted, plan: { left: plan.left, top: plan.top, width: plan.width, height: plan.height } };
+});
+
+test('W10: on the movement map two fingers pinch about the point between them, and one finger moves the map and leaves the zoom alone', async () => {
+  await on('#movement', { ...TABLET, mobile: true }, async (p) => {
+    await dismissStarted(p);
+    const cdp = await p.createCDPSession();
+    try {
+      const before = await mapView(p);
+      const mid = { x: before.plan.left + before.plan.width / 2, y: before.plan.top + before.plan.height / 2 };
+      // two fingers 80 px apart, drawn out to 280
+      await touch(cdp, 'touchStart', [{ x: mid.x - 40, y: mid.y, id: 1 }]);
+      await touch(cdp, 'touchStart', [{ x: mid.x - 40, y: mid.y, id: 1 }, { x: mid.x + 40, y: mid.y, id: 2 }]);
+      for (const reach of [60, 80, 100, 120, 140]) await touch(cdp, 'touchMove', [{ x: mid.x - reach, y: mid.y, id: 1 }, { x: mid.x + reach, y: mid.y, id: 2 }]);
+      await touch(cdp, 'touchEnd', []);
+      await shows(p, (was) => document.querySelector('.mov').movement.view.zoom > was * 3, before.zoom);
+      const pinched = await mapView(p);
+      assert.ok(Math.abs(pinched.zoom / before.zoom - 3.5) < 0.2, 'the zoom went from ' + before.zoom + ' to ' + pinched.zoom + ', not by the 3.5 the fingers drew out');
+      assert.equal(pinched.fitted, false);
+      // about the point between the fingers: what was under it still is
+      const still = await p.evaluate((was, at) => {
+        const view = document.querySelector('.mov').movement.view;
+        // the cell that was under the middle before, where it is now
+        const cell = { x: (at.x - was.plan.left - was.x) / (24 * was.zoom), y: (at.y - was.plan.top - was.y) / (24 * was.zoom) };
+        const now = view.toScreen(cell.x, cell.y);
+        return { dx: now.x - (at.x - was.plan.left), dy: now.y - (at.y - was.plan.top), size: view.size / view.zoom };
+      }, before, mid);
+      assert.equal(still.size, 24, 'a cell is not 24 px at 100 %: the arithmetic of this case is off');
+      assert.ok(Math.abs(still.dx) <= 3 && Math.abs(still.dy) <= 3, 'the map slid under the fingers by ' + JSON.stringify(still));
+
+      // one finger, 90 px right and 60 down
+      const from = { x: mid.x - 100, y: mid.y - 80 };
+      await touch(cdp, 'touchStart', [{ ...from, id: 1 }]);
+      for (let i = 1; i <= 6; i += 1) await touch(cdp, 'touchMove', [{ x: from.x + 15 * i, y: from.y + 10 * i, id: 1 }]);
+      await touch(cdp, 'touchEnd', []);
+      await shows(p, (was) => Math.abs(document.querySelector('.mov').movement.view.x - was) > 50, pinched.x);
+      const moved = await mapView(p);
+      assert.equal(moved.zoom, pinched.zoom, 'a one-finger drag changed the zoom');
+      assert.ok(Math.abs(moved.x - pinched.x - 90) <= 12 && Math.abs(moved.y - pinched.y - 60) <= 12, 'the map moved by ' + (moved.x - pinched.x) + ', ' + (moved.y - pinched.y) + ', not by the finger’s 90, 60');
+      // the drag opened no card
+      assert.equal(await p.$eval('.mov-card', (el) => el.hidden), true);
+    } finally {
+      await cdp.detach();
+    }
+  });
+});
+
+test('item 4: at 390 px a tap on a corridor cell opens its card and keeps it; a tap on the same cell, or off the corridors, puts it away', async () => {
+  await on('#movement', PHONE, async (p) => {
+    await dismissStarted(p);
+    assert.ok((await box(p, '#movement-plan')).height >= 380, 'the map has no height to tap on');
+    // a corridor cell of Floor 1 that is on screen, clear of the zoom buttons and of the map's edge
+    const spot = await p.evaluate(() => {
+      const movement = document.querySelector('.mov').movement;
+      const floor = movement.state.project.building.floors[0];
+      const plan = document.getElementById('movement-plan').getBoundingClientRect();
+      const zoom = document.querySelector('.mov-zoom').getBoundingClientRect();
+      for (let cell = 0; cell < floor.cells.length; cell += 1) {
+        if (floor.cells[cell] !== '#') continue;
+        const at = movement.cellAt(floor.id, cell);
+        if (!at || at.x < 30 || at.x > plan.width - 30 || at.y < 30 || at.y > plan.height - 30) continue;
+        const x = plan.left + at.x;
+        const y = plan.top + at.y;
+        if (x >= zoom.left - 10 && x <= zoom.right + 10 && y >= zoom.top - 10 && y <= zoom.bottom + 10) continue;
+        return { floorId: floor.id, cell, x, y, floor: floor.name };
+      }
+      return null;
+    });
+    assert.ok(spot, 'no corridor cell of Floor 1 is on the phone’s map');
+    await p.touchscreen.tap(spot.x, spot.y);
+    await shows(p, (wanted) => {
+      const card = document.querySelector('.mov-card');
+      return !card.hidden && card.dataset.cell === String(wanted.cell) && card.dataset.floor === wanted.floorId;
+    }, spot);
+    // read through what is really on screen: the card has a box, and it is inside the map
+    const card = await box(p, '.mov-card');
+    const stage = await box(p, '.mov-stage');
+    assert.ok(card, 'the card has no box');
+    assert.ok(card.left >= stage.left && card.right <= stage.right && card.top >= stage.top && card.bottom <= stage.bottom, 'the card runs out of the map: ' + JSON.stringify({ card, stage }));
+    assert.equal(await p.$eval('.mov-card__place', (el) => el.getClientRects().length > 0), true);
+    assert.match(await text(p, '.mov-card__place'), new RegExp(' · ' + spot.floor + '$'));
+    assert.match(await text(p, '.mov-card__load'), /^(\d+ students at its busiest|Nobody on screen crosses here)/);
+    assert.equal(await p.evaluate(() => document.querySelector('.mov').movement.point.source), 'tap');
+    // it is kept: a moment later, with nothing touched, it is still there
+    await p.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    assert.equal(await p.$eval('.mov-card', (el) => el.hidden), false);
+    // the same cell again: away
+    await p.touchscreen.tap(spot.x, spot.y);
+    await shows(p, () => document.querySelector('.mov-card').hidden);
+    // up again, then a tap between the floors: away
+    await p.touchscreen.tap(spot.x, spot.y);
+    await shows(p, () => !document.querySelector('.mov-card').hidden);
+    const empty = await p.evaluate(() => {
+      const movement = document.querySelector('.mov').movement;
+      const plan = document.getElementById('movement-plan').getBoundingClientRect();
+      const slot = movement.world.slots[0];
+      // above the first floor's box, in the row of its name
+      const at = movement.view.toScreen(slot.x + 1, slot.y - 0.6);
+      return { x: plan.left + at.x, y: plan.top + at.y };
+    });
+    await p.touchscreen.tap(empty.x, empty.y);
+    await shows(p, () => document.querySelector('.mov-card').hidden);
+    // none of it moved the map or zoomed it
+    assert.equal(await p.evaluate(() => document.querySelector('.mov').movement.fitted), true);
+  });
+});
