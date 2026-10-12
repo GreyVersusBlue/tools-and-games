@@ -27,7 +27,7 @@
 // are each a function of `env` returning { element, update(state) }:
 //
 //   env    { ctx,
-//            choice(), change(patch)      what is chosen on screen (model.js), and changing it
+//            choice(), change(patch, { keepCard })   what is chosen on screen (model.js), and changing it
 //            show(floorId, cells)         bring cells onto the map
 //            overlays                     [(g, view, floor, theme) => {}] drawn over a floor after the lanes
 //            marks                        [(g, map) => {}] drawn over the whole map, on a canvas of their
@@ -343,12 +343,28 @@ export const section = {
     }
 
     // ---- what is chosen
-    function change(patch) {
+    //   options.keepCard   a card the reader tapped open stays on its cell,
+    //                      saying what the new choice makes of it (playback
+    //                      going on from one transition to the next)
+    function change(patch, options) {
       choice = settleChoice(store.project, { ...choice, ...patch });
       // a new arrangement of the floors is fitted to the window again
       if (patch && 'floors' in patch) fitted = true;
+      const held = options && options.keepCard === true && !(patch && 'floors' in patch) ? tapped() : null;
       clearPoint();
       refresh();
+      reopen(held);
+    }
+
+    // A card the reader tapped open, and putting it back on its cell after
+    // something that clears the card (the map drawn for another choice, or
+    // at another size).
+    function tapped() {
+      return point && point.source === 'tap' ? { floorId: point.floorId, cell: point.cell } : null;
+    }
+    function reopen(held) {
+      const at = held && world && state ? placeOf(world, held.floorId, held.cell) : null;
+      if (at) pointAt(at.x + 0.5, at.y + 0.5, 'tap');
     }
 
     // ---- the results
@@ -779,10 +795,13 @@ export const section = {
       view.resize(width, height);
       renderer.resize(width, height, window.devicePixelRatio || 1);
       canvas.dataset.ratio = String(window.devicePixelRatio || 1);
+      // a card under the pointer goes with the old size; one the reader tapped open is put back on its cell
+      const held = tapped();
       clearPoint();
       arrange();
       // what was brought to the middle is still in the middle of the window as it is now
       if (shownLast && !fitted && world) centre(shownLast.floorId, shownLast.cells);
+      reopen(held);
       if (floorsRow.how) floorsRow.how.set(world ? world.how : 'side');
       queued = false;
       paint();

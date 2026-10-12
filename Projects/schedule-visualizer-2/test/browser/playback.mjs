@@ -1092,6 +1092,69 @@ test('44g: the hotspot rings and the keyboard cursor are drawn over the markers,
   await set({ size: 'small' });
 });
 
+test('a card the reader tapped open is put beside its cell again once playback’s line is in it, and stays on its cell when the whole day goes on to the next transition', async () => {
+  await change({ transition: TRANSITION });
+  await pinFrames();
+  await set({ speed: 1, pace: 'real', loop: 'day', order: 'together', style: 'tail', size: 'small' });
+  await bar((el) => el.playback.seek(0));
+  await pointerAway().catch(() => {});
+  const cell = (await walkOf(EARLY_GROUP)).cells[0];
+  // the cell near the foot of the map, so that its card has to stand above it
+  await view((floor, at) => {
+    const movement = document.querySelector('.mov').movement;
+    movement.fit();
+    movement.env.show(floor, [at]);
+    movement.view.panBy(0, movement.view.height / 2 - 40);
+    movement.env.paint();
+  }, cell.floorId, cell.cell);
+  await frame();
+  const middle = await mapPoint(cell.floorId, cell.cell);
+  const plan = await page.$eval('#movement-plan', (el) => {
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left, y: rect.top };
+  });
+  await page.mouse.click(plan.x + middle.x, plan.y + middle.y);
+  await page.waitForFunction((floor, wanted) => {
+    const card = document.querySelector('.mov-card');
+    const point = document.querySelector('.mov').movement.point;
+    return !card.hidden && card.dataset.floor === floor && card.dataset.cell === String(wanted) && point !== null && point.source === 'tap';
+  }, { timeout: 5000 }, cell.floorId, cell.cell);
+  // playback starts: its line goes into the card, which is a line taller
+  await scrubTo(30);
+  await page.waitForFunction(() => document.querySelector('.mov-card [data-part="now"]') !== null);
+  const placed = await view(() => {
+    const card = document.querySelector('.mov-card').getBoundingClientRect();
+    const stage = document.querySelector('.mov-stage').getBoundingClientRect();
+    return { top: card.top - stage.top, bottom: card.bottom - stage.top, height: card.height, size: document.querySelector('.mov').movement.view.size };
+  });
+  // above the cell, its foot 10 px over the cell's top edge: not hanging down over the cell it is about
+  assert.ok(Math.abs(placed.bottom - (middle.y - placed.size / 2 - 10)) <= 1.5, 'the card was left where it stood before it grew: ' + JSON.stringify({ placed, cellTop: middle.y - placed.size / 2 }));
+  assert.ok(placed.top >= 8, 'the card runs out of the top of the map');
+
+  // the whole day: at the transition's end playback goes on to the next, and the card is still up on its cell
+  await bar((el) => el.playback.seek(el.playback.end - 1));
+  await page.click('[data-action="play"]');
+  // at real pace a frame a second on is a second of the walk: the last one, and one over
+  for (const stamp of [40000, 41000, 42000]) await runFrame(stamp);
+  await settled();
+  assert.equal(await view(() => document.querySelector('.mov').movement.choice.transition), TRANSITION + 1);
+  const held = await view(() => {
+    const card = document.querySelector('.mov-card');
+    const point = document.querySelector('.mov').movement.point;
+    return { hidden: card.hidden, floor: card.dataset.floor, cell: card.dataset.cell, source: point ? point.source : null, load: card.querySelector('.mov-card__load').textContent };
+  });
+  assert.deepEqual([held.hidden, held.floor, held.cell, held.source], [false, cell.floorId, String(cell.cell), 'tap'], 'the card the reader was holding was put away at the end of the transition');
+  assert.match(held.load, /Period 7 to Period 8\.$|^Nobody on screen crosses here\.$/, 'the card is of the transition before: ' + held.load);
+  await page.click('[data-action="play"]');
+  // put away as the reader does: the same cell again
+  await page.mouse.click(plan.x + middle.x, plan.y + middle.y);
+  await page.waitForFunction(() => document.querySelector('.mov-card').hidden);
+  await pointerAway().catch(() => {});
+  await view(() => document.querySelector('.mov').movement.fit());
+  await set({ loop: 'once' });
+  await change({ transition: TRANSITION });
+});
+
 test('44d: a frame of playback, through the clock, the bar and the marks on a real canvas: under 16 ms', async () => {
   await change({ transition: TRANSITION });
   await set({ speed: 1, pace: 'real', loop: 'transition', order: 'together', style: 'route', size: 'large' });

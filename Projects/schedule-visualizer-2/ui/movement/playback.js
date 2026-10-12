@@ -367,8 +367,8 @@ export function playbackBar(env) {
         seconds = 0;
         lateSaid = '';
         const following = (chosen() + 1) % count();
-        // update() comes back with the next transition before this returns
-        if (following !== chosen()) env.change({ transition: following });
+        // update() comes back with the next transition before this returns; a card the reader is holding open stays
+        if (following !== chosen()) env.change({ transition: following }, { keepCard: true });
       } else {
         seconds = end();
         stop();
@@ -574,7 +574,10 @@ export function playbackBar(env) {
     const moment = started ? now() : null;
     const floorId = card.element.dataset.floor;
     if (!moment || card.element.hidden || floorId === undefined) {
-      if (extraKey !== '') card.extra.replaceChildren();
+      if (extraKey !== '') {
+        card.extra.replaceChildren();
+        card.place();
+      }
       extraKey = '';
       return;
     }
@@ -600,6 +603,8 @@ export function playbackBar(env) {
       line.append('.');
     }
     card.extra.replaceChildren(line);
+    // the card is a line taller (or shorter) than when it was put beside its cell
+    card.place();
   }
   // the card comes and goes with the pointer, between two frames of playback too
   const cardWatch = new MutationObserver(drawExtra);
