@@ -77,6 +77,7 @@ export const GROUPS = {
     'ui/building-inspector.test.mjs', // SV2-07
     'ui/movement.test.mjs', // SV2-17
     'ui/playback.test.mjs', // SV2-44
+    'ui/room-picker.test.mjs', // SV2-48
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
