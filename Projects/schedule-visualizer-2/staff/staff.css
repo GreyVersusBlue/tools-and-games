@@ -1591,9 +1591,12 @@ select.field__input {
   line-height: 1.2;
 }
 
+/* The kinds of day stand side by side while each table has room for its
+   longest words, and one under another when it has not: a kind is never
+   narrower than its table can be without cutting a word. */
 .sign__day {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(42%, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
   gap: 3cqw;
   order: 1;
@@ -1601,6 +1604,12 @@ select.field__input {
   margin-top: 1rem;
   margin-top: 5cqw;
   text-align: left;
+}
+
+.sign__kind {
+  flex: 1 1 42%;
+  min-width: min-content;
+  max-width: 100%;
 }
 
 .sign__kindname {
@@ -1619,8 +1628,14 @@ select.field__input {
   line-height: 1.3;
 }
 
-/* a word is never cut ("Emp ty"): a column is at least as wide as its longest
-   word, and a line breaks between words */
+/* A word is never cut ("Emp ty"), not a teacher's name of thirty letters and
+   not the period's: a column is as wide as its longest word and a line breaks
+   between words only. The period's own cell wraps between its words too, so a
+   long one does not push the table off the sheet. (The page breaks words
+   anywhere; a table cell takes that back. While a kind of day is as wide as
+   its table, as .sign__kind makes it, no test can tell this from
+   "break-word": the two part only when something squeezes the table again,
+   which is when a cut word would come back.) */
 .sign__table th,
 .sign__table td {
   padding: 0.15rem 0.25rem 0.15rem 0;
@@ -1629,12 +1644,11 @@ select.field__input {
   font-weight: var(--w-regular);
   text-align: left;
   vertical-align: top;
-  overflow-wrap: break-word;
+  overflow-wrap: normal;
 }
 
 .sign__table th {
   font-weight: var(--w-semibold);
-  white-space: nowrap;
 }
 
 .sign__school {
@@ -1673,12 +1687,21 @@ select.field__input {
   }
 
   .sign__day {
-    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+    flex-wrap: nowrap;
     gap: var(--s-4);
     margin-top: var(--s-3);
     padding: var(--s-3);
     border: var(--border-width) solid var(--line-strong);
     background: #ffffff;
+  }
+
+  /* a table whose words are wider than the phone is moved sideways inside
+     its own frame; the page stays still */
+  .sign__kind {
+    flex: none;
+    min-width: 0;
+    overflow-x: auto;
   }
 
   .sign__kindname {
@@ -1887,19 +1910,29 @@ select.field__input {
     display: none;
   }
 
-  /* as tall as the paper inside its margins, less a little (US Letter has
-     251 mm and A4 269 mm), so the school's name stands at the foot of the
-     sheet as it does in the preview */
+  /* as tall as the paper inside its margins, less a little, so the school's
+     name stands at the foot of the sheet as it does in the preview. The
+     paper is the reader's own choice in their print dialog (this page has no
+     paper setting): on paper 100vh is the page inside its margins, 251 mm of
+     US Letter and 269 mm of A4. The 240 mm before it is for a browser that
+     does not take the line after, and fits both. Nothing stands over the
+     sheet: the page's own 16 px gap above it is taken off, since on paper it
+     pushed the sheet's foot onto a second, empty sheet. */
+  .page[data-view="door"] .page__body > .sheet {
+    margin-top: 0;
+  }
+
   .sheet {
     max-width: none;
     min-height: 240mm;
+    min-height: calc(100vh - 3mm);
     aspect-ratio: auto;
     border: 0;
     break-inside: avoid;
   }
 
   .sign {
-    padding: 16mm 0 0;
+    padding: 12mm 0 0;
   }
 
   .sign__word {
@@ -1939,6 +1972,7 @@ select.field__input {
   .sign__table th,
   .sign__table td {
     padding: 1mm 2mm 1mm 0;
+    border-top: 0.2mm solid var(--line);
   }
 
   .sign__school {

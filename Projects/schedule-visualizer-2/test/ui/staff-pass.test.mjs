@@ -20,7 +20,7 @@ import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
 import { noteCountOf } from '../../staff/notes.js';
-import { render as renderBatch, batchCount, batchWords } from '../../ui/prints/batch.js';
+import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
 import { readTool } from '../publish/reader.mjs';
 
@@ -198,4 +198,67 @@ test('README\'s test table names every suite test/run.mjs lists, once, and no fi
   assert.deepEqual(listed.filter((file) => !named.includes(file)), [], 'suites test/run.mjs runs that the table does not name');
   assert.deepEqual(named.filter((file) => !listed.includes(file)), [], 'files in the table that test/run.mjs does not run');
   for (const row of section.matchAll(/^\| `test\/([^`]+)` \| (.+) \|$/gm)) assert.ok(row[2].trim().length >= 12, row[1] + ' says what it covers');
+});
+
+// ---------------------------------------------------------------- the preview's sheet count (item 1)
+
+// print-preview.js draws a page, so its one pure function is read out of its
+// source and run here: the same lines the page runs.
+function sheetCounter() {
+  const source = readTool('ui/components/print-preview.js');
+  const from = source.indexOf('export function sheetsOf(');
+  const body = source.slice(from, source.indexOf('\n}\n', from) + 3).replace('export function', 'function');
+  return new Function(body + '\nreturn sheetsOf;')();
+}
+
+test('sheets are counted from what is on paper: the gap, the dashed line and the room the screen draws where a sheet starts are not paper', () => {
+  const sheetsOf = sheetCounter();
+  const printable = 950;
+  // a cover of 300, then three signs of 946 each; on screen each sign starts 38 px after the one before ends and carries 24 px of line and room
+  const mark = { before: 38, inside: 24 };
+  const sign = 946 + mark.inside;
+  const starts = [0, 300 + mark.before];
+  for (let i = 0; i < 3; i += 1) starts.push(starts[starts.length - 1] + sign + (i < 2 ? mark.before : 0));
+  assert.equal(sheetsOf(starts, [mark, mark, mark], printable), 4, 'the cover and one sheet a sign');
+  // counted from the gaps between the starts, as before, each sign is 1008 px and two sheets
+  assert.equal(sheetsOf(starts, [{ before: 0, inside: 0 }, { before: 0, inside: 0 }, { before: 0, inside: 0 }], printable), 7);
+  // a sign that is really taller than the paper is two sheets
+  assert.equal(sheetsOf([0, 338, 338 + 24 + 960], [mark], printable), 3);
+  // a stretch exactly as long as the sheet is one; a pixel over is still one (the rounding the browser does); two over is two
+  assert.equal(sheetsOf([0, 950], [], printable), 1);
+  assert.equal(sheetsOf([0, 951], [], printable), 1);
+  assert.equal(sheetsOf([0, 952], [], printable), 2);
+  // nothing on a stretch is still the sheet it starts
+  assert.equal(sheetsOf([0, 0], [], printable), 1);
+  assert.equal(sheetsOf([0, 20, 40], [{ before: 38, inside: 24 }], printable), 2);
+});
+
+// ---------------------------------------------------------------- door signs are upright (item 2)
+
+test('a door sign is never laid on its side: asked for landscape the batch is portrait and its cover says so; a teacher schedule keeps what was asked', () => {
+  const project = school();
+  for (const size of ['letter', 'a4']) {
+    const rule = { letter: 'letter', a4: 'A4' }[size];
+    for (const day of [false, true]) {
+      const turned = renderBatch(project, null, { batch: 'doors', day, now: clock(), paper: { size, orientation: 'landscape' } }).html;
+      assert.ok(turned.includes('data-paper="' + size + '" data-orientation="portrait"'), size + ': the root');
+      assert.ok(turned.includes('<style id="page-size">@page { size: ' + rule + ' portrait; }</style>'), size + ': the page rule');
+      assert.ok(turned.includes(UPRIGHT_COVER), size + ': the cover says why');
+      const upright = renderBatch(project, null, { batch: 'doors', day, now: clock(), paper: { size, orientation: 'portrait' } }).html;
+      assert.ok(!upright.includes(UPRIGHT_COVER), 'asked for portrait there is nothing to say');
+      assert.equal(turned.replace(' ' + UPRIGHT_COVER, ''), upright, size + ': but for that sentence it is the portrait document');
+    }
+    const teachers = renderBatch(project, null, { batch: 'teachers', now: clock(), paper: { size, orientation: 'landscape' } }).html;
+    assert.ok(teachers.includes('data-orientation="landscape"') && !teachers.includes(UPRIGHT_COVER));
+  }
+  // the project's own setting, with nothing asked
+  const set = school();
+  set.settings.paper = { size: 'a4', orientation: 'landscape' };
+  assert.ok(renderBatch(set, null, { batch: 'doors', now: clock() }).html.includes('data-paper="a4" data-orientation="portrait"'));
+  // and the entries say so, for the preview sheet
+  assert.deepEqual(BATCHES.map((batch) => [batch.id, batch.upright === true, batch.uprightSays || null]), [
+    ['teacher-schedules', false, null],
+    ['door-signs', true, UPRIGHT_SENTENCE],
+    ['door-signs-day', true, UPRIGHT_SENTENCE],
+  ]);
 });

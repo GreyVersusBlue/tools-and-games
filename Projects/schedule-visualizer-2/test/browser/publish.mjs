@@ -1404,8 +1404,10 @@ test('batch printing: each button opens the preview sheet on one document, a she
           newSheets: Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.dataset.sheet),
           breaks: Array.from(doc.querySelectorAll('.new-sheet'), (el) => view.getComputedStyle(el).breakBefore),
           numberPx: number ? parseFloat(view.getComputedStyle(number).fontSize) : null,
-          columns: day ? view.getComputedStyle(day).gridTemplateColumns.split(' ').length : null,
-          tallest: Math.max(...Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.getBoundingClientRect().height)),
+          // how many kinds of day stand side by side: the tables that start on the first one's line
+          columns: day ? Array.from(day.children).filter((kind) => Math.abs(kind.getBoundingClientRect().top - day.children[0].getBoundingClientRect().top) < 1).length : null,
+          // as paper: without the dashed line and the room under it that the preview draws where a sheet starts
+          tallest: Math.max(...Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.getBoundingClientRect().height - parseFloat(view.getComputedStyle(el).paddingTop) - parseFloat(view.getComputedStyle(el).borderTopWidth))),
           scripts: doc.scripts.length,
         };
       });
@@ -1424,6 +1426,111 @@ test('batch printing: each button opens the preview sheet on one document, a she
       await page.waitForFunction(() => document.getElementById('print-preview') === null);
       assert.equal(await page.evaluate((s) => document.activeElement === document.querySelector(s), selector), true, 'focus is back on the button');
     }
+  });
+});
+
+// What the preview sheet says of the document on show.
+const previewOf = (page) => page.evaluate(() => {
+  const sheet = document.getElementById('print-preview');
+  const doc = sheet.querySelector('iframe').contentDocument;
+  const view = sheet.querySelector('iframe').contentWindow;
+  const papers = Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.getBoundingClientRect().height - parseFloat(view.getComputedStyle(el).paddingTop) - parseFloat(view.getComputedStyle(el).borderTopWidth));
+  return {
+    sheets: Number(sheet.dataset.sheets),
+    paper: sheet.dataset.paper,
+    status: sheet.querySelector('.preview__status').textContent,
+    signs: doc.querySelectorAll('[data-sheet="door"]').length,
+    tallest: Math.round(Math.max(...papers)),
+    root: doc.documentElement.dataset.orientation,
+    rule: doc.getElementById('page-size').textContent,
+    lead: doc.querySelector('.doc-lead').textContent,
+    turn: sheet.querySelectorAll('.preview__head input[type="radio"]').length,
+    upright: sheet.querySelector('[data-says="upright"]') ? sheet.querySelector('[data-says="upright"]').textContent : null,
+  };
+});
+
+async function openBatch(page, output) {
+  await page.click('.pub [data-print="' + output + '"]');
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+}
+
+async function closeBatch(page) {
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+}
+
+// Choose a paper size in the open sheet and wait for the document drawn on it.
+async function choosePaper(page, size) {
+  await page.evaluate((value) => {
+    const radio = document.querySelector('#print-preview .preview__head input[type="radio"][value="' + value + '"]');
+    radio.click();
+  }, size);
+  await page.waitForFunction((value) => {
+    const sheet = document.getElementById('print-preview');
+    return sheet.dataset.ready === 'true' && sheet.dataset.paper.startsWith(value + ' ');
+  }, { timeout: 15000 }, size);
+}
+
+test('the preview counts the sheets that go on paper: a door sign with ten periods, or with a thirty-character number and the room\'s day, is one sheet at Letter and at A4', async () => {
+  await closing(await open(), async (page) => {
+    // ten periods a day: the sign's day is two rows longer on each kind of day
+    await apply(page, 'setSetting', { key: 'periods', value: 10 });
+    await openBatch(page, 'door-signs-day');
+    for (const [size, most] of [['letter', 950], ['a4', 1017]]) {
+      await choosePaper(page, size);
+      const shown = await previewOf(page);
+      assert.equal(shown.signs, 13);
+      assert.ok(shown.tallest <= most, size + ', ten periods: the tallest sign is ' + shown.tallest + ' px of paper, and a sheet holds ' + most);
+      assert.equal(shown.sheets, 14, size + ', ten periods: the cover and one sheet a sign: ' + shown.status);
+      assert.match(shown.status, /About 14 sheets\.$/);
+    }
+    await closeBatch(page);
+
+    // a number of thirty characters wraps to a second and third line of the sign
+    const room = await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].spaces.find((space) => space.kind === 'room').id);
+    await apply(page, 'setRoomFields', { roomId: room, number: 'PORTABLE-CLASSROOM-ANNEX-NO-12' });
+    await openBatch(page, 'door-signs-day');
+    for (const [size, most] of [['a4', 1017], ['letter', 950]]) {
+      await choosePaper(page, size);
+      const shown = await previewOf(page);
+      assert.ok(shown.tallest <= most, size + ', a long number: the tallest sign is ' + shown.tallest + ' px of paper, and a sheet holds ' + most);
+      assert.equal(shown.sheets, 14, size + ', a long number and ten periods: ' + shown.status);
+    }
+    await closeBatch(page);
+    // and a document that does run on is still counted as running on: every teacher's schedule on one sheet each, plus the cover
+    await openBatch(page, 'teacher-schedules');
+    assert.equal((await previewOf(page)).sheets, 13);
+    await closeBatch(page);
+  });
+});
+
+test('door signs are upright sheets: with landscape chosen for the project the batch prints in portrait, says so, and offers no orientation; other documents keep theirs', async () => {
+  await closing(await open(), async (page) => {
+    await apply(page, 'setSetting', { key: 'paper.orientation', value: 'landscape' });
+    const steps = await undoSteps(page);
+    for (const output of ['door-signs', 'door-signs-day']) {
+      await openBatch(page, output);
+      const shown = await previewOf(page);
+      assert.equal(shown.upright, 'Door signs are upright sheets: they print in portrait.', output);
+      assert.equal(shown.turn, 2, output + ': the two paper sizes, and no orientation to choose');
+      assert.equal(shown.paper, 'letter portrait');
+      assert.equal(shown.root, 'portrait');
+      assert.equal(shown.rule, '@page { size: letter portrait; }');
+      assert.match(shown.status, /^US Letter, portrait\. About 14 sheets\.$/);
+      assert.equal(shown.sheets, 14, output + ': one sheet a sign, not two across a sheet on its side');
+      assert.ok(shown.lead.endsWith('Landscape is chosen for this project. Door signs are upright sheets, so these print in portrait.'), shown.lead);
+      await closeBatch(page);
+    }
+    // the project's own setting is as it was: nothing was changed to print a sign
+    assert.equal((await project(page)).settings.paper.orientation, 'landscape');
+    assert.equal(await undoSteps(page), steps);
+    await openBatch(page, 'teacher-schedules');
+    const teachers = await previewOf(page);
+    assert.equal(teachers.upright, null);
+    assert.equal(teachers.turn, 4, 'two sizes and two orientations');
+    assert.equal(teachers.paper, 'letter landscape');
+    assert.equal(teachers.root, 'landscape');
+    await closeBatch(page);
   });
 });
 

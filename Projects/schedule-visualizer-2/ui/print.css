@@ -500,6 +500,14 @@
   color: var(--ink-2);
 }
 
+/* a sentence where a choice would be: why this output has none */
+.preview__note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm, 1.35);
+}
+
 .preview__control[hidden] {
   display: none;
 }
@@ -685,14 +693,16 @@
    document does not load that file; test/engine/prints-batch.test.mjs holds
    the two together. A print document has no reset, so each line of the sign
    takes its own margin off here (one rule for every p in the sign would
-   outrank the lines' own margins). The sheet is nearly as tall as the paper
-   inside its margins (28 mm), so the school's name stands at its foot. The
-   18 mm more it leaves are the gap and the dashed line the preview draws
-   where a sheet starts, so the preview still counts one sheet a sign. */
+   outrank the lines' own margins). The sheet is as tall as the paper inside
+   its margins (28 mm) less a millimetre, so the school's name stands at its
+   foot and the sign is still one sheet. (The preview counts sheets from what
+   is on paper, not from the gap it draws between two of them, so the sign
+   leaves no room for that gap: print-preview.js, sheetsOf.) The door signs
+   are upright sheets: batch.js never lays one on its side. */
 .print-doc .batch-sign {
   display: flex;
   flex-direction: column;
-  min-height: calc(var(--page-h) - 46mm);
+  min-height: calc(var(--page-h) - 29mm);
 }
 
 .print-doc .sign {
@@ -700,7 +710,7 @@
   flex: 1 0 auto;
   flex-direction: column;
   align-items: center;
-  padding: 16mm 0 0;
+  padding: 12mm 0 0;
   text-align: center;
 }
 
@@ -746,13 +756,19 @@
 }
 
 .print-doc .sign__day {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(42%, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6mm;
   order: 1;
   width: 100%;
   margin-top: 8mm;
   text-align: left;
+}
+
+.print-doc .sign__kind {
+  flex: 1 1 42%;
+  min-width: min-content;
+  max-width: 100%;
 }
 
 .print-doc .sign__kindname {
@@ -766,6 +782,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 11pt;
+  font-variant-numeric: var(--numeric);
   line-height: 1.3;
 }
 
@@ -776,12 +793,11 @@
   font-weight: 400;
   text-align: left;
   vertical-align: top;
-  overflow-wrap: break-word;        /* a word is never cut: a column is as wide as its longest */
+  overflow-wrap: normal;            /* a word is never cut: a column is as wide as its longest */
 }
 
 .print-doc .sign__table th {
   font-weight: 600;
-  white-space: nowrap;
 }
 
 .print-doc .sign__school {

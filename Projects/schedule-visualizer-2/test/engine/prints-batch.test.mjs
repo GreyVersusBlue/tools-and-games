@@ -436,18 +436,83 @@ test('the batch is made from the published model: the project\'s own objects are
   assert.equal(doors(school(), { now: undefined }), render(school(), null, { batch: 'doors' }).html);
 });
 
-test('the sign\'s paper rules say the same in the staff browser\'s sheet and in the print document\'s', () => {
+// What a value says once the tokens both sheets share are written out: a
+// weight by its number, and the plan face with or without its fallback.
+function plain(value) {
+  return value
+    .replace(/var\(--w-regular\)/g, '400').replace(/var\(--w-medium\)/g, '500').replace(/var\(--w-semibold\)/g, '600').replace(/var\(--w-bold\)/g, '700')
+    .replace(/var\(--font-plan, var\(--font-ui\)\)/g, 'var(--font-plan)');
+}
+
+// The sign's rules in the staff sheet, as they stand on paper: each property
+// is what the paper rule says, or, where the paper rules say nothing, what
+// the screen rule says, since that is what cascades onto the paper. The
+// phone's rules (a screen under 640 px) and the container-unit sizes behind
+// @supports are no part of that.
+function staffSign() {
   const staff = readFileSync(path.join(TOOL_DIR, 'staff', 'staff.css'), 'utf8').replace(/\r\n?/g, '\n');
   const block = staff.slice(staff.indexOf('/* ---------- SV2-23:'), staff.indexOf('/* ---------- SV2-23: end'));
-  const paper = signRules(block.slice(block.indexOf('@media print')), '');
+  const printAt = block.indexOf('@media print');
+  let screen = block.slice(0, printAt);
+  for (const start of ['@media screen and (max-width: 639.98px) {', '@supports (font-size: 1cqw) {']) {
+    const from = screen.indexOf(start);
+    assert.notEqual(from, -1, 'the staff sheet has ' + start);
+    screen = screen.slice(0, from) + screen.slice(screen.indexOf('\n}\n', from) + 3);
+  }
+  return { screen: signRules(screen, ''), paper: signRules(block.slice(printAt), '') };
+}
+
+// Properties a size on screen is given in (rem, then container units) and the
+// paper rules always replace: the screen's value never reaches paper.
+const SCREEN_SIZES = ['font-size', 'padding', 'padding-top', 'margin-top', 'gap'];
+// What print.css has to say that the staff sheet does not: a print document
+// has no reset, so each line of the sign takes its browser margin off.
+const ONLY_IN_PRINT = { margin: '0' };
+
+test('the sign\'s paper rules say the same in the staff browser\'s sheet and in the print document\'s, each way, with what cascades from the screen', () => {
+  const staff = staffSign();
   const batch = signRules(readFileSync(path.join(TOOL_DIR, 'ui', 'print.css'), 'utf8').replace(/\r\n?/g, '\n'), '.print-doc ');
-  assert.ok(Object.keys(paper).length >= 8, 'the staff sheet\'s paper rules for the sign: ' + Object.keys(paper).join(' '));
-  for (const [selector, declared] of Object.entries(paper)) {
-    assert.ok(batch[selector], 'print.css has no rule for ' + selector);
-    for (const [property, value] of Object.entries(declared)) {
-      assert.equal(batch[selector][property], value, selector + ' { ' + property + ' } on paper');
+  assert.ok(Object.keys(staff.paper).length >= 8, 'the staff sheet\'s paper rules for the sign: ' + Object.keys(staff.paper).join(' '));
+  // what the staff sheet says of a property on paper, or undefined
+  const onPaper = (selector, property) => {
+    const paper = staff.paper[selector] && staff.paper[selector][property];
+    if (paper !== undefined) return paper;
+    const screen = staff.screen[selector] ? staff.screen[selector][property] : undefined;
+    // a size the screen gives in its own units is the screen's alone; "auto" is not a size
+    if (screen !== undefined && SCREEN_SIZES.includes(property) && /rem|cqw/.test(screen)) return undefined;
+    return screen;
+  };
+  // one way: everything the staff sheet's paper is, the print document is
+  let compared = 0;
+  const cascaded = [];
+  for (const selector of new Set([...Object.keys(staff.paper), ...Object.keys(staff.screen)])) {
+    for (const property of new Set([...Object.keys(staff.paper[selector] || {}), ...Object.keys(staff.screen[selector] || {})])) {
+      const want = onPaper(selector, property);
+      if (want === undefined) continue;
+      assert.ok(batch[selector], 'print.css has no rule for ' + selector);
+      assert.equal(plain(batch[selector][property] === undefined ? '(nothing)' : batch[selector][property]), plain(want), selector + ' { ' + property + ' } on paper: print.css against staff.css');
+      compared += 1;
+      if (!(staff.paper[selector] && property in staff.paper[selector])) cascaded.push(selector + ' ' + property);
     }
   }
+  // the other way: everything the print document says, the staff sheet's paper says
+  for (const [selector, declared] of Object.entries(batch)) {
+    for (const [property, value] of Object.entries(declared)) {
+      if (ONLY_IN_PRINT[property] === value) continue;
+      const want = onPaper(selector, property);
+      assert.notEqual(want, undefined, 'print.css says ' + selector + ' { ' + property + ': ' + value + ' } and the staff sheet says nothing of it on paper');
+      assert.equal(plain(value), plain(want), selector + ' { ' + property + ' } on paper: staff.css against print.css');
+    }
+  }
+  assert.ok(compared >= 60, 'compared ' + compared + ' declarations');
+  // the ones that reach paper from the screen rules are in the comparison: the face and its weight, the line, the spacing of the word "Room", the table's rule
+  for (const each of ['.sign__word font-family', '.sign__word letter-spacing', '.sign__word text-transform', '.sign__number font-weight', '.sign__number line-height', '.sign__number overflow-wrap',
+    '.sign__teacher font-weight', '.sign__teacher line-height', '.sign__subject color', '.sign__table line-height', '.sign__table border-collapse', '.sign__school color']) {
+    assert.ok(cascaded.includes(each), each + ' reaches paper from the screen rule and was compared');
+  }
+  // and the rule under each row of the day is the same hairline in both, in a paper unit
+  assert.equal(staff.paper['.sign__table th']['border-top'], '0.2mm solid var(--line)');
+  assert.equal(batch['.sign__table th']['border-top'], '0.2mm solid var(--line)');
 });
 
 test('a number too long for one line wraps on the sheet: nothing keeps it on one line', () => {
@@ -456,5 +521,5 @@ test('a number too long for one line wraps on the sheet: nothing keeps it on one
   assert.ok(rules['.sign__number'], 'print.css has no rule for the number');
   assert.equal(rules['.sign__number']['white-space'], undefined);
   assert.equal(rules['.sign__number']['overflow-wrap'], 'anywhere');
-  assert.equal(countOf(css.slice(css.indexOf('SV2-24: batch sheets')), 'nowrap'), 2, 'only the period column of a day table is kept on one line: a teacher schedule\'s, and the sign\'s');
+  assert.equal(countOf(css.slice(css.indexOf('SV2-24: batch sheets')), 'nowrap'), 1, 'only the period column of a teacher schedule is kept on one line; the sign\'s wraps between its words (SV2-45 item 4)');
 });
