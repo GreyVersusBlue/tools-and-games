@@ -5,14 +5,24 @@
 // first period on a 1280 px screen, a phone showed no period at all, and the
 // Teachers and Rooms tables said nothing about a double-booking the Groups
 // grid marked. Each case here is one of those, measured on the page as drawn.
+//
+// And what a review of that work found (the cases from "a cursor left in
+// Grade" on): columns that are hidden are hidden by a rule, not by what has a
+// box; a block is what is on screen, for copy, paste, Delete and Fill down
+// alike; the marks of a table for reading are one Tab stop; the sentence of a
+// mark stays inside the table's frame; a colour typed in shows at once.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, startServer, launch } from './harness.mjs';
+import { openPlanner, go, startServer, launch } from './harness.mjs';
 
 const DAY_A = 'dsample00a';
+const DAY_B = 'dsample00b';
 const A6 = 'gsample06a';
+const B6 = 'gsample06b';
+const C6 = 'gsample06c';
+const C7 = 'gsample07c';
 const LONG_NAME = 'Portable Classroom 14, East Annex';
 
 let server;
@@ -30,6 +40,87 @@ const box = (page, selector) => page.$eval(selector, (el) => {
   const rect = el.getBoundingClientRect();
   return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
 });
+
+// The box of the sentence a marked cell draws while it has the keyboard's
+// focus, or null when none is drawn. It is a ::after, which has no box to ask
+// for: this is its used left, top, width and height, from the padding edge of
+// the cell it is placed against.
+const popup = (page, selector) => page.$eval(selector, (cell) => {
+  const drawn = getComputedStyle(cell, '::after');
+  if (drawn.content === 'none') return null;
+  const at = cell.getBoundingClientRect();
+  const edge = getComputedStyle(cell);
+  const left = at.left + parseFloat(edge.borderLeftWidth) + parseFloat(drawn.left);
+  const top = at.top + parseFloat(edge.borderTopWidth) + parseFloat(drawn.top);
+  return { left, top, right: left + parseFloat(drawn.width), bottom: top + parseFloat(drawn.height), width: parseFloat(drawn.width), height: parseFloat(drawn.height) };
+});
+// The inside of the frame a table for reading scrolls in.
+const frameOf = (page) => page.$eval('.grd-below .grd-scroll', (el) => {
+  const rect = el.getBoundingClientRect();
+  return { left: rect.left + el.clientLeft, top: rect.top + el.clientTop, right: rect.left + el.clientLeft + el.clientWidth, bottom: rect.top + el.clientTop + el.clientHeight };
+});
+// Into a table for reading as the keyboard goes: its frame, then one Tab.
+async function tabInto(page) {
+  await page.focus('.grd-below .grd-scroll');
+  await page.keyboard.press('Tab');
+}
+const why = (page) => page.evaluate(() => getComputedStyle(document.activeElement, '::after').content);
+const status = (page) => page.$eval('.grd-status', (el) => el.textContent);
+const cellText = (page, selector) => page.$eval(selector + ' .grd-cell__text', (el) => el.textContent);
+const isStaged = (page, selector) => page.$eval(selector, (el) => el.classList.contains('is-staged'));
+const selectedKeys = (page) => page.$$eval('.grd-sheet [aria-selected="true"]', (all) => all.map((cell) => cell.dataset.key.replace(/^grid:/, '')));
+const stagedIs = (page, wanted) => page.waitForFunction((value) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd').dataset.staged === value, { timeout: 5000 }, String(wanted));
+const tabStops = (page) => page.$$eval('.grd-sheet [tabindex="0"]', (all) => all.map((cell) => ({ key: cell.dataset.key, boxed: cell.getClientRects().length > 0 })));
+
+// The cursor on one cell, with no block left over from the case before:
+// focus on the cell the cursor is already on keeps the block's other corner.
+async function cursorOn(page, selector) {
+  await settled(page);
+  await page.focus(selector);
+  await page.keyboard.press('Escape');
+}
+
+// What Ctrl+V and Ctrl+C do on the cell the cursor is on.
+async function paste(page, tsv) {
+  await settled(page);
+  await page.evaluate((value) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', value);
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, tsv);
+  await settled(page);
+}
+const copied = (page) => page.evaluate(() => {
+  const data = new DataTransfer();
+  document.activeElement.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }));
+  return data.getData('text/plain');
+});
+
+// Throw away what is staged, so the page does not ask before it closes and
+// the next case reads the sample as it is.
+async function discard(page) {
+  await settled(page);
+  if (await page.$eval('.grd', (el) => el.dataset.staged) !== 'true') return;
+  await page.evaluate(() => {
+    document.querySelector('.toast__close')?.click();
+    document.querySelector('.grd-bar [data-action="discard"]').click();
+  });
+  await page.waitForSelector('dialog[open]');
+  await page.evaluate(() => document.querySelector('dialog[open] .btn--danger').click());
+  await stagedIs(page, false);
+}
+
+// Change the project behind the page, and take the changes back.
+const change = (page, name, payload) => page.evaluate(async (action, given) => {
+  const actions = await import('./engine/actions.js');
+  globalThis.sv2.store.apply(actions[action], given);
+}, name, payload);
+async function undo(page, times) {
+  await page.evaluate((n) => {
+    for (let i = 0; i < n; i += 1) globalThis.sv2.store.undo();
+  }, times);
+  await settled(page);
+}
 
 async function openGrid(size) {
   const session = await openPlanner({ server, browser, hash: '#schedule/grid', theme: 'light', ...size });
@@ -257,8 +348,9 @@ test('the Teachers and Rooms tables mark the double-booking the Groups grid mark
   // and it can be reached and read without a pointer
   assert.equal(await page.$eval(cell, (el) => el.tabIndex), 0);
   assert.equal(await page.$eval(cell, (el) => getComputedStyle(el, '::after').content), 'none');
-  await page.focus(cell);
-  assert.match(await page.$eval(cell, (el) => getComputedStyle(el, '::after').content), /Problem: Room 203 has two groups in Period 2 on A Day/, 'in focus the sentence is drawn under the cell');
+  await tabInto(page);
+  assert.equal(await page.$eval(cell, (el) => el === document.activeElement), true, 'one Tab from the frame is on the marked cell');
+  assert.match(await page.$eval(cell, (el) => getComputedStyle(el, '::after').content), /Problem: Room 203 has two groups in Period 2 on A Day/, 'in the keyboard’s focus the sentence is drawn under the cell');
   // an unmarked cell is not a Tab stop
   assert.equal(await page.$$eval('.grd-table--read .grd-cell--read:not([data-severity])', (all) => all.filter((el) => el.hasAttribute('tabindex') || el.title !== '').length), 0);
 
@@ -269,4 +361,355 @@ test('the Teachers and Rooms tables mark the double-booking the Groups grid mark
   // one line for a finding, whichever cells it is on
   assert.equal(await page.$$eval('.grd-below .grd-why p', (all) => all.length), 2);
   await rowsAre(page, 'groups');
+});
+
+// ---------------------------------------------------------------- after the review
+
+test('a cursor left in Grade, the grid left, the screen narrowed, the grid come back to: its one Tab stop has a box', async () => {
+  const turn = await openGrid({ width: 1280, height: 800 });
+  const { page } = turn;
+  try {
+    await page.focus(key(A6, 'grade'));
+    assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':grade', boxed: true }]);
+    await go(page, '#building');
+    await page.setViewport({ width: 390, height: 760, deviceScaleFactor: 1 });
+    await go(page, '#schedule/grid');
+    await page.waitForSelector('.grd-sheet');
+    await settled(page);
+    assert.equal(await box(page, key(A6, 'grade')), null, 'Grade is hidden at 390');
+    assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':name', boxed: true }], 'the Tab stop went to the group’s name');
+
+    // the same with the grid open while the width is crossed
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+    await page.waitForFunction((selector) => document.querySelector(selector).getClientRects().length > 0, { timeout: 5000 }, key(A6, 'grade'));
+    await page.focus(key(A6, 'headCount'));
+    assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':headCount', boxed: true }]);
+    await page.setViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
+    await page.waitForFunction((selector) => document.querySelector(selector).getClientRects().length === 0, { timeout: 5000 }, key(A6, 'headCount'));
+    await page.waitForFunction((wanted) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd-sheet [tabindex="0"]')?.dataset.key === wanted, { timeout: 5000 }, 'grid:' + A6 + ':name');
+    assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':name', boxed: true }], 'crossing 640 px moved the Tab stop to Group');
+  } finally {
+    const found = turn.problems();
+    await turn.page.close();
+    assert.deepEqual(found, { errors: [], blocked: [], shimmed: [] });
+  }
+});
+
+test('an arrow key asks the page for no box: which columns are hidden is a rule', async () => {
+  const { page } = phone;
+  await settled(page);
+  await page.focus(key(A6, 'name'));
+  await page.evaluate(() => {
+    const asked = Element.prototype.getClientRects;
+    globalThis.__boxes = 0;
+    Element.prototype.getClientRects = function counted() {
+      globalThis.__boxes += 1;
+      return asked.call(this);
+    };
+    globalThis.__putBack = () => {
+      Element.prototype.getClientRects = asked;
+    };
+  });
+  try {
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await activeKey(page), 'grid:' + B6 + ':name', 'the cursor still steps over what is hidden');
+    assert.equal(await page.evaluate(() => globalThis.__boxes), 0);
+  } finally {
+    await page.evaluate(() => globalThis.__putBack());
+  }
+});
+
+test('on a phone a block is what is on screen: hidden columns are not selected and not copied', async () => {
+  const { page } = phone;
+  await settled(page);
+  assert.equal(await page.$eval('.grd', (el) => el.dataset.fields), 'hidden');
+  await cursorOn(page, key(A6, 'name'));
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.up('Shift');
+  assert.deepEqual(await selectedKeys(page), [
+    A6 + ':name', A6 + ':' + DAY_A + ':0', A6 + ':' + DAY_A + ':1',
+    B6 + ':name', B6 + ':' + DAY_A + ':0', B6 + ':' + DAY_A + ':1',
+  ], 'Group and two periods of two groups, and nothing that is out of sight');
+  assert.equal(await copied(page), '6A\t201\t103\r\n6B\t203\tGym');
+  assert.equal(await status(page), 'Copied 6 cells.');
+});
+
+test('on a phone a pasted row wider than Group goes into the periods, not into the columns out of sight', async () => {
+  const { page } = phone;
+  await settled(page);
+  await cursorOn(page, key(A6, 'name'));
+  await paste(page, '6A\t202\t204\r\n');
+  try {
+    await stagedIs(page, true);
+    assert.equal(await status(page), 'Pasted 3 cells.');
+    assert.deepEqual([await cellText(page, slot(A6, DAY_A, 0)), await cellText(page, slot(A6, DAY_A, 1))], ['202', '204']);
+    assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24'], 'Grade and Head count are as they were');
+    assert.deepEqual([await isStaged(page, key(A6, 'grade')), await isStaged(page, key(A6, 'headCount')), await isStaged(page, key(A6, 'colour'))], [false, false, false]);
+    assert.deepEqual(await selectedKeys(page), [A6 + ':name', A6 + ':' + DAY_A + ':0', A6 + ':' + DAY_A + ':1'], 'what was pasted is selected');
+
+    // one copied cell over a block fills what is on screen of it
+    await paste(page, 'Gym');
+    assert.equal(await status(page), 'Pasted 3 cells.', 'the name and two periods');
+    assert.deepEqual([await cellText(page, key(A6, 'name')), await cellText(page, slot(A6, DAY_A, 0)), await cellText(page, slot(A6, DAY_A, 1))], ['Gym', 'Gym', 'Gym']);
+    assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24']);
+  } finally {
+    await discard(page);
+  }
+});
+
+test('on a phone Delete empties only what is on screen of a block', async () => {
+  const { page } = phone;
+  await settled(page);
+  await cursorOn(page, key(A6, 'name'));
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.up('Shift');
+  await page.keyboard.press('Delete');
+  try {
+    await stagedIs(page, true);
+    assert.equal(await status(page), 'Cleared 1 cell.');
+    assert.equal(await cellText(page, slot(A6, DAY_A, 0)), '');
+    assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24']);
+    assert.deepEqual([await isStaged(page, key(A6, 'grade')), await isStaged(page, key(A6, 'headCount'))], [false, false]);
+  } finally {
+    await discard(page);
+  }
+});
+
+test('on a phone Fill down fills only what is on screen of a block', async () => {
+  const { page } = phone;
+  await settled(page);
+  // from Period 1 back to Group, then down a row: the block crosses the
+  // hidden columns and its top row is 6A
+  await cursorOn(page, slot(A6, DAY_A, 0));
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.up('Shift');
+  await page.evaluate(() => document.querySelector('.grd-toolbar [data-action="fill-down"]').click());
+  try {
+    await stagedIs(page, true);
+    // the name is refused (6A is taken); the room is the one cell filled
+    assert.match(await status(page), /^Filled down 1 cell from 6A\. 1 cell was not taken: There is already a group called "6A"\./);
+    assert.equal(await cellText(page, slot(B6, DAY_A, 0)), '201');
+    assert.deepEqual([await cellText(page, key(B6, 'headCount')), await isStaged(page, key(B6, 'headCount')), await isStaged(page, key(B6, 'colour'))], ['26', false, false], '6B keeps its own head count and colour');
+  } finally {
+    await discard(page);
+  }
+});
+
+test('the marks of a table for reading are one Tab stop, the arrow keys go from mark to mark, and only the keyboard draws the sentence', async () => {
+  const { page } = desk;
+  await rowsAre(page, 'rooms');
+  const stops = () => page.$$eval('.grd-table--read .is-marked', (all) => all.map((cell) => cell.tabIndex));
+  const on = () => page.evaluate(() => {
+    const cell = document.activeElement;
+    return cell.classList.contains('is-marked') ? cell.parentElement.children[0].textContent + ' ' + cell.dataset.severity : null;
+  });
+  // Room 203's double-booking, then the Cafeteria's note
+  assert.deepEqual(await stops(), [0, -1]);
+  await tabInto(page);
+  assert.equal(await on(), '203 problem');
+  assert.match(await why(page), /Problem: Room 203 has two groups/);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await on(), 'Cafeteria note');
+  assert.deepEqual(await stops(), [-1, 0], 'the Tab stop goes with the focus');
+  assert.match(await why(page), /Note: /);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await on(), 'Cafeteria note', 'no mark below: it stays');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await on(), '203 problem');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await on(), 'Cafeteria note');
+  await page.keyboard.press('Home');
+  assert.equal(await on(), '203 problem');
+  await page.keyboard.press('End');
+  assert.equal(await on(), 'Cafeteria note');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await on(), '203 problem');
+  // one stop: the next Tab is out of the table
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest('.grd-table--read'))), false);
+
+  // a click puts the focus on a mark and draws nothing: a pointer has the title
+  const note = '.grd-table--read .grd-cell--read[data-severity="note"]';
+  await page.$eval(note, (el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+  const at = await box(page, note);
+  await page.mouse.click(at.left + at.width / 2, at.top + at.height / 2);
+  assert.equal(await on(), 'Cafeteria note');
+  assert.equal(await why(page), 'none', 'a click draws no sentence');
+  assert.deepEqual(await stops(), [-1, 0]);
+  await rowsAre(page, 'groups');
+});
+
+test('the sentence of a mark stays inside the frame: at the right edge, and in the last row of a table of two or three rows', async () => {
+  const { page } = desk;
+  const inside = async (selector, what) => {
+    const drawn = await popup(page, selector);
+    const frame = await frameOf(page);
+    assert.notEqual(drawn, null, what + ': the sentence is drawn');
+    assert.ok(drawn.left >= frame.left - 0.5 && drawn.right <= frame.right + 0.5, what + ': the sentence is at ' + drawn.left + ' to ' + drawn.right + ' in a frame of ' + frame.left + ' to ' + frame.right);
+    assert.ok(drawn.top >= frame.top - 0.5 && drawn.bottom <= frame.bottom + 0.5, what + ': the sentence is at ' + drawn.top + ' to ' + drawn.bottom + ' down a frame of ' + frame.top + ' to ' + frame.bottom);
+  };
+  // browsers that do not read `content: … / ""` need the plain form before it
+  const sheet = await page.evaluate(() => fetch(document.querySelector('link[data-sheet="grid"]').href).then((answer) => answer.text()));
+  assert.match(sheet, /content: attr\(data-why\);\s+content: attr\(data-why\) \/ "";/);
+
+  // the last period of the last day in the last room: three groups in the
+  // Library, which seats 60
+  for (const group of [A6, B6, C6]) await change(page, 'setSlot', { groupId: group, dayTypeId: DAY_B, period: 7, slot: { room: 'rsamplelib' } });
+  try {
+    await rowsAre(page, 'rooms');
+    const corner = '.grd-table--read tbody tr:last-child td:last-child';
+    assert.equal(await page.$eval(corner, (el) => el.parentElement.children[0].textContent + ' ' + el.dataset.severity), 'Library warning');
+    await tabInto(page);
+    await page.keyboard.press('End');
+    assert.equal(await page.$eval(corner, (el) => el === document.activeElement), true);
+    await inside(corner, 'the corner cell of the Rooms table');
+  } finally {
+    // back to the sample and to the Groups rows, whatever was found, so the
+    // cases after this one start where they expect to
+    await undo(page, 3);
+    await rowsAre(page, 'groups');
+  }
+
+  // Ms. Vandermeer in the last row of three teachers, then of two
+  const others = ['tsample003', 'tsample004', 'tsample005', 'tsample006', 'tsample008', 'tsample009', 'tsample010', 'tsample011', 'tsample012'];
+  for (const id of others) await change(page, 'deleteTeacher', { id });
+  let changes = others.length;
+  try {
+    const cell = '.grd-table--read tbody tr:last-child .is-marked';
+    const names = () => page.$$eval('.grd-table--read tbody tr', (rows) => rows.map((tr) => tr.children[0].textContent));
+    await rowsAre(page, 'teachers');
+    assert.deepEqual(await names(), ['Ms. Halloran', 'Mr. Brightwater', 'Ms. Vandermeer']);
+    await tabInto(page);
+    await inside(cell, 'the last of three rows');
+
+    await change(page, 'deleteTeacher', { id: 'tsample002' });
+    changes += 1;
+    await settled(page);
+    assert.deepEqual(await names(), ['Ms. Halloran', 'Ms. Vandermeer']);
+    await tabInto(page);
+    await inside(cell, 'the last of two rows');
+  } finally {
+    await undo(page, changes);
+    await rowsAre(page, 'groups');
+  }
+});
+
+test('a colour typed into its cell shows in the swatch at once', async () => {
+  const { page } = desk;
+  await settled(page);
+  // in one turn of the page, so nothing has been drawn again in between
+  const found = await page.evaluate((selector) => {
+    const cell = document.querySelector(selector);
+    const press = (on) => on.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    cell.focus();
+    press(cell);
+    const field = cell.querySelector('.grd-input');
+    field.value = ' #1A2B3C ';
+    press(field);
+    const swatch = cell.querySelector('.grd-colour');
+    return { field: Boolean(cell.querySelector('.grd-input')), swatch: swatch && swatch.type + ' ' + swatch.value, title: cell.title, text: cell.querySelector('.grd-cell__text').textContent, hidden: cell.querySelector('.grd-cell__text').classList.contains('vh') };
+  }, key(A6, 'colour'));
+  try {
+    assert.deepEqual(found, { field: false, swatch: 'color #1a2b3c', title: '#1a2b3c', text: '#1a2b3c', hidden: true });
+    await stagedIs(page, true);
+    assert.equal(await page.$eval(key(A6, 'colour') + ' .grd-colour', (el) => el.value), '#1a2b3c', 'and it is the same once the tab is drawn again');
+  } finally {
+    await discard(page);
+  }
+});
+
+// 60 characters, none of them a room in the building
+const SIXTY = 'Portable Classroom 14 in the East Annex, beside the Bus Loop';
+
+// What a slot cell holding a long name looks like: the name, how many lines
+// it is on, and its mark against it.
+const longCell = (page, selector) => page.$eval(selector, (cell) => {
+  const span = cell.querySelector('.grd-cell__text');
+  const mark = cell.querySelector('.grd-cell__mark');
+  const text = span.getBoundingClientRect();
+  const sign = mark.getBoundingClientRect();
+  const all = cell.getBoundingClientRect();
+  return {
+    text: span.textContent,
+    lines: Math.round(text.height / parseFloat(getComputedStyle(span).lineHeight)),
+    width: text.width,
+    mark: mark.textContent,
+    markAfter: sign.left >= text.right - 0.5,
+    markBeside: sign.top >= text.top - 0.5 && sign.bottom <= text.bottom + 0.5,
+    markInside: sign.right <= all.right && sign.bottom <= all.bottom,
+    cell: all.width,
+    cut: cell.scrollWidth > cell.clientWidth || cell.scrollHeight > cell.clientHeight,
+  };
+});
+
+async function typeLong(page, selector) {
+  await settled(page);
+  await page.focus(selector);
+  await page.keyboard.type(SIXTY);
+  await page.keyboard.press('Enter');
+  await stagedIs(page, true);
+}
+
+test('a room name of 60 characters wraps in its cell, with the mark beside the two lines', async () => {
+  const { page } = desk;
+  assert.equal(SIXTY.length, 60);
+  await typeLong(page, slot(A6, DAY_A, 0));
+  try {
+    const found = await longCell(page, slot(A6, DAY_A, 0));
+    assert.deepEqual({ text: found.text, lines: found.lines, mark: found.mark, markAfter: found.markAfter, markBeside: found.markBeside, markInside: found.markInside, cut: found.cut },
+      { text: SIXTY, lines: 2, mark: '▲', markAfter: true, markBeside: true, markInside: true, cut: false });
+    assert.ok(found.width <= 288.5, 'the name is ' + found.width + ' px wide, past 18rem');
+  } finally {
+    await discard(page);
+  }
+});
+
+test('on a phone a long room name is no wider than the screen leaves beside Group', async () => {
+  const { page } = phone;
+  await typeLong(page, slot(A6, DAY_A, 0));
+  try {
+    const found = await longCell(page, slot(A6, DAY_A, 0));
+    assert.equal(found.text, SIXTY);
+    assert.equal(found.cut, false);
+    assert.equal(found.markInside, true);
+    assert.ok(found.width < 288, 'the name is ' + found.width + ' px wide on a 390 px screen, the 18rem of a wide one');
+    const name = await box(page, key(A6, 'name'));
+    const frame = await box(page, '.grd-sheet .grd-scroll');
+    assert.ok(name.width + found.cell <= frame.width, 'Group (' + name.width + ') and the cell (' + found.cell + ') fit the frame (' + frame.width + ') together');
+  } finally {
+    await discard(page);
+  }
+});
+
+test('a cell with two findings says both, the worst first, in all three tables', async () => {
+  const { page } = desk;
+  // 6C (23 students) and 7C (22) are both in Room 203 in Period 2; now it seats 22
+  await change(page, 'setRoomFields', { roomId: 'rsample203', capacity: 22 });
+  try {
+    await settled(page);
+    const both = /^Problem: Room 203 has two groups in Period 2 on A Day: 6C and 7C\. .* Warning: 6C has 23 students and Room 203 seats 22, in Period 2 on A Day\. The group needs a larger room\.$/;
+    const one = /^Problem: Room 203 has two groups in Period 2 on A Day: 6C and 7C\. \S[^:]*$/;
+    assert.match(await page.$eval(slot(C6, DAY_A, 1), (el) => el.title), both);
+    assert.equal(await page.$eval(slot(C6, DAY_A, 1), (el) => el.dataset.severity + ' ' + el.querySelector('.grd-cell__mark').textContent), 'problem ●');
+    assert.match(await page.$eval(slot(C6, DAY_A, 1) + ' .vh:last-child', (el) => el.textContent.trim()), both, 'and in words for a screen reader');
+    assert.match(await page.$eval(slot(C7, DAY_A, 1), (el) => el.title), one, '7C fits the room: its cell has the one');
+    for (const rows of ['teachers', 'rooms']) {
+      await rowsAre(page, rows);
+      const cell = '.grd-table--read .grd-cell--read[data-severity="problem"]';
+      assert.match(await page.$eval(cell, (el) => el.title), both, rows);
+      assert.match(await page.$eval(cell, (el) => el.dataset.why), both, rows);
+      assert.deepEqual(await page.$eval(cell, (el) => el.getAttribute('aria-describedby').split(' ').map((id) => document.getElementById(id).textContent.split(':')[0])), ['Problem', 'Warning'], rows);
+    }
+  } finally {
+    await rowsAre(page, 'groups');
+    await undo(page, 1);
+  }
 });

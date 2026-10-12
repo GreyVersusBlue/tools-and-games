@@ -7,6 +7,8 @@
 //   (pictureOf, which calls buildLanes): budget 300 ms, cold
 //   the card of one corridor cell under the pointer (cellCard): budget 5 ms
 //   a card, as a pointer moving along the corridors gets them
+//   one tick of the hotspot pulse (createPulse's frame, drawn by
+//   pulseFrame): budget 16 ms, a frame of the screen (SV2-47)
 //
 // The card's budget is held on the median of 200 corridor cells, not on the
 // first card of the process. The first one is printed and not asserted: it
@@ -15,6 +17,14 @@
 // page the loads come from the worker, so the first hover is as cold as
 // this). A page pays that once. The card of the busiest cell, once warm, is
 // asserted too, since it is the cell most groups cross.
+//
+// The pulse's tick is measured with a context that counts what it is asked
+// to draw, since painting needs a browser. What that holds is the shape of
+// the cost: a tick draws one arc for each ring, a handful on any building,
+// and reads nothing of the map (test/browser/hotspots.mjs holds the other
+// half in a page: the map's own canvas is not drawn again while the rings
+// pulse). The ranking the rings come from is worked out once a picture and is
+// printed, not part of a tick.
 //
 // The routes, the crowd model, the loads and the places are worked out first
 // and are not in the measure (routing.mjs, crowd.mjs and pipeline.mjs have
@@ -34,10 +44,12 @@ import { places } from '../../engine/places.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { buildLanes } from '../../ui/surface/overlays/lanes.js';
 import { defaultChoice, pictureOf, cellCard } from '../../ui/movement/model.js';
+import { hotspotRows, createPulse, pulseFrame, PULSE_TOP, PULSE_MS, PULSE_TIMES } from '../../ui/movement/hotspots.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
 
 const PICTURE_BUDGET = 300;
 const CARD_BUDGET = 5;
+const TICK_BUDGET = 16;
 const SLACK = 2;
 
 function timed(run) {
@@ -119,4 +131,63 @@ test('the card of one corridor cell of the big fixture: under 5 ms once the firs
   assert.deepEqual(again.value, cold.value, 'the second card of a cell says what the first did');
   assert.ok(median < CARD_BUDGET * SLACK, 'a card takes ' + median.toFixed(2) + ' ms at the median, over ' + CARD_BUDGET * SLACK);
   assert.ok(again.ms < CARD_BUDGET * SLACK, 'the card of the busiest cell took ' + again.ms.toFixed(2) + ' ms, over ' + CARD_BUDGET * SLACK);
+});
+
+test('one tick of the hotspot pulse on the big fixture: under 16 ms, and it draws the rings alone', () => {
+  const project = bigProject({ seed: 1 });
+  const { graph, results } = answered(project);
+  const picture = pictureOf(project, results, graph, defaultChoice(project));
+  // the ranking: once a picture, kept, and never a tick's work
+  const ranked = timed(() => hotspotRows(project, results, graph, picture));
+  const rows = ranked.value;
+  const again = timed(() => hotspotRows(project, results, graph, picture));
+  assert.equal(again.value, rows, 'the ranking is kept for the picture');
+  assert.ok(rows.length > 10, 'the fixture has places to rank: ' + rows.length);
+
+  // the rings the map would carry: the busiest cell of each top place, both ends of a stairs connection
+  const rings = [];
+  for (const row of rows.slice(0, PULSE_TOP)) {
+    const busiest = row.cells.find((cell) => !cell.excluded);
+    for (const end of row.place.kind === 'connection' ? row.ends : busiest ? [busiest] : []) {
+      const floor = project.building.floors.find((each) => each.id === end.floorId);
+      rings.push({ rank: row.rank, x: (end.cell % floor.width) * 24 + 12, y: Math.floor(end.cell / floor.width) * 24 + 12, r: 22 });
+    }
+  }
+  assert.ok(rings.length >= PULSE_TOP && rings.length <= PULSE_TOP * 2, rings.length + ' rings');
+
+  // a context that counts what it is asked for
+  let calls = 0;
+  const g = new Proxy({}, { get: (target, name) => (name in target ? target[name] : () => { calls += 1; }), set: (target, name, value) => { target[name] = value; return true; } });
+  let now = 0;
+  let next = null;
+  const each = [];
+  const asked = [];
+  const pulse = createPulse({
+    now: () => now,
+    later: (fn) => { next = fn; return 1; },
+    cancel: () => { next = null; },
+    still: () => false,
+    frame(left) {
+      const before = calls;
+      each.push(timed(() => pulseFrame(g, rings, left, { accent: '#0f6e66' })).ms);
+      asked.push(calls - before);
+    },
+    done() {},
+  });
+  pulse.start();
+  while (next) {
+    const tick = next;
+    next = null;
+    now += 60;
+    tick();
+  }
+  each.sort((a, b) => a - b);
+  const median = each[Math.floor(each.length / 2)];
+  const worst = each[each.length - 1];
+  console.log('# hotspot pulse, ' + each.length + ' ticks of ' + rings.length + ' rings: median ' + median.toFixed(3) + ' ms (budget ' + TICK_BUDGET + ', fails at ' + TICK_BUDGET * SLACK + '), worst ' + worst.toFixed(3) + ' ms; ' + asked[0] + ' drawing calls a tick; the ranking they come from, once a picture: ' + ranked.ms.toFixed(1) + ' ms, then ' + again.ms.toFixed(3) + ' ms');
+
+  assert.equal(each.length, (PULSE_MS * PULSE_TIMES) / 60, 'a tick every 60 ms until the pulses are done');
+  assert.ok(asked.every((count) => count === rings.length * 3), 'a tick asks for one arc a ring and nothing more: ' + asked[0] + ' calls for ' + rings.length + ' rings');
+  assert.ok(median < TICK_BUDGET * SLACK, 'a tick takes ' + median.toFixed(3) + ' ms at the median, over ' + TICK_BUDGET * SLACK);
+  assert.ok(worst < TICK_BUDGET * SLACK, 'the slowest tick took ' + worst.toFixed(3) + ' ms, over ' + TICK_BUDGET * SLACK);
 });

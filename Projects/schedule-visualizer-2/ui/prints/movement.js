@@ -8,25 +8,32 @@
 //                      (store.derived.results() and buildGraph's graph), or
 //                      the results alone. Left out, they are worked out here
 //                      from the project by the same pipeline the planner uses.
-//   options.movement   { choice, parts, picture }
+//   options.movement   { choice, parts, picture, project, results, graph }
 //     choice    what the map shows (ui/movement/model.js); left out, every
 //               group on the first day type, all transitions
 //     parts     { legend, scale, hotspots }: false leaves a part off the
 //               paper; each is on when left out
 //     picture   { url, width, height }: the map as an image, a data: address
 //               of a PNG or JPEG drawn by the Export tab from the model.
-//               Anything else is not put in the document.
+//               Anything else is not put in the document. The image carries
+//               no key to the colours: the scale is on the paper once, as
+//               its own section.
+//     project, results, graph   what the image was drawn from: the movement
+//               view's own state. Given, the whole document is made from
+//               them, so its sentences, its tables and its image are one
+//               project's, whatever has changed since.
 //   and what every output takes (document.js)
 //
-// The preview sheet hands an output its paper, the date and where the
-// stylesheets are, and nothing else. What the Export tab chose is therefore
-// left here by it before the sheet opens (`askFor`), and read when
-// options.movement is not given. A caller that gives options.movement gets
-// exactly that.
+// The preview sheet forwards options.movement from whoever opened it
+// (ui/components/print-preview.js). Nothing is kept here between two calls
+// but the last answer of the pipeline, for a caller that gives no results.
 //
 // Shared with the congestion report (./congestion.js):
 //   movementResults(project, derived) → { results, graph }
-//   keepResults(project, results, graph)   hand it the planner's own answer
+//   printedFrom(project, derived, options) → { project, results, graph }
+//                                     what a document is made from: what
+//                                     options.movement carries, else the
+//                                     project given with movementResults
 //   shownSentence(project, picture), colourSentence(picture)   what is shown, in words
 //   placesTable(rows, options)        the hotspot table as markup
 //   bandLines(band)                   the pattern that stands beside a band's
@@ -40,7 +47,7 @@ import { formatDuration } from '../../engine/findings.js';
 import { LOAD_BANDS, parse, toHex } from '../colour.js';
 import { count, list } from '../components/words.js';
 import { defaultChoice, settleChoice, pictureOf, groupRows, routeHealth, unitWord } from '../movement/model.js';
-import { hotspotRows, groupWords } from '../movement/hotspots.js';
+import { hotspotRows, placesElsewhere, groupWords } from '../movement/hotspots.js';
 import { bandText } from '../movement/legend.js';
 import { esc, frame, mm, paperOf, printableBox } from './document.js';
 
@@ -54,13 +61,6 @@ const HEADER_MM = 44;
 const CAPTION_MM = 10;
 
 const BAND_WORDS = ['quiet', '', '', '', 'busy'];
-
-let held = null;
-
-// What the Export tab chose, for the next document the preview sheet asks for.
-export function askFor(movement) {
-  held = movement || null;
-}
 
 export const seconds = formatDuration;
 
@@ -87,11 +87,13 @@ export function movementResults(project, derived) {
   return value;
 }
 
-// The planner's own answer for a project, kept so that the document the
-// preview sheet asks for next does not work it out a second time.
-export function keepResults(project, results, graph) {
-  if (!project || !results || !graph) return;
-  memo = { building: project.building, groups: project.groups, dayTypes: project.dayTypes, key: settingsKey(project), value: { results, graph } };
+// What a document is made from. The movement view's own state, handed over
+// in options.movement, is used whole: its project with its results. Otherwise
+// it is the project given, with the results given or worked out.
+export function printedFrom(project, derived, options) {
+  const given = options && options.movement ? options.movement : null;
+  if (given && given.project && given.results && given.results.routes) return { project: given.project, results: given.results, graph: given.graph || buildGraph(given.project) };
+  return { project, ...movementResults(project, derived) };
 }
 
 // ---------------------------------------------------------------- pieces
@@ -131,14 +133,16 @@ function typed(parts) {
   return parts.map((part) => esc(part.text)).join('');
 }
 
-// The hotspot table. options: { limit, total } (total: the day's total, where
-// no one transition is the peak).
+// The hotspot table. options: { limit, total, one } (total: the day's total,
+// where no one transition is the peak; one: one transition alone is shown,
+// so there is no other for a place to peak in. Either leaves the column out).
 export function placesTable(rows, options) {
   const opts = options || {};
+  const peaks = !opts.total && !opts.one;
   const shown = rows.slice(0, Number.isInteger(opts.limit) ? opts.limit : PLACES_ON_PAPER);
   const out = ['<table class="doc-table doc-table--places">',
     '<thead><tr><th scope="col" class="is-number">Rank</th><th scope="col">Place</th><th scope="col" class="is-number">Load</th><th scope="col">Band</th>'
-      + (opts.total ? '' : '<th scope="col">Peaks in</th>') + '<th scope="col">Groups</th><th scope="col" class="is-number">Delay</th></tr></thead>',
+      + (peaks ? '<th scope="col">Peaks in</th>' : '') + '<th scope="col">Groups</th><th scope="col" class="is-number">Delay</th></tr></thead>',
     '<tbody>'];
   for (const row of shown) {
     out.push('<tr>'
@@ -146,7 +150,7 @@ export function placesTable(rows, options) {
       + '<th scope="row">' + typed(row.parts) + (row.floorName ? ' on ' + esc(row.floorName) : '') + '</th>'
       + '<td class="is-number">' + row.load + ' ' + unitWord(row.unit, row.load) + '</td>'
       + '<td>' + square(LOAD_BANDS[Math.max(1, row.band) - 1]) + ' ' + row.band + '</td>'
-      + (opts.total ? '' : '<td>' + esc(row.when) + '</td>')
+      + (peaks ? '<td>' + esc(row.when) + '</td>' : '')
       + '<td>' + esc(groupWords(row).join(', ')) + '</td>'
       + '<td class="is-number">' + (row.delay === null ? '' : row.delay === 0 ? 'none' : esc(seconds(row.delay))) + '</td>'
       + '</tr>');
@@ -204,16 +208,19 @@ function figure(project, picture, image, options) {
 function legendSection(project, results, picture) {
   const rows = groupRows(project, results, picture);
   if (rows.length === 0) return '';
+  // "Late" follows what is printed: with one transition on the paper it is
+  // that transition's answer (picture.late is the map's own list), not the day's count
+  const one = picture.transition ? new Set(picture.late.map((walk) => walk.groupId)) : null;
   const out = ['<section class="doc-section">', '<h2>Groups on the map</h2>',
     '<table class="doc-table doc-table--groups">',
-    '<thead><tr><th scope="col">Group</th><th scope="col" class="is-number">Walking over the day</th><th scope="col" class="is-number">Lost to crowds</th><th scope="col">Stairs</th><th scope="col">Late</th><th scope="col">Failed routes</th></tr></thead>',
+    '<thead><tr><th scope="col">Group</th><th scope="col" class="is-number">Walking over the day</th><th scope="col" class="is-number">Lost to crowds</th><th scope="col">Stairs</th><th scope="col">' + (one ? 'Late in this transition' : 'Late') + '</th><th scope="col">Failed routes</th></tr></thead>',
     '<tbody>'];
   for (const row of rows) {
     out.push('<tr><th scope="row">' + square(colourOf(row.group.colour)) + ' ' + esc(row.group.name) + '</th>'
       + '<td class="is-number">' + esc(seconds(row.walking)) + '</td>'
       + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(seconds(row.waiting))) + '</td>'
       + '<td>' + (row.stairs ? 'Yes' : 'No') + '</td>'
-      + '<td>' + (row.late === 0 ? 'Never' : row.late === 1 ? 'Once' : row.late + ' times') + '</td>'
+      + '<td>' + (one ? (one.has(row.group.id) ? 'Yes' : 'No') : row.late === 0 ? 'Never' : row.late === 1 ? 'Once' : row.late + ' times') + '</td>'
       + '<td>' + (row.failed === 0 ? 'None' : row.failed) + '</td></tr>');
   }
   out.push('</tbody></table>', '</section>');
@@ -229,7 +236,7 @@ function scaleSection(picture) {
     : 'The scale is relative: fifths of the busiest cell on the map, ' + load.max + '.';
   const zones = load.zones === 0 ? 'No exclusion zones.' : count(load.zones, 'exclusion zone') + (load.zones === 1 ? ' is' : ' are') + ' left out of the scale.';
   const out = ['<section class="doc-section">', '<h2>Colour scale</h2>',
-    '<p class="doc-meaning">' + esc(how + ' ' + zones + ' On the map each band has its own number of slanting lines in a cell, for paper with no colour.') + '</p>',
+    '<p class="doc-meaning">' + esc(how + ' ' + zones + ' On the map each band has its own number of slanting lines in a cell, for paper with no colour. The map carries no key of its own: this is it.') + '</p>',
     '<table class="doc-table doc-table--scale">',
     '<thead><tr><th scope="col">Band</th><th scope="col">' + esc(many[0].toUpperCase() + many.slice(1)) + ' crossing a cell</th><th scope="col">Lines on the map</th></tr></thead>',
     '<tbody>'];
@@ -243,20 +250,25 @@ function scaleSection(picture) {
 
 function placesSection(project, results, graph, picture) {
   const rows = hotspotRows(project, results, graph, picture);
+  if (rows.length === 0 && placesElsewhere(project, results, graph, picture) > 0) return '<section class="doc-section">\n<h2>Busiest places</h2>\n<p class="doc-none">Nobody on the map crosses a corridor on the floor shown.</p>\n</section>';
   if (rows.length === 0) return '<section class="doc-section">\n<h2>Busiest places</h2>\n<p class="doc-none">Nobody on the map crosses a corridor.</p>\n</section>';
   const total = picture.choice.transition === null && picture.choice.measure === 'total';
+  const one = picture.choice.transition !== null;
   const tail = rows.length > PLACES_ON_PAPER ? 'The ' + PLACES_ON_PAPER + ' busiest of ' + rows.length + ' places anyone crosses. ' : '';
+  // the table is the picture's: the places of the floors on the map
+  const elsewhere = placesElsewhere(project, results, graph, picture);
+  const more = elsewhere > 0 ? ' ' + count(elsewhere, 'more place') + ' on floors not shown.' : '';
   return ['<section class="doc-section">', '<h2>Busiest places</h2>',
-    '<p class="doc-meaning">' + esc(tail + 'Delay is the waiting the crowd model found at the place' + (total ? ' over the day' : ' in the transition named') + ', with every group of the school walking.') + '</p>',
-    placesTable(rows, { total }),
+    '<p class="doc-meaning">' + esc(tail + 'Delay is the waiting the crowd model found at the place' + (total ? ' over the day' : one ? ' in this transition' : ' in the transition named') + ', with every group of the school walking.' + more) + '</p>',
+    placesTable(rows, { total, one }),
     '</section>'].join('\n');
 }
 
-export function render(project, derived, options) {
+export function render(given, derived, options) {
   const opts = options || {};
-  const asked = opts.movement || held || {};
+  const asked = opts.movement || {};
   const parts = asked.parts || {};
-  const { results, graph } = movementResults(project, derived);
+  const { project, results, graph } = printedFrom(given, derived, opts);
   const choice = settleChoice(project, asked.choice || defaultChoice(project));
   const picture = pictureOf(project, results, graph, choice);
 

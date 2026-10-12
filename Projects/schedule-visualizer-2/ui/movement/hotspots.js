@@ -6,30 +6,42 @@
 // pulses a few times when the ranking changes and is still under reduced
 // motion.
 //
-//   hotspotsPanel(env) -> { element, update(state) }
+//   hotspotsPanel(env) -> { element, update(state), unmount() }
 //
 // `env` and `state` are described at the top of ./index.js. The panel's
 // element carries `hotspots` for the tests and the console:
-//   { rows, selected, rings, moving }: the rows on show, the id of the place a
-//   click chose, the rings last drawn [{ rank, x, y, r }] in the map's own
-//   pixels, and whether they are pulsing.
+//   { rows, elsewhere, selected, rings, moving, layer, frames }: the rows on
+//   show, how many ranked places are on floors not shown, the id of the place
+//   a click chose, the rings last drawn [{ rank, x, y, r }] in the map's own
+//   pixels, whether they are pulsing, the canvas the pulse is drawn on (null
+//   until the map has been drawn), and how many frames of it were drawn.
 //
-// What is ranked is what is on the map: the groups shown, the day type, and
-// the busiest moment, the total over the day or the one transition chosen.
+// What is ranked is what is on the map: the groups shown, the day type, the
+// busiest moment, the total over the day or the one transition chosen, and
+// the floors shown. A place is a row when an end of it is on a floor shown,
+// so the first row is the legend's busiest load and a band here is a band
+// there; the places on other floors are counted in one line under the table.
 // The ranking itself, what a place is and what it is called are the engine's
 // (engine/places.js hotspots(), places()); a band is engine/load.js bandOf().
 // The delay is the crowd model's, and that model always walks every group.
 //
-//   hotspotRows(project, results, graph, picture) -> rows, busiest first
+//   hotspotRows(project, results, graph, picture) -> rows, busiest first: the
+//     places with an end on a floor the picture shows, ranked from 1
 //     { rank, id, place, parts, floorName, load, unit, band, peak, when,
 //       groups: [{ group, times, count }], delay, dayDelay,
 //       cells: [{ floorId, cell, load, excluded }],   busiest first; none for a stairs connection
 //       ends:  [{ floorId, cell }] }                  where the map goes: the place's cells, or a connection's two ends
 //     floorName is the floor's name when another place has the same name
 //     ("West" on two floors), else ''.
+//   placesElsewhere(project, results, graph, picture) -> how many ranked
+//     places have no end on a floor the picture shows
 //   rankedPlaces(project, results, graph, asked) -> the same rows for anything
-//     that names what it wants ranked without a picture (the congestion report)
+//     that names what it wants ranked without a picture (the congestion
+//     report): every place of the building
 //   hotspotsCsv(project, rows, picture) -> rows of cells for engine/csv.js
+//   pulseFrame(g, rings, left, theme)   one frame of the pulse: the ring that
+//     travels out from each ring, and nothing else
+//   createPulse(options) -> { start(), stop(), moving }   the pulse's clock
 //   cellWords(floor, cell) -> "Column 6, row 4"
 //   placeWords(row), groupWords(row)   a row's place and its groups as words
 
@@ -111,12 +123,13 @@ export function rankedPlaces(project, results, graph, asked) {
   });
 }
 
-// The ranking of what a picture of the map shows (model.js pictureOf).
-export function hotspotRows(project, results, graph, picture) {
-  if (!picture || !picture.load) return [];
+// The ranking of what a picture of the map shows (model.js pictureOf): the
+// places with an end on a floor shown, and how many places are elsewhere.
+function ranking(project, results, graph, picture) {
+  if (!picture || !picture.load) return { rows: [], elsewhere: 0 };
   const held = kept.get(picture);
   if (held) return held;
-  const rows = rankedPlaces(project, results, graph, {
+  const all = rankedPlaces(project, results, graph, {
     dayTypeId: picture.dayTypeId,
     groups: picture.groups,
     load: picture.load.source,
@@ -125,8 +138,19 @@ export function hotspotRows(project, results, graph, picture) {
     measure: picture.choice.measure,
     transitions: picture.transitions,
   });
-  if (results) kept.set(picture, rows);
-  return rows;
+  const shown = new Set(picture.floors.map((floor) => floor.id));
+  const rows = all.filter((row) => row.ends.some((end) => shown.has(end.floorId))).map((row, index) => ({ ...row, rank: index + 1 }));
+  const found = { rows, elsewhere: all.length - rows.length };
+  if (results) kept.set(picture, found);
+  return found;
+}
+
+export function hotspotRows(project, results, graph, picture) {
+  return ranking(project, results, graph, picture).rows;
+}
+
+export function placesElsewhere(project, results, graph, picture) {
+  return ranking(project, results, graph, picture).elsewhere;
 }
 
 // A cell the way the building editor's status line names one.
@@ -145,11 +169,22 @@ export function groupWords(row) {
   return row.groups.map((each) => each.group.name + (each.times > 1 ? ' ×' + each.times : ''));
 }
 
+// The table as a file. After the fixed columns there is one column a group
+// on the map, headed by the group's name exactly as typed, holding in how
+// many transitions that group crosses the place (1 when one transition is
+// counted) and nothing where it does not. A name is always a cell of its
+// own: no separator a name could hold stands between two of them.
+//   "When" is the transition a place peaks in (the busiest moment), the one
+//   transition on the map, or "the whole day" when the map adds the day up.
 export function hotspotsCsv(project, rows, picture) {
   const unit = rows.length > 0 ? rows[0].unit : picture && picture.load ? picture.load.unit : 'students';
-  const table = [['Rank', 'Place', 'Floor', 'Kind', 'Load (' + unit + ')', 'Peaks in', 'Groups', 'Delay (seconds)', 'Delay over the day (seconds)', 'Cells']];
+  const shown = picture && Array.isArray(picture.groups) ? picture.groups : [];
+  const table = [['Rank', 'Place', 'Floor', 'Kind', 'Load (' + unit + ')', 'When', 'Delay (seconds)', 'Delay over the day (seconds)', 'Cells', 'Groups', ...shown.map((group) => group.name)]];
   const floors = new Map(project.building.floors.map((floor) => [floor.id, floor]));
+  const choice = picture && picture.choice ? picture.choice : { transition: null, measure: 'busiest' };
+  const wholeDay = choice.transition === null && choice.measure === 'total';
   for (const row of rows) {
+    const times = new Map(row.groups.map((each) => [each.group.id, each.times]));
     const place = row.place;
     const where = place.kind === 'connection'
       ? (place.floorIds || []).map((id) => (floors.get(id) ? floors.get(id).name : '')).filter((name, index, all) => all.indexOf(name) === index).join('; ')
@@ -160,11 +195,12 @@ export function hotspotsCsv(project, rows, picture) {
       where,
       place.kind === 'connection' ? 'stairs' : place.kind,
       row.load,
-      row.when === '' ? 'the whole day' : row.when,
-      row.groups.map((each) => each.group.name + (each.times > 1 ? ' x' + each.times : '')).join('; '),
+      wholeDay ? 'the whole day' : picture && picture.transition ? picture.transition.name : row.when,
       row.delay === null ? '' : row.delay,
       row.dayDelay === null ? '' : row.dayDelay,
       place.kind === 'connection' ? '' : row.cells.length,
+      row.groups.length,
+      ...shown.map((group) => (times.has(group.id) ? times.get(group.id) : '')),
     ]);
   }
   return table;
@@ -177,6 +213,70 @@ function stateNow(last) {
   const section = typeof document === 'undefined' ? null : document.querySelector('.mov');
   const movement = section ? section.movement : null;
   return movement && movement.state ? movement.state : last;
+}
+
+// One frame of the pulse: from each ring, the ring that travels out and
+// fades as it goes. `left` is 1 as a pulse sets out and 0 as it ends. This
+// is all a tick of the pulse draws, on a canvas of its own over the map, so
+// what a tick costs does not grow with the building.
+//   rings   [{ x, y, r }] in the map's own pixels
+export function pulseFrame(g, rings, left, theme) {
+  g.strokeStyle = theme.accent;
+  g.lineWidth = 2;
+  g.globalAlpha = left;
+  for (const ring of rings) {
+    g.beginPath();
+    g.arc(ring.x, ring.y, ring.r * (1 + 0.7 * (1 - left)), 0, Math.PI * 2);
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+}
+
+// The pulse's clock: PULSE_TIMES pulses of PULSE_MS from start(), a frame
+// every PULSE_FRAME_MS, and nothing at all under reduced motion.
+//   options   { now(), later(fn, ms) -> handle, cancel(handle), still() -> boolean,
+//               frame(left), done() }
+//   start()   set the pulses going (again); false when motion is reduced
+//   stop()    no more frames: the timer is cleared
+//   moving    are pulses still to come?
+//   left()    how much of the pulse now running is left, 1 to 0
+export function createPulse(options) {
+  let until = 0;
+  let timer = null;
+  const left = () => (until === 0 ? 0 : ((until - options.now()) % PULSE_MS) / PULSE_MS);
+  function tick() {
+    timer = null;
+    if (options.now() >= until || options.still()) {
+      until = 0;
+      options.done();
+      return;
+    }
+    options.frame(left());
+    timer = options.later(tick, PULSE_FRAME_MS);
+  }
+  return {
+    start() {
+      if (options.still()) {
+        this.stop();
+        return false;
+      }
+      until = options.now() + PULSE_MS * PULSE_TIMES;
+      if (timer === null) tick();
+      return true;
+    },
+    stop() {
+      if (timer !== null) options.cancel(timer);
+      timer = null;
+      if (until !== 0) {
+        until = 0;
+        options.done();
+      }
+    },
+    get moving() {
+      return until !== 0;
+    },
+    left,
+  };
 }
 
 function cellsLabel(row, isOpen) {
@@ -197,25 +297,31 @@ export function hotspotsPanel(env) {
     body);
   const scroller = h('div', { class: 'mov-hot' }, table);
   const all = h('button', { type: 'button', class: 'mov-link mov-hot__all', hidden: true, data: { action: 'all-places' } });
+  // the places the table leaves out because their floors are not on the map
+  const elsewhereText = h('span');
+  const allFloors = h('button', { type: 'button', class: 'mov-link', data: { action: 'all-floors' } }, 'Show all floors');
+  const elsewhereLine = h('p', { class: 'mov-panel__note', hidden: true, data: { hotspots: 'elsewhere' } }, elsewhereText, ' ', allFloors);
   const notes = h('p', { class: 'mov-panel__note', data: { hotspots: 'notes' } });
   const element = h('div', { class: 'mov-panel', data: { panel: 'hotspots', pulse: 'none' } },
     h('h2', { class: 'mov-panel__title' }, 'Hotspots'),
-    lead, scroller, all, notes);
+    lead, scroller, all, elsewhereLine, notes);
 
   let last = null;
   let rows = [];
+  let elsewhere = 0;
   let selected = null;
   let whole = false;
   const open = new Set();
   let topKey = '';
-  let until = 0;
-  let timer = null;
   let rings = [];
   const still = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: true };
 
   function show(row, cells) {
     selected = row.id;
-    const end = row.ends[0];
+    // a stairs connection has an end on each of two floors: the one on the map is where the map goes
+    const now = stateNow(last);
+    const onMap = new Set(now ? now.picture.floors.map((floor) => floor.id) : []);
+    const end = row.ends.find((each) => onMap.has(each.floorId)) || row.ends[0];
     if (end) env.show(end.floorId, cells || row.ends.filter((each) => each.floorId === end.floorId).map((each) => each.cell));
     env.paint();
     for (const each of body.querySelectorAll('.mov-hot__row')) {
@@ -234,12 +340,16 @@ export function hotspotsPanel(env) {
     } else if (picture.mode === 'empty') {
       lead.textContent = 'Nothing is shown, so there is nothing to rank. Choose a group, a grade or every group.';
     } else if (rows.length === 0) {
-      lead.textContent = 'Nobody on screen crosses a corridor, so there is nothing to rank.';
+      lead.textContent = elsewhere > 0 ? 'Nobody on screen crosses a corridor on the floor shown, so there is nothing to rank here.' : 'Nobody on screen crosses a corridor, so there is nothing to rank.';
     } else {
       const what = picture.transition ? 'in ' + picture.transition.name : picture.choice.measure === 'total' ? 'added up over the day' : 'at its busiest moment';
       const who = picture.groups.length === state.project.groups.length ? 'every group' : count(picture.groups.length, 'group');
-      lead.replaceChildren((rows.length === 1 ? 'The one place anyone crosses' : 'The ' + rows.length + ' places anyone crosses, busiest first') + ': ' + who + ' on ', h('bdi', null, picture.dayTypeName), ', each place ' + what + '. Choose a place to see it on the map.');
+      // with one floor on the map, the table is that floor's
+      const floor = picture.floors.length < state.project.building.floors.length && picture.floors.length === 1 ? [' on ', h('bdi', null, picture.floors[0].name)] : [];
+      lead.replaceChildren(rows.length === 1 ? 'The one place anyone crosses' : 'The ' + rows.length + ' places anyone crosses', ...floor, (rows.length === 1 ? '' : ', busiest first') + ': ' + who + ' on ', h('bdi', null, picture.dayTypeName), ', each place ' + what + '. Choose a place to see it on the map.');
     }
+    elsewhereLine.hidden = !picture.ready || elsewhere === 0;
+    elsewhereText.textContent = count(elsewhere, 'more place') + ' on floors not shown.';
 
     // the unit is said once, at the head of the column
     loadHead.textContent = rows.length === 0 ? 'Load' : rows[0].unit === 'groups' ? 'Groups' : 'Students';
@@ -280,7 +390,8 @@ export function hotspotsPanel(env) {
           h('div', null,
             h('button', { type: 'button', class: 'mov-link mov-hot__name', data: { action: 'show' } }, row.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text))),
             row.floorName ? h('span', { class: 'mov-hot__floor' }, ' on ', h('bdi', null, row.floorName)) : null,
-            row.when ? h('span', { class: 'mov-hot__when' }, 'Peaks in ' + row.when) : null,
+            // with one transition on the map there is no other for a place to peak in
+            row.when && !picture.transition ? h('span', { class: 'mov-hot__when' }, 'Peaks in ' + row.when) : null,
             h('span', { class: 'mov-hot__groups' }, count(who.length, 'group') + ': ', who.flatMap((name, index) => [index > 0 ? ', ' : null, h('bdi', null, name)])),
             more))),
         h('td', { class: 'table__num' },
@@ -298,7 +409,7 @@ export function hotspotsPanel(env) {
 
     const zones = picture.load ? picture.load.source.zones : 0;
     notes.textContent = rows.length === 0 ? '' : 'The number in the square is the colour band, 1 quiet to 5 busy. Delay is the waiting the crowd model found at the place'
-      + (rows[0].peak === null ? ' over the day' : ' in the transition named') + ', with every group of the school walking.'
+      + (rows[0].peak === null ? ' over the day' : picture.transition ? ' in that transition' : ' in the transition named') + ', with every group of the school walking.'
       + (zones > 0 ? ' ' + count(zones, 'exclusion zone') + (zones === 1 ? ' is' : ' are') + ' left out of this table.' : '');
   }
 
@@ -308,21 +419,61 @@ export function hotspotsPanel(env) {
     all.focus();
   });
 
+  allFloors.addEventListener('click', () => {
+    env.change({ floors: 'auto' });
+    env.ctx.announce('Every floor is on the map.');
+    const first = body.querySelector('[data-action="show"]');
+    if (first) first.focus();
+  });
+
   // ---- the map: the place a click chose, and a ring on each of the top places
-  function tick() {
-    timer = null;
-    env.paint();
-    if (performance.now() < until && !still.matches) timer = setTimeout(tick, PULSE_FRAME_MS);
+  //
+  // The rings and their ranks are part of the map's own drawing (mark, below).
+  // The ring that travels out of each is drawn on a canvas of its own, laid
+  // over the map's, so a tick of the pulse clears and draws that and never
+  // asks for the floors to be drawn again.
+  let layer = null;
+  let layerRatio = 1;
+  let layerTheme = null;
+  let frames = 0;
+  // the rings are from before a change until the map is next drawn
+  let awaited = false;
+
+  function wipe() {
+    if (!layer) return;
+    const c = layer.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, layer.width, layer.height);
   }
 
-  function pulse() {
-    if (still.matches) {
-      until = 0;
-      env.paint();
-      return;
-    }
-    until = performance.now() + PULSE_MS * PULSE_TIMES;
-    if (timer === null) tick();
+  function frame(left) {
+    if (!layer || !layerTheme || awaited) return;
+    wipe();
+    const c = layer.getContext('2d');
+    c.setTransform(layerRatio, 0, 0, layerRatio, 0, 0);
+    pulseFrame(c, rings, left, layerTheme);
+    frames += 1;
+  }
+
+  const pulse = createPulse({
+    now: () => performance.now(),
+    later: (fn, ms) => setTimeout(fn, ms),
+    cancel: (handle) => clearTimeout(handle),
+    still: () => still.matches,
+    frame,
+    done() {
+      wipe();
+      element.dataset.pulse = rings.length === 0 ? 'none' : 'still';
+    },
+  });
+
+  // The pulse's canvas: over the map's own, the same size, letting every pointer through.
+  function layerOver(canvas, width) {
+    if (!layer) layer = h('canvas', { class: 'mov-rings', 'aria-hidden': 'true', style: 'position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;' });
+    if (layer.previousElementSibling !== canvas) canvas.after(layer);
+    if (layer.width !== canvas.width) layer.width = canvas.width;
+    if (layer.height !== canvas.height) layer.height = canvas.height;
+    layerRatio = width > 0 ? canvas.width / width : 1;
   }
 
   function outline(g, map, row, floors) {
@@ -371,7 +522,12 @@ export function hotspotsPanel(env) {
     const state = stateNow(last);
     const list = state ? hotspotRows(state.project, state.results, state.graph, state.picture) : [];
     rings = [];
+    awaited = false;
+    layerOver(g.canvas, map.view.width);
+    layerTheme = map.theme;
     if (list.length === 0) {
+      pulse.stop();
+      wipe();
       element.dataset.pulse = 'none';
       return;
     }
@@ -379,27 +535,12 @@ export function hotspotsPanel(env) {
     const chosen = list.find((row) => row.id === selected);
     if (chosen) outline(g, map, chosen, floors);
 
-    const now = performance.now();
-    const moving = !still.matches && now < until;
-    element.dataset.pulse = moving ? 'moving' : 'still';
     const r = Math.max(10, Math.round(map.view.size * 0.9));
-    // 1 as a pulse sets out, 0 as it ends
-    const left = moving ? ((until - now) % PULSE_MS) / PULSE_MS : 0;
     for (const row of list.slice(0, PULSE_TOP)) {
       // the busiest cell of the place that the scale counts; both ends of a stairs connection
       const busiest = row.cells.find((cell) => !cell.excluded);
       const points = (row.place.kind === 'connection' ? row.ends : busiest ? [busiest] : []).map((end) => map.point(end.floorId, end.cell)).filter(Boolean);
       for (const at of points) {
-        if (moving) {
-          // the ring that travels: out from the still one, fading as it goes
-          g.beginPath();
-          g.arc(at.x, at.y, r * (1 + 0.7 * (1 - left)), 0, Math.PI * 2);
-          g.globalAlpha = left;
-          g.strokeStyle = map.theme.accent;
-          g.lineWidth = 2;
-          g.stroke();
-          g.globalAlpha = 1;
-        }
         g.beginPath();
         g.arc(at.x, at.y, r, 0, Math.PI * 2);
         g.strokeStyle = map.theme.card;
@@ -423,6 +564,11 @@ export function hotspotsPanel(env) {
         rings.push({ rank: row.rank, x: at.x, y: at.y, r });
       }
     }
+    // the travelling rings go where the map now has the places, without waiting for the next tick
+    const moving = pulse.moving && !still.matches;
+    element.dataset.pulse = moving ? 'moving' : 'still';
+    if (moving) frame(pulse.left());
+    else wipe();
   }
   // named, so that whoever needs the map without the rings can find this entry
   mark.id = 'hotspots';
@@ -430,9 +576,12 @@ export function hotspotsPanel(env) {
 
   element.hotspots = {
     get rows() { return rows; },
+    get elsewhere() { return elsewhere; },
     get selected() { return selected; },
     get rings() { return rings; },
     get moving() { return element.dataset.pulse === 'moving'; },
+    get layer() { return layer; },
+    get frames() { return frames; },
   };
 
   return {
@@ -440,6 +589,7 @@ export function hotspotsPanel(env) {
     update(state) {
       last = state;
       rows = hotspotRows(state.project, state.results, state.graph, state.picture);
+      elsewhere = placesElsewhere(state.project, state.results, state.graph, state.picture);
       if (selected !== null && !rows.some((row) => row.id === selected)) selected = null;
       for (const id of Array.from(open)) if (!rows.some((row) => row.id === id)) open.delete(id);
       draw(state);
@@ -447,8 +597,17 @@ export function hotspotsPanel(env) {
       const next = rows.slice(0, PULSE_TOP).map((row) => row.id + ':' + row.load).join('|');
       if (next !== topKey) {
         topKey = next;
-        if (next !== '') pulse();
+        // the view draws the map after telling its panels, and the rings with it
+        awaited = true;
+        if (next !== '') pulse.start();
       }
+    },
+    // The view is leaving: no timer is left running, and nothing of the panel stays on the map.
+    unmount() {
+      pulse.stop();
+      if (layer) layer.remove();
+      const at = env.marks.indexOf(mark);
+      if (at !== -1) env.marks.splice(at, 1);
     },
   };
 }

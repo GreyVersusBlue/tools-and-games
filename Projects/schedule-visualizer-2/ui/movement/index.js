@@ -732,6 +732,7 @@ export const section = {
         input.detach();
         cursor.detach();
         canvas.removeEventListener('keydown', onKey);
+        panels.hotspots.unmount();
       },
     };
   },

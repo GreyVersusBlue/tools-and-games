@@ -6,8 +6,9 @@
 // section puts the text and the caret back (ui/schedule/index.js).
 //
 // sheet({ view, ids, stage(ops, said), undo(), remove(row), keep(row), say(text), roomLabel(room) })
-//   view    { at, anchor }: the cell the cursor is on and the other corner of
-//           the selection, each { row, col } by id, kept while the page is open
+//   view    { at, anchor, fields }: the cell the cursor is on and the other
+//           corner of the selection, each { row, col } by id, kept while the
+//           page is open; and whether a narrow screen shows the field columns
 //   stage   take a list of ops (model.js) and draw again
 // returns { element, draw(model), copy(), paste(text), clear(), fillDown(), keyOfCursor(), has(node) }
 
@@ -15,8 +16,13 @@ import { h, uid } from '../../components/dom.js';
 import { SEVERITY_WORDS } from '../common.js';
 import { cellState, cellText, readCell, planPaste, namesOf } from './model.js';
 import { parseTsv, writeTsv } from './tsv.js';
+import { findingWords, worstFirst } from './words.js';
 
 const LIST_LIMIT = 60;
+
+// Under this width the grid shows Group and the periods, and the other field
+// columns wait behind the Fields button. grid.css has the same number.
+export const NARROW = '(max-width: 640px)';
 
 export function cellKey(rowId, columnId) {
   return 'grid:' + rowId + ':' + columnId;
@@ -70,8 +76,11 @@ export function sheet(options) {
     painted = [];
     const box = range();
     if (!box) return;
+    const hidden = hiddenColumns();
     for (let r = box.r0; r <= box.r1; r += 1) {
       for (let c = box.c0; c <= box.c1; c += 1) {
+        // a block is what is on screen of it
+        if (hidden[c]) continue;
         const cell = cellAt(r, c);
         cell.setAttribute('aria-selected', 'true');
         painted.push(cell);
@@ -81,13 +90,21 @@ export function sheet(options) {
     cellAt(at.r, at.c).tabIndex = 0;
   }
 
-  // On a narrow screen the field columns after Group can be hidden (the
-  // Fields button; grid.css does the hiding). A hidden cell has no box. With
-  // the whole sheet out of sight nothing has one, and then no column counts
-  // as hidden.
+  // On a narrow screen the field columns after Group are hidden until the
+  // Fields button shows them (grid.css does the hiding, by the same rule).
+  // The rule is asked, not the page: a sheet that is not in the page yet, or
+  // is out of sight, has no boxes to go by.
   function hiddenColumns() {
-    const shown = model.columns.map((column, c) => cellAt(0, c).getClientRects().length > 0);
-    return shown.map((yes) => shown[0] && !yes);
+    const hide = view.fields !== true && window.matchMedia(NARROW).matches;
+    return model.columns.map((column) => hide && column.kind === 'field' && column.field !== 'name');
+  }
+
+  // The columns of a block that are on screen, as indexes, left to right.
+  function shownIn(box) {
+    const hidden = hiddenColumns();
+    const columns = [];
+    for (let c = box.c0; c <= box.c1; c += 1) if (!hidden[c]) columns.push(c);
+    return columns;
   }
 
   // The column the cursor lands in when it is sent to `c`: `c` itself, or
@@ -120,10 +137,6 @@ export function sheet(options) {
 
   // ---------------------------------------------------------------- drawing
 
-  function findingWords(findings) {
-    return findings.map((finding) => SEVERITY_WORDS[finding.severity].one.replace(/^./, (first) => first.toUpperCase()) + ': ' + finding.text).join(' ');
-  }
-
   function cellContent(row, column) {
     const state = cellState(model, row, column);
     if (column.kind === 'actions') {
@@ -147,7 +160,7 @@ export function sheet(options) {
     if (column.kind === 'slot' && state.text === '') parts.push(h('span', { class: 'vh' }, 'No room'));
     if (state.unknown) parts.push(h('span', { class: 'vh' }, ' (not in the building)'));
     if (state.findings.length > 0) {
-      const worst = ['problem', 'warning', 'note'].find((severity) => state.findings.some((finding) => finding.severity === severity));
+      const worst = worstFirst(state.findings)[0].severity;
       parts.push(h('span', { class: 'grd-cell__mark sch-mark--' + worst, 'aria-hidden': 'true' }, SEVERITY_WORDS[worst].glyph));
       parts.push(h('span', { class: 'vh' }, ' ' + findingWords(state.findings)));
     }
@@ -173,7 +186,7 @@ export function sheet(options) {
       title: column.field === 'colour' ? state.text : state.unknown ? state.text + ' is not in the building' : state.findings.length > 0 ? findingWords(state.findings) : null,
       data: { key: cellKey(row.id, column.id), row: row.id, col: column.id },
     }, cellContent(row, column));
-    if (state.findings.length > 0) cell.dataset.severity = state.findings.some((finding) => finding.severity === 'problem') ? 'problem' : state.findings[0].severity;
+    if (state.findings.length > 0) cell.dataset.severity = worstFirst(state.findings)[0].severity;
     cells.set(cell.dataset.key, cell);
     return cell;
   }
@@ -207,8 +220,11 @@ export function sheet(options) {
       if (!place(view.at)) view.at = view.anchor = refAt(0, 0);
       if (!place(view.anchor)) view.anchor = view.at;
       // a cursor left in a column that is now hidden would take the grid's
-      // one Tab stop out of reach: it goes to the group's name
-      if (hiddenColumns()[place(view.at).c]) view.at = view.anchor = { row: view.at.row, col: model.columns[0].id };
+      // one Tab stop out of reach: it goes to the group's name. The other
+      // corner of a block goes there too.
+      const hidden = hiddenColumns();
+      if (hidden[place(view.at).c]) view.at = view.anchor = { row: view.at.row, col: model.columns[0].id };
+      else if (hidden[place(view.anchor).c]) view.anchor = { row: view.anchor.row, col: model.columns[0].id };
       paint();
     }
     const again = place(reopen);
@@ -317,15 +333,26 @@ export function sheet(options) {
     if (slot) drawList();
   }
 
-  // Take the field away and put back what the cell showed.
+  // Take the field away and put back what the cell showed, or `text` when the
+  // field was read into the cell. The tab is drawn again a moment later; until
+  // then this is what the cell shows.
   function closeEditor(text) {
     if (!editor) return;
     const { cell, kept, column } = editor;
     editor = null;
     list.hidden = true;
     delete cell.dataset.editing;
-    if (text === undefined) cell.replaceChildren(...kept);
-    else cell.replaceChildren(h('span', { class: 'grd-cell__text' + (column.field === 'colour' ? ' vh' : '') }, text));
+    if (text === undefined) {
+      cell.replaceChildren(...kept);
+    } else if (column.field === 'colour') {
+      // a colour is its swatch: that is kept, and shows the new colour
+      cell.replaceChildren(...kept);
+      cell.title = text;
+      cell.querySelector('.grd-cell__text').textContent = text;
+      cell.querySelector('.grd-colour').value = text;
+    } else {
+      cell.replaceChildren(h('span', { class: 'grd-cell__text' }, text));
+    }
   }
 
   function cancel(focus) {
@@ -357,7 +384,8 @@ export function sheet(options) {
       return false;
     }
     drawing = true;
-    closeEditor(text);
+    // a colour as it was read (lower case, no spaces round it); the rest as typed
+    closeEditor(column.field === 'colour' ? read.op.value : text);
     drawing = false;
     if (!leaving) goTo(at.r + dr, at.c + dc, false);
     options.stage([read.op]);
@@ -390,15 +418,15 @@ export function sheet(options) {
 
   // ---------------------------------------------------------------- blocks
 
+  // The four things done to a block (copy, paste, Delete, Fill down) are done
+  // to what is on screen of it: a column that is hidden is in none of them.
+
   function copy() {
     const box = range();
     if (!box) return null;
+    const columns = shownIn(box);
     const rows = [];
-    for (let r = box.r0; r <= box.r1; r += 1) {
-      const out = [];
-      for (let c = box.c0; c <= box.c1; c += 1) out.push(cellText(model, model.rows[r], model.columns[c]));
-      rows.push(out);
-    }
+    for (let r = box.r0; r <= box.r1; r += 1) rows.push(columns.map((c) => cellText(model, model.rows[r], model.columns[c])));
     options.say('Copied ' + cellCount(rows.length * rows[0].length) + '.');
     return writeTsv(rows);
   }
@@ -413,24 +441,29 @@ export function sheet(options) {
   }
 
   // Paste a block with its corner on the cursor's block. One copied cell
-  // pasted over a selection fills the selection.
+  // pasted over a selection fills the selection. The block is laid over the
+  // columns on screen: a pasted row wider than those skips the hidden ones.
   function paste(text) {
     let block = parseTsv(text);
     if (block.length === 0 || !model) return;
     const box = range() || { r0: 0, r1: 0, c0: 0, c1: 0 };
     if (block.length === 1 && block[0].length === 1 && (box.r1 > box.r0 || box.c1 > box.c0)) {
       const one = block[0][0];
+      const width = shownIn(box).length;
       block = [];
-      for (let r = box.r0; r <= box.r1; r += 1) block.push(new Array(box.c1 - box.c0 + 1).fill(one));
+      for (let r = box.r0; r <= box.r1; r += 1) block.push(new Array(width).fill(one));
     }
-    const plan = planPaste(model, box.r0, box.c0, block, options.ids);
+    // the sheet as it is on screen, and the corner's place in that
+    const shown = shownIn({ c0: 0, c1: model.columns.length - 1 });
+    const corner = Math.max(0, shown.indexOf(box.c0));
+    const plan = planPaste({ ...model, columns: shown.map((c) => model.columns[c]) }, box.r0, corner, block, options.ids);
     if (plan.ops.length === 0 && plan.refused.length === 0) return;
     if (model.rows.length > 0) {
       // the block that was pasted is selected, with the cursor on its corner
       const r1 = Math.min(box.r0 + block.length - 1, model.rows.length - 1);
-      const c1 = Math.max(box.c0, Math.min(box.c0 + Math.max(...block.map((cells) => cells.length)) - 1, model.columns.length - 2));
+      const c1 = shown[Math.max(corner, Math.min(corner + Math.max(...block.map((cells) => cells.length)) - 1, shown.length - 2))];
       goTo(r1, c1, false, false);
-      goTo(box.r0, box.c0, true);
+      goTo(box.r0, shown[corner], true);
     }
     options.stage(plan.ops, 'Pasted ' + cellCount(plan.cells) + '.'
       + (plan.added > 0 ? ' Added ' + plan.added + (plan.added === 1 ? ' group.' : ' groups.') : '')
