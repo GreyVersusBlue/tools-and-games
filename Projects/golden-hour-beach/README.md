@@ -69,6 +69,16 @@ Or push the folder to a GitHub Pages repo as-is — no build step.
 
 Nothing here needs aiming, so nothing here requires the mouse to be captured.
 
+**East of the pier there is a bar** (#953): a ridge of sand 13 m out, about
+60 m long, with a channel behind it and a ford across the channel's middle.
+At low water the ford and the bar are dry sand and the channel either side of
+the ford is a strip of standing sea; the channel fills from its two ends as
+the tide rises, the ford goes under, then the bar, and at high water it is all
+sea. The ford is never over the knee, at any tide or any wave, so a walker the
+tide catches on the bar walks back with wet shins. The channel beside the ford
+is over the knee at high water, and there the way ashore is back along the bar.
+It is a try, and one `git revert` of its commit takes it out.
+
 You can wade to about knee depth — the limit is a water depth, not a line on
 the sand, so it breathes with the swash, rides the tide and hugs the shoreline
 curve (steeper seabed off the headland stops you sooner). There are no colliders anywhere:
@@ -154,7 +164,7 @@ node test/animals.mjs       # the same
 node tools/blender/validate.mjs
 ```
 
-116 checks on the arithmetic: twelve golden heights hold the home beach
+158 checks on the arithmetic: twelve golden heights hold the home beach
 bit-identical to its pre-coast self, the shoreline curve never bends enough to
 fold the foam, the cliff refuses a stride while its flank climbs, the pier deck
 enters at beach level and stops at the gap, the river is carved but always
@@ -167,7 +177,16 @@ beach's furniture rather than against itself: the sea's edge is checked against
 `groundHeight` and not against a second copy of the slope, high water has to
 leave dry sand under the flat-stone patches and wash the wrack line, the whole
 excursion has to fit inside the static wet strip along all 1.6 km, and the
-headland shelf is never allowed a minute with nothing on it. It cannot see whether any of it renders — for that,
+headland shelf is never allowed a minute with nothing on it.
+
+The bar has a group too (23 checks): every height on the rest of the coast is
+hashed against what it was before the bar, the crest is held between the top
+of low water's waves and the bottom of high water's, the ford under the knee
+at every minute of the tide, the seabed is flooded on a grid at 137 levels to
+show no water is drawn in a basin the sea could not reach, and a walker is
+stepped across the ford, turned back by the channel, and walked home.
+
+It cannot see whether any of it renders — for that,
 `npm run games golden-hour` in `Tools/board-check` drives the real page. The
 game exposes a `?debug` hook (`window.__gh`) so a driver can scrub the sun to
 night, teleport down the coast, aim the camera, and read the journal.
