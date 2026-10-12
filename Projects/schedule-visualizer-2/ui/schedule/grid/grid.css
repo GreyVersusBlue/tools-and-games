@@ -200,14 +200,17 @@
 }
 
 /* A period's column is as wide as the longest room name in it. A name is on
-   one line up to 18rem and wraps between words after that; it is never cut. */
+   one line up to 18rem and wraps between words after that; it is never cut.
+   On a narrow screen the limit is what the screen leaves beside Group at
+   its narrowest: Group's 6rem, the 50px round the table's frame, the cell's
+   own padding and a finding's mark come to 11.5rem. */
 .grd-cell--slot {
   max-width: none;
 }
 
 .grd-cell--slot .grd-cell__text {
   display: inline-block;
-  max-width: 18rem;
+  max-width: min(18rem, 100vw - 11.5rem);
   white-space: normal;
   overflow-wrap: anywhere;
   vertical-align: middle;
@@ -230,18 +233,25 @@
 }
 
 /* A finding on a cell of the Teachers or Rooms table: its shape and the line
-   under the cell as on the Groups grid, and in focus its sentence under it. */
+   under the cell as on the Groups grid, and with the keyboard's focus on it
+   its sentence under it. A pointer has the cell's title, and a click draws
+   nothing. */
 .grd-cell--read.is-marked {
   overflow: visible;
 }
 
-.grd-cell--read.is-marked:focus::after {
+.grd-cell--read.is-marked:focus-visible::after {
   /* the empty alternative keeps it out of what a screen reader is told: the
-     cell's description already says it */
+     cell's description already says it. A browser that does not read that
+     form keeps the plain one above it. */
+  content: attr(data-why);
   content: attr(data-why) / "";
   position: absolute;
-  top: 100%;
-  left: 0;
+  /* under the cell, from its left edge; readonly.js (placeWhy) measures when
+     the cell takes the focus and moves it to stay inside the frame the table
+     scrolls in */
+  top: var(--why-y, 100%);
+  left: var(--why-x, 0px);
   z-index: 4;
   width: max-content;
   max-width: min(18rem, 70vw);
@@ -253,18 +263,6 @@
   color: var(--ink);
   font-weight: var(--w-regular);
   white-space: normal;
-}
-
-/* near the right edge and the bottom it opens the other way, to stay inside
-   the frame */
-.grd-cell--read.is-marked:nth-last-child(-n+2):focus::after {
-  left: auto;
-  right: 0;
-}
-
-.grd-row:nth-child(n+4):nth-last-child(-n+2) .grd-cell--read.is-marked:focus::after {
-  top: auto;
-  bottom: 100%;
 }
 
 .grd-cell[aria-selected="true"] {
