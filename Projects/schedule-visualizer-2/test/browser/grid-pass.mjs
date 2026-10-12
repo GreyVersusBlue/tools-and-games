@@ -70,7 +70,24 @@ const cellText = (page, selector) => page.$eval(selector + ' .grd-cell__text', (
 const isStaged = (page, selector) => page.$eval(selector, (el) => el.classList.contains('is-staged'));
 const selectedKeys = (page) => page.$$eval('.grd-sheet [aria-selected="true"]', (all) => all.map((cell) => cell.dataset.key.replace(/^grid:/, '')));
 const stagedIs = (page, wanted) => page.waitForFunction((value) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd').dataset.staged === value, { timeout: 5000 }, String(wanted));
-const tabStops = (page) => page.$$eval('.grd-sheet [tabindex="0"]', (all) => all.map((cell) => ({ key: cell.dataset.key, boxed: cell.getClientRects().length > 0 })));
+// The grid's Tab stops and whether each has a box, read in one turn of the
+// page. ($$eval is two: it finds the cells, then asks them, and a grid drawn
+// again in between hands back a cell that has left the page, which has no box.)
+const tabStops = (page) => page.evaluate(() => Array.from(document.querySelectorAll('.grd-sheet [tabindex="0"]'), (cell) => ({ key: cell.dataset.key, boxed: cell.getClientRects().length > 0 })));
+// The grid's section mounted and shown, and done with what a change of width
+// brings: the page tells the grid a width was crossed in its next frame, which
+// on a busy machine comes after the grid is on screen, and the grid is then
+// drawn again. Two frames, so that has been said; then the drawing it asked for.
+async function gridShown(page) {
+  await page.waitForFunction(() => {
+    const sheet = document.querySelector('.sch .grd-sheet');
+    return Boolean(sheet) && sheet.isConnected && sheet.getClientRects().length > 0;
+  }, { timeout: 5000 });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await settled(page);
+}
 
 // The cursor on one cell, with no block left over from the case before:
 // focus on the cell the cursor is already on keeps the block's other corner.
@@ -374,8 +391,7 @@ test('a cursor left in Grade, the grid left, the screen narrowed, the grid come 
     await go(page, '#building');
     await page.setViewport({ width: 390, height: 760, deviceScaleFactor: 1 });
     await go(page, '#schedule/grid');
-    await page.waitForSelector('.grd-sheet');
-    await settled(page);
+    await gridShown(page);
     assert.equal(await box(page, key(A6, 'grade')), null, 'Grade is hidden at 390');
     assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':name', boxed: true }], 'the Tab stop went to the group’s name');
 
@@ -386,7 +402,7 @@ test('a cursor left in Grade, the grid left, the screen narrowed, the grid come 
     assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':headCount', boxed: true }]);
     await page.setViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
     await page.waitForFunction((selector) => document.querySelector(selector).getClientRects().length === 0, { timeout: 5000 }, key(A6, 'headCount'));
-    await page.waitForFunction((wanted) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd-sheet [tabindex="0"]')?.dataset.key === wanted, { timeout: 5000 }, 'grid:' + A6 + ':name');
+    await gridShown(page);
     assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':name', boxed: true }], 'crossing 640 px moved the Tab stop to Group');
   } finally {
     const found = turn.problems();
