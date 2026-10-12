@@ -855,21 +855,25 @@ test('W8: zoomed far out the rings of two places lie over one another: the busie
       const at = (px, py) => Array.from(g.getImageData(Math.round(px), Math.round(py), 1, 1).data);
       // round each rank's disc, 6 px from its middle (the number is inside that)
       const discs = rings.map((ring) => [0, 45, 90, 135, 180, 225, 270, 315].map((angle) => at(ring.bx + 6 * Math.cos((angle * Math.PI) / 180), ring.by + 6 * Math.sin((angle * Math.PI) / 180))));
-      // on the first ring's line, where the line of a ring it overlaps would put its light edge
-      const first = rings[0];
-      const under = [];
-      for (const other of rings.slice(1)) {
-        if (Math.hypot(other.x - first.x, other.y - first.y) >= first.r + other.r) continue;
-        for (let angle = 0; angle < 360; angle += 0.5) {
-          const px = first.x + first.r * Math.cos((angle * Math.PI) / 180);
-          const py = first.y + first.r * Math.sin((angle * Math.PI) / 180);
-          const off = Math.abs(Math.hypot(px - other.x, py - other.y) - other.r);
-          // inside the other's 5 px light line and clear of its 3 px dark one; and clear of every rank's disc
-          if (off >= 1.9 && off <= 2.2 && rings.every((ring) => Math.hypot(px - ring.bx, py - ring.by) > 9.5)) under.push({ angle, other: other.rank, got: at(px, py) });
-        }
+      // what is drawn over what: every circle the marks draw, in the order they are drawn
+      const arcs = [];
+      const real = CanvasRenderingContext2D.prototype.arc;
+      CanvasRenderingContext2D.prototype.arc = function arc(x, y, r, ...rest) {
+        if (this.canvas === layer) arcs.push({ x, y, r });
+        return real.call(this, x, y, r, ...rest);
+      };
+      try {
+        movement.env.paintMarks();
+      } finally {
+        CanvasRenderingContext2D.prototype.arc = real;
       }
+      const rankAt = (arc, key) => {
+        const ring = rings.find((each) => Math.abs(each[key[0]] - arc.x) < 0.01 && Math.abs(each[key[1]] - arc.y) < 0.01);
+        return ring ? ring.rank : null;
+      };
+      const order = arcs.map((arc) => (arc.r === rings[0].r && rankAt(arc, ['x', 'y']) !== null ? 'ring ' + rankAt(arc, ['x', 'y']) : rankAt(arc, ['bx', 'by']) !== null ? 'rank ' + rankAt(arc, ['bx', 'by']) : 'other'));
       const style = getComputedStyle(document.documentElement);
-      return { rings, discs, under, zoom: movement.view.zoom, accent: style.getPropertyValue('--accent').trim(), pulse: panel.dataset.pulse };
+      return { rings, discs, order, zoom: movement.view.zoom, accent: style.getPropertyValue('--accent').trim(), pulse: panel.dataset.pulse };
     });
     const hex = (value) => [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
     const accent = hex(seen.accent);
@@ -887,9 +891,8 @@ test('W8: zoomed far out the rings of two places lie over one another: the busie
     seen.rings.forEach((ring, index) => {
       for (const got of seen.discs[index]) assert.ok(isAccent(got), 'a line runs through the rank of place ' + ring.rank + ': ' + got);
     });
-    // the busiest place's ring is over the others
-    assert.ok(seen.under.length > 0, 'no spot was found where ring 1 crosses another ring’s light edge: the case tests nothing');
-    for (const spot of seen.under) assert.ok(isAccent(spot.got), 'ring ' + spot.other + ' is drawn over ring 1 at ' + spot.angle + '°: ' + spot.got);
+    // the busiest place's ring is drawn last of the rings, so it is over the others; and every rank after every ring, the busiest's last
+    assert.deepEqual(seen.order, ['ring 3', 'ring 2', 'ring 1', 'rank 3', 'rank 2', 'rank 1'], 'what the marks drew, in order');
   });
 });
 

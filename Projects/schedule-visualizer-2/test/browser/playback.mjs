@@ -1021,6 +1021,7 @@ test('44f: the marks have one canvas, the view’s own: a paint of the map, a fr
 });
 
 test('44g: the hotspot rings and the keyboard cursor are drawn over the markers, whatever order the marks were added in; set(null) changes nothing', async () => {
+  await change({ transition: TRANSITION });
   // the order the marks are drawn in is their `order`, not their place in the list
   const called = await view(() => {
     const env = document.querySelector('.mov').movement.env;
