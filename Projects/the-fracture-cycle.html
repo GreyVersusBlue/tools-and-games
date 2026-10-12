@@ -548,6 +548,23 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
       ]
     },
 
+    // ---------------- THE SEAM (the fourth prong) ----------------
+    // Not a fourth power and no fourth fragment: the one run in which nobody
+    // tells you what you are. Its state is `state.seam`, written at the
+    // entrance in `intro` and nowhere else, so a run down any of the three
+    // roads carries exactly the state it always did.
+    seam_walk:{
+      title:"The Unlit Way",
+      text:`<p>You take none of them. The seam runs on past the place where you woke — a line no wider than your foot, gold along one edge, crimson along the other, and no light of its own. It isn't a road. Nobody built it to arrive anywhere.</p>
+      <p>The ground isn't blank, though. Footprints run along the line ahead of you, bare, too many to count, and every one of them the size of yours. They keep to the seam for a while. Then, in ones and twos, they peel off — toward the gold, toward the crimson, toward the color that can't make up its mind.</p>
+      <p>None of them come back.</p>`,
+      choices:[
+        {label:"Keep to the gold edge, where most of the prints lean before they leave", mark:"a", next:"seam_cairn", effect:s=>{s.align+=1;}},
+        {label:"Keep to the crimson edge, where the prints dig deepest", mark:"b", next:"seam_cairn", effect:s=>{s.align-=1;}},
+        {label:"Walk the line itself, a foot on each side, where the prints are fewest", mark:"c", next:"seam_cairn"}
+      ]
+    },
+
     // ---------------- HUB ----------------
     hub_bazaar:{
       title:"Roseleaf Bazaar",

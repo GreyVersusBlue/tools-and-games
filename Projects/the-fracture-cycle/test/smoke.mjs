@@ -147,6 +147,15 @@ const initialState = () => eval("(" + initialStateSrc + ")");
 const nodes = eval("(" + nodesSrc + ")");
 
 const nodeIds = Object.keys(nodes);
+
+// The fourth prong (#958). PRONG_WIRED says whether a player can enter it, and
+// it is the one switch: while it is false the entrance must be absent and no
+// seam node may be reached from `intro`, however much of the prong is written;
+// once it is true all seven nodes must exist. A prong is never half-reachable.
+const PRONG_WIRED = false;
+const OLD_ENDINGS = ["end_radiant", "end_dire", "end_convergence", "end_ascension", "end_corruption"];
+const SEAM_ENDINGS = ["end_witness", "end_named"];
+const SEAM_NODES = ["seam_walk", "seam_cairn", "seam_stone", "seam_named", "seam_answer", ...SEAM_ENDINGS];
 ok(nodeIds.length > 0, "nodes is non-empty");
 
 function optionsFor(node) {
@@ -159,6 +168,8 @@ function optionsFor(node) {
   for (const id of nodeIds) {
     const node = nodes[id];
     if (node.ending) continue;
+    // an unfinished prong may point at a node not written yet; nothing reaches it
+    if (!PRONG_WIRED && SEAM_NODES.includes(id)) continue;
     state = initialState();
     let opts;
     try { opts = optionsFor(node); } catch (e) { badRefs.push(`${id}: choices() threw ${e.message}`); continue; }
@@ -197,14 +208,6 @@ function walk(id, curState) {
 }
 walk("intro", initialState());
 
-// The fourth prong (#958). PRONG_WIRED says whether a player can enter it, and
-// it is the one switch: while it is false the entrance must be absent and no
-// seam node may be reached from `intro`, however much of the prong is written;
-// once it is true all seven nodes must exist. A prong is never half-reachable.
-const PRONG_WIRED = false;
-const OLD_ENDINGS = ["end_radiant", "end_dire", "end_convergence", "end_ascension", "end_corruption"];
-const SEAM_ENDINGS = ["end_witness", "end_named"];
-const SEAM_NODES = ["seam_walk", "seam_cairn", "seam_stone", "seam_named", "seam_answer", ...SEAM_ENDINGS];
 const seamWritten = SEAM_NODES.filter(id => id in nodes);
 const seamReached = SEAM_NODES.filter(id => nodesVisited.has(id));
 const entrance = nodes.intro.choices.filter(c => c.next === "seam_walk");
