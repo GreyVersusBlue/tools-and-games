@@ -418,17 +418,16 @@ test('the page does not scroll on the other sections either: the inspector’s p
 
 // ---------------------------------------------------------------- W5: a message clears the bottom dock
 
-// The section has measured its dock as it is on screen now: --toast-clear is
-// how far the zoom buttons and the bar reach up from the surface's foot.
-const dockMeasured = (page) => shows(page, () => {
-  const surface = document.getElementById('surface');
-  const foot = surface.getBoundingClientRect().top + surface.clientTop + surface.clientHeight;
-  const tops = [document.querySelector('.mov-zoom'), document.querySelector('[data-bar="playback"]')].map((el) => el.getBoundingClientRect().top);
-  return surface.style.getPropertyValue('--toast-clear') === Math.max(0, Math.round(foot - Math.min(...tops))) + 'px';
-});
+// How far the section says its dock reaches up from the surface's foot.
+const dockClear = (page) => page.$eval('#surface', (el) => el.style.getPropertyValue('--toast-clear'));
 
-async function clearOfDock(page, what) {
-  await dockMeasured(page);
+// `since`: what the section's measure was before the dock changed. The case
+// waits for the section to have measured again, and then judges the boxes.
+async function clearOfDock(page, what, since) {
+  await shows(page, (was) => {
+    const now = document.getElementById('surface').style.getPropertyValue('--toast-clear');
+    return now !== '' && now !== was;
+  }, since === undefined ? '' : since);
   const toast = await box(page, '.toast');
   const zoom = await box(page, '.mov-zoom');
   const bar = await box(page, '[data-bar="playback"]');
@@ -454,16 +453,19 @@ for (const [name, size] of [['390 by 844', PHONE], ['1280 by 800', DESK], ['1440
 
       // the bar grows (More, and a transition's lines): the message is still clear of it
       await scrubInto(p, 5, 250);
+      const shut = await dockClear(p);
       await p.evaluate(() => document.querySelector('[data-action="more"]').click());
       await shows(p, () => document.querySelector('[data-part="more"]').hidden === false);
       const open = (await box(p, '[data-bar="playback"]')).height;
+      await shows(p, (was) => document.getElementById('surface').style.getPropertyValue('--toast-clear') !== was, shut);
       await p.evaluate((words) => globalThis.sv2.ctx.toast({ text: words, action: { label: 'Undo', run: () => {} } }), LONG);
       await clearOfDock(p, 'More open, a long message');
       // and while the message is up: the bar shrinks and grows under it
+      const tall = await dockClear(p);
       await p.evaluate(() => document.querySelector('[data-action="more"]').click());
       await shows(p, () => document.querySelector('[data-part="more"]').hidden === true);
       assert.ok((await box(p, '[data-bar="playback"]')).height < open, 'the bar is no shorter with More shut: the case tests nothing');
-      await clearOfDock(p, 'More shut again');
+      await clearOfDock(p, 'More shut again', tall);
       await closeToast(p);
 
       // the section's measure leaves with the section

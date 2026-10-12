@@ -699,12 +699,13 @@ export const section = {
       dock();
     });
     watcher.observe(stage);
-    watcher.observe(bar.element);
 
     // ---- where a message of the shell may lie (DESIGN 5.3): above what is
     // docked at the bottom of the surface, the playback bar and the zoom
     // buttons. How far that reaches up from the surface's bottom edge is
-    // --toast-clear on the surface, measured as it is on screen now.
+    // --toast-clear on the surface, measured as it is on screen now: when
+    // the stage changes size (the bar under it grew or shrank, the window
+    // changed) and when either of them is scrolled.
     let dockHost = null;
     function dock() {
       const host = dockHost || element.closest('.surface');
