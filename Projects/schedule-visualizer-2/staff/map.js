@@ -243,8 +243,26 @@ export function roomsAtTap(shapes, x, y) {
 
 // ---- the picture
 
-function themeOf(element) {
+// The colours of paper: the paper rules' own (the @media print block of
+// staff.css; a case holds the two equal). The map draws with these from the
+// moment printing starts, because a browser may say so before the print rules
+// are the page's styles.
+export const MAP_PAPER = {
+  paper: '#ffffff',
+  ink: '#1f2328',
+  line: '#d8d3c8',
+  edge: '#857f73',
+  accent: '#0f6e66',
+  accentInk: '#ffffff',
+  grid: '#e8e3d8',
+  corridor: '#ffffff',
+  stairs: '#d9ece9',
+  roomDefault: '#e9e4d9',
+};
+
+function themeOf(element, onPaper) {
   const style = getComputedStyle(element);
+  if (onPaper) return { ...MAP_PAPER, font: style.getPropertyValue('--font-plan').trim() || 'sans-serif' };
   const read = (name, fallback) => {
     const value = style.getPropertyValue(name).trim();
     return parseHex(value) ? value : fallback;
@@ -490,13 +508,15 @@ export function floorMap(ctx, options) {
   const into = h('button', { class: 'btn map__zoom', type: 'button', 'aria-label': 'Zoom in' }, '+');
   const fit = h('button', { class: 'btn map__zoom', type: 'button', 'aria-label': 'Fit the floor to the window' }, 'Fit');
 
+  let onPaper = false;
+
   function draw() {
     const width = frame.clientWidth;
     if (width === 0) return;
     const lines = routeOnFloor(opts.route, state.floor.id);
     state.plan = planOf(state.floor, width, MAP_ZOOMS[state.zoom], state.pan, near ? aroundExtentOf(state.floor, opts.around, opts.reach) : null);
     state.pan = state.plan.pan;
-    paint(canvas, school, state.floor, state.plan, themeOf(frame), marks, lines);
+    paint(canvas, school, state.floor, state.plan, themeOf(frame, onPaper), marks, lines);
     frame.dataset.floor = state.floor.id;
     if (opts.route) frame.dataset.route = String(lines.reduce((sum, line) => sum + line.cells.length, 0));
     if (near) frame.dataset.around = opts.around;
@@ -611,19 +631,42 @@ export function floorMap(ctx, options) {
 
   // drawn again when the frame changes width, when the plan face has loaded,
   // when the device changes between light and dark, and when the page goes to
-  // paper and comes back (paper is light whatever the screen is)
+  // paper and comes back (paper is light whatever the screen is). Going to
+  // paper is heard two ways, since no one way is every browser's: the print
+  // media query changing, and "beforeprint" and "afterprint" on the window
+  // (all WebKit says). Both end in the one repaint().
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => draw()).observe(frame);
   if (document.fonts && document.fonts.load) {
     document.fonts.load('600 12px "Barlow Semi Condensed"').then(() => draw(), () => {});
   }
-  if (typeof matchMedia === 'function') {
-    const watched = [matchMedia('(prefers-color-scheme: dark)'), matchMedia('print')];
-    const again = () => {
-      if (canvas.isConnected) draw();
-      else watched.forEach((query) => query.removeEventListener('change', again));
-    };
-    watched.forEach((query) => query.addEventListener('change', again));
+  const scheme = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
+  const printing = typeof matchMedia === 'function' ? matchMedia('print') : null;
+  const hears = typeof globalThis.addEventListener === 'function';
+  const repaint = (paper) => {
+    if (!canvas.isConnected) {
+      // the page this map was on has gone
+      if (scheme) scheme.removeEventListener('change', sameMedia);
+      if (printing) printing.removeEventListener('change', sameMedia);
+      if (hears) globalThis.removeEventListener('beforeprint', toPaper);
+      if (hears) globalThis.removeEventListener('afterprint', toScreen);
+      return;
+    }
+    onPaper = paper;
+    draw();
+  };
+  function sameMedia() {
+    repaint(printing.matches);
   }
+  function toPaper() {
+    repaint(true);
+  }
+  function toScreen() {
+    repaint(false);
+  }
+  if (scheme) scheme.addEventListener('change', sameMedia);
+  if (printing) printing.addEventListener('change', sameMedia);
+  if (hears) globalThis.addEventListener('beforeprint', toPaper);
+  if (hears) globalThis.addEventListener('afterprint', toScreen);
 
   chrome();
   return h('section', { class: 'mapbox', 'aria-label': opts.label || 'Floor plan' },

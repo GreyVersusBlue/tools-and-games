@@ -19,6 +19,8 @@ import { h } from './dom.js';
 export const ME_KEY = 'me';
 export const NOTES_KEY = 'notes';
 export const NOTE_MAX = 200;
+// From this many characters on, the field says how much of the 200 is used.
+export const NOTE_COUNT_FROM = 181;
 export const NOTES_KEPT_SENTENCE = 'Your notes are kept on this device only. They print with your schedule, and an empty note prints nothing.';
 
 // ---- who the reader is
@@ -72,6 +74,18 @@ export function readNotes(store) {
   return notesFrom(store.get(NOTES_KEY));
 }
 
+// A note of nothing but spaces says nothing: it is not shown and not printed.
+// It is still kept as it was typed, so the next letter lands where the reader
+// left the cursor.
+export function isBlankNote(text) {
+  return String(text).trim() === '';
+}
+
+// "187 of 200 characters" near the end of the room a note has, else ''.
+export function noteCountOf(text) {
+  return text.length >= NOTE_COUNT_FROM ? text.length + ' of ' + NOTE_MAX + ' characters' : '';
+}
+
 // The note against one period of one day type, or ''.
 export function noteOf(notes, dayTypeId, period) {
   const day = notes[dayTypeId];
@@ -102,8 +116,9 @@ export function writeNote(store, dayTypeIds, period, text) {
 // Put the reader's notes on their day cards (the node dayCardsOf() made), in
 // place: under each period its note as text, and, once "Edit my notes" is
 // pressed, a field for each period instead. A card that stands for two day
-// types that are the same shows the first one's note, and what is typed
-// there is kept against both. Returns the button and the sentence that go
+// types that are the same shows the first note there is among them (one kept
+// under the second day type alone is still shown), and what is typed there
+// is kept against both. Returns the button and the sentence that go
 // under the cards.
 export function noteFields(ctx, days) {
   const school = ctx.school;
@@ -114,8 +129,10 @@ export function noteFields(ctx, days) {
     const names = ids.map((id) => school.dayTypes.find((dayType) => dayType.id === id)).filter(Boolean).map((dayType) => dayType.name).join(' and ');
     for (const row of card.querySelectorAll('.row[data-period]')) {
       const period = Number(row.dataset.period);
-      const kept = ids.map((id) => noteOf(notes, id, period)).find((text) => text !== '') || '';
+      const every = ids.map((id) => noteOf(notes, id, period));
+      const kept = every.find((text) => !isBlankNote(text)) || every.find((text) => text !== '') || '';
       const paper = h('span', { class: 'note__paper' }, kept);
+      const count = h('span', { class: 'note__count', id: 'note-count-' + ids[0] + '-' + period }, noteCountOf(kept));
       const input = h('input', {
         class: 'field__input note__input',
         type: 'text',
@@ -124,13 +141,15 @@ export function noteFields(ctx, days) {
         enterkeyhint: 'done',
         placeholder: 'Add a note',
         'aria-label': 'Note for ' + school.periodName(period) + ' on ' + names,
+        'aria-describedby': count.id,
       });
       input.value = kept;
-      const box = h('div', { class: 'row__note note', dataset: { note: ids[0] + ':' + period, empty: String(kept === '') } }, paper, input);
+      const box = h('div', { class: 'row__note note', dataset: { note: ids[0] + ':' + period, empty: String(isBlankNote(kept)) } }, paper, input, count);
       input.addEventListener('input', () => {
         writeNote(ctx.store, ids, period, input.value);
         paper.textContent = input.value;
-        box.dataset.empty = String(input.value === '');
+        count.textContent = noteCountOf(input.value);
+        box.dataset.empty = String(isBlankNote(input.value));
       });
       input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') input.blur();

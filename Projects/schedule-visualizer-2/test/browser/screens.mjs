@@ -225,6 +225,19 @@ const movementShowing = (patch) => async (page) => {
   await movementDrawn(page);
 };
 
+// SV2-19: playback moved by its scrubber to a second of Period 6 to Period 7,
+// the sample school's long walk, with the settings behind More open or not.
+const playbackAt = (seconds, more) => async (page) => {
+  await movementShowing({ transition: 5 })(page);
+  if (more) await page.click('[data-bar="playback"] [data-action="more"]');
+  await page.$eval('[data-bar="playback"] [data-control="scrubber"]', (el, value) => {
+    el.value = String(value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, seconds);
+  await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.started === 'true');
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+};
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -490,6 +503,8 @@ export const SCREENS = [
   },
   { id: 'movement-one-group', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: ['gsample08a'], floors: 'fsample001' }) }, // SV2-17
   { id: 'movement-cleared', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: [] }) }, // SV2-17
+  { id: 'movement-playback', hash: '#movement', open: playbackAt(120, false) }, // SV2-19: half way through a transition, every group a marker
+  { id: 'movement-playback-late', hash: '#movement', open: playbackAt(250, true) }, // SV2-19: after the bell, one group late, the settings behind More
   { // SV2-17: the card of the corridor cell the keyboard cursor rests on
     id: 'movement-cell-card',
     hash: '#movement',

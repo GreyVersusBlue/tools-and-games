@@ -38,6 +38,10 @@ import { LOCK_WIDTH, LOCK_HEIGHT, LOCK_TOP, LOCK_BOTTOM, lockScreenLayout, image
 import { MAP_REACH, planOf, floorExtentOf, aroundExtentOf, routeOnFloor } from '../../staff/map.js';
 import { dayKindsOf } from '../../staff/views/teacher.js';
 import { signFit } from '../../staff/views/door-sign.js';
+import * as doorModule from '../../staff/views/door-sign.js';
+import * as groupModule from '../../staff/views/group.js';
+import * as mapModule from '../../staff/map.js';
+import { render as renderBatch } from '../../ui/prints/batch.js';
 import { ME_CHOOSE_SENTENCE } from '../../staff/me.js';
 import * as clockModule from '../../staff/clock.js';
 import * as teacherModule from '../../staff/views/teacher.js';
@@ -58,6 +62,21 @@ const AT_2230 = '2026-09-02T02:30:00Z'; // 2 September in UTC, still 1 September
 
 const future = () => new Date('2999-01-01T12:00:00Z');
 const later = () => new Date('2999-02-01T12:00:00Z');
+// A school whose B Day follows A Day: one kind of day, one card for both.
+function followed(project) {
+  project.dayTypes[1].own = false;
+  for (const each of project.groups) delete each.days[project.dayTypes[1].id];
+  project.dayTypes[1].bells = project.dayTypes[0].bells.map((bell) => (bell ? { ...bell } : null));
+}
+
+const CJK_SEVEN = '東京第一体育館';
+
+// The rows of each day table in a sign's markup, tags taken out.
+function rowsOf(markup) {
+  return Array.from(markup.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr>([\s\S]*?)<\/tr>/g))
+    .map((row) => Array.from(row[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)).map((cell) => cell[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&'))));
+}
+
 const scratch = mkdtempSync(path.join(os.tmpdir(), 'sv2-staff-outputs-'));
 const read = diskReader();
 const files = {};
@@ -261,7 +280,14 @@ test('the sign\'s number is set smaller only when it is longer than a number is'
   assert.equal(signFit('B12'), 1);
   assert.equal(signFit('Gym 2'), 1);
   assert.equal(signFit('Cafeteria'), 7 / 9);
-  assert.equal(signFit('東京東京東京東京'), 7 / 8, 'counted in characters, not in bytes');
+  assert.equal(signFit('Ünïcödé'), 1, 'counted in characters, not in bytes');
+  // a full-square character is as wide as two Latin ones: seven of them are set at half size, and fit
+  assert.equal(signFit(CJK_SEVEN), 0.5);
+  assert.equal(signFit('東京東京東京東京'), 7 / 16);
+  assert.equal(signFit('체육관'), 1, 'three Hangul squares are six wide');
+  assert.equal(signFit('ＲＯＯＭ２０４'), 0.5, 'fullwidth forms');
+  assert.equal(signFit('ｶﾌｪﾃﾘｱ'), 1, 'halfwidth katakana are half wide');
+  assert.equal(signFit('Gym 体育館'), 7 / 10);
   assert.equal(signFit('x'.repeat(60)), 0.3);
   assert.equal(signFit(''), 1);
 });
@@ -283,6 +309,117 @@ test('the debts are settled: one of each pair, Share in page.js, the engine\'s a
     if (/from '(\.\.\/)+engine\//.test(readFileSync(path.join(TOOL_DIR, ...id.split('/')), 'utf8'))) asks.push(id);
   }
   assert.deepEqual(asks, ['staff/source.js', 'staff/model.js', 'staff/shell.js']);
+  // SV2-41: the copy of the engine's period label is gone, the shell names the key the way notes.js does,
+  // and no comment sends a reader to a stylesheet that does not exist
+  assert.equal('shortPeriod' in groupModule, false, 'school.periodLabel is the one short form of a period');
+  const source = (name) => readFileSync(path.join(TOOL_DIR, 'staff', ...name.split('/')), 'utf8');
+  assert.match(source('shell.js'), /import \{[^}]*\bME_KEY\b[^}]*\} from '\.\/notes\.js';/);
+  assert.match(source('shell.js'), /store\.get\(ME_KEY\)/);
+  assert.doesNotMatch(source('shell.js'), /store\.get\('me'\)/);
+  for (const name of ['page.js', 'staff.css', 'views/door-sign.js', 'map.js', 'notes.js', 'outputs.js']) {
+    assert.doesNotMatch(source(name), /print\.css/, 'staff/' + name + ' names a second stylesheet: the paper rules are the @media print block of staff/staff.css');
+  }
+});
+
+test('with one kind of day the image is one column, and each period has its whole time', () => {
+  const project = sampleSchool();
+  followed(project);
+  const school = openSchool(publishedModel(project, { clock: () => new Date('2026-09-12T12:00:00Z') }));
+  const kinds = dayKindsOf(school, (dayType) => school.teacherDay('tsample001', dayType.id));
+  assert.equal(kinds.length, 1, 'the fixture this case stands on');
+  const layout = lockScreenLayout(school, school.teacher('tsample001'), kinds, { locale: 'en-GB', zone: 'UTC' });
+  const written = layout.items.filter((item) => item.kind === 'text');
+  assert.deepEqual(written.slice(0, 9).map((item) => item.text), ['Ms. Halloran', 'Mathematics · Room 101', 'A Day and B Day', '1', '8:00 AM to 8:48 AM', 'Planning', '2', '8:52 AM to 9:40 AM', '8B · 101']);
+  assert.equal(written.filter((item) => / to /.test(item.text)).length, 8, 'a start and an end for each of the eight periods');
+  // the three parts of a row stand side by side inside the one column, which is the image's width less its margins
+  const [label, time, what] = written.slice(3, 6);
+  assert.ok(label.x + label.fit <= time.x + 0.01 && time.x + time.fit <= what.x + 0.01, 'the time has the room its words need: ' + JSON.stringify([label.fit, time.fit, what.fit]));
+  assert.ok(time.fit >= time.size * 9, 'room for "10:36 AM to 11:24 AM" at ' + time.size + ' px: ' + time.fit);
+  assert.ok(Math.abs(what.x + what.fit - (layout.width - 24)) < 0.01);
+});
+
+test('the sign as markup is the sign in words, with every name escaped', () => {
+  const build = doorModule.doorSignMarkup;
+  assert.equal(typeof build, 'function', 'staff/views/door-sign.js has no string-returning builder of the sign');
+  const data = publishedModel(sampleSchool(), { clock: () => new Date('2026-09-12T12:00:00Z') });
+  data.settings.schoolName = HOSTILE;
+  data.teachers[0].name = HOSTILE + ' T';
+  data.groups[0].name = HOSTILE + ' G';
+  data.subjects[0].name = HOSTILE + ' S';
+  data.dayTypes[0].name = HOSTILE + ' D';
+  const school = openSchool(data);
+  school.room('rsample101').number = HOSTILE + ' R';
+  const markup = build(school, school.room('rsample101'), { day: true });
+  for (const raw of ['<img', '<b>', '</script', '"Ünï"', 'onerror="']) assert.equal(markup.includes(raw), false, raw + ' is in the markup as typed');
+  const safe = HOSTILE.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  for (const tail of ['', ' T', ' G', ' S', ' D', ' R']) assert.ok(markup.includes('<span dir="auto">' + safe + tail + '</span>'), 'the name ending "' + tail + '" is on the sign, escaped, kept apart from the words around it');
+  assert.deepEqual(Array.from(new Set(Array.from(markup.matchAll(/<\/?([a-z0-9]+)/g), (match) => match[1]))).sort(), ['div', 'h2', 'p', 'section', 'span', 'table', 'tbody', 'td', 'th', 'tr'], 'the tags a print document may have');
+  // a line for the foot that is not the school's own name, as the planner's batch gives it
+  assert.ok(build(school, school.room('rsample101'), { school: 'A & B' }).includes('<p class="sign__school" data-sign="school"><span dir="auto">A &amp; B</span></p>'));
+  assert.equal(build(school, school.room('rsample101'), {}).includes('sign__day'), false, 'no day unless asked');
+});
+
+test('a room with two teachers of different subjects has no subject line on its sign', () => {
+  const data = publishedModel(sampleSchool(), { clock: () => new Date('2026-09-12T12:00:00Z') });
+  const school = openSchool(data);
+  const room = school.room('rsample203');
+  const lines = () => Array.from(doorModule.doorSignMarkup(school, room, {}).matchAll(/<p class="sign__([a-z]+)"[^>]*>([\s\S]*?)<\/p>/g), (match) => [match[1], match[2].replace(/<[^>]+>/g, '')]);
+  assert.deepEqual(lines(), [['word', 'Room'], ['number', '203'], ['teacher', 'Ms. Vandermeer'], ['subject', 'Social Studies'], ['school', SCHOOL]]);
+  room.subjectId = null;
+  assert.deepEqual(lines()[3], ['subject', 'Social Studies'], 'with no subject of its own, the room\'s one teacher\'s');
+  room.teacherIds = ['tsample007', 'tsample001'];
+  assert.deepEqual(lines(), [['word', 'Room'], ['number', '203'], ['teacher', 'Ms. Vandermeer and Ms. Halloran'], ['school', SCHOOL]], 'Social Studies is one teacher\'s subject, not the room\'s');
+  school.teacher('tsample001').subjectId = school.teacher('tsample007').subjectId;
+  assert.deepEqual(lines()[3], ['subject', 'Social Studies'], 'two teachers of one subject');
+  school.teacher('tsample001').subjectId = null;
+  assert.equal(lines().some((line) => line[0] === 'subject'), false, 'a teacher with no subject is not of the other\'s');
+});
+
+test('the map\'s paper colours are the paper rules\' own', () => {
+  const css = readFileSync(path.join(TOOL_DIR, 'staff', 'staff.css'), 'utf8');
+  const print = css.slice(css.indexOf('/* paper is light whatever the screen is */'));
+  const token = (name) => new RegExp('\\n    --' + name + ': (#[0-9a-f]{6});').exec(print)[1];
+  assert.equal(typeof mapModule.MAP_PAPER, 'object', 'staff/map.js has no paper colours of its own to draw with before the print rules apply');
+  assert.deepEqual(mapModule.MAP_PAPER, {
+    paper: token('paper'), ink: token('ink'), line: token('line'), edge: token('line-strong'), accent: token('accent'), accentInk: token('accent-ink'),
+    grid: token('grid'), corridor: token('corridor'), stairs: token('stairs'), roomDefault: token('room-default'),
+  });
+});
+
+test('the door sign\'s rules stand in a browser with no :has() and no container units', () => {
+  const css = readFileSync(path.join(TOOL_DIR, 'staff', 'staff.css'), 'utf8').replace(/\r\n?/g, '\n');
+  const block = css.slice(css.indexOf('/* ---------- SV2-23:'), css.indexOf('/* ---------- SV2-23: end')).replace(/\/\*[\s\S]*?\*\//g, '');
+  // a browser that does not know :has() throws away the whole list it is in
+  let has = 0;
+  for (const match of block.matchAll(/([^{};]+)\{/g)) {
+    if (!match[1].includes(':has(')) continue;
+    has += 1;
+    for (const selector of match[1].split(',')) assert.ok(selector.includes(':has('), 'in a list with :has(): ' + selector.trim());
+  }
+  assert.ok(has >= 1);
+  assert.match(block, /\n  \.page\[data-view="door"\] \.page__body > :not\(\.sheet\) \{\n    display: none;\n  \}/, 'the rule that leaves the sheet alone on paper stands by itself');
+  // every size in cqw has the same property in rem just before it; one with var() in it would be
+  // kept by a browser that cannot read it, so it is behind @supports
+  let sizes = 0;
+  for (const match of block.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const lines = match[2].split(';').map((line) => line.trim()).filter((line) => line !== '');
+    lines.forEach((line, at) => {
+      if (!line.includes('cqw')) return;
+      sizes += 1;
+      const property = line.slice(0, line.indexOf(':'));
+      if (line.includes('var(')) {
+        assert.equal(match[1].trim(), '.sign__number', line);
+        return;
+      }
+      const before = at > 0 ? lines[at - 1] : '';
+      assert.ok(before.startsWith(property + ':') && /\drem\b/.test(before) && !before.includes('cqw'), match[1].trim() + ' { ' + line + ' } has no rem size before it');
+    });
+  }
+  assert.ok(sizes >= 12, 'the sign is sized in cqw: ' + sizes);
+  assert.match(block, /\n\.sign__number \{[^}]*\n  font-size: calc\([\d.]+rem \* var\(--sign-fit, 1\)\);/);
+  assert.match(block, /\n@supports \(font-size: 1cqw\) \{\n  \.sign__number \{\n    font-size: calc\(22\.5cqw \* var\(--sign-fit, 1\)\);\n  \}\n\}/);
+  // a word in the day table is never cut
+  assert.match(block, /\n\.sign__table th,\n\.sign__table td \{[^}]*overflow-wrap: break-word;/);
 });
 
 test('the paper rules are in the one stylesheet, inside @media print, with their classes listed at its top', () => {
@@ -316,6 +453,14 @@ before(async () => {
     project.id = 'pother0001';
     project.settings.schoolName = 'Another School';
   });
+  await write('merged', followed);
+  await write('signs', (project) => {
+    const rooms = project.building.floors.flatMap((floor) => floor.spaces);
+    rooms.find((space) => space.id === 'rsample102').number = CJK_SEVEN;
+    const shared = rooms.find((space) => space.id === 'rsample203');
+    shared.subjectId = null;
+    shared.teacherIds = ['tsample007', 'tsample001'];
+  });
   browser = await launch();
 });
 
@@ -328,7 +473,9 @@ after(async () => {
 // `store` is put in the device's storage before anything loads. `share` is
 // 'page' for a share sheet that takes a title, 'files' for one that takes a
 // file as well, 'refuses' for one that says it cannot take a file, 'closed'
-// for one the reader closes without sending.
+// for one the reader closes without sending, 'notallowed' for one that takes
+// a file but refuses because the tap that asked is too long ago. `clipboard`
+// gives the page a clipboard that records what was copied.
 async function openPage(options) {
   const opts = options || {};
   const context = await browser.createBrowserContext();
@@ -337,7 +484,7 @@ async function openPage(options) {
   await page.setViewport({ width: opts.width || 390, height: opts.height || 760, deviceScaleFactor: 1, hasTouch: phone, isMobile: phone });
   await page.emulateTimezone(ZONE);
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: opts.theme || 'light' }]);
-  await page.evaluateOnNewDocument((at, share, store) => {
+  await page.evaluateOnNewDocument((at, share, store, clipboard) => {
     globalThis.sv2StaffClock = { now: () => at, every: 3600000 };
     try {
       for (const [key, value] of Object.entries(store)) {
@@ -361,14 +508,17 @@ async function openPage(options) {
     if (share) {
       Object.defineProperty(navigator, 'share', { configurable: true, value: (what) => {
         if (share === 'closed') return Promise.reject(new DOMException('closed', 'AbortError'));
+        if (share === 'notallowed') return Promise.reject(new DOMException('the tap is too long ago', 'NotAllowedError'));
         globalThis.sv2Shared.push({ title: what.title, text: what.text, url: what.url, files: what.files ? what.files.map((file) => ({ name: file.name, type: file.type })) : null });
         for (const file of what.files || []) globalThis.sv2Files.push(file);
         return Promise.resolve();
       } });
     }
-    if (share === 'files' || share === 'closed') Object.defineProperty(navigator, 'canShare', { configurable: true, value: (what) => Boolean(what && what.files && what.files.length > 0) });
+    if (share === 'files' || share === 'closed' || share === 'notallowed') Object.defineProperty(navigator, 'canShare', { configurable: true, value: (what) => Boolean(what && what.files && what.files.length > 0) });
     if (share === 'refuses') Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false });
-  }, opts.at || AT_0950, opts.share || '', opts.store || {});
+    globalThis.sv2Copied = [];
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (what) => { globalThis.sv2Copied.push(what); return Promise.resolve(); } } });
+  }, opts.at || AT_0950, opts.share || '', opts.store || {}, opts.clipboard === true);
   const requests = [];
   const errors = [];
   page.on('request', (request) => requests.push(request.url()));
@@ -425,6 +575,35 @@ async function axe(page, name) {
   const said = result.violations.map((violation) => violation.id + ': ' + violation.help + ' at ' + violation.nodes.map((node) => node.target.join(' ')).join(', '));
   assert.deepEqual(said, [], 'axe on ' + name);
 }
+
+// Paper or screen, and the device's colour scheme, set together. This
+// Puppeteer's emulateMediaType() and emulateMediaFeatures() each undo the
+// other (measured: after "dark, then print" the page is light), so a case
+// that needs dark paper says both in one message. The channel stays open:
+// what it set goes when it closes.
+async function emulate(page, media, scheme) {
+  if (!page.sv2Media) page.sv2Media = await page.createCDPSession();
+  await page.sv2Media.send('Emulation.setEmulatedMedia', { media, features: [{ name: 'prefers-color-scheme', value: scheme }] });
+  const now = await page.evaluate(() => [matchMedia('print').matches ? 'print' : 'screen', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light']);
+  assert.deepEqual(now, [media, scheme], 'the emulation asked for is not the one the page has');
+}
+
+// Every word in the sign's day tables that is cut across two lines.
+const cutWords = (page) => page.evaluate(() => {
+  const cut = [];
+  for (const cell of document.querySelectorAll('.sign__table th, .sign__table td')) {
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      for (const word of node.data.matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(node, word.index);
+        range.setEnd(node, word.index + word[0].length);
+        if (range.getClientRects().length !== 1) cut.push(word[0]);
+      }
+    }
+  }
+  return cut;
+});
 
 const PRINTED = /^Printed (1 September 2026|September 1, 2026)$/;
 
@@ -728,7 +907,8 @@ test('paper is light when the screen is dark, and the screen is unchanged by the
     });
     const screen = await read();
     assert.deepEqual(screen, { body: 'rgb(21, 24, 28)', ink: 'rgb(232, 230, 225)', grid: '26,30,35', headingTop: 0, printed: 'none', side: 'sticky', split: 'grid', font: '16px' });
-    await page.emulateMediaType('print');
+    // print, and still dark: without the paper rules' own colours this page would print dark
+    await emulate(page, 'print', 'dark');
     await page.waitForFunction(() => Array.from(document.querySelector('.map canvas').getContext('2d').getImageData(2, 2, 1, 1).data).slice(0, 3).join(',') === '232,227,216', { timeout: 5000 });
     const paper = await read();
     assert.equal(paper.body, 'rgb(255, 255, 255)');
@@ -736,9 +916,7 @@ test('paper is light when the screen is dark, and the screen is unchanged by the
     assert.equal(paper.grid, '232,227,216', 'the floor plan is drawn again in the light colours');
     assert.equal(paper.printed, 'block');
     assert.equal(paper.split, 'block');
-    await page.emulateMediaType('screen');
-    // this Puppeteer forgets the emulated colour scheme when the media type is set, so it is set again
-    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
+    await emulate(page, 'screen', 'dark');
     await page.waitForFunction(() => Array.from(document.querySelector('.map canvas').getContext('2d').getImageData(2, 2, 1, 1).data).slice(0, 3).join(',') === '26,30,35', { timeout: 5000 });
     assert.deepEqual(await read(), screen);
     assert.deepEqual(session.errors, []);
@@ -914,7 +1092,7 @@ test('where the share sheet takes no file the image is a download, and a closed 
 // ---------------------------------------------------------------- The door sign
 
 test('the door sign is a preview of the sheet: the room large, the teacher, the subject, and the room\'s day when asked', async () => {
-  const session = await openPage({ theme: 'dark' });
+  const session = await openPage({ width: 1280, height: 900, theme: 'dark' });
   try {
     const { page } = session;
     await goto(page, files.open.url + '#/room/rsample101');
@@ -924,7 +1102,7 @@ test('the door sign is a preview of the sheet: the room large, the teacher, the 
     assert.equal(await page.title(), 'Door sign: Room 101 · ' + SCHOOL);
     assert.equal(await says(page), 'This is the sign as it prints: one sheet for the door.');
     assert.equal(await page.evaluate(() => document.querySelector('.bar a[aria-current="page"]').dataset.item), 'search');
-    assert.deepEqual(await texts(page, '.sign > p'), ['Room', '101', 'Ms. Halloran', 'Mathematics', SCHOOL]);
+    assert.deepEqual(await texts(page, '.sign p'), ['Room', '101', 'Ms. Halloran', 'Mathematics', SCHOOL]);
     assert.equal(await count(page, '[data-sign="day"]'), 0, 'the room\'s day is not on the sign until asked for');
     const sheet = await page.evaluate(() => {
       const el = document.querySelector('.sheet');
@@ -954,6 +1132,14 @@ test('the door sign is a preview of the sheet: the room large, the teacher, the 
       return { sideBySide: Math.abs(kinds[0].top - kinds[1].top) < 1 && kinds[1].left >= kinds[0].right, inside: kinds.every((rect) => rect.left >= box.left && rect.right <= box.right + 0.5) };
     });
     assert.deepEqual(day, { sideBySide: true, inside: true });
+    // row for row what the builder writes as markup for the planner's batch (one sign, written two ways)
+    const onPage = await page.evaluate(() => Array.from(document.querySelectorAll('.sign__kind'), (kind) => Array.from(kind.querySelectorAll('tr'), (row) => Array.from(row.children, (cell) => cell.textContent))));
+    const school = openSchool(files.open.model);
+    const markup = doorModule.doorSignMarkup(school, school.room('rsample101'), { day: true });
+    assert.deepEqual(onPage, rowsOf(markup));
+    assert.equal(onPage.length, 2);
+    assert.deepEqual(await texts(page, '.sign p'), Array.from(markup.matchAll(/<p [^>]*>([\s\S]*?)<\/p>/g), (match) => match[1].replace(/<[^>]+>/g, '')));
+    assert.deepEqual(await cutWords(page), [], 'a word of the day table is cut in two');
     await page.click('#door-day');
     assert.equal(await hash(page), '#/door/rsample101');
     assert.equal(await count(page, '[data-sign="day"]'), 0);
@@ -961,7 +1147,7 @@ test('the door sign is a preview of the sheet: the room large, the teacher, the 
     // from its address, with the day; a room with a name and no number; a long name set smaller
     await move(page, '#/door/rsamplegym?day=1', 'Door sign: Gym');
     assert.equal(await page.evaluate(() => document.getElementById('door-day').checked), true);
-    assert.deepEqual(await texts(page, '.sign > p'), ['Gym', 'Coach Dunmore', 'Physical Education', SCHOOL], 'no "Room" over a room that has a name');
+    assert.deepEqual(await texts(page, '.sign p'), ['Gym', 'Coach Dunmore', 'Physical Education', SCHOOL], 'no "Room" over a room that has a name');
     assert.equal(await count(page, '.sign__kind'), 2);
     await move(page, '#/door/rsamplecaf', 'Door sign: Cafeteria');
     const long = await page.evaluate(() => {
@@ -969,7 +1155,7 @@ test('the door sign is a preview of the sheet: the room large, the teacher, the 
       return [number.textContent, number.style.getPropertyValue('--sign-fit').trim(), number.scrollWidth <= number.clientWidth, number.getClientRects().length];
     });
     assert.deepEqual(long, ['Cafeteria', String(7 / 9), true, 1]);
-    assert.deepEqual(await texts(page, '.sign > p'), ['Cafeteria', SCHOOL], 'a room with no teacher and no subject has neither line');
+    assert.deepEqual(await texts(page, '.sign p'), ['Cafeteria', SCHOOL], 'a room with no teacher and no subject has neither line');
 
     await move(page, '#/door/rnobody000', 'Not in this schedule');
     // a teacher's page leads to the sign of the teacher's room
@@ -1207,6 +1393,447 @@ test('every page has one Share and one Print; Share gives the page\'s name and n
     assert.deepEqual(plain.errors, []);
   } finally {
     await plain.close();
+  }
+});
+
+// ---------------------------------------------------------------- SV2-41: what two reviews found
+
+const mapPixel = () => Array.from(document.querySelector('.map canvas').getContext('2d').getImageData(2, 2, 1, 1).data).slice(0, 3).join(',');
+
+test('the floor plan is drawn in paper colours when printing starts and in the screen\'s when it ends, where no print media change is heard', async () => {
+  const session = await openPage({ width: 1280, height: 900, theme: 'dark' });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/room/rsample101');
+    await mapsDrawn(page);
+    assert.equal(await page.evaluate(mapPixel), '26,30,35', 'the dark theme\'s empty cell');
+    // WebKit says "beforeprint" and never changes matchMedia('print'): the screen's styles are still the page's
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.equal(await page.evaluate(mapPixel), '232,227,216', 'drawn again in the light colours as printing starts');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(21, 24, 28)', 'the page itself was still on screen, and dark');
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    assert.equal(await page.evaluate(mapPixel), '26,30,35', 'and back when printing ends');
+    // a map that has left the page stops listening
+    await move(page, '#/search', 'Search');
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a page left open past midnight is dated the day it is printed', async () => {
+  const session = await openPage({ at: AT_2230 });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/group/gsample06a');
+    assert.match(await text(page, '[data-printed="date"]'), PRINTED);
+    await page.evaluate(() => {
+      globalThis.sv2StaffClock.now = () => '2026-09-02T13:50:00Z';
+    });
+    assert.match(await text(page, '[data-printed="date"]'), PRINTED, 'nothing has asked for paper yet');
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.match(await text(page, '[data-printed="date"]'), /^Printed (2 September 2026|September 2, 2026)$/);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a note of spaces only is an empty note on the page and on paper, and is kept as typed', async () => {
+  const session = await openPage({ width: 710, height: 950, store: { [ME_AT]: 'tsample001' } });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/me');
+    const type = (value) => page.evaluate((typed) => {
+      const field = document.querySelector('[data-note="dsample00a:1"] input');
+      field.value = typed;
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }, value);
+    const empty = () => page.evaluate(() => document.querySelector('[data-note="dsample00a:1"]').dataset.empty);
+    const onPaper = async () => {
+      await page.emulateMediaType('print');
+      const seen = await page.evaluate(() => Array.from(document.querySelectorAll('.note__paper')).filter((el) => el.getClientRects().length > 0).map((el) => el.textContent));
+      await page.emulateMediaType('screen');
+      return seen;
+    };
+    await page.click('[data-toggle="notes"]');
+    await type('   ');
+    assert.deepEqual(JSON.parse(await kept(page, NOTES_AT)), { dsample00a: { 1: '   ' } }, 'what was typed is what is kept');
+    assert.equal(await empty(), 'true', 'three spaces are not a note');
+    await page.click('[data-toggle="notes"]');
+    assert.equal(await shown(page, '.note'), 0, 'and take no room on the page');
+    assert.deepEqual(await onPaper(), [], 'and print nothing');
+    // the same when the file is opened again and the spaces are read back
+    await page.goto('about:blank');
+    await goto(page, files.open.url + '#/me');
+    assert.equal(await empty(), 'true');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-note="dsample00a:1"] input').value), '   ');
+    assert.deepEqual(await onPaper(), []);
+    // a note with something in it keeps its spaces
+    await page.click('[data-toggle="notes"]');
+    await type('  duty \t');
+    assert.deepEqual(JSON.parse(await kept(page, NOTES_AT)), { dsample00a: { 1: '  duty \t' } });
+    assert.equal(await empty(), 'false');
+    assert.deepEqual(await onPaper(), ['  duty \t']);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('the note field counts its 200 characters once past 180', async () => {
+  const session = await openPage({ store: { [ME_AT]: 'tsample001' } });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/me');
+    await page.click('[data-toggle="notes"]');
+    const type = (length) => page.evaluate((n) => {
+      const field = document.querySelector('[data-note="dsample00a:1"] input');
+      field.value = 'n'.repeat(n);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }, length);
+    const count = () => page.evaluate(() => {
+      const box = document.querySelector('[data-note="dsample00a:1"]');
+      const says = box.querySelector('.note__count');
+      return [says.textContent, says.getClientRects().length > 0, box.querySelector('input').getAttribute('aria-describedby') === says.id && says.id !== ''];
+    });
+    await type(180);
+    assert.deepEqual(await count(), ['', false, true], 'nothing to say at 180');
+    await type(181);
+    assert.deepEqual(await count(), ['181 of 200 characters', true, true]);
+    await type(200);
+    assert.deepEqual(await count(), ['200 of 200 characters', true, true]);
+    // read back long: the count is there as soon as the field is
+    await page.goto('about:blank');
+    await goto(page, files.open.url + '#/me');
+    assert.equal((await count())[1], false, 'not while the notes are only being read');
+    await page.click('[data-toggle="notes"]');
+    assert.deepEqual(await count(), ['200 of 200 characters', true, true]);
+    await page.emulateMediaType('print');
+    assert.equal((await count())[1], false, 'and never on paper');
+    await page.emulateMediaType('screen');
+    await type(12);
+    assert.deepEqual(await count(), ['', false, true]);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('one card for two day types reads a note kept under the second; a note outlasts "This is not me"', async () => {
+  const session = await openPage({ store: { [ME_AT]: 'tsample001', [NOTES_AT]: JSON.stringify({ dsample00b: { 1: 'Kept under B Day' } }) } });
+  try {
+    const { page } = session;
+    await goto(page, files.merged.url + '#/teacher/tsample001');
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('.day'), (card) => card.dataset.days)), ['dsample00a dsample00b']);
+    assert.equal(await text(page, '[data-note="dsample00a:1"] .note__paper'), 'Kept under B Day');
+    assert.equal(await shown(page, '.note'), 1);
+
+    // "This is not me" takes the notes off the page and leaves them on the device
+    await page.click('[data-me="forget"]');
+    await page.waitForSelector('[data-me="choose"]');
+    assert.equal(await count(page, '.note'), 0);
+    assert.equal(await kept(page, ME_AT), null);
+    assert.deepEqual(JSON.parse(await kept(page, NOTES_AT)), { dsample00b: { 1: 'Kept under B Day' } });
+    // "This is me" brings them back, and focus goes to the top of the page that was drawn again
+    await page.click('[data-me="choose"]');
+    await page.waitForSelector('[data-me="forget"]');
+    assert.equal(await text(page, '[data-note="dsample00a:1"] .note__paper'), 'Kept under B Day');
+    assert.equal(await shown(page, '.note'), 1);
+    assert.equal(await page.evaluate(() => (document.activeElement === document.querySelector('.page__title') ? 'the heading' : document.activeElement.outerHTML.slice(0, 80))), 'the heading', '"This is me" leaves focus on the page\'s heading');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('the image is handed over without waiting for faces that are loaded, and a share sheet that refuses the tap ends in a download', async () => {
+  const FACES = ['400 12px "Public Sans"', '600 12px "Public Sans"', '700 12px "Public Sans"', '600 12px "Barlow Semi Condensed"'];
+  const session = await openPage({ share: 'files' });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/teacher/tsample001');
+    // the faces are loaded; a load that is asked for anyway never answers
+    await page.evaluate(async (faces) => {
+      await Promise.all(faces.map((face) => document.fonts.load(face)));
+      globalThis.sv2Checked = [];
+      globalThis.sv2Loads = 0;
+      const check = document.fonts.check.bind(document.fonts);
+      document.fonts.check = (face) => {
+        globalThis.sv2Checked.push([face, check(face)]);
+        return check(face);
+      };
+      document.fonts.load = () => {
+        globalThis.sv2Loads += 1;
+        return new Promise(() => {});
+      };
+    }, FACES);
+    await page.click('[data-output="image"]');
+    await page.waitForFunction(() => globalThis.sv2Shared.length === 1, { timeout: 5000 }).catch(() => {});
+    assert.deepEqual(await page.evaluate(() => [globalThis.sv2Shared.length, globalThis.sv2Loads]), [1, 0], 'the share sheet was not opened: the image waited for faces the page already has');
+    assert.deepEqual(await page.evaluate(() => globalThis.sv2Checked), FACES.map((face) => [face, true]));
+    // a face that is not there yet is waited for, as before
+    await page.evaluate(() => {
+      document.fonts.check = () => false;
+      document.fonts.load = () => {
+        globalThis.sv2Loads += 1;
+        return Promise.resolve([]);
+      };
+    });
+    await page.click('[data-output="image"]');
+    await page.waitForFunction(() => globalThis.sv2Shared.length === 2, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => globalThis.sv2Loads), 4);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+
+  const refused = await openPage({ share: 'notallowed' });
+  try {
+    const { page } = refused;
+    await goto(page, files.open.url + '#/teacher/tsample001');
+    await page.click('[data-output="image"]');
+    await page.waitForFunction(() => globalThis.sv2Downloads.length === 1, { timeout: 5000 }).catch(() => {});
+    assert.deepEqual(await page.evaluate(() => globalThis.sv2Downloads.map((download) => download.name)), ['ms-halloran-schedule.png'], 'a share sheet that refuses is not one the reader closed: the image is downloaded');
+    await page.waitForFunction(() => document.querySelector('[data-says="image"]').textContent.startsWith('Saved as '), { timeout: 5000 });
+    assert.deepEqual(refused.errors, []);
+  } finally {
+    await refused.close();
+  }
+});
+
+test('on a web address Share gives the address and "Copy link" copies it', async () => {
+  const session = await openPage({ share: 'page', clipboard: true });
+  try {
+    const { page } = session;
+    const address = 'http://127.0.0.1:9/staff.html';
+    const html = readFileSync(files.open.file, 'utf8');
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      if (request.url().startsWith('http://127.0.0.1:9/')) request.respond({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+      else request.continue();
+    });
+    await goto(page, address + '#/group/gsample06a');
+    assert.deepEqual(await texts(page, '[data-actions="share"] button'), ['Share', 'Copy link']);
+    await page.click('[data-share="copy"]');
+    await page.waitForFunction(() => document.querySelector('[data-actions="share"] [role="status"]').textContent !== '', { timeout: 5000 });
+    assert.equal(await text(page, '[data-actions="share"] [role="status"]'), 'Link copied.');
+    assert.deepEqual(await page.evaluate(() => globalThis.sv2Copied), [address + '#/group/gsample06a']);
+    await page.click('[data-share="share"]');
+    assert.deepEqual(await page.evaluate(() => globalThis.sv2Shared), [{ title: '6A · ' + SCHOOL, text: '6A · ' + SCHOOL, url: address + '#/group/gsample06a', files: null }]);
+    assert.deepEqual(session.requests.filter((url) => !url.startsWith(address) && !url.startsWith('data:')), [], 'hosted, the file still asks for nothing but itself');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('on a phone the sheet keeps its shape and its number, and the room\'s day stands under it at the page\'s own size', async () => {
+  for (const width of [390, 1280]) {
+    const session = await openPage({ width, height: width === 390 ? 760 : 900, theme: 'dark' });
+    try {
+      const { page } = session;
+      await goto(page, files.open.url + '#/door/rsample101?day=1');
+      const sign = await page.evaluate(() => {
+        const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+        const size = (selector) => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize);
+        // the paper: on a phone the card inside the sheet, from 640 px the sheet itself
+        const phone = getComputedStyle(document.querySelector('.sign__card')).display !== 'contents';
+        const paper = box(phone ? '.sign__card' : '.sheet');
+        const day = box('.sign__day');
+        const school = box('.sign__school');
+        const kinds = Array.from(document.querySelectorAll('.sign__kind'), (el) => el.getBoundingClientRect());
+        return {
+          phone,
+          shape: Math.round((paper.width / paper.height) * 100) / 100,
+          share: Math.round((size('.sign__number') / paper.width) * 1000) / 10,
+          dayUnder: day.top >= paper.bottom,
+          dayInside: day.top > paper.top && day.bottom < paper.bottom,
+          schoolAtFoot: Math.round(((school.bottom - paper.top) / paper.height) * 100) / 100,
+          table: size('.sign__table'),
+          body: size('body'),
+          stacked: kinds[1].top >= kinds[0].bottom,
+          dayPaper: getComputedStyle(document.querySelector(phone ? '.sign__day' : '.sheet')).backgroundColor,
+          dayInk: getComputedStyle(document.querySelector('.sign__table td')).color,
+          wide: document.documentElement.scrollWidth <= window.innerWidth,
+        };
+      });
+      if (width === 390) {
+        assert.equal(sign.phone, true);
+        assert.equal(sign.shape, 0.75, 'the sheet\'s own shape');
+        assert.ok(Math.abs(sign.share - 22.5) < 0.3, 'the number is 22.5% of the sheet\'s width: ' + sign.share);
+        assert.equal(sign.dayUnder, true, 'the day is under the sheet, not squeezed into it');
+        assert.equal(sign.table, sign.body, 'at the size the page is read at: ' + sign.table + ' px of ' + sign.body);
+        assert.equal(sign.stacked, true, 'one kind of day under another');
+      } else {
+        assert.equal(sign.phone, false);
+        assert.equal(sign.dayInside, true, 'from 640 px the day is on the sheet, as it prints');
+        assert.equal(sign.stacked, false);
+      }
+      assert.ok(sign.schoolAtFoot > 0.9 && sign.schoolAtFoot <= 1, 'the school\'s name is at the foot of the paper: ' + sign.schoolAtFoot);
+      assert.deepEqual([sign.dayPaper, sign.dayInk], ['rgb(255, 255, 255)', 'rgb(31, 35, 40)'], 'the day is on paper too, in a dark theme');
+      assert.equal(sign.wide, true);
+      assert.deepEqual(await cutWords(page), [], 'at ' + width + ' px a word of the day table is cut in two');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+test('seven full-square characters stay on one line of the sign, and two teachers of different subjects name no subject', async () => {
+  for (const width of [390, 1280]) {
+    const session = await openPage({ width, height: 900 });
+    try {
+      const { page } = session;
+      await goto(page, files.signs.url + '#/door/rsample102');
+      const number = await page.evaluate(() => {
+        const el = document.querySelector('.sign__number');
+        return { text: el.textContent, fit: el.style.getPropertyValue('--sign-fit').trim(), lines: Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).fontSize)), inside: el.scrollWidth <= el.clientWidth };
+      });
+      assert.deepEqual(number, { text: CJK_SEVEN, fit: '0.5', lines: 1, inside: true }, 'at ' + width + ' px');
+      await move(page, '#/door/rsample203', 'Door sign: Room 203');
+      assert.deepEqual(await texts(page, '.sign p'), ['Room', '203', 'Ms. Vandermeer and Ms. Halloran', SCHOOL]);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+test('in a browser with no container units the sign is still a sign that can be read', async () => {
+  for (const width of [390, 1280]) {
+    const session = await openPage({ width, height: 900 });
+    try {
+      const { page } = session;
+      await goto(page, files.open.url + '#/door/rsamplecaf?day=1');
+      // what such a browser makes of the sheet: every declaration in cqw is thrown away, and @supports says no
+      const dropped = await page.evaluate(() => {
+        const style = document.querySelector('style');
+        const sizes = (css) => (css.match(/:[^;{}]*cqw[^;{}]*;/g) || []).length;
+        const before = style.textContent;
+        style.textContent = before.replace(/[^;{}]*:[^;{}]*cqw[^;{}]*;/g, '').replace(/@supports \(font-size: 1cqw\)/g, '@supports (font-size: 1nope)');
+        return [sizes(before), sizes(style.textContent), style.textContent.includes('@supports (font-size: 1cqw)')];
+      });
+      assert.ok(dropped[0] >= 12 && dropped[1] === 0 && dropped[2] === false, 'the cqw sizes were not all taken out: ' + dropped.join(' then '));
+      const sign = await page.evaluate(() => {
+        const px = (selector, property) => parseFloat(getComputedStyle(document.querySelector(selector))[property || 'fontSize']);
+        const number = document.querySelector('.sign__number');
+        const paper = document.querySelector(getComputedStyle(document.querySelector('.sign__card')).display === 'contents' ? '.sign' : '.sign__card');
+        return {
+          root: px('html'),
+          number: px('.sign__number'),
+          teacher: px('.sign__school'),
+          kind: px('.sign__kindname'),
+          table: px('.sign__table'),
+          padding: parseFloat(getComputedStyle(paper).paddingTop),
+          oneLine: Math.round(number.getBoundingClientRect().height / px('.sign__number')) === 1 && number.scrollWidth <= number.clientWidth,
+          wide: document.documentElement.scrollWidth <= window.innerWidth,
+        };
+      });
+      assert.ok(sign.number >= 3 * sign.root, 'the number is large: ' + sign.number + ' px');
+      assert.ok(Math.abs(sign.number / sign.root / (7 / 9) - Math.round((sign.number / sign.root / (7 / 9)) * 10) / 10) < 0.01, 'and still set smaller for nine letters: ' + sign.number);
+      assert.ok(sign.teacher >= 12 && sign.kind >= 12 && sign.table >= 12, 'nothing under 12 px: ' + JSON.stringify(sign));
+      assert.ok(sign.padding >= 12, 'the paper has a margin: ' + sign.padding);
+      assert.equal(sign.oneLine, true, '"Cafeteria" on one line, inside the sheet');
+      assert.equal(sign.wide, true);
+      assert.deepEqual(await cutWords(page), []);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+test('the printed sign puts the school\'s name where the preview does: at the foot of the sheet', async () => {
+  for (const day of ['', '?day=1']) {
+    const session = await openPage({ width: 710, height: 950 });
+    try {
+      const { page } = session;
+      await goto(page, files.open.url + '#/door/rsample101' + day);
+      const foot = () => page.evaluate(() => {
+        const sheet = document.querySelector('.sheet').getBoundingClientRect();
+        const school = document.querySelector('.sign__school').getBoundingClientRect();
+        return { at: Math.round(((school.bottom - sheet.top) / sheet.height) * 100) / 100, sheet: Math.round(sheet.height), end: Math.round(sheet.bottom + window.scrollY) };
+      });
+      const preview = await foot();
+      assert.ok(preview.at > 0.9 && preview.at <= 1, 'in the preview the name ends ' + preview.at + ' of the way down the sheet');
+      await page.emulateMediaType('print');
+      await pause(100);
+      const paper = await foot();
+      assert.ok(paper.at > 0.9 && paper.at <= 1, 'on paper the name ends ' + paper.at + ' of the way down the sheet');
+      // a sheet of US Letter inside this file's margins is 950 px tall, and of A4 1017
+      assert.ok(paper.sheet >= 850, 'the sheet on paper is the height of the paper, not of its words: ' + paper.sheet + ' px');
+      assert.ok(paper.end <= 950, 'and still one sheet: it ends at ' + paper.end + ' px of 950');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// The planner's batch of door signs, as its print document: written to disk
+// beside the published files with its two stylesheets named by file address,
+// and measured as paper at the width a sheet has inside its margins.
+test('in the batch a room number of thirty characters wraps on its sheet: nothing runs off Letter or A4', async () => {
+  const project = sampleSchool();
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces).filter((space) => space.kind === 'room');
+  rooms[0].number = 'W'.repeat(30);
+  rooms[1].number = '<script>alert("s")</script> #1';
+  rooms[2].number = 'PORTABLE-CLASSROOM-ANNEX-NO-12';
+  rooms[3].number = CJK_SEVEN + CJK_SEVEN + '東';
+  assert.deepEqual(rooms.slice(0, 3).map((room) => Array.from(room.number).length), [30, 30, 30]);
+  for (const [size, wide, tall] of [['letter', 215.9, 279.4], ['a4', 210, 297]]) {
+    const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
+    const file = path.join(scratch, 'batch-' + size + '.html');
+    writeFileSync(file, html);
+    const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
+    try {
+      const { page } = session;
+      await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+      await page.emulateMediaType('print');
+      await pause(100);
+      const sheets = await page.evaluate(() => Array.from(document.querySelectorAll('[data-sheet="door"]'), (sheet) => {
+        const box = sheet.getBoundingClientRect();
+        const number = sheet.querySelector('.sign__number');
+        const at = number.getBoundingClientRect();
+        return {
+          foot: Math.round(((sheet.querySelector('.sign__school').getBoundingClientRect().bottom - box.top) / box.height) * 100) / 100,
+          gaps: ['.sign__word', '.sign__number', '.sign__teacher', '.sign__subject', '.sign__kindname'].map((selector) => {
+            const line = sheet.querySelector(selector);
+            return line ? Math.round(parseFloat(getComputedStyle(line).marginTop) * 10) / 10 + ' ' + Math.round(parseFloat(getComputedStyle(line).marginBottom) * 10) / 10 : null;
+          }),
+          id: sheet.dataset.id,
+          number: number.textContent.slice(0, 12),
+          size: getComputedStyle(number).fontSize,
+          runsOff: sheet.scrollWidth - sheet.clientWidth,
+          inside: at.left >= box.left - 0.5 && at.right <= box.right + 0.5 && number.scrollWidth <= number.clientWidth,
+          lines: Math.round(at.height / parseFloat(getComputedStyle(number).fontSize)),
+          tall: Math.round(box.height),
+        };
+      }));
+      assert.equal(sheets.length, 13);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, size + ': the document is wider than its paper');
+      for (const sheet of sheets) {
+        assert.equal(sheet.runsOff, 0, size + ': the sign of ' + sheet.number + ' runs ' + sheet.runsOff + ' px off its sheet');
+        assert.equal(sheet.inside, true, size + ': the number ' + sheet.number + ' is not inside its sheet');
+        assert.ok(sheet.tall <= Math.floor(((tall - 28) * 96) / 25.4), size + ': the sign of ' + sheet.number + ' is ' + sheet.tall + ' px tall, more than one sheet');
+        // as in the staff browser: the sheet is the height of the paper and the school's name is at its foot
+        assert.ok(sheet.tall >= Math.floor(((tall - 50) * 96) / 25.4) && sheet.foot > 0.95 && sheet.foot <= 1, size + ': on the sign of ' + sheet.number + ' the school\'s name ends ' + sheet.foot + ' of the way down a sheet ' + sheet.tall + ' px tall');
+      }
+      // thirty W's at the smallest size are wider than the sheet: they wrap; a short number is one line at 120 pt
+      assert.deepEqual([sheets[0].size, sheets[0].lines > 1], ['48px', true], size + ': ' + JSON.stringify(sheets[0]));
+      const short = sheets.find((sheet) => sheet.id === 'rsample203');
+      // the space over each line is the staff sign's on paper (8 mm over the teacher, 3 mm over the subject), and no browser default
+      assert.deepEqual(short.gaps, ['0 0', '0 0', '30.2 0', '11.3 0', '0 0'], size + ': the margins of the sign\'s lines');
+      assert.deepEqual([short.size, short.lines], ['160px', 1], size + ': ' + JSON.stringify(short));
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
   }
 });
 
