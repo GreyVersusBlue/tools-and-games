@@ -25,7 +25,7 @@ import { allRooms } from '../../../engine/schema.js';
 import { fill, apply, button, keyed, emptyState, roomLabel } from '../common.js';
 import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, touch, discard, remember, takeBack, forgetSteps, stageSlot, stageField, stageAdd, stageRemove, stageKeep } from './staged.js';
 import { sheetModel, namesOf, newGroup } from './model.js';
-import { sheet as makeSheet, cellKey } from './sheet.js';
+import { sheet as makeSheet, cellKey, NARROW } from './sheet.js';
 import { teacherTable, roomTable } from './readonly.js';
 
 export { gridEditsPending, watchGridEdits } from './staged.js';
@@ -48,10 +48,6 @@ const ROWS = [
   { value: 'teachers', label: 'Teachers' },
   { value: 'rooms', label: 'Rooms' },
 ];
-
-// Under this width the grid shows Group and the periods, and the other field
-// columns wait behind the Fields button. grid.css has the same number.
-const NARROW = '(max-width: 640px)';
 
 const SHEET = new URL('./grid.css', import.meta.url).href;
 function loadSheet() {
@@ -338,7 +334,6 @@ export function mount(env) {
     element.dataset.rows = state.rows;
     element.dataset.staged = String(pending);
     element.dataset.fields = state.fields === true ? 'shown' : 'hidden';
-    // after the lines above: the sheet looks at which columns are in sight
     sheet.draw(model);
     const same = sheetShown ? project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id)) : [];
     fill(above,
