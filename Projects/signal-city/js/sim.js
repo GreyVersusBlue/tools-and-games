@@ -75,7 +75,7 @@
 //                                corridor) is refused until it is back, when
 //                                each box returns to the phase it was in
 //                                through an all-red
-//   ambulance  { leg, turn, within }   an emergency vehicle spawned at `at`
+//   ambulance  { leg, turn, within, route? }   an emergency vehicle spawned at `at`
 //                                that has `within` seconds from its arrival
 //                                to leave the map; past that it is late
 //                                (stats.ambulanceLate, an 'ambulance-late'
@@ -361,7 +361,7 @@ export class World {
         this.stats.outages++;
         break;
       case 'ambulance': {
-        const car = this.spawnCar({ leg: e.leg, archetype: 'emergency', turn: e.turn, node: e.node || 0 });
+        const car = this.spawnCar({ leg: e.leg, archetype: 'emergency', turn: e.turn, route: e.route, node: e.node || 0 });
         if (!car) return false;
         e.car = car;
         e.within = e.within ?? 45;
@@ -422,7 +422,7 @@ export class World {
   // One more member of a platoon, if the lane start is clear. A motorcade
   // already given the corridor passes it on to the new car.
   _spawnMember(e) {
-    const car = this.spawnCar({ leg: e.leg, archetype: e.kind, turn: e.turn, node: e.node, variant: e.cars.length % 4 });
+    const car = this.spawnCar({ leg: e.leg, archetype: e.kind, turn: e.turn, route: e.route, node: e.node, variant: e.cars.length % 4 });
     if (!car) return null;
     car.platoon = e;
     if (e.priority) car.priority = true;
@@ -790,7 +790,15 @@ export class World {
 
   // ---- spawning -----------------------------------------------------------
 
-  spawnCar({ leg, archetype, turn, variant, lane, node = 0 } = {}) {
+  // `route` (#960) is a scripted vehicle's turns box by box, `['T', 'T', 'L']`:
+  // the first is its turn at the box it arrives at (and overrides `turn`),
+  // and each handoff takes the next (_handoff). Past the end of the list,
+  // and with no list, a car handed on draws its turn like any other.
+  spawnCar({ leg, archetype, turn, route, variant, lane, node = 0 } = {}) {
+    if (route !== undefined && route !== null) {
+      if (!Array.isArray(route) || !route.length || route.some(t => !['L', 'T', 'R'].includes(t))) throw new Error(`a route is a list of L, T and R, one a box: ${JSON.stringify(route)}`);
+      turn = route[0];
+    }
     const net = this.nodes[node];
     leg = leg || this.rng.pick(net.spawnLegs);
     archetype = archetype || this.rng.weighted(this.mix);
@@ -826,6 +834,7 @@ export class World {
     car.s = car.length - car.stats.length / 2;   // whole body on the map
     car.v = v;
     for (const h of car.hist) { h.s = car.s; h.v = car.v; }
+    if (route) { car.route = route.slice(); car.routeAt = 1; }
     this.cars.push(car);
     this.stats.spawned++;
     return car;
@@ -1250,7 +1259,8 @@ export class World {
 
   // The corridor handoff: the car's centre has passed the end of a linked
   // path. Pick the next turn from the level's weights among the paths its
-  // lane can take at the next box, move `s` and the perception ring into the
+  // lane can take at the next box (or take it from the car's own route, if it
+  // was scripted with one), move `s` and the perception ring into the
   // new frame, and start the approach fresh.
   _handoff(car) {
     const old = car.path, link = old.link;
@@ -1262,7 +1272,12 @@ export class World {
     const weights = {};
     for (const p of choices) weights[p.turn] = this.turns[p.turn] || 0;
     for (const t of ['L', 'T', 'R']) if (!(t in weights) && net.lanesForTurn(t).some(l => net.pathFor(link.entry, l, t))) weights[t] = this.turns[t] || 0;
-    let turn = Object.values(weights).some(w => w > 0) ? this.rng.weighted(weights) : choices[0].turn;
+    // a scripted vehicle with a route takes this box's turn from it and
+    // draws nothing (#960); one the leg does not have at all (no such way
+    // out of this box) is drawn like anybody's
+    const told = car.route && car.routeAt < car.route.length ? car.route[car.routeAt] : null;
+    if (car.route) car.routeAt++;
+    let turn = told !== null && told in weights ? told : Object.values(weights).some(w => w > 0) ? this.rng.weighted(weights) : choices[0].turn;
     let next = choices.find(p => p.turn === turn);
     car.laneWant = null;
     if (!next) {

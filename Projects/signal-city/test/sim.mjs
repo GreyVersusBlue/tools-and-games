@@ -1610,6 +1610,78 @@ group('the lights back on a timed corridor (#959): the offset is written back as
   ok(plain.offsetOf() === 16 && Math.abs(apart(plain) - 16) < 1e-6, 'and with no outage the 16 is the 16 it opened on', `${plain.offsetOf()} against ${apart(plain)}`);
 }
 
+group('a scripted vehicle keeps its route past the first box (#960)');
+
+{
+  // a made-up row of three boxes on a 15 s rule where six cars in ten turn
+  // at every box, and one ambulance in from the west at 20 s
+  const row = (events, { turns = { T: 0.4, L: 0.3, R: 0.3 }, network = {}, spawns = [] } = {}) => ({ network: { nodes: 3, spacing: 220, ...network }, demand: [{ W: 300, N: 150, S: 150 }, { N: 150, S: 150 }, { E: 300, N: 150, S: 150 }], duration: 240, mix: { standard: 1 }, turns, controller: { main: 'EW', rules: [{ when: 'elapsed', seconds: 15, then: 'next' }] }, controllers: [], events, spawns });
+  const amb = route => [{ kind: 'ambulance', at: 20, leg: 'W', turn: 'T', within: 200, ...(route ? { route } : {}) }];
+  // one run, and where every scripted car went: its movement at each box it was handed to
+  const went = (lvl, seed, { call = false, kinds = ['emergency'] } = {}) => {
+    const w = new World(lvl, seed);
+    const mine = new Map(), first = new Map();
+    let draws = 0, handing = false, followed = null;
+    const weighted = w.rng.weighted.bind(w.rng), handoff = w._handoff.bind(w);
+    w.rng.weighted = x => { if (handing) draws++; return weighted(x); };
+    w._handoff = car => { handing = mine.has(car.id); handoff(car); handing = false; if (mine.has(car.id) && car.priority && followed === null) followed = (w.controllers[car.path.node].preemption || { movements: [] }).movements.join(); };
+    let read = 0;
+    for (let i = 0; i < 200 * 60; i++) {
+      w.step();
+      for (const c of w.cars) if (kinds.includes(c.archetype) && !mine.has(c.id)) { mine.set(c.id, []); first.set(c.id, c.path.movement); if (call) w.requestPriority(c); }
+      for (; read < w.events.length; read++) { const e = w.events[read]; if (mine.has(e.car) && ['handoff', 'lane', 'lane-missed'].includes(e.kind)) mine.get(e.car).push(e.kind === 'handoff' ? `${e.node}:${e.to}` : e.kind === 'lane' ? `lane:${e.to}` : 'missed'); }
+    }
+    const out = w.cars.filter(c => mine.has(c.id) && !c.done).length;
+    return { w, hands: [...mine.values()].map(h => h.join(' ')), first: [...first.values()], draws, followed, out, hash: w.hash() };
+  };
+  const seeds = Array.from({ length: 20 }, (_, i) => i + 1);
+
+  // the gap as it was, and still is for an event with no route: `turn` is the first box's
+  const loose = seeds.map(s => went(row(amb(null)), s));
+  const through = loose.filter(r => r.hands[0] === '1:W-T 2:W-T').length;
+  ok(loose.every(r => r.first[0] === 'W-T' && r.out === 0) && through > 0 && through < 20, 'with no route an ambulance told T goes through the first box and draws its turn at each box after, like any car: it crosses all three on some seeds of twenty and not on others', `${through} of 20: ${loose.map(r => r.hands[0] || 'left at box 1').join(' | ')}`);
+  ok(loose.every(r => r.draws === (r.hands[0] || '').split(' ').filter(Boolean).length), 'one draw a handoff');
+  // the route
+  const kept = seeds.map(s => went(row(amb(['T', 'T', 'T'])), s));
+  ok(kept.every(r => r.hands[0] === '1:W-T 2:W-T' && r.out === 0), 'with route T, T, T it crosses all three boxes on every seed of twenty and leaves the map', kept.map(r => r.hands[0]).join(' | '));
+  ok(kept.every(r => r.draws === 0), 'and draws nothing at either handoff', kept.map(r => r.draws).join());
+  for (const [route, want, first] of [[['T', 'T', 'L'], '1:W-T 2:W-L', 'W-T'], [['T', 'T', 'R'], '1:W-T 2:W-R', 'W-T'], [['T', 'L', 'T'], '1:W-L', 'W-T'], [['R', 'T', 'T'], '', 'W-R'], [['L'], '', 'W-L']]) {
+    const runs = seeds.slice(0, 6).map(s => went(row(amb(route)), s));
+    ok(runs.every(r => r.hands[0] === want && r.first[0] === first && r.out === 0 && r.draws === 0), `route ${route.join(', ')}: ${first} at the first box${want ? `, then ${want}` : ' and off the map there'}, on six seeds`, runs.map(r => `${r.first[0]} ${r.hands[0]}`).join(' | '));
+  }
+  // the route's first entry is the first box's turn, whatever `turn` says
+  const over = went(row([{ kind: 'ambulance', at: 20, leg: 'W', turn: 'L', within: 200, route: ['T', 'R'] }]), 3);
+  ok(over.first[0] === 'W-T' && over.hands[0] === '1:W-R', 'a route overrides the event\'s `turn` at the first box', `${over.first[0]} ${over.hands[0]}`);
+  // past the end of the list the car is anybody's: a route of one T is the same run as `turn: 'T'`
+  const short = seeds.slice(0, 6).map(s => went(row(amb(['T'])), s));
+  ok(short.every((r, i) => r.hash === loose[i].hash && r.hands[0] === loose[i].hands[0] && r.draws === loose[i].draws), 'a route that has run out draws like any car: route T alone is the run `turn: T` plays, to the hash, on six seeds', short.map(r => r.hands[0] || 'left at box 1').join(' | '));
+  // a turn the level's weights never draw
+  const never = seeds.slice(0, 6).map(s => went(row(amb(['T', 'L']), { turns: { T: 1 } }), s));
+  ok(never.every(r => r.hands[0] === '1:W-L' && r.draws === 0), 'on a street where nobody turns a route still turns left at the second box', never.map(r => r.hands[0]).join(' | '));
+  // a turn the box does not have: a row of T-junctions with no north leg
+  const tee = seeds.slice(0, 6).map(s => went(row(amb(['T', 'L', 'T']), { turns: { T: 1 }, network: { legs: ['E', 'S', 'W'] } }), s));
+  ok(tee.every(r => r.hands[0] === '1:W-T 2:W-T' && r.draws === 1 && r.out === 0), 'where the box has no such way out (a left with no north leg) that turn is drawn like anybody\'s, and the route goes on at the next box', tee.map(r => `${r.hands[0]}, ${r.draws} drawn`).join(' | '));
+  // a called one's corridor still follows it (R6): the whole entry leg, so this line cannot tell a route from a draw
+  const called = went(row(amb(['T', 'L']), { turns: { T: 1 } }), 2, { call: true });
+  ok(called.hands[0] === '1:W-L' && /W-L/.test(called.followed || ''), 'a called ambulance on a route is handed its corridor at the second box as before', String(called.followed));
+  // two lanes: a right from the inner lane is a lane change on the block before, as for any car (R12)
+  const wide = seeds.slice(0, 12).map(s => went(row(amb(['T', 'R', 'T']), { turns: { T: 1 }, network: { lanesPerDir: 2 } }), s));
+  const direct = wide.filter(r => r.hands[0] === '1:W-R').length, changed = wide.filter(r => r.hands[0] === '1:W-T lane:W-R').length;
+  // seed 11's ambulance is hit in the first box and towed there: it reaches no handoff, route or none
+  const towed = wide.filter(r => r.hands[0] === '' && r.w.events.some(e => e.kind === 'towed' && e.t < 60)).length;
+  ok(direct + changed + towed === 12 && direct >= 5 && changed >= 3 && towed <= 1 && wide.every(r => r.draws === 0 && r.out === 0), 'on two lanes each way a routed right is taken from the curb lane, or by a lane change on the block from the inner one', `${direct} from the curb lane, ${changed} by a lane change, ${towed} towed in the first box: ${wide.map(r => r.hands[0]).join(' | ')}`);
+  // every scripted kind: a motorcade's members, a procession's, and a level's `spawns`
+  const cade = went(row([{ kind: 'motorcade', at: 20, leg: 'W', size: 4, spacing: 1.2, route: ['T', 'L'] }], { turns: { T: 1 } }), 2, { kinds: ['motorcade'] });
+  ok(cade.hands.length === 4 && cade.hands.every(h => h === '1:W-L') && cade.draws === 0, 'all four cars of a motorcade with route T, L turn left at the second box', cade.hands.join(' | '));
+  const walk = went(row([{ kind: 'procession', at: 20, leg: 'W', size: 3, spacing: 2, route: ['T', 'T', 'R'] }], { turns: { T: 1 } }), 2, { kinds: ['procession'] });
+  ok(walk.hands.length === 3 && walk.hands.every(h => h === '1:W-T 2:W-R'), 'and all three of a procession with route T, T, R turn right at the third', walk.hands.join(' | '));
+  const listed = went(row([], { turns: { T: 1 }, spawns: [{ t: 20, leg: 'W', archetype: 'emergency', route: ['T', 'T', 'L'] }] }), 2);
+  ok(listed.hands.length === 1 && listed.hands[0] === '1:W-T 2:W-L', 'a level\'s scripted `spawns` entry takes a route the same way', listed.hands.join(' | '));
+  // a route that is not a list of turns is refused by name
+  const refused = [['T', 'X'], [], 'T', ['t']].map(route => { try { new World(row([]), 1).spawnCar({ leg: 'W', archetype: 'emergency', route }); return 'spawned'; } catch (e) { return e.message; } });
+  ok(refused.every(m => /a route is a list of L, T and R/.test(m)), 'a route with anything but L, T and R in it, an empty one and a bare string are each refused by name', refused.join(' | ').slice(0, 160));
+}
+
 group('a three-minute mixed run on the cycling level');
 
 {
