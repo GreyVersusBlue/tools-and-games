@@ -1505,6 +1505,111 @@ group('entry metering (R10, #778): a meter on a ring\'s leg, fired by the leg it
   ok(e2.w.events.filter(e => e.kind === 'meter' && e.leg === 'E').length === e2.w.meters[0].fired, 'each firing is an event the page can hear');
 }
 
+group('the lights back on a timed corridor (#959): the offset is written back as the street runs it, and no box is re-timed');
+
+{
+  // a made-up street: two boxes on one 38 s plan, the east one 16 s on, and
+  // an outage. Each box comes back to the top of the green it was in or
+  // was going to, so what the east box runs behind the west one afterwards
+  // is set by the second the dark began, not by the 16
+  const street = (out, extra = {}) => ({ network: { nodes: 2, spacing: 220 }, demand: [{ W: 500, N: 200, S: 200 }, { E: 500, N: 200, S: 200 }], duration: 600, mix: { standard: 1 }, controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 17 }, { phase: 1, green: 12 }], timing: { yellow: 3, allRed: 1.5, minGreen: 4 } }, controllers: [{ offset: 0 }, { offset: 16 }], events: out === null ? [] : [{ kind: 'outage', at: out, for: 10 }], ...extra });
+  const mod = (x, L) => ((x % L) + L) % L;
+  // how far the box at n is behind the first by where the two stand in their cycles right now
+  const apart = (w, n = 1) => mod(w.controllers[n].cyclePosition() - w.controllers[0].cyclePosition(), w.controllers[0].cycleLength());
+  const near = (a, b, by, L = 38) => Math.min(mod(a - b, L), mod(b - a, L)) <= by;
+  const lit = w => w.controllers.every(c => c.stage !== 'dark');
+  // the control: the same world with the write-back taken out
+  const deaf = (lvl, seed) => { const w = new World(lvl, seed); w._trueOffsets = () => {}; return w; };
+  const trace = w => w.controllers.map(c => `${c.phase}${c.stage[0]}${c.stageT.toFixed(3)}`).join(' ');
+
+  // the dark begins at 40 s: the west box is 2 s into its second cycle, on
+  // the boulevard's green, and the east box 18 s into its own, on the yellow
+  // that ends it: one comes back on phase 0 and the other on phase 1, 21.5 s
+  // apart (the boulevard's 17 s, its yellow and its all-red). One world at
+  // a time: car ids are the module's, so two worlds stepped in turn differ
+  const first = make => {
+    const w = make(street(40), 3), seen = [];
+    const L = w.controllers[0].cycleLength(), opens = w.offsetOf();
+    w.run(45);
+    const inDark = { out: w.powerOut, reads: w.offsetOf(), own: w.controllers[1].offset };
+    let firstLit = null, smooth = true, was = null;
+    while (w.t < 50 + 60) {
+      w.step();
+      seen.push(trace(w));
+      if (!lit(w)) continue;
+      if (firstLit === null) firstLit = { t: w.t, reads: w.offsetOf(), apart: apart(w), stages: w.controllers.map(c => c.stage).join(), next: w.controllers.map(c => c.next).join(), phase: w.controllers.map(c => c.phase).join() };
+      // a cycle position moves on by one step a step, the return's all-red included
+      const pos = w.controllers.map(c => c.cyclePosition());
+      if (was && pos.some((x, i) => !near(x, was[i] + DT, 1e-6))) smooth = false;
+      was = pos;
+    }
+    const minute = { reads: w.offsetOf(), apart: apart(w), west: w.controllers[0].offset, shifts: w.controllers.map(c => c.shift).join(), hash: w.hash(), cleared: w.stats.cleared };
+    const queued = w.setOffset(30);
+    w.run(240);
+    return { L, opens, inDark, firstLit, smooth, minute, seen: seen.join('|'), queued, paid: { reads: w.offsetOf(), apart: apart(w), shift: w.controllers[1].shift, hash: w.hash() } };
+  };
+  const w = first((l, s) => new World(l, s)), old = first(deaf);
+  const L = w.L;
+  ok(L === 38 && w.opens === 16, 'the street opens 16 s apart on a 38 s cycle', `${L} s, ${w.opens}`);
+  ok(w.inDark.out && w.inDark.reads === 16 && w.inDark.own === 16, 'in the dark the number is left alone: nothing is running to read', String(w.inDark.reads));
+  const fl = w.firstLit || {};
+  ok(fl.stages === 'allred,allred' && fl.next === '0,1' && fl.phase === '0,0', 'the lights come back through an all-red, the west box to the boulevard\'s green it was in and the east box to the side street\'s it was going to', JSON.stringify(fl));
+  ok(w.smooth, 'and from that step each box\'s cycle position runs on a step at a time, through the all-red into the green (the west box\'s all-red is not the one after its own green)');
+  ok(Math.abs(fl.reads - fl.apart) < 1e-6 && Math.abs(fl.reads - 21.5) < 1e-6, 'on the step the lights return the offset reads what the street runs, 21.5 s (the boulevard\'s 17, its yellow and its all-red), not the 16 from before', `${fl.reads} against ${fl.apart}`);
+  ok(Math.abs(w.minute.reads - w.minute.apart) < 1e-6 && w.minute.west === 0 && w.minute.shifts === '0,0', 'a minute later it still does, the west box\'s own offset is untouched and nothing was queued on either box', `${w.minute.reads} against ${w.minute.apart}`);
+  ok(old.minute.reads === 16 && Math.abs(old.minute.apart - 21.5) < 1e-6, 'the control, with the write-back taken out, reads 16 on a street running 21.5', `${old.minute.reads} against ${old.minute.apart}`);
+  ok(w.seen === old.seen && w.seen.length > 50000 && w.minute.hash === old.minute.hash, 'and the two runs are one run, step for step at both boxes: writing the number down re-times nothing', `${w.minute.cleared} and ${old.minute.cleared} cleared`);
+
+  // a move of the slider is a move from the truth
+  ok(w.queued === 8.5 && old.queued === 14, 'the slider to 30 from a true 21.5 queues 8.5 s; from the stale 16 it queued 14', `${w.queued} and ${old.queued}`);
+  ok(w.paid.shift === 0 && w.paid.reads === 30 && near(w.paid.apart, 30, 1.01), 'once paid, the street runs the 30 the slider reads', `${w.paid.apart.toFixed(2)} s apart`);
+  ok(old.paid.shift === 0 && old.paid.reads === 30 && near(old.paid.apart, 35.5, 1.01) && old.paid.hash !== w.paid.hash, 'where the control reads 30 on a street running 35.5', `${old.paid.apart.toFixed(2)} s apart`);
+
+  // a shift still owed when the power goes is still owed, and counted
+  const owing = make => {
+    const o = make(street(40), 3);
+    o.run(36);
+    o.setOffset(30);
+    o.run(20);
+    const back = { lit: lit(o), owed: o.controllers[1].shift, reads: o.offsetOf(), apart: apart(o) };
+    o.run(240);
+    return { back, shift: o.controllers[1].shift, reads: o.offsetOf(), apart: apart(o), hash: o.hash() };
+  };
+  const o = owing((l, s) => new World(l, s)), od = owing(deaf);
+  ok(o.back.lit && o.back.owed > 1 && o.back.owed === od.back.owed && Math.abs(mod(o.back.reads - o.back.owed, L) - o.back.apart) < 1e-6, 'a slider moved 4 s before the dark: at the return the offset reads where the east box stands plus what it still owes', `reads ${o.back.reads.toFixed(3)}, owes ${o.back.owed.toFixed(3)}, ${o.back.apart.toFixed(3)} s apart`);
+  ok(o.shift === 0 && near(o.apart, o.reads, 1.01) && o.reads === o.back.reads && o.hash === od.hash && od.reads === 30 && !near(od.apart, 30, 1.01), 'and once that is paid the street runs what it reads, in the same run as the control\'s, which reads 30', `reads ${o.reads.toFixed(2)}, ${o.apart.toFixed(2)} s apart; the control ${od.apart.toFixed(2)} s apart`);
+
+  // it is the east box against the west, whatever the west box's own offset is, and never outside one cycle
+  for (const [at, west] of [[40, 5], [47, 0], [61, 9], [70, 0]]) {
+    const v = new World(street(at, { controllers: [{ offset: west }, { offset: west + 16 }] }), 2).run(at + 30);
+    ok(lit(v) && v.controllers[0].offset === west && v.offsetOf() >= 0 && v.offsetOf() < L && Math.abs(v.offsetOf() - apart(v)) < 1e-6 && v.controllers[1].shift === 0, `an outage at ${at} s with the west box's own offset ${west}: the east box reads ${+v.offsetOf().toFixed(3)} s behind it, as the street runs, inside one cycle`, `${v.offsetOf()} against ${apart(v)}, west ${v.controllers[0].offset}`);
+  }
+  // two boxes that come back in the same step on the same green read 0 and nothing near it: the west box
+  // was on the boulevard's green and is read back from its start, the east box was on the yellow before it
+  const one = new World(street(53, { controllers: [{ offset: 0 }, { offset: 20 }] }), 2).run(53 + 30);
+  ok(lit(one) && one.offsetOf() === 0 && one.controllers[1].offset === 0 && apart(one) < 1e-6, 'an outage at 53 s on a street 20 s apart brings both boxes back on the boulevard together, and the offset reads 0 exactly', `${one.offsetOf()} against ${apart(one)}`);
+  // a hair under a whole cycle is the same clock, not 38 s: the east box's reading nudged a
+  // billionth of a millisecond early by hand, and the write-back run again
+  const hair = new World(street(53, { controllers: [{ offset: 0 }, { offset: 20 }] }), 2).run(53 + 30);
+  const west = hair.controllers[0];
+  hair.controllers[1].cycleOrigin = () => west.cycleOrigin() - 1e-12;
+  hair._trueOffsets();
+  ok(hair.offsetOf() === 0, 'a box a rounding error ahead of the first reads 0, not a cycle less nothing', String(hair.offsetOf()));
+  // a longer all-red at one box (the Timing tab's other slider) gives the two boxes two cycles and no offset to read
+  const two = new World(street(40), 2);
+  two.controllers[1].setTiming({ allRed: 3 });
+  two.run(80);
+  ok(lit(two) && two.controllers[1].cycleLength() === 41 && two.offsetOf() === 16, 'boxes on two cycles keep the number they had: there is no offset between them to write', `${two.controllers[1].cycleLength()} s, ${two.offsetOf()}`);
+  // three boxes: each against the first
+  const three = new World(street(40, { network: { nodes: 3, spacing: 220 }, demand: [{ W: 400, N: 150, S: 150 }, { N: 150, S: 150 }, { E: 400, N: 150, S: 150 }], controllers: [{ offset: 0 }, { offset: 16 }, { offset: 27 }] }), 2).run(80);
+  ok(lit(three) && [1, 2].every(n => Math.abs(three.offsetOf(n) - apart(three, n)) < 1e-6) && three.offsetOf(2) !== 27, 'on three boxes each is read against the first', `${three.offsetOf(1)} and ${three.offsetOf(2)} against ${apart(three, 1)} and ${apart(three, 2)}`);
+  // boxes on rules have no cycle to read, and a street with no outage is never written to
+  const rules = new World({ ...street(40), controller: { main: 'EW', rules: [{ when: 'elapsed', seconds: 20, then: 'next' }] }, controllers: [] }, 2).run(80);
+  ok(lit(rules) && rules.controllers.every(c => c.offset === 0) && rules.offsetOf() === 0, 'two boxes on rules come back with their offsets as they were: no plan, nothing to write');
+  const plain = new World(street(null), 3).run(120);
+  ok(plain.offsetOf() === 16 && Math.abs(apart(plain) - 16) < 1e-6, 'and with no outage the 16 is the 16 it opened on', `${plain.offsetOf()} against ${apart(plain)}`);
+}
+
 group('a three-minute mixed run on the cycling level');
 
 {

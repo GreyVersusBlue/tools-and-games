@@ -116,7 +116,7 @@ export const PACK_02 = [
     id: 'lights-out',
     name: 'Lights Out',
     blurb: 'Boulevard\'s two lights with the wave already running, and a power cut on the way. When the lights come back the wave does not.',
-    hint: 'The wave is set: watch it work. At 78 seconds the power goes for twelve, both boxes go dark and every car takes its turn. When it comes back each box starts again from the top of the green it was in, so the two clocks agree with each other and no longer with the slider: the diagram shows it, the lines landing on red. The slider moves the east box on from where it stands, so slide it until the lines land in green again and let it re-align. Sooner is better: every car that stops twice still counts.',
+    hint: 'The wave is set: watch it work. At 78 seconds the power goes for twelve, both boxes go dark and every car takes its turn. When it comes back each box starts again from the top of the green it was in, so the two boxes are on one clock: the slider drops to 0 to say so and the diagram shows it, the lines landing on red. Slide it back until the lines land in green again and let it re-align. Sooner is better: every car that stops twice still counts.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 },
     // Boulevard's plan and its 33 s cycle, and Boulevard's answer already in:
     // the east box 16 s on, so the level opens on a wave both ways
@@ -130,11 +130,12 @@ export const PACK_02 = [
     // box is on its boulevard green and the east box on the yellow that ends
     // its side street's. A box comes back to the phase it was in or was
     // going to (sim.js _endEvent), from the top of that green: both come
-    // back on the boulevard at the same instant, the offset the slider still
-    // calls 16 s is 0 on the street, and the wave is gone both ways until
-    // the slider moves the east box another half cycle. A second either way
-    // (77 or 79 s) and the boxes come back half a cycle apart with nothing
-    // to do. Twelve seconds, because a box comes back through one all-red
+    // back on the boulevard at the same instant, the offset is 0 on the
+    // street and the slider reads 0 (the truth is written back at the
+    // return, #959; until then it still read 16), and the wave is gone both
+    // ways until the slider moves the east box half a cycle on again. A
+    // second either way (77 or 79 s) and the boxes come back half a cycle
+    // apart with nothing to do. Twelve seconds, because a box comes back through one all-red
     // and a car still crossing on its turn is hit by the first green: 20 s
     // of dark read 8 such crashes in 24 seeds, 12 s read 5 in 48
     events: [{ kind: 'outage', at: 78, for: 12 }],
@@ -142,14 +143,15 @@ export const PACK_02 = [
     // calibrated on six seeds (R13, #933), `calibrate.mjs lights-out
     // --baseline --hand`. Nothing pressed: 120 to 168 cleared at 7 to 8 s,
     // 60 to 70% of the handed-on cars stopping again (3 of 64 before the
-    // power goes), one star on all six, no lock. The slider moved to 32
-    // (the east box 16 s on) 10 s after the lights come back: 12 to 28%,
-    // the lesson on all six, three stars on two. The tool's sweep by fours
-    // at that second keeps 4 (21 s on): the lesson on six and three stars
-    // on five; the star lost either way is a crash, and this street
-    // crashes with nobody's help. To 32 at 5, 20 and 30 s after the lights:
-    // 14 to 35%, the lesson on all six each time. To 24, a quarter of a
-    // cycle off: 32 to 58%, the lesson on one seed. The bar is 40%: 20
+    // power goes), one star on all six, no lock. The slider moved back to
+    // 16 (the east box 16 s on) 10 s after the lights come back: 12 to 28%,
+    // the lesson on all six, three stars on two. 21 at that second: the
+    // lesson on six and three stars on five; the star lost either way is a
+    // crash, and this street crashes with nobody's help. To 16 at 5, 20 and
+    // 30 s after the lights: 14 to 35%, the lesson on all six each time. To
+    // 8, a quarter of a cycle off: 32 to 58%, the lesson on one seed. (Until
+    // #959 the slider went on reading 16 after the return and these were
+    // its 32, 4 and 24: the same runs, car for car.) The bar is 40%: 20
     // points under the best seed with nothing pressed and 5 over the worst
     // with the slider moved 30 s late. The target is under the worst run of
     // all (120), so the slider is the second star

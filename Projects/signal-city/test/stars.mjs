@@ -42,8 +42,8 @@
 //
 // R13's power cut rides here too (RETURNS below): Lights Out's calibration
 // (#933). The level opens on Boulevard's wave and loses it to an outage:
-// both boxes come back on the boulevard's green at the same instant while
-// the slider still reads 16 s. With nothing pressed no seed locks, every
+// both boxes come back on the boulevard's green at the same instant, and the
+// slider reads the 0 s that is (#959; it used to go on reading 16). With nothing pressed no seed locks, every
 // seed clears the target for the one star, the wave ran until the power
 // went, and over the run more cars stop again than the bar allows. With the
 // slider moved ten seconds after the lights come back, by the half cycle
@@ -151,10 +151,11 @@ function runCross(level, mode) {
 
 // A timed corridor the power fails on (R13, #933): the slider value that
 // brings the wave back once the lights are on again (`slider`), and one a
-// quarter of a cycle from it (`wrong`). The slider moves the east box on by
-// its value less what it read before, from where the box stands, so on a
-// 33 s cycle 32 after 16 is 16 s on and 24 is 8.
-const RETURNS = { 'lights-out': { slider: 32, wrong: 24 } };
+// quarter of a cycle from it (`wrong`). The slider reads what the street
+// runs once the lights are back (#959), 0 on Lights Out, so 16 is 16 s on
+// and 8 is 8. Before #959 it went on reading 16 and these runs were its 32
+// and 24: the same shifts, and the rows below did not move by a car.
+const RETURNS = { 'lights-out': { slider: 16, wrong: 8 } };
 const BACK = 10;   // seconds after the lights come back before the slider is moved: time to read the diagram
 
 // One such level, six seeds: nothing pressed (`slider` null), or the slider
@@ -353,7 +354,7 @@ for (const [id, ret] of Object.entries(RETURNS).filter(([k]) => mine(k))) {
   const pre = dark.reduce((a, r) => [a[0] + r.pre[0], a[1] + r.pre[1]], [0, 0]);
   ok(pre[0] >= 40 && pre[1] / pre[0] <= bar / 2 && dark.every(r => r.pre[0] >= 5), `${level.name}: until the power goes the wave it opens on is running: of the handed-on cars off the map by then, at most half the bar's share had stopped again, six seeds together`, `${pre[1]} of ${pre[0]} (${dark.map(r => `${r.pre[1]}/${r.pre[0]}`).join(' ')})`);
   ok(dark.every(r => r.came && r.came.phases === '0,0' && r.came.into[0] === r.came.into[1] && near(r.came.t, out.at + out.for + level.controller.timing.allRed, 0.05)), `${level.name}: the lights come back through one all-red on the boulevard's green at both boxes, in the same step, on every seed`, dark.map(r => (r.came ? `${r.came.t.toFixed(2)} s ${r.came.phases}` : 'never')).join(' | '));
-  ok(dark.every(r => r.came && r.came.reads === set && r.reads === set && near(r.apart, 0, 0.01) && r.owed === 0), `${level.name}: so with nothing pressed the slider still reads ${set} s at the end and the two boxes are 0 s apart (Known gaps: the return is not through setOffset)`, dark.map(r => `reads ${r.reads}, ${r.apart.toFixed(1)} s apart`).join(' | '));
+  ok(set !== 0 && dark.every(r => r.came && r.came.reads === 0 && r.reads === 0 && near(r.apart, 0, 0.01) && r.owed === 0), `${level.name}: so with nothing pressed the two boxes are 0 s apart from then to the end, the slider reads 0 and not the ${set} s it opened on, and nothing was queued (#959: the truth is written back, the street is not re-timed)`, dark.map(r => `reads ${r.reads}, ${r.apart.toFixed(1)} s apart`).join(' | '));
   ok(dark.every(r => share(r) >= bar + 0.05), `${level.name}: and every seed stops again more than the bar's ${pc(bar)} of its handed-on cars, by 5 points or more`, dark.map(r => pc(share(r))).join(' | '));
   ok(fixed.every(r => !r.lock && r.cleared >= level.target && r.carried > 40 && share(r) <= bar - 0.05), `${level.name}, the slider to ${ret.slider} ${BACK} s after the lights: every seed clears the target and meets the lesson by 5 points or more`, fixed.map(r => `${r.lock ? 'LOCK' : r.cleared} ${pc(share(r))}`).join(' | '));
   ok(fixed.every(r => r.reads === ret.slider && r.owed === 0 && near(r.apart, set, 1.01)), `${level.name}, the slider to ${ret.slider}: it is paid in full by the end, and the east box is ${set} s on again`, fixed.map(r => `reads ${r.reads}, ${r.apart.toFixed(1)} s apart`).join(' | '));

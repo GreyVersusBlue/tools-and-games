@@ -408,7 +408,10 @@ export class World {
 
   _endEvent(e) {
     e.ended = true;
-    if (e.kind === 'outage') this.controllers.forEach((c, i) => { if (c.stage === 'dark') c.requestPhase(e.resume[i], 'outage'); });
+    if (e.kind === 'outage') {
+      this.controllers.forEach((c, i) => { if (c.stage === 'dark') c.requestPhase(e.resume[i], 'outage'); });
+      this._trueOffsets();
+    }
     if (e.kind === 'closure') {
       this.nodes[e.node].open(e.leg, e.lane);
       for (const c of this.cars) if (!c.done && c.path.node === e.node && c.path.entry === e.leg && c.path.lane === e.lane) { c.mergeS = 0; c.mergeLane = -1; }
@@ -668,6 +671,24 @@ export class World {
   setOffset(seconds, node = 1) {
     if (node <= 0 || node >= this.controllers.length) throw new RangeError(`no second box ${node}`);
     return this.controllers[node].setOffset(this.controllers[0].offset + seconds);
+  }
+
+  // The lights are back on a timed corridor (#959). Each box restarts from
+  // the top of a green, so how far one runs behind the first is whatever
+  // that left it, and the number set before the dark is no longer it. The
+  // truth is written into `offset`, the first box's kept and each other
+  // box's set that many seconds behind it (0 up to a cycle), so the slider
+  // reads what the street runs and a move of it is a move from there. No
+  // box is re-timed by this: a shift still owed is still owed, and counted.
+  _trueOffsets() {
+    const a = this.controllers[0];
+    const L = a.cycleLength();
+    for (const c of this.controllers.slice(1)) {
+      if (!L || Math.abs(c.cycleLength() - L) > 1e-9) continue;   // boxes on rules have no cycle, boxes on two cycles no offset
+      let d = (((c.cycleOrigin() - a.cycleOrigin()) % L) + L) % L;
+      d = Math.round(d * 1e6) / 1e6;
+      c.offset = a.offset + (d >= L ? 0 : d);
+    }
   }
 
   // The offset the box at `node` runs behind the first, for the panel.
