@@ -115,7 +115,7 @@ group('Boulevard: one offset lands both lines (R13)');
   ok(two.length >= 2 && two.every(d => d > 8), 'which Two Blocks\' 43 s cycle cannot do: at its 16 s the eastbound lines land more than 8 s off', two.map(f1).join(', '));
 }
 
-group('Lights Out: after the outage the diagram shows what the slider does not (R13, #933)');
+group('Lights Out: after the outage the diagram and the slider both show the wave is gone (R13, #933, #959)');
 
 {
   const toGreen = (runs, t) => Math.min(...runs.filter(r => r.head === 'green').map(r => Math.abs(t - r.from)));
@@ -127,10 +127,10 @@ group('Lights Out: after the outage the diagram shows what the slider does not (
     return { w, east: east.map(l => toGreen(m.nodes[1].east, l.t1)), west: west.map(l => toGreen(m.nodes[0].west, l.t1)) };
   };
   const said = r => `east ${r.east.map(f1).join(', ')} s; west ${r.west.map(f1).join(', ')} s off a green start`;
-  const open = landing(40), after = landing(100), mended = landing(200, 32);
+  const open = landing(40), after = landing(100), mended = landing(200, 16);
   ok(open.w.offsetOf() === 16 && open.east.length >= 2 && open.west.length >= 2 && [...open.east, ...open.west].every(d => d < 2), 'as it opens, the east box 16 s on, every line each way lands within 2 s of a green start', said(open));
-  ok(after.w.offsetOf() === 16 && !after.w.powerOut && after.east.length >= 2 && after.west.length >= 2 && [...after.east, ...after.west].every(d => d > 10), 'ten seconds after the lights come back the slider reads 16 as before, and every line each way lands more than 10 s from a green start', said(after));
-  ok(mended.w.offsetOf() === 32 && Math.abs(mended.w.controllers[1].shift) < 1e-6 && mended.east.length >= 2 && mended.west.length >= 2 && [...mended.east, ...mended.west].every(d => d < 2), 'with the slider moved to 32 at 100 s, by 200 s every line each way lands within 2 s of a green start again', said(mended));
+  ok(after.w.offsetOf() === 0 && !after.w.powerOut && after.east.length >= 2 && after.west.length >= 2 && [...after.east, ...after.west].every(d => d > 10), 'ten seconds after the lights come back the slider reads 0, and every line each way lands more than 10 s from a green start', said(after));
+  ok(mended.w.offsetOf() === 16 && Math.abs(mended.w.controllers[1].shift) < 1e-6 && mended.east.length >= 2 && mended.west.length >= 2 && [...mended.east, ...mended.west].every(d => d < 2), 'with the slider moved back to 16 at 100 s, by 200 s every line each way lands within 2 s of a green start again', said(mended));
 }
 
 group('the history');

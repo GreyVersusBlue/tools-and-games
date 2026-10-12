@@ -537,7 +537,7 @@ try {
     ok(errors.length === 0, 'no page errors on Cross Town', errors.join(' | '));
   });
 
-  await section('Lights Out: the wave is in, the power takes it, the slider brings it back (R13, #933)', async () => {
+  await section('Lights Out: the wave is in, the power takes it, the slider brings it back (R13, #933, #959)', async () => {
     await page.keyboard.press('Escape');
     const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); delete g.save.levels['lights-out']; g.save.levels['cross-town'] = { stars: 0, best: 10, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
     const card = () => page.evaluate(() => { const c = document.querySelector('.level-card[data-level="lights-out"]'); return c && { shut: c.classList.contains('locked') && c.disabled, why: c.querySelector('.lv-shut')?.textContent || '', lesson: c.querySelector('.lv-lesson')?.textContent || '', prev: c.previousElementSibling && c.previousElementSibling.dataset.level, after: c.nextElementSibling && c.nextElementSibling.dataset.level }; });
@@ -570,10 +570,11 @@ try {
     await new Promise(r => setTimeout(r, 300));
     const l2 = await panel();
     ok(!l2.out && l2.stages === 'green,green' && l2.phases === '0,0' && l2.into.split(',')[0] === l2.into.split(',')[1], 'at 94 s the lights are back, both boxes on the boulevard\'s green and in step', `${l2.t.toFixed(1)} s, ${l2.phases}, ${l2.into} s in`);
-    ok(l2.reads === 16 && l2.value === '16' && /16 s behind/.test(l2.note), 'and the slider still reads 16 (Known gaps: the hint says so, and the diagram shows the truth)', `${l2.value}: ${l2.note}`);
-    await page.evaluate(v => { const r = document.getElementById('offsetRange'); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); }, 32);
+    const val = await page.evaluate(() => document.getElementById('offsetVal').textContent);
+    ok(l2.reads === 0 && l2.value === '0' && val === '0 s' && /same clock \(33 s cycle\)\.$/.test(l2.note) && Math.abs(l2.owed) < 1e-6, 'and the slider has dropped to 0 with nobody touching it, its note says the boxes are on the same clock, and nothing is queued (#959)', `${l2.value}, ${val}: ${l2.note}`);
+    await page.evaluate(v => { const r = document.getElementById('offsetRange'); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); }, 16);
     const l3 = await panel();
-    ok(l3.reads === 32 && Math.abs(Math.abs(l3.owed) - 16) < 1e-6 && /Re-aligning: 16 s still to/.test(l3.note), 'the slider to 32 queues 16 s on the east box, and the note says it is re-aligning', l3.note);
+    ok(l3.reads === 16 && Math.abs(Math.abs(l3.owed) - 16) < 1e-6 && /16 s behind the west one .*Re-aligning: 16 s still to/.test(l3.note), 'the slider back to 16 queues 16 s on the east box, and the note says it is re-aligning', l3.note);
     await page.evaluate(n => window.__signalCity.step(n), 60 * 110);
     await new Promise(r => setTimeout(r, 300));
     const l4 = await page.evaluate(() => { const w = window.__signalCity.world, L = w.controllers[0].cycleLength(); return { owed: w.controllers[1].shift, apart: (((w.controllers[1].cyclePosition() - w.controllers[0].cyclePosition()) % L) + L) % L, lock: w.stats.gridlock, handoffs: w.stats.handoffs, note: document.getElementById('offsetNote').textContent }; });

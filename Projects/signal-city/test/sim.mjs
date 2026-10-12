@@ -1505,6 +1505,183 @@ group('entry metering (R10, #778): a meter on a ring\'s leg, fired by the leg it
   ok(e2.w.events.filter(e => e.kind === 'meter' && e.leg === 'E').length === e2.w.meters[0].fired, 'each firing is an event the page can hear');
 }
 
+group('the lights back on a timed corridor (#959): the offset is written back as the street runs it, and no box is re-timed');
+
+{
+  // a made-up street: two boxes on one 38 s plan, the east one 16 s on, and
+  // an outage. Each box comes back to the top of the green it was in or
+  // was going to, so what the east box runs behind the west one afterwards
+  // is set by the second the dark began, not by the 16
+  const street = (out, extra = {}) => ({ network: { nodes: 2, spacing: 220 }, demand: [{ W: 500, N: 200, S: 200 }, { E: 500, N: 200, S: 200 }], duration: 600, mix: { standard: 1 }, controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 17 }, { phase: 1, green: 12 }], timing: { yellow: 3, allRed: 1.5, minGreen: 4 } }, controllers: [{ offset: 0 }, { offset: 16 }], events: out === null ? [] : [{ kind: 'outage', at: out, for: 10 }], ...extra });
+  const mod = (x, L) => ((x % L) + L) % L;
+  // how far the box at n is behind the first by where the two stand in their cycles right now
+  const apart = (w, n = 1) => mod(w.controllers[n].cyclePosition() - w.controllers[0].cyclePosition(), w.controllers[0].cycleLength());
+  const near = (a, b, by, L = 38) => Math.min(mod(a - b, L), mod(b - a, L)) <= by;
+  const lit = w => w.controllers.every(c => c.stage !== 'dark');
+  // the control: the same world with the write-back taken out
+  const deaf = (lvl, seed) => { const w = new World(lvl, seed); w._trueOffsets = () => {}; return w; };
+  const trace = w => w.controllers.map(c => `${c.phase}${c.stage[0]}${c.stageT.toFixed(3)}`).join(' ');
+
+  // the dark begins at 40 s: the west box is 2 s into its second cycle, on
+  // the boulevard's green, and the east box 18 s into its own, on the yellow
+  // that ends it: one comes back on phase 0 and the other on phase 1, 21.5 s
+  // apart (the boulevard's 17 s, its yellow and its all-red). One world at
+  // a time: car ids are the module's, so two worlds stepped in turn differ
+  const first = make => {
+    const w = make(street(40), 3), seen = [];
+    const L = w.controllers[0].cycleLength(), opens = w.offsetOf();
+    w.run(45);
+    const inDark = { out: w.powerOut, reads: w.offsetOf(), own: w.controllers[1].offset };
+    let firstLit = null, smooth = true, was = null;
+    while (w.t < 50 + 60) {
+      w.step();
+      seen.push(trace(w));
+      if (!lit(w)) continue;
+      if (firstLit === null) firstLit = { t: w.t, reads: w.offsetOf(), apart: apart(w), stages: w.controllers.map(c => c.stage).join(), next: w.controllers.map(c => c.next).join(), phase: w.controllers.map(c => c.phase).join() };
+      // a cycle position moves on by one step a step, the return's all-red included
+      const pos = w.controllers.map(c => c.cyclePosition());
+      if (was && pos.some((x, i) => !near(x, was[i] + DT, 1e-6))) smooth = false;
+      was = pos;
+    }
+    const minute = { reads: w.offsetOf(), apart: apart(w), west: w.controllers[0].offset, shifts: w.controllers.map(c => c.shift).join(), hash: w.hash(), cleared: w.stats.cleared };
+    const queued = w.setOffset(30);
+    w.run(240);
+    return { L, opens, inDark, firstLit, smooth, minute, seen: seen.join('|'), queued, paid: { reads: w.offsetOf(), apart: apart(w), shift: w.controllers[1].shift, hash: w.hash() } };
+  };
+  const w = first((l, s) => new World(l, s)), old = first(deaf);
+  const L = w.L;
+  ok(L === 38 && w.opens === 16, 'the street opens 16 s apart on a 38 s cycle', `${L} s, ${w.opens}`);
+  ok(w.inDark.out && w.inDark.reads === 16 && w.inDark.own === 16, 'in the dark the number is left alone: nothing is running to read', String(w.inDark.reads));
+  const fl = w.firstLit || {};
+  ok(fl.stages === 'allred,allred' && fl.next === '0,1' && fl.phase === '0,0', 'the lights come back through an all-red, the west box to the boulevard\'s green it was in and the east box to the side street\'s it was going to', JSON.stringify(fl));
+  ok(w.smooth, 'and from that step each box\'s cycle position runs on a step at a time, through the all-red into the green (the west box\'s all-red is not the one after its own green)');
+  ok(Math.abs(fl.reads - fl.apart) < 1e-6 && Math.abs(fl.reads - 21.5) < 1e-6, 'on the step the lights return the offset reads what the street runs, 21.5 s (the boulevard\'s 17, its yellow and its all-red), not the 16 from before', `${fl.reads} against ${fl.apart}`);
+  ok(Math.abs(w.minute.reads - w.minute.apart) < 1e-6 && w.minute.west === 0 && w.minute.shifts === '0,0', 'a minute later it still does, the west box\'s own offset is untouched and nothing was queued on either box', `${w.minute.reads} against ${w.minute.apart}`);
+  ok(old.minute.reads === 16 && Math.abs(old.minute.apart - 21.5) < 1e-6, 'the control, with the write-back taken out, reads 16 on a street running 21.5', `${old.minute.reads} against ${old.minute.apart}`);
+  ok(w.seen === old.seen && w.seen.length > 50000 && w.minute.hash === old.minute.hash, 'and the two runs are one run, step for step at both boxes: writing the number down re-times nothing', `${w.minute.cleared} and ${old.minute.cleared} cleared`);
+
+  // a move of the slider is a move from the truth
+  ok(w.queued === 8.5 && old.queued === 14, 'the slider to 30 from a true 21.5 queues 8.5 s; from the stale 16 it queued 14', `${w.queued} and ${old.queued}`);
+  ok(w.paid.shift === 0 && w.paid.reads === 30 && near(w.paid.apart, 30, 1.01), 'once paid, the street runs the 30 the slider reads', `${w.paid.apart.toFixed(2)} s apart`);
+  ok(old.paid.shift === 0 && old.paid.reads === 30 && near(old.paid.apart, 35.5, 1.01) && old.paid.hash !== w.paid.hash, 'where the control reads 30 on a street running 35.5', `${old.paid.apart.toFixed(2)} s apart`);
+
+  // a shift still owed when the power goes is still owed, and counted
+  const owing = make => {
+    const o = make(street(40), 3);
+    o.run(36);
+    o.setOffset(30);
+    o.run(20);
+    const back = { lit: lit(o), owed: o.controllers[1].shift, reads: o.offsetOf(), apart: apart(o) };
+    o.run(240);
+    return { back, shift: o.controllers[1].shift, reads: o.offsetOf(), apart: apart(o), hash: o.hash() };
+  };
+  const o = owing((l, s) => new World(l, s)), od = owing(deaf);
+  ok(o.back.lit && o.back.owed > 1 && o.back.owed === od.back.owed && Math.abs(mod(o.back.reads - o.back.owed, L) - o.back.apart) < 1e-6, 'a slider moved 4 s before the dark: at the return the offset reads where the east box stands plus what it still owes', `reads ${o.back.reads.toFixed(3)}, owes ${o.back.owed.toFixed(3)}, ${o.back.apart.toFixed(3)} s apart`);
+  ok(o.shift === 0 && near(o.apart, o.reads, 1.01) && o.reads === o.back.reads && o.hash === od.hash && od.reads === 30 && !near(od.apart, 30, 1.01), 'and once that is paid the street runs what it reads, in the same run as the control\'s, which reads 30', `reads ${o.reads.toFixed(2)}, ${o.apart.toFixed(2)} s apart; the control ${od.apart.toFixed(2)} s apart`);
+
+  // it is the east box against the west, whatever the west box's own offset is, and never outside one cycle
+  for (const [at, west] of [[40, 5], [47, 0], [61, 9], [70, 0]]) {
+    const v = new World(street(at, { controllers: [{ offset: west }, { offset: west + 16 }] }), 2).run(at + 30);
+    ok(lit(v) && v.controllers[0].offset === west && v.offsetOf() >= 0 && v.offsetOf() < L && Math.abs(v.offsetOf() - apart(v)) < 1e-6 && v.controllers[1].shift === 0, `an outage at ${at} s with the west box's own offset ${west}: the east box reads ${+v.offsetOf().toFixed(3)} s behind it, as the street runs, inside one cycle`, `${v.offsetOf()} against ${apart(v)}, west ${v.controllers[0].offset}`);
+  }
+  // two boxes that come back in the same step on the same green read 0 and nothing near it: the west box
+  // was on the boulevard's green and is read back from its start, the east box was on the yellow before it
+  const one = new World(street(53, { controllers: [{ offset: 0 }, { offset: 20 }] }), 2).run(53 + 30);
+  ok(lit(one) && one.offsetOf() === 0 && one.controllers[1].offset === 0 && apart(one) < 1e-6, 'an outage at 53 s on a street 20 s apart brings both boxes back on the boulevard together, and the offset reads 0 exactly', `${one.offsetOf()} against ${apart(one)}`);
+  // a hair under a whole cycle is the same clock, not 38 s: the east box's reading nudged a
+  // billionth of a millisecond early by hand, and the write-back run again
+  const hair = new World(street(53, { controllers: [{ offset: 0 }, { offset: 20 }] }), 2).run(53 + 30);
+  const west = hair.controllers[0];
+  hair.controllers[1].cycleOrigin = () => west.cycleOrigin() - 1e-12;
+  hair._trueOffsets();
+  ok(hair.offsetOf() === 0, 'a box a rounding error ahead of the first reads 0, not a cycle less nothing', String(hair.offsetOf()));
+  // a longer all-red at one box (the Timing tab's other slider) gives the two boxes two cycles and no offset to read
+  const two = new World(street(40), 2);
+  two.controllers[1].setTiming({ allRed: 3 });
+  two.run(80);
+  ok(lit(two) && two.controllers[1].cycleLength() === 41 && two.offsetOf() === 16, 'boxes on two cycles keep the number they had: there is no offset between them to write', `${two.controllers[1].cycleLength()} s, ${two.offsetOf()}`);
+  // three boxes: each against the first
+  const three = new World(street(40, { network: { nodes: 3, spacing: 220 }, demand: [{ W: 400, N: 150, S: 150 }, { N: 150, S: 150 }, { E: 400, N: 150, S: 150 }], controllers: [{ offset: 0 }, { offset: 16 }, { offset: 27 }] }), 2).run(80);
+  ok(lit(three) && [1, 2].every(n => Math.abs(three.offsetOf(n) - apart(three, n)) < 1e-6) && three.offsetOf(2) !== 27, 'on three boxes each is read against the first', `${three.offsetOf(1)} and ${three.offsetOf(2)} against ${apart(three, 1)} and ${apart(three, 2)}`);
+  // boxes on rules have no cycle to read, and a street with no outage is never written to
+  const rules = new World({ ...street(40), controller: { main: 'EW', rules: [{ when: 'elapsed', seconds: 20, then: 'next' }] }, controllers: [] }, 2).run(80);
+  ok(lit(rules) && rules.controllers.every(c => c.offset === 0) && rules.offsetOf() === 0, 'two boxes on rules come back with their offsets as they were: no plan, nothing to write');
+  const plain = new World(street(null), 3).run(120);
+  ok(plain.offsetOf() === 16 && Math.abs(apart(plain) - 16) < 1e-6, 'and with no outage the 16 is the 16 it opened on', `${plain.offsetOf()} against ${apart(plain)}`);
+}
+
+group('a scripted vehicle keeps its route past the first box (#960)');
+
+{
+  // a made-up row of three boxes on a 15 s rule where six cars in ten turn
+  // at every box, and one ambulance in from the west at 20 s
+  const row = (events, { turns = { T: 0.4, L: 0.3, R: 0.3 }, network = {}, spawns = [] } = {}) => ({ network: { nodes: 3, spacing: 220, ...network }, demand: [{ W: 300, N: 150, S: 150 }, { N: 150, S: 150 }, { E: 300, N: 150, S: 150 }], duration: 240, mix: { standard: 1 }, turns, controller: { main: 'EW', rules: [{ when: 'elapsed', seconds: 15, then: 'next' }] }, controllers: [], events, spawns });
+  const amb = route => [{ kind: 'ambulance', at: 20, leg: 'W', turn: 'T', within: 200, ...(route ? { route } : {}) }];
+  // one run, and where every scripted car went: its movement at each box it was handed to
+  const went = (lvl, seed, { call = false, kinds = ['emergency'] } = {}) => {
+    const w = new World(lvl, seed);
+    const mine = new Map(), first = new Map();
+    let draws = 0, handing = false, followed = null;
+    const weighted = w.rng.weighted.bind(w.rng), handoff = w._handoff.bind(w);
+    w.rng.weighted = x => { if (handing) draws++; return weighted(x); };
+    w._handoff = car => { handing = mine.has(car.id); handoff(car); handing = false; if (mine.has(car.id) && car.priority && followed === null) followed = (w.controllers[car.path.node].preemption || { movements: [] }).movements.join(); };
+    let read = 0;
+    for (let i = 0; i < 200 * 60; i++) {
+      w.step();
+      for (const c of w.cars) if (kinds.includes(c.archetype) && !mine.has(c.id)) { mine.set(c.id, []); first.set(c.id, c.path.movement); if (call) w.requestPriority(c); }
+      for (; read < w.events.length; read++) { const e = w.events[read]; if (mine.has(e.car) && ['handoff', 'lane', 'lane-missed'].includes(e.kind)) mine.get(e.car).push(e.kind === 'handoff' ? `${e.node}:${e.to}` : e.kind === 'lane' ? `lane:${e.to}` : 'missed'); }
+    }
+    const out = w.cars.filter(c => mine.has(c.id) && !c.done).length;
+    return { w, hands: [...mine.values()].map(h => h.join(' ')), first: [...first.values()], draws, followed, out, hash: w.hash() };
+  };
+  const seeds = Array.from({ length: 20 }, (_, i) => i + 1);
+
+  // the gap as it was, and still is for an event with no route: `turn` is the first box's
+  const loose = seeds.map(s => went(row(amb(null)), s));
+  const through = loose.filter(r => r.hands[0] === '1:W-T 2:W-T').length;
+  ok(loose.every(r => r.first[0] === 'W-T' && r.out === 0) && through > 0 && through < 20, 'with no route an ambulance told T goes through the first box and draws its turn at each box after, like any car: it crosses all three on some seeds of twenty and not on others', `${through} of 20: ${loose.map(r => r.hands[0] || 'left at box 1').join(' | ')}`);
+  ok(loose.every(r => r.draws === (r.hands[0] || '').split(' ').filter(Boolean).length), 'one draw a handoff');
+  // the route
+  const kept = seeds.map(s => went(row(amb(['T', 'T', 'T'])), s));
+  ok(kept.every(r => r.hands[0] === '1:W-T 2:W-T' && r.out === 0), 'with route T, T, T it crosses all three boxes on every seed of twenty and leaves the map', kept.map(r => r.hands[0]).join(' | '));
+  ok(kept.every(r => r.draws === 0), 'and draws nothing at either handoff', kept.map(r => r.draws).join());
+  for (const [route, want, first] of [[['T', 'T', 'L'], '1:W-T 2:W-L', 'W-T'], [['T', 'T', 'R'], '1:W-T 2:W-R', 'W-T'], [['T', 'L', 'T'], '1:W-L', 'W-T'], [['R', 'T', 'T'], '', 'W-R'], [['L'], '', 'W-L']]) {
+    const runs = seeds.slice(0, 6).map(s => went(row(amb(route)), s));
+    ok(runs.every(r => r.hands[0] === want && r.first[0] === first && r.out === 0 && r.draws === 0), `route ${route.join(', ')}: ${first} at the first box${want ? `, then ${want}` : ' and off the map there'}, on six seeds`, runs.map(r => `${r.first[0]} ${r.hands[0]}`).join(' | '));
+  }
+  // the route's first entry is the first box's turn, whatever `turn` says
+  const over = went(row([{ kind: 'ambulance', at: 20, leg: 'W', turn: 'L', within: 200, route: ['T', 'R'] }]), 3);
+  ok(over.first[0] === 'W-T' && over.hands[0] === '1:W-R', 'a route overrides the event\'s `turn` at the first box', `${over.first[0]} ${over.hands[0]}`);
+  // past the end of the list the car is anybody's: a route of one T is the same run as `turn: 'T'`
+  const short = seeds.slice(0, 6).map(s => went(row(amb(['T'])), s));
+  ok(short.every((r, i) => r.hash === loose[i].hash && r.hands[0] === loose[i].hands[0] && r.draws === loose[i].draws), 'a route that has run out draws like any car: route T alone is the run `turn: T` plays, to the hash, on six seeds', short.map(r => r.hands[0] || 'left at box 1').join(' | '));
+  // a turn the level's weights never draw
+  const never = seeds.slice(0, 6).map(s => went(row(amb(['T', 'L']), { turns: { T: 1 } }), s));
+  ok(never.every(r => r.hands[0] === '1:W-L' && r.draws === 0), 'on a street where nobody turns a route still turns left at the second box', never.map(r => r.hands[0]).join(' | '));
+  // a turn the box does not have: a row of T-junctions with no north leg
+  const tee = seeds.slice(0, 6).map(s => went(row(amb(['T', 'L', 'T']), { turns: { T: 1 }, network: { legs: ['E', 'S', 'W'] } }), s));
+  ok(tee.every(r => r.hands[0] === '1:W-T 2:W-T' && r.draws === 1 && r.out === 0), 'where the box has no such way out (a left with no north leg) that turn is drawn like anybody\'s, and the route goes on at the next box', tee.map(r => `${r.hands[0]}, ${r.draws} drawn`).join(' | '));
+  // a called one's corridor still follows it (R6): the whole entry leg, so this line cannot tell a route from a draw
+  const called = went(row(amb(['T', 'L']), { turns: { T: 1 } }), 2, { call: true });
+  ok(called.hands[0] === '1:W-L' && /W-L/.test(called.followed || ''), 'a called ambulance on a route is handed its corridor at the second box as before', String(called.followed));
+  // two lanes: a right from the inner lane is a lane change on the block before, as for any car (R12)
+  const wide = seeds.slice(0, 12).map(s => went(row(amb(['T', 'R', 'T']), { turns: { T: 1 }, network: { lanesPerDir: 2 } }), s));
+  const direct = wide.filter(r => r.hands[0] === '1:W-R').length, changed = wide.filter(r => r.hands[0] === '1:W-T lane:W-R').length;
+  // seed 11's ambulance is hit in the first box and towed there: it reaches no handoff, route or none
+  const towed = wide.filter(r => r.hands[0] === '' && r.w.events.some(e => e.kind === 'towed' && e.t < 60)).length;
+  ok(direct + changed + towed === 12 && direct >= 5 && changed >= 3 && towed <= 1 && wide.every(r => r.draws === 0 && r.out === 0), 'on two lanes each way a routed right is taken from the curb lane, or by a lane change on the block from the inner one', `${direct} from the curb lane, ${changed} by a lane change, ${towed} towed in the first box: ${wide.map(r => r.hands[0]).join(' | ')}`);
+  // every scripted kind: a motorcade's members, a procession's, and a level's `spawns`
+  const cade = went(row([{ kind: 'motorcade', at: 20, leg: 'W', size: 4, spacing: 1.2, route: ['T', 'L'] }], { turns: { T: 1 } }), 2, { kinds: ['motorcade'] });
+  ok(cade.hands.length === 4 && cade.hands.every(h => h === '1:W-L') && cade.draws === 0, 'all four cars of a motorcade with route T, L turn left at the second box', cade.hands.join(' | '));
+  const walk = went(row([{ kind: 'procession', at: 20, leg: 'W', size: 3, spacing: 2, route: ['T', 'T', 'R'] }], { turns: { T: 1 } }), 2, { kinds: ['procession'] });
+  ok(walk.hands.length === 3 && walk.hands.every(h => h === '1:W-T 2:W-R'), 'and all three of a procession with route T, T, R turn right at the third', walk.hands.join(' | '));
+  const listed = went(row([], { turns: { T: 1 }, spawns: [{ t: 20, leg: 'W', archetype: 'emergency', route: ['T', 'T', 'L'] }] }), 2);
+  ok(listed.hands.length === 1 && listed.hands[0] === '1:W-T 2:W-L', 'a level\'s scripted `spawns` entry takes a route the same way', listed.hands.join(' | '));
+  // a route that is not a list of turns is refused by name
+  const refused = [['T', 'X'], [], 'T', ['t']].map(route => { try { new World(row([]), 1).spawnCar({ leg: 'W', archetype: 'emergency', route }); return 'spawned'; } catch (e) { return e.message; } });
+  ok(refused.every(m => /a route is a list of L, T and R/.test(m)), 'a route with anything but L, T and R in it, an empty one and a bare string are each refused by name', refused.join(' | ').slice(0, 160));
+}
+
 group('a three-minute mixed run on the cycling level');
 
 {

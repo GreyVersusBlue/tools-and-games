@@ -492,10 +492,11 @@ starves the north, its second star the entry meter (`lesson: { kind:
 green wave both ways, **Cross Town** (2026-10-07), three boxes in a row
 that an ambulance crosses (R6), and **Lights Out** (2026-10-07), an outage
 on a timed corridor. No candidate is left on the list. What R13 leaves is
-three engine units and four levels nobody has played: a scripted vehicle
-keeping its turn past the first box (Cross Town), the slider reading true
-after an outage and a box coming back from dark without hitting the car
-still crossing (Lights Out), all in Known gaps. Each level gets R1's two tables and
+one engine unit, one level call and four levels nobody has played: a box
+coming back from dark without hitting the car still crossing (Lights
+Out, written and held back) and Cross Town with turning traffic, which
+the route of #960 makes possible and nobody has calibrated, both in
+Known gaps; the slider reads true after an outage since #959. Each level gets R1's two tables and
 R2's rule from the first commit. One increment a session, a level or two at
 a time.
 
@@ -666,13 +667,22 @@ dark began and not by the offset. The second is chosen. At 78 s the west
 box is 12 s into its cycle, on its boulevard green, and the east box 28 s
 into its own, on the yellow that ends its side street's green: both come
 back on the boulevard at the same instant, the street is on one clock, and
-the wave is gone both ways while the slider still reads 16. At 77 s or
-79 s they come back on different streets, 14.5 or 18.5 s apart, close
+the wave is gone both ways. At 77 s or
+79 s they come back on different streets, 18.5 or 14.5 s apart, close
 enough to 16 that the wave survives and there is no level. The player
-slides the offset until the diagram's lines land in green again: the
-slider moves the east box on from where it stands by its value less what
-it read, so 32 (or 0, which is 17) is the half cycle. The hint says the
-slider no longer agrees with the street and to trust the diagram.
+slides the offset until the diagram's lines land in green again.
+
+**The slider reads the street since #959 (2026-10-12).** As #933 shipped
+it the slider and its note went on saying 16 after the return, on a
+street running 0, and the answer was 32 (the slider moved the east box
+on by its value less what it read). Now the step the lights return the
+engine writes down what the street runs, the slider drops to 0 with its
+note reading "the same clock", and the answer is 16 again. Nothing is
+re-timed: every figure in this section is the same run under a new
+number (32 is 16, 24 is 8, the tool's 4 is 21, 0 is 17, and 16, the
+slider left alone, is 0), checked car for car on six seeds. The hint
+says the slider drops to 0 and to slide it back. The figures below are
+in the numbers of the day they were measured, #933's.
 
 R1's two tables, six seeds, `node tools/calibrate.mjs lights-out
 --baseline --hand`. The tool changed for it: on a corridor with an outage
@@ -718,13 +728,14 @@ after it, on 24 seeds a 20 s outage read 8 or 9, a 25 s one 8, a 15 s one
 them on seeds 1 to 6 at 78 s. It is in Known gaps as an engine unit.
 
 **NOBODY HAS PLAYED IT.** What a person should look at first: the slider.
-After the outage it reads 16 and its note says the east box is 16 s
-behind, which is no longer true, and the answer is 32 or 0, where the note
-says "the same clock". The hint owns up to it, but a person may read it as
-a bug and be right (Known gaps has the engine unit that would make the
-slider read true). Then whether a player notices the wave is gone at all:
-the board announces the outage and the return, and nothing says the lines
-have moved. Then whether 12 s of dark is long enough to register as an
+Since #959 it drops from 16 to 0 by itself on the step the lights come
+back, and nobody has watched that happen: whether a thumb moving under
+nobody's hand reads as the game telling the truth or as the game taking
+the control away, and whether a level whose answer is now "put it back
+where it was" is too plain (as #933 shipped it the slider lied and the
+answer was 32). Then whether a player notices the wave is gone at all:
+the board announces the outage and the return, and besides the slider
+nothing says the lines have moved. Then whether 12 s of dark is long enough to register as an
 event, and whether a third of seeds losing the third star to a crash is
 fair on a level whose street is Boulevard's.
 
@@ -852,13 +863,31 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   level should ship a shorter all-red so that the advice bites at the
   setting it ships with is Devon's, and nothing in the level was changed.
 
-- An event's `turn` is the first box's only (#929). A car handed to the
-  next box draws its turn from the level's `turns` (`_handoff`, R12), an
-  ambulance or a motorcade car like any other, so on a row of boxes a
-  scripted vehicle crosses every box only where nobody turns. Cross Town
-  ships `turns: { T: 1 }` for that reason. Keeping a scripted car's turn
-  past the first box is an engine change, and then Cross Town can take
-  turns and is calibrated again.
+- A scripted vehicle takes a route, one turn a box (#960, 2026-10-12).
+  An event's `turn` is still the first box's only (#929): handed to the
+  next box, a car with no route draws its turn from the level's `turns`
+  (`_handoff`, R12), an ambulance or a motorcade car like any other.
+  `route: ['T', 'T', 'L']` on an ambulance, a motorcade, a procession or
+  a `spawns` entry is the turn at each box in order: the first is the
+  arrival box's and overrides `turn`, each handoff takes the next and
+  draws nothing from the seeded rng, a turn the level's weights give 0
+  is still taken, and one the box has no way out for (a left with no
+  north leg) is drawn like anybody's. On two lanes a routed turn from
+  the wrong lane is R12's lane change on the block before, and can be
+  missed like any car's. Past the end of the list the car draws again.
+  No shipped level names a route, so nothing moved. **Cross Town was not
+  given turns** and still ships `turns: { T: 1 }`. What that would take:
+  `route: ['T', 'T', 'T']` on its ambulance, weights in `turns`, then
+  `calibrate.mjs cross-town --baseline --hand` and its stars again,
+  because every car ahead of the ambulance at boxes 2 and 3 may now be
+  waiting to turn (on one lane a left turner at the head of the queue
+  holds it, the thing #569 widened the corridor for), and the routed
+  ambulance draws nothing where today's draws twice, so every pinned run
+  of the level moves with the first weight. Not covered, seen and left:
+  a district (`districtLevel`) passes a route through untouched while
+  moving the spawn to another leg, so a route written for one street is
+  read on another; the hand's `clearAhead` in `calibrate.mjs` gives the
+  through at each box ahead and does not read a route.
 
 - An ambulance still on the map when the run ends is late, called or
   not (#955, 2026-10-12). It used not to be: `stats.ambulanceLate`
@@ -1022,26 +1051,29 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   corridor was widened to the whole entry leg, calling it early made the
   ambulance late on 3 of 6 seeds: a left turner at the head of the one
   lane sat on a red W-L through the whole hold (#569).
-- An outage on a timed plan is scripted on one level now, Lights Out
-  (#933), and the level is built on what the engine does: each box comes
-  back through an all-red to the top of the green it was in or was going
-  to, so the offset on the street is whatever that makes it (0, 14.5 or
-  18.5 s on Boulevard's plan) while `Controller.offset`, the slider and
-  its note still give the number from before. Two engine changes are
-  possible and they are not the same. Writing the true offset back when
-  the lights return, so the slider reads 0 and the player sets 16 again,
-  keeps the level and makes its panel honest: that is the unit to do, and
-  it moves `test/stars.mjs`'s "the slider still reads 16" line and the
-  hint. Read again on 2026-10-12 and not started: `offset` is each
-  box's own seconds into the cycle at t = 0 and the slider reads the east
-  box's alone, so the write-back has to be the east box's offset against
-  the west's, and every pinned slider value moves with it (32 becomes 16,
-  24 becomes 8, the tool's 4 becomes 21) in `stars.mjs`, `scoring.mjs`,
-  `browser.mjs` and `calibrate.mjs`'s `powerBack`. Sending the return through `setOffset`'s shift, as this bullet
-  used to ask, mends the wave with nobody's help: broken on purpose in a
-  scratch copy, nothing pressed read 14 to 31% stopping again and three
-  stars on four seeds, and nine lines of `stars.mjs` failed by name. That
-  one deletes the level's lesson, so it is a decision, not a fix.
+- After an outage a timed corridor's offset is written back as the
+  street runs it (#959, 2026-10-12). Each box comes back through an
+  all-red to the top of the green it was in or was going to, so how far
+  the east box runs behind the west one is whatever that makes it (0,
+  14.5 or 18.5 s on Boulevard's plan), and until #959
+  `Controller.offset`, the slider and its note went on giving the number
+  from before. `World._trueOffsets()` runs on the step the outage ends:
+  each box after the first has its `offset` set to the first box's plus
+  what it really runs behind it, read off where the two stand in their
+  cycles (`Controller.cycleOrigin()`), 0 up to a cycle. It re-times
+  nothing: a run with the write-back taken out is the same run step for
+  step, and a shift still owed across the dark is still owed and is in
+  the number. What it does not cover, each seen and left: a box the
+  player puts back from flash on a timed corridor (no shipped corridor
+  offers flash), a priority corridor on a timed plan, which also leaves
+  the box somewhere else in its cycle (no shipped level has both), and a
+  street that comes back half a second off a whole one, where the
+  slider's label rounds (18.5 reads 19 and the first move of it queues
+  the half). Sending the return through `setOffset`'s shift is a
+  different change and still not made: it mends the wave with nobody's
+  help (broken on purpose in a scratch copy on 2026-10-07, nothing
+  pressed read 14 to 31% stopping again and three stars on four seeds),
+  which deletes Lights Out's lesson, so it is a decision, not a fix.
 - A box that comes back from dark crashes its own front row, and the
   cause is traced (2026-10-12): it is not the green and not the all-red's
   length. In the dark a car stops at the line and rolls 3.6 m up to the
