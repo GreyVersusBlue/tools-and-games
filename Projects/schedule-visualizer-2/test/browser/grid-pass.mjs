@@ -1003,6 +1003,24 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
   }
 });
 
+test('"10" and Enter in a grid cell stays "10", as it does in the group editor: a number is never turned into Room 101', async () => {
+  const { page } = desk;
+  const cell = slot(A6, DAY_A, 3);
+  try {
+    await cursorOn(page, cell);
+    await page.keyboard.type('10');
+    await page.waitForSelector(cell + ' .grd-input');
+    assert.ok(await page.$$eval('.grd-list .picker__option', (all) => all.length) >= 3, 'the case needs rooms 101, 102 and 103 offered');
+    await page.keyboard.press('Enter');
+    await stagedIs(page, true);
+    assert.equal(await cellText(page, cell), '10');
+    assert.equal(await isStaged(page, cell), true);
+    assert.equal(await page.$eval(cell, (el) => el.classList.contains('is-unknown') || el.querySelector('.is-unknown') !== null), true, 'the cell is not marked as not in the building');
+  } finally {
+    await discard(page);
+  }
+});
+
 test('the sentence of a mark is placed again when the window changes height alone', async () => {
   const { page } = desk;
   await rowsAre(page, 'teachers');
