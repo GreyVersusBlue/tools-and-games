@@ -82,19 +82,61 @@ const stagedIs = (page, wanted) => page.waitForFunction((value) => document.quer
 // page. ($$eval is two: it finds the cells, then asks them, and a grid drawn
 // again in between hands back a cell that has left the page, which has no box.)
 const tabStops = (page) => page.evaluate(() => Array.from(document.querySelectorAll('.grd-sheet [tabindex="0"]'), (cell) => ({ key: cell.dataset.key, boxed: cell.getClientRects().length > 0 })));
-// The grid's section mounted and shown, and done with what a change of width
-// brings: the page tells the grid a width was crossed in its next frame, which
-// on a busy machine comes after the grid is on screen, and the grid is then
-// drawn again. Two frames, so that has been said; then the drawing it asked for.
+// The grid's section mounted and shown, and drawn for the width the window
+// has now. The section leaves the width each drawing was made for on itself
+// (`data-narrow`), and that is what is waited for: the browser says a width
+// was crossed some time after the window has it, on a busy machine long
+// after, and a count of frames returned before the grid had been drawn for
+// it (the cursor still in a column out of sight, the focus on nothing).
 async function gridShown(page) {
   await page.waitForFunction(() => {
-    const sheet = document.querySelector('.sch .grd-sheet');
-    return Boolean(sheet) && sheet.isConnected && sheet.getClientRects().length > 0;
+    const section = document.querySelector('.sch');
+    const sheet = section && section.querySelector('.grd-sheet');
+    return Boolean(sheet) && sheet.isConnected && sheet.getClientRects().length > 0
+      && section.dataset.narrow === String(window.matchMedia('(max-width: 640px)').matches)
+      && section.dataset.pending !== 'true';
   }, { timeout: 5000 });
-  await page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  }));
+}
+
+// A control put where a pointer can reach it, before it is pressed. These
+// pages are second tabs of the first, with a line stuck across the top of
+// the section saying so, and a press goes to a point: a button the page has
+// scrolled up under that line is pressed on the line instead (Puppeteer
+// brings a control into view by the least scroll, which leaves it exactly
+// there). So the control goes to the middle of the window, and the wait is
+// for it to be what is at its own middle.
+async function reach(page, selector) {
   await settled(page);
+  await page.$eval(selector, (el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
+  await page.waitForFunction((wanted) => {
+    const el = document.querySelector(wanted);
+    if (!el || el.getClientRects().length === 0) return false;
+    const rect = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return Boolean(hit) && el.contains(hit);
+  }, { timeout: 5000 }, selector);
+}
+async function click(page, selector) {
+  await reach(page, selector);
+  await page.click(selector);
+}
+async function tap(page, selector) {
+  await reach(page, selector);
+  await page.tap(selector);
+}
+
+// Close a case's own page, and hold the page to having had no error. A case
+// that failed is reported as it failed, with what the page said added to its
+// message: an assertion in a `finally` would be reported in its place.
+async function shut(turn, failed) {
+  const found = turn.problems();
+  await turn.page.close().catch(() => {});
+  if (failed) {
+    const said = found.errors.concat(found.blocked, found.shimmed);
+    if (said.length > 0 && failed instanceof Error) failed.message += '\n(and the page said: ' + said.join(' | ') + ')';
+    throw failed;
+  }
+  assert.deepEqual(found, { errors: [], blocked: [], shimmed: [] });
 }
 
 // The cursor on one cell, with no block left over from the case before:
@@ -270,9 +312,9 @@ test('a period column is as wide as the longest room name in it, so no name is c
     // the edit is not left waiting, whatever was found: the page would ask
     // before it closed, and the cases after this one read the sample as it is
     await page.evaluate(() => document.querySelector('.toast__close')?.click());
-    await page.click('.grd-bar [data-action="discard"]');
+    await click(page, '.grd-bar [data-action="discard"]');
     await page.waitForSelector('dialog[open]');
-    await page.click('dialog[open] .btn--danger');
+    await click(page, 'dialog[open] .btn--danger');
     await page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd').dataset.staged === 'false', { timeout: 5000 });
   }
 });
@@ -324,7 +366,7 @@ test('on a phone the first period is on screen beside Group, which stays put, an
   assert.equal(await box(page, '.grd-hint__keys'), null);
   assert.equal(await page.$eval('.grd-hint', (el) => el.innerText), 'A room number with a dotted line under it is not in the building.');
 
-  await page.tap('.grd-toolbar [data-action="fields"]');
+  await tap(page, '.grd-toolbar [data-action="fields"]');
   await page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd').dataset.fields === 'shown', { timeout: 5000 });
   assert.notEqual(await box(page, key(A6, 'grade')), null, 'Grade is back');
   assert.equal(await page.$eval(key(A6, 'grade') + ' .grd-cell__text', (el) => el.textContent), '6');
@@ -340,7 +382,7 @@ test('on a phone the first period is on screen beside Group, which stays put, an
   // hidden again with the cursor in Grade: the cursor goes to the group's
   // name, so the grid keeps its one Tab stop
   await page.focus(key(A6, 'grade'));
-  await page.tap('.grd-toolbar [data-action="fields"]');
+  await tap(page, '.grd-toolbar [data-action="fields"]');
   await page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd').dataset.fields === 'hidden', { timeout: 5000 });
   assert.equal(await box(page, key(A6, 'grade')), null);
   assert.deepEqual(await page.$$eval('.grd-sheet [tabindex="0"]', (all) => all.map((cell) => cell.dataset.key)), ['grid:' + A6 + ':name']);
@@ -393,6 +435,7 @@ test('the Teachers and Rooms tables mark the double-booking the Groups grid mark
 test('a cursor left in Grade, the grid left, the screen narrowed, the grid come back to: its one Tab stop has a box', async () => {
   const turn = await openGrid({ width: 1280, height: 800 });
   const { page } = turn;
+  let failed = null;
   try {
     await page.focus(key(A6, 'grade'));
     assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':grade', boxed: true }]);
@@ -406,6 +449,9 @@ test('a cursor left in Grade, the grid left, the screen narrowed, the grid come 
     // the same with the grid open while the width is crossed
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     await page.waitForFunction((selector) => document.querySelector(selector).getClientRects().length > 0, { timeout: 5000 }, key(A6, 'grade'));
+    // drawn for this width before the cursor is moved: a width crossed and
+    // crossed back before the grid was drawn for the first is no crossing
+    await gridShown(page);
     await page.focus(key(A6, 'headCount'));
     assert.deepEqual(await tabStops(page), [{ key: 'grid:' + A6 + ':headCount', boxed: true }]);
     await page.setViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
@@ -426,11 +472,10 @@ test('a cursor left in Grade, the grid left, the screen narrowed, the grid come 
     await page.setViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
     await gridShown(page);
     assert.equal(await activeKey(page), 'grid-add', 'the grid took the focus from the toolbar');
-  } finally {
-    const found = turn.problems();
-    await turn.page.close();
-    assert.deepEqual(found, { errors: [], blocked: [], shimmed: [] });
+  } catch (error) {
+    failed = error;
   }
+  await shut(turn, failed);
 });
 
 test('an arrow key asks the page for no box: which columns are hidden is a rule', async () => {
@@ -789,6 +834,7 @@ test('on a phone a tap on a marked cell of the Teachers table draws its sentence
 test('a cell being edited in a column that goes out of sight at 640 px: its field closes with what was typed staged, the focus is on Group and the keys work', async () => {
   const turn = await openGrid({ width: 1280, height: 800 });
   const { page } = turn;
+  let failed = null;
   try {
     const count = await cellText(page, key(A6, 'headCount'));
     assert.notEqual(count, '31');
@@ -836,7 +882,7 @@ test('a cell being edited in a column that goes out of sight at 640 px: its fiel
     // which moves no focus, while Head count is being edited.
     await page.setViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
     await gridShown(page);
-    await page.click('[data-key="grid-fields"]');
+    await click(page, '[data-key="grid-fields"]');
     await page.waitForFunction((selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).getClientRects().length > 0, { timeout: 5000 }, key(C6, 'headCount'));
     await page.focus(key(C6, 'headCount'));
     await page.keyboard.press('Enter');
@@ -855,12 +901,11 @@ test('a cell being edited in a column that goes out of sight at 640 px: its fiel
     await gridShown(page);
     assert.equal(await cellText(page, key(C6, 'headCount')), '27', 'what was typed was not staged');
     assert.equal(await isStaged(page, key(C6, 'headCount')), true);
-  } finally {
-    await discard(page).catch(() => {});
-    const found = turn.problems();
-    await turn.page.close();
-    assert.deepEqual(found, { errors: [], blocked: [], shimmed: [] });
+  } catch (error) {
+    failed = error;
   }
+  await discard(page).catch(() => {});
+  await shut(turn, failed);
 });
 
 test('a sentence taller than the frame is not cut at its bottom, and it is placed again when the window changes width and when the frame scrolls', async () => {

@@ -49,12 +49,32 @@ const box = (page, selector) => page.evaluate((wanted) => {
   const rect = el.getBoundingClientRect();
   return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
 }, selector);
-// A finger's tap on what a selector finds, brought to the middle of the
-// window first (a phone's inspector handle and bottom bar are over its foot).
-async function tap(page, selector) {
-  await page.$eval(selector, (el) => el.scrollIntoView({ block: 'center' }));
+// Wait until what a selector finds is what a pointer at its middle would
+// touch: nothing over it (the phone's inspector as it shuts, a message, a
+// line stuck to the top of the section), and the page done drawing.
+const reachable = (page, selector) => page.waitForFunction((wanted) => {
+  const el = document.querySelector(wanted);
+  if (!el || el.getClientRects().length === 0 || document.querySelector('.sch')?.dataset.pending === 'true') return false;
+  const rect = el.getBoundingClientRect();
+  const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  return Boolean(hit) && el.contains(hit);
+}, { timeout: 5000 }, selector);
+// A finger's tap on the middle of what a selector finds, where it is now.
+async function tapAt(page, selector) {
+  await reachable(page, selector);
   const at = await box(page, selector);
   await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+}
+// The same, brought to the middle of the window first (a phone's inspector
+// handle and bottom bar are over its foot).
+async function tap(page, selector) {
+  await page.$eval(selector, (el) => el.scrollIntoView({ block: 'center' }));
+  await tapAt(page, selector);
+}
+// The phone's inspector opened or shut by its handle, and the page told so.
+async function inspector(page, open) {
+  await page.click('#inspector-toggle');
+  await page.waitForFunction((wanted) => document.getElementById('inspector').dataset.open === wanted, { timeout: 5000 }, String(open));
 }
 const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 // What a slot holds in the store.
@@ -77,16 +97,27 @@ async function open(hash, size, options) {
   return session;
 }
 
-// Run a case on its own page, and hold the page to having had no error.
+// Run a case on its own page, and hold the page to having had no error. A
+// case that failed is reported as it failed: what the page said is added to
+// its message, and does not stand in for it (an assertion in a `finally`
+// would, and the first thing to read would be the page's last complaint
+// instead of the line that broke).
 async function on(hash, size, run, options) {
   const session = await open(hash, size, options);
+  let failed = null;
   try {
     await run(session.page, session);
-  } finally {
-    const found = session.problems();
-    await session.page.close();
-    assert.deepEqual(found, CLEAN);
+  } catch (error) {
+    failed = error;
   }
+  const found = session.problems();
+  await session.page.close().catch(() => {});
+  if (failed) {
+    const said = found.errors.concat(found.blocked, found.shimmed);
+    if (said.length > 0 && failed instanceof Error) failed.message += '\n(and the page said: ' + said.join(' | ') + ')';
+    throw failed;
+  }
+  assert.deepEqual(found, CLEAN);
 }
 
 before(async () => {
@@ -432,9 +463,12 @@ test('a long message is at most 34rem wide: on the movement view it does not spa
   await on('#movement', DESK, async (p) => {
     await act(p, 'setOnboarding', { dismissed: true });
     await shows(p, () => document.getElementById('getting-started').hidden && document.querySelector('.mov')?.dataset.styled === 'true' && document.querySelector('.mov-legend') && !document.querySelector('.mov-legend').hidden);
-    await p.evaluate(() => new Promise((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    }));
+    // the map drawn, the legend with it (what movementDrawn of screens.mjs waits for)
+    await shows(p, () => {
+      const section = document.querySelector('.mov');
+      const movement = section.movement;
+      return section.dataset.pending !== 'true' && movement.state !== null && movement.state.results !== null && movement.state.project === globalThis.sv2.store.project && Number(movement.canvas.dataset.drawn || 0) > 0;
+    });
     await p.evaluate((words) => globalThis.sv2.ctx.toast({ text: words, action: { label: 'Undo', run: () => {} } }), LONG);
     const toast = await box(p, '.toast');
     const legend = await box(p, '.mov-legend');
@@ -504,17 +538,18 @@ test('the Building section keeps Getting started beside the plan, and the Staff 
 // the table's last row.
 async function lastRowClear(p, what) {
   await p.waitForSelector('.toast');
-  // the page is given a moment to move
-  await p.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  }));
-  const at = await p.evaluate(() => {
+  const read = () => {
     const rows = document.querySelectorAll('.sch-edit-table tbody tr');
     const row = rows[rows.length - 1].getBoundingClientRect();
     const toast = document.querySelector('.toast').getBoundingClientRect();
     const surface = document.getElementById('surface').getBoundingClientRect();
     return { row: [row.top, row.bottom], toast: [toast.top, toast.bottom], surface: [surface.top, surface.bottom] };
-  });
+  };
+  // The page moves for the message a moment after it shows. The wait is for
+  // where the row and the message are, not for a count of frames; when the
+  // time runs out the assertions below say where they were left.
+  await p.waitForFunction('(() => { const at = (' + read + ')(); return at.row[1] <= at.toast[0] && at.row[0] >= at.surface[0] && at.toast[1] <= at.surface[1] + 1; })()', { timeout: 5000 }).catch(() => {});
+  const at = await p.evaluate(read);
   assert.ok(at.row[1] <= at.toast[0], what + ': the message lies on the last row of the table: ' + JSON.stringify(at));
   assert.ok(at.row[0] >= at.surface[0] && at.toast[1] <= at.surface[1] + 1, what + ': the last row or the message is out of the surface: ' + JSON.stringify(at));
 }
@@ -769,19 +804,21 @@ test('on a 390 px phone the list of groups and the editor take turns: a tap on 6
     assert.equal((await cards()).length, 8);
     assert.equal(await box(p, '.sch-editor'), null, 'the editor is on the page under the whole list');
     assert.equal(await box(p, '[data-key="group-all"]'), null);
-    await p.click('#inspector-toggle');
+    await inspector(p, true);
     assert.equal(await text(p, '#inspector .sch-panel__scope'), 'Choose a group');
     assert.equal(await text(p, '#inspector .sch-panel__none'), 'Choose a group in the list, and what was found about it shows here.');
     assert.equal(await count(p, '#inspector .sch-finding'), 0);
     assert.deepEqual(await p.$eval('#inspector .sch-counts', (el) => [el.dataset.problem, el.dataset.warning, el.dataset.note]), ['1', '1', '2'], 'the counts are always there');
-    await p.click('#inspector-toggle');
+    await inspector(p, false);
 
     // a tap on 6B, with its card at the foot of the window: the editor that
-    // opens under it would be out of sight if the card stayed there
+    // opens under it would be out of sight if the card stayed there. (The
+    // inspector is a sheet over the lower half of a phone and has only just
+    // been shut: the tap waits for the card to be what is under the finger.)
     await p.$eval('.sch-group[data-group="' + B6 + '"]', (el) => el.scrollIntoView({ block: 'end' }));
     const card = await box(p, '.sch-group[data-group="' + B6 + '"]');
     assert.ok(card.bottom > 560, 'the card is not at the foot of the window');
-    await p.touchscreen.tap(card.left + card.width / 2, card.top + card.height / 2);
+    await tapAt(p, '.sch-group[data-group="' + B6 + '"]');
     await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('.sch-editor__title').textContent === '6B' && document.querySelector('.sch-editor').getClientRects().length > 0);
     assert.deepEqual(await cards(), [B6], 'the list is not folded to the group that was tapped');
     const name = await p.evaluate(() => {
@@ -797,9 +834,9 @@ test('on a 390 px phone the list of groups and the editor take turns: a tap on 6
     const chosen = await box(p, '.sch-group[data-group="' + B6 + '"]');
     assert.ok(all && all.top >= chosen.bottom && all.bottom <= name.top, '"All groups" is not between the card and the editor');
     assert.equal(await box(p, '[data-key="group-filter"]'), null, 'the filter box is still there with one card showing');
-    await p.click('#inspector-toggle');
+    await inspector(p, true);
     assert.equal(await text(p, '#inspector .sch-panel__scope'), 'About 6B');
-    await p.click('#inspector-toggle');
+    await inspector(p, false);
 
     // All groups: the cards again, the cursor on the one that was open
     await p.evaluate(() => document.querySelector('[data-key="group-all"]').click());
@@ -814,7 +851,7 @@ test('on a 390 px phone the list of groups and the editor take turns: a tap on 6
     });
     const top = await box(p, '.sch-group[data-group="' + A6 + '"]');
     assert.ok(top.top > 380 && top.bottom < 660, 'the first card is not in the lower half of the window: ' + JSON.stringify(top));
-    await p.touchscreen.tap(top.left + top.width / 2, top.top + top.height / 2);
+    await tapAt(p, '.sch-group[data-group="' + A6 + '"]');
     await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('.sch-editor__title').textContent === '6A' && document.querySelector('.sch-editor').getClientRects().length > 0);
     const first = await p.evaluate(() => {
       const field = document.querySelector('[data-key="group-name"]');

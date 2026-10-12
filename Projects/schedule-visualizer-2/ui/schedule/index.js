@@ -119,10 +119,14 @@ function settle() {
 function watchPointer() {
   if (watchPointer.done) return;
   watchPointer.done = true;
-  // the Groups tab's list and editor take turns on a phone, and the
-  // inspector says which: both are drawn again when that width is crossed
-  window.matchMedia(GROUPS_NARROW).addEventListener('change', () => {
-    if (live) live.redraw();
+  // The Groups tab's list and editor take turns on a phone, the inspector
+  // says which, and the grid hides its field columns there: all are drawn
+  // again when that width is crossed. Each drawing leaves the width it was
+  // made for on the section (`data-narrow`), so a drawing that came between
+  // the window changing and the browser saying so is not made twice, and a
+  // test can wait for the one that counts.
+  window.matchMedia(GROUPS_NARROW).addEventListener('change', (event) => {
+    if (live && live.narrow() !== event.matches) live.redraw();
   });
   document.addEventListener('pointerdown', () => {
     pointerDown = true;
@@ -226,6 +230,8 @@ export const section = {
       }),
       strip.element);
     ctx.setInspector(inspector.element);
+    // the tab and the inspector have just been drawn, for this width
+    element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
 
     function keyOf(node) {
       const holder = node && node.closest ? node.closest('[data-key]') : null;
@@ -272,6 +278,7 @@ export const section = {
       const held = field ? active.value : null;
       const caret = field ? [active.selectionStart, active.selectionEnd] : null;
       const project = ctx.store.project;
+      element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
       panel.update(project);
       inspector.update(project);
 
@@ -318,7 +325,7 @@ export const section = {
       if (timer === null) timer = setTimeout(run, 0);
     }
 
-    const handle = { run, waiting: false, redraw: schedule };
+    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true' };
     live = handle;
     // an address that named a slot: its row is scrolled to once this is on the page
     if (view.shown && view.shown.fresh) schedule();

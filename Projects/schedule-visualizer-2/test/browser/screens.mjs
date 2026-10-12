@@ -95,11 +95,9 @@ async function scheduleOnPhone(page) {
   page.once('framenavigated', () => {
     resize({ width: size.width, height: size.height }).catch(() => {});
   });
-  await page.waitForFunction(() => window.innerWidth === 390);
-  // crossing the width draws the Groups tab again, a frame later
-  await page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  }));
+  // crossing the width draws the tab again, some time after the window has
+  // it: the section says which width its last drawing was for
+  await page.waitForFunction(() => window.innerWidth === 390 && document.querySelector('.sch')?.dataset.narrow === 'true');
   await scheduleDrawn(page);
 }
 
