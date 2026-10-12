@@ -5,7 +5,13 @@
 // A section that scrolls ends in a band of paper for the message to lie on
 // (ui/app.css, --toast-room), so that with the page at its end the message is
 // not on the last row of a table it is about. A message taller than the band
-// raises it, once, and a page that was at its end is kept there.
+// raises it while the message is up, and a page that was at its end is kept
+// there; when the message leaves, the band is its own height again. A page
+// too short to scroll is never moved.
+//
+// A section that docks something along the bottom of the surface (the
+// movement view's playback bar and zoom buttons) says how far it reaches up
+// (--toast-clear on the surface, ui/app.css), and the message sits above it.
 
 import { h } from './dom.js';
 import { icon } from './icons.js';
@@ -52,30 +58,40 @@ export function createToasts(host, options) {
     element.remove();
     element = null;
     held = 0;
+    lowerRoom();
     if (hadFocus && back) back();
   }
 
   // Make the band at the page's end as tall as this message and its gap,
-  // when it is not already. It only grows: taking it back when the message
-  // leaves would move the page under the reader a second time.
-  // `atEnd`: was the page at its end before the message was put on it (the
-  // message rises into place, and for that moment adds to the page's height).
-  let room = 0;
-  const atEndOf = (scroller) => Boolean(scroller) && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1;
+  // when it is not already, for as long as the message is up.
+  // `atEnd`: was the page scrolled to its end before the message was put on
+  // it (the message rises into place, and for that moment adds to the page's
+  // height). A page that does not scroll is at no end: it is left where it is.
+  let raised = null;
+  const atEndOf = (scroller) => Boolean(scroller) && scroller.scrollHeight - scroller.clientHeight > 1 && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1;
   function makeRoom(atEnd) {
     const scroller = host.parentElement;
     if (!scroller) return;
-    const gap = scroller.getBoundingClientRect().bottom - element.getBoundingClientRect().bottom;
+    // what a section docks at the bottom lifts the message; that is not part of the band
+    const lifted = parseFloat(getComputedStyle(scroller).getPropertyValue('--toast-clear')) || 0;
+    const gap = scroller.getBoundingClientRect().bottom - element.getBoundingClientRect().bottom - lifted;
     const needed = Math.ceil(element.offsetHeight + Math.max(gap, 0) + 8);
-    const standing = room || parseFloat(getComputedStyle(scroller).getPropertyValue('--toast-room')) || 76;
+    const standing = parseFloat(getComputedStyle(scroller).getPropertyValue('--toast-room')) || 76;
     if (needed <= standing) return;
-    room = needed;
+    raised = scroller;
     // only a section that ends in the band grows with it; on one that does
     // not (the plan, the map) nothing has moved and nothing is scrolled
     const page = host.previousElementSibling;
     const before = page ? getComputedStyle(page).paddingBottom : '';
     scroller.style.setProperty('--toast-room', needed + 'px');
     if (atEnd && page && getComputedStyle(page).paddingBottom !== before) scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  // The message has left: the band is the sheet's own height again.
+  function lowerRoom() {
+    if (!raised) return;
+    raised.style.removeProperty('--toast-room');
+    raised = null;
   }
 
   function show(options) {

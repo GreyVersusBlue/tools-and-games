@@ -1,5 +1,5 @@
 // Small choices this device remembers, in localStorage under `sv2:device`:
-// { theme, lastSection, playback, paper }. The name is permanent.
+// { theme, lastSection, playback, paper, movement }. The name is permanent.
 //
 // Every write reads what is stored first and changes only the keys it was
 // given, so two parts of the page never undo each other's choices.
@@ -82,4 +82,44 @@ export function writePlayback(patch, storage) {
   const next = playbackWith(readPlayback(store), patch);
   writeDevice({ playback: next }, store);
   return next;
+}
+
+// `movement`: what the movement view was last left as, on this device
+// (DESIGN 5.3):
+//
+//   { controls: 'open' | 'folded',   the who, day type and transition controls
+//                                     under the first line: shown, or folded
+//                                     away behind "Change". Missing until the
+//                                     reader chooses: the window's width
+//                                     decides until then.
+//     played: true }                  playback has been started here once, so
+//                                     the bar's hint is not shown again
+//
+// A stored value without the field, or with something else in it, reads as
+// nothing chosen and nothing played.
+export const MOVEMENT_CONTROLS = Object.freeze(['open', 'folded']);
+
+export function movementOf(device) {
+  const kept = isObject(device) && isObject(device.movement) ? device.movement : {};
+  return { controls: MOVEMENT_CONTROLS.includes(kept.controls) ? kept.controls : null, played: kept.played === true };
+}
+
+export function readMovement(storage) {
+  return movementOf(readDevice(storage));
+}
+
+// Remember a change to it: only the keys given, and only what is one of the
+// choices. Returns what is now kept. Throws when the browser refuses.
+export function writeMovement(patch, storage) {
+  const store = storage || globalThis.localStorage;
+  const device = readDevice(store);
+  const asked = isObject(patch) ? patch : {};
+  const next = {};
+  const now = movementOf(device);
+  if (now.controls !== null) next.controls = now.controls;
+  if (now.played) next.played = true;
+  if (MOVEMENT_CONTROLS.includes(asked.controls)) next.controls = asked.controls;
+  if (asked.played === true) next.played = true;
+  writeDevice({ movement: next }, store);
+  return movementOf({ movement: next });
 }
