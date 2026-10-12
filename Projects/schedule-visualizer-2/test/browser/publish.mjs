@@ -606,7 +606,7 @@ test('batch printing: each button opens the preview sheet on one document, a she
         const doc = sheet.querySelector('iframe').contentDocument;
         const view = sheet.querySelector('iframe').contentWindow;
         const number = doc.querySelector('.sign__number');
-        const day = doc.querySelector('.sign__day');
+        const day = doc.querySelector('.batch-days, .sign__day');
         return {
           output: sheet.dataset.output,
           sheets: Number(sheet.dataset.sheets),

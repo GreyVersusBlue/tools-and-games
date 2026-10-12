@@ -1915,9 +1915,12 @@ select.field__input {
     font-size: 22pt;
   }
 
+  /* 8 mm over the day and over the school's name: with eight periods on two
+     kinds of day the sign is 860 px of a 950 px sheet, and the planner's
+     batch, which sets the same sign, needs 62 px of that for its preview */
   .sign__day {
     gap: 6mm;
-    margin-top: 12mm;
+    margin-top: 8mm;
   }
 
   .sign__kindname {
@@ -1934,7 +1937,7 @@ select.field__input {
   }
 
   .sign__school {
-    padding-top: 12mm;
+    padding-top: 8mm;
     font-size: 12pt;
   }
 }

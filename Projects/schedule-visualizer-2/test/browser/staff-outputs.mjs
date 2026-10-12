@@ -1822,7 +1822,7 @@ test('in the batch a room number of thirty characters wraps on its sheet: nothin
         assert.equal(sheet.inside, true, size + ': the number ' + sheet.number + ' is not inside its sheet');
         assert.ok(sheet.tall <= Math.floor(((tall - 28) * 96) / 25.4), size + ': the sign of ' + sheet.number + ' is ' + sheet.tall + ' px tall, more than one sheet');
         // as in the staff browser: the sheet is the height of the paper and the school's name is at its foot
-        assert.ok(sheet.tall >= Math.floor(((tall - 45) * 96) / 25.4) && sheet.foot > 0.95 && sheet.foot <= 1, size + ': on the sign of ' + sheet.number + ' the school\'s name ends ' + sheet.foot + ' of the way down a sheet ' + sheet.tall + ' px tall');
+        assert.ok(sheet.tall >= Math.floor(((tall - 50) * 96) / 25.4) && sheet.foot > 0.95 && sheet.foot <= 1, size + ': on the sign of ' + sheet.number + ' the school\'s name ends ' + sheet.foot + ' of the way down a sheet ' + sheet.tall + ' px tall');
       }
       // thirty W's at the smallest size are wider than the sheet: they wrap; a short number is one line at 120 pt
       assert.deepEqual([sheets[0].size, sheets[0].lines > 1], ['48px', true], size + ': ' + JSON.stringify(sheets[0]));
