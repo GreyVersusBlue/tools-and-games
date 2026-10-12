@@ -8,7 +8,7 @@
 //      the page itself — this test reads the shipped file as text and pulls
 //      the literal out, the same technique torchbearer's smoke test uses for
 //      its inline packs). This is the walk described in the session notes'
-//      branch map, made permanent: every one of the five endings must be
+//      branch map, made permanent: every one of the seven endings must be
 //      reachable from `intro`, and every `next` a choice points at must
 //      resolve to a real node. Before the align+=1 fix at radiant_gate this
 //      test failed — end_radiant was mathematically unreachable (max
