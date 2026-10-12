@@ -50,8 +50,14 @@
 // only way through, and the bar says so.
 //
 // The settings are remembered in `sv2:device` under `playback`
-// (storage/device.js). The bar's stylesheet is in this file (PLAYBACK_CSS)
-// until movement.css takes it.
+// (storage/device.js). The bar's rules are in ./movement.css.
+//
+// The bar is one row: Play, Previous, Next, the scrubber (which takes the
+// spare width), the clock, Speed, Loop and More. Where the row cannot hold
+// them (a window under 1100 px, or a bar squeezed by the inspector) Speed and
+// Loop go behind More with the other four settings. The line that says how to
+// start shows until playback has been started once on this device
+// (`movement.played` of sv2:device).
 //
 // For the tests and the console, on the bar's element:
 //
@@ -66,11 +72,12 @@
 
 import { h, uid } from '../components/dom.js';
 import { choice as segmented } from '../components/choice.js';
+import { icon } from '../components/icons.js';
 import { periodWords } from '../components/words.js';
 import { formatTime, parseTime } from '../../engine/bells.js';
 import { routingGraph } from '../../engine/routing.js';
 import { routePath, isLate } from '../../engine/crowd.js';
-import { readPlayback, writePlayback, playbackWith, PLAYBACK_SPEEDS } from '../../storage/device.js';
+import { readPlayback, writePlayback, playbackWith, PLAYBACK_SPEEDS, readMovement, writeMovement } from '../../storage/device.js';
 import { markersMark, trackOf, headAt, coveredBy } from '../surface/overlays/markers.js';
 
 // At the fixed pace and 1×, how long a transition takes to watch, and how
@@ -84,36 +91,20 @@ export const MAX_GAP_MS = 1000;
 export const REFUSED_TOAST = 'This browser did not keep the playback settings: they last until the page is closed.';
 export const REDUCED_LINE = 'Reduced motion is on, so nothing moves by itself: move the scrubber to walk the groups.';
 
+export const HINT = 'Playback walks one transition at a time. Press Play for the first, or choose one above.';
+export const HINT_REDUCED = 'Playback walks one transition at a time. Choose one above, or press Next for the first.';
+
 const LOOPS = [{ value: 'once', label: 'Once' }, { value: 'transition', label: 'This transition' }, { value: 'day', label: 'The whole day' }];
 
-export const PLAYBACK_CSS = `
-.mov-pb { display: grid; gap: var(--s-2); }
-.mov-pb__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
-.mov-pb__steps { display: inline-flex; gap: var(--s-1); }
-.mov-pb__play { min-width: 5rem; }
-.mov-pb__scrub { flex: 1 1 10rem; min-width: 8rem; height: 36px; margin: 0; accent-color: var(--accent); }
-.mov-pb__scrub:disabled { opacity: 0.5; }
-.mov-pb__time { display: grid; min-width: 9.5rem; font-variant-numeric: var(--numeric); }
-.mov-pb__clock { font-family: var(--font-plan); font-size: var(--t-lg); font-weight: var(--w-semibold); line-height: 1.1; }
-.mov-pb__countdown { font-size: var(--t-xs); line-height: var(--lh-xs); color: var(--ink-2); }
-.mov-pb__countdown[data-late="true"] { color: var(--problem); font-weight: var(--w-semibold); }
-.mov-pb__layer { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
-.mov-pb__pick { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--t-sm); }
-.mov-pb__select { width: auto; height: 36px; padding: 0 var(--s-2); border: var(--border-width) solid var(--line-strong); border-radius: var(--r-1); background: var(--card); }
-.mov-pb__more { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); padding-top: var(--s-2); border-top: var(--border); }
-.mov-pb__more[hidden], .mov-pb__line[hidden] { display: none; }
-.mov-pb__set { display: grid; gap: var(--s-1); min-width: 0; }
-.mov-pb__label { font-size: var(--t-xs); line-height: var(--lh-xs); font-weight: var(--w-semibold); color: var(--ink-2); }
-.mov-pb__line { margin: 0; font-size: var(--t-sm); line-height: var(--lh-sm); color: var(--ink-2); }
-.mov-pb__line--late { color: var(--problem); font-weight: var(--w-semibold); }
-.mov-card__now { margin: var(--s-1) 0 0; padding-top: var(--s-1); border-top: var(--border); font-size: var(--t-sm); line-height: var(--lh-sm); }
-.mov-card__late { color: var(--problem); font-weight: var(--w-semibold); }
-`;
+// Speed and Loop are on the bar's row from this width of window, when the
+// bar itself is at least ROW_HOLDS px wide (the inspector open beside it at
+// 1100 px leaves less); under either they are behind More.
+export const ROW_FROM = '(min-width: 1100px)';
+export const ROW_HOLDS = 872;
 
-function loadSheet() {
-  if (document.querySelector('style[data-sheet="playback"]')) return;
-  document.head.append(h('style', { data: { sheet: 'playback' } }, PLAYBACK_CSS));
-}
+// Playback was started on this device at some time: for the visit, whatever
+// the browser kept.
+let playedHere = false;
 
 // "0:37", "4:00", "12:05": whole seconds as minutes and seconds.
 export function minutesText(seconds) {
@@ -145,8 +136,8 @@ function able(button, on, why) {
 
 export function playbackBar(env) {
   const ctx = env.ctx;
-  loadSheet();
   let prefs = readPlayback();
+  if (!playedHere) playedHere = readMovement().played;
   let state = null;
   // what is played: the transition chosen, and the walks of the groups on screen
   let scene = null;
@@ -167,8 +158,9 @@ export function playbackBar(env) {
 
   // ---- the controls
   const playButton = h('button', { type: 'button', class: 'btn btn--primary mov-pb__play', data: { action: 'play' }, on: { click: () => (playing ? pause() : play()) } }, 'Play');
-  const previous = h('button', { type: 'button', class: 'btn', 'aria-label': 'Previous transition', data: { action: 'previous' }, on: { click: () => step(-1) } }, 'Previous');
-  const next = h('button', { type: 'button', class: 'btn', 'aria-label': 'Next transition', data: { action: 'next' }, on: { click: () => step(1) } }, 'Next');
+  // the two steps are arrows: their words are their names (aria-label), and the row keeps its width for the scrubber
+  const previous = h('button', { type: 'button', class: 'btn mov-pb__step mov-pb__step--back', 'aria-label': 'Previous transition', data: { action: 'previous' }, on: { click: () => step(-1) } }, icon('right', 16));
+  const next = h('button', { type: 'button', class: 'btn mov-pb__step', 'aria-label': 'Next transition', data: { action: 'next' }, on: { click: () => step(1) } }, icon('right', 16));
   const scrub = h('input', { type: 'range', class: 'mov-pb__scrub', min: '0', max: '1', step: '1', value: '0', 'aria-label': 'Seconds into the transition', data: { control: 'scrubber' } });
   scrub.addEventListener('input', () => seek(Number(scrub.value)));
   const clock = h('span', { class: 'mov-pb__clock', data: { part: 'clock' } });
@@ -197,6 +189,8 @@ export function playbackBar(env) {
     setting('size', 'Marker size', [{ value: 'small', label: 'Small' }, { value: 'large', label: 'Large' }]),
     setting('order', 'Who walks', [{ value: 'together', label: 'Everyone at once' }, { value: 'turns', label: 'One after another' }]));
 
+  const speedPick = h('label', { class: 'mov-pb__pick' }, 'Speed', speed);
+  const loopPick = h('label', { class: 'mov-pb__pick' }, 'Loop', loop);
   const note = h('p', { class: 'mov-pb__line', hidden: true, data: { part: 'note' } });
   const turn = h('p', { class: 'mov-pb__line', hidden: true, data: { part: 'turn' } });
   const late = h('p', { class: 'mov-pb__line mov-pb__line--late', hidden: true, data: { part: 'late' } });
@@ -206,10 +200,31 @@ export function playbackBar(env) {
       h('span', { class: 'mov-pb__steps' }, previous, next),
       scrub,
       h('span', { class: 'mov-pb__time' }, clock, countdown),
-      h('label', { class: 'mov-pb__pick' }, 'Speed', speed),
-      h('label', { class: 'mov-pb__pick' }, 'Loop', loop),
+      speedPick,
+      loopPick,
       moreButton),
     more, note, turn, late);
+
+  // ---- Speed and Loop: on the row where it holds them, behind More where it does not
+  const roomy = matchMedia(ROW_FROM);
+  function place() {
+    const width = element.clientWidth;
+    const compact = !roomy.matches || (width > 0 && width < ROW_HOLDS);
+    if (element.dataset.compact === String(compact)) return;
+    element.dataset.compact = String(compact);
+    const held = [speed, loop].find((each) => each === document.activeElement);
+    if (compact) more.prepend(speedPick, loopPick);
+    else moreButton.before(speedPick, loopPick);
+    // a control that was moved keeps the focus; behind More it opens More
+    if (held) {
+      if (compact && more.hidden) moreButton.click();
+      held.focus();
+    }
+  }
+  roomy.addEventListener('change', place);
+  const widthWatch = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
+  if (widthWatch) widthWatch.observe(element);
+  place();
 
   // ---- what is played
   function count() {
@@ -388,11 +403,22 @@ export function playbackBar(env) {
       lateSaid = '';
     }
     started = true;
+    seen();
     playing = true;
     lastStamp = null;
     if (frame === null) frame = frames.request(tick);
     render();
     drawMarks();
+  }
+
+  // Playback has been started here: the line that says how to is not needed
+  // again on this device. A browser that keeps nothing shows it next visit.
+  function seen() {
+    if (playedHere) return;
+    playedHere = true;
+    try {
+      writeMovement({ played: true });
+    } catch (error) { /* it holds for the visit */ }
   }
 
   function pause() {
@@ -404,6 +430,7 @@ export function playbackBar(env) {
     if (!scene) return;
     seconds = Math.max(0, Math.min(Number.isFinite(to) ? to : 0, end()));
     started = true;
+    seen();
     render();
     drawMarks();
   }
@@ -453,7 +480,8 @@ export function playbackBar(env) {
     if (!state) return '';
     if (count() === 0) return 'There is nothing to play: the day has one ' + periodWords(state.project.settings).one + '.';
     if (!state.results) return 'Working out the routes.';
-    if (chosen() === null) return reduce.matches ? 'Playback walks one transition at a time. Choose one above, or press Next for the first.' : 'Playback walks one transition at a time. Press Play for the first, or choose one above.';
+    // how to start: said until it has been done once on this device
+    if (chosen() === null) return playedHere ? '' : reduce.matches ? HINT_REDUCED : HINT;
     if (!scene) return 'Working out the routes.';
     if (scene.walkers.length === 0) return 'Nobody on screen walks in ' + scene.transition.name + '.';
     return reduce.matches ? REDUCED_LINE : '';
@@ -642,6 +670,8 @@ export function playbackBar(env) {
       stop();
       cardWatch.disconnect();
       reduce.removeEventListener('change', onReduce);
+      roomy.removeEventListener('change', place);
+      if (widthWatch) widthWatch.disconnect();
       const at = env.marks.indexOf(onMap);
       if (at !== -1) env.marks.splice(at, 1);
       layer.remove();

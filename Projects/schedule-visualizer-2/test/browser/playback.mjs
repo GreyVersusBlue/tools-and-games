@@ -877,7 +877,8 @@ test('with reduced motion nothing plays: the scrubber is the only way to move, a
   // "All" on the strip puts the markers away
   await change({ transition: null });
   assert.equal(await bar((el) => el.playback.mark.drawn.size), 0);
-  assert.equal(await part('note'), 'Playback walks one transition at a time. Choose one above, or press Next for the first.');
+  // how to start is said until playback has been started once on this device (test/browser/m3-pass.mjs); it has been, above
+  assert.equal(await part('note'), null);
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
   await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.reduced === 'false');
   assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('aria-disabled')), null);

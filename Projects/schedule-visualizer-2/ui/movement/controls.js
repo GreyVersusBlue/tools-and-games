@@ -3,11 +3,17 @@
 // transition, the two drawing options and Clear. Every change applies at
 // once; nothing here is staged.
 //
-//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe() })
-//     -> { element, update(project, picture, sentence) }
+//   controls({ change(patch), add(groupId), remove(groupId), clear(), showMe(), folded, fold(folded) })
+//     -> { element, update(project, picture, sentence), folded, setFolded(folded) }
 //
 // The pieces are built once and filled in on update, so a control keeps the
 // focus while the picture behind it changes.
+//
+// The map comes first: the sentence is always on screen and ends in
+// "Change", which shows the controls or folds them away. Folded, the
+// sentence alone says what is drawn. `folded` is how the view opens;
+// `fold(folded)` is told when the reader presses Change, and `setFolded` is
+// for the view (a window that became narrow).
 
 import { h, uid } from '../components/dom.js';
 import { choice as segmented } from '../components/choice.js';
@@ -27,7 +33,14 @@ export function controls(options) {
   // ---- the sentence
   const words = h('span', { class: 'mov-line__words' });
   const showMe = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'show-me' }, on: { click: () => options.showMe() } }, 'Show me');
-  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe);
+  const boxId = uid('mov-controls');
+  let folded = options.folded === true;
+  const changeButton = h('button', { type: 'button', class: 'mov-link mov-change', 'aria-expanded': String(!folded), 'aria-controls': boxId, data: { action: 'change' } }, 'Change');
+  changeButton.addEventListener('click', () => {
+    setFolded(!folded);
+    if (options.fold) options.fold(folded);
+  });
+  const line = h('p', { class: 'mov-line intro__first', id: 'movement-line' }, words, ' ', showMe, ' ', changeButton);
 
   // ---- who
   const whoId = uid('mov-who');
@@ -78,7 +91,19 @@ export function controls(options) {
   const clear = h('button', { type: 'button', class: 'btn mov-clear', data: { action: 'clear' }, on: { click: () => options.clear() } }, 'Clear');
   const optionsBox = h('div', { class: 'mov-ctl mov-ctl--options' }, label('Show', null), h('div', { class: 'mov-ctl__checks' }, labels.element, constant.element), clear);
 
-  const element = h('div', { class: 'mov-top' }, line, h('div', { class: 'mov-controls' }, whoBox, dayBox, stripBox, optionsBox));
+  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, dayBox, stripBox, optionsBox);
+  const element = h('div', { class: 'mov-top', data: { folded: String(folded) } }, line, box);
+
+  function setFolded(next) {
+    if (next === folded) return;
+    // a control that is put away gives the focus to what brings it back
+    const held = next && box.contains(document.activeElement);
+    folded = next;
+    box.hidden = folded;
+    element.dataset.folded = String(folded);
+    changeButton.setAttribute('aria-expanded', String(!folded));
+    if (held) changeButton.focus();
+  }
 
   function fill(select, entries, value) {
     const key = JSON.stringify(entries);
@@ -138,6 +163,10 @@ export function controls(options) {
 
   return {
     element,
+    get folded() {
+      return folded;
+    },
+    setFolded,
     update(nextProject, nextPicture, sentence) {
       project = nextProject;
       picture = nextPicture;

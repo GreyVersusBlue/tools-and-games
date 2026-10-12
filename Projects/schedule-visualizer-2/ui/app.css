@@ -581,7 +581,13 @@ kbd {
   transform: rotate(180deg);
 }
 
+/* The panel scrolls inside itself, and holds what it scrolls: a table's
+   hidden words (.vh, absolutely placed) lie where their rows do, inside this
+   box. Without that they hung from the page, far below the window's foot,
+   and the document itself scrolled (1606 px tall in an 800 px window with
+   the movement view's Hotspots open). */
 .inspector__body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -1365,10 +1371,10 @@ kbd {
    place the message themselves) the page ends in a band of paper as tall as
    a message and its gap: with the page at its end, the message is on that
    band and not on the last row of a table. The band is --toast-room, which
-   ui/components/toast.js raises when a message is taller than it (a long
-   one, wrapped on a phone) and never lowers, so the page does not jump when
-   a message leaves. Further up the page a message rides the bottom edge over
-   what is there, as it always did, and that can be scrolled clear. */
+   ui/components/toast.js raises while a message taller than it is up (a
+   long one, wrapped on a phone) and puts back when the message leaves.
+   Further up the page a message rides the bottom edge over what is there, as
+   it always did, and that can be scrolled clear. */
 .surface__layout:not([data-section="building"]):not([data-section="movement"]) {
   padding-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
 }
@@ -1923,34 +1929,38 @@ kbd {
   min-height: 0;
 }
 
-.surface__layout[data-section="movement"] > .getting-started {
-  align-self: start;
-  margin: var(--s-4);
-}
-
+/* Getting started goes under the map at full width, as it does on Schedule:
+   beside the map it took 360 px of it, and over it (1000 px and under) it
+   took its height. The map keeps the whole surface, and the surface scrolls
+   down to the card. Under the card is the band a message lies on. */
 .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) calc(360px + var(--s-4) * 2);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 100% auto;
 }
 
-/* the shell's messages sit over the map's corner, clear of the bar and the zoom buttons */
+.surface__layout[data-section="movement"] > .getting-started {
+  position: static;
+  order: 0;
+  align-self: start;
+  width: auto;
+  max-width: none;
+  margin: var(--s-4) var(--s-4) max(var(--s-6), var(--toast-room, 4.75rem));
+  scroll-margin-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
+}
+
+@media not all and (max-width: 1000px) {
+  .surface__layout[data-section="movement"] > .getting-started .steps {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0 var(--s-5);
+  }
+}
+
+/* The shell's messages stay bottom left of the surface and sit above what
+   the section docks at the bottom: the playback bar, and the zoom buttons
+   over the map's corner. The section measures them (--toast-clear, on the
+   surface; ui/movement/index.js). */
 .surface__layout[data-section="movement"] ~ .toasts {
-  bottom: 108px;
-}
-
-@media (max-width: 1000px) {
-  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
-    height: auto;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) .mov {
-    height: 80vh;
-  }
-
-  .surface__layout[data-section="movement"] > .getting-started {
-    margin: var(--s-3) auto;
-  }
+  bottom: calc(var(--toast-clear, 0px) + var(--s-3));
 }
 
 /* A phone with the inspector's sheet open: the sheet is what is being used,
