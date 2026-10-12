@@ -122,7 +122,7 @@ test('the view opens on every group, the first day type and all transitions, and
       choice: movement.choice,
       mode: movement.picture.mode,
       floors: movement.world.slots.map((slot) => slot.floor.name),
-      pressed: Array.from(document.querySelectorAll('.mov-strip__item[aria-pressed="true"]')).map((item) => item.dataset.transition),
+      pressed: Array.from(document.querySelectorAll('.mov-strip__item[aria-checked="true"]')).map((item) => item.dataset.transition),
       strip: Array.from(document.querySelectorAll('.mov-strip__item')).map((item) => item.querySelector('.mov-strip__name').textContent + ' ' + (item.querySelector('.mov-strip__time') || { textContent: '' }).textContent),
       who: document.querySelector('input[name="movement-who"]:checked').value,
       day: document.querySelector('[data-control="day"]').selectedOptions[0].textContent,
@@ -318,7 +318,7 @@ test('choosing one transition shows its passing time and only its walks', async 
   await page.click('.mov-strip__item[data-transition="5"]');
   await settled();
   assert.equal(await line(), 'Showing 8 groups on A Day, Period 6 to Period 7 (1:08 to 1:12). No route failed.');
-  assert.deepEqual(await page.$$eval('.mov-strip__item[aria-pressed="true"]', (all) => all.map((item) => item.dataset.transition)), ['5']);
+  assert.deepEqual(await page.$$eval('.mov-strip__item[aria-checked="true"]', (all) => all.map((item) => item.dataset.transition)), ['5']);
   assert.equal(await text('#inspector [data-figure="routes"] .mov-figure__value'), '8');
   assert.equal(await text('#inspector [data-figure="late"] .mov-figure__value'), '1 group');
   assert.equal(await text('#inspector [data-figure="late"] .mov-figure__more'), '8A: Period 6 to Period 7.');

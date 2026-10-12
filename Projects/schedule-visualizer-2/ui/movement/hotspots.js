@@ -250,6 +250,39 @@ function stateNow(last) {
   return movement && movement.state ? movement.state : last;
 }
 
+// A ring's rank is a small disc on the ring's line. Its place is the upper
+// right; where another ring's rank is already there (two places a few cells
+// apart, the map zoomed far out) it takes the next corner that is free, so
+// every number can be read. The rings themselves stay on their cells.
+//   rings   [{ rank, x, y, r }] in rank order; each gains { bx, by }
+export const RANK_RADIUS = 8;
+const RANK_CORNERS = [[0.71, -0.71], [-0.71, -0.71], [0.71, 0.71], [-0.71, 0.71], [0, -1], [0, 1], [1, 0], [-1, 0]];
+export function placeRanks(rings) {
+  const placed = [];
+  const clear = RANK_RADIUS * 2 + 1;
+  for (const ring of rings) {
+    let best = null;
+    let room = -1;
+    for (const [dx, dy] of RANK_CORNERS) {
+      const at = { x: ring.x + ring.r * dx, y: ring.y + ring.r * dy };
+      const nearest = placed.reduce((least, other) => Math.min(least, Math.hypot(other.x - at.x, other.y - at.y)), Infinity);
+      if (nearest >= clear) {
+        best = at;
+        break;
+      }
+      // none is free: the one with the most room
+      if (nearest > room) {
+        room = nearest;
+        best = at;
+      }
+    }
+    ring.bx = best.x;
+    ring.by = best.y;
+    placed.push(best);
+  }
+  return rings;
+}
+
 // One frame of the pulse: from each ring, the ring that travels out and
 // fades as it goes. `left` is 1 as a pulse sets out and 0 as it ends. A tick
 // of the pulse draws the map's marks again (the rings, this, and playback's
@@ -351,6 +384,8 @@ export function hotspotsPanel(env) {
   let topKey = '';
   let rings = [];
   const still = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: true };
+  // the inspector is a sheet over the map (ui/app.css): a phone
+  const sheet = typeof matchMedia === 'function' ? matchMedia('(max-width: 640px)') : { matches: false };
 
   function show(row, cells) {
     selected = row.id;
@@ -395,7 +430,7 @@ export function hotspotsPanel(env) {
     body.replaceChildren(...list.flatMap((row) => {
       const cellsId = base + '-cells-' + row.rank;
       const isOpen = open.has(row.id);
-      const cellsRow = h('tr', { class: 'mov-hot__cells', id: cellsId, hidden: !isOpen, data: { cellsOf: row.id } });
+      const cellsRow = h('tr', { class: 'mov-hot__cells', id: cellsId, hidden: !isOpen || sheet.matches, data: { cellsOf: row.id } });
       const fill = () => {
         const floor = floors.get(row.place.floorId);
         cellsRow.replaceChildren(h('td', { colspan: '3' },
@@ -403,10 +438,21 @@ export function hotspotsPanel(env) {
             h('button', { type: 'button', class: 'mov-link', data: { action: 'show-cell' }, on: { click: () => show(row, [cell.cell]) } }, floor ? cellWords(floor, cell.cell) : 'Cell ' + cell.cell),
             ': ' + cell.load + (cell.excluded ? ', left out of the scale' : ''))))));
       };
-      if (isOpen) fill();
-      const more = row.cells.length === 0 ? null : h('button', { type: 'button', class: 'mov-link mov-hot__more', 'aria-expanded': String(isOpen), 'aria-controls': cellsId, data: { action: 'cells' } }, cellsLabel(row, isOpen));
+      if (isOpen && !sheet.matches) fill();
+      // on a phone the link opens nothing here (see its click): it is not a disclosure there
+      const more = row.cells.length === 0 ? null : h('button', { type: 'button', class: 'mov-link mov-hot__more', 'aria-expanded': sheet.matches ? null : String(isOpen), 'aria-controls': sheet.matches ? null : cellsId, data: { action: 'cells' } }, cellsLabel(row, isOpen && !sheet.matches));
       if (more) {
         more.addEventListener('click', () => {
+          // On a phone the inspector is a sheet over the map: the place's
+          // cells are shown where they are, on the map. The sheet shuts, the
+          // map moves to the place and outlines it, and the rings pulse.
+          if (sheet.matches) {
+            env.ctx.closeInspector();
+            show(row);
+            pulse.start();
+            env.ctx.focusSurface();
+            return;
+          }
           const next = !open.has(row.id);
           if (next) {
             open.add(row.id);
@@ -563,29 +609,36 @@ export function hotspotsPanel(env) {
       // the busiest cell of the place that the scale counts; both ends of a stairs connection
       const busiest = row.cells.find((cell) => !cell.excluded);
       const points = (row.place.kind === 'connection' ? row.ends : busiest ? [busiest] : []).map((end) => map.point(end.floorId, end.cell)).filter(Boolean);
-      for (const at of points) {
-        g.beginPath();
-        g.arc(at.x, at.y, r, 0, Math.PI * 2);
-        g.strokeStyle = map.theme.card;
-        g.lineWidth = 5;
-        g.stroke();
-        g.strokeStyle = map.theme.accent;
-        g.lineWidth = 3;
-        g.stroke();
-        // its rank, on the ring's upper right
-        const bx = at.x + r * 0.71;
-        const by = at.y - r * 0.71;
-        g.beginPath();
-        g.arc(bx, by, 8, 0, Math.PI * 2);
-        g.fillStyle = map.theme.accent;
-        g.fill();
-        g.font = '600 11px ' + map.theme.font;
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.fillStyle = map.theme.accentInk;
-        g.fillText(String(row.rank), bx, by + 0.5);
-        rings.push({ rank: row.rank, x: at.x, y: at.y, r });
-      }
+      for (const at of points) rings.push({ rank: row.rank, x: at.x, y: at.y, r });
+    }
+    placeRanks(rings);
+    // Zoomed out, the rings of two places lie over one another. They are
+    // drawn last rank first, so the busiest place's is on top, and every
+    // rank after every ring, so no ring's line runs through a number.
+    const backToFront = rings.slice().reverse();
+    for (const ring of backToFront) {
+      g.beginPath();
+      g.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2);
+      g.strokeStyle = map.theme.card;
+      g.lineWidth = 5;
+      g.stroke();
+      g.strokeStyle = map.theme.accent;
+      g.lineWidth = 3;
+      g.stroke();
+    }
+    for (const ring of backToFront) {
+      g.beginPath();
+      g.arc(ring.bx, ring.by, RANK_RADIUS, 0, Math.PI * 2);
+      g.fillStyle = map.theme.accent;
+      g.fill();
+      g.strokeStyle = map.theme.card;
+      g.lineWidth = 1;
+      g.stroke();
+      g.font = '600 11px ' + map.theme.font;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillStyle = map.theme.accentInk;
+      g.fillText(String(ring.rank), ring.bx, ring.by + 0.5);
     }
     // the travelling rings, where the map now has the places
     const moving = pulse.moving && !still.matches;

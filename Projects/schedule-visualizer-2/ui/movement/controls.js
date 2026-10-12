@@ -77,7 +77,24 @@ export function controls(options) {
 
   // ---- which transition
   const stripId = uid('mov-strip');
-  const strip = h('div', { class: 'mov-strip', role: 'group', 'aria-labelledby': stripId, data: { control: 'transition' } });
+  // One Tab stop (DESIGN 5.3): a radio group, as the floors and the
+  // arrangement are. The arrow keys move the choice, Home and End go to its
+  // ends, and Tab passes through it once however many periods the day has.
+  const strip = h('div', { class: 'mov-strip', role: 'radiogroup', 'aria-labelledby': stripId, data: { control: 'transition' } });
+  strip.addEventListener('keydown', (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const items = Array.from(strip.children);
+    const at = items.indexOf(document.activeElement);
+    if (at === -1) return;
+    const to = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (at + 1) % items.length
+      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? (at - 1 + items.length) % items.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : -1;
+    if (to === -1) return;
+    event.preventDefault();
+    // as with any radio group, moving is choosing; the item keeps the focus while the map changes
+    if (to !== at) items[to].click();
+    items[to].focus();
+  });
   const stripBox = h('div', { class: 'mov-ctl mov-ctl--strip' }, label('Transition', stripId), strip);
   let stripKey = '';
 
@@ -147,7 +164,9 @@ export function controls(options) {
       const button = (value, top, under, name) => h('button', {
         type: 'button',
         class: 'mov-strip__item',
-        'aria-pressed': 'false',
+        role: 'radio',
+        'aria-checked': 'false',
+        tabindex: '-1',
         title: name,
         data: { transition: value },
         on: { click: () => options.change({ transition: value === 'all' ? null : Number(value) }) },
@@ -158,7 +177,12 @@ export function controls(options) {
       );
     }
     const now = picture.choice.transition === null ? 'all' : String(picture.choice.transition);
-    for (const item of strip.children) item.setAttribute('aria-pressed', String(item.dataset.transition === now));
+    for (const item of strip.children) {
+      const chosen = item.dataset.transition === now;
+      item.setAttribute('aria-checked', String(chosen));
+      // the one chosen is the group's Tab stop
+      item.tabIndex = chosen ? 0 : -1;
+    }
   }
 
   return {

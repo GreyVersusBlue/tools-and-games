@@ -3,7 +3,15 @@
 // the picture is the busiest moment or the total over the day, whether the
 // scale is relative or absolute, and how many exclusion zones are left out.
 //
-//   legend({ measure(value), scale(value), folded, fold(folded) }) -> { element, update(project, picture, chosen) }
+//   legend({ measure(value), scale(value), folded, fold(folded) })
+//     -> { element, line, update(project, picture, chosen), setDocked(docked), docked, open }
+//
+// The card never covers a floor (DESIGN 5.3). Where it would, at the fitted
+// zoom, and always on a phone, the view docks it (`setDocked(true)`): the
+// card is away and `line`, one line under the map, says the scale in short,
+// "Load · 1 to 177 · Relative", with a "Scale" button that brings the card
+// over the map until its own button puts it away again. Docked and away, the
+// card is still laid out (unseen), so the view can measure the room it needs.
 //
 // `chosen` is { mode }, the colour scale as the project has it now. While the
 // answer for a change of scale is awaited the picture, and so the numbers,
@@ -26,6 +34,19 @@ export function bandText(edge, words) {
 }
 
 const BAND_NAMES = ['quiet', '', '', '', 'busy'];
+
+// The scale in one line, for the legend docked under the map: "Load · 1 to
+// 177 · Relative". With one group there is no load colouring to give.
+export function lineText(picture) {
+  if (!picture || picture.mode === 'empty') return '';
+  if (picture.mode === 'single') return 'One group · its own colour';
+  const load = picture.load;
+  if (!load) return 'Load';
+  const first = load.edges[0];
+  const last = load.edges[load.edges.length - 1];
+  const range = !(load.max > 0) && load.mode !== 'absolute' ? 'nobody crosses' : first.from + ' to ' + (last.to === null ? last.from + ' or more' : last.to);
+  return 'Load · ' + range + ' · ' + (load.mode === 'absolute' ? 'Absolute' : 'Relative');
+}
 
 export function legend(options) {
   const titleId = uid('mov-legend');
@@ -54,22 +75,73 @@ export function legend(options) {
   const zones = h('p', { class: 'mov-legend__note', data: { legend: 'zones' } });
   const body = h('div', { class: 'mov-legend__body' }, what, bands, measureBox, scaleBox, scaleNote, zones);
   const single = h('p', { class: 'mov-legend__what', hidden: true, data: { legend: 'single' } });
-  // the card can be folded to its title, to see the map under it
+  // the card can be folded to its title, to see the map under it; docked, the
+  // same button puts the card away and leaves the line
   let folded = options.folded === true;
+  let docked = false;
+  let open = false;
   const toggle = h('button', { type: 'button', class: 'mov-link mov-legend__toggle', 'aria-expanded': String(!folded), data: { action: 'fold-legend' } }, folded ? 'Show' : 'Hide');
   toggle.addEventListener('click', () => {
+    if (docked) {
+      setOpen(false);
+      scaleButton.focus();
+      return;
+    }
     folded = !folded;
-    toggle.textContent = folded ? 'Show' : 'Hide';
-    toggle.setAttribute('aria-expanded', String(!folded));
-    element.dataset.folded = String(folded);
+    draw();
     if (options.fold) options.fold(folded);
   });
-  const element = h('aside', { class: 'mov-legend', 'aria-labelledby': titleId, hidden: true, data: { folded: String(folded) } }, h('div', { class: 'mov-legend__head' }, title, toggle), body, single);
+  const element = h('aside', { class: 'mov-legend', 'aria-labelledby': titleId, hidden: true, data: { folded: String(folded), docked: 'false', open: 'false' } }, h('div', { class: 'mov-legend__head' }, title, toggle), body, single);
+
+  // ---- docked: one line under the map
+  const lineWords = h('span', { class: 'mov-legend-line__words', data: { legend: 'line' } });
+  const scaleButton = h('button', { type: 'button', class: 'mov-link mov-legend-line__open', 'aria-expanded': 'false', data: { action: 'scale' } }, 'Scale');
+  scaleButton.addEventListener('click', () => {
+    setOpen(!open);
+    if (open) toggle.focus();
+  });
+  const line = h('div', { class: 'mov-legend-line', hidden: true, data: { legend: 'dock' } }, lineWords, scaleButton);
+
+  function draw() {
+    // docked, the card is whole whenever it is brought out: folding is for the card that stands on the map
+    const isFolded = folded && !docked;
+    toggle.textContent = isFolded ? 'Show' : 'Hide';
+    toggle.setAttribute('aria-expanded', String(!isFolded));
+    element.dataset.folded = String(isFolded);
+    element.dataset.docked = String(docked);
+    element.dataset.open = String(docked && open);
+    // away, it is out of the reader's way and out of the keyboard's
+    element.inert = docked && !open;
+    line.hidden = !docked || element.hidden;
+    scaleButton.setAttribute('aria-expanded', String(open));
+  }
+
+  function setOpen(next) {
+    open = next && docked;
+    draw();
+  }
+
+  function setDocked(next) {
+    if (next === docked) return;
+    docked = next;
+    open = false;
+    draw();
+  }
 
   return {
     element,
+    line,
+    setDocked,
+    get docked() {
+      return docked;
+    },
+    get open() {
+      return docked && open;
+    },
     update(project, picture, chosen) {
       element.hidden = picture.mode === 'empty';
+      lineWords.textContent = lineText(picture);
+      draw();
       if (picture.mode === 'empty') return;
       const group = picture.mode === 'single' ? picture.groups[0] : null;
       body.hidden = Boolean(group) || !picture.load;

@@ -1963,6 +1963,18 @@ kbd {
   bottom: calc(var(--toast-clear, 0px) + var(--s-3));
 }
 
+/* On a phone the movement view's inspector is a sheet over the lower 55 % of
+   the window: the first line and the top of the map stay on screen above it
+   (DESIGN 5.3). "Show its N cells" in the sheet shuts it and moves the map
+   (ui/movement/hotspots.js). */
+@media (max-width: 640px) {
+  .app:has(.surface__layout[data-section="movement"]) > .inspector[data-open="true"] {
+    height: 55vh;
+    height: 55dvh;
+    max-height: none;
+  }
+}
+
 /* A phone with the inspector's sheet open: the sheet is what is being used,
    so the plan's status line gives its height to the plan until the sheet is
    shut again. */

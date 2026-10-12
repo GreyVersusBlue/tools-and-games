@@ -269,7 +269,7 @@ export const section = {
     const bar = playbackBar(env);
     const stage = h('div', { class: 'mov-stage' }, canvas, layer, h('p', { class: 'vh', id: 'movement-keys' }, KEYS), key.element, card.element, zoomBox);
     const headline = h('h1', { class: 'vh' }, HEADLINE);
-    const map = h('div', { class: 'mov-map' }, headline, top.element, stage, bar.element);
+    const map = h('div', { class: 'mov-map' }, headline, top.element, stage, key.line, bar.element);
     const empty = h('div', { class: 'mov-empty stub', hidden: true });
     const element = h('div', { class: 'mov', data: { styled: 'false' } }, map, empty);
 
@@ -317,6 +317,7 @@ export const section = {
     function onWidth() {
       if (memory.controls === null) top.setFolded(!wide.matches);
       placeFloors();
+      dockLegend();
     }
     wide.addEventListener('change', onWidth);
     phone.addEventListener('change', onWidth);
@@ -434,13 +435,46 @@ export const section = {
         worldKey = nextKey;
       }
       world = next;
+      dockLegend();
       if (fitted) fit(true);
+    }
+
+    // ---- the legend never covers a floor (DESIGN 5.3). Its card stands on
+    // the map's bottom right corner only where, with the map fitted to the
+    // window, it would lie on no floor; otherwise, and always on a phone, it
+    // is docked as one line under the map. The stage is measured as it is
+    // without that line, so that docking does not itself decide the answer.
+    const probe = createViewport();
+    function coversFloor() {
+      if (!world || view.width === 0) return false;
+      const height = view.height + (key.line.hidden ? 0 : key.line.offsetHeight);
+      const card = key.element;
+      const width = card.offsetWidth;
+      const tall = card.offsetHeight;
+      if (width === 0 || tall === 0) return false;
+      probe.resize(view.width, height);
+      probe.fit({ x: 0, y: 0, w: world.width, h: world.height }, 20);
+      const style = getComputedStyle(card);
+      const right = view.width - (parseFloat(style.right) || 0);
+      const bottom = height - (parseFloat(style.bottom) || 0);
+      const box = { left: right - width, top: bottom - tall, right, bottom };
+      const size = probe.size;
+      return world.slots.some((slot) => {
+        const left = probe.x + slot.x * size;
+        const topEdge = probe.y + slot.y * size;
+        return left < box.right && box.left < left + slot.w * size && topEdge < box.bottom && box.top < topEdge + slot.h * size;
+      });
+    }
+    function dockLegend() {
+      if (gone || key.element.hidden) return;
+      key.setDocked(phone.matches || coversFloor());
     }
 
     function fit(quiet) {
       if (!world || view.width === 0) return;
       view.fit({ x: 0, y: 0, w: world.width, h: world.height }, 20);
       fitted = true;
+      shownLast = null;
       if (!quiet) {
         clearPoint();
         queuePaint();
@@ -450,21 +484,30 @@ export const section = {
     function zoomBy(factor) {
       view.zoomAbout(view.zoom * factor, view.width / 2, view.height / 2);
       fitted = false;
+      shownLast = null;
       clearPoint();
       queuePaint();
     }
 
-    // Bring cells of a floor onto the map, in the middle of the window.
-    function show(floorId, cells) {
-      if (!world) return;
-      if (!world.slots.some((slot) => slot.floor.id === floorId)) change({ floors: floorId });
+    // Bring cells of a floor onto the map, in the middle of the window. They
+    // stay in the middle if the window then changes size (the inspector's
+    // sheet shut over them, the bar grew), until the reader moves the map.
+    let shownLast = null;
+    function centre(floorId, cells) {
       const places = (cells || []).map((cell) => placeOf(world, floorId, cell)).filter(Boolean);
-      if (places.length === 0) return;
+      if (places.length === 0) return false;
       const x = places.reduce((sum, place) => sum + place.x + 0.5, 0) / places.length;
       const y = places.reduce((sum, place) => sum + place.y + 0.5, 0) / places.length;
       const at = view.toScreen(x, y);
       view.panBy(view.width / 2 - at.x, view.height / 2 - at.y);
       fitted = false;
+      return true;
+    }
+    function show(floorId, cells) {
+      if (!world) return;
+      if (!world.slots.some((slot) => slot.floor.id === floorId)) change({ floors: floorId });
+      if (!centre(floorId, cells)) return;
+      shownLast = { floorId, cells: cells.slice() };
       queuePaint();
     }
 
@@ -690,6 +733,7 @@ export const section = {
       spaceHeld: () => cursor.spaceHeld,
       viewChanged() {
         fitted = false;
+        shownLast = null;
         clearPoint();
         queuePaint();
       },
@@ -733,6 +777,8 @@ export const section = {
       canvas.dataset.ratio = String(window.devicePixelRatio || 1);
       clearPoint();
       arrange();
+      // what was brought to the middle is still in the middle of the window as it is now
+      if (shownLast && !fitted && world) centre(shownLast.floorId, shownLast.cells);
       if (floorsRow.how) floorsRow.how.set(world ? world.how : 'side');
       queued = false;
       paint();
@@ -837,6 +883,13 @@ export const section = {
 
     return {
       element,
+      // where the shell's "to the surface" goes: the map
+      focus() {
+        // with nothing to draw there is no map: the shell takes the region
+        if (map.hidden) return false;
+        canvas.focus();
+        return true;
+      },
       update() {
         ask();
         refresh();

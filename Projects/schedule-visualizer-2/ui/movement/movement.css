@@ -215,7 +215,7 @@
   background: var(--accent-soft);
 }
 
-.mov-strip__item[aria-pressed="true"] {
+.mov-strip__item[aria-checked="true"] {
   position: relative;
   background: var(--accent);
   border-color: var(--accent);
@@ -334,6 +334,37 @@
 .mov-legend[hidden],
 .mov-legend__body[hidden],
 .mov-legend__row[hidden] {
+  display: none;
+}
+
+/* Docked (it would lie on a floor, or the window is a phone's): the card is
+   away, laid out and unseen so the room it needs can still be measured, and
+   one line under the map stands for it. "Scale" on that line brings the card
+   out over the map until its own button puts it away. */
+.mov-legend[data-docked="true"] {
+  z-index: 6;
+  visibility: hidden;
+  box-shadow: var(--shadow);
+}
+
+.mov-legend[data-docked="true"][data-open="true"] {
+  visibility: visible;
+}
+
+.mov-legend-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+  padding: var(--s-1) var(--s-4);
+  background: var(--card);
+  border-top: var(--border);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mov-legend-line[hidden] {
   display: none;
 }
 
@@ -766,6 +797,19 @@
   padding: var(--s-3);
 }
 
+/* the four tabs are one row in the 320 px panel: at the shell's own size
+   Hotspots and Travel time filled a row, and Summary and Export made a second */
+.mov-inspector .tabs__list {
+  flex-wrap: nowrap;
+}
+
+.mov-inspector .tabs__tab {
+  flex: 1 1 auto;
+  padding: 0 var(--s-1);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+
 .mov-panel__title {
   font-size: var(--t-lg);
   line-height: var(--lh-lg);
@@ -900,6 +944,81 @@
 
   .mov-top {
     padding: var(--s-2) var(--s-3);
+  }
+}
+
+/* ---------- A finger's targets (DESIGN 5.3) ----------
+
+   Under 640 px, or with a coarse pointer, every control of the movement
+   surface is at least 44 px in its smaller dimension: the floors and the
+   arrangement in the top bar's second row, Change and the other links, the
+   who and transition choices, the two Show boxes (the row is the target),
+   Clear, the legend's choices and its button, the zoom buttons. The playback
+   bar's are with the bar, above. */
+@media (max-width: 640px), (pointer: coarse) {
+  .mov-floors .seg__label,
+  .mov .seg__label,
+  .mov-legend__row .seg__label {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .mov-floors {
+    padding-top: var(--s-1);
+    padding-bottom: var(--s-1);
+  }
+
+  .mov .mov-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mov-strip__item {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mov-check {
+    min-height: 44px;
+    padding-right: var(--s-2);
+  }
+
+  .mov-ctl__checks {
+    gap: 0;
+  }
+
+  .mov-check input {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .mov .btn,
+  .mov .field__input,
+  .mov-ctl__select {
+    min-height: 44px;
+  }
+
+  .mov .field__input,
+  .mov-ctl__select {
+    height: 44px;
+  }
+
+  .mov .chip__remove {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mov-zoom__btn {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .mov-legend-line {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 }
 
