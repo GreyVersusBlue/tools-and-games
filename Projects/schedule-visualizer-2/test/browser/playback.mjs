@@ -1058,6 +1058,8 @@ test('44g: the hotspot rings and the keyboard cursor are drawn over the markers,
       movement.cursor.moveTo(Math.floor(cell.x), Math.floor(cell.y), true);
       movement.env.paintMarks();
       const layer = movement.env.layer;
+      // the cursor is one of the marks: without it there is nothing over the marker to read
+      if (layer.dataset.cursor === undefined) return { marker, cursor: null };
       const [x, y, side] = layer.dataset.cursor.split(',').map(Number);
       const g = layer.getContext('2d');
       const at = (px, py) => Array.from(g.getImageData(Math.round(px), Math.round(py), 1, 1).data);
@@ -1065,6 +1067,7 @@ test('44g: the hotspot rings and the keyboard cursor are drawn over the markers,
       // the middle of the ring's left line, and of its top line
       return { marker, cursor: { x, y, side }, left: at(x + 1, y + side / 2), top: at(x + side / 2, y + 1), accent, size: movement.view.size };
     }, LATE_GROUP);
+    assert.ok(seen.cursor, 'the keyboard cursor was not drawn with the marks');
     assert.equal(seen.marker.late, true, 'a late marker, the widest there is');
     assert.equal(seen.cursor.side, 14, 'at 25 % a cell is ' + seen.size + ' px and the cursor’s ring is 14');
     assert.ok(Math.abs(seen.marker.x - (seen.cursor.x + 7)) <= seen.size / 2 + 0.5 && Math.abs(seen.marker.y - (seen.cursor.y + 7)) <= seen.size / 2 + 0.5, 'the cursor is on the marker’s cell: ' + JSON.stringify(seen));
