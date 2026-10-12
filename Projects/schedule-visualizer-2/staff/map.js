@@ -241,6 +241,17 @@ export function roomsAtTap(shapes, x, y) {
   return { pick: null, choices: close.map((room) => room.id) };
 }
 
+// ---- the maps on the page
+
+// Each map on the page, as the function that takes its listeners off.
+const mounted = new Set();
+
+// The page is leaving: every map on it stops listening to the window and to
+// the media queries. The shell calls this before it draws the next page.
+export function unmountMaps() {
+  for (const leave of Array.from(mounted)) leave();
+}
+
 // ---- the picture
 
 // A corridor reads against the floor's ground at 3:1 in both themes (WCAG
@@ -649,38 +660,66 @@ export function floorMap(ctx, options) {
   // paper is heard two ways, since no one way is every browser's: the print
   // media query changing, and "beforeprint" and "afterprint" on the window
   // (all WebKit says). Both end in the one repaint().
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => draw()).observe(frame);
+  //
+  // One print is two draws and no more: onto paper at whichever of the two
+  // says so first, and back at whichever says so first; the second voice of
+  // each pair finds the map already where it should be. A change between
+  // light and dark always draws.
+  //
+  // What listens on the window and on the two media queries is taken off
+  // when the page leaves: the shell calls unmountMaps() before it draws the
+  // next page. A map a view replaced inside its own page (Directions draws a
+  // new one for each pair of rooms) takes its own off the next time it is
+  // spoken to.
+  const watcher = typeof ResizeObserver === 'function' ? new ResizeObserver(() => draw()) : null;
+  if (watcher) watcher.observe(frame);
   if (document.fonts && document.fonts.load) {
     document.fonts.load('600 12px "Barlow Semi Condensed"').then(() => draw(), () => {});
   }
   const scheme = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
   const printing = typeof matchMedia === 'function' ? matchMedia('print') : null;
   const hears = typeof globalThis.addEventListener === 'function';
-  const repaint = (paper) => {
+  let left = false;
+  const leave = () => {
+    if (left) return;
+    left = true;
+    mounted.delete(leave);
+    if (watcher) watcher.disconnect();
+    if (scheme) scheme.removeEventListener('change', sameScheme);
+    if (printing) printing.removeEventListener('change', sameMedia);
+    if (hears) globalThis.removeEventListener('beforeprint', toPaper);
+    if (hears) globalThis.removeEventListener('afterprint', toScreen);
+  };
+  const repaint = (paper, whatever) => {
     if (!canvas.isConnected) {
-      // the page this map was on has gone
-      if (scheme) scheme.removeEventListener('change', sameMedia);
-      if (printing) printing.removeEventListener('change', sameMedia);
-      if (hears) globalThis.removeEventListener('beforeprint', toPaper);
-      if (hears) globalThis.removeEventListener('afterprint', toScreen);
+      // this map was replaced inside its page
+      leave();
       return;
     }
+    if (paper === onPaper && !whatever) return;
     onPaper = paper;
     draw();
+    // how many times the map was drawn again for paper, for the screen or for the theme
+    frame.dataset.repaints = String(Number(frame.dataset.repaints || 0) + 1);
+    frame.dataset.paper = String(onPaper);
   };
+  function sameScheme() {
+    repaint(onPaper, true);
+  }
   function sameMedia() {
-    repaint(printing.matches);
+    repaint(printing.matches, false);
   }
   function toPaper() {
-    repaint(true);
+    repaint(true, false);
   }
   function toScreen() {
-    repaint(false);
+    repaint(false, false);
   }
-  if (scheme) scheme.addEventListener('change', sameMedia);
+  if (scheme) scheme.addEventListener('change', sameScheme);
   if (printing) printing.addEventListener('change', sameMedia);
   if (hears) globalThis.addEventListener('beforeprint', toPaper);
   if (hears) globalThis.addEventListener('afterprint', toScreen);
+  mounted.add(leave);
 
   chrome();
   return h('section', { class: 'mapbox', 'aria-label': opts.label || 'Floor plan' },

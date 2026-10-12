@@ -888,6 +888,97 @@ test('on paper a teacher\'s schedule is one sheet: the day types side by side, t
   }
 });
 
+test('one print is two draws of the map, onto paper and back, however the browser says so; and a map\'s listeners leave with its page', async () => {
+  const session = await openPage({ width: 1280, height: 900 });
+  try {
+    const { page } = session;
+    // count what listens for printing and for a change of media, on the window and on every media query
+    await page.evaluateOnNewDocument(() => {
+      const held = { beforeprint: 0, afterprint: 0, change: 0 };
+      globalThis.sv2Held = held;
+      const add = window.addEventListener.bind(window);
+      const remove = window.removeEventListener.bind(window);
+      window.addEventListener = (type, ...rest) => {
+        if (type === 'beforeprint' || type === 'afterprint') held[type] += 1;
+        return add(type, ...rest);
+      };
+      window.removeEventListener = (type, ...rest) => {
+        if (type === 'beforeprint' || type === 'afterprint') held[type] -= 1;
+        return remove(type, ...rest);
+      };
+      const queryAdd = MediaQueryList.prototype.addEventListener;
+      const queryRemove = MediaQueryList.prototype.removeEventListener;
+      MediaQueryList.prototype.addEventListener = function added(type, ...rest) {
+        if (type === 'change') held.change += 1;
+        return queryAdd.call(this, type, ...rest);
+      };
+      MediaQueryList.prototype.removeEventListener = function removed(type, ...rest) {
+        if (type === 'change') held.change -= 1;
+        return queryRemove.call(this, type, ...rest);
+      };
+    });
+    const held = () => page.evaluate(() => ({ ...globalThis.sv2Held }));
+    await goto(page, files.open.url + '#/staffing');
+    const none = await held();
+    assert.equal(none.change, 0, 'a page with no map listens to no media query');
+
+    await move(page, '#/room/rsample101', 'Room 101');
+    await mapsDrawn(page);
+    assert.deepEqual(await held(), { beforeprint: none.beforeprint + 1, afterprint: none.afterprint + 1, change: 2 }, 'a map listens on the window twice and on two media queries');
+
+    // The page's own listener on the print query, added after the map's, so
+    // it is told after the map: what it writes is the state to wait on.
+    await page.evaluate(() => {
+      const printing = matchMedia('print');
+      printing.addEventListener('change', () => { document.documentElement.dataset.media = printing.matches ? 'print' : 'screen'; });
+      globalThis.sv2Held.change -= 1;
+    });
+    const repaints = () => page.evaluate(() => Number(document.querySelector('.map').dataset.repaints || 0));
+    const media = (want) => page.waitForFunction((wanted) => document.documentElement.dataset.media === wanted, { timeout: 5000 }, want);
+    assert.equal(await repaints(), 0);
+    // a print as Chromium and Firefox tell it: "beforeprint", the media change, the change back, "afterprint"
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.equal(await repaints(), 1, 'drawn for paper at the first word of it');
+    assert.equal(await page.evaluate(() => document.querySelector('.map').dataset.paper), 'true');
+    await page.emulateMediaType('print');
+    await media('print');
+    assert.equal(await repaints(), 1, 'the media query says the same thing again: not drawn again');
+    await page.emulateMediaType('screen');
+    await media('screen');
+    assert.equal(await repaints(), 2, 'and back');
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    assert.equal(await repaints(), 2, 'one print, two draws');
+    // as WebKit tells it: the two events and nothing else
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('beforeprint'));
+      window.dispatchEvent(new Event('afterprint'));
+    });
+    assert.equal(await repaints(), 4);
+    // and with the media query alone
+    await page.emulateMediaType('print');
+    await media('print');
+    await page.emulateMediaType('screen');
+    await media('screen');
+    assert.equal(await repaints(), 6);
+
+    // the page leaves: nothing of the map is left listening
+    await move(page, '#/staffing', 'Staffing');
+    assert.deepEqual(await held(), none, 'the map\'s four listeners went with its page');
+    // from one page with a map to another: the first page's map does not stay behind
+    await move(page, '#/group/gsample06a', '6A');
+    await mapsDrawn(page);
+    const maps = await count(page, '.map');
+    assert.ok(maps >= 1, 'the group\'s page has its map');
+    assert.deepEqual(await held(), { beforeprint: none.beforeprint + maps, afterprint: none.afterprint + maps, change: 2 * maps });
+    await move(page, '#/room/rsample101', 'Room 101');
+    await mapsDrawn(page);
+    assert.deepEqual(await held(), { beforeprint: none.beforeprint + 1, afterprint: none.afterprint + 1, change: 2 });
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
 test('paper is light when the screen is dark, and the screen is unchanged by the paper rules', async () => {
   const session = await openPage({ width: 1280, height: 900, theme: 'dark' });
   try {

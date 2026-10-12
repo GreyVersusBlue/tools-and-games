@@ -22,6 +22,7 @@ import { dayText, momentText, isStale, isOlderThanSeen } from './dates.js';
 import { readPublished, DAMAGED_SENTENCE } from './source.js';
 import { openSchool } from './model.js';
 import { pageOf, leftOutPage, printWhen, UNKNOWN_PAGE_SENTENCE } from './page.js';
+import { unmountMaps } from './map.js';
 import { ME_KEY } from './notes.js';
 import { unlockScreen } from './passcode.js';
 import { viewFor, isView } from './views.js';
@@ -101,6 +102,8 @@ export function mountShell(root, env) {
     if (!open) return;
     const current = open;
     const ctx = ctxFor(current);
+    // the page on screen is leaving: its maps stop listening before the next page makes its own
+    unmountMaps();
     let route = parseHash(win.location.hash);
     // An address that names no page of this file (a mistyped link, a view of
     // a newer copy): the search page, told so, at the search page's own
