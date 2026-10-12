@@ -73,6 +73,27 @@ const gridRows = (rows) => async (page) => {
   await scheduleDrawn(page);
 };
 
+// SV2-40: the grid on a phone, where Group and the periods are what shows.
+// A sweep keeps one page at one size, so the size is changed here and put
+// back when the sweep leaves for its next screen.
+async function gridOnPhone(page) {
+  const size = page.viewport ? page.viewport() : page.viewportSize();
+  const resize = (to) => (page.setViewport ? page.setViewport({ ...size, ...to }) : page.setViewportSize(to));
+  await resize({ width: 390, height: 760 });
+  page.once('framenavigated', () => {
+    resize({ width: size.width, height: size.height }).catch(() => {});
+  });
+  await gridDrawn(page);
+  await page.waitForFunction(() => document.querySelector('.grd-cell--grade').getClientRects().length === 0);
+}
+
+// SV2-40: the Teachers table with the cell of the sample's double-booking in
+// focus, its sentence drawn under it.
+async function gridTeachersMarked(page) {
+  await gridRows('teachers')(page);
+  await page.focus('.grd-table--read .is-marked');
+}
+
 // SV2-06: the plan is drawn once its own stylesheet has loaded.
 async function planReady(page) {
   await page.waitForFunction(() => {
@@ -436,6 +457,8 @@ export const SCREENS = [
   { id: 'schedule-grid-empty', hash: '#project', open: scheduleEmpty('grid') }, // SV2-12
   { id: 'schedule-grid-teachers', hash: '#schedule/grid', open: gridRows('teachers') }, // SV2-12
   { id: 'schedule-grid-rooms', hash: '#schedule/grid', open: gridRows('rooms') }, // SV2-12
+  { id: 'schedule-grid-phone', hash: '#schedule/grid', open: gridOnPhone }, // SV2-40
+  { id: 'schedule-grid-teachers-marked', hash: '#schedule/grid', open: gridTeachersMarked }, // SV2-40
   { // SV2-12: a cell being edited, with the rooms listed under it
     id: 'schedule-grid-editing',
     hash: '#schedule/grid',
