@@ -138,7 +138,7 @@ test('the room picker lists rooms as "204 — Mme. Dufrêne" and narrows as you 
   // typed (SV2-38 item 9; test/browser/m2-pass.mjs has the keeping), and
   // Escape still puts the room back
   await selectAllAndType('zzz');
-  assert.match(await text('.sch-day[data-day="' + DAY_A + '"] tr[data-period="0"] .sch-room .picker__empty'), /No room matches\. It is kept as typed/);
+  assert.match(await text('.sch-day[data-day="' + DAY_A + '"] tr[data-period="0"] .sch-room .sch-room__line'), /No room matches\. It is kept as typed/);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   assert.equal(await roomShown(DAY_A, 0), '201 — Ms. Oyelaran');
@@ -174,7 +174,8 @@ test('a group is entered from scratch by keyboard, and focus is never lost on th
       const labels = await page.$$eval('.sch-day[data-day="' + DAY_A + '"] tr[data-period="1"] .picker__option', (all) => all.map((el) => el.firstChild.textContent));
       const at = labels.findIndex((label) => label.split(' — ')[0] === plan[period]);
       assert.notEqual(at, -1, 'the list has ' + plan[period] + ': ' + labels.join(' | '));
-      for (let i = 0; i < at; i += 1) await page.keyboard.press('ArrowDown');
+      // nothing is highlighted until an arrow goes there (SV2-48): the first ArrowDown is the first room
+      for (let i = 0; i <= at; i += 1) await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
       await shows((selector, number) => document.querySelector(selector).value.split(' — ')[0] === number && document.activeElement === document.querySelector(selector), slot(DAY_A, period, 'room'), plan[period]);
       await page.keyboard.press('Tab');
@@ -380,7 +381,8 @@ test('Accept hands the engine who the finding names, so a walk finding (which th
 test('Show jumps to the slot, marks it and puts focus in it', async () => {
   await go(page, '#schedule/checks');
   await click('.sch-findings tr[data-finding^="room-double:' + DAY_A + ':1:"] [data-action="show"]');
-  await shows(() => location.hash === '#schedule/groups' && document.querySelector('.sch-slot[data-shown="true"]') !== null);
+  // Show goes to the slot's own address (SV2-48), so the list is a Back away on a phone
+  await shows((day) => location.hash === '#schedule/groups/gsample06c/' + day + '/1' && document.querySelector('.sch-slot[data-shown="true"]') !== null, DAY_A);
   assert.equal(await text('.sch-editor__title'), '6C');
   assert.equal(await page.$eval('.sch-slot[data-shown="true"]', (el) => el.closest('.sch-day').dataset.day + ':' + el.dataset.period), DAY_A + ':1');
   await keyIs('slot:' + DAY_A + ':1:room');

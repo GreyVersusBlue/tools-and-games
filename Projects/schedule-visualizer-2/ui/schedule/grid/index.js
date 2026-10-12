@@ -25,7 +25,7 @@ import { allRooms } from '../../../engine/schema.js';
 import { fill, apply, button, keyed, emptyState, roomLabel } from '../common.js';
 import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, touch, discard, remember, takeBack, forgetSteps, stageSlot, stageField, stageAdd, stageRemove, stageKeep } from './staged.js';
 import { sheetModel, namesOf, newGroup } from './model.js';
-import { sheet as makeSheet, cellKey, NARROW } from './sheet.js';
+import { sheet as makeSheet, cellKey } from './sheet.js';
 import { teacherTable, roomTable } from './readonly.js';
 
 export { gridEditsPending, watchGridEdits } from './staged.js';
@@ -91,11 +91,9 @@ function watchPage() {
     event.preventDefault();
     grid.sheet.paste(event.clipboardData.getData('text/plain'));
   });
-  // a phone turned on its side crosses the width at which columns hide: the
-  // sheet is drawn again so the cursor is not left in a column out of sight
-  window.matchMedia(NARROW).addEventListener('change', () => {
-    if (live && live.element.isConnected) live.redraw();
-  });
+  // (A phone turned on its side crosses the width at which columns hide. The
+  // section draws its tab again then, ../index.js, and the sheet puts the
+  // cursor in a column that is still in sight.)
   window.addEventListener('beforeunload', (event) => {
     if (!anyGridEditsPending()) return;
     event.preventDefault();
@@ -347,7 +345,7 @@ export function mount(env) {
     editNext = null;
   }
 
-  live = { element, sheet, rows: () => state.rows, empty: () => Boolean(model) && model.rows.length === 0, redraw: () => env.render() };
+  live = { element, sheet, rows: () => state.rows, empty: () => Boolean(model) && model.rows.length === 0 };
   draw(ctx.store.project);
 
   // Edits staged before the tab was left are still here: say so. (After the
