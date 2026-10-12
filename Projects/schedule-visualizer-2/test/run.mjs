@@ -103,6 +103,7 @@ export const GROUPS = {
     'browser/staff-outputs.mjs', // SV2-23
     'browser/publish.mjs', // SV2-24
     'browser/movement.mjs', // SV2-17
+    'browser/playback.mjs', // SV2-19
     'a11y/axe.mjs',
   ],
   a11y: [
