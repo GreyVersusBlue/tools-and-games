@@ -252,3 +252,40 @@ test('every route of the sample school can be written out: numbered from 1, a wa
   }
   assert.equal(written, 13 * 12);
 });
+
+// ---------------------------------------------------------------- SV2-43: does a failure's sentence open with what was typed?
+// (The import stands here so that the lines above are left as they were for
+// the unit changing two of the sentences beside this one.)
+import { startsAsTyped } from '../../engine/directions.js';
+
+test('startsAsTyped: true where describeFailure’s sentence opens with a room as it was typed, false where it opens with a word of the tool’s own', () => {
+  const project = planProject([['.A.....', '####...', '.....C.']]);
+  const floor = project.building.floors[0].id;
+  const cases = [
+    [{ ok: false, reason: 'no-room', roomId: null, floorId: null, end: 'to' }, false, 'No room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: '' }, false, 'The room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: '   ' }, false, 'The room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to' }, false, 'The room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: '999' }, true, 'Room 999'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: 'the annex' }, true, 'the annex'],
+    [{ ok: false, reason: 'no-entry', roomId: roomId('1C'), floorId: floor, end: 'to' }, true, 'Room 1C'],
+    [{ ok: false, reason: 'no-entry', roomId: 'rgone00001', floorId: floor, end: 'to' }, false, 'The room'],
+    [{ ok: false, reason: 'unreachable', roomId: roomId('1C'), floorId: floor, end: 'to', fromRoomId: roomId('1A') }, false, 'There is'],
+    [{ ok: false, reason: 'unreachable', roomId: roomId('1A'), floorId: floor, end: 'from' }, false, 'There is'],
+  ];
+  for (const [failed, typed, opens] of cases) {
+    const sentence = describeFailure(project, failed);
+    assert.ok(sentence.startsWith(opens), JSON.stringify(failed) + ' reads ' + sentence);
+    assert.equal(startsAsTyped(project, failed), typed, sentence);
+  }
+  // a room whose number is blank is named in the tool's words; the same words typed as its number are its name
+  const room = project.building.floors[0].spaces.find((space) => space.id === roomId('1C'));
+  room.number = ' ';
+  assert.equal(describeFailure(project, cases[6][0]), 'A room with no number on Floor 1 does not open onto a corridor.');
+  assert.equal(startsAsTyped(project, cases[6][0]), false);
+  room.number = 'A room with no number';
+  assert.equal(describeFailure(project, cases[6][0]), 'A room with no number on Floor 1 does not open onto a corridor.');
+  assert.equal(startsAsTyped(project, cases[6][0]), true);
+  // nothing to describe
+  assert.equal(startsAsTyped(project, null), false);
+});

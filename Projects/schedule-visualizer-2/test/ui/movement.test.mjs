@@ -17,6 +17,8 @@ import * as model from '../../ui/movement/model.js';
 import { layoutFloors, bestLayout, slotAt, placeOf, FLOOR_GAP, TITLE_ROWS } from '../../ui/movement/layout.js';
 import { bandText } from '../../ui/movement/legend.js';
 import { fixFor } from '../../ui/movement/summary.js';
+import { heldScale, canvasHolds, isBlank, LOWEST_SCALE } from '../../ui/movement/export.js';
+import { hotspotRows, hotspotsCsv, groupHeadings } from '../../ui/movement/hotspots.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createPipeline } from '../../engine/worker.js';
@@ -798,4 +800,173 @@ test('SV2-39 item 9: the lanes are the same whatever order the routes come in, a
   // by group last to first, as a project listed the other way round would give them
   const regrouped = entries.slice().sort((a, b) => b.rank - a.rank || b.t - a.t);
   assert.deepEqual(flat(buildLanes(sample.project, regrouped)), first);
+});
+
+// ---------------------------------------------------------------- SV2-43: the cases the review of SV2-39 named
+
+test('SV2-43 item 3: a reason that opens with a word of the tool’s own loses its capital after the comma, in every branch; what was typed keeps its own', () => {
+  const project = twoPeriods(shutRoom(), '1A', '1B');
+  const day = project.dayTypes[0].id;
+  const floor = floorId(1);
+  const failure = (route, period) => ({ groupId: 'gplan00001', dayTypeId: day, period: period || 0, route });
+  // a room that is not in the building, with nothing typed for it
+  for (const text of ['', '   ', undefined, null]) {
+    assert.equal(failureWords(project, failure({ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text }), false), 'P1, Period 2, the room is not in the building', JSON.stringify(text));
+  }
+  // a room with no way in, deleted since the answer was worked out
+  assert.equal(failureWords(project, failure({ ok: false, reason: 'no-entry', roomId: 'rgone00001', floorId: floor, end: 'to' }), false), 'P1, Period 2, the room on Floor 1 does not open onto a corridor');
+  assert.equal(failureWords(project, failure({ ok: false, reason: 'no-entry', roomId: 'rgone00001', floorId: null, end: 'from' }), false), 'P1, Period 1, the room does not open onto a corridor');
+  // no way through, from the end walked out of
+  assert.equal(failureWords(project, failure({ ok: false, reason: 'unreachable', roomId: roomId('1A'), floorId: floor, end: 'from' }), true), 'P1, Period 1 on A Day, there is no way through from Room 1A on Floor 1 to an exit');
+  // a room whose number is blank is named in the tool's words, and they lose their capital like the rest
+  const blank = clone(project);
+  blank.building.floors[0].spaces.find((space) => space.id === roomId('1B')).number = '  ';
+  assert.equal(failureWords(blank, failure({ ok: false, reason: 'no-entry', roomId: roomId('1B'), floorId: floor, end: 'to' }), false), 'P1, Period 2, a room with no number on Floor 1 does not open onto a corridor');
+  // the same words typed as a room's number are the room's name: as typed
+  for (const typed of ['A room with no number', 'The room', 'There', 'No room']) {
+    const named = clone(project);
+    named.building.floors[0].spaces.find((space) => space.id === roomId('1B')).number = typed;
+    assert.equal(failureWords(named, failure({ ok: false, reason: 'no-entry', roomId: roomId('1B'), floorId: floor, end: 'to' }), false), 'P1, Period 2, ' + typed + ' on Floor 1 does not open onto a corridor');
+    assert.equal(failureWords(named, failure({ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: typed }), false), 'P1, Period 2, ' + typed + ' is not in the building');
+  }
+  // the piece is marked as typed either way, so a name in it is never read as markup
+  const parts = model.failureParts(project, failure({ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: '<b>9</b>' }), false);
+  assert.deepEqual(parts[parts.length - 1], { text: '<b>9</b> is not in the building', name: true });
+});
+
+test('SV2-43 item 3: the first line of a derive that failed ends in one stop, whether the message brought one or not', () => {
+  const before = sample.project;
+  for (const [message, said] of [['The engine stopped', 'The engine stopped.'], ['The engine stopped.', 'The engine stopped.'], ['Stopped!', 'Stopped!'], ['Why?', 'Why?']]) {
+    const fresh = model.failedSentence(model.standingOf(before, { project: null, results: null, failed: message }));
+    assert.equal(words(fresh), 'The routes could not be worked out: ' + said, 'nothing drawn, ' + message);
+    const stale = model.failedSentence(model.standingOf(before, { project: before, results: sample.results, failed: message }));
+    assert.equal(words(stale), 'The routes could not be worked out: ' + said + ' The map and the figures are from before your last change.', 'an older answer drawn, ' + message);
+    // the message itself is one piece, exactly as it came
+    assert.ok(fresh.parts.some((part) => part.text === message && part.name === true));
+    assert.ok(stale.parts.some((part) => part.text === message && part.name === true));
+  }
+});
+
+test('SV2-43 item 3: a zone partly off its floor counts for the cells it does cover; one wholly off it, or on a floor the building does not have, counts for nothing', () => {
+  const project = clone(sample.project);
+  const third = project.building.floors[2];
+  const corridor = third.cells.indexOf('#');
+  const cx = corridor % third.width;
+  const cy = Math.floor(corridor / third.width);
+  project.building.zones.push({ id: 'zsample004', floorId: third.id, label: 'Over the west edge', x: -3, y: cy - 2, w: cx + 4, h: 3 });
+  project.building.zones.push({ id: 'zsample005', floorId: third.id, label: 'Off the floor', x: third.width + 5, y: third.height + 5, w: 4, h: 4 });
+  project.building.zones.push({ id: 'zsample006', floorId: third.id, label: 'Above the floor', x: cx, y: -9, w: 1, h: 4 });
+  project.building.zones.push({ id: 'zsample007', floorId: 'fnowhere00', label: 'No such floor', x: 0, y: 0, w: 40, h: 30 });
+  const world = derive(project);
+  assert.equal(picture(world, { floors: third.id }).load.zones, 1, 'the zone over the edge covers the corridor cell at column ' + (cx + 1));
+  assert.equal(picture(world).load.zones, 2, 'with the sample’s own zone on Floor 1');
+  assert.equal(picture(world, { floors: 'fsample002' }).load.zones, 0);
+});
+
+// ---------------------------------------------------------------- SV2-43: the review of SV2-47
+
+test('SV2-43 47c: the size a picture is drawn at is asked of the browser first as it was asked for, whatever it is, and then a step at a time down to a quarter', () => {
+  const tried = (asked, holdsFrom) => {
+    const seen = [];
+    const answer = heldScale(1000, 1000, asked, (width) => {
+      seen.push(width / 1000);
+      return width / 1000 <= holdsFrom;
+    });
+    return { seen, ...answer };
+  };
+  // under a half already: the size asked for is tried, then the quarter
+  assert.deepEqual(tried(0.45, 0.25), { seen: [0.45, 0.25], scale: 0.25, fell: 1 });
+  assert.deepEqual(tried(0.3, 0.3), { seen: [0.3], scale: 0.3, fell: 0 });
+  assert.deepEqual(tried(0.3, 0.25), { seen: [0.3, 0.25], scale: 0.25, fell: 1 });
+  // at the quarter, and under it: tried once, and nothing smaller is drawn
+  assert.deepEqual(tried(LOWEST_SCALE, 1), { seen: [0.25], scale: 0.25, fell: 0 });
+  assert.deepEqual(tried(LOWEST_SCALE, 0), { seen: [0.25], scale: 0, fell: 1 });
+  assert.deepEqual(tried(0.2, 1), { seen: [0.2], scale: 0.2, fell: 0 }, 'a map so large that the tool’s own limits ask for less than a quarter is drawn at that');
+  assert.deepEqual(tried(0.2, 0), { seen: [0.2], scale: 0, fell: 1 });
+  assert.deepEqual(tried(4, 0), { seen: [4, 2, 1, 0.5, 0.25], scale: 0, fell: 5 });
+});
+
+test('SV2-43 47c: a size the browser did not hold is asked about again; one it held is not', () => {
+  const had = globalThis.document;
+  let alpha = 0;
+  let made = 0;
+  globalThis.document = {
+    createElement: () => {
+      made += 1;
+      return { width: 0, height: 0, getContext: () => ({ fillStyle: '', fillRect() {}, getImageData: () => ({ data: [0, 0, 0, alpha] }) }) };
+    },
+  };
+  try {
+    // a size no other case asks about
+    assert.equal(canvasHolds(3217, 2113), false, 'the canvas took no pixel');
+    assert.equal(made, 1);
+    // the browser has the memory now: the same size is held, because it was asked again
+    alpha = 255;
+    assert.equal(canvasHolds(3217, 2113), true, 'a no from earlier in the visit was kept');
+    assert.equal(made, 2);
+    // and a yes is kept: no third canvas
+    alpha = 0;
+    assert.equal(canvasHolds(3217, 2113), true);
+    assert.equal(made, 2);
+  } finally {
+    if (had === undefined) delete globalThis.document;
+    else globalThis.document = had;
+  }
+});
+
+test('SV2-43 47c: a drawn picture is blank when its far corner reads back nothing', () => {
+  const drawnWith = (alpha) => {
+    const asked = [];
+    return { asked, pixels: { width: 640, height: 480 }, canvas: { getContext: () => ({ getImageData: (...at) => { asked.push(at); return { data: [255, 255, 255, alpha] }; } }) } };
+  };
+  const blank = drawnWith(0);
+  assert.equal(isBlank(blank), true);
+  assert.deepEqual(blank.asked, [[639, 479, 1, 1]], 'the far corner, one pixel');
+  assert.equal(isBlank(drawnWith(255)), false);
+  assert.equal(isBlank(drawnWith(1)), false);
+});
+
+test('SV2-43 47d: the hotspots file tells its group columns apart: no name, a name that is a fixed heading, a name two groups have', () => {
+  const fixed = ['Rank', 'Place', 'Floor', 'Kind', 'Load (students)', 'When', 'Delay (seconds)', 'Delay over the day (seconds)', 'Cells', 'Groups'];
+  const named = (...names) => names.map((name, index) => ({ id: 'g' + index, name }));
+  // names of their own are the headings, exactly as typed
+  assert.deepEqual(groupHeadings(named('6A', '=6B', '7A, "the early lot"', ' 7B '), fixed), ['6A', '=6B', '7A, "the early lot"', ' 7B ']);
+  assert.deepEqual(groupHeadings(named('', '   ', '7A'), fixed), ['(group with no name)', '(group with no name) (2nd of that name)', '7A']);
+  assert.deepEqual(groupHeadings(named('Rank', 'Groups', 'Load (students)', 'rank', 'Cells'), fixed), ['Rank (group)', 'Groups (group)', 'Load (students) (group)', 'rank', 'Cells (group)']);
+  assert.deepEqual(groupHeadings(named('7A', '7A', '8B', '7A', '7a'), fixed), ['7A', '7A (2nd of that name)', '8B', '7A (3rd of that name)', '7a']);
+  // a name typed as another heading reads is still a column of its own
+  const awkward = groupHeadings(named('7A', '7A', '7A (2nd of that name)', 'Rank (group)', 'Rank'), fixed);
+  assert.equal(new Set([...fixed, ...awkward]).size, fixed.length + awkward.length, 'two headings are the same: ' + awkward);
+  for (let n = 1; n <= 24; n += 1) assert.equal(groupHeadings(named(...new Array(n).fill('X')), fixed).length, n);
+  assert.deepEqual(groupHeadings(named(...new Array(13).fill('X')), fixed).slice(10), ['X (11th of that name)', 'X (12th of that name)', 'X (13th of that name)']);
+
+  // through the file: the sample with 6B and 6C renamed to 6A, 7A to nothing and 7B to "Groups"
+  const project = clone(sample.project);
+  group(project, '6B').name = '6A';
+  group(project, '6C').name = '6A';
+  group(project, '7A').name = '';
+  group(project, '7B').name = 'Groups';
+  const world = derive(project);
+  const view = picture(world);
+  const table = hotspotsCsv(project, hotspotRows(project, world.results, world.graph, view), view);
+  assert.deepEqual(table[0], [...fixed, '6A', '6A (2nd of that name)', '6A (3rd of that name)', '(group with no name)', 'Groups (group)', '7C', '8A', '8B']);
+  assert.equal(new Set(table[0]).size, table[0].length);
+  assert.ok(table[0].every((heading) => heading !== ''));
+  // the counts are still each group's own, under its own heading: the sample's first place is crossed by all eight
+  assert.deepEqual(table[1].slice(10), [1, 1, 1, 1, 1, 1, 1, 1]);
+});
+
+test('SV2-43 47g: the card’s "and N more" line has a weight to fall back on, and the marks’ canvas has its rules in the sheet', () => {
+  const sheet = readFileSync(fileURLToPath(new URL('../../ui/movement/movement.css', import.meta.url)), 'utf8');
+  const rule = sheet.slice(sheet.indexOf('.mov-card__floor,'), sheet.indexOf('}', sheet.indexOf('.mov-card__floor,')));
+  assert.ok(rule.includes('.mov-card__more'), 'the rule that sets the card’s quiet lines no longer names .mov-card__more');
+  assert.ok(/font-weight:\s*var\(--w-regular,\s*400\)/.test(rule), 'no weight to fall back on: ' + rule);
+  const marks = sheet.slice(sheet.indexOf('.mov-marks {'), sheet.indexOf('}', sheet.indexOf('.mov-marks {')));
+  for (const declaration of ['position: absolute', 'inset: 0', 'width: 100%', 'height: 100%', 'pointer-events: none']) assert.ok(marks.includes(declaration), '.mov-marks has no "' + declaration + '"');
+  // and no canvas is styled from a script any more
+  for (const file of ['hotspots.js', 'playback.js', 'index.js']) {
+    const source = readFileSync(fileURLToPath(new URL('../../ui/movement/' + file, import.meta.url)), 'utf8');
+    assert.equal(/h\('canvas'[^)]*style:/.test(source), false, file + ' gives a canvas an inline style');
+    assert.equal(/h\('style'/.test(source), false, file + ' adds a stylesheet of its own');
+  }
 });

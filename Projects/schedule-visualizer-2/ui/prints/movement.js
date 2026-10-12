@@ -90,10 +90,16 @@ export function movementResults(project, derived) {
 // What a document is made from. The movement view's own state, handed over
 // in options.movement, is used whole: its project with its results. Otherwise
 // it is the project given, with the results given or worked out.
+//   -> { project, results, graph, whole }
+// `whole` is false when a project was handed over without results that can
+// be read (no routes): the document is then of the project given, and an
+// image handed over beside that state is of something else and is left out
+// (SV2-43, 47f: an image of one project is never printed over the figures of
+// another).
 export function printedFrom(project, derived, options) {
   const given = options && options.movement ? options.movement : null;
-  if (given && given.project && given.results && given.results.routes) return { project: given.project, results: given.results, graph: given.graph || buildGraph(given.project) };
-  return { project, ...movementResults(project, derived) };
+  if (given && given.project && given.results && given.results.routes) return { project: given.project, results: given.results, graph: given.graph || buildGraph(given.project), whole: true };
+  return { project, ...movementResults(project, derived), whole: !(given && (given.project || given.results)) };
 }
 
 // ---------------------------------------------------------------- pieces
@@ -268,7 +274,7 @@ export function render(given, derived, options) {
   const opts = options || {};
   const asked = opts.movement || {};
   const parts = asked.parts || {};
-  const { project, results, graph } = printedFrom(given, derived, opts);
+  const { project, results, graph, whole } = printedFrom(given, derived, opts);
   const choice = settleChoice(project, asked.choice || defaultChoice(project));
   const picture = pictureOf(project, results, graph, choice);
 
@@ -277,7 +283,8 @@ export function render(given, derived, options) {
   else if (routeHealth(project, results).length > 0 && picture.groups.length > 0) lines.push('No route failed here.');
   const body = ['<p class="doc-lead">' + esc(lines.filter((line) => line !== '').join(' ')) + '</p>'];
   if (picture.groups.length > 0) {
-    body.push(figure(project, picture, asked.picture, opts));
+    // an image is printed only over the state it was drawn from
+    body.push(figure(project, picture, whole ? asked.picture : null, opts));
     if (parts.legend !== false) body.push(legendSection(project, results, picture));
     if (parts.scale !== false) body.push(scaleSection(picture));
     if (parts.hotspots !== false) body.push(placesSection(project, results, graph, picture));

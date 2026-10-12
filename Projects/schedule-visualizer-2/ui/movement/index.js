@@ -362,8 +362,9 @@ export const section = {
         if (gone || derived.asked !== project || store.project !== project) return;
         // store.project is `project` here, so the store's graph is this answer's
         derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, graph: results ? graphNow() : derived.graph, failed };
-        refresh();
+        // the answer is in: nothing is awaited by the time the panels are told (the Export tab reads this)
         delete element.dataset.pending;
+        refresh();
         if (failed) ctx.announce(failedSentence(standingOf(project, derived)).parts.map((part) => part.text).join(''));
       };
       store.derived.results().then((results) => settle(results, null), (error) => settle(null, error && error.message ? error.message : String(error)));

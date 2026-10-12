@@ -863,3 +863,35 @@ test('SV2-47 item 9: with one transition shown nothing says "Peaks in"; the file
   assert.deepEqual(late({ transition: 3 }), { heading: 'Late in this transition', cell: 'No', other: 'No' }, '8A is in time in the transition printed');
   assert.deepEqual(late({ transition: 5 }), { heading: 'Late in this transition', cell: 'Yes', other: 'No' });
 });
+
+test('SV2-43 47f: an image handed over beside a state that cannot be used is left out: it is never printed over another project’s figures', () => {
+  const before = derive(school());
+  const now = school();
+  group(now, '7A').name = '7A East';
+  const image = { url: PIXEL, width: 800, height: 600 };
+  // the state came over without results that can be read: no routes, no results, or no project
+  for (const [what, handed] of [
+    ['results with no routes', { project: before.project, results: {}, graph: before.graph }],
+    ['no results', { project: before.project, results: null, graph: before.graph }],
+    ['a project alone', { project: before.project }],
+    ['results alone', { results: before.results, graph: before.graph }],
+  ]) {
+    const from = movementPrint.printedFrom(now, null, { movement: { ...handed, picture: image } });
+    assert.equal(from.project, now, what + ': the document is of the project given');
+    assert.equal(from.whole, false, what);
+    const html = movementPrint.render(now, null, { ...NOW, movement: { ...handed, picture: image } }).html;
+    assert.ok(html.includes('7A East'), what + ': the figures are the project’s as it is now');
+    assert.equal(countOf(html, '<image '), 0, what + ': the image of the other project is on the page beside them');
+    assert.ok(html.includes('The map itself is added when this is printed from the Export tab of the movement view.'), what);
+  }
+  // the state whole: its image is printed, over its own figures
+  const whole = { project: before.project, results: before.results, graph: before.graph };
+  assert.equal(movementPrint.printedFrom(now, null, { movement: whole }).whole, true);
+  const printed = movementPrint.render(now, null, { ...NOW, movement: { ...whole, picture: image } }).html;
+  assert.equal(countOf(printed, '<image '), 1);
+  assert.equal(countOf(printed, '7A East'), 0);
+  // an image with no state beside it is the caller saying it is of the project given: printed
+  assert.equal(movementPrint.printedFrom(before.project, before, { movement: { picture: image } }).whole, true);
+  assert.equal(countOf(movementPrint.render(before.project, before, { ...NOW, movement: { picture: image } }).html, '<image '), 1);
+  assert.equal(movementPrint.printedFrom(now, null, null).whole, true);
+});

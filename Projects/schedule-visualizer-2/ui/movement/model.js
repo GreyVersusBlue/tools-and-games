@@ -33,7 +33,7 @@ import { findDayType, effectiveDayType, effectiveSchedule, ownDayTypes } from '.
 import { bellsFor, periodName, periodLabel, formatTime } from '../../engine/bells.js';
 import { resolveSlotRoom } from '../../engine/schema.js';
 import { loads, contributors, bandOf, bandEdges } from '../../engine/load.js';
-import { describeFailure } from '../../engine/directions.js';
+import { describeFailure, startsAsTyped } from '../../engine/directions.js';
 import { placeAt } from '../../engine/places.js';
 import { buildLanes, BAND_EXCLUDED } from '../surface/overlays/lanes.js';
 
@@ -386,16 +386,6 @@ export function unitWord(unit, n) {
   return n === 1 ? 'student' : 'students';
 }
 
-// Does describeFailure's sentence for this route open with a word of the
-// tool's own, not with a room as it was typed? "No room is set…", "There is
-// no way through…", "The room…" do; "Room 105…", "Gym…", "Annex 9…" do not.
-function opensWithOwnWord(project, route) {
-  if (route.reason === 'no-room' || route.reason === 'unreachable') return true;
-  if (route.reason === 'room-missing') return !(typeof route.text === 'string' && route.text.trim() !== '');
-  if (route.reason === 'no-entry') return !project.building.floors.some((floor) => floor.spaces.some((space) => space.kind === 'room' && space.id === route.roomId));
-  return false;
-}
-
 // The words for one failed route: "7-2, Period 3, Room 105 does not open onto a corridor"
 // in pieces, with the group's name marked as typed. The period is the one
 // that has to be put right (failurePeriod): the period walked into when the
@@ -405,7 +395,8 @@ export function failureParts(project, failure, withDay) {
   const group = project.groups.find((each) => each.id === failure.groupId);
   const dayType = withDay ? findDayType(project, failure.dayTypeId) : null;
   const sentence = describeFailure(project, failure.route).replace(/\.$/, '');
-  const text = opensWithOwnWord(project, failure.route) ? sentence[0].toLowerCase() + sentence.slice(1) : sentence;
+  // the directions say whether the sentence opens with what was typed (engine/directions.js): one rule, kept there
+  const text = startsAsTyped(project, failure.route) ? sentence : sentence[0].toLowerCase() + sentence.slice(1);
   return [
     { text: group ? group.name : 'A group', name: true },
     { text: ', ' + periodName(project.settings, failurePeriod(failure)) + (dayType ? ' on ' : '') },
@@ -438,10 +429,13 @@ export function standingOf(project, derived) {
 }
 
 // The first line when the routes could not be worked out, in pieces. The
-// message is somebody else's text: it is handed on as typed.
+// message is somebody else's text: it is handed on as typed, and a stop is
+// put after it when it did not bring one of its own.
 export function failedSentence(standing) {
+  const stop = /[.!?]$/.test(standing.failed) ? '' : '.';
   const parts = [{ text: 'The routes could not be worked out: ' }, { text: standing.failed, name: true }];
-  if (standing.stale) parts.push({ text: (/[.!?]$/.test(standing.failed) ? '' : '.') + ' The map and the figures are from before your last change.' });
+  const after = stop + (standing.stale ? ' The map and the figures are from before your last change.' : '');
+  if (after !== '') parts.push({ text: after });
   return { parts, showMe: false };
 }
 

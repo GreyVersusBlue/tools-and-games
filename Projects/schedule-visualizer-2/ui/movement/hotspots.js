@@ -40,6 +40,7 @@
 //     that names what it wants ranked without a picture (the congestion
 //     report): every place of the building
 //   hotspotsCsv(project, rows, picture) -> rows of cells for engine/csv.js
+//   groupHeadings(groups) -> the headings of the file's group columns
 //   pulseFrame(g, rings, left, theme)   one frame of the pulse: the ring that
 //     travels out from each ring, and nothing else
 //   createPulse(options) -> { start(), stop(), moving }   the pulse's clock
@@ -170,17 +171,50 @@ export function groupWords(row) {
   return row.groups.map((each) => each.group.name + (each.times > 1 ? ' ×' + each.times : ''));
 }
 
+// The headings of the group columns of the hotspots file. A group's column
+// is headed by its name exactly as typed, which is all there is to it for a
+// school whose groups have names of their own. Three things are told apart,
+// so that no two headings of the file are the same and none is empty:
+//   a group with no name            "(group with no name)"
+//   a name that is a fixed heading  "Rank (group)", "Groups (group)"
+//   a name another group has        the second and later, in the project's
+//                                   order: "7A (2nd of that name)"
+// `fixed` is the headings of the columns before them.
+function nth(n) {
+  const tens = n % 100;
+  const ones = n % 10;
+  return n + (tens >= 11 && tens <= 13 ? 'th' : ones === 1 ? 'st' : ones === 2 ? 'nd' : ones === 3 ? 'rd' : 'th');
+}
+export function groupHeadings(groups, fixed) {
+  const taken = new Set(fixed);
+  const seen = new Map();
+  return groups.map((group) => {
+    const name = typeof group.name === 'string' ? group.name : '';
+    let heading = name.trim() === '' ? '(group with no name)' : name;
+    if (fixed.includes(heading)) heading += ' (group)';
+    const times = (seen.get(heading) || 0) + 1;
+    seen.set(heading, times);
+    if (times > 1) heading += ' (' + nth(times) + ' of that name)';
+    // a name typed as another's heading reads ("7A (2nd of that name)") is still kept apart
+    while (taken.has(heading)) heading += ' (again)';
+    taken.add(heading);
+    return heading;
+  });
+}
+
 // The table as a file. After the fixed columns there is one column a group
-// on the map, headed by the group's name exactly as typed, holding in how
-// many transitions that group crosses the place (1 when one transition is
-// counted) and nothing where it does not. A name is always a cell of its
+// on the map, headed by the group's name exactly as typed (groupHeadings,
+// above, for the names that would not tell two columns apart), holding in
+// how many transitions that group crosses the place (1 when one transition
+// is counted) and nothing where it does not. A name is always a cell of its
 // own: no separator a name could hold stands between two of them.
 //   "When" is the transition a place peaks in (the busiest moment), the one
 //   transition on the map, or "the whole day" when the map adds the day up.
 export function hotspotsCsv(project, rows, picture) {
   const unit = rows.length > 0 ? rows[0].unit : picture && picture.load ? picture.load.unit : 'students';
   const shown = picture && Array.isArray(picture.groups) ? picture.groups : [];
-  const table = [['Rank', 'Place', 'Floor', 'Kind', 'Load (' + unit + ')', 'When', 'Delay (seconds)', 'Delay over the day (seconds)', 'Cells', 'Groups', ...shown.map((group) => group.name)]];
+  const fixed = ['Rank', 'Place', 'Floor', 'Kind', 'Load (' + unit + ')', 'When', 'Delay (seconds)', 'Delay over the day (seconds)', 'Cells', 'Groups'];
+  const table = [[...fixed, ...groupHeadings(shown, fixed)]];
   const floors = new Map(project.building.floors.map((floor) => [floor.id, floor]));
   const choice = picture && picture.choice ? picture.choice : { transition: null, measure: 'busiest' };
   const wholeDay = choice.transition === null && choice.measure === 'total';

@@ -102,7 +102,9 @@ const probed = new Map();
 
 // Does the browser really give a canvas of this many pixels? One pixel, at
 // the far corner, is written and read back: on a canvas past the browser's
-// limit nothing is ever written. Asked once a size; the canvas is let go.
+// limit nothing is ever written. A size the browser held is not asked about
+// again; one it did not hold is asked about every time, since what a browser
+// refuses for want of memory it may give a minute later. The canvas is let go.
 //   make   something that makes a canvas, for a test; the answer is then not kept
 export function canvasHolds(width, height, make) {
   const w = Math.round(width);
@@ -132,7 +134,7 @@ export function canvasHolds(width, height, make) {
       canvas.height = 0;
     } catch (error) { /* it goes with the page */ }
   }
-  if (typeof make !== 'function') probed.set(key, ok);
+  if (typeof make !== 'function' && ok) probed.set(key, true);
   return ok;
 }
 
@@ -424,12 +426,18 @@ export function drawPicture(movement, options) {
   }
 }
 
+// Did the canvas of a drawn picture stay blank? The far corner of the paper
+// is always painted: a canvas that reads back nothing there holds no picture.
+export function isBlank(drawn) {
+  return drawn.canvas.getContext('2d').getImageData(drawn.pixels.width - 1, drawn.pixels.height - 1, 1, 1).data[3] === 0;
+}
+
 export function exportPanel(env) {
   const ctx = env.ctx;
   const hooks = { deliver: null, holds: null };
   const holds = (width, height) => (typeof hooks.holds === 'function' ? hooks.holds(width, height) === true : canvasHolds(width, height));
   // said when the map, and so what is exported, is from before the last change
-  const behind = h('p', { class: 'mov-panel__note mov-export__behind', hidden: true, data: { export: 'behind' } });
+  const behind = h('p', { class: 'mov-panel__note mov-export__behind', role: 'status', hidden: true, data: { export: 'behind' } });
   const status = h('p', { class: 'mov-panel__note mov-export__status', role: 'status', data: { export: 'status' } });
   let last = null;
 
@@ -506,9 +514,7 @@ export function exportPanel(env) {
 
   const savePng = button('png', 'Save the picture as an image', async () => {
     const drawn = picture({ resolution: resolution.value });
-    // the far corner of the paper was painted: a canvas that reads back nothing there holds no picture
-    const corner = drawn.canvas.getContext('2d').getImageData(drawn.pixels.width - 1, drawn.pixels.height - 1, 1, 1).data[3];
-    const blob = corner === 0 ? null : await new Promise((resolve) => drawn.canvas.toBlob(resolve, 'image/png'));
+    const blob = isBlank(drawn) ? null : await new Promise((resolve) => drawn.canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('The browser could not make an image this large. Choose a lower resolution.');
     deliver({ fileName: exportFileName(last.project, 'movement picture', 'png', now()), mime: 'image/png', blob, width: drawn.pixels.width, height: drawn.pixels.height });
     if (drawn.fell > 0) {
@@ -522,6 +528,8 @@ export function exportPanel(env) {
     // the document has the header, the foot, the groups' legend and the colour scale itself,
     // so the image carries none of them: the scale is on the paper once
     const drawn = picture({ pattern: true, side: PRINT_SIDE, bare: true, legend: false, scale: false });
+    // as for the saved image: a canvas that reads back nothing at its far corner holds no picture
+    if (isBlank(drawn)) throw new Error('The browser could not make the picture for the print.');
     // the document is made from what the image was drawn from: the view's own state
     const view = movement();
     const from = view.state;
@@ -570,7 +578,8 @@ export function exportPanel(env) {
     for (const option of resolution.options) {
       const size = list.find((each) => each.id === option.value);
       const base = RESOLUTIONS.find((each) => each.id === option.value).label;
-      option.textContent = size ? base + ' (' + size.width + ' × ' + size.height + ')' : base;
+      // a size the browser cannot hold at all has no pixels to give: the name alone, and the line under says why
+      option.textContent = size && size.scale > 0 ? base + ' (' + size.width + ' × ' + size.height + ')' : base;
     }
     const chosen = list.find((each) => each.id === resolution.value);
     const full = RESOLUTIONS.find((each) => each.id === resolution.value).scale;
@@ -605,8 +614,11 @@ export function exportPanel(env) {
       for (const el of [transitionsFile, dayFile, report]) able(el, ready, 'The routes are still being worked out.');
       // the map on screen is the last answer: stale after a derive that failed, pending while one is awaited
       const section = document.querySelector('.mov');
-      const stale = ready && Boolean(section) && section.dataset.stale === 'true';
-      const pending = ready && !stale && state.project !== ctx.store.project;
+      // once a new answer is being asked for, that is what is said: "could
+      // not be worked out" was about the ask before it
+      const asking = Boolean(section) && section.dataset.pending === 'true';
+      const stale = ready && !asking && Boolean(section) && section.dataset.stale === 'true';
+      const pending = ready && !stale && (asking || state.project !== ctx.store.project);
       element.dataset.behind = stale ? 'stale' : pending ? 'pending' : 'no';
       behind.hidden = !stale && !pending;
       behind.textContent = stale ? 'The routes could not be worked out after your last change. The map, and everything exported here, is from before that change.'

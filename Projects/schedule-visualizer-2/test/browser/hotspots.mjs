@@ -1078,6 +1078,108 @@ test('a name is shown exactly as typed in the hotspot table and the travel-time 
   assert.equal((await shownRows())[0].name, 'Main Corridor, by Door B');
 });
 
+// ---------------------------------------------------------------- SV2-43: the review of SV2-47
+
+test('47a and 47b: the rings pulse when the Hotspots tab is opened onto a change made on another tab, and a tick of the pulse never paints the map', async () => {
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'no-preference' }]);
+  await change(OPEN);
+  await tab('hotspots');
+  // let the pulse of that change run out, so the next is the tab's own
+  await page.waitForFunction(() => document.querySelector('#inspector [data-panel="hotspots"]').dataset.pulse === 'still', { timeout: 12000 });
+  await tab('summary');
+  // the ranking changes while Summary is the tab on show: the panel is not told
+  await change({ transition: 3 });
+  const before = await view(() => ({ map: Number(document.querySelector('#movement-plan').dataset.drawn), marks: Number(document.querySelector('.mov-marks').dataset.drawn) }));
+  await tab('hotspots');
+  await page.waitForFunction(() => document.querySelector('#inspector [data-panel="hotspots"]').dataset.pulse === 'moving', { timeout: 5000 });
+  // the travelling ring is drawn, tick after tick, with no hover and no paint of the map to bring it
+  const had = await view(() => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames);
+  await page.waitForFunction(travelling, { timeout: 5000, polling: 'raf' });
+  await page.waitForFunction((count) => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames >= count + 5, { timeout: 5000 }, had);
+  const after = await view(() => ({ map: Number(document.querySelector('#movement-plan').dataset.drawn), marks: Number(document.querySelector('.mov-marks').dataset.drawn), moving: document.querySelector('#inspector [data-panel="hotspots"]').hotspots.moving }));
+  assert.equal(after.moving, true);
+  assert.equal(after.map, before.map, 'opening the tab, and every tick of its pulse, left the map’s own canvas alone: ' + before.map + ' → ' + after.map);
+  assert.ok(after.marks >= before.marks + 5, 'the marks were drawn for each tick: ' + before.marks + ' → ' + after.marks);
+  await change(OPEN);
+});
+
+test('47c: a size the browser cannot hold at all never reads "0 × 0", and a print whose picture came out blank is not opened', async () => {
+  await change(OPEN);
+  await tab('export');
+  const panel = '#inspector [data-panel="export"]';
+  await view(() => {
+    document.querySelector('#inspector [data-panel="export"]').exports.hooks.holds = () => false;
+  });
+  await page.select(panel + ' [data-export="resolution"]', 'print');
+  const options = await page.$$eval(panel + ' [data-export="resolution"] option', (all) => all.map((option) => option.textContent));
+  assert.equal(options.some((label) => /\b0 × 0\b/.test(label)), false, 'a size of no pixels is offered: ' + options);
+  assert.equal(options[2], 'Print', 'the size that cannot be held is named and no more');
+  assert.match(options[0], /^Standard \(\d{3,} × \d{3,}\)$/, 'the sizes not asked about keep their pixels');
+  assert.equal(await text(panel + ' [data-export="size"]'), 'This browser cannot hold an image of this map, even a small one.');
+  await view(() => {
+    document.querySelector('#inspector [data-panel="export"]').exports.hooks.holds = null;
+  });
+  await page.select(panel + ' [data-export="resolution"]', 'standard');
+
+  // the picture for the print is drawn and its canvas reads back nothing: no preview of a blank map
+  await view(() => {
+    globalThis.sv2read = CanvasRenderingContext2D.prototype.getImageData;
+    CanvasRenderingContext2D.prototype.getImageData = function getImageData(x, y, w, h) {
+      const got = globalThis.sv2read.call(this, x, y, w, h);
+      // the canvas an exported picture is drawn on, and no other
+      if (this.canvas.parentElement && this.canvas.parentElement.classList.contains('mov-export-host')) got.data.fill(0);
+      return got;
+    };
+  });
+  try {
+    await page.click(panel + ' [data-action="print-picture"]');
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('.toast .toast__text')).some((el) => el.textContent.startsWith('That was not exported.')), { timeout: 5000 });
+    assert.equal(await text('.toast .toast__text'), 'That was not exported. The browser could not make the picture for the print.');
+    assert.equal(await page.$('#print-preview[open]'), null, 'the preview was opened on a blank picture');
+  } finally {
+    await view(() => {
+      CanvasRenderingContext2D.prototype.getImageData = globalThis.sv2read;
+    });
+  }
+  await page.evaluate(() => document.querySelector('.toast__close')?.click());
+  // with the canvas reading back what was drawn, the same button opens the preview
+  await page.click(panel + ' [data-action="print-picture"]');
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+  await closePreview();
+});
+
+test('47e: once a new answer is being asked for, the Export tab stops saying the last one could not be worked out, and the line is a status', async () => {
+  await change(OPEN);
+  await tab('export');
+  const panel = '#inspector [data-panel="export"]';
+  assert.equal(await page.$eval(panel + ' [data-export="behind"]', (el) => el.getAttribute('role')), 'status');
+  try {
+    await standIn('fails');
+    await rename('7A West');
+    await page.waitForFunction(() => document.querySelector('.mov').dataset.stale === 'true' && document.querySelector('#inspector [data-panel="export"]').dataset.behind === 'stale', { timeout: 5000 });
+    assert.equal(await text(panel + ' [data-export="behind"]'), 'The routes could not be worked out after your last change. The map, and everything exported here, is from before that change.');
+    // a further change, and this time the answer is on its way
+    await standIn('waits');
+    await rename('7A North');
+    await page.waitForFunction(() => document.querySelector('.mov').dataset.pending === 'true', { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector('#inspector [data-panel="export"]').dataset.behind === 'pending', { timeout: 5000 });
+    assert.equal(await page.$eval('.mov', (el) => el.dataset.stale), 'true', 'the map is still the old answer');
+    assert.equal(await text(panel + ' [data-export="behind"]'), 'The routes are being worked out again after your last change. Until they are, the map, and everything exported here, is from before that change.');
+    await view(() => globalThis.sv2LetGo());
+    await settled();
+    assert.equal(await page.$eval(panel, (el) => el.dataset.behind), 'no');
+    assert.equal(await page.$eval(panel + ' [data-export="behind"]', (el) => el.hidden), true);
+  } finally {
+    await standIn('real');
+    await view(() => {
+      const { store } = globalThis.sv2;
+      for (let i = 0; i < 12 && store.project.groups.find((group) => group.id === 'gsample07a').name !== '7A'; i += 1) store.undo();
+    });
+    await settled();
+  }
+  assert.equal(await view(() => globalThis.sv2.store.project.groups.find((group) => group.id === 'gsample07a').name), '7A');
+});
+
 test('nothing went wrong on the way, and nothing was asked of another origin', async () => {
   assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
   assert.deepEqual(session.offsite, []);

@@ -134,6 +134,20 @@ function spaceParts(space) {
   return space.kind === 'room' ? roomParts(space, false) : [typed(space.label)];
 }
 
+// Does describeFailure's sentence for this route open with a room as it was
+// typed ("Room 105…", "Gym…", "Annex 9…"), and not with a word of the tool's
+// own ("No room is set…", "The room…", "There is no way through…", "A room
+// with no number…")? A caller that sets the sentence after other words
+// lowers the first letter of the tool's own word and of nothing else.
+export function startsAsTyped(project, route) {
+  if (!route) return false;
+  const typed = (text) => typeof text === 'string' && text.trim() !== '';
+  if (route.reason === 'room-missing') return typed(route.text);
+  if (route.reason !== 'no-entry') return false;
+  const room = route.roomId ? lookup(project).rooms.get(route.roomId) : null;
+  return Boolean(room) && typed(room.number);
+}
+
 // The sentence for a route that failed, naming the room and its floor.
 export function describeFailure(project, route) {
   const { floors, rooms } = lookup(project);

@@ -460,7 +460,7 @@
 .mov-card__more,
 .mov-card__times {
   color: var(--ink-2);
-  font-weight: var(--w-regular);
+  font-weight: var(--w-regular, 400);
 }
 
 .mov-card__groups {
