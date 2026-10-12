@@ -121,9 +121,14 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **an increment of rank 30,
-Throneshard's Grimmaw contests** (#950, 2026-10-11; committed locally on
-huginn for the landing, so its PR number is the landing's): ½, naming Opus 5,
+**The last batch of ranked work that shipped** is **rank 31, Throneshard's
+Piercing Gale and rune auras** (#952, 2026-10-11; committed locally on huginn
+for the landing, so its PR number is the landing's): ¼, naming Opus 5, run
+under Opus 5.5, and the row stays as "wants a person's look". The gale's
+spiral is two tube strands where it was about forty sparks, and each lasting
+rune aura stands on a rimmed band that lies on the river's surface. Before it
+came **an increment of rank 30,
+Throneshard's Grimmaw contests** (#950, 2026-10-11): ½, naming Opus 5,
 run under Opus 5.5, and the row stays with its text rewritten. Measured over 24
 seeded matches, 29 of 48 attempts that hurt Grimmaw are contested; the old
 count took in plans dropped before he was touched, and `stats.grimmawEngaged`
@@ -1077,7 +1082,7 @@ and #222 was closed unmerged an hour of suites later.
 | 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929; 150 s on its clock and a 270 s run since #949, on Devon's answer) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. A fourth, small, from #949: an ambulance still on the map when a run ends is not counted late and the end card says it made it (`WISHLIST.md` Known gaps; Cross Town goes round it by running 30 s past its clock). Nobody has played Cross Town at 150 s, where the call alone earns the second star. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
 | 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 17.9 against 18.8 at 10 minutes over 12 seeds (#948), about what two such means differ by from noise. The melee core in a lane against two ranged heroes dies as often as normal's now (2.2 against 2.5) and takes 16.7 last hits against normal's 19.7; the melee heroes in the middle lane take 18.5 against 21.3, not looked into. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
 | 30 | A contest of Grimmaw between hard bots is lost: over 12 seeds the defenders came out ahead in 1 of 10 and lost 19 heroes for 5 (#950). The count was never the trouble: 29 of 48 real attempts are contested, and #751's 0.8 to 3.2 counted plans dropped before he was touched. Two rules tried and not kept. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 31 | Wants a person's look on a real graphics card: Piercing Gale's corkscrew and the rune auras' rims were rebuilt and judged from software-rendered captures (#952). The spiral went from about 1,000 visible pixels to 8,400 to 43,400; each aura has a hard rim, and the arcane glyph no longer sits under the river. Nothing is left to build unless the look says so | `Projects/throneshard` | ¼ | Opus 5 | GPU |  | [Throneshard](#throneshard) |
 | 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
 
 ## Parked — needs a person at a real device
@@ -2644,11 +2649,26 @@ and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
 - The card preview is a SwiftShader draft (#749), and the every-second-frame
   shadow map was judged from a frame sequence, not a recording (#753); both
   want one look on real hardware.
-- Piercing Gale's spiral and the rune auras read faint from the game camera.
-  The capture tool for this, `tools/scripts/vfx_capture.mjs`, lists all sixteen
-  heroes now and has a mode `ally` for a spell cast on another hero (Ormund's
-  Stand Surety, Tobren's Twice Told), written on huginn and never run: it needs
-  Playwright and a real GPU.
+- Piercing Gale's corkscrew and the rune auras want a person's look on a real
+  graphics card (#952). They were rebuilt on huginn and judged from 1920x1080
+  software-rendered frames at the game camera's default zoom, which is honest
+  about colour and shape and says nothing about motion. What to look at:
+  whether the two-strand corkscrew behind the arrow reads as wind or as too
+  much (it is 9 units long and turns 14 radians a second, which no still
+  shows; at night its head blooms into the wind lane's streak); whether the
+  rim under a hero with a boon rune (1.55 out, dark rim outside it) is too
+  heavy beside the selection circle, and whether four runes told apart by
+  colour alone is enough; the arcane glyph on the river; Haste's longer
+  streaks behind a running hero. Not looked at: any of it on grass under
+  trees for the auras, the regeneration aura ending when the hero is full.
+  Found beside it and left: Titan's Might's ring (`attachments.js`) sits at
+  the hero's feet, so it is under the water in the river, 4,655 visible pixels
+  there against 18,608 on the lane. `tools/scripts/vfx_measure.mjs` redoes the
+  numbers and the frames on any machine, no GPU needed. The older capture tool,
+  `tools/scripts/vfx_capture.mjs`, lists all sixteen heroes and has a mode
+  `ally` for a spell cast on another hero (Ormund's Stand Surety, Tobren's
+  Twice Told), written on huginn and never run: it needs Playwright and a real
+  GPU.
 
 ## Tools/board-check
 

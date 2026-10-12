@@ -6,6 +6,49 @@ import { GEO, fresnelMat, fireMat } from '../meshfx.js';
 const TEAM_ORB = { sunward: 0x9dff6a, duskward: 0xff6a3a, neutral: 0xffd060 };
 const TOWER_ORB = { sunward: 0x7fe0ff, duskward: 0xff5030, neutral: 0xffd060 };
 
+// Piercing Gale's corkscrew: two strands wound round the flight line behind the arrow, opening from `r0` at the
+// arrowhead to `r` at the tail, each one thin tube: a shape, where the sparks it replaces were about forty specks.
+// `r` is the widest the picture gets and stays inside the arrow's own half-width (the ability's radius, 3.125).
+// A dark tube round each strand was tried for sunlit ground and did not show under the pale one, so it is not drawn.
+export const GALE_HELIX = { r: 1.1, r0: 0.25, length: 9, turns: 3, spin: 14, strands: 2, tube: 0.07, color: 0xd8d0b0, segments: 48, sides: 4 };
+let helixGeo = null;
+// One strand as a tube along +Z's wake (z from -0.5 back to -0.5 - length); alpha falls to nothing at the tail.
+function helixGeometry(H, radius) {
+  const N = H.segments, S = H.sides, pos = [], col = [], idx = [];
+  for (let i = 0; i <= N; i++) {
+    const u = i / N, a = u * H.turns * Math.PI * 2, R = H.r0 + (H.r - H.r0) * u, z = -0.5 - u * H.length;
+    const fade = Math.min(1, u * 8) * (1 - u * u);
+    for (let j = 0; j < S; j++) {
+      // ring of the tube in the plane of the radial direction and the flight axis: thin enough that the tilt of the strand does not matter
+      const b = (j / S) * Math.PI * 2, rr = R + Math.cos(b) * radius;
+      pos.push(Math.cos(a) * rr, Math.sin(a) * rr, z + Math.sin(b) * radius);
+      col.push(1, 1, 1, fade);
+    }
+  }
+  for (let i = 0; i < N; i++) for (let j = 0; j < S; j++) {
+    const p = i * S + j, q = i * S + ((j + 1) % S);
+    idx.push(p, q, p + S, q, q + S, p + S);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  g.setIndex(idx);
+  return g;
+}
+function buildHelix(vfx, H) {
+  helixGeo ??= helixGeometry(H, H.tube);
+  const lit = cached(vfx, 'gale_helix_lit', () => new THREE.MeshBasicMaterial({ color: H.color, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+  const grp = new THREE.Group();
+  for (let s = 0; s < H.strands; s++) {
+    const m = new THREE.Mesh(helixGeo, lit);
+    m.rotation.z = (s / H.strands) * Math.PI * 2;
+    m.renderOrder = 21;
+    grp.add(m);
+  }
+  grp.userData.galeHelix = true;
+  return grp;
+}
+
 const STYLES = {
   default: { glow: 0xffe6aa, size: 0.9, trail: { rate: 30, color: 0xffe6aa, size: [0.4, 0.05], life: 0.25 }, impact: 'spark' },
   pell: { glow: 0xffd9a0, size: 0.9, mesh: 'bullet', streak: 0xffcc66, trail: { rate: 60, color: 0xaaa090, alpha: true, size: [0.2, 0.5], life: 0.35 }, impact: 'bullet' },
@@ -32,7 +75,7 @@ const STYLES = {
   final_round: { glow: 0xffa040, size: 1.6, mesh: 'bullet', streak: 0xff7a20, streakLen: 4, trail: { rate: 120, color: 0xbbb0a0, alpha: true, size: [0.3, 1.0], life: 0.7 }, core: 0xffffff, impact: 'none' },
   // Liora: heavy rope-and-hemp arrow trailing chain links / a long pale wind arrow with a spiral and a streak
   tether_shot: { glow: 0xe0b060, size: 1.0, mesh: 'arrow', arrowScale: 2.4, wood: 0x6a4520, tip: 0xc8a060, trail: { rate: 55, color: 0xf0d090, color2: 0x6a4420, size: [0.3, 0.12], life: 0.5, frame: FRAME.RING, spread: 0.04 }, impact: 'tether' },
-  piercing_gale: { glow: 0xfff0b8, size: 2.2, core: 0xffffff, mesh: 'arrow', arrowScale: 3.4, wood: 0xf4ecd0, tip: 0xffffff, streak: 0xf6e8b0, streakLen: 5, spiral: { rate: 90, r: 1.1, color: 0xffffff, color2: 0xf0c860, size: [0.6, 0.03], life: 0.4 }, trail: { rate: 90, color: 0xffffff, color2: 0xf0c860, size: [0.4, 0.02], life: 0.3, frame: FRAME.SPARK, spread: 0.3 }, impact: 'none' },
+  piercing_gale: { glow: 0xfff0b8, size: 2.2, core: 0xffffff, mesh: 'arrow', arrowScale: 3.4, wood: 0xf4ecd0, tip: 0xffffff, streak: 0xf6e8b0, streakLen: 5, helix: GALE_HELIX, trail: { rate: 90, color: 0xffffff, color2: 0xf0c860, size: [0.4, 0.02], life: 0.3, frame: FRAME.SPARK, spread: 0.3 }, impact: 'none' },
   throwing_knife: { glow: 0xc080ff, size: 1.6, mesh: 'dagger', trail: { rate: 90, color: 0xe0c0ff, color2: 0x6020a0, size: [0.55, 0.03], life: 0.3 }, impact: 'none' },
 };
 
@@ -186,10 +229,10 @@ export function createProjectileVisual(vfx, kind, opts = {}) {
   const tmp = new THREE.Vector3();
   let spikeDist = 0;
 
-  const sp = st.spiral;
-  const spO = sp ? { position: new THREE.Vector3(), life: [sp.life * 0.7, sp.life], size: sp.size, color: sp.color, color2: sp.color2, frame: FRAME.SPARK, fadeIn: 0 } : null;
-  const right = new THREE.Vector3(), upv = new THREE.Vector3();
-  let phase = 0, spAcc = 0;
+  // the corkscrew is drawn out of the bow as the arrow leaves it, never behind the archer
+  const helix = st.helix ? buildHelix(vfx, st.helix) : null;
+  if (helix) { helix.scale.z = 0.001; g.add(helix); }
+  let trav = 0;
 
   const update = (dt) => {
     t += dt;
@@ -218,19 +261,11 @@ export function createProjectileVisual(vfx, kind, opts = {}) {
       }
     }
     // Linear "wave" projectiles (Flame Wave, Hush Wind) — emit across the width, perpendicular to travel
-    if (sp) {
-      // two interleaved helices around the flight axis (object +X/+Y are perpendicular to travel)
-      right.set(1, 0, 0).applyQuaternion(g.quaternion);
-      upv.set(0, 1, 0).applyQuaternion(g.quaternion);
-      spAcc += dt * sp.rate * vfx.quality;
-      const n = Math.floor(spAcc);
-      spAcc -= n;
-      for (let i = 0; i < n; i++) {
-        phase += 0.7;
-        const cs = Math.cos(phase) * sp.r, sn = Math.sin(phase) * sp.r;
-        spO.position.set(p.x + right.x * cs + upv.x * sn, p.y + right.y * cs + upv.y * sn, p.z + right.z * cs + upv.z * sn);
-        vfx.add.emit(1, spO);
-      }
+    if (helix) {
+      // object +Z is the flight line, so turning the group about it is the whole animation
+      if (hasLast) trav += last.distanceTo(p);
+      helix.scale.z = Math.max(0.001, Math.min(1, trav / (st.helix.length + 0.5)));
+      helix.rotation.z -= dt * st.helix.spin;
     }
     if (st.wave && hasLast) {
       const dir = tmp.subVectors(p, last);
