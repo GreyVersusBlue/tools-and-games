@@ -78,6 +78,7 @@ export const GROUPS = {
     'ui/movement.test.mjs', // SV2-17
     'ui/playback.test.mjs', // SV2-44
     'ui/room-picker.test.mjs', // SV2-48
+    'ui/staff-pass.test.mjs', // SV2-45
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -108,6 +109,7 @@ export const GROUPS = {
     'browser/staff-views-b.mjs', // SV2-22
     'browser/staff-outputs.mjs', // SV2-23
     'browser/publish.mjs', // SV2-24
+    'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
     'browser/hotspots.mjs', // SV2-18
     'browser/playback.mjs', // SV2-19

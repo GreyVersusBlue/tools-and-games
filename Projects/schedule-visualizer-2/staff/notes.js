@@ -19,7 +19,10 @@ import { h } from './dom.js';
 export const ME_KEY = 'me';
 export const NOTES_KEY = 'notes';
 export const NOTE_MAX = 200;
-// From this many characters on, the field says how much of the 200 is used.
+// From this much on, the field says how much of the 200 is used. The 200 is
+// the field's own limit (maxlength), which the browser counts in UTF-16 units:
+// an emoji is two of them, a family of three is eight. So the count is given
+// as a number of the 200 and is not called characters, which it is not.
 export const NOTE_COUNT_FROM = 181;
 export const NOTES_KEPT_SENTENCE = 'Your notes are kept on this device only. They print with your schedule, and an empty note prints nothing.';
 
@@ -81,9 +84,9 @@ export function isBlankNote(text) {
   return String(text).trim() === '';
 }
 
-// "187 of 200 characters" near the end of the room a note has, else ''.
+// "187 of 200" near the end of the room a note has, else ''.
 export function noteCountOf(text) {
-  return text.length >= NOTE_COUNT_FROM ? text.length + ' of ' + NOTE_MAX + ' characters' : '';
+  return text.length >= NOTE_COUNT_FROM ? text.length + ' of ' + NOTE_MAX : '';
 }
 
 // The note against one period of one day type, or ''.

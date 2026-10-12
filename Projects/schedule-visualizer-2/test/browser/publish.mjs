@@ -17,8 +17,7 @@
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -31,7 +30,13 @@ const DEFAULT = 'bulldogs2015';
 const CHANGED = 'heron-lantern-42';
 const HOSTILE = '<img src=x onerror="window.__pwned=1"> </script><b>"Ünï" 東京';
 
-const scratch = mkdtempSync(path.join(os.tmpdir(), 'sv2-publish-'));
+// Published files are written to a folder of this suite's own and taken away
+// when it ends: SV2_SCRATCH when the machine names a place, otherwise
+// test/.scratch inside the tool. Never the system's temporary folder, which
+// on some machines is memory.
+const SCRATCH_ROOT = process.env.SV2_SCRATCH ? path.resolve(process.env.SV2_SCRATCH) : path.join(TOOL_DIR, 'test', '.scratch');
+mkdirSync(SCRATCH_ROOT, { recursive: true });
+const scratch = mkdtempSync(path.join(SCRATCH_ROOT, 'publish-'));
 let server;
 let browser;
 
@@ -44,6 +49,12 @@ after(async () => {
   if (browser) await browser.close();
   if (server) await server.close();
   rmSync(scratch, { recursive: true, force: true });
+  try {
+    // the folder above it too, once the last suite using it has gone
+    rmdirSync(SCRATCH_ROOT);
+  } catch (error) {
+    // another suite's files are still in it, or the machine named it
+  }
 });
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -334,7 +345,7 @@ test('the publish form, line by line: views, names on the map, staleness, the pa
     }));
     // the passcode, what readers will see and the button first; what is in the file folded under one line; no heading reads "Staleness"
     assert.deepEqual(form.groups, ['Passcode', 'Before you publish', 'Views to include', 'The map', 'Days until the file counts as out of date']);
-    assert.deepEqual(form.fold, { open: false, says: 'What is in itAll 11 views', boxes: 12 });
+    assert.deepEqual(form.fold, { open: false, says: 'What is in it · All 11 views', boxes: 12 });
     assert.deepEqual(form.staleLabels, [1, true], 'the heading is the field\'s label: it is not said twice');
     assert.deepEqual(form.views, [
       ['teacher', true, 'Teacher pages'], ['group', true, 'Group pages'], ['room', true, 'Room pages and door signs'], ['map', true, 'Building map'],
@@ -1052,6 +1063,318 @@ test('a tab that cannot change the project: each control on the form goes back t
   }
 });
 
+// ---------------------------------------------------------------- SV2-45: the M4 pass on the form and the preview
+
+const CHECKS_WAIT = 'Waiting for the checks of the project as it is now.';
+const CHECKS_PENDING = 'Working out what readers will see.';
+const CHECKS_FAILED = 'The checks could not be run just now, so this form cannot say what readers will see. Look at Schedule › Checks.';
+const CHECKS_REFUSED = 'Nothing was published: the checks could not be run, so the file would go out with nothing said about what readers will see. Try again in a moment, or reload the page.';
+const NO_ENCRYPTION = 'This browser cannot open a locked file here: it has no encryption for pages opened this way. Open the file in Safari, Chrome, Edge or Firefox.';
+
+// 7A into the room 6A already has in Period 3: a second problem readers will see.
+const secondProblem = (page) => page.evaluate(() => {
+  const school = globalThis.sv2.store.project;
+  const day = school.dayTypes[0].id;
+  const six = school.groups.find((group) => group.name === '6A');
+  return { dayTypeId: day, period: 2, slot: { room: six.days[day][2].room }, groupId: school.groups.find((group) => group.name === '7A').id };
+});
+
+// Every answer from the checks comes `ms` late from here on.
+const lateChecks = (page, ms) => page.evaluate((late) => {
+  const engine = globalThis.sv2.store.derived.engine;
+  const results = engine.results.bind(engine);
+  engine.results = () => results().then((result) => new Promise((resolve) => { setTimeout(() => resolve(result), late); }));
+}, ms);
+
+// Press Publish without waiting for it: what the form says in the same turn.
+// The file, when it comes, is taken by the hook, which also notes what the
+// list held at that moment; `publishHeld` collects it.
+const pressPublish = (page) => page.evaluate(() => {
+  const view = document.querySelector('.stf').staff;
+  const pub = document.querySelector('.pub');
+  globalThis.__handed = null;
+  view.hooks.deliver = (published) => {
+    globalThis.__handed = {
+      pending: pub.dataset.checksPending || null,
+      lines: Array.from(document.querySelectorAll('.pub__checks li'), (el) => el.textContent),
+      checks: pub.dataset.checks,
+      periodThree: published.model.groups.find((group) => group.name === '7A').days[published.model.dayTypes[0].id][2].room,
+    };
+    return { fileName: published.fileName, bytes: published.html.length };
+  };
+  globalThis.__press = view.form.publish().finally(() => { view.hooks.deliver = null; });
+  return {
+    pending: pub.dataset.checksPending || null,
+    says: document.querySelector('[data-says="published"]').textContent,
+    busy: document.querySelector('.pub__checks').getAttribute('aria-busy'),
+    disabled: document.getElementById('publish-file').getAttribute('aria-disabled'),
+  };
+});
+const publishHeld = (page) => page.evaluate(() => globalThis.__press.then((published) => ({ made: published !== null, handed: globalThis.__handed })));
+
+test('Publish waits for the checks of the project it publishes: a press while they are on their way is held, says so, and the file goes out beside its own list', async () => {
+  await closing(await open(), async (page) => {
+    await lateChecks(page, 1500);
+    const slot = await secondProblem(page);
+    assert.deepEqual(await checkLines(page), [ROOM_203]);
+
+    // a second problem, and Publish pressed before its checks have answered
+    await apply(page, 'setSlot', slot);
+    const during = await pressPublish(page);
+    assert.deepEqual(during, { pending: 'true', says: CHECKS_WAIT, busy: 'true', disabled: 'true' });
+    // an answer that takes this long has words in the list's own place
+    await page.waitForFunction((words) => {
+      const line = document.querySelector('[data-says="checks-summary"]');
+      return !line.hidden && line.textContent === words;
+    }, { timeout: 5000 }, CHECKS_PENDING);
+    assert.deepEqual(await checkLines(page), [ROOM_203], 'the lines of the project before stay until the answer, marked busy');
+    const first = await publishHeld(page);
+    assert.equal(first.made, true);
+    assert.deepEqual(first.handed, { pending: null, lines: [ROOM_203, ROOM_101], checks: '2', periodThree: slot.slot.room }, 'when the file was handed over, the list was the list of the project in it');
+    assert.match(await says(page, 'published'), /^Published /);
+    // (noting the publish time is a change too, so the list is asked for once more)
+    await checksDrawn(page);
+    assert.equal(await page.evaluate(() => document.querySelector('.pub__checks').getAttribute('aria-busy')), null);
+
+    // the project changes again while the press is held: the file is the last project's, and so is the list
+    await apply(page, 'setSlot', { ...slot, slot: { room: null } });
+    assert.equal((await pressPublish(page)).says, CHECKS_WAIT);
+    await apply(page, 'setSlot', slot);
+    await page.evaluate(() => globalThis.sv2.store.undo());
+    await page.evaluate(() => globalThis.sv2.store.undo());
+    const second = await publishHeld(page);
+    assert.equal(second.made, true);
+    assert.deepEqual(second.handed, { pending: null, lines: [ROOM_203, ROOM_101], checks: '2', periodThree: slot.slot.room });
+
+    // with the answer already drawn a press waits for nothing
+    await checksDrawn(page);
+    const settled = await pressPublish(page);
+    assert.equal(settled.pending, null);
+    assert.equal(settled.says, 'Putting the file together.');
+    assert.equal((await publishHeld(page)).made, true);
+  });
+});
+
+test('the checks cannot be run: the lines of the project before are cleared, Publish asks again and refuses with a sentence, and publishes once they answer', async () => {
+  await closing(await open(), async (page) => {
+    assert.deepEqual(await checkLines(page), [ROOM_203]);
+    await page.evaluate(() => {
+      const engine = globalThis.sv2.store.derived.engine;
+      globalThis.__results = engine.results.bind(engine);
+      globalThis.__refused = 0;
+      engine.results = () => {
+        globalThis.__refused += 1;
+        return Promise.reject(new Error('The worker has gone.'));
+      };
+    });
+    await apply(page, 'setSlot', await secondProblem(page));
+    await checksDrawn(page);
+    assert.deepEqual(await checkLines(page), [], 'the line of the project before does not stand beside a run that gave no answer');
+    assert.equal(await page.evaluate(() => document.querySelector('.pub__checks').hidden), true);
+    assert.equal(await says(page, 'checks-summary'), CHECKS_FAILED);
+    assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.checks), 'none');
+    const before = await page.evaluate(() => globalThis.__refused);
+    assert.ok(before >= 1);
+
+    // Publish asks for them again (twice: a refusal is tried once more) and refuses
+    assert.equal(await publishThroughHook(page), null);
+    assert.equal(await says(page, 'published'), CHECKS_REFUSED);
+    assert.equal(await page.evaluate(() => globalThis.__refused), before + 2, 'the press asked again');
+    assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.hooks.published), null, 'no file was made');
+    assert.equal((await project(page)).publish.lastPublishedAt, null);
+    assert.equal(await page.evaluate(() => document.getElementById('publish-file').getAttribute('aria-disabled')), null, 'the button can be pressed again');
+
+    // the checks come back: the next press runs them, draws the list and publishes
+    await page.evaluate(() => { globalThis.sv2.store.derived.engine.results = globalThis.__results; });
+    const made = await publishThroughHook(page);
+    assert.ok(made && made.fileName.endsWith('.html'));
+    assert.deepEqual(await checkLines(page), [ROOM_203, ROOM_101]);
+    assert.match(await says(page, 'published'), /^Published /);
+  });
+});
+
+test('a file or a preview that could not be made says the tool\'s own sentence when it has one, the form and the preview alike, and the cause is in the console', async () => {
+  const session = await open();
+  const warned = [];
+  session.page.on('console', (message) => {
+    if (message.type() === 'warn' || message.type() === 'warning') warned.push(message.text());
+  });
+  await closing(session, async (page) => {
+    // a page with no encryption, as on a plain http address that is not this machine's own
+    await page.evaluate(() => {
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => globalThis.__subtle });
+      globalThis.__subtle = undefined;
+    });
+    assert.equal(await publishThroughHook(page), null);
+    assert.equal(await says(page, 'published'), NO_ENCRYPTION, 'not "Check the connection": the connection is fine');
+    assert.equal((await project(page)).publish.lastPublishedAt, null);
+    // the locked preview needs the same lock, and says the same
+    await page.click('.stf-bar .stf-check');
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 15000 });
+    assert.equal(await says(page, 'preview'), 'The preview could not be brought up to date. ' + NO_ENCRYPTION);
+    assert.ok(warned.some((text) => text.includes('the file could not be made')), 'the cause of the failed file is logged: ' + warned.join(' | '));
+    assert.ok(warned.some((text) => text.includes('the preview could not be brought up to date')), 'and the preview\'s');
+
+    // something the browser threw in its own words is not shown, and is not blamed on the connection
+    await page.evaluate(() => {
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => { throw new TypeError('Illegal invocation'); } });
+    });
+    assert.equal(await publishThroughHook(page), null);
+    assert.equal(await says(page, 'published'), 'The file could not be made, so nothing was published. Reload the page and try again.');
+
+    // with encryption back, both recover
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+    const before = await sent(page);
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await fedAfter(page, before);
+    assert.equal(await page.evaluate(() => document.querySelector('.stf-preview').dataset.previewSays), undefined);
+    assert.ok(await publishThroughHook(page));
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
+  });
+});
+
+test('"Start at the passcode screen" reaches a key the frame could only keep in its memory: the screen is shown the second time too', async () => {
+  await closing(await open(), async (page) => {
+    const inside = frameOf(page);
+    // the frame's storage refuses every write, as a file opened from a mail app's own viewer does
+    await inside.evaluate(() => {
+      Storage.prototype.setItem = () => { throw new DOMException('The quota has been exceeded.', 'QuotaExceededError'); };
+    });
+    const kept = () => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('sv2staff:') && key.endsWith(':key')).length);
+    for (const time of ['the first time', 'the second time']) {
+      const before = await sent(page);
+      await page.click('.stf-bar .stf-check');
+      await fedAfter(page, before);
+      await frameState(inside, 'locked');
+      assert.match(await inside.evaluate(() => document.body.textContent), /Enter the staff passcode\./, time);
+      await unlockIn(inside, DEFAULT);
+      await frameState(inside, 'open');
+      assert.equal(await kept(), 0, time + ': the key is nowhere but the frame\'s memory');
+      // and it is kept there: a change to the project does not ask again
+      const fed = await sent(page);
+      await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran ' + time });
+      await fedAfter(page, fed);
+      await frameState(inside, 'open');
+      const again = await sent(page);
+      await page.click('.stf-bar .stf-check');
+      await fedAfter(page, again);
+      await frameState(inside, 'open');
+    }
+  });
+});
+
+test('a read-only tab publishes its file and says nothing false: no "Nothing changed", the status and the section\'s first line say the project does not record it', async () => {
+  const first = await open();
+  let second = null;
+  try {
+    await apply(first.page, 'setSetting', { key: 'schoolName', value: 'First Tab School' });
+    await first.page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved' && !globalThis.sv2.storage.pending, { timeout: 10000 });
+    second = await open({ keep: true });
+    const page = second.page;
+    await page.waitForSelector('#banner-read-only');
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^No file has been made from this project yet\./);
+    const made = await publishThroughHook(page);
+    assert.ok(made && made.fileName.startsWith('First Tab School - staff schedule - '));
+    assert.equal(await page.evaluate(() => document.querySelectorAll('.toast').length), 0, 'no toast says "Nothing changed" about a file that was made');
+    const status = await says(page, 'published');
+    assert.ok(status.startsWith('Published ' + made.fileName + ' ('), status);
+    assert.ok(status.includes(NOT_SENT + ' This tab is read-only, so the project does not record that a file was made. It asks for the staff passcode: '), status);
+    assert.equal((await project(page)).publish.lastPublishedAt, null, 'the project was not changed');
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^This tab made a file just now\. The project does not record it while the tab is read-only\. It has /);
+    assert.deepEqual(second.problems().errors, []);
+  } finally {
+    if (second) await second.close();
+    await first.close();
+  }
+});
+
+test('"What is in it": the line has a mark that turns when it opens, a separator in its name, and says when the map carries no names', async () => {
+  await closing(await open(), async (page) => {
+    const mark = () => page.evaluate(() => {
+      const summary = document.querySelector('#publish-contents > summary');
+      const style = getComputedStyle(summary, '::before');
+      return { content: style.content, width: style.borderLeftWidth, transform: style.transform, text: summary.textContent, list: getComputedStyle(summary).listStyleType };
+    });
+    const folded = await mark();
+    assert.equal(folded.text, 'What is in it · All 11 views');
+    assert.equal(folded.content, '""', 'the mark is drawn');
+    assert.equal(folded.width, '7px');
+    assert.equal(folded.transform, 'none');
+    assert.equal(folded.list, 'none', 'one mark, not the browser\'s as well');
+    await openFold(page);
+    const open_ = await mark();
+    assert.notEqual(open_.transform, 'none', 'the mark points down when the line is open');
+    await page.click('.pub input[name="names"]');
+    await page.waitForFunction(() => document.querySelector('[data-says="views"]').textContent === 'All 11 views, no teacher names on the map');
+    await page.click('.pub input[data-view="coverage"]');
+    await page.waitForFunction(() => document.querySelector('[data-says="views"]').textContent === '10 of 11 views, no teacher names on the map');
+    await page.click('.pub input[name="names"]');
+    await page.waitForFunction(() => document.querySelector('[data-says="views"]').textContent === '10 of 11 views');
+  });
+});
+
+test('the published file\'s name never breaks inside its day, however long the school\'s name, and the name is on the line whole', async () => {
+  await closing(await open(), async (page) => {
+    const seen = new Set();
+    // each name is one letter longer, so the day meets the edge of the line at every offset
+    for (let extra = 0; extra < 14; extra += 1) {
+      const name = 'Marrowby Middle ' + 'm'.repeat(extra) + ' School';
+      await apply(page, 'setSetting', { key: 'schoolName', value: name });
+      const made = await publishThroughHook(page);
+      const laid = await page.evaluate(() => {
+        const file = document.querySelector('[data-says="published-file"]');
+        const day = file.querySelector('.pub__file-day');
+        const status = document.querySelector('[data-says="published"]');
+        return { text: file.textContent, day: day.textContent, lines: day.getClientRects().length, over: status.scrollWidth > status.clientWidth, fileLines: file.getClientRects().length };
+      });
+      assert.equal(laid.text, made.fileName);
+      assert.match(laid.day, /^\d{4}-\d{2}-\d{2}\.html$/);
+      assert.equal(laid.lines, 1, name + ': the day is on one line');
+      assert.equal(laid.over, false, name + ': and nothing runs off the form');
+      seen.add(laid.fileLines);
+    }
+    assert.ok(seen.size > 1, 'the names tried did move the break: ' + Array.from(seen).join(', ') + ' lines');
+  });
+});
+
+test('a preview that was given its page and never opened says so with "Try again", which makes the page anew and lets the one before it go', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      // the first page the frame is given never asks for its data: a blank page stands in for one that failed to start
+      const create = URL.createObjectURL.bind(URL);
+      const revoke = URL.revokeObjectURL.bind(URL);
+      globalThis.__made = [];
+      globalThis.__revoked = [];
+      URL.createObjectURL = (blob) => {
+        const address = create(globalThis.__made.length === 0 && blob.type.startsWith('text/html') ? new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }) : blob);
+        if (blob.type.startsWith('text/html')) globalThis.__made.push(address);
+        return address;
+      };
+      URL.revokeObjectURL = (address) => {
+        globalThis.__revoked.push(address);
+        revoke(address);
+      };
+    });
+    await go(page, '#staff');
+    await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'failed', { timeout: 30000 });
+    assert.equal(await says(page, 'preview'), 'The preview has not opened. Try again; publishing a file does not depend on it.');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').getClientRects().length > 0), true, 'the button is on screen');
+    const first = await page.evaluate(() => document.querySelector('.stf-frame').src);
+    await page.click('[data-action="preview-again"]');
+    await previewLive(page);
+    assert.deepEqual(await page.evaluate(() => globalThis.__revoked.filter((address) => globalThis.__made.includes(address))), [first], 'the page that never opened is let go, by a press a person can make');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').hidden), true);
+    await frameOf(page).waitForFunction(() => document.getElementById('app').dataset.state === 'open', { timeout: 30000 });
+    // and a file was never held up by it
+    assert.ok(await publishThroughHook(page));
+  });
+});
+
 // ---------------------------------------------------------------- batch printing
 
 test('batch printing: each button opens the preview sheet on one document, a sheet per teacher or room after the cover', async () => {
@@ -1081,8 +1404,10 @@ test('batch printing: each button opens the preview sheet on one document, a she
           newSheets: Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.dataset.sheet),
           breaks: Array.from(doc.querySelectorAll('.new-sheet'), (el) => view.getComputedStyle(el).breakBefore),
           numberPx: number ? parseFloat(view.getComputedStyle(number).fontSize) : null,
-          columns: day ? view.getComputedStyle(day).gridTemplateColumns.split(' ').length : null,
-          tallest: Math.max(...Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.getBoundingClientRect().height)),
+          // how many kinds of day stand side by side: the tables that start on the first one's line
+          columns: day ? Array.from(day.children).filter((kind) => Math.abs(kind.getBoundingClientRect().top - day.children[0].getBoundingClientRect().top) < 1).length : null,
+          // as paper: without the dashed line and the room under it that the preview draws where a sheet starts
+          tallest: Math.max(...Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.getBoundingClientRect().height - parseFloat(view.getComputedStyle(el).paddingTop) - parseFloat(view.getComputedStyle(el).borderTopWidth))),
           scripts: doc.scripts.length,
         };
       });
@@ -1101,6 +1426,111 @@ test('batch printing: each button opens the preview sheet on one document, a she
       await page.waitForFunction(() => document.getElementById('print-preview') === null);
       assert.equal(await page.evaluate((s) => document.activeElement === document.querySelector(s), selector), true, 'focus is back on the button');
     }
+  });
+});
+
+// What the preview sheet says of the document on show.
+const previewOf = (page) => page.evaluate(() => {
+  const sheet = document.getElementById('print-preview');
+  const doc = sheet.querySelector('iframe').contentDocument;
+  const view = sheet.querySelector('iframe').contentWindow;
+  const papers = Array.from(doc.querySelectorAll('.new-sheet'), (el) => el.getBoundingClientRect().height - parseFloat(view.getComputedStyle(el).paddingTop) - parseFloat(view.getComputedStyle(el).borderTopWidth));
+  return {
+    sheets: Number(sheet.dataset.sheets),
+    paper: sheet.dataset.paper,
+    status: sheet.querySelector('.preview__status').textContent,
+    signs: doc.querySelectorAll('[data-sheet="door"]').length,
+    tallest: Math.round(Math.max(...papers)),
+    root: doc.documentElement.dataset.orientation,
+    rule: doc.getElementById('page-size').textContent,
+    lead: doc.querySelector('.doc-lead').textContent,
+    turn: sheet.querySelectorAll('.preview__head input[type="radio"]').length,
+    upright: sheet.querySelector('[data-says="upright"]') ? sheet.querySelector('[data-says="upright"]').textContent : null,
+  };
+});
+
+async function openBatch(page, output) {
+  await page.click('.pub [data-print="' + output + '"]');
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+}
+
+async function closeBatch(page) {
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+}
+
+// Choose a paper size in the open sheet and wait for the document drawn on it.
+async function choosePaper(page, size) {
+  await page.evaluate((value) => {
+    const radio = document.querySelector('#print-preview .preview__head input[type="radio"][value="' + value + '"]');
+    radio.click();
+  }, size);
+  await page.waitForFunction((value) => {
+    const sheet = document.getElementById('print-preview');
+    return sheet.dataset.ready === 'true' && sheet.dataset.paper.startsWith(value + ' ');
+  }, { timeout: 15000 }, size);
+}
+
+test('the preview counts the sheets that go on paper: a door sign with ten periods, or with a thirty-character number and the room\'s day, is one sheet at Letter and at A4', async () => {
+  await closing(await open(), async (page) => {
+    // ten periods a day: the sign's day is two rows longer on each kind of day
+    await apply(page, 'setSetting', { key: 'periods', value: 10 });
+    await openBatch(page, 'door-signs-day');
+    for (const [size, most] of [['letter', 950], ['a4', 1017]]) {
+      await choosePaper(page, size);
+      const shown = await previewOf(page);
+      assert.equal(shown.signs, 13);
+      assert.ok(shown.tallest <= most, size + ', ten periods: the tallest sign is ' + shown.tallest + ' px of paper, and a sheet holds ' + most);
+      assert.equal(shown.sheets, 14, size + ', ten periods: the cover and one sheet a sign: ' + shown.status);
+      assert.match(shown.status, /About 14 sheets\.$/);
+    }
+    await closeBatch(page);
+
+    // a number of thirty characters wraps to a second and third line of the sign
+    const room = await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].spaces.find((space) => space.kind === 'room').id);
+    await apply(page, 'setRoomFields', { roomId: room, number: 'PORTABLE-CLASSROOM-ANNEX-NO-12' });
+    await openBatch(page, 'door-signs-day');
+    for (const [size, most] of [['a4', 1017], ['letter', 950]]) {
+      await choosePaper(page, size);
+      const shown = await previewOf(page);
+      assert.ok(shown.tallest <= most, size + ', a long number: the tallest sign is ' + shown.tallest + ' px of paper, and a sheet holds ' + most);
+      assert.equal(shown.sheets, 14, size + ', a long number and ten periods: ' + shown.status);
+    }
+    await closeBatch(page);
+    // and a document that does run on is still counted as running on: every teacher's schedule on one sheet each, plus the cover
+    await openBatch(page, 'teacher-schedules');
+    assert.equal((await previewOf(page)).sheets, 13);
+    await closeBatch(page);
+  });
+});
+
+test('door signs are upright sheets: with landscape chosen for the project the batch prints in portrait, says so, and offers no orientation; other documents keep theirs', async () => {
+  await closing(await open(), async (page) => {
+    await apply(page, 'setSetting', { key: 'paper.orientation', value: 'landscape' });
+    const steps = await undoSteps(page);
+    for (const output of ['door-signs', 'door-signs-day']) {
+      await openBatch(page, output);
+      const shown = await previewOf(page);
+      assert.equal(shown.upright, 'Door signs are upright sheets: they print in portrait.', output);
+      assert.equal(shown.turn, 2, output + ': the two paper sizes, and no orientation to choose');
+      assert.equal(shown.paper, 'letter portrait');
+      assert.equal(shown.root, 'portrait');
+      assert.equal(shown.rule, '@page { size: letter portrait; }');
+      assert.match(shown.status, /^US Letter, portrait\. About 14 sheets\.$/);
+      assert.equal(shown.sheets, 14, output + ': one sheet a sign, not two across a sheet on its side');
+      assert.ok(shown.lead.endsWith('Landscape is chosen for this project. Door signs are upright sheets, so these print in portrait.'), shown.lead);
+      await closeBatch(page);
+    }
+    // the project's own setting is as it was: nothing was changed to print a sign
+    assert.equal((await project(page)).settings.paper.orientation, 'landscape');
+    assert.equal(await undoSteps(page), steps);
+    await openBatch(page, 'teacher-schedules');
+    const teachers = await previewOf(page);
+    assert.equal(teachers.upright, null);
+    assert.equal(teachers.turn, 4, 'two sizes and two orientations');
+    assert.equal(teachers.paper, 'letter landscape');
+    assert.equal(teachers.root, 'landscape');
+    await closeBatch(page);
   });
 });
 

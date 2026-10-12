@@ -8,7 +8,7 @@
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
-import { pageOf } from '../page.js';
+import { pageOf, printGate } from '../page.js';
 import { aroundRoom } from '../map.js';
 import { clockNow, dayTypeFor, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, periodPicker, viewLink, nowTabs, entryWords } from '../clock.js';
 
@@ -112,7 +112,9 @@ export const nowView = {
       ];
     };
 
+    const gate = printGate();
     const draw = () => {
+      gate.set(Boolean(state.group || state.teacher));
       const moment = momentOf(school, state.dayType.id, clockNow(ctx));
       lastKey = momentKey(state.dayType.id, moment);
       const period = state.period === '' ? moment.shown : state.period;
@@ -168,9 +170,9 @@ export const nowView = {
 
     drawPickers(false);
     draw();
-    const page = pageOf('Where right now', null, says, nowTabs(school, 'now'),
+    const page = gate.on(pageOf('Where right now', null, says, nowTabs(school, 'now'),
       h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'now-who' }, 'Group or teacher'), who),
-      out, pickers);
+      out, pickers));
     watchClock(page, () => {
       if (state.period !== '') return;
       if (momentKey(state.dayType.id, momentOf(school, state.dayType.id, clockNow(ctx))) !== lastKey) draw();

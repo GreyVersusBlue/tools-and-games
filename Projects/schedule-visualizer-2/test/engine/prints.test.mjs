@@ -132,11 +132,13 @@ test('every output is a whole document: header with school, what it is and the d
     for (const paper of PAPER_CHOICES) {
       const { title, html } = output.render(project, null, { ...NOW, paper });
       const at = output.id + ' on ' + paper.size + ' ' + paper.orientation;
+      // a door sign is an upright sheet: it is portrait whatever is asked (SV2-45 item 2)
+      const turn = output.upright === true ? 'portrait' : paper.orientation;
       assert.equal(title, output.name + ' · ' + SAMPLE_SCHOOL_NAME, at);
-      assert.ok(html.startsWith('<!doctype html>\n<html lang="en" class="print-doc" data-theme="light" data-output="' + output.id + '" data-paper="' + paper.size + '" data-orientation="' + paper.orientation + '"'), at + ': the root');
+      assert.ok(html.startsWith('<!doctype html>\n<html lang="en" class="print-doc" data-theme="light" data-output="' + output.id + '" data-paper="' + paper.size + '" data-orientation="' + turn + '"'), at + ': the root');
       assert.equal(countOf(html, '<title>' + esc(title) + '</title>'), 1, at + ': the title');
       // written out here, not asked of pageRule(): a rule that ignored the paper would agree with itself
-      const rule = '@page { size: ' + { letter: 'letter', a4: 'A4' }[paper.size] + ' ' + paper.orientation + '; }';
+      const rule = '@page { size: ' + { letter: 'letter', a4: 'A4' }[paper.size] + ' ' + turn + '; }';
       assert.equal(countOf(html, '<style id="page-size">' + rule + '</style>'), 1, at + ': the page rule');
       assert.equal(countOf(html, '@page'), 1, at + ': one page rule and no other');
       assert.ok(html.includes('<link rel="stylesheet" href="ui/tokens.css">') && html.includes('<link rel="stylesheet" href="ui/print.css">'), at + ': the two stylesheets');

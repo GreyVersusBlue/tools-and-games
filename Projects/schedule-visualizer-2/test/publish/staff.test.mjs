@@ -463,7 +463,7 @@ function tokens(css) {
 test('every token the staff stylesheet shares with the planner\'s has the planner\'s value', () => {
   const planner = tokens(readTool('ui/tokens.css'));
   const staff = tokens(readTool('staff/staff.css'));
-  const own = ['--bar-height', '--rail-width', '--column', '--tap', '--stale-paper', '--note-paper'];
+  const own = ['--bar-height', '--rail-width', '--column', '--tap', '--stale-paper', '--note-paper', '--map-corridor'];
   let shared = 0;
   for (const [key, value] of staff) {
     const name = key.split(' ')[1];

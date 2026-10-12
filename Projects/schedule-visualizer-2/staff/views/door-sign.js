@@ -20,17 +20,35 @@ import { wordsJoined, dayKindsOf } from './teacher.js';
 import { roomUse } from './room.js';
 
 // Scripts whose characters are set a full square wide (Chinese, Japanese,
-// Korean, the fullwidth forms, emoji): each takes the room of two Latin ones.
+// Korean, the fullwidth forms, emoji, the symbols and tiles that are drawn as
+// emoji): each takes the room of two Latin ones.
 const WIDE = [
-  [0x1100, 0x115f], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xa000, 0xa4cf],
-  [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe30, 0xfe4f], [0xff00, 0xff60], [0xffe0, 0xffe6], [0x1f300, 0x1faff], [0x20000, 0x3fffd],
+  [0x1100, 0x115f], [0x2600, 0x27bf], [0x2b00, 0x2bff], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xa000, 0xa4cf],
+  [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe30, 0xfe4f], [0xff00, 0xff60], [0xffe0, 0xffe6], [0x1f000, 0x1f2ff], [0x1f300, 0x1faff], [0x20000, 0x3fffd],
 ];
+// What takes no room of its own: an accent that sits on the letter before it,
+// the mark that asks for a symbol's emoji form, and the joiner.
+const NONE = [[0x0300, 0x036f], [0xfe0f, 0xfe0f], [0x200d, 0x200d]];
+const JOINER = 0x200d;
 
-function widthOf(text) {
+const within = (ranges, point) => ranges.some(([from, to]) => point >= from && point <= to);
+
+// How much of a line a text takes, in Latin characters. What a joiner joins
+// is drawn as one picture, so the pieces after the first take no room: a
+// family of three is one emoji, two wide, and "e" with an accent after it is
+// one letter.
+export function signWidth(text) {
   let width = 0;
+  let joined = false;
   for (const character of String(text)) {
     const point = character.codePointAt(0);
-    width += WIDE.some(([from, to]) => point >= from && point <= to) ? 2 : 1;
+    if (point === JOINER) {
+      joined = true;
+      continue;
+    }
+    if (within(NONE, point)) continue;
+    if (!joined) width += within(WIDE, point) ? 2 : 1;
+    joined = false;
   }
   return width;
 }
@@ -40,7 +58,7 @@ function widthOf(text) {
 // Seven Latin characters fit at full size; a full-square character counts as
 // two of them.
 export function signFit(text) {
-  return Math.max(0.3, Math.min(1, 7 / Math.max(1, widthOf(text))));
+  return Math.max(0.3, Math.min(1, 7 / Math.max(1, signWidth(text))));
 }
 
 // ---- the sign as a tree: { tag, attrs, children }, a child being a node or text

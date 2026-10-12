@@ -689,13 +689,23 @@ export const SCREENS = [
     },
   },
   { id: 'staff-preview', hash: '#staff', open: staffLive }, // SV2-24: the preview frame fed, the publish form beside it
-  { // SV2-24: batch printing, in the preview sheet
+  { // SV2-24: batch printing, in the preview sheet (SV2-45: with the sentence where a door sign's orientation would be)
     id: 'staff-batch-print',
     hash: '#staff',
     open: async (page) => {
       await staffLive(page);
       await page.click('.pub [data-print="door-signs-day"]');
       await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
+  {
+    // SV2-45: the publish form with "What is in it" open, its mark turned
+    id: 'staff-contents-open',
+    hash: '#staff',
+    open: async (page) => {
+      await staffLive(page);
+      await page.click('#publish-contents > summary');
+      await page.waitForFunction(() => document.querySelector('.pub input[data-view="teacher"]').getClientRects().length > 0);
     },
   },
 ];

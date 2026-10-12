@@ -28,7 +28,7 @@ import { notePublished, setPublishSetting } from '../../engine/actions.js';
 import { PUBLISH_VIEWS, RANGES } from '../../engine/schema.js';
 import { isProtected } from '../../engine/publish-data.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
-import { pageReader, LinkError } from './assemble.js';
+import { pageReader, failureSentence } from './assemble.js';
 import { publishDocument, deviceRandom, fileTarget } from './targets.js';
 import { readerSentences, readerSummary, NOTHING_REMAINS as NOTHING } from './readers.js';
 
@@ -54,6 +54,18 @@ export const PASSCODE_EMPTY = 'A passcode cannot be empty. To publish without on
 export const PASSCODE_NOT_TAKEN = 'Nothing was published: the passcode in the box was not taken. Change it, or press Escape in the box to go back to the last one.';
 export const NOT_SENT = 'Nothing was sent anywhere: send the file on yourself, by mail or on a shared drive.';
 export const PUBLISH_FAILED = 'The file could not be made, so nothing was published. Check the connection and try again.';
+// for a failure that is neither the connection's nor one the tool has a sentence for
+export const PUBLISH_BROKE = 'The file could not be made, so nothing was published. Reload the page and try again.';
+export const CHECKS_PENDING = 'Working out what readers will see.';
+export const CHECKS_FAILED = 'The checks could not be run just now, so this form cannot say what readers will see. Look at Schedule › Checks.';
+export const CHECKS_NOT_HERE = 'The checks are not running in this tab, so this form cannot say what readers will see. Look at Schedule › Checks.';
+export const CHECKS_WAIT = 'Waiting for the checks of the project as it is now.';
+export const CHECKS_REFUSED = 'Nothing was published: the checks could not be run, so the file would go out with nothing said about what readers will see. Try again in a moment, or reload the page.';
+export const READ_ONLY_MADE = 'This tab is read-only, so the project does not record that a file was made.';
+// How long the checks may take before the list says it is being worked out.
+// They answer in a few milliseconds as a rule; words that came and went with
+// every keystroke would move the Publish button under the pointer.
+export const CHECKS_WORDS_AFTER_MS = 400;
 export const STALE_LABEL = 'Days until the file counts as out of date';
 export const NOTES_LINE = 'Teacher notes are published: the substitute plan shows them.';
 export const MAIL_LINE = 'On a phone, open the file in Safari or Chrome, or save it to Files first; a mail app’s preview will not work.';
@@ -73,7 +85,12 @@ export function publishForm(ctx, hooks) {
   let lastPasscode = DEFAULT_PASSCODE;
   // whose passcode that is: another project never inherits it
   let lastProject = null;
+  // The checks on screen: `asked` is the project they were last asked for,
+  // `answer` the promise for that asking (true once its lines are drawn, false
+  // when the run was refused), `wordsTimer` the wait before the pending words.
   let asked = null;
+  let answer = null;
+  let wordsTimer = null;
 
   // One change to project.publish. A value the action will not take is said,
   // and the control goes back to what the project holds. (A tab that cannot
@@ -178,44 +195,103 @@ export function publishForm(ctx, hooks) {
     element.dataset.checks = String(lines.length);
   }
 
+  function settled() {
+    delete element.dataset.checksPending;
+    checksList.removeAttribute('aria-busy');
+    if (wordsTimer !== null) clearTimeout(wordsTimer);
+    wordsTimer = null;
+  }
+
+  // A run that gave no answer: the lines of an earlier project do not stand
+  // beside it, and the next asking (a change, or a press of Publish) runs the
+  // checks again.
+  function refused(words) {
+    settled();
+    checksList.replaceChildren();
+    checksList.hidden = true;
+    checksSays.textContent = words;
+    checksSays.hidden = false;
+    element.dataset.checks = 'none';
+    asked = null;
+    return false;
+  }
+
   // The findings are the engine client's. They are asked for once per state
-  // of the project; until the answer for a change comes, the last stays.
+  // of the project. Until the answer for a change comes the form is marked
+  // data-checks-pending and the last lines stay, dimmed; an answer that takes
+  // long has words. Publish waits on what this returns (DECISIONS 2026-10-12
+  // 12:30): a promise for true once the lines of `project` are on screen, or
+  // for false when its checks could not be run.
   function askChecks(project) {
-    if (asked === project) return;
+    if (asked === project && answer !== null) return answer;
     asked = project;
     if (!store.derived || !store.derived.engine) {
-      checksSays.textContent = 'The checks are not running in this tab, so look at Schedule › Checks before you publish.';
-      checksSays.hidden = false;
-      checksList.hidden = true;
-      return;
+      answer = Promise.resolve(refused(CHECKS_NOT_HERE));
+      return answer;
     }
     element.dataset.checksPending = 'true';
-    store.derived.results().then((results) => {
-      if (stopped || asked !== project) return;
-      delete element.dataset.checksPending;
+    checksList.setAttribute('aria-busy', 'true');
+    if (wordsTimer === null) {
+      wordsTimer = setTimeout(() => {
+        wordsTimer = null;
+        if (stopped || element.dataset.checksPending !== 'true') return;
+        checksSays.textContent = CHECKS_PENDING;
+        checksSays.hidden = false;
+      }, CHECKS_WORDS_AFTER_MS);
+    }
+    const mine = store.derived.results().then((results) => {
+      // a newer asking has taken over: its answer is this one's too
+      if (stopped || asked !== project || answer !== mine) return answer !== mine && answer !== null ? answer : false;
+      settled();
       drawChecks(project, results);
-    }, () => {
-      if (stopped || asked !== project) return;
-      delete element.dataset.checksPending;
-      checksSays.textContent = 'The checks could not be run just now. Look at Schedule › Checks before you publish.';
-      checksSays.hidden = false;
+      return true;
+    }, (error) => {
+      if (stopped || asked !== project || answer !== mine) return answer !== mine && answer !== null ? answer : false;
+      console.warn('Schedule Visualizer 2: the checks could not be run for the publish form.', error);
+      return refused(CHECKS_FAILED);
     });
+    answer = mine;
+    return mine;
+  }
+
+  // The lines of the project as it is now, on screen: true, or false when its
+  // checks cannot be run (asked twice: a refusal is tried once more).
+  async function checksStand() {
+    for (let tries = 0; tries < 2; tries += 1) {
+      for (;;) {
+        const project = store.project;
+        const drawn = await askChecks(project);
+        if (stopped) return false;
+        if (store.project !== project) continue;
+        if (drawn) return true;
+        break;
+      }
+    }
+    return false;
   }
 
   // ---- publish
 
   const says = h('p', { class: 'pub__says', role: 'status', data: { says: 'published' } });
+  // A file's name ends in its day, which is one word: it goes to the next
+  // line whole, never cut at a hyphen.
+  function fileWords(fileName) {
+    const at = fileName.lastIndexOf(' ');
+    return h('span', { class: 'pub__file', data: { says: 'published-file' } }, fileName.slice(0, at + 1), h('span', { class: 'pub__file-day' }, fileName.slice(at + 1)));
+  }
   // The passcode a file asks for is typed text: it stands in an element of its
   // own, last on the line, so no full stop reads as part of it.
-  function saysPublished(published, size, passcode) {
-    const made = 'Published ' + published.fileName + size + '. ' + NOT_SENT + ' ';
+  function saysPublished(published, size, passcode, noted) {
+    const made = ['Published ', fileWords(published.fileName), size + '. ' + NOT_SENT + ' ' + (noted ? '' : READ_ONLY_MADE + ' ')];
     if (!published.locked) {
-      says.textContent = made + 'It opens with no passcode.';
+      says.replaceChildren(...made, 'It opens with no passcode.');
       return;
     }
-    says.replaceChildren(made + 'It asks for the staff passcode: ', h('strong', { class: 'pub__passcode', data: { says: 'published-passcode' } }, passcode));
+    says.replaceChildren(...made, 'It asks for the staff passcode: ', h('strong', { class: 'pub__passcode', data: { says: 'published-passcode' } }, passcode));
   }
   const button = h('button', { type: 'button', class: 'btn btn--primary', id: 'publish-file' }, fileTarget.action);
+
+  const readOnly = () => Boolean(ctx.storage && ctx.storage.state && ctx.storage.state.readOnly);
 
   async function publish() {
     if (busy) return null;
@@ -227,22 +303,32 @@ export function publishForm(ctx, hooks) {
     busy = true;
     button.setAttribute('aria-disabled', 'true');
     element.dataset.publishing = 'true';
-    says.textContent = 'Putting the file together.';
     try {
+      // The press is held until the list above is the list of the project
+      // the file is made from: a file never goes out beside the lines of an
+      // earlier project.
+      says.textContent = element.dataset.checksPending === 'true' || asked !== store.project ? CHECKS_WAIT : 'Putting the file together.';
+      if (!(await checksStand())) {
+        if (!stopped) says.textContent = CHECKS_REFUSED;
+        return null;
+      }
       const project = store.project;
+      says.textContent = 'Putting the file together.';
       const published = await publishDocument(pageReader(), project, { clock: ctx.clock, random: deviceRandom() });
       hooks.published = published;
       const delivered = typeof hooks.deliver === 'function' ? hooks.deliver(published) : fileTarget.deliver(published);
       const size = delivered && typeof delivered.bytes === 'number' ? ' (' + kilobytes(delivered.bytes) + ')' : '';
-      saysPublished(published, size, project.publish.passcode);
-      try {
-        store.apply(notePublished, { at: published.model.publishedAt });
-      } catch (error) {
-        // a tab that cannot change the project still made its file
-      }
+      // A tab that cannot change the project still made its file. It is not
+      // asked to note it: the refusal's toast ("Nothing changed") would be
+      // the one false thing on the screen.
+      const noted = !readOnly();
+      if (noted) store.apply(notePublished, { at: published.model.publishedAt });
+      saysPublished(published, size, project.publish.passcode, noted);
+      if (typeof hooks.made === 'function') hooks.made(published, noted);
       return published;
     } catch (error) {
-      says.textContent = error instanceof LinkError && error.message ? error.message : PUBLISH_FAILED;
+      console.warn('Schedule Visualizer 2: the file could not be made.', error);
+      says.textContent = failureSentence(error, { connection: PUBLISH_FAILED, other: PUBLISH_BROKE });
       return null;
     } finally {
       busy = false;
@@ -262,10 +348,11 @@ export function publishForm(ctx, hooks) {
   };
 
   // The eleven views and the map's names are folded away: the summary says
-  // how many views the file holds, so nothing is hidden that matters.
+  // how many views the file holds, and that the map carries no names when it
+  // does not, so nothing is hidden that matters.
   const foldSays = h('span', { class: 'pub__fold-says', data: { says: 'views' } });
   const fold = h('details', { class: 'pub__fold', id: 'publish-contents' },
-    h('summary', { class: 'pub__fold-title' }, h('span', { class: 'eyebrow' }, 'What is in it'), foldSays),
+    h('summary', { class: 'pub__fold-title' }, h('span', { class: 'eyebrow' }, 'What is in it'), ' · ', foldSays),
     group('Views to include', h('div', { class: 'pub__list' }, views.map((each) => each.element))),
     group('The map', names.element));
 
@@ -288,8 +375,8 @@ export function publishForm(ctx, hooks) {
     const publish = project.publish;
     for (const each of views) each.box.checked = publish.views[each.view] !== false;
     const held = views.filter((each) => each.box.checked).length;
-    foldSays.textContent = held === views.length ? 'All ' + views.length + ' views' : held + ' of ' + views.length + ' views';
     names.box.checked = publish.teacherNamesOnMap !== false;
+    foldSays.textContent = (held === views.length ? 'All ' + views.length + ' views' : held + ' of ' + views.length + ' views') + (names.box.checked ? '' : ', no teacher names on the map');
     stale.set(publish.stalenessDays);
     const until = printDate(new Date(ctx.clock().getTime() + publish.stalenessDays * DAY_MS));
     staleSays.textContent = 'Readers see a notice once the file is older than this. Published today, it is current until ' + until + '. From 1 to ' + RANGES.stalenessDays[1] + ' days.';
@@ -318,6 +405,7 @@ export function publishForm(ctx, hooks) {
     publish,
     stop() {
       stopped = true;
+      if (wordsTimer !== null) clearTimeout(wordsTimer);
     },
   };
 }

@@ -44,3 +44,8 @@ export const VIEWS = [searchView, teacherView, groupView, roomView, mapView, sta
 export function viewFor(id) {
   return VIEWS.find((view) => view.id === id) || searchView;
 }
+
+// Does an address name a view at all? The shell says so when it does not.
+export function isView(id) {
+  return VIEWS.some((view) => view.id === id);
+}

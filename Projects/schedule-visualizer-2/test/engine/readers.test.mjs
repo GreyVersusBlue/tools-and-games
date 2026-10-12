@@ -9,11 +9,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { readerSentences, readerSummary, READER_KINDS, NO_SENTENCE, NOTHING_REMAINS } from '../../ui/staff/readers.js';
+import { readerSentences, readerSummary, READER_KINDS, READER_BUILDING_KINDS, READER_BUILDING_UNSEEN, NO_SENTENCE, NOTHING_REMAINS } from '../../ui/staff/readers.js';
 import { checkSchedule } from '../../engine/checks.js';
-import { buildingChecks } from '../../engine/building-checks.js';
+import { buildingChecks, BUILDING_CHECK_KINDS } from '../../engine/building-checks.js';
 import { KIND_SEVERITY, makeFinding } from '../../engine/findings.js';
-import { school, room, group } from './helpers.mjs';
+import { school, room, group, clone } from './helpers.mjs';
+import { planProject, twoRooms, disconnectedWing, threeFloors, unjoinedFloors, cellAt } from '../fixtures/buildings/plans.mjs';
 
 const DAY = (project) => project.dayTypes[0].id;
 
@@ -84,21 +85,61 @@ test('a teacher based in two rooms, or three: the rooms are shown on the teacher
   assert.ok(texts(sentences(project)).includes(teacher.name + ' is based in three rooms: all three are shown on the teacher\'s page.'));
 });
 
-test('a problem in the building: the engine\'s sentence, and that the map follows the building as drawn', () => {
+// The building's problems, from the building checks themselves on buildings
+// that have them (SV2-45 item 42e).
+function buildingLines(project) {
+  return readerSentences(project, { findings: { findings: [], accepted: [] }, buildingFindings: buildingChecks(project) }).lines;
+}
+
+// What the engine tells the planner to do. None of it is for a reader.
+const ADVICE = /\b(Paint|Join|Connect|Put|Remove|Give|Mark|Move|change all but one|needs another)\b/;
+
+test('a problem in the building is said as a reader meets it, with none of the planner\'s advice: every kind, from the building checks\' own output', () => {
+  const twice = clone(threeFloors());
+  twice.building.floors[1].spaces[0].number = ' 1a ';
+  twice.building.floors[2].spaces[1].number = '1A';
+  const alone = planProject([['AA...', 'AA...', '.....', '..###', '.....']], { exits: [[1, 4, 3, 'Door']] });
+  const dead = clone(twoRooms());
+  dead.building.floors[0].spaces[0].doors = [{ cell: cellAt(dead, 1, 2, 0), side: 'n' }];
+  const cases = [
+    [twice, ['Three rooms are numbered 1A: all three are shown under that number.']],
+    [alone, ['Room 1A on Floor 1 touches no corridor or stairs: it is on the map, and Directions has no way to it.']],
+    [dead, ['Room 1A on Floor 1 has no door onto a corridor or stairs: it is on the map, and Directions has no way to it.']],
+    [disconnectedWing(), ['Part of Floor 1 cannot be reached from the rest of the building, with two rooms on it: Directions has no way to or from it.']],
+    [unjoinedFloors(), ['Nothing connects Floor 2 to the rest of the building: Directions has no way to or from it.']],
+  ];
+  const seen = new Set();
+  for (const [project, want] of cases) {
+    const found = buildingChecks(project).filter((finding) => finding.severity === 'problem');
+    assert.ok(found.length > 0, 'the building has a problem to say');
+    for (const finding of found) seen.add(finding.kind);
+    const lines = buildingLines(project);
+    assert.deepEqual(lines.map((line) => line.text), want);
+    for (const line of lines) {
+      assert.doesNotMatch(line.text, ADVICE, line.kind + ' carries advice to the planner');
+      assert.ok(found.every((finding) => !line.text.includes(finding.text)), line.kind + ' is not the engine\'s own sentence');
+    }
+  }
+  // every kind the building checks can call a problem is in the cases above, and has a sentence or is one a reader never meets
+  const kinds = [...READER_BUILDING_KINDS, ...READER_BUILDING_UNSEEN].sort();
+  assert.deepEqual(Array.from(seen).sort(), kinds);
+  for (const kind of kinds) assert.ok(BUILDING_CHECK_KINDS.includes(kind), kind + ' is not a kind the building checks make');
+});
+
+test('the schedule\'s lines come first, then the building\'s; a building warning and a room with no way out are not lines', () => {
   const project = school();
-  const finding = makeFindingLike('room-no-corridor', 'problem', 'Room 105 does not open onto a corridor.');
-  const read = readerSentences(project, { findings: checkSchedule(project, null), buildingFindings: [finding, makeFindingLike('room-no-number', 'warning', 'One room has no number.')] });
-  assert.deepEqual(texts(read), [
-    'Room 203 has two groups in Period 2 on A Day: both will be shown.',
-    'Room 105 does not open onto a corridor. The map and the directions follow the building as it is drawn.',
-  ], 'the schedule first, then the building; a building warning is not a line');
+  const wing = disconnectedWing();
+  const found = buildingChecks(wing);
+  assert.deepEqual(found.map((finding) => finding.kind), ['part-unreachable', 'room-no-exit-route', 'room-no-exit-route']);
+  const read = readerSentences(wing, { findings: checkSchedule(project, null), buildingFindings: [...found, makeFindingLike('room-no-number', 'warning', 'One room has no number.')] });
+  assert.deepEqual(read.lines.map((line) => line.kind), ['room-double', 'part-unreachable']);
 });
 
 function makeFindingLike(kind, severity, text) {
   return { id: kind + ':x', kind, severity, text, where: { dayTypeId: null, period: null, groupIds: [], roomId: null, teacherId: null }, fixable: false, about: [] };
 }
 
-test('a finding that names a room, a teacher or a group the project no longer has says nothing', () => {
+test('a finding that names a room, a teacher, a group or a floor the project no longer has is still a line: the sentence that says to look at the checks', () => {
   const project = school();
   const day = DAY(project);
   const gone = [
@@ -107,7 +148,15 @@ test('a finding that names a room, a teacher or a group the project no longer ha
     makeFinding('room-missing', [day, 1, 'ggone000001'], 'x', { dayTypeId: day, period: 1, groupIds: ['ggone000001'] }),
     makeFinding('teacher-multi-room', ['tgone000001'], 'x', { teacherId: 'tgone000001' }),
   ];
-  assert.deepEqual(readerSentences(project, { findings: { findings: gone, accepted: [] }, buildingFindings: [] }).lines, []);
+  const building = [
+    { ...makeFindingLike('room-no-corridor', 'problem', 'Room 9 touches no corridor. Paint a corridor up to one of its sides.'), where: { floorId: 'fgone000001', roomId: 'rgone000001', cells: [] } },
+    { ...makeFindingLike('floor-unconnected', 'problem', 'x'), where: { floorId: 'fgone000001', cells: [] } },
+    { ...makeFindingLike('room-duplicate-number', 'problem', 'x'), where: { floorId: 'fgone000001', roomId: 'rgone000001', roomIds: ['rgone000001'], cells: [] } },
+    makeFindingLike('a-kind-of-tomorrow', 'problem', 'Something is wrong. Paint over it.'),
+  ];
+  const read = readerSentences(project, { findings: { findings: gone, accepted: [] }, buildingFindings: building });
+  assert.deepEqual(read.lines.map((line) => line.text), new Array(8).fill(NO_SENTENCE));
+  assert.deepEqual(read.lines.map((line) => line.id), [...gone, ...building].map((finding) => finding.id), 'each keeps its own id');
 });
 
 test('a check that is switched off was not looked at: its problem is not a line, and the count says so', () => {

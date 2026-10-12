@@ -699,7 +699,7 @@ test('in the dark theme the plan is drawn in the dark tokens', async () => {
     const box = await roomBox(page, 'fsample001', 'rsample103');
     assert.equal(await pixel(page, box.x + 3, box.y + 3), mix('#3f8f5b', DARK.paper, 0.7));
     assert.equal(await pixel(page, box.x - 1, box.y + box.h / 2), DARK.accent, 'the ring');
-    assert.equal(await pixel(page, box.x + 3, box.y + box.h + box.cell / 2), '#2a2f36', 'the corridor');
+    assert.equal(await pixel(page, box.x + 3, box.y + box.h + box.cell / 2), '#69717d', 'the corridor, in the map\'s own --map-corridor (SV2-45 M6)');
   } finally {
     await session.close();
   }

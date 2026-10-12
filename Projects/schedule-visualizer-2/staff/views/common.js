@@ -7,7 +7,7 @@
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
-import { pageOf } from '../page.js';
+import { pageOf, printGate } from '../page.js';
 import { everyTeacherDay, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
 import { dayKindsOf } from './teacher.js';
 
@@ -85,7 +85,9 @@ export const commonView = {
             h('tbody', null, rows))));
     };
 
+    const gate = printGate();
     const draw = () => {
+      gate.set(chosen.length >= 2);
       picked.replaceChildren(...chosen.map((id) => {
         const teacher = school.teacher(id);
         return h('li', { class: 'chips__item' },
@@ -130,8 +132,8 @@ export const commonView = {
     });
 
     draw();
-    return pageOf('Common planning', null, says,
+    return gate.on(pageOf('Common planning', null, says,
       h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'common-add' }, 'Add a teacher'), adder),
-      picked, out);
+      picked, out));
   },
 };

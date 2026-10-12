@@ -389,14 +389,10 @@ test('the map\'s paper colours are the paper rules\' own', () => {
 test('the door sign\'s rules stand in a browser with no :has() and no container units', () => {
   const css = readFileSync(path.join(TOOL_DIR, 'staff', 'staff.css'), 'utf8').replace(/\r\n?/g, '\n');
   const block = css.slice(css.indexOf('/* ---------- SV2-23:'), css.indexOf('/* ---------- SV2-23: end')).replace(/\/\*[\s\S]*?\*\//g, '');
-  // a browser that does not know :has() throws away the whole list it is in
-  let has = 0;
-  for (const match of block.matchAll(/([^{};]+)\{/g)) {
-    if (!match[1].includes(':has(')) continue;
-    has += 1;
-    for (const selector of match[1].split(',')) assert.ok(selector.includes(':has('), 'in a list with :has(): ' + selector.trim());
-  }
-  assert.ok(has >= 1);
+  // a browser that does not know :has() throws away the whole list it is in:
+  // the sign's rules use none, since the shell names the view on .app (SV2-45 item 10)
+  assert.ok(!block.includes(':has('), 'a rule of the SV2-23 block uses :has()');
+  assert.match(block, /\n  \.app\[data-view="door"\] \.top,\n  \.app\[data-view="door"\] \.foot \{\n    display: none;\n  \}/, 'the school\'s line and the footer leave the sign\'s paper by the view\'s name on the frame');
   assert.match(block, /\n  \.page\[data-view="door"\] \.page__body > :not\(\.sheet\) \{\n    display: none;\n  \}/, 'the rule that leaves the sheet alone on paper stands by itself');
   // every size in cqw has the same property in rem just before it; one with var() in it would be
   // kept by a browser that cannot read it, so it is behind @supports
@@ -419,7 +415,7 @@ test('the door sign\'s rules stand in a browser with no :has() and no container 
   assert.match(block, /\n\.sign__number \{[^}]*\n  font-size: calc\([\d.]+rem \* var\(--sign-fit, 1\)\);/);
   assert.match(block, /\n@supports \(font-size: 1cqw\) \{\n  \.sign__number \{\n    font-size: calc\(22\.5cqw \* var\(--sign-fit, 1\)\);\n  \}\n\}/);
   // a word in the day table is never cut
-  assert.match(block, /\n\.sign__table th,\n\.sign__table td \{[^}]*overflow-wrap: break-word;/);
+  assert.match(block, /\n\.sign__table th,\n\.sign__table td \{[^}]*overflow-wrap: normal;/, 'a cell of the day takes back the page\'s "break anywhere": a word is never cut (SV2-45 item 4)');
 });
 
 test('the paper rules are in the one stylesheet, inside @media print, with their classes listed at its top', () => {
@@ -460,6 +456,12 @@ before(async () => {
     const shared = rooms.find((space) => space.id === 'rsample203');
     shared.subjectId = null;
     shared.teacherIds = ['tsample007', 'tsample001'];
+  });
+  // names that are one long word, and the longest period name the tool has ("10th Hour")
+  await write('longday', (project) => {
+    project.settings.periodWord = 'Hour';
+    project.teachers[0].name = LONG_TEACHER;
+    project.groups[0].name = LONG_GROUP;
   });
   browser = await launch();
 });
@@ -531,6 +533,16 @@ async function openPage(options) {
     errors.push('a dialog opened: ' + dialog.message());
     dialog.dismiss().catch(() => {});
   });
+  // The bar along the bottom lies over the last 56 px of the window, and a
+  // reader scrolls a button clear of it before pressing: so does a click here.
+  const click = page.click.bind(page);
+  page.click = async (selector, how) => {
+    await page.evaluate((s) => {
+      const found = document.querySelector(s);
+      if (found) found.scrollIntoView({ block: 'center' });
+    }, selector);
+    return click(selector, how);
+  };
   return { page, context, requests, errors, close: () => context.close() };
 }
 
@@ -606,6 +618,70 @@ const cutWords = (page) => page.evaluate(() => {
 });
 
 const PRINTED = /^Printed (1 September 2026|September 1, 2026)$/;
+
+// Thirty letters each, with nowhere to break.
+const LONG_TEACHER = 'Featherstonehaughcholmondeleys';
+const LONG_GROUP = 'Humanitiesaccelerationcohortab';
+
+// Where the sign's day stands against its sheet: nothing of a table past the
+// sheet's edge unless the table's own frame scrolls it.
+const dayFit = (page) => page.evaluate(() => {
+  const sheet = document.querySelector('.sheet, .batch-sign').getBoundingClientRect();
+  return {
+    kinds: document.querySelectorAll('.sign__kind').length,
+    past: Array.from(document.querySelectorAll('.sign__kind')).filter((kind) => {
+      const scrolls = getComputedStyle(kind).overflowX === 'auto';
+      const edge = (scrolls ? kind : kind.querySelector('table')).getBoundingClientRect();
+      return edge.right > sheet.right + 0.5 || edge.left < sheet.left - 0.5;
+    }).length,
+    scrolled: Array.from(document.querySelectorAll('.sign__kind')).filter((kind) => kind.scrollWidth > kind.clientWidth + 1).length,
+    sideBySide: Array.from(document.querySelectorAll('.sign__kind')).filter((kind) => Math.abs(kind.getBoundingClientRect().top - document.querySelector('.sign__kind').getBoundingClientRect().top) < 1).length,
+    wide: document.documentElement.scrollWidth <= window.innerWidth,
+    names: Array.from(document.querySelectorAll('.sign__table td')).map((cell) => cell.textContent).filter((text) => text.length >= 30).length,
+    period: document.querySelector('.sign__table th').textContent,
+  };
+});
+
+test('the sign\'s day never cuts a word and never runs past the sheet: thirty-letter names and the longest period name, at 390 px, at 1280 px and on paper', async () => {
+  const room = 'rsample101';
+  for (const [name, width, height, media] of [['a phone', 390, 844, 'screen'], ['a desktop', 1280, 900, 'screen'], ['US Letter', 710, 950, 'print'], ['A4', 688, 1017, 'print']]) {
+    const session = await openPage({ width, height });
+    try {
+      const { page } = session;
+      await goto(page, files.longday.url + '#/door/' + room + '?day=1');
+      if (media === 'print') {
+        await page.emulateMediaType('print');
+        await page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
+      }
+      const fit = await dayFit(page);
+      assert.equal(fit.kinds, 2, name);
+      assert.ok(fit.names >= 2, name + ': the long names are in the day: ' + fit.names);
+      assert.equal(fit.period, '1st Hour');
+      assert.deepEqual(await cutWords(page), [], name + ': a word of the day table is cut in two');
+      assert.equal(fit.past, 0, name + ': a table runs past the sheet');
+      assert.equal(fit.wide, true, name + ': the page scrolls sideways');
+      // on a phone a table too wide for it moves inside its own frame; on paper and on a desktop the kinds stand one under another instead
+      if (media === 'print' || width === 1280) assert.equal(fit.scrolled, 0, name + ': nothing is hidden behind a scroll');
+      if (media === 'print') assert.equal(fit.sideBySide, 1, name + ': with names this long the two kinds of day are one under another');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+  // and with the sample's own names the two kinds still stand side by side on paper
+  const session = await openPage({ width: 710, height: 950 });
+  try {
+    await goto(session.page, files.open.url + '#/door/' + room + '?day=1');
+    await session.page.emulateMediaType('print');
+    await session.page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
+    const fit = await dayFit(session.page);
+    assert.equal(fit.sideBySide, 2);
+    assert.equal(fit.past, 0);
+    assert.deepEqual(await cutWords(session.page), []);
+  } finally {
+    await session.close();
+  }
+});
 
 // ---------------------------------------------------------------- My schedule
 
@@ -876,6 +952,97 @@ test('on paper a teacher\'s schedule is one sheet: the day types side by side, t
     await mapsDrawn(page);
     const back = await look();
     assert.deepEqual(back, screen, JSON.stringify(back) + ' after, ' + JSON.stringify(screen) + ' before');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('one print is two draws of the map, onto paper and back, however the browser says so; and a map\'s listeners leave with its page', async () => {
+  const session = await openPage({ width: 1280, height: 900 });
+  try {
+    const { page } = session;
+    // count what listens for printing and for a change of media, on the window and on every media query
+    await page.evaluateOnNewDocument(() => {
+      const held = { beforeprint: 0, afterprint: 0, change: 0 };
+      globalThis.sv2Held = held;
+      const add = window.addEventListener.bind(window);
+      const remove = window.removeEventListener.bind(window);
+      window.addEventListener = (type, ...rest) => {
+        if (type === 'beforeprint' || type === 'afterprint') held[type] += 1;
+        return add(type, ...rest);
+      };
+      window.removeEventListener = (type, ...rest) => {
+        if (type === 'beforeprint' || type === 'afterprint') held[type] -= 1;
+        return remove(type, ...rest);
+      };
+      const queryAdd = MediaQueryList.prototype.addEventListener;
+      const queryRemove = MediaQueryList.prototype.removeEventListener;
+      MediaQueryList.prototype.addEventListener = function added(type, ...rest) {
+        if (type === 'change') held.change += 1;
+        return queryAdd.call(this, type, ...rest);
+      };
+      MediaQueryList.prototype.removeEventListener = function removed(type, ...rest) {
+        if (type === 'change') held.change -= 1;
+        return queryRemove.call(this, type, ...rest);
+      };
+    });
+    const held = () => page.evaluate(() => ({ ...globalThis.sv2Held }));
+    await goto(page, files.open.url + '#/staffing');
+    const none = await held();
+    assert.equal(none.change, 0, 'a page with no map listens to no media query');
+
+    await move(page, '#/room/rsample101', 'Room 101');
+    await mapsDrawn(page);
+    assert.deepEqual(await held(), { beforeprint: none.beforeprint + 1, afterprint: none.afterprint + 1, change: 2 }, 'a map listens on the window twice and on two media queries');
+
+    // The page's own listener on the print query, added after the map's, so
+    // it is told after the map: what it writes is the state to wait on.
+    await page.evaluate(() => {
+      const printing = matchMedia('print');
+      printing.addEventListener('change', () => { document.documentElement.dataset.media = printing.matches ? 'print' : 'screen'; });
+      globalThis.sv2Held.change -= 1;
+    });
+    const repaints = () => page.evaluate(() => Number(document.querySelector('.map').dataset.repaints || 0));
+    const media = (want) => page.waitForFunction((wanted) => document.documentElement.dataset.media === wanted, { timeout: 5000 }, want);
+    assert.equal(await repaints(), 0);
+    // a print as Chromium and Firefox tell it: "beforeprint", the media change, the change back, "afterprint"
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.equal(await repaints(), 1, 'drawn for paper at the first word of it');
+    assert.equal(await page.evaluate(() => document.querySelector('.map').dataset.paper), 'true');
+    await page.emulateMediaType('print');
+    await media('print');
+    assert.equal(await repaints(), 1, 'the media query says the same thing again: not drawn again');
+    await page.emulateMediaType('screen');
+    await media('screen');
+    assert.equal(await repaints(), 2, 'and back');
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    assert.equal(await repaints(), 2, 'one print, two draws');
+    // as WebKit tells it: the two events and nothing else
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('beforeprint'));
+      window.dispatchEvent(new Event('afterprint'));
+    });
+    assert.equal(await repaints(), 4);
+    // and with the media query alone
+    await page.emulateMediaType('print');
+    await media('print');
+    await page.emulateMediaType('screen');
+    await media('screen');
+    assert.equal(await repaints(), 6);
+
+    // the page leaves: nothing of the map is left listening
+    await move(page, '#/staffing', 'Staffing');
+    assert.deepEqual(await held(), none, 'the map\'s four listeners went with its page');
+    // from one page with a map to another: the first page's map does not stay behind
+    await move(page, '#/group/gsample06a', '6A');
+    await mapsDrawn(page);
+    const maps = await count(page, '.map');
+    assert.ok(maps >= 1, 'the group\'s page has its map');
+    assert.deepEqual(await held(), { beforeprint: none.beforeprint + maps, afterprint: none.afterprint + maps, change: 2 * maps });
+    await move(page, '#/room/rsample101', 'Room 101');
+    await mapsDrawn(page);
+    assert.deepEqual(await held(), { beforeprint: none.beforeprint + 1, afterprint: none.afterprint + 1, change: 2 });
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();
@@ -1363,7 +1530,11 @@ const EVERY_PAGE = PAPER_PAGES.concat([
   ['#/door/rsample101', 'Door sign: Room 101'],
 ]);
 
-test('every page has one Share and one Print; Share gives the page\'s name and never a file address', async () => {
+// Pages with nothing to print yet carry no Print (SV2-45 M4): the empty
+// search, My schedule before a choice, a page for something not in the file.
+const NOTHING_TO_PRINT = ['#/search', '#/me', '#/teacher/tnobody000'];
+
+test('every page has one Share, and one Print when it has something to print; Share gives the page\'s name and never a file address', async () => {
   const session = await openPage({ share: 'page' });
   try {
     const { page } = session;
@@ -1372,15 +1543,18 @@ test('every page has one Share and one Print; Share gives the page\'s name and n
       await move(page, address, title);
       assert.equal(await count(page, '[data-share="share"]'), 1, address + ' Share');
       assert.equal(await count(page, '[data-print]'), 1, address + ' Print');
+      const prints = !NOTHING_TO_PRINT.includes(address);
+      assert.equal(await shown(page, '[data-print]'), prints ? 1 : 0, address + ': Print is on the page');
       assert.equal(await count(page, '[data-share="copy"]'), 0, address + ': a file on disk has no link to copy');
       await page.click('[data-share="share"]');
-      await page.click('[data-print]');
+      if (prints) await page.click('[data-print]');
     }
     const shared = await page.evaluate(() => globalThis.sv2Shared);
     // what is shared is the tab's title: the view's own name for the page, then the school
     assert.deepEqual(shared.map((what) => what.title), EVERY_PAGE.map((each) => (each[2] || each[1]) + ' · ' + SCHOOL));
     assert.ok(shared.every((what) => what.text === what.title && what.url === undefined && what.files === null));
-    assert.equal(await page.evaluate(() => globalThis.sv2Printed), EVERY_PAGE.length);
+    assert.equal(await page.evaluate(() => globalThis.sv2Printed), EVERY_PAGE.length - NOTHING_TO_PRINT.length);
+    for (const address of NOTHING_TO_PRINT) assert.ok(EVERY_PAGE.some((each) => each[0] === address), address + ' is one of the pages');
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();
@@ -1483,7 +1657,7 @@ test('a note of spaces only is an empty note on the page and on paper, and is ke
   }
 });
 
-test('the note field counts its 200 characters once past 180', async () => {
+test('the note field says how much of its 200 is used once past 180, and does not call them characters', async () => {
   const session = await openPage({ store: { [ME_AT]: 'tsample001' } });
   try {
     const { page } = session;
@@ -1502,20 +1676,27 @@ test('the note field counts its 200 characters once past 180', async () => {
     await type(180);
     assert.deepEqual(await count(), ['', false, true], 'nothing to say at 180');
     await type(181);
-    assert.deepEqual(await count(), ['181 of 200 characters', true, true]);
+    assert.deepEqual(await count(), ['181 of 200', true, true]);
     await type(200);
-    assert.deepEqual(await count(), ['200 of 200 characters', true, true]);
+    assert.deepEqual(await count(), ['200 of 200', true, true]);
     // read back long: the count is there as soon as the field is
     await page.goto('about:blank');
     await goto(page, files.open.url + '#/me');
     assert.equal((await count())[1], false, 'not while the notes are only being read');
     await page.click('[data-toggle="notes"]');
-    assert.deepEqual(await count(), ['200 of 200 characters', true, true]);
+    assert.deepEqual(await count(), ['200 of 200', true, true]);
     await page.emulateMediaType('print');
     assert.equal((await count())[1], false, 'and never on paper');
     await page.emulateMediaType('screen');
     await type(12);
     assert.deepEqual(await count(), ['', false, true]);
+    // 91 faces are 91 characters to a reader and 182 of the field's 200: the line gives the number and names no unit (SV2-45 item 11)
+    await page.evaluate(() => {
+      const field = document.querySelector('[data-note="dsample00a:1"] input');
+      field.value = '\u{1F642}'.repeat(91);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    assert.deepEqual(await count(), ['182 of 200', true, true]);
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();
@@ -1747,29 +1928,67 @@ test('in a browser with no container units the sign is still a sign that can be 
   }
 });
 
-test('the printed sign puts the school\'s name where the preview does: at the foot of the sheet', async () => {
-  for (const day of ['', '?day=1']) {
-    const session = await openPage({ width: 710, height: 950 });
-    try {
-      const { page } = session;
-      await goto(page, files.open.url + '#/door/rsample101' + day);
-      const foot = () => page.evaluate(() => {
-        const sheet = document.querySelector('.sheet').getBoundingClientRect();
-        const school = document.querySelector('.sign__school').getBoundingClientRect();
-        return { at: Math.round(((school.bottom - sheet.top) / sheet.height) * 100) / 100, sheet: Math.round(sheet.height), end: Math.round(sheet.bottom + window.scrollY) };
-      });
-      const preview = await foot();
-      assert.ok(preview.at > 0.9 && preview.at <= 1, 'in the preview the name ends ' + preview.at + ' of the way down the sheet');
-      await page.emulateMediaType('print');
-      await pause(100);
-      const paper = await foot();
-      assert.ok(paper.at > 0.9 && paper.at <= 1, 'on paper the name ends ' + paper.at + ' of the way down the sheet');
-      // a sheet of US Letter inside this file's margins is 950 px tall, and of A4 1017
-      assert.ok(paper.sheet >= 850, 'the sheet on paper is the height of the paper, not of its words: ' + paper.sheet + ' px');
-      assert.ok(paper.end <= 950, 'and still one sheet: it ends at ' + paper.end + ' px of 950');
-      assert.deepEqual(session.errors, []);
-    } finally {
-      await session.close();
+// A sheet of paper inside this file's 14 mm margins, in CSS pixels: what the
+// window is while a page is being laid out for print, so 100vh is the sheet.
+const PAPERS_INSIDE = [['US Letter', 710, 950, 'Letter'], ['A4', 688, 1017, 'A4']];
+
+test('the printed sign puts the school\'s name where the preview does: at the foot of the sheet, on US Letter and on A4', async () => {
+  for (const [paperName, width, height] of PAPERS_INSIDE) {
+    for (const day of ['', '?day=1']) {
+      const session = await openPage({ width, height });
+      try {
+        const { page } = session;
+        await goto(page, files.open.url + '#/door/rsample101' + day);
+        const foot = () => page.evaluate(() => {
+          const sheet = document.querySelector('.sheet').getBoundingClientRect();
+          const school = document.querySelector('.sign__school').getBoundingClientRect();
+          return {
+            at: Math.round(((school.bottom - sheet.top) / sheet.height) * 100) / 100,
+            // how far down the sheet of paper the name ends: the paper is the window
+            ofPaper: Math.round(((school.bottom + window.scrollY) / window.innerHeight) * 100) / 100,
+            sheet: Math.round(sheet.height),
+            top: Math.round(sheet.top + window.scrollY),
+            end: Math.round(sheet.bottom + window.scrollY),
+            page: document.documentElement.scrollHeight,
+          };
+        });
+        const preview = await foot();
+        assert.ok(preview.at > 0.9 && preview.at <= 1, 'in the preview the name ends ' + preview.at + ' of the way down the sheet');
+        await page.emulateMediaType('print');
+        await page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
+        const paper = await foot();
+        const at = paperName + (day ? ' with the day' : '');
+        assert.ok(paper.at > 0.9 && paper.at <= 1, at + ': on paper the name ends ' + paper.at + ' of the way down the sheet');
+        assert.ok(paper.ofPaper > 0.95 && paper.ofPaper <= 1, at + ': and ' + paper.ofPaper + ' of the way down the paper');
+        assert.ok(paper.sheet >= height - 20, at + ': the sheet is the height of the paper, not of its words or of another paper: ' + paper.sheet + ' px of ' + height);
+        assert.equal(paper.top, 0, at + ': nothing stands over the sheet');
+        assert.ok(paper.end <= height, at + ': one sheet: it ends at ' + paper.end + ' px of ' + height);
+        assert.ok(paper.page <= height, at + ': and the page is no taller than the paper: ' + paper.page + ' px, so there is no second, empty sheet');
+        assert.deepEqual(session.errors, []);
+      } finally {
+        await session.close();
+      }
+    }
+  }
+});
+
+// The same, asked of the printer itself: the sign printed to a PDF on each
+// paper is one page. (Before SV2-45 it was two on both: a 16 px gap over the
+// sheet and a page a whole window tall left an empty second sheet.)
+test('printed for real, a door sign is one sheet of US Letter and one of A4, with the room\'s day and without', async () => {
+  const pagesOf = (pdf) => (Buffer.from(pdf).toString('latin1').match(/\/Type\s*\/Page\b(?!s)/g) || []).length;
+  for (const [paperName, width, height, format] of PAPERS_INSIDE) {
+    for (const address of ['#/door/rsample101', '#/door/rsample101?day=1', '#/door/rsamplecaf?day=1']) {
+      const session = await openPage({ width, height });
+      try {
+        const { page } = session;
+        await goto(page, files.open.url + address);
+        const pages = pagesOf(await page.pdf({ format, printBackground: true }));
+        assert.equal(pages, 1, address + ' on ' + paperName + ' prints ' + pages + ' sheets');
+        assert.deepEqual(session.errors, []);
+      } finally {
+        await session.close();
+      }
     }
   }
 });
