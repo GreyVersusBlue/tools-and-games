@@ -241,15 +241,87 @@ test('a click on a row moves the map to the place and outlines it', async () => 
   assert.ok(Math.abs(cell.x) < 1 && Math.abs(cell.y) < 1, 'the busiest cell is in the middle: ' + JSON.stringify(cell));
 });
 
-test('a place on a floor that is not on the map brings its floor onto it', async () => {
-  await change({ floors: 'fsample001' });
-  assert.deepEqual((await where()).floors, ['fsample001']);
-  const upper = await page.$$eval('#inspector .mov-hot__row', (all) => all.find((row) => row.querySelector('[data-action="show"]').textContent === 'Upper Corridor').dataset.rank);
-  await page.click('#inspector .mov-hot__row[data-rank="' + upper + '"] [data-action="show"]');
+test('SV2-47 item 1: with one floor on the map the table is that floor\'s, its first row is the legend\'s busiest, and a link brings every floor back', async () => {
+  const whole = await shownRows();
+  await change({ floors: 'fsample002' });
+  assert.deepEqual((await where()).floors, ['fsample002']);
+  const rows = await shownRows();
+  const seen = await view(() => {
+    const movement = document.querySelector('.mov').movement;
+    const panel = document.querySelector('#inspector [data-panel="hotspots"]').hotspots;
+    return {
+      busiest: movement.picture.busiest.load,
+      max: movement.picture.load.max,
+      top: movement.picture.load.edges[4],
+      ends: panel.rows.map((row) => row.ends.some((end) => end.floorId === 'fsample002')),
+      elsewhere: panel.elsewhere,
+      rings: panel.rings.length,
+      legend: document.querySelector('.mov-legend').textContent,
+    };
+  });
+  assert.ok(rows.length > 0 && rows.length < whole.length, rows.length + ' rows of ' + whole.length);
+  assert.ok(seen.ends.every(Boolean), 'every row has an end on Floor 2');
+  assert.ok(!rows.some((row) => row.name === 'Main Corridor, by Door B'), 'the Floor 1 corridor, the building\'s busiest at 177, is not a row');
+  assert.deepEqual(rows.map((row) => row.rank), rows.map((row, index) => index + 1));
+  assert.equal(rows[0].load, seen.busiest, 'the first row is the busiest load the picture has');
+  assert.equal(rows[0].load, seen.max);
+  assert.equal(rows[0].band, 5);
+  assert.ok(rows[0].load >= seen.top.from && rows[0].load <= seen.top.to, rows[0].load + ' is inside the legend\'s band 5, ' + seen.top.from + ' to ' + seen.top.to);
+  assert.ok(seen.legend.includes(String(seen.top.from)), 'and the legend on screen shows that band: ' + seen.legend);
+  assert.ok(seen.rings > 0, 'the rings are on places of the floor shown');
+  assert.equal(await text('#inspector [data-hotspots="lead"]'), 'The ' + rows.length + ' places anyone crosses on Floor 2, busiest first: every group on A Day, each place at its busiest moment. Choose a place to see it on the map.');
+  // the places on the other floors: one counted line, and the way back
+  assert.equal(seen.elsewhere, whole.length - rows.length);
+  assert.equal(await page.$eval('#inspector [data-hotspots="elsewhere"]', (el) => el.hidden), false);
+  assert.equal(await text('#inspector [data-hotspots="elsewhere"]'), seen.elsewhere + ' more places on floors not shown. Show all floors');
+  await page.click('#inspector [data-action="all-floors"]');
   await settled();
-  assert.deepEqual((await where()).floors, ['fsample002'], 'Floor 2 is the floor on the map now');
-  assert.equal(await page.$eval('#inspector .mov-hot__row[data-rank="' + upper + '"]', (el) => el.getAttribute('aria-current')), 'true', 'and the row is still the chosen one');
+  assert.deepEqual((await where()).floors, ['fsample001', 'fsample002', 'fsample003'], 'every floor is on the map again');
+  assert.equal(await page.$eval('#inspector [data-hotspots="elsewhere"]', (el) => el.hidden), true, 'and the line is gone');
+  assert.deepEqual((await shownRows()).map((row) => row.name), whole.map((row) => row.name));
+  assert.equal(await view(() => document.activeElement.dataset.action), 'show', 'the focus is on the first place, not lost with the link');
   await change(OPEN);
+});
+
+test('SV2-47 item 3: cells of a floor that is not on the map are in the middle of the window once their floor has arrived', async () => {
+  await change({ floors: 'fsample001' });
+  await view(() => document.querySelector('.mov').movement.fit());
+  await frames();
+  // a cell near a corner of Floor 2, far from where a fitted floor's middle is
+  const target = await view(() => {
+    const movement = document.querySelector('.mov').movement;
+    const floor = movement.state.project.building.floors.find((each) => each.id === 'fsample002');
+    let cell = -1;
+    for (let at = floor.cells.length - 1; at >= 0 && cell === -1; at -= 1) if (floor.cells[at] === '#') cell = at;
+    movement.env.show('fsample002', [cell]);
+    return cell;
+  });
+  await settled();
+  await pause(250);
+  await frames();
+  const after = await view((cell) => {
+    const movement = document.querySelector('.mov').movement;
+    const at = movement.cellAt('fsample002', cell);
+    return { floors: movement.world.slots.map((slot) => slot.floor.id), at, x: at ? at.x - movement.view.width / 2 : null, y: at ? at.y - movement.view.height / 2 : null, fitted: movement.fitted };
+  }, target);
+  assert.deepEqual(after.floors, ['fsample002'], 'Floor 2 is the floor on the map now');
+  assert.ok(after.at && Math.abs(after.x) < 1 && Math.abs(after.y) < 1, 'the cell is in the middle of the window after the flip: ' + JSON.stringify(after));
+  assert.equal(after.fitted, false, 'the map stays where it was put');
+  // a stairs connection's row goes to its end on the floor shown: the floor does not flip
+  const stairs = await page.$eval('#inspector .mov-hot__row[data-kind="connection"]', (el) => el.dataset.rank);
+  await page.click('#inspector .mov-hot__row[data-rank="' + stairs + '"] [data-action="show"]');
+  await frames();
+  assert.deepEqual((await where()).floors, ['fsample002'], 'the floor on the map stays');
+  const end = await view((rank) => {
+    const movement = document.querySelector('.mov').movement;
+    const row = document.querySelector('#inspector [data-panel="hotspots"]').hotspots.rows.find((each) => each.rank === Number(rank));
+    const on = row.ends.find((each) => each.floorId === 'fsample002');
+    const at = movement.cellAt(on.floorId, on.cell);
+    return { x: at.x - movement.view.width / 2, y: at.y - movement.view.height / 2 };
+  }, stairs);
+  assert.ok(Math.abs(end.x) < 1 && Math.abs(end.y) < 1, 'its end on Floor 2 is in the middle: ' + JSON.stringify(end));
+  await change(OPEN);
+  await view(() => document.querySelector('.mov').movement.fit());
 });
 
 test('the top places carry a ring that pulses when the ranking changes, and stands still under reduced motion', async () => {
@@ -259,14 +331,40 @@ test('the top places carry a ring that pulses when the ranking changes, and stan
   await frames();
   const moving = await view(() => {
     const panel = document.querySelector('#inspector [data-panel="hotspots"]');
-    return { pulse: panel.dataset.pulse, moving: panel.hotspots.moving, rings: panel.hotspots.rings.map((ring) => ring.rank), drawn: Number(document.querySelector('#movement-plan').dataset.drawn) };
+    const layer = panel.hotspots.layer;
+    const plan = document.querySelector('#movement-plan');
+    return {
+      pulse: panel.dataset.pulse,
+      moving: panel.hotspots.moving,
+      rings: panel.hotspots.rings.map((ring) => ring.rank),
+      drawn: Number(plan.dataset.drawn),
+      frames: panel.hotspots.frames,
+      over: layer !== null && layer.previousElementSibling === plan && layer.width === plan.width && layer.height === plan.height,
+      box: layer ? [layer.clientWidth, layer.clientHeight, plan.clientWidth, plan.clientHeight] : null,
+      through: layer ? getComputedStyle(layer).pointerEvents : null,
+    };
   });
   assert.equal(moving.pulse, 'moving');
   assert.equal(moving.moving, true);
   assert.deepEqual(Array.from(new Set(moving.rings)), [1, 2, 3], 'a ring on each of the top three places');
+  assert.equal(moving.over, true, 'the pulse has a canvas of its own, laid over the map\'s and the same size');
+  assert.deepEqual(moving.box.slice(0, 2), moving.box.slice(2));
+  assert.equal(moving.through, 'none', 'and every pointer goes through it to the map');
   await pause(400);
-  const later = await view(() => Number(document.querySelector('#movement-plan').dataset.drawn));
-  assert.ok(later >= moving.drawn + 3, 'the pulse draws frame after frame: ' + moving.drawn + ' → ' + later);
+  // SV2-47 item 5: a tick of the pulse draws on that canvas and never asks for the floors again
+  const later = await view(() => {
+    const panel = document.querySelector('#inspector [data-panel="hotspots"]').hotspots;
+    const ring = panel.rings[0];
+    const g = panel.layer.getContext('2d');
+    const ratio = panel.layer.width / panel.layer.clientWidth;
+    // the travelling ring is somewhere between the ring and 0.7 of a radius out: look for ink along a spoke
+    let inked = 0;
+    for (let d = ring.r - 3; d <= ring.r * 1.7 + 3; d += 0.5) if (g.getImageData(Math.round((ring.x - d) * ratio), Math.round(ring.y * ratio), 1, 1).data[3] > 0) inked += 1;
+    return { drawn: Number(document.querySelector('#movement-plan').dataset.drawn), frames: panel.frames, inked };
+  });
+  assert.equal(later.drawn, moving.drawn, 'the map itself is not drawn again while the rings pulse: ' + moving.drawn + ' → ' + later.drawn);
+  assert.ok(later.frames >= moving.frames + 3, 'the pulse draws frame after frame on its own canvas: ' + moving.frames + ' → ' + later.frames);
+  assert.ok(later.inked > 0, 'and the travelling ring is on it');
 
   // still: the same change under reduced motion draws the rings once and leaves them
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
@@ -293,7 +391,13 @@ test('the top places carry a ring that pulses when the ranking changes, and stan
   assert.equal(still.pulse, 'still');
   assert.equal(still.moving, false);
   assert.ok(still.rings >= 1);
+  const stillFrames = await view(() => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames);
   await pause(400);
+  assert.equal(await view(() => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames), stillFrames, 'and no frame of a pulse is drawn');
+  assert.equal(await view(() => {
+    const layer = document.querySelector('#inspector [data-panel="hotspots"]').hotspots.layer;
+    return Array.from(layer.getContext('2d').getImageData(0, 0, layer.width, layer.height).data).some((value) => value !== 0);
+  }), false, 'the pulse\'s canvas is empty');
   assert.equal(await view(() => Number(document.querySelector('#movement-plan').dataset.drawn)), still.drawn, 'nothing is drawn again: the ring does not move');
   // the still ring is there, in the accent, at its radius from the busiest cell
   const onRing = await pixel(still.ring.x - still.ring.r, still.ring.y);
@@ -403,8 +507,9 @@ test('each table is a CSV named for the school, what it is and the day, and its 
   assert.match(hot.fileName, /^Marrowby Middle School \(sample\) - hotspots - \d{4}-\d{2}-\d{2}\.csv$/);
   assert.equal(hot.mime, 'text/csv');
   const hotLines = hot.text.split('\r\n');
-  assert.equal(hotLines[0], '﻿Rank,Place,Floor,Kind,Load (students),Peaks in,Groups,Delay (seconds),Delay over the day (seconds),Cells');
-  assert.equal(hotLines[1], '1,"Main Corridor, by Door B",Floor 1,corridor,177,Period 4 to Period 5,8A; 7A; 6B; 7B; 8B; 6A; 6C; 7C,13,147,39');
+  // SV2-47 item 7: one column a group on the map, holding in how many transitions it crosses the place
+  assert.equal(hotLines[0], '﻿Rank,Place,Floor,Kind,Load (students),When,Delay (seconds),Delay over the day (seconds),Cells,Groups,6A,6B,6C,7A,7B,7C,8A,8B');
+  assert.equal(hotLines[1], '1,"Main Corridor, by Door B",Floor 1,corridor,177,Period 4 to Period 5,13,147,39,8,1,1,1,1,1,1,1,1');
   assert.equal(hotLines.length, 12, 'the headings, ten places, and the end of the last line');
   assert.equal(await text('#inspector [data-export="status"]'), 'Saved ' + hot.fileName + '.');
 
@@ -549,9 +654,25 @@ test('Print the picture opens the preview with the map, what is shown, and the p
       fits: plan ? plan.getBoundingClientRect().right <= doc.querySelector('.page').getBoundingClientRect().right : null,
       firstPlace: (doc.querySelector('.doc-table--places tbody th') || { textContent: '' }).textContent,
       scripts: doc.querySelectorAll('script').length,
+      size: image ? [Number(image.getAttribute('width')), Number(image.getAttribute('height'))] : null,
+      peaks: Array.from(doc.querySelectorAll('.doc-table--places thead th')).map((el) => el.textContent),
+      late: Array.from(doc.querySelectorAll('.doc-table--groups thead th')).map((el) => el.textContent)[4] || null,
     };
   });
   const first = await read();
+  // SV2-47 item 4: the colour scale is on the paper once. The image carries no key; the section stands alone.
+  const keys = await view(() => {
+    const panel = document.querySelector('#inspector [data-panel="export"]').exports;
+    const bare = panel.picture({ pattern: true, side: 3200, bare: true, legend: false, scale: false });
+    const keyed = panel.picture({ pattern: true, side: 3200, bare: true, legend: false, scale: true });
+    return { bare: [bare.width, bare.height], keyed: [keyed.width, keyed.height] };
+  });
+  assert.deepEqual(first.size, keys.bare, 'the image on the paper is the picture with no key');
+  assert.equal(keys.keyed[1] - keys.bare[1], 74, 'which is shorter by the key\'s height');
+  assert.equal(first.headings.filter((heading) => heading === 'Colour scale').length, 1, 'and the scale is there once, as its own section');
+  // SV2-47 item 9: one transition is printed, so no place "peaks in" it, and Late is that transition's
+  assert.ok(!first.peaks.includes('Peaks in'), first.peaks.join(' | '));
+  assert.equal(first.late, 'Late in this transition');
   assert.equal(first.output, 'movement');
   assert.equal(first.theme, 'light');
   assert.equal(first.what, 'Movement picture');
@@ -626,6 +747,290 @@ test('with nothing on the map the picture and the hotspots cannot be exported, a
   assert.equal(await page.$('#print-preview'), null);
   await change(OPEN);
   assert.equal(await page.$eval('#inspector [data-action="png"]', (el) => el.getAttribute('aria-disabled')), null);
+});
+
+// ---------------------------------------------------------------- SV2-47: the SV2-18 review
+
+test('SV2-47 item 2: a picture the browser cannot hold is never saved blank: it is saved a size down, and the tab says which and why', async () => {
+  await tab('export');
+  const panel = '#inspector [data-panel="export"]';
+  // the probe itself, on this browser: a canvas past its limit takes no pixel, an ordinary one does
+  const real = await view(async () => {
+    const { canvasHolds } = await import(new URL('ui/movement/export.js', location.href).href);
+    return { ordinary: canvasHolds(800, 600), tooWide: canvasHolds(70000, 8), tooTall: canvasHolds(8, 70000) };
+  });
+  assert.equal(real.ordinary, true);
+  assert.equal(real.tooWide, false, 'a canvas 70000 pixels wide is handed over by Chromium and stays blank: the probe says so');
+  assert.equal(real.tooTall, false);
+
+  const sizes = await view(() => document.querySelector('#inspector [data-panel="export"]').exports.sizes());
+  // a browser that holds less than this map at print size, as WebKit's 16.7 million pixels would be for a larger one: it holds the high size
+  const limit = sizes[1].width * sizes[1].height + 1;
+  await view((most) => {
+    globalThis.sv2asked = [];
+    document.querySelector('#inspector [data-panel="export"]').exports.hooks.holds = (width, height) => {
+      globalThis.sv2asked.push([width, height]);
+      return width * height <= most;
+    };
+  }, limit);
+  await page.select(panel + ' [data-export="resolution"]', 'print');
+  assert.equal(await text(panel + ' [data-export="size"]'), 'This browser cannot hold the map at that resolution (' + sizes[2].width + ' by ' + sizes[2].height + ' pixels), so the image is ' + sizes[1].width + ' by ' + sizes[1].height + ' pixels.');
+  const file = await delivered('png');
+  assert.deepEqual([file.width, file.height], [sizes[1].width, sizes[1].height], 'one step down from print is the high size');
+  assert.deepEqual(file.head, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.ok(file.size > 20000, 'a picture, not a blank: ' + file.size + ' bytes');
+  assert.equal(await text(panel + ' [data-export="status"]'), 'Saved ' + file.fileName + '. This browser could not hold the picture at print resolution (' + sizes[2].width + ' by ' + sizes[2].height + ' pixels), so it was saved one size down, at ' + sizes[1].width + ' by ' + sizes[1].height + ' pixels.');
+  assert.ok((await view(() => globalThis.sv2asked)).some((size) => size[0] === sizes[2].width && size[1] === sizes[2].height), 'the size meant was asked for before anything was drawn');
+  // what is drawn at the size held has the map on it: its corner is paper, and it is not one flat colour
+  const inside = await view(() => {
+    const drawn = document.querySelector('#inspector [data-panel="export"]').exports.picture({ resolution: 'print' });
+    const g = drawn.canvas.getContext('2d');
+    const data = g.getImageData(0, 0, drawn.pixels.width, Math.min(400, drawn.pixels.height)).data;
+    const seen = new Set();
+    for (let i = 0; i < data.length; i += 4 * 97) seen.add(data[i] + ',' + data[i + 1] + ',' + data[i + 2] + ',' + data[i + 3]);
+    return { fell: drawn.fell, scale: drawn.scale, asked: drawn.asked, colours: seen.size, corner: Array.from(g.getImageData(1, 1, 1, 1).data) };
+  });
+  assert.deepEqual([inside.fell, inside.scale, inside.asked], [1, 2, 4]);
+  assert.deepEqual(inside.corner, [255, 255, 255, 255]);
+  assert.ok(inside.colours > 3, 'more than paper is on it: ' + inside.colours + ' colours');
+  // a browser that holds nothing at all: no file, and the reason
+  await view(() => {
+    globalThis.sv2test = { files: [] };
+    const exportsOf = document.querySelector('#inspector [data-panel="export"]').exports;
+    exportsOf.hooks.holds = () => false;
+    exportsOf.hooks.deliver = (got) => globalThis.sv2test.files.push(got);
+  });
+  await page.click(panel + ' [data-action="png"]');
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('.toast .toast__text')).some((el) => el.textContent.startsWith('That was not exported.')));
+  assert.equal(await view(() => globalThis.sv2test.files.length), 0, 'nothing is saved rather than a blank');
+  assert.equal(await text('.toast .toast__text'), 'That was not exported. This browser could not make an image of this map, even a small one.');
+  await view(() => {
+    const exportsOf = document.querySelector('#inspector [data-panel="export"]').exports;
+    exportsOf.hooks.holds = null;
+    exportsOf.hooks.deliver = null;
+  });
+  await page.select(panel + ' [data-export="resolution"]', 'standard');
+  assert.equal(await text(panel + ' [data-export="size"]'), 'The image is ' + sizes[0].width + ' by ' + sizes[0].height + ' pixels.');
+});
+
+// The engine stood in for, as test/browser/movement.mjs does it.
+const standIn = (kind) => view((which) => {
+  const derived = globalThis.sv2.store.derived;
+  if (!globalThis.sv2Kept) globalThis.sv2Kept = derived.engine;
+  const real = globalThis.sv2Kept;
+  if (which === 'fails') derived.use({ results: () => new Promise((resolve, reject) => { setTimeout(() => reject(new Error('The engine stopped')), 0); }) });
+  else if (which === 'waits') {
+    const gate = new Promise((resolve) => { globalThis.sv2LetGo = resolve; });
+    derived.use({ results: () => gate.then(() => real.results()) });
+  } else derived.use(real);
+}, kind);
+
+const rename = (name) => view(async (next) => {
+  const { editGroup } = await import(new URL('engine/actions.js', location.href).href);
+  globalThis.sv2.store.apply(editGroup, { id: 'gsample07a', name: next });
+}, name);
+
+test('SV2-47 item 6: while an answer is awaited, or could not be had, the Export tab says the map is from before the change, and a print is made from that one project', async () => {
+  await change(OPEN);
+  await tab('export');
+  const panel = '#inspector [data-panel="export"]';
+  assert.equal(await page.$eval(panel, (el) => el.dataset.behind), 'no');
+  assert.equal(await page.$eval(panel + ' [data-export="behind"]', (el) => el.hidden), true);
+
+  // pending: the project has changed and the answer is held back
+  await standIn('waits');
+  await rename('7A East');
+  await page.waitForFunction(() => document.querySelector('#inspector [data-panel="export"]').dataset.behind === 'pending', { timeout: 5000 });
+  assert.equal(await text(panel + ' [data-export="behind"]'), 'The routes are being worked out again after your last change. Until they are, the map, and everything exported here, is from before that change.');
+  assert.equal(await page.$eval(panel + ' [data-export="behind"]', (el) => el.hidden), false);
+  for (const action of ['png', 'print-picture', 'csv-hotspots', 'csv-transitions', 'csv-day', 'print-congestion']) assert.equal(await page.$eval(panel + ' [data-action="' + action + '"]', (el) => el.getAttribute('aria-disabled')), null, action + ' stays as it was');
+  // the print now: its image is the old map, and so are its tables and sentences, whatever the project has become
+  await page.click(panel + ' [data-action="print-picture"]');
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+  const names = () => page.evaluate(() => {
+    const doc = document.querySelector('#print-preview iframe').contentDocument;
+    return { groups: Array.from(doc.querySelectorAll('.doc-table--groups tbody th')).map((el) => el.textContent.trim()), all: doc.body.textContent.includes('7A East'), image: doc.querySelector('.plan-figure image') !== null };
+  });
+  const printed = await names();
+  assert.equal(await view(() => globalThis.sv2.store.project.groups.find((group) => group.id === 'gsample07a').name), '7A East', 'the project has moved on');
+  assert.deepEqual(printed.groups, ['6A', '6B', '6C', '7A', '7B', '7C', '8A', '8B'], 'the print is of the project the image was drawn from');
+  assert.equal(printed.all, false);
+  assert.equal(printed.image, true);
+  // turning the paper renders the document again: still that one project
+  await page.click('#print-preview input[value="landscape"]');
+  await page.waitForSelector('#print-preview[data-paper="letter landscape"][data-ready="true"]');
+  assert.deepEqual((await names()).groups, printed.groups);
+  assert.equal((await names()).all, false);
+  await page.click('#print-preview input[value="portrait"]');
+  await page.waitForSelector('#print-preview[data-paper="letter portrait"][data-ready="true"]');
+  await closePreview();
+  // the congestion report the same
+  await page.click(panel + ' [data-action="print-congestion"]');
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+  const report = await page.evaluate(() => {
+    const body = document.querySelector('#print-preview iframe').contentDocument.body.textContent;
+    return { now: body.includes('7A East'), then: body.includes('7A') };
+  });
+  assert.deepEqual(report, { now: false, then: true }, 'the report is of the results on screen');
+  await closePreview();
+  // a CSV the same: it is the map as drawn
+  const day = await delivered('csv-day');
+  assert.ok(day.text.includes(',7A,') && !day.text.includes('7A East'));
+
+  // the answer comes: the line goes
+  await view(() => globalThis.sv2LetGo());
+  await settled();
+  assert.equal(await page.$eval(panel, (el) => el.dataset.behind), 'no');
+  assert.equal(await page.$eval(panel + ' [data-export="behind"]', (el) => el.hidden), true);
+  assert.ok((await delivered('csv-day')).text.includes('7A East'));
+
+  // stale: the next answer cannot be had
+  await standIn('fails');
+  await rename('7A West');
+  await page.waitForFunction(() => document.querySelector('.mov').dataset.stale === 'true', { timeout: 5000 });
+  assert.equal(await page.$eval(panel, (el) => el.dataset.behind), 'stale');
+  assert.equal(await text(panel + ' [data-export="behind"]'), 'The routes could not be worked out after your last change. The map, and everything exported here, is from before that change.');
+  assert.equal(await page.$eval(panel + ' [data-action="png"]', (el) => el.getAttribute('aria-disabled')), null);
+  assert.ok((await delivered('csv-day')).text.includes('7A East'), 'what is saved is the last answer\'s');
+
+  await standIn('real');
+  // back to the sample: the two names, and the paper turned twice in the preview
+  await view(() => {
+    const { store } = globalThis.sv2;
+    for (let i = 0; i < 12 && store.project.groups.find((group) => group.id === 'gsample07a').name !== '7A'; i += 1) store.undo();
+  });
+  await settled();
+  assert.equal(await view(() => globalThis.sv2.store.project.groups.find((group) => group.id === 'gsample07a').name), '7A');
+  assert.equal(await page.$eval(panel, (el) => el.dataset.behind), 'no');
+});
+
+test('SV2-47 item 8: a day type that is the same as another has that one\'s tables and files, named "(same as A Day)"', async () => {
+  await view(async () => {
+    const { replaceProject } = await import(new URL('engine/actions.js', location.href).href);
+    const { store } = globalThis.sv2;
+    const project = JSON.parse(JSON.stringify(store.project));
+    project.dayTypes[1].own = false;
+    project.dayTypes[1].bells = project.dayTypes[1].bells.map(() => null);
+    for (const group of project.groups) delete group.days[project.dayTypes[1].id];
+    store.apply(replaceProject, { project, label: 'B Day the same as A Day' });
+  });
+  await settled();
+  await change({ dayTypeId: 'dsample00b' });
+  await tab('tables');
+  assert.match(await text('#inspector [data-travel="lead"]'), /^How long every group takes on B Day \(same as A Day\), slowest first\./);
+  assert.equal(await page.$eval('#inspector [data-panel="tables"]', (el) => el.dataset.day), 'dsample00a', 'one day type answers for the bells and the rows');
+  assert.equal(await page.$eval('#inspector [data-travel="pick"]', (el) => el.selectedOptions[0].textContent), 'Period 6 to Period 7 (1:08 to 1:12)', 'A Day\'s bells');
+  const first = await page.$eval('#inspector [data-travel="transition"] tbody', (body) => ({ group: body.dataset.group, total: body.dataset.total }));
+  assert.deepEqual(first, { group: 'gsample08a', total: '261' }, 'A Day\'s slowest walk');
+  assert.equal(await page.$eval('#inspector [data-travel="day"] caption', (el) => el.textContent), 'Each group over the whole of B Day (same as A Day), slowest first');
+  await tab('export');
+  const byTransition = await delivered('csv-transitions');
+  assert.ok(byTransition.text.includes('\r\nB Day (same as A Day),Period 6 to Period 7,240,8A,Gym,303,261,0,261,late,21\r\n'), byTransition.text.slice(0, 400));
+  const byGroup = await delivered('csv-day');
+  assert.equal(byGroup.text.split('\r\n').length, 10);
+  assert.ok(byGroup.text.split('\r\n').slice(1, 9).every((line) => line.startsWith('B Day (same as A Day),')));
+  await view(() => globalThis.sv2.store.undo());
+  await settled();
+  await change(OPEN);
+});
+
+test('SV2-47 item 9: with one transition on the map no row says "Peaks in", and the file names that transition', async () => {
+  await tab('hotspots');
+  assert.ok((await shownRows()).every((row) => row.when.startsWith('Peaks in ')), 'over the day every place says where it peaks');
+  await change({ transition: 2 });
+  const rows = await shownRows();
+  assert.ok(rows.length > 0);
+  assert.deepEqual(rows.map((row) => row.when), rows.map(() => ''), 'one transition is shown: there is no other to peak in');
+  assert.match(await text('#inspector [data-hotspots="lead"]'), /each place in Period 3 to Period 4\. Choose a place/);
+  assert.match(await text('#inspector [data-hotspots="notes"]'), /Delay is the waiting the crowd model found at the place in that transition, /);
+  await tab('export');
+  const hot = await delivered('csv-hotspots');
+  assert.ok(hot.text.split('\r\n').slice(1, -1).every((line) => line.includes(',Period 3 to Period 4,')), hot.text.slice(0, 300));
+  await change({ transition: null, measure: 'total' });
+  const total = await delivered('csv-hotspots');
+  assert.ok(total.text.split('\r\n').slice(1, -1).every((line) => line.includes(',the whole day,')), total.text.slice(0, 300));
+  await change(OPEN);
+  await tab('hotspots');
+});
+
+test('SV2-47 items 5 and 9, at the size the tool promises: "Show all 64 places" shows them, a tick of the pulse is far under a frame, and leaving the view leaves no timer', async () => {
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'no-preference' }]);
+  await view(async () => {
+    const { bigProject } = await import(new URL('test/fixtures/big.mjs', location.href).href);
+    const { replaceProject } = await import(new URL('engine/actions.js', location.href).href);
+    const project = bigProject({ seed: 1 });
+    project.onboarding.dismissed = true;
+    globalThis.sv2.store.apply(replaceProject, { project, label: 'Load the timing fixture' });
+  });
+  await settled();
+  await tab('hotspots');
+  assert.equal((await shownRows()).length, 10, 'the table opens with ten');
+  const all = '#inspector [data-action="all-places"]';
+  assert.equal(await page.$eval(all, (el) => el.hidden), false);
+  assert.equal(await text(all), 'Show all 64 places');
+  await page.click(all);
+  const rows = await shownRows();
+  assert.equal(rows.length, 64);
+  assert.deepEqual(rows.map((row) => row.rank), Array.from({ length: 64 }, (unused, index) => index + 1));
+  assert.ok(rows.every((row, index) => index === 0 || rows[index - 1].load >= row.load), 'busiest first to the last');
+  assert.equal(await text(all), 'Show the first 10 only');
+  assert.equal(await view(() => document.activeElement.dataset.action), 'all-places', 'the focus stays on the button');
+  await page.click(all);
+  assert.equal((await shownRows()).length, 10);
+  assert.equal(await text(all), 'Show all 64 places');
+
+  // a tick of the pulse on this map: the map's canvas is not drawn again, and the tick itself is measured
+  await change({ transition: 1 });
+  await frames();
+  const before = await view(() => ({ moving: document.querySelector('#inspector [data-panel="hotspots"]').hotspots.moving, drawn: Number(document.querySelector('#movement-plan').dataset.drawn), frames: document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames }));
+  assert.equal(before.moving, true);
+  await pause(300);
+  const after = await view(() => ({ drawn: Number(document.querySelector('#movement-plan').dataset.drawn), frames: document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames }));
+  assert.equal(after.drawn, before.drawn, 'the map of four floors is not drawn again by the pulse');
+  assert.ok(after.frames > before.frames, 'while the pulse goes on: ' + before.frames + ' → ' + after.frames);
+  const ticks = await view(async () => {
+    const { pulseFrame } = await import(new URL('ui/movement/hotspots.js', location.href).href);
+    const panel = document.querySelector('#inspector [data-panel="hotspots"]').hotspots;
+    const g = panel.layer.getContext('2d');
+    const each = [];
+    for (let i = 0; i < 60; i += 1) {
+      const started = performance.now();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, panel.layer.width, panel.layer.height);
+      pulseFrame(g, panel.rings, 1 - i / 60, { accent: '#0f6e66' });
+      each.push(performance.now() - started);
+    }
+    each.sort((a, b) => a - b);
+    return { median: each[30], worst: each[59], rings: panel.rings.length };
+  });
+  console.log('# hotspot pulse in the page, the 3.13 fixture: one tick median ' + ticks.median.toFixed(2) + ' ms, worst ' + ticks.worst.toFixed(2) + ' ms (budget 16), ' + ticks.rings + ' rings');
+  assert.ok(ticks.median < 16, 'a tick of the pulse takes ' + ticks.median.toFixed(2) + ' ms at the median, over 16');
+
+  // leaving the view mid-pulse: the panel's timer is cleared and its canvas and mark are gone
+  await change({ transition: 2 });
+  await frames();
+  await view(() => {
+    const section = document.querySelector('.mov');
+    globalThis.sv2left = { panel: document.querySelector('#inspector [data-panel="hotspots"]'), env: section.movement.env };
+  });
+  assert.equal(await view(() => globalThis.sv2left.panel.hotspots.moving), true);
+  assert.ok(await view(() => globalThis.sv2left.env.marks.some((mark) => mark.id === 'hotspots')));
+  await view(() => { location.hash = '#project'; });
+  await page.waitForFunction(() => document.querySelector('.mov') === null);
+  const left = await view(() => ({ frames: globalThis.sv2left.panel.hotspots.frames, pulse: globalThis.sv2left.panel.dataset.pulse, layer: globalThis.sv2left.panel.hotspots.layer.isConnected, mark: globalThis.sv2left.env.marks.some((mark) => mark.id === 'hotspots') }));
+  await pause(300);
+  assert.equal(await view(() => globalThis.sv2left.panel.hotspots.frames), left.frames, 'no frame is drawn after the view has gone: the timer was cleared');
+  assert.notEqual(left.pulse, 'moving');
+  assert.equal(left.layer, false, 'the pulse\'s canvas left the page');
+  assert.equal(left.mark, false, 'and the panel\'s mark left the map\'s list');
+  await view(() => { location.hash = '#movement'; });
+  await page.waitForFunction(() => document.querySelector('.mov') !== null);
+  await view(() => globalThis.sv2.store.undo());
+  await settled();
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  await change(OPEN);
+  await tab('hotspots');
+  assert.equal((await shownRows())[0].name, 'Main Corridor, by Door B', 'the sample school is back');
 });
 
 // ---------------------------------------------------------------- names

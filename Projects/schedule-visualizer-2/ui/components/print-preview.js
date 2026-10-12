@@ -277,6 +277,7 @@ export function openPrintPreview(ctx, outputId, options) {
       sort: opts.sort,
       traceImage: state.traceImage,
       traceImages,
+      movement: opts.movement,
     });
     state.title = rendered.title;
     laidOut = new Promise((resolve) => {
