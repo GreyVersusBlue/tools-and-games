@@ -424,6 +424,8 @@ export function hotspotsPanel(env) {
       }
     }
   }
+  // named, so that whoever needs the map without the rings can find this entry
+  mark.id = 'hotspots';
   env.marks.push(mark);
 
   element.hotspots = {

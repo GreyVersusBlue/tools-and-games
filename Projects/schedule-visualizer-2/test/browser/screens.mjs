@@ -493,6 +493,7 @@ export const SCREENS = [
         const { setSlot } = await import(new URL('engine/actions.js', location.href).href);
         globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 2, slot: { room: null } });
       });
+      await page.click('#inspector [role="tab"][data-tab="summary"]');
       await page.waitForSelector('#inspector [data-summary="health"] li');
       await movementDrawn(page);
     },

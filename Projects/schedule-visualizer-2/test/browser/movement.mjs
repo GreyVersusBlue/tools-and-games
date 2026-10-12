@@ -102,6 +102,8 @@ before(async () => {
     dialog.dismiss();
   });
   await settled();
+  // the rings on the top places are test/browser/hotspots.mjs's; here the lanes' own pixels are read
+  await view(() => { const marks = document.querySelector('.mov').movement.env.marks; const at = marks.findIndex((mark) => mark.id === 'hotspots'); if (at !== -1) marks.splice(at, 1); });
 });
 
 after(async () => {
@@ -297,6 +299,7 @@ test('the absolute scale puts the school\'s own numbers in the legend, and undo 
 
 test('total over the day is a second picture, named as such', async () => {
   await change(OPEN);
+  await page.click('#inspector [role="tab"][data-tab="summary"]');
   await page.click('.mov-legend input[name="movement-measure"][value="total"]');
   await settled();
   assert.equal(await page.$eval('.mov-legend', (el) => el.dataset.measure), 'total');
@@ -311,6 +314,7 @@ test('total over the day is a second picture, named as such', async () => {
 
 test('choosing one transition shows its passing time and only its walks', async () => {
   await change(OPEN);
+  await page.click('#inspector [role="tab"][data-tab="summary"]');
   await page.click('.mov-strip__item[data-transition="5"]');
   await settled();
   assert.equal(await line(), 'Showing 8 groups on A Day, Period 6 to Period 7 (1:08 to 1:12). No route failed.');
