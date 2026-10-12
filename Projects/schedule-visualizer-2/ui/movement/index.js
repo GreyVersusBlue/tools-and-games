@@ -772,6 +772,21 @@ export const section = {
     document.addEventListener('scroll', onSurfaceScroll, { passive: true, capture: true });
     const dark = matchMedia('(prefers-color-scheme: dark)');
     dark.addEventListener('change', queuePaint);
+    // The pixels a CSS pixel is made of change with no change of size (the
+    // window moved to another screen, the browser's zoom): the canvases are
+    // made again at the new ratio. A query matches one ratio, so it is asked
+    // again each time.
+    let ratioQuery = null;
+    function onRatio() {
+      watchRatio();
+      measure();
+    }
+    function watchRatio() {
+      if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
+      ratioQuery = matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
+      ratioQuery.addEventListener('change', onRatio);
+    }
+    watchRatio();
 
     loadSheet().then(() => {
       if (gone) return;
@@ -803,6 +818,8 @@ export const section = {
       get state() { return state; },
       get fitted() { return fitted; },
       get point() { return point; },
+      // the keyboard cursor (ui/surface/cursor.js): where it is, and moveTo(x, y, visible)
+      cursor,
       change,
       fit,
       // Where on the canvas a group's lane runs through a cell, and how wide
@@ -831,6 +848,7 @@ export const section = {
         bar.unmount();
         watcher.disconnect();
         dark.removeEventListener('change', queuePaint);
+        if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
         wide.removeEventListener('change', onWidth);
         phone.removeEventListener('change', onWidth);
         input.detach();

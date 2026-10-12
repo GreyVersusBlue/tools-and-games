@@ -885,6 +885,245 @@ test('with reduced motion nothing plays: the scrubber is the only way to move, a
   assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), null, 'and Play has no title once it can be pressed');
 });
 
+// ---------------------------------------------------------------- SV2-43: the review of SV2-44
+
+test('44a: a setting written in one tab does not undo another tab’s: a write is the change, over what is stored', async () => {
+  await set({ speed: 1, loop: 'once', pace: 'fixed', style: 'tail', size: 'small', order: 'together' });
+  // a second tab that has read the same settings
+  const other = await openPlanner({ server: session.server, browser: session.browser, hash: '#movement', keep: true, theme: 'light', width: 1440, height: 900 });
+  try {
+    await other.page.waitForFunction(() => Boolean(document.querySelector('[data-bar="playback"]')?.playback));
+    assert.deepEqual(await other.page.$eval('[data-bar="playback"]', (el) => el.playback.prefs), { speed: 1, loop: 'once', pace: 'fixed', style: 'tail', size: 'small', order: 'together' });
+    // this tab changes the marker's size; the other, which read before that, the speed
+    await set({ size: 'large' });
+    await other.page.$eval('[data-bar="playback"]', (el) => el.playback.set({ speed: 4 }));
+    assert.deepEqual(await view(() => JSON.parse(localStorage.getItem('sv2:device')).playback), { speed: 4, loop: 'once', pace: 'fixed', style: 'tail', size: 'large', order: 'together' });
+    // and back the other way: this tab's next change keeps the other's speed
+    await set({ loop: 'day' });
+    assert.deepEqual(await view(() => JSON.parse(localStorage.getItem('sv2:device')).playback), { speed: 4, loop: 'day', pace: 'fixed', style: 'tail', size: 'large', order: 'together' });
+    // a choice of what the tab already shows writes nothing
+    const writes = await view(() => {
+      const real = Storage.prototype.setItem;
+      let count = 0;
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === 'sv2:device') count += 1;
+        return real.call(this, key, value);
+      };
+      document.querySelector('[data-bar="playback"]').playback.set({ loop: 'day' });
+      document.querySelector('[data-bar="playback"]').playback.set({ loop: 'transition' });
+      Storage.prototype.setItem = real;
+      return count;
+    });
+    assert.equal(writes, 1);
+  } finally {
+    await other.page.close();
+  }
+  await set({ speed: 1, loop: 'once', size: 'small' });
+});
+
+test('44b: a group stopped at the cap is late in playback whatever the margin, as the crowd model has it', async () => {
+  await changed([['setSetting', { key: 'secondsPerCell', value: 10 }], ['setSetting', { key: 'checks.passingMarginSeconds', value: 480 }]], async () => {
+    await change({ transition: TRANSITION });
+    const walk = await walkOf(LATE_GROUP);
+    assert.deepEqual([walk.arrived, walk.late, walk.cap, walk.passing, walk.margin], [false, true, 720, 240, 480], 'stopped at 720 s, which is the passing time and the margin exactly: not "more than" them');
+    await scrubTo(walk.seconds);
+    assert.equal((await drawn(LATE_GROUP)).late, true, 'the marker of a group that never arrives is late once it is stopped');
+    assert.match(await part('late'), /^Late, still walking after the passing time: (.+, )?8A[,.]/);
+    assert.equal(await page.$eval('[data-part="countdown"]', (el) => el.dataset.late), 'true');
+    assert.equal(await bar((el) => el.dataset.late !== '0'), true);
+    // a second before it is stopped it is inside the margin, like anyone
+    await scrubTo(walk.seconds - 1);
+    assert.equal((await drawn(LATE_GROUP)).late, false);
+  });
+});
+
+// The boxes of the map's canvas and of the marks' canvas over it.
+const canvases = () => view(() => {
+  const plan = document.querySelector('#movement-plan');
+  const marks = document.querySelector('.mov-marks');
+  const box = (el) => {
+    const rect = el.getBoundingClientRect();
+    return [rect.left, rect.top, rect.width, rect.height];
+  };
+  return { ratio: devicePixelRatio, plan: [plan.width, plan.height], marks: [marks.width, marks.height], planBox: box(plan), marksBox: box(marks), stage: [document.querySelector('.mov-stage').clientWidth, document.querySelector('.mov-stage').clientHeight] };
+});
+
+// The map has been drawn at the size the stage has now, at this pixel ratio.
+const sized = (ratio) => page.waitForFunction((wanted) => {
+  const movement = document.querySelector('.mov').movement;
+  const stage = document.querySelector('.mov-stage');
+  const plan = document.querySelector('#movement-plan');
+  return devicePixelRatio === wanted && plan.dataset.ratio === String(wanted) && movement.view.width === stage.clientWidth && movement.view.height === stage.clientHeight && plan.width === Math.round(stage.clientWidth * wanted);
+}, { timeout: 8000 }, ratio);
+
+test('44e: the marks’ canvas is the map’s, box for box and pixel for pixel: at a device pixel ratio of 2, after the window changes, and with the floors stacked', async () => {
+  await change({ transition: TRANSITION });
+  await set({ size: 'large', style: 'tail' });
+  try {
+    for (const [what, act] of [
+      ['at a ratio of 2', () => page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 2 })],
+      ['after the window changed', () => page.setViewport({ width: 1180, height: 760, deviceScaleFactor: 2 })],
+      ['stacked', () => change({ floors: 'stacked' })],
+    ]) {
+      await act();
+      await sized(2);
+      await scrubTo(100);
+      const at = await canvases();
+      assert.equal(at.ratio, 2);
+      assert.deepEqual(at.marks, at.plan, what + ': the marks’ canvas has other pixels than the map’s');
+      assert.deepEqual(at.marks, [at.stage[0] * 2, at.stage[1] * 2], what + ': not two pixels a CSS pixel');
+      assert.deepEqual(at.marksBox, at.planBox, what + ': the marks’ canvas is not the map’s box');
+      // a marker is on its own cell's pixels, not on half or twice the way there
+      const walk = await walkOf(LATE_GROUP);
+      const cell = walk.cells[walk.positions[100]];
+      const marker = await drawn(LATE_GROUP);
+      close(marker, await mapPoint(cell.floorId, cell.cell), 40, what);
+      assert.ok((await layerPixel(marker.x, marker.y))[3] > 200, what + ': nothing is drawn where the marker is said to be');
+    }
+  } finally {
+    await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+    await change({ floors: 'auto', transition: TRANSITION });
+    await sized(1);
+    await set({ size: 'small' });
+  }
+});
+
+test('44f: the marks have one canvas, the view’s own: a paint of the map, a frame of playback and a tick of the pulse move nothing in the document', async () => {
+  assert.deepEqual(await view(() => Array.from(document.querySelectorAll('.mov-stage canvas')).map((canvas) => canvas.id || canvas.className)), ['movement-plan', 'mov-marks']);
+  assert.equal(await view(() => document.querySelector('.mov-marks').previousElementSibling.id), 'movement-plan');
+  assert.equal(await view(() => document.querySelectorAll('.mov-pb__layer, .mov-rings').length), 0);
+  await view(() => {
+    globalThis.stageMoves = [];
+    globalThis.stageWatch = new MutationObserver((records) => {
+      for (const record of records) globalThis.stageMoves.push(Array.from(record.addedNodes).concat(Array.from(record.removedNodes)).map((node) => node.className || node.nodeName).join(','));
+    });
+    globalThis.stageWatch.observe(document.querySelector('.mov-stage'), { childList: true });
+  });
+  const before = await drawnCount();
+  // a new transition: the map is painted, and the rings set out
+  await change({ transition: 2 });
+  await page.waitForFunction(() => document.querySelector('.mov').movement.env.marks.some((mark) => mark.id === 'hotspots') && document.querySelector('#inspector [data-panel="hotspots"]')?.dataset.pulse === 'moving', { timeout: 5000 });
+  await scrubTo(40);
+  await pinFrames();
+  await page.click('[data-action="play"]');
+  for (const stamp of [1000, 1100, 1200]) await runFrame(stamp);
+  await page.click('[data-action="play"]');
+  // three ticks of the pulse and more
+  const ticks = await view(() => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames);
+  await page.waitForFunction((had) => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames >= had + 3, { timeout: 5000 }, ticks);
+  const after = await drawnCount();
+  assert.ok(after.map > before.map && after.layer >= before.layer + 6, 'the map and the marks were drawn: ' + JSON.stringify([before, after]));
+  assert.deepEqual(await view(() => {
+    globalThis.stageWatch.disconnect();
+    return globalThis.stageMoves.concat(globalThis.stageWatch.takeRecords().map(() => 'late'));
+  }), [], 'a canvas was put into the stage, or taken out of it');
+  await change({ transition: TRANSITION });
+});
+
+test('44g: the hotspot rings and the keyboard cursor are drawn over the markers, whatever order the marks were added in; set(null) changes nothing', async () => {
+  // the order the marks are drawn in is their `order`, not their place in the list
+  const called = await view(() => {
+    const env = document.querySelector('.mov').movement.env;
+    const original = env.marks.slice();
+    const seen = [];
+    env.marks.splice(0, env.marks.length, ...original.slice().reverse().map((mark) => {
+      const told = (g, map) => {
+        seen.push(mark.id);
+        return mark(g, map);
+      };
+      told.id = mark.id;
+      told.order = mark.order;
+      return told;
+    }));
+    env.paintMarks();
+    env.marks.splice(0, env.marks.length, ...original);
+    env.paintMarks();
+    return { seen, listed: original.map((mark) => mark.id) };
+  });
+  assert.deepEqual(called.seen, ['playback', 'hotspots'], 'the marks as listed: ' + called.listed);
+
+  // the cursor over a marker: zoomed far out, the ring of the cursor is 14 px and a large late marker reaches under its line
+  await set({ size: 'large', style: 'tail', pace: 'real', order: 'together' });
+  await scrubTo(250);
+  try {
+    const seen = await view(async (group) => {
+      const movement = document.querySelector('.mov').movement;
+      movement.view.zoomAbout(0.25, movement.view.width / 2, movement.view.height / 2);
+      movement.env.paint();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const marker = document.querySelector('[data-bar="playback"]').playback.mark.drawn.get(group);
+      const cell = movement.view.toCell(marker.x, marker.y);
+      movement.canvas.focus();
+      movement.cursor.moveTo(Math.floor(cell.x), Math.floor(cell.y), true);
+      movement.env.paintMarks();
+      const layer = movement.env.layer;
+      const [x, y, side] = layer.dataset.cursor.split(',').map(Number);
+      const g = layer.getContext('2d');
+      const at = (px, py) => Array.from(g.getImageData(Math.round(px), Math.round(py), 1, 1).data);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+      // the middle of the ring's left line, and of its top line
+      return { marker, cursor: { x, y, side }, left: at(x + 1, y + side / 2), top: at(x + side / 2, y + 1), accent, size: movement.view.size };
+    }, LATE_GROUP);
+    assert.equal(seen.marker.late, true, 'a late marker, the widest there is');
+    assert.equal(seen.cursor.side, 14, 'at 25 % a cell is ' + seen.size + ' px and the cursor’s ring is 14');
+    assert.ok(Math.abs(seen.marker.x - (seen.cursor.x + 7)) <= seen.size / 2 + 0.5 && Math.abs(seen.marker.y - (seen.cursor.y + 7)) <= seen.size / 2 + 0.5, 'the cursor is on the marker’s cell: ' + JSON.stringify(seen));
+    assert.ok(seen.marker.radius * 1.25 >= 6, 'the marker reaches under the ring’s line: radius ' + seen.marker.radius);
+    for (const [name, got] of [['left', seen.left], ['top', seen.top]]) {
+      assert.ok(Math.abs(got[0] - rgb(seen.accent)[0]) <= 12 && Math.abs(got[1] - rgb(seen.accent)[1]) <= 12 && Math.abs(got[2] - rgb(seen.accent)[2]) <= 12 && got[3] === 255, 'the ring’s ' + name + ' line is not in the focus colour over the marker: ' + got + ' against ' + seen.accent);
+    }
+  } finally {
+    await view(() => {
+      const movement = document.querySelector('.mov').movement;
+      movement.canvas.blur();
+      movement.fit();
+    });
+    await frame();
+  }
+
+  // a patch that is nothing is no change, and no error
+  const prefs = await bar((el) => el.playback.prefs);
+  await bar((el) => {
+    el.playback.set(null);
+    el.playback.set(undefined);
+    el.playback.set('fast');
+    el.playback.set([]);
+  });
+  assert.deepEqual(await bar((el) => el.playback.prefs), prefs);
+  await set({ size: 'small' });
+});
+
+test('44d: a frame of playback, through the clock, the bar and the marks on a real canvas: under 16 ms', async () => {
+  await change({ transition: TRANSITION });
+  await set({ speed: 1, pace: 'real', loop: 'transition', order: 'together', style: 'route', size: 'large' });
+  await pinFrames();
+  await bar((el) => el.playback.seek(0));
+  await page.click('[data-action="play"]');
+  const measured = await view(() => {
+    const layer = document.querySelector('.mov-marks');
+    const plan = document.querySelector('#movement-plan');
+    const had = { layer: Number(layer.dataset.drawn), map: Number(plan.dataset.drawn) };
+    const each = [];
+    // 120 frames, a second of the walk apart
+    for (let n = 1; n <= 120; n += 1) {
+      const started = performance.now();
+      globalThis.pinned.run(n * 1000);
+      // the pixels are asked for, so the drawing is done inside the measure
+      layer.getContext('2d').getImageData(0, 0, 1, 1);
+      each.push(performance.now() - started);
+    }
+    each.sort((a, b) => a - b);
+    return { median: each[60], worst: each[119], frames: Number(layer.dataset.drawn) - had.layer, map: Number(plan.dataset.drawn) - had.map, markers: document.querySelector('[data-bar="playback"]').playback.mark.drawn.size, seconds: Number(document.querySelector('[data-bar="playback"]').dataset.seconds) };
+  });
+  await page.click('[data-action="play"]');
+  console.log('# playback frame in the page, ' + measured.markers + ' markers with the whole route behind: median ' + measured.median.toFixed(2) + ' ms, worst ' + measured.worst.toFixed(2) + ' ms over 120 frames (budget 16, fails at 32)');
+  assert.equal(measured.frames, 120, 'each frame drew the marks once');
+  assert.equal(measured.map, 0, 'and the map not at all');
+  assert.equal(measured.markers, 8);
+  assert.ok(measured.seconds > 100, 'the clock went on: ' + measured.seconds);
+  assert.ok(measured.median < 32, 'a frame takes ' + measured.median.toFixed(2) + ' ms at the median');
+  await set({ loop: 'once', style: 'tail', size: 'small' });
+});
+
 test('leaving the view stops the frames and lets go of everything the bar listened to', async () => {
   await change({ transition: TRANSITION });
   await pinFrames();
@@ -911,14 +1150,16 @@ test('leaving the view stops the frames and lets go of everything the bar listen
   });
   await waitForSection(page, 'project');
 
-  const left = await view(() => ({ connected: globalThis.left.bar.isConnected, playing: globalThis.left.bar.playback.playing, cancelled: globalThis.pinned.cancelled - globalThis.left.cancelled, layer: globalThis.left.layer.isConnected, marks: globalThis.left.marks.length - globalThis.left.marked, dropped: globalThis.left.dropped }));
+  const left = await view(() => ({ connected: globalThis.left.bar.isConnected, playing: globalThis.left.bar.playback.playing, cancelled: globalThis.pinned.cancelled - globalThis.left.cancelled, layer: globalThis.left.layer.isConnected, marks: globalThis.left.marks.length - globalThis.left.marked, ids: globalThis.left.marks.map((mark) => mark.id || 'unnamed'), dropped: globalThis.left.dropped }));
   assert.equal(left.connected, false, 'the bar has left the page');
   assert.equal(left.playing, false, 'it is not playing');
   assert.equal(left.cancelled, 1, 'the frame it had asked for was cancelled as it left');
   assert.equal(await runFrame(2000), false, 'and no frame is waiting');
   assert.ok(left.dropped.includes('(prefers-reduced-motion: reduce) change'), 'the reduced-motion listener was dropped: ' + JSON.stringify(left.dropped));
-  assert.equal(left.layer, false, 'the markers’ layer went with it');
-  assert.ok(left.marks < 0, 'and the map no longer calls the bar when it paints');
+  assert.equal(left.layer, false, 'the marks’ canvas went with the view');
+  // 44c: the bar's own mark is off the list (and the hotspot rings', by their panel): two fewer, and neither is playback's
+  assert.equal(left.marks, -2, 'the marks left on the list: ' + JSON.stringify(left.ids));
+  assert.equal(left.ids.includes('playback'), false, 'the map would still call the bar when it paints');
   // the card it watched: a change to it is nobody's business any more
   const filled = await view(async (floor, cell) => {
     const card = globalThis.left.card;
@@ -929,6 +1170,41 @@ test('leaving the view stops the frames and lets go of everything the bar listen
     return card.querySelector('[data-part="now"]') !== null;
   }, door.floorId, door.cell);
   assert.equal(filled, false, 'the card’s observer was disconnected');
+});
+
+test('44g: a browser that keeps nothing is said once a visit, not once each time the view is opened', async () => {
+  // the case above left the view; it said so once already, earlier in this visit
+  await view(() => {
+    location.hash = '#movement';
+  });
+  await waitForSection(page, 'movement');
+  await settled();
+  const said = await view(() => {
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function setItem(key, value) {
+      if (key === 'sv2:device') throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      return real.call(this, key, value);
+    };
+    const toasts = [];
+    const watch = new MutationObserver((records) => {
+      for (const record of records) for (const node of record.addedNodes) if (node.nodeType === 1 && node.matches('.toast')) toasts.push(node.querySelector('.toast__text').textContent);
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
+    const playback = document.querySelector('[data-bar="playback"]').playback;
+    const was = playback.prefs.speed;
+    playback.set({ speed: was === 2 ? 4 : 2 });
+    const held = playback.prefs.speed;
+    const records = watch.takeRecords();
+    for (const record of records) for (const node of record.addedNodes) if (node.nodeType === 1 && node.matches('.toast')) toasts.push(node.querySelector('.toast__text').textContent);
+    watch.disconnect();
+    Storage.prototype.setItem = real;
+    // the browser keeps things again: the refused choice goes with the next one
+    playback.set({ speed: was });
+    return { toasts, held, was, stored: JSON.parse(localStorage.getItem('sv2:device')).playback.speed };
+  });
+  assert.deepEqual(said.toasts, [], 'said a second time in one visit');
+  assert.notEqual(said.held, said.was, 'the choice holds on screen all the same');
+  assert.equal(said.stored, said.was);
 });
 
 test('the page asked for nothing offsite and reported no error', () => {

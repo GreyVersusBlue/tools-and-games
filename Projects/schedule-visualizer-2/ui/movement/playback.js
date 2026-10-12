@@ -106,6 +106,13 @@ export const ROW_HOLDS = 872;
 // the browser kept.
 let playedHere = false;
 
+// The settings this browser refused to keep earlier in the visit: they are
+// sent again with the next change, so a choice made while the browser kept
+// nothing is not undone on screen by the write that follows it. And whether
+// the reader has been told, which is once a visit.
+const refusedKeys = new Set();
+let refusedSaid = false;
+
 // "0:37", "4:00", "12:05": whole seconds as minutes and seconds.
 export function minutesText(seconds) {
   const whole = Math.max(0, Math.floor(seconds));
@@ -151,7 +158,6 @@ export function playbackBar(env) {
   let lastStamp = null;
   let lateSaid = '';
   let extraKey = '';
-  let refused = false;
   const real = { request: (fn) => requestAnimationFrame(fn), cancel: (id) => cancelAnimationFrame(id) };
   let frames = real;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
@@ -256,7 +262,7 @@ export function playbackBar(env) {
       // a group in the same room, or with no route, has nowhere to be drawn
       if (!track || track.slots !== walker.slots) continue;
       const span = Math.max(1, walker.arrived ? walker.total : walker.positions.length - 1);
-      walkers.push({ groupId: group.id, name: group.name, colour: group.colour, track, positions: walker.positions, length: walker.length, arrived: walker.arrived === true, total: walker.total, span, offset });
+      walkers.push({ groupId: group.id, name: group.name, colour: group.colour, track, positions: walker.positions, length: walker.length, arrived: walker.arrived === true, late: walker.late === true, total: walker.total, span, offset });
       offset += span;
       together = Math.max(together, span);
     }
@@ -287,8 +293,12 @@ export function playbackBar(env) {
   }
 
   // Late by the one rule: a group that is in its room is judged by when it
-  // got there, one still walking by the clock.
+  // got there, one still walking by the clock. A group the crowd model
+  // stopped (it never arrives) is late from the moment it was stopped,
+  // whatever the school's margin: the model says so, and playback shows what
+  // the model found.
   function lateAt(walker, at) {
+    if (!walker.arrived && walker.late && at >= walker.span) return true;
     return isLate(walker.arrived && at >= walker.total ? walker.total : at, scene.passing, scene.margin);
   }
 
@@ -419,17 +429,27 @@ export function playbackBar(env) {
   }
 
   function set(patch) {
-    // what is on screen is what is kept, whole: a choice the browser refused
-    // to keep earlier holds for the visit and is written with the next one
-    prefs = playbackWith(prefs, patch);
-    try {
-      writePlayback(prefs);
-    } catch (error) {
-      // the browser keeps nothing: said once
-      if (!refused) ctx.toast({ kind: 'warning', text: REFUSED_TOAST });
-      refused = true;
+    const asked = patch !== null && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
+    const before = prefs;
+    prefs = playbackWith(prefs, asked);
+    // What is written is the change, over what is stored (two tabs do not
+    // undo each other's choices), with the settings this browser refused
+    // earlier in the visit sent again beside it.
+    const changed = Object.keys(prefs).filter((key) => key in asked && prefs[key] !== before[key]);
+    const send = {};
+    for (const key of [...refusedKeys, ...changed]) send[key] = prefs[key];
+    if (Object.keys(send).length > 0) {
+      try {
+        writePlayback(send);
+        refusedKeys.clear();
+      } catch (error) {
+        for (const key of Object.keys(send)) refusedKeys.add(key);
+        // the browser keeps nothing: said once a visit
+        if (!refusedSaid) ctx.toast({ kind: 'warning', text: REFUSED_TOAST });
+        refusedSaid = true;
+      }
     }
-    if ('order' in patch) {
+    if ('order' in asked) {
       seconds = 0;
       lateSaid = '';
     }
