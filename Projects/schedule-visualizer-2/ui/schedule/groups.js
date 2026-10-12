@@ -1,5 +1,17 @@
 // The Groups tab: the list of groups on the left, and on the right the group
 // editor, with the day types side by side and one row per period.
+//
+// The list is a listbox and one Tab stop: the arrow keys, Home and End move
+// through the groups, Enter or Space chooses the one the focus is on, and so
+// does a click. (A button for each group made a school of 40 groups 40 Tab
+// stops before the editor.)
+//
+// On a phone (under 640 px, NARROW) the list and the editor take turns, since
+// an editor under a list of every group is a screen and a half away from the
+// card that was tapped: `view.folded` false shows the cards and no editor,
+// and choosing a group folds the list to that group's card, with "All groups"
+// to open it again and the editor straight under it. schedule.css does the
+// showing and hiding; on a wider screen `folded` changes nothing.
 
 import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
@@ -18,6 +30,15 @@ import { roomPicker } from './room-picker.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
+// Under this width the list and the editor take turns. schedule.css has the
+// same number.
+export const NARROW = '(max-width: 640px)';
+
+// Is the Groups tab showing its list alone, waiting for a group to be chosen?
+export function choosingGroup(view) {
+  return view.folded !== true && window.matchMedia(NARROW).matches;
+}
+
 function filled(slot) {
   return slot.room !== null || slot.roomText !== '';
 }
@@ -26,7 +47,7 @@ function slotIsEmpty(slot) {
   return !filled(slot) && slot.label === '' && slot.teacherIds.length === 0;
 }
 
-function matches(group, filter) {
+export function matches(group, filter) {
   const wanted = filter.trim().toLowerCase();
   return wanted === '' || group.name.toLowerCase().includes(wanted) || group.grade.toLowerCase().includes(wanted);
 }
@@ -34,11 +55,21 @@ function matches(group, filter) {
 export function mount(env) {
   const { ctx, view } = env;
   const element = h('div', { class: 'sch-groups' });
+  let reveal = false;
 
+  // Choose a group. On a phone its card goes to the top of the screen, so
+  // the editor under it starts in sight.
   function select(groupId, focusKey) {
     view.groupId = groupId;
     view.shown = null;
+    view.folded = groupId !== null;
+    reveal = groupId !== null;
     env.render(focusKey);
+  }
+
+  function showAll() {
+    view.folded = false;
+    env.render(view.groupId ? 'group:' + view.groupId : 'group-add');
   }
 
   function add() {
@@ -51,9 +82,10 @@ export function mount(env) {
 
   // ------------------------------------------------------------ the list
 
-  // The button's name for a screen reader is what is in it: the shapes and
+  // The option's name for a screen reader is what is in it: the shapes and
   // the short figures are for the eye, and each has its words beside it.
-  function listItem(project, model, group, selected) {
+  // `stop`: is this the list's one Tab stop.
+  function listItem(project, model, group, selected, stop) {
     const words = periodWords(project.settings);
     const periods = project.settings.periods;
     const base = baseDayType(project);
@@ -69,10 +101,11 @@ export function mount(env) {
         h('span', { class: 'sch-bar__text' }, seen(dayType.name + ' ' + done + '/' + periods), said(dayType.name + ': ' + done + ' of ' + count(periods, words.one, words.many) + ' have a room. ')));
     });
     const found = model.byGroup.get(group.id) || [];
-    return h('li', null, keyed(h('button', {
-      type: 'button',
+    return keyed(h('li', {
       class: 'sch-group',
-      'aria-current': selected ? 'true' : null,
+      role: 'option',
+      'aria-selected': String(selected),
+      tabindex: stop ? '0' : '-1',
       data: { group: group.id },
       on: { click: () => select(group.id, 'group:' + group.id) },
     },
@@ -81,7 +114,34 @@ export function mount(env) {
       h('span', { class: 'sch-group__name' }, group.name),
       group.grade === '' ? said('. ') : h('span', { class: 'sch-group__grade' }, said(', grade '), group.grade, said('. ')),
       h('span', { class: 'sch-group__marks' }, marksFor(found))),
-    h('span', { class: 'sch-group__bars' }, bars)), 'group:' + group.id));
+    h('span', { class: 'sch-group__bars' }, bars)), 'group:' + group.id);
+  }
+
+  // The list's keys. The options that count are the ones on screen: a phone
+  // with the list folded shows one.
+  function listKeys(list) {
+    const stops = () => Array.from(list.querySelectorAll('[role="option"]'));
+    const moveStop = (to) => {
+      for (const each of stops()) each.tabIndex = each === to ? 0 : -1;
+    };
+    list.addEventListener('focusin', (event) => {
+      if (event.target.getAttribute('role') === 'option') moveStop(event.target);
+    });
+    list.addEventListener('keydown', (event) => {
+      const option = event.target;
+      if (option.getAttribute('role') !== 'option' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const shown = stops().filter((each) => each.getClientRects().length > 0);
+      const at = shown.indexOf(option);
+      const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: shown.length - 1 }[event.key];
+      if (to !== undefined) {
+        event.preventDefault();
+        const next = shown[Math.min(Math.max(to, 0), shown.length - 1)];
+        if (next && next !== option) next.focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        select(option.dataset.group, 'group:' + option.dataset.group);
+      }
+    });
   }
 
   // ------------------------------------------------------------ the editor
@@ -151,7 +211,9 @@ export function mount(env) {
     const keyBase = 'slot:' + dayType.id + ':' + period + ':';
     const change = (patch) => ctx.store.apply(setSlot, { groupId: group.id, dayTypeId: dayType.id, period, slot: patch });
     const resolved = resolveSlotRoom(project, slot);
-    const text = resolved.room ? roomLabel(project, resolved.room) : resolved.missing && resolved.text !== '' ? resolved.text + ' · ' + NOT_IN_BUILDING : '';
+    // a room of the building as "204 — Ms. Okafor"; text that is no room, as typed
+    const unknown = !resolved.room && resolved.missing && resolved.text !== '';
+    const text = resolved.room ? roomLabel(project, resolved.room) : unknown ? resolved.text : '';
 
     const found = model.bySlot.get(slotKey(group.id, dayType.id, period)) || [];
     const findingsId = found.length > 0 ? uid('slot-findings') : null;
@@ -159,6 +221,7 @@ export function mount(env) {
       name: 'Room for ' + at,
       key: keyBase + 'room',
       text,
+      missing: unknown,
       describedBy: findingsId,
       options: () => roomOptions(ctx.store.project, env.model(), slot),
       onPick: (roomId) => {
@@ -168,8 +231,14 @@ export function mount(env) {
           ctx.toast({ kind: 'problem', text: error.message });
         }
       },
+      onKeep: (typed) => {
+        try {
+          change({ room: null, roomText: typed });
+        } catch (error) {
+          ctx.toast({ kind: 'problem', text: error.message });
+        }
+      },
     });
-    if (resolved.missing && resolved.text !== '') room.input.classList.add('sch-room--missing');
 
     const label = field({ value: slot.label, name: 'slotLabel', placeholder: 'Label', commit: (value) => {
       change({ label: value });
@@ -294,6 +363,8 @@ export function mount(env) {
             ctx.toast({ text: 'Deleted group ' + group.name + '.', action: { label: 'Undo', run: ctx.undo } });
             const next = left[Math.min(index, left.length - 1)];
             select(next ? next.id : null, next ? 'group:' + next.id : 'group-add');
+            // on a phone the list comes back: the group that was open is gone
+            view.folded = false;
           }, { small: true, key: 'group-delete', action: 'delete', more: ' ' + group.name }))),
       headFields(project, group),
       h('div', { class: 'sch-days' }, project.dayTypes.map((dayType) => dayColumn(project, model, group, dayType))));
@@ -305,10 +376,13 @@ export function mount(env) {
     const model = env.model();
     if (project.groups.length === 0) {
       view.groupId = null;
+      view.folded = false;
       fill(element, emptyState('No groups yet. ' + WHAT, button('Add a group', add, { primary: true, key: 'group-add', action: 'add-group' })));
       return;
     }
     if (!project.groups.some((group) => group.id === view.groupId)) view.groupId = project.groups[0].id;
+    // a slot being shown (Show on a finding, a slot's address) is in the editor
+    if (view.shown && view.shown.groupId === view.groupId) view.folded = true;
     const selected = project.groups.find((group) => group.id === view.groupId);
     const visible = project.groups.filter((group) => matches(group, view.filter));
     const filter = keyed(h('input', { type: 'search', class: 'field__input', placeholder: 'Filter by name or grade', 'aria-label': 'Filter groups by name or grade', autocomplete: 'off', spellcheck: 'false' }), 'group-filter');
@@ -319,17 +393,31 @@ export function mount(env) {
     });
     const old = element.querySelector('.sch-groups__list');
     const scroll = old ? old.scrollTop : 0;
-    const list = h('ul', { class: 'sch-groups__list' }, visible.map((group) => listItem(project, model, group, group === selected)));
+    // one Tab stop: the chosen group, or the first on the list when the
+    // filter hides the chosen one
+    const stop = visible.includes(selected) ? selected : visible[0];
+    const list = h('ul', { class: 'sch-groups__list', role: 'listbox', 'aria-label': 'Groups', 'aria-orientation': 'vertical' },
+      visible.map((group) => listItem(project, model, group, group === selected, group === stop)));
+    listKeys(list);
+    element.dataset.folded = String(view.folded === true);
     fill(element, 
       h('p', { class: 'sch-lead' }, WHAT + ' Each has a name, and a room for every ' + periodWords(project.settings).one + '.'),
       h('div', { class: 'sch-groups__cols' },
         h('div', { class: 'sch-groups__side' },
           button('Add a group', add, { primary: true, key: 'group-add', action: 'add-group' }),
-          filter,
-          h('p', { class: 'sch-groups__tally', 'aria-live': 'polite' }, view.filter.trim() === '' ? count(project.groups.length, 'group') + '.' : visible.length === 0 ? 'No group matches ' + quote(view.filter.trim()) + '.' : visible.length + ' of ' + count(project.groups.length, 'group') + '.'),
-          list),
+          h('div', { class: 'sch-groups__find' },
+            filter,
+            h('p', { class: 'sch-groups__tally', 'aria-live': 'polite' }, view.filter.trim() === '' ? count(project.groups.length, 'group') + '.' : visible.length === 0 ? 'No group matches ' + quote(view.filter.trim()) + '.' : visible.length + ' of ' + count(project.groups.length, 'group') + '.')),
+          list,
+          // on a phone with the list folded to the chosen group (schedule.css)
+          h('div', { class: 'sch-groups__all' }, button('All groups', showAll, { key: 'group-all', action: 'all-groups', more: ': choose another group' }))),
         editor(project, model, selected)));
     list.scrollTop = scroll;
+    if (reveal) {
+      reveal = false;
+      const card = list.querySelector('[aria-selected="true"]');
+      if (card && window.matchMedia(NARROW).matches) card.scrollIntoView({ block: 'start' });
+    }
   }
 
   draw(ctx.store.project);

@@ -57,9 +57,11 @@ export function button(label, run, options) {
 }
 
 // A button for something that is not built yet. It stays reachable by
-// keyboard so its reason can be read, and does nothing.
-export function notYet(label, reason, action) {
-  return h('button', { type: 'button', class: 'btn sch-btn--small', 'aria-disabled': 'true', title: reason, data: action ? { action } : null },
+// keyboard so its reason can be read, and does nothing but say that reason:
+// `say()` is called on a press, for the caller to show it (a title is seen
+// by a mouse alone).
+export function notYet(label, reason, action, say) {
+  return h('button', { type: 'button', class: 'btn sch-btn--small', 'aria-disabled': 'true', title: reason, data: action ? { action } : null, on: say ? { click: () => say() } : null },
     label, h('span', { class: 'vh' }, ' (' + reason + ')'));
 }
 

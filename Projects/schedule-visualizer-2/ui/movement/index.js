@@ -57,6 +57,7 @@ import { parse, readable } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
 import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js';
 import { MOVEMENT_STEP } from '../help/progress.js';
+import { slotHash } from '../schedule/index.js';
 import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence } from './model.js';
 import { layoutFloors, bestLayout, slotAt, placeOf } from './layout.js';
 import { controls } from './controls.js';
@@ -121,31 +122,11 @@ function facts(project) {
   return 'There is nothing to draw yet: this project has ' + count(f.rooms, 'room') + ' and ' + count(f.groups, 'group') + '.';
 }
 
-// Open a group's slot in the Schedule section's Groups tab. The section has
-// no address for a slot, so this presses the group's own button once the tab
-// is drawn and puts the focus in the period's row.
-function openSlot(slot) {
-  let tries = 0;
-  const step = () => {
-    const section = document.querySelector('.sch');
-    const ready = section && section.dataset.pending !== 'true';
-    const button = ready ? Array.from(section.querySelectorAll('.sch-group')).find((each) => each.dataset.group === slot.groupId) : null;
-    if (!button) {
-      tries += 1;
-      if (tries < 40) setTimeout(step, 50);
-      return;
-    }
-    if (button.getAttribute('aria-current') !== 'true') button.click();
-    setTimeout(() => {
-      const day = Array.from(document.querySelectorAll('.sch-day')).find((each) => each.dataset.day === slot.dayTypeId);
-      const row = day ? day.querySelector('.sch-slot[data-period="' + slot.period + '"]') : null;
-      if (!row) return;
-      row.scrollIntoView({ block: 'center' });
-      const control = row.querySelector('input, select, button');
-      if (control) control.focus({ preventScroll: true });
-    }, 80);
-  };
-  step();
+// Open a group's slot in the Schedule section's Groups tab: a slot has an
+// address there (the top of ui/schedule/index.js), and the section does the
+// rest.
+function openSlot(ctx, slot) {
+  ctx.navigate(slotHash(slot.groupId, slot.dayTypeId, slot.period));
 }
 
 export const section = {
@@ -200,8 +181,8 @@ export const section = {
       paint: () => queuePaint(),
       card,
       fix(where) {
-        ctx.navigate(where.hash);
-        if (where.slot) openSlot(where.slot);
+        if (where.slot) openSlot(ctx, where.slot);
+        else ctx.navigate(where.hash);
       },
     };
 

@@ -541,7 +541,7 @@ test('route health lists a failed route by name with why, and its link opens the
     const row = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.sch-slot') : null;
     return row !== null && row.dataset.period === '2' && row.closest('.sch-day').dataset.day === 'dsample00a';
   }, { timeout: 5000 });
-  assert.equal(await page.$eval('.sch-group[aria-current="true"]', (el) => el.dataset.group), 'gsample07a');
+  assert.equal(await page.$eval('.sch-group[aria-selected="true"]', (el) => el.dataset.group), 'gsample07a');
   // put right, the view is whole again. The field is left first: the Schedule
   // section keeps what a focused field holds across a redraw, so an undo
   // with the cursor still in it would be typed over when the field is left.

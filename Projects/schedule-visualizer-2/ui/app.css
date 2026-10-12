@@ -478,6 +478,32 @@ kbd {
   grid-template-columns: minmax(0, 1fr) 360px;
 }
 
+/* On Schedule and on the Staff browser the card goes under the section, at
+   full width: beside it, it took 360 px from tables and a preview that need
+   them (the schedule card was 455 px wide on a 1280 px screen, its tabs in
+   two rows). Its steps then lie side by side. */
+.surface__layout[data-section="schedule"]:has(> .getting-started:not([hidden])),
+.surface__layout[data-section="staff"]:has(> .getting-started:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Brought back by Help, the card is scrolled to with the band a message
+   lies on (--toast-room, at the toast's rules) left clear under it: its
+   buttons are at its foot, where a message would otherwise be on them. */
+.surface__layout[data-section="schedule"] > .getting-started,
+.surface__layout[data-section="staff"] > .getting-started {
+  position: static;
+  scroll-margin-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
+}
+
+@media not all and (max-width: 1000px) {
+  .surface__layout[data-section="schedule"] > .getting-started .steps,
+  .surface__layout[data-section="staff"] > .getting-started .steps {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0 var(--s-5);
+  }
+}
+
 /* The sections that draw the plan sit on its grid, faintly. */
 .surface__layout[data-section="building"],
 .surface__layout[data-section="movement"],
@@ -826,6 +852,9 @@ kbd {
   font-weight: var(--w-medium);
   line-height: var(--lh-lg);
   text-align: center;
+  /* a link that is a button (Import CSV…) has a button's shape, not a
+     link's underline */
+  text-decoration: none;
 }
 
 .btn:hover {
@@ -1330,6 +1359,18 @@ kbd {
   border-radius: var(--r-2);
   box-shadow: var(--shadow);
   animation: rise var(--dur-1) var(--ease);
+}
+
+/* On a section that scrolls (every one but the two that are a plan, which
+   place the message themselves) the page ends in a band of paper as tall as
+   a message and its gap: with the page at its end, the message is on that
+   band and not on the last row of a table. The band is --toast-room, which
+   ui/components/toast.js raises when a message is taller than it (a long
+   one, wrapped on a phone) and never lowers, so the page does not jump when
+   a message leaves. Further up the page a message rides the bottom edge over
+   what is there, as it always did, and that can be scrolled clear. */
+.surface__layout:not([data-section="building"]):not([data-section="movement"]) {
+  padding-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
 }
 
 .toast__text {
@@ -1860,6 +1901,55 @@ kbd {
 
   .surface__layout[data-section="building"] .bld {
     min-height: 0;
+  }
+}
+
+/* ---------- The Movement section's place in the shell ----------
+
+   The map goes edge to edge, as the building's plan does: the layout's
+   padding and its faint grid go. (These were in ui/movement/movement.css
+   until the shell took them.) */
+
+.surface__layout[data-section="movement"] {
+  height: 100%;
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
+  background-image: none;
+}
+
+.surface__layout[data-section="movement"] > .surface__section {
+  min-height: 0;
+}
+
+.surface__layout[data-section="movement"] > .getting-started {
+  align-self: start;
+  margin: var(--s-4);
+}
+
+.surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) calc(360px + var(--s-4) * 2);
+}
+
+/* the shell's messages sit over the map's corner, clear of the bar and the zoom buttons */
+.surface__layout[data-section="movement"] ~ .toasts {
+  bottom: 108px;
+}
+
+@media (max-width: 1000px) {
+  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) .mov {
+    height: 80vh;
+  }
+
+  .surface__layout[data-section="movement"] > .getting-started {
+    margin: var(--s-3) auto;
   }
 }
 

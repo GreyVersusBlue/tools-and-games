@@ -2,8 +2,10 @@
 // the pointer is over one or focus is inside it. The host is a `role="status"`
 // element that is always in the page, so a screen reader hears each one.
 //
-// createToasts(host, { back }) -> { show({ text, action: { label, run }, duration }), dismiss(), focus(), showing }
-//   back()   where the focus goes when a toast that held it leaves the page
+// A section that scrolls ends in a band of paper for the message to lie on
+// (ui/app.css, --toast-room), so that with the page at its end the message is
+// not on the last row of a table it is about. A message taller than the band
+// raises it, once, and a page that was at its end is kept there.
 
 import { h } from './dom.js';
 import { icon } from './icons.js';
@@ -53,6 +55,23 @@ export function createToasts(host, options) {
     if (hadFocus && back) back();
   }
 
+  // Make the band at the page's end as tall as this message and its gap,
+  // when it is not already. It only grows: taking it back when the message
+  // leaves would move the page under the reader a second time.
+  let room = 0;
+  function makeRoom() {
+    const scroller = host.parentElement;
+    if (!scroller) return;
+    const gap = scroller.getBoundingClientRect().bottom - element.getBoundingClientRect().bottom;
+    const needed = Math.ceil(element.offsetHeight + Math.max(gap, 0) + 8);
+    const standing = room || parseFloat(getComputedStyle(scroller).getPropertyValue('--toast-room')) || 76;
+    if (needed <= standing) return;
+    const atEnd = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1;
+    room = needed;
+    scroller.style.setProperty('--toast-room', needed + 'px');
+    if (atEnd) scroller.scrollTop = scroller.scrollHeight;
+  }
+
   function show(options) {
     dismiss();
     const action = options.action
@@ -78,6 +97,7 @@ export function createToasts(host, options) {
     element.addEventListener('focusin', hold);
     element.addEventListener('focusout', release);
     host.append(element);
+    makeRoom();
     held = 0;
     remaining = options.duration === undefined ? TOAST_MS : options.duration;
     run();

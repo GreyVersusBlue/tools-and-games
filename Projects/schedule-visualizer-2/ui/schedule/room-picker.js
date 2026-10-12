@@ -3,22 +3,28 @@
 // narrows the list (by number or by teacher). Arrow keys move, Enter picks,
 // Escape closes the list and then puts the room back. Typing a room number and
 // leaving the field picks that room; an emptied field means no room. Text that
-// matches no room is refused in a sentence and stays to be fixed.
+// is no room of the building is kept as typed, with no room, and the slot is
+// marked "not in the building" (spec 5: a schedule can be entered before the
+// building is drawn, and a room that has gone stays in the schedule). The
+// grid does the same with a number typed into a cell.
 //
-// roomPicker({ name, key, text, describedBy, options, onPick })
+// roomPicker({ name, key, text, missing, describedBy, options, onPick, onKeep })
 //   text      what the slot holds now, as shown
+//   missing   true when that text is not a room of the building
 //   options   a function returning [{ id, label, detail, number }]; id null is "No room"
 //   onPick(id)
+//   onKeep(text)   keep the text as typed, with no room
 // returns { element, input }
 
 import { h, uid } from '../components/dom.js';
 import { roomNumberKey } from '../../engine/schema.js';
+import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { keyed } from './common.js';
 
 export function roomPicker(options) {
   const id = uid('room');
   const listId = id + '-list';
-  const refusalId = id + '-refusal';
+  const missingId = id + '-missing';
   let shown = [];
   let active = -1;
   let open = false;
@@ -39,28 +45,32 @@ export function roomPicker(options) {
   }), options.key);
   input.value = options.text;
   const list = h('ul', { class: 'picker__list', role: 'listbox', id: listId, 'aria-label': 'Rooms', hidden: true });
-  const refusal = h('p', { class: 'field__refusal', id: refusalId, hidden: true });
-  const element = h('div', { class: 'picker sch-room' }, input, list, refusal);
+  // Under the field while what it holds is not a room of the building.
+  const missing = h('p', { class: 'sch-room__missing', id: missingId, hidden: options.missing !== true },
+    h('span', { 'aria-hidden': 'true' }, '▲ '), NOT_IN_BUILDING.charAt(0).toUpperCase() + NOT_IN_BUILDING.slice(1) + '. It is kept as typed.');
+  const element = h('div', { class: 'picker sch-room' }, input, list, missing);
+  if (options.missing === true) input.classList.add('sch-room--missing');
 
   function describe() {
-    const ids = [options.describedBy, refusal.hidden ? null : refusalId].filter(Boolean).join(' ');
+    const ids = [options.describedBy, missing.hidden ? null : missingId].filter(Boolean).join(' ');
     if (ids) input.setAttribute('aria-describedby', ids);
     else input.removeAttribute('aria-describedby');
   }
   describe();
 
-  function refuse(message) {
-    refusal.textContent = message;
-    refusal.hidden = false;
-    input.setAttribute('aria-invalid', 'true');
-    describe();
+  const rooms = () => options.options().filter((option) => option.id !== null);
+
+  // Is what the field holds one room of the building: its number, or its
+  // whole label? Null when it is not.
+  function exact(text) {
+    const found = rooms().filter((option) => roomNumberKey(option.number) === roomNumberKey(text) || option.label.toLowerCase() === text.toLowerCase());
+    return found.length > 0 ? found[0] : null;
   }
 
-  function accept() {
-    refusal.hidden = true;
-    refusal.textContent = '';
-    input.removeAttribute('aria-invalid');
-    describe();
+  // Marked as it is typed: text that matches nothing in the list.
+  function markTyped() {
+    const text = input.value.trim();
+    input.classList.toggle('sch-room--missing', dirty ? text !== '' && shown.length === 0 : options.missing === true);
   }
 
   function matching() {
@@ -70,7 +80,9 @@ export function roomPicker(options) {
   }
 
   function mark() {
-    Array.from(list.children).forEach((item, index) => item.setAttribute('aria-selected', String(index === active)));
+    Array.from(list.children).forEach((item, index) => {
+      if (item.getAttribute('role') === 'option') item.setAttribute('aria-selected', String(index === active));
+    });
     if (active >= 0 && list.children[active] && list.children[active].id) {
       input.setAttribute('aria-activedescendant', list.children[active].id);
       list.children[active].scrollIntoView({ block: 'nearest' });
@@ -82,8 +94,25 @@ export function roomPicker(options) {
   function draw() {
     shown = matching();
     active = shown.length > 0 ? Math.min(Math.max(active, 0), shown.length - 1) : -1;
+    // The list's last line when there is nothing to pick: why, and what
+    // happens to what is typed. With no rooms at all it says where they come
+    // from, and goes there (on the press, as an option picks: the field must
+    // not have lost the focus and shut the list first).
+    const none = rooms().length === 0
+      ? h('li', { class: 'picker__empty', role: 'presentation', data: { empty: 'building' } }, 'No rooms in the building yet. ',
+        h('a', {
+          href: '#building',
+          tabindex: '-1',
+          on: {
+            pointerdown: (event) => {
+              event.preventDefault();
+              location.hash = '#building';
+            },
+          },
+        }, 'Number them in Building.'))
+      : shown.length === 0 ? h('li', { class: 'picker__empty', role: 'presentation', data: { empty: 'match' } }, 'No room matches. It is kept as typed, and marked as not in the building.') : null;
     if (shown.length === 0) {
-      list.replaceChildren(h('li', { class: 'picker__empty', role: 'presentation' }, 'No room matches.'));
+      list.replaceChildren(none);
     } else {
       list.replaceChildren(...shown.map((option, index) => h('li', {
         class: 'picker__option',
@@ -99,8 +128,10 @@ export function roomPicker(options) {
           },
         },
       }, h('span', null, option.label), option.detail ? h('span', { class: 'picker__detail' }, ' ', option.detail) : null)));
+      if (none) list.append(none);
     }
     mark();
+    markTyped();
   }
 
   function show() {
@@ -121,19 +152,37 @@ export function roomPicker(options) {
   function pick(option) {
     dirty = false;
     close();
-    accept();
     input.value = option.id === null ? '' : option.label;
+    missing.hidden = true;
+    input.classList.remove('sch-room--missing');
+    describe();
     options.onPick(option.id);
+  }
+
+  // Keep what was typed, with no room: the slot says it is not in the building.
+  function keep(text) {
+    dirty = false;
+    close();
+    input.value = text;
+    missing.hidden = false;
+    input.classList.add('sch-room--missing');
+    describe();
+    options.onKeep(text);
   }
 
   function revert() {
     dirty = false;
     input.value = options.text;
-    accept();
+    missing.hidden = options.missing !== true;
+    input.classList.toggle('sch-room--missing', options.missing === true);
+    describe();
   }
 
-  // What was typed, turned into a room: nothing is no room; a room's number
-  // or its whole label is that room; one match is that match.
+  // What was typed, read when the field is left or Enter is pressed with
+  // nothing chosen in the list: nothing is no room; a room's number or its
+  // whole label is that room; text that names one room by its teacher is that
+  // room; anything else is kept as typed. A number is never turned into
+  // another number: "10" is not Room 101, however few rooms there are yet.
   function resolve() {
     const text = input.value.trim();
     if (text === '') {
@@ -141,19 +190,22 @@ export function roomPicker(options) {
       else pick({ id: null });
       return;
     }
-    const rooms = options.options().filter((option) => option.id !== null);
-    const exact = rooms.filter((option) => roomNumberKey(option.number) === roomNumberKey(text) || option.label.toLowerCase() === text.toLowerCase());
-    const narrowed = exact.length > 0 ? exact : rooms.filter((option) => option.label.toLowerCase().includes(text.toLowerCase()));
-    if (narrowed.length === 1) pick(narrowed[0]);
-    else if (narrowed.length === 0) refuse('No room matches "' + text + '". Pick one from the list, or empty the field for no room.');
-    else refuse('"' + text + '" matches ' + narrowed.length + ' rooms. Pick one from the list.');
+    const found = exact(text);
+    if (found) {
+      pick(found);
+      return;
+    }
+    const wanted = text.toLowerCase();
+    const byTeacher = rooms().filter((option) => option.label.slice(option.number.length).toLowerCase().includes(wanted));
+    if (byTeacher.length === 1) pick(byTeacher[0]);
+    else if (options.missing === true && text === options.text) revert();
+    else keep(text);
   }
 
   input.addEventListener('focus', () => input.select());
   input.addEventListener('input', () => {
     dirty = true;
     active = 0;
-    accept();
     show();
   });
   input.addEventListener('click', () => {
@@ -185,7 +237,7 @@ export function roomPicker(options) {
         event.preventDefault();
         event.stopPropagation();
         close();
-      } else if (dirty || !refusal.hidden) {
+      } else if (dirty) {
         event.preventDefault();
         event.stopPropagation();
         revert();

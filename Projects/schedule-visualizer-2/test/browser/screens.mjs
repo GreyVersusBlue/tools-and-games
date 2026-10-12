@@ -87,6 +87,36 @@ async function gridOnPhone(page) {
   await page.waitForFunction(() => document.querySelector('.grd-cell--grade').getClientRects().length === 0);
 }
 
+// SV2-38: a screen of the schedule on a phone, the size put back as above.
+async function scheduleOnPhone(page) {
+  const size = page.viewport ? page.viewport() : page.viewportSize();
+  const resize = (to) => (page.setViewport ? page.setViewport({ ...size, ...to }) : page.setViewportSize(to));
+  await resize({ width: 390, height: 760 });
+  page.once('framenavigated', () => {
+    resize({ width: size.width, height: size.height }).catch(() => {});
+  });
+  await page.waitForFunction(() => window.innerWidth === 390);
+  // crossing the width draws the Groups tab again, a frame later
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await scheduleDrawn(page);
+}
+
+// SV2-38: the Checks tab on a phone, a finding's buttons under its sentence.
+async function checksOnPhone(page) {
+  await scheduleOnPhone(page);
+  await page.waitForSelector('.sch-checks .sch-finding__cell');
+}
+
+// SV2-38: the Groups tab on a phone after a group is chosen: its card, "All
+// groups", and the editor.
+async function groupEditorOnPhone(page) {
+  await scheduleOnPhone(page);
+  await page.evaluate(() => document.querySelectorAll('.sch-group')[1].click());
+  await page.waitForFunction(() => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('.sch-groups').dataset.folded === 'true' && document.querySelector('.sch-editor').getClientRects().length > 0);
+}
+
 // SV2-40: the Teachers table with the cell of the sample's double-booking in
 // focus, its sentence drawn under it.
 async function gridTeachersMarked(page) {
@@ -321,22 +351,25 @@ export const SCREENS = [
       await page.waitForSelector('.sch-slot .picker__option');
     },
   },
-  {
-    id: 'schedule-room-refused-and-missing', // SV2-11
+  { // SV2-38: a room number the building does not have is kept as typed (it
+    // was refused when SV2-11 wrote this screen), with its line under the
+    // field, and the next field's list open on its one line
+    id: 'schedule-room-not-in-building',
     hash: '#schedule/groups',
     open: async (page) => {
-      await page.evaluate(() => import('./engine/actions.js').then((actions) => {
-        const { store } = globalThis.sv2;
-        store.apply(actions.setSlot, { groupId: store.project.groups[0].id, dayTypeId: store.project.dayTypes[0].id, period: 1, slot: { room: null, roomText: 'B12' } });
-      }));
-      await page.waitForSelector('.sch-room--missing');
       await scheduleDrawn(page);
       await page.click('.sch-slot .picker__input');
-      await page.keyboard.type('zzz');
+      await page.keyboard.type('B12');
       await page.keyboard.press('Enter');
-      await page.waitForSelector('.sch-room .field__refusal:not([hidden])');
+      await page.waitForSelector('.sch-slot .sch-room__missing:not([hidden])');
+      await scheduleDrawn(page);
+      await page.click('.sch-slot[data-period="1"] .picker__input');
+      await page.keyboard.type('zzz');
+      await page.waitForSelector('.sch-slot[data-period="1"] .picker__empty');
     },
   },
+  { id: 'schedule-checks-phone', hash: '#schedule/checks', open: checksOnPhone }, // SV2-38
+  { id: 'schedule-group-editor-phone', hash: '#schedule/groups', open: groupEditorOnPhone }, // SV2-38
   {
     id: 'schedule-slot-menu', // SV2-11
     hash: '#schedule/groups',

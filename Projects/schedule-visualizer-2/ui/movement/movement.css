@@ -3,56 +3,9 @@
    canvas takes everything between. The legend, the cell card and the zoom
    buttons sit over the canvas's corners.
 
-   ui/movement/index.js adds this sheet to the page. */
-
-/* ---------- The section's place in the shell ----------
-
-   The map goes edge to edge, as the building's plan does: the layout's
-   padding and its faint grid go. These rules belong in ui/app.css beside the
-   Building section's; they are here until the shell takes them. */
-
-.surface__layout[data-section="movement"] {
-  height: 100%;
-  padding: 0;
-  gap: 0;
-  align-items: stretch;
-  grid-template-rows: minmax(0, 1fr);
-  background-image: none;
-}
-
-.surface__layout[data-section="movement"] > .surface__section {
-  min-height: 0;
-}
-
-.surface__layout[data-section="movement"] > .getting-started {
-  align-self: start;
-  margin: var(--s-4);
-}
-
-.surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) calc(360px + var(--s-4) * 2);
-}
-
-/* the shell's messages sit over the map's corner, clear of the bar and the zoom buttons */
-.surface__layout[data-section="movement"] ~ .toasts {
-  bottom: 108px;
-}
-
-@media (max-width: 1000px) {
-  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
-    height: auto;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) .mov {
-    height: 80vh;
-  }
-
-  .surface__layout[data-section="movement"] > .getting-started {
-    margin: var(--s-3) auto;
-  }
-}
+   index.html links this sheet (data-sheet="movement"); ui/movement/index.js
+   adds it to a page that does not. The section's place in the shell (the map
+   edge to edge, where Getting started and the messages go) is ui/app.css's. */
 
 /* ---------- The section ---------- */
 

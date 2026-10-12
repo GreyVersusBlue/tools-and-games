@@ -121,7 +121,7 @@ export function mount(env) {
       h('div', { class: 'sch-toolbar' },
         addButton,
         button('Export CSV', exportCsv, { key: 'teacher-export', action: 'export', more: ' of the teachers' }),
-        h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import' } }, 'Import CSV…')),
+        h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import', key: 'teacher-import' } }, 'Import CSV…', h('span', { class: 'vh' }, ' of teachers, on the Import tab'))),
       duplicates(project),
       h('div', { class: 'sch-scroll' }, h('table', { class: 'table sch-edit-table' },
         h('caption', { class: 'vh' }, 'Teachers'),
