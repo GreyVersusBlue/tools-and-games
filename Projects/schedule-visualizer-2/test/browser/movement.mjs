@@ -139,7 +139,7 @@ test('the view opens on every group, the first day type and all transitions, and
   assert.equal(seen.who, 'all');
   assert.equal(seen.day, 'A Day');
   assert.deepEqual(seen.tabs, ['Hotspots', 'Travel time', 'Summary', 'Export']);
-  assert.equal(seen.tab, 'Summary');
+  assert.equal(seen.tab, 'Hotspots');
   assert.equal(seen.bar, true, 'the playback bar has its place');
 });
 
@@ -483,6 +483,7 @@ test('a corridor cell under the pointer, tapped, or under the keyboard cursor sh
 
 test('the summary has the figures, and a row for each group on screen', async () => {
   await change(OPEN);
+  await page.click('#inspector [role="tab"][data-tab="summary"]');
   const figure = (key) => view((which) => {
     const el = document.querySelector('#inspector [data-figure="' + which + '"]');
     return [el.querySelector('dt').textContent, el.querySelector('.mov-figure__value').textContent, (el.querySelector('.mov-figure__more') || { textContent: '' }).textContent];

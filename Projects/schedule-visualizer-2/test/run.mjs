@@ -68,6 +68,7 @@ export const GROUPS = {
     'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
     'engine/prints-batch.test.mjs', // SV2-24
+    'engine/prints-movement.test.mjs', // SV2-18
     'engine/grid-edits.test.mjs', // SV2-12
     'engine/import-subjects.test.mjs', // SV2-13
     'ui/progress.test.mjs', // SV2-02
@@ -103,6 +104,7 @@ export const GROUPS = {
     'browser/staff-outputs.mjs', // SV2-23
     'browser/publish.mjs', // SV2-24
     'browser/movement.mjs', // SV2-17
+    'browser/hotspots.mjs', // SV2-18
     'a11y/axe.mjs',
   ],
   a11y: [

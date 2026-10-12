@@ -506,6 +506,55 @@ export const SCREENS = [
       await page.waitForSelector('#inspector [data-panel="hotspots"]');
     },
   },
+  { // SV2-18: the hotspot table with a row opened to its cells and a place chosen on the map
+    id: 'movement-hotspots-open',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="hotspots"]');
+      await page.click('#inspector .mov-hot__row[data-rank="2"] [data-action="cells"]');
+      await page.click('#inspector .mov-hot__row[data-rank="1"] [data-action="show"]');
+      await page.waitForSelector('#inspector .mov-hot__row[data-rank="1"][aria-current="true"]');
+    },
+  },
+  { // SV2-18: the travel-time tables
+    id: 'movement-travel-time',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="tables"]');
+      await page.waitForSelector('#inspector [data-travel="day"] tbody');
+    },
+  },
+  { // SV2-18: the Export tab
+    id: 'movement-export',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="export"]');
+      await page.waitForSelector('#inspector [data-panel="export"] [data-action="png"]:not([aria-disabled])');
+    },
+  },
+  { // SV2-18: the movement picture in the preview sheet
+    id: 'movement-print-picture',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="export"]');
+      await page.click('#inspector [data-action="print-picture"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
+  { // SV2-18: the congestion report in the preview sheet
+    id: 'movement-congestion-report',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="export"]');
+      await page.click('#inspector [data-action="print-congestion"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
   { id: 'movement-empty', hash: '#project', open: async (page) => { // SV2-17: no groups, so no map
     await removeSample(page);
     await page.evaluate(() => {
