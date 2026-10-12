@@ -82,6 +82,7 @@ export function preview(ctx) {
   let forget = false; // the tick has just gone on: the next locked copy tells the frame to forget its key
   let forgetNext = false; // and that copy is in hand, waiting to be sent
   let openTimer = null;
+  let staleSays = null; // why the frame could not be given the project as it is now, while that is so
 
   const sizeLabel = uid('staff-size');
   const lockId = uid('staff-lock');
@@ -189,7 +190,8 @@ export function preview(ctx) {
       if (mine !== turn || stopped) return;
       // the same sentence Publish would give for the same failure (form.js)
       console.warn('Schedule Visualizer 2: the preview could not be brought up to date.', error);
-      says.textContent = 'The preview could not be brought up to date. ' + failureSentence(error, { connection: PREVIEW_FAILED, other: PREVIEW_BROKE });
+      staleSays = 'The preview could not be brought up to date. ' + failureSentence(error, { connection: PREVIEW_FAILED, other: PREVIEW_BROKE });
+      says.textContent = staleSays;
       element.dataset.previewSays = 'stale';
       return;
     }
@@ -197,6 +199,7 @@ export function preview(ctx) {
     if (mine !== turn || stopped) return;
     if (locked && forget) forgetNext = true;
     forget = false;
+    staleSays = null;
     delete element.dataset.previewSays;
     data = next;
     shown = parts;
@@ -235,7 +238,8 @@ export function preview(ctx) {
       state.loaded = true;
       state.opened = false;
       state.live = false;
-      says.textContent = 'Opening the preview.';
+      // the reason there is nothing to show yet outlasts the page being made
+      says.textContent = staleSays || 'Opening the preview.';
       waitToOpen(true);
     } catch (error) {
       if (stopped) return;

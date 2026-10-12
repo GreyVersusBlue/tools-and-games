@@ -2056,6 +2056,42 @@ test('in the batch a room number of thirty characters wraps on its sheet: nothin
   }
 });
 
+// SV2-49 item 3. The planner's preview marks a batch document "has-page-boxes"
+// where the browser prints page margin boxes; a browser that does not print
+// them gets the document as it is written here, unmarked, and printed a
+// closing line after the last sign: a fifteenth sheet for thirteen signs and
+// a cover. The document is printed to a PDF as that browser would have it.
+test('printed for real with nothing marked on its root, a batch of door signs is the cover and a sheet a sign, on US Letter and on A4: no sheet for a closing line', async () => {
+  const pagesOf = (pdf) => (Buffer.from(pdf).toString('latin1').match(/\/Type\s*\/Page\b(?!s)/g) || []).length;
+  const project = sampleSchool();
+  const batches = [['doors', true, 14], ['doors', false, 14], ['teachers', false, 13]];
+  for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
+    for (const [batch, day, sheets] of batches) {
+      const at = batch + (day ? ' with the day' : '') + ' on ' + size;
+      const { html } = renderBatch(project, null, { batch, day, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
+      const file = path.join(scratch, 'batch-pdf-' + size + '-' + batch + (day ? '-day' : '') + '.html');
+      writeFileSync(file, html);
+      const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
+      try {
+        const { page } = session;
+        await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+        await page.evaluate(() => document.fonts.ready);
+        const root = await page.evaluate(() => ({
+          marked: document.documentElement.classList.contains('has-page-boxes'),
+          styled: getComputedStyle(document.querySelector('.doc-head__what')).fontWeight,
+          foot: document.querySelectorAll('.doc-foot').length,
+        }));
+        assert.deepEqual(root, { marked: false, styled: '700', foot: 0 }, at + ': print.css is applied, the root is unmarked and no closing line is in the document');
+        const pages = pagesOf(await page.pdf({ preferCSSPageSize: true, printBackground: true }));
+        assert.equal(pages, sheets, at + ': ' + pages + ' sheets of paper');
+        assert.deepEqual(session.errors, []);
+      } finally {
+        await session.close();
+      }
+    }
+  }
+});
+
 // ---------------------------------------------------------------- Every new page, both widths, both themes
 
 const NOTES_TWO = JSON.stringify({ dsample00a: { 1: 'Hall duty by stairs A', 6: 'Department meeting, every second week, in the Library' } });

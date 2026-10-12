@@ -30,6 +30,7 @@ import { routingGraph, route } from '../../engine/routing.js';
 import { directions, SQUARE_UNITS } from '../../engine/directions.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { disconnectedWing, roomId } from '../fixtures/buildings/plans.mjs';
 
 const AXE = readFileSync(path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js'), 'utf8');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
@@ -52,8 +53,8 @@ const read = diskReader();
 const files = {};
 let browser;
 
-async function write(name, change) {
-  const project = sampleSchool();
+async function write(name, change, from) {
+  const project = from ? from() : sampleSchool();
   project.publish.passcode = '';
   if (change) change(project);
   const published = await publishDocument(read, project, { clock: future, random: seededRandom('staff-views-b ' + name) });
@@ -77,6 +78,8 @@ before(async () => {
   await write('nobells', (project) => {
     for (const dayType of project.dayTypes) dayType.bells = dayType.bells.map(() => null);
   });
+  // one floor, two corridors that do not meet: rooms 1A and 1B on one, 1C and 1D on the other
+  await write('wing', null, disconnectedWing);
   browser = await launch();
 });
 
@@ -681,6 +684,8 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     assert.equal(await hash(page), '#/directions?from=rsample101&to=rsample303&stepfree=1');
     assert.equal(await says(page), 'There is no way from Room 101 to Room 303 without stairs.');
     assert.equal(await page.evaluate(() => document.querySelector('.steps')), null);
+    // the way with stairs was looked for and found before it is offered
+    assert.equal(await text(page, '[data-directions="stairs"]'), 'There is a way that uses stairs. Show the way with stairs');
     await page.click('[data-directions="stairs"] button');
     assert.equal(await page.evaluate(() => document.getElementById('directions-stepfree').checked), false);
     assert.equal(await hash(page), '#/directions?from=rsample101&to=rsample303');
@@ -699,6 +704,38 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     await page.select('#directions-to', 'rsample103');
     assert.equal(await says(page), 'This is the same room. There is no travel.');
     assert.deepEqual(asked(session, files.open.url), []);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// SV2-49 item 5
+test('Directions, step-free, between two rooms that nothing joins: the page says there is no way and offers no button that leads to a second refusal', async () => {
+  const session = await openPage();
+  try {
+    const { page } = session;
+    const [a, b, c] = [roomId('1A'), roomId('1B'), roomId('1C')];
+    await goto(page, files.wing.url + '#/directions?from=' + a + '&to=' + c + '&stepfree=1');
+    assert.equal(await page.evaluate(() => document.getElementById('directions-stepfree').checked), true);
+    assert.equal(await says(page), 'There is no way through from Room 1A to Room 1C on Floor 1.');
+    assert.equal(await page.evaluate(() => document.querySelector('.lede[role="status"]').dataset.ok), 'false');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-directions="stairs"]')), null, 'no way with stairs is offered where there is none');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('[data-out="directions"] button').length), 0);
+    assert.doesNotMatch(await page.evaluate(() => document.querySelector('.page__body').textContent), /without stairs|uses stairs/);
+
+    // with the box unticked the sentence is the same one: the box was never the reason
+    await page.click('#directions-stepfree');
+    assert.equal(await hash(page), '#/directions?from=' + a + '&to=' + c);
+    assert.equal(await says(page), 'There is no way through from Room 1A to Room 1C on Floor 1.');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-directions="stairs"]')), null);
+
+    // and a way that exists on this floor is given, step-free
+    await page.click('#directions-stepfree');
+    await page.select('#directions-to', b);
+    assert.match(await says(page), /^From Room 1A to Room 1B: under a minute, all on one floor, step-free\.$/);
+    assert.ok((await texts(page, '.steps > li')).length >= 1);
+    assert.deepEqual(asked(session, files.wing.url), []);
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();

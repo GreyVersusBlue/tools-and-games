@@ -235,7 +235,7 @@ both('M3: a way with no stairs between two floors is refused plainly, and the li
   }));
   assert.equal(said.says, 'There is no way from Room 101 to Room 302 without stairs.');
   assert.equal(said.ok, 'false');
-  assert.equal(said.next, 'There may be a way that uses stairs. Show the way with stairs');
+  assert.equal(said.next, 'There is a way that uses stairs. Show the way with stairs');
   assert.equal(said.button, 1);
   // and the button gives the way
   await page.tap('[data-directions="stairs"] button');
@@ -300,7 +300,14 @@ test('M4: "Print this page" is on a page only when the page has a result: seven 
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.querySelector('.page__body').dataset.result === 'none');
   assert.equal(await printShown(page), false, 'the box emptied');
+  // Something found, then nothing: the button comes with the results and goes
+  // with them. Each step waits on what the page sets, so the last line is
+  // read after the search for "halzzzz" was drawn, and the gate is seen to move.
+  await page.type('#find', 'hal');
+  await page.waitForFunction(() => document.querySelector('.page__body').dataset.result === 'true' && document.querySelectorAll('a[data-result]').length > 0);
+  assert.equal(await printShown(page), true, 'results again, and their button');
   await page.type('#find', 'zzzz');
+  await page.waitForFunction(() => document.getElementById('find').value === 'halzzzz' && location.hash.endsWith('q=halzzzz') && document.querySelectorAll('a[data-result]').length === 0 && document.querySelector('.page__body').dataset.result === 'none');
   assert.equal(await printShown(page), false, 'nothing found is nothing to print');
   // a page that names something this file does not have
   for (const address of ['#/teacher/tgone000001', '#/coverage/tgone000001', '#/door/rgone000001']) {
@@ -312,6 +319,14 @@ test('M4: "Print this page" is on a page only when the page has a result: seven 
     await visit(page, address);
     assert.equal(await printShown(page), true, address);
   }
+  // Where each of those prints from (SV2-49 item 10): a teacher's page has its
+  // own button, "Print this schedule", in the row under the day with the image
+  // and the door sign, so it is given no second one reading "Print this page".
+  const printButtons = () => page.evaluate(() => Array.from(document.querySelectorAll('[data-print]')).filter((button) => button.getClientRects().length > 0).map((button) => button.textContent + ' in ' + (button.closest('[data-actions]') || document.body).dataset.actions));
+  await visit(page, '#/teacher/tsample004');
+  assert.deepEqual(await printButtons(), ['Print this schedule in outputs']);
+  await visit(page, '#/room/rsample203');
+  assert.deepEqual(await printButtons(), ['Print this page in print']);
   await page.evaluate(() => localStorage.clear());
 }));
 
