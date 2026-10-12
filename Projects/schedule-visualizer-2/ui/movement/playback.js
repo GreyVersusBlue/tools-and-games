@@ -2,10 +2,12 @@
 // 8.1): it walks the groups on screen through one transition, each a marker
 // on the map (ui/surface/overlays/markers.js).
 //
-//   playbackBar(env) -> { element, update(state) }
+//   playbackBar(env) -> { element, update(state), unmount() }
 //
 // `env` and `state` are described at the top of ./index.js. The bar's height
-// is whatever its contents take; the map gives it the room.
+// is whatever its contents take; the map gives it the room. `unmount` is for
+// the view leaving the page: it stops the frames and lets go of what the bar
+// listens to.
 //
 // Where a group is at a second is the crowd model's answer
 // (state.results.crowd: per transition, per group, `positions`), read through
@@ -26,10 +28,21 @@
 //                                  everyone at once or one group after another
 //
 // The map shows no marker until playback is started (Play, or the scrubber);
-// choosing "All" on the strip puts them away again. A group still walking
-// when the passing time is over is late by the crowd model's own rule
-// (isLate): its marker changes shape, the bar names it, and the card of a
-// cell says so beside who is there now (env.card.extra).
+// choosing "All" on the strip puts them away again. Late is the crowd
+// model's own rule and no other (isLate: the passing time plus the school's
+// margin): a group still walking then has a marker of another shape, the bar
+// names it, the countdown takes the problem colour, and the card of a cell
+// says so beside who is there now (env.card.extra). The countdown's words
+// count from the bell, which is what the clock shows; between the bell and
+// the end of the margin it reads "after the bell" in plain ink. A group that
+// got to its room late keeps its marker's shape there and is named under its
+// own words, "In their room, late", not among those still walking.
+//
+// The markers have a canvas of their own, laid over the map's (the layer).
+// A frame of playback draws that layer and nothing else: the map under it
+// (every floor, its lanes, the load colours) is drawn again only when the map
+// itself changes, and each time it is, it hands the layer what it needs to
+// place a marker (the bar's entry on env.marks).
 //
 // The clock advances by the time between animation frames, not by counting
 // them, so a slow machine shows the same seconds. With reduced motion asked
@@ -43,12 +56,13 @@
 // For the tests and the console, on the bar's element:
 //
 //   element.playback   { seconds, end, playing, started, prefs, scene, mark,
-//                        now(), seek(seconds), play(), pause(), set(patch),
-//                        frames({ request, cancel }) }
+//                        layer, now(), seek(seconds), play(), pause(),
+//                        set(patch), frames({ request, cancel }) }
 //
 // `frames` replaces requestAnimationFrame for the playback clock alone, so a
 // test can hand it the frames' times; `mark.drawn` is where the markers were
-// last put on the map.
+// last put on the map, and `layer` is the canvas they are on
+// (`layer.dataset.drawn` counts its draws).
 
 import { h, uid } from '../components/dom.js';
 import { choice as segmented } from '../components/choice.js';
@@ -56,7 +70,7 @@ import { periodWords } from '../components/words.js';
 import { formatTime, parseTime } from '../../engine/bells.js';
 import { routingGraph } from '../../engine/routing.js';
 import { routePath, isLate } from '../../engine/crowd.js';
-import { readPlayback, writePlayback, PLAYBACK_SPEEDS } from '../../storage/device.js';
+import { readPlayback, writePlayback, playbackWith, PLAYBACK_SPEEDS } from '../../storage/device.js';
 import { markersMark, trackOf, headAt, coveredBy } from '../surface/overlays/markers.js';
 
 // At the fixed pace and 1×, how long a transition takes to watch, and how
@@ -67,6 +81,7 @@ export const TURN_SECONDS = 8;
 // a slow machine: the clock does not jump over it.
 export const MAX_GAP_MS = 1000;
 
+export const REFUSED_TOAST = 'This browser did not keep the playback settings: they last until the page is closed.';
 export const REDUCED_LINE = 'Reduced motion is on, so nothing moves by itself: move the scrubber to walk the groups.';
 
 const LOOPS = [{ value: 'once', label: 'Once' }, { value: 'transition', label: 'This transition' }, { value: 'day', label: 'The whole day' }];
@@ -81,7 +96,8 @@ export const PLAYBACK_CSS = `
 .mov-pb__time { display: grid; min-width: 9.5rem; font-variant-numeric: var(--numeric); }
 .mov-pb__clock { font-family: var(--font-plan); font-size: var(--t-lg); font-weight: var(--w-semibold); line-height: 1.1; }
 .mov-pb__countdown { font-size: var(--t-xs); line-height: var(--lh-xs); color: var(--ink-2); }
-.mov-pb__countdown[data-over="true"] { color: var(--problem); font-weight: var(--w-semibold); }
+.mov-pb__countdown[data-late="true"] { color: var(--problem); font-weight: var(--w-semibold); }
+.mov-pb__layer { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
 .mov-pb__pick { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--t-sm); }
 .mov-pb__select { width: auto; height: 36px; padding: 0 var(--s-2); border: var(--border-width) solid var(--line-strong); border-radius: var(--r-1); background: var(--card); }
 .mov-pb__more { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); padding-top: var(--s-2); border-top: var(--border); }
@@ -118,14 +134,13 @@ function setText(el, text) {
   if (el.textContent !== text) el.textContent = text;
 }
 
+// A button that can or cannot be pressed now. Its title is why it cannot,
+// and only that: one left from another reason is taken off.
 function able(button, on, why) {
-  if (on) {
-    button.removeAttribute('aria-disabled');
-    button.removeAttribute('title');
-  } else {
-    button.setAttribute('aria-disabled', 'true');
-    if (why) button.title = why;
-  }
+  if (on) button.removeAttribute('aria-disabled');
+  else button.setAttribute('aria-disabled', 'true');
+  if (!on && why) button.title = why;
+  else button.removeAttribute('title');
 }
 
 export function playbackBar(env) {
@@ -262,6 +277,12 @@ export function playbackBar(env) {
     return isLate(walker.arrived && at >= walker.total ? walker.total : at, scene.passing, scene.margin);
   }
 
+  // Still on its way at this second of its own clock: not yet in its room,
+  // or never to be (stopped at the cap).
+  function walkingAt(walker, at) {
+    return !(walker.arrived && at >= walker.total);
+  }
+
   const mark = markersMark(() => {
     const moment = started ? now() : null;
     if (!moment) return null;
@@ -272,7 +293,41 @@ export function playbackBar(env) {
       walkers: moment.walkers.map((walker) => ({ groupId: walker.groupId, colour: walker.colour, track: walker.track, positions: walker.positions, seconds: moment.clock, late: lateAt(walker, moment.clock) })),
     };
   });
-  env.marks.push(mark);
+
+  // ---- the markers' layer
+  const layer = h('canvas', { class: 'mov-pb__layer', 'aria-hidden': 'true', data: { layer: 'playback', drawn: '0' } });
+  const pen = layer.getContext('2d');
+  // what the map's last paint handed its marks, and the scale it drew at
+  let map = null;
+  let scale = null;
+
+  function drawMarks() {
+    // the map has not been painted yet: its first paint draws the markers
+    if (!map) {
+      env.paint();
+      return;
+    }
+    pen.setTransform(1, 0, 0, 1, 0, 0);
+    pen.clearRect(0, 0, layer.width, layer.height);
+    pen.setTransform(scale);
+    pen.save();
+    mark(pen, map);
+    pen.restore();
+    layer.dataset.drawn = String(Number(layer.dataset.drawn) + 1);
+  }
+
+  // The bar's entry on env.marks: the map was painted. Nothing is drawn on
+  // the map's own canvas; the layer is put over it, at its size, and drawn.
+  function onMap(g, given) {
+    const plan = g.canvas;
+    if (layer.previousElementSibling !== plan) plan.after(layer);
+    if (layer.width !== plan.width) layer.width = plan.width;
+    if (layer.height !== plan.height) layer.height = plan.height;
+    map = given;
+    scale = g.getTransform();
+    drawMarks();
+  }
+  env.marks.push(onMap);
 
   // ---- the clock
   function rate() {
@@ -321,7 +376,7 @@ export function playbackBar(env) {
       }
     }
     render();
-    env.paint();
+    drawMarks();
   }
 
   function play() {
@@ -337,7 +392,7 @@ export function playbackBar(env) {
     lastStamp = null;
     if (frame === null) frame = frames.request(tick);
     render();
-    env.paint();
+    drawMarks();
   }
 
   function pause() {
@@ -350,7 +405,7 @@ export function playbackBar(env) {
     seconds = Math.max(0, Math.min(Number.isFinite(to) ? to : 0, end()));
     started = true;
     render();
-    env.paint();
+    drawMarks();
   }
 
   function step(by) {
@@ -362,12 +417,14 @@ export function playbackBar(env) {
   }
 
   function set(patch) {
+    // what is on screen is what is kept, whole: a choice the browser refused
+    // to keep earlier holds for the visit and is written with the next one
+    prefs = playbackWith(prefs, patch);
     try {
-      prefs = writePlayback(patch);
+      writePlayback(prefs);
     } catch (error) {
-      // the choice holds for this visit; the browser keeps nothing, said once
-      prefs = { ...prefs, ...patch };
-      if (!refused) ctx.toast({ kind: 'warning', text: 'This browser did not keep the playback settings: they last until the page is closed.' });
+      // the browser keeps nothing: said once
+      if (!refused) ctx.toast({ kind: 'warning', text: REFUSED_TOAST });
       refused = true;
     }
     if ('order' in patch) {
@@ -375,12 +432,16 @@ export function playbackBar(env) {
       lateSaid = '';
     }
     render();
-    env.paint();
+    drawMarks();
   }
 
   // ---- what the bar says
   function lateNames(moment) {
     return moment.walkers.filter((walker) => lateAt(walker, moment.clock)).map((walker) => walker.name);
+  }
+
+  function bdis(names) {
+    return names.flatMap((name, index) => (index === 0 ? [h('bdi', null, name)] : [', ', h('bdi', null, name)]));
   }
 
   function lateWords() {
@@ -437,7 +498,9 @@ export function playbackBar(env) {
         ? (left >= 0 ? minutesText(left) + ' to the bell' : minutesText(-left) + ' after the bell')
         : (left >= 0 ? minutesText(left) + ' of the passing time left' : minutesText(-left) + ' over the passing time');
       setText(countdown, words);
+      // after the bell is what the words say; late is the markers' moment
       countdown.dataset.over = String(left < 0);
+      countdown.dataset.late = String(started && moment.walkers.some((walker) => lateAt(walker, moment.clock)));
       scrub.setAttribute('aria-valuetext', (time ? time + ', ' : '') + into + ', ' + words);
     }
 
@@ -458,14 +521,23 @@ export function playbackBar(env) {
       delete turn.dataset.key;
     }
 
+    // every late group, and of them the ones still on their way
     const names = moment && started ? lateNames(moment) : [];
+    const walking = moment && started ? moment.walkers.filter((walker) => lateAt(walker, moment.clock) && walkingAt(walker, moment.clock)).map((walker) => walker.name) : [];
+    const inRoom = names.filter((name) => !walking.includes(name));
     const lateKey = names.join('\n');
-    if (late.dataset.key !== lateKey) {
-      late.dataset.key = lateKey;
-      late.replaceChildren('Late, still walking after the passing time: ', ...names.flatMap((name, index) => (index === 0 ? [h('bdi', null, name)] : [', ', h('bdi', null, name)])), '.');
+    const lineKey = walking.join('\n') + '\n\n' + inRoom.join('\n');
+    if (late.dataset.key !== lineKey) {
+      late.dataset.key = lineKey;
+      late.replaceChildren(
+        ...(walking.length > 0 ? ['Late, still walking after the passing time: ', ...bdis(walking), '.'] : []),
+        ...(walking.length > 0 && inRoom.length > 0 ? [' '] : []),
+        ...(inRoom.length > 0 ? ['In their room, late: ', ...bdis(inRoom), '.'] : []),
+      );
     }
     late.hidden = names.length === 0;
-    element.dataset.late = String(names.length);
+    element.dataset.late = String(walking.length);
+    element.dataset.lateIn = String(inRoom.length);
     // a group that has just become late is said once
     if (playing && lateKey !== '' && lateKey !== lateSaid) ctx.announce(names.join(', ') + (names.length === 1 ? ' is late.' : ' are late.'));
     if (lateKey !== '' || !playing) lateSaid = lateKey;
@@ -507,13 +579,10 @@ export function playbackBar(env) {
     card.extra.replaceChildren(line);
   }
   // the card comes and goes with the pointer, between two frames of playback too
-  new MutationObserver(drawExtra).observe(env.card.element, { attributes: true, attributeFilter: ['hidden', 'data-floor', 'data-cell'] });
+  const cardWatch = new MutationObserver(drawExtra);
+  cardWatch.observe(env.card.element, { attributes: true, attributeFilter: ['hidden', 'data-floor', 'data-cell'] });
 
   function onReduce() {
-    if (!element.isConnected) {
-      reduce.removeEventListener('change', onReduce);
-      return;
-    }
     if (reduce.matches) stop();
     render();
   }
@@ -527,6 +596,7 @@ export function playbackBar(env) {
     get prefs() { return prefs; },
     get scene() { return scene; },
     mark,
+    layer,
     now,
     seek,
     play,
@@ -565,6 +635,17 @@ export function playbackBar(env) {
       if (!scene) stop();
       seconds = Math.min(seconds, end());
       render();
+    },
+    // The view is leaving the page: no frame is left asked for, and nothing
+    // the bar listened to still calls it.
+    unmount() {
+      stop();
+      cardWatch.disconnect();
+      reduce.removeEventListener('change', onReduce);
+      const at = env.marks.indexOf(onMap);
+      if (at !== -1) env.marks.splice(at, 1);
+      layer.remove();
+      map = null;
     },
   };
 }

@@ -727,6 +727,7 @@ export const section = {
       },
       unmount() {
         gone = true;
+        bar.unmount();
         watcher.disconnect();
         dark.removeEventListener('change', queuePaint);
         input.detach();
