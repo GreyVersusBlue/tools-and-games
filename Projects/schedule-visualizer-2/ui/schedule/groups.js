@@ -97,12 +97,10 @@ export function mount(env) {
     show(focusKey);
   }
 
-  // The list again, on a phone. The slot an address or a finding's Show
-  // opened is no longer being shown: left in place it would fold the list
-  // straight back.
+  // The list again, on a phone. (Nothing folds it back: an address and a
+  // finding's Show fold the list when they open a slot, and no drawing does.)
   function showAll() {
     view.folded = false;
-    view.shown = null;
     show(view.groupId ? 'group:' + view.groupId : 'group-add');
   }
 

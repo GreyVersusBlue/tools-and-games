@@ -49,8 +49,6 @@ export function roomPicker(options) {
   let active = -1;
   let open = false;
   let dirty = false;
-  // did the arrow keys put the highlight where it is
-  let arrowed = false;
   // the rooms Enter found the text to name, while the list is open on them
   let several = null;
   let said = '';
@@ -194,8 +192,10 @@ export function roomPicker(options) {
   }
 
   // Open the list. A field that holds a room and has not been typed in
-  // opens with that room highlighted; anything else opens with no highlight,
-  // so nothing is picked that the arrow keys did not go to.
+  // opens with that room highlighted, where Enter changes nothing; anything
+  // else opens with no highlight. So the highlight is only ever on the
+  // slot's own room or where the arrow keys put it, and Enter picking what
+  // is highlighted picks nothing the arrow keys did not go to.
   function show() {
     if (input.readOnly) return;
     const was = open;
@@ -210,7 +210,6 @@ export function roomPicker(options) {
   function close() {
     open = false;
     active = -1;
-    arrowed = false;
     several = null;
     list.hidden = true;
     input.setAttribute('aria-expanded', 'false');
@@ -263,7 +262,6 @@ export function roomPicker(options) {
     else if (result.kind === 'several' && how === 'enter') {
       several = result.options;
       active = -1;
-      arrowed = false;
       open = true;
       draw();
     } else keep(input.value.trim());
@@ -280,8 +278,8 @@ export function roomPicker(options) {
   input.addEventListener('input', () => {
     if (input.readOnly) return;
     dirty = true;
-    arrowed = false;
     several = null;
+    // typing takes the highlight off: Enter then reads the text
     active = -1;
     show();
   });
@@ -303,18 +301,16 @@ export function roomPicker(options) {
         // nothing of its own to open on: the arrow goes to the first, or the last
         if (active === -1 && shown.length > 0) {
           active = down ? 0 : shown.length - 1;
-          arrowed = true;
           mark();
         }
         return;
       }
       if (shown.length === 0) return;
       active = active === -1 ? (down ? 0 : shown.length - 1) : (active + (down ? 1 : -1) + shown.length) % shown.length;
-      arrowed = true;
       mark();
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      if (open && arrowed && shown[active]) pick(shown[active]);
+      if (open && shown[active]) pick(shown[active]);
       else if (dirty) resolve('enter');
       else close();
     } else if (event.key === 'Escape') {

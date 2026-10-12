@@ -1063,9 +1063,24 @@ test('the movement view\'s link to a slot opens a group that "All groups" can le
 
 test('on a 390 px phone the Back button from a group\'s editor is the list, with the focus on the group\'s card, and not the way out of the section', async () => {
   await on('#schedule/groups', PHONE, async (p) => {
+    // The tap draws the tab once. The address follows the drawing, and the
+    // address saying what is already drawn draws nothing: a second drawing
+    // would take the editor from under the finger. Counted by the columns
+    // the tab puts up at each drawing, until the page has heard the address.
+    const routed = p.evaluate(() => new Promise((resolve) => {
+      globalThis.drawings = 0;
+      new MutationObserver((records) => {
+        for (const record of records) for (const node of record.addedNodes) if (node.classList && node.classList.contains('sch-groups__cols')) globalThis.drawings += 1;
+      }).observe(document.querySelector('.sch-groups'), { childList: true });
+      window.addEventListener('hashchange', () => setTimeout(() => resolve('heard'), 0), { once: true });
+      // not a wait: the limit after which the case says no address came
+      setTimeout(() => resolve('no address in 5 s'), 5000);
+    }));
     await tap(p, '.sch-group[data-group="' + B6 + '"]');
+    assert.equal(await routed, 'heard', 'choosing a group on a phone did not change the address');
     await listIs(p, true);
     assert.equal(await hashOf(p), '#schedule/groups/' + B6, 'a group chosen on a phone has no place in the history');
+    assert.equal(await p.evaluate(() => globalThis.drawings), 1, 'the tap drew the tab more than once');
     assert.deepEqual(await shownCards(p), [B6]);
     await p.focus('[data-key="group-name"]');
     await p.evaluate(() => history.back());
@@ -1293,6 +1308,12 @@ test('a filter that matches no group leaves no listbox without an option, a sele
     await act(p, 'setSlot', { groupId: A7, dayTypeId: DAY_A, period: 0, slot: { label: 'Homeroom' } });
     await settled(p);
     assert.deepEqual((await current()).filter((row) => row[0] !== null), [['true', 'true']]);
+    // another row chosen: that one says so, and the first no longer does
+    await p.click('.sch-checks .sch-findings tbody tr:nth-child(1) .sch-finding__what');
+    await shows(p, () => document.querySelector('.sch-checks .sch-findings tbody tr').dataset.selected === 'true');
+    const moved = await current();
+    assert.deepEqual(moved[0], ['true', 'true']);
+    assert.deepEqual(moved[1], [null, null], 'the row that was selected still says it is');
 
     // where the list is: beside the inspector, and above it once it is a sheet
     const where = () => text(p, '#inspector .sch-panel__more[data-note="list"]');
