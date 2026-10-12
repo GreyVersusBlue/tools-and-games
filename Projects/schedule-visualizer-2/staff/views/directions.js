@@ -10,7 +10,7 @@
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
-import { pageOf } from '../page.js';
+import { pageOf, printGate } from '../page.js';
 import { viewLink, sectionHeading } from '../clock.js';
 import { floorMap } from '../map.js';
 
@@ -75,8 +75,10 @@ export const directionsView = {
     const from = roomPicker(school, 'directions-from', 'From', state.from);
     const to = roomPicker(school, 'directions-to', 'To', state.to);
     const stepFree = h('input', { class: 'check__input', id: 'directions-stepfree', type: 'checkbox', checked: state.stepFree });
+    const gate = printGate();
 
     const draw = () => {
+      gate.set(false);
       if (!state.from || !state.to) {
         says.replaceChildren(h('span', null, 'Choose where you are starting and where you are going.'));
         out.replaceChildren();
@@ -107,6 +109,7 @@ export const directionsView = {
         return;
       }
 
+      gate.set(true);
       const floors = routeFloors(school, found);
       const stairs = found.connections.length;
       const stairsOf = (letter) => (letter ? ['stairs ', typed(letter)] : 'the stairs');
@@ -162,12 +165,12 @@ export const directionsView = {
     } }, 'Swap start and end');
 
     draw();
-    return pageOf('Directions', null, says,
+    return gate.on(pageOf('Directions', null, says,
       h('div', { class: 'controls' },
         from.field,
         to.field,
         h('label', { class: 'check', for: 'directions-stepfree' }, stepFree, h('span', null, 'Step-free: a way with no stairs')),
         h('p', { class: 'actions' }, swap)),
-      out);
+      out));
   },
 };

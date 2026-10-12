@@ -25,13 +25,23 @@
 //
 // BATCHES are the three entries ui/prints/index.js lists, each with the fixed
 // options the preview sheet cannot pass.
+//
+// A door sign is an upright sheet: the number, the teacher and the room's day
+// under them are about 227 mm tall, and a sheet turned on its side has 188.
+// So the door signs print in portrait whatever orientation is chosen: the
+// entries say so (`upright`), the preview sheet offers no orientation for
+// them, and render() itself turns a landscape sheet upright and says so on
+// the cover.
 
 import { count } from '../components/words.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { openSchool } from '../../staff/model.js';
 import { wordsJoined, partsToText, dayKindsOf, teacherSummaryOf } from '../../staff/views/teacher.js';
 import { doorSignMarkup } from '../../staff/views/door-sign.js';
-import { esc, frame, printDate, schoolName } from './document.js';
+import { esc, frame, paperOf, printDate, schoolName } from './document.js';
+
+export const UPRIGHT_SENTENCE = 'Door signs are upright sheets: they print in portrait.';
+export const UPRIGHT_COVER = 'Landscape is chosen for this project. Door signs are upright sheets, so these print in portrait.';
 
 export const id = 'batch';
 export const name = 'Batch printing';
@@ -158,9 +168,16 @@ function publishedSchool(project, now) {
 }
 
 export function render(project, derived, options) {
-  const opts = options || {};
+  const given = options || {};
+  const doors = given.batch === 'doors';
+  const asked = paperOf(project, given);
+  // a door sign is never laid on its side: not when landscape is asked for,
+  // and the cover says so whenever landscape is what the project is set to
+  // (the preview sheet asks for portrait itself, and the reader still chose
+  // landscape somewhere)
+  const turned = doors && (asked.orientation === 'landscape' || paperOf(project, null).orientation === 'landscape');
+  const opts = turned ? { ...given, paper: { ...asked, orientation: 'portrait' } } : given;
   const school = publishedSchool(project, opts.now);
-  const doors = opts.batch === 'doors';
   let what;
   let body;
   if (doors) {
@@ -168,7 +185,7 @@ export function render(project, derived, options) {
     what = opts.day === true ? 'Door signs with each room’s day' : 'Door signs';
     body = [cover(rooms.length === 0
       ? 'There are no rooms in the building yet, so there is no sign to print.'
-      : (rooms.length === 1 ? 'One door sign follows' : rooms.length + ' door signs follow, one sheet each') + ', in the order of the building’s floors.',
+      : (rooms.length === 1 ? 'One door sign follows' : rooms.length + ' door signs follow, one sheet each') + ', in the order of the building’s floors.' + (turned ? ' ' + UPRIGHT_COVER : ''),
     rooms.map((room) => {
       const floor = school.floorOfRoom(room.id);
       return { name: school.roomName(room, true), detail: floor ? floor.name : '' };
@@ -187,13 +204,22 @@ export function render(project, derived, options) {
   return frame(project, { output: doors ? (opts.day === true ? 'door-signs-day' : 'door-signs') : 'teacher-schedules', what, pages: [{ body: body.join('\n') }], options: opts });
 }
 
-// How many sheets a batch is, cover included: for the button's own words.
+// How many sheets a batch is, the cover not counted: for the words beside
+// the buttons. It is counted from the school render() opens, the copy a
+// published file carries, so the words and the sheets cannot disagree.
 export function batchCount(project, batch) {
-  return batch === 'doors' ? openSchool(project).rooms.length : project.teachers.length;
+  const school = publishedSchool(project, null);
+  return batch === 'doors' ? school.rooms.length : school.teachers.length;
 }
 
 function entry(entryId, entryName, fixed) {
-  return { id: entryId, name: entryName, render: (project, derived, options) => render(project, derived, { ...options, ...fixed }) };
+  const made = { id: entryId, name: entryName, render: (project, derived, options) => render(project, derived, { ...options, ...fixed }) };
+  // the preview sheet reads these: no orientation to choose, and why
+  if (fixed.batch === 'doors') {
+    made.upright = true;
+    made.uprightSays = UPRIGHT_SENTENCE;
+  }
+  return made;
 }
 
 export const BATCHES = [
@@ -204,5 +230,5 @@ export const BATCHES = [
 
 // "12 teachers", for the lines beside the buttons.
 export function batchWords(project) {
-  return { teachers: count(project.teachers.length, 'teacher'), rooms: count(batchCount(project, 'doors'), 'room') };
+  return { teachers: count(batchCount(project, 'teachers'), 'teacher'), rooms: count(batchCount(project, 'doors'), 'room') };
 }

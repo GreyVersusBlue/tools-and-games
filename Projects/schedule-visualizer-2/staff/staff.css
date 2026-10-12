@@ -179,6 +179,7 @@
 
   --stale-paper: #f8ebbd;           /* the yellow band of an old copy; --ink on it */
   --note-paper: #e3eaf4;            /* the band of a quiet notice; --ink on it */
+  --map-corridor: #ffffff;          /* a corridor on the staff map; its --line-strong outline is its 3:1 against --grid here */
 }
 
 /* ---------- Dark, chosen ---------- */
@@ -212,6 +213,7 @@
 
   --stale-paper: #3d3210;
   --note-paper: #1c2a3d;
+  --map-corridor: #69717d;          /* 3.4:1 against --grid: the planner's --corridor is 1.2:1, and was lost on a phone */
 }
 
 /* ---------- Dark, following the device: the same values as the block above ---------- */
@@ -247,6 +249,7 @@
 
     --stale-paper: #3d3210;
     --note-paper: #1c2a3d;
+    --map-corridor: #69717d;
   }
 }
 
@@ -1588,9 +1591,12 @@ select.field__input {
   line-height: 1.2;
 }
 
+/* The kinds of day stand side by side while each table has room for its
+   longest words, and one under another when it has not: a kind is never
+   narrower than its table can be without cutting a word. */
 .sign__day {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(42%, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
   gap: 3cqw;
   order: 1;
@@ -1598,6 +1604,12 @@ select.field__input {
   margin-top: 1rem;
   margin-top: 5cqw;
   text-align: left;
+}
+
+.sign__kind {
+  flex: 1 1 42%;
+  min-width: min-content;
+  max-width: 100%;
 }
 
 .sign__kindname {
@@ -1616,8 +1628,14 @@ select.field__input {
   line-height: 1.3;
 }
 
-/* a word is never cut ("Emp ty"): a column is at least as wide as its longest
-   word, and a line breaks between words */
+/* A word is never cut ("Emp ty"), not a teacher's name of thirty letters and
+   not the period's: a column is as wide as its longest word and a line breaks
+   between words only. The period's own cell wraps between its words too, so a
+   long one does not push the table off the sheet. (The page breaks words
+   anywhere; a table cell takes that back. While a kind of day is as wide as
+   its table, as .sign__kind makes it, no test can tell this from
+   "break-word": the two part only when something squeezes the table again,
+   which is when a cut word would come back.) */
 .sign__table th,
 .sign__table td {
   padding: 0.15rem 0.25rem 0.15rem 0;
@@ -1626,12 +1644,11 @@ select.field__input {
   font-weight: var(--w-regular);
   text-align: left;
   vertical-align: top;
-  overflow-wrap: break-word;
+  overflow-wrap: normal;
 }
 
 .sign__table th {
   font-weight: var(--w-semibold);
-  white-space: nowrap;
 }
 
 .sign__school {
@@ -1670,12 +1687,21 @@ select.field__input {
   }
 
   .sign__day {
-    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+    flex-wrap: nowrap;
     gap: var(--s-4);
     margin-top: var(--s-3);
     padding: var(--s-3);
     border: var(--border-width) solid var(--line-strong);
     background: #ffffff;
+  }
+
+  /* a table whose words are wider than the phone is moved sideways inside
+     its own frame; the page stays still */
+  .sign__kind {
+    flex: none;
+    min-width: 0;
+    overflow-x: auto;
   }
 
   .sign__kindname {
@@ -1722,6 +1748,7 @@ select.field__input {
     --note: #3b5b8a;
     --grid: #e8e3d8;
     --corridor: #ffffff;
+    --map-corridor: #ffffff;
     --stairs: #d9ece9;
     --room-default: #e9e4d9;
   }
@@ -1797,9 +1824,11 @@ select.field__input {
     display: none;
   }
 
-  /* the substitute plan's date line is part of the page */
-  .page[data-view="sub"] .controls {
-    display: grid;
+  /* the substitute plan's date is a line of words on paper (.sub__date); the
+     field it was chosen in stays behind with the other controls. Every
+     teacher who could cover is named: .sub__rest is hidden on screen only. */
+  .sub__date {
+    font-weight: var(--w-semibold);
   }
 
   .row--now {
@@ -1869,32 +1898,41 @@ select.field__input {
   }
 
   /* the door sign: the sheet and nothing else, the number at 120 pt. The
-     rule that leaves the sheet alone in the page stands by itself: a browser
-     that does not know :has() throws away every rule it is listed in, and
-     would print the buttons. (Such a browser prints the school's line and
-     the footer as well as the sheet.) */
+     shell names the view on the frame as well as on the page (data-view on
+     .app), so the school's line and the footer are reached with no :has(),
+     which some browsers staff still carry do not know. */
   .page[data-view="door"] .page__body > :not(.sheet) {
     display: none;
   }
 
-  .app:has(.page[data-view="door"] .sheet) .top,
-  .app:has(.page[data-view="door"] .sheet) .foot {
+  .app[data-view="door"] .top,
+  .app[data-view="door"] .foot {
     display: none;
   }
 
-  /* as tall as the paper inside its margins, less a little (US Letter has
-     251 mm and A4 269 mm), so the school's name stands at the foot of the
-     sheet as it does in the preview */
+  /* as tall as the paper inside its margins, less a little, so the school's
+     name stands at the foot of the sheet as it does in the preview. The
+     paper is the reader's own choice in their print dialog (this page has no
+     paper setting): on paper 100vh is the page inside its margins, 251 mm of
+     US Letter and 269 mm of A4. The 240 mm before it is for a browser that
+     does not take the line after, and fits both. Nothing stands over the
+     sheet: the page's own 16 px gap above it is taken off, since on paper it
+     pushed the sheet's foot onto a second, empty sheet. */
+  .page[data-view="door"] .page__body > .sheet {
+    margin-top: 0;
+  }
+
   .sheet {
     max-width: none;
     min-height: 240mm;
+    min-height: calc(100vh - 3mm);
     aspect-ratio: auto;
     border: 0;
     break-inside: avoid;
   }
 
   .sign {
-    padding: 16mm 0 0;
+    padding: 12mm 0 0;
   }
 
   .sign__word {
@@ -1934,6 +1972,7 @@ select.field__input {
   .sign__table th,
   .sign__table td {
     padding: 1mm 2mm 1mm 0;
+    border-top: 0.2mm solid var(--line);
   }
 
   .sign__school {
@@ -1943,3 +1982,119 @@ select.field__input {
 }
 
 /* ---------- SV2-23: end ---------- */
+
+/* ---------- SV2-45: the M4 pass ---------- */
+
+/*
+    .row__time             one line always: "8:00 AM to 8:48 AM" never breaks
+    .notice                a quiet line at the head of a page (the shell's
+                           "That page is not in this schedule.")
+    .sub__date             the substitute plan's date on paper
+    .sub__rest             the teachers past the first three who could cover:
+                           on paper only
+    --map-corridor         the staff map's corridor (the tokens above)
+*/
+
+/* A period's times stay on one line, "8:00 AM to 8:48 AM" whole. In a wide
+   card a row is three columns: when, what, where; with subgrid the columns
+   are the card's, as wide as its widest time, so every row lines up. In a
+   narrow card (a phone, or two day types side by side) the times would take
+   half the row and squeeze a teacher's name into a sliver, so the period and
+   its times are one line across the top and what and where share the line
+   under it. */
+.row__time {
+  white-space: nowrap;
+}
+
+.day {
+  container-type: inline-size;
+}
+
+.day .row {
+  grid-template-columns: max-content minmax(0, 1fr) auto;
+}
+
+@supports (grid-template-columns: subgrid) {
+  .day .rows {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) auto;
+    column-gap: var(--s-3);
+  }
+
+  .day .row {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+}
+
+@container (max-width: 30rem) {
+  .day .rows {
+    display: block;
+  }
+
+  .day .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    row-gap: 0;
+  }
+
+  .day .row__when {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--s-2);
+  }
+}
+
+/* A row that is taken off the page is off it, whatever its class lays out. */
+.actions[hidden],
+.page__outputs[hidden] {
+  display: none;
+}
+
+.notice {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-left: var(--s-1) solid var(--note);
+  border-radius: var(--r-1);
+  background: var(--note-paper);
+  color: var(--ink);
+}
+
+/* (screen only: this block stands after the paper rules, and would undo them) */
+@media screen {
+  .sub__rest {
+    display: none;
+  }
+}
+
+/* Under a finger a link in a row or a table is 44 px high, by padding and not
+   by its type. The link is a box of its own, so a name that wraps keeps its
+   lines together inside one target, and two names one above the other in a
+   cell are a whole target apart: neither covers the other. The box is never
+   wider than the cell it is in, so a long name still breaks inside it. On
+   paper a link is as tall as its words. */
+@media screen and (pointer: coarse), screen and (max-width: 639.98px) {
+  .row a,
+  .table a {
+    display: inline-block;
+    max-width: 100%;
+    padding-block: calc((var(--tap) - 1.5em) / 2);   /* where the browser has no lh unit */
+    padding-block: calc((var(--tap) - 1lh) / 2);
+    vertical-align: middle;
+  }
+
+  /* the link brings its own room above and below, so the row gives less,
+     and in a narrow card the line of links sits close under the times */
+  .day .row {
+    padding-block: var(--s-1);
+  }
+
+  @container (max-width: 30rem) {
+    .day .row__when {
+      margin-bottom: -6px;
+    }
+  }
+}
+
+/* ---------- SV2-45: end ---------- */

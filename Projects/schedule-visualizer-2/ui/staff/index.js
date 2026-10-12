@@ -28,12 +28,15 @@ import { publishForm } from './form.js';
 // files are read in the background.
 export const IDLE_READ_MS = 4000;
 
-export const hooks = { deliver: null, published: null };
+export const hooks = { deliver: null, published: null, made: null };
 
-function facts(project) {
+// `unnoted`: this tab made a file the project could not note (the tab is
+// read-only), so "no file yet" would be false on this screen.
+function facts(project, unnoted) {
   const f = figures(project);
   const holds = 'It has ' + count(f.teachers, 'teacher') + ', ' + count(f.groups, 'group') + ' and ' + count(f.rooms, 'room') + ' to show.';
   const last = project.publish.lastPublishedAt ? printDate(project.publish.lastPublishedAt) : '';
+  if (unnoted) return 'This tab made a file just now. The project does not record it while the tab is read-only. ' + holds;
   if (last === '') return 'No file has been made from this project yet. ' + holds;
   return 'The last file from this project was made on ' + last + '. ' + holds;
 }
@@ -70,17 +73,24 @@ export const section = {
     element.staff = { preview: shown, form, hooks };
     ctx.setInspector(form.element, { title: 'Publish' });
 
+    let unnoted = false;
+    hooks.made = (published, noted) => {
+      unnoted = !noted;
+      lead.textContent = facts(ctx.store.project, unnoted);
+    };
+
     function update(project) {
-      lead.textContent = facts(project);
+      lead.textContent = facts(project, unnoted);
       shown.update(project);
       form.update(project);
     }
-    lead.textContent = facts(ctx.store.project);
+    lead.textContent = facts(ctx.store.project, unnoted);
 
     return {
       element,
       update,
       unmount() {
+        hooks.made = null;
         shown.stop();
         form.stop();
       },

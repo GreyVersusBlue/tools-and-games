@@ -4,7 +4,10 @@
 // groups and times, a date line, who could cover each period, where the room
 // is, the teacher's notes, and a line saying to check it against the office.
 // The page is a single column so it prints as it reads; the pickers and
-// buttons are left off the paper.
+// buttons are left off the paper. On paper the date is a line of words, not
+// the field it was chosen in, and every teacher who could cover a period is
+// named: the screen's "and 2 more" leads to a list a sheet of paper cannot
+// follow.
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
@@ -21,6 +24,14 @@ export const SUB_CHECK_SENTENCE = 'Check this plan with the office before the da
 function localDay(date) {
   const two = (n) => String(n).padStart(2, '0');
   return date.getFullYear() + '-' + two(date.getMonth() + 1) + '-' + two(date.getDate());
+}
+
+// "Tuesday, 1 September 2026" from a date field's "2026-09-01", in the
+// reader's own language; a blank line to write on when the field is empty.
+export function subDateWords(value) {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+  if (!parts) return '________________';
+  return new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
 }
 
 export const subView = {
@@ -44,8 +55,12 @@ export const subView = {
     const based = (absent.roomIds || []).map((id) => school.room(id)).filter(Boolean);
 
     const date = h('input', { class: 'field__input', id: 'sub-date', type: 'date', value: /^\d{4}-\d{2}-\d{2}$/.test(route.query.date || '') ? route.query.date : localDay(now) });
+    const dated = h('p', { class: 'print-only sub__date', dataset: { sub: 'date' } }, 'Date: ', subDateWords(date.value));
     const address = () => ctx.replace(makeHash('sub', absent.id, { d: route.query.d ? dayType.id : '', date: date.value !== localDay(now) ? date.value : '' }));
-    date.addEventListener('change', address);
+    date.addEventListener('change', () => {
+      dated.replaceChildren('Date: ', subDateWords(date.value));
+      address();
+    });
 
     const draw = () => {
       const day = everyTeacherDay(school, dayType.id).get(absent.id);
@@ -68,12 +83,12 @@ export const subView = {
             ? h('p', { class: 'muted' }, 'Nothing needs covering.')
             : h('ul', { class: 'plain' }, cover.map((item) => h('li', { dataset: { period: String(item.period) } },
               h('strong', null, school.periodName(item.period), ': '),
-              item.candidates.length === 0 ? 'nobody is free.' : item.candidates.slice(0, SUB_CANDIDATES).map((candidate, index) => [
+              // the first few on screen, with a count of the rest; on paper, every one
+              item.candidates.length === 0 ? 'nobody is free.' : item.candidates.map((candidate, index) => h('span', { class: index < SUB_CANDIDATES ? null : 'sub__rest', dataset: { candidate: candidate.teacher.id } },
                 index > 0 ? ', ' : null,
                 viewLink(school, 'teacher', candidate.teacher.id, typed(candidate.teacher.name)),
-                candidate.sameSubject ? ' (same subject)' : null,
-              ]),
-              item.candidates.length > SUB_CANDIDATES ? ', and ' + (item.candidates.length - SUB_CANDIDATES) + ' more' : null))),
+                candidate.sameSubject ? ' (same subject)' : null)),
+              item.candidates.length > SUB_CANDIDATES ? h('span', { class: 'no-print', dataset: { sub: 'more' } }, ', and ' + (item.candidates.length - SUB_CANDIDATES) + ' more') : null))),
           school.has('coverage') ? h('p', { class: 'no-print' }, h('a', { href: makeHash('coverage', absent.id, { d: dayType.id }) }, 'Everyone who is free, period by period')) : null),
 
         h('section', { class: 'card', dataset: { sub: 'room' } },
@@ -104,6 +119,7 @@ export const subView = {
     });
     draw();
     return pageOf(['Substitute plan: ', typed(absent.name)], null, says,
+      dated,
       h('div', { class: 'controls' },
         h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'sub-date' }, 'Date'), date),
         h('div', { class: 'no-print' }, picker)),

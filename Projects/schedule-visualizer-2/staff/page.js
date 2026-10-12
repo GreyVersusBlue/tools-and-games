@@ -69,6 +69,40 @@ export function pageOf(title, lede, ...children) {
   return page;
 }
 
+// "Print this page" stands only on a page with something to print: a page
+// that is still asking (which teacher, which rooms, what to search for) has
+// no result, and says so with printWhen(page, false). The row leaves the
+// page, and Share's frame with it when nothing else is in it.
+export function printWhen(page, has) {
+  page.dataset.result = has ? 'true' : 'none';
+  const row = page.querySelector('[data-actions="print"]');
+  if (row) row.hidden = !has;
+  const outputs = page.querySelector('.page__outputs');
+  if (outputs) outputs.hidden = Array.from(outputs.children).every((child) => child.hidden);
+  return page;
+}
+
+// For a view whose result comes and goes as the reader chooses, before and
+// after its page exists:
+//
+//   const gate = printGate();
+//   gate.set(found.ok);                 in the view's own draw()
+//   return gate.on(pageOf(...));
+export function printGate() {
+  let page = null;
+  let has = false;
+  return {
+    set(value) {
+      has = Boolean(value);
+      if (page) printWhen(page, has);
+    },
+    on(made) {
+      page = made;
+      return printWhen(page, has);
+    },
+  };
+}
+
 // The date line of every page on screen is written again as printing starts,
 // so a page left open since yesterday is not dated yesterday.
 if (typeof globalThis.addEventListener === 'function') {
@@ -80,12 +114,16 @@ if (typeof globalThis.addEventListener === 'function') {
 // A page for an address that names something this file does not have: a
 // teacher who has left, a link from an older copy.
 export function missingPage(what) {
-  return pageOf('Not in this schedule', 'This copy of the schedule has no ' + what + ' at this address. It may be from an older or a newer copy.',
-    h('p', null, h('a', { class: 'btn', href: '#/search' }, 'Search the schedule')));
+  return printWhen(pageOf('Not in this schedule', 'This copy of the schedule has no ' + what + ' at this address. It may be from an older or a newer copy.',
+    h('p', null, h('a', { class: 'btn', href: '#/search' }, 'Search the schedule'))), false);
 }
+
+// What the search page says above its box when the address named no page of
+// this file at all ("#/nonsense/route"): the shell puts it there.
+export const UNKNOWN_PAGE_SENTENCE = 'That page is not in this schedule.';
 
 // A view the publisher left out of this file.
 export function leftOutPage(name) {
-  return pageOf(name, 'This view was not included when this schedule was published.',
-    h('p', null, h('a', { class: 'btn', href: '#/search' }, 'Search the schedule')));
+  return printWhen(pageOf(name, 'This view was not included when this schedule was published.',
+    h('p', null, h('a', { class: 'btn', href: '#/search' }, 'Search the schedule'))), false);
 }

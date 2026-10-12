@@ -16,8 +16,8 @@ if (inline.found) {
   else await shell.show(inline.value);
 } else if (isFramed(window)) {
   shell.waiting('Waiting for the planner…');
-  watchPreview(window, (data) => {
-    shell.show(data);
+  watchPreview(window, (data, flags) => {
+    shell.show(data, flags);
   });
 } else {
   const beside = await siblingData();

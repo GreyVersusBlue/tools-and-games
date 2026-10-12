@@ -241,7 +241,24 @@ export function roomsAtTap(shapes, x, y) {
   return { pick: null, choices: close.map((room) => room.id) };
 }
 
+// ---- the maps on the page
+
+// Each map on the page, as the function that takes its listeners off.
+const mounted = new Set();
+
+// The page is leaving: every map on it stops listening to the window and to
+// the media queries. The shell calls this before it draws the next page.
+export function unmountMaps() {
+  for (const leave of Array.from(mounted)) leave();
+}
+
 // ---- the picture
+
+// A corridor reads against the floor's ground at 3:1 in both themes (WCAG
+// 1.4.11): by its outline everywhere (--line-strong on --grid and on the
+// corridor), and in the dark theme by its fill too (--map-corridor on --grid).
+// The planner's --corridor on its --grid is 1.2:1 in the dark, which on a
+// phone at 6 px a square left the corridors out of the picture.
 
 // The colours of paper: the paper rules' own (the @media print block of
 // staff.css; a case holds the two equal). The map draws with these from the
@@ -275,7 +292,8 @@ function themeOf(element, onPaper) {
     accent: read('--accent', '#0f6e66'),
     accentInk: read('--accent-ink', '#ffffff'),
     grid: read('--grid', '#e8e3d8'),
-    corridor: read('--corridor', '#ffffff'),
+    // the staff map's own corridor: 3:1 against the ground where the theme lets a fill be (staff.css)
+    corridor: read('--map-corridor', read('--corridor', '#ffffff')),
     stairs: read('--stairs', '#d9ece9'),
     roomDefault: read('--room-default', '#e9e4d9'),
     font: style.getPropertyValue('--font-plan').trim() || 'sans-serif',
@@ -367,19 +385,26 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
     g.fillStyle = kind === 'S' ? theme.stairs : theme.corridor;
     g.fillRect(plan.px(x), plan.py(y), cell + 0.5, cell + 0.5);
   }
-  g.strokeStyle = theme.line;
+  // the outline is what tells a corridor from the ground on light paper, where
+  // no fill can: --line-strong, 3:1 against the ground and the corridor alike
+  g.strokeStyle = theme.edge;
   g.lineWidth = 1;
+  g.lineCap = 'square';
+  const crisp = (v) => Math.round(v) + 0.5;
   g.beginPath();
   for (let index = 0; index < floor.cells.length; index += 1) {
     if (floor.cells[index] === '.') continue;
     const x = index % floor.width;
     const y = Math.floor(index / floor.width);
-    const left = plan.px(x);
-    const top = plan.py(y);
-    if (!walkable(x, y - 1)) { g.moveTo(left, top); g.lineTo(left + cell, top); }
-    if (!walkable(x, y + 1)) { g.moveTo(left, top + cell); g.lineTo(left + cell, top + cell); }
-    if (!walkable(x - 1, y)) { g.moveTo(left, top); g.lineTo(left, top + cell); }
-    if (!walkable(x + 1, y)) { g.moveTo(left + cell, top); g.lineTo(left + cell, top + cell); }
+    // each line on a whole pixel: a line across two is half its colour on each, and half of 3:1 is not 3:1
+    const left = crisp(plan.px(x));
+    const top = crisp(plan.py(y));
+    const right = crisp(plan.px(x) + cell);
+    const bottom = crisp(plan.py(y) + cell);
+    if (!walkable(x, y - 1)) { g.moveTo(left, top); g.lineTo(right, top); }
+    if (!walkable(x, y + 1)) { g.moveTo(left, bottom); g.lineTo(right, bottom); }
+    if (!walkable(x - 1, y)) { g.moveTo(left, top); g.lineTo(left, bottom); }
+    if (!walkable(x + 1, y)) { g.moveTo(right, top); g.lineTo(right, bottom); }
   }
   g.stroke();
   if (cell >= 10) {
@@ -635,38 +660,66 @@ export function floorMap(ctx, options) {
   // paper is heard two ways, since no one way is every browser's: the print
   // media query changing, and "beforeprint" and "afterprint" on the window
   // (all WebKit says). Both end in the one repaint().
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => draw()).observe(frame);
+  //
+  // One print is two draws and no more: onto paper at whichever of the two
+  // says so first, and back at whichever says so first; the second voice of
+  // each pair finds the map already where it should be. A change between
+  // light and dark always draws.
+  //
+  // What listens on the window and on the two media queries is taken off
+  // when the page leaves: the shell calls unmountMaps() before it draws the
+  // next page. A map a view replaced inside its own page (Directions draws a
+  // new one for each pair of rooms) takes its own off the next time it is
+  // spoken to.
+  const watcher = typeof ResizeObserver === 'function' ? new ResizeObserver(() => draw()) : null;
+  if (watcher) watcher.observe(frame);
   if (document.fonts && document.fonts.load) {
     document.fonts.load('600 12px "Barlow Semi Condensed"').then(() => draw(), () => {});
   }
   const scheme = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
   const printing = typeof matchMedia === 'function' ? matchMedia('print') : null;
   const hears = typeof globalThis.addEventListener === 'function';
-  const repaint = (paper) => {
+  let left = false;
+  const leave = () => {
+    if (left) return;
+    left = true;
+    mounted.delete(leave);
+    if (watcher) watcher.disconnect();
+    if (scheme) scheme.removeEventListener('change', sameScheme);
+    if (printing) printing.removeEventListener('change', sameMedia);
+    if (hears) globalThis.removeEventListener('beforeprint', toPaper);
+    if (hears) globalThis.removeEventListener('afterprint', toScreen);
+  };
+  const repaint = (paper, whatever) => {
     if (!canvas.isConnected) {
-      // the page this map was on has gone
-      if (scheme) scheme.removeEventListener('change', sameMedia);
-      if (printing) printing.removeEventListener('change', sameMedia);
-      if (hears) globalThis.removeEventListener('beforeprint', toPaper);
-      if (hears) globalThis.removeEventListener('afterprint', toScreen);
+      // this map was replaced inside its page
+      leave();
       return;
     }
+    if (paper === onPaper && !whatever) return;
     onPaper = paper;
     draw();
+    // how many times the map was drawn again for paper, for the screen or for the theme
+    frame.dataset.repaints = String(Number(frame.dataset.repaints || 0) + 1);
+    frame.dataset.paper = String(onPaper);
   };
+  function sameScheme() {
+    repaint(onPaper, true);
+  }
   function sameMedia() {
-    repaint(printing.matches);
+    repaint(printing.matches, false);
   }
   function toPaper() {
-    repaint(true);
+    repaint(true, false);
   }
   function toScreen() {
-    repaint(false);
+    repaint(false, false);
   }
-  if (scheme) scheme.addEventListener('change', sameMedia);
+  if (scheme) scheme.addEventListener('change', sameScheme);
   if (printing) printing.addEventListener('change', sameMedia);
   if (hears) globalThis.addEventListener('beforeprint', toPaper);
   if (hears) globalThis.addEventListener('afterprint', toScreen);
+  mounted.add(leave);
 
   chrome();
   return h('section', { class: 'mapbox', 'aria-label': opts.label || 'Floor plan' },

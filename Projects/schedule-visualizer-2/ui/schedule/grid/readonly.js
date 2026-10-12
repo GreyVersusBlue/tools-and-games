@@ -95,6 +95,10 @@ function placeWhy(cell, frame) {
   const x = Math.max(left, Math.min(at.left + cell.clientLeft, left + frame.clientWidth - width));
   let y = at.bottom;
   if (y + height > bottom) y = at.top - height >= top ? at.top - height : Math.max(top, bottom - height);
+  // a cell that is itself past the frame's foot or head (the window lost
+  // height under it, the frame was scrolled away) keeps its sentence at the
+  // nearest edge inside
+  y = Math.max(top, Math.min(y, bottom - height));
   cell.style.setProperty('--why-x', Math.round(x - at.left - cell.clientLeft) + 'px');
   cell.style.setProperty('--why-y', Math.round(y - at.top - cell.clientTop) + 'px');
 }
@@ -166,11 +170,22 @@ function shell(project, caption, first, rows) {
     if (cell && markOf(cell) !== -1 && document.activeElement !== cell) cell.focus();
   });
   // The sentence is placed by measurement, so it is placed again when what
-  // was measured moves: the frame scrolled, or changed size with the window.
+  // was measured moves: the frame scrolled, the frame changed width (the
+  // inspector folded), or the window changed size. A window that changes
+  // height alone moves it too: the frame is 70vh at its tallest, and a
+  // sentence under the last row was placed against the frame's old foot.
+  // `data-placed` is the window the last placing was for; a test waits on it.
+  // and `data-placings` counts them.
+  let placings = 0;
   const again = () => {
     const cell = inFocus();
     if (cell) placeWhy(cell, frame);
+    placings += 1;
+    frame.dataset.placings = String(placings);
+    frame.dataset.placed = window.innerWidth + 'x' + window.innerHeight;
   };
+  frame.dataset.placings = '0';
+  frame.dataset.placed = window.innerWidth + 'x' + window.innerHeight;
   frame.addEventListener('scroll', again, { passive: true });
   if (typeof ResizeObserver === 'function') {
     let width = null;
@@ -181,6 +196,12 @@ function shell(project, caption, first, rows) {
       again();
     }).observe(frame);
   }
+  // the window's own change of size; a frame that has left the page lets go
+  const resized = () => {
+    if (frame.isConnected) again();
+    else window.removeEventListener('resize', resized);
+  };
+  window.addEventListener('resize', resized);
   table.addEventListener('keydown', (event) => {
     const from = markOf(event.target);
     if (from === -1 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;

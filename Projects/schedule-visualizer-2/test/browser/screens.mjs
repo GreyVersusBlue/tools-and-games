@@ -92,14 +92,17 @@ async function scheduleOnPhone(page) {
   const size = page.viewport ? page.viewport() : page.viewportSize();
   const resize = (to) => (page.setViewport ? page.setViewport({ ...size, ...to }) : page.setViewportSize(to));
   await resize({ width: 390, height: 760 });
-  page.once('framenavigated', () => {
+  // put back when the sweep leaves; a group chosen on a phone is an address
+  // of its own (SV2-48), and going to it is not leaving
+  const leave = (frame) => {
+    if (frame !== page.mainFrame() || /#schedule\/groups\//.test(frame.url())) return;
+    page.off('framenavigated', leave);
     resize({ width: size.width, height: size.height }).catch(() => {});
-  });
-  await page.waitForFunction(() => window.innerWidth === 390);
-  // crossing the width draws the Groups tab again, a frame later
-  await page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  }));
+  };
+  page.on('framenavigated', leave);
+  // crossing the width draws the tab again, some time after the window has
+  // it: the section says which width its last drawing was for
+  await page.waitForFunction(() => window.innerWidth === 390 && document.querySelector('.sch')?.dataset.narrow === 'true');
   await scheduleDrawn(page);
 }
 
@@ -353,7 +356,7 @@ export const SCREENS = [
   },
   { // SV2-38: a room number the building does not have is kept as typed (it
     // was refused when SV2-11 wrote this screen), with its line under the
-    // field, and the next field's list open on its one line
+    // field, and the next field's own line saying nothing matches
     id: 'schedule-room-not-in-building',
     hash: '#schedule/groups',
     open: async (page) => {
@@ -365,7 +368,7 @@ export const SCREENS = [
       await scheduleDrawn(page);
       await page.click('.sch-slot[data-period="1"] .picker__input');
       await page.keyboard.type('zzz');
-      await page.waitForSelector('.sch-slot[data-period="1"] .picker__empty');
+      await page.waitForFunction(() => document.querySelector('.sch-slot[data-period="1"] .sch-room__line').textContent !== '');
     },
   },
   { id: 'schedule-checks-phone', hash: '#schedule/checks', open: checksOnPhone }, // SV2-38
@@ -739,13 +742,23 @@ export const SCREENS = [
     },
   },
   { id: 'staff-preview', hash: '#staff', open: staffLive }, // SV2-24: the preview frame fed, the publish form beside it
-  { // SV2-24: batch printing, in the preview sheet
+  { // SV2-24: batch printing, in the preview sheet (SV2-45: with the sentence where a door sign's orientation would be)
     id: 'staff-batch-print',
     hash: '#staff',
     open: async (page) => {
       await staffLive(page);
       await page.click('.pub [data-print="door-signs-day"]');
       await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
+  {
+    // SV2-45: the publish form with "What is in it" open, its mark turned
+    id: 'staff-contents-open',
+    hash: '#staff',
+    open: async (page) => {
+      await staffLive(page);
+      await page.click('#publish-contents > summary');
+      await page.waitForFunction(() => document.querySelector('.pub input[data-view="teacher"]').getClientRects().length > 0);
     },
   },
 ];
