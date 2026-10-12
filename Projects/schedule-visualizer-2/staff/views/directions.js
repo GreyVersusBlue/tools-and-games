@@ -4,7 +4,8 @@
 // the floors it passes through, and about how long the walk is. The route and
 // its words are the engine's (routing.js and directions.js, through the
 // school of model.js), the same ones the planner draws. "Step-free" asks for
-// a way with no stairs (?stepfree=1) and says so plainly when there is none.
+// a way with no stairs (?stepfree=1) and says so plainly when there is none;
+// the way with stairs is offered only when there is one (directionsRefusal).
 //
 // The time is the route's own estimate for an empty corridor.
 
@@ -55,6 +56,21 @@ export function routeFloors(school, found) {
   return parts;
 }
 
+// A way that could not be found, for the page: { text, stairs }. `text` is
+// the engine's sentence. With step-free asked for, the way is looked for once
+// more with stairs allowed: `stairs` is true when that way exists, so the
+// page offers it; when there is no way of any kind the sentence is the plain
+// refusal's, and nothing is offered that would only lead to another refusal.
+// Null when the way was found.
+export function directionsRefusal(school, fromId, toId, stepFree) {
+  const found = school.route(fromId, toId, { avoidStairs: stepFree });
+  if (found.ok) return null;
+  if (!stepFree) return { text: school.directions(found).text, stairs: false };
+  const plain = school.route(fromId, toId, { avoidStairs: false });
+  if (plain.ok) return { text: school.directions(found).text, stairs: true };
+  return { text: school.directions(plain).text, stairs: false };
+}
+
 export const directionsView = {
   id: 'directions',
   flag: 'directions',
@@ -93,9 +109,10 @@ export const directionsView = {
 
       if (!found.ok) {
         // the engine's own sentence: which room, which floor, and what was avoided
-        says.replaceChildren(h('span', null, typed(written.text)));
+        const refusal = directionsRefusal(school, state.from, state.to, state.stepFree);
+        says.replaceChildren(h('span', null, typed(refusal.text)));
         out.replaceChildren(...[
-          state.stepFree ? h('p', { dataset: { directions: 'stairs' } }, 'There may be a way that uses stairs. ', h('button', { class: 'btn', type: 'button', onclick: () => {
+          refusal.stairs ? h('p', { dataset: { directions: 'stairs' } }, 'There is a way that uses stairs. ', h('button', { class: 'btn', type: 'button', onclick: () => {
             stepFree.checked = false;
             stepFree.dispatchEvent(new Event('change'));
             stepFree.focus();

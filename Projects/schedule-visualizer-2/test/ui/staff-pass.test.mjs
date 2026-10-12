@@ -20,7 +20,7 @@ import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
 import { noteCountOf } from '../../staff/notes.js';
-import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
+import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
 import { readTool } from '../publish/reader.mjs';
 
@@ -104,6 +104,40 @@ test('"forget the kept key" travels with the one copy it is for: beside the data
   assert.deepEqual(got, [[{ n: 1 }, { forget: true }], [{ n: 2 }, { forget: false }]]);
 });
 
+// SV2-49 item 6
+test('a frame given another address holds a page that has not asked: nothing is sent to it, nothing is asked of the planner, and the flag waits for the page that asks', () => {
+  const { top, inner, frame } = pair();
+  frame.src = 'blob:first';
+  const got = [];
+  let data = null;
+  let flags = { forget: true };
+  let datas = 0;
+  let asked = 0;
+  const feed = feedPreview(top, frame, () => {
+    datas += 1;
+    return data;
+  }, () => {
+    asked += 1;
+    const now = flags;
+    flags = null;
+    return now;
+  });
+  watchPreview(inner, (value, with_) => got.push([value, with_]));
+  assert.equal(datas, 1, 'the first page asked, and there was nothing to give it');
+  // "Try again": the frame is given a new page, and a change lands before that page has asked
+  frame.src = 'blob:second';
+  data = { n: 1 };
+  assert.equal(feed.send(), false, 'the page that is going away is sent nothing');
+  assert.equal(datas, 1, 'the planner is not asked for data on its account, so it never counts the old page as live');
+  assert.equal(asked, 0, 'and "forget the kept key" is not used up');
+  assert.deepEqual(got, []);
+  // the new page asks
+  inner.parent.postMessage({ type: PREVIEW_READY });
+  assert.deepEqual(got, [[{ n: 1 }, { forget: true }]]);
+  assert.equal(feed.send(), true, 'and from then on a change is sent');
+  assert.equal(got.length, 2);
+});
+
 test('a feed with no flags sends the data alone, as before', () => {
   const { top, inner, frame } = pair();
   const sent = [];
@@ -152,6 +186,57 @@ test('the sign measures a number as it is drawn: a symbol or a tile drawn as an 
   assert.equal(signFit(family.repeat(4)), 7 / 8);
   assert.equal(signFit('e\u0301'.repeat(7)), 1, 'seven accented letters fit as seven do');
   assert.equal(signFit('\u2600'.repeat(4)), 7 / 8, 'four suns are eight wide');
+});
+
+// SV2-49 item 4: each row of the SV2-45 review's table, and the rules behind them.
+test('the sign measures what is drawn, not what is stored: a flag, a skin tone, a tag flag, a text-form symbol, marks in any script, a joiner between letters, Hangul in parts', () => {
+  const rows = [
+    ['\u{1F1FA}\u{1F1F8}', 2, 'a flag is two letters and one picture'],
+    ['\u{1F44D}\u{1F3FD}', 2, 'a thumbs up with a skin tone'],
+    ['\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', 2, 'the flag of England: a black flag and six tags'],
+    ['❤︎', 1, 'a heart asked for in its text form'],
+    ['ที่', 1, 'a Thai consonant with a vowel sign and a tone mark'],
+    ['A⃝', 1, 'A in an enclosing circle'],
+    ['a‍b', 2, 'a joiner between two letters joins nothing'],
+    ['‍204', 3, 'a joiner with nothing before it hides nothing'],
+  ];
+  for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
+
+  const more = [
+    // flags: pairs, never a run
+    ['\u{1F1FA}\u{1F1F8}\u{1F1EB}\u{1F1F7}', 4, 'two flags'],
+    ['\u{1F1FA}\u{1F1F8}\u{1F1EB}', 4, 'a flag and one letter left over'],
+    ['\u{1F1FA}A\u{1F1F8}', 5, 'two flag letters apart are two'],
+    // what takes no room
+    ['\u{1F44D}\u{1F3FB}\u{1F44D}\u{1F3FF}', 4, 'the lightest and the darkest skin tone'],
+    ['1️⃣', 1, 'a keycap is its digit'],
+    ['שּ', 1, 'a Hebrew letter with a point'],
+    ['بَ', 1, 'an Arabic letter with a vowel mark'],
+    ['a‌b', 2, 'a non-joiner is not drawn'],
+    ['東︀', 2, 'a variation selector after a CJK character'],
+    // a joiner joins two pictures, and only two pictures
+    ['\u{1F469}\u{1F3FD}‍\u{1F680}', 2, 'a person with a skin tone, joined to a rocket'],
+    ['\u{1F469}‍A', 3, 'a picture, a joiner and a letter: the letter keeps its room'],
+    ['A‍\u{1F469}', 3, 'a letter, a joiner and a picture'],
+    ['क्‍ष', 2, 'a joiner inside a Devanagari cluster hides no letter'],
+    // wide symbols outside the two blocks
+    ['⌚', 2, 'a watch, U+231A'],
+    ['⌛', 2, 'an hourglass, U+231B'],
+    ['⏰', 2, 'an alarm clock, U+23F0'],
+    ['⏩', 2, 'U+23E9'],
+    ['◾', 2, 'U+25FE'],
+    ['→', 1, 'an arrow is a narrow symbol'],
+    ['✓', 2, 'a check mark is in the block that is measured wide'],
+    ['✓︎', 1, 'and narrow in its text form'],
+    ['東︎', 2, 'the text-form mark narrows a symbol, never a CJK character'],
+    // Hangul: whole, and in parts
+    ['한', 2, 'a Hangul syllable'],
+    ['한', 2, 'the same syllable written as its three parts'],
+    ['한글', 4, 'two syllables in parts'],
+    ['ｶﾞ', 2, 'halfwidth katakana are narrow'],
+  ];
+  for (const [text, width, name] of more) assert.equal(signWidth(text), width, name);
+  assert.equal(signFit('\u{1F1FA}\u{1F1F8}'.repeat(3) + 'A'), 1, 'three flags and a letter are seven wide');
 });
 
 // ---------------------------------------------------------------- the batch's count (item 6)
@@ -230,7 +315,14 @@ test('sheets are counted from what is on paper: the gap, the dashed line and the
   assert.equal(sheetsOf([0, 952], [], printable), 2);
   // nothing on a stretch is still the sheet it starts
   assert.equal(sheetsOf([0, 0], [], printable), 1);
-  assert.equal(sheetsOf([0, 20, 40], [{ before: 38, inside: 24 }], printable), 2);
+  // SV2-49 item 9: a page that opens on a new sheet is that sheet, with no blank one counted ahead of it
+  assert.equal(sheetsOf([0, mark.before, mark.before + mark.inside + 900], [mark], printable), 1, 'nothing stands before the first new sheet');
+  assert.equal(sheetsOf([0, 20, 40], [mark], printable), 1, 'nor when the screen\'s gap is all there is before it');
+  assert.equal(sheetsOf([0, 0, 24 + 900, 24 + 900 + 38 + 24 + 900], [{ before: 0, inside: 24 }, mark], printable), 2, 'two sheets from the top, and two counted');
+  // a line of real paper before the first new sheet is a sheet, as a cover is
+  assert.equal(sheetsOf([0, mark.before + 12, mark.before + 12 + mark.inside + 900], [mark], printable), 2);
+  // and only the first stretch is ever left out: an empty sheet later in the page is still a sheet
+  assert.equal(sheetsOf([0, 300 + 38, 300 + 38 + 24 + 38, 300 + 38 + 24 + 38 + 24 + 900], [mark, mark], printable), 3);
 });
 
 // ---------------------------------------------------------------- door signs are upright (item 2)
@@ -243,18 +335,25 @@ test('a door sign is never laid on its side: asked for landscape the batch is po
       const turned = renderBatch(project, null, { batch: 'doors', day, now: clock(), paper: { size, orientation: 'landscape' } }).html;
       assert.ok(turned.includes('data-paper="' + size + '" data-orientation="portrait"'), size + ': the root');
       assert.ok(turned.includes('<style id="page-size">@page { size: ' + rule + ' portrait; }</style>'), size + ': the page rule');
-      assert.ok(turned.includes(UPRIGHT_COVER), size + ': the cover says why');
+      // SV2-49 item 9: this project is set to portrait, so the cover does not say the project chose landscape
+      assert.ok(turned.includes(UPRIGHT_ASKED), size + ': the cover says why');
+      assert.ok(!turned.includes('chosen for this project'), size + ': and blames nothing on the project\'s setting');
       const upright = renderBatch(project, null, { batch: 'doors', day, now: clock(), paper: { size, orientation: 'portrait' } }).html;
-      assert.ok(!upright.includes(UPRIGHT_COVER), 'asked for portrait there is nothing to say');
-      assert.equal(turned.replace(' ' + UPRIGHT_COVER, ''), upright, size + ': but for that sentence it is the portrait document');
+      assert.ok(!upright.includes(UPRIGHT_COVER) && !upright.includes(UPRIGHT_ASKED), 'asked for portrait there is nothing to say');
+      assert.equal(turned.replace(' ' + UPRIGHT_ASKED, ''), upright, size + ': but for that sentence it is the portrait document');
     }
     const teachers = renderBatch(project, null, { batch: 'teachers', now: clock(), paper: { size, orientation: 'landscape' } }).html;
-    assert.ok(teachers.includes('data-orientation="landscape"') && !teachers.includes(UPRIGHT_COVER));
+    assert.ok(teachers.includes('data-orientation="landscape"') && !teachers.includes(UPRIGHT_COVER) && !teachers.includes(UPRIGHT_ASKED));
   }
   // the project's own setting, with nothing asked
   const set = school();
   set.settings.paper = { size: 'a4', orientation: 'landscape' };
   assert.ok(renderBatch(set, null, { batch: 'doors', now: clock() }).html.includes('data-paper="a4" data-orientation="portrait"'));
+  // there the cover names the project's setting, whether or not the request asked for landscape too
+  for (const paper of [undefined, { size: 'a4', orientation: 'landscape' }, { size: 'a4', orientation: 'portrait' }]) {
+    const html = renderBatch(set, null, { batch: 'doors', now: clock(), paper }).html;
+    assert.ok(html.includes(UPRIGHT_COVER) && !html.includes(UPRIGHT_ASKED), 'the project is set to landscape: ' + JSON.stringify(paper || null));
+  }
   // and the entries say so, for the preview sheet
   assert.deepEqual(BATCHES.map((batch) => [batch.id, batch.upright === true, batch.uprightSays || null]), [
     ['teacher-schedules', false, null],

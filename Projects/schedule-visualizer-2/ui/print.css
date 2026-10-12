@@ -700,6 +700,7 @@
    leaves no room for that gap: print-preview.js, sheetsOf.) The door signs
    are upright sheets: batch.js never lays one on its side. */
 .print-doc .batch-sign {
+  container-type: inline-size;      /* the sheet the sign's names are measured against (36cqw, below) */
   display: flex;
   flex-direction: column;
   min-height: calc(var(--page-h) - 29mm);
@@ -798,6 +799,13 @@
 
 .print-doc .sign__table th {
   font-weight: 600;
+}
+
+.print-doc .sign__table td span {
+  display: inline-block;
+  max-width: 36cqw;                 /* a name longer than the sheet can hold is broken there, never run past its edge */
+  overflow-wrap: break-word;
+  vertical-align: top;
 }
 
 .print-doc .sign__school {

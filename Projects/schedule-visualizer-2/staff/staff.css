@@ -1632,10 +1632,8 @@ select.field__input {
    not the period's: a column is as wide as its longest word and a line breaks
    between words only. The period's own cell wraps between its words too, so a
    long one does not push the table off the sheet. (The page breaks words
-   anywhere; a table cell takes that back. While a kind of day is as wide as
-   its table, as .sign__kind makes it, no test can tell this from
-   "break-word": the two part only when something squeezes the table again,
-   which is when a cut word would come back.) */
+   anywhere; a table cell takes that back.) The one word that is cut is a name
+   too long for the sheet to hold: the rule after these. */
 .sign__table th,
 .sign__table td {
   padding: 0.15rem 0.25rem 0.15rem 0;
@@ -1649,6 +1647,20 @@ select.field__input {
 
 .sign__table th {
   font-weight: var(--w-semibold);
+}
+
+/* A name somebody typed stands in a box of its own, at most 36% of the sheet
+   wide: the room two names have side by side, with the period and the time
+   beside them. A word that fits that is whole, and its column is as wide as
+   it. A longer one is broken at that width, because a word past the sheet's
+   edge is not read at all: never past the sheet wins over never cut. (About
+   33 letters fit; a name of 60 takes two lines.) */
+.sign__table td span {
+  display: inline-block;
+  max-width: 12rem;
+  max-width: 36cqw;
+  overflow-wrap: break-word;
+  vertical-align: top;
 }
 
 .sign__school {
@@ -1696,12 +1708,14 @@ select.field__input {
     background: #ffffff;
   }
 
-  /* a table whose words are wider than the phone is moved sideways inside
-     its own frame; the page stays still */
+  /* On a phone a period is not a row of four columns: its name and its time
+     are one line, who is in the room is the next, and who teaches them the
+     one after, each as wide as the frame. So a word is cut only when it is
+     longer than a whole line, and nothing is moved sideways to be read: a
+     frame that scrolled could not be reached with a keyboard. */
   .sign__kind {
     flex: none;
     min-width: 0;
-    overflow-x: auto;
   }
 
   .sign__kindname {
@@ -1709,12 +1723,40 @@ select.field__input {
   }
 
   .sign__table {
+    display: block;
     font-size: var(--t-md);
+  }
+
+  .sign__table tbody {
+    display: block;
+  }
+
+  .sign__table tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--s-3);
+    padding: var(--s-1) 0;
+    border-top: 1px solid var(--line);
   }
 
   .sign__table th,
   .sign__table td {
-    padding: var(--s-1) var(--s-2) var(--s-1) 0;
+    min-width: 0;
+    padding: 0;
+    border-top: 0;
+    overflow-wrap: break-word;
+  }
+
+  .sign__table td:nth-of-type(n + 2) {
+    grid-column: 1 / -1;
+  }
+
+  .sign__table td:empty {
+    display: none;
+  }
+
+  .sign__table td span {
+    max-width: 100%;
   }
 }
 
@@ -1727,6 +1769,15 @@ select.field__input {
 
 @page {
   margin: 14mm;
+}
+
+/* The door sign's sheet is upright whatever the reader's print dialog says:
+   it is printed on a page named for it, and that page is portrait on the
+   paper the dialog chose. (Measured in Chromium PDFs with landscape asked:
+   one upright sheet of US Letter and of A4. A browser that does not know
+   named pages prints the sign as its dialog says, as before.) */
+@page sign {
+  size: portrait;
 }
 
 @media print {
@@ -1914,17 +1965,17 @@ select.field__input {
      name stands at the foot of the sheet as it does in the preview. The
      paper is the reader's own choice in their print dialog (this page has no
      paper setting): on paper 100vh is the page inside its margins, 251 mm of
-     US Letter and 269 mm of A4. The 240 mm before it is for a browser that
-     does not take the line after, and fits both. Nothing stands over the
-     sheet: the page's own 16 px gap above it is taken off, since on paper it
-     pushed the sheet's foot onto a second, empty sheet. */
+     US Letter and 269 mm of A4. Nothing stands over the sheet: the page's
+     own 16 px gap above it is taken off, since on paper it pushed the
+     sheet's foot onto a second, empty sheet. */
   .page[data-view="door"] .page__body > .sheet {
     margin-top: 0;
   }
 
+  /* WebKit is not measured here: if its 100vh on paper is the window's, the sheet is that tall and may run on. */
   .sheet {
+    page: sign;
     max-width: none;
-    min-height: 240mm;
     min-height: calc(100vh - 3mm);
     aspect-ratio: auto;
     border: 0;

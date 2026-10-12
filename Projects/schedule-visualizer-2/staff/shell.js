@@ -55,6 +55,8 @@ export function mountShell(root, env) {
   // ---- the screens that are not a schedule
 
   function card(state, title, ...body) {
+    // a schedule's page may be leaving for this card: its maps stop listening
+    unmountMaps();
     open = null;
     gate = null;
     delete root.dataset.view;
@@ -293,6 +295,8 @@ export function mountShell(root, env) {
         return true;
       },
     });
+    // the preview can lock a schedule that is open: the page on screen leaves, and its maps stop listening
+    unmountMaps();
     root.dataset.state = 'locked';
     delete root.dataset.view;
     root.replaceChildren(screen.element);

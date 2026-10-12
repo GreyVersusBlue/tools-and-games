@@ -255,7 +255,9 @@ test('the three batch outputs are in the list the preview sheet reads, each with
     assert.equal(title, batch.name + ' · ' + SAMPLE_SCHOOL_NAME);
     assert.ok(html.includes('data-output="' + batch.id + '"'), batch.id);
     assert.equal(countOf(html, '<section class="page">'), 1, batch.id + ': one .page, the sheets inside it');
-    assert.equal(countOf(html, '<footer class="doc-foot">' + TOOL_NAME + '</footer>'), 1);
+    // SV2-49 item 3: no closing line after the last sheet, which is as tall as the paper; a browser
+    // with no page margin boxes printed that line on a sheet of its own, one more than the preview said
+    assert.equal(countOf(html, 'doc-foot'), 0, batch.id + ': a batch has no closing line');
   }
   // what the preview sheet passes cannot turn one batch into another
   assert.equal(BATCHES[0].render(project, null, { ...NOW, batch: 'doors' }).html, teachers(project));

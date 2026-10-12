@@ -1155,41 +1155,192 @@ test('Publish waits for the checks of the project it publishes: a press while th
   });
 });
 
-test('the checks cannot be run: the lines of the project before are cleared, Publish asks again and refuses with a sentence, and publishes once they answer', async () => {
+// The real engine client (ui/engine-client.js) on a worker this case can
+// make refuse: every request reaches the real module worker, except while
+// `__worker.refuse` is set, when it is answered the way engine/worker.js
+// answers a run that threw. Nothing of the client is replaced, so what it
+// remembers of a failed run is what a person's browser would remember.
+const refusingWorker = (page) => page.evaluate(async () => {
+  const { engineFor } = await import(new URL('ui/engine-client.js', location.href).href);
+  const { ANSWER } = await import(new URL('engine/worker.js', location.href).href);
+  const store = globalThis.sv2.store;
+  engineFor(store).close();
+  const state = { refuse: false, posted: 0, refused: 0 };
+  globalThis.__worker = state;
+  const listeners = [];
+  const start = () => {
+    const made = new Worker(new URL('engine/worker.js', location.href), { type: 'module' });
+    for (const [type, listener] of listeners) made.addEventListener(type, listener);
+    return made;
+  };
+  let real = start();
+  engineFor(store, {
+    worker: () => ({
+      addEventListener(type, listener) {
+        listeners.push([type, listener]);
+        real.addEventListener(type, listener);
+      },
+      terminate() {
+        real.terminate();
+      },
+      postMessage(message) {
+        state.posted += 1;
+        if (!state.refuse) {
+          real.postMessage(message);
+          return;
+        }
+        state.refused += 1;
+        // a worker that failed has forgotten what it sent: this one starts again
+        real.terminate();
+        real = start();
+        setTimeout(() => {
+          for (const [type, listener] of listeners) if (type === 'message') listener({ data: { type: ANSWER, generation: message.generation, ok: false, error: 'The worker has gone.' } });
+        }, 0);
+      },
+    }),
+  });
+});
+const workerSaw = (page) => page.evaluate(() => ({ ...globalThis.__worker }));
+
+test('the checks cannot be run: the lines of the project before are cleared, Publish asks the worker again and refuses with a sentence, and publishes once it answers, with no edit and no reload', async () => {
   await closing(await open(), async (page) => {
     assert.deepEqual(await checkLines(page), [ROOM_203]);
-    await page.evaluate(() => {
-      const engine = globalThis.sv2.store.derived.engine;
-      globalThis.__results = engine.results.bind(engine);
-      globalThis.__refused = 0;
-      engine.results = () => {
-        globalThis.__refused += 1;
-        return Promise.reject(new Error('The worker has gone.'));
-      };
-    });
+    await refusingWorker(page);
+    await page.evaluate(() => { globalThis.__worker.refuse = true; });
     await apply(page, 'setSlot', await secondProblem(page));
     await checksDrawn(page);
     assert.deepEqual(await checkLines(page), [], 'the line of the project before does not stand beside a run that gave no answer');
     assert.equal(await page.evaluate(() => document.querySelector('.pub__checks').hidden), true);
     assert.equal(await says(page, 'checks-summary'), CHECKS_FAILED);
     assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.checks), 'none');
-    const before = await page.evaluate(() => globalThis.__refused);
-    assert.ok(before >= 1);
+    const before = await workerSaw(page);
+    assert.ok(before.refused >= 1);
 
-    // Publish asks for them again (twice: a refusal is tried once more) and refuses
+    // Publish asks for them again (twice: a refusal is tried once more) and refuses.
+    // Each asking reaches the worker: the client does not hand back the run that failed.
     assert.equal(await publishThroughHook(page), null);
     assert.equal(await says(page, 'published'), CHECKS_REFUSED);
-    assert.equal(await page.evaluate(() => globalThis.__refused), before + 2, 'the press asked again');
+    const after = await workerSaw(page);
+    assert.equal(after.posted - before.posted, 2, 'the press asked the worker again, and once more');
+    assert.equal(after.refused - before.refused, 2);
     assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.hooks.published), null, 'no file was made');
     assert.equal((await project(page)).publish.lastPublishedAt, null);
     assert.equal(await page.evaluate(() => document.getElementById('publish-file').getAttribute('aria-disabled')), null, 'the button can be pressed again');
 
-    // the checks come back: the next press runs them, draws the list and publishes
-    await page.evaluate(() => { globalThis.sv2.store.derived.engine.results = globalThis.__results; });
+    // the worker answers again: the next press, with nothing edited, runs the checks, draws the list and publishes
+    await page.evaluate(() => { globalThis.__worker.refuse = false; });
     const made = await publishThroughHook(page);
-    assert.ok(made && made.fileName.endsWith('.html'));
+    assert.ok(made && made.fileName.endsWith('.html'), 'a file was made on the press after the failure');
     assert.deepEqual(await checkLines(page), [ROOM_203, ROOM_101]);
     assert.match(await says(page, 'published'), /^Published /);
+    assert.equal((await workerSaw(page)).posted - after.posted >= 1, true);
+  });
+});
+
+const MOVED_ON = 'The schedule changed while the file was being made. The file is of the schedule as it was when Publish was pressed, and the changes made since are not in it: publish again to send them.';
+const NOT_NOTED = 'The project could not record that a file was made.';
+
+// Press Publish and stop the file between its making and its handing over,
+// so a case can change the project in the gap. `letGo` hands it over and
+// gives what went out and what the form held at that moment.
+const pressAndHold = (page) => page.evaluate(async () => {
+  const view = document.querySelector('.stf').staff;
+  const pub = document.querySelector('.pub');
+  const gate = {};
+  globalThis.__gate = gate;
+  const made = new Promise((resolve) => { gate.made = resolve; });
+  view.hooks.assembled = () => {
+    gate.made();
+    return new Promise((resolve) => { gate.open = resolve; });
+  };
+  view.hooks.deliver = (published) => {
+    const day = published.model.dayTypes[0].id;
+    gate.handed = {
+      periodThree: published.model.groups.find((group) => group.name === '7A').days[day][2].room,
+      publishedAt: published.model.publishedAt,
+      lines: Array.from(document.querySelectorAll('.pub__checks li'), (el) => el.textContent),
+      pending: pub.dataset.checksPending || null,
+    };
+    return { fileName: published.fileName, bytes: published.html.length };
+  };
+  gate.press = view.form.publish().finally(() => {
+    view.hooks.deliver = null;
+    view.hooks.assembled = null;
+  });
+  await made;
+});
+const letGo = (page) => page.evaluate(async () => {
+  globalThis.__gate.open();
+  const published = await globalThis.__gate.press;
+  return { made: published !== null, ...globalThis.__gate.handed };
+});
+const periodThree = (page) => page.evaluate(() => {
+  const school = globalThis.sv2.store.project;
+  return school.groups.find((group) => group.name === '7A').days[school.dayTypes[0].id][2].room;
+});
+
+test('the project changes while the file is being made: the file is of the project Publish was pressed on, the status says so, the list is the screen\'s, and the publish is noted', async () => {
+  await closing(await open(), async (page) => {
+    const slot = await secondProblem(page);
+    const pressedOn = await periodThree(page);
+    assert.notEqual(pressedOn, slot.slot.room);
+    assert.deepEqual(await checkLines(page), [ROOM_203]);
+
+    await pressAndHold(page);
+    // the file is made and not yet handed over: a second problem goes into the schedule
+    await apply(page, 'setSlot', slot);
+    await checksDrawn(page);
+    assert.deepEqual(await checkLines(page), [ROOM_203, ROOM_101]);
+    const first = await letGo(page);
+    assert.equal(first.made, true, 'the file still goes out');
+    assert.equal(first.periodThree, pressedOn, 'the file holds the schedule as it was when Publish was pressed');
+    const status = await says(page, 'published');
+    assert.match(status, /^Published /);
+    assert.ok(status.includes('. ' + MOVED_ON + ' ' + NOT_SENT + ' It asks for the staff passcode: '), status);
+    assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf), 'earlier');
+    // the edit is still in the project, the publish time is noted on it, and the list is that project's
+    assert.equal(await periodThree(page), slot.slot.room);
+    assert.equal((await project(page)).publish.lastPublishedAt, first.publishedAt);
+    await checksDrawn(page);
+    assert.deepEqual(await checkLines(page), [ROOM_203, ROOM_101], 'the list is of the project on screen, not of the file');
+    assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.checks), '2');
+
+    // pressed again with nothing changing meanwhile: the later change is in the file and nothing is said about an earlier schedule
+    await pressAndHold(page);
+    const second = await letGo(page);
+    assert.equal(second.periodThree, slot.slot.room);
+    assert.deepEqual(second.lines, [ROOM_203, ROOM_101]);
+    const next = await says(page, 'published');
+    assert.ok(!next.includes('as it was when Publish was pressed'), next);
+    assert.ok(next.includes('). ' + NOT_SENT + ' It asks for the staff passcode: '), next);
+    assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf), undefined);
+  });
+});
+
+test('the file went out and the project then would not record it: the status says Published and that it is not recorded, never that nothing was published', async () => {
+  await closing(await open(), async (page) => {
+    await page.evaluate(async () => {
+      const { notePublished } = await import(new URL('engine/actions.js', location.href).href);
+      const store = globalThis.sv2.store;
+      const apply = store.apply;
+      globalThis.__thrown = 0;
+      store.apply = function (action, payload) {
+        if (action === notePublished) {
+          globalThis.__thrown += 1;
+          throw new Error('The project would not take the note.');
+        }
+        return apply.call(store, action, payload);
+      };
+    });
+    const made = await publishThroughHook(page);
+    assert.equal(await page.evaluate(() => globalThis.__thrown), 1, 'the note was offered to the project, which threw');
+    assert.ok(made && made.fileName.endsWith('.html'), 'the file was handed over');
+    const status = await says(page, 'published');
+    assert.ok(status.startsWith('Published ' + made.fileName + ' ('), status);
+    assert.ok(status.includes(NOT_SENT + ' ' + NOT_NOTED + ' It asks for the staff passcode: '), status);
+    assert.ok(!/nothing was published/i.test(status), status);
+    assert.equal((await project(page)).publish.lastPublishedAt, null);
+    assert.notEqual(await page.evaluate(() => document.querySelector('.stf').staff.hooks.published), null);
   });
 });
 
@@ -1372,6 +1523,111 @@ test('a preview that was given its page and never opened says so with "Try again
     await frameOf(page).waitForFunction(() => document.getElementById('app').dataset.state === 'open', { timeout: 30000 });
     // and a file was never held up by it
     assert.ok(await publishThroughHook(page));
+  });
+});
+
+// SV2-49 item 6
+test('a preview whose page opened and could not be given its data keeps the sentence that says why: the wait for it to open ends when the page asks, and "has not opened" never follows', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 2500;
+      // no encryption: the locked copy cannot be made
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined });
+      // the passcode screen is asked for the moment the section is drawn, before its first copy is made
+      location.hash = '#staff';
+      await new Promise((resolve) => {
+        const look = () => {
+          const box = document.querySelector('.stf-bar .stf-check input');
+          if (!box) return void requestAnimationFrame(look);
+          box.click();
+          resolve();
+        };
+        look();
+      });
+    });
+    // the page has opened and asked (the wait is over) with the reason on screen
+    await page.waitForFunction(() => {
+      const preview = document.querySelector('.stf-preview');
+      return preview.dataset.previewSays === 'stale' && preview.dataset.waiting === undefined && document.querySelector('.stf').staff.preview.state.loaded;
+    }, { timeout: 30000 });
+    assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.preview.state.opened), true, 'the frame\'s page asked for its data');
+    assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent), 0, 'and was given none');
+    assert.equal(await says(page, 'preview'), 'The preview could not be brought up to date. ' + NO_ENCRYPTION);
+    assert.notEqual(await page.evaluate(() => document.querySelector('.stf-preview').dataset.preview), 'failed', 'the wait did not run out on a page that had opened');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').hidden), true);
+
+    // with encryption back the next change reaches the page that has been waiting
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await previewLive(page);
+    assert.equal(await page.evaluate(() => document.querySelector('.stf-preview').dataset.previewSays), undefined);
+    await frameOf(page).waitForFunction(() => document.getElementById('app').dataset.state === 'locked', { timeout: 30000 });
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
+  });
+});
+
+// SV2-49 item 9
+test('a map\'s listeners leave when its page gives way to a screen that is not a schedule: a copy the frame cannot read, and the passcode screen', async () => {
+  await closing(await open(), async (page) => {
+    const frame = frameOf(page);
+    await frame.waitForFunction(() => document.getElementById('app').dataset.state === 'open', { timeout: 30000 });
+    // count what listens for printing and for a change of media inside the frame, from here on
+    await frame.evaluate(() => {
+      const held = { beforeprint: 0, afterprint: 0, change: 0 };
+      globalThis.sv2Held = held;
+      const add = window.addEventListener.bind(window);
+      const remove = window.removeEventListener.bind(window);
+      window.addEventListener = (type, ...rest) => {
+        if (type === 'beforeprint' || type === 'afterprint') held[type] += 1;
+        return add(type, ...rest);
+      };
+      window.removeEventListener = (type, ...rest) => {
+        if (type === 'beforeprint' || type === 'afterprint') held[type] -= 1;
+        return remove(type, ...rest);
+      };
+      const queryAdd = MediaQueryList.prototype.addEventListener;
+      const queryRemove = MediaQueryList.prototype.removeEventListener;
+      MediaQueryList.prototype.addEventListener = function added(type, ...rest) {
+        if (type === 'change') held.change += 1;
+        return queryAdd.call(this, type, ...rest);
+      };
+      MediaQueryList.prototype.removeEventListener = function removed(type, ...rest) {
+        if (type === 'change') held.change -= 1;
+        return queryRemove.call(this, type, ...rest);
+      };
+    });
+    const held = () => frame.evaluate(() => ({ ...globalThis.sv2Held }));
+    const onMap = async () => {
+      await frame.waitForFunction(() => document.getElementById('app').dataset.state === 'open' && document.querySelector('.page[data-view="map"] .map canvas') !== null, { timeout: 30000 });
+    };
+    await frame.evaluate(() => { location.hash = '#/map/fsample001'; });
+    await onMap();
+    assert.deepEqual(await held(), { beforeprint: 1, afterprint: 1, change: 2 }, 'the map on the page listens on the window twice and on two media queries');
+
+    // a copy in a format this staff browser does not know: the page gives way to the card that says so
+    await page.evaluate(() => {
+      const inner = document.querySelector('.stf-frame').contentWindow;
+      inner.postMessage({ type: 'sv2-published', data: { format: 'sv2-published', version: 99 } }, location.origin);
+    });
+    await frame.waitForFunction(() => document.getElementById('app').dataset.state === 'newer', { timeout: 15000 });
+    assert.deepEqual(await held(), { beforeprint: 0, afterprint: 0, change: 0 }, 'nothing of the map is left listening behind the card');
+
+    // the schedule again, on its map; then the passcode screen takes its place
+    const before = await sent(page);
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await fedAfter(page, before);
+    await onMap();
+    assert.deepEqual(await held(), { beforeprint: 1, afterprint: 1, change: 2 });
+    await page.click('.stf-bar .stf-check');
+    await frame.waitForFunction(() => document.getElementById('app').dataset.state === 'locked', { timeout: 30000 });
+    assert.deepEqual(await held(), { beforeprint: 0, afterprint: 0, change: 0 }, 'nor behind the passcode screen');
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
   });
 });
 

@@ -7,6 +7,9 @@ import { route, routeToExit, routingGraph } from '../../engine/routing.js';
 import { directions, describeFailure, CELL_UNITS, SQUARE_UNITS } from '../../engine/directions.js';
 import { school } from './helpers.mjs';
 import { planProject, twoRooms, threeFloors, disconnectedWing, roomId, cellAt } from '../fixtures/buildings/plans.mjs';
+import { publishedModel } from '../../engine/publish-data.js';
+import { openSchool } from '../../staff/model.js';
+import { directionsRefusal } from '../../staff/views/directions.js';
 
 // An L-shaped walk with a floor change. From room 1A: left out of the room
 // and east along the corridor past room 1C, right at the corner, south to
@@ -252,6 +255,28 @@ test('the same room, and each named failure, as a sentence that names the room a
   assert.equal(describeFailure(floors, route(routingGraph(floors), roomId('1A'), roomId('2B'), { avoidStairs: true })), 'There is no step-free way through from Room 1A to Room 2B on Floor 2.');
   assert.equal(describeFailure(floors, routeToExit(routingGraph(floors), roomId('3A'), { avoidExits: ['xplan00001'] })), 'There is no way through from Room 3A on Floor 3 to an exit.');
   assert.equal(directions(floors, null).ok, false);
+});
+
+// SV2-49 item 5. The engine words a step-free refusal as "no way ... without
+// stairs" whenever stairs were being avoided, which on a wing no corridor
+// reaches promises a way that does not exist. The staff browser's page looks
+// once more with stairs allowed before it says so or offers that way.
+test('step-free with no way at all: the reader is told there is no way, and the way with stairs is offered only where there is one', () => {
+  const clock = () => new Date('2026-09-01T12:00:00Z');
+  const wing = disconnectedWing();
+  const opened = openSchool(publishedModel(wing, { clock }));
+  // what the engine says for the route as asked, and why the page cannot stop there
+  assert.equal(opened.directions(opened.route(roomId('1A'), roomId('1C'), { avoidStairs: true })).text, 'There is no way from Room 1A to Room 1C without stairs.');
+  assert.equal(opened.route(roomId('1A'), roomId('1C')).ok, false, 'and there is none with stairs either: one floor, two corridors that do not meet');
+
+  assert.deepEqual(directionsRefusal(opened, roomId('1A'), roomId('1C'), true), { text: 'There is no way through from Room 1A to Room 1C on Floor 1.', stairs: false });
+  assert.deepEqual(directionsRefusal(opened, roomId('1A'), roomId('1C'), false), { text: 'There is no way through from Room 1A to Room 1C on Floor 1.', stairs: false });
+  assert.equal(directionsRefusal(opened, roomId('1A'), roomId('1B'), true), null, 'a way that exists is no refusal');
+
+  // where stairs are the only way, the plain sentence stands and the way with stairs is offered
+  const floors = openSchool(publishedModel(threeFloors(), { clock }));
+  assert.deepEqual(directionsRefusal(floors, roomId('1A'), roomId('2B'), true), { text: 'There is no way from Room 1A to Room 2B without stairs.', stairs: true });
+  assert.equal(directionsRefusal(floors, roomId('1A'), roomId('2B'), false), null);
 });
 
 test('every route of the sample school can be written out: numbered from 1, a way out first and the room last', () => {

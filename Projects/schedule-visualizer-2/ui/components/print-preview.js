@@ -69,13 +69,16 @@ let sheet = null;
 //            two sheets) and { inside } below it (the dashed line and the
 //            room under it)
 // A stretch that is all decoration is still a sheet: the count never goes
-// under one a stretch.
+// under one a stretch. But for the first, when a new sheet starts where the
+// page does: nothing is on paper before it, so the page opens on that sheet
+// and no blank one is printed ahead of it.
 export function sheetsOf(starts, marks, printable) {
   let sheets = 0;
   for (let i = 0; i < starts.length - 1; i += 1) {
     const here = i === 0 ? null : marks[i - 1];
     const next = i < marks.length ? marks[i] : null;
     const paper = starts[i + 1] - starts[i] - (here ? here.inside : 0) - (next ? next.before : 0);
+    if (i === 0 && next && paper < 1) continue;
     sheets += Math.max(1, Math.ceil((paper - 1) / printable));
   }
   return sheets;

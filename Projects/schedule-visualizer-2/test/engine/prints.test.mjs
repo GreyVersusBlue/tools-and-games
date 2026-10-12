@@ -145,7 +145,9 @@ test('every output is a whole document: header with school, what it is and the d
       assert.ok(countOf(html, '<p class="doc-head__school">' + esc(SAMPLE_SCHOOL_NAME) + '</p>') >= 1, at + ': the school');
       assert.ok(html.includes('<h1 class="doc-head__what">' + output.name), at + ': what this is');
       assert.ok(html.includes('<p class="doc-head__date">1 September 2026</p>'), at + ': the date');
-      assert.equal(countOf(html, '<footer class="doc-foot">' + TOOL_NAME + '</footer>'), 1, at + ': the footer');
+      // a batch has no closing line: its last sheet is the paper's height, and the line was a sheet more (SV2-49 item 3)
+      const batch = ['teacher-schedules', 'door-signs', 'door-signs-day'].includes(output.id);
+      assert.equal(countOf(html, '<footer class="doc-foot">' + TOOL_NAME + '</footer>'), batch ? 0 : 1, at + ': the footer');
       assert.ok(html.trimEnd().endsWith('</html>'), at + ': closed');
       assert.equal(countOf(html, '<header class="doc-head">'), countOf(html, '<section class="page">'), at + ': a header on every sheet');
       const stray = tagsOf(html).filter((tag) => !TAGS.has(tag));

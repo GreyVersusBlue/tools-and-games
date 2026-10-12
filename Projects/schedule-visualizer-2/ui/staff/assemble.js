@@ -582,7 +582,11 @@ export function feedPreview(win, frame, getData, getFlags) {
   const own = originOf(win);
   const target = own === 'null' ? '*' : own;
   let ready = false;
+  // the address the frame held when its page asked: a frame given another
+  // address holds another page, which has not asked yet
+  let readyFor = null;
   const send = () => {
+    if (ready && frame.src !== readyFor) ready = false;
     if (!ready || !frame.contentWindow) return false;
     const data = getData();
     // with nothing to show yet the frame is left asking, and is answered when there is
@@ -595,6 +599,7 @@ export function feedPreview(win, frame, getData, getFlags) {
     if (event.source !== frame.contentWindow || event.origin !== own) return;
     if (!event.data || event.data.type !== PREVIEW_READY) return;
     ready = true;
+    readyFor = frame.src;
     send();
   };
   win.addEventListener('message', listen);

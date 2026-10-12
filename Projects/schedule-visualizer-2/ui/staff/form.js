@@ -17,7 +17,9 @@
 //   form.stop()
 //
 // `hooks.deliver(published)`, when a test sets it, takes the file instead of
-// the download; `hooks.published` is the last file made.
+// the download; `hooks.published` is the last file made. `hooks.assembled`,
+// when a test sets it, is awaited between the file being made and its being
+// handed over, so a case can change the project in that gap.
 
 import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
@@ -62,6 +64,10 @@ export const CHECKS_NOT_HERE = 'The checks are not running in this tab, so this 
 export const CHECKS_WAIT = 'Waiting for the checks of the project as it is now.';
 export const CHECKS_REFUSED = 'Nothing was published: the checks could not be run, so the file would go out with nothing said about what readers will see. Try again in a moment, or reload the page.';
 export const READ_ONLY_MADE = 'This tab is read-only, so the project does not record that a file was made.';
+// the file went out and the project then refused the note of it
+export const NOT_NOTED = 'The project could not record that a file was made.';
+// the project changed while the file was being put together (DECISIONS 2026-10-12 18:15)
+export const MOVED_ON = 'The schedule changed while the file was being made. The file is of the schedule as it was when Publish was pressed, and the changes made since are not in it: publish again to send them.';
 // How long the checks may take before the list says it is being worked out.
 // They answer in a few milliseconds as a rule; words that came and went with
 // every keystroke would move the Publish button under the pointer.
@@ -254,20 +260,22 @@ export function publishForm(ctx, hooks) {
     return mine;
   }
 
-  // The lines of the project as it is now, on screen: true, or false when its
-  // checks cannot be run (asked twice: a refusal is tried once more).
+  // The project whose lines are on screen, which is the project as it is
+  // now: the one the file is made from. Null when its checks cannot be run
+  // (asked twice: a refusal is tried once more, and the engine client never
+  // remembers a failed run, so each asking is a new one).
   async function checksStand() {
     for (let tries = 0; tries < 2; tries += 1) {
       for (;;) {
         const project = store.project;
         const drawn = await askChecks(project);
-        if (stopped) return false;
+        if (stopped) return null;
         if (store.project !== project) continue;
-        if (drawn) return true;
+        if (drawn) return project;
         break;
       }
     }
-    return false;
+    return null;
   }
 
   // ---- publish
@@ -281,8 +289,10 @@ export function publishForm(ctx, hooks) {
   }
   // The passcode a file asks for is typed text: it stands in an element of its
   // own, last on the line, so no full stop reads as part of it.
-  function saysPublished(published, size, passcode, noted) {
-    const made = ['Published ', fileWords(published.fileName), size + '. ' + NOT_SENT + ' ' + (noted ? '' : READ_ONLY_MADE + ' ')];
+  // `moved`: the project changed while the file was being made. `noted`:
+  // true, or the sentence saying why the project does not record the file.
+  function saysPublished(published, size, passcode, noted, moved) {
+    const made = ['Published ', fileWords(published.fileName), size + '. ' + (moved ? MOVED_ON + ' ' : '') + NOT_SENT + ' ' + (noted === true ? '' : noted + ' ')];
     if (!published.locked) {
       says.replaceChildren(...made, 'It opens with no passcode.');
       return;
@@ -308,23 +318,39 @@ export function publishForm(ctx, hooks) {
       // the file is made from: a file never goes out beside the lines of an
       // earlier project.
       says.textContent = element.dataset.checksPending === 'true' || asked !== store.project ? CHECKS_WAIT : 'Putting the file together.';
-      if (!(await checksStand())) {
+      // The file is made from the project the checks were for, the very
+      // object, whatever the store holds by the time it is ready.
+      const project = await checksStand();
+      if (project === null) {
         if (!stopped) says.textContent = CHECKS_REFUSED;
         return null;
       }
-      const project = store.project;
       says.textContent = 'Putting the file together.';
       const published = await publishDocument(pageReader(), project, { clock: ctx.clock, random: deviceRandom() });
+      if (typeof hooks.assembled === 'function') await hooks.assembled(published);
       hooks.published = published;
       const delivered = typeof hooks.deliver === 'function' ? hooks.deliver(published) : fileTarget.deliver(published);
       const size = delivered && typeof delivered.bytes === 'number' ? ' (' + kilobytes(delivered.bytes) + ')' : '';
+      // From here the file is out, and nothing below may say it is not.
+      const moved = store.project !== project;
       // A tab that cannot change the project still made its file. It is not
       // asked to note it: the refusal's toast ("Nothing changed") would be
       // the one false thing on the screen.
-      const noted = !readOnly();
-      if (noted) store.apply(notePublished, { at: published.model.publishedAt });
-      saysPublished(published, size, project.publish.passcode, noted);
-      if (typeof hooks.made === 'function') hooks.made(published, noted);
+      let noted = readOnly() ? READ_ONLY_MADE : true;
+      if (noted === true) {
+        try {
+          store.apply(notePublished, { at: published.model.publishedAt });
+        } catch (error) {
+          console.warn('Schedule Visualizer 2: the file was made, and the project could not record it.', error);
+          noted = NOT_NOTED;
+        }
+      }
+      saysPublished(published, size, project.publish.passcode, noted, moved);
+      if (moved) element.dataset.publishedOf = 'earlier';
+      else delete element.dataset.publishedOf;
+      // the list is the list of what is on screen, not of what went out
+      if (!stopped) askChecks(store.project);
+      if (typeof hooks.made === 'function') hooks.made(published, noted === true);
       return published;
     } catch (error) {
       console.warn('Schedule Visualizer 2: the file could not be made.', error);
