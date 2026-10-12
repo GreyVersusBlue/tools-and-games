@@ -3,16 +3,19 @@
 // own address (#schedule/groups and the rest), and the findings panel in the
 // inspector beside all of them.
 //
-// A slot has an address too:
+// A group has an address too, and so has a slot of it (address.js):
 //
+//   #schedule/groups/<groupId>
 //   #schedule/groups/<groupId>/<dayTypeId>/<period>
 //
-// with the period counted from 0, as the model counts it. It opens the Groups
-// tab on that group (taking the filter off when the filter hides it), scrolls
-// the period's row into view and puts the focus in its room field. A day type
-// that is the same as another opens the row of the day it copies. With the
-// group alone, the group is chosen; a group that is not in the project leaves
-// the tab as it was. `slotHash` writes one.
+// with the period counted from 0, as the model counts it. The slot's opens
+// the Groups tab on that group (taking the filter off when the filter hides
+// it), scrolls the period's row into view and puts the focus in its room
+// field. A day type that is the same as another opens the row of the day it
+// copies. With the group alone, the group is chosen. `#schedule/groups` with
+// no group, or with one that is not in the project, is the list: on a phone,
+// where the list and the editor take turns, the cards are shown, and the
+// group that was chosen stays chosen. `slotHash` and `groupHash` write them.
 //
 // A tab is a module exporting
 //
@@ -40,10 +43,12 @@ import { h } from '../components/dom.js';
 import { intro } from '../components/card.js';
 import { tabs } from '../components/tabs.js';
 import { periodWords } from '../components/words.js';
-import { findDayType, effectiveDayType } from '../../engine/day-types.js';
 import { scheduleModel } from './model.js';
-import { findingsPanel } from './checks.js';
+import { findingsPanel, SHEET as INSPECTOR_SHEET } from './checks.js';
 import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW } from './groups.js';
+import { readAddress, slotHash } from './address.js';
+
+export { slotHash };
 import { mount as grid, GRID_KEYS } from './grid/index.js';
 import { mount as teachers } from './teachers.js';
 import { mount as subjects } from './subjects.js';
@@ -128,6 +133,11 @@ function watchPointer() {
   window.matchMedia(GROUPS_NARROW).addEventListener('change', (event) => {
     if (live && live.narrow() !== event.matches) live.redraw();
   });
+  // beside the Checks tab the inspector says where the list is, which is
+  // another place once the inspector is a sheet
+  window.matchMedia(INSPECTOR_SHEET).addEventListener('change', () => {
+    if (live) live.inspect();
+  });
   document.addEventListener('pointerdown', () => {
     pointerDown = true;
   }, true);
@@ -140,34 +150,21 @@ function tabId(rest) {
   return SCHEDULE_TABS.some((tab) => tab.id === first) ? first : 'groups';
 }
 
-// The address of a group's slot (the top of this file).
-export function slotHash(groupId, dayTypeId, period) {
-  return '#schedule/groups/' + [groupId, dayTypeId, period].map((part) => encodeURIComponent(String(part))).join('/');
-}
-
-function decoded(part) {
-  try {
-    return decodeURIComponent(part);
-  } catch (error) {
-    return part;
-  }
-}
-
-// Take what an address says after the tab's name into `view`: the group, and
-// the slot to show when it names one. True when it named a group.
+// Take what an address of the Groups tab says into `view`: the group, and
+// the slot to show when it names one; or, with no group in it that the
+// project has, the list. Another tab's address changes nothing here. True
+// when it named a group.
 function takeAddress(project, rest) {
-  const parts = String(rest || '').split('/').map(decoded);
-  if (parts[0] !== 'groups' || !parts[1]) return false;
-  const group = project.groups.find((each) => each.id === parts[1]);
-  if (!group) return false;
+  if (tabId(rest) !== 'groups') return false;
+  const { group, slot } = readAddress(project, rest);
+  if (!group) {
+    view.folded = false;
+    return false;
+  }
   view.groupId = group.id;
   view.folded = true;
   if (!groupMatches(group, view.filter)) view.filter = '';
-  const dayType = parts[2] ? findDayType(project, parts[2]) : null;
-  const period = /^\d+$/.test(parts[3] || '') ? Number(parts[3]) : -1;
-  view.shown = dayType && period >= 0 && period < project.settings.periods
-    ? { groupId: group.id, dayTypeId: effectiveDayType(project, dayType.id).id, period, fresh: true }
-    : null;
+  view.shown = slot ? { groupId: group.id, dayTypeId: slot.dayTypeId, period: slot.period, fresh: true } : null;
   return true;
 }
 
@@ -325,7 +322,7 @@ export const section = {
       if (timer === null) timer = setTimeout(run, 0);
     }
 
-    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true' };
+    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect: () => inspector.update(ctx.store.project) };
     live = handle;
     // an address that named a slot: its row is scrolled to once this is on the page
     if (view.shown && view.shown.fresh) schedule();
@@ -337,12 +334,18 @@ export const section = {
       },
       // the same section, another tab
       route(next) {
+        const chosen = () => JSON.stringify([view.groupId, view.folded, view.filter, view.shown]);
+        const was = chosen();
         takeAddress(ctx.store.project, next);
         const same = strip.selected === tabId(next);
         strip.select(tabId(next));
-        // a tab that was just put up has drawn itself; the same tab asked
-        // for again, or one with something to show, is drawn (and scrolled)
-        if (same || (view.shown && view.shown.fresh)) schedule();
+        // A tab that was just put up has drawn itself. The same tab is drawn
+        // when the address chose something else in it, and any tab when
+        // there is a slot to show (and scroll to). An address that says what
+        // is already chosen draws nothing: on a phone the Groups tab writes
+        // its address after it has drawn (groups.js), and a second drawing
+        // would take the page from under a finger that has just tapped.
+        if ((same && chosen() !== was) || (view.shown && view.shown.fresh)) schedule();
         else inspector.update(ctx.store.project);
         return true;
       },

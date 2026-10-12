@@ -125,6 +125,15 @@ async function tap(page, selector) {
   await page.tap(selector);
 }
 
+// The window at a size, with a table for reading on the page, and the table's
+// frame told: the frame leaves the window its sentence was last placed for
+// on itself (`data-placed`), and that is waited for, not a count of frames.
+async function readSized(page, width, height) {
+  await page.setViewport({ width, height, deviceScaleFactor: 1 });
+  await page.waitForFunction((w, h) => window.innerWidth === w && window.innerHeight === h
+    && document.querySelector('.grd-below .grd-scroll')?.dataset.placed === w + 'x' + h, { timeout: 5000 }, width, height);
+}
+
 // Close a case's own page, and hold the page to having had no error. A case
 // that failed is reported as it failed, with what the page said added to its
 // message: an assertion in a `finally` would be reported in its place.
@@ -920,14 +929,7 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
     assert.ok(drawn.top >= frame.top - 0.5 && drawn.bottom <= frame.bottom + 0.5, what + ': the sentence is at ' + drawn.top + ' to ' + drawn.bottom + ' down a frame of ' + frame.top + ' to ' + frame.bottom);
     return { drawn, frame };
   };
-  const frames = () => page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  }));
-  const sized = async (width, height) => {
-    await page.setViewport({ width, height, deviceScaleFactor: 1 });
-    await page.waitForFunction((w, h) => window.innerWidth === w && window.innerHeight === h, { timeout: 5000 }, width, height);
-    await frames();
-  };
+  const sized = (width, height) => readSized(page, width, height);
   const refocus = async (selector) => {
     await page.focus('.grd-toolbar input[value="teachers"]');
     await page.focus(selector);
@@ -983,18 +985,51 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
     await refocus(cell);
     const start = await inside(cell, 'at 700 px');
     const at = await box(page, cell);
+    const placings = await page.$eval('.grd-below .grd-scroll', (frame) => Number(frame.dataset.placings));
     const moved = await page.$eval('.grd-below .grd-scroll', (frame, by) => {
       const from = frame.scrollLeft;
       frame.scrollLeft = from + by;
       return frame.scrollLeft - from;
     }, at.left - start.frame.left + 100);
     assert.ok(moved > start.drawn.left - start.frame.left, 'the table does not scroll far enough sideways at 700 px: ' + moved);
-    await frames();
+    // the frame says each time it places the sentence again: one more than before it was scrolled
+    await page.waitForFunction((was) => Number(document.querySelector('.grd-below .grd-scroll').dataset.placings) > was, { timeout: 5000 }, placings);
     await inside(cell, 'after the frame scrolled sideways');
   } finally {
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     await page.waitForFunction(() => window.innerWidth === 1280);
     await undo(page, others.length + 1);
+    await rowsAre(page, 'groups');
+  }
+});
+
+test('the sentence of a mark is placed again when the window changes height alone', async () => {
+  const { page } = desk;
+  await rowsAre(page, 'teachers');
+  try {
+    // a window 420 px high: the frame is 70 % of that at its tallest, the
+    // table of twelve teachers is taller, and the frame scrolls
+    await readSized(page, 1280, 420);
+    const last = await page.$$eval('.grd-table--read .is-marked', (all) => all[all.length - 1].dataset.key);
+    const far = '[data-key="' + last + '"]';
+    await page.focus('.grd-toolbar input[value="teachers"]');
+    await page.focus(far);
+    const read = async (what) => {
+      const drawn = await popup(page, far);
+      const frame = await frameOf(page);
+      assert.notEqual(drawn, null, what + ': the sentence is drawn');
+      return { drawn, frame };
+    };
+    const before = await read('at 420 px high');
+    assert.ok(before.drawn.top >= before.frame.top - 0.5 && before.drawn.bottom <= before.frame.bottom + 0.5, 'at 420 px high the sentence is at ' + before.drawn.top + ' to ' + before.drawn.bottom + ' down a frame of ' + before.frame.top + ' to ' + before.frame.bottom);
+    // 120 px shorter, the width as it was, the focus where it was
+    await readSized(page, 1280, 300);
+    const after = await read('at 300 px high');
+    assert.ok(before.drawn.bottom - before.frame.top > after.frame.bottom - after.frame.top + 1, 'the frame\'s foot did not rise past where the sentence was: the case shows nothing');
+    assert.ok(after.drawn.top >= after.frame.top - 0.5 && after.drawn.bottom <= after.frame.bottom + 0.5, 'after the window lost height alone the sentence is at ' + after.drawn.top + ' to ' + after.drawn.bottom + ' down a frame of ' + after.frame.top + ' to ' + after.frame.bottom);
+  } finally {
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+    await page.waitForFunction(() => window.innerWidth === 1280 && window.innerHeight === 800);
     await rowsAre(page, 'groups');
   }
 });

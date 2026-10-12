@@ -602,10 +602,10 @@ test('the group editor keeps a room number that is not in the building, as typed
     const first = slotField(DAY_A, 0);
     const line = (period) => p.$eval(slotRow(DAY_A, period) + ' .sch-room__missing', (el) => (el.hidden ? null : el.textContent));
 
-    // as it is typed: the list says what will happen, and the field is marked
+    // as it is typed: the line under the field says what will happen, and the field is marked
     await p.click(first);
     await p.keyboard.type('Portable 9');
-    assert.equal(await text(p, slotRow(DAY_A, 0) + ' .picker__empty'), 'No room matches. It is kept as typed, and marked as not in the building.');
+    assert.equal(await text(p, slotRow(DAY_A, 0) + ' .sch-room__line'), 'No room matches. It is kept as typed, and marked as not in the building.');
     assert.equal(await p.$eval(first, (el) => el.classList.contains('sch-room--missing')), true, 'the field is not marked as it is typed');
     // Enter keeps it
     await p.keyboard.press('Enter');
@@ -684,8 +684,8 @@ test('with no rooms in the building the picker\'s one line says so and goes to B
     const group = await p.evaluate(() => globalThis.sv2.store.project.groups[0].id);
     const field = slotField(day, 0);
     await p.click(field);
-    const line = slotRow(day, 0) + ' .picker__list > li';
-    assert.equal(await count(p, line), 1);
+    const line = slotRow(day, 0) + ' .sch-room__line';
+    assert.equal(await box(p, slotRow(day, 0) + ' .picker__list'), null, 'a list is drawn with nothing in it to pick');
     assert.equal(await text(p, line), 'No rooms in the building yet. Number them in Building.');
     assert.equal(await p.$eval(line + ' a', (a) => a.getAttribute('href')), '#building');
     await p.keyboard.type('B12');
@@ -695,8 +695,8 @@ test('with no rooms in the building the picker\'s one line says so and goes to B
     assert.deepEqual(await stored(p, group, day, 0), { room: null, roomText: 'B12' });
     // the line's link, pressed
     await p.click(slotField(day, 1));
-    await p.waitForSelector(slotRow(day, 1) + ' .picker__list > li a');
-    await p.click(slotRow(day, 1) + ' .picker__list > li a');
+    await p.waitForSelector(slotRow(day, 1) + ' .sch-room__line a');
+    await p.click(slotRow(day, 1) + ' .sch-room__line a');
     await waitForSection(p, 'building');
   });
 });
@@ -799,7 +799,8 @@ test('on a 390 px phone a finding\'s Show, Fix… and Accept are under its sente
 
 test('on a 390 px phone the list of groups and the editor take turns: a tap on 6B folds the list to its card and its Name field is in the window; the inspector says to choose a group until one is', async () => {
   await on('#schedule/groups', PHONE, async (p) => {
-    const cards = () => p.$$eval('.sch-group', (all) => all.filter((each) => each.getClientRects().length > 0).map((each) => each.dataset.group));
+    // in one turn of the page: found and then asked in two, a card of a list drawn again in between has left the page and has no box
+    const cards = () => p.evaluate(() => Array.from(document.querySelectorAll('.sch-group')).filter((each) => each.getClientRects().length > 0).map((each) => each.dataset.group));
     // nothing chosen yet: every card, no editor, and the inspector says so
     assert.equal((await cards()).length, 8);
     assert.equal(await box(p, '.sch-editor'), null, 'the editor is on the page under the whole list');
@@ -988,13 +989,360 @@ test('"Add a group" by keyboard puts the focus in Name with "New group" selected
   });
 });
 
+// ---------------------------------------------------------------- from the review of the pass (SV2-48)
+
+// The cards of the list that are on screen, read in one turn of the page.
+const shownCards = (page) => page.evaluate(() => Array.from(document.querySelectorAll('.sch-group')).filter((each) => each.getClientRects().length > 0).map((each) => each.dataset.group));
+const listIs = (page, folded) => page.waitForFunction((wanted) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.sch-groups')?.dataset.folded === wanted, { timeout: 5000 }, String(folded));
+const hashOf = (page) => page.evaluate(() => location.hash);
+// Type into a field over what it holds.
+async function typeOver(page, selector, words) {
+  await settled(page);
+  await page.click(selector);
+  await page.$eval(selector, (el) => el.select());
+  await page.keyboard.type(words);
+}
+const highlighted = (page, row) => page.$$eval(row + ' .picker__option[aria-selected="true"]', (all) => all.map((el) => el.dataset.room));
+const listOpen = (page, row) => page.$eval(row + ' .picker__list', (el) => !el.hidden && el.getClientRects().length > 0);
+const lineOf = (page, row) => page.$eval(row + ' .sch-room__line', (el) => el.textContent);
+
+test('on a 390 px phone "All groups" brings the list back after arriving by a slot\'s address and by Show on a finding, and it stays', async () => {
+  await on('#schedule/groups/' + C6 + '/' + DAY_A + '/1', PHONE, async (p) => {
+    await keyIs(p, 'slot:' + DAY_A + ':1:room');
+    assert.deepEqual(await shownCards(p), [C6]);
+    await tap(p, '[data-key="group-all"]');
+    await listIs(p, false);
+    assert.equal((await shownCards(p)).length, 8, 'by a slot\'s address: "All groups" left the list folded');
+    assert.equal(await box(p, '.sch-editor'), null);
+    assert.equal(await hashOf(p), '#schedule/groups', 'the list has no address of its own');
+    await keyIs(p, 'group:' + C6);
+    // the tab drawn again for a change to the project: still the list
+    await act(p, 'editGroup', { id: A7, grade: '7' });
+    await act(p, 'setSlot', { groupId: A7, dayTypeId: DAY_A, period: 0, slot: { label: 'Homeroom' } });
+    await listIs(p, false);
+    assert.equal((await shownCards(p)).length, 8, 'the list folded again at the next drawing');
+
+    // Show on a finding
+    await go(p, '#schedule/checks');
+    await settled(p);
+    await tap(p, '.sch-findings tr[data-finding^="room-double:' + DAY_A + ':1:"] [data-action="show"]');
+    await keyIs(p, 'slot:' + DAY_A + ':1:room');
+    assert.equal(await hashOf(p), '#schedule/groups/' + C6 + '/' + DAY_A + '/1', 'Show does not go to the slot\'s address');
+    assert.deepEqual(await shownCards(p), [C6]);
+    await tap(p, '[data-key="group-all"]');
+    await listIs(p, false);
+    assert.equal((await shownCards(p)).length, 8, 'by Show: "All groups" left the list folded');
+    // and Back from there is the editor Show opened, then the Checks tab
+    await p.evaluate(() => history.back());
+    await listIs(p, true);
+    assert.deepEqual(await shownCards(p), [C6]);
+    await p.evaluate(() => history.back());
+    await shows(p, () => location.hash === '#schedule/checks' && document.querySelector('.sch-checks') !== null);
+  });
+});
+
+test('the movement view\'s link to a slot opens a group that "All groups" can leave, once the window is a phone\'s', async () => {
+  await on('#movement', DESK, async (p) => {
+    await shows(p, () => document.querySelector('.mov')?.dataset.styled === 'true');
+    await act(p, 'setSlot', { groupId: A7, dayTypeId: DAY_A, period: 2, slot: { room: null } });
+    await p.click('#inspector [role="tab"][data-tab="summary"]');
+    await p.waitForSelector('#inspector [data-summary="health"] [data-action="fix"]', { timeout: 15000 });
+    await p.click('#inspector [data-summary="health"] [data-action="fix"]');
+    await waitForSection(p, 'schedule');
+    await keyIs(p, 'slot:' + DAY_A + ':2:room');
+    await p.setViewport({ width: 390, height: 760, deviceScaleFactor: 1 });
+    await shows(p, () => document.querySelector('.sch').dataset.narrow === 'true' && document.querySelector('.sch').dataset.pending !== 'true');
+    assert.deepEqual(await shownCards(p), [A7]);
+    await p.$eval('[data-key="group-all"]', (el) => el.scrollIntoView({ block: 'center' }));
+    await reachable(p, '[data-key="group-all"]');
+    await p.click('[data-key="group-all"]');
+    await listIs(p, false);
+    assert.equal((await shownCards(p)).length, 8, 'by the movement view\'s link: "All groups" left the list folded');
+  });
+});
+
+test('on a 390 px phone the Back button from a group\'s editor is the list, with the focus on the group\'s card, and not the way out of the section', async () => {
+  await on('#schedule/groups', PHONE, async (p) => {
+    await tap(p, '.sch-group[data-group="' + B6 + '"]');
+    await listIs(p, true);
+    assert.equal(await hashOf(p), '#schedule/groups/' + B6, 'a group chosen on a phone has no place in the history');
+    assert.deepEqual(await shownCards(p), [B6]);
+    await p.focus('[data-key="group-name"]');
+    await p.evaluate(() => history.back());
+    await listIs(p, false);
+    assert.equal(await hashOf(p), '#schedule/groups');
+    assert.equal(await p.$eval('.surface__layout', (el) => el.dataset.section), 'schedule', 'Back left the section');
+    assert.equal((await shownCards(p)).length, 8);
+    assert.equal(await box(p, '.sch-editor'), null);
+    await keyIs(p, 'group:' + B6);
+    // Forward is the editor again
+    await p.evaluate(() => history.forward());
+    await listIs(p, true);
+    assert.deepEqual(await shownCards(p), [B6]);
+    // an address whose group is not in the project is the list
+    await go(p, '#schedule/groups/gnobody0001/' + DAY_A + '/1');
+    await listIs(p, false);
+    assert.equal((await shownCards(p)).length, 8, 'an address naming no group left the editor of another open');
+
+    // an undo that takes back the group whose editor is open: the list
+    // comes back, since the editor would be another group's
+    await tap(p, '[data-action="add-group"]');
+    await listIs(p, true);
+    await keyIs(p, 'group-name');
+    assert.equal(await text(p, '.sch-editor__title'), 'New group');
+    await p.evaluate(() => globalThis.sv2.store.undo());
+    await listIs(p, false);
+    assert.equal((await shownCards(p)).length, 8, 'the list stayed folded on a group that is gone');
+    assert.equal(await p.evaluate(() => document.activeElement === document.body), false, 'the focus fell to the page');
+  });
+});
+
+test('in the room picker Enter keeps what was typed exactly as leaving the field does, and picks only what the arrow keys highlighted', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    const field = slotField(DAY_A, 1);
+    const row = slotRow(DAY_A, 1);
+    await typeOver(p, field, '10');
+    assert.ok((await count(p, row + ' .picker__option')) >= 3, 'rooms 101, 102 and 103 are offered');
+    assert.deepEqual(await highlighted(p, row), [], 'a room is highlighted that no arrow key went to');
+    assert.equal(await p.$eval(field, (el) => el.getAttribute('aria-activedescendant')), null);
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === '10' && !document.querySelector(selector).parentNode.querySelector('.sch-room__missing').hidden, field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: null, roomText: '10' }, '"10" and Enter is not Room 101');
+    await keyIs(p, 'slot:' + DAY_A + ':1:room');
+
+    // the arrow keys go to a room, and Enter picks that one
+    await typeOver(p, field, '10');
+    await p.keyboard.press('ArrowDown');
+    assert.deepEqual(await highlighted(p, row), ['rsample101']);
+    await p.keyboard.press('ArrowDown');
+    assert.deepEqual(await highlighted(p, row), ['rsample102']);
+    await p.keyboard.press('ArrowUp');
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === '101 — Ms. Halloran', field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: 'rsample101', roomText: '' });
+    // typing again takes the highlight off: Enter after it reads the text
+    await typeOver(p, field, '10');
+    await p.keyboard.press('ArrowDown');
+    await p.keyboard.type('3');
+    assert.deepEqual(await highlighted(p, row), []);
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value.startsWith('103 — '), field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: 'rsample103', roomText: '' }, 'a whole number typed and Enter is that room');
+  });
+});
+
+test('a room field that holds a room opens with that room highlighted, by a click, by ArrowDown and from a slot\'s address: Enter leaves the slot as it was', async () => {
+  await on('#schedule/groups/' + A6 + '/' + DAY_A + '/0', DESK, async (p) => {
+    const field = slotField(DAY_A, 0);
+    const row = slotRow(DAY_A, 0);
+    await keyIs(p, 'slot:' + DAY_A + ':0:room');
+    const before = await stored(p, A6, DAY_A, 0);
+    assert.match(before.room, /^rsample/, 'the case needs a slot with a room');
+    const same = () => p.evaluate(() => globalThis.sv2.store.project === globalThis.kept);
+    await p.evaluate(() => {
+      globalThis.kept = globalThis.sv2.store.project;
+    });
+    // where the address put the cursor: ArrowDown opens the list
+    await p.keyboard.press('ArrowDown');
+    assert.equal(await listOpen(p, row), true);
+    assert.deepEqual(await highlighted(p, row), [before.room], 'opened by ArrowDown, the highlight is not on the slot\'s own room');
+    assert.equal(await p.$eval(row + ' .picker__option', (el) => el.dataset.room), '', 'the case needs "No room" at the head of the list');
+    await p.keyboard.press('Enter');
+    assert.equal(await listOpen(p, row), false);
+    await settled(p);
+    assert.deepEqual(await stored(p, A6, DAY_A, 0), before, 'Enter on a list just opened changed the slot');
+    assert.equal(await same(), true, 'Enter on a list just opened made a change to the project');
+    // by a click
+    await p.keyboard.press('Tab');
+    await p.click(field);
+    assert.equal(await listOpen(p, row), true);
+    assert.deepEqual(await highlighted(p, row), [before.room], 'opened by a click, the highlight is not on the slot\'s own room');
+    await p.keyboard.press('Enter');
+    await settled(p);
+    assert.deepEqual(await stored(p, A6, DAY_A, 0), before);
+    assert.equal(await same(), true);
+    // one ArrowUp from there is "No room", and Enter then is meant
+    await p.click(field);
+    const at = await p.$$eval(row + ' .picker__option', (all) => all.findIndex((el) => el.getAttribute('aria-selected') === 'true'));
+    for (let i = 0; i < at; i += 1) await p.keyboard.press('ArrowUp');
+    assert.deepEqual(await highlighted(p, row), ['']);
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === '', field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 0), { room: null, roomText: '' });
+  });
+});
+
+test('text that two rooms answer to is kept as typed: Enter leaves the list open on the two and says so, leaving the field picks neither', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    // Ms. Halloran is based in 101; now in 102 as well
+    await act(p, 'editTeacher', { id: 'tsample001', roomIds: ['rsample101', 'rsample102'] });
+    await settled(p);
+    const field = slotField(DAY_A, 2);
+    const row = slotRow(DAY_A, 2);
+    const before = await stored(p, A6, DAY_A, 2);
+    await typeOver(p, field, 'halloran');
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector(selector + ' .sch-room__line').textContent !== '', row);
+    assert.equal(await lineOf(p, row), '2 rooms match. Pick one from the list.');
+    assert.equal(await listOpen(p, row), true, 'the list shut on Enter');
+    const offered = await p.$$eval(row + ' .picker__option', (all) => all.map((el) => [el.dataset.room, el.firstChild.textContent.includes('Ms. Halloran')]));
+    assert.deepEqual(offered, [['rsample101', true], ['rsample102', true]]);
+    assert.deepEqual(await highlighted(p, row), []);
+    assert.equal(await p.$eval(field, (el) => el.value), 'halloran');
+    assert.deepEqual(await stored(p, A6, DAY_A, 2), before, 'Enter picked one of the two');
+    // a second Enter picks neither still
+    await p.keyboard.press('Enter');
+    assert.equal(await listOpen(p, row), true);
+    assert.deepEqual(await stored(p, A6, DAY_A, 2), before);
+
+    // leaving the field keeps the text, and the line stays to say why
+    await p.keyboard.press('Tab');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === 'halloran' && !document.querySelector(selector).parentNode.querySelector('.sch-room__missing').hidden, field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 2), { room: null, roomText: 'halloran' }, 'leaving the field picked one of the two');
+    assert.equal(await lineOf(p, row), '2 rooms match. Pick one from the list.');
+
+    // the field opened again is on the two, and the arrows pick
+    await p.click(field);
+    assert.deepEqual(await p.$$eval(row + ' .picker__option', (all) => all.map((el) => el.dataset.room)), ['rsample101', 'rsample102']);
+    await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value.startsWith('102 — '), field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 2), { room: 'rsample102', roomText: '' });
+    assert.equal(await lineOf(p, row), '');
+  });
+});
+
+test('the picker\'s line of words is a status the field is described by, and its link to the building is a Tab away and keeps what was typed', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    const row = slotRow(DAY_A, 0);
+    await typeOver(p, slotField(DAY_A, 0), 'zzz');
+    const said = await p.$eval(row, (tr) => {
+      const input = tr.querySelector('.picker__input');
+      const line = tr.querySelector('.sch-room__line');
+      return { role: line.getAttribute('role'), boxed: line.getClientRects().length > 0, described: (input.getAttribute('aria-describedby') || '').split(' ').includes(line.id), words: line.textContent };
+    });
+    assert.deepEqual(said, { role: 'status', boxed: true, described: true, words: 'No room matches. It is kept as typed, and marked as not in the building.' });
+    await p.keyboard.press('Escape');
+    await p.keyboard.press('Escape');
+    assert.equal(await lineOf(p, row), '');
+    assert.equal(await p.$eval(row + ' .picker__input', (el) => (el.getAttribute('aria-describedby') || '').includes('-line')), false, 'the field is described by a line with no words');
+  });
+  await on('#project', DESK, async (p) => {
+    await p.click('#sample-school [data-action="sample"]');
+    await shows(p, () => document.getElementById('sample-chip').hidden);
+    await closeToast(p);
+    await go(p, '#schedule/groups');
+    await p.click('[data-action="add-group"]');
+    await keyIs(p, 'group-name');
+    const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);
+    const group = await p.evaluate(() => globalThis.sv2.store.project.groups[0].id);
+    await p.click(slotField(day, 0));
+    await p.keyboard.type('B12');
+    // by keyboard: the link is the next stop, and the picker has not shut on it
+    await p.keyboard.press('Tab');
+    const on = await p.evaluate(() => {
+      const el = document.activeElement;
+      return { tag: el.tagName, href: el.getAttribute('href'), inLine: Boolean(el.closest('.sch-room__line')), row: el.closest('tr')?.dataset.period };
+    });
+    assert.deepEqual(on, { tag: 'A', href: '#building', inLine: true, row: '0' }, 'Tab from the field did not reach the line\'s link');
+    await p.keyboard.press('Enter');
+    await waitForSection(p, 'building');
+    assert.deepEqual(await stored(p, group, day, 0), { room: null, roomText: 'B12' }, 'what was typed was lost on the way to the building');
+  });
+});
+
+test('narrowed under 640 px with the cursor in the editor and no card chosen by hand, the focus is on the group\'s card and not on the page', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    await p.click('[data-key="group-name"]');
+    assert.equal(await activeKey(p), 'group-name');
+    await p.setViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
+    await shows(p, () => document.querySelector('.sch').dataset.narrow === 'true' && document.querySelector('.sch').dataset.pending !== 'true');
+    assert.equal(await box(p, '.sch-editor'), null, 'the case needs the editor out of sight at 600 px');
+    assert.equal(await p.evaluate(() => document.activeElement === document.body), false, 'the focus fell to the page');
+    assert.equal(await activeKey(p), 'group:' + A6);
+    // and the list's keys work from there
+    await p.keyboard.press('ArrowDown');
+    assert.equal(await activeKey(p), 'group:' + B6);
+  });
+});
+
+test('a filter that matches no group leaves no listbox without an option, a selected finding says so to a screen reader, and the inspector follows the 900 px crossing', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    const list = () => p.$eval('.sch-groups__list', (el) => [el.getAttribute('role'), el.getAttribute('aria-label'), el.querySelectorAll('[role="option"]').length]);
+    assert.deepEqual(await list(), ['listbox', 'Groups', 8]);
+    await p.click('[data-key="group-filter"]');
+    await p.keyboard.type('zzzz');
+    await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelectorAll('.sch-group').length === 0);
+    assert.deepEqual(await list(), [null, null, 0], 'a listbox with no option');
+    assert.equal(await text(p, '.sch-groups__tally'), 'No group matches “zzzz”.');
+    for (let i = 0; i < 4; i += 1) await p.keyboard.press('Backspace');
+    await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelectorAll('.sch-group').length === 8);
+    assert.deepEqual(await list(), ['listbox', 'Groups', 8]);
+
+    await go(p, '#schedule/checks');
+    await settled(p);
+    const current = () => p.$$eval('.sch-checks .sch-findings:not(.sch-findings--accepted) tbody tr', (rows) => rows.map((row) => [row.getAttribute('aria-current'), row.dataset.selected || null]));
+    assert.deepEqual((await current()).filter((row) => row[0] !== null || row[1] !== null), [], 'a finding is selected before one was chosen');
+    await p.click('.sch-checks .sch-findings tbody tr:nth-child(2) .sch-finding__what');
+    await shows(p, () => document.querySelector('#inspector .sch-panel__scope').textContent === 'The finding selected');
+    const marked = await current();
+    assert.deepEqual(marked[1], ['true', 'true']);
+    assert.deepEqual(marked.filter((row) => row[0] !== null), [['true', 'true']], 'more than one row says it is the one');
+    // drawn again, the row still says so
+    await act(p, 'setSlot', { groupId: A7, dayTypeId: DAY_A, period: 0, slot: { label: 'Homeroom' } });
+    await settled(p);
+    assert.deepEqual((await current()).filter((row) => row[0] !== null), [['true', 'true']]);
+
+    // where the list is: beside the inspector, and above it once it is a sheet
+    const where = () => text(p, '#inspector .sch-panel__more[data-note="list"]');
+    assert.match(await where(), /^Every finding is in the list on the left\./);
+    await p.setViewport({ width: 800, height: 800, deviceScaleFactor: 1 });
+    await shows(p, () => document.querySelector('#inspector .sch-panel').dataset.where === 'above');
+    assert.match(await where(), /^Every finding is in the list above\./);
+    await p.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+    await shows(p, () => document.querySelector('#inspector .sch-panel').dataset.where === 'on the left');
+    assert.match(await where(), /^Every finding is in the list on the left\./);
+  });
+});
+
+test('at 390 px the room field is the row\'s full width under the period\'s name, and "203 — Ms. Vandermeer" is not cut', async () => {
+  await on('#schedule/groups/' + C6 + '/' + DAY_A + '/1', PHONE, async (p) => {
+    await keyIs(p, 'slot:' + DAY_A + ':1:room');
+    const fields = await p.$$eval('.sch-day[data-day="' + DAY_A + '"] .sch-slot', (rows) => rows.map((tr) => {
+      const input = tr.querySelector('.sch-room .picker__input');
+      const name = tr.querySelector('.sch-slot__period').getBoundingClientRect();
+      const field = input.getBoundingClientRect();
+      const menu = tr.querySelector('.sch-slot__menu').getBoundingClientRect();
+      const around = tr.getBoundingClientRect();
+      return { value: input.value, cut: input.scrollWidth > input.clientWidth, under: field.top >= name.bottom - 1, width: field.width, row: around.width, menuBeside: menu.left >= field.right && menu.right <= around.right + 1 && menu.top < field.bottom && menu.bottom > field.top };
+    }));
+    assert.equal(fields.length, 8);
+    assert.equal(fields[1].value, '203 — Ms. Vandermeer');
+    for (const field of fields) {
+      assert.equal(field.cut, false, JSON.stringify(field));
+      assert.equal(field.under, true, 'the field is beside the period\'s name: ' + JSON.stringify(field));
+      assert.ok(field.width >= field.row - 60, 'the field is not the row\'s width: ' + JSON.stringify(field));
+      assert.equal(field.menuBeside, true, 'the row\'s menu is not beside the field: ' + JSON.stringify(field));
+    }
+    // the table is still a table of rows to a screen reader
+    const roles = await p.$eval('.sch-day[data-day="' + DAY_A + '"] .sch-slots', (table) => [getComputedStyle(table).display, table.querySelectorAll('thead th').length, table.querySelector('caption') !== null]);
+    assert.deepEqual(roles, ['block', 3, true]);
+  });
+  // on a wide screen the name is beside the field as before
+  await on('#schedule/groups', DESK, async (p) => {
+    const beside = await p.$eval('.sch-slot', (tr) => tr.querySelector('.sch-slot__period').getBoundingClientRect().right <= tr.querySelector('.sch-room .picker__input').getBoundingClientRect().left + 1 && getComputedStyle(tr).display === 'table-row');
+    assert.equal(beside, true);
+  });
+});
+
 // ---------------------------------------------------------------- 19: the screens
 
 test('the sweeps have the three screens the walk-through missed, and each opens', async () => {
   const wanted = {
     'schedule-room-not-in-building': async (p) => {
       assert.equal(await p.$eval('.sch-slot .sch-room__missing:not([hidden])', (el) => el.textContent), '▲ Not in the building. It is kept as typed.');
-      assert.equal(await count(p, '.sch-slot .picker__list:not([hidden]) .picker__empty'), 1, 'the picker\'s list is not open on its one line');
+      assert.equal(await text(p, '.sch-slot[data-period="1"] .sch-room__line'), 'No room matches. It is kept as typed, and marked as not in the building.', 'the next field\'s line does not say that nothing matches');
     },
     'schedule-checks-phone': async (p) => {
       assert.equal(await p.evaluate(() => window.innerWidth), 390);
@@ -1008,6 +1356,7 @@ test('the sweeps have the three screens the walk-through missed, and each opens'
   };
   assert.equal(SCREENS.some((screen) => screen.id === 'schedule-room-refused-and-missing'), false, 'the screen of the refusal that is no longer given is still in the sweep');
   const session = await openPlanner({ server, browser, hash: '#project', theme: 'light', ...DESK });
+  let failed = null;
   try {
     for (const [id, check] of Object.entries(wanted)) {
       const screen = SCREENS.find((each) => each.id === id);
@@ -1018,9 +1367,11 @@ test('the sweeps have the three screens the walk-through missed, and each opens'
     // the size is put back when the sweep leaves a phone screen
     await visit(session, SCREENS.find((each) => each.id === 'schedule-groups'));
     await shows(session.page, () => window.innerWidth === 1280);
-  } finally {
-    const found = session.problems();
-    await session.page.close();
-    assert.deepEqual(found, CLEAN);
+  } catch (error) {
+    failed = error;
   }
+  const found = session.problems();
+  await session.page.close().catch(() => {});
+  if (failed) throw failed;
+  assert.deepEqual(found, CLEAN);
 });

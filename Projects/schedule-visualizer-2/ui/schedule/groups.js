@@ -11,7 +11,9 @@
 // card that was tapped: `view.folded` false shows the cards and no editor,
 // and choosing a group folds the list to that group's card, with "All groups"
 // to open it again and the editor straight under it. schedule.css does the
-// showing and hiding; on a wider screen `folded` changes nothing.
+// showing and hiding; on a wider screen `folded` changes nothing. On a phone
+// the two are two places with an address each (address.js), so the Back
+// button goes from a group's editor to the list.
 
 import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
@@ -27,6 +29,7 @@ import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
+import { GROUPS_HASH, groupHash } from './address.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
@@ -57,6 +60,33 @@ export function mount(env) {
   const element = h('div', { class: 'sch-groups' });
   let reveal = false;
 
+  // Was the focus in the editor when the editor went out of sight? A phone's
+  // list coming back (Back, "All groups", a window narrowed across 640 px)
+  // hides the editor, and the browser takes the focus from a field that is
+  // hidden without a word, or with a blur whose field is hidden by then.
+  // Remembered here until the next drawing, which gives the focus to the
+  // group's card instead of leaving it on the page.
+  let inEditor = false;
+  const editorOf = (node) => (node && node.closest ? node.closest('.sch-editor') : null);
+  element.addEventListener('focusin', (event) => {
+    inEditor = editorOf(event.target) !== null;
+  });
+  element.addEventListener('focusout', (event) => {
+    if (!editorOf(event.target)) return;
+    if (choosingGroup(view)) inEditor = true;
+    else if (!editorOf(event.relatedTarget)) inEditor = false;
+  });
+
+  // Draw what `view` now says. On a phone the address follows it, so the
+  // list and each editor are places the Back button knows; the section draws
+  // again when the address has changed, to the same thing.
+  function show(focusKey) {
+    env.render(focusKey);
+    if (!window.matchMedia(NARROW).matches) return;
+    const hash = view.folded === true && view.groupId ? groupHash(view.groupId) : GROUPS_HASH;
+    if (location.hash !== hash) ctx.navigate(hash);
+  }
+
   // Choose a group. On a phone its card goes to the top of the screen, so
   // the editor under it starts in sight.
   function select(groupId, focusKey) {
@@ -64,12 +94,16 @@ export function mount(env) {
     view.shown = null;
     view.folded = groupId !== null;
     reveal = groupId !== null;
-    env.render(focusKey);
+    show(focusKey);
   }
 
+  // The list again, on a phone. The slot an address or a finding's Show
+  // opened is no longer being shown: left in place it would fold the list
+  // straight back.
   function showAll() {
     view.folded = false;
-    env.render(view.groupId ? 'group:' + view.groupId : 'group-add');
+    view.shown = null;
+    show(view.groupId ? 'group:' + view.groupId : 'group-add');
   }
 
   function add() {
@@ -221,6 +255,7 @@ export function mount(env) {
       name: 'Room for ' + at,
       key: keyBase + 'room',
       text,
+      roomId: resolved.room ? resolved.room.id : null,
       missing: unknown,
       describedBy: findingsId,
       options: () => roomOptions(ctx.store.project, env.model(), slot),
@@ -362,9 +397,11 @@ export function mount(env) {
             const left = ctx.store.project.groups;
             ctx.toast({ text: 'Deleted group ' + group.name + '.', action: { label: 'Undo', run: ctx.undo } });
             const next = left[Math.min(index, left.length - 1)];
-            select(next ? next.id : null, next ? 'group:' + next.id : 'group-add');
             // on a phone the list comes back: the group that was open is gone
+            view.groupId = next ? next.id : null;
+            view.shown = null;
             view.folded = false;
+            show(next ? 'group:' + next.id : 'group-add');
           }, { small: true, key: 'group-delete', action: 'delete', more: ' ' + group.name }))),
       headFields(project, group),
       h('div', { class: 'sch-days' }, project.dayTypes.map((dayType) => dayColumn(project, model, group, dayType))));
@@ -380,9 +417,19 @@ export function mount(env) {
       fill(element, emptyState('No groups yet. ' + WHAT, button('Add a group', add, { primary: true, key: 'group-add', action: 'add-group' })));
       return;
     }
-    if (!project.groups.some((group) => group.id === view.groupId)) view.groupId = project.groups[0].id;
-    // a slot being shown (Show on a finding, a slot's address) is in the editor
-    if (view.shown && view.shown.groupId === view.groupId) view.folded = true;
+    // The chosen group is gone (an undo took back its adding, an import
+    // replaced it): the first one is chosen, and on a phone the list comes
+    // back, since the editor that was open was not this group's.
+    if (!project.groups.some((group) => group.id === view.groupId)) {
+      if (view.groupId !== null) view.folded = false;
+      view.groupId = project.groups[0].id;
+    }
+    // The focus was in the editor and the editor is out of sight (the list
+    // has come back on a phone): the group's card takes it.
+    const active = document.activeElement;
+    const lost = active === document.body || active === null;
+    if (choosingGroup(view) && ((editorOf(active) && element.contains(active)) || (lost && inEditor))) env.focusAfter('group:' + view.groupId);
+    inEditor = false;
     const selected = project.groups.find((group) => group.id === view.groupId);
     const visible = project.groups.filter((group) => matches(group, view.filter));
     const filter = keyed(h('input', { type: 'search', class: 'field__input', placeholder: 'Filter by name or grade', 'aria-label': 'Filter groups by name or grade', autocomplete: 'off', spellcheck: 'false' }), 'group-filter');
@@ -396,7 +443,10 @@ export function mount(env) {
     // one Tab stop: the chosen group, or the first on the list when the
     // filter hides the chosen one
     const stop = visible.includes(selected) ? selected : visible[0];
-    const list = h('ul', { class: 'sch-groups__list', role: 'listbox', 'aria-label': 'Groups', 'aria-orientation': 'vertical' },
+    // With a filter that matches nothing there is no list to a screen reader,
+    // only the line above saying so: a listbox has options.
+    const some = visible.length > 0;
+    const list = h('ul', { class: 'sch-groups__list', role: some ? 'listbox' : null, 'aria-label': some ? 'Groups' : null, 'aria-orientation': some ? 'vertical' : null },
       visible.map((group) => listItem(project, model, group, group === selected, group === stop)));
     listKeys(list);
     element.dataset.folded = String(view.folded === true);

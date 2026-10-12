@@ -490,6 +490,19 @@
   border-color: var(--warning);
 }
 
+/* Under the field: the words that are not options (nothing matches, two
+   rooms do, the building has no rooms yet). Empty, it takes no room. */
+.sch-room__line {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sch-room__line:empty {
+  display: none;
+}
+
 /* Under the field: what it holds is no room of the building. */
 .sch-room__missing {
   margin-top: var(--s-1);
@@ -794,6 +807,61 @@
 
   .sch-groups[data-folded="true"] .sch-groups__all {
     display: block;
+  }
+
+  /* A period's row on a phone: its name and time on a line of their own,
+     and the room field under it at the row's full width beside the menu.
+     (Beside the name the field was 150 px, and "203 — Ms. Vandermeer" was
+     cut at its edge.) The column headings are for a screen reader here. */
+  .sch-slots:not(.sch-slots--same),
+  .sch-slots:not(.sch-slots--same) > tbody {
+    display: block;
+  }
+
+  .sch-slots:not(.sch-slots--same) > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .sch-slot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-top: var(--border);
+  }
+
+  .sch-slot > .sch-slot__period {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--s-2);
+    padding-bottom: 0;
+  }
+
+  .sch-slot > td {
+    border-top: 0;
+  }
+
+  .sch-slot .sch-slot__time {
+    display: inline;
+    margin-left: 0;
+  }
+
+  /* the marks of a row are drawn once round the two lines, not round each */
+  .sch-slot[data-shown="true"] > .sch-slot__period {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+
+  .sch-slot[data-shown="true"] > td {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+
+  .sch-slot.is-drop > td {
+    box-shadow: none;
   }
 }
 
