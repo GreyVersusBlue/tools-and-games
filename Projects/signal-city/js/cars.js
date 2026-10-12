@@ -209,7 +209,22 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
   const line = p.stopLine + car.stopJitter;
   const d = line - car.front;
   if (car.committed) return 0;
-  if (car.front > p.stopLine + 0.5) return 0;   // past the line: committed by position
+  if (car.front > p.stopLine + 0.5) {
+    // past the line: committed by position. Except a car a four-way stop
+    // (a dark box, a flashing red) was holding at the box's edge when the
+    // lights came back (#957): it stopped at the line, rolled up to the
+    // box to wait its turn, and has not gone in. The red it now sees holds
+    // it where it would have waited, as a red holds anybody who has not
+    // entered, and the all-red clears the cars that had. Without this the
+    // whole front row read as committed the step the lights returned, the
+    // four-way's order went with the dark, and they all went at once.
+    // One whose nose is in the box, or that is rolling in and cannot stop
+    // by its edge, goes on: held there it would count as stalled in the
+    // box (sim.js, boxStall), and a nose in the box is in the box.
+    const room = p.boxEnter - car.front;
+    if (head === 'red' && car.stoppedAtLine && room >= 0 && car.v * car.v <= 2 * st.bComf * room + 1e-9) return p.boxEnter;
+    return 0;
+  }
   const rollTrust = () => {
     car.trustRolled = true;
     const chance = (st.greenTrust || 0) * (world.greenTrustScale ?? 1);

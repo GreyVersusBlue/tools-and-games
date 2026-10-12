@@ -927,6 +927,84 @@ group('events (M7): the power outage');
   ok(w.events.filter(x => x.kind === 'event' && x.event === 'outage').map(x => x.on).join() === 'true,false', 'the outage announced its start and its end', w.events.filter(x => x.kind === 'event').map(x => `${x.event}:${x.on}`).join(' '));
 }
 
+group('the lights come back (#957): a red holds the cars the four-way stop was holding');
+
+{
+  // Lights Out's street (two boxes, two lanes, 2.5 s of all-red) with the
+  // dark lengthened to 20 s. At the return every car the four-way stop was
+  // holding stands at the edge of its box, past the stop line: until #957
+  // each read as committed by position on the returning red, the order
+  // they had stopped in went with the dark, and they went together. The
+  // six seeds are the ones that crashed in the 12 s after the lights.
+  const { levelById } = await load('levels/pack-01.js');
+  const lo = levelById('lights-out');
+  const AT = 78, FOR = 20, BACK = AT + FOR;
+  const back = seed => {
+    const w = new World({ ...lo, events: [{ kind: 'outage', at: AT, for: FOR }], duration: BACK + 60 }, seed);
+    while (w.powerOut || w.t < AT + 1) w.step();
+    return w;
+  };
+  const atEdge = c => !c.done && !c.crashed && c.stoppedAtLine && c.front > c.path.stopLine + 0.5 && c.front <= c.path.boxEnter;
+  const w = back(1);
+  const held = w.cars.filter(atEdge);
+  const legs = new Set(held.map(c => `${c.path.node}${c.path.entry}`));
+  ok(Math.abs(w.t - BACK) < 0.03 && w.controllers.every(c => c.stage === 'allred') && w.stats.collisions === 0, 'seed 1: the power is back at 98 s, both boxes are in their all-red, and the dark cost no crash', `t ${w.t.toFixed(2)}, ${w.controllers.map(c => c.stage).join()}`);
+  ok(held.length >= 4 && [0, 1].every(n => ['N', 'S'].some(l => legs.has(n + l)) && ['E', 'W'].some(l => legs.has(n + l))), 'at each box cars of both streets stand at its edge, past their stop lines, where the four-way had them wait', `${held.length} cars: ${[...legs].join(' ')}`);
+  ok(held.every(c => w.controllerFor(c).head(c.path.movement) === 'red') && held.filter(c => c.v < 0.3).length >= 3, 'every one of them now faces a red, and most are standing', held.map(c => `${c.path.movement} ${c.v.toFixed(1)} m/s`).join(', '));
+  // follow them: nobody enters a box on a red, and the first in at each box has a green
+  const entered = new Map();
+  let ranRed = 0, crashes = 0;
+  for (let i = 0; i < 12 * 60; i++) {
+    w.step();
+    for (const c of held) {
+      if (entered.has(c.id) || c.front <= c.path.boxEnter + 0.5) continue;
+      const head = w.controllerFor(c).head(c.path.movement);
+      entered.set(c.id, { t: w.t - BACK, head });
+      if (head === 'red') ranRed++;
+    }
+  }
+  crashes = w.stats.collisions;
+  const first = [...entered.values()].sort((a, b) => a.t - b.t)[0];
+  ok(ranRed === 0, 'none of them goes into its box on the red', `${ranRed} of ${held.length} did: ${[...entered.values()].filter(e => e.head === 'red').map(e => `+${e.t.toFixed(2)} s`).join(' ')}`);
+  ok(first && first.t >= lo.controller.timing.allRed - 0.02 && /^green/.test(first.head), 'the first one in goes on its green, once the all-red has run', first ? `+${first.t.toFixed(2)} s on ${first.head}` : 'nobody went');
+  ok(crashes === 0, 'and seed 1 has no crash in the 12 s after the lights', `${crashes}`);
+  w.run(45);
+  ok(held.every(c => c.done || c.rear > c.path.boxExit) && !w.stats.gridlock, 'held is not stuck: within a minute every one of them is through its box', `${held.filter(c => !(c.done || c.rear > c.path.boxExit)).length} still short`);
+  const others = [3, 15, 16, 18, 22].map(seed => { const x = back(seed); x.run(12); return x.stats.collisions; });
+  ok(others.every(n => n === 0), 'seeds 3, 15, 16, 18 and 22, which each crashed in those 12 s, are clean too', others.join(' '));
+
+  // the rule itself, on one car at one box
+  const one = new World({ demand: {}, duration: 60 }, 1);
+  const car = one.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' });
+  const p = car.path, at = front => { car.s = front - car.stats.length / 2; };
+  const verdict = (head = 'red') => stopLineVerdict(car, head, Infinity, one);
+  ok(p.boxEnter > p.stopLine + 1, 'a box\'s edge is more than a metre past its stop line', `${(p.boxEnter - p.stopLine).toFixed(2)} m`);
+  car.stoppedAtLine = true; car.v = 0; at(p.boxEnter);
+  ok(verdict() === p.boxEnter, 'a car that stopped at a four-way and stands at the box\'s edge is held there by a red', `${verdict()} against ${p.boxEnter}`);
+  at(p.boxEnter + 0.1);
+  ok(verdict() === 0, 'one with its nose 0.1 m in the box is in it, and goes on: held there it would count as stalled in the box');
+  at(p.boxEnter - 1.5); car.v = 1;
+  ok(verdict() === p.boxEnter, 'one still rolling up from the line at 1 m/s is held at the edge');
+  at(p.boxEnter - 0.2); car.v = 4;
+  ok(verdict() === 0, 'one already going in at 4 m/s, which cannot stop by the edge, goes on');
+  car.v = 0; at(p.boxEnter);
+  ok(verdict('green') === 0 && verdict('green-arrow') === 0, 'a green lets it go');
+  car.stoppedAtLine = false;
+  ok(verdict() === 0, 'and a car past the line on a red that no four-way was holding is committed by position, as it always was');
+  car.stoppedAtLine = true;
+  ok(verdict('dark') === 0, 'in the dark itself nothing changes: it is the box\'s turn-taking that holds it');
+  // a flashing red is a four-way stop too
+  const fl = new World({ demand: { N: 500, S: 500, E: 500, W: 500 }, duration: 120, mix: { standard: 1 }, controller: { flash: 'red', timing: { yellow: 3, allRed: 4, minGreen: 4 } } }, 3);
+  fl.run(40);
+  const standing = () => fl.cars.filter(c => atEdge(c) && c.v < 0.3);
+  for (let i = 0; i < 60 * 60 && standing().length < 2; i++) fl.step();
+  const waiting = standing();
+  fl.setFlash(null);
+  let through = 0;
+  while (fl.controller.stage === 'allred') { fl.step(); for (const c of waiting) if (fl.controller.stage === 'allred' && c.front > c.path.boxEnter + 0.5 && !c.wentIn) { c.wentIn = true; through++; } }
+  ok(waiting.length >= 2 && fl.controller.stage === 'green' && through === 0, 'a flashing red switched off: the cars standing at the box\'s edge for their turn sit out the all-red', `${waiting.length} waiting, ${through} went in under the all-red`);
+}
+
 group('events (M7): the ambulance under a timer');
 
 {
