@@ -1496,7 +1496,7 @@ test('a note of spaces only is an empty note on the page and on paper, and is ke
   }
 });
 
-test('the note field counts its 200 characters once past 180', async () => {
+test('the note field says how much of its 200 is used once past 180, and does not call them characters', async () => {
   const session = await openPage({ store: { [ME_AT]: 'tsample001' } });
   try {
     const { page } = session;
@@ -1515,20 +1515,27 @@ test('the note field counts its 200 characters once past 180', async () => {
     await type(180);
     assert.deepEqual(await count(), ['', false, true], 'nothing to say at 180');
     await type(181);
-    assert.deepEqual(await count(), ['181 of 200 characters', true, true]);
+    assert.deepEqual(await count(), ['181 of 200', true, true]);
     await type(200);
-    assert.deepEqual(await count(), ['200 of 200 characters', true, true]);
+    assert.deepEqual(await count(), ['200 of 200', true, true]);
     // read back long: the count is there as soon as the field is
     await page.goto('about:blank');
     await goto(page, files.open.url + '#/me');
     assert.equal((await count())[1], false, 'not while the notes are only being read');
     await page.click('[data-toggle="notes"]');
-    assert.deepEqual(await count(), ['200 of 200 characters', true, true]);
+    assert.deepEqual(await count(), ['200 of 200', true, true]);
     await page.emulateMediaType('print');
     assert.equal((await count())[1], false, 'and never on paper');
     await page.emulateMediaType('screen');
     await type(12);
     assert.deepEqual(await count(), ['', false, true]);
+    // 91 faces are 91 characters to a reader and 182 of the field's 200: the line gives the number and names no unit (SV2-45 item 11)
+    await page.evaluate(() => {
+      const field = document.querySelector('[data-note="dsample00a:1"] input');
+      field.value = '\u{1F642}'.repeat(91);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    assert.deepEqual(await count(), ['182 of 200', true, true]);
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();

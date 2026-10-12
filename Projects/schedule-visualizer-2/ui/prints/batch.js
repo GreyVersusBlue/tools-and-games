@@ -187,9 +187,12 @@ export function render(project, derived, options) {
   return frame(project, { output: doors ? (opts.day === true ? 'door-signs-day' : 'door-signs') : 'teacher-schedules', what, pages: [{ body: body.join('\n') }], options: opts });
 }
 
-// How many sheets a batch is, cover included: for the button's own words.
+// How many sheets a batch is, the cover not counted: for the words beside
+// the buttons. It is counted from the school render() opens, the copy a
+// published file carries, so the words and the sheets cannot disagree.
 export function batchCount(project, batch) {
-  return batch === 'doors' ? openSchool(project).rooms.length : project.teachers.length;
+  const school = publishedSchool(project, null);
+  return batch === 'doors' ? school.rooms.length : school.teachers.length;
 }
 
 function entry(entryId, entryName, fixed) {
@@ -204,5 +207,5 @@ export const BATCHES = [
 
 // "12 teachers", for the lines beside the buttons.
 export function batchWords(project) {
-  return { teachers: count(project.teachers.length, 'teacher'), rooms: count(batchCount(project, 'doors'), 'room') };
+  return { teachers: count(batchCount(project, 'teachers'), 'teacher'), rooms: count(batchCount(project, 'doors'), 'room') };
 }

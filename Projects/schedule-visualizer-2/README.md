@@ -109,3 +109,99 @@ not on the list is a failure, and so is a file that runs and reports no test.
 
 No test reads the machine's clock or time zone. The clock is pinned at
 `2026-09-01T12:00:00Z` and ids come from a seeded source.
+
+## What each test file covers
+
+One row for every file `test/run.mjs` runs. A case in
+`test/ui/staff-pass.test.mjs` fails when a file it runs is missing here, or a
+row names a file it does not run.
+
+| File | What it covers |
+| --- | --- |
+| `test/engine/purity.test.mjs` | Nothing under `engine/` touches a page, storage, a timer, the clock or randomness |
+| `test/engine/ids.test.mjs` | Ids: their form, their prefixes, the seeded source |
+| `test/engine/schema.test.mjs` | The data model: defaults, ranges, a new project, how a room is named |
+| `test/engine/validate.test.mjs` | Every rule `validate` holds a project to |
+| `test/engine/migrate.test.mjs` | Older projects brought up to date, newer ones refused |
+| `test/engine/repair.test.mjs` | What is put right on every load, and what is said about it |
+| `test/engine/day-types.test.mjs` | A day type that is "the same as A Day", and its own copy |
+| `test/engine/bells.test.mjs` | Period names, times, passing times, the bell schedule checks |
+| `test/engine/actions.test.mjs` | Every action on a frozen project: what changes, what is shared, the undo label |
+| `test/engine/history.test.mjs` | Undo and redo, 200 steps, quiet actions |
+| `test/engine/store.test.mjs` | The store: apply, undo, subscribe, the three counters |
+| `test/engine/sample-school.test.mjs` | Each claim the sample school's own comment makes |
+| `test/engine/csv.test.mjs` | Reading and writing CSV: quotes, line breaks, byte-order marks |
+| `test/engine/building.test.mjs` | The floor plan's geometry through its actions |
+| `test/engine/graph.test.mjs` | The walkable graph, room entries, reachability |
+| `test/engine/building-checks.test.mjs` | Each building check, found where it is, with its sentence |
+| `test/engine/teacher-day.test.mjs` | The one rule for a teacher's day |
+| `test/engine/checks.test.mjs` | The schedule checks of spec 5.7 |
+| `test/engine/routing.test.mjs` | Routes: the quickest, the tie-breaks, the options, the named failures |
+| `test/engine/directions.test.mjs` | A route in words, the reader's "squares", the plain no-stairs refusal |
+| `test/engine/load.test.mjs` | What each group adds to the cells it crosses |
+| `test/engine/places.test.mjs` | Stretches of corridor, their names, the hotspot ranking |
+| `test/engine/crowd.test.mjs` | The crowd model, rule by rule |
+| `test/engine/import-groups.test.mjs` | Groups from CSV: the column guess, the preview, a name clash |
+| `test/engine/exports.test.mjs` | Every CSV and JSON export, and the file names |
+| `test/engine/project-file.test.mjs` | The project, building and schedule files, written and read back |
+| `test/engine/publish-data.test.mjs` | What a published file holds, key by key, and what it never holds |
+| `test/engine/publish-crypto.test.mjs` | The lock on a published file: the key, the round trip, a wrong passcode |
+| `test/publish/linker.test.mjs` | The linker rule, each form it refuses, and the assembled script |
+| `test/publish/manifest.test.mjs` | `staff/manifest.js` against what the staff browser really loads |
+| `test/publish/staff.test.mjs` | The staff browser's plain functions, and its tokens against the planner's |
+| `test/publish/baseline.mjs` | The recorded baseline of what staff receive: data, locked data and code |
+| `test/engine/presets.test.mjs` | The group colour presets, held equal in their two places |
+| `test/engine/worker.test.mjs` | The derived pipeline and the client that asks it |
+| `test/engine/runner.test.mjs` | The two rules `test/run.mjs` holds every suite to |
+| `test/engine/import-teachers.test.mjs` | The teacher list from a CSV file |
+| `test/engine/finding-ids.test.mjs` | One form for every finding's id |
+| `test/engine/prints.test.mjs` | The print documents: the frame, the floor plan, the room list, the checks report |
+| `test/engine/prints-batch.test.mjs` | Batch printing: every teacher's schedule and every door sign as one document |
+| `test/engine/readers.test.mjs` | What readers will see of the problems that remain, sentence by sentence |
+| `test/engine/prints-movement.test.mjs` | The movement view's tables, CSV files and print documents |
+| `test/engine/grid-edits.test.mjs` | The grid editor's one action and the pure parts that feed it |
+| `test/engine/import-subjects.test.mjs` | The subject list from a CSV file |
+| `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
+| `test/ui/helpers.test.mjs` | The interface's plain functions: the shortcut guard, fields, the picker, the table |
+| `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
+| `test/ui/movement.test.mjs` | The movement view's plain functions: lanes, the choice, the legend |
+| `test/ui/playback.test.mjs` | Playback's plain functions: what the device keeps, where a marker is |
+| `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
+| `test/a11y/contrast.mjs` | Token contrast, in Node |
+| `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
+| `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
+| `test/browser/shell-lines.mjs` | What the shell owed the units after it |
+| `test/browser/shell-owed.mjs` | What two more units owed the shell |
+| `test/browser/m1-pass.mjs` | The first milestone's design and journey pass |
+| `test/browser/draw-pointer.mjs` | Drawing a building with a mouse |
+| `test/browser/draw-keyboard.mjs` | Drawing a building with the keyboard alone |
+| `test/browser/draw-touch.mjs` | Drawing with a finger and with a pen |
+| `test/browser/doors-stairs.mjs` | Doors, stairs connections, exits, corridor names, the cell's menu |
+| `test/browser/inspector.mjs` | The building inspector's five tabs |
+| `test/browser/search.mjs` | Finding rooms, teachers and groups from the top bar |
+| `test/browser/storage.mjs` | Saving on the device, with a real IndexedDB |
+| `test/browser/recovery.mjs` | Recovery points: taken, kept, restored |
+| `test/browser/tabs.mjs` | Two tabs on one project |
+| `test/browser/schedule.mjs` | The Schedule section: a group entered by keyboard, the checks |
+| `test/browser/grid.mjs` | The Grid tab: typing, pasting, Apply and Discard |
+| `test/browser/grid-pass.mjs` | The Grid tab after the walk-through of the schedule |
+| `test/browser/m2-pass.mjs` | The schedule after the walk-through of it |
+| `test/browser/import.mjs` | The Import tab |
+| `test/browser/project-file.mjs` | The Project file card: export, import, building only, schedule only |
+| `test/browser/worker.mjs` | The derived pipeline in a real worker |
+| `test/browser/print.mjs` | The print preview sheet |
+| `test/browser/staff-shell.mjs` | The staff browser's frame: unlock, search, addresses, notices, from a file on disk |
+| `test/browser/staff-views-a.mjs` | The teacher, group, room, building map and staffing pages |
+| `test/browser/staff-views-b.mjs` | Free right now, Where right now, Common planning, Coverage, the substitute plan, Directions |
+| `test/browser/staff-outputs.mjs` | My schedule, notes, the lock-screen image, the door sign, every page on paper, batch sheets |
+| `test/browser/publish.mjs` | The Staff browser section: the preview, the publish form, a file published and opened from disk, batch printing |
+| `test/browser/m4-pass.mjs` | The published file on a phone after the walk-through: M1 to M8 |
+| `test/browser/movement.mjs` | The movement view: who, the day type, the transition, the lanes and the legend |
+| `test/browser/hotspots.mjs` | The movement view's inspector: hotspots, travel time, summary, export |
+| `test/browser/playback.mjs` | Playback: play, the scrubber, pace, the markers, the Late line |
+| `test/a11y/axe.mjs` | The accessibility sweep of every screen, light and dark |
+| `test/timing/routing.mjs` | Routing under its budget at the promised size |
+| `test/timing/crowd.mjs` | The crowd model under its budget |
+| `test/timing/pipeline.mjs` | The derived pipeline end to end under its budget |
+| `test/timing/movement.mjs` | The movement view's main-thread work under its budget |
+| `test/timing/playback.mjs` | One frame of playback under its budget |
