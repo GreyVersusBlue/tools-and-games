@@ -564,6 +564,33 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
         {label:"Walk the line itself, a foot on each side, where the prints are fewest", mark:"c", next:"seam_cairn"}
       ]
     },
+    seam_cairn:{
+      title:"The Count",
+      text:`<p>Where the last of the prints leave the line there's a cairn, shoulder-high, built of flat stones no bigger than a hand. Each one has a single mark scratched into it. Someone is sitting against it, knapping an edge onto a flake of flint, wearing neither court's colors — gray, mostly, like the stones.</p>
+      <p>"Sit or don't," the keeper says. "Orrin. I keep the count." A nod at the cairn. "Every stone is one of you. Something under the seam starts to hum, and one of you wakes up right where you did, and walks off down a road to be told what it is by whoever's standing at the end of it. Then it goes down to the hollow and chooses. The seam tilts, or it doesn't. After a while the humming starts again."</p>
+      <p>You ask how many. Orrin doesn't look up from the flint. "I stopped saying the number out loud. It started to sound like an accusation."</p>`,
+      choices:[
+        {label:"Ask what the marks mean", mark:"→", next:"seam_stone"}
+      ]
+    },
+    seam_stone:{
+      title:"The Top Stone",
+      text:`<p>"Not names. None of you ever had one to leave." Orrin taps the stones in turn. "A stroke for the gold road. A notch for the crimson. A ring for the tower. I cut them afterward, when word comes back of how it went." The top stone is blank. It is, you understand without being told, already yours — cut to size before you woke.</p>
+      <p>"You're the first to come this way before going that way. I haven't got a mark for it." The flint is held out to you, edge first, which in Orrin seems to pass for courtesy. "A name's only a thing you answer to. The courts will hand you one inside a day if you let them; they keep a few ready for whatever walks out of the seam. Or there's the one the first of you muttered, before it knew which road it wanted. <em>I've kept it.</em> Nobody's used it since."</p>`,
+      choices:[
+        {label:"Ask for the old name — carry what the first of them left behind", mark:"a", next:"seam_named", effect:s=>{s.seam.name='borne';}},
+        {label:"Take the flint, cut a mark of your own into the stone, and answer to that", mark:"b", next:"seam_named", effect:s=>{s.seam.name='own';}}
+      ]
+    },
+    seam_named:{
+      title:"A Name on the Seam",
+      text:`<p>Whichever it is, it sits oddly at first, the way a tool does before your grip has worn into it. You say it aloud once. The seam doesn't answer. Orrin does, which is more than the seam has ever done for anyone.</p>
+      <p>"It'll do. Don't spend it on the first court that asks." The flint goes back to work. "There's a market at Roseleaf, on the far edge. The pieces are there, or the people holding them are. You'll be offered all three, and every one of them comes tied to somebody's hand. Take them or don't."</p>
+      <p>"The hollow's under the seam, past the market. That's where the rest of you went. It'll be expecting a piece." For the first time Orrin looks straight at you. "See what it does with a name."</p>`,
+      choices:[
+        {label:"Head for the Roseleaf Bazaar", mark:"→", next:"hub_bazaar"}
+      ]
+    },
 
     // ---------------- HUB ----------------
     hub_bazaar:{
