@@ -492,9 +492,10 @@ starves the north, its second star the entry meter (`lesson: { kind:
 green wave both ways, **Cross Town** (2026-10-07), three boxes in a row
 that an ambulance crosses (R6), and **Lights Out** (2026-10-07), an outage
 on a timed corridor. No candidate is left on the list. What R13 leaves is
-three engine units and four levels nobody has played: a scripted vehicle
-keeping its turn past the first box (Cross Town) and a box coming back
-from dark without hitting the car still crossing (Lights Out), both in
+one engine unit, one level call and four levels nobody has played: a box
+coming back from dark without hitting the car still crossing (Lights
+Out, written and held back) and Cross Town with turning traffic, which
+the route of #960 makes possible and nobody has calibrated, both in
 Known gaps; the slider reads true after an outage since #959. Each level gets R1's two tables and
 R2's rule from the first commit. One increment a session, a level or two at
 a time.
@@ -862,13 +863,31 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   level should ship a shorter all-red so that the advice bites at the
   setting it ships with is Devon's, and nothing in the level was changed.
 
-- An event's `turn` is the first box's only (#929). A car handed to the
-  next box draws its turn from the level's `turns` (`_handoff`, R12), an
-  ambulance or a motorcade car like any other, so on a row of boxes a
-  scripted vehicle crosses every box only where nobody turns. Cross Town
-  ships `turns: { T: 1 }` for that reason. Keeping a scripted car's turn
-  past the first box is an engine change, and then Cross Town can take
-  turns and is calibrated again.
+- A scripted vehicle takes a route, one turn a box (#960, 2026-10-12).
+  An event's `turn` is still the first box's only (#929): handed to the
+  next box, a car with no route draws its turn from the level's `turns`
+  (`_handoff`, R12), an ambulance or a motorcade car like any other.
+  `route: ['T', 'T', 'L']` on an ambulance, a motorcade, a procession or
+  a `spawns` entry is the turn at each box in order: the first is the
+  arrival box's and overrides `turn`, each handoff takes the next and
+  draws nothing from the seeded rng, a turn the level's weights give 0
+  is still taken, and one the box has no way out for (a left with no
+  north leg) is drawn like anybody's. On two lanes a routed turn from
+  the wrong lane is R12's lane change on the block before, and can be
+  missed like any car's. Past the end of the list the car draws again.
+  No shipped level names a route, so nothing moved. **Cross Town was not
+  given turns** and still ships `turns: { T: 1 }`. What that would take:
+  `route: ['T', 'T', 'T']` on its ambulance, weights in `turns`, then
+  `calibrate.mjs cross-town --baseline --hand` and its stars again,
+  because every car ahead of the ambulance at boxes 2 and 3 may now be
+  waiting to turn (on one lane a left turner at the head of the queue
+  holds it, the thing #569 widened the corridor for), and the routed
+  ambulance draws nothing where today's draws twice, so every pinned run
+  of the level moves with the first weight. Not covered, seen and left:
+  a district (`districtLevel`) passes a route through untouched while
+  moving the spawn to another leg, so a route written for one street is
+  read on another; the hand's `clearAhead` in `calibrate.mjs` gives the
+  through at each box ahead and does not read a route.
 
 - An ambulance still on the map when the run ends is late, called or
   not (#955, 2026-10-12). It used not to be: `stats.ambulanceLate`
