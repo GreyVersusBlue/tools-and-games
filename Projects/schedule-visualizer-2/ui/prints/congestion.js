@@ -15,6 +15,9 @@
 // render(project, derived, options) → { title, html }
 //   derived   as the movement picture takes it (./movement.js); left out,
 //             the results are worked out here
+//   options.movement   { project, results, graph }: the movement view's own
+//             state, forwarded by the preview sheet. Given, the report is of
+//             that project with those results.
 //   and what every output takes (document.js)
 //
 //   worstTransitions(project, results, dayTypeId) → [{ period, name, times, seconds, walks, waiting, late }]
@@ -29,7 +32,7 @@ import { transitionsOf, unitWord } from '../movement/model.js';
 import { rankedPlaces } from '../movement/hotspots.js';
 import { transitionRows, lateWords } from '../movement/tables.js';
 import { esc, frame } from './document.js';
-import { movementResults, placesTable, seconds, PLACES_ON_PAPER } from './movement.js';
+import { printedFrom, placesTable, seconds, PLACES_ON_PAPER } from './movement.js';
 
 export const id = 'congestion';
 export const name = 'Congestion report';
@@ -154,9 +157,9 @@ export function scenarioSection(project) {
     + '</section>';
 }
 
-export function render(project, derived, options) {
+export function render(given, derived, options) {
   const opts = options || {};
-  const { results, graph } = movementResults(project, derived);
+  const { project, results, graph } = printedFrom(given, derived, opts);
   const own = ownDayTypes(project);
   const body = own.map((dayType, index) => daySection(project, results, graph, dayType, index === 0));
   const followers = project.dayTypes.filter((dayType) => !own.includes(dayType));

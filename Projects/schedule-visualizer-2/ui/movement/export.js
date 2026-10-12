@@ -21,12 +21,27 @@
 // (engine/csv.js, through csvText: a byte-order mark and CRLF, as every CSV
 // of the tool has).
 //
+// An image is only as large as the browser's canvas. A canvas past a
+// browser's limit is not refused: it is handed over and stays blank, and a
+// blank PNG would be saved. So before a picture is drawn a canvas of the size
+// meant is asked for and one pixel of it is written and read back
+// (canvasHolds); when that fails the picture is drawn a step smaller
+// (heldScale), and the line under the button says which size was saved and
+// why.
+//
+// What is exported is the map as it is drawn. While the routes are being
+// worked out again after a change, or could not be, the map is from before
+// the change, and a line at the top of the tab says so (`data-behind` on the
+// panel: 'no', 'pending' or 'stale'). The buttons stay as they are.
+//
 // The panel's element carries `exports` for the tests and the console:
 //   { hooks, picture(options), sizes() }
 //   hooks.deliver   when set, it is given { fileName, mime, text | blob,
 //                   width, height } and nothing is downloaded
-//   picture({ resolution, pattern })   draws the picture: { canvas, width, height, scale, pixels, origin, world }
-//   sizes()         the three resolutions with their sizes in pixels
+//   hooks.holds     when set, it answers for canvasHolds: (width, height) -> boolean
+//   picture({ resolution, pattern })   draws the picture: { canvas, width, height, scale, asked, fell, pixels, origin, world }
+//   sizes()         the three resolutions with their sizes in pixels; the one
+//                   chosen is the size the browser really holds (`fell` steps down from `asked`)
 
 import { h, uid } from '../components/dom.js';
 import { openPrintPreview } from '../components/print-preview.js';
@@ -36,7 +51,7 @@ import { lanesOverlay, drawStairLink, BAND_EXCLUDED } from '../surface/overlays/
 import { parse, readable } from '../colour.js';
 import { csvText, exportFileName } from '../../engine/exports.js';
 import { schoolName, printDate, TOOL_NAME } from '../prints/document.js';
-import { askFor, keepResults, bandLines, shownSentence, colourSentence } from '../prints/movement.js';
+import { bandLines, shownSentence, colourSentence } from '../prints/movement.js';
 import { unitWord } from './model.js';
 import { layoutFloors, placeOf } from './layout.js';
 import { bandText } from './legend.js';
@@ -49,10 +64,16 @@ export const RESOLUTIONS = [
   { id: 'high', label: 'High', scale: 2 },
   { id: 'print', label: 'Print', scale: 4 },
 ];
-// What a browser's canvas holds: the longer side and the area, in pixels.
-// A map too large for a resolution is drawn at the largest scale that fits.
+// The most this tool asks a browser's canvas for: the longer side and the
+// area, in pixels. A map too large for a resolution is first brought inside
+// these (fitScale). They are not what a browser holds: that is asked of the
+// browser itself (canvasHolds), and they answer for it only where there is
+// no canvas to ask (WebKit's area limit is about 16.7 million pixels, well
+// under MAX_AREA; Chromium's side is 32767 and older ones' 16384).
 export const MAX_SIDE = 12000;
 export const MAX_AREA = 60e6;
+// No picture is drawn smaller than this many pixels for one of the map at 100%.
+export const LOWEST_SCALE = 0.25;
 // The picture inside the print: enough pixels for a sheet, small enough to carry.
 const PRINT_SIDE = 3200;
 
@@ -72,9 +93,70 @@ function download(fileName, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// The scale a resolution gets on a picture of this size.
+// The scale a resolution gets on a picture of this size, before the browser is asked.
 export function fitScale(width, height, scale) {
   return Math.min(scale, MAX_SIDE / width, MAX_SIDE / height, Math.sqrt(MAX_AREA / (width * height)));
+}
+
+const probed = new Map();
+
+// Does the browser really give a canvas of this many pixels? One pixel, at
+// the far corner, is written and read back: on a canvas past the browser's
+// limit nothing is ever written. Asked once a size; the canvas is let go.
+//   make   something that makes a canvas, for a test; the answer is then not kept
+export function canvasHolds(width, height, make) {
+  const w = Math.round(width);
+  const t = Math.round(height);
+  if (!(w >= 1 && t >= 1)) return false;
+  if (typeof make !== 'function' && typeof document === 'undefined') return w <= MAX_SIDE && t <= MAX_SIDE && w * t <= MAX_AREA;
+  const key = w + ' ' + t;
+  if (typeof make !== 'function' && probed.has(key)) return probed.get(key);
+  let ok = false;
+  let canvas = null;
+  try {
+    canvas = typeof make === 'function' ? make() : document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = t;
+    const g = canvas.getContext('2d');
+    if (g && canvas.width === w && canvas.height === t) {
+      g.fillStyle = '#000000';
+      g.fillRect(w - 1, t - 1, 1, 1);
+      ok = g.getImageData(w - 1, t - 1, 1, 1).data[3] === 255;
+    }
+  } catch (error) {
+    ok = false;
+  }
+  if (canvas) {
+    try {
+      canvas.width = 0;
+      canvas.height = 0;
+    } catch (error) { /* it goes with the page */ }
+  }
+  if (typeof make !== 'function') probed.set(key, ok);
+  return ok;
+}
+
+// The next size down: 4, 2, 1, a half, a quarter of the map at 100%.
+export function stepDown(scale) {
+  let next = 2 ** Math.ceil(Math.log2(scale));
+  if (next >= scale) next /= 2;
+  return next;
+}
+
+// The scale a picture is really drawn at: the one asked for, or the first
+// step down from it that the browser holds.
+//   holds(width, height) -> boolean, in pixels of the image
+//   -> { scale, fell }: fell is how many steps down it took; scale is 0 when
+//      nothing down to LOWEST_SCALE is held
+export function heldScale(width, height, scale, holds) {
+  let at = scale;
+  let fell = 0;
+  while (!holds(Math.round(width * at), Math.round(height * at))) {
+    at = stepDown(at);
+    fell += 1;
+    if (at < LOWEST_SCALE) return { scale: 0, fell };
+  }
+  return { scale: at, fell };
 }
 
 // The lines that stand beside a band's colour on paper, over a floor's cells.
@@ -139,7 +221,8 @@ export function measurePicture(g, font, picture, how, options) {
 }
 
 // Draw the picture. `movement` is the view's handle (ui/movement/index.js).
-// options: { resolution, legend, scale, pattern, side, now, bare }
+// options: { resolution, legend, scale, pattern, side, now, bare, holds }
+//   holds           what answers for canvasHolds (the panel's test hook)
 //   legend, scale   false leaves the groups' legend or the colour scale off
 //   bare            no header and no foot: the picture goes into a document that has both
 //   pattern         the bands' lines as well as their colours (for paper)
@@ -166,7 +249,11 @@ export function drawPicture(movement, options) {
     const { world, mapW, mapH, width, height, withKey, chips, head } = measurePicture(g, theme.font, picture, movement.world ? movement.world.how : 'side', opts);
     const withChips = chips.length > 0;
     const wanted = RESOLUTIONS.find((each) => each.id === opts.resolution) || RESOLUTIONS[0];
-    const scale = fitScale(width, height, Number.isFinite(opts.side) ? opts.side / Math.max(width, height) : wanted.scale);
+    // the size meant, then the size the browser holds: never a canvas that would stay blank
+    const asked = fitScale(width, height, Number.isFinite(opts.side) ? opts.side / Math.max(width, height) : wanted.scale);
+    const held = heldScale(width, height, asked, typeof opts.holds === 'function' ? opts.holds : canvasHolds);
+    if (held.scale === 0) throw new Error('This browser could not make an image of this map, even a small one.');
+    const scale = held.scale;
     renderer.resize(width, height, scale);
     const whole = () => g.setTransform(scale, 0, 0, scale, 0, 0);
     whole();
@@ -330,7 +417,8 @@ export function drawPicture(movement, options) {
     }
 
     // origin: where the map's own (0, 0) is in the picture, in its units; a cell is CELL of them
-    return { canvas, width, height, scale, pixels: { width: canvas.width, height: canvas.height }, origin: { x: left0, y: head }, world };
+    // asked: the scale meant; fell: how many steps down the browser's canvas made it
+    return { canvas, width, height, scale, asked, fell: held.fell, pixels: { width: canvas.width, height: canvas.height }, origin: { x: left0, y: head }, world };
   } finally {
     host.remove();
   }
@@ -338,7 +426,10 @@ export function drawPicture(movement, options) {
 
 export function exportPanel(env) {
   const ctx = env.ctx;
-  const hooks = { deliver: null };
+  const hooks = { deliver: null, holds: null };
+  const holds = (width, height) => (typeof hooks.holds === 'function' ? hooks.holds(width, height) === true : canvasHolds(width, height));
+  // said when the map, and so what is exported, is from before the last change
+  const behind = h('p', { class: 'mov-panel__note mov-export__behind', hidden: true, data: { export: 'behind' } });
   const status = h('p', { class: 'mov-panel__note mov-export__status', role: 'status', data: { export: 'status' } });
   let last = null;
 
@@ -399,31 +490,46 @@ export function exportPanel(env) {
     const font = getComputedStyle(document.documentElement).getPropertyValue('--font-plan').trim() || 'sans-serif';
     const { width, height } = measurePicture(scratch.getContext('2d'), font, view.picture, view.world.how, parts());
     return RESOLUTIONS.map((each) => {
-      const scale = fitScale(width, height, each.scale);
-      return { id: each.id, label: each.label, scale, width: Math.round(width * scale), height: Math.round(height * scale) };
+      const asked = fitScale(width, height, each.scale);
+      // the browser is asked about the resolution chosen only: asking makes a canvas of that size
+      const held = each.id === resolution.value ? heldScale(width, height, asked, holds) : { scale: asked, fell: 0 };
+      const scale = held.scale;
+      return { id: each.id, label: each.label, scale, asked, fell: held.fell, width: Math.round(width * scale), height: Math.round(height * scale), askedWidth: Math.round(width * asked), askedHeight: Math.round(height * asked) };
     });
   }
 
   function picture(options) {
     const view = movement();
     if (!view || !view.state || !view.picture) throw new Error('The map is not drawn yet.');
-    return drawPicture(view, { ...parts(), now: now(), ...options });
+    return drawPicture(view, { ...parts(), now: now(), holds, ...options });
   }
 
   const savePng = button('png', 'Save the picture as an image', async () => {
     const drawn = picture({ resolution: resolution.value });
-    const blob = await new Promise((resolve) => drawn.canvas.toBlob(resolve, 'image/png'));
+    // the far corner of the paper was painted: a canvas that reads back nothing there holds no picture
+    const corner = drawn.canvas.getContext('2d').getImageData(drawn.pixels.width - 1, drawn.pixels.height - 1, 1, 1).data[3];
+    const blob = corner === 0 ? null : await new Promise((resolve) => drawn.canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('The browser could not make an image this large. Choose a lower resolution.');
     deliver({ fileName: exportFileName(last.project, 'movement picture', 'png', now()), mime: 'image/png', blob, width: drawn.pixels.width, height: drawn.pixels.height });
+    if (drawn.fell > 0) {
+      const wanted = RESOLUTIONS.find((each) => each.id === resolution.value);
+      status.textContent += ' This browser could not hold the picture at ' + wanted.label.toLowerCase() + ' resolution (' + Math.round(drawn.width * drawn.asked) + ' by ' + Math.round(drawn.height * drawn.asked) + ' pixels), so it was saved '
+        + (drawn.fell === 1 ? 'one size' : drawn.fell + ' sizes') + ' down, at ' + drawn.pixels.width + ' by ' + drawn.pixels.height + ' pixels.';
+    }
   }, true);
 
   const printPicture = button('print-picture', 'Print the picture', (opener) => {
-    // the document has the header, the foot and the groups' legend itself
-    const drawn = picture({ pattern: true, side: PRINT_SIDE, bare: true, legend: false });
-    keepResults(last.project, last.results, last.graph);
-    askFor({ choice: env.choice(), parts: parts(), picture: { url: drawn.canvas.toDataURL('image/png'), width: drawn.width, height: drawn.height } });
+    // the document has the header, the foot, the groups' legend and the colour scale itself,
+    // so the image carries none of them: the scale is on the paper once
+    const drawn = picture({ pattern: true, side: PRINT_SIDE, bare: true, legend: false, scale: false });
+    // the document is made from what the image was drawn from: the view's own state
+    const view = movement();
+    const from = view.state;
     status.textContent = '';
-    openPrintPreview(ctx, 'movement', { opener });
+    openPrintPreview(ctx, 'movement', {
+      opener,
+      movement: { choice: view.picture.choice, parts: parts(), picture: { url: drawn.canvas.toDataURL('image/png'), width: drawn.width, height: drawn.height }, project: from.project, results: from.results, graph: from.graph },
+    });
   });
 
   function csv(action, label, what, rows) {
@@ -432,18 +538,18 @@ export function exportPanel(env) {
     });
   }
   const hotspotsFile = csv('csv-hotspots', 'Hotspots', 'hotspots', (state) => hotspotsCsv(state.project, hotspotRows(state.project, state.results, state.graph, state.picture), state.picture));
-  const transitionsFile = csv('csv-transitions', 'Travel time, by transition', 'travel time by transition', (state) => transitionsCsv(state.project, state.results, state.picture.dayTypeId, state.picture.dayTypeName));
-  const dayFile = csv('csv-day', 'Travel time, by group', 'travel time by group', (state) => dayCsv(state.project, state.results, state.picture.dayTypeId, state.picture.dayTypeName));
+  const transitionsFile = csv('csv-transitions', 'Travel time, by transition', 'travel time by transition', (state) => transitionsCsv(state.project, state.results, state.picture.choice.dayTypeId));
+  const dayFile = csv('csv-day', 'Travel time, by group', 'travel time by group', (state) => dayCsv(state.project, state.results, state.picture.choice.dayTypeId));
 
   const report = button('print-congestion', 'Print the congestion report', (opener) => {
-    keepResults(last.project, last.results, last.graph);
     status.textContent = '';
-    openPrintPreview(ctx, 'congestion', { opener });
+    openPrintPreview(ctx, 'congestion', { opener, movement: { project: last.project, results: last.results, graph: last.graph } });
   });
 
   const sizeNote = h('p', { class: 'mov-panel__note', data: { export: 'size' } });
   const element = h('div', { class: 'mov-panel mov-export', data: { panel: 'export' } },
     h('h2', { class: 'mov-panel__title' }, 'Export'),
+    behind,
     h('h3', { class: 'mov-panel__sub' }, 'The picture'),
     h('p', null, 'The whole map as it is chosen now, drawn again on light paper under the school\'s name and what is shown.'),
     h('fieldset', { class: 'mov-export__parts' }, h('legend', { class: 'mov-ctl__label' }, 'With it'), legendTick.element, scaleTick.element, tableTick.element),
@@ -468,9 +574,11 @@ export function exportPanel(env) {
     }
     const chosen = list.find((each) => each.id === resolution.value);
     const full = RESOLUTIONS.find((each) => each.id === resolution.value).scale;
-    sizeNote.textContent = !chosen ? '' : chosen.scale < full
-      ? 'This map is too large for that resolution in a browser, so the image is ' + chosen.width + ' by ' + chosen.height + ' pixels, the largest it can be.'
-      : 'The image is ' + chosen.width + ' by ' + chosen.height + ' pixels.';
+    sizeNote.textContent = !chosen ? ''
+      : chosen.scale === 0 ? 'This browser cannot hold an image of this map, even a small one.'
+        : chosen.fell > 0 ? 'This browser cannot hold the map at that resolution (' + chosen.askedWidth + ' by ' + chosen.askedHeight + ' pixels), so the image is ' + chosen.width + ' by ' + chosen.height + ' pixels.'
+          : chosen.scale < full ? 'This map is too large for that resolution, so the image is ' + chosen.width + ' by ' + chosen.height + ' pixels, the most this tool asks a browser for.'
+            : 'The image is ' + chosen.width + ' by ' + chosen.height + ' pixels.';
   }
   for (const each of [legendTick.box, scaleTick.box, resolution]) each.addEventListener('change', drawSizes);
 
@@ -495,6 +603,14 @@ export function exportPanel(env) {
       const why = !ready ? 'The routes are still being worked out.' : 'Nothing is shown on the map. Choose a group, a grade or every group first.';
       for (const el of [savePng, printPicture, hotspotsFile]) able(el, shown, why);
       for (const el of [transitionsFile, dayFile, report]) able(el, ready, 'The routes are still being worked out.');
+      // the map on screen is the last answer: stale after a derive that failed, pending while one is awaited
+      const section = document.querySelector('.mov');
+      const stale = ready && Boolean(section) && section.dataset.stale === 'true';
+      const pending = ready && !stale && state.project !== ctx.store.project;
+      element.dataset.behind = stale ? 'stale' : pending ? 'pending' : 'no';
+      behind.hidden = !stale && !pending;
+      behind.textContent = stale ? 'The routes could not be worked out after your last change. The map, and everything exported here, is from before that change.'
+        : pending ? 'The routes are being worked out again after your last change. Until they are, the map, and everything exported here, is from before that change.' : '';
       drawSizes();
     },
   };

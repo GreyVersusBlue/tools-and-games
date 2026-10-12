@@ -15,8 +15,9 @@ import { bandOf, bandEdges } from '../../engine/load.js';
 import { parse as parseCsv } from '../../engine/csv.js';
 import { csvText, exportFileName } from '../../engine/exports.js';
 import { defaultChoice, pictureOf } from '../../ui/movement/model.js';
-import { hotspotRows, rankedPlaces, hotspotsCsv, cellWords, placeWords, PULSE_TOP, TABLE_FIRST } from '../../ui/movement/hotspots.js';
-import { transitionRows, dayRows, slowestPeriod, lateWords, transitionsCsv, dayCsv } from '../../ui/movement/tables.js';
+import { hotspotRows, placesElsewhere, rankedPlaces, hotspotsCsv, cellWords, placeWords, createPulse, pulseFrame, PULSE_TOP, TABLE_FIRST, PULSE_MS, PULSE_TIMES } from '../../ui/movement/hotspots.js';
+import { transitionRows, dayRows, slowestPeriod, lateWords, transitionsCsv, dayCsv, travelDay } from '../../ui/movement/tables.js';
+import { fitScale, heldScale, stepDown, canvasHolds, MAX_SIDE, MAX_AREA, LOWEST_SCALE } from '../../ui/movement/export.js';
 import { OUTPUTS, outputFor, renderOutput } from '../../ui/prints/index.js';
 import { esc } from '../../ui/prints/document.js';
 import * as movementPrint from '../../ui/prints/movement.js';
@@ -209,11 +210,12 @@ test('the three CSV files: their first lines, a row a walk, and names exactly as
   const view = picture(world);
 
   const hot = csvText(hotspotsCsv(project, hotspotRows(project, world.results, world.graph, view), view));
-  assert.ok(hot.startsWith('﻿Rank,Place,Floor,Kind,Load (students),Peaks in,Groups,Delay (seconds),Delay over the day (seconds),Cells\r\n'), hot.slice(0, 120));
+  assert.ok(hot.startsWith('﻿Rank,Place,Floor,Kind,Load (students),When,Delay (seconds),Delay over the day (seconds),Cells,Groups,"6A, ""the early lot""",6B,6C,7A,7B,7C,8A,8B\r\n'), hot.slice(0, 160));
   const hotRows = parseCsv(hot).rows;
   assert.equal(hotRows.length, 11);
   assert.deepEqual(hotRows[1].slice(0, 6), ['1', 'Main Corridor, by Door B', 'Floor 1', 'corridor', '177', 'Period 4 to Period 5']);
-  assert.ok(hotRows[1][6].includes('6A, "the early lot"'), hotRows[1][6]);
+  assert.equal(hotRows[0][10], '6A, "the early lot"', 'a group is a column, headed by its name as typed');
+  assert.deepEqual(hotRows[1].slice(6), ['13', '147', '39', '8', '1', '1', '1', '1', '1', '1', '1', '1'], 'each group that crosses has its count under its own name');
   assert.deepEqual(hotRows.find((row) => row[3] === 'stairs').slice(1, 3), ['Stairs A, Floor 1 to Floor 2', 'Floor 1; Floor 2']);
 
   const byTransition = csvText(transitionsCsv(project, world.results, DAY_A, view.dayTypeName));
@@ -251,7 +253,6 @@ test('both outputs are registered, and each renders with nothing but the project
 });
 
 test('the movement picture says what is shown: who, the day type, the transition and its passing time', () => {
-  movementPrint.askFor(null);
   const whole = movementPrint.render(sample.project, null, NOW).html;
   assert.ok(whole.includes('<p class="doc-lead">Showing every group (8) on A Day: all 7 transitions of the day. Corridors are coloured by the busiest moment: the most students crossing each cell in any one transition.</p>'), whole.slice(whole.indexOf('doc-lead'), whole.indexOf('doc-lead') + 300));
   const one = movementPrint.render(sample.project, null, { ...NOW, movement: { choice: { dayTypeId: DAY_B, transition: 3 } } }).html;
@@ -338,19 +339,41 @@ test('the map goes in as an image only when it is a PNG or JPEG data address', (
   assert.equal(countOf(noSize, '<image'), 0, 'a picture with no size is not one');
 });
 
-test('what the Export tab left is read when no choice comes with the call, and a call\'s own choice wins', () => {
-  try {
-    movementPrint.askFor({ choice: { transition: 0 }, parts: { hotspots: false } });
-    const held = movementPrint.render(sample.project, null, NOW).html;
-    assert.ok(held.includes('Period 1 to Period 2'));
-    assert.equal(countOf(held, '<h2>Busiest places</h2>'), 0);
-    const own = movementPrint.render(sample.project, null, { ...NOW, movement: { choice: { transition: 4 } } }).html;
-    assert.ok(own.includes('Period 5 to Period 6') && !own.includes('Period 1 to Period 2,'));
-    assert.equal(countOf(own, '<h2>Busiest places</h2>'), 1);
-  } finally {
-    movementPrint.askFor(null);
-  }
-  assert.ok(movementPrint.render(sample.project, null, NOW).html.includes('all 7 transitions of the day'), 'and nothing is left behind');
+test('SV2-47 item 6: the print keeps nothing between two calls: what one call chose is not in the next', () => {
+  assert.equal(movementPrint.askFor, undefined, 'there is no way to leave a choice behind');
+  assert.equal(movementPrint.keepResults, undefined, 'nor an answer');
+  const chosen = movementPrint.render(sample.project, null, { ...NOW, movement: { choice: { transition: 0 }, parts: { hotspots: false } } }).html;
+  assert.ok(chosen.includes('Period 1 to Period 2'));
+  assert.equal(countOf(chosen, '<h2>Busiest places</h2>'), 0);
+  const next = movementPrint.render(sample.project, null, NOW).html;
+  assert.ok(next.includes('all 7 transitions of the day'), 'the next call, with no choice of its own, is the whole day');
+  assert.equal(countOf(next, '<h2>Busiest places</h2>'), 1);
+});
+
+test('SV2-47 item 6: a print handed the view\'s own state is made from that project alone, table and sentences alike', () => {
+  // the map on screen is from before a change: 7A was renamed and 8A lost its rooms since, and the answer has not come
+  const before = derive(school());
+  const now = school();
+  group(now, '7A').name = '7A East';
+  for (const slots of Object.values(group(now, '8A').days)) slots.forEach((slot, period) => { slots[period] = { ...slot, room: null, roomText: '' }; });
+  const handed = { project: before.project, results: before.results, graph: before.graph };
+  const image = { url: PIXEL, width: 800, height: 600 };
+  const picture = movementPrint.render(now, null, { ...NOW, movement: { ...handed, picture: image } }).html;
+  assert.deepEqual(tableAfter(picture, 'Groups on the map').map((row) => row[0]), ['6A', '6B', '6C', '7A', '7B', '7C', '8A', '8B'], 'the groups as the image has them');
+  assert.equal(countOf(picture, '7A East'), 0, 'nothing of the project as it is now');
+  assert.deepEqual(tableAfter(picture, 'Busiest places')[0], ['1', 'Main Corridor, by Door B', '177 students', '5', 'Period 4 to Period 5', '8A, 7A, 6B, 7B, 8B, 6A, 6C, 7C', '13 s']);
+  assert.ok(picture.includes('Showing every group (8) on A Day: all 7 transitions of the day.') && !picture.includes('failed'), 'no route had failed when the image was drawn');
+  assert.equal(picture, movementPrint.render(before.project, before, { ...NOW, movement: { picture: image } }).html, 'it is the document of the project the image was drawn from');
+  // without the state it is the project given, worked out here
+  const fresh = movementPrint.render(now, null, { ...NOW, movement: {} }).html;
+  assert.ok(fresh.includes('7A East') && fresh.includes('routes failed'));
+  // the congestion report takes the same
+  const report = congestionPrint.render(now, null, { ...NOW, movement: handed }).html;
+  assert.equal(countOf(report, '7A East'), 0);
+  assert.equal(report, congestionPrint.render(before.project, before, NOW).html);
+  // and the results handed over are the ones used: nothing is worked out again
+  assert.equal(movementPrint.printedFrom(now, null, { movement: handed }).results, before.results);
+  assert.equal(movementPrint.printedFrom(now, null, { movement: { choice: {} } }).project, now);
 });
 
 test('the results the planner has are used as they are; without them the same pipeline runs, once a project', () => {
@@ -373,9 +396,6 @@ test('the results the planner has are used as they are; without them the same pi
   assert.ok(slow.results.walks.groups[0].walking > again.results.walks.groups[0].walking);
   // while a setting they do not depend on leaves the answer standing
   assert.equal(movementPrint.movementResults({ ...slower, settings: { ...slower.settings, paper: { size: 'a4', orientation: 'landscape' } } }, null), slow);
-  // the planner's own answer, handed over, is what the next document is made from
-  movementPrint.keepResults(project, mine.results, mine.graph);
-  assert.equal(movementPrint.movementResults(project, null).results, mine.results);
   assert.equal(movementPrint.render(project, mine, NOW).html, movementPrint.render(school(), null, NOW).html, 'given or worked out, the document is the same');
 });
 
@@ -574,4 +594,272 @@ test('rankedPlaces ranks what it is asked, without a picture', () => {
   const shown = hotspotRows(sample.project, sample.results, sample.graph, view);
   assert.deepEqual(asked.map((row) => [row.id, row.load, row.when, row.delay]), shown.map((row) => [row.id, row.load, row.when, row.delay]));
   assert.deepEqual(rankedPlaces(sample.project, sample.results, sample.graph, null), []);
+});
+
+// ---------------------------------------------------------------- SV2-47: the SV2-18 review
+
+test('SV2-47 item 1: with one floor on the map the table is that floor\'s: no place off the map is a row, and the first row is the legend\'s busiest load', () => {
+  const all = picture(sample);
+  const whole = hotspotRows(sample.project, sample.results, sample.graph, all);
+  assert.equal(placesElsewhere(sample.project, sample.results, sample.graph, all), 0, 'every floor on the map: nothing is elsewhere');
+  const view = picture(sample, { floors: 'fsample002' });
+  const rows = hotspotRows(sample.project, sample.results, sample.graph, view);
+  assert.ok(rows.length > 0 && rows.length < whole.length, rows.length + ' of ' + whole.length);
+  for (const row of rows) assert.ok(row.ends.some((end) => end.floorId === 'fsample002'), row.place.name + ' has no end on Floor 2');
+  assert.ok(!rows.some((row) => row.place.name === 'Main Corridor, by Door B'), 'the Floor 1 corridor is not a row');
+  assert.ok(whole.some((row) => row.place.name === 'Main Corridor, by Door B' && row.load === 177), 'though it is the busiest place of the building');
+  assert.deepEqual(rows.map((row) => row.rank), rows.map((row, index) => index + 1), 'ranked from 1 among what is shown');
+  // the same number means one thing on the screen: the first row is the legend's maximum, in its top band
+  assert.equal(rows[0].load, view.busiest.load);
+  assert.equal(rows[0].load, view.load.max);
+  assert.ok(view.load.max < 177, 'Floor 2\'s busiest is under the building\'s: ' + view.load.max);
+  assert.equal(rows[0].band, 5);
+  const top = view.load.edges[4];
+  assert.ok(rows[0].load >= top.from && rows[0].load <= top.to, rows[0].load + ' is inside the legend\'s band 5, ' + top.from + ' to ' + top.to);
+  for (const row of rows) assert.equal(row.band, bandOf(row.load, sample.project.settings.colourScale, view.load.max), row.place.name);
+  // the rest are counted, not listed
+  assert.equal(placesElsewhere(sample.project, sample.results, sample.graph, view), whole.length - rows.length);
+  // a stairs connection with one end on the floor is on the map, and is a row
+  const stairs = rows.filter((row) => row.place.kind === 'connection');
+  assert.ok(stairs.length > 0 && stairs.every((row) => row.ends.some((end) => end.floorId !== 'fsample002')), 'the stairs to the floors beside it');
+  // the print's table is the same rows, and says how many are elsewhere
+  const html = movementPrint.render(sample.project, sample, { ...NOW, movement: { choice: { floors: 'fsample002' } } }).html;
+  assert.deepEqual(tableAfter(html, 'Busiest places').map((row) => row[1]), rows.map((row) => placeWords(row)));
+  assert.ok(html.includes(' ' + (whole.length - rows.length) + ' more places on floors not shown.'), html.slice(html.indexOf('<h2>Busiest places</h2>'), html.indexOf('<h2>Busiest places</h2>') + 300));
+});
+
+test('SV2-47 item 2: a picture the browser\'s canvas cannot hold falls a step at a time to one it can', () => {
+  assert.deepEqual([4.4, 4, 3.1, 2, 1, 0.5].map(stepDown), [4, 2, 2, 1, 0.5, 0.25]);
+  // a browser whose canvas holds about 16.7 million pixels
+  const small = (width, height) => width * height <= 16777216;
+  assert.deepEqual(heldScale(1000, 1400, 4, small), { scale: 2, fell: 1 }, '22.4 million pixels are not held; a step down, 5.6 million are');
+  assert.deepEqual(heldScale(2000, 3000, 4, small), { scale: 1, fell: 2 });
+  assert.deepEqual(heldScale(1000, 1400, 2, small), { scale: 2, fell: 0 }, 'a size that is held is the size drawn');
+  assert.deepEqual(heldScale(1000, 1400, 3.8, small), { scale: 2, fell: 1 }, 'from a size the tool\'s own limits gave, down to a whole step');
+  const never = heldScale(1000, 1000, 1, () => false);
+  assert.equal(never.scale, 0, 'nothing is held: no picture, and the caller says so');
+  assert.ok(LOWEST_SCALE <= 0.25 && never.fell >= 3);
+  // what is asked of heldScale is the image's own pixels
+  const asked = [];
+  heldScale(1001, 1401, 2, (width, height) => asked.push([width, height]) > 0);
+  assert.deepEqual(asked, [[2002, 2802]]);
+
+  // the probe: one pixel at the far corner, written and read back
+  const canvasOf = (alpha, clamp) => {
+    const made = { fills: [], reads: [], w: 0, h: 0 };
+    const canvas = {
+      get width() { return made.w; },
+      set width(value) { made.w = clamp ? Math.min(value, clamp) : value; },
+      get height() { return made.h; },
+      set height(value) { made.h = value; },
+      getContext: () => ({ fillRect: (...args) => made.fills.push(args), getImageData: (...args) => { made.reads.push(args); return { data: [0, 0, 0, alpha] }; } }),
+    };
+    return { made, make: () => canvas };
+  };
+  const good = canvasOf(255);
+  assert.equal(canvasHolds(5000, 3000, good.make), true);
+  assert.deepEqual(good.made.fills, [[4999, 2999, 1, 1]]);
+  assert.deepEqual(good.made.reads, [[4999, 2999, 1, 1]], 'the pixel read is the pixel written');
+  assert.deepEqual([good.made.w, good.made.h], [0, 0], 'the canvas is let go');
+  assert.equal(canvasHolds(5000, 3000, canvasOf(0).make), false, 'a canvas that takes no pixel holds no picture');
+  assert.equal(canvasHolds(40000, 3000, canvasOf(255, 32767).make), false, 'a canvas the browser made smaller than asked');
+  assert.equal(canvasHolds(100, 100, () => { throw new Error('no memory'); }), false);
+  assert.equal(canvasHolds(0, 100, good.make), false);
+  // with no canvas to ask, the tool's own limits answer
+  assert.equal(canvasHolds(MAX_SIDE, 100), true);
+  assert.equal(canvasHolds(MAX_SIDE + 1, 100), false);
+  assert.equal(canvasHolds(8000, 8000), false, '64 million pixels are over MAX_AREA: ' + MAX_AREA);
+  assert.equal(fitScale(1000, 1400, 4), 4, 'and fitScale is what it was');
+});
+
+test('SV2-47 item 5: the pulse draws the travelling rings alone, stops when its pulses are done, and leaves no timer', () => {
+  // pulseFrame: one arc a ring, nothing else
+  const calls = [];
+  const g = new Proxy({}, { get: (target, name) => (name in target ? target[name] : (...args) => calls.push([name, ...args])), set: (target, name, value) => { target[name] = value; return true; } });
+  pulseFrame(g, [{ x: 10, y: 20, r: 22 }, { x: 50, y: 60, r: 22 }], 1, { accent: '#0f6e66' });
+  assert.deepEqual(calls.map((call) => call[0]), ['beginPath', 'arc', 'stroke', 'beginPath', 'arc', 'stroke']);
+  assert.deepEqual(calls[1].slice(1, 4), [10, 20, 22], 'a pulse sets out from the ring itself');
+  calls.length = 0;
+  pulseFrame(g, [{ x: 10, y: 20, r: 22 }], 0, { accent: '#0f6e66' });
+  assert.equal(calls[1][3].toFixed(1), (22 * 1.7).toFixed(1), 'and ends 0.7 of a radius out');
+  assert.equal(g.globalAlpha, 1, 'the context is left opaque');
+
+  // the clock, on a hand-wound time
+  let now = 1000;
+  const waiting = new Map();
+  let handle = 0;
+  const log = [];
+  let reduced = false;
+  const pulse = createPulse({
+    now: () => now,
+    later: (fn, ms) => { handle += 1; waiting.set(handle, { fn, at: now + ms }); return handle; },
+    cancel: (id) => waiting.delete(id),
+    still: () => reduced,
+    frame: (left) => log.push(left),
+    done: () => log.push('done'),
+  });
+  const run = (ms) => {
+    const until = now + ms;
+    for (;;) {
+      const next = Array.from(waiting).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!next || next[1].at > until) break;
+      waiting.delete(next[0]);
+      now = next[1].at;
+      next[1].fn();
+    }
+    now = until;
+  };
+  assert.equal(pulse.moving, false);
+  assert.equal(pulse.start(), true);
+  assert.equal(pulse.moving, true);
+  assert.equal(log.length, 1, 'the first frame is drawn at once');
+  assert.equal(waiting.size, 1, 'one timer');
+  run(PULSE_MS * PULSE_TIMES + 200);
+  assert.equal(log[log.length - 1], 'done');
+  assert.equal(log.filter((each) => each === 'done').length, 1);
+  assert.ok(log.length > 100, 'a frame every 60 ms for 7.2 s: ' + log.length);
+  assert.ok(log.slice(0, -1).every((left) => left >= 0 && left <= 1));
+  assert.equal(pulse.moving, false);
+  assert.equal(waiting.size, 0, 'no timer once the pulses are done');
+  // stop() mid-pulse clears the timer: nothing fires after it
+  log.length = 0;
+  pulse.start();
+  run(300);
+  const drawn = log.length;
+  pulse.stop();
+  assert.equal(waiting.size, 0, 'the timer is cleared');
+  assert.deepEqual(log.slice(drawn), ['done']);
+  run(1000);
+  assert.equal(log.length, drawn + 1, 'and no frame follows');
+  // start() while moving does not set a second timer going
+  pulse.start();
+  pulse.start();
+  assert.equal(waiting.size, 1);
+  pulse.stop();
+  // under reduced motion nothing moves at all
+  reduced = true;
+  log.length = 0;
+  assert.equal(pulse.start(), false);
+  assert.deepEqual(log, []);
+  assert.equal(waiting.size, 0);
+  assert.equal(pulse.moving, false);
+});
+
+test('SV2-47 item 7: a name that begins with = + - or @, or holds a line break, is in all three CSV files exactly as typed', () => {
+  // SV2-10's rule stands: `guard` is off unless asked for, because the guard's
+  // quote mark changes the name. A file read back gives the names typed.
+  const project = school();
+  const names = { '6A': '=6A', '6B': '+6B', '6C': '-6C', '7A': '@7A', '7B': '7B\nannex' };
+  for (const [from, to] of Object.entries(names)) group(project, from).name = to;
+  room(project, 'Gym').number = '=Gym';
+  room(project, '303').number = '+303\r\nupstairs';
+  project.building.floors[0].corridors.find((each) => each.name === 'Main Corridor').name = '@Main\nCorridor';
+  project.dayTypes[0].name = '-A Day';
+  const world = derive(project);
+  const view = picture(world);
+  const typed = Object.values(names);
+
+  const hotTable = hotspotsCsv(project, hotspotRows(project, world.results, world.graph, view), view);
+  const hot = parseCsv(csvText(hotTable)).rows;
+  assert.deepEqual(hot[0].slice(10), ['=6A', '+6B', '-6C', '@7A', '7B\nannex', '7C', '8A', '8B'], 'a column a group, each name a cell of its own');
+  assert.equal(hot[1][1], '@Main\nCorridor, by Door B');
+  assert.deepEqual(hot, hotTable.map((row) => row.map(String)), 'the file reads back as the table written');
+  assert.ok(csvText(hotTable).includes(',=6A,+6B,-6C,@7A,"7B\nannex",7C,'), 'no quote mark is put before = + - or @');
+  assert.ok(csvText(hotTable, { guard: true }).includes(',\'=6A,\'+6B,\'-6C,\'@7A,'), 'that is the guard, and it is the caller\'s to ask for');
+
+  const walks = parseCsv(csvText(transitionsCsv(project, world.results, DAY_A))).rows;
+  assert.ok(walks.slice(1).every((row) => row[0] === '-A Day'));
+  for (const name of typed) assert.ok(walks.some((row) => row[3] === name), JSON.stringify(name) + ' walks, under its own name');
+  assert.deepEqual(walks.find((row) => row[9] === 'late').slice(3, 6), ['8A', '=Gym', '+303\r\nupstairs']);
+
+  const days = parseCsv(csvText(dayCsv(project, world.results, DAY_A))).rows;
+  assert.deepEqual(days.slice(1).map((row) => row[1]).sort(), [...typed, '7C', '8A', '8B'].sort());
+  assert.ok(days.slice(1).every((row) => row[0] === '-A Day'));
+});
+
+test('SV2-47 item 7: the hotspots file has one column a group: no name is joined to another, and a count is never part of a name', () => {
+  const project = school();
+  // names the old "; " join and " x2" suffix could not tell apart from two groups, or from a count
+  group(project, '6A').name = '6A; 6B';
+  group(project, '6C').name = '6C x2';
+  const world = derive(project);
+  const view = picture(world, { measure: 'total' });
+  const rows = hotspotRows(project, world.results, world.graph, view);
+  const table = hotspotsCsv(project, rows, view);
+  assert.deepEqual(table[0].slice(0, 10), ['Rank', 'Place', 'Floor', 'Kind', 'Load (students)', 'When', 'Delay (seconds)', 'Delay over the day (seconds)', 'Cells', 'Groups']);
+  assert.deepEqual(table[0].slice(10), project.groups.map((each) => each.name), 'then the groups on the map, in the project\'s order');
+  assert.ok(table.every((row) => row.length === 10 + project.groups.length), 'every row is as wide as the headings');
+  rows.forEach((row, index) => {
+    const cells = table[index + 1].slice(10);
+    assert.equal(table[index + 1][9], row.groups.length, row.place.name);
+    project.groups.forEach((each, column) => {
+      const crossing = row.groups.find((one) => one.group.id === each.id);
+      assert.equal(cells[column], crossing ? crossing.times : '', row.place.name + ', ' + each.name);
+    });
+  });
+  assert.ok(table.slice(1).some((row) => row.slice(10).some((times) => times > 1)), 'over a day a group crosses a place in more than one transition, and the count says so');
+  // with some groups on the map, only they are columns
+  const two = picture(world, { who: 'groups', groupIds: ['gsample06a', 'gsample08a'] });
+  assert.deepEqual(hotspotsCsv(project, hotspotRows(project, world.results, world.graph, two), two)[0].slice(10), ['6A; 6B', '8A']);
+});
+
+test('SV2-47 item 8: a day type that is the same as another has that one\'s tables, from one source, and says so in every heading', () => {
+  const project = school();
+  project.dayTypes[1].own = false;
+  // a follower's own bells are not its bells: these must never show
+  project.dayTypes[1].bells = project.dayTypes[1].bells.map(() => ({ start: '06:00', end: '06:01' }));
+  for (const each of project.groups) delete each.days[DAY_B];
+  const world = derive(project);
+  assert.deepEqual(travelDay(project, DAY_B), { id: DAY_A, name: 'B Day', heading: 'B Day (same as A Day)' });
+  assert.deepEqual(travelDay(project, DAY_A), { id: DAY_A, name: 'A Day', heading: 'A Day' });
+  assert.deepEqual(travelDay(sample.project, DAY_B), { id: DAY_B, name: 'B Day', heading: 'B Day' }, 'a day type that is its own copy is itself');
+  assert.equal(travelDay(project, 'dnotthere0').id, DAY_A, 'a day type the project does not have is the first');
+
+  const asB = parseCsv(csvText(transitionsCsv(project, world.results, DAY_B))).rows;
+  const asA = parseCsv(csvText(transitionsCsv(project, world.results, DAY_A))).rows;
+  assert.ok(asB.length > 1, 'B Day\'s file has A Day\'s walks, not none');
+  assert.ok(asB.slice(1).every((row) => row[0] === 'B Day (same as A Day)'), asB[1][0]);
+  assert.deepEqual(asB.slice(1).map((row) => row.slice(1)), asA.slice(1).map((row) => row.slice(1)), 'every figure is A Day\'s');
+  assert.ok(asB.slice(1).every((row) => row[2] === '240'), 'the passing time is A Day\'s bells\', not the follower\'s own');
+
+  const dayB = parseCsv(csvText(dayCsv(project, world.results, DAY_B))).rows;
+  assert.equal(dayB.length, 9);
+  assert.ok(dayB.slice(1).every((row) => row[0] === 'B Day (same as A Day)'));
+  assert.deepEqual(dayB.slice(1).map((row) => row.slice(1)), parseCsv(csvText(dayCsv(project, world.results, DAY_A))).rows.slice(1).map((row) => row.slice(1)));
+});
+
+test('SV2-47 item 9: with one transition shown nothing says "Peaks in"; the file\'s When is the day only when the day is added up; Late on the print follows the transition printed', () => {
+  // the print's table: no "Peaks in" column when one transition is what is printed
+  const one = movementPrint.render(sample.project, sample, { ...NOW, movement: { choice: { transition: 3 } } }).html;
+  assert.equal(countOf(one, 'Peaks in'), 0);
+  assert.deepEqual(tableAfter(one, 'Busiest places')[0], ['1', 'Main Corridor, by Door B', '177 students', '5', '8A, 7A, 6B, 7B, 8B, 6A, 6C, 7C', '13 s']);
+  assert.ok(one.includes('Delay is the waiting the crowd model found at the place in this transition, with every group of the school walking.'));
+  const day = movementPrint.render(sample.project, sample, { ...NOW, movement: {} }).html;
+  assert.equal(countOf(day, '<th scope="col">Peaks in</th>'), 1, 'over the day each place peaks in a transition of its own');
+  assert.equal(countOf(movementPrint.placesTable([], { one: true }), 'Peaks in'), 0);
+  assert.equal(countOf(movementPrint.placesTable([], { total: true }), 'Peaks in'), 0);
+  assert.equal(countOf(movementPrint.placesTable([], {}), 'Peaks in'), 1);
+
+  // the file: the transition's name, or "the whole day" only when the whole day is what is shown
+  const when = (patch) => {
+    const view = picture(sample, patch);
+    return hotspotsCsv(sample.project, hotspotRows(sample.project, sample.results, sample.graph, view), view).slice(1).map((row) => row[5]);
+  };
+  assert.ok(when({ measure: 'total' }).every((cell) => cell === 'the whole day'));
+  assert.ok(when({ transition: 2 }).every((cell) => cell === 'Period 3 to Period 4'));
+  assert.equal(when({})[0], 'Period 4 to Period 5');
+  // a row whose peak has no name is left empty at the busiest moment: it is not "the whole day"
+  const busiest = picture(sample);
+  const nameless = { ...hotspotRows(sample.project, sample.results, sample.graph, busiest)[0], when: '' };
+  assert.equal(hotspotsCsv(sample.project, [nameless], busiest)[1][5], '');
+
+  // the print's legend: 8A is late once in the day, in Period 6 to Period 7
+  const late = (patch) => {
+    const html = movementPrint.render(sample.project, sample, { ...NOW, movement: { choice: patch } }).html;
+    const heading = html.slice(html.indexOf('<h2>Groups on the map</h2>')).match(/<th scope="col">(Late[^<]*)<\/th>/)[1];
+    return { heading, cell: tableAfter(html, 'Groups on the map').find((row) => row[0] === '8A')[4], other: tableAfter(html, 'Groups on the map').find((row) => row[0] === '6A')[4] };
+  };
+  assert.deepEqual(late({}), { heading: 'Late', cell: 'Once', other: 'Never' });
+  assert.deepEqual(late({ transition: 3 }), { heading: 'Late in this transition', cell: 'No', other: 'No' }, '8A is in time in the transition printed');
+  assert.deepEqual(late({ transition: 5 }), { heading: 'Late in this transition', cell: 'Yes', other: 'No' });
 });
