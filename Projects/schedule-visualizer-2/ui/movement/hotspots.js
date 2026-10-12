@@ -13,8 +13,9 @@
 //   { rows, elsewhere, selected, rings, moving, layer, frames }: the rows on
 //   show, how many ranked places are on floors not shown, the id of the place
 //   a click chose, the rings last drawn [{ rank, x, y, r }] in the map's own
-//   pixels, whether they are pulsing, the canvas the pulse is drawn on (null
-//   until the map has been drawn), and how many frames of it were drawn.
+//   pixels, whether they are pulsing, the canvas the rings and the pulse are
+//   drawn on (the map's marks', env.layer), and how many ticks of the pulse
+//   asked for it to be drawn.
 //
 // What is ranked is what is on the map: the groups shown, the day type, the
 // busiest moment, the total over the day or the one transition chosen, and
@@ -216,9 +217,10 @@ function stateNow(last) {
 }
 
 // One frame of the pulse: from each ring, the ring that travels out and
-// fades as it goes. `left` is 1 as a pulse sets out and 0 as it ends. This
-// is all a tick of the pulse draws, on a canvas of its own over the map, so
-// what a tick costs does not grow with the building.
+// fades as it goes. `left` is 1 as a pulse sets out and 0 as it ends. A tick
+// of the pulse draws the map's marks again (the rings, this, and playback's
+// markers when there are any) on their own canvas and never the map, so what
+// a tick costs does not grow with the building.
 //   rings   [{ x, y, r }] in the map's own pixels
 export function pulseFrame(g, rings, left, theme) {
   g.strokeStyle = theme.accent;
@@ -428,31 +430,16 @@ export function hotspotsPanel(env) {
 
   // ---- the map: the place a click chose, and a ring on each of the top places
   //
-  // The rings and their ranks are part of the map's own drawing (mark, below).
-  // The ring that travels out of each is drawn on a canvas of its own, laid
-  // over the map's, so a tick of the pulse clears and draws that and never
-  // asks for the floors to be drawn again.
-  let layer = null;
-  let layerRatio = 1;
-  let layerTheme = null;
+  // The rings, their ranks and the ring that travels out of each are one of
+  // the map's marks (mark, below; env.marks), on the marks' canvas over the
+  // map's. A tick of the pulse asks for the marks to be drawn again
+  // (env.paintMarks) and never for the floors.
   let frames = 0;
-  // the rings are from before a change until the map is next drawn
-  let awaited = false;
+  let marking = false;
 
-  function wipe() {
-    if (!layer) return;
-    const c = layer.getContext('2d');
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.clearRect(0, 0, layer.width, layer.height);
-  }
-
-  function frame(left) {
-    if (!layer || !layerTheme || awaited) return;
-    wipe();
-    const c = layer.getContext('2d');
-    c.setTransform(layerRatio, 0, 0, layerRatio, 0, 0);
-    pulseFrame(c, rings, left, layerTheme);
+  function frame() {
     frames += 1;
+    env.paintMarks();
   }
 
   const pulse = createPulse({
@@ -462,18 +449,22 @@ export function hotspotsPanel(env) {
     still: () => still.matches,
     frame,
     done() {
-      wipe();
       element.dataset.pulse = rings.length === 0 ? 'none' : 'still';
+      // the travelling rings are taken off: the marks without them (unless
+      // the marks are being drawn this moment, and stopped the pulse themselves)
+      if (!marking) env.paintMarks();
     },
   });
 
-  // The pulse's canvas: over the map's own, the same size, letting every pointer through.
-  function layerOver(canvas, width) {
-    if (!layer) layer = h('canvas', { class: 'mov-rings', 'aria-hidden': 'true', style: 'position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;' });
-    if (layer.previousElementSibling !== canvas) canvas.after(layer);
-    if (layer.width !== canvas.width) layer.width = canvas.width;
-    if (layer.height !== canvas.height) layer.height = canvas.height;
-    layerRatio = width > 0 ? canvas.width / width : 1;
+  // The ranking the rings are drawn from: worked out once for a state of the
+  // map, not once a frame.
+  let ranked = { results: null, picture: null, graph: null, list: [] };
+  function rankedNow(state) {
+    if (!state) return [];
+    if (ranked.results !== state.results || ranked.picture !== state.picture || ranked.graph !== state.graph) {
+      ranked = { results: state.results, picture: state.picture, graph: state.graph, list: hotspotRows(state.project, state.results, state.graph, state.picture) };
+    }
+    return ranked.list;
   }
 
   function outline(g, map, row, floors) {
@@ -520,14 +511,12 @@ export function hotspotsPanel(env) {
 
   function mark(g, map) {
     const state = stateNow(last);
-    const list = state ? hotspotRows(state.project, state.results, state.graph, state.picture) : [];
+    const list = rankedNow(state);
     rings = [];
-    awaited = false;
-    layerOver(g.canvas, map.view.width);
-    layerTheme = map.theme;
     if (list.length === 0) {
+      marking = true;
       pulse.stop();
-      wipe();
+      marking = false;
       element.dataset.pulse = 'none';
       return;
     }
@@ -564,14 +553,15 @@ export function hotspotsPanel(env) {
         rings.push({ rank: row.rank, x: at.x, y: at.y, r });
       }
     }
-    // the travelling rings go where the map now has the places, without waiting for the next tick
+    // the travelling rings, where the map now has the places
     const moving = pulse.moving && !still.matches;
     element.dataset.pulse = moving ? 'moving' : 'still';
-    if (moving) frame(pulse.left());
-    else wipe();
+    if (moving) pulseFrame(g, rings, pulse.left(), map.theme);
   }
-  // named, so that whoever needs the map without the rings can find this entry
+  // named, so that whoever needs the map without the rings can find this
+  // entry; drawn over playback's markers
   mark.id = 'hotspots';
+  mark.order = 2;
   env.marks.push(mark);
 
   element.hotspots = {
@@ -580,7 +570,7 @@ export function hotspotsPanel(env) {
     get selected() { return selected; },
     get rings() { return rings; },
     get moving() { return element.dataset.pulse === 'moving'; },
-    get layer() { return layer; },
+    get layer() { return env.layer; },
     get frames() { return frames; },
   };
 
@@ -597,15 +587,15 @@ export function hotspotsPanel(env) {
       const next = rows.slice(0, PULSE_TOP).map((row) => row.id + ':' + row.load).join('|');
       if (next !== topKey) {
         topKey = next;
-        // the view draws the map after telling its panels, and the rings with it
-        awaited = true;
+        // The pulse sets out now and draws the marks itself, tick by tick: it
+        // does not wait for the map to be drawn again, which it is not when
+        // this tab is opened onto a change made while another tab was shown.
         if (next !== '') pulse.start();
       }
     },
     // The view is leaving: no timer is left running, and nothing of the panel stays on the map.
     unmount() {
       pulse.stop();
-      if (layer) layer.remove();
       const at = env.marks.indexOf(mark);
       if (at !== -1) env.marks.splice(at, 1);
     },

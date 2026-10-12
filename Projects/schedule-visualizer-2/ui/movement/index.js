@@ -30,9 +30,16 @@
 //            choice(), change(patch)      what is chosen on screen (model.js), and changing it
 //            show(floorId, cells)         bring cells onto the map
 //            overlays                     [(g, view, floor, theme) => {}] drawn over a floor after the lanes
-//            marks                        [(g, map) => {}] drawn over the whole map after the stairs links;
-//                                         map.point(floorId, cell) gives a cell's middle in pixels, or null
-//            paint()                      draw the map again (an overlay changed)
+//            marks                        [(g, map) => {}] drawn over the whole map, on a canvas of their
+//                                         own laid over the map's (env.layer): map.point(floorId, cell)
+//                                         gives a cell's middle in pixels, or null. A mark with a higher
+//                                         `order` is drawn over one with a lower (playback's markers 1,
+//                                         the hotspot rings 2); the keyboard cursor is over them all.
+//            paint()                      draw the map again (an overlay changed); the marks with it
+//            paintMarks()                 draw the marks again, now, and nothing else: what a frame of
+//                                         playback or a tick of the pulse costs does not grow with the
+//                                         building
+//            layer                        the marks' canvas
 //            card                         the cell card (card.extra is playback's place in it)
 //            fix(where) }                 follow a "fix it" link of route health
 //   state  { project, results, graph, picture, health }: the project the
@@ -83,6 +90,9 @@ export const MOVEMENT_KEYS = [
   { id: 'movement-fit', does: 'Fit the map to the window', shown: '0' },
   { id: 'movement-escape', does: 'Put the cell card away', shown: 'Esc' },
 ];
+
+// The keyboard cursor's ring is never smaller than this, in CSS pixels.
+export const CURSOR_LEAST = 14;
 
 export const MOVEMENT_TABS = [
   { id: 'hotspots', label: 'Hotspots' },
@@ -170,6 +180,11 @@ export const section = {
     const canvas = h('canvas', { class: 'mov-plan', id: 'movement-plan', tabindex: '0', role: 'application', 'aria-label': 'The movement map', 'aria-describedby': 'movement-keys' });
     const renderer = createRenderer(canvas);
     const g = canvas.getContext('2d');
+    // The marks' canvas: over the map's own, the same size, letting every
+    // pointer through. It is this view's, made once and never moved, so a
+    // paint of the map changes nothing in the document.
+    const layer = h('canvas', { class: 'mov-marks', 'aria-hidden': 'true', data: { layer: 'marks', drawn: '0' } });
+    const pen = layer.getContext('2d');
     const card = cellCardView();
     const zoomText = h('span', { class: 'mov-zoom__text', 'aria-live': 'off' });
     const zoomBox = h('div', { class: 'mov-zoom', role: 'group', 'aria-label': 'Zoom' },
@@ -186,6 +201,8 @@ export const section = {
       overlays: [],
       marks: [],
       paint: () => queuePaint(),
+      paintMarks: () => paintMarks(),
+      layer,
       card,
       fix(where) {
         if (where.slot) openSlot(ctx, where.slot);
@@ -250,7 +267,7 @@ export const section = {
       },
     });
     const bar = playbackBar(env);
-    const stage = h('div', { class: 'mov-stage' }, canvas, h('p', { class: 'vh', id: 'movement-keys' }, KEYS), key.element, card.element, zoomBox);
+    const stage = h('div', { class: 'mov-stage' }, canvas, layer, h('p', { class: 'vh', id: 'movement-keys' }, KEYS), key.element, card.element, zoomBox);
     const headline = h('h1', { class: 'vh' }, HEADLINE);
     const map = h('div', { class: 'mov-map' }, headline, top.element, stage, bar.element);
     const empty = h('div', { class: 'mov-empty stub', hidden: true });
@@ -561,29 +578,53 @@ export const section = {
           drawStairLink(g, a || b, null, { ...style, text: link.label + (other ? ' to ' + other.name : '') });
         }
       }
-      for (const mark of env.marks) {
-        g.save();
-        mark(g, { view, theme, point: pixel });
-        g.restore();
-      }
-
-      // the keyboard cursor: dotted, with a light line under the dots
-      if (cursor.showing && document.activeElement === canvas) {
-        const at = view.toScreen(cursor.x, cursor.y);
-        const x = Math.round(at.x) + 1.5;
-        const y = Math.round(at.y) + 1.5;
-        const side = Math.round(size) - 3;
-        g.lineWidth = 3;
-        g.strokeStyle = theme.card;
-        g.strokeRect(x, y, side, side);
-        g.setLineDash([2, 2]);
-        g.lineWidth = 2;
-        g.strokeStyle = theme.ink;
-        g.strokeRect(x, y, side, side);
-        g.setLineDash([]);
-      }
+      paintMarks();
       zoomText.textContent = Math.round(view.zoom * 100) + '%';
       canvas.dataset.drawn = String(Number(canvas.dataset.drawn || 0) + 1);
+    }
+
+    // ---- the marks: what moves or changes without the map changing under
+    // it (playback's markers, the hotspot rings and their pulse, the keyboard
+    // cursor), drawn in that order on their own canvas.
+    function paintMarks() {
+      if (gone || !world || !state || view.width === 0 || map.hidden) return;
+      const theme = renderer.theme();
+      const ratio = window.devicePixelRatio || 1;
+      // the same pixels as the map's canvas, whatever the renderer rounded them to
+      if (layer.width !== canvas.width) layer.width = canvas.width;
+      if (layer.height !== canvas.height) layer.height = canvas.height;
+      pen.setTransform(1, 0, 0, 1, 0, 0);
+      pen.clearRect(0, 0, layer.width, layer.height);
+      pen.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const given = { view, theme, point: pixel };
+      for (const mark of env.marks.slice().sort((a, b) => (a.order || 0) - (b.order || 0))) {
+        pen.save();
+        mark(pen, given);
+        pen.restore();
+      }
+      drawCursor(pen, theme);
+      layer.dataset.drawn = String(Number(layer.dataset.drawn) + 1);
+    }
+
+    // The keyboard cursor (DESIGN 5.3): a ring round its cell, never under
+    // CURSOR_LEAST px across however far the map is zoomed out, a 2 px line in
+    // the focus colour between two 1 px lines of the surface's, so it reads
+    // on a corridor, on a lane, on a marker and on a hotspot's ring alike.
+    function drawCursor(c, theme) {
+      delete layer.dataset.cursor;
+      if (!cursor.showing || document.activeElement !== canvas) return;
+      const at = view.toScreen(cursor.x + 0.5, cursor.y + 0.5);
+      const side = Math.max(CURSOR_LEAST, Math.round(view.size) - 2);
+      const x = Math.round(at.x - side / 2);
+      const y = Math.round(at.y - side / 2);
+      c.lineJoin = 'round';
+      c.strokeStyle = theme.card;
+      c.lineWidth = 4;
+      c.strokeRect(x + 1, y + 1, side - 2, side - 2);
+      c.strokeStyle = theme.accent;
+      c.lineWidth = 2;
+      c.strokeRect(x + 1, y + 1, side - 2, side - 2);
+      layer.dataset.cursor = [x, y, side].join(',');
     }
 
     function queuePaint() {
@@ -676,8 +717,9 @@ export const section = {
       event.preventDefault();
     }
     canvas.addEventListener('keydown', onKey);
-    canvas.addEventListener('focus', queuePaint);
-    canvas.addEventListener('blur', queuePaint);
+    // the cursor comes and goes with the focus: the marks alone are drawn again
+    canvas.addEventListener('focus', paintMarks);
+    canvas.addEventListener('blur', paintMarks);
 
     // ---- the window
     function measure() {

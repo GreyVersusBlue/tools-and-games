@@ -38,11 +38,11 @@
 // got to its room late keeps its marker's shape there and is named under its
 // own words, "In their room, late", not among those still walking.
 //
-// The markers have a canvas of their own, laid over the map's (the layer).
-// A frame of playback draws that layer and nothing else: the map under it
-// (every floor, its lanes, the load colours) is drawn again only when the map
-// itself changes, and each time it is, it hands the layer what it needs to
-// place a marker (the bar's entry on env.marks).
+// The markers are one of the map's marks (env.marks, the top of ./index.js):
+// they are drawn on the marks' canvas, laid over the map's. A frame of
+// playback asks for the marks to be drawn again (env.paintMarks) and for
+// nothing else: the map under them (every floor, its lanes, the load
+// colours) is drawn again only when the map itself changes.
 //
 // The clock advances by the time between animation frames, not by counting
 // them, so a slow machine shows the same seconds. With reduced motion asked
@@ -67,8 +67,8 @@
 //
 // `frames` replaces requestAnimationFrame for the playback clock alone, so a
 // test can hand it the frames' times; `mark.drawn` is where the markers were
-// last put on the map, and `layer` is the canvas they are on
-// (`layer.dataset.drawn` counts its draws).
+// last put on the map, and `layer` is the canvas they are on, the map's
+// marks' (`layer.dataset.drawn` counts its draws).
 
 import { h, uid } from '../components/dom.js';
 import { choice as segmented } from '../components/choice.js';
@@ -309,40 +309,15 @@ export function playbackBar(env) {
     };
   });
 
-  // ---- the markers' layer
-  const layer = h('canvas', { class: 'mov-pb__layer', 'aria-hidden': 'true', data: { layer: 'playback', drawn: '0' } });
-  const pen = layer.getContext('2d');
-  // what the map's last paint handed its marks, and the scale it drew at
-  let map = null;
-  let scale = null;
+  // ---- the markers, among the map's marks: under the hotspot rings and the cursor
+  mark.id = 'playback';
+  mark.order = 1;
+  env.marks.push(mark);
 
+  // The markers moved, or changed: the marks are drawn again, the map is not.
   function drawMarks() {
-    // the map has not been painted yet: its first paint draws the markers
-    if (!map) {
-      env.paint();
-      return;
-    }
-    pen.setTransform(1, 0, 0, 1, 0, 0);
-    pen.clearRect(0, 0, layer.width, layer.height);
-    pen.setTransform(scale);
-    pen.save();
-    mark(pen, map);
-    pen.restore();
-    layer.dataset.drawn = String(Number(layer.dataset.drawn) + 1);
+    env.paintMarks();
   }
-
-  // The bar's entry on env.marks: the map was painted. Nothing is drawn on
-  // the map's own canvas; the layer is put over it, at its size, and drawn.
-  function onMap(g, given) {
-    const plan = g.canvas;
-    if (layer.previousElementSibling !== plan) plan.after(layer);
-    if (layer.width !== plan.width) layer.width = plan.width;
-    if (layer.height !== plan.height) layer.height = plan.height;
-    map = given;
-    scale = g.getTransform();
-    drawMarks();
-  }
-  env.marks.push(onMap);
 
   // ---- the clock
   function rate() {
@@ -624,7 +599,7 @@ export function playbackBar(env) {
     get prefs() { return prefs; },
     get scene() { return scene; },
     mark,
-    layer,
+    get layer() { return env.layer; },
     now,
     seek,
     play,
@@ -672,10 +647,8 @@ export function playbackBar(env) {
       reduce.removeEventListener('change', onReduce);
       roomy.removeEventListener('change', place);
       if (widthWatch) widthWatch.disconnect();
-      const at = env.marks.indexOf(onMap);
+      const at = env.marks.indexOf(mark);
       if (at !== -1) env.marks.splice(at, 1);
-      layer.remove();
-      map = null;
     },
   };
 }

@@ -48,13 +48,32 @@ async function tab(id) {
 
 const OPEN = { who: 'all', groupIds: [], dayTypeId: 'dsample00a', transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
 
-// The colour of one pixel of the map, as [r, g, b].
+// The colour of one pixel of the map as it is seen, as [r, g, b]: what the
+// marks' canvas has there (the rings, the outline of a chosen place), or the
+// map's own canvas under it where the marks have nothing.
 function pixel(x, y) {
   return view((px, py) => {
     const canvas = document.querySelector('#movement-plan');
+    const marks = document.querySelector('.mov-marks');
     const ratio = canvas.width / canvas.clientWidth;
+    const over = marks.getContext('2d').getImageData(Math.round(px * ratio), Math.round(py * ratio), 1, 1).data;
+    if (over[3] >= 200) return Array.from(over.slice(0, 3));
     return Array.from(canvas.getContext('2d').getImageData(Math.round(px * ratio), Math.round(py * ratio), 1, 1).data.slice(0, 3));
   }, x, y);
+}
+
+// Is the ring that travels out of a place's ring on the marks' canvas now?
+// Looked for along a spoke, clear of the ring that stands (its line reaches
+// 3 px out) and as far as the travelling ring goes (0.7 of a radius out).
+function travelling() {
+  const panel = document.querySelector('#inspector [data-panel="hotspots"]') || globalThis.sv2rings;
+  const ring = panel.hotspots.rings[0];
+  if (!ring) return false;
+  const layer = panel.hotspots.layer;
+  const g = layer.getContext('2d');
+  const ratio = layer.width / layer.clientWidth;
+  for (let d = ring.r + 4; d <= ring.r * 1.7 + 3; d += 0.5) if (g.getImageData(Math.round((ring.x - d) * ratio), Math.round(ring.y * ratio), 1, 1).data[3] > 0) return true;
+  return false;
 }
 
 function near(a, b, slack) {
@@ -338,6 +357,7 @@ test('the top places carry a ring that pulses when the ranking changes, and stan
       moving: panel.hotspots.moving,
       rings: panel.hotspots.rings.map((ring) => ring.rank),
       drawn: Number(plan.dataset.drawn),
+      marks: Number(layer.dataset.drawn),
       frames: panel.hotspots.frames,
       over: layer !== null && layer.previousElementSibling === plan && layer.width === plan.width && layer.height === plan.height,
       box: layer ? [layer.clientWidth, layer.clientHeight, plan.clientWidth, plan.clientHeight] : null,
@@ -347,24 +367,16 @@ test('the top places carry a ring that pulses when the ranking changes, and stan
   assert.equal(moving.pulse, 'moving');
   assert.equal(moving.moving, true);
   assert.deepEqual(Array.from(new Set(moving.rings)), [1, 2, 3], 'a ring on each of the top three places');
-  assert.equal(moving.over, true, 'the pulse has a canvas of its own, laid over the map\'s and the same size');
+  assert.equal(moving.over, true, 'the rings and their pulse are on the marks\' canvas, laid over the map\'s and the same size');
   assert.deepEqual(moving.box.slice(0, 2), moving.box.slice(2));
   assert.equal(moving.through, 'none', 'and every pointer goes through it to the map');
-  await pause(400);
   // SV2-47 item 5: a tick of the pulse draws on that canvas and never asks for the floors again
-  const later = await view(() => {
-    const panel = document.querySelector('#inspector [data-panel="hotspots"]').hotspots;
-    const ring = panel.rings[0];
-    const g = panel.layer.getContext('2d');
-    const ratio = panel.layer.width / panel.layer.clientWidth;
-    // the travelling ring is somewhere between the ring and 0.7 of a radius out: look for ink along a spoke
-    let inked = 0;
-    for (let d = ring.r - 3; d <= ring.r * 1.7 + 3; d += 0.5) if (g.getImageData(Math.round((ring.x - d) * ratio), Math.round(ring.y * ratio), 1, 1).data[3] > 0) inked += 1;
-    return { drawn: Number(document.querySelector('#movement-plan').dataset.drawn), frames: panel.frames, inked };
-  });
+  await page.waitForFunction((had) => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames >= had + 3, { timeout: 5000 }, moving.frames);
+  // the travelling ring is on it at some moment of a pulse (it sets out from under the ring that stands)
+  await page.waitForFunction(travelling, { timeout: 5000, polling: 'raf' });
+  const later = await view(() => ({ drawn: Number(document.querySelector('#movement-plan').dataset.drawn), marks: Number(document.querySelector('.mov-marks').dataset.drawn) }));
   assert.equal(later.drawn, moving.drawn, 'the map itself is not drawn again while the rings pulse: ' + moving.drawn + ' → ' + later.drawn);
-  assert.ok(later.frames >= moving.frames + 3, 'the pulse draws frame after frame on its own canvas: ' + moving.frames + ' → ' + later.frames);
-  assert.ok(later.inked > 0, 'and the travelling ring is on it');
+  assert.ok(later.marks >= moving.marks + 3, 'the marks are drawn tick after tick: ' + moving.marks + ' → ' + later.marks);
 
   // still: the same change under reduced motion draws the rings once and leaves them
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
@@ -386,6 +398,7 @@ test('the top places carry a ring that pulses when the ranking changes, and stan
       ring: panel.hotspots.rings.find((ring) => ring.rank === 1),
       rings: panel.hotspots.rings.length,
       drawn: Number(document.querySelector('#movement-plan').dataset.drawn),
+      marks: Number(document.querySelector('.mov-marks').dataset.drawn),
     }))));
   });
   assert.equal(still.pulse, 'still');
@@ -394,11 +407,9 @@ test('the top places carry a ring that pulses when the ranking changes, and stan
   const stillFrames = await view(() => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames);
   await pause(400);
   assert.equal(await view(() => document.querySelector('#inspector [data-panel="hotspots"]').hotspots.frames), stillFrames, 'and no frame of a pulse is drawn');
-  assert.equal(await view(() => {
-    const layer = document.querySelector('#inspector [data-panel="hotspots"]').hotspots.layer;
-    return Array.from(layer.getContext('2d').getImageData(0, 0, layer.width, layer.height).data).some((value) => value !== 0);
-  }), false, 'the pulse\'s canvas is empty');
+  assert.equal(await view(travelling), false, 'no ring travels out of the ring that stands');
   assert.equal(await view(() => Number(document.querySelector('#movement-plan').dataset.drawn)), still.drawn, 'nothing is drawn again: the ring does not move');
+  assert.equal(await view(() => Number(document.querySelector('.mov-marks').dataset.drawn)), still.marks, 'nor are the marks');
   // the still ring is there, in the accent, at its radius from the busiest cell
   const onRing = await pixel(still.ring.x - still.ring.r, still.ring.y);
   assert.ok(near(onRing, ACCENT, 40), 'a ring round the busiest place: ' + onRing);
