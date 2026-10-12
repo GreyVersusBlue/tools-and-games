@@ -70,8 +70,12 @@ export function createToasts(host, options) {
     const standing = room || parseFloat(getComputedStyle(scroller).getPropertyValue('--toast-room')) || 76;
     if (needed <= standing) return;
     room = needed;
+    // only a section that ends in the band grows with it; on one that does
+    // not (the plan, the map) nothing has moved and nothing is scrolled
+    const page = host.previousElementSibling;
+    const before = page ? getComputedStyle(page).paddingBottom : '';
     scroller.style.setProperty('--toast-room', needed + 'px');
-    if (atEnd) scroller.scrollTop = scroller.scrollHeight;
+    if (atEnd && page && getComputedStyle(page).paddingBottom !== before) scroller.scrollTop = scroller.scrollHeight;
   }
 
   function show(options) {

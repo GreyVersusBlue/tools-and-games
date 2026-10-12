@@ -99,7 +99,7 @@ export function roomPicker(options) {
     // from, and goes there (on the press, as an option picks: the field must
     // not have lost the focus and shut the list first).
     const none = rooms().length === 0
-      ? h('li', { class: 'picker__empty', role: 'presentation', data: { empty: 'building' } }, 'No rooms in the building yet. ',
+      ? h('li', { class: 'picker__empty', data: { empty: 'building' } }, 'No rooms in the building yet. ',
         h('a', {
           href: '#building',
           tabindex: '-1',
@@ -110,10 +110,20 @@ export function roomPicker(options) {
             },
           },
         }, 'Number them in Building.'))
-      : shown.length === 0 ? h('li', { class: 'picker__empty', role: 'presentation', data: { empty: 'match' } }, 'No room matches. It is kept as typed, and marked as not in the building.') : null;
-    if (shown.length === 0) {
+      : shown.length === 0 ? h('li', { class: 'picker__empty', data: { empty: 'match' } }, 'No room matches. It is kept as typed, and marked as not in the building.') : null;
+    // With nothing to pick the list is one line of words, and is not a
+    // listbox to a screen reader: a listbox has options. (With no rooms in
+    // the building "No room" is not offered either; emptying the field is
+    // the way to it.)
+    if (none) {
+      list.removeAttribute('role');
+      input.setAttribute('aria-expanded', 'false');
+      shown = [];
+      active = -1;
       list.replaceChildren(none);
     } else {
+      list.setAttribute('role', 'listbox');
+      input.setAttribute('aria-expanded', 'true');
       list.replaceChildren(...shown.map((option, index) => h('li', {
         class: 'picker__option',
         role: 'option',
@@ -128,7 +138,6 @@ export function roomPicker(options) {
           },
         },
       }, h('span', null, option.label), option.detail ? h('span', { class: 'picker__detail' }, ' ', option.detail) : null)));
-      if (none) list.append(none);
     }
     mark();
     markTyped();
