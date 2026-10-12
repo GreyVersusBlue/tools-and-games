@@ -243,6 +243,12 @@ export function roomsAtTap(shapes, x, y) {
 
 // ---- the picture
 
+// A corridor reads against the floor's ground at 3:1 in both themes (WCAG
+// 1.4.11): by its outline everywhere (--line-strong on --grid and on the
+// corridor), and in the dark theme by its fill too (--map-corridor on --grid).
+// The planner's --corridor on its --grid is 1.2:1 in the dark, which on a
+// phone at 6 px a square left the corridors out of the picture.
+
 // The colours of paper: the paper rules' own (the @media print block of
 // staff.css; a case holds the two equal). The map draws with these from the
 // moment printing starts, because a browser may say so before the print rules
@@ -275,7 +281,8 @@ function themeOf(element, onPaper) {
     accent: read('--accent', '#0f6e66'),
     accentInk: read('--accent-ink', '#ffffff'),
     grid: read('--grid', '#e8e3d8'),
-    corridor: read('--corridor', '#ffffff'),
+    // the staff map's own corridor: 3:1 against the ground where the theme lets a fill be (staff.css)
+    corridor: read('--map-corridor', read('--corridor', '#ffffff')),
     stairs: read('--stairs', '#d9ece9'),
     roomDefault: read('--room-default', '#e9e4d9'),
     font: style.getPropertyValue('--font-plan').trim() || 'sans-serif',
@@ -367,19 +374,26 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
     g.fillStyle = kind === 'S' ? theme.stairs : theme.corridor;
     g.fillRect(plan.px(x), plan.py(y), cell + 0.5, cell + 0.5);
   }
-  g.strokeStyle = theme.line;
+  // the outline is what tells a corridor from the ground on light paper, where
+  // no fill can: --line-strong, 3:1 against the ground and the corridor alike
+  g.strokeStyle = theme.edge;
   g.lineWidth = 1;
+  g.lineCap = 'square';
+  const crisp = (v) => Math.round(v) + 0.5;
   g.beginPath();
   for (let index = 0; index < floor.cells.length; index += 1) {
     if (floor.cells[index] === '.') continue;
     const x = index % floor.width;
     const y = Math.floor(index / floor.width);
-    const left = plan.px(x);
-    const top = plan.py(y);
-    if (!walkable(x, y - 1)) { g.moveTo(left, top); g.lineTo(left + cell, top); }
-    if (!walkable(x, y + 1)) { g.moveTo(left, top + cell); g.lineTo(left + cell, top + cell); }
-    if (!walkable(x - 1, y)) { g.moveTo(left, top); g.lineTo(left, top + cell); }
-    if (!walkable(x + 1, y)) { g.moveTo(left + cell, top); g.lineTo(left + cell, top + cell); }
+    // each line on a whole pixel: a line across two is half its colour on each, and half of 3:1 is not 3:1
+    const left = crisp(plan.px(x));
+    const top = crisp(plan.py(y));
+    const right = crisp(plan.px(x) + cell);
+    const bottom = crisp(plan.py(y) + cell);
+    if (!walkable(x, y - 1)) { g.moveTo(left, top); g.lineTo(right, top); }
+    if (!walkable(x, y + 1)) { g.moveTo(left, bottom); g.lineTo(right, bottom); }
+    if (!walkable(x - 1, y)) { g.moveTo(left, top); g.lineTo(left, bottom); }
+    if (!walkable(x + 1, y)) { g.moveTo(right, top); g.lineTo(right, bottom); }
   }
   g.stroke();
   if (cell >= 10) {

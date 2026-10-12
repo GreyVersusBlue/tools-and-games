@@ -27,7 +27,8 @@
 //          direction wraps the `name` pieces; nothing is added here.
 //
 // For a route that failed, ok is false, steps is empty and text is the
-// sentence describeFailure() gives.
+// sentence describeFailure() gives, but for a way with no stairs that does
+// not exist between two rooms, which is said plainly (withoutStairs).
 //
 // Directions after a flight of stairs cannot say left or right, because the
 // walker's facing on a landing is not known. Where the landing leads more
@@ -44,6 +45,11 @@ const OPPOSITE = [2, 3, 0, 1];
 const SIDE_INDEX = new Map(DOOR_SIDES.map((side, index) => [side, index]));
 
 export const CELL_UNITS = { perCell: 1, one: 'cell', many: 'cells' };
+// For a reader who never saw the planner: "cell" is the planner's word for a
+// square of its grid, and a published file says "squares of the floor plan".
+// The staff browser passes these (staff/model.js) until a building has a
+// scale and the distances are in its own unit.
+export const SQUARE_UNITS = { perCell: 1, one: 'square', many: 'squares' };
 
 function typed(text) {
   return { text, name: true };
@@ -154,8 +160,22 @@ export function describeFailure(project, route) {
   return 'There is ' + way + ' from ' + where(false) + ' to an exit.';
 }
 
+// A way with no stairs was asked for between two rooms, and there is none:
+// said plainly for a reader, "There is no way from Room 101 to Room 302
+// without stairs." Null for every other failure, which describeFailure()
+// words.
+function withoutStairs(project, route) {
+  if (route.reason !== 'unreachable' || route.end !== 'to') return null;
+  if (!Array.isArray(route.avoiding) || route.avoiding.length !== 1 || route.avoiding[0] !== 'stairs') return null;
+  const { rooms } = lookup(project);
+  const from = rooms.get(route.fromRoomId);
+  const to = rooms.get(route.roomId);
+  if (!from || !to) return null;
+  return 'There is no way from ' + roomName(from, false) + ' to ' + roomName(to, false) + ' without stairs.';
+}
+
 export function directions(project, route, units) {
-  if (!route || route.ok !== true) return { ok: false, steps: [], text: route ? describeFailure(project, route) : 'No route was asked for.' };
+  if (!route || route.ok !== true) return { ok: false, steps: [], text: route ? withoutStairs(project, route) || describeFailure(project, route) : 'No route was asked for.' };
   const steps = [];
   if (route.same) {
     finish(steps, 'same', [words('This is the same room. There is no travel.')], {});

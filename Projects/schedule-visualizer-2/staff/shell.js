@@ -21,10 +21,10 @@ import { openStorage, NOT_KEPT_SENTENCE } from './storage.js';
 import { dayText, momentText, isStale, isOlderThanSeen } from './dates.js';
 import { readPublished, DAMAGED_SENTENCE } from './source.js';
 import { openSchool } from './model.js';
-import { pageOf, leftOutPage } from './page.js';
+import { pageOf, leftOutPage, printWhen, UNKNOWN_PAGE_SENTENCE } from './page.js';
 import { ME_KEY } from './notes.js';
 import { unlockScreen } from './passcode.js';
-import { viewFor } from './views.js';
+import { viewFor, isView } from './views.js';
 import { unlockPublished, unlockWithKey, toBase64, fromBase64 } from '../engine/publish-crypto.js';
 
 const BAR = [
@@ -56,6 +56,7 @@ export function mountShell(root, env) {
   function card(state, title, ...body) {
     open = null;
     gate = null;
+    delete root.dataset.view;
     root.dataset.state = state;
     root.replaceChildren(h('div', { class: 'gate' }, h('main', { class: 'gate__card' }, h('h1', { class: 'gate__title', tabindex: '-1' }, title), body)));
     setTitle(title);
@@ -99,9 +100,17 @@ export function mountShell(root, env) {
   function draw(moveFocus) {
     if (!open) return;
     const current = open;
-    const route = parseHash(win.location.hash);
-    const view = viewFor(route.view);
     const ctx = ctxFor(current);
+    let route = parseHash(win.location.hash);
+    // An address that names no page of this file (a mistyped link, a view of
+    // a newer copy): the search page, told so, at the search page's own
+    // address, so the bar does not go on holding what led nowhere.
+    const unknown = !isView(route.view);
+    if (unknown) {
+      route = parseHash('#/search');
+      ctx.replace('#/search');
+    }
+    const view = viewFor(route.view);
     const left = view.flag !== null && !current.school.has(view.flag);
     let title = 'Staff schedule';
     let page;
@@ -110,11 +119,18 @@ export function mountShell(root, env) {
       page = left ? leftOutPage(title) : view.render(ctx, route);
     } catch (error) {
       // one page failing is said on that page; the rest of the file still works
-      page = pageOf('This page could not be shown', 'Something in this copy of the schedule could not be read for this page. The other pages still work.',
-        h('p', { class: 'muted' }, String(error && error.message ? error.message : error)));
+      page = printWhen(pageOf('This page could not be shown', 'Something in this copy of the schedule could not be read for this page. The other pages still work.',
+        h('p', { class: 'muted' }, String(error && error.message ? error.message : error))), false);
+    }
+    if (unknown) {
+      const heading = page.querySelector('.page__title');
+      if (heading) heading.before(h('p', { class: 'notice', role: 'status', dataset: { notice: 'unknown' } }, UNKNOWN_PAGE_SENTENCE));
     }
     current.main.replaceChildren(page);
     current.main.dataset.view = view.id;
+    // on the frame as well, so a rule for one view's paper (the door sign's)
+    // can reach the school's line and the footer without :has()
+    root.dataset.view = view.id;
     setTitle(title + ' · ' + current.school.name);
     for (const item of current.bar.querySelectorAll('a[data-item]')) {
       if (item.dataset.item === view.nav) item.setAttribute('aria-current', 'page');
@@ -275,6 +291,7 @@ export function mountShell(root, env) {
       },
     });
     root.dataset.state = 'locked';
+    delete root.dataset.view;
     root.replaceChildren(screen.element);
     setTitle('Staff schedule');
     screen.focus();

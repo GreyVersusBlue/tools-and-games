@@ -389,14 +389,10 @@ test('the map\'s paper colours are the paper rules\' own', () => {
 test('the door sign\'s rules stand in a browser with no :has() and no container units', () => {
   const css = readFileSync(path.join(TOOL_DIR, 'staff', 'staff.css'), 'utf8').replace(/\r\n?/g, '\n');
   const block = css.slice(css.indexOf('/* ---------- SV2-23:'), css.indexOf('/* ---------- SV2-23: end')).replace(/\/\*[\s\S]*?\*\//g, '');
-  // a browser that does not know :has() throws away the whole list it is in
-  let has = 0;
-  for (const match of block.matchAll(/([^{};]+)\{/g)) {
-    if (!match[1].includes(':has(')) continue;
-    has += 1;
-    for (const selector of match[1].split(',')) assert.ok(selector.includes(':has('), 'in a list with :has(): ' + selector.trim());
-  }
-  assert.ok(has >= 1);
+  // a browser that does not know :has() throws away the whole list it is in:
+  // the sign's rules use none, since the shell names the view on .app (SV2-45 item 10)
+  assert.ok(!block.includes(':has('), 'a rule of the SV2-23 block uses :has()');
+  assert.match(block, /\n  \.app\[data-view="door"\] \.top,\n  \.app\[data-view="door"\] \.foot \{\n    display: none;\n  \}/, 'the school\'s line and the footer leave the sign\'s paper by the view\'s name on the frame');
   assert.match(block, /\n  \.page\[data-view="door"\] \.page__body > :not\(\.sheet\) \{\n    display: none;\n  \}/, 'the rule that leaves the sheet alone on paper stands by itself');
   // every size in cqw has the same property in rem just before it; one with var() in it would be
   // kept by a browser that cannot read it, so it is behind @supports
@@ -531,6 +527,16 @@ async function openPage(options) {
     errors.push('a dialog opened: ' + dialog.message());
     dialog.dismiss().catch(() => {});
   });
+  // The bar along the bottom lies over the last 56 px of the window, and a
+  // reader scrolls a button clear of it before pressing: so does a click here.
+  const click = page.click.bind(page);
+  page.click = async (selector, how) => {
+    await page.evaluate((s) => {
+      const found = document.querySelector(s);
+      if (found) found.scrollIntoView({ block: 'center' });
+    }, selector);
+    return click(selector, how);
+  };
   return { page, context, requests, errors, close: () => context.close() };
 }
 
@@ -1363,7 +1369,11 @@ const EVERY_PAGE = PAPER_PAGES.concat([
   ['#/door/rsample101', 'Door sign: Room 101'],
 ]);
 
-test('every page has one Share and one Print; Share gives the page\'s name and never a file address', async () => {
+// Pages with nothing to print yet carry no Print (SV2-45 M4): the empty
+// search, My schedule before a choice, a page for something not in the file.
+const NOTHING_TO_PRINT = ['#/search', '#/me', '#/teacher/tnobody000'];
+
+test('every page has one Share, and one Print when it has something to print; Share gives the page\'s name and never a file address', async () => {
   const session = await openPage({ share: 'page' });
   try {
     const { page } = session;
@@ -1372,15 +1382,18 @@ test('every page has one Share and one Print; Share gives the page\'s name and n
       await move(page, address, title);
       assert.equal(await count(page, '[data-share="share"]'), 1, address + ' Share');
       assert.equal(await count(page, '[data-print]'), 1, address + ' Print');
+      const prints = !NOTHING_TO_PRINT.includes(address);
+      assert.equal(await shown(page, '[data-print]'), prints ? 1 : 0, address + ': Print is on the page');
       assert.equal(await count(page, '[data-share="copy"]'), 0, address + ': a file on disk has no link to copy');
       await page.click('[data-share="share"]');
-      await page.click('[data-print]');
+      if (prints) await page.click('[data-print]');
     }
     const shared = await page.evaluate(() => globalThis.sv2Shared);
     // what is shared is the tab's title: the view's own name for the page, then the school
     assert.deepEqual(shared.map((what) => what.title), EVERY_PAGE.map((each) => (each[2] || each[1]) + ' · ' + SCHOOL));
     assert.ok(shared.every((what) => what.text === what.title && what.url === undefined && what.files === null));
-    assert.equal(await page.evaluate(() => globalThis.sv2Printed), EVERY_PAGE.length);
+    assert.equal(await page.evaluate(() => globalThis.sv2Printed), EVERY_PAGE.length - NOTHING_TO_PRINT.length);
+    for (const address of NOTHING_TO_PRINT) assert.ok(EVERY_PAGE.some((each) => each[0] === address), address + ' is one of the pages');
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();

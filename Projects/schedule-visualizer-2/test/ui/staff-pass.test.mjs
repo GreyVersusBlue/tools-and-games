@@ -3,8 +3,9 @@
 //   node test/ui/staff-pass.test.mjs
 //
 // The seven settings the preview compares against the seven a file carries,
-// the publish time read once, which failures get which sentence, and the
-// "forget the kept key" flag on its way to the frame.
+// the publish time read once, which failures get which sentence, the "forget
+// the kept key" flag on its way to the frame, and the words a reader's
+// directions are written in.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,6 +17,7 @@ import { publishedModel } from '../../engine/publish-data.js';
 import { watchPreview, PREVIEW_READY, PREVIEW_DATA } from '../../staff/source.js';
 import { school, clock } from '../engine/helpers.mjs';
 import { diskReader } from '../publish/reader.mjs';
+import { openSchool } from '../../staff/model.js';
 
 test('the settings the preview is fed again for are the settings a published file carries: seven, the same seven, in the same order', () => {
   const carried = Object.keys(publishedModel(school(), { clock }).settings);
@@ -105,4 +107,16 @@ test('a feed with no flags sends the data alone, as before', () => {
   inner.parent.postMessage({ type: PREVIEW_READY });
   feed.send();
   assert.deepEqual(sent, [{ type: PREVIEW_DATA, data: { n: 1 } }, { type: PREVIEW_DATA, data: { n: 1 } }]);
+});
+
+test('the staff browser\'s directions are written for a reader: every walk is in squares, and a way with no stairs that does not exist is said plainly', () => {
+  const opened = openSchool(publishedModel(school(), { clock }));
+  const rooms = (number) => opened.rooms.find((room) => room.number === number).id;
+  const written = opened.directions(opened.route(rooms('101'), rooms('302')));
+  const walks = written.steps.filter((step) => step.kind === 'walk');
+  assert.ok(walks.length >= 3, 'the walk crosses the building');
+  for (const step of walks) assert.match(step.text, /^Walk \d+ squares?\b/, step.text);
+  assert.doesNotMatch(written.text, /\bcells?\b/);
+  const refused = opened.directions(opened.route(rooms('101'), rooms('302'), { avoidStairs: true }));
+  assert.equal(refused.text, 'There is no way from Room 101 to Room 302 without stairs.');
 });
