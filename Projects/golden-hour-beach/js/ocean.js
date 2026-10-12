@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Water } from '../libs/Water.js';
-import { sandHeight, waterLineZ, seaLevel, tideLevel, tideY } from './field.js';
+import { sandHeight, waterLineZ, seaLevel, tideLevel, tideY, shorelineZ, shoreEdgeZ, barEdges, barCrestS, BAR } from './field.js';
 
 // The sea: a big reflective Water plane whose height breathes very slowly
 // (the "slap" cycle) and rides a tide under that, plus a soft foam line that
@@ -73,6 +73,17 @@ export function buildOcean(scene, sunDirection) {
     scene.add(mesh);
     foamStrips.push({ mesh, base: g.attributes.position.array.slice(), cx: x0 + FOAM_CHUNK / 2 });
   }
+  // The bar east of the pier has two water's edges of its own, one each side
+  // of the ridge, and each gets a strip (#953). `flip` turns the alpha ramp's
+  // seaward bias round for the channel side, where seaward of the edge is
+  // dry sand.
+  const barStrips = [-1, 1].map(flip => {
+    const g = new THREE.PlaneGeometry(BAR.half * 2, 1.4, 45, 2);
+    g.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(g, foamMat);
+    scene.add(mesh);
+    return { mesh, base: g.attributes.position.array.slice(), side: flip < 0 ? 'sea' : 'land', flip };
+  });
   const foamDay = new THREE.Color(0xfff4e0);
   const foamBio = new THREE.Color(0x5fe8ff);
   let foamAdditive = false;
@@ -161,9 +172,37 @@ export function buildOcean(scene, sunDirection) {
         posArr.setX(i, x);
         posArr.setZ(i, z);
         // sandHeight, not groundHeight: foam runs under the pier, not over it.
-        posArr.setY(i, Math.max(sandHeight(x, z), water.position.y) + 0.03);
+        // Across the bar's ford at low water there is no edge here at all, and
+        // the strip goes under the sand rather than lie on dry ground.
+        posArr.setY(i, shoreEdgeZ(x, water.position.y) === null
+          ? sandHeight(x, z) - 0.5
+          : Math.max(sandHeight(x, z), water.position.y) + 0.03);
       }
       posArr.needsUpdate = true;
+    }
+    if (firstFoamPass || Math.abs(BAR.x - camX) <= FOAM_ACTIVE) {
+      for (const strip of barStrips) {
+        const posArr = strip.mesh.geometry.attributes.position;
+        const base = strip.base;
+        for (let i = 0; i < posArr.count; i++) {
+          const x = base[i * 3] + BAR.x;
+          const edge = barEdges(x, water.position.y)[strip.side];
+          const wob = Math.sin(x * 0.09 + state.t * 0.6) * 0.7 + Math.sin(x * 0.023 - state.t * 0.3) * 1.1;
+          // No edge at this x: fold the strip onto the crest line, under it.
+          // Where there is one the strip lies on the water side of it: laid
+          // across the edge as the beach's is, its dry half climbed the
+          // ridge's flank and read as a grey kerb from on the bar.
+          const z = edge === null
+            ? shorelineZ(x) + barCrestS(x)
+            : edge + (base[i * 3 + 2] + 0.55 + wob * 0.15) * strip.flip;
+          posArr.setX(i, x);
+          posArr.setZ(i, z);
+          posArr.setY(i, edge === null
+            ? sandHeight(x, z) - 0.5
+            : Math.max(sandHeight(x, z), water.position.y) + 0.03);
+        }
+        posArr.needsUpdate = true;
+      }
     }
     firstFoamPass = false;
     // Additive glow wants a touch more presence at full run-up than daytime foam.

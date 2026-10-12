@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BOUNDS, walkLimits } from './field.js';
+import { BOUNDS, walkLimits, inBarZone, barStep } from './field.js';
 
 // First-person stroll controls. Pointer-lock on desktop; drag-look +
 // hold-lower-screen-to-walk on touch. Camera height follows the terrain
@@ -155,15 +155,25 @@ export class WalkControls {
     let nx = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, this.pos.x + dx));
     let nz = Math.max(lim.minZ, Math.min(lim.maxZ, this.pos.z + dz));
 
+    // On the bar's stretch a column has more than one walkable interval, so
+    // the limit there is the depth under each stride (field.js's barStep).
+    const onBar = inBarZone(this.pos.x) || inBarZone(nx);
+    if (onBar) {
+      const to = barStep(this.pos.x, this.pos.z, this.pos.x + dx, this.pos.z + dz, waterLevel, WADE_DEPTH);
+      nx = to.x; nz = to.z;
+    }
+
     // The limits at the DESTINATION column must agree. Standing on the pier
     // deck, a sideways step leaves the deck's rectangle and the wading limit
     // at the new x would snap z ten metres shoreward — so any move whose new
     // column wants to yank z is refused instead. This is what keeps the deck's
     // edges solid without a railing anywhere.
-    const lim2 = walkLimits(nx, waterLevel, WADE_DEPTH);
-    const nz2 = Math.max(lim2.minZ, Math.min(lim2.maxZ, nz));
-    if (Math.abs(nz2 - nz) > 0.5) { nx = this.pos.x; nz = this.pos.z; }
-    else nz = nz2;
+    if (!onBar) {
+      const lim2 = walkLimits(nx, waterLevel, WADE_DEPTH);
+      const nz2 = Math.max(lim2.minZ, Math.min(lim2.maxZ, nz));
+      if (Math.abs(nz2 - nz) > 0.5) { nx = this.pos.x; nz = this.pos.z; }
+      else nz = nz2;
+    }
 
     // The step rule: a stride that would rise more than 0.9 m is refused.
     // This one line is what makes the headland's cliff face, and everything

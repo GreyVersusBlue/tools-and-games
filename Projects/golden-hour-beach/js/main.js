@@ -470,6 +470,8 @@ if (new URLSearchParams(location.search).has('debug')) {
     tide: () => ({ t: tideT, level: ocean.tide, y: ocean.tideY, period: TIDE.period, range: TIDE.range }),
     teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
     face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
+    // Eye height in metres, for a look down at the beach from above (1.62 is a walker).
+    eye(h) { controls.eyeHeight = h; controls._eye = h; },
     pos: () => ({ x: controls.pos.x, z: controls.pos.z }),
     journal: () => JSON.parse(JSON.stringify(journal.state)),
     // The owl's hunt runs on its own clock (nightpaths.js). This starts one

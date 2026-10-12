@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, sandHeight, shorelineZ, trailX, riverX, WET_STRIP } from './field.js';
+import { groundHeight, sandHeight, shorelineZ, trailX, riverX, WET_STRIP, BAR } from './field.js';
 
 // Beach terrain: the sand, the wet strips at the waterline, and the grass.
 // The heightfield itself lives in field.js, which imports nothing, so
@@ -234,6 +234,23 @@ export function buildTerrain(scene) {
     }
     wetGeo.computeVertexNormals();
     wetGroup.add(new THREE.Mesh(wetGeo, wetMat));
+  }
+  // The bar and its ford lie seaward of the strip, and they are wet sand
+  // whenever they are sand at all (#953): one patch more, same material,
+  // under the water plane wherever the sea is over it.
+  {
+    const s0 = -22, s1 = -1;
+    const barGeo = new THREE.PlaneGeometry(BAR.half * 2, s1 - s0, 45, 10);
+    barGeo.rotateX(-Math.PI / 2);
+    const bp = barGeo.attributes.position;
+    for (let i = 0; i < bp.count; i++) {
+      const x = bp.getX(i) + BAR.x;
+      const z = shorelineZ(x) + (s0 + s1) / 2 + bp.getZ(i);
+      bp.setX(i, x); bp.setZ(i, z);
+      bp.setY(i, sandHeight(x, z) + 0.015);
+    }
+    barGeo.computeVertexNormals();
+    wetGroup.add(new THREE.Mesh(barGeo, wetMat));
   }
   scene.add(wetGroup);
 

@@ -1686,9 +1686,22 @@ three investors, 2% a side, 200 XP. `tools/smoke.mjs` 270 → 270 + 89 = **359**
 **Nothing about the tier is open.** What it deliberately did not do is the
 seller side (#515) — representing the seller of a building wants a rent roll,
 an offering memorandum and a broker's opinion of value where `seller.js` has
-staging tiers, photo tiers and weekend open houses. It is a row for whoever
-wants it, sized on its own, and it is **not in the ranked table**: putting it
-there is a judgement call a session may make.
+staging tiers, photo tiers and weekend open houses. **Designed, not built,
+waits for Devon's read** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
+write the design"): `Projects/Closing Time/DESIGN-seller-commercial.md`. Offers
+are written on the packet and closings happen on the building; the rent roll
+(2 actions, 5 days) is worth 6% of gross value to every offer, the memorandum
+($0, $900, $2,800) sets which of three investor kinds see it, and the opinion
+of value (1 action) moves what the seller expects and so what they will sign.
+Measured on a scratch reimplementation: a median 23 days to an offer worth
+taking against a house's 12, $19,825 gross against $12,120, about the same
+money per day a client slot is held. Twelve questions for Devon are in its
+section 10 and are not in the table below; three sessions to build once he has
+answered. It is **not in the ranked table** and should not go there before his
+read. Two things read in the code on the way and not changed: `repairCareer()`
+never adds a client file to an old career's queue, and the `bonusReferral`
+event (`ev_ruth_referral`) picks from the whole queue with no ladder check, a
+fourth door beside #514's three; neither was reproduced in a career.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
@@ -1749,8 +1762,8 @@ offsite requests.
 used to head this list is gone from it. The waterline swings 9.3 m against the
 4.3 m the swash alone ever moved it, on a 2,400 s cycle of walking seconds that
 does not stop when the sun does; `test/smoke.mjs` 93 → 117. Two things it left
-behind are below: the intertidal structure that would give the ebb something to
-uncover (item 7), and the surf's missing distance term, which belongs to the
+behind are below: the intertidal structure that gives the ebb something to
+uncover, built as a try on 2026-10-11 (item 7), and the surf's missing distance term, which belongs to the
 ears-on row rather than to a session guessing at a gain curve (item 1).
 
 What's left:
@@ -1797,15 +1810,26 @@ What's left:
    a reload that keeps the journal and resets the sun. Each was broken once
    from green. Footprint-counting on the wet band was not added: it is a
    real-time walk, and #53 makes it a maybe.
-7. **A bar and a runnel, or any structure at all in the intertidal zone.** This
-   is what the tide leaves for a later increment and it is the obvious next
-   one: the sea's edge crosses 9.3 m of seabed that is a plain 0.10 ramp, so a
-   falling tide currently uncovers more flat sand rather than uncovering
-   anything. A bar you can walk out to at low water and have to come back off
-   is the thing every real beach does with a tide. It is not free: `wadeLimitZ`
-   is a closed-form solve on a constant slope and a non-monotone seabed makes
-   it a march, and the runnel behind the bar has to stay under knee depth or
-   the bar is content nobody can reach.
+7. **A bar and a runnel: built as a try on 2026-10-11 (#953), waiting for
+   Devon's walk.** East of the pier, x 325 to 415: a ridge 13 m out with its
+   crest at -0.03, a channel behind it, and a ford across the channel's middle
+   at -0.12. Low water leaves the ford and 61 m of bar dry with standing sea
+   in the channel either side; the channel fills from its ends, the ford goes
+   under, then the bar; high water is all sea. The ford is 0.43 m deep at the
+   top of the highest wave, under the 0.45 m knee, so nobody is trapped; the
+   channel beside it is over the knee at high water and turns a walker back
+   to the ford. On that stretch `barStep` replaces the one-limit-a-column
+   clamp, the bar has two foam strips and a wet-sand patch of its own, and
+   footprints read the ground. `test/smoke.mjs` 135 to 158. To take it out:
+   revert its commit.
+   **What is left:** Devon's walk (the beach at x 370 at low water, out over
+   the ford to the bar, wait for the tide; the bar is a straight ridge and its
+   channel-side foam reads as a grey kerb in software-rendered frames). No
+   foam is drawn round the tip of the water where the channel runs dry beside
+   the ford, no bird or crab is placed on the bar, the surf sound does not
+   know it, and nothing in a browser suite walks it. The crest sits in a 4 cm
+   window because the tide's range is 0.36 m against a 0.32 m swash; a bar
+   that stood prouder would need a bigger tide, which is the home beach's too.
 
 Deliberately not done, and still the right call:
 

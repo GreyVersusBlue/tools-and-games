@@ -68,6 +68,7 @@ js/
     events.js        data-driven event system (weighted draws + effect handlers)
     marketFacade.js  re-exports for the UI
 data/                ALL game content — see schemas below
+DESIGN-seller-commercial.md   the listing side of the commercial tier: designed, not built
 tools/
   seed_data.py       regenerates the initial content set (optional; JSON is hand-editable)
   smoke.mjs          headless engine + save test: node tools/smoke.mjs
@@ -219,7 +220,11 @@ New events are pure JSON composed from these handlers. New handler = one functio
   feature, not a missing half of this one: `seller.js`'s prep flow is staging tiers, photo
   tiers and weekend open houses, and none of the three means anything on a six-bay strip, which
   wants a rent roll, an offering memorandum and a broker's-opinion-of-value instead. Sized as
-  its own row rather than bolted on here.
+  its own row rather than bolted on here. **It is designed and not built** (#954, 2026-10-11):
+  [`DESIGN-seller-commercial.md`](DESIGN-seller-commercial.md), beside this file, has the
+  walk-through, what each prep step costs and does with the arithmetic on 212 Ferry St, the
+  data shapes, the module surface, the tests and twelve questions for Devon. Nothing under
+  `js/` or `data/` changed for it, and nothing is to be built from it before he has read it.
 - **The hall of past careers shipped** (`state.js`, the second half of it). `createNamespace({
   prefix: "closingTime." })` holds two members: `save.v1`, the career, at the key it has always
   had, and `hall`, one array of frozen scorecards. `enrollFinishedCareer()` is idempotent on
