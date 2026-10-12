@@ -20,6 +20,7 @@ import { dayText, momentText, isStale, isOlderThanSeen } from './dates.js';
 import { readPublished, DAMAGED_SENTENCE } from './source.js';
 import { openSchool } from './model.js';
 import { pageOf, leftOutPage } from './page.js';
+import { ME_KEY } from './notes.js';
 import { unlockScreen } from './passcode.js';
 import { viewFor } from './views.js';
 import { unlockPublished, unlockWithKey, toBase64, fromBase64 } from '../engine/publish-crypto.js';
@@ -178,7 +179,7 @@ export function mountShell(root, env) {
     if (firstOpen) {
       firstOpen = false;
       const hash = win.location.hash;
-      const me = store.get('me');
+      const me = store.get(ME_KEY);
       if ((hash === '' || hash === '#' || hash === '#/') && me && school.teacher(me) && school.has('teacher')) {
         ctxFor(open).replace(makeHash('teacher', me));
       }

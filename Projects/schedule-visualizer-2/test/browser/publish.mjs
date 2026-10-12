@@ -605,8 +605,8 @@ test('batch printing: each button opens the preview sheet on one document, a she
         const sheet = document.getElementById('print-preview');
         const doc = sheet.querySelector('iframe').contentDocument;
         const view = sheet.querySelector('iframe').contentWindow;
-        const number = doc.querySelector('.batch-sign__number');
-        const day = doc.querySelector('.batch-days');
+        const number = doc.querySelector('.sign__number');
+        const day = doc.querySelector('.batch-days, .sign__day');
         return {
           output: sheet.dataset.output,
           sheets: Number(sheet.dataset.sheets),
@@ -672,7 +672,7 @@ test('hostile names are text in the form, in the preview, in the batch sheets an
     await page.waitForSelector('#print-preview[open][data-ready="true"]');
     const sheet = await page.evaluate(() => {
       const doc = document.querySelector('#print-preview iframe').contentDocument;
-      return { number: Array.from(doc.querySelectorAll('.batch-sign__number'), (el) => el.textContent), school: doc.querySelector('.batch-sign__school').textContent, stray: doc.querySelectorAll('img, b, script').length };
+      return { number: Array.from(doc.querySelectorAll('.sign__number'), (el) => el.textContent), school: doc.querySelector('.sign__school').textContent, stray: doc.querySelectorAll('img, b, script').length };
     });
     assert.ok(sheet.number.includes(HOSTILE + ' R'));
     assert.equal(sheet.school, HOSTILE);

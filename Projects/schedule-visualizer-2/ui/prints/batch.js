@@ -12,24 +12,25 @@
 // it comes one sheet per teacher or per room, each an element with the class
 // "new-sheet".
 //
-// What a sheet says is the staff browser's own answer. The school is opened
-// the way the staff browser opens it (staff/model.js) and asked the same
-// questions: a teacher's day and the sentence about it (staff/views/
-// teacher.js), who is in a room each period (roomUse, staff/views/room.js),
-// which day types are the same (dayKindsOf), and how large a long room number
-// may be set (signFit, staff/views/door-sign.js). Only the markup is written
-// here, as text with every name escaped, because a print document is a string
-// and the staff browser builds elements. The sheets' rules are the marked
-// block at the end of ui/print.css.
+// What a sheet says is the staff browser's own answer, from the staff
+// browser's own data: the project is published first (publishedModel, the
+// copy a published file carries) and the school is opened from that copy the
+// way the staff browser opens it (staff/model.js), so nothing the planner
+// alone knows can be on a sheet. A teacher's day and the sentence about it
+// are staff/views/teacher.js's and are written out here as text with every
+// name escaped, because a print document is a string. A door sign is not
+// written here at all: it is the staff browser's sign (doorSignMarkup,
+// staff/views/door-sign.js), put inside a sheet. The sheets' rules are the
+// marked block at the end of ui/print.css.
 //
 // BATCHES are the three entries ui/prints/index.js lists, each with the fixed
 // options the preview sheet cannot pass.
 
 import { count } from '../components/words.js';
+import { publishedModel } from '../../engine/publish-data.js';
 import { openSchool } from '../../staff/model.js';
 import { wordsJoined, partsToText, dayKindsOf, teacherSummaryOf } from '../../staff/views/teacher.js';
-import { roomUse } from '../../staff/views/room.js';
-import { signFit } from '../../staff/views/door-sign.js';
+import { doorSignMarkup } from '../../staff/views/door-sign.js';
 import { esc, frame, printDate, schoolName } from './document.js';
 
 export const id = 'batch';
@@ -126,38 +127,14 @@ function teacherSheet(project, school, teacher, options) {
 
 // ---------------------------------------------------------------- door signs
 
+// The staff browser's sign for the room, in a sheet of its own. The line at
+// its foot is the school's name as every print document writes it.
 function signSheet(project, school, room, options) {
-  const numbered = room.number.trim() !== '';
-  const named = school.roomName(room, true);
-  // "Room 204" is the word and the number; "Gym" is the number alone
-  const worded = numbered && named === 'Room ' + room.number;
-  const big = numbered ? room.number : 'Room';
-  const teachers = (room.teacherIds || []).map((teacherId) => school.teacher(teacherId)).filter(Boolean);
-  const subject = school.subject(room.subjectId) || (teachers.length > 0 ? school.subject(teachers[0].subjectId) : null);
-  const out = [
+  return [
     '<section class="batch-sheet batch-sign new-sheet" data-sheet="door" data-id="' + esc(room.id) + '">',
-    worded ? '<p class="batch-sign__word">Room</p>' : '',
-    '<p class="batch-sign__number" style="--sign-fit: ' + signFit(big) + ';">' + esc(big) + '</p>',
-    teachers.length > 0 ? '<p class="batch-sign__teacher">' + esc(joined(teachers.map((teacher) => teacher.name))) + '</p>' : '',
-    subject ? '<p class="batch-sign__subject">' + esc(subject.name) + '</p>' : '',
-  ];
-  if (options.day === true) {
-    const uses = new Map(school.dayTypes.map((dayType) => [dayType.id, roomUse(school, room.id, dayType.id)]));
-    const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id)])));
-    out.push(days(kinds, kinds.map((kind) => dayTable(school, kind, [school.data.settings.periodWord, 'Group', 'Teacher'], (dayType, period) => {
-      const here = uses.get(dayType.id)[period];
-      if (here.length === 0) return [quiet('Empty'), ''];
-      const who = [];
-      for (const use of here) {
-        for (const teacher of use.teachers) {
-          if (!who.includes(teacher.name)) who.push(teacher.name);
-        }
-      }
-      return [esc(joined(here.map((use) => use.group.name))), esc(joined(who))];
-    }))));
-  }
-  out.push('<p class="batch-sign__school">' + esc(schoolName(project)) + '</p>', '</section>');
-  return out.filter((part) => part !== '').join('\n');
+    doorSignMarkup(school, room, { day: options.day === true, school: schoolName(project) }),
+    '</section>',
+  ].join('\n');
 }
 
 // ---------------------------------------------------------------- the document
@@ -172,9 +149,17 @@ function cover(lead, items) {
   return out.join('\n');
 }
 
+// The school as a published file would carry it. The publish time is on no
+// sheet; it is the document's own date, so no clock is read for it.
+function publishedSchool(project, now) {
+  const given = now instanceof Date ? now : new Date(now === null || now === undefined ? 0 : now);
+  const at = Number.isNaN(given.getTime()) ? new Date(0) : given;
+  return openSchool(publishedModel(project, { clock: () => at }));
+}
+
 export function render(project, derived, options) {
   const opts = options || {};
-  const school = openSchool(project);
+  const school = publishedSchool(project, opts.now);
   const doors = opts.batch === 'doors';
   let what;
   let body;

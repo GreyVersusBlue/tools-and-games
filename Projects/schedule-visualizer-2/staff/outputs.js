@@ -164,11 +164,25 @@ function themeNow() {
   };
 }
 
-// The teacher's schedule as a PNG, as a Blob.
+const LOCK_FACES = ['400 12px "Public Sans"', '600 12px "Public Sans"', '700 12px "Public Sans"', '600 12px "Barlow Semi Condensed"'];
+
+// Are the faces the image is drawn in loaded already? A page that has shown a
+// teacher's schedule has them. Where the browser cannot say, they are not.
+function facesThere(fonts) {
+  if (typeof fonts.check !== 'function') return false;
+  try {
+    return LOCK_FACES.every((face) => fonts.check(face));
+  } catch (error) {
+    return false;
+  }
+}
+
+// The teacher's schedule as a PNG, as a Blob. The faces are waited for only
+// when they are not there yet: a share sheet opens only for a while after the
+// tap that asked for it, and a wait that was not needed can use that up.
 export async function lockScreenImage(school, teacher, kinds) {
-  if (document.fonts && document.fonts.load) {
-    const faces = ['400 12px "Public Sans"', '600 12px "Public Sans"', '700 12px "Public Sans"', '600 12px "Barlow Semi Condensed"'];
-    await Promise.all(faces.map((face) => document.fonts.load(face))).catch(() => {
+  if (document.fonts && document.fonts.load && !facesThere(document.fonts)) {
+    await Promise.all(LOCK_FACES.map((face) => document.fonts.load(face))).catch(() => {
       // drawn in the device's own face where the school's cannot be loaded
     });
   }
@@ -212,7 +226,10 @@ export async function handOver(blob, name, title) {
 
 // The row under a teacher's day: print, the image, the door sign of each of
 // the teacher's rooms, and "This is me". Choosing draws the page again, now
-// the reader's own.
+// the reader's own, and focus goes to its heading: the page has changed from
+// its first line down (the notes, the map), and the button that would answer
+// the press is far below all of it. "This is not me" changes only what is
+// under the day, so focus stays there, on "This is me".
 export function teacherOutputs(ctx, teacher, kinds) {
   const school = ctx.school;
   const says = h('p', { class: 'muted', role: 'status', dataset: { says: 'image' } });
@@ -249,7 +266,7 @@ export function teacherOutputs(ctx, teacher, kinds) {
     : h('p', { class: 'outputs__row', dataset: { actions: 'me' } },
       h('button', { class: 'btn', type: 'button', dataset: { me: 'choose' }, onclick: () => {
         chooseMe(ctx, teacher.id);
-        again('[data-me="forget"]');
+        again('.page__title');
       } }, 'This is me'));
 
   return h('div', { class: 'outputs no-print', dataset: { part: 'outputs' } },
