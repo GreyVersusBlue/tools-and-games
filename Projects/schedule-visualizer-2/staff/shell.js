@@ -5,7 +5,9 @@
 //
 //   const shell = mountShell(root, { win, doc });
 //   shell.show(data);     a published model or a locked one; call again when
-//                         the planner's preview sends a newer one
+//                         the planner's preview sends a newer one. A second
+//                         argument { forget: true } drops the key kept for
+//                         the school first, from storage and from memory
 //   shell.waiting(text);  before any data has come
 //   shell.nothing();      no data anywhere
 //
@@ -223,7 +225,7 @@ export function mountShell(root, env) {
     return true;
   }
 
-  async function show(value) {
+  async function show(value, flags) {
     turn += 1;
     const mine = turn;
     const read = readPublished(value);
@@ -233,6 +235,9 @@ export function mountShell(root, env) {
 
     const envelope = read.envelope;
     const store = storeFor(envelope.schoolId);
+    // the planner's preview asked for the passcode screen: the key goes from
+    // wherever this page kept it, its storage or its memory
+    if (flags && flags.forget === true) store.remove('key');
     const kept = store.get('key');
     if (kept) {
       let model = null;

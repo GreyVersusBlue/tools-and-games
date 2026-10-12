@@ -11,16 +11,20 @@
 // see this once they have unlocked the file. "Start at the passcode screen"
 // feeds the locked form instead, so the unlock screen can be looked at and
 // tried. The staff browser keeps the key a passcode made, per school, so on
-// a reader's device it asks once; here that key is forgotten each time the
-// tick goes on, so the passcode screen is what the tick shows, every time.
-// (The frame's page is at a blob address made by this page, so the two share
-// one origin and one localStorage.)
+// a reader's device it asks once; here the frame is told to forget that key
+// each time the tick goes on (feedPreview's `forget`), so the passcode screen
+// is what the tick shows, every time, also where the frame could keep the key
+// only in its memory.
 //
 //   const view = preview(ctx);
 //   view.element                the bar and the frame
 //   view.update(project)        the project changed: feed the frame again, soon
 //   view.stop()                 the section is leaving
 //   view.state                  { loaded, live, sent, width, locked }, for the tests
+//
+// A frame that was given its page and has not asked for the data after
+// PREVIEW_TIMES.open says so, with "Try again": the page is made anew and the
+// address of the one before is let go.
 //
 // The frame is told again 250 ms after the last change, and only when
 // something the published file holds has changed: of the settings, the seven
@@ -30,16 +34,20 @@
 import { h, uid } from '../components/dom.js';
 import { choice } from '../components/choice.js';
 import { publishedModel, isProtected } from '../../engine/publish-data.js';
-import { assemble, pageReader, feedPreview, LinkError } from './assemble.js';
+import { assemble, pageReader, feedPreview, failureSentence } from './assemble.js';
 import { publishData, deviceRandom } from './targets.js';
-import { STORAGE_PREFIX } from '../../staff/storage.js';
 
 export const PREVIEW_SIZES = {
   phone: { label: 'Phone', width: 390, height: 760 },
   desktop: { label: 'Desktop', width: 1180, height: 760 },
 };
 export const PREVIEW_WAIT_MS = 250;
+// How long the frame has to ask for its data once it has its page. An object,
+// so a test can shorten the wait.
+export const PREVIEW_TIMES = { open: 20000 };
 export const PREVIEW_FAILED = 'The preview could not be put together: the staff browser\'s files could not be read. Check the connection and try again.';
+export const PREVIEW_BROKE = 'The preview could not be put together. Reload the page and try again.';
+export const PREVIEW_NOT_OPEN = 'The preview has not opened. Try again; publishing a file does not depend on it.';
 
 // The settings a published file carries: the keys of publishedModel's
 // `settings`, held equal to it by a case in test/browser/publish.mjs.
@@ -55,17 +63,6 @@ function partsOf(project, locked) {
     publish.views, publish.teacherNamesOnMap, publish.stalenessDays, locked ? publish.passcode : null, locked];
 }
 
-// Forget the key this device kept for a school's passcode, so the next locked
-// copy the frame is fed meets the passcode screen. Where the browser keeps
-// nothing there is nothing to forget.
-function forgetKey(schoolId) {
-  try {
-    window.localStorage.removeItem(STORAGE_PREFIX + schoolId + ':key');
-  } catch (error) {
-    // storage is refused here, so the frame kept no key either
-  }
-}
-
 function sameParts(a, b) {
   return a !== null && a.length === b.length && a.every((part, at) => part === b[at]);
 }
@@ -78,7 +75,9 @@ export function preview(ctx) {
   let turn = 0;
   let address = null;
   let stopped = false;
-  let forget = false; // the tick has just gone on: the kept key goes before the next feed
+  let forget = false; // the tick has just gone on: the next locked copy tells the frame to forget its key
+  let forgetNext = false; // and that copy is in hand, waiting to be sent
+  let openTimer = null;
 
   const sizeLabel = uid('staff-size');
   const lockId = uid('staff-lock');
@@ -130,12 +129,19 @@ export function preview(ctx) {
     if (data === null) return null;
     state.live = true;
     state.sent += 1;
+    if (openTimer !== null) clearTimeout(openTimer);
+    openTimer = null;
+    again.hidden = true;
     element.dataset.preview = 'live';
     element.dataset.sent = String(state.sent);
     says.textContent = state.locked
       ? 'This is the file as a reader first meets it. It follows the project as you change it.'
       : 'This is the file as staff see it. It follows the project as you change it.';
     return data;
+  }, () => {
+    const flags = forgetNext ? { forget: true } : null;
+    forgetNext = false;
+    return flags;
   });
 
   // Work out what the frame should hold now, and hand it over.
@@ -154,13 +160,18 @@ export function preview(ctx) {
         ? (await publishData(project, { clock: ctx.clock, random: deviceRandom() })).data
         : publishedModel(project, { clock: ctx.clock });
     } catch (error) {
-      if (mine === turn && !stopped) says.textContent = 'The preview could not be brought up to date: ' + (error && error.message ? error.message : 'something went wrong') + ' The file itself is not affected until you publish.';
+      if (mine !== turn || stopped) return;
+      // the same sentence Publish would give for the same failure (form.js)
+      console.warn('Schedule Visualizer 2: the preview could not be brought up to date.', error);
+      says.textContent = 'The preview could not be brought up to date. ' + failureSentence(error, { connection: PREVIEW_FAILED, other: PREVIEW_BROKE });
+      element.dataset.previewSays = 'stale';
       return;
     }
     // a later change overtook this one while the lock was being made
     if (mine !== turn || stopped) return;
-    if (locked && forget) forgetKey(project.id);
+    if (locked && forget) forgetNext = true;
     forget = false;
+    delete element.dataset.previewSays;
     data = next;
     shown = parts;
     feed.send();
@@ -196,12 +207,22 @@ export function preview(ctx) {
       address = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
       frame.src = address;
       state.loaded = true;
-      if (!state.live) says.textContent = 'Opening the preview.';
+      state.live = false;
+      says.textContent = 'Opening the preview.';
+      if (openTimer !== null) clearTimeout(openTimer);
+      openTimer = setTimeout(() => {
+        openTimer = null;
+        if (stopped || state.live) return;
+        element.dataset.preview = 'failed';
+        says.textContent = PREVIEW_NOT_OPEN;
+        again.hidden = false;
+      }, PREVIEW_TIMES.open);
     } catch (error) {
       if (stopped) return;
       element.dataset.preview = 'failed';
-      // the assembler's own refusals are sentences; anything else (a fetch that never arrived) is the browser's words, not ours
-      says.textContent = error instanceof LinkError && error.message ? error.message : PREVIEW_FAILED;
+      // the tool's own refusals are sentences; a file that never arrived is the connection's; the browser's own words are not shown
+      console.warn('Schedule Visualizer 2: the preview could not be put together.', error);
+      says.textContent = failureSentence(error, { connection: PREVIEW_FAILED, other: PREVIEW_BROKE });
       again.hidden = false;
     }
   }
@@ -221,6 +242,7 @@ export function preview(ctx) {
       feed.stop();
       observer.disconnect();
       if (timer !== null) clearTimeout(timer);
+      if (openTimer !== null) clearTimeout(openTimer);
       if (address) URL.revokeObjectURL(address);
     },
   };
