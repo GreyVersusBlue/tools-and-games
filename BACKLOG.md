@@ -1698,10 +1698,16 @@ taking against a house's 12, $19,825 gross against $12,120, about the same
 money per day a client slot is held. Twelve questions for Devon are in its
 section 10 and are not in the table below; three sessions to build once he has
 answered. It is **not in the ranked table** and should not go there before his
-read. Two things read in the code on the way and not changed: `repairCareer()`
-never adds a client file to an old career's queue, and the `bonusReferral`
-event (`ev_ruth_referral`) picks from the whole queue with no ladder check, a
-fourth door beside #514's three; neither was reproduced in a career.
+read. The two things it read in the code on the way were both real and are
+fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
+career began on the end of that career's queue, lowest rung first and then by
+id, and the `bonusReferral` event (`ev_ruth_referral`) asks the same
+`inReach()` the other three doors of #514 now ask, and does not fire with
+nobody in reach. Seen beside them and not changed: two referrals queued on one
+day can name the same client and taking both makes two records of them (any
+pair of the four doors; `meetClient()` called twice in the engine, not seen in
+a played career), and a seller passes every door whatever their tier, which is
+the design's question 12.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
