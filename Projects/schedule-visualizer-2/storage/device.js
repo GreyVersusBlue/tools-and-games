@@ -60,6 +60,17 @@ export function playbackOf(device) {
   return next;
 }
 
+// The settings with a change made to them. A key of the patch that is not one
+// of the choices (a speed of 3, a loop nobody offers) changes nothing: what
+// was there is kept, not the default.
+export function playbackWith(current, patch) {
+  const next = playbackOf({ playback: current });
+  const asked = isObject(patch) ? patch : {};
+  if (PLAYBACK_SPEEDS.includes(asked.speed)) next.speed = asked.speed;
+  for (const [key, values] of Object.entries(PLAYBACK_CHOICES)) if (values.includes(asked[key])) next[key] = asked[key];
+  return next;
+}
+
 export function readPlayback(storage) {
   return playbackOf(readDevice(storage));
 }
@@ -68,7 +79,7 @@ export function readPlayback(storage) {
 // when the browser refuses, as writeDevice does.
 export function writePlayback(patch, storage) {
   const store = storage || globalThis.localStorage;
-  const next = playbackOf({ playback: { ...readPlayback(store), ...patch } });
+  const next = playbackWith(readPlayback(store), patch);
   writeDevice({ playback: next }, store);
   return next;
 }

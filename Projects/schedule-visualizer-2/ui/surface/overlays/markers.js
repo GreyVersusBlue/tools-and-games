@@ -4,11 +4,17 @@
 // Where a group is comes from the crowd model's `positions` and nothing else
 // (ARCHITECTURE 6.3): positions[t] is the head's index along its path once
 // tick t has been played, −1 in the room it leaves, `slots` and above once it
-// is in the room it walks to. Nothing here walks a group; it only reads.
+// is in the room it walks to. The index goes on counting after that, one a
+// step, while the column behind the head follows it in, up to
+// `slots + length − 1` when the tail is in the room: headAt gives it as the
+// model has it, so coveredBy knows which cells the column has left. Only
+// where a point is placed (placeAt) is an index at or past `slots` the room.
+// Nothing here walks a group; it only reads.
 //
 //   trackOf(graph, route, path)    where each index of a path is on the map
 //   headAt(positions, seconds, step, slots)   -> { index, u }: the head is u
 //                                  of the way from `index` to the next index
+//                                  (`slots` is not read: nothing is clamped here)
 //   stairPoint(a, b, u)            a point along a stairs link's arc
 //   pointOn(track, index, u, map)  the head's place in pixels, or null
 //   coveredBy(track, head, length, floorId, cell)   is the column on this cell?
@@ -92,8 +98,8 @@ export function headAt(positions, seconds, step, slots) {
   const t = Math.max(0, Math.min(Number.isFinite(seconds) ? seconds : 0, last));
   const tick = Math.floor(t);
   const index = positions[tick];
-  if (index >= slots) return { index: slots, u: 0 };
-  // the tick on which the head takes the next slot
+  // the tick on which the head takes the next slot, or, once it is in the
+  // room, the tick on which the column behind it takes its next step in
   let next = tick + 1;
   while (next <= last && positions[next] === index) next += 1;
   if (next > last) return { index, u: 0 };

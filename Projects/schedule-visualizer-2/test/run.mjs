@@ -75,6 +75,7 @@ export const GROUPS = {
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
     'ui/movement.test.mjs', // SV2-17
+    'ui/playback.test.mjs', // SV2-44
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -118,6 +119,7 @@ export const GROUPS = {
     'timing/crowd.mjs', // SV2-15
     'timing/pipeline.mjs', // SV2-16
     'timing/movement.mjs', // SV2-39
+    'timing/playback.mjs', // SV2-44
   ],
 };
 
