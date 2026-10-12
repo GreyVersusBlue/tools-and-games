@@ -1049,3 +1049,129 @@ test('item 4: at 390 px a tap on a corridor cell opens its card and keeps it; a 
     assert.equal(await p.evaluate(() => document.querySelector('.mov').movement.fitted), true);
   });
 });
+
+// ---------------------------------------------------------------- item 2: the map from before a change that could not be answered
+
+// Stand in for the engine: an answer that fails, one that waits to be let go, or the real one again.
+const engine = (page, kind) => page.evaluate((which) => {
+  const derived = globalThis.sv2.store.derived;
+  if (!globalThis.sv2Kept) globalThis.sv2Kept = derived.engine;
+  const real = globalThis.sv2Kept;
+  if (which === 'fails') derived.use({ results: () => new Promise((resolve, reject) => { setTimeout(() => reject(new Error('The engine stopped')), 0); }) });
+  else if (which === 'waits') {
+    const gate = new Promise((resolve) => { globalThis.sv2LetGo = resolve; });
+    derived.use({ results: () => gate.then(() => real.results()) });
+  } else derived.use(real);
+}, kind);
+
+const renameGroup = (page, name) => page.evaluate(async (next) => {
+  const { editGroup } = await import('./engine/actions.js');
+  globalThis.sv2.store.apply(editGroup, { id: 'gsample07a', name: next });
+}, name);
+
+test('item 2: a map from before a change that could not be answered is muted under a band that says so, and the Summary says it of its figures', async () => {
+  await on('#movement', DESK, async (p) => {
+    await dismissStarted(p);
+    const look = () => p.evaluate(() => {
+      const band = document.querySelector('.mov-stale');
+      const note = document.querySelector('#inspector [data-summary="stale"]');
+      return {
+        stale: document.querySelector('.mov').dataset.stale || null,
+        band: band.getClientRects().length > 0 ? band.textContent : null,
+        plan: getComputedStyle(document.getElementById('movement-plan')).filter,
+        marks: getComputedStyle(document.querySelector('.mov-marks')).filter,
+        note: note && note.getClientRects().length > 0 ? note.textContent : null,
+        role: note ? note.getAttribute('role') : null,
+      };
+    });
+    await p.evaluate(() => document.querySelector('#inspector [role="tab"][data-tab="summary"]').click());
+    await shows(p, () => document.querySelector('#inspector [data-panel="summary"]') !== null);
+    assert.deepEqual(await look(), { stale: null, band: null, plan: 'none', marks: 'none', note: null, role: 'status' });
+
+    await engine(p, 'fails');
+    await renameGroup(p, '7A West');
+    await shows(p, () => document.querySelector('.mov').dataset.stale === 'true');
+    const stale = await look();
+    assert.equal(stale.band, 'From before your last change');
+    assert.match(stale.plan, /grayscale\(0\.85\).*opacity\(0\.6\)/, 'the picture is not muted: ' + stale.plan);
+    assert.equal(stale.marks, stale.plan, 'the marks are not muted with the map');
+    assert.equal(stale.note, 'The routes could not be worked out after your last change. Every figure here is from before it.');
+    // the band is along the top of the map, inside it, and takes no pointer from it
+    const band = await box(p, '.mov-stale');
+    const stage = await box(p, '.mov-stage');
+    assert.ok(Math.abs(band.top - stage.top) <= 1 && Math.abs(band.width - stage.width) <= 1, JSON.stringify({ band, stage }));
+    assert.equal(await p.$eval('.mov-stale', (el) => getComputedStyle(el).pointerEvents), 'none');
+    assert.equal(await text(p, '#movement-line .mov-line__words'), 'The routes could not be worked out: The engine stopped. The map and the figures are from before your last change.');
+
+    // an answer comes: the band, the muting and the line go
+    await engine(p, 'real');
+    await renameGroup(p, '7A East');
+    await drawn(p);
+    assert.deepEqual(await look(), { stale: null, band: null, plan: 'none', marks: 'none', note: null, role: 'status' });
+  });
+});
+
+// ---------------------------------------------------------------- item 3: an answer after the view has gone, and no engine at all
+
+test('item 3: an answer that arrives after the view has gone changes nothing and breaks nothing', async () => {
+  await on('#movement', DESK, async (p, session) => {
+    await engine(p, 'waits');
+    await renameGroup(p, '7A East');
+    await shows(p, () => document.querySelector('.mov').dataset.pending === 'true');
+    // the view is left with its answer still on the way
+    await p.evaluate(() => {
+      globalThis.sv2gone = document.querySelector('.mov');
+    });
+    await go(p, '#project');
+    // from here on, with the shell's own word for the new section said: what is announced
+    await p.evaluate(() => {
+      globalThis.sv2said = [];
+      globalThis.sv2watch = new MutationObserver(() => globalThis.sv2said.push(document.getElementById('announcer').textContent));
+      globalThis.sv2watch.observe(document.getElementById('announcer'), { childList: true, characterData: true, subtree: true });
+    });
+    const before = await p.evaluate(() => ({ connected: globalThis.sv2gone.isConnected, pending: globalThis.sv2gone.dataset.pending, name: globalThis.sv2gone.movement.state.project.groups.find((group) => group.id === 'gsample07a').name, drawn: globalThis.sv2gone.querySelector('#movement-plan').dataset.drawn, clear: document.getElementById('surface').style.getPropertyValue('--toast-clear') }));
+    assert.deepEqual([before.connected, before.pending, before.name, before.clear], [false, 'true', '7A', '']);
+    // now it comes
+    await p.evaluate(() => globalThis.sv2LetGo());
+    await p.evaluate(() => globalThis.sv2.store.derived.results());
+    const after = await p.evaluate(() => {
+      globalThis.sv2watch.disconnect();
+      return { pending: globalThis.sv2gone.dataset.pending, name: globalThis.sv2gone.movement.state.project.groups.find((group) => group.id === 'gsample07a').name, drawn: globalThis.sv2gone.querySelector('#movement-plan').dataset.drawn, said: globalThis.sv2said, section: document.querySelector('.surface__layout').dataset.section, clear: document.getElementById('surface').style.getPropertyValue('--toast-clear') };
+    });
+    assert.equal(after.name, '7A', 'the view that left took the answer and drew it');
+    assert.equal(after.pending, 'true', 'it was touched after it had gone');
+    assert.equal(after.drawn, before.drawn, 'it painted after it had gone');
+    assert.deepEqual(after.said, [], 'it spoke after it had gone');
+    assert.equal(after.clear, '', 'it measured its dock into another section’s surface');
+    assert.equal(after.section, 'project');
+    // back on the view: a new one, with the answer
+    await engine(p, 'real');
+    await go(p, '#movement');
+    await drawn(p);
+    assert.equal(await p.evaluate(() => document.querySelector('.mov').movement.state.project.groups.find((group) => group.id === 'gsample07a').name), '7A East');
+    assert.deepEqual(session.problems(), CLEAN);
+  });
+});
+
+test('item 3: with no engine attached the first line says the routes cannot be worked out, and nothing waits', async () => {
+  await on('#project', DESK, async (p) => {
+    await p.evaluate(() => {
+      const derived = globalThis.sv2.store.derived;
+      globalThis.sv2Kept = derived.engine;
+      derived.use(null);
+    });
+    assert.equal(await p.evaluate(() => globalThis.sv2.store.derived.engine), null, 'the engine could not be taken away: the case tests nothing');
+    await go(p, '#movement');
+    await shows(p, () => document.querySelector('.mov')?.dataset.styled === 'true' && document.querySelector('#movement-line .mov-line__words').textContent !== '');
+    assert.equal(await text(p, '#movement-line .mov-line__words'), 'The routes could not be worked out: Nothing is attached to work out the routes.');
+    assert.equal(await p.$eval('.mov', (el) => [el.dataset.pending || null, el.dataset.stale || null].join()), ',', 'nothing is awaited, and nothing older is drawn to be stale');
+    assert.equal(await p.$eval('[data-action="play"]', (el) => el.getAttribute('aria-disabled')), 'true');
+    assert.equal(await p.$eval('.mov-stale', (el) => el.hidden), true);
+    // the engine attached again: the next look at the view has its routes
+    await p.evaluate(() => globalThis.sv2.store.derived.use(globalThis.sv2Kept));
+    await go(p, '#project');
+    await go(p, '#movement');
+    await drawn(p);
+    assert.equal(await text(p, '#movement-line .mov-line__words'), 'Showing 8 groups on A Day, all transitions. No route failed.');
+  });
+});

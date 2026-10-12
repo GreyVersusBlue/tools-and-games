@@ -970,3 +970,35 @@ test('SV2-43 47g: the card’s "and N more" line has a weight to fall back on, a
     assert.equal(/h\('style'/.test(source), false, file + ' adds a stylesheet of its own');
   }
 });
+
+// ---------------------------------------------------------------- SV2-43 item 2: route health, folded
+
+test('SV2-43 item 2: two failures that one change puts right are one line of route health; failures of another slot, day or reason are lines of their own', () => {
+  const world = broken();
+  const health = routeHealth(world.project, world.results);
+  // 7A's Period 3 has no room on A Day (the walk in and the walk out), and 6B's Period 1 names a room that is not in the building on B Day
+  assert.deepEqual(health.map((failure) => [failure.groupId, failure.dayTypeId, failure.period, failure.fixPeriod]), [['gsample07a', DAY_A, 1, 2], ['gsample07a', DAY_A, 2, 2], ['gsample06b', DAY_B, 0, 0]]);
+  const folded = model.foldHealth(health);
+  assert.deepEqual(folded.map((failure) => [failure.groupId, failure.dayTypeId, failure.fixPeriod, failure.periods, failure.count]), [['gsample07a', DAY_A, 2, [1, 2], 2], ['gsample06b', DAY_B, 0, [0], 1]]);
+  // the line is the first failure's, whole: its words and its fix are what they were
+  assert.equal(failureWords(world.project, folded[0], true), failureWords(world.project, health[0], true));
+  assert.deepEqual(fixFor(world.project, folded[0]), fixFor(world.project, health[0]));
+  assert.equal(health.length, 3, 'the list handed in is left as it was');
+  // the same slot failing for two reasons is two things to put right
+  const two = [{ ...health[0] }, { ...health[1], reason: 'Room 9 is not in the building.' }];
+  assert.equal(model.foldHealth(two).length, 2);
+  // the same period of another day type, and of another group: not folded
+  assert.equal(model.foldHealth([health[0], { ...health[1], dayTypeId: DAY_B }]).length, 2);
+  assert.equal(model.foldHealth([health[0], { ...health[1], groupId: 'gsample08a' }]).length, 2);
+  // two slots side by side with no room: the walk between them fails once and is named for the slot walked into
+  const project = clone(sample.project);
+  for (const period of [2, 3]) group(project, '7A').days[DAY_A][period] = { room: null, roomText: '', label: '', teacherIds: [] };
+  const both = derive(project);
+  const list = routeHealth(project, both.results);
+  assert.equal(list.length, 3);
+  // the router names the end it could not start from: the walk between the two is the first slot's
+  assert.deepEqual(list.map((failure) => [failure.period, failure.fixPeriod, failure.route.end]), [[1, 2, 'to'], [2, 2, 'from'], [3, 3, 'from']]);
+  assert.deepEqual(model.foldHealth(list).map((failure) => [failure.fixPeriod, failure.periods]), [[2, [1, 2]], [3, [3]]]);
+  assert.equal(model.foldHealth(list).reduce((sum, failure) => sum + failure.count, 0), list.length, 'every failed route is in one line or another');
+  assert.deepEqual(model.foldHealth([]), []);
+});

@@ -27,12 +27,13 @@
 //   sentenceOf(project, picture, health)         the screen's first line, in pieces
 //   groupRows(project, results, picture)         the legend of the groups on screen
 //   routeHealth(project, results)                every failed route of every group on every day type
+//   foldHealth(health)                           the same as it is listed: one line for failures one change puts right
 //   cellCard(project, results, graph, picture, floorId, cell)   what a corridor cell's card says
 
 import { findDayType, effectiveDayType, effectiveSchedule, ownDayTypes } from '../../engine/day-types.js';
 import { bellsFor, periodName, periodLabel, formatTime } from '../../engine/bells.js';
 import { resolveSlotRoom } from '../../engine/schema.js';
-import { loads, contributors, bandOf, bandEdges } from '../../engine/load.js';
+import { loads, contributors, indexRoutes, bandOf, bandEdges } from '../../engine/load.js';
 import { describeFailure, startsAsTyped } from '../../engine/directions.js';
 import { placeAt } from '../../engine/places.js';
 import { buildLanes, BAND_EXCLUDED } from '../surface/overlays/lanes.js';
@@ -269,6 +270,8 @@ export function pictureOf(project, results, graph, input) {
 
   const routes = dayRoutes(results, dayType.id);
   if (!results || !routes || !graph) return picture;
+  // who crosses which cell, worked out with the picture and kept (engine/load.js): the first cell card is then as quick as the rest
+  indexRoutes(project, results.routes, dayType.id, graph);
 
   // the routes on screen
   const entries = [];
@@ -524,6 +527,29 @@ export function routeHealth(project, results) {
     }
   }
   return found;
+}
+
+// Route health as it is listed: failures that one change puts right are one
+// line. A slot with no room, or with a room nothing reaches, fails the walk
+// into it and the walk out of it for the one reason; the list names the slot
+// once and says how many routes it stops.
+//   [{ ...the first failure, periods: [the transitions that failed], count }]
+export function foldHealth(list) {
+  const folded = [];
+  const at = new Map();
+  for (const failure of list) {
+    const key = [failure.groupId, failure.dayTypeId, failure.fixPeriod, failure.reason].join('\u0000');
+    const kept = at.get(key);
+    if (kept) {
+      kept.periods.push(failure.period);
+      kept.count += 1;
+    } else {
+      const first = { ...failure, periods: [failure.period], count: 1 };
+      at.set(key, first);
+      folded.push(first);
+    }
+  }
+  return folded;
 }
 
 // ---------------------------------------------------------------- a cell's card

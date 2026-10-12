@@ -16,7 +16,7 @@ import { formatDuration } from '../../engine/findings.js';
 import { periodName } from '../../engine/bells.js';
 import { findDayType, ownDayTypes } from '../../engine/day-types.js';
 import { floorOfRoom } from '../../engine/schema.js';
-import { failureParts, groupRows, unitWord } from './model.js';
+import { failureParts, foldHealth, groupRows, unitWord } from './model.js';
 
 function parts(list) {
   return list.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
@@ -41,9 +41,12 @@ export function summaryPanel(env) {
   const healthTitle = h('h3', { class: 'mov-panel__sub', tabindex: '-1', id: 'movement-health' }, 'Route health');
   const healthLine = h('p', { class: 'mov-health__line', data: { summary: 'health-line' } });
   const health = h('ul', { class: 'mov-health', data: { summary: 'health' } });
+  // said while the map, and so every figure here, is the last answer after a derive that failed
+  const staleLine = h('p', { class: 'mov-panel__note mov-stale-note', role: 'status', hidden: true, data: { summary: 'stale' } },
+    'The routes could not be worked out after your last change. Every figure here is from before it.');
   const element = h('div', { class: 'mov-panel', data: { panel: 'summary' } },
     h('h2', { class: 'mov-panel__title' }, 'Summary'),
-    figures, groupsTitle, groups, healthTitle, healthLine, health);
+    staleLine, figures, groupsTitle, groups, healthTitle, healthLine, health);
 
   function figure(key, name, value, more) {
     return h('div', { class: 'mov-figure', data: { figure: key } },
@@ -113,11 +116,14 @@ export function summaryPanel(env) {
       return;
     }
     healthLine.textContent = count(list.length, 'route') + ' failed, of every group on ' + (days === 1 ? 'the one day type' : 'all ' + days + ' day types') + '. Each is a transition nobody can be drawn walking.';
-    health.replaceChildren(...list.map((failure) => {
+    // the routes are counted above; the list is what there is to put right, each thing once
+    health.replaceChildren(...foldHealth(list).map((failure) => {
       const fix = fixFor(project, failure);
       const dayType = findDayType(project, failure.dayTypeId);
-      return h('li', { class: 'mov-health__item', data: { group: failure.groupId, day: failure.dayTypeId, period: String(failure.period), reason: failure.route.reason } },
+      const fixed = periodName(project.settings, failure.fixPeriod);
+      return h('li', { class: 'mov-health__item', data: { group: failure.groupId, day: failure.dayTypeId, period: String(failure.period), periods: failure.periods.join(' '), count: String(failure.count), reason: failure.route.reason } },
         h('p', { class: 'mov-health__text' }, parts(failureParts(project, failure, Boolean(dayType))), '.'),
+        failure.count > 1 ? h('p', { class: 'mov-health__both' }, count(failure.count, 'route') + ' fail for this: the walk into ' + fixed + ' and the walk out of it.') : null,
         h('button', { type: 'button', class: 'mov-link', data: { action: 'fix' }, on: { click: () => env.fix(fix) } }, fix.label));
     }));
   }
@@ -125,6 +131,7 @@ export function summaryPanel(env) {
   return {
     element,
     update(state) {
+      staleLine.hidden = state.stale !== true;
       drawFigures(state.project, state.picture);
       drawGroups(state.project, state.results, state.picture);
       drawHealth(state.project, state.health);

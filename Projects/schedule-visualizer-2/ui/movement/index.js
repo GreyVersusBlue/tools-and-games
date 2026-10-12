@@ -42,9 +42,10 @@
 //            layer                        the marks' canvas
 //            card                         the cell card (card.extra is playback's place in it)
 //            fix(where) }                 follow a "fix it" link of route health
-//   state  { project, results, graph, picture, health }: the project the
-//          results are for, the results (null until the first answer),
-//          buildGraph's graph, model.js's picture and routeHealth's list
+//   state  { project, results, graph, picture, health, stale }: the project
+//          the results are for, the results (null until the first answer),
+//          buildGraph's graph, model.js's picture, routeHealth's list, and
+//          whether all of it is from before a change whose answer failed
 //
 // The view on screen is at document.querySelector('.mov').movement, for the
 // tests and for the console.
@@ -267,7 +268,9 @@ export const section = {
       },
     });
     const bar = playbackBar(env);
-    const stage = h('div', { class: 'mov-stage' }, canvas, layer, h('p', { class: 'vh', id: 'movement-keys' }, KEYS), key.element, card.element, zoomBox);
+    // over the map while it is the last answer after a derive that failed: the picture is muted under it (movement.css)
+    const staleBand = h('p', { class: 'mov-stale', hidden: true, data: { part: 'stale' } }, 'From before your last change');
+    const stage = h('div', { class: 'mov-stage' }, canvas, layer, staleBand, h('p', { class: 'vh', id: 'movement-keys' }, KEYS), key.element, card.element, zoomBox);
     const headline = h('h1', { class: 'vh' }, HEADLINE);
     const map = h('div', { class: 'mov-map' }, headline, top.element, stage, key.line, bar.element);
     const empty = h('div', { class: 'mov-empty stub', hidden: true });
@@ -404,9 +407,10 @@ export const section = {
       picture = pictureOf(shown, standing.results, graph, choice);
       const health = routeHealth(shown, standing.results);
       const sentence = standing.failed ? failedSentence(standing) : sentenceOf(shown, picture, health);
-      state = { project: shown, results: standing.results, graph, picture, health };
+      state = { project: shown, results: standing.results, graph, picture, health, stale: standing.stale };
       if (standing.stale) element.dataset.stale = 'true';
       else delete element.dataset.stale;
+      staleBand.hidden = !standing.stale;
       lineColours.clear();
       element.dataset.mode = picture.mode;
       element.dataset.groups = String(picture.groups.length);

@@ -313,6 +313,51 @@
   outline-offset: calc(var(--focus-width) * -1);
 }
 
+/* The map as the last answer after a derive that failed (.mov[data-stale]):
+   the picture is muted, and a band along its top says what it is. The first
+   line of the screen says why, in words. */
+.mov[data-stale="true"] .mov-plan,
+.mov[data-stale="true"] .mov-marks {
+  filter: grayscale(0.85) opacity(0.6);
+}
+
+.mov-stale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  margin: 0;
+  padding: var(--s-1) var(--s-4);
+  background: var(--card);
+  border-bottom: 3px solid var(--warning);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-semibold);
+  pointer-events: none;
+}
+
+.mov-stale[hidden] {
+  display: none;
+}
+
+.mov-stale-note {
+  padding-left: var(--s-3);
+  border-left: 3px solid var(--warning);
+  color: var(--ink);
+}
+
+.mov-stale-note[hidden] {
+  display: none;
+}
+
+.mov-health__both {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
 /* ---------- The legend ---------- */
 
 .mov-legend {

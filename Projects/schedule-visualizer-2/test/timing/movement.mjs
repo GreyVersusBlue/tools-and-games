@@ -10,13 +10,13 @@
 //   one tick of the hotspot pulse (createPulse's frame, drawn by
 //   pulseFrame): budget 16 ms, a frame of the screen (SV2-47)
 //
-// The card's budget is held on the median of 200 corridor cells, not on the
-// first card of the process. The first one is printed and not asserted: it
-// measures 11 to 12 ms here against 3 ms for every card after it, because
-// contributors() in engine/load.js has not run before on this thread (in the
-// page the loads come from the worker, so the first hover is as cold as
-// this). A page pays that once. The card of the busiest cell, once warm, is
-// asserted too, since it is the cell most groups cross.
+// The card's budget is held on the first card of the process, on the median
+// of 200 corridor cells after it, and on the card of the busiest cell again.
+// The first card used to cost 11 to 27 ms against 3 ms for every card after
+// it, because contributors() in engine/load.js walked every route of the day
+// for one cell; it now reads an index of routes by node that the picture
+// works out as it is made (indexRoutes, inside pictureOf's own budget), so
+// the first card is a card like any other.
 //
 // The pulse's tick is measured with a context that counts what it is asked
 // to draw, since painting needs a browser. What that holds is the shape of
@@ -91,7 +91,7 @@ test('the movement picture of the big fixture, every group over the whole day: u
   let points = 0;
   for (const list of picture.lanes.floors.values()) for (const lane of list) points += lane.points.length / 2;
   console.log('# movement picture, cold: ' + cold.ms.toFixed(1) + ' ms (budget ' + PICTURE_BUDGET + ', fails at ' + PICTURE_BUDGET * SLACK + '): ' + picture.drawn + ' routes of ' + picture.groups.length + ' groups on ' + picture.floors.length + ' floors, ' + points + ' lane points, the fullest stretch ' + picture.lanes.most + ' lanes');
-  console.log('# movement picture, again: ' + warm.ms.toFixed(1) + ' ms; of that buildLanes alone: ' + lanes.ms.toFixed(1) + ' ms; four chosen groups (their load counted again): ' + some.ms.toFixed(1) + ' ms');
+  console.log('# movement picture, again: ' + warm.ms.toFixed(1) + ' ms; buildLanes timed by itself on the same routes: ' + lanes.ms.toFixed(1) + ' ms; four chosen groups (their load counted again): ' + some.ms.toFixed(1) + ' ms');
 
   assert.equal(picture.groups.length, BIG.groups);
   assert.equal(picture.floors.length, BIG.floors);
@@ -106,7 +106,7 @@ test('the movement picture of the big fixture, every group over the whole day: u
   assert.ok(some.ms < PICTURE_BUDGET * SLACK, 'the picture of four groups took ' + some.ms.toFixed(1) + ' ms, over ' + PICTURE_BUDGET * SLACK);
 });
 
-test('the card of one corridor cell of the big fixture: under 5 ms once the first has been shown', () => {
+test('the card of one corridor cell of the big fixture: under 5 ms, the first card of the page among them', () => {
   const project = bigProject({ seed: 1 });
   const { graph, results } = answered(project);
   const picture = pictureOf(project, results, graph, defaultChoice(project));
@@ -123,7 +123,7 @@ test('the card of one corridor cell of the big fixture: under 5 ms once the firs
   const worst = each[each.length - 1];
   const again = timed(() => cellCard(project, results, graph, picture, floorId, cell));
   console.log('# cell card, ' + cells.length + ' corridor cells: median ' + median.toFixed(2) + ' ms (budget ' + CARD_BUDGET + ', fails at ' + CARD_BUDGET * SLACK + '), worst ' + worst.toFixed(2) + ' ms');
-  console.log('# cell card, the busiest cell: ' + again.ms.toFixed(2) + ' ms; the first card of the process, not asserted: ' + cold.ms.toFixed(2) + ' ms; ' + cold.value.groups.length + ' groups cross it, ' + cold.value.load + ' ' + cold.value.unit);
+  console.log('# cell card, the busiest cell: ' + again.ms.toFixed(2) + ' ms; the first card of the process: ' + cold.ms.toFixed(2) + ' ms (budget ' + CARD_BUDGET + ', fails at ' + CARD_BUDGET * SLACK + '); ' + cold.value.groups.length + ' groups cross it, ' + cold.value.load + ' ' + cold.value.unit);
 
   assert.equal(cold.value.load, picture.load.max);
   assert.ok(cold.value.groups.length > 10, 'the cell is really crossed: ' + cold.value.groups.length + ' groups');
@@ -131,6 +131,7 @@ test('the card of one corridor cell of the big fixture: under 5 ms once the firs
   assert.deepEqual(again.value, cold.value, 'the second card of a cell says what the first did');
   assert.ok(median < CARD_BUDGET * SLACK, 'a card takes ' + median.toFixed(2) + ' ms at the median, over ' + CARD_BUDGET * SLACK);
   assert.ok(again.ms < CARD_BUDGET * SLACK, 'the card of the busiest cell took ' + again.ms.toFixed(2) + ' ms, over ' + CARD_BUDGET * SLACK);
+  assert.ok(cold.ms < CARD_BUDGET * SLACK, 'the first card of the process took ' + cold.ms.toFixed(2) + ' ms, over ' + CARD_BUDGET * SLACK);
 });
 
 test('one tick of the hotspot pulse on the big fixture: under 16 ms, and it draws the rings alone', () => {

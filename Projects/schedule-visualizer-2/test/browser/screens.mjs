@@ -560,13 +560,66 @@ export const SCREENS = [
     hash: '#movement',
     open: async (page) => {
       await movementDrawn(page);
+      // the import in one turn and the change in the next: one evaluate that
+      // awaited the import and then changed the store had its promise
+      // collected under it now and then ("Promise was collected")
       await page.evaluate(async () => {
-        const { setSlot } = await import(new URL('engine/actions.js', location.href).href);
-        globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 2, slot: { room: null } });
+        globalThis.sv2actions = await import(new URL('engine/actions.js', location.href).href);
+      });
+      await page.evaluate(() => {
+        globalThis.sv2.store.apply(globalThis.sv2actions.setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 2, slot: { room: null } });
       });
       await page.click('#inspector [role="tab"][data-tab="summary"]');
       await page.waitForSelector('#inspector [data-summary="health"] li');
       await movementDrawn(page);
+    },
+  },
+  { // SV2-43: the controls folded away behind Change, and the playback bar's More open
+    id: 'movement-controls-folded',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.evaluate(() => {
+        if (document.querySelector('.mov-top').dataset.folded !== 'true') document.querySelector('[data-action="change"]').click();
+        document.querySelector('[data-action="more"]').click();
+        // the choice is this screen's alone: the screens after it open as a new device does
+        const device = JSON.parse(localStorage.getItem('sv2:device') || '{}');
+        delete device.movement;
+        localStorage.setItem('sv2:device', JSON.stringify(device));
+      });
+      await page.waitForFunction(() => document.querySelector('.mov-top').dataset.folded === 'true' && !document.querySelector('[data-part="more"]').hidden);
+      await movementDrawn(page);
+    },
+  },
+  { // SV2-43: the floors stacked; where the legend's card would cover a floor it is one line, and Scale brings the card out
+    id: 'movement-legend-docked',
+    hash: '#movement',
+    open: async (page) => {
+      await movementShowing({ floors: 'stacked' })(page);
+      await page.evaluate(() => {
+        if (document.querySelector('.mov-legend').dataset.docked === 'true') document.querySelector('[data-action="scale"]').click();
+      });
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('.mov-legend')).visibility === 'visible');
+    },
+  },
+  { // SV2-43: the last answer after a derive that failed: the muted map, its band, and the Summary's line
+    id: 'movement-stale',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.evaluate(async () => {
+        globalThis.sv2actions = await import(new URL('engine/actions.js', location.href).href);
+        globalThis.sv2.store.derived.use({ results: () => new Promise((resolve, reject) => { setTimeout(() => reject(new Error('The engine stopped')), 0); }) });
+      });
+      await page.evaluate(() => {
+        globalThis.sv2.store.apply(globalThis.sv2actions.editGroup, { id: 'gsample07a', name: '7A West' });
+      });
+      await page.waitForFunction(() => document.querySelector('.mov').dataset.stale === 'true');
+      await page.click('#inspector [role="tab"][data-tab="summary"]');
+      await page.waitForFunction(() => {
+        const note = document.querySelector('#inspector [data-summary="stale"]');
+        return note !== null && !note.hidden;
+      });
     },
   },
   { // SV2-17: a tab of the inspector that another unit fills

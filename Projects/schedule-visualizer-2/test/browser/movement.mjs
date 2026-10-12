@@ -519,10 +519,11 @@ test('route health lists a failed route by name with why, and its link opens the
   assert.equal(await text('#inspector [data-summary="health-line"]'), '2 routes failed, of every group on all 2 day types. Each is a transition nobody can be drawn walking.');
   const items = await page.$$eval('#inspector [data-summary="health"] li', (all) => all.map((li) => [li.dataset.group, li.dataset.day, li.dataset.period, li.dataset.reason, li.querySelector('.mov-health__text').textContent, li.querySelector('button').textContent]));
   assert.deepEqual(items, [
-    // the walk into Period 3 and the walk out of it: both name the period with no room (SV2-39 item 1)
+    // the walk into Period 3 and the walk out of it both name the period with no room (SV2-39 item 1):
+    // one thing to put right, so one line, which says it stops two routes (SV2-43 item 2)
     ['gsample07a', 'dsample00a', '1', 'no-room', '7A, Period 3 on A Day, no room is set for this period.', 'Fix it in the schedule'],
-    ['gsample07a', 'dsample00a', '2', 'no-room', '7A, Period 3 on A Day, no room is set for this period.', 'Fix it in the schedule'],
   ]);
+  assert.deepEqual(await page.$$eval('#inspector [data-summary="health"] li', (all) => all.map((li) => [li.dataset.count, li.dataset.periods, li.querySelector('.mov-health__both').textContent])), [['2', '1 2', '2 routes fail for this: the walk into Period 3 and the walk out of it.']]);
   assert.equal(await text('#inspector [data-summary="groups"] tr[data-group="gsample07a"] .mov-groups__failed'), '2 failed routes');
   // B Day shows no failure of its own, and says where the others are
   await page.select('[data-control="day"]', 'dsample00b');
