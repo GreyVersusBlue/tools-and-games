@@ -25,7 +25,8 @@
 // After it, two more pages play the first ten minutes of a hard-against-hard
 // match each (about a minute of wall clock a page) for the three rules that keep
 // a hard laner alive, and the first then stages a Grimmaw attempt for the count of attempts really made.
-// THRONESHARD_ONLY=hard runs those two alone.
+// THRONESHARD_ONLY=hard runs those two alone. THRONESHARD_ONLY=effects stops after the menu page's checks, which
+// take in Piercing Gale's corkscrew and the rune auras' bands (about 40 s).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,7 +40,8 @@ const PORT = 8171; // see Tools/board-check/README.md for the ports already in u
 const BASE = `http://127.0.0.1:${PORT}`;
 const PAGE_URL = '/Projects/throneshard/';
 const HERO = 'tobren';
-const ONLY_HARD = process.env.THRONESHARD_ONLY === 'hard'; // skip the whole match and run the two ten-minute hard ones
+const ONLY_FX = process.env.THRONESHARD_ONLY === 'effects'; // boot and the effect checks, no match at all
+const ONLY_HARD = ONLY_FX || process.env.THRONESHARD_ONLY === 'hard'; // skip the whole match and run the two ten-minute hard ones
 const ALLY = 'ormund';
 const SEED = 7;
 const CAP_MINUTES = 70;
@@ -74,6 +76,56 @@ try {
   const title = await page.title();
   ok(title === 'Throneshard', 'the page is titled Throneshard', JSON.stringify(title));
   await page.screenshot({ path: path.join(OUT, '1-menu.png') });
+
+  // Piercing Gale's corkscrew and the rune auras' bands, as the effect modules build them (no match needed, and
+  // nothing here is a picture: test what was chosen, where it sits and that it never outgrows the arrow).
+  if (booted) {
+    console.log('\neffects');
+    const fxr = await page.evaluate(async () => {
+      const g = window.game, vfx = g.vfx;
+      const { GALE_HELIX: H } = await import('./src/vfx/effects/projectiles.js');
+      const { RUNE_BAND: B } = await import('./src/vfx/effects/runes.js');
+      const def = g.abilities.getAbilityDef('liora_piercing_gale');
+      const vis = vfx.createProjectile('piercing_gale', {});
+      const helix = vis.object.children.find((c) => c.userData.galeHelix);
+      const out = { H, B, radius: def.radius, strands: helix?.children.filter((c) => c.isMesh).length ?? 0 };
+      if (helix) {
+        // widest point of the drawn tube, off the flight line, from the vertices themselves
+        const pos = helix.children[0].geometry.attributes.position; let far = 0, back = 0;
+        for (let i = 0; i < pos.count; i++) { far = Math.max(far, Math.hypot(pos.getX(i), pos.getY(i))); back = Math.min(back, pos.getZ(i)); }
+        out.far = far; out.back = -back;
+        vis.object.position.set(0, 1, 0); vis.update(1 / 60); out.z0 = helix.scale.z;
+        vis.object.position.set(0, 1, 3); vis.update(1 / 60); out.z3 = helix.scale.z;
+        vis.object.position.set(0, 1, 40); vis.update(1 / 60); out.z40 = helix.scale.z;
+      }
+      vis.dispose();
+      // a hero wading the river, where the boon runes are picked up: the bed is under the water there
+      const P = g.player?.hero?.position?.constructor ?? vfx.root.position.constructor;
+      let spot = null;
+      for (let d = -60; d <= 60 && !spot; d += 2) if (g.world.getHeight(d, d) < g.world.waterLevel - 0.3) spot = d;
+      out.spot = spot; out.water = g.world.waterLevel; out.bed = spot === null ? null : g.world.getHeight(spot, spot);
+      out.auras = [];
+      for (const name of ['rune_haste', 'rune_double_damage', 'rune_regeneration', 'rune_arcane']) {
+        const pos = new P(spot ?? 0, 0, spot ?? 0);
+        const unit = { alive: true, kind: 'hero', position: pos, object: { visible: true, parent: {}, position: new P(pos.x, out.bed ?? 0, pos.z) } };
+        const fx = vfx.attachToUnit(unit, name);
+        const meshes = []; for (const o of fx?.objects ?? []) o.traverse?.((c) => { if (c.isMesh) meshes.push(c); });
+        const rim = meshes.find((m) => m.userData.runeBand === 'rim'), under = meshes.find((m) => m.userData.runeBand === 'under');
+        out.auras.push({ name, meshes: meshes.length, rim: rim ? rim.scale.x / 2 : null, under: under ? under.scale.x / 2 : null, rimY: rim?.position.y ?? null, lowest: meshes.length ? Math.min(...meshes.map((m) => m.position.y)) : null, additive: rim?.material.blending === 2, darkUnder: under ? under.material.color.getHex() : null });
+        if (fx) fx.dead = true;
+      }
+      return out;
+    });
+    const H = fxr.H, B = fxr.B;
+    ok(fxr.strands === 2 && H.strands === 2 && H.r === 1.1 && H.length === 9 && H.turns === 3 && Math.abs(fxr.far - (H.r + H.tube)) < 0.01 && Math.abs(fxr.back - (0.5 + H.length + H.tube)) < 0.01,
+      "Piercing Gale's arrow carries a corkscrew of two strands, 1.1 wide at the tail and 9 long", `${fxr.strands} strands, ${fxr.far?.toFixed(2)} off the line, ${fxr.back?.toFixed(2)} back`);
+    ok(fxr.far < fxr.radius, 'the corkscrew stays inside the half-width the arrow hits', `${fxr.far?.toFixed(2)} drawn, ${fxr.radius} hit`);
+    ok(fxr.z0 < 0.01 && fxr.z3 > 0.25 && fxr.z3 < 0.4 && fxr.z40 === 1, 'it is drawn out with the distance flown, not behind the archer at release', `${fxr.z0}, ${fxr.z3?.toFixed(2)}, ${fxr.z40}`);
+    const bad = fxr.auras.filter((a) => !(a.rim === B.radius && B.radius === 1.55 && a.under > a.rim && a.under === B.under && a.additive && a.darkUnder < 0x303030));
+    ok(fxr.auras.length === 4 && !bad.length, 'each of the four lasting rune auras stands on a rim 1.55 out with a dark rim outside it', bad.map((a) => `${a.name}: rim ${a.rim}, under ${a.under}`).join('; '));
+    const sunk = fxr.auras.filter((a) => !(a.lowest > fxr.water));
+    ok(fxr.spot !== null && fxr.bed < fxr.water - 0.3 && !sunk.length, 'on a hero wading the river every ground piece of an aura lies on the water, not on the bed', `bed ${fxr.bed?.toFixed(2)}, water ${fxr.water}; ${sunk.map((a) => `${a.name} at ${a.lowest?.toFixed(2)}`).join('; ')}`);
+  }
 
   if (booted && !ONLY_HARD) {
     console.log('\nstart');
@@ -256,7 +308,7 @@ try {
   // two ranged heroes died 3.1 times in ten minutes, its partner dead, going home or not back in 60 of 75 deaths.
   // doLane's destination is read from its debug line again, and tryLastHit is wrapped for the creep it picks.
   // Last hits are printed and not checked, because one seed's mean runs from 9 to 21.
-  for (const [seed, lu] of [
+  for (const [seed, lu] of ONLY_FX ? [] : [
     [1, { heroId: 'kenshar', allies: ['brakka', 'aldric', 'isolde', 'vashkar'], enemies: ['sable', 'gorrow', 'pell', 'morvane', 'thalor'] }],
     [2, { heroId: 'sable', allies: ['gorrow', 'kenshar', 'morvane', 'thalor'], enemies: ['brakka', 'aldric', 'vesna', 'sera', 'isolde'] }],
   ]) {

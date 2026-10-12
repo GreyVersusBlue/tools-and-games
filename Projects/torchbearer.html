@@ -344,6 +344,8 @@ input[type=text].name-input:focus{outline:none;border-color:var(--brass)}
 .cell.hl-target{background:rgba(165,64,45,.3);cursor:crosshair;box-shadow:inset 0 0 0 1px rgba(208,106,80,.6)}
 .cell.hl-target:hover{background:rgba(165,64,45,.55)}
 .cell.hl-aoe{background:rgba(199,154,75,.3);box-shadow:inset 0 0 0 1px rgba(232,194,112,.55)}
+.cell.hl-aoe:hover{cursor:crosshair}
+#grid .cell.hl-hit{background:rgba(214,96,52,.5);box-shadow:inset 0 0 0 2px rgba(255,190,120,.9)}
 .token{
   position:absolute;width:40px;height:40px;margin:3px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
@@ -2056,6 +2058,21 @@ const Combat = Object.assign(newCombat(), {
     this.paintHighlights();
     g.querySelectorAll(".cell").forEach(el=>{ el.onclick=()=>this.cellClick(+el.dataset.x,+el.dataset.y); });
     g.querySelectorAll(".token").forEach(el=>{ el.onclick=(ev)=>{ ev.stopPropagation(); const cb=this.cbs.find(c=>c.id===el.dataset.cb); this.tokenClick(cb); }; });
+    // An armed area shows what it will cover before the click: the squares
+    // under the pointer's aim, from the list the engine hits (#951).
+    g.onmouseover=ev=>{
+      const el=ev.target.closest&&ev.target.closest(".cell, .token"); if(!el) return;
+      const t=el.dataset.cb? this.cbs.find(c=>c.id===el.dataset.cb) : {x:+el.dataset.x,y:+el.dataset.y};
+      if(t) this.paintPreview(t.x,t.y);
+    };
+    g.onmouseleave=()=>this.paintPreview(-1,-1);
+  },
+  paintPreview(x,y){
+    const g=document.getElementById("grid"); if(!g) return;
+    g.querySelectorAll(".cell.hl-hit").forEach(el=>el.classList.remove("hl-hit"));
+    const cb=this.cur(); if(!this.armed||!cb||cb.side!=="pc") return;
+    this.previewCells(cb,this.armed,x,y).forEach(p=>{
+      const el=g.querySelector(`.cell[data-x="${p.x}"][data-y="${p.y}"]`); if(el) el.classList.add("hl-hit"); });
   },
   paintHighlights(){
     const g=document.getElementById("grid"); if(!g||!this.armed) return;

@@ -178,6 +178,29 @@ Resolution model — exactly **one** of these per spell:
 
 Areas: `"area": {"shape":"burst","radius":20}` (pick a point) · `{"shape":"cone","length":15}` / `{"shape":"line","length":30}` (pick a direction) · `{"shape":"emanation","radius":10}` (centered on caster, hits enemies only). **Every area stops at a wall**: a cone and an emanation reach the creatures the caster has a clear line to, a burst the creatures its centre has one to, and a line ends at the first wall square. A burst's point, and a cone's or line's direction, can be put only on a square the caster has a clear line to. A monster power's `radius` is held to the same rule, so a hero behind a `walls` square is not counted toward its two and takes nothing from it.
 
+**A cone is a quarter circle, and it is the tabletop's.** The rule, in words: a cone spreads from the caster in a quarter circle; aimed straight (north, east, south, west) its first square shares an edge with the caster's square, aimed on a diagonal its first square touches the caster's corner, and the caster's own square is never in it. Its length is counted the way the tabletop counts any distance on a grid, 5 feet a straight step and 5 then 10 for diagonal steps, so the far corners are rounded off. That gives these templates (`coneCells` in `js/combat.js` is the one copy; `C` is the caster, east and south-east drawn, the other six aims are these turned):
+
+```
+15 feet, straight      15 feet, diagonal      30 feet, straight      30 feet, diagonal
+                                              . . . . X X .          C . . . . . .
+. . X X                C . . .                . . . X X X .          . X X X X X X
+C X X X                . X X X                . . X X X X X          . X X X X X .
+. . X X                . X X .                C X X X X X X          . X X X X X .
+                       . X . .                . . X X X X X          . X X X X . .
+                                              . . . X X X .          . X X X . . .
+                                              . . . . X X .          . X . . . . .
+```
+
+| Length (feet) | Straight: squares | by column out from the caster | Diagonal: squares | by column out from the caster |
+| --- | --- | --- | --- | --- |
+| 15 | 7 | 1, 3, 3 | 6 | 3, 2, 1 |
+| 30 | 26 | 1, 3, 5, 7, 7, 3 | 24 | 6, 5, 5, 4, 3, 1 |
+| 60 | 100 | 1, 3, 5, 7, 9, 11, 13, 15, 15, 11, 7, 3 | 96 | 12, 11, 11, 10, 10, 9, 9, 8, 7, 5, 3, 1 |
+
+Core ships one cone, Breathe Fire at 15 feet; 30 and 60 are there for a pack that writes one, and any multiple of 5 works. The player aims by clicking any lit square: the click names the nearest of the eight aims (a square two across and one down is the diagonal, three across and one down is straight; no square sits exactly between two), and the caster's own square names none. While a cone, line or burst is armed the board lights, under the pointer, exactly the squares the click would cover, walls already taken out. The grid has no keyboard aiming.
+
+**A line runs its full length** from the caster through the clicked square and on, to `length` feet or the first wall or the map's edge: a click two squares away and a click six away on one bearing are the same line. Off the eight straight bearings it is the stepped walk a ruler would give (two across and one down goes `1,0  2,1  3,1  4,2  5,2  6,3`). A line's length is counted as the engine counts every range and reach, one square a step on any bearing, so a 30-foot line is six squares on a diagonal as well; the 5-10-5 count is the cone template's alone.
+
 `rankEffects` keys are castable ranks; the engine uses the **highest key ≤ the rank being cast**, so a rank-1 spell with entries at `"1"` and `"2"` heightens automatically when cast from a rank-2 slot. Cantrips (`"rank": 0`) should define `"1"` and `"2"`. Damage/heal numbers should follow Paizo's curves (cantrips ≈ 2 dice at rank 1, +1 die per rank; 2-action heal `1d8+8`/rank).
 
 **Focus spells:** add `"focus": true` (costs 1 focus point). **Hexes:** additionally `"hex": true` — free to cast, limited to one per turn.
