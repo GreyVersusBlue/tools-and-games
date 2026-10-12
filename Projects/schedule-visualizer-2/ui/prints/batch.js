@@ -42,6 +42,8 @@ import { esc, frame, paperOf, printDate, schoolName } from './document.js';
 
 export const UPRIGHT_SENTENCE = 'Door signs are upright sheets: they print in portrait.';
 export const UPRIGHT_COVER = 'Landscape is chosen for this project. Door signs are upright sheets, so these print in portrait.';
+// landscape came with the request and the project is set to portrait
+export const UPRIGHT_ASKED = 'Landscape was asked for. Door signs are upright sheets, so these print in portrait.';
 
 export const id = 'batch';
 export const name = 'Batch printing';
@@ -174,8 +176,10 @@ export function render(project, derived, options) {
   // a door sign is never laid on its side: not when landscape is asked for,
   // and the cover says so whenever landscape is what the project is set to
   // (the preview sheet asks for portrait itself, and the reader still chose
-  // landscape somewhere)
-  const turned = doors && (asked.orientation === 'landscape' || paperOf(project, null).orientation === 'landscape');
+  // landscape somewhere). The cover names where landscape came from: the
+  // project's setting, or, with the project set to portrait, the request.
+  const chosen = paperOf(project, null).orientation === 'landscape';
+  const turned = doors && (asked.orientation === 'landscape' || chosen);
   const opts = turned ? { ...given, paper: { ...asked, orientation: 'portrait' } } : given;
   const school = publishedSchool(project, opts.now);
   let what;
@@ -185,7 +189,7 @@ export function render(project, derived, options) {
     what = opts.day === true ? 'Door signs with each room’s day' : 'Door signs';
     body = [cover(rooms.length === 0
       ? 'There are no rooms in the building yet, so there is no sign to print.'
-      : (rooms.length === 1 ? 'One door sign follows' : rooms.length + ' door signs follow, one sheet each') + ', in the order of the building’s floors.' + (turned ? ' ' + UPRIGHT_COVER : ''),
+      : (rooms.length === 1 ? 'One door sign follows' : rooms.length + ' door signs follow, one sheet each') + ', in the order of the building’s floors.' + (turned ? ' ' + (chosen ? UPRIGHT_COVER : UPRIGHT_ASKED) : ''),
     rooms.map((room) => {
       const floor = school.floorOfRoom(room.id);
       return { name: school.roomName(room, true), detail: floor ? floor.name : '' };
@@ -201,7 +205,8 @@ export function render(project, derived, options) {
       return { name: teacher.name, detail: subject ? subject.name : '' };
     }))].concat(teachers.map((teacher) => teacherSheet(project, school, teacher, opts)));
   }
-  return frame(project, { output: doors ? (opts.day === true ? 'door-signs-day' : 'door-signs') : 'teacher-schedules', what, pages: [{ body: body.join('\n') }], options: opts });
+  // no closing line after the last sheet: a sign's sheet is the paper's height, and the line was one sheet more (document.js)
+  return frame(project, { output: doors ? (opts.day === true ? 'door-signs-day' : 'door-signs') : 'teacher-schedules', what, pages: [{ body: body.join('\n') }], foot: false, options: opts });
 }
 
 // How many sheets a batch is, the cover not counted: for the words beside

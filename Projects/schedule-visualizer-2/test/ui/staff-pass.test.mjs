@@ -20,7 +20,7 @@ import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
 import { noteCountOf } from '../../staff/notes.js';
-import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
+import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
 import { readTool } from '../publish/reader.mjs';
 
@@ -102,6 +102,40 @@ test('"forget the kept key" travels with the one copy it is for: beside the data
   data = { n: 2 };
   feed.send();
   assert.deepEqual(got, [[{ n: 1 }, { forget: true }], [{ n: 2 }, { forget: false }]]);
+});
+
+// SV2-49 item 6
+test('a frame given another address holds a page that has not asked: nothing is sent to it, nothing is asked of the planner, and the flag waits for the page that asks', () => {
+  const { top, inner, frame } = pair();
+  frame.src = 'blob:first';
+  const got = [];
+  let data = null;
+  let flags = { forget: true };
+  let datas = 0;
+  let asked = 0;
+  const feed = feedPreview(top, frame, () => {
+    datas += 1;
+    return data;
+  }, () => {
+    asked += 1;
+    const now = flags;
+    flags = null;
+    return now;
+  });
+  watchPreview(inner, (value, with_) => got.push([value, with_]));
+  assert.equal(datas, 1, 'the first page asked, and there was nothing to give it');
+  // "Try again": the frame is given a new page, and a change lands before that page has asked
+  frame.src = 'blob:second';
+  data = { n: 1 };
+  assert.equal(feed.send(), false, 'the page that is going away is sent nothing');
+  assert.equal(datas, 1, 'the planner is not asked for data on its account, so it never counts the old page as live');
+  assert.equal(asked, 0, 'and "forget the kept key" is not used up');
+  assert.deepEqual(got, []);
+  // the new page asks
+  inner.parent.postMessage({ type: PREVIEW_READY });
+  assert.deepEqual(got, [[{ n: 1 }, { forget: true }]]);
+  assert.equal(feed.send(), true, 'and from then on a change is sent');
+  assert.equal(got.length, 2);
 });
 
 test('a feed with no flags sends the data alone, as before', () => {
@@ -281,7 +315,14 @@ test('sheets are counted from what is on paper: the gap, the dashed line and the
   assert.equal(sheetsOf([0, 952], [], printable), 2);
   // nothing on a stretch is still the sheet it starts
   assert.equal(sheetsOf([0, 0], [], printable), 1);
-  assert.equal(sheetsOf([0, 20, 40], [{ before: 38, inside: 24 }], printable), 2);
+  // SV2-49 item 9: a page that opens on a new sheet is that sheet, with no blank one counted ahead of it
+  assert.equal(sheetsOf([0, mark.before, mark.before + mark.inside + 900], [mark], printable), 1, 'nothing stands before the first new sheet');
+  assert.equal(sheetsOf([0, 20, 40], [mark], printable), 1, 'nor when the screen\'s gap is all there is before it');
+  assert.equal(sheetsOf([0, 0, 24 + 900, 24 + 900 + 38 + 24 + 900], [{ before: 0, inside: 24 }, mark], printable), 2, 'two sheets from the top, and two counted');
+  // a line of real paper before the first new sheet is a sheet, as a cover is
+  assert.equal(sheetsOf([0, mark.before + 12, mark.before + 12 + mark.inside + 900], [mark], printable), 2);
+  // and only the first stretch is ever left out: an empty sheet later in the page is still a sheet
+  assert.equal(sheetsOf([0, 300 + 38, 300 + 38 + 24 + 38, 300 + 38 + 24 + 38 + 24 + 900], [mark, mark], printable), 3);
 });
 
 // ---------------------------------------------------------------- door signs are upright (item 2)
@@ -294,18 +335,25 @@ test('a door sign is never laid on its side: asked for landscape the batch is po
       const turned = renderBatch(project, null, { batch: 'doors', day, now: clock(), paper: { size, orientation: 'landscape' } }).html;
       assert.ok(turned.includes('data-paper="' + size + '" data-orientation="portrait"'), size + ': the root');
       assert.ok(turned.includes('<style id="page-size">@page { size: ' + rule + ' portrait; }</style>'), size + ': the page rule');
-      assert.ok(turned.includes(UPRIGHT_COVER), size + ': the cover says why');
+      // SV2-49 item 9: this project is set to portrait, so the cover does not say the project chose landscape
+      assert.ok(turned.includes(UPRIGHT_ASKED), size + ': the cover says why');
+      assert.ok(!turned.includes('chosen for this project'), size + ': and blames nothing on the project\'s setting');
       const upright = renderBatch(project, null, { batch: 'doors', day, now: clock(), paper: { size, orientation: 'portrait' } }).html;
-      assert.ok(!upright.includes(UPRIGHT_COVER), 'asked for portrait there is nothing to say');
-      assert.equal(turned.replace(' ' + UPRIGHT_COVER, ''), upright, size + ': but for that sentence it is the portrait document');
+      assert.ok(!upright.includes(UPRIGHT_COVER) && !upright.includes(UPRIGHT_ASKED), 'asked for portrait there is nothing to say');
+      assert.equal(turned.replace(' ' + UPRIGHT_ASKED, ''), upright, size + ': but for that sentence it is the portrait document');
     }
     const teachers = renderBatch(project, null, { batch: 'teachers', now: clock(), paper: { size, orientation: 'landscape' } }).html;
-    assert.ok(teachers.includes('data-orientation="landscape"') && !teachers.includes(UPRIGHT_COVER));
+    assert.ok(teachers.includes('data-orientation="landscape"') && !teachers.includes(UPRIGHT_COVER) && !teachers.includes(UPRIGHT_ASKED));
   }
   // the project's own setting, with nothing asked
   const set = school();
   set.settings.paper = { size: 'a4', orientation: 'landscape' };
   assert.ok(renderBatch(set, null, { batch: 'doors', now: clock() }).html.includes('data-paper="a4" data-orientation="portrait"'));
+  // there the cover names the project's setting, whether or not the request asked for landscape too
+  for (const paper of [undefined, { size: 'a4', orientation: 'landscape' }, { size: 'a4', orientation: 'portrait' }]) {
+    const html = renderBatch(set, null, { batch: 'doors', now: clock(), paper }).html;
+    assert.ok(html.includes(UPRIGHT_COVER) && !html.includes(UPRIGHT_ASKED), 'the project is set to landscape: ' + JSON.stringify(paper || null));
+  }
   // and the entries say so, for the preview sheet
   assert.deepEqual(BATCHES.map((batch) => [batch.id, batch.upright === true, batch.uprightSays || null]), [
     ['teacher-schedules', false, null],
