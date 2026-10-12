@@ -202,15 +202,16 @@
 /* A period's column is as wide as the longest room name in it. A name is on
    one line up to 18rem and wraps between words after that; it is never cut.
    On a narrow screen the limit is what the screen leaves beside Group at
-   its narrowest: Group's 6rem, the 50px round the table's frame, the cell's
-   own padding and a finding's mark come to 11.5rem. */
+   its widest: Group's 8rem there, the 50px round the table's frame, the
+   cell's own padding and a finding's mark come to 13.5rem (the end of this
+   file). */
 .grd-cell--slot {
   max-width: none;
 }
 
 .grd-cell--slot .grd-cell__text {
   display: inline-block;
-  max-width: min(18rem, 100vw - 11.5rem);
+  max-width: 18rem;
   white-space: normal;
   overflow-wrap: anywhere;
   vertical-align: middle;
@@ -233,14 +234,15 @@
 }
 
 /* A finding on a cell of the Teachers or Rooms table: its shape and the line
-   under the cell as on the Groups grid, and with the keyboard's focus on it
-   its sentence under it. A pointer has the cell's title, and a click draws
-   nothing. */
+   under the cell as on the Groups grid, and with the focus on it its
+   sentence under it. The focus is the keyboard's, a click's or a tap's: a
+   finger has no title to rest on. */
 .grd-cell--read.is-marked {
   overflow: visible;
+  cursor: pointer;
 }
 
-.grd-cell--read.is-marked:focus-visible::after {
+.grd-cell--read.is-marked:focus::after {
   /* the empty alternative keeps it out of what a screen reader is told: the
      cell's description already says it. A browser that does not read that
      form keeps the plain one above it. */
@@ -254,7 +256,9 @@
   left: var(--why-x, 0px);
   z-index: 4;
   width: max-content;
-  max-width: min(18rem, 70vw);
+  /* --why-w: as wide as the frame, for a sentence taller than the frame */
+  max-width: var(--why-w, min(18rem, 70vw));
+  box-sizing: border-box;
   padding: var(--s-2);
   border: var(--border-width) solid var(--line-strong);
   border-radius: var(--r-1);
@@ -405,8 +409,18 @@
     display: none;
   }
 
+  /* Group is 6rem at its narrowest and 8rem at its widest, where a long
+     name wraps: the periods beside it are what a phone's width is for, and
+     a period's own limit (below) counts on Group being no wider. */
   .grd-cell--name {
     min-width: 6rem;
+    max-width: 8rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .grd-cell--slot .grd-cell__text {
+    max-width: calc(100vw - 13.5rem);
   }
 
   /* the keys are not worth the four lines they take above a table this

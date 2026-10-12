@@ -144,6 +144,7 @@ export function mount(env) {
     stage,
     say,
     roomLabel,
+    focusCursor: (key) => env.focusAfter(key),
     undo() {
       if (!takeBack(projectId())) return false;
       say('Took back the last change in the grid.');

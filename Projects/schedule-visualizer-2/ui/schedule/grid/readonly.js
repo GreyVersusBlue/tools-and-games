@@ -6,15 +6,19 @@
 // day type: the same findings, by the same key, that the Groups grid marks
 // its cells from (model.js `findings`), so the three tables mark the same
 // places. A marked cell has the finding's shape, its sentence as a title for
-// a pointer, and can be reached without one: with the keyboard's focus on it
-// the sentence is drawn beside the cell (grid.css) and is the cell's
+// a pointer that rests on it, and can be reached without one: with the focus
+// on it the sentence is drawn beside the cell (grid.css) and is the cell's
 // description, from a line under the table that `aria-describedby` names.
+// The focus is the keyboard's, or a click's, or a tap's: a finger has no
+// title to rest on, so a tap on a mark is how a phone reads why it is there
+// (DECISIONS 2026-10-12 10:58).
 //
 // The marks of a table are one Tab stop between them, however many there are:
 // Tab goes to the mark last visited (the first, to begin with), and from
-// there Right and Left go to the next and the last mark in reading order,
-// Down and Up to the nearest mark in a row below or above, Home and End to
-// the first and the last. A mark has a `data-key`, so the focus is put back
+// there Right and Left go to the next and the last mark in reading order
+// (the other way about where the page reads right to left, so the arrow
+// still goes the way it points), Down and Up to the nearest mark in a row
+// below or above, Home and End to the first and the last. A mark has a `data-key`, so the focus is put back
 // on it when the tab is drawn again (ui/schedule/index.js).
 
 import { h, uid } from '../../components/dom.js';
@@ -39,10 +43,12 @@ function findingsOf(findings, groupIds, dayTypeId, period) {
 // Which mark a key goes to from mark `from`: an index into `marks`, each
 // { cell, r, c } in reading order; `from` itself when there is none that way;
 // null for a key that is not one of these.
-function markFor(marks, from, key) {
+function markFor(marks, from, key, rtl) {
   const at = marks[from];
-  if (key === 'ArrowRight') return Math.min(from + 1, marks.length - 1);
-  if (key === 'ArrowLeft') return Math.max(from - 1, 0);
+  const next = rtl ? 'ArrowLeft' : 'ArrowRight';
+  const last = rtl ? 'ArrowRight' : 'ArrowLeft';
+  if (key === next) return Math.min(from + 1, marks.length - 1);
+  if (key === last) return Math.max(from - 1, 0);
   if (key === 'Home') return 0;
   if (key === 'End') return marks.length - 1;
   if (key !== 'ArrowDown' && key !== 'ArrowUp') return null;
@@ -61,16 +67,26 @@ function markFor(marks, from, key) {
 // frame the table scrolls in: under the cell from its left edge, moved along
 // when that would run past the frame's right; over the cell when there is no
 // room under it; and when there is room neither way (a table of a row or
-// two), against the frame's bottom, over part of the cell. grid.css draws it
-// (a ::after) and reads `--why-x` and `--why-y`, from the cell's own corner.
+// two), against the frame's bottom, over part of the cell. A sentence taller
+// than the frame (two findings with long names, in a table of one row) is
+// made as wide as the frame lets it be, which makes it shorter; and if it is
+// still the taller, the frame is given the height to hold it for as long as
+// the mark has the focus. grid.css draws it (a ::after) and reads `--why-x`,
+// `--why-y` and `--why-w`, from the cell's own corner.
 function placeWhy(cell, frame) {
   cell.style.removeProperty('--why-x');
   cell.style.removeProperty('--why-y');
+  cell.style.removeProperty('--why-w');
+  frame.style.removeProperty('min-height');
   const drawn = getComputedStyle(cell, '::after');
-  // nothing is drawn for a pointer's focus
   if (drawn.content === 'none') return;
+  let height = parseFloat(drawn.height);
+  if (height > frame.clientHeight) {
+    cell.style.setProperty('--why-w', Math.max(0, frame.clientWidth - 2) + 'px');
+    height = parseFloat(drawn.height);
+    if (height > frame.clientHeight) frame.style.minHeight = Math.ceil(height + frame.offsetHeight - frame.clientHeight) + 'px';
+  }
   const width = parseFloat(drawn.width);
-  const height = parseFloat(drawn.height);
   const at = cell.getBoundingClientRect();
   const around = frame.getBoundingClientRect();
   const left = around.left + frame.clientLeft;
@@ -130,16 +146,45 @@ function shell(project, caption, first, rows) {
   const markOf = (node) => marks.findIndex((mark) => mark.cell === node);
   // a region that scrolls sideways has to be reachable by keyboard
   const frame = h('div', { class: 'grd-scroll', tabindex: '0', role: 'region', 'aria-label': caption }, table, h('div', { class: 'vh grd-why' }, Array.from(lines.values())));
+  // the mark that has the focus, or null
+  const inFocus = () => {
+    const at = markOf(document.activeElement);
+    return at === -1 ? null : marks[at].cell;
+  };
   // the Tab stop goes with the focus, however the focus got there
   table.addEventListener('focusin', (event) => {
     if (markOf(event.target) === -1) return;
     for (const mark of marks) mark.cell.tabIndex = mark.cell === event.target ? 0 : -1;
     placeWhy(event.target, frame);
   });
+  table.addEventListener('focusout', () => frame.style.removeProperty('min-height'));
+  // A click or a tap on a mark gives it the focus, and with it the sentence.
+  // (A browser does that itself for most pointers; not every one does for a
+  // finger on a cell that is not a control.)
+  table.addEventListener('click', (event) => {
+    const cell = event.target.closest ? event.target.closest('.is-marked') : null;
+    if (cell && markOf(cell) !== -1 && document.activeElement !== cell) cell.focus();
+  });
+  // The sentence is placed by measurement, so it is placed again when what
+  // was measured moves: the frame scrolled, or changed size with the window.
+  const again = () => {
+    const cell = inFocus();
+    if (cell) placeWhy(cell, frame);
+  };
+  frame.addEventListener('scroll', again, { passive: true });
+  if (typeof ResizeObserver === 'function') {
+    let width = null;
+    new ResizeObserver(() => {
+      // its own change of height (made to hold a tall sentence) is not news
+      if (frame.clientWidth === width) return;
+      width = frame.clientWidth;
+      again();
+    }).observe(frame);
+  }
   table.addEventListener('keydown', (event) => {
     const from = markOf(event.target);
     if (from === -1 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-    const to = markFor(marks, from, event.key);
+    const to = markFor(marks, from, event.key, getComputedStyle(table).direction === 'rtl');
     if (to === null) return;
     event.preventDefault();
     marks[to].cell.focus();

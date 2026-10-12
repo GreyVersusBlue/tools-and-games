@@ -5,11 +5,14 @@
 // key with ":edit" after it, so when the tab is drawn again mid-word the
 // section puts the text and the caret back (ui/schedule/index.js).
 //
-// sheet({ view, ids, stage(ops, said), undo(), remove(row), keep(row), say(text), roomLabel(room) })
+// sheet({ view, ids, stage(ops, said), undo(), remove(row), keep(row), say(text), roomLabel(room), focusCursor(key) })
 //   view    { at, anchor, fields }: the cell the cursor is on and the other
 //           corner of the selection, each { row, col } by id, kept while the
 //           page is open; and whether a narrow screen shows the field columns
 //   stage   take a list of ops (model.js) and draw again
+//   focusCursor(key)   the cursor was moved by a drawing while the focus was
+//           in the sheet (its column went out of sight): put the focus on
+//           the cell with this key once the drawing is done
 // returns { element, draw(model), copy(), paste(text), clear(), fillDown(), keyOfCursor(), has(node) }
 
 import { h, uid } from '../../components/dom.js';
@@ -43,6 +46,23 @@ export function sheet(options) {
   let painted = [];
   let drag = null;
   let lastPointer = { type: 'mouse', onCursor: false };
+  // Does the sheet have the focus? Asked of the page first; but a cell that
+  // goes out of sight while it has the focus (its column hidden at 640 px)
+  // loses it to the page without a word, or with a blur from a cell whose
+  // column is hidden by then, so that is remembered here until the next
+  // drawing. (Hidden by the rule, as everywhere in this file: no box is asked for.)
+  let focusInside = false;
+  let hiddenUnderFocus = false;
+  element.addEventListener('focusin', () => {
+    focusInside = true;
+    hiddenUnderFocus = false;
+  });
+  element.addEventListener('focusout', (event) => {
+    const cell = drawing || !model ? null : cellOf(event.target);
+    const at = cell ? place({ row: cell.dataset.row, col: cell.dataset.col }) : null;
+    if (at && hiddenColumns()[at.c]) hiddenUnderFocus = true;
+    else if (!event.relatedTarget || !element.contains(event.relatedTarget)) focusInside = false;
+  });
 
   // ---------------------------------------------------------------- where
 
@@ -204,7 +224,23 @@ export function sheet(options) {
   }
 
   function draw(next) {
-    const reopen = editor ? { row: editor.row.id, col: editor.column.id } : null;
+    // was the focus in the sheet (on a cell, or in the field of one)?
+    const lost = document.activeElement === document.body || document.activeElement === null;
+    const held = element.contains(document.activeElement) || (lost && (hiddenUnderFocus || focusInside));
+    hiddenUnderFocus = false;
+    // A cell being edited whose column has gone out of sight (a phone turned
+    // on its side, a window narrowed across 640 px): the field is not opened
+    // again in a cell with no box, where it would hold the table's keys and
+    // show nothing. What it held is read into the cell as leaving it does,
+    // so what was typed is staged; text that cannot be read is let go.
+    let reopen = editor ? { row: editor.row.id, col: editor.column.id } : null;
+    if (editor && model) {
+      const at = place(reopen);
+      if (at && hiddenColumns()[at.c]) {
+        if (!commit(0, 0, true)) cancel(false);
+        reopen = null;
+      }
+    }
     drawing = true;
     closeEditor();
     model = next;
@@ -223,8 +259,13 @@ export function sheet(options) {
       // one Tab stop out of reach: it goes to the group's name. The other
       // corner of a block goes there too.
       const hidden = hiddenColumns();
-      if (hidden[place(view.at).c]) view.at = view.anchor = { row: view.at.row, col: model.columns[0].id };
-      else if (hidden[place(view.anchor).c]) view.anchor = { row: view.anchor.row, col: model.columns[0].id };
+      if (hidden[place(view.at).c]) {
+        view.at = view.anchor = { row: view.at.row, col: model.columns[0].id };
+        // the focus goes with the cursor, when the sheet had it
+        if (held && options.focusCursor) options.focusCursor(cellKey(view.at.row, view.at.col));
+      } else if (hidden[place(view.anchor).c]) {
+        view.anchor = { row: view.anchor.row, col: model.columns[0].id };
+      }
       paint();
     }
     const again = place(reopen);
@@ -545,11 +586,14 @@ export function sheet(options) {
     const mod = event.ctrlKey || event.metaKey;
     const lastRow = model.rows.length - 1;
     const lastColumn = model.columns.length - 1;
+    // where the page reads right to left the columns run that way too, and
+    // an arrow goes the way it points
+    const along = getComputedStyle(table).direction === 'rtl' ? -1 : 1;
     const moves = {
       ArrowUp: [at.r - 1, at.c],
       ArrowDown: [at.r + 1, at.c],
-      ArrowLeft: [at.r, at.c - 1],
-      ArrowRight: [at.r, at.c + 1],
+      ArrowLeft: [at.r, at.c - along],
+      ArrowRight: [at.r, at.c + along],
       Home: [mod ? 0 : at.r, 0],
       End: [mod ? lastRow : at.r, lastColumn],
       PageUp: [at.r - 10, at.c],
