@@ -1686,9 +1686,22 @@ three investors, 2% a side, 200 XP. `tools/smoke.mjs` 270 → 270 + 89 = **359**
 **Nothing about the tier is open.** What it deliberately did not do is the
 seller side (#515) — representing the seller of a building wants a rent roll,
 an offering memorandum and a broker's opinion of value where `seller.js` has
-staging tiers, photo tiers and weekend open houses. It is a row for whoever
-wants it, sized on its own, and it is **not in the ranked table**: putting it
-there is a judgement call a session may make.
+staging tiers, photo tiers and weekend open houses. **Designed, not built,
+waits for Devon's read** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
+write the design"): `Projects/Closing Time/DESIGN-seller-commercial.md`. Offers
+are written on the packet and closings happen on the building; the rent roll
+(2 actions, 5 days) is worth 6% of gross value to every offer, the memorandum
+($0, $900, $2,800) sets which of three investor kinds see it, and the opinion
+of value (1 action) moves what the seller expects and so what they will sign.
+Measured on a scratch reimplementation: a median 23 days to an offer worth
+taking against a house's 12, $19,825 gross against $12,120, about the same
+money per day a client slot is held. Twelve questions for Devon are in its
+section 10 and are not in the table below; three sessions to build once he has
+answered. It is **not in the ranked table** and should not go there before his
+read. Two things read in the code on the way and not changed: `repairCareer()`
+never adds a client file to an old career's queue, and the `bonusReferral`
+event (`ev_ruth_referral`) picks from the whole queue with no ladder check, a
+fourth door beside #514's three; neither was reproduced in a career.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
