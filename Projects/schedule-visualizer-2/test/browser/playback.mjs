@@ -63,6 +63,21 @@ async function undo() {
   await settled();
 }
 
+// A case on a changed project: the changes are taken back when it ends,
+// passed or failed, so the cases after it start from the sample school.
+async function changed(changes, run) {
+  let made = 0;
+  try {
+    for (const [name, payload] of changes) {
+      await apply(name, payload);
+      made += 1;
+    }
+    await run();
+  } finally {
+    for (; made > 0; made -= 1) await undo();
+  }
+}
+
 // The playback settings, set as the controls set them.
 async function set(patch) {
   await bar((el, next) => el.playback.set(next), patch);
@@ -687,156 +702,154 @@ test('a browser that will not keep the settings is said once, and the choice hol
 });
 
 test('the countdown and the markers turn late at the same moment: the passing time and the school’s margin', async () => {
-  // a school that allows 30 seconds past the bell, and walks slowly enough
-  // for 8A to be out longer than that
-  await apply('setSetting', { key: 'checks.passingMarginSeconds', value: 30 });
-  await apply('setSetting', { key: 'secondsPerCell', value: 4 });
-  await change({ transition: TRANSITION });
-  const walk = await walkOf(LATE_GROUP);
-  assert.equal(walk.passing, 240);
-  assert.equal(walk.margin, 30);
-  assert.ok(walk.total > 280, '8A is still walking 40 seconds after the bell: ' + walk.total);
-  const problem = await view(() => {
-    const probe = document.createElement('span');
-    probe.style.color = 'var(--problem)';
-    document.querySelector('[data-bar="playback"]').append(probe);
-    const colour = getComputedStyle(probe).color;
-    probe.remove();
-    return colour;
-  });
-  const countdown = () => page.$eval('[data-part="countdown"]', (el) => ({ text: el.textContent, over: el.dataset.over, late: el.dataset.late, colour: getComputedStyle(el).color }));
+  await changed([['setSetting', { key: 'checks.passingMarginSeconds', value: 30 }], ['setSetting', { key: 'secondsPerCell', value: 4 }]], async () => {
+    // a school that allows 30 seconds past the bell, and walks slowly enough
+    // for 8A to be out longer than that
+    await change({ transition: TRANSITION });
+    const walk = await walkOf(LATE_GROUP);
+    assert.equal(walk.passing, 240);
+    assert.equal(walk.margin, 30);
+    assert.ok(walk.total > 280, '8A is still walking 40 seconds after the bell: ' + walk.total);
+    const problem = await view(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--problem)';
+      document.querySelector('[data-bar="playback"]').append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    });
+    const countdown = () => page.$eval('[data-part="countdown"]', (el) => ({ text: el.textContent, over: el.dataset.over, late: el.dataset.late, colour: getComputedStyle(el).color }));
 
-  // five seconds after the bell: the words say so, in plain ink, and nobody is late
-  await scrubTo(245);
-  let read = await countdown();
-  assert.equal(read.text, '0:05 after the bell');
-  assert.equal(read.over, 'true');
-  assert.equal(read.late, 'false');
-  assert.notEqual(read.colour, problem, 'the countdown is not in the problem colour inside the margin');
-  assert.equal((await drawn(LATE_GROUP)).late, false);
-  assert.equal(await part('late'), null);
-  assert.equal(await bar((el) => el.dataset.late), '0');
-  // the last second of the margin
-  await scrubTo(270);
-  read = await countdown();
-  assert.equal(read.text, '0:30 after the bell');
-  assert.equal(read.late, 'false');
-  assert.equal((await drawn(LATE_GROUP)).late, false);
-  // and the first second past it: both at once
-  await scrubTo(271);
-  read = await countdown();
-  assert.equal(read.text, '0:31 after the bell');
-  assert.equal(read.late, 'true');
-  assert.equal(read.colour, problem);
-  assert.equal((await drawn(LATE_GROUP)).late, true);
-  assert.equal(await part('late'), 'Late, still walking after the passing time: 8A.');
-  assert.equal(await bar((el) => el.dataset.late), '1');
-  await undo();
-  await undo();
+    // five seconds after the bell: the words say so, in plain ink, and nobody is late
+    await scrubTo(245);
+    let read = await countdown();
+    assert.equal(read.text, '0:05 after the bell');
+    assert.equal(read.over, 'true');
+    assert.equal(read.late, 'false');
+    assert.notEqual(read.colour, problem, 'the countdown is not in the problem colour inside the margin');
+    assert.equal((await drawn(LATE_GROUP)).late, false);
+    assert.equal(await part('late'), null);
+    assert.equal(await bar((el) => el.dataset.late), '0');
+    // the last second of the margin
+    await scrubTo(270);
+    read = await countdown();
+    assert.equal(read.text, '0:30 after the bell');
+    assert.equal(read.late, 'false');
+    assert.equal((await drawn(LATE_GROUP)).late, false);
+    // and the first second past it: both at once
+    await scrubTo(271);
+    read = await countdown();
+    assert.equal(read.text, '0:31 after the bell');
+    assert.equal(read.late, 'true');
+    assert.equal(read.colour, problem);
+    assert.equal((await drawn(LATE_GROUP)).late, true);
+    assert.equal(await part('late'), 'Late, still walking after the passing time: 8A.');
+    assert.equal(await bar((el) => el.dataset.late), '1');
+  });
   assert.equal((await walkOf(LATE_GROUP)).total, 261, 'the sample school is as it was');
 });
 
 test('a group stopped at the cap: the scrubber ends there and its marker stands where it was stopped', async () => {
-  // ten seconds a cell: 8A's walk is longer than three passing times
-  await apply('setSetting', { key: 'secondsPerCell', value: 10 });
-  await change({ transition: TRANSITION });
-  const walk = await walkOf(LATE_GROUP);
-  assert.equal(walk.arrived, false, '8A does not arrive');
-  assert.equal(walk.cap, 720);
-  assert.equal(walk.total, walk.cap);
-  assert.equal(walk.positions.length - 1, walk.seconds);
-  assert.equal(await page.$eval('[data-control="scrubber"]', (el) => el.max), String(walk.seconds), 'the scrubber runs to the transition’s last tick');
-  assert.equal(await bar((el) => el.playback.end), walk.seconds);
-  // where it was stopped: the last cell its head took, still short of its room
-  const stopped = walk.positions[walk.seconds];
-  assert.ok(stopped < walk.slots && walk.cells[stopped], 'stopped on a corridor cell, index ' + stopped + ' of ' + walk.slots);
-  const lastStep = walk.positions.indexOf(stopped);
-  await scrubTo(walk.seconds);
-  const marker = await drawn(LATE_GROUP);
-  close(marker, await mapPoint(walk.cells[stopped].floorId, walk.cells[stopped].cell), 0.01, 'the marker at the cap');
-  assert.equal(marker.state, 'walking');
-  assert.equal(marker.late, true);
-  assert.match(await part('late'), /^Late, still walking after the passing time: (.+, )?8A[,.]/);
-  // it has stood there since its last step, and playing on does not move it
-  await scrubTo(lastStep);
-  close(await drawn(LATE_GROUP), marker, 0.01, 'the marker at its last step, second ' + lastStep);
-  await pinFrames();
-  await set({ speed: 4, pace: 'real', loop: 'once', order: 'together' });
-  await bar((el) => el.playback.seek(el.playback.end - 2));
-  await page.click('[data-action="play"]');
-  for (const stamp of [1000, 1900, 2800]) await runFrame(stamp);
-  await frame();
-  assert.equal(await seconds(), walk.seconds);
-  assert.equal(await bar((el) => el.dataset.playing), 'false');
-  close(await drawn(LATE_GROUP), marker, 0.01, 'the marker at the end');
-  await undo();
+  await changed([['setSetting', { key: 'secondsPerCell', value: 10 }]], async () => {
+    // ten seconds a cell: 8A's walk is longer than three passing times
+    await change({ transition: TRANSITION });
+    const walk = await walkOf(LATE_GROUP);
+    assert.equal(walk.arrived, false, '8A does not arrive');
+    assert.equal(walk.cap, 720);
+    assert.equal(walk.total, walk.cap);
+    assert.equal(walk.positions.length - 1, walk.seconds);
+    assert.equal(await page.$eval('[data-control="scrubber"]', (el) => el.max), String(walk.seconds), 'the scrubber runs to the transition’s last tick');
+    assert.equal(await bar((el) => el.playback.end), walk.seconds);
+    // where it was stopped: the last cell its head took, still short of its room
+    const stopped = walk.positions[walk.seconds];
+    assert.ok(stopped < walk.slots && walk.cells[stopped], 'stopped on a corridor cell, index ' + stopped + ' of ' + walk.slots);
+    const lastStep = walk.positions.indexOf(stopped);
+    await scrubTo(walk.seconds);
+    const marker = await drawn(LATE_GROUP);
+    close(marker, await mapPoint(walk.cells[stopped].floorId, walk.cells[stopped].cell), 0.01, 'the marker at the cap');
+    assert.equal(marker.state, 'walking');
+    assert.equal(marker.late, true);
+    assert.match(await part('late'), /^Late, still walking after the passing time: (.+, )?8A[,.]/);
+    // it has stood there since its last step, and playing on does not move it
+    await scrubTo(lastStep);
+    close(await drawn(LATE_GROUP), marker, 0.01, 'the marker at its last step, second ' + lastStep);
+    await pinFrames();
+    await set({ speed: 4, pace: 'real', loop: 'once', order: 'together' });
+    await bar((el) => el.playback.seek(el.playback.end - 2));
+    await page.click('[data-action="play"]');
+    for (const stamp of [1000, 1900, 2800]) await runFrame(stamp);
+    await frame();
+    assert.equal(await seconds(), walk.seconds);
+    assert.equal(await bar((el) => el.dataset.playing), 'false');
+    close(await drawn(LATE_GROUP), marker, 0.01, 'the marker at the end');
+  });
   assert.equal((await walkOf(LATE_GROUP)).total, 261);
 });
 
 test('bells not entered: the clock counts the seconds, and the countdown is the passing time', async () => {
-  await apply('setBells', { dayTypeId: DAY, bells: new Array(8).fill(null) });
-  await change({ transition: TRANSITION });
-  assert.equal(await view(() => document.querySelector('.mov').movement.picture.transition.times), '');
-  await scrubTo(37);
-  assert.equal(await part('clock'), '0:37');
-  assert.equal(await part('countdown'), '3:23 of the passing time left');
-  assert.equal(await page.$eval('[data-control="scrubber"]', (el) => el.getAttribute('aria-valuetext')), '0:37 into Period 6 to Period 7, 3:23 of the passing time left');
-  await scrubTo(240);
-  assert.equal(await part('countdown'), '0:00 of the passing time left');
-  await scrubTo(245);
-  assert.equal(await part('clock'), '4:05');
-  assert.equal(await part('countdown'), '0:05 over the passing time');
-  await undo();
+  await changed([['setBells', { dayTypeId: DAY, bells: new Array(8).fill(null) }]], async () => {
+    await change({ transition: TRANSITION });
+    assert.equal(await view(() => document.querySelector('.mov').movement.picture.transition.times), '');
+    await scrubTo(37);
+    assert.equal(await part('clock'), '0:37');
+    assert.equal(await part('countdown'), '3:23 of the passing time left');
+    assert.equal(await page.$eval('[data-control="scrubber"]', (el) => el.getAttribute('aria-valuetext')), '0:37 into Period 6 to Period 7, 3:23 of the passing time left');
+    await scrubTo(240);
+    assert.equal(await part('countdown'), '0:00 of the passing time left');
+    await scrubTo(245);
+    assert.equal(await part('clock'), '4:05');
+    assert.equal(await part('countdown'), '0:05 over the passing time');
+  });
   assert.match(await view(() => document.querySelector('.mov').movement.picture.transitions[5].times), /^\d+:\d\d to \d+:\d\d$/);
 });
 
 test('a day of two periods has one transition: the whole day plays it round', async () => {
-  await apply('setSetting', { key: 'periods', value: 2 });
-  assert.equal(await view(() => document.querySelector('.mov').movement.picture.transitions.length), 1);
-  await pinFrames();
-  await set({ speed: 4, pace: 'real', loop: 'day', order: 'together' });
-  await change({ transition: 0 });
-  assert.equal(await page.$eval('[data-action="next"]', (el) => el.getAttribute('aria-disabled')), 'true');
-  assert.equal(await page.$eval('[data-action="previous"]', (el) => el.getAttribute('aria-disabled')), 'true');
-  const end = await bar((el) => el.playback.end);
-  await bar((el) => el.playback.seek(el.playback.end - 1));
-  await page.click('[data-action="play"]');
-  await runFrame(1000);
-  await runFrame(1500);
-  assert.equal(await seconds(), 0, 'from its first second again');
-  assert.equal(await view(() => document.querySelector('.mov').movement.choice.transition), 0);
-  assert.equal(await bar((el) => el.dataset.playing), 'true', 'and still playing');
-  await runFrame(2000);
-  assert.equal(await seconds(), 2);
-  assert.equal(await bar((el) => el.playback.end), end);
-  await page.click('[data-action="play"]');
-  await undo();
+  await changed([['setSetting', { key: 'periods', value: 2 }]], async () => {
+    assert.equal(await view(() => document.querySelector('.mov').movement.picture.transitions.length), 1);
+    await pinFrames();
+    await set({ speed: 4, pace: 'real', loop: 'day', order: 'together' });
+    await change({ transition: 0 });
+    assert.equal(await page.$eval('[data-action="next"]', (el) => el.getAttribute('aria-disabled')), 'true');
+    assert.equal(await page.$eval('[data-action="previous"]', (el) => el.getAttribute('aria-disabled')), 'true');
+    const end = await bar((el) => el.playback.end);
+    await bar((el) => el.playback.seek(el.playback.end - 1));
+    await page.click('[data-action="play"]');
+    await runFrame(1000);
+    await runFrame(1500);
+    assert.equal(await seconds(), 0, 'from its first second again');
+    assert.equal(await view(() => document.querySelector('.mov').movement.choice.transition), 0);
+    assert.equal(await bar((el) => el.dataset.playing), 'true', 'and still playing');
+    await runFrame(2000);
+    assert.equal(await seconds(), 2);
+    assert.equal(await bar((el) => el.playback.end), end);
+    await page.click('[data-action="play"]');
+  });
   assert.equal(await view(() => document.querySelector('.mov').movement.picture.transitions.length), 7);
 });
 
 test('a day of one period has nothing to play, and a button’s title is only ever why it cannot be pressed now', async () => {
-  await apply('setSetting', { key: 'periods', value: 1 });
-  assert.equal(await part('note'), 'There is nothing to play: the day has one period.');
-  assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('aria-disabled')), 'true');
-  assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), null);
-  assert.equal(await page.$eval('[data-action="next"]', (el) => el.getAttribute('aria-disabled')), 'true');
-  assert.equal(await page.$eval('[data-control="scrubber"]', (el) => el.disabled), true);
-  assert.equal(await part('clock'), '');
-  await page.click('[data-action="play"]');
-  assert.equal(await bar((el) => el.dataset.playing), 'false');
-  assert.equal(await bar((el) => el.playback.mark.drawn.size), 0);
+  await changed([['setSetting', { key: 'periods', value: 1 }]], async () => {
+    assert.equal(await part('note'), 'There is nothing to play: the day has one period.');
+    assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('aria-disabled')), 'true');
+    assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), null);
+    assert.equal(await page.$eval('[data-action="next"]', (el) => el.getAttribute('aria-disabled')), 'true');
+    assert.equal(await page.$eval('[data-control="scrubber"]', (el) => el.disabled), true);
+    assert.equal(await part('clock'), '');
+    await page.click('[data-action="play"]');
+    assert.equal(await bar((el) => el.dataset.playing), 'false');
+    assert.equal(await bar((el) => el.playback.mark.drawn.size), 0);
 
-  // with reduced motion asked for, Play says so in its title; when it is no
-  // longer asked for, Play still cannot be pressed (one period) and the title
-  // about reduced motion is gone
-  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
-  await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.reduced === 'true');
-  assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), 'Reduced motion is on: use the scrubber.');
-  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
-  await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.reduced === 'false');
-  assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('aria-disabled')), 'true');
-  assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), null, 'a title left from reduced motion');
-  await undo();
+    // with reduced motion asked for, Play says so in its title; when it is no
+    // longer asked for, Play still cannot be pressed (one period) and the title
+    // about reduced motion is gone
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
+    await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.reduced === 'true');
+    assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), 'Reduced motion is on: use the scrubber.');
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+    await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.reduced === 'false');
+    assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('aria-disabled')), 'true');
+    assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), null, 'a title left from reduced motion');
+  });
   assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('aria-disabled')), null);
   assert.equal(await page.$eval('[data-action="play"]', (el) => el.getAttribute('title')), null);
 });
