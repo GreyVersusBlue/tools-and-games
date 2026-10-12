@@ -105,6 +105,7 @@ export const GROUPS = {
     'browser/publish.mjs', // SV2-24
     'browser/movement.mjs', // SV2-17
     'browser/hotspots.mjs', // SV2-18
+    'browser/playback.mjs', // SV2-19
     'a11y/axe.mjs',
   ],
   a11y: [
