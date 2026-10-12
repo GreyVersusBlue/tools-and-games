@@ -10,8 +10,11 @@
 // What it is fed is the published model as it is behind the passcode: staff
 // see this once they have unlocked the file. "Start at the passcode screen"
 // feeds the locked form instead, so the unlock screen can be looked at and
-// tried. (The staff browser keeps the key a passcode made, per school, so on
-// this device it asks once, as it will on a reader's.)
+// tried. The staff browser keeps the key a passcode made, per school, so on
+// a reader's device it asks once; here that key is forgotten each time the
+// tick goes on, so the passcode screen is what the tick shows, every time.
+// (The frame's page is at a blob address made by this page, so the two share
+// one origin and one localStorage.)
 //
 //   const view = preview(ctx);
 //   view.element                the bar and the frame
@@ -20,27 +23,47 @@
 //   view.state                  { loaded, live, sent, width, locked }, for the tests
 //
 // The frame is told again 250 ms after the last change, and only when
-// something the published file holds has changed.
+// something the published file holds has changed: of the settings, the seven
+// publishedModel copies (PUBLISHED_SETTINGS), so a theme or a paper size
+// leaves the frame alone.
 
 import { h, uid } from '../components/dom.js';
 import { choice } from '../components/choice.js';
 import { publishedModel, isProtected } from '../../engine/publish-data.js';
-import { assemble, pageReader, feedPreview } from './assemble.js';
+import { assemble, pageReader, feedPreview, LinkError } from './assemble.js';
 import { publishData, deviceRandom } from './targets.js';
+import { STORAGE_PREFIX } from '../../staff/storage.js';
 
 export const PREVIEW_SIZES = {
   phone: { label: 'Phone', width: 390, height: 760 },
   desktop: { label: 'Desktop', width: 1180, height: 760 },
 };
 export const PREVIEW_WAIT_MS = 250;
+export const PREVIEW_FAILED = 'The preview could not be put together: the staff browser\'s files could not be read. Check the connection and try again.';
+
+// The settings a published file carries: the keys of publishedModel's
+// `settings`, held equal to it by a case in test/browser/publish.mjs.
+export const PUBLISHED_SETTINGS = ['schoolName', 'periods', 'periodWord', 'defaultPassingSeconds', 'secondsPerCell', 'secondsPerStair', 'timeFormat'];
 
 // The parts of a project a published file is made from. The store shares
 // every branch a change did not touch, so "the same parts" is "nothing a
 // reader would see has changed".
 function partsOf(project, locked) {
   const publish = project.publish || {};
-  return [project.id, project.settings, project.building, project.subjects, project.teachers, project.dayTypes, project.groups,
+  const settings = project.settings || {};
+  return [project.id, ...PUBLISHED_SETTINGS.map((key) => settings[key]), project.building, project.subjects, project.teachers, project.dayTypes, project.groups,
     publish.views, publish.teacherNamesOnMap, publish.stalenessDays, locked ? publish.passcode : null, locked];
+}
+
+// Forget the key this device kept for a school's passcode, so the next locked
+// copy the frame is fed meets the passcode screen. Where the browser keeps
+// nothing there is nothing to forget.
+function forgetKey(schoolId) {
+  try {
+    window.localStorage.removeItem(STORAGE_PREFIX + schoolId + ':key');
+  } catch (error) {
+    // storage is refused here, so the frame kept no key either
+  }
 }
 
 function sameParts(a, b) {
@@ -55,6 +78,7 @@ export function preview(ctx) {
   let turn = 0;
   let address = null;
   let stopped = false;
+  let forget = false; // the tick has just gone on: the kept key goes before the next feed
 
   const sizeLabel = uid('staff-size');
   const lockId = uid('staff-lock');
@@ -135,6 +159,8 @@ export function preview(ctx) {
     }
     // a later change overtook this one while the lock was being made
     if (mine !== turn || stopped) return;
+    if (locked && forget) forgetKey(project.id);
+    forget = false;
     data = next;
     shown = parts;
     feed.send();
@@ -154,6 +180,7 @@ export function preview(ctx) {
 
   lockBox.addEventListener('change', () => {
     state.locked = lockBox.checked;
+    forget = state.locked;
     update(ctx.store.project);
   });
 
@@ -164,6 +191,8 @@ export function preview(ctx) {
     try {
       const html = await assemble(pageReader(), null);
       if (stopped) return;
+      // the page before this one, when "Try again" is making another
+      if (address) URL.revokeObjectURL(address);
       address = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
       frame.src = address;
       state.loaded = true;
@@ -171,7 +200,8 @@ export function preview(ctx) {
     } catch (error) {
       if (stopped) return;
       element.dataset.preview = 'failed';
-      says.textContent = error && error.message ? error.message : 'The preview could not be put together. Check the connection and try again.';
+      // the assembler's own refusals are sentences; anything else (a fetch that never arrived) is the browser's words, not ours
+      says.textContent = error instanceof LinkError && error.message ? error.message : PREVIEW_FAILED;
       again.hidden = false;
     }
   }

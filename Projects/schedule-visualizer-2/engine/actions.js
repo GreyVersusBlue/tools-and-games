@@ -351,6 +351,14 @@ export const setPublishSetting = action(
   },
 );
 
+// When a file was last published. payload: { at }, an ISO time. Quiet: when
+// the file was made is not the user's work on the school, so it is not an
+// undo step, and undoing something else does not bring an older time back.
+export const notePublished = action(
+  { label: 'Note when the file was published', bumps: [], quiet: true },
+  (project, payload) => setPublishSetting(project, { key: 'lastPublishedAt', value: payload.at }),
+);
+
 // Getting started. payload: any of { step, dismissed, neverShow }. Quiet:
 // ticking a step or hiding the card is not a change to the school, so it is
 // not an undo step and does not count as the project being modified.
