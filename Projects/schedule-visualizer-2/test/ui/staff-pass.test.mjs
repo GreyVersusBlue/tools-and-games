@@ -154,6 +154,57 @@ test('the sign measures a number as it is drawn: a symbol or a tile drawn as an 
   assert.equal(signFit('\u2600'.repeat(4)), 7 / 8, 'four suns are eight wide');
 });
 
+// SV2-49 item 4: each row of the SV2-45 review's table, and the rules behind them.
+test('the sign measures what is drawn, not what is stored: a flag, a skin tone, a tag flag, a text-form symbol, marks in any script, a joiner between letters, Hangul in parts', () => {
+  const rows = [
+    ['\u{1F1FA}\u{1F1F8}', 2, 'a flag is two letters and one picture'],
+    ['\u{1F44D}\u{1F3FD}', 2, 'a thumbs up with a skin tone'],
+    ['\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', 2, 'the flag of England: a black flag and six tags'],
+    ['❤︎', 1, 'a heart asked for in its text form'],
+    ['ที่', 1, 'a Thai consonant with a vowel sign and a tone mark'],
+    ['A⃝', 1, 'A in an enclosing circle'],
+    ['a‍b', 2, 'a joiner between two letters joins nothing'],
+    ['‍204', 3, 'a joiner with nothing before it hides nothing'],
+  ];
+  for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
+
+  const more = [
+    // flags: pairs, never a run
+    ['\u{1F1FA}\u{1F1F8}\u{1F1EB}\u{1F1F7}', 4, 'two flags'],
+    ['\u{1F1FA}\u{1F1F8}\u{1F1EB}', 4, 'a flag and one letter left over'],
+    ['\u{1F1FA}A\u{1F1F8}', 5, 'two flag letters apart are two'],
+    // what takes no room
+    ['\u{1F44D}\u{1F3FB}\u{1F44D}\u{1F3FF}', 4, 'the lightest and the darkest skin tone'],
+    ['1️⃣', 1, 'a keycap is its digit'],
+    ['שּ', 1, 'a Hebrew letter with a point'],
+    ['بَ', 1, 'an Arabic letter with a vowel mark'],
+    ['a‌b', 2, 'a non-joiner is not drawn'],
+    ['東︀', 2, 'a variation selector after a CJK character'],
+    // a joiner joins two pictures, and only two pictures
+    ['\u{1F469}\u{1F3FD}‍\u{1F680}', 2, 'a person with a skin tone, joined to a rocket'],
+    ['\u{1F469}‍A', 3, 'a picture, a joiner and a letter: the letter keeps its room'],
+    ['A‍\u{1F469}', 3, 'a letter, a joiner and a picture'],
+    ['क्‍ष', 2, 'a joiner inside a Devanagari cluster hides no letter'],
+    // wide symbols outside the two blocks
+    ['⌚', 2, 'a watch, U+231A'],
+    ['⌛', 2, 'an hourglass, U+231B'],
+    ['⏰', 2, 'an alarm clock, U+23F0'],
+    ['⏩', 2, 'U+23E9'],
+    ['◾', 2, 'U+25FE'],
+    ['→', 1, 'an arrow is a narrow symbol'],
+    ['✓', 2, 'a check mark is in the block that is measured wide'],
+    ['✓︎', 1, 'and narrow in its text form'],
+    ['東︎', 2, 'the text-form mark narrows a symbol, never a CJK character'],
+    // Hangul: whole, and in parts
+    ['한', 2, 'a Hangul syllable'],
+    ['한', 2, 'the same syllable written as its three parts'],
+    ['한글', 4, 'two syllables in parts'],
+    ['ｶﾞ', 2, 'halfwidth katakana are narrow'],
+  ];
+  for (const [text, width, name] of more) assert.equal(signWidth(text), width, name);
+  assert.equal(signFit('\u{1F1FA}\u{1F1F8}'.repeat(3) + 'A'), 1, 'three flags and a letter are seven wide');
+});
+
 // ---------------------------------------------------------------- the batch's count (item 6)
 
 test('how many sheets a batch is comes from the school the sheets are made from: the published copy, opened once the way render opens it', () => {
