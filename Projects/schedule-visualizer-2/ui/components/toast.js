@@ -58,15 +58,17 @@ export function createToasts(host, options) {
   // Make the band at the page's end as tall as this message and its gap,
   // when it is not already. It only grows: taking it back when the message
   // leaves would move the page under the reader a second time.
+  // `atEnd`: was the page at its end before the message was put on it (the
+  // message rises into place, and for that moment adds to the page's height).
   let room = 0;
-  function makeRoom() {
+  const atEndOf = (scroller) => Boolean(scroller) && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1;
+  function makeRoom(atEnd) {
     const scroller = host.parentElement;
     if (!scroller) return;
     const gap = scroller.getBoundingClientRect().bottom - element.getBoundingClientRect().bottom;
     const needed = Math.ceil(element.offsetHeight + Math.max(gap, 0) + 8);
     const standing = room || parseFloat(getComputedStyle(scroller).getPropertyValue('--toast-room')) || 76;
     if (needed <= standing) return;
-    const atEnd = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1;
     room = needed;
     scroller.style.setProperty('--toast-room', needed + 'px');
     if (atEnd) scroller.scrollTop = scroller.scrollHeight;
@@ -96,8 +98,9 @@ export function createToasts(host, options) {
     element.addEventListener('pointerleave', release);
     element.addEventListener('focusin', hold);
     element.addEventListener('focusout', release);
+    const atEnd = atEndOf(host.parentElement);
     host.append(element);
-    makeRoom();
+    makeRoom(atEnd);
     held = 0;
     remaining = options.duration === undefined ? TOAST_MS : options.duration;
     run();

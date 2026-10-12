@@ -153,20 +153,15 @@ export function roomPicker(options) {
     dirty = false;
     close();
     input.value = option.id === null ? '' : option.label;
-    missing.hidden = true;
-    input.classList.remove('sch-room--missing');
-    describe();
     options.onPick(option.id);
   }
 
-  // Keep what was typed, with no room: the slot says it is not in the building.
+  // Keep what was typed, with no room. The slot is drawn again for the
+  // change, and says then that the text is not in the building.
   function keep(text) {
     dirty = false;
     close();
     input.value = text;
-    missing.hidden = false;
-    input.classList.add('sch-room--missing');
-    describe();
     options.onKeep(text);
   }
 

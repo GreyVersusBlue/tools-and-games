@@ -476,6 +476,14 @@ test('on Schedule the Getting started card is under the schedule card at full wi
       const last = await p.$eval('.sch > .tabs > .tabs__list', (list) => list.lastElementChild.getBoundingClientRect().right - list.getBoundingClientRect().right);
       assert.ok(last <= 1, 'the last tab is ' + last + ' px out of the row at ' + width + ' px');
     }
+    // and with the reader's own larger type, which no padding makes room
+    // for, the row scrolls sideways before it wraps
+    await p.evaluate(() => {
+      document.documentElement.style.fontSize = '24px';
+    });
+    assert.equal((await tabTops(p)).length, 1, 'the tabs wrap at 901 px in 24 px type');
+    const row = await p.$eval('.sch > .tabs > .tabs__list', (list) => [list.scrollWidth > list.clientWidth, getComputedStyle(list).overflowX]);
+    assert.deepEqual(row, [true, 'auto'], 'the row of tabs does not scroll');
   });
 });
 
@@ -538,6 +546,14 @@ for (const [name, size] of [['1280 px', DESK], ['a 390 px phone', PHONE]]) {
       // the page can go no further down, and the row is still clear
       await toEnd();
       await lastRowClear(p, 'at the very end');
+      await closeToast(p);
+
+      // a message of several lines is taller than the band the page ends in: the band grows for it
+      await toEnd();
+      await p.evaluate((words) => globalThis.sv2.ctx.toast({ text: words + ' ' + words, action: { label: 'Undo', run: () => {} } }), LONG);
+      const tall = await box(p, '.toast');
+      assert.ok(tall.height > 76, 'the message is not taller than the band: ' + tall.height);
+      await lastRowClear(p, 'a tall message');
     });
   });
 }
@@ -579,6 +595,15 @@ test('the group editor keeps a room number that is not in the building, as typed
     await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === '10', slotField(DAY_A, 1));
     assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: null, roomText: '10' });
     assert.equal(await line(1), '▲ Not in the building. It is kept as typed.');
+
+    // not even when one room alone has the typed text in its number: "Gy" is not the Gym
+    await p.click(slotField(DAY_A, 4));
+    await p.keyboard.type('Gy');
+    assert.deepEqual(await p.$$eval(slotRow(DAY_A, 4) + ' .picker__option', (all) => all.map((el) => el.firstChild.textContent)), ['Gym — Coach Dunmore']);
+    await p.keyboard.press('Escape');
+    await p.keyboard.press('Tab');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === 'Gy' && !document.querySelector(selector).parentNode.querySelector('.sch-room__missing').hidden, slotField(DAY_A, 4));
+    assert.deepEqual(await stored(p, A6, DAY_A, 4), { room: null, roomText: 'Gy' });
 
     // a room's own number is that room, and a teacher's name that names one room is that room
     await p.click(slotField(DAY_A, 2));
@@ -751,8 +776,12 @@ test('on a 390 px phone the list of groups and the editor take turns: a tap on 6
     assert.deepEqual(await p.$eval('#inspector .sch-counts', (el) => [el.dataset.problem, el.dataset.warning, el.dataset.note]), ['1', '1', '2'], 'the counts are always there');
     await p.click('#inspector-toggle');
 
-    // a tap on 6B
-    await tap(p, '.sch-group[data-group="' + B6 + '"]');
+    // a tap on 6B, with its card at the foot of the window: the editor that
+    // opens under it would be out of sight if the card stayed there
+    await p.$eval('.sch-group[data-group="' + B6 + '"]', (el) => el.scrollIntoView({ block: 'end' }));
+    const card = await box(p, '.sch-group[data-group="' + B6 + '"]');
+    assert.ok(card.bottom > 560, 'the card is not at the foot of the window');
+    await p.touchscreen.tap(card.left + card.width / 2, card.top + card.height / 2);
     await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('.sch-editor__title').textContent === '6B' && document.querySelector('.sch-editor').getClientRects().length > 0);
     assert.deepEqual(await cards(), [B6], 'the list is not folded to the group that was tapped');
     const name = await p.evaluate(() => {
@@ -777,6 +806,24 @@ test('on a 390 px phone the list of groups and the editor take turns: a tap on 6
     await keyIs(p, 'group:' + B6);
     assert.equal((await cards()).length, 8);
     assert.equal(await box(p, '.sch-editor'), null);
+
+    // the first card, tapped where the tab opens with the page at its top:
+    // its editor would start under the foot of the window if the card stayed put
+    await p.evaluate(() => {
+      document.getElementById('surface').scrollTop = 0;
+    });
+    const top = await box(p, '.sch-group[data-group="' + A6 + '"]');
+    assert.ok(top.top > 380 && top.bottom < 660, 'the first card is not in the lower half of the window: ' + JSON.stringify(top));
+    await p.touchscreen.tap(top.left + top.width / 2, top.top + top.height / 2);
+    await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('.sch-editor__title').textContent === '6A' && document.querySelector('.sch-editor').getClientRects().length > 0);
+    const first = await p.evaluate(() => {
+      const field = document.querySelector('[data-key="group-name"]');
+      const rect = field.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return { top: rect.top, bottom: rect.bottom, onTop: hit === field, card: document.querySelector('.sch-group[aria-selected="true"]').getBoundingClientRect().top };
+    });
+    assert.equal(first.onTop, true, 'the Name field of the first card tapped is under the foot of the window: ' + JSON.stringify(first));
+    assert.ok(first.card < 200, 'the card that was tapped was not brought to the top: ' + JSON.stringify(first));
 
     // a slot's address, and Show on a finding, open the editor
     await go(p, '#schedule/groups/' + C6 + '/' + DAY_A + '/1');
