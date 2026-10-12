@@ -75,16 +75,14 @@ export function publishForm(ctx, hooks) {
   let lastProject = null;
   let asked = null;
 
-  // One change to project.publish. A refusal (a tab that cannot change the
-  // project, a value the action will not take) is said, and the control goes
-  // back to what the project holds.
+  // One change to project.publish. A value the action will not take is said,
+  // and the control goes back to what the project holds. (A tab that cannot
+  // change the project says so itself and draws the section again:
+  // storage/session.js.)
   function change(key, value) {
     try {
       store.apply(setPublishSetting, { key, value });
-      if (heldAt(key) === value) return true;
-      // a tab that cannot change the project says so itself and takes nothing
-      update(store.project);
-      return false;
+      return true;
     } catch (error) {
       ctx.toast({ text: error && error.message ? error.message : 'That could not be changed.', kind: 'problem' });
       update(store.project);
