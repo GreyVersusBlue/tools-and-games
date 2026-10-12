@@ -175,7 +175,7 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'movement', 'congestion']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
@@ -216,6 +216,8 @@ test('hostile names come through every output as text, never as markup', () => {
     'teacher-schedules': ['school', 'room', 'teacher', 'subject', 'group', 'day type'],
     'door-signs': ['school', 'floor', 'room', 'teacher', 'subject'],
     'door-signs-day': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
+    movement: ['school', 'group', 'day type'],
+    congestion: ['school', 'group', 'day type'],
   };
   for (const output of OUTPUTS) {
     for (const paper of [PAPER_CHOICES[0], PAPER_CHOICES[3]]) {
@@ -669,7 +671,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'document.js', 'floor-plan.js', 'index.js', 'plan-svg.js', 'room-list.js']);
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js']);
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {
