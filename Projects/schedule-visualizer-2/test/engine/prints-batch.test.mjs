@@ -97,7 +97,8 @@ function hostileSchool() {
 
 test('every teacher gets one new sheet, in the order of the Teachers list, after a cover that lists them', () => {
   const project = school();
-  const html = teachers(project);
+  // noon on the device, with no zone: the day printed is the same in every zone the test runs in
+  const html = teachers(project, { now: '2026-09-01T12:00:00' });
   const sheets = sheetsOf(html);
   assert.deepEqual(sheets.map((sheet) => sheet.id), project.teachers.map((teacher) => teacher.id));
   assert.equal(countOf(html, 'new-sheet'), project.teachers.length, 'one new-sheet a teacher and no other');
