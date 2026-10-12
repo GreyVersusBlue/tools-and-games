@@ -7,7 +7,11 @@
 // and opened from disk with it, a file published with protection off, the
 // staff browser's files read once and good for publishing with the network
 // gone, batch printing through the preview sheet, hostile names, and axe on
-// the section in both themes at a desktop's width and a phone's.
+// the section in both themes at a desktop's width and a phone's. And the
+// fixes of SV2-42: the list of what readers will see following two changes
+// made at once, the passcode screen every time its tick goes on, a passcode
+// that was refused keeping Publish from going ahead, a second project never
+// taking the first one's passcode, and a tab that cannot change the project.
 //
 // Each case opens the planner afresh on the sample school.
 
@@ -77,6 +81,19 @@ function frameOf(page) {
   assert.ok(frame, 'the preview frame is at a blob address');
   return frame;
 }
+
+const ROOM_101 = 'Room 101 has two groups in Period 3 on A Day: both will be shown.';
+const ROOM_203 = 'Room 203 has two groups in Period 2 on A Day: both will be shown.';
+const NOT_SENT = 'Nothing was sent anywhere: send the file on yourself, by mail or on a shared drive.';
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// The views and the map's names are folded under "What is in it": open it, as a click on the line does.
+async function openFold(page) {
+  if (!(await page.evaluate(() => document.getElementById('publish-contents').open))) await page.click('#publish-contents > summary');
+  await page.waitForFunction(() => document.querySelector('.pub input[data-view="teacher"]').getClientRects().length > 0);
+}
+
+const checkLines = (page) => page.evaluate(() => Array.from(document.querySelectorAll('.pub__checks li'), (el) => el.textContent));
 
 const sent = (page) => page.evaluate(() => Number(document.querySelector('.stf-preview').dataset.sent));
 const project = (page) => page.evaluate(() => JSON.parse(JSON.stringify(globalThis.sv2.store.project)));
@@ -306,6 +323,8 @@ test('the publish form, line by line: views, names on the map, staleness, the pa
       names: document.querySelector('.pub input[name="names"]').checked,
       stale: document.getElementById('publish-stale').value,
       staleLabel: document.getElementById('publish-stale').labels[0].textContent,
+      staleLabels: [document.getElementById('publish-stale').labels.length, document.getElementById('publish-stale').labels[0].closest('.pub__title') !== null],
+      fold: { open: document.getElementById('publish-contents').open, says: document.querySelector('#publish-contents > summary').textContent, boxes: document.querySelectorAll('#publish-contents input[type="checkbox"]').length },
       protect: document.getElementById('publish-protect').checked,
       passcode: document.getElementById('publish-passcode').value,
       passcodeAttrs: ['type', 'autocapitalize', 'autocorrect', 'autocomplete', 'spellcheck'].map((name) => document.getElementById('publish-passcode').getAttribute(name)),
@@ -313,7 +332,10 @@ test('the publish form, line by line: views, names on the map, staleness, the pa
       button: document.getElementById('publish-file').textContent,
       headings: Array.from(document.querySelectorAll('.pub h2'), (el) => el.textContent),
     }));
-    assert.deepEqual(form.groups, ['Views to include', 'The map', 'Staleness', 'Passcode', 'Before you publish']);
+    // the passcode, what readers will see and the button first; what is in the file folded under one line; no heading reads "Staleness"
+    assert.deepEqual(form.groups, ['Passcode', 'Before you publish', 'Views to include', 'The map', 'Days until the file counts as out of date']);
+    assert.deepEqual(form.fold, { open: false, says: 'What is in itAll 11 views', boxes: 12 });
+    assert.deepEqual(form.staleLabels, [1, true], 'the heading is the field\'s label: it is not said twice');
     assert.deepEqual(form.views, [
       ['teacher', true, 'Teacher pages'], ['group', true, 'Group pages'], ['room', true, 'Room pages and door signs'], ['map', true, 'Building map'],
       ['free', true, 'Free right now'], ['now', true, 'Where is this group right now'], ['common', true, 'Common planning'], ['coverage', true, 'Coverage'],
@@ -325,15 +347,41 @@ test('the publish form, line by line: views, names on the map, staleness, the pa
     assert.equal(form.protect, true);
     assert.equal(form.passcode, DEFAULT, 'the passcode the tool starts with, in plain sight: the publisher has to be able to pass it on');
     assert.deepEqual(form.passcodeAttrs, ['text', 'off', 'off', 'off', 'false']);
-    assert.equal(form.described, 'A short or guessable passcode stops a casual look, not someone set on guessing it; the passcode this tool starts with is public.');
+    assert.equal(form.described, 'This is the passcode the tool starts with, so it is public. Change it, then tell staff the new one.', 'under the passcode the tool starts with, the line says what to do');
     assert.equal(form.button, 'Publish a file');
     assert.deepEqual(form.headings, ['Publish', 'Print for the whole school']);
     assert.equal(await says(page, 'notes'), 'Teacher notes are published: the substitute plan shows them.');
     assert.equal(await says(page, 'mail'), 'On a phone, open the file in Safari or Chrome, or save it to Files first; a mail app’s preview will not work.');
 
     // the sample school has one problem left, and the form says what readers will see of it
-    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('.pub__checks li'), (el) => el.textContent)), ['Room 203 has two groups in Period 2 on A Day: both will be shown.']);
+    assert.deepEqual(await checkLines(page), [ROOM_203]);
     assert.equal(await page.evaluate(() => document.querySelector('.pub__checks li').dataset.kind), 'room-double');
+
+    // in a 1280 px window the passcode and the button are on screen before anything is scrolled, in this order
+    for (const height of [900, 720]) {
+      await page.setViewport({ width: 1280, height, deviceScaleFactor: 1 });
+      const seen = await page.evaluate(() => {
+        const body = document.querySelector('.pub').closest('.inspector__body') || document.querySelector('.inspector');
+        const box = body.getBoundingClientRect();
+        const within = (el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.height > 0 && rect.top >= box.top && rect.bottom <= Math.min(box.bottom, innerHeight);
+        };
+        const top = (id) => document.getElementById(id).getBoundingClientRect().top;
+        return {
+          scrolled: body.scrollTop,
+          passcode: within(document.getElementById('publish-passcode')),
+          protect: within(document.getElementById('publish-protect')),
+          button: within(document.getElementById('publish-file')),
+          order: top('publish-passcode') < top('publish-file') && top('publish-file') < top('publish-contents') && top('publish-contents') < top('publish-stale'),
+        };
+      });
+      assert.deepEqual(seen, { scrolled: 0, passcode: true, protect: true, button: true, order: true }, 'at 1280 by ' + height);
+    }
+
+    // a changed passcode gets the plain truth about short ones, and whom to tell
+    await typeInto(page, '#publish-passcode', CHANGED);
+    assert.equal(await says(page, 'passcode'), 'A short or guessable passcode stops a casual look, not someone set on guessing it. Tell staff this passcode: the file asks for it once on each device.');
   });
 });
 
@@ -342,10 +390,12 @@ test('each choice is the project\'s own setting: saved through the publish actio
     const inside = frameOf(page);
     const start = await undoSteps(page);
 
-    // a view left out: the project says so, the preview drops it
+    // a view left out: the project says so, the preview drops it, the folded line counts it
+    await openFold(page);
     let before = await sent(page);
     await page.click('.pub input[data-view="coverage"]');
     assert.equal((await project(page)).publish.views.coverage, false);
+    assert.equal(await says(page, 'views'), '10 of 11 views');
     assert.equal(await undoSteps(page), start + 1);
     assert.equal(await undoLabel(page), 'Change a publish setting');
     await fedAfter(page, before);
@@ -365,11 +415,14 @@ test('each choice is the project\'s own setting: saved through the publish actio
     assert.equal((await project(page)).publish.stalenessDays, 30);
     assert.equal(await undoSteps(page), start + 3);
     const hint = await page.evaluate(() => document.getElementById(document.getElementById('publish-stale').getAttribute('aria-describedby').split(' ')[0]).textContent);
-    const until = await page.evaluate(() => {
-      const date = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      return date.getDate() + ' ' + ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][date.getMonth()] + ' ' + date.getFullYear();
-    });
-    assert.equal(hint, 'Readers see a notice once the file is older than this. Published today, it is current until ' + until + '. From 1 to 3650 days.');
+    // the day is read from the line itself and checked against the page's clock a day either side, so midnight between the two reads is not a failure
+    const said = /^Readers see a notice once the file is older than this\. Published today, it is current until (\d{1,2} [A-Z][a-z]+ \d{4})\. From 1 to 3650 days\.$/.exec(hint);
+    assert.ok(said, hint);
+    const around = await page.evaluate((months) => [-1, 0].map((shift) => {
+      const date = new Date(Date.now() + (30 + shift) * 24 * 60 * 60 * 1000);
+      return date.getDate() + ' ' + months[date.getMonth()] + ' ' + date.getFullYear();
+    }), MONTHS);
+    assert.ok(around.includes(said[1]), said[1] + ' is 30 days on: ' + around.join(' or '));
     // a refusal is a sentence under the field, and nothing changes
     await typeInto(page, '#publish-stale', '0');
     assert.equal((await project(page)).publish.stalenessDays, 30);
@@ -414,8 +467,8 @@ test('each choice is the project\'s own setting: saved through the publish actio
 
 test('what readers will see: a sentence per remaining problem, redrawn as the schedule changes, with accepted ones counted apart', async () => {
   await closing(await open(), async (page) => {
-    const lines = () => page.evaluate(() => Array.from(document.querySelectorAll('.pub__checks li'), (el) => el.textContent));
-    assert.deepEqual(await lines(), ['Room 203 has two groups in Period 2 on A Day: both will be shown.']);
+    const lines = () => checkLines(page);
+    assert.deepEqual(await lines(), [ROOM_203]);
 
     // a second problem: 7A goes where 6A already is
     const slot = await page.evaluate(() => {
@@ -425,24 +478,93 @@ test('what readers will see: a sentence per remaining problem, redrawn as the sc
       return { dayTypeId: day, period: 2, room: six.days[day][2].room, groupId: school.groups.find((group) => group.name === '7A').id };
     });
     await apply(page, 'setSlot', { groupId: slot.groupId, dayTypeId: slot.dayTypeId, period: slot.period, slot: { room: slot.room } });
-    await page.waitForFunction(() => document.querySelectorAll('.pub__checks li').length >= 2);
-    const now = await lines();
-    assert.ok(now.includes('Room 101 has two groups in Period 3 on A Day: both will be shown.'), now.join(' | '));
-    assert.ok(now.includes('Room 203 has two groups in Period 2 on A Day: both will be shown.'));
+    await checksDrawn(page);
+    assert.deepEqual(await lines(), [ROOM_203, ROOM_101]);
 
     // accepted, the first is no longer a line; it is still published, and the form says so
     const id = await page.evaluate(() => document.querySelector('.pub__checks li[data-kind="room-double"]').dataset.finding);
     await apply(page, 'acceptFinding', { findingId: id, reason: 'Both coaches are there' });
-    await page.waitForFunction(() => /accepted/.test(document.querySelector('[data-says="checks-summary"]').textContent));
+    await checksDrawn(page);
+    assert.deepEqual(await lines(), [ROOM_101]);
     assert.equal(await says(page, 'checks-summary'), 'One problem you accepted is published as it is too.');
 
-    // with nothing left, one plain sentence
+    // Two undos at once. The list still holds one line until the checks
+    // answer, and it is the line of the project before: a wait for "one
+    // line" is met by that stale line (SV2-42 item 0), so the wait is for
+    // the answer, which the form marks with data-checks-pending.
     await page.evaluate(() => { globalThis.sv2.store.undo(); globalThis.sv2.store.undo(); });
-    await page.waitForFunction(() => document.querySelectorAll('.pub__checks li').length === 1);
+    await checksDrawn(page);
+    assert.deepEqual(await lines(), [ROOM_203]);
+    // with nothing left, one plain sentence
     const only = await page.evaluate(() => document.querySelector('.pub__checks li').dataset.finding);
     await apply(page, 'acceptFinding', { findingId: only, reason: 'Team taught' });
-    await page.waitForFunction(() => document.querySelector('.pub__checks').hidden);
+    await checksDrawn(page);
+    assert.equal(await page.evaluate(() => document.querySelector('.pub__checks').hidden), true);
     assert.equal(await says(page, 'checks-summary'), 'The checks found no problem that readers will see. One problem you accepted is published as it is.');
+
+    // a check that is switched off was not looked at, and the line says so
+    await page.evaluate(() => globalThis.sv2.store.undo());
+    await apply(page, 'setSetting', { key: 'checks.off', value: ['room-double', 'over-capacity'] });
+    await checksDrawn(page);
+    assert.deepEqual(await lines(), []);
+    assert.equal(await says(page, 'checks-summary'), 'The checks found no problem that readers will see. One check is switched off and was not looked at.');
+
+    // a teacher based in two rooms is said as the reader meets it
+    const rooms = await page.evaluate(() => globalThis.sv2.store.project.building.floors.flatMap((floor) => floor.spaces).filter((space) => space.number === '101' || space.number === '102').map((space) => space.id));
+    await apply(page, 'editTeacher', { id: 'tsample001', roomIds: rooms });
+    await checksDrawn(page);
+    const based = await page.evaluate(() => Array.from(document.querySelectorAll('.pub__checks li[data-kind="teacher-multi-room"]'), (el) => el.textContent));
+    assert.deepEqual(based, ['Ms. Halloran is based in two rooms: both are shown on the teacher\'s page.']);
+  });
+});
+
+test('two changes at once, ten times over, with the checks answering late: the list and the line under it are the last project\'s every time', async () => {
+  await closing(await open(), async (page) => {
+    // every answer from the checks comes 120 ms late, so each change below is made while one is still on its way
+    await page.evaluate(() => {
+      const engine = globalThis.sv2.store.derived.engine;
+      const results = engine.results.bind(engine);
+      engine.results = () => results().then((result) => new Promise((resolve) => { setTimeout(() => resolve(result), 120); }));
+    });
+    const slot = await page.evaluate(() => {
+      const school = globalThis.sv2.store.project;
+      const day = school.dayTypes[0].id;
+      const six = school.groups.find((group) => group.name === '6A');
+      return { dayTypeId: day, period: 2, slot: { room: six.days[day][2].room }, groupId: school.groups.find((group) => group.name === '7A').id };
+    });
+    for (let round = 1; round <= 10; round += 1) {
+      // three changes in one turn of the page: a second problem, one of the two accepted, and both taken back
+      const during = await page.evaluate(async (given) => {
+        const actions = await import(new URL('engine/actions.js', location.href).href);
+        const store = globalThis.sv2.store;
+        store.apply(actions.setSlot, given);
+        store.apply(actions.acceptFinding, { findingId: 'room-double:dsample00a:1:rsample203', reason: 'Both coaches are there' });
+        store.undo();
+        store.undo();
+        return document.querySelector('.pub').dataset.checksPending;
+      }, slot);
+      assert.equal(during, 'true', 'round ' + round + ': the form says an answer is on its way');
+      await checksDrawn(page);
+      assert.deepEqual(await checkLines(page), [ROOM_203], 'round ' + round);
+      assert.equal(await page.evaluate(() => document.querySelector('[data-says="checks-summary"]').hidden), true, 'round ' + round + ': nothing was accepted in the project as it stands');
+      assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.checks), '1');
+
+      // and the other way: ending on a project with something accepted
+      await page.evaluate(async (given) => {
+        const actions = await import(new URL('engine/actions.js', location.href).href);
+        const store = globalThis.sv2.store;
+        store.apply(actions.setSlot, given);
+        store.undo();
+        store.redo();
+        store.apply(actions.acceptFinding, { findingId: 'room-double:dsample00a:1:rsample203', reason: 'Both coaches are there' });
+      }, slot);
+      await checksDrawn(page);
+      assert.deepEqual(await checkLines(page), [ROOM_101], 'round ' + round + ', ending accepted');
+      assert.equal(await says(page, 'checks-summary'), 'One problem you accepted is published as it is too.', 'round ' + round);
+      await page.evaluate(() => { globalThis.sv2.store.undo(); globalThis.sv2.store.undo(); });
+    }
+    await checksDrawn(page);
+    assert.deepEqual(await checkLines(page), [ROOM_203]);
   });
 });
 
@@ -468,19 +590,50 @@ test('a changed passcode, Publish a file: the download is named for the school a
     }
     assert.equal(names.length, 1, 'one file was downloaded: ' + names.join(', '));
     assert.match(names[0], /^Marrowby Middle School \(sample\) - staff schedule - \d{4}-\d{2}-\d{2}\.html$/);
-    const today = await page.evaluate(() => {
-      const now = new Date();
-      return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    // The day in the name is the day the planner's clock gave when it made
+    // the file, which the project kept: that one reading is what the name
+    // is held to. The page's clock is moved on a day first, as it is when
+    // midnight falls between the publish and this line, so nothing below
+    // can pass by asking the clock again.
+    await page.evaluate(() => {
+      const Real = Date;
+      const DAY = 24 * 60 * 60 * 1000;
+      globalThis.Date = class extends Real {
+        constructor(...given) {
+          if (given.length === 0) super(Real.now() + DAY);
+          else super(...given);
+        }
+
+        static now() {
+          return Real.now() + DAY;
+        }
+      };
     });
-    assert.ok(names[0].endsWith(' - ' + today + '.html'), 'the day it was published, on this device');
+    const made = (await project(page)).publish.lastPublishedAt;
+    assert.match(made, /^\d{4}-\d{2}-\d{2}T/, 'the project remembers that a file went out');
+    const day = await page.evaluate((at, months) => {
+      const date = new Date(at);
+      return {
+        name: date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0'),
+        words: date.getDate() + ' ' + months[date.getMonth()] + ' ' + date.getFullYear(),
+      };
+    }, made, MONTHS);
+    assert.ok(names[0].endsWith(' - ' + day.name + '.html'), 'the day it was published, on this device: ' + names[0] + ' against ' + day.name);
+    // what the status says: the file, that nothing was sent, and the passcode it asks for
     const said = await says(page, 'published');
-    assert.match(said, /^Published Marrowby Middle School \(sample\) - staff schedule - \d{4}-\d{2}-\d{2}\.html \(\d+ KB\)\. It asks for the staff passcode\.$/);
+    assert.equal(said, 'Published ' + names[0] + ' (' + (/\((\d+ KB)\)/.exec(said) || [])[1] + '). ' + NOT_SENT + ' It asks for the staff passcode: ' + CHANGED);
+    assert.equal(await says(page, 'published-passcode'), CHANGED, 'the passcode stands alone, as typed');
     assert.equal(await page.evaluate(() => document.querySelector('[data-says="published"]').getAttribute('role')), 'status');
 
-    // publishing is not an undo step, and the project remembers that a file went out
+    // publishing is not an undo step: the time is noted by a quiet action of the engine's, and the form makes none of its own
     assert.equal(await undoSteps(page), steps);
-    assert.match((await project(page)).publish.lastPublishedAt, /^\d{4}-\d{2}-\d{2}T/);
-    await page.waitForFunction(() => document.querySelector('.stf-facts').textContent.startsWith('A file has been published from this project.'));
+    const noted = await page.evaluate(async () => {
+      const actions = await import(new URL('engine/actions.js', location.href).href);
+      const form = await (await fetch(new URL('ui/staff/form.js', location.href))).text();
+      return { quiet: Boolean(actions.notePublished) && actions.notePublished.quiet, label: actions.notePublished && actions.notePublished.label, formMakesOne: /\baction\(/.test(form) };
+    });
+    assert.deepEqual(noted, { quiet: true, label: 'Note when the file was published', formMakesOne: false });
+    assert.equal(await page.evaluate(() => document.querySelector('.stf-facts').textContent), 'The last file from this project was made on ' + day.words + '. It has 12 teachers, 8 groups and 13 rooms to show.');
 
     const html = readFileSync(path.join(folder, names[0]), 'utf8');
     for (const word of ['Marrowby', 'Halloran', 'tsample001', CHANGED, DEFAULT]) assert.ok(!html.includes(word), word + ' can be read in the file without the passcode');
@@ -523,6 +676,8 @@ test('protection off, Publish a file: the file opens from disk on a teacher\'s p
     assert.equal(published.locked, false);
     assert.match(await says(page, 'published'), /\. It opens with no passcode\.$/);
     // the choices on the form are in the file: a view left out is left out
+    assert.equal(await says(page, 'published'), 'Published ' + published.fileName + ' (' + (/\((\d+ KB)\)/.exec(await says(page, 'published')) || [])[1] + '). ' + NOT_SENT + ' It opens with no passcode.');
+    await openFold(page);
     await page.click('.pub input[data-view="staffing"]');
     const second = await publishThroughHook(page);
     assert.ok(second.html.includes('"staffing":false') && published.html.includes('"staffing":true'));
@@ -584,6 +739,317 @@ test('the files are read in the background a few seconds after the page loads, w
     assert.equal(asked('/staff/main.js'), 1);
     assert.deepEqual(toServer().slice(before), [], 'opening the section asked the server for nothing more');
   });
+});
+
+// ---------------------------------------------------------------- SV2-42: the passcode screen, the passcode, the re-feed
+
+const frameState = (inside, wanted) => inside.waitForFunction((want) => document.getElementById('app').dataset.state === want, { timeout: 30000 }, wanted);
+
+async function unlockIn(inside, passcode) {
+  await inside.evaluate(() => { document.getElementById('passcode').value = ''; });
+  await inside.type('#passcode', passcode);
+  await inside.evaluate(() => document.getElementById('passcode').form.requestSubmit());
+}
+
+test('"Start at the passcode screen" shows the passcode screen every time it is ticked, though the frame kept the key the first time', async () => {
+  await closing(await open(), async (page) => {
+    const inside = frameOf(page);
+    const kept = () => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('sv2staff:') && key.endsWith(':key')).length);
+    for (const time of ['the first time', 'the second time', 'the third time']) {
+      const before = await sent(page);
+      await page.click('.stf-bar .stf-check');
+      await fedAfter(page, before);
+      await frameState(inside, 'locked');
+      assert.match(await inside.evaluate(() => document.body.textContent), /Enter the staff passcode\./, time);
+      assert.equal(await kept(), 0, time + ': the key this device kept is forgotten when the tick goes on');
+      await unlockIn(inside, DEFAULT);
+      await frameState(inside, 'open');
+      assert.equal(await kept(), 1, time + ': unlocking keeps a key, as it does on a reader\'s device');
+      // while the tick stays on, a change to the project does not ask again: the key is kept, as on a reader's device
+      const fed = await sent(page);
+      await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran ' + time });
+      await fedAfter(page, fed);
+      await inside.evaluate(() => { location.hash = '#/teacher/tsample001'; });
+      await inside.waitForFunction((name) => document.querySelector('h1') && document.querySelector('h1').textContent === name, { timeout: 30000 }, 'Ms. Halloran ' + time);
+      assert.equal(await inside.evaluate(() => document.getElementById('app').dataset.state), 'open', time);
+      // untick: the open file again
+      const again = await sent(page);
+      await page.click('.stf-bar .stf-check');
+      await fedAfter(page, again);
+      await frameState(inside, 'open');
+    }
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
+  });
+});
+
+test('the passcode changed while the locked preview is open: the old one no longer opens it, the new one does', async () => {
+  await closing(await open(), async (page) => {
+    const inside = frameOf(page);
+    let before = await sent(page);
+    await page.click('.stf-bar .stf-check');
+    await fedAfter(page, before);
+    await frameState(inside, 'locked');
+    // changed on the form while the passcode screen is up
+    before = await sent(page);
+    await typeInto(page, '#publish-passcode', CHANGED);
+    await fedAfter(page, before);
+    await unlockIn(inside, DEFAULT);
+    await inside.waitForFunction(() => document.getElementById('passcode-says').textContent !== '', { timeout: 30000 });
+    assert.equal(await inside.evaluate(() => document.getElementById('passcode-says').textContent), 'That passcode did not open this schedule. Check it and try again.');
+    await unlockIn(inside, CHANGED);
+    await frameState(inside, 'open');
+    assert.equal(await inside.evaluate(() => document.querySelector('.top__school').textContent), SCHOOL);
+    // and changed again once it is open: the key the frame kept no longer fits, so it asks, and the newest passcode opens it
+    before = await sent(page);
+    await typeInto(page, '#publish-passcode', 'wren-ladder-7');
+    await fedAfter(page, before);
+    await frameState(inside, 'locked');
+    await unlockIn(inside, 'wren-ladder-7');
+    await frameState(inside, 'open');
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
+  });
+});
+
+test('another project loaded with protection off never takes the last project\'s passcode: ticking protect gives the tool\'s own', async () => {
+  await closing(await open(), async (page) => {
+    await typeInto(page, '#publish-passcode', CHANGED);
+    assert.equal((await project(page)).publish.passcode, CHANGED);
+    // another school's file, opened on this section: its own id, and no passcode
+    await page.evaluate(async () => {
+      const actions = await import(new URL('engine/actions.js', location.href).href);
+      const other = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+      other.id = 'psecond0001';
+      other.settings.schoolName = 'Tollgate Lane School';
+      other.publish.passcode = '';
+      globalThis.sv2.store.apply(actions.replaceProject, { project: other, label: 'Open Tollgate Lane School' });
+    });
+    await page.waitForFunction(() => !document.getElementById('publish-protect').checked);
+    await page.click('#publish-protect');
+    assert.equal((await project(page)).publish.passcode, DEFAULT, 'the tool\'s own passcode, not the one typed for the other school');
+    assert.equal(await page.evaluate(() => document.getElementById('publish-passcode').value), DEFAULT);
+    // within one project the box still brings back what that project had
+    await typeInto(page, '#publish-passcode', 'wren-ladder-7');
+    await page.click('#publish-protect');
+    await page.click('#publish-protect');
+    assert.equal((await project(page)).publish.passcode, 'wren-ladder-7');
+    // and back in the first project (an undo of the load and of what followed), its own
+    await page.evaluate(() => { for (let n = 0; n < 5; n += 1) globalThis.sv2.store.undo(); });
+    assert.equal((await project(page)).settings.schoolName, SCHOOL);
+    assert.equal((await project(page)).publish.passcode, CHANGED);
+    await page.click('#publish-protect');
+    await page.click('#publish-protect');
+    assert.equal((await project(page)).publish.passcode, CHANGED);
+  });
+});
+
+test('a passcode is trimmed, a blank one is refused, and Publish does nothing while the box holds a refused one', async () => {
+  await closing(await open(), async (page) => {
+    await typeInto(page, '#publish-passcode', '  ' + CHANGED + ' ');
+    assert.equal((await project(page)).publish.passcode, CHANGED, 'the spaces either side are not part of it');
+    assert.equal(await page.evaluate(() => document.getElementById('publish-passcode').value), CHANGED);
+    const steps = await undoSteps(page);
+
+    await typeInto(page, '#publish-passcode', '   ');
+    assert.equal(await page.evaluate(() => document.getElementById('publish-passcode-refusal').textContent), 'A passcode cannot be empty. To publish without one, untick "Ask for a staff passcode".');
+    assert.equal(await page.evaluate(() => document.getElementById('publish-passcode').getAttribute('aria-invalid')), 'true');
+    assert.equal((await project(page)).publish.passcode, CHANGED);
+
+    // the box shows no passcode and the project holds one: nothing goes out until that is settled
+    assert.equal(await publishThroughHook(page), null);
+    assert.equal(await says(page, 'published'), 'Nothing was published: the passcode in the box was not taken. Change it, or press Escape in the box to go back to the last one.');
+    assert.equal((await project(page)).publish.lastPublishedAt, null);
+    await page.click('#publish-file');
+    assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.hooks.published), null, 'a real click is refused the same way');
+
+    // Escape in the box puts the last passcode back, and then the file is made, and says which passcode it asks for
+    await page.focus('#publish-passcode');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => document.getElementById('publish-passcode').value), CHANGED);
+    const published = await publishThroughHook(page);
+    assert.equal(published.locked, true);
+    assert.equal(await says(page, 'published-passcode'), CHANGED);
+    assert.match(await says(page, 'published'), /^Published .+\.html \(\d+ KB\)\. Nothing was sent anywhere: send the file on yourself, by mail or on a shared drive\. It asks for the staff passcode: heron-lantern-42$/);
+    assert.equal(await undoSteps(page), steps);
+
+    // a passcode that is markup is text on that line
+    await typeInto(page, '#publish-passcode', HOSTILE);
+    await publishThroughHook(page);
+    assert.equal(await says(page, 'published-passcode'), HOSTILE);
+    assert.equal(await page.evaluate(() => document.querySelectorAll('.pub img, .pub b').length), 0);
+    assert.equal(await page.evaluate(() => globalThis.__pwned), undefined);
+  });
+});
+
+test('the frame is fed again for the seven settings a file carries and for no other, and "Try again" lets the page before it go', async () => {
+  await closing(await open(), async (page) => {
+    // the list preview.js compares is the list publishedModel copies
+    const lists = await page.evaluate(async () => {
+      const { PUBLISHED_SETTINGS } = await import(new URL('ui/staff/preview.js', location.href).href);
+      const { publishedModel } = await import(new URL('engine/publish-data.js', location.href).href);
+      return { compared: PUBLISHED_SETTINGS || null, published: Object.keys(publishedModel(globalThis.sv2.store.project, { clock: () => new Date() }).settings) };
+    });
+    assert.deepEqual(lists.compared, lists.published);
+    assert.equal(lists.published.length, 7);
+
+    // settings only the planner uses: the theme, the paper, a default head count, a check's limit
+    const before = await sent(page);
+    try {
+      await apply(page, 'setSetting', { key: 'theme', value: 'dark' });
+      await apply(page, 'setSetting', { key: 'paper.size', value: 'a4' });
+      await apply(page, 'setSetting', { key: 'defaultHeadCount', value: 31 });
+      await apply(page, 'setSetting', { key: 'checks.consecutiveLimit', value: 5 });
+      await wait(900);
+      assert.equal(await sent(page), before, 'nothing a reader sees changed, so the frame was left alone');
+    } finally {
+      // the theme is kept on the device as well as in the project: put it back for the cases that follow
+      await apply(page, 'setSetting', { key: 'theme', value: 'auto' });
+    }
+    await wait(600);
+    assert.equal(await sent(page), before);
+    // one a file carries
+    await apply(page, 'setSetting', { key: 'timeFormat', value: '24h' });
+    await fedAfter(page, before);
+
+    // "Try again" makes the page anew: the address of the one before is let go
+    await page.evaluate(() => {
+      const revoke = URL.revokeObjectURL.bind(URL);
+      globalThis.__revoked = [];
+      URL.revokeObjectURL = (address) => {
+        globalThis.__revoked.push(address);
+        revoke(address);
+      };
+    });
+    const first = await page.evaluate(() => document.querySelector('.stf-frame').src);
+    const fed = await sent(page);
+    await page.evaluate(() => document.querySelector('[data-action="preview-again"]').click());
+    await page.waitForFunction((was) => document.querySelector('.stf-frame').src !== was && document.querySelector('.stf-frame').src.startsWith('blob:'), { timeout: 30000 }, first);
+    await fedAfter(page, fed);
+    assert.deepEqual(await page.evaluate(() => globalThis.__revoked), [first]);
+    await frameOf(page).waitForFunction(() => document.getElementById('app').dataset.state === 'open', { timeout: 30000 });
+  });
+});
+
+// ---------------------------------------------------------------- SV2-42: what the preview and the form do at the edges
+
+test('room pages left out: the preview has no link to a room or a door sign, and the room\'s address says the view was left out', async () => {
+  await closing(await open(), async (page) => {
+    const inside = frameOf(page);
+    const links = () => inside.evaluate(() => Array.from(document.querySelectorAll('a[href]'), (a) => a.getAttribute('href')).filter((href) => /^#\/(room|door)\//.test(href)));
+    await inside.evaluate(() => { location.hash = '#/teacher/tsample001'; });
+    await inside.waitForFunction(() => document.querySelector('h1') && document.querySelector('h1').textContent === 'Ms. Halloran');
+    assert.ok((await links()).length > 0, 'with room pages in the file, a teacher\'s page links to rooms');
+
+    await openFold(page);
+    const before = await sent(page);
+    await page.click('.pub input[data-view="room"]');
+    await fedAfter(page, before);
+    await inside.waitForFunction(() => !Array.from(document.querySelectorAll('a[href]')).some((a) => /^#\/(room|door)\//.test(a.getAttribute('href'))), { timeout: 15000 });
+    assert.deepEqual(await links(), []);
+    assert.equal(await inside.evaluate(() => document.querySelector('h1').textContent), 'Ms. Halloran', 'still on the page it was on');
+    for (const address of ['#/room/rsample203', '#/door/rsample203']) {
+      await inside.evaluate((hash) => { location.hash = hash; }, address);
+      await inside.waitForFunction(() => /This view was not included when this schedule was published\./.test(document.getElementById('app').textContent), { timeout: 15000 });
+      assert.deepEqual(await links(), [], address);
+    }
+  });
+});
+
+test('the teacher whose page the frame is on is deleted: after the re-feed the frame says the page is not in this schedule', async () => {
+  await closing(await open(), async (page) => {
+    const inside = frameOf(page);
+    await inside.evaluate(() => { location.hash = '#/teacher/tsample001'; });
+    await inside.waitForFunction(() => document.querySelector('h1') && document.querySelector('h1').textContent === 'Ms. Halloran');
+    const before = await sent(page);
+    await apply(page, 'deleteTeacher', { id: 'tsample001' });
+    await fedAfter(page, before);
+    await inside.waitForFunction(() => document.querySelector('h1').textContent === 'Not in this schedule', { timeout: 15000 });
+    assert.match(await inside.evaluate(() => document.getElementById('app').textContent), /This copy of the schedule has no teacher at this address\. It may be from an older or a newer copy\./);
+    assert.equal(await inside.evaluate(() => location.hash), '#/teacher/tsample001');
+    // undone, the page is back where it was
+    const again = await sent(page);
+    await page.evaluate(() => globalThis.sv2.store.undo());
+    await fedAfter(page, again);
+    await inside.waitForFunction(() => document.querySelector('h1').textContent === 'Ms. Halloran', { timeout: 15000 });
+  });
+});
+
+test('the staff browser\'s files cannot be read: the preview says so with "Try again", and trying again brings it up', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    // the server stops answering for the staff browser's files (the connection has gone)
+    await page.evaluate(() => {
+      const real = globalThis.fetch.bind(globalThis);
+      globalThis.__fetch = real;
+      globalThis.fetch = (address, ...rest) => (/\/(staff|fonts)\//.test(String(address && address.url ? address.url : address)) ? Promise.reject(new TypeError('Failed to fetch')) : real(address, ...rest));
+    });
+    await go(page, '#staff');
+    await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'failed', { timeout: 30000 });
+    const failed = await page.evaluate(() => ({
+      says: document.querySelector('[data-says="preview"]').textContent,
+      again: document.querySelector('[data-action="preview-again"]').hidden,
+      label: document.querySelector('[data-action="preview-again"]').textContent,
+      src: document.querySelector('.stf-frame').getAttribute('src'),
+      sent: document.querySelector('.stf-preview').dataset.sent,
+    }));
+    assert.equal(failed.again, false);
+    assert.equal(failed.label, 'Try again');
+    assert.equal(failed.says, 'The preview could not be put together: the staff browser\'s files could not be read. Check the connection and try again.', 'a sentence of the tool\'s own, not the browser\'s "Failed to fetch"');
+    assert.equal(failed.src, null, 'no page was made');
+    assert.equal(failed.sent, '0');
+    // and a file cannot be made either: the form says so and notes nothing
+    assert.equal(await publishThroughHook(page), null);
+    assert.equal(await says(page, 'published'), 'The file could not be made, so nothing was published. Check the connection and try again.');
+    assert.equal((await project(page)).publish.lastPublishedAt, null);
+
+    await page.evaluate(() => { globalThis.fetch = globalThis.__fetch; });
+    await page.click('[data-action="preview-again"]');
+    await previewLive(page);
+    assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').hidden), true);
+    await frameOf(page).waitForFunction(() => document.getElementById('app').dataset.state === 'open', { timeout: 30000 });
+    assert.equal(await says(page, 'preview'), 'This is the file as staff see it. It follows the project as you change it.');
+  });
+});
+
+test('a tab that cannot change the project: each control on the form goes back to what the project holds, and the tab says why once', async () => {
+  const first = await open();
+  let second = null;
+  try {
+    await apply(first.page, 'setSetting', { key: 'schoolName', value: 'First Tab School' });
+    await first.page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved' && !globalThis.sv2.storage.pending, { timeout: 10000 });
+    second = await open({ keep: true });
+    const page = second.page;
+    await page.waitForSelector('#banner-read-only');
+    const held = await project(page);
+    assert.equal(held.publish.passcode, DEFAULT);
+
+    // a tick box
+    await openFold(page);
+    await page.click('.pub input[data-view="coverage"]');
+    await page.waitForFunction(() => document.querySelector('.toast .toast__text'));
+    assert.equal(await page.$eval('.toast .toast__text', (el) => el.textContent), 'Nothing changed: this tab is read-only while the project is open in another tab.');
+    assert.equal(await page.evaluate(() => document.querySelector('.pub input[data-view="coverage"]').checked), true, 'the box is ticked again');
+    assert.equal(await says(page, 'views'), 'All 11 views');
+    // the protect box: still on, the field still there
+    await page.click('#publish-protect');
+    assert.equal(await page.evaluate(() => document.getElementById('publish-protect').checked), true);
+    assert.equal(await page.evaluate(() => document.getElementById('publish-passcode').closest('.field').hidden), false);
+    // the two fields: what was typed is not left looking as if it had been taken
+    await typeInto(page, '#publish-passcode', CHANGED);
+    await page.waitForFunction((want) => document.getElementById('publish-passcode').value === want, { timeout: 5000 }, DEFAULT);
+    await typeInto(page, '#publish-stale', '30');
+    await page.waitForFunction(() => document.getElementById('publish-stale').value === '60', { timeout: 5000 });
+    assert.deepEqual((await project(page)).publish, held.publish, 'and nothing in the project changed');
+    assert.equal(await undoSteps(page), 0);
+    assert.deepEqual(second.problems().errors, []);
+    assert.deepEqual(first.problems().errors, []);
+  } finally {
+    if (second) await second.close();
+    await first.close();
+  }
 });
 
 // ---------------------------------------------------------------- batch printing
@@ -695,6 +1161,11 @@ for (const theme of ['light', 'dark']) {
       // with a refusal showing and protection off
       await typeInto(page, '#publish-stale', '0');
       await axe(page, 'the form with a refusal, ' + theme);
+      // with what is in the file unfolded, and a file published
+      await openFold(page);
+      await typeInto(page, '#publish-stale', '60');
+      await publishThroughHook(page);
+      await axe(page, 'the form unfolded after publishing, ' + theme);
     });
     await closing(await open({ theme, width: 390, height: 760, mobile: true }), async (page) => {
       const fits = await page.evaluate(() => {
@@ -709,7 +1180,9 @@ for (const theme of ['light', 'dark']) {
       await page.click('#inspector-toggle');
       await page.waitForFunction(() => document.getElementById('publish-file').getClientRects().length > 0);
       await axe(page, 'the publish form as a sheet, ' + theme + ', 390 px');
-      const targets = await page.evaluate(() => Array.from(document.querySelectorAll('.pub .stf-check, .pub .btn'), (el) => Math.round(el.getBoundingClientRect().height)));
+      await openFold(page);
+      const targets = await page.evaluate(() => Array.from(document.querySelectorAll('.pub .stf-check, .pub .btn, .pub summary'), (el) => Math.round(el.getBoundingClientRect().height)));
+      assert.equal(targets.length, 18, 'twelve boxes, the protect box, four buttons and the folded line');
       assert.ok(targets.every((height) => height >= 28), 'every target in the form is tall enough for a finger: ' + targets.join(' '));
     });
   });

@@ -19,6 +19,7 @@
 import { h } from '../components/dom.js';
 import { intro } from '../components/card.js';
 import { count, figures } from '../components/words.js';
+import { printDate } from '../prints/document.js';
 import { inputsFor, pageReader } from './assemble.js';
 import { preview } from './preview.js';
 import { publishForm } from './form.js';
@@ -32,7 +33,9 @@ export const hooks = { deliver: null, published: null };
 function facts(project) {
   const f = figures(project);
   const holds = 'It has ' + count(f.teachers, 'teacher') + ', ' + count(f.groups, 'group') + ' and ' + count(f.rooms, 'room') + ' to show.';
-  return project.publish.lastPublishedAt ? 'A file has been published from this project. ' + holds : 'Nothing has been published from this project yet. ' + holds;
+  const last = project.publish.lastPublishedAt ? printDate(project.publish.lastPublishedAt) : '';
+  if (last === '') return 'No file has been made from this project yet. ' + holds;
+  return 'The last file from this project was made on ' + last + '. ' + holds;
 }
 
 // Read the staff browser's files now. They are kept (assemble.js), so this is
