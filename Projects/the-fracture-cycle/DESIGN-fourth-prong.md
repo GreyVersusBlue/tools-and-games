@@ -49,8 +49,9 @@ changed.
 It leaves at `intro`, as a fourth choice that is not a road: the player takes
 none of the three and walks along the seam itself. It rejoins at `hub_bazaar`
 like the others, carrying no fragment, and comes back out of the trunk at
-`core_confrontation`, where a walker who has a name gets one more choice. That
-choice leads to the payoff node and the prong's two endings.
+`core_confrontation`, where a walker gets one more choice (every walker has a
+name by then: the stone offers two and no way round). That choice leads to the
+payoff node and the prong's two endings.
 
 ## Beginning
 
@@ -58,7 +59,8 @@ choice leads to the payoff node and the prong's two endings.
 unlit. The ground has footprints on it, all the size of the player's own, all
 leading away down one of the three roads, none coming back. Three choices, the
 only place the prong moves the status bar: lean toward the gold (`align` +1),
-toward the crimson (`align` -1), or keep to the line (`favor.invoker` +1).
+toward the crimson (`align` -1), or keep to the line (nothing moves, and the
+bar goes on reading Unaligned).
 
 ## Middle
 
@@ -99,8 +101,8 @@ Two endings.
 One object, written at the entrance and nowhere else: `state.seam = { name }`.
 `initialState()` does not change, so a run on an old prong carries exactly the
 state it always did, and the suite checks that no old path ends with a `seam`
-key. `seam.name` is read twice: by the socket's extra choice, and by the
-payoff's list. `mainPath` is set to `'seam'` as the other three set theirs.
+key. The socket's extra choice asks only whether `state.seam` is there; `seam.name`
+is read by the payoff's list. `mainPath` is set to `'seam'` as the other three set theirs.
 
 The save gains two ending ids at the end of `ENDING_IDS`. Same key, same
 version: a save from before loads with what it had and reads 5 of 7.
@@ -127,6 +129,16 @@ The tracker shows two unknown endings. The intro has a fourth choice. Taking it
 is the only run in which nobody tells them what they are, and the only one
 that says what the socket has been doing all along. The worst ending's last
 line gets an answer in "The Last Waking".
+
+## As built
+
+7 nodes (5 screens and 2 endings), 10 choices of its own and 2 more on old
+nodes (the entrance, the hollow), 1,184 words. The game is 32 nodes, 48
+choices, 7 endings, 3,775 words and 519 paths: the 171 old ones and 348 that
+start on the seam, ending 102 on "The Fourth Way", 36 on "The Threefold
+Aegis", 102 on "What the Socket Wasn't Ready For", 102 on "The Count Kept" and
+6 on "The Last Waking". The six are three leans by one name by one way through
+Roseleaf, the one that picks nothing up.
 
 ## No engine change
 

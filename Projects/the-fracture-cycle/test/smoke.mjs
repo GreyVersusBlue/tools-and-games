@@ -152,7 +152,7 @@ const nodeIds = Object.keys(nodes);
 // it is the one switch: while it is false the entrance must be absent and no
 // seam node may be reached from `intro`, however much of the prong is written;
 // once it is true all seven nodes must exist. A prong is never half-reachable.
-const PRONG_WIRED = false;
+const PRONG_WIRED = true;
 const OLD_ENDINGS = ["end_radiant", "end_dire", "end_convergence", "end_ascension", "end_corruption"];
 const SEAM_ENDINGS = ["end_witness", "end_named"];
 const SEAM_NODES = ["seam_walk", "seam_cairn", "seam_stone", "seam_named", "seam_answer", ...SEAM_ENDINGS];
@@ -171,6 +171,8 @@ function optionsFor(node) {
     // an unfinished prong may point at a node not written yet; nothing reaches it
     if (!PRONG_WIRED && SEAM_NODES.includes(id)) continue;
     state = initialState();
+    // the seam's nodes are only ever shown to a walker, who has this
+    if (SEAM_NODES.includes(id)) state.seam = { name: "own" };
     let opts;
     try { opts = optionsFor(node); } catch (e) { badRefs.push(`${id}: choices() threw ${e.message}`); continue; }
     for (const opt of opts) {
@@ -181,6 +183,13 @@ function optionsFor(node) {
     (badRefs.length ? ": " + badRefs.join("; ") : ""));
 }
 
+// and the same from the source, which also sees a choice no state above offered
+{
+  const named = [...nodesSrc.matchAll(/next:\s*"([^"]+)"/g)].map(m => m[1]);
+  const lost = [...new Set(named)].filter(id => !(id in nodes) && (PRONG_WIRED || !SEAM_NODES.includes(id)));
+  ok(named.length > 0 && lost.length === 0, "every `next` written in the source names a real node" + (lost.length ? ": " + lost.join(", ") : ""));
+}
+
 // the walk: DFS from intro, cloning state per branch, applying effects,
 // recording every ending reached and every node visited. A (nodeId, state)
 // memo guards the side_hub loop (radiant/dire/invoker contacts) from
@@ -189,24 +198,31 @@ const cloneState = s => JSON.parse(JSON.stringify(s));
 const endingsSeen = new Set();
 const nodesVisited = new Set();
 const memo = new Set();
+const walkErrors = [];
 
 function walk(id, curState) {
   const key = id + "|" + JSON.stringify(curState);
   if (memo.has(key)) return;
   memo.add(key);
-  nodesVisited.add(id);
   const node = nodes[id];
+  if (!node) { walkErrors.push(`a choice leads to "${id}", which is not a node`); return; }
+  nodesVisited.add(id);
   if (node.ending) { endingsSeen.add(id); return; }
   state = curState; // choices() reads `state.visited`/`state.align` via closure
-  const opts = optionsFor(node);
+  let opts;
+  try { opts = optionsFor(node); } catch (e) { walkErrors.push(`${id}: choices() threw (${e.message})`); return; }
   for (const opt of opts) {
     const branchState = cloneState(curState);
     state = branchState;
-    if (opt.effect) opt.effect(branchState);
+    try { if (opt.effect) opt.effect(branchState); }
+    catch (e) { walkErrors.push(`${id}: the effect of "${opt.label}" threw (${e.message})`); continue; }
     walk(opt.next, branchState);
   }
 }
 walk("intro", initialState());
+// A broken graph is reported here by name; the suite does not die of it (#34).
+ok(walkErrors.length === 0, "the walk meets no missing node and no choice or effect that throws" +
+  (walkErrors.length ? ": " + [...new Set(walkErrors)].slice(0, 4).join("; ") : ""));
 
 const seamWritten = SEAM_NODES.filter(id => id in nodes);
 const seamReached = SEAM_NODES.filter(id => nodesVisited.has(id));
@@ -251,13 +267,16 @@ const paths = [];
 const deadEnds = [];
 function enumerate(id, curState, steps) {
   const node = nodes[id];
+  if (!node) { deadEnds.push(`"${id}" is not a node`); return; }
   if (node.ending) {
     paths.push({ steps: [...steps, { id, title: node.title, text: shown(node, curState) }], end: id, state: curState });
     return;
   }
   if (steps.length >= DEPTH_CAP) { deadEnds.push(`${id}: no ending within ${DEPTH_CAP} steps`); return; }
   state = curState;
-  let opts = optionsFor(node);
+  let opts;
+  // a node shown to a state it was not written for is a dead end, said by name
+  try { opts = optionsFor(node); } catch (e) { deadEnds.push(`${id}: choices() threw (${e.message}) with ${JSON.stringify(curState)}`); return; }
   if (!opts.length) { deadEnds.push(`${id}: no choice offered with ${JSON.stringify(curState)}`); return; }
   // The seam's entrance is the one thing an old path is allowed to see that
   // it did not see before, and it is left out of what is compared here only.
@@ -266,7 +285,8 @@ function enumerate(id, curState, steps) {
   for (const opt of opts) {
     const branchState = cloneState(curState);
     state = branchState;
-    if (opt.effect) opt.effect(branchState);
+    try { if (opt.effect) opt.effect(branchState); }
+    catch (e) { deadEnds.push(`${id}: the effect of "${opt.label}" threw (${e.message})`); continue; }
     enumerate(opt.next, branchState, [...steps, {
       id, title: node.title, text: shown(node, curState), offered, took: opt.label, after: JSON.stringify(branchState),
     }]);
@@ -307,6 +327,70 @@ ok(oldPaths.length === OLD_PATHS, `the three old prongs still have ${OLD_PATHS} 
 ok(sha(oldPaths) === OLD_SHA, "every old path plays as it did: same nodes, text, choices offered and state at every step");
 ok(oldPaths.every(p => !("seam" in p.state)), "no old path ends carrying any of the seam's state");
 ok(oldPaths.every(p => OLD_ENDINGS.includes(p.end)), "no old path ends on one of the seam's endings");
+
+// The seam, every path of it and every crossing with the trunk it rejoins.
+if (PRONG_WIRED) {
+  const SEAM_PATHS = 348;
+  const ends = id => seamPaths.filter(p => p.end === id);
+  const through = (p, id) => p.steps.some(st => st.id === id);
+  ok(seamPaths.length === SEAM_PATHS, `the seam has ${SEAM_PATHS} paths, got ${seamPaths.length}`);
+  ok(seamPaths.every(p => ["seam_walk", "seam_cairn", "seam_stone", "seam_named", "hub_bazaar", "core_approach", "core_confrontation"].every(id => through(p, id))),
+    "every seam path walks its beginning and middle, rejoins at Roseleaf and reaches the socket");
+  ok(seamPaths.every(p => p.state.seam && ["borne", "own"].includes(p.state.seam.name)),
+    "no walker reaches an ending without one of the two names");
+  ok(["borne", "own"].every(n => seamPaths.some(p => p.state.seam.name === n)), "each of the two names is some walker's");
+  ok(seamPaths.every(p => p.steps.find(st => st.id === "core_confrontation").offered.some(o => o.endsWith("|seam_answer"))),
+    "the socket offers every named walker the hollow");
+  for (const id of ["end_convergence", "end_ascension", "end_corruption", ...SEAM_ENDINGS]) {
+    ok(ends(id).length > 0, `${id} is reachable by a walker of the seam`);
+  }
+  // Decided, #958: walking the line never moves align past 1, so a walker is
+  // never offered a court's ending. This line fails the day a seam choice
+  // moves align by 2, which is a design change and should be made on purpose.
+  ok(ends("end_radiant").length === 0 && ends("end_dire").length === 0,
+    "a walker of the seam is never offered the Sanctuary's ending or the Wildwoods'");
+  ok(seamPaths.every(p => Math.abs(p.state.align) <= 1), "the seam never moves align past 1 either way");
+  ok(ends("end_named").length > 0 && ends("end_named").every(p => p.state.seam.name === "own" && p.state.fragments.length === 0),
+    "the name is given only by a walker whose name is their own and whose hands are empty");
+  {
+    const atHollow = seamPaths.filter(p => through(p, "seam_answer"));
+    const could = p => p.state.seam.name === "own" && p.state.fragments.length === 0;
+    const offeredNamed = p => p.steps.find(st => st.id === "seam_answer").offered.some(o => o.endsWith("|end_named"));
+    ok(atHollow.length > 0 && atHollow.every(p => offeredNamed(p) === could(p)),
+      "the hollow offers the name to exactly those walkers, and to every one of them");
+    ok(atHollow.every(p => p.steps.find(st => st.id === "seam_answer").offered.filter(o => o.endsWith("|end_witness")).length === 1),
+      "the hollow offers every walker the way back to the cairn, once");
+    ok(atHollow.every(p => {
+      const way = p.steps.find(st => st.id === "seam_answer").offered.find(o => o.endsWith("|end_witness"));
+      return /empty hands/.test(way) === (p.state.fragments.length === 0) && /Carry the pieces/.test(way) === (p.state.fragments.length > 0);
+    }), "the way back is worded for what the walker carries");
+    for (const n of [0, 1, 2, 3]) {
+      ok(atHollow.some(p => p.state.fragments.length === n && p.steps.find(st => st.id === "seam_answer").text.includes(`You carry ${n} of the pieces`)),
+        `a walker reaches the hollow carrying ${n} and is told so`);
+    }
+  }
+}
+
+// What every screen is made of. The game's accessibility lives in its markup
+// and one stylesheet (one h2 a screen, real buttons, a focus ring, transitions
+// off under reduced motion); a new screen keeps it by adding nothing to either.
+{
+  const styleBlock = html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+  ok(!/seam|witness|named/.test(styleBlock), "the prong adds no rule to the stylesheet");
+  ok(/@media \(prefers-reduced-motion: reduce\)\{\s*\*\{ transition:none !important; \}/.test(styleBlock) && /\.choice-btn:focus-visible\{/.test(styleBlock),
+    "the reduced-motion rule and the focus ring are still in the stylesheet");
+  const tagsOf = ids => new Set(ids.flatMap(id => [...nodes[id].text.matchAll(/<\/?([a-z0-9]+)([^>]*)>/g)].map(m => m[1] + (m[2].trim() ? " " + m[2].trim() : ""))));
+  const oldTags = tagsOf(nodeIds.filter(id => !SEAM_NODES.includes(id)));
+  const strange = [...tagsOf(seamWritten)].filter(t => !oldTags.has(t));
+  ok(strange.length === 0, "a seam screen uses no element or attribute the old screens do not" + (strange.length ? `: ${strange.join(", ")}` : ""));
+  ok(seamWritten.every(id => nodes[id].title && /^<p>/.test(nodes[id].text.trim()) && /<\/p>$/.test(nodes[id].text.trim())),
+    "every seam screen has a title for the h2 and prose in paragraphs");
+  ok(nodeIds.every(id => !!nodes[id].ending === /^Ending: /.test(nodes[id].title)), "an ending's title says Ending, and only an ending's does");
+  ok(nodeIds.every(id => nodes[id].text.includes("${fragCount}") === !!nodes[id].dynamic || (nodes[id].dynamic && id === "core_confrontation")),
+    "a node that counts the fragments is marked dynamic, so the count is never printed as ${fragCount}");
+  ok(paths.every(p => p.steps.every(st => !st.text.includes("${"))), "no screen on any path shows an unfilled ${...}");
+  ok(html.includes(`id="trackerCount">0 / ${nodeIds.filter(id => nodes[id].ending).length}</span>`), "the tracker's first paint counts the endings there are");
+}
 
 if (process.argv.includes("--paths")) {
   const tally = list => Object.fromEntries([...OLD_ENDINGS, ...SEAM_ENDINGS].map(e => [e, list.filter(p => p.end === e).length]));
@@ -354,6 +438,16 @@ function memStore() {
   storage.setItem(SAVE_KEY, JSON.stringify({ seenEndings: ["end_dire", "end_dire", "not_a_real_ending"], __v: SAVE_VERSION }));
   const repaired = slot.load();
   ok(repaired.seenEndings.length === 1 && repaired.seenEndings[0] === "end_dire", "repair() drops unknown ids and dedupes");
+
+  // a save from before the fourth prong: five endings, all kept, 5 of 7
+  storage.setItem(SAVE_KEY, JSON.stringify({ seenEndings: [...OLD_ENDINGS], __v: SAVE_VERSION }));
+  const before958 = slot.load();
+  ok(before958 && JSON.stringify(before958.seenEndings) === JSON.stringify(OLD_ENDINGS), "a save holding the five old endings loads with all five, in order");
+  if (PRONG_WIRED) {
+    before958.seenEndings.push(...SEAM_ENDINGS);
+    slot.save(before958);
+    ok(slot.load().seenEndings.length === 7, "the seam's two endings are saved and survive repair()");
+  }
 
   // corrupt blob refused, not thrown
   storage.setItem(SAVE_KEY, "{not json");
