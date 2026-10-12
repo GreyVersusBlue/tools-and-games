@@ -180,6 +180,16 @@ export function makeTextures() {
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, w);
   });
+  // Rune aura band: a hard rim and nothing inside it, so it neither fills the ground under a hero nor passes for the
+  // spell-area indicator below (which has a fill and ticks).
+  T.band = canvasTex(256, (ctx, w) => {
+    const g = ctx.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+    g.addColorStop(0.8, 'rgba(255,255,255,0)');
+    g.addColorStop(0.86, 'rgba(255,255,255,1)');
+    g.addColorStop(0.94, 'rgba(255,255,255,1)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, w);
+  });
   // Spell-area indicator: crisp outer rim + faint fill + subtle inner tick ring (team-tinted by VFX.areaIndicator).
   T.area = canvasTex(256, (ctx, w) => {
     const c = w / 2;

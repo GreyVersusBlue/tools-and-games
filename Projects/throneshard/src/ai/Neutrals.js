@@ -96,7 +96,7 @@ export class Neutrals {
     this.grimmaw = null;
     this.grimmawRespawnAt = 0;
     this.grimmawKills = 0;
-    this.sigilHolder = null;
+    this.lanternHolder = null;
   }
 
   onMatchStart() {
@@ -186,35 +186,35 @@ export class Neutrals {
     const team = killerHero?.team ?? killer?.team ?? null;
     // Team bounty on top of the killer's last-hit bounty (Rules)
     if (team && team !== TEAM.NEUTRAL) for (const h of g.heroes) if (h.team === team) h.addGold(150, 'grimmaw');
-    // Sigil goes to the killer (or the nearest hero of the killing team)
+    // The Lantern goes to the killer (or the nearest hero of the killing team)
     let holder = killerHero;
     if (!holder && team) {
       let best = Infinity;
       for (const h of g.heroes) if (h.alive && h.team === team && h.distanceTo(u) < best) { best = h.distanceTo(u); holder = h; }
     }
-    if (holder) this.giveSigil(holder);
+    if (holder) this.giveLantern(holder);
     g.bus.emit('grimmaw:killed', { unit: u, killer, killerHero, team, holder, count: this.grimmawKills });
     g.bus.emit('ui:message', { text: `${team === TEAM.SUNWARD ? 'Sunward' : team === TEAM.DUSKWARD ? 'Duskward' : 'Someone'} has slain Grimmaw!`, color: '#ffcc33' });
   }
 
-  giveSigil(hero) {
+  giveLantern(hero) {
     const g = this.game;
-    this.sigilHolder = hero;
-    // Item systems may provide their own Sigil implementation via giveSigil(hero)
-    try { if (g.items?.giveSigil?.(hero)) return; } catch (e) { /* fall through */ }
-    // Fallback: Sigil as a modifier — prevents the next death (instant reincarnation), expires after 5 min.
+    this.lanternHolder = hero;
+    // Item systems may provide their own Lantern implementation via giveLantern(hero)
+    try { if (g.items?.giveLantern?.(hero)) return; } catch (e) { /* fall through */ }
+    // Fallback: the Lantern as a modifier — prevents the next death (instant reincarnation), expires after 5 min.
     hero.addModifier({
-      id: 'sigil', name: 'Sigil of Second Dawn', icon: '🛡️', duration: 300,
+      id: 'lantern', name: 'Lantern of Second Dawn', icon: '🏮', duration: 300,
       onDamageTaken: (unit, info) => {
         if (info.amount < unit.hp) return;
         info.amount = 0;
-        unit.removeModifier('sigil');
+        unit.removeModifier('lantern');
         unit.hp = unit.getStat('maxHp');
         unit.mana = unit.getStat('maxMana');
         unit.interrupt?.();
         g.vfx?.spawn?.('teleport', { position: unit.position.clone(), unit, radius: 2 });
-        g.bus.emit('ui:message', { text: `${unit.name} reincarnated with the Sigil!`, color: '#ffcc33' });
-        g.bus.emit('sigil:consumed', { hero: unit });
+        g.bus.emit('ui:message', { text: `${unit.name} reincarnated by the Lantern!`, color: '#ffcc33' });
+        g.bus.emit('lantern:consumed', { hero: unit });
       },
     });
   }

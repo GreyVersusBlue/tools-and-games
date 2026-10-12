@@ -465,12 +465,28 @@ export class Controller {
     const { yellow, allRed } = this.timing;
     let x = 0;
     const k = this._planIndex();
+    // a clearance into a green that is not the plan's next (a box back from
+    // dark or flash goes to the top of the green it was in, #959) is read
+    // back from that green's start
+    const j = this.next === null ? -1 : this.plan.findIndex(p => p.phase === this.next);
+    if (j >= 0 && j !== (k + 1) % this.plan.length && (this.stage === 'yellow' || this.stage === 'allred')) {
+      for (let i = 0; i < j; i++) x += this.plan[i].green + yellow + allRed;
+      const L = this.cycleLength();
+      const back = this.stage === 'allred' ? allRed - Math.min(this.stageT, allRed) : allRed + yellow - Math.min(this.stageT, yellow);
+      return (((x - back) % L) + L) % L;
+    }
     for (let i = 0; i < k; i++) x += this.plan[i].green + yellow + allRed;
     if (this.stage === 'green') return x + Math.min(this.stageT, this.plan[k].green);
     if (this.stage === 'yellow') return x + this.plan[k].green + Math.min(this.stageT, yellow);
     if (this.stage === 'allred') return x + this.plan[k].green + yellow + Math.min(this.stageT, allRed);
     return x;
   }
+
+  // Where this box's cycle would have stood at t = 0 for it to be where it
+  // is now, plus what a shift still owes: the `offset` it is really running
+  // to, whatever the field says (#959). Not reduced to one cycle. Exact at
+  // a stage's start; a green being cut or stretched reads by its plan.
+  cycleOrigin() { return this.cyclePosition() - this.t + this.shift; }
 
   // ---- commands -----------------------------------------------------------
 

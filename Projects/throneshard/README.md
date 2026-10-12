@@ -1,8 +1,8 @@
 # Throneshard
 
-Two thrones, three lanes, 14 heroes. A 5v5 MOBA against bots in three.js: Sunward vs Duskward, towers, barracks and
-a Throneshard crystal at the heart of each base, creep waves, neutral camps, Grimmaw and the Sigil of Second Dawn,
-14 heroes with 4 abilities each, items with recipes/shop/courier, fog of war, day/night and a full HUD.
+Two thrones, three lanes, 16 heroes. A 5v5 MOBA against bots in three.js: Sunward vs Duskward, towers, barracks and
+a Throneshard crystal at the heart of each base, creep waves, neutral camps, Grimmaw and the Lantern of Second Dawn,
+16 heroes with 4 abilities each, items with recipes/shop/courier, fog of war, day/night and a full HUD.
 
 ## Play
 No build step: serve the repo root statically (for example `python3 -m http.server`) and open
@@ -21,7 +21,7 @@ No build step: serve the repo root statically (for example `python3 -m http.serv
 | Camera | edge-pan, arrow keys, middle-drag, wheel zoom, click minimap |
 | Ping | Alt + click |
 
-Runes spawn in the river (power, every 2 min from 2:00) and jungle (bounty, every 2 min) — right-click to pick up.
+Runes spawn in the river (boon runes, every 2 min from 2:00) and jungle (windfall runes, every 2 min) — right-click to pick up.
 Wards are bought in the shop (Consumables) and placed with the item key. Talents: tree button left of the ability bar
 (levels 10/15/20/25). Buyback from the death screen. Ascendant Scepter upgrades every ultimate (see ability tooltips).
 
@@ -44,7 +44,7 @@ These use Playwright, which is not vendored: `cd tools && npm i --no-save --no-p
 `node tools/scripts/playtest.mjs <url> <hero> <minutes>` — drives the real UI, simulates a match, screenshots to /tmp/play_*.png
 `node tools/scripts/controls_test.mjs <url>` (hold-to-move, quick cast, rebinding), `tools/scripts/audio_test.mjs`, `tools/scripts/ux_shots.mjs <url> <outDir>` (UI screenshots at 3 resolutions)
 `node tools/scripts/profile.mjs`, `tools/scripts/botstats.mjs`, `tools/scripts/ai_sim.mjs` — perf / bot behaviour / full bot matches.
-`node tools/scripts/lh_test.mjs` / `match_stats.mjs` (bot last hits, match length, levels, Grimmaw; `DIFF_OVERRIDE` patches difficulty profiles for A/B runs), `bot_modes.mjs` (time in each bot mode), `shadow_motion.mjs` (shadow-map frame sequence), `vfx_capture.mjs` (every ability and rune effect).
+`node tools/scripts/lh_test.mjs` / `match_stats.mjs` (bot last hits, match length, levels, Grimmaw; `DIFF_OVERRIDE` patches difficulty profiles for A/B runs), `bot_modes.mjs` (time in each bot mode), `shadow_motion.mjs` (shadow-map frame sequence), `vfx_capture.mjs` (every ability and rune effect; needs Playwright and a GPU), `vfx_measure.mjs` (how many pixels Piercing Gale and the rune auras change, with and without the effect, on the board-check harness; no GPU needed).
 `node tools/scripts/ws2_perf.mjs <url> [low|medium|high|ultra]` — extended profile (world sub-timings, main/shadow draw calls).
 Structures are rebuilt with `tools/blender/structures/build.sh` (Blender 5 + gltf-transform).
 Characters (heroes, creeps, neutrals, Grimmaw, summons) are rebuilt with `tools/blender/characters/build.sh`

@@ -148,6 +148,66 @@ export const LORE_SKILL = {
   aberration: "occultism", incorporeal: "occultism"
 };
 
+/* ---------- area templates: a cone and a line on a square grid ----------
+   Pure functions of offsets from the caster's square, so the engine, the
+   page's preview and the suite all read one copy.
+
+   A length is counted the way the tabletop counts any distance on a grid:
+   a straight step is 5 feet and diagonal steps alternate 5 and 10, so a
+   square `dx,dy` away is max + floor(min / 2) squares off. */
+export function gridSteps(dx,dy){
+  const a=Math.abs(dx), b=Math.abs(dy);
+  return Math.max(a,b)+Math.floor(Math.min(a,b)/2);
+}
+/** Which of the eight aims a click `dx,dy` from the caster means: the nearest
+    of the four straight and four diagonal directions, as `[sx,sy]`. A square
+    is never exactly between two (the border is 22.5 degrees, whose tangent
+    is irrational), so every click has one answer. Null on the caster's own
+    square. */
+export function aimOf(dx,dy){
+  const a=Math.abs(dx), b=Math.abs(dy);
+  if(!a&&!b) return null;
+  if(Math.min(a,b)>Math.max(a,b)*(Math.SQRT2-1)) return [Math.sign(dx),Math.sign(dy)];
+  return a>b? [Math.sign(dx),0] : [0,Math.sign(dy)];
+}
+/** The squares of a cone `len` squares long aimed along `aim`, as offsets
+    from the caster. A cone is a quarter circle: aimed straight its first
+    square shares an edge with the caster's and it widens by one square a
+    side for each square out; aimed on a diagonal its first square touches
+    the caster's corner and it fills the quadrant between the caster's row
+    and column, neither of which is in it. The caster's own square never is.
+    Either way it ends where `gridSteps` passes its length. */
+export function coneCells(aim,len){
+  const [ax,ay]=aim, out=[];
+  for(let dy=-len;dy<=len;dy++)for(let dx=-len;dx<=len;dx++){
+    if(gridSteps(dx,dy)>len) continue;
+    const inside=ax&&ay? dx*ax>0&&dy*ay>0
+      : (dx*ax+dy*ay)>0&&Math.abs(dx*ay-dy*ax)<(dx*ax+dy*ay);
+    if(inside) out.push({x:dx,y:dy});
+  }
+  return out;
+}
+/** The squares of a line `len` squares long from the caster through the
+    square `dx,dy` away, nearest first. It is the Bresenham walk to that
+    square carried on past it, so a click two squares off and a click six
+    squares off on the same bearing are the same line, and it runs its full
+    length whichever was clicked. Its length is counted as the engine counts
+    every range and reach, one square a step on any bearing (`dist`), so a
+    30-foot line is six squares long on a diagonal too; only the cone's
+    template counts diagonals the tabletop's way. */
+export function lineCells(dx,dy,len){
+  const out=[]; if(!dx&&!dy) return out;
+  const adx=Math.abs(dx), ady=Math.abs(dy), sx=Math.sign(dx), sy=Math.sign(dy);
+  let x=0, y=0, err=adx-ady;
+  for(;;){
+    const e2=2*err;
+    if(e2>-ady){ err-=ady; x+=sx; }
+    if(e2<adx){ err+=adx; y+=sy; }
+    if(Math.max(Math.abs(x),Math.abs(y))>len) return out;
+    out.push({x,y});
+  }
+}
+
 export const CombatCore = {
 
   /* ---------- the event seam ---------- */
@@ -1058,8 +1118,47 @@ export const CombatCore = {
       not a wall, and with nothing solid on the way there. These are the
       squares the page lights, and `cellClick` takes no other (#924). */
   aimable(cb,a,x,y){
+    // A cone and a line are aimed away from the caster, so their own square
+    // names no direction; a burst may be centred on it.
+    if(a.wedge&&x===cb.x&&y===cb.y) return false;
     return Math.max(Math.abs(x-cb.x),Math.abs(y-cb.y))<=a.range
       &&!this.walls.has(this.key(x,y))&&this.losClear(cb,{x,y});
+  },
+  /** What the page lights under the pointer while a spell's area is armed:
+      the squares a click on (x,y) would cover, and nothing for a square a
+      click would refuse. Seek's burst is a search, not a hit, and lights
+      nothing. */
+  previewCells(cb,a,x,y){
+    if(!a||a.kind!=="cell"||a.mode==="seek"||!this.aimable(cb,a,x,y)) return [];
+    return this.areaCells(cb,a,{x,y});
+  },
+  /** The squares area action `a` covers when `cb` puts its point on
+      `target`: what `castAt` hits and what the page lights under the
+      pointer, off the one list. An area stops at a wall (#924): a line ends
+      at the first one it meets, a cone keeps the squares the caster has a
+      clear line to, a burst the squares its centre has one to. */
+  areaCells(cb,a,target){
+    const onMap=p=>p.x>=0&&p.y>=0&&p.x<this.mapW&&p.y<this.mapH;
+    const open=p=>onMap(p)&&!this.walls.has(this.key(p.x,p.y));
+    const dx=target.x-cb.x, dy=target.y-cb.y;
+    if(a.wedge==="line"){
+      const cells=[];
+      for(const o of lineCells(dx,dy,a.range)){
+        const p={x:cb.x+o.x,y:cb.y+o.y};
+        if(!open(p)) break;
+        cells.push(p);
+      }
+      return cells;
+    }
+    if(a.wedge==="cone"){
+      const aim=aimOf(dx,dy); if(!aim) return [];
+      return coneCells(aim,a.range).map(o=>({x:cb.x+o.x,y:cb.y+o.y})).filter(p=>open(p)&&this.losClear(cb,p));
+    }
+    const cells=[], r=a.radius||0;
+    for(let y=target.y-r;y<=target.y+r;y++)for(let x=target.x-r;x<=target.x+r;x++){
+      const p={x,y}; if(open(p)&&this.losClear(target,p)) cells.push(p);
+    }
+    return cells;
   },
   reachable(cb,budget){ // Dijkstra with 5-10-5 diagonals & difficult terrain; returns {key:{cost,prev}}
     const start={x:cb.x,y:cb.y}; const out={}; out[this.key(cb.x,cb.y)]={cost:0,prev:null,diag:0};
@@ -1447,6 +1546,7 @@ export const CombatCore = {
       this.doMove(cb,x,y,reach,a);
     } else if(a.kind==="cell"){
       if(Math.max(Math.abs(x-cb.x),Math.abs(y-cb.y))>a.range) return;
+      if(a.wedge&&x===cb.x&&y===cb.y) return;
       if(!this.aimable(cb,a,x,y)){ this.toast("No clear line to that square."); return; }
       if(a.mode==="seek"){
         this.spend(a.cost); this.seek(cb,{x,y},a.radius);
@@ -1626,7 +1726,7 @@ export const CombatCore = {
       a.friendly=!!(sp.heal||sp.allyBuff||sp.rankEffects[r.rank]&&sp.rankEffects[r.rank].heal||sp.special==="stabilize"||Object.values(sp.rankEffects)[0].heal);
       a.canDowned=true;
       if(sp.healOrHarmUndead) a.friendly=true; }
-    this.armed=a; this.hint(`Casting ${sp.name} — choose ${a.kind==="cell"?"a point":"a target"}.`);
+    this.armed=a; this.hint(`Casting ${sp.name} — choose ${a.wedge?"a direction":a.kind==="cell"?"a point":"a target"}.`);
     this.renderAll();
   },
   spendSpell(cb,a){
@@ -1656,30 +1756,12 @@ export const CombatCore = {
       // An area stops at a wall (#924): a line ends at the first one it meets,
       // a cone and an emanation reach who the caster has a clear line to, and
       // a burst reaches who its own centre has one to.
-      if(a.wedge==="line"){
-        // all cells along Bresenham to target
-        let x0=cb.x,y0=cb.y; const x1=target.x,y1=target.y;
-        const dx=Math.abs(x1-x0),dy=Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1; let err=dx-dy;
-        const cells=[];
-        while(!(x0===x1&&y0===y1)&&cells.length<=a.range){
-          const e2=2*err; if(e2>-dy){err-=dy;x0+=sx;} if(e2<dx){err+=dx;y0+=sy;}
-          if(this.walls.has(this.key(x0,y0))) break;
-          cells.push({x:x0,y:y0});
-        }
-        victims=this.cbs.filter(c=>!c.dead&&c.side!==cb.side&&cells.some(p=>p.x===c.x&&p.y===c.y));
-      } else if(a.wedge==="cone"){
-        const dirx=Math.sign(target.x-cb.x), diry=Math.sign(target.y-cb.y);
-        victims=this.cbs.filter(c=>{ if(c.dead||c.side===cb.side) return false;
-          const rx=c.x-cb.x, ry=c.y-cb.y;
-          if(Math.max(Math.abs(rx),Math.abs(ry))>a.range||((rx===0)&&(ry===0))) return false;
-          const okx=dirx===0||Math.sign(rx)===dirx||rx===0;
-          const oky=diry===0||Math.sign(ry)===diry||ry===0;
-          return okx&&oky&&Math.abs(Math.abs(rx)-Math.abs(ry))<=Math.max(Math.abs(rx),Math.abs(ry))&&this.losClear(cb,c);
-        });
-      } else { // burst
-        victims=this.cbs.filter(c=>!c.dead&&Math.max(Math.abs(c.x-target.x),Math.abs(c.y-target.y))<=a.radius&&this.losClear(target,c));
-        if(!sp.friendlyFire) victims=victims.filter(c=>c.side!==cb.side);
-      }
+      // `areaCells` is the one copy of each shape; a cone is the tabletop's
+      // quarter circle and a line runs its full length whichever of its
+      // squares was clicked (#951).
+      const cells=this.areaCells(cb,a,target);
+      victims=this.cbs.filter(c=>!c.dead&&cells.some(p=>p.x===c.x&&p.y===c.y));
+      if(a.wedge||!sp.friendlyFire) victims=victims.filter(c=>c.side!==cb.side);
     } else if(sp.area&&sp.area.shape==="emanation"){
       const rad=Math.floor(sp.area.radius/5);
       victims=this.cbs.filter(c=>!c.dead&&c!==cb&&c.side!==cb.side&&this.dist(c,cb)<=rad&&this.losClear(cb,c));

@@ -50,7 +50,7 @@ const res = await p.evaluate(() => {
   return {
     minutes: +(g.time / 60).toFixed(1), over: g.matchOver, winner: g.winner, score: g.rules.score,
     grimmawKills: g.ai.neutrals.grimmawKills, grim: S.grim, runes: S.runes, wards: S.wards, wardKills: S.wardKills, buybacks: S.buybacks,
-    grimmawAttempts: g.ai.stats.grimmawAttempts ?? 0, grimmawContests: g.ai.stats.grimmawContests ?? 0, runeStats: g.runes?.stats,
+    grimmawAttempts: g.ai.stats.grimmawAttempts ?? 0, grimmawEngaged: g.ai.stats.grimmawEngaged ?? 0, grimmawContests: g.ai.stats.grimmawContests ?? 0, runeStats: g.runes?.stats,
     talents: S.talents, scepters: g.heroes.filter((h) => h.data.hasScepter).map((h) => h.heroId),
     meleeLh10: avg(melee, 'lh'), rangedLh10: avg(ranged, 'lh'), lh10: lh10.map((h) => `${h.team[0]}:${h.id}${h.melee ? '(m)' : ''}=${h.lh}/${h.dn}`).join(' '),
     heroes: g.heroes.map((h) => `${h.team[0]}:${h.heroId} L${h.level} ${h.kills}/${h.deaths}/${h.assists} lh${h.lastHits}`).join(' | '),

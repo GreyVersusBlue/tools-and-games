@@ -159,6 +159,93 @@ export function pierDeckY(z) {
 export const CAVE = { x: -536, z: shorelineZ(-536) + 8, r: 9 };
 
 /**
+ * The bar and the runnel (#953): the one structure in the intertidal zone, on
+ * the sand east of the pier. A ridge along the shore 13 m out, a channel
+ * behind it, and a ford across the channel's middle.
+ *
+ * It is here and not on the home beach because twelve golden heights hold the
+ * home beach bit-identical, and its waterline is what the opening frame, the
+ * sanderlings, the groyne and the boulders are composed against.
+ *
+ * Every number is set by the sea's own range. The water plane runs from -0.37
+ * (low water, bottom of the swash) to 0.31 (high water, top of it), and a
+ * walker wades to 0.45.
+ *
+ * `crest` -0.03: above the highest wave of low water (-0.05), so the bar is
+ * dry sand then; below the lowest of high water (-0.01), so it is all sea
+ * then. The window is 4 cm wide because the tide's range (0.36) is only that
+ * much more than the swash's (0.32).
+ *
+ * `ford` -0.12: the channel's floor across its middle. 0.31 + 0.12 is 0.43, so
+ * the crossing is under the knee at every tide and every wave, which is the
+ * whole answer to being cut off: the way back is wet shins, never a wait.
+ *
+ * The channel falls away from the ford toward both ends and opens to the sea
+ * there, so it floods from its ends inward and no water is ever drawn in a
+ * basin the sea could not have reached. One flat water plane can only be
+ * honest about a seabed with that property; smoke.mjs floods it to check.
+ *
+ * Outside x0..x1 nothing here is evaluated, and inside it the lift is a max
+ * against the plain seabed that returns the seabed itself wherever the bar is
+ * not, so the coast on either side is the same numbers as before. It is the
+ * max that keeps them, not the x test: the ridge and the floor are both under
+ * the seabed by the ends, so sandHeight's `inBarZone` is there for the cost
+ * and smoke.mjs's hash of the coast stays green with it deleted. The same goes
+ * for sandAt's: off the bar its two branches give the same answer.
+ */
+export const BAR = {
+  x: 370, half: 45,           // centre, and half its length along the shore
+  s: -13,                     // the crest line, shore-relative
+  crest: -0.03, ford: -0.12,
+  fordHalf: 0.12,             // the ford's half-width at the bar, as a share of `half`
+  flare: 0.45,                // how much wider the ford is where it meets the beach
+  curve: 0.018,               // the ridge is a parabola: crest - curve * ds^2
+  bow: 2.5,                   // the crest line bends: its tips sit this much nearer the shore
+};
+
+export function inBarZone(x) {
+  return x > BAR.x - BAR.half && x < BAR.x + BAR.half;
+}
+
+/** The ridge's top at this x: full height along the middle, sunk at the tips. */
+export function barCrestY(x) {
+  const u = Math.abs(x - BAR.x) / BAR.half;
+  return BAR.crest - 1.62 * smooth(clamp01((u - 0.6) / 0.4));
+}
+
+/** Where the crest runs at this x, shore-relative: BAR.s at the ford. */
+export function barCrestS(x) {
+  // A plain bow and no more. A wander written over it made the foot of the
+  // ridge rise and fall along the channel, and its low spots held up to 1 cm
+  // of water the sea had no way into.
+  const u = (x - BAR.x) / BAR.half;
+  return BAR.s + BAR.bow * u * u;
+}
+
+/**
+ * The channel's floor: the ford in the middle, deepening to the ends. The
+ * ford widens toward the beach, as sand that has welded on does. At any one
+ * distance from shore the floor only falls away from the ford, which is what
+ * lets the sea in from the ends and nowhere else.
+ */
+export function runnelFloorY(x, s = barCrestS(x)) {
+  // Measured from the crest line, not from a fixed distance out: the foot of
+  // the ridge is the channel's deepest line, and it has to fall all the way to
+  // the ends. Measured from BAR.s it rose 1 cm on the way and held a puddle.
+  const sc = barCrestS(x);
+  const toShore = clamp01((s - sc) / -sc);
+  const u = (Math.abs(x - BAR.x) / BAR.half) * (1 - BAR.flare * toShore);
+  return BAR.ford - 1.3 * smooth(clamp01((u - BAR.fordHalf) / 0.75));
+}
+
+/** The built surface at shore distance s < 0, to be max'd against the seabed. */
+function barSurface(x, s) {
+  const ds = s - barCrestS(x);
+  const ridge = barCrestY(x) - BAR.curve * ds * ds;
+  return ds >= 0 ? Math.max(ridge, runnelFloorY(x, s)) : ridge;
+}
+
+/**
  * The ground a walker stands on: the sand, and the pier's planking where there
  * is planking. Everything that moves a body or places an object reads this.
  */
@@ -186,6 +273,7 @@ export function sandHeight(x, z) {
   let h;
   if (s < 0) {
     h = s * seabedSlope(x);                // underwater slope
+    if (inBarZone(x)) h = Math.max(h, barSurface(x, s));
   } else {
     h = s * beachSlope();                  // dry beach, gentle rise
   }
@@ -336,6 +424,43 @@ export function waterLineZ(x, level) {
 }
 
 /**
+ * Is the sea over this spot at this level? Everywhere but the bar that is the
+ * same question as "is it seaward of the water's edge", and it is asked that
+ * way so nothing off the bar changes. On the bar a column of sand meets the
+ * water up to three times, so the question goes to the ground itself.
+ */
+export function seaOver(x, z, level) {
+  if (inBarZone(x)) return sandHeight(x, z) < level;
+  return z < waterLineZ(x, level);
+}
+
+/**
+ * The beach's own water's edge, or null where there is none: across the ford
+ * at low water the sand runs dry from the beach to the bar and waterLineZ's
+ * line would be foam drawn on dry sand.
+ */
+export function shoreEdgeZ(x, level) {
+  const z = waterLineZ(x, level);
+  if (inBarZone(x) && sandHeight(x, z) > level + 1e-9) return null;
+  return z;
+}
+
+/**
+ * The bar's own two edges at this x, as world z: `sea` on its far side, `land`
+ * on the channel side. null for a side with no edge: the ridge under water at
+ * this x, or (land only) the channel dry behind it. Closed form, because the
+ * ridge is a parabola.
+ */
+export function barEdges(x, level) {
+  if (!inBarZone(x)) return { sea: null, land: null };
+  const over = barCrestY(x) - level;
+  if (over <= 0) return { sea: null, land: null };
+  const d = Math.sqrt(over / BAR.curve);
+  const sc = barCrestS(x), z0 = shorelineZ(x) + sc;
+  return { sea: z0 - d, land: runnelFloorY(x, sc + d) < level ? z0 + d : null };
+}
+
+/**
  * How far inland of the water's edge the sand still reads as wet.
  *
  * 7 m is not a taste: it is the widest band that still lands inside the
@@ -374,6 +499,9 @@ export const WET_STRIP = { seaward: -4, inland: 10 };
  * uses both, one for each question.
  */
 export function sandAt(x, z, level) {
+  // On the bar and the ford the sand is wet whenever the sea is off it: all of
+  // it is under water at high tide.
+  if (inBarZone(x) && z < shorelineZ(x)) return sandHeight(x, z) < level ? 'sea' : 'wet';
   const line = waterLineZ(x, level);
   if (z < line) return 'sea';
   return z < line + WET_REACH ? 'wet' : 'dry';
@@ -431,6 +559,37 @@ export function walkLimits(x, waterLevel, wadeDepth = 0.45) {
   // to the edge of the collapsed span, and not a plank further.
   if (Math.abs(x - PIER.x) <= PIER.halfW) minZ = Math.min(minZ, PIER.deckEnd);
   return { minZ, maxZ: BOUNDS.maxZ };
+}
+
+/**
+ * One stride on the bar's stretch of coast (#953), where walkLimits' single
+ * seaward limit a column is no longer true: the ford and the bar are walkable
+ * ground seaward of water that is not.
+ *
+ * The rule is the depth itself. A stride is taken if the water where it lands
+ * is no deeper than `wadeDepth`, or no deeper than where the walker already
+ * stands. The second half is what a wave is owed: the swash can lift the water
+ * past the knee around somebody standing in the channel, and they are not
+ * pushed, snapped or held. They can always walk to shallower water, and the
+ * ford is never deep.
+ *
+ * A stride that would leave the stretch gets no such allowance, because the
+ * old limit takes over there and would snap a walker it found out of depth.
+ * A refused stride is retried along the shore alone, then across it alone, so
+ * a walker sliding along the channel's edge slides and does not stick.
+ */
+export function barStep(x, z, nx, nz, waterLevel, wadeDepth = 0.45) {
+  nx = Math.max(BOUNDS.minX, Math.min(BOUNDS.maxX, nx));
+  nz = Math.max(BOUNDS.minZ, Math.min(BOUNDS.maxZ, nz));
+  const here = waterLevel - groundHeight(x, z);
+  const ok = (ax, az) => {
+    const d = waterLevel - groundHeight(ax, az);
+    return d <= wadeDepth || (d <= here && inBarZone(ax));
+  };
+  if (ok(nx, nz)) return { x: nx, z: nz };
+  if (nx !== x && ok(nx, z)) return { x: nx, z };
+  if (nz !== z && ok(x, nz)) return { x, z: nz };
+  return { x, z };
 }
 
 /* -------------------------------------------------------------------- layout */

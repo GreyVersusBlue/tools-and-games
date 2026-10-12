@@ -262,6 +262,23 @@ export function repairCareer(s) {
   });
   s.clientQueue = s.clientQueue.filter(id => id in DB.clients);
   s.usedClients = s.usedClients.filter(id => id in DB.clients);
+  // Clients added to data/ since this career began. The backfill above covered
+  // listings and neighborhoods and never the queue, so a career older than a
+  // client file never met that client: one begun before the commercial tier
+  // reached Broker-Track and was never sent an investor.
+  //
+  // New means in none of the queue, the used list and the book. They go on the
+  // END of the queue, lowest rung first and by id inside a rung. The end,
+  // because the front is who intake hands over next and nothing the player has
+  // been shown should move; rung then id, because makeCareer() puts starters
+  // first, and a shuffle here would need rand(), which repair may not draw from
+  // (it runs on every load). When one arrives is still the ladder's call:
+  // every door asks inReach(). A second pass finds them in the queue and adds
+  // nothing.
+  const known = new Set([...s.clientQueue, ...s.usedClients, ...s.clients.map(rec => rec.clientId)]);
+  const rung = c => { const i = LEVELS.findIndex(L => L.tiers.includes(c.tier)); return i === -1 ? LEVELS.length : i; };
+  s.clientQueue.push(...Object.values(DB.clients).filter(c => !known.has(c.id))
+    .sort((a, b) => rung(a) - rung(b) || (a.id < b.id ? -1 : 1)).map(c => c.id));
 
   // Deals pointing at a listing, an agent, or a client record that is gone.
   //

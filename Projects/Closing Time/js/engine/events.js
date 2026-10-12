@@ -1,7 +1,7 @@
 // events.js — data-driven random events. New events are pure JSON reusing these handlers.
 import { DB, fmtMoney } from "../data.js";
 import { S, log, addRep, rand, randRange, randInt, pick, getClientRec, contentClient, weekOf } from "../state.js";
-import { meetClient } from "./clients.js";
+import { meetClient, inReach } from "./clients.js";
 import { killDeal } from "./deals.js";
 
 export function eligibleEvents(phase) {
@@ -12,6 +12,9 @@ export function eligibleEvents(phase) {
     if (ev.minRep && S.rep < ev.minRep) return false;
     if (ev.minLevel && S.level < ev.minLevel) return false;
     if (S.firedEvents && S.firedEvents[ev.id] && ev.effect.handler === "brokerageRecruit") return false;
+    // A referral with nobody to refer is a Ledger line about a client who
+    // never arrives, so the call waits until somebody in the queue is in reach.
+    if (ev.effect.handler === "bonusReferral" && !S.clientQueue.some(inReach)) return false;
     // mode gating: need at least one matching context
     if (ev.mode === "buyer" && !S.deals.some(d => d.mode === "buyer" && ["offerPending", "underContract"].includes(d.stage)) && ["underContract", "offerPending"].includes(ev.phase)) return false;
     if (ev.mode === "seller" && ev.phase === "underContract" && !S.playerListings.some(p => p.status === "underContract")) return false;
@@ -115,8 +118,12 @@ const HANDLERS = {
     S.pendingLowball = { pctMin: fx.pctOfAskMin, pctMax: fx.pctOfAskMax };
   },
   bonusReferral(ev, fx) {
-    if (!S.clientQueue.length) return;
-    const id = pick(S.clientQueue);
+    // The same door as intake, the Monday lead and a client's referral: only
+    // somebody this rung can work. It used to pick from the whole queue, where
+    // ten of a Rookie Agent's nineteen on day one are buyers above the rung.
+    const pool = S.clientQueue.filter(inReach);
+    if (!pool.length) return;
+    const id = pick(pool);
     S.choiceQueue.push({ kind: "referralArrive", clientId: id, referredBy: { name: fx.sourceName, rel: "mentor of sorts" },
       text: `${ev.text} (${DB.clients[id].name}.)` });
   },

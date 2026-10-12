@@ -48,11 +48,11 @@ export class MinimapMarkers {
     const pulse = 1 + Math.sin((g.realTime ?? 0) * 5) * 0.15;
     for (const m of markers) {
       const x = this.mm.mx(m.x), y = this.mm.mz(m.z);
-      const r = (m.kind === 'bounty' ? 4 : 5.5) * k * pulse;
+      const r = (m.kind === 'windfall' ? 4 : 5.5) * k * pulse;
       c.save();
       c.translate(x, y);
       c.fillStyle = 'rgba(0,0,0,0.85)';
-      if (m.kind === 'bounty') {
+      if (m.kind === 'windfall') {
         c.beginPath(); c.arc(0, 0, r + 1.5 * k, 0, Math.PI * 2); c.fill();
         c.fillStyle = m.color; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
         c.fillStyle = '#3a2600'; c.font = `700 ${Math.round(6.5 * k)}px Rajdhani, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';

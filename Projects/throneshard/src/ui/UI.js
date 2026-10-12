@@ -226,9 +226,9 @@ export class UI {
       const k = e?.killerHero ?? e?.killer;
       this.announce('Grimmaw Has Fallen', k ? `Slain by <b class="t-${k.team}">${k.name}</b>` : '', 'gold');
     });
-    bus.on('sigil:consumed', (e) => {
+    bus.on('lantern:consumed', (e) => {
       const h = e?.hero ?? e?.holder ?? e?.unit;
-      this.announce('Sigil Consumed', h ? `<b class="t-${h.team}">${h.name}</b> has been reincarnated` : '', 'gold', 2.4);
+      this.announce('Lantern Spent', h ? `<b class="t-${h.team}">${h.name}</b> has been reincarnated` : '', 'gold', 2.4);
     });
     bus.on('unit:damaged', (e) => this.world?.onDamaged(e));
     bus.on('unit:healed', (e) => this.world?.onHealed(e));

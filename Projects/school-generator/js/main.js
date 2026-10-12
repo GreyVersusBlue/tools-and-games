@@ -8,7 +8,7 @@ import {
 } from './grid.js';
 import {
   totalShapeArea, nextRoomName, shapesOf, shapeArea, interiorPoint,
-  ACCENT_PALETTE,
+  ACCENT_PALETTE, accentPick, accentHex, accentName, accentInk, isNamedAccent, sameAccent,
 } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS, PROP_CATALOG, registeredRows } from './catalog.js';
@@ -1870,6 +1870,7 @@ function renderAccentSwatches() {
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
   });
+  renderAccentCustom();
 }
 ACCENT_PAINTS.forEach((c) => {
   const b = document.createElement('button');
@@ -1888,6 +1889,65 @@ ACCENT_PAINTS.forEach((c) => {
   });
   accentSwatches.appendChild(b);
 });
+
+// --- any other colour (#944) ---
+// Under the swatches: a colour input, a hex field and a chip. The first two
+// set the custom colour and arm the brush with it; the chip shows it, says its
+// hex, and arms or puts down the brush like a swatch. What the brush holds is
+// the '#rrggbb' itself, which is what a face has stored for a colour outside
+// the palette since #827, so the design format does not change. A pick that is
+// one of the palette's own colours arms that swatch instead and stores its id.
+// `customAccent` is tool state, like the brush: it is not saved, and a reload
+// starts it at mid grey.
+let customAccent = '#808080';
+const accentColor = $('accent-color'), accentHexField = $('accent-hex');
+const accentChip = $('accent-chip'), accentHexMsg = $('accent-hex-msg');
+const customArmed = () => typeof editor.accentPaint === 'string' && !isNamedAccent(editor.accentPaint);
+function accentMsg(text, warn = false) {
+  accentHexMsg.textContent = text;
+  accentHexMsg.classList.toggle('warn', warn);
+}
+function renderAccentCustom() {
+  const on = customArmed();
+  if (on) customAccent = accentHex(editor.accentPaint);
+  accentColor.value = customAccent;
+  // A refused entry stays in the field to be corrected; anything else is
+  // replaced by the colour in use.
+  if (accentHexField.getAttribute('aria-invalid') !== 'true') accentHexField.value = customAccent;
+  accentChip.textContent = customAccent;
+  accentChip.style.background = customAccent;
+  // Black or white, whichever reads on this colour (shapes.js's `accentInk`).
+  accentChip.style.color = accentInk(customAccent);
+  accentChip.classList.toggle('active', on);
+  accentChip.setAttribute('aria-pressed', String(on));
+  accentChip.setAttribute('aria-label', `Accent paint ${customAccent}`);
+  accentChip.title = `Paint a wall ${customAccent}`;
+}
+function pickCustomAccent(text) {
+  const v = accentPick(text);
+  if (!v) {
+    // Refused out loud, and nothing moves: the custom colour, the brush and
+    // every painted wall are what they were.
+    accentHexField.setAttribute('aria-invalid', 'true');
+    accentMsg(`"${String(text).trim().slice(0, 12)}" is not a colour. Type three or six hex digits, like #3a7f5c. Still ${customAccent}.`, true);
+    return false;
+  }
+  accentHexField.removeAttribute('aria-invalid');
+  if (isNamedAccent(v)) {
+    accentMsg(`${accentHex(v)} is ${accentName(v)}, so its swatch is lit.`);
+  } else {
+    customAccent = v;
+    accentMsg('');
+  }
+  editor.setAccentPaint(v);
+  return true;
+}
+accentColor.addEventListener('input', () => pickCustomAccent(accentColor.value));
+accentHexField.addEventListener('change', () => pickCustomAccent(accentHexField.value));
+accentChip.addEventListener('click', () => {
+  editor.setAccentPaint(customArmed() && sameAccent(editor.accentPaint, customAccent) ? undefined : customAccent);
+});
+renderAccentCustom();
 
 function cycleWallKind() {
   const i = WALL_KINDS.findIndex((k) => k.kind === editor.wallKind);

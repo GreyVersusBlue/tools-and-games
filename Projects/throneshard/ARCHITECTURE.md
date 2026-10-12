@@ -107,6 +107,24 @@ Player/bots use it as: `hero.issueOrder({type:'cast', ability, target|point})` (
 no-target after canCast). UI reads `def.icon` (emoji or image URL), `def.name`, `description`, cooldown/mana.
 `game.abilities.getAbilityDef(id)` also used by UI tooltips.
 
+A hero need not own a model file: Ormund's def says `model: 'rift_stalker'` and has no `CHARACTERS.ormund`, so
+`ModelFactory._heroOwn` leaves him on that rig, and `test/data.mjs` looks for the file the same way. Bots read an
+ability's `hint` and nothing else about it; `allyBelow` (default 0.55) is the health share under which a `defensive`
+or `healing` ally-target spell is cast. Ormund's four abilities are checked in `test/ormund.mjs`, run by `test/data.mjs`.
+Tobren is the second such hero (`model: 'bone_shaman'`, attack projectile borrowed with `projectileKind: 'vashkar'`),
+checked in `test/tobren.mjs`. A `hint` may be a function of the ability: Throw Again's asks for one enemy hero in its
+radius only while three basic abilities around him have over 5 s of cooldown left, and for 99 otherwise. An aura's
+`modifier(ab, unit)` is not re-made on a unit that never leaves the aura, so Good Counsel writes a gained level into
+the modifier its target already holds.
+
+Temporary obstacles: `world.blockCircle(x, z, r)` / `unblockCircle` count into the nav grid's `dyn` layer, which
+`isWalkable`, `findPath` and `Unit.tryStep` all read. Rift Wall is the one ability that uses it
+(`src/gameplay/abilities/riftWall.js`): a slab blocks from the tick it breaks ground to the tick it starts to crumble,
+on the timings the effect is handed, and the file's header lists what the wall does to a unit under it, to allies, to
+blinks, forced moves and projectiles, and to units already walking through. A unit only re-plans a path when its goal
+moves or its path runs out, so anything that blocks the grid has to clear `unit.path` for the units it cuts off, as
+that file does, and again when it unblocks. Checks: `test/wall.mjs`, run by `test/data.mjs`.
+
 ## Items contract (`game.items`)
 `ITEM_DEFS` exported from `src/gameplay/items/ItemDefs.js`: `{id, name, icon, cost, bonus{}, components?[], recipeCost?,
 active? {targetType, cooldown, manaCost, castRange, castPoint}, description, category, shop:'base'|'secret'|'side'}`.
@@ -142,9 +160,9 @@ Tower protection: higher tiers are `invulnerable` until the previous tier in tha
 
 ## Runes, wards, talents, Ascendant Scepter, buyback (gameplay extras)
 Registered through one subsystem, `game.extras` (`src/gameplay/GameplayExtras.js`), which exposes:
-- `game.runes` (`src/gameplay/runes/Runes.js`): power runes (haste, double damage, regeneration, invisibility, arcane,
-  illusion) every 2 min from 2:00 at one of the two river spots; bounty runes at 0:00 and every 2 min at 4 jungle spots.
-  Pickup = right-click (move order onto the rune) or walking over it; player heroes with a Flask store power runes in it
+- `game.runes` (`src/gameplay/runes/Runes.js`): boon runes (haste, double damage, regeneration, invisibility, arcane,
+  illusion) every 2 min from 2:00 at one of the two river spots; windfall runes at 0:00 and every 2 min at 4 jungle spots.
+  Pickup = right-click (move order onto the rune) or walking over it; player heroes with a Flask store boon runes in it
   (`item.storedRune`, used via the Flask). `markers(team)` feeds the minimap overlay. Events `rune:spawned`,
   `rune:picked {hero, type, stored}`, `rune:activated`.
 - `game.talents` (`src/gameplay/talents/`): talent trees at 10/15/20/25 (two options each, costs an ability point).

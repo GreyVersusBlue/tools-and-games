@@ -5,16 +5,18 @@ import { WARD_SPOTS, SENTRY_SPOTS } from './WardSpots.js';
 
 // Difficulty profiles
 // combo: disable-first spell chains + no wasted disables; lead: aim delayed/skillshot spells at predicted positions;
-// smart: incoming-damage aware retreat / fight evaluation; aware: map awareness (avoid farming where enemies were last seen,
+// smart: incoming-damage aware retreat / fight evaluation; yield: a laner the enemy heroes would commit on waits at its tower; aware: map awareness (avoid farming where enemies were last seen,
 // deward, contest Grimmaw more readily); runes/wards: rune pickup and warding behaviour.
 export const DIFFICULTY = {
   easy: { think: 0.4, lhAcc: 0.8, lhMiss: 0.35, abilityUse: 0.3, engage: 1.7, retreatHp: 0.22, harass: 0.04, deny: 0.1, focus: 0.5, dive: false, itemUse: 0.4, runes: 0.3, wards: false },
   normal: { think: 0.2, lhAcc: 0.9, lhMiss: 0.1, abilityUse: 0.65, engage: 1.3, retreatHp: 0.3, harass: 0.12, deny: 0.45, focus: 0.8, dive: false, itemUse: 0.8, runes: 1, wards: true },
-  hard: { think: 0.1, lhAcc: 0.9, lhMiss: 0.03, abilityUse: 1, engage: 1.0, retreatHp: 0.3, harass: 0.3, deny: 0.9, focus: 1, dive: true, itemUse: 1, runes: 1, wards: true, combo: true, lead: true, smart: true, aware: true },
+  hard: { think: 0.1, lhAcc: 0.9, lhMiss: 0.03, abilityUse: 1, engage: 1.0, retreatHp: 0.3, harass: 0.3, deny: 0.9, focus: 1, dive: true, itemUse: 1, runes: 1, wards: true, combo: true, lead: true, smart: true, yield: true, aware: true },
 };
 
 const LANE_PHASE_END = 660; // seconds; laners keep last-hitting until then unless a kill or a big edge is on
 const LANE_ENGAGE_RATIO = 2.1;
+const LANE_STANDOFF_RATIO = 0.8; // the fight ratio under which shouldRetreat already leaves at half health
+const LANE_YIELD_HOLD = 3; // seconds a laner goes on yielding after the enemy heroes that out-fought it were last in sight
 const HEAL_ITEM = /salve|healing|bark_ration|clarity|honeyed_plum|flask|wisp_ember/i;
 const MANA_ITEM = /clarity|honeyed_plum|flask|tidecall/i;
 const _v = new THREE.Vector3();
@@ -89,6 +91,7 @@ export class BotBrain {
 
     if (this.shouldRetreat()) { this.mode = 'retreat'; this.doRetreat(); return; }
     if (this.handleTowerDanger()) return;
+    this.yielding = (this.plan?.type === 'lane' || !this.plan) && this.laneYield();
     if (this.tryFight()) return;
     if (this.tryDeward()) return;
 
@@ -300,7 +303,7 @@ export class BotBrain {
           allies.sort((a, b) => a.healthPct - b.healthPct);
           const a = allies[0];
           if (!a) break;
-          if (info.defensive || info.healing) { if (a.healthPct < 0.55 && (enemies.length || info.healing)) cast = { target: a }; }
+          if (info.defensive || info.healing) { if (a.healthPct < (info.allyBelow ?? 0.55) && (enemies.length || info.healing)) cast = { target: a }; }
           else if (fighting) {
             // Offensive buff: best right-clicker near the fight
             const best = allies.filter((x) => x.kind === 'hero').sort((x, y) => this.heroDps(y) - this.heroDps(x))[0];
@@ -626,10 +629,10 @@ export class BotBrain {
     }
     return false;
   }
-  diveOk(tower) {
+  // `ft` is the hero the dive is for: the one being fought, or the one tryFight is weighing.
+  diveOk(tower, ft = this.fightTarget) {
     // Hard bots dive a nearly dead hero if healthy; everyone may hit a nearly dead tower with support
     const h = this.hero;
-    const ft = this.fightTarget;
     if (ft?.alive && ft.healthPct < 0.2 && h.healthPct > 0.6 && this.diff.dive) return true;
     if (tower.healthPct < 0.15 && h.healthPct > 0.5 && this.ctx.allyHeroes.length >= 1) return true;
     return h.healthPct > 0.7 && this.ctx.allyHeroes.length >= 3 && this.mode === 'push';
@@ -689,8 +692,13 @@ export class BotBrain {
     if (laning && !killable && ratio < laneBar && !committed) engage = false;
     // Being attacked by a hero in lane: fight back if not losing
     if (!engage && target.attackTarget === h && ratio > 0.9 && h.distanceTo(target) < h.getStat('attackRange') + 3) engage = true;
-    // Don't chase under enemy towers
-    if (engage && !this.diff.dive && this.underEnemyTower(target.position) && !(target.healthPct < 0.12 && h.healthPct > 0.6)) engage = false;
+    // Don't chase under enemy towers. A bot that dives may, on the terms handleTowerDanger will let it stay on and no
+    // others: `dive` used to wave every engage through, so a hard bot walked in after a healthy hero, was turned out
+    // on its next think, and walked in again, 6.9% of a melee laner's first ten minutes against normal's 2.1%.
+    if (engage && this.underEnemyTower(target.position)) {
+      if (this.diff.dive) { if (!this.towersOver(target.position).every((t) => t.subtype !== 'fountain' && this.diveOk(t, target))) engage = false; }
+      else if (!(target.healthPct < 0.12 && h.healthPct > 0.6)) engage = false;
+    }
     if (engage && h.distanceTo(target) > 22 && !killable) engage = false;
     if (!engage) {
       this.fightTarget = null;
@@ -728,6 +736,9 @@ export class BotBrain {
   underEnemyTower(pos) {
     return this.ctx.enemyTowers.some((t) => t.alive && t.distanceTo(pos) < t.getStat('attackRange') + 2);
   }
+  towersOver(pos) {
+    return this.ctx.enemyTowers.filter((t) => t.alive && t.distanceTo(pos) < t.getStat('attackRange') + 2);
+  }
 
   tryHarass(target) {
     const h = this.hero;
@@ -740,6 +751,7 @@ export class BotBrain {
       return false;
     }
     if (this.plan && this.plan.type !== 'lane') return false;
+    if (this.yielding && !this.underAllyTower(target.position)) return false;
     const range = h.getStat('attackRange');
     const d = h.edgeDistanceTo(target);
     if (d > range + 1.5 || h.healthPct < 0.5 || h.healthPct < target.healthPct - 0.15) return false;
@@ -775,6 +787,44 @@ export class BotBrain {
     return true;
   }
 
+  // How far behind the clash a laner stands when the enemy heroes in sight out-fight it and its allies: just outside
+  // the reach of an enemy standing where a ranged laner stands (0.6 of its range behind the clash). 0 when it need
+  // not. tryLastHit still walks it in for a creep it can kill, so it is in their reach for the hit and not between hits.
+  laneStandoff() {
+    const h = this.hero;
+    if (!this.diff.smart || this.game.time >= LANE_PHASE_END) return 0;
+    let near = null, reach = 0;
+    for (const e of this.ctx.enemyHeroes) {
+      if (!e.alive || e.distanceTo(h) > 20) continue;
+      if (!near || e.distanceTo(h) < near.distanceTo(h)) near = e;
+      reach = Math.max(reach, e.getStat('attackRange'));
+    }
+    if (!near || this.fightRatio(near) >= LANE_STANDOFF_RATIO) return 0;
+    return reach * 0.4 + 2;
+  }
+
+  // True while this laner stands alone against enemy heroes who would commit on it by the bar it commits on them:
+  // its side's health times damage, over theirs, is under 1 / LANE_ENGAGE_RATIO. The sides are the heroes standing
+  // here, allies within 20 of it and enemies in sight within 24, with no towers and no creeps, so a lane partner
+  // across the wave still counts and one that is dead or gone home does not. It gives up the clash and waits in its
+  // own tower's cover, where tryFight turns them back, taking only the creeps that come there, until an ally is back
+  // or they have been out of sight for LANE_YIELD_HOLD. Staying cost the melee core of a lane against two hard ranged
+  // heroes 3.1 deaths in ten minutes, and in 60 of 75 of them its partner was already dead, going home or not back.
+  laneYield() {
+    const h = this.hero;
+    if (!this.diff.yield || this.game.time >= LANE_PHASE_END) return false;
+    let aH = this.heroEhp(h), aD = this.heroDps(h), eH = 0, eD = 0;
+    for (const e of this.ctx.enemyHeroes) if (e.alive && e.distanceTo(h) <= 24) { eH += this.heroEhp(e); eD += this.heroDps(e); }
+    if (eH > 0) {
+      for (const a of this.ctx.allyHeroes) if (a.alive && a.distanceTo(h) <= 20) { aH += this.heroEhp(a); aD += this.heroDps(a); }
+      if (aH * aD < (eH * eD) / LANE_ENGAGE_RATIO) this.yieldUntil = this.now + LANE_YIELD_HOLD;
+    }
+    return this.now < (this.yieldUntil ?? 0);
+  }
+  underAllyTower(pos) {
+    return this.ctx.allyTowers.some((t) => t.alive && t.distanceTo(pos) < t.getStat('attackRange'));
+  }
+
   doLane(lane) {
     const h = this.hero;
     if (this.avoidCreepAggro(lane)) return;
@@ -784,7 +834,7 @@ export class BotBrain {
     const ownTower = this.d.structures.frontTower(this.team, lane);
     const towerS = ownTower ? path.project(ownTower.position.x, ownTower.position.z).s : 10;
     const ranged = !h.isMelee;
-    const back = ranged ? Math.max(4, h.getStat('attackRange') * 0.6) : 2.5;
+    const back = Math.max(ranged ? Math.max(4, h.getStat('attackRange') * 0.6) : 2.5, this.laneStandoff());
     let s;
     if (f.myN > 0) {
       const clash = f.enN > 0 ? Math.min(f.my, f.en) : f.my;
@@ -793,6 +843,8 @@ export class BotBrain {
       // Enemy wave without ours: farm near our tower, don't overextend
       s = Math.min(f.en - back - 2, towerS + 4);
     } else s = towerS + 6;
+    const yielding = this.yielding && !!ownTower;
+    if (yielding) s = Math.min(s, towerS + 3);
     // Don't go past the enemy's front tower range when nothing tanks
     const et = this.d.structures.frontTower(this.enemy, lane);
     if (et) {
@@ -805,7 +857,7 @@ export class BotBrain {
     const dest = v3(p.x - dir.z * this.lateral, p.z + dir.x * this.lateral);
     // Last-hit creeps under/near the enemy tower only if a wave tanks it; else just hold position
     this.moveTo(dest, 1.5);
-    this.debug = `lane ${lane} s=${s.toFixed(0)}`;
+    this.debug = yielding ? `yield ${lane} s=${s.toFixed(0)}` : `lane ${lane} s=${s.toFixed(0)}`;
   }
 
   // Predict creep HP at the time our hit would land; returns true if we issued/are executing a last hit or deny.
@@ -831,6 +883,7 @@ export class BotBrain {
       const ed = h.edgeDistanceTo(c);
       if (ed > range + 8) continue;
       if (this.underEnemyTower(c.position) && !this.towerBusy(c.position)) continue;
+      if (this.yielding && !this.underAllyTower(c.position)) continue;
       const tHit = this.timeToHit(c, ed, range, ms);
       const pred = this.predictHp(c, tHit);
       const dmg = this.myDamageVs(c) * this.diff.lhAcc;
@@ -843,6 +896,7 @@ export class BotBrain {
         if (!c.alive || !h.canAttack(c) || c.kind !== 'creep') continue;
         const ed = h.edgeDistanceTo(c);
         if (ed > range + 7 || this.underEnemyTower(c.position) && !this.towerBusy(c.position)) continue;
+        if (this.yielding && !this.underAllyTower(c.position)) continue;
         if (c.hp < this.myDamageVs(c) * 2.5 && c.hp < soonHp) { soon = c; soonHp = c.hp; }
       }
       if (soon) {
@@ -1084,8 +1138,8 @@ export class BotBrain {
     const maxD = early ? 50 : lane ? 30 : 38;
     const r = runes.runeFor(h, maxD);
     if (!r) { h.data.runeClaim = null; this.runeRoll = Math.random(); return false; }
-    // Opening bounty runes: supports / non-mid heroes only (mid goes to lane)
-    if (early && r.kind === 'bounty' && h.lane === 'mid') return false;
+    // Opening windfall runes: supports / non-mid heroes only (mid goes to lane)
+    if (early && r.kind === 'windfall' && h.lane === 'mid') return false;
     const foes = this.ctx.enemyHeroes.filter((e) => e.distanceTo(r.pos) < 14).length;
     const friends = 1 + this.ctx.allyHeroes.filter((a) => a.distanceTo(r.pos) < 18).length;
     if (foes > friends || (foes && h.healthPct < 0.5)) { h.data.runeClaim = null; return false; }

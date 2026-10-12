@@ -15,16 +15,12 @@ import { dom } from './dom.js';
 // above used to warn about). Dragging instead repositions elements in place
 // and lets `onMoveOccluder` hand back a fresh view model to patch from.
 //
-// Phase 8: a desk card is drawn at a size in room metres, not in pixels, so on
-// a phone the twelve of them come out around 52x34 CSS px — under every
-// fingertip guideline there is, and the swap is a press on one and a lift over
-// another. `touch` widens the card's own footprint rather than scaling the
-// plan, because the plan is a map of a real room and the desks are the only
-// thing on it you are meant to hit.
-const DESK = { mouse: [1.45, 0.95], touch: [1.72, 1.24] };
+// A desk card is drawn at a size in room metres, not in pixels. Phase 8 kept
+// a wider footprint for a fingertip; it went with the touch controls (#940).
+const DESK = [1.45, 0.95];
 
-export function createSeatingScreen({ copy, onSwap, onReset, onMoveOccluder, onConfirm, touch = false }) {
-  const [deskW, deskD] = touch ? DESK.touch : DESK.mouse;
+export function createSeatingScreen({ copy, onSwap, onReset, onMoveOccluder, onConfirm }) {
+  const [deskW, deskD] = DESK;
   let vm = null, meta = null;
   let selected = null, pressed = null, dragOcc = null;
   const cards = new Map(), occEls = new Map();

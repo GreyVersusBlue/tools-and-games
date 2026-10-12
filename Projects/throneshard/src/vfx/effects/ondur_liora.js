@@ -16,8 +16,10 @@ export const ONDUR_LIORA_EFFECTS = {
   // unit), stand for `hold` seconds, then sink back with dust and falling chunks. Two meshes per slab, two shared materials.
   rift_wall(vfx, o) {
     const dir = o.direction.clone().setY(0).normalize();
-    const from = o.position, len = o.length ?? 30, per = 2.2, dpu = o.delayPerUnit ?? 1 / 60;
-    const hold = o.hold ?? 2.6, rise = 0.28, sink = 0.6;
+    // per, rise, hold, sink and stagger come from the ability (gameplay/abilities/riftWall.js), which blocks the nav
+    // grid under each slab for the same seconds this draws it standing.
+    const from = o.position, len = o.length ?? 30, per = o.per ?? 2.2, dpu = o.delayPerUnit ?? 1 / 60;
+    const hold = o.hold ?? 2.6, rise = o.rise ?? 0.28, sink = o.sink ?? 0.6, stagger = o.stagger ?? 0.025;
     const n = Math.floor(len / per) + 1;
     const fx = vfx.fx(n * per * dpu + rise + hold + sink + 0.6);
     const slabMat = fx.own(new THREE.MeshStandardMaterial({ color: STONE, roughness: 0.95, flatShading: true }));
@@ -57,7 +59,7 @@ export const ONDUR_LIORA_EFFECTS = {
           burst(s, i % 4 === 0);
           if (i % 3 === 0) crackAt(s, hold + sink + 0.4);
         }
-        const tc = s.t0 + rise + hold + i * 0.025; // crumble start
+        const tc = s.t0 + rise + hold + i * stagger; // crumble start
         const c = Math.max(0, (t - tc) / sink);
         if (c > 0 && !s.down) { s.down = true; burst(s, true); }
         const e = c > 0 ? 1 : easeBack(Math.min(1, u));

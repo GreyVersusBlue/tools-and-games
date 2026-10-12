@@ -22,7 +22,7 @@ const TIPS = [
   'Use <b>Ctrl + Q/W/E/R</b> to learn abilities when you have points to spend.',
   'Press <b>Space</b> to center the camera on your hero.',
   'Alt-click the minimap to ping a location for your allies.',
-  "Grimmaw lurks in his lair by the river. Slaying him is a team effort, and his Sigil of Second Dawn brings its holder back from death once.",
+  "Grimmaw lurks in his lair by the river. Slaying him is a team effort, and his Lantern of Second Dawn brings its holder back from death once.",
   'Night falls every five minutes, reducing the vision of most heroes.',
   'Buying back is expensive, but it can win a desperate teamfight.',
   'Destroying the enemy Throneshard wins the game.',

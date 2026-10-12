@@ -24,19 +24,6 @@ export const CFG = {
   moveSpeed: 2.7,         // m/s
   eyeHeight: 1.65,
 
-  // Phase 8 — the thumb. Pixels, in CSS pixels, at the viewport's own scale:
-  // stickRadius is how far from the touchdown point counts as full tilt (a
-  // little under a thumb's comfortable arc on a 6" phone), and deadZone is
-  // how much of a stationary thumb's wobble is not a step. walkHalf is the
-  // fraction of the screen width that walks rather than looks; 0.5 is the
-  // left half, and it is a number here rather than a literal in input.js
-  // because a left-handed player is the obvious next thing to want.
-  touch: {
-    stickRadius: 62,
-    deadZone: 10,
-    walkHalf: 0.5
-  },
-
   // Phase 8 — the frame budget, written down.
   //
   // 33.3 ms is 30 fps, and 30 fps is the floor this game is allowed to run

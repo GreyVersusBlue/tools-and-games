@@ -35,6 +35,7 @@ const { ABILITY_DEFS } = await load('src/gameplay/abilities/AbilitySystem.js');
 const { TALENT_DEFS, TALENT_TIERS } = await load('src/gameplay/talents/TalentDefs.js');
 const { ITEM_DEFS } = await load('src/gameplay/items/ItemDefs.js');
 const { RECOMMENDED } = await load('src/gameplay/items/ItemBuilds.js');
+const { CHARACTERS } = await load('src/models/configs.js');
 
 let checks = 0, failures = 0;
 function ok(cond, label, detail = '') {
@@ -46,7 +47,7 @@ function ok(cond, label, detail = '') {
 
 const heroes = Object.values(HERO_DEFS);
 console.log(`heroes: ${heroes.length}`);
-ok(heroes.length === 14, 'fourteen heroes', `got ${heroes.length}`);
+ok(heroes.length === 16, 'sixteen heroes', `got ${heroes.length}`);
 
 const usedAbilities = new Set();
 for (const h of heroes) {
@@ -79,10 +80,12 @@ for (const h of heroes) {
     for (const item of build?.[phase] ?? []) ok(!!ITEM_DEFS[item], `${h.id} build ${phase}: item ${item} exists`);
   }
 
-  const glb = path.join(ROOT, 'assets/models/chars', `${h.id}.glb`);
+  // A hero wears the rig under its own id when there is one, else the model its def names (ModelFactory._heroOwn).
+  const kind = CHARACTERS[h.id] ? h.id : h.model;
+  const glb = path.join(ROOT, 'assets/models/chars', `${CHARACTERS[kind]?.rig}.glb`);
   ok(fs.existsSync(glb), `${h.id}: model file exists`, path.relative(ROOT, glb));
 }
-ok(usedAbilities.size === 56, 'fifty-six distinct hero abilities', `got ${usedAbilities.size}`);
+ok(usedAbilities.size === 64, 'sixty-four distinct hero abilities', `got ${usedAbilities.size}`);
 
 const items = Object.values(ITEM_DEFS);
 console.log(`items: ${items.length}`);
@@ -102,6 +105,52 @@ for (const f of walk(path.join(ROOT, 'src'))) for (const m of fs.readFileSync(f,
 console.log(`storage keys: ${keys.size}`);
 ok(keys.size > 0, 'found the storage keys');
 for (const k of keys) ok(k.startsWith('throneshard'), `storage key ${k} starts with "throneshard"`);
+
+// Runes and Grimmaw's drop. A rune's kind and type are bare strings compared in
+// four files, and the drop's event is emitted in one file and heard in another:
+// a rename that misses one of them leaves a bot that walks past a rune, a
+// minimap marker of the wrong shape, or an announcement that never shows.
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const { RUNE_TYPES, BOON_RUNE_SPOTS, WINDFALL_RUNE_SPOTS } = await load('src/gameplay/runes/Runes.js');
+const runesSrc = read('src/gameplay/runes/Runes.js');
+const runeTypes = Object.keys(RUNE_TYPES);
+const runeKinds = new Set([...runesSrc.matchAll(/this\.spawn\([^;]*,\s*'(\w+)'\)/g)].map((m) => m[1]));
+console.log(`runes: ${runeTypes.length} types, ${runeKinds.size} kinds`);
+ok(runeTypes.length === 7, 'seven rune types', `got ${runeTypes.length}`);
+ok(runeKinds.size === 2, 'Runes.js spawns two kinds of rune', `got ${[...runeKinds]}`);
+ok(BOON_RUNE_SPOTS?.length === 2 && WINDFALL_RUNE_SPOTS?.length === 4, 'two river spots and four jungle spots');
+for (const t of [...runesSrc.matchAll(/this\.spawn\('(\w+)'/g)]) ok(!!RUNE_TYPES[t[1]], `Runes.js spawns a defined type ${t[1]}`);
+for (const t of [...runesSrc.matchAll(/case '(\w+)':/g)]) ok(!!RUNE_TYPES[t[1]], `Runes.activate handles a defined type ${t[1]}`);
+const kindRe = /\b(?:r|m|x|rune)\.kind === '(\w+)'/g;
+for (const rel of ['src/gameplay/runes/Runes.js', 'src/ai/BotBrain.js', 'src/ui/hud/MinimapMarkers.js', 'tools/scripts/ws5_shots.mjs']) {
+  const found = [...read(rel).matchAll(kindRe)].map((m) => m[1]).filter((k) => k !== 'hero');
+  ok(found.length > 0, `${rel}: compares a rune's kind`);
+  for (const k of found) ok(runeKinds.has(k), `${rel}: rune kind ${k} is one Runes.js spawns`);
+}
+const colKeys = [...read('src/vfx/effects/runes.js').match(/const COL = \{([\s\S]*?)\n\};/)[1].matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
+ok(colKeys.join() === runeTypes.join(), 'the rune effects have a colour pair for each type, in order', `got ${colKeys}`);
+const captured = [...read('tools/scripts/vfx_capture.mjs').match(/const RUNES = \[([^\]]*)\]/)[1].matchAll(/'(\w+)'/g)].map((m) => m[1]);
+ok(captured.join() === runeTypes.join(), 'vfx_capture.mjs lists the same rune types', `got ${captured}`);
+const coinRe = read('src/audio/AudioSystem.js').match(/if \((\/[^/]+\/i)\.test\(reason/)[1];
+for (const m of runesSrc.matchAll(/addGold\(gold, '(\w+)'\)/g)) ok(new RegExp(coinRe.slice(1, -2), 'i').test(m[1]), `the coin sound hears the gold reason ${m[1]}`);
+// Every rune:, lantern: and grimmaw: event something listens for is emitted somewhere.
+const srcText = walk(path.join(ROOT, 'src')).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+const emitted = new Set([...srcText.matchAll(/\.emit\('([\w:]+)'/g)].map((m) => m[1]));
+const heard = new Set([...srcText.matchAll(/\.on\('((?:rune|lantern|grimmaw):[\w]+)'/g)].map((m) => m[1]));
+ok(heard.has('lantern:consumed') && heard.size >= 4, 'found the rune, lantern and grimmaw listeners', `got ${[...heard]}`);
+for (const e of heard) ok(emitted.has(e), `event ${e} is emitted somewhere`);
+
+// Rift Wall's gameplay wall: its lifetime, the push-out, and seeded walks through and round it (wall.mjs).
+const { wallChecks } = await import('./wall.mjs');
+await wallChecks({ ok, load });
+
+// Ormund's four abilities against the game's own heroes, units and ability system (ormund.mjs).
+const { ormundChecks } = await import('./ormund.mjs');
+await ormundChecks({ ok, load });
+
+// Tobren's four abilities, on the same kind of stage (tobren.mjs).
+const { tobrenChecks } = await import('./tobren.mjs');
+await tobrenChecks({ ok, load });
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
 process.exit(failures ? 1 : 0);

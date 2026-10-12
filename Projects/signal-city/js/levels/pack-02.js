@@ -69,7 +69,7 @@ export const PACK_02 = [
     id: 'cross-town',
     name: 'Cross Town',
     blurb: 'Three lights in a row on one street, and an ambulance that has to cross all three. Its corridor follows it from box to box, and at each one the queue is still in the road.',
-    hint: 'Call the corridor the moment the ambulance is on the map (E, or click it). The corridor follows it, but a box only goes green for it when it is handed over, a block away, and by then that box\'s queue is standing in its lane. Pick the next box and give its east-west phase before the ambulance gets there, then the one after. It has 100 seconds from the map edge.',
+    hint: 'Call the corridor the moment the ambulance is on the map (E, or click it). The corridor follows it, but a box only goes green for it when it is handed over, a block away, and by then that box\'s queue is standing in its lane. Pick the next box and give its east-west phase before the ambulance gets there, then the one after. It has 150 seconds from the map edge.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1, nodes: 3, spacing: 220 },
     // phase 0 is the street the ambulance takes, E-W (`main: 'EW'`); every
     // box on Rush Hour's 22 s rule, so the board runs itself until the call
@@ -81,20 +81,30 @@ export const PACK_02 = [
     // crossing every box. With any turn in the weights it leaves at box 2
     // or 3 on some seeds (Known gaps: an event's turn is the first box's)
     turns: { T: 1 },
-    events: [{ kind: 'ambulance', at: 90, leg: 'W', turn: 'T', within: 100 }],
-    duration: 240,
-    // calibrated on six seeds (R13, #929), `calibrate.mjs cross-town
-    // --baseline --hand`. One lane, so the ambulance is never faster than
-    // the car in front of it: its 660 m take 54 s at best. Nothing pressed:
-    // 99 to 116 cleared, the ambulance 99 to 136 s on the map or still on
-    // it at the end, one star on all six. The hand's corridor as it arrives
-    // and the boxes ahead left alone: 69 to 113 s, on time on four seeds.
-    // The hand in full, the green given at each box ahead of it: 54 to
-    // 80 s, on time and three stars on all six. 100 s is 5 s clear of the
-    // nearest seed either side of it without the road ahead (95 and 105 s).
-    // The target is under the worst run of all (93), so the second star is
-    // the ambulance on time on its corridor
-    target: 88,
+    // 150 s, not #929's 100: Devon asked for about half as much again
+    // (2026-10-07, #949). The run is 270 s, not 240, for the deadline's sake:
+    // 90 + 150 is 240, the old run's last frame, and an ambulance still on
+    // the map then was never late and read "made it without its corridor".
+    // The clock now runs out 30 s before the run does. Since #955 the end of
+    // a run counts that ambulance late and says where it was, so the 30 s
+    // are no longer what keeps the card honest; they are kept because a
+    // late ambulance is then seen late, by how much, with the run still on
+    events: [{ kind: 'ambulance', at: 90, leg: 'W', turn: 'T', within: 150 }],
+    duration: 270,
+    // calibrated on six seeds (R13, #929, again at #949), `calibrate.mjs
+    // cross-town --baseline --hand`. One lane, so the ambulance is never
+    // faster than the car in front of it: its 660 m take 54 s at best.
+    // Nothing pressed: 127 to 144 cleared, the ambulance 99 to 159 s on the
+    // map, late on two seeds and on time uncalled on four, which is not the
+    // lesson: one star on all six. The hand's corridor as it arrives and
+    // the boxes ahead left alone: 69 to 113 s, on time on all six, three
+    // stars on five. The hand in full, the green given at each box ahead of
+    // it: 54 to 80 s, three stars on all six. So at 150 s the call earns the
+    // second star by itself (a call a minute late on the boxes' own rule is
+    // 139 s at the slowest), and the road ahead is 33 s at the slowest seed
+    // and the clean run. The target is #929's 88 at the longer run's length
+    // (88 x 270 / 240), 6 under the worst run of any row (105)
+    target: 99,
     waitTarget: 20,
     lesson: { kind: 'ambulance' },
     // E-W held at two boxes for a minute is a long red, not a lock
@@ -106,7 +116,7 @@ export const PACK_02 = [
     id: 'lights-out',
     name: 'Lights Out',
     blurb: 'Boulevard\'s two lights with the wave already running, and a power cut on the way. When the lights come back the wave does not.',
-    hint: 'The wave is set: watch it work. At 78 seconds the power goes for twelve, both boxes go dark and every car takes its turn. When it comes back each box starts again from the top of the green it was in, so the two clocks agree with each other and no longer with the slider: the diagram shows it, the lines landing on red. The slider moves the east box on from where it stands, so slide it until the lines land in green again and let it re-align. Sooner is better: every car that stops twice still counts.',
+    hint: 'The wave is set: watch it work. At 78 seconds the power goes for twelve, both boxes go dark and every car takes its turn. When it comes back each box starts again from the top of the green it was in, so the two boxes are on one clock: the slider drops to 0 to say so and the diagram shows it, the lines landing on red. Slide it back until the lines land in green again and let it re-align. Sooner is better: every car that stops twice still counts.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, nodes: 2, spacing: 220 },
     // Boulevard's plan and its 33 s cycle, and Boulevard's answer already in:
     // the east box 16 s on, so the level opens on a wave both ways
@@ -120,11 +130,12 @@ export const PACK_02 = [
     // box is on its boulevard green and the east box on the yellow that ends
     // its side street's. A box comes back to the phase it was in or was
     // going to (sim.js _endEvent), from the top of that green: both come
-    // back on the boulevard at the same instant, the offset the slider still
-    // calls 16 s is 0 on the street, and the wave is gone both ways until
-    // the slider moves the east box another half cycle. A second either way
-    // (77 or 79 s) and the boxes come back half a cycle apart with nothing
-    // to do. Twelve seconds, because a box comes back through one all-red
+    // back on the boulevard at the same instant, the offset is 0 on the
+    // street and the slider reads 0 (the truth is written back at the
+    // return, #959; until then it still read 16), and the wave is gone both
+    // ways until the slider moves the east box half a cycle on again. A
+    // second either way (77 or 79 s) and the boxes come back half a cycle
+    // apart with nothing to do. Twelve seconds, because a box comes back through one all-red
     // and a car still crossing on its turn is hit by the first green: 20 s
     // of dark read 8 such crashes in 24 seeds, 12 s read 5 in 48
     events: [{ kind: 'outage', at: 78, for: 12 }],
@@ -132,14 +143,15 @@ export const PACK_02 = [
     // calibrated on six seeds (R13, #933), `calibrate.mjs lights-out
     // --baseline --hand`. Nothing pressed: 120 to 168 cleared at 7 to 8 s,
     // 60 to 70% of the handed-on cars stopping again (3 of 64 before the
-    // power goes), one star on all six, no lock. The slider moved to 32
-    // (the east box 16 s on) 10 s after the lights come back: 12 to 28%,
-    // the lesson on all six, three stars on two. The tool's sweep by fours
-    // at that second keeps 4 (21 s on): the lesson on six and three stars
-    // on five; the star lost either way is a crash, and this street
-    // crashes with nobody's help. To 32 at 5, 20 and 30 s after the lights:
-    // 14 to 35%, the lesson on all six each time. To 24, a quarter of a
-    // cycle off: 32 to 58%, the lesson on one seed. The bar is 40%: 20
+    // power goes), one star on all six, no lock. The slider moved back to
+    // 16 (the east box 16 s on) 10 s after the lights come back: 12 to 28%,
+    // the lesson on all six, three stars on two. 21 at that second: the
+    // lesson on six and three stars on five; the star lost either way is a
+    // crash, and this street crashes with nobody's help. To 16 at 5, 20 and
+    // 30 s after the lights: 14 to 35%, the lesson on all six each time. To
+    // 8, a quarter of a cycle off: 32 to 58%, the lesson on one seed. (Until
+    // #959 the slider went on reading 16 after the return and these were
+    // its 32, 4 and 24: the same runs, car for car.) The bar is 40%: 20
     // points under the best seed with nothing pressed and 5 over the worst
     // with the slider moved 30 s late. The target is under the worst run of
     // all (120), so the slider is the second star

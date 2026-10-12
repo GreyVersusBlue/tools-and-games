@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { FRAME } from '../textures.js';
-import { GEO, addMat } from '../meshfx.js';
+import { GEO, addMat, normMat } from '../meshfx.js';
 
 // Rune pickup bursts (rune_pickup, at the rune's spot), one-shot activation flourishes (rune_activate, on the hero) and
 // the lasting auras (RUNE_ATTACH, tied to the rune modifiers' vfxName). Each rune type has its own colour and motif.
@@ -13,7 +13,7 @@ const COL = {
   invisibility: [0xb070ff, 0xefe0ff],
   arcane: [0xff60d0, 0xffe0f6],
   illusion: [0xffd040, 0xfff6cc],
-  bounty: [0xffc830, 0xfff0a0],
+  windfall: [0xffc830, 0xfff0a0],
 };
 
 const X4 = [V(1, 0, 0), V(-1, 0, 0), V(0, 0, 1), V(0, 0, -1)];
@@ -21,7 +21,7 @@ const D4 = [V(0.7, 0, 0.7), V(-0.7, 0, 0.7), V(0.7, 0, -0.7), V(-0.7, 0, -0.7)];
 
 export const RUNE_EFFECTS = {
   rune_pickup(vfx, o) {
-    const type = o.type, [c, c2] = COL[type] ?? COL.bounty;
+    const type = o.type, [c, c2] = COL[type] ?? COL.windfall;
     const g = vfx.ground(o.position), p = V(g.x, g.y + 1.1, g.z);
     vfx.emit(1, { position: p, life: 0.3, size: [4.5, 0.5], color: c2, frame: FRAME.FLARE, fadeIn: 0 });
     vfx.flash(p, c, 28, 0.35, 16);
@@ -47,7 +47,7 @@ export const RUNE_EFFECTS = {
         vfx.ring({ position: g, r0: 3.4, r1: 0.3, color: c, duration: 0.45, ease: 1 });
         vfx.emit(14, { position: p, spread: 0.9, life: [0.4, 0.8], size: [0.4, 0.02], color: c2, color2: c, frame: FRAME.FLAKE, rotSpeed: 4 });
         break;
-      case 'arcane': // spinning sigil
+      case 'arcane': // spinning glyph
         vfx.decal({ position: g, radius: 2.6, tex: vfx.tex.rune, color: c, duration: 1.1, spin: 3, opacity: 1, grow: 0.5, fadeOut: 0.4, lift: 0.1 });
         vfx.emit(22, { position: V(g.x, g.y + 0.2, g.z), shape: 'ring', radius: 2, up: [2, 5], life: [0.6, 1], size: [0.4, 0.05], color: c2, color2: c, frame: FRAME.SPARK, fadeIn: 0.1 });
         vfx.ring({ position: g, r0: 0.5, r1: 4, color: c, duration: 0.5 });
@@ -60,7 +60,7 @@ export const RUNE_EFFECTS = {
         vfx.ring({ position: g, r0: 0.3, r1: 4, color: c, duration: 0.5 });
         vfx.ring({ position: g, r0: 0.2, r1: 2.6, color: c2, duration: 0.4, tex: vfx.tex.ring });
         break;
-      default: // bounty: coin shower
+      default: // windfall: coin shower
         vfx.emitAlpha(12, { position: p, speed: [1.5, 4], up: [5, 9], life: [0.7, 1.1], size: [0.28, 0.24], color: 0xd8a020, color2: c, frame: FRAME.CHUNK, gravity: 18, rotSpeed: 10, fadeIn: 0 });
         vfx.emit(14, { position: p, spread: 0.3, speed: [2, 5], up: [3, 6], life: [0.5, 0.9], size: [0.45, 0.05], color: c2, color2: c, frame: FRAME.FLARE, gravity: 9 });
         vfx.ring({ position: g, r0: 0.4, r1: 3.5, color: c, duration: 0.5 });
@@ -70,7 +70,7 @@ export const RUNE_EFFECTS = {
 
   // One-shot flourish on the hero (the lasting aura, where there is one, is the modifier's RUNE_ATTACH entry).
   rune_activate(vfx, o) {
-    const u = o.unit, type = o.type, [c, c2] = COL[type] ?? COL.bounty;
+    const u = o.unit, type = o.type, [c, c2] = COL[type] ?? COL.windfall;
     if (!u) return null;
     const g = vfx.ground(u.position), h = vfx.unitHeight(u), mid = vfx.unitPoint(u, 0.55);
     vfx.glow({ position: mid, follow: u, yOff: 0.55, size: h * 2.4, color: c, duration: 0.8, opacity: 0.7 });
@@ -134,15 +134,45 @@ function glowSprite(vfx, fx, color, opacity) {
   s.renderOrder = 21;
   return { s, mat };
 }
-// Shared shape: a soft body glow plus one particle stream; `emitFn(n, base, y0, h)` supplies the stream.
+// The band every lasting aura stands on: a hard rim in the rune's colour with a dark rim just outside it, so the edge
+// holds against pale dirt and bright water where a glow alone is a tint. It lies on the river's surface, not its bed,
+// and outside the selection circle. Cosmetic: no rune has a radius. Two quads.
+export const RUNE_BAND = { radius: 1.55, under: 1.72, opacity: 0.9, underOpacity: 0.7, lift: 0.07 };
+const SHADE = { haste: 0x2a0606, double_damage: 0x060c2a, regeneration: 0x04200a, arcane: 0x26062a };
+function band(vfx, fx, type) {
+  const B = RUNE_BAND;
+  const dm = fx.own(normMat(SHADE[type], vfx.tex.band, B.underOpacity));
+  const dark = fx.add(new THREE.Mesh(GEO.ground, dm));
+  dark.scale.set(B.under * 2, 1, B.under * 2);
+  dark.renderOrder = 5;
+  const lm = fx.own(addMat(COL[type][0], vfx.tex.band, B.opacity));
+  const lit = fx.add(new THREE.Mesh(GEO.ground, lm));
+  lit.scale.set(B.radius * 2, 1, B.radius * 2);
+  lit.renderOrder = 15;
+  dark.userData.runeBand = 'under'; lit.userData.runeBand = 'rim';
+  return {
+    lit, dark, lm,
+    place(u, v, dt, t) {
+      dark.visible = lit.visible = v;
+      const y = vfx.groundY(u.position.x, u.position.z);
+      dark.position.set(u.position.x, y + B.lift, u.position.z);
+      lit.position.set(u.position.x, y + B.lift + 0.03, u.position.z);
+      lit.rotation.y += dt * 1.4;
+      lm.opacity = B.opacity * (0.88 + 0.12 * Math.sin(t * 3));
+    },
+  };
+}
+// Shared shape: the band, a soft body glow and one particle stream; `emitFn(n, base, y0, h)` supplies the stream.
 function aura(type, glowSize, glowOp, perSec, emitFn) {
   return (vfx, fx, u) => {
     const [c] = COL[type];
+    const bd = band(vfx, fx, type);
     const gl = glowSprite(vfx, fx, c, glowOp);
     const base = V(0, 0, 0);
     fx.onUpdate = (dt, t) => {
       const v = visible(u);
       gl.s.visible = v;
+      bd.place(u, v, dt, t);
       const y0 = u.object?.position.y ?? u.position.y, h = vfx.unitHeight(u);
       gl.s.position.set(u.position.x, y0 + h * 0.5, u.position.z);
       const k = h * glowSize * (0.94 + 0.06 * Math.sin(t * 7));
@@ -158,7 +188,7 @@ function aura(type, glowSize, glowOp, perSec, emitFn) {
 export const RUNE_ATTACH = {
   // red speed lines kicked off the heels
   rune_haste: aura('haste', 2, 0.4, 30, (vfx, n, b, h) => {
-    vfx.emit(n, { position: b, spread: { x: 0.3, y: 0.2, z: 0.3 }, up: [0.2, 0.8], life: [0.2, 0.4], size: [0.55, 0.02], color: 0xffc080, color2: 0xff2a10, frame: FRAME.SPARK, fadeIn: 0 });
+    vfx.emit(n, { position: b, spread: { x: 0.3, y: 0.2, z: 0.3 }, up: [0.2, 0.8], life: [0.35, 0.6], size: [0.9, 0.05], color: 0xffc080, color2: 0xff2a10, frame: FRAME.SPARK, fadeIn: 0 });
     if (Math.random() < 0.3) vfx.emitAlpha(1, { position: b, spread: 0.3, up: [0.2, 0.6], life: [0.4, 0.7], size: [0.5, 1.2], color: 0x8a5a40, alpha: 0.3, frame: FRAME.SMOKE });
   }),
   // hard blue-white sparks off the shoulders, heavier glow
@@ -170,8 +200,9 @@ export const RUNE_ATTACH = {
   rune_regeneration: aura('regeneration', 1.8, 0.35, 18, (vfx, n, b) => {
     vfx.emit(n, { position: b, shape: 'disc', radius: 0.7, up: [1, 2.2], life: [0.7, 1.2], size: [0.5, 0.08], color: 0x80ff80, color2: 0xeaffee, frame: FRAME.FLARE, fadeIn: 0.2 });
   }),
-  // a magenta sigil turning under the hero, sparks lifting off it
+  // a magenta glyph turning under the hero, sparks lifting off it
   rune_arcane(vfx, fx, u) {
+    const bd = band(vfx, fx, 'arcane');
     const mat = fx.own(addMat(0xff60d0, vfx.tex.rune, 0.5));
     const ring = fx.add(new THREE.Mesh(GEO.ground, mat));
     ring.renderOrder = 15;
@@ -179,11 +210,13 @@ export const RUNE_ATTACH = {
     fx.onUpdate = (dt, t) => {
       const v = visible(u);
       ring.visible = v;
-      const y0 = u.object?.position.y ?? u.position.y;
+      bd.place(u, v, dt, t);
+      // on the water where the hero wades: the glyph used to sit 0.1 over his feet, under the river
+      const y0 = vfx.groundY(u.position.x, u.position.z);
       ring.position.set(u.position.x, y0 + 0.1, u.position.z);
       ring.scale.set(4, 1, 4);
-      ring.rotation.y += dt * 1.4;
-      mat.opacity = 0.42 + 0.1 * Math.sin(t * 3);
+      ring.rotation.y -= dt * 1.4;
+      mat.opacity = 0.62 + 0.1 * Math.sin(t * 3);
       if (!v) return;
       const n = rate(dt, fx, 9);
       if (n) { base.set(u.position.x, y0 + 0.1, u.position.z); vfx.emit(n, { position: base, shape: 'ring', radius: 1.6, up: [1, 2.5], life: [0.6, 1], size: [0.35, 0.03], color: 0xffe0f6, color2: 0xff60d0, frame: FRAME.SPARK, fadeIn: 0.1 }); }

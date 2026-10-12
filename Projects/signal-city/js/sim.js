@@ -75,11 +75,13 @@
 //                                corridor) is refused until it is back, when
 //                                each box returns to the phase it was in
 //                                through an all-red
-//   ambulance  { leg, turn, within }   an emergency vehicle spawned at `at`
+//   ambulance  { leg, turn, within, route? }   an emergency vehicle spawned at `at`
 //                                that has `within` seconds from its arrival
 //                                to leave the map; past that it is late
 //                                (stats.ambulanceLate, an 'ambulance-late'
-//                                event) and the level's satisfaction pays
+//                                event) and the level's satisfaction pays;
+//                                one still on the map when the run ends is
+//                                late as well (#955)
 // Four more kinds, the rest of M7:
 //   motorcade  { leg, turn, size, spacing }   a platoon of `size` cars of the
 //   procession                   `motorcade` (fast, tight) or `procession`
@@ -238,6 +240,7 @@ export class World {
     this._conf = new Map();
     this._sweep = new Map();
     this._walkerId = 0;
+    this.settled = false;   // the end of the run has been counted (#955)
     resetIds();
   }
 
@@ -358,7 +361,7 @@ export class World {
         this.stats.outages++;
         break;
       case 'ambulance': {
-        const car = this.spawnCar({ leg: e.leg, archetype: 'emergency', turn: e.turn, node: e.node || 0 });
+        const car = this.spawnCar({ leg: e.leg, archetype: 'emergency', turn: e.turn, route: e.route, node: e.node || 0 });
         if (!car) return false;
         e.car = car;
         e.within = e.within ?? 45;
@@ -405,7 +408,10 @@ export class World {
 
   _endEvent(e) {
     e.ended = true;
-    if (e.kind === 'outage') this.controllers.forEach((c, i) => { if (c.stage === 'dark') c.requestPhase(e.resume[i], 'outage'); });
+    if (e.kind === 'outage') {
+      this.controllers.forEach((c, i) => { if (c.stage === 'dark') c.requestPhase(e.resume[i], 'outage'); });
+      this._trueOffsets();
+    }
     if (e.kind === 'closure') {
       this.nodes[e.node].open(e.leg, e.lane);
       for (const c of this.cars) if (!c.done && c.path.node === e.node && c.path.entry === e.leg && c.path.lane === e.lane) { c.mergeS = 0; c.mergeLane = -1; }
@@ -416,7 +422,7 @@ export class World {
   // One more member of a platoon, if the lane start is clear. A motorcade
   // already given the corridor passes it on to the new car.
   _spawnMember(e) {
-    const car = this.spawnCar({ leg: e.leg, archetype: e.kind, turn: e.turn, node: e.node, variant: e.cars.length % 4 });
+    const car = this.spawnCar({ leg: e.leg, archetype: e.kind, turn: e.turn, route: e.route, node: e.node, variant: e.cars.length % 4 });
     if (!car) return null;
     car.platoon = e;
     if (e.priority) car.priority = true;
@@ -553,7 +559,8 @@ export class World {
   }
 
   // The clock on an ambulance: late once past its deadline still on the
-  // map, over once it has left.
+  // map, over once it has left. One still on the map when the run's own
+  // clock runs out is late too, whatever is left on its own (_settle).
   _ambulanceTick(e) {
     if (e.car.done) {
       e.clearedAt = this.t;
@@ -666,6 +673,24 @@ export class World {
     return this.controllers[node].setOffset(this.controllers[0].offset + seconds);
   }
 
+  // The lights are back on a timed corridor (#959). Each box restarts from
+  // the top of a green, so how far one runs behind the first is whatever
+  // that left it, and the number set before the dark is no longer it. The
+  // truth is written into `offset`, the first box's kept and each other
+  // box's set that many seconds behind it (0 up to a cycle), so the slider
+  // reads what the street runs and a move of it is a move from there. No
+  // box is re-timed by this: a shift still owed is still owed, and counted.
+  _trueOffsets() {
+    const a = this.controllers[0];
+    const L = a.cycleLength();
+    for (const c of this.controllers.slice(1)) {
+      if (!L || Math.abs(c.cycleLength() - L) > 1e-9) continue;   // boxes on rules have no cycle, boxes on two cycles no offset
+      let d = (((c.cycleOrigin() - a.cycleOrigin()) % L) + L) % L;
+      d = Math.round(d * 1e6) / 1e6;
+      c.offset = a.offset + (d >= L ? 0 : d);
+    }
+  }
+
   // The offset the box at `node` runs behind the first, for the panel.
   offsetOf(node = 1) { return this.controllers[node] ? this.controllers[node].offset - this.controllers[0].offset : 0; }
 
@@ -765,7 +790,15 @@ export class World {
 
   // ---- spawning -----------------------------------------------------------
 
-  spawnCar({ leg, archetype, turn, variant, lane, node = 0 } = {}) {
+  // `route` (#960) is a scripted vehicle's turns box by box, `['T', 'T', 'L']`:
+  // the first is its turn at the box it arrives at (and overrides `turn`),
+  // and each handoff takes the next (_handoff). Past the end of the list,
+  // and with no list, a car handed on draws its turn like any other.
+  spawnCar({ leg, archetype, turn, route, variant, lane, node = 0 } = {}) {
+    if (route !== undefined && route !== null) {
+      if (!Array.isArray(route) || !route.length || route.some(t => !['L', 'T', 'R'].includes(t))) throw new Error(`a route is a list of L, T and R, one a box: ${JSON.stringify(route)}`);
+      turn = route[0];
+    }
     const net = this.nodes[node];
     leg = leg || this.rng.pick(net.spawnLegs);
     archetype = archetype || this.rng.weighted(this.mix);
@@ -801,6 +834,7 @@ export class World {
     car.s = car.length - car.stats.length / 2;   // whole body on the map
     car.v = v;
     for (const h of car.hist) { h.s = car.s; h.v = car.v; }
+    if (route) { car.route = route.slice(); car.routeAt = 1; }
     this.cars.push(car);
     this.stats.spawned++;
     return car;
@@ -1198,11 +1232,35 @@ export class World {
     }
     // 5. drop finished cars
     if (this.tick % 60 === 0) this.cars = this.cars.filter(c => !c.done);
+    // 6. the clock has run out: settle what is still open (#955)
+    if (this.over && !this.settled) this._settle();
+  }
+
+  // The end of the run (#955). An ambulance that left in the last step is
+  // counted as it left; one still on the map has not made it, whatever its
+  // clock reads, and is late: `stats.ambulanceLate`, an 'ambulance-late'
+  // event marked `atEnd`, and `e.stranded` for the end card's reason line.
+  // Once, on the step the clock runs out; a run that ends early (a locked
+  // grid, hard mode's collision) is not settled, and earns no star anyway.
+  _settle() {
+    this.settled = true;
+    for (const e of this.active) {
+      if (e.kind !== 'ambulance' || e.ended) continue;
+      if (e.car.done) { this._ambulanceTick(e); continue; }
+      e.stranded = true;
+      if (!e.late) {
+        e.late = true;
+        this.stats.ambulanceLate++;
+        this.events.push({ t: this.t, kind: 'ambulance-late', car: e.car.id, atEnd: true });
+      }
+    }
+    this.active = this.active.filter(e => !e.ended);
   }
 
   // The corridor handoff: the car's centre has passed the end of a linked
   // path. Pick the next turn from the level's weights among the paths its
-  // lane can take at the next box, move `s` and the perception ring into the
+  // lane can take at the next box (or take it from the car's own route, if it
+  // was scripted with one), move `s` and the perception ring into the
   // new frame, and start the approach fresh.
   _handoff(car) {
     const old = car.path, link = old.link;
@@ -1214,7 +1272,12 @@ export class World {
     const weights = {};
     for (const p of choices) weights[p.turn] = this.turns[p.turn] || 0;
     for (const t of ['L', 'T', 'R']) if (!(t in weights) && net.lanesForTurn(t).some(l => net.pathFor(link.entry, l, t))) weights[t] = this.turns[t] || 0;
-    let turn = Object.values(weights).some(w => w > 0) ? this.rng.weighted(weights) : choices[0].turn;
+    // a scripted vehicle with a route takes this box's turn from it and
+    // draws nothing (#960); one the leg does not have at all (no such way
+    // out of this box) is drawn like anybody's
+    const told = car.route && car.routeAt < car.route.length ? car.route[car.routeAt] : null;
+    if (car.route) car.routeAt++;
+    let turn = told !== null && told in weights ? told : Object.values(weights).some(w => w > 0) ? this.rng.weighted(weights) : choices[0].turn;
     let next = choices.find(p => p.turn === turn);
     car.laneWant = null;
     if (!next) {

@@ -348,6 +348,31 @@
     #paint-swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     /* #832: the accent brush in the wall panel, and a ramp's fold in the stairs panel. */
     #accent-swatches { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 4px; }
+    /* #944: the free pick under the swatches. A custom colour can be anything,
+       so the lit ring is white outside and black inside (one of the two shows
+       on any colour), and the chip writes its hex in the ink main.js picks by
+       luminance. */
+    #accent-swatches .swatch.active, #accent-chip.active { border-color: #fff; box-shadow: inset 0 0 0 2px #000; }
+    #accent-custom { display: flex; gap: 4px; align-items: stretch; margin-top: 6px; }
+    #accent-color {
+      flex: 0 0 34px; width: 34px; height: 30px; padding: 0; cursor: pointer;
+      background: none; border: 1px solid var(--panel-border); border-radius: 5px;
+    }
+    #accent-hex {
+      flex: 1 1 0; min-width: 0; font-family: 'IBM Plex Mono', monospace; font-size: var(--fs-sm);
+      color: var(--text); background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--panel-border); border-radius: 5px; padding: 4px 6px;
+    }
+    #accent-hex[aria-invalid="true"] { border-color: var(--warn); }
+    #accent-chip {
+      flex: 0 0 auto; font-family: 'IBM Plex Mono', monospace; font-size: var(--fs-sm);
+      padding: 4px 8px; border: 2px solid rgba(255, 255, 255, 0.45); border-radius: 5px; cursor: pointer;
+      /* No fade: the colour and the ink on it change in the same frame, so the
+         hex is never light on light halfway between two picks. */
+      transition: none;
+    }
+    #accent-hex-msg { margin-top: 4px; min-height: 1.6em; }
+    #accent-hex-msg.warn { color: var(--warn); }
     #stair-readout .warn { color: var(--warn); }
     #ramp-fold .fold-row { display: flex; gap: 4px; align-items: center; }
     #ramp-fold button {
@@ -1844,6 +1869,16 @@
     <div id="wall-kinds"></div>
     <label id="accent-label" style="margin-top:12px">Accent wall</label>
     <div id="accent-swatches" role="group" aria-labelledby="accent-label"></div>
+    <div id="accent-custom" role="group" aria-label="Any other colour">
+      <input id="accent-color" type="color" value="#808080"
+             aria-label="Accent colour picker" title="Pick any colour for an accent wall" />
+      <input id="accent-hex" type="text" value="#808080" maxlength="9" size="8"
+             spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="#rrggbb"
+             aria-label="Accent colour as a hex code" aria-describedby="accent-hex-msg"
+             title="Type a hex colour, like #3a7f5c, and press Enter" />
+      <button id="accent-chip" type="button" aria-pressed="false"></button>
+    </div>
+    <div id="accent-hex-msg" class="readout" role="status" aria-live="polite"></div>
     <label style="margin-top:12px">Drawing</label>
     <div class="seg-toggle">
       <button id="wall-ortho" type="button" aria-pressed="true"
@@ -1869,7 +1904,9 @@
       under Accent wall, then click just inside the room beside the wall: the
       face that room looks at takes it, and the other side stays the
       neighbour's. The same colour again takes it off, and so does the dashed
-      swatch. Picking a wall type goes back to drawing.<br />
+      swatch. Picking a wall type goes back to drawing. For a colour that is
+      not among the swatches, use the picker under them or type its hex code
+      and press <kbd>Enter</kbd>.<br />
       Walls are drawn 0.4ft thick between two rooms and 0.8ft where the
       building meets the outside — that's read off the plan, not set here.
     </div></details>

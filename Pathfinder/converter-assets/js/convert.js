@@ -530,6 +530,10 @@ export function convertCreature(c, opts = {}) {
     attack: (b1) => bench('attack', b1, T.PF2_STRIKE_ATTACK, 'attack', 2, 1).value,
     umr: (name) => umrText(name),
     tail: (text) => convertText(text),
+    area: (die) => diceOnly(rowAt(T.PF2_AREA_DAMAGE, level).limited.avg, die),
+    energy: (word) => ENERGY_2E[String(word || '').toLowerCase()] || null,
+    level,
+    hitDice: c.hp?.hitDice ?? null,
   };
   // How an ability's text reads: 'rule' (rewritten by abilities.js), 'umr'
   // (the converter's wording for a universal ability), 'pf1e' (PF1e text with

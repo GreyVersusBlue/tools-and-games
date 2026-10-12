@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, sandAt, waterLineZ } from './field.js';
+import { groundHeight, sandAt, seaOver } from './field.js';
 
 // Shallow dark ovals dropped one per footstep, only on wet sand, fading over a
 // minute. The piece's most obvious missing pleasure and one of the cheapest:
@@ -109,7 +109,7 @@ export function buildFootprints(scene) {
       let changed = false;
       for (let i = 0; i < filled; i++) {
         if (age[i] === Infinity) continue;
-        age[i] += dt * (pz[i] < waterLineZ(px[i], waterY) ? WASH_RATE : 1);
+        age[i] += dt * (seaOver(px[i], pz[i], waterY) ? WASH_RATE : 1);
         const t = age[i] / FADE_SECONDS;
         if (t >= 1) { age[i] = Infinity; place(i, 0); changed = true; continue; }
         place(i, 1 - t);

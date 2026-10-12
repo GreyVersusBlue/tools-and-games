@@ -8,7 +8,8 @@ supply houses shipped on 2026-10-06 (#905), the rota the same day (#908) and
 the dated shelf with its walk-in the same day (#909) and season terms, the
 season that moves rent and wages, the same day (#911). **That is the whole
 back office: Q24's arc is complete.** What TG-25 has left is the sound and
-the texture pop, and neither is ranked.
+the texture pop, and neither is ranked. The mix was levelled by
+measurement on 2026-10-10 (#942) and has not been heard.
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -280,6 +281,17 @@ sound, then the texture pop.
    or `audio/music/`, and `audio/sfx/events/crowd-groan.mp3` is the last
    non-OGG file. Vendored CC0 only, with each file's source and licence
    recorded beside it. It cannot be judged without speakers.
+   **The mix was levelled on 2026-10-10 (#942)** after Devon's "Sound levels
+   are a bit all over the place, crowd is loud" of 2026-10-07: a trim per
+   sound in `audio.js`, the seven cues within 1.1 dB of each other where they
+   were 19.6 apart, the crowd's three sounds each 12 to 13 dB down,
+   `test/smoke-mix.mjs` (111) holding it. The README's "The mix" has the
+   table. **Nobody has heard it: it wants Devon's ears again**, and what to
+   turn if it is wrong is the `TRIM` table and the bands in that suite. A new
+   sound (the cheer, footsteps, music) needs a trim, a role in the suite and
+   `node tools/measure-audio.mjs` run where a decoder is, or CI is red;
+   re-encoding the groan to OGG needs the same run. Small and not done: a
+   volume slider (there is only the mute, and it is not saved).
 2. **The texture pop, and a 512 px tier.** A texture that lands after "Take
    the Floor" still pops in, and the 1k tier is one size for every surface.
    The order-of-magnitude cut itself is done (#201, #622); this is what Devon's

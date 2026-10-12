@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { du, TEAM } from '../../core/constants.js';
 
 // Runes (game.runes).
-// Timing (documented choice): power runes spawn every 2 minutes from 2:00 at ONE of the two river spots (random),
-// replacing an unclaimed one. Bounty runes spawn at 0:00 and every 2 minutes at the four jungle bounty spots.
+// Timing (documented choice): boon runes spawn every 2 minutes from 2:00 at ONE of the two river spots (random),
+// replacing an unclaimed one. Windfall runes spawn at 0:00 and every 2 minutes at the four jungle windfall spots.
 // Pickup: right-click the rune (the move order to it) or walk over it; bots use botWantsRune()/claim().
-// A hero carrying a Flask stores power runes in it (player heroes only) instead of activating them.
+// A hero carrying a Flask stores boon runes in it (player heroes only) instead of activating them.
 // Events: rune:spawned {rune}, rune:picked {hero, type, rune, stored}, rune:activated {hero, type}.
 export const RUNE_TYPES = {
   haste: { name: 'Haste', color: 0xff3a2a, icon: '👟', duration: 22, desc: 'Movement speed set to maximum.' },
@@ -14,34 +14,34 @@ export const RUNE_TYPES = {
   invisibility: { name: 'Invisibility', color: 0xb070ff, icon: '👻', duration: 45, desc: 'Invisible until attacking or casting.' },
   arcane: { name: 'Arcane', color: 0xff60d0, icon: '🔮', duration: 50, desc: '-30% cooldowns and mana costs.' },
   illusion: { name: 'Illusion', color: 0xffd040, icon: '🎭', duration: 75, desc: 'Creates two illusions of your hero.' },
-  bounty: { name: 'Bounty', color: 0xffc830, icon: '💰', duration: 0, desc: 'Gold for your whole team.' },
+  windfall: { name: 'Windfall', color: 0xffc830, icon: '💰', duration: 0, desc: 'Gold for your whole team.' },
 };
-const POWER = ['haste', 'double_damage', 'regeneration', 'invisibility', 'arcane', 'illusion'];
+const BOON = ['haste', 'double_damage', 'regeneration', 'invisibility', 'arcane', 'illusion'];
 
-// River power rune spots (top near Grimmaw, bottom) and jungle bounty spots (2 per side).
-export const POWER_RUNE_SPOTS = [[-22, -22], [24, 24]];
-export const BOUNTY_RUNE_SPOTS = [[-45, 5], [20, 45], [45, -5], [-20, -45]];
+// River boon rune spots (top near Grimmaw, bottom) and jungle windfall spots (2 per side).
+export const BOON_RUNE_SPOTS = [[-22, -22], [24, 24]];
+export const WINDFALL_RUNE_SPOTS = [[-45, 5], [20, 45], [45, -5], [-20, -45]];
 export const RUNE_INTERVAL = 120;
-export const POWER_RUNE_START = 120;
+export const BOON_RUNE_START = 120;
 const PICK_RANGE = 1.6;
 
 export class Runes {
   constructor(game) {
     this.game = game;
-    this.runes = []; // { id, type, pos: Vector3, spot, kind: 'power'|'bounty', mesh, spawnedAt }
-    this.nextPower = POWER_RUNE_START;
-    this.nextBounty = 0;
+    this.runes = []; // { id, type, pos: Vector3, spot, kind: 'boon'|'windfall', mesh, spawnedAt }
+    this.nextBoon = BOON_RUNE_START;
+    this.nextWindfall = 0;
     this.stats = { spawned: 0, picked: {}, stored: 0 };
     this._id = 1;
     this._t = 0;
-    this.powerSpots = POWER_RUNE_SPOTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
-    this.bountySpots = BOUNTY_RUNE_SPOTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
+    this.boonSpots = BOON_RUNE_SPOTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
+    this.windfallSpots = WINDFALL_RUNE_SPOTS.map(([x, z]) => new THREE.Vector3(x, 0, z));
   }
 
   onMatchStart() {
     const g = this.game;
-    this.nextPower = POWER_RUNE_START;
-    this.nextBounty = 0;
+    this.nextBoon = BOON_RUNE_START;
+    this.nextWindfall = 0;
   }
 
   // ---------------------------------------------------------------- spawning
@@ -75,7 +75,7 @@ export class Runes {
     const col = new THREE.Color(def.color);
     // floating gem
     const gem = new THREE.Mesh(
-      type === 'bounty' ? new THREE.CylinderGeometry(0.42, 0.42, 0.12, 20).rotateX(Math.PI / 2) : new THREE.OctahedronGeometry(0.45, 0),
+      type === 'windfall' ? new THREE.CylinderGeometry(0.42, 0.42, 0.12, 20).rotateX(Math.PI / 2) : new THREE.OctahedronGeometry(0.45, 0),
       new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.6, metalness: 0.3, roughness: 0.25, transparent: true, opacity: 0.95 }),
     );
     gem.position.y = 1.1;
@@ -121,7 +121,7 @@ export class Runes {
     this.stats.picked[rune.type] = (this.stats.picked[rune.type] ?? 0) + 1;
     if (hero.data) hero.data.runeClaim = null;
     let stored = false;
-    if (rune.kind === 'power' && !hero.isBot) {
+    if (rune.kind === 'boon' && !hero.isBot) {
       const flask = (hero.inventory ?? []).find((it) => it?.def?.id === 'flask');
       if (flask && !flask.storedRune) {
         flask.storedRune = rune.type;
@@ -143,9 +143,9 @@ export class Runes {
     if (!def || !hero?.alive) return;
     const base = { name: def.name + ' Rune', icon: def.icon, duration: def.duration, rune: true };
     switch (type) {
-      case 'bounty': {
+      case 'windfall': {
         const gold = Math.round(36 + 2 * Math.max(0, Math.floor(g.time / 60)));
-        for (const h of g.heroes) if (h.team === hero.team) h.addGold(gold, 'bounty');
+        for (const h of g.heroes) if (h.team === hero.team) h.addGold(gold, 'windfall');
         hero.addXp?.(Math.round(20 + 3 * Math.floor(Math.max(0, g.time) / 60)));
         g.bus.emit('gold:popup', { unit: hero, hero, amount: gold });
         break;
@@ -177,7 +177,7 @@ export class Runes {
         break;
     }
     g.bus.emit('rune:activated', { hero, type, fromFlask: !!opts.fromFlask });
-    if (hero === g.player?.hero || hero.team === g.player?.team) g.bus.emit('ui:message', { text: `${hero.name} activated ${def.name}${type === 'bounty' ? '' : ' rune'}`, color: '#' + def.color.toString(16).padStart(6, '0') });
+    if (hero === g.player?.hero || hero.team === g.player?.team) g.bus.emit('ui:message', { text: `${hero.name} activated ${def.name}${type === 'windfall' ? '' : ' rune'}`, color: '#' + def.color.toString(16).padStart(6, '0') });
   }
 
   // ---------------------------------------------------------------- bot helpers
@@ -195,22 +195,22 @@ export class Runes {
     return best;
   }
   // Seconds until the next rune spawn of any kind.
-  timeToNextSpawn() { return Math.min(this.nextPower, this.nextBounty) - this.game.time; }
+  timeToNextSpawn() { return Math.min(this.nextBoon, this.nextWindfall) - this.game.time; }
 
   // ---------------------------------------------------------------- update
   update(dt) {
     const g = this.game;
     if (!g.running || g.matchOver) return;
     if (dt > 0) {
-      if (g.time >= this.nextBounty) {
-        for (const s of this.bountySpots) this.spawn('bounty', s, 'bounty');
-        this.nextBounty += RUNE_INTERVAL;
+      if (g.time >= this.nextWindfall) {
+        for (const s of this.windfallSpots) this.spawn('windfall', s, 'windfall');
+        this.nextWindfall += RUNE_INTERVAL;
       }
-      if (g.time >= this.nextPower) {
-        const spot = this.powerSpots[Math.floor(Math.random() * this.powerSpots.length)];
-        for (const r of [...this.runes]) if (r.kind === 'power') this.remove(r); // only one power rune on the map
-        this.spawn(POWER[Math.floor(Math.random() * POWER.length)], spot, 'power');
-        this.nextPower += RUNE_INTERVAL;
+      if (g.time >= this.nextBoon) {
+        const spot = this.boonSpots[Math.floor(Math.random() * this.boonSpots.length)];
+        for (const r of [...this.runes]) if (r.kind === 'boon') this.remove(r); // only one boon rune on the map
+        this.spawn(BOON[Math.floor(Math.random() * BOON.length)], spot, 'boon');
+        this.nextBoon += RUNE_INTERVAL;
       }
       // pickups
       for (const r of [...this.runes]) {

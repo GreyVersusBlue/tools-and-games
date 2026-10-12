@@ -29,7 +29,7 @@ const {
   MILKS, SYRUPS, TOPPINGS, BASE_COLORS, RECIPES, FOODS, PHASES, SHIFT_MS,
   EQUIPMENT_UPGRADES, AMBIANCE_UPGRADES, BUSINESS_UPGRADES, MARKETING_COST,
   DAILY_MODIFIERS, RANDOM_EVENTS, STARTING_UNLOCKS, BARISTA_NAMES, PRESET_MAX,
-  META_UPGRADES, SHOP_LAYOUTS,
+  META_UPGRADES, SHOP_LAYOUTS, PACES,
 } = CONTENT;
 
 /* ---------- STATE + SIM ---------- */
@@ -71,6 +71,7 @@ const CATALOG = buildCatalog({
   presetMax: PRESET_MAX,
   metaUpgrades: META_UPGRADES.map(m=>m.id),
   layouts: SHOP_LAYOUTS.map(l=>l.id),
+  paces: PACES.map(p=>p.id),
 });
 const saveSlot = createCornerKettleSlot(CATALOG);
 const SAVE_KEY = saveSlot.key;
@@ -266,7 +267,14 @@ function buy(type, id, extra){
 
 /* ---------- STATIONS AND CHALKBOARD ---------- */
 const stations = createStations({ state, sim, toast, sound, renderAll, saveNow });
-const chalkboard = createChalkboard({ state, sim, buy });
+// The pace switch on the Menu Board. The rule and the words are the sim's; a
+// refusal (the pace already on) is said and changes nothing.
+function setPace(id){
+  const r = sim.setPace(id);
+  toast(r.ok ? r.text : r.reason);
+  if(r.ok) saveNow();
+}
+const chalkboard = createChalkboard({ state, sim, buy, setPace });
 
 // Both hands on the keys (Phase 8). Digits switch station tabs, `[` and `]`
 // move the focused station, "s" serves it, and everything inside the current
@@ -425,11 +433,16 @@ document.getElementById('muteToggle').onclick = ()=>{
 // `buttons` option exists to prevent.
 document.getElementById('newGameBtn').onclick = ()=>{
   if(window.confirm('Start a new game? This clears all saved progress (day, money, unlocks).')){
-    adoptSave(saveSlot.reset());
+    // The pace is how the player wants to be leaned on, not progress: a new
+    // shop opens on the one that was on, and the toast names it. Set on the
+    // data, before adoptSave() seats the first three customers.
+    const fresh = saveSlot.reset();
+    fresh.pace = state.pace;
+    adoptSave(fresh);
     sim.rollDailyModifier();   // a fresh state carries no modifier; day one rolls one
     renderAll();
     saveNow();
-    toast('New shop, day one ☕');
+    toast(`New shop, day one ☕ (${sim.currentPace().name})`);
   }
 };
 
@@ -547,7 +560,7 @@ if(typeof window !== 'undefined'){
     get state(){ return state; },
     get sheet(){ return sheetState; },
     doUnlock: buy, fireRandomEvent: sim.fireRandomEvent, generateOrder: sim.generateOrder,
-    tryAcceptCustomer, orderIsComplete: sim.orderIsComplete, serveReadiness: sim.serveReadiness,
+    setPace, tryAcceptCustomer, orderIsComplete: sim.orderIsComplete, serveReadiness: sim.serveReadiness,
     autoAssistStep: sim.autoAssistStep, serveSlot, saveState: saveNow, loadState, adoptSave,
     // A redraw on demand. The chalkboard only re-renders when something the
     // game did changed; a test that sets state.day by hand to reach a row

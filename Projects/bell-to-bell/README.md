@@ -27,17 +27,11 @@ Furniture casts real blind spots. Every reveal runs a line-of-sight raycast agai
 the storage cabinet and the bookshelf, so some tells can only be seen from somewhere
 else in the room. Layout is a sensor problem, not decoration.
 
-## On a phone
+## On a slow machine
 
-A device with a coarse pointer gets on-screen controls instead of the key list, and
-nothing downstream knows the difference: the stick produces the same movement vector
-WASD produces, a chip pushes the same action a keydown pushes, and a hold pad sets the
-same flag SHIFT sets. Your left thumb walks — the stick is drawn where you put it down,
-not where a designer drew a circle — and anything on the right looks, both at once. The
-lesson keys run along the bottom, the seven rubric look-fors are behind the RUBRIC chip,
-and Withitness and wait time are two pads you can hold together, which is the whole
-point of the five-second one. `?touch=on` and `?touch=off` force either branch from any
-machine.
+Keys and a mouse are the only way to play. The on-screen controls Phase 8
+built for a phone came out on 2026-10-10 (root `HISTORY.md` #940): no stick, no
+chips, no hold pads, no `?touch=` switch. What that phase measured stayed.
 
 **The frame budget is 33.3 ms — 30 fps — and it is in `CFG.quality`, not in anyone's
 head.** The game measures itself against it on whatever it is running on;
@@ -183,14 +177,13 @@ data/                 ← content lives here, not in code
   generation.json     the generator: name pool, distributions, schedule mix, and the bands a period must land in
   admin.json          the week: day names, the escalation ladder, the Friday Report's copy
   observation.json    the Observation: alert/arrival copy, look-fors, the post-conference tree
-  controls.json       what the on-screen controls say (the strip itself is generated from CFG.keys)
 src/
   config.js           every tuning constant
   state.js            game state + effect application
   loader.js           fetches data/, including whatever periods.json points at
   periods.js          reads the day out of periods.json; periodFor() is a lookup, or a generation
   persist.js          the chart, what you learned, the seed and the semester, between periods; the slot scheme
-  input.js            keys, look, movement, collision — and the thumb: stick, chips, hold pads
+  input.js            keys, mouse look, movement, collision
   quality.js          the frame budget, the boot tier, and what gets given up to stay inside it
   audio.js            drone, heartbeat, bell, directional whisper
   three.js            the one place the bare `three` specifier becomes a path
@@ -215,7 +208,7 @@ src/
   systems/simulate.js the period, headless: what balance.mjs and the band check both run
   systems/generate.js roster + schedule + the band check + the reroll
   systems/semester.js the record: what a class walks in with, and what a night does to it
-  ui/                 dom refs, hud, labels, menu, toast, report, seating, conference, week, touch
+  ui/                 dom refs, hud, labels, menu, toast, report, seating, conference, week
   main.js             wiring and the frame loop
 tests/smoke.mjs       headless assertions
 tests/balance.mjs     full-period simulation across play styles, the generator soak, a week

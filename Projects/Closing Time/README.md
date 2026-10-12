@@ -68,6 +68,7 @@ js/
     events.js        data-driven event system (weighted draws + effect handlers)
     marketFacade.js  re-exports for the UI
 data/                ALL game content — see schemas below
+DESIGN-seller-commercial.md   the listing side of the commercial tier: designed, not built
 tools/
   seed_data.py       regenerates the initial content set (optional; JSON is hand-editable)
   smoke.mjs          headless engine + save test: node tools/smoke.mjs
@@ -219,7 +220,11 @@ New events are pure JSON composed from these handlers. New handler = one functio
   feature, not a missing half of this one: `seller.js`'s prep flow is staging tiers, photo
   tiers and weekend open houses, and none of the three means anything on a six-bay strip, which
   wants a rent roll, an offering memorandum and a broker's-opinion-of-value instead. Sized as
-  its own row rather than bolted on here.
+  its own row rather than bolted on here. **It is designed and not built** (#954, 2026-10-11):
+  [`DESIGN-seller-commercial.md`](DESIGN-seller-commercial.md), beside this file, has the
+  walk-through, what each prep step costs and does with the arithmetic on 212 Ferry St, the
+  data shapes, the module surface, the tests and twelve questions for Devon. Nothing under
+  `js/` or `data/` changed for it, and nothing is to be built from it before he has read it.
 - **The hall of past careers shipped** (`state.js`, the second half of it). `createNamespace({
   prefix: "closingTime." })` holds two members: `save.v1`, the career, at the key it has always
   had, and `hall`, one array of frozen scorecards. `enrollFinishedCareer()` is idempotent on
@@ -257,6 +262,15 @@ New events are pure JSON composed from these handlers. New handler = one functio
   of. Before that, adding a listing threw on the MLS board for every existing player, and adding
   a neighborhood left it permanently out of the weekly market drift. Anything else you add to `S`
   belongs in `repairCareer()` the same day you add it — especially if arithmetic touches it.
+- **A client file added to `data/` reaches a career already under way** (#956). `repairCareer()`
+  puts every client the save has never heard of (in none of `clientQueue`, `usedClients` and the
+  book) on the end of the queue, lowest rung first and then by id. Not shuffled in: repair runs on
+  every load and may not draw from `rand()`, and the front of the queue is who intake hands over
+  next. Before this a career older than a client file never met that client.
+- **Four doors hand out a client and one function gates them**: intake, a happy client's referral,
+  the Monday lead and Ruth's call all ask `inReach()` in `engine/clients.js`. Ruth's call was
+  written without the gate and sent a Rookie Agent buyers above the rung; a fifth door calls
+  `inReach()` or the suite fails on a second copy of the rule.
 - **Removing content from a live career is safe now too.** `repairCareer()` also drops any
   `listingsState` / `market.nb` / `knowledge` entry whose id no longer has a matching file in
   `data/`. Without that, `calendar.js`'s daily aging loop — `for (const id in S.listingsState)`,

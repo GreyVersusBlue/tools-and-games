@@ -46,7 +46,12 @@ the Forge-Tyrant's Bellows Blast burns for what its data says and the validator
 refuses the entry that used to burn for nothing. **An area stops at a wall**
 (2026-10-07, #924): a cone, an emanation, a burst, a line and a monster's power
 reach nobody behind stone, and an area's point can be put only on the squares
-the page lights. `smoke.mjs` is at **1,717 passed, 0 failed** and the browser
+the page lights. **A cone is the tabletop's quarter circle and a line runs its
+full length** (2026-10-11, #951, on Devon's two answers of 2026-10-07):
+Breathe Fire covers 7 squares aimed straight and 6 on a diagonal where it took
+a half-plane of up to 27, Grim Tendrils is six squares whichever of them was
+clicked, and the board lights the squares an armed area will cover under the
+pointer. `smoke.mjs` is at **1,800 passed, 0 failed** and the browser
 recipe was last at **73 of 73**.
 
 ## What it is
@@ -299,7 +304,8 @@ Open and unclaimed. Add here rather than starting a new list.
   group before the report prints, so the named line that caught it ("validates
   against core") is never shown: exit 1 and the validator's message, but not a
   FAIL line.
-- **A dead companion rises at the next fight.** `finish(true)` restores HP to
+- **A dead companion rises at the next fight.** (**Devon, 2026-10-07, asked
+  what death should mean: "leave it"**, so it stays as pinned.) `finish(true)` restores HP to
   every party member, dead or not (a companion who died at dying 4 leaves the
   field on 23 HP), and `start` sets `dead=false` and `dying=0` on the whole
   party. Found by the headless Causeway fight in Phase 2 and pinned as-is in
@@ -307,7 +313,8 @@ Open and unclaimed. Add here rather than starting a new list.
   dead companion means for the scene graph.
 
 **Combat rules**
-- **Monsters cannot flank.** Foe combatants are built in `Combat.start` with no
+- **Monsters cannot flank.** (**Devon, 2026-10-07, asked whether monsters
+  should flank: "leave it"**, so it stays as pinned.) Foe combatants are built in `Combat.start` with no
   `dying` field, so `isFlanking`'s `a.dying===0` partner test is
   `undefined===0` and never passes; and `strikeMonster` hands `effAC` a bare
   `{id, ranged}` with no `x` or `y`, so the geometry is `NaN` first. PF2e's
@@ -335,15 +342,42 @@ Open and unclaimed. Add here rather than starting a new list.
   2026-10-07: `a.wedge` is the shape's own name and a line is a Bresenham walk
   from the caster to the clicked square (in `combat.js` since 8940aee, tested
   by "Grim Tendrils along the row"). What is true beside it and open:
-  - **The cone is a half-plane.** Aimed due east it takes every foe within
-    its length whose column is the caster's or east of it, the squares due
-    north and south included, and the last clause of its test
-    (`||rx|-|ry|| <= max`) is always true. `smoke.mjs` pins it by name ("the
-    cone is a quadrant test"). The fix needs a template (which squares a
-    15-foot cone covers on a diagonal) and fewer victims is a balance change
-    for Breathe Fire.
-  - **A line ends at the clicked square**, not at its length: a click two
-    squares away is a 10-foot Grim Tendrils. Not pinned by any test.
+  - ~~**The cone is a half-plane.**~~ **Built 2026-10-11, #951** (Devon,
+    2026-10-07: "real cone as far as ttrpg cones go"). `coneCells` in
+    `js/combat.js` is the template: a quarter circle, first square on the
+    caster's edge when aimed straight and on the caster's corner on a
+    diagonal, length counted 5-10-5, the caster's square never in it. 15 feet
+    is 7 squares straight (1, 3, 3 by column) and 6 diagonal (3, 2, 1); 30 is
+    26 and 24; 60 is 100 and 96; guide §7 draws them. A click names the
+    nearest of eight aims and no square sits between two. `smoke.mjs`'s "the
+    cone is a quadrant test" is its opposite now.
+  - ~~**A line ends at the clicked square.**~~ **Built 2026-10-11, #951**
+    (Devon, 2026-10-07: "full line"). `lineCells` carries the old Bresenham
+    walk on past the click to the line's length, a wall or the map's edge.
+  - **What the two cost and gave, measured** (a sweep of the ten shipped
+    encounters' opening layouts, every open square a caster could stand on,
+    the best click from each; geometry, not played fights). Breathe Fire's
+    best aim caught 2.24 foes on average before and 1.23 after, over the 565
+    squares from which the old cone reached anybody; two or more foes from
+    425 of them before and 163 after; from 45 it now reaches nobody. Grim
+    Tendrils' best click is 1.52 before and 1.53 after over 816 squares (a
+    full-range click already gave the whole line); a click two squares away
+    catches 879 more foes over 10,103 such clicks. **Breathe Fire was left at
+    2d6 and 15 feet**: those are the tabletop spell's numbers, and the 2.24
+    was the half-plane's doing, not the spell's. Nobody has played it; if it
+    reads as weak beside Force Barrage's sure 2d4+2, one step is its damage
+    to 2d8 or its length to 30 feet, and that is Devon's call.
+  - Left beside them: **a line's length is counted one square a step on any
+    bearing**, as every range and reach in the engine is, so a 30-foot line is
+    six squares on a diagonal where the tabletop's 5-10-5 count gives four;
+    counted the tabletop's way the best click fell to 1.40, a cut nobody asked
+    for, so it was not taken. The squares that light for aiming a cone are
+    still every square in a 7 by 7 box the caster can see, of which the cone's
+    own are a part; the grid has no keyboard aiming; `Widen Spell` is still
+    flavour; a monster's power is still a `radius` and cannot be a cone or a
+    line (the suite fails the day a pack writes one, and points at
+    `areaCells`); and **no browser check arms an area**, so the lit squares
+    are asserted in Node off `previewCells` and as text in the page.
 - The AI never Steps away, and retreats only while `fleeing` — and a flee now
   provokes, like every other Stride.
 - No Hide, Seek, Take Cover, Trip, Grapple, Shove (outside the `brutish-shove`

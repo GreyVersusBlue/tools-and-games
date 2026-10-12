@@ -20,10 +20,14 @@
 //   scale(pf1)       -> PF1e damage dice scaled the way Strike damage was, or null
 //   attack(pf1Bonus) -> the PF2e attack bonus at the same tier, for this level
 //   umr(name)        -> the converter's text for a universal ability, or ''
+//   area(die)        -> limited-use area damage for the level, in dice of that size
+//   energy(word)     -> the PF2e damage type for a PF1e energy word, or null
+//   level            -> the creature's PF2e level
+//   hitDice          -> the PF1e block's Hit Dice, or null
 //   tail(text)       -> trailing prose, converted the way unmatched text is
 // }
 
-export const RULES = Object.freeze(['affliction', 'gaze', 'constrict', 'trample', 'rend', 'throw-rock', 'distraction', 'paralysis', 'pull', 'rake', 'grab', 'limit', 'channel']);
+export const RULES = Object.freeze(['affliction', 'gaze', 'constrict', 'trample', 'rend', 'throw-rock', 'distraction', 'paralysis', 'pull', 'rake', 'grab', 'limit', 'channel', 'death-burst', 'whirlwind', 'energy-drain']);
 
 const ABILITY_CONDITION = {
   str: 'enfeebled 1', strength: 'enfeebled 1', dex: 'clumsy 1', dexterity: 'clumsy 1',
@@ -113,6 +117,34 @@ function gaze(name, text, ctx) {
     text: `A creature that starts its turn within ${m[2]} feet and can see the monster must attempt a DC ${dc} ${m[3]} save. On a failure, it is ${effect}.${keepTail(m[5], ctx)}`,
     why: `PF1e gaze stat line: DC ${m[4]} rescaled for the level, the range kept.`,
     numbers: { dc },
+  };
+}
+
+// "When killed, a balor explodes in a blinding flash of fire that deals 100
+// points of damage (half fire, half unholy damage) to anything within 100 feet
+// (Reflex DC 33 halves)." The amount is not carried: a burst that happens once
+// takes the level's limited-use area damage, as the breath weapon does. Holy
+// and unholy are traits in PF2e and not damage types, so a half written as one
+// goes to the trait and the damage is all of the other half's type.
+const SANCTIFIED = ['holy', 'unholy'];
+const DEATH_BURST = /^When killed, (?:an?|the) [A-Za-z' -]+? explodes(?: in [^.()]+?)? that deals (?:\d+d(\d+)(?:\s*[+-]\s*\d+)?|\d+) points of (?:([a-z]+) )?damage(?: \(half ([a-z]+), half ([a-z]+) damage\))? to anything within (\d+) feet \((Reflex|Fortitude|Will) DC (\d+) halves\)\.\s*([\s\S]*)$/;
+
+function deathBurst(name, text, ctx) {
+  const m = String(text).match(DEATH_BURST);
+  if (!m) return null;
+  const [, die, one, half1, half2, feet, save, dc1, rest] = m;
+  if (Boolean(one) === Boolean(half1)) return null; // a type once, not twice and not never
+  const trait = half1 && SANCTIFIED.includes(half2) ? half2 : null;
+  if (half1 && !trait) return null;
+  const type = ctx.energy(one || half1);
+  const dice = type && ctx.area(Number(die) || 6);
+  if (!dice) return null;
+  const dc = ctx.dc(Number(dc1));
+  return {
+    rule: 'death-burst', name: null, actions: '', traits: [type, trait].filter(Boolean),
+    text: `When the monster dies, it explodes, dealing ${dice} ${type} damage to each creature and object in a ${feet}-foot emanation (DC ${dc} basic ${save} save).${keepTail(rest, ctx)}`,
+    why: `PF1e burst on death: DC ${dc1} rescaled for the level; the damage is the level's limited-use area damage, as a breath weapon's is, and PF1e's own amount is not carried${trait ? `; ${trait} is a trait in PF2e and not a damage type, so all of it is ${type}` : ''}; the radius is kept.`,
+    numbers: { dc, damage: dice },
   };
 }
 
@@ -286,7 +318,45 @@ function limit(name, params, ctx) {
   };
 }
 
-const LINE_RULES = { constrict, trample, rend, 'rock throwing': throwRock, distraction, paralysis, pull: drag('pull'), push: drag('push'), rake, grab };
+// "1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 17". The stat line gives no
+// duration and no size: PF1e's whirlwind rule gives every creature 1 round for
+// each 2 Hit Dice and catches creatures smaller than the whirlwind, so both
+// are read from the block. PF1e's two Reflex saves, one against the damage and
+// one against being picked up, are one basic save here.
+function whirlwind(params, ctx) {
+  const m = String(params).match(/^1\/(\d+ (?:rounds|minutes|hours)|round|minute|hour|day),\s*(\d+)-(\d+)\s*(?:ft\.?|feet)\s*tall,\s*(\d+d\d+(?:\s*[+-]\s*\d+)?)\s+damage,\s*DC\s+(\d+)$/i);
+  const rounds = Math.floor((Number(ctx.hitDice) || 0) / 2);
+  if (!m || rounds < 1) return null;
+  const pf1 = m[4].replace(/\s+/g, '');
+  const from = ctx.strikeFor(pf1);
+  const dice = from ? from.dice : ctx.scale(pf1);
+  if (!dice) return null;
+  const dc = ctx.dc(Number(m[5]));
+  return {
+    rule: 'whirlwind', name: 'Whirlwind', actions: '2', traits: ['air'],
+    text: `Frequency once per ${m[1].toLowerCase()}. Effect The monster becomes a whirlwind ${m[2]} to ${m[3]} feet tall for ${rounds} round${rounds > 1 ? 's' : ''} or until it Dismisses the effect. In this form it can't make Strikes and can move through other creatures' spaces. Each creature whose space it enters takes ${dice} bludgeoning damage (DC ${dc} basic Reflex save); a creature takes this damage only once per round. A creature smaller than the monster that fails the save is also picked up and moves with the whirlwind, and it can spend an action to attempt the save again and get free.`,
+    why: `PF1e whirlwind (${params}): DC ${m[5]} rescaled for the level; ${from ? `the damage of the converted ${from.name} Strike, which PF1e wrote the same dice for` : 'the dice scaled as Strike damage was'}; the limit and the height are kept; ${rounds} round${rounds > 1 ? 's' : ''} is PF1e's 1 round for each 2 Hit Dice; PF1e's two Reflex saves are one basic save.`,
+    numbers: { dc, damage: dice },
+  };
+}
+
+// "2 levels, DC 22": negative levels a Strike bestows. PF1e's DC is the save a
+// day later to shed the level; PF2e's Drain Life asks for the save when the
+// Strike lands, so that is where the DC goes. A negative level is drained 1.
+function energyDrain(params, ctx) {
+  const m = String(params).match(/^([12]) levels?,\s*DC\s+(\d+)$/i);
+  if (!m || !(ctx.level >= 1)) return null;
+  const n = Number(m[1]);
+  const dc = ctx.dc(Number(m[2]));
+  return {
+    rule: 'energy-drain', name: 'Drain Life', actions: '', traits: [],
+    text: `When the monster damages a living creature with a Strike that lists Drain Life, the monster gains ${ctx.level} temporary Hit Points and the creature must succeed at a DC ${dc} Fortitude save or become drained ${n}. Further damage from such a Strike increases the drained value by ${n} on a failed save, to a maximum of drained 4.`,
+    why: `PF1e energy drain (${params}): DC ${m[2]} rescaled for the level and moved from the save a day later to the hit, where PF2e's Drain Life has it; ${n === 1 ? 'a negative level is' : `${n} negative levels are`} drained ${n}; the temporary Hit Points are the creature's level.`,
+    numbers: { dc },
+  };
+}
+
+const LINE_RULES = { constrict, trample, rend, 'rock throwing': throwRock, distraction, paralysis, pull: drag('pull'), push: drag('push'), rake, grab, whirlwind, 'energy drain': energyDrain };
 
 // A special attack with no text of its own: "rend (2 claws, 1d6+7)".
 export function rewriteLine(name, params, ctx) {
@@ -299,5 +369,5 @@ export function rewriteLine(name, params, ctx) {
 
 // A special ability with a block of text under SPECIAL ABILITIES.
 export function rewriteBlock(name, text, ctx) {
-  return affliction(name, text, ctx) || gaze(name, text, ctx) || null;
+  return affliction(name, text, ctx) || gaze(name, text, ctx) || deathBurst(name, text, ctx) || null;
 }

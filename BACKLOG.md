@@ -121,7 +121,47 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **rank 26, SkyWings 64's
+**The last batch of ranked work that shipped** is **rank 22, The Fracture
+Cycle's fourth prong** (#958, 2026-10-12; committed locally on huginn for the
+landing, so its PR number is the landing's): 2+, naming Fable 5.1, run under
+Opus 5.5 in one sitting, and the row has left the table. The fourth choice at
+the seam is to take no road: the walker finds the count of everyone who woke
+before, takes a name, and has two endings of their own at the socket. 32
+nodes, 7 endings and 519 paths where there were 25, 5 and 171, and the 171
+play as they did, pinned by hash. Nobody has read it. Before it came **rank
+31, Throneshard's
+Piercing Gale and rune auras** (#952, 2026-10-11; committed locally on huginn
+for the landing, so its PR number is the landing's): ¼, naming Opus 5, run
+under Opus 5.5, and the row stays as "wants a person's look". The gale's
+spiral is two tube strands where it was about forty sparks, and each lasting
+rune aura stands on a rimmed band that lies on the river's surface. Before it
+came **an increment of rank 30,
+Throneshard's Grimmaw contests** (#950, 2026-10-11): ½, naming Opus 5,
+run under Opus 5.5, and the row stays with its text rewritten. Measured over 24
+seeded matches, 29 of 48 attempts that hurt Grimmaw are contested; the old
+count took in plans dropped before he was touched, and `stats.grimmawEngaged`
+counts the real ones. No contest rule changed: two were measured and not kept.
+What is left is that a contest between hard bots is lost. Before it came **the second increment of
+rank 29, Throneshard's hard bots in the lane** (#948, 2026-10-10; committed
+locally on huginn for the landing, so its PR number is the landing's): ½,
+naming Opus 5, run under Opus 5.5, and the row stays with its text rewritten.
+A hard laner left alone against enemy heroes who would commit on it waits at
+its own tower. The melee core of a lane against two ranged heroes dies 2.2
+times in 10 minutes where it died 3.1, level with normal's 2.5, and takes 16.7
+last hits where it took 13.8, against normal's 19.7; hard melee heroes take
+17.9 against normal's 18.8. The first increment the same day (#946) stopped a
+hard bot walking in and out of an enemy tower's range after a healthy hero and
+stood a laner the enemy out-fights off from the creep clash. Before it the same day came
+**the second increment of rank 28, Throneshard's sixteenth hero** (#943;
+committed locally on huginn the same way): a 2+ row naming
+Fable 5.1, run under Opus 5.5, and with it the row is finished and gone.
+Tobren the Lotcaster, a ranged support on the spare model `bone_shaman` whose
+four abilities work through his allies, is in the game whole. The first
+increment the same day was Ormund the Tollkeeper, a melee guardian on
+`rift_stalker` (#941). Nobody has seen either on a real graphics card. Before it
+the same day came **rank 27, Throneshard's Rift Wall** (#938): the slabs block
+walking for every unit from the tick each breaks ground to the tick it starts
+to crumble, 2.88 to 3.26 s a slab. Before that came **rank 26, SkyWings 64's
 three draw-call cuts** (#930 to #932, 2026-10-07; committed locally on huginn
 for the landing, so its PR number is the landing's): 1, naming Opus 5, run
 under Opus 5.5 in two sessions. A frame is 204 to 352 draws from nine fixed
@@ -147,7 +187,7 @@ nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**16 ranked items remain**, and **every one of them names a model.**
+**13 ranked items remain** (counted off the table on 2026-10-12), and **every one of them names a model.**
 
 **The Blender block is empty** (#642, #707, 2026-09-25, Devon's instruction
 and his re-rank, which put every Blender row first). Every project's
@@ -160,19 +200,20 @@ all 14 dioramas. **Blender runs on Devon's machines only, headless
 every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
-**Nothing is claimed.** Ranks 1 to 14, 24 and 26 shipped and their rows are gone;
+**Nothing is claimed.** Ranks 1 to 14, 24 and 26 to 28 shipped and their rows are gone;
 the others keep their numbers until the next renumbering. **Ranks 25 to 32
 are new on 2026-10-07** (Devon, 2026-10-01: rank the work the "next ranked
 rows" loop could not see): Signal City's second pack (25), SkyWings 64's
-draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32). They are
+draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32; 27, Rift Wall, shipped on 2026-10-10, #938, and 28, the two new heroes, the same day, #941 and #943). They are
 appended in the order Devon named the projects and not placed among the older
 rows, because re-ranking the list is not a session's call; inside Throneshard
 the two Devon has answered come first, then the two with a measured number,
 then the two judged by eye. R13's Size and Model are its wishlist's; the
 other seven had none and are assigned here by Tier 1's three readings (#380).
-**Pick up next** for a session with no hardware is rank 22, The Fracture
-Cycle's fourth prong (2+, naming Fable 5.1, so Opus 5.5 under #638; no gate),
-which Devon approved on 2026-10-01; after it, ranks 25 to 31, none gated. The
+**Pick up next** for a session with no hardware is rank 25, Signal City's
+second pack (2+, naming Fable 5.1, so Opus 5.5 under #638; no gate); after
+it, ranks 29 to 31, none gated. Rank 22, The Fracture Cycle's fourth prong,
+shipped on 2026-10-12 (#958). The
 first row is still rank 15, the real-hardware pass on the site (½, naming
 Opus 5, so Opus 5.5 under #638; gate `GPU, phone`). Ranks 15 to 21, 23 and 32
 want a real GPU, a real phone or a person listening for an hour, and their
@@ -856,13 +897,12 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Three rows are 2+: rank 22 (The Fracture Cycle's fourth prong), rank 25
-(Signal City's second pack) and rank 28 (Throneshard's two heroes).** The
-sixteen rows left (15 to 23, 25 and 27 to 32, recounted off the table on
-2026-10-07) are nine that want hardware nothing here has (15 to 21, 23 and
-32) and seven a container can take (22, 25 and 27 to 31), none of them waiting
-on a yes any more: Devon approved the fourth prong on 2026-10-01 and
-answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
+**One row is 2+: rank 25 (Signal City's second pack).** The
+thirteen rows left (15 to 21, 23, 25 and 29 to 32, recounted off the table on
+2026-10-12, when rank 22, The Fracture Cycle's fourth prong, shipped as #958)
+are nine that want hardware nothing here has (15 to 21, 23 and 32) and four a
+container can take (25 and 29 to 31), none of them waiting on a yes any more:
+Devon answered Throneshard's two questions on 2026-10-05. For the hardware rows, the
 Parked section below the table says why they were left ranked anyway. Recounted off the table on
 2026-09-25, when 47 Blender rows went in above the thirteen. Signal City's row
 retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
@@ -872,12 +912,13 @@ same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
 the question it waited on is Devon's. Aphelion's touch/gamepad row left the
 same way the same day, for Q40 (#629).
 
-**The model split is 7 Opus 5, 5 Fable 5.1, 4 Sonnet 5.** Counted
+**The model split is 6 Opus 5, 4 Fable 5.1, 4 Sonnet 5.** Counted
 off the table rather than decremented, which is how the 15/14/9 drift was
-caught: 7 + 5 + 4 is 16, and the table has 16 rows. By size it is 7 ¼,
-6 ½, none of the 1 and 3 of the 2+, the same 16 (recounted 2026-10-07, after
-ranks 25 to 32 went in and 24 and 26 shipped). By gate it is 3 `GPU`, 3 `phone`,
-1 `GPU, phone`, 2 `ears` and 7 with none; no row names Opus 5.5 or reads
+caught: 6 + 4 + 4 is 14, and the table has 14 rows. By size it is 7 ¼,
+5 ½, none of the 1 and 2 of the 2+, the same 14 (recounted 2026-10-10, after
+ranks 27 and 28 shipped; the 16 this line read until then had not been taken
+down for rank 27). By gate it is 3 `GPU`, 3 `phone`,
+1 `GPU, phone`, 2 `ears` and 5 with none; no row names Opus 5.5 or reads
 `blender` now that the Blender block is empty.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
@@ -896,8 +937,10 @@ keyboard" was done on 2026-10-07 (#916, #917, TG-29; judged by no person), the
 other two of the four the same day (#921, TG-29: the Legacy row "Mocha on the
 Board" says its syrup is not included, and a barista's step refuses a syrup or
 topping that is not on the shelf), and
-"Difficulty presets" was not built: its four open choices are in the
-wishlist's "Questions for Devon". Nothing from it is in the
+"Difficulty presets" was built on 2026-10-10 to Devon's four answers of
+2026-10-07 (#947, TG-29: Busy Corner is the game as it was, Quiet Corner
+slows the door by 1.3 and lengthens patience by 1.5, switchable from the Menu
+Board mid-shift, one save field; played by no person). Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
@@ -1042,14 +1085,11 @@ and #222 was closed unmerged an hour of suites later.
 | 19 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
 | 20 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
 | 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 22 | A 4th prong, approved by Devon on 2026-10-01: a beginning, middle and payoff like the three it joins, and every existing path replayed afterwards. Needs no hardware; what the prong is about is the session's to write | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. What it leaves is three engine units, each its own and about a half by this session's reading (the Size cell is R13's and was not re-sized): the true offset written back when the lights return, so Lights Out's slider reads what the street runs (not the return through `setOffset`'s shift, which deletes that level's lesson); a box coming back from dark without hitting the car still crossing; a scripted vehicle keeping its turn past the first box, so Cross Town can take turns. Nobody has played any of the four levels. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 27 | Rift Wall gets a wall that stops enemies, as its tooltip says (Devon, 2026-10-05: collision, not a reworded tooltip) | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 28 | Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four abilities each, talents, a scepter upgrade, an item build, voice fallback and effects, under original names the session picks (Devon, 2026-10-05: go) | `Projects/throneshard` | 2+ | Fable 5.1 |  |  | [Throneshard](#throneshard) |
-| 29 | Hard bots last-hit below normal in a hard-versus-hard match: 14.2 against 17.1 at 10 minutes over 12 seeds (#750). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 30 | Most Grimmaw attempts go uncontested: 0.8 contests to 3.2 attempts a match (#751). Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 31 | Piercing Gale's spiral and the rune auras read faint from the game camera. Built and judged from captures; a person's look comes after | `Projects/throneshard` | ¼ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929; 150 s on its clock and a 270 s run since #949, on Devon's answer) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. Three of its engine units shipped on 2026-10-12: an ambulance still on the map when a run ends is late and the end card says where it was (#955; Cross Town keeps its 270 s); the true offset is written back when the lights return, so Lights Out's slider drops to 0 and its answer is 16 again (#959: no run moved, the pinned slider values did, 32 to 16 and 24 to 8); and a scripted vehicle takes a `route`, one turn a box (#960: no shipped level names one, so nothing moved). What it leaves is one engine unit and one level call, each about a half (the Size cell is R13's and was not re-sized). The engine unit, a box coming back from dark: traced on 2026-10-12 and written, not shipped. The cars the four-way stop held at the box's edge read as committed on the returning red and all go at once (13 crashes in 48 runs of a 20 s outage, 0 with the fix); the fix is commit afc8f07 on `wave/2026-10-12-TG-29-signalengine` under the claimed #957 and was held back because it moves Rush Hour's pinned runs (nothing pressed one star on 4 seeds of 6 and not 6, the hand three stars on 5 and not 6, one `scoring.mjs` line), so what is left is tracing Rush Hour's seeds 3 and 5 and re-pinning it, on Devon's word. The level call, Cross Town with turning traffic: `route: ['T', 'T', 'T']` on its ambulance and weights in `turns`, then its two tables and its stars again, since every car ahead of the ambulance may now turn across it. All in `WISHLIST.md` Known gaps. Nobody has played Cross Town at 150 s, where the call alone earns the second star, and nobody has watched Lights Out's slider drop by itself. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
+| 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 17.9 against 18.8 at 10 minutes over 12 seeds (#948), about what two such means differ by from noise. The melee core in a lane against two ranged heroes dies as often as normal's now (2.2 against 2.5) and takes 16.7 last hits against normal's 19.7; the melee heroes in the middle lane take 18.5 against 21.3, not looked into. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 30 | A contest of Grimmaw between hard bots is lost: over 12 seeds the defenders came out ahead in 1 of 10 and lost 19 heroes for 5 (#950). The count was never the trouble: 29 of 48 real attempts are contested, and #751's 0.8 to 3.2 counted plans dropped before he was touched. Two rules tried and not kept. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
+| 31 | Wants a person's look on a real graphics card: Piercing Gale's corkscrew and the rune auras' rims were rebuilt and judged from software-rendered captures (#952). The spiral went from about 1,000 visible pixels to 8,400 to 43,400; each aura has a hard rim, and the arcane glyph no longer sits under the river. Nothing is left to build unless the look says so | `Projects/throneshard` | ¼ | Opus 5 | GPU |  | [Throneshard](#throneshard) |
 | 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
 
 ## Parked — needs a person at a real device
@@ -1332,7 +1372,7 @@ construct's Fort reads no lower than moderate (#715). Every parse fixture's
 special attacks are hand-checked. Open follow-ups, none ranked. Devon answered
 all three questions that stood here on 2026-10-05: the flagging pass, go; the
 2e-style rewrite, go; Foundry, yes, he uses it, build the export. The first and
-the third are built; the rewrite has its second increment (#894, #899).
+the third are built; the rewrite has its third increment (#894, #899, #937).
 
 1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
    (#886, 2026-10-05), and the list is Devon's to read. They were written by a
@@ -1345,57 +1385,72 @@ the third are built; the rewrite has its second increment (#894, #899).
    reading. Answers go into `spell-map.json` by hand; rerun the script
    afterwards, or `converter-spells.test.mjs` fails on a stale list. The next
    73 (score 7) are one `CUT` away if the first 47 turn out worth it.
-2. **The 2e-style rewrite of special abilities: second increment done (#894,
-   #899, 2026-10-06), 33 of 111 abilities (30%).** Devon said go on 2026-10-05.
+2. **The 2e-style rewrite of special abilities: third increment done (#894,
+   #899, #937, 2026-10-10), 37 of 111 abilities (33%).** Devon said go on
+   2026-10-05.
    `converter-assets/js/abilities.js` rewrites an ability when a rule reads its
    whole construction and leaves it byte for byte as it was otherwise, marked
    **PF1e wording** on the page, in the copied text and in the Foundry file's
    notes. Every DC, attack bonus and damage figure a rule writes is the
-   converter's own for that creature at its new level. Fourteen rules, counted
+   converter's own for that creature at its new level. Seventeen rules, counted
    over the 57 fixtures, which are every PF1e stat block the repo has:
    affliction (a poison or disease stat line, 7), constrict (4), limit (a name
    and a per-day limit, 3), throw-rock (3), breath (2), channel (2),
-   distraction (2), gaze (2), grab with a size (2), rend (2), paralysis (1),
-   pull (1), rake (1), trample (1). The table is
-   `converter-assets/data/ability-patterns.md`, written by
+   death-burst (the balor's Death Throes, both layouts, 2), distraction (2),
+   gaze (2), grab with a size (2), rend (2), energy-drain (the vampire's, 1),
+   paralysis (1), pull (1), rake (1), trample (1), whirlwind (the djinni's, 1).
+   The table is `converter-assets/data/ability-patterns.md`, written by
    `measure-abilities.mjs`; `converter-assets/README.md` says where each
-   number comes from. What is left, 65 abilities in PF1e wording and 7 bare
+   number comes from. What is left, 61 abilities in PF1e wording and 7 bare
    names:
-   - **A save inside a sentence, 25 abilities. Needs a call before a rule.**
-     "must succeed on a DC N save or be [condition] for [duration]" is in 5
-     (the gelatinous cube's Paralysis, Gibbering, Spittle, Unholy Nimbus,
-     Paralytic Tentacles), each between sentences no rule reads. #899 left
-     them: rewriting one sentence would take the PF1e mark off the rest. The
-     call is a fourth wording, part by rule and part PF1e, and how the page,
-     the copied text and the Foundry notes show it.
-   - **A parenthesis no rule reads, 6.** `DC 18` and `DC 22` under a name
-     (no effect to write), `+1, 6/day` (the war priest's smite, twice),
-     `2 levels, DC 22`, and swallow whole's `1d4 bludgeoning damage, AC 10,
-     1 hp`, which needs a Rupture figure the tables do not have.
-   - **One or two fixtures each, readable whole:** a burst with a save for
-     half (the balor's Death Throes, both layouts), whirlwind, energy drain.
+   - **A save inside a sentence, 21 abilities. Closed: these stay PF1e
+     wording.** Devon, 2026-10-07, asked whether an ability may be shown part
+     by rule and part PF1e: "no, keep the 1e wording". So there is no fourth
+     display state, and the five "must succeed on a DC N save or be
+     [condition] for [duration]" abilities (the gelatinous cube's Paralysis,
+     Gibbering, Spittle, Unholy Nimbus, Paralytic Tentacles) are not a next
+     rule. Do not propose it again.
+   - **A parenthesis no rule reads, 5.** `DC 18` and `DC 22` under a name
+     (no effect to write), `+1, 6/day` (the war priest's smite, twice), and
+     swallow whole's `1d4 bludgeoning damage, AC 10, 1 hp`, which needs a
+     Rupture figure the tables do not have. Swallow whole is the one
+     construction left that a rule could read whole, and it waits on that
+     figure: do not invent one.
    - **Prose, 27.** No construction in them (Whip Mastery, Mimicry, Freeze).
-     These stay PF1e wording unless somebody writes them by hand.
-   - **Four calls in #899 Devon may want back**, beside #894's three: a name
-     with only a per-day limit reads "Frequency 9 times per day." and loses
-     its mark with no effect text; channel damage follows the Strike ratio
-     (the war priest's 1d6 is 1d6-1); paralysis keeps PF1e's 1d4+1 rounds
-     with the incapacitation trait; a poison's sleep is unconscious. Nobody
-     has read the 33 at a table.
+     These stay PF1e wording unless somebody writes them by hand. The
+     succubus's Drain Life is one: her energy drain is a kiss and a
+     suggestion in a paragraph, and the energy-drain rule reads the stat-line
+     form only.
+   - **With the three kinds of #937 taken, no rule is queued.** The next
+     increment, if there is one, starts from `data/ability-patterns.md` and
+     has to find a construction first. The 57 fixtures hold none that a rule
+     could read whole but swallow whole.
+   - **Devon kept all seven wording calls of #894 and #899** (2026-10-07:
+     "keep all seven"). **Four calls in #937 he may want back**: a burst on
+     death deals the level's limited-use area damage and PF1e's amount is not
+     carried (the balor's 100 points are 21d6, average 74; print is 16d10);
+     "half fire, half unholy" is all fire with the unholy trait; a
+     whirlwind's rounds are half the block's Hit Dice, from PF1e's universal
+     rule and not the stat line, and PF1e's two Reflex saves are one basic
+     save; two negative levels are drained 2 a hit, capped at drained 4, with
+     temporary Hit Points equal to the level and the DC moved to the hit.
+     Nobody has read the 37 at a table.
    - **`converter-abilities.test.mjs` is in `site-ci.yml` since 2026-10-06**,
      under "Pathfinder converter" with the Foundry suite. Neither line has run
      on GitHub yet: the first run is the next PR's, so read that job's log once.
    - The suite's hash is still of the 98 entries no rule wrote on 2026-10-05
      (89 of the 111 and the 9 the 111 leaves out: seven Reactive Strikes, a
-     regeneration, a fast healing). #899's rules took 11; the suite writes
-     them back in as they stood, so 87 are held. 33 and 87 are of 120.
+     regeneration, a fast healing). #899's rules took 11 and #937's took 4;
+     the suite writes them back in as they stood, so 83 are held. 37 and 83
+     are of 120.
    - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
      listed twice, once as a bare aura and once as text (the balor's Flaming
      Body), and a defensive ability the same way (the mouther's Amorphous).
      The succubus's "The DC is 22 for the Fortitude save" is not rescaled,
      because the DC and its number are two words apart.
-3. **A Foundry VTT actor export: built (#892, 2026-10-05), and waiting on
-   Devon's import.** The **Foundry JSON** button beside Copy and Print saves
+3. **A Foundry VTT actor export: built (#892, 2026-10-05), and imported by
+   Devon (2026-10-07: "The foundry import seems to work fine").** The
+   **Foundry JSON** button beside Copy and Print saves
    `<name>.foundry-npc.json`, a pf2e NPC for Import Data on an actor.
    `converter-assets/js/foundry.js` is a pure function, the converter's
    creature in and a plain object out, the same bytes every time. It targets
@@ -1404,13 +1459,10 @@ the third are built; the rewrite has its second increment (#894, #899).
    there has it and a slug only if one of them uses it, and puts everything
    else in the actor's private notes. A partial spell match is marked in the
    spell's name, at the top of its text and in the notes.
-   **It has not been imported into a real Foundry**: no machine here has one.
+   No machine here has a Foundry, so his report is the only import there has
+   been, and it does not say which creature or which fields he looked at.
    `converter-assets/README.md` lists which fields are sure, which are a best
    reading, and five lines on how to check it. What is left:
-   - **Devon imports one** (the lich is the widest: 30 spells, two of them
-     partial) and says what the sheet shows. A refused import is most likely
-     one of the fields left out for Foundry to default (`img`, `_stats`,
-     `system.publication`, a migration version).
    - **`converter-foundry.test.mjs` is in `site-ci.yml` since 2026-10-06**,
      under "Pathfinder converter". It has not run on GitHub yet: the first run
      is the next PR's.
@@ -1641,9 +1693,28 @@ three investors, 2% a side, 200 XP. `tools/smoke.mjs` 270 → 270 + 89 = **359**
 **Nothing about the tier is open.** What it deliberately did not do is the
 seller side (#515) — representing the seller of a building wants a rent roll,
 an offering memorandum and a broker's opinion of value where `seller.js` has
-staging tiers, photo tiers and weekend open houses. It is a row for whoever
-wants it, sized on its own, and it is **not in the ranked table**: putting it
-there is a judgement call a session may make.
+staging tiers, photo tiers and weekend open houses. **Designed, not built,
+waits for Devon's read** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
+write the design"): `Projects/Closing Time/DESIGN-seller-commercial.md`. Offers
+are written on the packet and closings happen on the building; the rent roll
+(2 actions, 5 days) is worth 6% of gross value to every offer, the memorandum
+($0, $900, $2,800) sets which of three investor kinds see it, and the opinion
+of value (1 action) moves what the seller expects and so what they will sign.
+Measured on a scratch reimplementation: a median 23 days to an offer worth
+taking against a house's 12, $19,825 gross against $12,120, about the same
+money per day a client slot is held. Twelve questions for Devon are in its
+section 10 and are not in the table below; three sessions to build once he has
+answered. It is **not in the ranked table** and should not go there before his
+read. The two things it read in the code on the way were both real and are
+fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
+career began on the end of that career's queue, lowest rung first and then by
+id, and the `bonusReferral` event (`ev_ruth_referral`) asks the same
+`inReach()` the other three doors of #514 now ask, and does not fire with
+nobody in reach. Seen beside them and not changed: two referrals queued on one
+day can name the same client and taking both makes two records of them (any
+pair of the four doors; `meetClient()` called twice in the engine, not seen in
+a played career), and a seller passes every door whatever their tier, which is
+the design's question 12.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
@@ -1704,8 +1775,8 @@ offsite requests.
 used to head this list is gone from it. The waterline swings 9.3 m against the
 4.3 m the swash alone ever moved it, on a 2,400 s cycle of walking seconds that
 does not stop when the sun does; `test/smoke.mjs` 93 → 117. Two things it left
-behind are below: the intertidal structure that would give the ebb something to
-uncover (item 7), and the surf's missing distance term, which belongs to the
+behind are below: the intertidal structure that gives the ebb something to
+uncover, built as a try on 2026-10-11 (item 7), and the surf's missing distance term, which belongs to the
 ears-on row rather than to a session guessing at a gain curve (item 1).
 
 What's left:
@@ -1752,15 +1823,26 @@ What's left:
    a reload that keeps the journal and resets the sun. Each was broken once
    from green. Footprint-counting on the wet band was not added: it is a
    real-time walk, and #53 makes it a maybe.
-7. **A bar and a runnel, or any structure at all in the intertidal zone.** This
-   is what the tide leaves for a later increment and it is the obvious next
-   one: the sea's edge crosses 9.3 m of seabed that is a plain 0.10 ramp, so a
-   falling tide currently uncovers more flat sand rather than uncovering
-   anything. A bar you can walk out to at low water and have to come back off
-   is the thing every real beach does with a tide. It is not free: `wadeLimitZ`
-   is a closed-form solve on a constant slope and a non-monotone seabed makes
-   it a march, and the runnel behind the bar has to stay under knee depth or
-   the bar is content nobody can reach.
+7. **A bar and a runnel: built as a try on 2026-10-11 (#953), waiting for
+   Devon's walk.** East of the pier, x 325 to 415: a ridge 13 m out with its
+   crest at -0.03, a channel behind it, and a ford across the channel's middle
+   at -0.12. Low water leaves the ford and 61 m of bar dry with standing sea
+   in the channel either side; the channel fills from its ends, the ford goes
+   under, then the bar; high water is all sea. The ford is 0.43 m deep at the
+   top of the highest wave, under the 0.45 m knee, so nobody is trapped; the
+   channel beside it is over the knee at high water and turns a walker back
+   to the ford. On that stretch `barStep` replaces the one-limit-a-column
+   clamp, the bar has two foam strips and a wet-sand patch of its own, and
+   footprints read the ground. `test/smoke.mjs` 135 to 158. To take it out:
+   revert its commit.
+   **What is left:** Devon's walk (the beach at x 370 at low water, out over
+   the ford to the bar, wait for the tide; the bar is a straight ridge and its
+   channel-side foam reads as a grey kerb in software-rendered frames). No
+   foam is drawn round the tip of the water where the channel runs dry beside
+   the ford, no bird or crab is placed on the bar, the surf sound does not
+   know it, and nothing in a browser suite walks it. The crest sits in a 4 cm
+   window because the tide's range is 0.36 m against a 0.32 m swash; a bar
+   that stood prouder would need a bigger tide, which is the home beach's too.
 
 Deliberately not done, and still the right call:
 
@@ -2238,27 +2320,38 @@ Two things the work turned up. The first is fixed, the second had shipped:
 
 `Projects/the-fracture-cycle.html`, `Projects/the-fracture-cycle/`.
 
-**Two rounds running with nothing outstanding.** The one real bug (the
-unreachable ending) is fixed, the save question is answered and implemented,
-the fonts are vendored, the accessibility issues are fixed, and the test suite
-passes. Don't invent busywork for a 799-line game with every ending reachable,
-a working save, no offsite requests, and no known accessibility or mobile
-issues.
+**Nothing outstanding but a read.** The one real bug (the unreachable ending)
+is fixed, the save question is answered and implemented, the fonts are
+vendored, the accessibility issues are fixed, and the test suite passes. Don't
+invent busywork for a game with every ending reachable, a working save, no
+offsite requests, and no known accessibility or mobile issues.
 
-The list below was only for if Devon deliberately decided to expand scope.
-**He did, for the first half of item 1: a fourth prong, approved on
-2026-10-01** (Q49, struck), and it is rank 22. Deeper side content was not
-asked for.
+**The fourth prong is in and playable (#958, 2026-10-12)**, on Devon's yes of
+2026-10-01 (Q49, struck); it was rank 22. The fourth choice at the seam is to
+take no road. Its outline, and what was measured before and after, is
+`Projects/the-fracture-cycle/DESIGN-fourth-prong.md`: 32 nodes, 48 choices, 7
+endings, 519 paths and 3,775 words where there were 25, 36, 5, 171 and 2,591.
+Deeper side content was not asked for and was not written.
 
-1. **A 4th prong, or deeper side content.** The three existing prongs and the
-   side-hub detour are each a complete beginning/middle/payoff shape, not
-   truncated. Adding more would be new content Devon chooses to commission, not
-   a gap being filled. If you do this, replay every existing path afterward —
-   a narrative game that silently loses a branch gives no error, the choice
-   just isn't there.
-2. **Re-verify the branch map after any future edit.** If a later round touches
-   the story logic at all, rerun `node Projects/the-fracture-cycle/test/smoke.mjs`
-   and replay by hand.
+1. **NOBODY HAS READ IT.** Devon should play the seam through once (the fourth
+   choice on the first screen; both of its endings are reachable in two runs,
+   "The Last Waking" only with a name of your own and nothing picked up at
+   Roseleaf) and say whether it sounds like his game. Every word of it is
+   between the `THE SEAM` comment and the `HUB` comment, in `seam_answer`, and
+   in the last two endings. To take it out: `git revert` the four commits of
+   #958; a save that had seen one of its two endings loads with that ending
+   dropped by `repair` and the rest kept.
+2. **A walker is told nothing about why "The Last Waking" is not on offer**
+   when they come to the hollow with a piece or a borne name. The prose hints
+   at it twice; the game's unused `.locked-note` style would say it outright.
+   Left as a choice for whoever reads it.
+3. **The preview and the social card still show the game as it was.** The
+   capture takes the first choice every time, so it never walks the seam and
+   needs no re-take; the board's description does not count endings.
+4. **Re-verify after any future edit.** `node
+   Projects/the-fracture-cycle/test/smoke.mjs` walks every path and pins the
+   171 old ones by hash; `--paths` prints the figures. An edit to an old
+   node's words moves that hash on purpose and says so in the file.
 
 Deliberately not done, twice, and still valid: no restructuring (still one
 file, still small enough to hold in one read); no mid-story save (the
@@ -2443,7 +2536,7 @@ hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
 as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
 (#649, #650): a board-check recipe, the Rush Hour preview and the card
-copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. R13's second level shipped on 2026-10-07 (#926): Boulevard, the two-lane corridor with a green wave both ways, on a 33 s cycle so that the 15.7 s between its boxes is half of it; nobody turns on it, because R12's lane change at the join does not see the car alongside (`WISHLIST.md` Known gaps), and nobody has played it. The lane change was fixed and one car in ten turns right on Boulevard since (#927, #928), and R13's third level shipped the same day (#929): Cross Town, three boxes in a row that an ambulance crosses in 100 s, where the corridor follows it and the green given at each box ahead decides it; nobody has played it. R13's last named level shipped that evening (#933): Lights Out, Boulevard's street with its wave already in and a 12 s outage at 78 s that brings both boxes back on one clock while the slider still reads 16, so the player finds the wave again on the diagram; nobody has played it, and the stale slider is the first thing for a person to judge. What is open is three engine units the levels turned up (`WISHLIST.md` Known gaps). **It is rank 25 since 2026-10-07**, the only one of R10 to R14 with anything left: R10 (#777, #778), R11 (#779, #780), R12 (#781) and R14 (#783) shipped whole. H1 to H4 have no row; they need a device, ears or a person and were not among the rows Devon asked for.
+copy, and Rush Hour's dusk is a level field. R6 (½) shipped in PR #451 (#682): the corridor follows a called vehicle to every box it is handed to (966 checks). R7 (½), R8 (¼) and R9 (½) shipped together on 2026-10-01 (#773 to #776): synthesized sound with a header switch, the phone layout with pinch and tap, and a queue rule that calls a phase while an uncalled arrow skips, which Crossing now ships with (1,044 checks across eleven suites). R10 (½) shipped on 2026-10-01 (#777, #778): an entry meter on a ring, sold on Free Play's ring, the one converted board where it beats the bare ring on four seeds of six, and a fix for a retried arrival that moved the level's own spawn time. R11 (1) shipped the same day (#779, #780): the trucker's trailer off-tracks as a hinged body and a turning truck holds only the lanes it sweeps, every target held. R12 (½) shipped the same day (#781): a car handed along a corridor changes lanes on the straight for its next turn. R13 (2+) started the same day (#782): pack 2's first level, Market Ring, whose second star is the entry meter. R14 (½) shipped with it (#783): endless keeps the day a run is on, so a run closed halfway is resumed at that day's start. R10 to R14 came from the audit's line TG-15. R13's second level shipped on 2026-10-07 (#926): Boulevard, the two-lane corridor with a green wave both ways, on a 33 s cycle so that the 15.7 s between its boxes is half of it; nobody turns on it, because R12's lane change at the join does not see the car alongside (`WISHLIST.md` Known gaps), and nobody has played it. The lane change was fixed and one car in ten turns right on Boulevard since (#927, #928), and R13's third level shipped the same day (#929): Cross Town, three boxes in a row that an ambulance crosses in 100 s, where the corridor follows it and the green given at each box ahead decides it. Its clock is 150 s and its run 270 s since 2026-10-11 (#949, Devon's "add about 50% more time"): the call alone is on time on six seeds of six now, and the green ahead is 13 to 37 s and the clean run; nobody has played it at 150 s. R13's last named level shipped that evening (#933): Lights Out, Boulevard's street with its wave already in and a 12 s outage at 78 s that brings both boxes back on one clock while the slider still reads 16, so the player finds the wave again on the diagram; nobody has played it, and the stale slider is the first thing for a person to judge. The end of a run counts an ambulance still on the map late since 2026-10-12 (#955). What is open is three engine units the levels turned up (`WISHLIST.md` Known gaps), the first of them traced and written but held back. **It is rank 25 since 2026-10-07**, the only one of R10 to R14 with anything left: R10 (#777, #778), R11 (#779, #780), R12 (#781) and R14 (#783) shipped whole. H1 to H4 have no row; they need a device, ears or a person and were not among the rows Devon asked for.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
@@ -2540,29 +2633,90 @@ frame's draw calls to `test/draws.json`).
 ## Throneshard
 
 A 3D lane battler Devon had built outside this repo and asked to move in on
-2026-09-30 under a name of its own (#738): fourteen heroes, three lanes, bots
+2026-09-30 under a name of its own (#738): sixteen heroes, three lanes, bots
 on both teams, shop, talents, runes, wards. Folder `Projects/throneshard/`.
-Its suites are `node test/data.mjs` (916 checks) and `node test/browser.mjs`
-(14) from the project folder, in Site CI's matrix. Its first polish pass
+Its suites are `node test/data.mjs` (1,211 checks, 38 of them `test/wall.mjs`'s,
+69 `test/ormund.mjs`'s and 63 `test/tobren.mjs`'s) and `node test/browser.mjs`
+(51; `THRONESHARD_ONLY=hard` runs its two ten-minute hard matches alone, 21
+checks) from the project folder, in Site CI's matrix.
+Its first polish pass
 shipped the same day (card preview, bots, XP curve, effects, art, announcer,
-Settings; `HISTORY.md` #749 to #755). Open, and **ranked 27 to 32 since
-2026-10-07** in the order the table gives, not this list's:
+Settings; `HISTORY.md` #749 to #755). Rift Wall got its gameplay wall on
+2026-10-10 (#938, old rank 27), and the two new heroes went in the same day
+(old rank 28): Ormund the Tollkeeper on the spare model `rift_stalker` (#941)
+and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
+32** in the order the table gives, not this list's:
 
-- Two new heroes from the spare models `rift_stalker` and `bone_shaman`: four
-  abilities each, talents, a scepter upgrade, an item build, voice fallback and
-  effects, with original names and kits. Not started. Devon, 2026-10-05: go,
-  with no naming preference, so the session picks the names. Rank 28.
-- Rift Wall has no gameplay wall: the slabs are a picture and enemies walk
-  through, against its tooltip (#755). Devon, 2026-10-05: add the collision,
-  do not reword the tooltip. Rank 27.
-- Hard bots still last-hit below normal in a hard-versus-hard match (14.2 against
-  17.1 at 10 minutes over 12 seeds) though ahead of normal in a mixed one (#750).
-- Most Grimmaw attempts are still not contested, 0.8 contests to 3.2 attempts
-  a match (#751).
+- Hard melee heroes still last-hit below normal in a hard-versus-hard match:
+  17.9 against 18.8 at 10 minutes over 12 seeds, each match in a fresh browser
+  (16.2 before #948 on the same seeds; ranged 11.1 against 9.6; all ten heroes
+  14.5 against 14.2). A second run of the old code and of normal, as pages of
+  one browser, gave 17.3 and 19.2, so a 12-seed mean moves by about 1 from
+  noise alone and the 0.9 left is inside it. #946 fixed the tower walk and
+  stood an out-fought laner off from the clash. #948 found what killed the
+  melee core of the lane against two ranged heroes: it stayed at the clash
+  alone. Three seconds before 60 of its 75 fatal retreats its support was dead
+  (21), going home (18) or not back yet (21), and it turned for home at 41% of
+  its health, 3.2 s before it died. A hard laner alone against enemy heroes
+  who would commit on it waits at its own tower now. That seat: 13.8 last
+  hits and 3.1 deaths in 10 minutes before, 16.7 and 2.2 after, normal's 19.7
+  and 2.5; its support dies 2.3 times where it died 3.3. What is left, in
+  order of size: the melee heroes in the middle lane take 18.5 where normal's
+  take 21.3 (18.3 before #948, so not the yield rule's doing, and #946 had
+  measured them level); the seat is 3.0 last hits under normal's, and of its
+  26 deaths left its support stood within 20 units in 11 and was going home in
+  10, so the pair loses the trade together (the two ranged heroes put 4,725
+  spell damage on it in 10 minutes, normal's 4,007). Tried and not kept:
+  counting the sides with `fightRatio`, which made the seat 20.3 last hits and
+  1.3 deaths but had the two ranged heroes yielding 24.5% of their first ten
+  minutes, because it does not count a lane partner standing across the wave.
+  Measured and not it: the support wandering off (it is within 14 units of its
+  core for 70 to 78% of their time in the lane at either difficulty), and the
+  push-dive leftover (1 of the seat's 37 deaths was under an enemy tower). That
+  leftover is still there: `diveOk`'s push clause reads `mode`, and `tryFight`
+  sets `mode` to `fight`, so a dive allowed for a push is refused on the next
+  think. Measure with the harness in `HISTORY.md`'s log for #948.
+- A contest of Grimmaw between hard bots is lost (#950). Counted by attempts
+  that hurt him (`stats.grimmawEngaged`; a third of the plans #751 counted were
+  dropped for a tower first), 29 of 48 were contested over 24 seeded matches,
+  and none of the other 19 was a team that could have gone and stayed away.
+  What a contest gets: hard defenders against normal attackers ahead in 5 of
+  8 with 5 steals, normal against hard 5 of 11, hard against hard 1 of 10 with
+  19 heroes lost for 5. In 14 of the 29 the nearest contester set out from
+  93 units or more, and in 3 of the 9 lost at the pit one contester at most
+  stood there. Tried and not kept, with figures in `HISTORY.md`'s log for #950: a
+  party of only those who can arrive inside 60% of the life he has left (it
+  ended nearly every contest, the 80-to-145-unit group steals with them), and
+  holding contesters 30 units out until three stand together (ahead in 6 of
+  21 where `main` had 10 of 19). Not tried: weighing the party against the
+  attackers by health and damage as `fightRatio` does, or by net worth, before
+  going; breaking a contest off when the first hero falls. The team that
+  starts an attempt is ahead by its own test, so an even-numbers contest
+  starts behind. The harness is described in that log; 12 matches cannot tell
+  a small gain from none, so plan on 24 a side.
 - The card preview is a SwiftShader draft (#749), and the every-second-frame
   shadow map was judged from a frame sequence, not a recording (#753); both
   want one look on real hardware.
-- Piercing Gale's spiral and the rune auras read faint from the game camera.
+- Piercing Gale's corkscrew and the rune auras want a person's look on a real
+  graphics card (#952). They were rebuilt on huginn and judged from 1920x1080
+  software-rendered frames at the game camera's default zoom, which is honest
+  about colour and shape and says nothing about motion. What to look at:
+  whether the two-strand corkscrew behind the arrow reads as wind or as too
+  much (it is 9 units long and turns 14 radians a second, which no still
+  shows; at night its head blooms into the wind lane's streak); whether the
+  rim under a hero with a boon rune (1.55 out, dark rim outside it) is too
+  heavy beside the selection circle, and whether four runes told apart by
+  colour alone is enough; the arcane glyph on the river; Haste's longer
+  streaks behind a running hero. Not looked at: any of it on grass under
+  trees for the auras, the regeneration aura ending when the hero is full.
+  Found beside it and left: Titan's Might's ring (`attachments.js`) sits at
+  the hero's feet, so it is under the water in the river, 4,655 visible pixels
+  there against 18,608 on the lane. `tools/scripts/vfx_measure.mjs` redoes the
+  numbers and the frames on any machine, no GPU needed. The older capture tool,
+  `tools/scripts/vfx_capture.mjs`, lists all sixteen heroes and has a mode
+  `ally` for a spell cast on another hero (Ormund's Stand Surety, Tobren's
+  Twice Told), written on huginn and never run: it needs Playwright and a real
+  GPU.
 
 ## Tools/board-check
 
@@ -2630,8 +2784,13 @@ Three of them are closed.
    `tests/props.mjs`), and Fourth Quarter's two texture tiers (2k 69.2 to
    23.0 MB, 1k byte for byte). Bell to Bell's referenced bytes went from 62.1
    MB to 13.4. `--check` holds every texture to its error against the
-   original. The host gzips `.gltf` and `.glb` (measured 2026-10-03, #821), so
-   the raw-under-gzipped rule is the conservative one and stays.
+   original. GitHub Pages gzipped `.gltf` and `.glb` (measured 2026-10-03, #821);
+   the public host since then, Devon's own server behind Cloudflare, does not
+   (measured 2026-10-10, #934: Horse.glb 181,808 bytes sent, window.gltf
+   2,508), so the raw-under-gzipped rule is not a conservative rule any more
+   but the one that matches what a visitor downloads, and #704's slack for a
+   host that does not gzip is a live case again. Whether the host is meant
+   to compress them is Q61.
    Castle Conundrum was the third game and is doing its own version of this in
    its own repo (#491). Not touched: Bell to Bell's four paintings (1.78 MB).
 3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and
@@ -2756,6 +2915,15 @@ ranked row (#628). Q39 was Devon's, and he answered it no on 2026-10-05.
 may read?", answered **yes** by Devon on 2026-09-13, locked #350: it is public
 reference data copied into the site, and any project may read it.
 
+**Struck 2026-10-10 (#935): Q16, Q20, Q21, Q32, Q34, Q35, Q42 and Q45**, all
+eight answered by Devon on 2026-10-05 and left standing as open here and in
+three wishlists until now. The rows below carry his words; two parts are
+not his to have answered and stay open, and say so (Q35's HTTPS half, and
+that Q42 was answered after the hall of past careers shipped). The questions
+his answers of 2026-10-07 closed in the wishlists are moved the same way
+there. **New 2026-10-10: Q59 to Q63**, about the host, in their own table at
+the foot of the list.
+
 **The `Where` column names files that no longer exist.** The prompts, the
 notes files and the ten handoffs were deleted in this consolidation; they are
 cited by name so a raise count can be checked, and `git log` is where they
@@ -2775,7 +2943,7 @@ live. Nothing in that column is a link to follow.
 | ~~Q8~~ | ~~**Does the period need a fail state?**~~ Struck — answered by Devon, 2026-10-05 (#889): still no. Answered "still no" three times. Confirming it lets Phase 3 stop designing around the possibility. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q9~~ | ~~**Is suppression too strong?**~~ Struck — answered by Devon, 2026-10-05 (#889): it is not. Leave it. Measured: in every 4th-period balance run exactly one scheduled tell never happens (Priya in front of June); splitting the pairs makes that "2 never happened, 2 found another way" and drops restless from 72 to 44. The handoff's own fix, if it is too strong, is a per-period cap on how much one kid absorbs, not a nerf to the effect — and now watch it across *two* rosters (Priya and Anh both), not just one. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q10~~ | ~~**Is the Observation's ambient Mastery cost calibrated?**~~ Struck — answered by Devon, 2026-10-05 (#889): right as it is. `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by design math and not by playtest. In the table it costs the good teacher nothing visible (79 either way) and buys 10 Fidelity if performed. | 2 | wishlist, `docs/HANDOFF.md` |
-| ~~Q11~~ | ~~**Mobile.**~~ Struck — answered by Devon, 2026-10-05 (#889): no mobile. Phase 8 had already shipped when this was answered (this wording predates it), so the answer closes the phone measurement and any further touch work; taking the shipped touch layer out is Devon's call and has not been made. Undecided, and the answer determines whether Phase 8 exists. `input.js` has `touchstart`/`touchmove` look and no way to walk or to press E, Q, R, T, O, H, G or F. | 2 | wishlist, `docs/HANDOFF.md` |
+| ~~Q11~~ | ~~**Mobile.**~~ Struck — answered by Devon, 2026-10-05 (#889): no mobile. Phase 8 had already shipped when this was answered (this wording predates it), so the answer closes the phone measurement and any further touch work. Devon, 2026-10-07: "no touch controls"; the shipped touch layer came out on 2026-10-10 (#940), and keys and the mouse are the game's only input. Undecided, and the answer determines whether Phase 8 exists. `input.js` has `touchstart`/`touchmove` look and no way to walk or to press E, Q, R, T, O, H, G or F. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q12~~ | ~~**An announced Observation variant?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes, and Phase 4 built it; #891 records its three choices and the suite holds it beside the surprise one. Treatment §6.1 has both announced and surprise; only unannounced is built. The handoff calls the surprise one funnier and rates this low; Phase 4 assumes yes. | 2 | wishlist, `docs/HANDOFF.md` |
 | ~~Q13~~ | ~~**Should Room Temp reveal direction at all?**~~ Struck — answered by Devon, 2026-10-05 (#889): yes: the quadrant it already reads. It still never names a kid. Two quadrants level at the top read as the middle now (#890). "Still unchanged." Room Temp names bands and quadrants only; naming is what the Withitness mode is for. | 1 | `docs/HANDOFF.md` only |
 
@@ -2783,14 +2951,14 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q16 | **Does the name-recycling quirk stay a feature?** Songs live on names (`songs[].kn` is a list of strings) and the ancestor-naming rule can hand a newborn a dead knower's name, so that child "knows" every song the ancestor knew and can resurrect a lost one. Rare; reads as poetry; fixing it means packing knower identity beyond names. Keep, or pay for identity? | 2 | wishlist, sprint 16 handoff |
+| ~~Q16~~ | ~~**Does the name-recycling quirk stay a feature?** Songs live on names (`songs[].kn` is a list of strings) and the ancestor-naming rule can hand a newborn a dead knower's name, so that child "knows" every song the ancestor knew and can resurrect a lost one. Rare; reads as poetry; fixing it means packing knower identity beyond names. Keep, or pay for identity?~~ Struck — answered by Devon, 2026-10-05: **"keep it"**. The name-recycling quirk stays a feature. Nothing to build. | 2 | wishlist, sprint 16 handoff |
 
 ### The Absalom Inheritance
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q20 | **Is the split between builds the design, or a tuning debt?** Round 3 called the asymmetry deliberate at 53.6% / 79.8%. Phase 1 narrowed it to **64.5% / 79.8%** without meaning to — Shield Block is worth about eleven points to the Wizard and Reactive Strike is worth nothing measurable to the Fighter — and Phase 2's two condition sources moved it again, to **65.3% / 79.3%**, so the gap is 14 points rather than 26 and the question is live rather than settled. Neither phase was aimed at it; both narrowed it, which is itself an argument that the 26 points were tuning debt. If the two builds are meant to be comparable challenges, `balance.mjs` needs a band per build rather than one shared 45–90% window; if they are an easy mode and a hard mode, the picker should say so, since a player choosing Kessa Vane cannot tell. **Measured again after Phase 6 (PR #164): 79.5% / 69.3%, a gap of 10.2 points**, and the thing that moved it was content rather than a build — the undercroft's boon pays Vesper 5.2 points and Kessa 1.4, against a fight that costs them 4.5 and 6.3. That is the first evidence in this question's history that the gap is content-shaped rather than kit-shaped, and it argues for the per-build band. **Measured again after Phase 7 (PR #166), and the question changed shape: there are four builds now — 79.1% / 74.4% / 69.3% / 68.0% — so "the split between builds" is a spread of 11.1 points across four rather than a gap between two, and the two new ones landed in the middle of it on their second tuning pass.** A per-build band is a bigger ask at four than it was at two; a single 45–90% window that all four sit comfortably inside is also now evidence that the window is doing less work than it looks like. Still unanswered, and still Devon's. | 2 | `Projects/absalom-inheritance/WISHLIST.md`, PRs #151, #153, #164 and #166 |
-| Q21 | **Does the adventure grow, or does the engine deepen?** Twelve to sixteen minutes, two rooms, four fights. Arc one deepens the engine on the rooms that exist; arc two spends the same effort on more rooms. A taste question, not a technical one. | 1 | wishlist |
+| ~~Q20~~ | ~~**Is the split between builds the design, or a tuning debt?** Round 3 called the asymmetry deliberate at 53.6% / 79.8%. Phase 1 narrowed it to **64.5% / 79.8%** without meaning to — Shield Block is worth about eleven points to the Wizard and Reactive Strike is worth nothing measurable to the Fighter — and Phase 2's two condition sources moved it again, to **65.3% / 79.3%**, so the gap is 14 points rather than 26 and the question is live rather than settled. Neither phase was aimed at it; both narrowed it, which is itself an argument that the 26 points were tuning debt. If the two builds are meant to be comparable challenges, `balance.mjs` needs a band per build rather than one shared 45–90% window; if they are an easy mode and a hard mode, the picker should say so, since a player choosing Kessa Vane cannot tell. **Measured again after Phase 6 (PR #164): 79.5% / 69.3%, a gap of 10.2 points**, and the thing that moved it was content rather than a build — the undercroft's boon pays Vesper 5.2 points and Kessa 1.4, against a fight that costs them 4.5 and 6.3. That is the first evidence in this question's history that the gap is content-shaped rather than kit-shaped, and it argues for the per-build band. **Measured again after Phase 7 (PR #166), and the question changed shape: there are four builds now — 79.1% / 74.4% / 69.3% / 68.0% — so "the split between builds" is a spread of 11.1 points across four rather than a gap between two, and the two new ones landed in the middle of it on their second tuning pass.** A per-build band is a bigger ask at four than it was at two; a single 45–90% window that all four sit comfortably inside is also now evidence that the window is doing less work than it looks like. Still unanswered, and still Devon's.~~ Struck — answered by Devon, 2026-10-05: **"it is the design"**. The split between builds is the design, not a tuning debt. The Selector recorded the consequence as: the picker should say which build is the easier and which the harder; that is a build and this tidy did not do it. | 2 | `Projects/absalom-inheritance/WISHLIST.md`, PRs #151, #153, #164 and #166 |
+| ~~Q21~~ | ~~**Does the adventure grow, or does the engine deepen?** Twelve to sixteen minutes, two rooms, four fights. Arc one deepens the engine on the rooms that exist; arc two spends the same effort on more rooms. A taste question, not a technical one.~~ Struck — answered by Devon, 2026-10-05: **"deepen the engine"**, not more rooms.  | 1 | wishlist |
 
 ### The Fourth Quarter
 
@@ -2819,9 +2987,9 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q32 | **What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? **This no longer blocks the builder:** `build-rules.js` leaves those purchases in `cp.unpriced` and flips `cp.exact` false (#305), so a build that raises an attribute comes back with a floor rather than a total. An answer here turns that floor into a number. | 1 | `Numina/WISHLIST.md` |
-| Q34 | **Do the eight nations with a blank `capital` have one?** Kindaria, Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are `demonym: ""` (the Five Duchies' entry says outright that it has none). If the book does not name them, the infobox should collapse rather than render a flag chip over one "See also" row. | 2 | wishlist, audit A4 |
-| Q35 | **Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`, and `test/a11y/packet.mjs` hardcodes the prefix too (Phase 7). **The HTTPS half now needs one person and one page load, and nothing else.** Batch 1 could not verify it from its sandbox, and neither could Phase 5, which was refused at the environment's network egress before a request left the box — that says nothing about the host. The links stay `http://` until somebody can load it, because an `http://` link to a host that redirects still works and a `https://` link to a host that does not serve it fails outright (locked #319); the reasoning is a `websiteSchemeNote` key in `site.json` now rather than a checklist line. | 3 | wishlist, audit D4, Numina Phase 5 |
+| ~~Q32~~ | ~~**What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? **This no longer blocks the builder:** `build-rules.js` leaves those purchases in `cp.unpriced` and flips `cp.exact` false (#305), so a build that raises an attribute comes back with a floor rather than a total. An answer here turns that floor into a number.~~ Struck — answered by Devon, 2026-10-05: **"ignore it"**. Recorded as: leave those purchases unpriced as #305 does, and do not ask again. | 1 | `Numina/WISHLIST.md` |
+| ~~Q34~~ | ~~**Do the eight nations with a blank `capital` have one?** Kindaria, Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are `demonym: ""` (the Five Duchies' entry says outright that it has none). If the book does not name them, the infobox should collapse rather than render a flag chip over one "See also" row.~~ Struck — answered by Devon, 2026-10-05: **"they have none"**. The eight nations have no capital, so the infobox collapses rather than rendering an empty row. | 2 | wishlist, audit A4 |
+| ~~Q35~~ | ~~**Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`, and `test/a11y/packet.mjs` hardcodes the prefix too (Phase 7). **The HTTPS half now needs one person and one page load, and nothing else.** Batch 1 could not verify it from its sandbox, and neither could Phase 5, which was refused at the environment's network egress before a request left the box — that says nothing about the host. The links stay `http://` until somebody can load it, because an `http://` link to a host that redirects still works and a `https://` link to a host that does not serve it fails outright (locked #319); the reasoning is a `websiteSchemeNote` key in `site.json` now rather than a checklist line.~~ **Half struck** — answered by Devon, 2026-10-05: the custom-domain move is **"not any time soon"**; the prefix, the origin and the `http://` links stay as they are. **Left open: whether `numinalarp.com` serves HTTPS.** His answer does not address it and nothing here has loaded the page; the links stay `http://` until somebody can say (#319). | 3 | wishlist, audit D4, Numina Phase 5 |
 
 ### The projects with no wishlist
 
@@ -2829,16 +2997,40 @@ live. Nothing in that column is a link to follow.
 | --- | --- | --- | --- |
 | ~~Q39~~ | ~~**Should `characters.html` adopt `gvb-save.js` for in-browser editing?**~~ Struck — answered by Devon, 2026-10-05: no. The page stays a showcase and nothing is built. Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. Its ranked row was retired here on 2026-09-24 (#628); `Pathfinder/tests/showcase.test.mjs` fails on the first line of the feature, so a yes means narrowing that check. | 4 | prompt 03, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | ~~Q40~~ | ~~**Does Aphelion ever need to run on a tablet or phone?**~~ Struck — answered by Devon, 2026-10-05: never. No touch or gamepad scheme is built and `test/desktop-input.mjs` keeps its rule. Four rounds re-derived "no evidence yet" from scratch rather than asking. The answer decides whether a touch/gamepad input scheme gets built. Nothing in the game reads a touch or a gamepad today, so on a phone without a keyboard it can be looked at and not played. Its ranked row was retired here on 2026-09-24 (#629); `Projects/aphelion/test/desktop-input.mjs` fails on the first line of the feature, so a yes means deleting the rule it trips. | 4 | prompt 04, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
-| Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
+| ~~Q42~~ | ~~**Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same.~~ Struck — answered by Devon, 2026-10-05: **"no"**. Multi-career history was not wanted. It had shipped on 2026-09-16 (the hall of past careers, #503 to #507) before he answered; he was not asked whether to take it out and nothing here removes it. | 3 | prompt 06's notes across three rounds |
 | ~~Q43~~ | ~~**If Golden Hour's night proves popular, should the owl hunt?**~~ Struck — answered by Devon, 2026-10-05: yes, one swoop, no kill shown, and the fireflies drift toward the fire. It was already built that way on 2026-09-24 (#633, PR #395, `js/creatures/nightpaths.js`); nothing moved. The timings are still unwatched, which is Golden Hour's item 1. | 1 | the project's notes |
-| Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
+| ~~Q45~~ | ~~**Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking.~~ Struck — answered by Devon, 2026-10-05: **"dread"**: keep pushing into `dread.js`, and lock "no save, no verbs, no collection" for Blue Hour. Golden Hour parity is not adopted. | 2 | prompt 24, the notes' sessions 2 and 4 |
 | ~~Q46~~ | ~~**Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?**~~ Struck — answered by Devon, 2026-10-05: point it at the fall line, knowing the eyes' drift and the head-flip move with it. It was already built that way on 2026-09-24 (#634, PR #395: `const downhillAt = fallLine` in `js/dread.js`); nothing moved. | 1 | prompt 24, session 6 |
 | ~~Q47~~ | ~~**Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#920, TG-29): the cost line on the tile is copper and bold on any order cheaper than counting up, and every sink has a sentence under the floor with the count and the cheapest line. Judged by no person. | 2 | prompt 14, the project's notes |
 | ~~Q48~~ | ~~**Do Integer Foundry's two model gaps get built despite the coupling argument?**~~ Struck — answered by #681 (2026-09-28): yes, as one piece. Mergers on one line went into `buildCosts`; the splitter's credit was measured and declined, because it belongs to a pair of orders and would change no roll on a board with a doubler. | 2 | prompt 14, the project's notes |
-| ~~Q49~~ | ~~**Does The Fracture Cycle get a 4th prong or deeper side content?**~~ Struck — answered by Devon, 2026-10-01: yes to a fourth prong, which is rank 22 and not built yet. Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
+| ~~Q49~~ | ~~**Does The Fracture Cycle get a 4th prong or deeper side content?**~~ Struck — answered by Devon, 2026-10-01: yes to a fourth prong, which was rank 22 and was built on 2026-10-12 (#958). Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | ~~Q52~~ | ~~**Does Orbital adopt `gvb-save.js` for save-bar UI consistency?**~~ Struck — answered by Devon, 2026-10-05: yes. Built 2026-10-07 (#925, TG-30): one slot on the key Orbital always had, Export and Import on the sector map, `assets/js/gvb-save.js` itself unchanged. | 2 | prompt 21, the project's notes |
 
+### The host (raised 2026-10-10, #934)
+
+The public site moved to Devon's own server behind Cloudflare (his words of
+2026-10-07: "We recently swapped over to my private server, tunneling through
+cloudflare"). What was measured is in #934. These are what cannot be read from
+outside; none blocks anything ranked.
+
+| # | Question | Raised | Where |
+| --- | --- | --- | --- |
+| Q59 | **How does a commit on `main` reach the server, and how long does it take?** A pull on a timer, a webhook, a deploy job, or by hand? On 2026-10-10 the site and `main` were the same commit (`b1f9a3c`) and the server's `last-modified` for `index.html` was four minutes after GitHub Pages' build of it (01:45:17 against 01:41:07 UTC on 2026-10-09), which is one sample and says nothing about the usual lag. A PR here cannot say "live" until this is known. | 1 | #934 |
+| Q60 | **Which machine is it, and who restarts what?** This session's machine (huginn) runs `cloudflared` and an `nginx` in containers whose configuration it cannot read, which suggests it and does not show it. Is huginn the origin, or only where sessions run? What happens to the public site when it reboots, and is the tunnel watched? | 1 | #934 |
+| Q61 | **Should `.glb` and `.gltf` be compressed on the public host?** They are not: `Horse.glb` and `window.gltf` come back at 181,808 and 2,508 bytes with `content-type: application/octet-stream` and no `content-encoding`, where GitHub Pages sent 68,939 and 774. HTML is brotli. The repo cannot change this; it is the origin's or Cloudflare's setting. `Horse.glb` is 2.6 times what it was on the wire; the models that are meshopt-packed were not measured. | 1 | #934 |
+| Q62 | **Should responses carry `cache-control`, and should Cloudflare cache the assets?** None of the responses measured (the page, one `.glb`, one `.gltf`) has a `cache-control`, and `cf-cache-status` is `DYNAMIC` on all of them, so those requests reached his server. Fonts, textures and models are the heavy ones; none of them was measured. | 1 | #934 |
+| Q63 | **Is GitHub Pages meant to stay on as a second copy?** `https://greyversusblue.github.io/tools-and-games/` still answers from GitHub, with the same `index.html` and a gzipped `.glb`, last modified one minute after `b1f9a3c`'s merge. Also listed for him, because deleting is his: `.nojekyll` (404 on the public host, so dotfiles are not served from there, which says nothing about `.git/`, not probed), `.firebaserc`, and the three places that still name `CNAME`, deleted on 2026-10-06 (the "site itself" and Ownership rows in this file, and `Tools/board-check/ownership.json`, which this PR may not touch). Several project READMEs still say "GitHub Pages" for how to host a copy; those are true of any static host and were left. | 1 | #934 |
+
 ### Answered, kept here so they are not re-asked
+
+- **Eight questions Devon answered on 2026-10-05 were recorded here on
+  2026-10-10** (#935), in their rows above, which keep the text of the
+  question beside the answer: Q16, "keep it"; Q20, "it is the design";
+  Q21, "deepen the engine"; Q32, "ignore it"; Q34, "they have none"; Q35,
+  "not any time soon" (its HTTPS half is not answered and stays open); Q42,
+  "no"; Q45, "dread". They were taken from the Selector's record of his
+  answers to the list sent that day (`BACKLOG-AUDIT-2026-10-01.md`, TG-23,
+  TG-26 and TG-29's notes), where only the words in bold are his.
 
 - **Four Castle Conundrum questions were answered here and moved with the
   project on 2026-09-15** (#491): whether the fourth bell forces the accusation

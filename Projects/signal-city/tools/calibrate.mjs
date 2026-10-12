@@ -294,7 +294,8 @@ export function played(level, seed, { hand = false, offset = null, at = null } =
 // then least wait). Every 2 s doubles a sweep that already costs Two Blocks
 // 66 runs. Null on a single box, and on boxes that run rules and no plan.
 // On a corridor with an outage the slider is moved BACK_DELAY seconds after
-// the lights come back (powerBack), and the number is the slider's.
+// the lights come back (powerBack), and the number is the slider's, which
+// reads what the street runs by then (#959): seconds behind the first box.
 export function handOffset(level, parts = {}) {
   // a row of boxes on rules has no plan to shift (Cross Town, #929): only a timed corridor has an offset
   if (!isCorridor(level) || (level.controller || {}).mode !== 'timed') return null;

@@ -24,7 +24,8 @@ const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ, SHELL_KINDS,
         sandHeight, shorelineZ, seabedSlope, beachSlope, regionAt, regionWeights, walkLimits, trailX,
         riverX, PIER, onPier, pierDeckY, CAVE,
         TIDE, tideLevel, tideY, seaLevel, waterLineZ, sandAt, poolIsClear,
-        WET_REACH, WET_STRIP } =
+        WET_REACH, WET_STRIP,
+        BAR, inBarZone, barCrestS, seaOver, shoreEdgeZ, barEdges, barStep } =
   await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -357,11 +358,14 @@ group('the tide');
   // luck: the pier deck (groundHeight returns planking there, 1.9 m up, which
   // is what makes it walkable), the pool basins carved into the headland
   // shelf, and the river channel, which is cut below sea level on purpose.
+  // A fourth since #953: the bar east of the pier, whose ford is dry at low
+  // water where this line says the edge is. It has a group of its own below.
   // Picking sample points that happened to miss them would have been the same
   // test with nothing holding it there.
   const plainCoast = x =>
     Math.abs(x - PIER.x) > PIER.halfW + 1 &&
     (x < 545 || x > 675) &&
+    !inBarZone(x) &&
     LAYOUT.headland.pools.every(p => Math.abs(x - p.x) > p.r + 1);
   let worstEbb = 0, ebbAt = null, worstFlood = 0, floodAt = null, sampled = 0;
   for (let x = -760; x <= 760; x += 5) {
@@ -833,6 +837,234 @@ group('the owl hunts the dunes');
   }
   ok(wary.every(d => d > 15), 'it hunts the ground the walker is not standing on',
     `drops ${Math.min(...wary).toFixed(1)} m from the walker at the nearest`);
+}
+
+/* ------------------------------------------------------ the bar and runnel -- */
+
+group('the bar and the runnel (#953)');
+{
+  // The sea's own four corners: the water plane at the bottom and top of the
+  // swash, at low and at high water.
+  const LOW0 = seaLevel(0, 600), LOW1 = seaLevel(1, 600);
+  const HIGH0 = seaLevel(0, 1800), HIGH1 = seaLevel(1, 1800);
+  const KNEE = 0.45;
+  const X0 = BAR.x - BAR.half, X1 = BAR.x + BAR.half;
+  const sAt = (x, s) => sandHeight(x, shorelineZ(x) + s);
+
+  // Nothing else moved. Every height on the coast that is not the bar's own
+  // seabed, as one FNV-1a hash over the float bits, taken from field.js as it
+  // stood before the bar (27,711 heights; git show 8e7fedf:.../js/field.js).
+  {
+    const buf = new DataView(new ArrayBuffer(8));
+    let h = 0x811c9dc5, n = 0;
+    for (let x = -780; x <= 780; x += 5) for (let z = -60; z <= 118; z += 2) {
+      if (inBarZone(x) && z < shorelineZ(x)) continue;
+      buf.setFloat64(0, groundHeight(x, z)); n++;
+      for (let i = 0; i < 8; i++) { h ^= buf.getUint8(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    }
+    ok(n === 27711 && h === 0x4257ff5a, 'the rest of the coast is the heights it was, bit for bit',
+      `${n} heights, hash ${h.toString(16)}`);
+  }
+  ok(regionAt(X0) === 'pier' && regionAt(X1) === 'pier' && X0 > PIER.x + PIER.halfW + 20 && X0 > 140,
+    'it lies on the pier beach, clear of the pier and nowhere near home', `x ${X0} to ${X1}`);
+  // At its two ends the bar has run out: the seabed there is the plain wedge.
+  let seam = 0;
+  for (let s = 0; s >= -40; s -= 0.25) {
+    for (const x of [X0 + 1e-6, X1 - 1e-6, X0 + 2, X1 - 2]) {
+      seam = Math.max(seam, Math.abs(sAt(x, s) - s * seabedSlope(x)));
+    }
+  }
+  ok(seam === 0, 'and has run out to the plain seabed 2 m inside either end', `worst lift ${seam}`);
+
+  // The crest, read off the ground and not off BAR.crest.
+  let top = -Infinity, topAt = null;
+  for (let x = X0; x <= X1; x += 0.5) for (let s = -8; s >= -20; s -= 0.25) {
+    const h = sAt(x, s);
+    if (h > top) { top = h; topAt = [x, s]; }
+  }
+  ok(top > LOW1 && top < HIGH0, 'the bar is dry through every wave of low water and under every wave of high',
+    `crest ${top.toFixed(3)} at s ${topAt[1]}, low water tops at ${LOW1.toFixed(2)}, high bottoms at ${HIGH0.toFixed(2)}`);
+  let dryLen = 0;
+  for (let x = X0; x <= X1; x += 0.5) if (sAt(x, barCrestS(x)) > tideY(600)) dryLen += 0.5;
+  ok(dryLen > 50 && dryLen < 2 * BAR.half - 10, 'at low water it is a bar, tens of metres long, with sea round both tips',
+    `${dryLen} m of crest above ${tideY(600).toFixed(2)}`);
+
+  // The ford: the deepest step between the beach and the crest, down the
+  // middle columns, at the highest water there ever is.
+  const fordW = BAR.half * BAR.fordHalf;
+  let deepest = 0;
+  for (let x = BAR.x - fordW; x <= BAR.x + fordW; x += 0.5) {
+    for (let s = 0; s >= BAR.s; s -= 0.25) deepest = Math.max(deepest, HIGH1 - sAt(x, s));
+  }
+  ok(deepest < KNEE && deepest > 0.3, 'the ford is under the knee at the top of the highest wave of high water',
+    `${deepest.toFixed(3)} m at the deepest, ${(2 * fordW).toFixed(1)} m wide`);
+  let worstTide = 0;
+  for (let t = 0; t < TIDE.period; t += 20) for (let w = 0; w <= 1; w += 0.125) {
+    for (let s = 0; s >= BAR.s; s -= 0.5) worstTide = Math.max(worstTide, seaLevel(w, t) - sAt(BAR.x, s));
+  }
+  ok(worstTide < KNEE, 'and at every minute of the tide and every height of the wave', `${worstTide.toFixed(3)} m`);
+
+  // The channel either side of the ford is a channel: it holds water at low
+  // water, and at high it is over the knee, which is what cuts a walker off.
+  const chan = x => { let m = Infinity; for (let s = -2; s >= BAR.s; s -= 0.25) m = Math.min(m, sAt(x, s)); return m; };
+  const chanX = BAR.x + BAR.half * 0.45;
+  ok(chan(chanX) < LOW0 && HIGH1 - chan(chanX) > KNEE && sAt(chanX, barCrestS(chanX)) > LOW1,
+    'either side of the ford the channel holds water at low water beside a dry bar, and is over the knee at high',
+    `floor ${chan(chanX).toFixed(2)} at x ${chanX.toFixed(0)}`);
+
+  // Flooding. One flat plane is drawn wherever it is above the sand, so the
+  // seabed has to be one where that is true of real water: every wet cell
+  // must be reachable from the open sea through wet cells. And the channel
+  // has to fill from its ends.
+  const GX = 0.25, GS = 0.25, NX = Math.round((X1 - X0 + 20) / GX) + 1, NS = Math.round(30 / GS) + 1;
+  const gh = new Float64Array(NX * NS);
+  for (let i = 0; i < NX; i++) for (let j = 0; j < NS; j++) gh[i * NS + j] = sAt(X0 - 10 + i * GX, -j * GS);
+  const stranded = level => {
+    const seen = new Uint8Array(NX * NS), stack = [];
+    for (let i = 0; i < NX; i++) { seen[i * NS + NS - 1] = 1; stack.push(i * NS + NS - 1); }   // s = -30, open sea
+    while (stack.length) {
+      const c = stack.pop(), i = (c / NS) | 0, j = c % NS;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const a = i + di, b = j + dj;
+        if (a < 0 || a >= NX || b < 0 || b >= NS) continue;
+        const k = a * NS + b;
+        if (!seen[k] && gh[k] < level) { seen[k] = 1; stack.push(k); }
+      }
+    }
+    let n = 0;
+    // 2 cm of slack: the channel's deepest line is a groove running across
+    // the grid at a slant, and a 0.25 m grid reads millimetre pockets into it
+    // (six of 1 mm on the shape as shipped). A basin is one a walker could see.
+    for (let k = 0; k < NX * NS; k++) if (gh[k] < level - 0.02 && !seen[k]) n++;
+    return n;
+  };
+  let ponds = 0, levels = 0;
+  for (let level = LOW0; level <= HIGH1 + 1e-9; level += 0.005) { ponds += stranded(level); levels++; }
+  ok(ponds === 0, 'no water is ever drawn in a basin the sea could not have got to', `${ponds} cells stranded 2 cm deep or more, over ${levels} levels`);
+
+  // The dry part of the channel, along the line halfway between beach and
+  // bar: one stretch about the ford, shrinking as the water rises, gone
+  // before the crest is.
+  const midS = BAR.s / 2;
+  const dryRun = level => {
+    let a = null, b = null, runs = 0, was = false;
+    for (let x = X0; x <= X1; x += 0.25) {
+      const dry = sAt(x, midS) >= level;
+      if (dry && !was) runs++;
+      if (dry) { if (a === null) a = x; b = x; }
+      was = dry;
+    }
+    return { a, b, runs };
+  };
+  let fromEnds = true, last = null, closedAt = null;
+  for (let level = LOW0; level <= HIGH1 + 1e-9; level += 0.01) {
+    const d = dryRun(level);
+    if (d.runs > 1) fromEnds = false;
+    if (d.runs === 1 && !(d.a < BAR.x && d.b > BAR.x)) fromEnds = false;
+    if (last && d.runs === 1 && (d.a < last.a - 1e-9 || d.b > last.b + 1e-9)) fromEnds = false;
+    if (last && last.runs === 0 && d.runs > 0) fromEnds = false;
+    if (d.runs === 0 && closedAt === null) closedAt = level;
+    last = d;
+  }
+  const first = dryRun(LOW0);
+  ok(fromEnds && first.runs === 1 && first.b - first.a > 20 && closedAt !== null && closedAt < top,
+    'the channel fills from its two ends toward the ford, and the ford goes under before the bar does',
+    `dry ${first.a} to ${first.b} at ${LOW0.toFixed(2)}, closed at ${closedAt?.toFixed(2)}, crest ${top.toFixed(2)}`);
+
+  // The edges the foam rides. Each is held to the ground, as the coast's is.
+  let miss = 0, seaN = 0, landN = 0, deadShore = 0, falseShore = 0;
+  for (const level of [LOW0, tideY(600), LOW1, tideY(0), seaLevel(1, 0), HIGH0, HIGH1]) {
+    for (let x = X0 + 0.5; x < X1; x += 0.5) {
+      const e = barEdges(x, level);
+      if (e.sea !== null) { seaN++; miss = Math.max(miss, Math.abs(sandHeight(x, e.sea) - level)); }
+      if (e.land !== null) { landN++; miss = Math.max(miss, Math.abs(sandHeight(x, e.land) - level)); }
+      const z = shoreEdgeZ(x, level);
+      if (z === null) { deadShore++; if (sandHeight(x, waterLineZ(x, level)) <= level) falseShore++; }
+      else miss = Math.max(miss, level < 0 ? Math.abs(sandHeight(x, z) - level) : 0);
+    }
+  }
+  ok(miss < 1e-9 && seaN > 300 && landN > 100, "the bar's two edges and the beach's are where the water meets the sand",
+    `worst miss ${miss.toExponential(1)} m, ${seaN} seaward and ${landN} channel-side`);
+  ok(deadShore > 50 && falseShore === 0, 'and the beach has no edge across the dry ford', `${deadShore} columns with none`);
+  {
+    const lo = barEdges(BAR.x, tideY(600)), hi = barEdges(BAR.x, tideY(1800)), side = barEdges(chanX, tideY(600));
+    ok(lo.sea !== null && lo.land === null && shoreEdgeZ(BAR.x, tideY(600)) === null &&
+       side.sea !== null && side.land !== null && shoreEdgeZ(chanX, tideY(600)) !== null &&
+       hi.sea === null && hi.land === null && shoreEdgeZ(BAR.x, tideY(1800)) !== null,
+      'low water: one edge at the ford (the far side of the bar), three beside it; high water: the beach alone');
+    ok(barEdges(X0 - 1, 0).sea === null && barEdges(0, -0.3).sea === null && shoreEdgeZ(0, -0.3) === waterLineZ(0, -0.3),
+      'off the bar there are no bar edges and the beach edge is the line it was');
+  }
+  const crestZ = shorelineZ(BAR.x) + BAR.s;
+  ok(sandAt(BAR.x, crestZ, tideY(600)) === 'wet' && sandAt(BAR.x, crestZ, tideY(1800)) === 'sea' &&
+     sandAt(BAR.x, crestZ + 6, tideY(600)) === 'wet' && sandAt(chanX, crestZ + 6, tideY(600)) === 'sea' &&
+     !seaOver(BAR.x, crestZ, LOW1) && seaOver(BAR.x, crestZ, HIGH0) && seaOver(chanX, crestZ + 6, LOW1),
+    'the bar and the dry ford take footprints at low water and the sea takes them back');
+  ok(seaOver(0, -8, -0.1) === (-8 < waterLineZ(0, -0.1)) && seaOver(0, -6.5, -0.1) === (-6.5 < waterLineZ(0, -0.1)) &&
+     sandAt(0, -5, -0.1) === 'wet' && sandAt(0, -8, -0.1) === 'sea',
+    'and on the home beach both are the questions they were');
+
+  // The walker. barStep is the whole rule on this stretch; controls.js adds
+  // the stride and nothing else.
+  const SPEED = 2.1, DT = 1 / 60;
+  const walk = (x, z, dirX, dirZ, levelAt, seconds, stop) => {
+    let t = 0;
+    for (; t < seconds; t += DT) {
+      const to = barStep(x, z, x + dirX * SPEED * DT, z + dirZ * SPEED * DT, levelAt(t));
+      x = to.x; z = to.z;
+      if (stop && stop(x, z)) break;
+    }
+    return { x, z, t };
+  };
+  const ashore = (x, z) => z >= shorelineZ(x);
+  // Home from the crest across the ford: 13 m at 2.1 m/s, at high water with
+  // the wave running, and at each minute of the tide. Not once held up.
+  let slowest = 0;
+  for (let t0 = 0; t0 < TIDE.period; t0 += 60) {
+    const r = walk(BAR.x, crestZ, 0, 1, t => seaLevel(0.5 - 0.5 * Math.cos(t * 2 * Math.PI / 9.5), t0), 30, ashore);
+    slowest = Math.max(slowest, r.t);
+  }
+  ok(Math.abs(slowest - -BAR.s / SPEED) < 0.05, 'the way back over the ford is a walk at walking speed at every tide',
+    `${slowest.toFixed(2)} s for ${-BAR.s} m`);
+  // Cut off: straight ashore from the bar beside the ford at high water is
+  // refused at the channel, and the walker is still where the bar is.
+  const cut = walk(chanX, shorelineZ(chanX) + barCrestS(chanX), 0, 1, () => HIGH1, 30, ashore);
+  ok(!ashore(cut.x, cut.z) && HIGH1 - groundHeight(cut.x, cut.z) <= KNEE + 1e-9,
+    'beside the ford at high water the channel turns a walker back, at the knee',
+    `stopped at s ${(cut.z - shorelineZ(cut.x)).toFixed(2)}, ${(HIGH1 - groundHeight(cut.x, cut.z)).toFixed(3)} m deep`);
+  // ...and round by the ford they are home.
+  const along = walk(cut.x, shorelineZ(cut.x) + BAR.s, -1, 0, () => HIGH1, 60, x => x <= BAR.x);
+  const home = walk(along.x, along.z, 0, 1, () => HIGH1, 30, ashore);
+  ok(ashore(home.x, home.z), 'and back along the bar to the ford, they walk ashore',
+    `${(cut.t + along.t + home.t).toFixed(1)} s in all`);
+  // Seaward off the bar the old rule holds: the walker stops at the knee.
+  const out = walk(BAR.x, crestZ, 0, -1, () => LOW0, 30);
+  ok(Math.abs(LOW0 - groundHeight(out.x, out.z) - KNEE) < 0.02 && out.z < crestZ - 2,
+    "the bar's far side is a wade to the knee and no further", `${(crestZ - out.z).toFixed(2)} m past the crest`);
+  // A wave over the knee does nothing to a walker but stop them going deeper.
+  {
+    // A spot where the channel's own floor is the ground, so it deepens along the shore.
+    const x = BAR.x + BAR.half * 0.3, z = shorelineZ(x) - 6;
+    const deepNow = HIGH1 - groundHeight(x, z);
+    const stay = barStep(x, z, x, z, HIGH1);
+    const deeper = barStep(x, z, x + 0.035, z, HIGH1);           // toward the channel's end
+    const shallower = barStep(x, z, x - 0.035, z, HIGH1);        // toward the ford
+    ok(deepNow > KNEE && stay.x === x && stay.z === z && deeper.x === x && shallower.x < x,
+      'a walker the water rises over is not moved, cannot go deeper, and can walk to the ford',
+      `${deepNow.toFixed(2)} m deep`);
+    const r = walk(x, z, -1, 0, () => HIGH1, 30, ax => ax <= BAR.x);
+    ok(r.x <= BAR.x && HIGH1 - groundHeight(r.x, r.z) < KNEE, 'which they reach');
+  }
+  // Leaving the stretch out of depth is refused: the old limit rules there,
+  // and it would snap them.
+  {
+    const z = shorelineZ(X1) - 6;                                  // 0.6 m down, 0.91 m of water at HIGH1
+    const leave = barStep(X1 - 0.01, z, X1 + 0.02, z, HIGH1);
+    const wade = barStep(X1 - 0.01, shorelineZ(X1) - 1, X1 + 0.02, shorelineZ(X1) - 1, HIGH1);
+    ok(leave.x === X1 - 0.01 && wade.x === X1 + 0.02 &&
+       shorelineZ(X1) - 1 >= walkLimits(X1 + 0.02, HIGH1).minZ && z < walkLimits(X1 + 0.02, HIGH1).minZ,
+      'a walker leaves the stretch only where the old wading limit would have them');
+  }
 }
 
 /* --------------------------------------------------------------------------- */
