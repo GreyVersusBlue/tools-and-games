@@ -85,7 +85,10 @@ export const PACK_02 = [
     // (2026-10-07, #949). The run is 270 s, not 240, for the deadline's sake:
     // 90 + 150 is 240, the old run's last frame, and an ambulance still on
     // the map then was never late and read "made it without its corridor".
-    // The clock now runs out 30 s before the run does
+    // The clock now runs out 30 s before the run does. Since #955 the end of
+    // a run counts that ambulance late and says where it was, so the 30 s
+    // are no longer what keeps the card honest; they are kept because a
+    // late ambulance is then seen late, by how much, with the run still on
     events: [{ kind: 'ambulance', at: 90, leg: 'W', turn: 'T', within: 150 }],
     duration: 270,
     // calibrated on six seeds (R13, #929, again at #949), `calibrate.mjs

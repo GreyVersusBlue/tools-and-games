@@ -465,11 +465,15 @@ group('the lesson decides a star (R2)');
   ok(Math.abs(idle.came - 90) < 0.05 && idle.corridors === '' && idle.trip > amb0.within && idle.trip < ct.duration - amb0.at && idle.r.lesson && !idle.r.lesson.met && idle.r.stars === 1 && idle.r.cleared >= ct.target, 'Cross Town with nothing pressed, seed 4: the ambulance comes at 90 s, nobody makes its corridor, it leaves the map late, and the run keeps one star', `${tripText(idle)}, ${idle.r.cleared} cleared, ${starString(idle.r.stars)}`);
   ok(idle.lateAt !== null && Math.abs(idle.lateAt - (idle.came + amb0.within)) < 0.05 && idle.lateAt < ct.duration - 29 && idle.w.stats.ambulanceLate === 1, 'it is called late the moment its 150 s are up, half a minute before the run ends', `late at ${idle.lateAt === null ? 'no time' : idle.lateAt.toFixed(2) + ' s'} of ${ct.duration}`);
   ok(/^the ambulance was \d+ s late$/.test(idle.r.reasons.at(-1)), 'and the reason line says how late', idle.r.reasons.at(-1));
-  // why the run is 270 s (#949): cut back to 240 the clock runs out on the
-  // last frame, the same ambulance is still on the map with nothing
-  // counted against it, and the end card says it made it
+  // cut back to 240 s the run's clock runs out on the ambulance's last
+  // frame with it still on the map. Until #955 nothing was counted against
+  // it and the end card said it had made it, which is why #949 made the
+  // run 270 s; now the end of the run counts it late and says where it was
   const cut = runC(null, 4, { ...ct, duration: 240 });
-  ok(cut.trip === Infinity && cut.lateAt === null && cut.w.stats.ambulanceLate === 0 && cut.r.reasons.at(-1) === 'the ambulance made it without its corridor', 'the same run cut to 240 s ends with the ambulance on the map, never late, and a reason line that says it made it: the run has to outlast the clock', `${tripText(cut)}: ${cut.r.reasons.at(-1)}`);
+  ok(cut.trip === Infinity && cut.w.ambulanceClock() > 0 && cut.w.ambulanceClock() < 0.05, 'the same run cut to 240 s ends with the ambulance on the map and a frame left on its own clock', `${tripText(cut)}, clock ${cut.w.ambulanceClock().toFixed(3)} s`);
+  ok(cut.w.stats.ambulanceLate === 1 && cut.lateAt === cut.w.t && cut.r.ambulanceLate === 1, 'and the end of the run counts it late (#955)', `${cut.w.stats.ambulanceLate} late, said at ${cut.lateAt === null ? 'no time' : cut.lateAt.toFixed(2) + ' s'}`);
+  ok(cut.r.reasons.at(-1) === 'the ambulance was still on the map when the clock ran out' && !cut.r.lesson.met && cut.r.stars === 1, 'its reason line says it was still on the map, and no longer that it made it', cut.r.reasons.at(-1));
+  ok(cut.r.points === Math.max(0, Math.round(cut.r.cleared * 10 + 200 + 150 + cut.r.bonus * 2 - cut.r.collisions * 100 - cut.r.honks * 5 - cut.r.pedLate * 5 - 50)), 'and it pays a late ambulance\'s 50 points', `${cut.r.points} points`);
   ok(called.corridors === '0,1,2' && called.handed === '1,2' && called.trip <= amb0.within - 30 && called.lateAt === null && called.r.lesson && called.r.lesson.met && called.r.stars === 3, 'seed 6, the corridor called as it arrives: it follows the ambulance to boxes 2 and 3, and that alone is on time with half a minute in hand, the lesson met', `${tripText(called)} against ${amb0.within} s, corridors at boxes ${called.corridors}`);
   ok(road.corridors === '0,1,2' && road.handed === '1,2' && road.trip <= amb0.within && road.trip < called.trip - 25 && road.r.lesson && road.r.lesson.met && road.r.stars === 3, 'called, and the green given at each box ahead of it: it crosses all three more than 25 s sooner, the lesson is met and the run three-stars', `${tripText(road)}, ${starString(road.r.stars)}`);
   ok(idle.turned === 0 && road.turned === 0 && road.w.stats.handoffs > 60, 'and every car handed on, the ambulance among them, goes straight on', `${road.w.stats.handoffs} handed on`);
