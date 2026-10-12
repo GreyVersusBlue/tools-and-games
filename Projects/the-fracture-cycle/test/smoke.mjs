@@ -19,9 +19,20 @@
 //      door: a fresh load, a round trip, a corrupt blob, an ending id that
 //      doesn't exist.
 //
+//   3. Every path (decision #958, the fourth prong). The walk in 2 memoises
+//      on (node, state) and so proves reachability, not sameness. Section 3
+//      enumerates every complete path from `intro` to an ending and pins the
+//      ones that do not start on the seam to a hash taken from the page as it
+//      stood before the prong was written: same nodes, same text, same
+//      choices offered, same state after each step. A typo fixed in an old
+//      node moves that hash on purpose: rerun with --paths and paste the new
+//      figures, in a commit that says why.
+//
 // Run with: node Projects/the-fracture-cycle/test/smoke.mjs
+//           node Projects/the-fracture-cycle/test/smoke.mjs --paths   (prints the counts and hashes)
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -186,17 +197,126 @@ function walk(id, curState) {
 }
 walk("intro", initialState());
 
-const ALL_ENDINGS = ["end_radiant", "end_dire", "end_convergence", "end_ascension", "end_corruption"];
+// The fourth prong (#958). PRONG_WIRED says whether a player can enter it, and
+// it is the one switch: while it is false the entrance must be absent and no
+// seam node may be reached from `intro`, however much of the prong is written;
+// once it is true all seven nodes must exist. A prong is never half-reachable.
+const PRONG_WIRED = false;
+const OLD_ENDINGS = ["end_radiant", "end_dire", "end_convergence", "end_ascension", "end_corruption"];
+const SEAM_ENDINGS = ["end_witness", "end_named"];
+const SEAM_NODES = ["seam_walk", "seam_cairn", "seam_stone", "seam_named", "seam_answer", ...SEAM_ENDINGS];
+const seamWritten = SEAM_NODES.filter(id => id in nodes);
+const seamReached = SEAM_NODES.filter(id => nodesVisited.has(id));
+const entrance = nodes.intro.choices.filter(c => c.next === "seam_walk");
+if (PRONG_WIRED) {
+  ok(entrance.length === 1, `the seam's entrance is one choice at intro, got ${entrance.length}`);
+  ok(seamWritten.length === SEAM_NODES.length,
+    `the prong is wired, so all ${SEAM_NODES.length} of its nodes exist (missing: ${SEAM_NODES.filter(id => !(id in nodes)).join(", ") || "none"})`);
+} else {
+  ok(entrance.length === 0, "the prong is not finished, so intro offers no way onto the seam");
+  ok(seamReached.length === 0, "the prong is not finished, so no seam node is reached from intro" +
+    (seamReached.length ? `: ${seamReached.join(", ")}` : ""));
+}
+
+const ALL_ENDINGS = PRONG_WIRED ? [...OLD_ENDINGS, ...SEAM_ENDINGS] : OLD_ENDINGS;
 for (const id of ALL_ENDINGS) {
   ok(endingsSeen.has(id), `${id} is reachable from intro (found: [${[...endingsSeen].join(", ")}])`);
 }
 ok(endingsSeen.size === ALL_ENDINGS.length, `exactly ${ALL_ENDINGS.length} endings exist and all are reachable, got ${endingsSeen.size}`);
 
-const orphans = nodeIds.filter(id => !nodesVisited.has(id));
+const orphans = nodeIds.filter(id => !nodesVisited.has(id) && (PRONG_WIRED || !SEAM_NODES.includes(id)));
 ok(orphans.length === 0, "every defined node is reached by the walk" + (orphans.length ? `: ${orphans.join(", ")} never visited` : ""));
 
 /* ---------------------------------------------------------------------
-   Section 3: the save slot (save-config.js + gvb-save.js)
+   Section 3: every path, node by node
+--------------------------------------------------------------------- */
+group("every path");
+
+// What the page's render() shows for a node in a given state. The one
+// substitution is the page's own line, asserted as text below so this copy
+// cannot drift from it unseen.
+function shown(node, s) {
+  return node.dynamic ? node.text.replace("${fragCount}", String(s.fragments.length)) : node.text;
+}
+ok(html.includes("html = html.replace('${fragCount}', String(state.fragments.length));"),
+  "the page's render() still makes the one substitution this suite copies");
+
+// No memo here: every complete path is walked on its own. `steps` is what a
+// player saw and did; `end` is where it stopped.
+const DEPTH_CAP = 40;
+const paths = [];
+const deadEnds = [];
+function enumerate(id, curState, steps) {
+  const node = nodes[id];
+  if (node.ending) {
+    paths.push({ steps: [...steps, { id, title: node.title, text: shown(node, curState) }], end: id, state: curState });
+    return;
+  }
+  if (steps.length >= DEPTH_CAP) { deadEnds.push(`${id}: no ending within ${DEPTH_CAP} steps`); return; }
+  state = curState;
+  let opts = optionsFor(node);
+  if (!opts.length) { deadEnds.push(`${id}: no choice offered with ${JSON.stringify(curState)}`); return; }
+  // The seam's entrance is the one thing an old path is allowed to see that
+  // it did not see before, and it is left out of what is compared here only.
+  const offered = opts.filter(o => !(id === "intro" && o.next === "seam_walk"))
+    .map(o => (o.mark || "") + "|" + o.label + "|" + o.next);
+  for (const opt of opts) {
+    const branchState = cloneState(curState);
+    state = branchState;
+    if (opt.effect) opt.effect(branchState);
+    enumerate(opt.next, branchState, [...steps, {
+      id, title: node.title, text: shown(node, curState), offered, took: opt.label, after: JSON.stringify(branchState),
+    }]);
+    state = curState;
+  }
+}
+enumerate("intro", initialState(), []);
+
+const onSeam = p => p.steps[1] && p.steps[1].id === "seam_walk";
+const oldPaths = paths.filter(p => !onSeam(p));
+const seamPaths = paths.filter(onSeam);
+const sha = list => crypto.createHash("sha256")
+  .update(JSON.stringify(list.map(p => JSON.stringify(p.steps)).sort())).digest("hex");
+const words = t => t.replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
+const countOf = ids => {
+  let choices = 0, w = 0;
+  for (const id of ids) {
+    const n = nodes[id];
+    w += words(n.title) + words(n.text);
+    if (n.ending) continue;
+    // a choice list built by a function is counted at its longest
+    const src = typeof n.choices === "function" ? String(n.choices).match(/label:/g).length : n.choices.length;
+    choices += src;
+    const labels = typeof n.choices === "function" ? [...String(n.choices).matchAll(/label:"([^"]*)"/g)].map(m => m[1]) : n.choices.map(c => c.label);
+    for (const l of labels) w += words(l);
+  }
+  return { nodes: ids.length, choices, words: w };
+};
+
+ok(deadEnds.length === 0, "no path stops short of an ending" + (deadEnds.length ? ": " + deadEnds.join("; ") : ""));
+ok(paths.every(p => nodes[p.end].ending), "every path ends on an ending node");
+
+// The three old prongs, as they played at d40aa09, before a line of the
+// fourth was written. 171 paths; the hash covers every step of every one.
+const OLD_PATHS = 171;
+const OLD_SHA = "4bd66e1d435aacca26bd084da7fcc5ecf8102f69e4dfca0e4d180e32f1516d9b";
+ok(oldPaths.length === OLD_PATHS, `the three old prongs still have ${OLD_PATHS} paths, got ${oldPaths.length}`);
+ok(sha(oldPaths) === OLD_SHA, "every old path plays as it did: same nodes, text, choices offered and state at every step");
+ok(oldPaths.every(p => !("seam" in p.state)), "no old path ends carrying any of the seam's state");
+ok(oldPaths.every(p => OLD_ENDINGS.includes(p.end)), "no old path ends on one of the seam's endings");
+
+if (process.argv.includes("--paths")) {
+  const tally = list => Object.fromEntries([...OLD_ENDINGS, ...SEAM_ENDINGS].map(e => [e, list.filter(p => p.end === e).length]));
+  console.log(JSON.stringify({
+    all: countOf(nodeIds), old: countOf(nodeIds.filter(id => !SEAM_NODES.includes(id))), seam: countOf(seamWritten),
+    endings: nodeIds.filter(id => nodes[id].ending).length,
+    paths: { old: oldPaths.length, seam: seamPaths.length }, oldSha: sha(oldPaths), seamSha: sha(seamPaths),
+    oldEnds: tally(oldPaths), seamEnds: tally(seamPaths),
+  }, null, 2));
+}
+
+/* ---------------------------------------------------------------------
+   Section 4: the save slot (save-config.js + gvb-save.js)
 --------------------------------------------------------------------- */
 group("save slot");
 
@@ -205,7 +325,9 @@ const { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, rep
   await mod("save-config.js");
 
 ok(ALL_ENDINGS.every(id => ENDING_IDS.includes(id)) && ENDING_IDS.length === ALL_ENDINGS.length,
-  "save-config's ENDING_IDS matches the five endings the graph actually has");
+  `save-config's ENDING_IDS matches the ${ALL_ENDINGS.length} endings the graph actually has`);
+ok(SAVE_KEY === "fracture-cycle-v1" && SAVE_VERSION === 1, "the storage key and version are the ones every save out there was written under (#36)");
+ok(OLD_ENDINGS.every((id, i) => ENDING_IDS[i] === id), "the five old ending ids come first and in their old order, so the tracker's first five chips do not move");
 
 function memStore() {
   const m = new Map();
