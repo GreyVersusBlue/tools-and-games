@@ -1,7 +1,13 @@
-/* The Movement section: the map as the page (DESIGN 5.3). The first line and
-   the controls are along the top, the playback bar along the bottom, and the
-   canvas takes everything between. The legend, the cell card and the zoom
-   buttons sit over the canvas's corners.
+/* The Movement section: the map as the page (DESIGN 5.3). The first line is
+   along the top with the controls under it, folded away or shown; the
+   playback bar is one row along the bottom; the canvas takes everything
+   between. The legend, the cell card and the zoom buttons sit over the
+   canvas's corners.
+
+   The map comes first at every width: the stage is never under 45 % of the
+   window's height, nor under 320 px. Where the controls are shown and the
+   window cannot hold that, the section scrolls inside itself (.mov) and the
+   stage keeps its height.
 
    index.html links this sheet (data-sheet="movement"); ui/movement/index.js
    adds it to a page that does not. The section's place in the shell (the map
@@ -12,6 +18,8 @@
 .mov {
   height: 100%;
   min-height: 360px;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--paper);
 }
 
@@ -21,9 +29,13 @@
 }
 
 .mov-map {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.mov-map > * {
+  flex: none;
 }
 
 .mov-map[hidden],
@@ -39,13 +51,43 @@
   border-bottom: var(--border);
 }
 
-/* the screen's first line: a sentence at the size of the text, not of a headline */
+/* the screen's first line: a sentence at the size of the text, not of a
+   headline, ending in what it offers (Show me, Change) */
 .mov-line.intro__first {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--s-4);
   margin: 0;
   max-width: none;
   font-size: var(--t-md);
   line-height: var(--lh-md);
   font-weight: var(--w-medium);
+}
+
+.mov-line__words {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.mov-line .mov-link[hidden] {
+  display: none;
+}
+
+/* the disclosure: an arrow that points down while the controls are away */
+.mov-change::after {
+  content: "";
+  display: inline-block;
+  width: 0.4em;
+  height: 0.4em;
+  margin-left: 0.4em;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-0.2em) rotate(45deg);
+}
+
+.mov-change[aria-expanded="true"]::after {
+  transform: translateY(0.05em) rotate(-135deg);
 }
 
 .mov-link {
@@ -68,6 +110,10 @@
   align-items: flex-start;
   gap: var(--s-3) var(--s-5);
   margin-top: var(--s-3);
+}
+
+.mov-controls[hidden] {
+  display: none;
 }
 
 .mov-ctl {
@@ -223,8 +269,12 @@
 
 /* ---------- The map ---------- */
 
-.mov-stage {
+/* the map's floor: 45 % of the window's height and 320 px at the least, and
+   whatever the first line and the bar leave above that */
+.mov-map > .mov-stage {
   position: relative;
+  flex: 1 0 max(45vh, 320px);
+  flex-basis: max(45dvh, 320px);
   min-height: 0;
   overflow: hidden;
 }
@@ -458,7 +508,7 @@
   color: var(--ink-2);
 }
 
-/* ---------- The playback bar's place ---------- */
+/* ---------- The playback bar ---------- */
 
 .mov-bar {
   padding: var(--s-2) var(--s-4);
@@ -466,10 +516,215 @@
   border-top: var(--border);
 }
 
-.mov-bar__note {
+.mov-pb {
+  display: grid;
+  gap: var(--s-2);
+}
+
+/* one row, whatever the width: the scrubber takes what the rest leave */
+.mov-pb__row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.mov-pb__row > * {
+  flex: none;
+}
+
+.mov-pb__steps {
+  display: inline-flex;
+  gap: var(--s-1);
+}
+
+.mov-pb__play {
+  min-width: 5rem;
+}
+
+.mov-pb__step {
+  min-width: 36px;
+  padding: 0;
+}
+
+.mov-pb__step--back .icon {
+  transform: scaleX(-1);
+}
+
+.mov-pb__row > .mov-pb__scrub {
+  flex: 1 1 0;
+  min-width: 3.5rem;
+  height: 36px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.mov-pb__scrub:disabled {
+  opacity: 0.5;
+}
+
+.mov-pb__time {
+  display: grid;
+  min-width: 9.5rem;
+  font-variant-numeric: var(--numeric);
+}
+
+.mov-pb__clock {
+  font-family: var(--font-plan);
+  font-size: var(--t-lg);
+  font-weight: var(--w-semibold);
+  line-height: 1.1;
+}
+
+.mov-pb__countdown {
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  color: var(--ink-2);
+}
+
+.mov-pb__countdown[data-late="true"] {
+  color: var(--problem);
+  font-weight: var(--w-semibold);
+}
+
+.mov-pb__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+}
+
+.mov-pb__select {
+  width: auto;
+  height: 36px;
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.mov-pb__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2) var(--s-5);
+  padding-top: var(--s-2);
+  border-top: var(--border);
+}
+
+.mov-pb__more[hidden],
+.mov-pb__line[hidden] {
+  display: none;
+}
+
+.mov-pb__set {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.mov-pb__label {
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  color: var(--ink-2);
+}
+
+.mov-pb__line {
+  margin: 0;
   font-size: var(--t-sm);
   line-height: var(--lh-sm);
   color: var(--ink-2);
+}
+
+.mov-pb__line--late {
+  color: var(--problem);
+  font-weight: var(--w-semibold);
+}
+
+/* the markers' canvas, over the map's */
+.mov-pb__layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* who is at the cell now, in the cell card */
+.mov-card__now {
+  margin: var(--s-1) 0 0;
+  padding-top: var(--s-1);
+  border-top: var(--border);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.mov-card__late {
+  color: var(--problem);
+  font-weight: var(--w-semibold);
+}
+
+/* A phone: the row is Play, the two steps, the scrubber, the clock and More,
+   and the countdown's words go under it at the row's full width. */
+@media (max-width: 640px) {
+  .mov-bar {
+    padding: var(--s-2) var(--s-3);
+  }
+
+  .mov-pb__row {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    gap: var(--s-1) var(--s-2);
+  }
+
+  .mov-pb__row > .mov-pb__scrub {
+    min-width: 0;
+  }
+
+  .mov-pb__time {
+    display: contents;
+  }
+
+  .mov-pb__countdown {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .mov-pb__countdown:empty {
+    display: none;
+  }
+
+  .mov-pb__play {
+    min-width: 3.5rem;
+    padding-left: var(--s-2);
+    padding-right: var(--s-2);
+  }
+}
+
+/* a finger's targets on the bar (DESIGN 5.3) */
+@media (max-width: 640px), (pointer: coarse) {
+  .mov-pb .btn,
+  .mov-pb__select,
+  .mov-pb__row > .mov-pb__scrub {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .mov-pb__select,
+  .mov-pb__row > .mov-pb__scrub {
+    height: 44px;
+  }
+
+  .mov-pb__step {
+    min-width: 44px;
+  }
+
+  .mov-pb .seg__label {
+    min-height: 44px;
+  }
 }
 
 /* ---------- The top bar's second row ---------- */

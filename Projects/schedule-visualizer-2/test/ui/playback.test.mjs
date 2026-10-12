@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DEVICE_KEY, readDevice, PLAYBACK_DEFAULTS, playbackOf, playbackWith, readPlayback, writePlayback } from '../../storage/device.js';
+import { DEVICE_KEY, readDevice, PLAYBACK_DEFAULTS, playbackOf, playbackWith, readPlayback, writePlayback, movementOf, readMovement, writeMovement } from '../../storage/device.js';
 import { trackOf, headAt, coveredBy, stairPoint, pointOn } from '../../ui/surface/overlays/markers.js';
 import { drawStairLink } from '../../ui/surface/overlays/lanes.js';
 import { clockText, minutesText } from '../../ui/movement/playback.js';
@@ -63,6 +63,32 @@ function cellsOf(track) {
 }
 
 // ------------------------------------------------- what the device keeps
+
+// The movement view's own field (SV2-43, W1): the folded controls and the
+// hint that playback has been seen.
+test('movementOf: a stored value without the field, or with a malformed one, is nothing chosen and nothing played', () => {
+  for (const device of [undefined, null, 'x', [], {}, { theme: 'dark', playback: { speed: 2 } }, { movement: null }, { movement: 'folded' }, { movement: [] }, { movement: { controls: 'shut', played: 'yes' } }, { movement: { controls: 1, played: 1 } }]) {
+    assert.deepEqual(movementOf(device), { controls: null, played: false }, JSON.stringify(device));
+  }
+  assert.deepEqual(movementOf({ movement: { controls: 'folded' } }), { controls: 'folded', played: false });
+  assert.deepEqual(movementOf({ movement: { controls: 'open', played: true } }), { controls: 'open', played: true });
+  assert.deepEqual(readMovement(storageOf('not json')), { controls: null, played: false });
+});
+
+test('writeMovement: one field of sv2:device, the others kept, a key changed only when it is one of the choices', () => {
+  const storage = storageOf({ theme: 'dark', lastSection: 'movement', playback: { speed: 2 } });
+  assert.deepEqual(writeMovement({ controls: 'folded' }, storage), { controls: 'folded', played: false });
+  assert.deepEqual(readDevice(storage), { theme: 'dark', lastSection: 'movement', playback: { speed: 2 }, movement: { controls: 'folded' } });
+  // the other key of the field survives a write of one
+  assert.deepEqual(writeMovement({ played: true }, storage), { controls: 'folded', played: true });
+  assert.deepEqual(readDevice(storage).movement, { controls: 'folded', played: true });
+  // what is not a choice changes nothing, and played is never taken back
+  assert.deepEqual(writeMovement({ controls: 'shut', played: false }, storage), { controls: 'folded', played: true });
+  assert.deepEqual(writeMovement({ controls: 'open' }, storage), { controls: 'open', played: true });
+  // the storage key is the device's own: nothing else was written
+  assert.deepEqual(Object.keys(readDevice(storage)).sort(), ['lastSection', 'movement', 'playback', 'theme']);
+  assert.throws(() => writeMovement({ controls: 'open' }, storageOf({}, true)), /refused/);
+});
 
 test('playbackOf: a playback that is not an object is every default', () => {
   for (const playback of ['x', [], null, undefined, 4, true]) {

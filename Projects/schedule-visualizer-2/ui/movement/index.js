@@ -58,6 +58,7 @@ import { buildGraph } from '../../engine/graph.js';
 import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js';
 import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash } from '../schedule/index.js';
+import { readMovement, writeMovement } from '../../storage/device.js';
 import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence } from './model.js';
 import { layoutFloors, bestLayout, slotAt, placeOf } from './layout.js';
 import { controls } from './controls.js';
@@ -110,7 +111,13 @@ function loadSheet() {
 
 // What is chosen here. It outlives a visit to another section, for the
 // project that is open.
-const memory = { projectId: null, choice: null, tab: 'hotspots', legendFolded: false };
+const memory = { projectId: null, choice: null, tab: 'hotspots', legendFolded: false, controls: null, refused: false };
+
+// The controls are open from this width and folded under it, until the
+// reader chooses (DESIGN 5.3); under PHONE the floors' row folds with them.
+export const CONTROLS_OPEN_FROM = '(min-width: 900px)';
+export const PHONE = '(max-width: 640px)';
+export const REFUSED_CHOICE = 'This browser did not keep that choice: it lasts until the page is closed.';
 
 function first(project) {
   const one = periodWords(project.settings).one;
@@ -186,7 +193,28 @@ export const section = {
       },
     };
 
+    // ---- the controls, shown or folded away behind "Change": the reader's
+    // choice on this device (sv2:device, `movement.controls`), and the
+    // window's width until there is one
+    const wide = matchMedia(CONTROLS_OPEN_FROM);
+    const phone = matchMedia(PHONE);
+    if (memory.controls === null) memory.controls = readMovement().controls;
+    const foldedByDefault = () => (memory.controls === null ? !wide.matches : memory.controls === 'folded');
+
     const top = controls({
+      folded: foldedByDefault(),
+      fold(folded) {
+        memory.controls = folded ? 'folded' : 'open';
+        try {
+          writeMovement({ controls: memory.controls });
+        } catch (error) {
+          // the browser keeps nothing: said once, and the choice holds for the visit
+          if (!memory.refused) ctx.toast({ kind: 'warning', text: REFUSED_CHOICE });
+          memory.refused = true;
+        }
+        placeFloors();
+        ctx.announce(folded ? 'The controls are folded away.' : 'The controls are shown.');
+      },
       change,
       add(groupId) {
         const answer = addGroup(choice, groupId);
@@ -261,7 +289,21 @@ export const section = {
       floorsRow.how.element.hidden = one || floors.length < 2;
       floorsRow.how.set(world ? world.how : 'side');
     }
-    ctx.setSecondRow(floorsRow);
+    // On a phone the floors' row folds with the controls.
+    let floorsShown = null;
+    function placeFloors() {
+      const shown = !map.hidden && !(top.folded && phone.matches);
+      if (shown === floorsShown) return;
+      floorsShown = shown;
+      ctx.setSecondRow(shown ? floorsRow : null);
+    }
+    function onWidth() {
+      if (memory.controls === null) top.setFolded(!wide.matches);
+      placeFloors();
+    }
+    wide.addEventListener('change', onWidth);
+    phone.addEventListener('change', onWidth);
+    placeFloors();
 
     // ---- the inspector
     const panels = { hotspots: hotspotsPanel(env), tables: tablesPanel(env), summary: summaryPanel(env), export: exportPanel(env) };
@@ -325,7 +367,7 @@ export const section = {
         empty.replaceChildren(intro({ headline: HEADLINE, first: first(project), facts: facts(project) }));
         key.element.hidden = true;
         ctx.setInspector(null);
-        ctx.setSecondRow(null);
+        placeFloors();
         state = null;
         delete element.dataset.stale;
         return;
@@ -333,8 +375,8 @@ export const section = {
       if (empty.firstChild) {
         empty.replaceChildren();
         ctx.setInspector(inspector.element.parentElement);
-        ctx.setSecondRow(floorsRow);
       }
+      placeFloors();
       // the last answer is drawn against the project it was worked out for,
       // on that project's graph; after a derive that failed it is stale
       const standing = standingOf(project, derived);
@@ -652,8 +694,39 @@ export const section = {
       queued = false;
       paint();
     }
-    const watcher = new ResizeObserver(measure);
+    const watcher = new ResizeObserver(() => {
+      measure();
+      dock();
+    });
     watcher.observe(stage);
+    watcher.observe(bar.element);
+
+    // ---- where a message of the shell may lie (DESIGN 5.3): above what is
+    // docked at the bottom of the surface, the playback bar and the zoom
+    // buttons. How far that reaches up from the surface's bottom edge is
+    // --toast-clear on the surface, measured as it is on screen now.
+    let dockHost = null;
+    function dock() {
+      const host = dockHost || element.closest('.surface');
+      if (gone || !host) return;
+      dockHost = host;
+      const edge = host.getBoundingClientRect();
+      const foot = edge.top + host.clientTop + host.clientHeight;
+      let top = foot;
+      for (const each of [zoomBox, bar.element]) {
+        const box = each.getBoundingClientRect();
+        if (box.height > 0 && box.bottom > edge.top && box.top < foot) top = Math.min(top, box.top);
+      }
+      const clear = Math.max(0, Math.round(foot - top)) + 'px';
+      if (host.style.getPropertyValue('--toast-clear') !== clear) host.style.setProperty('--toast-clear', clear);
+    }
+    // the surface scrolls down to Getting started, and the section inside
+    // itself on a small window: the dock moves with both
+    element.addEventListener('scroll', dock, { passive: true });
+    const onSurfaceScroll = (event) => {
+      if (event.target === dockHost) dock();
+    };
+    document.addEventListener('scroll', onSurfaceScroll, { passive: true, capture: true });
     const dark = matchMedia('(prefers-color-scheme: dark)');
     dark.addEventListener('change', queuePaint);
 
@@ -661,6 +734,7 @@ export const section = {
       if (gone) return;
       element.dataset.styled = 'true';
       measure();
+      dock();
     });
 
     // Looking at this view is the last step of Getting started. The tick is
@@ -708,9 +782,14 @@ export const section = {
       },
       unmount() {
         gone = true;
+        element.removeEventListener('scroll', dock);
+        document.removeEventListener('scroll', onSurfaceScroll, { capture: true });
+        if (dockHost) dockHost.style.removeProperty('--toast-clear');
         bar.unmount();
         watcher.disconnect();
         dark.removeEventListener('change', queuePaint);
+        wide.removeEventListener('change', onWidth);
+        phone.removeEventListener('change', onWidth);
         input.detach();
         cursor.detach();
         canvas.removeEventListener('keydown', onKey);
