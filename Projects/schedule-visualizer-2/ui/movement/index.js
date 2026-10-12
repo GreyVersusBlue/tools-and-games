@@ -109,7 +109,7 @@ function loadSheet() {
 
 // What is chosen here. It outlives a visit to another section, for the
 // project that is open.
-const memory = { projectId: null, choice: null, tab: 'summary', legendFolded: false };
+const memory = { projectId: null, choice: null, tab: 'hotspots', legendFolded: false };
 
 function first(project) {
   const one = periodWords(project.settings).one;

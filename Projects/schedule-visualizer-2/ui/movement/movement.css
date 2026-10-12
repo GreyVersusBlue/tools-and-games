@@ -445,7 +445,7 @@
 .mov-card__more,
 .mov-card__times {
   color: var(--ink-2);
-  font-weight: var(--w-regular, 400);
+  font-weight: var(--w-regular);
 }
 
 .mov-card__groups {
@@ -691,4 +691,212 @@
   .mov-top {
     padding: var(--s-2) var(--s-3);
   }
+}
+
+/* ---------- SV2-18: hotspots, tables, export ---------- */
+
+.mov-hot,
+.mov-travel {
+  margin-top: var(--s-2);
+  overflow-x: auto;
+}
+
+.mov-hot[hidden],
+.mov-travel__tables[hidden] {
+  display: none;
+}
+
+.mov-hot__table th,
+.mov-hot__table td {
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+}
+
+.mov-hot__table tbody th {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  border-top: var(--border);
+}
+
+.mov-hot__table td {
+  white-space: nowrap;
+}
+
+.mov-hot__row {
+  cursor: pointer;
+}
+
+.mov-hot__row:hover,
+.mov-hot__row[aria-current="true"] {
+  background: var(--accent-soft);
+}
+
+.mov-hot__place {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: var(--s-1);
+}
+
+.mov-hot__rank {
+  font-family: var(--font-plan);
+  font-weight: var(--w-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.mov-hot__name {
+  text-align: left;
+  font-weight: var(--w-semibold);
+}
+
+.mov-hot__when,
+.mov-hot__groups,
+.mov-hot__more {
+  display: block;
+}
+
+.mov-hot__when,
+.mov-hot__groups,
+.mov-travel__rooms,
+.mov-travel__fits {
+  color: var(--ink-2);
+}
+
+.mov-hot__more {
+  color: var(--accent);
+  font-weight: var(--w-medium);
+}
+
+.mov-hot__band {
+  display: inline-block;
+  min-width: 1.25rem;
+  margin-right: var(--s-1);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font-family: var(--font-plan);
+  font-weight: var(--w-semibold);
+  text-align: center;
+  color: #1f2328;
+}
+
+.mov-hot__band[data-band="1"] { background: var(--load-1); }
+.mov-hot__band[data-band="2"] { background: var(--load-2); }
+.mov-hot__band[data-band="3"] { background: var(--load-3); }
+.mov-hot__band[data-band="4"] { background: var(--load-4); }
+
+.mov-hot__band[data-band="5"] {
+  background: var(--load-5);
+  color: #ffffff;
+}
+
+.mov-hot__cells[hidden] {
+  display: none;
+}
+
+.mov-hot__cells td {
+  white-space: normal;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.mov-hot__cell-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  padding: 0 0 0 1.5rem;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.mov-hot__all {
+  margin-top: var(--s-2);
+}
+
+.mov-hot__all[hidden] {
+  display: none;
+}
+
+.mov-travel__choose,
+.mov-export__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.mov-travel__table th,
+.mov-travel__table td {
+  padding: var(--s-1) var(--s-2) var(--s-1) 0;
+}
+
+.mov-travel__table thead th {
+  width: 33.3%;
+  text-align: right;
+}
+
+.mov-hot__table thead .table__num {
+  text-align: right;
+}
+
+.mov-travel__table tbody th {
+  padding-top: var(--s-2);
+  border-top: var(--border);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+
+.mov-travel__table td {
+  border-top: 0;
+  padding-bottom: var(--s-2);
+  white-space: nowrap;
+}
+
+.mov-travel__name {
+  font-weight: var(--w-semibold);
+}
+
+.mov-travel__table .mov-travel__rooms,
+.mov-travel__table .mov-travel__fits,
+.mov-travel__table .mov-groups__late {
+  display: inline;
+  margin-left: var(--s-2);
+}
+
+.mov-export__parts {
+  display: grid;
+  gap: var(--s-1);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.mov-export__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.mov-export__status:empty {
+  display: none;
+}
+
+/* the canvas an exported picture is drawn on: in the page for its colours, never seen */
+.mov-export-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
