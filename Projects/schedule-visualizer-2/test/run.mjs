@@ -93,6 +93,7 @@ export const GROUPS = {
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
     'browser/grid.mjs', // SV2-12
+    'browser/grid-pass.mjs', // SV2-40
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16

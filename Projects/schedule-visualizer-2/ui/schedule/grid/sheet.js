@@ -81,11 +81,33 @@ export function sheet(options) {
     cellAt(at.r, at.c).tabIndex = 0;
   }
 
+  // On a narrow screen the field columns after Group can be hidden (the
+  // Fields button; grid.css does the hiding). A hidden cell has no box. With
+  // the whole sheet out of sight nothing has one, and then no column counts
+  // as hidden.
+  function hiddenColumns() {
+    const shown = model.columns.map((column, c) => cellAt(0, c).getClientRects().length > 0);
+    return shown.map((yes) => shown[0] && !yes);
+  }
+
+  // The column the cursor lands in when it is sent to `c`: `c` itself, or
+  // when that one is hidden the next one shown, going the way the cursor was
+  // going.
+  function landing(c, from) {
+    const hidden = hiddenColumns();
+    if (!hidden[c]) return c;
+    const step = from !== null && c < from ? -1 : 1;
+    for (let next = c + step; next >= 0 && next < hidden.length; next += step) if (!hidden[next]) return next;
+    for (let next = c - step; next >= 0 && next < hidden.length; next -= step) if (!hidden[next]) return next;
+    return c;
+  }
+
   // Put the cursor on a cell. `extend` keeps the other corner where it is.
   function goTo(r, c, extend, focus) {
     if (!model || model.rows.length === 0) return;
     const row = Math.min(Math.max(r, 0), model.rows.length - 1);
-    const column = Math.min(Math.max(c, 0), model.columns.length - 1);
+    const was = place(view.at);
+    const column = landing(Math.min(Math.max(c, 0), model.columns.length - 1), was ? was.c : null);
     view.at = refAt(row, column);
     if (!extend) view.anchor = view.at;
     paint();
@@ -114,8 +136,12 @@ export function sheet(options) {
       }, row.removed ? 'Put back' : 'Remove', h('span', { class: 'vh' }, ' ' + row.group.name))];
     }
     const parts = [];
-    if (column.field === 'colour') parts.push(h('span', { class: 'sch-dot', style: 'background:' + state.text }));
-    parts.push(h('span', { class: 'grd-cell__text' }, state.text));
+    // A colour is shown by its swatch, which is also the control that picks
+    // one. The hex is the cell's title and what the cell is edited as, and is
+    // here in words for a screen reader. A row marked to be removed has no
+    // control, so it gets a dot.
+    if (column.field === 'colour' && row.removed) parts.push(h('span', { class: 'sch-dot', style: 'background:' + state.text }));
+    parts.push(h('span', { class: 'grd-cell__text' + (column.field === 'colour' ? ' vh' : '') }, state.text));
     if (column.field === 'name' && row.removed) parts.push(h('span', { class: 'grd-tag' }, 'will be removed'));
     if (column.field === 'name' && row.added) parts.push(h('span', { class: 'grd-tag' }, 'new'));
     if (column.kind === 'slot' && state.text === '') parts.push(h('span', { class: 'vh' }, 'No room'));
@@ -144,7 +170,7 @@ export function sheet(options) {
       tabindex: '-1',
       'aria-selected': 'false',
       'aria-readonly': row.removed && column.kind !== 'actions' ? 'true' : null,
-      title: state.unknown ? state.text + ' is not in the building' : state.findings.length > 0 ? findingWords(state.findings) : null,
+      title: column.field === 'colour' ? state.text : state.unknown ? state.text + ' is not in the building' : state.findings.length > 0 ? findingWords(state.findings) : null,
       data: { key: cellKey(row.id, column.id), row: row.id, col: column.id },
     }, cellContent(row, column));
     if (state.findings.length > 0) cell.dataset.severity = state.findings.some((finding) => finding.severity === 'problem') ? 'problem' : state.findings[0].severity;
@@ -180,6 +206,9 @@ export function sheet(options) {
     if (model.rows.length > 0) {
       if (!place(view.at)) view.at = view.anchor = refAt(0, 0);
       if (!place(view.anchor)) view.anchor = view.at;
+      // a cursor left in a column that is now hidden would take the grid's
+      // one Tab stop out of reach: it goes to the group's name
+      if (hiddenColumns()[place(view.at).c]) view.at = view.anchor = { row: view.at.row, col: model.columns[0].id };
       paint();
     }
     const again = place(reopen);
@@ -291,12 +320,12 @@ export function sheet(options) {
   // Take the field away and put back what the cell showed.
   function closeEditor(text) {
     if (!editor) return;
-    const { cell, kept } = editor;
+    const { cell, kept, column } = editor;
     editor = null;
     list.hidden = true;
     delete cell.dataset.editing;
     if (text === undefined) cell.replaceChildren(...kept);
-    else cell.replaceChildren(h('span', { class: 'grd-cell__text' }, text));
+    else cell.replaceChildren(h('span', { class: 'grd-cell__text' + (column.field === 'colour' ? ' vh' : '') }, text));
   }
 
   function cancel(focus) {
@@ -412,12 +441,15 @@ export function sheet(options) {
   function clear() {
     const box = range();
     if (!box) return;
+    const hidden = hiddenColumns();
     const ops = [];
     for (let r = box.r0; r <= box.r1; r += 1) {
       for (let c = box.c0; c <= box.c1; c += 1) {
         const column = model.columns[c];
-        // a name cannot be empty and a colour is always one: neither is cleared
-        if (column.kind === 'actions' || column.field === 'name' || column.field === 'colour') continue;
+        // a name cannot be empty and a colour is always one: neither is
+        // cleared. Nor is a column that is hidden: what cannot be seen is not
+        // emptied by a block drawn across it.
+        if (column.kind === 'actions' || column.field === 'name' || column.field === 'colour' || hidden[c]) continue;
         const read = readCell(model, model.rows[r], column, '');
         if (read.ok && cellText(model, model.rows[r], column) !== '') ops.push(read.op);
       }
@@ -438,11 +470,13 @@ export function sheet(options) {
     }
     const source = model.rows[from];
     const names = namesOf(model);
+    const hidden = hiddenColumns();
     const ops = [];
     const refused = [];
     for (let c = box.c0; c <= box.c1; c += 1) {
       const column = model.columns[c];
-      if (column.kind === 'actions') continue;
+      // a hidden column is not filled either (see clear)
+      if (column.kind === 'actions' || hidden[c]) continue;
       for (let r = first; r <= box.r1; r += 1) {
         const row = model.rows[r];
         const read = readCell(model, row, column, cellText(model, source, column), names);
