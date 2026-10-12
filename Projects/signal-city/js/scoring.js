@@ -25,7 +25,8 @@
 // move it teaches, not the wait target, is the second star: with its
 // default left alone, a level's wait target was met by watching it. Kinds:
 //   ambulance    every ambulance off the map on time with its corridor
-//                called (a lucky green is on time and not the lesson)
+//                called (a lucky green is on time and not the lesson, and
+//                one still on the map when the run ends is late, #955)
 //   platoons     no motorcade or procession split by the light
 //   progression  at most `stops` of the cars one box hands to the next
 //                wait again there: the offset carries the platoon
@@ -62,6 +63,8 @@ export function lessonMet(world) {
       const clock = world.ambulanceClock();
       const late = Math.max(s.ambulanceLateBy || 0, clock !== null && clock < 0 ? -clock : 0);
       if (late > 0) return { met: false, why: `the ambulance was ${Math.max(1, Math.round(late))} s late` };
+      // still on the map at the end with its own clock not yet out (#955)
+      if (world.active.some(e => e.kind === 'ambulance' && e.stranded)) return { met: false, why: 'the ambulance was still on the map when the clock ran out' };
       if (s.ambulanceEscorted < s.ambulances) return { met: false, why: 'the ambulance made it without its corridor' };
       return { met: true, why: '' };
     }

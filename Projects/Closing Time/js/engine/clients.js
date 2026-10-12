@@ -6,9 +6,21 @@ import { isCommercial, isCommercialClient, capAt, knownCapex } from "./commercia
 
 export const REL_WORDS = ["college roommate", "sister", "coworker", "old neighbor", "cousin", "book-club friend", "brother-in-law", "poker buddy"];
 
+/**
+ * The ladder, as it applies to a client: their tier is one this rung works, or
+ * they are a seller. This is the only copy. Four doors hand out a client and
+ * each one asks here: intake below, rollReferral() below, the Monday lead in
+ * calendar.js and Ruth's call in events.js. The fourth was found picking from
+ * the whole queue because it had been written without the other three's
+ * filter in front of it, so there is no filter to copy any more.
+ */
+export function inReach(clientId) {
+  const c = DB.clients[clientId];
+  return levelInfo().tiers.includes(c.tier) || c.type === "seller";
+}
+
 export function nextIntakeCandidate() {
-  const tiers = levelInfo().tiers;
-  const idx = S.clientQueue.findIndex(id => tiers.includes(DB.clients[id].tier) || DB.clients[id].type === "seller");
+  const idx = S.clientQueue.findIndex(inReach);
   return idx === -1 ? null : { id: S.clientQueue[idx], idx };
 }
 
@@ -178,11 +190,9 @@ export function rollReferral(closedRec) {
   // client walking through the door, and the door is the ladder: a Senior
   // Agent's happy buyer cannot refer them a rent roll they are not allowed to
   // work.
-  const tiers = levelInfo().tiers;
   const pool = S.clientQueue.filter(id => {
-    const cand = DB.clients[id];
-    if (!tiers.includes(cand.tier) && cand.type !== "seller") return false;
-    return cand.type === c.type || rand() < 0.4;
+    if (!inReach(id)) return false;
+    return DB.clients[id].type === c.type || rand() < 0.4;
   });
   if (!pool.length) return null;
   const newId = pick(pool);

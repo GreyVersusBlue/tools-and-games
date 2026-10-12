@@ -573,7 +573,7 @@ The run is 270 s, because 90 + 150 is 240: on a 240 s run the clock ran
 out on the last frame, an ambulance still on the map then was never
 counted late, and the end card said "the ambulance made it without its
 corridor" of one that had not left (seeds 4 and 6 with nothing pressed;
-see Known gaps). The clock now runs out 30 s before the run does; Rush
+the engine counts it late since #955, see Known gaps). The clock now runs out 30 s before the run does; Rush
 Hour's runs out 15 s before. The ambulance still comes at 90 s, so every
 trip below is the same trip #929 measured and only what counts as on time
 changed; moving it to 60 s instead was measured and passed over (it
@@ -860,17 +860,29 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   past the first box is an engine change, and then Cross Town can take
   turns and is calibrated again.
 
-- An ambulance still on the map when the run ends, with time left on its
-  clock or none spent past it, is not late (#949): `stats.ambulanceLate`
-  counts at the step the clock runs out, `lessonMet` asks only for a
-  negative clock, and the end card then reads "the ambulance made it
-  without its corridor" of one that never left. Seen on Cross Town at
-  90 + 150 = 240 s on a 240 s run (seeds 4 and 6, nothing pressed; the
-  clock read 0.017 s at the end because the ambulance came a step after
-  90 s). The level goes round it in data: its run is 270 s, so the clock
-  runs out 30 s before the end. `test/scoring.mjs` pins the cut run as it
-  reads today. The engine unit is one sentence: an ambulance on the map
-  at the end has not made it, called or not.
+- An ambulance still on the map when the run ends is late, called or
+  not (#955, 2026-10-12). It used not to be: `stats.ambulanceLate`
+  counted only at the step its own clock ran out, `lessonMet` asked only
+  for a negative clock, and the end card read "the ambulance made it
+  without its corridor" of one that never left (#949 saw it on Cross Town
+  cut to 240 s, seeds 4 and 6, 0.017 s on the clock). `World._settle()`
+  now runs once on the step the run's clock runs out: an ambulance that
+  left the map on that very step is counted as it left (it used to read
+  as not escorted, a step short), one still there is late
+  (`stats.ambulanceLate`, 50 points, five honks of satisfaction, an
+  `ambulance-late` event marked `atEnd`), and the reason line is "the
+  ambulance was still on the map when the clock ran out". One already
+  late by its own clock is counted once and keeps "N s late". A run that
+  ends early (a locked grid, hard mode's collision) is not settled and
+  earns no star anyway. Nothing shipped was passing a stuck ambulance:
+  every level on six seeds with nothing pressed reads the same score,
+  stars, points and `World.hash()` before and after (Rush Hour's seeds 2
+  and 3 end with theirs on the map, 15 s late already). Cross Town keeps
+  its 270 s: the 30 s past the clock no longer keep the card honest, and
+  they do no harm, since a late ambulance is then seen late and by how
+  much with the run still on. An endless day's ambulance comes at 30 to
+  120 s with 60 s on a 180 s day, so one that came at 120 s and is still
+  there at the end is late now where it had a frame in hand.
 
 - An ambulance that crashes is off the map, and if it was called and not
   yet late that reads as on time on its corridor (`_ambulanceTick` asks
@@ -1020,18 +1032,50 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   the lights return, so the slider reads 0 and the player sets 16 again,
   keeps the level and makes its panel honest: that is the unit to do, and
   it moves `test/stars.mjs`'s "the slider still reads 16" line and the
-  hint. Sending the return through `setOffset`'s shift, as this bullet
+  hint. Read again on 2026-10-12 and not started: `offset` is each
+  box's own seconds into the cycle at t = 0 and the slider reads the east
+  box's alone, so the write-back has to be the east box's offset against
+  the west's, and every pinned slider value moves with it (32 becomes 16,
+  24 becomes 8, the tool's 4 becomes 21) in `stars.mjs`, `scoring.mjs`,
+  `browser.mjs` and `calibrate.mjs`'s `powerBack`. Sending the return through `setOffset`'s shift, as this bullet
   used to ask, mends the wave with nobody's help: broken on purpose in a
   scratch copy, nothing pressed read 14 to 31% stopping again and three
   stars on four seeds, and nine lines of `stars.mjs` failed by name. That
   one deletes the level's lesson, so it is a decision, not a fix.
-- A box that comes back from dark runs one all-red and then its green,
-  and a car still crossing on its four-way turn is hit: on Boulevard's
-  two-lane boxes 5 or 6 crashes in 48 seeds in a 12 s outage and the 10 s
-  after it, 8 or 9 in 24 for a 20 s one (#933). The player cannot prevent it. Lights
-  Out keeps its outage to 12 s for that reason; Rush Hour's box is one
-  lane and was not measured. The return wants to wait for the box to be
-  empty, or a second all-red.
+- A box that comes back from dark crashes its own front row, and the
+  cause is traced (2026-10-12): it is not the green and not the all-red's
+  length. In the dark a car stops at the line and rolls 3.6 m up to the
+  box's edge to wait its turn. The step the lights return every such car
+  is past its stop line by more than half a metre, so `stopLineVerdict`
+  reads it as committed by position on the red it now faces, the
+  four-way's order and its 3 s gap went with the dark, and the front row
+  of every leg goes at once. Lights Out's street with 20 s of dark, 24
+  seeds at 60 s and at 78 s: 13 crashes in the 12 s after the lights and
+  none in the dark; seed 1 at 78 s, five cars at the two boxes' edges go
+  in on the red 1.2 to 2.2 s after the return. A return all-red of
+  yellow plus all-red (5.5 s) was tried and leaves the same crashes at
+  the same instants, both cars on a red. The fix is written and NOT on
+  `main`: a car that stopped at a four-way (`stoppedAtLine`), has its
+  nose short of the box's edge and can stop there is held at the edge by
+  a red (one line in `cars.js`); the same 48 runs then read 0 crashes,
+  and `test/stars.mjs`'s Lights Out lines all pass (the slider to 32
+  three-stars 4 seeds of 6, not 2). It was held back because it moves
+  Rush Hour, whose outage is 30 s: nothing pressed keeps one star on 4
+  seeds of 6 and not 6 (seeds 3 and 5 collide once, 16 and 28 s after
+  the lights, and the level is hard mode), the hand three-stars 5 of 6
+  and not 6 (seed 3), and `scoring.mjs`'s "at 0.5 s on seed 4 the
+  dropped leg's left still yields" line fails on a collision. Over 48
+  seeds with nothing pressed and collisions forgiven Rush Hour reads 10
+  collisions before and 11 after, so the level is not shown to be
+  harder, but its pinned seeds are different runs and neither new crash
+  was traced. The code and a 17-check test group (a seeded reproduction,
+  the rule on one car, a flashing red switched off) are commit afc8f07
+  on GitHub's `wave/2026-10-12-TG-29-signalengine`, under the claimed
+  number #957; the unit is to trace Rush Hour's seeds 3 and 5 and then
+  re-pin or recalibrate it. One trap found by reading: a car held with
+  its nose past the edge would count as stalled in the box, and 30 s of
+  that ends a run, so the hold stops at the edge exactly. Lights Out's
+  12 s of dark stays until this lands.
 - A platoon member obeys the light like anyone else: a funeral
   procession's follow-through on a red (a courtesy law in much of the
   world) is not built, because with it a procession could only be split

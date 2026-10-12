@@ -79,7 +79,9 @@
 //                                that has `within` seconds from its arrival
 //                                to leave the map; past that it is late
 //                                (stats.ambulanceLate, an 'ambulance-late'
-//                                event) and the level's satisfaction pays
+//                                event) and the level's satisfaction pays;
+//                                one still on the map when the run ends is
+//                                late as well (#955)
 // Four more kinds, the rest of M7:
 //   motorcade  { leg, turn, size, spacing }   a platoon of `size` cars of the
 //   procession                   `motorcade` (fast, tight) or `procession`
@@ -238,6 +240,7 @@ export class World {
     this._conf = new Map();
     this._sweep = new Map();
     this._walkerId = 0;
+    this.settled = false;   // the end of the run has been counted (#955)
     resetIds();
   }
 
@@ -553,7 +556,8 @@ export class World {
   }
 
   // The clock on an ambulance: late once past its deadline still on the
-  // map, over once it has left.
+  // map, over once it has left. One still on the map when the run's own
+  // clock runs out is late too, whatever is left on its own (_settle).
   _ambulanceTick(e) {
     if (e.car.done) {
       e.clearedAt = this.t;
@@ -1198,6 +1202,29 @@ export class World {
     }
     // 5. drop finished cars
     if (this.tick % 60 === 0) this.cars = this.cars.filter(c => !c.done);
+    // 6. the clock has run out: settle what is still open (#955)
+    if (this.over && !this.settled) this._settle();
+  }
+
+  // The end of the run (#955). An ambulance that left in the last step is
+  // counted as it left; one still on the map has not made it, whatever its
+  // clock reads, and is late: `stats.ambulanceLate`, an 'ambulance-late'
+  // event marked `atEnd`, and `e.stranded` for the end card's reason line.
+  // Once, on the step the clock runs out; a run that ends early (a locked
+  // grid, hard mode's collision) is not settled, and earns no star anyway.
+  _settle() {
+    this.settled = true;
+    for (const e of this.active) {
+      if (e.kind !== 'ambulance' || e.ended) continue;
+      if (e.car.done) { this._ambulanceTick(e); continue; }
+      e.stranded = true;
+      if (!e.late) {
+        e.late = true;
+        this.stats.ambulanceLate++;
+        this.events.push({ t: this.t, kind: 'ambulance-late', car: e.car.id, atEnd: true });
+      }
+    }
+    this.active = this.active.filter(e => !e.ended);
   }
 
   // The corridor handoff: the car's centre has passed the end of a linked

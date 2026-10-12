@@ -968,6 +968,56 @@ group('events (M7): the ambulance under a timer');
 }
 
 {
+  // the end of the run settles an ambulance (#955): the same board, E-W
+  // green for good and eight cars queued on the red N leg, with the run's
+  // length chosen so that its clock runs out with the ambulance on the map
+  const { lessonMet } = await load('scoring.js');
+  const AMB = d => ({ demand: {}, duration: d, lesson: { kind: 'ambulance' }, controller: { timing: { yellow: 3, allRed: 1, minGreen: 4 }, startPhase: 1 }, events: [{ kind: 'ambulance', at: 22, leg: 'N', turn: 'T', within: 45 }] });
+  const build = d => { const w = new World(AMB(d), 1); for (let i = 0; i < 8; i++) { w.spawnCar({ leg: 'N', archetype: 'standard', turn: i === 0 ? 'L' : 'T' }); w.run(2.5); } return w; };
+  const toEnd = (w, call) => { let left = null; while (!w.over) { w.step(); const e = w.activeEvent('ambulance'); if (call && e && !e.car.priority) w.requestPriority(e.car); if (left === null && e && e.car.done) left = w.t; } return left; };
+  const lates = w => w.events.filter(x => x.kind === 'ambulance-late');
+  // 40 s: 18 s after it came, 27 s left on its own clock, nobody called
+  const w40 = build(40);
+  let before = null;
+  while (!w40.over) { before = { t: w40.t, settled: w40.settled, late: w40.stats.ambulanceLate, said: lates(w40).length, flag: w40.activeEvent('ambulance') ? w40.activeEvent('ambulance').late : null }; w40.step(); }
+  ok(before.t > 39.9 && before.settled === false && before.late === 0 && before.said === 0 && before.flag === false, 'one step before a 40 s run ends the ambulance behind the red queue is on the map and not late', `t ${before.t.toFixed(3)}`);
+  const e40 = w40.activeEvent('ambulance');
+  ok(w40.over && w40.settled && e40 && !e40.car.done && w40.ambulanceClock() > 26, 'on the last step it is still there with 27 s on its own clock', `clock ${w40.ambulanceClock().toFixed(1)}`);
+  ok(w40.stats.ambulanceLate === 1 && e40.late, 'and the end of the run counts it late', `${w40.stats.ambulanceLate} late`);
+  ok(e40.stranded === true, 'marked as stranded for the end card');
+  ok(lates(w40).length === 1 && lates(w40)[0].atEnd === true && lates(w40)[0].car === e40.car.id && lates(w40)[0].t === w40.t && Math.abs(w40.t - 40) < 0.02, 'the world said so once, at the end', lates(w40).map(x => `${x.t.toFixed(2)}${x.atEnd ? ' atEnd' : ''}`).join());
+  ok(w40.stats.ambulanceEscorted === 0 && w40.stats.ambulanceLateBy === 0, 'nothing is escorted and it was not late by its own clock', `${w40.stats.ambulanceEscorted} escorted, late by ${w40.stats.ambulanceLateBy}`);
+  const m40 = lessonMet(w40);
+  ok(m40.met === false, 'the lesson is not met');
+  ok(m40.why === 'the ambulance was still on the map when the clock ran out', 'and the reason line says it was still on the map, not that it made it', m40.why);
+  w40.step(); w40.step();
+  ok(w40.stats.ambulanceLate === 1 && lates(w40).length === 1, 'a step past the end does not count it twice', `${w40.stats.ambulanceLate} late`);
+  // 25 s: called the step it came, and still on the map 3 s later
+  const w25 = build(25);
+  toEnd(w25, true);
+  const e25 = w25.activeEvent('ambulance');
+  ok(e25 && e25.car.priority && !e25.car.done && w25.stats.ambulanceLate === 1 && e25.stranded && w25.stats.ambulanceEscorted === 0 && lessonMet(w25).why === 'the ambulance was still on the map when the clock ran out', 'called or not: a corridor that had not got it off the map by the end is late too', `${w25.stats.ambulanceLate} late, ${w25.stats.ambulanceEscorted} escorted`);
+  // 80 s: its own clock ran out at 67 s, and the end adds nothing to that
+  const w80 = build(80);
+  toEnd(w80, false);
+  const e80 = w80.activeEvent('ambulance');
+  ok(e80 && !e80.car.done && w80.stats.ambulanceLate === 1 && lates(w80).length === 1 && !lates(w80)[0].atEnd && Math.abs(lates(w80)[0].t - 67) < 0.1, 'one already late by its own clock is counted once, when that clock ran out', lates(w80).map(x => x.t.toFixed(2)).join());
+  ok(/^the ambulance was 13 s late$/.test(lessonMet(w80).why), 'and its reason line is still how late', lessonMet(w80).why);
+  // the run that ends on the very step the called ambulance leaves the map
+  const leftAt = toEnd(build(300), true);
+  const wx = build(leftAt - 0.5 / 60);
+  toEnd(wx, true);
+  const ambX = wx.events.find(x => x.kind === 'spawn' && x.archetype === 'emergency').car, goneX = wx.events.find(x => x.kind === 'cleared' && x.car === ambX);
+  ok(leftAt !== null && leftAt < 67 && goneX && goneX.t === leftAt && wx.t === leftAt, 'a called ambulance leaves the map at a known step, and a run can end on it', `left at ${leftAt && leftAt.toFixed(3)}, run ended at ${wx.t.toFixed(3)}`);
+  ok(wx.activeEvent('ambulance') === null && wx.stats.ambulanceLate === 0 && wx.stats.ambulanceEscorted === 1 && lates(wx).length === 0, 'one that left on the last step is counted as it left: on time, on its corridor', `${wx.stats.ambulanceLate} late, ${wx.stats.ambulanceEscorted} escorted`);
+  ok(lessonMet(wx).met === true, 'and the lesson is met');
+  // and a step earlier it is on the map
+  const wy = build(leftAt - 1.5 / 60);
+  toEnd(wy, true);
+  ok(wy.t < leftAt && leftAt - wy.t < 0.02 && wy.stats.ambulanceLate === 1 && wy.stats.ambulanceEscorted === 0 && wy.activeEvent('ambulance').stranded, 'a run one step shorter ends with it on the map, late', `${wy.stats.ambulanceLate} late`);
+}
+
+{
   // the shipped level: its moments fire when its text says, and the run is
   // still a function of the seed
   const { levelById } = await load('levels/pack-01.js');
