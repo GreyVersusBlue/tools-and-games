@@ -385,7 +385,7 @@
   </div>
 
   <div class="story-panel">
-    <h2 class="node-title" id="nodeTitle"></h2>
+    <h2 class="node-title" id="nodeTitle" tabindex="-1"></h2>
     <div class="node-text" id="nodeText"></div>
     <div class="choices" id="choices"></div>
   </div>
@@ -824,6 +824,18 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
     fragI.style.opacity = hasFrag('invoker') ? '1':'0.25';
   }
 
+  // A choice destroys the button that was pressed, and Begin the Cycle Anew
+  // sits below the story: without this, focus fell to the body after every
+  // choice and stayed under the page after a restart, so a screen reader was
+  // told nothing and a keyboard had no place (#963). The new screen's title
+  // takes focus. It is tabindex="-1": reachable from here, not a tab stop, and
+  // the next Tab is the first choice. Never on the first paint: a page does
+  // not take focus on load.
+  function arrive(){
+    titleEl.focus({preventScroll:true});
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
   function render(){
     const node = nodes[currentId];
     titleEl.textContent = node.title;
@@ -855,7 +867,7 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
         currentId = opt.next;
         renderStatus();
         render();
-        window.scrollTo({top:0, behavior:'smooth'});
+        arrive();
       });
       choicesEl.appendChild(btn);
     });
@@ -866,7 +878,7 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
     currentId = 'intro';
     renderStatus();
     render();
-    window.scrollTo({top:0, behavior:'smooth'});
+    arrive();
   });
 
   renderStatus();
