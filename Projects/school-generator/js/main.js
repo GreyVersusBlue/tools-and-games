@@ -10,6 +10,7 @@ import {
   totalShapeArea, nextRoomName, shapesOf, shapeArea, interiorPoint,
   ACCENT_PALETTE, accentPick, accentHex, accentName, accentInk, isNamedAccent, sameAccent,
 } from './shapes.js';
+import { customAccentsOf } from './wallrun.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS, PROP_CATALOG, registeredRows } from './catalog.js';
 import { DECOR_PACKS, packByKey, packPaint, packTypes } from './decor.js';
@@ -357,6 +358,9 @@ function designChanged(info = {}) {
   // A prop placed, painted, deleted or undone can change which swatch is
   // lit and what colour the chip shows.
   if (editor.tool === 'prop') syncPropPaint();
+  // A wall painted, erased or undone changes which custom colours the school
+  // holds, and the Wall panel lists them.
+  if (editor.tool === 'wall') renderAccentUsed();
   // A room drawn takes the number the field was offering, so the field has to
   // offer the next one. Skipped mid-drag like everything else derived here —
   // a stroke ends in an unthrottled call, which is when the room it baked
@@ -1871,6 +1875,7 @@ function renderAccentSwatches() {
     b.setAttribute('aria-pressed', String(on));
   });
   renderAccentCustom();
+  renderAccentUsed();
 }
 ACCENT_PAINTS.forEach((c) => {
   const b = document.createElement('button');
@@ -1948,6 +1953,43 @@ accentChip.addEventListener('click', () => {
   editor.setAccentPaint(customArmed() && sameAccent(editor.accentPaint, customAccent) ? undefined : customAccent);
 });
 renderAccentCustom();
+
+// --- the custom colours this school already has (#961) ---
+// Between the palette and the free pick: one swatch for each colour outside
+// the palette that some wall of the open school is painted with, every storey
+// counted (wallrun.js's `customAccentsOf`, in hex order). A swatch arms the
+// brush with its hex exactly as typing that hex would, and the lit one again
+// puts the brush down, like a named swatch. The row follows the school: it is
+// read again on every edit, undo, redo and replaced design, and it is hidden
+// while the school has none. Buttons are kept by hex and only added or taken
+// away, so Tab's place survives a repaint of the list.
+function renderAccentUsed() {
+  const row = $('accent-used-row'), box = $('accent-used');
+  const used = customAccentsOf(state);
+  const have = new Map([...box.children].map((b) => [b.dataset.accent, b]));
+  for (const [hex, b] of have) if (!used.includes(hex)) b.remove();
+  used.forEach((hex, i) => {
+    let b = have.get(hex);
+    if (!b) {
+      b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch';
+      b.dataset.accent = hex;
+      b.style.background = hex;
+      b.title = `Paint a wall ${hex}`;
+      b.setAttribute('aria-label', `Accent paint ${hex}, in this school`);
+      b.addEventListener('click', () => {
+        editor.setAccentPaint(sameAccent(editor.accentPaint, hex) ? undefined : hex);
+      });
+    }
+    if (box.children[i] !== b) box.insertBefore(b, box.children[i] || null);
+    const on = sameAccent(editor.accentPaint, hex);
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  row.classList.toggle('hidden', used.length === 0);
+}
+renderAccentUsed();
 
 function cycleWallKind() {
   const i = WALL_KINDS.findIndex((k) => k.kind === editor.wallKind);
@@ -2605,6 +2647,7 @@ function adoptState(next, opts = {}) {
   renderSitePanel();
   renderOverlayPanel();
   renderCodePanel();
+  if (editor.tool === 'wall') renderAccentUsed();
   // A different building is a different set of room numbers, and the name in
   // the box belongs to the one that just left. Forced, unlike the nudge in
   // designChanged: a custom name carried over from another design is exactly

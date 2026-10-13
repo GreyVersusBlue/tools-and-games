@@ -60086,7 +60086,7 @@ return { PROBE, solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe,
 })();
 // ---- js/wallrun.js ----
 const __m_js_wallrun_js = (() => {
-const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE, readAccentPaint, sameAccent, shapeAt } = __m_js_shapes_js;
+const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE, readAccentPaint, sameAccent, accentHex, isNamedAccent, shapeAt } = __m_js_shapes_js;
 // wallrun.js — a wall drawn from one point to another.
 //
 // Until this module the wall tool had no way to say how long a wall was. You
@@ -60239,6 +60239,32 @@ function tidyLineAccents(line) {
   const acc = Array.isArray(line.accents) ? line.accents : [];
   const out = [readHex(acc[LINE_LEFT]), readHex(acc[LINE_RIGHT])];
   if (out[0] || out[1]) line.accents = out; else delete line.accents;
+}
+
+// The colours outside the palette that a school is painted with: every storey's
+// room faces (`ring.accents`) and free-standing wall faces (`line.accents`),
+// each '#rrggbb' once, in hex order, so the list does not shuffle when a wall
+// is painted, undone or found on another storey first. A palette colour is
+// left out whether the file holds its id or its hex from before #912, since
+// the panel already has a swatch for it. This is what the Wall panel's
+// "In this school" row shows (#961).
+function customAccentsOf(state) {
+  const seen = new Set();
+  const take = (v) => {
+    const hex = accentHex(v);
+    if (hex && !isNamedAccent(hex)) seen.add(hex);
+  };
+  for (const floor of (state && Array.isArray(state.floors) ? state.floors : [])) {
+    for (const shape of shapesOf(floor)) {
+      for (const ring of (shape && Array.isArray(shape.rings) ? shape.rings : [])) {
+        if (Array.isArray(ring.accents)) ring.accents.forEach(take);
+      }
+    }
+    for (const line of wallLinesOf(floor)) {
+      if (line && Array.isArray(line.accents)) line.accents.forEach(take);
+    }
+  }
+  return [...seen].sort();
 }
 
 // Paint one face (a hex) or take its accent off (null). True if it changed.
@@ -60749,7 +60775,7 @@ function wallLineFootage(floor) {
   return ft;
 }
 
-return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, LINE_LEFT, lineAccent, setLineAccent, lineFaceAt, lineFaceInRoom, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, pruneAccents, eraseSegWall, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
+return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, LINE_LEFT, lineAccent, customAccentsOf, setLineAccent, lineFaceAt, lineFaceInRoom, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, pruneAccents, eraseSegWall, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
 })();
 // ---- js/terrain.js ----
 const __m_js_terrain_js = (() => {
