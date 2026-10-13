@@ -342,6 +342,15 @@ export function accentPick(text) {
 // True for a stored accent that is in the palette, by id or by hex.
 export const isNamedAccent = (v) => ACCENT_BY_HEX.has(accentHex(v));
 
+// The free pick's colour as the page kept it from the last visit (#962), or
+// null: what was kept has to read as a colour by the rule typing follows, and
+// a palette colour is never the custom one (its swatch is), so neither a
+// damaged entry nor a palette hex comes back as the field's colour.
+export function keptCustomAccent(text) {
+  const hex = parseAccentHex(text);
+  return hex && !ACCENT_BY_HEX.has(hex) ? hex : null;
+}
+
 // Ink to write or outline with on a colour that can be anything: black or
 // white, whichever has the higher WCAG contrast against it. The worst case is
 // a colour of luminance 0.179, where both give 4.58 to 1, so it clears 4.5.
