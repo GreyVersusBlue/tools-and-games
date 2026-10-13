@@ -831,9 +831,12 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
   // takes focus. It is tabindex="-1": reachable from here, not a tab stop, and
   // the next Tab is the first choice. Never on the first paint: a page does
   // not take focus on load.
+  // The scroll back to the top is the one movement the stylesheet's
+  // reduced-motion rule cannot reach, so it is asked here.
+  const stillPlease = window.matchMedia('(prefers-reduced-motion: reduce)');
   function arrive(){
     titleEl.focus({preventScroll:true});
-    window.scrollTo({top:0, behavior:'smooth'});
+    window.scrollTo({top:0, behavior: stillPlease.matches ? 'auto' : 'smooth'});
   }
 
   function render(){
