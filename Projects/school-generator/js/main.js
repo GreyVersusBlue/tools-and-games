@@ -9,6 +9,7 @@ import {
 import {
   totalShapeArea, nextRoomName, shapesOf, shapeArea, interiorPoint,
   ACCENT_PALETTE, accentPick, accentHex, accentName, accentInk, isNamedAccent, sameAccent,
+  keptCustomAccent,
 } from './shapes.js';
 import { customAccentsOf } from './wallrun.js';
 import { buildSampleSchool } from './sample.js';
@@ -1902,9 +1903,20 @@ ACCENT_PAINTS.forEach((c) => {
 // the '#rrggbb' itself, which is what a face has stored for a colour outside
 // the palette since #827, so the design format does not change. A pick that is
 // one of the palette's own colours arms that swatch instead and stores its id.
-// `customAccent` is tool state, like the brush: it is not saved, and a reload
-// starts it at mid grey.
+// `customAccent` is tool state, like the brush, so it is not in the design. It
+// is kept where the page keeps what else outlives a reload without being the
+// school (the label mode, the rail's folds): its own localStorage key, read
+// once here and written when the colour changes (#962). A first visit, a
+// profile with no storage and an entry that is not a colour start at mid grey.
+// The brush itself is not kept: a reload opens with it down.
+const ACCENT_KEY = 'sg-accent-custom';
 let customAccent = '#808080';
+try { customAccent = keptCustomAccent(localStorage.getItem(ACCENT_KEY)) || customAccent; } catch { /* fine */ }
+function keepCustomAccent(hex) {
+  if (hex === customAccent) return;
+  customAccent = hex;
+  try { localStorage.setItem(ACCENT_KEY, hex); } catch { /* fine */ }
+}
 const accentColor = $('accent-color'), accentHexField = $('accent-hex');
 const accentChip = $('accent-chip'), accentHexMsg = $('accent-hex-msg');
 const customArmed = () => typeof editor.accentPaint === 'string' && !isNamedAccent(editor.accentPaint);
@@ -1914,7 +1926,7 @@ function accentMsg(text, warn = false) {
 }
 function renderAccentCustom() {
   const on = customArmed();
-  if (on) customAccent = accentHex(editor.accentPaint);
+  if (on) keepCustomAccent(accentHex(editor.accentPaint));
   accentColor.value = customAccent;
   // A refused entry stays in the field to be corrected; anything else is
   // replaced by the colour in use.
@@ -1941,7 +1953,7 @@ function pickCustomAccent(text) {
   if (isNamedAccent(v)) {
     accentMsg(`${accentHex(v)} is ${accentName(v)}, so its swatch is lit.`);
   } else {
-    customAccent = v;
+    keepCustomAccent(v);
     accentMsg('');
   }
   editor.setAccentPaint(v);
