@@ -90,7 +90,9 @@ export function isFramed(win) {
 // Step 2. Tell the parent this page is ready until it answers, and hand every
 // answer to onData. Only the parent is listened to, and only from this page's
 // own origin: a preview frame is made by the planner from the planner's own
-// address, so the two always match. Returns a function that stops it.
+// address, so the two always match. An answer may carry `forget: true` (the
+// planner's "Start at the passcode screen" has just been ticked): onData is
+// handed { forget: true } with it. Returns a function that stops it.
 export function watchPreview(win, onData) {
   const own = win.location.origin;
   const target = own === 'null' ? '*' : own;
@@ -99,7 +101,7 @@ export function watchPreview(win, onData) {
     if (event.source !== win.parent || event.origin !== own) return;
     if (!event.data || event.data.type !== PREVIEW_DATA) return;
     answered = true;
-    onData(event.data.data);
+    onData(event.data.data, { forget: event.data.forget === true });
   };
   const knock = () => {
     if (!answered) win.parent.postMessage({ type: PREVIEW_READY }, target);

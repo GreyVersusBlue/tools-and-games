@@ -500,6 +500,14 @@
   color: var(--ink-2);
 }
 
+/* a sentence where a choice would be: why this output has none */
+.preview__note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm, 1.35);
+}
+
 .preview__control[hidden] {
   display: none;
 }
@@ -579,4 +587,233 @@
     padding-left: var(--s-3);
     padding-right: var(--s-3);
   }
+}
+
+/* ---------- SV2-24: batch sheets (ui/prints/batch.js) ----------
+   Every teacher's schedule, or every door sign, as one document: a cover
+   sheet that lists what follows, then one .new-sheet each. */
+
+.print-doc .batch-cover__list {
+  margin: 4mm 0 0;
+  padding-left: 6mm;
+  columns: 2;
+  column-gap: 10mm;
+}
+
+.print-doc .batch-cover__list li {
+  break-inside: avoid;
+  padding: 0.5mm 0;
+}
+
+.print-doc .batch-cover__detail {
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sheet {
+  break-inside: avoid;
+}
+
+.print-doc .batch-sheet__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 6mm;
+  margin: 0;
+  font-size: 8pt;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sheet__name {
+  margin: 2mm 0 0;
+  font-size: 20pt;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.print-doc .batch-sheet__facts {
+  margin: 1mm 0 0;
+}
+
+.print-doc .batch-sheet__says {
+  margin: 1mm 0 0;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-days {
+  display: grid;
+  grid-template-columns: repeat(var(--batch-days, 1), minmax(0, 1fr));
+  gap: 6mm;
+  margin-top: 5mm;
+  align-items: start;
+}
+
+.print-doc .batch-day__name {
+  margin: 0 0 1.5mm;
+  font-size: 11pt;
+  font-weight: 600;
+}
+
+.print-doc .batch-day__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+.print-doc .batch-day__table th,
+.print-doc .batch-day__table td {
+  padding: 1.4mm 1.5mm;
+  border-top: 0.2mm solid var(--line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+
+.print-doc .batch-day__table tr:last-child th,
+.print-doc .batch-day__table tr:last-child td {
+  border-bottom: 0.2mm solid var(--line-strong);
+}
+
+.print-doc .batch-day__table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.print-doc .batch-day__time {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-2);
+  font-size: 8pt;
+}
+
+.print-doc .batch-day__quiet {
+  color: var(--ink-2);
+}
+
+/* A door sign's sheet. What is on it is the staff browser's own sign
+   (doorSignMarkup, staff/views/door-sign.js), so the rules below it are the
+   sign's paper rules from staff/staff.css, said again because a print
+   document does not load that file; test/engine/prints-batch.test.mjs holds
+   the two together. A print document has no reset, so each line of the sign
+   takes its own margin off here (one rule for every p in the sign would
+   outrank the lines' own margins). The sheet is as tall as the paper inside
+   its margins (28 mm) less a millimetre, so the school's name stands at its
+   foot and the sign is still one sheet. (The preview counts sheets from what
+   is on paper, not from the gap it draws between two of them, so the sign
+   leaves no room for that gap: print-preview.js, sheetsOf.) The door signs
+   are upright sheets: batch.js never lays one on its side. */
+.print-doc .batch-sign {
+  container-type: inline-size;      /* the sheet the sign's names are measured against (36cqw, below) */
+  display: flex;
+  flex-direction: column;
+  min-height: calc(var(--page-h) - 29mm);
+}
+
+.print-doc .sign {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  padding: 12mm 0 0;
+  text-align: center;
+}
+
+.print-doc .sign__card {
+  display: contents;
+}
+
+.print-doc .sign__word {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-plan, var(--font-ui));
+  font-size: 22pt;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.print-doc .sign__number {
+  max-width: 100%;
+  margin: 0;
+  font-family: var(--font-plan, var(--font-ui));
+  font-size: calc(120pt * var(--sign-fit, 1));
+  font-weight: 600;
+  line-height: 1;
+  overflow-wrap: anywhere;          /* a number too long for one line at the smallest size wraps */
+}
+
+.print-doc .sign__teacher {
+  margin: 0;
+  margin-top: 8mm;
+  font-size: 32pt;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.print-doc .sign__subject {
+  margin: 0;
+  margin-top: 3mm;
+  color: var(--ink-2);
+  font-size: 22pt;
+  line-height: 1.2;
+}
+
+.print-doc .sign__day {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6mm;
+  order: 1;
+  width: 100%;
+  margin-top: 8mm;
+  text-align: left;
+}
+
+.print-doc .sign__kind {
+  flex: 1 1 42%;
+  min-width: min-content;
+  max-width: 100%;
+}
+
+.print-doc .sign__kindname {
+  margin: 0;
+  font-size: 14pt;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.print-doc .sign__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11pt;
+  font-variant-numeric: var(--numeric);
+  line-height: 1.3;
+}
+
+.print-doc .sign__table th,
+.print-doc .sign__table td {
+  padding: 1mm 2mm 1mm 0;
+  border-top: 0.2mm solid var(--line);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;            /* a word is never cut: a column is as wide as its longest */
+}
+
+.print-doc .sign__table th {
+  font-weight: 600;
+}
+
+.print-doc .sign__table td span {
+  display: inline-block;
+  max-width: 36cqw;                 /* a name longer than the sheet can hold is broken there, never run past its edge */
+  overflow-wrap: break-word;
+  vertical-align: top;
+}
+
+.print-doc .sign__school {
+  order: 2;
+  margin: 0;
+  margin-top: auto;
+  padding-top: 8mm;
+  color: var(--ink-2);
+  font-size: 12pt;
+  line-height: 1.3;
 }

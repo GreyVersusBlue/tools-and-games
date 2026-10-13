@@ -3,6 +3,20 @@
 // own address (#schedule/groups and the rest), and the findings panel in the
 // inspector beside all of them.
 //
+// A group has an address too, and so has a slot of it (address.js):
+//
+//   #schedule/groups/<groupId>
+//   #schedule/groups/<groupId>/<dayTypeId>/<period>
+//
+// with the period counted from 0, as the model counts it. The slot's opens
+// the Groups tab on that group (taking the filter off when the filter hides
+// it), scrolls the period's row into view and puts the focus in its room
+// field. A day type that is the same as another opens the row of the day it
+// copies. With the group alone, the group is chosen. `#schedule/groups` with
+// no group, or with one that is not in the project, is the list: on a phone,
+// where the list and the editor take turns, the cards are shown, and the
+// group that was chosen stays chosen. `slotHash` and `groupHash` write them.
+//
 // A tab is a module exporting
 //
 //   mount(env) -> { element, update(project) }
@@ -17,6 +31,8 @@
 //   tab()          the id of the tab on screen
 //   render(key)    draw again; `key` names the control to put focus on after
 //   focusAfter(key) the same, for the drawing a change to the project brings
+//   inspect()      draw the inspector's panel again, and nothing else (what is
+//                  selected in a tab changed, and the tab has shown it itself)
 //
 // Drawing again replaces the tab's elements, so every control that can hold
 // focus carries a `data-key`, and focus goes back to the control with the same
@@ -28,8 +44,11 @@ import { intro } from '../components/card.js';
 import { tabs } from '../components/tabs.js';
 import { periodWords } from '../components/words.js';
 import { scheduleModel } from './model.js';
-import { findingsPanel } from './checks.js';
-import { mount as groups } from './groups.js';
+import { findingsPanel, SHEET as INSPECTOR_SHEET } from './checks.js';
+import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW } from './groups.js';
+import { readAddress, slotHash } from './address.js';
+
+export { slotHash };
 import { mount as grid, GRID_KEYS } from './grid/index.js';
 import { mount as teachers } from './teachers.js';
 import { mount as subjects } from './subjects.js';
@@ -56,7 +75,7 @@ function loadSheet() {
 }
 
 // What is chosen here. It outlives a visit to another section.
-const view = { groupId: null, filter: '', shown: null };
+const view = { groupId: null, filter: '', shown: null, folded: false, findingId: null };
 
 // The walk results of the crowd model for the store's project: the engine
 // client's (ui/engine-client.js, attached at boot), asked for once per state
@@ -105,6 +124,20 @@ function settle() {
 function watchPointer() {
   if (watchPointer.done) return;
   watchPointer.done = true;
+  // The Groups tab's list and editor take turns on a phone, the inspector
+  // says which, and the grid hides its field columns there: all are drawn
+  // again when that width is crossed. Each drawing leaves the width it was
+  // made for on the section (`data-narrow`), so a drawing that came between
+  // the window changing and the browser saying so is not made twice, and a
+  // test can wait for the one that counts.
+  window.matchMedia(GROUPS_NARROW).addEventListener('change', (event) => {
+    if (live && live.narrow() !== event.matches) live.redraw();
+  });
+  // beside the Checks tab the inspector says where the list is, which is
+  // another place once the inspector is a sheet
+  window.matchMedia(INSPECTOR_SHEET).addEventListener('change', () => {
+    if (live) live.inspect();
+  });
   document.addEventListener('pointerdown', () => {
     pointerDown = true;
   }, true);
@@ -115,6 +148,24 @@ function watchPointer() {
 function tabId(rest) {
   const first = String(rest || '').split('/')[0];
   return SCHEDULE_TABS.some((tab) => tab.id === first) ? first : 'groups';
+}
+
+// Take what an address of the Groups tab says into `view`: the group, and
+// the slot to show when it names one; or, with no group in it that the
+// project has, the list. Another tab's address changes nothing here. True
+// when it named a group.
+function takeAddress(project, rest) {
+  if (tabId(rest) !== 'groups') return false;
+  const { group, slot } = readAddress(project, rest);
+  if (!group) {
+    view.folded = false;
+    return false;
+  }
+  view.groupId = group.id;
+  view.folded = true;
+  if (!groupMatches(group, view.filter)) view.filter = '';
+  view.shown = slot ? { groupId: group.id, dayTypeId: slot.dayTypeId, period: slot.period, fresh: true } : null;
+  return true;
 }
 
 export const section = {
@@ -131,6 +182,7 @@ export const section = {
   mount(ctx, rest) {
     loadSheet();
     watchPointer();
+    takeAddress(ctx.store.project, rest);
     let panel = null;
     let timer = null;
     let wantFocus = null;
@@ -146,6 +198,9 @@ export const section = {
       },
       focusAfter(key) {
         wantFocus = key;
+      },
+      inspect() {
+        inspector.update(ctx.store.project);
       },
     };
 
@@ -172,11 +227,26 @@ export const section = {
       }),
       strip.element);
     ctx.setInspector(inspector.element);
+    // the tab and the inspector have just been drawn, for this width
+    element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
 
     function keyOf(node) {
       const holder = node && node.closest ? node.closest('[data-key]') : null;
       return holder && (element.contains(holder) || inspector.element.contains(holder)) ? holder.dataset.key : null;
     }
+
+    // What each text field held when the focus came to it. A redraw carries
+    // text over to the new field only when it differs from this: when it was
+    // typed. Text that is there because the project changed under the field
+    // (an undo, a change made elsewhere) is the old drawing, not typing, and
+    // carrying it would have the field commit it over the change when left.
+    const drawn = new WeakMap();
+    const noteDrawn = (event) => {
+      const target = event.target;
+      if (target && target.tagName === 'INPUT' && ['text', 'search'].includes(target.type)) drawn.set(target, target.value);
+    };
+    element.addEventListener('focusin', noteDrawn);
+    inspector.element.addEventListener('focusin', noteDrawn);
 
     function find(key) {
       const escaped = CSS.escape(key);
@@ -199,10 +269,13 @@ export const section = {
       // Text being typed goes with the focus. (Taking the old field away
       // makes it commit, as leaving it does; text it could not keep, a taken
       // name or half a room number, is put in the new field to be fixed.)
-      const typing = had && active.tagName === 'INPUT' && ['text', 'search'].includes(active.type);
+      const field = had && active.tagName === 'INPUT' && ['text', 'search'].includes(active.type);
+      const typing = field && (!drawn.has(active) || drawn.get(active) !== active.value);
       const typed = typing ? active.value : null;
-      const caret = typing ? [active.selectionStart, active.selectionEnd] : null;
+      const held = field ? active.value : null;
+      const caret = field ? [active.selectionStart, active.selectionEnd] : null;
       const project = ctx.store.project;
+      element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
       panel.update(project);
       inspector.update(project);
 
@@ -226,11 +299,14 @@ export const section = {
         // typed over; the one focus was already in keeps its caret
         if (text && asked) {
           target.select();
-        } else if (text && caret) {
+        } else if (text && typing) {
           if (target.value !== typed) {
             target.value = typed;
             target.dispatchEvent(new Event('input', { bubbles: true }));
           }
+          target.setSelectionRange(caret[0], caret[1]);
+        } else if (text && caret && target.value === held) {
+          // nothing was typed and nothing changed under it: the caret stays
           target.setSelectionRange(caret[0], caret[1]);
         }
       } else if (had && inSection) {
@@ -246,8 +322,10 @@ export const section = {
       if (timer === null) timer = setTimeout(run, 0);
     }
 
-    const handle = { run, waiting: false };
+    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect: () => inspector.update(ctx.store.project) };
     live = handle;
+    // an address that named a slot: its row is scrolled to once this is on the page
+    if (view.shown && view.shown.fresh) schedule();
 
     return {
       element,
@@ -256,11 +334,18 @@ export const section = {
       },
       // the same section, another tab
       route(next) {
+        const chosen = () => JSON.stringify([view.groupId, view.folded, view.filter, view.shown]);
+        const was = chosen();
+        takeAddress(ctx.store.project, next);
         const same = strip.selected === tabId(next);
         strip.select(tabId(next));
-        // a tab that was just put up has drawn itself; the same tab asked
-        // for again, or one with something to show, is drawn (and scrolled)
-        if (same || (view.shown && view.shown.fresh)) schedule();
+        // A tab that was just put up has drawn itself. The same tab is drawn
+        // when the address chose something else in it, and any tab when
+        // there is a slot to show (and scroll to). An address that says what
+        // is already chosen draws nothing: on a phone the Groups tab writes
+        // its address after it has drawn (groups.js), and a second drawing
+        // would take the page from under a finger that has just tapped.
+        if ((same && chosen() !== was) || (view.shown && view.shown.fresh)) schedule();
         else inspector.update(ctx.store.project);
         return true;
       },

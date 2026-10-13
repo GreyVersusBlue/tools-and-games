@@ -17,7 +17,6 @@
 
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
-import { parseTime } from '../engine/bells.js';
 
 export const CLOCK_EVERY_MS = 30000;
 export const DAY_TYPE_KEY = 'day';
@@ -82,8 +81,8 @@ export function momentOf(school, dayTypeId, date) {
   const minutes = date.getHours() * 60 + date.getMinutes();
   const timed = [];
   school.bells(dayTypeId).forEach((bell, period) => {
-    const start = bell ? parseTime(bell.start) : null;
-    const end = bell ? parseTime(bell.end) : null;
+    const start = bell ? school.parseTime(bell.start) : null;
+    const end = bell ? school.parseTime(bell.end) : null;
     if (start !== null && end !== null && end > start) timed.push({ period, start, end });
   });
   timed.sort((a, b) => a.start - b.start);
@@ -213,20 +212,6 @@ export function periodFor(school, route) {
   return period < school.data.settings.periods ? period : '';
 }
 
-// The day types whose answer is the same, together: for a page that shows one
-// card where two day types do not differ. `keyOf(dayType)` is the answer as
-// text. → [{ dayTypes: [dayType, …], first: dayType }]
-export function sameDayTypes(school, keyOf) {
-  const sets = [];
-  for (const dayType of school.dayTypes) {
-    const key = keyOf(dayType);
-    const found = sets.find((set) => set.key === key);
-    if (found) found.dayTypes.push(dayType);
-    else sets.push({ key, dayTypes: [dayType], first: dayType });
-  }
-  return sets;
-}
-
 // "A Day", "A Day and B Day", "A Day, B Day and C Day", each name as typed.
 export function dayTypeNames(dayTypes) {
   const pieces = [];
@@ -257,36 +242,6 @@ export function nowTabs(school, current) {
 // A heading inside a page, with a count when there is one: "Teachers free (5)".
 export function sectionHeading(text, count) {
   return h('h2', { class: 'results__heading' }, text, typeof count === 'number' ? ' (' + count + ')' : null);
-}
-
-// "Share": the device's own share sheet, with the page's name and, when the
-// file is on a web address, that address. An address on disk means nothing on
-// another phone, so it is never shared or copied. `title()` is asked when the
-// button is pressed. Null where there is nothing to offer.
-export function shareRow(title) {
-  const hosted = globalThis.location.protocol === 'http:' || globalThis.location.protocol === 'https:';
-  const nav = globalThis.navigator;
-  const buttons = [];
-  if (nav && typeof nav.share === 'function') {
-    buttons.push(h('button', { class: 'btn', type: 'button', dataset: { share: 'share' }, onclick: () => {
-      const what = { title: title(), text: title() };
-      if (hosted) what.url = globalThis.location.href;
-      Promise.resolve().then(() => nav.share(what)).catch(() => {
-        // closing the share sheet without sending is not a failure
-      });
-    } }, 'Share'));
-  }
-  if (hosted && nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') {
-    const says = h('span', { class: 'muted', role: 'status' });
-    buttons.push(h('button', { class: 'btn', type: 'button', dataset: { share: 'copy' }, onclick: () => {
-      nav.clipboard.writeText(globalThis.location.href).then(() => {
-        says.textContent = 'Link copied.';
-      }, () => {
-        says.textContent = 'The link could not be copied. Copy it from the address bar.';
-      });
-    } }, 'Copy link'), says);
-  }
-  return buttons.length > 0 ? h('p', { class: 'actions', dataset: { actions: 'share' } }, buttons) : null;
 }
 
 // A teacher's subject and rooms, for the small line under a name:

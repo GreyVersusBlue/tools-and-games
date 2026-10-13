@@ -114,15 +114,25 @@ export function buildLanes(project, entries) {
   const walks = [];
   const links = new Map();
   const seen = new Set();
+  // The walks are taken in an order of their own (the project's order of
+  // groups, then the walk), never the order they were given in: which of a
+  // group's two walks through a cell gives the cell its lane point, and
+  // which line is drawn over which, must not change when a transition is
+  // taken off the picture and put back.
+  const ordered = [];
   for (const entry of entries) {
     const route = entry.route;
     if (!route || route.ok !== true || route.same === true || !Array.isArray(route.cells) || route.cells.length === 0) continue;
+    // the same walk in two transitions is one line
+    ordered.push({ entry, once: entry.groupId + '|' + route.fromRoomId + '|' + route.toRoomId + '|' + route.cells.length + '|' + (route.connections || []).join(',') });
+  }
+  ordered.sort((a, b) => a.entry.rank - b.entry.rank || (a.once < b.once ? -1 : a.once > b.once ? 1 : 0));
+  for (const { entry, once } of ordered) {
+    const route = entry.route;
     for (const id of route.connections || []) {
       if (!links.has(id)) links.set(id, []);
       if (!links.get(id).includes(entry.groupId)) links.get(id).push(entry.groupId);
     }
-    // the same walk in two transitions is one line
-    const once = entry.groupId + '|' + route.fromRoomId + '|' + route.toRoomId + '|' + route.cells.length + '|' + (route.connections || []).join(',');
     if (seen.has(once)) continue;
     seen.add(once);
     for (const run of runsOf(route)) {

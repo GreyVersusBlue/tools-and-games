@@ -67,12 +67,19 @@ export const GROUPS = {
     'engine/import-teachers.test.mjs', // SV2-35
     'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
+    'engine/prints-batch.test.mjs', // SV2-24
+    'engine/readers.test.mjs', // SV2-42
+    'engine/prints-movement.test.mjs', // SV2-18
     'engine/grid-edits.test.mjs', // SV2-12
     'engine/import-subjects.test.mjs', // SV2-13
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
     'ui/movement.test.mjs', // SV2-17
+    'ui/playback.test.mjs', // SV2-44
+    'ui/room-picker.test.mjs', // SV2-48
+    'ui/staff-pass.test.mjs', // SV2-45
+    'ui/engine-client.test.mjs', // SV2-49
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -92,6 +99,8 @@ export const GROUPS = {
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
     'browser/grid.mjs', // SV2-12
+    'browser/grid-pass.mjs', // SV2-40, SV2-46
+    'browser/m2-pass.mjs', // SV2-38
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16
@@ -99,7 +108,13 @@ export const GROUPS = {
     'browser/staff-shell.mjs', // SV2-20
     'browser/staff-views-a.mjs', // SV2-21
     'browser/staff-views-b.mjs', // SV2-22
+    'browser/staff-outputs.mjs', // SV2-23
+    'browser/publish.mjs', // SV2-24
+    'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
+    'browser/hotspots.mjs', // SV2-18
+    'browser/playback.mjs', // SV2-19
+    'browser/m3-pass.mjs', // SV2-43
     'a11y/axe.mjs',
   ],
   a11y: [
@@ -110,6 +125,8 @@ export const GROUPS = {
     'timing/routing.mjs', // SV2-05
     'timing/crowd.mjs', // SV2-15
     'timing/pipeline.mjs', // SV2-16
+    'timing/movement.mjs', // SV2-39
+    'timing/playback.mjs', // SV2-44
   ],
 };
 

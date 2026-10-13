@@ -688,6 +688,78 @@ school is the school name with the characters a file system refuses left out
 the project has no school name. The date is the day of the export on the
 user's device.
 
+## The movement CSV exports
+
+Three files from the Export tab of the movement view. They are written as
+every CSV export is (UTF-8 with a byte-order mark, CRLF, the header first,
+every name exactly as typed, the `guard` option off) and named the same way:
+`<school> - hotspots - <date>.csv`, `<school> - travel time by transition -
+<date>.csv`, `<school> - travel time by group - <date>.csv`. The rows come
+from `ui/movement/hotspots.js` (`hotspotsCsv`) and `ui/movement/tables.js`
+(`transitionsCsv`, `dayCsv`). None of the three is read back by the tool.
+
+What they hold is what is on the map when the button is pressed: the day
+type chosen, and for the hotspots the groups, the floors, and the busiest
+moment, the total over the day or the one transition chosen. While an answer
+is awaited, or after one could not be worked out, they hold the last answer
+drawn, and the tab says so. Every time is in whole seconds.
+
+**Hotspots.** One row a place with an end on a floor that is on the map,
+busiest first.
+
+| Column | Holds |
+|---|---|
+| Rank | 1 for the busiest place, counting up. |
+| Place | The place's name: a corridor's name, or "by Room 204", or the stairs and the floors they join. |
+| Floor | The floor's name. For stairs, each floor they join, joined by "; ". |
+| Kind | `corridor` (a named corridor), `stretch` (corridor cells between two junctions), `junction` (the cells where corridors meet) or `stairs` (a stairs connection). |
+| Load (students) or Load (groups) | The load, in the unit the map counts in: students when any group has a head count, otherwise groups. |
+| When | The transition the place peaks in ("Period 4 to Period 5"); the one transition on the map when one is chosen; "the whole day" when the map adds the day up. |
+| Delay (seconds) | The waiting the crowd model found at the place in that transition, with every group of the school walking. Empty where there is none to give. |
+| Delay over the day (seconds) | The same, added up over the day's transitions. |
+| Cells | How many cells the place has. Empty for stairs. |
+| Groups | How many of the groups on the map cross the place. |
+| one column a group on the map | In how many transitions that group crosses the place (1 when one transition is counted); empty where it does not. |
+
+A group's column is headed by the group's name exactly as typed. Three
+headings are changed so that no two columns of the file have the same one
+and none is empty: a group with no name is headed `(group with no name)`; a
+name that is one of the ten headings before it has ` (group)` after it
+(`Rank (group)`); and of groups with the same name, the second and later, in
+the project's order, say which they are (`7A (2nd of that name)`). The cells
+under a heading are that one group's whatever its heading says.
+
+**Travel time by transition.** One row a walk: every group that walks in
+every transition of the day type, transition by transition, the slowest
+walk first in each. A group that stays in its room, or whose route failed,
+has no row.
+
+| Column | Holds |
+|---|---|
+| Day type | The day type's name; for one that is the same as another, "B Day (same as A Day)". |
+| Transition | "Period 1 to Period 2", in the school's own word for a period. |
+| Passing time (seconds) | The time between the two bells, or the school's default. |
+| Group | The group's name. |
+| From room, To room | The room numbers, as typed. |
+| Walking (seconds) | The walk with nobody in the way. |
+| Waiting (seconds) | The seconds lost to the crowd. |
+| Total (seconds) | The two together: when the group is in its room. |
+| Late | `in time`, `late`, or `did not arrive` (the crowd model stopped the group at three passing times). Late is the passing time and the school's margin, by the one rule (`isLate` in `engine/crowd.js`). |
+| Late by (seconds) | For a late walk, how far past the passing time and the margin. Empty otherwise. |
+
+**Travel time by group.** One row a group that walks at all on the day type,
+the group with the slowest walk first.
+
+| Column | Holds |
+|---|---|
+| Day type | As above. |
+| Group | The group's name. |
+| Walks | How many transitions it walks in. |
+| Walking (seconds), Waiting (seconds), Total (seconds) | Added up over its walks. |
+| Late walks | How many of them are late. |
+| Slowest walk | The transition of its longest walk. |
+| Slowest walk (seconds) | That walk's total. |
+
 ## The published data
 
 Format name `sv2-published`, version **1**. Made by `publishedModel(project,

@@ -31,6 +31,16 @@
 // The paper chosen here is the project's setting (Settings › Paper size), so
 // it is remembered and is one undo step, like any other setting. In a tab that
 // cannot change the project the choice lasts for this sheet only.
+//
+// An output marked `upright` (the door signs) prints in portrait whatever the
+// project's orientation is: the sheet shows a sentence where the choice would
+// be, and the project's setting is left alone.
+//
+// "About N sheets" is counted from what goes on paper. Each .page starts a
+// sheet and so does each .new-sheet inside it; a stretch longer than the
+// sheet runs on to more. On screen a .new-sheet is drawn with a gap, a dashed
+// line and some room above its first line, none of which is on paper, so
+// they are taken off the stretch before it is counted (sheetsOf).
 
 import { h, uid } from './dom.js';
 import { choice } from './choice.js';
@@ -50,6 +60,29 @@ const EDGE = 8;
 const SHEET_WAIT_MS = 3000;
 
 let sheet = null;
+
+// How many sheets of paper a list of stretches takes, each `printable` long.
+//   starts   where each stretch begins, top to bottom, with the end of the
+//            last one as the final entry
+//   marks    for each start after the first, what the screen adds there that
+//            paper does not have: { before } above the start (the gap between
+//            two sheets) and { inside } below it (the dashed line and the
+//            room under it)
+// A stretch that is all decoration is still a sheet: the count never goes
+// under one a stretch. But for the first, when a new sheet starts where the
+// page does: nothing is on paper before it, so the page opens on that sheet
+// and no blank one is printed ahead of it.
+export function sheetsOf(starts, marks, printable) {
+  let sheets = 0;
+  for (let i = 0; i < starts.length - 1; i += 1) {
+    const here = i === 0 ? null : marks[i - 1];
+    const next = i < marks.length ? marks[i] : null;
+    const paper = starts[i + 1] - starts[i] - (here ? here.inside : 0) - (next ? next.before : 0);
+    if (i === 0 && next && paper < 1) continue;
+    sheets += Math.max(1, Math.ceil((paper - 1) / printable));
+  }
+  return sheets;
+}
 
 // The sheet's own rules are in print.css, which index.html links (the link
 // marked data-sheet="print"). This waits for that link; a page with no such
@@ -98,9 +131,14 @@ export function openPrintPreview(ctx, outputId, options) {
   const store = ctx.store;
   const project = () => store.project;
 
+  const upright = output.upright === true;
+  const sheetPaper = () => {
+    const set = paperOf(project(), null);
+    return upright ? { ...set, orientation: 'portrait' } : set;
+  };
   const state = {
     output: output.id,
-    paper: paperOf(project(), null),
+    paper: sheetPaper(),
     floorId: opts.floorId || 'all',
     traceImage: false,
     title: '',
@@ -133,6 +171,8 @@ export function openPrintPreview(ctx, outputId, options) {
 
   function setPaper(key, value) {
     if (state.paper[key] === value) return;
+    // an upright output has no orientation to set
+    if (upright && key === 'orientation') return;
     state.paper = { ...state.paper, [key]: value };
     try {
       store.apply(setSetting, { key: 'paper.' + key, value });
@@ -159,7 +199,9 @@ export function openPrintPreview(ctx, outputId, options) {
 
   const controls = [
     h('div', { class: 'preview__control' }, h('span', { class: 'preview__label', id: sizeLabel }, 'Paper size'), size.element),
-    h('div', { class: 'preview__control' }, h('span', { class: 'preview__label', id: turnLabel }, 'Orientation'), turn.element),
+    upright
+      ? h('p', { class: 'preview__note', data: { says: 'upright' } }, output.uprightSays || 'This prints in portrait.')
+      : h('div', { class: 'preview__control' }, h('span', { class: 'preview__label', id: turnLabel }, 'Orientation'), turn.element),
   ];
 
   // "This floor / every floor", for the outputs that are about the building.
@@ -247,15 +289,22 @@ export function openPrintPreview(ctx, outputId, options) {
     fit.style.height = Math.ceil(height * scale) + 'px';
     // How many sheets of paper: each .page starts one, and so does each
     // .new-sheet inside it; a stretch longer than the sheet runs on to more.
+    // What the screen draws where a sheet starts is not counted (sheetsOf).
     const printable = (box.height - MARGIN.top - MARGIN.bottom) * MM;
+    const px = (value) => parseFloat(value) || 0;
     let sheets = 0;
     for (const page of doc.querySelectorAll('.page')) {
       const style = doc.defaultView.getComputedStyle(page);
       const edge = page.getBoundingClientRect();
       const top = edge.top + parseFloat(style.paddingTop);
       const bottom = Math.max(top, edge.top + page.scrollHeight - parseFloat(style.paddingBottom));
-      const starts = [top].concat(Array.from(page.querySelectorAll('.new-sheet')).map((el) => el.getBoundingClientRect().top), [bottom]);
-      for (let i = 0; i < starts.length - 1; i += 1) sheets += Math.max(1, Math.ceil((starts[i + 1] - starts[i] - 1) / printable));
+      const starting = Array.from(page.querySelectorAll('.new-sheet'));
+      const starts = [top].concat(starting.map((el) => el.getBoundingClientRect().top), [bottom]);
+      const marks = starting.map((el) => {
+        const drawn = doc.defaultView.getComputedStyle(el);
+        return { before: px(drawn.marginTop), inside: px(drawn.paddingTop) + px(drawn.borderTopWidth) };
+      });
+      sheets += sheetsOf(starts, marks, printable);
     }
     element.dataset.sheets = String(sheets);
     const lost = state.traceImage && tracedNow().some((floor) => traceUrls.get(floor.image.imageId) === null);
@@ -277,6 +326,7 @@ export function openPrintPreview(ctx, outputId, options) {
       sort: opts.sort,
       traceImage: state.traceImage,
       traceImages,
+      movement: opts.movement,
     });
     state.title = rendered.title;
     laidOut = new Promise((resolve) => {

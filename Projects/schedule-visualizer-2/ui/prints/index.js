@@ -13,8 +13,11 @@
 import * as floorPlan from './floor-plan.js';
 import * as roomList from './room-list.js';
 import * as checksReport from './checks-report.js';
+import { BATCHES } from './batch.js';
+import * as movementPicture from './movement.js'; // SV2-18
+import * as congestionReport from './congestion.js'; // SV2-18
 
-export const OUTPUTS = [floorPlan, roomList, checksReport];
+export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport];
 
 export function outputFor(id) {
   return OUTPUTS.find((output) => output.id === id) || null;

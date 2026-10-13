@@ -12,6 +12,23 @@
   gap: var(--s-2);
 }
 
+/* The key hint sits under the toolbar: under the table is where toasts land. */
+.grd-above > .grd-hint {
+  margin-top: 0;
+}
+
+/* The Fields button is for a narrow screen only (see the end of this file). */
+@media not all and (max-width: 640px) {
+  .grd-fields {
+    display: none;
+  }
+}
+
+.grd-fields[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
 .grd-toolbar__label {
   font-size: var(--t-sm);
   font-weight: var(--w-semibold);
@@ -65,6 +82,12 @@
 
 .grd-below > .grd-scroll {
   margin-top: var(--s-2);
+}
+
+/* The sheet is as wide as its columns ask for and scrolls sideways in its
+   frame: a column is never squeezed under the longest thing in it. */
+.grd-sheet .grd-table {
+  width: max-content;
 }
 
 .grd-table {
@@ -160,12 +183,37 @@
   font-weight: var(--w-semibold);
 }
 
+/* Grade, Head count and Colour are as narrow as their headings; the periods
+   are what the width is for. */
+.grd-cell--grade,
+.grd-cell--headCount,
+.grd-cell--colour {
+  min-width: 0;
+}
+
 .grd-cell--headCount {
   text-align: right;
 }
 
 .grd-cell--colour .sch-dot {
-  margin-right: var(--s-1);
+  vertical-align: middle;
+}
+
+/* A period's column is as wide as the longest room name in it. A name is on
+   one line up to 18rem and wraps between words after that; it is never cut.
+   On a narrow screen the limit is what the screen leaves beside Group at
+   its widest: Group's 8rem there, the 50px round the table's frame, the
+   cell's own padding and a finding's mark come to 13.5rem (the end of this
+   file). */
+.grd-cell--slot {
+  max-width: none;
+}
+
+.grd-cell--slot .grd-cell__text {
+  display: inline-block;
+  max-width: 18rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
   vertical-align: middle;
 }
 
@@ -183,6 +231,42 @@
 
 .grd-cell--read.is-free {
   background: var(--paper);
+}
+
+/* A finding on a cell of the Teachers or Rooms table: its shape and the line
+   under the cell as on the Groups grid, and with the focus on it its
+   sentence under it. The focus is the keyboard's, a click's or a tap's: a
+   finger has no title to rest on. */
+.grd-cell--read.is-marked {
+  overflow: visible;
+  cursor: pointer;
+}
+
+.grd-cell--read.is-marked:focus::after {
+  /* the empty alternative keeps it out of what a screen reader is told: the
+     cell's description already says it. A browser that does not read that
+     form keeps the plain one above it. */
+  content: attr(data-why);
+  content: attr(data-why) / "";
+  position: absolute;
+  /* under the cell, from its left edge; readonly.js (placeWhy) measures when
+     the cell takes the focus and moves it to stay inside the frame the table
+     scrolls in */
+  top: var(--why-y, 100%);
+  left: var(--why-x, 0px);
+  z-index: 4;
+  width: max-content;
+  /* --why-w: as wide as the frame, for a sentence taller than the frame */
+  max-width: var(--why-w, min(18rem, 70vw));
+  box-sizing: border-box;
+  padding: var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-weight: var(--w-regular);
+  white-space: normal;
 }
 
 .grd-cell[aria-selected="true"] {
@@ -257,6 +341,19 @@
   font: inherit;
 }
 
+/* In the three narrow columns the field lies over the cells to its right
+   while it is typed in, instead of pushing the periods along. */
+.grd-cell--grade .grd-input,
+.grd-cell--headCount .grd-input,
+.grd-cell--colour .grd-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: max(100%, 6rem);
+  min-width: 0;
+}
+
 .grd-input[aria-invalid="true"] {
   border-color: var(--problem);
 }
@@ -264,7 +361,6 @@
 .grd-colour {
   width: 1.5rem;
   height: 1.5rem;
-  margin-left: var(--s-1);
   padding: 0;
   border: var(--border-width) solid var(--line-strong);
   border-radius: var(--r-1);
@@ -297,5 +393,43 @@
   .grd-colour {
     width: 2.75rem;
     height: 2.75rem;
+  }
+}
+
+/* A phone. Group stays where it is at the left and the periods scroll beside
+   it; Grade, Head count and Colour are hidden until the Fields button in the
+   toolbar is pressed. index.js has the same width (NARROW). */
+@media (max-width: 640px) {
+  .grd[data-fields="hidden"] .grd-head--grade,
+  .grd[data-fields="hidden"] .grd-head--headCount,
+  .grd[data-fields="hidden"] .grd-head--colour,
+  .grd[data-fields="hidden"] .grd-cell--grade,
+  .grd[data-fields="hidden"] .grd-cell--headCount,
+  .grd[data-fields="hidden"] .grd-cell--colour {
+    display: none;
+  }
+
+  /* Group is 6rem at its narrowest and 8rem at its widest, where a long
+     name wraps: the periods beside it are what a phone's width is for, and
+     a period's own limit (below) counts on Group being no wider. */
+  .grd-cell--name {
+    min-width: 6rem;
+    max-width: 8rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .grd-cell--slot .grd-cell__text {
+    max-width: calc(100vw - 13.5rem);
+  }
+
+  /* the keys are not worth the four lines they take above a table this
+     small, most often on a phone with no keyboard. Help lists them. */
+  .grd-hint__keys {
+    display: none;
+  }
+
+  .grd-scroll {
+    scroll-padding-left: 6rem;
   }
 }

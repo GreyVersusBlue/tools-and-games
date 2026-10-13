@@ -391,7 +391,7 @@ test('the two walk checks reach the Checks tab: the sample school\'s one late wa
   await go(page, '#schedule/checks');
   await settled();
   const walk = '.sch-checks .sch-findings tr[data-finding="group-walk:' + DAY_A + ':5:gsample08a"]';
-  assert.equal(await text(walk + ' td:nth-child(2)'), '8A needs 4 min 21 s to get from Gym to Room 303 after Period 6 on A Day, and the passing time is 4 min.');
+  assert.equal(await text(walk + ' td:nth-child(2) .sch-finding__what'), '8A needs 4 min 21 s to get from Gym to Room 303 after Period 6 on A Day, and the passing time is 4 min.');
   assert.equal(await page.$eval(walk, (row) => row.dataset.severity), 'warning');
   assert.equal(await page.$eval('#inspector .sch-counts', (el) => el.dataset.warning), '1');
   assert.equal(await exists('.sch-checks [data-note="walks"]'), false, 'the tab no longer says walking times are not worked out');

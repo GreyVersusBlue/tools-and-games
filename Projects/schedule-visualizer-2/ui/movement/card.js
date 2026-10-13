@@ -3,9 +3,11 @@
 // the pointer, the cell that was tapped, and the cell the keyboard cursor
 // rests on. SV2-19 adds who is there now during playback, in `extra`.
 //
-//   cellCardView() -> { element, extra, show(card, at, picture, settings), hide(), text(card, picture, settings) }
+//   cellCardView() -> { element, extra, show(card, at, picture, settings), place(), hide(), text(card, picture, settings) }
 //     card   what model.js's cellCard gave
 //     at     { x, y, size } in pixels inside the map: the cell's top left and its side
+//   place() puts the card beside its cell again, for whoever changed its
+//   height after it was shown (playback's line in `extra`).
 
 import { h } from '../components/dom.js';
 import { periodName } from '../../engine/bells.js';
@@ -34,6 +36,23 @@ export function cellCardView() {
   const extra = h('div', { class: 'mov-card__extra', data: { slot: 'playback' } });
   const element = h('div', { class: 'mov-card', hidden: true, data: { card: 'cell' } }, place, load, zone, groups, extra);
 
+  // Beside the cell, on whichever side has the room for the card as tall as it is now.
+  let shownAt = null;
+  function beside() {
+    if (!shownAt || element.hidden) return;
+    const at = shownAt;
+    const host = element.offsetParent || element.parentElement;
+    if (!host) return;
+    const width = element.offsetWidth;
+    const height = element.offsetHeight;
+    let left = at.x + at.size + 10;
+    if (left + width > host.clientWidth - 8) left = at.x - width - 10;
+    let top = at.y + at.size + 10;
+    if (top + height > host.clientHeight - 8) top = at.y - height - 10;
+    element.style.left = Math.max(8, left) + 'px';
+    element.style.top = Math.max(8, top) + 'px';
+  }
+
   function text(card, picture, settings) {
     const who = card.groups.map((each) => each.group.name + ' ' + times(each.times));
     return card.place.name + ', ' + card.floorName + '. ' + loadWords(card, picture, settings) + (who.length > 0 ? ' ' + who.join(', ') + '.' : '');
@@ -54,19 +73,13 @@ export function cellCardView() {
       );
       groups.hidden = card.groups.length === 0;
       element.hidden = false;
-      // beside the cell, on whichever side has the room
-      const host = element.offsetParent || element.parentElement;
-      const width = element.offsetWidth;
-      const height = element.offsetHeight;
-      let left = at.x + at.size + 10;
-      if (left + width > host.clientWidth - 8) left = at.x - width - 10;
-      let top = at.y + at.size + 10;
-      if (top + height > host.clientHeight - 8) top = at.y - height - 10;
-      element.style.left = Math.max(8, left) + 'px';
-      element.style.top = Math.max(8, top) + 'px';
+      shownAt = at;
+      beside();
     },
+    place: beside,
     hide() {
       element.hidden = true;
+      shownAt = null;
     },
   };
 }

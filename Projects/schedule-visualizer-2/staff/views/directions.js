@@ -4,14 +4,16 @@
 // the floors it passes through, and about how long the walk is. The route and
 // its words are the engine's (routing.js and directions.js, through the
 // school of model.js), the same ones the planner draws. "Step-free" asks for
-// a way with no stairs (?stepfree=1) and says so plainly when there is none.
+// a way with no stairs (?stepfree=1) and says so plainly when there is none;
+// the way with stairs is offered only when there is one (directionsRefusal).
 //
 // The time is the route's own estimate for an empty corridor.
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
-import { pageOf } from '../page.js';
-import { viewLink, sectionHeading, shareRow } from '../clock.js';
+import { pageOf, printGate } from '../page.js';
+import { viewLink, sectionHeading } from '../clock.js';
+import { floorMap } from '../map.js';
 
 // "under a minute", "about 1 minute", "about 4 minutes".
 function about(seconds) {
@@ -54,6 +56,21 @@ export function routeFloors(school, found) {
   return parts;
 }
 
+// A way that could not be found, for the page: { text, stairs }. `text` is
+// the engine's sentence. With step-free asked for, the way is looked for once
+// more with stairs allowed: `stairs` is true when that way exists, so the
+// page offers it; when there is no way of any kind the sentence is the plain
+// refusal's, and nothing is offered that would only lead to another refusal.
+// Null when the way was found.
+export function directionsRefusal(school, fromId, toId, stepFree) {
+  const found = school.route(fromId, toId, { avoidStairs: stepFree });
+  if (found.ok) return null;
+  if (!stepFree) return { text: school.directions(found).text, stairs: false };
+  const plain = school.route(fromId, toId, { avoidStairs: false });
+  if (plain.ok) return { text: school.directions(found).text, stairs: true };
+  return { text: school.directions(plain).text, stairs: false };
+}
+
 export const directionsView = {
   id: 'directions',
   flag: 'directions',
@@ -74,8 +91,10 @@ export const directionsView = {
     const from = roomPicker(school, 'directions-from', 'From', state.from);
     const to = roomPicker(school, 'directions-to', 'To', state.to);
     const stepFree = h('input', { class: 'check__input', id: 'directions-stepfree', type: 'checkbox', checked: state.stepFree });
+    const gate = printGate();
 
     const draw = () => {
+      gate.set(false);
       if (!state.from || !state.to) {
         says.replaceChildren(h('span', null, 'Choose where you are starting and where you are going.'));
         out.replaceChildren();
@@ -90,9 +109,10 @@ export const directionsView = {
 
       if (!found.ok) {
         // the engine's own sentence: which room, which floor, and what was avoided
-        says.replaceChildren(h('span', null, typed(written.text)));
+        const refusal = directionsRefusal(school, state.from, state.to, state.stepFree);
+        says.replaceChildren(h('span', null, typed(refusal.text)));
         out.replaceChildren(...[
-          state.stepFree ? h('p', { dataset: { directions: 'stairs' } }, 'There may be a way that uses stairs. ', h('button', { class: 'btn', type: 'button', onclick: () => {
+          refusal.stairs ? h('p', { dataset: { directions: 'stairs' } }, 'There is a way that uses stairs. ', h('button', { class: 'btn', type: 'button', onclick: () => {
             stepFree.checked = false;
             stepFree.dispatchEvent(new Event('change'));
             stepFree.focus();
@@ -106,20 +126,41 @@ export const directionsView = {
         return;
       }
 
+      gate.set(true);
       const floors = routeFloors(school, found);
       const stairs = found.connections.length;
+      const stairsOf = (letter) => (letter ? ['stairs ', typed(letter)] : 'the stairs');
+      // the line on each floor, in words: the picture's alternative
+      const lineOn = (floor) => {
+        const here = floors.map((part, index) => ({ part, index })).filter((each) => each.part.floorId === floor.id);
+        if (here.length === 0) return [h('span', null, 'The way does not cross ', typed(floor.name), '.')];
+        return [h('span', null, here.map(({ part, index }, at) => [
+          at > 0 ? ' Then from ' : ['On ', typed(floor.name), ' the line runs from '],
+          index === 0 ? typed(school.roomName(start)) : stairsOf(floors[index - 1].stairs),
+          ' to ',
+          part.stairs === null ? typed(school.roomName(end)) : stairsOf(part.stairs),
+          '.',
+        ]))];
+      };
       says.replaceChildren(h('span', null, ends, ': ', about(found.seconds), stairs === 0 ? ', all on one floor' : ', ' + stairs + (stairs === 1 ? ' flight' : ' flights') + ' of stairs', state.stepFree ? ', step-free' : null, '.'));
       out.replaceChildren(
         h('section', { class: 'card', dataset: { directions: 'steps' } },
           sectionHeading('The way', written.steps.length),
           h('ol', { class: 'steps' }, written.steps.map((step) => h('li', { class: 'steps__step', dataset: { kind: step.kind } },
             step.parts.map((part) => (part.name ? typed(part.text) : part.text))))),
-          h('p', { class: 'muted' }, 'The time is for an empty corridor. Distances are in squares of the floor plan.')),
+          h('p', { class: 'muted', dataset: { directions: 'time' } }, 'The walk is ' + school.formatDuration(found.seconds) + ' at the school\'s walking pace, for an empty corridor. Distances are in squares of the floor plan.')),
         h('section', { class: 'card', dataset: { directions: 'floors' } },
           sectionHeading('Floors on the way', floors.length),
           h('ol', { class: 'plain' }, floors.map((part) => h('li', null,
             school.has('map') && part.floor ? h('a', { href: makeHash('map', part.floorId) }, typed(part.floor.name)) : typed(part.floor ? part.floor.name : 'a floor'),
-            part.stairs === null ? ', where the walk ends' : [', then stairs ', typed(part.stairs)])))));
+            part.stairs === null ? ', where the walk ends' : [', then stairs ', typed(part.stairs)]))),
+          school.has('map') ? floorMap(ctx, {
+            floorId: floors[0].floorId,
+            label: 'The way on the map',
+            route: found,
+            marks: [{ roomId: start.id, ring: true }, { roomId: end.id, ring: true }],
+            says: lineOn,
+          }) : null));
     };
 
     const address = () => ctx.replace(makeHash('directions', '', { from: state.from, to: state.to, stepfree: state.stepFree ? '1' : '' }));
@@ -141,12 +182,12 @@ export const directionsView = {
     } }, 'Swap start and end');
 
     draw();
-    return pageOf('Directions', null, says,
+    return gate.on(pageOf('Directions', null, says,
       h('div', { class: 'controls' },
         from.field,
         to.field,
         h('label', { class: 'check', for: 'directions-stepfree' }, stepFree, h('span', null, 'Step-free: a way with no stairs')),
         h('p', { class: 'actions' }, swap)),
-      out, shareRow(() => 'Directions · ' + school.name));
+      out));
   },
 };

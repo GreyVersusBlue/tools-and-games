@@ -13,12 +13,18 @@ import { acceptFinding, unacceptFinding } from '../../engine/actions.js';
 import { SEVERITIES } from '../../engine/findings.js';
 import { floorOfRoom } from '../../engine/schema.js';
 import { fill, apply, button, keyed, notYet, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
+import { choosingGroup } from './groups.js';
+import { groupHash, slotHash } from './address.js';
 import { printButtons } from '../prints/index.js';
 import { printButton } from '../components/print-preview.js';
 
 const WHAT = 'Checks look through the schedule for problems, warnings and notes: two groups in one room, a teacher in two places, a walk too long for the passing time.';
 const FIX_REASON = 'Suggestions are not built yet';
 const PANEL_LIMIT = 12;
+// Under this width the inspector is a sheet under the section, not a panel
+// beside it (the shell's own width). The section draws the inspector again
+// when it is crossed (index.js), since the panel says where the list is.
+export const SHEET = '(max-width: 900px)';
 
 // Where Show takes a finding: a group's slot, a teacher's row, or the floor
 // the room is on.
@@ -27,10 +33,9 @@ export function showFinding(env, finding) {
   const where = finding.where;
   if (where.groupIds.length > 0) {
     const groupId = where.groupIds.includes(view.groupId) ? view.groupId : where.groupIds[0];
-    view.groupId = groupId;
-    view.filter = '';
-    view.shown = { groupId, dayTypeId: where.dayTypeId, period: where.period, fresh: true };
-    ctx.navigate('#schedule/groups');
+    // the slot's address: it chooses the group, takes off a filter that
+    // hides it, and on a phone leaves the list a Back away
+    ctx.navigate(where.dayTypeId && Number.isInteger(where.period) ? slotHash(groupId, where.dayTypeId, where.period) : groupHash(groupId));
   } else if (where.teacherId !== null) {
     view.shown = { teacherId: where.teacherId, fresh: true };
     ctx.navigate('#schedule/teachers');
@@ -96,7 +101,9 @@ function actions(env, finding, where) {
   const key = where + ':' + finding.id + ':';
   return h('div', { class: 'sch-finding__actions' },
     button('Show', () => showFinding(env, finding), { small: true, key: key + 'show', action: 'show', more: ': ' + finding.text }),
-    notYet('Fix…', FIX_REASON, 'fix'),
+    // not built yet: the reason is the button's title, which a finger and a
+    // keyboard never see, so a press says it
+    notYet('Fix…', FIX_REASON, 'fix', () => env.ctx.toast({ text: FIX_REASON + '.' })),
     button('Accept', (opener) => acceptWithReason(env, finding, opener), { small: true, key: key + 'accept', action: 'accept', more: ': ' + finding.text }));
 }
 
@@ -108,12 +115,46 @@ export function countsLine(model) {
 // ---------------------------------------------------------------- the panel
 
 // The inspector: the counts always, and the findings for whatever is
-// selected (the group being edited), or for the whole schedule.
+// selected (the group being edited), or for the whole schedule. Beside the
+// Checks tab, whose table is that list already, it is the counts and the one
+// finding selected there: the same four findings twice on one screen helped
+// nobody. On a phone whose Groups tab is showing its list alone, it says to
+// choose a group.
 export function findingsPanel(env) {
   const element = h('div', { class: 'sch-panel' });
-
+  function finding(each) {
+    return h('li', { class: 'sch-finding sch-finding--' + each.severity, data: { finding: each.id } },
+      h('p', { class: 'sch-finding__text' }, severityWord(each.severity), ' ', each.text),
+      actions(env, each, 'panel'));
+  }
+  function drawForChecks(model) {
+    const selected = model.findings.find((each) => each.id === env.view.findingId) || null;
+    // the list is beside the panel on a wide screen, and above its sheet on a narrow one
+    const where = window.matchMedia(SHEET).matches ? 'above' : 'on the left';
+    element.dataset.where = where;
+    fill(element,
+      h('h2', { class: 'sch-panel__title' }, 'Findings'),
+      countsLine(model),
+      h('h3', { class: 'sch-panel__scope' }, selected ? 'The finding selected' : 'No finding selected'),
+      selected ? h('ul', { class: 'sch-panel__list' }, finding(selected)) : null,
+      h('p', { class: 'sch-panel__more', data: { note: 'list' } }, model.findings.length === 0 ? 'Nothing found.' : 'Every finding is in the list ' + where + '.' + (selected ? '' : ' Select one there to see it here.')));
+  }
   function draw(project) {
     const model = env.model();
+    element.dataset.for = env.tab();
+    if (env.tab() === 'checks') {
+      drawForChecks(model);
+      return;
+    }
+    if (env.tab() === 'groups' && project.groups.length > 0 && choosingGroup(env.view)) {
+      fill(element,
+        h('h2', { class: 'sch-panel__title' }, 'Findings'),
+        countsLine(model),
+        h('h3', { class: 'sch-panel__scope' }, 'Choose a group'),
+        h('p', { class: 'sch-panel__none' }, 'Choose a group in the list, and what was found about it shows here.'),
+        h('p', { class: 'sch-panel__more' }, h('a', { href: '#schedule/checks' }, 'See every finding in Checks')));
+      return;
+    }
     const group = env.tab() === 'groups' ? project.groups.find((candidate) => candidate.id === env.view.groupId) : null;
     const scope = group ? model.byGroup.get(group.id) || [] : model.findings;
     const shown = scope.slice(0, PANEL_LIMIT);
@@ -123,11 +164,9 @@ export function findingsPanel(env) {
       h('h3', { class: 'sch-panel__scope' }, group ? 'About ' + group.name : 'In the whole schedule'),
       scope.length === 0
         ? h('p', { class: 'sch-panel__none' }, group ? 'Nothing found about ' + group.name + '.' : project.groups.length === 0 ? 'Nothing to check yet. Add a group and the checks start.' : 'Nothing found.')
-        : h('ul', { class: 'sch-panel__list' }, shown.map((finding) => h('li', { class: 'sch-finding sch-finding--' + finding.severity, data: { finding: finding.id } },
-          h('p', { class: 'sch-finding__text' }, severityWord(finding.severity), ' ', finding.text),
-          actions(env, finding, 'panel')))),
+        : h('ul', { class: 'sch-panel__list' }, shown.map(finding)),
       scope.length > shown.length ? h('p', { class: 'sch-panel__more' }, 'And ' + (scope.length - shown.length) + ' more. ') : null,
-      env.tab() === 'checks' ? null : h('p', { class: 'sch-panel__more' }, h('a', { href: '#schedule/checks' }, 'See every finding in Checks')));
+      h('p', { class: 'sch-panel__more' }, h('a', { href: '#schedule/checks' }, 'See every finding in Checks')));
   }
 
   draw(env.ctx.store.project);
@@ -144,6 +183,28 @@ function when(iso) {
 export function mount(env) {
   const { ctx } = env;
   const element = h('div', { class: 'sch-checks' });
+  // A finding is selected by a click or a tap on its row, or by the focus
+  // coming to one of its buttons. The inspector shows the one selected.
+  function selectRow(row) {
+    if (!row || env.view.findingId === row.dataset.finding) return;
+    env.view.findingId = row.dataset.finding;
+    for (const each of row.parentNode.children) mark(each, each === row);
+    env.inspect();
+  }
+  // The selected row says so to the eye (schedule.css reads data-selected)
+  // and to a screen reader (aria-current).
+  function mark(row, selected) {
+    if (selected) {
+      row.dataset.selected = 'true';
+      row.setAttribute('aria-current', 'true');
+    } else {
+      delete row.dataset.selected;
+      row.removeAttribute('aria-current');
+    }
+  }
+  const rowOf = (event) => (event.target.closest ? event.target.closest('.sch-findings:not(.sch-findings--accepted) tbody tr[data-finding]') : null);
+  element.addEventListener('click', (event) => selectRow(rowOf(event)));
+  element.addEventListener('focusin', (event) => selectRow(rowOf(event)));
 
   function stop(findingId) {
     if (apply(env, unacceptFinding, { findingId })) ctx.toast({ text: 'It counts again.', action: { label: 'Undo', run: ctx.undo } });
@@ -182,6 +243,7 @@ export function mount(env) {
 
   function draw(project) {
     const model = env.model();
+    if (!model.findings.some((finding) => finding.id === env.view.findingId)) env.view.findingId = null;
     const nothing = model.findings.length + model.accepted.length + model.changed.length + model.off.length + model.gone.length === 0;
     if (nothing && project.groups.length === 0) {
       fill(element, emptyState('Nothing to check yet. ' + WHAT, h('a', { class: 'btn btn--primary', href: '#schedule/groups', data: { action: 'go-groups' } }, 'Add a group')));
@@ -197,11 +259,16 @@ export function mount(env) {
         ? h('p', { class: 'sch-checks__none' }, 'Nothing found. ' + count(project.groups.length, 'group') + ' checked on every day type.')
         : h('div', { class: 'sch-scroll' }, h('table', { class: 'table sch-findings' },
           h('caption', { class: 'vh' }, 'Findings'),
-          h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Severity'), h('th', { scope: 'col' }, 'What was noticed'), h('th', { scope: 'col' }, h('span', { class: 'vh' }, 'Show, fix or accept')))),
-          h('tbody', null, model.findings.map((finding) => h('tr', { data: { finding: finding.id, severity: finding.severity } },
-            h('td', null, severityWord(finding.severity)),
-            h('td', null, finding.text),
-            h('td', null, actions(env, finding, 'tab'))))))),
+          h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Severity'), h('th', { scope: 'col' }, 'What was noticed', h('span', { class: 'vh' }, ', with Show, Fix and Accept')))),
+          // the buttons are in the sentence's cell: beside it while there is
+          // room, under it when there is not (a phone)
+          h('tbody', null, model.findings.map((finding) => {
+            const row = h('tr', { data: { finding: finding.id, severity: finding.severity } },
+              h('td', null, severityWord(finding.severity)),
+              h('td', null, h('div', { class: 'sch-finding__cell' }, h('p', { class: 'sch-finding__what' }, finding.text), actions(env, finding, 'tab'))));
+            mark(row, finding.id === env.view.findingId);
+            return row;
+          })))),
       h('h2', { class: 'sch-checks__heading' }, 'Accepted'),
       acceptedTable(model, project));
   }

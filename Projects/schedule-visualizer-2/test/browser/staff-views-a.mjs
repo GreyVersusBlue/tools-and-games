@@ -26,7 +26,7 @@ import { mix, labelOn, GROUP_PRESETS } from '../../ui/colour.js';
 import { openSchool } from '../../staff/model.js';
 import { floorExtentOf, planOf, roomsAtTap, mapMix, mapLabelOn, MAP_TAP_RADIUS, MAP_MAX_CELL } from '../../staff/map.js';
 import { teacherSummaryOf, partsToText, dayKindsOf, sharersOf, teachersOfSlot, wordsJoined } from '../../staff/views/teacher.js';
-import { groupTeaching, groupSummaryOf, shortPeriod } from '../../staff/views/group.js';
+import { groupTeaching, groupSummaryOf } from '../../staff/views/group.js';
 import { roomUse, roomSummaryOf } from '../../staff/views/room.js';
 import { roomsInOrder, floorLegend } from '../../staff/views/map.js';
 import { staffingRows } from '../../staff/views/staffing.js';
@@ -183,8 +183,12 @@ test('staffing has a row for every subject, with or without a teacher, and one f
 });
 
 test('the short form of a period is what is left when the school\'s word is taken away', () => {
-  const short = (word, index) => shortPeriod(periodName({ periodWord: word }, index));
+  // the school is asked (school.periodLabel, the engine's own): no view keeps a copy of the rule
+  const short = (word, index) => school((project) => { project.settings.periodWord = word; }).periodLabel(index);
   assert.deepEqual([short('Period', 2), short('Mod', 11), short('Block', 2), short('Hour', 2)], ['3', '12', 'C', '3rd']);
+  for (const [word, index] of [['Period', 2], ['Mod', 11], ['Block', 2], ['Hour', 2]]) {
+    assert.ok(periodName({ periodWord: word }, index).split(' ').includes(short(word, index)), word + ': the short form is a word of the whole name');
+  }
 });
 
 test('rooms are listed by number, numbers counted as numbers, a room with none last', () => {
@@ -695,7 +699,7 @@ test('in the dark theme the plan is drawn in the dark tokens', async () => {
     const box = await roomBox(page, 'fsample001', 'rsample103');
     assert.equal(await pixel(page, box.x + 3, box.y + 3), mix('#3f8f5b', DARK.paper, 0.7));
     assert.equal(await pixel(page, box.x - 1, box.y + box.h / 2), DARK.accent, 'the ring');
-    assert.equal(await pixel(page, box.x + 3, box.y + box.h + box.cell / 2), '#2a2f36', 'the corridor');
+    assert.equal(await pixel(page, box.x + 3, box.y + box.h + box.cell / 2), '#69717d', 'the corridor, in the map\'s own --map-corridor (SV2-45 M6)');
   } finally {
     await session.close();
   }

@@ -9,8 +9,8 @@
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
-import { pageOf, missingPage } from '../page.js';
-import { dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, shareRow, teacherDetail, entryWords } from '../clock.js';
+import { pageOf, missingPage, printWhen } from '../page.js';
+import { dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
@@ -45,10 +45,10 @@ export function teacherChooser(ctx, view, title, lede) {
   select.addEventListener('change', () => {
     if (select.value !== '') ctx.go(makeHash(view, select.value));
   });
-  return pageOf(title, lede,
+  return printWhen(pageOf(title, lede,
     school.teachers.length === 0
       ? h('p', { class: 'muted' }, 'This schedule has no teachers.')
-      : h('div', { class: 'field' }, h('label', { class: 'field__label', for: view + '-teacher' }, 'Teacher who is out'), select));
+      : h('div', { class: 'field' }, h('label', { class: 'field__label', for: view + '-teacher' }, 'Teacher who is out'), select)), false);
 }
 
 function listOf(words) {
@@ -121,6 +121,6 @@ export const coverageView = {
     });
     if (chosen) picker.appendChild(chosen);
     draw();
-    return pageOf(['Coverage: ', typed(absent.name)], null, says, picker, out, links, shareRow(() => 'Coverage: ' + absent.name + ' · ' + school.name));
+    return pageOf(['Coverage: ', typed(absent.name)], null, says, picker, out, links);
   },
 };

@@ -28,12 +28,15 @@ export async function publishData(project, options) {
 
 // publishDocument(read, project, { clock, random }) → what a file target
 // writes: { html, fileName, model, locked }. `read` is the assembler's reader
-// (pageReader() in the planner).
+// (pageReader() in the planner). The clock is read once: the day in the
+// file's name is the day of the publish time inside it, also when the lock
+// takes the seconds that cross midnight.
 export async function publishDocument(read, project, options) {
   const opts = options || {};
-  const made = await publishData(project, opts);
+  const now = opts.clock();
+  const made = await publishData(project, { ...opts, clock: () => now });
   const html = await assemble(read, made.data);
-  return { html, fileName: exportFileName(project, 'staff schedule', 'html', opts.clock()), model: made.model, locked: made.locked };
+  return { html, fileName: exportFileName(project, 'staff schedule', 'html', now), model: made.model, locked: made.locked };
 }
 
 // A source of numbers from 0 up to 1 from the device's own randomness, for

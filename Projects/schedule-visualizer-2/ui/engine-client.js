@@ -19,8 +19,9 @@
 // What this file adds to the pipeline:
 //
 //   Remembering. results() for counters already asked about is the same
-//     promise, pending or settled, so ten screens asking after one change
-//     cost one run. The pipeline itself keeps the routes while the geometry
+//     promise, pending or answered, so ten screens asking after one change
+//     cost one run. A run that failed is not remembered: the next asking is
+//     a new request. The pipeline itself keeps the routes while the geometry
 //     counter stands still and runs only the transitions a change touched.
 //   One request at a time. While the worker is busy a newer request waits,
 //     and only the newest waits: three keystrokes during one run cost two
@@ -76,6 +77,7 @@ export function createEngineClient(store, options) {
 
   function fail(job, error) {
     job.settled = true;
+    job.failed = true;
     stats.failed += 1;
     job.reject(error);
   }
@@ -198,7 +200,8 @@ export function createEngineClient(store, options) {
       stats.asked += 1;
       const versions = { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion };
       const stamp = versions.geometry + ':' + versions.building + ':' + versions.schedule;
-      if (wanted && wanted.stamp === stamp) {
+      // a run that failed is asked again, never remembered: a failure can pass
+      if (wanted && wanted.stamp === stamp && !wanted.failed) {
         stats.remembered += 1;
         return wanted.promise;
       }

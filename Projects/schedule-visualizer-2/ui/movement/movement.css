@@ -1,64 +1,25 @@
-/* The Movement section: the map as the page (DESIGN 5.3). The first line and
-   the controls are along the top, the playback bar along the bottom, and the
-   canvas takes everything between. The legend, the cell card and the zoom
-   buttons sit over the canvas's corners.
+/* The Movement section: the map as the page (DESIGN 5.3). The first line is
+   along the top with the controls under it, folded away or shown; the
+   playback bar is one row along the bottom; the canvas takes everything
+   between. The legend, the cell card and the zoom buttons sit over the
+   canvas's corners.
 
-   ui/movement/index.js adds this sheet to the page. */
+   The map comes first at every width: the stage is never under 45 % of the
+   window's height, nor under 320 px. Where the controls are shown and the
+   window cannot hold that, the section scrolls inside itself (.mov) and the
+   stage keeps its height.
 
-/* ---------- The section's place in the shell ----------
-
-   The map goes edge to edge, as the building's plan does: the layout's
-   padding and its faint grid go. These rules belong in ui/app.css beside the
-   Building section's; they are here until the shell takes them. */
-
-.surface__layout[data-section="movement"] {
-  height: 100%;
-  padding: 0;
-  gap: 0;
-  align-items: stretch;
-  grid-template-rows: minmax(0, 1fr);
-  background-image: none;
-}
-
-.surface__layout[data-section="movement"] > .surface__section {
-  min-height: 0;
-}
-
-.surface__layout[data-section="movement"] > .getting-started {
-  align-self: start;
-  margin: var(--s-4);
-}
-
-.surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) calc(360px + var(--s-4) * 2);
-}
-
-/* the shell's messages sit over the map's corner, clear of the bar and the zoom buttons */
-.surface__layout[data-section="movement"] ~ .toasts {
-  bottom: 108px;
-}
-
-@media (max-width: 1000px) {
-  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
-    height: auto;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) .mov {
-    height: 80vh;
-  }
-
-  .surface__layout[data-section="movement"] > .getting-started {
-    margin: var(--s-3) auto;
-  }
-}
+   index.html links this sheet (data-sheet="movement"); ui/movement/index.js
+   adds it to a page that does not. The section's place in the shell (the map
+   edge to edge, where Getting started and the messages go) is ui/app.css's. */
 
 /* ---------- The section ---------- */
 
 .mov {
   height: 100%;
   min-height: 360px;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--paper);
 }
 
@@ -68,9 +29,13 @@
 }
 
 .mov-map {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.mov-map > * {
+  flex: none;
 }
 
 .mov-map[hidden],
@@ -86,13 +51,43 @@
   border-bottom: var(--border);
 }
 
-/* the screen's first line: a sentence at the size of the text, not of a headline */
+/* the screen's first line: a sentence at the size of the text, not of a
+   headline, ending in what it offers (Show me, Change) */
 .mov-line.intro__first {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--s-4);
   margin: 0;
   max-width: none;
   font-size: var(--t-md);
   line-height: var(--lh-md);
   font-weight: var(--w-medium);
+}
+
+.mov-line__words {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.mov-line .mov-link[hidden] {
+  display: none;
+}
+
+/* the disclosure: an arrow that points down while the controls are away */
+.mov-change::after {
+  content: "";
+  display: inline-block;
+  width: 0.4em;
+  height: 0.4em;
+  margin-left: 0.4em;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-0.2em) rotate(45deg);
+}
+
+.mov-change[aria-expanded="true"]::after {
+  transform: translateY(0.05em) rotate(-135deg);
 }
 
 .mov-link {
@@ -115,6 +110,10 @@
   align-items: flex-start;
   gap: var(--s-3) var(--s-5);
   margin-top: var(--s-3);
+}
+
+.mov-controls[hidden] {
+  display: none;
 }
 
 .mov-ctl {
@@ -216,7 +215,7 @@
   background: var(--accent-soft);
 }
 
-.mov-strip__item[aria-pressed="true"] {
+.mov-strip__item[aria-checked="true"] {
   position: relative;
   background: var(--accent);
   border-color: var(--accent);
@@ -270,8 +269,12 @@
 
 /* ---------- The map ---------- */
 
-.mov-stage {
+/* the map's floor: 45 % of the window's height and 320 px at the least, and
+   whatever the first line and the bar leave above that */
+.mov-map > .mov-stage {
   position: relative;
+  flex: 1 0 max(45vh, 320px);
+  flex-basis: max(45dvh, 320px);
   min-height: 0;
   overflow: hidden;
 }
@@ -289,6 +292,18 @@
   -webkit-touch-callout: none;
 }
 
+/* the marks' canvas (playback's markers, the hotspot rings and their pulse,
+   the keyboard cursor): over the map's, the same box, letting every pointer
+   through to it */
+.mov-marks {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .mov-plan[data-panning="true"] {
   cursor: grabbing;
 }
@@ -296,6 +311,51 @@
 .mov-plan:focus-visible {
   outline: var(--focus-width) solid var(--focus);
   outline-offset: calc(var(--focus-width) * -1);
+}
+
+/* The map as the last answer after a derive that failed (.mov[data-stale]):
+   the picture is muted, and a band along its top says what it is. The first
+   line of the screen says why, in words. */
+.mov[data-stale="true"] .mov-plan,
+.mov[data-stale="true"] .mov-marks {
+  filter: grayscale(0.85) opacity(0.6);
+}
+
+.mov-stale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  margin: 0;
+  padding: var(--s-1) var(--s-4);
+  background: var(--card);
+  border-bottom: 3px solid var(--warning);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-semibold);
+  pointer-events: none;
+}
+
+.mov-stale[hidden] {
+  display: none;
+}
+
+.mov-stale-note {
+  padding-left: var(--s-3);
+  border-left: 3px solid var(--warning);
+  color: var(--ink);
+}
+
+.mov-stale-note[hidden] {
+  display: none;
+}
+
+.mov-health__both {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
 }
 
 /* ---------- The legend ---------- */
@@ -319,6 +379,37 @@
 .mov-legend[hidden],
 .mov-legend__body[hidden],
 .mov-legend__row[hidden] {
+  display: none;
+}
+
+/* Docked (it would lie on a floor, or the window is a phone's): the card is
+   away, laid out and unseen so the room it needs can still be measured, and
+   one line under the map stands for it. "Scale" on that line brings the card
+   out over the map until its own button puts it away. */
+.mov-legend[data-docked="true"] {
+  z-index: 6;
+  visibility: hidden;
+  box-shadow: var(--shadow);
+}
+
+.mov-legend[data-docked="true"][data-open="true"] {
+  visibility: visible;
+}
+
+.mov-legend-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+  padding: var(--s-1) var(--s-4);
+  background: var(--card);
+  border-top: var(--border);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mov-legend-line[hidden] {
   display: none;
 }
 
@@ -505,7 +596,7 @@
   color: var(--ink-2);
 }
 
-/* ---------- The playback bar's place ---------- */
+/* ---------- The playback bar ---------- */
 
 .mov-bar {
   padding: var(--s-2) var(--s-4);
@@ -513,10 +604,205 @@
   border-top: var(--border);
 }
 
-.mov-bar__note {
+.mov-pb {
+  display: grid;
+  gap: var(--s-2);
+}
+
+/* one row, whatever the width: the scrubber takes what the rest leave */
+.mov-pb__row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.mov-pb__row > * {
+  flex: none;
+}
+
+.mov-pb__steps {
+  display: inline-flex;
+  gap: var(--s-1);
+}
+
+.mov-pb__play {
+  min-width: 5rem;
+}
+
+.mov-pb__step {
+  min-width: 36px;
+  padding: 0;
+}
+
+.mov-pb__step--back .icon {
+  transform: scaleX(-1);
+}
+
+.mov-pb__row > .mov-pb__scrub {
+  flex: 1 1 0;
+  min-width: 3.5rem;
+  height: 36px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.mov-pb__scrub:disabled {
+  opacity: 0.5;
+}
+
+.mov-pb__time {
+  display: grid;
+  min-width: 9.5rem;
+  font-variant-numeric: var(--numeric);
+}
+
+.mov-pb__clock {
+  font-family: var(--font-plan);
+  font-size: var(--t-lg);
+  font-weight: var(--w-semibold);
+  line-height: 1.1;
+}
+
+.mov-pb__countdown {
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  color: var(--ink-2);
+}
+
+.mov-pb__countdown[data-late="true"] {
+  color: var(--problem);
+  font-weight: var(--w-semibold);
+}
+
+.mov-pb__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--t-sm);
+}
+
+.mov-pb__select {
+  width: auto;
+  height: 36px;
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.mov-pb__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2) var(--s-5);
+  padding-top: var(--s-2);
+  border-top: var(--border);
+}
+
+.mov-pb__more[hidden],
+.mov-pb__line[hidden] {
+  display: none;
+}
+
+.mov-pb__set {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.mov-pb__label {
+  font-size: var(--t-xs);
+  line-height: var(--lh-xs);
+  font-weight: var(--w-semibold);
+  color: var(--ink-2);
+}
+
+.mov-pb__line {
+  margin: 0;
   font-size: var(--t-sm);
   line-height: var(--lh-sm);
   color: var(--ink-2);
+}
+
+.mov-pb__line--late {
+  color: var(--problem);
+  font-weight: var(--w-semibold);
+}
+
+/* who is at the cell now, in the cell card */
+.mov-card__now {
+  margin: var(--s-1) 0 0;
+  padding-top: var(--s-1);
+  border-top: var(--border);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.mov-card__late {
+  color: var(--problem);
+  font-weight: var(--w-semibold);
+}
+
+/* A phone: the row is Play, the two steps, the scrubber, the clock and More,
+   and the countdown's words go under it at the row's full width. */
+@media (max-width: 640px) {
+  .mov-bar {
+    padding: var(--s-2) var(--s-3);
+  }
+
+  .mov-pb__row {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    gap: var(--s-1) var(--s-2);
+  }
+
+  .mov-pb__row > .mov-pb__scrub {
+    min-width: 0;
+  }
+
+  .mov-pb__time {
+    display: contents;
+  }
+
+  .mov-pb__countdown {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .mov-pb__countdown:empty {
+    display: none;
+  }
+
+  .mov-pb__play {
+    min-width: 3.5rem;
+    padding-left: var(--s-2);
+    padding-right: var(--s-2);
+  }
+}
+
+/* a finger's targets on the bar (DESIGN 5.3) */
+@media (max-width: 640px), (pointer: coarse) {
+  .mov-pb .btn,
+  .mov-pb__select,
+  .mov-pb__row > .mov-pb__scrub {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .mov-pb__select,
+  .mov-pb__row > .mov-pb__scrub {
+    height: 44px;
+  }
+
+  .mov-pb__step {
+    min-width: 44px;
+  }
+
+  .mov-pb .seg__label {
+    min-height: 44px;
+  }
 }
 
 /* ---------- The top bar's second row ---------- */
@@ -554,6 +840,19 @@
   flex: 1 1 100%;
   min-width: 0;
   padding: var(--s-3);
+}
+
+/* the four tabs are one row in the 320 px panel: at the shell's own size
+   Hotspots and Travel time filled a row, and Summary and Export made a second */
+.mov-inspector .tabs__list {
+  flex-wrap: nowrap;
+}
+
+.mov-inspector .tabs__tab {
+  flex: 1 1 auto;
+  padding: 0 var(--s-1);
+  font-size: var(--t-sm);
+  white-space: nowrap;
 }
 
 .mov-panel__title {
@@ -691,4 +990,287 @@
   .mov-top {
     padding: var(--s-2) var(--s-3);
   }
+}
+
+/* ---------- A finger's targets (DESIGN 5.3) ----------
+
+   Under 640 px, or with a coarse pointer, every control of the movement
+   surface is at least 44 px in its smaller dimension: the floors and the
+   arrangement in the top bar's second row, Change and the other links, the
+   who and transition choices, the two Show boxes (the row is the target),
+   Clear, the legend's choices and its button, the zoom buttons. The playback
+   bar's are with the bar, above. */
+@media (max-width: 640px), (pointer: coarse) {
+  .mov-floors .seg__label,
+  .mov .seg__label,
+  .mov-legend__row .seg__label {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .mov-floors {
+    padding-top: var(--s-1);
+    padding-bottom: var(--s-1);
+  }
+
+  .mov .mov-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mov-strip__item {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mov-check {
+    min-height: 44px;
+    padding-right: var(--s-2);
+  }
+
+  .mov-ctl__checks {
+    gap: 0;
+  }
+
+  .mov-check input {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .mov .btn,
+  .mov .field__input,
+  .mov-ctl__select {
+    min-height: 44px;
+  }
+
+  .mov .field__input,
+  .mov-ctl__select {
+    height: 44px;
+  }
+
+  .mov .chip__remove {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mov-zoom__btn {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .mov-legend-line {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+/* ---------- SV2-18: hotspots, tables, export ---------- */
+
+.mov-hot,
+.mov-travel {
+  margin-top: var(--s-2);
+  overflow-x: auto;
+}
+
+.mov-hot[hidden],
+.mov-travel__tables[hidden] {
+  display: none;
+}
+
+.mov-hot__table th,
+.mov-hot__table td {
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+}
+
+.mov-hot__table tbody th {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  border-top: var(--border);
+}
+
+.mov-hot__table td {
+  white-space: nowrap;
+}
+
+.mov-hot__row {
+  cursor: pointer;
+}
+
+.mov-hot__row:hover,
+.mov-hot__row[aria-current="true"] {
+  background: var(--accent-soft);
+}
+
+.mov-hot__place {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: var(--s-1);
+}
+
+.mov-hot__rank {
+  font-family: var(--font-plan);
+  font-weight: var(--w-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.mov-hot__name {
+  text-align: left;
+  font-weight: var(--w-semibold);
+}
+
+.mov-hot__when,
+.mov-hot__groups,
+.mov-hot__more {
+  display: block;
+}
+
+.mov-hot__when,
+.mov-hot__groups,
+.mov-travel__rooms,
+.mov-travel__fits {
+  color: var(--ink-2);
+}
+
+.mov-hot__more {
+  color: var(--accent);
+  font-weight: var(--w-medium);
+}
+
+.mov-hot__band {
+  display: inline-block;
+  min-width: 1.25rem;
+  margin-right: var(--s-1);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font-family: var(--font-plan);
+  font-weight: var(--w-semibold);
+  text-align: center;
+  color: #1f2328;
+}
+
+.mov-hot__band[data-band="1"] { background: var(--load-1); }
+.mov-hot__band[data-band="2"] { background: var(--load-2); }
+.mov-hot__band[data-band="3"] { background: var(--load-3); }
+.mov-hot__band[data-band="4"] { background: var(--load-4); }
+
+.mov-hot__band[data-band="5"] {
+  background: var(--load-5);
+  color: #ffffff;
+}
+
+.mov-hot__cells[hidden] {
+  display: none;
+}
+
+.mov-hot__cells td {
+  white-space: normal;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.mov-hot__cell-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  padding: 0 0 0 1.5rem;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.mov-hot__all {
+  margin-top: var(--s-2);
+}
+
+.mov-hot__all[hidden] {
+  display: none;
+}
+
+.mov-travel__choose,
+.mov-export__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.mov-travel__table th,
+.mov-travel__table td {
+  padding: var(--s-1) var(--s-2) var(--s-1) 0;
+}
+
+.mov-travel__table thead th {
+  width: 33.3%;
+  text-align: right;
+}
+
+.mov-hot__table thead .table__num {
+  text-align: right;
+}
+
+.mov-travel__table tbody th {
+  padding-top: var(--s-2);
+  border-top: var(--border);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-weight: var(--w-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+
+.mov-travel__table td {
+  border-top: 0;
+  padding-bottom: var(--s-2);
+  white-space: nowrap;
+}
+
+.mov-travel__name {
+  font-weight: var(--w-semibold);
+}
+
+.mov-travel__table .mov-travel__rooms,
+.mov-travel__table .mov-travel__fits,
+.mov-travel__table .mov-groups__late {
+  display: inline;
+  margin-left: var(--s-2);
+}
+
+.mov-export__parts {
+  display: grid;
+  gap: var(--s-1);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.mov-export__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.mov-export__status:empty {
+  display: none;
+}
+
+/* the canvas an exported picture is drawn on: in the page for its colours, never seen */
+.mov-export-host {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
 }

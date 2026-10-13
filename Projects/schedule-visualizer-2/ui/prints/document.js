@@ -95,6 +95,11 @@ export function mm(value) {
 //            the document's; `body` is markup, already escaped by its maker.
 //            Inside a body, an element with the class "new-sheet" starts a
 //            new sheet of paper too (print.css), and the preview counts it.
+//   foot     false leaves off the closing line, the tool's name, which a
+//            browser with no page margin boxes prints once after the last
+//            sheet. A batch says so: its last sheet is as tall as the paper,
+//            and the line after it was a sheet of its own that the preview
+//            never counted.
 // returns { title, html }
 export function frame(project, parts) {
   const options = parts.options || {};
@@ -133,11 +138,11 @@ export function frame(project, parts) {
     '</head>',
     '<body>',
     pages.join('\n'),
-    '<footer class="doc-foot">' + esc(TOOL_NAME) + '</footer>',
+  ].concat(parts.foot === false ? [] : ['<footer class="doc-foot">' + esc(TOOL_NAME) + '</footer>'], [
     '</body>',
     '</html>',
     '',
-  ].join('\n');
+  ]).join('\n');
 
   return { title, html };
 }
