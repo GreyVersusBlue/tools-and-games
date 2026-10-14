@@ -34,12 +34,11 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
+import { GAME_DIR, PAGE, loadStory, cloneState } from "./story.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GAME_DIR = path.join(HERE, "..");
-const PROJECTS_DIR = path.join(GAME_DIR, "..");
-const PAGE = path.join(PROJECTS_DIR, "the-fracture-cycle.html");
+// The page's story and the walker that plays every path of it live in
+// story.mjs, which test/browser.mjs reads too: one walker, two suites.
 
 // Windows: a bare `C:\...` is read by Node as URL scheme `c:` and refused
 // outright, so every dynamic import goes through pathToFileURL (v7 §7).
@@ -51,68 +50,6 @@ function ok(cond, label) { if (cond) pass++; else fails.push(label); }
 function group(name) { console.log("\n\u2500\u2500 " + name); }
 
 const html = fs.readFileSync(PAGE, "utf8");
-
-/**
- * Pull a balanced `{...}` or `[...]` literal out of JS source starting at
- * `start` (which must point at the opening bracket). String- and
- * template-literal-aware: a brace inside a "...", '...', or `...` (including
- * inside a `${...}` substitution, which is tracked as its own nested frame)
- * never affects depth. Comments are skipped too. This file's `nodes` object
- * is full of backtick prose with straight double quotes in dialogue and one
- * escaped `${'${fragCount}'}` substitution, all of which a plain
- * quote-toggling counter (fine for JSON-shaped data) would trip over.
- */
-function extractBalanced(src, start) {
-  const stack = [];
-  let i = start;
-  let mode = "code";
-  while (i < src.length) {
-    const c = src[i];
-    if (mode === "code") {
-      if (c === "/" && src[i + 1] === "/") { const j = src.indexOf("\n", i); i = j < 0 ? src.length : j + 1; continue; }
-      if (c === "/" && src[i + 1] === "*") { const j = src.indexOf("*/", i + 2); i = j < 0 ? src.length : j + 2; continue; }
-      if (c === "'") { mode = "sq"; i++; continue; }
-      if (c === '"') { mode = "dq"; i++; continue; }
-      if (c === "`") { mode = "bt"; i++; continue; }
-      if (c === "{") { stack.push("{"); i++; continue; }
-      if (c === "[") { stack.push("["); i++; continue; }
-      if (c === "}") {
-        const top = stack.pop();
-        i++;
-        if (top === "tplExpr") { mode = "bt"; continue; }
-        if (stack.length === 0) return src.slice(start, i);
-        continue;
-      }
-      if (c === "]") {
-        stack.pop();
-        i++;
-        if (stack.length === 0) return src.slice(start, i);
-        continue;
-      }
-      i++; continue;
-    }
-    if (mode === "sq" || mode === "dq") {
-      const quote = mode === "sq" ? "'" : '"';
-      if (c === "\\") { i += 2; continue; }
-      if (c === quote) { mode = "code"; i++; continue; }
-      i++; continue;
-    }
-    if (mode === "bt") {
-      if (c === "\\") { i += 2; continue; }
-      if (c === "`") { mode = "code"; i++; continue; }
-      if (c === "$" && src[i + 1] === "{") { stack.push("tplExpr"); mode = "code"; i += 2; continue; }
-      i++; continue;
-    }
-  }
-  throw new Error("extractBalanced: unterminated literal");
-}
-
-function literalAfter(src, marker) {
-  const at = src.indexOf(marker);
-  if (at < 0) throw new Error(`marker not found: ${marker}`);
-  const start = src.indexOf("{", at);
-  return extractBalanced(src, start);
-}
 
 /* ---------------------------------------------------------------------
    Section 1: page wiring sanity
@@ -132,19 +69,10 @@ ok(!/localStorage\s*\./.test(codeOnly), "the page makes no direct localStorage c
 --------------------------------------------------------------------- */
 group("story graph reachability");
 
-const initialStateSrc = literalAfter(html, "const initialState = () => (");
-const nodesSrc = literalAfter(html, "const nodes = {");
-
 // `nodes`'s effect/choices functions close over `state`, `hasFrag`, `addFrag`
-// exactly as they do in the page — declared here in the same scope before the
-// literal is eval'd, so the closures resolve them correctly.
-let state;
-function hasFrag(f) { return state.fragments.includes(f); }
-function addFrag(f) { if (!hasFrag(f)) state.fragments.push(f); }
-// eslint-disable-next-line no-eval
-const initialState = () => eval("(" + initialStateSrc + ")");
-// eslint-disable-next-line no-eval
-const nodes = eval("(" + nodesSrc + ")");
+// exactly as they do in the page; story.mjs declares all three in the scope
+// the literal is eval'd in, and `use(s)` says which state a choices() reads.
+const { nodesSrc, initialState, nodes, use, optionsFor, shown, enumerate } = loadStory(html);
 
 const nodeIds = Object.keys(nodes);
 
@@ -158,10 +86,6 @@ const SEAM_ENDINGS = ["end_witness", "end_named"];
 const SEAM_NODES = ["seam_walk", "seam_cairn", "seam_stone", "seam_named", "seam_answer", ...SEAM_ENDINGS];
 ok(nodeIds.length > 0, "nodes is non-empty");
 
-function optionsFor(node) {
-  return typeof node.choices === "function" ? node.choices() : node.choices;
-}
-
 // integrity: every `next` a choice points at must be a real node id
 {
   const badRefs = [];
@@ -170,9 +94,10 @@ function optionsFor(node) {
     if (node.ending) continue;
     // an unfinished prong may point at a node not written yet; nothing reaches it
     if (!PRONG_WIRED && SEAM_NODES.includes(id)) continue;
-    state = initialState();
+    const state = initialState();
     // the seam's nodes are only ever shown to a walker, who has this
     if (SEAM_NODES.includes(id)) state.seam = { name: "own" };
+    use(state);
     let opts;
     try { opts = optionsFor(node); } catch (e) { badRefs.push(`${id}: choices() threw ${e.message}`); continue; }
     for (const opt of opts) {
@@ -194,7 +119,6 @@ function optionsFor(node) {
 // recording every ending reached and every node visited. A (nodeId, state)
 // memo guards the side_hub loop (radiant/dire/invoker contacts) from
 // exploding or recursing forever.
-const cloneState = s => JSON.parse(JSON.stringify(s));
 const endingsSeen = new Set();
 const nodesVisited = new Set();
 const memo = new Set();
@@ -208,12 +132,12 @@ function walk(id, curState) {
   if (!node) { walkErrors.push(`a choice leads to "${id}", which is not a node`); return; }
   nodesVisited.add(id);
   if (node.ending) { endingsSeen.add(id); return; }
-  state = curState; // choices() reads `state.visited`/`state.align` via closure
+  use(curState); // choices() reads `state.visited`/`state.align` via closure
   let opts;
   try { opts = optionsFor(node); } catch (e) { walkErrors.push(`${id}: choices() threw (${e.message})`); return; }
   for (const opt of opts) {
     const branchState = cloneState(curState);
-    state = branchState;
+    use(branchState);
     try { if (opt.effect) opt.effect(branchState); }
     catch (e) { walkErrors.push(`${id}: the effect of "${opt.label}" threw (${e.message})`); continue; }
     walk(opt.next, branchState);
@@ -251,49 +175,15 @@ ok(orphans.length === 0, "every defined node is reached by the walk" + (orphans.
 --------------------------------------------------------------------- */
 group("every path");
 
-// What the page's render() shows for a node in a given state. The one
-// substitution is the page's own line, asserted as text below so this copy
-// cannot drift from it unseen.
-function shown(node, s) {
-  return node.dynamic ? node.text.replace("${fragCount}", String(s.fragments.length)) : node.text;
-}
-ok(html.includes("html = html.replace('${fragCount}', String(state.fragments.length));"),
+// What the page's render() shows for a node in a given state is story.mjs's
+// `shown`. The one substitution is the page's own line, asserted as text here
+// so that copy cannot drift from it unseen.
+ok(shown({ dynamic: true, text: "${fragCount}" }, { fragments: [1, 2] }) === "2" && html.includes("html = html.replace('${fragCount}', String(state.fragments.length));"),
   "the page's render() still makes the one substitution this suite copies");
 
-// No memo here: every complete path is walked on its own. `steps` is what a
-// player saw and did; `end` is where it stopped.
-const DEPTH_CAP = 40;
-const paths = [];
-const deadEnds = [];
-function enumerate(id, curState, steps) {
-  const node = nodes[id];
-  if (!node) { deadEnds.push(`"${id}" is not a node`); return; }
-  if (node.ending) {
-    paths.push({ steps: [...steps, { id, title: node.title, text: shown(node, curState) }], end: id, state: curState });
-    return;
-  }
-  if (steps.length >= DEPTH_CAP) { deadEnds.push(`${id}: no ending within ${DEPTH_CAP} steps`); return; }
-  state = curState;
-  let opts;
-  // a node shown to a state it was not written for is a dead end, said by name
-  try { opts = optionsFor(node); } catch (e) { deadEnds.push(`${id}: choices() threw (${e.message}) with ${JSON.stringify(curState)}`); return; }
-  if (!opts.length) { deadEnds.push(`${id}: no choice offered with ${JSON.stringify(curState)}`); return; }
-  // The seam's entrance is the one thing an old path is allowed to see that
-  // it did not see before, and it is left out of what is compared here only.
-  const offered = opts.filter(o => !(id === "intro" && o.next === "seam_walk"))
-    .map(o => (o.mark || "") + "|" + o.label + "|" + o.next);
-  for (const opt of opts) {
-    const branchState = cloneState(curState);
-    state = branchState;
-    try { if (opt.effect) opt.effect(branchState); }
-    catch (e) { deadEnds.push(`${id}: the effect of "${opt.label}" threw (${e.message})`); continue; }
-    enumerate(opt.next, branchState, [...steps, {
-      id, title: node.title, text: shown(node, curState), offered, took: opt.label, after: JSON.stringify(branchState),
-    }]);
-    state = curState;
-  }
-}
-enumerate("intro", initialState(), []);
+// No memo here: every complete path is walked on its own (story.mjs's
+// `enumerate`). `steps` is what a player saw and did; `end` is where it stopped.
+const { paths, deadEnds } = enumerate();
 
 const onSeam = p => p.steps[1] && p.steps[1].id === "seam_walk";
 const oldPaths = paths.filter(p => !onSeam(p));

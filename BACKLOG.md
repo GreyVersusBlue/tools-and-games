@@ -2348,6 +2348,33 @@ Deeper side content was not asked for and was not written.
 3. **The preview and the social card still show the game as it was.** The
    capture takes the first choice every time, so it never walks the seam and
    needs no re-take; the board's description does not count endings.
+
+**It has a page suite now (#963, 2026-10-13)**: `test/browser.mjs`, 76 checks
+in headless Chromium through `Tools/board-check`'s harness on port 8175, run
+by `.github/workflows/fracture-cycle-ci.yml` on a pull request that touches the
+game. `test/smoke.mjs` (71, unchanged) still walks the story in bare Node; the
+walker both use is `test/story.mjs`. The page suite plays 23 of the walker's
+519 paths by real clicks (a cover of every choice, every list of choices a
+screen offers, every ending from every prong) and compares the title, prose,
+choices and status bar on screen with the walker at each step; then two paths
+by keyboard alone, the save across reloads, a save from before the fourth
+prong, Export and Import, reduced motion, and overflow at 360 and 1920 px. It
+found two faults and both are fixed: focus fell to the body after every choice
+(the new screen's title takes it now), and the scroll to the top stayed smooth
+under `prefers-reduced-motion`.
+
+4. **A reload part way through a run is the first screen again.** The page
+   keeps no place, by the decision recorded at its tracker ("a CYOA this short
+   doesn't need a mid-story save"); the suite pins it as it is. If that is ever
+   wanted it is a save field through `repair`, not a new key (#36).
+5. **The title wears the browser's own focus outline after a choice made by
+   keyboard** (none after a click). It is where focus is, so it was left to
+   show; nobody has looked at it. One rule on `.node-title:focus-visible`
+   restyles or removes it.
+6. **Not covered by the suite:** a screen reader on any screen (the title is
+   focused; what is announced was not heard); the other 496 paths in a browser
+   (smoke.mjs walks all 519 in Node); the Playwright branch of the harness
+   (Windows).
 4. **Re-verify after any future edit.** `node
    Projects/the-fracture-cycle/test/smoke.mjs` walks every path and pins the
    171 old ones by hash; `--paths` prints the figures. An edit to an old
