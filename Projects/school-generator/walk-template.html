@@ -78216,6 +78216,10 @@ function roofPlan(state, roof = null) {
 
   if (r.style === 'parapet') {
     plan.rise = PARAPET_H + COPING_T;
+    // Over a curve the parapet stands on the rooms' own chords and not on the
+    // mask's 4ft steps, and the deck under it is the outline itself (#973).
+    const chords = parapetOnChords(mask, plan.outlines, rects, curvedLoopsOf(floor));
+    if (chords) Object.assign(plan, chords);
     return plan;
   }
 
@@ -78258,10 +78262,8 @@ function roofPlan(state, roof = null) {
 // `tris`; `rect` and `alongX` are null, since there is no rectangle. A loop
 // the eave or the skeleton refuses is left out, so its rectangles stay.
 function curvedRoofs(floor, eaveY, pitch) {
-  const { loops } = roofOutline(floor);
   const out = [];
-  for (const loop of loops || []) {
-    if (!hasCurve(loop)) continue;
+  for (const loop of curvedLoopsOf(floor)) {
     const eave = eavePolygon(loop, EAVE);
     const roof = eave && skeletonRoof(eave, eaveY, pitch);
     if (!roof) continue;
@@ -78269,6 +78271,54 @@ function curvedRoofs(floor, eaveY, pitch) {
     out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
   }
   return out;
+}
+
+// The loops of a storey's true outline with a curve in them: the buildings
+// `roofOutline` accepts, one by one (#971), read by `hasCurve` (#967). The one
+// test of which footprint a roof follows off its chords rather than the mask,
+// for the hipped roof's skeleton and the parapet's run alike.
+function curvedLoopsOf(floor) {
+  return (roofOutline(floor).loops || []).filter(hasCurve);
+}
+
+// A parapet over a curve (#973). Each of the mask's loops is matched to the
+// curved loop holding the middle of every cell along its edges; a curved loop
+// whose cells are all in loops of its own takes their place, its chords as
+// the parapet and itself, ear-clipped, as the deck, and the deck rectangles
+// whose first cell lies in it go. A mask loop whose cells lie in a curved
+// loop and somewhere else as well (two buildings a cell apart) keeps that
+// loop on its steps. `null` where nothing changes, so every other roof is
+// the plan it always was, key for key.
+function parapetOnChords(mask, outlines, rects, curved) {
+  if (!curved.length) return null;
+  const owner = (x, z) => curved.findIndex((loop) => pointInRing(loop, x, z));
+  const owners = outlines.map((loop) => {
+    const seen = new Set();
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i], b = loop[(i + 1) % loop.length];
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const dx = (b.x - a.x) / len, dz = (b.z - a.z) / len;
+      // The covered side is on the right of every edge (`maskOutlines`).
+      for (let t = CELL / 2; t < len; t += CELL) {
+        seen.add(owner(a.x + dx * t - dz * CELL / 2, a.z + dz * t + dx * CELL / 2));
+      }
+    }
+    return seen;
+  });
+  const taken = new Map();
+  curved.forEach((loop, k) => {
+    const mine = owners.filter((o) => o.has(k));
+    if (!mine.length || mine.some((o) => o.size > 1)) return;
+    const tris = triangulate(loop);
+    if (tris) taken.set(k, { pts: loop, tris });
+  });
+  if (!taken.size) return null;
+  const firstCellIn = (rect) => [...taken.values()].some((d) => pointInRing(d.pts, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
+  return {
+    outlines: [...outlines.filter((_, i) => !taken.has([...owners[i]][0])), ...[...taken.values()].map((d) => d.pts)],
+    deckRects: rects.filter((rect) => !firstCellIn(rect)),
+    deckPolys: [...taken.values()],
+  };
 }
 
 // The skeleton roofs a design's top storey stands under: the hipped style
@@ -78531,7 +78581,7 @@ function hasCurve(loop) {
 // frustum and the edit camera's standoff.
 const roofTop = (plan) => plan.eaveY + plan.rise;
 
-return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
+return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, curvedLoopsOf, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
 })();
 // ---- js/sightline.js ----
 const __m_js_sightline_js = (() => {
@@ -86867,6 +86917,11 @@ function initRender(canvas) {
         { x: rect.x1, y: plan.eaveY + 0.05, z: rect.z1 },
         { x: rect.x0, y: plan.eaveY + 0.05, z: rect.z1 },
       ]));
+    }
+    // A parapet over a curve: the deck is the outline, in its own triangles.
+    for (const poly of plan.deckPolys || []) {
+      const geo = roofFace(poly.pts.map((p) => ({ x: p.x, y: plan.eaveY + 0.05, z: p.z })), '#ffffff', poly.tris);
+      if (geo) deckGeos.push(geo);
     }
     for (const block of plan.blocks) {
       for (const f of block.faces) {
