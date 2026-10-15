@@ -444,8 +444,26 @@ and add to this list rather than starting a new one.
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
-- A pitched roof over a curve is a stepped rectangle; a straight skeleton
-  would fix it.
+- A pitched roof over a curve is still a stepped rectangle. The straight
+  skeleton is built: `js/skeleton.js`'s `straightSkeleton` and
+  `skeletonRoof` (#965), pure, faces in `blockRoof`'s shape, called by
+  nothing. The wiring, in order: (1) the top storey's true outline, since
+  `roofMask` rasterizes rooms to 4ft cells and the roof never sees a chord:
+  the union of the rooms' outer rings (split each edge where another ring's
+  corner lies on it, cancel opposite pairs, chain what is left; a courtyard
+  is a hole the skeleton does not take, so that roof keeps its rectangles);
+  (2) the eave, the outline mitred 1.5ft outward, back to the rectangles
+  where it self-crosses; (3) `roofPlan` uses it for `hip` when the outline
+  has an edge that is not axis-aligned (a diagonal wall too, since a curve
+  is chords), with every rectilinear roof byte for byte as today, and
+  `gable` keeps rectangles (over a curve it is a weighted skeleton);
+  (4) `render.js`'s `roofFace` fans from the first point, which draws a
+  non-convex face wrong, so a skeleton face needs ear-clipping; (5)
+  `elevation.js`'s `roofHeightAt` is rectangle arithmetic on `b.rect`,
+  `b.alongX` and `b.rise`, so the section needs the height of the face over
+  the point; the takeoff and the cost count roof area from the mask and can
+  stay; (6) a `test/tools` or `test/visual` capture with a curved pitched
+  roof, looked at.
 - Site regions can be restyled and deleted but not re-shaped.
 - The mesh is inscribed, not exact — a diagonal wall keeps its stair-step,
   and gates are midpoints rather than funnels.
