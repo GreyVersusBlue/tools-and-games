@@ -1191,3 +1191,43 @@ test('where the page reads right to left, the arrow keys go the way they point: 
     await rowsAre(page, 'groups');
   }
 });
+
+// ---------------------------------------------------------------- SV2-50
+
+test('SV2-50 item 8: the Teachers and Rooms tables add one window resize listener in all, not one at each drawing, and still place a sentence on a resize', async () => {
+  const turn = await openGrid({ width: 1280, height: 800 });
+  let failed = null;
+  try {
+    const { page } = turn;
+    // counted from before either table is first drawn
+    await page.evaluate(() => {
+      const add = window.addEventListener;
+      globalThis.resizeAdds = 0;
+      window.addEventListener = function counted(type, fn, options) {
+        if (type === 'resize' && /readonly\.js/.test(new Error().stack)) globalThis.resizeAdds += 1;
+        return add.call(this, type, fn, options);
+      };
+    });
+    const redraw = (n) => page.evaluate(async (times) => {
+      const { setSlot } = await import('./engine/actions.js');
+      for (let i = 0; i < times; i += 1) globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 0, slot: { label: 'Homeroom ' + i } });
+    }, n);
+    for (const rows of ['teachers', 'rooms', 'teachers']) {
+      await rowsAre(page, rows);
+      for (let i = 0; i < 4; i += 1) {
+        await redraw(1);
+        await settled(page);
+      }
+    }
+    const drawings = await page.evaluate(() => document.querySelectorAll('.grd-below .grd-scroll').length);
+    assert.equal(drawings, 1, 'the case needs one table on the page');
+    assert.equal(await page.evaluate(() => globalThis.resizeAdds), 1, 'a resize listener for each drawing of a table');
+    // and the one listener places the sentence of the table on the page
+    await tabInto(page);
+    await readSized(page, 1100, 760);
+    await readSized(page, 1280, 800);
+  } catch (error) {
+    failed = error;
+  }
+  await shut(turn, failed);
+});

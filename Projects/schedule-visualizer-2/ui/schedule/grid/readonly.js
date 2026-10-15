@@ -187,21 +187,19 @@ function shell(project, caption, first, rows) {
   frame.dataset.placings = '0';
   frame.dataset.placed = window.innerWidth + 'x' + window.innerHeight;
   frame.addEventListener('scroll', again, { passive: true });
+  let observer = null;
   if (typeof ResizeObserver === 'function') {
     let width = null;
-    new ResizeObserver(() => {
+    observer = new ResizeObserver(() => {
       // its own change of height (made to hold a tall sentence) is not news
       if (frame.clientWidth === width) return;
       width = frame.clientWidth;
       again();
-    }).observe(frame);
+    });
+    observer.observe(frame);
   }
-  // the window's own change of size; a frame that has left the page lets go
-  const resized = () => {
-    if (frame.isConnected) again();
-    else window.removeEventListener('resize', resized);
-  };
-  window.addEventListener('resize', resized);
+  // the window's own change of size: one listener for every frame (below)
+  placeOnResize(frame, again, observer);
   table.addEventListener('keydown', (event) => {
     const from = markOf(event.target);
     if (from === -1 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
@@ -211,6 +209,31 @@ function shell(project, caption, first, rows) {
     marks[to].cell.focus();
   });
   return frame;
+}
+
+// The frames on the page that place a sentence when the window changes
+// size, and the one window listener that tells them. A table is drawn again
+// at every change to the project, so a listener of its own each time would
+// be one more at every drawing; a frame that has left the page is let go
+// here, at the next drawing or the next resize, whichever comes first.
+const placers = new Map();
+let listening = false;
+function letGo() {
+  for (const [frame, placer] of placers) {
+    if (frame.isConnected) continue;
+    if (placer.observer) placer.observer.disconnect();
+    placers.delete(frame);
+  }
+}
+function placeOnResize(frame, again, observer) {
+  letGo();
+  placers.set(frame, { again, observer });
+  if (listening) return;
+  listening = true;
+  window.addEventListener('resize', () => {
+    letGo();
+    for (const placer of placers.values()) placer.again();
+  });
 }
 
 function groupNames(project, ids) {
