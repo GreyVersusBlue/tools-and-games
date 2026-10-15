@@ -589,6 +589,8 @@ if(typeof window !== 'undefined'){
     chalkboardHtml: () => chalkboard.html(),
     // The queue's, the stations row's and the station tab bar's, the same way (#969).
     queueHtml, slotsHtml, stationTabsHtml: () => stations.tabsHtml(),
+    // The open station's panel, key letters and all, the same way (#972).
+    stationsHtml: () => stations.panelHtml(),
     queueMax: sim.queueMax,
     slot: saveSlot, catalog: CATALOG, sim,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,

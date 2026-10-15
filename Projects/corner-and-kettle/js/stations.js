@@ -6,7 +6,8 @@
 // needed" dot is sim.stationsNeedingWork(); this file draws them and plays the
 // sound. It imports nothing: ui.js hands it the state, the sim and the three
 // page functions it needs, which keeps it below ui.js with no cycle. The one
-// import is patch.js, which imports nothing.
+// import is patch.js, which imports nothing. The tab bar (#969) and the open
+// station's panel (#972) are both patched in place with it.
 
 import { patchRows } from "./patch.js";
 
@@ -98,9 +99,9 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
     const cup = slot.cup;
     switch(tab){
       case 'presets':
-        if(slot.food) return `<div class="stationBlock"><h3>⭐ Presets</h3><div class="draghint">Presets are for drinks — this is a food order.</div></div>`;
+        if(slot.food) return `<div class="stationBlock" data-row="block:presets:food"><h3>⭐ Presets</h3><div class="draghint">Presets are for drinks — this is a food order.</div></div>`;
         return `
-      <div class="stationBlock">
+      <div class="stationBlock" data-row="block:presets">
         <h3>⭐ Presets</h3>
         <div class="draghint">Save a drink build to instantly re-apply it later.</div>
         <div class="btnrow" style="margin-top:6px;">
@@ -115,7 +116,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
       </div>`;
       case 'base':
         return `
-      <div class="stationBlock">
+      <div class="stationBlock" data-row="block:base">
         <h3>☕ Base</h3>
         <div class="btnrow">
           <button class="actionbtn" id="btnEspresso">☕ Pull Espresso Shot</button>
@@ -123,11 +124,11 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
           <button class="actionbtn" id="btnTea">🍵 Steep Tea</button>
         </div>
         <div class="draghint">Shots in cup: ${cup.shots} ${cup.base? '· base: '+cup.base : ''}${sim.shotsOver(slot) ? ` · the ticket asks for ${sim.shotsOver(slot)}: 🗑️ Dump starts the cup over` : ''}</div>
-        <div class="progresswrap"><div class="progressfill" id="baseProgress"></div></div>
+        <div class="progresswrap">${bar('baseProgress')}</div>
       </div>`;
       case 'milk':
         return `
-      <div class="stationBlock">
+      <div class="stationBlock" data-row="block:milk">
         <h3>🥛 Milk</h3>
         <div class="btnrow">${MILKS.map(m=>
           `<button class="actionbtn ${cup.milk===m.id?'selected':''}" aria-pressed="${cup.milk===m.id}" data-milk="${m.id}">${m.name}</button>`
@@ -137,21 +138,21 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
           <button class="actionbtn" id="btnColdPour" ${!cup.milk?'disabled':''}>🥶 Pour Cold</button>
           <button class="actionbtn" id="btnIce">🧊 ${cup.ice? 'Remove Ice':'Add Ice'}</button>
         </div>
-        <div class="progresswrap"><div class="progressfill" id="milkProgress"></div></div>
+        <div class="progresswrap">${bar('milkProgress')}</div>
       </div>`;
       case 'blend':
         return `
-      <div class="stationBlock">
+      <div class="stationBlock" data-row="block:blend">
         <h3>🥶 Blend</h3>
         <div class="draghint">For frozen drinks — add a base + milk first, then blend.</div>
         <div class="btnrow" style="margin-top:8px;">
           <button class="actionbtn" id="btnBlend">🥤 Blend!</button>
         </div>
-        <div class="progresswrap"><div class="progressfill" id="blendProgress"></div></div>
+        <div class="progresswrap">${bar('blendProgress')}</div>
       </div>`;
       case 'syrup':
         return `
-      <div class="stationBlock">
+      <div class="stationBlock" data-row="block:syrup">
         <h3>💧 Syrup</h3>
         <div class="btnrow">${SYRUPS.filter(s=>state.unlockedSyrups.has(s.id)).map(s=>
           `<button class="actionbtn ${cup.syrup===s.id?'selected':''}" aria-pressed="${cup.syrup===s.id}" data-syrup="${s.id}">💧 ${s.name}</button>`
@@ -159,7 +160,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
       </div>`;
       case 'toppings':
         return `
-      <div class="stationBlock">
+      <div class="stationBlock" data-row="block:toppings">
         <h3>✨ Toppings</h3>
         <div class="draghint">Tap a topping to add it. Tap again to remove it.</div>
         <div class="btnrow" style="margin-top:6px;">${TOPPINGS.filter(t=>state.unlockedToppings.has(t.id)).map(t=>
@@ -169,7 +170,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
       </div>`;
       case 'food':
         return `
-      <div class="stationBlock">
+      <div class="stationBlock" data-row="block:food">
         <h3>🍪 Food</h3>
         <div class="btnrow">${sim.getUnlockedFoodList().map(f=>
           `<button class="actionbtn ${slot.foodPlated===f.id?'selected':''}" aria-pressed="${slot.foodPlated===f.id}" data-food="${f.id}">${f.icon} Plate ${f.name}</button>`
@@ -180,19 +181,36 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
     return '';
   }
 
+  // The open station's panel is patched in place too (#972). It was one
+  // innerHTML on every redraw, which during a shift is most frames, so a
+  // player who had tabbed to Steam Milk was thrown off it at once. Now a
+  // button that does the same thing is the same element across a redraw, the
+  // way the tab bar's are. Each tab's block is its own row, so changing tab
+  // is a new block and the keyboard on the old one goes with it; inside a
+  // block a button is matched by position and by its data-* (patch.js), so a
+  // button that now does something else (a preset saved in front of Save
+  // Current) is a new element and loses the keyboard. Nothing else does.
+  //
+  // The markup is given its key letters before it is patched in, by the same
+  // bindKeys() the live panel is read with afterwards, so a redraw that
+  // changes nothing writes no attribute at all.
+  function panelHtml(slot){
+    const tpl = document.createElement('template');
+    // Trimmed: patchRows() keeps the rows, not the whitespace between them.
+    tpl.innerHTML = (slot
+      ? stationBlockHtml(state.stationTab, slot)
+      : `<div class="draghint" data-row="empty">No order in this station yet. Tap a waiting customer above to start one here.</div>`).trim();
+    bindKeys(tpl.content);
+    return tpl.innerHTML;
+  }
+
   function renderStationsAll(){
     const content = document.getElementById('stationsAll');
     const slot = currentSlot();
     renderStationTabs(slot);
-
-    if(!slot){
-      content.innerHTML = `<div class="draghint">No order in this station yet. Tap a waiting customer above to start one here.</div>`;
-      renderKeyLegend(bindKeys());
-      return;
-    }
-    content.innerHTML = stationBlockHtml(state.stationTab, slot);
-    attachStationHandlers();
-    renderKeyLegend(bindKeys());
+    patchRows(content, panelHtml(slot));
+    if(slot) attachStationHandlers();
+    renderKeyLegend(bindKeys(content));
   }
 
   /* ---------- the key map ---------- */
@@ -206,17 +224,21 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
   // `data-nokey` opts a control out. The preset deleters carry it: six saved
   // builds would otherwise be thirteen controls on a tab with ten keys, and
   // the ones it would cost are the six that apply a preset.
-  const keyable = () =>
-    [...document.querySelectorAll('#stationsAll .actionbtn:not([data-nokey])')];
+  //
+  // `root` is the live panel, or the markup about to be patched into it
+  // (panelHtml); an attribute already right is not written again.
+  const keyable = (root = document.getElementById('stationsAll')) =>
+    [...root.querySelectorAll('.actionbtn:not([data-nokey])')];
 
-  function bindKeys(){
+  function bindKeys(root){
     const bound = [];
-    keyable().forEach((btn, i)=>{
+    keyable(root).forEach((btn, i)=>{
       const key = KEY_ALPHABET[i];
       if(!key) return;
-      btn.setAttribute('aria-keyshortcuts', key);
+      if(btn.getAttribute('aria-keyshortcuts') !== key) btn.setAttribute('aria-keyshortcuts', key);
       const name = btn.textContent.trim();
-      btn.title = `${name} — Shortcut: ${key.toUpperCase()}`;
+      const title = `${name} — Shortcut: ${key.toUpperCase()}`;
+      if(btn.title !== title) btn.title = title;
       bound.push({ key, name, disabled: btn.disabled });
     });
     return bound;
@@ -259,13 +281,14 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
       `<div class="legendRow"><b>${esc(tab ? tab.label : 'Station')}</b> ${here}</div>`;
   }
 
+  // The handlers are set again on every redraw, kept button or new, and none
+  // of them holds a cup: a button outlives many cups now that the panel is
+  // patched (#972), so each reads the station and its cup when it is clicked.
+  // A timed button holds that pair until its bar fills, so a bar still
+  // running when the cup is dumped lands in the dumped cup, not the fresh one.
   function attachStationHandlers(){
-    const slot = currentSlot();
-    if(!slot) return;
-    // The cup the click started on. A bar still running when the cup is
-    // dumped lands in the dumped cup, not the fresh one.
-    const cup = slot.cup;
-    const act = (action, value) => {
+    const act = (action, value, slot = currentSlot(), cup = slot && slot.cup) => {
+      if(!slot) return null;
       const text = sim.cupAction(slot, action, value, cup);
       if(text) toast(text);
       return text;
@@ -282,11 +305,16 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
 
     for(const [id, [action, barId, noise]] of Object.entries(TIMED)){
       const btn = document.getElementById(id);
-      if(btn) btn.onclick = ()=> runProgress(barId, sim.cupActionMs(action), ()=>{
-        act(action);
-        if(noise) sound[noise]();
-        renderAll();
-      });
+      if(btn) btn.onclick = ()=>{
+        const slot = currentSlot();
+        if(!slot) return;
+        const cup = slot.cup;
+        runProgress(barId, sim.cupActionMs(action), ()=>{
+          act(action, undefined, slot, cup);
+          if(noise) sound[noise]();
+          renderAll();
+        });
+      };
     }
 
     document.querySelectorAll('[data-milk]').forEach(btn=>{
@@ -314,15 +342,27 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
 
   // A station's progress bar, on performance.now(). It is a bar, not the
   // game: the sim does not wait on it, and the action lands when it fills.
+  //
+  // How far a running bar has got is kept here and written into the markup
+  // (bar()), so a redraw in the middle of one patches the same width back
+  // rather than stripping it: the bar is an element that outlives redraws
+  // now (#972). When it fills, its width is forgotten before the action's
+  // redraw, so that redraw empties it, as the rebuilt bar always did.
+  const running = new Map();
+  const width = pct => `width: ${pct}%;`;
+  const bar = id =>
+    `<div class="progressfill" id="${id}"${running.has(id) ? ` style="${width(running.get(id))}"` : ''}></div>`;
+
   function runProgress(elId, duration, cb){
-    const el = document.getElementById(elId);
-    if(!el){ cb(); return; }
+    if(!document.getElementById(elId)){ cb(); return; }
     let start = performance.now();
     function step(now){
       let pct = Math.min(100, ((now-start)/duration)*100);
-      el.style.width = pct+'%';
+      running.set(elId, pct);
+      const el = document.getElementById(elId);
+      if(el) el.setAttribute('style', width(pct));
       if(pct<100) requestAnimationFrame(step);
-      else cb();
+      else { running.delete(elId); cb(); }
     }
     requestAnimationFrame(step);
   }
@@ -366,5 +406,6 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
     saveNow();
   }
 
-  return { renderStationsAll, selectTab, currentSlot, pressKey, tabsHtml: () => tabsHtml(currentSlot()) };
+  return { renderStationsAll, selectTab, currentSlot, pressKey, tabsHtml: () => tabsHtml(currentSlot()),
+    panelHtml: () => panelHtml(currentSlot()) };
 }

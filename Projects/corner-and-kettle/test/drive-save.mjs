@@ -60,8 +60,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const ONLY_A11Y = process.argv.includes('--a11y');
 // `--pace` runs section 16 alone the same way: the pace switch on the board.
 const ONLY_PACE = process.argv.includes('--pace');
-// `--focus` runs sections 17 and 18 alone: the board, the queue and the
-// stations row keeping the keyboard on a redraw.
+// `--focus` runs sections 17 to 19 alone: the board, the queue, the
+// stations row and the open station's panel keeping the keyboard on a redraw.
 const ONLY_FOCUS = process.argv.includes('--focus');
 
 /**
@@ -1750,6 +1750,159 @@ try {
   t.ok(tb.marked && f.same, 'the cup changing under it leaves the keyboard where it was', `${tb.tab}${f.why ? ', ' + f.why : ''}`);
   t.ok(qp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', qp.__errs.join(' | ') || 'clean');
   await qp.close();
+  }
+
+  /* ---------- 19. the open station's buttons keep the keyboard ---------- */
+  // The panel under the tab bar was one innerHTML on every redraw, so a
+  // button the player had tabbed to (a milk, Steam Milk, a syrup) was gone at
+  // the next one. It is patched in place now (#972), with three things held
+  // that a copy of section 18 would not hold: a timed button acts on the cup
+  // in the station when it is clicked, its bar keeps its width across a
+  // redraw and empties when it fills, and the key letters read off the panel
+  // are the ones a fresh build gives, which `stationsHtml` carries.
+
+  panel: {
+  if (ONLY_A11Y || ONLY_PACE) break panel;
+  t.section("19. the open station's buttons keep the keyboard across a redraw");
+  const sp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(sp, { wipe: true });
+  await sp.evaluate(() => { window.confirm = () => true; window.prompt = () => 'Test Build'; });
+  const at = () => sp.evaluate(() => {
+    const a = document.activeElement;
+    const btns = [...document.querySelectorAll('#stationsAll button')];
+    return {
+      marked: !!(a && a.__mark), inPanel: !!(a && a.closest && a.closest('#stationsAll')), tag: a && a.tagName,
+      name: a ? a.textContent.replace(/\s+/g, ' ').trim().slice(0, 50) : '', key: a && a.getAttribute ? a.getAttribute('aria-keyshortcuts') : null,
+      idx: btns.indexOf(a), tabindex: a ? a.tabIndex : null, count: btns.length,
+    };
+  });
+  // The panel against a fresh build, key letters included, in one task.
+  const panelFresh = () => sp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    if (typeof d.stationsHtml !== 'function') return { same: false, why: 'no stationsHtml on __CK_DEBUG__' };
+    const norm = root => [...root.childNodes].map(n => n.nodeType === 3 ? n.nodeValue
+      : n.nodeType === 1 ? `<${n.tagName} ${[...n.attributes].map(a => `${a.name}=${a.value}`).sort().join(' ')}>${norm(n)}</${n.tagName}>` : '').join('');
+    const tpl = document.createElement('template');
+    tpl.innerHTML = d.stationsHtml();
+    const a = norm(document.getElementById('stationsAll')), b = norm(tpl.content);
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    return { same: a === b, why: a === b ? '' : `first difference at ${i}: "${a.slice(i, i + 60)}" against "${b.slice(i, i + 60)}"` };
+  });
+  // A drink: a food order has no milk to steam and no presets to save.
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    let o; for (let i = 0; i < 100 && (!o || o.isFood); i++) o = d.generateOrder();
+    d.state.queue.push(o);
+    d.tryAcceptCustomer(d.state.queue[d.state.queue.length - 1].id); d.renderAll();
+    document.querySelector('#stationTabs [data-tab="milk"]').click();
+  });
+
+  // Tab from the station tab bar into the panel: the first milk.
+  await sp.focus('#stationTabs button:last-child');
+  let tabs = 0;
+  for (; tabs < 10 && !(await at()).inPanel; tabs++) await sp.keyboard.press('Tab');
+  await sp.evaluate(() => { document.activeElement.__mark = true; });
+  const m0 = await at();
+  t.ok(m0.inPanel && m0.tag === 'BUTTON' && m0.idx === 0 && m0.key === 'q', 'Tab from the tab bar reaches the first button in the open station', `${tabs} Tab, "${m0.name}" key ${m0.key}`);
+  let f = await panelFresh();
+  t.ok(f.same, 'the panel on first paint is exactly what a fresh build writes, key letters and all', f.why);
+
+  await sp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let m = await at();
+  t.ok(m.marked && m.inPanel, 'a redraw leaves the keyboard on the same button, which was not rebuilt', `${m.tag} "${m.name}"`);
+  t.ok(m.name === m0.name && m.idx === m0.idx && m.tabindex === 0 && m.key === m0.key, 'with the same name, the same key and the same place in the tab order', `"${m.name}" ${m.key} at ${m.idx} of ${m.count}`);
+  await wait(1500);
+  m = await at();
+  t.ok(m.marked, 'a second and a half of the shift running leaves it there', `"${m.name}"`);
+
+  // Enter picks that milk: the button is pressed now, on the same element,
+  // and Steam Milk below it is enabled.
+  await sp.keyboard.press('Enter');
+  await wait(150);
+  m = await at();
+  f = await panelFresh();
+  const steamOn = await sp.evaluate(() => !document.getElementById('btnSteam').disabled);
+  t.ok(m.marked && steamOn && await sp.evaluate(() => document.activeElement.getAttribute('aria-pressed') === 'true'), 'Enter picks the milk, on the same button, now pressed, and Steam Milk is enabled', `"${m.name}"`);
+  t.ok(f.same, 'and the panel is exactly a fresh build after it', f.why);
+
+  // Tab order after a redraw.
+  await sp.keyboard.press('Tab');
+  const m1 = await at();
+  t.ok(m1.inPanel && m1.idx === m0.idx + 1, 'Tab after a redraw goes to the next button in the panel', `${m0.idx} -> ${m1.idx} "${m1.name}"`);
+  await sp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  await sp.keyboard.down('Shift'); await sp.keyboard.press('Tab'); await sp.keyboard.up('Shift');
+  m = await at();
+  t.ok(m.marked, 'and Shift+Tab after another redraw comes back to the first', `"${m.name}"`);
+
+  // A timed button: Enter on Steam Milk runs the bar. A redraw halfway
+  // leaves the keyboard on it and the bar where it had got to; the bar
+  // empties when it fills, and the milk is steamed.
+  const ms = await sp.evaluate(() => {
+    const b = document.getElementById('btnSteam'); b.__steam = true; b.focus();
+    return window.__CK_DEBUG__.sim.cupActionMs('steamMilk');
+  });
+  const barW = () => sp.evaluate(() => {
+    const el = document.getElementById('milkProgress');
+    return { w: el ? parseFloat(el.style.width || '0') : -1, kept: !!(document.activeElement && document.activeElement.__steam) };
+  });
+  await sp.keyboard.press('Enter');
+  await wait(Math.round(ms / 2));
+  const b1 = await barW();
+  await sp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  const b2 = await barW();
+  f = await panelFresh();
+  t.ok(b1.w > 10 && b1.w < 100 && b2.w >= b1.w && b2.kept, 'a redraw halfway through Steam Milk leaves the bar where it had got to and the keyboard on the button', `${b1.w.toFixed(0)}% -> ${b2.w.toFixed(0)}%, kept ${b2.kept}`);
+  t.ok(f.same, 'with the bar drawn at that width by a fresh build too', f.why);
+  await wait(Math.round(ms / 2) + 400);
+  const b3 = await barW();
+  const steamed = await sp.evaluate(() => { const d = window.__CK_DEBUG__; return d.state.slots[d.state.focusedSlot].cup.milkSteamed === true; });
+  t.ok(steamed && b3.w === 0 && b3.kept, 'when it fills the milk is steamed, the bar is empty again and the keyboard is still on Steam Milk', `steamed ${steamed}, bar ${b3.w}%`);
+
+  // The cup a timed button acts on is the one in the station when it is
+  // clicked: a cup put in after the last redraw takes the shot.
+  await sp.evaluate(() => document.querySelector('#stationTabs [data-tab="base"]').click());
+  const shotMs = await sp.evaluate(() => window.__CK_DEBUG__.sim.cupActionMs('pullShot'));
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot];
+    window.__oldCup = sl.cup; sl.cup = JSON.parse(JSON.stringify(sl.cup)); window.__newCup = sl.cup;
+    window.__shots = [window.__oldCup.shots, window.__newCup.shots];
+    document.getElementById('btnEspresso').click();
+  });
+  await wait(shotMs + 400);
+  let cups = await sp.evaluate(() => [window.__shots, [window.__oldCup.shots, window.__newCup.shots]]);
+  t.ok(cups[1][1] === cups[0][1] + 1 && cups[1][0] === cups[0][0], 'a shot pulled after the cup changed lands in the cup in the station, not the one the panel was drawn with', `old ${cups[0][0]} -> ${cups[1][0]}, new ${cups[0][1]} -> ${cups[1][1]}`);
+  // And held until the bar fills: a cup swapped in halfway does not get it.
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot];
+    window.__oldCup = sl.cup;
+    document.getElementById('btnEspresso').click();
+  });
+  await wait(Math.round(shotMs / 2));
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot];
+    window.__shots = [window.__oldCup.shots, 0]; sl.cup = JSON.parse(JSON.stringify(sl.cup)); sl.cup.shots = 0; window.__newCup = sl.cup; d.renderAll();
+  });
+  await wait(Math.round(shotMs / 2) + 400);
+  cups = await sp.evaluate(() => [window.__shots, [window.__oldCup.shots, window.__newCup.shots]]);
+  t.ok(cups[1][0] === cups[0][0] + 1 && cups[1][1] === 0, 'a shot whose cup is swapped out halfway lands in the cup it was clicked on', `clicked ${cups[0][0]} -> ${cups[1][0]}, swapped in ${cups[1][1]}`);
+  f = await panelFresh();
+  t.ok(f.same, 'and the panel is exactly a fresh build after both', f.why);
+
+  // A button whose meaning changed is a new element. Saving a preset puts
+  // one in front of Save Current, so the keyboard on it goes; where it lands
+  // is reported, not ruled on.
+  await sp.evaluate(() => { document.querySelector('#stationTabs [data-tab="presets"]').click(); const b = document.getElementById('btnSavePreset'); b.__save = true; b.focus(); });
+  const pre = await sp.evaluate(() => window.__CK_DEBUG__.state.presets.length);
+  await sp.keyboard.press('Enter');
+  await wait(150);
+  const post = await sp.evaluate(() => {
+    const a = document.activeElement, d = window.__CK_DEBUG__;
+    return { n: d.state.presets.length, kept: !!(a && a.__save), at: a === document.body ? 'body' : a && a.tagName };
+  });
+  f = await panelFresh();
+  t.ok(post.n === pre + 1 && f.same, 'Enter on Save Current saves a preset and the panel is a fresh build after it', `${pre} -> ${post.n} presets; keyboard kept ${post.kept}, then on ${post.at}${f.why ? ', ' + f.why : ''}`);
+  t.ok(sp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', sp.__errs.join(' | ') || 'clean');
+  await sp.close();
   }
 
 } finally {
