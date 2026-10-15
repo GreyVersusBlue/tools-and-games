@@ -347,6 +347,29 @@ test('SV2-50 item 11: text is folded by NFKC and without a locale, and "Room 101
   assert.equal(readTyped('Room 150', ROOMS).kind, 'several');
 });
 
+// SV2-54 item 1: the start of a room's label lists it, as it did before
+// SV2-50 ("101 — ms" and "101 — Ms. Okafo" listed r101; after SV2-50 they
+// listed nothing, live on the site). Listing is not picking: the text is
+// still kept as typed when the field is left.
+test('SV2-54 item 1: text that starts a room\'s label, folded, lists that room, and is still not picked', () => {
+  const okafor = [
+    { id: 'r101', number: '101', label: '101 — Ms. Okafor', teachers: 'Ms. Okafor', detail: '' },
+    { id: 'r102', number: '102', label: '102 — Mr. Tindall', teachers: 'Mr. Tindall', detail: '' },
+  ];
+  for (const typed of ['101 — ms', '101 — Ms. Okafo', '101 — MS. OKAFOR', ' 101 — ', 'Room 101 — Ms', '１０１ — Ｍｓ']) {
+    assert.deepEqual(ids(listFor(typed, okafor)), ['r101'], 'listFor(' + JSON.stringify(typed) + ')');
+  }
+  assert.deepEqual(readTyped('101 — ms', okafor), { kind: 'keep', text: '101 — ms' });
+  assert.deepEqual(readTyped('101 — Ms. Okafo', okafor), { kind: 'keep', text: '101 — Ms. Okafo' });
+  // the whole label is the room, as before
+  assert.equal(readTyped('101 — Ms. Okafor ', okafor).option?.id, 'r101');
+  // the label is read from its start only: the middle of one is not a start
+  assert.deepEqual(ids(listFor('— ms', okafor)), [], '"— ms" is not the start of a label');
+  assert.deepEqual(ids(listFor('1 — ms', okafor)), [], '"1 — ms" is not the start of a label');
+  // a padded number's label, from its start as the field shows it
+  assert.deepEqual(ids(listFor('104  — mr', [{ id: 'rpad', number: ' 104 ', label: ' 104  — Mr. Fairweather-Ness', teachers: 'Mr. Fairweather-Ness' }])), ['rpad']);
+});
+
 // ---------------------------------------------------------------- the picker: Enter and leaving the field
 
 test('"10" and Enter keeps "10", as leaving the field does: no room is highlighted while typing, and none is picked', () => {
