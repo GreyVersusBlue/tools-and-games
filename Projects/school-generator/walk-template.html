@@ -78228,7 +78228,7 @@ function roofPlan(state, roof = null) {
   // used to put that cell on, and its deck goes with them: nothing under a
   // skeleton roof is open to the sky, and a 4ft deck cell would stand out
   // past a curved eave.
-  const curved = r.style === 'hip' ? curvedRoofs(floor, eaveY, r.pitch) : [];
+  const curved = skeletonRoofsOf(state, r);
   if (curved.length) {
     const firstCellIn = (rect) => curved.some((c) => pointInRing(c.outline, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
     rects = rects.filter((rect) => !firstCellIn(rect));
@@ -78269,6 +78269,51 @@ function curvedRoofs(floor, eaveY, pitch) {
     out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
   }
   return out;
+}
+
+// The skeleton roofs a design's top storey stands under: the hipped style
+// over a loop the outline, the eave and the skeleton all accept, and nothing
+// for every other roof. This is the one test of which footprint takes the
+// skeleton path; `roofPlan`, the takeoff and the estimate all ask it.
+function skeletonRoofsOf(state, roof = null) {
+  const r = normalizeRoof(roof || state.roof);
+  const top = (state.floors || []).length - 1;
+  const floor = (state.floors || [])[top];
+  if (!floor || r.style !== 'hip') return [];
+  return curvedRoofs(floor, floorBaseY(state, top) + WALL_H, r.pitch);
+}
+
+// The roof's quantity for the takeoff and the estimate: `footprint`, the plan
+// area it covers inside the walls (the mask's cells, never the eave), and
+// `area`, that footprint sloped at the pitch. Where a loop takes the skeleton
+// path its cells give way to the loop's own area off its chords, so a curve
+// is counted as drawn and not as a staircase of 4ft cells. Every face of a
+// skeleton roof stands at the one pitch, so its sloped area over that outline
+// is still the plan area over the cosine. Every other footprint is the mask's
+// count, by the same lines the takeoff and the estimate each had before (#970).
+function roofCover(state) {
+  const top = state.floors.length - 1;
+  const floor = state.floors[top];
+  if (!floor) return null;
+  const roof = normalizeRoof(state.roof || ensureRoof(state));
+  const entry = roofStyleEntry(roof.style);
+  const mask = roofMask(floor, floor.w, floor.h);
+  let footprint = maskCount(mask) * CELL * CELL;
+  const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
+  const curved = skeletonRoofsOf(state, roof);
+  if (curved.length) {
+    let cells = 0;
+    for (let r = 0; r < mask.h; r++) {
+      for (let c = 0; c < mask.w; c++) {
+        if (!mask.on[r * mask.w + c]) continue;
+        const x = (mask.cx0 + c + 0.5) * CELL, z = (mask.cy0 + r + 0.5) * CELL;
+        if (curved.some((k) => pointInRing(k.outline, x, z))) cells++;
+      }
+    }
+    footprint -= cells * CELL * CELL;
+    for (const k of curved) footprint += loopArea(k.outline);
+  }
+  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length };
 }
 
 // ---------- 5. the true outline, for a roof over a curve ----------
@@ -78433,7 +78478,7 @@ function hasCurve(loop) {
 // frustum and the edit camera's standoff.
 const roofTop = (plan) => plan.eaveY + plan.rise;
 
-return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, roofOutline, hasCurve, roofTop };
+return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
 })();
 // ---- js/sightline.js ----
 const __m_js_sightline_js = (() => {

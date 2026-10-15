@@ -1810,6 +1810,8 @@ Generator.
 
 **#968. Corner & Kettle's Menu Board is patched in place, rows matched by a `data-row` key and nodes inside a row by position; a button is kept only while its `data-*` attributes, the purchase it makes, are unchanged.** The board was one `innerHTML` on every redraw, so a focused button was thrown away by the next sale. The pace buttons' build-once pattern would have meant a builder and an updater for each of some twenty row shapes, so `build()` still writes the rows as markup and `patchRows()` writes into the live board only the text and attributes that changed. A button whose purchase changed is a new element on purpose: the keyboard on it is lost rather than left on a control that now buys something else. `__CK_DEBUG__.chalkboardHtml` lets the page check hold the patched board to a fresh build.
 
+**#970. School Generator's takeoff and estimate count a hipped roof over a curve off the loop's own chords, inside the walls, by the one test `roofPlan` uses.** `skeletonRoofsOf` (roof.js) is that test, and `roofPlan`, `takeoff.js` and `cost.js` all ask it through `roofCover`: a mask cell whose middle lies in a skeleton loop gives way to the loop's area, and every other footprint is the mask's count by the old lines. The roof is counted inside the walls, not out to the 1.5ft eave, because the mask always was and a school with one curved and one straight building would otherwise count two ways; every skeleton face stands at the one pitch, so the sloped area is still the plan area over the cosine. The site plan was left: it draws the ground storey whatever the roof, so this test cannot decide it.
+
 **#975. Reserved: #946 to #975 are held for sessions on Huginn (the Selector loop); anyone else numbers from #976.**
 
 # The log
