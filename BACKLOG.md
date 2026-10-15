@@ -940,9 +940,11 @@ topping that is not on the shelf), and
 "Difficulty presets" was built on 2026-10-10 to Devon's four answers of
 2026-10-07 (#947, TG-29: Busy Corner is the game as it was, Quiet Corner
 slows the door by 1.3 and lengthens patience by 1.5, switchable from the Menu
-Board mid-shift, one save field; played by no person). The Menu Board keeps
-the keyboard across a redraw since 2026-10-14 (#968, TG-29); the queue, the
-stations and the station panels still drop it, listed in the wishlist. Nothing from it is in the
+Board mid-shift, one save field; played by no person). The Menu Board, the
+queue, the stations row, the station tab bar and the open station's panel keep
+the keyboard across a redraw since 2026-10-15 (#968, #969, #972, TG-29); a
+button whose purchase or place changed is a new element and still drops it,
+listed in the wishlist. Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,

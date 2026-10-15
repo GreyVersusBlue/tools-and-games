@@ -1836,7 +1836,10 @@ try {
 
   // A timed button: Enter on Steam Milk runs the bar. A redraw halfway
   // leaves the keyboard on it and the bar where it had got to; the bar
-  // empties when it fills, and the milk is steamed.
+  // empties when it fills, and the milk is steamed. The width line alone
+  // cannot tell a patch that strips the bar's width from one that keeps it:
+  // the bar's next frame writes it back before the line reads it. The fresh
+  // build line after it is the one that fails when the width is not kept.
   const ms = await sp.evaluate(() => {
     const b = document.getElementById('btnSteam'); b.__steam = true; b.focus();
     return window.__CK_DEBUG__.sim.cupActionMs('steamMilk');
