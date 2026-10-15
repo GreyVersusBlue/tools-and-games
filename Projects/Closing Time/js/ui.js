@@ -741,6 +741,9 @@ function flowOpenHouse(pl) {
 function renderChoiceQueue() {
   if (!S.choiceQueue.length || $("#modal-root").childElementCount) return;
   const ch = S.choiceQueue[0];
+  // A second door's call about a client the first door already brought in:
+  // nobody is on the phone, so it goes without a modal.
+  if (ch.kind === "referralArrive" && Clients.alreadyMet(ch.clientId)) { S.choiceQueue.shift(); return renderChoiceQueue(); }
   const done = () => { S.choiceQueue.shift(); closeModal(); render(); };
   const deal = ch.dealId ? S.deals.find(d => d.id === ch.dealId) : null;
   const pl = ch.plId ? S.playerListings.find(p => p.id === ch.plId) : null;

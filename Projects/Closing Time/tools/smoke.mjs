@@ -2008,6 +2008,64 @@ console.log("\nRuth's referral, and a client added since the career began:");
     "a queue that lost one file and gained three drops the one and appends the three");
 }
 
+/* ------------------------------------------- two doors that name one client */
+// Every door queues a referralArrive naming somebody still in clientQueue, and
+// none of them looks at what is already waiting in choiceQueue, so two doors
+// on one day can name the same client. Taking both called meetClient() twice
+// and made two records of one person. The guard is in meetClient(), not at
+// the doors: a door that skipped a queued name would draw a different client
+// from rand() and move every seeded career that ever had two referrals
+// waiting at once.
+console.log("\ntwo doors that name one client:");
+{
+  const ruth = DB.events.ev_ruth_referral;
+  /** A Rookie's career with one client in reach, Ruth's call and a closed client's referral both naming them. */
+  const twoDoors = () => {
+    for (let i = 1; i <= 200; i++) {
+      newGame("bk_hearthstone");
+      S.seed = (i * 2654435761) % 4294967296; S.level = 1; S.day = 12; S.rep = 20;
+      const happy = Clients.meetClient("cl_0001");
+      happy.satisfaction = 100; happy.status = "closed";
+      S.clientQueue = ["cl_0004"];
+      S.choiceQueue.length = 0;
+      fireEvent(ruth);
+      if (Clients.rollReferral(happy) === null) continue;
+      return { happy, seed: i };
+    }
+    return null;
+  };
+  const got = twoDoors();
+  ok(got, "a seeded career where Ruth's call and a closed client's referral are both waiting");
+  if (got) {
+    const waiting = S.choiceQueue.filter(ch => ch.kind === "referralArrive").map(ch => ch.clientId);
+    eq(waiting.join(" "), "cl_0004 cl_0004", "and both name the same client");
+    const logBefore = S.log.length;
+    const first = Clients.meetClient(S.choiceQueue[0].clientId, S.choiceQueue[0].referredBy);
+    const second = Clients.meetClient(S.choiceQueue[1].clientId, S.choiceQueue[1].referredBy);
+    eq(S.clients.filter(r => r.clientId === "cl_0004").length, 1, "taking both makes one record of them, not two");
+    ok(second === first, "the second take hands back the record the first made");
+    eq(S.usedClients.filter(id => id === "cl_0004").length, 1, "they are in the used list once");
+    eq(S.log.length - logBefore, 1, "and the Ledger says New client once");
+    S.clientQueue.push("cl_0008");
+    ok(typeof Clients.alreadyMet === "function" && Clients.alreadyMet("cl_0004") && !Clients.alreadyMet("cl_0008"), "alreadyMet() tells a met client from one still in the queue");
+  }
+
+  // A save written before this fix can already hold two records of one
+  // client. Built by hand here, the way the old meetClient() left it.
+  newGame("bk_hearthstone");
+  S.seed = 977; S.level = 1;
+  const a = Clients.meetClient("cl_0004");
+  const b = { ...JSON.parse(JSON.stringify(a)), recId: "cr_doubled" };
+  S.clients.push(b); S.usedClients.push("cl_0004");
+  const dstore = memStore();
+  ok(save(dstore) && loadSave(dstore), "an old save with two records of one client loads");
+  eq(S.clients.filter(r => r.clientId === "cl_0004").length, 2, "and keeps both records: nothing is merged or dropped on load");
+  let threw = null;
+  try { for (let d = 0; d < 30; d++) { endDay(); S.choiceQueue.length = 0; } } catch (e) { threw = e; }
+  ok(!threw, "and plays thirty days on", threw && threw.stack);
+  ok(save(dstore) && loadSave(dstore), "and saves and loads again after them");
+}
+
 /* ------------------------------------------------ the content check's controls */
 // auditContent() passed on the real data/ at the top of this file, which shows
 // nothing unless it can also fail. Each copy below has one thing wrong with

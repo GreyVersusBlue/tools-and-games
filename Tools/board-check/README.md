@@ -254,10 +254,10 @@ taking a new one.
 | 8123 | `check-collisions.mjs`, `shoot-board.mjs` |
 | 8125 | `capture-previews.mjs` |
 | 8126 | `play-games.mjs` |
-| 8127 | `tools.mjs`, `Projects/integer-foundry/test/browser.mjs` |
+| 8127 | `tools.mjs`, `Projects/integer-foundry/test/browser.mjs`, `capture-hearth.mjs` |
 | 8129 | `Projects/integer-foundry/test/capture-legacy-save.mjs` |
 | 8131 | `Projects/corner-and-kettle/test/drive-save.mjs` |
-| 8137 | `Tools/schedule/test/publish.mjs` |
+| 8137 | `Tools/schedule/test/publish.mjs`, `Projects/daredevil/test/drive-daredevil.mjs` (`boot()`'s default, for `smoke-page.mjs` and `transcript.mjs`) |
 | 8138 | `Tools/schedule/test/smoke.mjs` |
 | 8140 | `Pathfinder/tests/anathema.test.mjs` |
 | 8146 | `Tools/seating-chart/test/drive-seating.mjs` |
@@ -273,12 +273,16 @@ taking a new one.
 | 8165 | `Projects/golden-hour-beach/test/animals.mjs` |
 | 8166 | `Projects/blue-hour-trail/test/animals.mjs` |
 | 8167 | `Projects/golden-hour-beach/test/props.mjs` |
-| 8168 | `Projects/blue-hour-trail/test/props.mjs` |
+| 8168 | `Projects/blue-hour-trail/test/props.mjs`, `blender/validate.mjs` |
 | 8169 | `Projects/fourth-quarter/test/bar.mjs` |
 | 8170 | `Projects/aphelion/test/ship.mjs` |
-| 8171 | `Pathfinder/tests/converter.test.mjs` |
+| 8171 | `Pathfinder/tests/converter.test.mjs`, `Projects/throneshard/test/browser.mjs` |
 | 8172 | `Projects/skywings64/test/browser.mjs` |
-| 8173 | `check-tavern-clicks.mjs` |
+| 8173 | `check-tavern-clicks.mjs`, `Projects/skywings64/tools/gpu-profile.mjs` |
+| 8174 | `Projects/skywings64/test/draws.mjs` |
+| 8175 | `Projects/the-fracture-cycle/test/browser.mjs` |
+| 8177 | `Projects/torchbearer/test/browser.mjs` |
+| 8191 | `Projects/throneshard/tools/scripts/vfx_measure.mjs` (`VFX_PORT` moves it) |
 
 8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are
 never run in the same process, and neither is in the other's CI job. It is on the

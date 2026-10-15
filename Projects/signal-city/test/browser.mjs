@@ -996,10 +996,33 @@ try {
       return { line: document.getElementById('eventLine').textContent, closed: net.isClosed('W', 0), zone: !!w.activeEvent('school'), scale: w.speedScale, cone: e ? [d[0] * e.d0 + rr[0] * (inner + 1.75), d[1] * e.d0 + rr[1] * (inner + 1.75)] : null, merges: w.stats.merges };
     });
     ok(!s2.zone && s2.scale === 1 && s2.closed && /Lane closed on W for \d+ s more/.test(s2.line), 'at 151 s the zone is over and the W curb lane is closed, and the line says so', s2.line);
-    const cone = await sample('cone', s2.cone[0], s2.cone[1], 3);
-    // a cone is orange (#ff7a1a) with a white ring, so at 2 px across most of its pixels are the blend
-    const orange = Object.entries(cone).filter(([k]) => { const [r, g, b] = k.split(',').map(Number); return r === 15 && g >= 7 && g <= 11 && b <= 7; }).reduce((n, [, v]) => n + v, 0);
-    ok(orange > 2, 'the first cone of the taper is orange on the board', `${orange} orange pixels of ${JSON.stringify(cone).slice(0, 100)}`);
+    // A cone is an orange disc (#ff7a1a, 0.36 m) with a white ring (0.2 m,
+    // 0.1 m wide). School Run draws at 5.6 px a metre, so the disc is 4 px
+    // across and the ring washes its middle to about 255,189,141: still
+    // orange, paler. The check reads the board layer alone, where the cones
+    // are drawn, so no ground shows through, and counts the pixels at least
+    // half opaque whose colour is orange by its proportions (g 0.4 to 0.8 of
+    // r, b at most 0.6 of r). The closure's tint is the same hue at 14%, under
+    // the half-opaque floor. A disc covers about 13 of the 36 pixels sampled.
+    // (#974: the check it replaces read the board over the ground at 4 bits
+    // and counted only the disc's antialiased rim, 3 pixels in CI and 2 on
+    // huginn against a floor of 3, the middle being too pale for its band.)
+    const coneLayer = await page.evaluate(([wx, wy, half]) => {
+      const r = window.__signalCity.game.renderer, c = window.__signalCity.game.canvas;
+      const p = r.toScreen(wx, wy);
+      const d = c.getContext('2d').getImageData(Math.round((p.x - half) * r.dpr), Math.round((p.y - half) * r.dpr), Math.round(2 * half * r.dpr), Math.round(2 * half * r.dpr)).data;
+      let orange = 0, opaque = 0;
+      const other = {};
+      for (let i = 0; i < d.length; i += 4) {
+        const [R, G, B, A] = [d[i], d[i + 1], d[i + 2], d[i + 3]];
+        if (A < 128) continue;
+        opaque++;
+        if (R >= 230 && G >= 0.4 * R && G <= 0.8 * R && B <= 0.6 * R) orange++;
+        else { const k = `${R},${G},${B}`; other[k] = (other[k] || 0) + 1; }
+      }
+      return { orange, opaque, of: d.length / 4, other };
+    }, [s2.cone[0], s2.cone[1], 3]);
+    ok(coneLayer.orange >= 8, 'the first cone of the taper is orange on the board', `${coneLayer.orange} orange pixels of ${coneLayer.opaque} opaque in ${coneLayer.of}; others ${JSON.stringify(coneLayer.other).slice(0, 100)}`);
     // (a) two banners at once queue in the board's top-left corner and never
     // overlap: at 151 s the zone's end and the closure's start both announce
     const bn = await page.evaluate(() => { const b = document.getElementById('board').getBoundingClientRect(); return { list: window.__signalCity.banners(), board: { left: b.left, top: b.top, right: b.right, bottom: b.bottom } }; });

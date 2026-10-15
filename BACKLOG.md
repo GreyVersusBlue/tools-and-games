@@ -1714,11 +1714,10 @@ fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
 career began on the end of that career's queue, lowest rung first and then by
 id, and the `bonusReferral` event (`ev_ruth_referral`) asks the same
 `inReach()` the other three doors of #514 now ask, and does not fire with
-nobody in reach. Seen beside them and not changed: two referrals queued on one
-day can name the same client and taking both makes two records of them (any
-pair of the four doors; `meetClient()` called twice in the engine, not seen in
-a played career), and a seller passes every door whatever their tier, which is
-the design's question 12.
+nobody in reach. Two doors that queue the same client on one day make one
+record of them now (#977, 2026-10-15). Seen beside them and not changed: a
+seller passes every door whatever their tier, which is the design's question
+12.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
