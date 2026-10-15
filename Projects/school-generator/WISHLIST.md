@@ -374,10 +374,14 @@ and add to this list rather than starting a new one.
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
   (`data.width` and `data.slope` were there since Phase 2), and the design
-  diff says when a ramp's width, slope or fold changes (#980), but a ramp a
-  file made narrower than 4ft raises no finding; a ramp over 30in a run still counts as a way up on the
-  accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`
-  finding names, though the finding carries its position.
+  diff says when a ramp's width, slope or fold changes (#980), and a ramp a
+  file made narrower than 4ft is a `narrow-ramp` warning that moves nothing
+  (#982); a ramp over 30in a run still counts as a way up on the
+  accessible route, and that is settled (#833, Devon, 2026-10-05). A
+  `ramp-rise` or `narrow-ramp` ramp is marked as every finding with a
+  position is: a ring at the ramp's foot on the map, and "Show it on the
+  plan" pans the edit view there. The edit view itself draws no mark for
+  any finding, so the ramp is not outlined there.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
