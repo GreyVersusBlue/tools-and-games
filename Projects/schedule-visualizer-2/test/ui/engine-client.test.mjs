@@ -20,6 +20,7 @@ import { createIds, seededRandom } from '../../engine/ids.js';
 import * as actions from '../../engine/actions.js';
 import { createPipeline, pack, REQUEST, ANSWER } from '../../engine/worker.js';
 import { createEngineClient } from '../../ui/engine-client.js';
+import { standingProject, CHECK_TRIES } from '../../ui/staff/form.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
 const clock = () => new Date('2026-09-01T12:00:00Z');
@@ -195,4 +196,51 @@ test('the header says a caller must not ask again from its own rejection, and wh
   assert.match(header, /a caller must not ask again from its own rejection handler/);
   assert.match(header, /the tab freezes/);
   assert.match(header, /two tries, ui\/staff\/form\.js checksStand/);
+});
+
+// SV2-53 item 5: the behaviour behind the header's rule. The page's one
+// caller that asks again after a refusal is Publish (ui/staff/form.js,
+// checksStand through standingProject). Here it runs against the real client
+// on the main thread, where a run and its refusal are both microtasks, so a
+// caller asking again from its own refusal without a bound would never let a
+// timer fire. It asks CHECK_TRIES times and gives up; a stand-in for the
+// page's askChecks counts, and stops a runaway at 50 so a broken bound fails
+// here instead of hanging the suite.
+test('Publish asks a project that cannot be checked twice and gives up: two runs, and the loop yields', async () => {
+  const store = storeOf(sampleSchool());
+  const client = createEngineClient(store, { worker: false });
+  store.replace({ ...store.project, settings: null });
+  let asked = 0;
+  let ticked = false;
+  setTimeout(() => { ticked = true; }, 0);
+  const ask = () => {
+    asked += 1;
+    if (asked > 50) return Promise.resolve(true);
+    return client.results().then(() => true, () => false);
+  };
+  const standing = await standingProject(() => store.project, ask, () => false);
+  assert.equal(standing, null, 'no project stands: Publish refuses with its sentence');
+  assert.equal(CHECK_TRIES, 2);
+  assert.equal(asked, 2, 'asked twice, not from its own refusal without end');
+  assert.deepEqual([client.stats.sent, client.stats.failed], [2, 2], 'two runs, both refused');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(ticked, true, 'a timer fired: the main thread was let go');
+  client.close();
+});
+
+test('a project that changes while it is asked about is asked about again, and that is not one of the tries', async () => {
+  const store = storeOf(sampleSchool());
+  const client = createEngineClient(store, { worker: false });
+  let asked = 0;
+  const ask = (project) => {
+    asked += 1;
+    const answer = client.results().then(() => true, () => false);
+    // the first asking is overtaken by an edit
+    if (asked === 1) store.apply(actions.renameFloor, { id: 'fsample001', name: 'Ground' });
+    return answer;
+  };
+  const standing = await standingProject(() => store.project, ask, () => false);
+  assert.equal(standing, store.project, 'the project as it is now stands');
+  assert.equal(asked, 2);
+  client.close();
 });
