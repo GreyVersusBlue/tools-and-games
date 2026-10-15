@@ -1342,6 +1342,8 @@ test('a theme, a paper size or a head count changed while the file is being made
     await letGo(page);
     assert.ok((await says(page, 'published')).includes('. ' + MOVED_ON + ' '), 'the period word is on every page of the file');
     assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf), 'earlier');
+    // the theme is kept on the device as well as in the project: put it back for the cases that follow
+    await apply(page, 'setSetting', { key: 'theme', value: 'auto' });
   });
 });
 
