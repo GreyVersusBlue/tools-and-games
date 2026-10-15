@@ -4,14 +4,17 @@
 // scale is relative or absolute, and how many exclusion zones are left out.
 //
 //   legend({ measure(value), scale(value), folded, fold(folded) })
-//     -> { element, line, update(project, picture, chosen), setDocked(docked), docked, open }
+//     -> { element, line, update(project, picture, chosen), setDocked(docked), bringOut(), docked, open }
 //
 // The card never covers a floor (DESIGN 5.3). Where it would, at the fitted
 // zoom, and always on a phone, the view docks it (`setDocked(true)`): the
 // card is away and `line`, one line under the map, says the scale in short,
 // "Load · 1 to 177 · Relative", with a "Scale" button that brings the card
-// over the map until its own button puts it away again. Docked and away, the
-// card is still laid out (unseen), so the view can measure the room it needs.
+// over the map until its own button puts it away again (`bringOut()` does
+// what Scale does). Docked and away, the card is still laid out (unseen), so
+// the view can measure the room it needs. The focus goes with it: docking a
+// card that holds the focus puts the focus on Scale, and a line that holds it
+// gives it to the card when the card stands on the map again.
 //
 // `chosen` is { mode }, the colour scale as the project has it now. While the
 // answer for a change of scale is awaited the picture, and so the numbers,
@@ -123,15 +126,26 @@ export function legend(options) {
 
   function setDocked(next) {
     if (next === docked) return;
+    const focused = document.activeElement;
+    const held = next ? element.contains(focused) : line.contains(focused);
     docked = next;
     open = false;
     draw();
+    if (held) (next ? scaleButton : toggle).focus();
+  }
+
+  // the card brought out over the map, as Scale does, with the focus on its own button
+  function bringOut() {
+    if (!docked) return;
+    setOpen(true);
+    toggle.focus();
   }
 
   return {
     element,
     line,
     setDocked,
+    bringOut,
     get docked() {
       return docked;
     },

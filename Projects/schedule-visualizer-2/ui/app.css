@@ -1306,6 +1306,39 @@ kbd {
   display: grid;
 }
 
+/* A control brought into view on the surface (the focus moving to it, Help
+   scrolling to a step) never lands under the banners stuck to its top: while
+   one is up, the surface keeps room for them at the top of what it scrolls
+   to. CSS cannot measure them, so the room is --banners-height when the page
+   sets it, and otherwise an allowance a banner: the not-saved banner with its
+   button is 97 px at 1280 and 193 px at 390, where it wraps (SV2-52). */
+.surface:has(> .banners > .banner) {
+  scroll-padding-top: var(--banners-height, 7rem);
+}
+
+.surface:has(> .banners > .banner + .banner) {
+  scroll-padding-top: var(--banners-height, 14rem);
+}
+
+.surface:has(> .banners > .banner + .banner + .banner) {
+  scroll-padding-top: var(--banners-height, 21rem);
+}
+
+@media (max-width: 640px) {
+  .surface:has(> .banners > .banner) {
+    scroll-padding-top: var(--banners-height, 13rem);
+  }
+
+  .surface:has(> .banners > .banner + .banner) {
+    scroll-padding-top: var(--banners-height, 26rem);
+  }
+
+  .surface:has(> .banners > .banner + .banner + .banner) {
+    scroll-padding-top: var(--banners-height, 39rem);
+  }
+}
+
+
 .banner {
   display: flex;
   flex-wrap: wrap;

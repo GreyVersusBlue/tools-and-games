@@ -15,6 +15,9 @@
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { openPlanner, go, startServer, launch, TOOL_PATH } from './harness.mjs';
 
@@ -192,10 +195,13 @@ test('the controls fold behind Change: folded under 900 px, open from it, and th
       assert.ok(await box(p, selector), selector + ' is not on screen with the controls shown');
     }
     assert.deepEqual((await device(p)).movement, { controls: 'open' });
-    // the stage keeps its height: the section scrolls inside itself, and the page does not
+    // the stage keeps its height: the section scrolls inside itself, and the page does not.
+    // Its height is all the section has under the first line and over the bar
+    // (SV2-52: the floors' row in the top bar takes some of the window on a phone)
     await drawn(p);
     const room = await mapRoom(p);
-    assert.ok(room.stage >= Math.ceil(844 * 0.45), 'with the controls shown the stage is ' + room.stage + ' px');
+    const has = await p.$eval('.mov', (el) => parseFloat(el.style.getPropertyValue('--mov-room')));
+    assert.ok(has >= 300 && room.stage >= has, 'with the controls shown the stage is ' + room.stage + ' px of the ' + has + ' the section has');
     assert.ok(room.sectionScrolls > 0, 'the section does not scroll inside itself: ' + JSON.stringify(room));
     assert.equal(await p.evaluate(() => document.scrollingElement.scrollHeight === document.scrollingElement.clientHeight), true, 'the page scrolls');
 
@@ -766,7 +772,7 @@ test('W6: from Who to the map is six Tabs whatever the number of periods: the tr
 
 // ---------------------------------------------------------------- W7: the keyboard cursor reads at any zoom
 
-test('W7: the keyboard cursor is a ring never under 14 px, a 2 px line in the focus colour between two lines of the surface’s: read at 25 % and at 100 %', async () => {
+test('W7: the keyboard cursor is a ring never under 14 px, a 2 px line in the focus colour between two lines of the surface’s: read at 25 % and at 100 %, and at 100 % under reduced motion', async () => {
   await on('#movement', DESK, async (p) => {
     await dismissStarted(p);
     await p.focus('#movement-plan');
@@ -778,10 +784,16 @@ test('W7: the keyboard cursor is a ring never under 14 px, a 2 px line in the fo
     });
     const hex = (value) => [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16));
     const near = (got, want) => got[3] === 255 && got.slice(0, 3).every((value, index) => Math.abs(value - want[index]) <= 14);
-    for (const zoom of [0.25, 1]) {
+    // SV2-52 item 11: the last reading is with the device asking for reduced motion
+    for (const [zoom, still] of [[0.25, false], [1, false], [1, true]]) {
+      if (still) {
+        await p.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
+        assert.equal(await p.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'reduced motion was not asked for: the reading tests nothing');
+      }
       const seen = await p.evaluate(async (wanted) => {
         const movement = document.querySelector('.mov').movement;
         const layer = movement.env.layer;
+        if (layer.dataset.cursor === undefined) return { missing: true };
         const was = layer.dataset.cursor.split(',').map(Number);
         // zoom about the cursor, so that it stays on screen
         movement.view.zoomAbout(wanted, was[0] + was[2] / 2, was[1] + was[2] / 2);
@@ -791,6 +803,7 @@ test('W7: the keyboard cursor is a ring never under 14 px, a 2 px line in the fo
           const wait = () => (Number(movement.canvas.dataset.drawn) > drawnBefore ? resolve() : requestAnimationFrame(wait));
           wait();
         });
+        if (layer.dataset.cursor === undefined) return { missing: true };
         const [x, y, side] = layer.dataset.cursor.split(',').map(Number);
         const g = layer.getContext('2d');
         const at = (px, py) => Array.from(g.getImageData(Math.round(px), Math.round(py), 1, 1).data);
@@ -813,7 +826,8 @@ test('W7: the keyboard cursor is a ring never under 14 px, a 2 px line in the fo
           middle: at(x + mid, y + mid),
         };
       }, zoom);
-      const what = 'at ' + Math.round(seen.zoom * 100) + ' % (a cell is ' + seen.size + ' px)';
+      assert.notEqual(seen.missing, true, 'no keyboard cursor is drawn' + (still ? ' under reduced motion' : '') + ' with the focus on the map');
+      const what = 'at ' + Math.round(seen.zoom * 100) + ' % (a cell is ' + seen.size + ' px)' + (still ? ', reduced motion' : '');
       assert.equal(seen.side, Math.max(14, Math.round(seen.size) - 2), what + ': the ring is ' + seen.side + ' px across');
       assert.ok(seen.side >= 14, what);
       // round the cursor's own cell
@@ -901,10 +915,10 @@ test('W8: zoomed far out the rings of two places lie over one another: the busie
 // Every control of the movement surface that is on screen, with the smaller
 // side of what a finger has to hit: the control, or the label a box or a
 // radio button sits in.
-const targets = (page) => page.evaluate(() => {
+const targets = (page, roots) => page.evaluate((wanted) => {
   const found = [];
   const seen = new Set();
-  for (const root of document.querySelectorAll('.mov, .mov-floors')) {
+  for (const root of document.querySelectorAll(wanted)) {
     for (const el of root.querySelectorAll('button, select, input, [role="radio"]')) {
       const target = el.matches('input[type="radio"], input[type="checkbox"]') ? el.closest('label') : el;
       if (!target || seen.has(target)) continue;
@@ -915,7 +929,7 @@ const targets = (page) => page.evaluate(() => {
     }
   }
   return found;
-});
+}, roots || '.mov, .mov-floors');
 
 for (const [name, size] of [['under 640 px (390 by 844)', PHONE], ['with a coarse pointer at 768 by 1024', { ...TABLET, mobile: true }]]) {
   test('W9: ' + name + ' every control of the movement surface is at least 44 px in its smaller dimension', async () => {
@@ -944,6 +958,32 @@ for (const [name, size] of [['under 640 px (390 by 844)', PHONE], ['with a coars
       assert.ok(all.filter((each) => each.what.startsWith('5 ') || /^\d+ "/.test(each.what) || each.what.startsWith('all "')).length >= 8, 'the transition strip’s segments were not measured: ' + names);
       const small = all.filter((each) => Math.min(each.width, each.height) < 43.5);
       assert.deepEqual(small, [], small.length + ' of ' + all.length + ' controls are under 44 px');
+
+      // SV2-52 item 6: and the inspector's sheet, on each of its four tabs
+      await p.evaluate(() => document.querySelector('[data-action="more"]').click());
+      if (await p.$eval('#inspector', (el) => el.dataset.open !== 'true')) await p.evaluate(() => document.getElementById('inspector-toggle').click());
+      await shows(p, () => document.getElementById('inspector').dataset.open === 'true');
+      const sheet = [];
+      for (const tab of ['hotspots', 'tables', 'summary', 'export']) {
+        await p.evaluate((id) => document.querySelector('.mov-inspector [role="tab"][data-tab="' + id + '"], .mov-inspector #tab-' + id + ', .mov-inspector [aria-controls$="' + id + '"]')?.click(), tab);
+        await shows(p, (id) => {
+          const panel = document.querySelector('[data-panel="' + id + '"]');
+          return panel && panel.getClientRects().length > 0;
+        }, tab);
+        // above 640 px a place's cells open under it (on a phone its button is
+        // "Show its N cells", which shuts the sheet: measured as it stands)
+        if (tab === 'hotspots' && size.width > 640) {
+          await p.evaluate(() => document.querySelector('[data-panel="hotspots"] [data-action="cells"]')?.click());
+          await shows(p, () => document.querySelector('[data-panel="hotspots"] [data-action="show-cell"]') !== null || document.querySelector('[data-panel="hotspots"] [data-action="cells"]') === null);
+        }
+        sheet.push(...(await targets(p, '#inspector')));
+      }
+      const sheetNames = sheet.map((each) => each.what).join(' | ');
+      for (const wanted of ['show "', 'cells "', ...(size.width > 640 ? ['show-cell "'] : []), 'png', 'print-picture', 'print-congestion', 'tabs__tab']) {
+        assert.ok(sheetNames.includes(wanted), wanted + ' was not measured on the inspector’s sheet: ' + sheetNames);
+      }
+      const smallSheet = sheet.filter((each) => Math.min(each.width, each.height) < 43.5);
+      assert.deepEqual(smallSheet, [], smallSheet.length + ' of ' + sheet.length + ' controls of the inspector’s sheet are under 44 px');
     });
   });
 }
@@ -1190,4 +1230,466 @@ test('item 3: with no engine attached the first line says the routes cannot be w
     await drawn(p);
     assert.equal(await text(p, '#movement-line .mov-line__words'), 'Showing 8 groups on A Day, all transitions. No route failed.');
   });
+});
+
+// ---------------------------------------------------------------- SV2-52: a short window, a scroll, 320 px
+
+const SIDEWAYS = { width: 844, height: 390, mobile: true };
+// two measures of one box, one rounded and one floored, agree to a pixel
+const near = (a, b) => Math.abs(a - b) <= 1;
+const SHORT = { width: 1280, height: 480 };
+
+// Where the first line, the stage, the bar and the section's foot are, and
+// what scrolls.
+const short = (page) => page.evaluate(() => {
+  const r = (selector) => {
+    const el = document.querySelector(selector);
+    if (!el || el.getClientRects().length === 0) return null;
+    const rect = el.getBoundingClientRect();
+    return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), left: Math.round(rect.left), right: Math.round(rect.right), height: Math.round(rect.height) };
+  };
+  const section = document.querySelector('.mov');
+  return {
+    section: r('.mov'),
+    surface: r('#surface'),
+    line: r('#movement-line'),
+    stage: r('.mov-stage'),
+    bar: r('[data-bar="playback"]'),
+    row: r('.mov-pb__row'),
+    room: parseFloat(section.style.getPropertyValue('--mov-room')),
+    scrolls: section.scrollHeight - section.clientHeight,
+    scrolled: section.scrollTop,
+    window: innerHeight,
+  };
+});
+// the bar is wholly on the window, inside the section, and nothing (the inspector's handle) lies on its row
+async function barOnScreen(page, step) {
+  const at = await short(page);
+  assert.ok(at.bar.top >= at.section.top && at.bar.bottom <= at.section.bottom, step + ': the bar is not inside the section: ' + JSON.stringify(at));
+  assert.ok(at.bar.bottom <= at.window && at.section.bottom <= at.surface.bottom, step + ': the bar runs under the window or the surface: ' + JSON.stringify(at));
+  const cut = await page.evaluate(() => {
+    const row = document.querySelector('.mov-pb__row').getBoundingClientRect();
+    return [0.25, 0.5, 0.75].map((y) => {
+      const el = document.elementFromPoint(row.left + 4, row.top + row.height * y);
+      return el && el.closest('[data-bar="playback"]') ? null : (el ? el.className || el.tagName : 'nothing');
+    }).filter(Boolean);
+  });
+  assert.deepEqual(cut, [], step + ': something lies on the bar’s row');
+  return at;
+}
+
+test('SV2-52 item 1: a phone on its side, 844 by 390: the stage has what the section has, the first line, the map and the bar are all on screen, and nothing scrolls', async () => {
+  await on('#movement', SIDEWAYS, async (p) => {
+    assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'true', 'under 900 px the controls open folded: the case tests the folded view');
+    const at = await barOnScreen(p, 'on arrival');
+    assert.equal(at.scrolls, 0, 'the section scrolls inside itself: ' + JSON.stringify(at));
+    assert.ok(at.line.top >= at.section.top, 'the first line is above the section');
+    // the floor of 320 px is capped at what there is: the stage is all of it, more than nothing
+    assert.ok(at.room > 60 && at.room < 320, 'the section has ' + at.room + ' px for the map at 844 by 390');
+    assert.ok(near(at.stage.height, at.room), 'the stage is not what the section has: ' + JSON.stringify(at));
+    assert.ok(at.stage.bottom <= at.bar.top, 'the bar lies on the map');
+    // playing changes the bar's height (the hint goes): still all on screen
+    await p.evaluate(() => document.querySelector('[data-action="play"]').click());
+    await shows(p, () => document.querySelector('[data-action="play"]').textContent === 'Pause');
+    await drawn(p);
+    const playing = await barOnScreen(p, 'playing');
+    assert.equal(playing.scrolls, 0, 'playing, the section scrolls: ' + JSON.stringify(playing));
+    assert.ok(near(playing.stage.height, playing.room), 'playing, the stage is not what the section has: ' + JSON.stringify(playing));
+    await p.evaluate(() => document.querySelector('[data-action="play"]').click());
+    // More opens up over the map's foot: the stage keeps its height, the
+    // bar, More and all, stays inside the section, and the first line is
+    // still on screen above it
+    await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
+    const shut = await short(p);
+    await p.tap('[data-action="more"]');
+    await shows(p, () => document.querySelector('[data-part="more"]').hidden === false);
+    // the section has measured itself with the bar as it is now
+    await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
+    const opened = await barOnScreen(p, 'More open');
+    assert.ok(near(opened.stage.height, shut.stage.height), 'opening More squeezed the map: ' + JSON.stringify({ shut: shut.stage, opened: opened.stage }));
+    assert.ok(opened.bar.top >= opened.line.bottom, 'More covers the first line: ' + JSON.stringify(opened));
+    await p.tap('[data-action="more"]');
+    await shows(p, () => document.querySelector('[data-part="more"]').hidden === true);
+  });
+});
+
+test('SV2-52 item 1: a short desktop window, 1280 by 480: with the controls shown the section scrolls and the bar stays at its foot, top or end; folded, nothing scrolls', async () => {
+  await on('#movement', SHORT, async (p) => {
+    assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'false', 'from 900 px the controls open shown: the case tests the shown view');
+    const top = await barOnScreen(p, 'scrolled to the top');
+    assert.ok(top.scrolls > 0, 'with the controls shown the section does not scroll: the case tests nothing: ' + JSON.stringify(top));
+    assert.ok(top.room > 100, 'what the section has for the map is not measured (--mov-room): ' + JSON.stringify(top));
+    assert.ok(top.stage.height >= top.room, 'the stage was squeezed under what the section has: ' + JSON.stringify(top));
+    await p.evaluate(() => {
+      const section = document.querySelector('.mov');
+      section.scrollTop = section.scrollHeight;
+    });
+    await shows(p, () => {
+      const section = document.querySelector('.mov');
+      return section.scrollTop >= section.scrollHeight - section.clientHeight - 1;
+    });
+    const end = await barOnScreen(p, 'scrolled to the end');
+    // at the end the whole stage is on screen over the bar
+    assert.ok(end.stage.top >= end.section.top && end.stage.bottom <= end.bar.top, 'at the end the map is not all on screen: ' + JSON.stringify(end));
+    // folded: the first line, the map and the bar in the window, nothing to scroll
+    await p.click('[data-action="change"]');
+    await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');
+    await drawn(p);
+    const folded = await barOnScreen(p, 'folded');
+    assert.equal(folded.scrolls, 0, 'folded, the section scrolls: ' + JSON.stringify(folded));
+    assert.ok(near(folded.stage.height, folded.room), 'folded, the stage is not what the section has: ' + JSON.stringify(folded));
+  });
+});
+
+// How much of the map's canvas is floors and lanes rather than the empty
+// field it is drawn on: the share of sampled pixels that are not the field's colour.
+const inked = (page) => page.evaluate(() => {
+  const canvas = document.getElementById('movement-plan');
+  const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  const field = [data[0], data[1], data[2]].join();
+  let ink = 0;
+  let all = 0;
+  for (let i = 0; i < data.length; i += 4 * 7) {
+    all += 1;
+    if ([data[i], data[i + 1], data[i + 2]].join() !== field) ink += 1;
+  }
+  return ink / all;
+});
+const viewAt = (page) => page.evaluate(() => {
+  const view = document.querySelector('.mov').movement.view;
+  return { x: Math.round(view.x), y: Math.round(view.y), zoom: view.zoom };
+});
+// one turn of a mouse wheel over the stage, at a point of it that is on screen
+async function wheelOverMap(page, deltaY) {
+  const at = await page.evaluate(() => {
+    const stage = document.querySelector('.mov-stage').getBoundingClientRect();
+    const section = document.querySelector('.mov').getBoundingClientRect();
+    const top = Math.max(stage.top, section.top);
+    return { x: Math.round(stage.left + stage.width / 2), y: Math.round(top + 20) };
+  });
+  const before = await page.evaluate(() => [document.querySelector('.mov').scrollTop, document.getElementById('movement-plan').dataset.drawn]);
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.wheel({ deltaY });
+  // the wheel has done what it does when the section has scrolled or the map has been drawn again
+  await shows(page, (was) => document.querySelector('.mov').scrollTop !== was[0] || document.getElementById('movement-plan').dataset.drawn !== was[1], before);
+}
+
+// the floors' box against the stage: how far it reaches into it from above and below
+const floorsOnStage = (page) => page.evaluate(() => {
+  const movement = document.querySelector('.mov').movement;
+  const view = movement.view;
+  const world = movement.world;
+  return { top: Math.round(view.y), bottom: Math.round(view.y + world.height * view.size), left: Math.round(view.x), right: Math.round(view.x + world.width * view.size), width: view.width, height: view.height };
+});
+const onStage = (box) => box.bottom >= 47 && box.top <= box.height - 47 && box.right >= 47 && box.left <= box.width - 47;
+
+test('SV2-52 item 2: a wheel over the map scrolls the section while the map is not all on screen, then moves the map, and never off the stage: 1280 by 480 with the controls shown', async () => {
+  await on('#movement', SHORT, async (p) => {
+    await dismissStarted(p);
+    await drawn(p);
+    const ink = await inked(p);
+    assert.ok(ink > 0.02, 'the map has no floors drawn on arrival: the case tests nothing (' + ink + ')');
+    const start = await viewAt(p);
+    assert.ok((await short(p)).scrolls > 0, 'the section does not scroll with the controls shown: the case tests nothing');
+
+    // the wheel scrolls the section, and the map stays where it was on the stage
+    await wheelOverMap(p, 120);
+    assert.ok(await p.$eval('.mov', (el) => el.scrollTop > 0), 'a wheel over the map did not scroll the section');
+    assert.deepEqual(await viewAt(p), start, 'the wheel moved the map while the section had more to scroll');
+    for (let turn = 0; turn < 10 && (await p.$eval('.mov', (el) => el.scrollTop < el.scrollHeight - el.clientHeight - 1)); turn += 1) await wheelOverMap(p, 120);
+    assert.deepEqual(await viewAt(p), start, 'the map moved before the section reached its end');
+    const end = await short(p);
+    assert.ok(end.stage.top >= end.section.top - 1 && end.stage.bottom <= end.bar.top + 1, 'at the end the map is not all on screen: ' + JSON.stringify(end));
+    // the floors are drawn on the map after the scroll, as before it
+    await drawn(p);
+    assert.ok(await inked(p) > ink * 0.8, 'after the section scrolled the map is blank');
+
+    // the map all on screen: the wheel moves it, however far it turns, and the floors stay on the stage
+    await wheelOverMap(p, 400);
+    assert.notDeepEqual(await viewAt(p), start, 'with the map all on screen the wheel did not move it');
+    for (let turn = 0; turn < 4; turn += 1) await wheelOverMap(p, 4000);
+    const kept = await floorsOnStage(p);
+    assert.ok(onStage(kept), 'the floors were moved off the stage: ' + JSON.stringify(kept));
+    assert.ok(await inked(p) > 0.002, 'the map is blank after a long wheel');
+  });
+});
+
+test('SV2-52 item 2: a phone on its side, 844 by 390: after a wheel over the map and the section scrolled to its end the floors are drawn on the stage, not only the hotspot rings', async () => {
+  await on('#movement', SIDEWAYS, async (p) => {
+    // the Foreman's steps on 5de6562 (land844-at-end.png)
+    await dismissStarted(p);
+    await drawn(p);
+    assert.ok(await inked(p) > 0.02, 'the map has no floors drawn on arrival: the case tests nothing');
+    await wheelOverMap(p, 400);
+    await p.evaluate(() => {
+      const section = document.querySelector('.mov');
+      section.scrollTop = section.scrollHeight;
+    });
+    await drawn(p);
+    const kept = await floorsOnStage(p);
+    assert.ok(onStage(kept), 'the wheel took the floors off the stage: ' + JSON.stringify(kept));
+    const ink = await inked(p);
+    assert.ok(ink > 0.01, 'after the wheel and the scroll the map is blank (' + ink + ' of it drawn on)');
+    // and the rings the hotspots draw are where the map has their places: on the stage too
+    const rings = await p.evaluate(() => document.querySelector('[data-panel="hotspots"]').hotspots.rings.map((ring) => [Math.round(ring.x), Math.round(ring.y)]));
+    const stage = await floorsOnStage(p);
+    assert.ok(rings.length > 0 && rings.every(([x, y]) => x >= 0 && y >= 0 && x <= stage.width && y <= stage.height), 'a ring is off the stage: ' + JSON.stringify(rings));
+  });
+});
+
+test('SV2-52 item 3: at 320 by 640 the bar fits: Play, the steps, the scrubber and More on the row, the clock on the countdown’s line, and nothing scrolls', async () => {
+  await on('#movement', { width: 320, height: 640, mobile: true }, async (p) => {
+    for (const step of ['before playback', 'playing']) {
+      if (step === 'playing') {
+        await p.evaluate(() => document.querySelector('[data-action="play"]').click());
+        await shows(p, () => document.querySelector('[data-part="clock"]').textContent !== '' && document.querySelector('[data-action="play"]').textContent === 'Pause');
+        await drawn(p);
+      }
+      const at = await barOnScreen(p, step);
+      assert.equal(at.scrolls, 0, step + ': the section scrolls: ' + JSON.stringify(at));
+      const row = await barRow(p);
+      const parts = ['play', 'previous', 'next', 'scrubber', 'more'];
+      for (const part of parts) assert.ok(row[part] && row[part].middle > row.play.top && row[part].middle < row.play.bottom, step + ': ' + part + ' is not on the row: ' + JSON.stringify(row));
+      for (let i = 1; i < parts.length; i += 1) assert.ok(row[parts[i]].left >= row[parts[i - 1]].right, step + ': ' + parts[i] + ' is not after ' + parts[i - 1] + ': ' + JSON.stringify(row));
+      assert.ok(row.play.left >= at.bar.left && row.more.right <= at.bar.right, step + ': the row runs out of the bar: ' + JSON.stringify(row));
+      assert.ok(row.scrubber.width >= 64, step + ': the scrubber is ' + row.scrubber.width + ' px wide');
+      if (step === 'playing') {
+        const words = await p.evaluate(() => [...document.querySelectorAll('[data-part="clock"], [data-part="countdown"]')].map((el) => {
+          const rect = el.getBoundingClientRect();
+          return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), width: Math.round(rect.width) };
+        }));
+        const [clock, countdown] = words;
+        assert.ok(clock.width > 30, 'the clock has no width: ' + JSON.stringify(words));
+        assert.ok(clock.top >= row.play.bottom, 'the clock is still on the row: ' + JSON.stringify({ words, row }));
+        assert.ok(clock.top < countdown.bottom && countdown.top < clock.bottom, 'the clock is not on the countdown’s line: ' + JSON.stringify(words));
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------- SV2-52 item 4: the legend's own Show, and the focus
+
+test('SV2-52 item 4: the card folded while it stood on the map and shown again where it would lie on a floor docks and is brought out over the map, with the focus on its own button', async () => {
+  await on('#movement', WIDE, async (p) => {
+    await dismissStarted(p);
+    assert.equal(await p.$eval('.mov-legend', (el) => el.dataset.docked), 'false', 'at 1440 by 900 the card stands on the map: the case tests nothing');
+    // folded to its title, it is small enough to stand on a narrower map
+    await p.click('[data-action="fold-legend"]');
+    await shows(p, () => document.querySelector('.mov-legend').dataset.folded === 'true');
+    await p.setViewport({ width: 1100, height: 800 });
+    await drawn(p);
+    assert.equal(await p.$eval('.mov-legend', (el) => el.dataset.docked), 'false', 'the folded card docked at 1100 by 800: the case tests nothing');
+    await p.click('[data-action="fold-legend"]');
+    await shows(p, () => document.querySelector('.mov-legend').dataset.folded === 'false');
+    const at = await legendAndFloors(p);
+    assert.equal(at.docked, 'true', 'shown whole at 1100 by 800 the card stands on the map: ' + JSON.stringify({ card: at.card, floors: at.floors }));
+    assert.equal(await p.$eval('.mov-legend', (el) => el.dataset.open), 'true', 'Show put the card away into the line: the reader asked to see it');
+    assert.equal(await focusedAs(p), 'fold-legend', 'the focus is not on the card’s own button');
+    // its own button puts it away into the line, with the focus on Scale
+    await p.click('[data-action="fold-legend"]');
+    await shows(p, () => document.querySelector('.mov-legend').dataset.open === 'false');
+    assert.equal(await focusedAs(p), 'scale');
+  });
+});
+
+test('SV2-52 item 4: a card that docks with the focus in it gives the focus to Scale, and the line gives it back to the card when it stands on the map again', async () => {
+  await on('#movement', WIDE, async (p) => {
+    await dismissStarted(p);
+    assert.equal(await p.$eval('.mov-legend', (el) => el.dataset.docked), 'false');
+    await p.focus('.mov-legend input[name="movement-scale"]');
+    await p.setViewport({ width: 1280, height: 900 });
+    await shows(p, () => document.querySelector('.mov-legend').dataset.docked === 'true');
+    assert.equal(await focusedAs(p), 'scale', 'docking the card dropped the focus');
+    await p.setViewport({ width: 1440, height: 900 });
+    await shows(p, () => document.querySelector('.mov-legend').dataset.docked === 'false');
+    assert.equal(await focusedAs(p), 'fold-legend', 'the line put away dropped the focus');
+  });
+});
+
+// ---------------------------------------------------------------- SV2-52 item 7: the dock, measured again
+
+// What this case cannot tell apart, said out loud (#147): the view now
+// measures the dock after a fold and whenever the bar changes height
+// (ui/movement/index.js), and taking both of those calls out leaves the case
+// green, because in this layout a fold and More each move the stage by a
+// fraction of a pixel (237 to 237.22 px at 1280 by 480) and a fold scrolls
+// the section back to its top, so the stage's observer and the scroll
+// listener measure it too. The case holds the outcome: the message is clear
+// of the dock after both.
+test('SV2-52 item 7: a message clears the dock after the controls fold and after the bar grows, when the stage keeps its size', async () => {
+  // 1280 by 480: the stage is what the section has, shown or folded, so a fold moves the map and its zoom buttons without resizing it
+  await on('#movement', SHORT, async (p) => {
+    await dismissStarted(p);
+    await drawn(p);
+    const shown = (await short(p)).stage.height;
+    await p.click('[data-action="change"]');
+    await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');
+    await drawn(p);
+    assert.ok(near((await short(p)).stage.height, shown), 'folding changed the stage’s size: the case tests nothing');
+    await p.evaluate((words) => globalThis.sv2.ctx.toast({ text: words }), HIDDEN_TOAST);
+    await clearOfDock(p, 'folded');
+    await closeToast(p);
+  });
+  // 1280 by 560, folded: the stage is all the section has, so More makes the bar taller and leaves the stage as it is
+  await on('#movement', { width: 1280, height: 560 }, async (p) => {
+    await dismissStarted(p);
+    await p.click('[data-action="change"]');
+    await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');
+    await drawn(p);
+    const before = (await short(p)).stage.height;
+    await p.tap('[data-action="more"]');
+    await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
+    assert.ok(near((await short(p)).stage.height, before), 'More changed the stage’s size: the case tests nothing');
+    await p.evaluate((words) => globalThis.sv2.ctx.toast({ text: words }), HIDDEN_TOAST);
+    await clearOfDock(p, 'More open');
+  });
+});
+
+// ---------------------------------------------------------------- SV2-52 item 9: crossings with the focus inside
+
+const focusedAs = (page) => page.evaluate(() => {
+  const el = document.activeElement;
+  return el ? (el.dataset.action || el.dataset.control || el.name || el.tagName.toLowerCase()) : null;
+});
+
+test('SV2-52 item 9: under 640 px the floors’ row folds away with the focus in it, and the focus goes to Change', async () => {
+  await on('#movement', { width: 700, height: 800 }, async (p) => {
+    assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'true', '700 px is under 900: the controls open folded');
+    await p.focus('.mov-floors input[name="movement-floors"]');
+    assert.equal(await focusedAs(p), 'movement-floors');
+    await p.setViewport({ width: 600, height: 800 });
+    await shows(p, () => !document.querySelector('.mov-floors')?.isConnected);
+    assert.equal(await focusedAs(p), 'change', 'the focus went with the floors’ row');
+  });
+});
+
+test('SV2-52 item 9: under 900 px the controls fold away with the focus in them, and the focus goes to Change', async () => {
+  await on('#movement', { width: 1000, height: 800 }, async (p) => {
+    assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'false');
+    await p.focus('[data-control="day"]');
+    await p.setViewport({ width: 800, height: 800 });
+    await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');
+    assert.equal(await focusedAs(p), 'change', 'the focus went with the controls');
+  });
+});
+
+test('SV2-52 item 9: under 1100 px Speed goes behind More with the focus on it, More opens, and the focus stays on Speed', async () => {
+  await on('#movement', WIDE, async (p) => {
+    assert.equal(await p.$eval('[data-bar="playback"]', (el) => el.dataset.compact), 'false', 'Speed is not on the row at 1440: the case tests nothing');
+    await p.focus('[data-control="speed"]');
+    await p.setViewport({ width: 1050, height: 900 });
+    await shows(p, () => document.querySelector('[data-bar="playback"]').dataset.compact === 'true');
+    assert.equal(await focusedAs(p), 'speed', 'the focus went with Speed');
+    assert.equal(await p.$eval('[data-part="more"]', (el) => el.hidden), false, 'Speed is behind a shut More');
+  });
+});
+
+test('SV2-52 item 9: a place’s cells button says it opens them (aria-expanded) above 640 px and says nothing of the kind under it, after the window crosses either way', async () => {
+  await on('#movement', { width: 700, height: 800 }, async (p) => {
+    await dismissStarted(p);
+    await p.evaluate(() => document.getElementById('inspector-toggle').click());
+    await shows(p, () => document.getElementById('inspector').dataset.open === 'true' && document.querySelector('[data-panel="hotspots"] [data-action="cells"]') !== null);
+    const expanded = () => p.$eval('[data-panel="hotspots"] [data-action="cells"]', (el) => el.getAttribute('aria-expanded'));
+    assert.equal(await expanded(), 'false');
+    await p.setViewport({ width: 600, height: 800 });
+    await shows(p, () => matchMedia('(max-width: 640px)').matches);
+    await shows(p, () => document.querySelector('[data-panel="hotspots"] [data-action="cells"]')?.getAttribute('aria-expanded') !== 'false').catch(() => {});
+    assert.equal(await expanded(), null, 'under 640 px the button that shuts the sheet still says it opens the cells under the row');
+    await p.setViewport({ width: 700, height: 800 });
+    await shows(p, () => document.querySelector('[data-panel="hotspots"] [data-action="cells"]')?.getAttribute('aria-expanded') === 'false').catch(() => {});
+    assert.equal(await expanded(), 'false', 'above 640 px again the button does not say whether the cells are open');
+  });
+});
+
+test('SV2-52 item 9: an engine attached after the view opened with none is asked, with no visit elsewhere', async () => {
+  await on('#project', DESK, async (p) => {
+    await p.evaluate(() => {
+      globalThis.sv2Kept = globalThis.sv2.store.derived.engine;
+      globalThis.sv2.store.derived.use(null);
+    });
+    await go(p, '#movement');
+    await shows(p, () => document.querySelector('.mov')?.dataset.styled === 'true' && document.querySelector('#movement-line .mov-line__words').textContent !== '');
+    assert.equal(await text(p, '#movement-line .mov-line__words'), 'The routes could not be worked out: Nothing is attached to work out the routes.', 'the view did open with no engine: the case tests nothing');
+    await p.evaluate(() => globalThis.sv2.store.derived.use(globalThis.sv2Kept));
+    const asked = await drawn(p).then(() => true, () => false);
+    assert.equal(asked, true, 'the engine attached afterwards was never asked: the map has no routes');
+    assert.equal(await text(p, '#movement-line .mov-line__words'), 'Showing 8 groups on A Day, all transitions. No route failed.');
+  });
+});
+
+// ---------------------------------------------------------------- SV2-52 item 10: twelve periods at 900 to 1100 px
+
+for (const width of [920, 1080]) {
+  test('SV2-52 item 10: at ' + width + ' by 800, with the controls shown, a strip of eleven transitions keeps the stage’s floor', async () => {
+    await on('#movement', { width, height: 800 }, async (p) => {
+      assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'false', 'from 900 px the controls are shown: the case tests nothing');
+      await p.evaluate(async () => {
+        globalThis.sv2Actions = await import('./engine/actions.js');
+      });
+      await p.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'periods', value: 12 }));
+      await drawn(p);
+      assert.equal(await p.$$eval('[data-control="transition"] [role="radio"], [data-control="transition"] input[type="radio"]', (els) => els.length >= 12), true, 'the strip has not twelve segments (All and eleven transitions)');
+      const at = await short(p);
+      const floor = Math.max(320, Math.ceil(800 * 0.45));
+      // the section's own height at 800 holds the floor: it is the floor that is asked for, not the cap
+      assert.ok(at.stage.height >= floor - 1, 'the strip squeezed the stage to ' + at.stage.height + ' px (floor ' + floor + ', the section has ' + at.room + '): ' + JSON.stringify(at));
+    });
+  });
+}
+
+// ---------------------------------------------------------------- SV2-52: scroll-padding-top on the surface (from SV2-50)
+
+for (const [name, size] of [['1280 by 800', DESK], ['390 by 844', PHONE]]) {
+  test('SV2-52: at ' + name + ', with a banner up, what is brought into view at the surface’s top is under the banner, not behind it', async () => {
+    await on('#movement', size, async (p) => {
+      // the import and the change in two evaluates: one that awaits an import and then applies can lose its promise (ARCHITECTURE 16, SV2-39)
+      await p.evaluate(async () => {
+        globalThis.sv2Actions = await import('./engine/actions.js');
+      });
+      await p.evaluate(() => {
+        globalThis.sv2.storage.setTiming({ retry: 400 });
+        globalThis.sv2.storage.hooks.failWrite = 'The disk is full (a test made this up)';
+        globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'schoolName', value: 'Banner Test School' });
+      });
+      await shows(p, () => document.getElementById('banner-save-failed') !== null);
+      // the surface scrolled down to Getting started, then the first line asked for at the top
+      await p.evaluate(() => {
+        const surface = document.getElementById('surface');
+        surface.scrollTop = surface.scrollHeight;
+      });
+      await shows(p, () => document.getElementById('surface').scrollTop > 0);
+      await p.evaluate(() => document.getElementById('movement-line').scrollIntoView({ block: 'start' }));
+      await shows(p, () => document.getElementById('movement-line').getBoundingClientRect().top < document.getElementById('surface').getBoundingClientRect().bottom);
+      const banner = await box(p, '#storage-banners');
+      const line = await box(p, '#movement-line');
+      assert.ok(banner.height > 0, 'the banner has no height: the case tests nothing');
+      assert.ok(line.top >= banner.bottom, 'the first line is behind the banner: ' + JSON.stringify({ banner, line }));
+      await p.evaluate(() => {
+        globalThis.sv2.storage.hooks.failWrite = null;
+      });
+      await shows(p, () => document.getElementById('banner-save-failed') === null);
+    });
+  });
+}
+
+// ---------------------------------------------------------------- SV2-52 item 13: the harness
+
+// A suite whose first page never shows its section once held the machine's
+// browser lock for 20 minutes (SV2-43): openPlanner threw and left its server
+// and browser running, so the process never ended. Here a process of its own
+// opens the planner at an address whose section never comes, and has to end
+// by itself once openPlanner has thrown.
+test('SV2-52 item 13: openPlanner closes its server and browser when the first page never shows its section, and the process ends', () => {
+  const harness = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), 'harness.mjs')).href;
+  const code = [
+    'const { openPlanner } = await import(' + JSON.stringify(harness) + ');',
+    "try { await openPlanner({ hash: '#nowhere' }); console.log('opened'); }",
+    "catch (error) { console.log('threw: ' + String(error.message).split('\\n')[0]); }",
+  ].join('\n');
+  const env = { ...process.env };
+  delete env.SV2_BASE;
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 60000, env });
+  assert.match(child.stdout, /^threw: /m, 'openPlanner did not throw for a section that never came: ' + child.stdout + child.stderr);
+  assert.equal(child.signal, null, 'the process was still running a minute after openPlanner threw: its server or browser was left open');
+  assert.equal(child.status, 0, child.stderr);
 });

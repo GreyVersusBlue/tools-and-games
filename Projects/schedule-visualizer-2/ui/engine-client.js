@@ -23,6 +23,21 @@
 //     cost one run. A run that failed is not remembered: the next asking is
 //     a new request. The pipeline itself keeps the routes while the geometry
 //     counter stands still and runs only the transitions a change touched.
+//
+//     So a caller must not ask again from its own rejection handler. Each
+//     asking after a failure is a new run, and a run that fails every time
+//     (a project the pipeline cannot read) answers each one with another
+//     rejection: with a worker that is a request posted for every answer, as
+//     fast as the worker can refuse (152 in 200 ms, measured by the SV2-49
+//     review); on the main thread the run and its rejection are both
+//     microtasks, so the loop never yields and the tab freezes. Ask again on
+//     the next change or the next press, or a bounded number of times, as the
+//     publish form does (two tries, ui/staff/form.js checksStand). Keeping
+//     the failed promise for the rest of its task would not help: a caller
+//     asking again in its handler would get the same rejected promise and
+//     loop on it instead. A run that fails after a newer change was asked
+//     about is given to nobody: whoever waited on it is waiting on the newer
+//     request already.
 //   One request at a time. While the worker is busy a newer request waits,
 //     and only the newest waits: three keystrokes during one run cost two
 //     runs, not four.

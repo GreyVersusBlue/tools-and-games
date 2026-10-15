@@ -67,7 +67,7 @@ import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js'
 import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
-import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence } from './model.js';
+import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, answerCounts, NO_ENGINE } from './model.js';
 import { layoutFloors, bestLayout, slotAt, placeOf } from './layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
@@ -94,6 +94,14 @@ export const MOVEMENT_KEYS = [
 
 // The keyboard cursor's ring is never smaller than this, in CSS pixels.
 export const CURSOR_LEAST = 14;
+
+// How much of the floors' box, in CSS pixels, a pan or a zoom always leaves
+// on the stage each way.
+export const KEEP_ON_STAGE = 48;
+
+// With nothing attached to work out the routes, how often the view looks
+// again for something that is.
+export const ENGINE_LOOK_MS = 1000;
 
 export const MOVEMENT_TABS = [
   { id: 'hotspots', label: 'Hotspots' },
@@ -231,6 +239,8 @@ export const section = {
           memory.refused = true;
         }
         placeFloors();
+        // the map and its zoom buttons moved up or down with no change to the stage's size
+        dock();
         ctx.announce(folded ? 'The controls are folded away.' : 'The controls are shown.');
       },
       change,
@@ -254,8 +264,14 @@ export const section = {
     });
     const key = legend({
       folded: memory.legendFolded,
+      // the card shown whole again may now lie on a floor (it was measured
+      // folded): then it docks, and is brought out over the map, since the
+      // reader asked to see it, until its own button puts it away
       fold(folded) {
         memory.legendFolded = folded;
+        if (folded) return;
+        dockLegend();
+        key.bringOut();
       },
       measure: (value) => change({ measure: value }),
       scale(value) {
@@ -314,8 +330,15 @@ export const section = {
     function placeFloors() {
       const shown = !map.hidden && !(top.folded && phone.matches);
       if (shown === floorsShown) return;
+      // the row put away with the focus in it (a window narrowed under 640 px):
+      // the focus goes to what brings it back
+      const held = !shown && floorsRow.contains(document.activeElement);
       floorsShown = shown;
       ctx.setSecondRow(shown ? floorsRow : null);
+      if (held) {
+        if (map.hidden) ctx.focusSurface();
+        else top.element.querySelector('[data-action="change"]').focus();
+      }
     }
     function onWidth() {
       if (memory.controls === null) top.setFolded(!wide.matches);
@@ -368,18 +391,35 @@ export const section = {
     }
 
     // ---- the results
+    let engineWait = null;
+    function lookForEngine() {
+      engineWait = null;
+      if (gone) return;
+      if (store.derived && store.derived.engine) {
+        derived.failed = null;
+        ask();
+        refresh();
+      } else {
+        engineWait = setTimeout(lookForEngine, ENGINE_LOOK_MS);
+      }
+    }
     function ask() {
       const project = store.project;
       if (derived.asked === project) return;
       derived.asked = project;
       if (!store.derived || !store.derived.engine) {
-        derived.failed = 'Nothing is attached to work out the routes.';
+        // nothing to ask, and nothing is awaited: the first line says so. The
+        // project is not marked asked, and the view looks again now and then,
+        // so an engine attached later is asked for this same project.
+        derived.asked = null;
+        derived.failed = NO_ENGINE;
+        if (engineWait === null) engineWait = setTimeout(lookForEngine, ENGINE_LOOK_MS);
         return;
       }
       element.dataset.pending = 'true';
       const settle = (results, failed) => {
         // an answer for a state the project has left is not for the screen
-        if (gone || derived.asked !== project || store.project !== project) return;
+        if (!answerCounts({ gone, asked: derived.asked, answered: project, now: store.project })) return;
         // store.project is `project` here, so the store's graph is this answer's
         derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, graph: results ? graphNow() : derived.graph, failed };
         // the answer is in: nothing is awaited by the time the panels are told (the Export tab reads this)
@@ -501,8 +541,30 @@ export const section = {
       }
     }
 
+    // The map is never moved off the stage (SV2-52): a wheel meant for the
+    // section, a long drag or a zoom far in leaves at least KEEP_ON_STAGE px
+    // of the floors' box on screen each way (all of it, when it is smaller),
+    // so the stage is never a blank field with nothing to say where the
+    // floors went.
+    function keepOnStage() {
+      if (!world || view.width === 0) return;
+      const size = view.size;
+      const across = world.width * size;
+      const down = world.height * size;
+      const keepX = Math.min(KEEP_ON_STAGE, across);
+      const keepY = Math.min(KEEP_ON_STAGE, down);
+      let dx = 0;
+      let dy = 0;
+      if (view.x + across < keepX) dx = keepX - (view.x + across);
+      else if (view.x > view.width - keepX) dx = view.width - keepX - view.x;
+      if (view.y + down < keepY) dy = keepY - (view.y + down);
+      else if (view.y > view.height - keepY) dy = view.height - keepY - view.y;
+      if (dx !== 0 || dy !== 0) view.panBy(dx, dy);
+    }
+
     function zoomBy(factor) {
       view.zoomAbout(view.zoom * factor, view.width / 2, view.height / 2);
+      keepOnStage();
       fitted = false;
       shownLast = null;
       clearPoint();
@@ -752,6 +814,7 @@ export const section = {
       menu() {},
       spaceHeld: () => cursor.spaceHeld,
       viewChanged() {
+        keepOnStage();
         fitted = false;
         shownLast = null;
         clearPoint();
@@ -833,6 +896,72 @@ export const section = {
       const clear = Math.max(0, Math.round(foot - top)) + 'px';
       if (host.style.getPropertyValue('--toast-clear') !== clear) host.style.setProperty('--toast-clear', clear);
     }
+    // ---- what the section has for the map (DESIGN 5.3; SV2-52): its height
+    // less the first line, as it is with the controls folded, and less what
+    // is docked under the map (the legend's line and the playback bar). The
+    // stage's floor of 45 % and 320 px is never more than that (--mov-room,
+    // movement.css), so in a short window the first line, the map and the
+    // bar are all on screen and nothing scrolls until the controls are shown.
+    // Two things lie over the section for a while and take nothing from the
+    // map: the inspector's sheet (under 900 px; the section scrolls under it
+    // with the map's top showing above it) and the bar's More (the bar grows
+    // up over the map's foot). The section is measured as with both shut.
+    const firstLine = top.element.querySelector('.mov-line');
+    const barMore = bar.element.querySelector('[data-part="more"]');
+    function room() {
+      if (gone || map.hidden || element.clientHeight === 0) return;
+      let height = element.clientHeight;
+      const sheet = document.getElementById('inspector');
+      if (sheet && !sheet.hidden && sheet.dataset.mode === 'sheet' && sheet.dataset.open === 'true') {
+        const handle = sheet.querySelector('.inspector__bar');
+        height += sheet.getBoundingClientRect().height - (handle ? handle.getBoundingClientRect().height : 0);
+      }
+      const shape = getComputedStyle(top.element);
+      const line = firstLine.getBoundingClientRect().height + (parseFloat(shape.paddingTop) || 0) + (parseFloat(shape.paddingBottom) || 0) + (parseFloat(shape.borderBottomWidth) || 0);
+      const gap = parseFloat(getComputedStyle(bar.element).rowGap) || 0;
+      // boxes as drawn, not rounded: whole pixels taken apart again can be one out
+      const tall = (el) => el.getBoundingClientRect().height;
+      const more = barMore && !barMore.hidden ? tall(barMore) + gap : 0;
+      const docked = key.line.hidden ? 0 : tall(key.line);
+      const foot = tall(bar.element) - more + docked;
+      const has = Math.max(0, Math.floor(height - line - foot));
+      const next = has + 'px';
+      if (element.style.getPropertyValue('--mov-room') !== next) element.style.setProperty('--mov-room', next);
+      // More may take the map's height and the legend's line, never the first line's
+      const moreRoom = Math.max(0, has + docked - gap) + 'px';
+      if (element.style.getPropertyValue('--mov-more') !== moreRoom) element.style.setProperty('--mov-more', moreRoom);
+      // the bar's height this was measured with, for a test to wait on
+      element.dataset.measuredBar = String(bar.element.offsetHeight);
+    }
+    // and where a message may lie, which moves with the bar's height (More,
+    // a line of words under the row) whether or not the stage changes size
+    const roomWatcher = new ResizeObserver(() => {
+      room();
+      dock();
+    });
+    for (const each of [element, firstLine, bar.element, key.line]) roomWatcher.observe(each);
+
+    // A wheel over the map scrolls the section while the section has some
+    // way to go that way and the map is not all on screen (the controls are
+    // shown in a short window); after that it moves the map, as it does
+    // everywhere else. Ctrl or Cmd with the wheel always zooms the map.
+    function sectionTakes(event) {
+      if (event.ctrlKey || event.metaKey || event.deltaY === 0) return false;
+      const most = element.scrollHeight - element.clientHeight;
+      if (most <= 0) return false;
+      const edge = element.getBoundingClientRect();
+      const shown = stage.getBoundingClientRect();
+      // the bar lies over the map's foot until the section is at its end
+      const foot = Math.min(edge.bottom, bar.element.getBoundingClientRect().top);
+      if (event.deltaY > 0) return element.scrollTop < most - 1 && shown.bottom > foot + 1;
+      return element.scrollTop > 0 && shown.top < edge.top - 1;
+    }
+    function onStageWheel(event) {
+      // the map's own handler (ui/surface/input.js) is not reached, and the browser scrolls the section
+      if (sectionTakes(event)) event.stopPropagation();
+    }
+    stage.addEventListener('wheel', onStageWheel, { capture: true, passive: true });
+
     // the surface scrolls down to Getting started, and the section inside
     // itself on a small window: the dock moves with both
     element.addEventListener('scroll', dock, { passive: true });
@@ -861,6 +990,7 @@ export const section = {
     loadSheet().then(() => {
       if (gone) return;
       element.dataset.styled = 'true';
+      room();
       measure();
       dock();
     });
@@ -919,11 +1049,14 @@ export const section = {
       },
       unmount() {
         gone = true;
+        if (engineWait !== null) clearTimeout(engineWait);
         element.removeEventListener('scroll', dock);
         document.removeEventListener('scroll', onSurfaceScroll, { capture: true });
         if (dockHost) dockHost.style.removeProperty('--toast-clear');
         bar.unmount();
         watcher.disconnect();
+        roomWatcher.disconnect();
+        stage.removeEventListener('wheel', onStageWheel, { capture: true });
         dark.removeEventListener('change', queuePaint);
         if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
         wide.removeEventListener('change', onWidth);

@@ -14,7 +14,9 @@
 //
 // The view on screen is at document.querySelector('.stf').staff, for the
 // tests and for the console: { preview, form, hooks }. `hooks.deliver`, when
-// set, is handed each published file instead of the download.
+// set, is handed each published file instead of the download;
+// `hooks.assembled`, when set, is awaited before it is handed over. Both are
+// the tests' and are null here: no module of the page sets them.
 
 import { h } from '../components/dom.js';
 import { intro } from '../components/card.js';
@@ -22,21 +24,24 @@ import { count, figures } from '../components/words.js';
 import { printDate } from '../prints/document.js';
 import { inputsFor, pageReader } from './assemble.js';
 import { preview } from './preview.js';
-import { publishForm } from './form.js';
+import { publishForm, READ_ONLY_MADE } from './form.js';
 
 // How long the page is left alone after it loads before the staff browser's
 // files are read in the background.
 export const IDLE_READ_MS = 4000;
 
-export const hooks = { deliver: null, published: null, made: null };
+export const hooks = { deliver: null, assembled: null, published: null, made: null };
 
-// `unnoted`: this tab made a file the project could not note (the tab is
-// read-only), so "no file yet" would be false on this screen.
-function facts(project, unnoted) {
+// `unnoted`: this tab made a file the project did not note, so "no file
+// yet" would be false on this screen. 'read-only' when the tab is read-only
+// and so was never asked to; 'refused' when the project was asked and could
+// not record it; null when the last file was noted.
+export function facts(project, unnoted) {
   const f = figures(project);
   const holds = 'It has ' + count(f.teachers, 'teacher') + ', ' + count(f.groups, 'group') + ' and ' + count(f.rooms, 'room') + ' to show.';
   const last = project.publish.lastPublishedAt ? printDate(project.publish.lastPublishedAt) : '';
-  if (unnoted) return 'This tab made a file just now. The project does not record it while the tab is read-only. ' + holds;
+  if (unnoted === 'read-only') return 'This tab made a file just now. The project does not record it while the tab is read-only. ' + holds;
+  if (unnoted === 'refused') return 'This tab made a file just now. The project could not record it. ' + holds;
   if (last === '') return 'No file has been made from this project yet. ' + holds;
   return 'The last file from this project was made on ' + last + '. ' + holds;
 }
@@ -73,9 +78,9 @@ export const section = {
     element.staff = { preview: shown, form, hooks };
     ctx.setInspector(form.element, { title: 'Publish' });
 
-    let unnoted = false;
+    let unnoted = null;
     hooks.made = (published, noted) => {
-      unnoted = !noted;
+      unnoted = noted === true ? null : noted === READ_ONLY_MADE ? 'read-only' : 'refused';
       lead.textContent = facts(ctx.store.project, unnoted);
     };
 

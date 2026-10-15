@@ -342,7 +342,9 @@ function drawLines(g, view, list, lanes, colourOf, constant, theme) {
 
 // A marker for each group a room sees, with the periods it is there: small
 // pills from the room's top left corner, a row at a time, and "+3" when the
-// room has no space for the rest. Dots when the labels are off or too small.
+// room has no space for the rest. Small squares when the labels are off or
+// too small: square, so that zoomed far out a route's end is not taken for a
+// playback marker (a disc) or a stairs link's end (a round dot) (SV2-52).
 function drawMarkers(g, view, floor, markers, labels, theme) {
   const size = view.size;
   const seen = view.visible(floor);
@@ -381,7 +383,7 @@ function drawMarkers(g, view, floor, markers, labels, theme) {
       g.fillStyle = fill;
       g.beginPath();
       if (words) g.rect(Math.round(x), Math.round(y), wide, high);
-      else g.arc(x + high / 2, y + high / 2, high / 2, 0, Math.PI * 2);
+      else g.rect(Math.round(x), Math.round(y), high, high);
       g.fill();
       g.strokeStyle = theme.card;
       g.lineWidth = 1;

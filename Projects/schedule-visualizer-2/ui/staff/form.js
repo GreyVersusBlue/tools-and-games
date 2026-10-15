@@ -19,7 +19,14 @@
 // `hooks.deliver(published)`, when a test sets it, takes the file instead of
 // the download; `hooks.published` is the last file made. `hooks.assembled`,
 // when a test sets it, is awaited between the file being made and its being
-// handed over, so a case can change the project in that gap.
+// handed over, so a case can change the project in that gap. Nothing in the
+// page sets either (ui/staff/index.js declares them null). `hooks.made(
+// published, noted)` is the section's: `noted` is true, or the sentence
+// saying why the project does not record the file.
+//
+// A form stopped while its file was being made (the section left) hands
+// nothing over: a download that starts after the reader has gone elsewhere
+// is not one they asked for.
 
 import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
@@ -32,6 +39,7 @@ import { isProtected } from '../../engine/publish-data.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageReader, failureSentence } from './assemble.js';
 import { publishDocument, deviceRandom, fileTarget } from './targets.js';
+import { partsOf, sameParts } from './preview.js';
 import { readerSentences, readerSummary, NOTHING_REMAINS as NOTHING } from './readers.js';
 
 // What each view is called on the form, in the order of spec 12.2.
@@ -328,11 +336,14 @@ export function publishForm(ctx, hooks) {
       says.textContent = 'Putting the file together.';
       const published = await publishDocument(pageReader(), project, { clock: ctx.clock, random: deviceRandom() });
       if (typeof hooks.assembled === 'function') await hooks.assembled(published);
+      if (stopped) return null;
       hooks.published = published;
       const delivered = typeof hooks.deliver === 'function' ? hooks.deliver(published) : fileTarget.deliver(published);
       const size = delivered && typeof delivered.bytes === 'number' ? ' (' + kilobytes(delivered.bytes) + ')' : '';
       // From here the file is out, and nothing below may say it is not.
-      const moved = store.project !== project;
+      // "The schedule changed" only when something a reader would see did: a
+      // theme or a paper size is a new project and the same file.
+      const moved = store.project !== project && !sameParts(partsOf(project, published.locked), partsOf(store.project, published.locked));
       // A tab that cannot change the project still made its file. It is not
       // asked to note it: the refusal's toast ("Nothing changed") would be
       // the one false thing on the screen.
@@ -348,9 +359,12 @@ export function publishForm(ctx, hooks) {
       saysPublished(published, size, project.publish.passcode, noted, moved);
       if (moved) element.dataset.publishedOf = 'earlier';
       else delete element.dataset.publishedOf;
-      // the list is the list of what is on screen, not of what went out
-      if (!stopped) askChecks(store.project);
-      if (typeof hooks.made === 'function') hooks.made(published, noted === true);
+      // The list is of what is on screen, not of what went out, and nothing
+      // here asks for it again: a project that moved, or the note just made
+      // of the publish, reached update(), which asked; in a read-only tab
+      // the store refuses every change, so the project on screen is the one
+      // checksStand asked about (SV2-51).
+      if (typeof hooks.made === 'function') hooks.made(published, noted);
       return published;
     } catch (error) {
       console.warn('Schedule Visualizer 2: the file could not be made.', error);

@@ -73,7 +73,7 @@ const CJK_SEVEN = '東京第一体育館';
 
 // The rows of each day table in a sign's markup, tags taken out.
 function rowsOf(markup) {
-  return Array.from(markup.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr>([\s\S]*?)<\/tr>/g))
+  return Array.from(markup.matchAll(/<tbody[^>]*>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g))
     .map((row) => Array.from(row[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)).map((cell) => cell[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&'))));
 }
 
@@ -468,6 +468,20 @@ before(async () => {
     project.teachers[0].name = WORD_TEACHER;
     project.groups[0].name = WORD_GROUP;
   });
+  // three groups in one period of Room 101, so its day has a list with commas (SV2-51 item 9)
+  await write('commas', (project) => {
+    const day = project.dayTypes[0].id;
+    project.groups.slice(0, 3).forEach((group, at) => {
+      group.days[day][2] = { ...group.days[day][2], room: 'rsample101', roomText: '' };
+      group.name = ['Northwingreaders', 'Southwingwriters', 'Eastwingthinkers'][at];
+    });
+  });
+  // the same with the longest period word: "3rd Hour" beside two names of sixty (SV2-51 item 9)
+  await write('longwordhour', (project) => {
+    project.settings.periodWord = 'Hour';
+    project.teachers[0].name = WORD_TEACHER;
+    project.groups[0].name = WORD_GROUP;
+  });
   browser = await launch();
 });
 
@@ -699,7 +713,7 @@ test('the sign\'s day never cuts a word and never runs past the sheet: thirty-le
 const namesFit = (page) => page.evaluate(() => {
   const sheet = document.querySelector('.sheet, .batch-sign').getBoundingClientRect();
   const day = document.querySelector('.sign__day').getBoundingClientRect();
-  const names = Array.from(document.querySelectorAll('.sign__table td span'));
+  const names = Array.from(document.querySelectorAll('.sign__table td span[dir]'));
   return {
     names: names.length,
     past: names.filter((name) => {
@@ -710,7 +724,9 @@ const namesFit = (page) => page.evaluate(() => {
   };
 });
 
-test('a word no sheet can hold is broken at the sheet\'s edge and nothing else is: two names of sixty letters in one row, at 390 px, at 1280 px, on paper and in the batch', async () => {
+// SV2-51 item 9: and with the school's period word "Hour", whose names
+// ("3rd Hour") are the longest the tool makes, beside the two.
+test('a word no sheet can hold is broken at the sheet\'s edge and nothing else is: two names of sixty letters in one row, with "Period" and with "Hour", at 390 px, at 1280 px, on paper and in the batch', async () => {
   const room = 'rsample101';
   const check = async (page, name) => {
     const fit = await dayFit(page);
@@ -726,28 +742,35 @@ test('a word no sheet can hold is broken at the sheet\'s edge and nothing else i
     assert.deepEqual(cut, [WORD_TEACHER, WORD_GROUP].sort(), name + ': the words cut in two');
     assert.ok(names.lines.every((lines) => lines >= 2 && lines <= 4), name + ': the lines each long name takes: ' + names.lines.join(' '));
   };
+  for (const [fixture, word] of [['longword', 'Period 3'], ['longwordhour', '3rd Hour']]) {
   for (const [name, width, height, media] of [['a phone', 390, 844, 'screen'], ['a narrow phone', 320, 640, 'screen'], ['a desktop', 1280, 900, 'screen'], ['US Letter', 710, 950, 'print'], ['A4', 688, 1017, 'print']]) {
     const session = await openPage({ width, height });
     try {
       const { page } = session;
-      await goto(page, files.longword.url + '#/door/' + room + '?day=1');
+      await goto(page, files[fixture].url + '#/door/' + room + '?day=1');
       if (media === 'print') {
         await page.emulateMediaType('print');
         await page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
       }
-      await check(page, name);
+      // the row where the two names meet is headed by that period
+      const rows = await page.evaluate((teacher) => Array.from(document.querySelectorAll('.sign__table tr')).filter((row) => row.textContent.includes(teacher)).map((row) => row.querySelector('th').textContent), WORD_TEACHER);
+      assert.ok(rows.includes(word), name + ': the long names meet in the row of ' + word + ': ' + rows.join(', '));
+      await check(page, name + ', ' + word);
       assert.deepEqual(session.errors, []);
     } finally {
       await session.close();
     }
   }
+  }
   // the planner's batch sets the same sign from print.css
+  for (const periodWord of ['Period', 'Hour']) {
   const project = sampleSchool();
+  project.settings.periodWord = periodWord;
   project.teachers[0].name = WORD_TEACHER;
   project.groups[0].name = WORD_GROUP;
   for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
     const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
-    const file = path.join(scratch, 'batch-word-' + size + '.html');
+    const file = path.join(scratch, 'batch-word-' + size + '-' + periodWord + '.html');
     writeFileSync(file, html);
     const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
     try {
@@ -760,7 +783,121 @@ test('a word no sheet can hold is broken at the sheet\'s edge and nothing else i
       await page.evaluate((id) => {
         for (const sheet of Array.from(document.querySelectorAll('[data-sheet="door"]'))) if (sheet.dataset.id !== id) sheet.remove();
       }, room);
-      await check(page, 'the batch on ' + size);
+      await check(page, 'the batch on ' + size + ', ' + periodWord);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+  }
+});
+
+// SV2-51 item 9. In a list of names ("A, B and C") a name is a box of its
+// own (span[dir]), and the line may end on either side of a box: the comma
+// after a name went to the start of the next line when the name filled the
+// line. Where a line ends depends on the names, so the first name's length is
+// swept in the page, a letter at a time, and every comma is read against the
+// last line of the name before it.
+const commasParted = (page) => page.evaluate(() => {
+  const first = Array.from(document.querySelectorAll('.sign__table td span[dir]')).find((span) => span.textContent.startsWith('Northwing'));
+  const parted = [];
+  for (let letters = 1; letters <= 40; letters += 1) {
+    first.textContent = 'N' + 'o'.repeat(letters);
+    for (const cell of document.querySelectorAll('.sign__table td')) {
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.data.startsWith(',')) continue;
+        const name = node.previousSibling && node.previousSibling.nodeType === 1 ? node.previousSibling : node.parentElement.previousElementSibling;
+        if (!name) continue;
+        const range = document.createRange();
+        range.setStart(node, 0);
+        range.setEnd(node, 1);
+        const comma = range.getClientRects()[0];
+        const lines = name.getClientRects();
+        const last = lines[lines.length - 1];
+        if (comma && last && Math.abs(comma.top - last.top) > 1) parted.push(letters + ' letters: ' + name.textContent.slice(0, 12));
+        // and kept with its name, a comma never stands past the sheet
+        const edge = Math.min(document.querySelector('.sheet, .batch-sign').getBoundingClientRect().right, document.querySelector('.sign__day').getBoundingClientRect().right);
+        if (comma && comma.right > edge + 0.5) parted.push(letters + ' letters: the comma after ' + name.textContent.slice(0, 12) + ' is past the sheet');
+      }
+    }
+  }
+  return parted;
+});
+
+test('a name and the comma after it are never parted at a line\'s end: on a phone, on a desktop, on paper and in the batch', async () => {
+  for (const [name, width, height, media] of [['a phone', 390, 844, 'screen'], ['a narrow phone', 320, 640, 'screen'], ['a desktop', 1280, 900, 'screen'], ['US Letter', 710, 950, 'print'], ['A4', 688, 1017, 'print']]) {
+    const session = await openPage({ width, height });
+    try {
+      const { page } = session;
+      await goto(page, files.commas.url + '#/door/rsample101?day=1');
+      if (media === 'print') {
+        await page.emulateMediaType('print');
+        await page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
+      }
+      assert.equal(await page.evaluate(() => Array.from(document.querySelectorAll('.sign__table td')).filter((cell) => cell.textContent.includes('Southwingwriters, Eastwingthinkers') || cell.textContent.includes(', Southwingwriters')).length > 0), true, name + ': the three names are a list with a comma');
+      assert.deepEqual(await commasParted(page), [], name + ': a comma begins a line');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+  const project = sampleSchool();
+  const day = project.dayTypes[0].id;
+  project.groups.slice(0, 3).forEach((group, at) => {
+    group.days[day][2] = { ...group.days[day][2], room: 'rsample101', roomText: '' };
+    group.name = ['Northwingreaders', 'Southwingwriters', 'Eastwingthinkers'][at];
+  });
+  for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
+    const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
+    const file = path.join(scratch, 'batch-commas-' + size + '.html');
+    writeFileSync(file, html);
+    const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
+    try {
+      const { page } = session;
+      await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+      await page.emulateMediaType('print');
+      await page.evaluate(() => {
+        for (const sheet of Array.from(document.querySelectorAll('[data-sheet="door"]'))) if (sheet.dataset.id !== 'rsample101') sheet.remove();
+      });
+      assert.deepEqual(await commasParted(page), [], 'the batch on ' + size + ': a comma begins a line');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// SV2-51 item 10. On a phone the sign's day is stacked lines, not a table
+// that scrolls (SV2-49), and its rows are display: grid. A screen reader
+// still meets a table with a row header for each period: Chromium keeps the
+// roles of a table whose display changed (measured here), and the markup
+// names them itself for a browser that would not (WebKit has dropped them).
+test('on a phone the sign\'s day is still a table to a screen reader: a row header for each period, and the cells beside it', async () => {
+  for (const width of [390, 1280]) {
+    const session = await openPage({ width, height: 844 });
+    try {
+      const { page } = session;
+      await goto(page, files.open.url + '#/door/rsample101?day=1');
+      const stacked = await page.evaluate(() => getComputedStyle(document.querySelector('.sign__table tr')).display);
+      assert.equal(stacked, width === 390 ? 'grid' : 'table-row', width + ' px');
+      const tree = await page.accessibility.snapshot({ root: await page.$('.sign__table'), interestingOnly: false });
+      const rows = [];
+      const walk = (node) => {
+        if (node.role === 'row') rows.push((node.children || []).filter((child) => child.role === 'rowheader' || child.role === 'cell').map((child) => child.role + ' ' + child.name));
+        (node.children || []).forEach(walk);
+      };
+      walk(tree);
+      assert.equal(tree.role, 'table', width + ' px');
+      assert.equal(rows.length, 8, width + ' px: a row a period');
+      assert.deepEqual(rows.map((row) => row[0]), Array.from({ length: 8 }, (_, at) => 'rowheader Period ' + (at + 1)), width + ' px');
+      assert.deepEqual(rows[1].slice(1, 3), ['cell 8:52 AM to 9:40 AM', 'cell 8B'], width + ' px');
+      const named = await page.evaluate(() => {
+        const table = document.querySelector('.sign__table');
+        return [table.getAttribute('role'), table.querySelector('tbody').getAttribute('role'), table.querySelector('tr').getAttribute('role'), table.querySelector('th').getAttribute('role'), table.querySelector('td').getAttribute('role')];
+      });
+      assert.deepEqual(named, ['table', 'rowgroup', 'row', 'rowheader', 'cell'], 'the markup names the roles itself');
       assert.deepEqual(session.errors, []);
     } finally {
       await session.close();
@@ -798,6 +935,48 @@ test('printed for real with landscape asked, a door sign is still one upright sh
     try {
       await goto(session.page, files.open.url + '#/teacher/tsample004');
       const printed = read(await session.page.pdf({ format, landscape: true, preferCSSPageSize: true, printBackground: true }));
+      assert.deepEqual(printed.boxes, [onItsSide], 'a teacher\'s schedule on ' + format + ', landscape asked');
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// SV2-51 item 8. The same sign printed with preferCSSPageSize false, where
+// the format and orientation the caller asks for are the paper (Puppeteer's
+// default, and the nearer of the two to a dialog that does not let a page
+// name its paper). Measured in Chromium on 2026-10-14: the sign is still one
+// upright sheet of Letter (612 by 792 pt) and of A4 (596 by 842), with
+// landscape asked and without, with the room's day and without: the named
+// page's `size: portrait` keeps the paper the caller chose and turns it
+// upright either way. The teacher's schedule is the control: asked on its
+// side, it is printed on its side, so the landscape asked did reach the page.
+test('printed with preferCSSPageSize false, landscape asked or not, a door sign is one upright sheet of Letter and of A4, and a teacher\'s schedule is on its side as asked', async () => {
+  const read = (pdf) => {
+    const text = Buffer.from(pdf).toString('latin1');
+    return {
+      pages: (text.match(/\/Type\s*\/Page\b(?!s)/g) || []).length,
+      boxes: Array.from(new Set(Array.from(text.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g), (match) => Math.round(Number(match[3])) + ' by ' + Math.round(Number(match[4]))))),
+    };
+  };
+  for (const [format, upright, onItsSide] of [['Letter', '612 by 792', '792 by 612'], ['A4', '596 by 842', '842 by 596']]) {
+    for (const landscape of [true, false]) {
+      for (const address of ['#/door/rsample101', '#/door/rsample101?day=1', '#/door/rsamplecaf?day=1']) {
+        const session = await openPage({ width: 1000, height: 800 });
+        try {
+          await goto(session.page, files.open.url + address);
+          const printed = read(await session.page.pdf({ format, landscape, preferCSSPageSize: false, printBackground: true }));
+          assert.deepEqual(printed, { pages: 1, boxes: [upright] }, address + ' on ' + format + (landscape ? ', landscape asked' : ''));
+          assert.deepEqual(session.errors, []);
+        } finally {
+          await session.close();
+        }
+      }
+    }
+    const session = await openPage({ width: 1000, height: 800 });
+    try {
+      await goto(session.page, files.open.url + '#/teacher/tsample004');
+      const printed = read(await session.page.pdf({ format, landscape: true, preferCSSPageSize: false, printBackground: true }));
       assert.deepEqual(printed.boxes, [onItsSide], 'a teacher\'s schedule on ' + format + ', landscape asked');
     } finally {
       await session.close();
@@ -1933,7 +2112,12 @@ test('on a web address Share gives the address and "Copy link" copies it', async
   }
 });
 
-test('on a phone the sheet keeps its shape and its number, and the room\'s day stands under it at the page\'s own size', async () => {
+// SV2-51 item 11: until SV2-51 the school's name was the card's foot on a
+// phone, so with the day on it stood above the periods, at the foot of the
+// first screenful (797 px down a sheet of 1539 at 390 px). It is the sheet's
+// foot on a screen as on paper: under the day when the day is shown, at the
+// card's foot when it is not.
+test('on a phone the sheet keeps its shape and its number, the room\'s day stands under it at the page\'s own size, and the school\'s name is the foot of it all', async () => {
   for (const width of [390, 1280]) {
     const session = await openPage({ width, height: width === 390 ? 760 : 900, theme: 'dark' });
     try {
@@ -1955,6 +2139,8 @@ test('on a phone the sheet keeps its shape and its number, and the room\'s day s
           dayUnder: day.top >= paper.bottom,
           dayInside: day.top > paper.top && day.bottom < paper.bottom,
           schoolAtFoot: Math.round(((school.bottom - paper.top) / paper.height) * 100) / 100,
+          schoolUnderDay: school.top >= day.bottom,
+          schoolLast: Array.from(document.querySelectorAll('.sheet *')).filter((el) => !el.contains(document.querySelector('.sign__school')) && el.getClientRects().length > 0).every((el) => el.getBoundingClientRect().bottom <= school.bottom + 0.5),
           table: size('.sign__table'),
           body: size('body'),
           stacked: kinds[1].top >= kinds[0].bottom,
@@ -1970,12 +2156,14 @@ test('on a phone the sheet keeps its shape and its number, and the room\'s day s
         assert.equal(sign.dayUnder, true, 'the day is under the sheet, not squeezed into it');
         assert.equal(sign.table, sign.body, 'at the size the page is read at: ' + sign.table + ' px of ' + sign.body);
         assert.equal(sign.stacked, true, 'one kind of day under another');
+        assert.equal(sign.schoolUnderDay, true, 'the school\'s name is under the periods, not at the foot of the card above them');
       } else {
         assert.equal(sign.phone, false);
         assert.equal(sign.dayInside, true, 'from 640 px the day is on the sheet, as it prints');
         assert.equal(sign.stacked, false);
+        assert.ok(sign.schoolAtFoot > 0.9 && sign.schoolAtFoot <= 1, 'the school\'s name is at the foot of the paper: ' + sign.schoolAtFoot);
       }
-      assert.ok(sign.schoolAtFoot > 0.9 && sign.schoolAtFoot <= 1, 'the school\'s name is at the foot of the paper: ' + sign.schoolAtFoot);
+      assert.equal(sign.schoolLast, true, 'nothing on the sheet stands below the school\'s name');
       assert.deepEqual([sign.dayPaper, sign.dayInk], ['rgb(255, 255, 255)', 'rgb(31, 35, 40)'], 'the day is on paper too, in a dark theme');
       assert.equal(sign.wide, true);
       assert.deepEqual(await cutWords(page), [], 'at ' + width + ' px a word of the day table is cut in two');
@@ -1983,6 +2171,26 @@ test('on a phone the sheet keeps its shape and its number, and the room\'s day s
     } finally {
       await session.close();
     }
+  }
+});
+
+test('on a phone without the room\'s day, the card is the whole sheet and the school\'s name is its foot', async () => {
+  const session = await openPage({ width: 390, height: 760 });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/door/rsample101');
+    const sign = await page.evaluate(() => {
+      const card = document.querySelector('.sign__card').getBoundingClientRect();
+      const school = document.querySelector('.sign__school');
+      const at = school.getBoundingClientRect();
+      return { boxes: school.getClientRects().length, inCard: school.parentElement.classList.contains('sign__card'), foot: Math.round(((at.bottom - card.top) / card.height) * 100) / 100, day: document.querySelectorAll('.sign__day').length };
+    });
+    assert.equal(sign.boxes > 0, true, 'the school\'s name has a box');
+    assert.deepEqual([sign.inCard, sign.day], [true, 0]);
+    assert.ok(sign.foot > 0.9 && sign.foot <= 1, 'the school\'s name is at the foot of the card: ' + sign.foot);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
   }
 });
 
@@ -2210,6 +2418,50 @@ test('printed for real with nothing marked on its root, a batch of door signs is
       } finally {
         await session.close();
       }
+    }
+  }
+});
+
+// SV2-51 item 1. A number counted at the fit's edge, seven Latin characters
+// by signWidth, is set at the full 120 pt; counted short, it was set as large
+// while drawing wider, wrapped to a second line and could push its sheet onto
+// two. Each number here was counted short before SV2-51 (a keycap as its
+// digit, a hexagram and a lone Hangul vowel as one) and is seven wide now, or
+// fourteen for the seven keycaps. Printed as the batch is printed: one line a
+// number, one sheet a sign.
+test('a number counted at the fit\'s edge is one line at its size, and its sign one sheet of Letter and of A4', async () => {
+  const pagesOf = (pdf) => (Buffer.from(pdf).toString('latin1').match(/\/Type\s*\/Page\b(?!s)/g) || []).length;
+  const edge = ['1\uFE0F\u20E3'.repeat(3) + 'A', '\u4DC0'.repeat(3) + 'B', '\u1161'.repeat(3) + 'C', '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'.repeat(3) + 'D', '1\uFE0F\u20E3'.repeat(7)];
+  assert.deepEqual(edge.map((number) => signFit(number)), [1, 1, 1, 1, 0.5], 'the numbers are at the edge of the fit');
+  const project = sampleSchool();
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces).filter((space) => space.kind === 'room');
+  edge.forEach((number, at) => { rooms[at].number = number; });
+  const ids = rooms.slice(0, edge.length).map((room) => room.id);
+  for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
+    const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
+    const file = path.join(scratch, 'batch-edge-' + size + '.html');
+    writeFileSync(file, html);
+    const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
+    try {
+      const { page } = session;
+      await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+      await page.emulateMediaType('print');
+      const numbers = await page.evaluate((wanted) => wanted.map((id) => {
+        const number = document.querySelector('[data-sheet="door"][data-id="' + id + '"] .sign__number');
+        const size = parseFloat(getComputedStyle(number).fontSize);
+        return { boxes: number.getClientRects().length, size, lines: Math.round(number.getBoundingClientRect().height / size) };
+      }), ids);
+      numbers.forEach((number, at) => {
+        assert.equal(number.boxes > 0, true, size + ': the number ' + JSON.stringify(edge[at]) + ' has a box');
+        assert.deepEqual([number.size, number.lines], [at === 4 ? 80 : 160, 1], size + ': the number ' + JSON.stringify(edge[at]) + ' is set at ' + number.size + ' px on ' + number.lines + ' lines');
+      });
+      await page.emulateMediaType(null);
+      const pages = pagesOf(await page.pdf({ preferCSSPageSize: true, printBackground: true }));
+      assert.equal(pages, 14, size + ': the cover and one sheet a sign, ' + pages + ' sheets');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
     }
   }
 });

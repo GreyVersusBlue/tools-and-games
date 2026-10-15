@@ -179,25 +179,37 @@ export function groupWords(row) {
 //   a name that is a fixed heading  "Rank (group)", "Groups (group)"
 //   a name another group has        the second and later, in the project's
 //                                   order: "7A (2nd of that name)"
+// Two headings are the same when they differ only by case or by spaces at
+// either end, since a spreadsheet reads them as one ("7a", " 7A "), and a
+// heading made here is never a name a group has as typed: a group really
+// named "7A (2nd of that name)" keeps it, and the made one goes on to
+// "(again)" (SV2-52).
 // `fixed` is the headings of the columns before them.
 function nth(n) {
   const tens = n % 100;
   const ones = n % 10;
   return n + (tens >= 11 && tens <= 13 ? 'th' : ones === 1 ? 'st' : ones === 2 ? 'nd' : ones === 3 ? 'rd' : 'th');
 }
+const headingKey = (text) => text.trim().toLowerCase();
 export function groupHeadings(groups, fixed) {
-  const taken = new Set(fixed);
+  const nameOf = (group) => (typeof group.name === 'string' ? group.name : '');
+  const fixedKeys = new Set(fixed.map(headingKey));
+  const typed = new Set(groups.map((group) => headingKey(nameOf(group))).filter((key) => key !== ''));
+  const taken = new Set(fixedKeys);
   const seen = new Map();
   return groups.map((group) => {
-    const name = typeof group.name === 'string' ? group.name : '';
+    const name = nameOf(group);
     let heading = name.trim() === '' ? '(group with no name)' : name;
-    if (fixed.includes(heading)) heading += ' (group)';
-    const times = (seen.get(heading) || 0) + 1;
-    seen.set(heading, times);
+    if (fixedKeys.has(headingKey(heading))) heading += ' (group)';
+    // a made heading that is another group's real name is not that name's first: it is kept apart below
+    const borrowed = heading !== name && typed.has(headingKey(heading));
+    const times = borrowed ? 1 : (seen.get(headingKey(heading)) || 0) + 1;
+    if (!borrowed) seen.set(headingKey(heading), times);
     if (times > 1) heading += ' (' + nth(times) + ' of that name)';
-    // a name typed as another's heading reads ("7A (2nd of that name)") is still kept apart
-    while (taken.has(heading)) heading += ' (again)';
-    taken.add(heading);
+    // a heading made here that another group has as its name, or one already used, is kept apart
+    const made = heading !== name;
+    while (taken.has(headingKey(heading)) || (made && typed.has(headingKey(heading)))) heading += ' (again)';
+    taken.add(headingKey(heading));
     return heading;
   });
 }
@@ -404,6 +416,22 @@ export function hotspotsPanel(env) {
     }
     env.ctx.announce('The map moved to ' + placeWords(row) + '.');
   }
+
+  // A window that crosses 640 px: above it a place's cells open under its
+  // row, and its button says whether they are open (aria-expanded); under it
+  // the button shuts the sheet and moves the map, and says nothing of the
+  // kind. The rows are drawn again for the width they are on, and a button
+  // that had the focus has it again.
+  function onSheet() {
+    if (!last) return;
+    const focused = document.activeElement;
+    const held = focused && element.contains(focused) && focused.dataset.action ? { action: focused.dataset.action, place: focused.closest('[data-place]')?.dataset.place || null } : null;
+    draw(last);
+    if (!held) return;
+    const again = [...element.querySelectorAll('[data-action="' + held.action + '"]')].find((each) => (each.closest('[data-place]')?.dataset.place || null) === held.place);
+    if (again) again.focus();
+  }
+  if (typeof sheet.addEventListener === 'function') sheet.addEventListener('change', onSheet);
 
   function draw(state) {
     const picture = state.picture;
@@ -686,6 +714,7 @@ export function hotspotsPanel(env) {
     // The view is leaving: no timer is left running, and nothing of the panel stays on the map.
     unmount() {
       pulse.stop();
+      if (typeof sheet.removeEventListener === 'function') sheet.removeEventListener('change', onSheet);
       const at = env.marks.indexOf(mark);
       if (at !== -1) env.marks.splice(at, 1);
     },

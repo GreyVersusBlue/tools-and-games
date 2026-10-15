@@ -14,8 +14,8 @@ import assert from 'node:assert/strict';
 
 import { DEVICE_KEY, readDevice, PLAYBACK_DEFAULTS, playbackOf, playbackWith, readPlayback, writePlayback, movementOf, readMovement, writeMovement } from '../../storage/device.js';
 import { trackOf, headAt, coveredBy, stairPoint, pointOn } from '../../ui/surface/overlays/markers.js';
-import { drawStairLink } from '../../ui/surface/overlays/lanes.js';
-import { clockText, minutesText } from '../../ui/movement/playback.js';
+import { drawStairLink, lanesOverlay } from '../../ui/surface/overlays/lanes.js';
+import { clockText, minutesText, lateList } from '../../ui/movement/playback.js';
 import { createPipeline } from '../../engine/worker.js';
 import { buildGraph } from '../../engine/graph.js';
 import { routingGraph } from '../../engine/routing.js';
@@ -88,6 +88,18 @@ test('writeMovement: one field of sv2:device, the others kept, a key changed onl
   // the storage key is the device's own: nothing else was written
   assert.deepEqual(Object.keys(readDevice(storage)).sort(), ['lastSection', 'movement', 'playback', 'theme']);
   assert.throws(() => writeMovement({ controls: 'open' }, storageOf({}, true)), /refused/);
+});
+
+test('writeMovement keeps a field of movement it does not know, and drops a known one that is not a choice (SV2-52 item 5)', () => {
+  const storage = storageOf({ movement: { controls: 'sideways', played: 'yes', zoom: 'remembered', later: { kept: [1, 2] } } });
+  assert.deepEqual(writeMovement({ played: true }, storage), { controls: null, played: true });
+  assert.deepEqual(readDevice(storage).movement, { zoom: 'remembered', later: { kept: [1, 2] }, played: true });
+  writeMovement({ controls: 'open' }, storage);
+  assert.deepEqual(readDevice(storage).movement, { zoom: 'remembered', later: { kept: [1, 2] }, controls: 'open', played: true });
+  // a stored value that is not an object is nothing to keep
+  const odd = storageOf({ movement: 'folded' });
+  writeMovement({ controls: 'folded' }, odd);
+  assert.deepEqual(readDevice(odd).movement, { controls: 'folded' });
 });
 
 test('playbackOf: a playback that is not an object is every default', () => {
@@ -366,4 +378,39 @@ test('clockText: no bell, no clock', () => {
   assert.equal(clockText(null, 10, '12h'), '');
   assert.equal(clockText('', 10, '12h'), '');
   assert.equal(clockText('soon', 10, '12h'), '');
+});
+
+test('the Late line names six groups at most and counts the rest, so 20 late groups do not grow the bar line by line (SV2-52 item 10)', () => {
+  const twenty = Array.from({ length: 20 }, (_, i) => 'Group ' + (i + 1));
+  assert.deepEqual(lateList(twenty), { shown: twenty.slice(0, 6), more: 14 });
+  assert.deepEqual(lateList(twenty.slice(0, 6)), { shown: twenty.slice(0, 6), more: 0 });
+  assert.deepEqual(lateList(['7A']), { shown: ['7A'], more: 0 });
+  assert.deepEqual(lateList([]), { shown: [], more: 0 });
+});
+
+test('zoomed far out a route’s end in a room is a small square, not a round dot like a playback marker or a stairs link’s end (SV2-52 item 10)', () => {
+  const shapes = [];
+  const g = new Proxy({}, {
+    get(target, name) {
+      if (name === 'arc') return (x, y, r) => shapes.push(['arc', r]);
+      if (name === 'rect') return (x, y, w, h) => shapes.push(['rect', w, h]);
+      if (name === 'measureText') return () => ({ width: 10 });
+      return name in target ? target[name] : () => {};
+    },
+    set(target, name, value) {
+      target[name] = value;
+      return true;
+    },
+  });
+  // 25 % of a 24 px cell: the pills have no room for words
+  const view = { x: 0, y: 0, size: 6, visible: () => ({ x0: 0, y0: 0, x1: 40, y1: 30 }) };
+  const floor = { id: 'f1', width: 40, height: 30 };
+  const theme = { font: 'sans-serif', ink: '#1f2328', ink2: '#515761', card: '#fffdf8', paper: '#f6f3ec' };
+  const markers = new Map([['f1', [{ box: { x0: 2, y0: 2, x1: 8, y1: 7 }, pills: [{ colour: '#d1495b', text: '2' }, { colour: '#0072b2', text: '3' }] }]]]);
+  for (const labels of [true, false]) {
+    shapes.length = 0;
+    lanesOverlay(() => ({ markers, labels }))(g, view, floor, theme);
+    assert.deepEqual(shapes.map((shape) => shape[0]), ['rect', 'rect'], 'labels ' + labels + ': ' + JSON.stringify(shapes));
+    assert.ok(shapes.every(([, w, h]) => w === h && w >= 4), 'not small squares: ' + JSON.stringify(shapes));
+  }
 });

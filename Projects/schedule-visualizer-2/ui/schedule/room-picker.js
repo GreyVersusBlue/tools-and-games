@@ -18,10 +18,26 @@
 // A field that holds a room opens with that room highlighted, so Enter there
 // changes nothing.
 //
+// An option is picked by a click with the main button (or a tap), never as a
+// pointer comes down: a finger that lands on the list to scroll it picks
+// nothing. Enter while a word is being composed (an input method) is the
+// input method's, and picks nothing either.
+//
+// The section draws the slot again whenever the project or the walk results
+// change, which makes a new picker under the focus (ui/schedule/index.js).
+// The one being typed in hands over what it held: the text, carried as
+// typing, and then the `picker:resume` event with { room } in its detail,
+// the option the arrow keys had highlighted ('' for "No room", null for
+// none), which opens the new list with the same highlight.
+//
 // One line under the field carries the words that are not options: that
 // nothing matches, that two rooms do, that the building has no rooms yet
-// (with a link to it). It is a status and the field is described by it, so
-// it is heard as well as seen, and its link is a Tab away.
+// (with a link to it). The field is described by it, and it is a status
+// from the first key the user presses in this field, so what typing changes
+// is heard as well as seen; a picker drawn again under the focus (below) is
+// not a status until then, so its words are not said again at every
+// drawing. The line's link is a Tab away, and keeps the focus across a
+// drawing (its `data-key` is the field's with ":building").
 //
 // roomPicker({ name, key, text, roomId, missing, describedBy, options, onPick, onKeep })
 //   text      what the slot holds now, as shown
@@ -30,6 +46,8 @@
 //   options   a function returning [{ id, label, detail, number }]; id null is "No room"
 //   onPick(id)
 //   onKeep(text)   keep the text as typed, with no room
+// Either may answer false: the change was refused (and said), and the field
+// is put back to what the slot holds.
 // While the field is readOnly the list does not open and nothing is picked
 // or kept.
 // returns { element, input }
@@ -72,7 +90,12 @@ export function roomPicker(options) {
   const missing = h('p', { class: 'sch-room__missing', id: missingId, hidden: options.missing !== true },
     h('span', { 'aria-hidden': 'true' }, '▲ '), NOT_IN_BUILDING.charAt(0).toUpperCase() + NOT_IN_BUILDING.slice(1) + '. It is kept as typed.');
   // The words that are not options (the top of this file).
-  const line = h('p', { class: 'sch-room__line', id: lineId, role: 'status' });
+  const line = h('p', { class: 'sch-room__line', id: lineId });
+  // a status from the user's first key (the top of this file)
+  const heard = (event) => {
+    if (event && event.isTrusted === false) return;
+    line.setAttribute('role', 'status');
+  };
   const element = h('div', { class: 'picker sch-room' }, input, line, missing, list);
   if (options.missing === true) input.classList.add('sch-room--missing');
 
@@ -107,6 +130,7 @@ export function roomPicker(options) {
       if (kind === 'building') {
         line.replaceChildren(words, h('a', {
           href: '#building',
+          data: { key: options.key + ':building' },
           on: {
             // the press must not take the focus from the field on a browser
             // that gives a pressed link none: the list would shut on the link
@@ -179,10 +203,12 @@ export function roomPicker(options) {
       'aria-selected': 'false',
       data: { room: option.id === null ? '' : option.id },
       on: {
-        // pointerdown, not click: the field must not blur first
-        pointerdown: (event) => {
-          event.preventDefault();
-          pick(option);
+        // the press must not take the focus from the field, or it would be
+        // read and the list shut before the click came
+        pointerdown: (event) => event.preventDefault(),
+        mousedown: (event) => event.preventDefault(),
+        click: (event) => {
+          if (event.button === 0) pick(option);
         },
       },
     }, h('span', null, option.label), option.detail ? h('span', { class: 'picker__detail' }, ' ', option.detail) : null)));
@@ -235,7 +261,7 @@ export function roomPicker(options) {
     dirty = false;
     close();
     input.value = option.id === null ? '' : option.label;
-    options.onPick(option.id);
+    if (options.onPick(option.id) === false) revert();
   }
 
   // Keep what was typed, with no room. The slot is drawn again for the
@@ -248,7 +274,7 @@ export function roomPicker(options) {
     dirty = false;
     close();
     input.value = text;
-    options.onKeep(text);
+    if (options.onKeep(text) === false) revert();
   }
 
   // What was typed, read by the one rule (room-rules.js). `how` is 'enter'
@@ -275,7 +301,8 @@ export function roomPicker(options) {
   }
 
   input.addEventListener('focus', () => input.select());
-  input.addEventListener('input', () => {
+  input.addEventListener('input', (event) => {
+    heard(event);
     if (input.readOnly) return;
     dirty = true;
     several = null;
@@ -291,7 +318,19 @@ export function roomPicker(options) {
     if (event.relatedTarget && line.contains(event.relatedTarget)) return;
     leave();
   });
+  // a drawing made a new picker under the focus: the list as it was
+  input.addEventListener('picker:resume', (event) => {
+    const room = event.detail ? event.detail.room : null;
+    show();
+    if (typeof room === 'string') {
+      active = shown.findIndex((option) => (option.id === null ? '' : option.id) === room);
+      mark();
+    }
+  });
   input.addEventListener('keydown', (event) => {
+    heard(event);
+    // a key of an input method composing a word is its own
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       if (input.readOnly) return;
