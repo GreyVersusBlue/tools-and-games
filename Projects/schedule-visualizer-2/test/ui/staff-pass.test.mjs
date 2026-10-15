@@ -19,6 +19,7 @@ import { school, clock } from '../engine/helpers.mjs';
 import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
+import { directionsView } from '../../staff/views/directions.js';
 import { noteCountOf } from '../../staff/notes.js';
 import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
@@ -224,6 +225,100 @@ test('the staff browser\'s directions are written for a reader: every walk is in
   assert.doesNotMatch(written.text, /\bcells?\b/);
   const refused = opened.directions(opened.route(rooms('101'), rooms('302'), { avoidStairs: true }));
   assert.equal(refused.text, 'There is no way from Room 101 to Room 302 without stairs.');
+});
+
+// ---------------------------------------------------------------- the step-free refusal's routes (SV2-51 item 4)
+
+// Just enough of a document for a staff view to build its page in Node:
+// elements with attributes, a dataset, children and text, and the three
+// selectors page.js asks for.
+class StubElement {
+  constructor(tag) {
+    this.tagName = tag.toUpperCase();
+    this.attributes = new Map();
+    this.childNodes = [];
+    this.dataset = {};
+    this.className = '';
+    this.hidden = false;
+  }
+
+  get children() {
+    return this.childNodes.filter((node) => node instanceof StubElement);
+  }
+
+  get textContent() {
+    return this.childNodes.map((node) => node.textContent).join('');
+  }
+
+  setAttribute(key, value) {
+    this.attributes.set(key, String(value));
+  }
+
+  getAttribute(key) {
+    return this.attributes.has(key) ? this.attributes.get(key) : null;
+  }
+
+  addEventListener() {}
+
+  appendChild(node) {
+    this.childNodes.push(node);
+    return node;
+  }
+
+  replaceChildren(...nodes) {
+    this.childNodes = [];
+    for (const node of nodes) this.appendChild(typeof node === 'object' ? node : { textContent: String(node) });
+  }
+
+  *descendants() {
+    for (const child of this.children) {
+      yield child;
+      yield* child.descendants();
+    }
+  }
+
+  find(test) {
+    for (const each of this.descendants()) if (test(each)) return each;
+    return null;
+  }
+
+  querySelector(selector) {
+    if (selector === '[data-print]') return this.find((el) => 'print' in el.dataset);
+    if (selector === '[data-actions="print"]') return this.find((el) => el.dataset.actions === 'print');
+    if (selector === '.page__outputs') return this.find((el) => el.className.split(' ').includes('page__outputs'));
+    throw new Error('the stand-in document does not know ' + selector);
+  }
+}
+
+function withStubDocument(run) {
+  const had = { document: globalThis.document, location: globalThis.location };
+  globalThis.document = { title: '', createElement: (tag) => new StubElement(tag), createTextNode: (text) => ({ textContent: String(text) }) };
+  globalThis.location = { protocol: 'file:', href: 'file:///staff.html' };
+  try {
+    return run();
+  } finally {
+    globalThis.document = had.document;
+    globalThis.location = had.location;
+  }
+}
+
+// The page's own use of directionsRefusal: the route the page looked for is
+// handed to it, so a step-free way that does not exist costs the way without
+// stairs and the way with them, two routes. Until SV2-51 the refusal looked
+// for the step-free way again: three.
+test('the Directions page refuses a step-free way that does not exist with two routes, not three, and still offers the way with stairs', () => {
+  const opened = openSchool(publishedModel(school(), { clock }));
+  const asked = [];
+  const counted = Object.create(opened);
+  counted.route = (from, to, options) => {
+    asked.push(Boolean(options && options.avoidStairs));
+    return opened.route(from, to, options);
+  };
+  const id = (number) => opened.rooms.find((room) => room.number === number).id;
+  const page = withStubDocument(() => directionsView.render({ school: counted, replace() {} }, { id: '', query: { from: id('101'), to: id('302'), stepfree: '1' } }));
+  assert.ok(page.textContent.includes('There is no way from Room 101 to Room 302 without stairs.'), page.textContent);
+  assert.ok(page.find((el) => el.dataset.directions === 'stairs'), 'the way with stairs is offered');
+  assert.deepEqual(asked, [true, false], 'the step-free way once, then the way with stairs');
 });
 
 // ---------------------------------------------------------------- the door sign's fit (item 5)
