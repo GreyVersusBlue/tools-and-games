@@ -473,9 +473,9 @@ and add to this list rather than starting a new one.
   square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
   keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
-  touch another building's keeps a stepped parapet; the takeoff and the
-  estimate count a parapet roof over a curve off its mask cells (#970 did
-  the hip only); the site plan's building line is the ground storey's mask, stepped on a curve
+  touch another building's keeps a stepped parapet, and the takeoff and the
+  estimate count it off those cells (#986 counts a chord parapet off its
+  chords); the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its
