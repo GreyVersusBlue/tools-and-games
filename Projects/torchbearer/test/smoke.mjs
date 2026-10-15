@@ -5442,6 +5442,12 @@ group("a cone is a quarter circle and a line runs its length (#951)");
     const r = ringed(); r.eng.armed = { kind: "cell", mode: "seek", range: 6, radius: 1, cost: 1 };
     eq(r.eng.previewCells(r.caster, r.eng.armed, 5, 4), [], "Seek's point lights no hit list");
     eq(r.eng.previewCells(r.caster, null, 5, 4), [], "…and nothing armed lights none");
+    // The pointer leaving the grid is a preview of (-1,-1). From a caster one
+    // square off the corner a line aimed there is in range and in sight by
+    // `aimable`'s count, and used to light the line on to the map's edge.
+    const c = ringed(); c.caster.x = 1; c.caster.y = 1; c.arm("grim-tendrils", 1, "r1");
+    eq([c.eng.aimable(c.caster, c.eng.armed, -1, -1), c.eng.previewCells(c.caster, c.eng.armed, -1, -1)], [true, []],
+      "a square off the map lights nothing, though aimable alone would take it (#966)");
   }
 
   // One copy of each shape, and nobody else with an idea of their own.
