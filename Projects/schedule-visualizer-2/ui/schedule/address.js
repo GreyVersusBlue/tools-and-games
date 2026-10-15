@@ -1,5 +1,6 @@
 // The addresses of the Groups tab, written and read. No page is needed for
-// either, so a plain Node test can ask (test/ui/room-picker.test.mjs).
+// either, so a plain Node test can ask (test/ui/room-picker.test.mjs and
+// test/ui/schedule-address.test.mjs).
 //
 //   #schedule/groups                                  the list of groups
 //   #schedule/groups/<groupId>                        a group, its editor open
@@ -82,4 +83,19 @@ export function showsList(project, hash) {
 export function groupOf(project, hash) {
   const rest = scheduleRest(hash);
   return rest !== null && rest.split('/')[0] === 'groups' ? readAddress(project, rest).group : null;
+}
+
+// Where an undo entry's `focus` is, as an address, for the message's Show
+// (ui/app.js, `hashForFocus`, hands it the shell's section ids). A change
+// to a group's slot is the slot's own address, and one to the group alone
+// the group's: `#schedule/groups` alone is the list, and on a phone the
+// list is not where the change was. Null for a focus of no section.
+export function focusHash(focus, sectionIds) {
+  if (!focus || !sectionIds.includes(focus.section)) return null;
+  if (focus.section === 'building' && focus.floorId) return '#building/' + focus.floorId;
+  if (focus.section === 'schedule' && focus.tab === 'groups' && focus.groupId) {
+    return focus.dayTypeId && Number.isInteger(focus.period) ? slotHash(focus.groupId, focus.dayTypeId, focus.period) : groupHash(focus.groupId);
+  }
+  if (focus.section === 'schedule' && focus.tab) return '#schedule/' + focus.tab;
+  return '#' + focus.section;
 }

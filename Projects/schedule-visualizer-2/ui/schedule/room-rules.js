@@ -30,6 +30,9 @@ function withoutRoomWord(folded) {
 //   { kind: 'none' }               nothing typed: no room
 //   { kind: 'room', option }       one room: its number, its whole label, or
 //                                  text that names it alone by its teacher
+//                                  (the whole label of a room with no number
+//                                  only when it carries teachers: "a room
+//                                  with no number" alone is nobody's room)
 //   { kind: 'several', options }   a number or label two rooms share, or text
 //                                  in the teachers of two: none is chosen
 //   { kind: 'keep', text }         no room: kept as typed
@@ -46,7 +49,10 @@ export function readTyped(typed, rooms) {
   const number = withoutRoomWord(wanted);
   const exact = rooms.filter((option) => {
     const own = fold(option.number);
-    return (own !== '' && (own === wanted || own === number)) || fold(option.label) === wanted;
+    if (own !== '') return own === wanted || own === number || fold(option.label) === wanted;
+    // a room with no number: its label is the tool's words for it, and
+    // names it only where it carries the room's teachers
+    return fold(option.teachers || '') !== '' && fold(option.label) === wanted;
   });
   if (exact.length === 1) return { kind: 'room', option: exact[0] };
   if (exact.length > 1) return { kind: 'several', options: exact };
@@ -58,8 +64,13 @@ export function readTyped(typed, rooms) {
 
 // The options a list shows for what is in the field: all of them for no
 // text, otherwise the rooms with the text in their number or their teachers
-// ("Room 101" finds 101). "No room" (id null) is offered only with every
-// room.
+// ("Room 101" finds 101), or at the start of their label, so that a label
+// typed or picked and then cut short ("101 — Ms. Okafo") still lists its
+// room. A room with no number is found by its teachers, and by the start of
+// its label only once the text reaches into them ("a room with no number —
+// Ms. Pelle"): the words before them are the tool's, and name no room
+// (readTyped picks its whole label, so the list shows it for that too).
+// "No room" (id null) is offered only with every room.
 export function listFor(typed, options) {
   const wanted = fold(typed);
   if (wanted === '') return options.slice();
@@ -67,8 +78,21 @@ export function listFor(typed, options) {
   return options.filter((option) => {
     if (option.id === null) return false;
     const own = fold(option.number);
-    return (own !== '' && (own.includes(wanted) || own.includes(number))) || fold(option.teachers || '').includes(wanted) || fold(option.label) === wanted;
+    if (own === '') return fold(option.teachers || '').includes(wanted) || startsIntoTeachers(wanted, option);
+    const label = fold(option.label);
+    return own.includes(wanted) || own.includes(number) || label.startsWith(wanted) || label.startsWith(number) || fold(option.teachers || '').includes(wanted);
   });
+}
+
+// Whether folded text starts the label of a room with no number and goes on
+// past the tool's words into its teachers. A label that does not end in its
+// teachers is matched whole only, as readTyped matches it.
+function startsIntoTeachers(wanted, option) {
+  const teachers = fold(option.teachers || '');
+  if (teachers === '') return false;
+  const label = fold(option.label);
+  if (!label.endsWith(teachers)) return label === wanted;
+  return label.startsWith(wanted) && wanted.length > label.length - teachers.length;
 }
 
 // "2 rooms match. Pick one from the list."

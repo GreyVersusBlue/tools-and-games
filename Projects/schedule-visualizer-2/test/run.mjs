@@ -78,6 +78,7 @@ export const GROUPS = {
     'ui/movement.test.mjs', // SV2-17
     'ui/playback.test.mjs', // SV2-44
     'ui/room-picker.test.mjs', // SV2-48
+    'ui/schedule-address.test.mjs', // SV2-54
     'ui/staff-pass.test.mjs', // SV2-45
     'ui/engine-client.test.mjs', // SV2-49
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
