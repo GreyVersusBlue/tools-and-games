@@ -370,6 +370,34 @@ test('SV2-54 item 1: text that starts a room\'s label, folded, lists that room, 
   assert.deepEqual(ids(listFor('104  — mr', [{ id: 'rpad', number: ' 104 ', label: ' 104  — Mr. Fairweather-Ness', teachers: 'Mr. Fairweather-Ness' }])), ['rpad']);
 });
 
+// SV2-54 item 2: the whole of the words that stand for a room with no number
+// (the label roomLabel gives such a room with no teacher) is not that room.
+test('SV2-54 item 2: the whole phrase "a room with no number", in any case and with spaces round it, picks nothing and lists nothing', () => {
+  for (const words of ['a room with no number', 'A Room With No Number', 'A ROOM WITH NO NUMBER', '  a room with no number ', 'Room a room with no number']) {
+    assert.deepEqual(readTyped(words, ODD), { kind: 'keep', text: words.trim() }, JSON.stringify(words) + ' picked a room');
+    assert.deepEqual(ids(listFor(words, ODD)), [], JSON.stringify(words) + ' listed a room');
+  }
+  // the label of one with a teacher names its teacher, and that is the room
+  assert.equal(readTyped('A ROOM WITH NO NUMBER — ms. pellegrew', ODD).option?.id, 'rnone');
+});
+
+test('SV2-54 item 2: a field that holds a room with no number keeps its room when its own words are typed again, and when they are picked again', () => {
+  const held = make({ text: 'a room with no number', roomId: 'rbare' }, { options: () => [NO_ROOM].concat(ODD) });
+  held.type('A room with no number');
+  held.leave();
+  assert.deepEqual(held.calls, [], 'its own words typed again dropped the room');
+  assert.equal(held.input.value, 'a room with no number');
+  const entered = make({ text: 'a room with no number', roomId: 'rbare' }, { options: () => [NO_ROOM].concat(ODD) });
+  entered.type('a room with no number ');
+  entered.key('Enter');
+  assert.deepEqual(entered.calls, []);
+  // and other words are kept, as any text that is no room
+  const other = make({ text: 'a room with no number', roomId: 'rbare' }, { options: () => [NO_ROOM].concat(ODD) });
+  other.type('a room with no window');
+  other.leave();
+  assert.deepEqual(other.calls, [['keep', 'a room with no window']]);
+});
+
 // ---------------------------------------------------------------- the picker: Enter and leaving the field
 
 test('"10" and Enter keeps "10", as leaving the field does: no room is highlighted while typing, and none is picked', () => {

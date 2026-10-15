@@ -30,6 +30,9 @@ function withoutRoomWord(folded) {
 //   { kind: 'none' }               nothing typed: no room
 //   { kind: 'room', option }       one room: its number, its whole label, or
 //                                  text that names it alone by its teacher
+//                                  (the whole label of a room with no number
+//                                  only when it carries teachers: "a room
+//                                  with no number" alone is nobody's room)
 //   { kind: 'several', options }   a number or label two rooms share, or text
 //                                  in the teachers of two: none is chosen
 //   { kind: 'keep', text }         no room: kept as typed
@@ -46,7 +49,10 @@ export function readTyped(typed, rooms) {
   const number = withoutRoomWord(wanted);
   const exact = rooms.filter((option) => {
     const own = fold(option.number);
-    return (own !== '' && (own === wanted || own === number)) || fold(option.label) === wanted;
+    if (own !== '') return own === wanted || own === number || fold(option.label) === wanted;
+    // a room with no number: its label is the tool's words for it, and
+    // names it only where it carries the room's teachers
+    return fold(option.teachers || '') !== '' && fold(option.label) === wanted;
   });
   if (exact.length === 1) return { kind: 'room', option: exact[0] };
   if (exact.length > 1) return { kind: 'several', options: exact };

@@ -55,7 +55,7 @@
 import { h, uid } from '../components/dom.js';
 import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { keyed } from './common.js';
-import { readTyped, listFor, severalWords } from './room-rules.js';
+import { readTyped, listFor, severalWords, fold } from './room-rules.js';
 
 export function roomPicker(options) {
   const id = uid('room');
@@ -282,6 +282,13 @@ export function roomPicker(options) {
   // on them and says so; leaving the field keeps the text as typed. Neither
   // picks one of them.
   function resolve(how) {
+    // The room's own text typed again is that room, and no change, whatever
+    // the rules make of it: "a room with no number" names no room by itself
+    // (room-rules.js), and must not take the room off the slot that holds it.
+    if (held !== null && options.missing !== true && fold(input.value) === fold(options.text)) {
+      revert();
+      return;
+    }
     const result = readTyped(input.value, rooms());
     if (result.kind === 'none') pick({ id: null });
     else if (result.kind === 'room') pick(result.option);
