@@ -381,6 +381,28 @@ test('SV2-54 item 2: the whole phrase "a room with no number", in any case and w
   assert.equal(readTyped('A ROOM WITH NO NUMBER — ms. pellegrew', ODD).option?.id, 'rnone');
 });
 
+// SV2-54b: a room with no number but with teachers is picked by its whole
+// label (above), so its list must show it for that label too, and for the
+// label cut short once it reaches the teachers ("a room with no number — Ms.
+// Pelle"), as item 1 does for a numbered room. SV2-54 listed nothing for any
+// of these (the reviewer's probe-unnumbered.mjs); 5a790085 listed the whole
+// label. The tool's words alone, or cut short before the teachers, list
+// nothing.
+test('SV2-54b: the label of a room with no number but with teachers, whole or cut short into its teachers, lists that room, and listFor agrees with readTyped', () => {
+  for (const typed of ['a room with no number — Ms. Pellegrew', 'A ROOM WITH NO NUMBER — ms. pellegrew', ' a room with no number — Ms. Pellegrew ']) {
+    assert.equal(readTyped(typed, ODD).option?.id, 'rnone', 'readTyped(' + JSON.stringify(typed) + ')');
+    assert.deepEqual(ids(listFor(typed, ODD)), ['rnone'], 'listFor(' + JSON.stringify(typed) + ') does not agree with readTyped');
+  }
+  for (const typed of ['a room with no number — Ms. Pelle', 'a room with no number — m', 'A ROOM WITH NO NUMBER — MS']) {
+    assert.deepEqual(ids(listFor(typed, ODD)), ['rnone'], 'listFor(' + JSON.stringify(typed) + ')');
+    assert.deepEqual(readTyped(typed, ODD), { kind: 'keep', text: typed }, 'readTyped(' + JSON.stringify(typed) + ') picked');
+  }
+  // the tool's words with the dash but no teacher yet are still the tool's words
+  for (const typed of ['a room with no number —', 'a room with no number — ', 'a room with no', 'a room with no number — Mr']) {
+    assert.deepEqual(ids(listFor(typed, ODD)), [], 'listFor(' + JSON.stringify(typed) + ') listed a room');
+  }
+});
+
 test('SV2-54 item 2: a field that holds a room with no number keeps its room when its own words are typed again, and when they are picked again', () => {
   const held = make({ text: 'a room with no number', roomId: 'rbare' }, { options: () => [NO_ROOM].concat(ODD) });
   held.type('A room with no number');
