@@ -591,8 +591,8 @@ export function accessibleAnalysis(state, opts = {}) {
   // still uses it, so it does not come off the count above.
   const metrics = stairMetrics(state);
   const longRamps = (state.links || []).filter((l) => rampOverRise(l, metrics));
-  // ADA 405.7: a straight ramp's top landing with something in its 5ft
-  // (#904), furniture and door swings asked since #984. The ramp stays where
+  // ADA 405.7: a ramp's top landing with something in its 5ft (#904),
+  // furniture and door swings asked since #984, a folded ramp's since #985. The ramp stays where
   // it is and stays in the count, as above.
   const tightLandings = (state.links || []).map((l) => rampLandingFit(state, l, metrics, catalogGet)).filter(Boolean);
   // ADA 405.5: a ramp a file made narrower than the panel lets one be (#982).

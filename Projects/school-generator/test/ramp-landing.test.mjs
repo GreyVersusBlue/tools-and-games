@@ -188,9 +188,12 @@ test('another link in the landing: a floor opening, a stair standing on it; not 
   assert.equal(rampLandingFit(pair.s, beside), null);
 });
 
-test('only a straight ramp is asked: a stair and a folded ramp against the same wall are not', () => {
+test('a stair against the same wall is not asked; a folded ramp is asked of its own top landing', () => {
   const st = school(7.5, twoRooms, { type: 'stair' });
   assert.equal(rampLandingFit(st.s, st.ramp), null);
+  // Five runs of 14.4ft: its top landing is x 21.9 to 26.9, nowhere near the
+  // wall on 84 the straight one's landing runs into (#985,
+  // test/fold-landing.test.mjs).
   const fold = school(7.5, twoRooms, { ramp: { runs: 5 } });
   assert.equal(rampLandingFit(fold.s, fold.ramp), null);
 });
@@ -321,12 +324,13 @@ test('neither: a desk past the landing, a wall-mounted board over it, a door swi
   assert.equal(find(a.findings, 'ramp-landing'), undefined);
 });
 
-test('both, and a stair or a folded ramp with a desk on its landing is not asked', () => {
+test('both, and a desk where a straight landing would be is not asked of a stair or a folded ramp', () => {
   const both = school(7, doorAhead);
   desk(both.s, 81.5, 22);
   assert.deepEqual(rampLandingFit(both.s, both.ramp, undefined, catalogEntry).why, ['prop', 'swing']);
   const f = find(accessibleAnalysis(both.s).findings, 'ramp-landing');
   assert.match(f.detail, /furniture stands in it \(1\); a door swings into it \(1\)/);
+  // A folded ramp's own top landing is x 32 to 37 (#985).
   for (const ramp of [{ type: 'stair' }, { ramp: { runs: 3 } }]) {
     const t = school(8, oneHall, ramp);
     desk(t.s, 82.5, 22);

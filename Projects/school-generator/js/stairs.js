@@ -658,6 +658,22 @@ export function rampLandingBox(link, metrics) {
   return link && link.type === 'ramp' ? topLandingBox(link, metrics) : null;
 }
 
+// The top landing the `ramp-landing` finding asks about, straight or folded
+// (#985): `box` local, `out` +1 when the way off is past `z1` and -1 past
+// `z0`. A folded ramp's is its layout's 'top' landing, the one `render.js`
+// draws and the walker stands on, which is at the near end beside the foot
+// for an even count. Null for a stair.
+export function rampTopLanding(link, metrics) {
+  if (!link || link.type !== 'ramp') return null;
+  const layout = rampLayout(link, metrics);
+  if (!layout) {
+    const box = rampLandingBox(link, metrics);
+    return box && { box, out: 1 };
+  }
+  const box = layout.landings[layout.landings.length - 1].box;
+  return { box, out: layout.exit.a.z > box.z0 ? 1 : -1 };
+}
+
 // The same guards as world segments on the plan, for the collider.
 export const rampGuardSegments = (link, metrics) =>
   rampGuards(link, metrics).map((g) => ({
