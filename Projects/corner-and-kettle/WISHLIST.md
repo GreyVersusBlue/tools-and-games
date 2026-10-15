@@ -845,13 +845,23 @@ outside CI on purpose (#353).
     checks) holds each to a fresh build. A customer taken to a station, an
     order released or served, and an empty station taking an order are new
     elements, and the keyboard falls to the page with them.
-  - *Left.* The open station's buttons (`renderStationsAll` in
-    `js/stations.js`, `content.innerHTML = stationBlockHtml(...)`) are still
-    rebuilt on every redraw and drop a focused control. Not a copy of the
-    others: a timed button's handler holds the cup it was clicked on, its
-    progress bar is inside the panel, and the key map is read off the
-    panel's DOM after each render (#367), so patching it has to keep all
-    three right.
+  - *The open station's panel keeps it too.* Done on 2026-10-15 (#972):
+    each tab's block is a `patchRows()` row, its key letters are written
+    into the markup by the one `bindKeys()` before it is patched, every
+    handler reads the station and its cup when clicked (a timed one keeps
+    that pair until its bar fills), and a running bar's width is kept and
+    written back across a redraw. `drive-save.mjs --focus` (section 19, 17
+    checks) holds it to a fresh build, key letters included, and the key
+    map after a 24-step scripted sequence was byte-identical before and
+    after the change.
+  - *Left.* Where the keyboard goes when its element does. A button whose
+    purchase changed (bought, now a tick), a customer taken, an order
+    released or served, a tab changed (the old block goes), and a button
+    whose place in its row changed all drop the keyboard to the page: Save
+    Current is one, because a saved preset is put in front of it, and so
+    is any syrup or topping that an unlock puts a new one in front of.
+    Moving the
+    keyboard to the nearest survivor instead is a design call, not a patch.
 - **Accessibility past the keyboard.** Done on 2026-10-07 (#916, #917), and
   judged by no person, with or without colour blindness:
   - *The cup.* Its picture says the base, the milk, the syrup and which
