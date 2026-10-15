@@ -127,6 +127,22 @@ test('a folded ramp\'s top landing off the floor it arrives on: the near end of 
   assert.equal(fit(ok), null);
 });
 
+test('the way off is asked at the top lane\'s middle, not on the ramp\'s axis', () => {
+  // Foot at 55: the landing is x 79 to 84, z 12 to 16, and ends on the wall at
+  // 84. Past it the far room only runs z 20 to 36, so the floor a foot past the
+  // landing's middle (85, 14) is outside, where (85, 22) on the axis is not.
+  const t = school(55, (u) => { u.box(1, 1, 20, 8, { name: 'Upper Hall' }); u.box(21, 5, 40, 8, { name: 'Far Room' }); });
+  assert.deepEqual(fit(t).why, ['wall', 'edge']);
+});
+
+test('the wall asked across the way off is at the open end of an even fold', () => {
+  // Two runs at foot 13: the landing is x 8 to 13 and is left by its x 8 edge,
+  // where a wall stands the length of the hall. Its other end, at 13, is where
+  // it meets the run, and has nothing across it.
+  const t = school(13, (u) => { u.box(1, 1, 1, 8, { name: 'Strip' }); u.box(2, 1, 40, 8, { name: 'Upper Hall' }); }, 2);
+  assert.deepEqual(fit(t).why, ['wall']);
+});
+
 test('another link in a folded ramp\'s top landing', () => {
   // Foot at 8: the landing is x 32 to 37, z 12 to 16.
   const hole = school(8, oneHall);
