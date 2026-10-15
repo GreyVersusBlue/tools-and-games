@@ -805,6 +805,48 @@ test('printed for real with landscape asked, a door sign is still one upright sh
   }
 });
 
+// SV2-51 item 8. The same sign printed with preferCSSPageSize false, where
+// the format and orientation the caller asks for are the paper (Puppeteer's
+// default, and the nearer of the two to a dialog that does not let a page
+// name its paper). Measured in Chromium on 2026-10-14: the sign is still one
+// upright sheet of Letter (612 by 792 pt) and of A4 (596 by 842), with
+// landscape asked and without, with the room's day and without: the named
+// page's `size: portrait` keeps the paper the caller chose and turns it
+// upright either way. The teacher's schedule is the control: asked on its
+// side, it is printed on its side, so the landscape asked did reach the page.
+test('printed with preferCSSPageSize false, landscape asked or not, a door sign is one upright sheet of Letter and of A4, and a teacher\'s schedule is on its side as asked', async () => {
+  const read = (pdf) => {
+    const text = Buffer.from(pdf).toString('latin1');
+    return {
+      pages: (text.match(/\/Type\s*\/Page\b(?!s)/g) || []).length,
+      boxes: Array.from(new Set(Array.from(text.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g), (match) => Math.round(Number(match[3])) + ' by ' + Math.round(Number(match[4]))))),
+    };
+  };
+  for (const [format, upright, onItsSide] of [['Letter', '612 by 792', '792 by 612'], ['A4', '596 by 842', '842 by 596']]) {
+    for (const landscape of [true, false]) {
+      for (const address of ['#/door/rsample101', '#/door/rsample101?day=1', '#/door/rsamplecaf?day=1']) {
+        const session = await openPage({ width: 1000, height: 800 });
+        try {
+          await goto(session.page, files.open.url + address);
+          const printed = read(await session.page.pdf({ format, landscape, preferCSSPageSize: false, printBackground: true }));
+          assert.deepEqual(printed, { pages: 1, boxes: [upright] }, address + ' on ' + format + (landscape ? ', landscape asked' : ''));
+          assert.deepEqual(session.errors, []);
+        } finally {
+          await session.close();
+        }
+      }
+    }
+    const session = await openPage({ width: 1000, height: 800 });
+    try {
+      await goto(session.page, files.open.url + '#/teacher/tsample004');
+      const printed = read(await session.page.pdf({ format, landscape: true, preferCSSPageSize: false, printBackground: true }));
+      assert.deepEqual(printed.boxes, [onItsSide], 'a teacher\'s schedule on ' + format + ', landscape asked');
+    } finally {
+      await session.close();
+    }
+  }
+});
+
 // ---------------------------------------------------------------- My schedule
 
 test('My schedule: choose yourself once, and the page is yours from then on', async () => {
