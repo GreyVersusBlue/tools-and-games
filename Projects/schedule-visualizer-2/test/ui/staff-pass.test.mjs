@@ -9,6 +9,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { PUBLISHED_SETTINGS } from '../../ui/staff/preview.js';
 import { publishDocument } from '../../ui/staff/targets.js';
@@ -225,6 +226,22 @@ test('the staff browser\'s directions are written for a reader: every walk is in
   assert.doesNotMatch(written.text, /\bcells?\b/);
   const refused = opened.directions(opened.route(rooms('101'), rooms('302'), { avoidStairs: true }));
   assert.equal(refused.text, 'There is no way from Room 101 to Room 302 without stairs.');
+});
+
+// ---------------------------------------------------------------- Publish's last asking (SV2-51 item 5)
+
+// After the file went out, form.js asked for the checks of the project on
+// screen (SV2-49). It was never the only asking: a project that moved, or the
+// note of the publish, reaches update(), which asks; a read-only tab refuses
+// every change, so its project is the one checksStand asked about, and the
+// asking was answered from what askChecks kept. With the line restored the
+// browser cases in publish.mjs stay green, which is how it was shown to do
+// nothing; this holds it out.
+test('once the file is out, Publish asks for no checks itself: update() does, for a project that moved or was noted', () => {
+  const form = readFileSync(new URL('../../ui/staff/form.js', import.meta.url), 'utf8');
+  const after = form.slice(form.indexOf('// From here the file is out'), form.indexOf('  button.addEventListener(\'click\', publish);'));
+  assert.ok(after.length > 200, 'the part of publish() after the file goes out was found');
+  assert.doesNotMatch(after, /askChecks\(/);
 });
 
 // ---------------------------------------------------------------- the step-free refusal's routes (SV2-51 item 4)

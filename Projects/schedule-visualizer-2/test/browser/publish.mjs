@@ -1469,6 +1469,49 @@ test('a read-only tab publishes its file and says nothing false: no "Nothing cha
   }
 });
 
+// SV2-51 item 5. In a read-only tab the store refuses every change, so the
+// project cannot move while the file is being made: what is pressed for in
+// the gap is refused, nothing says the schedule changed, and the list is the
+// one the file was checked against. Nothing asks the checks again after the
+// file goes out (form.js no longer does, since nothing there was ever the
+// only asking).
+test('a read-only tab: a change pressed while the file is being made is refused, nothing moved, and nothing asks for the checks again', async () => {
+  const first = await open();
+  let second = null;
+  try {
+    await apply(first.page, 'setSetting', { key: 'schoolName', value: 'First Tab School' });
+    await first.page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved' && !globalThis.sv2.storage.pending, { timeout: 10000 });
+    second = await open({ keep: true });
+    const page = second.page;
+    await page.waitForSelector('#banner-read-only');
+    const lines = await checkLines(page);
+    await pressAndHold(page);
+    const before = await page.evaluate(() => {
+      const derived = globalThis.sv2.store.derived;
+      const results = derived.results;
+      globalThis.__asked = 0;
+      derived.results = (...args) => {
+        globalThis.__asked += 1;
+        return results.apply(derived, args);
+      };
+      return globalThis.sv2.store.project;
+    });
+    await apply(page, 'setSetting', { key: 'periodWord', value: 'Hour' });
+    assert.deepEqual(await page.evaluate(() => globalThis.sv2.store.project), before, 'the read-only tab refused the change');
+    const out = await letGo(page);
+    assert.equal(out.made, true);
+    const status = await says(page, 'published');
+    assert.ok(!status.includes(MOVED_ON), status);
+    assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf), undefined);
+    assert.deepEqual(out.lines, lines, 'the file went out beside the list it was checked against');
+    assert.deepEqual(await checkLines(page), lines);
+    assert.equal(await page.evaluate(() => globalThis.__asked), 0, 'nothing asked for the checks again');
+  } finally {
+    if (second) await second.close();
+    await first.close();
+  }
+});
+
 test('"What is in it": the line has a mark that turns when it opens, a separator in its name, and says when the map carries no names', async () => {
   await closing(await open(), async (page) => {
     const mark = () => page.evaluate(() => {

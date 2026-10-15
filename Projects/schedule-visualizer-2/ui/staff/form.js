@@ -351,8 +351,11 @@ export function publishForm(ctx, hooks) {
       saysPublished(published, size, project.publish.passcode, noted, moved);
       if (moved) element.dataset.publishedOf = 'earlier';
       else delete element.dataset.publishedOf;
-      // the list is the list of what is on screen, not of what went out
-      if (!stopped) askChecks(store.project);
+      // The list is of what is on screen, not of what went out, and nothing
+      // here asks for it again: a project that moved, or the note just made
+      // of the publish, reached update(), which asked; in a read-only tab
+      // the store refuses every change, so the project on screen is the one
+      // checksStand asked about (SV2-51).
       if (typeof hooks.made === 'function') hooks.made(published, noted === true);
       return published;
     } catch (error) {
