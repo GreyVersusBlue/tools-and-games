@@ -24,6 +24,7 @@ import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, ord
 import { createSound } from "./sound.js";
 import { STATION_TAB_DEFS, createStations } from "./stations.js";
 import { createChalkboard } from "./chalkboard.js";
+import { patchRows } from "./patch.js";
 
 const {
   MILKS, SYRUPS, TOPPINGS, BASE_COLORS, RECIPES, FOODS, PHASES, SHIFT_MS,
@@ -113,68 +114,85 @@ function toast(msg){
 const sound = createSound(() => state.muted);
 
 /* ---------- RENDER: QUEUE ---------- */
-function renderQueue(){
-  const row = document.getElementById('queueRow');
-  row.innerHTML='';
-  state.queue.slice(0,sim.queueMax()).forEach((c)=>{
-    const div = document.createElement('button');
-    div.type = 'button';
-    div.className='customer';
-    if(c._servedAnim) div.className+=' served';
-    if(c.isRegular) div.className += ' regular';
-    div.setAttribute('aria-label', customerLabel(c));
-    div.title = `Wants: ${orderWords(c)}`;
+// Markup for attributes: a regular's name or an order's words in a label.
+const attr = s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+// The queue is patched in place (#969), the way the Menu Board is: it used to
+// be emptied and rebuilt on every redraw, and during a shift it redraws on
+// every patience tick, so a customer the keyboard was on was a new element
+// within a second. Each customer is a row keyed by their id, so the one the keyboard
+// is on stays the same button while patience drains and others come and go.
+// A customer taken to a station or gone is a row that goes, and the keyboard
+// with it. One click handler on the row stands in for one per button.
+function queueHtml(){
+  return state.queue.slice(0,sim.queueMax()).map((c)=>{
+    let cls = 'customer';
+    if(c._servedAnim) cls+=' served';
+    if(c.isRegular) cls += ' regular';
     const pct = Math.max(0, (c.patience/c.patienceMax))*100;
     const rec = c.isRegular ? state.regulars[c.regularName] : null;
-    div.innerHTML = `
+    return `<button type="button" class="${cls}" data-row="c${attr(c.id)}" data-cust="${attr(c.id)}" aria-label="${attr(customerLabel(c))}" title="${attr(`Wants: ${orderWords(c)}`)}">
       ${c.isRegular ? `<div class="regularName">${c.regularName} ${rec ? regularMoodEmoji(rec.satisfaction) : ''}
         ${rec ? `<small>(${rec.visits} visit${rec.visits===1?'':'s'})</small>` : ''}</div>` : ''}
       <div class="bubble">${orderIconsHtml(c)}</div>
       ${makeSpriteSvg(c.sprite)}
       <div class="patience"><div class="patience-fill" style="width:${pct}%"></div></div>
-    `;
-    div.onclick = ()=> tryAcceptCustomer(c.id);
-    row.appendChild(div);
-  });
+    </button>`;
+  }).join('');
 }
+function renderQueue(){
+  patchRows(document.getElementById('queueRow'), queueHtml());
+}
+document.getElementById('queueRow').addEventListener('click', (e)=>{
+  const b = e.target.closest('[data-cust]');
+  if(!b) return;
+  const c = state.queue.find(q=>String(q.id)===b.dataset.cust);
+  if(c) tryAcceptCustomer(c.id);
+});
 
 /* ---------- SLOTS ---------- */
-function renderSlots(){
-  const wrap = document.getElementById('slots');
-  wrap.innerHTML='';
-  state.slots.forEach((slot, idx)=>{
-    const div = document.createElement('div');
-    div.className = 'slot' + (idx===state.focusedSlot? ' focused':'') + (!slot? ' empty':'') + (slot && slot.serving? ' serving':'');
+// The stations row is patched in place too (#969). A station is a row keyed by
+// its number and the order on it, so its buttons stay the same elements while
+// the cup is made up and a barista comes and goes; an order taken, released or
+// served makes it a new row, and a button the keyboard was on goes with it.
+// The barista line is always one node, a comment when nobody is on it, so the
+// buttons after it keep their places. Clicks are read on the row.
+function slotsHtml(){
+  return state.slots.map((slot, idx)=>{
+    const cls = 'slot' + (idx===state.focusedSlot? ' focused':'') + (!slot? ' empty':'') + (slot && slot.serving? ' serving':'');
     // Which station the keys go to is a border colour and a faint ring; the
     // corner mark in index.html and this say it without either (#916).
-    if(idx===state.focusedSlot) div.setAttribute('aria-current', 'true');
+    const cur = idx===state.focusedSlot ? ' aria-current="true"' : '';
     if(!slot){
-      div.innerHTML = `Station ${idx+1}<br><small>tap a waiting customer</small>`;
-      div.onclick = ()=>{ state.focusedSlot = idx; renderAll(); };
-      wrap.appendChild(div);
-      return;
+      return `<div class="${cls}" data-row="s${idx}" data-slot="${idx}"${cur}>Station ${idx+1}<br><small>tap a waiting customer</small></div>`;
     }
     const order = slot.customer;
     const worker = state.baristas.find(b=>b.targetSlot===idx);
-    if(worker) div.className += ' baristaWorking';
-    div.innerHTML = `
-      ${worker ? `<div class="baristaChip">🧑‍🍳 ${worker.name} is on it…</div>` : ''}
-      <button class="clearbtn" title="release order back to queue">release</button>
+    return `<div class="${cls}${worker ? ' baristaWorking' : ''}" data-row="s${idx}-c${attr(order.id)}" data-slot="${idx}"${cur}>
+      ${worker ? `<div class="baristaChip">🧑‍🍳 ${worker.name} is on it…</div>` : '<!---->'}
+      <button class="clearbtn" data-act="release" title="release order back to queue">release</button>
       <div class="ticket">${orderDescriptionHtml(order, sim.getOrderRequirements(order), slot)}</div>
       <div class="cupwrap">${ slot.food ? foodSvg(order.foodId, 64) : cupSvg(slot.cup) }</div>
       <div class="cupnote">${ slot.food ? plateWords(slot.foodPlated) : cupWords(slot.cup) }</div>
       <div class="slotbtnrow">
-        <button class="discardbtn" title="dump the cup and start over">🗑️ Dump</button>
+        <button class="discardbtn" data-act="dump" title="dump the cup and start over">🗑️ Dump</button>
         ${serveButtonHtml(slot)}
       </div>
-    `;
-    div.querySelector('.clearbtn').onclick = (e)=>{ e.stopPropagation(); releaseSlot(idx); };
-    div.querySelector('.discardbtn').onclick = (e)=>{ e.stopPropagation(); discardCup(idx); };
-    div.querySelector('.servebtn').onclick = (e)=>{ e.stopPropagation(); serveSlot(idx); };
-    div.onclick = ()=>{ state.focusedSlot = idx; renderAll(); };
-    wrap.appendChild(div);
-  });
+    </div>`;
+  }).join('');
 }
+function renderSlots(){
+  patchRows(document.getElementById('slots'), slotsHtml());
+}
+document.getElementById('slots').addEventListener('click', (e)=>{
+  const s = e.target.closest('[data-slot]');
+  if(!s) return;
+  const idx = Number(s.dataset.slot), act = e.target.closest('[data-act]');
+  if(act && act.dataset.act==='release') releaseSlot(idx);
+  else if(act && act.dataset.act==='dump') discardCup(idx);
+  else if(act && act.dataset.act==='serve') serveSlot(idx);
+  else { state.focusedSlot = idx; renderAll(); }
+});
 
 // The Serve button reads the ticket (#341). A complete cup says "Serve". A
 // short one says "Serve 3/5", is styled as a warning and names what is missing,
@@ -194,7 +212,7 @@ function serveButtonHtml(slot){
     cls += ' short';
     label = `Serve now for partial credit, ${r.done} of ${r.total} done. Still missing: ${r.missing.join(', ')}.`;
   }
-  return `<button class="${cls}" aria-keyshortcuts="s" aria-label="${esc(label)}" title="${esc(label)} Shortcut: S" ${r.canServe? '':'disabled'}>${text}</button>`;
+  return `<button class="${cls}" data-act="serve" aria-keyshortcuts="s" aria-label="${esc(label)}" title="${esc(label)} Shortcut: S" ${r.canServe? '':'disabled'}>${text}</button>`;
 }
 
 /* ---------- ACCEPT / RELEASE / SERVE ---------- */
@@ -569,6 +587,8 @@ if(typeof window !== 'undefined'){
     // The Menu Board's rows as a fresh build writes them, which the page check
     // holds the patched board to (#968).
     chalkboardHtml: () => chalkboard.html(),
+    // The queue's, the stations row's and the station tab bar's, the same way (#969).
+    queueHtml, slotsHtml, stationTabsHtml: () => stations.tabsHtml(),
     queueMax: sim.queueMax,
     slot: saveSlot, catalog: CATALOG, sim,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,

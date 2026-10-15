@@ -5,7 +5,10 @@
 // long its bar runs is sim.cupActionMs(), and which tabs carry a "still
 // needed" dot is sim.stationsNeedingWork(); this file draws them and plays the
 // sound. It imports nothing: ui.js hands it the state, the sim and the three
-// page functions it needs, which keeps it below ui.js with no cycle.
+// page functions it needs, which keeps it below ui.js with no cycle. The one
+// import is patch.js, which imports nothing.
+
+import { patchRows } from "./patch.js";
 
 // The seven tabs. The "still needed" dot is not decided here: each ticket line
 // from getOrderRequirements() names the station it is made at, and a tab gets
@@ -64,17 +67,23 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
     return state.slots[state.focusedSlot];
   }
 
-  function renderStationTabs(slot){
-    const bar = document.getElementById('stationTabs');
+  // The tab bar is patched in place (#969): a tab is the same button on every
+  // redraw, so the keyboard on it stays there while the dots and the pressed
+  // tab move. The onclick is set again on each, kept or new.
+  function tabsHtml(slot){
     const needs = slot ? sim.stationsNeedingWork(slot) : new Set();
-    bar.innerHTML = STATION_TAB_DEFS.map((t,i)=>{
+    return STATION_TAB_DEFS.map((t,i)=>{
       // The dot is a ringed shape, and the same thing in words for anything
       // that reads the button rather than looks at it (#916).
       const need = needs.has(t.id);
       const dot = need ? '<span class="needdot" aria-hidden="true"></span><span class="sronly">, still needed</span>' : '';
       const on = state.stationTab===t.id;
-      return `<button class="stationTab ${on?'active':''}" data-tab="${t.id}" aria-pressed="${on}" aria-keyshortcuts="${i+1}" title="Shortcut: ${i+1}${need?' — the ticket still needs something here':''}">${t.label}${dot}</button>`;
+      return `<button class="stationTab ${on?'active':''}" data-row="tab:${t.id}" data-tab="${t.id}" aria-pressed="${on}" aria-keyshortcuts="${i+1}" title="Shortcut: ${i+1}${need?' — the ticket still needs something here':''}">${t.label}${dot}</button>`;
     }).join('');
+  }
+  function renderStationTabs(slot){
+    const bar = document.getElementById('stationTabs');
+    patchRows(bar, tabsHtml(slot));
     bar.querySelectorAll('.stationTab').forEach(btn=>{
       btn.onclick = ()=> selectTab(btn.dataset.tab);
     });
@@ -357,5 +366,5 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
     saveNow();
   }
 
-  return { renderStationsAll, selectTab, currentSlot, pressKey };
+  return { renderStationsAll, selectTab, currentSlot, pressKey, tabsHtml: () => tabsHtml(currentSlot()) };
 }

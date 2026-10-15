@@ -836,13 +836,22 @@ outside CI on purpose (#353).
     purchase changed (a station bought, so the row offers the next one, or
     an unlock that turns into a tick) is a new element and the keyboard
     falls to the page with it, as before.
-  - *Left.* The same fault elsewhere on the page, not fixed (each is its own
-    render function): the queue (`renderQueue`, whose customers take focus),
-    the stations row (`renderSlots`), the station tab bar and the open
-    station's buttons (`js/stations.js`, lines 70 and 184) are all rebuilt
-    by `innerHTML` on every redraw and drop a focused control the same way.
-    `patchRows()` is in `chalkboard.js` and would have to move to be shared
-    by them.
+  - *The queue, the stations row and the tab bar keep it too.* Done on
+    2026-10-15 (#969): `patchRows()` moved to `js/patch.js`, which imports
+    nothing, and `renderQueue`, `renderSlots` and the station tab bar write
+    through it. A customer is a row keyed by their id, a station by its
+    number and the order on it, a tab by its id; clicks on the queue and the
+    stations are read on the row. `drive-save.mjs --focus` (section 18, 26
+    checks) holds each to a fresh build. A customer taken to a station, an
+    order released or served, and an empty station taking an order are new
+    elements, and the keyboard falls to the page with them.
+  - *Left.* The open station's buttons (`renderStationsAll` in
+    `js/stations.js`, `content.innerHTML = stationBlockHtml(...)`) are still
+    rebuilt on every redraw and drop a focused control. Not a copy of the
+    others: a timed button's handler holds the cup it was clicked on, its
+    progress bar is inside the panel, and the key map is read off the
+    panel's DOM after each render (#367), so patching it has to keep all
+    three right.
 - **Accessibility past the keyboard.** Done on 2026-10-07 (#916, #917), and
   judged by no person, with or without colour blindness:
   - *The cup.* Its picture says the base, the milk, the syrup and which
