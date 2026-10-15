@@ -304,33 +304,14 @@ export const section = {
       const leaveHanded = () => {
         if (handed) handed.dispatchEvent(new CustomEvent('picker:leave'));
       };
-      const project = ctx.store.project;
-      element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
-      panel.update(project);
-      inspector.update(project);
-
-      const fresh = view.shown && view.shown.fresh;
-      const marked = fresh ? element.querySelector('[data-shown="true"]') : null;
-      if (fresh) view.shown.fresh = false;
-      if (marked) {
-        marked.scrollIntoView({ block: 'center' });
-        const first = marked.querySelector('input, select, button');
-        if (first) first.focus({ preventScroll: true });
-        wantFocus = null;
-        if (!first || first !== find(had)) leaveHanded();
-        return;
-      }
-      const owner = linkOf ? find(linkOf) : null;
-      if (owner) owner.dispatchEvent(new CustomEvent('picker:resume', { detail: { room: null } }));
-      const asked = wantFocus && wantFocus !== had ? find(wantFocus) : null;
-      const target = asked || (had && find(had));
-      wantFocus = null;
-      if (!target || target !== find(had)) leaveHanded();
-      if (target) {
-        if (document.activeElement !== target) target.focus();
+      // The focus put on `target`, the control the drawing has in its place
+      // or the one asked for. Typed text, its caret and an open list's
+      // highlight go over to the field drawn in place of the one they were
+      // in; a control that was asked for has its text selected, ready to be
+      // typed over.
+      const takeOver = (target, asked, how) => {
+        if (document.activeElement !== target) target.focus(how);
         const text = target.tagName === 'INPUT' && ['text', 'search'].includes(target.type);
-        // a control that was asked for has its text selected, ready to be
-        // typed over; the one focus was already in keeps its caret
         if (text && asked) {
           target.select();
         } else if (text && typing) {
@@ -346,6 +327,37 @@ export const section = {
         if (resume && target === document.activeElement && target.getAttribute('role') === 'combobox') {
           target.dispatchEvent(new CustomEvent('picker:resume', { detail: resume }));
         }
+      };
+      const project = ctx.store.project;
+      element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
+      panel.update(project);
+      inspector.update(project);
+
+      const fresh = view.shown && view.shown.fresh;
+      const marked = fresh ? element.querySelector('[data-shown="true"]') : null;
+      if (fresh) view.shown.fresh = false;
+      if (marked) {
+        marked.scrollIntoView({ block: 'center' });
+        const first = marked.querySelector('input, select, button');
+        wantFocus = null;
+        // the slot's first control is the field the focus was in, drawn
+        // again: it is handed over as below, text, caret and highlight
+        if (first && first === find(had)) {
+          takeOver(first, false, { preventScroll: true });
+          return;
+        }
+        leaveHanded();
+        if (first) first.focus({ preventScroll: true });
+        return;
+      }
+      const owner = linkOf ? find(linkOf) : null;
+      if (owner) owner.dispatchEvent(new CustomEvent('picker:resume', { detail: { room: null } }));
+      const asked = wantFocus && wantFocus !== had ? find(wantFocus) : null;
+      const target = asked || (had && find(had));
+      wantFocus = null;
+      if (!target || target !== find(had)) leaveHanded();
+      if (target) {
+        takeOver(target, Boolean(asked));
       } else if (had && inSection) {
         element.querySelector('[role="tabpanel"]').focus();
       } else if (had && inInspector) {

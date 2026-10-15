@@ -66,9 +66,11 @@ export function readTyped(typed, rooms) {
 // text, otherwise the rooms with the text in their number or their teachers
 // ("Room 101" finds 101), or at the start of their label, so that a label
 // typed or picked and then cut short ("101 — Ms. Okafo") still lists its
-// room. A room with no number has no label of its own to start: its label
-// is the tool's words for it, and only its teachers find it. "No room" (id
-// null) is offered only with every room.
+// room. A room with no number is found by its teachers, and by the start of
+// its label only once the text reaches into them ("a room with no number —
+// Ms. Pelle"): the words before them are the tool's, and name no room
+// (readTyped picks its whole label, so the list shows it for that too).
+// "No room" (id null) is offered only with every room.
 export function listFor(typed, options) {
   const wanted = fold(typed);
   if (wanted === '') return options.slice();
@@ -76,10 +78,21 @@ export function listFor(typed, options) {
   return options.filter((option) => {
     if (option.id === null) return false;
     const own = fold(option.number);
-    if (own === '') return fold(option.teachers || '').includes(wanted);
+    if (own === '') return fold(option.teachers || '').includes(wanted) || startsIntoTeachers(wanted, option);
     const label = fold(option.label);
     return own.includes(wanted) || own.includes(number) || label.startsWith(wanted) || label.startsWith(number) || fold(option.teachers || '').includes(wanted);
   });
+}
+
+// Whether folded text starts the label of a room with no number and goes on
+// past the tool's words into its teachers. A label that does not end in its
+// teachers is matched whole only, as readTyped matches it.
+function startsIntoTeachers(wanted, option) {
+  const teachers = fold(option.teachers || '');
+  if (teachers === '') return false;
+  const label = fold(option.label);
+  if (!label.endsWith(teachers)) return label === wanted;
+  return label.startsWith(wanted) && wanted.length > label.length - teachers.length;
 }
 
 // "2 rooms match. Pick one from the list."

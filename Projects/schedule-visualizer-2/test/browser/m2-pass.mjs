@@ -1768,6 +1768,42 @@ test('SV2-54 item 3: a drawing under an open list commits nothing: "10", ArrowDo
   });
 });
 
+// SV2-54b: the drawing that scrolls to a slot's address puts the focus in
+// the slot's first control. When that is the room picker being typed in (the
+// slot's address asked for again, as a second Show on it does), the picker
+// is handed over there as at any drawing: before, the typed text and the
+// highlight were dropped there and the new field opened on the slot's old
+// text, with nothing said.
+test('SV2-54b: a slot\'s address asked for again while its room field is being typed in carries the text and the highlight over: "10", ArrowDown, the address, Enter is Room 101 and one change', async () => {
+  const address = '#schedule/groups/' + A6 + '/' + DAY_A + '/1';
+  await on(address, DESK, async (p) => {
+    const key = 'slot:' + DAY_A + ':1:room';
+    const field = slotField(DAY_A, 1);
+    const row = slotRow(DAY_A, 1);
+    await keyIs(p, key);
+    const was = await stored(p, A6, DAY_A, 1);
+    assert.notEqual(was.room, 'rsample101', 'the case needs a slot that is not Room 101');
+    await typeOver(p, field, '10');
+    await p.keyboard.press('ArrowDown');
+    assert.deepEqual(await highlighted(p, row), ['rsample101']);
+    const before = await p.$(field);
+    const start = await depth(p);
+    await p.evaluate((hash) => globalThis.sv2.ctx.navigate(hash), address);
+    await settled(p);
+    assert.equal(await p.evaluate((el) => el.isConnected, before), false, 'the case needs the field drawn again by the scroll to the slot');
+    assert.equal(await p.$eval(row, (tr) => tr.dataset.shown), 'true', 'the case needs the row marked as the address\'s slot');
+    assert.equal(await activeKey(p), key);
+    assert.equal(await p.$eval(field, (el) => el.value), '10', 'the typed text was lost at the scroll to the slot');
+    assert.deepEqual(await highlighted(p, row), ['rsample101'], 'the highlight was lost at the scroll to the slot');
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), was, 'the drawing committed the half-typed text');
+    assert.equal(await depth(p), start, 'the drawing made an entry');
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === '101 — Ms. Halloran', field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: 'rsample101', roomText: '' });
+    assert.equal(await depth(p), start + 1, 'Enter after the drawing made more than one entry');
+  });
+});
+
 test('SV2-54 item 4: a phone turned upright after a group was chosen while it lay on its side leaves the list and that group in the history, never the list twice', async () => {
   const UPRIGHT = { width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
   const SIDE = { width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
