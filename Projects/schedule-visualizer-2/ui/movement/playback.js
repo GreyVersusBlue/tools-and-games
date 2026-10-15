@@ -87,6 +87,17 @@ export const TURN_SECONDS = 8;
 // A gap between two frames longer than this is a tab that was put away, not
 // a slow machine: the clock does not jump over it.
 export const MAX_GAP_MS = 1000;
+// While playing, the scrubber's words for a screen reader move in steps of this many seconds.
+export const VALUE_STEP = 15;
+
+// The Late line names this many groups at most and counts the rest, so a
+// transition with 20 late groups does not grow the bar a line at a time over
+// the map (SV2-52). The card of a cell and Travel time name every one.
+export const LATE_SHOWN = 6;
+export function lateList(names) {
+  const shown = names.slice(0, LATE_SHOWN);
+  return { shown, more: names.length - shown.length };
+}
 
 export const REFUSED_TOAST = 'This browser did not keep the playback settings: they last until the page is closed.';
 export const REDUCED_LINE = 'Reduced motion is on, so nothing moves by itself: move the scrubber to walk the groups.';
@@ -106,11 +117,13 @@ export const ROW_HOLDS = 872;
 // the browser kept.
 let playedHere = false;
 
-// The settings this browser refused to keep earlier in the visit: they are
-// sent again with the next change, so a choice made while the browser kept
-// nothing is not undone on screen by the write that follows it. And whether
-// the reader has been told, which is once a visit.
-const refusedKeys = new Set();
+// The settings this browser refused to keep earlier in the visit, with the
+// values chosen: they are laid over what is stored each time the bar is made
+// (another section and back is the same visit, and the choice still holds),
+// and sent again with the next change, so a choice made while the browser
+// kept nothing is not undone on screen by the write that follows it. And
+// whether the reader has been told, which is once a visit.
+const refused = {};
 let refusedSaid = false;
 
 // "0:37", "4:00", "12:05": whole seconds as minutes and seconds.
@@ -143,7 +156,7 @@ function able(button, on, why) {
 
 export function playbackBar(env) {
   const ctx = env.ctx;
-  let prefs = readPlayback();
+  let prefs = playbackWith(readPlayback(), refused);
   if (!playedHere) playedHere = readMovement().played;
   let state = null;
   // what is played: the transition chosen, and the walks of the groups on screen
@@ -156,7 +169,10 @@ export function playbackBar(env) {
   let started = false;
   let frame = null;
   let lastStamp = null;
-  let lateSaid = '';
+  // the late groups already said, by what is played (the day type, the
+  // transition and the groups on screen): a loop of the same transition, or
+  // of the whole day back to it, does not say them again
+  const lateSaid = new Map();
   let extraKey = '';
   const real = { request: (fn) => requestAnimationFrame(fn), cancel: (id) => cancelAnimationFrame(id) };
   let frames = real;
@@ -362,10 +378,8 @@ export function playbackBar(env) {
     if (seconds >= end()) {
       if (prefs.loop === 'transition') {
         seconds = 0;
-        lateSaid = '';
       } else if (prefs.loop === 'day' && count() > 0) {
         seconds = 0;
-        lateSaid = '';
         const following = (chosen() + 1) % count();
         // update() comes back with the next transition before this returns; a card the reader is holding open stays
         if (following !== chosen()) env.change({ transition: following }, { keepCard: true });
@@ -383,10 +397,7 @@ export function playbackBar(env) {
     if (reduce.matches || count() === 0 || !state || !state.results) return;
     if (chosen() === null) env.change({ transition: 0 });
     if (!scene) return;
-    if (seconds >= end()) {
-      seconds = 0;
-      lateSaid = '';
-    }
+    if (seconds >= end()) seconds = 0;
     started = true;
     seen();
     playing = true;
@@ -437,24 +448,43 @@ export function playbackBar(env) {
     // earlier in the visit sent again beside it.
     const changed = Object.keys(prefs).filter((key) => key in asked && prefs[key] !== before[key]);
     const send = {};
-    for (const key of [...refusedKeys, ...changed]) send[key] = prefs[key];
+    for (const key of [...Object.keys(refused), ...changed]) send[key] = prefs[key];
     if (Object.keys(send).length > 0) {
       try {
         writePlayback(send);
-        refusedKeys.clear();
+        for (const key of Object.keys(refused)) delete refused[key];
       } catch (error) {
-        for (const key of Object.keys(send)) refusedKeys.add(key);
+        Object.assign(refused, send);
         // the browser keeps nothing: said once a visit
         if (!refusedSaid) ctx.toast({ kind: 'warning', text: REFUSED_TOAST });
         refusedSaid = true;
       }
     }
+    // another order is another walk: its late groups are said again
     if ('order' in asked) {
       seconds = 0;
-      lateSaid = '';
+      lateSaid.delete(sceneKey);
     }
     render();
     drawMarks();
+  }
+
+  // What the scrubber says it is at, for a screen reader: the time, how far
+  // into the transition, and the countdown. While playing it moves in steps
+  // of VALUE_STEP seconds, so a reader on the scrubber is not read a new
+  // second every second; still, it is to the second.
+  function valueText(transition, clockSeconds) {
+    const at = playing ? Math.floor(clockSeconds / VALUE_STEP) * VALUE_STEP : clockSeconds;
+    const time = transition.times ? clockText(transition.from, at, state.project.settings.timeFormat) : '';
+    return (time ? time + ', ' : '') + minutesText(at) + ' into ' + transition.name + ', ' + countdownWords(transition, scene.passing - Math.floor(at));
+  }
+
+  // The countdown: to the bell, or past it, when the bells are known; the
+  // passing time left, or over it, when they are not. `left` is in seconds.
+  function countdownWords(transition, left) {
+    return transition.times
+      ? (left >= 0 ? minutesText(left) + ' to the bell' : minutesText(-left) + ' after the bell')
+      : (left >= 0 ? minutesText(left) + ' of the passing time left' : minutesText(-left) + ' over the passing time');
   }
 
   // ---- what the bar says
@@ -464,6 +494,12 @@ export function playbackBar(env) {
 
   function bdis(names) {
     return names.flatMap((name, index) => (index === 0 ? [h('bdi', null, name)] : [', ', h('bdi', null, name)]));
+  }
+
+  // the names for the Late line: the first LATE_SHOWN, and how many more
+  function listed(names) {
+    const { shown, more } = lateList(names);
+    return more > 0 ? [...bdis(shown), ' and ' + more + ' more'] : bdis(shown);
   }
 
   function lateWords() {
@@ -515,16 +551,13 @@ export function playbackBar(env) {
       const transition = scene.transition;
       const time = transition.times ? clockText(transition.from, moment.clock, state.project.settings.timeFormat) : '';
       const left = scene.passing - Math.floor(moment.clock);
-      const into = minutesText(moment.clock) + ' into ' + transition.name;
       setText(clock, time || minutesText(moment.clock));
-      const words = transition.times
-        ? (left >= 0 ? minutesText(left) + ' to the bell' : minutesText(-left) + ' after the bell')
-        : (left >= 0 ? minutesText(left) + ' of the passing time left' : minutesText(-left) + ' over the passing time');
-      setText(countdown, words);
+      setText(countdown, countdownWords(transition, left));
       // after the bell is what the words say; late is the markers' moment
       countdown.dataset.over = String(left < 0);
       countdown.dataset.late = String(started && moment.walkers.some((walker) => lateAt(walker, moment.clock)));
-      scrub.setAttribute('aria-valuetext', (time ? time + ', ' : '') + into + ', ' + words);
+      const text = valueText(transition, moment.clock);
+      if (scrub.getAttribute('aria-valuetext') !== text) scrub.setAttribute('aria-valuetext', text);
     }
 
     const words = noteText();
@@ -548,22 +581,28 @@ export function playbackBar(env) {
     const names = moment && started ? lateNames(moment) : [];
     const walking = moment && started ? moment.walkers.filter((walker) => lateAt(walker, moment.clock) && walkingAt(walker, moment.clock)).map((walker) => walker.name) : [];
     const inRoom = names.filter((name) => !walking.includes(name));
-    const lateKey = names.join('\n');
     const lineKey = walking.join('\n') + '\n\n' + inRoom.join('\n');
     if (late.dataset.key !== lineKey) {
       late.dataset.key = lineKey;
       late.replaceChildren(
-        ...(walking.length > 0 ? ['Late, still walking after the passing time: ', ...bdis(walking), '.'] : []),
+        ...(walking.length > 0 ? ['Late, still walking after the passing time: ', ...listed(walking), '.'] : []),
         ...(walking.length > 0 && inRoom.length > 0 ? [' '] : []),
-        ...(inRoom.length > 0 ? ['In their room, late: ', ...bdis(inRoom), '.'] : []),
+        ...(inRoom.length > 0 ? ['In their room, late: ', ...listed(inRoom), '.'] : []),
       );
     }
     late.hidden = names.length === 0;
     element.dataset.late = String(walking.length);
     element.dataset.lateIn = String(inRoom.length);
-    // a group that has just become late is said once
-    if (playing && lateKey !== '' && lateKey !== lateSaid) ctx.announce(names.join(', ') + (names.length === 1 ? ' is late.' : ' are late.'));
-    if (lateKey !== '' || !playing) lateSaid = lateKey;
+    // a group that has just become late is said once, by itself; one that
+    // was late where the reader scrubbed to is on the Late line, and is not
+    // said again when playing goes on
+    if (names.length > 0 && sceneKey !== null) {
+      if (!lateSaid.has(sceneKey)) lateSaid.set(sceneKey, new Set());
+      const said = lateSaid.get(sceneKey);
+      const fresh = names.filter((name) => !said.has(name));
+      if (playing && fresh.length > 0) ctx.announce(fresh.join(', ') + (fresh.length === 1 ? ' is late.' : ' are late.'));
+      for (const name of fresh) said.add(name);
+    }
 
     drawExtra();
   }
@@ -657,7 +696,6 @@ export function playbackBar(env) {
       if (walk !== walkKey) {
         walkKey = walk;
         seconds = 0;
-        lateSaid = '';
       }
       if (picture.choice.transition === null) started = false;
       if (!scene) stop();

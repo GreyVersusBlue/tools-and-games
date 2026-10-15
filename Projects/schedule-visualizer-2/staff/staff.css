@@ -1655,12 +1655,22 @@ select.field__input {
    it. A longer one is broken at that width, because a word past the sheet's
    edge is not read at all: never past the sheet wins over never cut. (About
    33 letters fit; a name of 60 takes two lines.) */
-.sign__table td span {
+.sign__table td span[dir] {
   display: inline-block;
   max-width: 12rem;
   max-width: 36cqw;
   overflow-wrap: break-word;
   vertical-align: top;
+}
+
+/* A name and the comma after it go to a line together (namesListed in
+   staff/views/door-sign.js); the name itself still wraps. */
+.sign__with {
+  white-space: nowrap;
+}
+
+.sign__with > span {
+  white-space: normal;
 }
 
 .sign__school {
@@ -1755,8 +1765,20 @@ select.field__input {
     display: none;
   }
 
-  .sign__table td span {
-    max-width: 100%;
+  /* With the room's day on the sign the school's name is the sheet's foot,
+     under the day (signTree): it is the foot of the day's paper, so it is
+     on paper in a dark theme too, and the two boxes read as one sheet. */
+  .sign__day + .sign__school {
+    margin-top: 0;
+    padding: 0 var(--s-3) var(--s-3);
+    border: var(--border-width) solid var(--line-strong);
+    border-top: 0;
+    background: #ffffff;
+  }
+
+  /* room for the comma a name may carry beside it, on a line of its own */
+  .sign__table td span[dir] {
+    max-width: calc(100% - 0.5em);
   }
 }
 

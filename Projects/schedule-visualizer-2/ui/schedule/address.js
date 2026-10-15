@@ -7,7 +7,8 @@
 //
 // with the period counted from 0, as the model counts it. On a phone the list
 // and a group's editor take turns, and these are the two places: Back from an
-// editor is the list (DECISIONS 2026-10-12 14:47).
+// editor is the list (DECISIONS 2026-10-12 14:47). `#schedule` alone is the
+// Groups tab too, and so the list.
 
 import { findDayType, effectiveDayType } from '../../engine/day-types.js';
 
@@ -51,4 +52,34 @@ export function readAddress(project, rest) {
     ? { dayTypeId: effectiveDayType(project, dayType.id).id, period }
     : null;
   return { group, slot };
+}
+
+// The part of a whole address after "#schedule/", or null for an address of
+// another section.
+export function scheduleRest(hash) {
+  const match = /^#\/?schedule(?:\/(.*))?$/.exec(String(hash));
+  return match ? match[1] || '' : null;
+}
+
+// Is this address the list of groups as written: the Groups tab with no
+// group in it at all? (An address naming a group the project no longer has
+// shows the list too, but it is still that group's place in the history.)
+export function writtenAsList(hash) {
+  const rest = scheduleRest(hash);
+  return rest !== null && /^(groups\/?)?$/.test(rest);
+}
+
+// Does this address show the list in this project: the Groups tab with no
+// group in it that the project has?
+export function showsList(project, hash) {
+  const rest = scheduleRest(hash);
+  if (rest === null) return false;
+  const tab = rest.split('/')[0];
+  return (tab === '' || tab === 'groups') && readAddress(project, rest).group === null;
+}
+
+// The group an address of the Groups tab names in this project, or null.
+export function groupOf(project, hash) {
+  const rest = scheduleRest(hash);
+  return rest !== null && rest.split('/')[0] === 'groups' ? readAddress(project, rest).group : null;
 }

@@ -1032,10 +1032,8 @@ test('on a 390 px phone "All groups" brings the list back after arriving by a sl
     await tap(p, '[data-key="group-all"]');
     await listIs(p, false);
     assert.equal((await shownCards(p)).length, 8, 'by Show: "All groups" left the list folded');
-    // and Back from there is the editor Show opened, then the Checks tab
-    await p.evaluate(() => history.back());
-    await listIs(p, true);
-    assert.deepEqual(await shownCards(p), [C6]);
+    // and Back from there is the Checks tab: the list took the place of the
+    // editor Show opened, since the list was not under it (SV2-50 item 7)
     await p.evaluate(() => history.back());
     await shows(p, () => location.hash === '#schedule/checks' && document.querySelector('.sch-checks') !== null);
   });
@@ -1395,4 +1393,312 @@ test('the sweeps have the three screens the walk-through missed, and each opens'
   await session.page.close().catch(() => {});
   if (failed) throw failed;
   assert.deepEqual(found, CLEAN);
+});
+
+// ---------------------------------------------------------------- SV2-50: the phone's history, and the focus
+
+const onPage = (page) => page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
+const drawnNarrow = (page, narrow) => shows(page, (wanted) => document.querySelector('.sch')?.dataset.narrow === wanted && document.querySelector('.sch').dataset.pending !== 'true', String(narrow));
+
+test('SV2-50 item 1: on a phone the Show of an undone slot change is the slot\'s address, so the editor opens on it and not the list', async () => {
+  await on('#schedule/groups', PHONE, async (p) => {
+    const hashes = await p.evaluate(async (g, d) => {
+      const { hashForFocus } = await import('./ui/app.js');
+      return [
+        hashForFocus({ section: 'schedule', tab: 'groups', groupId: g, dayTypeId: d, period: 3 }),
+        hashForFocus({ section: 'schedule', tab: 'groups', groupId: g, dayTypeId: d, period: 0 }),
+        hashForFocus({ section: 'schedule', tab: 'groups', groupId: g }),
+        hashForFocus({ section: 'schedule', tab: 'groups' }),
+        hashForFocus({ section: 'schedule', tab: 'teachers', teacherId: 'tsample001' }),
+      ];
+    }, C6, DAY_A);
+    assert.deepEqual(hashes, ['#schedule/groups/' + C6 + '/' + DAY_A + '/3', '#schedule/groups/' + C6 + '/' + DAY_A + '/0', '#schedule/groups/' + C6, '#schedule/groups', '#schedule/teachers']);
+
+    // the journey: a change, its undo from the list, and the message's Show
+    await act(p, 'setSlot', { groupId: C6, dayTypeId: DAY_A, period: 3, slot: { label: 'Choir' } });
+    await listIs(p, false);
+    await p.evaluate(() => globalThis.sv2.ctx.undo());
+    await shows(p, () => document.querySelector('.toast .toast__action')?.textContent === 'Show');
+    await tap(p, '.toast .toast__action');
+    await shows(p, () => location.hash !== '#schedule/groups');
+    assert.equal(await hashOf(p), '#schedule/groups/' + C6 + '/' + DAY_A + '/3', 'Show went to the list');
+    await keyIs(p, 'slot:' + DAY_A + ':3:room');
+    await listIs(p, true);
+    assert.deepEqual(await shownCards(p), [C6]);
+  });
+});
+
+test('SV2-50 item 2: when the filter hides the chosen group the focus goes to the list\'s Tab stop, never to the page: at the 640 crossing, and at "All groups" after a rename', async () => {
+  // 6A open with the filter at "7", the cursor in its Name, narrowed to 600
+  await on('#schedule/groups', DESK, async (p) => {
+    await p.click('[data-key="group-filter"]');
+    await p.keyboard.type('7');
+    await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelectorAll('.sch-group').length === 3);
+    assert.equal(await text(p, '.sch-editor__title'), '6A', 'the case needs 6A open behind the filter');
+    await p.click('[data-key="group-name"]');
+    assert.equal(await activeKey(p), 'group-name');
+    await p.setViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
+    await drawnNarrow(p, true);
+    assert.equal(await box(p, '.sch-editor'), null, 'the case needs the editor out of sight at 600 px');
+    assert.equal(await onPage(p), false, 'at the 640 crossing the focus fell to the page');
+    assert.equal(await activeKey(p), 'group:' + A7, 'the focus is not on the first card the filter leaves');
+  });
+  // on a phone: "B" in the filter (6B, 7B, 8B by name), 6B chosen and renamed
+  // out of it, "All groups"; and "6B", which leaves nothing once 6B is renamed
+  for (const [filter, wanted] of [['B', 'group:gsample07b'], ['6B', 'group-filter']]) {
+    await on('#schedule/groups', PHONE, async (p) => {
+      await p.click('[data-key="group-filter"]');
+      await p.keyboard.type(filter);
+      await shows(p, (n) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelectorAll('.sch-group').length === n, filter === 'B' ? 3 : 1);
+      await tap(p, '.sch-group[data-group="' + B6 + '"]');
+      await listIs(p, true);
+      await typeOver(p, '[data-key="group-name"]', 'Quarry');
+      await p.keyboard.press('Enter');
+      await shows(p, () => document.querySelector('.sch-editor__title')?.textContent === 'Quarry' && document.querySelector('.sch').dataset.pending !== 'true');
+      await tap(p, '[data-key="group-all"]');
+      await listIs(p, false);
+      assert.equal(await onPage(p), false, 'filter ' + filter + ': at "All groups" the focus fell to the page');
+      assert.equal(await activeKey(p), wanted, 'filter ' + filter);
+    });
+  }
+});
+
+test('SV2-50 item 3: at the 900 crossing the focus in the inspector stays on its control, a tablet turned either way; to a sheet that starts shut it goes to the sheet\'s button', async () => {
+  await on('#schedule/checks', { width: 1180, height: 820 }, async (p) => {
+    await p.click('.sch-checks .sch-findings tbody tr:nth-child(1) .sch-finding__what');
+    await shows(p, () => document.querySelector('#inspector .sch-panel__scope')?.textContent === 'The finding selected');
+    const control = '#inspector .sch-panel__list [data-action="accept"]';
+    const key = await p.$eval(control, (el) => el.dataset.key);
+    const turn = async (width, height, where) => {
+      await p.setViewport({ width, height, deviceScaleFactor: 1 });
+      await shows(p, (wanted) => document.querySelector('#inspector .sch-panel')?.dataset.where === wanted, where);
+      assert.equal(await onPage(p), false, 'turned to ' + width + ' px the focus fell to the page');
+    };
+    await p.focus(control);
+    assert.equal(await activeKey(p), key);
+    // the sheet has never been opened, so it starts shut
+    await turn(820, 1180, 'above');
+    assert.equal(await p.evaluate(() => document.getElementById('inspector').dataset.open), 'false', 'the case needs the sheet shut');
+    assert.equal(await p.evaluate(() => document.activeElement.id), 'inspector-toggle');
+    // opened by hand: from here on the panel is in sight on both sides
+    await inspector(p, true);
+    await p.focus(control);
+    await turn(1180, 820, 'on the left');
+    assert.equal(await activeKey(p), key, 'turned to 1180 px the focus is not on its control');
+    await turn(820, 1180, 'above');
+    assert.equal(await activeKey(p), key, 'turned to 820 px the focus is not on its control');
+  });
+});
+
+test('SV2-50 item 4: a phone turned upright with a group chosen has the group\'s address, so Back is the list and not the way out of the section', async () => {
+  await on('#project', { width: 844, height: 390, mobile: true }, async (p) => {
+    await go(p, '#schedule/groups');
+    await settled(p);
+    await p.click('.sch-group[data-group="' + B6 + '"]');
+    await shows(p, () => document.querySelector('.sch-editor__title')?.textContent === '6B' && document.querySelector('.sch').dataset.pending !== 'true');
+    assert.equal(await hashOf(p), '#schedule/groups', 'the case needs a wide screen that writes no address for a click');
+    await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    await drawnNarrow(p, true);
+    assert.deepEqual(await shownCards(p), [B6]);
+    assert.equal(await hashOf(p), '#schedule/groups/' + B6, 'turned upright, the editor has no place in the history');
+    await p.evaluate(() => history.back());
+    await listIs(p, false);
+    assert.equal(await hashOf(p), '#schedule/groups');
+    assert.equal(await p.$eval('.surface__layout', (el) => el.dataset.section), 'schedule', 'Back left the section');
+    assert.equal((await shownCards(p)).length, 8);
+    // turned on its side and upright again with the list showing: the list's address stays
+    await p.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    await drawnNarrow(p, false);
+    await p.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    await drawnNarrow(p, true);
+    assert.equal(await hashOf(p), '#schedule/groups');
+    assert.equal((await shownCards(p)).length, 8);
+  });
+});
+
+test('SV2-50 item 7: on a phone the history holds a group once: "All groups" goes back to the list under the editor, and Delete and an undone Add leave no second list', async () => {
+  await on('#project', PHONE, async (p) => {
+    await go(p, '#schedule/groups');
+    await settled(p);
+    const backToProject = async (why) => {
+      // every step back fires popstate, one between two entries of the same address too
+      await p.evaluate(() => new Promise((resolve) => {
+        window.addEventListener('popstate', () => resolve(), { once: true });
+        history.back();
+      }));
+      assert.equal(await hashOf(p), '#project', why);
+      await waitForSection(p, 'project');
+      await p.evaluate(() => history.forward());
+      await waitForSection(p, 'schedule');
+      await listIs(p, false);
+    };
+    // "All groups" from an editor chosen in the list
+    await tap(p, '.sch-group[data-group="' + B6 + '"]');
+    await listIs(p, true);
+    await shows(p, (hash) => location.hash === hash, '#schedule/groups/' + B6);
+    await tap(p, '[data-key="group-all"]');
+    await listIs(p, false);
+    await shows(p, () => location.hash === '#schedule/groups');
+    await backToProject('Back from the list after "All groups" is not the page the list was come to from');
+
+    // Delete
+    await tap(p, '.sch-group[data-group="' + C6 + '"]');
+    await listIs(p, true);
+    await shows(p, (hash) => location.hash === hash, '#schedule/groups/' + C6);
+    await tap(p, '[data-action="delete"]');
+    await listIs(p, false);
+    await shows(p, () => location.hash === '#schedule/groups');
+    await closeToast(p);
+    assert.equal((await shownCards(p)).length, 7);
+    await backToProject('Back from the list after a Delete is not the page the list was come to from');
+
+    // an Add, undone
+    await tap(p, '[data-action="add-group"]');
+    await listIs(p, true);
+    await shows(p, () => /^#schedule\/groups\/g/.test(location.hash));
+    await p.evaluate(() => globalThis.sv2.store.undo());
+    await listIs(p, false);
+    // the step back to the list is the browser's to take; a page that takes none times out here and is told below
+    await shows(p, () => location.hash === '#schedule/groups').catch(() => {});
+    assert.equal(await hashOf(p), '#schedule/groups', 'an undone Add left the gone group\'s address in the history');
+    await backToProject('Back from the list after an undone Add is not the page the list was come to from');
+  });
+});
+
+test('SV2-50 item 5: in the group editor a room with no number is not picked by "with", the words that stand for it, and its teacher still picks it', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    await act(p, 'setRoomFields', { roomId: 'rsample103', number: '' });
+    await settled(p);
+    const field = slotField(DAY_A, 2);
+    await typeOver(p, field, 'with');
+    await p.keyboard.press('Tab');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === 'with', field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 2), { room: null, roomText: 'with' }, '"with" picked the room with no number');
+    const teacher = await p.evaluate(() => {
+      const project = globalThis.sv2.store.project;
+      const room = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === 'rsample103');
+      return project.teachers.find((each) => each.id === room.teacherIds[0]).name;
+    });
+    await typeOver(p, field, teacher.split(' ').pop());
+    await p.keyboard.press('Tab');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value !== 'with', field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 2), { room: 'rsample103', roomText: '' }, 'its teacher\'s name did not pick the room with no number');
+  });
+});
+
+test('SV2-50 item 6: the arrow keys\' highlight under an open list survives a drawing: "10", ArrowDown, the project changed elsewhere, Enter picks Room 101', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    const field = slotField(DAY_A, 1);
+    const row = slotRow(DAY_A, 1);
+    await typeOver(p, field, '10');
+    await p.keyboard.press('ArrowDown');
+    assert.deepEqual(await highlighted(p, row), ['rsample101']);
+    // a drawing under the open list, as the walk's answer makes one
+    const before = await p.$(field);
+    await act(p, 'setSlot', { groupId: A7, dayTypeId: DAY_A, period: 0, slot: { label: 'Homeroom' } });
+    await settled(p);
+    assert.equal(await p.evaluate((el) => el.isConnected, before), false, 'the case needs the field drawn again');
+    assert.equal(await activeKey(p), 'slot:' + DAY_A + ':1:room');
+    assert.equal(await listOpen(p, row), true, 'the list shut at the drawing');
+    assert.deepEqual(await highlighted(p, row), ['rsample101'], 'the highlight was lost at the drawing');
+    await p.keyboard.press('Enter');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value === '101 — Ms. Halloran', field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: 'rsample101', roomText: '' });
+  });
+});
+
+test('SV2-50 item 8: the section left behind hears nothing more: a group chosen, Project opened, the window narrowed under 640 px, and the address is still Project\'s', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    await p.click('.sch-group[data-group="' + B6 + '"]');
+    await shows(p, () => document.querySelector('.sch-editor__title')?.textContent === '6B' && document.querySelector('.sch').dataset.pending !== 'true');
+    await go(p, '#project');
+    // a query made now hears the change after the section's, made earlier
+    const crossed = p.evaluate(() => new Promise((resolve) => {
+      window.matchMedia('(max-width: 640px)').addEventListener('change', () => setTimeout(resolve, 0), { once: true });
+    }));
+    await p.setViewport({ width: 390, height: 760, deviceScaleFactor: 1 });
+    await crossed;
+    assert.equal(await hashOf(p), '#project', 'the schedule left behind changed the address');
+    assert.equal(await p.$eval('.surface__layout', (el) => el.dataset.section), 'project');
+  });
+});
+
+// This case passes in Chromium with the written roles taken out as well: its
+// tree keeps a table's roles under display: block and grid (SV2-50 took every
+// role out and ran it). It guards the roles a browser that drops them needs,
+// which is not the one it runs in; it cannot catch their loss here.
+test('SV2-50 item 9: on a phone the slot table is a table to a screen reader still, its rows and cells in the accessibility tree', async () => {
+  await on('#schedule/groups/' + A6, PHONE, async (p) => {
+    await listIs(p, true);
+    assert.equal(await p.$eval('.sch-day[data-day="' + DAY_A + '"] .sch-slots', (el) => getComputedStyle(el).display), 'block', 'the case needs the phone\'s row layout');
+    const table = await p.$('.sch-day[data-day="' + DAY_A + '"] .sch-slots');
+    const tree = await p.accessibility.snapshot({ root: table, interestingOnly: false });
+    const roles = [];
+    const walk = (node) => {
+      roles.push(node.role);
+      for (const child of node.children || []) walk(child);
+    };
+    walk(tree);
+    const periods = await p.evaluate(() => globalThis.sv2.store.project.settings.periods);
+    assert.equal(tree.role, 'table', 'the table is not a table to a screen reader');
+    assert.equal(roles.filter((role) => role === 'row').length, periods + 1, 'a row per period and the heading row');
+    assert.equal(roles.filter((role) => role === 'rowheader').length, periods);
+    assert.equal(roles.filter((role) => role === 'columnheader').length, 3);
+    assert.equal(roles.filter((role) => role === 'cell').length, periods * 2);
+  });
+});
+
+test('SV2-50 item 10: an option is picked by a click or a tap, not as the pointer comes down: a press dragged off the list picks nothing', async () => {
+  await on('#schedule/groups', DESK, async (p) => {
+    const field = slotField(DAY_A, 1);
+    const row = slotRow(DAY_A, 1);
+    await typeOver(p, field, '10');
+    const option = row + ' .picker__option[data-room="rsample102"]';
+    const at = await box(p, option);
+    await p.mouse.move(at.left + at.width / 2, at.top + at.height / 2);
+    await p.mouse.down();
+    await p.mouse.move(at.left + at.width / 2, at.top - 200, { steps: 4 });
+    await p.mouse.up();
+    assert.equal(await activeKey(p), 'slot:' + DAY_A + ':1:room', 'the press took the focus from the field');
+    assert.equal(await p.$eval(field, (el) => el.value), '10', 'a press on an option picked it');
+    assert.equal(await stored(p, A6, DAY_A, 1).then((slot) => slot.room === 'rsample102'), false, 'a press on an option picked it');
+    // the click is the pick
+    await p.click(option);
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value.startsWith('102 — '), field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: 'rsample102', roomText: '' });
+  });
+  // a tap on a phone
+  await on('#schedule/groups/' + A6 + '/' + DAY_A + '/1', PHONE, async (p) => {
+    const field = slotField(DAY_A, 1);
+    const row = slotRow(DAY_A, 1);
+    await keyIs(p, 'slot:' + DAY_A + ':1:room');
+    await p.$eval(field, (el) => el.select());
+    await p.keyboard.type('10');
+    await tapAt(p, row + ' .picker__option[data-room="rsample103"]');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value.startsWith('103 — '), field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 1), { room: 'rsample103', roomText: '' });
+  });
+});
+
+test('SV2-50 item 11: the room picker\'s "Number them in Building." keeps the focus across a drawing', async () => {
+  await on('#project', DESK, async (p) => {
+    await p.click('#sample-school [data-action="sample"]');
+    await shows(p, () => document.getElementById('sample-chip').hidden);
+    await closeToast(p);
+    await go(p, '#schedule/groups');
+    await p.click('[data-action="add-group"]');
+    await keyIs(p, 'group-name');
+    const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);
+    const group = await p.evaluate(() => globalThis.sv2.store.project.groups[0].id);
+    await p.click(slotField(day, 0));
+    await p.waitForSelector(slotRow(day, 0) + ' .sch-room__line a');
+    await p.keyboard.press('Tab');
+    const key = 'slot:' + day + ':0:room:building';
+    assert.equal(await activeKey(p), key, 'the case needs the focus on the link');
+    await act(p, 'setSlot', { groupId: group, dayTypeId: day, period: 3, slot: { label: 'Choir' } });
+    await settled(p);
+    assert.equal(await onPage(p), false, 'the focus fell to the page');
+    assert.equal(await activeKey(p), key, 'the focus left the link at the drawing');
+    assert.equal(await p.evaluate(() => document.activeElement.isConnected), true);
+  });
 });

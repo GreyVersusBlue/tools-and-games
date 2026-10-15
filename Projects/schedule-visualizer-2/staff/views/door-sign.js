@@ -16,25 +16,27 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printButton } from '../page.js';
-import { wordsJoined, dayKindsOf } from './teacher.js';
+import { dayKindsOf } from './teacher.js';
 import { roomUse } from './room.js';
 
 // Scripts whose characters are set a full square wide (Chinese, Japanese,
 // Korean, the leading consonants of Hangul written in parts, the fullwidth
-// forms, emoji, the symbols and tiles that are drawn as emoji, in their two
-// blocks and where they stand alone: the watch, the hourglass, the small
-// squares): each takes the room of two Latin ones.
+// forms, the hexagrams, the vertical and the small forms of punctuation,
+// Tangut, the kana supplements, emoji, the symbols and tiles that are drawn
+// as emoji, in their two blocks and where they stand alone: the watch, the
+// hourglass, the small squares): each takes the room of two Latin ones.
 const WIDE = [
   [0x1100, 0x115f], [0x231a, 0x231b], [0x2329, 0x232a], [0x23e9, 0x23ec], [0x23f0, 0x23f0], [0x23f3, 0x23f3], [0x25fd, 0x25fe],
-  [0x2600, 0x27bf], [0x2b00, 0x2bff], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xa000, 0xa4cf], [0xa960, 0xa97c],
-  [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe30, 0xfe4f], [0xff00, 0xff60], [0xffe0, 0xffe6], [0x1f000, 0x1f2ff], [0x1f300, 0x1faff], [0x20000, 0x3fffd],
+  [0x2600, 0x27bf], [0x2b00, 0x2bff], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4dc0, 0x4dff], [0x4e00, 0x9fff], [0xa000, 0xa4cf], [0xa960, 0xa97c],
+  [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe10, 0xfe19], [0xfe30, 0xfe4f], [0xfe50, 0xfe6b], [0xff00, 0xff60], [0xffe0, 0xffe6],
+  [0x16fe0, 0x16fe4], [0x17000, 0x18d8f], [0x1b000, 0x1b2ff], [0x1f000, 0x1f2ff], [0x1f300, 0x1faff], [0x20000, 0x3fffd],
 ];
-// What takes no room of its own: the spaces and marks that are not drawn,
-// the vowels and final consonants of Hangul written in parts (they are drawn
-// inside the square their leading consonant opened), the marks that choose
-// between forms of the character before, the five skin tones, and the tags
-// that spell out a flag's region after a black flag.
-const NONE = [[0x1160, 0x11ff], [0x200b, 0x200c], [0x2060, 0x2060], [0xd7b0, 0xd7ff], [0xfe00, 0xfe0f], [0xfeff, 0xfeff], [0x1f3fb, 0x1f3ff], [0xe0020, 0xe007f]];
+// What takes no room of its own: the spaces and marks that are not drawn
+// (the soft hyphen, on a number that is one line, and the marks that set the
+// direction of text), the marks that choose between forms of the character
+// before (U+FE0F is the one that can widen it, below), and the tags that
+// spell out a flag's region after a black flag.
+const NONE = [[0xad, 0xad], [0x200b, 0x200c], [0x200e, 0x200f], [0x202a, 0x202e], [0x2060, 0x2060], [0x2066, 0x2069], [0xfe00, 0xfe0f], [0xfeff, 0xfeff], [0xe0020, 0xe007f]];
 // An accent, a vowel sign or a ring that sits on, under or around the
 // character before it: every nonspacing and enclosing mark, in any script.
 const MARK = /^[\p{Mn}\p{Me}]$/u;
@@ -42,48 +44,102 @@ const MARK = /^[\p{Mn}\p{Me}]$/u;
 const FLAG = [[0x1f1e6, 0x1f1ff]];
 // The symbols that are narrow when their plain, text form is asked for.
 const SYMBOLS = [[0x2190, 0x2bff]];
+// The pictures a joiner can join, and a skin tone can colour: not the
+// letters of a flag, which only pair with each other.
+const PICTURE = [[0x2600, 0x27bf], [0x1f000, 0x1f1e5], [0x1f200, 0x1ffff]];
+// The five skin tones: none after a picture, a square of colour anywhere else.
+const TONE = [[0x1f3fb, 0x1f3ff]];
+// Hangul written in parts: a leading consonant opens a square, a vowel after
+// it is drawn inside that square, and a final after a vowel (or after a whole
+// syllable of a consonant and a vowel) too. Standing alone, a vowel or a final
+// is a glyph of its own, counted as the square it can take.
+const LEADING = [[0x1100, 0x115f], [0xa960, 0xa97c]];
+const VOWEL = [[0x1160, 0x11a7], [0xd7b0, 0xd7c6]];
+const FINAL = [[0x11a8, 0x11ff], [0xd7cb, 0xd7fb]];
 const JOINER = 0x200d;
 const AS_TEXT = 0xfe0e;
+const AS_EMOJI = 0xfe0f;
+const KEYCAP = 0x20e3;
 
 const within = (ranges, point) => ranges.some(([from, to]) => point >= from && point <= to);
+// a whole Hangul syllable of a consonant and a vowel, with no final yet
+const openSyllable = (point) => point >= 0xac00 && point <= 0xd7a3 && (point - 0xac00) % 28 === 0;
 
 // How much of a line a text takes, in Latin characters. A joiner between two
 // pictures draws them as one, so the second takes no room: a family of three
-// is one emoji, two wide. Between letters, or with nothing before it, a
-// joiner joins nothing and each letter keeps its room. Two flag letters are
-// one flag; "e" with an accent after it is one letter.
+// is one emoji, two wide. Between letters, with nothing before it, or after
+// another joiner, a joiner joins nothing and each character keeps its room.
+// Two flag letters are one flag; "e" with an accent after it is one letter.
+// A narrow character asked for as an emoji (U+FE0F), or made a keycap, is
+// drawn as an emoji, two wide. Where the count is unsure it counts more, never
+// less: a number counted short is set too large and wraps to a second line.
 export function signWidth(text) {
   let width = 0;
   let last = 0; // the room the character before took: 1, 2, or 0 at the start
-  let lastPoint = 0;
+  let lastPoint = 0; // the character drawn last (a joined or toned one keeps the picture's)
+  let previous = 0; // the code point just before, whatever it was
+  let picture = false; // what was drawn last is a picture
+  let toned = false; // and it has its skin tone already
   let joining = false; // a joiner stands after a picture
   let flag = false; // the character before is the first letter of a flag
+  let joinedPoint = 0; // the picture a joiner just drew into the one before
   for (const character of String(text)) {
     const point = character.codePointAt(0);
+    const before = previous;
+    previous = point;
+    const unjoined = joinedPoint;
+    joinedPoint = 0;
     if (point === JOINER) {
-      joining = last === 2;
+      joining = picture && before !== JOINER;
+      // a joiner parts two flag letters: they are two letters, not a flag
+      flag = false;
       continue;
     }
     if (point === AS_TEXT) {
+      // a symbol joined to the picture before, asked for in its text form, is
+      // not drawn into it: it stands beside it, narrow
+      if (unjoined !== 0 && within(SYMBOLS, unjoined)) {
+        width += 1;
+        last = 1;
+        lastPoint = unjoined;
+        picture = false;
+        continue;
+      }
       if (last === 2 && within(SYMBOLS, lastPoint)) {
         width -= 1;
         last = 1;
       }
       continue;
     }
+    if ((point === AS_EMOJI || point === KEYCAP) && last === 1) {
+      width += 1;
+      last = 2;
+      continue;
+    }
+    if (within(TONE, point) && picture && !toned && !joining) {
+      toned = true;
+      continue;
+    }
+    if (within(VOWEL, point) && within(LEADING, before)) continue;
+    if (within(FINAL, point) && (within(VOWEL, before) || openSyllable(before))) continue;
     if (within(NONE, point) || MARK.test(character)) continue;
-    const wide = within(WIDE, point);
-    const joined = joining && wide;
+    const pictured = within(PICTURE, point) && !within(TONE, point);
+    const joined = joining && pictured;
     joining = false;
     if (joined) {
       flag = false;
+      toned = false;
+      joinedPoint = point;
       continue;
     }
     const second = flag && within(FLAG, point);
     flag = !second && within(FLAG, point);
     if (second) continue;
+    const wide = within(WIDE, point) || within(VOWEL, point) || within(FINAL, point);
     last = wide ? 2 : 1;
     lastPoint = point;
+    picture = pictured;
+    toned = false;
     width += last;
   }
   return width;
@@ -111,6 +167,24 @@ function el(tag, attrs, ...children) {
 // the same markup on the page and in the batch.
 const typedName = (text) => el('span', { dir: 'auto' }, String(text));
 
+// Names as a list, "A, B and C", the words as wordsJoined gives them. A name
+// is a box of its own (36% of the sheet at most), and a line may end on
+// either side of a box, so a comma after a name that filled its line went to
+// the start of the next one. Each name that a comma follows is kept with its
+// comma (.sign__with does not wrap between the two; the name inside still
+// wraps).
+function namesListed(names) {
+  const out = [];
+  names.forEach((name, at) => {
+    const last = at === names.length - 1;
+    const beforeAnd = at === names.length - 2;
+    if (last || beforeAnd) out.push(typedName(name));
+    else out.push(el('span', { class: 'sign__with' }, typedName(name), ','), ' ');
+    if (beforeAnd) out.push(' and ');
+  });
+  return out;
+}
+
 // The subject the sign names: the room's own; with none, the one its
 // teachers share. Teachers of different subjects share none, so none is named.
 function subjectOf(school, room, teachers) {
@@ -126,9 +200,13 @@ function dayOf(school, room) {
   return el('div', { class: 'sign__day', 'data-sign': 'day', 'data-count': String(kinds.length) }, kinds.map((kind) => {
     const bells = school.bells(kind.first.id);
     return el('section', { class: 'sign__kind' },
-      el('h2', { class: 'sign__kindname' }, wordsJoined(kind.dayTypes.map((dayType) => typedName(dayType.name)))),
-      el('table', { class: 'sign__table' },
-        el('tbody', null, uses.get(kind.first.id).map((here, period) => {
+      el('h2', { class: 'sign__kindname' }, namesListed(kind.dayTypes.map((dayType) => dayType.name))),
+      // The table names its roles itself: on a phone its rows are stacked
+      // lines (display: grid), and a browser may then read it as no table at
+      // all. Chromium keeps a table's roles either way (measured); WebKit has
+      // dropped them before and is not measured here.
+      el('table', { class: 'sign__table', role: 'table' },
+        el('tbody', { role: 'rowgroup' }, uses.get(kind.first.id).map((here, period) => {
           const bell = bells[period];
           const who = [];
           for (const use of here) {
@@ -136,11 +214,11 @@ function dayOf(school, room) {
               if (!who.some((each) => each.id === teacher.id)) who.push(teacher);
             }
           }
-          return el('tr', null,
-            el('th', { scope: 'row' }, school.periodName(period)),
-            el('td', null, bell && bell.start && bell.end ? school.time(bell.start) + ' to ' + school.time(bell.end) : ''),
-            el('td', null, here.length === 0 ? 'Empty' : wordsJoined(here.map((use) => typedName(use.group.name)))),
-            el('td', null, wordsJoined(who.map((teacher) => typedName(teacher.name)))));
+          return el('tr', { role: 'row' },
+            el('th', { scope: 'row', role: 'rowheader' }, school.periodName(period)),
+            el('td', { role: 'cell' }, bell && bell.start && bell.end ? school.time(bell.start) + ' to ' + school.time(bell.end) : ''),
+            el('td', { role: 'cell' }, here.length === 0 ? 'Empty' : namesListed(here.map((use) => use.group.name))),
+            el('td', { role: 'cell' }, namesListed(who.map((teacher) => teacher.name))));
         }))));
   }));
 }
@@ -156,14 +234,22 @@ function signTree(school, room, options) {
   const teachers = (room.teacherIds || []).map((id) => school.teacher(id)).filter(Boolean);
   const subject = subjectOf(school, room, teachers);
   const big = numbered ? room.number : 'Room';
+  const day = opts.day === true;
+  // The school's name is the sheet's foot. With the room's day on the sign it
+  // comes after the day, so on a phone, where the card and the day are two
+  // boxes, it is under the periods and not at the foot of the card above
+  // them. On paper and from 640 px the card is no box at all (display:
+  // contents) and the name is last either way.
+  const foot = el('p', { class: 'sign__school', 'data-sign': 'school' }, typedName(typeof opts.school === 'string' ? opts.school : school.name));
   return el('section', { class: 'sign', 'aria-label': 'The sign' },
     el('div', { class: 'sign__card' },
       worded ? el('p', { class: 'sign__word' }, 'Room') : null,
       el('p', { class: 'sign__number', style: '--sign-fit: ' + signFit(big), 'data-sign': 'number' }, numbered ? typedName(big) : big),
-      teachers.length > 0 ? el('p', { class: 'sign__teacher', 'data-sign': 'teacher' }, wordsJoined(teachers.map((teacher) => typedName(teacher.name)))) : null,
+      teachers.length > 0 ? el('p', { class: 'sign__teacher', 'data-sign': 'teacher' }, namesListed(teachers.map((teacher) => teacher.name))) : null,
       subject ? el('p', { class: 'sign__subject', 'data-sign': 'subject' }, typedName(subject.name)) : null,
-      el('p', { class: 'sign__school', 'data-sign': 'school' }, typedName(typeof opts.school === 'string' ? opts.school : school.name))),
-    opts.day === true ? dayOf(school, room) : null);
+      day ? null : foot),
+    day ? dayOf(school, room) : null,
+    day ? foot : null);
 }
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };

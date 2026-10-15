@@ -61,9 +61,11 @@ export function routeFloors(school, found) {
 // more with stairs allowed: `stairs` is true when that way exists, so the
 // page offers it; when there is no way of any kind the sentence is the plain
 // refusal's, and nothing is offered that would only lead to another refusal.
-// Null when the way was found.
-export function directionsRefusal(school, fromId, toId, stepFree) {
-  const found = school.route(fromId, toId, { avoidStairs: stepFree });
+// Null when the way was found. `asked`, when given, is the route the page
+// already looked for with these rooms and this choice: it is not looked for
+// again, so a step-free refusal costs two routes, not three.
+export function directionsRefusal(school, fromId, toId, stepFree, asked) {
+  const found = asked || school.route(fromId, toId, { avoidStairs: stepFree });
   if (found.ok) return null;
   if (!stepFree) return { text: school.directions(found).text, stairs: false };
   const plain = school.route(fromId, toId, { avoidStairs: false });
@@ -109,7 +111,7 @@ export const directionsView = {
 
       if (!found.ok) {
         // the engine's own sentence: which room, which floor, and what was avoided
-        const refusal = directionsRefusal(school, state.from, state.to, state.stepFree);
+        const refusal = directionsRefusal(school, state.from, state.to, state.stepFree, found);
         says.replaceChildren(h('span', null, typed(refusal.text)));
         out.replaceChildren(...[
           refusal.stairs ? h('p', { dataset: { directions: 'stairs' } }, 'There is a way that uses stairs. ', h('button', { class: 'btn', type: 'button', onclick: () => {

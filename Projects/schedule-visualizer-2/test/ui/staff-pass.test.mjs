@@ -9,6 +9,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { PUBLISHED_SETTINGS } from '../../ui/staff/preview.js';
 import { publishDocument } from '../../ui/staff/targets.js';
@@ -19,6 +20,11 @@ import { school, clock } from '../engine/helpers.mjs';
 import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
+import { directionsView } from '../../staff/views/directions.js';
+import { hooks as sectionHooks, facts } from '../../ui/staff/index.js';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { noteCountOf } from '../../staff/notes.js';
 import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
@@ -64,22 +70,47 @@ test('which failure gets which sentence: the tool\'s own as written, the connect
   assert.equal(failureSentence('a string', words), 'OTHER');
 });
 
-// A planner window and a frame window, as far as the two ends of the preview use one.
+// A planner window and a frame, as far as the two ends of the preview use
+// them. As in a browser, the frame's window (`frame.contentWindow`) is one
+// object whatever page it holds; each page has its own inner window, with its
+// own listeners, and a message posted to the frame reaches the page it holds
+// now. `navigate(src)` gives the frame another page (the one before keeps
+// running until `load()`, as a page being replaced does) and `load()` fires
+// the frame's load event. `inner` is the first page.
 function pair() {
   const origin = 'http://127.0.0.1:1';
-  const listeners = { top: [], frame: [] };
-  const top = { location: { origin }, addEventListener: (type, fn) => listeners.top.push(fn), removeEventListener() {} };
-  const inner = {
-    location: { origin },
-    parent: null,
-    addEventListener: (type, fn) => listeners.frame.push(fn),
-    removeEventListener() {},
-    setInterval: () => 1,
-    clearInterval() {},
-    postMessage: (data) => listeners.frame.forEach((fn) => fn({ source: inner.parent, origin, data })),
+  const listeners = { top: [], load: [] };
+  const top = { location: { origin }, addEventListener: (type, fn) => listeners.top.push(fn), removeEventListener: (type, fn) => { listeners.top = listeners.top.filter((each) => each !== fn); } };
+  const pages = [];
+  const proxy = { postMessage: (data) => pages[pages.length - 1].postMessage(data) };
+  const parent = { postMessage: (data) => listeners.top.forEach((fn) => fn({ source: proxy, origin, data })) };
+  const page = () => {
+    const own = [];
+    const inner = {
+      location: { origin },
+      parent,
+      addEventListener: (type, fn) => own.push(fn),
+      removeEventListener() {},
+      setInterval: () => 1,
+      clearInterval() {},
+      postMessage: (data) => own.forEach((fn) => fn({ source: parent, origin, data })),
+    };
+    pages.push(inner);
+    return inner;
   };
-  inner.parent = { postMessage: (data) => listeners.top.forEach((fn) => fn({ source: inner, origin, data })) };
-  return { top, inner, frame: { contentWindow: inner } };
+  const inner = page();
+  const frame = {
+    src: 'blob:first',
+    contentWindow: proxy,
+    addEventListener: (type, fn) => { if (type === 'load') listeners.load.push(fn); },
+    removeEventListener: (type, fn) => { listeners.load = listeners.load.filter((each) => each !== fn); },
+    load: () => listeners.load.forEach((fn) => fn()),
+    navigate: (src) => {
+      frame.src = src;
+      return page();
+    },
+  };
+  return { top, inner, frame };
 }
 
 test('"forget the kept key" travels with the one copy it is for: beside the data, once, and only when a message really goes', () => {
@@ -94,6 +125,7 @@ test('"forget the kept key" travels with the one copy it is for: beside the data
     flags = null;
     return now;
   });
+  frame.load();
   watchPreview(inner, (value, with_) => got.push([value, with_]));
   assert.deepEqual(got, [], 'with nothing to show nothing is sent');
   assert.equal(asked, 0, 'and the flag is not used up by a message that did not go');
@@ -107,7 +139,6 @@ test('"forget the kept key" travels with the one copy it is for: beside the data
 // SV2-49 item 6
 test('a frame given another address holds a page that has not asked: nothing is sent to it, nothing is asked of the planner, and the flag waits for the page that asks', () => {
   const { top, inner, frame } = pair();
-  frame.src = 'blob:first';
   const got = [];
   let data = null;
   let flags = { forget: true };
@@ -122,20 +153,60 @@ test('a frame given another address holds a page that has not asked: nothing is 
     flags = null;
     return now;
   });
+  frame.load();
   watchPreview(inner, (value, with_) => got.push([value, with_]));
   assert.equal(datas, 1, 'the first page asked, and there was nothing to give it');
   // "Try again": the frame is given a new page, and a change lands before that page has asked
-  frame.src = 'blob:second';
+  const second = frame.navigate('blob:second');
   data = { n: 1 };
   assert.equal(feed.send(), false, 'the page that is going away is sent nothing');
   assert.equal(datas, 1, 'the planner is not asked for data on its account, so it never counts the old page as live');
   assert.equal(asked, 0, 'and "forget the kept key" is not used up');
   assert.deepEqual(got, []);
-  // the new page asks
-  inner.parent.postMessage({ type: PREVIEW_READY });
+  // the new page loads and asks
+  frame.load();
+  watchPreview(second, (value, with_) => got.push([value, with_]));
   assert.deepEqual(got, [[{ n: 1 }, { forget: true }]]);
   assert.equal(feed.send(), true, 'and from then on a change is sent');
   assert.equal(got.length, 2);
+});
+
+// SV2-51 item 6. The page being replaced asks once more after the frame was
+// given the new address, before the new page has loaded: the frame's window
+// is the same object for both pages, so the message looks like the new
+// page's. It must not count: until SV2-51 it ended the wait for the new page
+// to open (state.opened), and the data went to the page that was going.
+test('a late "ready" from the page being replaced is not taken for the new page: only a "ready" after the frame\'s load for its address counts', () => {
+  const { top, inner, frame } = pair();
+  const got = [];
+  const late = [];
+  let asks = 0;
+  const feed = feedPreview(top, frame, () => {
+    asks += 1;
+    return { n: asks };
+  });
+  // before the first page has loaded, its "ready" is not counted either
+  inner.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 0, 'a frame that has not loaded its address has no page that asked');
+  frame.load();
+  watchPreview(inner, (value) => late.push(value));
+  assert.equal(asks, 1, 'the first page loaded and asked');
+  // "Try again": a new address; the old page, still there, asks again
+  const second = frame.navigate('blob:second');
+  inner.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 1, 'the old page\'s late "ready" does not ask the planner for data on the new page\'s account');
+  assert.equal(feed.send(), false, 'and nothing is sent to the frame');
+  assert.deepEqual(late, [{ n: 1 }], 'the old page got only what it was sent while it was the frame\'s page');
+  watchPreview(second, (value) => got.push(value));
+  assert.deepEqual(got, [], 'the new page asked before its load: not yet');
+  frame.load();
+  second.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 2);
+  assert.deepEqual(got, [{ n: 2 }], 'the new page, loaded, asks and is answered');
+  feed.stop();
+  frame.load();
+  second.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 2, 'a stopped feed answers nothing');
 });
 
 test('a feed with no flags sends the data alone, as before', () => {
@@ -143,6 +214,7 @@ test('a feed with no flags sends the data alone, as before', () => {
   const sent = [];
   inner.postMessage = (data) => sent.push(data);
   const feed = feedPreview(top, frame, () => ({ n: 1 }));
+  frame.load();
   inner.parent.postMessage({ type: PREVIEW_READY });
   feed.send();
   assert.deepEqual(sent, [{ type: PREVIEW_DATA, data: { n: 1 } }, { type: PREVIEW_DATA, data: { n: 1 } }]);
@@ -158,6 +230,147 @@ test('the staff browser\'s directions are written for a reader: every walk is in
   assert.doesNotMatch(written.text, /\bcells?\b/);
   const refused = opened.directions(opened.route(rooms('101'), rooms('302'), { avoidStairs: true }));
   assert.equal(refused.text, 'There is no way from Room 101 to Room 302 without stairs.');
+});
+
+// ---------------------------------------------------------------- Publish's last asking (SV2-51 item 5)
+
+// After the file went out, form.js asked for the checks of the project on
+// screen (SV2-49). It was never the only asking: a project that moved, or the
+// note of the publish, reaches update(), which asks; a read-only tab refuses
+// every change, so its project is the one checksStand asked about, and the
+// asking was answered from what askChecks kept. With the line restored the
+// browser cases in publish.mjs stay green, which is how it was shown to do
+// nothing; this holds it out.
+test('once the file is out, Publish asks for no checks itself: update() does, for a project that moved or was noted', () => {
+  const form = readFileSync(new URL('../../ui/staff/form.js', import.meta.url), 'utf8');
+  const after = form.slice(form.indexOf('// From here the file is out'), form.indexOf('  button.addEventListener(\'click\', publish);'));
+  assert.ok(after.length > 200, 'the part of publish() after the file goes out was found');
+  assert.doesNotMatch(after, /askChecks\(/);
+});
+
+// ---------------------------------------------------------------- the section's hooks and first line (SV2-51 item 10)
+
+test('the test hooks are declared, null, and nothing in the page sets them', () => {
+  assert.deepEqual(Object.keys(sectionHooks).sort(), ['assembled', 'deliver', 'made', 'published']);
+  assert.equal(sectionHooks.assembled, null);
+  assert.equal(sectionHooks.deliver, null);
+  const tool = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const setters = [];
+  for (const folder of ['ui', 'staff', 'engine', 'storage']) {
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const at = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(at);
+        else if (entry.name.endsWith('.js') && /hooks\.(assembled|deliver)\s*=[^=]/.test(readFileSync(at, 'utf8'))) setters.push(path.relative(tool, at));
+      }
+    };
+    walk(path.join(tool, folder));
+  }
+  assert.deepEqual(setters, [], 'a module of the page sets a test hook');
+});
+
+test('the section\'s first line after a file the project did not note: read-only says so, and a refusal in an editing tab says the project could not record it', () => {
+  const project = school();
+  const readOnly = facts(project, 'read-only');
+  const refused = facts(project, 'refused');
+  assert.match(readOnly, /^This tab made a file just now\. The project does not record it while the tab is read-only\. It has /);
+  assert.match(refused, /^This tab made a file just now\. The project could not record it\. It has /);
+  assert.doesNotMatch(refused, /read-only/);
+  assert.match(facts(project, null), /^No file has been made from this project yet\. /);
+});
+
+// ---------------------------------------------------------------- the step-free refusal's routes (SV2-51 item 4)
+
+// Just enough of a document for a staff view to build its page in Node:
+// elements with attributes, a dataset, children and text, and the three
+// selectors page.js asks for.
+class StubElement {
+  constructor(tag) {
+    this.tagName = tag.toUpperCase();
+    this.attributes = new Map();
+    this.childNodes = [];
+    this.dataset = {};
+    this.className = '';
+    this.hidden = false;
+  }
+
+  get children() {
+    return this.childNodes.filter((node) => node instanceof StubElement);
+  }
+
+  get textContent() {
+    return this.childNodes.map((node) => node.textContent).join('');
+  }
+
+  setAttribute(key, value) {
+    this.attributes.set(key, String(value));
+  }
+
+  getAttribute(key) {
+    return this.attributes.has(key) ? this.attributes.get(key) : null;
+  }
+
+  addEventListener() {}
+
+  appendChild(node) {
+    this.childNodes.push(node);
+    return node;
+  }
+
+  replaceChildren(...nodes) {
+    this.childNodes = [];
+    for (const node of nodes) this.appendChild(typeof node === 'object' ? node : { textContent: String(node) });
+  }
+
+  *descendants() {
+    for (const child of this.children) {
+      yield child;
+      yield* child.descendants();
+    }
+  }
+
+  find(test) {
+    for (const each of this.descendants()) if (test(each)) return each;
+    return null;
+  }
+
+  querySelector(selector) {
+    if (selector === '[data-print]') return this.find((el) => 'print' in el.dataset);
+    if (selector === '[data-actions="print"]') return this.find((el) => el.dataset.actions === 'print');
+    if (selector === '.page__outputs') return this.find((el) => el.className.split(' ').includes('page__outputs'));
+    throw new Error('the stand-in document does not know ' + selector);
+  }
+}
+
+function withStubDocument(run) {
+  const had = { document: globalThis.document, location: globalThis.location };
+  globalThis.document = { title: '', createElement: (tag) => new StubElement(tag), createTextNode: (text) => ({ textContent: String(text) }) };
+  globalThis.location = { protocol: 'file:', href: 'file:///staff.html' };
+  try {
+    return run();
+  } finally {
+    globalThis.document = had.document;
+    globalThis.location = had.location;
+  }
+}
+
+// The page's own use of directionsRefusal: the route the page looked for is
+// handed to it, so a step-free way that does not exist costs the way without
+// stairs and the way with them, two routes. Until SV2-51 the refusal looked
+// for the step-free way again: three.
+test('the Directions page refuses a step-free way that does not exist with two routes, not three, and still offers the way with stairs', () => {
+  const opened = openSchool(publishedModel(school(), { clock }));
+  const asked = [];
+  const counted = Object.create(opened);
+  counted.route = (from, to, options) => {
+    asked.push(Boolean(options && options.avoidStairs));
+    return opened.route(from, to, options);
+  };
+  const id = (number) => opened.rooms.find((room) => room.number === number).id;
+  const page = withStubDocument(() => directionsView.render({ school: counted, replace() {} }, { id: '', query: { from: id('101'), to: id('302'), stepfree: '1' } }));
+  assert.ok(page.textContent.includes('There is no way from Room 101 to Room 302 without stairs.'), page.textContent);
+  assert.ok(page.find((el) => el.dataset.directions === 'stairs'), 'the way with stairs is offered');
+  assert.deepEqual(asked, [true, false], 'the step-free way once, then the way with stairs');
 });
 
 // ---------------------------------------------------------------- the door sign's fit (item 5)
@@ -209,7 +422,6 @@ test('the sign measures what is drawn, not what is stored: a flag, a skin tone, 
     ['\u{1F1FA}A\u{1F1F8}', 5, 'two flag letters apart are two'],
     // what takes no room
     ['\u{1F44D}\u{1F3FB}\u{1F44D}\u{1F3FF}', 4, 'the lightest and the darkest skin tone'],
-    ['1️⃣', 1, 'a keycap is its digit'],
     ['שּ', 1, 'a Hebrew letter with a point'],
     ['بَ', 1, 'an Arabic letter with a vowel mark'],
     ['a‌b', 2, 'a non-joiner is not drawn'],
@@ -237,6 +449,64 @@ test('the sign measures what is drawn, not what is stored: a flag, a skin tone, 
   ];
   for (const [text, width, name] of more) assert.equal(signWidth(text), width, name);
   assert.equal(signFit('\u{1F1FA}\u{1F1F8}'.repeat(3) + 'A'), 1, 'three flags and a letter are seven wide');
+});
+
+// SV2-51 item 1: where SV2-49's count was short. A short count sets a number
+// too large, so it wraps to a second line and can push a batch sheet onto two.
+// SV2-49 pinned a keycap at 1, its digit; it is drawn as an emoji, two wide.
+test('the sign does not count short: a keycap, an emoji-form mark after a narrow base, a joiner only between two pictures, a skin tone only after a picture, Hangul parts alone, the wide blocks SV2-49 missed', () => {
+  const rows = [
+    // a narrow character drawn as an emoji
+    ['1\uFE0F\u20E3', 2, 'a keycap, as it is typed'],
+    ['#\uFE0F\u20E3', 2, 'the number sign keycap'],
+    ['1\u20E3', 2, 'a keycap without the emoji mark'],
+    ['\u00A9\uFE0F', 2, 'a narrow base with U+FE0F'],
+    ['\u2122\uFE0F', 2, 'the trade mark sign as an emoji'],
+    ['1\uFE0F\u20E3'.repeat(3) + 'A', 7, 'three keycaps and a letter'],
+    // a joiner joins two pictures and nothing else
+    ['\u6771\u200D\u6771', 4, 'a joiner between two CJK characters joins nothing'],
+    ['\u{20000}\u200D\u{20000}', 4, 'nor between two characters past U+20000'],
+    ['\u2600\u200D\u2600', 2, 'between two pictures in U+2600 to U+27BF it does'],
+    ['\u{1F468}\u200D\u200D\u{1F469}', 4, 'a second joiner in a row joins nothing'],
+    ['\u{1F468}\u200D\u200D\u{1F469}\u200D\u{1F467}', 4, 'and the joiner after the next picture joins again'],
+    ['\u{1F3F3}\uFE0F\u200D\u{1F308}', 2, 'a picture, its emoji mark, a joiner and a picture'],
+    // a skin tone
+    ['\u{1F3FD}', 2, 'a skin tone alone is a square of colour'],
+    ['A\u{1F3FD}', 3, 'after a letter it is a square of its own'],
+    ['\u6771\u{1F3FD}', 4, 'after a CJK character too'],
+    ['\u{1F44D}\u{1F3FD}\u{1F3FD}', 4, 'a picture takes one tone; a second is a square'],
+    // Hangul in parts
+    ['\u1161', 2, 'a lone Hangul vowel is a glyph'],
+    ['\u11AB', 2, 'a lone Hangul final is a glyph'],
+    ['\u11AB\u1161', 4, 'a final then a vowel are two glyphs'],
+    ['\uAC00\u11AB', 2, 'a final after a whole syllable of a consonant and a vowel is drawn inside it'],
+    ['\uAC01\u11AB', 4, 'after a syllable that has its final already it is a glyph'],
+    ['\uD7B0', 2, 'a lone vowel of the extended block'],
+    ['\uA960\uD7B0', 2, 'and after a leading consonant of the extended block'],
+    // the wide blocks
+    ['\u4DC0', 2, 'a hexagram, U+4DC0'],
+    ['\u4DFF', 2, 'U+4DFF'],
+    ['\uFE10', 2, 'a vertical comma, U+FE10'],
+    ['\uFE19', 2, 'U+FE19'],
+    ['\uFE50', 2, 'a small comma, U+FE50'],
+    ['\uFE6B', 2, 'U+FE6B'],
+    ['\u{17000}', 2, 'Tangut, U+17000'],
+    ['\u{18AFF}', 2, 'a Tangut component'],
+    ['\u{1B000}', 2, 'a kana supplement, U+1B000'],
+    ['\u{1B2FF}', 2, 'U+1B2FF'],
+    // flag letters pair with each other and nothing else
+    ['\u{1F1EC}\u200D\u{1F1E7}', 4, 'a joiner parts two flag letters'],
+    ['\u{1F1EC}\u{1F3FD}\u{1F1E7}', 6, 'a skin tone between two flag letters is a square, and parts them'],
+    // a symbol joined to a picture and asked for in its text form stands beside it
+    ['\u{1F469}\u200D\u2764\uFE0E', 3, 'a person, a joiner and a heart in its text form'],
+    ['\u{1F469}\u200D\u2764\uFE0F\u200D\u{1F468}', 2, 'the couple with a heart is one picture'],
+    // marks that are not drawn
+    ['2\u00AD04', 3, 'a soft hyphen'],
+    ['\u200F204', 3, 'a right-to-left mark'],
+    ['\u2067204\u2069', 3, 'a direction isolate'],
+  ];
+  for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
+  assert.equal(signFit('1\uFE0F\u20E3'.repeat(4)), 7 / 8, 'four keycaps are eight wide, set smaller');
 });
 
 // ---------------------------------------------------------------- the batch's count (item 6)
