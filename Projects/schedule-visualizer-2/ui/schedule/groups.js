@@ -265,9 +265,10 @@ export function mount(env) {
       const subject = project.subjects.find((candidate) => candidate.id === room.subjectId);
       const found = model.byRoom.get(room.id) || [];
       const detail = [subject ? subject.code || subject.name : null, found.length > 0 ? count(found.length, 'finding') : null].filter(Boolean).join(' · ');
-      return { id: room.id, number: room.number, label: roomLabel(project, room), detail };
+      const teachers = room.teacherIds.map((id) => (project.teachers.find((teacher) => teacher.id === id) || { name: '' }).name).filter((name) => name !== '').join(', ');
+      return { id: room.id, number: room.number, label: roomLabel(project, room), teachers, detail };
     });
-    return filled(slot) ? [{ id: null, number: '', label: 'No room', detail: '' }].concat(options) : options;
+    return filled(slot) ? [{ id: null, number: '', label: 'No room', teachers: '', detail: '' }].concat(options) : options;
   }
 
   function slotRow(project, model, group, dayType, period, slot, bell) {
@@ -291,18 +292,23 @@ export function mount(env) {
       missing: unknown,
       describedBy: findingsId,
       options: () => roomOptions(ctx.store.project, env.model(), slot),
+      // a refusal is said, and the field goes back to the slot's room
       onPick: (roomId) => {
         try {
           change({ room: roomId });
+          return true;
         } catch (error) {
           ctx.toast({ kind: 'problem', text: error.message });
+          return false;
         }
       },
       onKeep: (typed) => {
         try {
           change({ room: null, roomText: typed });
+          return true;
         } catch (error) {
           ctx.toast({ kind: 'problem', text: error.message });
+          return false;
         }
       },
     });
@@ -365,13 +371,13 @@ export function mount(env) {
 
     const shown = view.shown && view.shown.groupId === group.id && view.shown.dayTypeId === dayType.id && view.shown.period === period;
     const time = bell.start && bell.end ? formatTime(bell.start, settings.timeFormat, { suffix: false }) + '–' + formatTime(bell.end, settings.timeFormat) : '';
-    return h('tr', { class: 'sch-slot', data: { index: String(period), period: String(period), shown: shown ? 'true' : null } },
-      h('th', { scope: 'row', class: 'sch-slot__period' }, grip(), h('span', { class: 'sch-slot__name' }, pName), time === '' ? null : h('span', { class: 'sch-slot__time' }, time)),
-      h('td', { class: 'sch-slot__room' }, room.element,
+    return h('tr', { class: 'sch-slot', role: 'row', data: { index: String(period), period: String(period), shown: shown ? 'true' : null } },
+      h('th', { scope: 'row', role: 'rowheader', class: 'sch-slot__period' }, grip(), h('span', { class: 'sch-slot__name' }, pName), time === '' ? null : h('span', { class: 'sch-slot__time' }, time)),
+      h('td', { class: 'sch-slot__room', role: 'cell' }, room.element,
         h('div', { class: 'sch-slot__extra' }, label.element, h('div', { class: 'sch-slot__teacher' }, chips.length > 0 ? h('div', { class: 'chips' }, chips) : null, teacher.element)),
         found.length > 0 ? h('div', { id: findingsId, class: 'sch-slot__findings' }, found.map((finding) => h('p', { class: 'sch-finding-line sch-finding-line--' + finding.severity, data: { finding: finding.id } },
           h('span', { class: 'sch-finding-line__word' }, SEVERITY_WORDS[finding.severity].glyph + ' ' + finding.severity.charAt(0).toUpperCase() + finding.severity.slice(1) + ': '), finding.text))) : null),
-      h('td', { class: 'sch-slot__more' }, menu));
+      h('td', { class: 'sch-slot__more', role: 'cell' }, menu));
   }
 
   function dayColumn(project, model, group, dayType) {
@@ -394,7 +400,7 @@ export function mount(env) {
               h('td', null, resolved.room ? roomLabel(project, resolved.room) : resolved.text !== '' ? resolved.text + ' · ' + NOT_IN_BUILDING : '—'));
           }))));
     }
-    const body = h('tbody', null, day.map((slot, period) => slotRow(project, model, group, dayType, period, slot, bells[period])));
+    const body = h('tbody', { role: 'rowgroup' }, day.map((slot, period) => slotRow(project, model, group, dayType, period, slot, bells[period])));
     dragRows(body, (from, to) => {
       if (apply(env, moveSlot, { groupId: group.id, dayTypeId: dayType.id, from, to })) ctx.announce('Moved ' + periodName(project.settings, from) + '’s assignment to ' + periodName(project.settings, to) + '.');
     });
@@ -406,10 +412,13 @@ export function mount(env) {
           if (apply(env, copyDay, { fromDayTypeId: base.id, toDayTypeId: dayType.id, groupId: group.id })) ctx.toast({ text: 'Copied ' + group.name + '’s ' + base.name + ' to ' + dayType.name + '.', action: { label: 'Undo', run: ctx.undo } });
         }, { small: true, key: 'copy:' + dayType.id, action: 'copy-day' })),
       whole.map((finding) => h('p', { class: 'sch-finding-line sch-finding-line--' + finding.severity }, finding.text)),
-      h('table', { class: 'table sch-slots' },
+      // The roles are written out because on a phone schedule.css makes the
+      // table, its body and its rows blocks and grids, and a browser drops a
+      // table's roles with its display: written, they are the table's still.
+      h('table', { class: 'table sch-slots', role: 'table' },
         h('caption', { class: 'vh' }, group.name + ' on ' + dayType.name),
-        h('thead', null, h('tr', null,
-          h('th', { scope: 'col', class: 'sch-slots__period' }, words.One), h('th', { scope: 'col' }, 'Room', h('span', { class: 'vh' }, ', then a label and a teacher if needed')), h('th', { scope: 'col', class: 'sch-slots__more' }, h('span', { class: 'vh' }, 'Move')))),
+        h('thead', { role: 'rowgroup' }, h('tr', { role: 'row' },
+          h('th', { scope: 'col', role: 'columnheader', class: 'sch-slots__period' }, words.One), h('th', { scope: 'col', role: 'columnheader' }, 'Room', h('span', { class: 'vh' }, ', then a label and a teacher if needed')), h('th', { scope: 'col', role: 'columnheader', class: 'sch-slots__more' }, h('span', { class: 'vh' }, 'Move')))),
         body));
   }
 

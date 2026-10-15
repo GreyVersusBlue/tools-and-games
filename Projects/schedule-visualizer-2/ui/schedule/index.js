@@ -278,6 +278,15 @@ export const section = {
       const typed = typing ? active.value : null;
       const held = field ? active.value : null;
       const caret = field ? [active.selectionStart, active.selectionEnd] : null;
+      // A room picker with its list open hands over the option the arrow
+      // keys highlighted (room-picker.js, `picker:resume`).
+      const listed = field && active.getAttribute('role') === 'combobox' && active.getAttribute('aria-expanded') === 'true';
+      const lit = listed && active.getAttribute('aria-activedescendant') ? document.getElementById(active.getAttribute('aria-activedescendant')) : null;
+      const resume = listed ? { room: lit ? lit.dataset.room : null } : null;
+      // the focus on a room picker's link to the building, which is in the
+      // line under the field while its list is open: the new field's list is
+      // opened for it, so the link is there to take the focus back
+      const linkOf = had && active.tagName === 'A' && /:building$/.test(had) ? had.replace(/:building$/, '') : null;
       const project = ctx.store.project;
       element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
       panel.update(project);
@@ -293,6 +302,8 @@ export const section = {
         wantFocus = null;
         return;
       }
+      const owner = linkOf ? find(linkOf) : null;
+      if (owner) owner.dispatchEvent(new CustomEvent('picker:resume', { detail: { room: null } }));
       const asked = wantFocus && wantFocus !== had ? find(wantFocus) : null;
       const target = asked || (had && find(had));
       wantFocus = null;
@@ -312,6 +323,9 @@ export const section = {
         } else if (text && caret && target.value === held) {
           // nothing was typed and nothing changed under it: the caret stays
           target.setSelectionRange(caret[0], caret[1]);
+        }
+        if (resume && target === document.activeElement && target.getAttribute('role') === 'combobox') {
+          target.dispatchEvent(new CustomEvent('picker:resume', { detail: resume }));
         }
       } else if (had && inSection) {
         element.querySelector('[role="tabpanel"]').focus();
@@ -371,6 +385,13 @@ export const section = {
       element,
       update() {
         schedule();
+      },
+      // the section leaves the page: nothing outside it (a window crossing
+      // 640 or 900 px, a walk answer) reaches this drawing again
+      unmount() {
+        if (live === handle) live = null;
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
       },
       // the same section, another tab
       route(next) {

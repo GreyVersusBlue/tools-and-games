@@ -173,14 +173,14 @@ const { roomPicker } = await import('../../ui/schedule/room-picker.js');
 // and 202; two rooms were both numbered 150 (a project the checks would
 // object to, and a picker still has to cope with).
 const ROOMS = [
-  { id: 'r101', number: '101', label: '101 — Ms. Harrowgate', detail: 'MATH' },
-  { id: 'r102', number: '102', label: '102 — Mr. Tindall', detail: 'MATH' },
-  { id: 'r150a', number: '150', label: '150 — Mr. Abernethy-Voss', detail: '' },
-  { id: 'r150b', number: '150', label: '150 — Dr. Quennell', detail: '' },
-  { id: 'r201', number: '201', label: '201 — Ms. Okonjo-Reyes', detail: 'ENG' },
-  { id: 'r202', number: '202', label: '202 — Ms. Okonjo-Reyes, Mr. Lindqvist', detail: 'ENG' },
-  { id: 'rb12', number: 'B12', label: 'B12', detail: '' },
-  { id: 'rgym', number: 'Gym', label: 'Gym — Coach Draycott', detail: 'PE' },
+  { id: 'r101', number: '101', label: '101 — Ms. Harrowgate', teachers: 'Ms. Harrowgate', detail: 'MATH' },
+  { id: 'r102', number: '102', label: '102 — Mr. Tindall', teachers: 'Mr. Tindall', detail: 'MATH' },
+  { id: 'r150a', number: '150', label: '150 — Mr. Abernethy-Voss', teachers: 'Mr. Abernethy-Voss', detail: '' },
+  { id: 'r150b', number: '150', label: '150 — Dr. Quennell', teachers: 'Dr. Quennell', detail: '' },
+  { id: 'r201', number: '201', label: '201 — Ms. Okonjo-Reyes', teachers: 'Ms. Okonjo-Reyes', detail: 'ENG' },
+  { id: 'r202', number: '202', label: '202 — Ms. Okonjo-Reyes, Mr. Lindqvist', teachers: 'Ms. Okonjo-Reyes, Mr. Lindqvist', detail: 'ENG' },
+  { id: 'rb12', number: 'B12', label: 'B12', teachers: '', detail: '' },
+  { id: 'rgym', number: 'Gym', label: 'Gym — Coach Draycott', teachers: 'Coach Draycott', detail: 'PE' },
 ];
 const NO_ROOM = { id: null, number: '', label: 'No room', detail: '' };
 const ids = (options) => options.map((option) => option.id);
@@ -296,6 +296,57 @@ test('a list shows every option for no text, and for text the rooms with it anyw
   assert.deepEqual(ids(listFor('zzz', all)), []);
 });
 
+// SV2-50 item 5: the words that stand for a room with no number, and a
+// number with spaces round it, are not a room's teachers. The labels are the
+// ones ui/schedule/common.js's roomLabel makes for such rooms.
+const ODD = [
+  { id: 'rnone', number: '', label: 'a room with no number — Ms. Pellegrew', teachers: 'Ms. Pellegrew', detail: '' },
+  { id: 'rbare', number: '', label: 'a room with no number', teachers: '', detail: '' },
+  { id: 'rpad', number: ' 104 ', label: ' 104  — Mr. Fairweather-Ness', teachers: 'Mr. Fairweather-Ness', detail: '' },
+];
+
+test('SV2-50 item 5: a room with no number is never picked by the words that stand for it, and a number with spaces round it is read right', () => {
+  for (const words of ['with', 'no number', 'a room', 'room with no number', 'number']) {
+    assert.deepEqual(readTyped(words, ODD), { kind: 'keep', text: words }, '"' + words + '" picked a room');
+    assert.deepEqual(ids(listFor(words, ODD)), [], '"' + words + '" listed a room');
+  }
+  // its teacher still finds it, and so does its whole label
+  assert.equal(readTyped('Pellegrew', ODD).option.id, 'rnone');
+  assert.equal(readTyped('a room with no number — Ms. Pellegrew', ODD).option.id, 'rnone');
+  // the padded number, by number and by teacher, and the teacher's name is
+  // looked through whole: the start of it ("Mr. F") and its end ("Ness")
+  assert.equal(readTyped('104', ODD).option.id, 'rpad');
+  assert.equal(readTyped('Fairweather', ODD).option.id, 'rpad');
+  assert.equal(readTyped('mr. f', ODD).option.id, 'rpad');
+  assert.equal(readTyped('ness', ODD).option.id, 'rpad');
+  assert.deepEqual(ids(listFor('10', ODD)), ['rpad']);
+  // a teacher's text is never read off the end of a number: "4 " is in the label after "10"
+  assert.deepEqual(readTyped('4', ODD), { kind: 'keep', text: '4' });
+});
+
+test('SV2-50 item 11: text is folded by NFKC and without a locale, and "Room 101" is Room 101', () => {
+  // a full-width number
+  assert.equal(readTyped('１０１', ROOMS).option.id, 'r101');
+  assert.deepEqual(ids(listFor('１０', ROOMS)), ['r101', 'r102']);
+  // a name typed with its accent as a mark of its own (NFD), and stored that way
+  const accented = [{ id: 'r301', number: '301', label: '301 — Mme Renée Fauchard', teachers: 'Mme Renée Fauchard', detail: '' }];
+  assert.equal(readTyped('Rene\u0301e', accented).option.id, 'r301');
+  const stored = [{ id: 'r301', number: '301', label: '301 — Mme Rene\u0301e Fauchard', teachers: 'Mme Rene\u0301e Fauchard', detail: '' }];
+  assert.equal(readTyped('Renée', stored).option.id, 'r301');
+  // the dotted capital I is not turned into a dotless i by a Turkish device: no locale
+  const turkish = [{ id: 'r401', number: '401', label: '401 — Bay İnce', teachers: 'Bay İnce', detail: '' }];
+  assert.equal(readTyped('İnce', turkish).option.id, 'r401');
+  // "Room 101", as a sentence of the tool names it, in any case
+  assert.equal(readTyped('Room 101', ROOMS).option.id, 'r101');
+  assert.equal(readTyped('  room  b12 ', ROOMS).option.id, 'rb12');
+  assert.deepEqual(ids(listFor('Room 10', ROOMS)), ['r101', 'r102']);
+  // "Room" alone names nothing, and "Room 10" is not Room 101
+  assert.deepEqual(readTyped('Room', ROOMS), { kind: 'keep', text: 'Room' });
+  assert.deepEqual(readTyped('Room 10', ROOMS), { kind: 'keep', text: 'Room 10' });
+  // two rooms numbered 150 are still two
+  assert.equal(readTyped('Room 150', ROOMS).kind, 'several');
+});
+
 // ---------------------------------------------------------------- the picker: Enter and leaving the field
 
 test('"10" and Enter keeps "10", as leaving the field does: no room is highlighted while typing, and none is picked', () => {
@@ -358,10 +409,12 @@ test('an option highlighted, then the field left: what was typed is read, and th
   assert.deepEqual(picker.lit(), ['r101']);
   picker.leave();
   assert.deepEqual(picker.calls, [['keep', '10']]);
-  // a pointer on an option is a pick
+  // a click on an option is a pick (SV2-50 item 10: the click, not the press)
   const pressed = make();
   pressed.type('10');
   assert.equal(pressed.list.children[1].send('pointerdown').prevented, true, 'the press took the focus from the field');
+  assert.equal(pressed.list.children[1].send('mousedown').prevented, true, 'the press took the focus from the field');
+  pressed.list.children[1].send('click', { button: 0 });
   assert.deepEqual(pressed.calls, [['pick', 'r102']]);
 });
 
@@ -508,9 +561,10 @@ test('Escape shuts the list, and then puts back what the slot holds', () => {
 
 test('text that matches nothing is said on the line, a status the field is described by, and there is no list', () => {
   const picker = make({ describedBy: 'finding-7' });
-  assert.equal(picker.line.getAttribute('role'), 'status');
   assert.deepEqual(picker.described(), ['finding-7'], 'described by a line with no words');
   picker.type('zzz');
+  // a status from the first key (SV2-50 item 11)
+  assert.equal(picker.line.getAttribute('role'), 'status');
   assert.equal(picker.line.textContent, 'No room matches. It is kept as typed, and marked as not in the building.');
   assert.deepEqual(picker.described(), ['finding-7', picker.line.id]);
   assert.equal(picker.open(), false, 'a list is open with nothing in it to pick');
@@ -571,8 +625,116 @@ test('a field that is read only neither opens its list, nor picks, nor keeps', (
   late.key('Enter');
   assert.deepEqual(late.calls, []);
   assert.equal(late.input.value, '101 — Ms. Harrowgate');
-  late.list.children[3].send('pointerdown');
+  late.list.children[3].send('click', { button: 0 });
   assert.deepEqual(late.calls, []);
+});
+
+// ---------------------------------------------------------------- SV2-50: presses, composing, a drawing under the list
+
+test('SV2-50 item 10: an option is picked by a click with the main button, never as the pointer comes down, so a finger scrolling the list picks nothing', () => {
+  const picker = make();
+  picker.type('10');
+  const option = picker.list.children[0];
+  // a finger lands on the list and scrolls it: the press, then no click
+  option.send('pointerdown', { pointerType: 'touch', button: 0 });
+  option.send('pointercancel', { pointerType: 'touch' });
+  assert.deepEqual(picker.calls, [], 'a press picked a room');
+  // another button's click is not a pick either
+  option.send('click', { button: 2 });
+  option.send('click', { button: 1 });
+  assert.deepEqual(picker.calls, []);
+  assert.equal(picker.open(), true);
+  // the main button's click (a tap's too) is
+  option.send('click', { button: 0 });
+  assert.deepEqual(picker.calls, [['pick', 'r101']]);
+});
+
+test('SV2-50 item 10: Enter and the arrows while an input method composes a word are the input method\'s: nothing is picked, kept or moved', () => {
+  for (const composing of [{ isComposing: true }, { keyCode: 229 }]) {
+    const picker = make();
+    picker.type('10');
+    picker.input.send('keydown', { key: 'ArrowDown', ...composing });
+    assert.deepEqual(picker.lit(), [], 'an arrow moved the highlight while composing');
+    picker.key('ArrowDown');
+    assert.deepEqual(picker.lit(), ['r101']);
+    const enter = picker.input.send('keydown', { key: 'Enter', ...composing });
+    assert.equal(enter.prevented, false, 'the composing Enter was taken from the input method');
+    assert.deepEqual(picker.calls, [], 'Enter while composing picked or kept');
+    assert.equal(picker.open(), true);
+    // the composition over, Enter is the picker's
+    picker.key('Enter');
+    assert.deepEqual(picker.calls, [['pick', 'r101']]);
+  }
+});
+
+test('SV2-50 item 6: a new picker made under the focus by a drawing opens with the highlight the old one had, so "10", ArrowDown, a drawing, Enter is Room 101', () => {
+  const old = make();
+  old.type('10');
+  old.key('ArrowDown');
+  assert.deepEqual(old.lit(), ['r101']);
+  // what the section does (ui/schedule/index.js, run): the text carried as typing, then the list resumed
+  const next = make();
+  next.type('10');
+  assert.deepEqual(next.lit(), [], 'typing alone highlights nothing');
+  next.input.send('picker:resume', { detail: { room: 'r101' } });
+  assert.equal(next.open(), true);
+  assert.deepEqual(next.lit(), ['r101']);
+  next.key('Enter');
+  assert.deepEqual(next.calls, [['pick', 'r101']]);
+  // "No room" highlighted, nothing typed: the same list, on "No room"
+  const held = make({ text: '101 — Ms. Harrowgate', roomId: 'r101' });
+  held.input.send('picker:resume', { detail: { room: '' } });
+  assert.deepEqual(held.lit(), ['']);
+  held.key('Enter');
+  assert.deepEqual(held.calls, [['pick', null]]);
+  // no highlight handed over: the list opens as a click opens it
+  const plain = make({ text: '101 — Ms. Harrowgate', roomId: 'r101' });
+  plain.input.send('picker:resume', { detail: { room: null } });
+  assert.deepEqual(plain.lit(), ['r101']);
+  // a highlighted room the new list does not have: no highlight
+  const gone = make();
+  gone.type('10');
+  gone.input.send('picker:resume', { detail: { room: 'r999' } });
+  assert.deepEqual(gone.lit(), []);
+});
+
+test('SV2-50 item 11: a pick or a keep the project refuses puts the field back to what the slot holds', () => {
+  const refused = make({ text: '101 — Ms. Harrowgate', roomId: 'r101', onPick: () => false, onKeep: () => false });
+  refused.type('102');
+  refused.key('Enter');
+  assert.equal(refused.input.value, '101 — Ms. Harrowgate', 'a refused pick left the refused room in the field');
+  assert.equal(refused.open(), false);
+  refused.type('Portable 9');
+  refused.leave();
+  assert.equal(refused.input.value, '101 — Ms. Harrowgate', 'a refused keep left the refused text in the field');
+  // an answer that is not false is no refusal
+  const taken = make({ text: '', roomId: null, onPick: () => undefined });
+  taken.type('102');
+  taken.key('Enter');
+  assert.equal(taken.input.value, '102 — Mr. Tindall');
+});
+
+test('SV2-50 item 11: the line is a status from the user\'s first key, so a picker drawn again under the focus does not say its words again; its link has a key', () => {
+  // kept text two rooms answer to: the words are there from the start, and describe the field
+  const drawn = make({ text: '150', roomId: null, missing: true });
+  assert.equal(drawn.line.textContent, '2 rooms match. Pick one from the list.');
+  assert.ok(drawn.described().includes(drawn.line.id));
+  assert.equal(drawn.line.getAttribute('role'), null, 'a new drawing\'s line is a status before anything was pressed');
+  // the text a drawing carries over is sent as an input event the page made, not a key
+  drawn.input.send('input', { isTrusted: false });
+  assert.equal(drawn.line.getAttribute('role'), null);
+  drawn.key('ArrowDown');
+  assert.equal(drawn.line.getAttribute('role'), 'status');
+  // typing is a key too
+  const typed = make();
+  typed.type('zzz');
+  assert.equal(typed.line.getAttribute('role'), 'status');
+  // with no rooms, the link to the building has a key for the drawing to find it by
+  const empty = make(null, { options: () => [] });
+  empty.click();
+  const link = empty.line.children[0];
+  assert.equal(link.tagName, 'A');
+  assert.equal(link.dataset.key, 'slot:d:0:room:building');
 });
 
 // ---------------------------------------------------------------- the Groups tab's addresses
