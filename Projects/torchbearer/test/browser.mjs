@@ -253,9 +253,16 @@ try {
     const others = await page.evaluate(lit => window.__torchbearerCombat.cbs
       .filter(c => !c.dead && c.id !== "hero" && !lit.includes(`${c.x},${c.y}`)).map(c => c.name), lit);
     const texts = evs.slice(1).map(e => e.text);
+    // The yard has two Skeleton Guards, so this counts lines per name: as
+    // many as there are creatures of that name on the lit squares.
+    // A creature answers once: its save's roll, or the line saying the
+    // spell cannot hurt it. Damage and condition lines come after and are
+    // not counted.
+    const named = n => texts.filter(x => x.startsWith(n + ": ") && / save vs /.test(x) || x === `${n} has no life to drain.`).length;
+    const litCount = n => foesLit.filter(m => m === n).length;
     eq("everybody standing on a lit square is answered by the cast",
-      foesLit.map(n => texts.some(x => x.startsWith(n))), foesLit.map(() => true));
-    eq("…and nobody off it", others.filter(n => texts.some(x => x.includes(n))), []);
+      foesLit.map(n => named(n) >= litCount(n)), foesLit.map(() => true));
+    eq("…and nobody off it", [...new Set(others)].filter(n => named(n) > litCount(n)), []);
     eq("…one save for each creature under the line that can be hurt by it", rolled.length,
       foesLit.filter(n => !texts.some(x => x.startsWith(n) && /no life to drain/.test(x))).length);
     if (fail) console.log("  events of the cast:", JSON.stringify(evs).slice(0, 1500));
