@@ -157,8 +157,11 @@ export function preview(ctx) {
     // A page that asks after the wait ran out has opened after all: "has not
     // opened" goes, and so does "Try again", whatever was said since (a copy
     // that could not be made writes its own sentence over "has not opened").
-    const late = notOpen;
+    // So has the page before one "Try again" could not put together, when
+    // it asks: "could not be put together" goes with it, as it does in load().
+    const late = notOpen || brokeSays !== null;
     notOpen = false;
+    brokeSays = null;
     if (late) again.hidden = true;
     if (data === null) {
       if (late) {

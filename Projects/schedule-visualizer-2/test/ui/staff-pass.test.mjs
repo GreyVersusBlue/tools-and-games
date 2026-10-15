@@ -342,6 +342,21 @@ test('the section\'s first line after a file the project did not note: read-only
   assert.match(facts(project, null), /^No file has been made from this project yet\. /);
 });
 
+// SV2-53b. When "just now" stops being so the tab still made the file: the
+// line said "No file has been made from this project yet" after it, which was
+// false.
+test('a file the project did not note, no longer just now, is still a file this tab made: "earlier", never "no file yet"', () => {
+  const project = school();
+  const readOnly = facts(project, 'read-only', false);
+  const refused = facts(project, 'refused', false);
+  assert.match(readOnly, /^This tab made a file earlier\. The project does not record it while the tab is read-only\. It has /);
+  assert.match(refused, /^This tab made a file earlier\. The project could not record it\. It has /);
+  for (const line of [readOnly, refused]) {
+    assert.doesNotMatch(line, /just now|No file has been made/);
+  }
+  assert.match(facts(project, 'refused'), /^This tab made a file just now\./, 'just now unless told otherwise');
+});
+
 // ---------------------------------------------------------------- the step-free refusal's routes (SV2-51 item 4)
 
 // Just enough of a document for a staff view to build its page in Node:

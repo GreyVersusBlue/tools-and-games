@@ -1410,7 +1410,9 @@ test('the file went out and the project then would not record it: the status say
 // SV2-53 item 4. "This tab made a file just now" stood until the section
 // was drawn anew: it goes on the next change of the project, which is made
 // after the file, and after UNNOTED_TIMES.ms, when it is no longer just now.
-test('the first line about a file the project could not record goes on the next change, and after a while with none', async () => {
+// SV2-53b: what follows it is still true: the tab made a file, earlier. Until
+// SV2-53b it was "No file has been made from this project yet".
+test('the first line about a file the project could not record says "earlier" on the next change, and after a while with none', async () => {
   await closing(await open(), async (page) => {
     await page.evaluate(async () => {
       const { notePublished } = await import(new URL('engine/actions.js', location.href).href);
@@ -1423,12 +1425,13 @@ test('the first line about a file the project could not record goes on the next 
     });
     const first = () => page.evaluate(() => document.querySelector('.stf-facts').textContent);
     const JUST_NOW = /^This tab made a file just now\. The project could not record it\. It has /;
+    const EARLIER = /^This tab made a file earlier\. The project could not record it\. It has /;
     assert.ok(await publishThroughHook(page));
     assert.match(await first(), JUST_NOW);
     // the next change
     await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
-    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file'), { timeout: 30000 });
-    assert.match(await first(), /^No file has been made from this project yet\. It has /);
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
+    assert.match(await first(), EARLIER, 'the tab made a file; it is not "no file yet"');
     // made again, and nothing changes: it goes after the set time
     await page.evaluate(async () => {
       const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
@@ -1436,8 +1439,8 @@ test('the first line about a file the project could not record goes on the next 
     });
     assert.ok(await publishThroughHook(page));
     assert.match(await first(), JUST_NOW);
-    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file'), { timeout: 30000 });
-    assert.match(await first(), /^No file has been made from this project yet\. It has /);
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
+    assert.match(await first(), EARLIER, 'after the set time as after a change');
     await page.evaluate(async () => {
       const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
       UNNOTED_TIMES.ms = 5 * 60 * 1000;
@@ -1541,6 +1544,11 @@ test('a read-only tab publishes its file and says nothing false: no "Nothing cha
     const page = second.page;
     await page.waitForSelector('#banner-read-only');
     assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^No file has been made from this project yet\./);
+    // the store refuses every change here, so only the set time ends "just now"
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 3000;
+    });
     const made = await publishThroughHook(page);
     assert.ok(made && made.fileName.startsWith('First Tab School - staff schedule - '));
     assert.equal(await page.evaluate(() => document.querySelectorAll('.toast').length), 0, 'no toast says "Nothing changed" about a file that was made');
@@ -1549,6 +1557,9 @@ test('a read-only tab publishes its file and says nothing false: no "Nothing cha
     assert.ok(status.includes(NOT_SENT + ' This tab is read-only, so the project does not record that a file was made. It asks for the staff passcode: '), status);
     assert.equal((await project(page)).publish.lastPublishedAt, null, 'the project was not changed');
     assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^This tab made a file just now\. The project does not record it while the tab is read-only\. It has /);
+    // SV2-53b: and once it is no longer just now, the tab still made it
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^This tab made a file earlier\. The project does not record it while the tab is read-only\. It has /);
     assert.deepEqual(second.problems().errors, []);
   } finally {
     if (second) await second.close();
@@ -1883,6 +1894,49 @@ test('after the wait ran out, a copy made again clears "could not be brought up 
     await page.evaluate(() => {
       for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
     });
+  });
+});
+
+// SV2-53b. "Could not be put together" was cleared only by the next load():
+// after the wait ran out and "Try again" could not put a page together, the
+// page before it, still in the frame, asked late and was given its copy, and
+// the bar went on saying the preview could not be put together beside it.
+test('the page before one "Try again" could not put together asks late: it is live, and "could not be put together" and "Try again" go', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    const bar = () => page.evaluate(() => {
+      const preview = document.querySelector('.stf-preview');
+      const again = document.querySelector('[data-action="preview-again"]');
+      return { preview: preview.dataset.preview, says: document.querySelector('[data-says="preview"]').textContent, again: again.getClientRects().length > 0 };
+    });
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      // the first page does not ask in time (a blank page); the second cannot be made at all
+      const create = URL.createObjectURL.bind(URL);
+      let pages = 0;
+      URL.createObjectURL = (blob) => {
+        if (!blob.type.startsWith('text/html')) return create(blob);
+        pages += 1;
+        if (pages > 1) throw new TypeError('Out of memory');
+        return create(new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }));
+      };
+      location.hash = '#staff';
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'failed', { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: 'The preview has not opened. Try again; publishing a file does not depend on it.', again: true });
+    await page.click('[data-action="preview-again"]');
+    await page.waitForFunction(() => document.querySelector('[data-says="preview"]').textContent.startsWith('The preview could not be put together'), { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: 'The preview could not be put together. Reload the page and try again.', again: true }, 'the browser\'s own words are not shown');
+    // and now, late, the page before it asks, and is given its copy
+    const sent = await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent);
+    await frameOf(page).evaluate(() => parent.postMessage({ type: 'sv2-preview-ready' }, location.origin));
+    await page.waitForFunction((before) => document.querySelector('.stf').staff.preview.state.sent > before, { timeout: 30000 }, sent);
+    assert.deepEqual(await bar(), { preview: 'live', says: 'This is the file as staff see it. It follows the project as you change it.', again: false }, 'a live page is not said to be one that could not be put together');
+    // and a later change keeps saying so
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction((before) => document.querySelector('.stf').staff.preview.state.sent > before + 1, { timeout: 30000 }, sent);
+    assert.equal((await bar()).says, 'This is the file as staff see it. It follows the project as you change it.');
   });
 });
 
