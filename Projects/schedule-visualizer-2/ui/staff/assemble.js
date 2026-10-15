@@ -578,6 +578,14 @@ function originOf(win) {
 // to drop the key it kept for this school's passcode, wherever it kept it
 // (its storage, or its memory where storage is refused), before it reads the
 // copy in hand.
+//
+// A "ready" counts only once the frame has fired `load` for the address it
+// holds. A frame's window is one object across its pages, so a "ready" the
+// page being replaced posted just before it went arrives looking like the new
+// page's; taken for it, it would end the wait for the new page to open (and
+// send the data to a page about to go). The page asks again every 500 ms
+// until it is answered, so the new page's own "ready" after its `load` is
+// the one that counts.
 export function feedPreview(win, frame, getData, getFlags) {
   const own = originOf(win);
   const target = own === 'null' ? '*' : own;
@@ -585,6 +593,12 @@ export function feedPreview(win, frame, getData, getFlags) {
   // the address the frame held when its page asked: a frame given another
   // address holds another page, which has not asked yet
   let readyFor = null;
+  // the address the frame last finished loading
+  let loadedFor = null;
+  const loaded = () => {
+    loadedFor = frame.src;
+  };
+  frame.addEventListener('load', loaded);
   const send = () => {
     if (ready && frame.src !== readyFor) ready = false;
     if (!ready || !frame.contentWindow) return false;
@@ -598,6 +612,7 @@ export function feedPreview(win, frame, getData, getFlags) {
   const listen = (event) => {
     if (event.source !== frame.contentWindow || event.origin !== own) return;
     if (!event.data || event.data.type !== PREVIEW_READY) return;
+    if (frame.src !== loadedFor) return;
     ready = true;
     readyFor = frame.src;
     send();
@@ -607,6 +622,7 @@ export function feedPreview(win, frame, getData, getFlags) {
     send,
     stop() {
       win.removeEventListener('message', listen);
+      frame.removeEventListener('load', loaded);
     },
   };
 }

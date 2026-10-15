@@ -64,22 +64,47 @@ test('which failure gets which sentence: the tool\'s own as written, the connect
   assert.equal(failureSentence('a string', words), 'OTHER');
 });
 
-// A planner window and a frame window, as far as the two ends of the preview use one.
+// A planner window and a frame, as far as the two ends of the preview use
+// them. As in a browser, the frame's window (`frame.contentWindow`) is one
+// object whatever page it holds; each page has its own inner window, with its
+// own listeners, and a message posted to the frame reaches the page it holds
+// now. `navigate(src)` gives the frame another page (the one before keeps
+// running until `load()`, as a page being replaced does) and `load()` fires
+// the frame's load event. `inner` is the first page.
 function pair() {
   const origin = 'http://127.0.0.1:1';
-  const listeners = { top: [], frame: [] };
-  const top = { location: { origin }, addEventListener: (type, fn) => listeners.top.push(fn), removeEventListener() {} };
-  const inner = {
-    location: { origin },
-    parent: null,
-    addEventListener: (type, fn) => listeners.frame.push(fn),
-    removeEventListener() {},
-    setInterval: () => 1,
-    clearInterval() {},
-    postMessage: (data) => listeners.frame.forEach((fn) => fn({ source: inner.parent, origin, data })),
+  const listeners = { top: [], load: [] };
+  const top = { location: { origin }, addEventListener: (type, fn) => listeners.top.push(fn), removeEventListener: (type, fn) => { listeners.top = listeners.top.filter((each) => each !== fn); } };
+  const pages = [];
+  const proxy = { postMessage: (data) => pages[pages.length - 1].postMessage(data) };
+  const parent = { postMessage: (data) => listeners.top.forEach((fn) => fn({ source: proxy, origin, data })) };
+  const page = () => {
+    const own = [];
+    const inner = {
+      location: { origin },
+      parent,
+      addEventListener: (type, fn) => own.push(fn),
+      removeEventListener() {},
+      setInterval: () => 1,
+      clearInterval() {},
+      postMessage: (data) => own.forEach((fn) => fn({ source: parent, origin, data })),
+    };
+    pages.push(inner);
+    return inner;
   };
-  inner.parent = { postMessage: (data) => listeners.top.forEach((fn) => fn({ source: inner, origin, data })) };
-  return { top, inner, frame: { contentWindow: inner } };
+  const inner = page();
+  const frame = {
+    src: 'blob:first',
+    contentWindow: proxy,
+    addEventListener: (type, fn) => { if (type === 'load') listeners.load.push(fn); },
+    removeEventListener: (type, fn) => { listeners.load = listeners.load.filter((each) => each !== fn); },
+    load: () => listeners.load.forEach((fn) => fn()),
+    navigate: (src) => {
+      frame.src = src;
+      return page();
+    },
+  };
+  return { top, inner, frame };
 }
 
 test('"forget the kept key" travels with the one copy it is for: beside the data, once, and only when a message really goes', () => {
@@ -94,6 +119,7 @@ test('"forget the kept key" travels with the one copy it is for: beside the data
     flags = null;
     return now;
   });
+  frame.load();
   watchPreview(inner, (value, with_) => got.push([value, with_]));
   assert.deepEqual(got, [], 'with nothing to show nothing is sent');
   assert.equal(asked, 0, 'and the flag is not used up by a message that did not go');
@@ -107,7 +133,6 @@ test('"forget the kept key" travels with the one copy it is for: beside the data
 // SV2-49 item 6
 test('a frame given another address holds a page that has not asked: nothing is sent to it, nothing is asked of the planner, and the flag waits for the page that asks', () => {
   const { top, inner, frame } = pair();
-  frame.src = 'blob:first';
   const got = [];
   let data = null;
   let flags = { forget: true };
@@ -122,20 +147,60 @@ test('a frame given another address holds a page that has not asked: nothing is 
     flags = null;
     return now;
   });
+  frame.load();
   watchPreview(inner, (value, with_) => got.push([value, with_]));
   assert.equal(datas, 1, 'the first page asked, and there was nothing to give it');
   // "Try again": the frame is given a new page, and a change lands before that page has asked
-  frame.src = 'blob:second';
+  const second = frame.navigate('blob:second');
   data = { n: 1 };
   assert.equal(feed.send(), false, 'the page that is going away is sent nothing');
   assert.equal(datas, 1, 'the planner is not asked for data on its account, so it never counts the old page as live');
   assert.equal(asked, 0, 'and "forget the kept key" is not used up');
   assert.deepEqual(got, []);
-  // the new page asks
-  inner.parent.postMessage({ type: PREVIEW_READY });
+  // the new page loads and asks
+  frame.load();
+  watchPreview(second, (value, with_) => got.push([value, with_]));
   assert.deepEqual(got, [[{ n: 1 }, { forget: true }]]);
   assert.equal(feed.send(), true, 'and from then on a change is sent');
   assert.equal(got.length, 2);
+});
+
+// SV2-51 item 6. The page being replaced asks once more after the frame was
+// given the new address, before the new page has loaded: the frame's window
+// is the same object for both pages, so the message looks like the new
+// page's. It must not count: until SV2-51 it ended the wait for the new page
+// to open (state.opened), and the data went to the page that was going.
+test('a late "ready" from the page being replaced is not taken for the new page: only a "ready" after the frame\'s load for its address counts', () => {
+  const { top, inner, frame } = pair();
+  const got = [];
+  const late = [];
+  let asks = 0;
+  const feed = feedPreview(top, frame, () => {
+    asks += 1;
+    return { n: asks };
+  });
+  // before the first page has loaded, its "ready" is not counted either
+  inner.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 0, 'a frame that has not loaded its address has no page that asked');
+  frame.load();
+  watchPreview(inner, (value) => late.push(value));
+  assert.equal(asks, 1, 'the first page loaded and asked');
+  // "Try again": a new address; the old page, still there, asks again
+  const second = frame.navigate('blob:second');
+  inner.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 1, 'the old page\'s late "ready" does not ask the planner for data on the new page\'s account');
+  assert.equal(feed.send(), false, 'and nothing is sent to the frame');
+  assert.deepEqual(late, [{ n: 1 }], 'the old page got only what it was sent while it was the frame\'s page');
+  watchPreview(second, (value) => got.push(value));
+  assert.deepEqual(got, [], 'the new page asked before its load: not yet');
+  frame.load();
+  second.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 2);
+  assert.deepEqual(got, [{ n: 2 }], 'the new page, loaded, asks and is answered');
+  feed.stop();
+  frame.load();
+  second.parent.postMessage({ type: PREVIEW_READY });
+  assert.equal(asks, 2, 'a stopped feed answers nothing');
 });
 
 test('a feed with no flags sends the data alone, as before', () => {
@@ -143,6 +208,7 @@ test('a feed with no flags sends the data alone, as before', () => {
   const sent = [];
   inner.postMessage = (data) => sent.push(data);
   const feed = feedPreview(top, frame, () => ({ n: 1 }));
+  frame.load();
   inner.parent.postMessage({ type: PREVIEW_READY });
   feed.send();
   assert.deepEqual(sent, [{ type: PREVIEW_DATA, data: { n: 1 } }, { type: PREVIEW_DATA, data: { n: 1 } }]);
