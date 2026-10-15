@@ -126,6 +126,12 @@ let playedHere = false;
 const refused = {};
 let refusedSaid = false;
 
+// The late groups already said, by the project and what is played (the day
+// type, the transition and the groups on screen), for the visit: a loop of
+// the same transition, a loop of the whole day back to it, or another
+// section and back does not say them again (SV2-55 item 7).
+const lateSaid = new Map();
+
 // "0:37", "4:00", "12:05": whole seconds as minutes and seconds.
 export function minutesText(seconds) {
   const whole = Math.max(0, Math.floor(seconds));
@@ -162,6 +168,8 @@ export function playbackBar(env) {
   // what is played: the transition chosen, and the walks of the groups on screen
   let scene = null;
   let sceneKey = null;
+  // what is played, in the project open: the late groups said are kept by it
+  const saidKey = () => (state && state.project ? state.project.id : '') + '|' + sceneKey;
   let walkKey = null;
   // seconds along what is played: into the transition, or along the turns
   let seconds = 0;
@@ -169,10 +177,6 @@ export function playbackBar(env) {
   let started = false;
   let frame = null;
   let lastStamp = null;
-  // the late groups already said, by what is played (the day type, the
-  // transition and the groups on screen): a loop of the same transition, or
-  // of the whole day back to it, does not say them again
-  const lateSaid = new Map();
   let extraKey = '';
   const real = { request: (fn) => requestAnimationFrame(fn), cancel: (id) => cancelAnimationFrame(id) };
   let frames = real;
@@ -463,7 +467,7 @@ export function playbackBar(env) {
     // another order is another walk: its late groups are said again
     if ('order' in asked) {
       seconds = 0;
-      lateSaid.delete(sceneKey);
+      lateSaid.delete(saidKey());
     }
     render();
     drawMarks();
@@ -597,8 +601,9 @@ export function playbackBar(env) {
     // was late where the reader scrubbed to is on the Late line, and is not
     // said again when playing goes on
     if (names.length > 0 && sceneKey !== null) {
-      if (!lateSaid.has(sceneKey)) lateSaid.set(sceneKey, new Set());
-      const said = lateSaid.get(sceneKey);
+      const at = saidKey();
+      if (!lateSaid.has(at)) lateSaid.set(at, new Set());
+      const said = lateSaid.get(at);
       const fresh = names.filter((name) => !said.has(name));
       if (playing && fresh.length > 0) ctx.announce(fresh.join(', ') + (fresh.length === 1 ? ' is late.' : ' are late.'));
       for (const name of fresh) said.add(name);
