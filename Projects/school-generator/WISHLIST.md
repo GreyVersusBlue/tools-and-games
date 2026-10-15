@@ -447,7 +447,9 @@ and add to this list rather than starting a new one.
 - A hipped roof over a curve stands on the straight skeleton of the rooms'
   own outline (#965, #967): `roofOutline`, `hasCurve`, `eavePolygon`,
   `triangulate`, `roofHeightOver`, wired through `roofPlan`, `roofFace` and
-  `roofHeightAt`; every rectilinear roof is what it was. Left: a courtyard
+  `roofHeightAt`, and counted by the takeoff and the estimate through
+  `roofCover` off the loop's own chords (#970); every rectilinear roof is
+  what it was. Left: a courtyard
   anywhere on the top storey refuses the whole storey's outline, so a curved
   building beside a courtyard building keeps its rectangles (refuse per loop
   instead: a hole loop takes only the loop round it); a room with a hole, two
@@ -455,8 +457,12 @@ and add to this list rather than starting a new one.
   than the 1.5ft eave keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); the parapet style still runs along the
   4ft mask outline, so a flat roof's parapet over a curve is stepped; the
-  takeoff and the cost count roof area off the mask, and the site plan's
-  building line is the mask's, both stepped on a curve; the elevation sorts a
+  site plan's building line is the ground storey's mask, stepped on a curve
+  (it draws the ground storey whatever the roof, so the skeleton path's test
+  cannot decide it: drawing it from `roofOutline` moves the site plan of a
+  curved school under every roof style and every storey count, a call of its
+  own); the takeoff counts the roof inside the walls, not the 1.5ft eave, on
+  both paths (#970); the elevation sorts a
   skeleton roof's faces by their nearest point like a rectangle's, and
   nobody has checked a hip seen across a valley in the sheet by eye; no
   `test/visual` capture has a curved roof (the sample school has none); the
