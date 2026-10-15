@@ -1453,7 +1453,7 @@ section("18. what colour said is said in words, and motion is a stylesheet's bus
   const stationsSrc = uncommented(read("js", "stations.js"));
   ok(/<div class="cupnote">\$\{ slot\.food \? plateWords\(slot\.foodPlated\) : cupWords\(slot\.cup\) \}<\/div>/.test(ui), "ui.js writes the line under every station's cup or plate");
   ok(/title="\$\{attr\(`Wants: \$\{orderWords\(c\)\}`\)\}"/.test(ui), "and the order's words on the queue card");
-  ok(/idx===state\.focusedSlot\) div\.setAttribute\('aria-current', 'true'\)/.test(ui), "and marks the focused station for anything that reads it");
+  ok(/idx===state\.focusedSlot \? ' aria-current="true"'/.test(ui), "and marks the focused station for anything that reads it");
   ok(/class="needdot" aria-hidden="true"><\/span><span class="sronly">, still needed<\/span>/.test(stationsSrc), "the tab's dot comes with its words");
   eq((stationsSrc.match(/aria-pressed="\$\{/g) || []).length, 5, "the tabs and the four kinds of pick say which one is on");
 
