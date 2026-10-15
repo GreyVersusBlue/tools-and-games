@@ -1933,7 +1933,12 @@ test('on a web address Share gives the address and "Copy link" copies it', async
   }
 });
 
-test('on a phone the sheet keeps its shape and its number, and the room\'s day stands under it at the page\'s own size', async () => {
+// SV2-51 item 11: until SV2-51 the school's name was the card's foot on a
+// phone, so with the day on it stood above the periods, at the foot of the
+// first screenful (797 px down a sheet of 1539 at 390 px). It is the sheet's
+// foot on a screen as on paper: under the day when the day is shown, at the
+// card's foot when it is not.
+test('on a phone the sheet keeps its shape and its number, the room\'s day stands under it at the page\'s own size, and the school\'s name is the foot of it all', async () => {
   for (const width of [390, 1280]) {
     const session = await openPage({ width, height: width === 390 ? 760 : 900, theme: 'dark' });
     try {
@@ -1955,6 +1960,8 @@ test('on a phone the sheet keeps its shape and its number, and the room\'s day s
           dayUnder: day.top >= paper.bottom,
           dayInside: day.top > paper.top && day.bottom < paper.bottom,
           schoolAtFoot: Math.round(((school.bottom - paper.top) / paper.height) * 100) / 100,
+          schoolUnderDay: school.top >= day.bottom,
+          schoolLast: Array.from(document.querySelectorAll('.sheet *')).filter((el) => !el.contains(document.querySelector('.sign__school')) && el.getClientRects().length > 0).every((el) => el.getBoundingClientRect().bottom <= school.bottom + 0.5),
           table: size('.sign__table'),
           body: size('body'),
           stacked: kinds[1].top >= kinds[0].bottom,
@@ -1970,12 +1977,14 @@ test('on a phone the sheet keeps its shape and its number, and the room\'s day s
         assert.equal(sign.dayUnder, true, 'the day is under the sheet, not squeezed into it');
         assert.equal(sign.table, sign.body, 'at the size the page is read at: ' + sign.table + ' px of ' + sign.body);
         assert.equal(sign.stacked, true, 'one kind of day under another');
+        assert.equal(sign.schoolUnderDay, true, 'the school\'s name is under the periods, not at the foot of the card above them');
       } else {
         assert.equal(sign.phone, false);
         assert.equal(sign.dayInside, true, 'from 640 px the day is on the sheet, as it prints');
         assert.equal(sign.stacked, false);
+        assert.ok(sign.schoolAtFoot > 0.9 && sign.schoolAtFoot <= 1, 'the school\'s name is at the foot of the paper: ' + sign.schoolAtFoot);
       }
-      assert.ok(sign.schoolAtFoot > 0.9 && sign.schoolAtFoot <= 1, 'the school\'s name is at the foot of the paper: ' + sign.schoolAtFoot);
+      assert.equal(sign.schoolLast, true, 'nothing on the sheet stands below the school\'s name');
       assert.deepEqual([sign.dayPaper, sign.dayInk], ['rgb(255, 255, 255)', 'rgb(31, 35, 40)'], 'the day is on paper too, in a dark theme');
       assert.equal(sign.wide, true);
       assert.deepEqual(await cutWords(page), [], 'at ' + width + ' px a word of the day table is cut in two');
@@ -1983,6 +1992,26 @@ test('on a phone the sheet keeps its shape and its number, and the room\'s day s
     } finally {
       await session.close();
     }
+  }
+});
+
+test('on a phone without the room\'s day, the card is the whole sheet and the school\'s name is its foot', async () => {
+  const session = await openPage({ width: 390, height: 760 });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/door/rsample101');
+    const sign = await page.evaluate(() => {
+      const card = document.querySelector('.sign__card').getBoundingClientRect();
+      const school = document.querySelector('.sign__school');
+      const at = school.getBoundingClientRect();
+      return { boxes: school.getClientRects().length, inCard: school.parentElement.classList.contains('sign__card'), foot: Math.round(((at.bottom - card.top) / card.height) * 100) / 100, day: document.querySelectorAll('.sign__day').length };
+    });
+    assert.equal(sign.boxes > 0, true, 'the school\'s name has a box');
+    assert.deepEqual([sign.inCard, sign.day], [true, 0]);
+    assert.ok(sign.foot > 0.9 && sign.foot <= 1, 'the school\'s name is at the foot of the card: ' + sign.foot);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
   }
 });
 

@@ -195,14 +195,22 @@ function signTree(school, room, options) {
   const teachers = (room.teacherIds || []).map((id) => school.teacher(id)).filter(Boolean);
   const subject = subjectOf(school, room, teachers);
   const big = numbered ? room.number : 'Room';
+  const day = opts.day === true;
+  // The school's name is the sheet's foot. With the room's day on the sign it
+  // comes after the day, so on a phone, where the card and the day are two
+  // boxes, it is under the periods and not at the foot of the card above
+  // them. On paper and from 640 px the card is no box at all (display:
+  // contents) and the name is last either way.
+  const foot = el('p', { class: 'sign__school', 'data-sign': 'school' }, typedName(typeof opts.school === 'string' ? opts.school : school.name));
   return el('section', { class: 'sign', 'aria-label': 'The sign' },
     el('div', { class: 'sign__card' },
       worded ? el('p', { class: 'sign__word' }, 'Room') : null,
       el('p', { class: 'sign__number', style: '--sign-fit: ' + signFit(big), 'data-sign': 'number' }, numbered ? typedName(big) : big),
       teachers.length > 0 ? el('p', { class: 'sign__teacher', 'data-sign': 'teacher' }, wordsJoined(teachers.map((teacher) => typedName(teacher.name)))) : null,
       subject ? el('p', { class: 'sign__subject', 'data-sign': 'subject' }, typedName(subject.name)) : null,
-      el('p', { class: 'sign__school', 'data-sign': 'school' }, typedName(typeof opts.school === 'string' ? opts.school : school.name))),
-    opts.day === true ? dayOf(school, room) : null);
+      day ? null : foot),
+    day ? dayOf(school, room) : null,
+    day ? foot : null);
 }
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
