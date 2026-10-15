@@ -595,21 +595,37 @@ export function createLandmarks(terrain, seed = 1337) {
     }
     // lamp posts
     for (let x = cx - 90; x <= cx + 90; x += 30) for (const s of [-1, 1]) { pb.cyl(x, dy + 3.4, z0 + s * 4.8, 0.09, 0.12, 4.6, 5, 0x333a40); wb.box(x, dy + 5.9, z0 + s * 4.8, 0.7, 0.4, 0.7, 0xffe9a0); }
-    // traffic
+    // traffic: seven cars, one InstancedMesh, one draw (HISTORY.md #978). The body is built white and
+    // takes its car's colour from instanceColor; `paint` keeps that colour off the glass, lamp and wheels.
     const carMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.4 });
-    const cars = [];
+    carMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = 'attribute float paint;\n' + sh.vertexShader.replace('#include <color_vertex>', 'vColor = color * mix(vec3(1.0), instanceColor, paint);');
+    };
+    const cb = new GeoBuilder();
+    cb.box(0, 0.7, 0, 4.4, 1.0, 1.9, 0xffffff);
+    const bodyVerts = cb.pos.length / 3;
+    cb.box(-0.2, 1.4, 0, 2.4, 0.8, 1.7, 0x9fc6e8); cb.box(2.1, 0.75, 0, 0.2, 0.3, 1.5, 0xfff2b0);
+    for (const wx of [-1.5, 1.5]) for (const wz of [-0.95, 0.95]) cb.cyl(wx, 0.35, wz, 0.35, 0.35, 0.3, 8, 0x111111, 0);
+    const carGeo = cb.build(), paint = new Float32Array(carGeo.attributes.position.count);
+    paint.fill(1, 0, bodyVerts);
+    carGeo.setAttribute('paint', new THREE.BufferAttribute(paint, 1));
+    const traffic = new THREE.InstancedMesh(carGeo, carMat, 7);
+    traffic.name = 'traffic';
+    traffic.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    traffic.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, dy + 1, z0), 103);   // the whole roadway: a car stays within cx +-98, lane +-2.1
+    group.add(traffic);
+    const cars = [], _car = new THREE.Object3D(), _cc = new THREE.Color();
     for (let i = 0; i < 7; i++) {
-      const cb = new GeoBuilder(), cc = [0xd7362b, 0x2f5fc8, 0xf2c94c, 0xf4f4f0, 0x2fa84a, 0x333a48, 0xff8a1f][i];
-      cb.box(0, 0.7, 0, 4.4, 1.0, 1.9, cc); cb.box(-0.2, 1.4, 0, 2.4, 0.8, 1.7, 0x9fc6e8); cb.box(2.1, 0.75, 0, 0.2, 0.3, 1.5, 0xfff2b0);
-      for (const wx of [-1.5, 1.5]) for (const wz of [-0.95, 0.95]) cb.cyl(wx, 0.35, wz, 0.35, 0.35, 0.3, 8, 0x111111, 0);
-      const m = new THREE.Mesh(cb.build(), carMat); group.add(m);
-      cars.push({ m, dir: i % 2 ? 1 : -1, x: cx - 100 + (i * 29) % 200, sp: 8 + (i * 3) % 6, lane: (i % 2 ? 1 : -1) * 2.1 });
+      traffic.setColorAt(i, _cc.set([0xd7362b, 0x2f5fc8, 0xf2c94c, 0xf4f4f0, 0x2fa84a, 0x333a48, 0xff8a1f][i]));
+      cars.push({ dir: i % 2 ? 1 : -1, x: cx - 100 + (i * 29) % 200, sp: 8 + (i * 3) % 6, lane: (i % 2 ? 1 : -1) * 2.1 });
     }
     updaters.push((dt) => {
-      for (const c of cars) {
+      cars.forEach((c, i) => {
         c.x += c.dir * c.sp * dt; if (c.x > cx + 98) c.x = cx - 98; if (c.x < cx - 98) c.x = cx + 98;
-        c.m.position.set(c.x, dy + 0.7, z0 + c.lane); c.m.rotation.y = c.dir > 0 ? 0 : Math.PI;
-      }
+        _car.position.set(c.x, dy + 0.7, z0 + c.lane); _car.rotation.y = c.dir > 0 ? 0 : Math.PI;
+        _car.updateMatrix(); traffic.setMatrixAt(i, _car.matrix);
+      });
+      traffic.instanceMatrix.needsUpdate = true;
     });
     info.bridge = { position: new THREE.Vector3(cx, dy, z0), length: 200, towerTop: yT };
   }
