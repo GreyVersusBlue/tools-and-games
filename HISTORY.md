@@ -1820,6 +1820,8 @@ Generator.
 
 **#973. School Generator's parapet over a curve runs on the rooms' own chords, and the deck under it is that outline.** `roofPlan`'s parapet branch asks `curvedLoopsOf` (`roofOutline`'s per-building loops read by `hasCurve`, the one test the hipped roof's skeleton already takes, which `curvedRoofs` now calls too); a mask loop whose edge cells all lie in one curved loop gives way to it, the deck rectangles whose first cell lies in it go and the loop, ear-clipped, is the deck (`deckPolys`, drawn by `render.js`). A mask loop holding cells of a curved building and of anything else (two buildings a cell apart) stays stepped; where no loop is taken the plan is the old one key for key, so no `deckPolys` key appears. The takeoff and the estimate still count a parapet roof off the mask cells: the scope allowed them to move, but counting the deck off the chords is #970's change for a second style and was left for its own session.
 
+**#974. Signal City's cone check reads the board layer alone and counts orange by proportion, not one 4-bit band.** The old check read the board drawn over the ground at 4 bits a channel and wanted red 15, green 7 to 11, blue at most 7. At School Run's 5.6 px a metre a cone is 4 px across and its white ring washes the middle to 255,189,141, outside that band, so the count was only the disc's antialiased rim: 3 pixels in Site CI, 2 on huginn, against a floor of 3. The page draws what it always meant to. The check now reads `game.canvas`, where the cones are drawn, and counts pixels at least half opaque with green 0.4 to 0.8 of red and blue at most 0.6 of it, floor 8 of the 13 a disc covers; the closure's 14% tint is the same hue and stays under the opacity floor.
+
 **#975. Reserved: #946 to #975 are held for sessions on Huginn (the Selector loop); anyone else numbers from #976.**
 
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
@@ -3135,3 +3137,14 @@ Twenty-eighth session of the audit's line TG-28, worker TG-28-parapet, under Opu
 
 **Left.** The takeoff and the estimate count a curved parapet roof off its mask cells (#970 did it for the hip only); a curved building whose mask cells touch another building's keeps a stepped parapet; every other item of the WISHLIST bullet stands.
 
+## Signal City: the cone-orange check, 2026-10-15 (TG-29)
+
+Worker TG-29-signalorange of the audit's line TG-29, under Opus 5.5 on huginn in a worktree (`sel/TG-29-signalorange`) beside one other worker (TG-28-pinch, School Generator), no subagents; decision #974. Every Signal City log from #770 on reported `test/browser.mjs` with one old failure, the first cone of School Run's taper read as not orange.
+
+**Cause.** Reproduced on `main` (e05b543): 297 checks, 1 failed, "2 orange pixels". The check is unchanged since it was written (b4edeadf, 2026-09-22) and Site CI runs the file: its run on 2026-10-15 passed the same line with 3. No commit turned it red. A full-precision read of the cone showed the page drawing as intended: a 4 px disc of #ff7a1a whose middle the white ring blends to 255,189,141, outside the check's 4-bit band, so it counted only the rim, which antialiasing makes 2 or 3 pixels depending on the machine.
+
+**The fix (#974).** `test/browser.mjs` only: the check reads the board layer and counts orange by proportion (above). It reads 13 of 13 opaque pixels on huginn. Breaks from green, one locked run each, `js/render.js` in place and put back: the cones filled #ffd21e (the beacons' yellow) read 0 orange of 13 opaque and fail the line; the cone loop drawing nothing reads 0 of 0 and fails it. That second run also failed the ground-drag pair at a load average of 11, which an earlier Signal City log saw at load 16; the final run passed them.
+
+**Also.** `Tools/board-check/README.md`'s port table had four fixed ports missing (8174 SkyWings `draws.mjs`, 8175 The Fracture Cycle, 8177 Torchbearer, 8191 Throneshard's `vfx_measure.mjs`) and five listed ports with a second user unnamed: 8127 `capture-hearth.mjs`, 8137 Daredevil's `boot()` default, 8168 `blender/validate.mjs`, 8171 Throneshard's `browser.mjs`, 8173 SkyWings' `gpu-profile.mjs`. All added; nothing renumbered. The paragraph under the table still says 8127 is doubled; it is three now.
+
+**Left.** Nothing of the cone check. The shared ports are listed, not separated.
