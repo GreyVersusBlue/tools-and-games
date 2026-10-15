@@ -372,9 +372,9 @@ and add to this list rather than starting a new one.
   and a folded ramp's top landing is not asked; a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
-  (`data.width` and `data.slope` were there since Phase 2), but
-  `designdiff.js` says nothing when a ramp's width, slope or fold changes
-  and a ramp a file made narrower than 4ft raises no finding; a ramp over 30in a run still counts as a way up on the
+  (`data.width` and `data.slope` were there since Phase 2), and the design
+  diff says when a ramp's width, slope or fold changes (#980), but a ramp a
+  file made narrower than 4ft raises no finding; a ramp over 30in a run still counts as a way up on the
   accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`
   finding names, though the finding carries its position.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
@@ -437,8 +437,8 @@ and add to this list rather than starting a new one.
   rubbing a room out from in front of a painted face takes the accent with
   it now (#964, `paintCells` asks `pruneAccents` after a rub-out; pure Node,
   no browser check drives the stroke, and the status line does not say an
-  accent came off); `duplicateFloor`
-  copies no free-standing wall, painted or not; the brush's two refusals for
+  accent came off); `duplicateFloor` copies a storey's free-standing walls,
+  faces and doorways with them (#979); the brush's two refusals for
   a free-standing wall are driven by a browser check for glass and by
   nothing for the outdoor face; nobody has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
