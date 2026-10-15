@@ -3127,4 +3127,7 @@ window.addEventListener("DOMContentLoaded",()=>App.init());
 /* Dev probe. Nothing in the page reads it; it is how a browser-driven suite
    reaches the engine now that a module script has no globals. */
 window.__torchbearer=App;
+/* The fight, for test/browser.mjs: it compares the squares lit while an area
+   is armed with what the engine's `previewCells` says for that aim. */
+window.__torchbearerCombat=Combat;
 </script></body></html>
