@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 
 import { roofOutline, hasCurve } from '../js/roof.js';
 import { arcPoints } from '../js/shapes.js';
-import { eavePolygon, cleanPolygon, skeletonRoof, triangulate } from '../js/skeleton.js';
+import { eavePolygon, cleanPolygon, skeletonRoof, triangulate, roofHeightOver } from '../js/skeleton.js';
 
 const room = (pts) => ({ rings: [{ pts: pts.map(([x, z]) => ({ x, z })), walls: [], openings: [] }] });
 const floorOf = (...rooms) => ({ shapes: rooms });
@@ -247,4 +247,52 @@ test('every face of every curved roof is cut into triangles inside it', () => {
     }
   }
   assert.ok(faces > 60);
+});
+
+// ---------- the section's height ----------
+
+// A seeded walk, so a failure names a point that can be found again.
+const rand = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+
+test('over a convex curved roof the height is the eave plus the pitch times the distance to the nearest wall line', () => {
+  // On a convex footprint every face's plane is that arithmetic, which
+  // is a fact about hips and not the skeleton's own code.
+  // Under half a circle, so the corners where the arc meets the straight
+  // walls still turn the same way and the footprint is convex.
+  for (const s of [bowed(0.4, 12), bowed(0.45, 32), bowed(0.05, 2)]) {
+    const eave = eavePolygon(P(s), 1.5);
+    const roof = skeletonRoof(eave, 12, 6);
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of eave) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+    let n = 0;
+    for (let k = 0; k < 400; k++) {
+      const x = x0 + (x1 - x0) * rand(), z = z0 + (z1 - z0) * rand();
+      const y = roofHeightOver(roof.faces, x, z);
+      if (!inPoly(eave, x, z)) { if (y !== null) assert.ok(Math.abs(y - 12) < 1e-6, 'only the eave line itself is on it'); continue; }
+      let d = Infinity;
+      for (let i = 0; i < eave.length; i++) d = Math.min(d, -lineDist(eave[i], eave[(i + 1) % eave.length], { x, z }));
+      assert.ok(Math.abs(y - (12 + (6 / 12) * d)) < 1e-6, `(${x}, ${z}): ${y} against ${12 + d / 2}`);
+      n++;
+    }
+    assert.ok(n > 150, 'enough of the points fell on the roof');
+  }
+});
+
+test('over a non-convex curved roof the height is each face\'s plane, continuous across every hip and valley', () => {
+  const s = [[0, 0], [60, 0], ...arcPoints({ x: 60, z: 0 }, { x: 60, z: 40 }, -0.5, 24).slice(1, -1).map((p) => [p.x, p.z]),
+    [60, 40], [40, 40], [40, 20], [20, 20], [20, 40], [0, 40]];
+  const roof = skeletonRoof(eavePolygon(P(s), 1.5), 12, 4);
+  for (const f of roof.faces) {
+    // Every corner of a face sits on its own plane...
+    for (const p of f.pts) assert.ok(Math.abs(roofHeightOver([f], p.x, p.z) - p.y) < 1e-6);
+    // ...and a point inside it, nudged along a side, reads the same from either face that side borders.
+    for (let i = 0; i < f.pts.length; i++) {
+      const a = f.pts[i], b = f.pts[(i + 1) % f.pts.length];
+      const m = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+      const y = roofHeightOver(roof.faces, m.x, m.z);
+      assert.ok(Math.abs(y - (a.y + b.y) / 2) < 1e-6, `face ${f.edge} side ${i}: ${y} against ${(a.y + b.y) / 2}`);
+    }
+  }
+  assert.equal(roofHeightOver(roof.faces, 30, 35), null, 'the courtyard of the U is not under the roof');
+  assert.equal(roofHeightOver(roof.faces, -10, 10), null);
 });

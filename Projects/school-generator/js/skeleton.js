@@ -461,6 +461,36 @@ export function triangulate(pts) {
   return backward ? tris.map(([a, b, c]) => [c, b, a]) : tris;
 }
 
+// The height of a skeleton roof over one point of the plan, for the section:
+// the plane of the face the point lies in (or on the edge of), read off the
+// face itself (its eave and the point of it furthest from the eave), so it
+// needs no pitch passed in. Null outside every face.
+export function roofHeightOver(faces, x, z) {
+  let best = null, bestD = Infinity;
+  for (const f of faces) {
+    const pts = f.pts;
+    let inside = false, d = Infinity;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      const s = L2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L2)) : 0;
+      d = Math.min(d, Math.hypot(a.x + dx * s - x, a.z + dz * s - z));
+    }
+    if (inside) d = 0;
+    if (d < bestD) { bestD = d; best = f; }
+  }
+  if (!best || bestD > 1e-6) return null;
+  const [a, b] = best.pts;
+  const L = Math.hypot(b.x - a.x, b.z - a.z);
+  const inward = (p) => ((b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x)) / L;
+  // Any corner off the eave gives the face's slope; the furthest gives it with
+  // the least rounding.
+  let far = a, farD = 0;
+  for (const p of best.pts) if (inward(p) > farD) { farD = inward(p); far = p; }
+  return a.y + ((far.y - a.y) / farD) * inward({ x, z });
+}
+
 // The hipped roof over a polygon: every edge an eave at `eaveY`, every face a
 // plane rising at `pitch` in 12. Faces come back in blockRoof's shape
 // ({ kind: 'slope', pts: [{ x, y, z }] }, counter-clockwise in (x, z), the
