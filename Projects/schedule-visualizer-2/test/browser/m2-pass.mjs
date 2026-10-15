@@ -1581,7 +1581,8 @@ test('SV2-50 item 5: in the group editor a room with no number is not picked by 
     });
     await typeOver(p, field, teacher.split(' ').pop());
     await p.keyboard.press('Tab');
-    await shows(p, (n) => globalThis.sv2.store.project.groups[0].days.dsample00a[2].room === n, 'rsample103');
+    await shows(p, (selector) => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector(selector).value !== 'with', field);
+    assert.deepEqual(await stored(p, A6, DAY_A, 2), { room: 'rsample103', roomText: '' }, 'its teacher\'s name did not pick the room with no number');
   });
 });
 
