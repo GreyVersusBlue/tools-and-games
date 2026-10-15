@@ -566,6 +566,9 @@ if(typeof window !== 'undefined'){
     // game did changed; a test that sets state.day by hand to reach a row
     // gated on the day needs to ask for the repaint itself.
     renderAll,
+    // The Menu Board's rows as a fresh build writes them, which the page check
+    // holds the patched board to (#968).
+    chalkboardHtml: () => chalkboard.html(),
     queueMax: sim.queueMax,
     slot: saveSlot, catalog: CATALOG, sim,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,

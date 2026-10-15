@@ -1424,7 +1424,7 @@ try {
   /* ---------- 17. the Menu Board keeps the keyboard ---------- */
   // Everything under the pace switch was written as one innerHTML on every
   // redraw, so a player who had tabbed to a button lost it to the next sale
-  // and the next Tab started again from the top of the page (#967). The board
+  // and the next Tab started again from the top of the page (#968). The board
   // is now patched in place: a button that does the same thing as before is
   // the same element, with its focus, its place in the tab order and its name.
   // The DOM is the assertion (#39), and what the board shows is held to a
@@ -1432,7 +1432,7 @@ try {
 
   focus: {
   if (ONLY_A11Y || ONLY_PACE) break focus;
-  t.section('17. the Menu Board keeps the keyboard across a redraw (#967)');
+  t.section('17. the Menu Board keeps the keyboard across a redraw (#968)');
   const fp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(fp, { wipe: true });
   await fp.evaluate(() => { window.confirm = () => true; });
@@ -1533,6 +1533,21 @@ try {
   t.ok(s1.same && s1.working && /^Working/.test(s1.text), 'Enter again calls them back in, on the same button', s1.text);
   f = await faithful();
   t.ok(f.same, 'and the board is still exactly a fresh build', f.why);
+
+  // A button whose purchase changed is a new element, so Enter held down
+  // cannot buy the next station on the strength of having bought this one.
+  const st = await fp.evaluate(() => {
+    const b = document.querySelector('#chalkContent [data-unlock-station]'); b.__st = true; b.focus();
+    return { slots: window.__CK_DEBUG__.state.slots.length, was: b.dataset.unlockStation };
+  });
+  await fp.keyboard.press('Enter');
+  await wait(150);
+  const st2 = await fp.evaluate(() => {
+    const a = document.activeElement, n = document.querySelector('#chalkContent [data-unlock-station]');
+    return { slots: window.__CK_DEBUG__.state.slots.length, kept: !!(a && a.__st), next: n ? n.dataset.unlockStation : null, nextOld: !!(n && n.__st) };
+  });
+  t.ok(st2.slots === st.slots + 1 && st2.next !== st.was, 'Enter on a station unlock buys it and the row offers the next one', `${st.slots} -> ${st2.slots} slots, button ${st.was} -> ${st2.next}`);
+  t.ok(!st2.kept && !st2.nextOld, 'on a new button, not the one the keyboard pressed', `kept ${st2.kept}`);
 
   // Real play: a shift running for two seconds redraws the board as it likes.
   await fp.evaluate(() => { document.querySelector('#chalkContent [data-schedule-barista]').focus(); });
