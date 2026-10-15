@@ -347,6 +347,16 @@ test('the sign does not count short: a keycap, an emoji-form mark after a narrow
     ['\u{18AFF}', 2, 'a Tangut component'],
     ['\u{1B000}', 2, 'a kana supplement, U+1B000'],
     ['\u{1B2FF}', 2, 'U+1B2FF'],
+    // flag letters pair with each other and nothing else
+    ['\u{1F1EC}\u200D\u{1F1E7}', 4, 'a joiner parts two flag letters'],
+    ['\u{1F1EC}\u{1F3FD}\u{1F1E7}', 6, 'a skin tone between two flag letters is a square, and parts them'],
+    // a symbol joined to a picture and asked for in its text form stands beside it
+    ['\u{1F469}\u200D\u2764\uFE0E', 3, 'a person, a joiner and a heart in its text form'],
+    ['\u{1F469}\u200D\u2764\uFE0F\u200D\u{1F468}', 2, 'the couple with a heart is one picture'],
+    // marks that are not drawn
+    ['2\u00AD04', 3, 'a soft hyphen'],
+    ['\u200F204', 3, 'a right-to-left mark'],
+    ['\u2067204\u2069', 3, 'a direction isolate'],
   ];
   for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
   assert.equal(signFit('1\uFE0F\u20E3'.repeat(4)), 7 / 8, 'four keycaps are eight wide, set smaller');

@@ -31,11 +31,12 @@ const WIDE = [
   [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe10, 0xfe19], [0xfe30, 0xfe4f], [0xfe50, 0xfe6b], [0xff00, 0xff60], [0xffe0, 0xffe6],
   [0x16fe0, 0x16fe4], [0x17000, 0x18d8f], [0x1b000, 0x1b2ff], [0x1f000, 0x1f2ff], [0x1f300, 0x1faff], [0x20000, 0x3fffd],
 ];
-// What takes no room of its own: the spaces and marks that are not drawn,
-// the marks that choose between forms of the character before (U+FE0F is
-// the one that can widen it, below), and the tags that spell out a flag's
-// region after a black flag.
-const NONE = [[0x200b, 0x200c], [0x2060, 0x2060], [0xfe00, 0xfe0f], [0xfeff, 0xfeff], [0xe0020, 0xe007f]];
+// What takes no room of its own: the spaces and marks that are not drawn
+// (the soft hyphen, on a number that is one line, and the marks that set the
+// direction of text), the marks that choose between forms of the character
+// before (U+FE0F is the one that can widen it, below), and the tags that
+// spell out a flag's region after a black flag.
+const NONE = [[0xad, 0xad], [0x200b, 0x200c], [0x200e, 0x200f], [0x202a, 0x202e], [0x2060, 0x2060], [0x2066, 0x2069], [0xfe00, 0xfe0f], [0xfeff, 0xfeff], [0xe0020, 0xe007f]];
 // An accent, a vowel sign or a ring that sits on, under or around the
 // character before it: every nonspacing and enclosing mark, in any script.
 const MARK = /^[\p{Mn}\p{Me}]$/u;
@@ -43,8 +44,9 @@ const MARK = /^[\p{Mn}\p{Me}]$/u;
 const FLAG = [[0x1f1e6, 0x1f1ff]];
 // The symbols that are narrow when their plain, text form is asked for.
 const SYMBOLS = [[0x2190, 0x2bff]];
-// The pictures a joiner can join, and a skin tone can colour.
-const PICTURE = [[0x2600, 0x27bf], [0x1f000, 0x1ffff]];
+// The pictures a joiner can join, and a skin tone can colour: not the
+// letters of a flag, which only pair with each other.
+const PICTURE = [[0x2600, 0x27bf], [0x1f000, 0x1f1e5], [0x1f200, 0x1ffff]];
 // The five skin tones: none after a picture, a square of colour anywhere else.
 const TONE = [[0x1f3fb, 0x1f3ff]];
 // Hangul written in parts: a leading consonant opens a square, a vowel after
@@ -80,15 +82,29 @@ export function signWidth(text) {
   let toned = false; // and it has its skin tone already
   let joining = false; // a joiner stands after a picture
   let flag = false; // the character before is the first letter of a flag
+  let joinedPoint = 0; // the picture a joiner just drew into the one before
   for (const character of String(text)) {
     const point = character.codePointAt(0);
     const before = previous;
     previous = point;
+    const unjoined = joinedPoint;
+    joinedPoint = 0;
     if (point === JOINER) {
       joining = picture && before !== JOINER;
+      // a joiner parts two flag letters: they are two letters, not a flag
+      flag = false;
       continue;
     }
     if (point === AS_TEXT) {
+      // a symbol joined to the picture before, asked for in its text form, is
+      // not drawn into it: it stands beside it, narrow
+      if (unjoined !== 0 && within(SYMBOLS, unjoined)) {
+        width += 1;
+        last = 1;
+        lastPoint = unjoined;
+        picture = false;
+        continue;
+      }
       if (last === 2 && within(SYMBOLS, lastPoint)) {
         width -= 1;
         last = 1;
@@ -113,6 +129,7 @@ export function signWidth(text) {
     if (joined) {
       flag = false;
       toned = false;
+      joinedPoint = point;
       continue;
     }
     const second = flag && within(FLAG, point);
