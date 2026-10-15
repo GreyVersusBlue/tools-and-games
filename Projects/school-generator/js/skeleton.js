@@ -389,6 +389,39 @@ export function straightSkeleton(input, opts = {}) {
   return { poly, nodes: outNodes, arcs: outArcs, faces };
 }
 
+// The eave line: the polygon pushed `d` feet outward, every edge parallel to
+// its own wall and every corner mitred, which is how a fascia board runs round
+// a building and also exactly where the straight skeleton's wavefront would be
+// at time -d, so the roof stood on it is the same roof carried out over the
+// overhang. Corners come back one for one with `poly` after `cleanPolygon`.
+//
+// The stated limit: an outward offset closes up a concave run (a curve bowed
+// into the building, a notch), and once `d` is more than such a run can give,
+// an edge turns end for end or the line crosses itself. Both are refused, as
+// null, and the caller keeps the rectangles (#967); nothing is trimmed or
+// patched into a roof that is quietly not what was drawn.
+export function eavePolygon(input, d) {
+  const poly = cleanPolygon(input);
+  if (!poly || !(d >= 0)) return null;
+  const n = poly.length;
+  const normal = (i) => {
+    const a = poly[i], b = poly[(i + 1) % n];
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    return { x: (b.z - a.z) / L, z: -(b.x - a.x) / L };
+  };
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const n1 = normal((i - 1 + n) % n), n2 = normal(i);
+    const k = 1 + n1.x * n2.x + n1.z * n2.z;
+    out.push(P2(poly[i].x + (d * (n1.x + n2.x)) / k, poly[i].z + (d * (n1.z + n2.z)) / k));
+  }
+  // A run turned end for end always crosses its neighbours, so one test for a
+  // simple polygon catches both (a corner that turns straight back has k of 0,
+  // and the infinite point it gives fails the same test).
+  const clean = cleanPolygon(out);
+  return clean ? out : null;
+}
+
 // The hipped roof over a polygon: every edge an eave at `eaveY`, every face a
 // plane rising at `pitch` in 12. Faces come back in blockRoof's shape
 // ({ kind: 'slope', pts: [{ x, y, z }] }, counter-clockwise in (x, z), the

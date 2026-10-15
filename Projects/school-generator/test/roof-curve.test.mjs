@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 
 import { roofOutline, hasCurve } from '../js/roof.js';
 import { arcPoints } from '../js/shapes.js';
+import { eavePolygon, cleanPolygon } from '../js/skeleton.js';
 
 const room = (pts) => ({ rings: [{ pts: pts.map(([x, z]) => ({ x, z })), walls: [], openings: [] }] });
 const floorOf = (...rooms) => ({ shapes: rooms });
@@ -124,4 +125,52 @@ test('a diagonal wall drawn as two collinear pieces is one wall, not a curve', (
   const o = roofOutline(floorOf(room([[0, 0], [40, 0], [30, 10], [20, 20], [0, 20]])));
   assert.equal(o.loops[0].length, 4);
   assert.equal(hasCurve(o.loops[0]), false);
+});
+
+// ---------- the eave ----------
+
+const P = (a) => a.map(([x, z]) => ({ x, z }));
+const lineDist = (a, b, p) =>
+  ((p.x - a.x) * (b.z - a.z) - (p.z - a.z) * (b.x - a.x)) / Math.hypot(b.x - a.x, b.z - a.z);
+
+test('the eave of a rectangle is the rectangle 1.5ft bigger all round', () => {
+  const e = eavePolygon(P([[0, 0], [40, 0], [40, 20], [0, 20]]), 1.5);
+  assert.deepEqual(e.map((p) => [p.x, p.z]), [[-1.5, -1.5], [41.5, -1.5], [41.5, 21.5], [-1.5, 21.5]]);
+});
+
+test('every eave edge runs parallel to its wall, 1.5ft outside it, round a curve too', () => {
+  for (const pts of [bowed(0.4, 12), bowed(0.9, 32), bowed(-0.2, 8), bowed(0.05, 2)]) {
+    const poly = cleanPolygon(P(pts));
+    const e = eavePolygon(poly, 1.5);
+    assert.ok(e, `bulge ${pts.length}`);
+    assert.equal(e.length, poly.length);
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      // Outward is the right-hand side of a wall walked counter-clockwise,
+      // which `lineDist` counts positive.
+      assert.ok(Math.abs(lineDist(a, b, e[i]) - 1.5) < 1e-9, `edge ${i} start`);
+      assert.ok(Math.abs(lineDist(a, b, e[(i + 1) % e.length]) - 1.5) < 1e-9, `edge ${i} end`);
+    }
+    assert.ok(Math.abs(area(e)) > Math.abs(area(poly)), 'outward, not inward');
+    assert.ok(cleanPolygon(e), 'and still a simple polygon');
+  }
+});
+
+test('a curve bowed into the building tighter than the eave is refused, a looser one is not', () => {
+  // A 40 by 24 room whose east wall is pushed in by a semicircle of radius r.
+  const dented = (r, steps = 16) => {
+    const arc = arcPoints({ x: 40, z: 12 - r }, { x: 40, z: 12 + r }, 0.5, steps);
+    return P([[0, 0], [40, 0], ...arc.map((p) => [p.x, p.z]), [40, 24], [0, 24]]);
+  };
+  assert.ok(cleanPolygon(dented(1)), 'the room itself is fine');
+  assert.equal(eavePolygon(dented(1), 1.5), null, 'r 1ft under a 1.5ft eave');
+  assert.equal(eavePolygon(dented(1.4), 1.5), null, 'r 1.4ft');
+  assert.ok(eavePolygon(dented(4), 1.5), 'r 4ft');
+  assert.ok(eavePolygon(dented(10), 1.5), 'r 10ft');
+});
+
+test('a notch narrower than two eaves closes up and is refused', () => {
+  const notch = (w) => P([[0, 0], [40, 0], [40, 10], [20 + w / 2, 10], [20 + w / 2, 4], [20 - w / 2, 4], [20 - w / 2, 10], [0, 10]]);
+  assert.equal(eavePolygon(notch(2), 1.5), null);
+  assert.ok(eavePolygon(notch(4), 1.5));
 });
