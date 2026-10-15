@@ -78409,8 +78409,10 @@ function skeletonRoofsOf(state, roof = null) {
 // path its cells give way to the loop's own area off its chords, so a curve
 // is counted as drawn and not as a staircase of 4ft cells. Every face of a
 // skeleton roof stands at the one pitch, so its sloped area over that outline
-// is still the plan area over the cosine. Every other footprint is the mask's
-// count, by the same lines the takeoff and the estimate each had before (#970).
+// is still the plan area over the cosine. A parapet roof whose parapet runs on
+// the chords (`roofPlan`'s `deckPolys`, #973's one test) is counted off that
+// same outline, flat (#986). Every other footprint is the mask's count, by the
+// same lines the takeoff and the estimate each had before (#970).
 function roofCover(state) {
   const top = state.floors.length - 1;
   const floor = state.floors[top];
@@ -78421,19 +78423,23 @@ function roofCover(state) {
   let footprint = maskCount(mask) * CELL * CELL;
   const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
   const curved = skeletonRoofsOf(state, roof);
-  if (curved.length) {
+  // Only a parapet plan has `deckPolys`; the style test saves building the
+  // plan for every other roof and changes no figure.
+  const chords = roof.style === 'parapet' ? (roofPlan(state, roof).deckPolys || []) : [];
+  const loops = [...curved.map((k) => k.outline), ...chords.map((d) => d.pts)];
+  if (loops.length) {
     let cells = 0;
     for (let r = 0; r < mask.h; r++) {
       for (let c = 0; c < mask.w; c++) {
         if (!mask.on[r * mask.w + c]) continue;
         const x = (mask.cx0 + c + 0.5) * CELL, z = (mask.cy0 + r + 0.5) * CELL;
-        if (curved.some((k) => pointInRing(k.outline, x, z))) cells++;
+        if (loops.some((loop) => pointInRing(loop, x, z))) cells++;
       }
     }
     footprint -= cells * CELL * CELL;
-    for (const k of curved) footprint += loopArea(k.outline);
+    for (const loop of loops) footprint += loopArea(loop);
   }
-  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length };
+  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length, chords: chords.length };
 }
 
 // ---------- 5. the true outline, for a roof over a curve ----------

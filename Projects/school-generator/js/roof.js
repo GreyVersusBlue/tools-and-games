@@ -514,6 +514,8 @@ export function roofCover(state) {
   let footprint = maskCount(mask) * CELL * CELL;
   const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
   const curved = skeletonRoofsOf(state, roof);
+  // Only a parapet plan has `deckPolys`; the style test saves building the
+  // plan for every other roof and changes no figure.
   const chords = roof.style === 'parapet' ? (roofPlan(state, roof).deckPolys || []) : [];
   const loops = [...curved.map((k) => k.outline), ...chords.map((d) => d.pts)];
   if (loops.length) {

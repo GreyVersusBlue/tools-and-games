@@ -124,6 +124,15 @@ test('only the hipped style takes the skeleton beside a courtyard', () => {
   for (const style of ['gable', 'parapet', 'flat']) {
     const s = school({ style });
     assert.equal(skeletonRoofsOf(s).length, 0, style);
-    assert.equal(roofCover(s).footprint, maskFootprint(s), style);
+    if (style !== 'parapet') {
+      assert.equal(roofCover(s).footprint, maskFootprint(s), style);
+      continue;
+    }
+    // The parapet runs on the curved building's chords (#973), and the
+    // takeoff counts it off them too (#986): off the mask, on the plan's loops.
+    const cover = roofCover(s);
+    assert.equal(cover.chords, roofPlan(s).deckPolys.length);
+    assert.equal(cover.chords, 1);
+    assert.notEqual(cover.footprint, maskFootprint(s));
   }
 });
