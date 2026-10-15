@@ -1708,6 +1708,21 @@ select.field__input {
     background: #ffffff;
   }
 
+  /* With the room's day on the sign the card is not the sheet: the card, the
+     day and the school's line under it are, read as one paper. In the
+     sheet's shape the card stood 280 px of empty paper above the periods at
+     390 px (SV2-53 item 6); it is as tall as the number, the teacher and the
+     subject. */
+  .sign__card:has(+ .sign__day) {
+    aspect-ratio: auto;
+  }
+
+  /* The school's line is read on a phone, not measured off a sheet: 2.3% of
+     a card 356 px wide was 8 px (SV2-53 item 6). */
+  .sign__school {
+    font-size: var(--t-sm);
+  }
+
   .sign__day {
     flex-direction: column;
     flex-wrap: nowrap;
