@@ -370,8 +370,11 @@ and add to this list rather than starting a new one.
   room for it is a `ramp-landing` warning that moves nothing (#904), and it
   is drawn as a deck at the floor above (#981), as a stair's 4ft one is
   (#983), and a floor-standing prop or a door leaf sweeping into it is a
-  `ramp-landing` reason too (#984), but a folded ramp's top landing is not
-  asked, and a prop or a swing in a stair's landing is not; a ramp's width and slope
+  `ramp-landing` reason too (#984); a folded ramp's top landing is asked
+  the same five questions by the same lines, at its own open end (#985),
+  and was always drawn and walked (#825), but its turn landings are not
+  asked (they stand between storeys, on no floor), and a prop or a swing in
+  a stair's landing is not; a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
   (`data.width` and `data.slope` were there since Phase 2), and the design
