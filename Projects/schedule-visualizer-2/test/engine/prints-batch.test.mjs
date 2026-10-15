@@ -48,7 +48,7 @@ function sheetsOf(html) {
 
 // The body rows of each table on a sheet: [[[cell text, …], …], …], tags taken out.
 function tablesOf(sheet) {
-  return Array.from(sheet.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr>([\s\S]*?)<\/tr>/g))
+  return Array.from(sheet.matchAll(/<tbody[^>]*>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g))
     .map((row) => Array.from(row[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)).map((cell) => cell[1].replace(/<span class="batch-day__time">[\s\S]*?<\/span>/, '').replace(/<[^>]+>/g, ''))));
 }
 

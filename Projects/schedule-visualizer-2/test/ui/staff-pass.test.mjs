@@ -21,6 +21,10 @@ import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
 import { directionsView } from '../../staff/views/directions.js';
+import { hooks as sectionHooks, facts } from '../../ui/staff/index.js';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { noteCountOf } from '../../staff/notes.js';
 import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
@@ -242,6 +246,37 @@ test('once the file is out, Publish asks for no checks itself: update() does, fo
   const after = form.slice(form.indexOf('// From here the file is out'), form.indexOf('  button.addEventListener(\'click\', publish);'));
   assert.ok(after.length > 200, 'the part of publish() after the file goes out was found');
   assert.doesNotMatch(after, /askChecks\(/);
+});
+
+// ---------------------------------------------------------------- the section's hooks and first line (SV2-51 item 10)
+
+test('the test hooks are declared, null, and nothing in the page sets them', () => {
+  assert.deepEqual(Object.keys(sectionHooks).sort(), ['assembled', 'deliver', 'made', 'published']);
+  assert.equal(sectionHooks.assembled, null);
+  assert.equal(sectionHooks.deliver, null);
+  const tool = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const setters = [];
+  for (const folder of ['ui', 'staff', 'engine', 'storage']) {
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const at = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(at);
+        else if (entry.name.endsWith('.js') && /hooks\.(assembled|deliver)\s*=[^=]/.test(readFileSync(at, 'utf8'))) setters.push(path.relative(tool, at));
+      }
+    };
+    walk(path.join(tool, folder));
+  }
+  assert.deepEqual(setters, [], 'a module of the page sets a test hook');
+});
+
+test('the section\'s first line after a file the project did not note: read-only says so, and a refusal in an editing tab says the project could not record it', () => {
+  const project = school();
+  const readOnly = facts(project, 'read-only');
+  const refused = facts(project, 'refused');
+  assert.match(readOnly, /^This tab made a file just now\. The project does not record it while the tab is read-only\. It has /);
+  assert.match(refused, /^This tab made a file just now\. The project could not record it\. It has /);
+  assert.doesNotMatch(refused, /read-only/);
+  assert.match(facts(project, null), /^No file has been made from this project yet\. /);
 });
 
 // ---------------------------------------------------------------- the step-free refusal's routes (SV2-51 item 4)

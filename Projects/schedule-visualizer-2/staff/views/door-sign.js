@@ -201,8 +201,12 @@ function dayOf(school, room) {
     const bells = school.bells(kind.first.id);
     return el('section', { class: 'sign__kind' },
       el('h2', { class: 'sign__kindname' }, namesListed(kind.dayTypes.map((dayType) => dayType.name))),
-      el('table', { class: 'sign__table' },
-        el('tbody', null, uses.get(kind.first.id).map((here, period) => {
+      // The table names its roles itself: on a phone its rows are stacked
+      // lines (display: grid), and a browser may then read it as no table at
+      // all. Chromium keeps a table's roles either way (measured); WebKit has
+      // dropped them before and is not measured here.
+      el('table', { class: 'sign__table', role: 'table' },
+        el('tbody', { role: 'rowgroup' }, uses.get(kind.first.id).map((here, period) => {
           const bell = bells[period];
           const who = [];
           for (const use of here) {
@@ -210,11 +214,11 @@ function dayOf(school, room) {
               if (!who.some((each) => each.id === teacher.id)) who.push(teacher);
             }
           }
-          return el('tr', null,
-            el('th', { scope: 'row' }, school.periodName(period)),
-            el('td', null, bell && bell.start && bell.end ? school.time(bell.start) + ' to ' + school.time(bell.end) : ''),
-            el('td', null, here.length === 0 ? 'Empty' : namesListed(here.map((use) => use.group.name))),
-            el('td', null, namesListed(who.map((teacher) => teacher.name))));
+          return el('tr', { role: 'row' },
+            el('th', { scope: 'row', role: 'rowheader' }, school.periodName(period)),
+            el('td', { role: 'cell' }, bell && bell.start && bell.end ? school.time(bell.start) + ' to ' + school.time(bell.end) : ''),
+            el('td', { role: 'cell' }, here.length === 0 ? 'Empty' : namesListed(here.map((use) => use.group.name))),
+            el('td', { role: 'cell' }, namesListed(who.map((teacher) => teacher.name))));
         }))));
   }));
 }

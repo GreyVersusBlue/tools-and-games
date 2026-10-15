@@ -1369,6 +1369,24 @@ test('the file went out and the project then would not record it: the status say
     assert.ok(!/nothing was published/i.test(status), status);
     assert.equal((await project(page)).publish.lastPublishedAt, null);
     assert.notEqual(await page.evaluate(() => document.querySelector('.stf').staff.hooks.published), null);
+    // and the section's first line says the same, not that the tab is read-only (SV2-51 item 10)
+    const first = await page.evaluate(() => document.querySelector('.stf-facts').textContent);
+    assert.match(first, /^This tab made a file just now\. The project could not record it\. It has /);
+    assert.doesNotMatch(first, /read-only/);
+  });
+});
+
+// SV2-51 item 10. The section left while its file was being made: the form is
+// stopped, and the file is not handed over (no download starts on a screen
+// the reader has left), nor is the publish noted.
+test('the section is left while the file is being made: nothing is handed over and nothing is noted', async () => {
+  await closing(await open(), async (page) => {
+    await pressAndHold(page);
+    await go(page, '#building');
+    const out = await letGo(page);
+    assert.equal(out.made, false, 'publish() gave no file');
+    assert.equal(out.publishedAt, undefined, 'deliver was never called');
+    assert.equal((await project(page)).publish.lastPublishedAt, null, 'the project does not note a file that was not handed over');
   });
 });
 

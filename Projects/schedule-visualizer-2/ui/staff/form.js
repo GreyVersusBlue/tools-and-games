@@ -19,7 +19,14 @@
 // `hooks.deliver(published)`, when a test sets it, takes the file instead of
 // the download; `hooks.published` is the last file made. `hooks.assembled`,
 // when a test sets it, is awaited between the file being made and its being
-// handed over, so a case can change the project in that gap.
+// handed over, so a case can change the project in that gap. Nothing in the
+// page sets either (ui/staff/index.js declares them null). `hooks.made(
+// published, noted)` is the section's: `noted` is true, or the sentence
+// saying why the project does not record the file.
+//
+// A form stopped while its file was being made (the section left) hands
+// nothing over: a download that starts after the reader has gone elsewhere
+// is not one they asked for.
 
 import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
@@ -329,6 +336,7 @@ export function publishForm(ctx, hooks) {
       says.textContent = 'Putting the file together.';
       const published = await publishDocument(pageReader(), project, { clock: ctx.clock, random: deviceRandom() });
       if (typeof hooks.assembled === 'function') await hooks.assembled(published);
+      if (stopped) return null;
       hooks.published = published;
       const delivered = typeof hooks.deliver === 'function' ? hooks.deliver(published) : fileTarget.deliver(published);
       const size = delivered && typeof delivered.bytes === 'number' ? ' (' + kilobytes(delivered.bytes) + ')' : '';
@@ -356,7 +364,7 @@ export function publishForm(ctx, hooks) {
       // of the publish, reached update(), which asked; in a read-only tab
       // the store refuses every change, so the project on screen is the one
       // checksStand asked about (SV2-51).
-      if (typeof hooks.made === 'function') hooks.made(published, noted === true);
+      if (typeof hooks.made === 'function') hooks.made(published, noted);
       return published;
     } catch (error) {
       console.warn('Schedule Visualizer 2: the file could not be made.', error);

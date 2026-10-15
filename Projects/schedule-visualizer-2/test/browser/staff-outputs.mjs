@@ -73,7 +73,7 @@ const CJK_SEVEN = '東京第一体育館';
 
 // The rows of each day table in a sign's markup, tags taken out.
 function rowsOf(markup) {
-  return Array.from(markup.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr>([\s\S]*?)<\/tr>/g))
+  return Array.from(markup.matchAll(/<tbody[^>]*>([\s\S]*?)<\/tbody>/g)).map((table) => Array.from(table[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g))
     .map((row) => Array.from(row[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)).map((cell) => cell[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&'))));
 }
 
@@ -862,6 +862,42 @@ test('a name and the comma after it are never parted at a line\'s end: on a phon
         for (const sheet of Array.from(document.querySelectorAll('[data-sheet="door"]'))) if (sheet.dataset.id !== 'rsample101') sheet.remove();
       });
       assert.deepEqual(await commasParted(page), [], 'the batch on ' + size + ': a comma begins a line');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// SV2-51 item 10. On a phone the sign's day is stacked lines, not a table
+// that scrolls (SV2-49), and its rows are display: grid. A screen reader
+// still meets a table with a row header for each period: Chromium keeps the
+// roles of a table whose display changed (measured here), and the markup
+// names them itself for a browser that would not (WebKit has dropped them).
+test('on a phone the sign\'s day is still a table to a screen reader: a row header for each period, and the cells beside it', async () => {
+  for (const width of [390, 1280]) {
+    const session = await openPage({ width, height: 844 });
+    try {
+      const { page } = session;
+      await goto(page, files.open.url + '#/door/rsample101?day=1');
+      const stacked = await page.evaluate(() => getComputedStyle(document.querySelector('.sign__table tr')).display);
+      assert.equal(stacked, width === 390 ? 'grid' : 'table-row', width + ' px');
+      const tree = await page.accessibility.snapshot({ root: await page.$('.sign__table'), interestingOnly: false });
+      const rows = [];
+      const walk = (node) => {
+        if (node.role === 'row') rows.push((node.children || []).filter((child) => child.role === 'rowheader' || child.role === 'cell').map((child) => child.role + ' ' + child.name));
+        (node.children || []).forEach(walk);
+      };
+      walk(tree);
+      assert.equal(tree.role, 'table', width + ' px');
+      assert.equal(rows.length, 8, width + ' px: a row a period');
+      assert.deepEqual(rows.map((row) => row[0]), Array.from({ length: 8 }, (_, at) => 'rowheader Period ' + (at + 1)), width + ' px');
+      assert.deepEqual(rows[1].slice(1, 3), ['cell 8:52 AM to 9:40 AM', 'cell 8B'], width + ' px');
+      const named = await page.evaluate(() => {
+        const table = document.querySelector('.sign__table');
+        return [table.getAttribute('role'), table.querySelector('tbody').getAttribute('role'), table.querySelector('tr').getAttribute('role'), table.querySelector('th').getAttribute('role'), table.querySelector('td').getAttribute('role')];
+      });
+      assert.deepEqual(named, ['table', 'rowgroup', 'row', 'rowheader', 'cell'], 'the markup names the roles itself');
       assert.deepEqual(session.errors, []);
     } finally {
       await session.close();
