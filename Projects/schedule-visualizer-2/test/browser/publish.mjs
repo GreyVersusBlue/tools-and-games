@@ -1598,6 +1598,78 @@ test('a preview whose page opened and could not be given its data keeps the sent
   });
 });
 
+// SV2-51 item 7. The frame is given the last copy that could be made; while a
+// later one could not be, the preview does not follow the project. Until
+// SV2-51 a page that asked again then (here the frame reloaded) was answered
+// with the old copy and the sentence turned to "It follows the project as you
+// change it.", which was false.
+test('while the preview could not be brought up to date, a page that asks again is given the last copy and the sentence that says why stays', async () => {
+  await closing(await open(), async (page) => {
+    await frameOf(page).waitForFunction(() => document.getElementById('app').dataset.state === 'open', { timeout: 30000 });
+    // no encryption: the locked copy the tick asks for cannot be made
+    await page.evaluate(() => {
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined });
+      document.querySelector('.stf-bar .stf-check input').click();
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
+    const stale = 'The preview could not be brought up to date. ' + NO_ENCRYPTION;
+    assert.equal(await says(page, 'preview'), stale);
+    const sent = await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent);
+    // the frame's page starts again and asks for its data
+    await page.evaluate(() => document.querySelector('.stf-frame').contentWindow.location.reload());
+    await page.waitForFunction((before) => document.querySelector('.stf').staff.preview.state.sent > before, { timeout: 30000 }, sent);
+    assert.equal(await says(page, 'preview'), stale, 'the old copy went to the page, and the preview does not claim to follow the project');
+    assert.equal(await page.evaluate(() => document.querySelector('.stf-preview').dataset.previewSays), 'stale');
+    // with encryption back, the next change is followed and said to be
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === undefined, { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelector('[data-says="preview"]').textContent.endsWith('It follows the project as you change it.'), { timeout: 30000 });
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
+  });
+});
+
+// SV2-51 item 7. A page that asks after the 20 s ran out has opened after
+// all. With a copy to give it the sentence was put right before; with none
+// (the copy could not be made) "has not opened" and "Try again" stayed beside
+// a page that had opened.
+test('a page that asks after the wait ran out clears "has not opened" and "Try again", and says why there is nothing to show', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      // the page the frame is given does not ask for its data in time: a blank page
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => create(blob.type.startsWith('text/html') ? new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }) : blob);
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined });
+      location.hash = '#staff';
+      await new Promise((resolve) => {
+        const look = () => {
+          const box = document.querySelector('.stf-bar .stf-check input');
+          if (!box) return void requestAnimationFrame(look);
+          box.click();
+          resolve();
+        };
+        look();
+      });
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.preview === 'failed' && document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
+    assert.equal(await says(page, 'preview'), 'The preview has not opened. Try again; publishing a file does not depend on it.');
+    // and now, late, the page asks
+    assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.preview.state.opened), false);
+    await frameOf(page).evaluate(() => parent.postMessage({ type: 'sv2-preview-ready' }, location.origin));
+    // the planner takes the ask: the page has opened
+    await page.waitForFunction(() => document.querySelector('.stf').staff.preview.state.opened === true, { timeout: 30000 });
+    assert.equal(await says(page, 'preview'), 'The preview could not be brought up to date. ' + NO_ENCRYPTION);
+    assert.notEqual(await page.evaluate(() => document.querySelector('.stf-preview').dataset.preview), 'failed');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').hidden), true, 'no "Try again" for a page that opened');
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+  });
+});
+
 // SV2-49 item 9
 test('a map\'s listeners leave when its page gives way to a screen that is not a schedule: a copy the frame cannot read, and the passcode screen', async () => {
   await closing(await open(), async (page) => {

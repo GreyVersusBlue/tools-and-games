@@ -141,15 +141,28 @@ export function preview(ctx) {
     // the data could not be made.
     waitToOpen(false);
     state.opened = true;
-    if (data === null) return null;
+    // a page that asks after the wait ran out has opened after all: "has not
+    // opened" goes, and so does "Try again"
+    const late = element.dataset.preview === 'failed' && says.textContent === PREVIEW_NOT_OPEN;
+    if (late) again.hidden = true;
+    if (data === null) {
+      if (late) {
+        element.dataset.preview = 'loading';
+        says.textContent = staleSays || 'Opening the preview.';
+      }
+      return null;
+    }
     state.live = true;
     state.sent += 1;
     again.hidden = true;
     element.dataset.preview = 'live';
     element.dataset.sent = String(state.sent);
-    says.textContent = state.locked
+    // What the frame is given is the last copy that could be made. While a
+    // later one could not be, the preview does not follow the project, and
+    // the sentence saying why stays.
+    says.textContent = staleSays || (state.locked
       ? 'This is the file as a reader first meets it. It follows the project as you change it.'
-      : 'This is the file as staff see it. It follows the project as you change it.';
+      : 'This is the file as staff see it. It follows the project as you change it.');
     return data;
   }, () => {
     const flags = forgetNext ? { forget: true } : null;
