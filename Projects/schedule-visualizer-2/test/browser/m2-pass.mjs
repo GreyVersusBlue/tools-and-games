@@ -1521,8 +1521,11 @@ test('SV2-50 item 7: on a phone the history holds a group once: "All groups" goe
     await go(p, '#schedule/groups');
     await settled(p);
     const backToProject = async (why) => {
-      await p.evaluate(() => history.back());
-      await shows(p, () => location.hash !== '#schedule/groups' || document.querySelector('.surface__layout')?.dataset.section !== 'schedule');
+      // every step back fires popstate, one between two entries of the same address too
+      await p.evaluate(() => new Promise((resolve) => {
+        window.addEventListener('popstate', () => resolve(), { once: true });
+        history.back();
+      }));
       assert.equal(await hashOf(p), '#project', why);
       await waitForSection(p, 'project');
       await p.evaluate(() => history.forward());
@@ -1536,7 +1539,7 @@ test('SV2-50 item 7: on a phone the history holds a group once: "All groups" goe
     await tap(p, '[data-key="group-all"]');
     await listIs(p, false);
     await shows(p, () => location.hash === '#schedule/groups');
-    await backToProject('Back from the list after "All groups" is the editor again');
+    await backToProject('Back from the list after "All groups" is not the page the list was come to from');
 
     // Delete
     await tap(p, '.sch-group[data-group="' + C6 + '"]');
@@ -1547,7 +1550,7 @@ test('SV2-50 item 7: on a phone the history holds a group once: "All groups" goe
     await shows(p, () => location.hash === '#schedule/groups');
     await closeToast(p);
     assert.equal((await shownCards(p)).length, 7);
-    await backToProject('Back from the list after a Delete is the list again');
+    await backToProject('Back from the list after a Delete is not the page the list was come to from');
 
     // an Add, undone
     await tap(p, '[data-action="add-group"]');
@@ -1555,7 +1558,9 @@ test('SV2-50 item 7: on a phone the history holds a group once: "All groups" goe
     await shows(p, () => /^#schedule\/groups\/g/.test(location.hash));
     await p.evaluate(() => globalThis.sv2.store.undo());
     await listIs(p, false);
-    await shows(p, () => location.hash === '#schedule/groups');
-    await backToProject('Back from the list after an undone Add is the list again');
+    // the step back to the list is the browser's to take; a page that takes none times out here and is told below
+    await shows(p, () => location.hash === '#schedule/groups').catch(() => {});
+    assert.equal(await hashOf(p), '#schedule/groups', 'an undone Add left the gone group\'s address in the history');
+    await backToProject('Back from the list after an undone Add is not the page the list was come to from');
   });
 });
