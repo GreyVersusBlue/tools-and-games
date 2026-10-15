@@ -14,7 +14,7 @@ import {
   pictureOf, sentenceOf, groupRows, routeHealth, cellCard, failurePeriod,
 } from '../../ui/movement/model.js';
 import * as model from '../../ui/movement/model.js';
-import { layoutFloors, bestLayout, slotAt, placeOf, FLOOR_GAP, TITLE_ROWS } from '../../ui/movement/layout.js';
+import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, FLOOR_GAP, TITLE_ROWS, STAGE_LEAST, FIT_MARGIN } from '../../ui/movement/layout.js';
 import { bandText } from '../../ui/movement/legend.js';
 import { fixFor } from '../../ui/movement/summary.js';
 import { heldScale, canvasHolds, isBlank, LOWEST_SCALE } from '../../ui/movement/export.js';
@@ -1065,4 +1065,22 @@ test('SV2-52 item 11 (SV2-43 item 3): with no engine attached the first line say
   assert.deepEqual(standing, { project, results: null, failed: 'Nothing is attached to work out the routes.', stale: false });
   assert.equal(model.failedSentence(standing).parts.map((part) => part.text).join(''), 'The routes could not be worked out: Nothing is attached to work out the routes.');
   assert.equal(model.failedSentence(standing).showMe, false);
+});
+
+// SV2-55 item 0: the stage's least, whatever the section has
+test('SV2-55 item 0: the stage’s least is 120 px, or the floors’ box fitted across the stage when that is shorter, at the zoom’s own floor of 25 %', () => {
+  assert.equal(STAGE_LEAST, 120);
+  assert.equal(FIT_MARGIN, 20);
+  // nothing laid out yet, or no width: the least itself
+  assert.equal(stageLeast(null, 844), 120);
+  assert.equal(stageLeast({ width: 40, height: 30 }, 0), 120);
+  // a building as tall as it is wide: fitted across 844 px it is far taller than 120
+  assert.equal(stageLeast({ width: 40, height: 40 }, 844), 120);
+  // a long low building: fitted across 844 px (804 / (200 x 24) is under 25 %, so 25 %) it is 4 x 24 x 0.25 + 40 = 64 px
+  assert.equal(stageLeast({ width: 200, height: 4 }, 844), 64);
+  // 2 cells high at the full width's zoom: 804 / (40 x 24) = 0.8375, so 2 x 24 x 0.8375 + 40 = 80.2, rounded up
+  assert.equal(stageLeast({ width: 40, height: 2 }, 844), 81);
+  // the sample's three floors side by side at 844 px (the browser case's own figure)
+  const floors = sample.project.building.floors;
+  assert.equal(stageLeast(layoutFloors(floors, 'side'), 844), 120);
 });

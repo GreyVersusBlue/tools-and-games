@@ -1278,36 +1278,91 @@ async function barOnScreen(page, step) {
   return at;
 }
 
-test('SV2-52 item 1: a phone on its side, 844 by 390: the stage has what the section has, the first line, the map and the bar are all on screen, and nothing scrolls', async () => {
+// The view has measured what the bar lies over (--mov-under, --toast-clear)
+// with the section scrolled as it is now: after a scroll, the scroll event has come.
+const lifted = (page) => shows(page, () => {
+  const section = document.querySelector('.mov');
+  return section.dataset.dockedAt === String(Math.round(section.scrollTop));
+});
+
+// The zoom buttons: wholly on the stage, above the bar, and what a finger
+// meets at the middle of each is the button.
+async function zoomClear(page, step) {
+  await lifted(page);
+  const at = await page.evaluate(() => {
+    const r = (el) => {
+      const rect = el.getBoundingClientRect();
+      return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), left: Math.round(rect.left), right: Math.round(rect.right) };
+    };
+    const zoom = document.querySelector('.mov-zoom');
+    const met = [...zoom.querySelectorAll('button')].map((button) => {
+      const rect = button.getBoundingClientRect();
+      const el = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return el === button || button.contains(el) ? null : (el ? el.className || el.tagName : 'nothing');
+    }).filter(Boolean);
+    return { zoom: r(zoom), stage: r(document.querySelector('.mov-stage')), bar: r(document.querySelector('[data-bar="playback"]')), line: r(document.querySelector('.mov-top')), met };
+  });
+  assert.deepEqual(at.met, [], step + ': something lies on the zoom buttons: ' + JSON.stringify(at));
+  assert.ok(at.zoom.bottom <= at.bar.top, step + ': the zoom buttons run under the bar: ' + JSON.stringify(at));
+  assert.ok(at.zoom.top >= at.stage.top && at.zoom.bottom <= at.stage.bottom, step + ': the zoom buttons are not on the stage: ' + JSON.stringify(at));
+  return at;
+}
+
+// SV2-55 item 0. On the live site after #562 a phone on its side (844 by
+// 390, with touch) had a 41 px map with the zoom over it. The 44 px finger
+// targets take 61 px more than a mouse's (the floors' row 16, the first line
+// 20, the legend's line 17, the bar 8), and the stage had what was left. Its
+// least is now 120 px (or the floors' box at Fit, when that is less): the
+// section scrolls instead, the bar sticky at its foot, the zoom above it.
+test('SV2-55 item 0: a phone on its side with touch, 844 by 390: the stage keeps its least of 120 px, the section scrolls with the bar at its foot, and the zoom buttons stand above the bar, at the top and at the end', async () => {
   await on('#movement', SIDEWAYS, async (p) => {
+    assert.deepEqual(await p.evaluate(() => [matchMedia('(pointer: coarse)').matches, navigator.maxTouchPoints > 0]), [true, true], 'the page is not a touch screen’s: the case measures the wrong page');
     assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'true', 'under 900 px the controls open folded: the case tests the folded view');
-    const at = await barOnScreen(p, 'on arrival');
-    assert.equal(at.scrolls, 0, 'the section scrolls inside itself: ' + JSON.stringify(at));
-    assert.ok(at.line.top >= at.section.top, 'the first line is above the section');
-    // the floor of 320 px is capped at what there is: the stage is all of it, more than nothing
-    assert.ok(at.room > 60 && at.room < 320, 'the section has ' + at.room + ' px for the map at 844 by 390');
-    assert.ok(near(at.stage.height, at.room), 'the stage is not what the section has: ' + JSON.stringify(at));
-    assert.ok(at.stage.bottom <= at.bar.top, 'the bar lies on the map');
-    // playing changes the bar's height (the hint goes): still all on screen
-    await p.evaluate(() => document.querySelector('[data-action="play"]').click());
-    await shows(p, () => document.querySelector('[data-action="play"]').textContent === 'Pause');
+    await dismissStarted(p);
     await drawn(p);
-    const playing = await barOnScreen(p, 'playing');
-    assert.equal(playing.scrolls, 0, 'playing, the section scrolls: ' + JSON.stringify(playing));
-    assert.ok(near(playing.stage.height, playing.room), 'playing, the stage is not what the section has: ' + JSON.stringify(playing));
-    await p.evaluate(() => document.querySelector('[data-action="play"]').click());
-    // More opens up over the map's foot: the stage keeps its height, the
-    // bar, More and all, stays inside the section, and the first line is
-    // still on screen above it
-    await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
-    const shut = await short(p);
+    // the sample's floors fitted across 844 px are taller than 120 px, so the
+    // least is 120 itself, or what the section has over the bar and the
+    // legend's line when that is less: with the first line scrolled away the
+    // whole stage is then on screen
+    const top = await barOnScreen(p, 'at the top');
+    const under = await p.evaluate(() => {
+      const tall = (selector) => document.querySelector(selector).getBoundingClientRect().height;
+      return Math.floor(document.querySelector('.mov').clientHeight - tall('[data-bar="playback"]') - tall('.mov-legend-line'));
+    });
+    const least = Math.min(120, under);
+    assert.ok(least >= 100, 'the section has ' + under + ' px over the bar and the legend’s line: the case tests a smaller window than it says');
+    assert.ok(top.stage.height >= least - 1, 'the stage is a strip under its least: ' + JSON.stringify(top));
+    assert.ok(top.scrolls > 0, 'the section has less than the least and does not scroll: the stage was squeezed: ' + JSON.stringify(top));
+    assert.equal(await p.evaluate(async () => {
+      const { stageLeast } = await import('./ui/movement/layout.js');
+      return stageLeast(document.querySelector('.mov').movement.world, document.querySelector('.mov-stage').clientWidth);
+    }), 120, 'the view’s own rule gives another least for the sample at 844 px');
+    assert.ok(top.line.top >= top.section.top, 'the first line is not on screen at the top');
+    await zoomClear(p, 'at the top');
+    // at the end the whole stage is on screen over the bar, the zoom in its corner
+    await p.evaluate(() => {
+      const section = document.querySelector('.mov');
+      section.scrollTop = section.scrollHeight;
+    });
+    await shows(p, () => {
+      const section = document.querySelector('.mov');
+      return section.scrollTop >= section.scrollHeight - section.clientHeight - 1;
+    });
+    await drawn(p);
+    const end = await barOnScreen(p, 'at the end');
+    assert.ok(end.stage.top >= end.section.top - 1 && end.stage.bottom <= end.bar.top + 1, 'at the end the map is not all on screen: ' + JSON.stringify(end));
+    const zoomEnd = await zoomClear(p, 'at the end');
+    assert.ok(zoomEnd.stage.bottom - zoomEnd.zoom.bottom <= 13, 'at the end the zoom is not back in the stage’s corner: ' + JSON.stringify(zoomEnd));
+    assert.ok(await inked(p) > 0.02, 'at the end the map is blank');
+    // playing (the hint goes) and More open: the bar stays on screen, the zoom above it
+    await p.evaluate(() => {
+      const section = document.querySelector('.mov');
+      section.scrollTop = 0;
+    });
     await p.tap('[data-action="more"]');
     await shows(p, () => document.querySelector('[data-part="more"]').hidden === false);
-    // the section has measured itself with the bar as it is now
     await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
-    const opened = await barOnScreen(p, 'More open');
-    assert.ok(near(opened.stage.height, shut.stage.height), 'opening More squeezed the map: ' + JSON.stringify({ shut: shut.stage, opened: opened.stage }));
-    assert.ok(opened.bar.top >= opened.line.bottom, 'More covers the first line: ' + JSON.stringify(opened));
+    await barOnScreen(p, 'More open');
     await p.tap('[data-action="more"]');
     await shows(p, () => document.querySelector('[data-part="more"]').hidden === true);
   });

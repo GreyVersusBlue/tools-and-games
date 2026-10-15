@@ -12,6 +12,7 @@
 //   bestLayout(floors, width, height)   'side' or 'stacked': whichever fits the window larger
 //   slotAt(layout, x, y)                { slot, x, y, cell } for a place on the map, or null between floors
 //   placeOf(layout, floorId, cell)      { x, y }: the top left of a floor's cell on the map, or null
+//   stageLeast(layout, width)           the least height the stage is given, in CSS pixels
 //
 // No DOM in here.
 
@@ -51,6 +52,24 @@ export function fitZoom(layout, width, height, margin) {
   return clampZoom(Math.min(Math.max(1, width - pad * 2) / (layout.width * CELL), Math.max(1, height - pad * 2) / (layout.height * CELL)));
 }
 
+// The map is fitted with this margin, in CSS pixels, all round.
+export const FIT_MARGIN = 20;
+
+// The least the stage is given, in CSS pixels, however little the section
+// has (SV2-55): the zoom buttons' 44 px finger targets with their 12 px
+// margins (68), and over them the 48 px a pan or a zoom always leaves of
+// the floors (KEEP_ON_STAGE in index.js), 116, so 120. A stage under that
+// is a strip with the zoom lying over it (41 px at 844 by 390 on a touch
+// screen, on the live site after #562). When the floors' whole box, fitted
+// across the stage's width, is shorter than that, the box is enough.
+export const STAGE_LEAST = 120;
+
+export function stageLeast(layout, width) {
+  if (!layout || !(width > 0)) return STAGE_LEAST;
+  const zoom = clampZoom(Math.max(1, width - FIT_MARGIN * 2) / (layout.width * CELL));
+  return Math.min(STAGE_LEAST, Math.ceil(layout.height * CELL * zoom + FIT_MARGIN * 2));
+}
+
 export function bestLayout(floors, width, height) {
   if (floors.length < 2) return 'side';
   return fitZoom(layoutFloors(floors, 'stacked'), width, height) > fitZoom(layoutFloors(floors, 'side'), width, height) ? 'stacked' : 'side';
@@ -71,3 +90,4 @@ export function placeOf(layout, floorId, cell) {
   if (!slot) return null;
   return { x: slot.x + (cell % slot.floor.width) - slot.box.x, y: slot.y + Math.floor(cell / slot.floor.width) - slot.box.y };
 }
+

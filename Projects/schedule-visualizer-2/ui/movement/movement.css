@@ -8,10 +8,13 @@
    window's height, nor under 320 px, unless the section has less than that
    under its first line and over the bar (a phone on its side, a short
    window): then the stage has what there is, so the first line, the map and
-   the bar are all on screen with the controls folded. Where the controls are
-   shown and the window cannot hold that, the section scrolls inside itself
-   (.mov), the stage keeps its height, and the bar stays at the section's
-   foot.
+   the bar are all on screen with the controls folded. It never has less
+   than its least, though (120 px, or the floors' box at Fit when that is
+   less, and no more than the section has over the bar; SV2-55): with less
+   than that, and where the controls are shown and the window cannot hold
+   the stage, the section scrolls inside itself (.mov), the stage keeps its
+   height, the bar stays at the section's foot, and the zoom buttons and the
+   legend's card stand above the bar where it lies over the stage.
 
    index.html links this sheet (data-sheet="movement"); ui/movement/index.js
    adds it to a page that does not. The section's place in the shell (the map
@@ -275,7 +278,9 @@
 /* the map's floor: 45 % of the window's height and 320 px at the least, and
    whatever the first line and the bar leave above that; but never more than
    the section has under its first line (folded) and over what is docked
-   under the map, --mov-room, which ui/movement/index.js measures */
+   under the map, --mov-room, which ui/movement/index.js measures, and which
+   is never under the stage's least (120 px, or the floors' box at Fit when
+   that is less: stageLeast in layout.js) */
 .mov-map > .mov-stage {
   position: relative;
   flex: 1 0 max(45vh, 320px);
@@ -369,10 +374,10 @@
 .mov-legend {
   position: absolute;
   right: var(--s-3);
-  bottom: var(--s-3);
+  bottom: calc(var(--s-3) + var(--mov-under, 0px));
   width: 16.5rem;
   max-width: calc(100% - var(--s-5));
-  max-height: calc(100% - var(--s-5));
+  max-height: calc(100% - var(--s-5) - var(--mov-under, 0px));
   overflow: auto;
   padding: var(--s-3);
   background: var(--card);
@@ -565,10 +570,12 @@
 
 /* ---------- Zoom ---------- */
 
+/* lifted over the bar where the bar lies on the stage's foot (--mov-under,
+   ui/movement/index.js) */
 .mov-zoom {
   position: absolute;
   left: var(--s-3);
-  bottom: var(--s-3);
+  bottom: calc(var(--s-3) + var(--mov-under, 0px));
   display: flex;
   align-items: center;
   background: var(--card);

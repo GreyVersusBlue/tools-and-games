@@ -68,7 +68,7 @@ import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
 import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, answerCounts, NO_ENGINE } from './model.js';
-import { layoutFloors, bestLayout, slotAt, placeOf } from './layout.js';
+import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, FIT_MARGIN } from './layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
 import { cellCardView } from './card.js';
@@ -481,6 +481,7 @@ export const section = {
     }
 
     // ---- where the floors sit
+    let roomReady = false;
     function arrange() {
       if (!picture) return;
       const floors = picture.floors;
@@ -497,6 +498,8 @@ export const section = {
       world = next;
       dockLegend();
       if (fitted) fit(true);
+      // the stage's least follows the floors' box (stageLeast)
+      if (roomReady) room();
     }
 
     // ---- the legend never covers a floor (DESIGN 5.3). Its card stands on
@@ -513,7 +516,7 @@ export const section = {
       const tall = card.offsetHeight;
       if (width === 0 || tall === 0) return false;
       probe.resize(view.width, height);
-      probe.fit({ x: 0, y: 0, w: world.width, h: world.height }, 20);
+      probe.fit({ x: 0, y: 0, w: world.width, h: world.height }, FIT_MARGIN);
       const style = getComputedStyle(card);
       const right = view.width - (parseFloat(style.right) || 0);
       const bottom = height - (parseFloat(style.bottom) || 0);
@@ -532,7 +535,7 @@ export const section = {
 
     function fit(quiet) {
       if (!world || view.width === 0) return;
-      view.fit({ x: 0, y: 0, w: world.width, h: world.height }, 20);
+      view.fit({ x: 0, y: 0, w: world.width, h: world.height }, FIT_MARGIN);
       fitted = true;
       shownLast = null;
       if (!quiet) {
@@ -886,6 +889,9 @@ export const section = {
       const host = dockHost || element.closest('.surface');
       if (gone || !host) return;
       dockHost = host;
+      lift();
+      // where the section was scrolled to when this was measured, for a test to wait on
+      element.dataset.dockedAt = String(Math.round(element.scrollTop));
       const edge = host.getBoundingClientRect();
       const foot = edge.top + host.clientTop + host.clientHeight;
       let top = foot;
@@ -896,6 +902,22 @@ export const section = {
       const clear = Math.max(0, Math.round(foot - top)) + 'px';
       if (host.style.getPropertyValue('--toast-clear') !== clear) host.style.setProperty('--toast-clear', clear);
     }
+    // ---- the zoom buttons and the legend's card stand above the bar (SV2-55).
+    // Where the section scrolls (a short window, the controls shown) the bar,
+    // sticky at the section's foot, lies over the stage's foot until the
+    // section is at its end. How far it reaches up into the stage is
+    // --mov-under on the stage, and the two lift by that much, but never out
+    // of the stage's top.
+    function lift() {
+      if (map.hidden) return;
+      const shown = stage.getBoundingClientRect();
+      const barTop = bar.element.getBoundingClientRect().top;
+      const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
+      const most = Math.max(0, shown.height - zoomBox.offsetHeight - margin * 2);
+      const under = Math.round(Math.min(most, Math.max(0, shown.bottom - barTop))) + 'px';
+      if (stage.style.getPropertyValue('--mov-under') !== under) stage.style.setProperty('--mov-under', under);
+    }
+
     // ---- what the section has for the map (DESIGN 5.3; SV2-52): its height
     // less the first line, as it is with the controls folded, and less what
     // is docked under the map (the legend's line and the playback bar). The
@@ -906,8 +928,12 @@ export const section = {
     // map: the inspector's sheet (under 900 px; the section scrolls under it
     // with the map's top showing above it) and the bar's More (the bar grows
     // up over the map's foot). The section is measured as with both shut.
+    // What the stage gets is never under its least (stageLeast in layout.js,
+    // SV2-55): a section with less scrolls, rather than the map becoming a
+    // strip with the zoom over it.
     const firstLine = top.element.querySelector('.mov-line');
     const barMore = bar.element.querySelector('[data-part="more"]');
+    roomReady = true;
     function room() {
       if (gone || map.hidden || element.clientHeight === 0) return;
       let height = element.clientHeight;
@@ -925,7 +951,13 @@ export const section = {
       const docked = key.line.hidden ? 0 : tall(key.line);
       const foot = tall(bar.element) - more + docked;
       const has = Math.max(0, Math.floor(height - line - foot));
-      const next = has + 'px';
+      // never under the stage's least (layout.js): with less than that the
+      // section scrolls, the bar sticky at its foot, rather than the map
+      // shrinking to a strip. Nor is the least more than the section has over
+      // the bar and the legend's line, so with the first line scrolled away
+      // the whole stage is on screen (110 px at 844 by 390 on a touch screen).
+      const least = Math.min(stageLeast(world, stage.clientWidth), Math.max(0, Math.floor(height - foot)));
+      const next = Math.max(has, least) + 'px';
       if (element.style.getPropertyValue('--mov-room') !== next) element.style.setProperty('--mov-room', next);
       // More may take the map's height and the legend's line, never the first line's
       const moreRoom = Math.max(0, has + docked - gap) + 'px';

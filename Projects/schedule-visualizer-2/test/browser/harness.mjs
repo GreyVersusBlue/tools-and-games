@@ -162,7 +162,16 @@ export async function openPlanner(options) {
   // goes on, so the suite ends instead of holding its server and browser,
   // and the machine's browser lock with them, for ever (SV2-52).
   try {
-    if (opts.keep !== true) await clearSaved(page, server.base);
+    if (opts.keep !== true) {
+      await clearSaved(page, server.base);
+      // The CDP session clearSaved opens and closes takes Puppeteer's touch
+      // emulation with it: a page asked for as a phone then loads with no
+      // touch and a fine pointer, so the layout a finger gets (the 44 px
+      // rules under `pointer: coarse`) was never the one measured (SV2-55:
+      // the live 844 by 390 map was 41 px with touch, 106 px without). The
+      // page's size is asked for again before it loads.
+      if (size.mobile && browser.__engine !== 'playwright') await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    }
     await page.goto(url(hash), { waitUntil: 'load' });
     await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
     await page.evaluate(() => document.fonts.ready);
