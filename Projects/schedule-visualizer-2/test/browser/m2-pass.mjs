@@ -192,7 +192,8 @@ test('a button that cannot be used yet is drawn dashed by the shell\'s styleshee
 
 test('where the Movement section sits in the shell is ui/app.css\'s to say, beside Building\'s, and the map is still edge to edge', async () => {
   assert.doesNotMatch(source('ui/movement/movement.css'), /\.surface__layout/, 'movement.css still places the section in the shell');
-  assert.match(source('ui/app.css'), /\.surface__layout\[data-section="movement"\] \{\n {2}height: 100%;\n {2}padding: 0;/);
+  // (SV2-55: the section's height is the surface's less the banners stuck to its top)
+  assert.match(source('ui/app.css'), /\.surface__layout\[data-section="movement"\] \{\n {2}height: calc\(100% - var\(--banners-height, 0px\)\);\n {2}min-height: calc\(100% - var\(--banners-height, 0px\)\);\n {2}padding: 0;/);
   await on('#movement', DESK, async (p) => {
     await shows(p, () => document.querySelector('.mov')?.dataset.styled === 'true');
     const at = await p.evaluate(() => {
@@ -851,7 +852,8 @@ test('on a 390 px phone the list of groups and the editor take turns: a tap on 6
       document.getElementById('surface').scrollTop = 0;
     });
     const top = await box(p, '.sch-group[data-group="' + A6 + '"]');
-    assert.ok(top.top > 380 && top.bottom < 660, 'the first card is not in the lower half of the window: ' + JSON.stringify(top));
+    // (SV2-55: with touch emulated as asked, the 44 px targets put the card at 594 to 678)
+    assert.ok(top.top > 380 && top.bottom < 760, 'the first card is not in the lower half of the window: ' + JSON.stringify(top));
     await tapAt(p, '.sch-group[data-group="' + A6 + '"]');
     await shows(p, () => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('.sch-editor__title').textContent === '6A' && document.querySelector('.sch-editor').getClientRects().length > 0);
     const first = await p.evaluate(() => {
