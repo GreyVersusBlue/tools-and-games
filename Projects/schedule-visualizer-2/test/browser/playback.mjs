@@ -1337,17 +1337,23 @@ test('SV2-52 item 5: a choice the browser refused lasts the visit: speed 4 is st
   await view((was) => document.querySelector('[data-bar="playback"]').playback.set({ speed: was, loop: 'once' }), chosen.was);
 });
 
-test('SV2-52 item 8: a late group is said once a visit, not again on each loop of the same transition', async () => {
+// A new visit: the page loaded again, so nothing said earlier in this file's
+// page counts, and the movement view open on transition 5 with the frames pinned.
+async function freshVisit() {
+  await page.reload({ waitUntil: 'load' });
+  await waitForSection(page, 'movement');
   await settled();
   await view(() => document.querySelector('.mov').movement.change({ transition: 5 }));
   await settled();
   await pinFrames();
   await bar((el) => el.playback.set({ speed: 4, pace: 'real', loop: 'transition', order: 'together' }));
-  await bar((el) => el.playback.seek(230));
-  const heard = await view(() => {
+}
+// Every write to the announcer while `run` goes on in the page (the records
+// are read as they are, not the text the region ends with).
+async function heardWhile(run, ...args) {
+  return view((source, given) => {
     const said = [];
     const announcer = document.getElementById('announcer');
-    // what each write put there (the records are read as they are, not the text the region ends with)
     const take = (records) => {
       for (const record of records) {
         if (record.type === 'characterData') said.push(record.target.textContent);
@@ -1356,27 +1362,73 @@ test('SV2-52 item 8: a late group is said once a visit, not again on each loop o
     };
     const watch = new MutationObserver(take);
     watch.observe(announcer, { childList: true, characterData: true, subtree: true });
-    const playback = document.querySelector('[data-bar="playback"]').playback;
-    playback.play();
-    // a second of the page a frame, four of playback at 4×: three times round the transition
-    let stamp = 1000;
-    let loops = 0;
-    let last = 0;
-    for (let frame = 0; frame < 2000 && loops < 3; frame += 1) {
-      if (!globalThis.pinned.run(stamp)) break;
-      stamp += 1000;
-      const now = Number(document.querySelector('[data-bar="playback"]').dataset.seconds);
-      if (now < last) loops += 1;
-      last = now;
-    }
-    playback.pause();
+    const result = (0, eval)('(' + source + ')')(...given);
     take(watch.takeRecords());
     watch.disconnect();
-    return { said, loops };
+    return { said, result };
+  }, run.toString(), args);
+}
+// Play from where the bar is, a second of the page a frame (four of
+// playback at 4x), until the transition has gone round `rounds` times.
+function playRounds(rounds) {
+  const playback = document.querySelector('[data-bar="playback"]').playback;
+  playback.play();
+  let stamp = 1000;
+  let loops = 0;
+  let last = Number(document.querySelector('[data-bar="playback"]').dataset.seconds);
+  for (let frame = 0; frame < 2000 && loops < rounds; frame += 1) {
+    if (!globalThis.pinned.run(stamp)) break;
+    stamp += 1000;
+    const now = Number(document.querySelector('[data-bar="playback"]').dataset.seconds);
+    if (now < last) loops += 1;
+    last = now;
+  }
+  playback.pause();
+  return loops;
+}
+const lateWordsIn = (said) => said.filter((words) => / (is|are) late\.$/.test(words));
+
+test('SV2-52 item 8 and SV2-55 item 7: a late group is said once a visit: not again on each loop of the same transition, nor after another section and back', async () => {
+  await freshVisit();
+  await bar((el) => el.playback.seek(230));
+  const first = await heardWhile(playRounds, 3);
+  assert.ok(first.result >= 2, 'the transition was not played round twice: the case tests nothing (' + first.result + ')');
+  assert.deepEqual(lateWordsIn(first.said), ['8A is late.'], 'what was said of late groups over ' + first.result + ' loops: ' + JSON.stringify(first.said));
+  // another section and back: the view and its bar are made again, in the same visit
+  await view(() => {
+    location.hash = '#project';
   });
-  assert.ok(heard.loops >= 2, 'the transition was not played round twice: the case tests nothing (' + heard.loops + ')');
-  const late = heard.said.filter((words) => / (is|are) late\.$/.test(words));
-  assert.deepEqual(late, ['8A is late.'], 'what was said of late groups over ' + heard.loops + ' loops: ' + JSON.stringify(heard.said));
+  await waitForSection(page, 'project');
+  await view(() => {
+    location.hash = '#movement';
+  });
+  await waitForSection(page, 'movement');
+  await settled();
+  assert.equal(await view(() => document.querySelector('.mov').movement.choice.transition), 5, 'the view came back on another transition: the case tests nothing');
+  await pinFrames();
+  await bar((el) => el.playback.seek(230));
+  const again = await heardWhile(playRounds, 2);
+  assert.ok(again.result >= 1, 'the transition was not played round after the visit elsewhere: the case tests nothing');
+  assert.deepEqual(lateWordsIn(again.said), [], 'a late group already said this visit was said again after another section: ' + JSON.stringify(again.said));
+  // and 8A is late in this transition all the same (from about 245 s to its end at 261 s)
+  await bar((el) => el.playback.seek(255));
+  assert.match(await part('late'), /8A/, 'the Late line does not name 8A: the group is not late here, and the case tests nothing');
+  await bar((el) => el.playback.set({ speed: 1, pace: 'fixed', loop: 'once' }));
+});
+
+test('SV2-55 item 7: scrubbed while paused to where a group is late, then played: it is on the Late line and nothing is said of it', async () => {
+  await freshVisit();
+  // paused, the scrubber at a moment 8A is late: the Late line names it, and nothing is said
+  const scrubbed = await heardWhile(() => {
+    document.querySelector('[data-bar="playback"]').playback.seek(255);
+    return document.querySelector('[data-bar="playback"]').dataset.late + '/' + document.querySelector('[data-bar="playback"]').dataset.lateIn;
+  });
+  assert.match(await part('late'), /8A/, 'scrubbed to 255 s the Late line does not name 8A: the case tests nothing');
+  assert.deepEqual(lateWordsIn(scrubbed.said), [], 'scrubbing while paused said a late group: ' + JSON.stringify(scrubbed.said));
+  // then Play, round the transition: 8A is still late, and nothing new is said
+  const played = await heardWhile(playRounds, 1);
+  assert.ok(played.result >= 1, 'the transition was not played round: the case tests nothing');
+  assert.deepEqual(lateWordsIn(played.said), [], 'Play after the scrub said what the Late line already showed: ' + JSON.stringify(played.said));
   await bar((el) => el.playback.set({ speed: 1, pace: 'fixed', loop: 'once' }));
 });
 

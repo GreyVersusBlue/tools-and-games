@@ -118,6 +118,9 @@ async function plainPage(browser, { width, height, mobile }) {
   return page;
 }
 
+// How long openPlanner's cleanup waits for a page to close before going on.
+export const PAGE_CLOSE_MS = 5000;
+
 // openPlanner({ hash, width, height, theme, mobile, device, keep, intercept })
 //   hash       the address to open; '#building' when none is given. The bare
 //              address is not the same thing: the planner then opens the
@@ -134,41 +137,63 @@ async function plainPage(browser, { width, height, mobile }) {
 export async function openPlanner(options) {
   const opts = options || {};
   const server = opts.server || (await startServer());
-  const browser = opts.browser || (await launch());
-  const size = { width: opts.width || 1280, height: opts.height || 900, mobile: opts.mobile === true };
-  const page = opts.intercept === true ? await prepPage(browser, server.base, { ...size, dsf: 1 }) : await plainPage(browser, size);
+  // From here on whatever this call opened is closed again when a step
+  // throws (the page, and the browser and the server unless they were
+  // given), before the error goes on: launching the browser, making the page
+  // and setting it up, the first page that does not load. A suite whose
+  // first page could not load once held its server and browser, and the
+  // machine's browser lock with them, for ever (SV2-52; SV2-55 for the steps
+  // before the page loads). A page that does not close is given up on after
+  // PAGE_CLOSE_MS, so the cleanup itself cannot hang.
+  let browser = opts.browser || null;
+  let page = null;
   const requests = [];
   const offsite = [];
-  page.on('request', (request) => {
-    const url = request.url();
-    requests.push(url);
-    if (!sameOrigin(url, server.base)) {
-      offsite.push(url);
-      page.__errs.push('offsite: ' + url.slice(0, 160));
-    }
-  });
-  if (opts.theme) await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: opts.theme }]);
-  if (opts.device) {
-    await page.evaluateOnNewDocument((value) => {
-      try {
-        if (localStorage.getItem('sv2:device') === null) localStorage.setItem('sv2:device', value);
-      } catch (error) { /* the page will say so itself */ }
-    }, JSON.stringify(opts.device));
-  }
   const url = (hash) => server.base + TOOL_PATH + (hash || '');
   const hash = typeof opts.hash === 'string' ? opts.hash : '#building';
-  // A first page that does not load closes what this call opened (the page,
-  // and the browser and the server unless they were given) before the error
-  // goes on, so the suite ends instead of holding its server and browser,
-  // and the machine's browser lock with them, for ever (SV2-52).
+  const size = { width: opts.width || 1280, height: opts.height || 900, mobile: opts.mobile === true };
   try {
-    if (opts.keep !== true) await clearSaved(page, server.base);
+    if (!browser) browser = await launch();
+    page = opts.intercept === true ? await prepPage(browser, server.base, { ...size, dsf: 1 }) : await plainPage(browser, size);
+    page.on('request', (request) => {
+      const address = request.url();
+      requests.push(address);
+      if (!sameOrigin(address, server.base)) {
+        offsite.push(address);
+        page.__errs.push('offsite: ' + address.slice(0, 160));
+      }
+    });
+    if (opts.theme) await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: opts.theme }]);
+    if (opts.device) {
+      await page.evaluateOnNewDocument((value) => {
+        try {
+          if (localStorage.getItem('sv2:device') === null) localStorage.setItem('sv2:device', value);
+        } catch (error) { /* the page will say so itself */ }
+      }, JSON.stringify(opts.device));
+    }
+    if (opts.keep !== true) {
+      await clearSaved(page, server.base);
+      // The CDP session clearSaved opens and closes takes Puppeteer's touch
+      // emulation with it: a page asked for as a phone then loads with no
+      // touch and a fine pointer, so the layout a finger gets (the 44 px
+      // rules under `pointer: coarse`) was never the one measured (SV2-55:
+      // the live 844 by 390 map was 41 px with touch, 106 px without). The
+      // page's size is asked for again before it loads.
+      if (size.mobile && browser.__engine !== 'playwright') await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    }
     await page.goto(url(hash), { waitUntil: 'load' });
     await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
     await page.evaluate(() => document.fonts.ready);
   } catch (error) {
-    await page.close().catch(() => {});
-    if (!opts.browser) await browser.close().catch(() => {});
+    if (page) {
+      let wait = null;
+      const given = new Promise((resolve) => {
+        wait = setTimeout(resolve, PAGE_CLOSE_MS);
+      });
+      await Promise.race([page.close().catch(() => {}), given]);
+      clearTimeout(wait);
+    }
+    if (browser && !opts.browser) await browser.close().catch(() => {});
     if (!opts.server) await server.close().catch(() => {});
     throw error;
   }
