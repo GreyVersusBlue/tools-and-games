@@ -45,8 +45,8 @@ import { tabs } from '../components/tabs.js';
 import { periodWords } from '../components/words.js';
 import { scheduleModel } from './model.js';
 import { findingsPanel, SHEET as INSPECTOR_SHEET } from './checks.js';
-import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW } from './groups.js';
-import { readAddress, slotHash } from './address.js';
+import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, toGroup, toList } from './groups.js';
+import { readAddress, slotHash, groupOf, GROUPS_HASH } from './address.js';
 
 export { slotHash };
 import { mount as grid, GRID_KEYS } from './grid/index.js';
@@ -130,7 +130,13 @@ function watchPointer() {
   // made for on the section (`data-narrow`), so a drawing that came between
   // the window changing and the browser saying so is not made twice, and a
   // test can wait for the one that counts.
+  //
+  // Crossing to narrow, the address becomes what the view is: a group chosen
+  // on a wide screen (a phone on its side) has written no address, and
+  // turned upright its editor is a place above the list, so Back is the list
+  // and not the way out of the section (DECISIONS 2026-10-12 14:47).
   window.matchMedia(GROUPS_NARROW).addEventListener('change', (event) => {
+    if (live && event.matches) live.placeInHistory();
     if (live && live.narrow() !== event.matches) live.redraw();
   });
   // beside the Checks tab the inspector says where the list is, which is
@@ -199,9 +205,7 @@ export const section = {
       focusAfter(key) {
         wantFocus = key;
       },
-      inspect() {
-        inspector.update(ctx.store.project);
-      },
+      inspect: () => inspect(),
     };
 
     const strip = tabs({
@@ -322,7 +326,43 @@ export const section = {
       if (timer === null) timer = setTimeout(run, 0);
     }
 
-    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect: () => inspector.update(ctx.store.project) };
+    // The inspector's panel drawn again, and nothing else. Its controls are
+    // new ones, so the focus that was on one goes to the control with the
+    // same key, as run() does for a whole drawing, and never to the page.
+    // Crossing 900 px the inspector becomes a sheet that starts shut: then
+    // the focus goes to the button that opens it, as when the sheet is shut
+    // by hand with the focus inside (ui/app.js), or to the inspector.
+    function inspect() {
+      const active = document.activeElement;
+      const inside = inspector.element.contains(active);
+      const had = inside ? keyOf(active) : null;
+      inspector.update(ctx.store.project);
+      if (!inside || inspector.element.contains(document.activeElement)) return;
+      const seen = (el) => Boolean(el) && el.getClientRects().length > 0;
+      const target = had ? inspector.element.querySelector('[data-key="' + CSS.escape(had) + '"]') : null;
+      const toggle = document.getElementById('inspector-toggle');
+      if (seen(target)) target.focus();
+      else if (seen(toggle)) toggle.focus();
+      else document.getElementById('inspector').focus();
+    }
+
+    // The Groups tab's address made what the view is, on a phone: a chosen
+    // group's editor above the list, or the list.
+    function placeInHistory() {
+      if (strip.selected !== 'groups' || ctx.store.project.groups.length === 0) return;
+      const group = groupOf(ctx.store.project, location.hash);
+      if (view.folded === true && view.groupId) {
+        if (!group || group.id !== view.groupId) {
+          // another group's address is not the list under this one
+          if (group) history.replaceState(null, '', GROUPS_HASH);
+          toGroup(ctx, view.groupId);
+        }
+      } else if (group) {
+        toList();
+      }
+    }
+
+    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect, placeInHistory };
     live = handle;
     // an address that named a slot: its row is scrolled to once this is on the page
     if (view.shown && view.shown.fresh) schedule();

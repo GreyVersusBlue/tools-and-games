@@ -13,7 +13,10 @@
 // to open it again and the editor straight under it. schedule.css does the
 // showing and hiding; on a wider screen `folded` changes nothing. On a phone
 // the two are two places with an address each (address.js), so the Back
-// button goes from a group's editor to the list.
+// button goes from a group's editor to the list. The history holds a group
+// once: "All groups", a Delete and an undone Add go back to the list when
+// the list is the entry under the editor, and put the list's address in the
+// editor's place otherwise, so Back never shows the list twice.
 
 import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
@@ -29,7 +32,7 @@ import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
-import { GROUPS_HASH, groupHash } from './address.js';
+import { GROUPS_HASH, groupHash, writtenAsList, showsList } from './address.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
@@ -53,6 +56,37 @@ function slotIsEmpty(slot) {
 export function matches(group, filter) {
   const wanted = filter.trim().toLowerCase();
   return wanted === '' || group.name.toLowerCase().includes(wanted) || group.grade.toLowerCase().includes(wanted);
+}
+
+// The key of the list's one Tab stop: the chosen group's card, or the first
+// card the filter leaves when it hides the chosen one, or the filter box
+// when it leaves none. The focus is put here when the list comes back, and
+// never on a card that is not drawn.
+export function listStop(project, view) {
+  const visible = project.groups.filter((group) => matches(group, view.filter));
+  const stop = visible.find((group) => group.id === view.groupId) || visible[0];
+  return stop ? 'group:' + stop.id : project.groups.length > 0 ? 'group-filter' : 'group-add';
+}
+
+// A group's editor put on the history, on a phone. An editor chosen from the
+// list is marked as having the list under it, which is where "All groups"
+// goes back to.
+const LIST_UNDER = 'scheduleListUnder';
+export function toGroup(ctx, groupId) {
+  const hash = groupHash(groupId);
+  if (location.hash === hash) return;
+  const fromList = showsList(ctx.store.project, location.hash);
+  ctx.navigate(hash);
+  // the new entry is made as the address is set; the mark goes on it
+  if (fromList && location.hash === hash) history.replaceState({ [LIST_UNDER]: true }, '');
+}
+
+// The list's address, on a phone: back to it when it is the entry under this
+// one, and in this one's place otherwise. Neither adds an entry.
+export function toList() {
+  if (writtenAsList(location.hash)) return;
+  if (history.state && history.state[LIST_UNDER] === true) history.back();
+  else history.replaceState(null, '', GROUPS_HASH);
 }
 
 export function mount(env) {
@@ -83,8 +117,8 @@ export function mount(env) {
   function show(focusKey) {
     env.render(focusKey);
     if (!window.matchMedia(NARROW).matches) return;
-    const hash = view.folded === true && view.groupId ? groupHash(view.groupId) : GROUPS_HASH;
-    if (location.hash !== hash) ctx.navigate(hash);
+    if (view.folded === true && view.groupId) toGroup(ctx, view.groupId);
+    else toList();
   }
 
   // Choose a group. On a phone its card goes to the top of the screen, so
@@ -101,7 +135,7 @@ export function mount(env) {
   // finding's Show fold the list when they open a slot, and no drawing does.)
   function showAll() {
     view.folded = false;
-    show(view.groupId ? 'group:' + view.groupId : 'group-add');
+    show(listStop(ctx.store.project, view));
   }
 
   function add() {
@@ -399,7 +433,7 @@ export function mount(env) {
             view.groupId = next ? next.id : null;
             view.shown = null;
             view.folded = false;
-            show(next ? 'group:' + next.id : 'group-add');
+            show(listStop(ctx.store.project, view));
           }, { small: true, key: 'group-delete', action: 'delete', more: ' ' + group.name }))),
       headFields(project, group),
       h('div', { class: 'sch-days' }, project.dayTypes.map((dayType) => dayColumn(project, model, group, dayType))));
@@ -419,14 +453,18 @@ export function mount(env) {
     // replaced it): the first one is chosen, and on a phone the list comes
     // back, since the editor that was open was not this group's.
     if (!project.groups.some((group) => group.id === view.groupId)) {
-      if (view.groupId !== null) view.folded = false;
+      if (view.groupId !== null) {
+        view.folded = false;
+        // its editor's place in the history is the list's now
+        if (window.matchMedia(NARROW).matches) toList();
+      }
       view.groupId = project.groups[0].id;
     }
     // The focus was in the editor and the editor is out of sight (the list
-    // has come back on a phone): the group's card takes it.
+    // has come back on a phone): the list's Tab stop takes it.
     const active = document.activeElement;
     const lost = active === document.body || active === null;
-    if (choosingGroup(view) && ((editorOf(active) && element.contains(active)) || (lost && inEditor))) env.focusAfter('group:' + view.groupId);
+    if (choosingGroup(view) && ((editorOf(active) && element.contains(active)) || (lost && inEditor))) env.focusAfter(listStop(project, view));
     inEditor = false;
     const selected = project.groups.find((group) => group.id === view.groupId);
     const visible = project.groups.filter((group) => matches(group, view.filter));
