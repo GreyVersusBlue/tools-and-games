@@ -1731,10 +1731,11 @@ const CHECKS = [
   // A straight ramp's top landing, drawn (#981). test/ramp-deck.test.mjs
   // proves the box sits in the hole and is walked at the rise; this is
   // whether anything stands there. Two ramps on a two-storey slab, the
-  // default and a wide shallow one, and a ray dropped on each landing.
+  // default and a wide shallow one, and a ray dropped on each landing; and a
+  // stair's 4ft one, drawn by the same line since #983 (test/stair-deck.test.mjs).
   {
     name: 'ramp-deck',
-    what: "a straight ramp's 5ft top landing is a deck at the floor above, not a hole",
+    what: "a straight ramp's 5ft top landing and a stair's 4ft one are decks at the floor above, not holes",
     async run(d) {
       return d.page.evaluate(`(async () => {
         const THREE = await import('three');
@@ -1750,6 +1751,7 @@ const CHECKS = [
         }
         addStair(s, 0, { type: 'ramp', x: 100, z: 40, rotationY: 0 });
         addStair(s, 0, { type: 'ramp', x: 160, z: 20, rotationY: 0, width: 8, slope: 16 });
+        addStair(s, 0, { type: 'stair', x: 40, z: 40, rotationY: 0 });   // #983
         const api = window.app.renderApi;
         api.buildFromState(s);
         api.scene.updateMatrixWorld(true);
@@ -1766,6 +1768,8 @@ const CHECKS = [
           narrowEdge: top(101.6, 188.7, 12.5), // near its far corner, inside the rail
           wide: top(163, 214.5, 12.5),       // the 8ft ramp's, off its middle
           wideNear: top(157.5, 212.3, 12.5), // just past the top of its run
+          stair: top(40, 61.25, 12.5),       // the middle of the stair's landing
+          stairEdge: top(41.6, 63, 12.5),    // near its far corner, inside the rail
         };
         api.buildFromState(window.app.state);
         return out;
@@ -1775,8 +1779,9 @@ const CHECKS = [
       // 4ft at 1:12 is 144ft of run from z 40, so its landing is z 184 to
       // 189; 8ft at 1:16 is 192ft from z 20, landing z 212 to 217. Each is
       // the floor above's height, 12; the hole under it reached the floor
-      // below, 0.
-      for (const k of ['narrow', 'narrowEdge', 'wide', 'wideNear']) {
+      // below, 0. The stair's 21 treads of 11in are 19.25ft from z 40, so its
+      // 4ft landing is z 59.25 to 63.25 (#983); before, the ray fell through.
+      for (const k of ['narrow', 'narrowEdge', 'wide', 'wideNear', 'stair', 'stairEdge']) {
         if (ctx[k] === null || Math.abs(ctx[k] - 12) > 0.12) {
           throw new Error(`${k}: the highest thing on the landing is at ${ctx[k]}ft, not 12ft`);
         }

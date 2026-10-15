@@ -57,15 +57,17 @@ test('a folded ramp and a stair have no straight landing box', () => {
 });
 
 // render.js cannot be imported in Node (it opens with three), so the line is
-// read: the straight ramp's branch draws `rampLandingBox` as a level slab whose
-// top is the rise, in the ramp's own colour, into the same geometry list.
-test('render.js draws the straight ramp\'s landing from rampLandingBox at the rise', () => {
+// read: `buildStairRun` draws `topLandingBox` as a level slab whose top is the
+// rise, in the run's own colour, into the same geometry list. Since #983 the
+// line follows both branches, so a stair's landing is drawn by it too
+// (test/stair-deck.test.mjs); for a ramp the box is `rampLandingBox`'s.
+test('render.js draws the straight ramp\'s landing from its top landing box at the rise', () => {
   const src = readFileSync(fileURLToPath(new URL('../js/render.js', import.meta.url)), 'utf8');
   const start = src.indexOf('const buildStairRun = (link) =>');
-  const end = src.indexOf('} else {', start);
-  assert.ok(start > 0 && end > start, 'buildStairRun\'s ramp branch not found');
+  const end = src.indexOf('// Handrails:', start);
+  assert.ok(start > 0 && end > start, 'buildStairRun not found');
   const branch = src.slice(start, end);
-  assert.match(branch, /rampLandingBox\(link, metrics\)/, 'the ramp branch does not ask for its landing');
+  assert.match(branch, /topLandingBox\(link, metrics\)/, 'buildStairRun does not ask for its landing');
   assert.match(branch, /localBox\(link, land\.x1 - land\.x0, 0\.5, land\.z1 - land\.z0,[^;]*m\.rise - 0\.25[^;]*_tread, stairGeos\)/,
     'the landing is not drawn as a 0.5ft slab topped at the rise');
 });

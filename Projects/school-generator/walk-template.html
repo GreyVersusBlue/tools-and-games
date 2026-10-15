@@ -59783,13 +59783,21 @@ function rampLandingArea(link, metrics) {
   return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
 }
 
-// The level landing at the top of a straight ramp, as a local box: the ramp's
-// own width, from the top of the run to the far edge of the hole. Null for a
-// stair and for a folded ramp, whose landings are its layout's.
-function rampLandingBox(link, metrics) {
-  if (!link || link.type !== 'ramp' || isSwitchback(link)) return null;
+// The level landing at the top of a straight run, stair or ramp, as a local
+// box: the run's own width, from the top of the run to the far edge of the
+// hole, `topLanding` deep (a stair's 4ft, a ramp's 5ft). Null for a folded
+// ramp, whose landings are its layout's, and for a link with no run. render.js
+// draws it for both kinds (#981, #983).
+function topLandingBox(link, metrics) {
+  if (!isRun(link) || isSwitchback(link)) return null;
   const hw = stairWidth(link) / 2, run = runLength(link, metrics);
-  return { x0: -hw, x1: hw, z0: run, z1: run + RAMP_LANDING };
+  return { x0: -hw, x1: hw, z0: run, z1: run + topLanding(link) };
+}
+
+// The same box for a straight ramp alone, which is what the `ramp-landing`
+// finding asks about (ADA 405.7, #904); null for a stair.
+function rampLandingBox(link, metrics) {
+  return link && link.type === 'ramp' ? topLandingBox(link, metrics) : null;
 }
 
 // The same guards as world segments on the plan, for the collider.
@@ -59998,7 +60006,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, topLandingBox, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {
@@ -80929,7 +80937,7 @@ const { CELL, WALL_H, WALL_T, WALL_T_EXT, DOOR_H, RAIL_H, FLOOR_H, floorBaseY, w
 const { SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint, floorSolidAt, openingSpec, shapeAt } = __m_js_shapes_js;
 const { catalogEntry, propColor, variantKey } = __m_js_catalog_js;
 const { revealAt } = __m_js_hunt_js;
-const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, rampLandingBox, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
+const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, topLandingBox, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
 const { wallProbe, solidBeside } = __m_js_walls_js;
 const { wallLinesOf, lineEnds, lineKind, lineOpenings } = __m_js_wallrun_js;
 const { gridPitch, majorEvery, ORIGIN, asOrigin } = __m_js_snapgrid_js;
@@ -85885,15 +85893,6 @@ function initRender(canvas) {
           coloredGeo(curb, _nosing);
           stairGeos.push(curb);
         }
-        // The level landing at the top, ADA's 5ft (#904), cut out of the
-        // floor above and walked at its height: a slab in the ramp's colour,
-        // as a folded ramp's top landing is, from the box the walker and the
-        // hole read (#981). Before, nothing stood there.
-        const land = rampLandingBox(link, metrics);
-        if (land) {
-          localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
-            (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
-        }
       } else {
         // Each step is a solid block from the slab up to its own tread, not a
         // floating board: overlapping boxes merge into one mass, so the run has
@@ -85904,6 +85903,16 @@ function initRender(canvas) {
           localBox(link, w, top, m.tread, 0, top / 2, z0 + m.tread / 2, _tread, stairGeos);
           localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + m.tread - 0.1, _nosing, stairGeos);
         }
+      }
+      // The level landing at the top, cut out of the floor above and walked
+      // at its height: a slab in the run's colour, as a folded ramp's top
+      // landing is, from the box the walker and the hole read. A ramp's is
+      // ADA's 5ft (#904, drawn since #981), a stair's 4ft (#983); before,
+      // nothing stood on either and the walk crossed open hole.
+      const land = topLandingBox(link, metrics);
+      if (land) {
+        localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
+          (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
       }
       // Handrails: a sloped cap either side, on posts that grow with the run.
       // Identical for both — a ramp needs them more than a stair does.
