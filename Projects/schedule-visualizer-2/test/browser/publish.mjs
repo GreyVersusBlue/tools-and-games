@@ -1800,13 +1800,56 @@ test('a page that asks after the wait ran out clears "has not opened" and "Try a
   });
 });
 
-// SV2-53 item 3. Until SV2-53 a page that asked late cleared "failed" and
-// "Try again" only while the bar still read "has not opened": a copy that
-// could not be made after the wait ran out wrote its own sentence over it,
-// and the page that then asked stayed "failed" with "Try again" beside it.
-// And a copy made again while no page was asking left "could not be brought
-// up to date" standing until a page asked.
-test('after the wait ran out: a later sentence does not keep a page that asks late "failed", and a copy made again clears "could not be brought up to date" at once', async () => {
+// SV2-53 item 3. Until SV2-53 a page that asked late, with no copy to be
+// given, cleared "failed" and "Try again" only while the bar still read "has
+// not opened": a copy that could not be made after the wait ran out wrote its
+// own sentence over it, and the page that then asked stayed "failed" with
+// "Try again" beside it.
+test('after the wait ran out, a later sentence does not keep a page that asks late "failed" or its "Try again"', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    const stale = 'The preview could not be brought up to date. ' + NO_ENCRYPTION;
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      // the page the frame is given does not ask for its data in time: a blank page
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => create(blob.type.startsWith('text/html') ? new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }) : blob);
+      // no encryption, and the passcode screen asked for before the first copy: no copy is ever made
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined });
+      location.hash = '#staff';
+      await new Promise((resolve) => {
+        const look = () => {
+          const box = document.querySelector('.stf-bar .stf-check input');
+          if (!box) return void requestAnimationFrame(look);
+          box.click();
+          resolve();
+        };
+        look();
+      });
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.preview === 'failed' && document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
+    assert.equal(await says(page, 'preview'), 'The preview has not opened. Try again; publishing a file does not depend on it.');
+    // a change, and its copy cannot be made either: its sentence goes over "has not opened"
+    const sent = await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent);
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction(() => document.querySelector('[data-says="preview"]').textContent.startsWith('The preview could not be brought up to date.'), { timeout: 30000 });
+    assert.equal(await page.evaluate(() => document.querySelector('.stf-preview').dataset.preview), 'failed', 'no page has asked yet');
+    // and now, late, the page asks, with nothing to be given
+    await frameOf(page).evaluate(() => parent.postMessage({ type: 'sv2-preview-ready' }, location.origin));
+    await page.waitForFunction(() => document.querySelector('.stf').staff.preview.state.opened === true, { timeout: 30000 });
+    assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent), sent, 'there was no copy to give it');
+    assert.notEqual(await page.evaluate(() => document.querySelector('.stf-preview').dataset.preview), 'failed', 'a page that asked has opened');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').getClientRects().length), 0, 'no "Try again" for a page that opened');
+    assert.equal(await says(page, 'preview'), stale, 'and the bar says why there is nothing to show');
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+  });
+});
+
+// SV2-53 item 3. A copy made again while no page was asking left "could not
+// be brought up to date" standing until a page asked, though it was no
+// longer so.
+test('after the wait ran out, a copy made again clears "could not be brought up to date" at once, with no page asking', async () => {
   const session = await openPlanner({ browser, server, hash: '#building' });
   await closing(session, async (page) => {
     const NOT_OPEN = 'The preview has not opened. Try again; publishing a file does not depend on it.';
@@ -1819,7 +1862,6 @@ test('after the wait ran out: a later sentence does not keep a page that asks la
     await page.evaluate(async () => {
       const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
       PREVIEW_TIMES.open = 600;
-      // the page the frame is given does not ask for its data in time: a blank page
       const create = URL.createObjectURL.bind(URL);
       URL.createObjectURL = (blob) => create(blob.type.startsWith('text/html') ? new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }) : blob);
       location.hash = '#staff';
@@ -1838,19 +1880,7 @@ test('after the wait ran out: a later sentence does not keep a page that asks la
     await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
     await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === undefined, { timeout: 30000 });
     assert.deepEqual(await bar(), { preview: 'failed', says: NOT_OPEN, stale: null, again: true }, '"could not be brought up to date" is no longer so');
-    // the copy fails again, over "has not opened"; and now, late, the page asks
-    await page.evaluate(() => Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined }));
-    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran once more' });
-    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
-    assert.equal((await bar()).says, stale);
-    await frameOf(page).evaluate(() => parent.postMessage({ type: 'sv2-preview-ready' }, location.origin));
-    await page.waitForFunction(() => document.querySelector('.stf').staff.preview.state.opened === true, { timeout: 30000 });
-    const late = await bar();
-    assert.notEqual(late.preview, 'failed', 'a page that asked has opened');
-    assert.equal(late.again, false, 'no "Try again" for a page that opened');
-    assert.equal(late.says, stale, 'and the bar says why there is nothing to show');
     await page.evaluate(() => {
-      delete globalThis.crypto.subtle;
       for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
     });
   });
