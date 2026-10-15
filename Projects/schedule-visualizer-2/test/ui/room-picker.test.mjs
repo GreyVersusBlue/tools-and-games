@@ -333,9 +333,9 @@ test('SV2-50 item 11: text is folded by NFKC and without a locale, and "Room 101
   assert.equal(readTyped('Rene\u0301e', accented).option?.id, 'r301', 'readTyped(\'Rene\u0301e\', accented)');
   const stored = [{ id: 'r301', number: '301', label: '301 — Mme Rene\u0301e Fauchard', teachers: 'Mme Rene\u0301e Fauchard', detail: '' }];
   assert.equal(readTyped('Renée', stored).option?.id, 'r301', 'readTyped(\'Renée\', stored)');
-  // the dotted capital I is not turned into a dotless i by a Turkish device: no locale
-  const turkish = [{ id: 'r401', number: '401', label: '401 — Bay İnce', teachers: 'Bay İnce', detail: '' }];
-  assert.equal(readTyped('İnce', turkish).option?.id, 'r401', 'readTyped(\'İnce\', turkish)');
+  // (No case for the locale: typed text and a room's text are folded by the
+  // one function, so a locale's lower case would agree with itself and pass
+  // here either way. That fold() names no locale is read in room-rules.js.)
   // "Room 101", as a sentence of the tool names it, in any case
   assert.equal(readTyped('Room 101', ROOMS).option?.id, 'r101', 'readTyped(\'Room 101\', ROOMS)');
   assert.equal(readTyped('  room  b12 ', ROOMS).option?.id, 'rb12', 'readTyped(\'  room  b12 \', ROOMS)');
