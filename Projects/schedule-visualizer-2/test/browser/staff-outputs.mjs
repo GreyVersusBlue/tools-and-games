@@ -468,6 +468,20 @@ before(async () => {
     project.teachers[0].name = WORD_TEACHER;
     project.groups[0].name = WORD_GROUP;
   });
+  // three groups in one period of Room 101, so its day has a list with commas (SV2-51 item 9)
+  await write('commas', (project) => {
+    const day = project.dayTypes[0].id;
+    project.groups.slice(0, 3).forEach((group, at) => {
+      group.days[day][2] = { ...group.days[day][2], room: 'rsample101', roomText: '' };
+      group.name = ['Northwingreaders', 'Southwingwriters', 'Eastwingthinkers'][at];
+    });
+  });
+  // the same with the longest period word: "3rd Hour" beside two names of sixty (SV2-51 item 9)
+  await write('longwordhour', (project) => {
+    project.settings.periodWord = 'Hour';
+    project.teachers[0].name = WORD_TEACHER;
+    project.groups[0].name = WORD_GROUP;
+  });
   browser = await launch();
 });
 
@@ -699,7 +713,7 @@ test('the sign\'s day never cuts a word and never runs past the sheet: thirty-le
 const namesFit = (page) => page.evaluate(() => {
   const sheet = document.querySelector('.sheet, .batch-sign').getBoundingClientRect();
   const day = document.querySelector('.sign__day').getBoundingClientRect();
-  const names = Array.from(document.querySelectorAll('.sign__table td span'));
+  const names = Array.from(document.querySelectorAll('.sign__table td span[dir]'));
   return {
     names: names.length,
     past: names.filter((name) => {
@@ -710,7 +724,9 @@ const namesFit = (page) => page.evaluate(() => {
   };
 });
 
-test('a word no sheet can hold is broken at the sheet\'s edge and nothing else is: two names of sixty letters in one row, at 390 px, at 1280 px, on paper and in the batch', async () => {
+// SV2-51 item 9: and with the school's period word "Hour", whose names
+// ("3rd Hour") are the longest the tool makes, beside the two.
+test('a word no sheet can hold is broken at the sheet\'s edge and nothing else is: two names of sixty letters in one row, with "Period" and with "Hour", at 390 px, at 1280 px, on paper and in the batch', async () => {
   const room = 'rsample101';
   const check = async (page, name) => {
     const fit = await dayFit(page);
@@ -726,28 +742,35 @@ test('a word no sheet can hold is broken at the sheet\'s edge and nothing else i
     assert.deepEqual(cut, [WORD_TEACHER, WORD_GROUP].sort(), name + ': the words cut in two');
     assert.ok(names.lines.every((lines) => lines >= 2 && lines <= 4), name + ': the lines each long name takes: ' + names.lines.join(' '));
   };
+  for (const [fixture, word] of [['longword', 'Period 3'], ['longwordhour', '3rd Hour']]) {
   for (const [name, width, height, media] of [['a phone', 390, 844, 'screen'], ['a narrow phone', 320, 640, 'screen'], ['a desktop', 1280, 900, 'screen'], ['US Letter', 710, 950, 'print'], ['A4', 688, 1017, 'print']]) {
     const session = await openPage({ width, height });
     try {
       const { page } = session;
-      await goto(page, files.longword.url + '#/door/' + room + '?day=1');
+      await goto(page, files[fixture].url + '#/door/' + room + '?day=1');
       if (media === 'print') {
         await page.emulateMediaType('print');
         await page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
       }
-      await check(page, name);
+      // the row where the two names meet is headed by that period
+      const rows = await page.evaluate((teacher) => Array.from(document.querySelectorAll('.sign__table tr')).filter((row) => row.textContent.includes(teacher)).map((row) => row.querySelector('th').textContent), WORD_TEACHER);
+      assert.ok(rows.includes(word), name + ': the long names meet in the row of ' + word + ': ' + rows.join(', '));
+      await check(page, name + ', ' + word);
       assert.deepEqual(session.errors, []);
     } finally {
       await session.close();
     }
   }
+  }
   // the planner's batch sets the same sign from print.css
+  for (const periodWord of ['Period', 'Hour']) {
   const project = sampleSchool();
+  project.settings.periodWord = periodWord;
   project.teachers[0].name = WORD_TEACHER;
   project.groups[0].name = WORD_GROUP;
   for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
     const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
-    const file = path.join(scratch, 'batch-word-' + size + '.html');
+    const file = path.join(scratch, 'batch-word-' + size + '-' + periodWord + '.html');
     writeFileSync(file, html);
     const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
     try {
@@ -760,7 +783,85 @@ test('a word no sheet can hold is broken at the sheet\'s edge and nothing else i
       await page.evaluate((id) => {
         for (const sheet of Array.from(document.querySelectorAll('[data-sheet="door"]'))) if (sheet.dataset.id !== id) sheet.remove();
       }, room);
-      await check(page, 'the batch on ' + size);
+      await check(page, 'the batch on ' + size + ', ' + periodWord);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+  }
+});
+
+// SV2-51 item 9. In a list of names ("A, B and C") a name is a box of its
+// own (span[dir]), and the line may end on either side of a box: the comma
+// after a name went to the start of the next line when the name filled the
+// line. Where a line ends depends on the names, so the first name's length is
+// swept in the page, a letter at a time, and every comma is read against the
+// last line of the name before it.
+const commasParted = (page) => page.evaluate(() => {
+  const first = Array.from(document.querySelectorAll('.sign__table td span[dir]')).find((span) => span.textContent.startsWith('Northwing'));
+  const parted = [];
+  for (let letters = 1; letters <= 40; letters += 1) {
+    first.textContent = 'N' + 'o'.repeat(letters);
+    for (const cell of document.querySelectorAll('.sign__table td')) {
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.data.startsWith(',')) continue;
+        const name = node.previousSibling && node.previousSibling.nodeType === 1 ? node.previousSibling : node.parentElement.previousElementSibling;
+        if (!name) continue;
+        const range = document.createRange();
+        range.setStart(node, 0);
+        range.setEnd(node, 1);
+        const comma = range.getClientRects()[0];
+        const lines = name.getClientRects();
+        const last = lines[lines.length - 1];
+        if (comma && last && Math.abs(comma.top - last.top) > 1) parted.push(letters + ' letters: ' + name.textContent.slice(0, 12));
+        // and kept with its name, a comma never stands past the sheet
+        const edge = Math.min(document.querySelector('.sheet, .batch-sign').getBoundingClientRect().right, document.querySelector('.sign__day').getBoundingClientRect().right);
+        if (comma && comma.right > edge + 0.5) parted.push(letters + ' letters: the comma after ' + name.textContent.slice(0, 12) + ' is past the sheet');
+      }
+    }
+  }
+  return parted;
+});
+
+test('a name and the comma after it are never parted at a line\'s end: on a phone, on a desktop, on paper and in the batch', async () => {
+  for (const [name, width, height, media] of [['a phone', 390, 844, 'screen'], ['a narrow phone', 320, 640, 'screen'], ['a desktop', 1280, 900, 'screen'], ['US Letter', 710, 950, 'print'], ['A4', 688, 1017, 'print']]) {
+    const session = await openPage({ width, height });
+    try {
+      const { page } = session;
+      await goto(page, files.commas.url + '#/door/rsample101?day=1');
+      if (media === 'print') {
+        await page.emulateMediaType('print');
+        await page.waitForFunction(() => matchMedia('print').matches && getComputedStyle(document.querySelector('.top')).display === 'none');
+      }
+      assert.equal(await page.evaluate(() => Array.from(document.querySelectorAll('.sign__table td')).filter((cell) => cell.textContent.includes('Southwingwriters, Eastwingthinkers') || cell.textContent.includes(', Southwingwriters')).length > 0), true, name + ': the three names are a list with a comma');
+      assert.deepEqual(await commasParted(page), [], name + ': a comma begins a line');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+  const project = sampleSchool();
+  const day = project.dayTypes[0].id;
+  project.groups.slice(0, 3).forEach((group, at) => {
+    group.days[day][2] = { ...group.days[day][2], room: 'rsample101', roomText: '' };
+    group.name = ['Northwingreaders', 'Southwingwriters', 'Eastwingthinkers'][at];
+  });
+  for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
+    const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
+    const file = path.join(scratch, 'batch-commas-' + size + '.html');
+    writeFileSync(file, html);
+    const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
+    try {
+      const { page } = session;
+      await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+      await page.emulateMediaType('print');
+      await page.evaluate(() => {
+        for (const sheet of Array.from(document.querySelectorAll('[data-sheet="door"]'))) if (sheet.dataset.id !== 'rsample101') sheet.remove();
+      });
+      assert.deepEqual(await commasParted(page), [], 'the batch on ' + size + ': a comma begins a line');
       assert.deepEqual(session.errors, []);
     } finally {
       await session.close();

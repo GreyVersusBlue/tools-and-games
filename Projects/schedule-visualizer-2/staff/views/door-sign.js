@@ -16,7 +16,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printButton } from '../page.js';
-import { wordsJoined, dayKindsOf } from './teacher.js';
+import { dayKindsOf } from './teacher.js';
 import { roomUse } from './room.js';
 
 // Scripts whose characters are set a full square wide (Chinese, Japanese,
@@ -167,6 +167,24 @@ function el(tag, attrs, ...children) {
 // the same markup on the page and in the batch.
 const typedName = (text) => el('span', { dir: 'auto' }, String(text));
 
+// Names as a list, "A, B and C", the words as wordsJoined gives them. A name
+// is a box of its own (36% of the sheet at most), and a line may end on
+// either side of a box, so a comma after a name that filled its line went to
+// the start of the next one. Each name that a comma follows is kept with its
+// comma (.sign__with does not wrap between the two; the name inside still
+// wraps).
+function namesListed(names) {
+  const out = [];
+  names.forEach((name, at) => {
+    const last = at === names.length - 1;
+    const beforeAnd = at === names.length - 2;
+    if (last || beforeAnd) out.push(typedName(name));
+    else out.push(el('span', { class: 'sign__with' }, typedName(name), ','), ' ');
+    if (beforeAnd) out.push(' and ');
+  });
+  return out;
+}
+
 // The subject the sign names: the room's own; with none, the one its
 // teachers share. Teachers of different subjects share none, so none is named.
 function subjectOf(school, room, teachers) {
@@ -182,7 +200,7 @@ function dayOf(school, room) {
   return el('div', { class: 'sign__day', 'data-sign': 'day', 'data-count': String(kinds.length) }, kinds.map((kind) => {
     const bells = school.bells(kind.first.id);
     return el('section', { class: 'sign__kind' },
-      el('h2', { class: 'sign__kindname' }, wordsJoined(kind.dayTypes.map((dayType) => typedName(dayType.name)))),
+      el('h2', { class: 'sign__kindname' }, namesListed(kind.dayTypes.map((dayType) => dayType.name))),
       el('table', { class: 'sign__table' },
         el('tbody', null, uses.get(kind.first.id).map((here, period) => {
           const bell = bells[period];
@@ -195,8 +213,8 @@ function dayOf(school, room) {
           return el('tr', null,
             el('th', { scope: 'row' }, school.periodName(period)),
             el('td', null, bell && bell.start && bell.end ? school.time(bell.start) + ' to ' + school.time(bell.end) : ''),
-            el('td', null, here.length === 0 ? 'Empty' : wordsJoined(here.map((use) => typedName(use.group.name)))),
-            el('td', null, wordsJoined(who.map((teacher) => typedName(teacher.name)))));
+            el('td', null, here.length === 0 ? 'Empty' : namesListed(here.map((use) => use.group.name))),
+            el('td', null, namesListed(who.map((teacher) => teacher.name))));
         }))));
   }));
 }
@@ -223,7 +241,7 @@ function signTree(school, room, options) {
     el('div', { class: 'sign__card' },
       worded ? el('p', { class: 'sign__word' }, 'Room') : null,
       el('p', { class: 'sign__number', style: '--sign-fit: ' + signFit(big), 'data-sign': 'number' }, numbered ? typedName(big) : big),
-      teachers.length > 0 ? el('p', { class: 'sign__teacher', 'data-sign': 'teacher' }, wordsJoined(teachers.map((teacher) => typedName(teacher.name)))) : null,
+      teachers.length > 0 ? el('p', { class: 'sign__teacher', 'data-sign': 'teacher' }, namesListed(teachers.map((teacher) => teacher.name))) : null,
       subject ? el('p', { class: 'sign__subject', 'data-sign': 'subject' }, typedName(subject.name)) : null,
       day ? null : foot),
     day ? dayOf(school, room) : null,

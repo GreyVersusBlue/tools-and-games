@@ -523,5 +523,28 @@ test('a number too long for one line wraps on the sheet: nothing keeps it on one
   assert.ok(rules['.sign__number'], 'print.css has no rule for the number');
   assert.equal(rules['.sign__number']['white-space'], undefined);
   assert.equal(rules['.sign__number']['overflow-wrap'], 'anywhere');
-  assert.equal(countOf(css.slice(css.indexOf('SV2-24: batch sheets')), 'nowrap'), 1, 'only the period column of a teacher schedule is kept on one line; the sign\'s wraps between its words (SV2-45 item 4)');
+  // only the period column of a teacher schedule is kept on one line, and a name with the comma after it (SV2-51 item 9); the sign wraps between its words (SV2-45 item 4)
+  assert.equal(countOf(css.slice(css.indexOf('SV2-24: batch sheets')), 'nowrap'), 2);
+  assert.equal(rules['.sign__with']['white-space'], 'nowrap');
+  assert.equal(rules['.sign__with > span']['white-space'], 'normal', 'the name inside still wraps');
+});
+
+// SV2-51 item 9. A browser with no container units drops a 36cqw width, and a
+// name of sixty letters would then stand whole, past the sheet. staff.css
+// gives each such size a line before it in another unit; print.css's names
+// have the same.
+test('a name\'s 36cqw has a line before it in a unit every browser knows, in print.css as in staff.css', () => {
+  const block = (css, selector) => {
+    const at = css.indexOf('\n' + selector + ' {');
+    assert.notEqual(at, -1, selector);
+    return css.slice(at, css.indexOf('}', at));
+  };
+  const widths = (text) => Array.from(text.matchAll(/max-width:\s*([^;]+);/g), (match) => match[1].trim());
+  const print = widths(block(readFileSync(path.join(TOOL_DIR, 'ui', 'print.css'), 'utf8').replace(/\r\n?/g, '\n'), '.print-doc .sign__table td span[dir]'));
+  const staff = widths(block(readFileSync(path.join(TOOL_DIR, 'staff', 'staff.css'), 'utf8').replace(/\r\n?/g, '\n'), '.sign__table td span[dir]'));
+  for (const [sheet, list] of [['staff.css', staff], ['print.css', print]]) {
+    assert.equal(list.length, 2, sheet + ': ' + list.join(', '));
+    assert.equal(list[1], '36cqw', sheet);
+    assert.doesNotMatch(list[0], /cq/, sheet + ': the line before is in a unit every browser knows');
+  }
 });
