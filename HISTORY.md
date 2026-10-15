@@ -1824,6 +1824,8 @@ Generator.
 
 **#975. Reserved: #946 to #975 are held for sessions on Huginn (the Selector loop); anyone else numbers from #976.**
 
+**#977. Closing Time: meeting a client who has already been met hands back their record and changes nothing, and the page drops a waiting referral for them without a modal.** Each of the four doors (#514, #956) picks from `clientQueue` and none reads what is already waiting in `choiceQueue`, so two doors on one day can name one client, and taking both called `meetClient()` twice: two records, the name twice in `usedClients`, two Ledger lines. The guard is in `meetClient()` (and `alreadyMet()` beside it), not at the doors, because a door that skipped a waiting name would draw a different client from `rand()` and move every seeded career that ever had two waiting; this way nothing that did not double plays differently. A save that already holds two records loads and plays on with both, as before; nothing merges them. Reverse by filtering the doors' pools on the waiting names instead. *Closing Time, TG-29.*
+
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
 
 # The log
@@ -3148,3 +3150,19 @@ Worker TG-29-signalorange of the audit's line TG-29, under Opus 5.5 on huginn in
 **Also.** `Tools/board-check/README.md`'s port table had four fixed ports missing (8174 SkyWings `draws.mjs`, 8175 The Fracture Cycle, 8177 Torchbearer, 8191 Throneshard's `vfx_measure.mjs`) and five listed ports with a second user unnamed: 8127 `capture-hearth.mjs`, 8137 Daredevil's `boot()` default, 8168 `blender/validate.mjs`, 8171 Throneshard's `browser.mjs`, 8173 SkyWings' `gpu-profile.mjs`. All added; nothing renumbered. The paragraph under the table still says 8127 is doubled; it is three now.
 
 **Left.** Nothing of the cone check. The shared ports are listed, not separated.
+
+## Closing Time: two doors that name one client, 2026-10-15 (TG-29)
+
+Worker TG-29-closingdup of the audit's line TG-29, under Opus 5.5 on huginn in a worktree (`sel/TG-29-closingdup`) beside one other worker (TG-28-pinch, School Generator), no subagents; decision #977. The last thing #956's session saw and did not change.
+
+**Cause.** Still open on `main` (fb867d6). Reproduced in `tools/smoke.mjs` on a seeded Rookie career with one client in reach (`cl_0004`): Ruth's call and a closed client's `rollReferral()` both queued a `referralArrive` naming them, and taking both gave two records, `cl_0004` twice in `usedClients` and two "New client" lines. No door looks at `choiceQueue`; `meetClient()` never asked whether the client had been met.
+
+**The fix (#977).** `js/engine/clients.js`: `alreadyMet()` reads `usedClients` (nothing ever takes a name off it), and `meetClient()` returns the client's existing record without touching any state when they have one. `js/ui.js`: `renderChoiceQueue()` drops a `referralArrive` for a client already met before it builds a modal, so the second door's call is never shown. The referral it carried still counted in `stats.referrals` when it was rolled, as before.
+
+**Nothing moved.** A seeded probe (scratch, not committed: Math.random and Date.now pinned, 300 careers of 336 days, intake every third day and every referral taken) hashes every final state to `2b5892608ebf3904` before and after, with 994 referrals and no doubled record in either; the doors draw exactly as they did. `tools/smoke.mjs` 537 to 548, exit 0. The suite's own careers are not seeded, so its printed day-40 narrative differs between any two runs, before or after.
+
+**An old doubled save.** Built by hand the way the old `meetClient()` left it, saved and loaded: it loads, keeps both records (two roster slots for one person), plays thirty days and saves again. No repair was written, since nothing breaks; the suite pins that it keeps both.
+
+**Breaks.** Pure Node, in place and put back: the early return removed fails the four record, used-list and Ledger lines; `alreadyMet()` always false fails those and its own line; `alreadyMet()` true for a client still in the queue passed at first, because the line's control (`cl_0008`) was not in the queue when it was asked, so the test now puts them there and the break fails that line alone. The page: a scratch Playwright check (headless 1194, under the suites lock) sets two waiting referrals for one client, takes the first and finds no second modal, an empty `choiceQueue`, one record and no page error; with the drop line removed it fails two of its five lines (the second modal opens and its choice stays).
+
+**Left.** A seller passes every door whatever their tier (the seller-side design's question 12); the seller-side commercial tier waits on Devon's read.
