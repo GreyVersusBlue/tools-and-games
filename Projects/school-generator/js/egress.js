@@ -54,7 +54,9 @@ import {
 import {
   clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis, rampLandingFit,
 } from './clearance.js';
-import { rampSlope, rampRuns, rampRunRise, rampOverRise, rampMinRuns, stairMetrics } from './stairs.js';
+import {
+  rampSlope, rampRuns, rampRunRise, rampOverRise, rampMinRuns, stairMetrics, RAMP_CTRL,
+} from './stairs.js';
 import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE, pathGrade } from './sitemesh.js';
 import { terrainField } from './terrain.js';
 import { buildingOccupancy } from './occupancy.js';
@@ -592,6 +594,9 @@ export function accessibleAnalysis(state, opts = {}) {
   // ADA 405.7: a straight ramp's top landing with something in its 5ft
   // (#904). The ramp stays where it is and stays in the count, as above.
   const tightLandings = (state.links || []).map((l) => rampLandingFit(state, l, metrics)).filter(Boolean);
+  // ADA 405.5: a ramp a file made narrower than the panel lets one be (#982).
+  // A warning that moves nothing; the ramp stays in the count, as above.
+  const narrowRamps = (state.links || []).filter((l) => l.type === 'ramp' && stairWidth(l) < RAMP_CTRL.minW);
   const stairsOnly = rooms.filter((r) => r.stairsOnly);
 
   // Phase 40: the chair, once it has arrived. Only the rooms the route reaches
@@ -645,7 +650,7 @@ export function accessibleAnalysis(state, opts = {}) {
     findings: [
       ...accessibleFindings({
         rooms: stairsOnly, entrances, summary, narrowDoors, steepRamps,
-        longRamps, rise: metrics.rise, minRuns: rampMinRuns(metrics), tightLandings,
+        longRamps, rise: metrics.rise, minRuns: rampMinRuns(metrics), tightLandings, narrowRamps,
       }),
       ...turning.findings,
       ...reach.findings,
@@ -668,6 +673,7 @@ const ADA = {
   ramp: 'ADA 2010 · §405.2',
   rampRise: 'ADA 2010 · §405.6',
   rampLanding: 'ADA 2010 · §405.7',
+  rampWidth: 'ADA 2010 · §405.5',
   surface: 'ADA 2010 · §403.3',
 };
 
@@ -834,7 +840,7 @@ function egressFindings({ rooms, exits, stairs, summary, common, edition, occupa
 
 function accessibleFindings({
   rooms, entrances, summary, narrowDoors, steepRamps = [], longRamps = [], rise = 0, minRuns = 1,
-  tightLandings = [],
+  tightLandings = [], narrowRamps = [],
 }) {
   const out = [];
   if (!entrances.length) {
@@ -874,6 +880,16 @@ function accessibleFindings({
       'these are off the accessible route and what they lead to counts as stairs-only. ' +
       'A longer run at 1:12 — or a lift — is the answer.',
       { doors: steepRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })), cite: ADA.ramp }));
+  }
+  if (narrowRamps.length) {
+    const w = Math.min(...narrowRamps.map((l) => stairWidth(l)));
+    out.push(finding('warn', 'narrow-ramp',
+      `${narrowRamps.length} ramp${narrowRamps.length === 1 ? '' : 's'} narrower than ${ft(RAMP_CTRL.minW)}`,
+      `The narrowest is ${inches(w)} wide. A ramp is 36 in clear between the handrails (ADA 405.5) ` +
+      `at the least, and this tool draws one ${ft(RAMP_CTRL.minW)} wide so the rails stand outside that; ` +
+      'under 36 in it is no ramp a chair can count on. Nothing was moved or widened: pick it with ' +
+      'the Stairs tool and raise Ramp width. The route above still counts it as a way up.',
+      { doors: narrowRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })), cite: ADA.rampWidth }));
   }
   if (longRamps.length) {
     // The worst run on the page, and what would cure it. A storey so tall that
