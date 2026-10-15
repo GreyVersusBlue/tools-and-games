@@ -389,6 +389,108 @@ export function straightSkeleton(input, opts = {}) {
   return { poly, nodes: outNodes, arcs: outArcs, faces };
 }
 
+// The eave line: the polygon pushed `d` feet outward, every edge parallel to
+// its own wall and every corner mitred, which is how a fascia board runs round
+// a building and also exactly where the straight skeleton's wavefront would be
+// at time -d, so the roof stood on it is the same roof carried out over the
+// overhang. Corners come back one for one with `poly` after `cleanPolygon`.
+//
+// The stated limit: an outward offset closes up a concave run (a curve bowed
+// into the building, a notch), and once `d` is more than such a run can give,
+// an edge turns end for end or the line crosses itself. Both are refused, as
+// null, and the caller keeps the rectangles (#967); nothing is trimmed or
+// patched into a roof that is quietly not what was drawn.
+export function eavePolygon(input, d) {
+  const poly = cleanPolygon(input);
+  if (!poly || !(d >= 0)) return null;
+  const n = poly.length;
+  const normal = (i) => {
+    const a = poly[i], b = poly[(i + 1) % n];
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    return { x: (b.z - a.z) / L, z: -(b.x - a.x) / L };
+  };
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const n1 = normal((i - 1 + n) % n), n2 = normal(i);
+    const k = 1 + n1.x * n2.x + n1.z * n2.z;
+    out.push(P2(poly[i].x + (d * (n1.x + n2.x)) / k, poly[i].z + (d * (n1.z + n2.z)) / k));
+  }
+  // A run turned end for end always crosses its neighbours, so one test for a
+  // simple polygon catches both (a corner that turns straight back has k of 0,
+  // and the infinite point it gives fails the same test).
+  const clean = cleanPolygon(out);
+  return clean ? out : null;
+}
+
+// A face cut into triangles by ear clipping, as index triples into `pts`
+// (anything with x and z), each wound in (x, z) the way the face is. A
+// skeleton face is not convex in general (an L's long slope runs past its
+// valley), and a fan from the first point, which is how render.js has always
+// drawn a roof face, puts a triangle outside it there. Null if no ear can be
+// found, which a simple polygon always has.
+export function triangulate(pts) {
+  const n = pts.length;
+  if (n < 3) return null;
+  let idx = [...Array(n).keys()];
+  const backward = signedArea(pts) < 0;
+  if (backward) idx.reverse();
+  const cross = (a, b, c) => (pts[b].x - pts[a].x) * (pts[c].z - pts[a].z) - (pts[b].z - pts[a].z) * (pts[c].x - pts[a].x);
+  const tris = [];
+  while (idx.length > 3) {
+    const m = idx.length;
+    let cut = -1;
+    for (let k = 0; k < m && cut < 0; k++) {
+      const a = idx[(k - 1 + m) % m], b = idx[k], c = idx[(k + 1) % m];
+      const turn = cross(a, b, c);
+      // A corner that does not turn is never an ear (its triangle is flat);
+      // it becomes an ordinary corner once a neighbour is clipped.
+      if (turn <= 1e-12 * (1 + Math.abs(pts[a].x) + Math.abs(pts[a].z)) ** 2) continue;
+      let clear = true;
+      for (const j of idx) {
+        if (j === a || j === b || j === c) continue;
+        if (cross(a, b, j) >= 0 && cross(b, c, j) >= 0 && cross(c, a, j) >= 0) { clear = false; break; }
+      }
+      if (!clear) continue;
+      tris.push([a, b, c]);
+      cut = k;
+    }
+    if (cut < 0) return null;
+    idx.splice(cut, 1);
+  }
+  if (cross(idx[0], idx[1], idx[2]) > 0) tris.push([idx[0], idx[1], idx[2]]);
+  return backward ? tris.map(([a, b, c]) => [c, b, a]) : tris;
+}
+
+// The height of a skeleton roof over one point of the plan, for the section:
+// the plane of the face the point lies in (or on the edge of), read off the
+// face itself (its eave and the point of it furthest from the eave), so it
+// needs no pitch passed in. Null outside every face.
+export function roofHeightOver(faces, x, z) {
+  let best = null, bestD = Infinity;
+  for (const f of faces) {
+    const pts = f.pts;
+    let inside = false, d = Infinity;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      const s = L2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L2)) : 0;
+      d = Math.min(d, Math.hypot(a.x + dx * s - x, a.z + dz * s - z));
+    }
+    if (inside) d = 0;
+    if (d < bestD) { bestD = d; best = f; }
+  }
+  if (!best || bestD > 1e-6) return null;
+  const [a, b] = best.pts;
+  const L = Math.hypot(b.x - a.x, b.z - a.z);
+  const inward = (p) => ((b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x)) / L;
+  // Any corner off the eave gives the face's slope; the furthest gives it with
+  // the least rounding.
+  let far = a, farD = 0;
+  for (const p of best.pts) if (inward(p) > farD) { farD = inward(p); far = p; }
+  return a.y + ((far.y - a.y) / farD) * inward({ x, z });
+}
+
 // The hipped roof over a polygon: every edge an eave at `eaveY`, every face a
 // plane rising at `pitch` in 12. Faces come back in blockRoof's shape
 // ({ kind: 'slope', pts: [{ x, y, z }] }, counter-clockwise in (x, z), the

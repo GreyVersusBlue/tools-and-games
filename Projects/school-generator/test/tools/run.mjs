@@ -285,7 +285,9 @@ const modulesFetched = (since = 0) =>
 // is the walk template's own 4 MB rule; the request ceiling leaves room for a
 // phase's worth of new modules above the measurement, because a budget that
 // is exactly the measurement is a budget that fails on a comment.
-const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 115 };
+// 116 since #967: roof.js imports skeleton.js, because a hipped roof over a
+// curve is drawn at boot like any other roof.
+const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 116 };
 // Modules the boot must not fetch: each is behind a button, and the phase
 // that put it there is named so the next reader knows what re-pinning costs.
 const DEFERRED = [
@@ -1393,6 +1395,87 @@ const CHECKS = [
         }
       }
       if (after.json !== before.json) throw new Error('the check left its paint on the design');
+    },
+  },
+  // A hipped roof over a curve, drawn (#967). test/roof-curve.test.mjs proves
+  // the faces and their triangles in Node; this builds the scene with an
+  // L-shaped wing whose end is curved on the top storey, away from the school,
+  // and reads the roof's triangles back: every one inside the eave line and
+  // the lot covering it exactly once. A fan from each face's first point,
+  // which is how the renderer drew every roof face before, lays triangles of
+  // the L's long slopes across the valley over the next face: with the
+  // renderer's triangles taken away it covered 2390.3 ft² of a 2326.3 ft² eave.
+  {
+    name: 'curved-roof',
+    what: 'a hipped roof over an L with a curved end is drawn as its skeleton faces, inside the eave, once over',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { addShape, curveSegment, pointInRing } = await import('./js/shapes.js');
+        const { roofPlan } = await import('./js/roof.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, top = s.floors.length - 1, floor = s.floors[top];
+        const was = { roof: JSON.stringify(s.roof ?? null), shapes: JSON.stringify(floor.shapes), nextId: s.nextId };
+        const x0 = (s.w + 12) * CELL, z0 = 8;
+        const R = (a, b, c, e) => [{ x: a, z: b }, { x: c, z: b }, { x: c, z: e }, { x: a, z: e }];
+        const hall = addShape(s, top, R(x0, z0, x0 + 48, z0 + 24));
+        addShape(s, top, R(x0, z0 + 24, x0 + 20, z0 + 56));
+        // The hall's east wall, bowed out of the room.
+        const steps = curveSegment(hall, 0, 1, -0.45);
+        s.roof = { style: 'hip', pitch: 6, facade: 'brick' };
+        window.app.renderApi.buildFromState(s);
+        const plan = roofPlan(s);
+        const sk = plan.blocks.find((b) => b.skeleton);
+        const out = { steps, found: !!sk, n: 0, outside: 0, area: 0, eaveArea: 0 };
+        if (sk) {
+          const e = sk.eave;
+          for (let i = 0; i < e.length; i++) {
+            const p = e[i], q = e[(i + 1) % e.length];
+            out.eaveArea += (p.x * q.z - q.x * p.z) / 2;
+          }
+          let bx0 = Infinity, bx1 = -Infinity;
+          for (const p of e) { bx0 = Math.min(bx0, p.x); bx1 = Math.max(bx1, p.x); }
+          window.app.renderApi.scene.updateMatrixWorld(true);
+          window.app.renderApi.scene.traverse((o) => {
+            const g = o.isMesh && o.geometry;
+            if (!g || !g.attributes.position) return;
+            const P = g.attributes.position, I = g.index;
+            const n = (I ? I.count : P.count) / 3;
+            for (let k = 0; k < n; k++) {
+              const v = [0, 1, 2].map((j) => {
+                const i = I ? I.getX(k * 3 + j) : k * 3 + j;
+                return new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld);
+              });
+              // A roof slope: off to the east of the school, at the eave or
+              // above it, and not flat.
+              if (v.some((p) => p.x < bx0 - 0.01 || p.x > bx1 + 0.01)) continue;
+              const ys = v.map((p) => p.y);
+              if (Math.min(...ys) < plan.eaveY - 1e-3 || Math.max(...ys) < plan.eaveY + 1e-2) continue;
+              out.n++;
+              out.area += Math.abs((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[1].z - v[0].z) * (v[2].x - v[0].x)) / 2;
+              const mx = (v[0].x + v[1].x + v[2].x) / 3, mz = (v[0].z + v[1].z + v[2].z) / 3;
+              if (!pointInRing(e, mx, mz)) out.outside++;
+            }
+          });
+        }
+        // Put the school back the way the next check expects to find it.
+        s.roof = JSON.parse(was.roof);
+        if (s.roof === null) delete s.roof;
+        floor.shapes = JSON.parse(was.shapes);
+        s.nextId = was.nextId;
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!(ctx.steps > 3)) throw new Error(`the curve tool laid ${ctx.steps} segments, not a curve`);
+      if (!ctx.found) throw new Error('the roof plan has no skeleton block over the curved wing');
+      if (ctx.n < 20) throw new Error(`found ${ctx.n} roof triangles over the wing`);
+      if (ctx.outside) throw new Error(`${ctx.outside} of ${ctx.n} roof triangles lie outside the eave line`);
+      if (Math.abs(ctx.area - ctx.eaveArea) > 1e-3 * ctx.eaveArea) {
+        throw new Error(`the roof's triangles cover ${ctx.area.toFixed(2)} ft² of plan, the eave line ${ctx.eaveArea.toFixed(2)}`);
+      }
+      if (after.json !== before.json) throw new Error('the check left its wing on the design');
     },
   },
   // An accent wall, drawn (#827). test/accent.test.mjs proves which face of

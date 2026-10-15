@@ -38,7 +38,8 @@
 // Pure module: no three.js. Exercised by test/roof.test.mjs.
 
 import { CELL, WALL_H, floorBaseY } from './grid.js';
-import { shapesOf, shapeBBox, pointInShape } from './shapes.js';
+import { shapesOf, shapeBBox, pointInShape, pointInRing } from './shapes.js';
+import { eavePolygon, skeletonRoof, triangulate } from './skeleton.js';
 
 // A parapet is a low wall around a flat roof, hiding the mechanical plant and
 // carrying the flashing. Three feet is a school's; anything shorter reads as a
@@ -371,12 +372,28 @@ export function roofPlan(state, roof = null) {
   // and a pitched roof needs one too: two masses of different width meet at a
   // valley, and without a deck under them that valley is a hole you can see
   // the classrooms through.
-  const rects = maskRects(mask);
+  let rects = maskRects(mask);
   plan.deckRects = rects;
 
   if (r.style === 'parapet') {
     plan.rise = PARAPET_H + COPING_T;
     return plan;
+  }
+
+  // A hipped roof over a curve stands on the straight skeleton of the rooms'
+  // own outline, carried out to the eave (#967). Only there: every loop
+  // without a curve in it, every gable (over a curve that is a weighted
+  // skeleton) and every footprint the outline or the eave refuses keeps the
+  // rectangles below, unchanged. The rectangles a curved loop takes over are
+  // the ones whose first cell lies in it, which is the test the mask itself
+  // used to put that cell on, and its deck goes with them: nothing under a
+  // skeleton roof is open to the sky, and a 4ft deck cell would stand out
+  // past a curved eave.
+  const curved = r.style === 'hip' ? curvedRoofs(floor, eaveY, r.pitch) : [];
+  if (curved.length) {
+    const firstCellIn = (rect) => curved.some((c) => pointInRing(c.outline, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
+    rects = rects.filter((rect) => !firstCellIn(rect));
+    plan.deckRects = rects;
   }
 
   for (const rect of rects) {
@@ -389,7 +406,188 @@ export function roofPlan(state, roof = null) {
     plan.blocks.push({ ...block, rect });
     plan.rise = Math.max(plan.rise, block.rise);
   }
+  for (const c of curved) {
+    plan.blocks.push(c);
+    plan.rise = Math.max(plan.rise, c.rise);
+  }
   return plan;
+}
+
+// The skeleton roofs of a storey's curved loops, one block each in the shape
+// `blockRoof` gives (faces, gables, rise, topY) plus `skeleton: true`, the
+// loop as `outline`, the eave line as `eave` and each face's triangles as
+// `tris`; `rect` and `alongX` are null, since there is no rectangle. A loop
+// the eave or the skeleton refuses is left out, so its rectangles stay.
+export function curvedRoofs(floor, eaveY, pitch) {
+  const { loops } = roofOutline(floor);
+  const out = [];
+  for (const loop of loops || []) {
+    if (!hasCurve(loop)) continue;
+    const eave = eavePolygon(loop, EAVE);
+    const roof = eave && skeletonRoof(eave, eaveY, pitch);
+    if (!roof) continue;
+    const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
+    out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
+  }
+  return out;
+}
+
+// ---------- 5. the true outline, for a roof over a curve ----------
+//
+// The mask above is the roof's resolution for every rectilinear school, and a
+// curve reaches it as a staircase of 4ft cells. A hipped roof over a curve is
+// stood on the rooms' own chords instead (#965, #967), so it needs the top
+// storey's footprint as polygons: the union of the rooms' outer rings. Rooms
+// share walls exactly, so the union is bookkeeping rather than clipping: every
+// ring wound the same way, each edge split wherever another ring's corner lies
+// on it, every edge that has its own reverse somewhere (a shared wall) taken
+// out with it, and what is left chained into loops. Anything that bookkeeping
+// cannot vouch for is refused with a sentence, and a refused footprint keeps
+// its rectangles:
+//   * a room with a hole in it (its own courtyard),
+//   * a loop wound the other way (a courtyard between rooms),
+//   * two rooms laying the same wall the same way (they overlap),
+//   * two rooms whose walls cross, or one room inside another,
+//   * an outline that touches itself at a point.
+
+const OUTLINE_ON = 1e-4;     // ft — a corner this close to a wall lies on it
+const okey = (p) => `${Math.round(p.x * 1e4)},${Math.round(p.z * 1e4)}`;
+const loopArea = (pts) => {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a += p.x * q.z - q.x * p.z;
+  }
+  return a / 2;
+};
+
+// `{ loops }` (each a list of { x, z }, positive area, no repeated point), or
+// `{ loops: null, refused }` with the reason in words.
+export function roofOutline(floor) {
+  const shapes = shapesOf(floor);
+  const rings = [];
+  for (const shape of shapes) {
+    if (shape.rings.length > 1) return { loops: null, refused: 'a room has a hole in it' };
+    const pts = shape.rings[0].pts.map((p) => ({ x: p.x, z: p.z }));
+    const a = loopArea(pts);
+    if (a < 0) pts.reverse();
+    rings.push(pts);
+  }
+  const corners = rings.flat();
+  const edges = new Map();     // 'from|to' -> { from, to }
+  const add = (from, to) => {
+    const kf = okey(from), kt = okey(to);
+    if (kf === kt) return true;
+    const back = `${kt}|${kf}`;
+    if (edges.has(back)) { edges.delete(back); return true; }
+    if (edges.has(`${kf}|${kt}`)) return false;
+    edges.set(`${kf}|${kt}`, { from, to, kf, kt });
+    return true;
+  };
+  for (const pts of rings) {
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      if (L2 <= 0) continue;
+      const lo = { x: Math.min(a.x, b.x) - OUTLINE_ON, z: Math.min(a.z, b.z) - OUTLINE_ON };
+      const hi = { x: Math.max(a.x, b.x) + OUTLINE_ON, z: Math.max(a.z, b.z) + OUTLINE_ON };
+      const cuts = [];
+      for (const c of corners) {
+        if (c.x < lo.x || c.x > hi.x || c.z < lo.z || c.z > hi.z) continue;
+        const t = ((c.x - a.x) * dx + (c.z - a.z) * dz) / L2;
+        if (t <= 1e-9 || t >= 1 - 1e-9) continue;
+        if (Math.abs((c.x - a.x) * dz - (c.z - a.z) * dx) / Math.sqrt(L2) > OUTLINE_ON) continue;
+        cuts.push({ t, c });
+      }
+      cuts.sort((u, v) => u.t - v.t);
+      let from = a;
+      for (const { c } of cuts) {
+        if (!add(from, c)) return { loops: null, refused: 'two rooms overlap' };
+        from = c;
+      }
+      if (!add(from, b)) return { loops: null, refused: 'two rooms overlap' };
+    }
+  }
+  const out = new Map();
+  for (const e of edges.values()) {
+    if (out.has(e.kf)) return { loops: null, refused: 'the outline touches itself at a point' };
+    out.set(e.kf, e);
+  }
+  const loops = [];
+  while (out.size) {
+    const [k0, first] = out.entries().next().value;
+    const loop = [];
+    let e = first;
+    while (e) {
+      out.delete(e.kf);
+      loop.push({ x: e.from.x, z: e.from.z });
+      if (e.kt === k0) break;
+      e = out.get(e.kt);
+    }
+    if (!e) return { loops: null, refused: 'the outline does not close' };
+    // A wall split where a neighbour's corner met it is one wall again.
+    for (let i = 0; loop.length > 3 && i < loop.length;) {
+      const p = loop[(i - 1 + loop.length) % loop.length], q = loop[i], r = loop[(i + 1) % loop.length];
+      const ax = q.x - p.x, az = q.z - p.z, bx = r.x - q.x, bz = r.z - q.z;
+      const cross = ax * bz - az * bx, dot = ax * bx + az * bz;
+      if (Math.abs(cross) <= 1e-9 * Math.hypot(ax, az) * Math.hypot(bx, bz) && dot > 0) loop.splice(i, 1);
+      else i++;
+    }
+    const a = loopArea(loop);
+    if (a <= 0) return { loops: null, refused: 'the rooms close round a courtyard' };
+    loops.push(loop);
+  }
+  // Rooms that cross without sharing a corner leave both rings whole, and
+  // their areas still add up; their walls cross, or one loop sits in another.
+  const segs = loops.flatMap((l) => l.map((p, i) => [p, l[(i + 1) % l.length]]));
+  const side = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const [a, b] = segs[i], [c, d] = segs[j];
+      if (Math.max(a.x, b.x) < Math.min(c.x, d.x) || Math.max(c.x, d.x) < Math.min(a.x, b.x) ||
+          Math.max(a.z, b.z) < Math.min(c.z, d.z) || Math.max(c.z, d.z) < Math.min(a.z, b.z)) continue;
+      const s1 = side(c, d, a), s2 = side(c, d, b), s3 = side(a, b, c), s4 = side(a, b, d);
+      if (((s1 > 1e-9 && s2 < -1e-9) || (s1 < -1e-9 && s2 > 1e-9)) &&
+          ((s3 > 1e-9 && s4 < -1e-9) || (s3 < -1e-9 && s4 > 1e-9))) {
+        return { loops: null, refused: 'two rooms overlap' };
+      }
+    }
+  }
+  for (const l of loops) {
+    const m = { x: (l[0].x + l[1].x) / 2, z: (l[0].z + l[1].z) / 2 };
+    if (loops.some((o) => o !== l && pointInRing(o, m.x, m.z))) return { loops: null, refused: 'two rooms overlap' };
+  }
+  return { loops };
+}
+
+// Whether an outline has a curve in it. A curved wall is stored as its chords
+// (shapes.js tessellates an arc when it is drawn, in equal steps of angle, three
+// at least), and nothing records that they were ever a curve; so a curve is
+// read off its chords: three in a row of one length, turning the same way by
+// one angle, under 85 degrees a turn (#967). A diagonal wall, a chamfer, a
+// wing set at an angle, a rotated square and an octagon's alternate sides are
+// straight walls and keep their rectangles. Read as a curve as well, and
+// meant to be: a regular polygon of five sides or more, which is a curve
+// drawn by hand. Not read as one: an arc of two chords (only a `steps` of 2
+// asked for in code lays one down).
+const CURVE_TURN = (85 * Math.PI) / 180;
+export function hasCurve(loop) {
+  const n = loop.length;
+  if (n < 4) return false;
+  const len = (i) => Math.hypot(loop[(i + 1) % n].x - loop[i].x, loop[(i + 1) % n].z - loop[i].z);
+  const turn = (i) => {       // the signed turn at corner i + 1, between edges i and i + 1
+    const a = loop[i], b = loop[(i + 1) % n], c = loop[(i + 2) % n];
+    return Math.atan2((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x),
+      (b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z));
+  };
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n), l2 = len((i + 2) % n);
+    const t0 = turn(i), t1 = turn((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0 || Math.abs(l2 - l0) > 1e-6 * l0) continue;
+    if (Math.abs(t1 - t0) > 1e-6 || t0 === 0 || Math.abs(t0) >= CURVE_TURN) continue;
+    return true;
+  }
+  return false;
 }
 
 // The world height of the highest thing on the building, for the sun's shadow
