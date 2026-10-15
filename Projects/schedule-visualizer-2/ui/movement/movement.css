@@ -5,9 +5,13 @@
    canvas's corners.
 
    The map comes first at every width: the stage is never under 45 % of the
-   window's height, nor under 320 px. Where the controls are shown and the
-   window cannot hold that, the section scrolls inside itself (.mov) and the
-   stage keeps its height.
+   window's height, nor under 320 px, unless the section has less than that
+   under its first line and over the bar (a phone on its side, a short
+   window): then the stage has what there is, so the first line, the map and
+   the bar are all on screen with the controls folded. Where the controls are
+   shown and the window cannot hold that, the section scrolls inside itself
+   (.mov), the stage keeps its height, and the bar stays at the section's
+   foot.
 
    index.html links this sheet (data-sheet="movement"); ui/movement/index.js
    adds it to a page that does not. The section's place in the shell (the map
@@ -17,7 +21,6 @@
 
 .mov {
   height: 100%;
-  min-height: 360px;
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--paper);
@@ -270,11 +273,14 @@
 /* ---------- The map ---------- */
 
 /* the map's floor: 45 % of the window's height and 320 px at the least, and
-   whatever the first line and the bar leave above that */
+   whatever the first line and the bar leave above that; but never more than
+   the section has under its first line (folded) and over what is docked
+   under the map, --mov-room, which ui/movement/index.js measures */
 .mov-map > .mov-stage {
   position: relative;
   flex: 1 0 max(45vh, 320px);
-  flex-basis: max(45dvh, 320px);
+  flex-basis: min(max(45vh, 320px), var(--mov-room, 100vh));
+  flex-basis: min(max(45dvh, 320px), var(--mov-room, 100dvh));
   min-height: 0;
   overflow: hidden;
 }
@@ -598,7 +604,13 @@
 
 /* ---------- The playback bar ---------- */
 
+/* at the section's foot whatever is scrolled: with the controls shown in a
+   short window the bar lies over the map's lower edge until the section is
+   scrolled to its end, and is never under the window's */
 .mov-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 7;
   padding: var(--s-2) var(--s-4);
   background: var(--card);
   border-top: var(--border);
@@ -692,11 +704,20 @@
   background: var(--card);
 }
 
+/* More opens up over the map's foot (the bar is at the section's foot): it
+   never takes more than 40 % of the window, nor more than the map and the
+   legend's line have (--mov-more, ui/movement/index.js), so the first line
+   stays on screen and a message has room above the bar; it scrolls inside
+   itself past that, and is never under 6rem */
 .mov-pb__more {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--s-2) var(--s-5);
+  max-height: max(6rem, min(40vh, var(--mov-more, 40vh)));
+  max-height: max(6rem, min(40dvh, var(--mov-more, 40dvh)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding-top: var(--s-2);
   border-top: var(--border);
 }
@@ -775,10 +796,41 @@
     display: none;
   }
 
+  /* as wide for "Pause" as for "Play", so the scrubber keeps its width when
+     playback starts (at 390 px it lost 8 px to "Pause", to 51) */
   .mov-pb__play {
     min-width: 3.5rem;
-    padding-left: var(--s-2);
-    padding-right: var(--s-2);
+    padding-left: var(--s-1);
+    padding-right: var(--s-1);
+  }
+}
+
+/* Under 360 px (a 320 px phone) the row cannot hold the clock as well: it
+   joins the countdown's line under the row, and the row is Play, the two
+   steps, the scrubber and More, closer together, so the scrubber keeps a
+   width a thumb can use (SV2-52). */
+@media (max-width: 359.98px) {
+  .mov-pb__row {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    column-gap: var(--s-1);
+  }
+
+  .mov-pb__time {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--s-2);
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .mov-pb__time:has(> .mov-pb__clock:empty):has(> .mov-pb__countdown:empty) {
+    display: none;
+  }
+
+  .mov-pb__clock:empty {
+    display: none;
   }
 }
 

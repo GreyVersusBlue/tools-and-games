@@ -192,10 +192,13 @@ test('the controls fold behind Change: folded under 900 px, open from it, and th
       assert.ok(await box(p, selector), selector + ' is not on screen with the controls shown');
     }
     assert.deepEqual((await device(p)).movement, { controls: 'open' });
-    // the stage keeps its height: the section scrolls inside itself, and the page does not
+    // the stage keeps its height: the section scrolls inside itself, and the page does not.
+    // Its height is all the section has under the first line and over the bar
+    // (SV2-52: the floors' row in the top bar takes some of the window on a phone)
     await drawn(p);
     const room = await mapRoom(p);
-    assert.ok(room.stage >= Math.ceil(844 * 0.45), 'with the controls shown the stage is ' + room.stage + ' px');
+    const has = await p.$eval('.mov', (el) => parseFloat(el.style.getPropertyValue('--mov-room')));
+    assert.ok(has >= 300 && room.stage >= has, 'with the controls shown the stage is ' + room.stage + ' px of the ' + has + ' the section has');
     assert.ok(room.sectionScrolls > 0, 'the section does not scroll inside itself: ' + JSON.stringify(room));
     assert.equal(await p.evaluate(() => document.scrollingElement.scrollHeight === document.scrollingElement.clientHeight), true, 'the page scrolls');
 
@@ -1189,5 +1192,240 @@ test('item 3: with no engine attached the first line says the routes cannot be w
     await go(p, '#movement');
     await drawn(p);
     assert.equal(await text(p, '#movement-line .mov-line__words'), 'Showing 8 groups on A Day, all transitions. No route failed.');
+  });
+});
+
+// ---------------------------------------------------------------- SV2-52: a short window, a scroll, 320 px
+
+const SIDEWAYS = { width: 844, height: 390, mobile: true };
+// two measures of one box, one rounded and one floored, agree to a pixel
+const near = (a, b) => Math.abs(a - b) <= 1;
+const SHORT = { width: 1280, height: 480 };
+
+// Where the first line, the stage, the bar and the section's foot are, and
+// what scrolls.
+const short = (page) => page.evaluate(() => {
+  const r = (selector) => {
+    const el = document.querySelector(selector);
+    if (!el || el.getClientRects().length === 0) return null;
+    const rect = el.getBoundingClientRect();
+    return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), left: Math.round(rect.left), right: Math.round(rect.right), height: Math.round(rect.height) };
+  };
+  const section = document.querySelector('.mov');
+  return {
+    section: r('.mov'),
+    surface: r('#surface'),
+    line: r('#movement-line'),
+    stage: r('.mov-stage'),
+    bar: r('[data-bar="playback"]'),
+    row: r('.mov-pb__row'),
+    room: parseFloat(section.style.getPropertyValue('--mov-room')),
+    scrolls: section.scrollHeight - section.clientHeight,
+    scrolled: section.scrollTop,
+    window: innerHeight,
+  };
+});
+// the bar is wholly on the window, inside the section, and nothing (the inspector's handle) lies on its row
+async function barOnScreen(page, step) {
+  const at = await short(page);
+  assert.ok(at.bar.top >= at.section.top && at.bar.bottom <= at.section.bottom, step + ': the bar is not inside the section: ' + JSON.stringify(at));
+  assert.ok(at.bar.bottom <= at.window && at.section.bottom <= at.surface.bottom, step + ': the bar runs under the window or the surface: ' + JSON.stringify(at));
+  const cut = await page.evaluate(() => {
+    const row = document.querySelector('.mov-pb__row').getBoundingClientRect();
+    return [0.25, 0.5, 0.75].map((y) => {
+      const el = document.elementFromPoint(row.left + 4, row.top + row.height * y);
+      return el && el.closest('[data-bar="playback"]') ? null : (el ? el.className || el.tagName : 'nothing');
+    }).filter(Boolean);
+  });
+  assert.deepEqual(cut, [], step + ': something lies on the bar’s row');
+  return at;
+}
+
+test('SV2-52 item 1: a phone on its side, 844 by 390: the stage has what the section has, the first line, the map and the bar are all on screen, and nothing scrolls', async () => {
+  await on('#movement', SIDEWAYS, async (p) => {
+    assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'true', 'under 900 px the controls open folded: the case tests the folded view');
+    const at = await barOnScreen(p, 'on arrival');
+    assert.equal(at.scrolls, 0, 'the section scrolls inside itself: ' + JSON.stringify(at));
+    assert.ok(at.line.top >= at.section.top, 'the first line is above the section');
+    // the floor of 320 px is capped at what there is: the stage is all of it, more than nothing
+    assert.ok(at.room > 60 && at.room < 320, 'the section has ' + at.room + ' px for the map at 844 by 390');
+    assert.ok(near(at.stage.height, at.room), 'the stage is not what the section has: ' + JSON.stringify(at));
+    assert.ok(at.stage.bottom <= at.bar.top, 'the bar lies on the map');
+    // playing changes the bar's height (the hint goes): still all on screen
+    await p.evaluate(() => document.querySelector('[data-action="play"]').click());
+    await shows(p, () => document.querySelector('[data-action="play"]').textContent === 'Pause');
+    await drawn(p);
+    const playing = await barOnScreen(p, 'playing');
+    assert.equal(playing.scrolls, 0, 'playing, the section scrolls: ' + JSON.stringify(playing));
+    assert.ok(near(playing.stage.height, playing.room), 'playing, the stage is not what the section has: ' + JSON.stringify(playing));
+    await p.evaluate(() => document.querySelector('[data-action="play"]').click());
+    // More opens up over the map's foot: the stage keeps its height, the
+    // bar, More and all, stays inside the section, and the first line is
+    // still on screen above it
+    await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
+    const shut = await short(p);
+    await p.tap('[data-action="more"]');
+    await shows(p, () => document.querySelector('[data-part="more"]').hidden === false);
+    // the section has measured itself with the bar as it is now
+    await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
+    const opened = await barOnScreen(p, 'More open');
+    assert.ok(near(opened.stage.height, shut.stage.height), 'opening More squeezed the map: ' + JSON.stringify({ shut: shut.stage, opened: opened.stage }));
+    assert.ok(opened.bar.top >= opened.line.bottom, 'More covers the first line: ' + JSON.stringify(opened));
+    await p.tap('[data-action="more"]');
+    await shows(p, () => document.querySelector('[data-part="more"]').hidden === true);
+  });
+});
+
+test('SV2-52 item 1: a short desktop window, 1280 by 480: with the controls shown the section scrolls and the bar stays at its foot, top or end; folded, nothing scrolls', async () => {
+  await on('#movement', SHORT, async (p) => {
+    assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'false', 'from 900 px the controls open shown: the case tests the shown view');
+    const top = await barOnScreen(p, 'scrolled to the top');
+    assert.ok(top.scrolls > 0, 'with the controls shown the section does not scroll: the case tests nothing: ' + JSON.stringify(top));
+    assert.ok(top.room > 100, 'what the section has for the map is not measured (--mov-room): ' + JSON.stringify(top));
+    assert.ok(top.stage.height >= top.room, 'the stage was squeezed under what the section has: ' + JSON.stringify(top));
+    await p.evaluate(() => {
+      const section = document.querySelector('.mov');
+      section.scrollTop = section.scrollHeight;
+    });
+    await shows(p, () => {
+      const section = document.querySelector('.mov');
+      return section.scrollTop >= section.scrollHeight - section.clientHeight - 1;
+    });
+    const end = await barOnScreen(p, 'scrolled to the end');
+    // at the end the whole stage is on screen over the bar
+    assert.ok(end.stage.top >= end.section.top && end.stage.bottom <= end.bar.top, 'at the end the map is not all on screen: ' + JSON.stringify(end));
+    // folded: the first line, the map and the bar in the window, nothing to scroll
+    await p.click('[data-action="change"]');
+    await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'true');
+    await drawn(p);
+    const folded = await barOnScreen(p, 'folded');
+    assert.equal(folded.scrolls, 0, 'folded, the section scrolls: ' + JSON.stringify(folded));
+    assert.ok(near(folded.stage.height, folded.room), 'folded, the stage is not what the section has: ' + JSON.stringify(folded));
+  });
+});
+
+// How much of the map's canvas is floors and lanes rather than the empty
+// field it is drawn on: the share of sampled pixels that are not the field's colour.
+const inked = (page) => page.evaluate(() => {
+  const canvas = document.getElementById('movement-plan');
+  const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  const field = [data[0], data[1], data[2]].join();
+  let ink = 0;
+  let all = 0;
+  for (let i = 0; i < data.length; i += 4 * 7) {
+    all += 1;
+    if ([data[i], data[i + 1], data[i + 2]].join() !== field) ink += 1;
+  }
+  return ink / all;
+});
+const viewAt = (page) => page.evaluate(() => {
+  const view = document.querySelector('.mov').movement.view;
+  return { x: Math.round(view.x), y: Math.round(view.y), zoom: view.zoom };
+});
+// one turn of a mouse wheel over the stage, at a point of it that is on screen
+async function wheelOverMap(page, deltaY) {
+  const at = await page.evaluate(() => {
+    const stage = document.querySelector('.mov-stage').getBoundingClientRect();
+    const section = document.querySelector('.mov').getBoundingClientRect();
+    const top = Math.max(stage.top, section.top);
+    return { x: Math.round(stage.left + stage.width / 2), y: Math.round(top + 20) };
+  });
+  const before = await page.evaluate(() => [document.querySelector('.mov').scrollTop, document.getElementById('movement-plan').dataset.drawn]);
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.wheel({ deltaY });
+  // the wheel has done what it does when the section has scrolled or the map has been drawn again
+  await shows(page, (was) => document.querySelector('.mov').scrollTop !== was[0] || document.getElementById('movement-plan').dataset.drawn !== was[1], before);
+}
+
+// the floors' box against the stage: how far it reaches into it from above and below
+const floorsOnStage = (page) => page.evaluate(() => {
+  const movement = document.querySelector('.mov').movement;
+  const view = movement.view;
+  const world = movement.world;
+  return { top: Math.round(view.y), bottom: Math.round(view.y + world.height * view.size), left: Math.round(view.x), right: Math.round(view.x + world.width * view.size), width: view.width, height: view.height };
+});
+const onStage = (box) => box.bottom >= 47 && box.top <= box.height - 47 && box.right >= 47 && box.left <= box.width - 47;
+
+test('SV2-52 item 2: a wheel over the map scrolls the section while the map is not all on screen, then moves the map, and never off the stage: 1280 by 480 with the controls shown', async () => {
+  await on('#movement', SHORT, async (p) => {
+    await dismissStarted(p);
+    await drawn(p);
+    const ink = await inked(p);
+    assert.ok(ink > 0.02, 'the map has no floors drawn on arrival: the case tests nothing (' + ink + ')');
+    const start = await viewAt(p);
+    assert.ok((await short(p)).scrolls > 0, 'the section does not scroll with the controls shown: the case tests nothing');
+
+    // the wheel scrolls the section, and the map stays where it was on the stage
+    await wheelOverMap(p, 120);
+    assert.ok(await p.$eval('.mov', (el) => el.scrollTop > 0), 'a wheel over the map did not scroll the section');
+    assert.deepEqual(await viewAt(p), start, 'the wheel moved the map while the section had more to scroll');
+    for (let turn = 0; turn < 10 && (await p.$eval('.mov', (el) => el.scrollTop < el.scrollHeight - el.clientHeight - 1)); turn += 1) await wheelOverMap(p, 120);
+    assert.deepEqual(await viewAt(p), start, 'the map moved before the section reached its end');
+    const end = await short(p);
+    assert.ok(end.stage.top >= end.section.top - 1 && end.stage.bottom <= end.bar.top + 1, 'at the end the map is not all on screen: ' + JSON.stringify(end));
+    // the floors are drawn on the map after the scroll, as before it
+    await drawn(p);
+    assert.ok(await inked(p) > ink * 0.8, 'after the section scrolled the map is blank');
+
+    // the map all on screen: the wheel moves it, however far it turns, and the floors stay on the stage
+    await wheelOverMap(p, 400);
+    assert.notDeepEqual(await viewAt(p), start, 'with the map all on screen the wheel did not move it');
+    for (let turn = 0; turn < 4; turn += 1) await wheelOverMap(p, 4000);
+    const kept = await floorsOnStage(p);
+    assert.ok(onStage(kept), 'the floors were moved off the stage: ' + JSON.stringify(kept));
+    assert.ok(await inked(p) > 0.002, 'the map is blank after a long wheel');
+  });
+});
+
+test('SV2-52 item 2: a phone on its side, 844 by 390: after a wheel over the map and the section scrolled to its end the floors are drawn on the stage, not only the hotspot rings', async () => {
+  await on('#movement', SIDEWAYS, async (p) => {
+    // the Foreman's steps on 5de6562 (land844-at-end.png)
+    await dismissStarted(p);
+    await drawn(p);
+    assert.ok(await inked(p) > 0.02, 'the map has no floors drawn on arrival: the case tests nothing');
+    await wheelOverMap(p, 400);
+    await p.evaluate(() => {
+      const section = document.querySelector('.mov');
+      section.scrollTop = section.scrollHeight;
+    });
+    await drawn(p);
+    const kept = await floorsOnStage(p);
+    assert.ok(onStage(kept), 'the wheel took the floors off the stage: ' + JSON.stringify(kept));
+    const ink = await inked(p);
+    assert.ok(ink > 0.01, 'after the wheel and the scroll the map is blank (' + ink + ' of it drawn on)');
+    // and the rings the hotspots draw are where the map has their places: on the stage too
+    const rings = await p.evaluate(() => document.querySelector('[data-panel="hotspots"]').hotspots.rings.map((ring) => [Math.round(ring.x), Math.round(ring.y)]));
+    const stage = await floorsOnStage(p);
+    assert.ok(rings.length > 0 && rings.every(([x, y]) => x >= 0 && y >= 0 && x <= stage.width && y <= stage.height), 'a ring is off the stage: ' + JSON.stringify(rings));
+  });
+});
+
+test('SV2-52 item 3: at 320 by 640 the bar fits: Play, the steps, the scrubber and More on the row, the clock on the countdown’s line, and nothing scrolls', async () => {
+  await on('#movement', { width: 320, height: 640, mobile: true }, async (p) => {
+    for (const step of ['before playback', 'playing']) {
+      if (step === 'playing') {
+        await p.evaluate(() => document.querySelector('[data-action="play"]').click());
+        await shows(p, () => document.querySelector('[data-part="clock"]').textContent !== '' && document.querySelector('[data-action="play"]').textContent === 'Pause');
+        await drawn(p);
+      }
+      const at = await barOnScreen(p, step);
+      assert.equal(at.scrolls, 0, step + ': the section scrolls: ' + JSON.stringify(at));
+      const row = await barRow(p);
+      const parts = ['play', 'previous', 'next', 'scrubber', 'more'];
+      for (const part of parts) assert.ok(row[part] && row[part].middle > row.play.top && row[part].middle < row.play.bottom, step + ': ' + part + ' is not on the row: ' + JSON.stringify(row));
+      for (let i = 1; i < parts.length; i += 1) assert.ok(row[parts[i]].left >= row[parts[i - 1]].right, step + ': ' + parts[i] + ' is not after ' + parts[i - 1] + ': ' + JSON.stringify(row));
+      assert.ok(row.play.left >= at.bar.left && row.more.right <= at.bar.right, step + ': the row runs out of the bar: ' + JSON.stringify(row));
+      assert.ok(row.scrubber.width >= 64, step + ': the scrubber is ' + row.scrubber.width + ' px wide');
+      if (step === 'playing') {
+        const words = await p.evaluate(() => [...document.querySelectorAll('[data-part="clock"], [data-part="countdown"]')].map((el) => {
+          const rect = el.getBoundingClientRect();
+          return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), width: Math.round(rect.width) };
+        }));
+        const [clock, countdown] = words;
+        assert.ok(clock.width > 30, 'the clock has no width: ' + JSON.stringify(words));
+        assert.ok(clock.top >= row.play.bottom, 'the clock is still on the row: ' + JSON.stringify({ words, row }));
+        assert.ok(clock.top < countdown.bottom && countdown.top < clock.bottom, 'the clock is not on the countdown’s line: ' + JSON.stringify(words));
+      }
+    }
   });
 });
