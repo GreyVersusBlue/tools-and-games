@@ -55,6 +55,13 @@ test('alone, the courtyard building is refused exactly as before', () => {
   const h = roofOutline(school({ curved: false, east: 'hole' }).floors[0]);
   assert.equal(h.loops, null);
   assert.match(h.refused, /hole/);
+  // Two buildings, both refused: still no loops at all, and the first reason.
+  const s = school({ curved: false });
+  const sh = addShape(s, 0, R4(160, 8, 196, 48));
+  sh.rings.push({ pts: R4(170, 18, 186, 38), walls: [], openings: [] });
+  const two = roofOutline(s.floors[0]);
+  assert.equal(two.loops, null);
+  assert.match(two.refused, /courtyard|hole/);
 });
 
 test('beside a courtyard building, the curved building keeps its own loop and the outline says why the other went', () => {
