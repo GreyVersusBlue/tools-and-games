@@ -380,7 +380,7 @@
   bottom: calc(var(--s-3) + var(--mov-under, 0px));
   width: 16.5rem;
   max-width: calc(100% - var(--s-5));
-  max-height: calc(100% - var(--s-5) - var(--mov-under, 0px));
+  max-height: calc(100% - var(--s-5));
   overflow: auto;
   padding: var(--s-3);
   background: var(--card);

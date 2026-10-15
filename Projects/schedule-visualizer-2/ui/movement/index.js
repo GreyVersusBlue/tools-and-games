@@ -494,7 +494,10 @@ export const section = {
       probe.fit({ x: 0, y: 0, w: world.width, h: world.height }, FIT_MARGIN);
       const style = getComputedStyle(card);
       const right = view.width - (parseFloat(style.right) || 0);
-      const bottom = height - (parseFloat(style.bottom) || 0);
+      // where the card rests: not lifted over the bar (--mov-under), which
+      // moves with the scroll and must not decide whether it docks
+      const lifted = parseFloat(stage.style.getPropertyValue('--mov-under')) || 0;
+      const bottom = height - ((parseFloat(style.bottom) || 0) - lifted);
       const box = { left: right - width, top: bottom - tall, right, bottom };
       const size = probe.size;
       return world.slots.some((slot) => {
@@ -957,9 +960,12 @@ export const section = {
       if (most <= 0) return false;
       const edge = element.getBoundingClientRect();
       const shown = stage.getBoundingClientRect();
-      // the bar lies over the map's foot until the section is at its end
+      // the bar lies over the map's foot until the section is at its end;
+      // the map's foot is the docked legend's line under it when it is there,
+      // so the wheel brings that line above the bar too (SV2-55)
       const foot = Math.min(edge.bottom, bar.element.getBoundingClientRect().top);
-      if (event.deltaY > 0) return element.scrollTop < most - 1 && shown.bottom > foot + 1;
+      const mapFoot = key.line.hidden ? shown.bottom : Math.max(shown.bottom, key.line.getBoundingClientRect().bottom);
+      if (event.deltaY > 0) return element.scrollTop < most - 1 && mapFoot > foot + 1;
       return element.scrollTop > 0 && shown.top < edge.top - 1;
     }
     function onStageWheel(event) {

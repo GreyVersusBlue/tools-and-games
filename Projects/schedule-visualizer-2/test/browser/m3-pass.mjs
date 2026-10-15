@@ -1598,6 +1598,11 @@ test('SV2-52 item 2: a wheel over the map scrolls the section while the map is n
   await on('#movement', SHORT, async (p) => {
     await dismissStarted(p);
     await drawn(p);
+    // closing the message gave the map the focus, which brought it above the bar (SV2-55): back to the top
+    await p.evaluate(() => {
+      document.querySelector('.mov').scrollTop = 0;
+    });
+    await lifted(p);
     const ink = await inked(p);
     assert.ok(ink > 0.02, 'the map has no floors drawn on arrival: the case tests nothing (' + ink + ')');
     const start = await viewAt(p);
