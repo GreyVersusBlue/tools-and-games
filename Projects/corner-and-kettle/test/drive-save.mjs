@@ -1506,6 +1506,18 @@ try {
   h = await here();
   t.ok(h.marked && !(await fp.evaluate(() => /Event active/.test(document.getElementById('chalkContent').textContent))), 'and its going does too', `"${h.name}"`);
 
+  // A row that loses nodes: the reopen row from open (its <b> bean count, a
+  // button) back to locked (one line of words, a padlock).
+  const reopenRow = () => fp.evaluate(() => document.querySelector('#chalkContent [data-row="reopen"]')?.innerHTML.replace(/\s+/g, ' ') || '');
+  await fp.evaluate(() => { const d = window.__CK_DEBUG__; d.__day = d.state.day; d.state.day = d.sim.content.PRESTIGE_MIN_DAY; d.renderAll(); });
+  const opened = await reopenRow();
+  await fp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.day = d.__day; d.renderAll(); });
+  const closed = await reopenRow();
+  f = await faithful();
+  t.ok(/<b>/.test(opened) && !/<b>/.test(closed) && f.same, 'a row that loses words and a button (reopen, open then locked) is left with none of them', f.why || closed.slice(0, 80));
+  h = await here();
+  t.ok(h.marked, 'and the keyboard stayed where it was through both', `"${h.name}"`);
+
   // The tab order is the board's order: Tab and Shift+Tab after a redraw.
   await fp.keyboard.press('Tab');
   const h1 = await here();
