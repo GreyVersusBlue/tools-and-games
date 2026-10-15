@@ -41,6 +41,8 @@ import {
 } from './collide.js';
 import { emptyField } from './terrain.js';
 import { propsOnFloor } from './props.js';
+import { footprintOf } from './propplace.js';
+import { collectDoorLeaves, leafEnd } from './openings.js';
 
 // ---------- the doorway ----------
 //
@@ -126,7 +128,12 @@ export const rampRolls = (link) =>
 //           end, is off the storey above: there is nowhere to arrive.
 //   'link'  another link's hole in that floor, or a stair, ramp or lift that
 //           stands on it, overlaps it.
-// Props are not asked, and neither is the swing of a door beside it.
+//   'prop'  a floor-standing prop's footprint overlaps it (wall and ceiling
+//           mounts are not asked). Needs `catalogGet` for the footprint; a
+//           caller without one is not asked this (#984).
+//   'swing' a door leaf of the storey above sweeps into it between shut and
+//           its quarter turn, the far end's own doorway included: 405.7.5
+//           lets a door's clearance share the landing, not its leaf (#984).
 // Null for a stair, a folded ramp (its landings are its layout's) and a ramp
 // whose landing is clear.
 const LANDING_EPS = 0.1;        // ft: flush against an edge is not in the way
@@ -157,7 +164,7 @@ function polygonsOverlap(a, b) {
   return false;
 }
 
-export function rampLandingFit(state, link, metrics = stairMetrics(state)) {
+export function rampLandingFit(state, link, metrics = stairMetrics(state), catalogGet = null) {
   const box = rampLandingBox(link, metrics);
   const floor = box && state.floors[link.to];
   if (!floor) return null;
@@ -192,6 +199,25 @@ export function rampLandingFit(state, link, metrics = stairMetrics(state)) {
     return polys.filter(Boolean);
   });
   if (others.some((poly) => polygonsOverlap(mine, poly))) why.push('link');
+
+  // The landing as a world polygon, flush edges let off as for walls.
+  const clear = rectCorners(link, inside);
+  if (catalogGet) {
+    const inTheWay = propsOnFloor(state, link.to).some((p) => {
+      const entry = catalogGet(p.type);
+      if (!entry || entry.mount !== 'floor') return false;
+      const { hw, hd } = footprintOf(entry, p);
+      const c = Math.cos(p.rotationY || 0), sn = Math.sin(p.rotationY || 0);
+      const foot = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([lx, lz]) => (
+        { x: p.x + lx * c + lz * sn, z: p.z - lx * sn + lz * c }));
+      return polygonsOverlap(clear, foot);
+    });
+    if (inTheWay) why.push('prop');
+  }
+  // A leaf's sweep, hinge and eight points on its arc from shut to open.
+  const sweeps = collectDoorLeaves(state, link.to).map((leaf) => (
+    [{ x: leaf.hx, z: leaf.hz }, ...Array.from({ length: 9 }, (_, k) => leafEnd(leaf, k / 8))]));
+  if (sweeps.some((poly) => polygonsOverlap(clear, poly))) why.push('swing');
 
   if (!why.length) return null;
   const at = localToWorld(link, 0, (box.z0 + box.z1) / 2);

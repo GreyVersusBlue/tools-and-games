@@ -592,8 +592,9 @@ export function accessibleAnalysis(state, opts = {}) {
   const metrics = stairMetrics(state);
   const longRamps = (state.links || []).filter((l) => rampOverRise(l, metrics));
   // ADA 405.7: a straight ramp's top landing with something in its 5ft
-  // (#904). The ramp stays where it is and stays in the count, as above.
-  const tightLandings = (state.links || []).map((l) => rampLandingFit(state, l, metrics)).filter(Boolean);
+  // (#904), furniture and door swings asked since #984. The ramp stays where
+  // it is and stays in the count, as above.
+  const tightLandings = (state.links || []).map((l) => rampLandingFit(state, l, metrics, catalogGet)).filter(Boolean);
   // ADA 405.5: a ramp a file made narrower than the panel lets one be (#982).
   // A warning that moves nothing; the ramp stays in the count, as above.
   const narrowRamps = (state.links || []).filter((l) => l.type === 'ramp' && stairWidth(l) < RAMP_CTRL.minW);
@@ -912,6 +913,8 @@ function accessibleFindings({
       [n('wall'), 'a wall or a doorway stands in it'],
       [n('edge'), 'it runs off the floor it arrives on'],
       [n('link'), 'another stair, ramp, lift or floor opening is in it'],
+      [n('prop'), 'furniture stands in it'],
+      [n('swing'), 'a door swings into it'],
     ].filter(([count]) => count).map(([count, what]) => `${what} (${count})`).join('; ');
     out.push(finding('warn', 'ramp-landing',
       `${tightLandings.length} ramp${tightLandings.length === 1 ? '' : 's'} with no room for the top landing`,
