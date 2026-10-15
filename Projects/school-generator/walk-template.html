@@ -78333,6 +78333,10 @@ function roofCover(state) {
 //   * two rooms laying the same wall the same way (they overlap),
 //   * two rooms whose walls cross, or one room inside another,
 //   * an outline that touches itself at a point.
+// A refusal keeps the rectangles for its own building only (#971): rooms
+// whose bounds touch, one to the next, are a building, and where the storey
+// as a whole is refused each building is judged alone, so a curved building
+// beside a courtyard building still stands on its skeleton.
 
 const OUTLINE_ON = 1e-4;     // ft — a corner this close to a wall lies on it
 const okey = (p) => `${Math.round(p.x * 1e4)},${Math.round(p.z * 1e4)}`;
@@ -78346,9 +78350,58 @@ const loopArea = (pts) => {
 };
 
 // `{ loops }` (each a list of { x, z }, positive area, no repeated point), or
-// `{ loops: null, refused }` with the reason in words.
+// `{ loops: null, refused }` with the reason in words. Where some buildings
+// are refused and others are not, `{ loops, refused }`: the loops of the
+// buildings that passed, and the first refusal's reason.
 function roofOutline(floor) {
   const shapes = shapesOf(floor);
+  const whole = unionOf(shapes);
+  if (whole.loops) return whole;
+  const groups = buildingsOf(shapes);
+  if (groups.length < 2) return whole;
+  const loops = [];
+  let refused = null;
+  for (const g of groups) {
+    const o = unionOf(g);
+    if (o.loops) loops.push(...o.loops);
+    else refused = refused || o.refused;
+  }
+  return loops.length ? { loops, refused } : whole;
+}
+
+// The rooms in groups whose bounds touch, one to the next: no wall of one
+// group can meet, cross or enclose a wall of another, so each is judged alone.
+function buildingsOf(shapes) {
+  const boxes = shapes.map((sh) => {
+    const b = { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity };
+    for (const ring of sh.rings) {
+      for (const p of ring.pts) {
+        b.x0 = Math.min(b.x0, p.x); b.z0 = Math.min(b.z0, p.z);
+        b.x1 = Math.max(b.x1, p.x); b.z1 = Math.max(b.z1, p.z);
+      }
+    }
+    return b;
+  });
+  const parent = shapes.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (a.x0 > b.x1 + OUTLINE_ON || b.x0 > a.x1 + OUTLINE_ON ||
+          a.z0 > b.z1 + OUTLINE_ON || b.z0 > a.z1 + OUTLINE_ON) continue;
+      parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map();
+  shapes.forEach((sh, i) => {
+    const k = find(i);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(sh);
+  });
+  return [...groups.values()];
+}
+
+function unionOf(shapes) {
   const rings = [];
   for (const shape of shapes) {
     if (shape.rings.length > 1) return { loops: null, refused: 'a room has a hole in it' };

@@ -449,10 +449,12 @@ and add to this list rather than starting a new one.
   `triangulate`, `roofHeightOver`, wired through `roofPlan`, `roofFace` and
   `roofHeightAt`, and counted by the takeoff and the estimate through
   `roofCover` off the loop's own chords (#970); every rectilinear roof is
-  what it was. Left: a courtyard
-  anywhere on the top storey refuses the whole storey's outline, so a curved
-  building beside a courtyard building keeps its rectangles (refuse per loop
-  instead: a hole loop takes only the loop round it); a room with a hole, two
+  what it was. A refusal keeps the rectangles for its own building only
+  (#971): rooms whose bounds touch, one to the next, are judged together, so
+  a curved building beside a courtyard building stands on its skeleton.
+  Left: a building is grouped by bounds, not by walls, so a curved building
+  standing inside the bounds of a courtyard building's L (not touching it) is
+  refused with it; a courtyard, a room with a hole, two
   rooms meeting at a corner, an arc of two chords and a curve bowed in tighter
   than the 1.5ft eave keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); the parapet style still runs along the
