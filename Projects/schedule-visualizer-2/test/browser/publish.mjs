@@ -1762,6 +1762,62 @@ test('a page that asks after the wait ran out clears "has not opened" and "Try a
   });
 });
 
+// SV2-53 item 3. Until SV2-53 a page that asked late cleared "failed" and
+// "Try again" only while the bar still read "has not opened": a copy that
+// could not be made after the wait ran out wrote its own sentence over it,
+// and the page that then asked stayed "failed" with "Try again" beside it.
+// And a copy made again while no page was asking left "could not be brought
+// up to date" standing until a page asked.
+test('after the wait ran out: a later sentence does not keep a page that asks late "failed", and a copy made again clears "could not be brought up to date" at once', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    const NOT_OPEN = 'The preview has not opened. Try again; publishing a file does not depend on it.';
+    const stale = 'The preview could not be brought up to date. ' + NO_ENCRYPTION;
+    const bar = () => page.evaluate(() => {
+      const preview = document.querySelector('.stf-preview');
+      const again = document.querySelector('[data-action="preview-again"]');
+      return { preview: preview.dataset.preview, says: document.querySelector('[data-says="preview"]').textContent, stale: preview.dataset.previewSays || null, again: again.getClientRects().length > 0 };
+    });
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      // the page the frame is given does not ask for its data in time: a blank page
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => create(blob.type.startsWith('text/html') ? new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }) : blob);
+      location.hash = '#staff';
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'failed', { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: NOT_OPEN, stale: null, again: true });
+    // no encryption, and the passcode screen asked for: the locked copy cannot be made, and says so over "has not opened"
+    await page.evaluate(() => {
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined });
+      document.querySelector('.stf-bar .stf-check input').click();
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: stale, stale: 'stale', again: true }, 'no page has asked: it has still not opened');
+    // encryption back and a change: the copy is made, and no page is asking for it
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === undefined, { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: NOT_OPEN, stale: null, again: true }, '"could not be brought up to date" is no longer so');
+    // the copy fails again, over "has not opened"; and now, late, the page asks
+    await page.evaluate(() => Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined }));
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran once more' });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
+    assert.equal((await bar()).says, stale);
+    await frameOf(page).evaluate(() => parent.postMessage({ type: 'sv2-preview-ready' }, location.origin));
+    await page.waitForFunction(() => document.querySelector('.stf').staff.preview.state.opened === true, { timeout: 30000 });
+    const late = await bar();
+    assert.notEqual(late.preview, 'failed', 'a page that asked has opened');
+    assert.equal(late.again, false, 'no "Try again" for a page that opened');
+    assert.equal(late.says, stale, 'and the bar says why there is nothing to show');
+    await page.evaluate(() => {
+      delete globalThis.crypto.subtle;
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
+  });
+});
+
 // SV2-49 item 9
 test('a map\'s listeners leave when its page gives way to a screen that is not a schedule: a copy the frame cannot read, and the passcode screen', async () => {
   await closing(await open(), async (page) => {
