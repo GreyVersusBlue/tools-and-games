@@ -164,7 +164,7 @@ export function addFloor(s, index = s.currentFloor + 1) {
   return at;
 }
 
-// Copy an existing floor's rooms onto a new level above it.
+// Copy an existing floor's rooms and free-standing walls onto a new level above it.
 export function duplicateFloor(s, index = s.currentFloor) {
   if (s.floors.length >= MAX_FLOORS) return -1;
   const src = s.floors[index];
@@ -194,6 +194,18 @@ export function duplicateFloor(s, index = s.currentFloor) {
         ...(Array.isArray(r.accents) ? { accents: r.accents.slice() } : {}),
       })),
     })),
+    // ...and its free-standing walls (wallrun.js's `floor.walls`), the same
+    // way: fresh ids, the kind, each face's accent (#910) and the doorways
+    // and windows a wall holds, as a room's are (#979). No key when the
+    // storey has none, so a storey without one copies as it always did.
+    ...(Array.isArray(src.walls) && src.walls.length ? {
+      walls: src.walls.map((l) => ({
+        ...l,
+        id: nextShapeId(s),
+        ...(Array.isArray(l.openings) ? { openings: l.openings.map((o) => ({ ...o })) } : {}),
+        ...(Array.isArray(l.accents) ? { accents: l.accents.slice() } : {}),
+      })),
+    } : {}),
   });
   remapFloorRefs(s, (i) => (i >= at ? i + 1 : i));
   s.currentFloor = at;
