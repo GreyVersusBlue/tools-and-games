@@ -543,7 +543,9 @@ export function roofCover(state) {
 //   * a loop wound the other way (a courtyard between rooms),
 //   * two rooms laying the same wall the same way (they overlap),
 //   * two rooms whose walls cross, or one room inside another,
-//   * an outline that touches itself at a point.
+//   * rooms wrapped round a courtyard that meets the outside at one corner.
+// Two rooms meeting at a corner are not refused: the outline is split at
+// that corner into a loop each (#976).
 // A refusal keeps the rectangles for its own building only (#971): rooms
 // whose bounds touch, one to the next, are a building, and where the storey
 // as a whole is refused each building is judged alone, so a curved building
@@ -656,23 +658,46 @@ function unionOf(shapes) {
       if (!add(from, b)) return { loops: null, refused: 'two rooms overlap' };
     }
   }
-  const out = new Map();
+  const out = new Map();       // corner -> the edges leaving it
   for (const e of edges.values()) {
-    if (out.has(e.kf)) return { loops: null, refused: 'the outline touches itself at a point' };
-    out.set(e.kf, e);
+    if (!out.has(e.kf)) out.set(e.kf, []);
+    out.get(e.kf).push(e);
+  }
+  // Where the outline touches itself at a corner (two rooms meeting at a
+  // point) two edges leave it. Each edge arriving goes on along the one that
+  // turns hardest towards the rooms, so the outline splits there into loops
+  // that each keep their own rooms (#976). Two arrivals wanting the same edge
+  // means two rooms' corners open into each other: they overlap.
+  const turnTo = (e, f) => {
+    const ax = e.to.x - e.from.x, az = e.to.z - e.from.z, bx = f.to.x - f.from.x, bz = f.to.z - f.from.z;
+    return Math.atan2(ax * bz - az * bx, ax * bx + az * bz);
+  };
+  const next = new Map();
+  const taken = new Set();
+  for (const e of edges.values()) {
+    const leaving = out.get(e.kt);
+    if (!leaving) return { loops: null, refused: 'the outline does not close' };
+    const f = leaving.reduce((best, g) => (turnTo(e, g) > turnTo(e, best) ? g : best));
+    if (taken.has(f)) return { loops: null, refused: 'two rooms overlap' };
+    taken.add(f);
+    next.set(e, f);
   }
   const loops = [];
-  while (out.size) {
-    const [k0, first] = out.entries().next().value;
+  const done = new Set();
+  for (const first of edges.values()) {
+    if (done.has(first)) continue;
     const loop = [];
+    const at = new Set();
     let e = first;
-    while (e) {
-      out.delete(e.kf);
+    do {
+      // One loop through a corner twice wraps round something open to the
+      // outside only at that corner: a courtyard.
+      if (at.has(e.kf)) return { loops: null, refused: 'the rooms close round a courtyard' };
+      at.add(e.kf);
+      done.add(e);
       loop.push({ x: e.from.x, z: e.from.z });
-      if (e.kt === k0) break;
-      e = out.get(e.kt);
-    }
-    if (!e) return { loops: null, refused: 'the outline does not close' };
+      e = next.get(e);
+    } while (e !== first);
     // A wall split where a neighbour's corner met it is one wall again.
     for (let i = 0; loop.length > 3 && i < loop.length;) {
       const p = loop[(i - 1 + loop.length) % loop.length], q = loop[i], r = loop[(i + 1) % loop.length];
@@ -716,8 +741,13 @@ function unionOf(shapes) {
 // wing set at an angle, a rotated square and an octagon's alternate sides are
 // straight walls and keep their rectangles. Read as a curve as well, and
 // meant to be: a regular polygon of five sides or more, which is a curve
-// drawn by hand. Not read as one: an arc of two chords (only a `steps` of 2
-// asked for in code lays one down).
+// drawn by hand. An arc of two chords (only a `steps` of 2 asked for in code
+// lays one down) has one turn of its own, so it is read by its ends instead
+// (#976): two chords of one length turning under 85 degrees, where the turn
+// at each end plus half the middle one is a right angle, both ends alike.
+// That is a wall square to both its neighbours, bowed. A chamfer, a saw-tooth
+// wall and a prow of 45 degree walls are not; a prow of two equal walls on a
+// square end turning under 85 degrees at its tip is, and is the same chords.
 const CURVE_TURN = (85 * Math.PI) / 180;
 export function hasCurve(loop) {
   const n = loop.length;
@@ -733,6 +763,14 @@ export function hasCurve(loop) {
     const t0 = turn(i), t1 = turn((i + 1) % n);
     if (Math.abs(l1 - l0) > 1e-6 * l0 || Math.abs(l2 - l0) > 1e-6 * l0) continue;
     if (Math.abs(t1 - t0) > 1e-6 || t0 === 0 || Math.abs(t0) >= CURVE_TURN) continue;
+    return true;
+  }
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0) continue;
+    const before = turn((i - 1 + n) % n), mid = turn(i), after = turn((i + 1) % n);
+    if (mid === 0 || Math.abs(mid) >= CURVE_TURN || Math.abs(after - before) > 1e-6) continue;
+    if (Math.abs(Math.abs(before + mid / 2) - Math.PI / 2) > 1e-6) continue;
     return true;
   }
   return false;
