@@ -422,6 +422,45 @@ export function eavePolygon(input, d) {
   return clean ? out : null;
 }
 
+// A face cut into triangles by ear clipping, as index triples into `pts`
+// (anything with x and z), each wound in (x, z) the way the face is. A
+// skeleton face is not convex in general (an L's long slope runs past its
+// valley), and a fan from the first point, which is how render.js has always
+// drawn a roof face, puts a triangle outside it there. Null if no ear can be
+// found, which a simple polygon always has.
+export function triangulate(pts) {
+  const n = pts.length;
+  if (n < 3) return null;
+  let idx = [...Array(n).keys()];
+  const backward = signedArea(pts) < 0;
+  if (backward) idx.reverse();
+  const cross = (a, b, c) => (pts[b].x - pts[a].x) * (pts[c].z - pts[a].z) - (pts[b].z - pts[a].z) * (pts[c].x - pts[a].x);
+  const tris = [];
+  while (idx.length > 3) {
+    const m = idx.length;
+    let cut = -1;
+    for (let k = 0; k < m && cut < 0; k++) {
+      const a = idx[(k - 1 + m) % m], b = idx[k], c = idx[(k + 1) % m];
+      const turn = cross(a, b, c);
+      // A corner that does not turn is never an ear (its triangle is flat);
+      // it becomes an ordinary corner once a neighbour is clipped.
+      if (turn <= 1e-12 * (1 + Math.abs(pts[a].x) + Math.abs(pts[a].z)) ** 2) continue;
+      let clear = true;
+      for (const j of idx) {
+        if (j === a || j === b || j === c) continue;
+        if (cross(a, b, j) >= 0 && cross(b, c, j) >= 0 && cross(c, a, j) >= 0) { clear = false; break; }
+      }
+      if (!clear) continue;
+      tris.push([a, b, c]);
+      cut = k;
+    }
+    if (cut < 0) return null;
+    idx.splice(cut, 1);
+  }
+  if (cross(idx[0], idx[1], idx[2]) > 0) tris.push([idx[0], idx[1], idx[2]]);
+  return backward ? tris.map(([a, b, c]) => [c, b, a]) : tris;
+}
+
 // The hipped roof over a polygon: every edge an eave at `eaveY`, every face a
 // plane rising at `pitch` in 12. Faces come back in blockRoof's shape
 // ({ kind: 'slope', pts: [{ x, y, z }] }, counter-clockwise in (x, z), the

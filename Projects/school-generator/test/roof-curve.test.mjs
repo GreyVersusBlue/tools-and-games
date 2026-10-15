@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 
 import { roofOutline, hasCurve } from '../js/roof.js';
 import { arcPoints } from '../js/shapes.js';
-import { eavePolygon, cleanPolygon } from '../js/skeleton.js';
+import { eavePolygon, cleanPolygon, skeletonRoof, triangulate } from '../js/skeleton.js';
 
 const room = (pts) => ({ rings: [{ pts: pts.map(([x, z]) => ({ x, z })), walls: [], openings: [] }] });
 const floorOf = (...rooms) => ({ shapes: rooms });
@@ -173,4 +173,78 @@ test('a notch narrower than two eaves closes up and is refused', () => {
   const notch = (w) => P([[0, 0], [40, 0], [40, 10], [20 + w / 2, 10], [20 + w / 2, 4], [20 - w / 2, 4], [20 - w / 2, 10], [0, 10]]);
   assert.equal(eavePolygon(notch(2), 1.5), null);
   assert.ok(eavePolygon(notch(4), 1.5));
+});
+
+// ---------- the faces, in triangles ----------
+
+const inPoly = (pts, x, z) => {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i], b = pts[j];
+    if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+};
+const crosses = (a, b, c, d) => {
+  const o = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  const e = 1e-9;
+  const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+  return ((d1 > e && d2 < -e) || (d1 < -e && d2 > e)) && ((d3 > e && d4 < -e) || (d3 < -e && d4 > e));
+};
+// Every triangle wound like the face, inside it (its middle inside, none of
+// its sides crossing the face's), and the areas adding up to the face's.
+function assertTiles(face, tris, label) {
+  assert.ok(tris, `${label}: no triangles`);
+  const sign = Math.sign(area(face));
+  let sum = 0;
+  for (const [a, b, c] of tris) {
+    const tri = [face[a], face[b], face[c]];
+    const ar = area(tri) * sign;
+    assert.ok(ar > 1e-12, `${label}: triangle ${a},${b},${c} wound backward or flat`);
+    sum += ar;
+    const mx = (tri[0].x + tri[1].x + tri[2].x) / 3, mz = (tri[0].z + tri[1].z + tri[2].z) / 3;
+    assert.ok(inPoly(face, mx, mz), `${label}: triangle ${a},${b},${c} lies outside its face`);
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < face.length; j++) {
+        assert.ok(!crosses(tri[i], tri[(i + 1) % 3], face[j], face[(j + 1) % face.length]),
+          `${label}: triangle ${a},${b},${c} crosses the face's side ${j}`);
+      }
+    }
+  }
+  const want = Math.abs(area(face));
+  assert.ok(Math.abs(sum - want) < 1e-9 * (1 + want), `${label}: ${sum} against ${want}`);
+}
+
+test('a non-convex face is cut into triangles inside it, where a fan from its first point is not', () => {
+  // An L's long slope: eave along the bottom, ridge, valley, short ridge.
+  const face = P([[0, 0], [40, 0], [30, 10], [30, 30], [20, 20], [10, 10]]);
+  const fan = face.slice(1, -1).map((_, i) => [0, i + 1, i + 2]);
+  assert.throws(() => assertTiles(face, fan, 'fan'), /outside|crosses|backward/, 'the old fan really is wrong here');
+  // From every corner, either way round, and with a corner that does not
+  // turn put in the middle of the eave.
+  const withFlat = P([[0, 0], [20, 0], [40, 0], [30, 10], [30, 30], [20, 20], [10, 10]]);
+  for (const f of [face, withFlat]) {
+    for (let k = 0; k < f.length; k++) {
+      const turned = [...f.slice(k), ...f.slice(0, k)];
+      assertTiles(turned, triangulate(turned), `ear clip from ${k}`);
+      const back = [...turned].reverse();
+      assertTiles(back, triangulate(back), `ear clip from ${k}, wound back`);
+    }
+  }
+});
+
+test('every face of every curved roof is cut into triangles inside it', () => {
+  const shapes = [bowed(0.4, 12), bowed(0.9, 32), bowed(-0.2, 8), bowed(0.05, 2),
+    [[0, 0], [60, 0], ...arcPoints({ x: 60, z: 0 }, { x: 60, z: 40 }, -0.5, 24).slice(1, -1).map((p) => [p.x, p.z]),
+      [60, 40], [40, 40], [40, 20], [20, 20], [20, 40], [0, 40]]];
+  let faces = 0;
+  for (const s of shapes) {
+    const roof = skeletonRoof(eavePolygon(P(s), 1.5), 12, 4);
+    assert.ok(roof);
+    for (const f of roof.faces) {
+      assertTiles(f.pts, triangulate(f.pts), `face ${f.edge} of a ${s.length}-gon`);
+      faces++;
+    }
+  }
+  assert.ok(faces > 60);
 });
