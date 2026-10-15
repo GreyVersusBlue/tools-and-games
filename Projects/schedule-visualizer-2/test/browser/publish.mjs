@@ -1407,6 +1407,44 @@ test('the file went out and the project then would not record it: the status say
   });
 });
 
+// SV2-53 item 4. "This tab made a file just now" stood until the section
+// was drawn anew: it goes on the next change of the project, which is made
+// after the file, and after UNNOTED_TIMES.ms, when it is no longer just now.
+test('the first line about a file the project could not record goes on the next change, and after a while with none', async () => {
+  await closing(await open(), async (page) => {
+    await page.evaluate(async () => {
+      const { notePublished } = await import(new URL('engine/actions.js', location.href).href);
+      const store = globalThis.sv2.store;
+      const apply = store.apply;
+      store.apply = function (action, payload) {
+        if (action === notePublished) throw new Error('The project would not take the note.');
+        return apply.call(store, action, payload);
+      };
+    });
+    const first = () => page.evaluate(() => document.querySelector('.stf-facts').textContent);
+    const JUST_NOW = /^This tab made a file just now\. The project could not record it\. It has /;
+    assert.ok(await publishThroughHook(page));
+    assert.match(await first(), JUST_NOW);
+    // the next change
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file'), { timeout: 30000 });
+    assert.match(await first(), /^No file has been made from this project yet\. It has /);
+    // made again, and nothing changes: it goes after the set time
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 800;
+    });
+    assert.ok(await publishThroughHook(page));
+    assert.match(await first(), JUST_NOW);
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file'), { timeout: 30000 });
+    assert.match(await first(), /^No file has been made from this project yet\. It has /);
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 5 * 60 * 1000;
+    });
+  });
+});
+
 // SV2-51 item 10. The section left while its file was being made: the form is
 // stopped, and the file is not handed over (no download starts on a screen
 // the reader has left), nor is the publish noted.

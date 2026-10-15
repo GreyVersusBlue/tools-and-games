@@ -32,6 +32,11 @@ export const IDLE_READ_MS = 4000;
 
 export const hooks = { deliver: null, assembled: null, published: null, made: null };
 
+// How long "This tab made a file just now" stands when the project did not
+// note the file: it goes on the next change of the project, or after this
+// long, whichever comes first. An object, so a test can shorten it.
+export const UNNOTED_TIMES = { ms: 5 * 60 * 1000 };
+
 // `unnoted`: this tab made a file the project did not note, so "no file
 // yet" would be false on this screen. 'read-only' when the tab is read-only
 // and so was never asked to; 'refused' when the project was asked and could
@@ -79,12 +84,33 @@ export const section = {
     ctx.setInspector(form.element, { title: 'Publish' });
 
     let unnoted = null;
-    hooks.made = (published, noted) => {
-      unnoted = noted === true ? null : noted === READ_ONLY_MADE ? 'read-only' : 'refused';
+    let unnotedOf = null; // the project on screen when the file was made
+    let unnotedTimer = null;
+    const noted = () => {
+      if (unnotedTimer !== null) clearTimeout(unnotedTimer);
+      unnotedTimer = null;
+      unnoted = null;
+      unnotedOf = null;
+    };
+    hooks.made = (published, recorded) => {
+      noted();
+      if (recorded === true) {
+        lead.textContent = facts(ctx.store.project, null);
+        return;
+      }
+      unnoted = recorded === READ_ONLY_MADE ? 'read-only' : 'refused';
+      unnotedOf = ctx.store.project;
+      // "just now" stops being so
+      unnotedTimer = setTimeout(() => {
+        noted();
+        lead.textContent = facts(ctx.store.project, null);
+      }, UNNOTED_TIMES.ms);
       lead.textContent = facts(ctx.store.project, unnoted);
     };
 
     function update(project) {
+      // the next change of the project: the file was made before it, not just now
+      if (unnoted !== null && project !== unnotedOf) noted();
       lead.textContent = facts(project, unnoted);
       shown.update(project);
       form.update(project);
@@ -96,6 +122,7 @@ export const section = {
       update,
       unmount() {
         hooks.made = null;
+        noted();
         shown.stop();
         form.stop();
       },

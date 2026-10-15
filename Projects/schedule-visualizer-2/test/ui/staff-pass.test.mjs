@@ -270,22 +270,65 @@ test('a passcode turned on or off while the file is made is a change a reader se
 
 // ---------------------------------------------------------------- the section's hooks and first line (SV2-51 item 10)
 
+// A write to one of the two test hooks, in any form a module could make it:
+// hooks.deliver = …, hooks['deliver'] = …, Object.assign(hooks, …),
+// Object.defineProperty(hooks, …) and Reflect.set(hooks, …). Until SV2-53
+// only the first was looked for (SV2-53 item 4).
+const HOOK_WRITES = [
+  /\bhooks\s*\.\s*(assembled|deliver)\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
+  /\bhooks\s*\[\s*(['"`])(assembled|deliver)\1\s*\]\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
+  /\bhooks\s*\[\s*[^'"`\]\s][^\]]*\]\s*=(?!=)/,
+  /\bObject\s*\.\s*(assign|defineProperty|defineProperties|setPrototypeOf)\s*\(\s*[\w$.]*\bhooks\b/,
+  /\bReflect\s*\.\s*(set|defineProperty)\s*\(\s*[\w$.]*\bhooks\b/,
+];
+const setsTestHook = (source) => HOOK_WRITES.some((pattern) => pattern.test(source));
+
+test('the guard sees every way a module could set a test hook, and not the page\'s own hooks or a comparison', () => {
+  const writes = [
+    'hooks.deliver = (file) => file;',
+    'hooks.assembled=wait;',
+    "hooks['deliver'] = take;",
+    'hooks["assembled"] = wait;',
+    'hooks[`deliver`] = take;',
+    'hooks[name] = take;',
+    'Object.assign(hooks, { deliver: take });',
+    'Object.assign(view.hooks, { assembled: wait });',
+    "Object.defineProperty(hooks, 'deliver', { value: take });",
+    "Reflect.set(hooks, 'deliver', take);",
+    'hooks.deliver ??= take;',
+  ];
+  for (const source of writes) assert.equal(setsTestHook(source), true, source);
+  const not = [
+    'hooks.made = (published, noted) => {};',
+    'hooks.published = published;',
+    "if (typeof hooks.deliver === 'function') hooks.deliver(published);",
+    "hooks['made'] = null;",
+    'const deliver = hooks.deliver;',
+  ];
+  for (const source of not) assert.equal(setsTestHook(source), false, source);
+});
+
 test('the test hooks are declared, null, and nothing in the page sets them', () => {
   assert.deepEqual(Object.keys(sectionHooks).sort(), ['assembled', 'deliver', 'made', 'published']);
   assert.equal(sectionHooks.assembled, null);
   assert.equal(sectionHooks.deliver, null);
   const tool = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const setters = [];
+  let read = 0;
   for (const folder of ['ui', 'staff', 'engine', 'storage']) {
     const walk = (dir) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const at = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(at);
-        else if (entry.name.endsWith('.js') && /hooks\.(assembled|deliver)\s*=[^=]/.test(readFileSync(at, 'utf8'))) setters.push(path.relative(tool, at));
+        else if (entry.name.endsWith('.js')) {
+          read += 1;
+          if (setsTestHook(readFileSync(at, 'utf8'))) setters.push(path.relative(tool, at));
+        }
       }
     };
     walk(path.join(tool, folder));
   }
+  assert.ok(read > 100, 'the page\'s modules were read: ' + read);
   assert.deepEqual(setters, [], 'a module of the page sets a test hook');
 });
 
