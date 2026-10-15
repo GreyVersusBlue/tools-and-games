@@ -454,11 +454,15 @@ and add to this list rather than starting a new one.
   a curved building beside a courtyard building stands on its skeleton.
   A flat roof's parapet over a curved building runs on the same loop's
   chords, and the deck under it is that outline, ear-clipped (#973).
+  Two rooms meeting at a corner are a loop each, so a curved one there takes
+  the skeleton and the chord parapet; an arc of two chords is a curve when it
+  was bowed off a wall square to both its neighbours (#976).
   Left: a building is grouped by bounds, not by walls, so a curved building
   standing inside the bounds of a courtyard building's L (not touching it) is
-  refused with it; a courtyard, a room with a hole, two
-  rooms meeting at a corner, an arc of two chords and a curve bowed in tighter
-  than the 1.5ft eave keep rectangles too; `gable` over a curve keeps
+  refused with it; a courtyard (one meeting the outside at a single corner
+  included), a room with a hole, an arc of two chords off a wall that was not
+  square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
+  keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
   touch another building's keeps a stepped parapet; the takeoff and the
   estimate count a parapet roof over a curve off its mask cells (#970 did
