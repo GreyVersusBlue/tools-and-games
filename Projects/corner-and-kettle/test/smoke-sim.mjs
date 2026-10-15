@@ -424,7 +424,7 @@ section("10. the page has no clock and no dice of its own, and owns no rule");
   // checkout, not just a Linux CI runner's LF one.
   const read = (...p) => readFileSync(join(here, "..", ...p), "utf8").replace(/\r\n/g, "\n");
   const uncommented = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  const VIEW = ["ui.js", "stations.js", "chalkboard.js", "draw.js", "sound.js"];
+  const VIEW = ["ui.js", "stations.js", "chalkboard.js", "patch.js", "draw.js", "sound.js"];
   const html = read("index.html");
   eq((html.match(/<script\b/g) || []).length, 1, "index.html has exactly one script tag");
   ok(/<script type="module" src="\.\/js\/ui\.js"><\/script>/.test(html), "and it is the module js/ui.js");
@@ -1452,7 +1452,7 @@ section("18. what colour said is said in words, and motion is a stylesheet's bus
   const ui = uncommented(read("js", "ui.js"));
   const stationsSrc = uncommented(read("js", "stations.js"));
   ok(/<div class="cupnote">\$\{ slot\.food \? plateWords\(slot\.foodPlated\) : cupWords\(slot\.cup\) \}<\/div>/.test(ui), "ui.js writes the line under every station's cup or plate");
-  ok(/div\.title = `Wants: \$\{orderWords\(c\)\}`/.test(ui), "and the order's words on the queue card");
+  ok(/title="\$\{attr\(`Wants: \$\{orderWords\(c\)\}`\)\}"/.test(ui), "and the order's words on the queue card");
   ok(/idx===state\.focusedSlot\) div\.setAttribute\('aria-current', 'true'\)/.test(ui), "and marks the focused station for anything that reads it");
   ok(/class="needdot" aria-hidden="true"><\/span><span class="sronly">, still needed<\/span>/.test(stationsSrc), "the tab's dot comes with its words");
   eq((stationsSrc.match(/aria-pressed="\$\{/g) || []).length, 5, "the tabs and the four kinds of pick say which one is on");

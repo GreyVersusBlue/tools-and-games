@@ -24,6 +24,7 @@ import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, ord
 import { createSound } from "./sound.js";
 import { STATION_TAB_DEFS, createStations } from "./stations.js";
 import { createChalkboard } from "./chalkboard.js";
+import { patchRows } from "./patch.js";
 
 const {
   MILKS, SYRUPS, TOPPINGS, BASE_COLORS, RECIPES, FOODS, PHASES, SHIFT_MS,
@@ -113,30 +114,41 @@ function toast(msg){
 const sound = createSound(() => state.muted);
 
 /* ---------- RENDER: QUEUE ---------- */
-function renderQueue(){
-  const row = document.getElementById('queueRow');
-  row.innerHTML='';
-  state.queue.slice(0,sim.queueMax()).forEach((c)=>{
-    const div = document.createElement('button');
-    div.type = 'button';
-    div.className='customer';
-    if(c._servedAnim) div.className+=' served';
-    if(c.isRegular) div.className += ' regular';
-    div.setAttribute('aria-label', customerLabel(c));
-    div.title = `Wants: ${orderWords(c)}`;
+// Markup for attributes: a regular's name or an order's words in a label.
+const attr = s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+// The queue is patched in place (#969), the way the Menu Board is: it used to
+// be emptied and rebuilt on every redraw, and during a shift it redraws on
+// every patience tick, so a customer the keyboard was on was a new element
+// within a second. Each customer is a row keyed by their id, so the one the keyboard
+// is on stays the same button while patience drains and others come and go.
+// A customer taken to a station or gone is a row that goes, and the keyboard
+// with it. One click handler on the row stands in for one per button.
+function queueHtml(){
+  return state.queue.slice(0,sim.queueMax()).map((c)=>{
+    let cls = 'customer';
+    if(c._servedAnim) cls+=' served';
+    if(c.isRegular) cls += ' regular';
     const pct = Math.max(0, (c.patience/c.patienceMax))*100;
     const rec = c.isRegular ? state.regulars[c.regularName] : null;
-    div.innerHTML = `
+    return `<button type="button" class="${cls}" data-row="c${attr(c.id)}" data-cust="${attr(c.id)}" aria-label="${attr(customerLabel(c))}" title="${attr(`Wants: ${orderWords(c)}`)}">
       ${c.isRegular ? `<div class="regularName">${c.regularName} ${rec ? regularMoodEmoji(rec.satisfaction) : ''}
         ${rec ? `<small>(${rec.visits} visit${rec.visits===1?'':'s'})</small>` : ''}</div>` : ''}
       <div class="bubble">${orderIconsHtml(c)}</div>
       ${makeSpriteSvg(c.sprite)}
       <div class="patience"><div class="patience-fill" style="width:${pct}%"></div></div>
-    `;
-    div.onclick = ()=> tryAcceptCustomer(c.id);
-    row.appendChild(div);
-  });
+    </button>`;
+  }).join('');
 }
+function renderQueue(){
+  patchRows(document.getElementById('queueRow'), queueHtml());
+}
+document.getElementById('queueRow').addEventListener('click', (e)=>{
+  const b = e.target.closest('[data-cust]');
+  if(!b) return;
+  const c = state.queue.find(q=>String(q.id)===b.dataset.cust);
+  if(c) tryAcceptCustomer(c.id);
+});
 
 /* ---------- SLOTS ---------- */
 function renderSlots(){
@@ -569,6 +581,8 @@ if(typeof window !== 'undefined'){
     // The Menu Board's rows as a fresh build writes them, which the page check
     // holds the patched board to (#968).
     chalkboardHtml: () => chalkboard.html(),
+    // The queue's, the same way (#969).
+    queueHtml,
     queueMax: sim.queueMax,
     slot: saveSlot, catalog: CATALOG, sim,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,

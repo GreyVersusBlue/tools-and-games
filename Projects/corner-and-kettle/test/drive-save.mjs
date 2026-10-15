@@ -60,7 +60,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const ONLY_A11Y = process.argv.includes('--a11y');
 // `--pace` runs section 16 alone the same way: the pace switch on the board.
 const ONLY_PACE = process.argv.includes('--pace');
-// `--focus` runs section 17 alone: the board keeping the keyboard on a redraw.
+// `--focus` runs sections 17 and 18 alone: the board, the queue and the
+// stations row keeping the keyboard on a redraw.
 const ONLY_FOCUS = process.argv.includes('--focus');
 
 /**
@@ -1568,6 +1569,102 @@ try {
   t.ok(s1.same, 'two seconds of the shift running leave the keyboard on the board', s1.text);
   t.ok(fp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', fp.__errs.join(' | ') || 'clean');
   await fp.close();
+  }
+
+  /* ---------- 18. the queue and the stations row keep the keyboard ---------- */
+  // Both were emptied and rebuilt with createElement on every redraw, and the
+  // queue redraws whenever the shop does anything, so a customer or a station
+  // button the player had tabbed to was gone within a second and the next Tab
+  // started from the top of the page. Both are patched in place now, the way
+  // the Menu Board is (section 17), and held to a fresh build after each step.
+
+  queue: {
+  if (ONLY_A11Y || ONLY_PACE) break queue;
+  t.section('18. the queue keeps the keyboard across a redraw');
+  const qp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(qp, { wipe: true });
+  await qp.evaluate(() => { window.confirm = () => true; });
+  // Whoever has the keyboard, tagged by what the player would hear.
+  const where = () => qp.evaluate(() => {
+    const a = document.activeElement;
+    const inQ = !!(a && a.closest && a.closest('#queueRow')), inS = !!(a && a.closest && a.closest('#slots'));
+    const peers = inQ ? [...document.querySelectorAll('#queueRow button')] : [...document.querySelectorAll('#slots button')];
+    return {
+      marked: !!(a && a.__mark), inQ, inS, tag: a && a.tagName,
+      name: a ? (a.getAttribute('aria-label') || a.textContent.replace(/\s+/g, ' ').trim()).slice(0, 70) : '',
+      idx: peers.indexOf(a),
+      // From the whole label: a regular's is long enough to cut it off `name`.
+      pat: a ? ((a.getAttribute('aria-label') || '').match(/(\d+)% patience/) || [])[1] || null : null,
+    };
+  });
+  // The row as it stands against a fresh build of it, attribute order and
+  // comments aside, measured in one task so no frame runs in between.
+  const fresh = (id, fn) => qp.evaluate((id, fn) => {
+    const d = window.__CK_DEBUG__;
+    if (typeof d[fn] !== 'function') return { same: false, why: `no ${fn} on __CK_DEBUG__` };
+    const norm = root => [...root.childNodes].map(n => n.nodeType === 3 ? n.nodeValue
+      : n.nodeType === 1 ? `<${n.tagName} ${[...n.attributes].map(a => `${a.name}=${a.value}`).sort().join(' ')}>${norm(n)}</${n.tagName}>` : '').join('');
+    const tpl = document.createElement('template');
+    tpl.innerHTML = d[fn]();
+    const a = norm(document.getElementById(id)), b = norm(tpl.content);
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    return { same: a === b, why: a === b ? '' : `first difference at ${i}: "${a.slice(i, i + 60)}" against "${b.slice(i, i + 60)}"` };
+  }, id, fn);
+  const queueFresh = () => fresh('queueRow', 'queueHtml');
+
+  // The queue. Tab from the top of the page to the first customer.
+  await qp.evaluate(() => { document.activeElement && document.activeElement.blur(); });
+  let tabs = 0;
+  for (; tabs < 40 && !(await where()).inQ; tabs++) await qp.keyboard.press('Tab');
+  await qp.evaluate(() => { document.activeElement.__mark = true; });
+  const q0 = await where();
+  t.ok(q0.inQ && q0.tag === 'BUTTON' && q0.idx === 0, 'Tab from the top of the page reaches the first customer in the queue', `${tabs} Tab, "${q0.name}"`);
+  let f = await queueFresh();
+  t.ok(f.same, 'the queue on first paint is exactly what a fresh build writes', f.why);
+
+  await qp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let q = await where();
+  t.ok(q.marked && q.inQ && q.idx === 0, 'a redraw leaves the keyboard on the same customer, which was not rebuilt', `"${q.name}"`);
+
+  // The shift running: patience drains, so the label and the bar move.
+  await wait(2500);
+  q = await where();
+  f = await queueFresh();
+  t.ok(q.marked && q.idx === 0, 'two and a half seconds of the shift running leave the keyboard on that customer', `"${q.name}"`);
+  t.ok(f.same && q.pat !== null && q.pat !== q0.pat, 'whose label now says the patience left, as a fresh build does', `${q0.pat}% -> ${q.pat}%${f.why ? ', ' + f.why : ''}`);
+
+  // A customer arriving behind and one taken from beside it.
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.queue.push(d.generateOrder()); d.renderAll(); });
+  q = await where();
+  t.ok(q.marked && q.idx === 0, 'a customer arriving at the back leaves the keyboard where it was', `"${q.name}"`);
+  const took = await qp.evaluate(() => { const d = window.__CK_DEBUG__, id = d.state.queue[1].id; d.tryAcceptCustomer(id); return d.state.slots.some(s => s && s.customer.id === id); });
+  q = await where();
+  f = await queueFresh();
+  t.ok(took && q.marked && q.idx === 0, 'the customer beside it taken to a station leaves the keyboard where it was', `"${q.name}"`);
+  t.ok(f.same, 'and the queue is exactly a fresh build after it', f.why);
+
+  // The tab order is the queue's order after a redraw.
+  await qp.keyboard.press('Tab');
+  const q1 = await where();
+  t.ok(q1.inQ && q1.idx === 1, 'Tab after a redraw goes to the next customer', `${q.idx} -> ${q1.idx} "${q1.name}"`);
+  await qp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  await qp.keyboard.down('Shift'); await qp.keyboard.press('Tab'); await qp.keyboard.up('Shift');
+  q = await where();
+  t.ok(q.marked, 'and Shift+Tab after another redraw comes back to the first', `"${q.name}"`);
+
+  // Enter takes the order. The customer leaves the queue, so the element goes
+  // with them; where the keyboard lands then is reported, not ruled on.
+  const before = await qp.evaluate(() => window.__CK_DEBUG__.state.slots.filter(Boolean).length);
+  await qp.keyboard.press('Enter');
+  await wait(150);
+  const after = await qp.evaluate(() => {
+    const d = window.__CK_DEBUG__, a = document.activeElement;
+    return { n: d.state.slots.filter(Boolean).length, at: a === document.body ? 'body' : a && a.tagName };
+  });
+  t.ok(after.n === before + 1, 'Enter on that customer takes the order to a station', `${before} -> ${after.n} stations busy; keyboard then on ${after.at}`);
+
+  t.ok(qp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', qp.__errs.join(' | ') || 'clean');
+  await qp.close();
   }
 
 } finally {
