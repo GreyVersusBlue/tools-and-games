@@ -10,8 +10,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { roofOutline, hasCurve } from '../js/roof.js';
-import { arcPoints } from '../js/shapes.js';
+import { roofOutline, hasCurve, roofPlan, roofMask, EAVE, curvedRoofs } from '../js/roof.js';
+import { arcPoints, addShape, curveSegment } from '../js/shapes.js';
+import { createState, CELL, WALL_H, floorBaseY } from '../js/grid.js';
+import { roofHeightAt, computeElevation, computeSection } from '../js/elevation.js';
 import { eavePolygon, cleanPolygon, skeletonRoof, triangulate, roofHeightOver } from '../js/skeleton.js';
 
 const room = (pts) => ({ rings: [{ pts: pts.map(([x, z]) => ({ x, z })), walls: [], openings: [] }] });
@@ -111,14 +113,38 @@ test('an empty storey is no loops, not a refusal', () => {
 
 // ---------- what counts as a curve ----------
 
-test('a curve is two skew chords in a row; a diagonal wall or an octagon is not', () => {
+test('a curve is three equal chords turning equally; straight walls at angles are not', () => {
   const pts = (a) => a.map(([x, z]) => ({ x, z }));
+  const ngon = (k, r, rot = 0) => Array.from({ length: k }, (_, i) =>
+    ({ x: 50 + r * Math.cos(rot + (2 * Math.PI * i) / k), z: 50 + r * Math.sin(rot + (2 * Math.PI * i) / k) }));
   assert.equal(hasCurve(pts([[0, 0], [40, 0], [40, 16], [0, 16]])), false);
   assert.equal(hasCurve(pts([[0, 0], [40, 0], [40, 10], [34, 16], [0, 16]])), false, 'a chamfer');
   assert.equal(hasCurve(pts([[8, 0], [16, 0], [24, 8], [24, 16], [16, 24], [8, 24], [0, 16], [0, 8]])), false, 'an octagon');
+  // test/fixtures/plan-v5.json's wing: two skew walls of one length, at a right angle.
+  assert.equal(hasCurve(pts([[4, 4], [36, 4], [36, 16], [56, 12], [60, 32], [36, 28], [36, 24], [4, 24]])), false, 'plan-v5');
+  assert.equal(hasCurve(ngon(4, 20, 0.5)), false, 'a rotated square');
+  assert.equal(hasCurve(pts([[0, 0], [10, 0], [20, 6], [30, 16], [0, 16]])), false, 'two skew walls');
   assert.equal(hasCurve(pts(bowed(0.4, 12))), true);
-  assert.equal(hasCurve(pts(bowed(0.05, 2))), true, 'the shallowest arc a wall can be given');
-  assert.equal(hasCurve(pts([[0, 0], [10, 0], [20, 6], [30, 16], [0, 16]])), true, 'two skew walls meeting are read as a curve');
+  assert.equal(hasCurve(pts(bowed(0.4))), true, 'the steps the curve tool picks');
+  assert.equal(hasCurve(pts(bowed(0.9, 3))), true, 'three chords round most of a circle');
+  assert.equal(hasCurve(pts(bowed(0.5, 3))), true, 'a semicircle whose middle chord runs along z');
+  assert.equal(hasCurve(pts(bowed(0.05, 2))), false, 'two chords are not enough to tell');
+  // Walk a path of (length, turn in degrees) steps from the origin, then home.
+  const walk = (steps) => {
+    let x = 0, z = 0, h = 0;
+    const out = [{ x, z }];
+    for (const [l, deg] of steps) {
+      h += (deg * Math.PI) / 180;
+      x += l * Math.cos(h); z += l * Math.sin(h);
+      out.push({ x, z });
+    }
+    return out;
+  };
+  assert.equal(hasCurve(walk([[10, 0], [10, 40], [10, -80], [10, 80], [40, 100]])), false, 'an S of equal walls');
+  assert.equal(hasCurve(walk([[10, 0], [10, 30], [15, 30], [20, 30], [40, 120]])), false, 'equal turns, walls lengthening');
+  assert.equal(hasCurve(pts([[0, 0], [10, 0], [20, 0], [30, 0], [30, 10], [0, 10]])), false, 'a wall in three equal pieces');
+  assert.equal(hasCurve(ngon(5, 20, 0.3)), true, 'a regular pentagon, meant');
+  assert.equal(hasCurve(ngon(12, 20)), true, 'a regular 12-gon, meant');
 });
 
 test('a diagonal wall drawn as two collinear pieces is one wall, not a curve', () => {
@@ -295,4 +321,153 @@ test('over a non-convex curved roof the height is each face\'s plane, continuous
   }
   assert.equal(roofHeightOver(roof.faces, 30, 35), null, 'the courtyard of the U is not under the roof');
   assert.equal(roofHeightOver(roof.faces, -10, 10), null);
+});
+
+// ---------- the wiring ----------
+
+const R4 = (x0, z0, x1, z1) => [{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }];
+// A school of two buildings on one storey: a 40 by 24 hall with its east wall
+// bowed out by the curve tool, against a 16ft room on its west side, and a
+// separate L-shaped block to the south that has no curve at all.
+function school({ curve = true, style = 'hip', pitch = 6, courtyard = false } = {}) {
+  const s = createState(30, 30);
+  const hall = addShape(s, 0, R4(24, 8, 64, 32));
+  addShape(s, 0, R4(8, 8, 24, 32));
+  if (courtyard) {
+    // Close the hall's north side into a ring round an open middle.
+    addShape(s, 0, R4(8, -24, 64, -12));
+    addShape(s, 0, R4(8, -12, 20, 8));
+    addShape(s, 0, R4(52, -12, 64, 8));
+  }
+  addShape(s, 0, R4(8, 60, 48, 76));
+  addShape(s, 0, R4(8, 76, 24, 100));
+  if (curve) {
+    // Segment 1 is the hall's east wall, (64, 8) to (64, 32); a negative
+    // bulge bows it out of the room, to x 73.6.
+    assert.ok(curveSegment(hall, 0, 1, -0.4) > 3, 'the curve tool laid a curve');
+  }
+  s.roof = { style, pitch, facade: 'brick' };
+  return s;
+}
+const strip = (b) => JSON.parse(JSON.stringify(b));
+
+test('a hipped roof over a curve is one skeleton block, and the straight-walled building beside it is not touched', () => {
+  const s = school();
+  const plan = roofPlan(s);
+  const sk = plan.blocks.filter((b) => b.skeleton);
+  assert.equal(sk.length, 1);
+  assert.ok(hasCurve(sk[0].outline));
+  assert.ok(sk[0].faces.length > 10, 'a face per wall and per chord');
+  assert.ok(sk[0].faces.every((f) => f.tris && f.tris.length), 'every face brings its triangles');
+  // The L to the south: the same blocks, point for point, as a school whose hall has no curve.
+  const before = roofPlan(school({ curve: false })).blocks.filter((b) => b.rect.z0 >= 60);
+  const after = plan.blocks.filter((b) => !b.skeleton);
+  assert.ok(after.length >= 2);
+  assert.deepEqual(strip(after), strip(before));
+  assert.ok(after.every((b) => b.rect.z0 >= 60), 'no rectangle is left over the curved hall');
+});
+
+test('a curved roof starts 1.5ft outside the walls at the eave height and rises at the pitch', () => {
+  const s = school();
+  const plan = roofPlan(s);
+  const [sk] = plan.blocks.filter((b) => b.skeleton);
+  const eaveY = floorBaseY(s, 0) + WALL_H;
+  assert.equal(plan.eaveY, eaveY);
+  for (const f of sk.faces) {
+    assert.equal(f.pts[0].y, eaveY);
+    assert.equal(f.pts[1].y, eaveY);
+  }
+  for (let i = 0; i < sk.outline.length; i++) {
+    const a = sk.outline[i], b = sk.outline[(i + 1) % sk.outline.length];
+    assert.ok(Math.abs(lineDist(a, b, sk.eave[i]) - EAVE) < 1e-9);
+  }
+  // The hall and its neighbour are 24ft deep, so the eave line is 27ft
+  // across and the ridge stands half of that, at 6 in 12, over the eave.
+  assert.ok(Math.abs(sk.rise - 13.5 * 0.5) < 1e-9, `rise ${sk.rise}`);
+  assert.equal(plan.rise, Math.max(sk.rise, ...plan.blocks.map((b) => b.rise)));
+});
+
+test('the deck under the curved roof goes, and the straight building keeps its own', () => {
+  const plan = roofPlan(school());
+  const plain = roofPlan(school({ curve: false }));
+  assert.deepEqual(strip(plan.deckRects), strip(plain.deckRects.filter((r) => r.z0 >= 60)));
+});
+
+test('only the hipped style takes the new path', () => {
+  for (const style of ['gable', 'parapet', 'flat']) {
+    const plan = roofPlan(school({ style }));
+    assert.ok(!plan.blocks.some((b) => b.skeleton), style);
+  }
+  assert.ok(!roofPlan(school({ curve: false })).blocks.some((b) => b.skeleton), 'no curve, no skeleton');
+});
+
+test('a curve on a courtyard keeps the rectangles, the outline having said why', () => {
+  const s = school({ courtyard: true });
+  assert.match(roofOutline(s.floors[0]).refused, /courtyard/);
+  const plan = roofPlan(s);
+  assert.ok(!plan.blocks.some((b) => b.skeleton));
+  assert.ok(plan.blocks.length > 2);
+});
+
+test('a curve too tight for the eave keeps the rectangles', () => {
+  // A semicircular dent 1ft in radius in the hall's east wall: the eave
+  // closes up there (see the eave tests), so the loop has no skeleton.
+  const s = createState(30, 30);
+  const arc = arcPoints({ x: 64, z: 19 }, { x: 64, z: 21 }, 0.5, 8);
+  addShape(s, 0, [{ x: 24, z: 8 }, { x: 64, z: 8 }, ...arc, { x: 64, z: 32 }, { x: 24, z: 32 }]);
+  s.roof = { style: 'hip', pitch: 6 };
+  assert.ok(hasCurve(roofOutline(s.floors[0]).loops[0]));
+  assert.deepEqual(curvedRoofs(s.floors[0], 12, 6), []);
+  assert.ok(roofPlan(s).blocks.length >= 1);
+  assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton));
+});
+
+test('the section reads a curved roof off its faces, and nothing past its walls', () => {
+  const s = school();
+  const plan = roofPlan(s);
+  const [sk] = plan.blocks.filter((b) => b.skeleton);
+  const mask = roofMask(s.floors[0], s.w, s.h);
+  // Inside the walls, the face's plane, which on this convex hall is the
+  // eave plus the pitch times the distance in from the nearest eave line.
+  for (const [x, z] of [[10, 10], [30, 20], [60, 20], [70, 20], [72.5, 15]]) {
+    const y = roofHeightAt(plan, mask, x, z);
+    let d = Infinity;
+    for (let i = 0; i < sk.eave.length; i++) d = Math.min(d, -lineDist(sk.eave[i], sk.eave[(i + 1) % sk.eave.length], { x, z }));
+    assert.ok(Math.abs(y - (plan.eaveY + 0.5 * d)) < 1e-6, `(${x}, ${z}): ${y}`);
+  }
+  // A cell the mask turned on past the curve (its middle is inside the hall,
+  // its corner is not) reads as nothing overhead outside the wall.
+  let found = 0;
+  for (let c = 0; c < mask.w; c++) {
+    for (let r = 0; r < mask.h; r++) {
+      if (!mask.on[r * mask.w + c]) continue;
+      for (const [fx, fz] of [[0.02, 0.02], [0.98, 0.02], [0.02, 0.98], [0.98, 0.98]]) {
+        const x = (mask.cx0 + c + fx) * CELL, z = (mask.cy0 + r + fz) * CELL;
+        if (inPoly(sk.outline, x, z) || z >= 60) continue;
+        assert.equal(roofHeightAt(plan, mask, x, z), null, `(${x}, ${z}) is outside the hall`);
+        found++;
+      }
+    }
+  }
+  assert.ok(found > 0, 'the test found a cell corner past the curve');
+  // The L to the south reads as it always did.
+  const plain = roofPlan(school({ curve: false }));
+  const plainMask = roofMask(school({ curve: false }).floors[0], 30, 30);
+  for (const [x, z] of [[10, 62], [20, 70], [30, 75], [15, 90], [46, 61]]) {
+    assert.equal(roofHeightAt(plan, mask, x, z), roofHeightAt(plain, plainMask, x, z), `(${x}, ${z})`);
+  }
+  // And a cut across the hall's curve draws the roof up to the ridge and back.
+  const sec = computeSection(s, { ax: 0, az: 20, bx: 90, bz: 20 });
+  const ys = sec.roofline.flat().map((p) => p.y);
+  assert.ok(Math.abs(Math.max(...ys) - (plan.eaveY + sk.rise)) < 0.6);
+});
+
+test('the elevation draws the curved roof\'s faces, up to its ridge', () => {
+  const s = school();
+  const plan = roofPlan(s);
+  const [sk] = plan.blocks.filter((b) => b.skeleton);
+  const el = computeElevation(s, 'e');
+  const roofs = el.paints.filter((p) => p.kind === 'roof');
+  const top = Math.max(...roofs.flatMap((p) => p.poly.map((q) => q.y)));
+  assert.ok(Math.abs(top - (plan.eaveY + sk.rise)) < 1e-9, `${top}`);
 });

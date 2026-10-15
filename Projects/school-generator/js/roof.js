@@ -39,6 +39,7 @@
 
 import { CELL, WALL_H, floorBaseY } from './grid.js';
 import { shapesOf, shapeBBox, pointInShape, pointInRing } from './shapes.js';
+import { eavePolygon, skeletonRoof, triangulate } from './skeleton.js';
 
 // A parapet is a low wall around a flat roof, hiding the mechanical plant and
 // carrying the flashing. Three feet is a school's; anything shorter reads as a
@@ -371,12 +372,28 @@ export function roofPlan(state, roof = null) {
   // and a pitched roof needs one too: two masses of different width meet at a
   // valley, and without a deck under them that valley is a hole you can see
   // the classrooms through.
-  const rects = maskRects(mask);
+  let rects = maskRects(mask);
   plan.deckRects = rects;
 
   if (r.style === 'parapet') {
     plan.rise = PARAPET_H + COPING_T;
     return plan;
+  }
+
+  // A hipped roof over a curve stands on the straight skeleton of the rooms'
+  // own outline, carried out to the eave (#967). Only there: every loop
+  // without a curve in it, every gable (over a curve that is a weighted
+  // skeleton) and every footprint the outline or the eave refuses keeps the
+  // rectangles below, unchanged. The rectangles a curved loop takes over are
+  // the ones whose first cell lies in it, which is the test the mask itself
+  // used to put that cell on, and its deck goes with them: nothing under a
+  // skeleton roof is open to the sky, and a 4ft deck cell would stand out
+  // past a curved eave.
+  const curved = r.style === 'hip' ? curvedRoofs(floor, eaveY, r.pitch) : [];
+  if (curved.length) {
+    const firstCellIn = (rect) => curved.some((c) => pointInRing(c.outline, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
+    rects = rects.filter((rect) => !firstCellIn(rect));
+    plan.deckRects = rects;
   }
 
   for (const rect of rects) {
@@ -389,7 +406,30 @@ export function roofPlan(state, roof = null) {
     plan.blocks.push({ ...block, rect });
     plan.rise = Math.max(plan.rise, block.rise);
   }
+  for (const c of curved) {
+    plan.blocks.push(c);
+    plan.rise = Math.max(plan.rise, c.rise);
+  }
   return plan;
+}
+
+// The skeleton roofs of a storey's curved loops, one block each in the shape
+// `blockRoof` gives (faces, gables, rise, topY) plus `skeleton: true`, the
+// loop as `outline`, the eave line as `eave` and each face's triangles as
+// `tris`; `rect` and `alongX` are null, since there is no rectangle. A loop
+// the eave or the skeleton refuses is left out, so its rectangles stay.
+export function curvedRoofs(floor, eaveY, pitch) {
+  const { loops } = roofOutline(floor);
+  const out = [];
+  for (const loop of loops || []) {
+    if (!hasCurve(loop)) continue;
+    const eave = eavePolygon(loop, EAVE);
+    const roof = eave && skeletonRoof(eave, eaveY, pitch);
+    if (!roof) continue;
+    const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
+    out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
+  }
+  return out;
 }
 
 // ---------- 5. the true outline, for a roof over a curve ----------
@@ -521,18 +561,32 @@ export function roofOutline(floor) {
 }
 
 // Whether an outline has a curve in it. A curved wall is stored as its chords
-// (shapes.js tessellates an arc when it is drawn), so a curve is two edges in a
-// row neither of which runs along x or z. A single diagonal wall, a chamfered
-// corner or an octagon's alternate sides are straight walls, and keep their
-// rectangles (#967).
+// (shapes.js tessellates an arc when it is drawn, in equal steps of angle, three
+// at least), and nothing records that they were ever a curve; so a curve is
+// read off its chords: three in a row of one length, turning the same way by
+// one angle, under 85 degrees a turn (#967). A diagonal wall, a chamfer, a
+// wing set at an angle, a rotated square and an octagon's alternate sides are
+// straight walls and keep their rectangles. Read as a curve as well, and
+// meant to be: a regular polygon of five sides or more, which is a curve
+// drawn by hand. Not read as one: an arc of two chords (only a `steps` of 2
+// asked for in code lays one down).
+const CURVE_TURN = (85 * Math.PI) / 180;
 export function hasCurve(loop) {
   const n = loop.length;
-  const skew = (i) => {
-    const a = loop[i], b = loop[(i + 1) % n];
-    const dx = Math.abs(b.x - a.x), dz = Math.abs(b.z - a.z);
-    return dx > 1e-6 * (dx + dz) && dz > 1e-6 * (dx + dz) && dx + dz > 1e-9;
+  if (n < 4) return false;
+  const len = (i) => Math.hypot(loop[(i + 1) % n].x - loop[i].x, loop[(i + 1) % n].z - loop[i].z);
+  const turn = (i) => {       // the signed turn at corner i + 1, between edges i and i + 1
+    const a = loop[i], b = loop[(i + 1) % n], c = loop[(i + 2) % n];
+    return Math.atan2((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x),
+      (b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z));
   };
-  for (let i = 0; i < n; i++) if (skew(i) && skew((i + 1) % n)) return true;
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n), l2 = len((i + 2) % n);
+    const t0 = turn(i), t1 = turn((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0 || Math.abs(l2 - l0) > 1e-6 * l0) continue;
+    if (Math.abs(t1 - t0) > 1e-6 || t0 === 0 || Math.abs(t0) >= CURVE_TURN) continue;
+    return true;
+  }
   return false;
 }
 
