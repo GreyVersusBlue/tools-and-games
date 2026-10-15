@@ -109,13 +109,17 @@ export function readMovement(storage) {
 }
 
 // Remember a change to it: only the keys given, and only what is one of the
-// choices. Returns what is now kept. Throws when the browser refuses.
+// choices. A field of `movement` this file does not know (one a later version
+// writes) is kept as it was; a known one that is not one of the choices goes.
+// Returns what is now kept. Throws when the browser refuses.
 export function writeMovement(patch, storage) {
   const store = storage || globalThis.localStorage;
   const device = readDevice(store);
   const asked = isObject(patch) ? patch : {};
-  const next = {};
+  const next = isObject(device.movement) ? { ...device.movement } : {};
   const now = movementOf(device);
+  delete next.controls;
+  delete next.played;
   if (now.controls !== null) next.controls = now.controls;
   if (now.played) next.played = true;
   if (MOVEMENT_CONTROLS.includes(asked.controls)) next.controls = asked.controls;

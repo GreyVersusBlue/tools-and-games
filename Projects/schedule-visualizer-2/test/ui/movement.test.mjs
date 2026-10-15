@@ -932,12 +932,24 @@ test('SV2-43 47d: the hotspots file tells its group columns apart: no name, a na
   // names of their own are the headings, exactly as typed
   assert.deepEqual(groupHeadings(named('6A', '=6B', '7A, "the early lot"', ' 7B '), fixed), ['6A', '=6B', '7A, "the early lot"', ' 7B ']);
   assert.deepEqual(groupHeadings(named('', '   ', '7A'), fixed), ['(group with no name)', '(group with no name) (2nd of that name)', '7A']);
-  assert.deepEqual(groupHeadings(named('Rank', 'Groups', 'Load (students)', 'rank', 'Cells'), fixed), ['Rank (group)', 'Groups (group)', 'Load (students) (group)', 'rank', 'Cells (group)']);
-  assert.deepEqual(groupHeadings(named('7A', '7A', '8B', '7A', '7a'), fixed), ['7A', '7A (2nd of that name)', '8B', '7A (3rd of that name)', '7a']);
+  // a fixed heading, or another group's name, without case or outer spaces is the same heading to a spreadsheet (SV2-52 item 12)
+  assert.deepEqual(groupHeadings(named('Rank', 'Groups', 'Load (students)', 'rank', 'Cells'), fixed), ['Rank (group)', 'Groups (group)', 'Load (students) (group)', 'rank (group) (2nd of that name)', 'Cells (group)']);
+  assert.deepEqual(groupHeadings(named('7A', '7A', '8B', '7A', '7a'), fixed), ['7A', '7A (2nd of that name)', '8B', '7A (3rd of that name)', '7a (4th of that name)']);
   // a name typed as another heading reads is still a column of its own
   const awkward = groupHeadings(named('7A', '7A', '7A (2nd of that name)', 'Rank (group)', 'Rank'), fixed);
   assert.equal(new Set([...fixed, ...awkward]).size, fixed.length + awkward.length, 'two headings are the same: ' + awkward);
   for (let n = 1; n <= 24; n += 1) assert.equal(groupHeadings(named(...new Array(n).fill('X')), fixed).length, n);
+  // SV2-52 item 12: a group really named "7A (2nd of that name)" beside two 7As keeps its name as typed, before them or after
+  assert.deepEqual(groupHeadings(named('7A', '7A', '7A (2nd of that name)'), fixed), ['7A', '7A (2nd of that name) (again)', '7A (2nd of that name)']);
+  assert.deepEqual(groupHeadings(named('7A (2nd of that name)', '7A', '7A'), fixed), ['7A (2nd of that name)', '7A', '7A (2nd of that name) (again)']);
+  assert.deepEqual(groupHeadings(named('Rank', 'Rank (group)'), fixed), ['Rank (group) (again)', 'Rank (group)']);
+  // headings that differ only by case or outer spaces are told apart, the names kept as typed in front
+  const spaced = groupHeadings(named('7B', ' 7B', '7b ', '7B'), fixed);
+  assert.deepEqual(spaced, ['7B', ' 7B (2nd of that name)', '7b  (3rd of that name)', '7B (4th of that name)']);
+  const norm = (text) => text.trim().toLowerCase();
+  for (const list of [spaced, awkward, groupHeadings(named('rank', ' Groups ', 'x', 'X', ' x '), fixed)]) {
+    assert.equal(new Set([...fixed, ...list].map(norm)).size, fixed.length + list.length, 'two headings are the same to a spreadsheet: ' + list);
+  }
   assert.deepEqual(groupHeadings(named(...new Array(13).fill('X')), fixed).slice(10), ['X (11th of that name)', 'X (12th of that name)', 'X (13th of that name)']);
 
   // through the file: the sample with 6B and 6C renamed to 6A, 7A to nothing and 7B to "Groups"
@@ -1035,4 +1047,22 @@ test('SV2-43 W8: a ring’s rank stands on its upper right unless another rank i
   assert.equal(placeRanks(given), given);
   assert.deepEqual([given[0].x, given[0].y, given[0].r], [7, 9, 12]);
   assert.deepEqual(placeRanks([]), []);
+});
+
+// SV2-43 item 3's two browser cases, as the rules the view follows (SV2-52 item 11)
+test('SV2-52 item 11 (SV2-43 item 3): an answer that comes after the view has gone, or for a project the store has left, is not for the screen', () => {
+  const before = { id: 'p1' };
+  const after = { id: 'p1' };
+  assert.equal(model.answerCounts({ gone: false, asked: before, answered: before, now: before }), true);
+  assert.equal(model.answerCounts({ gone: true, asked: before, answered: before, now: before }), false, 'the view has gone');
+  assert.equal(model.answerCounts({ gone: false, asked: after, answered: before, now: after }), false, 'a later project was asked about since');
+  assert.equal(model.answerCounts({ gone: false, asked: before, answered: before, now: after }), false, 'the store moved on before the answer came');
+});
+
+test('SV2-52 item 11 (SV2-43 item 3): with no engine attached the first line says the routes cannot be worked out, and nothing older is drawn to be stale', () => {
+  const project = clone(sample.project);
+  const standing = model.standingOf(project, { project: null, results: null, failed: model.NO_ENGINE });
+  assert.deepEqual(standing, { project, results: null, failed: 'Nothing is attached to work out the routes.', stale: false });
+  assert.equal(model.failedSentence(standing).parts.map((part) => part.text).join(''), 'The routes could not be worked out: Nothing is attached to work out the routes.');
+  assert.equal(model.failedSentence(standing).showMe, false);
 });

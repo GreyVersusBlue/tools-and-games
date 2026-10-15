@@ -157,10 +157,21 @@ export async function openPlanner(options) {
   }
   const url = (hash) => server.base + TOOL_PATH + (hash || '');
   const hash = typeof opts.hash === 'string' ? opts.hash : '#building';
-  if (opts.keep !== true) await clearSaved(page, server.base);
-  await page.goto(url(hash), { waitUntil: 'load' });
-  await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
-  await page.evaluate(() => document.fonts.ready);
+  // A first page that does not load closes what this call opened (the page,
+  // and the browser and the server unless they were given) before the error
+  // goes on, so the suite ends instead of holding its server and browser,
+  // and the machine's browser lock with them, for ever (SV2-52).
+  try {
+    if (opts.keep !== true) await clearSaved(page, server.base);
+    await page.goto(url(hash), { waitUntil: 'load' });
+    await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
+    await page.evaluate(() => document.fonts.ready);
+  } catch (error) {
+    await page.close().catch(() => {});
+    if (!opts.browser) await browser.close().catch(() => {});
+    if (!opts.server) await server.close().catch(() => {});
+    throw error;
+  }
   return {
     page,
     browser,

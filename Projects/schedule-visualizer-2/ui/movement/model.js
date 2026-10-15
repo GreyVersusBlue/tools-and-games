@@ -425,6 +425,21 @@ export function failurePeriod(failure) {
 //   failed             the message, or null
 //   stale              a derive failed and an older answer is still drawn:
 //                      the picture is from before the change
+// What the first line gives as the reason when nothing is attached to work
+// the routes out (the store's derived.engine is null).
+export const NO_ENGINE = 'Nothing is attached to work out the routes.';
+
+// Whether an answer that has just come is for the screen: the view is still
+// up, the answer is for the project last asked about, and the store has not
+// moved on from that project meanwhile. An answer that is not is dropped
+// and changes nothing.
+//   { gone, asked, answered, now }   the view left; the project last asked
+//                                    about; the one this answer is for; the
+//                                    store's project now
+export function answerCounts({ gone, asked, answered, now }) {
+  return !gone && asked === answered && now === answered;
+}
+
 export function standingOf(project, derived) {
   const kept = Boolean(derived && derived.results && derived.project);
   const failed = derived && derived.failed ? String(derived.failed) : null;

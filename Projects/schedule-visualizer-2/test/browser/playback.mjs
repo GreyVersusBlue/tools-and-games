@@ -1167,7 +1167,10 @@ test('a card the reader tapped open is put beside its cell again once playback�
   await change({ transition: TRANSITION });
 });
 
-test('44d: a frame of playback, through the clock, the bar and the marks on a real canvas: under 16 ms', async () => {
+// The budget is 16 ms a frame; as in the timing suite, the case fails at
+// twice that at the median, and at four times it for the worst of 120 frames
+// (SV2-52 item 11: the title said "under 16 ms" and the worst was not asserted).
+test('44d: a frame of playback, through the clock, the bar and the marks on a real canvas: the median under 32 ms (twice the 16 ms budget) and the worst of 120 under 64 ms', async () => {
   await change({ transition: TRANSITION });
   await set({ speed: 1, pace: 'real', loop: 'transition', order: 'together', style: 'route', size: 'large' });
   await pinFrames();
@@ -1196,6 +1199,7 @@ test('44d: a frame of playback, through the clock, the bar and the marks on a re
   assert.equal(measured.markers, 8);
   assert.ok(measured.seconds > 100, 'the clock went on: ' + measured.seconds);
   assert.ok(measured.median < 32, 'a frame takes ' + measured.median.toFixed(2) + ' ms at the median');
+  assert.ok(measured.worst < 64, 'the worst frame of 120 takes ' + measured.worst.toFixed(2) + ' ms');
   await set({ loop: 'once', style: 'tail', size: 'small' });
 });
 
@@ -1280,6 +1284,129 @@ test('44g: a browser that keeps nothing is said once a visit, not once each time
   assert.deepEqual(said.toasts, [], 'said a second time in one visit');
   assert.notEqual(said.held, said.was, 'the choice holds on screen all the same');
   assert.equal(said.stored, said.was);
+});
+
+test('SV2-52 item 5: a choice the browser refused lasts the visit: speed 4 is still 4 after another section, and goes with the next write once the browser keeps things again', async () => {
+  await settled();
+  const chosen = await view(() => {
+    globalThis.sv2RealSetItem = Storage.prototype.setItem;
+    const real = globalThis.sv2RealSetItem;
+    Storage.prototype.setItem = function setItem(key, value) {
+      if (key === 'sv2:device') throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      return real.call(this, key, value);
+    };
+    const playback = document.querySelector('[data-bar="playback"]').playback;
+    const was = playback.prefs.speed;
+    const to = was === 4 ? 0.5 : 4;
+    playback.set({ speed: to });
+    return { was, to, held: playback.prefs.speed, stored: JSON.parse(localStorage.getItem('sv2:device') || '{}').playback?.speed ?? null };
+  });
+  assert.equal(chosen.held, chosen.to, 'the refused choice does not hold on screen: the case tests nothing');
+  assert.notEqual(chosen.stored, chosen.to, 'the browser kept the choice after all: the case tests nothing');
+  // another section and back: the bar is made again, and the choice is still the reader's
+  await view(() => {
+    location.hash = '#project';
+  });
+  await waitForSection(page, 'project');
+  await view(() => {
+    location.hash = '#movement';
+  });
+  await waitForSection(page, 'movement');
+  await settled();
+  const after = await view(() => ({ speed: document.querySelector('[data-bar="playback"]').playback.prefs.speed, shown: document.querySelector('[data-control="speed"]').value }));
+  assert.deepEqual(after, { speed: chosen.to, shown: String(chosen.to) }, 'the refused choice was lost when the view was made again');
+  // the browser keeps things again: the refused choice is written with the next one
+  const stored = await view(() => {
+    Storage.prototype.setItem = globalThis.sv2RealSetItem;
+    document.querySelector('[data-bar="playback"]').playback.set({ loop: 'day' });
+    return JSON.parse(localStorage.getItem('sv2:device')).playback;
+  });
+  assert.equal(stored.speed, chosen.to, 'the refused speed did not go with the next write');
+  assert.equal(stored.loop, 'day');
+  await view((was) => document.querySelector('[data-bar="playback"]').playback.set({ speed: was, loop: 'once' }), chosen.was);
+});
+
+test('SV2-52 item 8: a late group is said once a visit, not again on each loop of the same transition', async () => {
+  await settled();
+  await view(() => document.querySelector('.mov').movement.change({ transition: 5 }));
+  await settled();
+  await pinFrames();
+  await bar((el) => el.playback.set({ speed: 4, pace: 'real', loop: 'transition', order: 'together' }));
+  await bar((el) => el.playback.seek(230));
+  const heard = await view(() => {
+    const said = [];
+    const announcer = document.getElementById('announcer');
+    // what each write put there (the records are read as they are, not the text the region ends with)
+    const take = (records) => {
+      for (const record of records) {
+        if (record.type === 'characterData') said.push(record.target.textContent);
+        for (const node of record.addedNodes) said.push(node.textContent);
+      }
+    };
+    const watch = new MutationObserver(take);
+    watch.observe(announcer, { childList: true, characterData: true, subtree: true });
+    const playback = document.querySelector('[data-bar="playback"]').playback;
+    playback.play();
+    // a second of the page a frame, four of playback at 4×: three times round the transition
+    let stamp = 1000;
+    let loops = 0;
+    let last = 0;
+    for (let frame = 0; frame < 2000 && loops < 3; frame += 1) {
+      if (!globalThis.pinned.run(stamp)) break;
+      stamp += 1000;
+      const now = Number(document.querySelector('[data-bar="playback"]').dataset.seconds);
+      if (now < last) loops += 1;
+      last = now;
+    }
+    playback.pause();
+    take(watch.takeRecords());
+    watch.disconnect();
+    return { said, loops };
+  });
+  assert.ok(heard.loops >= 2, 'the transition was not played round twice: the case tests nothing (' + heard.loops + ')');
+  const late = heard.said.filter((words) => / (is|are) late\.$/.test(words));
+  assert.deepEqual(late, ['8A is late.'], 'what was said of late groups over ' + heard.loops + ' loops: ' + JSON.stringify(heard.said));
+  await bar((el) => el.playback.set({ speed: 1, pace: 'fixed', loop: 'once' }));
+});
+
+test('SV2-52 item 8: the scrubber’s words change only when they change, in steps of 15 seconds while playing, and to the second when paused', async () => {
+  await settled();
+  await view(() => document.querySelector('.mov').movement.change({ transition: 5 }));
+  await settled();
+  await pinFrames();
+  await bar((el) => el.playback.set({ speed: 4, pace: 'real', loop: 'once', order: 'together' }));
+  await bar((el) => el.playback.seek(0));
+  const written = await view(() => {
+    const scrubber = document.querySelector('[data-control="scrubber"]');
+    const records = [];
+    // each record's old value is what the words were before that write; the last write's are on the scrubber now
+    const watch = new MutationObserver((list) => {
+      for (const record of list) records.push(record.oldValue);
+    });
+    watch.observe(scrubber, { attributes: true, attributeFilter: ['aria-valuetext'], attributeOldValue: true });
+    const playback = document.querySelector('[data-bar="playback"]').playback;
+    playback.play();
+    // the first frame starts the clock; then 20 frames of 4 seconds each: 80 seconds played
+    for (let frame = 0; frame <= 20; frame += 1) globalThis.pinned.run(1000 + frame * 1000);
+    const played = Number(document.querySelector('[data-bar="playback"]').dataset.seconds);
+    playback.pause();
+    for (const record of watch.takeRecords()) records.push(record.oldValue);
+    watch.disconnect();
+    return { records, played, values: [...records.slice(1), scrubber.getAttribute('aria-valuetext')] };
+  });
+  assert.ok(written.played >= 79, 'playback did not run 80 seconds: the case tests nothing (' + written.played + ')');
+  assert.ok(written.records.length <= 7, 'the scrubber’s words were written ' + written.records.length + ' times in 80 seconds of playing: ' + JSON.stringify(written.records.slice(0, 4)));
+  // and every step of them while playing is a whole 15 seconds into the transition
+  // the last words are the ones written as it paused, to the second: the steps are the ones before
+  assert.match(written.values[written.values.length - 1], / 1:20 into /, 'paused, the words are not to the second');
+  const steps = written.values.slice(0, -1).map((now) => / (\d+):(\d\d) into /.exec(now)).filter(Boolean).map((m) => Number(m[1]) * 60 + Number(m[2]));
+  assert.ok(steps.length >= 4 && steps.every((at) => at % 15 === 0), 'the words while playing are not in steps of 15 seconds: ' + JSON.stringify(steps));
+  // and no write left them as they were
+  for (let i = 1; i < written.values.length; i += 1) assert.notEqual(written.values[i], written.values[i - 1], 'the words were written again unchanged');
+  // paused, the scrubber's words are to the second again
+  await bar((el) => el.playback.seek(37));
+  assert.match(await page.$eval('[data-control="scrubber"]', (el) => el.getAttribute('aria-valuetext')), / 0:37 into Period 6 to Period 7, /);
+  await bar((el) => el.playback.set({ speed: 1, pace: 'fixed' }));
 });
 
 test('the page asked for nothing offsite and reported no error', () => {

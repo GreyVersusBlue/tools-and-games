@@ -67,7 +67,7 @@ import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js'
 import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
-import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence } from './model.js';
+import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, answerCounts, NO_ENGINE } from './model.js';
 import { layoutFloors, bestLayout, slotAt, placeOf } from './layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
@@ -98,6 +98,10 @@ export const CURSOR_LEAST = 14;
 // How much of the floors' box, in CSS pixels, a pan or a zoom always leaves
 // on the stage each way.
 export const KEEP_ON_STAGE = 48;
+
+// With nothing attached to work out the routes, how often the view looks
+// again for something that is.
+export const ENGINE_LOOK_MS = 1000;
 
 export const MOVEMENT_TABS = [
   { id: 'hotspots', label: 'Hotspots' },
@@ -235,6 +239,8 @@ export const section = {
           memory.refused = true;
         }
         placeFloors();
+        // the map and its zoom buttons moved up or down with no change to the stage's size
+        dock();
         ctx.announce(folded ? 'The controls are folded away.' : 'The controls are shown.');
       },
       change,
@@ -258,8 +264,14 @@ export const section = {
     });
     const key = legend({
       folded: memory.legendFolded,
+      // the card shown whole again may now lie on a floor (it was measured
+      // folded): then it docks, and is brought out over the map, since the
+      // reader asked to see it, until its own button puts it away
       fold(folded) {
         memory.legendFolded = folded;
+        if (folded) return;
+        dockLegend();
+        key.bringOut();
       },
       measure: (value) => change({ measure: value }),
       scale(value) {
@@ -318,8 +330,15 @@ export const section = {
     function placeFloors() {
       const shown = !map.hidden && !(top.folded && phone.matches);
       if (shown === floorsShown) return;
+      // the row put away with the focus in it (a window narrowed under 640 px):
+      // the focus goes to what brings it back
+      const held = !shown && floorsRow.contains(document.activeElement);
       floorsShown = shown;
       ctx.setSecondRow(shown ? floorsRow : null);
+      if (held) {
+        if (map.hidden) ctx.focusSurface();
+        else top.element.querySelector('[data-action="change"]').focus();
+      }
     }
     function onWidth() {
       if (memory.controls === null) top.setFolded(!wide.matches);
@@ -372,18 +391,35 @@ export const section = {
     }
 
     // ---- the results
+    let engineWait = null;
+    function lookForEngine() {
+      engineWait = null;
+      if (gone) return;
+      if (store.derived && store.derived.engine) {
+        derived.failed = null;
+        ask();
+        refresh();
+      } else {
+        engineWait = setTimeout(lookForEngine, ENGINE_LOOK_MS);
+      }
+    }
     function ask() {
       const project = store.project;
       if (derived.asked === project) return;
       derived.asked = project;
       if (!store.derived || !store.derived.engine) {
-        derived.failed = 'Nothing is attached to work out the routes.';
+        // nothing to ask, and nothing is awaited: the first line says so. The
+        // project is not marked asked, and the view looks again now and then,
+        // so an engine attached later is asked for this same project.
+        derived.asked = null;
+        derived.failed = NO_ENGINE;
+        if (engineWait === null) engineWait = setTimeout(lookForEngine, ENGINE_LOOK_MS);
         return;
       }
       element.dataset.pending = 'true';
       const settle = (results, failed) => {
         // an answer for a state the project has left is not for the screen
-        if (gone || derived.asked !== project || store.project !== project) return;
+        if (!answerCounts({ gone, asked: derived.asked, answered: project, now: store.project })) return;
         // store.project is `project` here, so the store's graph is this answer's
         derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, graph: results ? graphNow() : derived.graph, failed };
         // the answer is in: nothing is awaited by the time the panels are told (the Export tab reads this)
@@ -897,7 +933,12 @@ export const section = {
       // the bar's height this was measured with, for a test to wait on
       element.dataset.measuredBar = String(bar.element.offsetHeight);
     }
-    const roomWatcher = new ResizeObserver(() => room());
+    // and where a message may lie, which moves with the bar's height (More,
+    // a line of words under the row) whether or not the stage changes size
+    const roomWatcher = new ResizeObserver(() => {
+      room();
+      dock();
+    });
     for (const each of [element, firstLine, bar.element, key.line]) roomWatcher.observe(each);
 
     // A wheel over the map scrolls the section while the section has some
@@ -1008,6 +1049,7 @@ export const section = {
       },
       unmount() {
         gone = true;
+        if (engineWait !== null) clearTimeout(engineWait);
         element.removeEventListener('scroll', dock);
         document.removeEventListener('scroll', onSurfaceScroll, { capture: true });
         if (dockHost) dockHost.style.removeProperty('--toast-clear');

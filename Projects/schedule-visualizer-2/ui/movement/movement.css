@@ -1117,6 +1117,28 @@
     padding-top: 0;
     padding-bottom: 0;
   }
+
+  /* the inspector's panels too, its sheet on a phone (SV2-52): the tabs, the
+     Hotspots rows' names and "Show its N cells", "Show all floors", the
+     links to fix a route, the Export buttons and choices */
+  .mov-inspector .tabs__tab,
+  .mov-inspector .btn,
+  .mov-inspector .field__input,
+  .mov-inspector .mov-ctl__select {
+    min-height: 44px;
+  }
+
+  .mov-inspector .mov-link {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mov-inspector .seg__label {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 /* ---------- SV2-18: hotspots, tables, export ---------- */
