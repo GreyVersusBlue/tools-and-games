@@ -368,9 +368,10 @@ and add to this list rather than starting a new one.
   one in a browser, which nobody has watched; the straight ramp's top
   landing is ADA's 5ft now, ramps already placed included, and one with no
   room for it is a `ramp-landing` warning that moves nothing (#904), and it
-  is drawn as a deck at the floor above (#981), but props and a door's swing
-  in it are not asked, and a folded ramp's top landing is not asked; a
-  stair's 4ft top landing is open hole in the scene the way the ramp's was; a ramp's width and slope
+  is drawn as a deck at the floor above (#981), as a stair's 4ft one is
+  (#983), and a floor-standing prop or a door leaf sweeping into it is a
+  `ramp-landing` reason too (#984), but a folded ramp's top landing is not
+  asked, and a prop or a swing in a stair's landing is not; a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
   (`data.width` and `data.slope` were there since Phase 2), and the design
