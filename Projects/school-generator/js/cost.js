@@ -33,14 +33,14 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/cost.test.mjs.
 
-import { CELL, WALL_H, floorLabel, wallHeightOf } from './grid.js';
+import { WALL_H, floorLabel, wallHeightOf } from './grid.js';
 import { WALL_T_EXT, PROBE } from './walls.js';
 import { shapesOf, shapeArea, shapeAt } from './shapes.js';
 import { readFinish, DEFAULT_FINISH } from './finish.js';
 import { propsOnFloor } from './props.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { computeFloorPlan } from './blueprint.js';
-import { normalizeRoof, ensureRoof, roofStyleEntry, roofMask, maskCount } from './roof.js';
+import { normalizeRoof, ensureRoof, roofCover } from './roof.js';
 import { siteSchedule, regionsOf, markingEntry } from './site.js';
 import {
   stairsOf, stairMetrics, runMetrics, stairWidth, isRun, isElevator, rampLandingArea,
@@ -202,11 +202,8 @@ export function sharedQuantities(state) {
   const out = tally();
   const top = state && state.floors ? state.floors[state.floors.length - 1] : null;
   if (top) {
-    const roof = normalizeRoof(state.roof || ensureRoof(state));
-    const entry = roofStyleEntry(roof.style);
-    const footprint = maskCount(roofMask(top, top.w, top.h)) * CELL * CELL;
-    const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
-    add(out, assemblyKey('roof', entry.pitched ? 'shingle' : 'membrane'), footprint * slope);
+    const { entry, area } = roofCover(state);
+    add(out, assemblyKey('roof', entry.pitched ? 'shingle' : 'membrane'), area);
   }
   for (const s of siteSchedule(state)) add(out, assemblyKey('paving', s.key), s.sqft);
   const marks = new Map();

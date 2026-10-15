@@ -1127,8 +1127,11 @@ export const CombatCore = {
   /** What the page lights under the pointer while a spell's area is armed:
       the squares a click on (x,y) would cover, and nothing for a square a
       click would refuse. Seek's burst is a search, not a hit, and lights
-      nothing. */
+      nothing. Nor does a square off the map: the page asks for (-1,-1) when
+      the pointer leaves the grid, and `aimable` alone would aim a line or a
+      cone at it from a caster near the corner (#966). */
   previewCells(cb,a,x,y){
+    if(x<0||y<0||x>=this.mapW||y>=this.mapH) return [];
     if(!a||a.kind!=="cell"||a.mode==="seek"||!this.aimable(cb,a,x,y)) return [];
     return this.areaCells(cb,a,{x,y});
   },

@@ -444,8 +444,36 @@ and add to this list rather than starting a new one.
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
-- A pitched roof over a curve is a stepped rectangle; a straight skeleton
-  would fix it.
+- A hipped roof over a curve stands on the straight skeleton of the rooms'
+  own outline (#965, #967): `roofOutline`, `hasCurve`, `eavePolygon`,
+  `triangulate`, `roofHeightOver`, wired through `roofPlan`, `roofFace` and
+  `roofHeightAt`, and counted by the takeoff and the estimate through
+  `roofCover` off the loop's own chords (#970); every rectilinear roof is
+  what it was. A refusal keeps the rectangles for its own building only
+  (#971): rooms whose bounds touch, one to the next, are judged together, so
+  a curved building beside a courtyard building stands on its skeleton.
+  A flat roof's parapet over a curved building runs on the same loop's
+  chords, and the deck under it is that outline, ear-clipped (#973).
+  Left: a building is grouped by bounds, not by walls, so a curved building
+  standing inside the bounds of a courtyard building's L (not touching it) is
+  refused with it; a courtyard, a room with a hole, two
+  rooms meeting at a corner, an arc of two chords and a curve bowed in tighter
+  than the 1.5ft eave keep rectangles too; `gable` over a curve keeps
+  rectangles (a weighted skeleton); a curved building whose 4ft mask cells
+  touch another building's keeps a stepped parapet; the takeoff and the
+  estimate count a parapet roof over a curve off its mask cells (#970 did
+  the hip only); the site plan's building line is the ground storey's mask, stepped on a curve
+  (it draws the ground storey whatever the roof, so the skeleton path's test
+  cannot decide it: drawing it from `roofOutline` moves the site plan of a
+  curved school under every roof style and every storey count, a call of its
+  own); the takeoff counts the roof inside the walls, not the 1.5ft eave, on
+  both paths (#970); the elevation sorts a
+  skeleton roof's faces by their nearest point like a rectangle's, and
+  nobody has checked a hip seen across a valley in the sheet by eye; no
+  `test/visual` capture has a curved roof (the sample school has none); the
+  look on a real GPU. One software-rendered look on huginn (an L with a
+  curved end, from above): hip, valley and the rounded end read right; and
+  one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.
 - The mesh is inscribed, not exact — a diagonal wall keeps its stair-step,
   and gates are midpoints rather than funnels.
