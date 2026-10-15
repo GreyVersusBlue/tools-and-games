@@ -173,10 +173,11 @@ export function straightSkeleton(input, opts = {}) {
   };
 
   // Edges either side that face each other along one line make a spike of
-  // zero width: the point stands still and settle() closes the spike.
+  // zero width. Its point stands still, and the neighbours either side run
+  // into it as an ordinary edge event.
   const vertexOrSpike = (x, z, node, eL, eR) => {
     const a = edges[eL], b = edges[eR];
-    if (1 + a.nx * b.nx + a.nz * b.nz < 1e-9) return { x, z, node, eL, eR, vx: 0, vz: 0, spike: true };
+    if (1 + a.nx * b.nx + a.nz * b.nz < 1e-9) return { x, z, node, eL, eR, vx: 0, vz: 0 };
     return makeVertex(x, z, node, eL, eR);
   };
 
@@ -197,8 +198,7 @@ export function straightSkeleton(input, opts = {}) {
       let changed = false;
       const next = [];
       for (let loop of loops) {
-        let merged = false;
-        for (let i = 0; i < loop.length && loop.length > 1; i++) {
+                for (let i = 0; i < loop.length && loop.length > 1; i++) {
           const a0 = loop[i], b0 = loop[(i + 1) % loop.length];
           if (Math.hypot(a0.x - b0.x, a0.z - b0.z) > EPS) continue;
           // Turn the loop so the pair is at the front; it is a cycle.
@@ -216,30 +216,8 @@ export function straightSkeleton(input, opts = {}) {
             v = vertexOrSpike(x, z, ia, a.eL, b.eR);
             loop.splice(0, 2, v);
           }
-          merged = true; changed = true;
+          changed = true;
           break;
-        }
-        // A spike tip: walk it down to the nearer neighbour, which sits on the
-        // same line, and run the neighbours' edges straight through.
-        if (!merged && loop.length > 2) {
-          const si = loop.findIndex((v) => v.spike);
-          if (si >= 0) {
-            loop = loop.slice(si).concat(loop.slice(0, si));
-            const L = loop.length;
-            const s = loop[0], pv = loop[L - 1], nv = loop[1];
-            const dp = Math.hypot(pv.x - s.x, pv.z - s.z), dn = Math.hypot(nv.x - s.x, nv.z - s.z);
-            const toPrev = dp <= dn;
-            const to = toPrev ? pv : nv;
-            const it = retire(to);
-            arcs.push([s.node, it]);
-            loop.shift();
-            // The neighbour now sits between its outer edge and the far side
-            // of the spike, which runs on through it.
-            const eL = toPrev ? to.eL : pv.eR, eR = toPrev ? nv.eL : to.eR;
-            const ni = toPrev ? loop.length - 1 : 0;
-            loop[ni] = vertexOrSpike(to.x, to.z, it, eL, eR);
-            changed = true;
-          }
         }
         if (loop.length >= 3) {
           // No area left: the loop is a line (the ridge of a wing whose two
@@ -258,23 +236,6 @@ export function straightSkeleton(input, opts = {}) {
             const ids = loop.map((v) => ({ s: (v.x - A.x) * ux + (v.z - A.z) * uz, id: retire(v) }))
               .sort((p, q) => p.s - q.s || p.id - q.id);
             for (let i = 1; i < ids.length; i++) if (ids[i - 1].id !== ids[i].id) arcs.push([ids[i - 1].id, ids[i].id]);
-            changed = true;
-            continue;
-          }
-          // Not a line but no area either: spikes out of one point (a cross
-          // whose four arms all closed at once). Every edge of it is ridge,
-          // walked out and back, so the repeats fold away at the end.
-          let per = 0;
-          for (let i = 0; i < loop.length; i++) {
-            const p = loop[i], q = loop[(i + 1) % loop.length];
-            per += Math.hypot(q.x - p.x, q.z - p.z);
-          }
-          if (2 * Math.abs(signedArea(loop)) <= per * EPS * 10) {
-            const ids = loop.map(retire);
-            for (let i = 0; i < ids.length; i++) {
-              const p = ids[i], q = ids[(i + 1) % ids.length];
-              if (p !== q) arcs.push([p, q]);
-            }
             changed = true;
             continue;
           }
@@ -374,29 +335,11 @@ export function straightSkeleton(input, opts = {}) {
       if (Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z) <= EPS * 10) { canon[i] = j; break; }
     }
   }
-  // An arc laid down out and back across a closed loop can pass over a node
-  // another arc ends at; cut it there, or the faces stop being a planar map.
-  const live = [...new Set(canon)];
-  const pending = arcs.map(([a, b]) => [canon[a], canon[b]]);
-  const cut = [];
-  while (pending.length) {
-    const [a, b] = pending.pop();
-    if (a === b) continue;
-    const A = nodes[a], B = nodes[b];
-    const L = Math.hypot(B.x - A.x, B.z - A.z);
-    const on = live.find((k) => {
-      if (k === a || k === b) return false;
-      const K = nodes[k];
-      const s = ((K.x - A.x) * (B.x - A.x) + (K.z - A.z) * (B.z - A.z)) / L;
-      if (s <= EPS * 10 || s >= L - EPS * 10) return false;
-      return Math.abs((K.x - A.x) * (B.z - A.z) - (K.z - A.z) * (B.x - A.x)) / L <= EPS * 10;
-    });
-    if (on === undefined) cut.push([a, b]);
-    else pending.push([a, on], [on, b]);
-  }
+  const cut = arcs.map(([a, b]) => [canon[a], canon[b]]);
   const seen = new Set();
   const outArcs = [];
   for (const [a, b] of cut) {
+    if (a === b) continue;
     const key = a < b ? `${a},${b}` : `${b},${a}`;
     if (seen.has(key)) continue;
     seen.add(key);

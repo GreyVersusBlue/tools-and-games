@@ -228,7 +228,9 @@ test('degenerate input is refused with null, not a roof', () => {
     null, undefined, 'square', [], [{ x: 0, z: 0 }, { x: 1, z: 0 }],
     [{ x: 0, z: 0 }, { x: 0, z: 0 }, { x: 0, z: 0 }],                         // one point
     [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 20, z: 0 }],                        // a line
-    [{ x: 0, z: 0 }, { x: 10, z: 10 }, { x: 10, z: 0 }, { x: 0, z: 10 }],     // a bow tie
+    [{ x: 0, z: 0 }, { x: 10, z: 10 }, { x: 10, z: 0 }, { x: 0, z: 10 }],     // a bow tie, no area
+    // A wall run back across the room, with area either side of the crossing.
+    [{ x: 0, z: 0 }, { x: 30, z: 0 }, { x: 30, z: 20 }, { x: 10, z: 20 }, { x: 10, z: -10 }],
     [{ x: 0, z: 0 }, { x: NaN, z: 0 }, { x: 10, z: 10 }],
     [{ x: 0, z: 0 }, { x: Infinity, z: 0 }, { x: 10, z: 10 }],
     [{ x: 0, z: 0 }, { x: 10, z: 0 }, null],
@@ -240,5 +242,39 @@ test('degenerate input is refused with null, not a roof', () => {
   for (const p of bad) {
     assert.equal(straightSkeleton(p), null, JSON.stringify(p));
     assert.equal(skeletonRoof(p, 10, 4), null, JSON.stringify(p));
+  }
+});
+
+test('three thousand random star-shaped rooms are each planar, tiled and a tree', () => {
+  // A seeded generator, so a failure names a polygon that fails again. Two of
+  // the 3,000 fold a node into a neighbour 1e-4ft away, which puts it 1e-4ft
+  // off one face's plane: 1/400 of an inch, so the bound here is 1e-3ft.
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (let c = 0; c < 3000; c++) {
+    const n = 5 + Math.floor(rnd() * 36);
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const th = (2 * Math.PI * (i + 0.8 * rnd())) / n, r = 10 + 40 * rnd();
+      pts.push({ x: +(r * Math.cos(th)).toFixed(2), z: +(r * Math.sin(th)).toFixed(2) });
+    }
+    const sk = straightSkeleton(pts);
+    assert.ok(sk, `case ${c} refused`);
+    const roof = skeletonRoof(pts, 0, 12);
+    let sum = 0;
+    for (const f of roof.faces) {
+      const a = sk.poly[f.edge], b = sk.poly[(f.edge + 1) % sk.poly.length];
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const nx = -(b.z - a.z) / len, nz = (b.x - a.x) / len;
+      for (const p of f.pts) {
+        const off = Math.abs(p.y - (nx * (p.x - a.x) + nz * (p.z - a.z)));
+        assert.ok(off < 1e-3, `case ${c}: face ${f.edge} is ${off}ft off its plane`);
+      }
+      const fa = area(f.pts);
+      assert.ok(fa > 0, `case ${c}: face ${f.edge} is wound backwards`);
+      sum += fa;
+    }
+    assert.ok(Math.abs(sum - area(sk.poly)) < 1e-6 * area(sk.poly), `case ${c}: faces cover ${sum} of ${area(sk.poly)}`);
+    assert.equal(sk.arcs.length, sk.nodes.length - 1, `case ${c}: not a tree`);
   }
 });
