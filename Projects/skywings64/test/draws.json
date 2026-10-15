@@ -3,14 +3,14 @@
  "views": {
   "pad": {
    "draws": {
-    "total": 264,
+    "total": 258,
     "shadow.terrain": 10,
     "shadow.statics": 21,
     "shadow.vegetation": 9,
     "shadow.rest": 26,
     "scene.rest": 61,
     "scene.terrain": 28,
-    "scene.statics": 71,
+    "scene.statics": 65,
     "scene.vegetation": 20,
     "post": 18
    },
@@ -27,7 +27,7 @@
     "post": 18
    },
    "rendererInfo": {
-    "calls": 264,
+    "calls": 258,
     "triangles": 4322322
    },
    "uncastInBox": 0,
@@ -37,10 +37,10 @@
     "shadow:Group 26 draws 4k tris",
     "scene:landmarks/vegetation 20 draws 2311k tris",
     "scene:landmarks/props 14 draws 8k tris",
-    "scene:landmarks/Mesh 13 draws 1k tris",
     "scene:landmarks/Sprite 12 draws 0k tris",
     "shadow:terrain 10 draws 54k tris",
     "shadow:landmarks/vegetation 9 draws 1611k tris",
+    "scene:landmarks/Mesh 6 draws 0k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris",
     "scene:landmarks/glb:castle 5 draws 3k tris",
     "shadow:landmarks/Mesh 4 draws 0k tris",
@@ -48,13 +48,13 @@
     "scene:sky 4 draws 4k tris"
    ],
    "memory": {
-    "geometryMB": 22.31,
-    "meshes": 896,
-    "instanced": 57,
-    "geometries": 176,
+    "geometryMB": 22.21,
+    "meshes": 890,
+    "instanced": 58,
+    "geometries": 170,
     "textures": 48,
     "textureMB": 127.1,
-    "programs": 77
+    "programs": 78
    },
    "camera": [
     54,
@@ -198,14 +198,14 @@
   },
   "lighthouse": {
    "draws": {
-    "total": 352,
+    "total": 346,
     "shadow.terrain": 10,
     "shadow.vegetation": 9,
     "shadow.statics": 6,
     "shadow.rest": 26,
     "scene.rest": 67,
     "scene.terrain": 40,
-    "scene.statics": 156,
+    "scene.statics": 150,
     "scene.vegetation": 20,
     "post": 18
    },
@@ -222,7 +222,7 @@
     "post": 18
    },
    "rendererInfo": {
-    "calls": 352,
+    "calls": 346,
     "triangles": 923510
    },
    "uncastInBox": 0,
@@ -233,7 +233,7 @@
     "scene:terrain 40 draws 111k tris",
     "shadow:Group 26 draws 4k tris",
     "scene:landmarks/vegetation 20 draws 393k tris",
-    "scene:landmarks/Mesh 18 draws 2k tris",
+    "scene:landmarks/Mesh 11 draws 0k tris",
     "shadow:terrain 10 draws 54k tris",
     "scene:landmarks/glb:lighthouse 10 draws 2k tris",
     "shadow:landmarks/vegetation 9 draws 97k tris",
@@ -243,13 +243,13 @@
     "scene:landmarks/glb:heads 3 draws 6k tris"
    ],
    "memory": {
-    "geometryMB": 22.29,
-    "meshes": 896,
-    "instanced": 57,
-    "geometries": 298,
+    "geometryMB": 22.2,
+    "meshes": 890,
+    "instanced": 58,
+    "geometries": 292,
     "textures": 55,
     "textureMB": 127.1,
-    "programs": 82
+    "programs": 83
    },
    "camera": [
     650,
@@ -328,32 +328,32 @@
   },
   "windmills": {
    "draws": {
-    "total": 291,
+    "total": 288,
     "shadow.terrain": 10,
     "shadow.vegetation": 9,
     "shadow.statics": 27,
     "shadow.rest": 26,
     "scene.rest": 52,
     "scene.terrain": 34,
-    "scene.statics": 95,
+    "scene.statics": 92,
     "scene.vegetation": 20,
     "post": 18
    },
    "tris": {
-    "total": 3302236,
+    "total": 3302728,
     "shadow.terrain": 54000,
     "shadow.vegetation": 1121266,
     "shadow.statics": 20696,
     "shadow.rest": 3708,
     "scene.rest": 200644,
     "scene.terrain": 102890,
-    "scene.statics": 30580,
+    "scene.statics": 31072,
     "scene.vegetation": 1768434,
     "post": 18
    },
    "rendererInfo": {
-    "calls": 291,
-    "triangles": 3302268
+    "calls": 288,
+    "triangles": 3302760
    },
    "uncastInBox": 6,
    "owners": [
@@ -366,20 +366,20 @@
     "shadow:terrain 10 draws 54k tris",
     "shadow:landmarks/props 10 draws 9k tris",
     "shadow:landmarks/vegetation 9 draws 1121k tris",
-    "scene:landmarks/Mesh 9 draws 1k tris",
     "scene:landmarks/glb:castle 7 draws 3k tris",
     "shadow:landmarks/glb:castle 5 draws 3k tris",
+    "scene:landmarks/Mesh 5 draws 0k tris",
     "scene:sky 4 draws 4k tris",
     "scene:landmarks/glb:heads 2 draws 6k tris"
    ],
    "memory": {
-    "geometryMB": 23.28,
-    "meshes": 896,
-    "instanced": 57,
-    "geometries": 319,
+    "geometryMB": 23.18,
+    "meshes": 890,
+    "instanced": 58,
+    "geometries": 313,
     "textures": 55,
     "textureMB": 127.1,
-    "programs": 82
+    "programs": 83
    },
    "camera": [
     425,
