@@ -823,9 +823,26 @@ outside CI on purpose (#353).
   - *Left.* Nobody has played either pace since the switch went in. The
     mean line at the door is what the sweep calls pressure; whether a person
     feels 1.3 and 1.5 as gentle enough is unjudged. The board says nothing
-    about the money difference. The rest of the Menu Board is still rebuilt
-    on every redraw and drops the keyboard's focus; only the pace buttons
-    are not.
+    about the money difference.
+  - *The board keeps the keyboard.* Done on 2026-10-14 (#968): the rest of
+    the Menu Board was one `innerHTML` on every redraw, which is every sale,
+    so a focused button was thrown away within seconds and the next Tab
+    started from the top of the page. Each row now carries a `data-row` key
+    and `patchRows()` in `js/chalkboard.js` updates the board in place: a
+    button that makes the same purchase as before is the same element, with
+    its focus, its place in the tab order and its name. `drive-save.mjs
+    --focus` (section 17, 21 checks) holds it, and holds the patched board
+    to a fresh build after every step. What it does not keep: a button whose
+    purchase changed (a station bought, so the row offers the next one, or
+    an unlock that turns into a tick) is a new element and the keyboard
+    falls to the page with it, as before.
+  - *Left.* The same fault elsewhere on the page, not fixed (each is its own
+    render function): the queue (`renderQueue`, whose customers take focus),
+    the stations row (`renderSlots`), the station tab bar and the open
+    station's buttons (`js/stations.js`, lines 70 and 184) are all rebuilt
+    by `innerHTML` on every redraw and drop a focused control the same way.
+    `patchRows()` is in `chalkboard.js` and would have to move to be shared
+    by them.
 - **Accessibility past the keyboard.** Done on 2026-10-07 (#916, #917), and
   judged by no person, with or without colour blindness:
   - *The cup.* Its picture says the base, the milk, the syrup and which

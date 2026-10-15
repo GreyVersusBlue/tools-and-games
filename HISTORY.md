@@ -1806,6 +1806,8 @@ Generator.
 
 **#966. Torchbearer's grid highlights are scoped under `#grid`, and a page check compares the lit squares with the engine's lists.** `.cell.floor.alt` is three classes and outranked the two-class `.cell.hl-aoe`, `.cell.hl-move` and `.cell.hl-target`, so every other lit square kept the floor's fill: a checkerboard nobody saw, because nothing opened the page with an area armed. No rule moved: `aimable` and `previewCells` decide what lights, as before. `test/browser.mjs` reaches the fight through a one-line probe, `window.__torchbearerCombat`, beside the old `window.__torchbearer`. Keyboard aiming was not built: the grid has no keyboard model to extend, so the proposal is in the WISHLIST.
 
+**#968. Corner & Kettle's Menu Board is patched in place, rows matched by a `data-row` key and nodes inside a row by position; a button is kept only while its `data-*` attributes, the purchase it makes, are unchanged.** The board was one `innerHTML` on every redraw, so a focused button was thrown away by the next sale. The pace buttons' build-once pattern would have meant a builder and an updater for each of some twenty row shapes, so `build()` still writes the rows as markup and `patchRows()` writes into the live board only the text and attributes that changed. A button whose purchase changed is a new element on purpose: the keyboard on it is lost rather than left on a control that now buys something else. `__CK_DEBUG__.chalkboardHtml` lets the page check hold the patched board to a fresh build.
+
 **#975. Reserved: #946 to #975 are held for sessions on Huginn (the Selector loop); anyone else numbers from #976.**
 
 # The log
