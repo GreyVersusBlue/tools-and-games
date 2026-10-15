@@ -347,12 +347,14 @@
     #room-finish { width: 100%; }
     #paint-swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     /* #832: the accent brush in the wall panel, and a ramp's fold in the stairs panel. */
-    #accent-swatches { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 4px; }
+    #accent-swatches, #accent-used { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 4px; }
+    /* #961: the custom colours the school already holds, between the two. */
+    #accent-used-row label { margin-top: 6px; }
     /* #944: the free pick under the swatches. A custom colour can be anything,
        so the lit ring is white outside and black inside (one of the two shows
        on any colour), and the chip writes its hex in the ink main.js picks by
        luminance. */
-    #accent-swatches .swatch.active, #accent-chip.active { border-color: #fff; box-shadow: inset 0 0 0 2px #000; }
+    #accent-swatches .swatch.active, #accent-used .swatch.active, #accent-chip.active { border-color: #fff; box-shadow: inset 0 0 0 2px #000; }
     #accent-custom { display: flex; gap: 4px; align-items: stretch; margin-top: 6px; }
     #accent-color {
       flex: 0 0 34px; width: 34px; height: 30px; padding: 0; cursor: pointer;
@@ -1869,6 +1871,10 @@
     <div id="wall-kinds"></div>
     <label id="accent-label" style="margin-top:12px">Accent wall</label>
     <div id="accent-swatches" role="group" aria-labelledby="accent-label"></div>
+    <div id="accent-used-row" class="hidden">
+      <label id="accent-used-label">In this school</label>
+      <div id="accent-used" role="group" aria-labelledby="accent-used-label"></div>
+    </div>
     <div id="accent-custom" role="group" aria-label="Any other colour">
       <input id="accent-color" type="color" value="#808080"
              aria-label="Accent colour picker" title="Pick any colour for an accent wall" />

@@ -52,7 +52,7 @@ import {
   MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec,
   shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg,
   insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE,
-  readAccentPaint, sameAccent,
+  readAccentPaint, sameAccent, accentHex, isNamedAccent,
   shapeAt,
 } from './shapes.js';
 
@@ -157,6 +157,32 @@ function tidyLineAccents(line) {
   const acc = Array.isArray(line.accents) ? line.accents : [];
   const out = [readHex(acc[LINE_LEFT]), readHex(acc[LINE_RIGHT])];
   if (out[0] || out[1]) line.accents = out; else delete line.accents;
+}
+
+// The colours outside the palette that a school is painted with: every storey's
+// room faces (`ring.accents`) and free-standing wall faces (`line.accents`),
+// each '#rrggbb' once, in hex order, so the list does not shuffle when a wall
+// is painted, undone or found on another storey first. A palette colour is
+// left out whether the file holds its id or its hex from before #912, since
+// the panel already has a swatch for it. This is what the Wall panel's
+// "In this school" row shows (#961).
+export function customAccentsOf(state) {
+  const seen = new Set();
+  const take = (v) => {
+    const hex = accentHex(v);
+    if (hex && !isNamedAccent(hex)) seen.add(hex);
+  };
+  for (const floor of (state && Array.isArray(state.floors) ? state.floors : [])) {
+    for (const shape of shapesOf(floor)) {
+      for (const ring of (shape && Array.isArray(shape.rings) ? shape.rings : [])) {
+        if (Array.isArray(ring.accents)) ring.accents.forEach(take);
+      }
+    }
+    for (const line of wallLinesOf(floor)) {
+      if (line && Array.isArray(line.accents)) line.accents.forEach(take);
+    }
+  }
+  return [...seen].sort();
 }
 
 // Paint one face (a hex) or take its accent off (null). True if it changed.

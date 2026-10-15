@@ -416,19 +416,28 @@ and add to this list rather than starting a new one.
   color picker"): under the swatches a colour input, a hex field and a chip,
   the colour stored as the `#rrggbb` both fields already took, called by its
   hex, with black or white ink by luminance on the chip and on the brush's
-  hover bar. Left from #944: the custom colour is tool state, so a reload
-  starts the field at `#808080` and a colour used earlier is typed again or
-  read off the status line; the panel does not list the custom colours a
-  school already has; the hover bar's outline is one pixel; nobody has
-  looked at a custom colour on a wall or a free-standing wall in the lit
-  scene on a GPU. Left from #910: the click on the
+  hover bar. The panel lists the custom colours a school already holds
+  (#961): an "In this school" row between the swatches and the free pick,
+  one swatch a hex, every storey, hex order, armed like a named swatch. The
+  free pick's colour outlives a reload (#962), in the page's own
+  `sg-accent-custom` localStorage key and not in the school. Left from #944,
+  #961 and #962: the hover bar's outline is one pixel; nobody has looked at
+  a custom colour on a wall or a free-standing wall in the lit scene on a
+  GPU, nor at the "In this school" row on a real display (one huginn
+  screenshot, eleven colours, two rows); the row is driven in a browser for
+  paint, undo, redo and a fresh page, and by its source only for New and
+  Open; the kept colour is per browser profile, so a school opened on
+  another machine starts at `#808080` with its own colours in the row.
+  Left from #910: the click on the
   plan is a pointer gesture, for a room's wall and a free-standing one alike
   (the swatches take Tab and Enter, the plan has no keyboard cursor); a
   free-standing wall's outdoor face cannot be painted, because the facade is
   drawn over it; a wall drawn over another one of the same kind loses that
   wall's doorways, as it did before, and keeps its paint; the floor brush
-  rubbing a room out from in front of a painted face leaves the accent in
-  the file until the next load or the next corner let go; `duplicateFloor`
+  rubbing a room out from in front of a painted face takes the accent with
+  it now (#964, `paintCells` asks `pruneAccents` after a rub-out; pure Node,
+  no browser check drives the stroke, and the status line does not say an
+  accent came off); `duplicateFloor`
   copies no free-standing wall, painted or not; the brush's two refusals for
   a free-standing wall are driven by a browser check for glass and by
   nothing for the outdoor face; nobody has looked at one by eye;

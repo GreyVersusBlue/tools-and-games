@@ -2105,8 +2105,11 @@ const CHECKS = [
   // and where it is stored; this types a hex into the Wall panel with the
   // keyboard, paints a wall with it, opens the design in a second page from
   // the autosave, types something that is not a colour, tries black and white
-  // for the ink, and goes back to a named swatch. One undo step goes on (the
-  // paint) and one comes off, so `undo-redo` finds the stack as it was.
+  // for the ink, and goes back to a named swatch. It also reads the row of the
+  // school's own custom colours (#961) at each step, presses its swatch with
+  // Enter, and reads what the page kept and what the second page opened with
+  // (#962). One undo step goes on (the paint) and one comes off (undo, redo,
+  // undo), so `undo-redo` finds the stack as it was.
   {
     name: 'accent-free',
     what: 'a hex typed under the swatches paints a wall and survives a reload, a bad one is refused with the old colour kept, black and white get the other ink, and a named swatch still works',
@@ -2158,6 +2161,13 @@ const CHECKS = [
           rim: rim ? { on: rim.visible && rim.parent.visible, ink: rim.material.color.getHexString(), bar: rim.parent.material.color.getHexString() } : null,
           focus: document.activeElement && document.activeElement.id,
           status: document.getElementById('status').textContent,
+          // #961: the school's own custom colours. #962: what the page keeps.
+          used: [...document.querySelectorAll('#accent-used .swatch')].map((b) => b.dataset.accent),
+          usedLit: [...document.querySelectorAll('#accent-used .swatch[aria-pressed="true"]')].map((b) => b.dataset.accent),
+          usedLabels: [...document.querySelectorAll('#accent-used .swatch')].map((b) => b.getAttribute('aria-label')),
+          usedHidden: el('accent-used-row').classList.contains('hidden'),
+          usedFocus: document.activeElement && document.activeElement.closest('#accent-used') ? document.activeElement.dataset.accent : null,
+          kept: localStorage.getItem('sg-accent-custom'),
         };
       })()`;
       const read = () => q(READ);
@@ -2203,6 +2213,10 @@ const CHECKS = [
               face: ring.accents ? ring.accents[${aim.seg}] : null,
               drawn: runs.some((r) => r.left === '#3a7f5c' || r.right === '#3a7f5c'),
               field: document.getElementById('accent-hex').value,
+              chip: document.getElementById('accent-chip').textContent,
+              armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
+              used: [...document.querySelectorAll('#accent-used .swatch')].map((b) => b.dataset.accent),
+              usedHidden: document.getElementById('accent-used-row').classList.contains('hidden'),
             };
           })()`);
         } finally { await tab.close(); }
@@ -2231,13 +2245,25 @@ const CHECKS = [
       await q(`document.getElementById('accent-chip').click(); 1`);
       await hover();
       const chipOff = await read();
+      // #961: the swatch of the colour the wall wears, pressed with the
+      // keyboard, arms it as typing it did; again, and the brush is down.
+      await d.page.focus('#accent-used .swatch[data-accent="#3a7f5c"]');
+      await d.page.keyboard.press('Enter');
+      await d.page.waitForTimeout(120);
+      const usedOn = await read();
+      await d.page.keyboard.press('Enter');
+      await d.page.waitForTimeout(120);
+      const usedOff = await read();
       await q('window.app.editor.undo(); 1');
       const undone = await read();
-      return { aim, idle, typed, painted, saved, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, undone };
+      await q('window.app.editor.redo(); 1');
+      const redone = await read();
+      await q('window.app.editor.undo(); 1');
+      return { aim, idle, typed, painted, saved, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, usedOn, usedOff, undone, redone };
     },
     expect: ({ ctx, before, after }) => {
       const say = (what, v) => { throw new Error(`${what}: ${JSON.stringify(v)}`); };
-      const { idle, typed, painted, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, undone } = ctx;
+      const { idle, typed, painted, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, usedOn, usedOff, undone, redone } = ctx;
       if (idle.armed !== 'off' || idle.field !== '#808080' || idle.picker !== '#808080' || idle.chip !== '#808080' ||
           idle.pressed !== 'false' || idle.invalid || idle.msg) say('the free pick should open at mid grey, not armed', idle);
       if (typed.armed !== '#3a7f5c' || typed.field !== '#3a7f5c' || typed.picker !== '#3a7f5c' || typed.chip !== '#3a7f5c' ||
@@ -2271,6 +2297,36 @@ const CHECKS = [
       if (chipOn.armed !== '#123456' || chipOn.pressed !== 'true' || chipOn.lit.length) say('the chip should arm the custom colour', chipOn);
       if (chipOff.armed !== 'off' || chipOff.pressed !== 'false' || (chipOff.rim && chipOff.rim.on)) say('the chip again should put the brush down, outline and all', chipOff);
       if (undone.face !== null) say('one undo should take the paint off', undone);
+      // #961: the row follows the school.
+      if (idle.used.length || !idle.usedHidden) say('a school with no custom colour should show no row of them', idle);
+      if (typed.used.length || !typed.usedHidden) say('a colour typed and not yet on a wall is not the school\'s', typed);
+      if (painted.used.join() !== '#3a7f5c' || painted.usedHidden || painted.usedLit.join() !== '#3a7f5c' ||
+          painted.usedLabels.join() !== 'Accent paint #3a7f5c, in this school') {
+        say('a wall painted a custom colour should put its swatch in the row, lit while the brush holds it', painted);
+      }
+      if (reloaded.used.join() !== '#3a7f5c' || reloaded.usedHidden) say('a fresh page should list the colour the school holds', reloaded);
+      if (black.used.join() !== '#3a7f5c' || black.usedLit.length) say('arming another colour should leave the row as it was, unlit', black);
+      if (swatch.used.join() !== '#3a7f5c' || swatch.usedLit.length) say('a named swatch should not light the row', swatch);
+      if (usedOn.armed !== '#3a7f5c' || usedOn.field !== '#3a7f5c' || usedOn.picker !== '#3a7f5c' || usedOn.chip !== '#3a7f5c' ||
+          usedOn.pressed !== 'true' || usedOn.usedLit.join() !== '#3a7f5c' || usedOn.lit.length || usedOn.usedFocus !== '#3a7f5c' ||
+          !/^Accent, #3a7f5c — click just inside a room/.test(usedOn.status)) {
+        say('Enter on the school\'s own swatch should arm that colour as typing it does, and keep the focus', usedOn);
+      }
+      if (usedOff.armed !== 'off' || usedOff.usedLit.length || usedOff.pressed !== 'false' || usedOff.used.join() !== '#3a7f5c') {
+        say('Enter on the lit swatch should put the brush down and leave the swatch there', usedOff);
+      }
+      if (undone.used.length || !undone.usedHidden) say('the undo that takes the paint off should take the swatch out of the row', undone);
+      if (redone.face !== '#3a7f5c' || redone.used.join() !== '#3a7f5c' || redone.usedHidden) say('a redo should bring the wall and its swatch back', redone);
+      // #962: the page keeps the custom colour, and a fresh page opens with it.
+      if (idle.kept !== null) say('nothing should be kept before a colour is picked', idle.kept);
+      if (typed.kept !== '#3a7f5c') say('a typed colour should be kept', typed.kept);
+      if (reloaded.field !== '#3a7f5c' || reloaded.chip !== '#3a7f5c' || reloaded.armed !== 'off') {
+        say('a fresh page should open the free pick at the last custom colour, with the brush down', reloaded);
+      }
+      if (refused.kept !== '#3a7f5c') say('a refused entry should not be kept', refused.kept);
+      if (picked.kept !== '#123456') say('the colour input\'s pick should be kept', picked.kept);
+      if (named.kept !== '#123456' || swatch.kept !== '#123456') say('a palette colour is not the custom one and should not be kept', named.kept);
+      if (usedOn.kept !== '#3a7f5c') say('a colour armed from the school\'s row should be kept', usedOn.kept);
       if (after.walls !== before.walls) throw new Error('the brush drew a wall');
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
