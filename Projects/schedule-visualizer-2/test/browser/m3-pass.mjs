@@ -1979,11 +1979,16 @@ function harnessChild(lines, extraEnv, timeout) {
 }
 
 test('SV2-55 item 5: openPlanner closes its server when the browser cannot be launched, and the process ends', () => {
-  // a temporary folder that does not exist: the browser's profile cannot be made, so launch() throws
+  // a temporary folder inside a file, which cannot be made: the browser is unpacked and its
+  // profile made in the temporary folder, so launch() throws
+  // (the browser's unpacker raises a stray error of its own a moment after
+  // launch() has thrown; it is noted, so the process ends of itself or not
+  // by what openPlanner left open)
   const child = harnessChild([
+    "process.on('uncaughtException', (error) => console.log('stray: ' + error.code));",
     "try { await openPlanner({ hash: '#movement' }); console.log('opened'); }",
     "catch (error) { console.log('threw: ' + String(error.message).split('\\n')[0]); }",
-  ], { TMPDIR: path.join(path.dirname(fileURLToPath(import.meta.url)), 'no-such-folder-sv2-55') });
+  ], { TMPDIR: path.join(fileURLToPath(import.meta.url), 'no-folder-here') });
   assert.match(child.stdout, /^threw: /m, 'openPlanner did not throw with no browser to launch: ' + child.stdout + child.stderr);
   assert.equal(child.signal, null, 'the process was still running after openPlanner threw: its server was left open (' + child.stdout + ')');
   assert.equal(child.status, 0, child.stderr);
