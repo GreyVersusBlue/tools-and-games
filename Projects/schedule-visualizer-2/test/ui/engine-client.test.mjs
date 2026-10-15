@@ -13,6 +13,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { createStore } from '../../engine/store.js';
 import { createIds, seededRandom } from '../../engine/ids.js';
@@ -160,4 +161,38 @@ test('a failure does not disturb the request after a change: the newer project i
   assert.equal(result.generation, 2);
   assert.equal(worker.posted, 2);
   client.close();
+});
+
+// SV2-51 item 3. The run for the older counters fails after the project has
+// changed and been asked about again: its failure is given to nobody, since
+// whoever asked for it was handed the newer request when that was asked, and
+// the newer request goes to the worker next and answers both.
+test('a run that fails after a newer change was asked about: neither caller sees the failure, and the newer answer reaches both', async () => {
+  const worker = standInWorker(1);
+  const store = storeOf(sampleSchool());
+  const client = createEngineClient(store, { worker: () => worker });
+
+  const older = client.results();
+  store.apply(actions.renameFloor, { id: 'fsample001', name: 'Ground' });
+  const newer = client.results();
+  assert.notEqual(newer, older);
+  assert.equal(worker.posted, 1, 'the newer request waits while the worker is busy');
+  worker.work(); // the worker refuses the older run
+  assert.equal(worker.posted, 2, 'the newer request goes as soon as the worker is free');
+  assert.deepEqual([client.stats.failed, client.stats.dropped], [0, 1], 'the refusal is dropped, not given to a caller');
+  worker.work();
+  const [a, b] = await Promise.all([older, newer]);
+  assert.equal(a.generation, 2, 'the older caller gets the newer answer');
+  assert.equal(b.generation, 2);
+  assert.equal(a, b);
+  client.close();
+});
+
+// The header is what stands between a caller and the storm: the client keeps
+// no failure, so it is the caller's to not ask again from its own rejection.
+test('the header says a caller must not ask again from its own rejection, and why', () => {
+  const header = readFileSync(new URL('../../ui/engine-client.js', import.meta.url), 'utf8').split('\nimport ')[0];
+  assert.match(header, /a caller must not ask again from its own rejection handler/);
+  assert.match(header, /the tab freezes/);
+  assert.match(header, /two tries, ui\/staff\/form\.js checksStand/);
 });
