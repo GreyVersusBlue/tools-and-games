@@ -1,7 +1,7 @@
 // patch.js — writes markup into a live element without rebuilding what is
 // already there, so a control the keyboard is on stays the same element.
-// The Menu Board (chalkboard.js), the queue and the stations row (ui.js) use
-// it (#968, #969). It imports nothing.
+// The Menu Board (chalkboard.js), the queue and the stations row (ui.js) and
+// the station tab bar (stations.js) use it (#968, #969). It imports nothing.
 
 // The board is patched in place, never rewritten (#968). Until then the whole
 // of #chalkContent was one innerHTML on every redraw, which is every sale, so

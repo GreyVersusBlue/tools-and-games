@@ -8,7 +8,7 @@ redirect stub.
 ```
 content.js <- nothing          sim.js <- nothing           sound.js <- nothing
     ^                            ^                             ^
-    |                            |    stations.js <- nothing   |
+    |                            |    stations.js <- patch.js  |
 draw.js <- content.js,           |    chalkboard.js <- patch.js|
            ../assets/sprites/cups.js (the sheet's atlas)    patch.js <- nothing
     ^                            |          ^                  |
@@ -79,7 +79,7 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   button works mid-shift.
 - **`stations.js`** — `createStations(ctx)`: the seven tabs, the buttons in
   each, the progress bars, the presets tab, and the panel's key map. **Imports
-  nothing**: `ui.js` hands it `state`, `sim`, `toast`, `sound`, `renderAll` and
+  only `patch.js`**, for its tab bar (#969), and `patch.js` imports nothing: `ui.js` hands it `state`, `sim`, `toast`, `sound`, `renderAll` and
   `saveNow`. It needs `renderAll` and `ui.js` needs it, so an import either way
   would be a cycle; passing the functions in keeps it a leaf that `ui.js` sits
   on. A timed button captures the cup it was clicked on, so a bar that finishes
@@ -105,8 +105,8 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   element without rebuilding what is already there. Rows are matched by a
   `data-row` key and the nodes in a row by position, and a button is kept while
   its `data-*` attributes are unchanged, so a control the keyboard is on stays
-  the same element (#968). The Menu Board, the queue and the stations row use
-  it (#969). Imports nothing.
+  the same element (#968). The Menu Board, the queue, the stations row and the
+  station tab bar use it (#969). Imports nothing.
 - **`ui.js`** — the entry. Builds the state, the sim and the save slot; draws
   the topbar, queue and counter; owns `serveSlot()`, `buy()`, the frame loop,
   the day-end modal, the reopen ledger (`showReopenLedger()`, built from

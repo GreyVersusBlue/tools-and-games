@@ -1723,6 +1723,31 @@ try {
   });
   f = await slotsFresh();
   t.ok(r2.q === q2 + 1 && f.same, 'Enter on Release sends the order back to the queue', `${q2} -> ${r2.q} waiting; keyboard then on ${r2.at}${f.why ? ', ' + f.why : ''}`);
+
+  // The station tab bar, over an order. A redraw, the tab chosen by Enter
+  // and the cup changing under it all leave the keyboard on the same tab.
+  const tabsFresh = () => fresh('stationTabs', 'stationTabsHtml');
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.queue.push(d.generateOrder()); d.tryAcceptCustomer(d.state.queue[0].id); d.renderAll(); });
+  const onTab = () => qp.evaluate(() => {
+    const a = document.activeElement;
+    return { marked: !!(a && a.__tab), tab: a && a.dataset ? a.dataset.tab : null, pressed: a ? a.getAttribute('aria-pressed') : null,
+      idx: [...document.querySelectorAll('#stationTabs button')].indexOf(a) };
+  });
+  const firstTab = await qp.evaluate(() => { const b = document.querySelector('#stationTabs button:not(.active)'); b.__tab = true; b.focus(); return b.dataset.tab; });
+  f = await tabsFresh();
+  t.ok(f.same, 'the station tab bar is exactly what a fresh build writes', f.why);
+  await qp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let tb = await onTab();
+  t.ok(tb.marked && tb.tab === firstTab, 'a redraw leaves the keyboard on the same station tab', `${firstTab} -> ${tb.tab}`);
+  await qp.keyboard.press('Enter');
+  await wait(150);
+  tb = await onTab();
+  f = await tabsFresh();
+  t.ok(tb.marked && tb.pressed === 'true' && f.same, 'Enter on it opens that tab, on the same button, now pressed', `${tb.tab} pressed ${tb.pressed}${f.why ? ', ' + f.why : ''}`);
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot]; if (sl) d.autoAssistStep(sl); d.renderAll(); });
+  tb = await onTab();
+  f = await tabsFresh();
+  t.ok(tb.marked && f.same, 'the cup changing under it leaves the keyboard where it was', `${tb.tab}${f.why ? ', ' + f.why : ''}`);
   t.ok(qp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', qp.__errs.join(' | ') || 'clean');
   await qp.close();
   }

@@ -587,8 +587,8 @@ if(typeof window !== 'undefined'){
     // The Menu Board's rows as a fresh build writes them, which the page check
     // holds the patched board to (#968).
     chalkboardHtml: () => chalkboard.html(),
-    // The queue's and the stations row's, the same way (#969).
-    queueHtml, slotsHtml,
+    // The queue's, the stations row's and the station tab bar's, the same way (#969).
+    queueHtml, slotsHtml, stationTabsHtml: () => stations.tabsHtml(),
     queueMax: sim.queueMax,
     slot: saveSlot, catalog: CATALOG, sim,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,
