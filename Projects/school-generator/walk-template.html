@@ -80929,7 +80929,7 @@ const { CELL, WALL_H, WALL_T, WALL_T_EXT, DOOR_H, RAIL_H, FLOOR_H, floorBaseY, w
 const { SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint, floorSolidAt, openingSpec, shapeAt } = __m_js_shapes_js;
 const { catalogEntry, propColor, variantKey } = __m_js_catalog_js;
 const { revealAt } = __m_js_hunt_js;
-const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
+const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, rampLandingBox, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
 const { wallProbe, solidBeside } = __m_js_walls_js;
 const { wallLinesOf, lineEnds, lineKind, lineOpenings } = __m_js_wallrun_js;
 const { gridPitch, majorEvery, ORIGIN, asOrigin } = __m_js_snapgrid_js;
@@ -85884,6 +85884,15 @@ function initRender(canvas) {
           curb.translate(link.x, baseY, link.z);
           coloredGeo(curb, _nosing);
           stairGeos.push(curb);
+        }
+        // The level landing at the top, ADA's 5ft (#904), cut out of the
+        // floor above and walked at its height: a slab in the ramp's colour,
+        // as a folded ramp's top landing is, from the box the walker and the
+        // hole read (#981). Before, nothing stood there.
+        const land = rampLandingBox(link, metrics);
+        if (land) {
+          localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
+            (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
         }
       } else {
         // Each step is a solid block from the slab up to its own tread, not a

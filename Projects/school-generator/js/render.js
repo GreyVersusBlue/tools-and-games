@@ -32,7 +32,7 @@ import {
 import { catalogEntry, propColor, variantKey } from './catalog.js';
 import { revealAt } from './hunt.js';
 import {
-  stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards,
+  stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, rampLandingBox,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
   floorCuts, inFloorCut, stairWidth,
 } from './stairs.js';
@@ -4953,6 +4953,15 @@ export function initRender(canvas) {
           curb.translate(link.x, baseY, link.z);
           coloredGeo(curb, _nosing);
           stairGeos.push(curb);
+        }
+        // The level landing at the top, ADA's 5ft (#904), cut out of the
+        // floor above and walked at its height: a slab in the ramp's colour,
+        // as a folded ramp's top landing is, from the box the walker and the
+        // hole read (#981). Before, nothing stood there.
+        const land = rampLandingBox(link, metrics);
+        if (land) {
+          localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
+            (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
         }
       } else {
         // Each step is a solid block from the slab up to its own tread, not a
