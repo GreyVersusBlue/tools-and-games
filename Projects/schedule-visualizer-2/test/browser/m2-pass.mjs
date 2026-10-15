@@ -1623,6 +1623,10 @@ test('SV2-50 item 8: the section left behind hears nothing more: a group chosen,
   });
 });
 
+// This case passes in Chromium with the written roles taken out as well: its
+// tree keeps a table's roles under display: block and grid (SV2-50 took every
+// role out and ran it). It guards the roles a browser that drops them needs,
+// which is not the one it runs in; it cannot catch their loss here.
 test('SV2-50 item 9: on a phone the slot table is a table to a screen reader still, its rows and cells in the accessibility tree', async () => {
   await on('#schedule/groups/' + A6, PHONE, async (p) => {
     await listIs(p, true);

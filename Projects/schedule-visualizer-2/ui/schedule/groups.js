@@ -413,8 +413,10 @@ export function mount(env) {
         }, { small: true, key: 'copy:' + dayType.id, action: 'copy-day' })),
       whole.map((finding) => h('p', { class: 'sch-finding-line sch-finding-line--' + finding.severity }, finding.text)),
       // The roles are written out because on a phone schedule.css makes the
-      // table, its body and its rows blocks and grids, and a browser drops a
-      // table's roles with its display: written, they are the table's still.
+      // table, its body and its rows blocks and grids, and a browser may drop
+      // a table's roles with its display (WebKit has). Chromium keeps them
+      // without these lines (measured 2026-10-14 by SV2-50, every role taken
+      // out); WebKit was not run here.
       h('table', { class: 'table sch-slots', role: 'table' },
         h('caption', { class: 'vh' }, group.name + ' on ' + dayType.name),
         h('thead', { role: 'rowgroup' }, h('tr', { role: 'row' },
