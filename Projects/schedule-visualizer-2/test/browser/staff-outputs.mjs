@@ -2214,6 +2214,50 @@ test('printed for real with nothing marked on its root, a batch of door signs is
   }
 });
 
+// SV2-51 item 1. A number counted at the fit's edge, seven Latin characters
+// by signWidth, is set at the full 120 pt; counted short, it was set as large
+// while drawing wider, wrapped to a second line and could push its sheet onto
+// two. Each number here was counted short before SV2-51 (a keycap as its
+// digit, a hexagram and a lone Hangul vowel as one) and is seven wide now, or
+// fourteen for the seven keycaps. Printed as the batch is printed: one line a
+// number, one sheet a sign.
+test('a number counted at the fit\'s edge is one line at its size, and its sign one sheet of Letter and of A4', async () => {
+  const pagesOf = (pdf) => (Buffer.from(pdf).toString('latin1').match(/\/Type\s*\/Page\b(?!s)/g) || []).length;
+  const edge = ['1\uFE0F\u20E3'.repeat(3) + 'A', '\u4DC0'.repeat(3) + 'B', '\u1161'.repeat(3) + 'C', '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'.repeat(3) + 'D', '1\uFE0F\u20E3'.repeat(7)];
+  assert.deepEqual(edge.map((number) => signFit(number)), [1, 1, 1, 1, 0.5], 'the numbers are at the edge of the fit');
+  const project = sampleSchool();
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces).filter((space) => space.kind === 'room');
+  edge.forEach((number, at) => { rooms[at].number = number; });
+  const ids = rooms.slice(0, edge.length).map((room) => room.id);
+  for (const [size, wide] of [['letter', 215.9], ['a4', 210]]) {
+    const { html } = renderBatch(project, null, { batch: 'doors', day: true, now: '2026-09-01T12:00:00.000Z', paper: { size, orientation: 'portrait' }, base: pathToFileURL(path.join(TOOL_DIR, 'ui')).href + '/' });
+    const file = path.join(scratch, 'batch-edge-' + size + '.html');
+    writeFileSync(file, html);
+    const session = await openPage({ width: Math.floor(((wide - 24) * 96) / 25.4), height: 900 });
+    try {
+      const { page } = session;
+      await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+      await page.emulateMediaType('print');
+      const numbers = await page.evaluate((wanted) => wanted.map((id) => {
+        const number = document.querySelector('[data-sheet="door"][data-id="' + id + '"] .sign__number');
+        const size = parseFloat(getComputedStyle(number).fontSize);
+        return { boxes: number.getClientRects().length, size, lines: Math.round(number.getBoundingClientRect().height / size) };
+      }), ids);
+      numbers.forEach((number, at) => {
+        assert.equal(number.boxes > 0, true, size + ': the number ' + JSON.stringify(edge[at]) + ' has a box');
+        assert.deepEqual([number.size, number.lines], [at === 4 ? 80 : 160, 1], size + ': the number ' + JSON.stringify(edge[at]) + ' is set at ' + number.size + ' px on ' + number.lines + ' lines');
+      });
+      await page.emulateMediaType(null);
+      const pages = pagesOf(await page.pdf({ preferCSSPageSize: true, printBackground: true }));
+      assert.equal(pages, 14, size + ': the cover and one sheet a sign, ' + pages + ' sheets');
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
 // ---------------------------------------------------------------- Every new page, both widths, both themes
 
 const NOTES_TWO = JSON.stringify({ dsample00a: { 1: 'Hall duty by stairs A', 6: 'Department meeting, every second week, in the Library' } });

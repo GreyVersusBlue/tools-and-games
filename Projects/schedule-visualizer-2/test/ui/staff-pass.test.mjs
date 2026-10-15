@@ -209,7 +209,6 @@ test('the sign measures what is drawn, not what is stored: a flag, a skin tone, 
     ['\u{1F1FA}A\u{1F1F8}', 5, 'two flag letters apart are two'],
     // what takes no room
     ['\u{1F44D}\u{1F3FB}\u{1F44D}\u{1F3FF}', 4, 'the lightest and the darkest skin tone'],
-    ['1️⃣', 1, 'a keycap is its digit'],
     ['שּ', 1, 'a Hebrew letter with a point'],
     ['بَ', 1, 'an Arabic letter with a vowel mark'],
     ['a‌b', 2, 'a non-joiner is not drawn'],
@@ -237,6 +236,54 @@ test('the sign measures what is drawn, not what is stored: a flag, a skin tone, 
   ];
   for (const [text, width, name] of more) assert.equal(signWidth(text), width, name);
   assert.equal(signFit('\u{1F1FA}\u{1F1F8}'.repeat(3) + 'A'), 1, 'three flags and a letter are seven wide');
+});
+
+// SV2-51 item 1: where SV2-49's count was short. A short count sets a number
+// too large, so it wraps to a second line and can push a batch sheet onto two.
+// SV2-49 pinned a keycap at 1, its digit; it is drawn as an emoji, two wide.
+test('the sign does not count short: a keycap, an emoji-form mark after a narrow base, a joiner only between two pictures, a skin tone only after a picture, Hangul parts alone, the wide blocks SV2-49 missed', () => {
+  const rows = [
+    // a narrow character drawn as an emoji
+    ['1\uFE0F\u20E3', 2, 'a keycap, as it is typed'],
+    ['#\uFE0F\u20E3', 2, 'the number sign keycap'],
+    ['1\u20E3', 2, 'a keycap without the emoji mark'],
+    ['\u00A9\uFE0F', 2, 'a narrow base with U+FE0F'],
+    ['\u2122\uFE0F', 2, 'the trade mark sign as an emoji'],
+    ['1\uFE0F\u20E3'.repeat(3) + 'A', 7, 'three keycaps and a letter'],
+    // a joiner joins two pictures and nothing else
+    ['\u6771\u200D\u6771', 4, 'a joiner between two CJK characters joins nothing'],
+    ['\u{20000}\u200D\u{20000}', 4, 'nor between two characters past U+20000'],
+    ['\u2600\u200D\u2600', 2, 'between two pictures in U+2600 to U+27BF it does'],
+    ['\u{1F468}\u200D\u200D\u{1F469}', 4, 'a second joiner in a row joins nothing'],
+    ['\u{1F468}\u200D\u200D\u{1F469}\u200D\u{1F467}', 4, 'and the joiner after the next picture joins again'],
+    ['\u{1F3F3}\uFE0F\u200D\u{1F308}', 2, 'a picture, its emoji mark, a joiner and a picture'],
+    // a skin tone
+    ['\u{1F3FD}', 2, 'a skin tone alone is a square of colour'],
+    ['A\u{1F3FD}', 3, 'after a letter it is a square of its own'],
+    ['\u6771\u{1F3FD}', 4, 'after a CJK character too'],
+    ['\u{1F44D}\u{1F3FD}\u{1F3FD}', 4, 'a picture takes one tone; a second is a square'],
+    // Hangul in parts
+    ['\u1161', 2, 'a lone Hangul vowel is a glyph'],
+    ['\u11AB', 2, 'a lone Hangul final is a glyph'],
+    ['\u11AB\u1161', 4, 'a final then a vowel are two glyphs'],
+    ['\uAC00\u11AB', 2, 'a final after a whole syllable of a consonant and a vowel is drawn inside it'],
+    ['\uAC01\u11AB', 4, 'after a syllable that has its final already it is a glyph'],
+    ['\uD7B0', 2, 'a lone vowel of the extended block'],
+    ['\uA960\uD7B0', 2, 'and after a leading consonant of the extended block'],
+    // the wide blocks
+    ['\u4DC0', 2, 'a hexagram, U+4DC0'],
+    ['\u4DFF', 2, 'U+4DFF'],
+    ['\uFE10', 2, 'a vertical comma, U+FE10'],
+    ['\uFE19', 2, 'U+FE19'],
+    ['\uFE50', 2, 'a small comma, U+FE50'],
+    ['\uFE6B', 2, 'U+FE6B'],
+    ['\u{17000}', 2, 'Tangut, U+17000'],
+    ['\u{18AFF}', 2, 'a Tangut component'],
+    ['\u{1B000}', 2, 'a kana supplement, U+1B000'],
+    ['\u{1B2FF}', 2, 'U+1B2FF'],
+  ];
+  for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
+  assert.equal(signFit('1\uFE0F\u20E3'.repeat(4)), 7 / 8, 'four keycaps are eight wide, set smaller');
 });
 
 // ---------------------------------------------------------------- the batch's count (item 6)
