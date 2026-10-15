@@ -801,11 +801,20 @@
   font-weight: 600;
 }
 
-.print-doc .sign__table td span {
+.print-doc .sign__table td span[dir] {
   display: inline-block;
+  max-width: 67mm;                  /* for a browser with no container units: 36% of the narrower sheet, A4's 186 mm */
   max-width: 36cqw;                 /* a name longer than the sheet can hold is broken there, never run past its edge */
   overflow-wrap: break-word;
   vertical-align: top;
+}
+
+.print-doc .sign__with {
+  white-space: nowrap;              /* a name and the comma after it go to a line together */
+}
+
+.print-doc .sign__with > span {
+  white-space: normal;
 }
 
 .print-doc .sign__school {
