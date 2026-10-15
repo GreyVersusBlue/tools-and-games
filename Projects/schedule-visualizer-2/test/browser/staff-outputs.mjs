@@ -287,7 +287,8 @@ test('the sign\'s number is set smaller only when it is longer than a number is'
   assert.equal(signFit('체육관'), 1, 'three Hangul squares are six wide');
   assert.equal(signFit('ＲＯＯＭ２０４'), 0.5, 'fullwidth forms');
   assert.equal(signFit('ｶﾌｪﾃﾘｱ'), 1, 'halfwidth katakana are half wide');
-  assert.equal(signFit('Gym 体育館'), 7 / 10);
+  // SV2-53 item 2: the m is drawn half again as wide as a seventh of the line
+  assert.equal(signFit('Gym 体育館'), 7 / 10.5);
   assert.equal(signFit('x'.repeat(60)), 0.3);
   assert.equal(signFit(''), 1);
 });

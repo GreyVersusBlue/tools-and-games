@@ -1713,7 +1713,7 @@ select.field__input {
      sheet's shape the card stood 280 px of empty paper above the periods at
      390 px (SV2-53 item 6); it is as tall as the number, the teacher and the
      subject. */
-  .sign__card:has(+ .sign__day) {
+  .sign[data-day] .sign__card {
     aspect-ratio: auto;
   }
 

@@ -262,7 +262,9 @@ function signTree(school, room, options) {
   // them. On paper and from 640 px the card is no box at all (display:
   // contents) and the name is last either way.
   const foot = el('p', { class: 'sign__school', 'data-sign': 'school' }, typedName(typeof opts.school === 'string' ? opts.school : school.name));
-  return el('section', { class: 'sign', 'aria-label': 'The sign' },
+  // data-day: the room's day is on the sign, so on a phone the card is not
+  // the whole sheet (staff/staff.css)
+  return el('section', day ? { class: 'sign', 'aria-label': 'The sign', 'data-day': 'on' } : { class: 'sign', 'aria-label': 'The sign' },
     el('div', { class: 'sign__card' },
       worded ? el('p', { class: 'sign__word' }, 'Room') : null,
       el('p', { class: 'sign__number', style: '--sign-fit: ' + signFit(big), 'data-sign': 'number' }, numbered ? typedName(big) : big),
