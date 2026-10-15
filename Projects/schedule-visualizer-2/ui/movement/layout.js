@@ -13,6 +13,7 @@
 //   slotAt(layout, x, y)                { slot, x, y, cell } for a place on the map, or null between floors
 //   placeOf(layout, floorId, cell)      { x, y }: the top left of a floor's cell on the map, or null
 //   stageLeast(layout, width)           the least height the stage is given, in CSS pixels
+//   keepShift(view, layout, keep)       { dx, dy }: the pan that leaves `keep` px of the floors on the stage
 //
 // No DOM in here.
 
@@ -91,3 +92,24 @@ export function placeOf(layout, floorId, cell) {
   return { x: slot.x + (cell % slot.floor.width) - slot.box.x, y: slot.y + Math.floor(cell / slot.floor.width) - slot.box.y };
 }
 
+// The pan, in CSS pixels, that leaves at least `keep` px of the floors' box
+// on the stage each way (all of the box where it is smaller), so no pan or
+// zoom takes the map off the stage. `view` is { x, y, size, width, height }.
+// The keep is never more than the stage itself (SV2-55, as the building
+// editor's keepNear): a stage shorter than the keep cannot hold it at both
+// edges at once, and the pan would go one way and back again on every event
+// (a 30 px stage over a 60 px box went -12, -18, -12, -18).
+export function keepShift(view, layout, keep) {
+  if (!layout || !(view.width > 0) || !(view.height > 0)) return { dx: 0, dy: 0 };
+  const across = layout.width * view.size;
+  const down = layout.height * view.size;
+  const keepX = Math.min(keep, across, view.width);
+  const keepY = Math.min(keep, down, view.height);
+  let dx = 0;
+  let dy = 0;
+  if (view.x + across < keepX) dx = keepX - (view.x + across);
+  else if (view.x > view.width - keepX) dx = view.width - keepX - view.x;
+  if (view.y + down < keepY) dy = keepY - (view.y + down);
+  else if (view.y > view.height - keepY) dy = view.height - keepY - view.y;
+  return { dx, dy };
+}

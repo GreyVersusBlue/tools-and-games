@@ -67,8 +67,8 @@ import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js'
 import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
-import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, answerCounts, NO_ENGINE } from './model.js';
-import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, FIT_MARGIN } from './layout.js';
+import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, createAsker } from './model.js';
+import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, keepShift, FIT_MARGIN } from './layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
 import { cellCardView } from './card.js';
@@ -98,10 +98,6 @@ export const CURSOR_LEAST = 14;
 // How much of the floors' box, in CSS pixels, a pan or a zoom always leaves
 // on the stage each way.
 export const KEEP_ON_STAGE = 48;
-
-// With nothing attached to work out the routes, how often the view looks
-// again for something that is.
-export const ENGINE_LOOK_MS = 1000;
 
 export const MOVEMENT_TABS = [
   { id: 'hotspots', label: 'Hotspots' },
@@ -169,7 +165,6 @@ export const section = {
     const store = ctx.store;
     let choice = settleChoice(store.project, memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project));
     // the last answer, the project it was worked out for, and that project's graph
-    let derived = { asked: null, project: null, results: null, graph: null, failed: null };
     // The graph of the building as it is: the store keeps one a building (ARCHITECTURE 16, SV2-16).
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
     let state = null;
@@ -390,45 +385,24 @@ export const section = {
       if (at) pointAt(at.x + 0.5, at.y + 0.5, 'tap');
     }
 
-    // ---- the results
-    let engineWait = null;
-    function lookForEngine() {
-      engineWait = null;
-      if (gone) return;
-      if (store.derived && store.derived.engine) {
-        derived.failed = null;
-        ask();
-        refresh();
-      } else {
-        engineWait = setTimeout(lookForEngine, ENGINE_LOOK_MS);
-      }
-    }
-    function ask() {
-      const project = store.project;
-      if (derived.asked === project) return;
-      derived.asked = project;
-      if (!store.derived || !store.derived.engine) {
-        // nothing to ask, and nothing is awaited: the first line says so. The
-        // project is not marked asked, and the view looks again now and then,
-        // so an engine attached later is asked for this same project.
-        derived.asked = null;
-        derived.failed = NO_ENGINE;
-        if (engineWait === null) engineWait = setTimeout(lookForEngine, ENGINE_LOOK_MS);
-        return;
-      }
-      element.dataset.pending = 'true';
-      const settle = (results, failed) => {
-        // an answer for a state the project has left is not for the screen
-        if (!answerCounts({ gone, asked: derived.asked, answered: project, now: store.project })) return;
-        // store.project is `project` here, so the store's graph is this answer's
-        derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, graph: results ? graphNow() : derived.graph, failed };
+    // ---- the results: asked once per state of the project (model.js's
+    // createAsker, which a Node case runs as the view does)
+    const asker = createAsker({
+      store,
+      graph: () => graphNow(),
+      gone: () => gone,
+      timers: { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) },
+      pending() {
+        element.dataset.pending = 'true';
+      },
+      settled(failed, answered) {
         // the answer is in: nothing is awaited by the time the panels are told (the Export tab reads this)
-        delete element.dataset.pending;
+        if (answered) delete element.dataset.pending;
         refresh();
-        if (failed) ctx.announce(failedSentence(standingOf(project, derived)).parts.map((part) => part.text).join(''));
-      };
-      store.derived.results().then((results) => settle(results, null), (error) => settle(null, error && error.message ? error.message : String(error)));
-    }
+        if (failed) ctx.announce(failedSentence(standingOf(store.project, asker.derived)).parts.map((part) => part.text).join(''));
+      },
+    });
+    const ask = () => asker.ask();
 
     // ---- everything but the canvas
     function refresh() {
@@ -457,6 +431,7 @@ export const section = {
       placeFloors();
       // the last answer is drawn against the project it was worked out for,
       // on that project's graph; after a derive that failed it is stale
+      const derived = asker.derived;
       const standing = standingOf(project, derived);
       const shown = standing.project;
       const graph = standing.results && derived.graph ? derived.graph : graphNow();
@@ -549,20 +524,13 @@ export const section = {
     // of the floors' box on screen each way (all of it, when it is smaller),
     // so the stage is never a blank field with nothing to say where the
     // floors went.
+    // The keep is capped by the stage's own size (keepShift, layout.js), and
+    // it is applied after the stage changes size as well (SV2-55).
     function keepOnStage() {
-      if (!world || view.width === 0) return;
-      const size = view.size;
-      const across = world.width * size;
-      const down = world.height * size;
-      const keepX = Math.min(KEEP_ON_STAGE, across);
-      const keepY = Math.min(KEEP_ON_STAGE, down);
-      let dx = 0;
-      let dy = 0;
-      if (view.x + across < keepX) dx = keepX - (view.x + across);
-      else if (view.x > view.width - keepX) dx = view.width - keepX - view.x;
-      if (view.y + down < keepY) dy = keepY - (view.y + down);
-      else if (view.y > view.height - keepY) dy = view.height - keepY - view.y;
+      if (!world || view.width === 0) return false;
+      const { dx, dy } = keepShift(view, world, KEEP_ON_STAGE);
       if (dx !== 0 || dy !== 0) view.panBy(dx, dy);
+      return dx !== 0 || dy !== 0;
     }
 
     function zoomBy(factor) {
@@ -867,6 +835,8 @@ export const section = {
       arrange();
       // what was brought to the middle is still in the middle of the window as it is now
       if (shownLast && !fitted && world) centre(shownLast.floorId, shownLast.cells);
+      // and a map the reader moved is still on the stage at its new size
+      if (!fitted) keepOnStage();
       reopen(held);
       if (floorsRow.how) floorsRow.how.set(world ? world.how : 'side');
       queued = false;
@@ -962,6 +932,10 @@ export const section = {
       // More may take the map's height and the legend's line, never the first line's
       const moreRoom = Math.max(0, has + docked - gap) + 'px';
       if (element.style.getPropertyValue('--mov-more') !== moreRoom) element.style.setProperty('--mov-more', moreRoom);
+      // a control brought into view (the focus moving to it) is brought clear
+      // of the bar, sticky at the section's foot (scroll-padding-bottom, SV2-55)
+      const barRoom = Math.ceil(tall(bar.element)) + 'px';
+      if (element.style.getPropertyValue('--mov-bar') !== barRoom) element.style.setProperty('--mov-bar', barRoom);
       // the bar's height this was measured with, for a test to wait on
       element.dataset.measuredBar = String(bar.element.offsetHeight);
     }
@@ -1081,7 +1055,7 @@ export const section = {
       },
       unmount() {
         gone = true;
-        if (engineWait !== null) clearTimeout(engineWait);
+        asker.stop();
         element.removeEventListener('scroll', dock);
         document.removeEventListener('scroll', onSurfaceScroll, { capture: true });
         if (dockHost) dockHost.style.removeProperty('--toast-clear');

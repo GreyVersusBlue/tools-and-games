@@ -1320,6 +1320,11 @@ test('SV2-55 item 0: a phone on its side with touch, 844 by 390: the stage keeps
     assert.equal(await p.$eval('.mov-top', (el) => el.dataset.folded), 'true', 'under 900 px the controls open folded: the case tests the folded view');
     await dismissStarted(p);
     await drawn(p);
+    // closing the message gave the map the focus, which brings it above the bar: back to the top
+    await p.evaluate(() => {
+      document.querySelector('.mov').scrollTop = 0;
+    });
+    await lifted(p);
     // the sample's floors fitted across 844 px are taller than 120 px, so the
     // least is 120 itself, or what the section has over the bar and the
     // legend's line when that is less: with the first line scrolled away the
@@ -1365,6 +1370,157 @@ test('SV2-55 item 0: a phone on its side with touch, 844 by 390: the stage keeps
     await barOnScreen(p, 'More open');
     await p.tap('[data-action="more"]');
     await shows(p, () => document.querySelector('[data-part="more"]').hidden === true);
+  });
+});
+
+// Press Tab until the focus is on what `selector` finds (at most 80 times).
+async function tabTo(page, selector) {
+  for (let press = 0; press < 80; press += 1) {
+    if (await page.evaluate((wanted) => document.activeElement === document.querySelector(wanted), selector)) return;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error('80 Tabs did not reach ' + selector);
+}
+// what the focus is on: its box, the bar's, and whether a finger at its middle meets it
+const focusedClear = (page) => page.evaluate(() => {
+  const el = document.activeElement;
+  const rect = el.getBoundingClientRect();
+  const met = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  const bar = document.querySelector('[data-bar="playback"]').getBoundingClientRect();
+  return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), barTop: Math.round(bar.top), onTop: met === el || el.contains(met), what: el.getAttribute('aria-label') || el.textContent };
+});
+
+// SV2-55 item 1 (reproduced by the Foreman, s52/f1-1280x480-controls.png): at
+// 1280 by 480 with the controls shown and the section at its top the bar,
+// sticky at the section's foot, lay over the zoom buttons (465 to 503 under a
+// bar from 400) and the docked legend line, and a focused Zoom in stayed
+// under it. Now the zoom stands above the bar, and what the focus brings into
+// view lands above it (scroll-padding-bottom).
+for (const [name, size] of [['1280 by 480', SHORT], ['844 by 390 with touch', SIDEWAYS]]) {
+  test('SV2-55 item 1: ' + name + ' with the controls shown and the section at its top: the zoom buttons are above the bar, Zoom in with the focus is above it, and the legend’s Scale with the focus is brought above it', async () => {
+    await on('#movement', size, async (p) => {
+      await dismissStarted(p);
+      if (await p.$eval('.mov-top', (el) => el.dataset.folded) === 'true') {
+        await p.click('[data-action="change"]');
+        await shows(p, () => document.querySelector('.mov-top').dataset.folded === 'false');
+      }
+      await drawn(p);
+      // the section at its top (the map took the focus when the message closed, and came above the bar)
+      await p.evaluate(() => {
+        document.querySelector('.mov').scrollTop = 0;
+      });
+      await lifted(p);
+      const at = await short(p);
+      assert.ok(at.scrolls > 0, 'with the controls shown the section does not scroll: the case tests nothing: ' + JSON.stringify(at));
+      assert.equal(at.scrolled, 0, 'the section is not at its top');
+      assert.ok(at.stage.bottom > at.bar.top, 'the bar does not lie over the stage’s foot at the top: the case tests nothing: ' + JSON.stringify(at));
+      // where some of the stage is on screen over the bar the zoom stands on that part; at 844 by
+      // 390 the shown controls fill the window and the whole stage starts under the bar
+      if (at.stage.top < at.bar.top) await zoomClear(p, 'controls shown, at the top');
+      else assert.equal(size, SIDEWAYS, 'at 1280 by 480 none of the stage is on screen at the top: ' + JSON.stringify(at));
+
+      // Tab from Change to Zoom in: it has the focus, on screen, above the bar
+      await p.focus('[data-action="change"]');
+      await tabTo(p, '[data-action="zoom-in"]');
+      await lifted(p);
+      const zoomIn = await focusedClear(p);
+      assert.equal(zoomIn.what, 'Zoom in');
+      assert.ok(zoomIn.bottom <= zoomIn.barTop && zoomIn.onTop, 'Zoom in has the focus under the bar: ' + JSON.stringify(zoomIn));
+
+      // the docked legend's Scale, under the bar at the top, comes above it with the focus
+      if (await p.$eval('.mov-legend-line', (el) => !el.hidden)) {
+        await p.evaluate(() => {
+          document.querySelector('.mov').scrollTop = 0;
+        });
+        await lifted(p);
+        const under = await p.evaluate(() => document.querySelector('.mov-legend-line').getBoundingClientRect().bottom > document.querySelector('[data-bar="playback"]').getBoundingClientRect().top);
+        assert.equal(under, true, 'the legend’s line is not under the bar at the top: the case tests nothing');
+        await tabTo(p, '.mov-legend-line__open');
+        await lifted(p);
+        const scale = await focusedClear(p);
+        assert.ok(scale.bottom <= scale.barTop && scale.onTop, 'Scale has the focus under the bar: ' + JSON.stringify(scale));
+      } else {
+        assert.equal(size, SHORT, 'at 844 by 390 the legend is docked');
+      }
+    });
+  });
+}
+
+// SV2-55 items 2 and 4: a storage banner is stuck to the surface's top over
+// the section. The section had the surface's whole height under it, so the
+// bar at its foot went below the window by the banner's height.
+const saveFails = async (page) => {
+  // the import is not awaited by the evaluate: on a page with touch emulated
+  // Puppeteer drops the awaited promise ("Promise was collected")
+  await page.evaluate(() => {
+    globalThis.sv2.storage.hooks.failWrite = 'The disk is full (a test made this up)';
+    import('./engine/actions.js').then(({ setSetting }) => {
+      const mode = globalThis.sv2.store.project.settings.colourScale.mode;
+      globalThis.sv2.store.apply(setSetting, { key: 'colourScale.mode', value: mode === 'relative' ? 'absolute' : 'relative' });
+    });
+  });
+  await shows(page, () => document.getElementById('banner-save-failed') !== null);
+};
+const bannerMeasured = (page) => shows(page, () => {
+  const host = document.getElementById('storage-banners');
+  return document.getElementById('surface').style.getPropertyValue('--banners-height') === host.offsetHeight + 'px';
+});
+
+for (const [name, size] of [['1280 by 800', DESK], ['1280 by 480', SHORT], ['844 by 390 with touch', SIDEWAYS], ['390 by 844 with touch', PHONE]]) {
+  test('SV2-55 items 2 and 4: at ' + name + ' the not-saved banner never pushes the bar below the window: the section has what the banner leaves, measured (--banners-height)', async () => {
+    await on('#movement', size, async (p) => {
+      await dismissStarted(p);
+      await drawn(p);
+      await saveFails(p);
+      await bannerMeasured(p);
+      await shows(p, () => document.querySelector('.mov').dataset.measuredBar === String(document.querySelector('[data-bar="playback"]').offsetHeight));
+      const banner = await box(p, '#banner-save-failed');
+      assert.ok(banner && banner.height > 40, 'the banner is not on screen');
+      const at = await barOnScreen(p, 'under the banner');
+      assert.ok(at.section.top >= Math.round(banner.bottom) - 1, 'the section starts under the banner’s top, behind it: ' + JSON.stringify({ banner, section: at.section }));
+      assert.equal(await p.$eval('#surface', (el) => el.scrollHeight - el.clientHeight), 0, 'the surface scrolls: the banner pushed the section down');
+      await p.evaluate(() => {
+        globalThis.sv2.storage.hooks.failWrite = null;
+      });
+    });
+  });
+}
+
+// SV2-55 item 4: until --banners-height is set, the surface keeps an
+// allowance for the banners at the top of what it scrolls to; the allowance
+// is never more than half the surface (13rem at 640 px wide was 208 px of a
+// 222 px surface on a small phone on its side).
+test('SV2-55 item 4: a control brought into view lands under the banners by their measured height, and by no more than half the surface when it is not measured, at 640 by 360 with touch', async () => {
+  await on('#movement', { width: 640, height: 360, mobile: true }, async (p) => {
+    await dismissStarted(p);
+    await drawn(p);
+    await saveFails(p);
+    await bannerMeasured(p);
+    // a tall block on the surface with a target at its top, brought into view as the focus brings a control
+    const landed = (unset) => p.evaluate((drop) => {
+      const surface = document.getElementById('surface');
+      if (drop) surface.style.removeProperty('--banners-height');
+      const block = document.createElement('div');
+      block.style.height = '3000px';
+      const target = document.createElement('span');
+      target.textContent = 'target';
+      block.append(target);
+      surface.append(block);
+      surface.scrollTop = surface.scrollHeight;
+      target.scrollIntoView({ block: 'start' });
+      const at = target.getBoundingClientRect().top - surface.getBoundingClientRect().top;
+      block.remove();
+      surface.scrollTop = 0;
+      return { at: Math.round(at), half: Math.round(surface.clientHeight / 2), banners: document.getElementById('storage-banners').offsetHeight };
+    }, unset);
+    const measured = await landed(false);
+    assert.ok(Math.abs(measured.at - measured.banners) <= 1, 'the room kept is not the banners’ measured height: ' + JSON.stringify(measured));
+    const fallback = await landed(true);
+    assert.ok(fallback.at <= fallback.half + 1, 'the allowance pads more than half the surface: ' + JSON.stringify(fallback));
+    assert.ok(fallback.at > 0, 'no allowance at all for the banners: ' + JSON.stringify(fallback));
+    await p.evaluate(() => {
+      globalThis.sv2.storage.hooks.failWrite = null;
+    });
   });
 });
 
@@ -1746,5 +1902,113 @@ test('SV2-52 item 13: openPlanner closes its server and browser when the first p
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 60000, env });
   assert.match(child.stdout, /^threw: /m, 'openPlanner did not throw for a section that never came: ' + child.stdout + child.stderr);
   assert.equal(child.signal, null, 'the process was still running a minute after openPlanner threw: its server or browser was left open');
+  assert.equal(child.status, 0, child.stderr);
+});
+
+// SV2-55 item 3: the view's clamp after the stage changes size under a map
+// the reader moved, and on a stage shorter than the keep. (The swing the
+// Foreman measured needs the stage and the floors' box together under 96 px
+// with the box the taller; the sample's box is about 180 px even at 25 %, so
+// the swing itself is held by the Node case on keepShift, which index.js calls.)
+const stageTo = async (page, px) => {
+  await page.evaluate((height) => {
+    document.querySelector('.mov-stage').style.flex = '0 0 ' + height + 'px';
+  }, px);
+  await shows(page, (height) => document.querySelector('.mov').movement.view.height === height, px);
+};
+const keptOnStage = (box) => {
+  const keepY = Math.min(48, box.bottom - box.top, box.height);
+  const keepX = Math.min(48, box.right - box.left, box.width);
+  return box.bottom >= keepY - 0.5 && box.top <= box.height - keepY + 0.5 && box.right >= keepX - 0.5 && box.left <= box.width - keepX + 0.5;
+};
+
+test('SV2-55 item 3: a stage made smaller under a map the reader moved keeps the floors on it, and on a 30 px stage wheel turns leave them still and on it', async () => {
+  await on('#movement', DESK, async (p) => {
+    await dismissStarted(p);
+    await drawn(p);
+    // a map the reader moved down to the stage's foot: 50 px of the floors showing
+    await stageTo(p, 300);
+    await p.evaluate(() => {
+      const movement = document.querySelector('.mov').movement;
+      movement.view.panBy(0, 250 - movement.view.y);
+      movement.view.panBy(0, 0);
+    });
+    await p.mouse.move(640, 120);
+    // the stage made smaller: the floors are brought back onto it
+    await stageTo(p, 30);
+    await drawn(p);
+    const resized = await floorsOnStage(p);
+    assert.ok(keptOnStage(resized), 'after the stage was made smaller the floors are off it: ' + JSON.stringify(resized));
+
+    // wheel turns that would take the floors up and away: the map settles and stays
+    const at = await p.evaluate(() => {
+      const rect = document.querySelector('.mov-stage').getBoundingClientRect();
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + 10) };
+    });
+    await p.mouse.move(at.x, at.y);
+    const ys = [];
+    for (let turn = 0; turn < 5; turn += 1) {
+      await wheelOverMap(p, 4000);
+      ys.push((await floorsOnStage(p)).top);
+    }
+    assert.ok(new Set(ys.slice(1)).size === 1, 'the map went one way and back under the same wheel: ' + ys.join(', '));
+    const kept = await floorsOnStage(p);
+    assert.ok(kept.bottom - kept.top > 30, 'the floors’ box is not taller than the stage: the case tests nothing: ' + JSON.stringify(kept));
+    assert.ok(keptOnStage(kept), 'the wheel took the floors off the stage: ' + JSON.stringify(kept));
+  });
+});
+
+// SV2-55 item 5: openPlanner closes what it opened when an earlier step
+// throws as well: launching the browser (the server was already up), and
+// making and setting up the page (the browser and the server were). And the
+// cleanup itself cannot hang on a page that never closes. Each runs in a
+// process of its own, which has to end by itself once openPlanner has thrown.
+function harnessChild(lines, extraEnv, timeout) {
+  const harness = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), 'harness.mjs')).href;
+  const code = ['const { openPlanner, launch } = await import(' + JSON.stringify(harness) + ');', ...lines].join('\n');
+  const env = { ...process.env, ...(extraEnv || {}) };
+  delete env.SV2_BASE;
+  const started = Date.now();
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: timeout || 45000, env });
+  return { ...child, took: Date.now() - started };
+}
+
+test('SV2-55 item 5: openPlanner closes its server when the browser cannot be launched, and the process ends', () => {
+  // a temporary folder that does not exist: the browser's profile cannot be made, so launch() throws
+  const child = harnessChild([
+    "try { await openPlanner({ hash: '#movement' }); console.log('opened'); }",
+    "catch (error) { console.log('threw: ' + String(error.message).split('\\n')[0]); }",
+  ], { TMPDIR: path.join(path.dirname(fileURLToPath(import.meta.url)), 'no-such-folder-sv2-55') });
+  assert.match(child.stdout, /^threw: /m, 'openPlanner did not throw with no browser to launch: ' + child.stdout + child.stderr);
+  assert.equal(child.signal, null, 'the process was still running after openPlanner threw: its server was left open (' + child.stdout + ')');
+  assert.equal(child.status, 0, child.stderr);
+});
+
+test('SV2-55 item 5: openPlanner closes its page, browser and server when the page’s set-up throws, and the process ends', () => {
+  // a device setting that cannot be written as JSON: the set-up throws after the page is made
+  const child = harnessChild([
+    "try { await openPlanner({ hash: '#movement', theme: 'light', device: { n: 1n } }); console.log('opened'); }",
+    "catch (error) { console.log('threw: ' + String(error.message).split('\\n')[0]); }",
+  ]);
+  assert.match(child.stdout, /^threw: .*BigInt/m, 'openPlanner did not throw on the device setting: ' + child.stdout + child.stderr);
+  assert.equal(child.signal, null, 'the process was still running after openPlanner threw: its browser or server was left open (' + child.stdout + ')');
+  assert.equal(child.status, 0, child.stderr);
+});
+
+test('SV2-55 item 5: a page that never closes holds openPlanner’s cleanup for PAGE_CLOSE_MS at most, and the error still goes on', () => {
+  // a browser of the caller's whose pages never close; the set-up throws, so the cleanup closes the page
+  const child = harnessChild([
+    'const real = await launch();',
+    'const pages = [];',
+    "const browser = { __engine: real.__engine, newPage: async () => { const page = await real.newPage(); pages.push(page); page.close = () => new Promise(() => {}); return page; } };",
+    'const started = Date.now();',
+    "try { await openPlanner({ browser, hash: '#movement', device: { n: 1n } }); console.log('opened'); }",
+    "catch (error) { console.log('threw after ' + (Date.now() - started) + ' ms: ' + String(error.message).split('\\n')[0]); }",
+    'await real.close();',
+  ], {}, 40000);
+  assert.match(child.stdout, /^threw after \d+ ms: .*BigInt/m, 'openPlanner did not throw past a page that never closes: ' + child.stdout + child.stderr);
+  const took = Number(/threw after (\d+) ms/.exec(child.stdout)[1]);
+  assert.ok(took >= 4500 && took < 15000, 'the cleanup waited ' + took + ' ms on the page, not the 5 s it is given');
+  assert.equal(child.signal, null, 'the process did not end: ' + child.stdout);
   assert.equal(child.status, 0, child.stderr);
 });

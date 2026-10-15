@@ -148,6 +148,7 @@ export function startStorage(ctx, options) {
   // Their look is ui/app.css's `.banner`, with an edge for each kind:
   // problem, warning or note.
   const bannerHost = h('div', { id: 'storage-banners', class: 'banners' });
+  new ResizeObserver(() => bannerHost.parentNode && bannerHost.parentNode.style.setProperty('--banners-height', bannerHost.offsetHeight + 'px')).observe(bannerHost);
   const banners = new Map();
 
   function mountBanners() {

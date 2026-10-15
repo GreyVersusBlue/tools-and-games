@@ -26,6 +26,9 @@
   height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
+  /* what the focus brings into view lands above the bar, which is sticky at
+     the section's foot (--mov-bar, ui/movement/index.js) */
+  scroll-padding-bottom: var(--mov-bar, 0px);
   background: var(--paper);
 }
 
