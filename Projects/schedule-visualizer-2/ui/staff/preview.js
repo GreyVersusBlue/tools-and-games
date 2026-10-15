@@ -59,15 +59,19 @@ export const PUBLISHED_SETTINGS = ['schoolName', 'periods', 'periodWord', 'defau
 
 // The parts of a project a published file is made from. The store shares
 // every branch a change did not touch, so "the same parts" is "nothing a
-// reader would see has changed".
-function partsOf(project, locked) {
+// reader would see has changed". A theme, a paper size or the note that a
+// file was made is a new project object with the same parts. `locked`: the
+// file is behind the passcode, so the passcode is a part too. The preview
+// feeds the frame again only for new parts; Publish says the schedule
+// changed while its file was made only for new parts (form.js).
+export function partsOf(project, locked) {
   const publish = project.publish || {};
   const settings = project.settings || {};
   return [project.id, ...PUBLISHED_SETTINGS.map((key) => settings[key]), project.building, project.subjects, project.teachers, project.dayTypes, project.groups,
     publish.views, publish.teacherNamesOnMap, publish.stalenessDays, locked ? publish.passcode : null, locked];
 }
 
-function sameParts(a, b) {
+export function sameParts(a, b) {
   return a !== null && a.length === b.length && a.every((part, at) => part === b[at]);
 }
 

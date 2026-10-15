@@ -1317,6 +1317,34 @@ test('the project changes while the file is being made: the file is of the proje
   });
 });
 
+// SV2-51 item 2. A theme, a paper size or a planner-only setting changed
+// while the file is being made is a new project object, and until SV2-51
+// that alone made the status say the schedule changed. It says so only when
+// something a reader would see changed (preview.js's partsOf and sameParts).
+test('a theme, a paper size or a head count changed while the file is being made: nothing a reader sees changed, and the status says nothing about an earlier schedule', async () => {
+  await closing(await open(), async (page) => {
+    await pressAndHold(page);
+    const before = await page.evaluate(() => globalThis.sv2.store.project);
+    await apply(page, 'setSetting', { key: 'theme', value: 'dark' });
+    await apply(page, 'setSetting', { key: 'paper.size', value: 'a4' });
+    await apply(page, 'setSetting', { key: 'defaultHeadCount', value: 31 });
+    const after = await page.evaluate(() => globalThis.sv2.store.project);
+    assert.notDeepEqual(after.settings, before.settings, 'the project did change');
+    const out = await letGo(page);
+    assert.equal(out.made, true);
+    const status = await says(page, 'published');
+    assert.ok(!status.includes(MOVED_ON), status);
+    assert.ok(status.includes('). ' + NOT_SENT + ' It asks for the staff passcode: '), status);
+    assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf), undefined);
+    // and a setting the file carries, changed in the gap, is said
+    await pressAndHold(page);
+    await apply(page, 'setSetting', { key: 'periodWord', value: 'Hour' });
+    await letGo(page);
+    assert.ok((await says(page, 'published')).includes('. ' + MOVED_ON + ' '), 'the period word is on every page of the file');
+    assert.equal(await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf), 'earlier');
+  });
+});
+
 test('the file went out and the project then would not record it: the status says Published and that it is not recorded, never that nothing was published', async () => {
   await closing(await open(), async (page) => {
     await page.evaluate(async () => {
