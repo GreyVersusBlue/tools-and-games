@@ -60,6 +60,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const ONLY_A11Y = process.argv.includes('--a11y');
 // `--pace` runs section 16 alone the same way: the pace switch on the board.
 const ONLY_PACE = process.argv.includes('--pace');
+// `--focus` runs section 17 alone: the board keeping the keyboard on a redraw.
+const ONLY_FOCUS = process.argv.includes('--focus');
 
 /**
  * Click a control inside the chalkboard. The panel is a ~3,000 px scroll
@@ -122,7 +124,7 @@ const p = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
 
 try {
   sections: {
-  if (ONLY_A11Y || ONLY_PACE) break sections;
+  if (ONLY_A11Y || ONLY_PACE || ONLY_FOCUS) break sections;
   /* ---------- 1. the page boots at all ---------- */
 
   t.section('1. the module script runs');
@@ -1088,7 +1090,7 @@ try {
   // it alone.
 
   a11y: {
-  if (ONLY_PACE) break a11y;
+  if (ONLY_PACE || ONLY_FOCUS) break a11y;
   t.section('15. without colour, and without motion (#916, #917)');
   const ap = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(ap, { wipe: true });
@@ -1283,7 +1285,7 @@ try {
   // save, so `--pace` can run it alone.
 
   pace: {
-  if (ONLY_A11Y) break pace;
+  if (ONLY_A11Y || ONLY_FOCUS) break pace;
   t.section('16. the pace switch on the Menu Board (#947)');
   const pp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(pp, { wipe: true });
@@ -1417,6 +1419,128 @@ try {
   t.ok(b.pace === 'busy' && (await savedState(pp)).pace === 'busy' && Math.abs(quietDoor / b.door - 1.3) < 1e-9, 'and a click on Busy Corner puts the new shop back on today\'s game', `${b.pace}, door ${quietDoor} -> ${b.door}`);
   t.ok(pp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', pp.__errs.join(' | ') || 'clean');
   await pp.close();
+  }
+
+  /* ---------- 17. the Menu Board keeps the keyboard ---------- */
+  // Everything under the pace switch was written as one innerHTML on every
+  // redraw, so a player who had tabbed to a button lost it to the next sale
+  // and the next Tab started again from the top of the page (#967). The board
+  // is now patched in place: a button that does the same thing as before is
+  // the same element, with its focus, its place in the tab order and its name.
+  // The DOM is the assertion (#39), and what the board shows is held to a
+  // fresh build of the same rows after every step.
+
+  focus: {
+  if (ONLY_A11Y || ONLY_PACE) break focus;
+  t.section('17. the Menu Board keeps the keyboard across a redraw (#967)');
+  const fp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(fp, { wipe: true });
+  await fp.evaluate(() => { window.confirm = () => true; });
+  // Money and one hand on staff, so the Staff rows have their buttons.
+  await fp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.money = 5000; d.doUnlock('hireBarista'); d.state.money = 5000; d.renderAll();
+  });
+  await fp.click('#chalkToggle');
+  await wait(500);
+  const here = () => fp.evaluate(() => {
+    const a = document.activeElement;
+    const btns = [...document.querySelectorAll('#chalkContent button')];
+    return {
+      marked: !!(a && a.__mark), inBoard: !!(a && a.closest && a.closest('#chalkContent')), tag: a && a.tagName,
+      name: a ? (a.getAttribute('aria-label') || a.textContent.replace(/\s+/g, ' ').trim()).slice(0, 60) : '',
+      idx: btns.indexOf(a), tabindex: a ? a.tabIndex : null, count: btns.length,
+    };
+  });
+  // The board as it stands against the rows a fresh build writes, attribute
+  // order aside. A patch that left a stale `disabled` or an old price behind
+  // fails here and not only on a person's screen.
+  const faithful = () => fp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    if (typeof d.chalkboardHtml !== 'function') return { same: false, why: 'no chalkboardHtml on __CK_DEBUG__' };
+    const norm = root => [...root.childNodes].map(n => n.nodeType === 3 ? n.nodeValue
+      : n.nodeType === 1 ? `<${n.tagName} ${[...n.attributes].map(a => `${a.name}=${a.value}`).sort().join(' ')}>${norm(n)}</${n.tagName}>` : '').join('');
+    const tpl = document.createElement('template');
+    tpl.innerHTML = d.chalkboardHtml();
+    const a = norm(document.getElementById('chalkContent')), b = norm(tpl.content);
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    return { same: a === b, why: a === b ? '' : `first difference at ${i}: "${a.slice(i, i + 60)}" against "${b.slice(i, i + 60)}"` };
+  });
+
+  // Tab from the pace switch into the board.
+  await fp.focus('[data-pace="quiet"]');
+  let tabs = 0;
+  for (; tabs < 6 && !(await here()).inBoard; tabs++) await fp.keyboard.press('Tab');
+  await fp.evaluate(() => { document.activeElement.__mark = true; });
+  let h0 = await here();
+  t.ok(h0.inBoard && h0.tag === 'BUTTON' && h0.tabindex === 0, 'Tab from the pace switch reaches a button on the board', `${tabs} Tab, "${h0.name}"`);
+  let f = await faithful();
+  t.ok(f.same, 'the board on first paint is exactly the rows a fresh build writes', f.why);
+
+  await fp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let h = await here();
+  t.ok(h.marked && h.inBoard, 'a redraw leaves the keyboard on the same button, which was not rebuilt', `${h.tag} "${h.name}"`);
+  t.ok(h.name === h0.name && h.idx === h0.idx && h.tabindex === 0, 'with the same name and the same place in the tab order', `"${h.name}" at ${h.idx} of ${h.count}`);
+
+  // A purchase somewhere else changes money, prices and what is affordable.
+  await fp.evaluate(() => {
+    const d = window.__CK_DEBUG__, s = d.sim.content.SYRUPS.find(x => !d.state.unlockedSyrups.has(x.id));
+    d.doUnlock('syrup', s.id);
+  });
+  h = await here();
+  t.ok(h.marked && h.name === h0.name, 'a purchase made elsewhere on the board leaves the keyboard where it was', `"${h.name}"`);
+  f = await faithful();
+  t.ok(f.same, 'and the board shows exactly what a fresh build shows after it', f.why);
+
+  // A row that appears above the button (an event) moves nothing under it.
+  await fp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.activeEvent = { id: 'rush', until: d.state.shiftElapsed + 60000 }; d.renderAll();
+  });
+  h = await here();
+  const eventRow = await fp.evaluate(() => /Event active/.test(document.getElementById('chalkContent').textContent));
+  t.ok(eventRow && h.marked && h.idx === h0.idx, 'a row added above it (an event) leaves the keyboard on the same button', `event row ${eventRow}, "${h.name}"`);
+  f = await faithful();
+  t.ok(f.same, 'with the event row drawn as a fresh build draws it', f.why);
+  await fp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.activeEvent = null; d.renderAll(); });
+  h = await here();
+  t.ok(h.marked && !(await fp.evaluate(() => /Event active/.test(document.getElementById('chalkContent').textContent))), 'and its going does too', `"${h.name}"`);
+
+  // The tab order is the board's order: Tab and Shift+Tab after a redraw.
+  await fp.keyboard.press('Tab');
+  const h1 = await here();
+  t.ok(h1.inBoard && h1.idx === h0.idx + 1, 'Tab after a redraw goes to the next button on the board', `${h0.idx} -> ${h1.idx} "${h1.name}"`);
+  await fp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  await fp.keyboard.down('Shift'); await fp.keyboard.press('Tab'); await fp.keyboard.up('Shift');
+  h = await here();
+  t.ok(h.marked, 'and Shift+Tab after another redraw comes back to the first one', `"${h.name}"`);
+
+  // A button whose words change with what it toggles keeps the keyboard.
+  await fp.evaluate(() => { const b = document.querySelector('#chalkContent [data-schedule-barista]'); b.__sched = true; b.focus(); });
+  const sched = () => fp.evaluate(() => {
+    const a = document.activeElement, d = window.__CK_DEBUG__;
+    return { same: !!(a && a.__sched), text: a ? a.textContent.replace(/\s+/g, ' ').trim().slice(0, 60) : '', working: d.state.baristas[0].working !== false };
+  });
+  let s0 = await sched();
+  await fp.keyboard.press('Enter');
+  await wait(150);
+  let s1 = await sched();
+  t.ok(s0.working && !s1.working && /^Off today/.test(s1.text), 'Enter on "Give day off" gives the day off and the button says so', `${s0.text} -> ${s1.text}`);
+  t.ok(s1.same, 'and the keyboard is still on that button', s1.text);
+  await fp.keyboard.press('Enter');
+  await wait(150);
+  s1 = await sched();
+  t.ok(s1.same && s1.working && /^Working/.test(s1.text), 'Enter again calls them back in, on the same button', s1.text);
+  f = await faithful();
+  t.ok(f.same, 'and the board is still exactly a fresh build', f.why);
+
+  // Real play: a shift running for two seconds redraws the board as it likes.
+  await fp.evaluate(() => { document.querySelector('#chalkContent [data-schedule-barista]').focus(); });
+  await wait(2000);
+  s1 = await sched();
+  t.ok(s1.same, 'two seconds of the shift running leave the keyboard on the board', s1.text);
+  t.ok(fp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', fp.__errs.join(' | ') || 'clean');
+  await fp.close();
   }
 
 } finally {
