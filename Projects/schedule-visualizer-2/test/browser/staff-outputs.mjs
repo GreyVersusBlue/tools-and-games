@@ -453,6 +453,9 @@ before(async () => {
   await write('signs', (project) => {
     const rooms = project.building.floors.flatMap((floor) => floor.spaces);
     rooms.find((space) => space.id === 'rsample102').number = CJK_SEVEN;
+    // the widest Latin capitals the sign's face has, seven of them (SV2-53 item 2)
+    rooms.find((space) => space.id === 'rsample103').number = 'WWWWWWW';
+    rooms.find((space) => space.id === 'rsample204').number = 'MW-1004';
     const shared = rooms.find((space) => space.id === 'rsample203');
     shared.subjectId = null;
     shared.teacherIds = ['tsample007', 'tsample001'];
@@ -2207,6 +2210,50 @@ test('seven full-square characters stay on one line of the sign, and two teacher
       assert.deepEqual(number, { text: CJK_SEVEN, fit: '0.5', lines: 1, inside: true }, 'at ' + width + ' px');
       await move(page, '#/door/rsample203', 'Door sign: Room 203');
       assert.deepEqual(await texts(page, '.sign p'), ['Room', '203', 'Ms. Vandermeer and Ms. Halloran', SCHOOL]);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// SV2-53 item 2. Until SV2-53 signWidth counted a Latin character as one of
+// seven at full size whatever its shape, and seven W's wrapped to a second
+// line at 120 pt. W and M are the widest letters the sign's face draws, so
+// seven of them, set at the fit their count gives, must stand on one line
+// inside the sheet: on a phone, on a desktop and on paper.
+test('seven of the widest capitals, "WWWWWWW" and "MW-1004", stand on one line of the sign at the fit, on screen and on paper', async () => {
+  // a phone, a desktop, and the inside of a sheet of US Letter and of A4 (PAPERS_INSIDE) for paper
+  for (const [width, height, media] of [[390, 900, 'screen'], [1280, 900, 'screen'], [710, 950, 'print'], [688, 1017, 'print']]) {
+    const session = await openPage({ width, height });
+    try {
+      const { page } = session;
+      for (const [room, text] of [['rsample103', 'WWWWWWW'], ['rsample204', 'MW-1004']]) {
+        await goto(page, files.signs.url + '#/door/' + room);
+        await page.emulateMediaType(media);
+        await page.waitForFunction((m) => matchMedia(m).matches, {}, media);
+        const number = await page.evaluate(() => {
+          const el = document.querySelector('.sign__number');
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sheet = document.querySelector('.sheet').getBoundingClientRect();
+          const box = el.getBoundingClientRect();
+          return {
+            boxes: el.getClientRects().length,
+            text: el.textContent,
+            fit: el.style.getPropertyValue('--sign-fit').trim(),
+            // one line: every piece of the text has the same top
+            lines: new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size,
+            inside: el.scrollWidth <= el.clientWidth && box.left >= sheet.left - 0.5 && box.right <= sheet.right + 0.5,
+          };
+        });
+        const at = text + ' at ' + width + ' by ' + height + ' on ' + media;
+        assert.ok(number.boxes > 0, 'the number has a box: ' + at);
+        delete number.boxes;
+        assert.ok(Math.abs(Number(number.fit) - signFit(text)) < 1e-9 && signFit(text) < 1, 'set smaller by its count, ' + signFit(text) + ': ' + at + ', ' + number.fit);
+        delete number.fit;
+        assert.deepEqual(number, { text, lines: 1, inside: true }, at);
+      }
       assert.deepEqual(session.errors, []);
     } finally {
       await session.close();

@@ -529,6 +529,36 @@ test('the sign does not count short: a keycap, an emoji-form mark after a narrow
   assert.equal(signFit('1\uFE0F\u20E3'.repeat(4)), 7 / 8, 'four keycaps are eight wide, set smaller');
 });
 
+// SV2-53 item 2, the Foreman's sw2.mjs. A symbol asked for in its text form
+// (U+FE0E) is a letter, not a picture: a joiner after it joins nothing and a
+// skin tone after it is a square. A symbol with its skin tone is an emoji
+// whatever follows. The two-em and three-em dashes are two and three letters
+// long, and the letters the sign's face draws wider than a seventh of the line
+// count their width (measured in Barlow Semi Condensed 600), so seven W's are
+// set small enough to stay on one line (the browser case is staff-outputs.mjs).
+test('the sign does not count short after a text-form symbol, for a toned symbol, for the long dashes, or for the broad letters', () => {
+  const rows = [
+    ['\u2764\uFE0E\u200D\u{1F525}'.repeat(4), 12, 'a heart in text form, a joiner and fire, four times: the joiner joins nothing'],
+    ['\u2764\uFE0E\u200D\u{1F525}', 3, 'once'],
+    ['\u261D\uFE0E\u{1F3FD}', 3, 'a skin tone after a text-form symbol is a square of its own'],
+    ['\u261D\uFE0E\u{1F3FD}'.repeat(4), 12, 'four times'],
+    ['\u261D\u{1F3FD}\uFE0E', 2, 'a toned symbol is an emoji, whatever follows'],
+    ['\u261D\u{1F3FD}', 2, 'as it is with nothing after it'],
+    ['\u2E3A', 2, 'the two-em dash'],
+    ['\u2E3B', 3, 'the three-em dash'],
+    ['A\u2E3BB\u2E3BC', 9, 'letters between three-em dashes'],
+    ['WWWWWWW', 10.5, 'seven W\'s are ten and a half letters'],
+    ['MW-1004', 7.75, 'M and W are broad, the rest one each'],
+    ['mw%@', 5.75, 'the broad lower-case letters and signs'],
+    ['\u00C6\u00BE', 3.5, 'AE and three quarters'],
+    ['HHHHHHH', 7, 'the widest letters that are not broad fit seven'],
+    ['#\uFE0F\u20E3', 2, 'a broad sign made a keycap is two, not more'],
+  ];
+  for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
+  assert.equal(signFit('WWWWWWW'), 7 / 10.5);
+  assert.equal(signFit('HHHHHHH'), 1);
+});
+
 // ---------------------------------------------------------------- the batch's count (item 6)
 
 test('how many sheets a batch is comes from the school the sheets are made from: the published copy, opened once the way render opens it', () => {
