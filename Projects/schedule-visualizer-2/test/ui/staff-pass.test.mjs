@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { PUBLISHED_SETTINGS } from '../../ui/staff/preview.js';
+import { PUBLISHED_SETTINGS, readerSeesChange } from '../../ui/staff/preview.js';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { failureSentence, feedPreview, LinkError, ReadError } from '../../ui/staff/assemble.js';
 import { publishedModel } from '../../engine/publish-data.js';
@@ -246,6 +246,26 @@ test('once the file is out, Publish asks for no checks itself: update() does, fo
   const after = form.slice(form.indexOf('// From here the file is out'), form.indexOf('  button.addEventListener(\'click\', publish);'));
   assert.ok(after.length > 200, 'the part of publish() after the file goes out was found');
   assert.doesNotMatch(after, /askChecks\(/);
+});
+
+// SV2-53 item 1, the Foreman's parts.mjs: Publish says the schedule changed
+// while the file was made when a reader would see a change, and a passcode
+// turned on or off is one. Each project is read as the file it would make;
+// until SV2-53 both were read with the made file's flag, so on-in-the-gap
+// was no change and off-in-the-gap was.
+test('a passcode turned on or off while the file is made is a change a reader sees; a theme is not', () => {
+  const base = { id: 'p', settings: { schoolName: 'S', theme: 'auto' }, building: {}, subjects: [], teachers: [], dayTypes: [], groups: [], publish: { views: {}, passcode: '' } };
+  const on = { ...base, publish: { ...base.publish, passcode: 'secret1' } };
+  const other = { ...on, publish: { ...on.publish, passcode: 'secret2' } };
+  const themed = { ...base, settings: { ...base.settings, theme: 'dark' } };
+  assert.equal(readerSeesChange(base, on), true, 'turned on while the file was made');
+  assert.equal(readerSeesChange(on, base), true, 'turned off while the file was made');
+  assert.equal(readerSeesChange(on, other), true, 'a locked file with another passcode');
+  assert.equal(readerSeesChange(base, themed), false, 'a theme is a new project and the same file');
+  assert.equal(readerSeesChange(on, on), false, 'the same project');
+  // the page's own use: form.js says MOVED_ON by this rule and no other
+  const form = readFileSync(new URL('../../ui/staff/form.js', import.meta.url), 'utf8');
+  assert.match(form, /const moved = readerSeesChange\(project, store\.project\);/);
 });
 
 // ---------------------------------------------------------------- the section's hooks and first line (SV2-51 item 10)

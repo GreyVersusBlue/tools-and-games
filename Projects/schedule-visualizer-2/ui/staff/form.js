@@ -39,7 +39,7 @@ import { isProtected } from '../../engine/publish-data.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageReader, failureSentence } from './assemble.js';
 import { publishDocument, deviceRandom, fileTarget } from './targets.js';
-import { partsOf, sameParts } from './preview.js';
+import { readerSeesChange } from './preview.js';
 import { readerSentences, readerSummary, NOTHING_REMAINS as NOTHING } from './readers.js';
 
 // What each view is called on the form, in the order of spec 12.2.
@@ -343,7 +343,7 @@ export function publishForm(ctx, hooks) {
       // From here the file is out, and nothing below may say it is not.
       // "The schedule changed" only when something a reader would see did: a
       // theme or a paper size is a new project and the same file.
-      const moved = store.project !== project && !sameParts(partsOf(project, published.locked), partsOf(store.project, published.locked));
+      const moved = readerSeesChange(project, store.project);
       // A tab that cannot change the project still made its file. It is not
       // asked to note it: the refusal's toast ("Nothing changed") would be
       // the one false thing on the screen.

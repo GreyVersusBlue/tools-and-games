@@ -1347,6 +1347,35 @@ test('a theme, a paper size or a head count changed while the file is being made
   });
 });
 
+// SV2-53 item 1. A passcode turned on or off while the file is being made
+// is a change a reader sees: one file asks for a passcode and the other
+// does not. Until SV2-53 the form read both projects with the made file's
+// own flag, so turning the passcode on in the gap said nothing and turning
+// it off said the schedule changed only by luck of the flag.
+test('a passcode turned on or off while the file is being made is said as a change, each way', async () => {
+  await closing(await open(), async (page) => {
+    const status = async () => [await says(page, 'published'), await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf || null)];
+    // the sample asks for a passcode: turned off in the gap
+    await pressAndHold(page);
+    await apply(page, 'setPublishSetting', { key: 'passcode', value: '' });
+    assert.equal((await letGo(page)).made, true);
+    const [off, offOf] = await status();
+    assert.ok(off.includes('. ' + MOVED_ON + ' '), 'a passcode turned off while the file was made: ' + off);
+    assert.ok(off.includes('It asks for the staff passcode: '), 'the file is the locked one Publish was pressed on: ' + off);
+    assert.equal(offOf, 'earlier');
+    // and with none, turned on in the gap
+    await pressAndHold(page);
+    await apply(page, 'setPublishSetting', { key: 'passcode', value: 'lanterns-41' });
+    assert.equal((await letGo(page)).made, true);
+    const [on, onOf] = await status();
+    assert.ok(on.includes('. ' + MOVED_ON + ' '), 'a passcode turned on while the file was made: ' + on);
+    assert.ok(on.endsWith('It opens with no passcode.'), on);
+    assert.equal(onOf, 'earlier');
+    // put the sample's passcode back for the cases that follow
+    await apply(page, 'setPublishSetting', { key: 'passcode', value: 'bulldogs2015' });
+  });
+});
+
 test('the file went out and the project then would not record it: the status says Published and that it is not recorded, never that nothing was published', async () => {
   await closing(await open(), async (page) => {
     await page.evaluate(async () => {

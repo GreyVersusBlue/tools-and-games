@@ -75,6 +75,17 @@ export function sameParts(a, b) {
   return a !== null && a.length === b.length && a.every((part, at) => part === b[at]);
 }
 
+// Whether a reader would see a change between two projects, each read as
+// the file it would make: locked when its own passcode is on. Publish says
+// "the schedule changed while the file was being made" by this (form.js).
+// A passcode turned on or off between the two is a change: one file asks
+// for a passcode and the other does not. Until SV2-53 the form read both
+// with the made file's flag, so a passcode turned on during assembly was no
+// change and one turned off was.
+export function readerSeesChange(before, after) {
+  return before !== after && !sameParts(partsOf(before, isProtected(before)), partsOf(after, isProtected(after)));
+}
+
 export function preview(ctx) {
   const state = { loaded: false, opened: false, live: false, sent: 0, width: 'phone', locked: false };
   let data = null;
