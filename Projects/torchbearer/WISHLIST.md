@@ -371,13 +371,38 @@ Open and unclaimed. Add here rather than starting a new list.
     bearing**, as every range and reach in the engine is, so a 30-foot line is
     six squares on a diagonal where the tabletop's 5-10-5 count gives four;
     counted the tabletop's way the best click fell to 1.40, a cut nobody asked
-    for, so it was not taken. The squares that light for aiming a cone are
-    still every square in a 7 by 7 box the caster can see, of which the cone's
-    own are a part; the grid has no keyboard aiming; `Widen Spell` is still
-    flavour; a monster's power is still a `radius` and cannot be a cone or a
-    line (the suite fails the day a pack writes one, and points at
-    `areaCells`); and **no browser check arms an area**, so the lit squares
-    are asserted in Node off `previewCells` and as text in the page.
+    for, so it was not taken. `Widen Spell` is still flavour; a monster's
+    power is still a `radius` and cannot be a cone or a line (the suite fails
+    the day a pack writes one, and points at `areaCells`).
+  - ~~**The lit squares were a checkerboard and nothing opened the page to
+    see it.**~~ **Fixed 2026-10-14, #966.** `.cell.floor.alt` is three
+    classes and outranked the two-class `.cell.hl-aoe`, `.cell.hl-move` and
+    `.cell.hl-target`, so every other lit square kept the floor's fill and
+    showed only its ring. The highlights sit under `#grid` now. The squares a
+    click may aim at (still every square in range the caster can see, which
+    for a cone is a 7 by 7 box: the engine's `aimable`, unchanged) are a thin
+    ring and an amber fill; the squares the aim would hit are a thick ring and
+    a hotter fill, following the pointer. `test/browser.mjs` arms Stride,
+    Seek, Breathe Fire, Grim Tendrils and a burst in the Chapel Yard, hovers
+    two aims each and compares the lit squares with `aimable` and
+    `previewCells`, then casts the line once. Torchbearer CI runs it.
+  - **Keyboard aiming, a proposal, not built.** The grid has no keyboard
+    model at all: the cells are plain `div`s with no `tabindex` and a click
+    handler each, and the page's only keyboard path into play is the action
+    bar's buttons and the `.opt-card` Enter handler. Aiming by key would
+    invent the model, so it is written here instead. What it would take:
+    `#grid` gets `role="grid"` and one roving `tabindex="0"` cell (the
+    caster's square when an area is armed, the hero's otherwise); arrow keys
+    move it one square, diagonals on Home/End/PageUp/PageDown or on two
+    arrows held; moving it calls `paintPreview` for that square exactly as a
+    hover does; Enter calls `cellClick`; Escape clears `armed` and its hint,
+    where today Escape only closes a modal; the focused cell wears the site's `:focus-visible` brass outline;
+    and each move writes "aiming at column C, row R: N squares, M foes" into
+    the `#toast` status region, which is the only live region the page
+    announces actions in besides the Chronicle log. Open calls before it is
+    built: whether arrows also move a Stride's destination (one model for
+    every armed action, or areas only), and whether a token gets focus as
+    its own stop or only through its square.
 - The AI never Steps away, and retreats only while `fleeing` — and a flee now
   provokes, like every other Stride.
 - No Hide, Seek, Take Cover, Trip, Grapple, Shove (outside the `brutish-shove`

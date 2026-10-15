@@ -5994,12 +5994,16 @@ export function initRender(canvas) {
 
   // A roof face — a triangle or a quad in 3D — with planar UVs off its own
   // world footprint, so shingle courses come out at shingle size on a slope.
-  // White vertex colours, for the same reason `drapedRegion` uses them.
-  function roofFace(pts, color = '#ffffff') {
+  // White vertex colours, for the same reason `drapedRegion` uses them. A
+  // rectangle's faces are convex and fanned from the first point; a skeleton
+  // face over a curve need not be, and brings its own triangles (#967).
+  function roofFace(pts, color = '#ffffff', tris = null) {
     const verts = [];
     const uvs = [];
-    for (let i = 1; i + 1 < pts.length; i++) {
-      for (const p of [pts[0], pts[i], pts[i + 1]]) {
+    const fan = [];
+    for (let i = 1; i + 1 < pts.length; i++) fan.push([0, i, i + 1]);
+    for (const tri of tris || fan) {
+      for (const p of tri.map((k) => pts[k])) {
         verts.push(p.x, p.y, p.z);
         uvs.push(p.x, -p.z);
       }
@@ -6033,9 +6037,14 @@ export function initRender(canvas) {
         { x: rect.x0, y: plan.eaveY + 0.05, z: rect.z1 },
       ]));
     }
+    // A parapet over a curve: the deck is the outline, in its own triangles.
+    for (const poly of plan.deckPolys || []) {
+      const geo = roofFace(poly.pts.map((p) => ({ x: p.x, y: plan.eaveY + 0.05, z: p.z })), '#ffffff', poly.tris);
+      if (geo) deckGeos.push(geo);
+    }
     for (const block of plan.blocks) {
       for (const f of block.faces) {
-        const geo = roofFace(f.pts);
+        const geo = roofFace(f.pts, '#ffffff', f.tris);
         if (geo) slopeGeos.push(geo);
       }
       for (const g of block.gables) {

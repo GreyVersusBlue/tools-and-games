@@ -60,6 +60,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const ONLY_A11Y = process.argv.includes('--a11y');
 // `--pace` runs section 16 alone the same way: the pace switch on the board.
 const ONLY_PACE = process.argv.includes('--pace');
+// `--focus` runs sections 17 to 19 alone: the board, the queue, the
+// stations row and the open station's panel keeping the keyboard on a redraw.
+const ONLY_FOCUS = process.argv.includes('--focus');
 
 /**
  * Click a control inside the chalkboard. The panel is a ~3,000 px scroll
@@ -122,7 +125,7 @@ const p = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
 
 try {
   sections: {
-  if (ONLY_A11Y || ONLY_PACE) break sections;
+  if (ONLY_A11Y || ONLY_PACE || ONLY_FOCUS) break sections;
   /* ---------- 1. the page boots at all ---------- */
 
   t.section('1. the module script runs');
@@ -1088,7 +1091,7 @@ try {
   // it alone.
 
   a11y: {
-  if (ONLY_PACE) break a11y;
+  if (ONLY_PACE || ONLY_FOCUS) break a11y;
   t.section('15. without colour, and without motion (#916, #917)');
   const ap = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(ap, { wipe: true });
@@ -1283,7 +1286,7 @@ try {
   // save, so `--pace` can run it alone.
 
   pace: {
-  if (ONLY_A11Y) break pace;
+  if (ONLY_A11Y || ONLY_FOCUS) break pace;
   t.section('16. the pace switch on the Menu Board (#947)');
   const pp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(pp, { wipe: true });
@@ -1417,6 +1420,492 @@ try {
   t.ok(b.pace === 'busy' && (await savedState(pp)).pace === 'busy' && Math.abs(quietDoor / b.door - 1.3) < 1e-9, 'and a click on Busy Corner puts the new shop back on today\'s game', `${b.pace}, door ${quietDoor} -> ${b.door}`);
   t.ok(pp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', pp.__errs.join(' | ') || 'clean');
   await pp.close();
+  }
+
+  /* ---------- 17. the Menu Board keeps the keyboard ---------- */
+  // Everything under the pace switch was written as one innerHTML on every
+  // redraw, so a player who had tabbed to a button lost it to the next sale
+  // and the next Tab started again from the top of the page (#968). The board
+  // is now patched in place: a button that does the same thing as before is
+  // the same element, with its focus, its place in the tab order and its name.
+  // The DOM is the assertion (#39), and what the board shows is held to a
+  // fresh build of the same rows after every step.
+
+  focus: {
+  if (ONLY_A11Y || ONLY_PACE) break focus;
+  t.section('17. the Menu Board keeps the keyboard across a redraw (#968)');
+  const fp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(fp, { wipe: true });
+  await fp.evaluate(() => { window.confirm = () => true; });
+  // Money and one hand on staff, so the Staff rows have their buttons.
+  await fp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.money = 5000; d.doUnlock('hireBarista'); d.state.money = 5000; d.renderAll();
+  });
+  await fp.click('#chalkToggle');
+  await wait(500);
+  const here = () => fp.evaluate(() => {
+    const a = document.activeElement;
+    const btns = [...document.querySelectorAll('#chalkContent button')];
+    return {
+      marked: !!(a && a.__mark), inBoard: !!(a && a.closest && a.closest('#chalkContent')), tag: a && a.tagName,
+      name: a ? (a.getAttribute('aria-label') || a.textContent.replace(/\s+/g, ' ').trim()).slice(0, 60) : '',
+      idx: btns.indexOf(a), tabindex: a ? a.tabIndex : null, count: btns.length,
+    };
+  });
+  // The board as it stands against the rows a fresh build writes, attribute
+  // order aside. A patch that left a stale `disabled` or an old price behind
+  // fails here and not only on a person's screen.
+  const faithful = () => fp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    if (typeof d.chalkboardHtml !== 'function') return { same: false, why: 'no chalkboardHtml on __CK_DEBUG__' };
+    const norm = root => [...root.childNodes].map(n => n.nodeType === 3 ? n.nodeValue
+      : n.nodeType === 1 ? `<${n.tagName} ${[...n.attributes].map(a => `${a.name}=${a.value}`).sort().join(' ')}>${norm(n)}</${n.tagName}>` : '').join('');
+    const tpl = document.createElement('template');
+    tpl.innerHTML = d.chalkboardHtml();
+    const a = norm(document.getElementById('chalkContent')), b = norm(tpl.content);
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    return { same: a === b, why: a === b ? '' : `first difference at ${i}: "${a.slice(i, i + 60)}" against "${b.slice(i, i + 60)}"` };
+  });
+
+  // Tab from the pace switch into the board.
+  await fp.focus('[data-pace="quiet"]');
+  let tabs = 0;
+  for (; tabs < 6 && !(await here()).inBoard; tabs++) await fp.keyboard.press('Tab');
+  await fp.evaluate(() => { document.activeElement.__mark = true; });
+  let h0 = await here();
+  t.ok(h0.inBoard && h0.tag === 'BUTTON' && h0.tabindex === 0, 'Tab from the pace switch reaches a button on the board', `${tabs} Tab, "${h0.name}"`);
+  let f = await faithful();
+  t.ok(f.same, 'the board on first paint is exactly the rows a fresh build writes', f.why);
+
+  await fp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let h = await here();
+  t.ok(h.marked && h.inBoard, 'a redraw leaves the keyboard on the same button, which was not rebuilt', `${h.tag} "${h.name}"`);
+  t.ok(h.name === h0.name && h.idx === h0.idx && h.tabindex === 0, 'with the same name and the same place in the tab order', `"${h.name}" at ${h.idx} of ${h.count}`);
+
+  // A purchase somewhere else changes money, prices and what is affordable.
+  await fp.evaluate(() => {
+    const d = window.__CK_DEBUG__, s = d.sim.content.SYRUPS.find(x => !d.state.unlockedSyrups.has(x.id));
+    d.doUnlock('syrup', s.id);
+  });
+  h = await here();
+  t.ok(h.marked && h.name === h0.name, 'a purchase made elsewhere on the board leaves the keyboard where it was', `"${h.name}"`);
+  f = await faithful();
+  t.ok(f.same, 'and the board shows exactly what a fresh build shows after it', f.why);
+
+  // A row that appears above the button (an event) moves nothing under it.
+  await fp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.activeEvent = { id: 'rush', until: d.state.shiftElapsed + 60000 }; d.renderAll();
+  });
+  h = await here();
+  const eventRow = await fp.evaluate(() => /Event active/.test(document.getElementById('chalkContent').textContent));
+  t.ok(eventRow && h.marked && h.idx === h0.idx, 'a row added above it (an event) leaves the keyboard on the same button', `event row ${eventRow}, "${h.name}"`);
+  f = await faithful();
+  t.ok(f.same, 'with the event row drawn as a fresh build draws it', f.why);
+  await fp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.activeEvent = null; d.renderAll(); });
+  h = await here();
+  t.ok(h.marked && !(await fp.evaluate(() => /Event active/.test(document.getElementById('chalkContent').textContent))), 'and its going does too', `"${h.name}"`);
+
+  // A row that loses nodes: the reopen row from open (its <b> bean count, a
+  // button) back to locked (one line of words, a padlock).
+  const reopenRow = () => fp.evaluate(() => document.querySelector('#chalkContent [data-row="reopen"]')?.innerHTML.replace(/\s+/g, ' ') || '');
+  await fp.evaluate(() => { const d = window.__CK_DEBUG__; d.__day = d.state.day; d.state.day = d.sim.content.PRESTIGE_MIN_DAY; d.renderAll(); });
+  const opened = await reopenRow();
+  await fp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.day = d.__day; d.renderAll(); });
+  const closed = await reopenRow();
+  f = await faithful();
+  t.ok(/<b>/.test(opened) && !/<b>/.test(closed) && f.same, 'a row that loses words and a button (reopen, open then locked) is left with none of them', f.why || closed.slice(0, 80));
+  h = await here();
+  t.ok(h.marked, 'and the keyboard stayed where it was through both', `"${h.name}"`);
+
+  // The tab order is the board's order: Tab and Shift+Tab after a redraw.
+  await fp.keyboard.press('Tab');
+  const h1 = await here();
+  t.ok(h1.inBoard && h1.idx === h0.idx + 1, 'Tab after a redraw goes to the next button on the board', `${h0.idx} -> ${h1.idx} "${h1.name}"`);
+  await fp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  await fp.keyboard.down('Shift'); await fp.keyboard.press('Tab'); await fp.keyboard.up('Shift');
+  h = await here();
+  t.ok(h.marked, 'and Shift+Tab after another redraw comes back to the first one', `"${h.name}"`);
+
+  // A button whose words change with what it toggles keeps the keyboard.
+  await fp.evaluate(() => { const b = document.querySelector('#chalkContent [data-schedule-barista]'); b.__sched = true; b.focus(); });
+  const sched = () => fp.evaluate(() => {
+    const a = document.activeElement, d = window.__CK_DEBUG__;
+    return { same: !!(a && a.__sched), text: a ? a.textContent.replace(/\s+/g, ' ').trim().slice(0, 60) : '', working: d.state.baristas[0].working !== false };
+  });
+  let s0 = await sched();
+  await fp.keyboard.press('Enter');
+  await wait(150);
+  let s1 = await sched();
+  t.ok(s0.working && !s1.working && /^Off today/.test(s1.text), 'Enter on "Give day off" gives the day off and the button says so', `${s0.text} -> ${s1.text}`);
+  t.ok(s1.same, 'and the keyboard is still on that button', s1.text);
+  await fp.keyboard.press('Enter');
+  await wait(150);
+  s1 = await sched();
+  t.ok(s1.same && s1.working && /^Working/.test(s1.text), 'Enter again calls them back in, on the same button', s1.text);
+  f = await faithful();
+  t.ok(f.same, 'and the board is still exactly a fresh build', f.why);
+
+  // A button whose purchase changed is a new element, so Enter held down
+  // cannot buy the next station on the strength of having bought this one.
+  const st = await fp.evaluate(() => {
+    const b = document.querySelector('#chalkContent [data-unlock-station]'); b.__st = true; b.focus();
+    return { slots: window.__CK_DEBUG__.state.slots.length, was: b.dataset.unlockStation };
+  });
+  await fp.keyboard.press('Enter');
+  await wait(150);
+  const st2 = await fp.evaluate(() => {
+    const a = document.activeElement, n = document.querySelector('#chalkContent [data-unlock-station]');
+    return { slots: window.__CK_DEBUG__.state.slots.length, kept: !!(a && a.__st), next: n ? n.dataset.unlockStation : null, nextOld: !!(n && n.__st) };
+  });
+  t.ok(st2.slots === st.slots + 1 && st2.next !== st.was, 'Enter on a station unlock buys it and the row offers the next one', `${st.slots} -> ${st2.slots} slots, button ${st.was} -> ${st2.next}`);
+  t.ok(!st2.kept && !st2.nextOld, 'on a new button, not the one the keyboard pressed', `kept ${st2.kept}`);
+
+  // Real play: a shift running for two seconds redraws the board as it likes.
+  await fp.evaluate(() => { document.querySelector('#chalkContent [data-schedule-barista]').focus(); });
+  await wait(2000);
+  s1 = await sched();
+  t.ok(s1.same, 'two seconds of the shift running leave the keyboard on the board', s1.text);
+  t.ok(fp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', fp.__errs.join(' | ') || 'clean');
+  await fp.close();
+  }
+
+  /* ---------- 18. the queue and the stations row keep the keyboard ---------- */
+  // Both were emptied and rebuilt with createElement on every redraw, and the
+  // queue redraws whenever the shop does anything, so a customer or a station
+  // button the player had tabbed to was gone within a second and the next Tab
+  // started from the top of the page. Both are patched in place now, the way
+  // the Menu Board is (section 17), and held to a fresh build after each step.
+
+  queue: {
+  if (ONLY_A11Y || ONLY_PACE) break queue;
+  t.section('18. the queue and the stations row keep the keyboard across a redraw');
+  const qp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(qp, { wipe: true });
+  await qp.evaluate(() => { window.confirm = () => true; });
+  // Whoever has the keyboard, tagged by what the player would hear.
+  const where = () => qp.evaluate(() => {
+    const a = document.activeElement;
+    const inQ = !!(a && a.closest && a.closest('#queueRow')), inS = !!(a && a.closest && a.closest('#slots'));
+    const peers = inQ ? [...document.querySelectorAll('#queueRow button')] : [...document.querySelectorAll('#slots button')];
+    return {
+      marked: !!(a && a.__mark), inQ, inS, tag: a && a.tagName,
+      name: a ? (a.getAttribute('aria-label') || a.textContent.replace(/\s+/g, ' ').trim()).slice(0, 70) : '',
+      idx: peers.indexOf(a),
+      // From the whole label: a regular's is long enough to cut it off `name`.
+      pat: a ? ((a.getAttribute('aria-label') || '').match(/(\d+)% patience/) || [])[1] || null : null,
+    };
+  });
+  // The row as it stands against a fresh build of it, attribute order and
+  // comments aside, measured in one task so no frame runs in between.
+  const fresh = (id, fn) => qp.evaluate((id, fn) => {
+    const d = window.__CK_DEBUG__;
+    if (typeof d[fn] !== 'function') return { same: false, why: `no ${fn} on __CK_DEBUG__` };
+    const norm = root => [...root.childNodes].map(n => n.nodeType === 3 ? n.nodeValue
+      : n.nodeType === 1 ? `<${n.tagName} ${[...n.attributes].map(a => `${a.name}=${a.value}`).sort().join(' ')}>${norm(n)}</${n.tagName}>` : '').join('');
+    const tpl = document.createElement('template');
+    tpl.innerHTML = d[fn]();
+    const a = norm(document.getElementById(id)), b = norm(tpl.content);
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    return { same: a === b, why: a === b ? '' : `first difference at ${i}: "${a.slice(i, i + 60)}" against "${b.slice(i, i + 60)}"` };
+  }, id, fn);
+  const queueFresh = () => fresh('queueRow', 'queueHtml');
+  const slotsFresh = () => fresh('slots', 'slotsHtml');
+
+  // The queue. Tab from the top of the page to the first customer.
+  await qp.evaluate(() => { document.activeElement && document.activeElement.blur(); });
+  let tabs = 0;
+  for (; tabs < 40 && !(await where()).inQ; tabs++) await qp.keyboard.press('Tab');
+  await qp.evaluate(() => { document.activeElement.__mark = true; });
+  const q0 = await where();
+  t.ok(q0.inQ && q0.tag === 'BUTTON' && q0.idx === 0, 'Tab from the top of the page reaches the first customer in the queue', `${tabs} Tab, "${q0.name}"`);
+  let f = await queueFresh();
+  t.ok(f.same, 'the queue on first paint is exactly what a fresh build writes', f.why);
+
+  await qp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let q = await where();
+  t.ok(q.marked && q.inQ && q.idx === 0, 'a redraw leaves the keyboard on the same customer, which was not rebuilt', `"${q.name}"`);
+
+  // The shift running: patience drains, so the label and the bar move.
+  await wait(2500);
+  q = await where();
+  f = await queueFresh();
+  t.ok(q.marked && q.idx === 0, 'two and a half seconds of the shift running leave the keyboard on that customer', `"${q.name}"`);
+  t.ok(f.same && q.pat !== null && q.pat !== q0.pat, 'whose label now says the patience left, as a fresh build does', `${q0.pat}% -> ${q.pat}%${f.why ? ', ' + f.why : ''}`);
+
+  // A customer arriving behind and one taken from beside it.
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.queue.push(d.generateOrder()); d.renderAll(); });
+  q = await where();
+  t.ok(q.marked && q.idx === 0, 'a customer arriving at the back leaves the keyboard where it was', `"${q.name}"`);
+  const took = await qp.evaluate(() => { const d = window.__CK_DEBUG__, id = d.state.queue[1].id; d.tryAcceptCustomer(id); return d.state.slots.some(s => s && s.customer.id === id); });
+  q = await where();
+  f = await queueFresh();
+  t.ok(took && q.marked && q.idx === 0, 'the customer beside it taken to a station leaves the keyboard where it was', `"${q.name}"`);
+  t.ok(f.same, 'and the queue is exactly a fresh build after it', f.why);
+
+  // The tab order is the queue's order after a redraw.
+  await qp.keyboard.press('Tab');
+  const q1 = await where();
+  t.ok(q1.inQ && q1.idx === 1, 'Tab after a redraw goes to the next customer', `${q.idx} -> ${q1.idx} "${q1.name}"`);
+  await qp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  await qp.keyboard.down('Shift'); await qp.keyboard.press('Tab'); await qp.keyboard.up('Shift');
+  q = await where();
+  t.ok(q.marked, 'and Shift+Tab after another redraw comes back to the first', `"${q.name}"`);
+
+  // Enter takes the order. The customer leaves the queue, so the element goes
+  // with them; where the keyboard lands then is reported, not ruled on.
+  const before = await qp.evaluate(() => window.__CK_DEBUG__.state.slots.filter(Boolean).length);
+  await qp.keyboard.press('Enter');
+  await wait(150);
+  const after = await qp.evaluate(() => {
+    const d = window.__CK_DEBUG__, a = document.activeElement;
+    return { n: d.state.slots.filter(Boolean).length, at: a === document.body ? 'body' : a && a.tagName };
+  });
+  t.ok(after.n === before + 1, 'Enter on that customer takes the order to a station', `${before} -> ${after.n} stations busy; keyboard then on ${after.at}`);
+
+  // The stations row. Station 1 holds an order; Tab into it from the queue.
+  await qp.focus('#queueRow button:last-child');
+  tabs = 0;
+  for (; tabs < 10 && !(await where()).inS; tabs++) await qp.keyboard.press('Tab');
+  await qp.evaluate(() => { document.activeElement.__mark = true; });
+  const s0 = await where();
+  t.ok(s0.inS && s0.tag === 'BUTTON', 'Tab from the queue reaches a button on a station', `${tabs} Tab, "${s0.name}"`);
+  f = await slotsFresh();
+  t.ok(f.same, 'the stations row is exactly what a fresh build writes', f.why);
+  await qp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let s = await where();
+  t.ok(s.marked && s.inS && s.idx === s0.idx, 'a redraw leaves the keyboard on the same station button', `"${s.name}"`);
+
+  // Work on the cup changes the ticket, the cup and the Serve button.
+  const serve0 = await qp.evaluate(() => document.querySelector('#slots .servebtn').outerHTML.slice(0, 200));
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__; const sl = d.state.slots.find(Boolean); for (let i = 0; i < 12 && d.autoAssistStep(sl); i++); d.renderAll(); });
+  const serve1 = await qp.evaluate(() => document.querySelector('#slots .servebtn').outerHTML.slice(0, 200));
+  s = await where();
+  f = await slotsFresh();
+  t.ok(serve0 !== serve1 && s.marked && s.idx === s0.idx, 'the cup made up changes the Serve button and leaves the keyboard where it was', `"${s.name}"`);
+  t.ok(f.same && !/disabled/.test(serve1), 'with Serve enabled, as a fresh build draws it', f.why || serve1.slice(0, 80));
+
+  // A barista starting on that station puts a line above the buttons.
+  await qp.evaluate(() => {
+    const d = window.__CK_DEBUG__; d.state.money = 5000; d.doUnlock('hireBarista');
+    const b = d.state.baristas[0], idx = d.state.slots.findIndex(Boolean); b.targetSlot = idx; d.renderAll();
+  });
+  const chip = await qp.evaluate(() => !!document.querySelector('#slots .baristaChip'));
+  s = await where();
+  f = await slotsFresh();
+  t.ok(chip && s.marked && s.idx === s0.idx && f.same, 'a barista line added above it leaves the keyboard on the same button', `chip ${chip}, "${s.name}"${f.why ? ', ' + f.why : ''}`);
+  // A day off, or the next tick puts them straight back on the station.
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__, b = d.state.baristas[0]; b.working = false; b.targetSlot = null; d.renderAll(); });
+  s = await where();
+  f = await slotsFresh();
+  t.ok(s.marked && f.same && !(await qp.evaluate(() => !!document.querySelector('#slots .baristaChip'))), 'and its going does too', `"${s.name}"${f.why ? ', ' + f.why : ''}`);
+
+  // An order landing on another station changes that station only.
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.queue.push(d.generateOrder()); d.tryAcceptCustomer(d.state.queue[0].id); });
+  s = await where();
+  f = await slotsFresh();
+  const busy = await qp.evaluate(() => window.__CK_DEBUG__.state.slots.filter(Boolean).length);
+  t.ok(busy === 2 && s.marked && f.same, 'an order taken to the other station leaves the keyboard where it was', `${busy} busy, "${s.name}"${f.why ? ', ' + f.why : ''}`);
+
+  // Two seconds of the shift with the keyboard on Release.
+  await qp.evaluate(() => { const b = document.querySelector('#slots [data-act="release"]') || document.querySelector('#slots .clearbtn'); b.__rel = true; b.focus(); });
+  await wait(2000);
+  const rel = await qp.evaluate(() => { const a = document.activeElement; return !!(a && a.__rel); });
+  t.ok(rel, 'two seconds of the shift running leave the keyboard on the station', 'Release');
+  // Enter on Release sends the order back; the station's buttons go with it.
+  const q2 = await qp.evaluate(() => window.__CK_DEBUG__.state.queue.length);
+  await qp.keyboard.press('Enter');
+  await wait(150);
+  const r2 = await qp.evaluate(() => {
+    const d = window.__CK_DEBUG__, a = document.activeElement;
+    return { q: d.state.queue.length, at: a === document.body ? 'body' : a && a.tagName };
+  });
+  f = await slotsFresh();
+  t.ok(r2.q === q2 + 1 && f.same, 'Enter on Release sends the order back to the queue', `${q2} -> ${r2.q} waiting; keyboard then on ${r2.at}${f.why ? ', ' + f.why : ''}`);
+
+  // The station tab bar, over an order. A redraw, the tab chosen by Enter
+  // and the cup changing under it all leave the keyboard on the same tab.
+  const tabsFresh = () => fresh('stationTabs', 'stationTabsHtml');
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__; d.state.queue.push(d.generateOrder()); d.tryAcceptCustomer(d.state.queue[0].id); d.renderAll(); });
+  const onTab = () => qp.evaluate(() => {
+    const a = document.activeElement;
+    return { marked: !!(a && a.__tab), tab: a && a.dataset ? a.dataset.tab : null, pressed: a ? a.getAttribute('aria-pressed') : null,
+      idx: [...document.querySelectorAll('#stationTabs button')].indexOf(a) };
+  });
+  const firstTab = await qp.evaluate(() => { const b = document.querySelector('#stationTabs button:not(.active)'); b.__tab = true; b.focus(); return b.dataset.tab; });
+  f = await tabsFresh();
+  t.ok(f.same, 'the station tab bar is exactly what a fresh build writes', f.why);
+  await qp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let tb = await onTab();
+  t.ok(tb.marked && tb.tab === firstTab, 'a redraw leaves the keyboard on the same station tab', `${firstTab} -> ${tb.tab}`);
+  await qp.keyboard.press('Enter');
+  await wait(150);
+  tb = await onTab();
+  f = await tabsFresh();
+  t.ok(tb.marked && tb.pressed === 'true' && f.same, 'Enter on it opens that tab, on the same button, now pressed', `${tb.tab} pressed ${tb.pressed}${f.why ? ', ' + f.why : ''}`);
+  await qp.evaluate(() => { const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot]; if (sl) d.autoAssistStep(sl); d.renderAll(); });
+  tb = await onTab();
+  f = await tabsFresh();
+  t.ok(tb.marked && f.same, 'the cup changing under it leaves the keyboard where it was', `${tb.tab}${f.why ? ', ' + f.why : ''}`);
+  t.ok(qp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', qp.__errs.join(' | ') || 'clean');
+  await qp.close();
+  }
+
+  /* ---------- 19. the open station's buttons keep the keyboard ---------- */
+  // The panel under the tab bar was one innerHTML on every redraw, so a
+  // button the player had tabbed to (a milk, Steam Milk, a syrup) was gone at
+  // the next one. It is patched in place now (#972), with three things held
+  // that a copy of section 18 would not hold: a timed button acts on the cup
+  // in the station when it is clicked, its bar keeps its width across a
+  // redraw and empties when it fills, and the key letters read off the panel
+  // are the ones a fresh build gives, which `stationsHtml` carries.
+
+  panel: {
+  if (ONLY_A11Y || ONLY_PACE) break panel;
+  t.section("19. the open station's buttons keep the keyboard across a redraw");
+  const sp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(sp, { wipe: true });
+  await sp.evaluate(() => { window.confirm = () => true; window.prompt = () => 'Test Build'; });
+  const at = () => sp.evaluate(() => {
+    const a = document.activeElement;
+    const btns = [...document.querySelectorAll('#stationsAll button')];
+    return {
+      marked: !!(a && a.__mark), inPanel: !!(a && a.closest && a.closest('#stationsAll')), tag: a && a.tagName,
+      name: a ? a.textContent.replace(/\s+/g, ' ').trim().slice(0, 50) : '', key: a && a.getAttribute ? a.getAttribute('aria-keyshortcuts') : null,
+      idx: btns.indexOf(a), tabindex: a ? a.tabIndex : null, count: btns.length,
+    };
+  });
+  // The panel against a fresh build, key letters included, in one task.
+  const panelFresh = () => sp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    if (typeof d.stationsHtml !== 'function') return { same: false, why: 'no stationsHtml on __CK_DEBUG__' };
+    const norm = root => [...root.childNodes].map(n => n.nodeType === 3 ? n.nodeValue
+      : n.nodeType === 1 ? `<${n.tagName} ${[...n.attributes].map(a => `${a.name}=${a.value}`).sort().join(' ')}>${norm(n)}</${n.tagName}>` : '').join('');
+    const tpl = document.createElement('template');
+    tpl.innerHTML = d.stationsHtml();
+    const a = norm(document.getElementById('stationsAll')), b = norm(tpl.content);
+    let i = 0; while (i < a.length && a[i] === b[i]) i++;
+    return { same: a === b, why: a === b ? '' : `first difference at ${i}: "${a.slice(i, i + 60)}" against "${b.slice(i, i + 60)}"` };
+  });
+  // A drink: a food order has no milk to steam and no presets to save.
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    let o; for (let i = 0; i < 100 && (!o || o.isFood); i++) o = d.generateOrder();
+    d.state.queue.push(o);
+    d.tryAcceptCustomer(d.state.queue[d.state.queue.length - 1].id); d.renderAll();
+    document.querySelector('#stationTabs [data-tab="milk"]').click();
+  });
+
+  // Tab from the station tab bar into the panel: the first milk.
+  await sp.focus('#stationTabs button:last-child');
+  let tabs = 0;
+  for (; tabs < 10 && !(await at()).inPanel; tabs++) await sp.keyboard.press('Tab');
+  await sp.evaluate(() => { document.activeElement.__mark = true; });
+  const m0 = await at();
+  t.ok(m0.inPanel && m0.tag === 'BUTTON' && m0.idx === 0 && m0.key === 'q', 'Tab from the tab bar reaches the first button in the open station', `${tabs} Tab, "${m0.name}" key ${m0.key}`);
+  let f = await panelFresh();
+  t.ok(f.same, 'the panel on first paint is exactly what a fresh build writes, key letters and all', f.why);
+
+  await sp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  let m = await at();
+  t.ok(m.marked && m.inPanel, 'a redraw leaves the keyboard on the same button, which was not rebuilt', `${m.tag} "${m.name}"`);
+  t.ok(m.name === m0.name && m.idx === m0.idx && m.tabindex === 0 && m.key === m0.key, 'with the same name, the same key and the same place in the tab order', `"${m.name}" ${m.key} at ${m.idx} of ${m.count}`);
+  await wait(1500);
+  m = await at();
+  t.ok(m.marked, 'a second and a half of the shift running leaves it there', `"${m.name}"`);
+
+  // Enter picks that milk: the button is pressed now, on the same element,
+  // and Steam Milk below it is enabled.
+  await sp.keyboard.press('Enter');
+  await wait(150);
+  m = await at();
+  f = await panelFresh();
+  const steamOn = await sp.evaluate(() => !document.getElementById('btnSteam').disabled);
+  t.ok(m.marked && steamOn && await sp.evaluate(() => document.activeElement.getAttribute('aria-pressed') === 'true'), 'Enter picks the milk, on the same button, now pressed, and Steam Milk is enabled', `"${m.name}"`);
+  t.ok(f.same, 'and the panel is exactly a fresh build after it', f.why);
+
+  // Tab order after a redraw.
+  await sp.keyboard.press('Tab');
+  const m1 = await at();
+  t.ok(m1.inPanel && m1.idx === m0.idx + 1, 'Tab after a redraw goes to the next button in the panel', `${m0.idx} -> ${m1.idx} "${m1.name}"`);
+  await sp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  await sp.keyboard.down('Shift'); await sp.keyboard.press('Tab'); await sp.keyboard.up('Shift');
+  m = await at();
+  t.ok(m.marked, 'and Shift+Tab after another redraw comes back to the first', `"${m.name}"`);
+
+  // A timed button: Enter on Steam Milk runs the bar. A redraw halfway
+  // leaves the keyboard on it and the bar where it had got to; the bar
+  // empties when it fills, and the milk is steamed. The width line alone
+  // cannot tell a patch that strips the bar's width from one that keeps it:
+  // the bar's next frame writes it back before the line reads it. The fresh
+  // build line after it is the one that fails when the width is not kept.
+  const ms = await sp.evaluate(() => {
+    const b = document.getElementById('btnSteam'); b.__steam = true; b.focus();
+    return window.__CK_DEBUG__.sim.cupActionMs('steamMilk');
+  });
+  const barW = () => sp.evaluate(() => {
+    const el = document.getElementById('milkProgress');
+    return { w: el ? parseFloat(el.style.width || '0') : -1, kept: !!(document.activeElement && document.activeElement.__steam) };
+  });
+  await sp.keyboard.press('Enter');
+  await wait(Math.round(ms / 2));
+  const b1 = await barW();
+  await sp.evaluate(() => window.__CK_DEBUG__.renderAll());
+  const b2 = await barW();
+  f = await panelFresh();
+  t.ok(b1.w > 10 && b1.w < 100 && b2.w >= b1.w && b2.kept, 'a redraw halfway through Steam Milk leaves the bar where it had got to and the keyboard on the button', `${b1.w.toFixed(0)}% -> ${b2.w.toFixed(0)}%, kept ${b2.kept}`);
+  t.ok(f.same, 'with the bar drawn at that width by a fresh build too', f.why);
+  await wait(Math.round(ms / 2) + 400);
+  const b3 = await barW();
+  const steamed = await sp.evaluate(() => { const d = window.__CK_DEBUG__; return d.state.slots[d.state.focusedSlot].cup.milkSteamed === true; });
+  t.ok(steamed && b3.w === 0 && b3.kept, 'when it fills the milk is steamed, the bar is empty again and the keyboard is still on Steam Milk', `steamed ${steamed}, bar ${b3.w}%`);
+
+  // The cup a timed button acts on is the one in the station when it is
+  // clicked: a cup put in after the last redraw takes the shot.
+  await sp.evaluate(() => document.querySelector('#stationTabs [data-tab="base"]').click());
+  const shotMs = await sp.evaluate(() => window.__CK_DEBUG__.sim.cupActionMs('pullShot'));
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot];
+    window.__oldCup = sl.cup; sl.cup = JSON.parse(JSON.stringify(sl.cup)); window.__newCup = sl.cup;
+    window.__shots = [window.__oldCup.shots, window.__newCup.shots];
+    document.getElementById('btnEspresso').click();
+  });
+  await wait(shotMs + 400);
+  let cups = await sp.evaluate(() => [window.__shots, [window.__oldCup.shots, window.__newCup.shots]]);
+  t.ok(cups[1][1] === cups[0][1] + 1 && cups[1][0] === cups[0][0], 'a shot pulled after the cup changed lands in the cup in the station, not the one the panel was drawn with', `old ${cups[0][0]} -> ${cups[1][0]}, new ${cups[0][1]} -> ${cups[1][1]}`);
+  // And held until the bar fills: a cup swapped in halfway does not get it.
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot];
+    window.__oldCup = sl.cup;
+    document.getElementById('btnEspresso').click();
+  });
+  await wait(Math.round(shotMs / 2));
+  await sp.evaluate(() => {
+    const d = window.__CK_DEBUG__, sl = d.state.slots[d.state.focusedSlot];
+    window.__shots = [window.__oldCup.shots, 0]; sl.cup = JSON.parse(JSON.stringify(sl.cup)); sl.cup.shots = 0; window.__newCup = sl.cup; d.renderAll();
+  });
+  await wait(Math.round(shotMs / 2) + 400);
+  cups = await sp.evaluate(() => [window.__shots, [window.__oldCup.shots, window.__newCup.shots]]);
+  t.ok(cups[1][0] === cups[0][0] + 1 && cups[1][1] === 0, 'a shot whose cup is swapped out halfway lands in the cup it was clicked on', `clicked ${cups[0][0]} -> ${cups[1][0]}, swapped in ${cups[1][1]}`);
+  f = await panelFresh();
+  t.ok(f.same, 'and the panel is exactly a fresh build after both', f.why);
+
+  // A button whose meaning changed is a new element. Saving a preset puts
+  // one in front of Save Current, so the keyboard on it goes; where it lands
+  // is reported, not ruled on.
+  await sp.evaluate(() => { document.querySelector('#stationTabs [data-tab="presets"]').click(); const b = document.getElementById('btnSavePreset'); b.__save = true; b.focus(); });
+  const pre = await sp.evaluate(() => window.__CK_DEBUG__.state.presets.length);
+  await sp.keyboard.press('Enter');
+  await wait(150);
+  const post = await sp.evaluate(() => {
+    const a = document.activeElement, d = window.__CK_DEBUG__;
+    return { n: d.state.presets.length, kept: !!(a && a.__save), at: a === document.body ? 'body' : a && a.tagName };
+  });
+  f = await panelFresh();
+  t.ok(post.n === pre + 1 && f.same, 'Enter on Save Current saves a preset and the panel is a fresh build after it', `${pre} -> ${post.n} presets; keyboard kept ${post.kept}, then on ${post.at}${f.why ? ', ' + f.why : ''}`);
+  t.ok(sp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', sp.__errs.join(' | ') || 'clean');
+  await sp.close();
   }
 
 } finally {

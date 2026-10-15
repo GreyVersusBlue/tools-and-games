@@ -38,7 +38,8 @@
 // Pure module: no three.js. Exercised by test/roof.test.mjs.
 
 import { CELL, WALL_H, floorBaseY } from './grid.js';
-import { shapesOf, shapeBBox, pointInShape } from './shapes.js';
+import { shapesOf, shapeBBox, pointInShape, pointInRing } from './shapes.js';
+import { eavePolygon, skeletonRoof, triangulate } from './skeleton.js';
 
 // A parapet is a low wall around a flat roof, hiding the mechanical plant and
 // carrying the flashing. Three feet is a school's; anything shorter reads as a
@@ -371,12 +372,32 @@ export function roofPlan(state, roof = null) {
   // and a pitched roof needs one too: two masses of different width meet at a
   // valley, and without a deck under them that valley is a hole you can see
   // the classrooms through.
-  const rects = maskRects(mask);
+  let rects = maskRects(mask);
   plan.deckRects = rects;
 
   if (r.style === 'parapet') {
     plan.rise = PARAPET_H + COPING_T;
+    // Over a curve the parapet stands on the rooms' own chords and not on the
+    // mask's 4ft steps, and the deck under it is the outline itself (#973).
+    const chords = parapetOnChords(mask, plan.outlines, rects, curvedLoopsOf(floor));
+    if (chords) Object.assign(plan, chords);
     return plan;
+  }
+
+  // A hipped roof over a curve stands on the straight skeleton of the rooms'
+  // own outline, carried out to the eave (#967). Only there: every loop
+  // without a curve in it, every gable (over a curve that is a weighted
+  // skeleton) and every footprint the outline or the eave refuses keeps the
+  // rectangles below, unchanged. The rectangles a curved loop takes over are
+  // the ones whose first cell lies in it, which is the test the mask itself
+  // used to put that cell on, and its deck goes with them: nothing under a
+  // skeleton roof is open to the sky, and a 4ft deck cell would stand out
+  // past a curved eave.
+  const curved = skeletonRoofsOf(state, r);
+  if (curved.length) {
+    const firstCellIn = (rect) => curved.some((c) => pointInRing(c.outline, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
+    rects = rects.filter((rect) => !firstCellIn(rect));
+    plan.deckRects = rects;
   }
 
   for (const rect of rects) {
@@ -389,7 +410,332 @@ export function roofPlan(state, roof = null) {
     plan.blocks.push({ ...block, rect });
     plan.rise = Math.max(plan.rise, block.rise);
   }
+  for (const c of curved) {
+    plan.blocks.push(c);
+    plan.rise = Math.max(plan.rise, c.rise);
+  }
   return plan;
+}
+
+// The skeleton roofs of a storey's curved loops, one block each in the shape
+// `blockRoof` gives (faces, gables, rise, topY) plus `skeleton: true`, the
+// loop as `outline`, the eave line as `eave` and each face's triangles as
+// `tris`; `rect` and `alongX` are null, since there is no rectangle. A loop
+// the eave or the skeleton refuses is left out, so its rectangles stay.
+export function curvedRoofs(floor, eaveY, pitch) {
+  const out = [];
+  for (const loop of curvedLoopsOf(floor)) {
+    const eave = eavePolygon(loop, EAVE);
+    const roof = eave && skeletonRoof(eave, eaveY, pitch);
+    if (!roof) continue;
+    const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
+    out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
+  }
+  return out;
+}
+
+// The loops of a storey's true outline with a curve in them: the buildings
+// `roofOutline` accepts, one by one (#971), read by `hasCurve` (#967). The one
+// test of which footprint a roof follows off its chords rather than the mask,
+// for the hipped roof's skeleton and the parapet's run alike.
+export function curvedLoopsOf(floor) {
+  return (roofOutline(floor).loops || []).filter(hasCurve);
+}
+
+// A parapet over a curve (#973). Each of the mask's loops is matched to the
+// curved loop holding the middle of every cell along its edges; a curved loop
+// whose cells are all in loops of its own takes their place, its chords as
+// the parapet and itself, ear-clipped, as the deck, and the deck rectangles
+// whose first cell lies in it go. A mask loop whose cells lie in a curved
+// loop and somewhere else as well (two buildings a cell apart) keeps that
+// loop on its steps. `null` where nothing changes, so every other roof is
+// the plan it always was, key for key.
+function parapetOnChords(mask, outlines, rects, curved) {
+  if (!curved.length) return null;
+  const owner = (x, z) => curved.findIndex((loop) => pointInRing(loop, x, z));
+  const owners = outlines.map((loop) => {
+    const seen = new Set();
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i], b = loop[(i + 1) % loop.length];
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const dx = (b.x - a.x) / len, dz = (b.z - a.z) / len;
+      // The covered side is on the right of every edge (`maskOutlines`).
+      for (let t = CELL / 2; t < len; t += CELL) {
+        seen.add(owner(a.x + dx * t - dz * CELL / 2, a.z + dz * t + dx * CELL / 2));
+      }
+    }
+    return seen;
+  });
+  const taken = new Map();
+  curved.forEach((loop, k) => {
+    const mine = owners.filter((o) => o.has(k));
+    if (!mine.length || mine.some((o) => o.size > 1)) return;
+    const tris = triangulate(loop);
+    if (tris) taken.set(k, { pts: loop, tris });
+  });
+  if (!taken.size) return null;
+  const firstCellIn = (rect) => [...taken.values()].some((d) => pointInRing(d.pts, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
+  return {
+    outlines: [...outlines.filter((_, i) => !taken.has([...owners[i]][0])), ...[...taken.values()].map((d) => d.pts)],
+    deckRects: rects.filter((rect) => !firstCellIn(rect)),
+    deckPolys: [...taken.values()],
+  };
+}
+
+// The skeleton roofs a design's top storey stands under: the hipped style
+// over a loop the outline, the eave and the skeleton all accept, and nothing
+// for every other roof. This is the one test of which footprint takes the
+// skeleton path; `roofPlan`, the takeoff and the estimate all ask it.
+export function skeletonRoofsOf(state, roof = null) {
+  const r = normalizeRoof(roof || state.roof);
+  const top = (state.floors || []).length - 1;
+  const floor = (state.floors || [])[top];
+  if (!floor || r.style !== 'hip') return [];
+  return curvedRoofs(floor, floorBaseY(state, top) + WALL_H, r.pitch);
+}
+
+// The roof's quantity for the takeoff and the estimate: `footprint`, the plan
+// area it covers inside the walls (the mask's cells, never the eave), and
+// `area`, that footprint sloped at the pitch. Where a loop takes the skeleton
+// path its cells give way to the loop's own area off its chords, so a curve
+// is counted as drawn and not as a staircase of 4ft cells. Every face of a
+// skeleton roof stands at the one pitch, so its sloped area over that outline
+// is still the plan area over the cosine. Every other footprint is the mask's
+// count, by the same lines the takeoff and the estimate each had before (#970).
+export function roofCover(state) {
+  const top = state.floors.length - 1;
+  const floor = state.floors[top];
+  if (!floor) return null;
+  const roof = normalizeRoof(state.roof || ensureRoof(state));
+  const entry = roofStyleEntry(roof.style);
+  const mask = roofMask(floor, floor.w, floor.h);
+  let footprint = maskCount(mask) * CELL * CELL;
+  const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
+  const curved = skeletonRoofsOf(state, roof);
+  if (curved.length) {
+    let cells = 0;
+    for (let r = 0; r < mask.h; r++) {
+      for (let c = 0; c < mask.w; c++) {
+        if (!mask.on[r * mask.w + c]) continue;
+        const x = (mask.cx0 + c + 0.5) * CELL, z = (mask.cy0 + r + 0.5) * CELL;
+        if (curved.some((k) => pointInRing(k.outline, x, z))) cells++;
+      }
+    }
+    footprint -= cells * CELL * CELL;
+    for (const k of curved) footprint += loopArea(k.outline);
+  }
+  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length };
+}
+
+// ---------- 5. the true outline, for a roof over a curve ----------
+//
+// The mask above is the roof's resolution for every rectilinear school, and a
+// curve reaches it as a staircase of 4ft cells. A hipped roof over a curve is
+// stood on the rooms' own chords instead (#965, #967), so it needs the top
+// storey's footprint as polygons: the union of the rooms' outer rings. Rooms
+// share walls exactly, so the union is bookkeeping rather than clipping: every
+// ring wound the same way, each edge split wherever another ring's corner lies
+// on it, every edge that has its own reverse somewhere (a shared wall) taken
+// out with it, and what is left chained into loops. Anything that bookkeeping
+// cannot vouch for is refused with a sentence, and a refused footprint keeps
+// its rectangles:
+//   * a room with a hole in it (its own courtyard),
+//   * a loop wound the other way (a courtyard between rooms),
+//   * two rooms laying the same wall the same way (they overlap),
+//   * two rooms whose walls cross, or one room inside another,
+//   * an outline that touches itself at a point.
+// A refusal keeps the rectangles for its own building only (#971): rooms
+// whose bounds touch, one to the next, are a building, and where the storey
+// as a whole is refused each building is judged alone, so a curved building
+// beside a courtyard building still stands on its skeleton.
+
+const OUTLINE_ON = 1e-4;     // ft — a corner this close to a wall lies on it
+const okey = (p) => `${Math.round(p.x * 1e4)},${Math.round(p.z * 1e4)}`;
+const loopArea = (pts) => {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a += p.x * q.z - q.x * p.z;
+  }
+  return a / 2;
+};
+
+// `{ loops }` (each a list of { x, z }, positive area, no repeated point), or
+// `{ loops: null, refused }` with the reason in words. Where some buildings
+// are refused and others are not, `{ loops, refused }`: the loops of the
+// buildings that passed, and the first refusal's reason.
+export function roofOutline(floor) {
+  const shapes = shapesOf(floor);
+  const whole = unionOf(shapes);
+  if (whole.loops) return whole;
+  const groups = buildingsOf(shapes);
+  if (groups.length < 2) return whole;
+  const loops = [];
+  let refused = null;
+  for (const g of groups) {
+    const o = unionOf(g);
+    if (o.loops) loops.push(...o.loops);
+    else refused = refused || o.refused;
+  }
+  return loops.length ? { loops, refused } : whole;
+}
+
+// The rooms in groups whose bounds touch, one to the next: no wall of one
+// group can meet, cross or enclose a wall of another, so each is judged alone.
+function buildingsOf(shapes) {
+  const boxes = shapes.map((sh) => {
+    const b = { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity };
+    for (const ring of sh.rings) {
+      for (const p of ring.pts) {
+        b.x0 = Math.min(b.x0, p.x); b.z0 = Math.min(b.z0, p.z);
+        b.x1 = Math.max(b.x1, p.x); b.z1 = Math.max(b.z1, p.z);
+      }
+    }
+    return b;
+  });
+  const parent = shapes.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (a.x0 > b.x1 + OUTLINE_ON || b.x0 > a.x1 + OUTLINE_ON ||
+          a.z0 > b.z1 + OUTLINE_ON || b.z0 > a.z1 + OUTLINE_ON) continue;
+      parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map();
+  shapes.forEach((sh, i) => {
+    const k = find(i);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(sh);
+  });
+  return [...groups.values()];
+}
+
+function unionOf(shapes) {
+  const rings = [];
+  for (const shape of shapes) {
+    if (shape.rings.length > 1) return { loops: null, refused: 'a room has a hole in it' };
+    const pts = shape.rings[0].pts.map((p) => ({ x: p.x, z: p.z }));
+    const a = loopArea(pts);
+    if (a < 0) pts.reverse();
+    rings.push(pts);
+  }
+  const corners = rings.flat();
+  const edges = new Map();     // 'from|to' -> { from, to }
+  const add = (from, to) => {
+    const kf = okey(from), kt = okey(to);
+    if (kf === kt) return true;
+    const back = `${kt}|${kf}`;
+    if (edges.has(back)) { edges.delete(back); return true; }
+    if (edges.has(`${kf}|${kt}`)) return false;
+    edges.set(`${kf}|${kt}`, { from, to, kf, kt });
+    return true;
+  };
+  for (const pts of rings) {
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      if (L2 <= 0) continue;
+      const lo = { x: Math.min(a.x, b.x) - OUTLINE_ON, z: Math.min(a.z, b.z) - OUTLINE_ON };
+      const hi = { x: Math.max(a.x, b.x) + OUTLINE_ON, z: Math.max(a.z, b.z) + OUTLINE_ON };
+      const cuts = [];
+      for (const c of corners) {
+        if (c.x < lo.x || c.x > hi.x || c.z < lo.z || c.z > hi.z) continue;
+        const t = ((c.x - a.x) * dx + (c.z - a.z) * dz) / L2;
+        if (t <= 1e-9 || t >= 1 - 1e-9) continue;
+        if (Math.abs((c.x - a.x) * dz - (c.z - a.z) * dx) / Math.sqrt(L2) > OUTLINE_ON) continue;
+        cuts.push({ t, c });
+      }
+      cuts.sort((u, v) => u.t - v.t);
+      let from = a;
+      for (const { c } of cuts) {
+        if (!add(from, c)) return { loops: null, refused: 'two rooms overlap' };
+        from = c;
+      }
+      if (!add(from, b)) return { loops: null, refused: 'two rooms overlap' };
+    }
+  }
+  const out = new Map();
+  for (const e of edges.values()) {
+    if (out.has(e.kf)) return { loops: null, refused: 'the outline touches itself at a point' };
+    out.set(e.kf, e);
+  }
+  const loops = [];
+  while (out.size) {
+    const [k0, first] = out.entries().next().value;
+    const loop = [];
+    let e = first;
+    while (e) {
+      out.delete(e.kf);
+      loop.push({ x: e.from.x, z: e.from.z });
+      if (e.kt === k0) break;
+      e = out.get(e.kt);
+    }
+    if (!e) return { loops: null, refused: 'the outline does not close' };
+    // A wall split where a neighbour's corner met it is one wall again.
+    for (let i = 0; loop.length > 3 && i < loop.length;) {
+      const p = loop[(i - 1 + loop.length) % loop.length], q = loop[i], r = loop[(i + 1) % loop.length];
+      const ax = q.x - p.x, az = q.z - p.z, bx = r.x - q.x, bz = r.z - q.z;
+      const cross = ax * bz - az * bx, dot = ax * bx + az * bz;
+      if (Math.abs(cross) <= 1e-9 * Math.hypot(ax, az) * Math.hypot(bx, bz) && dot > 0) loop.splice(i, 1);
+      else i++;
+    }
+    const a = loopArea(loop);
+    if (a <= 0) return { loops: null, refused: 'the rooms close round a courtyard' };
+    loops.push(loop);
+  }
+  // Rooms that cross without sharing a corner leave both rings whole, and
+  // their areas still add up; their walls cross, or one loop sits in another.
+  const segs = loops.flatMap((l) => l.map((p, i) => [p, l[(i + 1) % l.length]]));
+  const side = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const [a, b] = segs[i], [c, d] = segs[j];
+      if (Math.max(a.x, b.x) < Math.min(c.x, d.x) || Math.max(c.x, d.x) < Math.min(a.x, b.x) ||
+          Math.max(a.z, b.z) < Math.min(c.z, d.z) || Math.max(c.z, d.z) < Math.min(a.z, b.z)) continue;
+      const s1 = side(c, d, a), s2 = side(c, d, b), s3 = side(a, b, c), s4 = side(a, b, d);
+      if (((s1 > 1e-9 && s2 < -1e-9) || (s1 < -1e-9 && s2 > 1e-9)) &&
+          ((s3 > 1e-9 && s4 < -1e-9) || (s3 < -1e-9 && s4 > 1e-9))) {
+        return { loops: null, refused: 'two rooms overlap' };
+      }
+    }
+  }
+  for (const l of loops) {
+    const m = { x: (l[0].x + l[1].x) / 2, z: (l[0].z + l[1].z) / 2 };
+    if (loops.some((o) => o !== l && pointInRing(o, m.x, m.z))) return { loops: null, refused: 'two rooms overlap' };
+  }
+  return { loops };
+}
+
+// Whether an outline has a curve in it. A curved wall is stored as its chords
+// (shapes.js tessellates an arc when it is drawn, in equal steps of angle, three
+// at least), and nothing records that they were ever a curve; so a curve is
+// read off its chords: three in a row of one length, turning the same way by
+// one angle, under 85 degrees a turn (#967). A diagonal wall, a chamfer, a
+// wing set at an angle, a rotated square and an octagon's alternate sides are
+// straight walls and keep their rectangles. Read as a curve as well, and
+// meant to be: a regular polygon of five sides or more, which is a curve
+// drawn by hand. Not read as one: an arc of two chords (only a `steps` of 2
+// asked for in code lays one down).
+const CURVE_TURN = (85 * Math.PI) / 180;
+export function hasCurve(loop) {
+  const n = loop.length;
+  if (n < 4) return false;
+  const len = (i) => Math.hypot(loop[(i + 1) % n].x - loop[i].x, loop[(i + 1) % n].z - loop[i].z);
+  const turn = (i) => {       // the signed turn at corner i + 1, between edges i and i + 1
+    const a = loop[i], b = loop[(i + 1) % n], c = loop[(i + 2) % n];
+    return Math.atan2((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x),
+      (b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z));
+  };
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n), l2 = len((i + 2) % n);
+    const t0 = turn(i), t1 = turn((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0 || Math.abs(l2 - l0) > 1e-6 * l0) continue;
+    if (Math.abs(t1 - t0) > 1e-6 || t0 === 0 || Math.abs(t0) >= CURVE_TURN) continue;
+    return true;
+  }
+  return false;
 }
 
 // The world height of the highest thing on the building, for the sun's shadow

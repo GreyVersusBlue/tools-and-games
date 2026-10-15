@@ -1,6 +1,6 @@
 # Corner & Kettle's `js/` — module map
 
-Eight ES modules, no bundler, no build step. `../index.html` loads exactly one
+Nine ES modules, no bundler, no build step. `../index.html` loads exactly one
 of them (`<script type="module" src="./js/ui.js">`); the rest are imported.
 `Projects/coffee_shop_sim.html`, where the whole game used to live, is a
 redirect stub.
@@ -8,13 +8,13 @@ redirect stub.
 ```
 content.js <- nothing          sim.js <- nothing           sound.js <- nothing
     ^                            ^                             ^
-    |                            |    stations.js <- nothing   |
-draw.js <- content.js,           |    chalkboard.js <- nothing |
-           ../assets/sprites/cups.js (the sheet's atlas)
+    |                            |    stations.js <- patch.js  |
+draw.js <- content.js,           |    chalkboard.js <- patch.js|
+           ../assets/sprites/cups.js (the sheet's atlas)    patch.js <- nothing
     ^                            |          ^                  |
     |                            |          |                  |
 ui.js <- content.js, sim.js, draw.js, sound.js, stations.js, chalkboard.js,
-         save.js, ../../../assets/js/gvb-save.js
+         patch.js, save.js, ../../../assets/js/gvb-save.js
                   ^
 save.js <- ../../../assets/js/gvb-save.js
 ```
@@ -22,7 +22,7 @@ save.js <- ../../../assets/js/gvb-save.js
 **The split is model and view.** `content.js` and `sim.js` are the game: what
 the shop sells and everything that happens to it, runnable in Node with a seed.
 `ui.js`, `stations.js` and `chalkboard.js` are the page, and none of them owns
-a rule. `test/smoke-sim.mjs` section 10 reads all five view modules and fails
+a rule. `test/smoke-sim.mjs` section 10 reads all six view modules and fails
 if one writes `state.money`, a cup's fields, a plate, an unlock set, an
 upgrade, a promotion or training, or calls a `doUnlock()` again.
 
@@ -79,7 +79,7 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   button works mid-shift.
 - **`stations.js`** — `createStations(ctx)`: the seven tabs, the buttons in
   each, the progress bars, the presets tab, and the panel's key map. **Imports
-  nothing**: `ui.js` hands it `state`, `sim`, `toast`, `sound`, `renderAll` and
+  only `patch.js`**, for its tab bar (#969), and `patch.js` imports nothing: `ui.js` hands it `state`, `sim`, `toast`, `sound`, `renderAll` and
   `saveNow`. It needs `renderAll` and `ui.js` needs it, so an import either way
   would be a cycle; passing the functions in keeps it a leaf that `ui.js` sits
   on. A timed button captures the cup it was clicked on, so a bar that finishes
@@ -95,11 +95,18 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
 - **`chalkboard.js`** — `createChalkboard({state, sim, buy, setPace})`: the Menu Board,
   including the Legacy section, the reopen row and the pace switch (#947),
   whose two buttons sit in `#paceRows`, are built once and are never rebuilt,
-  so the keyboard's focus stays on them through a redraw. **Imports nothing**, for the
-  same reason. Every button's `disabled` is `sim.canBuy()`, **and so is every
+  so the keyboard's focus stays on them through a redraw; the rest of the board
+  is patched in place by `patch.js` (#968). **Imports only `patch.js`**, which
+  imports nothing, so it stays below `ui.js` the same way. Every button's `disabled` is `sim.canBuy()`, **and so is every
   price it prints** (#363), and every click is `buy` — so the rule that enables
   a button, the number on its face and the rule that takes the money are one
   rule (#344).
+- **`patch.js`** — `patchRows(el, html)`: writes rows of markup into a live
+  element without rebuilding what is already there. Rows are matched by a
+  `data-row` key and the nodes in a row by position, and a button is kept while
+  its `data-*` attributes are unchanged, so a control the keyboard is on stays
+  the same element (#968). The Menu Board, the queue, the stations row and the
+  station tab bar use it (#969). Imports nothing.
 - **`ui.js`** — the entry. Builds the state, the sim and the save slot; draws
   the topbar, queue and counter; owns `serveSlot()`, `buy()`, the frame loop,
   the day-end modal, the reopen ledger (`showReopenLedger()`, built from

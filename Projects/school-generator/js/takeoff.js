@@ -21,7 +21,7 @@
 // Pure module: no three.js, no DOM. Exercised by test/takeoff.test.mjs.
 
 import {
-  CELL, WALL_H, floorLabel, wallHeightOf,
+  WALL_H, floorLabel, wallHeightOf,
 } from './grid.js';
 import { totalShapeArea } from './shapes.js';
 import { WALL_T_EXT } from './walls.js';
@@ -34,7 +34,7 @@ import {
 import { computeFloorPlan } from './blueprint.js';
 import { finishEntry } from './finish.js';
 import { siteSchedule, regionsOf, markingEntry } from './site.js';
-import { roofMask, maskCount, roofStyleEntry, ensureRoof, normalizeRoof } from './roof.js';
+import { roofCover } from './roof.js';
 import { MULLION_BAY } from './openings.js';
 import { csvRows } from './csv.js';
 
@@ -210,26 +210,22 @@ function linkRows(state) {
   return rows;
 }
 
-// The roof, as the area it covers. `roofMask` is the same mask the renderer
-// builds its planes from, so a pitched roof's *sloped* area is the footprint
-// scaled by the pitch — one over the cosine of the slope, which for a 4:12 is
-// about 1.05.
+// The roof, as the area it covers. `roofCover` reads the same mask the
+// renderer builds its planes from, or a hipped roof's own outline where it
+// stands on the skeleton of a curve, so a pitched roof's *sloped* area is the
+// footprint scaled by the pitch — one over the cosine of the slope, which for
+// a 4:12 is about 1.05.
 function roofTakeoff(state) {
-  const top = state.floors.length - 1;
-  const floor = state.floors[top];
-  if (!floor) return null;
-  const roof = normalizeRoof(state.roof || ensureRoof(state));
-  const entry = roofStyleEntry(roof.style);
-  const mask = roofMask(floor, floor.w, floor.h);
-  const footprint = maskCount(mask) * CELL * CELL;
-  const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
+  const cover = roofCover(state);
+  if (!cover) return null;
+  const { roof, entry, footprint, area } = cover;
   return {
     style: roof.style,
     label: entry.label,
     pitched: !!entry.pitched,
     pitch: entry.pitched ? roof.pitch : 0,
     footprint,
-    area: footprint * slope,
+    area,
     facade: roof.facade,
   };
 }

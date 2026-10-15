@@ -7,7 +7,7 @@ decision #13).
 node Projects/corner-and-kettle/test/smoke-sim.mjs     638 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    261 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands and the two paces, about 3.5 minutes
-node Projects/corner-and-kettle/test/drive-save.mjs    233 checks, real browser
+node Projects/corner-and-kettle/test/drive-save.mjs    297 checks, real browser
 ```
 
 `drive-save.mjs --a11y` runs its section 15 alone (31 checks, about six
@@ -17,6 +17,20 @@ alone, read off the DOM, and `prefers-reduced-motion` on the real stylesheet
 the cup in words against the sim's own ticket lines, and a rule that every
 animation or transition in `index.html` has a line turning it off under the
 media query. A new animation with no such line fails there.
+
+`drive-save.mjs --focus` runs its sections 17 to 19 alone (64 checks, about
+half a minute). Section 17 (21 checks) is the Menu Board keeping the keyboard on a button across a redraw, a
+purchase elsewhere, an event row appearing above, Tab and Shift+Tab, and the
+barista schedule toggle by Enter (#968). After each step it holds the board as
+patched to a fresh build of the same rows (`__CK_DEBUG__.chalkboardHtml`), so
+a patch that left a stale price or `disabled` behind fails by name. Section
+18 (26 checks) does the same for the queue, the stations row and the station
+tab bar (#969). Section 19 (17 checks) does it for the open station's panel
+(#972), key letters included (`__CK_DEBUG__.stationsHtml`), and holds the
+three things that panel has and the others do not: a timed button acts on the
+cup in the station when it is clicked and keeps that cup until its bar fills,
+the bar keeps its width across a redraw and empties when it fills, and the
+key map read off the panel is a fresh build's.
 
 `drive-save.mjs --pace` runs its section 16 alone the same way (36 checks):
 the pace switch on the Menu Board (#947), by keyboard mid-shift and by mouse,
