@@ -326,19 +326,19 @@ test('SV2-50 item 5: a room with no number is never picked by the words that sta
 
 test('SV2-50 item 11: text is folded by NFKC and without a locale, and "Room 101" is Room 101', () => {
   // a full-width number
-  assert.equal(readTyped('１０１', ROOMS).option.id, 'r101');
+  assert.equal(readTyped('１０１', ROOMS).option?.id, 'r101', 'readTyped(\'１０１\', ROOMS)');
   assert.deepEqual(ids(listFor('１０', ROOMS)), ['r101', 'r102']);
   // a name typed with its accent as a mark of its own (NFD), and stored that way
   const accented = [{ id: 'r301', number: '301', label: '301 — Mme Renée Fauchard', teachers: 'Mme Renée Fauchard', detail: '' }];
-  assert.equal(readTyped('Rene\u0301e', accented).option.id, 'r301');
+  assert.equal(readTyped('Rene\u0301e', accented).option?.id, 'r301', 'readTyped(\'Rene\u0301e\', accented)');
   const stored = [{ id: 'r301', number: '301', label: '301 — Mme Rene\u0301e Fauchard', teachers: 'Mme Rene\u0301e Fauchard', detail: '' }];
-  assert.equal(readTyped('Renée', stored).option.id, 'r301');
+  assert.equal(readTyped('Renée', stored).option?.id, 'r301', 'readTyped(\'Renée\', stored)');
   // the dotted capital I is not turned into a dotless i by a Turkish device: no locale
   const turkish = [{ id: 'r401', number: '401', label: '401 — Bay İnce', teachers: 'Bay İnce', detail: '' }];
-  assert.equal(readTyped('İnce', turkish).option.id, 'r401');
+  assert.equal(readTyped('İnce', turkish).option?.id, 'r401', 'readTyped(\'İnce\', turkish)');
   // "Room 101", as a sentence of the tool names it, in any case
-  assert.equal(readTyped('Room 101', ROOMS).option.id, 'r101');
-  assert.equal(readTyped('  room  b12 ', ROOMS).option.id, 'rb12');
+  assert.equal(readTyped('Room 101', ROOMS).option?.id, 'r101', 'readTyped(\'Room 101\', ROOMS)');
+  assert.equal(readTyped('  room  b12 ', ROOMS).option?.id, 'rb12', 'readTyped(\'  room  b12 \', ROOMS)');
   assert.deepEqual(ids(listFor('Room 10', ROOMS)), ['r101', 'r102']);
   // "Room" alone names nothing, and "Room 10" is not Room 101
   assert.deepEqual(readTyped('Room', ROOMS), { kind: 'keep', text: 'Room' });
