@@ -1,9 +1,11 @@
-// The takeoff and the estimate over a hipped roof on a curve. Run
+// The takeoff and the estimate over a hipped or a parapet roof on a curve. Run
 // `node --test 'test/*.test.mjs'` from Projects/school-generator.
 //
 // A footprint that takes the skeleton path (the one test `roofPlan` asks) is
 // counted off its own chords, not off the 4ft mask's staircase; every other
-// footprint is the mask's count, as before. The curved figure is checked
+// footprint is the mask's count, as before. A parapet that runs on the chords
+// (#973, `roofPlan`'s `deckPolys`) is counted off that same outline, flat
+// (#986). The curved figure is checked
 // against one worked by hand from the circle the curve tool laid.
 
 import test from 'node:test';
@@ -106,12 +108,15 @@ test('the takeoff and the estimate both read the curved figure', () => {
 
 test('every roof that does not take the skeleton path is the mask, figure for figure', () => {
   const cases = [
-    ...['gable', 'parapet', 'flat'].map((style) => school({ style })),
+    ...['gable', 'flat'].map((style) => school({ style })),
     school({ curve: false }),
     school({ courtyard: true }),
+    school({ style: 'parapet', curve: false }),
+    school({ style: 'parapet', courtyard: true }),
   ];
   for (const s of cases) {
     assert.equal(skeletonRoofsOf(s).length, 0, `${s.roof.style}`);
+    assert.ok(!roofPlan(s).deckPolys, `${s.roof.style}: no parapet on chords`);
     const pitched = s.roof.style === 'hip' || s.roof.style === 'gable';
     const want = maskFootprint(s);
     const cover = roofCover(s);
@@ -123,4 +128,29 @@ test('every roof that does not take the skeleton path is the mask, figure for fi
 test('roofPlan and the takeoff agree on which loops are skeleton', () => {
   const s = school();
   assert.equal(roofPlan(s).blocks.filter((b) => b.skeleton).length, roofCover(s).skeleton);
+});
+
+test('a parapet roof over a curve is counted off the chords its parapet runs on, flat', () => {
+  const s = school({ style: 'parapet' });
+  const plan = roofPlan(s);
+  assert.equal(plan.deckPolys && plan.deckPolys.length, 1, 'the hall takes the chord parapet');
+  const n = plan.deckPolys[0].pts.filter((p) => p.x > 64 + 1e-9).length + 1;
+  assert.ok(n >= 4, `${n} chords`);
+  const cover = roofCover(s);
+  near(cover.footprint, byHand(n), 1e-6, 'footprint');
+  assert.equal(cover.area, cover.footprint, 'flat: the area is the footprint');
+  assert.equal(cover.chords, 1);
+  assert.equal(cover.skeleton, 0);
+  assert.notEqual(maskFootprint(s), cover.footprint);
+  const t = takeoff(s);
+  assert.equal(t.roof.area, cover.area);
+  assert.equal(sharedQuantities(s).get('roof:membrane'), cover.area);
+  const row = takeoffCSV(t).split('\n').find((l) => l.startsWith('Roof,'));
+  assert.ok(row && row.includes(`,${roundQty(cover.area)},`), `the CSV row carries it: ${row}`);
+});
+
+test('a flat roof over the same curve has no parapet and stays on the mask', () => {
+  const s = school({ style: 'flat' });
+  assert.equal(roofCover(s).footprint, maskFootprint(s));
+  assert.equal(roofCover(s).chords, 0);
 });
