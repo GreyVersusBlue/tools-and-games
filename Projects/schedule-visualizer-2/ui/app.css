@@ -1309,32 +1309,34 @@ kbd {
 /* A control brought into view on the surface (the focus moving to it, Help
    scrolling to a step) never lands under the banners stuck to its top: while
    one is up, the surface keeps room for them at the top of what it scrolls
-   to. CSS cannot measure them, so the room is --banners-height when the page
-   sets it, and otherwise an allowance a banner: the not-saved banner with its
-   button is 97 px at 1280 and 193 px at 390, where it wraps (SV2-52). */
+   to. The room is --banners-height, which storage/session.js measures and
+   sets (SV2-55); until it has, an allowance a banner: the not-saved banner
+   with its button is 97 px at 1280 and 193 px at 390, where it wraps
+   (SV2-52). The allowance is never more than half the surface, so a short
+   window is not padded past what it shows. */
 .surface:has(> .banners > .banner) {
-  scroll-padding-top: var(--banners-height, 7rem);
+  scroll-padding-top: var(--banners-height, min(7rem, 50%));
 }
 
 .surface:has(> .banners > .banner + .banner) {
-  scroll-padding-top: var(--banners-height, 14rem);
+  scroll-padding-top: var(--banners-height, min(14rem, 50%));
 }
 
 .surface:has(> .banners > .banner + .banner + .banner) {
-  scroll-padding-top: var(--banners-height, 21rem);
+  scroll-padding-top: var(--banners-height, min(21rem, 50%));
 }
 
 @media (max-width: 640px) {
   .surface:has(> .banners > .banner) {
-    scroll-padding-top: var(--banners-height, 13rem);
+    scroll-padding-top: var(--banners-height, min(13rem, 50%));
   }
 
   .surface:has(> .banners > .banner + .banner) {
-    scroll-padding-top: var(--banners-height, 26rem);
+    scroll-padding-top: var(--banners-height, min(26rem, 50%));
   }
 
   .surface:has(> .banners > .banner + .banner + .banner) {
-    scroll-padding-top: var(--banners-height, 39rem);
+    scroll-padding-top: var(--banners-height, min(39rem, 50%));
   }
 }
 
@@ -1949,8 +1951,12 @@ kbd {
    padding and its faint grid go. (These were in ui/movement/movement.css
    until the shell took them.) */
 
+/* The banners (not saved, another tab, the device nearly full) are stuck to
+   the surface's top over the section; the section has the rest, so the bar
+   at its foot stays in the window (--banners-height, storage/session.js). */
 .surface__layout[data-section="movement"] {
-  height: 100%;
+  height: calc(100% - var(--banners-height, 0px));
+  min-height: calc(100% - var(--banners-height, 0px));
   padding: 0;
   gap: 0;
   align-items: stretch;

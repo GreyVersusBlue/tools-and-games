@@ -32,16 +32,24 @@ export const IDLE_READ_MS = 4000;
 
 export const hooks = { deliver: null, assembled: null, published: null, made: null };
 
+// How long "This tab made a file just now" stands when the project did not
+// note the file: on the next change of the project, or after this long,
+// whichever comes first, it says "earlier" instead. An object, so a test can
+// shorten it.
+export const UNNOTED_TIMES = { ms: 5 * 60 * 1000 };
+
 // `unnoted`: this tab made a file the project did not note, so "no file
 // yet" would be false on this screen. 'read-only' when the tab is read-only
 // and so was never asked to; 'refused' when the project was asked and could
-// not record it; null when the last file was noted.
-export function facts(project, unnoted) {
+// not record it; null when the last file was noted. `justNow` false once the
+// file is no longer just now: the tab still made it, earlier.
+export function facts(project, unnoted, justNow = true) {
   const f = figures(project);
   const holds = 'It has ' + count(f.teachers, 'teacher') + ', ' + count(f.groups, 'group') + ' and ' + count(f.rooms, 'room') + ' to show.';
   const last = project.publish.lastPublishedAt ? printDate(project.publish.lastPublishedAt) : '';
-  if (unnoted === 'read-only') return 'This tab made a file just now. The project does not record it while the tab is read-only. ' + holds;
-  if (unnoted === 'refused') return 'This tab made a file just now. The project could not record it. ' + holds;
+  const made = justNow ? 'This tab made a file just now. ' : 'This tab made a file earlier. ';
+  if (unnoted === 'read-only') return made + 'The project does not record it while the tab is read-only. ' + holds;
+  if (unnoted === 'refused') return made + 'The project could not record it. ' + holds;
   if (last === '') return 'No file has been made from this project yet. ' + holds;
   return 'The last file from this project was made on ' + last + '. ' + holds;
 }
@@ -78,24 +86,55 @@ export const section = {
     element.staff = { preview: shown, form, hooks };
     ctx.setInspector(form.element, { title: 'Publish' });
 
+    // A file this tab made and the project did not note stays made: when
+    // "just now" stops being so, the line says "earlier", never "no file
+    // yet". It goes when a later file is noted.
     let unnoted = null;
-    hooks.made = (published, noted) => {
-      unnoted = noted === true ? null : noted === READ_ONLY_MADE ? 'read-only' : 'refused';
-      lead.textContent = facts(ctx.store.project, unnoted);
+    let justNow = false;
+    let unnotedOf = null; // the project on screen when the file was made
+    let unnotedTimer = null;
+    const earlier = () => {
+      if (unnotedTimer !== null) clearTimeout(unnotedTimer);
+      unnotedTimer = null;
+      justNow = false;
+      unnotedOf = null;
+    };
+    const noted = () => {
+      earlier();
+      unnoted = null;
+    };
+    hooks.made = (published, recorded) => {
+      noted();
+      if (recorded === true) {
+        lead.textContent = facts(ctx.store.project, null);
+        return;
+      }
+      unnoted = recorded === READ_ONLY_MADE ? 'read-only' : 'refused';
+      justNow = true;
+      unnotedOf = ctx.store.project;
+      // "just now" stops being so
+      unnotedTimer = setTimeout(() => {
+        earlier();
+        lead.textContent = facts(ctx.store.project, unnoted, justNow);
+      }, UNNOTED_TIMES.ms);
+      lead.textContent = facts(ctx.store.project, unnoted, justNow);
     };
 
     function update(project) {
-      lead.textContent = facts(project, unnoted);
+      // the next change of the project: the file was made before it, not just now
+      if (justNow && project !== unnotedOf) earlier();
+      lead.textContent = facts(project, unnoted, justNow);
       shown.update(project);
       form.update(project);
     }
-    lead.textContent = facts(ctx.store.project, unnoted);
+    lead.textContent = facts(ctx.store.project, unnoted, justNow);
 
     return {
       element,
       update,
       unmount() {
         hooks.made = null;
+        noted();
         shown.stop();
         form.stop();
       },

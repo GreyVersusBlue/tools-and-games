@@ -16,7 +16,12 @@
 // button goes from a group's editor to the list. The history holds a group
 // once: "All groups", a Delete and an undone Add go back to the list when
 // the list is the entry under the editor, and put the list's address in the
-// editor's place otherwise, so Back never shows the list twice.
+// editor's place otherwise, so Back never shows the list twice. The entry a
+// Delete or an undone Add steps back from is the gone group's no longer: it
+// becomes a spent list (`spentEntry`), and Forward onto it steps back again
+// (ui/schedule/index.js), so Forward never lands on a group that is gone nor
+// shows the list a second time. A tap on the group whose address the page is
+// at (a slot's, from Show) adds nothing.
 
 import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
@@ -32,7 +37,7 @@ import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
-import { GROUPS_HASH, groupHash, writtenAsList, showsList } from './address.js';
+import { GROUPS_HASH, groupHash, writtenAsList, showsList, groupOf } from './address.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
@@ -72,9 +77,13 @@ export function listStop(project, view) {
 // list is marked as having the list under it, which is where "All groups"
 // goes back to.
 const LIST_UNDER = 'scheduleListUnder';
+const SPENT = 'scheduleSpent';
 export function toGroup(ctx, groupId) {
   const hash = groupHash(groupId);
   if (location.hash === hash) return;
+  // the address is already this group's place: a slot of it
+  const here = groupOf(ctx.store.project, location.hash);
+  if (here && here.id === groupId) return;
   const fromList = showsList(ctx.store.project, location.hash);
   ctx.navigate(hash);
   // the new entry is made as the address is set; the mark goes on it
@@ -82,11 +91,23 @@ export function toGroup(ctx, groupId) {
 }
 
 // The list's address, on a phone: back to it when it is the entry under this
-// one, and in this one's place otherwise. Neither adds an entry.
-export function toList() {
+// one, and in this one's place otherwise. Neither adds an entry. `gone`: the
+// group of this entry has gone (a Delete, an undone Add), so the entry left
+// above the list is made a spent one first, never to be landed on again.
+export function toList(gone) {
   if (writtenAsList(location.hash)) return;
-  if (history.state && history.state[LIST_UNDER] === true) history.back();
-  else history.replaceState(null, '', GROUPS_HASH);
+  if (history.state && history.state[LIST_UNDER] === true) {
+    if (gone === true) history.replaceState({ [SPENT]: true }, '', GROUPS_HASH);
+    history.back();
+  } else {
+    history.replaceState(null, '', GROUPS_HASH);
+  }
+}
+
+// Is the page on an entry a gone group left (above, `toList`)? The list is
+// the entry under it, and that is where the page goes.
+export function spentEntry() {
+  return Boolean(history.state && history.state[SPENT] === true) && writtenAsList(location.hash);
 }
 
 export function mount(env) {
@@ -114,11 +135,11 @@ export function mount(env) {
   // Draw what `view` now says. On a phone the address follows it, so the
   // list and each editor are places the Back button knows; the section draws
   // again when the address has changed, to the same thing.
-  function show(focusKey) {
+  function show(focusKey, gone) {
     env.render(focusKey);
     if (!window.matchMedia(NARROW).matches) return;
     if (view.folded === true && view.groupId) toGroup(ctx, view.groupId);
-    else toList();
+    else toList(gone);
   }
 
   // Choose a group. On a phone its card goes to the top of the screen, so
@@ -444,7 +465,7 @@ export function mount(env) {
             view.groupId = next ? next.id : null;
             view.shown = null;
             view.folded = false;
-            show(listStop(ctx.store.project, view));
+            show(listStop(ctx.store.project, view), true);
           }, { small: true, key: 'group-delete', action: 'delete', more: ' ' + group.name }))),
       headFields(project, group),
       h('div', { class: 'sch-days' }, project.dayTypes.map((dayType) => dayColumn(project, model, group, dayType))));
@@ -467,7 +488,7 @@ export function mount(env) {
       if (view.groupId !== null) {
         view.folded = false;
         // its editor's place in the history is the list's now
-        if (window.matchMedia(NARROW).matches) toList();
+        if (window.matchMedia(NARROW).matches) toList(true);
       }
       view.groupId = project.groups[0].id;
     }

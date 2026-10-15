@@ -75,6 +75,17 @@ export function sameParts(a, b) {
   return a !== null && a.length === b.length && a.every((part, at) => part === b[at]);
 }
 
+// Whether a reader would see a change between two projects, each read as
+// the file it would make: locked when its own passcode is on. Publish says
+// "the schedule changed while the file was being made" by this (form.js).
+// A passcode turned on or off between the two is a change: one file asks
+// for a passcode and the other does not. Until SV2-53 the form read both
+// with the made file's flag, so a passcode turned on during assembly was no
+// change and one turned off was.
+export function readerSeesChange(before, after) {
+  return before !== after && !sameParts(partsOf(before, isProtected(before)), partsOf(after, isProtected(after)));
+}
+
 export function preview(ctx) {
   const state = { loaded: false, opened: false, live: false, sent: 0, width: 'phone', locked: false };
   let data = null;
@@ -87,6 +98,8 @@ export function preview(ctx) {
   let forgetNext = false; // and that copy is in hand, waiting to be sent
   let openTimer = null;
   let staleSays = null; // why the frame could not be given the project as it is now, while that is so
+  let notOpen = false; // the wait for the page ran out, and no page has asked since
+  let brokeSays = null; // why the page could not be put together, while that is so
 
   const sizeLabel = uid('staff-size');
   const lockId = uid('staff-lock');
@@ -141,9 +154,14 @@ export function preview(ctx) {
     // the data could not be made.
     waitToOpen(false);
     state.opened = true;
-    // a page that asks after the wait ran out has opened after all: "has not
-    // opened" goes, and so does "Try again"
-    const late = element.dataset.preview === 'failed' && says.textContent === PREVIEW_NOT_OPEN;
+    // A page that asks after the wait ran out has opened after all: "has not
+    // opened" goes, and so does "Try again", whatever was said since (a copy
+    // that could not be made writes its own sentence over "has not opened").
+    // So has the page before one "Try again" could not put together, when
+    // it asks: "could not be put together" goes with it, as it does in load().
+    const late = notOpen || brokeSays !== null;
+    notOpen = false;
+    brokeSays = null;
     if (late) again.hidden = true;
     if (data === null) {
       if (late) {
@@ -160,9 +178,7 @@ export function preview(ctx) {
     // What the frame is given is the last copy that could be made. While a
     // later one could not be, the preview does not follow the project, and
     // the sentence saying why stays.
-    says.textContent = staleSays || (state.locked
-      ? 'This is the file as a reader first meets it. It follows the project as you change it.'
-      : 'This is the file as staff see it. It follows the project as you change it.');
+    says.textContent = staleSays || plainSays();
     return data;
   }, () => {
     const flags = forgetNext ? { forget: true } : null;
@@ -182,10 +198,25 @@ export function preview(ctx) {
       openTimer = null;
       delete element.dataset.waiting;
       if (stopped || state.live) return;
+      notOpen = true;
       element.dataset.preview = 'failed';
       says.textContent = PREVIEW_NOT_OPEN;
       again.hidden = false;
     }, PREVIEW_TIMES.open);
+  }
+
+  // What the bar says when no copy is stale: why the page could not be made,
+  // that it has not opened, that it follows the project, or that it is
+  // opening.
+  function plainSays() {
+    if (brokeSays !== null) return brokeSays;
+    if (notOpen) return PREVIEW_NOT_OPEN;
+    if (state.live) {
+      return state.locked
+        ? 'This is the file as a reader first meets it. It follows the project as you change it.'
+        : 'This is the file as staff see it. It follows the project as you change it.';
+    }
+    return 'Opening the preview.';
   }
 
   // Work out what the frame should hold now, and hand it over.
@@ -216,11 +247,16 @@ export function preview(ctx) {
     if (mine !== turn || stopped) return;
     if (locked && forget) forgetNext = true;
     forget = false;
+    const wasStale = staleSays !== null;
     staleSays = null;
     delete element.dataset.previewSays;
     data = next;
     shown = parts;
-    feed.send();
+    // A page that is asking is given the copy and the sentence with it. One
+    // that is not (it has not opened, or is being made anew) is given it when
+    // it asks, and meanwhile "could not be brought up to date" is no longer
+    // so: it goes now, not when a page next asks.
+    if (!feed.send() && wasStale) says.textContent = plainSays();
   }
 
   function update(project) {
@@ -243,6 +279,8 @@ export function preview(ctx) {
 
   async function load() {
     again.hidden = true;
+    notOpen = false;
+    brokeSays = null;
     says.textContent = 'Putting the preview together.';
     element.dataset.preview = 'loading';
     try {
@@ -263,7 +301,8 @@ export function preview(ctx) {
       element.dataset.preview = 'failed';
       // the tool's own refusals are sentences; a file that never arrived is the connection's; the browser's own words are not shown
       console.warn('Schedule Visualizer 2: the preview could not be put together.', error);
-      says.textContent = failureSentence(error, { connection: PREVIEW_FAILED, other: PREVIEW_BROKE });
+      brokeSays = failureSentence(error, { connection: PREVIEW_FAILED, other: PREVIEW_BROKE });
+      says.textContent = brokeSays;
       again.hidden = false;
     }
   }

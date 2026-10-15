@@ -14,7 +14,7 @@ import {
   pictureOf, sentenceOf, groupRows, routeHealth, cellCard, failurePeriod,
 } from '../../ui/movement/model.js';
 import * as model from '../../ui/movement/model.js';
-import { layoutFloors, bestLayout, slotAt, placeOf, FLOOR_GAP, TITLE_ROWS } from '../../ui/movement/layout.js';
+import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, keepShift, FLOOR_GAP, TITLE_ROWS, STAGE_LEAST, FIT_MARGIN } from '../../ui/movement/layout.js';
 import { bandText } from '../../ui/movement/legend.js';
 import { fixFor } from '../../ui/movement/summary.js';
 import { heldScale, canvasHolds, isBlank, LOWEST_SCALE } from '../../ui/movement/export.js';
@@ -1065,4 +1065,195 @@ test('SV2-52 item 11 (SV2-43 item 3): with no engine attached the first line say
   assert.deepEqual(standing, { project, results: null, failed: 'Nothing is attached to work out the routes.', stale: false });
   assert.equal(model.failedSentence(standing).parts.map((part) => part.text).join(''), 'The routes could not be worked out: Nothing is attached to work out the routes.');
   assert.equal(model.failedSentence(standing).showMe, false);
+});
+
+// SV2-55 item 0: the stage's least, whatever the section has
+test('SV2-55 item 0: the stage’s least is 120 px, or the floors’ box fitted across the stage when that is shorter, at the zoom’s own floor of 25 %', () => {
+  assert.equal(STAGE_LEAST, 120);
+  assert.equal(FIT_MARGIN, 20);
+  // nothing laid out yet, or no width: the least itself
+  assert.equal(stageLeast(null, 844), 120);
+  assert.equal(stageLeast({ width: 40, height: 30 }, 0), 120);
+  // a building as tall as it is wide: fitted across 844 px it is far taller than 120
+  assert.equal(stageLeast({ width: 40, height: 40 }, 844), 120);
+  // a long low building: fitted across 844 px (804 / (200 x 24) is under 25 %, so 25 %) it is 4 x 24 x 0.25 + 40 = 64 px
+  assert.equal(stageLeast({ width: 200, height: 4 }, 844), 64);
+  // 2 cells high at the full width's zoom: 804 / (40 x 24) = 0.8375, so 2 x 24 x 0.8375 + 40 = 80.2, rounded up
+  assert.equal(stageLeast({ width: 40, height: 2 }, 844), 81);
+  // the sample's three floors side by side at 844 px (the browser case's own figure)
+  const floors = sample.project.building.floors;
+  assert.equal(stageLeast(layoutFloors(floors, 'side'), 844), 120);
+});
+
+// SV2-55 item 6: the view's own asking (model.js's createAsker, which
+// index.js makes once per visit), run with a store and a clock of the case's
+// own, so a break in the code the view runs fails here and not only in a
+// browser.
+function askerRig(options) {
+  const opts = options || {};
+  const calls = { pending: 0, settled: [] };
+  const timers = [];
+  let gone = false;
+  const store = { project: { id: 'p1' }, derived: opts.engine === false ? {} : null };
+  let answer = null;
+  const attach = () => {
+    store.derived = {
+      engine: {},
+      results: () => new Promise((resolve, reject) => {
+        answer = { resolve, reject };
+      }),
+    };
+  };
+  if (opts.engine !== false) attach();
+  const asker = model.createAsker({
+    store,
+    graph: () => 'graph of ' + store.project.id,
+    gone: () => gone,
+    timers: {
+      set(fn, ms) {
+        timers.push({ fn, ms, cleared: false });
+        return timers.length - 1;
+      },
+      clear(id) {
+        timers[id].cleared = true;
+      },
+    },
+    pending() {
+      calls.pending += 1;
+    },
+    settled(failed, answered) {
+      calls.settled.push([failed, answered]);
+    },
+  });
+  // the timers set and not yet run or cleared
+  const due = () => timers.filter((each) => !each.cleared && !each.ran);
+  const tick = () => {
+    const next = due()[0];
+    next.ran = true;
+    next.fn();
+  };
+  return { asker, store, calls, due, tick, attach, leave: () => { gone = true; }, answer: () => answer };
+}
+const turn = () => new Promise((resolve) => setImmediate(resolve));
+
+test('SV2-55 item 6: the view asks once per state of the project, says it waits, and draws the answer for that state', async () => {
+  const rig = askerRig();
+  rig.asker.ask();
+  rig.asker.ask();
+  assert.equal(rig.calls.pending, 1, 'the same project was asked about twice');
+  rig.answer().resolve('results 1');
+  await turn();
+  assert.deepEqual(rig.calls.settled, [[null, true]]);
+  assert.equal(rig.asker.derived.results, 'results 1');
+  assert.equal(rig.asker.derived.project, rig.store.project);
+  assert.equal(rig.asker.derived.graph, 'graph of p1', 'the graph is not kept beside the answer it belongs to');
+  // a failure keeps the last answer and says why
+  rig.store.project = { id: 'p2' };
+  rig.asker.ask();
+  rig.answer().reject(new Error('the worker stopped'));
+  await turn();
+  assert.deepEqual(rig.calls.settled[1], ['the worker stopped', true]);
+  assert.equal(rig.asker.derived.results, 'results 1', 'a failure threw the last answer away');
+});
+
+test('SV2-55 item 6: an answer that comes after the view has gone, or for a project the store has left, changes nothing', async () => {
+  const gone = askerRig();
+  gone.asker.ask();
+  gone.leave();
+  gone.answer().resolve('late results');
+  await turn();
+  assert.deepEqual(gone.calls.settled, [], 'an answer after the view had gone was drawn');
+  assert.equal(gone.asker.derived.results, null);
+
+  const left = askerRig();
+  left.asker.ask();
+  const first = left.answer();
+  left.store.project = { id: 'p2' };
+  first.resolve('results for p1');
+  await turn();
+  assert.deepEqual(left.calls.settled, [], 'an answer for a project the store has left was drawn');
+  left.asker.ask();
+  left.answer().resolve('results for p2');
+  await turn();
+  assert.deepEqual(left.calls.settled, [[null, true]]);
+  assert.equal(left.asker.derived.results, 'results for p2');
+});
+
+test('SV2-55 item 6: with no engine the view says so and looks again every ENGINE_LOOK_MS; an engine attached later is asked about the project as it is then; leaving stops the looking', async () => {
+  assert.equal(model.ENGINE_LOOK_MS, 1000);
+  const rig = askerRig({ engine: false });
+  rig.asker.ask();
+  assert.equal(rig.asker.derived.failed, model.NO_ENGINE, 'the first line is not told that nothing is attached');
+  assert.equal(rig.calls.pending, 0, 'something is awaited with nothing to ask');
+  assert.deepEqual(rig.due().map((each) => each.ms), [1000], 'the view does not look again in a second');
+  rig.asker.ask();
+  assert.equal(rig.due().length, 1, 'asking again set a second look');
+  // still nothing: another look is set
+  rig.tick();
+  assert.deepEqual(rig.due().map((each) => each.ms), [1000], 'the view stopped looking while nothing was attached');
+  assert.deepEqual(rig.calls.settled, []);
+  // attached, and the project has moved on meanwhile: the next look asks about the project now
+  rig.attach();
+  rig.store.project = { id: 'p3' };
+  rig.tick();
+  assert.equal(rig.calls.pending, 1, 'the engine attached later was not asked');
+  assert.deepEqual(rig.calls.settled, [[null, false]], 'the view did not draw again when the engine came');
+  assert.equal(rig.asker.derived.failed, null, 'the first line still says nothing is attached');
+  assert.equal(rig.due().length, 0, 'the view goes on looking with an engine attached');
+  rig.answer().resolve('results for p3');
+  await turn();
+  assert.equal(rig.asker.derived.project.id, 'p3');
+
+  // leaving while it looks: the look is cleared, and a look that runs anyway does nothing
+  const left = askerRig({ engine: false });
+  left.asker.ask();
+  assert.equal(left.asker.waiting, true);
+  left.asker.stop();
+  left.leave();
+  assert.equal(left.asker.waiting, false);
+  assert.equal(left.due().length, 0, 'the look was not cleared when the view left');
+});
+
+test('SV2-55 item 6: the movement view asks through createAsker and keeps no asking of its own', () => {
+  const source = readFileSync(fileURLToPath(new URL('../../ui/movement/index.js', import.meta.url)), 'utf8');
+  assert.match(source, /const asker = createAsker\(\{/, 'index.js does not make its asker');
+  assert.match(source, /asker\.stop\(\);/, 'index.js does not stop its asker when the view leaves');
+  assert.doesNotMatch(source, /results\(\)\.then|ENGINE_LOOK_MS/, 'index.js asks for the results or looks for an engine itself');
+});
+
+// SV2-55 item 3 (reproduced by the Foreman in Node, keep.mjs): a stage under
+// about 96 px could not hold 48 px of the floors at its top and its bottom at
+// once, so the clamp sent the map one way and back on every event.
+test('SV2-55 item 3: the keep is capped by the stage: a 30 px stage over a 60 px box settles at once and stays, with the box over the whole stage', () => {
+  const view = { x: 0, y: -20, width: 400, height: 30, size: 6 };
+  const box = { width: 40, height: 10 };
+  const ys = [];
+  for (let event = 0; event < 4; event += 1) {
+    const { dx, dy } = keepShift(view, box, 48);
+    view.x += dx;
+    view.y += dy;
+    ys.push(view.y);
+  }
+  assert.deepEqual(ys, [-20, -20, -20, -20], 'the pan went one way and back: ' + ys.join(', '));
+  // a box pulled further off settles at the stage's own height and stays
+  view.y = -200;
+  const after = [];
+  for (let event = 0; event < 3; event += 1) {
+    const { dy } = keepShift(view, box, 48);
+    view.y += dy;
+    after.push(view.y);
+  }
+  assert.deepEqual(after, [-30, -30, -30]);
+  // the box's foot is at the stage's foot: 30 px of it, the whole stage, on screen
+  assert.equal(view.y + box.height * view.size, 30);
+});
+
+test('SV2-55 item 3: on a stage taller than the keep the keep is 48 px each way, or the whole box when it is smaller', () => {
+  const view = { x: -1000, y: 900, width: 400, height: 300, size: 6 };
+  const shift = keepShift(view, { width: 40, height: 10 }, 48);
+  // 240 px across: its right edge comes to 48 px in; 60 px down: its top comes to 48 px from the foot
+  assert.deepEqual(shift, { dx: 48 - (-1000 + 240), dy: 300 - 48 - 900 });
+  const small = keepShift({ x: -100, y: 0, width: 400, height: 300, size: 1 }, { width: 20, height: 20 }, 48);
+  assert.deepEqual(small, { dx: 100, dy: 0 }, 'a box under 48 px is not brought all onto the stage (to x 0)');
+  assert.deepEqual(keepShift({ x: 0, y: 0, width: 0, height: 0, size: 1 }, { width: 20, height: 20 }, 48), { dx: 0, dy: 0 }, 'a stage not yet measured is moved');
 });
