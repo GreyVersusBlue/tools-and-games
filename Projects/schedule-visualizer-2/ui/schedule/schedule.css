@@ -792,8 +792,19 @@
      (ui/schedule/groups.js has the same width, NARROW). With no group chosen
      yet the cards are the page and there is no editor; a tap folds the list
      to that group's card, with "All groups" under it and the editor next. */
+  /* All its cards are on the page, so the list is no scroller of its own:
+     one would clip the card's scroll margin (below) to its own edge. */
   .sch-groups__list {
     max-height: none;
+    overflow-y: visible;
+  }
+
+  /* The chosen card is scrolled to the top of the surface (groups.js); this
+     much paper stays between it and the top bar, as the section's own
+     padding leaves above the first card (the Foreman measured its edge 0.1
+     px under the bar at 390 by 844 without it). */
+  .sch-group {
+    scroll-margin-top: var(--s-3);
   }
 
   .sch-groups[data-folded="false"] .sch-editor {

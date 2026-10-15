@@ -749,6 +749,26 @@ test('SV2-50 item 6: a new picker made under the focus by a drawing opens with t
   assert.deepEqual(gone.lit(), []);
 });
 
+test('SV2-54 item 3: a picker handed over to a drawing does not commit what is half typed as it is taken away; told to leave, it reads it as leaving does', () => {
+  const old = make();
+  old.type('10');
+  old.key('ArrowDown');
+  old.input.send('picker:handover');
+  // taken off the page with the focus in it
+  old.leave();
+  assert.deepEqual(old.calls, [], 'the picker taken away by a drawing kept "10"');
+  // the drawing had no picker for it: it is left after all, once
+  old.input.send('picker:leave');
+  assert.deepEqual(old.calls, [['keep', '10']]);
+  old.input.send('picker:leave');
+  assert.deepEqual(old.calls, [['keep', '10']], 'left twice');
+  // a picker not handed over is not left by the word
+  const plain = make();
+  plain.type('10');
+  plain.input.send('picker:leave');
+  assert.deepEqual(plain.calls, []);
+});
+
 test('SV2-50 item 11: a pick or a keep the project refuses puts the field back to what the slot holds', () => {
   const refused = make({ text: '101 — Ms. Harrowgate', roomId: 'r101', onPick: () => false, onKeep: () => false });
   refused.type('102');
@@ -765,27 +785,67 @@ test('SV2-50 item 11: a pick or a keep the project refuses puts the field back t
   assert.equal(taken.input.value, '102 — Mr. Tindall');
 });
 
-test('SV2-50 item 11: the line is a status from the user\'s first key, so a picker drawn again under the focus does not say its words again; its link has a key', () => {
+test('SV2-50 item 11, as SV2-54 item 7 changed it: the line is a status from the picker\'s making, empty; a picker drawn again under the focus is handed the words and does not say them again; its link has a key', () => {
   // kept text two rooms answer to: the words are there from the start, and describe the field
   const drawn = make({ text: '150', roomId: null, missing: true });
   assert.equal(drawn.line.textContent, '2 rooms match. Pick one from the list.');
   assert.ok(drawn.described().includes(drawn.line.id));
-  assert.equal(drawn.line.getAttribute('role'), null, 'a new drawing\'s line is a status before anything was pressed');
-  // the text a drawing carries over is sent as an input event the page made, not a key
-  drawn.input.send('input', { isTrusted: false });
-  assert.equal(drawn.line.getAttribute('role'), null);
-  drawn.key('ArrowDown');
   assert.equal(drawn.line.getAttribute('role'), 'status');
-  // typing is a key too
+  // typing
   const typed = make();
-  typed.type('zzz');
   assert.equal(typed.line.getAttribute('role'), 'status');
+  assert.equal(typed.line.textContent, '');
+  typed.type('zzz');
+  assert.equal(typed.line.textContent, 'No room matches. It is kept as typed, and marked as not in the building.');
   // with no rooms, the link to the building has a key for the drawing to find it by
   const empty = make(null, { options: () => [] });
   empty.click();
   const link = empty.line.children[0];
   assert.equal(link.tagName, 'A');
   assert.equal(link.dataset.key, 'slot:d:0:room:building');
+});
+
+test('SV2-54 item 7: the first words after a drawing are said: the line is a status, empty, before anything is pressed, and a click that brings words puts them in a status', () => {
+  // a picker a drawing has just made under the focus, nothing pressed in it yet
+  const fresh = make(null, { options: () => [] });
+  assert.equal(fresh.line.getAttribute('role'), 'status', 'a new picker\'s line is no status until a key');
+  assert.equal(fresh.line.textContent, '');
+  assert.equal(fresh.described().includes(fresh.line.id), false, 'an empty line describes the field');
+  // the click opens it, with no key pressed: the words go into the status
+  fresh.click();
+  assert.equal(fresh.line.getAttribute('role'), 'status');
+  assert.equal(fresh.line.textContent, 'No rooms in the building yet. Number them in Building.');
+});
+
+test('SV2-54 item 7: a picker handed over leaves its words to the one made in its place, which holds them from its making, so the drawing does not say them again', async () => {
+  const old = make();
+  old.type('zzz');
+  const words = old.line.textContent;
+  assert.match(words, /^No room matches/);
+  old.input.send('picker:handover');
+  // the drawing: a new picker for the same field, then the text and the list handed over
+  const next = make();
+  assert.equal(next.line.getAttribute('role'), 'status');
+  assert.equal(next.line.textContent, words, 'the new picker\'s line was empty when made');
+  const node = next.line.childNodes[0];
+  next.input.value = 'zzz';
+  next.input.send('input', { isTrusted: false });
+  next.input.send('picker:resume', { detail: { room: null } });
+  assert.equal(next.line.textContent, words);
+  assert.equal(next.line.childNodes[0], node, 'the same words were put in the line again');
+  // once the drawing is done the picker says its own words: the same ones, untouched
+  await Promise.resolve();
+  assert.equal(next.line.childNodes[0], node, 'the same words were put in the line again');
+  // a pick that ends "2 rooms match": the new picker holds a room, and says nothing
+  const two = make({ text: '150', roomId: null, missing: true });
+  assert.equal(two.line.textContent, '2 rooms match. Pick one from the list.');
+  two.input.send('picker:handover');
+  const picked = make({ text: '150 — Dr. Quennell', roomId: 'r150b' });
+  await Promise.resolve();
+  assert.equal(picked.line.textContent, '', 'the words handed over outlived what they were about');
+  // what is handed over is for that drawing alone
+  const later = make();
+  assert.equal(later.line.textContent, '', 'words handed over outlived the drawing');
 });
 
 // ---------------------------------------------------------------- the Groups tab's addresses

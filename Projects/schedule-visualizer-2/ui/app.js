@@ -41,7 +41,7 @@ import { createIds } from '../engine/ids.js';
 import { newProject, THEMES } from '../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../engine/publish-defaults.js';
 import { gridEditsPending, watchGridEdits } from './schedule/grid/index.js';
-import { slotHash, groupHash } from './schedule/address.js';
+import { focusHash } from './schedule/address.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
@@ -73,14 +73,10 @@ export function parseHash(hash) {
 // slot is the slot's own address, and one to the group alone the group's
 // (ui/schedule/address.js): `#schedule/groups` alone is the list, and on a
 // phone the list is not where the change was.
+// The rule is focusHash's, in ui/schedule/address.js, where a Node test
+// reads it with no page (test/ui/schedule-address.test.mjs).
 export function hashForFocus(focus) {
-  if (!focus || !SECTIONS.some((each) => each.id === focus.section)) return null;
-  if (focus.section === 'building' && focus.floorId) return '#building/' + focus.floorId;
-  if (focus.section === 'schedule' && focus.tab === 'groups' && focus.groupId) {
-    return focus.dayTypeId && Number.isInteger(focus.period) ? slotHash(focus.groupId, focus.dayTypeId, focus.period) : groupHash(focus.groupId);
-  }
-  if (focus.section === 'schedule' && focus.tab) return '#schedule/' + focus.tab;
-  return '#' + focus.section;
+  return focusHash(focus, SECTIONS.map((each) => each.id));
 }
 
 async function boot() {

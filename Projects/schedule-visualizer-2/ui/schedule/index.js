@@ -45,8 +45,8 @@ import { tabs } from '../components/tabs.js';
 import { periodWords } from '../components/words.js';
 import { scheduleModel } from './model.js';
 import { findingsPanel, SHEET as INSPECTOR_SHEET } from './checks.js';
-import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, toGroup, toList } from './groups.js';
-import { readAddress, slotHash, groupOf, GROUPS_HASH } from './address.js';
+import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, toGroup, toList, spentEntry } from './groups.js';
+import { readAddress, slotHash, groupOf, groupHash } from './address.js';
 
 export { slotHash };
 import { mount as grid, GRID_KEYS } from './grid/index.js';
@@ -144,6 +144,12 @@ function watchPointer() {
   window.matchMedia(INSPECTOR_SHEET).addEventListener('change', () => {
     if (live) live.inspect();
   });
+  // Forward onto the entry a gone group left (groups.js, `toList`) is a step
+  // to the list's address from the list's address, which no `hashchange`
+  // reports: the step back to the list is taken here.
+  window.addEventListener('popstate', () => {
+    if (live && spentEntry()) history.back();
+  });
   document.addEventListener('pointerdown', () => {
     pointerDown = true;
   }, true);
@@ -188,6 +194,8 @@ export const section = {
   mount(ctx, rest) {
     loadSheet();
     watchPointer();
+    // a page loaded onto the entry a gone group left: to the list under it
+    if (spentEntry()) history.back();
     takeAddress(ctx.store.project, rest);
     let panel = null;
     let timer = null;
@@ -287,6 +295,15 @@ export const section = {
       // line under the field while its list is open: the new field's list is
       // opened for it, so the link is there to take the focus back
       const linkOf = had && active.tagName === 'A' && /:building$/.test(had) ? had.replace(/:building$/, '') : null;
+      // A room picker being typed in is handed over, not left: taking it
+      // away must not commit half a number ("10" kept as typed, then Room
+      // 101 picked in the new field, two changes for one). If the drawing
+      // has no field for it, it is left after all (below), as a field is.
+      const handed = field && active.getAttribute('role') === 'combobox' ? active : null;
+      if (handed) handed.dispatchEvent(new CustomEvent('picker:handover'));
+      const leaveHanded = () => {
+        if (handed) handed.dispatchEvent(new CustomEvent('picker:leave'));
+      };
       const project = ctx.store.project;
       element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
       panel.update(project);
@@ -300,6 +317,7 @@ export const section = {
         const first = marked.querySelector('input, select, button');
         if (first) first.focus({ preventScroll: true });
         wantFocus = null;
+        if (!first || first !== find(had)) leaveHanded();
         return;
       }
       const owner = linkOf ? find(linkOf) : null;
@@ -307,6 +325,7 @@ export const section = {
       const asked = wantFocus && wantFocus !== had ? find(wantFocus) : null;
       const target = asked || (had && find(had));
       wantFocus = null;
+      if (!target || target !== find(had)) leaveHanded();
       if (target) {
         if (document.activeElement !== target) target.focus();
         const text = target.tagName === 'INPUT' && ['text', 'search'].includes(target.type);
@@ -366,10 +385,13 @@ export const section = {
       if (strip.selected !== 'groups' || ctx.store.project.groups.length === 0) return;
       const group = groupOf(ctx.store.project, location.hash);
       if (view.folded === true && view.groupId) {
-        if (!group || group.id !== view.groupId) {
-          // another group's address is not the list under this one
-          if (group) history.replaceState(null, '', GROUPS_HASH);
+        if (!group) {
           toGroup(ctx, view.groupId);
+        } else if (group.id !== view.groupId) {
+          // another group's address (chosen while narrow, before a group
+          // was chosen wide) is this group's place now, with the list still
+          // under it when it was: a list of its own would be the list twice
+          history.replaceState(history.state, '', groupHash(view.groupId));
         }
       } else if (group) {
         toList();
@@ -407,7 +429,7 @@ export const section = {
         // its address after it has drawn (groups.js), and a second drawing
         // would take the page from under a finger that has just tapped.
         if ((same && chosen() !== was) || (view.shown && view.shown.fresh)) schedule();
-        else inspector.update(ctx.store.project);
+        else inspect();
         return true;
       },
     };
