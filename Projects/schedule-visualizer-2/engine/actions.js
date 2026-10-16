@@ -1768,6 +1768,18 @@ function scenarioFocus() {
   return { section: 'scenarios' };
 }
 
+// A payload left out or null reads as {}, so each action's own refusal applies.
+function payloadOf(payload) {
+  return payload && typeof payload === 'object' ? payload : {};
+}
+
+// A name is blank when nothing is left of it after white space and the
+// zero-width characters (U+200B to U+200D, U+2060, U+FEFF) are taken out.
+// A name that is not blank is kept exactly as typed.
+function blankName(value) {
+  return typeof value === 'string' && value.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '') === '';
+}
+
 function needScenario(project) {
   if (!project.scenario) refuse('There is no scenario open. Start one first.', 'no-scenario');
   return project.scenario;
@@ -1777,8 +1789,12 @@ function needNoScenario(project, payload) {
   if (project.scenario && !(payload && payload.replace === true)) refuse('A scenario is already open: ' + project.scenario.name + '. Apply it or discard it first.', 'scenario-open');
 }
 
+// The scenario's name as a label says it: NEW_SCENARIO_NAME when the stored
+// one is blank, which a file can hold (repair keeps name: '').
 function scenarioName(project) {
-  return project.scenario ? project.scenario.name : '';
+  if (!project.scenario) return '';
+  const name = project.scenario.name;
+  return typeof name !== 'string' || blankName(name) ? NEW_SCENARIO_NAME : name;
 }
 
 function changesWord(n) {
@@ -1813,21 +1829,22 @@ function chipText(project, change) {
 // Start a scenario with no changes. payload: { name } (left out or blank,
 // NEW_SCENARIO_NAME) and replace, to put it in place of an open one.
 export const newScenario = action(
-  { label: (before, payload, after) => 'Start scenario ' + after.scenario.name, bumps: [], focus: scenarioFocus },
+  { label: (before, payload, after) => 'Start scenario ' + scenarioName(after), bumps: [], focus: scenarioFocus },
   (project, payload) => {
     needNoScenario(project, payload);
-    const given = payload ? payload.name : undefined;
-    const name = given === undefined || (typeof given === 'string' && given.trim() === '') ? NEW_SCENARIO_NAME : needText(given, 'A scenario name');
+    const given = payloadOf(payload).name;
+    const name = given === undefined || blankName(given) ? NEW_SCENARIO_NAME : needText(given, 'A scenario name');
     return withScenario(project, { name, changes: [], compared: null });
   },
 );
 
 // payload: { name }.
 export const renameScenario = action(
-  { label: (before, payload) => 'Rename scenario ' + scenarioName(before) + ' to ' + payload.name, bumps: [], focus: scenarioFocus },
+  { label: (before, payload) => 'Rename scenario ' + scenarioName(before) + ' to ' + payloadOf(payload).name, bumps: [], focus: scenarioFocus },
   (project, payload) => {
     const scenario = needScenario(project);
-    const name = needName(payload.name, 'A scenario');
+    const given = payloadOf(payload).name;
+    const name = needName(blankName(given) ? '' : given, 'A scenario');
     if (name === scenario.name) return project;
     return withScenario(project, { ...scenario, name });
   },
@@ -1840,37 +1857,41 @@ export const renameScenario = action(
 // earlier one, and this one goes when it leaves its slots as the schedule
 // has them, which is how "move 7-1 to 204 and back" leaves nothing. An older
 // change the schedule has caught up with stays (reconcile hides it). Adding
-// what changes nothing makes no undo step. payload: { change }.
+// what changes nothing makes no undo step, and so does adding a change the
+// scenario already holds, compared field by field. When the change added
+// leaves its slots as the schedule has them it goes too, taking with it the
+// changes it replaced, and the label says how many went. payload: { change }.
 export const addScenarioChange = action(
   {
     label: (before, payload, after) => {
       const name = scenarioName(before);
-      const change = scenarioChange(payload.change);
+      const change = scenarioChange(payloadOf(payload).change);
       const list = after.scenario.changes;
-      if (list.length > 0 && sameChange(list[list.length - 1], change)) return 'Add to scenario ' + name + ': ' + chipText(before, change);
+      const added = 'Add to scenario ' + name + ': ' + chipText(before, change);
+      if (list.length > 0 && sameChange(list[list.length - 1], change)) return added;
       const gone = before.scenario.changes.filter((old) => !list.includes(old));
-      return 'Put back in scenario ' + name + ': ' + chipText(before, gone[0]) + (gone.length > 1 ? ' and ' + changesWord(gone.length - 1) + ' more' : '');
+      return added + ', which puts back the schedule there and takes ' + changesWord(gone.length) + ' out of the scenario';
     },
     bumps: [],
     focus: scenarioFocus,
   },
   (project, payload) => {
     const scenario = needScenario(project);
-    const change = scenarioChange(payload.change);
+    const change = scenarioChange(payloadOf(payload).change);
     applyChanges(project, [change]);
     const list = scenario.changes.concat([change]);
     const changes = normalise(project, list, { added: list.length - 1 });
-    if (changes.length === scenario.changes.length && changes.every((kept, i) => kept === scenario.changes[i])) return project;
+    if (changes.length === scenario.changes.length && changes.every((kept, i) => sameChange(kept, scenario.changes[i]))) return project;
     return withScenario(project, { ...scenario, changes });
   },
 );
 
 // payload: { index }, the change's place in project.scenario.changes.
 export const removeScenarioChange = action(
-  { label: (before, payload) => 'Remove from scenario ' + scenarioName(before) + ': ' + chipText(before, before.scenario.changes[payload.index]), bumps: [], focus: scenarioFocus },
+  { label: (before, payload) => 'Remove from scenario ' + scenarioName(before) + ': ' + chipText(before, before.scenario.changes[payloadOf(payload).index]), bumps: [], focus: scenarioFocus },
   (project, payload) => {
     const scenario = needScenario(project);
-    const index = payload.index;
+    const index = payloadOf(payload).index;
     if (!Number.isInteger(index) || index < 0 || index >= scenario.changes.length) refuse('That change is no longer in the scenario.', 'missing');
     return withScenario(project, { ...scenario, changes: scenario.changes.filter((change, i) => i !== index) });
   },
@@ -1883,13 +1904,27 @@ export const discardScenario = action(
   (project) => (project.scenario ? withScenario(project, null) : project),
 );
 
+// What scenarioFromDiff reads of the other project, each the shape it reads
+// it as: a building whose floors are a list of floors each with a list of
+// spaces, settings, and lists of groups and day types.
+function readableProject(other) {
+  const isObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  const listOf = (value) => Array.isArray(value) && value.every(isObject);
+  if (Array.isArray(other) || !isObject(other.building) || !isObject(other.settings)) return false;
+  if (!listOf(other.building.floors) || !other.building.floors.every((floor) => listOf(floor.spaces))) return false;
+  return listOf(other.groups) && listOf(other.dayTypes);
+}
+
 // "Compare with another project file": the scenario is what would make this
 // schedule the file's, matched by room number and group name
 // (scenarioFromDiff), with the file's name and the groups only one side has
 // in `compared`. A different building is refused with the count of rooms
 // that differ. The slots it could not compare (scenarioFromDiff's `skipped`)
 // are for the lab to show; the scenario does not keep them.
-// payload: { project, fileName, name } and replace, as newScenario.
+// A project that is not the shape scenarioFromDiff reads (the building's
+// floors and their spaces, the groups, the day types, the settings) is
+// refused before it is read. payload: { project, fileName, name } and
+// replace, as newScenario.
 export const setScenarioFromFile = action(
   {
     label: (before, payload, after) => 'Compare with ' + (after.scenario.compared.fileName === '' ? 'another file' : after.scenario.compared.fileName) + ': ' + changesWord(after.scenario.changes.length),
@@ -1897,11 +1932,13 @@ export const setScenarioFromFile = action(
     focus: scenarioFocus,
   },
   (project, payload) => {
-    needNoScenario(project, payload);
-    const other = payload ? payload.project : undefined;
+    const given = payloadOf(payload);
+    needNoScenario(project, given);
+    const other = given.project;
     if (!other || typeof other !== 'object') refuse('There is no project file to compare with.', 'bad-value');
-    const options = { fileName: typeof payload.fileName === 'string' ? payload.fileName : '' };
-    if (typeof payload.name === 'string' && payload.name.trim() !== '') options.name = payload.name;
+    if (!readableProject(other)) refuse('This file is not a project file this tool can read, so there is nothing to compare with.', 'bad-value');
+    const options = { fileName: typeof given.fileName === 'string' ? given.fileName : '' };
+    if (typeof given.name === 'string' && !blankName(given.name)) options.name = given.name;
     return withScenario(project, scenarioFromDiff(project, other, options).scenario);
   },
 );
