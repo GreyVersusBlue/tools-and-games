@@ -280,7 +280,9 @@ test('the sign\'s number is set smaller only when it is longer than a number is'
   assert.equal(signFit('B12'), 1);
   assert.equal(signFit('Gym 2'), 1);
   assert.equal(signFit('Cafeteria'), 7 / 9);
-  assert.equal(signFit('Ünïcödé'), 1, 'counted in characters, not in bytes');
+  assert.equal(signFit('Ënïcödé'), 1, 'counted in characters, not in bytes');
+  // SV2-58 item 3: Ü is a hair over a seventh of a phone card's line, so it counts 1.25
+  assert.equal(signFit('Ünïcödé'), 7 / 7.25);
   // a full-square character is as wide as two Latin ones: seven of them are set at half size, and fit
   assert.equal(signFit(CJK_SEVEN), 0.5);
   assert.equal(signFit('東京東京東京東京'), 7 / 16);
