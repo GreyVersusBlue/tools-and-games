@@ -1535,7 +1535,7 @@ test('"Start at the passcode screen" reaches a key the frame could only keep in 
 });
 
 test('a read-only tab publishes its file and says nothing false: no "Nothing changed", the status and the section\'s first line say the project does not record it', async () => {
-  const first = await open();
+  let first = await open();
   let second = null;
   try {
     await apply(first.page, 'setSetting', { key: 'schoolName', value: 'First Tab School' });
@@ -1560,10 +1560,21 @@ test('a read-only tab publishes its file and says nothing false: no "Nothing cha
     // SV2-53b: and once it is no longer just now, the tab still made it
     await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
     assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^This tab made a file earlier\. The project does not record it while the tab is read-only\. It has /);
+    // SV2-58b: the other tab closes and this one becomes the editor; the tab
+    // is no longer read-only, so the line no longer says it is
+    await first.close();
+    first = null;
+    await page.waitForSelector('#banner-read-only', { hidden: true, timeout: 30000 });
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.includes('read-only'), { timeout: 10000 });
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^No file has been made from this project yet\. It has /);
+    // and leaving the section and opening it again does not bring it back
+    await go(page, '#building');
+    await go(page, '#staff');
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^No file has been made from this project yet\. It has /);
     assert.deepEqual(second.problems().errors, []);
   } finally {
     if (second) await second.close();
-    await first.close();
+    if (first) await first.close();
   }
 });
 
