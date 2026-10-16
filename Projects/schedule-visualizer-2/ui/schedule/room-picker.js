@@ -342,8 +342,15 @@ export function roomPicker(options) {
     handed = true;
     const [kind, ...rest] = said.split('|');
     leftWords.set(options.key, { kind, words: rest.join('|') });
-    // the drawing that takes this one away is done within this task
-    queueMicrotask(() => leftWords.delete(options.key));
+    // The drawing that takes this one away is done within this task. A
+    // drawing that kept this field on the page took nothing away: the
+    // picker is still the one being typed in, and a hand-over left standing
+    // would make its blur do nothing ever after, so what is typed in it
+    // would never be read (SV2-56 item 2).
+    queueMicrotask(() => {
+      leftWords.delete(options.key);
+      if (input.isConnected) handed = false;
+    });
   });
   input.addEventListener('picker:leave', () => {
     if (!handed) return;

@@ -29,6 +29,12 @@ class StubNode {
   constructor() {
     this.parentNode = null;
   }
+
+  // on the page: under the stand-in's body
+  get isConnected() {
+    for (let at = this; at; at = at.parentNode) if (at === globalThis.document.body) return true;
+    return false;
+  }
 }
 
 class StubText extends StubNode {
@@ -163,6 +169,7 @@ globalThis.document = {
   createElement: (tag) => new StubElement(tag),
   createTextNode: (text) => new StubText(text),
 };
+globalThis.document.body = new StubElement('body');
 globalThis.location = { hash: '#schedule/groups' };
 
 const { roomPicker } = await import('../../ui/schedule/room-picker.js');
@@ -206,6 +213,7 @@ function make(slot, more) {
   const input = made.input;
   return {
     calls,
+    element: made.element,
     input,
     line,
     missing,
@@ -789,6 +797,35 @@ test('SV2-54 item 3: a picker handed over to a drawing does not commit what is h
   plain.type('10');
   plain.input.send('picker:leave');
   assert.deepEqual(plain.calls, []);
+});
+
+// The drawings of the section make a new picker for every field they draw,
+// and a picker handed over waits for its successor. One that a drawing kept
+// on the page has no successor: once the drawing is done it is the picker
+// being typed in again, and its blur reads the text as before.
+test('SV2-56 item 2: a picker handed over to a drawing that kept it on the page is not left handed over: leaving it reads what was typed, once', async () => {
+  const kept = make();
+  document.body.append(kept.element);
+  kept.type('10');
+  kept.input.send('picker:handover');
+  // the drawing is done; the field is still on the page
+  await Promise.resolve();
+  kept.leave();
+  assert.deepEqual(kept.calls, [['keep', '10']], 'a picker the drawing kept stayed handed over: its text was never read');
+  kept.input.send('picker:leave');
+  assert.deepEqual(kept.calls, [['keep', '10']], 'left twice');
+  document.body.replaceChildren();
+  // one the drawing took off the page stays handed over until it is told
+  const taken = make();
+  document.body.append(taken.element);
+  taken.type('10');
+  taken.input.send('picker:handover');
+  document.body.replaceChildren();
+  await Promise.resolve();
+  taken.leave();
+  assert.deepEqual(taken.calls, [], 'the picker taken away by the drawing kept "10"');
+  taken.input.send('picker:leave');
+  assert.deepEqual(taken.calls, [['keep', '10']]);
 });
 
 test('SV2-50 item 11: a pick or a keep the project refuses puts the field back to what the slot holds', () => {
