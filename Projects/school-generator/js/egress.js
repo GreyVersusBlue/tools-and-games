@@ -52,7 +52,7 @@ import {
   buildNav, egressField, pointField, dischargeField, dischargePath,
 } from './navgraph.js';
 import {
-  clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis, rampLandingFit,
+  clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis, rampLandingFit, stairLandingFit,
 } from './clearance.js';
 import {
   rampSlope, rampRuns, rampRunRise, rampOverRise, rampMinRuns, stairMetrics, RAMP_CTRL,
@@ -595,6 +595,9 @@ export function accessibleAnalysis(state, opts = {}) {
   // furniture and door swings asked since #984, a folded ramp's since #985. The ramp stays where
   // it is and stays in the count, as above.
   const tightLandings = (state.links || []).map((l) => rampLandingFit(state, l, metrics, catalogGet)).filter(Boolean);
+  // A stair's 4ft top landing with furniture or a door's swing in it (#987):
+  // the two of those questions a stair is asked. A warning that moves nothing.
+  const stairLandings = (state.links || []).map((l) => stairLandingFit(state, l, metrics, catalogGet)).filter(Boolean);
   // ADA 405.5: a ramp a file made narrower than the panel lets one be (#982).
   // A warning that moves nothing; the ramp stays in the count, as above.
   const narrowRamps = (state.links || []).filter((l) => l.type === 'ramp' && stairWidth(l) < RAMP_CTRL.minW);
@@ -652,6 +655,7 @@ export function accessibleAnalysis(state, opts = {}) {
       ...accessibleFindings({
         rooms: stairsOnly, entrances, summary, narrowDoors, steepRamps,
         longRamps, rise: metrics.rise, minRuns: rampMinRuns(metrics), tightLandings, narrowRamps,
+        stairLandings,
       }),
       ...turning.findings,
       ...reach.findings,
@@ -841,7 +845,7 @@ function egressFindings({ rooms, exits, stairs, summary, common, edition, occupa
 
 function accessibleFindings({
   rooms, entrances, summary, narrowDoors, steepRamps = [], longRamps = [], rise = 0, minRuns = 1,
-  tightLandings = [], narrowRamps = [],
+  tightLandings = [], narrowRamps = [], stairLandings = [],
 }) {
   const out = [];
   if (!entrances.length) {
@@ -922,6 +926,22 @@ function accessibleFindings({
       `from the top of the run. Here ${said}. Nothing was moved: the ramp is where it was put, ` +
       'so shift it, or what is in the way. The route above still counts it as a way up.',
       { doors: tightLandings.slice(0, 8).map((l) => ({ id: l.id, floor: l.floor, x: l.x, z: l.z, w: 0 })), cite: ADA.rampLanding }));
+  }
+  if (stairLandings.length) {
+    // No section is cited: the building code's stair-landing rule is about
+    // its size and lets a door swing part way in, so neither reason is quoted
+    // as a breach of it (#987).
+    const n = (why) => stairLandings.filter((l) => l.why.includes(why)).length;
+    const said = [
+      [n('prop'), 'furniture stands in it'],
+      [n('swing'), 'a door swings into it'],
+    ].filter(([count]) => count).map(([count, what]) => `${what} (${count})`).join('; ');
+    out.push(finding('warn', 'stair-landing',
+      `${stairLandings.length} stair${stairLandings.length === 1 ? '' : 's'} with something in the top landing`,
+      'A stair\'s landing is kept clear: it is as wide as the stair and 4 ft long, measured from ' +
+      `the top of the run. Here ${said}. Nothing was moved: the stair is where it was put, ` +
+      'so shift it, or what is in the way.',
+      { doors: stairLandings.slice(0, 8).map((l) => ({ id: l.id, floor: l.floor, x: l.x, z: l.z, w: 0 })) }));
   }
   return out;
 }
