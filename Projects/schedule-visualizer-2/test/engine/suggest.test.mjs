@@ -10,11 +10,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { suggest, suggestionCandidates, NO_SUGGESTION, SUGGESTION_LIMIT, SUGGESTION_KINDS, RUN_TRIES } from '../../engine/suggest.js';
-import { applyChanges, normalise } from '../../engine/scenario.js';
+import { suggest, suggestionCandidates, suggestionParts, NO_SUGGESTION, SUGGESTION_LIMIT, SUGGESTION_KINDS } from '../../engine/suggest.js';
+import { applyChanges, normalise, compareResults } from '../../engine/scenario.js';
 import { createPipeline } from '../../engine/worker.js';
 import { checkSchedule } from '../../engine/checks.js';
-import { setPeriods, setRoomTeachers, editTeacher, editGroup, setSlot } from '../../engine/actions.js';
+import { setPeriods, setRoomTeachers, setRoomFields, editTeacher, editGroup, setSlot } from '../../engine/actions.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { school, ctx } from './helpers.mjs';
 
@@ -77,6 +77,11 @@ function assertHonest(project, finding, answer) {
     assert.equal(suggestion.effects.walking.before, walkingOf(before, groupId, d), suggestion.text + ': walking before is the crowd model\'s');
     assert.equal(suggestion.effects.walking.after, walkingOf(after, groupId, d), suggestion.text + ': walking after is the crowd model\'s');
     assert.equal(suggestion.effects.walking.difference, suggestion.effects.walking.after - suggestion.effects.walking.before);
+    // and the walking figure is the one the lab will show when it is tried
+    const compared = compareResults(before, after, { dayTypeId: d, changes: [suggestion.change], limit: 0 });
+    const row = compared.groups.find((entry) => entry.groupId === groupId);
+    assert.equal(suggestion.effects.walking.difference, (row && row.after ? row.after.walking : 0) - (row && row.before ? row.before.walking : 0), suggestion.text + ': the lab\'s walking');
+    assert.ok(compared.figures.failed.difference <= 0, suggestion.text + ': no walk loses its way');
   }
 }
 
@@ -344,7 +349,7 @@ test('a finding on B Day suggests changes to B Day', () => {
 
 // ---------------------------------------------------------------- the pipeline
 
-test('one pipeline handed in: the project first under its counters, then each candidate under its own, sharing the routes', () => {
+test('one pipeline handed in: never run under the store\'s counters, each run under one of its own, sharing the routes', () => {
   const project = school();
   const finding = findingOf(project, DOUBLE);
   const real = createPipeline();
@@ -354,43 +359,80 @@ test('one pipeline handed in: the project first under its counters, then each ca
   const pipeline = {
     run(next, counters) {
       const result = real.run(next, counters);
-      calls.push({ counters, work: result.work });
+      calls.push({ next, counters, work: result.work });
       return result;
     },
   };
   const shared = suggest(project, finding, { pipeline, versions });
-  assert.deepEqual(calls[0].counters, versions, 'the schedule as it is, first');
+  assert.equal(calls[0].next, project, 'the schedule as it is, first');
+  const schedules = calls.map((call) => call.counters.schedule);
+  assert.equal(new Set(schedules).size, schedules.length, 'each run has a counter of its own');
+  assert.ok(schedules.every((n) => n < 0), 'below zero, where the store never counts: ' + schedules.join(','));
+  assert.ok(calls.every((call) => call.counters.geometry === 3 && call.counters.building === 4));
+  const again = [];
+  suggest(project, finding, { pipeline: { run: (next, counters) => { again.push(counters.schedule); return real.run(next, counters); } }, versions });
+  assert.ok(again.every((n) => !schedules.includes(n)), 'and never one an earlier call used');
   const candidates = calls.slice(1);
   assert.ok(candidates.length > 0);
-  const schedules = candidates.map((call) => call.counters.schedule);
-  assert.equal(new Set(schedules).size, schedules.length, 'each candidate has a counter of its own');
-  assert.ok(schedules.every((n) => n < 0), 'below zero, where the store never counts');
-  assert.ok(candidates.every((call) => call.counters.geometry === 3 && call.counters.building === 4));
   // a swap walks between rooms the schedule already walks between: nothing is searched again
-  assert.ok(candidates.every((call) => call.work.routesRun === true && call.work.searches === 0), 'the route cache is shared: ' + candidates.map((call) => call.work.searches).join(','));
-  // against the run before it (the last candidate): the two transitions at
-  // each end of either swap, at most eight of the fourteen
-  assert.ok(candidates.every((call) => call.work.transitionsRun <= 8 && call.work.transitions === 14), 'a candidate runs only the transitions that changed: ' + candidates.map((call) => call.work.transitionsRun).join(','));
+  assert.ok(calls.every((call) => call.work.routesRun === true && call.work.searches === 0), 'the route cache is shared: ' + calls.map((call) => call.work.searches).join(','));
+  // against the run before it: the two transitions at each end of either
+  // swap, at most eight of the fourteen
+  assert.ok(calls.every((call) => call.work.transitionsRun <= 8 && call.work.transitions === 14), 'a run works out only the transitions that changed: ' + calls.map((call) => call.work.transitionsRun).join(','));
   // the same answer as with a pipeline of its own
   const alone = suggest(project, finding);
   assert.deepEqual(shared.suggestions.map((s) => s.text), alone.suggestions.map((s) => s.text));
 });
 
-test('the static checks come first for a room finding, and are skipped for a walk', () => {
+test('a pipeline holding a scenario under the store\'s counters: the same suggestions as a fresh one', () => {
+  // the lane's pipeline holds the schedule with the first suggestion tried,
+  // under the counters the store has for the schedule as it is. Read as the
+  // schedule as it is, the room is no longer double-booked, and nothing
+  // would be offered.
+  const project = school();
+  const finding = findingOf(project, DOUBLE);
+  const versions = { geometry: 2, building: 3, schedule: 4 };
+  const alone = suggest(project, finding).suggestions.map((s) => s.text);
+  const lane = createPipeline();
+  lane.run(applyChanges(project, [suggest(project, finding).suggestions[0].change]), versions);
+  const answer = suggest(project, finding, { pipeline: lane, versions });
+  assert.equal(answer.none, null, 'something to offer');
+  assert.deepEqual(answer.suggestions.map((s) => s.text), alone);
+});
+
+test('a pipeline handed in after it held another project: the same suggestions as a fresh one', () => {
+  // the first call stops after its first run (its finding is not in that
+  // project), so the pipeline is left holding the other project under a
+  // counter of suggest's own. A counter used twice would read it back.
+  const project = school();
+  const finding = findingOf(project, DOUBLE);
+  const versions = { geometry: 2, building: 3, schedule: 4 };
+  const alone = suggest(project, finding).suggestions.map((s) => s.text);
+  const pipeline = createPipeline();
+  const other = applyChanges(project, [{ kind: 'move', dayTypeId: A, groupId: G7C, period: 1, roomId: CAFETERIA }]);
+  assert.deepEqual(suggest(other, finding, { pipeline, versions }), { suggestions: [], none: NO_SUGGESTION }, 'not a finding of the other project');
+  const answer = suggest(project, finding, { pipeline, versions });
+  assert.deepEqual(answer.suggestions.map((s) => s.text), alone);
+});
+
+test('the static checks come first for a room finding, and do not judge a walk', () => {
   const project = school();
   const count = (finding) => {
     const real = createPipeline();
     let runs = 0;
-    suggest(project, finding, { pipeline: { run: (next, counters) => { runs += 1; return real.run(next, counters); } } });
-    return runs - 1;
+    const answer = suggest(project, finding, { pipeline: { run: (next, counters) => { runs += 1; return real.run(next, counters); } } });
+    return { runs: runs - 1, answer };
   };
   const double = findingOf(project, DOUBLE);
   const doubleCandidates = suggestionCandidates(project, double);
   // stage 1 drops the swaps that leave 203 double-booked or book another room twice
-  assert.ok(count(double) < doubleCandidates.length, 'the pipeline runs fewer than all ' + doubleCandidates.length);
+  assert.ok(count(double).runs < doubleCandidates.length, 'the pipeline runs fewer than all ' + doubleCandidates.length);
+  // the static checks cannot see a walk: the swaps reach the pipeline, and
+  // it is the pipeline that says which clear it
   const walk = findingOf(project, WALK);
-  const reorders = suggestionCandidates(project, walk).filter((candidate) => candidate.kind === 'reorder').length;
-  assert.ok(count(walk) >= Math.min(reorders, RUN_TRIES), 'every swap of a walk goes to the pipeline');
+  const { runs, answer } = count(walk);
+  assert.ok(runs > 0);
+  assert.ok(answer.suggestions.some((s) => s.kind === 'reorder'), answer.suggestions.map((s) => s.text).join(' / '));
 });
 
 // What the pipeline was handed, told apart by the edited groups' days.
@@ -452,4 +494,199 @@ test('the same answer every time', () => {
   const project = school();
   const finding = findingOf(project, WALK);
   assert.deepEqual(suggest(project, finding), suggest(project, finding));
+});
+
+// ---------------------------------------------------------------- SV2-63b
+
+test('the fourth kind goes by the teacher\'s subject, never the room\'s: a Science teacher\'s room is not offered for Social Studies', () => {
+  // Room 301 given Social Studies as its own subject; its teacher, Ms.
+  // Thistlewood, still teaches Science, and 6C and 7C are Ms. Vandermeer's
+  // Social Studies
+  let project = school();
+  project = setPeriods(project, { periods: 2 }, ctx());
+  project = setRoomFields(project, { roomId: R301, subjectId: 'ssample004' }, ctx());
+  const finding = findingOf(project, DOUBLE);
+  const theirs = suggestionCandidates(project, finding, { otherTeachersRooms: true }).filter((candidate) => candidate.kind === 'other-teachers-room');
+  assert.deepEqual(theirs.map((candidate) => candidate.change.roomId), [], 'no room of another teacher of the subject');
+  const on = suggest(project, finding, { otherTeachersRooms: true });
+  assert.ok(on.suggestions.every((suggestion) => suggestion.change.roomId !== R301), on.suggestions.map((s) => s.text).join(' / '));
+});
+
+test('another teacher\'s room with two owners names both', () => {
+  // Room 301 is Ms. Thistlewood's (Social Studies here) and Mr.
+  // Pennywhistle's, who has nobody in Period 2
+  let project = shortDay();
+  project = setRoomTeachers(project, { roomId: R301, teacherIds: [teacherId(project, 'Ms. Thistlewood'), teacherId(project, 'Mr. Pennywhistle')] }, ctx());
+  const finding = findingOf(project, DOUBLE);
+  const on = suggest(project, finding, { otherTeachersRooms: true });
+  assertHonest(project, finding, on);
+  const theirs = on.suggestions.filter((suggestion) => suggestion.kind === 'other-teachers-room');
+  assert.equal(theirs.length, 2, on.suggestions.map((s) => s.text).join(' / '));
+  for (const suggestion of theirs) {
+    assert.match(suggestion.text, /^Move (6C|7C) to Room 301, Ms\. Thistlewood and Mr\. Pennywhistle's room, for Period 2: from Room 203, taught by Ms\. Thistlewood and Mr\. Pennywhistle instead of Ms\. Vandermeer, /);
+    assert.deepEqual(suggestion.effects.owners, [teacherId(project, 'Ms. Thistlewood'), teacherId(project, 'Mr. Pennywhistle')]);
+    assert.ok(suggestion.parts.some((part) => part.name === true && part.text === 'Mr. Pennywhistle'), 'each name a typed part');
+  }
+});
+
+// The sample school with 8B in the Cafeteria (shared, no teacher) in Period
+// 2 on A Day, beside 6C (23) and 7C (22) double-booked in Room 203. 8B has
+// the school's default head count, 25.
+function cafeteriaInUse(capacity) {
+  let project = school();
+  project = setSlot(project, { groupId: 'gsample08b', dayTypeId: A, period: 1, slot: { room: CAFETERIA } }, ctx());
+  if (capacity !== undefined) project = setRoomFields(project, { roomId: CAFETERIA, capacity }, ctx());
+  return project;
+}
+
+test('a shared space in use is free while the groups there and the one moving in fit it', () => {
+  const into = (project) => suggestionCandidates(project, findingOf(project, DOUBLE)).filter((candidate) => candidate.change.roomId === CAFETERIA).map((candidate) => candidate.change.groupId).sort();
+  assert.deepEqual(into(cafeteriaInUse()), [G6C, G7C], 'it seats 150: either group can join 8B');
+  assert.deepEqual(into(cafeteriaInUse(48)), [G6C, G7C], '25 and 23 is 48');
+  assert.deepEqual(into(cafeteriaInUse(47)), [G7C], '25 and 23 is over 47; 25 and 22 is not');
+  assert.deepEqual(into(cafeteriaInUse(null)), [], 'with no capacity it is free only when empty');
+  const project = cafeteriaInUse();
+  const finding = findingOf(project, DOUBLE);
+  const answer = suggest(project, finding);
+  assertHonest(project, finding, answer);
+  const move = answer.suggestions.find((suggestion) => suggestion.change.roomId === CAFETERIA && suggestion.change.groupId === G7C);
+  assert.ok(move, answer.suggestions.map((s) => s.text).join(' / '));
+  assert.match(move.text, /^Move 7C to Cafeteria for Period 2: from Room 203, no longer taught by Ms\. Vandermeer, .*no new findings$/);
+});
+
+test('a room that seats the group comes before one that does not', () => {
+  // a day of two periods; Room 301 has no teacher and seats 10, the
+  // Cafeteria seats 150. Each is a floor from Room 203, and 301 comes first
+  // by number, so only the seats put the Cafeteria ahead
+  let project = school();
+  project = setPeriods(project, { periods: 2 }, ctx());
+  project = setRoomTeachers(project, { roomId: R301, teacherIds: [] }, ctx());
+  const order = () => suggestionCandidates(project, findingOf(project, DOUBLE)).filter((candidate) => candidate.change.groupId === G7C && candidate.kind === 'free-room').map((candidate) => candidate.change.roomId);
+  assert.deepEqual(order(), [R301, CAFETERIA], 'both seat 7C: by number');
+  project = setRoomFields(project, { roomId: R301, capacity: 10 }, ctx());
+  assert.deepEqual(order(), [CAFETERIA, R301], 'the one that seats 7C first');
+});
+
+test('a teacher in two rooms: moving the group from a room not in the building into the teacher\'s own room', () => {
+  // one period; 8B's slot keeps "999", a room not in the building, and names
+  // Ms. Vandermeer, who has 6B in Room 203, here a shared space seating 60
+  let project = school();
+  project = setPeriods(project, { periods: 1 }, ctx());
+  const vandermeer = teacherId(project, 'Ms. Vandermeer');
+  project = setSlot(project, { groupId: 'gsample08b', dayTypeId: A, period: 0, slot: { room: null, roomText: '999', teacherIds: [vandermeer] } }, ctx());
+  project = setRoomFields(project, { roomId: R203, shared: true, capacity: 60 }, ctx());
+  const finding = findingOf(project, 'teacher-double:' + A + ':0:' + vandermeer);
+  const answer = suggest(project, finding);
+  assertHonest(project, finding, answer);
+  assertWords(answer);
+  const move = answer.suggestions.find((suggestion) => suggestion.change.groupId === 'gsample08b');
+  assert.ok(move, answer.suggestions.map((s) => s.text).join(' / '));
+  assert.equal(move.kind, 'teachers-room');
+  assert.match(move.text, /^Move 8B to Room 203 for Period 1: from 999 \(not in the building\), same teachers, /);
+  assert.ok(move.parts.some((part) => part.name === true && part.text === '999'), 'the number as typed');
+});
+
+test('"from no room": the words for a group with no room in the period', () => {
+  // a move changes the room and never who teaches, so no finding keeps a
+  // move from an empty slot; the words are read straight from the sentence
+  let project = school();
+  project = setSlot(project, { groupId: G7C, dayTypeId: A, period: 1, slot: { room: null } }, ctx());
+  const candidate = { change: { kind: 'move', dayTypeId: A, groupId: G7C, period: 1, roomId: R301 }, kind: 'teachers-room', room: project.building.floors[2].spaces.find((space) => space.id === R301), owners: [] };
+  const effects = { teachers: [], walking: { before: 0, after: 0, difference: 0 }, findings: { new: { problem: 0, warning: 0, note: 0 } } };
+  const text = suggestionParts(project, candidate, effects).map((part) => part.text).join('');
+  assert.equal(text, 'Move 7C to Room 301 for Period 2: from no room, same teachers, no change in walking, no new findings');
+});
+
+test('a teacher in two rooms is cleared by a suggestion', () => {
+  // 8B's slot in Room 101 in Period 2 names Ms. Vandermeer, who has 6C and 7C in 203
+  let project = school();
+  project = setSlot(project, { groupId: 'gsample08b', dayTypeId: A, period: 1, slot: { teacherIds: [teacherId(project, 'Ms. Vandermeer')] } }, ctx());
+  const finding = findingOf(project, 'teacher-double:' + A + ':1:' + teacherId(project, 'Ms. Vandermeer'));
+  const answer = suggest(project, finding);
+  assert.ok(answer.suggestions.length > 0);
+  assertHonest(project, finding, answer);
+  assertOrdered(answer);
+  assertWords(answer);
+});
+
+test('no planning period is cleared by a suggestion', () => {
+  const project = setPeriods(school(), { periods: 2 }, ctx());
+  const finding = findingOf(project, 'no-planning:' + A + ':' + teacherId(project, 'Coach Dunmore'));
+  const answer = suggest(project, finding);
+  assert.ok(answer.suggestions.length > 0);
+  assertHonest(project, finding, answer);
+  assertOrdered(answer);
+  assertWords(answer);
+});
+
+test('a teacher\'s walk is cleared by a suggestion', () => {
+  // 8A's slot in Room 303 in Period 7 names Coach Dunmore, who has 8A in the
+  // Gym in Period 6: 4 min 21 s before any crowding, with 4 min to pass
+  let project = school();
+  const dunmore = teacherId(project, 'Coach Dunmore');
+  project = setSlot(project, { groupId: G8A, dayTypeId: A, period: 6, slot: { teacherIds: [dunmore] } }, ctx());
+  const finding = findingOf(project, 'teacher-walk:' + A + ':5:' + dunmore);
+  const answer = suggest(project, finding);
+  assert.ok(answer.suggestions.length > 0);
+  assertHonest(project, finding, answer);
+  assertOrdered(answer);
+  assertWords(answer);
+});
+
+test('a room over capacity is cleared by a suggestion', () => {
+  const project = editGroup(school(), { id: 'gsample07b', headCount: 35 }, ctx());
+  const finding = findingOf(project, 'over-capacity:' + A + ':1:rsample204');
+  const answer = suggest(project, finding);
+  assert.ok(answer.suggestions.length > 0);
+  assertHonest(project, finding, answer);
+  assertOrdered(answer);
+  assertWords(answer);
+  assert.ok(answer.suggestions.some((suggestion) => suggestion.text === 'Move 7B to Cafeteria for Period 2: from Room 204, no longer taught by Mme. Dufrêne, 54 seconds more walking, no new findings'), answer.suggestions.map((s) => s.text).join(' / '));
+});
+
+test('the period words: Blocks, Hours and Mods', () => {
+  const expected = {
+    Block: ["Swap 7C's Blocks B and F: ", 'Move 7C to Cafeteria for Block B: '],
+    Hour: ["Swap 7C's 2nd and 6th Hours: ", 'Move 7C to Cafeteria for 2nd Hour: '],
+    Mod: ["Swap 7C's Mods 2 and 6: ", 'Move 7C to Cafeteria for Mod 2: '],
+  };
+  for (const [word, [swap, move]] of Object.entries(expected)) {
+    const sample = school();
+    const project = { ...sample, settings: { ...sample.settings, periodWord: word } };
+    const texts = suggest(project, findingOf(project, DOUBLE)).suggestions.map((s) => s.text);
+    assert.ok(texts.some((text) => text.startsWith(swap)), word + ': ' + texts.join(' / '));
+    assert.ok(texts.some((text) => text.startsWith(move)), word + ': ' + texts.join(' / '));
+  }
+});
+
+test('every suggestion for every finding of the sample school, and of its variants, is honest', () => {
+  const variants = [school(), shortDay(), cafeteriaInUse(), editGroup(school(), { id: 'gsample07b', headCount: 35 }, ctx())];
+  let offered = 0;
+  for (const project of variants) {
+    const before = run(project);
+    for (const finding of before.findings.findings.concat(before.findings.accepted)) {
+      for (const otherTeachersRooms of [false, true]) {
+        const answer = suggest(project, finding, { otherTeachersRooms });
+        offered += answer.suggestions.length;
+        assertHonest(project, finding, answer);
+        assertOrdered(answer);
+        assertWords(answer);
+      }
+    }
+  }
+  assert.ok(offered > 50, offered + ' suggestions');
+});
+
+test('the cap changes no answer on the sample school: capped and uncapped give the same lists', () => {
+  for (const project of [school(), shortDay(), editGroup(school(), { id: 'gsample07b', headCount: 35 }, ctx())]) {
+    const pipeline = createPipeline();
+    const versions = { geometry: 1, building: 1, schedule: 1 };
+    for (const finding of pipeline.run(project, versions).findings.findings.filter((one) => one.fixable)) {
+      for (const otherTeachersRooms of [false, true]) {
+        const capped = suggest(project, finding, { pipeline, versions, otherTeachersRooms }).suggestions.map((s) => s.text);
+        const uncapped = suggest(project, finding, { pipeline, versions, otherTeachersRooms, runTries: Infinity }).suggestions.map((s) => s.text);
+        assert.deepEqual(capped, uncapped, finding.id);
+      }
+    }
+  }
 });

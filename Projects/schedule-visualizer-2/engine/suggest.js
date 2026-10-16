@@ -10,17 +10,26 @@
 //
 //   options:
 //     pipeline            a createPipeline() from engine/worker.js to run the
-//                         candidates through. Pass the one the caller keeps,
-//                         so the candidates share its route cache. Left out,
-//                         a pipeline of this call's own.
+//                         candidates through. Give suggestions a pipeline the
+//                         main lane does not use: suggest never runs under
+//                         the caller's schedule counter, so it leaves the
+//                         pipeline holding a candidate, and the main lane's
+//                         next run would work the schedule out again rather
+//                         than hand back the answer it had. Left out, a
+//                         pipeline of this call's own. (Today a pipeline has
+//                         a route cache of its own; one shared with the main
+//                         lane's is SV2-64's to add.)
 //     versions            { geometry, building, schedule }, the store's
-//                         counters for `project`. With them a candidate runs
-//                         again only the transitions that differ from the run
-//                         before it; without them a shared pipeline works
-//                         every candidate out whole.
+//                         counters for `project`. Only the geometry and
+//                         building counters are used, so the route cache and
+//                         the graph are reused; each run takes a schedule
+//                         counter of suggest's own. Without them a pipeline
+//                         handed in works every run out whole.
 //     otherTeachersRooms  true to look at other teachers' rooms too (kind d);
 //                         off by default (spec 5.8)
 //     limit               at most this many, 1 to 5 (default 5)
+//     runTries            the stage 2 cap a rank, RUN_TRIES by default;
+//                         Infinity lifts it (the tests compare the two)
 //
 // The finding is one checkSchedule() gave for `project` (its id, kind and
 // `where` are read). The candidates, for a finding about groups G on day
@@ -30,12 +39,13 @@
 //                              day, the nearest periods first; for a walk
 //                              finding the swap of p and p+1 first
 //   b  'teachers-room'         move g to another room of the slot's own
-//                              teachers that no group uses in (D, p)
-//   c  'free-room'             move g to a room with no teachers that no
-//                              group uses in (D, p)
+//                              teachers that is free in (D, p)
+//   c  'free-room'             move g to a room with no teachers that is
+//                              free in (D, p)
 //   d  'other-teachers-room'   with otherTeachersRooms only: move g to a free
-//                              room of another teacher of the same subject;
-//                              the sentence says whose room it is
+//                              room of another teacher who teaches a subject
+//                              the slot's teachers teach; the sentence says
+//                              whose room it is
 //
 // G and p come from the finding's `where`, except: a teacher with no
 // planning period has every period of the day in which they teach, and a
@@ -44,11 +54,14 @@
 //
 // Two stages decide which candidates stay:
 //
-//   1. the static checks (checkSchedule with no walk figures): a candidate
-//      after which the finding's id is still there goes, and so does one
-//      that adds a problem. The walk kinds skip this stage, since the static
-//      checks cannot see a walk.
-//   2. the pipeline, on what is left: a candidate goes when the finding is
+//   1. the static checks (checkSchedule with no walk figures, day type D
+//      alone: a change to D changes nothing another own day type is checked
+//      on), on every candidate of a rank: one that adds a problem goes, and
+//      so does one after which the finding's id is still there, except for
+//      the walk kinds, which the static checks cannot see. What is left is
+//      put in the order of its static trade: new warnings, then new notes,
+//      then the order suggestionCandidates() gives.
+//   2. the pipeline, in that order: a candidate goes when the finding is
 //      still there, when it adds a problem, or when it leaves a walk with no
 //      way through that had one (a walk that fails is not walked, and would
 //      read as walking saved).
@@ -71,23 +84,29 @@
 //    203, taught by Ms. Thistlewood instead of Ms. Vandermeer, …"
 //
 // The work is bounded, so one finding is answered inside the budget of
-// test/timing/suggest.mjs (1 s at the size of spec 3.13). The ranks are
+// test/timing/suggest.mjs (1 s warm at the size of spec 3.13). The ranks are
 // tried in turn (a; b and c; d), and a rank only while fewer than `limit`
 // suggestions of earlier ranks have been found, since those would come first
-// whatever a later rank found. Within a rank at most STATIC_TRIES candidates
-// go through stage 1 and RUN_TRIES through stage 2, in the order
-// suggestionCandidates() gives: swaps by the distance between the two
-// periods, moves to a teacher's own room before rooms with none, and moves
-// to rooms that seat the group, then on the same floor (or the nearest),
-// then by number, first. A cap leaves out the ones that order puts last.
+// whatever a later rank found. Within a rank stage 2 stops once enough are
+// found whose trade is ahead of the next candidate's static trade: the
+// pipeline's new findings are the static ones and the walks' (warnings
+// only), so the next one's warnings can only rise and its notes stay, and it
+// cannot come in. Short of that it stops at RUN_TRIES, 32. On the 3.13
+// fixture no finding needs more than 29 (SV2-63b ran all 1,092 calls with
+// the cap lifted), so the cap changes no answer there or on the sample
+// school; it is there for a school where many candidates tie on their trade.
 //
-// The pipeline. suggest runs `project` through it under `versions` first, and
-// takes that run's answer as the schedule as it is, so the pipeline handed in
-// must not hold another project under the same counters (a scenario's, say):
-// give suggestions a pipeline of their own that shares the route cache. It is
-// left holding the last candidate it ran, under schedule counters below zero,
-// which a store never uses; its next run with the store's counters works out
-// what differs, as after any other change.
+// The candidates move into rooms that are free in (D, p): a room no group
+// uses, or a shared space (spec 5.7) while the groups already in it and the
+// one moving in stay within what it seats. A shared space with no capacity
+// is free only when empty. Kind d is a room whose teachers include one who
+// teaches a subject the slot's teachers teach; the room's own subject is
+// not read.
+//
+// The pipeline is left holding the last run of the call, under a schedule
+// counter below zero, which a store never uses, and never handed out twice:
+// a pipeline that held anything, a scenario under the store's counters
+// included, gives the same suggestions as a fresh one.
 
 import { allRooms, findById, resolveSlotRoom, roomNumberKey, nameOfRoom } from './schema.js';
 import { isOwnCopy, effectiveSchedule } from './day-types.js';
@@ -100,8 +119,7 @@ import { createPipeline } from './worker.js';
 
 export const SUGGESTION_LIMIT = 5;
 export const NO_SUGGESTION = 'No small change clears this.';
-export const STATIC_TRIES = 30;
-export const RUN_TRIES = 16;
+export const RUN_TRIES = 32;
 
 // The kinds, in the order the list shows them; b and c share a rank.
 export const SUGGESTION_KINDS = ['reorder', 'teachers-room', 'free-room', 'other-teachers-room'];
@@ -212,15 +230,26 @@ function headCountOf(project, group) {
   return Number.isInteger(group.headCount) ? group.headCount : project.settings.defaultHeadCount;
 }
 
-// The rooms some group uses in (d, p), by id.
+// The rooms some group uses in (d, p): room id -> the head count of the
+// groups there together.
 function usedRooms(project, dayTypeId, period) {
-  const used = new Set();
+  const used = new Map();
   for (const group of project.groups) {
     const slot = effectiveSchedule(project, group.id, dayTypeId)[period];
     const resolved = resolveSlotRoom(project, slot);
-    if (resolved.room) used.add(resolved.room.id);
+    if (resolved.room) used.set(resolved.room.id, (used.get(resolved.room.id) || 0) + headCountOf(project, group));
   }
   return used;
+}
+
+// Is `room` free for a group of `seats` to move into, with `used` from
+// usedRooms? A room nobody uses is. A shared space (spec 5.7: two groups in
+// it at once is no problem) is free while the groups already there and the
+// one moving in stay within what it seats; with no capacity set it is free
+// only when empty, since nothing says how many it holds.
+function isFreeFor(room, used, seats) {
+  if (!used.has(room.id)) return room.shared !== true || !Number.isInteger(room.capacity) || seats <= room.capacity;
+  return room.shared === true && Number.isInteger(room.capacity) && used.get(room.id) + seats <= room.capacity;
 }
 
 // The floor each room is on, and the floor's level.
@@ -283,8 +312,8 @@ function findingSlots(project, finding) {
 }
 
 // Every candidate change for the finding, in the order the kinds are tried
-// and, within a kind, the order a cap keeps: { change, kind, slot, room,
-// owners, key }. The no-ops normalise would drop are left out, and so is a
+// and, within a kind, the order stage 2 keeps for candidates whose static
+// trade ties: { change, kind, slot, room, owners, key }. The no-ops normalise would drop are left out, and so is a
 // change named twice.
 export function suggestionCandidates(project, finding, options) {
   const opts = options || {};
@@ -342,12 +371,13 @@ export function suggestionCandidates(project, finding, options) {
     const currentRoom = resolveSlotRoom(project, current).room;
     const homeFloor = currentRoom ? floors.get(currentRoom.id) : null;
     const teacherIds = slotTeacherIds(project, current);
+    // the subjects the slot's teachers teach; a room's own subject is not
+    // one of them (a Science room can be a Social Studies teacher's)
     const subjects = new Set();
     for (const id of teacherIds) {
       const teacher = findById(project.teachers, id);
       if (teacher && teacher.subjectId) subjects.add(teacher.subjectId);
     }
-    if (subjects.size === 0 && currentRoom && currentRoom.subjectId) subjects.add(currentRoom.subjectId);
     const ownRooms = new Set();
     for (const id of teacherIds) {
       const teacher = findById(project.teachers, id);
@@ -355,7 +385,7 @@ export function suggestionCandidates(project, finding, options) {
     }
     const seats = headCountOf(project, group);
     for (const room of rooms) {
-      if (used.has(room.id) || (currentRoom && room.id === currentRoom.id)) continue;
+      if ((currentRoom && room.id === currentRoom.id) || !isFreeFor(room, used, seats)) continue;
       const roomTeachers = Array.isArray(room.teacherIds) ? room.teacherIds : [];
       let kind = null;
       if (ownRooms.has(room.id)) kind = 'teachers-room';
@@ -364,7 +394,7 @@ export function suggestionCandidates(project, finding, options) {
         const same = roomTeachers.some((id) => {
           const teacher = findById(project.teachers, id);
           return teacher && teacher.subjectId ? subjects.has(teacher.subjectId) : false;
-        }) || (room.subjectId !== null && room.subjectId !== undefined && subjects.has(room.subjectId));
+        });
         if (same) kind = 'other-teachers-room';
       }
       if (kind === null) continue;
@@ -373,7 +403,7 @@ export function suggestionCandidates(project, finding, options) {
         change: { kind: 'move', dayTypeId: d, groupId: slot.groupId, period: slot.period, roomId: room.id },
         kind, slot, room, owners: kind === 'other-teachers-room' ? roomTeachers.slice() : [],
         key: { period: slot.period, room: roomNumberKey(room.number) },
-        fits: room.capacity === null || room.capacity === undefined || room.capacity >= seats ? 0 : 1,
+        fits: !Number.isInteger(room.capacity) || room.capacity >= seats + (used.get(room.id) || 0) ? 0 : 1,
         away: homeFloor && floor ? Math.abs(floor.level - homeFloor.level) : 0,
       });
     }
@@ -400,11 +430,11 @@ function findingIds(checked) {
   return ids;
 }
 
-function problemIds(checked) {
-  return new Set(checked.findings.filter((finding) => finding.severity === 'problem').map((finding) => finding.id));
-}
-
-function sentence(project, candidate, effects) {
+// The sentence of one candidate (from suggestionCandidates) with its
+// effects, as parts. suggest uses it; it is exported so the words can be
+// read for a slot no finding offers a surviving move from (a group with no
+// room: a move changes the room only, so never who is teaching).
+export function suggestionParts(project, candidate, effects) {
   const settings = project.settings;
   const group = findById(project.groups, candidate.change.groupId);
   const parts = [];
@@ -434,45 +464,95 @@ function bySuggestionOrder(x, y) {
     || x.index - y.index;
 }
 
+// The counted findings of a static check, as ids by severity.
+function staticIds(checked) {
+  const out = { problem: new Set(), warning: new Set(), note: new Set() };
+  for (const finding of checked.findings) if (out[finding.severity]) out[finding.severity].add(finding.id);
+  return out;
+}
+
+// The static checks of day type `d` alone. A change to one day type's own
+// schedule changes nothing another own day type is checked on, so the
+// findings of the others are the same before and after and need not be
+// worked out again for every candidate (the day types that copy `d` are not
+// checked a second time, checks.js).
+function checkOneDay(project, d) {
+  return checkSchedule({ ...project, dayTypes: project.dayTypes.filter((dayType) => dayType.id === d) }, null);
+}
+
+// Below zero, where a store never counts, and never handed out twice in this
+// page's life: a pipeline left holding whatever project, under whatever
+// counters, never takes a run of suggest's for one it already holds.
+let lastCounter = 0;
+function freshCounter() {
+  lastCounter -= 1;
+  return lastCounter;
+}
+
+// The order the trade is read in, without the walking: fewer new warnings,
+// then fewer new notes. Below zero when x comes first.
+function byTrade(x, y) {
+  return x.warning - y.warning || x.note - y.note;
+}
+
 export function suggest(project, finding, options) {
   const opts = options || {};
   const limit = Number.isInteger(opts.limit) ? Math.max(1, Math.min(SUGGESTION_LIMIT, opts.limit)) : SUGGESTION_LIMIT;
+  const runTries = opts.runTries === Infinity || (Number.isInteger(opts.runTries) && opts.runTries > 0) ? opts.runTries : RUN_TRIES;
   const none = { suggestions: [], none: NO_SUGGESTION };
   if (!finding || typeof finding !== 'object' || !finding.where) return none;
-  const own = !opts.pipeline;
-  const pipeline = own ? createPipeline() : opts.pipeline;
-  const versions = opts.versions || (own ? { geometry: 0, building: 0, schedule: 0 } : null);
-  const counters = (n) => (versions ? { geometry: versions.geometry, building: versions.building, schedule: -n } : null);
+  const pipeline = opts.pipeline || createPipeline();
+  const versions = opts.versions || (opts.pipeline ? null : { geometry: 0, building: 0, schedule: 0 });
+  // never the caller's schedule counter: the base and each candidate run
+  // under one of suggest's own, with the store's geometry and building
+  // counters so the route cache is shared
+  const counters = () => (versions ? { geometry: versions.geometry, building: versions.building, schedule: freshCounter() } : null);
 
-  const before = pipeline.run(project, versions);
+  const before = pipeline.run(project, counters());
   if (!findingIds(before.findings).has(finding.id)) return none;
   const d = finding.where.dayTypeId;
   const isWalk = WALK_KINDS.includes(finding.kind);
-  const staticBefore = isWalk ? null : problemIds(checkSchedule(project, null));
+  const staticBefore = staticIds(checkOneDay(project, d));
 
   const candidates = suggestionCandidates(project, finding, opts);
   const found = [];
-  let runs = 0;
   for (const rank of [0, 1, 2]) {
     if (found.length >= limit) break;
-    let checked = 0;
-    let tried = 0;
+    // stage 1, every candidate of the rank: the static checks, and the
+    // static trade
+    const survivors = [];
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
       if (RANK[candidate.kind] !== rank) continue;
       const next = applyChanges(project, [candidate.change]);
-      if (!isWalk) {
-        if (checked >= STATIC_TRIES) break;
-        checked += 1;
-        const after = checkSchedule(next, null);
-        if (findingIds(after).has(finding.id)) continue;
-        const problems = problemIds(after);
-        if (Array.from(problems).some((id) => !staticBefore.has(id))) continue;
+      const after = checkOneDay(next, d);
+      if (!isWalk && findingIds(after).has(finding.id)) continue;
+      const ids = staticIds(after);
+      if (Array.from(ids.problem).some((id) => !staticBefore.problem.has(id))) continue;
+      const trade = { warning: 0, note: 0 };
+      for (const severity of ['warning', 'note']) {
+        for (const id of ids[severity]) if (!staticBefore[severity].has(id)) trade[severity] += 1;
       }
-      if (tried >= RUN_TRIES) break;
+      survivors.push({ candidate, index, next, trade });
+    }
+    survivors.sort((x, y) => byTrade(x.trade, y.trade) || x.index - y.index);
+
+    // stage 2, in the order of the static trade, up to runTries. The
+    // pipeline's new findings are the static ones and the walks' (warnings
+    // only), so a candidate's warnings can only rise from its static trade
+    // and its notes stay: once `limit` are found whose trade is already
+    // ahead of the next survivor's static one, nothing left can come in.
+    const need = limit - found.length;
+    const inRank = [];
+    let tried = 0;
+    for (const { candidate, index, next, trade } of survivors) {
+      if (inRank.length >= need) {
+        inRank.sort(bySuggestionOrder);
+        if (byTrade(inRank[need - 1].effects.findings.new, trade) < 0) break;
+      }
+      if (tried >= runTries) break;
       tried += 1;
-      runs += 1;
-      const result = pipeline.run(next, counters(runs));
+      const result = pipeline.run(next, counters());
       if (findingIds(result.findings).has(finding.id)) continue;
       const compared = compareResults(before, result, { dayTypeId: d, changes: [candidate.change], limit: 0 });
       if (compared.findings.new.some((one) => one.severity === 'problem')) continue;
@@ -493,13 +573,14 @@ export function suggest(project, finding, options) {
           resolvedIds: compared.findings.resolved.map((one) => one.id),
         },
       };
-      found.push({ candidate, kind: candidate.kind, key: candidate.key, index, effects, chip });
+      inRank.push({ candidate, kind: candidate.kind, key: candidate.key, index, effects, chip });
     }
+    found.push(...inRank);
   }
 
   found.sort(bySuggestionOrder);
   const suggestions = found.slice(0, limit).map((entry) => {
-    const parts = sentence(project, entry.candidate, entry.effects);
+    const parts = suggestionParts(project, entry.candidate, entry.effects);
     return {
       change: entry.candidate.change,
       kind: entry.kind,
