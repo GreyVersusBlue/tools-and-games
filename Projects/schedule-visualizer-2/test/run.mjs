@@ -72,6 +72,7 @@ export const GROUPS = {
     'engine/prints-movement.test.mjs', // SV2-18
     'engine/grid-edits.test.mjs', // SV2-12
     'engine/import-subjects.test.mjs', // SV2-13
+    'engine/scenario.test.mjs', // SV2-60
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07

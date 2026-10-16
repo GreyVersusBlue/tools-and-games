@@ -161,6 +161,7 @@ row names a file it does not run.
 | `test/engine/prints-movement.test.mjs` | The movement view's tables, CSV files and print documents |
 | `test/engine/grid-edits.test.mjs` | The grid editor's one action and the pure parts that feed it |
 | `test/engine/import-subjects.test.mjs` | The subject list from a CSV file |
+| `test/engine/scenario.test.mjs` | The scenario engine: apply, normalise, reconcile, the comparison, the difference map's numbers, compare with another file, the chip words |
 | `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
 | `test/ui/helpers.test.mjs` | The interface's plain functions: the shortcut guard, fields, the picker, the table |
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
