@@ -37,7 +37,7 @@ import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
-import { GROUPS_HASH, groupHash, writtenAsList, showsList, groupOf } from './address.js';
+import { GROUPS_HASH, groupHash, writtenAsList, showsList, groupOf, namesGoneGroup } from './address.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
@@ -108,6 +108,41 @@ export function toList(gone) {
 // the entry under it, and that is where the page goes.
 export function spentEntry() {
   return Boolean(history.state && history.state[SPENT] === true) && writtenAsList(location.hash);
+}
+
+// The step back off a spent entry, on `popstate` and when the section is
+// mounted onto one (ui/schedule/index.js): Forward onto it, or a page
+// loaded onto it, goes to the list under it. True when it stepped.
+export function stepOffSpent() {
+  if (!spentEntry()) return false;
+  history.back();
+  return true;
+}
+
+// The address made what the view is, on a screen crossing to narrow (a
+// phone turned upright): the chosen group's editor above the list, or the
+// list. A wide screen writes no address, so the one the page is at can be
+// any group's, or a group's that has gone since (a Delete or an undone Add
+// while wide): that address is not the view's, and it never stays as a
+// second list under the list. Gone, it becomes the chosen group's place
+// with the list still under it when it was, or the list's (`toList(true)`).
+export function placeView(ctx, view) {
+  const project = ctx.store.project;
+  const group = groupOf(project, location.hash);
+  const gone = namesGoneGroup(project, location.hash);
+  if (view.folded === true && view.groupId) {
+    if (group && group.id === view.groupId) return;
+    // another group's address (chosen while narrow, before a group was
+    // chosen wide), or a gone one's, is this group's place now, with the
+    // list still under it when it was: a list of its own would be the
+    // list twice
+    if (group || gone) history.replaceState(history.state, '', groupHash(view.groupId));
+    else toGroup(ctx, view.groupId);
+  } else if (gone) {
+    toList(true);
+  } else if (group) {
+    toList();
+  }
 }
 
 export function mount(env) {

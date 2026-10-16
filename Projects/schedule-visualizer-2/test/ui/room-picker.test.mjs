@@ -29,6 +29,12 @@ class StubNode {
   constructor() {
     this.parentNode = null;
   }
+
+  // on the page: under the stand-in's body
+  get isConnected() {
+    for (let at = this; at; at = at.parentNode) if (at === globalThis.document.body) return true;
+    return false;
+  }
 }
 
 class StubText extends StubNode {
@@ -163,6 +169,7 @@ globalThis.document = {
   createElement: (tag) => new StubElement(tag),
   createTextNode: (text) => new StubText(text),
 };
+globalThis.document.body = new StubElement('body');
 globalThis.location = { hash: '#schedule/groups' };
 
 const { roomPicker } = await import('../../ui/schedule/room-picker.js');
@@ -206,6 +213,7 @@ function make(slot, more) {
   const input = made.input;
   return {
     calls,
+    element: made.element,
     input,
     line,
     missing,
@@ -351,6 +359,33 @@ test('SV2-50 item 11: text is folded by NFKC and without a locale, and "Room 101
 // SV2-50 ("101 — ms" and "101 — Ms. Okafo" listed r101; after SV2-50 they
 // listed nothing, live on the site). Listing is not picking: the text is
 // still kept as typed when the field is left.
+test('SV2-56 item 4: inner runs of spaces are one space, and a hyphen or a dash typed for the label\'s dash is that dash', () => {
+  // the whole label, typed with a hyphen, two, an en dash, a minus, or no spaces round it
+  for (const typed of ['101 - Ms. Harrowgate', '101 -- ms. harrowgate', '101 \u2013 Ms. Harrowgate', '101 \u2212 Ms. Harrowgate', '101-Ms. Harrowgate', '101  —  Ms.  Harrowgate', '101\u00a0—\u00a0Ms. Harrowgate']) {
+    assert.equal(readTyped(typed, ROOMS).option?.id, 'r101', 'readTyped(' + JSON.stringify(typed) + ')');
+  }
+  // a label cut short, with a hyphen for its dash, still lists its room and picks none
+  for (const typed of ['101 - Ms', '101 -', '101-', '101 - Ms.  Harrow']) {
+    assert.deepEqual(ids(listFor(typed, ROOMS)), ['r101'], 'listFor(' + JSON.stringify(typed) + ')');
+  }
+  assert.deepEqual(readTyped('101 - Ms', ROOMS), { kind: 'keep', text: '101 - Ms' }, 'part of a label is kept as typed');
+  // a teacher's name with two spaces in it
+  assert.equal(readTyped('Coach  Draycott', ROOMS).option?.id, 'rgym');
+  // a hyphen inside a name meets itself, and a dash typed for it does too
+  assert.deepEqual(ids(listFor('Okonjo-Reyes', ROOMS)), ['r201', 'r202']);
+  assert.deepEqual(ids(listFor('Okonjo-R', ROOMS)), ['r201', 'r202']);
+  assert.deepEqual(ids(listFor('Okonjo', ROOMS)), ['r201', 'r202']);
+  assert.equal(readTyped('201 - Ms. Okonjo-Reyes', ROOMS).option?.id, 'r201');
+  // a room with no number, its label typed with a hyphen and two spaces
+  const unnumbered = [{ id: 'rnone', number: '', label: 'a room with no number — Ms. Pellegrew', teachers: 'Ms. Pellegrew', detail: '' }];
+  assert.equal(readTyped('a room  with no number - Ms. Pellegrew', unnumbered).option?.id, 'rnone');
+  assert.deepEqual(readTyped('a room  with  no number', unnumbered), { kind: 'keep', text: 'a room  with  no number' }, 'the bare phrase with two spaces in it picked a room');
+  // a number is still never another number
+  assert.deepEqual(readTyped('10 -', ROOMS), { kind: 'keep', text: '10 -' });
+  // what is kept is what was typed, spaces and hyphen and all
+  assert.deepEqual(readTyped('Room  7 - annex', ROOMS), { kind: 'keep', text: 'Room  7 - annex' });
+});
+
 test('SV2-54 item 1: text that starts a room\'s label, folded, lists that room, and is still not picked', () => {
   const okafor = [
     { id: 'r101', number: '101', label: '101 — Ms. Okafor', teachers: 'Ms. Okafor', detail: '' },
@@ -789,6 +824,35 @@ test('SV2-54 item 3: a picker handed over to a drawing does not commit what is h
   plain.type('10');
   plain.input.send('picker:leave');
   assert.deepEqual(plain.calls, []);
+});
+
+// The drawings of the section make a new picker for every field they draw,
+// and a picker handed over waits for its successor. One that a drawing kept
+// on the page has no successor: once the drawing is done it is the picker
+// being typed in again, and its blur reads the text as before.
+test('SV2-56 item 2: a picker handed over to a drawing that kept it on the page is not left handed over: leaving it reads what was typed, once', async () => {
+  const kept = make();
+  document.body.append(kept.element);
+  kept.type('10');
+  kept.input.send('picker:handover');
+  // the drawing is done; the field is still on the page
+  await Promise.resolve();
+  kept.leave();
+  assert.deepEqual(kept.calls, [['keep', '10']], 'a picker the drawing kept stayed handed over: its text was never read');
+  kept.input.send('picker:leave');
+  assert.deepEqual(kept.calls, [['keep', '10']], 'left twice');
+  document.body.replaceChildren();
+  // one the drawing took off the page stays handed over until it is told
+  const taken = make();
+  document.body.append(taken.element);
+  taken.type('10');
+  taken.input.send('picker:handover');
+  document.body.replaceChildren();
+  await Promise.resolve();
+  taken.leave();
+  assert.deepEqual(taken.calls, [], 'the picker taken away by the drawing kept "10"');
+  taken.input.send('picker:leave');
+  assert.deepEqual(taken.calls, [['keep', '10']]);
 });
 
 test('SV2-50 item 11: a pick or a keep the project refuses puts the field back to what the slot holds', () => {
