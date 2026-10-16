@@ -35,6 +35,33 @@ let browser;
 const source = (file) => readFileSync(path.join(TOOL_DIR, ...file.split('/')), 'utf8');
 const settled = (page) => page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 5000 });
 const shows = (page, fn, ...args) => page.waitForFunction(fn, { timeout: 5000 }, ...args);
+// A wait for a state the page sets that an assertion depends on: when the
+// state never comes, the case fails saying `why` (SV2-56 item 3: such a
+// wait once ended in `.catch(() => {})`, and the assertion after it read
+// whatever the page was left at).
+async function until(page, why, fn, ...args) {
+  try {
+    await page.waitForFunction(fn, { timeout: 5000 }, ...args);
+  } catch (error) {
+    if (error.name !== 'TimeoutError') throw error;
+    assert.fail(why + ' (waited 5 s for: ' + String(fn).replace(/\s+/g, ' ').slice(0, 160) + ')');
+  }
+}
+// The same across a load of the page: a step of the history to an entry
+// another document made may load it again, and a wait in the page is lost
+// with the document it was in. Asked again until it holds or the time is out.
+async function untilAcrossLoads(page, why, fn) {
+  const end = Date.now() + 5000;
+  for (;;) {
+    try {
+      if (await page.evaluate(fn)) return;
+    } catch (error) {
+      if (!/context was destroyed|navigat|detached/i.test(String(error.message))) throw error;
+    }
+    if (Date.now() > end) assert.fail(why + ' (waited 5 s for: ' + String(fn).replace(/\s+/g, ' ').slice(0, 160) + ')');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
 const text = (page, selector) => page.$eval(selector, (el) => el.textContent);
 const count = (page, selector) => page.$$eval(selector, (all) => all.length);
 const activeKey = (page) => page.evaluate(() => (document.activeElement && document.activeElement.dataset.key) || null);
@@ -549,7 +576,12 @@ async function lastRowClear(p, what) {
   // The page moves for the message a moment after it shows. The wait is for
   // where the row and the message are, not for a count of frames; when the
   // time runs out the assertions below say where they were left.
-  await p.waitForFunction('(() => { const at = (' + read + ')(); return at.row[1] <= at.toast[0] && at.row[0] >= at.surface[0] && at.toast[1] <= at.surface[1] + 1; })()', { timeout: 5000 }).catch(() => {});
+  const clear = '(() => { const at = (' + read + ')(); return at.row[1] <= at.toast[0] && at.row[0] >= at.surface[0] && at.toast[1] <= at.surface[1] + 1; })()';
+  const where = await p.waitForFunction(clear, { timeout: 5000 }).then(() => null, (error) => {
+    if (error.name !== 'TimeoutError') throw error;
+    return p.evaluate(read);
+  });
+  assert.equal(where, null, what + ': the message and the last row never came apart: ' + JSON.stringify(where));
   const at = await p.evaluate(read);
   assert.ok(at.row[1] <= at.toast[0], what + ': the message lies on the last row of the table: ' + JSON.stringify(at));
   assert.ok(at.row[0] >= at.surface[0] && at.toast[1] <= at.surface[1] + 1, what + ': the last row or the message is out of the surface: ' + JSON.stringify(at));
@@ -1560,9 +1592,8 @@ test('SV2-50 item 7: on a phone the history holds a group once: "All groups" goe
     await shows(p, () => /^#schedule\/groups\/g/.test(location.hash));
     await p.evaluate(() => globalThis.sv2.store.undo());
     await listIs(p, false);
-    // the step back to the list is the browser's to take; a page that takes none times out here and is told below
-    await shows(p, () => location.hash === '#schedule/groups').catch(() => {});
-    assert.equal(await hashOf(p), '#schedule/groups', 'an undone Add left the gone group\'s address in the history');
+    // the step back to the list is the browser's to take
+    await until(p, 'an undone Add left the gone group\'s address in the history', () => location.hash === '#schedule/groups');
     await backToProject('Back from the list after an undone Add is not the page the list was come to from');
   });
 });
@@ -1849,11 +1880,10 @@ test('SV2-54 item 5: Forward after a Delete or an undone Add never lands on the 
         await p.evaluate(() => globalThis.sv2.store.undo());
       }
       await listIs(p, false);
-      await shows(p, () => location.hash === '#schedule/groups').catch(() => {});
-      assert.equal(await hashOf(p), '#schedule/groups', how + ': not on the list');
+      await until(p, how + ': not on the list', () => location.hash === '#schedule/groups');
       await step(p, 'forward');
       // the page steps back off the spent entry it was taken to (groups.js)
-      await shows(p, () => !(history.state && history.state.scheduleSpent) && document.querySelector('.sch')?.dataset.pending !== 'true').catch(() => {});
+      await until(p, how + ': Forward was left on the spent entry', () => !(history.state && history.state.scheduleSpent) && document.querySelector('.sch')?.dataset.pending !== 'true');
       assert.equal(await hashOf(p), '#schedule/groups', how + ': Forward landed on the gone group\'s address');
       assert.notEqual(await hashOf(p), '#schedule/groups/' + gone);
       await listIs(p, false);
@@ -1889,11 +1919,67 @@ test('SV2-54 item 5: Forward after a Delete or an undone Add never lands on the 
     await settled(p);
     await p.evaluate(() => history.forward());
     // a step to an entry another document made may load the page again
-    await shows(p, () => document.querySelector('.sch')?.dataset.pending === 'false' || document.querySelector('.sch')?.dataset.pending === undefined).catch(() => {});
-    await p.waitForFunction(() => location.hash === '#schedule/groups' && document.querySelector('.sch-groups')?.dataset.folded === 'false', { timeout: 5000 }).catch(() => {});
+    await untilAcrossLoads(p, 'after a reload Forward never came back to the list', () => location.hash === '#schedule/groups'
+      && !(history.state && history.state.scheduleSpent)
+      && document.querySelector('.sch')?.dataset.pending !== 'true'
+      && document.querySelector('.sch-groups')?.dataset.folded === 'false');
     assert.equal(await hashOf(p), '#schedule/groups', 'after a reload Forward landed on the gone group\'s address');
     assert.deepEqual(await backTo(p, '#project', 3), ['#schedule/groups', '#project'], 'after a reload the list is twice in the history');
   });
+});
+
+// The review of SV2-54 (probe-wide-delete.mjs): a group chosen on a phone,
+// the phone turned on its side, the group deleted there or its Add undone
+// (a wide screen writes no address, so the page stays on the gone group's),
+// turned upright. Before, the turn left the gone group's entry above the
+// list as a second list: "All groups" from the next group went back to it,
+// and Back from there was the list again.
+test('SV2-56 item 1: a Delete or an undone Add while wide, then upright, a tap on another group, All groups and Back never shows the list twice', async () => {
+  const UPRIGHT = { width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  const SIDE = { width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  for (const how of ['delete', 'undone add', 'delete, then a group chosen wide']) {
+    await on('#project', { width: 390, height: 844, mobile: true }, async (p) => {
+      await go(p, '#schedule/groups');
+      await settled(p);
+      if (how === 'undone add') {
+        await tap(p, '[data-action="add-group"]');
+        await listIs(p, true);
+        await shows(p, () => /^#schedule\/groups\/g/.test(location.hash) && !location.hash.includes('gsample'));
+      } else {
+        await tap(p, '.sch-group[data-group="' + C6 + '"]');
+        await listIs(p, true);
+        await shows(p, (hash) => location.hash === hash, '#schedule/groups/' + C6);
+      }
+      const gone = await hashOf(p);
+      await p.setViewport(SIDE);
+      await drawnNarrow(p, false);
+      if (how === 'undone add') await p.evaluate(() => globalThis.sv2.store.undo());
+      else await p.click('[data-action="delete"]');
+      await closeToast(p);
+      await until(p, how + ': the group is still in the list', (id) => !document.querySelector('.sch-group[data-group="' + id + '"]') && document.querySelector('.sch').dataset.pending !== 'true', gone.split('/').pop());
+      assert.equal(await hashOf(p), gone, how + ': the case needs the wide screen to have left the gone group\'s address');
+      if (how === 'delete, then a group chosen wide') {
+        await p.click('.sch-group[data-group="' + B6 + '"]');
+        await shows(p, () => document.querySelector('.sch-editor__title')?.textContent === '6B' && document.querySelector('.sch').dataset.pending !== 'true');
+        await p.setViewport(UPRIGHT);
+        await drawnNarrow(p, true);
+        await until(p, how + ': turned upright, the page is not at 6B\'s address', (hash) => location.hash === hash, '#schedule/groups/' + B6);
+        assert.deepEqual(await backTo(p, '#project', 4), ['#schedule/groups/' + B6, '#schedule/groups', '#project'], how + ': the history from 6B back to Project');
+        return;
+      }
+      await p.setViewport(UPRIGHT);
+      await drawnNarrow(p, true);
+      await listIs(p, false);
+      await until(p, how + ': turned upright, the page is still at the gone group\'s address', () => location.hash === '#schedule/groups' && !(history.state && history.state.scheduleSpent));
+      await tap(p, '.sch-group[data-group="' + B6 + '"]');
+      await listIs(p, true);
+      await shows(p, (hash) => location.hash === hash, '#schedule/groups/' + B6);
+      await tap(p, '[data-key="group-all"]');
+      await listIs(p, false);
+      await until(p, how + ': "All groups" did not come back to the list', () => location.hash === '#schedule/groups');
+      assert.deepEqual(await backTo(p, '#project', 4), ['#schedule/groups', '#project'], how + ': Back from the list showed the list twice');
+    });
+  }
 });
 
 test('SV2-54 item 5: on a phone a tap on the chosen card, on a slot\'s address Show went to, adds nothing to the history', async () => {
