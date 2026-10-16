@@ -45,7 +45,7 @@ import { tabs } from '../components/tabs.js';
 import { periodWords } from '../components/words.js';
 import { scheduleModel } from './model.js';
 import { findingsPanel, SHEET as INSPECTOR_SHEET } from './checks.js';
-import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, stepOffSpent, placeView } from './groups.js';
+import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, stepOffSpent, placeInHistory } from './groups.js';
 import { readAddress, slotHash } from './address.js';
 
 export { slotHash };
@@ -392,13 +392,8 @@ export const section = {
     }
 
     // The Groups tab's address made what the view is, on a phone: a chosen
-    // group's editor above the list, or the list (groups.js, `placeView`).
-    function placeInHistory() {
-      if (strip.selected !== 'groups' || ctx.store.project.groups.length === 0) return;
-      placeView(ctx, view);
-    }
-
-    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect, placeInHistory };
+    // group's editor above the list, or the list (groups.js, `placeInHistory`).
+    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect, placeInHistory: () => placeInHistory(ctx, view, strip.selected) };
     live = handle;
     // an address that named a slot: its row is scrolled to once this is on the page
     if (view.shown && view.shown.fresh) schedule();
