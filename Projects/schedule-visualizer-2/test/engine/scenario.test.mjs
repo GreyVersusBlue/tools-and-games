@@ -241,6 +241,18 @@ test('compareResults: moving 7C out of Room 203 resolves the double-booking by i
   assert.ok(compared.findings.unchanged.every((finding) => finding.id !== doubled));
 });
 
+test('compareResults: a finding is told by its id, so one whose sentence names other groups now is unchanged', () => {
+  const project = school();
+  // 7C leaves Room 203 and 8A comes in: still two groups there, the same finding with other names
+  const changes = [move(G7C, 1, 'rsample201'), move(G8A, 1, 'rsample203')];
+  const compared = compareResults(run(project), run(applyScenario(project, { changes })), { changes });
+  const doubled = 'room-double:' + A + ':1:' + SAMPLE_PROBLEMS.roomDouble.roomId;
+  const kept = compared.findings.unchanged.find((finding) => finding.id === doubled);
+  assert.ok(kept, 'the double-booking is unchanged');
+  assert.match(kept.text, /6C and 8A/, 'and carries the sentence as it is after the scenario');
+  assert.ok(!compared.findings.new.some((finding) => finding.id === doubled) && !compared.findings.resolved.some((finding) => finding.id === doubled));
+});
+
 test('compareResults: late is isLate with the school\'s margin', () => {
   const project = school();
   const swap = [swapPeriods(G8A, 5, 6)];
