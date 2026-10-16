@@ -476,9 +476,12 @@ and add to this list rather than starting a new one.
   square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
   keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
-  touch another building's keeps a stepped parapet, and the takeoff and the
-  estimate count it off those cells (#986 counts a chord parapet off its
-  chords); the site plan's building line is the ground storey's mask, stepped on a curve
+  touch another building's takes its chord parapet only where no cell of the
+  other reaches inside its chords (#988); where one does (a box 0.2ft off a
+  bow, its cell 1.56ft inside the chords), the pair keeps one stepped parapet
+  and its mask count, and the question for Devon is which gives way: the
+  stepped building's cells cut back to the chords, the curve, or a deck over
+  the gap; the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its
