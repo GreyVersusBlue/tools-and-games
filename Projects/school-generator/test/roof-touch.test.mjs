@@ -110,6 +110,37 @@ test('the takeoff counts the hall off its chords and the box off its cells', () 
     `${both.footprint} against ${hallOnly.footprint} + ${boxOnly.footprint}`);
 });
 
+test('a box beside a wall on a cell line touches it and does not reach inside', () => {
+  // West of the hall's west room (x 8, on the lattice): the box's cells end
+  // at 8, so the loop clipped to them is a line with no area. The box starts
+  // further north than the hall, so the shared mask loop is walked from one
+  // of the box's cells first.
+  const s = school({ box: null });
+  addShape(s, 0, R4(0.5, 0.5, 7.5, 20));
+  const alone = createState(50, 30);
+  addShape(alone, 0, R4(0.5, 0.5, 7.5, 20));
+  alone.roof = s.roof;
+  assert.equal(maskOutlines(maskOf(s)).length, 1, 'the mask joins them');
+  const plan = roofPlan(s);
+  assert.equal(plan.deckPolys?.length, 1, 'the hall takes its chords');
+  assert.deepEqual(plan.outlines.slice(0, -1), roofPlan(alone).outlines, 'the box\'s own loop, and not the shared one');
+});
+
+test('a box in the notch of a curved L, its cells against the wall\'s cell line, does not reach inside', () => {
+  // The west room runs south to z 48, so the hall and it make an L whose
+  // notch (x 24 to 64, z 32 to 48) lies inside the L's bounds; the box's
+  // cells there meet the hall's south wall (z 32) along a line with no area.
+  const s = createState(50, 30);
+  const hall = addShape(s, 0, R4(24, 8, 64, 32));
+  addShape(s, 0, R4(8, 8, 24, 48));
+  assert.ok(curveSegment(hall, 0, 1, -0.3125) > 3);
+  addShape(s, 0, R4(28, 32.5, 60, 44));
+  s.roof = { style: 'parapet', pitch: 6, facade: 'brick' };
+  assert.equal(roofOutline(s.floors[0]).loops.length, 2, 'two buildings');
+  assert.equal(maskOutlines(maskOf(s)).length, 1, 'the mask joins them');
+  assert.equal(roofPlan(s).deckPolys?.length, 1, 'the L takes its chords');
+});
+
 test('a box whose cell reaches inside the chords keeps the pair on its steps', () => {
   // The bow reaches x 73.56 and the box starts at 73.8, so the box's cell from
   // 72 to 76 lies 1.56ft inside the hall's chords. Two parapets would stand

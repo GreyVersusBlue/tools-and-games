@@ -108,7 +108,10 @@ test('only the parapet moves: flat, gable and hip over the same curve are as the
 test('two buildings a cell apart share a mask loop, and that loop stays stepped', () => {
   const s = school();
   // A box 0.2ft east of the bow's widest point (x 73.6): its bounds do not touch the
-  // hall's, so it is a building of its own, but its mask cells touch.
+  // hall's, so it is a building of its own, but its mask cells touch, and the
+  // cell from 72 to 76 reaches 1.56ft inside the chords, so the pair stays
+  // stepped; where no cell reaches inside, the curve is taken (#988,
+  // test/roof-touch.test.mjs).
   addShape(s, 0, R4(73.8, 16, 95, 24));
   assert.equal(roofOutline(s.floors[0]).loops.length, 2, 'two buildings, both accepted');
   const plan = roofPlan(s);
