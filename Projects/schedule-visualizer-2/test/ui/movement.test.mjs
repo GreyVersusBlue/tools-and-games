@@ -14,7 +14,7 @@ import {
   pictureOf, sentenceOf, groupRows, routeHealth, cellCard, failurePeriod,
 } from '../../ui/movement/model.js';
 import * as model from '../../ui/movement/model.js';
-import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, keepShift, FLOOR_GAP, TITLE_ROWS, STAGE_LEAST, FIT_MARGIN } from '../../ui/movement/layout.js';
+import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, keepShift, FLOOR_GAP, TITLE_ROWS, STAGE_LEAST, ZOOM_ROOM, FIT_MARGIN } from '../../ui/movement/layout.js';
 import { bandText } from '../../ui/movement/legend.js';
 import { fixFor } from '../../ui/movement/summary.js';
 import { heldScale, canvasHolds, isBlank, LOWEST_SCALE } from '../../ui/movement/export.js';
@@ -1076,13 +1076,37 @@ test('SV2-55 item 0: the stage’s least is 120 px, or the floors’ box fitted 
   assert.equal(stageLeast({ width: 40, height: 30 }, 0), 120);
   // a building as tall as it is wide: fitted across 844 px it is far taller than 120
   assert.equal(stageLeast({ width: 40, height: 40 }, 844), 120);
-  // a long low building: fitted across 844 px (804 / (200 x 24) is under 25 %, so 25 %) it is 4 x 24 x 0.25 + 40 = 64 px
-  assert.equal(stageLeast({ width: 200, height: 4 }, 844), 64);
+  // a long low building: fitted across 844 px (804 / (200 x 24) is under 25 %, so 25 %) it is 4 x 24 x 0.25 + 40 = 64 px,
+  // under what the zoom needs, so 70 (SV2-57 item 3)
+  assert.equal(stageLeast({ width: 200, height: 4 }, 844), 70);
   // 2 cells high at the full width's zoom: 804 / (40 x 24) = 0.8375, so 2 x 24 x 0.8375 + 40 = 80.2, rounded up
   assert.equal(stageLeast({ width: 40, height: 2 }, 844), 81);
   // the sample's three floors side by side at 844 px (the browser case's own figure)
   const floors = sample.project.building.floors;
   assert.equal(stageLeast(layoutFloors(floors, 'side'), 844), 120);
+});
+
+// SV2-57 item 3 (the review of SV2-55, probe.mjs): for a building one or a
+// few rows high the floors' box at Fit was 46 to 64 px, under the zoom box
+// with its margins, so the zoom lay over the whole map. The least is never
+// under what the zoom needs: ZOOM_ROOM, or the need the view measured.
+test('SV2-57 item 3: the stage’s least is never under what the zoom box needs, for a building one row high or four, at 844 and at 390 px', () => {
+  assert.equal(ZOOM_ROOM, 70, 'the zoom’s need is its 44 px buttons, 2 px of border and 12 px of margin above and below');
+  for (const [width, height] of [[200, 1], [200, 2], [200, 4], [60, 1], [3, 1], [1, 1]]) {
+    // a floor that many rows high, with its name's rows over it
+    const layout = { width, height: height + TITLE_ROWS };
+    for (const across of [844, 390]) {
+      assert.ok(stageLeast(layout, across) >= ZOOM_ROOM, width + ' by ' + height + ' at ' + across + ' px: ' + stageLeast(layout, across));
+      // the need the view measures: under a mouse the buttons are 36 px, 62 in all
+      assert.ok(stageLeast(layout, across, 62) >= 62, width + ' by ' + height + ' at ' + across + ' px under a mouse: ' + stageLeast(layout, across, 62));
+    }
+  }
+  // the box fitted is enough where it is taller than the zoom and shorter than 120
+  assert.equal(stageLeast({ width: 40, height: 2 }, 844, 62), 81);
+  assert.equal(stageLeast({ width: 200, height: 3 }, 844, 62), 62, 'a measured need under ZOOM_ROOM is the floor, not ZOOM_ROOM');
+  assert.equal(stageLeast({ width: 200, height: 3 }, 844, 76.4), 77, 'a measured need is rounded up');
+  // and never more than the least itself, whatever is measured
+  assert.equal(stageLeast({ width: 200, height: 3 }, 844, 500), STAGE_LEAST);
 });
 
 // SV2-55 item 6: the view's own asking (model.js's createAsker, which
@@ -1214,12 +1238,11 @@ test('SV2-55 item 6: with no engine the view says so and looks again every ENGIN
   assert.equal(left.due().length, 0, 'the look was not cleared when the view left');
 });
 
-test('SV2-55 item 6: the movement view asks through createAsker and keeps no asking of its own', () => {
-  const source = readFileSync(fileURLToPath(new URL('../../ui/movement/index.js', import.meta.url)), 'utf8');
-  assert.match(source, /const asker = createAsker\(\{/, 'index.js does not make its asker');
-  assert.match(source, /asker\.stop\(\);/, 'index.js does not stop its asker when the view leaves');
-  assert.doesNotMatch(source, /results\(\)\.then|ENGINE_LOOK_MS/, 'index.js asks for the results or looks for an engine itself');
-});
+// What index.js hands createAsker (that the view has gone, what waiting
+// and an answer do to the screen, that a change asks, that a failure is
+// said) is held by behaviour in the real view: test/browser/movement.mjs,
+// "SV2-57 item 2". A regex over index.js's source held it before, and five
+// breaks of that wiring left it green (SV2-57 item 2).
 
 // SV2-55 item 3 (reproduced by the Foreman in Node, keep.mjs): a stage under
 // about 96 px could not hold 48 px of the floors at its top and its bottom at

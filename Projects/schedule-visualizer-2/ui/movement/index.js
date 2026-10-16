@@ -907,6 +907,12 @@ export const section = {
     const firstLine = top.element.querySelector('.mov-line');
     const barMore = bar.element.querySelector('[data-part="more"]');
     roomReady = true;
+    // what the zoom box needs of the stage: its height and its margin above
+    // and below (SV2-57), as drawn: 70 px under a finger, 62 under a mouse
+    function zoomRoom() {
+      const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
+      return zoomBox.offsetHeight + margin * 2;
+    }
     function room() {
       if (gone || map.hidden || element.clientHeight === 0) return;
       let height = element.clientHeight;
@@ -929,7 +935,7 @@ export const section = {
       // shrinking to a strip. Nor is the least more than the section has over
       // the bar and the legend's line, so with the first line scrolled away
       // the whole stage is on screen (110 px at 844 by 390 on a touch screen).
-      const least = Math.min(stageLeast(world, stage.clientWidth), Math.max(0, Math.floor(height - foot)));
+      const least = Math.min(stageLeast(world, stage.clientWidth, zoomRoom()), Math.max(0, Math.floor(height - foot)));
       const next = Math.max(has, least) + 'px';
       if (element.style.getPropertyValue('--mov-room') !== next) element.style.setProperty('--mov-room', next);
       // More may take the map's height and the legend's line, never the first line's

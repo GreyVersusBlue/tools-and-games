@@ -10,7 +10,8 @@
    window): then the stage has what there is, so the first line, the map and
    the bar are all on screen with the controls folded. It never has less
    than its least, though (120 px, or the floors' box at Fit when that is
-   less, and no more than the section has over the bar; SV2-55): with less
+   less but never under what the zoom buttons need, and no more than the
+   section has over the bar; SV2-55, SV2-57): with less
    than that, and where the controls are shown and the window cannot hold
    the stage, the section scrolls inside itself (.mov), the stage keeps its
    height, the bar stays at the section's foot, and the zoom buttons and the
@@ -283,7 +284,7 @@
    the section has under its first line (folded) and over what is docked
    under the map, --mov-room, which ui/movement/index.js measures, and which
    is never under the stage's least (120 px, or the floors' box at Fit when
-   that is less: stageLeast in layout.js) */
+   that is less, never under the zoom box's need: stageLeast in layout.js) */
 .mov-map > .mov-stage {
   position: relative;
   flex: 1 0 max(45vh, 320px);
