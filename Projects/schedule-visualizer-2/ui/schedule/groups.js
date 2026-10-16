@@ -145,6 +145,15 @@ export function placeView(ctx, view) {
   }
 }
 
+// What the turn upright does (ui/schedule/index.js), for the tab on screen:
+// on the Groups tab the view is placed, also when the project has no groups
+// left, since the last group deleted while wide has left its address above
+// the list (SV2-56b: a return for no groups kept it there, and Add a group,
+// All groups and Back showed the list twice).
+export function placeInHistory(ctx, view, tab) {
+  if (tab === 'groups') placeView(ctx, view);
+}
+
 export function mount(env) {
   const { ctx, view } = env;
   const element = h('div', { class: 'sch-groups' });

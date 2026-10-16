@@ -16,7 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { scheduleRest, writtenAsList, showsList, groupOf, namesGoneGroup, focusHash, groupHash, slotHash, GROUPS_HASH } from '../../ui/schedule/address.js';
-import { listStop, toGroup, toList, spentEntry, stepOffSpent, placeView } from '../../ui/schedule/groups.js';
+import { listStop, toGroup, toList, spentEntry, stepOffSpent, placeView, placeInHistory } from '../../ui/schedule/groups.js';
 import { deleteGroup } from '../../engine/actions.js';
 import { school, ctx, group } from '../engine/helpers.mjs';
 
@@ -301,4 +301,37 @@ test('SV2-56 item 3: Forward onto a spent entry steps straight back to the list 
   page.history.forward();
   assert.equal(location.hash, groupHash(a7));
   assert.equal(page.at(), 1);
+});
+
+// ---------------------------------------------------------------- SV2-56b
+
+// The review of SV2-56 (probe-history.mjs, A): the only group, chosen on a
+// phone, deleted while the phone lay on its side, then upright. The turn
+// upright returned when the project had no groups left, so the gone group's
+// entry stayed above the list, marked as having the list under it: "Add a
+// group" put the new group above that, "All groups" went back to it, and
+// Back from there was the list again. `placeInHistory` is what
+// ui/schedule/index.js calls when the screen crosses to narrow.
+test('SV2-56b: the only group deleted while wide, then upright, Add a group, All groups and Back never shows the list twice', () => {
+  let project = school();
+  const { page, ctx: shell } = planner(project, '#project');
+  page.navigate(GROUPS_HASH);
+  const first = project.groups[0].id;
+  toGroup(shell, first);
+  for (const each of project.groups) project = deleteGroup(project, { id: each.id }, ctx());
+  shell.store.project = project;
+  assert.equal(project.groups.length, 0);
+  // the drawing of a project with no groups chooses none and opens the list
+  const view = { groupId: null, folded: false };
+  placeInHistory(shell, view, 'groups');
+  assert.equal(location.hash, GROUPS_HASH, 'turned upright with no groups left, the page is still at the gone group\'s address');
+  assert.deepEqual(page.hashes().slice(0, page.at() + 1), ['#project', GROUPS_HASH], 'the gone group\'s entry is still above the list');
+  // "Add a group" on the phone: the new group is chosen from the list
+  project = { ...project, groups: [{ ...school().groups[1], id: 'gadded00001' }] };
+  shell.store.project = project;
+  toGroup(shell, 'gadded00001');
+  toList();
+  assert.equal(location.hash, GROUPS_HASH);
+  page.history.back();
+  assert.equal(location.hash, '#project', 'Back from the list showed the list twice');
 });
