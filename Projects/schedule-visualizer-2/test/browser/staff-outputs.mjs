@@ -457,6 +457,10 @@ before(async () => {
     // the widest Latin capitals the sign's face has, seven of them (SV2-53 item 2)
     rooms.find((space) => space.id === 'rsample103').number = 'WWWWWWW';
     rooms.find((space) => space.id === 'rsample204').number = 'MW-1004';
+    // the capitals that are a hair over a seventh of a phone card's line (SV2-58 item 3)
+    rooms.find((space) => space.id === 'rsample301').number = 'HHHHHHH';
+    rooms.find((space) => space.id === 'rsample302').number = 'UUUUUUU';
+    rooms.find((space) => space.id === 'rsample201').number = 'ÜÜÜÜÜÜÜ';
     const shared = rooms.find((space) => space.id === 'rsample203');
     shared.subjectId = null;
     shared.teacherIds = ['tsample007', 'tsample001'];
@@ -2271,6 +2275,62 @@ test('seven of the widest capitals, "WWWWWWW" and "MW-1004", stand on one line o
         assert.ok(Math.abs(Number(number.fit) - signFit(text)) < 1e-9 && signFit(text) < 1, 'set smaller by its count, ' + signFit(text) + ': ' + at + ', ' + number.fit);
         delete number.fit;
         assert.deepEqual(number, { text, lines: 1, inside: true }, at);
+      }
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// SV2-58 item 3. On a phone the card is a box inside the sheet, and its
+// 1 px borders are inside the sheet's content box, so its line is 2 px
+// shorter than the 88% of the sheet the count was made against: at a card
+// 356 px wide, seven H's at 120 pt's share (22.5% of the sheet) were 1 px
+// over, and the seventh went to a second line. H, U and the accented U's
+// are 0.557 em; a seventh of the phone's line is 0.555.
+test('seven H\'s, U\'s or Ü\'s stand on one line of the sign on a phone, at a card 356 px wide and on a narrower phone', async () => {
+  for (const [width, height] of [[390, 900], [320, 640]]) {
+    const session = await openPage({ width, height });
+    try {
+      const { page } = session;
+      assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'a phone, with touch');
+      for (const [room, text] of [['rsample301', 'HHHHHHH'], ['rsample302', 'UUUUUUU'], ['rsample201', 'ÜÜÜÜÜÜÜ']]) {
+        await goto(page, files.signs.url + '#/door/' + room);
+        const number = await page.evaluate(() => {
+          const el = document.querySelector('.sign__number');
+          const card = document.querySelector('.sign__card');
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const inner = card.getBoundingClientRect();
+          const box = el.getBoundingClientRect();
+          return {
+            boxes: el.getClientRects().length,
+            card: card.getClientRects().length > 0 ? Math.round(inner.width) : 0,
+            sheet: Math.round(document.querySelector('.sheet').getBoundingClientRect().width),
+            // inside its borders
+            within: card.clientWidth,
+            text: el.textContent,
+            fit: el.style.getPropertyValue('--sign-fit').trim(),
+            lines: new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size,
+            inside: el.scrollWidth <= el.clientWidth && box.left >= inner.left - 0.5 && box.right <= inner.right + 0.5,
+          };
+        });
+        const at = text + ' at ' + width + ' by ' + height;
+        assert.ok(number.boxes > 0 && number.card > 0, 'the number and the card have boxes: ' + at);
+        // the card is the sheet on a phone: its borders are inside the sheet's content box
+        assert.equal(number.card, number.sheet, 'the card is the sheet\'s width: ' + at);
+        if (width === 390) assert.equal(number.within, 356, 'the card the review measured, inside its borders: ' + at);
+        const { fit } = number;
+        delete number.boxes;
+        delete number.card;
+        delete number.sheet;
+        delete number.within;
+        delete number.fit;
+        // one line, inside the card: what a reader sees
+        assert.deepEqual(number, { text, lines: 1, inside: true }, at);
+        // and set at the fit its count gives, which is under full size
+        assert.ok(Math.abs(Number(fit) - signFit(text)) < 1e-9 && signFit(text) < 1, 'set smaller by its count, ' + signFit(text) + ': ' + at + ', ' + fit);
       }
       assert.deepEqual(session.errors, []);
     } finally {
