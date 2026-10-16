@@ -1,0 +1,6 @@
+/* The Safety section's own stylesheet (DESIGN 5.5).
+
+   index.html links it (data-sheet="safety"). The section mounts the plan map
+   (ui/surface/plan-map.js), whose rules are ui/movement/movement.css's map
+   rules and ui/app.css's block for the plan map's sections; what is the
+   evacuation view's and the door cards' alone goes here. */
