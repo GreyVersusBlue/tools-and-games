@@ -373,8 +373,11 @@ and add to this list rather than starting a new one.
   `ramp-landing` reason too (#984); a folded ramp's top landing is asked
   the same five questions by the same lines, at its own open end (#985),
   and was always drawn and walked (#825), but its turn landings are not
-  asked (they stand between storeys, on no floor), and a prop or a swing in
-  a stair's landing is not; a ramp's width and slope
+  asked (they stand between storeys, on no floor); a stair's 4ft top
+  landing is asked the two of those questions that make sense for a stair,
+  a floor-standing prop and a door's swing, by the same lines, as a
+  `stair-landing` warning that moves nothing and cites no section (#987),
+  but a wall, an edge or another link in it is not; a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
   (`data.width` and `data.slope` were there since Phase 2), and the design
