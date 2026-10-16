@@ -10,8 +10,9 @@
 // for a double-booked room, a long walk, a room over capacity and a run of
 // consecutive periods, with other teachers' rooms off and on.
 //
-// Measured by SV2-63 on huginn (2026-10-16): warm 108 to 364 ms, the slowest
-// a double-booked room with the switch off. The suite fails at twice the
+// Measured by SV2-63 on huginn (2026-10-16), three runs: warm 104 to 439 ms,
+// cold 160 to 563 ms; the slowest is the double-booked room, the first one
+// measured. The suite fails at twice the
 // budget, to leave room for a slow runner, and prints the measured number
 // either way. The clock is read here, in the test, never in the engine.
 

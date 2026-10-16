@@ -387,10 +387,11 @@ export function suggestionCandidates(project, finding, options) {
 
 // ---------------------------------------------------------------- the run
 
-function findingIds(result) {
+// The ids of every finding in a checkSchedule() answer ({ findings,
+// accepted, … }), counted or accepted: an accepted finding is still there.
+function findingIds(checked) {
   const ids = new Set();
-  const findings = result && result.findings ? result.findings : result;
-  for (const list of [findings.findings, findings.accepted]) {
+  for (const list of [checked.findings, checked.accepted]) {
     for (const finding of Array.isArray(list) ? list : []) ids.add(finding.id);
   }
   return ids;
@@ -441,7 +442,7 @@ export function suggest(project, finding, options) {
   const counters = (n) => (versions ? { geometry: versions.geometry, building: versions.building, schedule: -n } : null);
 
   const before = pipeline.run(project, versions);
-  if (!findingIds(before).has(finding.id)) return none;
+  if (!findingIds(before.findings).has(finding.id)) return none;
   const d = finding.where.dayTypeId;
   const isWalk = WALK_KINDS.includes(finding.kind);
   const staticBefore = isWalk ? null : problemIds(checkSchedule(project, null));
@@ -469,7 +470,7 @@ export function suggest(project, finding, options) {
       tried += 1;
       runs += 1;
       const result = pipeline.run(next, counters(runs));
-      if (findingIds(result).has(finding.id)) continue;
+      if (findingIds(result.findings).has(finding.id)) continue;
       const compared = compareResults(before, result, { dayTypeId: d, changes: [candidate.change], limit: 0 });
       if (compared.findings.new.some((one) => one.severity === 'problem')) continue;
       if (compared.figures.failed.difference > 0) continue;

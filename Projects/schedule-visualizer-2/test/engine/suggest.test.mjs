@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { suggest, suggestionCandidates, NO_SUGGESTION, SUGGESTION_LIMIT, SUGGESTION_KINDS, RUN_TRIES } from '../../engine/suggest.js';
 import { applyChanges, normalise } from '../../engine/scenario.js';
 import { createPipeline } from '../../engine/worker.js';
+import { checkSchedule } from '../../engine/checks.js';
 import { setPeriods, setRoomTeachers, editTeacher, editGroup, setSlot } from '../../engine/actions.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { school, ctx } from './helpers.mjs';
@@ -226,7 +227,21 @@ test('another teacher\'s room only behind the switch, and the sentence says whos
     assert.match(suggestion.text, /^Move (6C|7C) to Room 301, Ms\. Thistlewood's room, for Period 2: from Room 203, taught by Ms\. Thistlewood instead of Ms\. Vandermeer, /);
     assert.deepEqual(suggestion.effects.owners, [thistlewood]);
   }
-  assert.ok(on.suggestions.indexOf(theirs[0]) > on.suggestions.findIndex((suggestion) => suggestion.kind === 'free-room'), 'after the free rooms');
+  const lastFree = on.suggestions.map((suggestion) => suggestion.kind).lastIndexOf('free-room');
+  assert.ok(lastFree >= 0 && lastFree < on.suggestions.indexOf(theirs[0]), 'after the free rooms');
+});
+
+test('another teacher\'s room comes after the free rooms even when its trade is better', () => {
+  // with the planning check off, a move to Room 301 adds nothing and walks
+  // less, while each move to the Cafeteria adds a note and walks more; the
+  // kind still comes first
+  let project = shortDay();
+  project = { ...project, settings: { ...project.settings, checks: { ...project.settings.checks, off: ['no-planning'] } } };
+  const on = suggest(project, findingOf(project, DOUBLE), { otherTeachersRooms: true });
+  assertHonest(project, findingOf(project, DOUBLE), on);
+  assert.deepEqual(on.suggestions.map((suggestion) => suggestion.kind), ['free-room', 'free-room', 'other-teachers-room', 'other-teachers-room']);
+  const [free, theirs] = [on.suggestions[0], on.suggestions[2]];
+  assert.ok(theirs.effects.walking.difference < free.effects.walking.difference && theirs.effects.findings.new.note < free.effects.findings.new.note, 'the later one walks less and adds less: ' + on.suggestions.map((s) => s.text).join(' / '));
 });
 
 test('another teacher\'s room of another subject is never offered', () => {
@@ -234,6 +249,32 @@ test('another teacher\'s room of another subject is never offered', () => {
   project = editTeacher(project, { id: teacherId(project, 'Ms. Thistlewood'), subjectId: 'ssample003' }, ctx());
   const finding = findingOf(project, DOUBLE);
   assert.ok(!suggestionCandidates(project, finding, { otherTeachersRooms: true }).some((candidate) => candidate.kind === 'other-teachers-room'));
+});
+
+test('a move into a room with no way in or out is never offered, though it walks less', () => {
+  // a day of two periods (no swap helps); Room 301 has no teacher, and is
+  // shut off as in scenario.test.mjs: no door, moved to a corner of its floor
+  // away from every corridor
+  let project = school();
+  project = setPeriods(project, { periods: 2 }, ctx());
+  project = setRoomTeachers(project, { roomId: R301, teacherIds: [] }, ctx());
+  const shut = project.building.floors[2].spaces.find((space) => space.id === R301);
+  shut.cells = [0];
+  shut.doors = [];
+  const finding = findingOf(project, DOUBLE);
+  const into301 = suggestionCandidates(project, finding).filter((candidate) => candidate.change.roomId === R301);
+  assert.equal(into301.length, 2, 'both groups could go to 301: it is free and has no teacher');
+  // a walk that fails is not walked: moving 7C there would read as walking saved
+  const before = run(project);
+  const after = run(applyChanges(project, [into301.find((candidate) => candidate.change.groupId === G7C).change]));
+  assert.ok(walkingOf(after, G7C, A) < walkingOf(before, G7C, A));
+  const answer = suggest(project, finding);
+  assert.ok(answer.suggestions.length > 0);
+  const offered = answer.suggestions.map((s) => s.text).join(' / ');
+  assert.ok(!answer.suggestions.some((suggestion) => suggestion.change.groupId === G7C && suggestion.change.roomId === R301), offered);
+  // 6C is in 301 already in Period 1: staying there takes its failed walk away
+  // rather than adding one, so that move is offered
+  assert.ok(answer.suggestions.some((suggestion) => suggestion.change.groupId === G6C && suggestion.change.roomId === R301), offered);
 });
 
 // ---------------------------------------------------------------- none
@@ -350,6 +391,61 @@ test('the static checks come first for a room finding, and are skipped for a wal
   const walk = findingOf(project, WALK);
   const reorders = suggestionCandidates(project, walk).filter((candidate) => candidate.kind === 'reorder').length;
   assert.ok(count(walk) >= Math.min(reorders, RUN_TRIES), 'every swap of a walk goes to the pipeline');
+});
+
+// What the pipeline was handed, told apart by the edited groups' days.
+function spyPipeline(project, seen) {
+  const real = createPipeline();
+  return {
+    run(next, counters) {
+      if (next !== project) seen.push(next);
+      return real.run(next, counters);
+    },
+  };
+}
+
+function sameDays(a, b) {
+  return JSON.stringify(a.groups.map((group) => group.days)) === JSON.stringify(b.groups.map((group) => group.days));
+}
+
+test('stage 1: a candidate the static checks say leaves the finding, or adds a problem, never reaches the pipeline', () => {
+  // the limit of consecutive periods at 3: Ms. Vandermeer teaches Periods 1
+  // to 4 in Room 203 on A Day, and many swaps leave her run as long
+  const sample = school();
+  const project = { ...sample, settings: { ...sample.settings, checks: { ...sample.settings.checks, consecutiveLimit: 3 } } };
+  const finding = findingOf(project, 'consecutive:' + A + ':0:' + teacherId(project, 'Ms. Vandermeer'));
+  const problems = new Set(checkSchedule(project, null).findings.filter((one) => one.severity === 'problem').map((one) => one.id));
+  const ruledOut = suggestionCandidates(project, finding).map((candidate) => applyChanges(project, [candidate.change])).filter((next) => {
+    const after = checkSchedule(next, null);
+    return after.findings.some((one) => one.id === finding.id) || after.findings.some((one) => one.severity === 'problem' && !problems.has(one.id));
+  });
+  const stays = ruledOut.filter((next) => checkSchedule(next, null).findings.some((one) => one.id === finding.id));
+  assert.ok(stays.length > 0 && stays.length < ruledOut.length, 'some candidates leave the run as it is, others add a problem');
+  const seen = [];
+  const answer = suggest(project, finding, { pipeline: spyPipeline(project, seen) });
+  assert.ok(answer.suggestions.length > 0 && seen.length > 0);
+  for (const next of seen) assert.ok(!ruledOut.some((out) => sameDays(out, next)), 'the pipeline ran a candidate the static checks ruled out');
+});
+
+test('stage 2: a candidate the pipeline says leaves the finding is never offered, whatever the static checks said', () => {
+  // the pipeline is told to report the finding still there for the first
+  // suggestion's change; a room finding passes the static checks first, so
+  // only stage 2 can drop it
+  const project = school();
+  const finding = findingOf(project, DOUBLE);
+  const first = suggest(project, finding).suggestions[0];
+  const target = applyChanges(project, [first.change]);
+  const real = createPipeline();
+  const pipeline = {
+    run(next, counters) {
+      const result = real.run(next, counters);
+      if (next === project || !sameDays(next, target)) return result;
+      return { ...result, findings: { ...result.findings, findings: result.findings.findings.concat([finding]) } };
+    },
+  };
+  const answer = suggest(project, finding, { pipeline });
+  assert.ok(answer.suggestions.length > 0);
+  assert.ok(!answer.suggestions.some((suggestion) => JSON.stringify(suggestion.change) === JSON.stringify(first.change)), 'dropped: ' + first.text);
 });
 
 test('the same answer every time', () => {
