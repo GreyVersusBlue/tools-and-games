@@ -59,7 +59,7 @@ export const FIT_MARGIN = 20;
 // The least the stage is given, in CSS pixels, however little the section
 // has (SV2-55): the zoom buttons' 44 px finger targets with their 12 px
 // margins (68), and over them the 48 px a pan or a zoom always leaves of
-// the floors (KEEP_ON_STAGE in index.js), 116, so 120. A stage under that
+// the floors (KEEP_ON_STAGE in ui/surface/plan-map.js), 116, so 120. A stage under that
 // is a strip with the zoom lying over it (41 px at 844 by 390 on a touch
 // screen, on the live site after #562). When the floors' whole box, fitted
 // across the stage's width, is shorter than that, the box is enough, but
