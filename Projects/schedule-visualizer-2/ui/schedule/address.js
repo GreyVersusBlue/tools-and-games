@@ -85,6 +85,15 @@ export function groupOf(project, hash) {
   return rest !== null && rest.split('/')[0] === 'groups' ? readAddress(project, rest).group : null;
 }
 
+// Does this address name a group the project does not have (deleted since
+// the address was written, an Add undone, or never there)? It shows the
+// list (`showsList`) but is not written as it, so it is a place in the
+// history that is no group's any more.
+export function namesGoneGroup(project, hash) {
+  const rest = scheduleRest(hash);
+  return rest !== null && rest.split('/')[0] === 'groups' && !writtenAsList(hash) && readAddress(project, rest).group === null;
+}
+
 // Where an undo entry's `focus` is, as an address, for the message's Show
 // (ui/app.js, `hashForFocus`, hands it the shell's section ids). A change
 // to a group's slot is the slot's own address, and one to the group alone

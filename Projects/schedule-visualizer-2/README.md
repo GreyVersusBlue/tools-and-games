@@ -161,6 +161,8 @@ row names a file it does not run.
 | `test/engine/prints-movement.test.mjs` | The movement view's tables, CSV files and print documents |
 | `test/engine/grid-edits.test.mjs` | The grid editor's one action and the pure parts that feed it |
 | `test/engine/import-subjects.test.mjs` | The subject list from a CSV file |
+| `test/engine/scenario.test.mjs` | The scenario engine: apply, normalise, reconcile, the comparison, the difference map's numbers, compare with another file, the chip words |
+| `test/engine/evacuation.test.mjs` | Evacuation: every room's way out, the exits' rooms and people, the rooms with no way out, the door card's data |
 | `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
 | `test/ui/helpers.test.mjs` | The interface's plain functions: the shortcut guard, fields, the picker, the table |
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
@@ -209,3 +211,4 @@ row names a file it does not run.
 | `test/timing/pipeline.mjs` | The derived pipeline end to end under its budget |
 | `test/timing/movement.mjs` | The movement view's main-thread work under its budget |
 | `test/timing/playback.mjs` | One frame of playback under its budget |
+| `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |

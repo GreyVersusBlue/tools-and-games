@@ -60,11 +60,19 @@ const FINAL = [[0x11a8, 0x11ff], [0xd7cb, 0xd7fb]];
 // in the sign's face (Barlow Semi Condensed 600, its Latin file) fit the
 // sheet at full size, but seven W's are 5.4 em where the line holds 3.9: each
 // of these counts as its own width, measured in Chromium in that face and
-// rounded up to a quarter of a letter. The two-em and three-em dashes are one
-// character drawn two and three letters long. (A character outside the face,
+// rounded up to a quarter of a letter. The line is the shortest the sign
+// has: on a phone the card is a box with its 1 px borders inside the sheet,
+// so the line holds 3.886 em at a card 356 px wide (3.877 at 260), and H, U
+// and the accented U's, 0.557 em, are just over a seventh of it: 1.0033 of
+// one at 356 and 1.0057 at 260 (SV2-58). They count 1.01, not a quarter more:
+// that holds seven on one line on any card down to 175 px, and a sign with
+// one H in seven letters is set at 0.9986 of full size, not 0.966 (SV2-58b).
+// The two-em and three-em dashes are one character drawn two and three
+// letters long. (A character outside the face,
 // a Greek or a Cyrillic letter, is drawn in the reader's own font, whose
 // width the file cannot know; it counts one, or two in WIDE.)
 const BROAD = new Map([
+  ...[0x48, 0x55, 0xd9, 0xda, 0xdb, 0xdc].map((point) => [point, 1.01]),
   ...[0x23, 0x26, 0x4d, 0x4e, 0x77, 0xa3, 0xa5, 0xd0, 0xd1, 0xd8, 0x2014, 0x201a, 0x2037, 0x203c, 0x203f, 0x2040, 0x2048, 0x2049, 0x204a, 0x204b, 0x204c, 0x204d, 0x2050, 0x2054, 0x2055, 0x205b, 0x20ac, 0x2122].map((point) => [point, 1.25]),
   ...[0x25, 0x40, 0x57, 0x6d, 0xa9, 0xbc, 0xbd, 0xe6, 0x152, 0x153, 0x2026, 0x203b, 0x2057, 0x2058, 0x2059, 0x205c].map((point) => [point, 1.5]),
   ...[0xbe, 0xc6, 0x2047].map((point) => [point, 1.75]),

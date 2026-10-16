@@ -11,10 +11,46 @@
 // Text is compared folded: spaces round it and the case of its letters do
 // not count, and neither do the forms of one letter (NFKC: a full-width
 // "１０１" is "101", and an "é" typed as two code points is the one "é").
-// Folding uses no locale, so it says the same on every device.
+// Inside it, a run of spaces is one space, and a run of hyphens or dashes
+// with the spaces round it is the label's " — ", since a keyboard has no
+// em dash: "101 - Ms. Okafor", "101-Ms. Okafor" and "101  —  ms. okafor"
+// are all the label "101 — Ms. Okafor" (SV2-56 item 4). Both sides of every
+// comparison are folded by this one function, so a hyphen inside a name
+// ("Okonjo-Reyes") or a number ("B-12") still meets itself. Folding uses no
+// locale, so it says the same on every device.
+//
+// Folding is for finding a room; it never makes two rooms one. The engine
+// keeps "B-12" and "B–12", "Portable 1" and "Portable  1", and "Gym-North"
+// and Gym (whose label is "Gym — North") apart, since its key for a number
+// is only trimmed and lower case (engine/schema.js, `roomNumberKey`). So a
+// typed text that is exactly one room's number by that key (with NFKC, as
+// above) is that room before anything is folded (`byNumber`, SV2-56b).
+
+import { roomNumberKey } from '../../engine/schema.js';
+
+const DASHES = /\s*[-\u2010-\u2015\u2212]+\s*/gu;
 
 export function fold(text) {
-  return String(text).normalize('NFKC').trim().toLowerCase();
+  return String(text).normalize('NFKC').toLowerCase().replace(DASHES, ' \u2014 ').replace(/\s+/gu, ' ').trim();
+}
+
+// The one room whose number is the typed text by the engine's key (NFKC,
+// trimmed, lower case, nothing inside it folded), or "Room " and that
+// number; null when no room's number is, or two are (two numbers NFKC makes
+// one, which the engine keeps apart: then the folded rules below decide).
+export function byNumber(typed, rooms) {
+  const key = numberKey(typed);
+  if (key === '') return null;
+  for (const wanted of [key, withoutRoomWord(key)]) {
+    const found = rooms.filter((option) => option.id !== null && numberKey(option.number) === wanted);
+    if (found.length === 1) return found[0];
+    if (found.length > 1) return null;
+  }
+  return null;
+}
+
+function numberKey(text) {
+  return roomNumberKey(String(text).normalize('NFKC'));
 }
 
 // "Room 101" is how the tool names Room 101 in a sentence (engine/schema.js,
@@ -28,7 +64,9 @@ function withoutRoomWord(folded) {
 // with nothing chosen in the list. One of
 //
 //   { kind: 'none' }               nothing typed: no room
-//   { kind: 'room', option }       one room: its number, its whole label, or
+//   { kind: 'room', option }       one room: its number as the engine keys it
+//                                  (`byNumber`, before anything is folded),
+//                                  its number or whole label folded, or
 //                                  text that names it alone by its teacher
 //                                  (the whole label of a room with no number
 //                                  only when it carries teachers: "a room
@@ -45,6 +83,8 @@ function withoutRoomWord(folded) {
 export function readTyped(typed, rooms) {
   const text = String(typed).trim();
   if (text === '') return { kind: 'none' };
+  const own = byNumber(text, rooms);
+  if (own) return { kind: 'room', option: own };
   const wanted = fold(text);
   const number = withoutRoomWord(wanted);
   const exact = rooms.filter((option) => {

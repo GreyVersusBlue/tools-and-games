@@ -12,7 +12,7 @@
 //   bestLayout(floors, width, height)   'side' or 'stacked': whichever fits the window larger
 //   slotAt(layout, x, y)                { slot, x, y, cell } for a place on the map, or null between floors
 //   placeOf(layout, floorId, cell)      { x, y }: the top left of a floor's cell on the map, or null
-//   stageLeast(layout, width)           the least height the stage is given, in CSS pixels
+//   stageLeast(layout, width, zoomRoom) the least height the stage is given, in CSS pixels
 //   keepShift(view, layout, keep)       { dx, dy }: the pan that leaves `keep` px of the floors on the stage
 //
 // No DOM in here.
@@ -62,13 +62,20 @@ export const FIT_MARGIN = 20;
 // the floors (KEEP_ON_STAGE in index.js), 116, so 120. A stage under that
 // is a strip with the zoom lying over it (41 px at 844 by 390 on a touch
 // screen, on the live site after #562). When the floors' whole box, fitted
-// across the stage's width, is shorter than that, the box is enough.
+// across the stage's width, is shorter than that, the box is enough, but
+// never less than the zoom box needs (SV2-57): a long low building's box is
+// 58 px at 844 px wide, under the zoom's 70 (44 px buttons, their 2 px of
+// border and 12 px of margin each way), and the zoom then lay over all of
+// it. `zoomRoom` is that need as the view measures it; ZOOM_ROOM when it is
+// not given.
 export const STAGE_LEAST = 120;
+export const ZOOM_ROOM = 70;
 
-export function stageLeast(layout, width) {
+export function stageLeast(layout, width, zoomRoom) {
   if (!layout || !(width > 0)) return STAGE_LEAST;
+  const floor = Math.min(STAGE_LEAST, zoomRoom > 0 ? Math.ceil(zoomRoom) : ZOOM_ROOM);
   const zoom = clampZoom(Math.max(1, width - FIT_MARGIN * 2) / (layout.width * CELL));
-  return Math.min(STAGE_LEAST, Math.ceil(layout.height * CELL * zoom + FIT_MARGIN * 2));
+  return Math.max(floor, Math.min(STAGE_LEAST, Math.ceil(layout.height * CELL * zoom + FIT_MARGIN * 2)));
 }
 
 export function bestLayout(floors, width, height) {

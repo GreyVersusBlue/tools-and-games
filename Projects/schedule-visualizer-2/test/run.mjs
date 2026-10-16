@@ -72,6 +72,8 @@ export const GROUPS = {
     'engine/prints-movement.test.mjs', // SV2-18
     'engine/grid-edits.test.mjs', // SV2-12
     'engine/import-subjects.test.mjs', // SV2-13
+    'engine/scenario.test.mjs', // SV2-60
+    'engine/evacuation.test.mjs', // SV2-62
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
@@ -128,6 +130,7 @@ export const GROUPS = {
     'timing/pipeline.mjs', // SV2-16
     'timing/movement.mjs', // SV2-39
     'timing/playback.mjs', // SV2-44
+    'timing/evacuation.mjs', // SV2-62
   ],
 };
 

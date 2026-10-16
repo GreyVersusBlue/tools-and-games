@@ -15,8 +15,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { scheduleRest, writtenAsList, showsList, groupOf, focusHash, groupHash, slotHash, GROUPS_HASH } from '../../ui/schedule/address.js';
-import { listStop, toGroup, toList, spentEntry } from '../../ui/schedule/groups.js';
+import { scheduleRest, writtenAsList, showsList, groupOf, namesGoneGroup, focusHash, groupHash, slotHash, GROUPS_HASH } from '../../ui/schedule/address.js';
+import { listStop, toGroup, toList, spentEntry, stepOffSpent, placeView, placeInHistory } from '../../ui/schedule/groups.js';
 import { deleteGroup } from '../../engine/actions.js';
 import { school, ctx, group } from '../engine/helpers.mjs';
 
@@ -26,10 +26,16 @@ const SECTIONS = ['building', 'schedule', 'movement', 'scenarios', 'safety', 'st
 
 // The browser's history as far as groups.js uses it: `location.hash`,
 // `history.state`, `pushState`, `replaceState`, `back`, `forward`, and the
-// shell's `navigate`, which sets the address (a new entry).
+// shell's `navigate`, which sets the address (a new entry). A step back or
+// forward that moves calls `page.popstate`, when a test has set one, as the
+// browser fires `popstate`.
 function standIn(start) {
   const entries = [{ hash: start, state: null }];
   let at = 0;
+  let page = null;
+  const stepped = () => {
+    if (page.popstate) page.popstate();
+  };
   const location = {
     get hash() {
       return entries[at].hash;
@@ -51,15 +57,20 @@ function standIn(start) {
       entries[at] = { hash: hash === undefined ? entries[at].hash : hash, state };
     },
     back() {
-      if (at > 0) at -= 1;
+      if (at === 0) return;
+      at -= 1;
+      stepped();
     },
     forward() {
-      if (at < entries.length - 1) at += 1;
+      if (at === entries.length - 1) return;
+      at += 1;
+      stepped();
     },
   };
   globalThis.location = location;
   globalThis.history = history;
-  return {
+  page = {
+    popstate: null,
     history,
     navigate(hash) {
       if (location.hash !== hash) history.pushState(null, '', hash);
@@ -68,6 +79,7 @@ function standIn(start) {
     hashes: () => entries.map((entry) => entry.hash),
     at: () => at,
   };
+  return page;
 }
 
 function planner(project, start) {
@@ -113,6 +125,17 @@ test('showsList is the list in this project: no group, or a group the project do
   const after = deleteGroup(project, { id: a6.id }, ctx());
   assert.equal(groupOf(after, groupHash(a6.id)), null);
   assert.equal(showsList(after, groupHash(a6.id)), true);
+});
+
+test('namesGoneGroup is an address naming a group the project does not have, and nothing else', () => {
+  const project = school();
+  const a6 = group(project, '6A');
+  const after = deleteGroup(project, { id: a6.id }, ctx());
+  assert.equal(namesGoneGroup(after, groupHash(a6.id)), true);
+  assert.equal(namesGoneGroup(after, slotHash(a6.id, 'dsample00a', 2)), true, 'a gone group\'s slot');
+  assert.equal(namesGoneGroup(project, '#schedule/groups/gnobody0001'), true);
+  assert.equal(namesGoneGroup(project, groupHash(a6.id)), false, 'a group the project has');
+  for (const hash of ['#schedule', '#schedule/groups', '#schedule/groups/', '#schedule/grid/' + a6.id, '#project', '']) assert.equal(namesGoneGroup(after, hash), false, hash);
 });
 
 test('focusHash, the rule of hashForFocus: a slot\'s change is the slot\'s address, a group\'s the group\'s, and the list only when no group is named', () => {
@@ -197,4 +220,118 @@ test('SV2-54 item 5: the chosen group, on its own slot\'s address, adds no entry
   toGroup(shell, a7);
   assert.deepEqual(page.hashes(), ['#schedule/groups', slot, groupHash(a7)]);
   assert.equal(history.state, null, 'a slot\'s address is not the list: the new entry has no list under it');
+});
+
+// ---------------------------------------------------------------- SV2-56
+
+// The review of SV2-54's walk (probe-wide-delete.mjs): 6C chosen on a phone,
+// the phone on its side, 6C deleted there (a wide screen writes no address,
+// so the page stays on 6C's), turned upright, 7A tapped, "All groups", Back.
+// `placeView` is what the turn upright does (ui/schedule/index.js).
+function wideDelete(folded) {
+  let project = school();
+  const c6 = group(project, '6C').id;
+  const a7 = group(project, '7A').id;
+  const { page, ctx: shell } = planner(project, '#schedule/groups');
+  toGroup(shell, c6);
+  project = deleteGroup(project, { id: c6 }, ctx());
+  shell.store.project = project;
+  // the drawing after a Delete opens the list and chooses the first group;
+  // a click on 7A while still wide folds the list to it
+  const view = { groupId: folded ? a7 : project.groups[0].id, folded };
+  placeView(shell, view);
+  return { page, shell, view, c6, a7 };
+}
+
+test('SV2-56 item 1: a Delete while wide, then upright, a tap on another group, All groups and Back never shows the list twice', () => {
+  const { page, shell, c6, a7 } = wideDelete(false);
+  assert.equal(location.hash, GROUPS_HASH, 'turned upright, the page is still at the gone group\'s address');
+  assert.equal(page.at(), 0, 'the gone group\'s entry is left above the list instead of stepped back from');
+  toGroup(shell, a7);
+  assert.deepEqual(page.hashes(), [GROUPS_HASH, groupHash(a7)], 'the gone group is still in the history under 7A');
+  toList();
+  assert.equal(page.at(), 0);
+  assert.equal(location.hash, GROUPS_HASH);
+  assert.equal(page.hashes().includes(groupHash(c6)), false);
+  // Back from the list leaves the section: there is no second list under it
+  page.history.back();
+  assert.equal(page.at(), 0);
+});
+
+test('SV2-56 item 1: a Delete while wide, another group chosen wide, then upright: that group is in the gone one\'s place, the list under it', () => {
+  const { page, a7 } = wideDelete(true);
+  assert.deepEqual(page.hashes(), [GROUPS_HASH, groupHash(a7)], 'turned upright, the gone group\'s entry is still a list under the editor');
+  assert.equal(history.state && history.state.scheduleListUnder, true, 'the list under it is forgotten');
+  toList();
+  assert.equal(page.at(), 0, '"All groups" made an entry instead of going back');
+  assert.equal(location.hash, GROUPS_HASH);
+});
+
+test('SV2-56 item 1: an undone Add while wide is a gone group too', () => {
+  const project = school();
+  const a6 = group(project, '6A').id;
+  // the group the Add made, chosen on a phone, then gone by an Undo while wide
+  const { page, ctx: shell } = planner(project, '#schedule/groups');
+  page.navigate(groupHash('gadded00001'));
+  history.replaceState({ scheduleListUnder: true }, '');
+  placeView(shell, { groupId: a6, folded: false });
+  assert.equal(page.at(), 0, 'turned upright, the gone group\'s entry is still above the list');
+  assert.equal(location.hash, GROUPS_HASH);
+  page.history.forward();
+  assert.equal(spentEntry(), true, 'the gone group\'s entry above the list is not spent');
+});
+
+test('SV2-56 item 3: Forward onto a spent entry steps straight back to the list under it, and Forward onto a group still there stays', () => {
+  const project = school();
+  const c6 = group(project, '6C').id;
+  const a7 = group(project, '7A').id;
+  const page = planner(project, '#schedule/groups').page;
+  const shell = { store: { project }, navigate: page.navigate };
+  page.popstate = stepOffSpent;
+  toGroup(shell, c6);
+  toList(true);
+  assert.equal(page.at(), 0);
+  page.history.forward();
+  assert.equal(page.at(), 0, 'Forward was left on the spent entry');
+  assert.equal(location.hash, GROUPS_HASH);
+  assert.equal(stepOffSpent(), false, 'the list under it is not spent');
+  // a group chosen afterwards drops the spent entry: Forward is that group
+  toGroup(shell, a7);
+  toList();
+  page.history.forward();
+  assert.equal(location.hash, groupHash(a7));
+  assert.equal(page.at(), 1);
+});
+
+// ---------------------------------------------------------------- SV2-56b
+
+// The review of SV2-56 (probe-history.mjs, A): the only group, chosen on a
+// phone, deleted while the phone lay on its side, then upright. The turn
+// upright returned when the project had no groups left, so the gone group's
+// entry stayed above the list, marked as having the list under it: "Add a
+// group" put the new group above that, "All groups" went back to it, and
+// Back from there was the list again. `placeInHistory` is what
+// ui/schedule/index.js calls when the screen crosses to narrow.
+test('SV2-56b: the only group deleted while wide, then upright, Add a group, All groups and Back never shows the list twice', () => {
+  let project = school();
+  const { page, ctx: shell } = planner(project, '#project');
+  page.navigate(GROUPS_HASH);
+  const first = project.groups[0].id;
+  toGroup(shell, first);
+  for (const each of project.groups) project = deleteGroup(project, { id: each.id }, ctx());
+  shell.store.project = project;
+  assert.equal(project.groups.length, 0);
+  // the drawing of a project with no groups chooses none and opens the list
+  const view = { groupId: null, folded: false };
+  placeInHistory(shell, view, 'groups');
+  assert.equal(location.hash, GROUPS_HASH, 'turned upright with no groups left, the page is still at the gone group\'s address');
+  assert.deepEqual(page.hashes().slice(0, page.at() + 1), ['#project', GROUPS_HASH], 'the gone group\'s entry is still above the list');
+  // "Add a group" on the phone: the new group is chosen from the list
+  project = { ...project, groups: [{ ...school().groups[1], id: 'gadded00001' }] };
+  shell.store.project = project;
+  toGroup(shell, 'gadded00001');
+  toList();
+  assert.equal(location.hash, GROUPS_HASH);
+  page.history.back();
+  assert.equal(location.hash, '#project', 'Back from the list showed the list twice');
 });

@@ -19,7 +19,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { openPlanner, go, startServer, launch, TOOL_PATH } from './harness.mjs';
+import { openPlanner, go, startServer, launch, visit, TOOL_PATH } from './harness.mjs';
+import { SCREENS } from './screens.mjs';
 
 const PHONE = { width: 390, height: 844, mobile: true };
 const TABLET = { width: 768, height: 1024 };
@@ -1373,6 +1374,64 @@ test('SV2-55 item 0: a phone on its side with touch, 844 by 390: the stage keeps
   });
 });
 
+// SV2-57 item 3 (the review of SV2-55, probe.mjs): a building one row high
+// and 200 cells long, on its floor's first row, is a box two cells high (the
+// row and the margin drawnBox keeps under it) under the floor's name: fitted
+// across 844 px, 4 x 24 x 25 % + 40 = 64 px, and the stage's
+// least was that box: under the zoom box with its margins (70 px with
+// touch), so the zoom lay over the whole map. The least is now never under
+// what the zoom needs.
+const lowBuilding = (page) => page.evaluate(() => {
+  // not awaited by the evaluate: on a page with touch emulated Puppeteer drops the awaited promise
+  import('./engine/actions.js').then(({ replaceProject }) => {
+    const project = structuredClone(globalThis.sv2.store.project);
+    const floor = project.building.floors[0];
+    const width = 200;
+    const row = 0;
+    const cells = Array.from({ length: width * 5 }, (unused, index) => (Math.floor(index / width) === row && index % width >= 2 && index % width < width - 2 ? '#' : '.'));
+    const room = (id, number, at, side) => ({ id, kind: 'room', cells: [row * width + at, row * width + at + 1], number, teacherIds: [], subjectId: null, wing: '', capacity: null, shared: false, doors: [{ cell: row * width + at + (side === 'e' ? 1 : 0), side }] });
+    project.building.floors = [{ ...floor, width, height: 5, cells: cells.join(''), spaces: [room('rlowroom01', 'L1', 0, 'e'), room('rlowroom02', 'L2', width - 2, 'w')], corridors: [], exits: [], image: null }];
+    project.building.connections = [];
+    project.building.zones = [];
+    project.onboarding.dismissed = true;
+    globalThis.sv2.store.apply(replaceProject, { project, label: 'A building one row high' });
+  });
+});
+
+test('SV2-57 item 3: a building one row high on a phone on its side with touch, 844 by 390: the stage is never under what the zoom buttons need, and at the section’s end they lie on it above the bar', async () => {
+  await on('#movement', SIDEWAYS, async (p) => {
+    assert.equal(await p.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page is not a touch screen’s: the case measures the wrong page');
+    await dismissStarted(p);
+    await drawn(p);
+    await lowBuilding(p);
+    await shows(p, () => document.querySelector('.mov').movement.world?.height === 4);
+    await drawn(p);
+    const at = await p.evaluate(async () => {
+      const { fitZoom, FIT_MARGIN } = await import('./ui/movement/layout.js');
+      const movement = document.querySelector('.mov').movement;
+      const stage = document.querySelector('.mov-stage');
+      const zoom = document.querySelector('.mov-zoom');
+      const margin = parseFloat(getComputedStyle(zoom).left);
+      const across = fitZoom({ width: movement.world.width, height: 1 }, stage.clientWidth, 10000, FIT_MARGIN);
+      return { stage: stage.clientHeight, zoom: zoom.offsetHeight, margin, box: Math.ceil(movement.world.height * 24 * across + FIT_MARGIN * 2) };
+    });
+    assert.equal(at.zoom, 46, 'the zoom buttons are not a finger’s 44 px: ' + JSON.stringify(at));
+    assert.ok(at.box < at.zoom + at.margin * 2, 'the floors’ box at Fit is not under what the zoom needs: the case tests nothing: ' + JSON.stringify(at));
+    assert.ok(at.stage < 120, 'the stage is not at its least: the case tests nothing: ' + JSON.stringify(at));
+    assert.ok(at.stage >= at.zoom + at.margin * 2, 'the stage is under what the zoom buttons need: ' + JSON.stringify(at));
+    await p.evaluate(() => {
+      const section = document.querySelector('.mov');
+      section.scrollTop = section.scrollHeight;
+    });
+    await shows(p, () => {
+      const section = document.querySelector('.mov');
+      return section.scrollTop >= section.scrollHeight - section.clientHeight - 1;
+    });
+    await drawn(p);
+    await zoomClear(p, 'at the end');
+  });
+});
+
 // Press Tab until the focus is on what `selector` finds (at most 80 times).
 async function tabTo(page, selector) {
   for (let press = 0; press < 80; press += 1) {
@@ -1461,9 +1520,11 @@ const saveFails = async (page) => {
   });
   await shows(page, () => document.getElementById('banner-save-failed') !== null);
 };
+// measured as drawn, rounded up (SV2-57 item 4): offsetHeight rounds, and a
+// banner 57.4 px tall left 0.4 px of it over what the room was kept for
 const bannerMeasured = (page) => shows(page, () => {
   const host = document.getElementById('storage-banners');
-  return document.getElementById('surface').style.getPropertyValue('--banners-height') === host.offsetHeight + 'px';
+  return document.getElementById('surface').style.getPropertyValue('--banners-height') === Math.ceil(host.getBoundingClientRect().height) + 'px';
 });
 
 for (const [name, size] of [['1280 by 800', DESK], ['1280 by 480', SHORT], ['844 by 390 with touch', SIDEWAYS], ['390 by 844 with touch', PHONE]]) {
@@ -1485,6 +1546,35 @@ for (const [name, size] of [['1280 by 800', DESK], ['1280 by 480', SHORT], ['844
     });
   });
 }
+
+// SV2-57 item 4: the banners' height is their box as drawn, rounded up, so a
+// fraction of a pixel never lies over the room kept for it. offsetHeight
+// rounds to the nearest: a box 10.4 px taller read as 10 px.
+test('SV2-57 item 4: --banners-height is the banners’ box rounded up, not offsetHeight: a box 0.4 px over a whole pixel counts the next pixel', async () => {
+  await on('#movement', DESK, async (p) => {
+    await dismissStarted(p);
+    await drawn(p);
+    await saveFails(p);
+    await bannerMeasured(p);
+    const was = await p.evaluate(() => document.getElementById('surface').style.getPropertyValue('--banners-height'));
+    await p.evaluate(() => {
+      const host = document.getElementById('storage-banners');
+      host.style.minHeight = (Math.ceil(host.getBoundingClientRect().height) + 10.4) + 'px';
+    });
+    // the banners' observer has run for the new box
+    await shows(p, (old) => document.getElementById('surface').style.getPropertyValue('--banners-height') !== old, was);
+    const at = await p.evaluate(() => {
+      const host = document.getElementById('storage-banners');
+      return { set: document.getElementById('surface').style.getPropertyValue('--banners-height'), box: host.getBoundingClientRect().height, offset: host.offsetHeight };
+    });
+    assert.ok(at.box % 1 > 0.2 && at.box % 1 < 0.5, 'the box is not a fraction under a half over a whole pixel: the case tests nothing: ' + JSON.stringify(at));
+    assert.equal(at.set, Math.ceil(at.box) + 'px', 'the banners’ height is not their box rounded up: ' + JSON.stringify(at));
+    await p.evaluate(() => {
+      document.getElementById('storage-banners').style.minHeight = '';
+      globalThis.sv2.storage.hooks.failWrite = null;
+    });
+  });
+});
 
 // SV2-55 item 4: until --banners-height is set, the surface keeps an
 // allowance for the banners at the top of what it scrolls to; the allowance
@@ -1931,17 +2021,30 @@ test('SV2-55 item 3: a stage made smaller under a map the reader moved keeps the
   await on('#movement', DESK, async (p) => {
     await dismissStarted(p);
     await drawn(p);
-    // a map the reader moved down to the stage's foot: 50 px of the floors showing
+    // a map the reader moved down to the stage's foot, 50 px of the floors
+    // showing: moved as a reader moves it, a drag with the middle button
+    // through the map's own input, so the view knows the map is no longer
+    // fitted (SV2-57 item 1: a pan of the viewport alone left it fitted, and
+    // the resize then fitted the map again whatever the clamp did)
     await stageTo(p, 300);
-    await p.evaluate(() => {
+    const from = await p.evaluate(() => {
+      const rect = document.querySelector('.mov-stage').getBoundingClientRect();
       const movement = document.querySelector('.mov').movement;
-      movement.view.panBy(0, 250 - movement.view.y);
-      movement.view.panBy(0, 0);
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + 40), by: Math.round(250 - movement.view.y) };
     });
+    await p.mouse.move(from.x, from.y);
+    await p.mouse.down({ button: 'middle' });
+    await p.mouse.move(from.x, from.y + from.by / 2);
+    await p.mouse.move(from.x, from.y + from.by);
+    await p.mouse.up({ button: 'middle' });
+    await shows(p, () => document.querySelector('.mov').movement.fitted === false);
+    const moved = await floorsOnStage(p);
+    assert.ok(moved.height - moved.top < 60 && moved.height - moved.top >= 47, 'the drag did not leave the floors at the stage’s foot: ' + JSON.stringify(moved));
     await p.mouse.move(640, 120);
     // the stage made smaller: the floors are brought back onto it
     await stageTo(p, 30);
     await drawn(p);
+    assert.equal(await p.evaluate(() => document.querySelector('.mov').movement.fitted), false, 'the map was fitted again when the stage changed size: the case does not reach the clamp');
     const resized = await floorsOnStage(p);
     assert.ok(keptOnStage(resized), 'after the stage was made smaller the floors are off it: ' + JSON.stringify(resized));
 
@@ -1961,6 +2064,35 @@ test('SV2-55 item 3: a stage made smaller under a map the reader moved keeps the
     assert.ok(kept.bottom - kept.top > 30, 'the floors’ box is not taller than the stage: the case tests nothing: ' + JSON.stringify(kept));
     assert.ok(keptOnStage(kept), 'the wheel took the floors off the stage: ' + JSON.stringify(kept));
   });
+});
+
+// SV2-57 item 5: visit() (screens.mjs's sweeps: axe and no-offsite) loads
+// each screen after clearSaved, whose CDP session takes Puppeteer's touch
+// emulation with it. A session opened as a phone, or a screen that asks for
+// a phone's viewport, is loaded with touch; the next screen is back at the
+// session's own size, with a fine pointer.
+test('SV2-57 item 5: visit() loads a phone’s screen with touch, after clearSaved, and puts the session’s own size back for the next screen', async () => {
+  const pointer = (page) => page.evaluate(() => ({ coarse: matchMedia('(pointer: coarse)').matches, touch: navigator.maxTouchPoints > 0, width: innerWidth, height: innerHeight }));
+  const phone = await openPlanner({ server, browser, hash: '#movement', theme: 'light', ...PHONE });
+  try {
+    assert.deepEqual(await pointer(phone.page), { coarse: true, touch: true, width: 390, height: 844 }, 'openPlanner did not give a touch page: the case tests nothing');
+    await visit(phone, { id: 'phone', hash: '#movement' });
+    assert.deepEqual(await pointer(phone.page), { coarse: true, touch: true, width: 390, height: 844 }, 'a session opened as a phone visits its screens with a fine pointer');
+  } finally {
+    await phone.page.close();
+  }
+  const desk = await openPlanner({ server, browser, hash: '#movement', theme: 'light', ...DESK });
+  try {
+    const sideways = SCREENS.find((screen) => screen.id === 'movement-phone-sideways');
+    assert.ok(sideways, 'the sweeps have no movement screen on a phone on its side');
+    await visit(desk, sideways);
+    assert.deepEqual(await pointer(desk.page), { coarse: true, touch: true, width: 844, height: 390 }, 'a screen that asks for a phone is loaded with a fine pointer');
+    await visit(desk, SCREENS.find((screen) => screen.id === 'movement-map'));
+    assert.deepEqual(await pointer(desk.page), { coarse: false, touch: false, width: 1280, height: 800 }, 'the screen after a phone’s is not at the session’s own size');
+    assert.deepEqual(desk.problems(), CLEAN);
+  } finally {
+    await desk.page.close();
+  }
 });
 
 // SV2-55 item 5: openPlanner closes what it opened when an earlier step
