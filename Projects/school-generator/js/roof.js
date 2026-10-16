@@ -446,10 +446,16 @@ export function curvedLoopsOf(floor) {
 // curved loop holding the middle of every cell along its edges; a curved loop
 // whose cells are all in loops of its own takes their place, its chords as
 // the parapet and itself, ear-clipped, as the deck, and the deck rectangles
-// whose first cell lies in it go. A mask loop whose cells lie in a curved
-// loop and somewhere else as well (two buildings a cell apart) keeps that
-// loop on its steps. `null` where nothing changes, so every other roof is
-// the plan it always was, key for key.
+// whose first cell lies in it go. `null` where nothing changes, so every
+// other roof is the plan it always was, key for key.
+//
+// Two buildings whose walls do not meet can still have mask cells side by
+// side, and share a mask loop (#988). The curved one is taken there too when
+// no cell of anything else reaches inside its chords; the rest of the shared
+// loop is outlined again from its own cells, and a deck rectangle laid across
+// both keeps its cells outside the curve, cut again into rectangles. A cell
+// that does reach inside the chords keeps the pair on its steps: two
+// parapets would stand inside one another, and which gives way is a call.
 function parapetOnChords(mask, outlines, rects, curved) {
   if (!curved.length) return null;
   const owner = (x, z) => curved.findIndex((loop) => pointInRing(loop, x, z));
@@ -469,17 +475,74 @@ function parapetOnChords(mask, outlines, rects, curved) {
   const taken = new Map();
   curved.forEach((loop, k) => {
     const mine = owners.filter((o) => o.has(k));
-    if (!mine.length || mine.some((o) => o.size > 1)) return;
+    if (!mine.length) return;
+    if (mine.some((o) => o.size > 1) && cellReachesInto(mask, loop)) return;
     const tris = triangulate(loop);
     if (tris) taken.set(k, { pts: loop, tris });
   });
   if (!taken.size) return null;
-  const firstCellIn = (rect) => [...taken.values()].some((d) => pointInRing(d.pts, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
-  return {
-    outlines: [...outlines.filter((_, i) => !taken.has([...owners[i]][0])), ...[...taken.values()].map((d) => d.pts)],
-    deckRects: rects.filter((rect) => !firstCellIn(rect)),
-    deckPolys: [...taken.values()],
-  };
+  const polys = [...taken.values()];
+  const inTaken = (x, z) => polys.some((d) => pointInRing(d.pts, x, z));
+  const kept = outlines.filter((_, i) => ![...owners[i]].some((k) => taken.has(k)));
+  const shared = owners.some((o) => o.size > 1 && [...o].some((k) => taken.has(k)));
+  if (!shared) {
+    const firstCellIn = (rect) => inTaken(rect.x0 + CELL / 2, rect.z0 + CELL / 2);
+    return {
+      outlines: [...kept, ...polys.map((d) => d.pts)],
+      deckRects: rects.filter((rect) => !firstCellIn(rect)),
+      deckPolys: polys,
+    };
+  }
+  const centreIn = (c, r) => inTaken((mask.cx0 + c + 0.5) * CELL, (mask.cy0 + r + 0.5) * CELL);
+  const rest = { ...mask, on: mask.on.map((v, i) => (v && !centreIn(i % mask.w, Math.floor(i / mask.w)) ? 1 : 0)) };
+  const keys = new Set(kept.map((l) => JSON.stringify(l)));
+  const split = maskOutlines(rest).filter((l) => !keys.has(JSON.stringify(l)));
+  const deckRects = rects.flatMap((rect) => {
+    let inside = 0;
+    for (let r = rect.r0; r < rect.r1; r++) for (let c = rect.c0; c < rect.c1; c++) if (centreIn(c, r)) inside++;
+    if (!inside) return [rect];
+    if (inside === (rect.r1 - rect.r0) * (rect.c1 - rect.c0)) return [];
+    const part = { ...rest, on: rest.on.map((v, i) => {
+      const c = i % mask.w, r = Math.floor(i / mask.w);
+      return v && c >= rect.c0 && c < rect.c1 && r >= rect.r0 && r < rect.r1 ? 1 : 0;
+    }) };
+    return maskRects(part);
+  });
+  return { outlines: [...kept, ...split, ...polys.map((d) => d.pts)], deckRects, deckPolys: polys };
+}
+
+// Does a covered cell whose middle lies outside `loop` lie partly inside it?
+// The area of the loop clipped to the cell's square (Sutherland-Hodgman,
+// which gives the right area for a loop that is not convex).
+function cellReachesInto(mask, loop) {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const p of loop) { x0 = Math.min(x0, p.x); z0 = Math.min(z0, p.z); x1 = Math.max(x1, p.x); z1 = Math.max(z1, p.z); }
+  const c0 = Math.max(0, Math.floor(x0 / CELL) - mask.cx0), c1 = Math.min(mask.w, Math.ceil(x1 / CELL) - mask.cx0);
+  const r0 = Math.max(0, Math.floor(z0 / CELL) - mask.cy0), r1 = Math.min(mask.h, Math.ceil(z1 / CELL) - mask.cy0);
+  for (let r = r0; r < r1; r++) {
+    for (let c = c0; c < c1; c++) {
+      if (!mask.on[r * mask.w + c]) continue;
+      const sx = (mask.cx0 + c) * CELL, sz = (mask.cy0 + r) * CELL;
+      if (pointInRing(loop, sx + CELL / 2, sz + CELL / 2)) continue;
+      let pts = loop;
+      for (const [axis, at, keep] of [['x', sx, 1], ['x', sx + CELL, -1], ['z', sz, 1], ['z', sz + CELL, -1]]) {
+        const out = [];
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          const ia = (a[axis] - at) * keep >= 0, ib = (b[axis] - at) * keep >= 0;
+          if (ia) out.push(a);
+          if (ia !== ib) {
+            const t = (at - a[axis]) / (b[axis] - a[axis]);
+            out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+          }
+        }
+        pts = out;
+        if (!pts.length) break;
+      }
+      if (pts.length >= 3 && Math.abs(loopArea(pts)) > 1e-6) return true;
+    }
+  }
+  return false;
 }
 
 // The skeleton roofs a design's top storey stands under: the hipped style
@@ -500,8 +563,10 @@ export function skeletonRoofsOf(state, roof = null) {
 // path its cells give way to the loop's own area off its chords, so a curve
 // is counted as drawn and not as a staircase of 4ft cells. Every face of a
 // skeleton roof stands at the one pitch, so its sloped area over that outline
-// is still the plan area over the cosine. Every other footprint is the mask's
-// count, by the same lines the takeoff and the estimate each had before (#970).
+// is still the plan area over the cosine. A parapet roof whose parapet runs on
+// the chords (`roofPlan`'s `deckPolys`, #973's one test) is counted off that
+// same outline, flat (#986). Every other footprint is the mask's count, by the
+// same lines the takeoff and the estimate each had before (#970).
 export function roofCover(state) {
   const top = state.floors.length - 1;
   const floor = state.floors[top];
@@ -512,19 +577,23 @@ export function roofCover(state) {
   let footprint = maskCount(mask) * CELL * CELL;
   const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
   const curved = skeletonRoofsOf(state, roof);
-  if (curved.length) {
+  // Only a parapet plan has `deckPolys`; the style test saves building the
+  // plan for every other roof and changes no figure.
+  const chords = roof.style === 'parapet' ? (roofPlan(state, roof).deckPolys || []) : [];
+  const loops = [...curved.map((k) => k.outline), ...chords.map((d) => d.pts)];
+  if (loops.length) {
     let cells = 0;
     for (let r = 0; r < mask.h; r++) {
       for (let c = 0; c < mask.w; c++) {
         if (!mask.on[r * mask.w + c]) continue;
         const x = (mask.cx0 + c + 0.5) * CELL, z = (mask.cy0 + r + 0.5) * CELL;
-        if (curved.some((k) => pointInRing(k.outline, x, z))) cells++;
+        if (loops.some((loop) => pointInRing(loop, x, z))) cells++;
       }
     }
     footprint -= cells * CELL * CELL;
-    for (const k of curved) footprint += loopArea(k.outline);
+    for (const loop of loops) footprint += loopArea(loop);
   }
-  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length };
+  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length, chords: chords.length };
 }
 
 // ---------- 5. the true outline, for a roof over a curve ----------
@@ -543,7 +612,9 @@ export function roofCover(state) {
 //   * a loop wound the other way (a courtyard between rooms),
 //   * two rooms laying the same wall the same way (they overlap),
 //   * two rooms whose walls cross, or one room inside another,
-//   * an outline that touches itself at a point.
+//   * rooms wrapped round a courtyard that meets the outside at one corner.
+// Two rooms meeting at a corner are not refused: the outline is split at
+// that corner into a loop each (#976).
 // A refusal keeps the rectangles for its own building only (#971): rooms
 // whose bounds touch, one to the next, are a building, and where the storey
 // as a whole is refused each building is judged alone, so a curved building
@@ -656,23 +727,46 @@ function unionOf(shapes) {
       if (!add(from, b)) return { loops: null, refused: 'two rooms overlap' };
     }
   }
-  const out = new Map();
+  const out = new Map();       // corner -> the edges leaving it
   for (const e of edges.values()) {
-    if (out.has(e.kf)) return { loops: null, refused: 'the outline touches itself at a point' };
-    out.set(e.kf, e);
+    if (!out.has(e.kf)) out.set(e.kf, []);
+    out.get(e.kf).push(e);
+  }
+  // Where the outline touches itself at a corner (two rooms meeting at a
+  // point) two edges leave it. Each edge arriving goes on along the one that
+  // turns hardest towards the rooms, so the outline splits there into loops
+  // that each keep their own rooms (#976). Two arrivals wanting the same edge
+  // means two rooms' corners open into each other: they overlap.
+  const turnTo = (e, f) => {
+    const ax = e.to.x - e.from.x, az = e.to.z - e.from.z, bx = f.to.x - f.from.x, bz = f.to.z - f.from.z;
+    return Math.atan2(ax * bz - az * bx, ax * bx + az * bz);
+  };
+  const next = new Map();
+  const taken = new Set();
+  for (const e of edges.values()) {
+    const leaving = out.get(e.kt);
+    if (!leaving) return { loops: null, refused: 'the outline does not close' };
+    const f = leaving.reduce((best, g) => (turnTo(e, g) > turnTo(e, best) ? g : best));
+    if (taken.has(f)) return { loops: null, refused: 'two rooms overlap' };
+    taken.add(f);
+    next.set(e, f);
   }
   const loops = [];
-  while (out.size) {
-    const [k0, first] = out.entries().next().value;
+  const done = new Set();
+  for (const first of edges.values()) {
+    if (done.has(first)) continue;
     const loop = [];
+    const at = new Set();
     let e = first;
-    while (e) {
-      out.delete(e.kf);
+    do {
+      // One loop through a corner twice wraps round something open to the
+      // outside only at that corner: a courtyard.
+      if (at.has(e.kf)) return { loops: null, refused: 'the rooms close round a courtyard' };
+      at.add(e.kf);
+      done.add(e);
       loop.push({ x: e.from.x, z: e.from.z });
-      if (e.kt === k0) break;
-      e = out.get(e.kt);
-    }
-    if (!e) return { loops: null, refused: 'the outline does not close' };
+      e = next.get(e);
+    } while (e !== first);
     // A wall split where a neighbour's corner met it is one wall again.
     for (let i = 0; loop.length > 3 && i < loop.length;) {
       const p = loop[(i - 1 + loop.length) % loop.length], q = loop[i], r = loop[(i + 1) % loop.length];
@@ -716,8 +810,13 @@ function unionOf(shapes) {
 // wing set at an angle, a rotated square and an octagon's alternate sides are
 // straight walls and keep their rectangles. Read as a curve as well, and
 // meant to be: a regular polygon of five sides or more, which is a curve
-// drawn by hand. Not read as one: an arc of two chords (only a `steps` of 2
-// asked for in code lays one down).
+// drawn by hand. An arc of two chords (only a `steps` of 2 asked for in code
+// lays one down) has one turn of its own, so it is read by its ends instead
+// (#976): two chords of one length turning under 85 degrees, where the turn
+// at each end plus half the middle one is a right angle, both ends alike.
+// That is a wall square to both its neighbours, bowed. A chamfer, a saw-tooth
+// wall and a prow of 45 degree walls are not; a prow of two equal walls on a
+// square end turning under 85 degrees at its tip is, and is the same chords.
 const CURVE_TURN = (85 * Math.PI) / 180;
 export function hasCurve(loop) {
   const n = loop.length;
@@ -733,6 +832,14 @@ export function hasCurve(loop) {
     const t0 = turn(i), t1 = turn((i + 1) % n);
     if (Math.abs(l1 - l0) > 1e-6 * l0 || Math.abs(l2 - l0) > 1e-6 * l0) continue;
     if (Math.abs(t1 - t0) > 1e-6 || t0 === 0 || Math.abs(t0) >= CURVE_TURN) continue;
+    return true;
+  }
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0) continue;
+    const before = turn((i - 1 + n) % n), mid = turn(i), after = turn((i + 1) % n);
+    if (mid === 0 || Math.abs(mid) >= CURVE_TURN || Math.abs(after - before) > 1e-6) continue;
+    if (Math.abs(Math.abs(before + mid / 2) - Math.PI / 2) > 1e-6) continue;
     return true;
   }
   return false;

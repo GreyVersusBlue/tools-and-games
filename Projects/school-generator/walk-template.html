@@ -55132,7 +55132,7 @@ function addFloor(s, index = s.currentFloor + 1) {
   return at;
 }
 
-// Copy an existing floor's rooms onto a new level above it.
+// Copy an existing floor's rooms and free-standing walls onto a new level above it.
 function duplicateFloor(s, index = s.currentFloor) {
   if (s.floors.length >= MAX_FLOORS) return -1;
   const src = s.floors[index];
@@ -55162,6 +55162,18 @@ function duplicateFloor(s, index = s.currentFloor) {
         ...(Array.isArray(r.accents) ? { accents: r.accents.slice() } : {}),
       })),
     })),
+    // ...and its free-standing walls (wallrun.js's `floor.walls`), the same
+    // way: fresh ids, the kind, each face's accent (#910) and the doorways
+    // and windows a wall holds, as a room's are (#979). No key when the
+    // storey has none, so a storey without one copies as it always did.
+    ...(Array.isArray(src.walls) && src.walls.length ? {
+      walls: src.walls.map((l) => ({
+        ...l,
+        id: nextShapeId(s),
+        ...(Array.isArray(l.openings) ? { openings: l.openings.map((o) => ({ ...o })) } : {}),
+        ...(Array.isArray(l.accents) ? { accents: l.accents.slice() } : {}),
+      })),
+    } : {}),
   });
   remapFloorRefs(s, (i) => (i >= at ? i + 1 : i));
   s.currentFloor = at;
@@ -59771,13 +59783,37 @@ function rampLandingArea(link, metrics) {
   return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
 }
 
-// The level landing at the top of a straight ramp, as a local box: the ramp's
-// own width, from the top of the run to the far edge of the hole. Null for a
-// stair and for a folded ramp, whose landings are its layout's.
-function rampLandingBox(link, metrics) {
-  if (!link || link.type !== 'ramp' || isSwitchback(link)) return null;
+// The level landing at the top of a straight run, stair or ramp, as a local
+// box: the run's own width, from the top of the run to the far edge of the
+// hole, `topLanding` deep (a stair's 4ft, a ramp's 5ft). Null for a folded
+// ramp, whose landings are its layout's, and for a link with no run. render.js
+// draws it for both kinds (#981, #983).
+function topLandingBox(link, metrics) {
+  if (!isRun(link) || isSwitchback(link)) return null;
   const hw = stairWidth(link) / 2, run = runLength(link, metrics);
-  return { x0: -hw, x1: hw, z0: run, z1: run + RAMP_LANDING };
+  return { x0: -hw, x1: hw, z0: run, z1: run + topLanding(link) };
+}
+
+// The same box for a straight ramp alone, which is what the `ramp-landing`
+// finding asks about (ADA 405.7, #904); null for a stair.
+function rampLandingBox(link, metrics) {
+  return link && link.type === 'ramp' ? topLandingBox(link, metrics) : null;
+}
+
+// The top landing the `ramp-landing` finding asks about, straight or folded
+// (#985): `box` local, `out` +1 when the way off is past `z1` and -1 past
+// `z0`. A folded ramp's is its layout's 'top' landing, the one `render.js`
+// draws and the walker stands on, which is at the near end beside the foot
+// for an even count. Null for a stair.
+function rampTopLanding(link, metrics) {
+  if (!link || link.type !== 'ramp') return null;
+  const layout = rampLayout(link, metrics);
+  if (!layout) {
+    const box = rampLandingBox(link, metrics);
+    return box && { box, out: 1 };
+  }
+  const box = layout.landings[layout.landings.length - 1].box;
+  return { box, out: layout.exit.a.z > box.z0 ? 1 : -1 };
 }
 
 // The same guards as world segments on the plan, for the collider.
@@ -59986,7 +60022,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, topLandingBox, rampLandingBox, rampTopLanding, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {
@@ -68420,11 +68456,13 @@ return { YARD_STEP, YARD_MARGIN, FACE_CLEAR, WALK_GRADE, ACCESSIBLE_GRADE, MAX_R
 const __m_js_clearance_js = (() => {
 const { floorLabel } = __m_js_grid_js;
 const { LEAF_NONE, floorSolidAt, shapeAt } = __m_js_shapes_js;
-const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope, rampLandingBox, localToWorld, worldToLocal, rectCorners, cutPolygon, footprintPolygon, pointInPolygon, isElevator } = __m_js_stairs_js;
+const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope, rampTopLanding, topLandingBox, localToWorld, worldToLocal, rectCorners, cutPolygon, footprintPolygon, pointInPolygon, isElevator } = __m_js_stairs_js;
 const { MAX_RAMP_GRADE } = __m_js_sitemesh_js;
 const { buildCollider, candidates, wallSegments, doorwaySegments, segsCross } = __m_js_collide_js;
 const { emptyField } = __m_js_terrain_js;
 const { propsOnFloor } = __m_js_props_js;
+const { footprintOf } = __m_js_propplace_js;
+const { collectDoorLeaves, leafEnd } = __m_js_openings_js;
 // clearance.js — the chair: what a seated body needs of a building, said once.
 //
 // Phase 40. "Accessibility stops at routes" was the backlog's own sentence:
@@ -68454,6 +68492,8 @@ const { propsOnFloor } = __m_js_props_js;
 // so nothing in the save format moved.
 //
 // Pure module: no three.js, no DOM. Exercised by test/clearance.test.mjs.
+
+
 
 
 
@@ -68534,9 +68574,10 @@ const rampRolls = (link) =>
 //
 // ADA 405.7: a ramp ends on a level landing as wide as the ramp and 60in long
 // (#904). Nothing here refuses a ramp or moves one. This says whether the
-// landing a straight ramp is owed has the room it needs on the storey above,
-// read from the design as drawn, so a ramp placed when the landing was 4ft is
-// asked the same question as one placed today and no save field records it.
+// top landing a ramp is owed, straight or folded (#985), has the room it
+// needs on the storey above, read from the design as drawn, so a ramp placed
+// when the landing was 4ft is asked the same question as one placed today
+// and no save field records it.
 //
 // Three things can be in its way, and `why` names each that is:
 //   'wall'  a wall or rail of the storey above runs through it, or a doorway
@@ -68544,12 +68585,19 @@ const rampRolls = (link) =>
 //           a doorway's 32in to leave by. A doorway *at* its far end is the
 //           way off and is allowed (405.7.5), jambs and all.
 //   'edge'  a corner of it, or the floor a foot past the middle of its far
-//           end, is off the storey above: there is nowhere to arrive.
+//           end, is off the storey above: there is nowhere to arrive. A
+//           folded ramp's far end is the open edge its walker steps off by,
+//           beside the foot for an even count (`rampTopLanding`).
 //   'link'  another link's hole in that floor, or a stair, ramp or lift that
 //           stands on it, overlaps it.
-// Props are not asked, and neither is the swing of a door beside it.
-// Null for a stair, a folded ramp (its landings are its layout's) and a ramp
-// whose landing is clear.
+//   'prop'  a floor-standing prop's footprint overlaps it (wall and ceiling
+//           mounts are not asked). Needs `catalogGet` for the footprint; a
+//           caller without one is not asked this (#984).
+//   'swing' a door leaf of the storey above sweeps into it between shut and
+//           its quarter turn, the far end's own doorway included: 405.7.5
+//           lets a door's clearance share the landing, not its leaf (#984).
+// Null for a stair and a ramp whose landing is clear. A folded ramp's turn
+// landings are not asked: they stand between storeys, on no floor.
 const LANDING_EPS = 0.1;        // ft: flush against an edge is not in the way
 const LANDING_STEP_OFF = 1;     // ft of floor wanted past the far end
 const LANDING_LINK_INSET = 0.3; // ft: more than the slack a hole is cut with
@@ -68578,10 +68626,20 @@ function polygonsOverlap(a, b) {
   return false;
 }
 
-function rampLandingFit(state, link, metrics = stairMetrics(state)) {
-  const box = rampLandingBox(link, metrics);
-  const floor = box && state.floors[link.to];
-  if (!floor) return null;
+function rampLandingFit(state, link, metrics = stairMetrics(state), catalogGet = null) {
+  // Straight or folded, the one top landing and its open edge (#985).
+  const top = rampTopLanding(link, metrics);
+  if (!top || !top.box || !state.floors[link.to]) return null;
+  return landingFit(state, link, top.box, top.out, metrics, catalogGet);
+}
+
+// The five questions above, asked of local box `box` on storey `link.to`,
+// whose way off is past `z1` when `out` is +1 and past `z0` when it is -1.
+// A ramp's top landing and a stair's (#989) both come through here, so
+// there is one copy of each question. Null when nothing is in the way.
+function landingFit(state, link, box, out, metrics, catalogGet) {
+  const floor = state.floors[link.to];
+  const end = out === 1 ? box.z1 : box.z0;
   const e = LANDING_EPS;
   const why = [];
 
@@ -68590,17 +68648,17 @@ function rampLandingFit(state, link, metrics = stairMetrics(state)) {
     return [a.lx, a.lz, b.lx, b.lz];
   };
   const inside = { x0: box.x0 + e, x1: box.x1 - e, z0: box.z0 + e, z1: box.z1 - e };
-  const farEnd = { ...inside, z0: box.z1 - e, z1: box.z1 + e };
+  const farEnd = { ...inside, z0: end - e, z1: end + e };
   const walls = wallSegments(floor);
   const shut = walls.reduce((sum, s) => sum + lengthInBox(...local(s), farEnd), 0);
   if (walls.concat(doorwaySegments(floor)).some((s) => lengthInBox(...local(s), inside) > 1e-6)
     || inside.x1 - inside.x0 - shut < MIN_CLEAR_W) why.push('wall');
 
   const solid = (lx, lz) => { const p = localToWorld(link, lx, lz); return floorSolidAt(floor, p.x, p.z); };
-  const past = box.z1 + LANDING_STEP_OFF;
+  const mid = (box.x0 + box.x1) / 2;
   const asked = [
     [inside.x0, inside.z0], [inside.x1, inside.z0], [inside.x0, inside.z1], [inside.x1, inside.z1],
-    [0, past],
+    [mid, end + out * LANDING_STEP_OFF],
   ];
   if (!asked.every(([lx, lz]) => solid(lx, lz))) why.push('edge');
 
@@ -68614,9 +68672,52 @@ function rampLandingFit(state, link, metrics = stairMetrics(state)) {
   });
   if (others.some((poly) => polygonsOverlap(mine, poly))) why.push('link');
 
+  // The landing as a world polygon, flush edges let off as for walls.
+  const clear = rectCorners(link, inside);
+  if (catalogGet && propInLanding(state, link.to, clear, catalogGet)) why.push('prop');
+  if (swingInLanding(state, link.to, clear)) why.push('swing');
+
   if (!why.length) return null;
-  const at = localToWorld(link, 0, (box.z0 + box.z1) / 2);
+  const at = localToWorld(link, mid, (box.z0 + box.z1) / 2);
   return { id: link.id, floor: link.to, x: at.x, z: at.z, why };
+}
+
+// Does a floor-standing prop's footprint, turned, overlap `clear` (a world
+// polygon) on storey `floorId`? Wall and ceiling mounts are not asked.
+function propInLanding(state, floorId, clear, catalogGet) {
+  return propsOnFloor(state, floorId).some((p) => {
+    const entry = catalogGet(p.type);
+    if (!entry || entry.mount !== 'floor') return false;
+    const { hw, hd } = footprintOf(entry, p);
+    const c = Math.cos(p.rotationY || 0), sn = Math.sin(p.rotationY || 0);
+    const foot = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([lx, lz]) => (
+      { x: p.x + lx * c + lz * sn, z: p.z - lx * sn + lz * c }));
+    return polygonsOverlap(clear, foot);
+  });
+}
+
+// Does a door leaf of storey `floorId` sweep into `clear` between shut and its
+// quarter turn? The sweep is the hinge and nine points on the leaf's arc.
+function swingInLanding(state, floorId, clear) {
+  return collectDoorLeaves(state, floorId).some((leaf) => polygonsOverlap(clear,
+    [{ x: leaf.hx, z: leaf.hz }, ...Array.from({ length: 9 }, (_, k) => leafEnd(leaf, k / 8))]));
+}
+
+// ---------- the landing at the top of a stair ----------
+//
+// A straight stair's top landing is `topLandingBox`'s: the stair's width and
+// 4ft deep, from the top of the run, drawn as a deck since #983, left by its
+// far end. It is asked the ramp's five questions by the same lines
+// (`landingFit`): 'prop' and 'swing' since #987, and 'wall', 'edge' and
+// 'link' since #989, so a wall or a doorway in it or shutting its far end, a
+// landing off the floor above, and another link's hole or footprint in it are
+// each a reason too. Null for a ramp and for a stair whose landing is clear;
+// nothing is moved.
+function stairLandingFit(state, link, metrics = stairMetrics(state), catalogGet = null) {
+  if (!link || link.type !== 'stair') return null;
+  const box = topLandingBox(link, metrics);
+  if (!box || !state.floors[link.to]) return null;
+  return landingFit(state, link, box, 1, metrics, catalogGet);
 }
 
 // The seated walker, as `moveWalker` options. `extra` is the per-step state
@@ -69161,7 +69262,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
   return out;
 }
 
-return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, rampLandingFit, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
+return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, rampLandingFit, stairLandingFit, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
 })();
 // ---- js/threshold.js ----
 const __m_js_threshold_js = (() => {
@@ -78285,10 +78386,16 @@ function curvedLoopsOf(floor) {
 // curved loop holding the middle of every cell along its edges; a curved loop
 // whose cells are all in loops of its own takes their place, its chords as
 // the parapet and itself, ear-clipped, as the deck, and the deck rectangles
-// whose first cell lies in it go. A mask loop whose cells lie in a curved
-// loop and somewhere else as well (two buildings a cell apart) keeps that
-// loop on its steps. `null` where nothing changes, so every other roof is
-// the plan it always was, key for key.
+// whose first cell lies in it go. `null` where nothing changes, so every
+// other roof is the plan it always was, key for key.
+//
+// Two buildings whose walls do not meet can still have mask cells side by
+// side, and share a mask loop (#988). The curved one is taken there too when
+// no cell of anything else reaches inside its chords; the rest of the shared
+// loop is outlined again from its own cells, and a deck rectangle laid across
+// both keeps its cells outside the curve, cut again into rectangles. A cell
+// that does reach inside the chords keeps the pair on its steps: two
+// parapets would stand inside one another, and which gives way is a call.
 function parapetOnChords(mask, outlines, rects, curved) {
   if (!curved.length) return null;
   const owner = (x, z) => curved.findIndex((loop) => pointInRing(loop, x, z));
@@ -78308,17 +78415,74 @@ function parapetOnChords(mask, outlines, rects, curved) {
   const taken = new Map();
   curved.forEach((loop, k) => {
     const mine = owners.filter((o) => o.has(k));
-    if (!mine.length || mine.some((o) => o.size > 1)) return;
+    if (!mine.length) return;
+    if (mine.some((o) => o.size > 1) && cellReachesInto(mask, loop)) return;
     const tris = triangulate(loop);
     if (tris) taken.set(k, { pts: loop, tris });
   });
   if (!taken.size) return null;
-  const firstCellIn = (rect) => [...taken.values()].some((d) => pointInRing(d.pts, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
-  return {
-    outlines: [...outlines.filter((_, i) => !taken.has([...owners[i]][0])), ...[...taken.values()].map((d) => d.pts)],
-    deckRects: rects.filter((rect) => !firstCellIn(rect)),
-    deckPolys: [...taken.values()],
-  };
+  const polys = [...taken.values()];
+  const inTaken = (x, z) => polys.some((d) => pointInRing(d.pts, x, z));
+  const kept = outlines.filter((_, i) => ![...owners[i]].some((k) => taken.has(k)));
+  const shared = owners.some((o) => o.size > 1 && [...o].some((k) => taken.has(k)));
+  if (!shared) {
+    const firstCellIn = (rect) => inTaken(rect.x0 + CELL / 2, rect.z0 + CELL / 2);
+    return {
+      outlines: [...kept, ...polys.map((d) => d.pts)],
+      deckRects: rects.filter((rect) => !firstCellIn(rect)),
+      deckPolys: polys,
+    };
+  }
+  const centreIn = (c, r) => inTaken((mask.cx0 + c + 0.5) * CELL, (mask.cy0 + r + 0.5) * CELL);
+  const rest = { ...mask, on: mask.on.map((v, i) => (v && !centreIn(i % mask.w, Math.floor(i / mask.w)) ? 1 : 0)) };
+  const keys = new Set(kept.map((l) => JSON.stringify(l)));
+  const split = maskOutlines(rest).filter((l) => !keys.has(JSON.stringify(l)));
+  const deckRects = rects.flatMap((rect) => {
+    let inside = 0;
+    for (let r = rect.r0; r < rect.r1; r++) for (let c = rect.c0; c < rect.c1; c++) if (centreIn(c, r)) inside++;
+    if (!inside) return [rect];
+    if (inside === (rect.r1 - rect.r0) * (rect.c1 - rect.c0)) return [];
+    const part = { ...rest, on: rest.on.map((v, i) => {
+      const c = i % mask.w, r = Math.floor(i / mask.w);
+      return v && c >= rect.c0 && c < rect.c1 && r >= rect.r0 && r < rect.r1 ? 1 : 0;
+    }) };
+    return maskRects(part);
+  });
+  return { outlines: [...kept, ...split, ...polys.map((d) => d.pts)], deckRects, deckPolys: polys };
+}
+
+// Does a covered cell whose middle lies outside `loop` lie partly inside it?
+// The area of the loop clipped to the cell's square (Sutherland-Hodgman,
+// which gives the right area for a loop that is not convex).
+function cellReachesInto(mask, loop) {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const p of loop) { x0 = Math.min(x0, p.x); z0 = Math.min(z0, p.z); x1 = Math.max(x1, p.x); z1 = Math.max(z1, p.z); }
+  const c0 = Math.max(0, Math.floor(x0 / CELL) - mask.cx0), c1 = Math.min(mask.w, Math.ceil(x1 / CELL) - mask.cx0);
+  const r0 = Math.max(0, Math.floor(z0 / CELL) - mask.cy0), r1 = Math.min(mask.h, Math.ceil(z1 / CELL) - mask.cy0);
+  for (let r = r0; r < r1; r++) {
+    for (let c = c0; c < c1; c++) {
+      if (!mask.on[r * mask.w + c]) continue;
+      const sx = (mask.cx0 + c) * CELL, sz = (mask.cy0 + r) * CELL;
+      if (pointInRing(loop, sx + CELL / 2, sz + CELL / 2)) continue;
+      let pts = loop;
+      for (const [axis, at, keep] of [['x', sx, 1], ['x', sx + CELL, -1], ['z', sz, 1], ['z', sz + CELL, -1]]) {
+        const out = [];
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          const ia = (a[axis] - at) * keep >= 0, ib = (b[axis] - at) * keep >= 0;
+          if (ia) out.push(a);
+          if (ia !== ib) {
+            const t = (at - a[axis]) / (b[axis] - a[axis]);
+            out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+          }
+        }
+        pts = out;
+        if (!pts.length) break;
+      }
+      if (pts.length >= 3 && Math.abs(loopArea(pts)) > 1e-6) return true;
+    }
+  }
+  return false;
 }
 
 // The skeleton roofs a design's top storey stands under: the hipped style
@@ -78339,8 +78503,10 @@ function skeletonRoofsOf(state, roof = null) {
 // path its cells give way to the loop's own area off its chords, so a curve
 // is counted as drawn and not as a staircase of 4ft cells. Every face of a
 // skeleton roof stands at the one pitch, so its sloped area over that outline
-// is still the plan area over the cosine. Every other footprint is the mask's
-// count, by the same lines the takeoff and the estimate each had before (#970).
+// is still the plan area over the cosine. A parapet roof whose parapet runs on
+// the chords (`roofPlan`'s `deckPolys`, #973's one test) is counted off that
+// same outline, flat (#986). Every other footprint is the mask's count, by the
+// same lines the takeoff and the estimate each had before (#970).
 function roofCover(state) {
   const top = state.floors.length - 1;
   const floor = state.floors[top];
@@ -78351,19 +78517,23 @@ function roofCover(state) {
   let footprint = maskCount(mask) * CELL * CELL;
   const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
   const curved = skeletonRoofsOf(state, roof);
-  if (curved.length) {
+  // Only a parapet plan has `deckPolys`; the style test saves building the
+  // plan for every other roof and changes no figure.
+  const chords = roof.style === 'parapet' ? (roofPlan(state, roof).deckPolys || []) : [];
+  const loops = [...curved.map((k) => k.outline), ...chords.map((d) => d.pts)];
+  if (loops.length) {
     let cells = 0;
     for (let r = 0; r < mask.h; r++) {
       for (let c = 0; c < mask.w; c++) {
         if (!mask.on[r * mask.w + c]) continue;
         const x = (mask.cx0 + c + 0.5) * CELL, z = (mask.cy0 + r + 0.5) * CELL;
-        if (curved.some((k) => pointInRing(k.outline, x, z))) cells++;
+        if (loops.some((loop) => pointInRing(loop, x, z))) cells++;
       }
     }
     footprint -= cells * CELL * CELL;
-    for (const k of curved) footprint += loopArea(k.outline);
+    for (const loop of loops) footprint += loopArea(loop);
   }
-  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length };
+  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length, chords: chords.length };
 }
 
 // ---------- 5. the true outline, for a roof over a curve ----------
@@ -78382,7 +78552,9 @@ function roofCover(state) {
 //   * a loop wound the other way (a courtyard between rooms),
 //   * two rooms laying the same wall the same way (they overlap),
 //   * two rooms whose walls cross, or one room inside another,
-//   * an outline that touches itself at a point.
+//   * rooms wrapped round a courtyard that meets the outside at one corner.
+// Two rooms meeting at a corner are not refused: the outline is split at
+// that corner into a loop each (#976).
 // A refusal keeps the rectangles for its own building only (#971): rooms
 // whose bounds touch, one to the next, are a building, and where the storey
 // as a whole is refused each building is judged alone, so a curved building
@@ -78495,23 +78667,46 @@ function unionOf(shapes) {
       if (!add(from, b)) return { loops: null, refused: 'two rooms overlap' };
     }
   }
-  const out = new Map();
+  const out = new Map();       // corner -> the edges leaving it
   for (const e of edges.values()) {
-    if (out.has(e.kf)) return { loops: null, refused: 'the outline touches itself at a point' };
-    out.set(e.kf, e);
+    if (!out.has(e.kf)) out.set(e.kf, []);
+    out.get(e.kf).push(e);
+  }
+  // Where the outline touches itself at a corner (two rooms meeting at a
+  // point) two edges leave it. Each edge arriving goes on along the one that
+  // turns hardest towards the rooms, so the outline splits there into loops
+  // that each keep their own rooms (#976). Two arrivals wanting the same edge
+  // means two rooms' corners open into each other: they overlap.
+  const turnTo = (e, f) => {
+    const ax = e.to.x - e.from.x, az = e.to.z - e.from.z, bx = f.to.x - f.from.x, bz = f.to.z - f.from.z;
+    return Math.atan2(ax * bz - az * bx, ax * bx + az * bz);
+  };
+  const next = new Map();
+  const taken = new Set();
+  for (const e of edges.values()) {
+    const leaving = out.get(e.kt);
+    if (!leaving) return { loops: null, refused: 'the outline does not close' };
+    const f = leaving.reduce((best, g) => (turnTo(e, g) > turnTo(e, best) ? g : best));
+    if (taken.has(f)) return { loops: null, refused: 'two rooms overlap' };
+    taken.add(f);
+    next.set(e, f);
   }
   const loops = [];
-  while (out.size) {
-    const [k0, first] = out.entries().next().value;
+  const done = new Set();
+  for (const first of edges.values()) {
+    if (done.has(first)) continue;
     const loop = [];
+    const at = new Set();
     let e = first;
-    while (e) {
-      out.delete(e.kf);
+    do {
+      // One loop through a corner twice wraps round something open to the
+      // outside only at that corner: a courtyard.
+      if (at.has(e.kf)) return { loops: null, refused: 'the rooms close round a courtyard' };
+      at.add(e.kf);
+      done.add(e);
       loop.push({ x: e.from.x, z: e.from.z });
-      if (e.kt === k0) break;
-      e = out.get(e.kt);
-    }
-    if (!e) return { loops: null, refused: 'the outline does not close' };
+      e = next.get(e);
+    } while (e !== first);
     // A wall split where a neighbour's corner met it is one wall again.
     for (let i = 0; loop.length > 3 && i < loop.length;) {
       const p = loop[(i - 1 + loop.length) % loop.length], q = loop[i], r = loop[(i + 1) % loop.length];
@@ -78555,8 +78750,13 @@ function unionOf(shapes) {
 // wing set at an angle, a rotated square and an octagon's alternate sides are
 // straight walls and keep their rectangles. Read as a curve as well, and
 // meant to be: a regular polygon of five sides or more, which is a curve
-// drawn by hand. Not read as one: an arc of two chords (only a `steps` of 2
-// asked for in code lays one down).
+// drawn by hand. An arc of two chords (only a `steps` of 2 asked for in code
+// lays one down) has one turn of its own, so it is read by its ends instead
+// (#976): two chords of one length turning under 85 degrees, where the turn
+// at each end plus half the middle one is a right angle, both ends alike.
+// That is a wall square to both its neighbours, bowed. A chamfer, a saw-tooth
+// wall and a prow of 45 degree walls are not; a prow of two equal walls on a
+// square end turning under 85 degrees at its tip is, and is the same chords.
 const CURVE_TURN = (85 * Math.PI) / 180;
 function hasCurve(loop) {
   const n = loop.length;
@@ -78572,6 +78772,14 @@ function hasCurve(loop) {
     const t0 = turn(i), t1 = turn((i + 1) % n);
     if (Math.abs(l1 - l0) > 1e-6 * l0 || Math.abs(l2 - l0) > 1e-6 * l0) continue;
     if (Math.abs(t1 - t0) > 1e-6 || t0 === 0 || Math.abs(t0) >= CURVE_TURN) continue;
+    return true;
+  }
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0) continue;
+    const before = turn((i - 1 + n) % n), mid = turn(i), after = turn((i + 1) % n);
+    if (mid === 0 || Math.abs(mid) >= CURVE_TURN || Math.abs(after - before) > 1e-6) continue;
+    if (Math.abs(Math.abs(before + mid / 2) - Math.PI / 2) > 1e-6) continue;
     return true;
   }
   return false;
@@ -80879,7 +81087,7 @@ const { CELL, WALL_H, WALL_T, WALL_T_EXT, DOOR_H, RAIL_H, FLOOR_H, floorBaseY, w
 const { SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint, floorSolidAt, openingSpec, shapeAt } = __m_js_shapes_js;
 const { catalogEntry, propColor, variantKey } = __m_js_catalog_js;
 const { revealAt } = __m_js_hunt_js;
-const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
+const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, topLandingBox, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
 const { wallProbe, solidBeside } = __m_js_walls_js;
 const { wallLinesOf, lineEnds, lineKind, lineOpenings } = __m_js_wallrun_js;
 const { gridPitch, majorEvery, ORIGIN, asOrigin } = __m_js_snapgrid_js;
@@ -85845,6 +86053,16 @@ function initRender(canvas) {
           localBox(link, w, top, m.tread, 0, top / 2, z0 + m.tread / 2, _tread, stairGeos);
           localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + m.tread - 0.1, _nosing, stairGeos);
         }
+      }
+      // The level landing at the top, cut out of the floor above and walked
+      // at its height: a slab in the run's colour, as a folded ramp's top
+      // landing is, from the box the walker and the hole read. A ramp's is
+      // ADA's 5ft (#904, drawn since #981), a stair's 4ft (#983); before,
+      // nothing stood on either and the walk crossed open hole.
+      const land = topLandingBox(link, metrics);
+      if (land) {
+        localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
+          (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
       }
       // Handrails: a sloped cap either side, on posts that grow with the run.
       // Identical for both — a ramp needs them more than a stair does.

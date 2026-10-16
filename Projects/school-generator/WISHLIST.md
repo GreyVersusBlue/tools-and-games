@@ -367,16 +367,31 @@ and add to this list rather than starting a new one.
   notch in front of the entry counted as footprint; crowd agents walked up
   one in a browser, which nobody has watched; the straight ramp's top
   landing is ADA's 5ft now, ramps already placed included, and one with no
-  room for it is a `ramp-landing` warning that moves nothing (#904), but
-  `render.js` draws no deck on it, props and a door's swing are not asked,
-  and a folded ramp's top landing is not asked; a ramp's width and slope
+  room for it is a `ramp-landing` warning that moves nothing (#904), and it
+  is drawn as a deck at the floor above (#981), as a stair's 4ft one is
+  (#983), and a floor-standing prop or a door leaf sweeping into it is a
+  `ramp-landing` reason too (#984); a folded ramp's top landing is asked
+  the same five questions by the same lines, at its own open end (#985),
+  and was always drawn and walked (#825), but its turn landings are not
+  asked (they stand between storeys, on no floor); a stair's 4ft top
+  landing is asked the two of those questions that make sense for a stair,
+  a floor-standing prop and a door's swing, by the same lines, as a
+  `stair-landing` warning that moves nothing and cites no section (#987),
+  and the other three, a wall or a doorway in it or shutting its far end,
+  the landing off the floor above and another link in it, by the same
+  `landingFit` lines on the same warning (#989), so all five are asked of
+  it and whether the warning cites a section is Devon's; a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
-  (`data.width` and `data.slope` were there since Phase 2), but
-  `designdiff.js` says nothing when a ramp's width, slope or fold changes
-  and a ramp a file made narrower than 4ft raises no finding; a ramp over 30in a run still counts as a way up on the
-  accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`
-  finding names, though the finding carries its position.
+  (`data.width` and `data.slope` were there since Phase 2), and the design
+  diff says when a ramp's width, slope or fold changes (#980), and a ramp a
+  file made narrower than 4ft is a `narrow-ramp` warning that moves nothing
+  (#982); a ramp over 30in a run still counts as a way up on the
+  accessible route, and that is settled (#833, Devon, 2026-10-05). A
+  `ramp-rise` or `narrow-ramp` ramp is marked as every finding with a
+  position is: a ring at the ramp's foot on the map, and "Show it on the
+  plan" pans the edit view there. The edit view itself draws no mark for
+  any finding, so the ramp is not outlined there.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
@@ -437,8 +452,8 @@ and add to this list rather than starting a new one.
   rubbing a room out from in front of a painted face takes the accent with
   it now (#964, `paintCells` asks `pruneAccents` after a rub-out; pure Node,
   no browser check drives the stroke, and the status line does not say an
-  accent came off); `duplicateFloor`
-  copies no free-standing wall, painted or not; the brush's two refusals for
+  accent came off); `duplicateFloor` copies a storey's free-standing walls,
+  faces and doorways with them (#979); the brush's two refusals for
   a free-standing wall are driven by a browser check for glass and by
   nothing for the outdoor face; nobody has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
@@ -454,15 +469,22 @@ and add to this list rather than starting a new one.
   a curved building beside a courtyard building stands on its skeleton.
   A flat roof's parapet over a curved building runs on the same loop's
   chords, and the deck under it is that outline, ear-clipped (#973).
+  Two rooms meeting at a corner are a loop each, so a curved one there takes
+  the skeleton and the chord parapet; an arc of two chords is a curve when it
+  was bowed off a wall square to both its neighbours (#976).
   Left: a building is grouped by bounds, not by walls, so a curved building
   standing inside the bounds of a courtyard building's L (not touching it) is
-  refused with it; a courtyard, a room with a hole, two
-  rooms meeting at a corner, an arc of two chords and a curve bowed in tighter
-  than the 1.5ft eave keep rectangles too; `gable` over a curve keeps
+  refused with it; a courtyard (one meeting the outside at a single corner
+  included), a room with a hole, an arc of two chords off a wall that was not
+  square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
+  keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
-  touch another building's keeps a stepped parapet; the takeoff and the
-  estimate count a parapet roof over a curve off its mask cells (#970 did
-  the hip only); the site plan's building line is the ground storey's mask, stepped on a curve
+  touch another building's takes its chord parapet only where no cell of the
+  other reaches inside its chords (#988); where one does (a box 0.2ft off a
+  bow, its cell 1.56ft inside the chords), the pair keeps one stepped parapet
+  and its mask count, and the question for Devon is which gives way: the
+  stepped building's cells cut back to the chords, the curve, or a deck over
+  the gap; the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its

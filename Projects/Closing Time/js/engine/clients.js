@@ -24,7 +24,21 @@ export function nextIntakeCandidate() {
   return idx === -1 ? null : { id: S.clientQueue[idx], idx };
 }
 
+/** Met already, by any door. Nothing takes a name off usedClients, so a client in it is never handed out again. */
+export function alreadyMet(clientId) {
+  return S.usedClients.includes(clientId);
+}
+
 export function meetClient(clientId, referredBy = null) {
+  // Two doors can queue the same name on one day: each picks from
+  // clientQueue and none reads what is already waiting in choiceQueue. Taking
+  // the second hands back the record the first made and changes nothing. The
+  // doors are left as they are because skipping a waiting name would change
+  // what they draw, and move every seeded career that ever had two waiting.
+  if (alreadyMet(clientId)) {
+    const met = S.clients.filter(r => r.clientId === clientId);
+    if (met.length) return met[met.length - 1];
+  }
   S.clientQueue = S.clientQueue.filter(id => id !== clientId);
   S.usedClients.push(clientId);
   const c = DB.clients[clientId];

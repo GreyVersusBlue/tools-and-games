@@ -830,7 +830,8 @@ the trailer; `loadSheet()` is called from `main.js`; `sprites.html` shows the
 procedural and rendered cars side by side. `test/sprites.mjs` is 42 checks and
 `test/browser.mjs` 238 (one failure that predates the work, the cone-orange
 pixel check, fails the same way on `main` under this machine's software
-rendering). The sim never reads a sprite. Not looked at: the sheet on a real
+rendering; the check was wrong, not the page, and was rewritten on
+2026-10-15, #974). The sim never reads a sprite. Not looked at: the sheet on a real
 GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 
 ## Known gaps and decisions

@@ -641,13 +641,37 @@ export function rampLandingArea(link, metrics) {
   return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
 }
 
-// The level landing at the top of a straight ramp, as a local box: the ramp's
-// own width, from the top of the run to the far edge of the hole. Null for a
-// stair and for a folded ramp, whose landings are its layout's.
-export function rampLandingBox(link, metrics) {
-  if (!link || link.type !== 'ramp' || isSwitchback(link)) return null;
+// The level landing at the top of a straight run, stair or ramp, as a local
+// box: the run's own width, from the top of the run to the far edge of the
+// hole, `topLanding` deep (a stair's 4ft, a ramp's 5ft). Null for a folded
+// ramp, whose landings are its layout's, and for a link with no run. render.js
+// draws it for both kinds (#981, #983).
+export function topLandingBox(link, metrics) {
+  if (!isRun(link) || isSwitchback(link)) return null;
   const hw = stairWidth(link) / 2, run = runLength(link, metrics);
-  return { x0: -hw, x1: hw, z0: run, z1: run + RAMP_LANDING };
+  return { x0: -hw, x1: hw, z0: run, z1: run + topLanding(link) };
+}
+
+// The same box for a straight ramp alone, which is what the `ramp-landing`
+// finding asks about (ADA 405.7, #904); null for a stair.
+export function rampLandingBox(link, metrics) {
+  return link && link.type === 'ramp' ? topLandingBox(link, metrics) : null;
+}
+
+// The top landing the `ramp-landing` finding asks about, straight or folded
+// (#985): `box` local, `out` +1 when the way off is past `z1` and -1 past
+// `z0`. A folded ramp's is its layout's 'top' landing, the one `render.js`
+// draws and the walker stands on, which is at the near end beside the foot
+// for an even count. Null for a stair.
+export function rampTopLanding(link, metrics) {
+  if (!link || link.type !== 'ramp') return null;
+  const layout = rampLayout(link, metrics);
+  if (!layout) {
+    const box = rampLandingBox(link, metrics);
+    return box && { box, out: 1 };
+  }
+  const box = layout.landings[layout.landings.length - 1].box;
+  return { box, out: layout.exit.a.z > box.z0 ? 1 : -1 };
 }
 
 // The same guards as world segments on the plan, for the collider.
