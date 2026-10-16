@@ -12,9 +12,8 @@
 //
 // Measured by SV2-63 on huginn (2026-10-16), three runs: warm 104 to 439 ms,
 // cold 160 to 563 ms; the slowest is the double-booked room, the first one
-// measured. The suite fails at twice the
-// budget, to leave room for a slow runner, and prints the measured number
-// either way. The clock is read here, in the test, never in the engine.
+// measured. The suite fails at twice the budget, to leave room for a slow
+// runner, and prints the measured number either way. The clock is read here, in the test, never in the engine.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

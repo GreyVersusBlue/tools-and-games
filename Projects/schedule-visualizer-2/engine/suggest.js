@@ -15,8 +15,9 @@
 //                         a pipeline of this call's own.
 //     versions            { geometry, building, schedule }, the store's
 //                         counters for `project`. With them a candidate runs
-//                         again only the transitions it changes; without them
-//                         a shared pipeline works every candidate out whole.
+//                         again only the transitions that differ from the run
+//                         before it; without them a shared pipeline works
+//                         every candidate out whole.
 //     otherTeachersRooms  true to look at other teachers' rooms too (kind d);
 //                         off by default (spec 5.8)
 //     limit               at most this many, 1 to 5 (default 5)
@@ -26,13 +27,12 @@
 // type D in period p:
 //
 //   a  'reorder'               swapPeriods(g, p, q) for every other q of the
-//                              day; for a walk finding the swap of p and p+1
-//                              first, then the other periods nearest first
+//                              day, the nearest periods first; for a walk
+//                              finding the swap of p and p+1 first
 //   b  'teachers-room'         move g to another room of the slot's own
 //                              teachers that no group uses in (D, p)
 //   c  'free-room'             move g to a room with no teachers that no
-//                              group uses in (D, p), rooms seating the group
-//                              first
+//                              group uses in (D, p)
 //   d  'other-teachers-room'   with otherTeachersRooms only: move g to a free
 //                              room of another teacher of the same subject;
 //                              the sentence says whose room it is
@@ -63,20 +63,23 @@
 // piece somebody typed (as in scenario.js, places.js and directions.js):
 //
 //   <verb>: <rooms>, <teachers>, <walking>, <findings>
-//   "Swap 6C's Periods 2 and 3: same rooms, same teachers, 40 seconds less
+//   "Swap 7C's Periods 2 and 6: same rooms, same teachers, no change in
 //    walking, no new findings"
 //   "Move 7C to Cafeteria for Period 2: from Room 203, no longer taught by
-//    Ms. Vandermeer, 12 seconds more walking, one new note"
+//    Ms. Vandermeer, 12 seconds less walking, no new findings"
 //   "Move 7C to Room 301, Ms. Thistlewood's room, for Period 2: from Room
 //    203, taught by Ms. Thistlewood instead of Ms. Vandermeer, …"
 //
-// The work is bounded so one finding is answered in about the time of a
-// screen's redraw at the size of spec 3.13: each kind tries at most
-// STATIC_TRIES candidates in stage 1 and RUN_TRIES in stage 2, in the order
-// given above, and a kind is only tried while fewer than `limit` suggestions
-// of earlier kinds have been found (those would come first whatever the
-// later kinds found). The candidates a cap leaves out are the ones the
-// order puts last.
+// The work is bounded, so one finding is answered inside the budget of
+// test/timing/suggest.mjs (1 s at the size of spec 3.13). The ranks are
+// tried in turn (a; b and c; d), and a rank only while fewer than `limit`
+// suggestions of earlier ranks have been found, since those would come first
+// whatever a later rank found. Within a rank at most STATIC_TRIES candidates
+// go through stage 1 and RUN_TRIES through stage 2, in the order
+// suggestionCandidates() gives: swaps by the distance between the two
+// periods, moves to a teacher's own room before rooms with none, and moves
+// to rooms that seat the group, then on the same floor (or the nearest),
+// then by number, first. A cap leaves out the ones that order puts last.
 //
 // The pipeline. suggest runs `project` through it under `versions` first, and
 // takes that run's answer as the schedule as it is, so the pipeline handed in
@@ -86,7 +89,7 @@
 // which a store never uses; its next run with the store's counters works out
 // what differs, as after any other change.
 
-import { allRooms, findRoom, findById, resolveSlotRoom, roomNumberKey, nameOfRoom } from './schema.js';
+import { allRooms, findById, resolveSlotRoom, roomNumberKey, nameOfRoom } from './schema.js';
 import { isOwnCopy, effectiveSchedule } from './day-types.js';
 import { periodName } from './bells.js';
 import { slotTeacherIds, teacherDays } from './teacher-day.js';
