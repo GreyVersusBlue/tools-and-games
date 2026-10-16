@@ -166,11 +166,11 @@ test('addScenarioChange: a later change on a slot replaces the earlier one whole
   assert.deepEqual(store.project.scenario.changes, [swapPeriods(G6C, 1, 2), swapRooms(G7C, G8B, 1)]);
 });
 
-test('addScenarioChange: "move 7C to 204 and back" leaves nothing, labelled as putting the change back; a change that changes nothing is no step', () => {
+test('addScenarioChange: "move 7C to 204 and back" leaves nothing, labelled as putting the schedule back; a change that changes nothing is no step', () => {
   const store = withChanges([move(G7C, 1, 'rsample204')]);
   store.apply(addScenarioChange, { change: move(G7C, 1, 'rsample203') });
   assert.deepEqual(store.project.scenario.changes, []);
-  assert.equal(store.undoLabel, 'Put back in scenario Trial: 7C · A Day · Period 2: 203 → 204, taught by Mme. Dufrêne instead of Ms. Vandermeer');
+  assert.equal(store.undoLabel, 'Add to scenario Trial: 7C · A Day · Period 2: 203 → 203, which puts back the schedule there and takes 1 change out of the scenario');
   store.undo();
   assert.deepEqual(store.project.scenario.changes, [move(G7C, 1, 'rsample204')], 'undo brings the change back');
 
@@ -204,6 +204,73 @@ test('addScenarioChange: an older change the schedule has caught up with is kept
   store.redo();
   store.apply(setSlot, { groupId: G7C, dayTypeId: A, period: 1, slot: { room: 'rsample203' } });
   assert.deepEqual(reconcile(store.project, store.project.scenario).changes, [older, move(G6C, 2, 'rsample201')], 'the schedule moved on: the kept change applies again');
+});
+
+test('addScenarioChange: a change that puts the schedule back and takes two changes with it says it took two out, not that it put them back', () => {
+  // 6C and 7C are both in Room 203 in Period 2: swapping their rooms there changes nothing
+  const store = withChanges([move(G7C, 1, 'rsample204'), move(G6C, 1, 'rsamplelib')]);
+  store.apply(addScenarioChange, { change: swapRooms(G6C, G7C, 1) });
+  assert.deepEqual(store.project.scenario.changes, []);
+  assert.equal(store.undoLabel, 'Add to scenario Trial: 6C ↔ 7C · A Day · Period 2: 203 ↔ 203, which puts back the schedule there and takes 2 changes out of the scenario');
+  assert.doesNotMatch(store.undoLabel, /Put back in scenario/);
+});
+
+test('addScenarioChange: adding a change the scenario already holds, as a fresh object with the same fields, is no step', () => {
+  const store = withChanges([move(G6C, 2, 'rsample201'), move(G7C, 1, 'rsample204')]);
+  const now = store.project;
+  const entries = store.history.past.length;
+  assert.equal(store.apply(addScenarioChange, { change: { ...move(G7C, 1, 'rsample204'), note: 'again' } }), now, 'the project is the very same object');
+  assert.equal(store.history.past.length, entries, 'no entry for a change the scenario already holds');
+  assert.equal(store.project.scenario.changes, now.scenario.changes);
+});
+
+// ---------------------------------------------------------------- names and payloads
+
+test('a blank stored name reads "New scenario" in every label; a name blank of white space and zero-width characters is blank', () => {
+  const blank = school();
+  blank.scenario = { name: ' \u200B ', changes: [move(G7C, 1, 'rsample204')], compared: null };
+  const labels = [
+    [renameScenario, { name: 'Trial' }, 'Rename scenario New scenario to Trial'],
+    [addScenarioChange, { change: swapPeriods(G8A, 5, 6) }, 'Add to scenario New scenario: ' + changeWords(blank, swapPeriods(G8A, 5, 6)).text],
+    [removeScenarioChange, { index: 0 }, 'Remove from scenario New scenario: 7C · A Day · Period 2: 203 → 204, taught by Mme. Dufrêne instead of Ms. Vandermeer'],
+    [discardScenario, {}, 'Discard scenario New scenario'],
+    [applyScenario, {}, 'Apply scenario New scenario: 1 change'],
+  ];
+  for (const name of ['', ' \u200B ']) {
+    for (const [act, payload, label] of labels) {
+      const store = storeOf(clone({ ...blank, scenario: { ...blank.scenario, name } }));
+      store.apply(act, payload);
+      assert.equal(store.undoLabel, label, act.name + ' with the name ' + JSON.stringify(name));
+    }
+  }
+  const replaced = storeOf(clone({ ...blank, scenario: { ...blank.scenario, name: '' } }));
+  replaced.apply(newScenario, { name: '\u200B\u200C\u200D\u2060\uFEFF \t', replace: true });
+  assert.equal(replaced.project.scenario.name, NEW_SCENARIO_NAME, 'zero-width characters alone are the default name');
+  assert.equal(replaced.undoLabel, 'Start scenario New scenario');
+
+  assert.throws(() => replaced.apply(renameScenario, { name: '\u200B\u2060\uFEFF' }), refusedWith('no-name'));
+  replaced.apply(renameScenario, { name: ' Trial\u200B ' });
+  assert.equal(replaced.project.scenario.name, ' Trial\u200B ', 'a name that is not blank is stored exactly as typed');
+  assert.equal(newScenario(school(), { name: '\u200BX' }).scenario.name, '\u200BX');
+});
+
+test('every scenario action reads a null payload as {}, so its own refusal applies and never a TypeError', () => {
+  const none = storeOf();
+  none.apply(newScenario, null);
+  assert.equal(none.project.scenario.name, NEW_SCENARIO_NAME);
+  none.apply(discardScenario, null);
+  assert.throws(() => none.apply(setScenarioFromFile, null), (error) => refusedWith('bad-value')(error) && error.message === 'There is no project file to compare with.');
+
+  const store = withChanges([move(G7C, 1, 'rsample204')]);
+  const open = store.project;
+  assert.throws(() => store.apply(renameScenario, null), refusedWith('no-name'));
+  assert.throws(() => store.apply(addScenarioChange, null), refusedWith('bad-value'));
+  assert.throws(() => store.apply(removeScenarioChange, null), refusedWith('missing'));
+  assert.throws(() => store.apply(newScenario, null), refusedWith('scenario-open'));
+  assert.throws(() => store.apply(setScenarioFromFile, null), refusedWith('scenario-open'));
+  assert.equal(store.project, open, 'no refusal changed anything');
+  store.apply(applyScenario, null);
+  assert.equal(store.undoLabel, 'Apply scenario Trial: 1 change');
 });
 
 // ---------------------------------------------------------------- removeScenarioChange
@@ -281,6 +348,29 @@ test('setScenarioFromFile: another building is refused with the count of rooms, 
   assert.equal(store.project.scenario, open.scenario);
 });
 
+test('setScenarioFromFile: a file that is not a project this tool can read is refused in words, never a TypeError', () => {
+  const good = school();
+  const malformed = {
+    'an empty object': {},
+    'a list': [],
+    'groups that are text': { ...good, groups: 'x' },
+    'no building': { ...good, building: undefined },
+    'a building with no floors': { ...good, building: {} },
+    'floors with no spaces': { ...good, building: { ...good.building, floors: [{ id: 'f' }] } },
+    'no settings': { ...good, settings: undefined },
+    'no day types': { ...good, dayTypes: undefined },
+    'a day type that is null': { ...good, dayTypes: [null] },
+    'a group that is null': { ...good, groups: [null] },
+  };
+  const store = storeOf();
+  const project = store.project;
+  for (const [what, other] of Object.entries(malformed)) {
+    assert.throws(() => store.apply(setScenarioFromFile, { project: other, fileName: 'odd.json' }), (error) => refusedWith('bad-value')(error) && error.message === 'This file is not a project file this tool can read, so there is nothing to compare with.', what);
+  }
+  assert.equal(store.project, project, 'no refusal changed anything');
+  assert.equal(store.history.past.length, 0);
+});
+
 // ---------------------------------------------------------------- applyScenario
 
 test('applyScenario: the reconciled changes go into the schedule as one entry, the scenario is closed, and one undo brings back both', () => {
@@ -333,6 +423,10 @@ test('applyScenario: one change is "1 change"; a scenario none of whose changes 
 });
 
 test('applyScenario: a refusal changes nothing, and the project handed in is never written to', () => {
+  // On a project repair gives, 'no-scenario' is the one refusal applyScenario
+  // can reach: reconcile drops every change setSlot or moveSlot would refuse
+  // there. The next case reaches one half way through the changes, on a
+  // hand-built project repair would not give.
   const store = storeOf();
   const project = store.project;
   const state = { history: store.history, counters: counters(store), version: store.version };
@@ -355,6 +449,27 @@ test('applyScenario: a refusal changes nothing, and the project handed in is nev
   const after = applyScenario(frozen, {});
   assert.deepEqual(frozen, copy, 'the project handed in is as it was');
   assert.equal(after.scenario, null);
+});
+
+test('applyScenario: a refusal half way through the changes leaves the store, its history and its counters as they were', () => {
+  // Hand-built: 6C's Period 2 names a room that is gone and keeps the number
+  // 7, not text. Reconcile keeps both changes (whyGone reads nothing of the
+  // slot), the move on 8A applies, and then the swap of rooms hands setSlot
+  // { room: null, roomText: 7 } for 7C, which it refuses. Repair would have
+  // made the 7 text, so a project read from a file cannot get here.
+  const project = school();
+  const days = project.groups.find((candidate) => candidate.id === G6C).days;
+  days[A][1] = { ...days[A][1], room: 'rnosuchrm1', roomText: 7 };
+  project.scenario = { name: 'Half', changes: [move(G8A, 0, 'rsample204'), swapRooms(G6C, G7C, 1)], compared: null };
+  const store = storeOf(project);
+  assert.equal(reconcile(store.project, store.project.scenario).changes.length, 2, 'reconcile keeps both, so the refusal comes from setSlot');
+  const before = store.project;
+  const state = { history: store.history, past: store.history.past.slice(), counters: counters(store), version: store.version };
+  assert.throws(() => store.apply(applyScenario, {}), (error) => refusedWith('bad-value')(error) && error.message === 'The room text is text.');
+  assert.equal(store.project, before, 'the project is the very same object');
+  assert.equal(store.project.scenario, before.scenario, 'the scenario is still open');
+  assert.equal(slot(store.project, G8A, A, 0).room, slot(school(), G8A, A, 0).room, 'the first change is not half applied');
+  assert.deepEqual({ history: store.history, past: store.history.past, counters: counters(store), version: store.version }, state);
 });
 
 // ---------------------------------------------------------------- the project file
