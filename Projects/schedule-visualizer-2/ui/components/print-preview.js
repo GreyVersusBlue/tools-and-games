@@ -12,7 +12,10 @@
 //   openPrintPreview(ctx, outputId, options)
 //     outputId   an id in ui/prints/index.js: 'floor-plan', 'room-list', 'checks'
 //     options    { floorId, sort, opener }: floorId and sort go to the output;
-//                opener is what gets focus back (the focused element, left out)
+//                opener is what gets focus back (the focused element, left out).
+//                Any other option goes to the output as it is ({ roomIds }
+//                for the door cards); the sheet's own (paper, now, base,
+//                floorId, the traced image) win over one of the same name.
 //   returns { element, frame, close(), closed, ready(), state }
 //     ready()    resolves when the document on show has been laid out
 //     state      { output, paper: { size, orientation }, floorId, traceImage, title }
@@ -318,7 +321,10 @@ export function openPrintPreview(ctx, outputId, options) {
     traceControl.hidden = tracedNow().length === 0;
     const traceImages = {};
     for (const [imageId, url] of traceUrls) if (url !== null) traceImages[imageId] = url;
+    const extra = { ...opts };
+    delete extra.opener;
     const rendered = output.render(project(), derived, {
+      ...extra,
       paper: state.paper,
       now: ctx.clock ? ctx.clock() : null,
       base: UI_BASE,

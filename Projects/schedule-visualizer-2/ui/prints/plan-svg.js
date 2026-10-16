@@ -21,6 +21,28 @@
 //                           URLs. An image with no entry here, one that is
 //                           hidden (visible: false) or missing, and an entry
 //                           that is not a data URL of an image are not drawn.
+//     options.crop          { x, y, width, height } in cells: draw only this
+//                           window of the floor (a door card's box), clamped
+//                           to the floor. The picture is the window, edge to
+//                           edge, with no room added round it; width and
+//                           height are the window's, so a caller scales it to
+//                           the space it has. What lies wholly outside is
+//                           left out; a room the edge cuts is drawn whole and
+//                           cut by the picture's edge. rooms, exits and
+//                           letters count what is in the window.
+//     options.route         { cells, start, exit }: the way out, drawn over the
+//                           plan as a line through the cells in walking order
+//                           (a jump between cells that do not touch, as at a
+//                           floor's second visit or a same-floor stairs, starts
+//                           the line again), from `start` (the room cell it
+//                           leaves by: a round mark) to `exit` (the exit's
+//                           cell: a square mark). Cells are indexes into this
+//                           floor; start and exit may be null (the route only
+//                           passes through, or ends on another floor).
+//                           Anything that is not a cell of the floor is left
+//                           out.
+//                           With neither option the picture is byte for byte
+//                           what it was before they existed.
 //     svg      the markup, or '' when nothing is drawn on the floor
 //     traced   whether the traced image is in the picture
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
@@ -193,6 +215,55 @@ function traceMarkup(image, url) {
     + '</g>';
 }
 
+// The window asked for, as whole cells inside the floor, or null.
+function cropOf(floor, asked) {
+  if (!asked || typeof asked !== 'object') return null;
+  const values = [asked.x, asked.y, asked.width, asked.height];
+  if (!values.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
+  const x = Math.max(0, Math.floor(asked.x));
+  const y = Math.max(0, Math.floor(asked.y));
+  const right = Math.min(floor.width, Math.ceil(asked.x + asked.width));
+  const bottom = Math.min(floor.height, Math.ceil(asked.y + asked.height));
+  if (right <= x || bottom <= y) return null;
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+// The way out as markup: a pale band under a dark line, the round mark where
+// it leaves the room and the square mark at the exit.
+function routeMarkup(floor, route) {
+  const size = floor.width * floor.height;
+  const isCell = (cell) => Number.isInteger(cell) && cell >= 0 && cell < size;
+  const centre = (cell) => [((cell % floor.width) + 0.5) * U, (Math.floor(cell / floor.width) + 0.5) * U];
+  const cells = (Array.isArray(route.cells) ? route.cells : []).filter(isCell);
+  const start = isCell(route.start) ? route.start : null;
+  const exit = isCell(route.exit) ? route.exit : null;
+  const out = [];
+  const pieces = [];
+  let last = null;
+  for (const cell of start === null ? cells : [start].concat(cells)) {
+    const [x, y] = centre(cell);
+    const touching = last !== null && (last === start || Math.abs((last % floor.width) - (cell % floor.width)) + Math.abs(Math.floor(last / floor.width) - Math.floor(cell / floor.width)) <= 1);
+    pieces.push((touching ? 'L' : 'M') + n(x) + ' ' + n(y));
+    last = cell;
+  }
+  if (pieces.length > 1) {
+    const d = pieces.join('');
+    out.push('<path class="plan__route-band" d="' + d + '"/>');
+    out.push('<path class="plan__route" d="' + d + '"/>');
+  }
+  if (start !== null) {
+    const [x, y] = centre(start);
+    const r = U * 0.34;
+    out.push('<path class="plan__start" d="M' + n(x - r) + ' ' + n(y) + 'a' + n(r) + ' ' + n(r) + ' 0 1 0 ' + n(r * 2) + ' 0a' + n(r) + ' ' + n(r) + ' 0 1 0 ' + n(-r * 2) + ' 0z"/>');
+  }
+  if (exit !== null) {
+    const [x, y] = centre(exit);
+    const r = U * 0.32;
+    out.push('<path class="plan__end" d="M' + n(x - r) + ' ' + n(y - r) + 'h' + n(r * 2) + 'v' + n(r * 2) + 'h' + n(-r * 2) + 'z"/>');
+  }
+  return out.length === 0 ? '' : '<g class="plan__way">' + out.join('') + '</g>';
+}
+
 export function planSvg(project, floor, options) {
   const width = floor.width;
   const height = floor.height;
@@ -203,6 +274,12 @@ export function planSvg(project, floor, options) {
     if (floor.cells[cell] === CELL_CORRIDOR) corridor.push(cell);
     else if (floor.cells[cell] === CELL_STAIRS) stairs.push(cell);
   }
+  const crop = cropOf(floor, options && options.crop);
+  const inCrop = (cell) => {
+    const x = cell % width;
+    const y = Math.floor(cell / width);
+    return x >= crop.x && x < crop.x + crop.width && y >= crop.y && y < crop.y + crop.height;
+  };
 
   // what is drawn, and its box
   let x0 = Infinity;
@@ -221,6 +298,10 @@ export function planSvg(project, floor, options) {
   stairs.forEach(take);
   for (const space of floor.spaces) space.cells.forEach(take);
   if (x1 === -1) return { svg: '', drawn: false, traced: false, width: 0, height: 0, rooms: 0, exits: 0, letters: [] };
+  // in a window, only what is in it (the walls still look at the whole floor)
+  const shownCorridor = crop ? corridor.filter(inCrop) : corridor;
+  const shownStairs = crop ? stairs.filter(inCrop) : stairs;
+  const shown = (cells) => !crop || cells.some(inCrop);
 
   const walkable = (x, y) => x >= 0 && y >= 0 && x < width && y < height && (floor.cells[y * width + x] === CELL_CORRIDOR || floor.cells[y * width + x] === CELL_STAIRS);
   const outside = (x, y) => x < 0 || y < 0 || x >= width || y >= height || (floor.cells[y * width + x] === CELL_EMPTY && !owners.has(y * width + x));
@@ -232,10 +313,10 @@ export function planSvg(project, floor, options) {
   if (traceUrl !== null) out.push(traceMarkup(floor.image, traceUrl));
 
   // corridors and stairs, then the line where a walkable cell meets anything else
-  if (corridor.length > 0) out.push('<path class="plan__corridor" d="' + cellsPath(corridor, width) + '"/>');
-  if (stairs.length > 0) out.push('<path class="plan__stairs" d="' + cellsPath(stairs, width) + '"/>');
+  if (shownCorridor.length > 0) out.push('<path class="plan__corridor" d="' + cellsPath(shownCorridor, width) + '"/>');
+  if (shownStairs.length > 0) out.push('<path class="plan__stairs" d="' + cellsPath(shownStairs, width) + '"/>');
   const walls = [];
-  for (const cell of corridor.concat(stairs)) {
+  for (const cell of shownCorridor.concat(shownStairs)) {
     const x = cell % width;
     const y = Math.floor(cell / width);
     if (!walkable(x, y - 1)) walls.push([x, y, x + 1, y]);
@@ -255,7 +336,7 @@ export function planSvg(project, floor, options) {
     }
   }
   const letters = [];
-  for (const cell of stairs) {
+  for (const cell of shownStairs) {
     const x = (cell % width) * U;
     const y = Math.floor(cell / width) * U;
     const here = lettersAt.get(cell) || [];
@@ -268,7 +349,7 @@ export function planSvg(project, floor, options) {
 
   // other spaces, then rooms: the fill, the outline with its door gaps, the label
   let rooms = 0;
-  const spaces = floor.spaces.filter((space) => space.kind !== 'room').concat(floor.spaces.filter((space) => space.kind === 'room'));
+  const spaces = floor.spaces.filter((space) => space.kind !== 'room').concat(floor.spaces.filter((space) => space.kind === 'room')).filter((space) => shown(space.cells));
   for (const space of spaces) {
     const isRoom = space.kind === 'room';
     const shape = shapeOf(space, width);
@@ -305,7 +386,7 @@ export function planSvg(project, floor, options) {
 
   // corridor names, along the way the named cells run
   for (const named of floor.corridors) {
-    if (typeof named.name !== 'string' || named.name.trim() === '' || named.cells.length === 0) continue;
+    if (typeof named.name !== 'string' || named.name.trim() === '' || named.cells.length === 0 || !shown(named.cells)) continue;
     let ax = Infinity;
     let ay = Infinity;
     let bx = -1;
@@ -331,7 +412,7 @@ export function planSvg(project, floor, options) {
     const x = exit.cell % width;
     const y = Math.floor(exit.cell / width);
     const side = outside(x, y - 1) ? 'n' : outside(x, y + 1) ? 's' : outside(x - 1, y) ? 'w' : outside(x + 1, y) ? 'e' : null;
-    if (!side) continue;
+    if (!side || !shown([exit.cell])) continue;
     exits += 1;
     const across = side === 'n' || side === 's';
     const at = (side === 'n' ? y : side === 's' ? y + 1 : side === 'w' ? x : x + 1) * U;
@@ -346,12 +427,19 @@ export function planSvg(project, floor, options) {
     }
   }
 
-  // cropped to what is drawn, with room around it for the door names
+  // the way out, over everything
+  if (options && options.route && typeof options.route === 'object') {
+    const way = routeMarkup(floor, options.route);
+    if (way !== '') out.push(way);
+  }
+
+  // cropped to what is drawn, with room around it for the door names; or to
+  // the window asked for, edge to edge
   const pad = named ? 1 : 0.25;
-  const vx = (x0 - pad) * U;
-  const vy = (y0 - pad) * U;
-  const vw = (x1 - x0 + 1 + pad * 2) * U;
-  const vh = (y1 - y0 + 1 + pad * 2) * U;
+  const vx = crop ? crop.x * U : (x0 - pad) * U;
+  const vy = crop ? crop.y * U : (y0 - pad) * U;
+  const vw = crop ? crop.width * U : (x1 - x0 + 1 + pad * 2) * U;
+  const vh = crop ? crop.height * U : (y1 - y0 + 1 + pad * 2) * U;
   const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg" viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + esc('Floor plan of ' + floor.name) + '">\n'
     + out.join('\n') + '\n</svg>';
   return { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
