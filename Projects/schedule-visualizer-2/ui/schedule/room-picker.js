@@ -59,7 +59,7 @@
 import { h, uid } from '../components/dom.js';
 import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { keyed } from './common.js';
-import { readTyped, listFor, severalWords, fold } from './room-rules.js';
+import { readTyped, listFor, severalWords, fold, byNumber } from './room-rules.js';
 
 // The line's words a picker handed over to a drawing left for the picker
 // made in its place, by key, until the drawing that makes it is done.
@@ -293,9 +293,15 @@ export function roomPicker(options) {
     // The room's own text typed again is that room, and no change, whatever
     // the rules make of it: "a room with no number" names no room by itself
     // (room-rules.js), and must not take the room off the slot that holds it.
+    // Unless the text is exactly another room's number: "Gym-North" folds as
+    // the label "Gym — North" of the room Gym, and is still Gym-North
+    // (room-rules.js, `byNumber`, SV2-56b).
     if (held !== null && options.missing !== true && fold(input.value) === fold(options.text)) {
-      revert();
-      return;
+      const numbered = byNumber(input.value, rooms());
+      if (numbered === null || numbered.id === held) {
+        revert();
+        return;
+      }
     }
     const result = readTyped(input.value, rooms());
     if (result.kind === 'none') pick({ id: null });
@@ -342,8 +348,15 @@ export function roomPicker(options) {
     handed = true;
     const [kind, ...rest] = said.split('|');
     leftWords.set(options.key, { kind, words: rest.join('|') });
-    // the drawing that takes this one away is done within this task
-    queueMicrotask(() => leftWords.delete(options.key));
+    // The drawing that takes this one away is done within this task. A
+    // drawing that kept this field on the page took nothing away: the
+    // picker is still the one being typed in, and a hand-over left standing
+    // would make its blur do nothing ever after, so what is typed in it
+    // would never be read (SV2-56 item 2).
+    queueMicrotask(() => {
+      leftWords.delete(options.key);
+      if (input.isConnected) handed = false;
+    });
   });
   input.addEventListener('picker:leave', () => {
     if (!handed) return;

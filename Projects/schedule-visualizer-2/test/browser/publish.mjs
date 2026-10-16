@@ -1535,7 +1535,7 @@ test('"Start at the passcode screen" reaches a key the frame could only keep in 
 });
 
 test('a read-only tab publishes its file and says nothing false: no "Nothing changed", the status and the section\'s first line say the project does not record it', async () => {
-  const first = await open();
+  let first = await open();
   let second = null;
   try {
     await apply(first.page, 'setSetting', { key: 'schoolName', value: 'First Tab School' });
@@ -1560,10 +1560,21 @@ test('a read-only tab publishes its file and says nothing false: no "Nothing cha
     // SV2-53b: and once it is no longer just now, the tab still made it
     await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
     assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^This tab made a file earlier\. The project does not record it while the tab is read-only\. It has /);
+    // SV2-58b: the other tab closes and this one becomes the editor; the tab
+    // is no longer read-only, so the line no longer says it is
+    await first.close();
+    first = null;
+    await page.waitForSelector('#banner-read-only', { hidden: true, timeout: 30000 });
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.includes('read-only'), { timeout: 10000 });
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^No file has been made from this project yet\. It has /);
+    // and leaving the section and opening it again does not bring it back
+    await go(page, '#building');
+    await go(page, '#staff');
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^No file has been made from this project yet\. It has /);
     assert.deepEqual(second.problems().errors, []);
   } finally {
     if (second) await second.close();
-    await first.close();
+    if (first) await first.close();
   }
 });
 
@@ -1608,6 +1619,144 @@ test('a read-only tab: a change pressed while the file is being made is refused,
     if (second) await second.close();
     await first.close();
   }
+});
+
+// SV2-58 item 2, the behaviour behind the source-text case of SV2-51 item 5
+// in staff-pass.test.mjs. The line SV2-51 took away asked for the checks of
+// the project on screen once the file was out. In most states it asked
+// nothing: the project the form last asked about was the one on screen, and
+// that asking was kept. It asks for real only when the form holds no asking
+// at all: the project changed while the file was made, the checks of the
+// changed project were refused (that forgets the asking, so a press of
+// Publish runs them again), and the project then would not take the note of
+// the publish, which would have asked. Then nothing may ask until the next
+// change: here, nothing does.
+test('the checks refused for a project changed while the file was made, and the note refused: once the file is out nothing asks for the checks until the next change', async () => {
+  await closing(await open(), async (page) => {
+    await page.evaluate(async () => {
+      const { notePublished } = await import(new URL('engine/actions.js', location.href).href);
+      const store = globalThis.sv2.store;
+      const apply = store.apply;
+      store.apply = function (action, payload) {
+        if (action === notePublished) throw new Error('The project would not take the note.');
+        return apply.call(store, action, payload);
+      };
+      const derived = store.derived;
+      const results = derived.results;
+      globalThis.__asked = 0;
+      globalThis.__refuse = false;
+      derived.results = (...args) => {
+        globalThis.__asked += 1;
+        if (globalThis.__refuse) return Promise.reject(new Error('The checks would not run.'));
+        return results.apply(derived, args);
+      };
+    });
+    await pressAndHold(page);
+    // the file is made and not yet handed over: the project changes, and its checks are refused
+    await page.evaluate(() => { globalThis.__refuse = true; });
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran, changed' });
+    await page.waitForFunction(() => document.querySelector('.pub').dataset.checks === 'none', { timeout: 15000 });
+    assert.equal(await says(page, 'checks-summary'), CHECKS_FAILED);
+    const asked = await page.evaluate(() => globalThis.__asked);
+    assert.ok(asked >= 1, 'the changed project was asked about: ' + asked);
+    await page.evaluate(() => { globalThis.__refuse = false; });
+    const out = await letGo(page);
+    assert.equal(out.made, true, 'the file still goes out');
+    const status = await says(page, 'published');
+    assert.ok(status.includes(MOVED_ON) && status.includes(NOT_NOTED), status);
+    // a turn of the event loop, and a timer, for anything asked after the file went out
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    assert.equal(await page.evaluate(() => globalThis.__asked), asked, 'nothing asked for the checks once the file was out');
+    assert.equal(await says(page, 'checks-summary'), CHECKS_FAILED, 'the list still says the checks could not be run');
+    // the next change asks, and is answered
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran' });
+    await checksDrawn(page);
+    assert.equal(await page.evaluate(() => globalThis.__asked), asked + 1, 'the next change asked once');
+    assert.notEqual(await page.evaluate(() => document.querySelector('.pub').dataset.checks), 'none');
+  });
+});
+
+// SV2-58 item 1. The view's element carried the test hooks in every
+// browser, so anything on the page could hand a published file somewhere
+// other than the download. A browser a test drives says so
+// (navigator.webdriver); a reader's does not, and there the view has no
+// hooks at all.
+test('the test hooks are on the view only in a browser a test drives: where navigator.webdriver is false the view has none', async () => {
+  await closing(await open(), async (page) => {
+    assert.equal(await page.evaluate(() => navigator.webdriver), true, 'the harness\'s browser says a test drives it');
+    assert.deepEqual(await page.evaluate(() => Object.keys(document.querySelector('.stf').staff).sort()), ['form', 'hooks', 'preview']);
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(Navigator.prototype, 'webdriver', { configurable: true, get: () => false });
+    });
+    await page.reload({ waitUntil: 'load' });
+    await previewLive(page);
+    await checksDrawn(page);
+    const view = await page.evaluate(() => {
+      const el = document.querySelector('.stf');
+      return { webdriver: navigator.webdriver, shown: el.getClientRects().length > 0, keys: Object.keys(el.staff).sort(), hooks: 'hooks' in el.staff };
+    });
+    assert.deepEqual(view, { webdriver: false, shown: true, keys: ['form', 'preview'], hooks: false });
+  });
+});
+
+// SV2-58 item 4. The section's view is made anew each time it is opened, and
+// until SV2-58 the file this tab made, which the project did not note, went
+// with the view: left and opened again, the line said "No file has been made
+// from this project yet". It is kept by the project's id.
+test('a file the project did not note is not forgotten when the section is left and opened again: just now, then earlier, and another project has its own line', async () => {
+  await closing(await open(), async (page) => {
+    await page.evaluate(async () => {
+      const { notePublished } = await import(new URL('engine/actions.js', location.href).href);
+      const store = globalThis.sv2.store;
+      const apply = store.apply;
+      store.apply = function (action, payload) {
+        if (action === notePublished) throw new Error('The project would not take the note.');
+        return apply.call(store, action, payload);
+      };
+    });
+    const first = () => page.evaluate(() => {
+      const el = document.querySelector('.stf-facts');
+      return el && el.getClientRects().length > 0 ? el.textContent : null;
+    });
+    const JUST_NOW = /^This tab made a file just now\. The project could not record it\. It has /;
+    const EARLIER = /^This tab made a file earlier\. The project could not record it\. It has /;
+    assert.match(await first(), /^No file has been made from this project yet\. /);
+    assert.ok(await publishThroughHook(page));
+    assert.match(await first(), JUST_NOW);
+    // left and opened again, nothing changed: still just now
+    await go(page, '#building');
+    await go(page, '#staff');
+    assert.match(await first(), JUST_NOW, 'opened again with nothing changed');
+    // a change made elsewhere: earlier, and still made
+    await go(page, '#building');
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await go(page, '#staff');
+    assert.match(await first(), EARLIER, 'opened again after a change');
+    // the set time runs out while the section is away
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 800;
+    });
+    assert.ok(await publishThroughHook(page));
+    assert.match(await first(), JUST_NOW);
+    await go(page, '#building');
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1200)));
+    await go(page, '#staff');
+    assert.match(await first(), EARLIER, 'opened again after the set time');
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 5 * 60 * 1000;
+    });
+    // another project in the tab has a line of its own
+    await page.evaluate(() => {
+      const store = globalThis.sv2.store;
+      store.replace({ ...store.project, id: 'pother0001' });
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-facts').textContent.startsWith('No file has been made from this project yet.'), { timeout: 10000 });
+    await go(page, '#building');
+    await go(page, '#staff');
+    assert.match(await first(), /^No file has been made from this project yet\. /, 'another project made no file');
+  });
 });
 
 test('"What is in it": the line has a mark that turns when it opens, a separator in its name, and says when the map carries no names', async () => {

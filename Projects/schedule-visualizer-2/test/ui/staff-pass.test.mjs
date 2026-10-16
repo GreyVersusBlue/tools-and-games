@@ -21,7 +21,13 @@ import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
 import { directionsView } from '../../staff/views/directions.js';
-import { hooks as sectionHooks, facts } from '../../ui/staff/index.js';
+import * as staffSection from '../../ui/staff/index.js';
+import { facts, viewHandle, unnotedStands, unnotedOf, fileMade, followTab } from '../../ui/staff/index.js';
+import { READ_ONLY_MADE } from '../../ui/staff/form.js';
+import { createStore } from '../../engine/store.js';
+import { replaceProject, notePublished } from '../../engine/actions.js';
+import { sampleSchool, SAMPLE_PROJECT_ID } from '../../data/sample-school.js';
+import { makeIds } from '../engine/helpers.mjs';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -270,10 +276,16 @@ test('a passcode turned on or off while the file is made is a change a reader se
 
 // ---------------------------------------------------------------- the section's hooks and first line (SV2-51 item 10)
 
-// A write to one of the two test hooks, in any form a module could make it:
-// hooks.deliver = …, hooks['deliver'] = …, Object.assign(hooks, …),
-// Object.defineProperty(hooks, …) and Reflect.set(hooks, …). Until SV2-53
-// only the first was looked for (SV2-53 item 4).
+// A write to one of the two test hooks in the plain forms: hooks.deliver = …,
+// hooks['deliver'] = …, Object.assign(hooks, …), Object.defineProperty(hooks,
+// …) and Reflect.set(hooks, …), whatever the name in front of `hooks`. A write
+// through another name (`const box = hooks; box.deliver = …`) is not seen
+// here. What keeps the page's own modules off the hooks is that only
+// ui/staff/index.js declares them and only form.js is handed them, and no
+// module of the page writes them in a form seen here (the next two cases).
+// Neither is a defence against code written to reach them. Until SV2-53 only
+// the first form was looked for (SV2-53 item 4); until SV2-58 this case's
+// title said it saw every way (SV2-58 item 1).
 const HOOK_WRITES = [
   /\bhooks\s*\.\s*(assembled|deliver)\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
   /\bhooks\s*\[\s*(['"`])(assembled|deliver)\1\s*\]\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
@@ -283,7 +295,7 @@ const HOOK_WRITES = [
 ];
 const setsTestHook = (source) => HOOK_WRITES.some((pattern) => pattern.test(source));
 
-test('the guard sees every way a module could set a test hook, and not the page\'s own hooks or a comparison', () => {
+test('the guard sees the plain forms of a write to a test hook, and not the page\'s own hooks or a comparison', () => {
   const writes = [
     'hooks.deliver = (file) => file;',
     'hooks.assembled=wait;',
@@ -308,10 +320,36 @@ test('the guard sees every way a module could set a test hook, and not the page\
   for (const source of not) assert.equal(setsTestHook(source), false, source);
 });
 
-test('the test hooks are declared, null, and nothing in the page sets them', () => {
-  assert.deepEqual(Object.keys(sectionHooks).sort(), ['assembled', 'deliver', 'made', 'published']);
-  assert.equal(sectionHooks.assembled, null);
-  assert.equal(sectionHooks.deliver, null);
+// SV2-58 item 1. The hooks were exported from ui/staff/index.js and put on
+// the view's element in every browser, so a module could import them under
+// another name, or reach them through `.stf.staff`, and write them where the
+// guard above does not look (the SV2-53 review's hook-guard.mjs: five such
+// writes). Now the object is the module's own, and the view carries it only
+// in a browser that says a test drives it (navigator.webdriver). That keeps
+// the hooks out of a reader's ordinary page; a page's script can redefine
+// the flag, so it is no defence against code that sets out to reach them
+// (SV2-58b; until then this case's title said no module could).
+test('the test hooks are out of a reader\'s ordinary page: ui/staff/index.js exports none, and the view carries them only where the browser says a test drives it', () => {
+  assert.equal('hooks' in staffSection, false, 'ui/staff/index.js exports its hooks');
+  for (const [name, value] of Object.entries(staffSection)) {
+    assert.ok(!(value && typeof value === 'object' && 'deliver' in value), name + ' is the hooks under another name');
+  }
+  const testHooks = { deliver: null, assembled: null, published: null, made: null };
+  const parts = { preview: { stop() {} }, form: { stop() {} } };
+  const reader = viewHandle(parts, testHooks, false);
+  assert.deepEqual(Object.keys(reader).sort(), ['form', 'preview'], 'a reader\'s browser: no hooks on the view');
+  assert.equal(viewHandle(parts, testHooks, undefined).hooks, undefined, 'not when the browser does not say');
+  const driven = viewHandle(parts, testHooks, true);
+  assert.deepEqual(Object.keys(driven).sort(), ['form', 'hooks', 'preview']);
+  assert.equal(driven.hooks, testHooks, 'a test\'s browser: the hooks themselves');
+  // and the page's own use: the view is made by that rule from the browser's flag, not from anything the page can set
+  const source = readFileSync(new URL('../../ui/staff/index.js', import.meta.url), 'utf8');
+  assert.match(source, /^const hooks = \{ deliver: null, assembled: null, published: null, made: null \};$/m, 'declared, null, and not exported');
+  assert.match(source, /element\.staff = viewHandle\(\{ preview: shown, form \}, hooks, automated\(\)\);/);
+  assert.match(source, /const automated = \(\) => typeof navigator !== 'undefined' && navigator\.webdriver === true;/);
+});
+
+test('nothing in the page sets the test hooks', () => {
   const tool = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const setters = [];
   let read = 0;
@@ -355,6 +393,97 @@ test('a file the project did not note, no longer just now, is still a file this 
     assert.doesNotMatch(line, /just now|No file has been made/);
   }
   assert.match(facts(project, 'refused'), /^This tab made a file just now\./, 'just now unless told otherwise');
+});
+
+// SV2-58b. The tab's unrecorded file was kept by the project's id for the
+// tab's life, and outlived its truth: the tab became the editor, or the
+// project took up another tab's later file, and the line still said "This
+// tab made a file earlier. The project does not record it while the tab is
+// read-only." (the review's unnoted-stale.mjs). And the sample school's id is
+// fixed, so a sample removed and loaded again inherited the old one's entry.
+const MADE_AT = '2026-10-16T08:00:00.000Z';
+const recording = (project, at) => ({ ...project, publish: { ...project.publish, lastPublishedAt: at } });
+
+test('the tab\'s unrecorded file stands only while its line is true: a read-only one while the tab is read-only, and any one until the project records a later file', () => {
+  const project = school();
+  const readOnly = { unnoted: 'read-only', at: Date.parse(MADE_AT) };
+  const refused = { unnoted: 'refused', at: Date.parse(MADE_AT) };
+  assert.equal(unnotedStands(readOnly, project, true), true, 'read-only, nothing recorded');
+  assert.equal(unnotedStands(readOnly, project, false), false, 'the tab is the editor now');
+  assert.equal(unnotedStands(refused, project, false), true, 'a refusal is not about the tab being read-only');
+  for (const entry of [readOnly, refused]) {
+    assert.equal(unnotedStands(entry, recording(project, '2026-10-16T09:00:00.000Z'), true), false, entry.unnoted + ': a later file recorded');
+    assert.equal(unnotedStands(entry, recording(project, '2026-10-15T09:00:00.000Z'), true), true, entry.unnoted + ': an earlier file recorded');
+    assert.equal(unnotedStands(entry, recording(project, MADE_AT), true), true, entry.unnoted + ': a file recorded at the same moment is not later');
+  }
+  assert.equal(unnotedStands(null, project, true), false);
+});
+
+test('an entry that no longer stands is dropped, not kept for later: the line is the project\'s own again', () => {
+  const project = { ...school(), id: 'pstale0001' };
+  fileMade(project.id, READ_ONLY_MADE, project, MADE_AT);
+  assert.equal(unnotedOf(project, true).unnoted, 'read-only');
+  // another tab's later file, taken up
+  const later = recording(project, '2026-10-16T09:00:00.000Z');
+  assert.equal(unnotedOf(later, true), null);
+  assert.equal(unnotedOf(project, true), null, 'dropped');
+  assert.match(facts(later, null), /^The last file from this project was made on /);
+  // the tab becomes the editor
+  fileMade(project.id, READ_ONLY_MADE, project, MADE_AT);
+  assert.equal(unnotedOf(project, false), null);
+  assert.equal(unnotedOf(project, true), null, 'dropped, so read-only again does not bring it back');
+  // a refusal stands in an editing tab, and a noted file takes it away
+  fileMade(project.id, 'The project could not record it.', project, MADE_AT);
+  assert.equal(unnotedOf(project, false).unnoted, 'refused');
+  fileMade(project.id, true, project, MADE_AT);
+  assert.equal(unnotedOf(project, false), null);
+});
+
+test('the sample school loaded again is a new project: it does not inherit the old one\'s file, and undo across a load keeps it', () => {
+  const store = createStore({ project: sampleSchool(), clock, ids: makeIds(5) });
+  followTab(store, null);
+  followTab(store, null); // followed once, however often asked
+  const made = () => unnotedOf(store.project, true);
+  fileMade(SAMPLE_PROJECT_ID, READ_ONLY_MADE, store.project, MADE_AT);
+  assert.equal(made().unnoted, 'read-only');
+  // a change of the sample keeps it
+  store.apply(notePublished, { at: '2026-09-01T12:00:00.000Z' });
+  assert.equal(made().unnoted, 'read-only', 'a recorded file older than the entry');
+  // the sample removed, and brought back by undo: the same project
+  store.apply(replaceProject, { project: { ...sampleSchool(), id: 'pempty0001' }, label: 'Remove the sample school' });
+  assert.equal(store.project.id, 'pempty0001');
+  store.undo();
+  assert.equal(store.project.id, SAMPLE_PROJECT_ID);
+  assert.equal(made().unnoted, 'read-only', 'undo brings back the project the file was made beside');
+  // removed, and loaded again: a new project with the same id
+  store.apply(replaceProject, { project: { ...sampleSchool(), id: 'pempty0001' }, label: 'Remove the sample school' });
+  store.apply(replaceProject, { project: sampleSchool(), label: 'Load the sample school' });
+  assert.equal(store.project.id, SAMPLE_PROJECT_ID);
+  assert.equal(made(), null, 'the sample loaded again made no file in this tab');
+  assert.match(facts(store.project, null), /^No file has been made from this project yet\. /);
+  // and a project read from the device over another (the store's replace)
+  fileMade(SAMPLE_PROJECT_ID, 'The project could not record it.', store.project, MADE_AT);
+  store.replace({ ...sampleSchool(), id: 'pempty0002' });
+  store.replace(sampleSchool());
+  assert.equal(made(), null, 'loaded by replace');
+});
+
+test('the tab becoming the editor drops its read-only files, whether or not the section is open, and keeps a refused one', () => {
+  const listeners = [];
+  const storage = { state: { readOnly: true }, subscribe: (fn) => listeners.push(fn) };
+  followTab(null, storage);
+  followTab(null, storage);
+  assert.equal(listeners.length, 1, 'followed once');
+  const a = { ...school(), id: 'peditor001' };
+  const b = { ...school(), id: 'peditor002' };
+  fileMade(a.id, READ_ONLY_MADE, a, MADE_AT);
+  fileMade(b.id, 'The project could not record it.', b, MADE_AT);
+  listeners[0]({ readOnly: true }, 'tabs');
+  assert.equal(unnotedOf(a, true).unnoted, 'read-only', 'still read-only');
+  listeners[0]({ readOnly: false }, 'tabs');
+  assert.equal(unnotedOf(a, true), null, 'the editor now: read-only again does not bring it back');
+  assert.equal(unnotedOf(b, false).unnoted, 'refused');
+  fileMade(b.id, true, b, MADE_AT);
 });
 
 // ---------------------------------------------------------------- the step-free refusal's routes (SV2-51 item 4)
@@ -594,6 +723,8 @@ test('the sign does not count short: a keycap, an emoji-form mark after a narrow
 // long, and the letters the sign's face draws wider than a seventh of the line
 // count their width (measured in Barlow Semi Condensed 600), so seven W's are
 // set small enough to stay on one line (the browser case is staff-outputs.mjs).
+// The line is a phone card's, whose borders are inside the sheet: there H and
+// U are a hair over a seventh of it (SV2-58 item 3).
 test('the sign does not count short after a text-form symbol, for a toned symbol, for the long dashes, or for the broad letters', () => {
   const rows = [
     ['\u2764\uFE0E\u200D\u{1F525}'.repeat(4), 12, 'a heart in text form, a joiner and fire, four times: the joiner joins nothing'],
@@ -609,12 +740,36 @@ test('the sign does not count short after a text-form symbol, for a toned symbol
     ['MW-1004', 7.75, 'M and W are broad, the rest one each'],
     ['mw%@', 5.75, 'the broad lower-case letters and signs'],
     ['\u00C6\u00BE', 3.5, 'AE and three quarters'],
-    ['HHHHHHH', 7, 'the widest letters that are not broad fit seven'],
+    ['HHHHHHH', 7.07, 'H is a hair over a seventh of a phone card\'s line (SV2-58 item 3), and only a hair (SV2-58b)'],
+    ['UUUUUUU', 7.07, 'and U'],
+    ['\u00D9\u00DA\u00DB\u00DC', 4.04, 'and the accented U\'s'],
+    ['DDDDDDD', 7, 'the widest letters that are not broad fit seven'],
     ['#\uFE0F\u20E3', 2, 'a broad sign made a keycap is two, not more'],
   ];
-  for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
+  // a sum of hundredths is not exact in binary
+  for (const [text, width, name] of rows) assert.ok(Math.abs(signWidth(text) - width) < 1e-9, name + ': ' + signWidth(text));
   assert.equal(signFit('WWWWWWW'), 7 / 10.5);
-  assert.equal(signFit('HHHHHHH'), 1);
+  assert.ok(Math.abs(signFit('HHHHHHH') - 7 / 7.07) < 1e-9);
+  assert.equal(signFit('DDDDDDD'), 1);
+});
+
+// SV2-58b. SV2-58 counted H, U and the accented U's a quarter more than a
+// letter, where a phone card's line needs 1.0033 of one at 356 px and 1.0057
+// at 260 (0.557 em against a seventh of 3.886 and 3.877 em), so a room number
+// of seven letters with one H in it, which stood at full size, was set at
+// 0.966 of it (the review's width-diff58.mjs: 104,992 of 400,000 such numbers
+// set smaller). They count 1.01: what the line forces, and no more.
+test('H and U count what a phone card\'s line needs of them, a hundredth over a letter: seven letters with an H are set at all but full size', () => {
+  const unit = (card) => (0.88 * card - 2) / (0.225 * card) / 7; // a seventh of the line, in em
+  for (const card of [356, 320, 286, 260, 200, 176]) {
+    assert.ok(signWidth('H') >= 0.557 / unit(card), 'H holds seven on a card ' + card + ' px wide');
+  }
+  assert.ok(signWidth('H') <= 1.01, 'H counts no more than its need rounded up to a hundredth: ' + signWidth('H'));
+  for (const text of ['HALL 12', 'HUB-101', 'HUT-101', '\u00DCBER 12']) {
+    assert.ok(signFit(text) > 0.99, text + ' is set at ' + signFit(text));
+  }
+  assert.equal(signFit('HALL 12'), 7 / 7.01);
+  assert.equal(signFit('H-101'), 1, 'a short number with an H is at full size');
 });
 
 // ---------------------------------------------------------------- the batch's count (item 6)

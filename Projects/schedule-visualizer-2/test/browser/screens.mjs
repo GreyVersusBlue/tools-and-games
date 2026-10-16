@@ -7,6 +7,9 @@
 //   hash   the address to load
 //   open   optional: async (page) => {} to bring up what the address alone does
 //          not show (a dialog, a menu, an emptied project)
+//   viewport  optional: { width, height, mobile } the page is loaded at, with
+//          touch when `mobile` (SV2-57); the next screen without one is at
+//          the sweep's own size again (harness.mjs's visit)
 
 const press = (key) => async (page) => {
   await page.keyboard.press(key);
@@ -532,6 +535,7 @@ export const SCREENS = [
     },
   },
   { id: 'movement-map', hash: '#movement', open: movementDrawn }, // SV2-17: every group, the legend, the summary
+  { id: 'movement-phone-sideways', hash: '#movement', viewport: { width: 844, height: 390, mobile: true }, open: movementDrawn }, // SV2-57: a phone on its side, with touch
   { // SV2-17: four chosen groups, with the reason there can be no fifth
     id: 'movement-four-groups',
     hash: '#movement',

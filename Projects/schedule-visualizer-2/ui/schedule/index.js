@@ -45,8 +45,8 @@ import { tabs } from '../components/tabs.js';
 import { periodWords } from '../components/words.js';
 import { scheduleModel } from './model.js';
 import { findingsPanel, SHEET as INSPECTOR_SHEET } from './checks.js';
-import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, toGroup, toList, spentEntry } from './groups.js';
-import { readAddress, slotHash, groupOf, groupHash } from './address.js';
+import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, stepOffSpent, placeInHistory } from './groups.js';
+import { readAddress, slotHash } from './address.js';
 
 export { slotHash };
 import { mount as grid, GRID_KEYS } from './grid/index.js';
@@ -148,7 +148,7 @@ function watchPointer() {
   // to the list's address from the list's address, which no `hashchange`
   // reports: the step back to the list is taken here.
   window.addEventListener('popstate', () => {
-    if (live && spentEntry()) history.back();
+    if (live) stepOffSpent();
   });
   document.addEventListener('pointerdown', () => {
     pointerDown = true;
@@ -195,7 +195,7 @@ export const section = {
     loadSheet();
     watchPointer();
     // a page loaded onto the entry a gone group left: to the list under it
-    if (spentEntry()) history.back();
+    stepOffSpent();
     takeAddress(ctx.store.project, rest);
     let panel = null;
     let timer = null;
@@ -392,25 +392,8 @@ export const section = {
     }
 
     // The Groups tab's address made what the view is, on a phone: a chosen
-    // group's editor above the list, or the list.
-    function placeInHistory() {
-      if (strip.selected !== 'groups' || ctx.store.project.groups.length === 0) return;
-      const group = groupOf(ctx.store.project, location.hash);
-      if (view.folded === true && view.groupId) {
-        if (!group) {
-          toGroup(ctx, view.groupId);
-        } else if (group.id !== view.groupId) {
-          // another group's address (chosen while narrow, before a group
-          // was chosen wide) is this group's place now, with the list still
-          // under it when it was: a list of its own would be the list twice
-          history.replaceState(history.state, '', groupHash(view.groupId));
-        }
-      } else if (group) {
-        toList();
-      }
-    }
-
-    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect, placeInHistory };
+    // group's editor above the list, or the list (groups.js, `placeInHistory`).
+    const handle = { run, waiting: false, redraw: schedule, narrow: () => element.dataset.narrow === 'true', inspect, placeInHistory: () => placeInHistory(ctx, view, strip.selected) };
     live = handle;
     // an address that named a slot: its row is scrolled to once this is on the page
     if (view.shown && view.shown.fresh) schedule();
