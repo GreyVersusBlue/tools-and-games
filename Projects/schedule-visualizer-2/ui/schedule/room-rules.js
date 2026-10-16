@@ -11,10 +11,18 @@
 // Text is compared folded: spaces round it and the case of its letters do
 // not count, and neither do the forms of one letter (NFKC: a full-width
 // "１０１" is "101", and an "é" typed as two code points is the one "é").
-// Folding uses no locale, so it says the same on every device.
+// Inside it, a run of spaces is one space, and a run of hyphens or dashes
+// with the spaces round it is the label's " — ", since a keyboard has no
+// em dash: "101 - Ms. Okafor", "101-Ms. Okafor" and "101  —  ms. okafor"
+// are all the label "101 — Ms. Okafor" (SV2-56 item 4). Both sides of every
+// comparison are folded by this one function, so a hyphen inside a name
+// ("Okonjo-Reyes") or a number ("B-12") still meets itself. Folding uses no
+// locale, so it says the same on every device.
+
+const DASHES = /\s*[-\u2010-\u2015\u2212]+\s*/gu;
 
 export function fold(text) {
-  return String(text).normalize('NFKC').trim().toLowerCase();
+  return String(text).normalize('NFKC').toLowerCase().replace(DASHES, ' \u2014 ').replace(/\s+/gu, ' ').trim();
 }
 
 // "Room 101" is how the tool names Room 101 in a sentence (engine/schema.js,
