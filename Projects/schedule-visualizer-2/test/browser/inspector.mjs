@@ -250,7 +250,7 @@ test('an other space has a label, a kind and a colour', async () => {
 
 // ---------------------------------------------------------------- the room list
 
-test('the Rooms tab lists the rooms of the floor on screen, sorted by number, and carries the two print buttons', async () => {
+test('the Rooms tab lists the rooms of the floor on screen, sorted by number, and carries the three print buttons', async () => {
   await tab('rooms');
   const now = await project();
   const rooms = now.building.floors[0].spaces.filter((space) => space.kind === 'room');
