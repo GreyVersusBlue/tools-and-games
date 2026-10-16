@@ -227,11 +227,24 @@ export async function go(page, hash) {
 
 // Load one screen of screens.mjs from scratch: a fresh page load with no
 // saved project (unless the screen says `keep: true`), then whatever the
-// screen needs opened.
+// screen needs opened. The page is at the size the session was opened at,
+// or at the screen's own `viewport` ({ width, height, mobile }), asked for
+// again after clearSaved and before the load (SV2-57 item 5): the CDP
+// session clearSaved opens and closes takes Puppeteer's touch emulation
+// with it, so a phone's page loaded with a fine pointer and the sweeps
+// measured a layout no finger gets (openPlanner does the same since SV2-55).
 export async function visit(session, screen) {
   const { page } = session;
+  const sized = typeof page.setViewport === 'function';
+  // the size the session was opened at, kept from its first visit
+  if (sized && !page.__visitSize) page.__visitSize = page.viewport();
   await page.goto('about:blank');
   if (screen.keep !== true) await clearSaved(page, session.base);
+  if (sized) {
+    const own = screen.viewport;
+    const wanted = own ? { width: own.width, height: own.height, deviceScaleFactor: 1, hasTouch: own.mobile === true, isMobile: own.mobile === true } : page.__visitSize;
+    if (wanted) await page.setViewport(wanted);
+  }
   await page.goto(session.url(screen.hash), { waitUntil: 'load' });
   await waitForSection(page, screen.hash.replace(/^#/, '').split('/')[0]);
   await page.evaluate(() => document.fonts.ready);
