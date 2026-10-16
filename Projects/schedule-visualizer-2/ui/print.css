@@ -874,6 +874,32 @@
   align-items: center;
 }
 
+/* the maps cut into rows under one another, or columns side by side
+   (mapLayout in door-cards.js: whichever lets the cells be largest) */
+.print-doc .card__maps--rows {
+  flex-direction: column;
+  align-items: center;
+}
+
+.print-doc .card__maps--columns {
+  align-items: flex-start;
+}
+
+.print-doc .card__maps-group {
+  display: flex;
+  gap: 4mm;
+}
+
+.print-doc .card__maps--rows .card__maps-group {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.print-doc .card__maps--columns .card__maps-group {
+  flex-direction: column;
+  align-items: center;
+}
+
 .print-doc .card__map {
   margin: 0;
   break-inside: avoid;
@@ -902,6 +928,13 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* upright, short steps stand in two columns when that leaves the maps more
+   room; door-cards.js counts each column (6 mm apart) at half the width */
+.print-doc .card__steps--two {
+  columns: 2;
+  column-gap: 6mm;
 }
 
 .print-doc .card__step {
