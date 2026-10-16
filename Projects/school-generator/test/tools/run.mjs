@@ -1728,6 +1728,67 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the check left its ramp on the design');
     },
   },
+  // A straight ramp's top landing, drawn (#981). test/ramp-deck.test.mjs
+  // proves the box sits in the hole and is walked at the rise; this is
+  // whether anything stands there. Two ramps on a two-storey slab, the
+  // default and a wide shallow one, and a ray dropped on each landing; and a
+  // stair's 4ft one, drawn by the same line since #983 (test/stair-deck.test.mjs).
+  {
+    name: 'ramp-deck',
+    what: "a straight ramp's 5ft top landing and a stair's 4ft one are decks at the floor above, not holes",
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { createState, addFloor } = await import('./js/grid.js');
+        const { createLattice, setTile, bake } = await import('./js/lattice.js');
+        const { addStair } = await import('./js/stairs.js');
+        const s = createState(60, 60);
+        addFloor(s);
+        for (const i of [0, 1]) {
+          const lat = createLattice(60, 60);
+          for (let y = 0; y < 60; y++) for (let x = 0; x < 60; x++) setTile(lat, x, y, true);
+          bake(s, i, lat);
+        }
+        addStair(s, 0, { type: 'ramp', x: 100, z: 40, rotationY: 0 });
+        addStair(s, 0, { type: 'ramp', x: 160, z: 20, rotationY: 0, width: 8, slope: 16 });
+        addStair(s, 0, { type: 'stair', x: 40, z: 40, rotationY: 0 });   // #983
+        const api = window.app.renderApi;
+        api.buildFromState(s);
+        api.scene.updateMatrixWorld(true);
+        const ray = new THREE.Raycaster();
+        const baked = [];
+        api.scene.traverse((o) => { if (o.isMesh && o.userData.baked) baked.push(o); });
+        const top = (x, z, from) => {
+          ray.set(new THREE.Vector3(x, from, z), new THREE.Vector3(0, -1, 0));
+          const hit = ray.intersectObjects(baked, false)[0];
+          return hit ? hit.point.y : null;
+        };
+        const out = {
+          narrow: top(100, 186.5, 12.5),     // the middle of the 4ft ramp's landing
+          narrowEdge: top(101.6, 188.7, 12.5), // near its far corner, inside the rail
+          wide: top(163, 214.5, 12.5),       // the 8ft ramp's, off its middle
+          wideNear: top(157.5, 212.3, 12.5), // just past the top of its run
+          stair: top(40, 61.25, 12.5),       // the middle of the stair's landing
+          stairEdge: top(41.6, 63, 12.5),    // near its far corner, inside the rail
+        };
+        api.buildFromState(window.app.state);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      // 4ft at 1:12 is 144ft of run from z 40, so its landing is z 184 to
+      // 189; 8ft at 1:16 is 192ft from z 20, landing z 212 to 217. Each is
+      // the floor above's height, 12; the hole under it reached the floor
+      // below, 0. The stair's 21 treads of 11in are 19.25ft from z 40, so its
+      // 4ft landing is z 59.25 to 63.25 (#983); before, the ray fell through.
+      for (const k of ['narrow', 'narrowEdge', 'wide', 'wideNear', 'stair', 'stairEdge']) {
+        if (ctx[k] === null || Math.abs(ctx[k] - 12) > 0.12) {
+          throw new Error(`${k}: the highest thing on the landing is at ${ctx[k]}ft, not 12ft`);
+        }
+      }
+      if (after.json !== before.json) throw new Error('the check left its ramps on the design');
+    },
+  },
   // The two controls of #832, driven the way a person drives them: the panel's
   // own buttons, then a click on the plan. test/ramp-controls.test.mjs has the
   // arithmetic; this is whether the page reaches it.

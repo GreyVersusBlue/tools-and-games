@@ -32,7 +32,7 @@ import {
 import { catalogEntry, propColor, variantKey } from './catalog.js';
 import { revealAt } from './hunt.js';
 import {
-  stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards,
+  stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, topLandingBox,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
   floorCuts, inFloorCut, stairWidth,
 } from './stairs.js';
@@ -4964,6 +4964,16 @@ export function initRender(canvas) {
           localBox(link, w, top, m.tread, 0, top / 2, z0 + m.tread / 2, _tread, stairGeos);
           localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + m.tread - 0.1, _nosing, stairGeos);
         }
+      }
+      // The level landing at the top, cut out of the floor above and walked
+      // at its height: a slab in the run's colour, as a folded ramp's top
+      // landing is, from the box the walker and the hole read. A ramp's is
+      // ADA's 5ft (#904, drawn since #981), a stair's 4ft (#983); before,
+      // nothing stood on either and the walk crossed open hole.
+      const land = topLandingBox(link, metrics);
+      if (land) {
+        localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
+          (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
       }
       // Handrails: a sloped cap either side, on posts that grow with the run.
       // Identical for both — a ramp needs them more than a stair does.

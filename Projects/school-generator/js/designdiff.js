@@ -20,7 +20,8 @@
 //             differ.
 //   walls     free-standing walls, by id; endpoints and kind.
 //   props     by id; type, storey and position.
-//   links     stairs, ramps and lifts, by id; type, storeys and position.
+//   links     stairs, ramps and lifts, by id; type, storeys and position,
+//             and a ramp's width, slope and fold.
 //   regions   the site's, by id; outline, surface and marking.
 //   storeys   added or removed outright, and the sheet's size.
 //   records   the design-wide ones — sky, roof, ground, code, life, school
@@ -44,6 +45,7 @@ import { floorLabel } from './grid.js';
 import { wallLinesOf, lineAccent } from './wallrun.js';
 import { regionArea } from './site.js';
 import { same } from './history.js';
+import { stairWidth, rampSlope, rampRuns, rampSide } from './stairs.js';
 
 export const CHANGES = ['added', 'removed', 'changed'];
 
@@ -276,6 +278,29 @@ const LINK_WORD = { stair: 'stair', ramp: 'ramp', elevator: 'lift', opening: 'fl
 const linkWord = (l) => LINK_WORD[l.type] || l.type || 'link';
 const between = (l) => `between ${floorLabel(Math.min(l.from, l.to))} and ${floorLabel(Math.max(l.from, l.to))}`;
 
+// What a ramp's own numbers did between two designs (#980): its width and
+// slope, set from the Stairs panel (#907), and its fold (#832). Read through
+// stairs.js's accessors, so a default written out is the ramp it always was;
+// the side its runs stack to is asked only of a ramp folded both times, since
+// a straight ramp has no runs to turn. Anything but a ramp on both sides
+// says nothing here.
+const feet = (n) => String(Math.round(n * 10) / 10);
+const runsWord = (n) => (n === 1 ? 'one run' : `${n} runs`);
+function rampChanges(la, lb) {
+  if (la.type !== 'ramp' || lb.type !== 'ramp') return [];
+  const whats = [];
+  const wa = stairWidth(la), wb = stairWidth(lb);
+  if (wa !== wb) whats.push(`${wb > wa ? 'widened' : 'narrowed'} from ${feet(wa)} to ${feet(wb)} ft`);
+  const sa = rampSlope(la), sb = rampSlope(lb);
+  if (sa !== sb) whats.push(`${sb > sa ? 'eased' : 'steepened'} from 1:${feet(sa)} to 1:${feet(sb)}`);
+  const ra = rampRuns(la), rb = rampRuns(lb);
+  if (ra === 1 && rb > 1) whats.push(`folded into ${runsWord(rb)}`);
+  else if (ra > 1 && rb === 1) whats.push('straightened into one run');
+  else if (ra !== rb) whats.push(`refolded from ${ra} to ${runsWord(rb)}`);
+  else if (ra > 1 && rampSide(la) !== rampSide(lb)) whats.push('turned its runs to the other side');
+  return whats;
+}
+
 function diffLinks(da, db, out) {
   const A = byId(linksOf(da)), B = byId(linksOf(db));
   for (const [id, la] of A) {
@@ -288,9 +313,11 @@ function diffLinks(da, db, out) {
     }
     const changed = la.type !== lb.type || la.from !== lb.from || la.to !== lb.to
       || Math.hypot(lb.x - la.x, lb.z - la.z) > MOVE_EPS_FT || Math.abs(num(lb.rotationY) - num(la.rotationY)) > 1e-6;
-    if (changed) {
+    const whats = rampChanges(la, lb);
+    if (changed || whats.length) {
       out.push({ kind: 'link', change: 'changed', floor: num(lb.from), id,
-        sentence: `A ${linkWord(lb)} ${between(lb)} changed.`,
+        ...(whats.length ? { whats } : {}),
+        sentence: `A ${linkWord(lb)} ${between(lb)} ${[...(changed ? ['changed'] : []), ...whats].join(', ')}.`,
         marks: [lb.from, lb.to].map((f) => ({ floor: f, kind: 'link', change: 'changed', x: lb.x, z: lb.z })) });
     }
   }

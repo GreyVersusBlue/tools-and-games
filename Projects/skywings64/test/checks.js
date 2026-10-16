@@ -109,6 +109,20 @@
       ok(under.visible && under.castShadow === true && away !== under && away.castShadow === false,
         'terrain: the square under the shadow box casts, the one across the map does not', { under: under.castShadow, away: away.castShadow, metresApart: Math.round(flat(away.geometry.boundingSphere.center, spot)) });
 
+      // ---- bridge traffic (#978): seven cars as one InstancedMesh. Read from the instance matrices
+      // over one simulated second: each car has moved by its own speed (8 or 11 m/s) along its lane,
+      // or wrapped from one end of the 196 m road to the other.
+      const tr = L.children.filter((c) => c.name === 'traffic'), car = tr[0], br = W.landmarks.bridge.position;
+      const at = (k) => [0, 1, 2, 3, 4, 5, 6].map((i) => car.instanceMatrix.array[i * 16 + k]);
+      const x0 = at(12); q.sim(1, null); const x1 = at(12), lanes = at(14).map((z) => +(z - br.z).toFixed(3));
+      const step1 = x0.map((x, i) => +Math.abs(x1[i] - x).toFixed(2)), cols = new Set([0, 1, 2, 3, 4, 5, 6].map((i) => car.instanceColor.array.slice(i * 3, i * 3 + 3).join()));
+      const paint = car.geometry.attributes.paint.array, painted = paint.reduce((s, v) => s + v, 0);
+      ok(tr.length === 1 && car.isInstancedMesh && car.count === 7 && L.children.filter((c) => c.isMesh && c.material === car.material).length === 1
+        && step1.every((d) => Math.abs(d - 8) < 0.01 || Math.abs(d - 11) < 0.01 || d > 150) && lanes.every((z) => Math.abs(Math.abs(z) - 2.1) < 0.001) && x1.every((x) => Math.abs(x - br.x) <= 98.01),
+        'bridge traffic: seven cars, one InstancedMesh, each driving its own lane at 8 or 11 m/s', { meshes: tr.length, metresIn1s: step1, lanes });
+      ok(cols.size === 7 && painted === 36 && paint.slice(0, 36).every((v) => v === 1),
+        'bridge traffic: seven body colours, painted on the body\'s 36 vertices only', { colours: cols.size, painted });
+
       if (window.__swOnly === 'models') return out;                  // test/browser.mjs --models
 
       // ---- courses: every mission builds, and every ring can be flown through

@@ -27,6 +27,9 @@ import { buildReport } from '../js/report.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { takeoff } from '../js/takeoff.js';
+import { addProp } from '../js/props.js';
+import { catalogEntry } from '../js/catalog.js';
+import { shapesOf } from '../js/shapes.js';
 
 const M = stairRun(12);
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
@@ -54,6 +57,12 @@ function school(x, upper, opts = {}) {
 const oneHall = (u) => u.box(1, 1, 40, 8, { name: 'Upper Hall' });
 const twoRooms = (u) => { u.box(1, 1, 20, 8, { name: 'Upper Hall' }); u.box(21, 1, 40, 8, { name: 'Far Room' }); };
 const shortHall = (u) => u.box(1, 1, 20, 8, { name: 'Upper Hall' });
+// Every door of the storey above turned to swing the other way (#984).
+const swingBack = (s) => {
+  for (const sh of shapesOf(s.floors[1])) {
+    for (const ring of sh.rings) for (const o of ring.openings) o.sw = o.sw === -1 ? 1 : -1;
+  }
+};
 
 // ---------- the rule ----------
 
@@ -118,17 +127,24 @@ test('a wall across the far end is in the way; a doorway there is the way off', 
   // Foot at 7: the landing ends on 84, where the wall is.
   const shut = school(7, twoRooms);
   assert.deepEqual(rampLandingFit(shut.s, shut.ramp).why, ['wall']);
+  // Its leaf swings away from the landing: the one that swings in is #984's,
+  // below.
   const door = (u) => { twoRooms(u); u.door(21, 5, false); };
   const open = school(7, door);
+  swingBack(open.s);
   assert.equal(rampLandingFit(open.s, open.ramp), null, 'ADA 405.7.5: a doorway may adjoin a landing');
   // The same doorway half a foot inside the landing is a door across it.
+  // Its leaf sweeps the landing whichever way it turns, since the doorway is
+  // inside it (#984).
   const through = school(7.5, door);
-  assert.deepEqual(rampLandingFit(through.s, through.ramp).why, ['wall']);
+  swingBack(through.s);
+  assert.deepEqual(rampLandingFit(through.s, through.ramp).why, ['wall', 'swing']);
   // That one is caught by the jambs, which stand 0.2ft inside a 4ft ramp's
   // sides. A 3ft ramp passes between them, and the doorway itself is what is
   // across its landing.
   const narrow = school(7.5, door, { ramp: { width: 3 } });
-  assert.deepEqual(rampLandingFit(narrow.s, narrow.ramp).why, ['wall']);
+  swingBack(narrow.s);
+  assert.deepEqual(rampLandingFit(narrow.s, narrow.ramp).why, ['wall', 'swing']);
 });
 
 test('a landing that runs off the floor above, or has no floor past its end', () => {
@@ -172,9 +188,12 @@ test('another link in the landing: a floor opening, a stair standing on it; not 
   assert.equal(rampLandingFit(pair.s, beside), null);
 });
 
-test('only a straight ramp is asked: a stair and a folded ramp against the same wall are not', () => {
+test('a stair against the same wall is not asked; a folded ramp is asked of its own top landing', () => {
   const st = school(7.5, twoRooms, { type: 'stair' });
   assert.equal(rampLandingFit(st.s, st.ramp), null);
+  // Five runs of 14.4ft: its top landing is x 21.9 to 26.9, nowhere near the
+  // wall on 84 the straight one's landing runs into (#985,
+  // test/fold-landing.test.mjs).
   const fold = school(7.5, twoRooms, { ramp: { runs: 5 } });
   assert.equal(rampLandingFit(fold.s, fold.ramp), null);
 });
@@ -249,4 +268,72 @@ test('nothing is built on a straight ramp\'s landing, so the takeoff does not mo
   const { s } = school(8, oneHall);
   const row = takeoff(s).links.find((l) => l.type === 'ramp');
   assert.ok(near(row.area, 4 * 72), 'the sloped deck only');
+});
+
+// ---------- furniture and a door's swing in the landing (#984) ----------
+//
+// Foot at 8 in one hall: the landing is x 80 to 85, z 20 to 24. A student desk
+// is 2ft by 1.5ft. Foot at 7 against the far room: the landing ends on the
+// wall at 84, where the doorway is, and that doorway's 3ft leaf swings in.
+
+const desk = (s, x, z, extra = {}) => addProp(s, 'student-desk', { floor: 1, x, z, rotationY: 0, ...extra });
+const doorAhead = (u) => { twoRooms(u); u.door(21, 5, false); };
+
+test('a desk in the landing, alone: asked with the catalog, named, and moved nowhere', () => {
+  const { s, ramp } = school(8, oneHall);
+  const d = desk(s, 82.5, 22);
+  const fit = rampLandingFit(s, ramp, undefined, catalogEntry);
+  assert.deepEqual(fit.why, ['prop']);
+  assert.deepEqual([fit.floor, fit.x, fit.z].map((v) => Math.round(v * 10) / 10), [1, 82.5, 22]);
+  assert.equal(rampLandingFit(s, ramp), null, 'no catalog, no footprint: not asked');
+  assert.deepEqual([d.x, d.z, s.props.length], [82.5, 22, 1], 'the desk was not moved');
+  const f = find(accessibleAnalysis(s).findings, 'ramp-landing');
+  assert.ok(f && /furniture stands in it \(1\)/.test(f.detail), f && f.detail);
+  assert.doesNotMatch(f.detail, /door swings/);
+  // The footprint is read turned. Square on, a desk whose middle is 0.8ft past
+  // the landing's end reaches 0.2ft back over it (its 2ft runs along x: 85.8 - 1
+  // is 84.8); turned a quarter, its 1.5ft does, and it stops at 85.05.
+  const square = school(8, oneHall);
+  desk(square.s, 85.8, 22);
+  assert.deepEqual(rampLandingFit(square.s, square.ramp, undefined, catalogEntry).why, ['prop']);
+  const turned = school(8, oneHall);
+  desk(turned.s, 85.8, 22, { rotationY: Math.PI / 2 });
+  assert.equal(rampLandingFit(turned.s, turned.ramp, undefined, catalogEntry), null);
+});
+
+test('a door swinging into the landing, alone; the same door swinging away is the way off', () => {
+  const { s, ramp } = school(7, doorAhead);
+  assert.deepEqual(rampLandingFit(s, ramp, undefined, catalogEntry).why, ['swing']);
+  assert.deepEqual(rampLandingFit(s, ramp).why, ['swing'], 'a swing needs no catalog');
+  const f = find(accessibleAnalysis(s).findings, 'ramp-landing');
+  assert.ok(f && /a door swings into it \(1\)/.test(f.detail), f && f.detail);
+  assert.doesNotMatch(f.detail, /furniture/);
+  swingBack(s);
+  assert.equal(rampLandingFit(s, ramp, undefined, catalogEntry), null);
+  assert.equal(find(accessibleAnalysis(s).findings, 'ramp-landing'), undefined);
+});
+
+test('neither: a desk past the landing, a wall-mounted board over it, a door swinging away', () => {
+  const { s, ramp } = school(7, doorAhead);
+  swingBack(s);
+  desk(s, 78, 22);                   // x 77 to 79: the run's top is 79, not in it
+  addProp(s, 'whiteboard', { floor: 1, x: 81.5, z: 22, rotationY: 0 });
+  assert.equal(rampLandingFit(s, ramp, undefined, catalogEntry), null);
+  const a = accessibleAnalysis(s);
+  assert.equal(a.summary.tightLandings, 0);
+  assert.equal(find(a.findings, 'ramp-landing'), undefined);
+});
+
+test('both, and a desk where a straight landing would be is not asked of a stair or a folded ramp', () => {
+  const both = school(7, doorAhead);
+  desk(both.s, 81.5, 22);
+  assert.deepEqual(rampLandingFit(both.s, both.ramp, undefined, catalogEntry).why, ['prop', 'swing']);
+  const f = find(accessibleAnalysis(both.s).findings, 'ramp-landing');
+  assert.match(f.detail, /furniture stands in it \(1\); a door swings into it \(1\)/);
+  // A folded ramp's own top landing is x 32 to 37 (#985).
+  for (const ramp of [{ type: 'stair' }, { ramp: { runs: 3 } }]) {
+    const t = school(8, oneHall, ramp);
+    desk(t.s, 82.5, 22);
+    assert.equal(rampLandingFit(t.s, t.ramp, undefined, catalogEntry), null);
+  }
 });

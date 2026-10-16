@@ -101,11 +101,8 @@ test('overlapping rooms are refused, whether or not they share a wall', () => {
   assert.equal(inside.loops, null, 'a room inside another');
 });
 
-test('two rooms meeting only at a corner are refused', () => {
-  const o = roofOutline(floorOf(room([[0, 0], [20, 0], [20, 16], [0, 16]]), room([[20, 16], [40, 16], [40, 32], [20, 32]])));
-  assert.equal(o.loops, null);
-  assert.match(o.refused, /point/);
-});
+// Two rooms meeting only at a corner were refused here until #976, which
+// splits them into a loop each: test/roof-pinch.test.mjs.
 
 test('an empty storey is no loops, not a refusal', () => {
   assert.deepEqual(roofOutline(floorOf()), { loops: [] });
@@ -128,7 +125,8 @@ test('a curve is three equal chords turning equally; straight walls at angles ar
   assert.equal(hasCurve(pts(bowed(0.4))), true, 'the steps the curve tool picks');
   assert.equal(hasCurve(pts(bowed(0.9, 3))), true, 'three chords round most of a circle');
   assert.equal(hasCurve(pts(bowed(0.5, 3))), true, 'a semicircle whose middle chord runs along z');
-  assert.equal(hasCurve(pts(bowed(0.05, 2))), false, 'two chords are not enough to tell');
+  // Two chords were not read as a curve until #976: test/roof-pinch.test.mjs.
+  assert.equal(hasCurve(pts(bowed(0.05, 2))), true, 'two chords bowed off a square wall');
   // Walk a path of (length, turn in degrees) steps from the origin, then home.
   const walk = (steps) => {
     let x = 0, z = 0, h = 0;

@@ -1714,11 +1714,10 @@ fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
 career began on the end of that career's queue, lowest rung first and then by
 id, and the `bonusReferral` event (`ev_ruth_referral`) asks the same
 `inReach()` the other three doors of #514 now ask, and does not fire with
-nobody in reach. Seen beside them and not changed: two referrals queued on one
-day can name the same client and taking both makes two records of them (any
-pair of the four doors; `meetClient()` called twice in the engine, not seen in
-a played career), and a seller passes every door whatever their tier, which is
-the design's question 12.
+nobody in reach. Two doors that queue the same client on one day make one
+record of them now (#977, 2026-10-15). Seen beside them and not changed: a
+seller passes every door whatever their tier, which is the design's question
+12.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
@@ -2652,12 +2651,13 @@ Folder `Projects/skywings64/`; `WISHLIST.md` there carries the two open
 items. Item 1 was three measured draw-call cuts, rank 26 for a day: all three
 shipped on 2026-10-07 (#930 vegetation in 20 batches, #931 the copies of each
 GLB as herds, #932 far terrain one mesh a square; 182 to 460 fewer draws a
-frame, counted and not yet timed). What is open in it is Devon's timing run on
+frame, counted and not yet timed; #978 drew the bridge's seven cars as one on
+2026-10-15, 3 to 6 fewer). What is open in it is Devon's timing run on
 the Windows GPU and a list of smaller cuts nobody has ranked. Item 2, a phone
 and a controller in hand, waits on a person (see Parked). The glider landing
 and the heads model were the other two: Devon flew the landing on 2026-10-03
 and it works, and `heads.glb` was rebuilt on 2026-10-05 (#895). Its suite is
-`node test/browser.mjs` from the project folder, in Site CI's matrix (82
+`node test/browser.mjs` from the project folder, in Site CI's matrix (84
 checks; the first 35 are `test/assets.mjs`, Node only, and the last 3 hold a
 frame's draw calls to `test/draws.json`).
 
