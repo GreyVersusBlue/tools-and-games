@@ -170,10 +170,17 @@ function polygonsOverlap(a, b) {
 export function rampLandingFit(state, link, metrics = stairMetrics(state), catalogGet = null) {
   // Straight or folded, the one top landing and its open edge (#985).
   const top = rampTopLanding(link, metrics);
-  const box = top && top.box;
-  const floor = box && state.floors[link.to];
-  if (!floor) return null;
-  const end = top.out === 1 ? box.z1 : box.z0;
+  if (!top || !top.box || !state.floors[link.to]) return null;
+  return landingFit(state, link, top.box, top.out, metrics, catalogGet);
+}
+
+// The five questions above, asked of local box `box` on storey `link.to`,
+// whose way off is past `z1` when `out` is +1 and past `z0` when it is -1.
+// A ramp's top landing and a stair's (#989) both come through here, so
+// there is one copy of each question. Null when nothing is in the way.
+function landingFit(state, link, box, out, metrics, catalogGet) {
+  const floor = state.floors[link.to];
+  const end = out === 1 ? box.z1 : box.z0;
   const e = LANDING_EPS;
   const why = [];
 
@@ -192,7 +199,7 @@ export function rampLandingFit(state, link, metrics = stairMetrics(state), catal
   const mid = (box.x0 + box.x1) / 2;
   const asked = [
     [inside.x0, inside.z0], [inside.x1, inside.z0], [inside.x0, inside.z1], [inside.x1, inside.z1],
-    [mid, end + top.out * LANDING_STEP_OFF],
+    [mid, end + out * LANDING_STEP_OFF],
   ];
   if (!asked.every(([lx, lz]) => solid(lx, lz))) why.push('edge');
 
@@ -240,24 +247,18 @@ function swingInLanding(state, floorId, clear) {
 // ---------- the landing at the top of a stair ----------
 //
 // A straight stair's top landing is `topLandingBox`'s: the stair's width and
-// 4ft deep, from the top of the run, drawn as a deck since #983. Of the
-// ramp's five questions only the two that are about what stands or swings on
-// a floor make sense for it: 'prop' and 'swing', asked by the same lines as
-// above. Walls, edges and other links are the stair's own placement, which
-// the hole and the route already answer. Null for a ramp and for a stair
-// whose landing is clear; nothing is moved (#987).
+// 4ft deep, from the top of the run, drawn as a deck since #983, left by its
+// far end. It is asked the ramp's five questions by the same lines
+// (`landingFit`): 'prop' and 'swing' since #987, and 'wall', 'edge' and
+// 'link' since #989, so a wall or a doorway in it or shutting its far end, a
+// landing off the floor above, and another link's hole or footprint in it are
+// each a reason too. Null for a ramp and for a stair whose landing is clear;
+// nothing is moved.
 export function stairLandingFit(state, link, metrics = stairMetrics(state), catalogGet = null) {
   if (!link || link.type !== 'stair') return null;
   const box = topLandingBox(link, metrics);
   if (!box || !state.floors[link.to]) return null;
-  const e = LANDING_EPS;
-  const clear = rectCorners(link, { x0: box.x0 + e, x1: box.x1 - e, z0: box.z0 + e, z1: box.z1 - e });
-  const why = [];
-  if (catalogGet && propInLanding(state, link.to, clear, catalogGet)) why.push('prop');
-  if (swingInLanding(state, link.to, clear)) why.push('swing');
-  if (!why.length) return null;
-  const at = localToWorld(link, (box.x0 + box.x1) / 2, (box.z0 + box.z1) / 2);
-  return { id: link.id, floor: link.to, x: at.x, z: at.z, why };
+  return landingFit(state, link, box, 1, metrics, catalogGet);
 }
 
 // The seated walker, as `moveWalker` options. `extra` is the per-step state

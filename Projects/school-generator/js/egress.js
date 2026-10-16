@@ -595,8 +595,9 @@ export function accessibleAnalysis(state, opts = {}) {
   // furniture and door swings asked since #984, a folded ramp's since #985. The ramp stays where
   // it is and stays in the count, as above.
   const tightLandings = (state.links || []).map((l) => rampLandingFit(state, l, metrics, catalogGet)).filter(Boolean);
-  // A stair's 4ft top landing with furniture or a door's swing in it (#987):
-  // the two of those questions a stair is asked. A warning that moves nothing.
+  // A stair's 4ft top landing asked the same five questions: furniture and a
+  // door's swing since #987, a wall, the floor's edge and another link since
+  // #989. A warning that moves nothing.
   const stairLandings = (state.links || []).map((l) => stairLandingFit(state, l, metrics, catalogGet)).filter(Boolean);
   // ADA 405.5: a ramp a file made narrower than the panel lets one be (#982).
   // A warning that moves nothing; the ramp stays in the count, as above.
@@ -911,15 +912,20 @@ function accessibleFindings({
       `one run may rise (ADA 405.6). ${cure} The route above still counts it as a way up.`,
       { doors: longRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })), cite: ADA.rampRise }));
   }
-  if (tightLandings.length) {
-    const n = (why) => tightLandings.filter((l) => l.why.includes(why)).length;
-    const said = [
+  // Each reason a landing gave, counted, in one order for a ramp's and a
+  // stair's (#989).
+  const landingSaid = (list) => {
+    const n = (why) => list.filter((l) => l.why.includes(why)).length;
+    return [
       [n('wall'), 'a wall or a doorway stands in it'],
       [n('edge'), 'it runs off the floor it arrives on'],
       [n('link'), 'another stair, ramp, lift or floor opening is in it'],
       [n('prop'), 'furniture stands in it'],
       [n('swing'), 'a door swings into it'],
     ].filter(([count]) => count).map(([count, what]) => `${what} (${count})`).join('; ');
+  };
+  if (tightLandings.length) {
+    const said = landingSaid(tightLandings);
     out.push(finding('warn', 'ramp-landing',
       `${tightLandings.length} ramp${tightLandings.length === 1 ? '' : 's'} with no room for the top landing`,
       'A ramp ends on a level landing as wide as the ramp and 5 ft long (ADA 405.7), measured ' +
@@ -929,13 +935,9 @@ function accessibleFindings({
   }
   if (stairLandings.length) {
     // No section is cited: the building code's stair-landing rule is about
-    // its size and lets a door swing part way in, so neither reason is quoted
-    // as a breach of it (#987).
-    const n = (why) => stairLandings.filter((l) => l.why.includes(why)).length;
-    const said = [
-      [n('prop'), 'furniture stands in it'],
-      [n('swing'), 'a door swings into it'],
-    ].filter(([count]) => count).map(([count, what]) => `${what} (${count})`).join('; ');
+    // its size and lets a door swing part way in, so no reason is quoted as
+    // a breach of it (#987, #989).
+    const said = landingSaid(stairLandings);
     out.push(finding('warn', 'stair-landing',
       `${stairLandings.length} stair${stairLandings.length === 1 ? '' : 's'} with something in the top landing`,
       'A stair\'s landing is kept clear: it is as wide as the stair and 4 ft long, measured from ' +
