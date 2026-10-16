@@ -16,9 +16,11 @@
 // test, never in the engine.
 //
 // The second case is the cap: stage 2 of suggest runs at most RUN_TRIES
-// candidates a rank. SV2-63b ran every finding on the fixture with the cap
-// lifted (1,092 calls); the most any needed was 29, so at 32 no list differs.
-// The case holds the findings that needed the most, capped against uncapped.
+// candidates a rank. SV2-63b ran every fixable finding on the fixture with
+// the cap lifted (1,092 calls, other teachers' rooms off and on): the most
+// runs any took was 29, and the lowest cap that gave the same list was at
+// most 22, so at 32 no list differs. The case holds the six that needed a
+// cap above 16, capped against uncapped, and shows that 16 would change them.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,13 +36,14 @@ const SLOWEST = [
   'consecutive:dbig00000a:5:tbig000033',
   'group-walk:dbig00000b:1:gbig000018',
 ];
-// the most runs with the cap lifted, 28 and 29
-const MOST_RUNS = [
-  ['room-double:dbig00000b:7:rbig200014', true],
-  ['group-walk:dbig00000b:1:gbig000062', true],
-  ['room-double:dbig00000b:3:rbig200023', true],
-  ['group-walk:dbig00000b:2:gbig000064', true],
-  ['group-walk:dbig00000a:7:gbig000024', true],
+// the lowest cap that gives the uncapped list: 17 to 22
+const CAP_NEEDS = [
+  'room-double:dbig00000a:4:rbig200015',
+  'room-double:dbig00000a:0:rbig200008',
+  'room-double:dbig00000a:3:rbig400035',
+  'group-walk:dbig00000a:0:gbig000077',
+  'group-walk:dbig00000b:0:gbig000063',
+  'group-walk:dbig00000b:1:gbig000018',
 ];
 const VERSIONS = { geometry: 1, building: 1, schedule: 1 };
 
@@ -86,15 +89,13 @@ test('the cap changes no answer on the big fixture: capped and uncapped give the
   const project = bigProject({ seed: 1 });
   const pipeline = createPipeline();
   const findings = pipeline.run(project, VERSIONS).findings.findings;
-  for (const [id, otherTeachersRooms] of MOST_RUNS) {
+  for (const id of CAP_NEEDS) {
     const finding = findings.find((one) => one.id === id);
     assert.ok(finding, 'the fixture has ' + id);
-    const real = pipeline;
-    let runs = 0;
-    const counting = { run: (next, counters) => { runs += 1; return real.run(next, counters); } };
-    const uncapped = suggest(project, finding, { pipeline: counting, versions: VERSIONS, otherTeachersRooms, runTries: Infinity }).suggestions.map((s) => s.text);
-    assert.ok(runs - 1 > 16, id + ': a finding the old cap of 16 would have cut short (' + (runs - 1) + ' runs)');
-    const capped = suggest(project, finding, { pipeline, versions: VERSIONS, otherTeachersRooms }).suggestions.map((s) => s.text);
-    assert.deepEqual(capped, uncapped, id + ' at RUN_TRIES ' + RUN_TRIES);
+    const options = { pipeline, versions: VERSIONS, otherTeachersRooms: true };
+    const texts = (runTries) => suggest(project, finding, { ...options, runTries }).suggestions.map((s) => s.text);
+    const uncapped = texts(Infinity);
+    assert.notDeepEqual(texts(16), uncapped, id + ': a cap of 16 changes the list, so this case can see a cap');
+    assert.deepEqual(texts(undefined), uncapped, id + ': at RUN_TRIES ' + RUN_TRIES + ', the same list as uncapped');
   }
 });
