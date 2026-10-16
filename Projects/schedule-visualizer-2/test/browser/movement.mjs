@@ -799,6 +799,97 @@ test('SV2-39 item 7: the graph the view draws on is the one the store keeps for 
   assert.equal(await line(), 'Showing 8 groups on A Day, all transitions. No route failed.');
 });
 
+// ---------------------------------------------------------------- SV2-57: the review of SV2-55
+
+// SV2-57 item 2. The view asks for its results through model.js's
+// createAsker, which a Node case runs; what index.js hands it (that the view
+// has gone, what waiting and an answer do to the screen, that a change asks,
+// that a failure is said) was held by a regex over index.js's source, which
+// five breaks of that wiring left green (the review's asker-regex.mjs). Here
+// the real view is worked: an engine stood in by the store's own way in
+// answers only when the case lets it go, and records who asked it.
+const holdEngine = () => view(() => {
+  const derived = globalThis.sv2.store.derived;
+  if (!globalThis.sv2Kept) globalThis.sv2Kept = derived.engine;
+  const real = globalThis.sv2Kept;
+  globalThis.sv2Asked = [];
+  globalThis.sv2Held = [];
+  derived.use({
+    results: () => {
+      globalThis.sv2Asked.push(String(new Error('asked').stack));
+      return new Promise((resolve, reject) => {
+        globalThis.sv2Held.push(() => real.results().then(resolve, reject));
+      });
+    },
+  });
+});
+// let every held question go to the real engine, and wait for its answers
+// to have been handed over (a task later, as a worker's are)
+const letGo = () => view(async () => {
+  const held = globalThis.sv2Held.splice(0);
+  await Promise.all(held.map((go) => go()));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return held.length;
+});
+const rename = (name) => view(async (next) => {
+  const { editGroup } = await import(new URL('engine/actions.js', location.href).href);
+  globalThis.sv2.store.apply(editGroup, { id: 'gsample07a', name: next });
+}, name);
+const waiting = () => page.waitForFunction(() => document.querySelector('.mov').dataset.pending === 'true', { timeout: 5000 });
+
+test('SV2-57 item 2: a change makes the view ask once, through its asker, and mark itself waiting; the answer clears the mark and draws that project; a failure is said; an answer after the view has gone draws nothing', async () => {
+  await change(OPEN);
+  await holdEngine();
+  try {
+    // a change: the view asks, once, by its asker, and says it is waiting
+    await rename('7A North');
+    await waiting();
+    const asked = await view(() => globalThis.sv2Asked.filter((stack) => stack.includes('/ui/movement/')));
+    assert.equal(asked.length, 1, 'the view asked ' + asked.length + ' times for one change');
+    assert.match(asked[0], /ui\/movement\/model\.js/, 'the view asked by something other than its asker:\n' + asked[0]);
+    assert.equal(await view(() => document.querySelector('.mov').movement.state.project === globalThis.sv2.store.project), false, 'the new project was drawn before its answer came');
+    // the answer: the mark goes, and the new project is what is drawn
+    assert.ok(await letGo() >= 1);
+    await page.waitForFunction(() => document.querySelector('.mov').dataset.pending !== 'true', { timeout: 5000 });
+    assert.equal(await view(() => document.querySelector('.mov').movement.state.project === globalThis.sv2.store.project), true, 'the answer came and the view did not draw it');
+    assert.equal(await view(() => document.querySelector('.mov').movement.state.project.groups.find((group) => group.id === 'gsample07a').name), '7A North');
+
+    // a failure: said, as well as shown
+    await view(() => {
+      document.getElementById('announcer').textContent = '';
+      globalThis.sv2.store.derived.use({ results: () => new Promise((resolve, reject) => { setTimeout(() => reject(new Error('The engine stopped (a test made this up)')), 0); }) });
+    });
+    await rename('7A South');
+    await page.waitForFunction(() => document.querySelector('.mov').dataset.stale === 'true', { timeout: 5000 });
+    assert.equal(await text('#announcer'), 'The routes could not be worked out: The engine stopped (a test made this up). The map and the figures are from before your last change.', 'the failure is not said');
+
+    // an answer that comes after the view has gone draws nothing on it
+    await holdEngine();
+    await rename('7A West');
+    await waiting();
+    await view(() => {
+      globalThis.sv2Gone = document.querySelector('.mov');
+    });
+    await go(page, '#building');
+    assert.equal(await view(() => globalThis.sv2Gone.isConnected), false, 'the movement view is still on the page: the case tests nothing');
+    assert.ok(await letGo() >= 1, 'nothing was held for the view that has gone');
+    assert.equal(await view(() => globalThis.sv2Gone.dataset.pending || null), 'true', 'an answer was handed to the view after it had gone');
+  } finally {
+    await view(() => {
+      globalThis.sv2.store.derived.use(globalThis.sv2Kept);
+      delete globalThis.sv2Gone;
+    });
+  }
+  await go(page, '#movement');
+  await view(() => {
+    for (let step = 0; step < 3; step += 1) globalThis.sv2.store.undo();
+  });
+  await settled();
+  assert.equal(await view(() => globalThis.sv2.store.project.groups.find((group) => group.id === 'gsample07a').name), '7A');
+  await change(OPEN);
+  assert.equal(await line(), 'Showing 8 groups on A Day, all transitions. No route failed.');
+});
+
 test('with no groups there is no map: the screen says what the view is and what to do first', async () => {
   await go(page, '#project');
   await page.click('#sample-school [data-action="sample"]');
