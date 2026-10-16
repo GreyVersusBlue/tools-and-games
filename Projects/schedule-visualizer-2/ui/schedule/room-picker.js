@@ -25,19 +25,23 @@
 //
 // The section draws the slot again whenever the project or the walk results
 // change, which makes a new picker under the focus (ui/schedule/index.js).
-// The one being typed in hands over what it held: the text, carried as
-// typing, and then the `picker:resume` event with { room } in its detail,
-// the option the arrow keys had highlighted ('' for "No room", null for
-// none), which opens the new list with the same highlight.
+// The one being typed in is told `picker:handover` first, and does not
+// commit what it holds as it is taken away; it hands over what it held: the
+// text, carried as typing, and then the `picker:resume` event with { room }
+// in its detail, the option the arrow keys had highlighted ('' for "No
+// room", null for none), which opens the new list with the same highlight.
+// So "10", ArrowDown, a drawing, Enter is Room 101 and one change.
 //
 // One line under the field carries the words that are not options: that
 // nothing matches, that two rooms do, that the building has no rooms yet
 // (with a link to it). The field is described by it, and it is a status
-// from the first key the user presses in this field, so what typing changes
-// is heard as well as seen; a picker drawn again under the focus (below) is
-// not a status until then, so its words are not said again at every
-// drawing. The line's link is a Tab away, and keeps the focus across a
-// drawing (its `data-key` is the field's with ":building").
+// from the moment the picker is made, empty, so the first words put in it
+// are heard as well as seen, whatever put them there (a key, a click, a
+// drawing). A picker handed over to a drawing leaves its words to the
+// picker made in its place, which holds them before it is on the page, so
+// the words already said are not said again at every drawing. The line's
+// link is a Tab away, and keeps the focus across a drawing (its `data-key`
+// is the field's with ":building").
 //
 // roomPicker({ name, key, text, roomId, missing, describedBy, options, onPick, onKeep })
 //   text      what the slot holds now, as shown
@@ -55,7 +59,11 @@
 import { h, uid } from '../components/dom.js';
 import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { keyed } from './common.js';
-import { readTyped, listFor, severalWords } from './room-rules.js';
+import { readTyped, listFor, severalWords, fold } from './room-rules.js';
+
+// The line's words a picker handed over to a drawing left for the picker
+// made in its place, by key, until the drawing that makes it is done.
+const leftWords = new Map();
 
 export function roomPicker(options) {
   const id = uid('room');
@@ -70,6 +78,8 @@ export function roomPicker(options) {
   // the rooms Enter found the text to name, while the list is open on them
   let several = null;
   let said = '';
+  // handed over to the picker a drawing put in this one's place
+  let handed = false;
 
   const input = keyed(h('input', {
     class: 'field__input picker__input',
@@ -89,13 +99,11 @@ export function roomPicker(options) {
   // Under the field while what it holds is not a room of the building.
   const missing = h('p', { class: 'sch-room__missing', id: missingId, hidden: options.missing !== true },
     h('span', { 'aria-hidden': 'true' }, '▲ '), NOT_IN_BUILDING.charAt(0).toUpperCase() + NOT_IN_BUILDING.slice(1) + '. It is kept as typed.');
-  // The words that are not options (the top of this file).
-  const line = h('p', { class: 'sch-room__line', id: lineId });
-  // a status from the user's first key (the top of this file)
-  const heard = (event) => {
-    if (event && event.isTrusted === false) return;
-    line.setAttribute('role', 'status');
-  };
+  // The words that are not options (the top of this file): a status from
+  // the start, and empty until there is something to say.
+  const line = h('p', { class: 'sch-room__line', id: lineId, role: 'status' });
+  const inherited = leftWords.get(options.key);
+  leftWords.delete(options.key);
   const element = h('div', { class: 'picker sch-room' }, input, line, missing, list);
   if (options.missing === true) input.classList.add('sch-room--missing');
 
@@ -282,6 +290,13 @@ export function roomPicker(options) {
   // on them and says so; leaving the field keeps the text as typed. Neither
   // picks one of them.
   function resolve(how) {
+    // The room's own text typed again is that room, and no change, whatever
+    // the rules make of it: "a room with no number" names no room by itself
+    // (room-rules.js), and must not take the room off the slot that holds it.
+    if (held !== null && options.missing !== true && fold(input.value) === fold(options.text)) {
+      revert();
+      return;
+    }
     const result = readTyped(input.value, rooms());
     if (result.kind === 'none') pick({ id: null });
     else if (result.kind === 'room') pick(result.option);
@@ -302,7 +317,6 @@ export function roomPicker(options) {
 
   input.addEventListener('focus', () => input.select());
   input.addEventListener('input', (event) => {
-    heard(event);
     if (input.readOnly) return;
     dirty = true;
     several = null;
@@ -314,8 +328,26 @@ export function roomPicker(options) {
     if (!open) show();
   });
   input.addEventListener('blur', (event) => {
+    // handed over to a new picker by a drawing: that one carries on
+    if (handed) return;
     // to the line's link: the picker still has the focus
     if (event.relatedTarget && line.contains(event.relatedTarget)) return;
+    leave();
+  });
+  // A drawing is about to take this picker away and put a new one under
+  // the focus, which is handed the text and the highlight: leaving now
+  // would commit what is half typed. If the drawing has no new picker for
+  // it, it says `picker:leave`, and what was typed is read as on leaving.
+  input.addEventListener('picker:handover', () => {
+    handed = true;
+    const [kind, ...rest] = said.split('|');
+    leftWords.set(options.key, { kind, words: rest.join('|') });
+    // the drawing that takes this one away is done within this task
+    queueMicrotask(() => leftWords.delete(options.key));
+  });
+  input.addEventListener('picker:leave', () => {
+    if (!handed) return;
+    handed = false;
     leave();
   });
   // a drawing made a new picker under the focus: the list as it was
@@ -328,7 +360,6 @@ export function roomPicker(options) {
     }
   });
   input.addEventListener('keydown', (event) => {
-    heard(event);
     // a key of an input method composing a word is its own
     if (event.isComposing || event.keyCode === 229) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -365,6 +396,16 @@ export function roomPicker(options) {
     }
   });
 
-  words();
+  // A picker made in the place of one handed over starts with its words, so
+  // they are there before the line is on the page and are not said again.
+  // Once the drawing has handed it the text and the list (the same task),
+  // its own words are put in their place: the same words change nothing,
+  // and others (the room was picked, and two no longer match) are said.
+  if (inherited) {
+    say(inherited.kind, inherited.words);
+    queueMicrotask(words);
+  } else {
+    words();
+  }
   return { element, input };
 }

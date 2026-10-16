@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { PUBLISHED_SETTINGS } from '../../ui/staff/preview.js';
+import { PUBLISHED_SETTINGS, readerSeesChange } from '../../ui/staff/preview.js';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { failureSentence, feedPreview, LinkError, ReadError } from '../../ui/staff/assemble.js';
 import { publishedModel } from '../../engine/publish-data.js';
@@ -248,7 +248,65 @@ test('once the file is out, Publish asks for no checks itself: update() does, fo
   assert.doesNotMatch(after, /askChecks\(/);
 });
 
+// SV2-53 item 1, the Foreman's parts.mjs: Publish says the schedule changed
+// while the file was made when a reader would see a change, and a passcode
+// turned on or off is one. Each project is read as the file it would make;
+// until SV2-53 both were read with the made file's flag, so on-in-the-gap
+// was no change and off-in-the-gap was.
+test('a passcode turned on or off while the file is made is a change a reader sees; a theme is not', () => {
+  const base = { id: 'p', settings: { schoolName: 'S', theme: 'auto' }, building: {}, subjects: [], teachers: [], dayTypes: [], groups: [], publish: { views: {}, passcode: '' } };
+  const on = { ...base, publish: { ...base.publish, passcode: 'secret1' } };
+  const other = { ...on, publish: { ...on.publish, passcode: 'secret2' } };
+  const themed = { ...base, settings: { ...base.settings, theme: 'dark' } };
+  assert.equal(readerSeesChange(base, on), true, 'turned on while the file was made');
+  assert.equal(readerSeesChange(on, base), true, 'turned off while the file was made');
+  assert.equal(readerSeesChange(on, other), true, 'a locked file with another passcode');
+  assert.equal(readerSeesChange(base, themed), false, 'a theme is a new project and the same file');
+  assert.equal(readerSeesChange(on, on), false, 'the same project');
+  // the page's own use: form.js says MOVED_ON by this rule and no other
+  const form = readFileSync(new URL('../../ui/staff/form.js', import.meta.url), 'utf8');
+  assert.match(form, /const moved = readerSeesChange\(project, store\.project\);/);
+});
+
 // ---------------------------------------------------------------- the section's hooks and first line (SV2-51 item 10)
+
+// A write to one of the two test hooks, in any form a module could make it:
+// hooks.deliver = …, hooks['deliver'] = …, Object.assign(hooks, …),
+// Object.defineProperty(hooks, …) and Reflect.set(hooks, …). Until SV2-53
+// only the first was looked for (SV2-53 item 4).
+const HOOK_WRITES = [
+  /\bhooks\s*\.\s*(assembled|deliver)\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
+  /\bhooks\s*\[\s*(['"`])(assembled|deliver)\1\s*\]\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
+  /\bhooks\s*\[\s*[^'"`\]\s][^\]]*\]\s*=(?!=)/,
+  /\bObject\s*\.\s*(assign|defineProperty|defineProperties|setPrototypeOf)\s*\(\s*[\w$.]*\bhooks\b/,
+  /\bReflect\s*\.\s*(set|defineProperty)\s*\(\s*[\w$.]*\bhooks\b/,
+];
+const setsTestHook = (source) => HOOK_WRITES.some((pattern) => pattern.test(source));
+
+test('the guard sees every way a module could set a test hook, and not the page\'s own hooks or a comparison', () => {
+  const writes = [
+    'hooks.deliver = (file) => file;',
+    'hooks.assembled=wait;',
+    "hooks['deliver'] = take;",
+    'hooks["assembled"] = wait;',
+    'hooks[`deliver`] = take;',
+    'hooks[name] = take;',
+    'Object.assign(hooks, { deliver: take });',
+    'Object.assign(view.hooks, { assembled: wait });',
+    "Object.defineProperty(hooks, 'deliver', { value: take });",
+    "Reflect.set(hooks, 'deliver', take);",
+    'hooks.deliver ??= take;',
+  ];
+  for (const source of writes) assert.equal(setsTestHook(source), true, source);
+  const not = [
+    'hooks.made = (published, noted) => {};',
+    'hooks.published = published;',
+    "if (typeof hooks.deliver === 'function') hooks.deliver(published);",
+    "hooks['made'] = null;",
+    'const deliver = hooks.deliver;',
+  ];
+  for (const source of not) assert.equal(setsTestHook(source), false, source);
+});
 
 test('the test hooks are declared, null, and nothing in the page sets them', () => {
   assert.deepEqual(Object.keys(sectionHooks).sort(), ['assembled', 'deliver', 'made', 'published']);
@@ -256,16 +314,21 @@ test('the test hooks are declared, null, and nothing in the page sets them', () 
   assert.equal(sectionHooks.deliver, null);
   const tool = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const setters = [];
+  let read = 0;
   for (const folder of ['ui', 'staff', 'engine', 'storage']) {
     const walk = (dir) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const at = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(at);
-        else if (entry.name.endsWith('.js') && /hooks\.(assembled|deliver)\s*=[^=]/.test(readFileSync(at, 'utf8'))) setters.push(path.relative(tool, at));
+        else if (entry.name.endsWith('.js')) {
+          read += 1;
+          if (setsTestHook(readFileSync(at, 'utf8'))) setters.push(path.relative(tool, at));
+        }
       }
     };
     walk(path.join(tool, folder));
   }
+  assert.ok(read > 100, 'the page\'s modules were read: ' + read);
   assert.deepEqual(setters, [], 'a module of the page sets a test hook');
 });
 
@@ -277,6 +340,21 @@ test('the section\'s first line after a file the project did not note: read-only
   assert.match(refused, /^This tab made a file just now\. The project could not record it\. It has /);
   assert.doesNotMatch(refused, /read-only/);
   assert.match(facts(project, null), /^No file has been made from this project yet\. /);
+});
+
+// SV2-53b. When "just now" stops being so the tab still made the file: the
+// line said "No file has been made from this project yet" after it, which was
+// false.
+test('a file the project did not note, no longer just now, is still a file this tab made: "earlier", never "no file yet"', () => {
+  const project = school();
+  const readOnly = facts(project, 'read-only', false);
+  const refused = facts(project, 'refused', false);
+  assert.match(readOnly, /^This tab made a file earlier\. The project does not record it while the tab is read-only\. It has /);
+  assert.match(refused, /^This tab made a file earlier\. The project could not record it\. It has /);
+  for (const line of [readOnly, refused]) {
+    assert.doesNotMatch(line, /just now|No file has been made/);
+  }
+  assert.match(facts(project, 'refused'), /^This tab made a file just now\./, 'just now unless told otherwise');
 });
 
 // ---------------------------------------------------------------- the step-free refusal's routes (SV2-51 item 4)
@@ -507,6 +585,36 @@ test('the sign does not count short: a keycap, an emoji-form mark after a narrow
   ];
   for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
   assert.equal(signFit('1\uFE0F\u20E3'.repeat(4)), 7 / 8, 'four keycaps are eight wide, set smaller');
+});
+
+// SV2-53 item 2, the Foreman's sw2.mjs. A symbol asked for in its text form
+// (U+FE0E) is a letter, not a picture: a joiner after it joins nothing and a
+// skin tone after it is a square. A symbol with its skin tone is an emoji
+// whatever follows. The two-em and three-em dashes are two and three letters
+// long, and the letters the sign's face draws wider than a seventh of the line
+// count their width (measured in Barlow Semi Condensed 600), so seven W's are
+// set small enough to stay on one line (the browser case is staff-outputs.mjs).
+test('the sign does not count short after a text-form symbol, for a toned symbol, for the long dashes, or for the broad letters', () => {
+  const rows = [
+    ['\u2764\uFE0E\u200D\u{1F525}'.repeat(4), 12, 'a heart in text form, a joiner and fire, four times: the joiner joins nothing'],
+    ['\u2764\uFE0E\u200D\u{1F525}', 3, 'once'],
+    ['\u261D\uFE0E\u{1F3FD}', 3, 'a skin tone after a text-form symbol is a square of its own'],
+    ['\u261D\uFE0E\u{1F3FD}'.repeat(4), 12, 'four times'],
+    ['\u261D\u{1F3FD}\uFE0E', 2, 'a toned symbol is an emoji, whatever follows'],
+    ['\u261D\u{1F3FD}', 2, 'as it is with nothing after it'],
+    ['\u2E3A', 2, 'the two-em dash'],
+    ['\u2E3B', 3, 'the three-em dash'],
+    ['A\u2E3BB\u2E3BC', 9, 'letters between three-em dashes'],
+    ['WWWWWWW', 10.5, 'seven W\'s are ten and a half letters'],
+    ['MW-1004', 7.75, 'M and W are broad, the rest one each'],
+    ['mw%@', 5.75, 'the broad lower-case letters and signs'],
+    ['\u00C6\u00BE', 3.5, 'AE and three quarters'],
+    ['HHHHHHH', 7, 'the widest letters that are not broad fit seven'],
+    ['#\uFE0F\u20E3', 2, 'a broad sign made a keycap is two, not more'],
+  ];
+  for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
+  assert.equal(signFit('WWWWWWW'), 7 / 10.5);
+  assert.equal(signFit('HHHHHHH'), 1);
 });
 
 // ---------------------------------------------------------------- the batch's count (item 6)

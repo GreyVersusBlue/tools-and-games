@@ -347,6 +347,79 @@ test('SV2-50 item 11: text is folded by NFKC and without a locale, and "Room 101
   assert.equal(readTyped('Room 150', ROOMS).kind, 'several');
 });
 
+// SV2-54 item 1: the start of a room's label lists it, as it did before
+// SV2-50 ("101 — ms" and "101 — Ms. Okafo" listed r101; after SV2-50 they
+// listed nothing, live on the site). Listing is not picking: the text is
+// still kept as typed when the field is left.
+test('SV2-54 item 1: text that starts a room\'s label, folded, lists that room, and is still not picked', () => {
+  const okafor = [
+    { id: 'r101', number: '101', label: '101 — Ms. Okafor', teachers: 'Ms. Okafor', detail: '' },
+    { id: 'r102', number: '102', label: '102 — Mr. Tindall', teachers: 'Mr. Tindall', detail: '' },
+  ];
+  for (const typed of ['101 — ms', '101 — Ms. Okafo', '101 — MS. OKAFOR', ' 101 — ', 'Room 101 — Ms', '１０１ — Ｍｓ']) {
+    assert.deepEqual(ids(listFor(typed, okafor)), ['r101'], 'listFor(' + JSON.stringify(typed) + ')');
+  }
+  assert.deepEqual(readTyped('101 — ms', okafor), { kind: 'keep', text: '101 — ms' });
+  assert.deepEqual(readTyped('101 — Ms. Okafo', okafor), { kind: 'keep', text: '101 — Ms. Okafo' });
+  // the whole label is the room, as before
+  assert.equal(readTyped('101 — Ms. Okafor ', okafor).option?.id, 'r101');
+  // the label is read from its start only: the middle of one is not a start
+  assert.deepEqual(ids(listFor('— ms', okafor)), [], '"— ms" is not the start of a label');
+  assert.deepEqual(ids(listFor('1 — ms', okafor)), [], '"1 — ms" is not the start of a label');
+  // a padded number's label, from its start as the field shows it
+  assert.deepEqual(ids(listFor('104  — mr', [{ id: 'rpad', number: ' 104 ', label: ' 104  — Mr. Fairweather-Ness', teachers: 'Mr. Fairweather-Ness' }])), ['rpad']);
+});
+
+// SV2-54 item 2: the whole of the words that stand for a room with no number
+// (the label roomLabel gives such a room with no teacher) is not that room.
+test('SV2-54 item 2: the whole phrase "a room with no number", in any case and with spaces round it, picks nothing and lists nothing', () => {
+  for (const words of ['a room with no number', 'A Room With No Number', 'A ROOM WITH NO NUMBER', '  a room with no number ', 'Room a room with no number']) {
+    assert.deepEqual(readTyped(words, ODD), { kind: 'keep', text: words.trim() }, JSON.stringify(words) + ' picked a room');
+    assert.deepEqual(ids(listFor(words, ODD)), [], JSON.stringify(words) + ' listed a room');
+  }
+  // the label of one with a teacher names its teacher, and that is the room
+  assert.equal(readTyped('A ROOM WITH NO NUMBER — ms. pellegrew', ODD).option?.id, 'rnone');
+});
+
+// SV2-54b: a room with no number but with teachers is picked by its whole
+// label (above), so its list must show it for that label too, and for the
+// label cut short once it reaches the teachers ("a room with no number — Ms.
+// Pelle"), as item 1 does for a numbered room. SV2-54 listed nothing for any
+// of these (the reviewer's probe-unnumbered.mjs); 5a790085 listed the whole
+// label. The tool's words alone, or cut short before the teachers, list
+// nothing.
+test('SV2-54b: the label of a room with no number but with teachers, whole or cut short into its teachers, lists that room, and listFor agrees with readTyped', () => {
+  for (const typed of ['a room with no number — Ms. Pellegrew', 'A ROOM WITH NO NUMBER — ms. pellegrew', ' a room with no number — Ms. Pellegrew ']) {
+    assert.equal(readTyped(typed, ODD).option?.id, 'rnone', 'readTyped(' + JSON.stringify(typed) + ')');
+    assert.deepEqual(ids(listFor(typed, ODD)), ['rnone'], 'listFor(' + JSON.stringify(typed) + ') does not agree with readTyped');
+  }
+  for (const typed of ['a room with no number — Ms. Pelle', 'a room with no number — m', 'A ROOM WITH NO NUMBER — MS']) {
+    assert.deepEqual(ids(listFor(typed, ODD)), ['rnone'], 'listFor(' + JSON.stringify(typed) + ')');
+    assert.deepEqual(readTyped(typed, ODD), { kind: 'keep', text: typed }, 'readTyped(' + JSON.stringify(typed) + ') picked');
+  }
+  // the tool's words with the dash but no teacher yet are still the tool's words
+  for (const typed of ['a room with no number —', 'a room with no number — ', 'a room with no', 'a room with no number — Mr']) {
+    assert.deepEqual(ids(listFor(typed, ODD)), [], 'listFor(' + JSON.stringify(typed) + ') listed a room');
+  }
+});
+
+test('SV2-54 item 2: a field that holds a room with no number keeps its room when its own words are typed again, and when they are picked again', () => {
+  const held = make({ text: 'a room with no number', roomId: 'rbare' }, { options: () => [NO_ROOM].concat(ODD) });
+  held.type('A room with no number');
+  held.leave();
+  assert.deepEqual(held.calls, [], 'its own words typed again dropped the room');
+  assert.equal(held.input.value, 'a room with no number');
+  const entered = make({ text: 'a room with no number', roomId: 'rbare' }, { options: () => [NO_ROOM].concat(ODD) });
+  entered.type('a room with no number ');
+  entered.key('Enter');
+  assert.deepEqual(entered.calls, []);
+  // and other words are kept, as any text that is no room
+  const other = make({ text: 'a room with no number', roomId: 'rbare' }, { options: () => [NO_ROOM].concat(ODD) });
+  other.type('a room with no window');
+  other.leave();
+  assert.deepEqual(other.calls, [['keep', 'a room with no window']]);
+});
+
 // ---------------------------------------------------------------- the picker: Enter and leaving the field
 
 test('"10" and Enter keeps "10", as leaving the field does: no room is highlighted while typing, and none is picked', () => {
@@ -698,6 +771,26 @@ test('SV2-50 item 6: a new picker made under the focus by a drawing opens with t
   assert.deepEqual(gone.lit(), []);
 });
 
+test('SV2-54 item 3: a picker handed over to a drawing does not commit what is half typed as it is taken away; told to leave, it reads it as leaving does', () => {
+  const old = make();
+  old.type('10');
+  old.key('ArrowDown');
+  old.input.send('picker:handover');
+  // taken off the page with the focus in it
+  old.leave();
+  assert.deepEqual(old.calls, [], 'the picker taken away by a drawing kept "10"');
+  // the drawing had no picker for it: it is left after all, once
+  old.input.send('picker:leave');
+  assert.deepEqual(old.calls, [['keep', '10']]);
+  old.input.send('picker:leave');
+  assert.deepEqual(old.calls, [['keep', '10']], 'left twice');
+  // a picker not handed over is not left by the word
+  const plain = make();
+  plain.type('10');
+  plain.input.send('picker:leave');
+  assert.deepEqual(plain.calls, []);
+});
+
 test('SV2-50 item 11: a pick or a keep the project refuses puts the field back to what the slot holds', () => {
   const refused = make({ text: '101 — Ms. Harrowgate', roomId: 'r101', onPick: () => false, onKeep: () => false });
   refused.type('102');
@@ -714,27 +807,67 @@ test('SV2-50 item 11: a pick or a keep the project refuses puts the field back t
   assert.equal(taken.input.value, '102 — Mr. Tindall');
 });
 
-test('SV2-50 item 11: the line is a status from the user\'s first key, so a picker drawn again under the focus does not say its words again; its link has a key', () => {
+test('SV2-50 item 11, as SV2-54 item 7 changed it: the line is a status from the picker\'s making, empty; a picker drawn again under the focus is handed the words and does not say them again; its link has a key', () => {
   // kept text two rooms answer to: the words are there from the start, and describe the field
   const drawn = make({ text: '150', roomId: null, missing: true });
   assert.equal(drawn.line.textContent, '2 rooms match. Pick one from the list.');
   assert.ok(drawn.described().includes(drawn.line.id));
-  assert.equal(drawn.line.getAttribute('role'), null, 'a new drawing\'s line is a status before anything was pressed');
-  // the text a drawing carries over is sent as an input event the page made, not a key
-  drawn.input.send('input', { isTrusted: false });
-  assert.equal(drawn.line.getAttribute('role'), null);
-  drawn.key('ArrowDown');
   assert.equal(drawn.line.getAttribute('role'), 'status');
-  // typing is a key too
+  // typing
   const typed = make();
-  typed.type('zzz');
   assert.equal(typed.line.getAttribute('role'), 'status');
+  assert.equal(typed.line.textContent, '');
+  typed.type('zzz');
+  assert.equal(typed.line.textContent, 'No room matches. It is kept as typed, and marked as not in the building.');
   // with no rooms, the link to the building has a key for the drawing to find it by
   const empty = make(null, { options: () => [] });
   empty.click();
   const link = empty.line.children[0];
   assert.equal(link.tagName, 'A');
   assert.equal(link.dataset.key, 'slot:d:0:room:building');
+});
+
+test('SV2-54 item 7: the first words after a drawing are said: the line is a status, empty, before anything is pressed, and a click that brings words puts them in a status', () => {
+  // a picker a drawing has just made under the focus, nothing pressed in it yet
+  const fresh = make(null, { options: () => [] });
+  assert.equal(fresh.line.getAttribute('role'), 'status', 'a new picker\'s line is no status until a key');
+  assert.equal(fresh.line.textContent, '');
+  assert.equal(fresh.described().includes(fresh.line.id), false, 'an empty line describes the field');
+  // the click opens it, with no key pressed: the words go into the status
+  fresh.click();
+  assert.equal(fresh.line.getAttribute('role'), 'status');
+  assert.equal(fresh.line.textContent, 'No rooms in the building yet. Number them in Building.');
+});
+
+test('SV2-54 item 7: a picker handed over leaves its words to the one made in its place, which holds them from its making, so the drawing does not say them again', async () => {
+  const old = make();
+  old.type('zzz');
+  const words = old.line.textContent;
+  assert.match(words, /^No room matches/);
+  old.input.send('picker:handover');
+  // the drawing: a new picker for the same field, then the text and the list handed over
+  const next = make();
+  assert.equal(next.line.getAttribute('role'), 'status');
+  assert.equal(next.line.textContent, words, 'the new picker\'s line was empty when made');
+  const node = next.line.childNodes[0];
+  next.input.value = 'zzz';
+  next.input.send('input', { isTrusted: false });
+  next.input.send('picker:resume', { detail: { room: null } });
+  assert.equal(next.line.textContent, words);
+  assert.equal(next.line.childNodes[0], node, 'the same words were put in the line again');
+  // once the drawing is done the picker says its own words: the same ones, untouched
+  await Promise.resolve();
+  assert.equal(next.line.childNodes[0], node, 'the same words were put in the line again');
+  // a pick that ends "2 rooms match": the new picker holds a room, and says nothing
+  const two = make({ text: '150', roomId: null, missing: true });
+  assert.equal(two.line.textContent, '2 rooms match. Pick one from the list.');
+  two.input.send('picker:handover');
+  const picked = make({ text: '150 — Dr. Quennell', roomId: 'r150b' });
+  await Promise.resolve();
+  assert.equal(picked.line.textContent, '', 'the words handed over outlived what they were about');
+  // what is handed over is for that drawing alone
+  const later = make();
+  assert.equal(later.line.textContent, '', 'words handed over outlived the drawing');
 });
 
 // ---------------------------------------------------------------- the Groups tab's addresses

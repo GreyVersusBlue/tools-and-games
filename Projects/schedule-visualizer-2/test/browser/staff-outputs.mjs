@@ -287,7 +287,8 @@ test('the sign\'s number is set smaller only when it is longer than a number is'
   assert.equal(signFit('체육관'), 1, 'three Hangul squares are six wide');
   assert.equal(signFit('ＲＯＯＭ２０４'), 0.5, 'fullwidth forms');
   assert.equal(signFit('ｶﾌｪﾃﾘｱ'), 1, 'halfwidth katakana are half wide');
-  assert.equal(signFit('Gym 体育館'), 7 / 10);
+  // SV2-53 item 2: the m is drawn half again as wide as a seventh of the line
+  assert.equal(signFit('Gym 体育館'), 7 / 10.5);
   assert.equal(signFit('x'.repeat(60)), 0.3);
   assert.equal(signFit(''), 1);
 });
@@ -453,6 +454,9 @@ before(async () => {
   await write('signs', (project) => {
     const rooms = project.building.floors.flatMap((floor) => floor.spaces);
     rooms.find((space) => space.id === 'rsample102').number = CJK_SEVEN;
+    // the widest Latin capitals the sign's face has, seven of them (SV2-53 item 2)
+    rooms.find((space) => space.id === 'rsample103').number = 'WWWWWWW';
+    rooms.find((space) => space.id === 'rsample204').number = 'MW-1004';
     const shared = rooms.find((space) => space.id === 'rsample203');
     shared.subjectId = null;
     shared.teacherIds = ['tsample007', 'tsample001'];
@@ -2117,7 +2121,13 @@ test('on a web address Share gives the address and "Copy link" copies it', async
 // first screenful (797 px down a sheet of 1539 at 390 px). It is the sheet's
 // foot on a screen as on paper: under the day when the day is shown, at the
 // card's foot when it is not.
-test('on a phone the sheet keeps its shape and its number, the room\'s day stands under it at the page\'s own size, and the school\'s name is the foot of it all', async () => {
+// SV2-53 item 6. With the day on, the phone's card kept the sheet's shape
+// (0.75) until SV2-53, which left 280 px of empty paper between the subject
+// and the periods at 390 px: the card is the number, the teacher and the
+// subject now, and the day and the school's line finish the sheet under it.
+// The school's line was 2.3% of the card's width, 8 px; it is the page's
+// small text.
+test('on a phone the sheet keeps its number, the card holds no tall empty paper above the day, the room\'s day stands under it at the page\'s own size, and the school\'s name is the foot of it all, readable', async () => {
   for (const width of [390, 1280]) {
     const session = await openPage({ width, height: width === 390 ? 760 : 900, theme: 'dark' });
     try {
@@ -2132,8 +2142,13 @@ test('on a phone the sheet keeps its shape and its number, the room\'s day stand
         const day = box('.sign__day');
         const school = box('.sign__school');
         const kinds = Array.from(document.querySelectorAll('.sign__kind'), (el) => el.getBoundingClientRect());
+        const last = box('.sign__subject');
         return {
           phone,
+          // the paper under the last line of the card, less the card's own bottom margin
+          emptyUnder: Math.round(paper.bottom - last.bottom - parseFloat(getComputedStyle(document.querySelector(phone ? '.sign__card' : '.sign')).paddingBottom)),
+          foot: size('.sign__school'),
+          footBoxes: document.querySelector('.sign__school').getClientRects().length,
           shape: Math.round((paper.width / paper.height) * 100) / 100,
           share: Math.round((size('.sign__number') / paper.width) * 1000) / 10,
           dayUnder: day.top >= paper.bottom,
@@ -2151,7 +2166,10 @@ test('on a phone the sheet keeps its shape and its number, the room\'s day stand
       });
       if (width === 390) {
         assert.equal(sign.phone, true);
-        assert.equal(sign.shape, 0.75, 'the sheet\'s own shape');
+        assert.ok(sign.shape > 0.75, 'the card is not the sheet\'s shape, which is taller: ' + sign.shape);
+        assert.ok(sign.emptyUnder <= 4, 'no empty paper under the subject: ' + sign.emptyUnder + ' px');
+        assert.equal(sign.footBoxes > 0, true);
+        assert.ok(sign.foot >= 14 && sign.foot >= sign.body * 0.85, 'the school\'s line is read at the page\'s small size: ' + sign.foot + ' px of ' + sign.body);
         assert.ok(Math.abs(sign.share - 22.5) < 0.3, 'the number is 22.5% of the sheet\'s width: ' + sign.share);
         assert.equal(sign.dayUnder, true, 'the day is under the sheet, not squeezed into it');
         assert.equal(sign.table, sign.body, 'at the size the page is read at: ' + sign.table + ' px of ' + sign.body);
@@ -2183,9 +2201,12 @@ test('on a phone without the room\'s day, the card is the whole sheet and the sc
       const card = document.querySelector('.sign__card').getBoundingClientRect();
       const school = document.querySelector('.sign__school');
       const at = school.getBoundingClientRect();
-      return { boxes: school.getClientRects().length, inCard: school.parentElement.classList.contains('sign__card'), foot: Math.round(((at.bottom - card.top) / card.height) * 100) / 100, day: document.querySelectorAll('.sign__day').length };
+      return { boxes: school.getClientRects().length, inCard: school.parentElement.classList.contains('sign__card'), foot: Math.round(((at.bottom - card.top) / card.height) * 100) / 100, day: document.querySelectorAll('.sign__day').length, shape: Math.round((card.width / card.height) * 100) / 100, size: parseFloat(getComputedStyle(school).fontSize), body: parseFloat(getComputedStyle(document.body).fontSize) };
     });
     assert.equal(sign.boxes > 0, true, 'the school\'s name has a box');
+    assert.equal(sign.shape, 0.75, 'the card is the sheet, in the sheet\'s shape');
+    // SV2-53 item 6: 8 px until SV2-53
+    assert.ok(sign.size >= 14 && sign.size >= sign.body * 0.85, 'the school\'s line is read at the page\'s small size: ' + sign.size + ' px of ' + sign.body);
     assert.deepEqual([sign.inCard, sign.day], [true, 0]);
     assert.ok(sign.foot > 0.9 && sign.foot <= 1, 'the school\'s name is at the foot of the card: ' + sign.foot);
     assert.deepEqual(session.errors, []);
@@ -2207,6 +2228,50 @@ test('seven full-square characters stay on one line of the sign, and two teacher
       assert.deepEqual(number, { text: CJK_SEVEN, fit: '0.5', lines: 1, inside: true }, 'at ' + width + ' px');
       await move(page, '#/door/rsample203', 'Door sign: Room 203');
       assert.deepEqual(await texts(page, '.sign p'), ['Room', '203', 'Ms. Vandermeer and Ms. Halloran', SCHOOL]);
+      assert.deepEqual(session.errors, []);
+    } finally {
+      await session.close();
+    }
+  }
+});
+
+// SV2-53 item 2. Until SV2-53 signWidth counted a Latin character as one of
+// seven at full size whatever its shape, and seven W's wrapped to a second
+// line at 120 pt. W and M are the widest letters the sign's face draws, so
+// seven of them, set at the fit their count gives, must stand on one line
+// inside the sheet: on a phone, on a desktop and on paper.
+test('seven of the widest capitals, "WWWWWWW" and "MW-1004", stand on one line of the sign at the fit, on screen and on paper', async () => {
+  // a phone, a desktop, and the inside of a sheet of US Letter and of A4 (PAPERS_INSIDE) for paper
+  for (const [width, height, media] of [[390, 900, 'screen'], [1280, 900, 'screen'], [710, 950, 'print'], [688, 1017, 'print']]) {
+    const session = await openPage({ width, height });
+    try {
+      const { page } = session;
+      for (const [room, text] of [['rsample103', 'WWWWWWW'], ['rsample204', 'MW-1004']]) {
+        await goto(page, files.signs.url + '#/door/' + room);
+        await page.emulateMediaType(media);
+        await page.waitForFunction((m) => matchMedia(m).matches, {}, media);
+        const number = await page.evaluate(() => {
+          const el = document.querySelector('.sign__number');
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sheet = document.querySelector('.sheet').getBoundingClientRect();
+          const box = el.getBoundingClientRect();
+          return {
+            boxes: el.getClientRects().length,
+            text: el.textContent,
+            fit: el.style.getPropertyValue('--sign-fit').trim(),
+            // one line: every piece of the text has the same top
+            lines: new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size,
+            inside: el.scrollWidth <= el.clientWidth && box.left >= sheet.left - 0.5 && box.right <= sheet.right + 0.5,
+          };
+        });
+        const at = text + ' at ' + width + ' by ' + height + ' on ' + media;
+        assert.ok(number.boxes > 0, 'the number has a box: ' + at);
+        delete number.boxes;
+        assert.ok(Math.abs(Number(number.fit) - signFit(text)) < 1e-9 && signFit(text) < 1, 'set smaller by its count, ' + signFit(text) + ': ' + at + ', ' + number.fit);
+        delete number.fit;
+        assert.deepEqual(number, { text, lines: 1, inside: true }, at);
+      }
       assert.deepEqual(session.errors, []);
     } finally {
       await session.close();

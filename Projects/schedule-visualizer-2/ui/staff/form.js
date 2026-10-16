@@ -39,7 +39,7 @@ import { isProtected } from '../../engine/publish-data.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageReader, failureSentence } from './assemble.js';
 import { publishDocument, deviceRandom, fileTarget } from './targets.js';
-import { partsOf, sameParts } from './preview.js';
+import { readerSeesChange } from './preview.js';
 import { readerSentences, readerSummary, NOTHING_REMAINS as NOTHING } from './readers.js';
 
 // What each view is called on the form, in the order of spec 12.2.
@@ -89,6 +89,31 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function kilobytes(bytes) {
   return bytes < 1024 * 1024 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (Math.round(bytes / 1024 / 102.4) / 10) + ' MB';
+}
+
+// How many times Publish asks for the checks of a project that cannot be
+// checked. The engine client remembers no failed run (ui/engine-client.js),
+// so each asking is a run: asked from its own refusal without a bound, a
+// caller would loop as fast as the runs can fail.
+export const CHECK_TRIES = 2;
+
+// The project whose checks have been drawn, as it is now: `current()` is the
+// project on screen, `ask(project)` a promise for true once that project's
+// lines are drawn or for false when its checks could not be run. A project
+// that changed while it was asked about is asked about again (that is not a
+// try); a refusal is tried again until CHECK_TRIES, then the answer is null.
+export async function standingProject(current, ask, isStopped) {
+  for (let tries = 0; tries < CHECK_TRIES; tries += 1) {
+    for (;;) {
+      const project = current();
+      const drawn = await ask(project);
+      if (isStopped()) return null;
+      if (current() !== project) continue;
+      if (drawn) return project;
+      break;
+    }
+  }
+  return null;
 }
 
 export function publishForm(ctx, hooks) {
@@ -272,18 +297,8 @@ export function publishForm(ctx, hooks) {
   // now: the one the file is made from. Null when its checks cannot be run
   // (asked twice: a refusal is tried once more, and the engine client never
   // remembers a failed run, so each asking is a new one).
-  async function checksStand() {
-    for (let tries = 0; tries < 2; tries += 1) {
-      for (;;) {
-        const project = store.project;
-        const drawn = await askChecks(project);
-        if (stopped) return null;
-        if (store.project !== project) continue;
-        if (drawn) return project;
-        break;
-      }
-    }
-    return null;
+  function checksStand() {
+    return standingProject(() => store.project, askChecks, () => stopped);
   }
 
   // ---- publish
@@ -343,7 +358,7 @@ export function publishForm(ctx, hooks) {
       // From here the file is out, and nothing below may say it is not.
       // "The schedule changed" only when something a reader would see did: a
       // theme or a paper size is a new project and the same file.
-      const moved = store.project !== project && !sameParts(partsOf(project, published.locked), partsOf(store.project, published.locked));
+      const moved = readerSeesChange(project, store.project);
       // A tab that cannot change the project still made its file. It is not
       // asked to note it: the refusal's toast ("Nothing changed") would be
       // the one false thing on the screen.

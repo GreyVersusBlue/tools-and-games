@@ -440,6 +440,82 @@ export function answerCounts({ gone, asked, answered, now }) {
   return !gone && asked === answered && now === answered;
 }
 
+// With nothing attached to work out the routes, how often the view looks
+// again for something that is.
+export const ENGINE_LOOK_MS = 1000;
+
+// How the view asks for the results, with no DOM in it, so a Node case runs
+// the code the view runs (SV2-55 item 6). One asker per visit of the view.
+//   createAsker({ store, graph, gone, timers, pending, settled, lookMs })
+//     store             the planner's store: store.project, and store.derived
+//                       with `engine` and `results()` once an engine is attached
+//     graph()           the store's graph now, kept beside an answer
+//     gone()            true once the view has left
+//     timers            { set(fn, ms) -> id, clear(id) }
+//     pending()         an answer is awaited
+//     settled(failed, answered)   draw again: an answer came (answered), with
+//                       the failure's words or null; or an engine was found
+//   -> { ask(), stop(), derived, waiting }
+//     ask()      ask about the store's project, once per project; with no
+//                engine the first line says so (derived.failed is NO_ENGINE),
+//                and the asker looks again every lookMs until one is
+//                attached, then asks about the project as it is then
+//     stop()     no more looking
+//     derived    { asked, project, results, graph, failed }: the last answer
+//     waiting    a look again is set
+export function createAsker({ store, graph, gone, timers, pending, settled, lookMs }) {
+  const every = lookMs === undefined ? ENGINE_LOOK_MS : lookMs;
+  let derived = { asked: null, project: null, results: null, graph: null, failed: null };
+  let wait = null;
+  function look() {
+    wait = null;
+    if (gone()) return;
+    if (store.derived && store.derived.engine) {
+      derived.failed = null;
+      ask();
+      settled(null, false);
+    } else {
+      wait = timers.set(look, every);
+    }
+  }
+  function ask() {
+    const project = store.project;
+    if (derived.asked === project) return;
+    derived.asked = project;
+    if (!store.derived || !store.derived.engine) {
+      // nothing to ask, and nothing is awaited: the first line says so. The
+      // project is not marked asked, and the view looks again now and then,
+      // so an engine attached later is asked for this same project.
+      derived.asked = null;
+      derived.failed = NO_ENGINE;
+      if (wait === null) wait = timers.set(look, every);
+      return;
+    }
+    pending();
+    const settle = (results, failed) => {
+      // an answer for a state the project has left is not for the screen
+      if (!answerCounts({ gone: gone(), asked: derived.asked, answered: project, now: store.project })) return;
+      // store.project is `project` here, so the store's graph is this answer's
+      derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, graph: results ? graph() : derived.graph, failed };
+      settled(failed, true);
+    };
+    store.derived.results().then((results) => settle(results, null), (error) => settle(null, error && error.message ? error.message : String(error)));
+  }
+  return {
+    ask,
+    stop() {
+      if (wait !== null) timers.clear(wait);
+      wait = null;
+    },
+    get derived() {
+      return derived;
+    },
+    get waiting() {
+      return wait !== null;
+    },
+  };
+}
+
 export function standingOf(project, derived) {
   const kept = Boolean(derived && derived.results && derived.project);
   const failed = derived && derived.failed ? String(derived.failed) : null;

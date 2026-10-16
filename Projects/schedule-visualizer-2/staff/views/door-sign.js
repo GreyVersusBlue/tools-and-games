@@ -56,6 +56,21 @@ const TONE = [[0x1f3fb, 0x1f3ff]];
 const LEADING = [[0x1100, 0x115f], [0xa960, 0xa97c]];
 const VOWEL = [[0x1160, 0x11a7], [0xd7b0, 0xd7c6]];
 const FINAL = [[0x11a8, 0x11ff], [0xd7cb, 0xd7fb]];
+// Characters drawn wider than a seventh of the line. Seven of anything else
+// in the sign's face (Barlow Semi Condensed 600, its Latin file) fit the
+// sheet at full size, but seven W's are 5.4 em where the line holds 3.9: each
+// of these counts as its own width, measured in Chromium in that face and
+// rounded up to a quarter of a letter. The two-em and three-em dashes are one
+// character drawn two and three letters long. (A character outside the face,
+// a Greek or a Cyrillic letter, is drawn in the reader's own font, whose
+// width the file cannot know; it counts one, or two in WIDE.)
+const BROAD = new Map([
+  ...[0x23, 0x26, 0x4d, 0x4e, 0x77, 0xa3, 0xa5, 0xd0, 0xd1, 0xd8, 0x2014, 0x201a, 0x2037, 0x203c, 0x203f, 0x2040, 0x2048, 0x2049, 0x204a, 0x204b, 0x204c, 0x204d, 0x2050, 0x2054, 0x2055, 0x205b, 0x20ac, 0x2122].map((point) => [point, 1.25]),
+  ...[0x25, 0x40, 0x57, 0x6d, 0xa9, 0xbc, 0xbd, 0xe6, 0x152, 0x153, 0x2026, 0x203b, 0x2057, 0x2058, 0x2059, 0x205c].map((point) => [point, 1.5]),
+  ...[0xbe, 0xc6, 0x2047].map((point) => [point, 1.75]),
+  ...[0x2001, 0x2003, 0x2015, 0x2030, 0x2042, 0x2053, 0x2e3a].map((point) => [point, 2]),
+  ...[0x2031, 0x2e3b].map((point) => [point, 3]),
+]);
 const JOINER = 0x200d;
 const AS_TEXT = 0xfe0e;
 const AS_EMOJI = 0xfe0f;
@@ -75,7 +90,7 @@ const openSyllable = (point) => point >= 0xac00 && point <= 0xd7a3 && (point - 0
 // less: a number counted short is set too large and wraps to a second line.
 export function signWidth(text) {
   let width = 0;
-  let last = 0; // the room the character before took: 1, 2, or 0 at the start
+  let last = 0; // the room the character before took (1, 2, a BROAD width), or 0 at the start
   let lastPoint = 0; // the character drawn last (a joined or toned one keeps the picture's)
   let previous = 0; // the code point just before, whatever it was
   let picture = false; // what was drawn last is a picture
@@ -105,14 +120,20 @@ export function signWidth(text) {
         picture = false;
         continue;
       }
-      if (last === 2 && within(SYMBOLS, lastPoint)) {
+      // A symbol in its text form is a letter, not a picture: a joiner after
+      // it joins nothing and a skin tone after it is a square of its own. A
+      // symbol with its skin tone is drawn as an emoji whatever follows, so
+      // it keeps its two.
+      if (last === 2 && within(SYMBOLS, lastPoint) && !toned) {
         width -= 1;
         last = 1;
       }
+      picture = false;
+      toned = false;
       continue;
     }
-    if ((point === AS_EMOJI || point === KEYCAP) && last === 1) {
-      width += 1;
+    if ((point === AS_EMOJI || point === KEYCAP) && last > 0 && last < 2) {
+      width += 2 - last;
       last = 2;
       continue;
     }
@@ -136,7 +157,7 @@ export function signWidth(text) {
     flag = !second && within(FLAG, point);
     if (second) continue;
     const wide = within(WIDE, point) || within(VOWEL, point) || within(FINAL, point);
-    last = wide ? 2 : 1;
+    last = BROAD.has(point) ? BROAD.get(point) : wide ? 2 : 1;
     lastPoint = point;
     picture = pictured;
     toned = false;
@@ -241,7 +262,9 @@ function signTree(school, room, options) {
   // them. On paper and from 640 px the card is no box at all (display:
   // contents) and the name is last either way.
   const foot = el('p', { class: 'sign__school', 'data-sign': 'school' }, typedName(typeof opts.school === 'string' ? opts.school : school.name));
-  return el('section', { class: 'sign', 'aria-label': 'The sign' },
+  // data-day: the room's day is on the sign, so on a phone the card is not
+  // the whole sheet (staff/staff.css)
+  return el('section', day ? { class: 'sign', 'aria-label': 'The sign', 'data-day': 'on' } : { class: 'sign', 'aria-label': 'The sign' },
     el('div', { class: 'sign__card' },
       worded ? el('p', { class: 'sign__word' }, 'Room') : null,
       el('p', { class: 'sign__number', style: '--sign-fit: ' + signFit(big), 'data-sign': 'number' }, numbered ? typedName(big) : big),

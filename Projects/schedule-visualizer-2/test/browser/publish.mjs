@@ -1347,6 +1347,35 @@ test('a theme, a paper size or a head count changed while the file is being made
   });
 });
 
+// SV2-53 item 1. A passcode turned on or off while the file is being made
+// is a change a reader sees: one file asks for a passcode and the other
+// does not. Until SV2-53 the form read both projects with the made file's
+// own flag, so turning the passcode on in the gap said nothing and turning
+// it off said the schedule changed only by luck of the flag.
+test('a passcode turned on or off while the file is being made is said as a change, each way', async () => {
+  await closing(await open(), async (page) => {
+    const status = async () => [await says(page, 'published'), await page.evaluate(() => document.querySelector('.pub').dataset.publishedOf || null)];
+    // the sample asks for a passcode: turned off in the gap
+    await pressAndHold(page);
+    await apply(page, 'setPublishSetting', { key: 'passcode', value: '' });
+    assert.equal((await letGo(page)).made, true);
+    const [off, offOf] = await status();
+    assert.ok(off.includes('. ' + MOVED_ON + ' '), 'a passcode turned off while the file was made: ' + off);
+    assert.ok(off.includes('It asks for the staff passcode: '), 'the file is the locked one Publish was pressed on: ' + off);
+    assert.equal(offOf, 'earlier');
+    // and with none, turned on in the gap
+    await pressAndHold(page);
+    await apply(page, 'setPublishSetting', { key: 'passcode', value: 'lanterns-41' });
+    assert.equal((await letGo(page)).made, true);
+    const [on, onOf] = await status();
+    assert.ok(on.includes('. ' + MOVED_ON + ' '), 'a passcode turned on while the file was made: ' + on);
+    assert.ok(on.endsWith('It opens with no passcode.'), on);
+    assert.equal(onOf, 'earlier');
+    // put the sample's passcode back for the cases that follow
+    await apply(page, 'setPublishSetting', { key: 'passcode', value: 'bulldogs2015' });
+  });
+});
+
 test('the file went out and the project then would not record it: the status says Published and that it is not recorded, never that nothing was published', async () => {
   await closing(await open(), async (page) => {
     await page.evaluate(async () => {
@@ -1375,6 +1404,47 @@ test('the file went out and the project then would not record it: the status say
     const first = await page.evaluate(() => document.querySelector('.stf-facts').textContent);
     assert.match(first, /^This tab made a file just now\. The project could not record it\. It has /);
     assert.doesNotMatch(first, /read-only/);
+  });
+});
+
+// SV2-53 item 4. "This tab made a file just now" stood until the section
+// was drawn anew: it goes on the next change of the project, which is made
+// after the file, and after UNNOTED_TIMES.ms, when it is no longer just now.
+// SV2-53b: what follows it is still true: the tab made a file, earlier. Until
+// SV2-53b it was "No file has been made from this project yet".
+test('the first line about a file the project could not record says "earlier" on the next change, and after a while with none', async () => {
+  await closing(await open(), async (page) => {
+    await page.evaluate(async () => {
+      const { notePublished } = await import(new URL('engine/actions.js', location.href).href);
+      const store = globalThis.sv2.store;
+      const apply = store.apply;
+      store.apply = function (action, payload) {
+        if (action === notePublished) throw new Error('The project would not take the note.');
+        return apply.call(store, action, payload);
+      };
+    });
+    const first = () => page.evaluate(() => document.querySelector('.stf-facts').textContent);
+    const JUST_NOW = /^This tab made a file just now\. The project could not record it\. It has /;
+    const EARLIER = /^This tab made a file earlier\. The project could not record it\. It has /;
+    assert.ok(await publishThroughHook(page));
+    assert.match(await first(), JUST_NOW);
+    // the next change
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
+    assert.match(await first(), EARLIER, 'the tab made a file; it is not "no file yet"');
+    // made again, and nothing changes: it goes after the set time
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 800;
+    });
+    assert.ok(await publishThroughHook(page));
+    assert.match(await first(), JUST_NOW);
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
+    assert.match(await first(), EARLIER, 'after the set time as after a change');
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 5 * 60 * 1000;
+    });
   });
 });
 
@@ -1474,6 +1544,11 @@ test('a read-only tab publishes its file and says nothing false: no "Nothing cha
     const page = second.page;
     await page.waitForSelector('#banner-read-only');
     assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^No file has been made from this project yet\./);
+    // the store refuses every change here, so only the set time ends "just now"
+    await page.evaluate(async () => {
+      const { UNNOTED_TIMES } = await import(new URL('ui/staff/index.js', location.href).href);
+      UNNOTED_TIMES.ms = 3000;
+    });
     const made = await publishThroughHook(page);
     assert.ok(made && made.fileName.startsWith('First Tab School - staff schedule - '));
     assert.equal(await page.evaluate(() => document.querySelectorAll('.toast').length), 0, 'no toast says "Nothing changed" about a file that was made');
@@ -1482,6 +1557,9 @@ test('a read-only tab publishes its file and says nothing false: no "Nothing cha
     assert.ok(status.includes(NOT_SENT + ' This tab is read-only, so the project does not record that a file was made. It asks for the staff passcode: '), status);
     assert.equal((await project(page)).publish.lastPublishedAt, null, 'the project was not changed');
     assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^This tab made a file just now\. The project does not record it while the tab is read-only\. It has /);
+    // SV2-53b: and once it is no longer just now, the tab still made it
+    await page.waitForFunction(() => !document.querySelector('.stf-facts').textContent.startsWith('This tab made a file just now'), { timeout: 30000 });
+    assert.match(await page.evaluate(() => document.querySelector('.stf-facts').textContent), /^This tab made a file earlier\. The project does not record it while the tab is read-only\. It has /);
     assert.deepEqual(second.problems().errors, []);
   } finally {
     if (second) await second.close();
@@ -1730,6 +1808,135 @@ test('a page that asks after the wait ran out clears "has not opened" and "Try a
     assert.notEqual(await page.evaluate(() => document.querySelector('.stf-preview').dataset.preview), 'failed');
     assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').hidden), true, 'no "Try again" for a page that opened');
     await page.evaluate(() => { delete globalThis.crypto.subtle; });
+  });
+});
+
+// SV2-53 item 3. Until SV2-53 a page that asked late, with no copy to be
+// given, cleared "failed" and "Try again" only while the bar still read "has
+// not opened": a copy that could not be made after the wait ran out wrote its
+// own sentence over it, and the page that then asked stayed "failed" with
+// "Try again" beside it.
+test('after the wait ran out, a later sentence does not keep a page that asks late "failed" or its "Try again"', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    const stale = 'The preview could not be brought up to date. ' + NO_ENCRYPTION;
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      // the page the frame is given does not ask for its data in time: a blank page
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => create(blob.type.startsWith('text/html') ? new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }) : blob);
+      // no encryption, and the passcode screen asked for before the first copy: no copy is ever made
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined });
+      location.hash = '#staff';
+      await new Promise((resolve) => {
+        const look = () => {
+          const box = document.querySelector('.stf-bar .stf-check input');
+          if (!box) return void requestAnimationFrame(look);
+          box.click();
+          resolve();
+        };
+        look();
+      });
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.preview === 'failed' && document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
+    assert.equal(await says(page, 'preview'), 'The preview has not opened. Try again; publishing a file does not depend on it.');
+    // a change, and its copy cannot be made either: its sentence goes over "has not opened"
+    const sent = await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent);
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction(() => document.querySelector('[data-says="preview"]').textContent.startsWith('The preview could not be brought up to date.'), { timeout: 30000 });
+    assert.equal(await page.evaluate(() => document.querySelector('.stf-preview').dataset.preview), 'failed', 'no page has asked yet');
+    // and now, late, the page asks, with nothing to be given
+    await frameOf(page).evaluate(() => parent.postMessage({ type: 'sv2-preview-ready' }, location.origin));
+    await page.waitForFunction(() => document.querySelector('.stf').staff.preview.state.opened === true, { timeout: 30000 });
+    assert.equal(await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent), sent, 'there was no copy to give it');
+    assert.notEqual(await page.evaluate(() => document.querySelector('.stf-preview').dataset.preview), 'failed', 'a page that asked has opened');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-action="preview-again"]').getClientRects().length), 0, 'no "Try again" for a page that opened');
+    assert.equal(await says(page, 'preview'), stale, 'and the bar says why there is nothing to show');
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+  });
+});
+
+// SV2-53 item 3. A copy made again while no page was asking left "could not
+// be brought up to date" standing until a page asked, though it was no
+// longer so.
+test('after the wait ran out, a copy made again clears "could not be brought up to date" at once, with no page asking', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    const NOT_OPEN = 'The preview has not opened. Try again; publishing a file does not depend on it.';
+    const stale = 'The preview could not be brought up to date. ' + NO_ENCRYPTION;
+    const bar = () => page.evaluate(() => {
+      const preview = document.querySelector('.stf-preview');
+      const again = document.querySelector('[data-action="preview-again"]');
+      return { preview: preview.dataset.preview, says: document.querySelector('[data-says="preview"]').textContent, stale: preview.dataset.previewSays || null, again: again.getClientRects().length > 0 };
+    });
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (blob) => create(blob.type.startsWith('text/html') ? new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }) : blob);
+      location.hash = '#staff';
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'failed', { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: NOT_OPEN, stale: null, again: true });
+    // no encryption, and the passcode screen asked for: the locked copy cannot be made, and says so over "has not opened"
+    await page.evaluate(() => {
+      Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, get: () => undefined });
+      document.querySelector('.stf-bar .stf-check input').click();
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === 'stale', { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: stale, stale: 'stale', again: true }, 'no page has asked: it has still not opened');
+    // encryption back and a change: the copy is made, and no page is asking for it
+    await page.evaluate(() => { delete globalThis.crypto.subtle; });
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction(() => document.querySelector('.stf-preview').dataset.previewSays === undefined, { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: NOT_OPEN, stale: null, again: true }, '"could not be brought up to date" is no longer so');
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('sv2staff:')) localStorage.removeItem(key);
+    });
+  });
+});
+
+// SV2-53b. "Could not be put together" was cleared only by the next load():
+// after the wait ran out and "Try again" could not put a page together, the
+// page before it, still in the frame, asked late and was given its copy, and
+// the bar went on saying the preview could not be put together beside it.
+test('the page before one "Try again" could not put together asks late: it is live, and "could not be put together" and "Try again" go', async () => {
+  const session = await openPlanner({ browser, server, hash: '#building' });
+  await closing(session, async (page) => {
+    const bar = () => page.evaluate(() => {
+      const preview = document.querySelector('.stf-preview');
+      const again = document.querySelector('[data-action="preview-again"]');
+      return { preview: preview.dataset.preview, says: document.querySelector('[data-says="preview"]').textContent, again: again.getClientRects().length > 0 };
+    });
+    await page.evaluate(async () => {
+      const { PREVIEW_TIMES } = await import(new URL('ui/staff/preview.js', location.href).href);
+      PREVIEW_TIMES.open = 600;
+      // the first page does not ask in time (a blank page); the second cannot be made at all
+      const create = URL.createObjectURL.bind(URL);
+      let pages = 0;
+      URL.createObjectURL = (blob) => {
+        if (!blob.type.startsWith('text/html')) return create(blob);
+        pages += 1;
+        if (pages > 1) throw new TypeError('Out of memory');
+        return create(new Blob(['<!doctype html><title>blank</title>'], { type: 'text/html' }));
+      };
+      location.hash = '#staff';
+    });
+    await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'failed', { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: 'The preview has not opened. Try again; publishing a file does not depend on it.', again: true });
+    await page.click('[data-action="preview-again"]');
+    await page.waitForFunction(() => document.querySelector('[data-says="preview"]').textContent.startsWith('The preview could not be put together'), { timeout: 30000 });
+    assert.deepEqual(await bar(), { preview: 'failed', says: 'The preview could not be put together. Reload the page and try again.', again: true }, 'the browser\'s own words are not shown');
+    // and now, late, the page before it asks, and is given its copy
+    const sent = await page.evaluate(() => document.querySelector('.stf').staff.preview.state.sent);
+    await frameOf(page).evaluate(() => parent.postMessage({ type: 'sv2-preview-ready' }, location.origin));
+    await page.waitForFunction((before) => document.querySelector('.stf').staff.preview.state.sent > before, { timeout: 30000 }, sent);
+    assert.deepEqual(await bar(), { preview: 'live', says: 'This is the file as staff see it. It follows the project as you change it.', again: false }, 'a live page is not said to be one that could not be put together');
+    // and a later change keeps saying so
+    await apply(page, 'editTeacher', { id: 'tsample001', name: 'Ms. Halloran again' });
+    await page.waitForFunction((before) => document.querySelector('.stf').staff.preview.state.sent > before + 1, { timeout: 30000 }, sent);
+    assert.equal((await bar()).says, 'This is the file as staff see it. It follows the project as you change it.');
   });
 });
 
