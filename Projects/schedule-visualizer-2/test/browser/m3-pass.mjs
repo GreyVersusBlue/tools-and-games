@@ -19,7 +19,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { openPlanner, go, startServer, launch, TOOL_PATH } from './harness.mjs';
+import { openPlanner, go, startServer, launch, visit, TOOL_PATH } from './harness.mjs';
+import { SCREENS } from './screens.mjs';
 
 const PHONE = { width: 390, height: 844, mobile: true };
 const TABLET = { width: 768, height: 1024 };
@@ -2063,6 +2064,35 @@ test('SV2-55 item 3: a stage made smaller under a map the reader moved keeps the
     assert.ok(kept.bottom - kept.top > 30, 'the floors’ box is not taller than the stage: the case tests nothing: ' + JSON.stringify(kept));
     assert.ok(keptOnStage(kept), 'the wheel took the floors off the stage: ' + JSON.stringify(kept));
   });
+});
+
+// SV2-57 item 5: visit() (screens.mjs's sweeps: axe and no-offsite) loads
+// each screen after clearSaved, whose CDP session takes Puppeteer's touch
+// emulation with it. A session opened as a phone, or a screen that asks for
+// a phone's viewport, is loaded with touch; the next screen is back at the
+// session's own size, with a fine pointer.
+test('SV2-57 item 5: visit() loads a phone’s screen with touch, after clearSaved, and puts the session’s own size back for the next screen', async () => {
+  const pointer = (page) => page.evaluate(() => ({ coarse: matchMedia('(pointer: coarse)').matches, touch: navigator.maxTouchPoints > 0, width: innerWidth, height: innerHeight }));
+  const phone = await openPlanner({ server, browser, hash: '#movement', theme: 'light', ...PHONE });
+  try {
+    assert.deepEqual(await pointer(phone.page), { coarse: true, touch: true, width: 390, height: 844 }, 'openPlanner did not give a touch page: the case tests nothing');
+    await visit(phone, { id: 'phone', hash: '#movement' });
+    assert.deepEqual(await pointer(phone.page), { coarse: true, touch: true, width: 390, height: 844 }, 'a session opened as a phone visits its screens with a fine pointer');
+  } finally {
+    await phone.page.close();
+  }
+  const desk = await openPlanner({ server, browser, hash: '#movement', theme: 'light', ...DESK });
+  try {
+    const sideways = SCREENS.find((screen) => screen.id === 'movement-phone-sideways');
+    assert.ok(sideways, 'the sweeps have no movement screen on a phone on its side');
+    await visit(desk, sideways);
+    assert.deepEqual(await pointer(desk.page), { coarse: true, touch: true, width: 844, height: 390 }, 'a screen that asks for a phone is loaded with a fine pointer');
+    await visit(desk, SCREENS.find((screen) => screen.id === 'movement-map'));
+    assert.deepEqual(await pointer(desk.page), { coarse: false, touch: false, width: 1280, height: 800 }, 'the screen after a phone’s is not at the session’s own size');
+    assert.deepEqual(desk.problems(), CLEAN);
+  } finally {
+    await desk.page.close();
+  }
 });
 
 // SV2-55 item 5: openPlanner closes what it opened when an earlier step

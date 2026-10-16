@@ -5,8 +5,10 @@
 //   cold   the graph, every room's way out, byExit, noRoute and a door card
 //          for every room, from nothing: budget 300 ms
 //
-// Measured by SV2-62 on huginn (2026-10-16), five runs in fresh processes:
-// 93 to 185 ms, the routes alone 46 to 157 ms. The suite fails at twice the
+// Measured by SV2-62b on huginn (2026-10-16), five runs in fresh processes,
+// after the stale-route check, the room's footprint in the crop and the
+// folded steps: 110 to 129 ms, the routes alone 72 to 84 ms (SV2-62 measured
+// 93 to 185 and 46 to 157 on a busier machine). The suite fails at twice the
 // budget, to leave room for a slow runner, and prints the measured number
 // either way. The clock is read here, in the test, never in the engine.
 
