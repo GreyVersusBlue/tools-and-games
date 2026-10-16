@@ -1736,3 +1736,191 @@ export const applyGridEdits = action(
 );
 
 // ================================================================ SV2-12: the grid editor (end)
+
+// ================================================================ SV2-61: scenario actions (start)
+//
+// The scenario lab's actions (spec 9, ARCHITECTURE 6.6). One scenario is open
+// at a time, in project.scenario: { name, changes, compared }. Every action
+// here but applyScenario changes the scenario alone, so each moves no
+// counter (bumps: []); each is an undo step all the same. The rules about
+// changes are engine/scenario.js's, used here and never re-implemented:
+// normalise when a change is added, reconcile when the scenario is applied,
+// applyChanges for the schedule itself, scenarioFromDiff for a file.
+//
+//   newScenario           { name?, replace? }
+//   renameScenario        { name }
+//   addScenarioChange     { change }
+//   removeScenarioChange  { index }, an index into project.scenario.changes
+//   discardScenario       {}
+//   setScenarioFromFile   { project, fileName?, name?, replace? }
+//   applyScenario         {}
+//
+// A scenario that is open is never replaced unless the payload says
+// `replace: true`. Reconcile's `changes` and `dropped[*].change` are the
+// scenario's own change objects, so a chip finds its index with indexOf.
+
+import { CHANGE_KINDS } from './schema.js';
+import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords } from './scenario.js';
+
+export const NEW_SCENARIO_NAME = 'New scenario';
+
+function scenarioFocus() {
+  return { section: 'scenarios' };
+}
+
+function needScenario(project) {
+  if (!project.scenario) refuse('There is no scenario open. Start one first.', 'no-scenario');
+  return project.scenario;
+}
+
+function needNoScenario(project, payload) {
+  if (project.scenario && !(payload && payload.replace === true)) refuse('A scenario is already open: ' + project.scenario.name + '. Apply it or discard it first.', 'scenario-open');
+}
+
+function scenarioName(project) {
+  return project.scenario ? project.scenario.name : '';
+}
+
+function changesWord(n) {
+  return n + (n === 1 ? ' change' : ' changes');
+}
+
+function withScenario(project, scenario) {
+  return { ...project, scenario };
+}
+
+// A change as the scenario keeps it: its own fields and no others. Refused
+// when it is not one of the three kinds with every field it needs.
+function scenarioChange(change) {
+  const bad = () => refuse('A scenario change is a move, a swap of two periods or a swap of two rooms, with every field it needs.', 'bad-value');
+  if (!change || typeof change !== 'object' || !CHANGE_KINDS.includes(change.kind)) bad();
+  const text = (value) => (typeof value === 'string' && value !== '' ? value : bad());
+  const whole = (value) => (Number.isInteger(value) && value >= 0 ? value : bad());
+  if (change.kind === 'move') return { kind: 'move', dayTypeId: text(change.dayTypeId), groupId: text(change.groupId), period: whole(change.period), roomId: text(change.roomId) };
+  if (change.kind === 'swapPeriods') return { kind: 'swapPeriods', dayTypeId: text(change.dayTypeId), groupId: text(change.groupId), periodA: whole(change.periodA), periodB: whole(change.periodB) };
+  return { kind: 'swapRooms', dayTypeId: text(change.dayTypeId), groupA: text(change.groupA), groupB: text(change.groupB), period: whole(change.period) };
+}
+
+function sameChange(a, b) {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
+function chipText(project, change) {
+  return changeWords(project, change).text;
+}
+
+// Start a scenario with no changes. payload: { name } (left out or blank,
+// NEW_SCENARIO_NAME) and replace, to put it in place of an open one.
+export const newScenario = action(
+  { label: (before, payload, after) => 'Start scenario ' + after.scenario.name, bumps: [], focus: scenarioFocus },
+  (project, payload) => {
+    needNoScenario(project, payload);
+    const given = payload ? payload.name : undefined;
+    const name = given === undefined || (typeof given === 'string' && given.trim() === '') ? NEW_SCENARIO_NAME : needText(given, 'A scenario name');
+    return withScenario(project, { name, changes: [], compared: null });
+  },
+);
+
+// payload: { name }.
+export const renameScenario = action(
+  { label: (before, payload) => 'Rename scenario ' + scenarioName(before) + ' to ' + payload.name, bumps: [], focus: scenarioFocus },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const name = needName(payload.name, 'A scenario');
+    if (name === scenario.name) return project;
+    return withScenario(project, { ...scenario, name });
+  },
+);
+
+// One more change. It is refused in the schedule editor's words when it
+// could not be applied to the schedule as it is now (a "same as" day type, a
+// group, period or room that is not there). Then the changes are normalised
+// with this one as the one added: a later change on a slot replaces an
+// earlier one, and this one goes when it leaves its slots as the schedule
+// has them, which is how "move 7-1 to 204 and back" leaves nothing. An older
+// change the schedule has caught up with stays (reconcile hides it). Adding
+// what changes nothing makes no undo step. payload: { change }.
+export const addScenarioChange = action(
+  {
+    label: (before, payload, after) => {
+      const name = scenarioName(before);
+      const change = scenarioChange(payload.change);
+      const list = after.scenario.changes;
+      if (list.length > 0 && sameChange(list[list.length - 1], change)) return 'Add to scenario ' + name + ': ' + chipText(before, change);
+      const gone = before.scenario.changes.filter((old) => !list.includes(old));
+      return 'Put back in scenario ' + name + ': ' + chipText(before, gone[0]) + (gone.length > 1 ? ' and ' + changesWord(gone.length - 1) + ' more' : '');
+    },
+    bumps: [],
+    focus: scenarioFocus,
+  },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const change = scenarioChange(payload.change);
+    applyChanges(project, [change]);
+    const list = scenario.changes.concat([change]);
+    const changes = normalise(project, list, { added: list.length - 1 });
+    if (changes.length === scenario.changes.length && changes.every((kept, i) => kept === scenario.changes[i])) return project;
+    return withScenario(project, { ...scenario, changes });
+  },
+);
+
+// payload: { index }, the change's place in project.scenario.changes.
+export const removeScenarioChange = action(
+  { label: (before, payload) => 'Remove from scenario ' + scenarioName(before) + ': ' + chipText(before, before.scenario.changes[payload.index]), bumps: [], focus: scenarioFocus },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const index = payload.index;
+    if (!Number.isInteger(index) || index < 0 || index >= scenario.changes.length) refuse('That change is no longer in the scenario.', 'missing');
+    return withScenario(project, { ...scenario, changes: scenario.changes.filter((change, i) => i !== index) });
+  },
+);
+
+// The scenario goes, changes and all; undo brings it back. With none open
+// this changes nothing.
+export const discardScenario = action(
+  { label: (before) => 'Discard scenario ' + scenarioName(before), bumps: [], focus: scenarioFocus },
+  (project) => (project.scenario ? withScenario(project, null) : project),
+);
+
+// "Compare with another project file": the scenario is what would make this
+// schedule the file's, matched by room number and group name
+// (scenarioFromDiff), with the file's name and the groups only one side has
+// in `compared`. A different building is refused with the count of rooms
+// that differ. The slots it could not compare (scenarioFromDiff's `skipped`)
+// are for the lab to show; the scenario does not keep them.
+// payload: { project, fileName, name } and replace, as newScenario.
+export const setScenarioFromFile = action(
+  {
+    label: (before, payload, after) => 'Compare with ' + (after.scenario.compared.fileName === '' ? 'another file' : after.scenario.compared.fileName) + ': ' + changesWord(after.scenario.changes.length),
+    bumps: [],
+    focus: scenarioFocus,
+  },
+  (project, payload) => {
+    needNoScenario(project, payload);
+    const other = payload ? payload.project : undefined;
+    if (!other || typeof other !== 'object') refuse('There is no project file to compare with.', 'bad-value');
+    const options = { fileName: typeof payload.fileName === 'string' ? payload.fileName : '' };
+    if (typeof payload.name === 'string' && payload.name.trim() !== '') options.name = payload.name;
+    return withScenario(project, scenarioFromDiff(project, other, options).scenario);
+  },
+);
+
+// Write the scenario into the real schedule as one undo step, and close it.
+// Only the changes that still apply go in (reconcile); each is applied by
+// setSlot or moveSlot (applyChanges). Any refusal refuses the whole step and
+// nothing changes. Undo brings back the schedule and the scenario together.
+export const applyScenario = action(
+  {
+    label: (before) => 'Apply scenario ' + scenarioName(before) + ': ' + changesWord(reconcile(before, before.scenario).changes.length),
+    bumps: [SCHEDULE],
+    focus: scenarioFocus,
+  },
+  (project) => {
+    const scenario = needScenario(project);
+    const applied = applyChanges(project, reconcile(project, scenario).changes);
+    return withScenario(applied, null);
+  },
+);
+
+// ================================================================ SV2-61: scenario actions (end)
