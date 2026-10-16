@@ -29,6 +29,7 @@ import { suggest, SUGGESTION_LIMIT, RUN_TRIES } from '../../engine/suggest.js';
 import { bigProject } from '../fixtures/big.mjs';
 
 const BUDGET = 1000;
+const SLACK = 2; // as every timing file here: a CI runner is not this machine
 const KINDS = ['room-double', 'group-walk', 'over-capacity', 'consecutive'];
 const SLOWEST = [
   'room-double:dbig00000b:7:rbig200014',
@@ -79,10 +80,10 @@ test('suggestions for one finding on the big fixture: under 1000 ms warm', () =>
       lines.push(finding.id + (otherTeachersRooms ? ' (other rooms on)' : '') + ': warm ' + warmMs.toFixed(1) + ' ms, cold ' + coldMs.toFixed(1) + ' ms, ' + warm.suggestions.length + ' suggestions');
       assert.ok(warm.suggestions.length > 0 && warm.suggestions.length <= SUGGESTION_LIMIT, finding.id + ': something to offer on the fixture');
       assert.deepEqual(cold.suggestions.map((one) => one.text), warm.suggestions.map((one) => one.text), finding.id + ': the same answer either way');
-      assert.ok(warmMs < BUDGET, finding.id + ' took ' + warmMs.toFixed(1) + ' ms warm, over ' + BUDGET);
+      assert.ok(warmMs < BUDGET * SLACK, finding.id + ' took ' + warmMs.toFixed(1) + ' ms warm, over ' + BUDGET * SLACK);
     }
   }
-  console.log('# suggestions (budget ' + BUDGET + ' ms warm): worst warm ' + worstWarm.toFixed(1) + ' ms, worst cold ' + worstCold.toFixed(1) + ' ms\n# ' + lines.join('\n# '));
+  console.log('# suggestions (budget ' + BUDGET + ' ms warm, fails at ' + BUDGET * SLACK + '): worst warm ' + worstWarm.toFixed(1) + ' ms, worst cold ' + worstCold.toFixed(1) + ' ms\n# ' + lines.join('\n# '));
 });
 
 test('the cap changes no answer on the big fixture: capped and uncapped give the same lists', () => {
