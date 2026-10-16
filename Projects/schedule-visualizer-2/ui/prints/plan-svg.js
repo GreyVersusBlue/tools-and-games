@@ -235,7 +235,8 @@ function cropOf(floor, asked) {
 // Where an exit's door name is drawn, in units, on the safe side: a
 // character at 0.62 of the size in the plan's face (it runs about 0.5), 0.75
 // in a script the face does not have and the browser sets in another, 1.05
-// when wide, and the height of the line with room over and under. One unit of
+// when wide, and the height of a line set round its centre with room over
+// and under (a fallback face's box runs to 0.8 of the size). One unit of
 // margin round it, so the name never touches the picture's edge.
 function exitNameBox(name, side, x, y, at, gap) {
   const size = 7.5;
@@ -245,7 +246,7 @@ function exitNameBox(name, side, x, y, at, gap) {
     ems += code < 0x0250 ? 0.62 : (code >= 0x1100 && (code <= 0x115f || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6) || code >= 0x20000)) ? 1.05 : 0.75;
   }
   const wide = ems * size;
-  const half = size * 0.65;
+  const half = size * 0.85;
   let box;
   if (side === 'n' || side === 's') {
     const cx = (x + 0.5) * U;
