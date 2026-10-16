@@ -40,7 +40,11 @@
 //                           floor; start and exit may be null (the route only
 //                           passes through, or ends on another floor).
 //                           Anything that is not a cell of the floor is left
-//                           out.
+//                           out. With a window too, when `exit` is an exit
+//                           with a door name, the window grows past its edge
+//                           (past the floor's, where the name is drawn) to
+//                           hold the whole name; width and height grow with
+//                           it, and may then be fractions of a cell.
 //                           With neither option the picture is byte for byte
 //                           what it was before they existed.
 //     svg      the markup, or '' when nothing is drawn on the floor
@@ -228,6 +232,33 @@ function cropOf(floor, asked) {
   return { x, y, width: right - x, height: bottom - y };
 }
 
+// Where an exit's door name is drawn, in units, on the safe side: a
+// character at 0.62 of the size in the plan's face (it runs about 0.5), 0.75
+// in a script the face does not have and the browser sets in another, 1.05
+// when wide, and the height of the line with room over and under. One unit of
+// margin round it, so the name never touches the picture's edge.
+function exitNameBox(name, side, x, y, at, gap) {
+  const size = 7.5;
+  let ems = 0;
+  for (const character of String(name)) {
+    const code = character.codePointAt(0);
+    ems += code < 0x0250 ? 0.62 : (code >= 0x1100 && (code <= 0x115f || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6) || code >= 0x20000)) ? 1.05 : 0.75;
+  }
+  const wide = ems * size;
+  const half = size * 0.65;
+  let box;
+  if (side === 'n' || side === 's') {
+    const cx = (x + 0.5) * U;
+    const cy = at + (side === 'n' ? -gap - 3 : gap + 4);
+    box = { left: cx - wide / 2, right: cx + wide / 2, top: cy - half, bottom: cy + half };
+  } else {
+    const cy = (y + 0.5) * U;
+    const from = at + (side === 'w' ? -gap : gap);
+    box = { left: side === 'w' ? from - wide : from, right: side === 'w' ? from : from + wide, top: cy - half, bottom: cy + half };
+  }
+  return { left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 };
+}
+
 // The way out as markup: a pale band under a dark line, the round mark where
 // it leaves the room and the square mark at the exit.
 function routeMarkup(floor, route) {
@@ -408,6 +439,10 @@ export function planSvg(project, floor, options) {
   // exits: a thick dash on the edge that leads outside, the door name beyond it
   let exits = 0;
   let named = false;
+  // in a window with a route, the box of the route's exit's name (it lies
+  // outside the floor, so the window grows to hold it)
+  const routeExit = options && options.route && typeof options.route === 'object' && Number.isInteger(options.route.exit) ? options.route.exit : null;
+  let nameBox = null;
   for (const exit of floor.exits) {
     const x = exit.cell % width;
     const y = Math.floor(exit.cell / width);
@@ -424,6 +459,7 @@ export function planSvg(project, floor, options) {
       const gap = 4;
       if (across) out.push(text((x + 0.5) * U, at + (side === 'n' ? -gap - 3 : gap + 4), 7.5, 'plan__exit-name', exit.doorName));
       else out.push(text(at + (side === 'w' ? -gap : gap), (y + 0.5) * U, 7.5, 'plan__exit-name plan__exit-name--' + side, exit.doorName));
+      if (crop && routeExit === exit.cell) nameBox = exitNameBox(exit.doorName, side, x, y, at, gap);
     }
   }
 
@@ -436,10 +472,19 @@ export function planSvg(project, floor, options) {
   // cropped to what is drawn, with room around it for the door names; or to
   // the window asked for, edge to edge
   const pad = named ? 1 : 0.25;
-  const vx = crop ? crop.x * U : (x0 - pad) * U;
-  const vy = crop ? crop.y * U : (y0 - pad) * U;
-  const vw = crop ? crop.width * U : (x1 - x0 + 1 + pad * 2) * U;
-  const vh = crop ? crop.height * U : (y1 - y0 + 1 + pad * 2) * U;
+  let vx = crop ? crop.x * U : (x0 - pad) * U;
+  let vy = crop ? crop.y * U : (y0 - pad) * U;
+  let vw = crop ? crop.width * U : (x1 - x0 + 1 + pad * 2) * U;
+  let vh = crop ? crop.height * U : (y1 - y0 + 1 + pad * 2) * U;
+  if (nameBox !== null) {
+    // the window grows past its edge, the floor's too, by what the name needs
+    const left = Math.min(vx, nameBox.left);
+    const top = Math.min(vy, nameBox.top);
+    vw = Math.max(vx + vw, nameBox.right) - left;
+    vh = Math.max(vy + vh, nameBox.bottom) - top;
+    vx = left;
+    vy = top;
+  }
   const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg" viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + esc('Floor plan of ' + floor.name) + '">\n'
     + out.join('\n') + '\n</svg>';
   return { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };

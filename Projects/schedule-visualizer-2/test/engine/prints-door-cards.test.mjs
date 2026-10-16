@@ -18,7 +18,7 @@ import { planSvg } from '../../ui/prints/plan-svg.js';
 import { esc } from '../../ui/prints/document.js';
 import { render as floorPlan } from '../../ui/prints/floor-plan.js';
 import { roomRows, sortRoomRows } from '../../ui/prints/room-list.js';
-import { evacuationRoutes, noRoute, doorCard } from '../../engine/evacuation.js';
+import { evacuationRoutes, noRoute, doorCard, ELEVATOR_KIND } from '../../engine/evacuation.js';
 import { routingGraph } from '../../engine/routing.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { planProject, threeFloors, twoRooms, disconnectedWing, splitLevel, floorId, roomId } from '../fixtures/buildings/plans.mjs';
@@ -151,7 +151,10 @@ test('every floor the route passes through is drawn, in the order the route reac
   assert.deepEqual(maps.map((match) => match[1]), [floorId(3), floorId(2), floorId(1)]);
   maps.forEach((match, i) => {
     const box = card.floors[i].box;
-    assert.ok(match[2].includes('viewBox="' + [box.x * 20, box.y * 20, box.width * 20, box.height * 20].join(' ') + '"'), match[1] + ': the crop');
+    const view = match[2].match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+    if (i < 2) assert.deepEqual(view, [box.x * 20, box.y * 20, box.width * 20, box.height * 20], match[1] + ': the crop');
+    // the exit's floor: the crop, grown where the exit's name needs it
+    else assert.ok(view[0] <= box.x * 20 && view[1] <= box.y * 20 && view[0] + view[2] >= (box.x + box.width) * 20 && view[1] + view[3] >= (box.y + box.height) * 20, match[1] + ': the crop and more: ' + view);
     assert.equal(countOf(match[2], '<path class="plan__route"'), i === 1 ? 0 : 1, match[1] + ': the line (floor 2 is one stairs cell: no line, the stairs show it)');
   });
   // the start on the room's floor only, the exit on the exit's floor only
@@ -181,8 +184,9 @@ test('the maps share one scale, and a small route is not blown up past the large
   assert.equal(doorCards.mapLayout([{ width: 5, height: 30 }, { width: 5, height: 30 }], 190, 150).across, true);
   const markup = cardsOf(doorCards.render(threeFloors(), null, NOW).html).get(roomId('3A'));
   const sizes = Array.from(markup.matchAll(/<div class="card__plan" style="width: ([\d.]+)mm; height: ([\d.]+)mm;">/g)).map((match) => [Number(match[1]), Number(match[2])]);
-  const boxes = doorCard(threeFloors(), null, evacuationRoutes(threeFloors()).rooms.find((entry) => entry.roomId === roomId('3A')).route).floors.map((floor) => floor.box);
-  const scales = sizes.map(([w], i) => w / boxes[i].width);
+  const held = doorCard(threeFloors(), null, evacuationRoutes(threeFloors()).rooms.find((entry) => entry.roomId === roomId('3A')).route).floors;
+  const widths = held.map((floor) => planSvg(threeFloors(), threeFloors().building.floors.find((candidate) => candidate.id === floor.floorId), { crop: floor.box, route: { cells: floor.cells, start: floor.start, exit: floor.exit } }).width);
+  const scales = sizes.map(([w], i) => w / widths[i]);
   for (const scale of scales) assert.ok(Math.abs(scale - scales[0]) < 0.02, 'one scale: ' + scales.join(', '));
 });
 
@@ -274,14 +278,15 @@ test('a room with no way out gets a card in the routing engine\'s own sentence, 
   for (const entry of missing) {
     const markup = cards.get(entry.roomId);
     assert.ok(markup.startsWith(entry.roomId + '" data-route="none">'));
-    assert.ok(markup.includes('<p class="card__none">' + esc(entry.sentence) + '</p>'), entry.sentence);
+    assert.ok(markup.includes('<p class="card__none"><span dir="auto">' + esc(entry.sentence) + '</span></p>'), entry.sentence);
+    assert.equal(countOf(markup, doorCards.ELEVATOR_SAYS), 0, 'not a room that only an elevator would get out');
     assert.ok(markup.includes(doorCards.NO_ROUTE_SAYS));
     assert.equal(countOf(markup, '<figure'), 0);
     assert.equal(countOf(markup, 'card__step'), 0);
   }
   const cover = html.slice(html.indexOf('<h1 class="doc-head__what">Door cards</h1>'), html.indexOf('<div class="card" '));
   assert.ok(cover.includes('<h2>2 rooms with no way out</h2>'));
-  assert.ok(cover.includes('<ul class="card-cover__missing">' + missing.map((entry) => '<li data-room="' + entry.roomId + '">' + esc(entry.sentence) + '</li>').join('') + '</ul>'));
+  assert.ok(cover.includes('<ul class="card-cover__missing">' + missing.map((entry) => '<li data-room="' + entry.roomId + '"><span dir="auto">' + esc(entry.sentence) + '</span></li>').join('') + '</ul>'));
   assert.ok(cover.includes('<span class="card-cover__to">no way out</span>'));
   assert.ok(cover.includes('<span class="card-cover__to">to <span dir="auto">West Door</span></span>'));
   // the first sheet comes first, before any card
@@ -363,6 +368,161 @@ test('no clock is read: the date is the one handed in, none without it, and the 
   assert.equal(doorCards.render(sampleSchool(), null, NOW).html, doorCards.render(sampleSchool(), null, NOW).html);
   const code = readFileSync(path.join(TOOL_DIR, 'ui', 'prints', 'door-cards.js'), 'utf8').replace(/\/\/.*$/gm, '');
   assert.doesNotMatch(code, /\bDate\b|performance\.now|Math\.random/);
+});
+
+// ---------------------------------------------------------------- SV2-66b: the review's six
+
+// What cardFit needs for one room: the room list's row and the card.
+function fitOf(project, id, paper, last) {
+  const graph = routingGraph(project);
+  const entry = evacuationRoutes(project, graph).rooms.find((candidate) => candidate.roomId === id);
+  const row = roomRows(project, 'all').find((candidate) => candidate.id === id);
+  return doorCards.cardFit(project, row, doorCard(project, graph, entry.route), paper, { last });
+}
+
+// The cell a card's first map is drawn at, in mm, read from the markup.
+function cellIn(markup, plan) {
+  return Number(markup.match(/<div class="card__plan" style="width: ([\d.]+)mm;/)[1]) / plan.width;
+}
+
+test('Room 303 upright on Letter: three floors\' maps at least half as large again as the 2.3 mm a cell they were, every step still on the one sheet', () => {
+  const project = sampleSchool();
+  const letter = { size: 'letter', orientation: 'portrait' };
+  const markup = cardsOf(doorCards.render(project, null, { ...NOW, paper: letter, roomIds: ['rsample303'] }).html).get('rsample303');
+  const fit = fitOf(project, 'rsample303', letter, true);
+  // before this fix: one row of three at 85.05 mm for a 37-cell box, 2.30 mm a cell
+  const before = 85.05 / 37;
+  const cell = cellIn(markup, fit.plans[0]);
+  assert.ok(cell >= before * 1.5, cell + ' mm a cell, against ' + before.toFixed(3) + ' before');
+  assert.ok(Math.abs(cell - fit.layout.cell) < 0.01, 'the markup is the fit');
+  assert.equal(countOf(markup, 'new-sheet'), 0, 'the steps stay on one sheet');
+  assert.equal(stepNumbers(markup).length, 15);
+  // the largest map on its own row, the other two in a row under it
+  assert.deepEqual([fit.layout.kind, fit.layout.groups], ['rows', [[0], [1, 2]]]);
+  assert.ok(markup.includes('<div class="card__maps card__maps--rows"><div class="card__maps-group"><figure class="card__map" data-floor="fsample003">'));
+  // the maps take the height the steps leave: here, with the steps in two columns
+  assert.equal(fit.columns, 2);
+  assert.ok(markup.includes('<ul class="card__steps card__steps--two">'));
+  assert.ok(Math.abs(fit.region.height - (fit.room - fit.key - 4 - fit.exit - fit.firstSteps)) < 1e-9);
+  assert.ok(fit.layout.height <= fit.region.height + 1e-9);
+  // landscape: no smaller than before (3.47 mm on Letter, 3.27 on A4) on a card the closing line does not follow
+  for (const [size, was] of [['letter', 3.467], ['a4', 3.27]]) {
+    const side = fitOf(project, 'rsample303', { size, orientation: 'landscape' }, false);
+    assert.ok(side.layout.cell >= was, size + ' landscape: ' + side.layout.cell);
+    assert.equal(side.sheets.length, 1, size + ' landscape: one sheet');
+  }
+  // every sample card on every paper is still one sheet (the test above), and
+  // each arrangement is one scale: a row, a stack, rows, columns
+  const rows = doorCards.mapLayout([{ width: 30, height: 10 }, { width: 14, height: 10 }, { width: 14, height: 10 }], 100, 100);
+  assert.deepEqual([rows.kind, rows.groups], ['rows', [[0], [1, 2]]]);
+  const columns = doorCards.mapLayout([{ width: 10, height: 30 }, { width: 10, height: 14 }, { width: 10, height: 14 }], 100, 120);
+  assert.deepEqual([columns.kind, columns.groups], ['columns', [[0], [1, 2]]]);
+});
+
+// The box a door name's text could take, on the safe side, from the markup:
+// 0.6 of the size a character (the plan's face runs about 0.5), 0.7 in a
+// script the face has not got, and the line's height round its centre.
+function nameBoxes(svg) {
+  return Array.from(svg.matchAll(/<text class="plan__exit-name( plan__exit-name--([we]))?" x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)">([^<]*)<\/text>/g)).map((match) => {
+    const [, , side, x, y, size, name] = match;
+    const width = Array.from(name).reduce((sum, character) => sum + (character.codePointAt(0) < 0x0250 ? 0.6 : 0.7), 0) * Number(size);
+    const left = side === 'w' ? Number(x) - width : side === 'e' ? Number(x) : Number(x) - width / 2;
+    return { name, left, right: left + width, top: Number(y) - Number(size) * 0.6, bottom: Number(y) + Number(size) * 0.6 };
+  });
+}
+
+test('the exit\'s door name is wholly on the card\'s map: the window grows past the floor\'s edge on the exit\'s side', () => {
+  const check = (project, ids, names) => {
+    const cards = cardsOf(doorCards.render(project, null, { ...NOW, roomIds: ids }).html);
+    const seen = [];
+    for (const id of ids) {
+      for (const figure of cards.get(id).matchAll(/<figure class="card__map"[\s\S]*?<\/figure>/g)) {
+        const [vx, vy, vw, vh] = figure[0].match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+        for (const box of nameBoxes(figure[0])) {
+          seen.push(box.name);
+          assert.ok(box.left >= vx && box.right <= vx + vw && box.top >= vy && box.bottom <= vy + vh, id + ': ' + box.name + ' ' + JSON.stringify(box) + ' in ' + [vx, vy, vw, vh]);
+        }
+      }
+    }
+    for (const name of names) assert.ok(seen.includes(esc(name)), name + ' is drawn');
+  };
+  // Door A below Floor 1 (Rooms 101 and 303), Door B to the east (the gym)
+  check(sampleSchool(), ['rsample101', 'rsamplegym', 'rsample303'], ['Door A', 'Door B']);
+  const long = sampleSchool();
+  const first = long.building.floors[0];
+  first.exits.find((exit) => exit.doorName === 'Door A').doorName = 'Main entrance by the bus loop and the staff car park';
+  first.exits.find((exit) => exit.doorName === 'Door B').doorName = 'דלת הכניסה המזרחית';
+  check(long, ['rsample101', 'rsamplegym', 'rsample303'], ['Main entrance by the bus loop and the staff car park', 'דלת הכניסה המזרחית']);
+  // a plan with no route keeps its window as asked, the floor's edge and all
+  const floor = first;
+  assert.ok(planSvg(long, floor, { crop: { x: 0, y: 0, width: floor.width, height: floor.height } }).svg.includes('viewBox="0 0 ' + floor.width * 20 + ' ' + floor.height * 20 + '"'));
+});
+
+test('the last card keeps room for the closing line, page boxes or none: windingCorridor(3) upright reserves it in its estimate', () => {
+  const project = windingCorridor(3);
+  for (const size of ['letter', 'a4']) {
+    const paper = { size, orientation: 'portrait' };
+    const last = fitOf(project, roomId('1A'), paper, true);
+    const inPile = fitOf(project, roomId('1A'), paper, false);
+    assert.equal(last.foot, doorCards.FOOT_MM, size);
+    assert.equal(inPile.foot, 0, size);
+    assert.ok(Math.abs(inPile.room - last.room - doorCards.FOOT_MM) < 1e-9, size + ': the first sheet\'s room');
+    assert.ok(Math.abs(inPile.later - last.later - doorCards.FOOT_MM) < 1e-9, size + ': a later sheet\'s room');
+    assert.ok(last.region.height + last.firstSteps + last.key + 4 + last.exit + doorCards.FOOT_MM <= inPile.room + 1e-9, size + ': maps, steps and the closing line fit the sheet');
+    // the document lays its last card out that way
+    const markup = cardsOf(doorCards.render(project, null, { ...NOW, paper }).html).get(roomId('1A'));
+    assert.ok(Math.abs(cellIn(markup, last.plans[0]) - last.layout.cell) < 0.01, size + ': the card is the last card\'s fit');
+    assert.equal(countOf(markup, 'new-sheet'), 0, size + ': one sheet');
+  }
+  assert.ok(doorCards.FOOT_MM >= 12, 'the closing line: 6 mm, 2 mm, its rule, 8 pt');
+});
+
+test('a floor that is not in the building, or room ids that are not a list, print one sheet saying so, never every room', () => {
+  const project = sampleSchool();
+  for (const options of [{ floorId: 'nosuchfloor' }, { floorId: 42 }]) {
+    const { html } = doorCards.render(project, null, { ...NOW, ...options });
+    assert.equal(cardOrder(html).length, 0, JSON.stringify(options));
+    assert.equal(countOf(html, '<section class="page">'), 1);
+    assert.ok(html.includes('<p class="doc-lead">' + doorCards.NOTHING_SAYS + '</p>'));
+    assert.equal(countOf(html, 'one for each room in the building'), 0);
+  }
+  const notList = doorCards.render(project, null, { ...NOW, roomIds: 'rsample101' }).html;
+  assert.equal(cardOrder(notList).length, 0);
+  assert.ok(notList.includes('None of the rooms chosen is in the building.'));
+  // left out, '' and 'all' are still every room
+  for (const floorId of [undefined, null, '', 'all']) assert.equal(cardOrder(doorCards.render(project, null, { ...NOW, floorId }).html).length, 13, String(floorId));
+});
+
+test('the routing engine\'s sentences on a no-route card and the first sheet are set like names: a right-to-left room name reads in its own direction', () => {
+  const project = disconnectedWing();
+  project.building.floors[0].spaces.find((space) => space.id === roomId('1C')).number = 'חדר ג';
+  const { html } = doorCards.render(project, null, NOW);
+  const entry = noRoute(project, evacuationRoutes(project)).find((candidate) => candidate.roomId === roomId('1C'));
+  assert.ok(entry.sentence.includes('חדר ג'));
+  const sentence = '<span dir="auto">' + esc(entry.sentence) + '</span>';
+  assert.ok(cardsOf(html).get(roomId('1C')).includes('<p class="card__none">' + sentence + '</p>'));
+  assert.ok(html.includes('<li data-room="' + roomId('1C') + '">' + sentence + '</li>'));
+});
+
+test('a room whose only way out is by elevator says so on its card and on the first sheet', () => {
+  // two floors joined twice, both joins elevators: Room 2A's only way down
+  const floor = ['..AA......', '..AA......', 'S########S', '..........', '..........'];
+  const project = planProject([floor, floor], {
+    doors: { '1A': [[2, 1, 's']], '2A': [[2, 1, 's']] },
+    connections: [[1, 0, 2, 2, 0, 2], [1, 9, 2, 2, 9, 2]],
+    exits: [[1, 1, 2, 'West Door']],
+  });
+  for (const connection of project.building.connections) connection.kind = ELEVATOR_KIND;
+  assert.deepEqual(evacuationRoutes(project).rooms.map((entry) => entry.onlyByElevator), [false, true]);
+  const { html } = doorCards.render(project, null, NOW);
+  const card = cardsOf(html).get(roomId('2A'));
+  assert.ok(card.includes('<p class="card__none"><span dir="auto">There is no way through from Room 2A on Floor 2 to an exit.</span></p><p class="card__lift">' + doorCards.ELEVATOR_SAYS + '</p>'));
+  assert.equal(countOf(cardsOf(html).get(roomId('1A')), doorCards.ELEVATOR_SAYS), 0);
+  assert.ok(html.includes('<li data-room="' + roomId('2A') + '"><span dir="auto">There is no way through from Room 2A on Floor 2 to an exit.</span> ' + doorCards.ELEVATOR_SAYS + '</li>'));
+  assert.ok(html.includes('<span class="card-cover__to">no way out but by elevator</span>'));
+  // with the elevators made stairs, the room has its way out and nothing is said
+  for (const connection of project.building.connections) delete connection.kind;
+  assert.equal(countOf(doorCards.render(project, null, NOW).html, doorCards.ELEVATOR_SAYS), 0);
 });
 
 // ---------------------------------------------------------------- planSvg's two options
