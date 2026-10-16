@@ -4,8 +4,9 @@
 //   top       the screen's first line, a sentence; then who, the day type,
 //             the transition strip, the two drawing options and Clear (./controls.js)
 //   the map   the plan map (ui/surface/plan-map.js): every floor on one
-//             canvas (./layout.js), drawn by the plan's own renderer, its
-//             zoom, its keyboard cursor and its row of floors; here the
+//             canvas (ui/surface/plan-layout.js), drawn by the plan's own
+//             renderer, its zoom, its keyboard cursor and its row of
+//             floors; here the
 //             lanes, the load colouring and the room markers are laid over
 //             it (ui/surface/overlays/lanes.js), and the stairs links from
 //             floor to floor; the legend card bottom right
@@ -66,7 +67,7 @@ import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
 import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, createAsker } from './model.js';
-import { slotAt, placeOf, FIT_MARGIN } from './layout.js';
+import { slotAt, placeOf, FIT_MARGIN } from '../surface/plan-layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
 import { cellCardView } from './card.js';
@@ -99,24 +100,6 @@ export const MOVEMENT_TABS = [
   { id: 'summary', label: 'Summary' },
   { id: 'export', label: 'Export' },
 ];
-
-// The section's own stylesheet. A page that links it (data-sheet="movement")
-// is left alone; otherwise it is added here.
-const SHEET = new URL('./movement.css', import.meta.url).href;
-function loadSheet() {
-  let link = document.querySelector('link[data-sheet="movement"]');
-  if (!link) {
-    link = h('link', { rel: 'stylesheet', href: SHEET, data: { sheet: 'movement' } });
-    document.head.append(link);
-  }
-  return new Promise((resolve) => {
-    if (link.sheet) resolve();
-    else {
-      link.addEventListener('load', () => resolve());
-      link.addEventListener('error', () => resolve());
-    }
-  });
-}
 
 // What is chosen here. It outlives a visit to another section, for the
 // project that is open.
@@ -172,13 +155,25 @@ export const section = {
 
     // ---- the map (ui/surface/plan-map.js): the canvas, the marks' canvas,
     // the viewport, the pointer and the keyboard cursor, the zoom buttons and
-    // the row of floors, the stage's least and the keep on the stage
+    // the row of floors, the stage's least and the keep on the stage; its
+    // root is this section's element, styled by movement.css (the map loads
+    // the sheet). The frame is asked for once the rest below is made.
     const plan = createPlanMap({
       ctx,
       name: 'movement',
       label: 'The movement map',
       keys: KEYS,
       floorsRow: { value: () => choice.floors, change: (value) => change({ floors: value }) },
+      frame: () => ({
+        before: [headline, top.element],
+        after: [key.line, bar.element],
+        inside: [staleBand, key.element, card.element],
+        head: top.element,
+        line: top.element.querySelector('.mov-line'),
+        foot: bar.element,
+        more: bar.element.querySelector('[data-part="more"]'),
+        under: key.line,
+      }),
     });
     const { view, canvas, layer, stage } = plan;
     const card = cellCardView();
@@ -285,18 +280,9 @@ export const section = {
     const headline = h('h1', { class: 'vh' }, HEADLINE);
     const map = plan.element;
     const empty = h('div', { class: 'mov-empty stub', hidden: true });
-    const element = h('div', { class: 'mov', data: { styled: 'false' } }, map, empty);
-    plan.frame({
-      root: element,
-      before: [headline, top.element],
-      after: [key.line, bar.element],
-      inside: [staleBand, key.element, card.element],
-      head: top.element,
-      line: top.element.querySelector('.mov-line'),
-      foot: bar.element,
-      more: bar.element.querySelector('[data-part="more"]'),
-      under: key.line,
-    });
+    // the section's element is the plan map's root (div.mov), with the map in it
+    const element = plan.root;
+    element.append(empty);
 
     // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
     function placeFloors() {
@@ -574,12 +560,6 @@ export const section = {
         reopen(held);
       }
       return false;
-    });
-
-    loadSheet().then(() => {
-      if (gone) return;
-      element.dataset.styled = 'true';
-      plan.remeasure();
     });
 
     // Looking at this view is the last step of Getting started. The tick is

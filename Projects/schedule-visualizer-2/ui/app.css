@@ -1403,15 +1403,16 @@ kbd {
 }
 
 /* On a section that scrolls (every one but those that are a plan, which
-   place the message themselves: Building, and Movement, Scenarios and
-   Safety on the plan map) the page ends in a band of paper as tall as a
-   message and its gap: with the page at its end, the message is on that
-   band and not on the last row of a table. The band is --toast-room, which
-   ui/components/toast.js raises while a message taller than it is up (a
-   long one, wrapped on a phone) and puts back when the message leaves.
-   Further up the page a message rides the bottom edge over what is there, as
-   it always did, and that can be scrolled clear. */
-.surface__layout:not([data-section="building"]):not([data-section="movement"]):not([data-section="scenarios"]):not([data-section="safety"]) {
+   place the message themselves: Building, Movement, and Scenarios and
+   Safety while a plan map is mounted in them, data-plan-map) the page ends
+   in a band of paper as tall as a message and its gap: with the page at
+   its end, the message is on that band and not on the last row of a table.
+   The band is --toast-room, which ui/components/toast.js raises while a
+   message taller than it is up (a long one, wrapped on a phone) and puts
+   back when the message leaves. Further up the page a message rides the
+   bottom edge over what is there, as it always did, and that can be
+   scrolled clear. */
+.surface__layout:not([data-section="building"]):not([data-section="movement"]):not([data-section="scenarios"][data-plan-map]):not([data-section="safety"][data-plan-map]) {
   padding-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
 }
 
@@ -1949,16 +1950,20 @@ kbd {
 /* ---------- The plan map's sections in the shell ----------
 
    Movement, Scenarios and Safety mount the same plan map
-   (ui/surface/plan-map.js), and its rules hold for all three alike. The map
-   goes edge to edge, as the building's plan does: the layout's padding and
-   its faint grid go. (These were in ui/movement/movement.css until the shell
-   took them.) */
+   (ui/surface/plan-map.js), and its rules hold for all three alike: for
+   Movement always, and for Scenarios and Safety while a map is mounted in
+   them, which the map marks on the layout (data-plan-map) and takes away
+   when it is unmounted, so a section of theirs with no map keeps the
+   layout's padding, its grid and the band under it. The map goes edge to
+   edge, as the building's plan does: the layout's padding and its faint
+   grid go. (These were in ui/movement/movement.css until the shell took
+   them.) */
 
 /* The banners (not saved, another tab, the device nearly full) are stuck to
    the surface's top over the section; the section has the rest, so the bar
    at its foot stays in the window (--banners-height, storage/session.js). */
-.surface__layout[data-section="scenarios"],
-.surface__layout[data-section="safety"],
+.surface__layout[data-section="scenarios"][data-plan-map],
+.surface__layout[data-section="safety"][data-plan-map],
 .surface__layout[data-section="movement"] {
   height: calc(100% - var(--banners-height, 0px));
   min-height: calc(100% - var(--banners-height, 0px));
@@ -1969,8 +1974,8 @@ kbd {
   background-image: none;
 }
 
-.surface__layout[data-section="scenarios"] > .surface__section,
-.surface__layout[data-section="safety"] > .surface__section,
+.surface__layout[data-section="scenarios"][data-plan-map] > .surface__section,
+.surface__layout[data-section="safety"][data-plan-map] > .surface__section,
 .surface__layout[data-section="movement"] > .surface__section {
   min-height: 0;
 }
@@ -1979,15 +1984,15 @@ kbd {
    beside the map it took 360 px of it, and over it (1000 px and under) it
    took its height. The map keeps the whole surface, and the surface scrolls
    down to the card. Under the card is the band a message lies on. */
-.surface__layout[data-section="scenarios"]:has(> .getting-started:not([hidden])),
-.surface__layout[data-section="safety"]:has(> .getting-started:not([hidden])),
+.surface__layout[data-section="scenarios"][data-plan-map]:has(> .getting-started:not([hidden])),
+.surface__layout[data-section="safety"][data-plan-map]:has(> .getting-started:not([hidden])),
 .surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 100% auto;
 }
 
-.surface__layout[data-section="scenarios"] > .getting-started,
-.surface__layout[data-section="safety"] > .getting-started,
+.surface__layout[data-section="scenarios"][data-plan-map] > .getting-started,
+.surface__layout[data-section="safety"][data-plan-map] > .getting-started,
 .surface__layout[data-section="movement"] > .getting-started {
   position: static;
   order: 0;
@@ -1999,8 +2004,8 @@ kbd {
 }
 
 @media not all and (max-width: 1000px) {
-  .surface__layout[data-section="scenarios"] > .getting-started .steps,
-  .surface__layout[data-section="safety"] > .getting-started .steps,
+  .surface__layout[data-section="scenarios"][data-plan-map] > .getting-started .steps,
+  .surface__layout[data-section="safety"][data-plan-map] > .getting-started .steps,
   .surface__layout[data-section="movement"] > .getting-started .steps {
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
     gap: 0 var(--s-5);
@@ -2011,8 +2016,8 @@ kbd {
    the section docks at the bottom: the playback bar, and the zoom buttons
    over the map's corner. The plan map measures them (--toast-clear, on the
    surface; ui/surface/plan-map.js). */
-.surface__layout[data-section="scenarios"] ~ .toasts,
-.surface__layout[data-section="safety"] ~ .toasts,
+.surface__layout[data-section="scenarios"][data-plan-map] ~ .toasts,
+.surface__layout[data-section="safety"][data-plan-map] ~ .toasts,
 .surface__layout[data-section="movement"] ~ .toasts {
   bottom: calc(var(--toast-clear, 0px) + var(--s-3));
 }
@@ -2022,8 +2027,8 @@ kbd {
    (DESIGN 5.3). "Show its N cells" in the sheet shuts it and moves the map
    (ui/movement/hotspots.js). */
 @media (max-width: 640px) {
-  .app:has(.surface__layout[data-section="scenarios"]) > .inspector[data-open="true"],
-  .app:has(.surface__layout[data-section="safety"]) > .inspector[data-open="true"],
+  .app:has(.surface__layout[data-section="scenarios"][data-plan-map]) > .inspector[data-open="true"],
+  .app:has(.surface__layout[data-section="safety"][data-plan-map]) > .inspector[data-open="true"],
   .app:has(.surface__layout[data-section="movement"]) > .inspector[data-open="true"] {
     height: 55vh;
     height: 55dvh;

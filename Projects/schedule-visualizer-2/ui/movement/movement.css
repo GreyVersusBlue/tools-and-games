@@ -17,8 +17,9 @@
    height, the bar stays at the section's foot, and the zoom buttons and the
    legend's card stand above the bar where it lies over the stage.
 
-   index.html links this sheet (data-sheet="movement"); ui/movement/index.js
-   adds it to a page that does not. The section's place in the shell (the map
+   index.html links this sheet (data-sheet="movement"); the plan map
+   (ui/surface/plan-map.js), whose .mov-* rules these are for every section
+   that mounts it, adds it to a page that does not. The section's place in the shell (the map
    edge to edge, where Getting started and the messages go) is ui/app.css's. */
 
 /* ---------- The section ---------- */
@@ -28,7 +29,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   /* what the focus brings into view lands above the bar, which is sticky at
-     the section's foot (--mov-bar, ui/movement/index.js) */
+     the section's foot (--mov-bar, ui/surface/plan-map.js) */
   scroll-padding-bottom: var(--mov-bar, 0px);
   background: var(--paper);
 }
@@ -282,9 +283,10 @@
 /* the map's floor: 45 % of the window's height and 320 px at the least, and
    whatever the first line and the bar leave above that; but never more than
    the section has under its first line (folded) and over what is docked
-   under the map, --mov-room, which ui/movement/index.js measures, and which
-   is never under the stage's least (120 px, or the floors' box at Fit when
-   that is less, never under the zoom box's need: stageLeast in layout.js) */
+   under the map, --mov-room, which ui/surface/plan-map.js measures, and
+   which is never under the stage's least (120 px, or the floors' box at Fit
+   when that is less, never under the zoom box's need: stageLeast in
+   ui/surface/plan-layout.js) */
 .mov-map > .mov-stage {
   position: relative;
   flex: 1 0 max(45vh, 320px);
@@ -575,7 +577,7 @@
 /* ---------- Zoom ---------- */
 
 /* lifted over the bar where the bar lies on the stage's foot (--mov-under,
-   ui/movement/index.js) */
+   ui/surface/plan-map.js) */
 .mov-zoom {
   position: absolute;
   left: var(--s-3);
@@ -717,7 +719,7 @@
 
 /* More opens up over the map's foot (the bar is at the section's foot): it
    never takes more than 40 % of the window, nor more than the map and the
-   legend's line have (--mov-more, ui/movement/index.js), so the first line
+   legend's line have (--mov-more, ui/surface/plan-map.js), so the first line
    stays on screen and a message has room above the bar; it scrolls inside
    itself past that, and is never under 6rem */
 .mov-pb__more {

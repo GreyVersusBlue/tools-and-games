@@ -122,6 +122,7 @@ export const GROUPS = {
     'browser/hotspots.mjs', // SV2-18
     'browser/playback.mjs', // SV2-19
     'browser/m3-pass.mjs', // SV2-43
+    'browser/plan-map.mjs', // SV2-65b
     'a11y/axe.mjs',
   ],
   a11y: [

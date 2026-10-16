@@ -175,7 +175,7 @@ row names a file it does not run.
 | `test/ui/schedule-address.test.mjs` | The Groups tab's addresses, its one Tab stop and a phone's history of the list and a group, with no browser |
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
 | `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
-| `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown |
+| `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
@@ -209,6 +209,7 @@ row names a file it does not run.
 | `test/browser/movement.mjs` | The movement view: who, the day type, the transition, the lanes and the legend |
 | `test/browser/hotspots.mjs` | The movement view's inspector: hotspots, travel time, summary, export |
 | `test/browser/playback.mjs` | Playback: play, the scrubber, pace, the markers, the Late line |
+| `test/browser/plan-map.mjs` | The plan map mounted through its module as Scenarios and Safety will: their stubs as they were, the toast clearance of two maps, the keep on the stage and the stage's least |
 | `test/a11y/axe.mjs` | The accessibility sweep of every screen, light and dark |
 | `test/timing/routing.mjs` | Routing under its budget at the promised size |
 | `test/timing/crowd.mjs` | The crowd model under its budget |

@@ -2,17 +2,21 @@
 // Scenarios and Safety mount (ui/surface/plan-map.js, SV2-65): the room the
 // stage is given in a section (stageRoom, which the map's room() measures
 // for), the keep on the stage (keepOnStage, which every pan, zoom and resize
-// of the map goes through) and which floors a choice puts on the map. The
-// pure arithmetic under them stays in ui/movement/layout.js, whose own cases
-// are in test/ui/movement.test.mjs; these pin that the module applies it.
+// of the map goes through), which floors a choice puts on the map, and the
+// two options a section cannot leave out. The pure arithmetic under them is
+// ui/surface/plan-layout.js, whose own cases are in test/ui/movement.test.mjs;
+// these pin that the module applies it. The module in a page, mounted as a
+// section mounts it, is test/browser/plan-map.mjs.
 //
 //   node test/ui/plan-map.test.mjs
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { stageRoom, keepOnStage, floorsShown, KEEP_ON_STAGE, CURSOR_LEAST } from '../../ui/surface/plan-map.js';
-import { layoutFloors, stageLeast, STAGE_LEAST, ZOOM_ROOM, TITLE_ROWS } from '../../ui/movement/layout.js';
+import { createPlanMap, stageRoom, keepOnStage, floorsShown, KEEP_ON_STAGE, CURSOR_LEAST } from '../../ui/surface/plan-map.js';
+import * as planLayout from '../../ui/surface/plan-layout.js';
+import * as oldPath from '../../ui/movement/layout.js';
+import { layoutFloors, stageLeast, STAGE_LEAST, ZOOM_ROOM, TITLE_ROWS } from '../../ui/surface/plan-layout.js';
 import { createViewport, CELL } from '../../ui/surface/viewport.js';
 
 // A square building: its box at Fit across 844 px is taller than 120 px, so
@@ -119,4 +123,19 @@ test('which floors a choice puts on the map: one by its id, every floor in the b
   assert.deepEqual(floorsShown(project, 'fb').map((floor) => floor.id), ['fb']);
   for (const value of ['auto', 'side', 'stacked', 'fgone', undefined]) assert.deepEqual(floorsShown(project, value).map((floor) => floor.id), ['fa', 'fb'], String(value));
   assert.notEqual(floorsShown(project, 'auto'), project.building.floors, 'the building\'s own list was handed out');
+});
+
+test('SV2-65b: a map needs a name and a frame, and is told which one is missing before it makes anything', () => {
+  const ctx = { store: { project: null } };
+  assert.throws(() => createPlanMap({ ctx, label: 'A map', frame: {} }), (error) => error instanceof TypeError && /needs a name/.test(error.message), 'a map with no name took Movement\'s ids');
+  assert.throws(() => createPlanMap({ ctx, label: 'A map', name: '', frame: {} }), (error) => error instanceof TypeError && /needs a name/.test(error.message), 'an empty name was taken');
+  assert.throws(() => createPlanMap({ ctx, label: 'A map', name: 'lab' }), (error) => error instanceof TypeError && /needs a frame/.test(error.message), 'a map with no frame was made, and its room and dock would do nothing');
+  assert.throws(() => createPlanMap({ ctx, label: 'A map', name: 'lab', frame: null }), (error) => error instanceof TypeError && /needs a frame/.test(error.message));
+  assert.throws(() => createPlanMap(), (error) => error instanceof TypeError && /needs a name/.test(error.message));
+});
+
+test('SV2-65b: the layout is ui/surface/plan-layout.js, and the old path under ui/movement hands on the same functions', () => {
+  assert.ok(Object.keys(planLayout).length >= 10, 'the module lost its exports: ' + Object.keys(planLayout).join(', '));
+  assert.deepEqual(Object.keys(oldPath).sort(), Object.keys(planLayout).sort());
+  for (const key of Object.keys(planLayout)) assert.equal(oldPath[key], planLayout[key], key + ' at the old path is not the same one');
 });

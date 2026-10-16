@@ -3,17 +3,46 @@
 // and the top bar's row of floors. Movement draws its walks on it; Scenarios
 // and Safety mount the same map with their own overlay (ARCHITECTURE 6.6).
 //
-//   const map = createPlanMap({ ctx, label, floorsRow, name, keys })
+//   const map = createPlanMap({ ctx, label, name, frame, floorsRow, keys })
 //     ctx         the shell's section context
 //     label       the map's accessible name ("The movement map")
+//     name        required: the prefix of the ids ('movement': #movement-plan,
+//                 #movement-keys); two maps on one page need two names
+//     frame       required: the section around the map, an object or a
+//                 function returning one, asked once (at the first
+//                 setProject or remeasure, or straight after the code that
+//                 made the map, whichever is first):
+//                 { before, after, inside, head, line, foot, more, under },
+//                 every one optional, so {} is a bare map. `before` and
+//                 `after` are lists put above and under the stage in
+//                 map.element, `inside` a list put on the stage under the
+//                 zoom buttons; the rest are what the stage's room is
+//                 measured with (stageRoom): `head` the box of the first line
+//                 and the controls, `line` the first line (what the head
+//                 folds to), `foot` the bar sticky at the section's foot,
+//                 `more` what of the foot may grow over the map, `under` a
+//                 line docked under the stage
 //     floorsRow   { value(), change(value) }: which floors are on the map
 //                 ('auto', 'side', 'stacked' or a floor's id) and choosing
 //                 another; the map then puts its row of floors in the top
 //                 bar's second row. Without it every floor is on the map, laid
 //                 out as fits the window best, and there is no row.
-//     name        the prefix of the ids (default 'movement': #movement-plan)
 //     keys        the sentence a screen reader is given for the map's keys
 //
+// A name or a frame left out is a TypeError naming it. The map makes its own
+// root, map.root (div.mov, the section's scrolling element, with map.element
+// in it): it loads movement.css, whose .mov-* rules style it, sets
+// data-styled="true" on the root once the sheet is in, and measures itself
+// then. While it is mounted the shell's layout element carries data-plan-map
+// (the name), which is what puts the layout of a plan (ui/app.css, "The plan
+// map's sections in the shell") on Scenarios and Safety. What a section that
+// mounts it still has to do:
+//   - put map.root (or something holding it) in the element it returns;
+//   - call map.setProject(project, graph) from its update, which is also how
+//     a change of theme is drawn (the theme is a setting of the project);
+//   - call map.unmount() from its own unmount.
+//
+//   map.root                the section's scrolling element (div.mov)
 //   map.element             the column the stage stands in (.mov-map)
 //   map.stage               the stage (.mov-stage): the map's canvas, the marks' canvas, the zoom buttons
 //   map.setProject(project, graph)   draw this project (the one the section's
@@ -25,7 +54,7 @@
 //   map.paint()             draw the map again, at the next frame; the marks with it
 //   map.paintMarks()        draw the marks again, now, and nothing else
 //   map.show(floorId, cells)   bring cells to the middle of the map
-//   map.fit()               fit the map to the stage
+//   map.fit(quiet)          fit the map to the stage
 //   map.focus()             put the focus on the map; false when it is hidden
 //   map.cellAt(floorId, cell)  a cell's middle in pixels, or null
 //   map.onCell(fn)          fn({ kind, x, y, inside }) for what is done to a cell:
@@ -36,18 +65,7 @@
 //                           the map's cells
 //   map.unmount()
 //
-// What the sections that mount it needed besides (SV2-65):
-//   map.frame({ root, before, after, inside, head, line, foot, more, under })
-//                           the section around the map: `root` is the
-//                           section's scrolling element; `before` and `after`
-//                           go above and under the stage in map.element,
-//                           `inside` on the stage under the zoom buttons; the
-//                           rest are what the stage's room is measured with
-//                           (stageRoom): `head` the box of the first line and
-//                           the controls, `line` the first line (what the head
-//                           folds to), `foot` the bar sticky at the section's
-//                           foot, `more` what of the foot may grow over the
-//                           map, `under` a line docked under the stage
+// What Movement needed besides (SV2-65):
 //   map.view, map.canvas, map.layer, map.cursor, map.world, map.fitted,
 //   map.graph, map.project
 //   map.theme()             the renderer's colours
@@ -56,16 +74,18 @@
 //                           away; true when the focus was in the row taken away
 //   map.onLayout(fn)        fn() each time the floors are laid out, before
 //                           a fitted map is fitted again
-//   map.remeasure()         measure the section again (its sheet has loaded)
+//   map.remeasure()         measure the section again
+//   map.dock()              measure again where a message may lie (the
+//                           section's head moved with no change of size)
 //
 // The rules of the stage (DESIGN 5.3; DECISIONS 2026-10-14 23:53,
 // 2026-10-15 11:54 and 2026-10-16 01:15) are here, for every section: the
-// stage is never under its least (stageLeast in ui/movement/layout.js, never
+// stage is never under its least (stageLeast in ./plan-layout.js, never
 // under what the zoom box needs as drawn), a section with less scrolls with
 // the bar sticky at its foot, the zoom buttons and a docked line lift over
 // the bar, no pan or zoom leaves under KEEP_ON_STAGE px of the floors, and a
 // message of the shell lies above what is docked at the bottom
-// (--toast-clear).
+// (--toast-clear, owned by the map mounted last of those still mounted).
 
 import { h } from '../components/dom.js';
 import { choice as segmented } from '../components/choice.js';
@@ -74,7 +94,38 @@ import { createViewport, ZOOM_STEP } from './viewport.js';
 import { createRenderer } from './renderer.js';
 import { attachInput } from './input.js';
 import { attachCursor } from './cursor.js';
-import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, FIT_MARGIN } from '../movement/layout.js';
+import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, FIT_MARGIN } from './plan-layout.js';
+
+// The map's stylesheet: movement.css's .mov-* rules, for every section that
+// mounts it. A page that links it (data-sheet="movement", as index.html does)
+// is left alone; otherwise it is added here.
+const SHEET = new URL('../movement/movement.css', import.meta.url).href;
+function loadSheet() {
+  let link = document.querySelector('link[data-sheet="movement"]');
+  if (!link) {
+    link = h('link', { rel: 'stylesheet', href: SHEET, data: { sheet: 'movement' } });
+    document.head.append(link);
+  }
+  return new Promise((resolve) => {
+    if (link.sheet) resolve();
+    else {
+      link.addEventListener('load', () => resolve());
+      link.addEventListener('error', () => resolve());
+    }
+  });
+}
+
+// The maps mounted now, in the order they were made: { name, layout,
+// surface, clear }. The surface's --toast-clear is the last one's; a map
+// under it measures its own value and keeps it, and gets the surface back
+// when the one over it is unmounted. The shell's layout keeps data-plan-map
+// while any map mounted on it is.
+const mounted = [];
+function setClear(entry) {
+  if (!entry || !entry.surface) return;
+  if (entry.clear === null) entry.surface.style.removeProperty('--toast-clear');
+  else if (entry.surface.style.getPropertyValue('--toast-clear') !== entry.clear) entry.surface.style.setProperty('--toast-clear', entry.clear);
+}
 
 // The keyboard cursor's ring is never smaller than this, in CSS pixels.
 export const CURSOR_LEAST = 14;
@@ -130,14 +181,20 @@ export function stageRoom(m) {
 }
 
 // Which floors a choice puts on the map: one floor by its id, else all.
+// Movement's picture has the same rule as shownFloors (ui/movement/model.js),
+// which reads the choice whole; a change to one is a change to the other.
 export function floorsShown(project, value) {
   const one = project.building.floors.find((floor) => floor.id === value);
   return one ? [one] : project.building.floors.slice();
 }
 
-export function createPlanMap(options) {
+export function createPlanMap(asked) {
+  const options = asked || {};
+  if (typeof options.name !== 'string' || options.name === '') throw new TypeError('createPlanMap needs a name: the prefix of the map\'s ids (\'movement\' gives #movement-plan).');
+  const frameOption = options.frame;
+  if (frameOption === null || (typeof frameOption !== 'function' && typeof frameOption !== 'object')) throw new TypeError('createPlanMap needs a frame: the section around the map, { before, after, inside, head, line, foot, more, under } or a function returning it ({} for a bare map).');
   const ctx = options.ctx;
-  const name = options.name || 'movement';
+  const name = options.name;
   const floorsChoice = options.floorsRow || null;
   let project = null;
   let graph = null;
@@ -169,6 +226,14 @@ export function createPlanMap(options) {
     h('button', { type: 'button', class: 'mov-zoom__btn mov-zoom__btn--fit', title: 'Fit the map to the window (0)', data: { action: 'fit' }, on: { click: () => fit() } }, 'Fit'));
   const stage = h('div', { class: 'mov-stage' }, canvas, layer, h('p', { class: 'vh', id: name + '-keys' }, options.keys || ''), zoomBox);
   const element = h('div', { class: 'mov-map' }, stage);
+  // the section's scrolling element, hidden (movement.css) until its sheet is in
+  const root = h('div', { class: 'mov', data: { styled: 'false' } }, element);
+
+  // this map in the list of those mounted, and the shell's layout marked as holding one
+  const layout = document.querySelector('.surface__layout');
+  const me = { name, layout, surface: null, clear: null };
+  mounted.push(me);
+  if (layout) layout.dataset.planMap = name;
 
   const overlays = [];
   const across = [];
@@ -250,6 +315,7 @@ export function createPlanMap(options) {
   }
 
   function setProject(next, nextGraph) {
+    framed();
     project = next;
     graph = nextGraph || null;
     arrange();
@@ -507,8 +573,10 @@ export function createPlanMap(options) {
       const box = each.getBoundingClientRect();
       if (box.height > 0 && box.bottom > edge.top && box.top < foot) top = Math.min(top, box.top);
     }
-    const clear = Math.max(0, Math.round(foot - top)) + 'px';
-    if (surface.style.getPropertyValue('--toast-clear') !== clear) surface.style.setProperty('--toast-clear', clear);
+    me.surface = surface;
+    me.clear = Math.max(0, Math.round(foot - top)) + 'px';
+    // the surface's value is the last map's mounted (mounted, above)
+    if (mounted[mounted.length - 1] === me) setClear(me);
   }
   // ---- the zoom buttons (and a card of the section's) stand above the foot
   // (SV2-55). Where the section scrolls (a short window, the controls shown)
@@ -623,16 +691,34 @@ export function createPlanMap(options) {
   }
   watchRatio();
 
-  function frame(given) {
-    parts = { root: given.root, head: given.head || null, line: given.line || null, foot: given.foot || null, more: given.more || null, under: given.under || null };
-    if (given.before) element.prepend(...given.before);
-    if (given.after) element.append(...given.after);
-    if (given.inside) for (const each of given.inside) stage.insertBefore(each, zoomBox);
-    parts.root.addEventListener('scroll', dock, { passive: true });
-    for (const each of [parts.root, parts.line, parts.foot, parts.under]) if (each) roomWatcher.observe(each);
+  // ---- the section around the map (the frame option), asked for once
+  function framed() {
+    if (parts || gone) return;
+    const around = (typeof frameOption === 'function' ? frameOption() : frameOption) || {};
+    parts = { root, head: around.head || null, line: around.line || null, foot: around.foot || null, more: around.more || null, under: around.under || null };
+    if (around.before) element.prepend(...around.before);
+    if (around.after) element.append(...around.after);
+    if (around.inside) for (const each of around.inside) stage.insertBefore(each, zoomBox);
+    root.addEventListener('scroll', dock, { passive: true });
+    for (const each of [root, parts.line, parts.foot, parts.under]) if (each) roomWatcher.observe(each);
   }
+  // the code that made the map has the rest of its section made by then
+  queueMicrotask(framed);
+
+  function remeasure() {
+    framed();
+    room();
+    measure();
+    dock();
+  }
+  loadSheet().then(() => {
+    if (gone) return;
+    root.dataset.styled = 'true';
+    remeasure();
+  });
 
   return {
+    root,
     element,
     stage,
     view,
@@ -669,18 +755,28 @@ export function createPlanMap(options) {
       hovered = floorId === null || floorId === undefined ? null : { floorId, cell };
     },
     showFloors,
-    frame,
-    remeasure() {
-      room();
-      measure();
-      dock();
-    },
+    remeasure,
     dock,
     unmount() {
+      if (gone) return;
       gone = true;
-      if (parts) parts.root.removeEventListener('scroll', dock);
+      if (parts) root.removeEventListener('scroll', dock);
       document.removeEventListener('scroll', onSurfaceScroll, { capture: true });
-      if (dockHost) dockHost.style.removeProperty('--toast-clear');
+      // the surface's --toast-clear: this map's goes, and the map mounted
+      // before it, if one still is, has its own back
+      const at = mounted.indexOf(me);
+      const last = at === mounted.length - 1;
+      if (at !== -1) mounted.splice(at, 1);
+      if (last && me.surface) {
+        const under = mounted[mounted.length - 1];
+        if (under && under.surface === me.surface) setClear(under);
+        else me.surface.style.removeProperty('--toast-clear');
+      }
+      if (layout) {
+        const still = mounted.filter((each) => each.layout === layout);
+        if (still.length === 0) delete layout.dataset.planMap;
+        else layout.dataset.planMap = still[still.length - 1].name;
+      }
       watcher.disconnect();
       roomWatcher.disconnect();
       stage.removeEventListener('wheel', onStageWheel, { capture: true });
