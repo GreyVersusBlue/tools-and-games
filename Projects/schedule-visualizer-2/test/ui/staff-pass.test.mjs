@@ -21,7 +21,8 @@ import { diskReader } from '../publish/reader.mjs';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
 import { directionsView } from '../../staff/views/directions.js';
-import { hooks as sectionHooks, facts } from '../../ui/staff/index.js';
+import * as staffSection from '../../ui/staff/index.js';
+import { facts, viewHandle } from '../../ui/staff/index.js';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -270,10 +271,14 @@ test('a passcode turned on or off while the file is made is a change a reader se
 
 // ---------------------------------------------------------------- the section's hooks and first line (SV2-51 item 10)
 
-// A write to one of the two test hooks, in any form a module could make it:
-// hooks.deliver = …, hooks['deliver'] = …, Object.assign(hooks, …),
-// Object.defineProperty(hooks, …) and Reflect.set(hooks, …). Until SV2-53
-// only the first was looked for (SV2-53 item 4).
+// A write to one of the two test hooks in the plain forms: hooks.deliver = …,
+// hooks['deliver'] = …, Object.assign(hooks, …), Object.defineProperty(hooks,
+// …) and Reflect.set(hooks, …), whatever the name in front of `hooks`. A write
+// through another name (`const box = hooks; box.deliver = …`) is not seen
+// here: what keeps the page's modules off the hooks is that no module but
+// ui/staff/index.js holds them (the next two cases), and form.js is handed
+// them. Until SV2-53 only the first form was looked for (SV2-53 item 4);
+// until SV2-58 this case's title said it saw every way (SV2-58 item 1).
 const HOOK_WRITES = [
   /\bhooks\s*\.\s*(assembled|deliver)\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
   /\bhooks\s*\[\s*(['"`])(assembled|deliver)\1\s*\]\s*(=(?!=)|\?\?=|\|\|=|&&=)/,
@@ -283,7 +288,7 @@ const HOOK_WRITES = [
 ];
 const setsTestHook = (source) => HOOK_WRITES.some((pattern) => pattern.test(source));
 
-test('the guard sees every way a module could set a test hook, and not the page\'s own hooks or a comparison', () => {
+test('the guard sees the plain forms of a write to a test hook, and not the page\'s own hooks or a comparison', () => {
   const writes = [
     'hooks.deliver = (file) => file;',
     'hooks.assembled=wait;',
@@ -308,10 +313,33 @@ test('the guard sees every way a module could set a test hook, and not the page\
   for (const source of not) assert.equal(setsTestHook(source), false, source);
 });
 
-test('the test hooks are declared, null, and nothing in the page sets them', () => {
-  assert.deepEqual(Object.keys(sectionHooks).sort(), ['assembled', 'deliver', 'made', 'published']);
-  assert.equal(sectionHooks.assembled, null);
-  assert.equal(sectionHooks.deliver, null);
+// SV2-58 item 1. The hooks were exported from ui/staff/index.js and put on
+// the view's element in every browser, so a module could import them under
+// another name, or reach them through `.stf.staff`, and write them where the
+// guard above does not look (the SV2-53 review's hook-guard.mjs: five such
+// writes). Now the object is the module's own, and the view carries it only
+// in a browser a test drives (navigator.webdriver).
+test('no module can reach the test hooks: ui/staff/index.js exports none, and the view carries them only in a browser a test drives', () => {
+  assert.equal('hooks' in staffSection, false, 'ui/staff/index.js exports its hooks');
+  for (const [name, value] of Object.entries(staffSection)) {
+    assert.ok(!(value && typeof value === 'object' && 'deliver' in value), name + ' is the hooks under another name');
+  }
+  const testHooks = { deliver: null, assembled: null, published: null, made: null };
+  const parts = { preview: { stop() {} }, form: { stop() {} } };
+  const reader = viewHandle(parts, testHooks, false);
+  assert.deepEqual(Object.keys(reader).sort(), ['form', 'preview'], 'a reader\'s browser: no hooks on the view');
+  assert.equal(viewHandle(parts, testHooks, undefined).hooks, undefined, 'not when the browser does not say');
+  const driven = viewHandle(parts, testHooks, true);
+  assert.deepEqual(Object.keys(driven).sort(), ['form', 'hooks', 'preview']);
+  assert.equal(driven.hooks, testHooks, 'a test\'s browser: the hooks themselves');
+  // and the page's own use: the view is made by that rule from the browser's flag, not from anything the page can set
+  const source = readFileSync(new URL('../../ui/staff/index.js', import.meta.url), 'utf8');
+  assert.match(source, /^const hooks = \{ deliver: null, assembled: null, published: null, made: null \};$/m, 'declared, null, and not exported');
+  assert.match(source, /element\.staff = viewHandle\(\{ preview: shown, form \}, hooks, automated\(\)\);/);
+  assert.match(source, /const automated = \(\) => typeof navigator !== 'undefined' && navigator\.webdriver === true;/);
+});
+
+test('nothing in the page sets the test hooks', () => {
   const tool = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const setters = [];
   let read = 0;
@@ -594,6 +622,8 @@ test('the sign does not count short: a keycap, an emoji-form mark after a narrow
 // long, and the letters the sign's face draws wider than a seventh of the line
 // count their width (measured in Barlow Semi Condensed 600), so seven W's are
 // set small enough to stay on one line (the browser case is staff-outputs.mjs).
+// The line is a phone card's, whose borders are inside the sheet: there H and
+// U are a hair over a seventh of it (SV2-58 item 3).
 test('the sign does not count short after a text-form symbol, for a toned symbol, for the long dashes, or for the broad letters', () => {
   const rows = [
     ['\u2764\uFE0E\u200D\u{1F525}'.repeat(4), 12, 'a heart in text form, a joiner and fire, four times: the joiner joins nothing'],
@@ -609,12 +639,16 @@ test('the sign does not count short after a text-form symbol, for a toned symbol
     ['MW-1004', 7.75, 'M and W are broad, the rest one each'],
     ['mw%@', 5.75, 'the broad lower-case letters and signs'],
     ['\u00C6\u00BE', 3.5, 'AE and three quarters'],
-    ['HHHHHHH', 7, 'the widest letters that are not broad fit seven'],
+    ['HHHHHHH', 8.75, 'H is a hair over a seventh of a phone card\'s line (SV2-58 item 3)'],
+    ['UUUUUUU', 8.75, 'and U'],
+    ['\u00D9\u00DA\u00DB\u00DC', 5, 'and the accented U\'s'],
+    ['DDDDDDD', 7, 'the widest letters that are not broad fit seven'],
     ['#\uFE0F\u20E3', 2, 'a broad sign made a keycap is two, not more'],
   ];
   for (const [text, width, name] of rows) assert.equal(signWidth(text), width, name);
   assert.equal(signFit('WWWWWWW'), 7 / 10.5);
-  assert.equal(signFit('HHHHHHH'), 1);
+  assert.equal(signFit('HHHHHHH'), 0.8);
+  assert.equal(signFit('DDDDDDD'), 1);
 });
 
 // ---------------------------------------------------------------- the batch's count (item 6)

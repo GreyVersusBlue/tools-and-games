@@ -386,6 +386,71 @@ test('SV2-56 item 4: inner runs of spaces are one space, and a hyphen or a dash 
   assert.deepEqual(readTyped('Room  7 - annex', ROOMS), { kind: 'keep', text: 'Room  7 - annex' });
 });
 
+// SV2-56b, from the review of SV2-56 (probe-fold.mjs): folding a hyphen to
+// the label's dash and a run of spaces to one made rooms the engine keeps
+// apart (engine/schema.js, `roomNumberKey`: trimmed, lower case) fold equal,
+// so a room's exact number, typed, said "2 rooms match" and picked nothing.
+// A number typed exactly as the engine keys it is that room, first.
+const numbered = (id, number, teachers) => ({ id, number, teachers: teachers || '', label: teachers ? number + ' — ' + teachers : number, detail: '' });
+
+test('SV2-56b: a room\'s number typed exactly is that room, though another number or label folds the same', () => {
+  const pairs = [
+    ['B-12', 'B–12'],
+    ['B-12', 'B - 12'],
+    ['Portable 1', 'Portable  1'],
+  ];
+  for (const [a, b] of pairs) {
+    const rooms = [numbered('ra', a), numbered('rb', b)];
+    assert.equal(readTyped(a, rooms).option?.id, 'ra', 'readTyped(' + JSON.stringify(a) + ') beside ' + JSON.stringify(b));
+    assert.equal(readTyped(b, rooms).option?.id, 'rb', 'readTyped(' + JSON.stringify(b) + ') beside ' + JSON.stringify(a));
+    // in another case, with spaces round it, and as "Room <number>": the engine's key
+    assert.equal(readTyped(' ' + a.toLowerCase() + ' ', rooms).option?.id, 'ra');
+    assert.equal(readTyped('Room ' + b, rooms).option?.id, 'rb');
+  }
+  assert.equal(readTyped('B – 12', [numbered('ra', 'B-12'), numbered('rb', 'B–12')]).kind, 'several', 'a third spelling of both is still two rooms');
+  // a hyphenated number that is another room's label folded
+  const gym = [numbered('rgym', 'Gym', 'North'), numbered('rgn', 'Gym-North')];
+  assert.equal(readTyped('Gym-North', gym).option?.id, 'rgn', 'readTyped("Gym-North") is not room Gym-North');
+  assert.equal(readTyped('gym-north', gym).option?.id, 'rgn');
+  assert.equal(readTyped('Gym — North', gym).kind, 'several', 'the label of Gym is also Gym-North folded: neither is chosen for the user');
+  const chen = [numbered('r10', '10', 'A. Chen'), numbered('r10a', '10-A. Chen')];
+  assert.equal(readTyped('10-A. Chen', chen).option?.id, 'r10a');
+  // a picked number is shown and kept as the room's own text, not folded
+  const picker = make(null, { options: () => [numbered('ra', 'B-12'), numbered('rb', 'B–12')] });
+  picker.type('B–12');
+  picker.leave();
+  assert.deepEqual(picker.calls, [['pick', 'rb']], 'leaving the field with a room\'s exact number picked nothing');
+  assert.equal(picker.input.value, 'B–12');
+});
+
+test('SV2-56b: the slot\'s own text folded is no change, unless it is exactly another room\'s number: Gym held, "Gym-North" typed is Gym-North', () => {
+  const rooms = () => [NO_ROOM, numbered('rgym', 'Gym', 'North'), numbered('rgn', 'Gym-North')];
+  for (const how of ['leave', 'Enter']) {
+    const picker = make({ text: 'Gym — North', roomId: 'rgym' }, { options: rooms });
+    picker.type('Gym-North');
+    if (how === 'Enter') picker.key('Enter');
+    else picker.leave();
+    assert.deepEqual(picker.calls, [['pick', 'rgn']], how + ': the held room was put back instead of Gym-North picked');
+    assert.equal(picker.input.value, 'Gym-North', how);
+  }
+  // the held room's label in another spelling is still the held room: no change
+  const same = make({ text: 'Gym — North', roomId: 'rgym' }, { options: rooms });
+  same.type('gym  —  north');
+  same.leave();
+  assert.deepEqual(same.calls, []);
+  assert.equal(same.input.value, 'Gym — North');
+  // Gym-North held, its own number typed folded otherwise: no change
+  const other = make({ text: 'Gym-North', roomId: 'rgn' }, { options: rooms });
+  other.type('Gym - North');
+  other.leave();
+  assert.deepEqual(other.calls, []);
+  // B-12 held, B–12 typed (the same folded): that room
+  const b = make({ text: 'B-12', roomId: 'ra' }, { options: () => [NO_ROOM, numbered('ra', 'B-12'), numbered('rb', 'B–12')] });
+  b.type('B–12');
+  b.leave();
+  assert.deepEqual(b.calls, [['pick', 'rb']]);
+});
+
 test('SV2-54 item 1: text that starts a room\'s label, folded, lists that room, and is still not picked', () => {
   const okafor = [
     { id: 'r101', number: '101', label: '101 — Ms. Okafor', teachers: 'Ms. Okafor', detail: '' },

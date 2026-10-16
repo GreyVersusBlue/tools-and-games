@@ -1982,6 +1982,45 @@ test('SV2-56 item 1: a Delete or an undone Add while wide, then upright, a tap o
   }
 });
 
+// The review of SV2-56 (probe-history.mjs, A): the same with the only
+// group. The turn upright did nothing when the project had no groups left,
+// so the gone group's entry stayed above the list: "Add a group", "All
+// groups" and Back showed the list twice.
+test('SV2-56b: the only group deleted while wide, then upright, Add a group, All groups and Back never shows the list twice', async () => {
+  const UPRIGHT = { width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  const SIDE = { width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  await on('#project', { width: 390, height: 844, mobile: true }, async (p) => {
+    await p.evaluate(async (keep) => {
+      const actions = await import('./engine/actions.js');
+      for (const group of globalThis.sv2.store.project.groups.slice()) {
+        if (group.id !== keep) globalThis.sv2.store.apply(actions.deleteGroup, { id: group.id });
+      }
+    }, C6);
+    assert.deepEqual(await p.evaluate(() => globalThis.sv2.store.project.groups.map((group) => group.id)), [C6], 'the case needs 6C to be the only group');
+    await go(p, '#schedule/groups');
+    await settled(p);
+    await tap(p, '.sch-group[data-group="' + C6 + '"]');
+    await listIs(p, true);
+    await shows(p, (hash) => location.hash === hash, '#schedule/groups/' + C6);
+    await p.setViewport(SIDE);
+    await drawnNarrow(p, false);
+    await p.click('[data-action="delete"]');
+    await closeToast(p);
+    await until(p, 'the only group was not deleted', () => document.querySelector('[data-action="add-group"]') && !document.querySelector('.sch-group') && document.querySelector('.sch').dataset.pending !== 'true');
+    assert.equal(await hashOf(p), '#schedule/groups/' + C6, 'the case needs the wide screen to have left the gone group\'s address');
+    await p.setViewport(UPRIGHT);
+    await drawnNarrow(p, true);
+    await until(p, 'turned upright with no groups left, the page is still at the gone group\'s address', () => location.hash === '#schedule/groups');
+    await tap(p, '[data-action="add-group"]');
+    await listIs(p, true);
+    await shows(p, () => /^#schedule\/groups\/g/.test(location.hash) && !location.hash.includes('gsample'));
+    await tap(p, '[data-key="group-all"]');
+    await listIs(p, false);
+    await until(p, '"All groups" did not come back to the list', () => location.hash === '#schedule/groups');
+    assert.deepEqual(await backTo(p, '#project', 4), ['#schedule/groups', '#project'], 'Back from the list showed the list twice');
+  });
+});
+
 test('SV2-54 item 5: on a phone a tap on the chosen card, on a slot\'s address Show went to, adds nothing to the history', async () => {
   await on('#schedule/groups', PHONE, async (p) => {
     await act(p, 'setSlot', { groupId: C6, dayTypeId: DAY_A, period: 3, slot: { label: 'Choir' } });
