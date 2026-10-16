@@ -469,11 +469,26 @@ test('the last card keeps room for the closing line, page boxes or none: winding
     assert.ok(Math.abs(inPile.room - last.room - doorCards.FOOT_MM) < 1e-9, size + ': the first sheet\'s room');
     assert.ok(Math.abs(inPile.later - last.later - doorCards.FOOT_MM) < 1e-9, size + ': a later sheet\'s room');
     assert.ok(last.region.height + last.firstSteps + last.key + 4 + last.exit + doorCards.FOOT_MM <= inPile.room + 1e-9, size + ': maps, steps and the closing line fit the sheet');
-    // the document lays its last card out that way
+    // this card's map is at the largest cell either way, so it shows one sheet, not which fit
     const markup = cardsOf(doorCards.render(project, null, { ...NOW, paper }).html).get(roomId('1A'));
-    assert.ok(Math.abs(cellIn(markup, last.plans[0]) - last.layout.cell) < 0.01, size + ': the card is the last card\'s fit');
     assert.equal(countOf(markup, 'new-sheet'), 0, size + ': one sheet');
   }
+  // the document lays out its last card with the room kept, and no other:
+  // the sample's Room 204, whose maps are smaller for it, alone and before 303
+  const letter = { size: 'letter', orientation: 'portrait' };
+  const sample = sampleSchool();
+  const alone = fitOf(sample, 'rsample204', letter, true);
+  const before = fitOf(sample, 'rsample204', letter, false);
+  assert.ok(alone.layout.cell < before.layout.cell - 0.1, 'the closing line costs this card: ' + alone.layout.cell + ' against ' + before.layout.cell);
+  const cellOf = (ids) => cellIn(cardsOf(doorCards.render(sample, null, { ...NOW, paper: letter, roomIds: ids }).html).get('rsample204'), alone.plans[0]);
+  assert.ok(Math.abs(cellOf(['rsample204']) - alone.layout.cell) < 0.01, 'last: the room kept');
+  assert.ok(Math.abs(cellOf(['rsample204', 'rsample303']) - before.layout.cell) < 0.01, 'not last: no room kept');
+  // on its side, Room 303 alone keeps every step on one sheet by widening the steps' column
+  const side = fitOf(sample, 'rsample303', { size: 'letter', orientation: 'landscape' }, true);
+  assert.deepEqual([side.sheets.length, side.share], [1, 0.56]);
+  const sideMarkup = cardsOf(doorCards.render(sample, null, { ...NOW, paper: { size: 'letter', orientation: 'landscape' }, roomIds: ['rsample303'] }).html).get('rsample303');
+  assert.ok(sideMarkup.includes('<div class="card__body card__body--side" style="grid-template-columns: 56fr 44fr;">'));
+  assert.equal(countOf(sideMarkup, 'new-sheet'), 0);
   assert.ok(doorCards.FOOT_MM >= 12, 'the closing line: 6 mm, 2 mm, its rule, 8 pt');
 });
 
