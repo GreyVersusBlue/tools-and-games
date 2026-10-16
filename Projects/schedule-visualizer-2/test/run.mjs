@@ -74,6 +74,9 @@ export const GROUPS = {
     'engine/import-subjects.test.mjs', // SV2-13
     'engine/scenario.test.mjs', // SV2-60
     'engine/evacuation.test.mjs', // SV2-62
+    'engine/scenario-actions.test.mjs', // SV2-61
+    'engine/prints-door-cards.test.mjs', // SV2-66
+    'engine/suggest.test.mjs', // SV2-63
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
@@ -83,6 +86,7 @@ export const GROUPS = {
     'ui/schedule-address.test.mjs', // SV2-54
     'ui/staff-pass.test.mjs', // SV2-45
     'ui/engine-client.test.mjs', // SV2-49
+    'ui/plan-map.test.mjs', // SV2-65
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -118,6 +122,7 @@ export const GROUPS = {
     'browser/hotspots.mjs', // SV2-18
     'browser/playback.mjs', // SV2-19
     'browser/m3-pass.mjs', // SV2-43
+    'browser/plan-map.mjs', // SV2-65b
     'a11y/axe.mjs',
   ],
   a11y: [
@@ -131,6 +136,7 @@ export const GROUPS = {
     'timing/movement.mjs', // SV2-39
     'timing/playback.mjs', // SV2-44
     'timing/evacuation.mjs', // SV2-62
+    'timing/suggest.mjs', // SV2-63
   ],
 };
 

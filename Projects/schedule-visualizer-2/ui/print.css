@@ -826,3 +826,220 @@
   font-size: 12pt;
   line-height: 1.3;
 }
+
+/* ---------- SV2-66: door cards (ui/prints/door-cards.js) ----------
+   One card per room: the room and its floor, the maps of the way out, the
+   numbered steps, the exit and the assembly point. door-cards.js works out
+   how many steps fit on the first sheet from the sizes here; change one and
+   change its constant there too. Upright, the maps stand over the steps; on
+   a sheet turned on its side they stand left of them. */
+
+.print-doc .card__room {
+  margin-bottom: 4mm;
+}
+
+.print-doc .card__name {
+  margin: 0;
+  font-size: 26pt;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.print-doc .card__floor {
+  margin: 0;
+  font-size: 13pt;
+  line-height: 1.3;
+  color: var(--ink-2);
+}
+
+.print-doc .card__body--side {
+  display: grid;
+  grid-template-columns: 58fr 42fr;
+  column-gap: 6mm;
+  align-items: start;
+}
+
+.print-doc .card__maps {
+  display: flex;
+  gap: 4mm;
+  justify-content: center;
+}
+
+.print-doc .card__maps--row {
+  align-items: flex-end;
+}
+
+.print-doc .card__maps--stack {
+  flex-direction: column;
+  align-items: center;
+}
+
+/* the maps cut into rows under one another, or columns side by side
+   (mapLayout in door-cards.js: whichever lets the cells be largest) */
+.print-doc .card__maps--rows {
+  flex-direction: column;
+  align-items: center;
+}
+
+.print-doc .card__maps--columns {
+  align-items: flex-start;
+}
+
+.print-doc .card__maps-group {
+  display: flex;
+  gap: 4mm;
+}
+
+.print-doc .card__maps--rows .card__maps-group {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.print-doc .card__maps--columns .card__maps-group {
+  flex-direction: column;
+  align-items: center;
+}
+
+.print-doc .card__map {
+  margin: 0;
+  break-inside: avoid;
+}
+
+.print-doc .card__map-name {
+  margin-top: 1mm;
+  font-size: 9pt;
+  line-height: 1.3;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.print-doc .card__key {
+  margin: 2mm 0 0;
+  font-size: 8.5pt;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.print-doc .card__body--up .card__directions {
+  margin-top: 4mm;
+}
+
+.print-doc .card__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* upright, short steps stand in two columns when that leaves the maps more
+   room; door-cards.js counts each column (6 mm apart) at half the width */
+.print-doc .card__steps--two {
+  columns: 2;
+  column-gap: 6mm;
+}
+
+.print-doc .card__step {
+  display: grid;
+  grid-template-columns: 8mm 1fr;
+  margin: 0 0 1.6mm;
+  font-size: 11pt;
+  line-height: 1.35;
+  break-inside: avoid;
+}
+
+.print-doc .card__n {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.print-doc .card__exit {
+  margin-top: 3mm;
+  padding-top: 3mm;
+  border-top: 0.5mm solid var(--ink);
+  font-size: 12pt;
+  line-height: 1.35;
+  break-inside: avoid;
+}
+
+.print-doc .card__exit-line,
+.print-doc .card__assembly {
+  margin: 0;
+}
+
+.print-doc .card__label {
+  margin-right: 2mm;
+  font-weight: 700;
+}
+
+.print-doc .card__assembly--none {
+  color: var(--ink-2);
+}
+
+.print-doc .card__continued {
+  margin: 0 0 4mm;
+  padding-bottom: 2mm;
+  border-bottom: 0.2mm solid var(--line-strong);
+  font-size: 10pt;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.print-doc .card__none {
+  margin: 6mm 0 3mm;
+  font-size: 16pt;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.print-doc .card-cover__all {
+  font-weight: 600;
+}
+
+.print-doc .card-cover__missing {
+  margin: 0 0 5mm;
+  padding-left: 6mm;
+}
+
+.print-doc .card-cover__list {
+  margin: 2mm 0 0;
+  padding-left: 6mm;
+  columns: 2;
+  column-gap: 10mm;
+}
+
+.print-doc .card-cover__list li {
+  break-inside: avoid;
+  padding: 0.5mm 0;
+}
+
+.print-doc .card-cover__to {
+  color: var(--ink-2);
+}
+
+/* the way out over a plan (planSvg's route option) */
+.print-doc .plan__route-band {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__route {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__start {
+  fill: var(--ink);
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.print-doc .plan__end {
+  fill: var(--accent);
+  stroke: #ffffff;
+  stroke-width: 2;
+}

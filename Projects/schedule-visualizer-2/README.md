@@ -163,6 +163,9 @@ row names a file it does not run.
 | `test/engine/import-subjects.test.mjs` | The subject list from a CSV file |
 | `test/engine/scenario.test.mjs` | The scenario engine: apply, normalise, reconcile, the comparison, the difference map's numbers, compare with another file, the chip words |
 | `test/engine/evacuation.test.mjs` | Evacuation: every room's way out, the exits' rooms and people, the rooms with no way out, the door card's data |
+| `test/engine/scenario-actions.test.mjs` | The scenario lab's actions: start, rename, add and remove a change, discard, compare with another file, apply as one undo step |
+| `test/engine/prints-door-cards.test.mjs` | Door cards: which rooms and in what order, the cropped maps of the way out, the steps and their second sheet, rooms with no way out, and the floor plan's crop and route options |
+| `test/engine/suggest.test.mjs` | Suggestions for a finding: the candidates, the two stages, the order, the sentence, at most five, "No small change clears this." |
 | `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
 | `test/ui/helpers.test.mjs` | The interface's plain functions: the shortcut guard, fields, the picker, the table |
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
@@ -172,6 +175,7 @@ row names a file it does not run.
 | `test/ui/schedule-address.test.mjs` | The Groups tab's addresses, its one Tab stop and a phone's history of the list and a group, with no browser |
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
 | `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
+| `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
@@ -205,6 +209,7 @@ row names a file it does not run.
 | `test/browser/movement.mjs` | The movement view: who, the day type, the transition, the lanes and the legend |
 | `test/browser/hotspots.mjs` | The movement view's inspector: hotspots, travel time, summary, export |
 | `test/browser/playback.mjs` | Playback: play, the scrubber, pace, the markers, the Late line |
+| `test/browser/plan-map.mjs` | The plan map mounted through its module as Scenarios and Safety will: their stubs as they were, the toast clearance of two maps, the keep on the stage and the stage's least |
 | `test/a11y/axe.mjs` | The accessibility sweep of every screen, light and dark |
 | `test/timing/routing.mjs` | Routing under its budget at the promised size |
 | `test/timing/crowd.mjs` | The crowd model under its budget |
@@ -212,3 +217,4 @@ row names a file it does not run.
 | `test/timing/movement.mjs` | The movement view's main-thread work under its budget |
 | `test/timing/playback.mjs` | One frame of playback under its budget |
 | `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |
+| `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
