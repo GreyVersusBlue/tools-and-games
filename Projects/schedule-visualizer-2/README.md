@@ -163,6 +163,7 @@ row names a file it does not run.
 | `test/engine/import-subjects.test.mjs` | The subject list from a CSV file |
 | `test/engine/scenario.test.mjs` | The scenario engine: apply, normalise, reconcile, the comparison, the difference map's numbers, compare with another file, the chip words |
 | `test/engine/evacuation.test.mjs` | Evacuation: every room's way out, the exits' rooms and people, the rooms with no way out, the door card's data |
+| `test/engine/scenario-actions.test.mjs` | The scenario lab's actions: start, rename, add and remove a change, discard, compare with another file, apply as one undo step |
 | `test/engine/suggest.test.mjs` | Suggestions for a finding: the candidates, the two stages, the order, the sentence, at most five, "No small change clears this." |
 | `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
 | `test/ui/helpers.test.mjs` | The interface's plain functions: the shortcut guard, fields, the picker, the table |
