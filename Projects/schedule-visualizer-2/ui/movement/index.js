@@ -3,14 +3,16 @@
 //
 //   top       the screen's first line, a sentence; then who, the day type,
 //             the transition strip, the two drawing options and Clear (./controls.js)
-//   the map   every floor on one canvas (./layout.js), drawn by the plan's
-//             own renderer with the lanes, the load colouring and the room
-//             markers laid over it (ui/surface/overlays/lanes.js), and the
-//             stairs links from floor to floor; the legend card bottom right
+//   the map   the plan map (ui/surface/plan-map.js): every floor on one
+//             canvas (./layout.js), drawn by the plan's own renderer, its
+//             zoom, its keyboard cursor and its row of floors; here the
+//             lanes, the load colouring and the room markers are laid over
+//             it (ui/surface/overlays/lanes.js), and the stairs links from
+//             floor to floor; the legend card bottom right
 //             (./legend.js); a card for the cell under the pointer, the cell
 //             tapped, or the cell the keyboard cursor rests on (./card.js)
 //   bottom    the playback bar's place (./playback.js)
-//   top bar   which floors are on the map, and side by side or stacked
+//   top bar   which floors are on the map, and side by side or stacked (the plan map's row)
 //   inspector Hotspots, Travel time, Summary, Export (./hotspots.js,
 //             ./tables.js, ./summary.js, ./export.js)
 //
@@ -53,13 +55,9 @@
 import { h } from '../components/dom.js';
 import { intro } from '../components/card.js';
 import { tabs } from '../components/tabs.js';
-import { choice as segmented } from '../components/choice.js';
 import { count, figures, periodWords } from '../components/words.js';
-import { singleKeyAllowed } from '../components/shortcuts.js';
-import { createViewport, ZOOM_STEP } from '../surface/viewport.js';
-import { createRenderer } from '../surface/renderer.js';
-import { attachInput } from '../surface/input.js';
-import { attachCursor } from '../surface/cursor.js';
+import { createViewport } from '../surface/viewport.js';
+import { createPlanMap, CURSOR_LEAST, KEEP_ON_STAGE } from '../surface/plan-map.js';
 import { lanesOverlay, drawStairLink, lanePoint, lineWidth } from '../surface/overlays/lanes.js';
 import { parse, readable } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
@@ -68,7 +66,7 @@ import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
 import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, createAsker } from './model.js';
-import { layoutFloors, bestLayout, slotAt, placeOf, stageLeast, keepShift, FIT_MARGIN } from './layout.js';
+import { slotAt, placeOf, FIT_MARGIN } from './layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
 import { cellCardView } from './card.js';
@@ -92,12 +90,8 @@ export const MOVEMENT_KEYS = [
   { id: 'movement-escape', does: 'Put the cell card away', shown: 'Esc' },
 ];
 
-// The keyboard cursor's ring is never smaller than this, in CSS pixels.
-export const CURSOR_LEAST = 14;
-
-// How much of the floors' box, in CSS pixels, a pan or a zoom always leaves
-// on the stage each way.
-export const KEEP_ON_STAGE = 48;
+// The keyboard cursor's least and the keep on the stage are the plan map's.
+export { CURSOR_LEAST, KEEP_ON_STAGE };
 
 export const MOVEMENT_TABS = [
   { id: 'hotspots', label: 'Hotspots' },
@@ -169,10 +163,6 @@ export const section = {
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
     let state = null;
     let picture = null;
-    let world = null;
-    let worldKey = '';
-    let fitted = true;
-    let queued = false;
     let gone = false;
     // the cell whose card shows: { floorId, cell, source }
     let point = null;
@@ -180,32 +170,29 @@ export const section = {
     let bandKey = null;
     const lineColours = new Map();
 
-    const view = createViewport();
-    const canvas = h('canvas', { class: 'mov-plan', id: 'movement-plan', tabindex: '0', role: 'application', 'aria-label': 'The movement map', 'aria-describedby': 'movement-keys' });
-    const renderer = createRenderer(canvas);
-    const g = canvas.getContext('2d');
-    // The marks' canvas: over the map's own, the same size, letting every
-    // pointer through. It is this view's, made once and never moved, so a
-    // paint of the map changes nothing in the document.
-    const layer = h('canvas', { class: 'mov-marks', 'aria-hidden': 'true', data: { layer: 'marks', drawn: '0' } });
-    const pen = layer.getContext('2d');
+    // ---- the map (ui/surface/plan-map.js): the canvas, the marks' canvas,
+    // the viewport, the pointer and the keyboard cursor, the zoom buttons and
+    // the row of floors, the stage's least and the keep on the stage
+    const plan = createPlanMap({
+      ctx,
+      name: 'movement',
+      label: 'The movement map',
+      keys: KEYS,
+      floorsRow: { value: () => choice.floors, change: (value) => change({ floors: value }) },
+    });
+    const { view, canvas, layer, stage } = plan;
     const card = cellCardView();
-    const zoomText = h('span', { class: 'mov-zoom__text', 'aria-live': 'off' });
-    const zoomBox = h('div', { class: 'mov-zoom', role: 'group', 'aria-label': 'Zoom' },
-      h('button', { type: 'button', class: 'mov-zoom__btn', 'aria-label': 'Zoom out', title: 'Zoom out (-)', data: { action: 'zoom-out' }, on: { click: () => zoomBy(1 / ZOOM_STEP) } }, '−'),
-      zoomText,
-      h('button', { type: 'button', class: 'mov-zoom__btn', 'aria-label': 'Zoom in', title: 'Zoom in (=)', data: { action: 'zoom-in' }, on: { click: () => zoomBy(ZOOM_STEP) } }, '+'),
-      h('button', { type: 'button', class: 'mov-zoom__btn mov-zoom__btn--fit', title: 'Fit the map to the window (0)', data: { action: 'fit' }, on: { click: () => fit() } }, 'Fit'));
 
     const env = {
       ctx,
       choice: () => choice,
       change,
-      show,
-      overlays: [],
-      marks: [],
-      paint: () => queuePaint(),
-      paintMarks: () => paintMarks(),
+      show: (floorId, cells) => plan.show(floorId, cells),
+      // the plan map's: the lanes are first in it (below), before a panel's own
+      overlays: plan.overlays,
+      marks: plan.marks,
+      paint: () => plan.paint(),
+      paintMarks: () => plan.paintMarks(),
       layer,
       card,
       fix(where) {
@@ -235,7 +222,7 @@ export const section = {
         }
         placeFloors();
         // the map and its zoom buttons moved up or down with no change to the stage's size
-        dock();
+        plan.dock();
         ctx.announce(folded ? 'The controls are folded away.' : 'The controls are shown.');
       },
       change,
@@ -278,62 +265,46 @@ export const section = {
         }
       },
     });
+    // the lanes go over each floor before any overlay of a panel's
+    plan.overlays.push(lanesOverlay(() => {
+      if (!picture) return null;
+      const theme = plan.theme();
+      return {
+        bands: picture.bands,
+        bandColours: themeColours(theme),
+        lanes: picture.lanes,
+        markers: picture.markers,
+        labels: choice.labels,
+        constantWidth: choice.constantWidth,
+        colourOf: (groupId) => lineColour(groupId, theme),
+      };
+    }));
     const bar = playbackBar(env);
     // over the map while it is the last answer after a derive that failed: the picture is muted under it (movement.css)
     const staleBand = h('p', { class: 'mov-stale', hidden: true, data: { part: 'stale' } }, 'From before your last change');
-    const stage = h('div', { class: 'mov-stage' }, canvas, layer, staleBand, h('p', { class: 'vh', id: 'movement-keys' }, KEYS), key.element, card.element, zoomBox);
     const headline = h('h1', { class: 'vh' }, HEADLINE);
-    const map = h('div', { class: 'mov-map' }, headline, top.element, stage, key.line, bar.element);
+    const map = plan.element;
     const empty = h('div', { class: 'mov-empty stub', hidden: true });
     const element = h('div', { class: 'mov', data: { styled: 'false' } }, map, empty);
+    plan.frame({
+      root: element,
+      before: [headline, top.element],
+      after: [key.line, bar.element],
+      inside: [staleBand, key.element, card.element],
+      head: top.element,
+      line: top.element.querySelector('.mov-line'),
+      foot: bar.element,
+      more: bar.element.querySelector('[data-part="more"]'),
+      under: key.line,
+    });
 
-    // ---- the top bar's second row: which floors, and how they are laid out
-    const floorsRow = h('div', { class: 'mov-floors' });
-    let floorsKey = '';
-    function drawFloors(project) {
-      const floors = project.building.floors;
-      const next = JSON.stringify(floors.map((floor) => [floor.id, floor.name]));
-      if (next !== floorsKey) {
-        floorsKey = next;
-        const which = segmented({
-          name: 'movement-floors',
-          labelledBy: 'movement-floors-label',
-          value: choice.floors,
-          onChange: (value) => change({ floors: value === 'all' ? 'auto' : value }),
-          options: [{ value: 'all', label: floors.length === 1 ? 'The floor' : 'All ' + floors.length + ' floors' }, ...(floors.length > 1 ? floors.map((floor) => ({ value: floor.id, label: floor.name })) : [])],
-        });
-        const how = segmented({
-          name: 'movement-arrange',
-          labelledBy: 'movement-arrange-label',
-          value: 'side',
-          onChange: (value) => change({ floors: value }),
-          options: [{ value: 'side', label: 'Side by side' }, { value: 'stacked', label: 'Stacked' }],
-        });
-        floorsRow.replaceChildren(
-          h('span', { class: 'mov-floors__label', id: 'movement-floors-label' }, 'Floors'), which.element,
-          h('span', { class: 'vh', id: 'movement-arrange-label' }, 'How the floors are laid out'), how.element);
-        floorsRow.which = which;
-        floorsRow.how = how;
-      }
-      const one = floors.some((floor) => floor.id === choice.floors);
-      floorsRow.which.set(one ? choice.floors : 'all');
-      floorsRow.how.element.hidden = one || floors.length < 2;
-      floorsRow.how.set(world ? world.how : 'side');
-    }
-    // On a phone the floors' row folds with the controls.
-    let floorsShown = null;
+    // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
     function placeFloors() {
-      const shown = !map.hidden && !(top.folded && phone.matches);
-      if (shown === floorsShown) return;
       // the row put away with the focus in it (a window narrowed under 640 px):
       // the focus goes to what brings it back
-      const held = !shown && floorsRow.contains(document.activeElement);
-      floorsShown = shown;
-      ctx.setSecondRow(shown ? floorsRow : null);
-      if (held) {
-        if (map.hidden) ctx.focusSurface();
-        else top.element.querySelector('[data-action="change"]').focus();
-      }
+      if (!plan.showFloors(!map.hidden && !(top.folded && phone.matches))) return;
+      if (map.hidden) ctx.focusSurface();
+      else top.element.querySelector('[data-action="change"]').focus();
     }
     function onWidth() {
       if (memory.controls === null) top.setFolded(!wide.matches);
@@ -366,8 +337,6 @@ export const section = {
     //                      going on from one transition to the next)
     function change(patch, options) {
       choice = settleChoice(store.project, { ...choice, ...patch });
-      // a new arrangement of the floors is fitted to the window again
-      if (patch && 'floors' in patch) fitted = true;
       const held = options && options.keepCard === true && !(patch && 'floors' in patch) ? tapped() : null;
       clearPoint();
       refresh();
@@ -381,6 +350,7 @@ export const section = {
       return point && point.source === 'tap' ? { floorId: point.floorId, cell: point.cell } : null;
     }
     function reopen(held) {
+      const world = plan.world;
       const at = held && world && state ? placeOf(world, held.floorId, held.cell) : null;
       if (at) pointAt(at.x + 0.5, at.y + 0.5, 'tap');
     }
@@ -450,31 +420,8 @@ export const section = {
       key.update(shown, picture, { mode: project.settings.colourScale && project.settings.colourScale.mode === 'absolute' ? 'absolute' : 'relative' });
       bar.update(state);
       drawPanel();
-      arrange();
-      drawFloors(project);
-      queuePaint();
-    }
-
-    // ---- where the floors sit
-    let roomReady = false;
-    function arrange() {
-      if (!picture) return;
-      const floors = picture.floors;
-      const how = choice.floors === 'side' || choice.floors === 'stacked' ? choice.floors : bestLayout(floors, view.width, view.height);
-      const next = layoutFloors(floors, how);
-      const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
-      // the floors' views are kept by the slot, for the renderer
-      for (const slot of next.slots) slot.view = createViewport();
-      if (nextKey !== worldKey) {
-        // a map of another shape: an arrangement the window chose is fitted again
-        if (worldKey === '' || choice.floors === 'auto') fitted = true;
-        worldKey = nextKey;
-      }
-      world = next;
-      dockLegend();
-      if (fitted) fit(true);
-      // the stage's least follows the floors' box (stageLeast)
-      if (roomReady) room();
+      // the floors laid out, the row of floors drawn, the map painted (plan-map.js)
+      plan.setProject(shown, graph);
     }
 
     // ---- the legend never covers a floor (DESIGN 5.3). Its card stands on
@@ -484,6 +431,7 @@ export const section = {
     // without that line, so that docking does not itself decide the answer.
     const probe = createViewport();
     function coversFloor() {
+      const world = plan.world;
       if (!world || view.width === 0) return false;
       const height = view.height + (key.line.hidden ? 0 : key.line.offsetHeight);
       const card = key.element;
@@ -510,62 +458,8 @@ export const section = {
       if (gone || key.element.hidden) return;
       key.setDocked(phone.matches || coversFloor());
     }
-
-    function fit(quiet) {
-      if (!world || view.width === 0) return;
-      view.fit({ x: 0, y: 0, w: world.width, h: world.height }, FIT_MARGIN);
-      fitted = true;
-      shownLast = null;
-      if (!quiet) {
-        clearPoint();
-        queuePaint();
-      }
-    }
-
-    // The map is never moved off the stage (SV2-52): a wheel meant for the
-    // section, a long drag or a zoom far in leaves at least KEEP_ON_STAGE px
-    // of the floors' box on screen each way (all of it, when it is smaller),
-    // so the stage is never a blank field with nothing to say where the
-    // floors went.
-    // The keep is capped by the stage's own size (keepShift, layout.js), and
-    // it is applied after the stage changes size as well (SV2-55).
-    function keepOnStage() {
-      if (!world || view.width === 0) return false;
-      const { dx, dy } = keepShift(view, world, KEEP_ON_STAGE);
-      if (dx !== 0 || dy !== 0) view.panBy(dx, dy);
-      return dx !== 0 || dy !== 0;
-    }
-
-    function zoomBy(factor) {
-      view.zoomAbout(view.zoom * factor, view.width / 2, view.height / 2);
-      keepOnStage();
-      fitted = false;
-      shownLast = null;
-      clearPoint();
-      queuePaint();
-    }
-
-    // Bring cells of a floor onto the map, in the middle of the window. They
-    // stay in the middle if the window then changes size (the inspector's
-    // sheet shut over them, the bar grew), until the reader moves the map.
-    let shownLast = null;
-    function centre(floorId, cells) {
-      const places = (cells || []).map((cell) => placeOf(world, floorId, cell)).filter(Boolean);
-      if (places.length === 0) return false;
-      const x = places.reduce((sum, place) => sum + place.x + 0.5, 0) / places.length;
-      const y = places.reduce((sum, place) => sum + place.y + 0.5, 0) / places.length;
-      const at = view.toScreen(x, y);
-      view.panBy(view.width / 2 - at.x, view.height / 2 - at.y);
-      fitted = false;
-      return true;
-    }
-    function show(floorId, cells) {
-      if (!world) return;
-      if (!world.slots.some((slot) => slot.floor.id === floorId)) change({ floors: floorId });
-      if (!centre(floorId, cells)) return;
-      shownLast = { floorId, cells: cells.slice() };
-      queuePaint();
-    }
+    // each time the floors are laid out, before a fitted map is fitted again
+    plan.onLayout(dockLegend);
 
     // ---- the colours
     function themeColours(theme) {
@@ -594,81 +488,17 @@ export const section = {
       return colour;
     }
 
-    // ---- the canvas
-    const overlay = lanesOverlay(() => {
-      if (!picture) return null;
-      const theme = renderer.theme();
-      return {
-        bands: picture.bands,
-        bandColours: themeColours(theme),
-        lanes: picture.lanes,
-        markers: picture.markers,
-        labels: choice.labels,
-        constantWidth: choice.constantWidth,
-        colourOf: (groupId) => lineColour(groupId, theme),
-      };
-    });
-
-    function pixel(floorId, cell) {
-      const place = world ? placeOf(world, floorId, cell) : null;
-      return place ? view.toScreen(place.x + 0.5, place.y + 0.5) : null;
-    }
-
-    function paint() {
-      queued = false;
-      if (gone || !world || !state || view.width === 0 || map.hidden) return;
-      const theme = renderer.theme();
-      const ratio = window.devicePixelRatio || 1;
-      const size = view.size;
+    // ---- the stairs links in use: a dotted arc from one end to the other,
+    // over every floor on the map's canvas
+    plan.across.push((g, given) => {
+      if (!picture || !state) return;
+      const theme = given.theme;
       themeColours(theme);
-      g.setTransform(ratio, 0, 0, ratio, 0, 0);
-      g.fillStyle = theme.paper;
-      g.fillRect(0, 0, view.width, view.height);
-      for (const slot of world.slots) {
-        const left = Math.round(view.x + slot.x * size);
-        const topEdge = Math.round(view.y + slot.y * size);
-        const right = Math.round(view.x + (slot.x + slot.w) * size);
-        const bottom = Math.round(view.y + (slot.y + slot.h) * size);
-        // the floor's name, over its top left corner
-        const nameSize = Math.max(11, Math.min(18, Math.round(size * 0.7)));
-        g.font = '600 ' + nameSize + 'px ' + theme.font;
-        g.textAlign = 'left';
-        g.textBaseline = 'alphabetic';
-        g.fillStyle = theme.ink;
-        g.fillText(slot.floor.name, left, topEdge - Math.max(4, Math.round(size * 0.3)));
-        if (right < 0 || bottom < 0 || left > view.width || topEdge > view.height) continue;
-        const floorView = slot.view;
-        floorView.resize(view.width, view.height);
-        floorView.zoom = view.zoom;
-        floorView.x = view.x + (slot.x - slot.box.x) * size;
-        floorView.y = view.y + (slot.y - slot.box.y) * size;
-        g.save();
-        g.beginPath();
-        g.rect(left, topEdge, right - left, bottom - topEdge);
-        g.clip();
-        renderer.draw({
-          project: state.project,
-          floor: slot.floor,
-          view: floorView,
-          selection: [],
-          hover: point && point.source !== 'keyboard' && point.floorId === slot.floor.id ? point.cell : null,
-          cursor: null,
-          preview: null,
-          overlays: [overlay, ...env.overlays],
-        });
-        g.restore();
-        g.setTransform(ratio, 0, 0, ratio, 0, 0);
-        g.strokeStyle = theme.line;
-        g.lineWidth = 1;
-        g.strokeRect(left + 0.5, topEdge + 0.5, right - left - 1, bottom - topEdge - 1);
-      }
-
-      // the stairs links in use: a dotted arc from one end to the other
       const alone = picture.groups.length === 1 ? lineColour(picture.groups[0].id, theme) : null;
-      const linkWidth = Math.max(2, Math.min(4, size * 0.14));
+      const linkWidth = Math.max(2, Math.min(4, view.size * 0.14));
       for (const link of picture.links) {
-        const a = pixel(link.a.floorId, link.a.cell);
-        const b = pixel(link.b.floorId, link.b.cell);
+        const a = given.point(link.a.floorId, link.a.cell);
+        const b = given.point(link.b.floorId, link.b.cell);
         if (!a && !b) continue;
         const style = { colour: alone || theme.ink, edge: theme.card, width: linkWidth, font: theme.font, ink: theme.ink };
         if (a && b) {
@@ -678,71 +508,20 @@ export const section = {
           drawStairLink(g, a || b, null, { ...style, text: link.label + (other ? ' to ' + other.name : '') });
         }
       }
-      paintMarks();
-      zoomText.textContent = Math.round(view.zoom * 100) + '%';
-      canvas.dataset.drawn = String(Number(canvas.dataset.drawn || 0) + 1);
-    }
-
-    // ---- the marks: what moves or changes without the map changing under
-    // it (playback's markers, the hotspot rings and their pulse, the keyboard
-    // cursor), drawn in that order on their own canvas.
-    function paintMarks() {
-      if (gone || !world || !state || view.width === 0 || map.hidden) return;
-      const theme = renderer.theme();
-      const ratio = window.devicePixelRatio || 1;
-      // the same pixels as the map's canvas, whatever the renderer rounded them to
-      if (layer.width !== canvas.width) layer.width = canvas.width;
-      if (layer.height !== canvas.height) layer.height = canvas.height;
-      pen.setTransform(1, 0, 0, 1, 0, 0);
-      pen.clearRect(0, 0, layer.width, layer.height);
-      pen.setTransform(ratio, 0, 0, ratio, 0, 0);
-      const given = { view, theme, point: pixel };
-      for (const mark of env.marks.slice().sort((a, b) => (a.order || 0) - (b.order || 0))) {
-        pen.save();
-        mark(pen, given);
-        pen.restore();
-      }
-      drawCursor(pen, theme);
-      layer.dataset.drawn = String(Number(layer.dataset.drawn) + 1);
-    }
-
-    // The keyboard cursor (DESIGN 5.3): a ring round its cell, never under
-    // CURSOR_LEAST px across however far the map is zoomed out, a 2 px line in
-    // the focus colour between two 1 px lines of the surface's, so it reads
-    // on a corridor, on a lane, on a marker and on a hotspot's ring alike.
-    function drawCursor(c, theme) {
-      delete layer.dataset.cursor;
-      if (!cursor.showing || document.activeElement !== canvas) return;
-      const at = view.toScreen(cursor.x + 0.5, cursor.y + 0.5);
-      const side = Math.max(CURSOR_LEAST, Math.round(view.size) - 2);
-      const x = Math.round(at.x - side / 2);
-      const y = Math.round(at.y - side / 2);
-      c.lineJoin = 'round';
-      c.strokeStyle = theme.card;
-      c.lineWidth = 4;
-      c.strokeRect(x + 1, y + 1, side - 2, side - 2);
-      c.strokeStyle = theme.accent;
-      c.lineWidth = 2;
-      c.strokeRect(x + 1, y + 1, side - 2, side - 2);
-      layer.dataset.cursor = [x, y, side].join(',');
-    }
-
-    function queuePaint() {
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(paint);
-    }
+    });
 
     // ---- the cell card
     function clearPoint() {
       if (!point && card.element.hidden) return;
       point = null;
+      plan.hover(null);
       card.hide();
-      queuePaint();
+      plan.paint();
     }
 
     // The card for a cell of the map. Returns what was found there.
     function pointAt(x, y, source) {
+      const world = plan.world;
       const found = world ? slotAt(world, x, y) : null;
       const info = found && state ? cellCard(state.project, state.results, state.graph, picture, found.slot.floor.id, found.cell) : null;
       if (!info) {
@@ -750,267 +529,57 @@ export const section = {
         return { found, info: null };
       }
       point = { floorId: found.slot.floor.id, cell: found.cell, source, picture };
+      // the cell the pointer is on is drawn as hovered; the keyboard's has its own ring
+      plan.hover(source === 'keyboard' ? null : point.floorId, point.cell);
       const at = view.toScreen(x, y);
       card.show(info, { x: at.x, y: at.y, size: view.size }, picture, state.project.settings);
       card.element.dataset.floor = point.floorId;
       card.element.dataset.cell = String(point.cell);
-      queuePaint();
+      plan.paint();
       return { found, info };
     }
 
-    const worldFloor = { get width() { return world ? Math.ceil(world.width) : 1; }, get height() { return world ? Math.ceil(world.height) : 1; } };
-    const host = {
-      view,
-      floor: () => worldFloor,
-      // nothing is drawn here: a drag moves the map
-      down: () => 'pan',
-      move() {},
-      up() {},
-      cancel() {},
-      // a tap shows a cell's card and keeps it; a tap on the same cell, or on nothing, puts it away
-      tap(ev) {
+    // what is done to a cell of the map (plan-map.js's onCell)
+    plan.onCell((ev) => {
+      const world = plan.world;
+      if (ev.kind === 'tap') {
+        // a tap shows a cell's card and keeps it; a tap on the same cell, or on nothing, puts it away
         const found = world && ev.inside ? slotAt(world, ev.x, ev.y) : null;
         if (!found || (point && point.source === 'tap' && point.floorId === found.slot.floor.id && point.cell === found.cell)) clearPoint();
         else pointAt(ev.x, ev.y, 'tap');
-      },
-      hover(ev) {
-        if (point && point.source === 'tap') return;
-        if (!ev || !ev.inside) {
+      } else if (ev.kind === 'hover') {
+        if (point && point.source === 'tap') return false;
+        if (!ev.inside) {
           clearPoint();
-          return;
+          return false;
         }
         // still in the cell whose card is up, over the same picture: nothing to work out again
         const found = point && point.source === 'hover' && point.picture === picture && world ? slotAt(world, ev.x, ev.y) : null;
-        if (found && found.slot.floor.id === point.floorId && found.cell === point.cell) return;
+        if (found && found.slot.floor.id === point.floorId && found.cell === point.cell) return false;
         pointAt(ev.x, ev.y, 'hover');
-      },
-      hasMenu: () => false,
-      menu() {},
-      spaceHeld: () => cursor.spaceHeld,
-      viewChanged() {
-        keepOnStage();
-        fitted = false;
-        shownLast = null;
-        clearPoint();
-        queuePaint();
-      },
-      moved(ev) {
+      } else if (ev.kind === 'keyboard') {
         const { found, info } = pointAt(ev.x, ev.y, 'keyboard');
         if (info) ctx.announce(card.text(info, picture, state.project.settings));
         else ctx.announce(found ? found.slot.floor.name + ': not a corridor.' : 'Between floors.');
-        queuePaint();
-      },
-      escape() {
+      } else if (ev.kind === 'escape') {
         if (!point) return false;
         clearPoint();
         return true;
-      },
-      shown: () => queuePaint(),
-    };
-    const input = attachInput(canvas, host);
-    const cursor = attachCursor(canvas, host);
-
-    function onKey(event) {
-      if (!singleKeyAllowed(event)) return;
-      if (event.key === '=' || event.key === '+') zoomBy(ZOOM_STEP);
-      else if (event.key === '-') zoomBy(1 / ZOOM_STEP);
-      else if (event.key === '0') fit();
-      else return;
-      event.preventDefault();
-    }
-    canvas.addEventListener('keydown', onKey);
-    // the cursor comes and goes with the focus: the marks alone are drawn again
-    canvas.addEventListener('focus', paintMarks);
-    canvas.addEventListener('blur', paintMarks);
-
-    // ---- the window
-    function measure() {
-      const width = stage.clientWidth;
-      const height = stage.clientHeight;
-      if (gone || width === 0 || height === 0) return;
-      if (width === view.width && height === view.height && canvas.dataset.ratio === String(window.devicePixelRatio || 1)) return;
-      view.resize(width, height);
-      renderer.resize(width, height, window.devicePixelRatio || 1);
-      canvas.dataset.ratio = String(window.devicePixelRatio || 1);
-      // a card under the pointer goes with the old size; one the reader tapped open is put back on its cell
-      const held = tapped();
-      clearPoint();
-      arrange();
-      // what was brought to the middle is still in the middle of the window as it is now
-      if (shownLast && !fitted && world) centre(shownLast.floorId, shownLast.cells);
-      // and a map the reader moved is still on the stage at its new size
-      if (!fitted) keepOnStage();
-      reopen(held);
-      if (floorsRow.how) floorsRow.how.set(world ? world.how : 'side');
-      queued = false;
-      paint();
-    }
-    const watcher = new ResizeObserver(() => {
-      measure();
-      dock();
-    });
-    watcher.observe(stage);
-
-    // ---- where a message of the shell may lie (DESIGN 5.3): above what is
-    // docked at the bottom of the surface, the playback bar and the zoom
-    // buttons. How far that reaches up from the surface's bottom edge is
-    // --toast-clear on the surface, measured as it is on screen now: when
-    // the stage changes size (the bar under it grew or shrank, the window
-    // changed) and when either of them is scrolled.
-    let dockHost = null;
-    function dock() {
-      const host = dockHost || element.closest('.surface');
-      if (gone || !host) return;
-      dockHost = host;
-      lift();
-      // where the section was scrolled to when this was measured, for a test to wait on
-      element.dataset.dockedAt = String(Math.round(element.scrollTop));
-      const edge = host.getBoundingClientRect();
-      const foot = edge.top + host.clientTop + host.clientHeight;
-      let top = foot;
-      for (const each of [zoomBox, bar.element]) {
-        const box = each.getBoundingClientRect();
-        if (box.height > 0 && box.bottom > edge.top && box.top < foot) top = Math.min(top, box.top);
+      } else if (ev.kind === 'view') {
+        clearPoint();
+      } else if (ev.kind === 'resize') {
+        // a card under the pointer goes with the old size; one the reader tapped open is put back on its cell
+        const held = tapped();
+        clearPoint();
+        reopen(held);
       }
-      const clear = Math.max(0, Math.round(foot - top)) + 'px';
-      if (host.style.getPropertyValue('--toast-clear') !== clear) host.style.setProperty('--toast-clear', clear);
-    }
-    // ---- the zoom buttons and the legend's card stand above the bar (SV2-55).
-    // Where the section scrolls (a short window, the controls shown) the bar,
-    // sticky at the section's foot, lies over the stage's foot until the
-    // section is at its end. How far it reaches up into the stage is
-    // --mov-under on the stage, and the two lift by that much, but never out
-    // of the stage's top.
-    function lift() {
-      if (map.hidden) return;
-      const shown = stage.getBoundingClientRect();
-      const barTop = bar.element.getBoundingClientRect().top;
-      const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-      const most = Math.max(0, shown.height - zoomBox.offsetHeight - margin * 2);
-      const under = Math.round(Math.min(most, Math.max(0, shown.bottom - barTop))) + 'px';
-      if (stage.style.getPropertyValue('--mov-under') !== under) stage.style.setProperty('--mov-under', under);
-    }
-
-    // ---- what the section has for the map (DESIGN 5.3; SV2-52): its height
-    // less the first line, as it is with the controls folded, and less what
-    // is docked under the map (the legend's line and the playback bar). The
-    // stage's floor of 45 % and 320 px is never more than that (--mov-room,
-    // movement.css), so in a short window the first line, the map and the
-    // bar are all on screen and nothing scrolls until the controls are shown.
-    // Two things lie over the section for a while and take nothing from the
-    // map: the inspector's sheet (under 900 px; the section scrolls under it
-    // with the map's top showing above it) and the bar's More (the bar grows
-    // up over the map's foot). The section is measured as with both shut.
-    // What the stage gets is never under its least (stageLeast in layout.js,
-    // SV2-55): a section with less scrolls, rather than the map becoming a
-    // strip with the zoom over it.
-    const firstLine = top.element.querySelector('.mov-line');
-    const barMore = bar.element.querySelector('[data-part="more"]');
-    roomReady = true;
-    // what the zoom box needs of the stage: its height and its margin above
-    // and below (SV2-57), as drawn: 70 px under a finger, 62 under a mouse
-    function zoomRoom() {
-      const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-      return zoomBox.offsetHeight + margin * 2;
-    }
-    function room() {
-      if (gone || map.hidden || element.clientHeight === 0) return;
-      let height = element.clientHeight;
-      const sheet = document.getElementById('inspector');
-      if (sheet && !sheet.hidden && sheet.dataset.mode === 'sheet' && sheet.dataset.open === 'true') {
-        const handle = sheet.querySelector('.inspector__bar');
-        height += sheet.getBoundingClientRect().height - (handle ? handle.getBoundingClientRect().height : 0);
-      }
-      const shape = getComputedStyle(top.element);
-      const line = firstLine.getBoundingClientRect().height + (parseFloat(shape.paddingTop) || 0) + (parseFloat(shape.paddingBottom) || 0) + (parseFloat(shape.borderBottomWidth) || 0);
-      const gap = parseFloat(getComputedStyle(bar.element).rowGap) || 0;
-      // boxes as drawn, not rounded: whole pixels taken apart again can be one out
-      const tall = (el) => el.getBoundingClientRect().height;
-      const more = barMore && !barMore.hidden ? tall(barMore) + gap : 0;
-      const docked = key.line.hidden ? 0 : tall(key.line);
-      const foot = tall(bar.element) - more + docked;
-      const has = Math.max(0, Math.floor(height - line - foot));
-      // never under the stage's least (layout.js): with less than that the
-      // section scrolls, the bar sticky at its foot, rather than the map
-      // shrinking to a strip. Nor is the least more than the section has over
-      // the bar and the legend's line, so with the first line scrolled away
-      // the whole stage is on screen (110 px at 844 by 390 on a touch screen).
-      const least = Math.min(stageLeast(world, stage.clientWidth, zoomRoom()), Math.max(0, Math.floor(height - foot)));
-      const next = Math.max(has, least) + 'px';
-      if (element.style.getPropertyValue('--mov-room') !== next) element.style.setProperty('--mov-room', next);
-      // More may take the map's height and the legend's line, never the first line's
-      const moreRoom = Math.max(0, has + docked - gap) + 'px';
-      if (element.style.getPropertyValue('--mov-more') !== moreRoom) element.style.setProperty('--mov-more', moreRoom);
-      // a control brought into view (the focus moving to it) is brought clear
-      // of the bar, sticky at the section's foot (scroll-padding-bottom, SV2-55)
-      const barRoom = Math.ceil(tall(bar.element)) + 'px';
-      if (element.style.getPropertyValue('--mov-bar') !== barRoom) element.style.setProperty('--mov-bar', barRoom);
-      // the bar's height this was measured with, for a test to wait on
-      element.dataset.measuredBar = String(bar.element.offsetHeight);
-    }
-    // and where a message may lie, which moves with the bar's height (More,
-    // a line of words under the row) whether or not the stage changes size
-    const roomWatcher = new ResizeObserver(() => {
-      room();
-      dock();
+      return false;
     });
-    for (const each of [element, firstLine, bar.element, key.line]) roomWatcher.observe(each);
-
-    // A wheel over the map scrolls the section while the section has some
-    // way to go that way and the map is not all on screen (the controls are
-    // shown in a short window); after that it moves the map, as it does
-    // everywhere else. Ctrl or Cmd with the wheel always zooms the map.
-    function sectionTakes(event) {
-      if (event.ctrlKey || event.metaKey || event.deltaY === 0) return false;
-      const most = element.scrollHeight - element.clientHeight;
-      if (most <= 0) return false;
-      const edge = element.getBoundingClientRect();
-      const shown = stage.getBoundingClientRect();
-      // the bar lies over the map's foot until the section is at its end;
-      // the map's foot is the docked legend's line under it when it is there,
-      // so the wheel brings that line above the bar too (SV2-55)
-      const foot = Math.min(edge.bottom, bar.element.getBoundingClientRect().top);
-      const mapFoot = key.line.hidden ? shown.bottom : Math.max(shown.bottom, key.line.getBoundingClientRect().bottom);
-      if (event.deltaY > 0) return element.scrollTop < most - 1 && mapFoot > foot + 1;
-      return element.scrollTop > 0 && shown.top < edge.top - 1;
-    }
-    function onStageWheel(event) {
-      // the map's own handler (ui/surface/input.js) is not reached, and the browser scrolls the section
-      if (sectionTakes(event)) event.stopPropagation();
-    }
-    stage.addEventListener('wheel', onStageWheel, { capture: true, passive: true });
-
-    // the surface scrolls down to Getting started, and the section inside
-    // itself on a small window: the dock moves with both
-    element.addEventListener('scroll', dock, { passive: true });
-    const onSurfaceScroll = (event) => {
-      if (event.target === dockHost) dock();
-    };
-    document.addEventListener('scroll', onSurfaceScroll, { passive: true, capture: true });
-    const dark = matchMedia('(prefers-color-scheme: dark)');
-    dark.addEventListener('change', queuePaint);
-    // The pixels a CSS pixel is made of change with no change of size (the
-    // window moved to another screen, the browser's zoom): the canvases are
-    // made again at the new ratio. A query matches one ratio, so it is asked
-    // again each time.
-    let ratioQuery = null;
-    function onRatio() {
-      watchRatio();
-      measure();
-    }
-    function watchRatio() {
-      if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
-      ratioQuery = matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
-      ratioQuery.addEventListener('change', onRatio);
-    }
-    watchRatio();
 
     loadSheet().then(() => {
       if (gone) return;
       element.dataset.styled = 'true';
-      room();
-      measure();
-      dock();
+      plan.remeasure();
     });
 
     // Looking at this view is the last step of Getting started. The tick is
@@ -1030,37 +599,34 @@ export const section = {
       view,
       canvas,
       env,
+      plan,
       get choice() { return choice; },
       get picture() { return picture; },
-      get world() { return world; },
+      get world() { return plan.world; },
       get state() { return state; },
-      get fitted() { return fitted; },
+      get fitted() { return plan.fitted; },
       get point() { return point; },
       // the keyboard cursor (ui/surface/cursor.js): where it is, and moveTo(x, y, visible)
-      cursor,
+      cursor: plan.cursor,
       change,
-      fit,
+      fit: () => plan.fit(),
       // Where on the canvas a group's lane runs through a cell, and how wide
       // the line is, in CSS pixels; null when the group does not walk there.
       laneAt(groupId, floorId, cell) {
+        const world = plan.world;
         const at = picture && picture.lanes ? lanePoint(picture.lanes, groupId, floorId, cell) : null;
         const slot = at && world ? world.slots.find((each) => each.floor.id === floorId) : null;
         if (!slot) return null;
         const place = view.toScreen(slot.x + at[0] - slot.box.x, slot.y + at[1] - slot.box.y);
-        return { x: place.x, y: place.y, width: lineWidth(picture.lanes, view.size, choice.constantWidth), colour: lineColour(groupId, renderer.theme()) };
+        return { x: place.x, y: place.y, width: lineWidth(picture.lanes, view.size, choice.constantWidth), colour: lineColour(groupId, plan.theme()) };
       },
-      cellAt: pixel,
+      cellAt: plan.cellAt,
     };
 
     return {
       element,
       // where the shell's "to the surface" goes: the map
-      focus() {
-        // with nothing to draw there is no map: the shell takes the region
-        if (map.hidden) return false;
-        canvas.focus();
-        return true;
-      },
+      focus: () => plan.focus(),
       update() {
         ask();
         refresh();
@@ -1068,20 +634,10 @@ export const section = {
       unmount() {
         gone = true;
         asker.stop();
-        element.removeEventListener('scroll', dock);
-        document.removeEventListener('scroll', onSurfaceScroll, { capture: true });
-        if (dockHost) dockHost.style.removeProperty('--toast-clear');
         bar.unmount();
-        watcher.disconnect();
-        roomWatcher.disconnect();
-        stage.removeEventListener('wheel', onStageWheel, { capture: true });
-        dark.removeEventListener('change', queuePaint);
-        if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
+        plan.unmount();
         wide.removeEventListener('change', onWidth);
         phone.removeEventListener('change', onWidth);
-        input.detach();
-        cursor.detach();
-        canvas.removeEventListener('keydown', onKey);
         panels.hotspots.unmount();
       },
     };
