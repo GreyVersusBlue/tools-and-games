@@ -450,12 +450,15 @@ export function curvedLoopsOf(floor) {
 // other roof is the plan it always was, key for key.
 //
 // Two buildings whose walls do not meet can still have mask cells side by
-// side, and share a mask loop (#988). The curved one is taken there too when
-// no cell of anything else reaches inside its chords; the rest of the shared
-// loop is outlined again from its own cells, and a deck rectangle laid across
-// both keeps its cells outside the curve, cut again into rectangles. A cell
-// that does reach inside the chords keeps the pair on its steps: two
-// parapets would stand inside one another, and which gives way is a call.
+// side, and share a mask loop (#988). The curved one is taken there too; the
+// rest of the shared loop is outlined again from its own cells, and a deck
+// rectangle laid across both keeps its cells outside the curve, cut again
+// into rectangles. Where a cell of the other building reaches inside the
+// chords, that building gives way (#990, Devon): its loop is cut back to the
+// chords, so its parapet runs along them where it was cut, and each cell the
+// curve takes a bite of leaves the deck as a rectangle and comes back as what
+// is left of it (`deckPolys` entries marked `trim`). Where the cut cannot be
+// vouched for (`ringMinus` says null) the pair stays on its steps, as before.
 function parapetOnChords(mask, outlines, rects, curved) {
   if (!curved.length) return null;
   const owner = (x, z) => curved.findIndex((loop) => pointInRing(loop, x, z));
@@ -472,15 +475,26 @@ function parapetOnChords(mask, outlines, rects, curved) {
     }
     return seen;
   });
-  const taken = new Map();
+  const taken = new Map(), reach = new Set();
   curved.forEach((loop, k) => {
     const mine = owners.filter((o) => o.has(k));
     if (!mine.length) return;
-    if (mine.some((o) => o.size > 1) && cellReachesInto(mask, loop)) return;
     const tris = triangulate(loop);
-    if (tris) taken.set(k, { pts: loop, tris });
+    if (!tris) return;
+    if (mine.some((o) => o.size > 1) && cellReachesInto(mask, loop)) reach.add(k);
+    taken.set(k, { pts: loop, tris });
   });
   if (!taken.size) return null;
+  const plan = chordPlan(mask, outlines, rects, owners, taken, reach);
+  if (plan || !reach.size) return plan;
+  for (const k of reach) taken.delete(k);
+  return taken.size ? chordPlan(mask, outlines, rects, owners, taken, new Set()) : null;
+}
+
+// `parapetOnChords`' plan for the curved loops it took; `reach` names the ones
+// another building's cells reach inside, which that building gives way to.
+// `null` where a cut cannot be made.
+function chordPlan(mask, outlines, rects, owners, taken, reach) {
   const polys = [...taken.values()];
   const inTaken = (x, z) => polys.some((d) => pointInRing(d.pts, x, z));
   const kept = outlines.filter((_, i) => ![...owners[i]].some((k) => taken.has(k)));
@@ -497,24 +511,70 @@ function parapetOnChords(mask, outlines, rects, curved) {
   const rest = { ...mask, on: mask.on.map((v, i) => (v && !centreIn(i % mask.w, Math.floor(i / mask.w)) ? 1 : 0)) };
   const keys = new Set(kept.map((l) => JSON.stringify(l)));
   const split = maskOutlines(rest).filter((l) => !keys.has(JSON.stringify(l)));
+  // The cells the curve takes a bite of: covered, their middle outside it,
+  // some of their area inside (#990). None where nothing reaches inside.
+  const cuts = [...reach].map((k) => taken.get(k).pts);
+  const bitten = new Set();
+  for (const loop of cuts) for (const i of cellsReachingInto(rest, loop)) bitten.add(i);
+  const pieceOf = (i) => {
+    const sx = (mask.cx0 + (i % mask.w)) * CELL, sz = (mask.cy0 + Math.floor(i / mask.w)) * CELL;
+    return cuts.reduce((left, loop) => left && left.flatMap((l) => ringMinus(l, loop) || [null]),
+      [[{ x: sx, z: sz }, { x: sx + CELL, z: sz }, { x: sx + CELL, z: sz + CELL }, { x: sx, z: sz + CELL }]]);
+  };
   const deckRects = rects.flatMap((rect) => {
-    let inside = 0;
-    for (let r = rect.r0; r < rect.r1; r++) for (let c = rect.c0; c < rect.c1; c++) if (centreIn(c, r)) inside++;
-    if (!inside) return [rect];
-    if (inside === (rect.r1 - rect.r0) * (rect.c1 - rect.c0)) return [];
+    let inside = 0, bit = 0;
+    for (let r = rect.r0; r < rect.r1; r++) {
+      for (let c = rect.c0; c < rect.c1; c++) {
+        if (centreIn(c, r)) inside++;
+        else if (bitten.has(r * mask.w + c)) bit++;
+      }
+    }
+    if (!inside && !bit) return [rect];
+    if (inside + bit === (rect.r1 - rect.r0) * (rect.c1 - rect.c0)) return [];
     const part = { ...rest, on: rest.on.map((v, i) => {
       const c = i % mask.w, r = Math.floor(i / mask.w);
-      return v && c >= rect.c0 && c < rect.c1 && r >= rect.r0 && r < rect.r1 ? 1 : 0;
+      return v && !bitten.has(i) && c >= rect.c0 && c < rect.c1 && r >= rect.r0 && r < rect.r1 ? 1 : 0;
     }) };
     return maskRects(part);
   });
-  return { outlines: [...kept, ...split, ...polys.map((d) => d.pts)], deckRects, deckPolys: polys };
+  if (!bitten.size) {
+    return { outlines: [...kept, ...split, ...polys.map((d) => d.pts)], deckRects, deckPolys: polys };
+  }
+  // The other building's loops, cut back to the chords: its parapet.
+  const cutLoops = [];
+  for (const loop of [...kept, ...split]) {
+    let left = [loop];
+    for (const c of cuts) {
+      left = left.flatMap((l) => ringMinus(l, c) || [null]);
+      if (left.includes(null)) return null;
+    }
+    cutLoops.push(...left);
+  }
+  // Its deck: each bitten cell, less the curve, in its own triangles.
+  const pieces = [];
+  for (const i of [...bitten].sort((a, b) => a - b)) {
+    const left = pieceOf(i);
+    if (left.includes(null)) return null;
+    for (const pts of left) {
+      const tris = triangulate(pts);
+      if (!tris) return null;
+      pieces.push({ pts, tris, trim: true });
+    }
+  }
+  return { outlines: [...cutLoops, ...polys.map((d) => d.pts)], deckRects, deckPolys: [...polys, ...pieces] };
 }
 
 // Does a covered cell whose middle lies outside `loop` lie partly inside it?
-// The area of the loop clipped to the cell's square (Sutherland-Hodgman,
-// which gives the right area for a loop that is not convex).
 function cellReachesInto(mask, loop) {
+  return cellsReachingInto(mask, loop, true).length > 0;
+}
+
+// The covered cells (indices into `mask.on`) whose middle lies outside `loop`
+// and some of whose area lies inside it: the area of the loop clipped to the
+// cell's square (Sutherland-Hodgman, which gives the right area for a loop
+// that is not convex). `first` stops at the first one.
+function cellsReachingInto(mask, loop, first = false) {
+  const out = [];
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
   for (const p of loop) { x0 = Math.min(x0, p.x); z0 = Math.min(z0, p.z); x1 = Math.max(x1, p.x); z1 = Math.max(z1, p.z); }
   const c0 = Math.max(0, Math.floor(x0 / CELL) - mask.cx0), c1 = Math.min(mask.w, Math.ceil(x1 / CELL) - mask.cx0);
@@ -526,23 +586,111 @@ function cellReachesInto(mask, loop) {
       if (pointInRing(loop, sx + CELL / 2, sz + CELL / 2)) continue;
       let pts = loop;
       for (const [axis, at, keep] of [['x', sx, 1], ['x', sx + CELL, -1], ['z', sz, 1], ['z', sz + CELL, -1]]) {
-        const out = [];
+        const next = [];
         for (let i = 0; i < pts.length; i++) {
           const a = pts[i], b = pts[(i + 1) % pts.length];
           const ia = (a[axis] - at) * keep >= 0, ib = (b[axis] - at) * keep >= 0;
-          if (ia) out.push(a);
+          if (ia) next.push(a);
           if (ia !== ib) {
             const t = (at - a[axis]) / (b[axis] - a[axis]);
-            out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+            next.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
           }
         }
-        pts = out;
+        pts = next;
         if (!pts.length) break;
       }
-      if (pts.length >= 3 && Math.abs(loopArea(pts)) > 1e-6) return true;
+      if (pts.length >= 3 && Math.abs(loopArea(pts)) > 1e-6) {
+        out.push(r * mask.w + c);
+        if (first) return out;
+      }
     }
   }
-  return false;
+  return out;
+}
+
+// What is left of ring `a` once ring `b` is taken out of it (#990): a list of
+// loops, each wound as `a` is, or `null` where the bookkeeping cannot vouch
+// for the answer, and the caller then leaves things as they were. Both edges
+// lists are split where they cross; `a`'s pieces outside `b` and `b`'s pieces
+// inside `a`, reversed, chain end to start into the loops. Refused: an edge
+// of one lying along the other or ending on it, `b` wholly inside `a` (a hole
+// is not a loop), and `a` a hole loop of the mask that `b` crosses.
+function ringMinus(a, b) {
+  const E = 1e-9;
+  const cutsA = a.map(() => []), cutsB = b.map(() => []);
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    const ux = q.x - p.x, uz = q.z - p.z;
+    for (let j = 0; j < b.length; j++) {
+      const r = b[j], s = b[(j + 1) % b.length];
+      const vx = s.x - r.x, vz = s.z - r.z;
+      const wx = r.x - p.x, wz = r.z - p.z;
+      const d = ux * vz - uz * vx;
+      const scale = Math.hypot(ux, uz) * Math.hypot(vx, vz);
+      if (Math.abs(d) <= 1e-12 * scale) {
+        // Parallel: refused if they lie on one line and meet.
+        if (Math.abs(wx * uz - wz * ux) > 1e-9 * Math.hypot(ux, uz)) continue;
+        const len2 = ux * ux + uz * uz;
+        const t0 = (wx * ux + wz * uz) / len2, t1 = ((s.x - p.x) * ux + (s.z - p.z) * uz) / len2;
+        if (Math.max(t0, t1) >= -E && Math.min(t0, t1) <= 1 + E) return null;
+        continue;
+      }
+      const t = (wx * vz - wz * vx) / d, u = (wx * uz - wz * ux) / d;
+      if (t < -E || t > 1 + E || u < -E || u > 1 + E) continue;
+      if (t < E || t > 1 - E || u < E || u > 1 - E) return null;
+      const pt = { x: p.x + ux * t, z: p.z + uz * t };
+      cutsA[i].push({ t, pt });
+      cutsB[j].push({ t: u, pt });
+    }
+  }
+  if (!cutsA.some((c) => c.length)) {
+    if (pointInRing(b, a[0].x, a[0].z)) return [];
+    if (pointInRing(a, b[0].x, b[0].z)) return null;
+    return [a];
+  }
+  if (loopArea(a) < 0) return null;
+  const forward = loopArea(b) > 0;
+  const pieces = new Map();
+  const put = (from, to) => {
+    const k = okey(from);
+    if (pieces.has(k)) return false;
+    pieces.set(k, { from, to });
+    return true;
+  };
+  const runs = (ring, cuts, i) => {
+    const pts = [ring[i], ...cuts[i].sort((m, n) => m.t - n.t).map((c) => c.pt), ring[(i + 1) % ring.length]];
+    return pts.slice(1).map((to, k) => [pts[k], to]);
+  };
+  for (let i = 0; i < a.length; i++) {
+    for (const [from, to] of runs(a, cutsA, i)) {
+      if (pointInRing(b, (from.x + to.x) / 2, (from.z + to.z) / 2)) continue;
+      if (!put(from, to)) return null;
+    }
+  }
+  for (let j = 0; j < b.length; j++) {
+    for (const [from, to] of runs(b, cutsB, j)) {
+      if (!pointInRing(a, (from.x + to.x) / 2, (from.z + to.z) / 2)) continue;
+      // `b`'s boundary inside `a` runs against `b`'s own winding.
+      if (!(forward ? put(to, from) : put(from, to))) return null;
+    }
+  }
+  const loops = [];
+  while (pieces.size) {
+    const [startKey, first] = pieces.entries().next().value;
+    const pts = [];
+    let cur = first, key = startKey;
+    while (cur) {
+      pieces.delete(key);
+      pts.push(cur.from);
+      key = okey(cur.to);
+      if (key === startKey) break;
+      cur = pieces.get(key);
+      if (!cur) return null;
+    }
+    if (pts.length < 3 || Math.abs(loopArea(pts)) < 1e-9) return null;
+    loops.push(pts);
+  }
+  return loops;
 }
 
 // The skeleton roofs a design's top storey stands under: the hipped style
@@ -565,8 +713,10 @@ export function skeletonRoofsOf(state, roof = null) {
 // skeleton roof stands at the one pitch, so its sloped area over that outline
 // is still the plan area over the cosine. A parapet roof whose parapet runs on
 // the chords (`roofPlan`'s `deckPolys`, #973's one test) is counted off that
-// same outline, flat (#986). Every other footprint is the mask's count, by the
-// same lines the takeoff and the estimate each had before (#970).
+// same outline, flat (#986), and so is a neighbour cut back to those chords,
+// off its whole cells and what is left of each cut one (#990): the deck as
+// drawn. Every other footprint is the mask's count, by the same lines the
+// takeoff and the estimate each had before (#970).
 export function roofCover(state) {
   const top = state.floors.length - 1;
   const floor = state.floors[top];
@@ -593,7 +743,7 @@ export function roofCover(state) {
     footprint -= cells * CELL * CELL;
     for (const loop of loops) footprint += loopArea(loop);
   }
-  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length, chords: chords.length };
+  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length, chords: chords.filter((d) => !d.trim).length };
 }
 
 // ---------- 5. the true outline, for a roof over a curve ----------

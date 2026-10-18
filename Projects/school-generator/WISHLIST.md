@@ -380,7 +380,8 @@ and add to this list rather than starting a new one.
   and the other three, a wall or a doorway in it or shutting its far end,
   the landing off the floor above and another link in it, by the same
   `landingFit` lines on the same warning (#989), so all five are asked of
-  it and whether the warning cites a section is Devon's; a ramp's width and slope
+  it, and it cites no section, which is settled (Devon, 2026-10-16: not
+  IBC 1011.6); a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
   (`data.width` and `data.slope` were there since Phase 2), and the design
@@ -479,12 +480,13 @@ and add to this list rather than starting a new one.
   square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
   keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
-  touch another building's takes its chord parapet only where no cell of the
-  other reaches inside its chords (#988); where one does (a box 0.2ft off a
-  bow, its cell 1.56ft inside the chords), the pair keeps one stepped parapet
-  and its mask count, and the question for Devon is which gives way: the
-  stepped building's cells cut back to the chords, the curve, or a deck over
-  the gap; the site plan's building line is the ground storey's mask, stepped on a curve
+  touch another building's takes its chord parapet (#988), and where a cell
+  of the other reaches inside its chords (a box 0.2ft off a bow, its cell
+  1.56ft inside them) the other building gives way (#990, Devon): its loop
+  is cut back to the chords, its bitten cells are decked as what is left of
+  them, and the takeoff and the estimate count that deck; along the cut the
+  two parapets stand on one line, drawn twice, and a cut `ringMinus` cannot
+  vouch for (an edge along the other ring) keeps the pair stepped; the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its

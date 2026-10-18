@@ -6,8 +6,8 @@
 // its steps. Now the curved one takes its chords where no cell of anything
 // else reaches inside them, and the other building keeps its own cells, its
 // own loop round them and the rectangles they had. Where a cell of the
-// other building does reach inside the chords the pair stays as it was:
-// what a parapet does there is a question, not arithmetic.
+// other building does reach inside the chords, that building gives way and
+// is cut back to them (#990, test/roof-trim.test.mjs).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -141,15 +141,16 @@ test('a box in the notch of a curved L, its cells against the wall\'s cell line,
   assert.equal(roofPlan(s).deckPolys?.length, 1, 'the L takes its chords');
 });
 
-test('a box whose cell reaches inside the chords keeps the pair on its steps', () => {
+test('a box whose cell reaches inside the chords gives way to them', () => {
   // The bow reaches x 73.56 and the box starts at 73.8, so the box's cell from
-  // 72 to 76 lies 1.56ft inside the hall's chords. Two parapets would stand
-  // inside one another there; which gives way is Devon's call (WISHLIST).
+  // 72 to 76 lies 1.56ft inside the hall's chords. The box is cut back to the
+  // chords and the hall keeps them (#990, Devon; test/roof-trim.test.mjs).
   const s = school({ bow: -0.4, box: 73.8 });
   const plan = roofPlan(s);
-  assert.ok(!('deckPolys' in plan));
-  assert.deepEqual(plan.outlines, maskOutlines(maskOf(s)));
-  assert.equal(roofCover(s).chords, 0);
+  const hall = roofOutline(s.floors[0]).loops.find((l) => l.length > 4);
+  assert.deepEqual(plan.deckPolys.filter((d) => !d.trim).map((d) => d.pts), [hall]);
+  assert.ok(plan.deckPolys.some((d) => d.trim), 'the box\'s bitten cells are pieces');
+  assert.equal(roofCover(s).chords, 1);
 });
 
 test('only the parapet: flat, gable and hip over the touching pair are as they were', () => {
