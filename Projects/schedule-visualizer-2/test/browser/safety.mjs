@@ -80,6 +80,20 @@ async function roomPoint(page, roomId) {
   }, roomId);
 }
 
+// Every cell of a room's way out, and the room, is on the stage.
+async function wayOnStage(page, roomId) {
+  return page.evaluate((id) => {
+    const view = document.querySelector('.sfy').safety;
+    const row = view.picture.byRoom.get(id);
+    const places = [...row.cells.map((cell) => ({ floorId: row.floorId, cell })), ...row.route.cells, row.route.exit];
+    const off = places.filter((place) => {
+      const at = view.plan.cellAt(place.floorId, place.cell);
+      return !at || at.x < 0 || at.y < 0 || at.x > view.plan.view.width || at.y > view.plan.view.height;
+    });
+    return { off: off.length, of: places.length };
+  }, roomId);
+}
+
 // The print preview's document, once it is laid out: the cards in print
 // order, the cover's lists, the paper, and every typed name it holds.
 async function previewRead(page) {
@@ -308,21 +322,19 @@ test('the inspector lists each exit with the rooms it serves and their people, a
   assert.deepEqual(listed.flatMap((item) => item.rooms.map((room) => room.id)).sort(), facts.rooms.map((room) => room.id).sort());
   assert.equal(await seen(page, '.sfy-missing__none'), 'Every room has a way out.');
 
-  // a room's button picks it, presses it, and brings it to the middle of the map
-  await page.evaluate(() => document.querySelector('.sfy').safety.plan.fit());
+  // a room's button picks it, presses it, and brings its whole way out onto the map
+  await page.evaluate(() => {
+    const plan = document.querySelector('.sfy').safety.plan;
+    plan.fit();
+    for (let i = 0; i < 6; i += 1) plan.canvas.dispatchEvent(new KeyboardEvent('keydown', { key: '=', bubbles: true }));
+  });
+  const before = await wayOnStage(page, 'rsample303');
+  assert.ok(before.off > 0, 'zoomed in, Room 303\'s way out was all on the stage already: the case tests nothing');
   await page.click('.sfy-exit .sfy-room[data-room="rsample303"]');
   await page.waitForSelector('.sfy[data-picked="rsample303"]');
   assert.equal(await page.$eval('.sfy-exit .sfy-room[data-room="rsample303"]', (el) => el.getAttribute('aria-pressed')), 'true');
   assert.equal(await page.$eval('.sfy-exit .sfy-room[data-room="rsample101"]', (el) => el.getAttribute('aria-pressed')), 'false');
-  const middle = await page.evaluate(() => {
-    const view = document.querySelector('.sfy').safety;
-    const row = view.picture.byRoom.get('rsample303');
-    const points = row.cells.map((cell) => view.plan.cellAt(row.floorId, cell));
-    const x = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-    const y = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-    return { dx: x - view.plan.view.width / 2, dy: y - view.plan.view.height / 2 };
-  });
-  assert.ok(Math.abs(middle.dx) <= 2 && Math.abs(middle.dy) <= 2, 'Room 303 is not in the middle of the map: ' + JSON.stringify(middle));
+  assert.deepEqual(await wayOnStage(page, 'rsample303'), { off: 0, of: before.of }, 'Room 303\'s way out is not all on the map');
 });
 
 // The sample school with one room that opens onto nothing: a block of empty
@@ -507,7 +519,7 @@ test('typed names, hostile and in other scripts, are shown and printed exactly a
     globalThis.sv2.store.replace(project);
   }, typed);
   await ready(page);
-  await page.waitForFunction((door) => document.querySelector('.sfy-key__name') && document.querySelector('.sfy-key__name').textContent === door, {}, typed.door);
+  assert.equal(await seen(page, '.sfy-key__name'), typed.door);
   assert.equal(await seen(page, '.sfy-exit .sfy-exit__assembly bdi'), typed.assembly);
   assert.equal(await seen(page, '.sfy-exit__where bdi'), typed.floor);
   assert.equal(await seen(page, '.sfy-room[data-room="rsample101"]'), typed.room);
@@ -679,14 +691,9 @@ test('on a phone with touch the inspector is a sheet: a room tapped in it shuts 
     await page.touchscreen.tap(at.x, at.y);
     await page.waitForSelector('.sfy[data-picked="rsample302"]');
     await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'false');
-    // the room is in the middle of the map, and the map is not under the sheet
-    const middle = await page.evaluate(() => {
-      const view = document.querySelector('.sfy').safety;
-      const row = view.picture.byRoom.get('rsample302');
-      const points = row.cells.map((cell) => view.plan.cellAt(row.floorId, cell));
-      return { dx: points.reduce((sum, p) => sum + p.x, 0) / points.length - view.plan.view.width / 2, dy: points.reduce((sum, p) => sum + p.y, 0) / points.length - view.plan.view.height / 2 };
-    });
-    assert.ok(Math.abs(middle.dx) <= 2 && Math.abs(middle.dy) <= 2, 'Room 302 is not in the middle of the map: ' + JSON.stringify(middle));
+    // its whole way out is on the map, and the sheet is not over it
+    const way = await wayOnStage(page, 'rsample302');
+    assert.equal(way.off, 0, 'Room 302\'s way out is not all on the map: ' + JSON.stringify(way));
     // the Door cards tab's controls take a finger too
     await page.tap('#inspector-toggle');
     await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'true');
