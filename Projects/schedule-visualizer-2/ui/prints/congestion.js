@@ -33,11 +33,17 @@
 //     most late walks, then the earlier one
 //   lateWalks(project, results, dayTypeId) → the late walks as tables.js rows, slowest first
 //   scenarioSection(project, comparison) → markup, '' with no scenario open
-//     comparison   undefined while it is being worked out (or with no engine
-//                  to work it out); null when the lane answered null; an
-//                  Error or { failed: message } when it failed; else the
-//                  lane's answer. An answer for other changes than the
-//                  scenario's own as it is now is stale and never printed.
+//     comparison   undefined while it is being worked out; SCENARIO_UNAVAILABLE
+//                  when nothing on the page can work it out (no engine); null
+//                  when the lane answered null; an Error or { failed: message }
+//                  when it failed; else the lane's answer. An answer for other
+//                  changes than the scenario's own as it is now is stale and
+//                  never printed. An answer of a shape the section cannot read
+//                  is said to have failed; the section never throws.
+//                  Answered, a scenario with no change, kept or dropped, is
+//                  one sentence, whatever the answer's figures.
+//   SCENARIO_UNAVAILABLE   the marker the print preview hands as
+//             derived.scenario when there is no engine to ask
 //   SCENARIO_PLACES   how many places busier, and how many quieter, it lists
 
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
@@ -58,6 +64,8 @@ export const WORST_TRANSITIONS = 3;
 // The places a scenario changes most, each way. Five a side keeps the two
 // tables to about a third of a sheet beside the figures; the lab shows the rest.
 export const SCENARIO_PLACES = 5;
+// derived.scenario when the page has nothing to work the comparison out with
+export const SCENARIO_UNAVAILABLE = Object.freeze({ unavailable: true });
 
 function crowdDay(results, dayTypeId) {
   return results.crowd && Array.isArray(results.crowd.days) ? results.crowd.days.find((day) => day.dayTypeId === dayTypeId) || null : null;
@@ -208,17 +216,21 @@ function placeHtml(project, row, names) {
   return partsHtml(row.parts || [{ text: row.name || '', name: true }]) + (onFloor ? ' on <span dir="auto">' + esc(floor.name) + '</span>' : '');
 }
 
+// With more than one own day type the busiest place says which day it is on.
 function busiestHtml(project, side, names) {
   if (!side) return 'nobody walks';
-  return side.load + ' ' + unitWord(side.unit, side.load) + ', ' + placeHtml(project, side, names);
+  const day = ownDayTypes(project).length > 1 ? findDayType(project, side.dayTypeId) : null;
+  return side.load + ' ' + unitWord(side.unit, side.load) + ', ' + placeHtml(project, side, names) + (day ? ', on <span dir="auto">' + esc(day.name) + '</span>' : '');
 }
 
 function figuresTable(project, compare, names) {
   const f = compare.figures;
   const time = (n) => esc(seconds(n));
+  // a time's difference is that of the two times as printed (whole seconds),
+  // so the three cells always agree and less than half a second is no change
   const row = (label, side, words) => '<tr><th scope="row">' + esc(label) + '</th>'
     + '<td class="is-number">' + (words ? time(side.before) : side.before) + '</td><td class="is-number">' + (words ? time(side.after) : side.after) + '</td>'
-    + changeCell(side.difference, words) + '</tr>';
+    + changeCell(words ? Math.round(side.after) - Math.round(side.before) : side.difference, words) + '</tr>';
   const out = ['<table class="doc-table doc-table--scenario">',
     '<thead><tr><th scope="col">Figure</th><th scope="col" class="is-number">Before</th><th scope="col" class="is-number">After</th><th scope="col" class="is-number">Difference</th></tr></thead>',
     '<tbody>',
@@ -284,25 +296,57 @@ export function scenarioSection(project, comparison) {
   };
   const say = (text) => out.push('<p class="doc-none">' + text + '</p>');
 
+  let view;
+  try {
+    view = reconcile(project, scenario);
+  } catch (error) {
+    view = null;
+  }
   if (comparison === undefined) {
     say('Every figure above was worked out for the schedule as it stands. What ' + called + ' would change is still being worked out.');
+    return close();
+  }
+  if (comparison !== null && typeof comparison === 'object' && comparison.unavailable === true) {
+    say('Every figure above was worked out for the schedule as it stands. What ' + called + ' would change cannot be worked out here, so nothing of it is printed.');
     return close();
   }
   if (comparison === null) {
     say('What ' + called + ' would change could not be worked out for this report, so nothing of it is printed. Close the report and open it again to try once more.');
     return close();
   }
-  if (comparison instanceof Error || typeof comparison.failed === 'string') {
-    const message = comparison instanceof Error ? comparison.message : comparison.failed;
-    say('What ' + called + ' would change could not be worked out: <span dir="auto">' + esc(message) + '</span>' + (/[.!?]$/.test(message) ? '' : '.') + ' Nothing of it is printed.');
+  const failed = (message) => {
+    const said = typeof message === 'string' ? message.trim() : '';
+    say('What ' + called + ' would change could not be worked out'
+      + (said === '' ? '.' : ': <span dir="auto">' + esc(said) + '</span>' + (/[.!?]$/.test(said) ? '' : '.')) + ' Nothing of it is printed.');
+    return close();
+  };
+  if (comparison instanceof Error) return failed(comparison.message);
+  if (typeof comparison !== 'object' || view === null) return failed('');
+  if (typeof comparison.failed === 'string') return failed(comparison.failed);
+  // nothing kept and nothing dropped: one sentence, not a sheet of "no change"
+  if (view.changes.length === 0 && view.dropped.length === 0) {
+    say(called.charAt(0).toUpperCase() + called.slice(1) + ' has no changes yet, so it changes nothing in this report.');
     return close();
   }
-  const view = reconcile(project, scenario);
   if (!current(comparison, view.changes) || !comparison.compare) {
     say('The scenario has changed since its effect was worked out, so nothing of it is printed. Close the report and open it again for its figures.');
     return close();
   }
+  // an answer of a shape this section cannot read is said, never thrown:
+  // the day sections above still print
+  let body;
+  try {
+    body = comparisonHtml(project, scenario, comparison, view, called);
+  } catch (error) {
+    return failed('its answer could not be read');
+  }
   out[0] = '<section class="doc-section doc-scenario new-sheet">';
+  out.push(body);
+  return close();
+}
+
+function comparisonHtml(project, scenario, comparison, view, called) {
+  const out = [];
   const compare = comparison.compare;
   const result = comparison.result || {};
   const names = new Map();
@@ -346,7 +390,7 @@ export function scenarioSection(project, comparison) {
   const places = compare.places;
   out.push(placeChanges(project, 'Places that get busier', places.busier.slice(0, SCENARIO_PLACES), 'busier', unit, names, 'No place gets busier.'));
   out.push(placeChanges(project, 'Places that get quieter', places.quieter.slice(0, SCENARIO_PLACES), 'quieter', unit, names, 'No place gets quieter.'));
-  return close();
+  return out.join('\n');
 }
 
 export function render(given, derived, options) {

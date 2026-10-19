@@ -114,7 +114,7 @@ test('a comparison on the sample school with two changes prints the changes, the
   const figures = Object.fromEntries(rowsAfter(section, 'Before and after').map((row) => [row[0], row.slice(1)]));
   assert.deepEqual(figures['Walking, all walks together'], ['153 min 48 s', '153 min', '−48 s']);
   assert.deepEqual(figures['Lost to the crowd'], ['7 min 58 s', '8 min 21 s', '+23 s']);
-  assert.deepEqual(figures['Busiest place'], ['177 students, Main Corridor, by Door B', '177 students, Main Corridor, by Door B', 'no change']);
+  assert.deepEqual(figures['Busiest place'], ['177 students, Main Corridor, by Door B, on A Day', '177 students, Main Corridor, by Door B, on A Day', 'no change']);
   assert.deepEqual(figures['Late walks'], ['1', '0', '−1']);
   assert.deepEqual(figures['Walks with no way through'], ['0', '0', 'no change']);
   assert.deepEqual(figures.Problems, ['1', '1', 'no change']);
@@ -242,4 +242,118 @@ test('the section is the same from the movement view\'s state and from a bare re
   assert.equal(sectionOf(congestionPrint.render(sample, null, { ...NOW, movement }).html), sectionOf(congestionPrint.render(sample, null, NOW).html));
   // and the day sections are still the movement view's: the report without its scenario section is the bare one's
   assert.equal(fromMovement.replace('\n' + section, ''), congestionPrint.render(before, null, { ...NOW, movement }).html);
+});
+
+// ---------------------------------------------------------------- SV2-71b
+
+// The answer with some of its figures replaced, the rest as the lane gave them.
+function withFigures(figures) {
+  return { ...answer, compare: { ...answer.compare, figures: { ...answer.compare.figures, ...figures } } };
+}
+
+test('with no engine the preview hands { unavailable: true }, and the section says the effect cannot be worked out here', () => {
+  const sentence = '<p class="doc-none">Every figure above was worked out for the schedule as it stands. What the scenario <span dir="auto">Ease the 2nd floor</span> would change cannot be worked out here, so nothing of it is printed.</p>';
+  for (const marker of [congestionPrint.SCENARIO_UNAVAILABLE, { unavailable: true }]) {
+    const section = sectionOf(congestionPrint.render(sample, { scenario: marker }, NOW).html);
+    assert.ok(section.includes(sentence), 'unavailable');
+    assert.equal(countOf(section, 'still being worked out'), 0, 'never "still being worked out" for good');
+    assert.equal(countOf(section, '<table'), 0);
+    assert.equal(countOf(section, 'new-sheet'), 0);
+  }
+});
+
+test('an answer of a shape the section cannot read is said to have failed, and the report around it still prints', () => {
+  const broken = [
+    { ...answer, compare: { ...answer.compare, figures: null } },
+    { ...answer, compare: { ...answer.compare, findings: { new: 'x' } } },
+    withFigures({ busiest: undefined }),
+    42,
+    'an answer',
+  ];
+  for (const comparison of broken) {
+    let html;
+    assert.doesNotThrow(() => {
+      html = congestionPrint.render(sample, { scenario: comparison }, NOW).html;
+    }, 'render threw for ' + JSON.stringify(comparison && comparison.compare ? Object.keys(comparison.compare) : comparison));
+    const section = sectionOf(html);
+    assert.match(text(section), /^The scenario: Ease the 2nd floor What the scenario Ease the 2nd floor would change could not be worked out(: its answer could not be read)?\. Nothing of it is printed\.$/);
+    assert.equal(countOf(section, '<table'), 0);
+    assert.equal(countOf(section, 'new-sheet'), 0);
+    // the day sections are there, the same as with no scenario answer at all
+    assert.equal(html.replace(section, ''), congestionPrint.render(sample, { scenario: { failed: 'x' } }, NOW).html.replace(sectionOf(congestionPrint.render(sample, { scenario: { failed: 'x' } }, NOW).html), ''));
+  }
+});
+
+test('a scenario with no changes, kept or dropped, is one sentence and takes no sheet', () => {
+  const empty = withScenario(school(), 'Nothing yet', []);
+  const comparison = comparisonOf(empty);
+  const section = congestionPrint.scenarioSection(empty, comparison);
+  assert.equal(text(section), 'The scenario: Nothing yet The scenario Nothing yet has no changes yet, so it changes nothing in this report.');
+  assert.equal(countOf(section, 'new-sheet'), 0);
+  assert.equal(countOf(section, '<table'), 0);
+  assert.equal(countOf(section, '>no change<'), 0);
+  // every change dropped is not "no changes yet": it prints what was dropped
+  const lost = withScenario(school(), 'All lost', [{ kind: 'move', dayTypeId: DAY_A, groupId: 'gsample06a', period: 3, roomId: 'rgonegone00' }]);
+  const lostSection = congestionPrint.scenarioSection(lost, comparisonOf(lost));
+  assert.equal(countOf(lostSection, 'has no changes yet'), 0);
+  assert.ok(lostSection.includes('1 change no longer applies and is left out:'));
+});
+
+test('a time\'s difference is the difference of the two times as printed', () => {
+  const section = congestionPrint.scenarioSection(sample, withFigures({
+    walking: { before: 100.4, after: 101.6, difference: 1.2 },
+    crowding: { before: 10.2, after: 10.45, difference: 0.25 },
+  }));
+  const figures = Object.fromEntries(rowsAfter(section, 'Before and after').map((row) => [row[0], row.slice(1)]));
+  assert.deepEqual(figures['Walking, all walks together'], ['1 min 40 s', '1 min 42 s', '+2 s'], 'rounded separately the difference would print +1 s');
+  assert.deepEqual(figures['Lost to the crowd'], ['10 s', '10 s', 'no change'], 'a quarter of a second is no change, never "+0 s"');
+  assert.ok(section.includes('<td class="is-number doc-change">no change</td>'), 'no change has no direction');
+  const crossing = congestionPrint.scenarioSection(sample, withFigures({ crowding: { before: 10.4, after: 10.6, difference: 0.2 } }));
+  assert.deepEqual(rowsAfter(crossing, 'Before and after').find((row) => row[0] === 'Lost to the crowd'), ['Lost to the crowd', '10 s', '11 s', '+1 s']);
+});
+
+test('the busiest place names its day type with several own day types, and says nobody walks on a side with none', () => {
+  const f = answer.compare.figures;
+  const busiest = (comparison, project) => rowsAfter(congestionPrint.scenarioSection(project || sample, comparison), 'Before and after').find((row) => row[0] === 'Busiest place').slice(1);
+  const onB = { ...f.busiest.after, dayTypeId: 'dsample00b', load: 180 };
+  assert.deepEqual(busiest(withFigures({ busiest: { before: f.busiest.before, after: onB, difference: 3 } })),
+    ['177 students, Main Corridor, by Door B, on A Day', '180 students, Main Corridor, by Door B, on B Day', '+3']);
+  assert.deepEqual(busiest(withFigures({ busiest: { before: f.busiest.before, after: null, difference: -177 } })),
+    ['177 students, Main Corridor, by Door B, on A Day', 'nobody walks', '−177']);
+  assert.deepEqual(busiest(withFigures({ busiest: { before: null, after: f.busiest.after, difference: 177 } })),
+    ['nobody walks', '177 students, Main Corridor, by Door B, on A Day', '+177']);
+});
+
+test('with one own day type the busiest place says no day and the places have no Day type column', () => {
+  const project = school();
+  for (const dayType of project.dayTypes.slice(1)) dayType.own = false;
+  withScenario(project, 'One day', twoChanges());
+  const section = congestionPrint.scenarioSection(project, comparisonOf(project));
+  assert.ok(section.includes('<h3>Before and after</h3>'), 'the comparison printed');
+  const busiest = rowsAfter(section, 'Before and after').find((row) => row[0] === 'Busiest place');
+  assert.ok(busiest.slice(1, 3).every((cell) => !/ on [AB] Day$/.test(cell)), 'no day type: ' + busiest.join(' | '));
+  assert.equal(countOf(section, '<th scope="col">Day type</th>'), 0);
+  const busier = rowsAfter(section, 'Places that get busier');
+  assert.ok(busier.length > 0 && busier.every((row) => row.length === 4), 'four cells a row: place, before, after, change');
+});
+
+test('a scenario from a compared file says the file and the groups only in one of them, as typed', () => {
+  const project = withScenario(school(), 'From the other file', twoChanges());
+  const comparison = comparisonOf(project);
+  project.scenario = { ...project.scenario, compared: { fileName: 'Spring <b>.json', addedGroups: ['9Z <i>', '七年三組'], removedGroups: ['6A'] } };
+  const section = congestionPrint.scenarioSection(project, comparison);
+  assert.ok(section.includes('<p class="doc-meaning">It is this project compared with <span dir="auto">Spring &lt;b&gt;.json</span>. Only in that file: <span dir="auto">9Z &lt;i&gt;</span>, <span dir="auto">七年三組</span>. Only in this project: <span dir="auto">6A</span>.</p>'));
+  assert.equal(countOf(section, '<b>') + countOf(section, '<i>'), 0);
+  project.scenario = { ...project.scenario, compared: { fileName: '', addedGroups: [], removedGroups: [] } };
+  assert.ok(congestionPrint.scenarioSection(project, comparison).includes('<p class="doc-meaning">It is this project compared with another project file.</p>'));
+});
+
+test('an Error handed in as the answer, and a failure with no message, are said plainly', () => {
+  const thrown = sectionOf(congestionPrint.render(sample, { scenario: new Error('The worker stopped') }, NOW).html);
+  assert.equal(text(thrown), 'The scenario: Ease the 2nd floor What the scenario Ease the 2nd floor would change could not be worked out: The worker stopped. Nothing of it is printed.');
+  for (const comparison of [{ failed: '' }, { failed: '   ' }, new Error('')]) {
+    const section = congestionPrint.scenarioSection(sample, comparison);
+    assert.equal(text(section), 'The scenario: Ease the 2nd floor What the scenario Ease the 2nd floor would change could not be worked out. Nothing of it is printed.', JSON.stringify(comparison));
+    assert.equal(countOf(section, '<span dir="auto"></span>'), 0);
+  }
 });
