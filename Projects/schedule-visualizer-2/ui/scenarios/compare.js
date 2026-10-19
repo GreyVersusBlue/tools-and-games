@@ -125,7 +125,10 @@ export function comparePanel(env) {
       listOf(compare.findings.unchanged, 'Unchanged', 'unchanged', false));
   }
 
+  // what the body was drawn from: the answer, and the project's groups (a
+  // group renamed or deleted while the answer is old is named as it is now)
   let shownCompare = null;
+  let shownGroups = null;
   function update(state) {
     drawOptions(state.project);
     const mode = !state.scenario ? 'none' : state.pending && !state.compare ? 'working' : state.failed && !state.compare ? 'failed' : state.old ? 'old' : 'ready';
@@ -145,8 +148,9 @@ export function comparePanel(env) {
       body.replaceChildren();
       return;
     }
-    if (state.compare === shownCompare) return;
+    if (state.compare === shownCompare && state.project.groups === shownGroups) return;
     shownCompare = state.compare;
+    shownGroups = state.project.groups;
     const keep = body.querySelectorAll('details[open]');
     const opened = new Set(Array.from(keep).map((el) => el.dataset.part));
     body.replaceChildren(figuresTable(state.compare), busiestLine(state.compare), groupsBlock(state.project, state.compare), placesBlock(state.compare), findingsBlock(state.compare));

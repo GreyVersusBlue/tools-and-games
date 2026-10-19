@@ -80,6 +80,11 @@ export function formChange(form) {
   return { change: { kind: 'swapRooms', dayTypeId: f.dayTypeId, groupA: f.groupA, groupB: f.groupB, period: f.period } };
 }
 
+// The building's rooms in the picker's order: by number, numbers read as numbers.
+export function sortedRooms(project) {
+  return allRooms(project).slice().sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+}
+
 function partsToNodes(parts) {
   return parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
 }
@@ -178,7 +183,7 @@ export function formsPanel(env) {
       fields.push(select('scenario-move-group', 'Group', groups, f.groupId, (value) => set('move', 'groupId', value)));
       fields.push(select('scenario-move-day', 'Day type', days, f.dayTypeId, (value) => set('move', 'dayTypeId', value)));
       fields.push(select('scenario-move-period', word, periods, f.period, (value) => set('move', 'period', whole(value))));
-      const rooms = allRooms(project).slice().sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+      const rooms = sortedRooms(project);
       const room = rooms.find((each) => each.id === f.roomId) || null;
       const picker = roomPicker({
         name: 'Room to move to',
@@ -186,7 +191,7 @@ export function formsPanel(env) {
         text: room ? roomLabel(project, room) : '',
         roomId: room ? room.id : null,
         missing: false,
-        options: () => allRooms(ctx.store.project).map((each) => ({ id: each.id, number: each.number, label: roomLabel(ctx.store.project, each), teachers: '', detail: '' })),
+        options: () => sortedRooms(ctx.store.project).map((each) => ({ id: each.id, number: each.number, label: roomLabel(ctx.store.project, each), teachers: '', detail: '' })),
         onPick(id) {
           set('move', 'roomId', id);
           line.textContent = '';
@@ -234,7 +239,8 @@ export function formsPanel(env) {
       project.dayTypes.map((day) => [day.id, day.name, day.own]),
       project.settings.periods,
       project.settings.periodWord,
-      allRooms(project).map((room) => [room.id, room.number, room.teacherIds.join(',')]),
+      // a room's name and label too: the picker shows the label of the room picked
+      allRooms(project).map((room) => [room.id, room.number, room.name, roomLabel(project, room), room.teacherIds.join(',')]),
     ]);
   }
 
