@@ -704,7 +704,9 @@ test('the congestion report’s button opens the print preview of the congestion
   await ready(page);
   const chip = (await chips(page))[0].text;
   await page.click('[data-action="congestion"]');
-  await page.waitForSelector('#print-preview[open][data-ready="true"]', { timeout: 30000 });
+  // the preview asks the scenario lane itself (SV2-71) and lays the report
+  // out again with its answer: data-scenario goes 'asked', then 'answered'
+  await page.waitForSelector('#print-preview[open][data-ready="true"][data-scenario="answered"]', { timeout: 30000 });
   const doc = await page.evaluate(() => {
     const frame = document.querySelector('#print-preview iframe').contentDocument;
     const section = frame.querySelector('.doc-scenario');
@@ -712,8 +714,8 @@ test('the congestion report’s button opens the print preview of the congestion
   });
   assert.equal(doc.output, 'congestion');
   assert.ok(doc.section !== null, 'the report has its scenario section');
-  // the section names the change once the report prints the comparison (SV2-71)
-  if (!/not built yet/.test(doc.section)) assert.ok(doc.section.includes(chip.split(':')[0]), doc.section);
+  // the section names the change, in the chip's words (SV2-71)
+  assert.ok(doc.section.includes(chip), 'the report names the lab’s change: ' + doc.section);
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('#print-preview[open]'));
   assert.equal(await page.evaluate(() => document.activeElement.dataset.action), 'congestion', 'the focus comes back to the button');
