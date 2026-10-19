@@ -3102,6 +3102,73 @@ const CHECKS = [
     },
   },
   {
+    // #1003: "Show it on the plan" leaves a mark in the edit view where the
+    // map draws its own, and the next edit takes it away. After
+    // report-on-demand, which asks that nothing has loaded the analysis yet.
+    name: 'finding-mark',
+    what: 'a finding shown on the plan is marked in the edit view at the place the map marks it, until the next edit',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      await d.pick('stair');
+      await q(`document.querySelector('#stair-kinds [data-type="ramp"]').click(); 1`);
+      for (let i = 0; i < 11; i++) await q(`document.getElementById('ramp-runs-less').click(); 1`);
+      await d.assertClear([[100, 112]]);
+      await d.click(100, 112);
+      const ramp = await q(`(() => { const l = window.app.state.links[window.app.state.links.length - 1];
+        return { id: l.id, type: l.type, from: l.from, data: { ...l.data } }; })()`);
+      await q(`document.getElementById('report-btn').click(); 1`);
+      await d.page.waitForFunction('!window.app.report.stale && !!window.app.report.data', { timeout: 90000 });
+      const pick = await q(`(() => {
+        const fs = window.app.report.data.findings;
+        const i = fs.findIndex((f) => f.code === 'ramp-rise' && (f.doors || []).some((p) => p.id === ${ramp.id}));
+        if (i < 0) return null;
+        const at = fs[i].doors.find((p) => p.id === ${ramp.id});
+        return { i, at: { x: at.x, z: at.z, floor: at.floor ?? 0 }, button: !!document.querySelector('#report-findings .goto[data-goto="' + i + '"]') };
+      })()`);
+      const before = await q(`window.app.renderApi.scene.getObjectByName('finding-mark').children.length`);
+      if (pick && pick.button) await q(`document.querySelector('#report-findings .goto[data-goto="${pick && pick.i}"]').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const shown = await q(`(() => {
+        const g = window.app.renderApi.scene.getObjectByName('finding-mark');
+        return {
+          visible: g.visible, floor: window.app.state.currentFloor,
+          parts: g.children.map((m) => ({ kind: m.userData.kind, x: m.position.x, y: m.position.y, z: m.position.z, scale: m.scale.x })),
+          view: { x: window.app.renderApi.editView.x, z: window.app.renderApi.editView.z },
+        };
+      })()`);
+      await q(`document.getElementById('report-btn').click(); 1`);
+      await q(`window.app.editor.stairSelect(${ramp.id}); 1`);
+      await q(`document.getElementById('stair-delete').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const after = await q(`(() => {
+        const g = window.app.renderApi.scene.getObjectByName('finding-mark');
+        return { visible: g.visible, parts: g.children.length, mark: window.app.editMark };
+      })()`);
+      await q(`document.querySelector('#stair-kinds [data-type="stair"]').click(); 1`);
+      return { ramp, pick, before, shown, after };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.ramp.type !== 'ramp' || (ctx.ramp.data.runs || 1) !== 1) throw new Error(`no one-run ramp was placed: ${JSON.stringify(ctx.ramp)}`);
+      if (!ctx.pick) throw new Error('a one-run ramp up a storey raised no ramp-rise finding at its foot');
+      if (!ctx.pick.button) throw new Error('its finding has no "Show it on the plan" button');
+      if (ctx.before !== 0) throw new Error(`the edit view held ${ctx.before} marks before anything was shown`);
+      const rings = ctx.shown.parts.filter((p) => p.kind === 'ring');
+      if (!ctx.shown.visible || rings.length !== 1) throw new Error(`the edit view did not mark the ramp: ${JSON.stringify(ctx.shown)}`);
+      const r = rings[0];
+      if (Math.abs(r.x - ctx.pick.at.x) > 1e-6 || Math.abs(r.z - ctx.pick.at.z) > 1e-6) {
+        throw new Error(`the ring is at ${r.x}, ${r.z}, not at the map's ${ctx.pick.at.x}, ${ctx.pick.at.z}`);
+      }
+      if (ctx.shown.floor !== ctx.pick.at.floor) throw new Error(`the plan is on storey ${ctx.shown.floor}, the ramp's foot on ${ctx.pick.at.floor}`);
+      if (Math.abs(ctx.shown.view.x - r.x) > 1e-6 || Math.abs(ctx.shown.view.z - r.z) > 1e-6) {
+        throw new Error('the view did not pan to the ring');
+      }
+      if (!(r.scale >= 1.5)) throw new Error(`the ring was never sized to the view: scale ${r.scale}`);
+      if (ctx.after.visible || ctx.after.parts !== 0 || ctx.after.mark !== null) {
+        throw new Error(`deleting the ramp left its mark: ${JSON.stringify(ctx.after)}`);
+      }
+    },
+  },
+  {
     name: 'cost-on-demand',
     what: 'the cost sheet opens with its currencies and rate rows once its modules land',
     async run(d) {

@@ -879,6 +879,10 @@ function openWalkOverlay() {
   openModal(walkOverlay, $('walk-start'));
 }
 let mode = 'edit';
+// The edit view's mark for a finding (#1003, by showFinding): up here, since
+// an edit can clear it before the code that draws it has run.
+let editMark = null;         // the finding's mark, rooms read to points, or null
+let editMarkFloor = -1;      // the storey findingGroup holds the mark for
 
 // --- Phase 27: light that stops at walls ---
 //
@@ -5007,6 +5011,7 @@ const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) =>
 
 function reportInvalidate() {
   report.stale = true;
+  if (editMark) clearEditMark();
   if (reportPanel.classList.contains('hidden')) return;
   renderReportStale();
   clearTimeout(report.timer);
@@ -5106,12 +5111,83 @@ function showFinding(i) {
     floor = place.door.floor ?? 0;
   }
   if (!at) return;
+  showEditMark(f);
   goToFloor(floor);
   renderApi.editView.x = at.x;
   renderApi.editView.z = at.z;
   renderApi.editView.height = Math.min(renderApi.editView.height, 140);
   $('status').textContent = `${f.title} — ` +
     `${place.room && place.room.name ? place.room.name : 'here'}, ${floorLabel(floor)}.`;
+}
+
+// The edit view's mark for the finding shown (#1003), drawn at the places the
+// map's mark is (`findingMarks`): a ring at each doorway, exit and ramp foot,
+// a dot at each room the nav graph puts it in, and a turning circle at its
+// true size, the one that fits filled inside a ring for the one wanted. Only
+// on the storey being edited, only while editing; the next edit takes it
+// away, since the report it was read from is stale then. The rings and dots
+// are sized off the view height each frame, as polyedit.js's handles are.
+const findingGroup = new THREE.Group();
+findingGroup.name = 'finding-mark';
+findingGroup.visible = false;
+renderApi.scene.add(findingGroup);
+
+function showEditMark(f) {
+  const mark = findingMarks({ findings: [f] })[0] || null;
+  if (mark && mark.rooms.length) {
+    const nav = buildNav(state);
+    mark.rooms = mark.rooms.map((r) => ({ ...r, at: nav.node(r.id) })).filter((r) => r.at);
+  }
+  editMark = mark;
+  editMarkFloor = -1;
+}
+
+function clearEditMark() {
+  editMark = null;
+  editMarkFloor = -1;
+  buildEditMark();
+}
+
+function buildEditMark() {
+  for (const c of [...findingGroup.children]) {
+    findingGroup.remove(c);
+    c.geometry.dispose();
+    c.material.dispose();
+  }
+  if (!editMark) return;
+  const floor = state.currentFloor;
+  editMarkFloor = floor;
+  const here = markOnFloor(editMark, floor);
+  const y = floorBaseY(state, floor) + 0.2;
+  const [r, g, b] = markLine(editMark.level).match(/[\d.]+/g).map(Number);
+  const color = new THREE.Color(r / 255, g / 255, b / 255);
+  const put = (geo, x, z, opacity, scaled, kind) => {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity, depthTest: false, side: THREE.DoubleSide,
+    }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y, z);
+    m.renderOrder = 504;
+    m.frustumCulled = false;
+    m.userData = { scaled, kind };
+    findingGroup.add(m);
+  };
+  for (const d of here.doors) put(new THREE.RingGeometry(0.72, 1, 40), d.x, d.z, 0.95, true, 'ring');
+  for (const rm of here.rooms) put(new THREE.CircleGeometry(0.4, 24), rm.at.x, rm.at.z, 0.95, true, 'dot');
+  for (const c of here.circles) {
+    const need = Math.max(0.1, c.need), fit = Math.max(0.1, c.r);
+    put(new THREE.RingGeometry(need * 0.96, need, 64), c.x, c.z, 0.95, false, 'need');
+    put(new THREE.CircleGeometry(fit, 48), c.x, c.z, 0.35, false, 'fit');
+  }
+}
+
+function updateEditMark() {
+  const on = !!editMark && mode === 'edit';
+  findingGroup.visible = on;
+  if (!on) return;
+  if (editMarkFloor !== state.currentFloor) buildEditMark();
+  const k = Math.min(12, Math.max(1.5, renderApi.editView.height * 0.025));
+  for (const m of findingGroup.children) if (m.userData.scaled) m.scale.set(k, k, 1);
 }
 
 // Exit discharge, as the one or two rows a panel has room for. Empty for a
@@ -8844,6 +8920,7 @@ function loop() {
   // Everybody else in the session: their edits, their cameras and this one's,
   // on a timer of its own. Costs nothing at all when there is no session.
   if (collab.wire) sessionTick(performance.now());
+  updateEditMark();
   renderApi.render(dt);
   // Drawn after the 3D frame so the map is over it, and only while walking —
   // it is a thing you carry, not a thing on the drawing board.
@@ -9234,4 +9311,7 @@ window.app = {
   get file() { return fileSession; },
   get fileWorld() { return fileWorld; },
   get offline() { return offline; },
+  // --- #1003 ---
+  showFinding,
+  get editMark() { return editMark; },
 };
