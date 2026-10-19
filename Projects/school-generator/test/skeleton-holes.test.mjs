@@ -146,6 +146,10 @@ test('(f) a hole crossing the outer ring, outside it, or touching its edge is re
   assert.equal(straightSkeleton(sq, { holes: [R(30, 10, 50, 30)] }), null, 'crossing');
   assert.equal(straightSkeleton(sq, { holes: [R(50, 10, 60, 30)] }), null, 'outside');
   // A diamond whose top corner sits on the square's south edge, at its middle.
+  // cleanRings's touch check alone refuses it: this skeleton roofs it right
+  // (on its planes, area exact), so the gate would let it through, unlike the
+  // design's prototype (DESIGN-roof-holes.md, increment 1's implementation
+  // note). It is refused because a touch is the pinch's job (increment 6).
   const touch = [{ x: 20, z: 0 }, { x: 30, z: 10 }, { x: 20, z: 20 }, { x: 10, z: 10 }];
   assert.equal(straightSkeleton(sq, { holes: [touch] }), null, 'touching');
   assert.equal(cleanRings(sq, [touch]), null, 'touching, at the rings');
@@ -177,4 +181,34 @@ test('skeletonHolds passes a good skeleton and fails one with a node off its pla
   // A face dropped: every node still on its plane, the area short.
   assert.equal(skeletonHolds({ ...sk, faces: sk.faces.slice(1) }), false, 'a face missing');
   for (const s of [HALL, L_SHAPE]) assert.equal(skeletonHolds(straightSkeleton(s)), true);
+});
+
+// Fifteen hundred random star-shaped rooms, each with one to three courts
+// (rectangles at any angle, or small stars), seeded. Every set cleanRings
+// accepts must come back, so through the gate: on its planes and tiled.
+test('fifteen hundred random rooms with one to three courts each hold', () => {
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const star = (cx, cz, k, r0, r1) => Array.from({ length: k }, (_, i) => {
+    const th = (2 * Math.PI * (i + 0.3 * rnd())) / k, r = r0 + (r1 - r0) * rnd();
+    return { x: cx + r * Math.cos(th), z: cz + r * Math.sin(th) };
+  });
+  const box = (cx, cz, w, h, a) => [[-w, -h], [w, -h], [w, h], [-w, h]].map(([x, z]) => ({
+    x: cx + x * Math.cos(a) - z * Math.sin(a), z: cz + x * Math.sin(a) + z * Math.cos(a),
+  }));
+  let held = 0;
+  for (let n = 0; n < 1500; n++) {
+    const outer = star(50, 50, 5 + Math.floor(rnd() * 20), 25, 45);
+    const holes = [];
+    for (let h = 1 + Math.floor(rnd() * 3); h > 0; h--) {
+      const cx = 35 + rnd() * 30, cz = 35 + rnd() * 30;
+      holes.push(rnd() < 0.5 ? box(cx, cz, 1 + rnd() * 6, 1 + rnd() * 6, rnd() * 3) : star(cx, cz, 3 + Math.floor(rnd() * 9), 1, 6));
+    }
+    if (!cleanRings(outer, holes)) continue;
+    const sk = straightSkeleton(outer, { holes });
+    assert.ok(sk, `case ${n} refused: ${JSON.stringify({ outer, holes })}`);
+    held++;
+  }
+  // Most sets are accepted; a court near the wall or on another is not.
+  assert.ok(held > 900, `only ${held} accepted`);
 });

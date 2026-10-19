@@ -352,6 +352,23 @@ the old code (the hole is ignored: the area is the outer ring's); (f)'s touch
 case fails with the gate taken out (the faces come back 20ft off). Browser:
 none. Leaves: `offsetRing`, `triangulate` with holes, the pinch, all wiring.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes1, #996).* Shipped as
+written, with one finding. (f)'s touch case does **not** fail with the gate
+taken out: with `cleanRings`'s touch check also removed, this skeleton roofs a
+diamond court touching the square's edge at its middle correctly (8 faces,
+every node on its plane to 0.000ft, 1500 ft² against 1500), and so do four
+other touching courts tried. The prototype's 20ft error was the prototype's.
+So the touch is refused by `cleanRings` alone, as section 2.3's table says,
+and the gate is checked from outside on doctored skeletons (a node moved, a
+node's time changed, a face dropped). No input is known that reaches the gate
+and fails it: 2,451 seeded random rings with one to three courts, gate off,
+all held. The wiring line (`skeletonHolds(sk) ? sk : null`) is therefore not
+guarded by any failing input; the 108 cases and every `skeleton*`/`roof-*`
+test pass through it, so the gate applies to every input, holes or not, as
+2.4 allows. Searching merges with no hole too moved nothing (the 108-case
+hash and the whole suite unchanged), so "only with holes" is a guard against
+rounding nobody has seen, kept as designed. Increment 2 starts from here.
+
 **2. The stopped wavefront and the bridged triangulation, pure.**
 `skeleton.js`: `offsetRing` (inward to a time; outward through a frame),
 `triangulate(pts, holes)`. New tests in `test/skeleton-holes.test.mjs`:
