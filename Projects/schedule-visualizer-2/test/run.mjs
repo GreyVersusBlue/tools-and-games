@@ -88,6 +88,7 @@ export const GROUPS = {
     'ui/engine-client.test.mjs', // SV2-49
     'ui/plan-map.test.mjs', // SV2-65
     'ui/scenario-lane.test.mjs', // SV2-64
+    'ui/safety.test.mjs', // SV2-67b
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [

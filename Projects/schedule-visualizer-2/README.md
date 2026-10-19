@@ -177,6 +177,7 @@ row names a file it does not run.
 | `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
 | `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs |
 | `test/ui/scenario-lane.test.mjs` | The scenario and suggestion lanes: a second pipeline on the shared route cache, the worker's answers, what the client keeps and drops, the main thread giving the worker's answers |
+| `test/ui/safety.test.mjs` | The Safety section's plain functions: the exits' colours far enough apart in both themes and repeating past ten, a way out in runs a floor, the first line, a room's line and the cursor's sentence |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
