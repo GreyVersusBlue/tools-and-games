@@ -486,9 +486,13 @@ and add to this list rather than starting a new one.
   a curve on any ring runs round it, the deck the outline less the court and
   counted so; a hipped roof over such a building stands on the skeleton with
   each court's eave, 1.5ft into the court, as a hole, the section reading the
-  court as sky (#999). Left: a court narrower than two eaves keeps the hip
-  on rectangles (`DESIGN-roof-holes.md` question 3's default), a courtyard meeting the outside at a single corner
-  (refused), a room with a hole grouped with a separate room standing in
+  court as sky (#999). A courtyard meeting the outside at a single corner is
+  one loop through that corner twice, kept with `pinch` set (#1001): under the
+  parapet it runs round the court with the deck the loop itself, and hipped
+  it stands on the outer eave with the court's own eave as a hole, the two
+  eaves not touching (question 6's default). Left: a court narrower than two
+  eaves, or a pinched court its eave closes or splits, keeps the hip on
+  rectangles (`DESIGN-roof-holes.md` question 3's default), a room with a hole grouped with a separate room standing in
   that hole when the storey is judged building by building (`roomsMeet`
   asks every ring), an arc of two chords off a wall whose ends turn unlike (a
   parallelogram's end: bowed in two chords it is the polygon of a chamfer as
@@ -513,11 +517,12 @@ and add to this list rather than starting a new one.
   `test/visual` capture has a curved roof (the sample school has none); the
   look on a real GPU. The courts, the hole, the head-on notch and the
   single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
-  increments in order with Devon's questions in its section 6. Increments 1
-  to 5 are built: the skeleton with holes (#996), `offsetRing` and
+  increments in order with Devon's questions in its section 6. All six are
+  built: the skeleton with holes (#996), `offsetRing` and
   `triangulate` with holes (#997), the outline's courts wired into the
-  parapet and its deck (#998), the hip round a court (#999), and the head-on notch
-  (#1000); next is increment 6, the single-corner courtyard. One software-rendered look on huginn (an L with a
+  parapet and its deck (#998), the hip round a court (#999), the head-on notch
+  (#1000) and the single-corner courtyard (#1001). Gable over a curve, the
+  design's increment 7, waits for Devon's answer to its question 5. One software-rendered look on huginn (an L with a
   curved end, from above): hip, valley and the rounded end read right; and
   one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.

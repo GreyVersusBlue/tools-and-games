@@ -522,6 +522,30 @@ the eave line is (two loops touching at the corner, or one), and the
 implementer checks it against the frame offset before deciding. Browser:
 none new. Leaves: gable.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes6, #1001).* Shipped,
+question 6 on its default, the 108-case hash unchanged. Four findings. (1)
+The eave at the pinch is neither of the two answers this section offers. The
+L's ring run outward 1.5ft through the frame (`offsetRing(ring, -1.5,
+{ pinch })`) comes back as two loops that do **not** touch: the L's own
+mitred eave, inner corner (21.5, 21.5), and the court's own eave, the square
+11.5 to 18.5 wound as a hole, corner (18.5, 18.5), 4.24ft apart. Each visit
+to the corner pairs its own two walls and the two run apart from t = 0, so
+outward they part at once. Section 2.3 and question 6 suppose the eaves meet
+at the corner; they do not, and the roof over a pinched court is the roof
+over any court: the outer eave with the court's eave as a hole. So the
+default holds, and the wiring is `pinchEave` in `roof.js` (one loop round the
+outside, one court per corner visited twice, else null) feeding #999's path,
+not a pinched ring into `skeletonRoof`; `skeletonRoof` takes no `pinch`
+since no caller has one to give. (2) `triangulate` refused the pinched deck:
+ear clipping read the second visit as a point inside every ear at the first.
+A repeated point now takes its first index, as a bridge's ends do, so the
+parapet's deck is the loop, area exact. (3) `unionOf` checks a pinched loop
+with `cleanPolygon({ pinch })` before keeping it; no layout of rooms is known
+to reach that refusal (the turn towards the rooms keeps the wedges apart),
+and its comment says so. (4) A pinched building beside a refused one, judged
+building by building, keeps its flag; a test says so, since dropping it was
+green until then. Gable, increment 7, waits for question 5.
+
 **7 (optional, after question 5). Gable over a curve, the weighted
 skeleton.** At least two increments: the weighted wavefront, pure, with its
 own tests (a rectangle with both ends weight 0 gives `blockRoof`'s gable,

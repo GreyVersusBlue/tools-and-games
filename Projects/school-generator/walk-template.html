@@ -78917,8 +78917,8 @@ function steppedEave(loop, d) {
 // (#971), read by `hasCurve` (#967) on every ring, a court's included (#998,
 // DESIGN-roof-holes.md question 2's default). The one test of which footprint
 // a roof follows off its chords rather than the mask, for the hipped roof's
-// skeleton and the parapet's run alike. `pinch` is false until a loop through
-// a corner twice is accepted.
+// skeleton and the parapet's run alike. `pinch` is true for a loop through a
+// corner twice (#1001).
 function curvedLoopsOf(floor) {
   const o = roofOutline(floor);
   return (o.loops || []).map((outer, i) => ({ outer, holes: o.holes[i], pinch: o.pinch[i] }))
@@ -79284,9 +79284,10 @@ function roofCover(state) {
 // cannot vouch for is refused with a sentence, and a refused footprint keeps
 // its rectangles:
 //   * two rooms laying the same wall the same way (they overlap),
-//   * two rooms whose walls cross, or one room inside another,
-//   * rooms wrapped round a courtyard that meets the outside at one corner.
-// Two rooms meeting at a corner are not refused: the outline is split at
+//   * two rooms whose walls cross, or one room inside another.
+// Rooms wrapped round a courtyard that meets the outside at one corner are
+// not refused (#1001): the loop through that corner twice is kept, marked in
+// `pinch`. Two rooms meeting at a corner are not refused: the outline is split at
 // that corner into a loop each (#976). A court is not refused either (#998):
 // a room's own hole goes into the bookkeeping wound the other way, so the
 // room is on the left of every edge of it, and a loop that comes out wound
@@ -79310,11 +79311,12 @@ const loopArea = (pts) => {
   return a / 2;
 };
 
-// `{ loops, holes }` (each loop a list of { x, z }, positive area, no
-// repeated point; `holes[i]` the courts inside `loops[i]`, each wound the
-// other way, negative area, and empty where there are none), or
+// `{ loops, holes, pinch }` (each loop a list of { x, z }, positive area, no
+// repeated point but where `pinch[i]` is true, a corner visited twice; `holes[i]`
+// the courts inside `loops[i]`, each wound the other way, negative area, and
+// empty where there are none), or
 // `{ loops: null, refused }` with the reason in words. Where some buildings
-// are refused and others are not, `{ loops, holes, refused }`: the loops of
+// are refused and others are not, `{ loops, holes, pinch, refused }`: the loops of
 // the buildings that passed, and the first refusal's reason.
 function roofOutline(floor) {
   const shapes = shapesOf(floor);
