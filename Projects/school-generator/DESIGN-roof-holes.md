@@ -453,6 +453,25 @@ on increment 3's code (the hip over a court is rectangles there). Browser:
 and outside the court eaves, covering the eave less the court eaves once.
 Leaves: the head-on notch, the pinch.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes4, #999).* Shipped as
+written, question 3 on its default, the 108-case hash unchanged. Four
+findings. (1) `skeletonRoof` had not taken holes yet (3.1 lists it, no
+increment named it), so it does here; with no holes its faces and return
+carry no new key (`ring`, `holes`), so a shipped block is the same object
+key for key. (2) "`roofHeightAt` ... at the eave height 1.4ft into it"
+cannot hold beside "null in the court" once the test is `inFootprint`, as
+3.3 says: 1.4ft into the court is under the court's overhang and in no
+footprint, so it reads as sky, as the outer overhang does. The test reads
+null there and, 1.4ft back into the building from the court wall, the court
+face's plane at the eave plus 2.9ft times the pitch. (3) Four more old tests
+pinned the hip over a court as rectangles than this section names:
+`roof-courtyard`'s courtyard on the curved building, `roof-groupwalls`'
+hall touching the L, and two in `roof-takeoff`; each was rewritten to the
+new answer. (4) In `curved-roof-court` it is the area line that fails with
+the skeleton built without its court (2326.30 ft² against 2281.30), not the
+"inside the court's eave" line: the 9 by 5 court eave holds no triangle's
+middle. Increment 5 starts from here.
+
 **5. The head-on notch.** `roof.js`: `eaveLine`'s third answer. Tests: the
 notched hall of `roof-tightcurve.test.mjs` with the square notch, a slot and a
 dovetail, each now on its skeleton with an eave straight past the notch, every

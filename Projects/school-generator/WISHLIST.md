@@ -482,8 +482,10 @@ and add to this list rather than starting a new one.
   A court, a room's own hole or the space rooms close round, is a hole of
   its building's loop (#998), and a flat roof's parapet over a building with
   a curve on any ring runs round it, the deck the outline less the court and
-  counted so. Left: the hip over a court (rectangles until increment 4 of
-  `DESIGN-roof-holes.md`), a courtyard meeting the outside at a single corner
+  counted so; a hipped roof over such a building stands on the skeleton with
+  each court's eave, 1.5ft into the court, as a hole, the section reading the
+  court as sky (#999). Left: a court narrower than two eaves keeps the hip
+  on rectangles (`DESIGN-roof-holes.md` question 3's default), a courtyard meeting the outside at a single corner
   (refused), a room with a hole grouped with a separate room standing in
   that hole when the storey is judged building by building (`roomsMeet`
   asks every ring), an arc of two chords off a wall whose ends turn unlike (a
@@ -511,8 +513,9 @@ and add to this list rather than starting a new one.
   single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
   increments in order with Devon's questions in its section 6. Increments 1
   to 3 are built: the skeleton with holes (#996), `offsetRing` and
-  `triangulate` with holes (#997), and the outline's courts wired into the
-  parapet and its deck (#998); next is increment 4, the hip over a court. One software-rendered look on huginn (an L with a
+  `triangulate` with holes (#997), the outline's courts wired into the
+  parapet and its deck (#998), and the hip round a court (#999); next is
+  increment 5, the head-on notch. One software-rendered look on huginn (an L with a
   curved end, from above): hip, valley and the rounded end read right; and
   one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.
