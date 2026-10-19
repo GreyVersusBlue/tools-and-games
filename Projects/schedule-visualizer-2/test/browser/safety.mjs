@@ -6,8 +6,12 @@
 // way out, door cards printed for one room, a choice of rooms and every
 // room through the print preview (read from the preview's own sheets, the
 // paper chosen in the sheet), typed names shown as typed, the stage and the
-// toast rules at three sizes, and the time evacuationRoutes takes on the
-// 3.13 fixture in this browser.
+// toast rules at three sizes, and the time evacuationRoutes and the
+// section's picture take on the 3.13 fixture in this browser. SV2-67b: where
+// the focus goes when what held it hides or goes, the exits' colours past ten
+// and under the badges' zoom, state gone stale while mounted (a room deleted
+// or renamed, another project), a no-route room's key, a draw waiting off the
+// page, and one finger and two on the map leaving the pick alone.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -267,7 +271,7 @@ test('a room picked by keyboard: the cursor over a room says where it goes out, 
   });
   await page.keyboard.press('ArrowRight');
   await page.waitForFunction(() => /^Room 102: out by /.test(document.getElementById('announcer').textContent));
-  assert.equal(await page.$eval('#announcer', (el) => el.textContent), 'Room 102: out by Door A. Enter shows its way out.');
+  assert.equal(await page.$eval('#announcer', (el) => el.textContent), 'Room 102: out by Door A, number 1 in the key. Enter shows its way out.');
   assert.equal(await page.$eval('.sfy', (el) => el.dataset.mode), 'all', 'the cursor alone picks nothing');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.sfy[data-picked="rsample102"]');
@@ -378,6 +382,8 @@ test('a room with no way out: the first line counts it, the inspector lists it w
   await page.click('.sfy-missing__row .sfy-room');
   await page.waitForSelector('.sfy[data-picked="rsafetycut"]');
   assert.equal(await seen(page, '#safety-line .mov-line__words'), 'Annex 9 has no way out. ' + sentence);
+  // the key says what is drawn for it, a frame and no route, not the round and square marks
+  assert.equal(await seen(page, '.sfy-key__marks'), 'The picked room is framed. It has no way out, so no route is drawn.');
   // in the Door cards list, in words where the way out would be
   await page.click('.sfy-inspector .tabs__tab[data-tab="cards"]');
   assert.equal(await seen(page, '.sfy-row[data-room="rsafetycut"] .sfy-row__way'), sentence);
@@ -443,6 +449,8 @@ test('door cards for the rooms ticked in the list print in room order, with the 
   assert.deepEqual(read.cover, ['rsample101', 'rsample204', 'rsample302'], 'the cover does not list the pile');
   assert.ok(read.sheets >= 4, 'a cover and three cards are at least four sheets: ' + read.sheets);
   await closePreview(page);
+  // the focus is back on the button that opened it
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.print), 'chosen');
   // the ticks outlive a visit to another section
   await go(page, '#movement');
   await go(page, '#safety');
@@ -472,6 +480,8 @@ test('door cards for every room: the whole building in room order behind a cover
   assert.deepEqual(read.cover, order);
   assert.deepEqual(read.routes.filter((route) => route !== 'ok'), []);
   await closePreview(page);
+  // the focus is back on the button that opened it
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.print), 'all');
 });
 
 test('the text alternative: every room with its exit, its walking time and the first step, floor by floor, and Show picks it', async () => {
@@ -706,6 +716,279 @@ test('on a phone with touch the inspector is a sheet: a room tapped in it shuts 
   }
 });
 
+// ---- SV2-67b: the focus, the colours past ten and under the badges' zoom,
+// state gone stale while mounted, a draw waiting off the page, touch
+
+const active = (page) => page.evaluate(() => {
+  const el = document.activeElement;
+  return { tag: el.tagName, id: el.id, cls: el.className, room: el.dataset.room || null, print: el.dataset.print || null };
+});
+
+async function apply(page, name, payload) {
+  await page.evaluate(async (n, p) => {
+    const actions = await import('./engine/actions.js');
+    globalThis.sv2.store.apply(actions[n], p);
+  }, name, payload);
+}
+
+test('Show every room and Untick all hide themselves when pressed from the keyboard: the focus goes to the map and to the first box, never to the page', async () => {
+  const page = wide.page;
+  await fresh(page, 'cards');
+  await page.evaluate(() => document.querySelector('.sfy').safety.pick('rsample302'));
+  await page.waitForFunction(() => !document.querySelector('[data-action="show-all"]').hidden);
+  await page.focus('[data-action="show-all"]');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.sfy').dataset.mode === 'all');
+  assert.equal((await active(page)).id, 'safety-plan', 'Show every room left the focus on ' + JSON.stringify(await active(page)));
+  // two rooms ticked by the keyboard, then Untick all by the keyboard
+  for (const id of ['rsample302', 'rsample101']) {
+    await page.focus('.sfy-row[data-room="' + id + '"] .sfy-row__box');
+    await page.keyboard.press('Space');
+  }
+  await page.waitForFunction(() => document.querySelector('.sfy-panel [data-print="chosen"]').dataset.count === '2');
+  await page.focus('.sfy-panel [data-action="untick"]');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.sfy-panel [data-print="chosen"]').dataset.count === '0');
+  const first = await page.$eval('.sfy-row .sfy-row__box', (el) => el.dataset.room);
+  const now = await active(page);
+  assert.equal(now.cls, 'sfy-row__box', 'Untick all left the focus on ' + JSON.stringify(now));
+  assert.equal(now.room, first, 'the focus is not on the list\'s first box');
+});
+
+test('a room whose row holds the focus is deleted: the focus goes to the row now in its place, in the Door cards list and in the Exits list', async () => {
+  const page = wide.page;
+  await fresh(page, 'cards');
+  const order = await page.$$eval('.sfy-row', (rows) => rows.map((row) => row.dataset.room));
+  const at = order.indexOf('rsample302');
+  await page.focus('.sfy-row[data-room="rsample302"] .sfy-row__box');
+  await apply(page, 'deleteSpaces', { spaceIds: ['rsample302'] });
+  await page.waitForFunction(() => !document.querySelector('.sfy-row[data-room="rsample302"]'));
+  let now = await active(page);
+  assert.equal(now.cls, 'sfy-row__box', 'the focus went to ' + JSON.stringify(now));
+  assert.equal(now.room, order[at + 1], 'the focus is not on the box of the row after Room 302');
+  // the Exits tab: a room's button
+  await page.click('.sfy-inspector .tabs__tab[data-tab="exits"]');
+  const buttons = await page.$$eval('.sfy-exit .sfy-room', (list) => list.map((el) => el.dataset.room));
+  const gone = buttons[buttons.length - 1];
+  await page.focus('.sfy-exit .sfy-room[data-room="' + gone + '"]');
+  await apply(page, 'deleteSpaces', { spaceIds: [gone] });
+  await page.waitForFunction((id) => !document.querySelector('.sfy-room[data-room="' + id + '"]'), {}, gone);
+  now = await active(page);
+  assert.equal(now.cls, 'sfy-room', 'the focus went to ' + JSON.stringify(now));
+  assert.equal(now.room, buttons[buttons.length - 2], 'the last room\'s button gone, the focus is not on the one before it');
+});
+
+test('the picked room deleted while mounted is said in the live region and every room is shown; a ticked room deleted is let go; the picked room renamed keeps its pick under its new name', async () => {
+  const page = wide.page;
+  await fresh(page, 'cards');
+  for (const id of ['rsample302', 'rsample101']) await page.click('.sfy-row[data-room="' + id + '"] .sfy-row__box');
+  await page.evaluate(() => document.querySelector('.sfy').safety.pick('rsample302'));
+  await page.waitForSelector('.sfy[data-picked="rsample302"]');
+  await apply(page, 'deleteSpaces', { spaceIds: ['rsample302'] });
+  await page.waitForFunction(() => document.querySelector('.sfy').dataset.mode === 'all');
+  assert.equal(await page.$eval('#announcer', (el) => el.textContent), 'Room 302 is no longer in the building; showing every room.');
+  assert.equal(await page.evaluate(() => document.querySelector('.sfy').safety.picked), null);
+  assert.deepEqual(await page.evaluate(() => document.querySelector('.sfy').safety.chosen), ['rsample101']);
+  assert.equal(await seen(page, '.sfy-panel [data-print="chosen"]'), 'Print the 1 room ticked');
+  assert.equal(await page.$eval('.sfy-panel [data-print="picked"]', (el) => el.hidden), true);
+  assert.equal(await seen(page, '#safety-line .mov-line__words'), 'Every room’s way out, coloured by the exit it uses: 12 rooms to 2 exits.');
+  // a ticked room deleted, not picked
+  await apply(page, 'deleteSpaces', { spaceIds: ['rsample101'] });
+  await page.waitForFunction(() => document.querySelector('.sfy-panel [data-print="chosen"]').dataset.count === '0');
+  assert.deepEqual(await page.evaluate(() => document.querySelector('.sfy').safety.chosen), []);
+  // the picked room renamed: still picked, the line and the button under the name as typed
+  await page.evaluate(() => document.querySelector('.sfy').safety.pick('rsample204'));
+  await page.waitForSelector('.sfy[data-picked="rsample204"]');
+  await apply(page, 'setRoomFields', { roomId: 'rsample204', number: '<b>Lab</b> 4' });
+  await page.waitForFunction(() => document.getElementById('safety-line').textContent.includes('<b>Lab</b> 4'));
+  const name = await page.evaluate(() => document.querySelector('.sfy').safety.picture.byRoom.get('rsample204').name);
+  assert.ok(name.includes('<b>Lab</b> 4'), name);
+  assert.equal(await page.evaluate(() => document.querySelector('.sfy').safety.picked), 'rsample204');
+  assert.ok((await seen(page, '#safety-line .mov-line__words')).startsWith(name + ' on Floor 2: out by '));
+  assert.equal(await seen(page, '.sfy-panel [data-print="picked"]'), 'Print the card for ' + name);
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.sfy b, .sfy-inspector b').length), 0);
+});
+
+test('another project put in while the section is mounted lets go of the picked room and the ticks, though its rooms have the same ids', async () => {
+  const page = wide.page;
+  await fresh(page, 'cards');
+  await page.click('.sfy-row[data-room="rsample101"] .sfy-row__box');
+  await page.evaluate(() => document.querySelector('.sfy').safety.pick('rsample204'));
+  await page.waitForSelector('.sfy[data-picked="rsample204"]');
+  const was = await page.evaluate(() => globalThis.sv2.store.project.id);
+  await page.evaluate(async () => {
+    const { sampleSchool } = await import('./data/sample-school.js');
+    const project = sampleSchool();
+    project.id = project.id + 'x';
+    globalThis.sv2.store.replace(project);
+  });
+  await ready(page);
+  assert.notEqual(await page.evaluate(() => globalThis.sv2.store.project.id), was);
+  assert.equal(await page.evaluate(() => document.querySelector('.sfy').safety.picked), null, 'the pick of another project is kept');
+  assert.equal(await page.$eval('.sfy', (el) => el.dataset.mode), 'all');
+  assert.deepEqual(await page.evaluate(() => document.querySelector('.sfy').safety.chosen), [], 'the ticks of another project are kept');
+  assert.equal(await page.$eval('.sfy-row[data-room="rsample101"] .sfy-row__box', (el) => el.checked), false);
+  assert.equal(await page.$eval('.sfy-panel [data-print="chosen"]', (el) => el.dataset.count), '0');
+});
+
+test('twelve exits: the key lists twelve numbers and says the colours repeat after ten, exit 11 in exit 1\'s colour', async () => {
+  const page = wide.page;
+  await fresh(page);
+  assert.equal(await page.$eval('.sfy-key [data-note="repeat"]', (el) => el.hidden), true, 'with two exits the key says the colours repeat');
+  await page.evaluate(async () => {
+    const { sampleSchool } = await import('./data/sample-school.js');
+    const { isEdgeCorridorCell } = await import('./engine/schema.js');
+    const project = sampleSchool();
+    let n = project.building.floors.reduce((sum, floor) => sum + floor.exits.length, 0);
+    for (const floor of project.building.floors) {
+      const taken = new Set(floor.exits.map((exit) => exit.cell));
+      for (let cell = 0; cell < floor.cells.length && n < 12; cell += 1) {
+        if (taken.has(cell) || !isEdgeCorridorCell(floor, cell)) continue;
+        n += 1;
+        floor.exits.push({ id: 'xsafety' + String(n).padStart(3, '0'), cell, doorName: 'Door ' + n, assembly: '' });
+      }
+    }
+    globalThis.sv2.store.replace(project);
+  });
+  await ready(page);
+  await page.waitForFunction(() => document.querySelectorAll('.sfy-key__item').length === 12);
+  const key = await page.$$eval('.sfy-key__item', (items) => items.map((item) => item.dataset.number + '|' + item.querySelector('.sfy-swatch').textContent));
+  assert.deepEqual(key, Array.from({ length: 12 }, (_, i) => (i + 1) + '|' + (i + 1)));
+  assert.equal(await seen(page, '.sfy-key [data-note="repeat"]'), 'The colours repeat after exit 10: the number on each room says which exit.');
+  const colours = await page.evaluate(() => {
+    const view = document.querySelector('.sfy').safety;
+    return Array.from({ length: 12 }, (_, i) => view.colour(i + 1));
+  });
+  assert.equal(colours[10], colours[0]);
+  assert.equal(new Set(colours.slice(0, 10)).size, 10);
+  // the key's swatch of exit 11 carries its number on exit 1's colour
+  assert.equal(await page.$eval('.sfy-key__item[data-number="11"] .sfy-swatch', (el) => el.style.backgroundColor), await page.$eval('.sfy-key__item[data-number="1"] .sfy-swatch', (el) => el.style.backgroundColor));
+});
+
+test('a phone at Fit: the badges are under their least, and the key says zooming in shows the numbers; zoomed in to them, it says nothing of it', async () => {
+  const session = await openPlanner({ width: 390, height: 844, mobile: true, hash: '#safety', theme: 'light' });
+  const page = session.page;
+  try {
+    await ready(page);
+    const fit = await page.evaluate(async () => {
+      const { EXIT_KEY_LEAST } = await import('./ui/surface/overlays/evacuation.js');
+      return { size: document.querySelector('.sfy').safety.plan.view.size, least: EXIT_KEY_LEAST };
+    });
+    assert.ok(fit.size < fit.least, 'at Fit a cell is ' + fit.size + ' px, not under the badges\' ' + fit.least + ': the case tests nothing');
+    // the map painted at Fit (ready): the key has said it
+    assert.equal(await page.$eval('.sfy-key [data-note="zoom"]', (el) => el.hidden), false, 'at Fit, with no badge drawn, the key does not say that zooming in shows the numbers');
+    assert.equal(await page.$eval('.sfy-key [data-note="zoom"]', (el) => el.textContent), 'Zoom in to see each room’s exit number on the map.');
+    // zoomed in from the keyboard until the badges are drawn
+    await page.focus('#safety-plan');
+    for (let i = 0; i < 12 && (await page.evaluate(() => document.querySelector('.sfy').safety.plan.view.size)) < fit.least; i += 1) await page.keyboard.press('=');
+    assert.ok(await page.evaluate((least) => document.querySelector('.sfy').safety.plan.view.size >= least, fit.least), 'the map did not zoom to the badges');
+    await page.waitForFunction(() => document.querySelector('.sfy-key [data-note="zoom"]').hidden);
+    // back to Fit: said again
+    await page.keyboard.press('0');
+    await page.waitForFunction(() => !document.querySelector('.sfy-key [data-note="zoom"]').hidden);
+    // with a room picked no badge is drawn at any zoom: nothing said of them
+    await page.evaluate(() => document.querySelector('.sfy').safety.pick('rsample204'));
+    await page.waitForFunction(() => document.querySelector('.sfy-key [data-note="zoom"]').hidden);
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+function touch(cdp, type, fingers) {
+  return cdp.send('Input.dispatchTouchEvent', { type, touchPoints: fingers.map((finger) => ({ x: Math.round(finger.x), y: Math.round(finger.y), id: finger.id, radiusX: 4, radiusY: 4, force: 1 })) });
+}
+
+test('on a phone, one finger moving the map and two pinching it over rooms leave the picked room as it is; a tap picks', async () => {
+  const session = await openPlanner({ width: 390, height: 844, mobile: true, hash: '#safety', theme: 'light' });
+  const page = session.page;
+  const cdp = await page.createCDPSession();
+  const view = () => page.evaluate(() => {
+    const v = document.querySelector('.sfy').safety.plan.view;
+    return { x: v.x, y: v.y, zoom: v.zoom, picked: document.querySelector('.sfy').safety.picked };
+  });
+  try {
+    await ready(page);
+    const gym = await roomPoint(page, 'rsamplegym');
+    await page.touchscreen.tap(gym.x, gym.y);
+    await page.waitForSelector('.sfy[data-picked="rsamplegym"]');
+    // one finger from the middle of Room 101, 60 px right and 40 down
+    const from = await roomPoint(page, 'rsample101');
+    let before = await view();
+    await touch(cdp, 'touchStart', [{ ...from, id: 1 }]);
+    for (let i = 1; i <= 6; i += 1) await touch(cdp, 'touchMove', [{ x: from.x + 10 * i, y: from.y + 7 * i, id: 1 }]);
+    await touch(cdp, 'touchEnd', []);
+    await page.waitForFunction((was) => document.querySelector('.sfy').safety.plan.view.x !== was, {}, before.x);
+    let after = await view();
+    assert.equal(after.picked, 'rsamplegym', 'a one-finger drag over Room 101 changed the pick');
+    assert.equal(after.zoom, before.zoom, 'a one-finger drag changed the zoom');
+    // two fingers about Room 102, drawn apart
+    const mid = await roomPoint(page, 'rsample102');
+    before = after;
+    await touch(cdp, 'touchStart', [{ x: mid.x - 20, y: mid.y, id: 1 }]);
+    await touch(cdp, 'touchStart', [{ x: mid.x - 20, y: mid.y, id: 1 }, { x: mid.x + 20, y: mid.y, id: 2 }]);
+    for (const reach of [30, 40, 50, 60]) await touch(cdp, 'touchMove', [{ x: mid.x - reach, y: mid.y, id: 1 }, { x: mid.x + reach, y: mid.y, id: 2 }]);
+    await touch(cdp, 'touchEnd', []);
+    await page.waitForFunction((was) => document.querySelector('.sfy').safety.plan.view.zoom > was * 1.5, {}, before.zoom);
+    after = await view();
+    assert.equal(after.picked, 'rsamplegym', 'a pinch over Room 102 changed the pick');
+    assert.equal(await page.$eval('.sfy', (el) => el.dataset.picked), 'rsamplegym');
+    // and a tap on a room still picks it
+    const room = await roomPoint(page, 'rsample102');
+    await page.touchscreen.tap(room.x, room.y);
+    await page.waitForSelector('.sfy[data-picked="rsample102"]');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await cdp.detach();
+    await session.close();
+  }
+});
+
+test('the section mounted off the page asks for one frame at a time and none once unmounted; put on the page, it draws', async () => {
+  const session = await openPlanner({ width: 1280, height: 800, hash: '#building', theme: 'light' });
+  const page = session.page;
+  try {
+    await page.evaluate(async () => {
+      globalThis.sfyModule = await import('./ui/safety/index.js');
+    });
+    // mounted and never put on the page: the page goes on answering
+    const first = await page.evaluate(() => {
+      const ctx = { ...globalThis.sv2.ctx, setInspector() {} };
+      globalThis.sfyOff = globalThis.sfyModule.section.mount(ctx);
+      return { connected: globalThis.sfyOff.element.isConnected, waiting: globalThis.sfyOff.element.safety.waiting };
+    });
+    assert.deepEqual(first, { connected: false, waiting: true });
+    await page.waitForFunction(() => globalThis.sfyOff.element.safety.waiting === true && globalThis.sfyOff.element.dataset.mode === undefined);
+    assert.equal(await page.evaluate(() => {
+      globalThis.sfyOff.unmount();
+      return globalThis.sfyOff.element.safety.waiting;
+    }), false, 'a frame is still asked for after unmount');
+    // a second one put on the page draws
+    await page.evaluate(() => {
+      const ctx = { ...globalThis.sv2.ctx, setInspector() {} };
+      globalThis.sfyOn = globalThis.sfyModule.section.mount(ctx);
+      const box = document.createElement('div');
+      box.id = 'sfy-off-test';
+      box.style.cssText = 'position:fixed;left:0;top:0;width:600px;height:500px;visibility:hidden';
+      box.append(globalThis.sfyOn.element);
+      document.body.append(box);
+    });
+    await page.waitForFunction(() => globalThis.sfyOn.element.dataset.mode === 'all' && !globalThis.sfyOn.element.safety.waiting);
+    await page.evaluate(() => {
+      globalThis.sfyOn.unmount();
+      document.getElementById('sfy-off-test').remove();
+    });
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// The section's whole picture on the 3.13 fixture in Chromium on huginn
+// (SV2-67b, 2026-10-19): 72 to 118 ms over 13 runs of this file, so a
+// budget of 150 ms, failing at 300.
+const PICTURE_BUDGET = 150;
+
 test('evacuationRoutes on the 3.13 fixture (4 floors of 60 by 40, 150 rooms) in this browser, once', async () => {
   const page = wide.page;
   const ms = await page.evaluate(async () => {
@@ -728,4 +1011,7 @@ test('evacuationRoutes on the 3.13 fixture (4 floors of 60 by 40, 150 rooms) in 
   console.log('# evacuationRoutes on the 3.13 fixture in Chromium: ' + ms.routes.toFixed(1) + ' ms with the graph; the section\'s whole picture ' + ms.picture.toFixed(1) + ' ms');
   // the timing suite's budget for routes, cards and all is 300 ms, failing at twice that
   assert.ok(ms.routes < 600, 'evacuationRoutes took ' + ms.routes + ' ms');
+  // the section's picture, which the page works out once a state of the
+  // building: PICTURE_BUDGET measured here, failing at twice it
+  assert.ok(ms.picture < PICTURE_BUDGET * 2, 'the section\'s picture took ' + ms.picture.toFixed(1) + ' ms, over twice its budget of ' + PICTURE_BUDGET + ' ms');
 });

@@ -34,7 +34,8 @@
 }
 
 .sfy-key__list[hidden],
-.sfy-key__marks[hidden] {
+.sfy-key__marks[hidden],
+.sfy-key__note[hidden] {
   display: none;
 }
 
@@ -47,6 +48,13 @@
 
 .sfy-key__marks {
   margin: 0;
+}
+
+/* the colours repeat past ten; zoom in for the numbers: a line of its own */
+.sfy-key__note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-2);
 }
 
 /* an exit's number on its colour: the badge drawn on a room, in words too */

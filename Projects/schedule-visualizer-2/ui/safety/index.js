@@ -10,7 +10,10 @@
 //             round mark at its door to the square mark at the exit
 //   under     the key, docked under the map: each exit's number, colour and
 //             name, so the badge on a room says which exit without the
-//             colour; with a room picked, what the two marks mean
+//             colour; past ten exits, that the colours repeat; with the
+//             badges too small to draw, that zooming in shows them; with a
+//             room picked, what the two marks mean (or, for a room with no
+//             way out, that it is framed and no route is drawn)
 //   top bar   which floors are on the map (the plan map's row)
 //   inspector Exits (./exits.js): every exit with the rooms it serves and
 //             their people, and the rooms with no way out, each with the
@@ -35,7 +38,7 @@ import { tabs } from '../components/tabs.js';
 import { count, figures } from '../components/words.js';
 import { createPlanMap } from '../surface/plan-map.js';
 import { slotAt } from '../surface/plan-layout.js';
-import { evacuationOverlay, exitColours, runsOf } from '../surface/overlays/evacuation.js';
+import { evacuationOverlay, exitColours, runsOf, EXIT_KEY_LEAST, EXIT_PRESETS } from '../surface/overlays/evacuation.js';
 import { drawStairLink } from '../surface/overlays/lanes.js';
 import { labelOn } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
@@ -61,10 +64,38 @@ export const SAFETY_TABS = [
 ];
 
 export const MARKS_SAY = 'Round mark: the door the room is left by. Square mark: the exit.';
+// what is drawn for a picked room with no way out: its frame, no route and no marks
+export const LOST_SAYS = 'The picked room is framed. It has no way out, so no route is drawn.';
+// under the key, when the badges are too small to draw (EXIT_KEY_LEAST)
+export const ZOOM_SAYS = 'Zoom in to see each room’s exit number on the map.';
+// under the key, past the colours there are
+export const REPEAT_SAYS = (n) => 'The colours repeat after exit ' + n + ': the number on each room says which exit.';
+// the live region, when the picked room is gone from the building
+export const GONE_SAYS = (name) => name + ' is no longer in the building; showing every room.';
+
+// The cursor's sentence over a room: its way out, by name and by the number
+// the key and the badges give it, since past the colours a colour repeats.
+export function cursorLine(row, picture) {
+  if (!row.ok) return row.name + ': ' + row.sentence;
+  const exit = picture.exits.find((each) => each.exitId === row.exitId);
+  return row.name + ': out by ' + (exit ? exit.name + ', number ' + exit.number + ' in the key' : 'an exit') + '. Enter shows its way out.';
+}
 
 // What is chosen here, kept for the open project while the page is open
 // (in memory: no storage key).
-const memory = { projectId: null, picked: null, chosen: new Set(), floors: 'auto', tab: 'exits' };
+const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits' };
+
+// A project other than the one the choices were made for lets them go: on
+// mounting, and at every refresh while mounted (a replace, Undo across one).
+function adopt(project) {
+  if (memory.projectId === project.id) return false;
+  memory.projectId = project.id;
+  memory.picked = null;
+  memory.pickedName = '';
+  memory.chosen = new Set();
+  memory.floors = 'auto';
+  return true;
+}
 
 function first(project) {
   const f = figures(project);
@@ -98,13 +129,10 @@ export const section = {
   },
   mount(ctx) {
     const store = ctx.store;
-    if (memory.projectId !== store.project.id) {
-      memory.projectId = store.project.id;
-      memory.picked = null;
-      memory.chosen = new Set();
-      memory.floors = 'auto';
-    }
+    adopt(store.project);
     let gone = false;
+    // the frame a draw waits for while the section is not yet on the page
+    let waiting = 0;
     let picture = null;
     let shown = null;
     let colours = [];
@@ -116,7 +144,7 @@ export const section = {
 
     // ---- the first line
     const lineWords = h('span', { class: 'mov-line__words', data: { part: 'words' } });
-    const allButton = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'show-all' }, on: { click: () => pick(null, { say: true }) } }, 'Show every room');
+    const allButton = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'show-all' }, on: { click: showEvery } }, 'Show every room');
     const line = h('p', { class: 'mov-line intro__first', id: 'safety-line' }, lineWords, ' ', allButton);
     const top = h('div', { class: 'mov-top sfy-top' }, line);
     const headline = h('h1', { class: 'vh' }, HEADLINE);
@@ -124,7 +152,9 @@ export const section = {
     // ---- the key, docked under the map
     const keyList = h('ul', { class: 'sfy-key__list', 'aria-label': 'Exits on the map' });
     const marks = h('p', { class: 'sfy-key__marks', hidden: true }, MARKS_SAY);
-    const keyLine = h('div', { class: 'sfy-key', data: { part: 'key' } }, h('span', { class: 'sfy-key__title', 'aria-hidden': 'true' }, 'Key'), keyList, marks);
+    const repeat = h('p', { class: 'sfy-key__note', hidden: true, data: { note: 'repeat' } });
+    const zoomNote = h('p', { class: 'sfy-key__note', hidden: true, data: { note: 'zoom' } }, ZOOM_SAYS);
+    const keyLine = h('div', { class: 'sfy-key', data: { part: 'key' } }, h('span', { class: 'sfy-key__title', 'aria-hidden': 'true' }, 'Key'), keyList, marks, repeat, zoomNote);
 
     const plan = createPlanMap({
       ctx,
@@ -165,6 +195,8 @@ export const section = {
     }
 
     // ---- the overlay: what it draws is read at each paint
+    // the key says so when the badges are too small to be drawn, as the map is painted
+    plan.overlays.push((g, view) => drawZoomNote(view.size));
     plan.overlays.push(evacuationOverlay(() => {
       if (!picture || !shown) return null;
       const lost = memory.picked ? picture.byRoom.get(memory.picked) : null;
@@ -210,6 +242,8 @@ export const section = {
         if (sheet && sheet.dataset.mode === 'sheet' && sheet.dataset.open === 'true') ctx.closeInspector();
         pick(roomId, { say: true, bring: true });
       },
+      // where the focus goes when what held it in a panel is gone: the map
+      home: () => plan.focus(),
     };
     const panels = { exits: exitsPanel(env), cards: doorCardsPanel(env) };
     const inspector = tabs({
@@ -244,6 +278,13 @@ export const section = {
       if (opts.say) ctx.announce(lineWords.textContent);
     }
 
+    // Show every room hides itself: the focus goes to the map it changed
+    function showEvery() {
+      const held = document.activeElement === allButton;
+      pick(null, { say: true });
+      if (held) plan.focus();
+    }
+
     // ---- what is done to a cell of the map (plan-map.js's onCell)
     function roomUnder(x, y) {
       const world = plan.world;
@@ -262,8 +303,7 @@ export const section = {
         const row = room ? picture.byRoom.get(room.id) : null;
         if (!found) ctx.announce('Between floors.');
         else if (!row) ctx.announce(found.slot.floor.name + ': not a room.');
-        else if (!row.ok) ctx.announce(row.name + ': ' + row.sentence);
-        else ctx.announce(row.name + ': out by ' + picture.exits.find((exit) => exit.exitId === row.exitId).name + '. Enter shows its way out.');
+        else ctx.announce(cursorLine(row, picture));
       } else if (ev.kind === 'escape') {
         if (!memory.picked) return false;
         pick(null, { say: true });
@@ -292,9 +332,15 @@ export const section = {
     // ---- everything but the canvas
     function drawKey() {
       const one = Boolean(memory.picked);
+      const row = one ? picture.byRoom.get(memory.picked) : null;
       keyList.hidden = one;
       marks.hidden = !one;
+      marks.textContent = row && !row.ok ? LOST_SAYS : MARKS_SAY;
       keyLine.dataset.mode = one ? 'one' : 'all';
+      const repeats = !one && picture.exits.length > EXIT_PRESETS.length;
+      repeat.hidden = !repeats;
+      repeat.textContent = repeats ? REPEAT_SAYS(EXIT_PRESETS.length) : '';
+      drawZoomNote(plan.view.size);
       if (one) return;
       keyList.replaceChildren(...picture.exits.map((exit) => h('li', { class: 'sfy-key__item', data: { exit: exit.exitId, number: String(exit.number) } },
         h('span', { class: 'sfy-swatch', style: swatch(exit.number), 'aria-hidden': 'true' }, String(exit.number)),
@@ -302,17 +348,31 @@ export const section = {
         h('span', null, h('bdi', { class: 'sfy-key__name' }, exit.name), ', ' + count(exit.rooms, 'room')))));
     }
 
+    // the badges are drawn from EXIT_KEY_LEAST px a cell; under it, with
+    // every room shown, the key says that zooming in shows the numbers
+    function drawZoomNote(size) {
+      const hide = gone || !picture || Boolean(memory.picked) || !(size > 0) || size >= EXIT_KEY_LEAST;
+      if (zoomNote.hidden !== hide) zoomNote.hidden = hide;
+    }
+
     function draw() {
       if (!picture || gone) return;
       // The renderer keeps the theme it first reads (ui/surface/renderer.js),
       // and a canvas not yet in the document reads no tokens at all: the key's
       // colours wait until the shell has put the section on the page, which
-      // it does as soon as mount returns.
+      // it does as soon as mount returns. One frame is asked for at a time,
+      // and none once the section is unmounted.
       if (!element.isConnected) {
-        queueMicrotask(draw);
+        if (!waiting) {
+          waiting = requestAnimationFrame(() => {
+            waiting = 0;
+            draw();
+          });
+        }
         return;
       }
       if (memory.picked && !picture.byRoom.has(memory.picked)) memory.picked = null;
+      if (memory.picked) memory.pickedName = picture.byRoom.get(memory.picked).name;
       lineWords.replaceChildren(...words(firstLine(shown, picture, memory.picked)));
       allButton.hidden = !memory.picked;
       element.dataset.mode = memory.picked ? 'one' : 'all';
@@ -325,6 +385,7 @@ export const section = {
 
     function refresh() {
       const project = store.project;
+      adopt(project);
       const f = figures(project);
       const nothing = f.rooms === 0 || f.exits === 0;
       map.hidden = nothing;
@@ -351,12 +412,19 @@ export const section = {
       const graph = graphNow();
       picture = pictureNow();
       shown = project;
-      // a chosen room the building no longer has is let go
+      // a chosen room the building no longer has is let go; the picked one, said
       for (const id of Array.from(memory.chosen)) if (!picture.byRoom.has(id)) memory.chosen.delete(id);
+      let lost = null;
+      if (memory.picked && !picture.byRoom.has(memory.picked)) {
+        lost = memory.pickedName || 'The picked room';
+        memory.picked = null;
+        memory.pickedName = '';
+      }
       element.dataset.rooms = String(picture.rows.length);
       element.dataset.missing = String(picture.missing.length);
       draw();
       plan.setProject(project, graph);
+      if (lost) ctx.announce(GONE_SAYS(lost));
     }
 
     refresh();
@@ -368,6 +436,8 @@ export const section = {
       get chosen() { return Array.from(memory.chosen); },
       pick: (roomId) => pick(roomId, { bring: true }),
       colour: (number) => exitColour(number),
+      // a draw is waiting for the section to be put on the page
+      get waiting() { return waiting !== 0; },
     };
 
     return {
@@ -378,6 +448,8 @@ export const section = {
       },
       unmount() {
         gone = true;
+        if (waiting) cancelAnimationFrame(waiting);
+        waiting = 0;
         plan.canvas.removeEventListener('keydown', onKey);
         dark.removeEventListener('change', onScheme);
         plan.unmount();

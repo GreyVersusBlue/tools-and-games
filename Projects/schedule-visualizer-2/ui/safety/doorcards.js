@@ -14,7 +14,13 @@
 //
 //   doorCardsPanel(env) -> { element, update() }
 //     env   { ctx, picture(), project(), picked(), chosen() (a Set of room
-//             ids, kept by the section), swatch(number), themeKey(), pick(roomId) }
+//             ids, kept by the section), swatch(number), themeKey(), pick(roomId),
+//             home() (puts the focus on the map) }
+//
+// The focus is never left on nothing: Untick all hides itself, and gives
+// the focus to the list's first box; a row whose room is gone gives it to
+// the same control of the row now in its place, or of the row before, or
+// with no row left to the map.
 
 import { h, uid } from '../components/dom.js';
 import { openPrintPreview } from '../components/print-preview.js';
@@ -57,10 +63,16 @@ export function doorCardsPanel(env) {
   }
 
   function untick() {
+    const held = document.activeElement === clearButton;
     env.chosen().clear();
     for (const box of list.querySelectorAll('input[type="checkbox"]')) box.checked = false;
     buttons();
     env.ctx.announce('No room is ticked.');
+    if (held) {
+      const box = list.querySelector('input[type="checkbox"]');
+      if (box) box.focus();
+      else env.home();
+    }
   }
 
   function buttons() {
@@ -90,6 +102,10 @@ export function doorCardsPanel(env) {
     const picture = env.picture();
     const project = env.project();
     const held = list.contains(document.activeElement) ? document.activeElement.id : null;
+    // where it was, for a row that will not be drawn again
+    const heldRow = held ? document.activeElement.closest('.sfy-row') : null;
+    const heldAt = heldRow ? Array.from(list.querySelectorAll('.sfy-row')).indexOf(heldRow) : -1;
+    const heldKind = held ? (document.activeElement.matches('.sfy-row__box') ? '.sfy-row__box' : '.sfy-row__show') : null;
     const byFloor = new Map(project.building.floors.map((floor) => [floor.id, []]));
     for (const row of picture.rows) if (byFloor.has(row.floorId)) byFloor.get(row.floorId).push(row);
     const groups = [];
@@ -123,6 +139,13 @@ export function doorCardsPanel(env) {
     if (held) {
       const again = document.getElementById(held);
       if (again) again.focus();
+      else {
+        const rows = list.querySelectorAll('.sfy-row');
+        const row = rows.length > 0 ? rows[Math.min(Math.max(heldAt, 0), rows.length - 1)] : null;
+        const control = row ? row.querySelector(heldKind) : null;
+        if (control) control.focus();
+        else env.home();
+      }
     }
   }
 

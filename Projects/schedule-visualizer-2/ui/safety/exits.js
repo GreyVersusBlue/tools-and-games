@@ -5,7 +5,12 @@
 // button that shows its way out on the map.
 //
 //   exitsPanel(env) -> { element, update() }
-//     env   { picture(), project(), picked(), swatch(number), themeKey(), pick(roomId) }
+//     env   { picture(), project(), picked(), swatch(number), themeKey(), pick(roomId),
+//             home() (puts the focus on the map) }
+//
+// A room's button that held the focus and is gone with its room gives the
+// focus to the button now in its place in the panel, or the one before, or
+// with none left to the map.
 
 import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
@@ -41,6 +46,7 @@ export function exitsPanel(env) {
     }
     // the focus is put back on the same thing after the panel is drawn again
     const held = element.contains(document.activeElement) ? document.activeElement.dataset.room || null : null;
+    const heldAt = held ? Array.from(element.querySelectorAll('.sfy-room')).indexOf(document.activeElement) : -1;
     drawnFor = picture;
     drawnTheme = env.themeKey();
     drawnPicked = env.picked();
@@ -77,6 +83,11 @@ export function exitsPanel(env) {
     if (held) {
       const again = element.querySelector('[data-room="' + CSS.escape(held) + '"].sfy-room');
       if (again) again.focus();
+      else {
+        const buttons = element.querySelectorAll('.sfy-room');
+        if (buttons.length > 0) buttons[Math.min(Math.max(heldAt, 0), buttons.length - 1)].focus();
+        else env.home();
+      }
     }
   }
 
