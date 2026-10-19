@@ -1549,6 +1549,82 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the check left its wing on the design');
     },
   },
+  // The same with a court in the hall (#998). test/roof-holes.test.mjs proves
+  // the plan's deck is the outline less the court; this reads the drawn deck
+  // back: no triangle with its middle in the court, none outside the outline,
+  // and the outline less the court covered once.
+  {
+    name: 'curved-parapet-court',
+    what: 'a flat roof with a parapet over a curved L with a court has a deck that is the outline less the court, once over',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { addShape, curveSegment, pointInRing } = await import('./js/shapes.js');
+        const { roofPlan } = await import('./js/roof.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, top = s.floors.length - 1, floor = s.floors[top];
+        const was = { roof: JSON.stringify(s.roof ?? null), shapes: JSON.stringify(floor.shapes), nextId: s.nextId };
+        const x0 = (s.w + 12) * CELL, z0 = 8;
+        const R = (a, b, c, e) => [{ x: a, z: b }, { x: c, z: b }, { x: c, z: e }, { x: a, z: e }];
+        const hall = addShape(s, top, R(x0, z0, x0 + 48, z0 + 24));
+        addShape(s, top, R(x0, z0 + 24, x0 + 20, z0 + 56));
+        const steps = curveSegment(hall, 0, 1, -0.45);
+        const court = R(x0 + 12, z0 + 8, x0 + 24, z0 + 16);
+        hall.rings.push({ pts: court, walls: [], openings: [] });
+        s.roof = { style: 'parapet', pitch: 6, facade: 'brick' };
+        window.app.renderApi.buildFromState(s);
+        const plan = roofPlan(s);
+        const deck = (plan.deckPolys || []).find((p) => p.pts.some((q) => q.x > x0 - 0.01));
+        const out = { steps, found: !!deck, holes: deck ? deck.holes.length : 0, n: 0, outside: 0, inCourt: 0, area: 0, loopArea: 0 };
+        if (deck) {
+          const e = deck.pts;
+          for (let i = 0; i < e.length; i++) {
+            const p = e[i], q = e[(i + 1) % e.length];
+            out.loopArea += (p.x * q.z - q.x * p.z) / 2;
+          }
+          const y = plan.eaveY + 0.05;
+          window.app.renderApi.scene.updateMatrixWorld(true);
+          window.app.renderApi.scene.traverse((o) => {
+            const g = o.isMesh && o.geometry;
+            if (!g || !g.attributes.position) return;
+            const P = g.attributes.position, I = g.index;
+            const n = (I ? I.count : P.count) / 3;
+            for (let k = 0; k < n; k++) {
+              const v = [0, 1, 2].map((j) => {
+                const i = I ? I.getX(k * 3 + j) : k * 3 + j;
+                return new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld);
+              });
+              if (v.some((p) => p.x < x0 - 0.01 || Math.abs(p.y - y) > 1e-3)) continue;
+              out.n++;
+              out.area += Math.abs((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[1].z - v[0].z) * (v[2].x - v[0].x)) / 2;
+              const mx = (v[0].x + v[1].x + v[2].x) / 3, mz = (v[0].z + v[1].z + v[2].z) / 3;
+              if (!pointInRing(e, mx, mz)) out.outside++;
+              if (pointInRing(court, mx, mz)) out.inCourt++;
+            }
+          });
+        }
+        s.roof = JSON.parse(was.roof);
+        if (s.roof === null) delete s.roof;
+        floor.shapes = JSON.parse(was.shapes);
+        s.nextId = was.nextId;
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!(ctx.steps > 3)) throw new Error(`the curve tool laid ${ctx.steps} segments, not a curve`);
+      if (!ctx.found) throw new Error('the roof plan has no deck outline over the curved wing with a court');
+      if (ctx.holes !== 1) throw new Error(`the deck has ${ctx.holes} courts, not 1`);
+      if (ctx.n < 8) throw new Error(`found ${ctx.n} deck triangles over the wing`);
+      if (ctx.outside) throw new Error(`${ctx.outside} of ${ctx.n} deck triangles lie outside the outline`);
+      if (ctx.inCourt) throw new Error(`${ctx.inCourt} of ${ctx.n} deck triangles lie in the court`);
+      const want = ctx.loopArea - 96;
+      if (Math.abs(ctx.area - want) > 1e-3 * want) {
+        throw new Error(`the deck's triangles cover ${ctx.area.toFixed(2)} ft² of plan, the outline less the court ${want.toFixed(2)}`);
+      }
+      if (after.json !== before.json) throw new Error('the check left its wing on the design');
+    },
+  },
   // An accent wall, drawn (#827). test/accent.test.mjs proves which face of
   // which run takes the colour; this builds the scene and reads the corners
   // back, the way 'wall-faces' does, with one wall of the red room green.

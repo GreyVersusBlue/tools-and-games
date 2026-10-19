@@ -563,11 +563,11 @@ function parapetOnChords(mask, outlines, rects, curved) {
 function chordPlan(mask, outlines, rects, owners, taken, reach) {
   const polys = [...taken.values()];
   const inTaken = (x, z) => polys.some((d) => inFootprint({ outline: d.pts, holes: d.holes }, x, z));
-  // Each taken footprint's parapet: its outer ring and every court's, the
-  // court wound as `maskOutlines` winds a hole loop, covered side on the right
-  // (#998). A neighbour is cut against the outer ring only: it cannot reach
-  // into a court without crossing the curved building's walls.
-  const parapets = polys.flatMap((d) => [d.pts, ...d.holes.map((h) => (loopArea(h) > 0 ? [...h].reverse() : h))]);
+  // Each taken footprint's parapet: its outer ring and every court's (#998),
+  // which `roofOutline` winds as `maskOutlines` winds a hole loop, covered
+  // side on the right. A neighbour is cut against the outer ring only: it
+  // cannot reach into a court without crossing the curved building's walls.
+  const parapets = polys.flatMap((d) => [d.pts, ...d.holes]);
   const kept = outlines.filter((_, i) => ![...owners[i]].some((k) => taken.has(k)));
   const shared = owners.some((o) => o.size > 1 && [...o].some((k) => taken.has(k)));
   if (!shared) {

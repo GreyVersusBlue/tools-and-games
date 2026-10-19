@@ -166,6 +166,59 @@ test('inFootprint is in the outline and in none of its holes', () => {
   assert.equal(inFootprint({ outline: R4(0, 0, 40, 40) }, 15, 15), true, 'no holes key');
 });
 
+test('a curve only in the court takes the chords: a round court in a square room', () => {
+  // DESIGN-roof-holes.md question 2's default: a curve on any ring.
+  const s = createState(30, 20);
+  const sh = addShape(s, 0, R4(8, 8, 48, 48));
+  const round = Array.from({ length: 12 }, (_, k) => ({ x: 28 + 8 * Math.cos((Math.PI * k) / 6), z: 28 + 8 * Math.sin((Math.PI * k) / 6) }));
+  sh.rings.push({ pts: round, walls: [], openings: [] });
+  s.roof = { style: 'parapet', pitch: 6, facade: 'brick' };
+  const [f] = curvedLoopsOf(s.floors[0]);
+  assert.ok(f, 'the square with a round court has a curve');
+  const plan = roofPlan(s);
+  assert.equal(plan.deckPolys.length, 1);
+  assert.equal(plan.deckPolys[0].holes.length, 1);
+  assert.ok(Math.abs(roofCover(s).footprint - (1600 - Math.abs(area(round)))) < 1e-9);
+  assert.ok(plan.outlines.some((l) => l.length === 12 && area(l) < 0), 'the parapet round the court, on its chords');
+});
+
+test('a room standing in the court, touching no wall, is its own building and keeps its mask', () => {
+  const s = hall();
+  addShape(s, 0, R4(24, 20.5, 28, 27.5));
+  const o = roofOutline(s.floors[0]);
+  assert.equal(o.loops.length, 2, 'the hall and the room in its court');
+  const plan = roofPlan(s);
+  const [outer] = o.loops.filter((l) => l.length > 4);
+  // The room's two cells keep their own mask loop and deck rectangle.
+  assert.ok(plan.outlines.some((l) => l.length === 4 && l.every((p) => p.x >= 24 && p.x <= 28 && p.z >= 20 && p.z <= 28)), 'its parapet');
+  assert.equal(plan.deckRects.length, 1, 'its deck');
+  assert.ok(Math.abs(roofCover(s).footprint - (area(outer) - 96 + 2 * CELL * CELL)) < 1e-9, 'counted once, on its cells');
+});
+
+test('a courtyard building standing in another\'s court: each court goes to the loop right round it', () => {
+  const s = courtyard('parapet');
+  const sh = addShape(s, 0, R4(20, 20, 36, 36));
+  sh.rings.push({ pts: R4(24, 24, 32, 32), walls: [], openings: [] });
+  const o = roofOutline(s.floors[0]);
+  assert.equal(o.loops.length, 2);
+  const big = o.loops.findIndex((l) => area(l) === 40 * 40);
+  assert.ok(big >= 0);
+  assert.deepEqual(o.holes[big].map(area), [-24 * 24], 'the outer building\'s court');
+  assert.deepEqual(o.holes[1 - big].map(area), [-8 * 8], 'the inner building\'s own');
+});
+
+test('where the storey is judged building by building, a building keeps its court', () => {
+  const s = hall();
+  // Two rooms overlapping, well clear of the hall: the storey is refused as a whole.
+  addShape(s, 0, R4(80, 8, 100, 24));
+  addShape(s, 0, R4(90, 16, 110, 32));
+  const o = roofOutline(s.floors[0]);
+  assert.match(o.refused, /overlap/);
+  assert.equal(o.loops.length, 1);
+  assert.equal(o.holes[0].length, 1, 'the hall\'s court');
+  assert.equal(roofPlan(s).deckPolys[0].holes.length, 1);
+});
+
 // Pinned from the plan before this change: a rectilinear courtyard building
 // has no curve, so it never reaches the chords, under any style or pitch.
 const PINNED = {
