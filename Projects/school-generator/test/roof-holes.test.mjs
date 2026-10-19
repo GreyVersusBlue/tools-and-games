@@ -271,6 +271,33 @@ test('a round court: its eave is the 12-gon 1.5ft in, and the hall stands round 
   assert.equal(roofHeightAt(roofPlan(s), mask, 28, 24), null, 'sky in the middle of the court');
 });
 
+// A court with a head-on notch of its own, 2ft wide and 3ft deep into the
+// hall off its north side: the court's eave is its ring's own wavefront run
+// 1.5ft in (#999), which closes the notch at 1ft as the outer eave's closes
+// one in a wall (#1000), so the court eave is the plain court's.
+test('a court whose own notch meets head on: its eave closes past it, and the hall stands round it', () => {
+  const notched = [{ x: 20, z: 20 }, { x: 32, z: 20 }, { x: 32, z: 28 }, { x: 27, z: 28 }, { x: 27, z: 31 }, { x: 25, z: 31 }, { x: 25, z: 28 }, { x: 20, z: 28 }];
+  const s = hallWith([notched]);
+  const [b] = skeletonRoofsOf(s);
+  assert.ok(b, 'on the skeleton');
+  assert.equal(b.eaveHoles.length, 1);
+  const eave = b.eaveHoles[0].map((p) => key(p)).filter((k, i, a) => a.indexOf(k) === i);
+  // Straight-through corners from the closed notch may stand on the eave's
+  // north side; every corner lies on the plain court eave's outline.
+  for (const p of b.eaveHoles[0]) {
+    const onX = Math.abs(p.x - 21.5) < 1e-9 || Math.abs(p.x - 30.5) < 1e-9, onZ = Math.abs(p.z - 21.5) < 1e-9 || Math.abs(p.z - 26.5) < 1e-9;
+    assert.ok((onX && p.z > 21.5 - 1e-9 && p.z < 26.5 + 1e-9) || (onZ && p.x > 21.5 - 1e-9 && p.x < 30.5 + 1e-9), `court eave corner ${key(p)}`);
+  }
+  for (const c of COURT_EAVE) assert.ok(eave.includes(key(c)), `the court eave has ${key(c)}`);
+  assert.ok(Math.abs(Math.abs(area(b.eaveHoles[0])) - 45) < 1e-9, `the court eave is 9 by 5: ${area(b.eaveHoles[0])}`);
+  everyFaceOnItsPlane(b, roofPlan(s).eaveY, 0.5);
+  let sum = 0;
+  for (const f of b.faces) sum += area(f.pts);
+  assert.ok(Math.abs(sum - (area(b.eave) - 45)) < 1e-6, `faces ${sum}`);
+  const [outer] = roofOutline(s.floors[0]).loops;
+  assert.ok(Math.abs(roofCover(s).footprint - (area(outer) - 96 - 6)) < 1e-9, 'the cover is the outline less the court and its notch');
+});
+
 test('rooms round the court and a room with a hole give the same figures', () => {
   const one = hall(), four = hall({ rooms: true });
   assert.ok(Math.abs(roofCover(one).footprint - roofCover(four).footprint) < 1e-9);

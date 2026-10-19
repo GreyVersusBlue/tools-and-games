@@ -14,7 +14,7 @@ import { roofOutline, hasCurve, roofPlan, roofMask, EAVE, curvedRoofs } from '..
 import { arcPoints, addShape, curveSegment } from '../js/shapes.js';
 import { createState, CELL, WALL_H, floorBaseY } from '../js/grid.js';
 import { roofHeightAt, computeElevation, computeSection } from '../js/elevation.js';
-import { eavePolygon, cleanPolygon, skeletonRoof, triangulate, roofHeightOver } from '../js/skeleton.js';
+import { eavePolygon, cleanPolygon, skeletonRoof, triangulate, roofHeightOver, offsetRing } from '../js/skeleton.js';
 
 const room = (pts) => ({ rings: [{ pts: pts.map(([x, z]) => ({ x, z })), walls: [], openings: [] }] });
 const floorOf = (...rooms) => ({ shapes: rooms });
@@ -199,10 +199,19 @@ test('a curve bowed into the building tighter than the eave is refused, a looser
   assert.ok(eavePolygon(dented(10), 1.5), 'r 10ft');
 });
 
-test('a notch narrower than two eaves closes up and is refused', () => {
+// The mitred line still crosses itself over a notch narrower than two eaves,
+// and #993's step-out still refuses it (the sides meet head on); the eave a
+// roof stands on is the outline's wavefront run out 1.5ft (#1000), which
+// closes the notch at half its width and runs straight past it. A 4ft notch
+// stays open 1ft, the mitred line point for point.
+test('a notch narrower than two eaves: the mitred line crosses itself, and the eave closes straight past it', () => {
   const notch = (w) => P([[0, 0], [40, 0], [40, 10], [20 + w / 2, 10], [20 + w / 2, 4], [20 - w / 2, 4], [20 - w / 2, 10], [0, 10]]);
   assert.equal(eavePolygon(notch(2), 1.5), null);
+  const [closed, ...more] = offsetRing(notch(2), -1.5);
+  assert.equal(more.length, 0, 'one eave');
+  assert.deepEqual(cleanPolygon(closed).map((p) => [p.x, p.z]), [[-1.5, -1.5], [41.5, -1.5], [41.5, 11.5], [-1.5, 11.5]]);
   assert.ok(eavePolygon(notch(4), 1.5));
+  assert.deepEqual(offsetRing(notch(4), -1.5), [eavePolygon(notch(4), 1.5)]);
 });
 
 // ---------- the faces, in triangles ----------

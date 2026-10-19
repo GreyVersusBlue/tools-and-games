@@ -78769,13 +78769,27 @@ function courtEaves(holes, d) {
 // of them closes up, which is gone from there on, its neighbours meeting, and
 // on to `d`. So a dent the overhang covers is covered (a V or a notch that
 // narrows inward closes the same way), and the roof stands on the eave line
-// as it is. Two sides meeting head on (a square notch, a slot, a dovetail) is
-// a split, not this, and stays refused: null, and the loop keeps its
-// rectangles. Every step goes through `cleanPolygon`, which refuses a line
-// that crosses itself, so a line that is returned holds every wall corner.
+// as it is. Every step goes through `cleanPolygon`, which refuses a line that
+// crosses itself, so a line that is returned holds every wall corner.
+//
+// Two sides meeting head on (a square notch, a slot, a dovetail) is a split,
+// which neither of those answers takes. Only where both refuse, the third is
+// the loop's own wavefront run outward to `d` (`offsetRing`, #997): the two
+// sides walk towards each other, meet at half the notch's width, and the line
+// runs straight past where the notch was (DESIGN-roof-holes.md 2.2, #1000).
+// One loop back is the eave; none, or two pieces, is still null. So every
+// loop that had an eave has the same eave.
 function eaveLine(loop, d) {
   const mitred = eavePolygon(loop, d);
   if (mitred) return mitred;
+  const stepped = steppedEave(loop, d);
+  if (stepped) return stepped;
+  const loops = offsetRing(loop, -d);
+  return loops && loops.length === 1 ? cleanPolygon(loops[0]) : null;
+}
+
+// `eaveLine`'s second answer (#993).
+function steppedEave(loop, d) {
   let cur = cleanPolygon(loop), left = d;
   for (let step = 0; cur && step < loop.length; step++) {
     const n = cur.length;
