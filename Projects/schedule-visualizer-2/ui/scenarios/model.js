@@ -117,13 +117,16 @@ export function signed(n, unit) {
   return (n > 0 ? '+' : MINUS) + Math.abs(n) + (unit ? ' ' + unit : '');
 }
 
+// A number never parts from its unit at a line's end: "7 min 58 s" breaks
+// only between "7 min" and "58 s".
+const NBSP = '\u00a0';
 export function duration(seconds) {
-  return formatDuration(seconds);
+  return formatDuration(seconds).replace(/(\d) (min|s)\b/g, '$1' + NBSP + '$2');
 }
 
 export function signedDuration(seconds) {
   if (seconds === 0) return 'no change';
-  return (seconds > 0 ? '+' : MINUS) + formatDuration(Math.abs(seconds));
+  return (seconds > 0 ? '+' : MINUS) + duration(Math.abs(seconds));
 }
 
 function busiestWords(side) {

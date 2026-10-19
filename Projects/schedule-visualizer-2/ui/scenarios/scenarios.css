@@ -378,16 +378,32 @@
   overflow-wrap: anywhere;
 }
 
+/* four columns in the inspector's 320 px: fixed widths, and a figure wraps
+   at its spaces ("153 min / 48 s") rather than pushing the table wider */
 .scn-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
 }
 
+.scn-table th:first-child {
+  width: 31%;
+}
+
+.scn-table thead th:last-child {
+  width: 27%;
+}
+
+.scn-table thead th {
+  overflow-wrap: normal;
+}
+
 .scn-table th,
 .scn-table td {
-  padding: var(--s-1) var(--s-2) var(--s-1) 0;
+  padding: var(--s-1) var(--s-1) var(--s-1) 0;
+  overflow-wrap: break-word;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
@@ -406,7 +422,6 @@
 
 .scn-table .num {
   text-align: right;
-  white-space: nowrap;
 }
 
 .scn-trend {
