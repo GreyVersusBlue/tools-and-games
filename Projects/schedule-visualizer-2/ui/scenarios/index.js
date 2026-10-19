@@ -44,6 +44,8 @@ import { filePanel } from './file.js';
 import { comparePanel } from './compare.js';
 
 const HEADLINE = 'This is the scenario lab.';
+// Apply's button when nothing in the scenario applies: it closes the scenario.
+const APPLY_NOTHING = 'Close the scenario: no change of it applies';
 const KEYS = 'Arrow keys move the cursor one cell and say what is under it. Hold Space and press the arrows to move the map. = and - zoom in and out, 0 fits the map to the window. The comparison is in the inspector.';
 
 // What is chosen here, kept for the open project while the page is open
@@ -90,8 +92,11 @@ export const section = {
     adopt(store.project);
     let gone = false;
     let view = null;
-    // the comparison: the last answer, and whether a newer one is being worked out
-    const lane = { compare: null, answer: null, pending: false, failed: null, asked: 0 };
+    // the comparison: the last answer, and whether a newer one is being worked
+    // out; `key` is what the last asking was for (the scenario object, the
+    // store's counters, the lab's options), so a drawing that changes none of
+    // them (the floors row, the theme, a store change elsewhere) asks nothing
+    const lane = { compare: null, answer: null, pending: false, failed: null, asked: 0, key: null };
 
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
 
@@ -133,6 +138,8 @@ export const section = {
       // where the focus goes when what held it is gone: the panel's first control
       home: () => changes.focusName(),
       ask,
+      // false once the section has been taken off the page
+      mounted: () => !gone,
     };
     const changes = changesPanel(env);
     const forms = formsPanel(env);
@@ -226,6 +233,20 @@ export const section = {
     }
 
     // ---- the comparison, asked of the scenario lane
+    function laneKey() {
+      return { scenario: store.project.scenario, counters: store.geometryVersion + ':' + store.buildingVersion + ':' + store.scheduleVersion, dayTypeId: memory.dayTypeId, transition: memory.transition };
+    }
+
+    function sameKey(a, b) {
+      return Boolean(a) && Boolean(b) && a.scenario === b.scenario && a.counters === b.counters && a.dayTypeId === b.dayTypeId && a.transition === b.transition;
+    }
+
+    // asks again only when what the answer is for has changed
+    function askIfChanged() {
+      if (sameKey(lane.key, laneKey())) drawCompare();
+      else ask();
+    }
+
     function ask() {
       if (!view || gone) return;
       if (!store.derived || typeof store.derived.scenario !== 'function') {
@@ -238,6 +259,8 @@ export const section = {
       lane.pending = true;
       lane.failed = null;
       drawCompare();
+      // drawn first: the options settle to the project (a day type gone is none)
+      lane.key = laneKey();
       store.derived.scenario({ dayTypeId: memory.dayTypeId, transition: memory.transition }).then((answer) => {
         if (gone || token !== lane.asked) return;
         lane.pending = false;
@@ -279,17 +302,23 @@ export const section = {
         body,
         id: 'scenario-apply',
         opener: applyButton,
-        buttons: [{ label: n === 1 ? 'Apply 1 change' : 'Apply ' + n + ' changes', value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
+        // with nothing that applies the button says what it does: it closes the scenario
+        buttons: [{ label: n === 0 ? APPLY_NOTHING : n === 1 ? 'Apply 1 change' : 'Apply ' + n + ' changes', value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
       });
       const answer = await dialog.closed;
       if (answer !== 'apply' || gone) return;
       if (!run(applyScenario, {})) return;
-      const text = 'Applied ' + quote(current.name) + ': ' + count(n, 'change') + ' made to the schedule.';
-      ctx.toast({ text, action: { label: 'Undo', run: ctx.undo } });
-      ctx.announce(text);
-      requestAnimationFrame(() => {
+      // the dialog gave the focus back to Apply, which the drawing has just
+      // hidden: it goes on to the start field now, never by way of the page
+      changes.focusName();
+      const text = n === 0 ? 'Closed ' + quote(current.name) + ': no change of it applied, and the schedule is as it was.' : 'Applied ' + quote(current.name) + ': ' + count(n, 'change') + ' made to the schedule.';
+      // Undo from the message brings the scenario back, and the focus to its
+      // name field, its first control (the message and its button are gone)
+      ctx.toast({ text, action: { label: 'Undo', run: () => {
+        ctx.undo();
         if (!gone) changes.focusName();
-      });
+      } } });
+      ctx.announce(text);
     }
 
     // ---- Discard…: asks first
@@ -306,10 +335,8 @@ export const section = {
       });
       if (!ok || gone) return;
       if (!run(discardScenario, {})) return;
+      changes.focusName();
       ctx.announce('Discarded the scenario.');
-      requestAnimationFrame(() => {
-        if (!gone) changes.focusName();
-      });
     }
 
     function refresh() {
@@ -353,10 +380,11 @@ export const section = {
       forms.element.hidden = !view;
       if (view) forms.update(project);
       file.update(view);
-      if (view) ask();
+      if (view) askIfChanged();
       else {
         // nothing open: the last answer goes, and an asking still out is let go
         lane.asked += 1;
+        lane.key = null;
         lane.compare = null;
         lane.answer = null;
         lane.pending = false;

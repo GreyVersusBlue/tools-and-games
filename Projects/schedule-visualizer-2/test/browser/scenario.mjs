@@ -10,6 +10,15 @@
 // building, the congestion report's button, the spec 18 journey, typed names
 // shown as typed, and the bar at the section's foot with touch on a phone
 // upright and on its side and at 1280 by 800.
+//
+// SV2-68b, the review's findings: a drawing that changes nothing the
+// comparison is for asks the lane nothing; the focus after Apply, Discard
+// and Undo from the message; an older answer after a newer one, a failed
+// lane, the section leaving while the lane works, Redo after an Undone
+// Apply; a group deleted under the lab; a scenario from a file then edited;
+// the slots not compared kept to their own comparison and worked out after
+// the question; a refused file said as an alert; Undo of a rename in a
+// focused field; Apply with nothing that applies; the picker after a rename.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -859,6 +868,519 @@ for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
     }
   });
 }
+
+// ---- SV2-68b: the review's findings
+
+const addChange = (page, change) => page.evaluate(async (c) => {
+  const { addScenarioChange } = await import('./engine/actions.js');
+  globalThis.sv2.store.apply(addScenarioChange, { change: c });
+}, change);
+
+const MOVE_7A = { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' };
+const MOVE_7B = { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07b', period: 2, roomId: 'rsample103' };
+
+// The lane held: each asking waits in globalThis.__held.calls until a case
+// settles it; restoreLane() puts the real one back.
+async function holdLane(page) {
+  await page.evaluate(() => {
+    const derived = globalThis.sv2.store.derived;
+    const real = derived.scenario;
+    globalThis.__held = { real, calls: [] };
+    derived.scenario = (options) => {
+      const call = { options };
+      call.promise = new Promise((resolve, reject) => {
+        call.resolve = resolve;
+        call.reject = reject;
+      });
+      globalThis.__held.calls.push(call);
+      return call.promise;
+    };
+  });
+}
+
+async function restoreLane(page) {
+  await page.evaluate(() => {
+    if (globalThis.__held) globalThis.sv2.store.derived.scenario = globalThis.__held.real;
+  });
+}
+
+// Settle held asking `i` with the real lane's answer for its options; returns
+// once the section's own handler of it has run.
+async function answerHeld(page, i, name) {
+  await page.evaluate(async (at, key) => {
+    const held = globalThis.__held;
+    const call = held.calls.at(at);
+    const answer = await held.real.call(globalThis.sv2.store.derived, call.options);
+    globalThis[key] = answer;
+    call.resolve(answer);
+    // the section's handler was added first, so it has run once this resumes
+    await call.promise;
+  }, i, name);
+}
+
+// Where the focus is just after each store change has been drawn and the
+// code that made it has finished (a microtask after the change).
+async function watchFocus(page) {
+  await page.evaluate(() => {
+    if (globalThis.__focusOff) globalThis.__focusOff();
+    globalThis.__focus = [];
+    globalThis.__focusOff = globalThis.sv2.store.subscribe(() => queueMicrotask(() => {
+      const el = document.activeElement;
+      globalThis.__focus.push({ id: el.id, tag: el.tagName, action: (el.dataset && el.dataset.action) || null, shown: el !== document.body && el.getClientRects().length > 0 });
+    }));
+  });
+}
+
+async function focusSeen(page) {
+  return page.evaluate(() => {
+    const seen = globalThis.__focus;
+    globalThis.__focus = [];
+    return seen;
+  });
+}
+
+async function unwatchFocus(page) {
+  await page.evaluate(() => {
+    if (globalThis.__focusOff) globalThis.__focusOff();
+    globalThis.__focusOff = null;
+  });
+}
+
+test('SV2-68b 1: the floors row, the theme and a change elsewhere ask the lane nothing; a change of the scenario still asks', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Quiet');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  await page.evaluate(() => {
+    const derived = globalThis.sv2.store.derived;
+    const real = derived.scenario;
+    const el = document.querySelector('.scn');
+    const spy = { real, asked: 0, states: [] };
+    spy.observer = new MutationObserver(() => spy.states.push(el.dataset.compare));
+    spy.observer.observe(el, { attributes: true, attributeFilter: ['data-compare'] });
+    derived.scenario = (options) => {
+      spy.asked += 1;
+      return real.call(derived, options);
+    };
+    globalThis.__spy = spy;
+  });
+  try {
+    // one floor on the map, then all of them again
+    await page.click('.mov-floors input[name="scenarios-floors"][value="fsample002"] + .seg__label');
+    await page.waitForFunction(() => document.querySelector('.scn').scenarios.memory.floors === 'fsample002');
+    await page.click('.mov-floors input[name="scenarios-floors"][value="all"] + .seg__label');
+    await page.waitForFunction(() => document.querySelector('.scn').scenarios.memory.floors === 'auto');
+    // the theme, dark and back: the section is drawn again each time
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(async (value) => {
+        const { setSetting } = await import('./engine/actions.js');
+        globalThis.sv2.store.apply(setSetting, { key: 'theme', value });
+      }, theme);
+      await page.waitForFunction((value) => document.documentElement.dataset.theme === value, {}, theme);
+    }
+    // the attribute is written on each drawing; only what it says counts
+    const quiet = await page.evaluate(() => ({ asked: globalThis.__spy.asked, states: globalThis.__spy.states.filter((state) => state !== 'ready') }));
+    assert.equal(quiet.asked, 0, 'nothing the comparison is for changed, so the lane was not asked');
+    assert.deepEqual(quiet.states, [], 'and the inspector never said it was working the comparison out again');
+    assert.equal(await page.$eval('.scn-compare__status', (el) => el.textContent), '');
+    // a change of the scenario asks
+    await addChange(page, MOVE_7B);
+    await ready(page);
+    assert.ok(await page.evaluate(() => globalThis.__spy.asked) >= 1, 'a new scenario object asks again');
+  } finally {
+    await page.evaluate(() => {
+      globalThis.sv2.store.derived.scenario = globalThis.__spy.real;
+      globalThis.__spy.observer.disconnect();
+    });
+  }
+});
+
+test('SV2-68b 2: after Apply the focus goes straight to the start field, after Undo from the message to the name field', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Focus apply');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  await watchFocus(page);
+  try {
+    await page.click('[data-action="apply"]');
+    await page.waitForSelector('#scenario-apply[open]');
+    await page.click('#scenario-apply .btn--primary');
+    await ready(page);
+    const applied = await focusSeen(page);
+    assert.ok(applied.length > 0, 'the store changed');
+    assert.deepEqual(applied.at(-1), { id: 'scenario-start-name', tag: 'INPUT', action: null, shown: true }, 'once Apply has run, the start field has the focus, never the page or a hidden button: ' + JSON.stringify(applied));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'scenario-start-name');
+    // Undo from the message: the scenario comes back, and the focus with it to its name field
+    await page.waitForSelector('.toast .toast__action');
+    assert.equal(await page.$eval('.toast .toast__action', (el) => el.textContent), 'Undo');
+    await page.click('.toast .toast__action');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.mode === 'open');
+    await ready(page);
+    const undone = await focusSeen(page);
+    assert.deepEqual(undone.at(-1), { id: 'scenario-name', tag: 'INPUT', action: null, shown: true }, 'after Undo the focus is on the scenario’s name field: ' + JSON.stringify(undone));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'scenario-name');
+  } finally {
+    await unwatchFocus(page);
+  }
+});
+
+test('SV2-68b 2: after Discard the focus goes straight to the start field', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Focus discard');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  await watchFocus(page);
+  try {
+    await page.click('[data-action="discard"]');
+    await page.waitForSelector('dialog[open]');
+    await page.click('dialog[open] .btn--danger');
+    await ready(page);
+    const seenFocus = await focusSeen(page);
+    assert.deepEqual(seenFocus.at(-1), { id: 'scenario-start-name', tag: 'INPUT', action: null, shown: true }, 'once Discard has run, the start field has the focus: ' + JSON.stringify(seenFocus));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'scenario-start-name');
+  } finally {
+    await unwatchFocus(page);
+  }
+});
+
+test('SV2-68b 3: Redo after undoing an Apply applies it again and closes the scenario', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Redo');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  const before = await slotRoom(page, 'gsample07a', A, 2);
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  await page.click('#scenario-apply .btn--primary');
+  await ready(page);
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await ready(page);
+  assert.equal(await slotRoom(page, 'gsample07a', A, 2), before);
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.mode), 'open');
+  await page.evaluate(() => globalThis.sv2.store.redo());
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.mode === 'none');
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.compare), 'none', 'the comparison of the closed scenario is let go');
+  assert.equal(await slotRoom(page, 'gsample07a', A, 2), 'rsample101', 'Redo writes the change again');
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario), null, 'and closes the scenario again');
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.mode), 'none');
+  assert.match(await seen(page, '#scenario-line'), /No scenario is open/);
+  assert.equal(await page.$eval('.scn-compare', (el) => el.dataset.state), 'none');
+});
+
+test('SV2-68b 3: an older answer of the lane that comes after a newer one is never shown', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Race');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  await holdLane(page);
+  try {
+    await page.select('#scenario-compare-day', B);
+    await page.select('#scenario-compare-day', '');
+    await page.waitForFunction(() => globalThis.__held.calls.length === 2);
+    // the newer first
+    await answerHeld(page, 1, '__newer');
+    await page.waitForFunction(() => document.querySelector('.scn').scenarios.answer === globalThis.__newer && document.querySelector('.scn').dataset.compare === 'ready');
+    // then the older, for B Day
+    await answerHeld(page, 0, '__older');
+    const shown = await page.evaluate(() => {
+      const el = document.querySelector('.scn');
+      return { newer: el.scenarios.answer === globalThis.__newer, day: el.scenarios.compare.dayTypeId, olderDay: globalThis.__older.compare.dayTypeId, state: el.dataset.compare };
+    });
+    assert.equal(shown.olderDay, B, 'the older asking was for B Day');
+    assert.equal(shown.newer, true, 'the newer answer stays up: ' + JSON.stringify(shown));
+    assert.notEqual(shown.day, B);
+    assert.equal(shown.state, 'ready');
+  } finally {
+    await restoreLane(page);
+  }
+});
+
+test('SV2-68b 3: a lane that fails is said in the lab, the last figures kept and marked', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Fails');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  const figuresBefore = await page.$eval('.scn-figures', (el) => el.textContent);
+  await page.evaluate(() => {
+    const derived = globalThis.sv2.store.derived;
+    globalThis.__held = { real: derived.scenario, calls: [] };
+    derived.scenario = () => Promise.reject(new Error('The lane fell over.'));
+  });
+  try {
+    await addChange(page, MOVE_7B);
+    await page.waitForFunction(() => !document.querySelector('.scn').scenarios.pending);
+    assert.equal(await page.$eval('.scn', (el) => el.dataset.compare), 'failed');
+    assert.equal(await seen(page, '.scn-compare__status'), 'The comparison could not be worked out: The lane fell over. The figures below are from before your last change.');
+    assert.equal(await page.$eval('.scn-compare', (el) => el.dataset.state), 'old');
+    assert.equal(await page.$eval('.scn-figures', (el) => el.textContent), figuresBefore);
+  } finally {
+    await restoreLane(page);
+  }
+});
+
+test('SV2-68b 3: the section taken off the page while the lane works: no error, and nothing written after', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Leaving');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  await holdLane(page);
+  try {
+    await addChange(page, MOVE_7B);
+    await page.waitForFunction(() => globalThis.__held.calls.length >= 1 && document.querySelector('.scn').dataset.compare === 'pending');
+    await page.evaluate(() => {
+      const el = document.querySelector('.scn');
+      globalThis.__left = { el, answer: el.scenarios.answer };
+    });
+    await go(page, '#movement');
+    await page.waitForFunction(() => !globalThis.__left.el.isConnected);
+    await answerHeld(page, 0, '__late');
+    const after = await page.evaluate(() => ({ compare: globalThis.__left.el.dataset.compare, same: globalThis.__left.el.scenarios.answer === globalThis.__left.answer, pending: globalThis.__left.el.scenarios.pending }));
+    assert.deepEqual(after, { compare: 'pending', same: true, pending: true }, 'the answer came after the section left, and nothing of it was written');
+    assert.deepEqual(wide.problems().errors, []);
+  } finally {
+    await restoreLane(page);
+    await go(page, '#scenarios');
+  }
+});
+
+test('SV2-68b 4: a group deleted under the lab: the forms fall back, the old answer names it as gone', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Group gone');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  await page.select('#scenario-move-group', 'gsample07a');
+  assert.equal(await page.$eval('.scn-groups tr[data-group="gsample07a"] th bdi', (el) => el.textContent), '7A');
+  await holdLane(page);
+  try {
+    await page.evaluate(async () => {
+      const { deleteGroup } = await import('./engine/actions.js');
+      globalThis.sv2.store.apply(deleteGroup, { id: 'gsample07a' });
+    });
+    await page.waitForFunction(() => document.querySelector('.scn-compare').dataset.state === 'old');
+    // the answer up is from before the deletion; its row for the group says it is gone
+    const row = await page.$eval('.scn-groups tr[data-group="gsample07a"] th', (el) => ({ text: el.textContent, typed: el.querySelector('bdi') !== null }));
+    assert.deepEqual(row, { text: 'A group no longer in the project' + 'edited', typed: false });
+    // the move form falls back to the first group there is
+    const form = await page.evaluate(() => ({ value: document.getElementById('scenario-move-group').value, options: Array.from(document.querySelectorAll('#scenario-move-group option')).map((option) => option.value) }));
+    assert.equal(form.value, 'gsample06a');
+    assert.ok(!form.options.includes('gsample07a'), form.options.join(' '));
+    // the change names a group gone: it no longer applies
+    assert.equal(await page.$eval('.scn-dropped', (el) => el.hidden), false);
+    // the lane answers for the project as it is now: no row for the group
+    await answerHeld(page, -1, '__after');
+    await restoreLane(page);
+    await ready(page);
+    assert.equal(await page.$('.scn-groups tr[data-group="gsample07a"]'), null, 'the new answer has no row for it');
+  } finally {
+    await restoreLane(page);
+  }
+});
+
+test('SV2-68b 4, 5: a scenario from a file, then edited: its comparison and the slots not compared stay; Undo of the file drops the result line', async () => {
+  const page = wide.page;
+  await fresh(page);
+  const file = writeFile('edited.json', (project) => {
+    const a7 = project.groups.find((group) => group.id === 'gsample07a');
+    a7.days.dsample00a[2] = { ...a7.days.dsample00a[2], room: 'rsample101' };
+    const b7 = project.groups.find((group) => group.id === 'gsample07b');
+    b7.days.dsample00a[0] = { ...b7.days.dsample00a[0], room: null };
+    project.groups.find((group) => group.id === 'gsample08b').name = '8B next year';
+  });
+  const input = await page.$('input[data-file="compare"]');
+  await input.uploadFile(file);
+  await page.waitForFunction(() => /^Compared with/.test(document.querySelector('.scn-file__result').textContent));
+  await ready(page);
+  const compared = (await scenarioOf(page)).compared;
+  const shown = async () => page.evaluate(() => ({
+    groups: document.querySelector('.scn-file__groups').hidden ? null : document.querySelector('.scn-file__groups').textContent,
+    skipped: document.querySelector('.scn-file__skipped').hidden ? null : Array.from(document.querySelectorAll('.scn-file__skipped li')).map((li) => li.dataset.reason),
+  }));
+  const first = await shown();
+  assert.deepEqual(first.skipped, ['no-room']);
+  assert.match(first.groups, /8B next year/);
+  assert.equal(await page.$eval('.scn-file__result [role="status"]', (el) => el.textContent), 'Compared with “edited.json”: 1 change. 1 slot could not be compared; they are listed below.');
+  // a chip added by the form, then the file's own chip taken out
+  await page.select('#scenario-move-group', 'gsample08a');
+  await page.select('#scenario-move-period', '5');
+  await pickRoom(page, 'Library');
+  await addByPointer(page);
+  assert.equal((await chips(page)).length, 2);
+  assert.deepEqual((await scenarioOf(page)).compared, compared);
+  assert.deepEqual(await shown(), first, 'added to: the comparison and its slots not compared stay');
+  await page.click('.scn-chip[data-index="0"] [data-action="remove"]');
+  await ready(page);
+  assert.deepEqual((await scenarioOf(page)).changes.map((change) => change.groupId), ['gsample08a']);
+  assert.deepEqual((await scenarioOf(page)).compared, compared);
+  assert.deepEqual(await shown(), first, 'taken from: they stay');
+  // SV2-68b 10: taking a chip out is said where adding one is
+  assert.match(await seen(page, '.scn-status'), /^Removed: 7A · A Day · Period 3: Library → 101/);
+  // back to before the file: the line about it goes
+  for (let i = 0; i < 3; i += 1) await page.evaluate(() => globalThis.sv2.store.undo());
+  await ready(page);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario), null);
+  assert.equal(await page.$eval('.scn-file__result', (el) => el.textContent), '', 'no line about a comparison no longer open');
+});
+
+test('SV2-68b 5: the slots not compared belong to their comparison, not to a file of the same name', async () => {
+  const page = wide.page;
+  await fresh(page);
+  const once = (dir, nulls) => {
+    fs.mkdirSync(path.join(SCRATCH, dir), { recursive: true });
+    return writeFile(path.join(dir, 'proposal.json'), (project) => {
+      const a7 = project.groups.find((group) => group.id === 'gsample07a');
+      a7.days.dsample00a[2] = { ...a7.days.dsample00a[2], room: 'rsample101' };
+      const b7 = project.groups.find((group) => group.id === 'gsample07b');
+      for (let p = 0; p < nulls; p += 1) b7.days.dsample00a[p] = { ...b7.days.dsample00a[p], room: null };
+    });
+  };
+  const one = once('one', 1);
+  const two = once('two', 2);
+  const input = await page.$('input[data-file="compare"]');
+  await input.uploadFile(one);
+  await page.waitForFunction(() => /^Compared with/.test(document.querySelector('.scn-file__result').textContent));
+  await ready(page);
+  assert.equal(await page.$$eval('.scn-file__skipped li', (items) => items.length), 1);
+  // the second, of the same name, over it
+  await page.evaluate(() => {
+    globalThis.__firstCompared = globalThis.sv2.store.project.scenario.compared;
+  });
+  await input.uploadFile(two);
+  await page.waitForSelector('dialog[open]');
+  // while the question is up, the project changes under it: 7B's first slot
+  // empties here too, so that slot is no longer one the file differs in
+  await page.evaluate(async () => {
+    const { setSlot } = await import('./engine/actions.js');
+    globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07b', dayTypeId: 'dsample00a', period: 0, slot: { room: null } });
+  });
+  await page.click('dialog[open] .btn--primary, dialog[open] .btn--danger');
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario.compared !== globalThis.__firstCompared && /^Compared with/.test(document.querySelector('.scn-file__result').textContent));
+  await ready(page);
+  assert.deepEqual(await page.$$eval('.scn-file__skipped li', (items) => items.map((li) => li.textContent)), ['7B · A Day · Period 2: the file has no room there.'], 'worked out against the project as it is once the question is answered');
+  // Undo of the second: the first comparison is back, and the second's slots are not its
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await ready(page);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario.compared.fileName), 'proposal.json');
+  assert.equal(await page.$eval('.scn-file__skipped', (el) => el.hidden), true, 'another comparison’s slots are not listed under this one');
+  assert.equal(await page.$eval('.scn-file__result', (el) => el.textContent), '', 'nor its result line');
+});
+
+test('SV2-68b 5: the section left while it asks whether to replace the scenario: answering writes nothing', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Kept');
+  await addChange(page, MOVE_7A);
+  await ready(page);
+  const kept = await scenarioOf(page);
+  const file = writeFile('while-away.json', (project) => {
+    const b7 = project.groups.find((group) => group.id === 'gsample07b');
+    b7.days.dsample00a[2] = { ...b7.days.dsample00a[2], room: 'rsample101' };
+  });
+  const input = await page.$('input[data-file="compare"]');
+  await input.uploadFile(file);
+  await page.waitForSelector('dialog[open]');
+  await page.evaluate(() => {
+    globalThis.__away = document.querySelector('.scn');
+    location.hash = '#movement';
+  });
+  await page.waitForFunction(() => !globalThis.__away.isConnected && document.querySelector('dialog[open]'));
+  await page.click('dialog[open] .btn--primary, dialog[open] .btn--danger');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  // the store's change, had there been one, is drawn at once: none came
+  assert.deepEqual(await scenarioOf(page), kept, 'the section had gone, so the scenario is not replaced');
+  assert.equal(await page.evaluate(() => globalThis.__away.querySelector('.scn-file__result').textContent), '');
+  assert.deepEqual(wide.problems().errors, []);
+  await go(page, '#scenarios');
+});
+
+test('SV2-68b 5: a file refused is said as an alert', async () => {
+  const page = wide.page;
+  await fresh(page);
+  const junk = path.join(SCRATCH, 'refused.json');
+  fs.writeFileSync(junk, '{"hello": 1}');
+  const input = await page.$('input[data-file="compare"]');
+  await input.uploadFile(junk);
+  await page.waitForFunction(() => /refused\.json” was not compared/.test(document.querySelector('.scn-file__result').textContent));
+  assert.equal(await page.$eval('.scn-file__result p', (el) => el.getAttribute('role')), 'alert');
+});
+
+test('SV2-68b 7: Undo of a rename while the name field has the focus shows the name back, and leaving the field keeps it', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'One');
+  await page.focus('#scenario-name');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('a');
+  await page.keyboard.up('Control');
+  await page.keyboard.type('Two');
+  await page.keyboard.press('Enter');
+  await ready(page);
+  assert.equal((await scenarioOf(page)).name, 'Two');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'scenario-name');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await ready(page);
+  assert.equal((await scenarioOf(page)).name, 'One');
+  assert.equal(await page.$eval('#scenario-name', (el) => el.value), 'One', 'the field shows the name Undo put back');
+  await page.keyboard.press('Tab');
+  await ready(page);
+  assert.equal((await scenarioOf(page)).name, 'One', 'leaving the field does not write the old text over the Undo');
+  // what is typed is still committed on leaving
+  await page.focus('#scenario-name');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('a');
+  await page.keyboard.up('Control');
+  await page.keyboard.type('Three');
+  await page.keyboard.press('Tab');
+  await ready(page);
+  assert.equal((await scenarioOf(page)).name, 'Three');
+});
+
+test('SV2-68b 8: with nothing that applies, Apply’s button says it closes the scenario', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Empty');
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  const buttons = await page.$$eval('#scenario-apply .dialog__buttons button', (items) => items.map((button) => button.textContent));
+  assert.deepEqual(buttons, ['Close the scenario: no change of it applies', 'Keep it as a scenario']);
+  await page.click('#scenario-apply .btn--primary');
+  await ready(page);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario), null);
+  await page.waitForFunction(() => /Closed “Empty”: no change of it applied, and the schedule is as it was\./.test(document.querySelector('.toasts').textContent));
+});
+
+test('SV2-68b 9: the room picked shows its label as it is after a rename, and the picker lists rooms by number', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Labels');
+  await page.select('#scenario-move-group', 'gsample07a');
+  await pickRoom(page, '101');
+  assert.equal(await page.$eval('.scn-field--room input', (el) => el.value), '101 — Ms. Halloran');
+  await page.evaluate(async () => {
+    const { editTeacher } = await import('./engine/actions.js');
+    globalThis.sv2.store.apply(editTeacher, { id: 'tsample001', name: 'Ms. Halloran-Byrne' });
+  });
+  await ready(page);
+  assert.equal(await page.$eval('.scn-field--room input', (el) => el.value), '101 — Ms. Halloran-Byrne');
+  // the list, opened on an empty field, in the order of the rooms' numbers
+  await page.click('.scn-field--room input', { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await page.waitForSelector('.scn-field--room .picker__list:not([hidden])');
+  const listed = await page.$$eval('.scn-field--room .picker__option', (items) => items.map((item) => item.textContent.split(' — ')[0]));
+  const numbers = await page.evaluate(async () => {
+    const { allRooms } = await import('./engine/schema.js');
+    return allRooms(globalThis.sv2.store.project).map((room) => room.number).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  });
+  assert.deepEqual(listed.map((text) => numbers.find((n) => text.startsWith(n))), numbers);
+  await page.keyboard.press('Escape');
+});
 
 test('nothing went wrong on the page', () => {
   assert.deepEqual(wide.problems().errors, []);

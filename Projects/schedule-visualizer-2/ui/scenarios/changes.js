@@ -34,6 +34,9 @@ export function changesPanel(env) {
   // ---- with one open
   const nameInput = h('input', { class: 'field__input scn-name__input', id: 'scenario-name', type: 'text', autocomplete: 'off', spellcheck: 'false', data: { key: 'scenario-name' } });
   let nameHeld = null;
+  // the name the field was last set from (the stored name): leaving the field
+  // commits only what was typed over it, never a name an Undo has replaced
+  let nameSet = '';
   nameInput.addEventListener('focus', () => {
     nameHeld = nameInput.value;
   });
@@ -77,30 +80,34 @@ export function changesPanel(env) {
       startName.value = '';
       ctx.announce('Started a scenario.');
       // the name field takes the focus: it is the open scenario's first control
-      requestAnimationFrame(() => {
-        if (nameInput.isConnected && !open.hidden) nameInput.focus();
-      });
+      if (nameInput.isConnected && !open.hidden) nameInput.focus();
     }
   }
 
   function rename() {
     if (!view) return;
     const current = env.project().scenario ? env.project().scenario.name : '';
-    if (nameInput.value === current) return;
+    if (nameInput.value === current || nameInput.value === nameSet) return;
     if (env.apply(renameScenario, { name: nameInput.value })) nameHeld = nameInput.value;
     else nameInput.value = current;
   }
 
   // the × of a chip: the change out by its index in scenario.changes; the
   // focus to the chip now in its place, else the one before, else the list's heading
+  // Said in the same live region as an added change.
   function remove(index, at) {
+    const chip = view ? view.kept.find((each) => each.index === index) : null;
     if (!env.apply(removeScenarioChange, { index })) return;
-    requestAnimationFrame(() => {
-      const buttons = chips.querySelectorAll('[data-action="remove"]');
-      const next = buttons[Math.min(at, buttons.length - 1)];
-      if (next) next.focus();
-      else env.home();
-    });
+    if (chip) {
+      const text = 'Removed: ' + chip.words.text + '.';
+      status.textContent = text;
+      ctx.announce(text);
+    }
+    // the panel is drawn again by now (the store tells the section at once)
+    const buttons = chips.querySelectorAll('[data-action="remove"]');
+    const next = buttons[Math.min(at, buttons.length - 1)];
+    if (next) next.focus();
+    else env.home();
   }
 
   // Remove them: the dropped changes out, last first so each index still
@@ -110,8 +117,10 @@ export function changesPanel(env) {
     const indexes = view.dropped.map((each) => each.index).filter((index) => index >= 0).sort((a, b) => b - a);
     const n = indexes.length;
     for (const index of indexes) if (!env.apply(removeScenarioChange, { index })) break;
-    ctx.announce('Removed ' + count(n, 'change') + ' that no longer applied.');
-    requestAnimationFrame(() => env.home());
+    const text = 'Removed ' + count(n, 'change') + ' that no longer applied.';
+    status.textContent = text;
+    ctx.announce(text);
+    env.home();
   }
 
   function update(next) {
@@ -123,7 +132,15 @@ export function changesPanel(env) {
       return;
     }
     const stored = env.project().scenario.name;
-    if (document.activeElement !== nameInput && nameInput.value !== stored) nameInput.value = stored;
+    // a field being typed in keeps what was typed; one that holds the name it
+    // was set from follows the stored name (an Undo of a rename while it has
+    // the focus), and Escape then puts back that name
+    const typed = document.activeElement === nameInput && nameInput.value !== nameSet;
+    if (!typed) {
+      if (nameInput.value !== stored) nameInput.value = stored;
+      if (document.activeElement === nameInput) nameHeld = stored;
+    }
+    nameSet = stored;
     if (stored !== view.name) nameInput.placeholder = view.name;
     none.hidden = view.kept.length > 0;
     chips.hidden = view.kept.length === 0;

@@ -5,11 +5,13 @@
 // groups by name and refuses another building with the count of rooms that
 // differ. What could not be compared (scenarioFromDiff's `skipped`) is the
 // lab's to say: it is worked out here, kept in the lab's memory for the
-// scenario it was made with, and listed under the button.
+// comparison it was made with (the scenario's `compared` object, which the
+// scenario keeps through its edits), and listed under the button.
 //
 // filePanel(env) -> { element, update(view) }
-//   env.ctx, env.memory (memory.file: { fileName, skipped }),
-//   env.apply(action, payload) (false when refused, and said in `say`)
+//   env.ctx, env.memory (memory.file: { compared, skipped }),
+//   env.apply(action, payload) (false when refused, and said in `say`),
+//   env.mounted() (false once the section is off the page)
 
 import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
@@ -25,7 +27,8 @@ function quote(text) {
 export function filePanel(env) {
   const ctx = env.ctx;
   const memory = env.memory;
-  const result = h('p', { class: 'scn-file__result', role: 'status', data: { part: 'file-result' } });
+  // what the last file came to: a refusal is an alert, as the Project section says one
+  const result = h('div', { class: 'scn-file__result', data: { part: 'file-result' } });
   const groupsLine = h('p', { class: 'scn-file__groups', hidden: true, data: { part: 'file-groups' } });
   const skippedBox = h('details', { class: 'scn-file__skipped', hidden: true, data: { part: 'file-skipped' } });
   const input = h('input', { type: 'file', accept: '.json,application/json', hidden: true, tabindex: '-1', 'aria-hidden': 'true', data: { file: 'compare' } });
@@ -41,11 +44,20 @@ export function filePanel(env) {
     const picked = file.text();
     // the same file chosen again is a change again
     input.value = '';
-    picked.then((text) => compare(file.name, text), (error) => say(quote(file.name) + ' could not be read. ' + (error && error.message ? error.message : '')));
+    picked.then((text) => compare(file.name, text), (error) => refused(quote(file.name) + ' could not be read. ' + (error && error.message ? error.message : '')));
   });
 
-  function say(text) {
-    result.textContent = text;
+  // `about`: the compared object a result line describes; the line goes when
+  // that is no longer the open scenario's (an Undo, a Discard)
+  let about = null;
+  function say(text, kind, compared) {
+    if (!env.mounted()) return;
+    about = compared || null;
+    result.dataset.result = kind || 'said';
+    result.replaceChildren(h('p', { role: kind === 'refused' ? 'alert' : 'status' }, text));
+  }
+  function refused(text) {
+    say(text, 'refused');
   }
 
   async function compare(fileName, text) {
@@ -53,18 +65,11 @@ export function filePanel(env) {
     try {
       read = readProjectFile(text, { ids: ctx.ids, clock: ctx.clock });
     } catch (error) {
-      say(quote(fileName) + ' was not compared, and nothing has changed. ' + (error && error.message ? error.message : ''));
+      refused(quote(fileName) + ' was not compared, and nothing has changed. ' + (error && error.message ? error.message : ''));
       return;
     }
+    if (!env.mounted()) return;
     const project = ctx.store.project;
-    // what cannot be compared, said before anything changes; another
-    // building is refused by the action itself, in its own words
-    let skipped = [];
-    try {
-      skipped = scenarioFromDiff(project, read.project, { fileName }).skipped;
-    } catch (error) {
-      skipped = [];
-    }
     let replace = false;
     if (project.scenario) {
       replace = await ctx.confirm({
@@ -74,16 +79,28 @@ export function filePanel(env) {
         keep: 'Keep the scenario',
         opener,
       });
+      // the section may have gone, or the project changed, while it asked
+      if (!env.mounted()) return;
       if (!replace) {
         say(quote(fileName) + ' was read and not compared. Nothing has changed.');
         return;
       }
     }
-    const done = env.apply(setScenarioFromFile, { project: read.project, fileName, replace }, (message) => say(quote(fileName) + ' was not compared, and nothing has changed. ' + message));
+    // what cannot be compared, against the project as it is now; another
+    // building is refused by the action itself, in its own words
+    let skipped = [];
+    try {
+      skipped = scenarioFromDiff(ctx.store.project, read.project, { fileName }).skipped;
+    } catch (error) {
+      skipped = [];
+    }
+    const done = env.apply(setScenarioFromFile, { project: read.project, fileName, replace }, (message) => refused(quote(fileName) + ' was not compared, and nothing has changed. ' + message));
     if (!done) return;
     const scenario = ctx.store.project.scenario;
-    memory.file = { fileName, skipped };
-    say('Compared with ' + quote(fileName) + ': ' + count(scenario.changes.length, 'change') + '.' + (skipped.length > 0 ? ' ' + count(skipped.length, 'slot') + ' could not be compared; they are listed below.' : ''));
+    memory.file = { compared: scenario.compared, skipped };
+    say('Compared with ' + quote(fileName) + ': ' + count(scenario.changes.length, 'change') + '.' + (skipped.length > 0 ? ' ' + count(skipped.length, 'slot') + ' could not be compared; they are listed below.' : ''), 'done', scenario.compared);
+    // the store drew the panel before this line was said: draw it for this scenario
+    update({ compared: scenario.compared });
     ctx.announce(result.textContent);
   }
 
@@ -101,8 +118,15 @@ export function filePanel(env) {
       groupsLine.dataset.added = String(added.length);
       groupsLine.dataset.removed = String(removed.length);
     }
-    // the slots that could not be compared, while the scenario is the one made from the file
-    const kept = memory.file && compared && memory.file.fileName === compared.fileName ? memory.file : null;
+    // a result line about a comparison that is no longer open goes
+    if (about && about !== compared) {
+      about = null;
+      delete result.dataset.result;
+      result.replaceChildren();
+    }
+    // the slots that could not be compared, while the scenario is the one made
+    // from the file (its comparison, kept as the same object through its edits)
+    const kept = memory.file && compared && memory.file.compared === compared ? memory.file : null;
     const skipped = kept ? kept.skipped : [];
     skippedBox.hidden = skipped.length === 0;
     if (skipped.length > 0) {
