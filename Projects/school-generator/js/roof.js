@@ -766,9 +766,11 @@ export function roofCover(state) {
 // Two rooms meeting at a corner are not refused: the outline is split at
 // that corner into a loop each (#976).
 // A refusal keeps the rectangles for its own building only (#971): rooms
-// whose bounds touch, one to the next, are a building, and where the storey
-// as a whole is refused each building is judged alone, so a curved building
-// beside a courtyard building still stands on its skeleton.
+// whose walls touch or cross, or one of which stands inside another, one to
+// the next, are a building (#991), and where the storey as a whole is
+// refused each building is judged alone, so a curved building beside a
+// courtyard building, or in the notch of one of its rooms, still stands on
+// its skeleton.
 
 const OUTLINE_ON = 1e-4;     // ft — a corner this close to a wall lies on it
 const okey = (p) => `${Math.round(p.x * 1e4)},${Math.round(p.z * 1e4)}`;
@@ -801,8 +803,12 @@ export function roofOutline(floor) {
   return loops.length ? { loops, refused } : whole;
 }
 
-// The rooms in groups whose bounds touch, one to the next: no wall of one
-// group can meet, cross or enclose a wall of another, so each is judged alone.
+// The rooms in groups that meet, one to the next: two rooms meet where a wall
+// of one comes within OUTLINE_ON of a wall of the other (touching, a corner
+// on a wall, crossing) or a corner of one lies inside the other (#991). No
+// wall of one group meets, crosses or encloses a wall of another, so each is
+// judged alone. By bounds alone (#971), a room standing in the notch of an
+// L-shaped room was judged with it.
 function buildingsOf(shapes) {
   const boxes = shapes.map((sh) => {
     const b = { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity };
@@ -821,6 +827,7 @@ function buildingsOf(shapes) {
       const a = boxes[i], b = boxes[j];
       if (a.x0 > b.x1 + OUTLINE_ON || b.x0 > a.x1 + OUTLINE_ON ||
           a.z0 > b.z1 + OUTLINE_ON || b.z0 > a.z1 + OUTLINE_ON) continue;
+      if (!roomsMeet(shapes[i], shapes[j])) continue;
       parent[find(i)] = find(j);
     }
   }
@@ -831,6 +838,28 @@ function buildingsOf(shapes) {
     groups.get(k).push(sh);
   });
   return [...groups.values()];
+}
+
+function roomsMeet(p, q) {
+  const segs = (sh) => sh.rings.flatMap((r) => r.pts.map((a, i) => [a, r.pts[(i + 1) % r.pts.length]]));
+  const sp = segs(p), sq = segs(q);
+  for (const [a, b] of sp) for (const [c, d] of sq) if (segGap(a, b, c, d) <= OUTLINE_ON) return true;
+  const inside = (u, v) => u.rings.some((r) => pointInRing(r.pts, v.rings[0].pts[0].x, v.rings[0].pts[0].z));
+  return inside(p, q) || inside(q, p);
+}
+
+// The least distance between segments ab and cd: 0 where they cross, else
+// the nearest of each end to the other segment.
+function segGap(a, b, c, d) {
+  const side = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  const s1 = side(c, d, a), s2 = side(c, d, b), s3 = side(a, b, c), s4 = side(a, b, d);
+  if (((s1 > 0 && s2 < 0) || (s1 < 0 && s2 > 0)) && ((s3 > 0 && s4 < 0) || (s3 < 0 && s4 > 0))) return 0;
+  const toSeg = (p, u, v) => {
+    const dx = v.x - u.x, dz = v.z - u.z, L2 = dx * dx + dz * dz;
+    const t = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - u.x) * dx + (p.z - u.z) * dz) / L2)) : 0;
+    return Math.hypot(p.x - u.x - dx * t, p.z - u.z - dz * t);
+  };
+  return Math.min(toSeg(a, c, d), toSeg(b, c, d), toSeg(c, a, b), toSeg(d, a, b));
 }
 
 function unionOf(shapes) {
