@@ -2,10 +2,11 @@
 // (#971). Run `node --test 'test/*.test.mjs'` from Projects/school-generator.
 //
 // The top storey's outline is judged building by building: rooms whose
-// bounds touch, transitively, are one building, and a refusal (a courtyard, a
-// room with a hole, an overlap, a pinch) keeps the rectangles for that
-// building only. A curved building elsewhere on the same storey still stands
-// on the straight skeleton, and the takeoff and the estimate follow it.
+// walls meet, transitively, are one building (by bounds until #991), and a
+// refusal (a courtyard, a room with a hole, an overlap, a pinch) keeps the
+// rectangles for that building only. A curved building elsewhere on the
+// same storey still stands on the straight skeleton, and the takeoff and the
+// estimate follow it.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

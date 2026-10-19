@@ -407,17 +407,17 @@ test('a curve on a courtyard keeps the rectangles, the outline having said why',
   assert.ok(plan.blocks.length > 2);
 });
 
-test('a curve too tight for the eave keeps the rectangles', () => {
-  // A semicircular dent 1ft in radius in the hall's east wall: the eave
-  // closes up there (see the eave tests), so the loop has no skeleton.
+test('a curve too tight for the eave stands on its skeleton, the eave closed over it (#993)', () => {
+  // A semicircular dent 1ft in radius in the hall's east wall: the mitred
+  // eave crosses itself there (see the eave tests), and the wavefront closes
+  // the dent instead; test/roof-tightcurve.test.mjs has the figures.
   const s = createState(30, 30);
   const arc = arcPoints({ x: 64, z: 19 }, { x: 64, z: 21 }, 0.5, 8);
   addShape(s, 0, [{ x: 24, z: 8 }, { x: 64, z: 8 }, ...arc, { x: 64, z: 32 }, { x: 24, z: 32 }]);
   s.roof = { style: 'hip', pitch: 6 };
   assert.ok(hasCurve(roofOutline(s.floors[0]).loops[0]));
-  assert.deepEqual(curvedRoofs(s.floors[0], 12, 6), []);
-  assert.ok(roofPlan(s).blocks.length >= 1);
-  assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton));
+  assert.equal(curvedRoofs(s.floors[0], 12, 6).length, 1);
+  assert.ok(roofPlan(s).blocks.some((b) => b.skeleton));
 });
 
 test('the section reads a curved roof off its faces, and nothing past its walls', () => {

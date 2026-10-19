@@ -105,18 +105,18 @@ test('only the parapet moves: flat, gable and hip over the same curve are as the
   }
 });
 
-test('two buildings a cell apart share a mask loop, and that loop stays stepped', () => {
+test('two buildings a cell apart share a mask loop, and the curve keeps its chords', () => {
   const s = school();
   // A box 0.2ft east of the bow's widest point (x 73.6): its bounds do not touch the
   // hall's, so it is a building of its own, but its mask cells touch, and the
-  // cell from 72 to 76 reaches 1.56ft inside the chords, so the pair stays
-  // stepped; where no cell reaches inside, the curve is taken (#988,
-  // test/roof-touch.test.mjs).
+  // cell from 72 to 76 reaches 1.56ft inside the chords. The box gives way,
+  // cut back to the chords (#990, test/roof-trim.test.mjs); where no cell
+  // reaches inside, nothing is cut (#988, test/roof-touch.test.mjs).
   addShape(s, 0, R4(73.8, 16, 95, 24));
   assert.equal(roofOutline(s.floors[0]).loops.length, 2, 'two buildings, both accepted');
   const plan = roofPlan(s);
   const m = maskOf(s);
   assert.equal(maskOutlines(m).length, 1, 'the mask joins them');
-  assert.deepEqual(plan.outlines, maskOutlines(m));
-  assert.ok(!('deckPolys' in plan));
+  assert.equal(plan.deckPolys.filter((d) => !d.trim).length, 1, 'the hall\'s chord deck');
+  assert.equal(plan.outlines.length, 2, 'the box\'s cut loop and the hall\'s chords');
 });

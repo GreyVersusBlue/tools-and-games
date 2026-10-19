@@ -380,7 +380,8 @@ and add to this list rather than starting a new one.
   and the other three, a wall or a doorway in it or shutting its far end,
   the landing off the floor above and another link in it, by the same
   `landingFit` lines on the same warning (#989), so all five are asked of
-  it and whether the warning cites a section is Devon's; a ramp's width and slope
+  it, and it cites no section, which is settled (Devon, 2026-10-16: not
+  IBC 1011.6); a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
   (`data.width` and `data.slope` were there since Phase 2), and the design
@@ -465,26 +466,36 @@ and add to this list rather than starting a new one.
   `roofHeightAt`, and counted by the takeoff and the estimate through
   `roofCover` off the loop's own chords (#970); every rectilinear roof is
   what it was. A refusal keeps the rectangles for its own building only
-  (#971): rooms whose bounds touch, one to the next, are judged together, so
-  a curved building beside a courtyard building stands on its skeleton.
+  (#971): rooms whose walls touch or cross, or one of which stands inside
+  another, one to the next, are judged together (#991; by bounds before), so
+  a curved building beside a courtyard building, or in the notch of one of
+  its L-shaped rooms, stands on its skeleton.
   A flat roof's parapet over a curved building runs on the same loop's
   chords, and the deck under it is that outline, ear-clipped (#973).
   Two rooms meeting at a corner are a loop each, so a curved one there takes
   the skeleton and the chord parapet; an arc of two chords is a curve when it
-  was bowed off a wall square to both its neighbours (#976).
-  Left: a building is grouped by bounds, not by walls, so a curved building
-  standing inside the bounds of a courtyard building's L (not touching it) is
-  refused with it; a courtyard (one meeting the outside at a single corner
-  included), a room with a hole, an arc of two chords off a wall that was not
-  square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
-  keep rectangles too; `gable` over a curve keeps
+  was bowed off a wall square to both its neighbours (#976), or splayed alike
+  at both ends by 45 degrees or more (#994).
+  A curve bowed in tighter than the 1.5ft eave stands on its skeleton, the
+  eave closing over it as the wavefront runs out, and a V or inward-tapering
+  notch closes the same way (#993).
+  Left: a courtyard (one meeting the outside at a single corner
+  included), a room with a hole (`straightSkeleton` and `triangulate` each
+  take one ring, so a hip needs a skeleton that also runs out from the hole,
+  and a parapet a deck bridged to it; which of the two it should be is a call
+  of its own), an arc of two chords off a wall whose ends turn unlike (a
+  parallelogram's end: bowed in two chords it is the polygon of a chamfer as
+  long as the wall before it, #994), and a notch whose sides meet head on (a square
+  notch, a slot, a dovetail: a split in the outward wavefront, which
+  `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
-  touch another building's takes its chord parapet only where no cell of the
-  other reaches inside its chords (#988); where one does (a box 0.2ft off a
-  bow, its cell 1.56ft inside the chords), the pair keeps one stepped parapet
-  and its mask count, and the question for Devon is which gives way: the
-  stepped building's cells cut back to the chords, the curve, or a deck over
-  the gap; the site plan's building line is the ground storey's mask, stepped on a curve
+  touch another building's takes its chord parapet (#988), and where a cell
+  of the other reaches inside its chords (a box 0.2ft off a bow, its cell
+  1.56ft inside them) the other building gives way (#990, Devon): its loop
+  is cut back to the chords, its bitten cells are decked as what is left of
+  them, and the takeoff and the estimate count that deck; along the cut the
+  parapet is the curved building's, drawn once (#992), and a cut `ringMinus` cannot
+  vouch for (an edge along the other ring) keeps the pair stepped; the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its
@@ -493,7 +504,12 @@ and add to this list rather than starting a new one.
   skeleton roof's faces by their nearest point like a rectangle's, and
   nobody has checked a hip seen across a valley in the sheet by eye; no
   `test/visual` capture has a curved roof (the sample school has none); the
-  look on a real GPU. One software-rendered look on huginn (an L with a
+  look on a real GPU. The courts, the hole, the head-on notch and the
+  single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
+  increments in order with Devon's questions in its section 6. Increments 1
+  and 2, the skeleton with holes (#996) and `offsetRing` and `triangulate`
+  with holes (#997), are built and called by nothing yet; next is increment
+  3, the flat roof's deck with a hole and the inner parapet. One software-rendered look on huginn (an L with a
   curved end, from above): hip, valley and the rounded end read right; and
   one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.
