@@ -8,7 +8,12 @@
 // preview to say the scenario's comparison is in the document on show
 // (data-scenario="answered", data-ready="true"), reads the section in the
 // frame and checks the two are the same text. It also opens the report while
-// the comparison never comes and while it fails, and reads what is said.
+// the comparison never comes, while it fails, with no engine, and with an
+// answer that makes showing it throw, and reads what is said. Last, the
+// answer arrives while a change of paper is still being laid out (its font
+// files held back through the DevTools protocol, so the document has loaded
+// and waits on doc.fonts.ready): the answer waits for that document, and
+// ready() resolves.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -83,7 +88,7 @@ async function openFromLab() {
   }
   await view(() => {
     const opener = document.querySelector('#inspector [data-action="print-congestion"]');
-    globalThis.sv2open(globalThis.sv2.ctx, 'congestion', { opener });
+    globalThis.sv2preview = globalThis.sv2open(globalThis.sv2.ctx, 'congestion', { opener });
   });
 }
 
@@ -154,32 +159,135 @@ test('opened with { opener } alone, as the lab opens it, the section is the same
   assert.equal(await view(() => document.activeElement && document.activeElement.dataset.action), 'print-congestion');
 });
 
-test('while the comparison has not come the section says the report is of the schedule as it stands; a failed one says so', async () => {
+test('while the comparison has not come the section says the report is of the schedule as it stands; a failed one, none to ask and a throwing show say so', async () => {
   await noPreview();
-  // a lane that never answers, then one that fails: the page's own scenario() set aside meanwhile
+  // the page's own scenario() set aside meanwhile, and put back whatever happens
   await view(() => {
     const derived = globalThis.sv2.store.derived;
     globalThis.sv2test = { scenario: derived.scenario };
-    derived.scenario = () => new Promise(() => {});
   });
-  await openFromLab();
-  await page.waitForSelector('#print-preview[open][data-scenario="asked"][data-ready="true"]');
-  const pending = await section();
-  assert.ok(pending.boxes > 0);
-  assert.equal(pending.text, 'The scenario: ' + NAME + ' Every figure above was worked out for the schedule as it stands. What the scenario ' + NAME + ' would change is still being worked out.');
-  assert.equal(pending.figures, null);
-  await closePreview();
+  try {
+    // a lane that never answers
+    await view(() => {
+      globalThis.sv2.store.derived.scenario = () => new Promise(() => {});
+    });
+    await openFromLab();
+    await page.waitForSelector('#print-preview[open][data-scenario="asked"][data-ready="true"]');
+    const pending = await section();
+    assert.ok(pending.boxes > 0);
+    assert.equal(pending.text, 'The scenario: ' + NAME + ' Every figure above was worked out for the schedule as it stands. What the scenario ' + NAME + ' would change is still being worked out.');
+    assert.equal(pending.figures, null);
+    await closePreview();
 
+    // one that fails
+    await view(() => {
+      globalThis.sv2.store.derived.scenario = () => Promise.reject(new Error('The worker stopped'));
+    });
+    await openFromLab();
+    await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="true"]');
+    const failed = await section();
+    assert.equal(failed.text, 'The scenario: ' + NAME + ' What the scenario ' + NAME + ' would change could not be worked out: The worker stopped. Nothing of it is printed.');
+    assert.equal(failed.figures, null);
+    await closePreview();
+
+    // none to ask: the section says so at once, never "still being worked out"
+    await view(() => {
+      globalThis.sv2.store.derived.scenario = undefined;
+    });
+    await openFromLab();
+    await page.waitForSelector('#print-preview[open][data-scenario="unavailable"][data-ready="true"]');
+    const none = await section();
+    assert.equal(none.text, 'The scenario: ' + NAME + ' Every figure above was worked out for the schedule as it stands. What the scenario ' + NAME + ' would change cannot be worked out here, so nothing of it is printed.');
+    await closePreview();
+
+    // an answer that makes the render throw (instanceof asks its prototype,
+    // and this one refuses): the flag says so and the document before stands
+    await view(() => {
+      const hostile = new Proxy({}, { getPrototypeOf() { throw new Error('no prototype'); } });
+      globalThis.sv2.store.derived.scenario = () => Promise.resolve(hostile);
+    });
+    await openFromLab();
+    await page.waitForSelector('#print-preview[open][data-scenario="failed"][data-ready="true"]');
+    const stood = await section();
+    assert.equal(stood.text, pending.text, 'the pending document stands');
+    assert.equal(await view(() => Promise.race([globalThis.sv2preview.ready().then(() => 'ready'), new Promise((done) => setTimeout(() => done('pending'), 5000))])), 'ready');
+    await closePreview();
+  } finally {
+    await view(() => {
+      globalThis.sv2.store.derived.scenario = globalThis.sv2test.scenario;
+    });
+  }
+});
+
+// Hold back the next requests for the report's font files, through the
+// DevTools protocol (the same under Puppeteer and Playwright; the cache off,
+// so a face already read is asked for again) until release(). Held
+// stylesheets would not do: the frame's load event waits for them, and the
+// preview's wait only starts at that event.
+async function holdFaces() {
+  const client = typeof page.createCDPSession === 'function' ? await page.createCDPSession() : await page.context().newCDPSession(page);
+  const held = [];
+  client.on('Fetch.requestPaused', (event) => held.push(event.requestId));
+  await client.send('Network.enable');
+  await client.send('Network.setCacheDisabled', { cacheDisabled: true });
+  await client.send('Fetch.enable', { patterns: [{ urlPattern: '*/fonts/public-sans-*' }] });
+  let released = false;
+  return {
+    held,
+    async release() {
+      if (released) return;
+      released = true;
+      for (const requestId of held.splice(0)) await client.send('Fetch.continueRequest', { requestId }).catch(() => {});
+      await client.send('Fetch.disable').catch(() => {});
+      await client.send('Network.setCacheDisabled', { cacheDisabled: false }).catch(() => {});
+      await client.detach().catch(() => {});
+    },
+  };
+}
+
+test('an answer that arrives while a change of paper is still laid out waits for it, and ready() resolves', async () => {
+  await noPreview();
+  let hold = null;
   await view(() => {
-    globalThis.sv2.store.derived.scenario = () => Promise.reject(new Error('The worker stopped'));
+    const derived = globalThis.sv2.store.derived;
+    globalThis.sv2test = { scenario: derived.scenario };
   });
-  await openFromLab();
-  await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="true"]');
-  const failed = await section();
-  assert.equal(failed.text, 'The scenario: ' + NAME + ' What the scenario ' + NAME + ' would change could not be worked out: The worker stopped. Nothing of it is printed.');
-  assert.equal(failed.figures, null);
-  await closePreview();
-  await view(() => {
-    globalThis.sv2.store.derived.scenario = globalThis.sv2test.scenario;
-  });
+  try {
+    // the real answer, handed over only when the test says
+    await view(() => {
+      const real = globalThis.sv2test.scenario;
+      globalThis.sv2.store.derived.scenario = () => new Promise((resolve, reject) => {
+        globalThis.sv2answer = () => real().then(resolve, reject);
+      });
+    });
+    await openFromLab();
+    await page.waitForSelector('#print-preview[open][data-scenario="asked"][data-ready="true"][data-paper="letter portrait"]');
+    // the next document's faces are held back, so its layout waits on them
+    hold = await holdFaces();
+    await view(() => {
+      document.querySelector('#print-preview input[value="a4"]').click();
+      globalThis.sv2ready = globalThis.sv2preview.ready().then(() => 'ready');
+    });
+    for (let tries = 0; hold.held.length === 0 && tries < 200; tries += 1) await new Promise((done) => setTimeout(done, 25));
+    assert.ok(hold.held.length > 0, 'the paper\'s document asked for its faces');
+    assert.equal(await view(() => document.getElementById('print-preview').dataset.ready), 'false', 'the paper\'s document is still being laid out');
+    // the answer comes now, then the faces
+    await view(() => globalThis.sv2answer());
+    await new Promise((done) => setTimeout(done, 200));
+    await hold.release();
+    assert.equal(await view(() => Promise.race([globalThis.sv2ready, new Promise((done) => setTimeout(() => done('pending'), 5000))])), 'ready', 'ready() taken during the paper\'s layout resolves');
+    await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="true"][data-paper="a4 portrait"]', { timeout: 20000 });
+    const answered = await section();
+    assert.deepEqual(answered.figures, fromMovement.figures, 'the answer is in the document on show');
+    assert.equal(await view(() => Promise.race([globalThis.sv2preview.ready().then(() => 'ready'), new Promise((done) => setTimeout(() => done('pending'), 5000))])), 'ready');
+    // the paper back as it was
+    await page.click('#print-preview input[value="letter"]');
+    await page.waitForSelector('#print-preview[data-ready="true"][data-paper="letter portrait"]');
+    await closePreview();
+  } finally {
+    if (hold) await hold.release();
+    await view(() => {
+      globalThis.sv2.store.derived.scenario = globalThis.sv2test.scenario;
+    });
+  }
 });

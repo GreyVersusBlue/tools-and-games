@@ -434,21 +434,48 @@ export function openPrintPreview(ctx, outputId, options) {
   // would change: the scenario lane's comparison, asked here whoever opened
   // the report, so the section is the same from Movement and from the lab.
   // Until it comes the section says it is still being worked out; a failure
-  // or a null answer is shown as such. As above, the first document is
-  // replaced only once it is laid out. data-scenario is 'asked', then
-  // 'answered' once the document with the answer in it is laid out.
-  if (output.id === 'congestion' && project().scenario && store.derived && store.derived.engine && typeof store.derived.scenario === 'function') {
-    element.dataset.scenario = 'asked';
-    const answered = (scenario) => first.then(() => {
-      if (!alive) return null;
-      derived = { ...(derived || {}), scenario };
-      return show().then(() => {
-        if (alive) element.dataset.scenario = 'answered';
+  // or a null answer is shown as such; with no engine to ask, the section is
+  // told so ({ unavailable: true }) and says it cannot be worked out here.
+  // data-scenario is 'asked', then 'answered' once the answer is in the
+  // document being laid out (with data-ready="true", laid out), 'failed' if
+  // showing it threw (the document before it stands), or 'unavailable'.
+  if (output.id === 'congestion' && project().scenario) {
+    if (store.derived && store.derived.engine && typeof store.derived.scenario === 'function') {
+      element.dataset.scenario = 'asked';
+      // The document on show when the answer arrives may not be the first:
+      // a change of paper replaces it. Replacing one whose stylesheets and
+      // faces are still awaited would leave that wait pending for good, so
+      // the answer waits for whichever document is newest, again and again
+      // until no newer one came while it waited.
+      const settledNow = () => {
+        const now = laidOut;
+        return now.then(() => (laidOut === now ? null : settledNow()));
+      };
+      const answered = (scenario) => settledNow().then(() => {
+        if (!alive) return;
+        const before = derived;
+        derived = { ...(derived || {}), scenario };
+        try {
+          show();
+          element.dataset.scenario = 'answered';
+        } catch (error) {
+          // the render threw before the frame was touched: the document on
+          // show stands, and so does what it was drawn from
+          derived = before;
+          element.dataset.ready = 'true';
+          element.dataset.scenario = 'failed';
+        }
       });
-    });
-    store.derived.scenario()
-      .then(answered, (error) => answered({ failed: error && error.message ? String(error.message) : String(error) }))
-      .catch(() => { /* the document already on show stands */ });
+      store.derived.scenario()
+        .then(answered, (error) => answered({ failed: error && error.message ? String(error.message) : String(error) }))
+        .catch(() => {
+          if (alive) element.dataset.scenario = 'failed';
+        });
+    } else {
+      // set before the first document is drawn: show() runs once the stylesheet is in
+      derived = { ...(derived || {}), scenario: { unavailable: true } };
+      element.dataset.scenario = 'unavailable';
+    }
   }
 
   return {
