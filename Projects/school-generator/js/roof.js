@@ -1071,10 +1071,16 @@ function unionOf(shapes) {
 // drawn by hand. An arc of two chords (only a `steps` of 2 asked for in code
 // lays one down) has one turn of its own, so it is read by its ends instead
 // (#976): two chords of one length turning under 85 degrees, where the turn
-// at each end plus half the middle one is a right angle, both ends alike.
-// That is a wall square to both its neighbours, bowed. A chamfer, a saw-tooth
-// wall and a prow of 45 degree walls are not; a prow of two equal walls on a
-// square end turning under 85 degrees at its tip is, and is the same chords.
+// at each end plus half the middle one (the turn of the wall they were bowed
+// off) is alike at both ends and at least 45 degrees (#994; a right angle
+// before it). That is a wall square to both its neighbours, or splayed alike
+// at both, bowed. A chamfer, a saw-tooth wall and a prow of 45 degree walls
+// are not; a prow of two equal walls on such an end turning under 85 degrees
+// at its tip is, and is the same chords. Two equal saw teeth or a V cut in a
+// straight wall read as a wall turning under 42.5 degrees, so the 45 keeps
+// them out. A wall whose ends turn unlike (a parallelogram's end) is not read:
+// bowed in two chords it is the same polygon as a chamfer as long as the wall
+// before it.
 const CURVE_TURN = (85 * Math.PI) / 180;
 export function hasCurve(loop) {
   const n = loop.length;
@@ -1097,7 +1103,7 @@ export function hasCurve(loop) {
     if (Math.abs(l1 - l0) > 1e-6 * l0) continue;
     const before = turn((i - 1 + n) % n), mid = turn(i), after = turn((i + 1) % n);
     if (mid === 0 || Math.abs(mid) >= CURVE_TURN || Math.abs(after - before) > 1e-6) continue;
-    if (Math.abs(Math.abs(before + mid / 2) - Math.PI / 2) > 1e-6) continue;
+    if (Math.abs(before + mid / 2) < Math.PI / 4) continue;
     return true;
   }
   return false;
