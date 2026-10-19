@@ -105,8 +105,23 @@ export const section = {
     const barText = h('p', { class: 'scn-bar__text', data: { part: 'bar-text' } });
     const applyButton = h('button', { type: 'button', class: 'btn btn--primary', data: { action: 'apply' }, on: { click: () => applyNow() } }, 'Apply…');
     const discardButton = h('button', { type: 'button', class: 'btn', data: { action: 'discard' }, on: { click: () => discardNow() } }, 'Discard…');
-    const bar = h('div', { class: 'mov-bar scn-bar', role: 'group', 'aria-label': 'The scenario', hidden: true, data: { bar: 'scenario' } },
-      barText, h('div', { class: 'scn-bar__buttons' }, applyButton, discardButton));
+    // With no scenario open the bar is closed to no height, never display:
+    // none: the plan map measures its foot by its box (the zoom buttons and
+    // the messages stand above it), and a foot with no box reads as one at
+    // the top of the window.
+    const barButtons = h('div', { class: 'scn-bar__buttons' }, applyButton, discardButton);
+    const bar = h('div', { class: 'mov-bar scn-bar', data: { bar: 'scenario', open: 'false' } }, barText, barButtons);
+    function openBar(open) {
+      bar.dataset.open = String(open);
+      barButtons.hidden = !open;
+      if (open) {
+        bar.setAttribute('role', 'group');
+        bar.setAttribute('aria-label', 'The scenario');
+      } else {
+        bar.removeAttribute('role');
+        bar.removeAttribute('aria-label');
+      }
+    }
 
     // ---- the panel
     const env = {
@@ -124,10 +139,10 @@ export const section = {
     const file = filePanel(env);
     const congestion = h('button', { type: 'button', class: 'btn', data: { action: 'congestion' }, on: { click: (event) => openPrintPreview(ctx, 'congestion', { opener: event.currentTarget }) } }, 'Print the congestion report…');
     const report = h('section', { class: 'scn-report', 'aria-labelledby': 'scenario-report-title' },
-      h('h3', { class: 'scn-panel__title', id: 'scenario-report-title' }, 'Congestion report'),
+      h('h2', { class: 'scn-panel__title', id: 'scenario-report-title' }, 'Congestion report'),
       h('p', { class: 'scn-report__lead' }, 'The movement view’s report on paper, with what the open scenario does to it.'),
       congestion);
-    const panel = h('aside', { class: 'scn-panel', 'aria-label': 'The scenario and its changes', data: { part: 'panel' } }, changes.element, forms.element, file.element, report);
+    const panel = h('section', { class: 'scn-panel', 'aria-label': 'The scenario and its changes', data: { part: 'panel' } }, changes.element, forms.element, file.element, report);
 
     const plan = createPlanMap({
       ctx,
@@ -194,9 +209,17 @@ export const section = {
     function add(change) {
       const project = store.project;
       const said = changeWords(project, change).text;
-      if (!run(addScenarioChange, { change })) return false;
-      const undone = cancelled(project.scenario, store.project.scenario, change);
-      const text = undone ? cancelledSentence(said, undone.taken) : 'Added: ' + said + '.';
+      let refused = false;
+      const made = run(addScenarioChange, { change }, (message) => {
+        refused = true;
+        changes.said(message);
+        ctx.toast({ kind: 'problem', text: message });
+      });
+      if (refused) return false;
+      // no entry at all: the change puts back the schedule and nothing was
+      // there to take out, or the scenario already holds exactly this
+      const undone = made ? cancelled(project.scenario, store.project.scenario, change) : cancelled(project.scenario, project.scenario, change);
+      const text = undone ? cancelledSentence(said, undone.taken) : made ? 'Added: ' + said + '.' : 'The scenario already has this: ' + said + '.';
       changes.said(text);
       ctx.announce(text);
       return true;
@@ -309,7 +332,7 @@ export const section = {
         inspectorShown = false;
         element.dataset.mode = 'empty';
         view = null;
-        bar.hidden = true;
+        openBar(false);
         return;
       }
       if (!inspectorShown) {
@@ -317,10 +340,14 @@ export const section = {
         inspectorShown = true;
       }
       if (empty.firstChild) empty.replaceChildren();
+      // a control of the panel that this drawing hides or takes away (a
+      // scenario opened, closed, applied or undone) hands the focus to the
+      // panel's first control, rather than letting it fall to the page
+      const held = panel.contains(document.activeElement) ? document.activeElement : null;
       view = scenarioView(project);
       element.dataset.mode = view ? 'open' : 'none';
       lineWords.replaceChildren(...words(firstLine(project, view)));
-      bar.hidden = !view;
+      openBar(Boolean(view));
       barText.textContent = barWords(view);
       changes.update(view);
       forms.element.hidden = !view;
@@ -337,6 +364,7 @@ export const section = {
         drawCompare();
       }
       plan.setProject(project, graphNow());
+      if (held && (!held.isConnected || held.closest('[hidden]'))) changes.focusName();
     }
 
     refresh();

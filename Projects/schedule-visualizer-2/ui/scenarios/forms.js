@@ -97,7 +97,7 @@ export function formsPanel(env) {
       draw(ctx.store.project, true);
     },
   });
-  const title = h('h3', { class: 'scn-panel__title', id: 'scenario-add-title' }, 'Add a change');
+  const title = h('h2', { class: 'scn-panel__title', id: 'scenario-add-title' }, 'Add a change');
   const body = h('div', { class: 'scn-form', data: { part: 'form' } });
   const element = h('section', { class: 'scn-add', 'aria-labelledby': 'scenario-add-title' }, title, kinds.element, body);
 

@@ -172,10 +172,11 @@ export function groupRow(project, row) {
   return { groupId: row.groupId, name, typed: Boolean(group), edited: row.edited, before: total(row.before), after: total(row.after), change, worse };
 }
 
-// The groups whose travel changed, biggest first (compareResults' order),
-// and how many did not.
+// The groups whose travel changed and the groups the scenario edits, in
+// compareResults' order (biggest change first, edited first within a band),
+// and how many others walk as before.
 export function groupRows(project, compare) {
-  const changed = compare.groups.filter((row) => row.failedChange !== 0 || (row.difference !== null && row.difference !== 0));
+  const changed = compare.groups.filter((row) => row.edited || row.failedChange !== 0 || (row.difference !== null && row.difference !== 0));
   return { rows: changed.map((row) => groupRow(project, row)), same: compare.groups.length - changed.length };
 }
 

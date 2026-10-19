@@ -31,7 +31,7 @@ export function filePanel(env) {
   const input = h('input', { type: 'file', accept: '.json,application/json', hidden: true, tabindex: '-1', 'aria-hidden': 'true', data: { file: 'compare' } });
   const opener = h('button', { type: 'button', class: 'btn', data: { action: 'compare-file' }, on: { click: () => input.click() } }, 'Compare with another project file…');
   const element = h('section', { class: 'scn-file', 'aria-labelledby': 'scenario-file-title' },
-    h('h3', { class: 'scn-panel__title', id: 'scenario-file-title' }, 'Compare with another project file'),
+    h('h2', { class: 'scn-panel__title', id: 'scenario-file-title' }, 'Compare with another project file'),
     h('p', { class: 'scn-file__lead' }, 'A project file of this building, next year’s proposal say, becomes a scenario: every slot that differs is a change, groups matched by name.'),
     opener, input, result, groupsLine, skippedBox);
 

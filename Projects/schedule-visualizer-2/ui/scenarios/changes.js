@@ -54,13 +54,13 @@ export function changesPanel(env) {
   });
   const naming = h('div', { class: 'scn-name' }, h('label', { class: 'field__label', for: 'scenario-name' }, 'Scenario name'), nameInput);
 
-  const chipsTitle = h('h3', { class: 'scn-panel__title', id: 'scenario-chips-title' }, 'Changes');
+  const chipsTitle = h('h2', { class: 'scn-panel__title', id: 'scenario-chips-title' }, 'Changes');
   const chips = h('ul', { class: 'scn-chips', 'aria-labelledby': 'scenario-chips-title', data: { part: 'chips' } });
   const none = h('p', { class: 'scn-none', hidden: true }, 'No changes yet. Add one below.');
   // what the last action said about itself (a change that cancelled itself)
   const status = h('p', { class: 'scn-status', role: 'status', data: { part: 'status' } });
 
-  const droppedTitle = h('h3', { class: 'scn-panel__title', id: 'scenario-dropped-title' }, 'No longer applies');
+  const droppedTitle = h('h2', { class: 'scn-panel__title', id: 'scenario-dropped-title' }, 'No longer applies');
   const droppedNote = h('p', { class: 'scn-dropped__note' }, 'The schedule has changed under these. They are skipped when you apply, and come back if the change under them is undone.');
   const droppedList = h('ul', { class: 'scn-dropped__list', 'aria-labelledby': 'scenario-dropped-title' });
   const removeDropped = h('button', { type: 'button', class: 'btn', data: { action: 'remove-dropped' }, on: { click: removeThem } }, 'Remove them');
@@ -87,7 +87,8 @@ export function changesPanel(env) {
     if (!view) return;
     const current = env.project().scenario ? env.project().scenario.name : '';
     if (nameInput.value === current) return;
-    if (!env.apply(renameScenario, { name: nameInput.value })) nameInput.value = current;
+    if (env.apply(renameScenario, { name: nameInput.value })) nameHeld = nameInput.value;
+    else nameInput.value = current;
   }
 
   // the × of a chip: the change out by its index in scenario.changes; the

@@ -20,7 +20,7 @@
 }
 
 .scn-panel[hidden],
-.scn-bar[hidden],
+.scn-bar__buttons[hidden],
 .scn-open[hidden],
 .scn-start[hidden],
 .scn-add[hidden],
@@ -239,6 +239,15 @@
 }
 
 /* ---------- The bar at the section's foot (sticky: .mov-bar) ---------- */
+
+/* closed to no height while no scenario is open, but laid out: the plan map
+   measures what stands above it from its box */
+.scn-bar[data-open="false"] {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
 
 .scn-bar {
   display: flex;
