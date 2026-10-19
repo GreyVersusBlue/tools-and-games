@@ -213,6 +213,7 @@ row names a file it does not run.
 | `test/browser/playback.mjs` | Playback: play, the scrubber, pace, the markers, the Late line |
 | `test/browser/plan-map.mjs` | The plan map mounted through its module as Scenarios and Safety will: their stubs as they were, the toast clearance of two maps, the keep on the stage and the stage's least |
 | `test/browser/safety.mjs` | The Safety section: a room picked by pointer and by keyboard, every room coloured by exit with its key, the exits and the rooms with no way out, door cards for one room, the rooms ticked and every room through the preview, typed names as typed, the stage and toast rules at three sizes |
+| `test/browser/scenario.mjs` | The scenario lab: start and rename, each kind of change by pointer and by keyboard, a chip removed, a change that cancels itself, a change dropped when its room goes and back on Undo, the comparison as the scenario lane gives it and while it works, Apply as one step of undo, Discard asking, compare with a file and another building refused, the congestion report, the spec 18 journey, typed names as typed, the bar with touch at three sizes |
 | `test/a11y/axe.mjs` | The accessibility sweep of every screen, light and dark |
 | `test/timing/routing.mjs` | Routing under its budget at the promised size |
 | `test/timing/crowd.mjs` | The crowd model under its budget |

@@ -126,6 +126,7 @@ export const GROUPS = {
     'browser/m3-pass.mjs', // SV2-43
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
+    'browser/scenario.mjs', // SV2-68
     'a11y/axe.mjs',
   ],
   a11y: [
