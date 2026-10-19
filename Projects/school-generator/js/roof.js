@@ -39,7 +39,7 @@
 
 import { CELL, WALL_H, floorBaseY } from './grid.js';
 import { shapesOf, shapeBBox, pointInShape, pointInRing } from './shapes.js';
-import { eavePolygon, skeletonRoof, triangulate } from './skeleton.js';
+import { eavePolygon, cleanPolygon, skeletonRoof, triangulate } from './skeleton.js';
 
 // A parapet is a low wall around a flat roof, hiding the mechanical plant and
 // carrying the flashing. Three feet is a school's; anything shorter reads as a
@@ -425,13 +425,64 @@ export function roofPlan(state, roof = null) {
 export function curvedRoofs(floor, eaveY, pitch) {
   const out = [];
   for (const loop of curvedLoopsOf(floor)) {
-    const eave = eavePolygon(loop, EAVE);
+    const eave = eaveLine(loop, EAVE);
     const roof = eave && skeletonRoof(eave, eaveY, pitch);
     if (!roof) continue;
     const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
     out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
   }
   return out;
+}
+
+// The eave line over a loop, `d` feet out. Where the mitred eave stands it is
+// that, corner for corner. Where it crosses itself because a curve bowed into
+// the building is tighter than the overhang (#993), the chords are carried out
+// the way the skeleton's own wavefront runs backwards: to the moment the first
+// of them closes up, which is gone from there on, its neighbours meeting, and
+// on to `d`. So a dent the overhang covers is covered (a V or a notch that
+// narrows inward closes the same way), and the roof stands on the eave line
+// as it is. Two sides meeting head on (a square notch, a slot, a dovetail) is
+// a split, not this, and stays refused: null, and the loop keeps its
+// rectangles. Every step goes through `cleanPolygon`, which refuses a line
+// that crosses itself, so a line that is returned holds every wall corner.
+function eaveLine(loop, d) {
+  const mitred = eavePolygon(loop, d);
+  if (mitred) return mitred;
+  let cur = cleanPolygon(loop), left = d;
+  for (let step = 0; cur && step < loop.length; step++) {
+    const n = cur.length;
+    const normal = (i) => {
+      const a = cur[i], b = cur[(i + 1) % n];
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      return { x: (b.z - a.z) / L, z: -(b.x - a.x) / L };
+    };
+    // Each corner's mitred speed, as `eavePolygon` moves it, and the moment
+    // each edge's length runs out between its two corners.
+    const speed = cur.map((_, i) => {
+      const n1 = normal((i - 1 + n) % n), n2 = normal(i);
+      const k = 1 + n1.x * n2.x + n1.z * n2.z;
+      return { x: (n1.x + n2.x) / k, z: (n1.z + n2.z) / k };
+    });
+    let first = Infinity;
+    for (let i = 0; i < n; i++) {
+      const a = cur[i], b = cur[(i + 1) % n], j = (i + 1) % n;
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      const s = ((speed[j].x - speed[i].x) * (b.x - a.x) + (speed[j].z - speed[i].z) * (b.z - a.z)) / L;
+      if (s < 0) first = Math.min(first, -L / s);
+    }
+    // Nothing closing before `d` means the mitred line failed on a split;
+    // `cleanPolygon` would refuse the step below for the same reason, so this
+    // only says it sooner.
+    if (!(first < left)) return null;
+    // Out to that moment; the closed edges come back as repeated corners,
+    // which `cleanPolygon` drops, and a pair of sides that now run on one
+    // line joins. Sides meeting head on leave a spike, which it refuses.
+    cur = cleanPolygon(cur.map((p, i) => ({ x: p.x + speed[i].x * first, z: p.z + speed[i].z * first })));
+    left -= first;
+    const eave = cur && eavePolygon(cur, left);
+    if (eave) return eave;
+  }
+  return null;
 }
 
 // The loops of a storey's true outline with a curve in them: the buildings
