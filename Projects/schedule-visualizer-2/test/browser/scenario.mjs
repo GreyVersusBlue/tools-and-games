@@ -1060,7 +1060,8 @@ test('SV2-68b 3: Redo after undoing an Apply applies it again and closes the sce
   assert.equal(await slotRoom(page, 'gsample07a', A, 2), before);
   assert.equal(await page.$eval('.scn', (el) => el.dataset.mode), 'open');
   await page.evaluate(() => globalThis.sv2.store.redo());
-  await ready(page);
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.mode === 'none');
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.compare), 'none', 'the comparison of the closed scenario is let go');
   assert.equal(await slotRoom(page, 'gsample07a', A, 2), 'rsample101', 'Redo writes the change again');
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario), null, 'and closes the scenario again');
   assert.equal(await page.$eval('.scn', (el) => el.dataset.mode), 'none');
@@ -1246,6 +1247,9 @@ test('SV2-68b 5: the slots not compared belong to their comparison, not to a fil
   await ready(page);
   assert.equal(await page.$$eval('.scn-file__skipped li', (items) => items.length), 1);
   // the second, of the same name, over it
+  await page.evaluate(() => {
+    globalThis.__firstCompared = globalThis.sv2.store.project.scenario.compared;
+  });
   await input.uploadFile(two);
   await page.waitForSelector('dialog[open]');
   // while the question is up, the project changes under it: 7B's first slot
@@ -1255,7 +1259,7 @@ test('SV2-68b 5: the slots not compared belong to their comparison, not to a fil
     globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07b', dayTypeId: 'dsample00a', period: 0, slot: { room: null } });
   });
   await page.click('dialog[open] .btn--primary, dialog[open] .btn--danger');
-  await page.waitForFunction(() => /^Compared with/.test(document.querySelector('.scn-file__result').textContent) && /1 slot could not/.test(document.querySelector('.scn-file__result').textContent));
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario.compared !== globalThis.__firstCompared && /^Compared with/.test(document.querySelector('.scn-file__result').textContent));
   await ready(page);
   assert.deepEqual(await page.$$eval('.scn-file__skipped li', (items) => items.map((li) => li.textContent)), ['7B · A Day · Period 2: the file has no room there.'], 'worked out against the project as it is once the question is answered');
   // Undo of the second: the first comparison is back, and the second's slots are not its
