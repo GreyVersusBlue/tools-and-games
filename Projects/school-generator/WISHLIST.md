@@ -474,13 +474,18 @@ and add to this list rather than starting a new one.
   chords, and the deck under it is that outline, ear-clipped (#973).
   Two rooms meeting at a corner are a loop each, so a curved one there takes
   the skeleton and the chord parapet; an arc of two chords is a curve when it
-  was bowed off a wall square to both its neighbours (#976).
+  was bowed off a wall square to both its neighbours (#976), or splayed alike
+  at both ends by 45 degrees or more (#994).
   A curve bowed in tighter than the 1.5ft eave stands on its skeleton, the
   eave closing over it as the wavefront runs out, and a V or inward-tapering
   notch closes the same way (#993).
   Left: a courtyard (one meeting the outside at a single corner
-  included), a room with a hole, an arc of two chords off a wall that was not
-  square to its neighbours, and a notch whose sides meet head on (a square
+  included), a room with a hole (`straightSkeleton` and `triangulate` each
+  take one ring, so a hip needs a skeleton that also runs out from the hole,
+  and a parapet a deck bridged to it; which of the two it should be is a call
+  of its own), an arc of two chords off a wall whose ends turn unlike (a
+  parallelogram's end: bowed in two chords it is the polygon of a chamfer as
+  long as the wall before it, #994), and a notch whose sides meet head on (a square
   notch, a slot, a dovetail: a split in the outward wavefront, which
   `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
