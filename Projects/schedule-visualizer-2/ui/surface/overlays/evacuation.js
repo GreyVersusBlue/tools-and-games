@@ -16,10 +16,22 @@
 // The first half of this file has no canvas in it and runs in Node:
 //
 //   exitColours(count, theme) -> ['#rrggbb', …]
-//     one colour an exit, in key order: the group presets (ui/colour.js),
-//     each made readable at 3:1 against the theme's corridor, which in both
-//     themes is the lighter or the darker end of what a line lies on
-//     (corridor and card), so a line and the key's swatch both pass
+//     one colour an exit, in key order: EXIT_PRESETS, each made readable at
+//     3:1 against the theme's corridor, which in both themes is the lighter
+//     or the darker end of what a line lies on (corridor and card), so a
+//     line and the key's swatch both pass. Past EXIT_PRESETS.length exits
+//     the colours repeat (the key says so; the number is the exit's identity)
+//   EXIT_PRESETS   ten colours: the group presets' red, blue, orange,
+//     green and purple (ui/colour.js), with a blue grey, a sky, a dark brown,
+//     a pure blue and a violet, found by search so that every pair stays
+//     apart once made 3:1 in both themes. The presets' own yellow, made 3:1
+//     on a white corridor, came out an olive 0.067 from the orange and 0.121
+//     from the brown (the review's exits 7 and 9)
+//   EXIT_APART     the least OKLab distance between any two of the ten,
+//     after readable(), in either theme: 0.13, above the 0.121 of the pair
+//     called alike; the ten are at least 0.133 apart (blue and purple, dark)
+//   oklab(colour) -> [L, a, b]   Björn Ottosson's OKLab, for that distance
+//   apart(a, b) -> number        the OKLab distance between two colours
 //   runsOf(route) -> [[{ floorId, cell }, …], …]
 //     a route as runs of cells, one run a floor it crosses, cut where a
 //     stairs connection is taken: the room cell it leaves by first
@@ -37,15 +49,46 @@
 //              in the problem colour from `lost`: { floorId, cells }
 //   EXIT_KEY_LEAST   the zoom (px a cell) under which badges are not drawn
 
-import { GROUP_PRESETS, readable, labelOn, parse } from '../../colour.js';
+import { readable, labelOn, parse } from '../../colour.js';
 
 export const EXIT_KEY_LEAST = 10;
+
+export const EXIT_PRESETS = Object.freeze(['#d1495b', '#0072b2', '#e69f00', '#009e73', '#9999aa', '#00aaff', '#664400', '#7b4ea3', '#0000ff', '#9900ee']);
+
+export const EXIT_APART = 0.13;
 
 export function exitColours(count, theme) {
   const surface = theme && parse(theme.corridor) ? theme.corridor : '#ffffff';
   const out = [];
-  for (let i = 0; i < count; i += 1) out.push(readable(GROUP_PRESETS[i % GROUP_PRESETS.length], surface, 3));
+  for (let i = 0; i < count; i += 1) out.push(readable(EXIT_PRESETS[i % EXIT_PRESETS.length], surface, 3));
   return out;
+}
+
+function linear(value) {
+  const v = value / 255;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+
+export function oklab(colour) {
+  const c = parse(colour);
+  if (!c) throw new TypeError('Not a colour this tool can read: ' + String(colour));
+  const r = linear(c.r);
+  const g = linear(c.g);
+  const b = linear(c.b);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+export function apart(a, b) {
+  const x = oklab(a);
+  const y = oklab(b);
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
 }
 
 export function runsOf(route) {
