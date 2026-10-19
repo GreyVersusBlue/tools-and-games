@@ -506,9 +506,10 @@ and add to this list rather than starting a new one.
   `test/visual` capture has a curved roof (the sample school has none); the
   look on a real GPU. The courts, the hole, the head-on notch and the
   single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
-  increments in order with Devon's questions in its section 6. Increment 1,
-  the skeleton with holes, is built and called by nothing yet (#996); next is
-  increment 2, `offsetRing` and `triangulate` with holes. One software-rendered look on huginn (an L with a
+  increments in order with Devon's questions in its section 6. Increments 1
+  and 2, the skeleton with holes (#996) and `offsetRing` and `triangulate`
+  with holes (#997), are built and called by nothing yet; next is increment
+  3, the flat roof's deck with a hole and the inner parapet. One software-rendered look on huginn (an L with a
   curved end, from above): hip, valley and the rounded end read right; and
   one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.

@@ -384,6 +384,20 @@ shipped answer for every face of every skeleton test, pinned. Each fails on
 the old code (no `offsetRing`; `triangulate` ignores the second argument and
 covers the hole). Browser: none. Leaves: the wiring.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes2, #997).* Shipped as
+written, with one finding. The frame's margin of `4|d| + 10` (2.2) does not
+keep the frame clear: a corner moves at `1/sin(θ/2)`, so a 4.6 degree spike
+(a triangle 100ft long and 8ft wide) runs 37.5ft out by 1.5, meets the
+frame's loop, and `offsetRing` refused a ring `eavePolygon` takes. The frame
+stands `|d| · (v + 2) + 10` clear now, `v` the fastest corner's speed, and a
+loop that mixes the ring's edges with the frame's still returns null. Every
+figure in the increment held as stated. `offsetRing` returns each loop
+starting at the vertex from the ring's lowest-numbered corner still
+standing, so with no event it is `eavePolygon`'s answer in `eavePolygon`'s
+order. The bridge order (rightmost hole first) only fixes the answer: each
+bridge is tested against every ring and every earlier bridge. Increment 3
+starts from here.
+
 **3. Flat roofs: the deck with a hole and the inner parapet.** `roof.js`:
 `roofOutline` returns `holes` (a room's own hole, and a court between rooms,
 contained loop by loop), `curvedLoopsOf`'s new shape, `inFootprint`,
