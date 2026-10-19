@@ -484,6 +484,30 @@ answer in place: a shipped loop that returned null there before and does not
 now is a moved hash, and the increment stops to report it. Browser: none new
 (`curved-roof` covers drawing a skeleton block). Leaves: the pinch.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes5, #1000).* Shipped as
+written, the 108-case hash unchanged: run first with the third answer in
+place and no test touched, every one of the 108 lines was identical and the
+only `roof-*` or `skeleton*` test to fail was the one this section names.
+Four findings. (1) The court with a head-on notch of its own was already
+roofed on increment 4's code: `courtEaves` has asked `offsetRing` since
+#999, so its test passes on the code before and fails only with the court's
+offset taken out. It pins the case, it did not catch it. (2) `roof-curve`'s
+"a notch narrower than two eaves" tests `eavePolygon`, which is unchanged,
+so its rewrite asserts the mitred line still refuses and `offsetRing` gives
+the rectangle; it too passes on the code before. The test that fails on the
+code before is `roof-tightcurve`'s, the notched hall itself. (3) "None, or
+two pieces, is still null" has a case: a bottle notch (a 1ft mouth into a 5
+by 6ft pocket) closes at its mouth first, and the outward wavefront is the
+eave and the pocket, two loops. Taking the first would roof over the
+pocket's sky; it keeps its rectangles, and a test says so. (4) The order of
+the second and third answers decides nothing anyone has found: with
+`offsetRing` asked before #993's step-out, the whole Node suite and the 108
+cases are unchanged, the step-out being the same wavefront run by mitred
+steps. The design's order is kept, since it makes "a loop with an eave keeps
+it" true by construction. The eave is passed through `cleanPolygon`, which
+drops the straight-through corner where the notch closed. Increment 6 starts
+from here.
+
 **6. The courtyard that meets the outside at one corner.** `skeleton.js`:
 `cleanPolygon({ pinch })`, carried through `straightSkeleton` and
 `offsetRing`; `roof.js`: `unionOf` keeps the loop through a corner twice, with

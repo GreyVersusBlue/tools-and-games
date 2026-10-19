@@ -478,7 +478,9 @@ and add to this list rather than starting a new one.
   at both ends by 45 degrees or more (#994).
   A curve bowed in tighter than the 1.5ft eave stands on its skeleton, the
   eave closing over it as the wavefront runs out, and a V or inward-tapering
-  notch closes the same way (#993).
+  notch closes the same way (#993). A notch whose sides meet head on (a
+  square notch, a slot, a dovetail) closes as the outline's own wavefront
+  runs out 1.5ft, and the eave runs straight past it (#1000).
   A court, a room's own hole or the space rooms close round, is a hole of
   its building's loop (#998), and a flat roof's parapet over a building with
   a curve on any ring runs round it, the deck the outline less the court and
@@ -490,9 +492,9 @@ and add to this list rather than starting a new one.
   that hole when the storey is judged building by building (`roomsMeet`
   asks every ring), an arc of two chords off a wall whose ends turn unlike (a
   parallelogram's end: bowed in two chords it is the polygon of a chamfer as
-  long as the wall before it, #994), and a notch whose sides meet head on (a square
-  notch, a slot, a dovetail: a split in the outward wavefront, which
-  `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
+  long as the wall before it, #994), and a notch whose mouth closes before
+  its inside does (a bottle: the wavefront run out is the eave and a pocket,
+  which `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
   touch another building's takes its chord parapet (#988), and where a cell
   of the other reaches inside its chords (a box 0.2ft off a bow, its cell
@@ -512,10 +514,10 @@ and add to this list rather than starting a new one.
   look on a real GPU. The courts, the hole, the head-on notch and the
   single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
   increments in order with Devon's questions in its section 6. Increments 1
-  to 3 are built: the skeleton with holes (#996), `offsetRing` and
+  to 5 are built: the skeleton with holes (#996), `offsetRing` and
   `triangulate` with holes (#997), the outline's courts wired into the
-  parapet and its deck (#998), and the hip round a court (#999); next is
-  increment 5, the head-on notch. One software-rendered look on huginn (an L with a
+  parapet and its deck (#998), the hip round a court (#999), and the head-on notch
+  (#1000); next is increment 6, the single-corner courtyard. One software-rendered look on huginn (an L with a
   curved end, from above): hip, valley and the rounded end read right; and
   one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.
