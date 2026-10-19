@@ -176,6 +176,7 @@ row names a file it does not run.
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
 | `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
 | `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs |
+| `test/ui/scenario-lane.test.mjs` | The scenario and suggestion lanes: a second pipeline on the shared route cache, the worker's answers, what the client keeps and drops, the main thread giving the worker's answers |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
@@ -219,3 +220,4 @@ row names a file it does not run.
 | `test/timing/playback.mjs` | One frame of playback under its budget |
 | `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
+| `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |

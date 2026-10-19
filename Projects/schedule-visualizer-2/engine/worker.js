@@ -8,6 +8,7 @@
 //
 //   const pipeline = createPipeline();
 //   const result = pipeline.run(project, { geometry, building, schedule });
+//   const beside = createPipeline({ cache: pipeline.cache });
 //
 // The three numbers are the store's counters (store.geometryVersion,
 // .buildingVersion, .scheduleVersion). A pipeline remembers its last answer
@@ -33,6 +34,13 @@
 // A part that was kept is the same object as last time, so a screen can tell
 // what to redraw with `===`.
 //
+// createPipeline({ cache }) makes a pipeline that shares another's route
+// cache (pipeline.cache): its distance fields are kept by the geometry
+// counter alone, so two pipelines asked about two schedules of one building
+// search each field once between them. Everything else a pipeline keeps is
+// its own, so each pipeline's counters only have to be consistent with
+// themselves. Left out, a cache of its own, as before.
+//
 // The result:
 //
 //   { versions,           the counters it was worked out for, or null
@@ -55,6 +63,24 @@
 //   out   { type: 'sv2-derived', generation, ok: true, answer }
 //         { type: 'sv2-derived', generation, ok: false, error }
 //
+//   in    { type: 'sv2-derive-scenario', generation, project, versions }
+//   out   { type: 'sv2-derived-scenario', generation, ok, answer | error }
+//         answer is scenarioRun(): trimResult() (engine/scenario.js) of the
+//         project with its open scenario applied, { places, loads, walks,
+//         findings, failedWalks }; never routes or crowd positions
+//   in    { type: 'sv2-suggest', generation, project, versions, finding, options }
+//   out   { type: 'sv2-suggested', generation, ok, answer | error }
+//         answer is suggest() (engine/suggest.js): { suggestions, none }
+//
+// The three lanes have a pipeline each, and the scenario and suggestion
+// pipelines share the main one's route cache. The main lane's pipeline is
+// never handed a scenario's project or a suggestion's candidate, so its
+// answers and what it keeps are exactly what they were with one lane. The
+// scenario lane's `versions` are the page's own counters for that lane
+// (ui/engine-client.js makes them: its schedule counter moves when the
+// store's does or when project.scenario is another object); suggest puts
+// every run of its own under a schedule counter below zero.
+//
 // `answer` is the result with every part the worker's previous answer already
 // carried left out (pack): a whole part, one group's routes, one transition,
 // one day type's loads. Copying every route of the big fixture across takes
@@ -69,10 +95,16 @@ import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
 import { buildingChecks } from './building-checks.js';
+import { applyChanges, reconcile, trimResult } from './scenario.js';
+import { suggest } from './suggest.js';
 
 export const REQUEST = 'sv2-derive';
 export const ANSWER = 'sv2-derived';
 export const READY = 'sv2-worker-ready';
+export const SCENARIO_REQUEST = 'sv2-derive-scenario';
+export const SCENARIO_ANSWER = 'sv2-derived-scenario';
+export const SUGGEST_REQUEST = 'sv2-suggest';
+export const SUGGEST_ANSWER = 'sv2-suggested';
 
 // The parts of a result that are kept or sent whole.
 export const WHOLE_PARTS = ['places', 'walks', 'findings', 'buildingFindings'];
@@ -96,8 +128,9 @@ function walkKey(project, dayRoutes, period, headCounts) {
   return pieces.join(';');
 }
 
-export function createPipeline() {
-  const cache = createRouteCache();
+export function createPipeline(options) {
+  const given = options && options.cache;
+  const cache = given || createRouteCache();
   let held = null;
   let runs = 0;
 
@@ -195,15 +228,38 @@ export function createPipeline() {
 
   return {
     run,
-    // Forget everything: the next run works it all out.
+    // the route cache, for a pipeline that is to share it
+    cache,
+    // Forget everything: the next run works it all out. A cache handed in
+    // is the pipeline's that made it, and stays as it is.
     clear() {
       held = null;
+      if (given) return;
       cache.fields.clear();
       cache.routes.clear();
       cache.bytes = 0;
       cache.stamp = undefined;
     },
   };
+}
+
+// The scenario lane's answer: the project with its open scenario's changes
+// applied, those that still apply (reconcile, which leaves out a change
+// whose group, room, day type or period is gone, one a later change
+// replaces, and one the schedule already has), run on `pipeline`, trimmed
+// to what compareResults reads. The project handed in is not changed. With
+// no scenario open, the project as it is.
+export function scenarioRun(pipeline, project, versions) {
+  const kept = reconcile(project, project.scenario).changes;
+  return trimResult(pipeline.run(applyChanges(project, kept), versions));
+}
+
+// The suggestion lane's answer: suggest() run on `pipeline`, which must not
+// be the main lane's (engine/suggest.js, "Counters"). `versions` are the
+// store's; suggest reads only their geometry and building counters.
+export function suggestRun(pipeline, project, versions, finding, options) {
+  const opts = options || {};
+  return suggest(project, finding, { pipeline, versions: countersOf(versions), otherTeachersRooms: opts.otherTeachersRooms === true, limit: opts.limit });
 }
 
 // Is this the route the other side already has? A route that was walked is
@@ -313,9 +369,32 @@ const scope = typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undef
 
 if (scope) {
   const pipeline = createPipeline();
+  const scenarioPipeline = createPipeline({ cache: pipeline.cache });
+  const suggestionPipeline = createPipeline({ cache: pipeline.cache });
   let sent = null;
+  const said = (error) => (error && error.message ? String(error.message) : String(error));
   scope.addEventListener('message', (event) => {
     const message = event.data;
+    if (message && message.type === SCENARIO_REQUEST) {
+      try {
+        const answer = scenarioRun(scenarioPipeline, message.project, message.versions);
+        scope.postMessage({ type: SCENARIO_ANSWER, generation: message.generation, ok: true, answer });
+      } catch (error) {
+        scenarioPipeline.clear();
+        scope.postMessage({ type: SCENARIO_ANSWER, generation: message.generation, ok: false, error: said(error) });
+      }
+      return;
+    }
+    if (message && message.type === SUGGEST_REQUEST) {
+      try {
+        const answer = suggestRun(suggestionPipeline, message.project, message.versions, message.finding, message.options);
+        scope.postMessage({ type: SUGGEST_ANSWER, generation: message.generation, ok: true, answer });
+      } catch (error) {
+        suggestionPipeline.clear();
+        scope.postMessage({ type: SUGGEST_ANSWER, generation: message.generation, ok: false, error: said(error) });
+      }
+      return;
+    }
     if (!message || message.type !== REQUEST) return;
     try {
       const result = pipeline.run(message.project, message.versions);
@@ -326,7 +405,7 @@ if (scope) {
       // the page starts again from nothing after a failure, so this side does too
       pipeline.clear();
       sent = null;
-      scope.postMessage({ type: ANSWER, generation: message.generation, ok: false, error: error && error.message ? String(error.message) : String(error) });
+      scope.postMessage({ type: ANSWER, generation: message.generation, ok: false, error: said(error) });
     }
   });
   // a worker whose imports never arrive says nothing, and the page stops waiting for it
