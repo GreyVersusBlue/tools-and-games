@@ -984,7 +984,8 @@ export function roofOutline(floor) {
 
 // The rooms in groups that meet, one to the next: two rooms meet where a wall
 // of one comes within OUTLINE_ON of a wall of the other (touching, a corner
-// on a wall, crossing) or a corner of one lies inside the other (#991). No
+// on a wall, crossing) or a corner of one lies on the other's floor, in its
+// outer ring and in none of its holes (#991, #1002). No
 // wall of one group meets, crosses or encloses a wall of another, so each is
 // judged alone. By bounds alone (#971), a room standing in the notch of an
 // L-shaped room was judged with it.
@@ -1023,7 +1024,9 @@ function roomsMeet(p, q) {
   const segs = (sh) => sh.rings.flatMap((r) => r.pts.map((a, i) => [a, r.pts[(i + 1) % r.pts.length]]));
   const sp = segs(p), sq = segs(q);
   for (const [a, b] of sp) for (const [c, d] of sq) if (segGap(a, b, c, d) <= OUTLINE_ON) return true;
-  const inside = (u, v) => u.rings.some((r) => pointInRing(r.pts, v.rings[0].pts[0].x, v.rings[0].pts[0].z));
+  // On the other's floor: a room standing in another's own hole is clear of
+  // it, as one standing in a court of rooms is (#1002).
+  const inside = (u, v) => pointInShape(u, v.rings[0].pts[0].x, v.rings[0].pts[0].z);
   return inside(p, q) || inside(q, p);
 }
 
