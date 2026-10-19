@@ -430,6 +430,27 @@ export function openPrintPreview(ctx, outputId, options) {
     })).catch(() => { /* the document already on show stands */ });
   }
 
+  // The congestion report with a scenario open prints what the scenario
+  // would change: the scenario lane's comparison, asked here whoever opened
+  // the report, so the section is the same from Movement and from the lab.
+  // Until it comes the section says it is still being worked out; a failure
+  // or a null answer is shown as such. As above, the first document is
+  // replaced only once it is laid out. data-scenario is 'asked', then
+  // 'answered' once the document with the answer in it is laid out.
+  if (output.id === 'congestion' && project().scenario && store.derived && store.derived.engine && typeof store.derived.scenario === 'function') {
+    element.dataset.scenario = 'asked';
+    const answered = (scenario) => first.then(() => {
+      if (!alive) return null;
+      derived = { ...(derived || {}), scenario };
+      return show().then(() => {
+        if (alive) element.dataset.scenario = 'answered';
+      });
+    });
+    store.derived.scenario()
+      .then(answered, (error) => answered({ failed: error && error.message ? String(error.message) : String(error) }))
+      .catch(() => { /* the document already on show stands */ });
+  }
+
   return {
     element,
     frame,
