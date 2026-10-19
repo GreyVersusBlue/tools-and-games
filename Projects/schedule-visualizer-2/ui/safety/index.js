@@ -229,13 +229,18 @@ export const section = {
 
     // ---- picking a room
     //   options.say     say it in the live region
-    //   options.bring   bring the room onto the map (picked from a list)
+    //   options.bring   bring its way out onto the map (picked from a list):
+    //                   the room's floor shown, and the map fitted to the
+    //                   window, since a way out can cross every floor
     function pick(roomId, options) {
       const opts = options || {};
       const row = roomId && picture ? picture.byRoom.get(roomId) : null;
       memory.picked = row ? roomId : null;
       draw();
-      if (opts.bring && row && row.cells.length > 0) plan.show(row.floorId, row.cells);
+      if (opts.bring && row && row.cells.length > 0) {
+        plan.show(row.floorId, row.cells);
+        plan.fit();
+      }
       if (opts.say) ctx.announce(lineWords.textContent);
     }
 
