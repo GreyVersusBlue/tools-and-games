@@ -91,6 +91,7 @@ export const GROUPS = {
     'ui/scenario-lane.test.mjs', // SV2-64
     'ui/safety.test.mjs', // SV2-67b
     'ui/scenarios-model.test.mjs', // SV2-68b
+    'ui/difference.test.mjs', // SV2-69
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -130,6 +131,7 @@ export const GROUPS = {
     'browser/safety.mjs', // SV2-67
     'browser/scenario.mjs', // SV2-68
     'browser/congestion-scenario.mjs', // SV2-71
+    'browser/difference.mjs', // SV2-69
     'a11y/axe.mjs',
   ],
   a11y: [
