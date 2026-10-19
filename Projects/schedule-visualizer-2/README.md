@@ -166,6 +166,7 @@ row names a file it does not run.
 | `test/engine/scenario-actions.test.mjs` | The scenario lab's actions: start, rename, add and remove a change, discard, compare with another file, apply as one undo step |
 | `test/engine/prints-door-cards.test.mjs` | Door cards: which rooms and in what order, the cropped maps of the way out, the steps and their second sheet, rooms with no way out, and the floor plan's crop and route options |
 | `test/engine/suggest.test.mjs` | Suggestions for a finding: the candidates, the two stages, the order, the sentence, at most five, "No small change clears this." |
+| `test/engine/prints-congestion-scenario.test.mjs` | The congestion report's scenario section: before its comparison comes, the changes, the figures with their signs, new and resolved findings, places busier and quieter, a change that no longer applies, a failed or stale comparison, typed names, the same from Movement and from the lab |
 | `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
 | `test/ui/helpers.test.mjs` | The interface's plain functions: the shortcut guard, fields, the picker, the table |
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
@@ -214,6 +215,7 @@ row names a file it does not run.
 | `test/browser/plan-map.mjs` | The plan map mounted through its module as Scenarios and Safety will: their stubs as they were, the toast clearance of two maps, the keep on the stage and the stage's least |
 | `test/browser/safety.mjs` | The Safety section: a room picked by pointer and by keyboard, every room coloured by exit with its key, the exits and the rooms with no way out, door cards for one room, the rooms ticked and every room through the preview, typed names as typed, the stage and toast rules at three sizes |
 | `test/browser/scenario.mjs` | The scenario lab: start and rename, each kind of change by pointer and by keyboard, a chip removed, a change that cancels itself, a change dropped when its room goes and back on Undo, the comparison as the scenario lane gives it and while it works, Apply as one step of undo, Discard asking, compare with a file and another building refused, the congestion report, the spec 18 journey, typed names as typed, the bar with touch at three sizes |
+| `test/browser/congestion-scenario.mjs` | The congestion report with a scenario open: its section once the comparison comes, the same text from Movement's button and from the preview opened as the lab opens it, and what it says while the comparison has not come and when it failed |
 | `test/a11y/axe.mjs` | The accessibility sweep of every screen, light and dark |
 | `test/timing/routing.mjs` | Routing under its budget at the promised size |
 | `test/timing/crowd.mjs` | The crowd model under its budget |

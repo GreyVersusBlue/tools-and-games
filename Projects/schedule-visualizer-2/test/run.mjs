@@ -77,6 +77,7 @@ export const GROUPS = {
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/suggest.test.mjs', // SV2-63
+    'engine/prints-congestion-scenario.test.mjs', // SV2-71
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
@@ -127,6 +128,7 @@ export const GROUPS = {
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
     'browser/scenario.mjs', // SV2-68
+    'browser/congestion-scenario.mjs', // SV2-71
     'a11y/axe.mjs',
   ],
   a11y: [

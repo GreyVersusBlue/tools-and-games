@@ -461,18 +461,18 @@ test('a day type on which nobody is late says so, and one that is the same as an
   assert.ok(one.includes('<p class="doc-meaning">B Day is the same as A Day and has no figures of its own.</p>'));
 });
 
-test('an open scenario gets one sentence saying its effect is left out; no scenario, no word of one', () => {
+test('an open scenario whose comparison has not come gets one sentence saying it is being worked out; no scenario, no word of one', () => {
   assert.equal(countOf(congestionPrint.render(sample.project, null, NOW).html, 'cenario'), 0);
   const project = school();
   project.scenario = { name: 'Move 7th grade <b>', changes: [{ kind: 'move', dayTypeId: DAY_A, groupId: 'gsample07a', period: 2, roomId: 'rsample101' }, { kind: 'move', dayTypeId: DAY_A, groupId: 'gsample07b', period: 2, roomId: 'rsample102' }], compared: null };
   const { html } = congestionPrint.render(project, null, NOW);
-  assert.equal(countOf(html, '<h2>The scenario</h2>'), 1);
-  assert.ok(html.includes('<p class="doc-none">A scenario, Move 7th grade &lt;b&gt;, is open with 2 changes. What it would change is left out of this report: the comparison is not built yet, and every figure here is the schedule as it stands.</p>'));
+  assert.equal(countOf(html, '<h2>The scenario: <span dir="auto">Move 7th grade &lt;b&gt;</span></h2>'), 1);
+  assert.ok(html.includes('<p class="doc-none">Every figure above was worked out for the schedule as it stands. What the scenario <span dir="auto">Move 7th grade &lt;b&gt;</span> would change is still being worked out.</p>'));
   assert.equal(countOf(html, '<b>'), 0);
   // the figures are the schedule's own: nothing of the scenario was applied
   assert.equal(html.replace(/\n<section class="doc-section doc-scenario">[\s\S]*?<\/section>/, ''), congestionPrint.render(school(), null, NOW).html);
   project.scenario = { name: '  ', changes: [], compared: null };
-  assert.ok(congestionPrint.render(project, null, NOW).html.includes('A scenario is open with no changes.'));
+  assert.ok(congestionPrint.render(project, null, NOW).html.includes('What the scenario <span dir="auto">New scenario</span> would change is still being worked out.'));
 });
 
 test('a school where nobody walks still prints both, and says there is nothing to report', () => {
