@@ -561,7 +561,35 @@ function chordPlan(mask, outlines, rects, owners, taken, reach) {
       pieces.push({ pts, tris, trim: true });
     }
   }
-  return { outlines: [...cutLoops, ...polys.map((d) => d.pts)], deckRects, deckPolys: [...polys, ...pieces] };
+  // Along the cut the box's loop and the curve's stand on one line. The run is
+  // the curve's, drawn whole, and the cut loop's edges along its chords are
+  // left out (#992): every such edge is a piece of one chord, so nothing of
+  // the cut loop's own parapet goes with them.
+  const onChord = (p, q) => cuts.some((loop) => loop.some((a, i) => {
+    const b = loop[(i + 1) % loop.length];
+    const ux = b.x - a.x, uz = b.z - a.z, L2 = ux * ux + uz * uz;
+    return [p, q].every((m) => {
+      const t = ((m.x - a.x) * ux + (m.z - a.z) * uz) / L2;
+      return t > -1e-9 && t < 1 + 1e-9 && Math.abs((m.x - a.x) * uz - (m.z - a.z) * ux) <= 1e-9 * Math.sqrt(L2);
+    });
+  }));
+  const parapetSkip = [];
+  cutLoops.forEach((loop, i) => loop.forEach((a, j) => {
+    if (onChord(a, loop[(j + 1) % loop.length])) parapetSkip.push([i, j]);
+  }));
+  return { outlines: [...cutLoops, ...polys.map((d) => d.pts)], deckRects, deckPolys: [...polys, ...pieces], parapetSkip };
+}
+
+// The parapet as the renderer draws it: one `[from, to]` run per edge of every
+// outline, less the edges `parapetSkip` names (#992), which only a plan cut
+// back to a curve's chords carries.
+export function parapetRuns(plan) {
+  const skip = new Set((plan.parapetSkip || []).map(([i, j]) => `${i}:${j}`));
+  const runs = [];
+  plan.outlines.forEach((loop, i) => loop.forEach((a, j) => {
+    if (!skip.has(`${i}:${j}`)) runs.push([a, loop[(j + 1) % loop.length]]);
+  }));
+  return runs;
 }
 
 // Does a covered cell whose middle lies outside `loop` lie partly inside it?

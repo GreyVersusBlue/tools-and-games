@@ -78501,7 +78501,35 @@ function chordPlan(mask, outlines, rects, owners, taken, reach) {
       pieces.push({ pts, tris, trim: true });
     }
   }
-  return { outlines: [...cutLoops, ...polys.map((d) => d.pts)], deckRects, deckPolys: [...polys, ...pieces] };
+  // Along the cut the box's loop and the curve's stand on one line. The run is
+  // the curve's, drawn whole, and the cut loop's edges along its chords are
+  // left out (#992): every such edge is a piece of one chord, so nothing of
+  // the cut loop's own parapet goes with them.
+  const onChord = (p, q) => cuts.some((loop) => loop.some((a, i) => {
+    const b = loop[(i + 1) % loop.length];
+    const ux = b.x - a.x, uz = b.z - a.z, L2 = ux * ux + uz * uz;
+    return [p, q].every((m) => {
+      const t = ((m.x - a.x) * ux + (m.z - a.z) * uz) / L2;
+      return t > -1e-9 && t < 1 + 1e-9 && Math.abs((m.x - a.x) * uz - (m.z - a.z) * ux) <= 1e-9 * Math.sqrt(L2);
+    });
+  }));
+  const parapetSkip = [];
+  cutLoops.forEach((loop, i) => loop.forEach((a, j) => {
+    if (onChord(a, loop[(j + 1) % loop.length])) parapetSkip.push([i, j]);
+  }));
+  return { outlines: [...cutLoops, ...polys.map((d) => d.pts)], deckRects, deckPolys: [...polys, ...pieces], parapetSkip };
+}
+
+// The parapet as the renderer draws it: one `[from, to]` run per edge of every
+// outline, less the edges `parapetSkip` names (#992), which only a plan cut
+// back to a curve's chords carries.
+function parapetRuns(plan) {
+  const skip = new Set((plan.parapetSkip || []).map(([i, j]) => `${i}:${j}`));
+  const runs = [];
+  plan.outlines.forEach((loop, i) => loop.forEach((a, j) => {
+    if (!skip.has(`${i}:${j}`)) runs.push([a, loop[(j + 1) % loop.length]]);
+  }));
+  return runs;
 }
 
 // Does a covered cell whose middle lies outside `loop` lie partly inside it?
@@ -78968,7 +78996,7 @@ function hasCurve(loop) {
 // frustum and the edit camera's standoff.
 const roofTop = (plan) => plan.eaveY + plan.rise;
 
-return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, curvedLoopsOf, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
+return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, curvedLoopsOf, parapetRuns, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
 })();
 // ---- js/sightline.js ----
 const __m_js_sightline_js = (() => {
@@ -81280,7 +81308,7 @@ const { placardsFor, exitSignsFor, EXIT_W, EXIT_H } = __m_js_signage_js;
 const { classify, isGroup } = __m_js_occupancy_js;
 const { terrainField, groundAt, emptyField } = __m_js_terrain_js;
 const { regionsOf, surfaceEntry, markingsFor } = __m_js_site_js;
-const { roofPlan, roofTop, PARAPET_H, COPING_T } = __m_js_roof_js;
+const { roofPlan, roofTop, parapetRuns, PARAPET_H, COPING_T } = __m_js_roof_js;
 const { sampleBake, bakedTint } = __m_js_bakelight_js;
 const { loadModel, writeGLB, FT_TO_M } = __m_js_gltf_js;
 const { modelBytes, modelsOf } = __m_js_models_js;
@@ -87301,11 +87329,7 @@ function initRender(canvas) {
     const wallGeos = [], capGeos = [], deckGeos = [], slopeGeos = [], gableGeos = [];
 
     if (plan.parapetH > 0) {
-      for (const loop of plan.outlines) {
-        for (let i = 0; i < loop.length; i++) {
-          parapetRun(loop[i], loop[(i + 1) % loop.length], plan.eaveY, wallGeos, capGeos);
-        }
-      }
+      for (const [a, b] of parapetRuns(plan)) parapetRun(a, b, plan.eaveY, wallGeos, capGeos);
     }
     for (const rect of plan.deckRects) {
       deckGeos.push(roofFace([

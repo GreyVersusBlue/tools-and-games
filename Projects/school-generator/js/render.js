@@ -53,7 +53,7 @@ import { placardsFor, exitSignsFor, EXIT_W, EXIT_H } from './signage.js';
 import { classify, isGroup } from './occupancy.js';
 import { terrainField, groundAt, emptyField } from './terrain.js';
 import { regionsOf, surfaceEntry, markingsFor } from './site.js';
-import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
+import { roofPlan, roofTop, parapetRuns, PARAPET_H, COPING_T } from './roof.js';
 // --- Phase 9 ---
 import { sampleBake, bakedTint } from './bakelight.js';
 import { loadModel, writeGLB, FT_TO_M } from './gltf.js';
@@ -6033,11 +6033,7 @@ export function initRender(canvas) {
     const wallGeos = [], capGeos = [], deckGeos = [], slopeGeos = [], gableGeos = [];
 
     if (plan.parapetH > 0) {
-      for (const loop of plan.outlines) {
-        for (let i = 0; i < loop.length; i++) {
-          parapetRun(loop[i], loop[(i + 1) % loop.length], plan.eaveY, wallGeos, capGeos);
-        }
-      }
+      for (const [a, b] of parapetRuns(plan)) parapetRun(a, b, plan.eaveY, wallGeos, capGeos);
     }
     for (const rect of plan.deckRects) {
       deckGeos.push(roofFace([
