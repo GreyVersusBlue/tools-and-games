@@ -176,6 +176,8 @@ row names a file it does not run.
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
 | `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
 | `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs |
+| `test/ui/scenario-lane.test.mjs` | The scenario and suggestion lanes: a second pipeline on the shared route cache, the worker's answers, what the client keeps and drops, the main thread giving the worker's answers |
+| `test/ui/safety.test.mjs` | The Safety section's plain functions: the exits' colours far enough apart in both themes and repeating past ten, a way out in runs a floor, the first line, a room's line and the cursor's sentence |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
@@ -210,6 +212,7 @@ row names a file it does not run.
 | `test/browser/hotspots.mjs` | The movement view's inspector: hotspots, travel time, summary, export |
 | `test/browser/playback.mjs` | Playback: play, the scrubber, pace, the markers, the Late line |
 | `test/browser/plan-map.mjs` | The plan map mounted through its module as Scenarios and Safety will: their stubs as they were, the toast clearance of two maps, the keep on the stage and the stage's least |
+| `test/browser/safety.mjs` | The Safety section: a room picked by pointer and by keyboard, every room coloured by exit with its key, the exits and the rooms with no way out, door cards for one room, the rooms ticked and every room through the preview, typed names as typed, the stage and toast rules at three sizes |
 | `test/a11y/axe.mjs` | The accessibility sweep of every screen, light and dark |
 | `test/timing/routing.mjs` | Routing under its budget at the promised size |
 | `test/timing/crowd.mjs` | The crowd model under its budget |
@@ -218,3 +221,4 @@ row names a file it does not run.
 | `test/timing/playback.mjs` | One frame of playback under its budget |
 | `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
+| `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |

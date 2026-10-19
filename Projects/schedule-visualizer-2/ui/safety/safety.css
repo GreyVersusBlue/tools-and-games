@@ -4,3 +4,274 @@
    (ui/surface/plan-map.js), whose rules are ui/movement/movement.css's map
    rules and ui/app.css's block for the plan map's sections; what is the
    evacuation view's and the door cards' alone goes here. */
+
+/* ---------- The key, docked under the map ---------- */
+
+.sfy-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  background: var(--card);
+  border-top: var(--border);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sfy-key__title {
+  font-weight: var(--w-semibold);
+}
+
+.sfy-key__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sfy-key__list[hidden],
+.sfy-key__marks[hidden],
+.sfy-key__note[hidden] {
+  display: none;
+}
+
+.sfy-key__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.sfy-key__marks {
+  margin: 0;
+}
+
+/* the colours repeat past ten; zoom in for the numbers: a line of its own */
+.sfy-key__note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-2);
+}
+
+/* an exit's number on its colour: the badge drawn on a room, in words too */
+.sfy-swatch {
+  display: inline-block;
+  flex: none;
+  min-width: 1.5em;
+  padding: 0 0.3em;
+  border-radius: var(--r-1);
+  /* the colour and the number's ink are set where it is made, the ink by
+     labelOn() (ui/colour.js) so the number reads at 4.5:1 on any exit colour */
+  font-weight: var(--w-semibold);
+  text-align: center;
+}
+
+.sfy-swatch--small {
+  min-width: 1.3em;
+  font-size: var(--t-xs);
+  line-height: var(--lh-sm);
+}
+
+/* ---------- The empty screen ---------- */
+
+.sfy-empty[hidden] {
+  display: none;
+}
+
+.sfy-empty {
+  padding: var(--s-6) var(--s-5) max(var(--s-6), var(--toast-room, 4.75rem));
+}
+
+/* ---------- The inspector ---------- */
+
+.sfy-panel__lead {
+  margin: var(--s-2) 0 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-exits,
+.sfy-rooms,
+.sfy-missing,
+.sfy-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sfy-exit {
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.sfy-exit__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--t-md);
+  line-height: var(--lh-md);
+  font-weight: var(--w-semibold);
+}
+
+.sfy-exit__where,
+.sfy-exit__assembly,
+.sfy-missing__why,
+.sfy-missing__none {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-exit__assembly--none {
+  color: var(--ink-2);
+}
+
+.sfy-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin-top: var(--s-2);
+}
+
+/* a room's name: shows its way out on the map */
+.sfy-room {
+  min-height: 28px;
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.sfy-room:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sfy-room[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: var(--w-semibold);
+}
+
+.sfy-missing__row {
+  margin-top: var(--s-3);
+}
+
+.sfy-cards__print {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.sfy-cards__print [hidden] {
+  display: none;
+}
+
+.sfy-cards__hint {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-floor {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.sfy-floor__name {
+  padding: 0;
+  font-weight: var(--w-semibold);
+}
+
+.sfy-row {
+  padding: var(--s-2) 0;
+  border-bottom: var(--border);
+}
+
+.sfy-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.sfy-row__box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.sfy-row__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: var(--w-medium);
+  overflow-wrap: anywhere;
+}
+
+.sfy-row__show {
+  flex: none;
+  font-size: var(--t-sm);
+}
+
+.sfy-row__way {
+  margin: var(--s-1) 0 0 calc(18px + var(--s-2));
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.sfy-row__way[data-way="none"] {
+  color: var(--problem);
+}
+
+/* Under 640 px, or on a coarse pointer, every control here takes a finger
+   (DESIGN 5.3, Targets): 44 px in its smaller dimension. */
+@media (max-width: 640px), (pointer: coarse) {
+  .sfy-room,
+  .sfy-inspector .btn {
+    min-height: 44px;
+  }
+
+  .sfy-row__head {
+    min-height: 44px;
+  }
+
+  .sfy-row__box {
+    width: 24px;
+    height: 24px;
+  }
+
+  .sfy-row__name {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+  }
+
+  .sfy-row__show {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .sfy-row__way {
+    margin-left: calc(24px + var(--s-2));
+  }
+}
