@@ -435,7 +435,9 @@ new answer, and "a curve on a courtyard keeps the rectangles" only in its
 outline line, since its hip half is increment 4's. (4) `buildingsOf` groups a
 room with a hole with a separate room standing in that hole (`roomsMeet`
 asks every ring), which only matters where the storey is refused as a whole;
-left in the WISHLIST. `roofPlan`'s rectangle test through `inFootprint` is
+left in the WISHLIST. *Closed, 2026-10-19 (worker TG-28-holegroup, #1002):*
+`roomsMeet` asks `pointInShape`, the room's floor, so a room in another's own
+hole is its own building, as one in a court of rooms already was. `roofPlan`'s rectangle test through `inFootprint` is
 the old `pointInRing` until a skeleton block carries holes. Increment 4
 starts from here.
 

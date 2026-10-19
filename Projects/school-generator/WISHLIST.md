@@ -391,8 +391,9 @@ and add to this list rather than starting a new one.
   accessible route, and that is settled (#833, Devon, 2026-10-05). A
   `ramp-rise` or `narrow-ramp` ramp is marked as every finding with a
   position is: a ring at the ramp's foot on the map, and "Show it on the
-  plan" pans the edit view there. The edit view itself draws no mark for
-  any finding, so the ramp is not outlined there.
+  plan" pans the edit view there and draws the map's marks in it, a ring at
+  the same foot (#1003), until the next edit. That ring is the mark; the
+  ramp's own outline is not drawn.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
@@ -490,11 +491,12 @@ and add to this list rather than starting a new one.
   one loop through that corner twice, kept with `pinch` set (#1001): under the
   parapet it runs round the court with the deck the loop itself, and hipped
   it stands on the outer eave with the court's own eave as a hole, the two
-  eaves not touching (question 6's default). Left: a court narrower than two
+  eaves not touching (question 6's default). A room standing in another
+  room's own hole, touching none of its walls, is a building of its own, as
+  one standing in a court of rooms is, so what is refused in the court is
+  refused alone (#1002). Left: a court narrower than two
   eaves, or a pinched court its eave closes or splits, keeps the hip on
-  rectangles (`DESIGN-roof-holes.md` question 3's default), a room with a hole grouped with a separate room standing in
-  that hole when the storey is judged building by building (`roomsMeet`
-  asks every ring), an arc of two chords off a wall whose ends turn unlike (a
+  rectangles (`DESIGN-roof-holes.md` question 3's default), an arc of two chords off a wall whose ends turn unlike (a
   parallelogram's end: bowed in two chords it is the polygon of a chamfer as
   long as the wall before it, #994), and a notch whose mouth closes before
   its inside does (a bottle: the wavefront run out is the eave and a pocket,
