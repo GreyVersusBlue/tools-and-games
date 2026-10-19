@@ -418,6 +418,27 @@ exactly as before" (now: accepted, no curve, rectangles). Browser: extend
 deck triangles over the building, none with its middle in the court, area the
 outline less the court once over. Leaves: the hip over a court.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes3, #998).* Shipped as
+written, questions 2 and 4 on their defaults, the 108-case hash unchanged.
+Four findings. (1) A room's own hole goes into `unionOf`'s edge
+bookkeeping wound against its outer ring, so it comes out exactly as a court
+between rooms does, and a room filling a hole cancels its walls as a shared
+wall would; one rule for both, and the court is a hole of the *smallest*
+loop round it, so a courtyard building standing in another's court keeps its
+own. (2) A loop standing in another's court is no longer an overlap. (3) More
+tests pinned the refusal than section 1 lists: also `roof-curve`'s empty
+storey (the return shape), `roof-courtyard`'s "beside a courtyard building"
+and "a courtyard on the curved building itself", five in
+`roof-groupwalls.test.mjs` that used the courtyard L as a refused building,
+and `roof-takeoff`'s list of mask-counted roofs; each was rewritten to the
+new answer, and "a curve on a courtyard keeps the rectangles" only in its
+outline line, since its hip half is increment 4's. (4) `buildingsOf` groups a
+room with a hole with a separate room standing in that hole (`roomsMeet`
+asks every ring), which only matters where the storey is refused as a whole;
+left in the WISHLIST. `roofPlan`'s rectangle test through `inFootprint` is
+the old `pointInRing` until a skeleton block carries holes. Increment 4
+starts from here.
+
 **4. Hipped roofs over a courtyard.** `roof.js`: `courtEaves`, `curvedRoofs`
 with holes, `skeletonRoofsOf` taking footprints with holes; `elevation.js`
 `roofHeightAt` through `inFootprint`. Tests in `test/roof-holes.test.mjs`:

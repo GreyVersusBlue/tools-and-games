@@ -1552,7 +1552,10 @@ const CHECKS = [
   // The same with a court in the hall (#998). test/roof-holes.test.mjs proves
   // the plan's deck is the outline less the court; this reads the drawn deck
   // back: no triangle with its middle in the court, none outside the outline,
-  // and the outline less the court covered once.
+  // and the outline less the court covered once. With the deck triangulated
+  // without its court it is the area line that fails (1989.26 ft² against
+  // 1893.26: no triangle's middle lay in the court); with render.js drawing
+  // the outer ring alone, the build throws on the court's indices.
   {
     name: 'curved-parapet-court',
     what: 'a flat roof with a parapet over a curved L with a court has a deck that is the outline less the court, once over',
