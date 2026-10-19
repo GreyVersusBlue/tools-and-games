@@ -524,7 +524,7 @@ test('a number too long for one line wraps on the sheet: nothing keeps it on one
   assert.equal(rules['.sign__number']['white-space'], undefined);
   assert.equal(rules['.sign__number']['overflow-wrap'], 'anywhere');
   // only the period column of a teacher schedule is kept on one line, and a name with the comma after it (SV2-51 item 9); the sign wraps between its words (SV2-45 item 4)
-  assert.equal(countOf(css.slice(css.indexOf('SV2-24: batch sheets')), 'nowrap'), 2);
+  assert.equal(countOf(css.slice(css.indexOf('SV2-24: batch sheets'), css.indexOf('SV2-66: door cards')), 'nowrap'), 2);
   assert.equal(rules['.sign__with']['white-space'], 'nowrap');
   assert.equal(rules['.sign__with > span']['white-space'], 'normal', 'the name inside still wraps');
 });

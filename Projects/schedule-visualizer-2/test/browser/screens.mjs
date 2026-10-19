@@ -274,6 +274,31 @@ const playbackAt = (seconds, more) => async (page) => {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 };
 
+// SV2-68: the scenario lab with a scenario open on the sample school (a move
+// that changes who teaches, a swap of periods, a swap of rooms), drawn and
+// its comparison answered; `dropped` deletes the room the move goes to.
+const scenarioOpen = (options) => async (page) => {
+  const opts = options || {};
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async (drop) => {
+    const { newScenario, addScenarioChange, deleteSpaces } = await import(new URL('engine/actions.js', location.href).href);
+    const store = globalThis.sv2.store;
+    store.apply(newScenario, { name: 'Library swap' });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+    store.apply(addScenarioChange, { change: { kind: 'swapPeriods', dayTypeId: 'dsample00b', groupId: 'gsample06a', periodA: 0, periodB: 3 } });
+    store.apply(addScenarioChange, { change: { kind: 'swapRooms', dayTypeId: 'dsample00a', groupA: 'gsample08a', groupB: 'gsample08b', period: 1 } });
+    if (drop) store.apply(deleteSpaces, { spaceIds: ['rsample101'] });
+  }, opts.dropped === true);
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.mode === 'open' && el.dataset.compare === 'ready' && !el.scenarios.pending && el.scenarios.plan.project === globalThis.sv2.store.project && Number(document.getElementById('scenarios-plan').dataset.drawn || 0) > 0;
+  }, { timeout: 30000 });
+  if (opts.apply) {
+    await page.click('[data-action="apply"]');
+    await page.waitForSelector('#scenario-apply[open]');
+  }
+};
+
 // SV2-67: the Safety section once its map is styled, measured and drawn for
 // the project in the store.
 async function safetyDrawn(page) {
@@ -805,6 +830,11 @@ export const SCREENS = [
       await page.waitForFunction(() => document.querySelector('.pub input[data-view="teacher"]').getClientRects().length > 0);
     },
   },
+  { id: 'scenarios-open', hash: '#scenarios', open: scenarioOpen() }, // SV2-68: a scenario's chips, the forms, the comparison, the bar
+  { id: 'scenarios-phone', hash: '#scenarios', viewport: { width: 390, height: 844, mobile: true }, open: scenarioOpen() }, // SV2-68: a phone, with touch
+  { id: 'scenarios-phone-sideways', hash: '#scenarios', viewport: { width: 844, height: 390, mobile: true }, open: scenarioOpen() }, // SV2-68: a phone on its side, with touch
+  { id: 'scenarios-dropped', hash: '#scenarios', open: scenarioOpen({ dropped: true }) }, // SV2-68: a change that no longer applies, with Remove them
+  { id: 'scenarios-apply', hash: '#scenarios', open: scenarioOpen({ apply: true }) }, // SV2-68: Apply's summary
   { id: 'safety-map', hash: '#safety', open: safetyDrawn }, // SV2-67: every room's way out by exit, the key, the Exits tab
   { id: 'safety-phone', hash: '#safety', viewport: { width: 390, height: 844, mobile: true }, open: safetyDrawn }, // SV2-67: a phone, with touch
   { id: 'safety-phone-sideways', hash: '#safety', viewport: { width: 844, height: 390, mobile: true }, open: safetyDrawn }, // SV2-67: a phone on its side, with touch

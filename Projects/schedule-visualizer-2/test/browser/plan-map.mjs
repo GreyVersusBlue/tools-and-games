@@ -3,10 +3,14 @@
 // makes: node test/browser/plan-map.mjs
 //
 // The shell's layout of a plan holds for Scenarios and Safety only while a
-// map is mounted in them (data-plan-map), so their stubs, which mount none,
-// sit as they did before the map came out of Movement (SV2-65b, measured at
-// 3c0eee81 with Getting started up on a new device). The surface's
-// --toast-clear is the last mounted map's, and an earlier map's value comes
+// map is mounted in them (data-plan-map), so with none mounted they sit as
+// their stubs did before the map came out of Movement (SV2-65b, measured at
+// 3c0eee81 with Getting started up on a new device). Both sections mount
+// maps of their own now (Safety since SV2-67, Scenarios since SV2-68), so
+// each case here takes the scenario lab away first and puts in its place the
+// Scenarios stub as it was at 3c0eee81 (bare()): the section then stands as
+// a plan-map section with no map mounted, and the maps made here are alone.
+// The surface's --toast-clear is the last mounted map's, and an earlier map's value comes
 // back when the later one goes. A pan or a zoom past the edge keeps
 // KEEP_ON_STAGE px of the floors on the stage, and the stage is never under
 // its least however little the section has.
@@ -47,6 +51,36 @@ const BEFORE = {
   '390 #scenarios': { padding: '16px 12px 76px', grid: true, stub: [12, 246, 366, 372], started: [12, 65, 366, 65], toasts: '12px' },
   '390 #safety': { padding: '16px 12px 76px', grid: true, stub: [12, 274, 366, 316], started: [12, 65, 366, 65], toasts: '12px' },
 };
+
+// The Scenarios section with no map mounted: the lab mounted afresh, its map
+// unmounted and its element taken off the page, and in its place the stub it
+// replaced, made as that stub made itself (ui/scenarios/index.js at
+// 8e265fa6, for the sample school with no scenario open).
+async function bare(page) {
+  await go(page, '#project');
+  await go(page, '#scenarios');
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 15000 });
+  await page.evaluate(async () => {
+    globalThis.planMapCard = await import('./ui/components/card.js');
+  });
+  await page.evaluate(() => {
+    const lab = document.querySelector('.scn');
+    lab.scenarios.plan.unmount();
+    // the stub had no inspector and no row of floors in the top bar
+    globalThis.sv2.ctx.setInspector(null);
+    globalThis.sv2.ctx.setSecondRow(null);
+    const { intro, NOT_BUILT } = globalThis.planMapCard;
+    const stub = document.createElement('div');
+    stub.className = 'stub';
+    stub.append(intro({
+      headline: 'This is the scenario lab.',
+      first: 'Try a change to the schedule here: move a group, swap two rooms. See what it does to the corridors, then apply it or discard it. The real schedule is not touched until you apply.',
+      facts: 'No scenario is open.',
+      note: NOT_BUILT,
+    }));
+    lab.replaceWith(stub);
+  });
+}
 
 async function stubShape(page) {
   return page.evaluate(() => {
@@ -151,9 +185,10 @@ function kept(shown, keep, why) {
 // ---------------------------------------------------------------- item 1
 
 async function stubsAsBefore(session, size) {
-  // Safety mounts its own map since SV2-67, so the Scenarios stub is the one left
+  // Safety mounts its own map since SV2-67 and Scenarios since SV2-68: the
+  // Scenarios section with its map taken away stands for a section with none
   for (const hash of ['#scenarios']) {
-    await go(session.page, hash);
+    await bare(session.page);
     const shape = await stubShape(session.page);
     const was = BEFORE[size + ' ' + hash];
     assert.equal(await session.page.evaluate(() => document.querySelector('.surface__layout').dataset.planMap), undefined, hash + ': the layout says a plan map is mounted where none is');
@@ -182,7 +217,7 @@ test('SV2-65b item 1: the Scenarios stub at 390 by 844 with touch keeps the padd
 
 test('SV2-65b item 1: a map mounted in Scenarios puts the plan\'s layout on it, and its unmount takes it away again', async () => {
   const page = wide.page;
-  await go(page, '#scenarios');
+  await bare(page);
   await mount(page, 'lab-one');
   const on = await page.evaluate(() => ({ mark: document.querySelector('.surface__layout').dataset.planMap, padding: getComputedStyle(document.querySelector('.surface__layout')).padding }));
   assert.deepEqual(on, { mark: 'lab-one', padding: '0px' }, 'the map in Scenarios is not edge to edge');
@@ -195,7 +230,7 @@ test('SV2-65b item 1: a map mounted in Scenarios puts the plan\'s layout on it, 
 
 test('SV2-65b item 2: two maps in one page: the later one\'s --toast-clear holds, and when it goes the earlier one\'s stands', async () => {
   const page = wide.page;
-  await go(page, '#scenarios');
+  await bare(page);
   await mount(page, 'lab-a', { slot: 'flex: 0 0 500px; height: 480px' });
   const alone = await clearOf(page);
   assert.match(alone, /^[1-9]\d*px$/, 'the first map measured nothing: ' + alone);
@@ -227,7 +262,7 @@ test('SV2-65b item 2: two maps in one page: the later one\'s --toast-clear holds
 
 test('SV2-65b item 4: a wheel and the zoom past the edge leave KEEP_ON_STAGE px of the floors on the stage, through createPlanMap', async () => {
   const page = wide.page;
-  await go(page, '#scenarios');
+  await bare(page);
   await mount(page, 'lab-keep');
   const keep = await page.evaluate(async () => (await import('./ui/surface/plan-map.js')).KEEP_ON_STAGE);
   assert.equal(keep, 48);
@@ -257,7 +292,7 @@ test('SV2-65b item 4: a wheel and the zoom past the edge leave KEEP_ON_STAGE px 
 
 test('SV2-65b item 4: with little room under its first line the stage keeps its least and the section scrolls, through createPlanMap', async () => {
   const page = wide.page;
-  await go(page, '#scenarios');
+  await bare(page);
   // 220 px of section, 160 of them a first line: 60 px under it
   await mount(page, 'lab-least', { slot: 'flex: 0 0 600px; height: 220px', head: 160 });
   await page.waitForFunction(() => globalThis.planMaps['lab-least'].map.root.style.getPropertyValue('--mov-room') !== '', { timeout: 5000 });
