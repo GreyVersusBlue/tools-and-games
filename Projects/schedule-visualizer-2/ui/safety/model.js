@@ -20,6 +20,7 @@
 //   firstLine(project, picture, picked) -> parts [{ text, name }]
 //     the screen's first line: what is drawn, as a sentence
 //   roomLine(row, picture) -> string   "Door A · 45 s · Turn left out of the door."
+//     (the exit's number is beside it, on its colour, where it is shown)
 //
 // Every name in it is as typed; whoever puts them on screen sets textContent.
 
@@ -64,7 +65,7 @@ export function safetyPicture(project, graph) {
 export function roomLine(row, picture) {
   if (!row.ok) return row.sentence;
   const exit = picture.exits.find((each) => each.exitId === row.exitId);
-  const bits = [(exit ? exit.number + ' ' + exit.name : 'An exit'), formatDuration(row.seconds)];
+  const bits = [exit ? exit.name : 'An exit', formatDuration(row.seconds)];
   if (row.first) bits.push(row.first);
   return bits.join(' · ');
 }
