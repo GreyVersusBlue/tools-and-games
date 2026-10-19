@@ -475,17 +475,21 @@ and add to this list rather than starting a new one.
   Two rooms meeting at a corner are a loop each, so a curved one there takes
   the skeleton and the chord parapet; an arc of two chords is a curve when it
   was bowed off a wall square to both its neighbours (#976).
+  A curve bowed in tighter than the 1.5ft eave stands on its skeleton, the
+  eave closing over it as the wavefront runs out, and a V or inward-tapering
+  notch closes the same way (#993).
   Left: a courtyard (one meeting the outside at a single corner
   included), a room with a hole, an arc of two chords off a wall that was not
-  square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
-  keep rectangles too; `gable` over a curve keeps
+  square to its neighbours, and a notch whose sides meet head on (a square
+  notch, a slot, a dovetail: a split in the outward wavefront, which
+  `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
   rectangles (a weighted skeleton); a curved building whose 4ft mask cells
   touch another building's takes its chord parapet (#988), and where a cell
   of the other reaches inside its chords (a box 0.2ft off a bow, its cell
   1.56ft inside them) the other building gives way (#990, Devon): its loop
   is cut back to the chords, its bitten cells are decked as what is left of
   them, and the takeoff and the estimate count that deck; along the cut the
-  two parapets stand on one line, drawn twice, and a cut `ringMinus` cannot
+  parapet is the curved building's, drawn once (#992), and a cut `ringMinus` cannot
   vouch for (an edge along the other ring) keeps the pair stepped; the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
