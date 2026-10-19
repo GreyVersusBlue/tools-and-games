@@ -164,10 +164,12 @@ test('index.html links the Building section\'s stylesheet: it is there before th
 // SV2-65: Scenarios and Safety mount the plan map; their own sheets are
 // linked by index.html before either section has been on screen, once each,
 // after Movement's (whose map rules they lean on), and carry no rule yet.
-test('index.html links the Scenarios and Safety sheets after Movement\'s: loaded before either section is opened, linked once, a header comment only', async () => {
+test('index.html links the Scenarios and Safety sheets after Movement\'s: loaded before either section is opened, linked once, Scenarios\' a header comment only and Safety\'s its own rules', async () => {
   for (const [name, file] of [['scenarios', 'ui/scenarios/scenarios.css'], ['safety', 'ui/safety/safety.css']]) {
     assert.match(source('index.html'), new RegExp('<link rel="stylesheet" href="' + file.replace(/[./]/g, '\\$&') + '" data-sheet="' + name + '">'), file);
-    assert.equal(source(file).replace(/\/\*[\s\S]*?\*\//g, '').trim(), '', file + ' carries more than its header comment');
+    // SV2-67: Safety's sheet has its own rules now, every one under its own .sfy names
+    if (name === 'safety') assert.deepEqual(source(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media[^{]*\{/g, '').match(/[^{}]+(?=\{)/g).flatMap((list) => list.split(',')).map((one) => one.trim()).filter((one) => !/^\.sfy[-\w]*([\s>:[.]|$)/.test(one)), [], file + ' styles something that is not the Safety section\'s own');
+    else assert.equal(source(file).replace(/\/\*[\s\S]*?\*\//g, '').trim(), '', file + ' carries more than its header comment');
   }
   const links = await page.$$eval('link[rel="stylesheet"]', (all) => all.map((link) => ({ href: link.getAttribute('href'), sheet: link.dataset.sheet || null, inHead: link.parentNode === document.head, loaded: link.sheet !== null })));
   const at = (sheet) => links.findIndex((link) => link.sheet === sheet);

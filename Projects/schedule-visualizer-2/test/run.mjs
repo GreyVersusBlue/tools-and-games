@@ -87,6 +87,8 @@ export const GROUPS = {
     'ui/staff-pass.test.mjs', // SV2-45
     'ui/engine-client.test.mjs', // SV2-49
     'ui/plan-map.test.mjs', // SV2-65
+    'ui/scenario-lane.test.mjs', // SV2-64
+    'ui/safety.test.mjs', // SV2-67b
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -123,6 +125,7 @@ export const GROUPS = {
     'browser/playback.mjs', // SV2-19
     'browser/m3-pass.mjs', // SV2-43
     'browser/plan-map.mjs', // SV2-65b
+    'browser/safety.mjs', // SV2-67
     'a11y/axe.mjs',
   ],
   a11y: [
@@ -137,6 +140,7 @@ export const GROUPS = {
     'timing/playback.mjs', // SV2-44
     'timing/evacuation.mjs', // SV2-62
     'timing/suggest.mjs', // SV2-63
+    'timing/scenario-lane.mjs', // SV2-64
   ],
 };
 

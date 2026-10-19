@@ -151,7 +151,8 @@ function kept(shown, keep, why) {
 // ---------------------------------------------------------------- item 1
 
 async function stubsAsBefore(session, size) {
-  for (const hash of ['#scenarios', '#safety']) {
+  // Safety mounts its own map since SV2-67, so the Scenarios stub is the one left
+  for (const hash of ['#scenarios']) {
     await go(session.page, hash);
     const shape = await stubShape(session.page);
     const was = BEFORE[size + ' ' + hash];
@@ -165,11 +166,11 @@ async function stubsAsBefore(session, size) {
   assert.deepEqual(session.problems().errors, []);
 }
 
-test('SV2-65b item 1: the Scenarios and Safety stubs at 1280 by 800 keep the padding, the card and the band under it they had before the plan map', async () => {
+test('SV2-65b item 1: the Scenarios stub at 1280 by 800 keeps the padding, the card and the band under it they had before the plan map', async () => {
   await stubsAsBefore(wide, '1280');
 });
 
-test('SV2-65b item 1: the Scenarios and Safety stubs at 390 by 844 with touch keep the padding, the card and the band under it they had before the plan map', async () => {
+test('SV2-65b item 1: the Scenarios stub at 390 by 844 with touch keeps the padding, the card and the band under it they had before the plan map', async () => {
   // a browser of its own, opened and closed here: one at a time
   const phone = await openPlanner({ width: 390, height: 844, mobile: true, hash: '#scenarios', theme: 'light' });
   try {

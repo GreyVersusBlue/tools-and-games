@@ -274,6 +274,46 @@ const playbackAt = (seconds, more) => async (page) => {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 };
 
+// SV2-67: the Safety section once its map is styled, measured and drawn for
+// the project in the store.
+async function safetyDrawn(page) {
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.sfy');
+    return el && el.dataset.styled === 'true' && el.safety && el.safety.picture && el.safety.plan.project === globalThis.sv2.store.project && Number(document.getElementById('safety-plan').dataset.drawn || 0) > 0;
+  }, { timeout: 20000 });
+}
+
+// SV2-67: the Safety inspector on one of its tabs.
+const safetyTab = (tab) => async (page) => {
+  await page.click('.sfy-inspector .tabs__tab[data-tab="' + tab + '"]');
+  await page.waitForFunction((which) => document.querySelector('.sfy-panel[data-panel="' + which + '"]')?.getClientRects().length > 0, {}, tab);
+};
+
+// SV2-67: the sample school with one room on Floor 1 that opens onto nothing.
+async function safetyCutOff(page) {
+  await safetyDrawn(page);
+  await page.evaluate(async () => {
+    const { sampleSchool } = await import(new URL('data/sample-school.js', location.href).href);
+    const project = sampleSchool();
+    const floor = project.building.floors[0];
+    const owned = new Set(floor.spaces.flatMap((space) => space.cells));
+    const empty = (x, y) => x >= 0 && y >= 0 && x < floor.width && y < floor.height && floor.cells[y * floor.width + x] === '.' && !owned.has(y * floor.width + x);
+    let at = null;
+    for (let y = 1; y < floor.height - 3 && !at; y += 1) {
+      for (let x = 1; x < floor.width - 3 && !at; x += 1) {
+        let ok = true;
+        for (let dy = -1; dy <= 2 && ok; dy += 1) for (let dx = -1; dx <= 2 && ok; dx += 1) if (!empty(x + dx, y + dy)) ok = false;
+        if (ok) at = [x, y];
+      }
+    }
+    const [x, y] = at;
+    floor.spaces.push({ id: 'rsafetycut', kind: 'room', cells: [y * floor.width + x, y * floor.width + x + 1, (y + 1) * floor.width + x, (y + 1) * floor.width + x + 1], number: 'Annex 9', teacherIds: [], subjectId: null, wing: '', capacity: 12, shared: false, doors: [] });
+    globalThis.sv2.store.replace(project);
+  });
+  await page.waitForFunction(() => document.querySelector('.sfy').dataset.missing === '1');
+  await safetyDrawn(page);
+}
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -763,6 +803,45 @@ export const SCREENS = [
       await staffLive(page);
       await page.click('#publish-contents > summary');
       await page.waitForFunction(() => document.querySelector('.pub input[data-view="teacher"]').getClientRects().length > 0);
+    },
+  },
+  { id: 'safety-map', hash: '#safety', open: safetyDrawn }, // SV2-67: every room's way out by exit, the key, the Exits tab
+  { id: 'safety-phone', hash: '#safety', viewport: { width: 390, height: 844, mobile: true }, open: safetyDrawn }, // SV2-67: a phone, with touch
+  { id: 'safety-phone-sideways', hash: '#safety', viewport: { width: 844, height: 390, mobile: true }, open: safetyDrawn }, // SV2-67: a phone on its side, with touch
+  { // SV2-67: one room's way out across two floors, with the marks' line, on the Door cards tab with rooms ticked
+    id: 'safety-one-room',
+    hash: '#safety',
+    open: async (page) => {
+      await safetyDrawn(page);
+      await page.evaluate(() => document.querySelector('.sfy').safety.pick('rsample303'));
+      await safetyTab('cards')(page);
+      for (const id of ['rsample101', 'rsample204']) await page.click('.sfy-row[data-room="' + id + '"] .sfy-row__box');
+      await page.waitForFunction(() => document.querySelector('.sfy-panel [data-print="chosen"]').dataset.count === '2');
+    },
+  },
+  { id: 'safety-no-route', hash: '#safety', open: safetyCutOff }, // SV2-67: a room with no way out, listed with its sentence
+  { // SV2-67: door cards for every room in the preview sheet
+    id: 'safety-print',
+    hash: '#safety',
+    open: async (page) => {
+      await safetyDrawn(page);
+      await safetyTab('cards')(page);
+      await page.click('.sfy-panel [data-print="all"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]', { timeout: 30000 });
+    },
+  },
+  { // SV2-67: no exits marked: the sentence and the way to the building
+    id: 'safety-no-exits',
+    hash: '#safety',
+    open: async (page) => {
+      await safetyDrawn(page);
+      await page.evaluate(async () => {
+        const { sampleSchool } = await import(new URL('data/sample-school.js', location.href).href);
+        const project = sampleSchool();
+        for (const floor of project.building.floors) floor.exits = [];
+        globalThis.sv2.store.replace(project);
+      });
+      await page.waitForFunction(() => document.querySelector('.sfy').dataset.mode === 'empty');
     },
   },
 ];
