@@ -29,10 +29,12 @@
 //   evacuationOverlay(read) -> (g, view, floor, theme) => {}   for map.overlays
 //     read()   null, or { mode: 'all' | 'one',
 //                         rooms: [{ roomId, floorId, cells, route, colour, number }],
-//                         picked: roomId or null }
+//                         picked: roomId or null, lost }
 //              rooms: every room with a way out (cells: the room's own
 //              cells; route: routeToExit's; colour and number: its exit's in
-//              the key). In 'one' only the picked room's entry is drawn.
+//              the key). In 'one' only the picked room's entry is drawn; a
+//              picked room with no way out is not among them, and is framed
+//              in the problem colour from `lost`: { floorId, cells }
 //   EXIT_KEY_LEAST   the zoom (px a cell) under which badges are not drawn
 
 import { GROUP_PRESETS, readable, labelOn, parse } from '../../colour.js';
@@ -194,6 +196,8 @@ export function evacuationOverlay(read) {
         drawRoute(g, view, floor, entry.route, colour, Math.max(3, Math.min(10, size * 0.32)), theme);
         if (entry.floorId === floor.id) frameRoom(g, view, floor, entry.cells, colour, Math.max(2, Math.min(4, size * 0.12)));
         ends(g, view, floor, entry.route, colour, theme);
+      } else if (picture.lost && picture.lost.floorId === floor.id) {
+        frameRoom(g, view, floor, picture.lost.cells, theme.problem, Math.max(2, Math.min(4, size * 0.12)));
       }
     } else {
       const width = Math.max(2, Math.min(6, size * 0.18));

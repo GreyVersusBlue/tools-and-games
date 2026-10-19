@@ -167,9 +167,11 @@ export const section = {
     // ---- the overlay: what it draws is read at each paint
     plan.overlays.push(evacuationOverlay(() => {
       if (!picture || !shown) return null;
+      const lost = memory.picked ? picture.byRoom.get(memory.picked) : null;
       return {
         mode: memory.picked ? 'one' : 'all',
         picked: memory.picked,
+        lost: lost && !lost.ok ? { floorId: lost.floorId, cells: lost.cells } : null,
         rooms: picture.rows.filter((row) => row.ok).map((row) => ({ roomId: row.roomId, floorId: row.floorId, cells: row.cells, route: row.route, number: row.exitNumber, colour: exitColour(row.exitNumber) })),
       };
     }));
@@ -202,7 +204,12 @@ export const section = {
       chosen: () => memory.chosen,
       swatch,
       themeKey: () => plan.theme().corridor,
-      pick: (roomId) => pick(roomId, { say: true, bring: true }),
+      pick(roomId) {
+        // on a phone the inspector is a sheet over the map: it is shut, so the way out is seen
+        const sheet = document.getElementById('inspector');
+        if (sheet && sheet.dataset.mode === 'sheet' && sheet.dataset.open === 'true') ctx.closeInspector();
+        pick(roomId, { say: true, bring: true });
+      },
     };
     const panels = { exits: exitsPanel(env), cards: doorCardsPanel(env) };
     const inspector = tabs({

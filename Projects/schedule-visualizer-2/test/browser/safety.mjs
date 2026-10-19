@@ -149,17 +149,19 @@ test('every room is shown coloured by its exit: the first line says so, and the 
       const top = Math.min(...row.cells.map((cell) => Math.floor(cell / floor.width)));
       const cell = Math.max(...row.cells.filter((each) => Math.floor(each / floor.width) === top));
       const at = view.plan.cellAt(row.floorId, cell);
-      const width = Math.max(2, Math.min(4, size * 0.12));
-      const x = Math.round((at.x) * ratio);
-      const y = Math.round((at.y - size / 2 + width / 2 + 1) * ratio);
-      const d = g.getImageData(x, y, 1, 1).data;
-      return { room: row.roomId, number: row.exitNumber, got: [d[0], d[1], d[2]], want: view.colour(row.exitNumber) };
+      // the frame's line lies 1 to 5 px under the room's top edge: the column of pixels there, one of which is wholly the line
+      const x = Math.round(at.x * ratio);
+      const y = Math.round((at.y - size / 2) * ratio);
+      const d = g.getImageData(x, y, 1, Math.ceil(6 * ratio)).data;
+      const column = [];
+      for (let i = 0; i < d.length; i += 4) column.push([d[i], d[i + 1], d[i + 2]]);
+      return { room: row.roomId, number: row.exitNumber, column, want: view.colour(row.exitNumber) };
     });
   });
   for (const pixel of pixels) {
     const want = [1, 3, 5].map((i) => parseInt(pixel.want.slice(i, i + 2), 16));
-    const off = Math.max(...want.map((value, i) => Math.abs(value - pixel.got[i])));
-    assert.ok(off <= 24, pixel.room + ' is not framed in exit ' + pixel.number + '\'s colour ' + pixel.want + ': ' + JSON.stringify(pixel.got));
+    const off = Math.min(...pixel.column.map((got) => Math.max(...want.map((value, i) => Math.abs(value - got[i])))));
+    assert.ok(off <= 12, pixel.room + ' is not framed in exit ' + pixel.number + '\'s colour ' + pixel.want + ': ' + JSON.stringify(pixel.column));
   }
 });
 
@@ -565,7 +567,7 @@ test('spec 18, "print door cards": from the rail to a room tapped on the map, it
     let read = await previewRead(page);
     assert.deepEqual(read.cards, ['rsample303']);
     assert.deepEqual(read.names, ['Room 303']);
-    assert.ok(/Take the stairs/.test(read.text), 'Room 303 is on Floor 3: its card says to take the stairs');
+    assert.ok(read.text.includes('Take stairs B down to Floor 2.'), 'Room 303 is on Floor 3: its card says to take the stairs');
     await closePreview(page);
     await page.click('.sfy-panel [data-print="all"]');
     read = await previewRead(page);
@@ -633,6 +635,9 @@ for (const [name, size] of [['390 by 844 with touch', { width: 390, height: 844,
       assert.equal(overlap(boxes.toast, boxes.zoom), false, 'the message lies on the zoom buttons: ' + JSON.stringify(boxes));
       assert.ok(boxes.toast.bottom <= boxes.surface.bottom && boxes.toast.top >= boxes.surface.top, 'the message is out of the surface');
       assert.ok(boxes.zoom.top - boxes.toast.bottom <= 24, 'the message is ' + (boxes.zoom.top - boxes.toast.bottom) + ' px above the zoom buttons, not just above them');
+      // the message goes (on a phone on its side it lies over the map)
+      await page.click('.toast .toast__close');
+      await page.waitForFunction(() => !document.querySelector('.toast'));
       // a tap (or a click) on a room picks it at this size too
       await page.evaluate(() => {
         document.querySelector('.sfy').scrollTop = 0;
@@ -656,6 +661,43 @@ for (const [name, size] of [['390 by 844 with touch', { width: 390, height: 844,
     }
   });
 }
+
+test('on a phone with touch the inspector is a sheet: a room tapped in it shuts the sheet and shows its way out on the map, a 44 px target', async () => {
+  const session = await openPlanner({ width: 390, height: 844, mobile: true, hash: '#safety', theme: 'light' });
+  const page = session.page;
+  try {
+    await ready(page);
+    await page.tap('#inspector-toggle');
+    await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'true' && document.getElementById('inspector').dataset.mode === 'sheet' && document.querySelectorAll('#inspector .sfy-room').length > 0);
+    const button = '#inspector .sfy-exit .sfy-room[data-room="rsample302"]';
+    await page.$eval(button, (el) => el.scrollIntoView({ block: 'center' }));
+    const at = await page.$eval(button, (el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, height: r.height };
+    });
+    assert.ok(at.height >= 44, 'a room\'s button is ' + at.height + ' px high under a finger');
+    await page.touchscreen.tap(at.x, at.y);
+    await page.waitForSelector('.sfy[data-picked="rsample302"]');
+    await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'false');
+    // the room is in the middle of the map, and the map is not under the sheet
+    const middle = await page.evaluate(() => {
+      const view = document.querySelector('.sfy').safety;
+      const row = view.picture.byRoom.get('rsample302');
+      const points = row.cells.map((cell) => view.plan.cellAt(row.floorId, cell));
+      return { dx: points.reduce((sum, p) => sum + p.x, 0) / points.length - view.plan.view.width / 2, dy: points.reduce((sum, p) => sum + p.y, 0) / points.length - view.plan.view.height / 2 };
+    });
+    assert.ok(Math.abs(middle.dx) <= 2 && Math.abs(middle.dy) <= 2, 'Room 302 is not in the middle of the map: ' + JSON.stringify(middle));
+    // the Door cards tab's controls take a finger too
+    await page.tap('#inspector-toggle');
+    await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'true');
+    await page.tap('.sfy-inspector .tabs__tab[data-tab="cards"]');
+    const sizes = await page.evaluate(() => Array.from(document.querySelectorAll('.sfy-panel[data-panel="cards"] .btn:not([hidden]), .sfy-panel[data-panel="cards"] .sfy-row__show')).filter((el) => el.getClientRects().length > 0).map((el) => Math.min(el.getBoundingClientRect().height, el.getBoundingClientRect().width)));
+    assert.ok(sizes.length > 13 && sizes.every((size) => size >= 44), 'a control under a finger is under 44 px: ' + JSON.stringify(sizes));
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
 
 test('evacuationRoutes on the 3.13 fixture (4 floors of 60 by 40, 150 rooms) in this browser, once', async () => {
   const page = wide.page;
