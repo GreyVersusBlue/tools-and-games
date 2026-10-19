@@ -77490,7 +77490,14 @@ const segsCross = (a, b, c, d, eps) => {
 // `collinear` is the sine of the smallest turn kept. A chord of a curve turns
 // by its own angle, which for a 2ft chord on a 400ft radius is still 0.005, so
 // the default only removes vertices that are straight to within rounding.
-function cleanPolygon(input, { collinear = 1e-6 } = {}) {
+//
+// With `pinch` (#1001, DESIGN-roof-holes.md 2.3), one point may stand twice
+// in the ring, as a courtyard meeting the outside at a corner gives it: the
+// same point at two corners, each with its own two edges, where the two
+// wedges of building at it do not overlap and share no edge's direction. A
+// corner on another edge's interior is still refused, and so is a point three
+// times. Without `pinch` the answer is the shipped one for every input.
+function cleanPolygon(input, { collinear = 1e-6, pinch = false } = {}) {
   if (!Array.isArray(input) || input.length < 3) return null;
   let pts = [];
   for (const p of input) {
@@ -77538,7 +77545,10 @@ function cleanPolygon(input, { collinear = 1e-6 } = {}) {
     }
   }
   // Two edges that touch without crossing (a vertex sitting on another edge,
-  // a polygon pinched at a point) are just as fatal to a wavefront.
+  // a polygon pinched at a point) are just as fatal to a wavefront. With
+  // `pinch`, a corner standing on another corner is the one touch let by,
+  // and only once the wedges at it are seen to keep apart.
+  const twin = new Array(n).fill(-1);
   for (let i = 0; i < n; i++) {
     const p = pts[i];
     for (let j = 0; j < n; j++) {
@@ -77547,7 +77557,37 @@ function cleanPolygon(input, { collinear = 1e-6 } = {}) {
       const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
       const t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / L2;
       if (t < 0 || t > 1) continue;
-      if (Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z) <= eps * 10) return null;
+      if (Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z) > eps * 10) continue;
+      if (!pinch) return null;
+      const k = Math.hypot(a.x - p.x, a.z - p.z) <= eps * 10 ? j
+        : Math.hypot(b.x - p.x, b.z - p.z) <= eps * 10 ? (j + 1) % n : -1;
+      if (k < 0) return null;
+      twin[i] = k;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const k = twin[i];
+    if (k < 0) continue;
+    // Two visits name each other; a point three times cannot.
+    if (twin[k] !== i) return null;
+    if (k < i) continue;
+    // Each corner's wedge of building runs counter-clockwise from its next
+    // edge round to its previous one; neither of the other corner's edges
+    // may point into it or along its sides.
+    const p = pts[i];
+    const dir = (q) => Math.atan2(q.z - p.z, q.x - p.x);
+    const TAU = Math.PI * 2;
+    const wedge = (c) => {
+      const from = dir(pts[(c + 1) % n]);
+      return { from, span: ((dir(pts[(c - 1 + n) % n]) - from) % TAU + TAU) % TAU };
+    };
+    const into = (w, q) => {
+      const s = ((dir(q) - w.from) % TAU + TAU) % TAU;
+      return s > -1e-9 && s < w.span + 1e-9 || s > TAU - 1e-9;
+    };
+    const wi = wedge(i), wk = wedge(k);
+    for (const [w, c] of [[wi, k], [wk, i]]) {
+      if (into(w, pts[(c + 1) % n]) || into(w, pts[(c - 1 + n) % n])) return null;
     }
   }
   return pts;
@@ -78110,11 +78150,15 @@ function offsetRing(ring, d, opts = {}) {
 // before, a bridge's two ends each standing twice in it under one index, and
 // the indices are into `[...pts, ...holes.flat()]`. Null if a hole sees no
 // corner.
+//
+// A ring through a corner twice (a pinch, #1001) is clipped the same way: the
+// second visit takes the first one's index, as a bridge's ends do, so neither
+// visit is read as standing inside an ear at the other.
 function triangulate(pts, holes = []) {
   if (Array.isArray(holes) && holes.length) return bridged(pts, holes);
   const n = pts.length;
   if (n < 3) return null;
-  let idx = [...Array(n).keys()];
+  let idx = twinned(pts, [...Array(n).keys()]);
   const backward = signedArea(pts) < 0;
   if (backward) idx.reverse();
   const tris = clipEars(pts, idx);
@@ -78124,6 +78168,18 @@ function triangulate(pts, holes = []) {
 
 // Ear clipping over `idx`, a counter-clockwise walk of `pts` (an index may
 // stand in it twice, where a bridge comes and goes).
+// Each index of `idx` that names the same point as an earlier one, exactly,
+// given that earlier one's index (#1001). A ring with no repeated point comes
+// back as it went in.
+function twinned(pts, idx) {
+  const first = new Map();
+  return idx.map((i) => {
+    const k = `${pts[i].x},${pts[i].z}`;
+    if (!first.has(k)) first.set(k, i);
+    return first.get(k);
+  });
+}
+
 function clipEars(pts, idx) {
   const cross = (a, b, c) => (pts[b].x - pts[a].x) * (pts[c].z - pts[a].z) - (pts[b].z - pts[a].z) * (pts[c].x - pts[a].x);
   const tris = [];
@@ -78157,7 +78213,7 @@ function bridged(pts, holes) {
   if (holes.some((h) => !Array.isArray(h) || h.length < 3)) return null;
   const all = [...pts, ...holes.flat()];
   const backward = signedArea(pts) < 0;
-  let outer = [...pts.keys()];
+  let outer = twinned(pts, [...pts.keys()]);
   if (backward) outer.reverse();
   // Each hole clockwise, so the face is on the left of every edge.
   let base = pts.length;
@@ -78728,11 +78784,13 @@ function roofPlan(state, roof = null) {
 // the block it always was, key for key.
 function curvedRoofs(floor, eaveY, pitch) {
   const out = [];
-  for (const { outer: loop, holes } of curvedLoopsOf(floor)) {
-    const eave = eaveLine(loop, EAVE);
+  for (const { outer: loop, holes, pinch } of curvedLoopsOf(floor)) {
+    const pinched = pinch ? pinchEave(loop, EAVE) : null;
+    const eave = pinch ? pinched && pinched.eave : eaveLine(loop, EAVE);
     if (!eave) continue;
-    if (holes.length) {
-      const eaveHoles = courtEaves(holes, EAVE);
+    if (holes.length || pinch) {
+      const courts = holes.length ? courtEaves(holes, EAVE) : [];
+      const eaveHoles = courts && [...courts, ...(pinched ? pinched.courts : [])];
       const roof = eaveHoles && skeletonRoof(eave, eaveY, pitch, { holes: eaveHoles });
       if (!roof) continue;
       const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
@@ -78788,6 +78846,33 @@ function eaveLine(loop, d) {
   return loops && loops.length === 1 ? cleanPolygon(loops[0]) : null;
 }
 
+// The eave of a loop through a corner twice (#1001), `d` feet out: the loop's
+// own wavefront run outward through the frame, as `eaveLine`'s third answer
+// is, with the corner let by (`pinch`). The two visits to the corner each
+// pair their own walls, and run out they come apart, so what comes back is
+// the eave round the outside and the court's own eave `d` into the court, not
+// touching: on the L of DESIGN-roof-holes.md 2.3 the outer eave's corner is
+// (21.5, 21.5) and the court's (18.5, 18.5), 4.24ft apart, which is the eave
+// a court with no pinch would have. `{ eave, courts }`, the courts wound
+// counter-clockwise as `courtEaves` gives them; null unless exactly one loop
+// runs round the outside and one court comes back for each corner visited
+// twice (a court the eave pinches in two, or a bottle notch's pocket, keeps
+// the rectangles, as #1000 keeps it with no pinch).
+function pinchEave(loop, d) {
+  const loops = offsetRing(loop, -d, { pinch: true });
+  if (!loops) return null;
+  const outer = loops.filter((l) => loopArea(l) > 0);
+  const inner = loops.filter((l) => loopArea(l) < 0);
+  const seen = new Set(), twice = new Set();
+  for (const p of loop) (seen.has(okey(p)) ? twice : seen).add(okey(p));
+  // Run outward, nothing splits the loop round the outside (a pocket closes
+  // off inside it), so `outer` is never two; the test is the statement.
+  if (outer.length !== 1 || inner.length !== twice.size) return null;
+  const eave = cleanPolygon(outer[0]);
+  const courts = inner.map((l) => cleanPolygon(l));
+  return eave && courts.every(Boolean) ? { eave, courts } : null;
+}
+
 // `eaveLine`'s second answer (#993).
 function steppedEave(loop, d) {
   let cur = cleanPolygon(loop), left = d;
@@ -78836,7 +78921,7 @@ function steppedEave(loop, d) {
 // a corner twice is accepted.
 function curvedLoopsOf(floor) {
   const o = roofOutline(floor);
-  return (o.loops || []).map((outer, i) => ({ outer, holes: o.holes[i], pinch: false }))
+  return (o.loops || []).map((outer, i) => ({ outer, holes: o.holes[i], pinch: o.pinch[i] }))
     .filter((f) => [f.outer, ...f.holes].some(hasCurve));
 }
 
@@ -79237,14 +79322,14 @@ function roofOutline(floor) {
   if (whole.loops) return whole;
   const groups = buildingsOf(shapes);
   if (groups.length < 2) return whole;
-  const loops = [], holes = [];
+  const loops = [], holes = [], pinch = [];
   let refused = null;
   for (const g of groups) {
     const o = unionOf(g);
-    if (o.loops) { loops.push(...o.loops); holes.push(...o.holes); }
+    if (o.loops) { loops.push(...o.loops); holes.push(...o.holes); pinch.push(...o.pinch); }
     else refused = refused || o.refused;
   }
-  return loops.length ? { loops, holes, refused } : whole;
+  return loops.length ? { loops, holes, pinch, refused } : whole;
 }
 
 // The rooms in groups that meet, one to the next: two rooms meet where a wall
@@ -79375,17 +79460,19 @@ function unionOf(shapes) {
     taken.add(f);
     next.set(e, f);
   }
-  const loops = [], courts = [];
+  const loops = [], courts = [], pinched = [];
   const done = new Set();
   for (const first of edges.values()) {
     if (done.has(first)) continue;
     const loop = [];
     const at = new Set();
-    let e = first;
+    let e = first, twice = false;
     do {
-      // One loop through a corner twice wraps round something open to the
-      // outside only at that corner: a courtyard.
-      if (at.has(e.kf)) return { loops: null, refused: 'the rooms close round a courtyard' };
+      // One loop through a corner twice wraps round a courtyard open to the
+      // outside only at that corner. It is kept as one loop, marked `pinch`
+      // (#1001), and `cleanPolygon({ pinch })` judges the corner below, a
+      // corner three times included.
+      if (at.has(e.kf)) twice = true;
       at.add(e.kf);
       done.add(e);
       loop.push({ x: e.from.x, z: e.from.z });
@@ -79401,7 +79488,13 @@ function unionOf(shapes) {
     }
     const a = loopArea(loop);
     if (a === 0) return { loops: null, refused: 'the outline does not close' };
-    (a > 0 ? loops : courts).push(loop);
+    // No layout of rooms is known that reaches this refusal: the turn
+    // towards the rooms keeps the wedges at a pinch apart. It stands so that
+    // nothing `cleanPolygon` would refuse is handed on as a pinch.
+    if (twice && !(a > 0 && cleanPolygon(loop, { pinch: true }))) {
+      return { loops: null, refused: 'the rooms close round a courtyard' };
+    }
+    if (a > 0) { loops.push(loop); pinched.push(twice); } else courts.push(loop);
   }
   // Rooms that cross without sharing a corner leave both rings whole, and
   // their areas still add up; their walls cross, or one loop sits in another.
@@ -79438,7 +79531,7 @@ function unionOf(shapes) {
       return { loops: null, refused: 'two rooms overlap' };
     }
   }
-  return { loops, holes };
+  return { loops, holes, pinch: pinched };
 }
 
 // Whether an outline has a curve in it. A curved wall is stored as its chords

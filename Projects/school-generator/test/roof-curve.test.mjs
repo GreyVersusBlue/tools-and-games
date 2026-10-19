@@ -111,7 +111,7 @@ test('overlapping rooms are refused, whether or not they share a wall', () => {
 // splits them into a loop each: test/roof-pinch.test.mjs.
 
 test('an empty storey is no loops, not a refusal', () => {
-  assert.deepEqual(roofOutline(floorOf()), { loops: [], holes: [] });
+  assert.deepEqual(roofOutline(floorOf()), { loops: [], holes: [], pinch: [] });
 });
 
 // ---------- what counts as a curve ----------

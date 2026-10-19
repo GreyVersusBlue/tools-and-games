@@ -75,7 +75,14 @@ const segsCross = (a, b, c, d, eps) => {
 // `collinear` is the sine of the smallest turn kept. A chord of a curve turns
 // by its own angle, which for a 2ft chord on a 400ft radius is still 0.005, so
 // the default only removes vertices that are straight to within rounding.
-export function cleanPolygon(input, { collinear = 1e-6 } = {}) {
+//
+// With `pinch` (#1001, DESIGN-roof-holes.md 2.3), one point may stand twice
+// in the ring, as a courtyard meeting the outside at a corner gives it: the
+// same point at two corners, each with its own two edges, where the two
+// wedges of building at it do not overlap and share no edge's direction. A
+// corner on another edge's interior is still refused, and so is a point three
+// times. Without `pinch` the answer is the shipped one for every input.
+export function cleanPolygon(input, { collinear = 1e-6, pinch = false } = {}) {
   if (!Array.isArray(input) || input.length < 3) return null;
   let pts = [];
   for (const p of input) {
@@ -123,7 +130,10 @@ export function cleanPolygon(input, { collinear = 1e-6 } = {}) {
     }
   }
   // Two edges that touch without crossing (a vertex sitting on another edge,
-  // a polygon pinched at a point) are just as fatal to a wavefront.
+  // a polygon pinched at a point) are just as fatal to a wavefront. With
+  // `pinch`, a corner standing on another corner is the one touch let by,
+  // and only once the wedges at it are seen to keep apart.
+  const twin = new Array(n).fill(-1);
   for (let i = 0; i < n; i++) {
     const p = pts[i];
     for (let j = 0; j < n; j++) {
@@ -132,7 +142,37 @@ export function cleanPolygon(input, { collinear = 1e-6 } = {}) {
       const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
       const t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / L2;
       if (t < 0 || t > 1) continue;
-      if (Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z) <= eps * 10) return null;
+      if (Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z) > eps * 10) continue;
+      if (!pinch) return null;
+      const k = Math.hypot(a.x - p.x, a.z - p.z) <= eps * 10 ? j
+        : Math.hypot(b.x - p.x, b.z - p.z) <= eps * 10 ? (j + 1) % n : -1;
+      if (k < 0) return null;
+      twin[i] = k;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const k = twin[i];
+    if (k < 0) continue;
+    // Two visits name each other; a point three times cannot.
+    if (twin[k] !== i) return null;
+    if (k < i) continue;
+    // Each corner's wedge of building runs counter-clockwise from its next
+    // edge round to its previous one; neither of the other corner's edges
+    // may point into it or along its sides.
+    const p = pts[i];
+    const dir = (q) => Math.atan2(q.z - p.z, q.x - p.x);
+    const TAU = Math.PI * 2;
+    const wedge = (c) => {
+      const from = dir(pts[(c + 1) % n]);
+      return { from, span: ((dir(pts[(c - 1 + n) % n]) - from) % TAU + TAU) % TAU };
+    };
+    const into = (w, q) => {
+      const s = ((dir(q) - w.from) % TAU + TAU) % TAU;
+      return s > -1e-9 && s < w.span + 1e-9 || s > TAU - 1e-9;
+    };
+    const wi = wedge(i), wk = wedge(k);
+    for (const [w, c] of [[wi, k], [wk, i]]) {
+      if (into(w, pts[(c + 1) % n]) || into(w, pts[(c - 1 + n) % n])) return null;
     }
   }
   return pts;
@@ -695,11 +735,15 @@ export function offsetRing(ring, d, opts = {}) {
 // before, a bridge's two ends each standing twice in it under one index, and
 // the indices are into `[...pts, ...holes.flat()]`. Null if a hole sees no
 // corner.
+//
+// A ring through a corner twice (a pinch, #1001) is clipped the same way: the
+// second visit takes the first one's index, as a bridge's ends do, so neither
+// visit is read as standing inside an ear at the other.
 export function triangulate(pts, holes = []) {
   if (Array.isArray(holes) && holes.length) return bridged(pts, holes);
   const n = pts.length;
   if (n < 3) return null;
-  let idx = [...Array(n).keys()];
+  let idx = twinned(pts, [...Array(n).keys()]);
   const backward = signedArea(pts) < 0;
   if (backward) idx.reverse();
   const tris = clipEars(pts, idx);
@@ -709,6 +753,18 @@ export function triangulate(pts, holes = []) {
 
 // Ear clipping over `idx`, a counter-clockwise walk of `pts` (an index may
 // stand in it twice, where a bridge comes and goes).
+// Each index of `idx` that names the same point as an earlier one, exactly,
+// given that earlier one's index (#1001). A ring with no repeated point comes
+// back as it went in.
+function twinned(pts, idx) {
+  const first = new Map();
+  return idx.map((i) => {
+    const k = `${pts[i].x},${pts[i].z}`;
+    if (!first.has(k)) first.set(k, i);
+    return first.get(k);
+  });
+}
+
 function clipEars(pts, idx) {
   const cross = (a, b, c) => (pts[b].x - pts[a].x) * (pts[c].z - pts[a].z) - (pts[b].z - pts[a].z) * (pts[c].x - pts[a].x);
   const tris = [];
@@ -742,7 +798,7 @@ function bridged(pts, holes) {
   if (holes.some((h) => !Array.isArray(h) || h.length < 3)) return null;
   const all = [...pts, ...holes.flat()];
   const backward = signedArea(pts) < 0;
-  let outer = [...pts.keys()];
+  let outer = twinned(pts, [...pts.keys()]);
   if (backward) outer.reverse();
   // Each hole clockwise, so the face is on the left of every edge.
   let base = pts.length;
