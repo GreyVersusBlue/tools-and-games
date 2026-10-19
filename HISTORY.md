@@ -1854,6 +1854,8 @@ Generator.
 
 **#990. Where another building's 4ft mask cell reaches inside a curved building's chords, the other building gives way (Devon, 2026-10-16).** #988 kept that pair on one stepped parapet. Now the curved building takes its chord parapet and deck as it does alone, and the other building's loop is cut back to the chords (`ringMinus` in `roof.js`: both rings split where they cross, chained end to start), so its parapet runs along them where it was cut. Each cell the curve takes a bite of leaves the deck rectangles and comes back as what is left of it, ear-clipped, a `deckPolys` entry marked `trim`; `roofCover` counts those pieces flat by #986's own sweep and `chords` counts only the curve. Along the cut the two parapets stand on the same chord, drawn twice. Where `ringMinus` cannot vouch for the cut (an edge along or ending on the other ring, a hole) the pair stays on its steps, as before.
 
+**#991. School Generator groups a storey's rooms into buildings for the roof by their walls, not their bounds.** #971 judged a refused storey building by building, a building being rooms whose bounding boxes touched; so a curved hall standing in the notch of a courtyard building's L-shaped room, 4ft clear of every wall, was judged with the courtyard and kept its rectangles. Two rooms are one building now where a wall of one comes within 1e-4ft of a wall of the other (touching, a corner on a wall, crossing) or a corner of one lies inside the other, so #971's guarantee holds unchanged: no wall of one group meets, crosses or encloses another's. A rectilinear building split off this way changes no roof, since only curved loops reach `roofPlan`.
+
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
 
 # The log
@@ -3304,3 +3306,13 @@ Thirty-ninth session of the audit's line TG-28, worker TG-28-trimcurve, under Op
 **Checks.** `node --test 'test/*.test.mjs'` 2502 to 2510, exit 0 (8 new in `test/roof-trim.test.mjs`, four failing on the old code; the stepped-pair tests in `roof-touch` and `roof-parapet` rewritten to the new result); 11 breaks in `roof.js`, each failed a test; `tools/blender/validate.mjs` 630, exit 0; the browser and board checks are in the audit note. `ringMinus`'s refusals (an edge along the other ring or ending on it, a hole) are driven by no test: no school here reaches them.
 
 **Left.** The two parapets along the cut are drawn on one line, twice; every older leftover in the WISHLIST.
+
+Fortieth session of the audit's line TG-28, worker TG-28-groupwalls, under Opus 5.5 on huginn in a worktree (`sel/TG-28-groupwalls`), no subagents; decision #991. The WISHLIST's "grouped by bounds, not by walls" item, checked open first: `buildingsOf` unioned any two rooms whose boxes touched. A first test with the L built of two rectangles passed on the old code, because the grouping is room by room, so the case needs one L-shaped room whose own box holds the curved hall.
+
+**The change (#991).** `buildingsOf` keeps the bounds test as a quick reject and then asks `roomsMeet`: a wall of each within `OUTLINE_ON` (`segGap`, zero where they cross) or a corner of either inside the other. `unionOf` and every reader are untouched. No save field, no module added (boot 116), `walk-template.html` rebuilt.
+
+**Did not move.** The five fixtures, the sample school and the three gallery schools under parapet, flat, gable and hip at 2, 4 and 12 (108 cases) hash the same in `roofOutline`, `roofPlan`, `roofHeightAt` on a 3ft grid, four elevations, a section, `roofCover`, the takeoff, its CSV, the estimate and its CSV (1,080 hashes, 0 moved): none of them is refused as a whole with a room clear of another's walls inside its box.
+
+**Checks.** `node --test 'test/*.test.mjs'` 2510 to 2516, exit 0 (6 new in `test/roof-groupwalls.test.mjs`, three failing on the old code); 5 breaks in `roof.js`, each failed a test (containment one way only was green until the inner room was also drawn first); `tools/blender/validate.mjs` 630, exit 0; the browser and board checks are in the audit note.
+
+**Left.** Every older item of the WISHLIST roof bullet.

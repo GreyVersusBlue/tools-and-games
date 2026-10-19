@@ -466,16 +466,16 @@ and add to this list rather than starting a new one.
   `roofHeightAt`, and counted by the takeoff and the estimate through
   `roofCover` off the loop's own chords (#970); every rectilinear roof is
   what it was. A refusal keeps the rectangles for its own building only
-  (#971): rooms whose bounds touch, one to the next, are judged together, so
-  a curved building beside a courtyard building stands on its skeleton.
+  (#971): rooms whose walls touch or cross, or one of which stands inside
+  another, one to the next, are judged together (#991; by bounds before), so
+  a curved building beside a courtyard building, or in the notch of one of
+  its L-shaped rooms, stands on its skeleton.
   A flat roof's parapet over a curved building runs on the same loop's
   chords, and the deck under it is that outline, ear-clipped (#973).
   Two rooms meeting at a corner are a loop each, so a curved one there takes
   the skeleton and the chord parapet; an arc of two chords is a curve when it
   was bowed off a wall square to both its neighbours (#976).
-  Left: a building is grouped by bounds, not by walls, so a curved building
-  standing inside the bounds of a courtyard building's L (not touching it) is
-  refused with it; a courtyard (one meeting the outside at a single corner
+  Left: a courtyard (one meeting the outside at a single corner
   included), a room with a hole, an arc of two chords off a wall that was not
   square to its neighbours, and a curve bowed in tighter than the 1.5ft eave
   keep rectangles too; `gable` over a curve keeps
