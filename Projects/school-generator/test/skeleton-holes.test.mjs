@@ -13,7 +13,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { straightSkeleton, cleanRings, skeletonHolds } from '../js/skeleton.js';
+import { createHash } from 'node:crypto';
+
+import {
+  straightSkeleton, cleanRings, skeletonHolds, cleanPolygon, eavePolygon, skeletonRoof, triangulate,
+} from '../js/skeleton.js';
+// Increment 2's function is reached through the namespace, so the code before
+// it fails each of its tests by name rather than the whole file on import.
+import * as skeleton from '../js/skeleton.js';
 
 const R = (x0, z0, x1, z1) => [
   { x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 },
@@ -211,4 +218,210 @@ test('fifteen hundred random rooms with one to three courts each hold', () => {
   }
   // Most sets are accepted; a court near the wall or on another is not.
   assert.ok(held > 900, `only ${held} accepted`);
+});
+
+// ---------- increment 2: the stopped wavefront, the bridged triangulation (#997)
+
+// The design's notched block (2.2): 40 by 24, a notch `w` wide and `deep` into
+// its west wall, centred on z 12.
+const notched = (w, deep = 3) => [
+  { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 24 }, { x: 0, z: 24 },
+  { x: 0, z: 12 + w / 2 }, { x: deep, z: 12 + w / 2 }, { x: deep, z: 12 - w / 2 }, { x: 0, z: 12 - w / 2 },
+];
+const EAVE_BOX = R(-1.5, -1.5, 41.5, 25.5);
+const samePts = (name, got, want, tol = 1e-9) => {
+  assert.equal(got.length, want.length, `${name}: ${got.length} corners, want ${want.length}`);
+  got.forEach((p, i) => assert.ok(Math.hypot(p.x - want[i].x, p.z - want[i].z) < tol,
+    `${name}: corner ${i} at (${p.x}, ${p.z}), want (${want[i].x}, ${want[i].z})`));
+};
+// An outward offset that closed its notch: one loop, which is the plain eave
+// rectangle once the straight-through corner where the notch was is dropped.
+const closedNotch = (name, ring) => {
+  const out = skeleton.offsetRing(ring, -1.5);
+  assert.ok(Array.isArray(out), `${name}: refused`);
+  assert.equal(out.length, 1, `${name}: ${out.length} loops`);
+  samePts(name, cleanPolygon(out[0]), EAVE_BOX);
+};
+
+test('offsetRing: a notch 2ft or 3ft wide closes under a 1.5ft eave, 4ft stays open as eavePolygon has it', () => {
+  // 2ft: its sides meet at t = 1, before the stop.
+  closedNotch('2ft notch', notched(2));
+  // 3ft: they meet at t = 1.5, the stop itself, and that event is processed.
+  closedNotch('3ft notch', notched(3));
+  // The same notch at 1.4ft is still open, 0.2ft wide.
+  const early = skeleton.offsetRing(notched(3), -1.4);
+  assert.equal(early.length, 1);
+  const zs = early[0].filter((p) => p.x > 0 && p.x < 40).map((p) => p.z).sort((a, b) => a - b);
+  assert.equal(zs.length, 2, '3ft notch at 1.4ft: the notch\'s back corners stand');
+  assert.ok(Math.abs(zs[1] - zs[0] - 0.2) < 1e-9, `3ft notch at 1.4ft is ${zs[1] - zs[0]}ft wide`);
+  // 4ft: open 1ft wide, point for point the mitred line, in its order.
+  const four = skeleton.offsetRing(notched(4), -1.5);
+  assert.equal(four.length, 1);
+  samePts('4ft notch', four[0], eavePolygon(notched(4), 1.5));
+  assert.equal(eavePolygon(notched(3), 1.5), null, 'the mitred line refuses the 3ft notch');
+});
+
+test('offsetRing: a slot 0.5ft wide and 6ft deep, and a dovetail, close too', () => {
+  closedNotch('slot', notched(0.5, 6));
+  // Narrower at the mouth (2ft) than at the back (3ft).
+  closedNotch('dovetail', [
+    { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 24 }, { x: 0, z: 24 },
+    { x: 0, z: 13 }, { x: 3, z: 13.5 }, { x: 3, z: 10.5 }, { x: 0, z: 11 },
+  ]);
+});
+
+test('offsetRing inward: a court 2.5ft wide has no eave at 1.5, a dumbbell court is pinched in two', () => {
+  assert.deepEqual(skeleton.offsetRing(R(0, 0, 2.5, 10), 1.5), []);
+  // Two 8ft squares joined by a neck 2ft wide and 4ft long.
+  const dumbbell = [
+    { x: 0, z: 0 }, { x: 8, z: 0 }, { x: 8, z: 3 }, { x: 12, z: 3 }, { x: 12, z: 0 }, { x: 20, z: 0 },
+    { x: 20, z: 8 }, { x: 12, z: 8 }, { x: 12, z: 5 }, { x: 8, z: 5 }, { x: 8, z: 8 }, { x: 0, z: 8 },
+  ];
+  const two = skeleton.offsetRing(dumbbell, 1.5);
+  assert.equal(two.length, 2, `${two.length} loops`);
+  for (const l of two) {
+    assert.ok(area(l) > 0, 'each loop counter-clockwise');
+    assert.ok(Math.abs(area(l) - 25) < 1e-9, `a 5ft square each, got ${area(l)} ft²`);
+  }
+  samePts('west half', cleanPolygon(two[0]), R(1.5, 1.5, 6.5, 6.5));
+  samePts('east half', cleanPolygon(two[1]), R(13.5, 1.5, 18.5, 6.5));
+});
+
+test('offsetRing on a square: out is eavePolygon\'s answer, in is the square 1.5ft smaller', () => {
+  const sq = R(0, 0, 10, 10);
+  const out = skeleton.offsetRing(sq, -1.5);
+  assert.equal(out.length, 1);
+  samePts('out', out[0], eavePolygon(sq, 1.5));
+  const inn = skeleton.offsetRing(sq, 1.5);
+  assert.equal(inn.length, 1);
+  samePts('in', inn[0], R(1.5, 1.5, 8.5, 8.5));
+  // Either winding in, the same answer out.
+  samePts('out, clockwise', skeleton.offsetRing([...sq].reverse(), -1.5)[0], eavePolygon(sq, 1.5));
+  // A corner 4.6 degrees sharp runs out 37.5ft by 1.5: the frame stands clear
+  // of it, and the answer is still the mitred line.
+  const spike = [{ x: 0, z: 0 }, { x: 100, z: 4 }, { x: 0, z: 8 }];
+  samePts('spike', skeleton.offsetRing(spike, -1.5)[0], eavePolygon(spike, 1.5));
+  assert.equal(skeleton.offsetRing([{ x: 0, z: 0 }, { x: 1, z: 0 }], -1.5), null);
+  assert.equal(skeleton.offsetRing(sq, NaN), null);
+});
+
+// Triangles off `triangulate(outer, holes)` that cover the outer ring less the
+// holes exactly: each wound as the outer ring, none with its middle outside
+// the outer ring or inside a hole, and their areas adding up.
+function covers(name, outer, holes) {
+  const tris = triangulate(outer, holes);
+  assert.ok(tris, `${name}: refused`);
+  const all = [...outer, ...holes.flat()];
+  const inside = (ring, x, z) => {
+    let k = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[i], b = ring[j];
+      if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) k = !k;
+    }
+    return k;
+  };
+  let sum = 0;
+  for (const t of tris) {
+    const [a, b, c] = t.map((i) => all[i]);
+    const ta = area([a, b, c]);
+    assert.ok(ta > 0, `${name}: triangle ${t} is wound backwards or flat (${ta})`);
+    const mx = (a.x + b.x + c.x) / 3, mz = (a.z + b.z + c.z) / 3;
+    assert.ok(inside(outer, mx, mz), `${name}: triangle ${t} is outside the outer ring`);
+    for (const h of holes) assert.ok(!inside(h, mx, mz), `${name}: triangle ${t} has its middle in a hole`);
+    sum += ta;
+  }
+  const want = area(outer) - holes.reduce((s, h) => s + Math.abs(area(h)), 0);
+  assert.ok(Math.abs(sum - want) < 1e-9 * want, `${name}: triangles cover ${sum} ft², want ${want}`);
+  return tris;
+}
+
+test('triangulate with holes: a square round a centred hole, and the bowed hall round a round court', () => {
+  covers('square', R(0, 0, 40, 40), [R(10, 10, 30, 30)]);
+  covers('square, hole clockwise', R(0, 0, 40, 40), [[...R(10, 10, 30, 30)].reverse()]);
+  covers('hall, round court', HALL, [roundCourt(20, 16, 6, 12)]);
+  covers('hall, two courts', HALL, [R(10, 12, 22, 20), R(30, 10, 40, 18)]);
+  covers('hall, three courts', HALL, [R(4, 4, 10, 10), roundCourt(20, 16, 6, 12), R(30, 10, 40, 18)]);
+  // An outer ring given clockwise gives clockwise triangles, as without holes.
+  const cw = triangulate([...R(0, 0, 40, 40)].reverse(), [R(10, 10, 30, 30)]);
+  const all = [...[...R(0, 0, 40, 40)].reverse(), ...R(10, 10, 30, 30)];
+  assert.ok(cw.every((t) => area(t.map((i) => all[i])) < 0));
+});
+
+// The courts of the fifteen hundred random rooms above, seeded the same way:
+// every set cleanRings accepts is bridged and covered exactly. A court's
+// nearest corner here is often hidden behind another court or a re-entrant
+// wall, or already used by an earlier bridge.
+test('the random rooms\' courts are each bridged and covered exactly', () => {
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const star = (cx, cz, k, r0, r1) => Array.from({ length: k }, (_, i) => {
+    const th = (2 * Math.PI * (i + 0.3 * rnd())) / k, r = r0 + (r1 - r0) * rnd();
+    return { x: cx + r * Math.cos(th), z: cz + r * Math.sin(th) };
+  });
+  const box = (cx, cz, w, h, a) => [[-w, -h], [w, -h], [w, h], [-w, h]].map(([x, z]) => ({
+    x: cx + x * Math.cos(a) - z * Math.sin(a), z: cz + x * Math.sin(a) + z * Math.cos(a),
+  }));
+  let done = 0;
+  for (let n = 0; n < 1500; n++) {
+    const outer = star(50, 50, 5 + Math.floor(rnd() * 20), 25, 45);
+    const holes = [];
+    for (let h = 1 + Math.floor(rnd() * 3); h > 0; h--) {
+      const cx = 35 + rnd() * 30, cz = 35 + rnd() * 30;
+      holes.push(rnd() < 0.5 ? box(cx, cz, 1 + rnd() * 6, 1 + rnd() * 6, rnd() * 3) : star(cx, cz, 3 + Math.floor(rnd() * 9), 1, 6));
+    }
+    const rings = cleanRings(outer, holes);
+    if (!rings) continue;
+    covers(`case ${n}`, rings.outer, rings.holes);
+    done++;
+  }
+  assert.ok(done > 900, `only ${done} accepted`);
+});
+
+// Every face of every shape in test/skeleton.test.mjs (the rectangle, L, U, T,
+// plus, the regular polygons, the curved walls and its 3,000 seeded random
+// rooms), as skeletonRoof gives them, ear clipped with no holes. The hash was
+// taken from the module at d677d2d, before `holes` went in.
+const TRIS_TODAY = { faces: 63665, tris: 172618, sha256: 'ce23aada52b0539e665a6d4205c23d505f123019fe9d9fc3dcdfe33a0fbefeaa' };
+
+test('triangulate with no holes gives the shipped triangles for every skeleton test face', () => {
+  const shapes = [R(0, 0, 40, 20),
+    [[0, 0], [40, 0], [40, 20], [20, 20], [20, 40], [0, 40]],
+    [[0, 0], [60, 0], [60, 40], [40, 40], [40, 20], [20, 20], [20, 40], [0, 40]],
+    [[0, 0], [60, 0], [60, 20], [40, 20], [40, 50], [20, 50], [20, 20], [0, 20]],
+    [[20, 0], [40, 0], [40, 20], [70, 20], [70, 40], [40, 40], [40, 65], [20, 65], [20, 40], [0, 40], [0, 20], [20, 20]],
+  ].map((s) => s.map((p) => (Array.isArray(p) ? { x: p[0], z: p[1] } : p)));
+  for (const k of [3, 5, 8, 12, 24, 64]) shapes.push(roundCourt(0, 0, 15, k));
+  for (const k of [8, 16, 32, 64]) {
+    for (const bulge of [12, -10, 4, 0.5]) {
+      const pts = [{ x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 20 }];
+      for (let i = 1; i < k; i++) {
+        const th = (Math.PI * i) / k;
+        pts.push({ x: 20 + 20 * Math.cos(th), z: 20 + bulge * Math.sin(th) });
+      }
+      pts.push({ x: 0, z: 20 });
+      shapes.push(pts);
+    }
+  }
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (let c = 0; c < 3000; c++) {
+    const n = 5 + Math.floor(rnd() * 36);
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const th = (2 * Math.PI * (i + 0.8 * rnd())) / n, r = 10 + 40 * rnd();
+      pts.push({ x: +(r * Math.cos(th)).toFixed(2), z: +(r * Math.sin(th)).toFixed(2) });
+    }
+    shapes.push(pts);
+  }
+  const got = [], also = [];
+  for (const s of shapes) {
+    for (const f of skeletonRoof(s, 0, 12).faces) {
+      got.push(triangulate(f.pts));
+      also.push(triangulate(f.pts, []));
+    }
+  }
+  assert.equal(got.length, TRIS_TODAY.faces);
+  assert.equal(got.flat().length, TRIS_TODAY.tris);
+  assert.equal(createHash('sha256').update(JSON.stringify(got)).digest('hex'), TRIS_TODAY.sha256);
+  assert.equal(JSON.stringify(also), JSON.stringify(got), 'an empty `holes` is no holes');
 });

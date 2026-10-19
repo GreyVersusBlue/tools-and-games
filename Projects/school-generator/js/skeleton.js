@@ -215,6 +215,17 @@ export function cleanRings(outer, holes = [], opts = {}) {
 // ring, `{ edge, ring, nodes }`, the outer ring's first. `poly` stays the
 // outer ring.
 export function straightSkeleton(input, opts = {}) {
+  return wavefront(input, opts);
+}
+
+// The wavefront itself. With `stop` it is offsetRing's: the event loop runs
+// until the next event would come after `stop` (one at `stop` itself is still
+// processed, so a notch that closes exactly at the eave's distance is closed),
+// moves every vertex on to `stop`, and returns the loops as they stand, each a
+// list of `{ x, z, corner, eL, eR }` with `corner` the ring corner the vertex
+// set out from (null once an event has made it anew). No loops left before
+// `stop` is `[]`.
+function wavefront(input, opts, stop) {
   const holeList = Array.isArray(opts.holes) ? opts.holes : [];
   let poly, rings;
   if (holeList.length) {
@@ -429,6 +440,13 @@ export function straightSkeleton(input, opts = {}) {
         }
       }
     }
+    if (stop !== undefined && (!best || now + best.dt > stop + EPS)) {
+      const dt = stop - now;
+      return loops.map((lp) => lp.map((v) => ({
+        x: v.x + v.vx * dt, z: v.z + v.vz * dt,
+        corner: v.node < n ? v.node : null, eL: v.eL, eR: v.eR,
+      })));
+    }
     if (!best) throw new Error('skeleton: no event');
     // Move every vertex to the event's time.
     now += best.dt;
@@ -471,6 +489,7 @@ export function straightSkeleton(input, opts = {}) {
     }
     settle();
   }
+  if (stop !== undefined) return [];
 
   // Fold together nodes that landed on the same point, then drop arcs that
   // shrank to nothing or repeat.
@@ -600,18 +619,97 @@ export function eavePolygon(input, d) {
   return clean ? out : null;
 }
 
+// A ring pushed `d` feet in (d > 0) or out (d < 0), as the wavefront has it at
+// that moment (DESIGN-roof-holes.md 2.2, #997): where `eavePolygon`'s mitred
+// line would cross itself, two sides meeting head on close the notch between
+// them as a ridge closes a wing, and the line runs straight past it. Inward is
+// the ring's own wavefront stopped at `d`; outward is the ring as a hole in a
+// frame, stopped at `-d`, keeping the loops that are not the frame's. The
+// frame stands `|d|` times the fastest corner's speed (plus two for the
+// frame's own corners) plus 10ft clear, so no corner reaches it by `-d`: the
+// design's flat `4|d| + 10` let a 4.6 degree spike's corner, which moves at
+// 25ft a foot, run into the frame and refused a ring `eavePolygon` takes. Returns the loops, each counter-clockwise and starting
+// at the vertex from the ring's lowest-numbered corner still standing (so an
+// offset with no event is `eavePolygon`'s corners in `eavePolygon`'s order);
+// `[]` where nothing is left (a court narrower than 2d); null where the ring
+// is refused or a loop of the ring's reached the frame's.
+export function offsetRing(ring, d, opts = {}) {
+  const pts = cleanPolygon(ring, opts);
+  if (!pts || !Number.isFinite(d)) return null;
+  const m = pts.length;
+  const lead = (loop, cornerIndex) => {
+    let at = 0, best = Infinity;
+    loop.forEach((v, k) => {
+      const c = v.corner === null ? Infinity : cornerIndex(v.corner);
+      if (c < best) { best = c; at = k; }
+    });
+    return loop.slice(at).concat(loop.slice(0, at)).map((v) => P2(v.x, v.z));
+  };
+  try {
+    if (d >= 0) {
+      const front = wavefront(pts, opts, d);
+      return front.map((l) => lead(l, (c) => c));
+    }
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of pts) {
+      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+      z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+    }
+    let fastest = 0;
+    for (let i = 0; i < m; i++) {
+      const a = pts[(i - 1 + m) % m], b = pts[i], c = pts[(i + 1) % m];
+      const l1 = Math.hypot(b.x - a.x, b.z - a.z), l2 = Math.hypot(c.x - b.x, c.z - b.z);
+      const n1x = (b.z - a.z) / l1, n1z = -(b.x - a.x) / l1, n2x = (c.z - b.z) / l2, n2z = -(c.x - b.x) / l2;
+      fastest = Math.max(fastest, Math.hypot(n1x + n2x, n1z + n2z) / (1 + n1x * n2x + n1z * n2z));
+    }
+    if (!Number.isFinite(fastest)) return null;
+    const g = -d * (fastest + 2) + 10;
+    const frame = [P2(x0 - g, z0 - g), P2(x1 + g, z0 - g), P2(x1 + g, z1 + g), P2(x0 - g, z1 + g)];
+    const front = wavefront(frame, { ...opts, holes: [pts] }, -d);
+    if (!front) return null;
+    // The frame's edges are 0 to 3; the hole's corner k is the ring's m-1-k.
+    const out = [];
+    for (const l of front) {
+      const own = l.map((v) => v.eL >= 4 && v.eR >= 4);
+      if (own.every((o) => !o)) continue;
+      if (!own.every((o) => o)) return null;
+      out.push(lead(l.slice().reverse(), (c) => m - 1 - (c - 4)));
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 // A face cut into triangles by ear clipping, as index triples into `pts`
 // (anything with x and z), each wound in (x, z) the way the face is. A
 // skeleton face is not convex in general (an L's long slope runs past its
 // valley), and a fan from the first point, which is how render.js has always
 // drawn a roof face, puts a triangle outside it there. Null if no ear can be
 // found, which a simple polygon always has.
-export function triangulate(pts) {
+//
+// With `holes` (DESIGN-roof-holes.md 3.1, #997), each hole is bridged into the
+// outer ring first, furthest right first: from its rightmost corner to the
+// nearest corner of the ring so far that it can see without touching any
+// edge, entering that corner's own wedge. The bridged ring is ear clipped as
+// before, a bridge's two ends each standing twice in it under one index, and
+// the indices are into `[...pts, ...holes.flat()]`. Null if a hole sees no
+// corner.
+export function triangulate(pts, holes = []) {
+  if (Array.isArray(holes) && holes.length) return bridged(pts, holes);
   const n = pts.length;
   if (n < 3) return null;
   let idx = [...Array(n).keys()];
   const backward = signedArea(pts) < 0;
   if (backward) idx.reverse();
+  const tris = clipEars(pts, idx);
+  if (!tris) return null;
+  return backward ? tris.map(([a, b, c]) => [c, b, a]) : tris;
+}
+
+// Ear clipping over `idx`, a counter-clockwise walk of `pts` (an index may
+// stand in it twice, where a bridge comes and goes).
+function clipEars(pts, idx) {
   const cross = (a, b, c) => (pts[b].x - pts[a].x) * (pts[c].z - pts[a].z) - (pts[b].z - pts[a].z) * (pts[c].x - pts[a].x);
   const tris = [];
   while (idx.length > 3) {
@@ -636,6 +734,77 @@ export function triangulate(pts) {
     idx.splice(cut, 1);
   }
   if (cross(idx[0], idx[1], idx[2]) > 0) tris.push([idx[0], idx[1], idx[2]]);
+  return tris;
+}
+
+function bridged(pts, holes) {
+  if (!Array.isArray(pts) || pts.length < 3) return null;
+  if (holes.some((h) => !Array.isArray(h) || h.length < 3)) return null;
+  const all = [...pts, ...holes.flat()];
+  const backward = signedArea(pts) < 0;
+  let outer = [...pts.keys()];
+  if (backward) outer.reverse();
+  // Each hole clockwise, so the face is on the left of every edge.
+  let base = pts.length;
+  const hs = holes.map((h) => {
+    const ix = h.map((_, k) => base + k);
+    base += h.length;
+    return signedArea(h) > 0 ? ix.reverse() : ix;
+  });
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of pts) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+  }
+  const scale = Math.hypot(x1 - x0, z1 - z0);
+  const eps = scale * 1e-9;
+  const cross = (o, a, b) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+  const same = (p, q) => Math.hypot(p.x - q.x, p.z - q.z) <= eps;
+  // Every edge a bridge may not cross: each ring's, and each bridge made.
+  const segs = [];
+  for (const ix of [outer, ...hs]) ix.forEach((a, k) => segs.push([a, ix[(k + 1) % ix.length]]));
+  const sees = (V, M) => {
+    if (same(V, M)) return false;
+    for (const [a, b] of segs) {
+      const A = all[a], B = all[b];
+      if (same(A, V) || same(A, M) || same(B, V) || same(B, M)) continue;
+      if (segsCross(V, M, A, B, eps * scale)) return false;
+    }
+    // Nor may it run through a corner on the way.
+    const dx = M.x - V.x, dz = M.z - V.z, L2 = dx * dx + dz * dz;
+    for (const P of all) {
+      if (same(P, V) || same(P, M)) continue;
+      const t = ((P.x - V.x) * dx + (P.z - V.z) * dz) / L2;
+      if (t <= 0 || t >= 1) continue;
+      if (Math.hypot(V.x + dx * t - P.x, V.z + dz * t - P.z) <= eps * 10) return false;
+    }
+    return true;
+  };
+  // Whether M lies in the walk's interior wedge at position `pos`.
+  const inWedge = (pos, M) => {
+    const k = outer.length;
+    const A = all[outer[(pos - 1 + k) % k]], V = all[outer[pos]], B = all[outer[(pos + 1) % k]];
+    const toB = cross(V, B, M), toA = cross(V, A, M);
+    return cross(A, V, B) >= 0 ? toB > 0 && toA < 0 : toB > 0 || toA < 0;
+  };
+  const order = hs.map((ix, k) => {
+    let m = ix[0];
+    for (const i of ix) if (all[i].x > all[m].x || (all[i].x === all[m].x && all[i].z < all[m].z)) m = i;
+    return { ix, m, k };
+  }).sort((a, b) => all[b.m].x - all[a.m].x || a.k - b.k);
+  for (const { ix, m } of order) {
+    const M = all[m];
+    const near = outer.map((v, pos) => ({ v, pos, d: Math.hypot(all[v].x - M.x, all[v].z - M.z) }))
+      .sort((a, b) => a.d - b.d || a.pos - b.pos);
+    const pick = near.find((c) => inWedge(c.pos, M) && sees(all[c.v], M));
+    if (!pick) return null;
+    const k0 = ix.indexOf(m);
+    const round = [...ix.slice(k0), ...ix.slice(0, k0), m];
+    outer = [...outer.slice(0, pick.pos + 1), ...round, ...outer.slice(pick.pos)];
+    segs.push([pick.v, m]);
+  }
+  const tris = clipEars(all, outer);
+  if (!tris) return null;
   return backward ? tris.map(([a, b, c]) => [c, b, a]) : tris;
 }
 
