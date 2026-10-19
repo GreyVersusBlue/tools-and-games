@@ -117,9 +117,11 @@ async function standInWorker() {
   return {
     inbox: [],
     posted: [],
+    sent: [], // { type, versions } of each message, as it was sent
     refuse: 0,
     postMessage(message) {
       this.posted.push(message.type);
+      this.sent.push({ type: message.type, versions: { ...message.versions } });
       this.inbox.push(structuredClone(message));
     },
     addEventListener(type, listener) {
@@ -153,6 +155,8 @@ async function standInWorker() {
     },
   };
 }
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 // Ask, let the stand-in work, and give the answer.
 async function answered(worker, promise) {
@@ -255,6 +259,19 @@ test('the main lane is untouched by the other two: between two main requests a s
 });
 
 // -------------------------------------------------------------- the client
+
+test('on the main thread the first scenario asking searches nothing: its pipeline borrows the main lane\'s route cache', async () => {
+  const store = withScenario(storeOf(sampleSchool()));
+  const client = engineFor(store, { worker: false });
+  assert.equal(client.searches, null, 'nothing has been made on this side yet');
+  await store.derived.results();
+  const searched = client.searches;
+  assert.ok(searched > 0, 'the main lane searched');
+  const answer = await store.derived.scenario();
+  assert.equal(answer.result.findings.findings.some((finding) => finding.id === DOUBLE_ID), false);
+  assert.equal(client.searches - searched, 0, 'the scenario run searched nothing');
+  client.close();
+});
 
 test('store.derived.scenario() and suggest() refuse until an engine is attached; scenario() is null with no scenario open', async () => {
   const store = storeOf(sampleSchool());
@@ -457,5 +474,167 @@ test('a worker given up on hands the lanes to the main thread, and they are answ
   assert.deepEqual(scenario.result, expectedScenario(store.project));
   assert.equal(suggestion.where, 'main');
   assert.ok(suggestion.suggestions.length > 0);
+  client.close();
+});
+
+// ------------------------------------------- the store moving under a lane
+
+test('a scenario changed or closed while its answer waits on the main lane is never compared as it was: the newest is, or null', async () => {
+  for (const closing of [false, true]) {
+    const store = withScenario(storeOf(sampleSchool()));
+    const worker = await standInWorker();
+    const client = engineFor(store, { worker: () => worker });
+    const asked = store.derived.scenario();
+    await tick();
+    assert.deepEqual(worker.inbox.map((message) => message.type), [SCENARIO_REQUEST]);
+    worker.work(); // the scenario is answered; its comparison asks the main lane
+    await tick();
+    assert.deepEqual(worker.inbox.map((message) => message.type), [REQUEST], 'the comparison waits on the main lane');
+    // a scenario action moves no counter: only the scenario's identity says it changed
+    const counters = versionsOf(store);
+    if (closing) store.apply(actions.discardScenario, {});
+    else store.apply(actions.removeScenarioChange, { index: 1 });
+    assert.deepEqual(versionsOf(store), counters);
+    await worker.workAll();
+    const got = await asked;
+    if (closing) {
+      assert.equal(got, null, 'the scenario was closed: null, never the comparison of the scenario as it was');
+    } else {
+      assert.deepEqual(got.changes.length, 1, 'the answer is for the one change left, not the two there were');
+      assert.deepEqual(got.result, expectedScenario(store.project));
+    }
+    assert.equal(client.laneStats.scenario.dropped, 1, (closing ? 'closing' : 'removing a change') + ': the answer for the scenario as it was is dropped');
+    client.close();
+  }
+});
+
+test('closing the scenario drops the job it wanted: whoever waited gets null, and nothing more is worked out', async () => {
+  const store = withScenario(storeOf(sampleSchool()));
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker });
+  const first = store.derived.scenario(); // sent
+  await tick();
+  store.apply(actions.removeScenarioChange, { index: 1 });
+  const second = store.derived.scenario(); // waits behind the first
+  store.apply(actions.discardScenario, {});
+  assert.equal(await store.derived.scenario(), null);
+  // at once, before the worker answers anything
+  const early = await Promise.race([Promise.all([first, second]), tick().then(() => 'still waiting')]);
+  assert.deepEqual(early, [null, null], 'both earlier askings resolve null as soon as no scenario is found open, not when the worker answers');
+  await worker.workAll();
+  assert.equal(worker.posted.filter((type) => type === SCENARIO_REQUEST).length, 1, 'the job that waited was never sent');
+
+  // on the main thread the job waits a turn before it runs; closed in that turn, it never runs
+  const here = withScenario(storeOf(sampleSchool()));
+  const local = engineFor(here, { worker: false });
+  const pending = here.derived.scenario();
+  here.apply(actions.discardScenario, {});
+  assert.equal(await here.derived.scenario(), null);
+  assert.equal(await pending, null);
+  assert.equal(local.laneStats.scenario.answered, 0, 'the closed scenario was never worked out');
+  client.close();
+  local.close();
+});
+
+test('a lane job whose counters the store has moved past is never sent: it is asked again with the counters as they are, so the shared route cache keeps the newest geometry', async () => {
+  const store = withScenario(storeOf(sampleSchool()));
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker });
+  await answered(worker, store.derived.results());
+  const first = store.derived.scenario(); // sent
+  await tick();
+  store.apply(actions.removeScenarioChange, { index: 1 });
+  const queued = store.derived.scenario(); // waits behind the first, at these counters
+  store.apply(actions.paintCorridor, { floorId: 'fsample003', cells: [0] });
+  const moved = store.derived.results(); // the main lane at the new geometry
+  await tick();
+  worker.work(); // the first scenario answer: the queued job's turn
+  assert.deepEqual(worker.inbox.map((message) => message.type), [REQUEST, SCENARIO_REQUEST]);
+  worker.work();
+  worker.work();
+  // a schedule-only edit on the main lane: the geometry the route cache holds is its own
+  store.apply(actions.setSlot, { groupId: 'gsample07c', dayTypeId: DAY_A, period: PERIOD, slot: { label: 'Moved here' } });
+  const edited = store.derived.results();
+  worker.work();
+  const after = await edited;
+  assert.equal(after.work.searches, 0, 'no route is searched again after a schedule-only edit: a stale scenario job reset the shared cache to an older geometry');
+  const scenarios = worker.sent.filter((message) => message.type === SCENARIO_REQUEST);
+  assert.equal(scenarios[1].versions.geometry, (await moved).versions.geometry, 'the second scenario request is for the geometry as it is now');
+  await worker.workAll();
+  const [a, b] = await Promise.all([first, queued]);
+  assert.deepEqual(a, b);
+  assert.deepEqual(a.versions, versionsOf(store));
+  assert.ok(client.laneStats.scenario.dropped >= 2, 'the first answer and the stale job were dropped');
+
+  // the suggestion lane: a job made ready at older counters, waiting behind another
+  const walk = 'group-walk:' + DAY_A + ':5:gsample08a';
+  const one = store.derived.suggest(DOUBLE_ID);
+  await tick(); // ready, and sent
+  const two = store.derived.suggest(walk);
+  await tick(); // ready, and waiting
+  const before = worker.sent.length;
+  store.apply(actions.paintCorridor, { floorId: 'fsample003', cells: [1] });
+  await worker.workAll();
+  assert.equal(await one, null);
+  const answer = await two;
+  assert.deepEqual(answer.versions, versionsOf(store), 'the suggestion is for the counters as they are now');
+  const stale = worker.sent.slice(before).filter((message) => message.type === SUGGEST_REQUEST && message.versions.geometry !== store.geometryVersion);
+  assert.deepEqual(stale, [], 'no suggestion was sent at the older geometry');
+  client.close();
+});
+
+test('no failure is remembered on the main thread either: a scenario or suggestion that could not be worked out here is worked out again, with nothing changed', async () => {
+  const real = withScenario(storeOf(sampleSchool()));
+  // a stand-in store whose project cannot be read until `unreadable` is
+  // turned off; the counters and the scenario object stay the same throughout
+  let unreadable = true;
+  const broken = { ...real.project, settings: null };
+  const stand = {
+    get project() {
+      return unreadable ? broken : real.project;
+    },
+    get geometryVersion() {
+      return real.geometryVersion;
+    },
+    get buildingVersion() {
+      return real.buildingVersion;
+    },
+    get scheduleVersion() {
+      return real.scheduleVersion;
+    },
+    derived: { engine: null, use() {} },
+  };
+  const client = createEngineClient(stand, { worker: false });
+  assert.equal(client.where, 'main');
+  const refused = client.scenario();
+  await assert.rejects(refused);
+  assert.deepEqual([client.laneStats.scenario.sent, client.laneStats.scenario.failed], [1, 1]);
+  const noSuggestion = client.suggest(DOUBLE_ID);
+  await assert.rejects(noSuggestion);
+  assert.equal(client.laneStats.suggest.failed, 1);
+
+  unreadable = false;
+  const again = client.scenario();
+  assert.notEqual(again, refused, 'a new promise');
+  assert.equal(client.laneStats.scenario.sent, 2, 'the same counters and scenario are run again: the failure was not remembered');
+  assert.deepEqual((await again).result, expectedScenario(real.project));
+  const yes = client.suggest(DOUBLE_ID);
+  assert.notEqual(yes, noSuggestion);
+  assert.ok((await yes).suggestions.length > 0, 'the suggestion is worked out again');
+  client.close();
+});
+
+test('compareResults options key the comparison: two Sets of floors are two comparisons, each of its own floors', async () => {
+  const store = withScenario(storeOf(sampleSchool()));
+  const client = engineFor(store, { worker: false });
+  const ground = await store.derived.scenario({ floorIds: new Set(['fsample001']) });
+  const upper = await store.derived.scenario({ floorIds: new Set(['fsample002']) });
+  const main = trimResult(createPipeline().run(store.project));
+  const changes = store.project.scenario.changes;
+  assert.deepEqual(upper.compare, compareResults(main, upper.result, { floorIds: ['fsample002'], changes }), 'the second Set is not answered with the first one\'s comparison');
+  assert.deepEqual(ground.compare, compareResults(main, ground.result, { floorIds: ['fsample001'], changes }));
+  assert.notDeepEqual(ground.compare.places, upper.compare.places);
+  const same = store.derived.scenario({ floorIds: new Set(['fsample002']) });
+  assert.equal(same, store.derived.scenario({ floorIds: new Set(['fsample002']) }), 'the same floors in another Set: one comparison');
   client.close();
 });

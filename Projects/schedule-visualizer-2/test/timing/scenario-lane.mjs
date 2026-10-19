@@ -11,8 +11,15 @@
 //           worked out, the main lane's result in hand: the median of five
 //           changes, budget 100 ms
 //   first   the first asking after the scenario is opened, the scenario
-//           pipeline empty but the route cache shared with the main lane's,
-//           so nothing is searched: budget 400 ms
+//           pipeline empty but the route cache shared with the main lane's:
+//           budget 400 ms. Nearly nothing is searched, and the file asserts
+//           it (client.searches, at most a tenth of the main lane's), but
+//           not nothing: the cache keeps 64 distance fields (FIELD_LIMIT in
+//           engine/routing.js) and this fixture has 150 rooms, so a scenario
+//           whose walks start from a room evicted since is searched again.
+//           SV2-64b measured 3 of 150 (the move 2, the swap 1). On a school
+//           of 64 rooms or fewer it is nothing, which
+//           test/ui/scenario-lane.test.mjs asserts on the sample school.
 //
 // The suite fails at twice the budget (SLACK 2, as every timing file here: a
 // CI runner is not this machine) and prints the measured numbers either way.
@@ -40,6 +47,9 @@ import { bigProject } from '../fixtures/big.mjs';
 
 const BUDGET = 100;
 const FIRST_BUDGET = 400;
+// the first asking may search at most this fraction of what the main lane
+// searched (1/FEW); measured 3 of 150, see the header
+const FEW = 10;
 const SLACK = 2; // as every timing file here: a CI runner is not this machine
 const clock = () => new Date('2026-09-01T12:00:00Z');
 
@@ -70,9 +80,13 @@ test('the scenario lane on the big fixture: one change added, warm, under ' + BU
   store.apply(actions.newScenario, { name: 'Trial' });
   store.apply(actions.addScenarioChange, { change: moveFor(store.project, 3, 0, 2) });
   store.apply(actions.addScenarioChange, { change: { kind: 'swapPeriods', dayTypeId: store.project.dayTypes[1].id, groupId: store.project.groups[40].id, periodA: 1, periodB: 4 } });
+  const searched = client.searches;
+  assert.ok(searched > 0, 'the main lane searched the building first');
   const first = await timed(() => store.derived.scenario());
   assert.equal(first.value.changes.length, 2);
   assert.equal(client.laneStats.scenario.sent, 1);
+  const firstSearches = client.searches - searched;
+  assert.ok(firstSearches * FEW <= searched, 'the first asking searched ' + firstSearches + ' distance fields, more than a ' + FEW + 'th of the main lane\'s ' + searched + ': the route cache is not the main lane\'s');
 
   const warm = [];
   for (let i = 0; i < 5; i += 1) {

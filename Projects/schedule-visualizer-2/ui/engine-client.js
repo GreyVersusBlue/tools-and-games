@@ -48,7 +48,9 @@
 //     the worker's next answer leaves out what it has already sent.)
 //
 // `client.stats` counts what happened, for the tests and the console:
-// asked, remembered, sent, answered, dropped, failed.
+// asked, remembered, sent, answered, dropped, failed. `client.searches` is
+// the distance fields searched on the main thread so far (null until a
+// pipeline is made there).
 //
 // Two more lanes, for the scenario lab and the Fix… dialog, each with a
 // pipeline of its own in the worker (or on the main thread, the same
@@ -70,7 +72,14 @@
 //     null when no scenario is open.
 //   The run is remembered by the three counters and the identity of
 //   project.scenario (a scenario action moves no counter, but every one
-//   makes a new scenario object), and the comparison by its options too.
+//   makes a new scenario object), and the comparison by its options too,
+//   a Set among them read as its members sorted (compareResults reads
+//   floorIds only as an array; a Set is handed on as one). Before a
+//   comparison is made, its run is checked against the store as it is now,
+//   counters and scenario both: a run for anything else is dropped and the
+//   newest asked for, and with the scenario closed the answer is null. An
+//   asking that finds no scenario open settles every earlier caller null
+//   and drops the job they waited on, unworked.
 //
 //   const { suggestions, none } = await store.derived.suggest(findingId, options);
 //     suggest() (engine/suggest.js) for the finding with that id in the main
@@ -85,7 +94,11 @@
 // resolves null instead: nobody is showing it any more); an answer for
 // counters the main lane has moved past is never given, the newest is; a
 // failure is never remembered, and a caller must not ask again from its own
-// rejection handler, for the same reason as above. `client.laneStats`
+// rejection handler, for the same reason as above. A job is checked once
+// more just before it is sent (or run here): one whose counters, or
+// scenario, the store has moved past is dropped and asked again as the
+// store is now, so a job at an older geometry never reaches the route cache
+// the three pipelines share (it would empty it for the main lane). `client.laneStats`
 // counts each lane: asked, remembered, sent, answered, dropped, failed.
 
 import { createPipeline, unpack, scenarioRun, suggestRun, REQUEST, ANSWER, READY, SCENARIO_REQUEST, SCENARIO_ANSWER, SUGGEST_REQUEST, SUGGEST_ANSWER } from '../engine/worker.js';
@@ -99,6 +112,19 @@ const clients = new WeakMap();
 
 function stampOf(versions) {
   return versions ? versions.geometry + ':' + versions.building + ':' + versions.schedule : '';
+}
+
+// compareResults' options as given, with every Set made a sorted array: a
+// Set is read as the list it holds (compareResults reads only arrays), and
+// two Sets are two keys (JSON.stringify writes every Set as {}).
+function optionsKeyed(options) {
+  const given = options || {};
+  const out = {};
+  for (const name of Object.keys(given)) {
+    const value = given[name];
+    out[name] = value instanceof Set ? Array.from(value).sort() : value;
+  }
+  return out;
 }
 
 function laneCounts() {
@@ -247,18 +273,47 @@ export function createEngineClient(store, options) {
     }
   }
 
+  // Is this lane job for the store as it is? Its counters, and for the
+  // scenario lane the identity of project.scenario too.
+  function laneCurrent(lane, job) {
+    if (stampOf(job.storeVersions) !== stampOf(currentVersions())) return false;
+    return lane !== lanes.scenario || store.project.scenario === job.project.scenario;
+  }
+
+  // A job about to be worked out for a store that has moved on is dropped,
+  // and the lane asked again as the store is now; with no scenario open, the
+  // scenario lane's callers get null. Never sent: a job at an older geometry
+  // would reset the route cache all three pipelines share.
+  function dropStale(lane, job) {
+    if (laneCurrent(lane, job)) return false;
+    lane.stats.dropped += 1;
+    if (lane === lanes.scenario) askScenario();
+    else client.suggest(job.findingId, job.given);
+    // the asking above settles the job (laneJob) when it makes a new one;
+    // when it makes none (no scenario open) it has settled it null already
+    if (!job.settled) {
+      job.settled = true;
+      job.resolve(null);
+    }
+    return true;
+  }
+
   function pumpLane(lane) {
     const job = lane.wanted;
     if (closed || !job || job.settled || job.sent || !job.ready) return;
     if (where === 'main') {
+      if (dropStale(lane, job)) return;
       job.sent = true;
       lane.stats.sent += 1;
       Promise.resolve().then(() => {
-        if (job === lane.wanted && !closed && !job.settled) runLaneHere(lane, job);
+        if (job !== lane.wanted || closed || job.settled) return;
+        if (dropStale(lane, job)) return;
+        runLaneHere(lane, job);
       });
       return;
     }
     if (lane.flying !== null) return;
+    if (dropStale(lane, job)) return;
     job.sent = true;
     lane.flying = job.generation;
     lane.stats.sent += 1;
@@ -300,6 +355,56 @@ export function createEngineClient(store, options) {
       else lane.stats.dropped += 1;
     }
     pumpLane(lane);
+  }
+
+  function currentVersions() {
+    return { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion };
+  }
+
+  // The scenario lane's job for the store as it is now: the one wanted
+  // already when it is for these counters and this scenario, else a new one.
+  // With no scenario open, null, and a job still waiting is settled null
+  // and never worked out.
+  function askScenario() {
+    const lane = lanes.scenario;
+    const project = store.project;
+    if (!project.scenario) {
+      const older = lane.wanted;
+      if (older && !older.settled) {
+        older.settled = true;
+        older.resolve(null);
+        // one already with the worker is counted when its answer comes
+        if (!older.sent || where === 'main') lane.stats.dropped += 1;
+      }
+      lane.wanted = null;
+      return null;
+    }
+    const versions = currentVersions();
+    if (!scenarioIds.has(project.scenario)) {
+      scenarioIdNext += 1;
+      scenarioIds.set(project.scenario, scenarioIdNext);
+    }
+    const key = stampOf(versions) + '|' + scenarioIds.get(project.scenario);
+    const held = lane.wanted;
+    if (held && held.key === key && !held.failed) {
+      lane.stats.remembered += 1;
+      return held;
+    }
+    if (key !== scenarioKey) {
+      scenarioKey = key;
+      scenarioCounter += 1;
+    }
+    const job = laneJob(lane, {
+      key,
+      subject: 'scenario',
+      project,
+      storeVersions: versions,
+      versions: { geometry: versions.geometry, building: versions.building, schedule: scenarioCounter },
+      ready: true,
+      compares: new Map(),
+    });
+    pumpLane(lane);
+    return job;
   }
 
   function giveUpOnWorker(reason) {
@@ -386,6 +491,12 @@ export function createEngineClient(store, options) {
     get fallback() {
       return fallback;
     },
+    // Distance fields searched on this side so far, by the pipelines here
+    // (they share one route cache, counted once); null while none is made.
+    get searches() {
+      const caches = new Set([local, localScenario, localSuggest].filter(Boolean).map((pipeline) => pipeline.cache));
+      return caches.size === 0 ? null : Array.from(caches).reduce((sum, cache) => sum + cache.searches, 0);
+    },
     get laneStats() {
       return { scenario: lanes.scenario.stats, suggest: lanes.suggest.stats };
     },
@@ -421,48 +532,24 @@ export function createEngineClient(store, options) {
       if (closed) return Promise.reject(new Error('This engine client has been closed.'));
       const lane = lanes.scenario;
       lane.stats.asked += 1;
-      const project = store.project;
-      if (!project.scenario) return Promise.resolve(null);
-      const asked = { ...(options || {}) };
+      const asked = optionsKeyed(options);
       delete asked.changes;
-      const versions = { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion };
-      if (!scenarioIds.has(project.scenario)) {
-        scenarioIdNext += 1;
-        scenarioIds.set(project.scenario, scenarioIdNext);
-      }
-      const key = stampOf(versions) + '|' + scenarioIds.get(project.scenario);
-      let job = lane.wanted;
-      if (job && job.key === key && !job.failed) {
-        lane.stats.remembered += 1;
-      } else {
-        if (key !== scenarioKey) {
-          scenarioKey = key;
-          scenarioCounter += 1;
-        }
-        job = laneJob(lane, {
-          key,
-          subject: 'scenario',
-          project,
-          storeVersions: versions,
-          versions: { geometry: versions.geometry, building: versions.building, schedule: scenarioCounter },
-          ready: true,
-          compares: new Map(),
-        });
-        pumpLane(lane);
-      }
+      const job = askScenario();
+      if (!job) return Promise.resolve(null);
       const askedKey = JSON.stringify(asked);
       const held = job.compares.get(askedKey);
       if (held) return held;
-      const promise = job.promise.then((run) => client.results().then((main) => {
-        // the store has moved on since this was worked out: the newest instead
-        if (stampOf(main.versions) !== stampOf(run.storeVersions)) {
+      const promise = job.promise.then((run) => (run === null ? null : client.results().then((main) => {
+        // the store has moved on since this was worked out, its counters or
+        // its scenario: the newest instead, or null when the scenario is closed
+        if (stampOf(main.versions) !== stampOf(run.storeVersions) || stampOf(main.versions) !== stampOf(currentVersions()) || store.project.scenario !== run.project.scenario) {
           lane.stats.dropped += 1;
           return client.scenario(options);
         }
         const changes = reconcile(run.project, run.project.scenario).changes;
         const compare = compareResults(trimResult(main), run.answer, { ...asked, changes });
         return { result: run.answer, compare, changes, versions: run.storeVersions, where: run.where, generation: run.generation };
-      }));
+      })));
       job.compares.set(askedKey, promise);
       // a comparison that failed is not remembered either
       promise.catch(() => {
@@ -477,7 +564,7 @@ export function createEngineClient(store, options) {
       lane.stats.asked += 1;
       const given = options || {};
       const asked = { otherTeachersRooms: given.otherTeachersRooms === true, limit: Number.isInteger(given.limit) ? given.limit : null };
-      const versions = { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion };
+      const versions = currentVersions();
       const stamp = stampOf(versions);
       const subject = JSON.stringify([findingId, asked.otherTeachersRooms, asked.limit]);
       const key = stamp + '|' + subject;
@@ -485,7 +572,7 @@ export function createEngineClient(store, options) {
         lane.stats.remembered += 1;
         return lane.wanted.answered;
       }
-      const job = laneJob(lane, { key, stamp, subject, project: store.project, storeVersions: versions, versions, options: asked, finding: null, ready: false });
+      const job = laneJob(lane, { key, stamp, subject, findingId, given: options, project: store.project, storeVersions: versions, versions, options: asked, finding: null, ready: false });
       job.answered = job.promise.then((run) => (run === null ? null : { ...run.answer, findingId, versions: run.storeVersions, where: run.where, generation: run.generation }));
       // the finding is the main lane's, for the same counters
       client.results().then((main) => {
