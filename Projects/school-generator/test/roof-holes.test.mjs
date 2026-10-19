@@ -1,13 +1,15 @@
-// A flat roof over a building with a court in it (DESIGN-roof-holes.md,
-// increment 3; #998). Run `node --test 'test/*.test.mjs'` from
+// The roof over a building with a court in it (DESIGN-roof-holes.md,
+// increments 3 and 4; #998, #999). Run `node --test 'test/*.test.mjs'` from
 // Projects/school-generator.
 //
 // `roofOutline` gives each building's courts as holes of its loop, whether
 // the court is a room's own hole or the space rooms close round. Under the
 // parapet a building with a curve on any of its rings runs its parapet on
 // the chords and round the court, and its deck is the outline less the court.
-// The hipped roof over a court stays on rectangles until increment 4, and a
-// rectilinear courtyard building is the plan it always was under every style.
+// Hipped (increment 4, #999), it stands on the skeleton of the outline with
+// each court's eave, 1.5ft into the court, as a hole. Gabled it keeps its
+// rectangles, and a rectilinear courtyard building is the plan it always was
+// under every style.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,6 +19,7 @@ import * as roof from '../js/roof.js';
 import { addShape, pointInRing } from '../js/shapes.js';
 import { createState, CELL } from '../js/grid.js';
 import { takeoff } from '../js/takeoff.js';
+import { roofHeightAt } from '../js/elevation.js';
 import { sharedQuantities } from '../js/cost.js';
 
 const { roofOutline, roofPlan, roofCover, roofMask, maskCount, parapetRuns, skeletonRoofsOf, curvedLoopsOf, inFootprint } = roof;
@@ -141,15 +144,132 @@ for (const rooms of [false, true]) {
     assert.equal(sharedQuantities(s).get('roof:membrane'), cover.area);
   });
 
-  test(`${what}: the hip over the court keeps its rectangles for now`, () => {
-    for (const style of ['hip', 'gable']) {
-      const s = hall({ rooms, style });
-      assert.equal(skeletonRoofsOf(s).length, 0, style);
-      assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton), style);
-      assert.equal(roofCover(s).footprint, maskFootprint(s), style);
-    }
+  test(`${what}: the gable over the court keeps its rectangles`, () => {
+    // Gable over a curve is the weighted skeleton (question 5), not built.
+    const s = hall({ rooms, style: 'gable' });
+    assert.equal(skeletonRoofsOf(s).length, 0);
+    assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton));
+    assert.equal(roofCover(s).footprint, maskFootprint(s));
   });
+
+  for (const pitch of [2, 6, 12]) {
+    test(`${what}: hipped at ${pitch} in 12, the roof stands round the court on its skeleton (#999)`, () => {
+      const s = hall({ rooms, style: 'hip', pitch });
+      const slope = pitch / 12;
+      const [outer] = roofOutline(s.floors[0]).loops;
+      const blocks = roofPlan(s).blocks.filter((b) => b.skeleton);
+      assert.equal(blocks.length, 1, 'one skeleton block');
+      assert.equal(skeletonRoofsOf(s).length, 1);
+      const [b] = blocks;
+      assert.equal(b.holes.length, 1, 'the court is the block\'s hole');
+      // The court's eave: its ring 1.5ft into the court.
+      assert.equal(b.eaveHoles.length, 1);
+      assert.deepEqual(new Set(b.eaveHoles[0].map(key)), new Set(COURT_EAVE.map(key)));
+      const plan = roofPlan(s);
+      everyFaceOnItsPlane(b, plan.eaveY, slope);
+      // A face for each of the court's four walls, rising from the court eave.
+      const court = b.faces.filter((f) => f.ring === 1);
+      assert.equal(court.length, 4, 'four court faces');
+      for (const f of court) {
+        for (const p of f.pts.slice(0, 2)) {
+          assert.ok(Math.abs(p.y - plan.eaveY) < 1e-9, 'the court face starts at the eave height');
+          assert.ok(COURT_EAVE.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 1e-9), `(${p.x}, ${p.z}) is a court eave corner`);
+        }
+      }
+      assert.equal(b.faces.filter((f) => f.ring === 0).length, b.faces.length - 4);
+      // The faces tile the outer eave less the court's eave, once.
+      let sum = 0;
+      for (const f of b.faces) sum += area(f.pts);
+      assert.ok(Math.abs(sum - (area(b.eave) - 9 * 5)) < 1e-6, `faces ${sum} against ${area(b.eave) - 45}`);
+      // The section: sky over the court and under its overhang, as outside the
+      // outer wall; 1.4ft back from the court wall, the court face's plane.
+      const mask = roofMask(s.floors[0], s.w, s.h);
+      assert.equal(roofHeightAt(plan, mask, 26, 24), null, 'the middle of the court');
+      assert.equal(roofHeightAt(plan, mask, 26, 21.4), null, '1.4ft into the court, under the eave');
+      assert.equal(roofHeightAt(plan, mask, 30.6, 24), null, '1.4ft into the court from its east wall');
+      const y = roofHeightAt(plan, mask, 26, 18.6);
+      assert.ok(Math.abs(y - (plan.eaveY + (1.5 + 1.4) * slope)) < 1e-9, `1.4ft into the building from the court: ${y}`);
+      // The takeoff: the outline less the court, sloped at the pitch.
+      const cover = roofCover(s);
+      assert.equal(cover.skeleton, 1);
+      assert.ok(Math.abs(cover.footprint - (area(outer) - 96)) < 1e-9, `${cover.footprint} against ${area(outer) - 96}`);
+      assert.ok(Math.abs(cover.area - cover.footprint * Math.hypot(12, pitch) / 12) < 1e-9);
+    });
+  }
 }
+
+// The court pushed 1.5ft in, counter-clockwise as `offsetRing` gives it.
+const COURT_EAVE = R4(21.5, 21.5, 30.5, 26.5);
+
+// Every face of a skeleton block on the plane through its own eave edge:
+// each point's height the eave's plus the pitch times its distance in.
+function everyFaceOnItsPlane(b, eaveY, slope) {
+  for (const f of b.faces) {
+    const [a, c] = f.pts;
+    const L = Math.hypot(c.x - a.x, c.z - a.z);
+    assert.ok(L > 0);
+    for (const p of f.pts) {
+      const d = ((c.x - a.x) * (p.z - a.z) - (c.z - a.z) * (p.x - a.x)) / L;
+      assert.ok(Math.abs(p.y - (eaveY + slope * d)) < 1e-9, `face ${f.ring}:${f.edge} off its plane by ${p.y - (eaveY + slope * d)}`);
+    }
+  }
+}
+
+// One room, the hall's outline, with `courts` as its holes.
+function hallWith(courts, pitch = 6) {
+  const s = createState(30, 20);
+  const sh = addShape(s, 0, [{ x: 8, z: 8 }, ...ARC.map((p) => ({ ...p })), { x: 8, z: 40 }]);
+  for (const c of courts) sh.rings.push({ pts: c.map((p) => ({ ...p })), walls: [], openings: [] });
+  s.roof = { style: 'hip', pitch, facade: 'brick' };
+  return s;
+}
+
+test('a court 2.5ft wide keeps the hipped hall on its rectangles (question 3\'s default)', () => {
+  // Its eave, 1.5ft in from both sides, has nothing left at 1.25ft.
+  const s = hallWith([R4(20, 20, 22.5, 28)]);
+  assert.equal(curvedLoopsOf(s.floors[0]).length, 1, 'the outline takes it');
+  assert.equal(skeletonRoofsOf(s).length, 0);
+  assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton));
+  assert.equal(roofCover(s).footprint, maskFootprint(s));
+  // 3.5ft wide, it has an eave half a foot wide, and the roof stands round it.
+  assert.equal(skeletonRoofsOf(hallWith([R4(20, 20, 23.5, 28)])).length, 1);
+});
+
+test('two courts: a hole and an eave each, every face on its plane', () => {
+  const courts = [R4(16, 16, 24, 24), R4(30, 20, 40, 32)];
+  const s = hallWith(courts);
+  const [b] = skeletonRoofsOf(s);
+  assert.ok(b, 'on the skeleton');
+  assert.equal(b.holes.length, 2);
+  assert.equal(b.eaveHoles.length, 2);
+  everyFaceOnItsPlane(b, roofPlan(s).eaveY, 0.5);
+  assert.equal(b.faces.filter((f) => f.ring === 1).length, 4);
+  assert.equal(b.faces.filter((f) => f.ring === 2).length, 4);
+  let sum = 0;
+  for (const f of b.faces) sum += area(f.pts);
+  assert.ok(Math.abs(sum - (area(b.eave) - 5 * 5 - 7 * 9)) < 1e-6, `faces ${sum}`);
+  const [outer] = roofOutline(s.floors[0]).loops;
+  assert.ok(Math.abs(roofCover(s).footprint - (area(outer) - 64 - 120)) < 1e-9);
+});
+
+test('a round court: its eave is the 12-gon 1.5ft in, and the hall stands round it', () => {
+  const round = Array.from({ length: 12 }, (_, k) => ({ x: 28 + 6 * Math.cos((Math.PI * k) / 6), z: 24 + 6 * Math.sin((Math.PI * k) / 6) }));
+  const s = hallWith([round]);
+  const [b] = skeletonRoofsOf(s);
+  assert.ok(b, 'on the skeleton');
+  assert.equal(b.eaveHoles.length, 1);
+  assert.equal(b.eaveHoles[0].length, 12);
+  // Each eave corner 1.5ft in from each of its two chords: the apothem less 1.5.
+  const apothem = 6 * Math.cos(Math.PI / 12);
+  for (const p of b.eaveHoles[0]) {
+    const r = Math.hypot(p.x - 28, p.z - 24);
+    assert.ok(Math.abs(r - (apothem - 1.5) / Math.cos(Math.PI / 12)) < 1e-9, `corner at ${r}`);
+  }
+  everyFaceOnItsPlane(b, roofPlan(s).eaveY, 0.5);
+  assert.equal(b.faces.filter((f) => f.ring === 1).length, 12);
+  const mask = roofMask(s.floors[0], s.w, s.h);
+  assert.equal(roofHeightAt(roofPlan(s), mask, 28, 24), null, 'sky in the middle of the court');
+});
 
 test('rooms round the court and a room with a hole give the same figures', () => {
   const one = hall(), four = hall({ rooms: true });

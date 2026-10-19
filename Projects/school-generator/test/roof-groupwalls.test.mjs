@@ -79,14 +79,16 @@ test('so it stands on the skeleton under hip and its chords under parapet, and t
   assert.ok(flat.deckPolys[0].pts.some((p) => p.x > 185), 'the deck runs out to the bow');
 });
 
-test('the same hall touching the L is judged with it: a court, rectangles under hip, chords under parapet', () => {
-  // One building with the L's court as its hole since #998. The hip over a
-  // court keeps its rectangles until DESIGN-roof-holes.md's increment 4; the
-  // parapet runs on the hall's chords and round the court.
+test('the same hall touching the L is judged with it: a court, the skeleton under hip, chords under parapet', () => {
+  // One building with the L's court as its hole since #998. The hip stands
+  // round the court on the skeleton since #999 (DESIGN-roof-holes.md
+  // increment 4); the parapet runs on the hall's chords and round the court.
   const o = roofOutline(school({ at: 'touching' }).floors[0]);
   assert.equal(o.loops.length, 1);
   assert.equal(o.holes[0].length, 1);
-  assert.equal(roofPlan(school({ at: 'touching' })).blocks.filter((b) => b.skeleton).length, 0);
+  const sk = roofPlan(school({ at: 'touching' })).blocks.filter((b) => b.skeleton);
+  assert.equal(sk.length, 1);
+  assert.equal(sk[0].holes.length, 1, 'the skeleton has the court as its hole');
   const deck = roofPlan(school({ at: 'touching', style: 'parapet' })).deckPolys;
   assert.equal(deck.length, 1);
   assert.equal(deck[0].holes.length, 1, 'the deck has the court as its hole');

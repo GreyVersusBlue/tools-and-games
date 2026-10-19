@@ -122,17 +122,22 @@ test('the takeoff and the estimate follow roofPlan building by building', () => 
   }
 });
 
-test('a courtyard on the curved building itself keeps its hip on rectangles', () => {
+test('a courtyard on the curved building itself: the hip stands round it on the skeleton', () => {
   // The hall closed into a ring round an open middle: one building, with a
-  // court since #998; the hip over a court is DESIGN-roof-holes.md's
-  // increment 4, so until then it keeps its rectangles.
+  // court since #998, and its hip on the skeleton round that court since #999
+  // (DESIGN-roof-holes.md increment 4).
   const s = school({ east: 'none' });
   addShape(s, 0, R4(8, -24, 64, -12));
   addShape(s, 0, R4(8, -12, 20, 8));
   addShape(s, 0, R4(52, -12, 64, 8));
-  assert.deepEqual(curvedLoopsOf(s.floors[0]).map((f) => f.holes.length), [1]);
-  assert.equal(skeletonRoofsOf(s).length, 0);
-  assert.equal(roofCover(s).footprint, maskFootprint(s));
+  const [f] = curvedLoopsOf(s.floors[0]);
+  assert.equal(f.holes.length, 1);
+  const sk = skeletonRoofsOf(s);
+  assert.equal(sk.length, 1);
+  assert.deepEqual(sk[0].holes, f.holes);
+  assert.equal(sk[0].eaveHoles.length, 1);
+  assert.equal(roofCover(s).skeleton, 1);
+  assert.notEqual(roofCover(s).footprint, maskFootprint(s), 'counted off the outline, not the cells');
 });
 
 test('only the hipped style takes the skeleton beside a courtyard', () => {

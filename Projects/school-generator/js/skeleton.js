@@ -842,8 +842,15 @@ export function roofHeightOver(faces, x, z) {
 // plane rising at `pitch` in 12. Faces come back in blockRoof's shape
 // ({ kind: 'slope', pts: [{ x, y, z }] }, counter-clockwise in (x, z), the
 // eave's two ends first), so a renderer that draws one draws the other.
-export function skeletonRoof(polygon, eaveY, pitch) {
-  const sk = straightSkeleton(polygon);
+//
+// With `opts.holes` (each court's eave line, any winding), the faces of a
+// hole's edges are ordinary slopes rising from that eave, each face carrying
+// its `ring` beside its `edge`, and the roof carries the holes as the
+// skeleton cleaned them (clockwise) in `holes` (DESIGN-roof-holes.md 3.1).
+// With none, the answer is the shipped one, key for key.
+export function skeletonRoof(polygon, eaveY, pitch, opts = {}) {
+  const withHoles = Array.isArray(opts.holes) && opts.holes.length > 0;
+  const sk = withHoles ? straightSkeleton(polygon, { holes: opts.holes }) : straightSkeleton(polygon);
   if (!sk) return null;
   const slope = pitch / 12;
   const pts = sk.nodes.map((p) => ({ x: p.x, y: eaveY + p.t * slope, z: p.z }));
@@ -857,8 +864,10 @@ export function skeletonRoof(polygon, eaveY, pitch) {
       const cross = (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
       return Math.abs(cross) > 1e-9 * Math.hypot(r.x - p.x, r.z - p.z);
     });
-    return { kind: 'slope', edge: f.edge, pts: ids.map((i) => pts[i]) };
+    const face = { kind: 'slope', edge: f.edge, pts: ids.map((i) => pts[i]) };
+    return withHoles ? { ...face, ring: f.ring } : face;
   });
   const rise = Math.max(0, ...sk.nodes.map((p) => p.t)) * slope;
-  return { faces, gables: [], rise, topY: eaveY + rise, poly: sk.poly };
+  const out = { faces, gables: [], rise, topY: eaveY + rise, poly: sk.poly };
+  return withHoles ? { ...out, holes: sk.rings.slice(1) } : out;
 }

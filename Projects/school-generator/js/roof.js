@@ -39,7 +39,7 @@
 
 import { CELL, WALL_H, floorBaseY } from './grid.js';
 import { shapesOf, shapeBBox, pointInShape, pointInRing } from './shapes.js';
-import { eavePolygon, cleanPolygon, skeletonRoof, triangulate } from './skeleton.js';
+import { eavePolygon, cleanPolygon, skeletonRoof, triangulate, offsetRing } from './skeleton.js';
 
 // A parapet is a low wall around a flat roof, hiding the mechanical plant and
 // carrying the flashing. Three feet is a school's; anything shorter reads as a
@@ -422,17 +422,46 @@ export function roofPlan(state, roof = null) {
 // loop as `outline`, the eave line as `eave` and each face's triangles as
 // `tris`; `rect` and `alongX` are null, since there is no rectangle. A loop
 // the eave or the skeleton refuses is left out, so its rectangles stay.
+//
+// A footprint with a court (#999) stands on the outer eave with each court's
+// eave, 1.5ft into the court, as a hole of the skeleton, so the slopes round
+// the court rise from that eave as the outer ones rise from theirs; the block
+// carries the court rings as `holes` and their eaves as `eaveHoles`. A court
+// too narrow for its eave keeps the building on its rectangles
+// (DESIGN-roof-holes.md question 3's default). A footprint with no court is
+// the block it always was, key for key.
 export function curvedRoofs(floor, eaveY, pitch) {
   const out = [];
   for (const { outer: loop, holes } of curvedLoopsOf(floor)) {
-    // A pitched roof over a court is DESIGN-roof-holes.md's increment 4; until
-    // then a footprint with a court keeps its rectangles (#998).
-    if (holes.length) continue;
     const eave = eaveLine(loop, EAVE);
-    const roof = eave && skeletonRoof(eave, eaveY, pitch);
+    if (!eave) continue;
+    if (holes.length) {
+      const eaveHoles = courtEaves(holes, EAVE);
+      const roof = eaveHoles && skeletonRoof(eave, eaveY, pitch, { holes: eaveHoles });
+      if (!roof) continue;
+      const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
+      out.push({ ...roof, faces, skeleton: true, outline: loop, holes, eave, eaveHoles, rect: null, alongX: null });
+      continue;
+    }
+    const roof = skeletonRoof(eave, eaveY, pitch);
     if (!roof) continue;
     const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
     out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
+  }
+  return out;
+}
+
+// Each court's eave line, `d` feet into the court: the court ring's own
+// wavefront stopped at `d` (`offsetRing`, #997), so a court the eave pinches
+// in two gives both pieces. Null where any court has no eave left (narrower
+// than 2d) or is refused, which keeps the building on its rectangles
+// (DESIGN-roof-holes.md question 3's default: nothing drawn that was not).
+function courtEaves(holes, d) {
+  const out = [];
+  for (const h of holes) {
+    const loops = offsetRing(h, d);
+    if (!loops || !loops.length) return null;
+    out.push(...loops);
   }
   return out;
 }

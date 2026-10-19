@@ -1628,6 +1628,86 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the check left its wing on the design');
     },
   },
+  // The hipped roof over the same L with its court (#999). test/roof-holes
+  // .test.mjs proves the plan's faces stand on their planes round the court's
+  // eave; this reads the drawn slopes back, as 'curved-roof' does: every
+  // triangle inside the outer eave and outside the court's eave, and the
+  // outer eave less the court's covered once.
+  {
+    name: 'curved-roof-court',
+    what: 'a hipped roof over a curved L with a court is drawn as its skeleton faces, inside the eave, round the court eave, once over',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { addShape, curveSegment, pointInRing } = await import('./js/shapes.js');
+        const { roofPlan } = await import('./js/roof.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, top = s.floors.length - 1, floor = s.floors[top];
+        const was = { roof: JSON.stringify(s.roof ?? null), shapes: JSON.stringify(floor.shapes), nextId: s.nextId };
+        const x0 = (s.w + 12) * CELL, z0 = 8;
+        const R = (a, b, c, e) => [{ x: a, z: b }, { x: c, z: b }, { x: c, z: e }, { x: a, z: e }];
+        const hall = addShape(s, top, R(x0, z0, x0 + 48, z0 + 24));
+        addShape(s, top, R(x0, z0 + 24, x0 + 20, z0 + 56));
+        const steps = curveSegment(hall, 0, 1, -0.45);
+        hall.rings.push({ pts: R(x0 + 12, z0 + 8, x0 + 24, z0 + 16), walls: [], openings: [] });
+        s.roof = { style: 'hip', pitch: 6, facade: 'brick' };
+        window.app.renderApi.buildFromState(s);
+        const plan = roofPlan(s);
+        const sk = plan.blocks.find((b) => b.skeleton);
+        const ringArea = (e) => {
+          let a = 0;
+          for (let i = 0; i < e.length; i++) a += (e[i].x * e[(i + 1) % e.length].z - e[(i + 1) % e.length].x * e[i].z) / 2;
+          return a;
+        };
+        const out = { steps, found: !!sk, courts: sk && sk.eaveHoles ? sk.eaveHoles.length : 0, n: 0, outside: 0, inCourt: 0, area: 0, want: 0 };
+        if (sk) {
+          const e = sk.eave, holes = sk.eaveHoles || [];
+          out.want = ringArea(e) - holes.reduce((a, h) => a + Math.abs(ringArea(h)), 0);
+          let bx0 = Infinity, bx1 = -Infinity;
+          for (const p of e) { bx0 = Math.min(bx0, p.x); bx1 = Math.max(bx1, p.x); }
+          window.app.renderApi.scene.updateMatrixWorld(true);
+          window.app.renderApi.scene.traverse((o) => {
+            const g = o.isMesh && o.geometry;
+            if (!g || !g.attributes.position) return;
+            const P = g.attributes.position, I = g.index;
+            const n = (I ? I.count : P.count) / 3;
+            for (let k = 0; k < n; k++) {
+              const v = [0, 1, 2].map((j) => {
+                const i = I ? I.getX(k * 3 + j) : k * 3 + j;
+                return new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld);
+              });
+              if (v.some((p) => p.x < bx0 - 0.01 || p.x > bx1 + 0.01)) continue;
+              const ys = v.map((p) => p.y);
+              if (Math.min(...ys) < plan.eaveY - 1e-3 || Math.max(...ys) < plan.eaveY + 1e-2) continue;
+              out.n++;
+              out.area += Math.abs((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[1].z - v[0].z) * (v[2].x - v[0].x)) / 2;
+              const mx = (v[0].x + v[1].x + v[2].x) / 3, mz = (v[0].z + v[1].z + v[2].z) / 3;
+              if (!pointInRing(e, mx, mz)) out.outside++;
+              if (holes.some((h) => pointInRing(h, mx, mz))) out.inCourt++;
+            }
+          });
+        }
+        s.roof = JSON.parse(was.roof);
+        if (s.roof === null) delete s.roof;
+        floor.shapes = JSON.parse(was.shapes);
+        s.nextId = was.nextId;
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!(ctx.steps > 3)) throw new Error(`the curve tool laid ${ctx.steps} segments, not a curve`);
+      if (!ctx.found) throw new Error('the roof plan has no skeleton block over the curved wing with a court');
+      if (ctx.courts !== 1) throw new Error(`the skeleton block has ${ctx.courts} court eaves, not 1`);
+      if (ctx.n < 24) throw new Error(`found ${ctx.n} roof triangles over the wing`);
+      if (ctx.outside) throw new Error(`${ctx.outside} of ${ctx.n} roof triangles lie outside the eave line`);
+      if (ctx.inCourt) throw new Error(`${ctx.inCourt} of ${ctx.n} roof triangles lie inside the court's eave`);
+      if (Math.abs(ctx.area - ctx.want) > 1e-3 * ctx.want) {
+        throw new Error(`the roof's triangles cover ${ctx.area.toFixed(2)} ft² of plan, the eave less the court's eave ${ctx.want.toFixed(2)}`);
+      }
+      if (after.json !== before.json) throw new Error('the check left its wing on the design');
+    },
+  },
   // An accent wall, drawn (#827). test/accent.test.mjs proves which face of
   // which run takes the colour; this builds the scene and reads the corners
   // back, the way 'wall-faces' does, with one wall of the red room green.

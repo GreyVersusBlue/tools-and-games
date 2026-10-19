@@ -405,15 +405,20 @@ test('only the hipped style takes the new path', () => {
   assert.ok(!roofPlan(school({ curve: false })).blocks.some((b) => b.skeleton), 'no curve, no skeleton');
 });
 
-test('a curve on a courtyard keeps the rectangles, the outline having said why', () => {
-  // The outline takes the court as a hole since #998; the hip over a court is
-  // DESIGN-roof-holes.md's increment 4, so until then it keeps rectangles.
+test('a curve on a courtyard stands on its skeleton, round the court', () => {
+  // The outline takes the court as a hole since #998, and the hip stands
+  // round it since #999 (DESIGN-roof-holes.md increment 4); the L beside it
+  // keeps its rectangles.
   const s = school({ courtyard: true });
   const o = roofOutline(s.floors[0]);
-  assert.equal(o.holes[o.loops.findIndex((l) => hasCurve(l))].length, 1, 'the curved building has a court');
+  const at = o.loops.findIndex((l) => hasCurve(l));
+  assert.equal(o.holes[at].length, 1, 'the curved building has a court');
   const plan = roofPlan(s);
-  assert.ok(!plan.blocks.some((b) => b.skeleton));
-  assert.ok(plan.blocks.length > 2);
+  const sk = plan.blocks.filter((b) => b.skeleton);
+  assert.equal(sk.length, 1);
+  assert.deepEqual(sk[0].holes, o.holes[at]);
+  assert.ok(sk[0].faces.some((f) => f.ring === 1), 'faces rising from the court eave');
+  assert.ok(plan.blocks.some((b) => !b.skeleton), 'the L\'s rectangles');
 });
 
 test('a curve too tight for the eave stands on its skeleton, the eave closed over it (#993)', () => {

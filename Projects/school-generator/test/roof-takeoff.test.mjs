@@ -115,7 +115,6 @@ test('every roof that does not take the skeleton path is the mask, figure for fi
   const cases = [
     ...['gable', 'flat'].map((style) => school({ style })),
     school({ curve: false }),
-    school({ courtyard: true }),
     school({ style: 'parapet', curve: false }),
   ];
   for (const s of cases) {
@@ -139,7 +138,11 @@ test('a parapet over a curve with a court is counted off the outline less the co
   const rest = 40 * 16 + 16 * 24;     // the L to the south, on whole cells
   near(roofCover(s).footprint, lessCourt + rest, 1e-9, 'outline less the court, plus the L');
   near(Math.abs(area(f[0].holes[0])), 32 * 20, 1e-9, 'the court is 32 by 20');
-  assert.equal(skeletonRoofsOf(school({ courtyard: true })).length, 0, 'the hip keeps its rectangles for now');
+  // Hipped, the same outline less the court since #999, sloped.
+  const hip = school({ courtyard: true });
+  assert.equal(skeletonRoofsOf(hip).length, 1, 'the hip stands round the court');
+  near(roofCover(hip).footprint, lessCourt + rest, 1e-9, 'hipped: outline less the court, plus the L');
+  near(roofCover(hip).area, (lessCourt + rest) * slopeOf(6), 1e-9, 'sloped at 6 in 12');
 });
 
 test('roofPlan and the takeoff agree on which loops are skeleton', () => {
