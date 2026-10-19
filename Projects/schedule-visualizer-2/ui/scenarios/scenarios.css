@@ -3,4 +3,460 @@
    index.html links it (data-sheet="scenarios"). The section mounts the plan
    map (ui/surface/plan-map.js), whose rules are ui/movement/movement.css's
    map rules and ui/app.css's block for the plan map's sections; what is the
-   scenario lab's alone goes here. */
+   scenario lab's alone goes here: the panel of the scenario and its changes
+   (beside the map on a wide window, under it on a narrow one), the bar of
+   Apply and Discard at the section's foot, and the comparison in the
+   inspector. */
+
+/* ---------- The panel ---------- */
+
+.scn-panel {
+  display: grid;
+  gap: var(--s-5);
+  align-content: start;
+  padding: var(--s-4);
+  background: var(--card);
+  border-top: var(--border);
+}
+
+.scn-panel[hidden],
+.scn-bar[hidden],
+.scn-open[hidden],
+.scn-start[hidden],
+.scn-add[hidden],
+.scn-dropped[hidden] {
+  display: none;
+}
+
+.scn-panel__title {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.scn-changes,
+.scn-open,
+.scn-add,
+.scn-file,
+.scn-report {
+  display: grid;
+  gap: var(--s-2);
+  align-content: start;
+  min-width: 0;
+}
+
+.scn-start__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scn-start__row .field__input {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.scn-name__input {
+  width: 100%;
+}
+
+/* ---------- The chips ---------- */
+
+.scn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scn-chips[hidden],
+.scn-none[hidden],
+.scn-form__follow[hidden] {
+  display: none;
+}
+
+.scn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  max-width: 100%;
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-2);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.scn-chip__words {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.scn-chip__remove {
+  flex: none;
+  min-width: 32px;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scn-chip__remove:hover {
+  background: var(--card);
+}
+
+.scn-none,
+.scn-status,
+.scn-file__lead,
+.scn-report__lead,
+.scn-dropped__note,
+.scn-form__now,
+.scn-form__preview,
+.scn-form__follow,
+.scn-form__line,
+.scn-file__result,
+.scn-file__groups {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.scn-status:empty,
+.scn-form__line:empty,
+.scn-file__result:empty,
+.scn-form__now:empty,
+.scn-form__preview:empty {
+  display: none;
+}
+
+.scn-file__groups[hidden],
+.scn-file__skipped[hidden] {
+  display: none;
+}
+
+.scn-none,
+.scn-file__lead,
+.scn-report__lead,
+.scn-dropped__note,
+.scn-form__now {
+  color: var(--ink-2);
+}
+
+.scn-status {
+  padding: var(--s-2) var(--s-3);
+  border-left: 3px solid var(--accent);
+  background: var(--paper);
+}
+
+/* ---------- What no longer applies ---------- */
+
+.scn-dropped {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px dashed var(--warning);
+  border-radius: var(--r-2);
+  background: var(--paper);
+}
+
+.scn-dropped__list {
+  margin: 0;
+  padding-left: var(--s-5);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.scn-dropped .btn {
+  justify-self: start;
+}
+
+/* ---------- Add a change ---------- */
+
+.scn-add .seg {
+  flex-wrap: wrap;
+}
+
+.scn-form {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.scn-form__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--s-2) var(--s-3);
+}
+
+.scn-field {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.scn-field .field__input {
+  width: 100%;
+  min-width: 0;
+}
+
+.scn-field--room {
+  grid-column: 1 / -1;
+}
+
+.scn-form__follow {
+  color: var(--note);
+}
+
+.scn-form__line {
+  color: var(--problem);
+}
+
+.scn-form__actions .btn,
+.scn-file .btn,
+.scn-report .btn {
+  justify-self: start;
+}
+
+.scn-file__skipped summary {
+  cursor: pointer;
+  font-size: var(--t-sm);
+}
+
+.scn-file__skipped ul {
+  margin: var(--s-1) 0 0;
+  padding-left: var(--s-5);
+  font-size: var(--t-sm);
+}
+
+/* ---------- The bar at the section's foot (sticky: .mov-bar) ---------- */
+
+.scn-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+}
+
+.scn-bar__text {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--t-sm);
+}
+
+.scn-bar__buttons {
+  display: flex;
+  gap: var(--s-2);
+}
+
+/* a finger's target on a phone or a coarse pointer */
+@media (max-width: 639.98px), (pointer: coarse) {
+  .scn-bar .btn,
+  .scn-panel .btn,
+  .scn-panel .field__input,
+  .scn-panel .seg__option {
+    min-height: 44px;
+  }
+
+  .scn-chip__remove {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ---------- Beside the map, on a wide window ---------- */
+
+/* The panel takes a column on the left and the first line, the stage and the
+   bar the rest; the panel scrolls on its own, so its length takes nothing
+   from the stage, whose height is the plan map's (--mov-room). */
+@media (min-width: 1200px) {
+  .scn .mov-map {
+    display: grid;
+    grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(min(max(45dvh, 320px), var(--mov-room, 100dvh)), 1fr) auto;
+  }
+
+  .scn .mov-map > * {
+    grid-column: 2;
+  }
+
+  .scn .mov-map > .scn-panel {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    contain: size;
+    overflow-y: auto;
+    border-top: 0;
+    border-right: var(--border);
+  }
+
+  .scn .mov-map > .mov-stage {
+    grid-row: 3;
+  }
+
+  .scn .mov-map > .scn-bar {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+}
+
+/* ---------- The comparison, in the inspector ---------- */
+
+.scn-compare {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+}
+
+.scn-compare__title {
+  margin: 0;
+  font-size: var(--t-lg);
+}
+
+.scn-compare__options {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.scn-compare__options[hidden] {
+  display: none;
+}
+
+.scn-compare__options .field__input {
+  width: 100%;
+}
+
+.scn-compare__status {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.scn-compare__status:empty {
+  display: none;
+}
+
+.scn-compare__body {
+  display: grid;
+  gap: var(--s-4);
+}
+
+/* the last answer, kept while a newer one is worked out, reads as old: its
+   status line says so, and the figures are set back */
+.scn-compare[data-state="old"] .scn-compare__body {
+  opacity: 0.6;
+}
+
+.scn-compare__heading {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-md);
+}
+
+.scn-compare__busiest,
+.scn-compare__note {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.scn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.scn-table th,
+.scn-table td {
+  padding: var(--s-1) var(--s-2) var(--s-1) 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.scn-table thead th {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.scn-table tbody th {
+  font-weight: 500;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.scn-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.scn-trend {
+  display: block;
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.scn-trend[data-trend="worse"] {
+  color: var(--problem);
+}
+
+.scn-trend[data-trend="better"] {
+  color: var(--accent);
+}
+
+/* an edited group, said in words and outlined, never by colour alone */
+.scn-tag {
+  display: inline-block;
+  margin-left: var(--s-1);
+  padding: 0 var(--s-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-1);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.scn-places__title,
+.scn-findings__title {
+  margin: 0 0 var(--s-1);
+  font-size: var(--t-sm);
+}
+
+.scn-places__list,
+.scn-findings__list {
+  margin: 0;
+  padding-left: var(--s-5);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.scn-places + .scn-places,
+.scn-findings + .scn-findings {
+  margin-top: var(--s-3);
+}
+
+.scn-findings summary {
+  cursor: pointer;
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.scn-severity {
+  font-weight: 600;
+}
+
+.scn-summary__list {
+  margin: var(--s-1) 0 var(--s-3);
+  padding-left: var(--s-5);
+  overflow-wrap: anywhere;
+}
