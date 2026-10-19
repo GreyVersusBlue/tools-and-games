@@ -504,7 +504,9 @@ and add to this list rather than starting a new one.
   skeleton roof's faces by their nearest point like a rectangle's, and
   nobody has checked a hip seen across a valley in the sheet by eye; no
   `test/visual` capture has a curved roof (the sample school has none); the
-  look on a real GPU. One software-rendered look on huginn (an L with a
+  look on a real GPU. The courts, the hole, the head-on notch and the
+  single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
+  increments in order with Devon's questions in its section 6. One software-rendered look on huginn (an L with a
   curved end, from above): hip, valley and the rounded end read right; and
   one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.
