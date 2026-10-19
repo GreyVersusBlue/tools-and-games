@@ -138,6 +138,7 @@ export const GROUPS = {
     'timing/playback.mjs', // SV2-44
     'timing/evacuation.mjs', // SV2-62
     'timing/suggest.mjs', // SV2-63
+    'timing/scenario-lane.mjs', // SV2-64
   ],
 };
 

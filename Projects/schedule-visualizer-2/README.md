@@ -219,3 +219,4 @@ row names a file it does not run.
 | `test/timing/playback.mjs` | One frame of playback under its budget |
 | `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
+| `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |
