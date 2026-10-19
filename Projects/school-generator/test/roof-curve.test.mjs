@@ -72,22 +72,28 @@ test('separate buildings are separate loops', () => {
   assert.equal(o.loops.length, 2);
 });
 
-test('a courtyard is refused, and says so', () => {
-  // Four rooms round an empty middle.
+test('a courtyard is a hole of the loop round it (#998)', () => {
+  // Four rooms round an empty middle: refused until #998.
   const o = roofOutline(floorOf(
     room([[0, 0], [48, 0], [48, 12], [0, 12]]), room([[0, 36], [48, 36], [48, 48], [0, 48]]),
     room([[0, 12], [12, 12], [12, 36], [0, 36]]), room([[36, 12], [48, 12], [48, 36], [36, 36]]),
   ));
-  assert.equal(o.loops, null);
-  assert.match(o.refused, /courtyard/);
+  assert.equal(o.refused, undefined);
+  assert.equal(o.loops.length, 1);
+  assert.equal(area(o.loops[0]), 48 * 48);
+  assert.equal(o.holes[0].length, 1);
+  assert.equal(area(o.holes[0][0]), -24 * 24, 'the court, wound the other way');
 });
 
-test('a room with a hole of its own is refused', () => {
+test('a room with a hole of its own gives the hole as its court (#998)', () => {
   const sh = room([[0, 0], [40, 0], [40, 40], [0, 40]]);
   sh.rings.push({ pts: [{ x: 10, z: 10 }, { x: 10, z: 30 }, { x: 30, z: 30 }, { x: 30, z: 10 }], walls: [], openings: [] });
   const o = roofOutline(floorOf(sh));
-  assert.equal(o.loops, null);
-  assert.match(o.refused, /hole/);
+  assert.equal(o.refused, undefined);
+  assert.equal(o.loops.length, 1);
+  assert.equal(area(o.loops[0]), 1600);
+  assert.equal(o.holes[0].length, 1);
+  assert.equal(area(o.holes[0][0]), -400);
 });
 
 test('overlapping rooms are refused, whether or not they share a wall', () => {
@@ -105,7 +111,7 @@ test('overlapping rooms are refused, whether or not they share a wall', () => {
 // splits them into a loop each: test/roof-pinch.test.mjs.
 
 test('an empty storey is no loops, not a refusal', () => {
-  assert.deepEqual(roofOutline(floorOf()), { loops: [] });
+  assert.deepEqual(roofOutline(floorOf()), { loops: [], holes: [] });
 });
 
 // ---------- what counts as a curve ----------
@@ -400,8 +406,11 @@ test('only the hipped style takes the new path', () => {
 });
 
 test('a curve on a courtyard keeps the rectangles, the outline having said why', () => {
+  // The outline takes the court as a hole since #998; the hip over a court is
+  // DESIGN-roof-holes.md's increment 4, so until then it keeps rectangles.
   const s = school({ courtyard: true });
-  assert.match(roofOutline(s.floors[0]).refused, /courtyard/);
+  const o = roofOutline(s.floors[0]);
+  assert.equal(o.holes[o.loops.findIndex((l) => hasCurve(l))].length, 1, 'the curved building has a court');
   const plan = roofPlan(s);
   assert.ok(!plan.blocks.some((b) => b.skeleton));
   assert.ok(plan.blocks.length > 2);

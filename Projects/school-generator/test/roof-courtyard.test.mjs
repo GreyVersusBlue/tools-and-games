@@ -11,7 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { roofOutline, roofPlan, roofCover, roofMask, maskCount, skeletonRoofsOf } from '../js/roof.js';
+import { roofOutline, roofPlan, roofCover, roofMask, maskCount, skeletonRoofsOf, curvedLoopsOf } from '../js/roof.js';
 import { addShape, curveSegment } from '../js/shapes.js';
 import { createState, CELL } from '../js/grid.js';
 import { takeoff } from '../js/takeoff.js';
@@ -49,29 +49,41 @@ const maskFootprint = (s) => {
   return maskCount(roofMask(f, f.w, f.h)) * CELL * CELL;
 };
 
-test('alone, the courtyard building is refused exactly as before', () => {
-  const o = roofOutline(school({ curved: false }).floors[0]);
-  assert.equal(o.loops, null);
-  assert.match(o.refused, /courtyard/);
-  const h = roofOutline(school({ curved: false, east: 'hole' }).floors[0]);
-  assert.equal(h.loops, null);
-  assert.match(h.refused, /hole/);
-  // Two buildings, both refused: still no loops at all, and the first reason.
+test('alone, the courtyard building is accepted with its court, has no curve, and keeps its rectangles', () => {
+  // Refused until #998, which takes a court as a hole of its loop.
+  for (const east of ['courtyard', 'hole']) {
+    const s = school({ curved: false, east });
+    const o = roofOutline(s.floors[0]);
+    assert.equal(o.refused, undefined, east);
+    assert.equal(o.loops.length, 1, east);
+    assert.equal(o.holes[0].length, 1, `${east}: one court`);
+    assert.equal(curvedLoopsOf(s.floors[0]).length, 0, `${east}: no curve`);
+    for (const style of ['hip', 'gable', 'parapet', 'flat']) {
+      const plan = roofPlan(school({ curved: false, east, style }));
+      assert.ok(!plan.blocks.some((b) => b.skeleton), `${east} ${style}: no skeleton`);
+      assert.equal(plan.deckPolys, undefined, `${east} ${style}: no chord deck`);
+      assert.equal(roofCover(school({ curved: false, east, style })).footprint, maskFootprint(s), `${east} ${style}: the mask's count`);
+    }
+  }
+  // Two courtyard buildings: both pass, a court each.
   const s = school({ curved: false });
   const sh = addShape(s, 0, R4(160, 8, 196, 48));
   sh.rings.push({ pts: R4(170, 18, 186, 38), walls: [], openings: [] });
   const two = roofOutline(s.floors[0]);
-  assert.equal(two.loops, null);
-  assert.match(two.refused, /courtyard|hole/);
+  assert.equal(two.loops.length, 2);
+  assert.deepEqual(two.holes.map((h) => h.length), [1, 1]);
 });
 
-test('beside a courtyard building, the curved building keeps its own loop and the outline says why the other went', () => {
+test('beside a courtyard building, the curved building keeps its own loop, and the other has its court', () => {
   for (const east of ['courtyard', 'hole']) {
     const both = roofOutline(school({ east }).floors[0]);
     const alone = roofOutline(school({ east: 'none' }).floors[0]);
     assert.ok(alone.loops && alone.loops.length === 1);
-    assert.deepEqual(both.loops, alone.loops, `${east}: the curved loop, point for point`);
-    assert.match(both.refused, east === 'hole' ? /hole/ : /courtyard/);
+    assert.equal(both.loops.length, 2, east);
+    const k = both.loops.findIndex((l) => JSON.stringify(l) === JSON.stringify(alone.loops[0]));
+    assert.ok(k >= 0, `${east}: the curved loop, point for point`);
+    assert.deepEqual(both.holes[k], [], `${east}: no court in the curved building`);
+    assert.equal(both.holes[1 - k].length, 1, `${east}: the courtyard building's court (#998)`);
   }
 });
 
@@ -110,13 +122,15 @@ test('the takeoff and the estimate follow roofPlan building by building', () => 
   }
 });
 
-test('a courtyard on the curved building itself still refuses that building', () => {
-  // The hall closed into a ring round an open middle: one building, refused whole.
+test('a courtyard on the curved building itself keeps its hip on rectangles', () => {
+  // The hall closed into a ring round an open middle: one building, with a
+  // court since #998; the hip over a court is DESIGN-roof-holes.md's
+  // increment 4, so until then it keeps its rectangles.
   const s = school({ east: 'none' });
   addShape(s, 0, R4(8, -24, 64, -12));
   addShape(s, 0, R4(8, -12, 20, 8));
   addShape(s, 0, R4(52, -12, 64, 8));
-  assert.match(roofOutline(s.floors[0]).refused, /courtyard/);
+  assert.deepEqual(curvedLoopsOf(s.floors[0]).map((f) => f.holes.length), [1]);
   assert.equal(skeletonRoofsOf(s).length, 0);
   assert.equal(roofCover(s).footprint, maskFootprint(s));
 });
