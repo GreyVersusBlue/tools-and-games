@@ -119,10 +119,26 @@ const stored = (page, groupId, day, period) => page.evaluate((g, d, p) => {
   const slot = globalThis.sv2.store.project.groups.find((group) => group.id === g).days[d][p];
   return { room: slot.room, roomText: slot.roomText };
 }, groupId, day, period);
-const act = (page, name, payload) => page.evaluate(async (action, given) => {
-  const actions = await import('./engine/actions.js');
-  globalThis.sv2.store.apply(actions[action], given);
-}, name, payload);
+// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
+// module script the page loads itself, and waited for: the page sets the
+// key. An import() awaited inside page.evaluate came back "Protocol error
+// (Runtime.callFunctionOn): Promise was collected" (SV2-72e: act's, on a page
+// just opened at #movement, in 2 of 10 runs of this file with the CPU
+// throttled 4 and the worker's answers late), so a module is loaded first
+// and used in a synchronous evaluate after, as SV2-72a did in grid-pass.mjs.
+// A load of the page empties the globals, and the module is loaded again.
+async function loadModule(page, key, file) {
+  const there = (wanted) => Boolean(globalThis.sv2modules && globalThis.sv2modules[wanted]);
+  if (await page.evaluate(there, key)) return;
+  await page.addScriptTag({ type: 'module', content: 'import * as module from ' + JSON.stringify('./' + file) + '; (globalThis.sv2modules ||= {})[' + JSON.stringify(key) + '] = module;' });
+  await page.waitForFunction(there, { timeout: 5000 }, key);
+}
+async function act(page, name, payload) {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate((action, given) => {
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions[action], given);
+  }, name, payload);
+}
 
 // A page of its own for a case: the sample school, nothing saved.
 async function open(hash, size, options) {
@@ -1483,8 +1499,10 @@ const drawnNarrow = (page, narrow) => shows(page, (wanted) => document.querySele
 
 test('SV2-50 item 1: on a phone the Show of an undone slot change is the slot\'s address, so the editor opens on it and not the list', async () => {
   await on('#schedule/groups', PHONE, async (p) => {
-    const hashes = await p.evaluate(async (g, d) => {
-      const { hashForFocus } = await import('./ui/app.js');
+    // the page's own app.js (the same address, so the same module, not a second boot)
+    await loadModule(p, 'app', 'ui/app.js');
+    const hashes = await p.evaluate((g, d) => {
+      const { hashForFocus } = globalThis.sv2modules.app;
       return [
         hashForFocus({ section: 'schedule', tab: 'groups', groupId: g, dayTypeId: d, period: 3 }),
         hashForFocus({ section: 'schedule', tab: 'groups', groupId: g, dayTypeId: d, period: 0 }),
@@ -2037,8 +2055,9 @@ test('SV2-56b: the only group deleted while wide, then upright, Add a group, All
   const UPRIGHT = { width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
   const SIDE = { width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
   await on('#project', { width: 390, height: 844, mobile: true }, async (p) => {
-    await p.evaluate(async (keep) => {
-      const actions = await import('./engine/actions.js');
+    await loadModule(p, 'actions', 'engine/actions.js');
+    await p.evaluate((keep) => {
+      const { actions } = globalThis.sv2modules;
       for (const group of globalThis.sv2.store.project.groups.slice()) {
         if (group.id !== keep) globalThis.sv2.store.apply(actions.deleteGroup, { id: group.id });
       }

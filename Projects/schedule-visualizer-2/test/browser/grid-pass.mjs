@@ -186,22 +186,25 @@ async function discard(page) {
   await stagedIs(page, false);
 }
 
-// The engine's actions put on the page as `globalThis.sv2actions`, by a
-// module script the page loads itself. An import() awaited inside
-// page.evaluate can come back "Protocol error: Promise was collected" (it
-// did here once, in a full run), so the actions are loaded first and used
-// in a synchronous evaluate after.
-async function loadActions(page) {
-  if (await page.evaluate(() => typeof globalThis.sv2actions === 'object')) return;
-  await page.addScriptTag({ type: 'module', content: "import * as actions from './engine/actions.js'; globalThis.sv2actions = actions;" });
-  await page.waitForFunction(() => typeof globalThis.sv2actions === 'object', { timeout: 5000 });
+// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
+// module script the page loads itself, and waited for: the page sets the
+// key. An import() awaited inside page.evaluate can come back "Protocol
+// error (Runtime.callFunctionOn): Promise was collected" (SV2-72a: once here,
+// in a full run; SV2-72e: in m2-pass.mjs, 2 runs in 10 with the CPU throttled 4), so a module is loaded
+// first and used in a synchronous evaluate after. A load of the page empties
+// the globals, and the module is loaded again.
+async function loadModule(page, key, file) {
+  const there = (wanted) => Boolean(globalThis.sv2modules && globalThis.sv2modules[wanted]);
+  if (await page.evaluate(there, key)) return;
+  await page.addScriptTag({ type: 'module', content: 'import * as module from ' + JSON.stringify('./' + file) + '; (globalThis.sv2modules ||= {})[' + JSON.stringify(key) + '] = module;' });
+  await page.waitForFunction(there, { timeout: 5000 }, key);
 }
 
 // Change the project behind the page, and take the changes back.
 async function change(page, name, payload) {
-  await loadActions(page);
+  await loadModule(page, 'actions', 'engine/actions.js');
   await page.evaluate((action, given) => {
-    globalThis.sv2.store.apply(globalThis.sv2actions[action], given);
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions[action], given);
   }, name, payload);
 }
 async function undo(page, times) {
@@ -1086,8 +1089,9 @@ test('the worst finding of a cell is said first, whatever order its groups\' fin
     assert.match(await page.$eval(cell, (el) => el.dataset.why), /^Problem: /);
     assert.equal(await page.$eval(cell, (el) => el.dataset.severity + ' ' + el.querySelector('.grd-cell__mark').textContent), 'problem ●', 'the mark is not the worst finding\'s');
     // the rule itself, handed a warning ahead of a problem and a note ahead of both
-    const order = await page.evaluate(async () => {
-      const { worstFirst, findingWords } = await import('./ui/schedule/grid/words.js');
+    await loadModule(page, 'words', 'ui/schedule/grid/words.js');
+    const order = await page.evaluate(() => {
+      const { worstFirst, findingWords } = globalThis.sv2modules.words;
       const given = [{ id: 'n', severity: 'note', text: 'n.' }, { id: 'w1', severity: 'warning', text: 'w1.' }, { id: 'p', severity: 'problem', text: 'p.' }, { id: 'w2', severity: 'warning', text: 'w2.' }];
       return [worstFirst(given).map((each) => each.id).join(' '), findingWords(given), given.map((each) => each.id).join(' ')];
     });
@@ -1221,9 +1225,9 @@ test('SV2-50 item 8: the Teachers and Rooms tables add one window resize listene
         return add.call(this, type, fn, options);
       };
     });
-    await loadActions(page);
+    await loadModule(page, 'actions', 'engine/actions.js');
     const redraw = (n) => page.evaluate((times) => {
-      for (let i = 0; i < times; i += 1) globalThis.sv2.store.apply(globalThis.sv2actions.setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 0, slot: { label: 'Homeroom ' + i } });
+      for (let i = 0; i < times; i += 1) globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 0, slot: { label: 'Homeroom ' + i } });
     }, n);
     for (const rows of ['teachers', 'rooms', 'teachers']) {
       await rowsAre(page, rows);
