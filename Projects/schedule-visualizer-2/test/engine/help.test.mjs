@@ -32,7 +32,7 @@ async function railSections() {
   const names = listed[1].split(',').map((each) => each.trim()).filter(Boolean);
   const sections = [];
   for (const local of names) {
-    const line = APP.match(new RegExp("import \\{ section as " + local + " \\} from '([^']+)'"));
+    const line = APP.match(new RegExp("import \\{[^}]*\\bsection as " + local + "\\b[^}]*\\} from '([^']+)'"));
     assert.ok(line, 'ui/app.js has no import line for the rail\'s ' + local);
     const mod = await import(pathToFileURL(path.join(TOOL, 'ui', line[1])).href);
     sections.push(mod.section);
