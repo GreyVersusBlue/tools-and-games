@@ -112,7 +112,9 @@ test('a comparison on the sample school with two changes prints the changes, the
   assert.deepEqual([f.walking.difference, f.crowding.difference, f.late.difference, f.findings.warning.difference, f.busiest.difference], [-48, 23, -1, -1, 0],
     'the sample\'s figures moved: the expectations below are of the crowd model as it was');
   const figures = Object.fromEntries(rowsAfter(section, 'Before and after').map((row) => [row[0], row.slice(1)]));
-  assert.deepEqual(figures['Walking, all walks together'], ['153 min 48 s', '153 min', '−48 s']);
+  // SV2-72d: from an hour, hours and minutes, the difference of the two as printed (153 min 48 s and 153 min)
+  assert.deepEqual(figures['Walking, all walks together'], ['2 h 34 min', '2 h 33 min', '−1 min']);
+  assert.ok(section.includes('<td class="is-number doc-change is-less">−1\u00a0min</td>'), 'one no-break space inside the figure, and less said by the cell');
   assert.deepEqual(figures['Lost to the crowd'], ['7 min 58 s', '8 min 21 s', '+23 s']);
   assert.deepEqual(figures['Busiest place'], ['177 students, Main Corridor, by Door B, on A Day', '177 students, Main Corridor, by Door B, on A Day', 'no change']);
   assert.deepEqual(figures['Late walks'], ['1', '0', '−1']);
@@ -121,8 +123,7 @@ test('a comparison on the sample school with two changes prints the changes, the
   assert.deepEqual(figures.Warnings, ['1', '0', '−1']);
   assert.deepEqual(figures.Notes, ['2', '2', 'no change']);
   // the direction is in the markup as a class beside the word, never colour alone
-  assert.ok(section.includes('<td class="is-number doc-change is-less">−48 s</td>'));
-  assert.ok(section.includes('<td class="is-number doc-change is-more">+23 s</td>'));
+  assert.ok(section.includes('<td class="is-number doc-change is-more">+23\u00a0s</td>'));
 
   // new and resolved findings
   const added = rowsAfter(section, 'New findings');
