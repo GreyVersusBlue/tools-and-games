@@ -42,6 +42,7 @@ import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
 import { filePanel } from './file.js';
 import { comparePanel } from './compare.js';
+import { mountDifference } from './difference.js';
 
 const HEADLINE = 'This is the scenario lab.';
 // Apply's button when nothing in the scenario applies: it closes the scenario.
@@ -173,6 +174,7 @@ export const section = {
 
     // SV2-69: the difference overlay mounts here, one line, from ./difference.js,
     // reading the lane's last answer (lane.answer) and memory.transition.
+    const difference = mountDifference({ ctx, store, plan, memory, lane, inspector: () => inspectorBox });
 
     // ---- the map's cursor says what is under it
     plan.onCell((ev) => {
@@ -278,6 +280,7 @@ export const section = {
     function drawCompare() {
       compare.update({ project: store.project, scenario: Boolean(view), compare: view ? lane.compare : null, pending: lane.pending, old: Boolean(lane.compare) && (lane.pending || Boolean(lane.failed)), failed: lane.failed });
       element.dataset.compare = !view ? 'none' : lane.pending ? 'pending' : lane.failed ? 'failed' : lane.compare ? 'ready' : 'none';
+      difference.update();
     }
 
     // ---- Apply…: what will change and what is skipped, then one step of undo
