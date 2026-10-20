@@ -531,3 +531,11 @@ test('the sender refuses a project id the receiver would refuse: over 64 charact
   const pack = await packTransfer('x', { projectId: 'p'.repeat(64), subtle });
   assert.equal((await receiveAll(pack.frames)).projectId, 'p'.repeat(64));
 });
+
+test('a kind is offer or answer only, not a name every object has', async () => {
+  for (const type of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    await assert.rejects(encodeSignal({ type, sdp: OFFER }, { subtle }), TypeError, 'encode ' + type);
+    const code = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+    await assert.rejects(decodeSignal(code, { subtle, expect: type }), TypeError, 'expect ' + type);
+  }
+});

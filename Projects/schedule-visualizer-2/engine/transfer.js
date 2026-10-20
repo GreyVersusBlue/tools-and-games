@@ -395,7 +395,7 @@ function refuseTooLong(length) {
 // it is; left out, it is deflated wherever the browser can.
 export async function encodeSignal(description, options) {
   const subtle = needSubtle(options);
-  if (!isObject(description) || !(description.type in SIGNAL_KINDS) || typeof description.sdp !== 'string') throw new TypeError('a session description is { type: "offer" or "answer", sdp }');
+  if (!isObject(description) || !Object.hasOwn(SIGNAL_KINDS, description.type) || typeof description.sdp !== 'string') throw new TypeError('a session description is { type: "offer" or "answer", sdp }');
   const wantCompress = !(options && options.compress === false) && compressionAvailable();
   let body = new TextEncoder().encode(description.sdp);
   if (wantCompress) body = await through(body, new CompressionStream('deflate-raw'));
@@ -417,7 +417,7 @@ export async function encodeSignal(description, options) {
 export async function decodeSignal(code, options) {
   const subtle = needSubtle(options);
   const expect = options.expect;
-  if (!(expect in SIGNAL_KINDS)) throw new TypeError('options.expect is "offer" or "answer"');
+  if (!Object.hasOwn(SIGNAL_KINDS, expect)) throw new TypeError('options.expect is "offer" or "answer"');
   const text = typeof code === 'string' ? code.replace(/\s+/g, '') : '';
   if (text.slice(0, SIGNAL_PREFIX.length).toUpperCase() !== SIGNAL_PREFIX) refuse('notCode');
   // No code this side makes is longer, so a longer one is not read at all.
