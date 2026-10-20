@@ -620,3 +620,68 @@ test('print.css has the door card\'s rules, the route\'s marks among them', () =
   assert.match(step, /line-height: 1\.35;/);
   assert.match(step, /margin: 0 0 1\.6mm;/);
 });
+
+// ---------------------------------------------------------------- SV2-72c item 5
+
+// Every label of a map's markup with the least box its text can take: 0.45
+// of its size a character (the plan's condensed face runs about 0.5) round
+// its anchor, a quarter turned for a name that runs down, 0.3 of the size
+// over and under its middle. A label whose least box leaves the picture is
+// cut on paper, whatever the face.
+function leastBoxes(svg) {
+  return Array.from(svg.matchAll(/<text class="([^"]+)" x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"([^>]*)>([^<]*)<\/text>/g)).map((match) => {
+    const [, cls, x, y, size, more, text] = match;
+    const words = text.replace(/&[a-z#0-9]+;/g, '_');
+    const half = (words.length * 0.45 * Number(size)) / 2;
+    const tall = Number(size) * 0.3;
+    const cx = Number(x);
+    const cy = Number(y);
+    const side = /plan__exit-name--([we])/.exec(cls);
+    if (side) return { cls, text, left: side[1] === 'w' ? cx - half * 2 : cx, right: side[1] === 'w' ? cx : cx + half * 2, top: cy - tall, bottom: cy + tall };
+    if (/rotate\(-90/.test(more)) return { cls, text, left: cx - tall, right: cx + tall, top: cy - half, bottom: cy + half };
+    return { cls, text, left: cx - half, right: cx + half, top: cy - tall, bottom: cy + tall };
+  });
+}
+
+test('door cards: no label is cut at a map\'s edge (Room 303\'s card cut "Cafeteria" and a corridor\'s name), and the room\'s own number is on its map', () => {
+  const project = sampleSchool();
+  const ids = project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room').map((space) => space.id));
+  const cards = cardsOf(doorCards.render(project, null, { ...NOW, roomIds: ids }).html);
+  let labels = 0;
+  const cut = [];
+  for (const id of ids) {
+    for (const figure of cards.get(id).matchAll(/<figure class="card__map"[\s\S]*?<\/figure>/g)) {
+      const [vx, vy, vw, vh] = figure[0].match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+      for (const box of leastBoxes(figure[0])) {
+        labels += 1;
+        if (box.left < vx || box.right > vx + vw || box.top < vy || box.bottom > vy + vh) cut.push(id + ': ' + box.text + ' (' + box.cls + ')');
+      }
+    }
+  }
+  assert.ok(labels > 50, 'only ' + labels + ' labels on the sample\'s cards: the case reads nothing');
+  assert.deepEqual(cut, []);
+  // the starting room is in its window whole, so its number always stays
+  const room = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === 'rsample303');
+  assert.ok(/<text class="plan__number"[^>]*>303<\/text>/.test(cards.get('rsample303')), 'Room 303\'s number is not on its card\'s map');
+  assert.equal(room.number, '303');
+});
+
+test('a window\'s labels: one the edge cuts is left out, one wholly inside stays, and with no window nothing is left out', () => {
+  const project = sampleSchool();
+  const floor = project.building.floors.find((each) => each.spaces.some((space) => space.id === 'rsample101'));
+  const all = planSvg(project, floor).svg;
+  const whole = planSvg(project, floor, { crop: { x: 0, y: 0, width: floor.width, height: floor.height } }).svg;
+  const count = (svg) => (svg.match(/<text /g) || []).length;
+  // a window of the whole floor keeps every label on the floor; the door
+  // names beyond its edge, which the window would cut, go (with no route
+  // the window does not grow for them)
+  const inside = (svg) => (svg.match(/<text class="(?!plan__exit-name)/g) || []).length;
+  assert.equal(inside(whole), inside(all), 'a window of the whole floor lost a label on the floor');
+  assert.equal(count(all) - count(whole), (all.match(/plan__exit-name/g) || []).length, 'a door name beyond the floor\'s edge is printed in part');
+  // a window through the middle of the floor cuts some rooms in two
+  const half = planSvg(project, floor, { crop: { x: 0, y: 0, width: Math.ceil(floor.width / 2), height: floor.height } }).svg;
+  const kept = leastBoxes(half);
+  const [vx, vy, vw, vh] = half.match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+  for (const box of kept) assert.ok(box.left >= vx && box.right <= vx + vw && box.top >= vy && box.bottom <= vy + vh, box.text + ' is cut');
+  assert.ok(kept.length > 0 && kept.length < count(all), kept.length + ' of ' + count(all));
+});
