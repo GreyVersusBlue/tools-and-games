@@ -242,9 +242,12 @@ export function snapshotsCard(ctx) {
     }
   }
 
+  // While a list is being read and drawn the card carries data-pending, so a
+  // test (or anything else) can wait for the rows it is about to press.
   async function draw() {
     drawn += 1;
     const mine = drawn;
+    element.dataset.pending = 'true';
     let found = [];
     let failed = null;
     if (snapshots) {
@@ -270,6 +273,7 @@ export function snapshotsCard(ctx) {
     listEl.hidden = found.length === 0;
     if (renaming !== null && !found.some((entry) => entry.id === renaming)) renaming = null;
     listEl.replaceChildren(...found.map((entry) => row(entry, now, format)));
+    delete element.dataset.pending;
     placeFocus();
   }
 
