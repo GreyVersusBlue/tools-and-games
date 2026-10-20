@@ -59,6 +59,7 @@
 //   map.cellAt(floorId, cell)  a cell's middle in pixels, or null
 //   map.onCell(fn)          fn({ kind, x, y, inside }) for what is done to a cell:
 //                           'tap', 'hover', 'keyboard' (the cursor moved there),
+//                           'enter' (Enter on the cursor's cell; SV2-72c),
 //                           'escape' (fn returns true when it used the key),
 //                           'view' (the map moved under the pointer) and
 //                           'resize' (the stage changed size); x and y are in
@@ -506,6 +507,8 @@ export function createPlanMap(asked) {
       queuePaint();
     },
     escape: () => emit({ kind: 'escape' }),
+    // Enter on the cursor's cell: a press here would be a pan, so it is said as itself
+    enter: (ev) => emit({ ...ev, kind: 'enter' }),
     shown: () => queuePaint(),
   };
   const input = attachInput(canvas, host);
@@ -556,6 +559,15 @@ export function createPlanMap(asked) {
   // the surface, measured as it is on screen now: when the stage changes
   // size (the foot under it grew or shrank, the window changed) and when
   // either of them is scrolled.
+  // The frame's foot as it is on screen: none when it has no box (not
+  // rendered, or a section's bar laid out as display: none), whose
+  // getBoundingClientRect() would read 0 everywhere, as if the foot stood
+  // at the window's top and lay over the whole stage (SV2-68's review)
+  function footShown() {
+    const foot = parts && parts.foot;
+    return foot && foot.getClientRects().length > 0 ? foot : null;
+  }
+
   let dockHost = null;
   function dock() {
     if (gone || !parts) return;
@@ -568,7 +580,7 @@ export function createPlanMap(asked) {
     const edge = surface.getBoundingClientRect();
     const foot = edge.top + surface.clientTop + surface.clientHeight;
     let top = foot;
-    for (const each of [zoomBox, parts.foot]) {
+    for (const each of [zoomBox, footShown()]) {
       if (!each) continue;
       const box = each.getBoundingClientRect();
       if (box.height > 0 && box.bottom > edge.top && box.top < foot) top = Math.min(top, box.top);
@@ -587,7 +599,8 @@ export function createPlanMap(asked) {
   function lift() {
     if (element.hidden) return;
     const shown = stage.getBoundingClientRect();
-    const footTop = parts.foot ? parts.foot.getBoundingClientRect().top : shown.bottom;
+    const foot = footShown();
+    const footTop = foot ? foot.getBoundingClientRect().top : shown.bottom;
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
     const most = Math.max(0, shown.height - zoomBox.offsetHeight - margin * 2);
     const under = Math.round(Math.min(most, Math.max(0, shown.bottom - footTop))) + 'px';
@@ -621,10 +634,11 @@ export function createPlanMap(asked) {
       const shape = parts.head ? getComputedStyle(parts.head) : null;
       line = tall(parts.line) + (shape ? (parseFloat(shape.paddingTop) || 0) + (parseFloat(shape.paddingBottom) || 0) + (parseFloat(shape.borderBottomWidth) || 0) : 0);
     }
-    const gap = parts.foot ? parseFloat(getComputedStyle(parts.foot).rowGap) || 0 : 0;
-    const more = parts.more && !parts.more.hidden ? tall(parts.more) + gap : 0;
+    const foot = footShown();
+    const gap = foot ? parseFloat(getComputedStyle(foot).rowGap) || 0 : 0;
+    const more = foot && parts.more && !parts.more.hidden ? tall(parts.more) + gap : 0;
     const docked = parts.under && !parts.under.hidden ? tall(parts.under) : 0;
-    const bar = tall(parts.foot);
+    const bar = tall(foot);
     const next = stageRoom({ world, width: stage.clientWidth, zoomRoom: zoomRoom(), height, line, foot: bar - more + docked, docked, gap, bar });
     const set = (key, value) => {
       if (root.style.getPropertyValue(key) !== value) root.style.setProperty(key, value);
@@ -633,7 +647,7 @@ export function createPlanMap(asked) {
     set('--mov-more', next.more + 'px');
     set('--mov-bar', next.bar + 'px');
     // the foot's height this was measured with, for a test to wait on
-    root.dataset.measuredBar = String(parts.foot ? parts.foot.offsetHeight : 0);
+    root.dataset.measuredBar = String(foot ? foot.offsetHeight : 0);
   }
   // and where a message may lie, which moves with the foot's height whether
   // or not the stage changes size
@@ -656,7 +670,8 @@ export function createPlanMap(asked) {
     // the foot lies over the map's foot until the section is at its end; the
     // map's foot is the docked line under it when it is there, so the wheel
     // brings that line above the foot too (SV2-55)
-    const foot = parts.foot ? Math.min(edge.bottom, parts.foot.getBoundingClientRect().top) : edge.bottom;
+    const shownFoot = footShown();
+    const foot = shownFoot ? Math.min(edge.bottom, shownFoot.getBoundingClientRect().top) : edge.bottom;
     const mapFoot = !parts.under || parts.under.hidden ? shown.bottom : Math.max(shown.bottom, parts.under.getBoundingClientRect().bottom);
     if (event.deltaY > 0) return root.scrollTop < most - 1 && mapFoot > foot + 1;
     return root.scrollTop > 0 && shown.top < edge.top - 1;

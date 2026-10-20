@@ -314,3 +314,99 @@ test('SV2-65b item 4: with little room under its first line the stage keeps its 
   await unmount(page, 'lab-least');
   assert.deepEqual(wide.problems().errors, []);
 });
+
+// ---------------------------------------------------------------- SV2-72c
+
+test('SV2-72c item 7: a renderer read off the page has the page\'s colours, and keeps none of them once it is put in a dark island', async () => {
+  const page = wide.page;
+  await page.evaluate(async () => {
+    globalThis.planMapRenderer = await import('./ui/surface/renderer.js');
+  });
+  const got = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    const renderer = globalThis.planMapRenderer.createRenderer(canvas);
+    const off = { ...renderer.theme() };
+    const island = document.createElement('div');
+    island.dataset.theme = 'dark';
+    island.style.cssText = 'position:fixed;left:0;top:0;width:10px;height:10px;visibility:hidden';
+    island.append(canvas);
+    document.body.append(island);
+    const on = { ...renderer.theme() };
+    const root = getComputedStyle(document.documentElement);
+    const dark = getComputedStyle(island);
+    island.remove();
+    return {
+      off: [off.ink, off.corridor, off.accent],
+      page: ['--ink', '--corridor', '--accent'].map((name) => root.getPropertyValue(name).trim()),
+      on: [on.ink, on.corridor, on.accent],
+      island: ['--ink', '--corridor', '--accent'].map((name) => dark.getPropertyValue(name).trim()),
+    };
+  });
+  assert.deepEqual(got.off, got.page, 'off the page the renderer did not read the page\'s tokens (#888888 for every one?)');
+  assert.notDeepEqual(got.page, got.island, 'the page and the island have the same colours: the case tests nothing');
+  assert.deepEqual(got.on, got.island, 'the colours read off the page were kept once the canvas was in the document');
+  assert.deepEqual(wide.problems().errors, []);
+});
+
+test('SV2-72c item 8: a frame foot laid out with no box is no foot: the zoom buttons stay at the stage\'s foot and the room is measured without it', async () => {
+  const page = wide.page;
+  await bare(page);
+  await mount(page, 'lab-foot', { slot: 'flex: 0 0 600px; height: 480px', foot: 60 });
+  const read = () => page.evaluate(() => {
+    const { map } = globalThis.planMaps['lab-foot'];
+    const stage = map.stage.getBoundingClientRect();
+    const zoom = map.stage.querySelector('.mov-zoom').getBoundingClientRect();
+    return { under: map.stage.style.getPropertyValue('--mov-under'), bar: map.root.style.getPropertyValue('--mov-bar'), measured: map.root.dataset.measuredBar, gap: Math.round(stage.bottom - zoom.bottom) };
+  });
+  const shown = await read();
+  assert.equal(shown.bar, '60px', 'the fixture\'s foot was not measured');
+  // the foot taken out of the layout, as a bar with display: none
+  await page.evaluate(() => {
+    const { map } = globalThis.planMaps['lab-foot'];
+    map.root.querySelector('.mov-map > div:last-child').style.display = 'none';
+    map.remeasure();
+  });
+  await page.waitForFunction(() => globalThis.planMaps['lab-foot'].map.root.dataset.measuredBar === '0', { timeout: 5000 });
+  const none = await read();
+  assert.equal(none.under, '0px', 'the zoom buttons were lifted over a foot that is not there (its box read as the window\'s top)');
+  assert.equal(none.bar, '0px', 'a foot with no box was measured as a bar');
+  assert.equal(none.gap, 12, 'the zoom buttons are not at the stage\'s foot: ' + JSON.stringify(none));
+  await unmount(page, 'lab-foot');
+  assert.deepEqual(wide.problems().errors, []);
+});
+
+// the keydown listeners on an element, through the protocol
+async function keydowns(page, selector) {
+  const cdp = await page.createCDPSession();
+  try {
+    const { result } = await cdp.send('Runtime.evaluate', { expression: 'document.querySelector(' + JSON.stringify(selector) + ')' });
+    const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
+    return listeners.filter((each) => each.type === 'keydown').length;
+  } finally {
+    await cdp.detach();
+  }
+}
+
+test('SV2-72c item 6: Enter on the cursor\'s cell is an onCell kind of its own, \'enter\', at the cursor\'s cell; Safety reads no key of the canvas itself', async () => {
+  const page = wide.page;
+  await bare(page);
+  await mount(page, 'lab-enter');
+  await page.evaluate(() => {
+    globalThis.planMapEvents = [];
+    globalThis.planMaps['lab-enter'].map.onCell((ev) => {
+      globalThis.planMapEvents.push({ kind: ev.kind, x: ev.x, y: ev.y });
+      return ev.kind === 'enter';
+    });
+    globalThis.planMaps['lab-enter'].map.focus();
+  });
+  for (const key of ['ArrowRight', 'ArrowRight', 'ArrowDown', 'Enter']) await page.keyboard.press(key);
+  const events = await page.evaluate(() => globalThis.planMapEvents);
+  assert.deepEqual(events.filter((ev) => ev.kind === 'keyboard').map((ev) => [ev.x, ev.y]), [[1, 0], [2, 0], [2, 1]]);
+  assert.deepEqual(events.filter((ev) => ev.kind === 'enter'), [{ kind: 'enter', x: 2, y: 1 }], 'Enter was not said to the section (a press on this map is a pan)');
+  const bareMap = await keydowns(page, '#lab-enter-plan');
+  await unmount(page, 'lab-enter');
+  await go(page, '#safety');
+  await page.waitForFunction(() => document.querySelector('.sfy') && document.querySelector('.sfy').dataset.styled === 'true');
+  assert.equal(await keydowns(page, '#safety-plan'), bareMap, 'Safety listens for keys on the map\'s canvas beside the map\'s own');
+  assert.deepEqual(wide.problems().errors, []);
+});

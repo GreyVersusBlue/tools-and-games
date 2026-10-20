@@ -3,7 +3,9 @@
 // implementation:
 //
 //   arrows            move the cursor one cell
-//   Enter             act as a click would: down and up on the cursor's cell
+//   Enter             act as a click would: down and up on the cursor's cell;
+//                     or host.enter(ev), when the host has one (a map with
+//                     nothing to draw, where a press is a pan: ui/surface/plan-map.js)
 //   Shift + arrows    a drag: down on the cell the cursor was on, a move for
 //                     each step, and up when Shift is let go
 //   Space + arrows    move the map. Space does nothing else
@@ -15,6 +17,7 @@
 //   moved(ev)         the cursor is on another cell (announce it, draw it)
 //   escape()          Escape with no drag going
 //   shown(showing)    the cursor appeared or went (a pointer took over)
+//   enter(ev)         optional: Enter on the cursor's cell, in place of down and up
 //
 // ev = { x, y, index, inside: true, sx, sy, shift, pointerType: 'keyboard', source: 'keyboard' }
 
@@ -86,6 +89,10 @@ export function attachCursor(canvas, host) {
       if (event.repeat || dragging) return;
       show(true);
       const ev = make(false);
+      if (typeof host.enter === 'function') {
+        host.enter(ev);
+        return;
+      }
       const answer = host.down(ev);
       if (answer !== false && answer !== 'pan') host.up(ev);
       return;

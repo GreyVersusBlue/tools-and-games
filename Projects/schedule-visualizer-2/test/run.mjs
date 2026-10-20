@@ -90,6 +90,7 @@ export const GROUPS = {
     'ui/plan-map.test.mjs', // SV2-65
     'ui/scenario-lane.test.mjs', // SV2-64
     'ui/safety.test.mjs', // SV2-67b
+    'ui/exit-colours.test.mjs', // SV2-72c
     'ui/scenarios-model.test.mjs', // SV2-68b
     'ui/difference.test.mjs', // SV2-69
     'ui/fix-kinds.test.mjs', // SV2-70b

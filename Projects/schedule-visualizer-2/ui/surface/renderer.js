@@ -125,20 +125,29 @@ export function createRenderer(canvas) {
   let letters = { connections: null, floorId: null, byCell: new Map() };
   let surnames = { teachers: null, byId: new Map() };
 
+  // The colours are kept once read, until the theme changes. A canvas that
+  // is not in the document has no styles of its own: it reads the page's
+  // root (where the tokens are), and what it read is not kept, so the first
+  // draw once it is on the page reads its own (SV2-72c: a map made before
+  // its section was put on the page kept #888888 for every token).
   function readTheme() {
     const key = (document.documentElement.dataset.theme || '') + ':' + dark.matches;
     if (theme && key === themeKey) return theme;
-    const style = getComputedStyle(canvas);
+    const placed = canvas.isConnected;
+    const style = getComputedStyle(placed ? canvas : document.documentElement);
     const next = {};
+    let whole = placed;
     for (const name of TOKENS) {
       const value = style.getPropertyValue('--' + name).trim();
+      if (!parse(value)) whole = false;
       next[camel(name)] = parse(value) ? value : '#888888';
     }
     next.font = style.getPropertyValue('--font-plan').trim() || 'sans-serif';
-    theme = next;
-    themeKey = key;
     fills.clear();
     labels.clear();
+    theme = next;
+    // a reading with a token missing is used for this draw and asked again at the next
+    themeKey = whole ? key : null;
     return theme;
   }
 
