@@ -77,34 +77,18 @@ const gridRows = (rows) => async (page) => {
 };
 
 // SV2-40: the grid on a phone, where Group and the periods are what shows.
-// A sweep keeps one page at one size, so the size is changed here and put
-// back when the sweep leaves for its next screen.
+// The screen is loaded at a phone's size with touch (its `viewport`, SV2-72e;
+// it used to be resized here, with no touch).
 async function gridOnPhone(page) {
-  const size = page.viewport ? page.viewport() : page.viewportSize();
-  const resize = (to) => (page.setViewport ? page.setViewport({ ...size, ...to }) : page.setViewportSize(to));
-  await resize({ width: 390, height: 760 });
-  page.once('framenavigated', () => {
-    resize({ width: size.width, height: size.height }).catch(() => {});
-  });
+  await page.waitForFunction(() => window.innerWidth === 390);
   await gridDrawn(page);
   await page.waitForFunction(() => document.querySelector('.grd-cell--grade').getClientRects().length === 0);
 }
 
-// SV2-38: a screen of the schedule on a phone, the size put back as above.
+// SV2-38: a screen of the schedule on a phone, loaded at a phone's size with
+// touch (its `viewport`, SV2-72e).
 async function scheduleOnPhone(page) {
-  const size = page.viewport ? page.viewport() : page.viewportSize();
-  const resize = (to) => (page.setViewport ? page.setViewport({ ...size, ...to }) : page.setViewportSize(to));
-  await resize({ width: 390, height: 760 });
-  // put back when the sweep leaves; a group chosen on a phone is an address
-  // of its own (SV2-48), and going to it is not leaving
-  const leave = (frame) => {
-    if (frame !== page.mainFrame() || /#schedule\/groups\//.test(frame.url())) return;
-    page.off('framenavigated', leave);
-    resize({ width: size.width, height: size.height }).catch(() => {});
-  };
-  page.on('framenavigated', leave);
-  // crossing the width draws the tab again, some time after the window has
-  // it: the section says which width its last drawing was for
+  // the section says which width its last drawing was for
   await page.waitForFunction(() => window.innerWidth === 390 && document.querySelector('.sch')?.dataset.narrow === 'true');
   await scheduleDrawn(page);
 }
@@ -491,8 +475,8 @@ export const SCREENS = [
       await page.waitForFunction(() => document.querySelector('.sch-slot[data-period="1"] .sch-room__line').textContent !== '');
     },
   },
-  { id: 'schedule-checks-phone', hash: '#schedule/checks', open: checksOnPhone }, // SV2-38
-  { id: 'schedule-group-editor-phone', hash: '#schedule/groups', open: groupEditorOnPhone }, // SV2-38
+  { id: 'schedule-checks-phone', hash: '#schedule/checks', viewport: { width: 390, height: 844, mobile: true }, open: checksOnPhone }, // SV2-38; with touch since SV2-72e
+  { id: 'schedule-group-editor-phone', hash: '#schedule/groups', viewport: { width: 390, height: 844, mobile: true }, open: groupEditorOnPhone }, // SV2-38; with touch since SV2-72e
   {
     id: 'schedule-slot-menu', // SV2-11
     hash: '#schedule/groups',
@@ -617,7 +601,7 @@ export const SCREENS = [
   { id: 'schedule-grid-empty', hash: '#project', open: scheduleEmpty('grid') }, // SV2-12
   { id: 'schedule-grid-teachers', hash: '#schedule/grid', open: gridRows('teachers') }, // SV2-12
   { id: 'schedule-grid-rooms', hash: '#schedule/grid', open: gridRows('rooms') }, // SV2-12
-  { id: 'schedule-grid-phone', hash: '#schedule/grid', open: gridOnPhone }, // SV2-40
+  { id: 'schedule-grid-phone', hash: '#schedule/grid', viewport: { width: 390, height: 844, mobile: true }, open: gridOnPhone }, // SV2-40; with touch since SV2-72e
   { id: 'schedule-grid-teachers-marked', hash: '#schedule/grid', open: gridTeachersMarked }, // SV2-40
   { // SV2-12: a cell being edited, with the rooms listed under it
     id: 'schedule-grid-editing',

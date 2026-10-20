@@ -1447,6 +1447,35 @@ test('the sweeps have the three screens the walk-through missed, and each opens'
   assert.deepEqual(found, CLEAN);
 });
 
+// The SV2-57 review: three of the schedule's phone screens were resized by
+// their own `open` after a load at the sweep's size, so axe and the
+// no-offsite count saw them with a mouse, never with touch. They are loaded
+// at a phone's size with touch now, as the sweeps load every `viewport`
+// screen (harness.mjs, visit), and the size is the sweep's own again after.
+test('SV2-72e item 2: the schedule\'s phone screens in the sweeps run at a phone\'s size with touch, and the next screen at the sweep\'s size', async () => {
+  const phones = ['schedule-checks-phone', 'schedule-group-editor-phone', 'schedule-grid-phone'];
+  const session = await openPlanner({ server, browser, hash: '#project', theme: 'light', ...DESK });
+  let failed = null;
+  try {
+    for (const id of phones) {
+      const screen = SCREENS.find((each) => each.id === id);
+      assert.ok(screen, id + ' is not in test/browser/screens.mjs');
+      await visit(session, screen);
+      const seen = await session.page.evaluate(() => ({ width: window.innerWidth, touch: navigator.maxTouchPoints > 0, coarse: matchMedia('(pointer: coarse)').matches }));
+      assert.deepEqual(seen, { width: 390, touch: true, coarse: true }, id + ' ran without touch, or not at a phone\'s width');
+    }
+    await visit(session, SCREENS.find((each) => each.id === 'schedule-groups'));
+    const back = await session.page.evaluate(() => ({ width: window.innerWidth, touch: navigator.maxTouchPoints > 0 }));
+    assert.deepEqual(back, { width: 1280, touch: false }, 'the screen after a phone\'s is not at the sweep\'s size');
+  } catch (error) {
+    failed = error;
+  }
+  const found = session.problems();
+  await session.page.close().catch(() => {});
+  if (failed) throw failed;
+  assert.deepEqual(found, CLEAN);
+});
+
 // ---------------------------------------------------------------- SV2-50: the phone's history, and the focus
 
 const onPage = (page) => page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
