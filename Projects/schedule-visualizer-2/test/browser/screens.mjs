@@ -115,6 +115,20 @@ async function checksOnPhone(page) {
   await page.waitForSelector('.sch-checks .sch-finding__cell');
 }
 
+// SV2-70: the Fix dialog on the sample school's double-booked room, answered;
+// `others` turns the switch on (the other teachers' rooms asked for too).
+const fixOpen = (options) => async (page) => {
+  const opts = options || {};
+  await scheduleDrawn(page);
+  await page.waitForSelector('.sch-findings tr[data-finding="room-double:dsample00a:1:rsample203"] [data-action="fix"]', { timeout: 30000 });
+  await page.click('.sch-findings tr[data-finding="room-double:dsample00a:1:rsample203"] [data-action="fix"]');
+  await page.waitForFunction(() => document.getElementById('fix-dialog')?.dataset.state === 'answered', { timeout: 30000 });
+  if (opts.others) {
+    await page.click('#fix-dialog [data-part="others"]');
+    await page.waitForFunction(() => document.getElementById('fix-dialog').dataset.others === 'true' && document.getElementById('fix-dialog').dataset.state === 'answered', { timeout: 30000 });
+  }
+};
+
 // SV2-38: the Groups tab on a phone after a group is chosen: its card, "All
 // groups", and the editor.
 async function groupEditorOnPhone(page) {
@@ -553,6 +567,9 @@ export const SCREENS = [
       await page.waitForSelector('#accept-dialog .field__refusal:not([hidden])');
     },
   },
+  { id: 'schedule-fix', hash: '#schedule/checks', open: fixOpen() }, // SV2-70: the Fix dialog, its sentences and Try it
+  { id: 'schedule-fix-others', hash: '#schedule/checks', open: fixOpen({ others: true }) }, // SV2-70: the switch on
+  { id: 'schedule-fix-phone', hash: '#schedule/checks', viewport: { width: 390, height: 844, mobile: true }, open: fixOpen() }, // SV2-70: a phone, with touch
   {
     id: 'schedule-accepted-list', // SV2-11
     hash: '#schedule/checks',
