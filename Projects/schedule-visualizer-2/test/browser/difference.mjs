@@ -331,7 +331,10 @@ test('SV2-72d 7: one cursor move says one sentence: the card\'s on a cell with a
     plan.cursor.moveTo(p.x - 1, p.y, true);
     // every text the live region is given, in turn
     globalThis.__said = [];
-    globalThis.__sayWatch = new MutationObserver(() => globalThis.__said.push(document.getElementById('announcer').textContent));
+    // each text set, from its own record: two sets in one task come to one callback
+    globalThis.__sayWatch = new MutationObserver((records) => {
+      for (const record of records) for (const node of record.addedNodes) globalThis.__said.push(node.textContent);
+    });
     globalThis.__sayWatch.observe(document.getElementById('announcer'), { childList: true, characterData: true, subtree: true });
   }, hot.floorId, hot.cell);
   await page.keyboard.press('ArrowRight');
