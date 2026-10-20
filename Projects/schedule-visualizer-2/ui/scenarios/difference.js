@@ -7,6 +7,7 @@
 //
 //   mountDifference({ ctx, store, plan, memory, lane, inspector }) -> { update() }
 //   whenWords, sidesWords, cardText: the card's words (below)
+//   cardWalks, groupsAt: who walks a cell before and after (below)
 //     plan       the lab's plan map (ui/surface/plan-map.js)
 //     memory     the lab's memory: dayTypeId and transition are its own
 //                choice in the comparison (null for every day type, null for
@@ -22,16 +23,32 @@
 // Before is the main lane's result for the answer's counters
 // (store.derived.results(), which keeps one answer per counter triple, so
 // this is the result the comparison was made against); after is the
-// answer's result. Both carry their `loads` whole through trimResult. With
-// no answer the map is not painted. While a newer answer is worked out the
-// last one stays painted and the section's data-difference reads 'old'.
+// answer's result. Both carry their `loads` whole through trimResult. An
+// answer is taken only together with its before: until results() gives the
+// before for the answer's counters, the last answer and its picture stay.
+// With no answer the map is not painted. The section's data-difference:
+//   'none'     no answer
+//   'waiting'  an answer is coming and nothing is painted: the first one,
+//              or the building has changed under the picture (the store's
+//              geometry counter is not the answer's), which leaves the map
+//              unpainted and the card closed until an answer for it comes
+//   'old'      a newer answer is coming; the last picture stays painted
+//   'failed'   results() refused; the section says so in the comparison's
+//              words, and the next update asks again
+//   'shown'    the picture is the lane's newest answer
 //
 // The card (on hover, on a tap, at the keyboard cursor) gives a walkable
 // cell's place, its change in words, its load before and after, and the
 // groups that walk there only before or only after. Only a group the
-// scenario edits can walk anywhere else: their walks are routed for the
-// card, for the real schedule and for the scenario, by the engine's own
-// routesForSchedule, and engine/load.js's contributors says who crosses.
+// scenario edits can walk anywhere else: their walks are routed by the
+// engine's own routesForSchedule, for the real schedule and the scenario,
+// once an answer, on the first card after it comes (cardWalks), and every
+// card after that only looks up who crosses its cell (groupsAt). For one
+// transition the groups are counted in that transition, the one the
+// figures are of. For the whole day the figures are each side's busiest
+// transition, which before and after can be two different transitions, so
+// the groups are counted over the whole day and the card says "Over the
+// day".
 //
 // The test handle is document.querySelector('.scn').difference.
 
@@ -40,7 +57,6 @@ import { slotAt } from '../surface/plan-layout.js';
 import { differenceOverlay, differenceOf, differenceWords, rankPlaces, apartGroups, strengthOf, DIFFERENCE_ALPHA, DIFFERENCE_TOP } from '../surface/overlays/difference.js';
 import { applyChanges, editedGroupIds } from '../../engine/scenario.js';
 import { routesForSchedule, routingGraph, createRouteCache } from '../../engine/routing.js';
-import { contributors } from '../../engine/load.js';
 import { buildGraph } from '../../engine/graph.js';
 import { periodName } from '../../engine/bells.js';
 import { unitWord } from '../movement/model.js';
@@ -66,10 +82,16 @@ function partsToText(parts) {
 //     "at its busiest in one transition, on A Day" for the whole day,
 //     "in Period 2 to Period 3, on A Day" for one transition
 //   sidesWords(info)   "Before 12, after 26 students, <when>."
+//   apartLabel(side, transition)
+//     "Walk here only before: " for one transition,
+//     "Over the day, walk here only before: " for the whole day (null)
 //   cardText(info)     the card as one sentence, for the live region:
-//     "<place>, <floor>: 14 busier. Before 12, after 26 students, <when>.
-//      Walk here only before: 7A. Walk here only after: 8B."
-//   info: { parts, floorName, words, before, after, unit, when, excluded,
+//     "<place>, <floor>, corridor: 14 busier. Before 12, after 26 students,
+//      <when>. Walk here only before: 7A. Walk here only after: 8B."
+//     It is said in place of the lab's own line about the cell ("Floor 1:
+//     corridor."), so it names the floor and corridor or stairs as that does.
+//   info: { parts, floorName, stairs, words, before, after, unit, when,
+//           transition, excluded,
 //           groups: { onlyBefore, onlyAfter } (groups, by name as typed) or null }
 export function whenWords(project, transition, dayTypeId) {
   const day = project.dayTypes.find((each) => each.id === dayTypeId);
@@ -86,12 +108,91 @@ function namesText(groups) {
   return groups.map((group) => group.name).join(', ');
 }
 
+export function apartLabel(side, transition) {
+  return (transition === null ? 'Over the day, walk' : 'Walk') + ' here only ' + side + ': ';
+}
+
 export function cardText(info) {
-  let text = partsToText(info.parts) + ', ' + info.floorName + ': ' + info.words + '. ' + sidesWords(info);
+  const transition = info.transition === undefined ? null : info.transition;
+  let text = partsToText(info.parts) + ', ' + info.floorName + ', ' + (info.stairs ? 'stairs' : 'corridor') + ': ' + info.words + '. ' + sidesWords(info);
   if (info.excluded) text += ' In an exclusion zone.';
-  if (info.groups && info.groups.onlyBefore.length > 0) text += ' Walk here only before: ' + namesText(info.groups.onlyBefore) + '.';
-  if (info.groups && info.groups.onlyAfter.length > 0) text += ' Walk here only after: ' + namesText(info.groups.onlyAfter) + '.';
+  if (info.groups && info.groups.onlyBefore.length > 0) text += ' ' + apartLabel('before', transition) + namesText(info.groups.onlyBefore) + '.';
+  if (info.groups && info.groups.onlyAfter.length > 0) text += ' ' + apartLabel('after', transition) + namesText(info.groups.onlyAfter) + '.';
   return text;
+}
+
+// Who walks where, before and after, for the card: worked out once an
+// answer.
+//
+//   cardWalks(project, changes, graph, { cache, geometryVersion }?)
+//     project is the real schedule, changes the answer's (reconcile's kept
+//     changes) and graph buildGraph(project). The groups the changes edit
+//     are routed for the real schedule and for it with the changes applied;
+//     no other group walks anywhere else. Null when no change edits a group.
+//       { order: Map groupId -> its place in project.groups,
+//         before, after: Map dayTypeId -> Map node -> Map groupId -> Set of
+//                        the transitions it crosses the node in }
+//     A route crosses the cells it walks, each once, as engine/load.js
+//     counts a load (a route not found, or one that stays in its room,
+//     crosses nothing); test/ui/difference.test.mjs holds it to
+//     contributors' answer at every node.
+//   groupsAt(walks, node, dayTypeId, transition) -> { onlyBefore, onlyAfter }
+//     the group ids that cross the node on that day only before and only
+//     after, in the transition (null: in any transition of the day), each in
+//     the order of the project's groups
+function crossings(routes, graph, edited) {
+  const byDay = new Map();
+  for (const day of routes.days) {
+    const nodes = new Map();
+    for (const entry of day.groups) {
+      if (!edited.has(entry.groupId)) continue;
+      entry.routes.forEach((found, t) => {
+        if (!found || found.ok !== true || found.same === true) return;
+        for (const place of found.cells) {
+          const f = graph.floorIndex.get(place.floorId);
+          if (f === undefined) continue;
+          const node = graph.floors[f].nodeOfCell[place.cell];
+          if (node === undefined || node < 0) continue;
+          let groups = nodes.get(node);
+          if (!groups) nodes.set(node, (groups = new Map()));
+          let times = groups.get(entry.groupId);
+          if (!times) groups.set(entry.groupId, (times = new Set()));
+          times.add(t);
+        }
+      });
+    }
+    byDay.set(day.dayTypeId, nodes);
+  }
+  return byDay;
+}
+
+export function cardWalks(project, changes, graph, options) {
+  const edited = new Set(editedGroupIds(changes || []));
+  for (const id of edited) if (!project.groups.some((group) => group.id === id)) edited.delete(id);
+  if (edited.size === 0) return null;
+  const after = applyChanges(project, changes);
+  const only = (whole) => ({ ...whole, groups: whole.groups.filter((group) => edited.has(group.id)) });
+  const routing = routingGraph(project, graph);
+  const opts = options || {};
+  const asked = { cache: opts.cache, geometryVersion: opts.geometryVersion };
+  return {
+    order: new Map(project.groups.map((group, index) => [group.id, index])),
+    before: crossings(routesForSchedule(only(project), routing, asked), graph, edited),
+    after: crossings(routesForSchedule(only(after), routing, asked), graph, edited),
+  };
+}
+
+export function groupsAt(walks, node, dayTypeId, transition) {
+  if (!walks) return { onlyBefore: [], onlyAfter: [] };
+  const who = (side) => {
+    const nodes = side.get(dayTypeId);
+    const groups = nodes ? nodes.get(node) : null;
+    if (!groups) return [];
+    const ids = [];
+    for (const [id, times] of groups) if (transition === null || transition === undefined || times.has(transition)) ids.push(id);
+    return ids.sort((a, b) => walks.order.get(a) - walks.order.get(b));
+  };
+  return apartGroups(who(walks.before), who(walks.after));
 }
 
 // a swatch of the tint at a strength, in the theme on screen (the tokens
@@ -103,15 +204,20 @@ function swatch(kind, strength) {
 
 export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   const element = plan.root;
-  // what is painted: the answer it is from, the before it is compared
-  // with, and the difference worked out for the lab's choice
-  const held = { answer: null, before: null, key: null, difference: null, ranked: { rows: [], changed: 0 }, graph: null, project: null };
+  // what is painted: the answer it is from and the before it is compared
+  // with (taken together, never one without the other), the difference
+  // worked out for the lab's choice, and the card's walks for the answer
+  const held = { answer: null, before: null, key: null, difference: null, ranked: { rows: [], changed: 0 }, graph: null, project: null, walks: null };
+  // the newest answer whose before is asked for: { answer, state: 'out' | 'failed' }
+  let asking = null;
+  // what results() refused with, said in the section until an answer is taken
+  let failed = null;
   // the painter's last paint, for the tests: which picture it painted
   // (data-difference-made when it painted) and in which theme
   const painted = { count: 0, theme: null, made: null };
-  const draw = differenceOverlay(() => (held.difference ? { difference: held.difference, graph: held.graph } : null));
+  const draw = differenceOverlay(() => (held.difference && current() ? { difference: held.difference, graph: held.graph } : null));
   plan.overlays.push((g, view, floor, theme) => {
-    if (!held.difference) return;
+    if (!held.difference || !current()) return;
     painted.count += 1;
     painted.theme = theme.problem + ' ' + theme.accent + ' ' + theme.corridor;
     painted.made = element.dataset.differenceMade;
@@ -144,16 +250,31 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     }).filter((name) => name !== '');
   }
 
+  // in the comparison's own words (ui/scenarios/compare.js)
+  function failedWords() {
+    return 'The difference map could not be worked out: ' + failed + (held.difference ? ' The map and the table are from before your last change.' : '');
+  }
+
   function drawTable() {
     place();
     const difference = held.difference;
     const project = held.project;
     if (!difference || !project) {
-      section.hidden = true;
       tableBody.replaceChildren();
+      if (failed === null) {
+        section.hidden = true;
+        return;
+      }
+      section.hidden = false;
+      title.textContent = 'The difference map';
+      key.hidden = true;
+      table.hidden = true;
+      note.textContent = failedWords();
+      note.hidden = false;
       return;
     }
     section.hidden = false;
+    key.hidden = false;
     const unit = difference.unit;
     title.textContent = difference.transition === null
       ? 'Corridors that change most over the day'
@@ -174,17 +295,25 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       h('td', { class: 'num' }, differenceWords(row.delta)))));
     table.hidden = held.ranked.rows.length === 0;
     const more = held.ranked.changed - held.ranked.rows.length;
-    note.textContent = held.ranked.changed === 0
+    const said = held.ranked.changed === 0
       ? (difference.transition === null ? 'No corridor gets busier or quieter over the day.' : 'No corridor gets busier or quieter in this transition.')
       : more > 0 ? (more === 1 ? '1 other place changes less.' : more + ' other places change less.') : '';
+    note.textContent = failed === null ? said : failedWords() + (said ? ' ' + said : '');
     note.hidden = note.textContent === '';
   }
 
   // ---- working out the picture
+  // the answer taken is of the building on the map: the store's geometry
+  // counter is still the one it was worked out at
+  function current() {
+    return Boolean(held.answer) && Boolean(held.answer.versions) && held.answer.versions.geometry === store.geometryVersion;
+  }
+
   function stateOf() {
-    if (!held.answer) return 'none';
+    if (!held.answer && !asking) return 'none';
+    if (asking && asking.state === 'failed') return 'failed';
     if (!held.difference) return 'waiting';
-    return lane.pending ? 'old' : 'shown';
+    return lane.pending || asking || lane.answer !== held.answer ? 'old' : 'shown';
   }
 
   function settle() {
@@ -193,7 +322,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
 
   function compute() {
     const answer = held.answer;
-    if (!answer || !held.before) return;
+    if (!answer || !held.before || !current()) return;
     const next = [answer, held.before, memory.dayTypeId, memory.transition];
     if (held.key && next.every((each, i) => each === held.key[i])) return;
     held.key = next;
@@ -207,9 +336,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     plan.paint();
   }
 
-  function clear() {
-    held.answer = null;
-    held.before = null;
+  // the picture taken down, the answer kept: the building changed under it
+  function blank() {
     held.key = null;
     held.difference = null;
     held.ranked = { rows: [], changed: 0 };
@@ -218,31 +346,60 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     plan.paint();
   }
 
-  function update() {
-    const answer = lane.answer;
-    if (!answer || !answer.result) {
-      if (held.answer || held.difference) clear();
+  function clear() {
+    held.answer = null;
+    held.before = null;
+    held.walks = null;
+    asking = null;
+    failed = null;
+    blank();
+  }
+
+  // the before for this answer; the answer is taken only with it
+  function fetchBefore(answer) {
+    const mine = { answer, state: 'out' };
+    asking = mine;
+    if (failed !== null) {
+      failed = null;
+      drawTable();
+    }
+    const refused = (error) => {
+      if (asking !== mine) return;
+      mine.state = 'failed';
+      failed = error && error.message ? error.message : String(error);
+      drawTable();
       settle();
+    };
+    if (!store.derived || typeof store.derived.results !== 'function') {
+      refused(new Error('the engine is not running on this page.'));
       return;
     }
-    if (answer !== held.answer) {
-      held.answer = answer;
-      held.before = null;
-      const asked = answer;
-      if (!store.derived || typeof store.derived.results !== 'function') {
+    store.derived.results().then((main) => {
+      if (asking !== mine) return;
+      asking = null;
+      // the store has moved on: a newer answer is on its way, and the last
+      // picture stays until it comes (the next update asks again)
+      if (!main || !sameVersions(main.versions, answer.versions)) {
         settle();
         return;
       }
-      store.derived.results().then((main) => {
-        if (held.answer !== asked) return;
-        // the store has moved on: a newer answer is on its way, and the
-        // last picture stays until it comes
-        if (!main || !sameVersions(main.versions, asked.versions)) return;
-        held.before = main;
-        compute();
-        settle();
-      }, () => {});
+      held.answer = answer;
+      held.before = main;
+      held.key = null;
+      compute();
+      settle();
+    }, refused);
+  }
+
+  function update() {
+    const answer = lane.answer;
+    if (!answer || !answer.result) {
+      if (held.answer || held.difference || asking || failed !== null) clear();
+      settle();
+      return;
     }
+    if (answer !== held.answer && !(asking && asking.answer === answer && asking.state === 'out')) fetchBefore(answer);
+    if (held.difference && !current()) blank();
     compute();
     settle();
   }
@@ -259,46 +416,30 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   // the cell whose card shows: { floorId, cell, x, y, source }
   let point = null;
 
-  // the walks of the edited groups, for the real schedule and the scenario,
-  // worked out once an answer and day type
-  const walks = new Map();
-  function walksOf(answer, project, graph) {
-    const key = answer;
-    if (walks.has(key)) return walks.get(key);
-    walks.clear();
-    const edited = new Set(editedGroupIds(answer.changes || []));
-    let found = null;
-    if (edited.size > 0) {
-      const after = applyChanges(project, answer.changes);
-      const only = (whole) => ({ ...whole, groups: whole.groups.filter((group) => edited.has(group.id)) });
-      const routing = routingGraph(project, graph);
-      const options = { cache, geometryVersion: store.geometryVersion };
-      found = { before: { project, routes: routesForSchedule(only(project), routing, options) }, after: { project: after, routes: routesForSchedule(only(after), routing, options) } };
-    }
-    walks.set(key, found);
-    return found;
-  }
-
-  // who walks over this node only before, and only after
+  // who walks over this node only before, and only after: the walks are
+  // worked out on the first card after an answer is taken, and kept with it
   function groupsApart(node, dayTypeId) {
     const answer = held.answer;
-    const project = held.project;
-    if (!answer || !project || !sameVersions(answer.versions, { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion })) return null;
-    const found = walksOf(answer, project, held.graph);
-    if (!found) return { onlyBefore: [], onlyAfter: [] };
-    const options = held.difference.transition === null ? undefined : { period: held.difference.transition };
-    const who = (side) => contributors(side.project, side.routes, dayTypeId, { nodes: [node] }, held.graph, options).map((each) => each.groupId);
-    const apart = apartGroups(who(found.before), who(found.after));
+    const project = store.project;
+    if (!answer || !sameVersions(answer.versions, { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion })) return null;
+    if (!held.walks || held.walks.answer !== answer) {
+      held.walks = { answer, walks: cardWalks(project, answer.changes || [], held.graph, { cache, geometryVersion: store.geometryVersion }) };
+      builds.walks += 1;
+    }
+    const apart = groupsAt(held.walks.walks, node, dayTypeId, held.difference.transition);
     const named = (ids) => ids.map((id) => project.groups.find((group) => group.id === id)).filter(Boolean);
     return { onlyBefore: named(apart.onlyBefore), onlyAfter: named(apart.onlyAfter) };
   }
+
+  // how many times the card's walks were worked out, for the tests
+  const builds = { walks: 0 };
 
   // what the card says of a cell, or null where there is nothing to say
   function cardOf(floorId, cell) {
     const difference = held.difference;
     const graph = held.graph;
     const project = held.project;
-    if (!difference || !graph || !project || graph.count !== difference.cells.length) return null;
+    if (!difference || !graph || !project || !current() || graph.count !== difference.cells.length) return null;
     const f = graph.floorIndex.get(floorId);
     if (f === undefined) return null;
     const node = graph.floors[f].nodeOfCell[cell];
@@ -313,6 +454,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       node,
       parts: at && at.parts && at.parts.length > 0 ? at.parts : [{ text: at ? at.name : 'Corridor' }],
       floorName: graph.floors[f].name,
+      stairs: Boolean(graph.stairs && graph.stairs[node]),
       delta,
       words: differenceWords(delta),
       strength: strengthOf(delta, difference.largest),
@@ -320,6 +462,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       after: difference.after.cells[node],
       unit: difference.unit,
       when: whenWords(project, difference.transition, dayTypeId),
+      transition: difference.transition,
       dayTypeId,
       excluded: Boolean(difference.excluded && difference.excluded[node]),
       groups: groupsApart(node, dayTypeId),
@@ -343,9 +486,9 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     cardZone.hidden = !info.excluded;
     const groups = info.groups || { onlyBefore: [], onlyAfter: [] };
     cardBefore.hidden = groups.onlyBefore.length === 0;
-    cardBefore.replaceChildren(...(groups.onlyBefore.length > 0 ? namesNodes('Walk here only before: ', groups.onlyBefore) : []));
+    cardBefore.replaceChildren(...(groups.onlyBefore.length > 0 ? namesNodes(apartLabel('before', info.transition), groups.onlyBefore) : []));
     cardAfter.hidden = groups.onlyAfter.length === 0;
-    cardAfter.replaceChildren(...(groups.onlyAfter.length > 0 ? namesNodes('Walk here only after: ', groups.onlyAfter) : []));
+    cardAfter.replaceChildren(...(groups.onlyAfter.length > 0 ? namesNodes(apartLabel('after', info.transition), groups.onlyAfter) : []));
     card.dataset.floor = info.floorId;
     card.dataset.cell = String(info.cell);
     card.hidden = false;
@@ -417,9 +560,11 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       if (found && found.slot.floor.id === point.floorId && found.cell === point.cell) return false;
       pointAt(ev.x, ev.y, 'hover');
     } else if (ev.kind === 'keyboard') {
-      // the lab has said what is under the cursor; on a walkable cell this says more
-      // the lab's own line about the cell is said first (its handler runs
-      // after this one), so this one goes after it
+      // On a cell with a card this is the one sentence said: the lab's own
+      // line about the cell ("Floor 1: corridor.") is set by its handler,
+      // which runs after this one, and this sentence replaces it a microtask
+      // later. It names the floor and corridor or stairs, as the lab's does,
+      // before the rest of the card.
       const { info } = pointAt(ev.x, ev.y, 'keyboard');
       if (info) queueMicrotask(() => ctx.announce(cardText(info)));
     } else if (ev.kind === 'escape') {
@@ -444,6 +589,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     get rows() { return held.ranked.rows; },
     get changed() { return held.ranked.changed; },
     painted,
+    builds,
+    get failed() { return failed; },
     cardOf,
     cardText,
     // what is painted, cell by cell, read from the picture rather than the pixels
@@ -451,7 +598,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       const difference = held.difference;
       const graph = held.graph;
       const out = { state: stateOf(), answer: held.answer, dayTypeId: memory.dayTypeId, transition: memory.transition, largest: difference ? difference.largest : 0, busier: [], quieter: [], top: held.ranked.rows.map((row) => ({ placeId: row.placeId, delta: row.delta, before: row.before, after: row.after })) };
-      if (!difference || !graph || graph.count !== difference.cells.length) return out;
+      if (!difference || !graph || !current() || graph.count !== difference.cells.length) return out;
       for (let node = 0; node < difference.cells.length; node += 1) {
         const delta = difference.cells[node];
         if (delta === 0 || (difference.excluded && difference.excluded[node])) continue;
