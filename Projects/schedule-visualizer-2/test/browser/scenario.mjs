@@ -513,6 +513,41 @@ test('SV2-72d 3 (W3): in the inspector’s 320 px a time of an hour or more read
   assert.ok(lines.tableWide, 'and the table stays inside the inspector');
 });
 
+// SV2-72d2 item 6: the figures are laid out as a grid (each name a line over
+// its three figures), so the table's roles are said in the markup; read
+// back from Chromium's accessibility tree, not from the markup.
+test('SV2-72d2 6: the comparison\'s figures are a table to a screen reader, with column headers and a row header for each figure', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Read aloud');
+  await page.evaluate(async () => {
+    const bound = new Promise((resolve, reject) => setTimeout(() => reject(new Error('engine/actions.js did not load in 10 s')), 10000));
+    const { addScenarioChange } = await Promise.race([import('./engine/actions.js'), bound]);
+    globalThis.sv2.store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+  });
+  await ready(page);
+  assert.equal(await page.$eval('.scn-figures', (el) => getComputedStyle(el).display), 'grid', 'the figures are laid out as a grid: the case is about a table that is not drawn as one');
+  const table = await page.$('.scn-figures');
+  const tree = await page.accessibility.snapshot({ root: table, interestingOnly: false });
+  const rows = [];
+  const walk = (node) => {
+    if (node.role === 'row') rows.push((node.children || []).filter((child) => ['columnheader', 'rowheader', 'cell', 'gridcell'].includes(child.role)).map((child) => child.role + ':' + child.name.replace(/\u00a0/g, ' ').trim()));
+    for (const child of node.children || []) walk(child);
+  };
+  walk(tree);
+  assert.equal(tree.role, 'table', 'the figures are not a table to a screen reader: ' + tree.role);
+  assert.equal(tree.name, 'The scenario’s figures before, after, and the difference');
+  assert.deepEqual(rows[0], ['columnheader:Figure', 'columnheader:Before', 'columnheader:After', 'columnheader:Difference'], 'the heading row is four column headers');
+  const body = rows.slice(1);
+  assert.equal(body.length, 8, 'a row for each of the eight figures');
+  for (const row of body) {
+    assert.equal(row.length, 4, 'a figure\'s row is its name and three cells: ' + JSON.stringify(row));
+    assert.match(row[0], /^rowheader:\S/, 'a figure\'s name is its row\'s header: ' + JSON.stringify(row));
+    assert.deepEqual(row.slice(1).map((cell) => cell.split(':')[0]), ['cell', 'cell', 'cell'], JSON.stringify(row));
+  }
+  assert.equal(body[0][0], 'rowheader:Total walking time');
+});
+
 test('the comparison is the scenario lane’s answer, figure by figure, edited groups marked in words', async () => {
   const page = wide.page;
   await fresh(page);
@@ -557,7 +592,7 @@ test('the comparison is the scenario lane’s answer, figure by figure, edited g
   assert.equal(found.shown.length, 8, 'eight figures: walking, crowding, busiest, late, failed walks, and findings by severity');
   assert.deepEqual(found.shown, found.rows.map(([id, label, a, b, d]) => [id, label, a, b, d]));
   assert.deepEqual(found.shownGroups, found.groups);
-  assert.equal(found.edited, 3, 'each edited group is in the table, its time changed or not');
+  assert.equal(found.edited, 3, 'each edited group is in the table: each one\'s time changes here (a group that reads "no change" is counted, SV2-72d2)');
   assert.deepEqual(found.tags, new Array(found.edited).fill('edited'), 'every edited row says so in words');
   assert.deepEqual(found.shownBusier, found.busier);
   assert.deepEqual(found.shownQuieter, found.quieter);
@@ -828,7 +863,10 @@ test('spec 18 journey: run a scenario and apply it, by the screen alone', async 
   // the comparison is there before anything is applied
   const walking = await page.$eval('.scn-figures tr[data-figure="walking"]', (tr) => tr.textContent);
   assert.match(walking, /^Total walking time/);
-  assert.equal(await page.$eval('.scn-groups tbody tr[data-group="gsample08a"]', (tr) => tr.dataset.edited), 'true');
+  // 8A's own day takes as long either way (19 min), so it is counted with
+  // the groups that walk as before, never a row saying "no change" (SV2-72d2 5)
+  assert.equal(await page.$('.scn-groups tbody tr[data-group="gsample08a"]'), null, '8A is not listed');
+  assert.equal(await seen(page, '[data-part="groups"] .scn-compare__note'), '7 other groups walk as before.');
   assert.equal(await slotRoom(page, 'gsample08a', A, 5), 'rsamplegym', 'nothing applied yet');
   await page.click('[data-action="apply"]');
   await page.waitForSelector('#scenario-apply[open]');
@@ -885,6 +923,67 @@ test('SV2-72d 4: from 1200 px a message starts right of the lab’s panel, never
   assert.ok(box.toast.left - box.panel.right <= 24, 'and beside it, at the usual gap: ' + (box.toast.left - box.panel.right));
   await page.click('.toast .toast__close');
   await page.waitForFunction(() => !document.querySelector('.toast'));
+  // SV2-72d2 item 9: the window narrowed under 1200 px with the lab still
+  // mounted, the panel goes under the map and the surface keeps no left
+  // edge; widened again, the edge comes back where the panel ends, and it
+  // follows the panel as it grows. The panel's column is minmax(18rem,
+  // 22rem) beside a minmax(0, 1fr) map, so from 1200 px it is 22rem at any
+  // width (352 px at 1200 and at 1920 alike): what widens it here is a
+  // larger root font (16 px to 20 px, 352 px to 440 px).
+  const edge = () => page.evaluate(() => {
+    const surface = document.getElementById('surface');
+    const panel = document.querySelector('.scn-panel').getBoundingClientRect();
+    return { value: surface.style.getPropertyValue('--toast-left'), reach: Math.round(panel.right - surface.getBoundingClientRect().left - surface.clientLeft), panel: Math.round(panel.width), rem: parseFloat(getComputedStyle(document.documentElement).fontSize) };
+  });
+  // a wait on the page's own state that, timed out, fails saying what it waited for
+  const until = (fn, what) => page.waitForFunction(fn, { timeout: 10000 }).catch(async (error) => {
+    if (error && error.name === 'TimeoutError') assert.fail(what + ' in 10 s: ' + JSON.stringify(await edge()));
+    throw error;
+  });
+  const following = (what) => until(() => {
+    const surface = document.getElementById('surface');
+    const panel = document.querySelector('.scn-panel').getBoundingClientRect();
+    return surface.style.getPropertyValue('--toast-left') === Math.round(panel.right - surface.getBoundingClientRect().left - surface.clientLeft) + 'px';
+  }, what);
+  const messageBeside = async (what) => {
+    await page.evaluate(() => globalThis.sv2.ctx.toast({ text: 'A message at this width' }));
+    await page.waitForFunction(() => {
+      const toast = document.querySelector('.toast');
+      return toast && toast.getClientRects().length > 0 && toast.getAnimations().every((each) => each.playState !== 'running');
+    });
+    const at = await page.evaluate(() => ({ toast: document.querySelector('.toast').getBoundingClientRect().left, panel: document.querySelector('.scn-panel').getBoundingClientRect().right }));
+    assert.ok(at.toast >= at.panel && at.toast - at.panel <= 24, what + ': the message starts right of the panel: ' + JSON.stringify(at));
+    await page.click('.toast .toast__close');
+    await page.waitForFunction(() => !document.querySelector('.toast'));
+  };
+  try {
+    await page.setViewport({ width: 1100, height: 800, deviceScaleFactor: 1 });
+    await until(() => document.getElementById('surface').style.getPropertyValue('--toast-left') === '', 'under 1200 px, with the lab still mounted, the surface keeps no left edge');
+    assert.ok(await page.$('.scn'), 'the lab is still mounted');
+    const narrow = await edge();
+    assert.equal(narrow.value, '', 'under 1200 px the panel is under the map, and the surface keeps no left edge: ' + JSON.stringify(narrow));
+    await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 1 });
+    await following('at 1200 the edge comes back where the panel ends');
+    const back = await edge();
+    assert.equal(back.value, back.reach + 'px', 'at 1200 the edge is back where the panel ends: ' + JSON.stringify(back));
+    assert.equal(back.panel, 22 * back.rem, 'the panel is 22rem: ' + JSON.stringify(back));
+    await messageBeside('at 1200');
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '20px';
+    });
+    await following('the edge follows the panel as it grows');
+    const grown = await edge();
+    assert.equal(grown.panel, 440, 'the panel grew with the root font: ' + JSON.stringify(grown));
+    assert.equal(grown.value, grown.reach + 'px', 'the edge follows the panel as it grows: ' + JSON.stringify(grown));
+    assert.ok(grown.reach > back.reach, JSON.stringify([back, grown]));
+    await messageBeside('with the panel grown');
+  } finally {
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty('font-size');
+    });
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+  }
+  await page.waitForFunction(() => document.getElementById('surface').style.getPropertyValue('--toast-left') !== '', { timeout: 10000 });
   await go(page, '#schedule/groups');
   assert.equal(await page.$eval('#surface', (el) => el.style.getPropertyValue('--toast-left')), '', 'Schedule’s messages keep the usual left edge');
   await go(page, '#scenarios');
@@ -969,6 +1068,45 @@ for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
     }
   });
 }
+
+// SV2-72d2 item 11 (W5): on a phone on its side the lab's map keeps 160 px,
+// as Safety's does (createPlanMap's least, SV2-72c), or what caps it: the
+// floors' box at Fit standing above the zoom buttons (stageLeast), and what
+// the section has over its sticky foot.
+test('SV2-72d2 11: at 844 by 390 with touch, with a scenario open, the stage is at least 160 px or its cap', async () => {
+  const phone = await openPlanner({ server, width: 844, height: 390, mobile: true, hash: '#scenarios', theme: 'light' });
+  try {
+    const page = phone.page;
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0), true, 'the page is touched, not clicked');
+    await fresh(page);
+    await page.tap('#scenario-start-name');
+    await page.keyboard.type('Side');
+    await page.tap('[data-action="start"]');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.mode === 'open');
+    await ready(page);
+    const shape = await page.evaluate(async () => {
+      const bound = new Promise((resolve, reject) => setTimeout(() => reject(new Error('plan-layout.js did not load in 10 s')), 10000));
+      const { stageLeast } = await Promise.race([import('./ui/surface/plan-layout.js'), bound]);
+      const root = document.querySelector('.scn');
+      const stage = root.querySelector('.mov-stage');
+      const zoom = root.querySelector('.mov-zoom');
+      const margin = parseFloat(getComputedStyle(zoom).left) || 0;
+      return {
+        stage: stage.getBoundingClientRect().height,
+        least: stageLeast(root.scenarios.plan.world, stage.clientWidth, zoom.offsetHeight + margin * 2, 160),
+        cap: root.clientHeight - root.querySelector('.scn-bar').getBoundingClientRect().height,
+        wide: root.scrollWidth - root.clientWidth,
+      };
+    });
+    const floor = Math.min(160, shape.least, shape.cap);
+    assert.ok(floor >= 120, 'the cap leaves the case something to test: ' + JSON.stringify(shape));
+    assert.ok(shape.stage >= floor - 0.5, 'on a phone on its side the stage is ' + shape.stage + ' px, under ' + floor + ': ' + JSON.stringify(shape));
+    assert.ok(shape.wide <= 0, 'the section runs ' + shape.wide + ' px off the side');
+    assert.deepEqual(phone.problems().errors, []);
+  } finally {
+    await phone.close();
+  }
+});
 
 // ---- SV2-68b: the review's findings
 

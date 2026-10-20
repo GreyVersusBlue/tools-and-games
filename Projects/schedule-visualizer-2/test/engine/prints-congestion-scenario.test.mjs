@@ -379,3 +379,22 @@ test('SV2-72d: the scenario\'s name follows engine/actions.js\'s blankName, and 
     assert.ok(!/\\u200[bBdD]|\\u2060|\\uFEFF|[​‍⁠﻿]/.test(source), file + ' keeps no copy of the zero-width characters of the rule');
   }
 });
+
+// SV2-72d2 item 10: the report says a length one way throughout. The day
+// sections print a time from an hour in hours and minutes, as the scenario's
+// table does (ui/scenarios/model.js), never "65 min" above "1 h 5 min".
+test('SV2-72d2: the day sections print a time of an hour or more in hours and minutes, by the scenario table\'s rule', () => {
+  const project = school();
+  // an hour and five minutes between Period 5 and Period 6 on A Day
+  project.dayTypes.find((each) => each.id === DAY_A).bells[5].start = '13:21';
+  const { html } = congestionPrint.render(project, null, NOW);
+  const worst = rowsAfter(html, 'worst transitions</h2>');
+  const long = worst.find((row) => row[0] === 'Period 5 to Period 6');
+  assert.ok(long, 'the long transition is among the worst: ' + JSON.stringify(worst));
+  assert.equal(long[1], '12:16 to 1:21, 1 h 5 min', 'not "65 min"');
+  // under an hour as before, seconds and all
+  assert.ok(worst.some((row) => row[1] === '9:40 to 9:44, 4 min'), JSON.stringify(worst));
+  // and the rule is the scenario table's own: a time and its row agree
+  const figures = Object.fromEntries(rowsAfter(congestionPrint.scenarioSection(sample, withFigures({ walking: { before: 3900, after: 3900, difference: 0 } })), 'Before and after').map((row) => [row[0], row.slice(1)]));
+  assert.equal(figures['Walking, all walks together'][0], long[1].split(', ')[1], 'the scenario table prints 3900 s as the day section does');
+});

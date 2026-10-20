@@ -157,6 +157,9 @@ export const section = {
       name: 'scenarios',
       label: 'The scenario map',
       keys: KEYS,
+      // a phone on its side keeps 160 px of map, the first line and the
+      // docked line scrolled away instead, as Safety does (W5, SV2-72d2)
+      least: 160,
       floorsRow: {
         value: () => memory.floors,
         change(value) {

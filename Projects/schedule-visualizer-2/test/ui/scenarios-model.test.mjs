@@ -121,7 +121,10 @@ test('groupRow: a group no longer in the project is named so, and not as typed t
   assert.equal(row.typed, false);
 });
 
-test('groupRows: edited groups and groups whose travel changed, the rest counted', () => {
+// SV2-72d2 item 5: the list is of the groups whose printed change is a
+// change. An edited group whose times stay reads "no change" and is counted
+// with the others that walk as before (this case listed g3 until then).
+test('groupRows: the groups whose travel changes as printed, the rest counted, an edited group that stays the same among them', () => {
   const compare = {
     groups: [
       { groupId: 'g1', edited: false, before: sideOf(100), after: sideOf(100), difference: 0, failedChange: 1 },
@@ -129,11 +132,38 @@ test('groupRows: edited groups and groups whose travel changed, the rest counted
       { groupId: 'g3', edited: true, before: sideOf(100), after: sideOf(100), difference: 0, failedChange: 0 },
       { groupId: 'g4', edited: false, before: sideOf(100), after: sideOf(100), difference: 0, failedChange: 0 },
       { groupId: 'g5', edited: false, before: null, after: null, difference: null, failedChange: 0 },
+      { groupId: 'g6', edited: true, before: null, after: sideOf(60), difference: null, failedChange: 0 },
     ],
   };
   const found = groupRows(project, compare);
-  assert.deepEqual(found.rows.map((row) => row.groupId), ['g1', 'g2', 'g3'], 'in the comparison’s order');
-  assert.equal(found.same, 2, 'a group the same, and one with no time either side, walk as before');
+  assert.deepEqual(found.rows.map((row) => row.groupId), ['g1', 'g2', 'g6'], 'in the comparison’s order; an edited group with no time on a side is still listed');
+  assert.equal(found.same, 3, 'an edited group the same, a group the same, and one with no time either side, walk as before');
+});
+
+test('SV2-72d2 5: a group whose seconds moved but whose printed change is "no change" is not listed, and is counted as walking as before', () => {
+  const compare = {
+    groups: [
+      { groupId: 'g1', edited: false, before: sideOf(9228), after: sideOf(9240), difference: 12, failedChange: 0 },
+      { groupId: 'g2', edited: true, before: sideOf(9228), after: sideOf(9240), difference: 12, failedChange: 0 },
+      { groupId: 'g3', edited: false, before: sideOf(3500), after: sideOf(3700), difference: 200, failedChange: 0 },
+    ],
+  };
+  const found = groupRows(project, compare);
+  assert.deepEqual(found.rows.map((row) => [row.groupId, row.change]), [['g3', '+4' + NBSP + 'min']]);
+  assert.equal(found.rows.some((row) => row.change === 'no change'), false, 'no row says it did not change');
+  assert.equal(found.same, 2, '12 s over two and a half hours walks as before, edited or not');
+});
+
+test('SV2-72d2 4: a group\'s Before and After are to the grain of its change: 3500 s to 3700 s reads 58 min, 1 h 2 min, +4 min', () => {
+  const row = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(3500), after: sideOf(3700), difference: 200, failedChange: 0 });
+  assert.deepEqual([row.before, row.after, row.change], ['58' + NBSP + 'min', '1' + NBSP + 'h' + NBSP + '2' + NBSP + 'min', '+4' + NBSP + 'min'], 'never "58 min 20 s" beside a change to the minute');
+  assert.equal(row.worse, true);
+  // under an hour on both sides the cells stay to the second
+  const short = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(100), after: sideOf(130), difference: 30, failedChange: 0 });
+  assert.deepEqual([short.before, short.after, short.change], ['1' + NBSP + 'min' + NBSP + '40' + NBSP + 's', '2' + NBSP + 'min' + NBSP + '10' + NBSP + 's', '+30' + NBSP + 's']);
+  // a row worded by its walks with no way through keeps each side's own time
+  const failed = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(3500), after: sideOf(60), difference: null, failedChange: 1 });
+  assert.deepEqual([failed.before, failed.after], ['58' + NBSP + 'min' + NBSP + '20' + NBSP + 's', '1' + NBSP + 'min']);
 });
 
 test('barWords: what is staged, with what is skipped', () => {
