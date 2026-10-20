@@ -12,6 +12,7 @@ import { savedCard } from './saved.js';
 import { filesCard } from './files.js';
 import { snapshotsCard } from './snapshots.js';
 import { recoveryCard } from './recovery.js';
+import { transferCard } from './transfer/index.js';
 import { settingsCard } from './settings.js';
 import { sampleCard } from './sample.js';
 import { clearCard } from './clear.js';
@@ -19,7 +20,7 @@ import { aboutCard } from './about.js';
 import { startSnapshots } from '../../storage/snapshots.js';
 
 // The cards, top to bottom. Each is a function (ctx) -> { element, update(project) }.
-export const CARDS = [savedCard, filesCard, snapshotsCard, recoveryCard, settingsCard, clearCard, sampleCard, aboutCard];
+export const CARDS = [savedCard, filesCard, snapshotsCard, recoveryCard, transferCard, settingsCard, clearCard, sampleCard, aboutCard];
 
 // The section's own stylesheet. index.html may link it (with data-sheet,
 // which is how it is found here); this adds it on a page that does not.

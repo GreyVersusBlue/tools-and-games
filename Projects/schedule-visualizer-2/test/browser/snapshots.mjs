@@ -191,7 +191,7 @@ const waitSaved = () => page.waitForFunction(() => document.getElementById('save
 test('the Snapshots card stands after Project file, says there are none yet and the limit, and has its name field', async () => {
   await listed(0);
   const order = await page.$$eval('.page > section.card', (all) => all.map((el) => el.id));
-  assert.deepEqual(order, ['saved', 'project-file', 'snapshots', 'recovery', 'settings', 'clear', 'sample-school', 'about']);
+  assert.deepEqual(order, ['saved', 'project-file', 'snapshots', 'recovery', 'transfer', 'settings', 'clear', 'sample-school', 'about']);
   assert.equal(await text('#snapshots [data-line="snapshots"]'), 'There are no snapshots yet. Take one before a large change; the tool also takes one by itself before it clears the building, the schedule or the whole project, and before an import replaces it. This device keeps up to ' + SNAPSHOT_LIMIT + '.');
   assert.equal(await page.$eval('#snapshots .snap__list', (el) => el.hidden), true);
   assert.equal(await page.$eval('#snapshots [data-field="snapshot-name"]', (el) => el.labels[0].textContent), 'Name');
