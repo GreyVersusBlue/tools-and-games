@@ -61,6 +61,33 @@ async function loadModule(key, file) {
   }
 }
 
+// What a promise of the page's came to, kept on the page and waited for
+// there: a promise awaited across page.evaluate can come back "Promise was
+// collected" (SV2-72e), and a race with a timer in the page is the same
+// await (SV2-72f2). track(key, fn) runs fn on the page in a synchronous
+// evaluate and keeps what its promise comes to under globalThis.sv2kept[key];
+// outcome(key, ms) waits up to ms for it on the page and returns it, or
+// 'pending' when it has not come.
+async function track(key, fn) {
+  await view((name, body) => {
+    const kept = (globalThis.sv2kept ||= {});
+    kept[name] = 'pending';
+    Promise.resolve(new Function('return (' + body + ')();')()).then((value) => {
+      kept[name] = value;
+    }, (error) => {
+      kept[name] = 'failed: ' + String((error && error.message) || error);
+    });
+  }, key, String(fn));
+}
+async function outcome(key, ms) {
+  try {
+    await page.waitForFunction((name) => globalThis.sv2kept[name] !== 'pending', { timeout: ms }, key);
+  } catch (error) {
+    if (error.name !== 'TimeoutError') throw error;
+  }
+  return view((name) => globalThis.sv2kept[name], key);
+}
+
 // The movement view has the answer for the project as it is now, and has drawn it.
 async function settled() {
   await page.waitForFunction(() => {
@@ -259,7 +286,8 @@ test('while the comparison has not come the section says the report is of the sc
     await page.waitForSelector('#print-preview[open][data-scenario="failed"][data-ready="true"]');
     const stood = await section();
     assert.equal(stood.text, pending.text, 'the pending document stands');
-    assert.equal(await view(() => Promise.race([globalThis.sv2preview.ready().then(() => 'ready'), new Promise((done) => setTimeout(() => done('pending'), 5000))])), 'ready');
+    await track('ready', () => globalThis.sv2preview.ready().then(() => 'ready'));
+    assert.equal(await outcome('ready', 5000), 'ready');
     await closePreview();
   } finally {
     await view(() => {
@@ -346,21 +374,28 @@ test('an answer that arrives while a change of paper is still laid out waits for
     hold = await holdFaces();
     await view(() => {
       document.querySelector('#print-preview input[value="a4"]').click();
-      globalThis.sv2ready = globalThis.sv2preview.ready().then(() => 'ready');
+      // taken in the same task as the click, so during the paper's layout (outcome)
+      const kept = (globalThis.sv2kept ||= {});
+      kept.paperReady = 'pending';
+      globalThis.sv2preview.ready().then(() => {
+        kept.paperReady = 'ready';
+      });
     });
     await hold.asked(1);
     assert.ok(hold.held.length > 0, 'the paper\'s document asked for its faces');
     assert.equal(await view(() => document.getElementById('print-preview').dataset.ready), 'false', 'the paper\'s document is still being laid out');
     // the answer comes now (the lane's promise settled and handed to the
     // preview before the evaluate returns), then the faces
-    assert.equal(await view(() => Promise.race([globalThis.sv2answer().then(() => 'answered'), new Promise((done) => setTimeout(() => done('no answer'), 15000))])), 'answered');
+    await track('answer', () => globalThis.sv2answer().then(() => 'answered'));
+    assert.equal(await outcome('answer', 15000), 'answered');
     assert.equal(await view(() => document.getElementById('print-preview').dataset.scenario), 'asked', 'the answer waits for the paper\'s document');
     await hold.release();
-    assert.equal(await view(() => Promise.race([globalThis.sv2ready, new Promise((done) => setTimeout(() => done('pending'), 5000))])), 'ready', 'ready() taken during the paper\'s layout resolves');
+    assert.equal(await outcome('paperReady', 5000), 'ready', 'ready() taken during the paper\'s layout resolves');
     await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="true"][data-paper="a4 portrait"]', { timeout: 20000 });
     const answered = await section();
     assert.deepEqual(answered.figures, fromMovement.figures, 'the answer is in the document on show');
-    assert.equal(await view(() => Promise.race([globalThis.sv2preview.ready().then(() => 'ready'), new Promise((done) => setTimeout(() => done('pending'), 5000))])), 'ready');
+    await track('ready', () => globalThis.sv2preview.ready().then(() => 'ready'));
+    assert.equal(await outcome('ready', 5000), 'ready');
     // the paper back as it was
     await page.click('#print-preview input[value="letter"]');
     await page.waitForSelector('#print-preview[data-ready="true"][data-paper="letter portrait"]');
@@ -391,8 +426,9 @@ test('SV2-72d 6: a paper chosen while the answer\'s own document is laid out end
     await page.waitForSelector('#print-preview[open][data-scenario="asked"][data-ready="true"][data-paper="letter portrait"]');
     // the answer's document asks for its faces and is held there
     hold = await holdFaces();
-    await view(() => globalThis.sv2answer());
+    await track('answer', () => globalThis.sv2answer().then(() => 'answered'));
     await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="false"]', { timeout: 20000 });
+    assert.equal(await outcome('answer', 5000), 'answered', 'the lane\'s answer did not settle');
     await hold.asked(1);
     assert.ok(hold.held.length > 0, 'the answer\'s document asked for its faces');
     // taken now, ready() is the answer's layout (a task of its own, before the paper)
