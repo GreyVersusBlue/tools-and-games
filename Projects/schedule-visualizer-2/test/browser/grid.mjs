@@ -46,11 +46,27 @@ const stagedIs = (wanted) => shows((value) => document.querySelector('.sch')?.da
 // m2-pass.mjs, 2 runs in 10 with the CPU throttled 4), so a module is loaded
 // first and used in a synchronous evaluate after. A load of the page empties
 // the globals, and the module is loaded again.
+// The script imports the module itself and keeps `{ error }` under the key
+// when that fails: a static import that fails fires no error the test can
+// see, and a wrong path came back as this wait's timeout (SV2-72e2).
 async function loadModule(page, key, file) {
-  const there = (wanted) => Boolean(globalThis.sv2modules && globalThis.sv2modules[wanted]);
-  if (await page.evaluate(there, key)) return;
-  await page.addScriptTag({ type: 'module', content: 'import * as module from ' + JSON.stringify('./' + file) + '; (globalThis.sv2modules ||= {})[' + JSON.stringify(key) + '] = module;' });
-  await page.waitForFunction(there, { timeout: 5000 }, key);
+  // null while it loads, then `{ error }`: null when the module is there
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await page.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    // forgotten, so a later call tries again rather than repeat this one
+    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
 }
 const inSchedule = (group, day, period) => page.evaluate((g, d, p) => {
   const project = globalThis.sv2.store.project;
