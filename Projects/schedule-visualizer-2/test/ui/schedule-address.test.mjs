@@ -207,7 +207,7 @@ test('SV2-54 item 5: from an entry the list was not under, a gone group\'s addre
   const c6 = group(project, '6C').id;
   const { page, ctx: shell } = planner(project, '#movement');
   openAddress(shell, slotHash(c6, 'dsample00a', 2));
-  assert.equal(history.state, null, 'opened from Movement, the entry is marked as having the list under it');
+  assert.equal(history.state, null, 'opened from Movement, the entry is not marked as having the list under it');
   toList(true);
   assert.deepEqual(page.hashes(), ['#movement', '#schedule/groups']);
   assert.equal(page.at(), 1);
@@ -258,6 +258,47 @@ test('SV2-72e item 1: an address of the group the page is at takes its entry\'s 
   openAddress(shell, slotHash(a7, 'dsample00a', 0));
   assert.deepEqual(page.hashes(), [GROUPS_HASH, groupHash(c6), slotHash(a7, 'dsample00a', 0)]);
   assert.equal(history.state, null, 'another group\'s address has the list under it');
+});
+
+// ---------------------------------------------------------------- SV2-72e2
+
+// The review of SV2-72e, finding 2: a gone group's address (6C, opened from
+// #project, deleted while wide, so the page stays there) shows the list, but
+// the entry under it is #project, not the list. A Show from there is not
+// marked: marked, a Delete went Back onto the gone group's address.
+test('SV2-72e2 item 2: an address opened from a gone group\'s address is not marked, since the entry under it is not the list', () => {
+  let project = school();
+  const c6 = group(project, '6C').id;
+  const a7 = group(project, '7A').id;
+  const { page, ctx: shell } = planner(project, '#project');
+  openAddress(shell, groupHash(c6));
+  project = deleteGroup(project, { id: c6 }, ctx());
+  shell.store.project = project;
+  assert.equal(showsList(project, location.hash), true, 'the case needs the page at a gone group\'s address');
+  const slot = slotHash(a7, 'dsample00a', 0);
+  openAddress(shell, slot);
+  assert.deepEqual(page.hashes(), ['#project', groupHash(c6), slot]);
+  assert.equal(history.state, null, 'opened from a gone group\'s address, the entry is marked as having the list under it');
+  toList(true);
+  assert.deepEqual(page.hashes(), ['#project', groupHash(c6), GROUPS_HASH], 'a Delete went back onto the gone group\'s address');
+  assert.equal(page.at(), 2);
+});
+
+// The review of SV2-72e, finding 3: the same-group replace keeps the state of
+// the entry it replaces, and an entry with no mark (a group's editor opened
+// from Checks) keeps none. Passed before SV2-72e2; kept as a guard.
+test('SV2-72e2 item 3: a slot of the group the page is at, from an entry with no mark, takes its place with no mark', () => {
+  const project = school();
+  const c6 = group(project, '6C').id;
+  const { page, ctx: shell } = planner(project, '#schedule/checks');
+  openAddress(shell, groupHash(c6));
+  assert.equal(history.state, null, 'opened from Checks, the group\'s entry is marked as having the list under it');
+  const slot = slotHash(c6, 'dsample00a', 2);
+  openAddress(shell, slot);
+  assert.deepEqual(page.hashes(), ['#schedule/checks', slot], 'Show for the group\'s own slot made an entry');
+  assert.equal(history.state, null, 'the slot in an unmarked entry\'s place gained a mark');
+  toList(true);
+  assert.deepEqual(page.hashes(), ['#schedule/checks', GROUPS_HASH], 'a Delete went back to Checks instead of writing the list in the slot\'s place');
 });
 
 test('SV2-54 item 5: the chosen group, on its own slot\'s address, adds no entry; another group from a slot\'s address does', () => {

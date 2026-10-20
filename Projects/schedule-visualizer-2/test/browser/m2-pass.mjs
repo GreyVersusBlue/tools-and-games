@@ -2144,7 +2144,7 @@ test('SV2-72e item 1: Movement\'s link into a slot, then a Delete on a phone: th
     await settled(p);
     await listIs(p, true);
     assert.equal(await hashOf(p), '#schedule/groups/' + C6 + '/' + DAY_A + '/2');
-    assert.equal(await p.evaluate(() => history.state), null, 'opened from Movement, the entry is marked as having the list under it');
+    assert.equal(await p.evaluate(() => history.state), null, 'opened from Movement, the entry is not marked as having the list under it');
     await tap(p, '[data-action="delete"]');
     await closeToast(p);
     await listIs(p, false);
