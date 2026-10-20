@@ -130,6 +130,7 @@ export const GROUPS = {
     'browser/safety.mjs', // SV2-67
     'browser/scenario.mjs', // SV2-68
     'browser/congestion-scenario.mjs', // SV2-71
+    'browser/fix.mjs', // SV2-70
     'a11y/axe.mjs',
   ],
   a11y: [
