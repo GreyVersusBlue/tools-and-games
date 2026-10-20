@@ -740,7 +740,8 @@ test('Scan, Stop and Scan again while the browser is still asking for the camera
     await b.page.waitForFunction(() => globalThis.sv2camera.asked === 1);
     await press(b.page, '[data-action="scan-offer"]');
     await b.page.waitForFunction(() => globalThis.sv2camera.given === 1);
-    await b.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    // a start that went on would have the stream playing and read by now
+    await b.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
     assert.equal(await camera(), 'off', 'a camera stopped while it was being asked for is never shown as on');
     assert.equal(await tracksLive(b.page), 0, 'and its stream is stopped');
 
