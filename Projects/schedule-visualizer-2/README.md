@@ -181,6 +181,7 @@ row names a file it does not run.
 | `test/ui/safety.test.mjs` | The Safety section's plain functions: the exits' colours far enough apart in both themes and repeating past ten, a way out in runs a floor, the first line, a room's line and the cursor's sentence |
 | `test/ui/scenarios-model.test.mjs` | The scenario lab's plain functions: a change that cancelled itself, the signs and the better or worse marks of the figures and of a group's row, which groups the comparison lists, the bar's words |
 | `test/ui/difference.test.mjs` | The difference map's plain functions: the five strengths against the largest change, both tints' contrast on the corridor in both themes, zero and exclusion zones left unpainted, every day type together, the transition chosen, the ten largest changes with ties, groups apart, the card's words with typed names |
+| `test/ui/fix-kinds.test.mjs` | The kinds Fix… is on (FIXABLE_KINDS) and the kinds the suggestion engine works on, read through its candidates, are the same set |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |

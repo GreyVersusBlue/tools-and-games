@@ -11,11 +11,15 @@
 // Fix… on a fixable finding and none on the rest; the dialog working, then
 // the lane's sentences as the lane gives them; the switch asking again, and
 // kept for the project while the page is open; Try it starting a scenario
-// and adding to an open one, opening Scenarios with the focus on the chip,
-// the schedule untouched; a Try it the scenario refuses; "No small change
-// clears this."; a failed and a stale answer; keyboard only; a phone at 390
-// by 844 with touch; Escape and Close giving the focus back; typed names
-// shown as typed.
+// and adding to an open one, opening Scenarios with the focus on the
+// scenario's name field, the schedule untouched, and what one Undo and then
+// another take back; Try it saying what it did: added, already there, in
+// place of an earlier change; the line about an open scenario, shown only
+// with one; Try it pressed twice, and Enter again once it has landed; a Try
+// it the scenario refuses; "No small change clears this."; the finding
+// cleared under the dialog; a failed and a stale answer; keyboard only; a
+// phone at 390 by 844 and on its side at 844 by 390, with touch; Escape and
+// Close giving the focus back; typed names shown as typed.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,6 +30,7 @@ const DAY_A = 'dsample00a';
 const CLASH = 'room-double:' + DAY_A + ':2:rsample103';
 const NOTE = 'room-no-subject:rsamplecaf';
 const NO_SUGGESTION = 'No small change clears this.';
+const CLEARED = 'This finding is cleared now: the schedule as it is no longer has it.';
 const HOSTILE = '<img src=x onerror="window.__hit=1">&amp; "6A"';
 const ARABIC = 'الصف السادس';
 const CLEAN = { errors: [], blocked: [], shimmed: [] };
@@ -116,7 +121,7 @@ const shown = (page) => page.evaluate(() => {
 // The lane's own answer for the same question, as the store is now.
 const lane = (page, findingId, others) => page.evaluate(async (id, otherTeachersRooms) => {
   const answer = await globalThis.sv2.store.derived.suggest(id, { otherTeachersRooms, limit: 5 });
-  return { none: answer.none, suggestions: answer.suggestions.map((each) => ({ kind: each.kind, text: each.text, owners: each.effects.owners, change: each.change })) };
+  return { none: answer.none, suggestions: answer.suggestions.map((each) => ({ kind: each.kind, text: each.text, chip: each.chip.text, owners: each.effects.owners, change: each.change })) };
 }, findingId, others);
 
 const teacherNames = (page, ids) => page.evaluate((list) => list.map((id) => globalThis.sv2.store.project.teachers.find((each) => each.id === id).name), ids);
@@ -131,6 +136,24 @@ const active = (page) => page.evaluate(() => {
   const chip = el.closest('.scn-chip');
   return { tag: el.tagName, key: el.dataset.key || null, action: el.dataset.action || null, id: el.id || null, chip: chip ? Number(chip.dataset.index) : null, inDialog: Boolean(el.closest('#fix-dialog')), label: el.getAttribute('aria-label') };
 });
+
+// What the page last said in its live region.
+const said = (page) => page.$eval('#announcer', (el) => el.textContent);
+
+// The line about an open scenario: its words, or null when it has no box.
+const against = (page) => page.$eval('#fix-dialog [data-part="against"]', (el) => (el.getClientRects().length > 0 ? el.textContent : null));
+
+// Try it has landed: Scenarios up, the dialog gone, the focus on the
+// scenario's name field.
+async function landed(page) {
+  await page.waitForFunction(() => location.hash === '#scenarios' && !document.querySelector('dialog[open]') && document.activeElement && document.activeElement.id === 'scenario-name', { timeout: 10000 });
+}
+
+// Fix… on the clash, pressed in the page: a scenario action just made can
+// draw the list again between finding the button and clicking it.
+const pressFix = (page) => page.$eval(fixOf(CLASH), (el) => el.click());
+
+const tryAt = (index) => '#fix-dialog .fix-list__item[data-index="' + index + '"] [data-action="try"]';
 
 // Hold the lane's answer until released, to see the working state.
 async function holdLane(page) {
@@ -177,6 +200,7 @@ async function on(size, run, options) {
 
 const DESK = { width: 1280, height: 800 };
 const PHONE = { width: 390, height: 844, mobile: true };
+const SIDE = { width: 844, height: 390, mobile: true };
 
 // ---------------------------------------------------------------- the button
 
@@ -275,7 +299,7 @@ test('the switch asks again with other teachers\' rooms: working, then five, the
 
 // ---------------------------------------------------------------- Try it
 
-test('Try it with no scenario open starts one named for the finding, adds the change, opens Scenarios with the focus on its chip, and leaves the schedule as it was', async () => {
+test('Try it with no scenario open starts one named for the finding, adds the change, opens Scenarios with the focus on the name field, and leaves the schedule as it was; one Undo empties the scenario, a second closes it', async () => {
   await on(DESK, async (page) => {
     const before = await schedule(page);
     const depthBefore = await depth(page);
@@ -284,42 +308,58 @@ test('Try it with no scenario open starts one named for the finding, adds the ch
     const asked = await lane(page, CLASH, false);
     const pick = asked.suggestions.find((each) => each.kind === 'free-room') || asked.suggestions[0];
     const at = asked.suggestions.indexOf(pick);
-    await page.click('#fix-dialog .fix-list__item[data-index="' + at + '"] [data-action="try"]');
-    await page.waitForFunction(() => location.hash === '#scenarios' && !document.querySelector('dialog[open]'), { timeout: 10000 });
-    await page.waitForFunction(() => document.activeElement && document.activeElement.closest('.scn-chip'), { timeout: 10000 });
+    await page.click(tryAt(at));
+    await landed(page);
     const scenario = await scenarioOf(page);
     assert.equal(scenario.name, 'Two groups in one room on A Day, Period 3');
     assert.deepEqual(scenario.changes, [pick.change]);
     assert.equal(await page.$$eval('.scn-chip', (all) => all.length), 1);
+    // the name field, never a chip's ×
     const focus = await active(page);
-    assert.equal(focus.chip, 0);
-    assert.equal(focus.action, 'remove');
-    // nothing applied: the schedule as it was, and only the scenario's two steps of undo
+    assert.equal(focus.id, 'scenario-name');
+    assert.equal(focus.chip, null);
+    assert.equal(await said(page), 'Started the scenario Two groups in one room on A Day, Period 3 with ' + pick.chip + '. Nothing is applied yet.');
+    // nothing applied: the schedule as it was
     assert.equal(await schedule(page), before);
-    assert.equal(await depth(page), depthBefore + 2);
+    const depthTried = await depth(page);
     const steps = (await labels(page)).slice(-2);
+    // one Undo takes the change out and leaves the scenario open, empty
+    await page.click('#undo');
+    await page.waitForFunction((n) => globalThis.sv2.store.history.past.length === n, { timeout: 5000 }, depthTried - 1);
+    const emptied = await scenarioOf(page);
+    assert.deepEqual(emptied && emptied.changes, [], 'one Undo leaves the started scenario open with no changes');
+    assert.equal(emptied.name, 'Two groups in one room on A Day, Period 3');
+    assert.equal(await schedule(page), before);
+    // a second closes it
+    await page.click('#undo');
+    await page.waitForFunction((n) => globalThis.sv2.store.history.past.length === n, { timeout: 5000 }, depthTried - 2);
+    assert.equal(await scenarioOf(page), null);
+    assert.equal(await schedule(page), before);
+    // and those were the scenario's two steps of undo, the only ones Try it made
+    assert.equal(depthTried, depthBefore + 2);
     assert.match(steps[0], /^Start scenario Two groups in one room on A Day, Period 3$/);
     assert.match(steps[1], /^Add to scenario Two groups in one room on A Day, Period 3: /);
   });
 });
 
-test('Try it with a scenario open adds to it: one step of undo, the name kept, the new chip focused', async () => {
+test('Try it with a scenario open adds to it: one step of undo, the name kept, the name field focused, the change said as added', async () => {
   await on(DESK, async (page) => {
     await act(page, 'newScenario', { name: 'Morning trial' });
     await act(page, 'addScenarioChange', { change: { kind: 'swapPeriods', dayTypeId: 'dsample00b', groupId: 'gsample08b', periodA: 0, periodB: 1 } });
     const before = await schedule(page);
     const versions = await page.evaluate(() => [globalThis.sv2.store.geometryVersion, globalThis.sv2.store.buildingVersion, globalThis.sv2.store.scheduleVersion].join(':'));
     const depthBefore = await depth(page);
-    await page.click(fixOf(CLASH));
+    await pressFix(page);
     await waitState(page, 'answered');
     const asked = await lane(page, CLASH, false);
-    await page.click('#fix-dialog .fix-list__item[data-index="0"] [data-action="try"]');
-    await page.waitForFunction(() => location.hash === '#scenarios' && document.activeElement && document.activeElement.closest('.scn-chip'), { timeout: 10000 });
+    await page.click(tryAt(0));
+    await landed(page);
     const scenario = await scenarioOf(page);
     assert.equal(scenario.name, 'Morning trial');
     assert.equal(scenario.changes.length, 2);
     assert.deepEqual(scenario.changes[1], asked.suggestions[0].change);
-    assert.equal((await active(page)).chip, 1);
+    assert.equal((await active(page)).id, 'scenario-name');
+    assert.equal(await said(page), 'Added to the scenario Morning trial: ' + asked.suggestions[0].chip + '. Nothing is applied yet.');
     assert.equal(await schedule(page), before);
     assert.equal(await page.evaluate(() => [globalThis.sv2.store.geometryVersion, globalThis.sv2.store.buildingVersion, globalThis.sv2.store.scheduleVersion].join(':')), versions);
     assert.equal(await depth(page), depthBefore + 1);
@@ -363,6 +403,111 @@ test('a Try it the scenario refuses says the action\'s own sentence in the dialo
   });
 });
 
+test('the same suggestion tried twice from two openings: the second says the scenario already has it, adds nothing and makes no undo step', async () => {
+  await on(DESK, async (page) => {
+    await page.click(fixOf(CLASH));
+    await waitState(page, 'answered');
+    const asked = await lane(page, CLASH, false);
+    await page.click(tryAt(0));
+    await landed(page);
+    const first = await scenarioOf(page);
+    const depthAfter = await depth(page);
+    await go(page, '#schedule/checks');
+    await settled(page);
+    await page.waitForSelector(fixOf(CLASH), { timeout: 30000 });
+    await page.click(fixOf(CLASH));
+    await waitState(page, 'answered');
+    assert.equal((await shown(page)).items[0].text, asked.suggestions[0].text, 'the list is the same for the schedule as it stands');
+    await page.click(tryAt(0));
+    await landed(page);
+    assert.equal(await said(page), 'The scenario ' + first.name + ' already has this change: ' + asked.suggestions[0].chip + '. Nothing was added.');
+    assert.deepEqual(await scenarioOf(page), first);
+    assert.equal(await depth(page), depthAfter);
+    assert.equal(await page.$$eval('.scn-chip', (all) => all.length), 1);
+  });
+});
+
+test('a Try it that replaces an earlier change on the same slot says which change it took the place of', async () => {
+  await on(DESK, async (page) => {
+    await page.click(fixOf(CLASH));
+    await waitState(page, 'answered');
+    const asked = await lane(page, CLASH, false);
+    const at = asked.suggestions.findIndex((each) => each.change.kind === 'move');
+    assert.ok(at !== -1, 'the fixture offers a move');
+    const pick = asked.suggestions[at];
+    await closeDialog(page);
+    // the scenario moves the same group in the same period to another room
+    const earlier = { ...pick.change, roomId: 'rsample101' };
+    assert.notEqual(earlier.roomId, pick.change.roomId);
+    await act(page, 'newScenario', { name: 'Rooms trial' });
+    await act(page, 'addScenarioChange', { change: earlier });
+    // the earlier change in the action's own words
+    const earlierWords = (await labels(page)).at(-1).replace(/^Add to scenario Rooms trial: /, '');
+    await pressFix(page);
+    await waitState(page, 'answered');
+    await page.click(tryAt(at));
+    await landed(page);
+    const scenario = await scenarioOf(page);
+    assert.deepEqual(scenario.changes, [pick.change]);
+    assert.equal(await said(page), 'Added to the scenario Rooms trial: ' + pick.chip + ', in place of ' + earlierWords + '. Nothing is applied yet.');
+  });
+});
+
+test('the line about an open scenario shows only with one open, with its name as typed and how many changes it has', async () => {
+  await on(DESK, async (page) => {
+    await page.click(fixOf(CLASH));
+    await waitState(page, 'answered');
+    assert.equal(await against(page), null, 'no scenario open, no line');
+    await closeDialog(page);
+    await act(page, 'newScenario', { name: HOSTILE });
+    await pressFix(page);
+    await waitState(page, 'answered');
+    assert.equal(await against(page), 'Worked out against the schedule as it stands; Try it adds to the open scenario ' + HOSTILE + ', which has no changes yet.');
+    assert.equal(await page.$$eval('#fix-dialog img', (all) => all.length), 0);
+    // a change added while the dialog is open is counted at once
+    await act(page, 'addScenarioChange', { change: { kind: 'swapPeriods', dayTypeId: 'dsample00b', groupId: 'gsample08b', periodA: 0, periodB: 1 } });
+    await page.waitForFunction(() => document.querySelector('#fix-dialog [data-part="against"]').textContent.includes('already has'), { timeout: 5000 });
+    assert.equal(await against(page), 'Worked out against the schedule as it stands; the open scenario ' + HOSTILE + ' already has 1 change, so check the comparison in Scenarios.');
+    // and the scenario discarded under it: the line goes
+    await act(page, 'discardScenario', {});
+    await page.waitForFunction(() => document.querySelector('#fix-dialog [data-part="against"]').hidden, { timeout: 5000 });
+    assert.equal(await against(page), null);
+  });
+});
+
+test('Try it pressed twice at once makes one scenario with one change; Enter again once it has landed leaves the chip in place', async () => {
+  await on(DESK, async (page) => {
+    const depthBefore = await depth(page);
+    await page.click(fixOf(CLASH));
+    await waitState(page, 'answered');
+    const asked = await lane(page, CLASH, false);
+    // every sentence the live region is given from here on
+    await page.evaluate(() => {
+      globalThis.__fixSaid = [];
+      new MutationObserver((records) => {
+        for (const record of records) for (const node of record.addedNodes) globalThis.__fixSaid.push(node.textContent);
+      }).observe(document.getElementById('announcer'), { childList: true });
+    });
+    // two presses in one turn, before Scenarios is up
+    await page.$eval(tryAt(0), (el) => {
+      el.click();
+      el.click();
+    });
+    // landed: Scenarios up, the dialog gone, the focus somewhere in the lab
+    await page.waitForFunction(() => location.hash === '#scenarios' && !document.querySelector('dialog[open]') && document.activeElement && document.activeElement.closest('.scn') && document.querySelector('.scn-chip'), { timeout: 10000 });
+    assert.deepEqual(await page.evaluate(() => globalThis.__fixSaid.filter((text) => /^(Started|Added|The scenario|Scenario )/.test(text))), ['Started the scenario Two groups in one room on A Day, Period 3 with ' + asked.suggestions[0].chip + '. Nothing is applied yet.'], 'the second press said nothing of its own');
+    assert.equal(await depth(page), depthBefore + 2);
+    // Enter again, as a key held down would
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.$$eval('.scn-chip', (all) => all.length), 1, 'Enter after Try it took the change out');
+    assert.deepEqual((await scenarioOf(page)).changes, [asked.suggestions[0].change]);
+    assert.equal(await depth(page), depthBefore + 2);
+    assert.equal(await page.evaluate(() => Boolean(document.querySelector('dialog[open]'))), false);
+    assert.equal((await active(page)).id, 'scenario-name');
+  });
+});
+
 // ---------------------------------------------------------------- the other answers
 
 test('"No small change clears this." with and without the switch: a third group in Room 203 in Period 2', async () => {
@@ -379,6 +524,33 @@ test('"No small change clears this." with and without the switch: a third group 
     assert.equal((await shown(page)).status, NO_SUGGESTION);
     assert.equal(await page.$$eval('#fix-dialog [data-action="try"]', (all) => all.length), 0);
   }, { period: 1, room: 'rsample203', finding: third });
+});
+
+test('the finding cleared under the open dialog: stale first, then Ask again says it is cleared, with no Try it, no Ask again and no word about the switch; an Undo brings the list back', async () => {
+  await on(DESK, async (page) => {
+    await page.click(fixOf(CLASH));
+    await waitState(page, 'answered');
+    await act(page, 'setSlot', { groupId: 'gsample06a', dayTypeId: DAY_A, period: 2, slot: { room: 'rsample101' } });
+    await waitState(page, 'stale');
+    await page.click('#fix-dialog [data-action="ask-again"]');
+    await page.waitForFunction(() => !['working', 'stale'].includes(document.getElementById('fix-dialog').dataset.state), { timeout: 30000 });
+    const view = await shown(page);
+    assert.equal(view.state, 'cleared');
+    assert.equal(view.status, CLEARED);
+    assert.equal(view.items.length, 0);
+    assert.equal(await page.$$eval('#fix-dialog [data-action="try"]', (all) => all.length), 0);
+    assert.equal(await page.$eval('#fix-dialog [data-action="ask-again"]', (el) => el.hidden), true);
+    assert.doesNotMatch(view.status, /switch|No small change/);
+    // the switch asks again and gets the same
+    await page.click('#fix-dialog [data-part="others"]');
+    await waitState(page, 'cleared');
+    // Undo puts the clash back: stale, and Ask again lists the changes again
+    await page.evaluate(() => globalThis.sv2.store.undo());
+    await waitState(page, 'stale');
+    await page.click('#fix-dialog [data-action="ask-again"]');
+    await waitState(page, 'answered');
+    assert.equal((await shown(page)).items.length, 5);
+  });
 });
 
 test('a failed answer says so in a sentence, and Ask again is a press that asks once more', async () => {
@@ -408,7 +580,7 @@ test('a failed answer says so in a sentence, and Ask again is a press that asks 
 
 // ---------------------------------------------------------------- keyboard, phone, focus
 
-test('keyboard only: Tab to Fix…, Enter opens it with the focus inside, Space works the switch, Tab to Try it, Enter lands on the chip in Scenarios', async () => {
+test('keyboard only: Tab to Fix…, Enter opens it with the focus inside, Space works the switch, Tab to Try it, Enter lands on the scenario\'s name field in Scenarios', async () => {
   await on(DESK, async (page) => {
     await page.focus('.sch-checks tr[data-finding="' + CLASH + '"] [data-action="show"]');
     await page.keyboard.press('Tab');
@@ -429,7 +601,7 @@ test('keyboard only: Tab to Fix…, Enter opens it with the focus inside, Space 
     await page.keyboard.press('Tab');
     assert.equal((await active(page)).action, 'try');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => location.hash === '#scenarios' && document.activeElement && document.activeElement.closest('.scn-chip'), { timeout: 10000 });
+    await landed(page);
     assert.equal((await scenarioOf(page)).changes.length, 1);
   });
 });
@@ -504,6 +676,49 @@ test('a phone at 390 by 844 with touch: the dialog inside the window, 44 px targ
     await page.$eval('#fix-dialog .fix-list__item[data-index="0"] [data-action="try"]', (el) => el.scrollIntoView({ block: 'center' }));
     await tap('#fix-dialog .fix-list__item[data-index="0"] [data-action="try"]');
     await page.waitForFunction(() => location.hash === '#scenarios' && document.querySelector('.scn-chip'), { timeout: 10000 });
+    assert.equal((await scenarioOf(page)).changes.length, 1);
+  }, { hash: '#schedule/checks' });
+});
+
+test('a phone on its side at 844 by 390 with touch: the dialog inside the window, no sideways scroll, 44 px targets, Try it reached by scrolling the dialog and tapped', async () => {
+  await on(SIDE, async (page) => {
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches && window.innerWidth === 844 && window.innerHeight === 390), true);
+    await page.$eval(fixOf(CLASH), (el) => el.scrollIntoView({ block: 'center' }));
+    const tap = async (selector) => {
+      const at = await page.$eval(selector, (el) => {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      await page.touchscreen.tap(at.x, at.y);
+    };
+    await tap(fixOf(CLASH));
+    await waitState(page, 'answered');
+    const sizes = await page.evaluate(() => {
+      const dialog = document.getElementById('fix-dialog');
+      const rect = dialog.getBoundingClientRect();
+      const tall = (el) => el.getBoundingClientRect().height;
+      return {
+        inside: rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight,
+        scrollsSideways: dialog.scrollWidth > dialog.clientWidth,
+        tries: Array.from(dialog.querySelectorAll('[data-action="try"]')).map(tall),
+        close: tall(dialog.querySelector('.dialog__buttons .btn')),
+        switchRow: tall(dialog.querySelector('[data-part="others"]').closest('label')),
+      };
+    });
+    assert.equal(sizes.inside, true, JSON.stringify(sizes));
+    assert.equal(sizes.scrollsSideways, false);
+    assert.equal(sizes.tries.length, 4);
+    // a scrolled dialog lays out in fractions of a pixel: 43.99997 is 44
+    for (const height of [...sizes.tries, sizes.close, sizes.switchRow]) assert.ok(height >= 43.99, JSON.stringify(sizes));
+    const last = tryAt(3);
+    await page.$eval(last, (el) => el.scrollIntoView({ block: 'center' }));
+    const reachable = await page.$eval(last, (el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.top >= 0 && rect.bottom <= window.innerHeight;
+    });
+    assert.equal(reachable, true, 'the last Try it scrolls into the window');
+    await tap(last);
+    await landed(page);
     assert.equal((await scenarioOf(page)).changes.length, 1);
   }, { hash: '#schedule/checks' });
 });

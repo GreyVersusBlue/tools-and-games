@@ -1,8 +1,9 @@
 // Fix…: small changes that would clear one finding (spec 5.8; DESIGN 5.2 and
 // 5.4). The Checks tab and the findings panel show the button on a finding
 // the suggestion engine can work on (`finding.fixable`, engine/findings.js,
-// which is the list of kinds engine/suggest.js takes); a finding it cannot
-// help has no button.
+// the same kinds as engine/suggest.js's own list, which
+// test/ui/fix-kinds.test.mjs holds equal); a finding it cannot help has no
+// button.
 //
 //   openFix(env, finding, opener)
 //
@@ -12,32 +13,51 @@
 // own words, each the change and, after it, what else it changes; the words
 // never say which is better, the reader chooses. "No small change clears
 // this.", a failed answer and an answer for a schedule that has changed
-// since each say so in a sentence.
+// since each say so in a sentence. The lane gives "No small change clears
+// this." for a finding no longer in its result too, so an answer with none
+// is checked against the main lane's findings (store.derived.results()):
+// when the finding is not there for the schedule as it is, the dialog says
+// it is cleared now, with no Ask again and no word about the switch.
 //
 // The switch "Also try other teachers' free rooms in the same subject" is
 // off by default and asks again with otherTeachersRooms; the engine's
 // sentence for such a move says whose room it is. The switch is kept in
 // memory for the open project while the page is open: no storage key.
 //
+// The changes are worked out against the schedule as it stands, never with
+// an open scenario's changes; with a scenario open the dialog says so in a
+// line of its own, with the scenario's name and how many changes it has.
+//
 // Try it never changes the schedule. It adds the suggestion's change to the
 // open scenario (addScenarioChange), or starts one named for the finding
-// (newScenario) and adds it there, closes the dialog and opens Scenarios
-// with the focus on the new change's chip. A change the scenario refuses
-// (the schedule has moved under the list) is said in the action's own words
-// in the dialog, and nothing is started.
+// (newScenario) and adds it there, closes the dialog and opens Scenarios.
+// What it says is worked out from the scenario's changes before and after:
+// added; already there, so nothing added (the action makes no entry);
+// added in place of an earlier change on the same slot; or, should the
+// action find the change cancels itself, the lab's own sentence for that
+// (ui/scenarios/model.js; no case of fix.mjs reaches it, since a suggestion
+// never leaves its slots as the schedule has them). A change the scenario refuses (the schedule has
+// moved under the list) is said in the action's own words in the dialog,
+// and nothing is started. A second press while the first is on its way to
+// Scenarios is ignored.
 //
 // Focus: the dialog takes it on open; Escape and Close give it back to the
 // Fix… button that opened it, or to the same button drawn again since, or,
 // when that finding is gone, to the first control of the list it was in.
+// After Try it the focus goes to the scenario's name field (#scenario-name),
+// never to a chip's ×: Enter there renames to the same name, which does
+// nothing, where a repeated Enter on × would take the change out again.
 //
 // The dialog's state is on its element, for the tests and for the eye:
-// data-state working, answered, none, failed or stale; data-others true or
-// false.
+// data-state working, answered, none, cleared, failed or stale; data-others
+// true or false.
 
 import { h, uid, focusables } from '../components/dom.js';
-import { periodWords } from '../components/words.js';
+import { periodWords, count } from '../components/words.js';
+import { cancelled, cancelledSentence } from '../scenarios/model.js';
 import { checkLabel } from '../project/settings.js';
-import { newScenario, addScenarioChange } from '../../engine/actions.js';
+import { newScenario, addScenarioChange, NEW_SCENARIO_NAME } from '../../engine/actions.js';
+import { changeWords } from '../../engine/scenario.js';
 import { SUGGESTION_LIMIT } from '../../engine/suggest.js';
 import { periodName } from '../../engine/bells.js';
 
@@ -46,6 +66,7 @@ export const OTHERS_LABEL = 'Also try other teachers’ free rooms in the same s
 export const WORKING = 'Working out small changes that would clear this…';
 export const FAILED = 'The changes could not be worked out';
 export const STALE = 'The schedule has changed since this list was worked out, so it may no longer clear this. Ask again to work it out for the schedule as it is.';
+export const CLEARED = 'This finding is cleared now: the schedule as it is no longer has it.';
 const TRY_SAYS = 'Try it puts the change in a scenario, where it can be compared and applied. The schedule itself does not change.';
 
 // The switch, per project id, for the page's life.
@@ -100,10 +121,20 @@ function sameVersions(a, b) {
   return Boolean(a && b) && a.geometry === b.geometry && a.building === b.building && a.schedule === b.schedule;
 }
 
-function sameChange(a, b) {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  for (const key of keys) if (a[key] !== b[key]) return false;
-  return true;
+// The scenario's name as its labels say it: a blank name is 'New scenario'
+// (engine/actions.js).
+function scenarioLabel(scenario) {
+  const name = scenario && typeof scenario.name === 'string' ? scenario.name : '';
+  return name.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '') === '' ? NEW_SCENARIO_NAME : name;
+}
+
+// Is the finding in the main lane's result (its findings or its accepted)?
+function hasFinding(result, findingId) {
+  const checked = result && result.findings;
+  for (const list of checked ? [checked.findings, checked.accepted] : []) {
+    if (Array.isArray(list) && list.some((each) => each && each.id === findingId)) return true;
+  }
+  return false;
 }
 
 export function openFix(env, finding, opener) {
@@ -122,6 +153,8 @@ export function openFix(env, finding, opener) {
   const again = h('button', { type: 'button', class: 'btn', hidden: true, data: { action: 'ask-again' }, on: { click: () => ask() } }, 'Ask again');
   const list = h('ol', { class: 'fix-list', data: { part: 'list' }, style: 'display:grid;gap:var(--s-3);margin:0;padding:0;list-style:none' });
   const refusal = h('p', { role: 'alert', hidden: true, data: { part: 'refusal' }, style: 'color:var(--problem)' });
+  // with a scenario open: the changes are worked out without it
+  const against = h('p', { class: 'sch-hint', hidden: true, data: { part: 'against' } });
 
   const dialog = ctx.openDialog({
     id: 'fix-dialog',
@@ -134,6 +167,7 @@ export function openFix(env, finding, opener) {
       h('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2)' }, status, again),
       list,
       refusal,
+      against,
       h('p', { class: 'sch-hint' }, TRY_SAYS),
     ],
     buttons: [{ label: 'Close', value: null }],
@@ -158,6 +192,21 @@ export function openFix(env, finding, opener) {
   // ---- asking
   let asked = 0;
   let shown = null;
+
+  function drawAgainst() {
+    const scenario = store.project.scenario;
+    against.hidden = !scenario;
+    if (!scenario) {
+      against.replaceChildren();
+      return;
+    }
+    const n = scenario.changes.length;
+    const name = h('bdi', null, scenarioLabel(scenario));
+    against.replaceChildren(...(n === 0
+      ? ['Worked out against the schedule as it stands; Try it adds to the open scenario ', name, ', which has no changes yet.']
+      : ['Worked out against the schedule as it stands; the open scenario ', name, ' already has ' + count(n, 'change') + ', so check the comparison in Scenarios.']));
+  }
+  drawAgainst();
 
   function setState(state, sentence) {
     element.dataset.state = state;
@@ -187,8 +236,18 @@ export function openFix(env, finding, opener) {
         return;
       }
       shown = result;
-      draw(result);
-    }, (error) => {
+      if (result.suggestions.length > 0) {
+        draw(result);
+        return;
+      }
+      // none: is the finding still there for this schedule?
+      return Promise.resolve(store.derived.results()).then((main) => {
+        if (mine !== asked || !element.isConnected) return;
+        if (!sameVersions(result.versions, versionsNow())) setState('stale', STALE);
+        else if (main && sameVersions(main.versions, result.versions) && !hasFinding(main, finding.id)) setState('cleared', CLEARED);
+        else draw(result);
+      });
+    }).then(null, (error) => {
       // said, never asked again from here (ui/engine-client.js's header):
       // Ask again is a press
       if (mine !== asked || !element.isConnected) return;
@@ -217,6 +276,7 @@ export function openFix(env, finding, opener) {
   // ---- the schedule moving under the list
   const unsubscribe = store.subscribe(() => {
     if (shown && !sameVersions(shown.versions, versionsNow())) setState('stale', STALE);
+    drawAgainst();
   });
   dialog.closed.then(() => unsubscribe());
 
@@ -227,7 +287,11 @@ export function openFix(env, finding, opener) {
   });
 
   // ---- Try it
+  let trying = false;
+
   function tryIt(suggestion) {
+    // a second press (a repeated key) while the first is on its way
+    if (trying) return;
     const project = store.project;
     const starting = !project.scenario;
     const name = scenarioNameFor(project, finding);
@@ -238,6 +302,7 @@ export function openFix(env, finding, opener) {
       refuse(error);
       return;
     }
+    const before = project.scenario;
     try {
       if (starting) store.apply(newScenario, { name });
       store.apply(addScenarioChange, { change: suggestion.change });
@@ -245,10 +310,31 @@ export function openFix(env, finding, opener) {
       refuse(error);
       return;
     }
-    const scenario = store.project.scenario;
-    dialog.close('try');
-    ctx.announce((starting ? 'Started the scenario ' + scenario.name + ' with ' : 'Added to the scenario ' + scenario.name + ': ') + suggestion.chip.text + '. Nothing is applied yet.');
-    land(suggestion.change);
+    trying = true;
+    const said = trySaid(starting, before, store.project.scenario, suggestion);
+    // the dialog closes once Scenarios is up, so the focus never goes back
+    // to Fix… on the way there
+    land(() => {
+      dialog.close('try');
+      ctx.announce(said);
+    });
+  }
+
+  // What Try it did, from the scenario's changes before and after.
+  function trySaid(starting, before, after, suggestion) {
+    const name = scenarioLabel(after);
+    const chip = suggestion.chip.text;
+    if (starting) return 'Started the scenario ' + name + ' with ' + chip + '. Nothing is applied yet.';
+    // the action made no entry: the scenario holds this change already
+    if (after === before) return 'The scenario ' + name + ' already has this change: ' + chip + '. Nothing was added.';
+    const gone = cancelled(before, after, suggestion.change);
+    if (gone) return 'Scenario ' + name + ': ' + cancelledSentence(chip, gone.taken);
+    const replaced = before.changes.filter((old) => !after.changes.includes(old));
+    if (replaced.length > 0) {
+      const old = replaced.map((each) => changeWords(store.project, each).text).join('; ');
+      return 'Added to the scenario ' + name + ': ' + chip + ', in place of ' + old + '. Nothing is applied yet.';
+    }
+    return 'Added to the scenario ' + name + ': ' + chip + '. Nothing is applied yet.';
   }
 
   function refuse(error) {
@@ -256,24 +342,23 @@ export function openFix(env, finding, opener) {
     refusal.hidden = false;
   }
 
-  // Scenarios, with the focus on the new chip, else the lab's first control.
-  function land(change) {
-    function focusChip() {
-      const scenario = store.project.scenario;
-      const index = scenario ? scenario.changes.findIndex((each) => sameChange(each, change)) : -1;
+  // Scenarios, then `done` (the dialog closed), then the focus on the
+  // scenario's name field, else the lab's first control.
+  function land(done) {
+    function focusLab() {
+      done();
       const lab = document.querySelector('.scn');
       if (!lab) return;
-      const chip = index === -1 ? null : lab.querySelector('.scn-chip[data-index="' + index + '"] [data-action="remove"]');
-      const target = chip || lab.querySelector('#scenario-name') || focusables(lab)[0];
+      const target = lab.querySelector('#scenario-name') || focusables(lab)[0];
       if (target) target.focus();
     }
     if (location.hash === '#scenarios') {
       ctx.navigate('#scenarios');
-      focusChip();
+      focusLab();
       return;
     }
     // after the shell's own hashchange listener has put the section up
-    window.addEventListener('hashchange', focusChip, { once: true });
+    window.addEventListener('hashchange', focusLab, { once: true });
     ctx.navigate('#scenarios');
   }
 

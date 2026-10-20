@@ -570,6 +570,7 @@ export const SCREENS = [
   { id: 'schedule-fix', hash: '#schedule/checks', open: fixOpen() }, // SV2-70: the Fix dialog, its sentences and Try it
   { id: 'schedule-fix-others', hash: '#schedule/checks', open: fixOpen({ others: true }) }, // SV2-70: the switch on
   { id: 'schedule-fix-phone', hash: '#schedule/checks', viewport: { width: 390, height: 844, mobile: true }, open: fixOpen() }, // SV2-70: a phone, with touch
+  { id: 'schedule-fix-phone-side', hash: '#schedule/checks', viewport: { width: 844, height: 390, mobile: true }, open: fixOpen() }, // SV2-70b: a phone on its side, with touch
   {
     id: 'schedule-accepted-list', // SV2-11
     hash: '#schedule/checks',

@@ -12,7 +12,7 @@ import { checkLabel } from '../project/settings.js';
 import { acceptFinding, unacceptFinding } from '../../engine/actions.js';
 import { SEVERITIES } from '../../engine/findings.js';
 import { floorOfRoom } from '../../engine/schema.js';
-import { fill, apply, button, keyed, notYet, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
+import { fill, apply, button, keyed, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
 import { choosingGroup } from './groups.js';
 import { groupHash, slotHash } from './address.js';
 import { printButtons } from '../prints/index.js';
