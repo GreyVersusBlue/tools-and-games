@@ -299,6 +299,44 @@ const scenarioOpen = (options) => async (page) => {
   }
 };
 
+// SV2-69: the scenario lab's difference map: 7A moved out of the Library
+// for Period 3, the comparison narrowed to Period 3 to Period 4 (corridors
+// busier and quieter at full strength), painted, with the card of the
+// strongest busier cell up under the pointer.
+const differenceShown = async (page) => {
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async () => {
+    const { newScenario, addScenarioChange } = await import(new URL('engine/actions.js', location.href).href);
+    const store = globalThis.sv2.store;
+    document.querySelector('.scn').scenarios.memory.transition = 2;
+    store.apply(newScenario, { name: 'Library move' });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+  });
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.difference === 'shown' && !el.scenarios.pending && el.difference.answer === el.scenarios.answer && el.difference.painted.made === el.dataset.differenceMade;
+  }, { timeout: 30000 });
+  // the cell brought to the middle of the map, painted there, then pointed at
+  const drawn = await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    const hot = el.difference.state().busier.sort((a, b) => b.delta - a.delta)[0];
+    const was = Number(document.getElementById('scenarios-plan').dataset.drawn || 0);
+    el.scenarios.plan.show(hot.floorId, [hot.cell]);
+    el.scenarios.plan.paint();
+    return was;
+  });
+  await page.waitForFunction((was) => Number(document.getElementById('scenarios-plan').dataset.drawn || 0) > was, {}, drawn);
+  const at = await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    const hot = el.difference.state().busier.sort((a, b) => b.delta - a.delta)[0];
+    const middle = el.scenarios.plan.cellAt(hot.floorId, hot.cell);
+    const box = document.getElementById('scenarios-plan').getBoundingClientRect();
+    return { x: box.left + middle.x, y: box.top + middle.y };
+  });
+  await page.mouse.move(at.x, at.y);
+  await page.waitForFunction(() => !document.querySelector('[data-card="difference"]').hidden);
+};
+
 // SV2-67: the Safety section once its map is styled, measured and drawn for
 // the project in the store.
 async function safetyDrawn(page) {
@@ -835,6 +873,7 @@ export const SCREENS = [
   { id: 'scenarios-phone-sideways', hash: '#scenarios', viewport: { width: 844, height: 390, mobile: true }, open: scenarioOpen() }, // SV2-68: a phone on its side, with touch
   { id: 'scenarios-dropped', hash: '#scenarios', open: scenarioOpen({ dropped: true }) }, // SV2-68: a change that no longer applies, with Remove them
   { id: 'scenarios-apply', hash: '#scenarios', open: scenarioOpen({ apply: true }) }, // SV2-68: Apply's summary
+  { id: 'scenarios-difference', hash: '#scenarios', open: differenceShown }, // SV2-69: the difference map painted, its card up, the table of the ten largest changes
   { id: 'safety-map', hash: '#safety', open: safetyDrawn }, // SV2-67: every room's way out by exit, the key, the Exits tab
   { id: 'safety-phone', hash: '#safety', viewport: { width: 390, height: 844, mobile: true }, open: safetyDrawn }, // SV2-67: a phone, with touch
   { id: 'safety-phone-sideways', hash: '#safety', viewport: { width: 844, height: 390, mobile: true }, open: safetyDrawn }, // SV2-67: a phone on its side, with touch

@@ -366,7 +366,7 @@ test('the text alternative: the table of the ten largest changes is the overlay\
     assert.ok(row.cells[1].length > 0, 'a floor');
   }
   // the key says it in words too
-  assert.match(await page.$eval('[data-part="difference-key"]', (el) => el.textContent), /^On the map: busier , quieter \. The stronger the colour, the larger the change; the largest is \d+ students\./);
+  assert.match(await page.$eval('[data-part="difference-key"]', (el) => el.textContent), /^On the map: busier, quieter\. The stronger the colour, the larger the change; the largest is \d+ students\./);
   // the table sits in the inspector beside the comparison, under the map's own heading
   assert.equal(await page.$eval('[data-part="difference"]', (el) => Boolean(el.closest('.scn-inspector'))), true);
 });

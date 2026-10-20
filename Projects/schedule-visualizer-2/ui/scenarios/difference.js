@@ -124,10 +124,13 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   const tableBody = h('tbody');
   const table = h('table', { class: 'scn-table scn-difference', data: { part: 'difference-table' } },
     h('caption', { class: 'vh' }, 'The ' + DIFFERENCE_TOP + ' largest changes on the difference map, largest first'),
-    h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Place'), h('th', { scope: 'col' }, 'Floor'), h('th', { scope: 'col' }, 'Before'), h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Change'))),
+    // five columns in the inspector's 320 px (the lab's table rules are for four)
+    // the figures' headings stand over their figures, at the right
+    h('thead', null, h('tr', null, ...[['Place', 28, 'left'], ['Floor', 17, 'left'], ['Before', 16, 'right'], ['After', 13, 'right'], ['Change', 26, 'right']].map(([text, share, side]) => h('th', { scope: 'col', style: 'width:' + share + '%;text-align:' + side }, text)))),
     tableBody);
   const note = h('p', { class: 'scn-compare__note', data: { part: 'difference-note' } });
-  const section = h('section', { class: 'scn-difference-block', 'aria-labelledby': 'scenario-difference-title', data: { part: 'difference' }, hidden: true }, title, key, table, note);
+  // laid out as the comparison above it is (its padding and spacing)
+  const section = h('section', { class: 'scn-compare scn-difference-block', 'aria-labelledby': 'scenario-difference-title', data: { part: 'difference' }, hidden: true }, title, key, table, note);
 
   function place() {
     const box = inspector();
@@ -155,9 +158,10 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     title.textContent = difference.transition === null
       ? 'Corridors that change most over the day'
       : 'Corridors that change most in ' + periodName(project.settings, difference.transition) + ' to ' + periodName(project.settings, difference.transition + 1);
-    key.replaceChildren('On the map: busier ', swatch('problem', 3), ', quieter ', swatch('accent', 3), '. ',
+    key.replaceChildren('On the map: ', swatch('problem', 3), 'busier, ', swatch('accent', 3), 'quieter. ',
       difference.largest > 0 ? 'The stronger the colour, the larger the change; the largest is ' + difference.largest + ' ' + unitWord(unit, difference.largest) + '. A place with no change is not coloured.' : 'Nothing on the map changes.');
-    const several = difference.dayTypeIds.length > 1;
+    // the day type is named on a row only when the rows come from more than one
+    const several = new Set(held.ranked.rows.map((row) => row.dayTypeId)).size > 1;
     const dayName = (id) => {
       const day = project.dayTypes.find((each) => each.id === id);
       return day ? day.name : '';
