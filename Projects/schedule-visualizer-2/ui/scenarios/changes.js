@@ -9,7 +9,7 @@
 //   and said), env.home() (where the focus goes when what held it is gone)
 
 import { h } from '../components/dom.js';
-import { newScenario, renameScenario, removeScenarioChange } from '../../engine/actions.js';
+import { newScenario, renameScenario, removeScenarioChange, removeScenarioChanges } from '../../engine/actions.js';
 import { count } from '../components/words.js';
 
 function words(parts) {
@@ -110,13 +110,13 @@ export function changesPanel(env) {
     else env.home();
   }
 
-  // Remove them: the dropped changes out, last first so each index still
-  // holds. Each is its own step of undo (the actions take one index at a time).
+  // Remove them: the dropped changes out, as one step of undo
+  // (removeScenarioChanges, SV2-72d); one Undo brings them all back.
   function removeThem() {
     if (!view || view.dropped.length === 0) return;
-    const indexes = view.dropped.map((each) => each.index).filter((index) => index >= 0).sort((a, b) => b - a);
+    const indexes = view.dropped.map((each) => each.index).filter((index) => index >= 0);
     const n = indexes.length;
-    for (const index of indexes) if (!env.apply(removeScenarioChange, { index })) break;
+    if (!env.apply(removeScenarioChanges, { indexes })) return;
     const text = 'Removed ' + count(n, 'change') + ' that no longer applied.';
     status.textContent = text;
     ctx.announce(text);

@@ -48,6 +48,9 @@
 // never to a chip's ×: Enter there renames to the same name, which does
 // nothing, where a repeated Enter on × would take the change out again.
 //
+// Its layout is the Fix block at the end of ui/schedule/schedule.css (SV2-72d):
+// the title and Close stay in view and the body scrolls between them.
+//
 // The dialog's state is on its element, for the tests and for the eye:
 // data-state working, answered, none, cleared, failed or stale; data-others
 // true or false.
@@ -56,7 +59,7 @@ import { h, uid, focusables } from '../components/dom.js';
 import { periodWords, count } from '../components/words.js';
 import { cancelled, cancelledSentence } from '../scenarios/model.js';
 import { checkLabel } from '../project/settings.js';
-import { newScenario, addScenarioChange, NEW_SCENARIO_NAME } from '../../engine/actions.js';
+import { newScenario, addScenarioChange, NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
 import { changeWords } from '../../engine/scenario.js';
 import { SUGGESTION_LIMIT } from '../../engine/suggest.js';
 import { periodName } from '../../engine/bells.js';
@@ -122,10 +125,10 @@ function sameVersions(a, b) {
 }
 
 // The scenario's name as its labels say it: a blank name is 'New scenario'
-// (engine/actions.js).
+// (engine/actions.js's blankName).
 function scenarioLabel(scenario) {
   const name = scenario && typeof scenario.name === 'string' ? scenario.name : '';
-  return name.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '') === '' ? NEW_SCENARIO_NAME : name;
+  return blankName(name) ? NEW_SCENARIO_NAME : name;
 }
 
 // Is the finding in the main lane's result (its findings or its accepted)?
@@ -151,8 +154,8 @@ export function openFix(env, finding, opener) {
   others.checked = othersFor(store.project);
   const status = h('p', { role: 'status', data: { part: 'status' } });
   const again = h('button', { type: 'button', class: 'btn', hidden: true, data: { action: 'ask-again' }, on: { click: () => ask() } }, 'Ask again');
-  const list = h('ol', { class: 'fix-list', data: { part: 'list' }, style: 'display:grid;gap:var(--s-3);margin:0;padding:0;list-style:none' });
-  const refusal = h('p', { role: 'alert', hidden: true, data: { part: 'refusal' }, style: 'color:var(--problem)' });
+  const list = h('ol', { class: 'fix-list', data: { part: 'list' } });
+  const refusal = h('p', { class: 'fix-refusal', role: 'alert', hidden: true, data: { part: 'refusal' } });
   // with a scenario open: the changes are worked out without it
   const against = h('p', { class: 'sch-hint', hidden: true, data: { part: 'against' } });
 
@@ -163,8 +166,8 @@ export function openFix(env, finding, opener) {
     fallbackFocus: backHome,
     body: [
       h('p', { dir: 'auto', data: { part: 'finding' } }, finding.text),
-      h('label', { for: switchId, style: 'display:flex;align-items:center;gap:var(--s-2);min-height:44px;cursor:pointer' }, others, h('span', null, OTHERS_LABEL)),
-      h('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-2)' }, status, again),
+      h('label', { class: 'fix-switch', for: switchId }, others, h('span', null, OTHERS_LABEL)),
+      h('div', { class: 'fix-asking' }, status, again),
       list,
       refusal,
       against,
@@ -264,8 +267,8 @@ export function openFix(env, finding, opener) {
     setState('answered', (n === 1 ? 'One change' : n + ' changes') + ' would clear this. Each says what else it changes.');
     list.replaceChildren(...result.suggestions.map((suggestion, index) => {
       const { change, effects } = splitSentence(suggestion.parts);
-      return h('li', { class: 'fix-list__item', data: { kind: suggestion.kind, index: String(index) }, style: 'display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--s-2);padding-bottom:var(--s-3);border-bottom:var(--border)' },
-        h('p', { class: 'fix-list__words', dir: 'auto', style: 'flex:1 1 16rem;margin:0' },
+      return h('li', { class: 'fix-list__item', data: { kind: suggestion.kind, index: String(index) } },
+        h('p', { class: 'fix-list__words', dir: 'auto' },
           h('strong', { data: { part: 'change' } }, words(change)),
           effects.length > 0 ? [': ', h('span', { data: { part: 'effects' } }, words(effects))] : null),
         h('button', { type: 'button', class: 'btn', data: { action: 'try' }, on: { click: () => tryIt(suggestion) } },

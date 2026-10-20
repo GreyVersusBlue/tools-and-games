@@ -112,7 +112,9 @@ test('a comparison on the sample school with two changes prints the changes, the
   assert.deepEqual([f.walking.difference, f.crowding.difference, f.late.difference, f.findings.warning.difference, f.busiest.difference], [-48, 23, -1, -1, 0],
     'the sample\'s figures moved: the expectations below are of the crowd model as it was');
   const figures = Object.fromEntries(rowsAfter(section, 'Before and after').map((row) => [row[0], row.slice(1)]));
-  assert.deepEqual(figures['Walking, all walks together'], ['153 min 48 s', '153 min', '−48 s']);
+  // SV2-72d: from an hour, hours and minutes, the difference of the two as printed (153 min 48 s and 153 min)
+  assert.deepEqual(figures['Walking, all walks together'], ['2 h 34 min', '2 h 33 min', '−1 min']);
+  assert.ok(section.includes('<td class="is-number doc-change is-less">−1\u00a0min</td>'), 'one no-break space inside the figure, and less said by the cell');
   assert.deepEqual(figures['Lost to the crowd'], ['7 min 58 s', '8 min 21 s', '+23 s']);
   assert.deepEqual(figures['Busiest place'], ['177 students, Main Corridor, by Door B, on A Day', '177 students, Main Corridor, by Door B, on A Day', 'no change']);
   assert.deepEqual(figures['Late walks'], ['1', '0', '−1']);
@@ -121,8 +123,7 @@ test('a comparison on the sample school with two changes prints the changes, the
   assert.deepEqual(figures.Warnings, ['1', '0', '−1']);
   assert.deepEqual(figures.Notes, ['2', '2', 'no change']);
   // the direction is in the markup as a class beside the word, never colour alone
-  assert.ok(section.includes('<td class="is-number doc-change is-less">−48 s</td>'));
-  assert.ok(section.includes('<td class="is-number doc-change is-more">+23 s</td>'));
+  assert.ok(section.includes('<td class="is-number doc-change is-more">+23\u00a0s</td>'));
 
   // new and resolved findings
   const added = rowsAfter(section, 'New findings');
@@ -355,5 +356,26 @@ test('an Error handed in as the answer, and a failure with no message, are said 
     const section = congestionPrint.scenarioSection(sample, comparison);
     assert.equal(text(section), 'The scenario: Ease the 2nd floor What the scenario Ease the 2nd floor would change could not be worked out. Nothing of it is printed.', JSON.stringify(comparison));
     assert.equal(countOf(section, '<span dir="auto"></span>'), 0);
+  }
+});
+
+// SV2-72d item 2: the blank-name rule is engine/actions.js's blankName,
+// exported, and the report, the lab and the Fix dialog use it: none keeps a
+// copy of its character list to drift from the actions' labels.
+test('SV2-72d: the scenario\'s name follows engine/actions.js\'s blankName, and no screen or print keeps a copy of the rule', async () => {
+  const { blankName, NEW_SCENARIO_NAME } = await import('../../engine/actions.js');
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  for (const name of ['', '   ', '​⁠', '﻿ ‍', 'Plan', ' x ']) {
+    const said = blankName(name) ? NEW_SCENARIO_NAME : name;
+    const html = congestionPrint.scenarioSection(withScenario(school(), name, twoChanges()), undefined);
+    assert.ok(html.includes('<h2>The scenario: <span dir="auto">' + esc(said) + '</span></h2>'), JSON.stringify(name) + ' prints as ' + said);
+  }
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  for (const file of ['ui/prints/congestion.js', 'ui/scenarios/model.js', 'ui/schedule/checks-fix.js']) {
+    const source = fs.readFileSync(path.join(root, ...file.split('/')), 'utf8');
+    assert.ok(/\bblankName\b/.test(source), file + ' uses blankName');
+    assert.ok(!/\\u200[bBdD]|\\u2060|\\uFEFF|[​‍⁠﻿]/.test(source), file + ' keeps no copy of the zero-width characters of the rule');
   }
 });

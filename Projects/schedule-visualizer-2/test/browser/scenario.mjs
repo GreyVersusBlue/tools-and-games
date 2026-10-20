@@ -437,6 +437,82 @@ test('a change whose room is deleted no longer applies, is listed with why, and 
   assert.equal(await page.$eval('.scn-dropped', (el) => el.hidden), true);
 });
 
+test('SV2-72d 1: "Remove them" takes every change that no longer applies out as one step of undo, and one Undo brings them back', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Two dropped');
+  await page.evaluate(async () => {
+    const { addScenarioChange } = await import('./engine/actions.js');
+    const store = globalThis.sv2.store;
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 4, roomId: 'rsample101' } });
+    store.apply(addScenarioChange, { change: { kind: 'swapPeriods', dayTypeId: 'dsample00a', groupId: 'gsample06a', periodA: 0, periodB: 3 } });
+    const { deleteSpaces } = await import('./engine/actions.js');
+    store.apply(deleteSpaces, { spaceIds: ['rsample101'] });
+  });
+  await ready(page);
+  assert.equal(await page.$$eval('.scn-dropped__item', (items) => items.length), 2);
+  assert.equal(await seen(page, '[data-action="remove-dropped"]'), 'Remove them');
+  const entries = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.click('[data-action="remove-dropped"]');
+  await ready(page);
+  assert.deepEqual((await scenarioOf(page)).changes.map((change) => change.kind), ['swapPeriods']);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.history.past.length), entries + 1, 'one step of undo for both');
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.undoLabel), 'Remove from scenario Two dropped: 2 changes');
+  assert.equal(await seen(page, '.scn-status'), 'Removed 2 changes that no longer applied.');
+  // one Undo: both are back, still listed as no longer applying (the room is still gone)
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await ready(page);
+  assert.deepEqual((await scenarioOf(page)).changes.map((change) => change.kind), ['move', 'move', 'swapPeriods']);
+  assert.equal(await page.$$eval('.scn-dropped__item', (items) => items.length), 2);
+});
+
+// How many lines a cell's own words take, its "better" or "worse" mark left
+// out: the distinct tops of its text's line boxes. Read only from a cell
+// that has a box.
+const LINES = `(cell) => {
+  if (cell.getClientRects().length === 0) throw new Error('a cell with no box');
+  const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, { acceptNode: (node) => (node.parentElement.closest('.scn-trend') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+  const tops = new Set();
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    for (const rect of range.getClientRects()) if (rect.width > 0) tops.add(Math.round(rect.top));
+  }
+  return tops.size;
+}`;
+
+test('SV2-72d 3 (W3): in the inspector’s 320 px a time of an hour or more reads in hours, no figure breaks inside itself, and no label takes three lines', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Hours');
+  await page.evaluate(async () => {
+    const { addScenarioChange } = await import('./engine/actions.js');
+    const store = globalThis.sv2.store;
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07c', period: 1, roomId: 'rsample204' } });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample08a', period: 6, roomId: 'rsample101' } });
+  });
+  await ready(page);
+  const width = await page.$eval('#inspector-body', (el) => Math.round(el.getBoundingClientRect().width));
+  assert.ok(width <= 320, 'the inspector is its 320 px, ' + width);
+  // the sample's walking over the day is 153 min 48 s before and 153 min after
+  const walking = await page.$$eval('.scn-figures tr[data-figure="walking"] td', (cells) => cells.map((cell) => cell.childNodes[0].textContent));
+  assert.deepEqual(walking, ['2\u00a0h\u00a034\u00a0min', '2\u00a0h\u00a033\u00a0min', '−1\u00a0min'], 'hours and minutes, and the difference that of the two as shown');
+  const lines = await page.evaluate((source) => {
+    const count = new Function('return ' + source)();
+    const of = (selector) => Array.from(document.querySelectorAll(selector)).map((cell) => [cell.closest('tr').dataset.figure || cell.closest('tr').dataset.group, cell.textContent, count(cell)]);
+    return { figures: of('.scn-figures td.num'), groups: of('.scn-groups td.num'), labels: of('.scn-figures tbody th'), tableWide: Math.round(document.querySelector('.scn-figures').getBoundingClientRect().right) <= Math.round(document.querySelector('#inspector-body').getBoundingClientRect().right) };
+  }, LINES);
+  assert.ok(lines.figures.length >= 24 && lines.groups.length >= 3, 'figures and groups shown');
+  for (const [row, text, n] of lines.figures.concat(lines.groups)) {
+    // a sentence ("1 walk more with no way through") may wrap; a figure never
+    if (/[a-z]{4,}/i.test(text.replace(/better|worse|no change/g, ''))) continue;
+    assert.equal(n, 1, row + ': "' + text + '" is on one line');
+  }
+  for (const [row, text, n] of lines.labels) assert.ok(n <= 2, row + ': "' + text + '" takes ' + n + ' lines');
+  assert.ok(lines.tableWide, 'and the table stays inside the inspector');
+});
+
 test('the comparison is the scenario lane’s answer, figure by figure, edited groups marked in words', async () => {
   const page = wide.page;
   await fresh(page);
@@ -788,6 +864,31 @@ test('the stage keeps its least, the bar sticks at the section’s foot and a me
   await page.waitForFunction(() => document.querySelector('.toast'));
   const toast = await page.evaluate(() => document.querySelector('.toast').getBoundingClientRect().bottom);
   assert.ok(toast <= box.bar.top + 1, 'the message lies above the bar: ' + toast + ' over ' + box.bar.top);
+});
+
+test('SV2-72d 4: from 1200 px a message starts right of the lab’s panel, never over its forms, and the surface keeps no left edge once the lab is left', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Message');
+  await page.evaluate(() => globalThis.sv2.ctx.toast({ text: 'A message from the lab' }));
+  await page.waitForFunction(() => {
+    const toast = document.querySelector('.toast');
+    return toast && toast.getClientRects().length > 0 && toast.getAnimations().every((each) => each.playState !== 'running');
+  });
+  const box = await page.evaluate(() => ({
+    toast: document.querySelector('.toast').getBoundingClientRect().toJSON(),
+    panel: document.querySelector('.scn-panel').getBoundingClientRect().toJSON(),
+    stage: document.querySelector('.scn .mov-stage').getBoundingClientRect().toJSON(),
+  }));
+  assert.ok(box.panel.right <= box.stage.left + 1, 'the panel stands beside the map at 1280');
+  assert.ok(box.toast.left >= box.panel.right, 'the message starts right of the panel: ' + box.toast.left + ' against ' + box.panel.right);
+  assert.ok(box.toast.left - box.panel.right <= 24, 'and beside it, at the usual gap: ' + (box.toast.left - box.panel.right));
+  await page.click('.toast .toast__close');
+  await page.waitForFunction(() => !document.querySelector('.toast'));
+  await go(page, '#schedule/groups');
+  assert.equal(await page.$eval('#surface', (el) => el.style.getPropertyValue('--toast-left')), '', 'Schedule’s messages keep the usual left edge');
+  await go(page, '#scenarios');
+  await ready(page);
 });
 
 // A phone, with touch: the panel under the map, the bar sticky at the foot

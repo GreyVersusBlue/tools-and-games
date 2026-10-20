@@ -151,6 +151,8 @@ export function openPrintPreview(ctx, outputId, options) {
     settle = resolve;
   });
   let laidOut = Promise.resolve();
+  // ends the wait of the document being laid out, when show() replaces it
+  let cutLayout = null;
   let derived = null;
   let alive = true;
 
@@ -335,8 +337,27 @@ export function openPrintPreview(ctx, outputId, options) {
       movement: opts.movement,
     });
     state.title = rendered.title;
+    // A document replaced before it is laid out (a paper chosen while the
+    // scenario's answer is being shown, SV2-72d) never sends its stylesheets'
+    // or faces' word: its wait ends here instead, now, so nothing chained on
+    // it (ready(), the scenario's answer) waits for good.
+    if (cutLayout) cutLayout();
+    let cut;
+    const replaced = new Promise((resolve) => {
+      cut = resolve;
+    });
+    cutLayout = cut;
+    let over = false;
     laidOut = new Promise((resolve) => {
-      frame.addEventListener('load', async () => {
+      const end = () => {
+        if (over) return;
+        over = true;
+        frame.removeEventListener('load', onLoad);
+        resolve();
+      };
+      replaced.then(end);
+      async function onLoad() {
+        if (over) return;
         const doc = frame.contentDocument;
         if (doc && doc.documentElement) {
           doc.documentElement.classList.toggle('has-page-boxes', printsPageBoxes());
@@ -348,19 +369,22 @@ export function openPrintPreview(ctx, outputId, options) {
             }
           });
           // the sheets are measured once their stylesheets and faces are in
-          await Promise.all(Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).map((link) => (link.sheet ? null : new Promise((done) => {
+          await Promise.race([replaced, Promise.all(Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).map((link) => (link.sheet ? null : new Promise((done) => {
             link.addEventListener('load', done, { once: true });
             link.addEventListener('error', done, { once: true });
-          }))));
-          if (doc.fonts && doc.fonts.ready) await doc.fonts.ready;
+          }))))]);
+          if (!over && doc.fonts && doc.fonts.ready) await Promise.race([replaced, doc.fonts.ready]);
         }
+        // replaced meanwhile: the newer document is measured by its own wait
+        if (over) return;
         if (alive) {
           place();
           element.dataset.paper = state.paper.size + ' ' + state.paper.orientation;
           element.dataset.ready = 'true';
         }
-        resolve();
-      }, { once: true });
+        end();
+      }
+      frame.addEventListener('load', onLoad);
     });
     frame.srcdoc = rendered.html;
     return laidOut;

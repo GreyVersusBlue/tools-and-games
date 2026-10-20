@@ -230,9 +230,9 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   const tableBody = h('tbody');
   const table = h('table', { class: 'scn-table scn-difference', data: { part: 'difference-table' } },
     h('caption', { class: 'vh' }, 'The ' + DIFFERENCE_TOP + ' largest changes on the difference map, largest first'),
-    // five columns in the inspector's 320 px (the lab's table rules are for four)
-    // the figures' headings stand over their figures, at the right
-    h('thead', null, h('tr', null, ...[['Place', 28, 'left'], ['Floor', 17, 'left'], ['Before', 16, 'right'], ['After', 13, 'right'], ['Change', 26, 'right']].map(([text, share, side]) => h('th', { scope: 'col', style: 'width:' + share + '%;text-align:' + side }, text)))),
+    // five columns in the inspector's 320 px, at the shares of scenarios.css's
+    // .scn-difference, the figures' headings over their figures at the right
+    h('thead', null, h('tr', null, ...['Place', 'Floor', 'Before', 'After', 'Change'].map((text) => h('th', { scope: 'col' }, text)))),
     tableBody);
   const note = h('p', { class: 'scn-compare__note', data: { part: 'difference-note' } });
   // laid out as the comparison above it is (its padding and spacing)
@@ -537,7 +537,11 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     else hideCard();
   }
 
+  // the card's sentence for the keyboard cursor's last move, for the lab to
+  // say (cursorWords); null on a cell with no card
+  let heard = null;
   plan.onCell((ev) => {
+    if (ev.kind === 'keyboard') heard = null;
     if (!held.difference) {
       if (ev.kind === 'escape' && point) {
         hideCard();
@@ -560,13 +564,13 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       if (found && found.slot.floor.id === point.floorId && found.cell === point.cell) return false;
       pointAt(ev.x, ev.y, 'hover');
     } else if (ev.kind === 'keyboard') {
-      // On a cell with a card this is the one sentence said: the lab's own
-      // line about the cell ("Floor 1: corridor.") is set by its handler,
-      // which runs after this one, and this sentence replaces it a microtask
-      // later. It names the floor and corridor or stairs, as the lab's does,
-      // before the rest of the card.
+      // On a cell with a card the card's sentence is the one said, by the
+      // lab's own cursor handler, which runs after this one and asks
+      // cursorWords() (SV2-72d: one line in the live region, never the lab's
+      // then this). It names the floor and corridor or stairs, as the lab's
+      // line does, before the rest of the card.
       const { info } = pointAt(ev.x, ev.y, 'keyboard');
-      if (info) queueMicrotask(() => ctx.announce(cardText(info)));
+      if (info) heard = cardText(info);
     } else if (ev.kind === 'escape') {
       if (!point) return false;
       hideCard();
@@ -611,5 +615,14 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   };
 
   settle();
-  return { update };
+  return {
+    update,
+    // What the keyboard cursor's move should say when it is on a cell with a
+    // card: the card's sentence, once; else null, and the lab says its own line.
+    cursorWords() {
+      const said = heard;
+      heard = null;
+      return said;
+    },
+  };
 }

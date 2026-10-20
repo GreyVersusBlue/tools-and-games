@@ -13,7 +13,9 @@
 // answer arrives while a change of paper is still being laid out (its font
 // files held back through the DevTools protocol, so the document has loaded
 // and waits on doc.fonts.ready): the answer waits for that document, and
-// ready() resolves.
+// ready() resolves. And the other way round (SV2-72d): a paper chosen while
+// the answer's own document waits on its faces ends that wait, so a ready()
+// taken then resolves once the paper's document is laid out.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -136,8 +138,11 @@ test('from Movement\'s button the report carries the scenario\'s changes, figure
     ['2', '8A · A Day · Period 7: 303 → 101, taught by Ms. Halloran instead of Ms. O\'Fennimore'],
   ]);
   const figures = Object.fromEntries(fromMovement.figures.map((row) => [row[0], row.slice(1)]));
-  assert.deepEqual(figures['Walking, all walks together'], ['153 min 48 s', '153 min', '−48 s']);
-  assert.deepEqual(figures['Lost to the crowd'], ['7 min 58 s', '8 min 21 s', '+23 s']);
+  // SV2-72d: times as the lab shows them, from an hour in hours and minutes, no-break spaces inside
+  const plain = (cells) => cells.map((cell) => cell.replace(/\u00a0/g, ' '));
+  assert.deepEqual(plain(figures['Walking, all walks together']), ['2 h 34 min', '2 h 33 min', '−1 min']);
+  assert.deepEqual(plain(figures['Lost to the crowd']), ['7 min 58 s', '8 min 21 s', '+23 s']);
+  assert.ok(figures['Lost to the crowd'].every((cell) => !cell.includes(' ')), 'no breaking space inside a time');
   assert.deepEqual(figures['Late walks'], ['1', '0', '−1']);
   assert.ok(fromMovement.text.includes('New findings 1') && fromMovement.text.includes('Resolved findings 2'));
   assert.deepEqual(fromMovement.places[0][0], ['Upper Corridor', 'A Day', '147', '175', '+28 busier']);
@@ -281,6 +286,54 @@ test('an answer that arrives while a change of paper is still laid out waits for
     assert.deepEqual(answered.figures, fromMovement.figures, 'the answer is in the document on show');
     assert.equal(await view(() => Promise.race([globalThis.sv2preview.ready().then(() => 'ready'), new Promise((done) => setTimeout(() => done('pending'), 5000))])), 'ready');
     // the paper back as it was
+    await page.click('#print-preview input[value="letter"]');
+    await page.waitForSelector('#print-preview[data-ready="true"][data-paper="letter portrait"]');
+    await closePreview();
+  } finally {
+    if (hold) await hold.release();
+    await view(() => {
+      globalThis.sv2.store.derived.scenario = globalThis.sv2test.scenario;
+    });
+  }
+});
+
+test('SV2-72d 6: a paper chosen while the answer\'s own document is laid out ends that layout\'s wait, and a ready() taken then resolves', async () => {
+  await noPreview();
+  let hold = null;
+  await view(() => {
+    globalThis.sv2test = { scenario: globalThis.sv2.store.derived.scenario };
+  });
+  try {
+    await view(() => {
+      const real = globalThis.sv2test.scenario;
+      globalThis.sv2.store.derived.scenario = () => new Promise((resolve, reject) => {
+        globalThis.sv2answer = () => real().then(resolve, reject);
+      });
+    });
+    await openFromLab();
+    await page.waitForSelector('#print-preview[open][data-scenario="asked"][data-ready="true"][data-paper="letter portrait"]');
+    // the answer's document asks for its faces and is held there
+    hold = await holdFaces();
+    await view(() => globalThis.sv2answer());
+    await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="false"]', { timeout: 20000 });
+    for (let tries = 0; hold.held.length === 0 && tries < 200; tries += 1) await new Promise((done) => setTimeout(done, 25));
+    assert.ok(hold.held.length > 0, 'the answer\'s document asked for its faces');
+    // taken now, ready() is the answer's layout (a task of its own, before the paper)
+    await view(() => {
+      globalThis.sv2answerReady = 'pending';
+      globalThis.sv2preview.ready().then(() => {
+        globalThis.sv2answerReady = 'ready';
+      });
+    });
+    await page.click('#print-preview input[value="a4"]');
+    assert.equal(await view(() => document.getElementById('print-preview').dataset.ready), 'false', 'the paper\'s document is being laid out');
+    // the faces come now (the paper's document asks for the same files, so
+    // it waits on the same requests)
+    await hold.release();
+    await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="true"][data-paper="a4 portrait"]', { timeout: 20000 });
+    assert.equal(await view(() => globalThis.sv2answerReady), 'ready', 'the answer\'s layout, replaced, no longer waits');
+    const answered = await section();
+    assert.deepEqual(answered.figures, fromMovement.figures, 'the answer is in the document on show');
     await page.click('#print-preview input[value="letter"]');
     await page.waitForSelector('#print-preview[data-ready="true"][data-paper="letter portrait"]');
     await closePreview();

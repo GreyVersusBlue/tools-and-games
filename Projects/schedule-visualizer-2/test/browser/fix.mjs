@@ -723,6 +723,56 @@ test('a phone on its side at 844 by 390 with touch: the dialog inside the window
   }, { hash: '#schedule/checks' });
 });
 
+// SV2-72d item 5 (W4) and item 8: the title and Close stay in the window
+// with the list scrolled to its end, and the dialog's layout is its sheet's.
+for (const [size, label] of [[PHONE, 'upright at 390 by 844'], [SIDE, 'on its side at 844 by 390']]) {
+  test('SV2-72d 5: a phone ' + label + ' with touch: the title and Close stay in view with the list scrolled to its last Try it, and nothing is laid out by an inline style', async () => {
+    await on(size, async (page) => {
+      assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0), true);
+      await page.$eval(fixOf(CLASH), (el) => el.scrollIntoView({ block: 'center' }));
+      const at = await page.$eval(fixOf(CLASH), (el) => {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      await page.touchscreen.tap(at.x, at.y);
+      await waitState(page, 'answered');
+      // the switch on: five suggestions, the longest list
+      await page.$eval('#fix-dialog [data-part="others"]', (el) => el.click());
+      await waitState(page, 'answered');
+      await page.waitForFunction(() => document.querySelectorAll('#fix-dialog .fix-list__item').length === 5, { timeout: 30000 });
+      const view = await page.evaluate(() => {
+        const dialog = document.getElementById('fix-dialog');
+        const tries = dialog.querySelectorAll('[data-action="try"]');
+        tries[tries.length - 1].scrollIntoView({ block: 'end' });
+        const inView = (el) => {
+          if (el.getClientRects().length === 0) return 'no box';
+          const rect = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return rect.top >= 0 && rect.bottom <= window.innerHeight && Boolean(hit) && (hit === el || el.contains(hit));
+        };
+        const body = dialog.querySelector('.dialog__body');
+        return {
+          title: inView(dialog.querySelector('.dialog__title')),
+          close: inView(dialog.querySelector('.dialog__buttons .btn')),
+          last: inView(tries[tries.length - 1]),
+          bodyScrolls: body.scrollHeight > body.clientHeight,
+          dialogScrolled: dialog.scrollTop,
+          styled: Array.from(dialog.querySelectorAll('[style]')).map((el) => el.className || el.tagName),
+        };
+      });
+      assert.equal(view.last, true, 'the last Try it is in view: ' + JSON.stringify(view));
+      assert.equal(view.title, true, 'the title is in view: ' + JSON.stringify(view));
+      assert.equal(view.close, true, 'Close is in view: ' + JSON.stringify(view));
+      assert.equal(view.dialogScrolled, 0, 'the dialog itself never scrolls: its body does');
+      assert.deepEqual(view.styled, [], 'no inline style in the dialog');
+      // Close still closes and gives the focus back
+      await page.$eval('#fix-dialog .dialog__buttons .btn', (el) => el.click());
+      await page.waitForFunction(() => !document.querySelector('dialog[open]'), { timeout: 5000 });
+      assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.dataset.action), 'fix');
+    }, { hash: '#schedule/checks' });
+  });
+}
+
 test('hostile and non-Latin names show as typed in the finding and in every sentence, and no markup runs', async () => {
   await on(DESK, async (page) => {
     await page.click(fixOf(CLASH));
