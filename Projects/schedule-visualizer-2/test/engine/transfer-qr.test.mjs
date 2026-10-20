@@ -27,7 +27,7 @@ import assert from 'node:assert/strict';
 
 import { EC_LEVELS, MIN_VERSION, MAX_VERSION, sizeOf, blockLayout, totalCodewords, reedSolomon, formatBits, versionBits, functionPatterns, byteCapacity, dataOrder, gfMul, gfDiv } from '../../vendor/qr-encode/qr-core.js';
 import { encodeQr, penalty, qrPathData, QrError, dataCodewords, interleave } from '../../vendor/qr-encode/qr-encode.js';
-import { decodeMatrix, decodeLuminance, luminanceOf, correct, formatTable } from '../../vendor/qr-decode/qr-decode.js';
+import { decodeMatrix, decodeLuminance, luminanceOf, correct, formatTable, misdecodeProtection } from '../../vendor/qr-decode/qr-decode.js';
 import { findFinders, FINDERS_MOST } from '../../vendor/qr-decode/qr-locate.js';
 import { seededRandom } from '../../engine/ids.js';
 
@@ -535,4 +535,35 @@ test('the finder search keeps at most FINDERS_MOST places, however many finder-l
   const found = findFinders(bits, width, height);
   assert.ok(found.length > 100, found.length + ' found: the squares must read as finders for this to test the cap');
   assert.ok(found.length <= FINDERS_MOST, found.length + ' found');
+});
+
+test('versions 1 to 3 hold back their misdecode-protection codewords: error correction mends (n − p) / 2, not n / 2', () => {
+  // ISO/IEC 18004:2015 Table 9, note b: in these symbols p codewords of
+  // the error correction are kept for detecting a misdecode rather than
+  // mending one, and the error correction capacity the table gives is
+  // (n − p) / 2: 1-L 2 of 7 (p = 3), 1-M 4 of 10 (p = 2), 1-Q 6 of 13
+  // (p = 1), 1-H 8 of 17 (p = 1), 2-L 4 of 10 (p = 2), 3-L 7 of 15 (p = 1).
+  for (const [version, level, n, p] of [[1, 'L', 7, 3], [1, 'M', 10, 2], [1, 'Q', 13, 1], [1, 'H', 17, 1], [2, 'L', 10, 2], [3, 'L', 15, 1]]) {
+    assert.equal(misdecodeProtection(version, level), p);
+    const layout = blockLayout(version, level);
+    assert.equal(layout.blocks.length, 1);
+    assert.equal(layout.ecPerBlock, n, version + '-' + level);
+    const text = 'SV2:p' + version + level;
+    const symbol = encodeQr(text, { level, minVersion: version, maxVersion: version });
+    assert.equal(symbol.version, version);
+    const order = dataOrder(version);
+    // One bit wrong in each of `count` codewords, spread through the block.
+    const damaged = (count) => {
+      const modules = symbol.modules.slice();
+      for (let k = 0; k < count; k += 1) modules[order[8 * Math.floor((k * layout.total) / count)]] ^= 1;
+      return { size: symbol.size, modules };
+    };
+    const most = Math.floor((n - p) / 2);
+    const read = decodeMatrix(damaged(most));
+    assert.equal(read?.text, text, version + '-' + level + ' with ' + most + ' wrong');
+    assert.equal(read.corrected, most);
+    assert.equal(decodeMatrix(damaged(most + 1)), null, version + '-' + level + ' with ' + (most + 1) + ' wrong');
+  }
+  assert.equal(misdecodeProtection(2, 'M'), 0);
+  assert.equal(misdecodeProtection(4, 'L'), 0);
 });
