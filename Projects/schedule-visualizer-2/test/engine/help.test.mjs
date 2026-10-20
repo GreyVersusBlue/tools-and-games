@@ -158,11 +158,12 @@ const at = (object, dotted) => dotted.split('.').reduce((value, key) => (value =
 
 test('every setting the load, travel-time and late numbers depend on is in Help, with its default read from the defaults', () => {
   const needed = settingsTheEnginesRead();
-  assert.deepEqual(needed, ['checks.passingMarginSeconds', 'colourScale.bands', 'colourScale.mode', 'defaultHeadCount', 'defaultPassingSeconds', 'secondsPerCell', 'secondsPerStair']);
   const parts = numbers(defaultSettings());
   assert.deepEqual(parts.map((each) => each.id), ['load', 'travel', 'late']);
   const used = new Set(parts.flatMap((each) => each.uses));
   for (const name of needed) assert.ok(used.has(name), 'Help does not say how ' + name + ' goes into the numbers: add it to numbers() in ui/help/content.js');
+  // and the search above finds what it should: a pattern that found nothing would pass the loop
+  for (const name of ['checks.passingMarginSeconds', 'colourScale.bands', 'colourScale.mode', 'defaultHeadCount', 'defaultPassingSeconds', 'secondsPerCell', 'secondsPerStair']) assert.ok(needed.includes(name), 'the engines\' source no longer shows ' + name + ' being read');
   const defaults = defaultSettings();
   const text = parts.flatMap((each) => each.sentences).join(' ');
   assert.match(text, new RegExp('\\b' + defaults.secondsPerCell + ' seconds \\(the default\\) for each square of corridor'));
