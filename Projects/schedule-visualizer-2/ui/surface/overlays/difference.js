@@ -13,10 +13,14 @@
 //
 //   DIFFERENCE_STRENGTHS   5
 //   DIFFERENCE_ALPHA       the five opacities a tint is laid over its cell
-//                          at, weakest first. Over the corridor the weakest
-//                          is 1.26:1 or more and the strongest 4.4:1 or more
-//                          in both themes, and each strength is at least
-//                          1.29 times the one under it (test/ui/difference.test.mjs)
+//                          at, weakest first. test/ui/difference.test.mjs
+//                          holds, in both themes, over the corridor and over
+//                          the stairs colour (a landing is painted too): the
+//                          weakest at 1.2:1 or more, each strength 1.25 times
+//                          the one under it or more, the strongest at 3:1 or
+//                          more. Measured on 2026-10-19, not held: the weakest
+//                          1.24 to 1.37, each step 1.26 or more, the strongest
+//                          3.78 or more (over the corridor alone, 4.43)
 //   DIFFERENCE_TOP         10, the rows of the text alternative
 //   strengthOf(delta, largest) -> 0 to 5
 //     0 for no change (or nothing changing anywhere), else the fifth of the
@@ -32,12 +36,15 @@
 //     type, loadDifference for it; for every day type (dayTypeId null), each
 //     cell and connection takes the day type whose change there is largest,
 //     the earlier day type on a tie. Null when nothing can be compared.
+//     largest is taken from the cells alone, the ones the map paints: a stairs
+//     connection is never painted, so its change is in the table and the
+//     card's figures but does not set the strengths or the key's figure.
 //       { dayTypeId, transition, measure, unit, dayTypeIds,
 //         cells, connections            Int32Array: after less before
 //         before: { cells, connections } Int32Array: before's load as compared
 //         after:  { cells, connections } Int32Array: after's
 //         dayOfCell, dayOfConnection     Uint8Array: index into dayTypeIds
-//         largest                        the largest |change| outside the zones
+//         largest                        the largest |change| of a cell outside the zones
 //         excluded, excludedConnections }
 //   differenceWords(delta) -> '14 busier' | '9 quieter' | 'no change'
 //   rankPlaces(difference, places, limit?) -> { rows, changed }
@@ -121,7 +128,6 @@ export function differenceOf(before, after, options) {
   pairs.forEach((load, day) => {
     const earlier = was.get(load.dayTypeId);
     const found = loadDifference(earlier, load, { transition, measure });
-    if (found.largest > out.largest) out.largest = found.largest;
     const take = (part, deltas, days) => {
       const a = picked(earlier, part, transition, measure);
       const b = picked(load, part, transition, measure);
@@ -136,6 +142,11 @@ export function differenceOf(before, after, options) {
     take('cells', found.cells, out.dayOfCell);
     take('connections', found.connections, out.dayOfConnection);
   });
+  // the strengths are of what is painted: cells outside the zones
+  for (let i = 0; i < nodes; i += 1) {
+    if (out.excluded && out.excluded[i]) continue;
+    if (Math.abs(out.cells[i]) > out.largest) out.largest = Math.abs(out.cells[i]);
+  }
   return out;
 }
 

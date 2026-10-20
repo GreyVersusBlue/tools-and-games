@@ -8,7 +8,10 @@
 // and at the keyboard cursor; the transition and the day type chosen in the
 // comparison change the picture; the table of the ten largest changes is
 // the overlay's; a change of theme paints again; with no answer nothing is
-// painted; typed names show as typed; no page errors.
+// painted; typed names show as typed; no page errors. SV2-69b: a building
+// changed under the lab paints nothing until its answer comes; an answer is
+// taken only with its own before; a refused before is said and asked again;
+// the card's walks are worked out once an answer.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -222,8 +225,21 @@ test('the card by pointer: the place, the change in words, before and after, and
   assert.match(card.sides, /^Before \d+, after \d+ students, at its busiest in one transition, on A Day\.$/);
   const [, was, now] = card.sides.match(/Before (\d+), after (\d+)/).map(Number);
   assert.equal(now - was, hot.delta);
-  assert.equal(card.onlyAfter, 'Walk here only after: 7A');
+  // over the whole day the groups are counted over the day, and the card says so
+  assert.equal(card.onlyAfter, 'Over the day, walk here only after: 7A');
   assert.equal(card.onlyBefore, null);
+  // a second cell's card for the same answer looks its cell up: the walks
+  // were worked out for the first card and are not worked out again
+  const built = await page.evaluate(() => document.querySelector('.scn').difference.builds.walks);
+  const next = s.busier.filter((each) => each.floorId === hot.floorId && each.node !== hot.node).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.node - b.node)[0];
+  const second = await where(page, next.floorId, next.cell);
+  await painted(page);
+  await page.mouse.move(second.x, second.y);
+  await page.waitForFunction((cell) => {
+    const el = document.querySelector('[data-card="difference"]');
+    return !el.hidden && el.dataset.cell === String(cell);
+  }, {}, next.cell);
+  assert.equal(await page.evaluate(() => document.querySelector('.scn').difference.builds.walks), built, 'the walks were worked out again for a second card');
   // the pointer leaves the map: the card goes
   await page.mouse.move(1, 1);
   await page.waitForFunction(() => document.querySelector('[data-card="difference"]').hidden);
@@ -244,7 +260,7 @@ test('the card by pointer: the place, the change in words, before and after, and
   await choose(page, 'scenario-compare-when', '');
 });
 
-test('the card at the keyboard cursor: said in the live region, after the lab\'s own line; Escape puts it away', async () => {
+test('the card at the keyboard cursor: one sentence in the live region, in place of the lab\'s own line and naming its floor and corridor; Escape puts it away', async () => {
   const page = wide.page;
   await open(page, [MOVE]);
   const s = await state(page);
@@ -264,7 +280,17 @@ test('the card at the keyboard cursor: said in the live region, after the lab\'s
     return !card.hidden && card.dataset.cell === String(cell) && /busier/.test(document.getElementById('announcer').textContent);
   }, {}, hot.cell);
   const said = await page.$eval('#announcer', (el) => el.textContent);
-  assert.match(said, new RegExp(': ' + hot.delta + ' busier\\. Before \\d+, after \\d+ students, at its busiest in one transition, on A Day\\. Walk here only after: 7A\\.$'));
+  assert.match(said, new RegExp(': ' + hot.delta + ' busier\\. Before \\d+, after \\d+ students, at its busiest in one transition, on A Day\\. Over the day, walk here only after: 7A\\.$'));
+  // the whole of what is said is the card's sentence, and it says what the
+  // lab's line would have: the floor, and corridor or stairs
+  const words = await page.evaluate((f, c) => {
+    const el = document.querySelector('.scn');
+    const graph = el.scenarios.plan.graph;
+    const node = graph.floors[graph.floorIndex.get(f)].nodeOfCell[c];
+    return { text: el.difference.cardText(el.difference.cardOf(f, c)), floor: graph.floors[graph.floorIndex.get(f)].name, kind: graph.stairs[node] ? 'stairs' : 'corridor' };
+  }, hot.floorId, hot.cell);
+  assert.equal(said, words.text);
+  assert.ok(said.includes(', ' + words.floor + ', ' + words.kind + ': '), said);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'scenarios-plan');
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.querySelector('[data-card="difference"]').hidden);
@@ -293,7 +319,7 @@ test('the card by a tap with touch on a phone: a tap shows it and keeps it, a se
     }, {}, hot.cell);
     const card = await cardNow(page);
     assert.equal(card.change, hot.delta + ' busier');
-    assert.equal(card.onlyAfter, 'Walk here only after: 7A');
+    assert.equal(card.onlyAfter, 'Over the day, walk here only after: 7A');
     // the card is on the stage, inside the window
     const box = await page.$eval('[data-card="difference"]', (el) => {
       const r = el.getBoundingClientRect();
@@ -355,8 +381,10 @@ test('the text alternative: the table of the ten largest changes is the overlay\
   assert.ok(rows.length > 0 && rows.length <= 10);
   assert.deepEqual(rows.map((row) => [row.placeId, row.delta]), s.top.map((row) => [row.placeId, row.delta]));
   assert.ok(rows.every((row) => row.boxed), 'every row is on screen in the inspector');
-  // largest first, and the first is the map's largest change
-  assert.equal(Math.abs(rows[0].delta), s.largest);
+  // largest first; the map's largest is its largest painted cell, which a
+  // stairs connection in the table may pass
+  assert.equal(s.largest, Math.max(...[...s.busier, ...s.quieter].map((each) => Math.abs(each.delta))));
+  assert.ok(Math.abs(rows[0].delta) >= s.largest);
   for (let i = 1; i < rows.length; i += 1) assert.ok(Math.abs(rows[i].delta) <= Math.abs(rows[i - 1].delta));
   for (const [i, row] of rows.entries()) {
     const top = s.top[i];
@@ -366,7 +394,9 @@ test('the text alternative: the table of the ten largest changes is the overlay\
     assert.ok(row.cells[1].length > 0, 'a floor');
   }
   // the key says it in words too
-  assert.match(await page.$eval('[data-part="difference-key"]', (el) => el.textContent), /^On the map: busier, quieter\. The stronger the colour, the larger the change; the largest is \d+ students\./);
+  const keyText = await page.$eval('[data-part="difference-key"]', (el) => el.textContent);
+  assert.match(keyText, /^On the map: busier, quieter\. The stronger the colour, the larger the change; the largest is \d+ students\./);
+  assert.equal(Number(keyText.match(/the largest is (\d+)/)[1]), s.largest, 'the key quotes the map\'s largest');
   // the table sits in the inspector beside the comparison, under the map's own heading
   assert.equal(await page.$eval('[data-part="difference"]', (el) => Boolean(el.closest('.scn-inspector'))), true);
 });
@@ -441,7 +471,7 @@ test('typed names show as typed: a group and a corridor renamed with markup and 
   await page.waitForFunction(() => !document.querySelector('[data-card="difference"]').hidden);
   const card = await cardNow(page);
   assert.deepEqual(card.groups, [HOSTILE]);
-  assert.equal(card.onlyAfter, 'Walk here only after: ' + HOSTILE);
+  assert.equal(card.onlyAfter, 'Over the day, walk here only after: ' + HOSTILE);
   const place = await page.$eval('[data-card="difference"] .mov-card__place', (el) => el.textContent);
   assert.ok(place.startsWith(ARABIC), place);
   const first = await page.$eval('[data-part="difference-table"] tbody tr th', (el) => el.textContent);
@@ -449,6 +479,145 @@ test('typed names show as typed: a group and a corridor renamed with markup and 
   assert.equal(await page.evaluate(() => window.__hit), undefined, 'the markup in a name ran');
   assert.equal(await page.$$eval('.scn img[src="x"]', (els) => els.length), 0);
   await page.mouse.move(1, 1);
+});
+
+test('the building changed under the lab: nothing painted on the old picture and the card closed, then painted again with the new answer', async () => {
+  const page = wide.page;
+  await open(page, [MOVE]);
+  const s = await state(page);
+  const hot = strongest(s.busier.filter((each) => each.floorId === 'fsample001'));
+  const at = await where(page, hot.floorId, hot.cell);
+  await painted(page);
+  // a tap keeps the card open through a new picture
+  await page.mouse.click(at.x, at.y);
+  await page.waitForFunction((cell) => {
+    const card = document.querySelector('[data-card="difference"]');
+    return !card.hidden && card.dataset.cell === String(cell);
+  }, {}, hot.cell);
+  const width = await page.evaluate(() => globalThis.sv2.store.project.building.floors.find((floor) => floor.id === 'fsample001').width);
+  // the lane's next answer is held back until the test lets it go, so what
+  // the lab does before it comes can be read
+  await page.evaluate(async () => {
+    const { resizeFloor } = await import(new URL('engine/actions.js', location.href).href);
+    const derived = globalThis.sv2.store.derived;
+    const real = derived.scenario;
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    globalThis.__releaseScenario = () => {
+      derived.scenario = real;
+      release();
+    };
+    derived.scenario = (options) => gate.then(() => real(options));
+    // two columns added on the west of Floor 1: every cell moves two to the east
+    globalThis.sv2.store.apply(resizeFloor, { floorId: 'fsample001', left: 2 });
+  });
+  try {
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.scn');
+      return el.scenarios.plan.project === globalThis.sv2.store.project && el.scenarios.pending;
+    });
+    const count = await page.evaluate(() => document.querySelector('.scn').difference.painted.count);
+    const drawn = await page.evaluate(() => {
+      const was = Number(document.getElementById('scenarios-plan').dataset.drawn || 0);
+      document.querySelector('.scn').scenarios.plan.paint();
+      return was;
+    });
+    await page.waitForFunction((was) => Number(document.getElementById('scenarios-plan').dataset.drawn || 0) > was, {}, drawn);
+    assert.equal(await page.evaluate(() => document.querySelector('.scn').difference.painted.count), count, 'the overlay painted the old picture on the new floor');
+    assert.equal(await page.$eval('[data-card="difference"]', (el) => el.hidden), true, 'the card stayed open on the old picture');
+    assert.equal(await page.$eval('.scn', (el) => el.dataset.difference), 'waiting');
+    const waiting = await state(page);
+    assert.deepEqual([waiting.busier.length, waiting.quieter.length], [0, 0]);
+    // no card on the new floor from the old picture either
+    assert.equal(await page.evaluate((c) => document.querySelector('.scn').difference.cardOf('fsample001', c), hot.cell + 2), null);
+  } finally {
+    await page.evaluate(() => globalThis.__releaseScenario());
+  }
+  await painted(page);
+  const again = await state(page);
+  const moved = Math.floor(hot.cell / width) * (width + 2) + (hot.cell % width) + 2;
+  const there = again.busier.find((each) => each.floorId === 'fsample001' && each.cell === moved);
+  assert.ok(there, 'the busiest cell, two cells east, is painted with the new answer');
+  assert.equal(there.delta, hot.delta);
+});
+
+test('an answer is taken only with its own before: a before for other counters leaves the last answer and its picture together', async () => {
+  const page = wide.page;
+  await open(page, [MOVE]);
+  await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    globalThis.__oldAnswer = el.difference.answer;
+    const derived = globalThis.sv2.store.derived;
+    const real = derived.results;
+    globalThis.__realResults = real;
+    globalThis.__served = 0;
+    // the main lane's result, claiming counters the answer was not made at
+    derived.results = () => real().then((main) => {
+      globalThis.__served += 1;
+      return { ...main, versions: { geometry: -1, building: -1, schedule: -1 } };
+    });
+  });
+  try {
+    await page.select('#scenario-compare-when', '1');
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.scn');
+      return !el.scenarios.pending && el.scenarios.answer && el.scenarios.answer !== globalThis.__oldAnswer && globalThis.__served >= 1;
+    });
+    const held = await page.evaluate(() => {
+      const el = document.querySelector('.scn');
+      return { same: el.difference.answer === globalThis.__oldAnswer, state: el.dataset.difference };
+    });
+    assert.equal(held.same, true, 'the new answer was taken without its before');
+    assert.equal(held.state, 'old');
+  } finally {
+    await page.evaluate(() => {
+      globalThis.sv2.store.derived.results = globalThis.__realResults;
+    });
+  }
+  // the real before again: the lane's answer is taken with it (painted()
+  // waits for the answer taken to be the lane's)
+  await choose(page, 'scenario-compare-when', '');
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.difference), 'shown');
+});
+
+test('a before refused is said in the section, and asked again on the next drawing', async () => {
+  const page = wide.page;
+  await open(page, [MOVE]);
+  await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    globalThis.__oldAnswer = el.difference.answer;
+    const derived = globalThis.sv2.store.derived;
+    globalThis.__realResults = derived.results;
+    globalThis.__refused = 0;
+    derived.results = () => {
+      globalThis.__refused += 1;
+      return Promise.reject(new Error('Invented refusal for the test.'));
+    };
+  });
+  try {
+    await page.select('#scenario-compare-when', '1');
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.scn');
+      return !el.scenarios.pending && el.scenarios.answer && el.scenarios.answer !== globalThis.__oldAnswer && globalThis.__refused >= 1;
+    });
+    assert.equal(await page.$eval('.scn', (el) => el.dataset.difference), 'failed');
+    const note = await page.$eval('[data-part="difference-note"]', (el) => (el.hidden ? null : el.textContent));
+    assert.ok(note && note.startsWith('The difference map could not be worked out: Invented refusal for the test. The map and the table are from before your last change.'), String(note));
+  } finally {
+    await page.evaluate(() => {
+      globalThis.sv2.store.derived.results = globalThis.__realResults;
+    });
+  }
+  // a change that moves no counter draws the lab again with the same answer:
+  // the before is asked for again, and this time comes
+  await page.evaluate(async () => {
+    const { setSetting } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(setSetting, { key: 'schoolName', value: 'Invented School' });
+  });
+  await painted(page);
+  const note = await page.$eval('[data-part="difference-note"]', (el) => el.textContent);
+  assert.ok(!note.includes('could not be worked out'), note);
+  await choose(page, 'scenario-compare-when', '');
 });
 
 test('no page errors on the wide page', () => {

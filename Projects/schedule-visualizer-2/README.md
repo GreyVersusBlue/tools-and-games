@@ -230,3 +230,4 @@ row names a file it does not run.
 | `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
 | `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |
+| `test/timing/difference-card.mjs` | The difference map's card, the first after an answer and a later one, under its budgets |

@@ -1,9 +1,12 @@
-// The difference map's plain functions (SV2-69): the strength rule and its
-// five bands, the two tints and their contrast on the corridor in both
-// themes (read from ui/tokens.css), zero changes and exclusion zones left
-// unpainted (through a canvas that records what is drawn), every day type
-// together, the ten largest changes with ties, groups apart, and the card's
-// words with typed names. The map in a page is test/browser/difference.mjs.
+// The difference map's plain functions (SV2-69, SV2-69b): the strength rule
+// and its five bands, the two tints and their contrast on the corridor and
+// on the stairs in both themes (read from ui/tokens.css), zero changes and
+// exclusion zones left unpainted (through a canvas that records what is
+// drawn), the strengths taken from painted cells only, every day type
+// together, the ten largest changes with ties, groups apart, the card's
+// walks against engine/load.js contributors and that a later card only
+// looks its cell up, and the card's words with typed names. The map in a
+// page is test/browser/difference.mjs.
 //
 //   node test/ui/difference.test.mjs
 
@@ -15,12 +18,14 @@ import { fileURLToPath } from 'node:url';
 
 import { strengthOf, tintOf, differenceOf, differenceWords, rankPlaces, apartGroups, differenceOverlay, DIFFERENCE_ALPHA, DIFFERENCE_STRENGTHS, DIFFERENCE_TOP } from '../../ui/surface/overlays/difference.js';
 import { apart } from '../../ui/surface/overlays/evacuation.js';
-import { whenWords, sidesWords, cardText } from '../../ui/scenarios/difference.js';
+import { whenWords, sidesWords, cardText, apartLabel, cardWalks, groupsAt } from '../../ui/scenarios/difference.js';
 import { contrast, mix } from '../../ui/colour.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { buildGraph } from '../../engine/graph.js';
 import { createPipeline, scenarioRun } from '../../engine/worker.js';
-import { loadDifference } from '../../engine/scenario.js';
+import { loadDifference, applyChanges, editedGroupIds } from '../../engine/scenario.js';
+import { contributors } from '../../engine/load.js';
+import { routingGraph, routesForSchedule } from '../../engine/routing.js';
 
 const TOOL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -30,7 +35,7 @@ function tokens() {
   const css = fs.readFileSync(path.join(TOOL, 'ui', 'tokens.css'), 'utf8');
   const values = (name) => Array.from(css.matchAll(new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})', 'g')), (m) => m[1].toLowerCase());
   const out = { light: {}, dark: {} };
-  for (const name of ['problem', 'accent', 'corridor']) {
+  for (const name of ['problem', 'accent', 'corridor', 'stairs']) {
     const found = values(name);
     assert.equal(found.length, 3, name + ': three values in tokens.css (light, dark, auto dark), found ' + found.length);
     assert.equal(found[2], found[1], name + ': the auto dark block is the dark one');
@@ -103,24 +108,35 @@ test('busier is the problem colour and quieter the accent, at the strength\'s op
   }
 });
 
+// Over the corridor and over the stairs colour: a stairs cell (a landing) is
+// painted too. The measured figures are of 2026-10-19's tokens.
+const UNDER = {
+  // weakest 1.26 to 1.37, steps 1.29 or more, strongest 4.43 or more; busier and quieter 0.042 apart at the weakest
+  corridor: { apart: 0.04 },
+  // weakest 1.24 to 1.37, steps 1.26 or more, strongest 3.78 or more; busier and quieter 0.037 apart at the weakest (dark)
+  stairs: { apart: 0.035 },
+};
 for (const [name, theme] of Object.entries(THEMES)) {
-  test('the ' + name + ' theme: both tints\' five strengths against the corridor ' + theme.corridor + ': each shows, each is told from the one under it, the strongest is 3:1, and busier is told from quieter', () => {
-    for (const kind of ['problem', 'accent']) {
-      const ratios = DIFFERENCE_ALPHA.map((alpha) => contrast(mix(theme[kind], theme.corridor, alpha), theme.corridor));
-      const said = kind + ' ' + ratios.map((r) => r.toFixed(2)).join(', ');
-      // the weakest still shows on a corridor (measured 1.26 to 1.37)
-      assert.ok(ratios[0] >= 1.2, said);
-      // each strength is at least a quarter again the one under it (measured 1.29 or more)
-      for (let i = 1; i < ratios.length; i += 1) assert.ok(ratios[i] >= ratios[i - 1] * 1.25, said + ': strength ' + (i + 1) + ' against ' + i);
-      // the strongest meets WCAG 1.4.11 for a graphic, 3:1 (measured 4.43 or more)
-      assert.ok(ratios[4] >= 3, said);
-    }
-    // the same strength busier and quieter differ in hue, not only in name (measured 0.051 at the weakest)
-    for (let s = 1; s <= 5; s += 1) {
-      const d = apart(tintOf(1, s, theme), tintOf(-1, s, theme));
-      assert.ok(d >= 0.04, 'strength ' + s + ': busier and quieter are ' + d.toFixed(3) + ' apart in OKLab');
-    }
-  });
+  for (const [under, held] of Object.entries(UNDER)) {
+    test('the ' + name + ' theme over the ' + under + ' ' + theme[under] + ': both tints\' five strengths each show, each is told from the one under it, the strongest is 3:1, and busier is told from quieter', () => {
+      const base = theme[under];
+      for (const kind of ['problem', 'accent']) {
+        const ratios = DIFFERENCE_ALPHA.map((alpha) => contrast(mix(theme[kind], base, alpha), base));
+        const said = kind + ' over ' + under + ' ' + ratios.map((r) => r.toFixed(2)).join(', ');
+        // the weakest still shows
+        assert.ok(ratios[0] >= 1.2, said);
+        // each strength is at least a quarter again the one under it
+        for (let i = 1; i < ratios.length; i += 1) assert.ok(ratios[i] >= ratios[i - 1] * 1.25, said + ': strength ' + (i + 1) + ' against ' + i);
+        // the strongest meets WCAG 1.4.11 for a graphic, 3:1
+        assert.ok(ratios[4] >= 3, said);
+      }
+      // the same strength busier and quieter differ in hue, not only in name
+      for (let s = 1; s <= 5; s += 1) {
+        const d = apart(mix(theme.problem, base, DIFFERENCE_ALPHA[s - 1]), mix(theme.accent, base, DIFFERENCE_ALPHA[s - 1]));
+        assert.ok(d >= held.apart, under + ', strength ' + s + ': busier and quieter are ' + d.toFixed(3) + ' apart in OKLab');
+      }
+    });
+  }
 }
 
 // ---- the difference from two results
@@ -134,6 +150,10 @@ test('one day type: the deltas are loadDifference\'s, before and after are the l
     const engine = loadDifference(a, b, { transition });
     assert.deepEqual(Array.from(d.cells), Array.from(engine.cells));
     assert.deepEqual(Array.from(d.connections), Array.from(engine.connections));
+    // the largest is the cells' (what is painted), which here is the engine's too
+    let cellsLargest = 0;
+    for (let i = 0; i < d.cells.length; i += 1) if (!d.excluded[i]) cellsLargest = Math.max(cellsLargest, Math.abs(d.cells[i]));
+    assert.equal(d.largest, cellsLargest);
     assert.equal(d.largest, engine.largest);
     assert.deepEqual(d.dayTypeIds, ['dsample00a']);
     for (let i = 0; i < d.cells.length; i += 1) assert.equal(d.after.cells[i] - d.before.cells[i], d.cells[i], 'node ' + i);
@@ -235,6 +255,108 @@ test('a graph of another size than the difference is not painted, and nothing is
   assert.equal(paintAll({ project: w.project }, differenceOverlay(() => null), THEMES.light).get('fsample001').length, 0);
 });
 
+// two loads of one day type over three cells and one stairs connection, the
+// connection's change (12) larger than any cell's (at most 4)
+function loadOf(cells, links) {
+  const c = Int32Array.from(cells);
+  const l = Int32Array.from(links);
+  return { dayTypeId: 'dA', unit: 'students', cells: { busiest: c, total: c, byTransition: [c] }, connections: { busiest: l, total: l, byTransition: [l] }, excluded: new Uint8Array(cells.length), excludedConnections: new Uint8Array(links.length) };
+}
+
+test('the strengths and the key\'s largest are of the painted cells: a stairs connection changing more is in the table, not in the scale', () => {
+  const before = loadOf([10, 10, 10], [2]);
+  const after = loadOf([14, 8, 10], [14]);
+  const d = differenceOf([before], [after], { dayTypeId: 'dA', transition: null });
+  assert.equal(loadDifference(before, after).largest, 12, 'the engine\'s largest takes the connection');
+  assert.equal(d.largest, 4, 'the map\'s largest is the largest cell change');
+  // the strongest painted cell is strength 5, so the map shows what the key says
+  assert.equal(strengthOf(d.cells[0], d.largest), 5);
+  // the connection is still the table's first row, with its own figures
+  const places = { places: [
+    { id: 'stretch', kind: 'stretch', name: 'Run', parts: [], floorId: 'f1', nodes: [0, 1, 2] },
+    { id: 'stairs', kind: 'connection', name: 'Stairs A', parts: [], floorId: 'f1', floorIds: ['f1', 'f2'], nodes: [], link: 0 },
+  ] };
+  assert.deepEqual(rankPlaces(d, places).rows.map((row) => [row.placeId, row.delta]), [['stairs', 12], ['stretch', 4]]);
+});
+
+// ---- the card's walks
+
+// MOVE and SWAP_B on the sample school, as the card works them out and as
+// contributors counts the same walks
+function walksOfSample() {
+  const project = sampleSchool();
+  const graph = buildGraph(project);
+  const changes = [MOVE, SWAP_B];
+  const walks = cardWalks(project, changes, graph);
+  const edited = new Set(editedGroupIds(changes));
+  const only = (whole) => ({ ...whole, groups: whole.groups.filter((group) => edited.has(group.id)) });
+  const routing = routingGraph(project, graph);
+  const after = applyChanges(project, changes);
+  return { project, graph, walks, sides: { before: { project, routes: routesForSchedule(only(project), routing) }, after: { project: after, routes: routesForSchedule(only(after), routing) } } };
+}
+
+test('the card\'s walks say who crosses every cell, day and transition as engine/load.js contributors does, the groups apart in the list\'s order', () => {
+  const { project, graph, walks, sides } = walksOfSample();
+  const order = new Map(project.groups.map((group, i) => [group.id, i]));
+  const who = (side, node, day, t) => contributors(side.project, side.routes, day, { nodes: [node] }, graph, t === null ? undefined : { period: t }).map((each) => each.groupId).sort((a, b) => order.get(a) - order.get(b));
+  let apartSeen = 0;
+  for (const day of ['dsample00a', 'dsample00b']) {
+    for (const t of [null, 0, 1, 2, 3, 4, 5]) {
+      for (let node = 0; node < graph.count; node += 1) {
+        const want = apartGroups(who(sides.before, node, day, t), who(sides.after, node, day, t));
+        assert.deepEqual(groupsAt(walks, node, day, t), want, day + ', transition ' + t + ', node ' + node);
+        if (want.onlyBefore.length + want.onlyAfter.length > 0) apartSeen += 1;
+      }
+    }
+  }
+  // enough to mean something: the move and the swap put groups apart on many cells
+  assert.ok(apartSeen > 100, 'cells with a group apart: ' + apartSeen);
+  // no change that edits a group, nobody walks anywhere else
+  assert.equal(cardWalks(project, [], graph), null);
+  assert.deepEqual(groupsAt(null, 0, 'dsample00a', null), { onlyBefore: [], onlyAfter: [] });
+});
+
+// A later card only looks its cell up. groupsAt is handed walks whose day
+// and cell maps count their gets and throw on any iteration, set, delete or
+// clear: each call may get its day and its cell once a side, and read that
+// one cell's groups, so it neither walks every cell nor builds or changes
+// the index. Its answers are the same as on the plain walks. What that costs
+// on the big fixture is test/timing/difference-card.mjs.
+function watched(map, counts, inner) {
+  const out = new Map(Array.from(map, ([key, value]) => [key, inner ? inner(value) : value]));
+  const refuse = (what) => () => { throw new Error('groupsAt ' + what + ' a map of the index'); };
+  const get = out.get.bind(out);
+  return Object.assign(out, {
+    get(key) { counts.gets += 1; return get(key); },
+    has: refuse('asked has of'), set: refuse('set'), delete: refuse('deleted from'), clear: refuse('cleared'),
+    keys: refuse('iterated'), values: refuse('iterated'), entries: refuse('iterated'), forEach: refuse('iterated'),
+    [Symbol.iterator]: refuse('iterated'),
+  });
+}
+
+test('a later card looks its cell up and nothing else: one get of its day and one of its cell a side, no walk over the cells, no change to the index', () => {
+  const { graph, walks } = walksOfSample();
+  const counts = { gets: 0 };
+  const side = (byDay) => watched(byDay, counts, (nodes) => watched(nodes, counts));
+  const seen = { order: walks.order, before: side(walks.before), after: side(walks.after) };
+  let calls = 0;
+  let apartSeen = 0;
+  for (const day of ['dsample00a', 'dsample00b', 'no-such-day']) {
+    for (const t of [null, 2]) {
+      for (let node = 0; node < graph.count; node += 1) {
+        const before = counts.gets;
+        const got = groupsAt(seen, node, day, t);
+        calls += 1;
+        assert.ok(counts.gets - before <= 4, day + ', node ' + node + ': ' + (counts.gets - before) + ' gets');
+        assert.deepEqual(got, groupsAt(walks, node, day, t), day + ', transition ' + t + ', node ' + node);
+        if (got.onlyBefore.length + got.onlyAfter.length > 0) apartSeen += 1;
+      }
+    }
+  }
+  assert.ok(apartSeen > 10, 'cells with a group apart: ' + apartSeen);
+  assert.ok(counts.gets <= calls * 4, counts.gets + ' gets for ' + calls + ' cards');
+});
+
 // ---- words and the table
 
 test('the change in words: "14 busier", "9 quieter", "no change"', () => {
@@ -292,6 +414,7 @@ test('on the sample school the table names corridors and stairs by place, with t
   const d = differenceOf(w.before.loads, w.after.loads, { dayTypeId: 'dsample00a', transition: null });
   const ranked = rankPlaces(d, w.after.places);
   assert.ok(ranked.rows.length > 0 && ranked.rows.length <= 10);
+  // the first row is the largest change (here a cell's, the map's largest)
   assert.equal(ranked.rows[0].delta, d.largest, 'the first row is the largest change');
   for (const row of ranked.rows) {
     assert.ok(row.parts.length > 0 && row.parts.every((part) => typeof part.text === 'string'));
@@ -315,7 +438,7 @@ test('groups apart: who walks a cell only before and only after, each in its lis
 const HOSTILE = '<img src=x onerror="alert(1)">&amp;';
 const ARABIC = 'الممر الشمالي';
 
-test('the card\'s words: the place and floor as typed, the change, before and after with the unit, when, and the groups apart', () => {
+test('the card\'s words: the place and floor as typed, corridor or stairs, the change, before and after with the unit, when, and the groups apart over the day or in the transition', () => {
   const project = sampleSchool();
   assert.equal(whenWords(project, null, 'dsample00a'), 'at its busiest in one transition, on A Day');
   assert.equal(whenWords(project, 2, 'dsample00b'), 'in Period 3 to Period 4, on B Day');
@@ -328,13 +451,21 @@ test('the card\'s words: the place and floor as typed, the change, before and af
     after: 26,
     unit: 'students',
     when: whenWords(project, null, 'dsample00a'),
+    transition: null,
+    stairs: false,
     excluded: false,
     groups: { onlyBefore: [{ id: 'g1', name: HOSTILE }], onlyAfter: [{ id: 'g2', name: '七年一班' }, { id: 'g3', name: '8B' }] },
   };
   assert.equal(sidesWords(info), 'Before 12, after 26 students, at its busiest in one transition, on A Day.');
-  assert.equal(cardText(info), ARABIC + ', by ' + HOSTILE + ', Étage 2 "<b>": 14 busier. Before 12, after 26 students, at its busiest in one transition, on A Day. Walk here only before: ' + HOSTILE + '. Walk here only after: 七年一班, 8B.');
+  // the whole day: the groups are counted over the day, and the words say so
+  assert.equal(cardText(info), ARABIC + ', by ' + HOSTILE + ', Étage 2 "<b>", corridor: 14 busier. Before 12, after 26 students, at its busiest in one transition, on A Day. Over the day, walk here only before: ' + HOSTILE + '. Over the day, walk here only after: 七年一班, 8B.');
+  // one transition: the groups are of that transition, the figures' own
+  const one = { ...info, when: whenWords(project, 2, 'dsample00a'), transition: 2, stairs: true };
+  assert.equal(cardText(one), ARABIC + ', by ' + HOSTILE + ', Étage 2 "<b>", stairs: 14 busier. Before 12, after 26 students, in Period 3 to Period 4, on A Day. Walk here only before: ' + HOSTILE + '. Walk here only after: 七年一班, 8B.');
+  assert.equal(apartLabel('after', null), 'Over the day, walk here only after: ');
+  assert.equal(apartLabel('before', 0), 'Walk here only before: ');
   // one group, no zone, nothing apart
   const quiet = { ...info, words: differenceWords(-1), before: 2, after: 1, unit: 'groups', excluded: true, groups: { onlyBefore: [], onlyAfter: [] } };
-  assert.equal(cardText(quiet), ARABIC + ', by ' + HOSTILE + ', Étage 2 "<b>": 1 quieter. Before 2, after 1 group, at its busiest in one transition, on A Day. In an exclusion zone.');
+  assert.equal(cardText(quiet), ARABIC + ', by ' + HOSTILE + ', Étage 2 "<b>", corridor: 1 quieter. Before 2, after 1 group, at its busiest in one transition, on A Day. In an exclusion zone.');
   assert.equal(cardText({ ...quiet, groups: null }), cardText(quiet));
 });
