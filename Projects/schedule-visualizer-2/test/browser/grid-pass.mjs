@@ -186,11 +186,24 @@ async function discard(page) {
   await stagedIs(page, false);
 }
 
+// The engine's actions put on the page as `globalThis.sv2actions`, by a
+// module script the page loads itself. An import() awaited inside
+// page.evaluate can come back "Protocol error: Promise was collected" (it
+// did here once, in a full run), so the actions are loaded first and used
+// in a synchronous evaluate after.
+async function loadActions(page) {
+  if (await page.evaluate(() => typeof globalThis.sv2actions === 'object')) return;
+  await page.addScriptTag({ type: 'module', content: "import * as actions from './engine/actions.js'; globalThis.sv2actions = actions;" });
+  await page.waitForFunction(() => typeof globalThis.sv2actions === 'object', { timeout: 5000 });
+}
+
 // Change the project behind the page, and take the changes back.
-const change = (page, name, payload) => page.evaluate(async (action, given) => {
-  const actions = await import('./engine/actions.js');
-  globalThis.sv2.store.apply(actions[action], given);
-}, name, payload);
+async function change(page, name, payload) {
+  await loadActions(page);
+  await page.evaluate((action, given) => {
+    globalThis.sv2.store.apply(globalThis.sv2actions[action], given);
+  }, name, payload);
+}
 async function undo(page, times) {
   await page.evaluate((n) => {
     for (let i = 0; i < n; i += 1) globalThis.sv2.store.undo();
@@ -1208,9 +1221,9 @@ test('SV2-50 item 8: the Teachers and Rooms tables add one window resize listene
         return add.call(this, type, fn, options);
       };
     });
-    const redraw = (n) => page.evaluate(async (times) => {
-      const { setSlot } = await import('./engine/actions.js');
-      for (let i = 0; i < times; i += 1) globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 0, slot: { label: 'Homeroom ' + i } });
+    await loadActions(page);
+    const redraw = (n) => page.evaluate((times) => {
+      for (let i = 0; i < times; i += 1) globalThis.sv2.store.apply(globalThis.sv2actions.setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 0, slot: { label: 'Homeroom ' + i } });
     }, n);
     for (const rows of ['teachers', 'rooms', 'teachers']) {
       await rowsAre(page, rows);
