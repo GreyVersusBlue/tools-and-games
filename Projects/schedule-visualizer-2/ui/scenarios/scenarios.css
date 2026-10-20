@@ -408,6 +408,46 @@
   overflow-wrap: normal;
 }
 
+/* The figures: a grid of three columns, each figure's name a line of its
+   own over its before, after and difference (ui/scenarios/compare.js says
+   the table's roles outright, so the grid is still a table to a reader).
+   The corner heading, "Figure", is for a reader alone. */
+.scn-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.scn-figures thead,
+.scn-figures tbody,
+.scn-figures tr {
+  display: contents;
+}
+
+.scn-figures th,
+.scn-figures td {
+  display: block;
+}
+
+.scn-figures .scn-figures__corner {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.scn-figures tbody th {
+  grid-column: 1 / -1;
+  padding-top: var(--s-2);
+  border-bottom: 0;
+}
+
+.scn-figures thead th:not(.scn-figures__corner),
+.scn-figures td.num {
+  text-align: right;
+}
+
 /* The difference map's table (ui/scenarios/difference.js): five columns,
    at fixed shares, the figures' headings over their figures at the right. */
 .scn-difference {

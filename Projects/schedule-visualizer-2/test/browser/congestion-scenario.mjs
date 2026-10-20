@@ -138,8 +138,11 @@ test('from Movement\'s button the report carries the scenario\'s changes, figure
     ['2', '8A · A Day · Period 7: 303 → 101, taught by Ms. Halloran instead of Ms. O\'Fennimore'],
   ]);
   const figures = Object.fromEntries(fromMovement.figures.map((row) => [row[0], row.slice(1)]));
-  assert.deepEqual(figures['Walking, all walks together'], ['153 min 48 s', '153 min', '−48 s']);
-  assert.deepEqual(figures['Lost to the crowd'], ['7 min 58 s', '8 min 21 s', '+23 s']);
+  // SV2-72d: times as the lab shows them, from an hour in hours and minutes, no-break spaces inside
+  const plain = (cells) => cells.map((cell) => cell.replace(/\u00a0/g, ' '));
+  assert.deepEqual(plain(figures['Walking, all walks together']), ['2 h 34 min', '2 h 33 min', '−1 min']);
+  assert.deepEqual(plain(figures['Lost to the crowd']), ['7 min 58 s', '8 min 21 s', '+23 s']);
+  assert.ok(figures['Lost to the crowd'].every((cell) => !cell.includes(' ')), 'no breaking space inside a time');
   assert.deepEqual(figures['Late walks'], ['1', '0', '−1']);
   assert.ok(fromMovement.text.includes('New findings 1') && fromMovement.text.includes('Resolved findings 2'));
   assert.deepEqual(fromMovement.places[0][0], ['Upper Corridor', 'A Day', '147', '175', '+28 busier']);
@@ -236,10 +239,6 @@ async function holdFaces() {
   let released = false;
   return {
     held,
-    // the requests from the given place in `held` on, the earlier ones kept held
-    async releaseFrom(from) {
-      for (const requestId of held.splice(from)) await client.send('Fetch.continueRequest', { requestId }).catch(() => {});
-    },
     async release() {
       if (released) return;
       released = true;
@@ -319,7 +318,6 @@ test('SV2-72d 6: a paper chosen while the answer\'s own document is laid out end
     await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="false"]', { timeout: 20000 });
     for (let tries = 0; hold.held.length === 0 && tries < 200; tries += 1) await new Promise((done) => setTimeout(done, 25));
     assert.ok(hold.held.length > 0, 'the answer\'s document asked for its faces');
-    const answerFaces = hold.held.length;
     // taken now, ready() is the answer's layout (a task of its own, before the paper)
     await view(() => {
       globalThis.sv2answerReady = 'pending';
@@ -328,10 +326,10 @@ test('SV2-72d 6: a paper chosen while the answer\'s own document is laid out end
       });
     });
     await page.click('#print-preview input[value="a4"]');
-    for (let tries = 0; hold.held.length <= answerFaces && tries < 200; tries += 1) await new Promise((done) => setTimeout(done, 25));
-    // only the paper's document gets its faces: the answer's stay held, as a
-    // replaced document's would never arrive
-    await hold.releaseFrom(answerFaces);
+    assert.equal(await view(() => document.getElementById('print-preview').dataset.ready), 'false', 'the paper\'s document is being laid out');
+    // the faces come now (the paper's document asks for the same files, so
+    // it waits on the same requests)
+    await hold.release();
     await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="true"][data-paper="a4 portrait"]', { timeout: 20000 });
     assert.equal(await view(() => globalThis.sv2answerReady), 'ready', 'the answer\'s layout, replaced, no longer waits');
     const answered = await section();

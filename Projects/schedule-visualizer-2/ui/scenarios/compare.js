@@ -66,14 +66,17 @@ export function comparePanel(env) {
 
   function figuresTable(compare) {
     const rows = figureRows(compare);
-    return h('table', { class: 'scn-table scn-figures', data: { part: 'figures' } },
-      h('caption', { class: 'vh' }, 'The scenario’s figures before, after, and the difference'),
-      h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Figure'), h('th', { scope: 'col' }, 'Before'), h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Difference'))),
-      h('tbody', null, rows.map((row) => h('tr', { data: { figure: row.id, trend: row.worse === null ? 'same' : row.worse ? 'worse' : 'better' } },
-        h('th', { scope: 'row' }, row.label),
-        h('td', { class: 'num' }, row.before),
-        h('td', { class: 'num' }, row.after),
-        h('td', { class: 'num' }, row.difference, trend(row.worse))))));
+    // Laid out as a grid in the inspector's 320 px (scenarios.css): each
+    // figure's name a line of its own over its three figures, since four
+    // columns left the names 70 px and three lines (SV2-72d, W3). The roles
+    // are said outright, so the grid stays a table to a screen reader.
+    return h('table', { class: 'scn-table scn-figures', role: 'table', 'aria-label': 'The scenario’s figures before, after, and the difference', data: { part: 'figures' } },
+      h('thead', { role: 'rowgroup' }, h('tr', { role: 'row' }, h('th', { scope: 'col', role: 'columnheader', class: 'scn-figures__corner' }, 'Figure'), h('th', { scope: 'col', role: 'columnheader' }, 'Before'), h('th', { scope: 'col', role: 'columnheader' }, 'After'), h('th', { scope: 'col', role: 'columnheader' }, 'Difference'))),
+      h('tbody', { role: 'rowgroup' }, rows.map((row) => h('tr', { role: 'row', data: { figure: row.id, trend: row.worse === null ? 'same' : row.worse ? 'worse' : 'better' } },
+        h('th', { scope: 'row', role: 'rowheader' }, row.label),
+        h('td', { class: 'num', role: 'cell' }, row.before),
+        h('td', { class: 'num', role: 'cell' }, row.after),
+        h('td', { class: 'num', role: 'cell' }, row.difference, trend(row.worse))))));
   }
 
   function busiestLine(compare) {
