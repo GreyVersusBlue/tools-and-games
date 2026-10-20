@@ -450,3 +450,32 @@ test('an offer goes into a QR code and is read back from its modules and from a 
   assert.equal(fromFrame && fromFrame.text, code);
   assert.equal((await decodeSignal(fromFrame.text, { subtle, expect: 'offer' })).sdp, OFFER);
 });
+
+// ---------------------------------------------------------------- SV2-29c
+
+// Bytes through deflate-raw, for codes built by hand.
+async function deflated(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+test('a code longer than one QR code holds is refused before it is read, its check right or not', async () => {
+  const random = seededRandom('over');
+  const body = Uint8Array.from({ length: 1800 }, () => 97 + Math.floor(random() * 26));
+  const code = await codeWith([1, 1, 0], body);
+  assert.ok(code.length > SIGNAL_MOST, code.length + ' characters');
+  await assert.rejects(decodeSignal(code, { subtle, expect: 'offer' }), refusal('too-long', /too long for one QR code \(\d+ characters; one holds 2331\)/));
+  // Spaces do not count toward the length: the same code wrapped is still too long, and a short one wrapped wide is not.
+  const fits = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+  assert.equal((await decodeSignal(fits.replace(/(.)/g, '$1 '), { subtle, expect: 'offer' })).sdp, OFFER);
+});
+
+test('a code whose check is right but which unpacks past 64 KB is refused, not opened', async () => {
+  const body = await deflated(new TextEncoder().encode('v'.repeat(200 * 1024)));
+  const code = await codeWith([1, 1, 1], body);
+  assert.ok(code.length <= SIGNAL_MOST, code.length + ' characters');
+  await assert.rejects(decodeSignal(code, { subtle, expect: 'offer' }), refusal('too-long', /more than 64 KB/));
+  // Exactly 64 KB opens.
+  const edge = await codeWith([1, 1, 1], await deflated(new TextEncoder().encode('v'.repeat(64 * 1024))));
+  assert.equal((await decodeSignal(edge, { subtle, expect: 'offer' })).sdp.length, 64 * 1024);
+});

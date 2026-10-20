@@ -57,6 +57,11 @@ export const SIGNAL_CHECK_BYTES = 4;
 // The most characters one QR code holds at error correction M (version 40,
 // byte mode). A code longer than this is refused when it is made.
 export const SIGNAL_MOST = 2331;
+// The most a code's description may unpack to. A browser's offer or answer
+// for one data channel is under 2 KB; deflate turns 100 KB of one letter
+// into a few hundred bytes, so a code that fits the QR limit could otherwise
+// unpack to hundreds of megabytes.
+export const SIGNAL_INFLATED_MOST = 64 * 1024;
 
 export const SENTENCES = {
   foreign: 'This did not come from Send to another device in Schedule Visualizer 2, so nothing was changed.',
@@ -76,6 +81,7 @@ export const SENTENCES = {
   wantedOffer: 'This is a reply code. Paste the code from the device that is sending the project.',
   wantedAnswer: 'This is a sending device\'s code. Paste the reply code from the device that is receiving the project.',
   noInflate: 'This browser cannot open that code. Send the project file instead.',
+  tooBig: 'This code unpacks to more than 64 KB, which no connection code does, so it was not opened. Copy the code from the other device again, or send the project file instead.',
 };
 
 export class TransferError extends Error {
@@ -295,7 +301,9 @@ export function compressionAvailable() {
   return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
 }
 
-async function through(bytes, stream) {
+// The bytes through a compression stream; null, the stream cancelled, once
+// the output passes `most` bytes.
+async function through(bytes, stream, most = Infinity) {
   const writer = stream.writable.getWriter();
   writer.write(bytes).catch(() => {});
   writer.close().catch(() => {});
@@ -307,6 +315,10 @@ async function through(bytes, stream) {
     if (done) break;
     pieces.push(value);
     length += value.length;
+    if (length > most) {
+      reader.cancel().catch(() => {});
+      return null;
+    }
   }
   const out = new Uint8Array(length);
   let at = 0;
@@ -351,6 +363,10 @@ export function fromBase64Url(text) {
   return out;
 }
 
+function refuseTooLong(length) {
+  refuse('too-long', 'This connection code is too long for one QR code (' + length + ' characters; one holds ' + SIGNAL_MOST + '). Send the project file instead.');
+}
+
 // options: { subtle, compress } — compress false packs the description as
 // it is; left out, it is deflated wherever the browser can.
 export async function encodeSignal(description, options) {
@@ -367,9 +383,7 @@ export async function encodeSignal(description, options) {
   const check = await sha256(subtle, payload.subarray(0, 3 + body.length));
   payload.set(check.subarray(0, SIGNAL_CHECK_BYTES), 3 + body.length);
   const code = SIGNAL_PREFIX + toBase64Url(payload);
-  if (code.length > SIGNAL_MOST) {
-    throw new TransferError('This connection code is too long for one QR code (' + code.length + ' characters; one holds ' + SIGNAL_MOST + '). Send the project file instead.', 'too-long');
-  }
+  if (code.length > SIGNAL_MOST) refuseTooLong(code.length);
   return code;
 }
 
@@ -382,6 +396,8 @@ export async function decodeSignal(code, options) {
   if (!(expect in SIGNAL_KINDS)) throw new TypeError('options.expect is "offer" or "answer"');
   const text = typeof code === 'string' ? code.replace(/\s+/g, '') : '';
   if (text.slice(0, SIGNAL_PREFIX.length).toUpperCase() !== SIGNAL_PREFIX) refuse('notCode');
+  // No code this side makes is longer, so a longer one is not read at all.
+  if (text.length > SIGNAL_MOST) refuseTooLong(text.length);
   const payload = fromBase64Url(text.slice(SIGNAL_PREFIX.length));
   if (!payload) refuse('mistyped');
   if (payload.length < 3 + SIGNAL_CHECK_BYTES) refuse('mistyped');
@@ -396,11 +412,14 @@ export async function decodeSignal(code, options) {
   let body = payload.slice(3, end);
   if (payload[2] === 1) {
     if (!compressionAvailable()) refuse('noInflate');
+    let inflated;
     try {
-      body = await through(body, new DecompressionStream('deflate-raw'));
+      inflated = await through(body, new DecompressionStream('deflate-raw'), SIGNAL_INFLATED_MOST);
     } catch {
       refuse('mistyped');
     }
+    if (inflated === null) refuse('too-long', SENTENCES.tooBig);
+    body = inflated;
   }
   let sdp;
   try {
