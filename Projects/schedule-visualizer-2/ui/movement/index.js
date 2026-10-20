@@ -419,7 +419,9 @@ export const section = {
     function coversFloor() {
       const world = plan.world;
       if (!world || view.width === 0) return false;
-      const height = view.height + (key.line.hidden ? 0 : key.line.offsetHeight);
+      // the stage undocked: what docking the line took from it, which is
+      // less than the line's height where the stage is at its least (SV2-72c3)
+      const height = view.height + (key.line.hidden ? 0 : plan.undockedGain());
       const card = key.element;
       const width = card.offsetWidth;
       const tall = card.offsetHeight;

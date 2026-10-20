@@ -1403,9 +1403,23 @@ test('SV2-57 item 3: a building one row high on a phone on its side with touch, 
     assert.equal(await p.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page is not a touch screen’s: the case measures the wrong page');
     await dismissStarted(p);
     await drawn(p);
+    // SV2-72c3: the layout settles. Each time Movement's legend changes from
+    // docked to undocked or back is counted from here: on a stage held at its
+    // least, judging the card on the stage plus the whole docked line (45 px)
+    // undocked it, and the stage 2 px taller docked it again, every frame
+    await p.evaluate(() => {
+      const card = document.querySelector('.mov-legend');
+      globalThis.legendTurns = 0;
+      new MutationObserver((records) => {
+        for (const record of records) if (record.oldValue !== card.getAttribute('data-docked')) globalThis.legendTurns += 1;
+      }).observe(card, { attributes: true, attributeFilter: ['data-docked'], attributeOldValue: true });
+    });
     await lowBuilding(p);
     await shows(p, () => document.querySelector('.mov').movement.world?.height === 4);
-    await drawn(p);
+    const unsettled = await drawn(p).then(() => null, (error) => error);
+    const turns = await p.evaluate(() => globalThis.legendTurns);
+    assert.ok(turns <= 1, 'Movement\'s legend docked and undocked ' + turns + ' times after the building changed: the layout does not settle');
+    if (unsettled) throw unsettled;
     const at = await p.evaluate(async () => {
       const { fitZoom, FIT_MARGIN } = await import('./ui/movement/layout.js');
       const movement = document.querySelector('.mov').movement;
@@ -1428,6 +1442,8 @@ test('SV2-57 item 3: a building one row high on a phone on its side with touch, 
       return section.scrollTop >= section.scrollHeight - section.clientHeight - 1;
     });
     await drawn(p);
+    // and the scroll to the section's end turned it no more
+    assert.equal(await p.evaluate(() => globalThis.legendTurns), turns, 'Movement\'s legend docked or undocked as the section was scrolled to its end');
     await zoomClear(p, 'at the end');
   });
 });

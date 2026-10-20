@@ -85,6 +85,9 @@
 //   map.fitAt(width, height)   where Fit would put the floors on a stage of
 //                           that size: { zoom, x, y, how, clear }, or null
 //                           (Movement's legend asks it, SV2-72c2)
+//   map.undockedGain()      how much taller the stage is with the docked
+//                           line away (0 with none docked): what Movement's
+//                           legend judges its card on (SV2-72c3)
 //   map.dock()              measure again where a message may lie (the
 //                           section's head moved with no change of size)
 //
@@ -673,6 +676,12 @@ export function createPlanMap(asked) {
   // the section scrolls under it with the map's top showing above it) and
   // what of the foot may grow (playback's More grows up over the map's foot).
   // The section is measured as with both shut.
+  // How much taller the stage is with the docked line (`under`) away, as
+  // room() last measured it: the line's height while the stage is over its
+  // least, less where the least holds it (SV2-72c3: at 844 by 390 with a
+  // finger the stage was 70 px docked and 72 undocked, and Movement's legend,
+  // judged on 70 + the line's 45 px, undocked and docked again each frame).
+  let roomAway = 0;
   function room() {
     const root = parts && parts.root;
     if (gone || !root || element.hidden || root.clientHeight === 0) return;
@@ -694,7 +703,10 @@ export function createPlanMap(asked) {
     const more = foot && parts.more && !parts.more.hidden ? tall(parts.more) + gap : 0;
     const docked = parts.under && !parts.under.hidden ? tall(parts.under) : 0;
     const bar = tall(foot);
-    const next = stageRoom({ world, width: stage.clientWidth, zoomRoom: zoomRoom(), height, line, foot: bar - more + docked, docked, gap, bar, least: options.least });
+    const measured = { world, width: stage.clientWidth, zoomRoom: zoomRoom(), height, line, foot: bar - more + docked, docked, gap, bar, least: options.least };
+    const next = stageRoom(measured);
+    // and what the stage would have with the docked line away (undockedGain)
+    roomAway = docked > 0 ? Math.max(0, stageRoom({ ...measured, foot: bar - more, docked: 0 }).room - next.room) : 0;
     const set = (key, value) => {
       if (root.style.getPropertyValue(key) !== value) root.style.setProperty(key, value);
     };
@@ -855,6 +867,9 @@ export function createPlanMap(asked) {
     dock,
     // where Fit would put the floors on a stage of this size, round the zoom
     // buttons as they are drawn: { zoom, x, y, how, clear } (fitClear), or null
+    // what the stage gains in px when the docked line goes away: never more
+    // than the line's height, and less where the stage is held at its least
+    undockedGain: () => roomAway,
     fitAt(width, height, margin) {
       if (!world || !(width > 0) || !(height > 0)) return null;
       return fitClear(world, width, height, zoomCorner(height), margin === undefined ? FIT_MARGIN : margin);
