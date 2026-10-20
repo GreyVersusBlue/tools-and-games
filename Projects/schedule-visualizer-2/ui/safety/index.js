@@ -70,6 +70,9 @@ export const LOST_SAYS = 'The picked room is framed. It has no way out, so no ro
 export const ZOOM_SAYS = 'Zoom in to see each room’s exit number on the map.';
 // under the key, past the colours there are (EXIT_COUNT)
 export const REPEAT_SAYS = (n) => 'The colours repeat after exit ' + n + ': the number on each room says which exit.';
+// the stage's least in px, in place of the plan map's 120: a phone on its
+// side keeps a map a finger can use, the key scrolled to under it (W5)
+export const SAFETY_LEAST = 160;
 // the live region, when the picked room is gone from the building
 export const GONE_SAYS = (name) => name + ' is no longer in the building; showing every room.';
 
@@ -161,8 +164,7 @@ export const section = {
       keys: KEYS,
       // the routes run along the corridors: their names are drawn over them
       namesOver: true,
-      // a phone on its side keeps 160 px of map, the key scrolled to under it (W5)
-      least: 160,
+      least: SAFETY_LEAST,
       floorsRow: {
         value: () => memory.floors,
         change(value) {

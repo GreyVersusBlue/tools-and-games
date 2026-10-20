@@ -617,6 +617,7 @@ for (const [name, size] of [['390 by 844 with touch', { width: 390, height: 844,
       assert.equal(touch, size.mobile === true, 'the page is not under the pointer asked for');
       const shape = await page.evaluate(async () => {
         const { stageLeast } = await import('./ui/surface/plan-layout.js');
+        const { SAFETY_LEAST } = await import('./ui/safety/index.js');
         const view = document.querySelector('.sfy').safety;
         const stage = document.querySelector('.sfy .mov-stage');
         const zoom = document.querySelector('.sfy .mov-zoom');
@@ -624,14 +625,22 @@ for (const [name, size] of [['390 by 844 with touch', { width: 390, height: 844,
         const root = document.querySelector('.sfy');
         return {
           stage: stage.getBoundingClientRect().height,
-          least: stageLeast(view.plan.world, stage.clientWidth, zoom.offsetHeight + margin * 2),
+          // Safety's own least (SV2-72c2: the plan map's 120 was the one compared)
+          least: stageLeast(view.plan.world, stage.clientWidth, zoom.offsetHeight + margin * 2, SAFETY_LEAST),
+          own: SAFETY_LEAST,
+          // the map's top on the stage at Fit: the floors' name row is its first
+          top: view.plan.view.y,
+          fit: stage.dataset.fit,
           wide: root.scrollWidth - root.clientWidth,
           zoomInStage: zoom.getBoundingClientRect().bottom <= stage.getBoundingClientRect().bottom + 0.5 && zoom.getBoundingClientRect().top >= stage.getBoundingClientRect().top - 0.5,
         };
       });
       assert.ok(shape.stage >= shape.least - 0.5, 'the stage is ' + shape.stage + ' px, under its least ' + shape.least);
       // SV2-72c (W5): on a phone on its side Safety keeps 160 px of map (it had 135 under the first line and the key)
-      if (size.height < 500) assert.ok(shape.stage >= 160 - 0.5, 'on a phone on its side the stage is ' + shape.stage + ' px, under 160');
+      assert.equal(shape.own, 160);
+      // SV2-72c2 item 9: the floors' name row is whole at Fit, not run off the stage's top (2 px of "Floor 1" on a phone on its side)
+      assert.ok(shape.top >= -0.5, 'the floors\' name row runs ' + (-shape.top).toFixed(1) + ' px off the stage\'s top at Fit (' + shape.fit + ')');
+      if (size.height < 500) assert.ok(shape.stage >= shape.own - 0.5, 'on a phone on its side the stage is ' + shape.stage + ' px, under ' + shape.own);
       assert.ok(shape.wide <= 0, 'the section runs ' + shape.wide + ' px off the side');
       assert.ok(shape.zoomInStage, 'the zoom buttons are not on the stage');
       // the key, under the stage, is reached by scrolling the section to its end
