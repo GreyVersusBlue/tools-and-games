@@ -361,22 +361,26 @@ export function createPlanMap(asked) {
       keepClear = true;
       clearFoot();
     }
-    // in the part of the stage above the foot, where the floors are whole
-    // in it (SV2-72f: at 844 by 390 the foot still lies 12 px over
-    // Movement's stage once the first line stops clearFoot), else on the
-    // whole stage as before
+    // in the part of the stage the foot leaves (all of it with no foot
+    // over it), where the floors are whole in it: clear of the zoom buttons
+    // if a band can be, else the plain fit (SV2-72f: at 844 by 390 the foot
+    // still lies 12 px over Movement's stage once the first line stops
+    // clearFoot). Where they cannot be whole there, on the whole stage with
+    // the zoom buttons kept clear, as SV2-72c had it: whole would be under
+    // the foot.
     const corner = zoomCorner(view.height);
-    const over = footOver();
+    const shown = view.height - footOver();
     const size = (at) => CELL * at.zoom;
-    const above = over > 0 ? fitClear(world, view.width, view.height - over, corner, FIT_MARGIN) : null;
-    const place = above && above.y >= -1e-9 && above.y + world.height * size(above) <= view.height - over + 1e-9 && above.x >= -1e-9 && above.x + world.width * size(above) <= view.width + 1e-9
-      ? above
-      : fitClear(world, view.width, view.height, corner, FIT_MARGIN);
+    const seen = fitClear(world, view.width, shown, corner, FIT_MARGIN);
+    const whole = seen.y >= -1e-9 && seen.y + world.height * size(seen) <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + world.width * size(seen) <= view.width + 1e-9;
+    const place = whole ? seen : fitClear(world, view.width, view.height, corner, FIT_MARGIN, false);
     view.zoom = place.zoom;
     view.x = place.x;
     view.y = place.y;
-    // 'whole', 'above' or 'beside' the zoom buttons, for a test to read
+    // 'whole', 'above' or 'beside' the zoom buttons, and whether they lie
+    // clear of every painted cell, for a test to read
     stage.dataset.fit = place.how;
+    stage.dataset.fitClear = String(place.clear !== false);
     fitted = true;
     shownLast = null;
     if (!quiet) {
