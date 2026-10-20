@@ -343,6 +343,9 @@ export function openFix(env, finding, opener) {
   function refuse(error) {
     refusal.textContent = error && error.message ? error.message : 'That change could not be put in a scenario.';
     refusal.hidden = false;
+    // under the list, it may be out of the body's scrolled view (a phone):
+    // brought into it, so what the alert says is also seen (SV2-72d2)
+    refusal.scrollIntoView({ block: 'nearest' });
   }
 
   // Scenarios, then `done` (the dialog closed), then the focus on the

@@ -909,11 +909,21 @@
   flex: none;
 }
 
+/* A scroller clips what is drawn outside its padding box, a focus ring
+   included: the body keeps a ring's room inside its edges (padding, the
+   same taken back from the dialog's own padding at the sides so the text
+   stays where it was) and scrolls a focused control in clear of them
+   (scroll-padding), so the switch's ring at the left and a Try it's at the
+   right are drawn whole (SV2-72d2). */
 #fix-dialog .dialog__body {
+  --fix-ring: calc(var(--focus-width) + var(--focus-offset));
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  padding: var(--fix-ring);
+  margin-inline: calc(var(--fix-ring) * -1);
+  scroll-padding: var(--fix-ring);
 }
 
 .fix-switch {
