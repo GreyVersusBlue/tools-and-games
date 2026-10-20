@@ -820,8 +820,9 @@ test('on a 390 px phone a finding\'s Show, Fix… and Accept are under its sente
     const card = await box(p, '.sch');
     const rows = await findingBoxes(p);
     assert.equal(rows.length, 4);
+    // SV2-70: Fix… on the two findings the suggestion engine can work on (the clash and the walk), none on the two notes
+    assert.deepEqual(rows.map((row) => row.buttons.map((button) => button.label).join(' ')), ['Show Fix… Accept', 'Show Fix… Accept', 'Show Accept', 'Show Accept']);
     for (const row of rows) {
-      assert.deepEqual(row.buttons.map((button) => button.label), ['Show', 'Fix…', 'Accept']);
       for (const button of row.buttons) {
         assert.ok(button.left >= card.left && button.right <= card.right, button.label + ' runs out of the card: ' + JSON.stringify({ button, card }));
         assert.ok(button.right <= 390, button.label + ' runs off the phone');
@@ -975,25 +976,25 @@ test('beside the Checks tab the inspector does not repeat its table: the counts,
 test('Fix… is a working button: drawn solid, its title says what it does, and a press opens the Fix dialog, by pointer and by keyboard', async () => {
   await on('#schedule/checks', DESK, async (p) => {
     const fix = '.sch-checks .sch-findings tbody tr [data-action="fix"]';
-    assert.equal(await p.$eval(fix, (el) => [el.getAttribute('aria-disabled'), el.title, el.disabled, getComputedStyle(el).borderTopStyle].join('|')), 'null|Small changes that would clear this, to try in a scenario|false|solid');
-    const opened = async () => {
+    assert.equal(await p.$eval(fix, (el) => [el.getAttribute('aria-disabled'), el.title, el.disabled, getComputedStyle(el).borderTopStyle].join('|')), '|Small changes that would clear this, to try in a scenario|false|solid');
+    const opened = async (hash) => {
       await p.waitForSelector('#fix-dialog[open]');
-      assert.equal(await p.evaluate(() => location.hash), '#schedule/checks');
+      assert.equal(await p.evaluate(() => location.hash), hash, 'the press stays where it is');
       assert.equal(await count(p, '.toast'), 0);
       await p.keyboard.press('Escape');
       await p.waitForFunction(() => !document.querySelector('dialog[open]'));
     };
     await p.click(fix);
-    await opened();
+    await opened('#schedule/checks');
     await p.focus(fix);
     await p.keyboard.press('Enter');
-    await opened();
+    await opened('#schedule/checks');
     // the inspector's Fix… too
     await go(p, '#schedule/teachers');
     await settled(p);
     await p.focus('#inspector [data-action="fix"]');
     await p.keyboard.press(' ');
-    await opened();
+    await opened('#schedule/teachers');
   });
 });
 
