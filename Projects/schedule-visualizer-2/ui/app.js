@@ -29,7 +29,7 @@ import { gettingStarted } from './components/getting-started.js';
 import { paperForRegion } from './project/settings.js';
 
 import { section as building } from './building/index.js';
-import { section as schedule } from './schedule/index.js';
+import { section as schedule, openAddress } from './schedule/index.js';
 import { section as movement } from './movement/index.js';
 import { section as scenarios } from './scenarios/index.js';
 import { section as safety } from './safety/index.js';
@@ -41,7 +41,7 @@ import { createIds } from '../engine/ids.js';
 import { newProject, THEMES } from '../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../engine/publish-defaults.js';
 import { gridEditsPending, watchGridEdits } from './schedule/grid/index.js';
-import { focusHash } from './schedule/address.js';
+import { focusHash, groupOf } from './schedule/address.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
@@ -244,7 +244,8 @@ async function boot() {
 
   function showAction(focus) {
     const hash = hashForFocus(focus);
-    return hash ? { label: 'Show', run: () => navigate(hash) } : undefined;
+    // a group's or a slot's address is opened by the schedule's rule, marked when the list is under it (SV2-72e)
+    return hash ? { label: 'Show', run: () => (groupOf(store.project, hash) ? openAddress(ctx, hash) : navigate(hash)) } : undefined;
   }
 
   function undo() {

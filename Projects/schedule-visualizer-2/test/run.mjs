@@ -141,6 +141,7 @@ export const GROUPS = {
     'browser/congestion-scenario.mjs', // SV2-71
     'browser/difference.mjs', // SV2-69
     'browser/fix.mjs', // SV2-70
+    'browser/m5-pass.mjs', // SV2-72f
     'browser/snapshots.mjs', // SV2-28
     'browser/transfer.mjs', // SV2-29b
     'browser/help.mjs', // SV2-30a

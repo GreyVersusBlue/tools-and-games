@@ -105,6 +105,51 @@ function sameIds(a, b) {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
+// Every open connection's `fresh` set (below): images stored on this page
+// that no saved project names yet, which no sweep on any connection may take.
+const liveFresh = new Set();
+
+// The image sweep for code with a connection of its own (storage/snapshots.js
+// deleting a snapshot). Inside a readwrite transaction over snapshots,
+// quarantine and images: delete every image that nothing names. Kept: `named`
+// (the saved project and the one on screen, as the caller read them in the
+// same transaction), every image a snapshot names, every image a record set
+// aside in quarantine names (so a recovered copy still has its pictures), and
+// every image a connection on this page stored that no saved project names
+// yet (an import between storing its images and saving). `done(swept)` is
+// called with the ids deleted, before the transaction commits.
+export function sweepUnnamedImages(tx, named, done) {
+  const keep = new Set(named);
+  const finish = done || (() => {});
+  const snapshots = tx.objectStore(SNAPSHOT_STORE).openCursor();
+  snapshots.onsuccess = () => {
+    const at = snapshots.result;
+    if (at) {
+      for (const id of imageIdsOf(at.value && at.value.project)) keep.add(id);
+      at.continue();
+      return;
+    }
+    const aside = tx.objectStore(QUARANTINE_STORE).openCursor();
+    aside.onsuccess = () => {
+      const held = aside.result;
+      if (held) {
+        const raw = held.value && held.value.raw;
+        for (const id of imageIdsOf(raw)) keep.add(id);
+        for (const id of imageIdsOf(raw && raw.project)) keep.add(id);
+        held.continue();
+        return;
+      }
+      const images = tx.objectStore(IMAGE_STORE);
+      const keys = images.getAllKeys();
+      keys.onsuccess = () => {
+        const swept = keys.result.filter((id) => !keep.has(id) && !Array.from(liveFresh).some((set) => set.has(id)));
+        for (const id of swept) images.delete(id);
+        finish(swept);
+      };
+    };
+  };
+}
+
 export async function openDatabases(options) {
   const opts = options || {};
   const factory = opts.indexedDB || globalThis.indexedDB;
@@ -133,6 +178,7 @@ export async function openDatabases(options) {
   // Image ids written in this session that no saved project names yet. A
   // save that runs before the project names them must not sweep them away.
   const fresh = new Set();
+  liveFresh.add(fresh);
   // The image ids of the project as last saved, to know when a sweep is due.
   let savedImageIds = null;
 
@@ -394,6 +440,7 @@ export async function openDatabases(options) {
     getPoint,
     deletePoint,
     close() {
+      liveFresh.delete(fresh);
       main.close();
       if (recovery) recovery.close();
     },

@@ -103,7 +103,7 @@
 import { h } from '../components/dom.js';
 import { choice as segmented } from '../components/choice.js';
 import { singleKeyAllowed } from '../components/shortcuts.js';
-import { createViewport, ZOOM_STEP } from './viewport.js';
+import { createViewport, ZOOM_STEP, CELL } from './viewport.js';
 import { createRenderer } from './renderer.js';
 import { attachInput } from './input.js';
 import { attachCursor } from './cursor.js';
@@ -356,12 +356,31 @@ export function createPlanMap(asked) {
   // Fit leaves the zoom buttons' corner clear of every painted cell (fitClear in ./plan-layout.js)
   function fit(quiet) {
     if (!world || view.width === 0) return;
-    const place = fitClear(world, view.width, view.height, zoomCorner(view.height), FIT_MARGIN);
+    // Fit pressed brings the stage clear of the foot again (clearFoot)
+    if (!quiet) {
+      keepClear = true;
+      clearFoot();
+    }
+    // in the part of the stage the foot leaves (all of it with no foot
+    // over it), where the floors are whole in it: clear of the zoom buttons
+    // if a band can be, else the plain fit (SV2-72f: at 844 by 390 the foot
+    // still lies 12 px over Movement's stage once the first line stops
+    // clearFoot). Where they cannot be whole there, on the whole stage with
+    // the zoom buttons kept clear, as SV2-72c had it: whole would be under
+    // the foot.
+    const corner = zoomCorner(view.height);
+    const shown = view.height - footOver();
+    const size = (at) => CELL * at.zoom;
+    const seen = fitClear(world, view.width, shown, corner, FIT_MARGIN);
+    const whole = seen.y >= -1e-9 && seen.y + world.height * size(seen) <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + world.width * size(seen) <= view.width + 1e-9;
+    const place = whole ? seen : fitClear(world, view.width, view.height, corner, FIT_MARGIN, false);
     view.zoom = place.zoom;
     view.x = place.x;
     view.y = place.y;
-    // 'whole', 'above' or 'beside' the zoom buttons, for a test to read
+    // 'whole', 'above' or 'beside' the zoom buttons, and whether they lie
+    // clear of every painted cell, for a test to read
     stage.dataset.fit = place.how;
+    stage.dataset.fitClear = String(place.clear !== false);
     fitted = true;
     shownLast = null;
     if (!quiet) {
@@ -634,6 +653,13 @@ export function createPlanMap(asked) {
   // the section is at its end. How far it reaches up into the stage is
   // --mov-under on the stage, and they lift by that much, but never out of
   // the stage's top.
+  // How far the foot lies over the stage now, in px of the stage.
+  function footOver() {
+    const foot = footShown();
+    if (!foot || element.hidden) return 0;
+    const shown = stage.getBoundingClientRect();
+    return Math.max(0, Math.min(shown.height, Math.ceil(shown.bottom - foot.getBoundingClientRect().top)));
+  }
   // How far the foot reaches up into the stage now, never lifting the
   // buttons out of the stage's top; 0 with no frame yet.
   function liftNow() {
@@ -652,6 +678,7 @@ export function createPlanMap(asked) {
   let liftScroll = null;
   function lift() {
     if (element.hidden) return;
+    clearFoot();
     const under = liftNow() + 'px';
     const scrolled = parts && parts.root ? Math.round(parts.root.scrollTop) : 0;
     const moved = stage.style.getPropertyValue('--mov-under') !== under;
@@ -663,6 +690,41 @@ export function createPlanMap(asked) {
       queuePaint();
     }
     liftScroll = scrolled;
+  }
+
+  // ---- the stage clear of the foot (SV2-72f). Where the section scrolls
+  // (a phone on its side: Movement's stage held at its least, the docked line
+  // under it) the sticky foot lay over the stage's foot at the section's top,
+  // over the floors Fit had put there (24 px of Movement's 110 at 844 by
+  // 390). Until the reader scrolls the section, and again on Fit, the section
+  // is scrolled the least that puts the stage whole above the foot, never so
+  // far that the first line's own box (frame.line) or the stage's top leaves
+  // the section's top; the head's padding over the line goes first.
+  let keepClear = true;
+  let ownScroll = null;
+  function clearFoot() {
+    const root = parts && parts.root;
+    if (!root || gone || element.hidden || root.dataset.styled !== 'true') return;
+    const top = Math.round(root.scrollTop);
+    // a scroll the map did not make is the reader's, and is left alone
+    if (ownScroll !== null && top !== ownScroll) keepClear = false;
+    if (!keepClear) return;
+    const foot = footShown();
+    if (!foot) return;
+    const shown = stage.getBoundingClientRect();
+    const edge = root.getBoundingClientRect();
+    const over = Math.ceil(shown.bottom - foot.getBoundingClientRect().top);
+    const line = parts.line && parts.line.getClientRects().length > 0 ? parts.line.getBoundingClientRect().top : shown.top;
+    const most = Math.floor(Math.min(line - edge.top, shown.top - edge.top, root.scrollHeight - root.clientHeight - top));
+    const by = Math.min(over, most);
+    if (by <= 0) {
+      ownScroll = top;
+      return;
+    }
+    root.scrollTop = top + by;
+    ownScroll = Math.round(root.scrollTop);
+    // the lift that follows is a change of where the section was, not the reader's scroll (lift)
+    liftScroll = ownScroll;
   }
 
   // what the zoom box needs of the stage: its height and its margin above

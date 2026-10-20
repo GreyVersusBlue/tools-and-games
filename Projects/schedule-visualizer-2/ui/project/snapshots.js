@@ -7,7 +7,9 @@
 // Restore asks nothing: it is one undo step, and a recovery point of the
 // present is taken first. Delete asks, because it cannot be undone.
 //
-// Every name is shown exactly as typed, as text, in its own direction.
+// Every name is shown exactly as typed, as text, in its own direction: a
+// <bdi> inside a sentence, so a name with a right-to-left override in it
+// cannot turn the words after it round.
 
 import { h, uid } from '../components/dom.js';
 import { card } from '../components/card.js';
@@ -15,10 +17,6 @@ import { count } from '../components/words.js';
 import { formatBytes, whenWords } from '../../storage/words.js';
 import { summaryWords } from '../../storage/session.js';
 import { pageSnapshots, SNAPSHOT_LIMIT, NAME_NEEDED, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
-
-function quote(text) {
-  return '“' + text + '”';
-}
 
 function messageOf(error) {
   const text = String(error && error.message ? error.message : error).trim();
@@ -37,6 +35,9 @@ function download(fileName, text) {
 
 // A typed name, as text, in its own direction.
 const named = (name) => h('bdi', { class: 'snap__name-text' }, name);
+
+// The same, in quotation marks, for inside a sentence.
+const quoted = (name) => ['“', named(name), '”'];
 
 // The status line under the take form.
 export function countSentence(entries, limit) {
@@ -66,37 +67,56 @@ export function snapshotsCard(ctx) {
   let drawn = 0;
   let entries = [];
 
-  function say(kind, text) {
+  // `parts`: text and nodes (a name is a <bdi>, never spliced into the text)
+  function say(kind, ...parts) {
     result.hidden = false;
     result.dataset.result = kind;
-    result.replaceChildren(h('p', { role: kind === 'refused' ? 'alert' : 'status' }, text));
+    result.replaceChildren(h('p', { role: kind === 'refused' ? 'alert' : 'status' }, parts));
   }
 
   const readOnly = () => Boolean(ctx.storage && ctx.storage.state.readOnly);
 
-  form.addEventListener('submit', async (event) => {
+  // One take, restore or delete at a time: a second Enter or press while one
+  // is under way does nothing, so a double press never takes two snapshots.
+  let busy = false;
+  async function once(run) {
+    if (busy) return;
+    busy = true;
+    try {
+      await run();
+    } finally {
+      busy = false;
+    }
+  }
+
+  form.addEventListener('submit', (event) => {
     event.preventDefault();
     if (!snapshots) return;
-    const name = input.value;
-    try {
-      const taken = await snapshots.take(name);
-      input.value = '';
-      say('done', 'Took the snapshot ' + quote(taken.name) + '.');
-      focusAfter = 'take';
-    } catch (error) {
-      say('refused', error && error.code === 'no-name' ? NAME_NEEDED : messageOf(error));
-      input.focus();
-    }
+    once(async () => {
+      const name = input.value;
+      try {
+        const taken = await snapshots.take(name);
+        input.value = '';
+        say('done', 'Took the snapshot ', quoted(taken.name), '.');
+        focusAfter = 'take';
+      } catch (error) {
+        say('refused', error && error.code === 'no-name' ? NAME_NEEDED : messageOf(error));
+        input.focus();
+      }
+    });
   });
 
   async function restore(entry) {
     try {
       const done = await snapshots.restore(entry.id);
       const notes = done.notes.length > 0 ? ' ' + count(done.notes.length, 'thing') + ' in it ' + (done.notes.length === 1 ? 'was' : 'were') + ' put right on the way in.' : '';
-      say('done', 'Restored the snapshot ' + quote(done.name) + '. What was here before is a recovery point now, and Undo puts it back.' + notes);
-      ctx.toast({ text: 'Restored the snapshot ' + done.name + '.', action: { label: 'Undo', run: ctx.undo } });
+      const before = done.recoveryPoint
+        ? ' What was here before is a recovery point now, and Undo puts it back.'
+        : ' No recovery point could be kept of what was here before, because this device is not keeping recovery points just now; Undo still puts it back while this tab stays open.';
+      say('done', 'Restored the snapshot ', quoted(done.name), '.' + before + notes);
+      ctx.toast({ text: ['Restored the snapshot ', named(done.name), '.'], action: { label: 'Undo', run: ctx.undo } });
     } catch (error) {
-      say('refused', 'The snapshot ' + quote(entry.name) + ' was not restored. ' + messageOf(error));
+      say('refused', 'The snapshot ', quoted(entry.name), ' was not restored. ' + messageOf(error));
     }
   }
 
@@ -104,15 +124,15 @@ export function snapshotsCard(ctx) {
     try {
       const file = await snapshots.exportFile(entry.id);
       download(file.fileName, file.text);
-      say('done', 'Saved the snapshot ' + quote(file.name) + ' as ' + quote(file.fileName) + ' to your downloads. It is a project file: import it under Project file.');
+      say('done', 'Saved the snapshot ', quoted(file.name), ' as ', quoted(file.fileName), ' to your downloads. It is a project file: import it under Project file.');
     } catch (error) {
-      say('refused', 'The snapshot ' + quote(entry.name) + ' was not exported. ' + messageOf(error));
+      say('refused', 'The snapshot ', quoted(entry.name), ' was not exported. ' + messageOf(error));
     }
   }
 
   async function remove(entry, opener) {
     const ok = await ctx.confirm({
-      title: 'Delete the snapshot ' + quote(entry.name) + '?',
+      title: ['Delete the snapshot ', quoted(entry.name), '?'],
       body: 'It cannot be brought back. The project you are working on does not change. Export it first to keep it as a file.',
       action: 'Delete this snapshot',
       keep: 'Keep it',
@@ -123,18 +143,18 @@ export function snapshotsCard(ctx) {
     const at = entries.findIndex((each) => each.id === entry.id);
     try {
       await snapshots.remove(entry.id);
-      say('done', 'Deleted the snapshot ' + quote(entry.name) + '.');
+      say('done', 'Deleted the snapshot ', quoted(entry.name), '.');
       // the focus goes to the row now in its place, else the one before, else the name field
       const next = entries[at + 1] || entries[at - 1];
       focusAfter = next ? { id: next.id, action: 'delete' } : 'take';
     } catch (error) {
-      say('refused', 'The snapshot ' + quote(entry.name) + ' was not deleted. ' + messageOf(error));
+      say('refused', 'The snapshot ', quoted(entry.name), ' was not deleted. ' + messageOf(error));
     }
   }
 
   // A button that does nothing but say why while it is marked off: `off` is
-  // that sentence, or null. (aria-disabled keeps it in the tab order, so it
-  // has to stop the click itself.)
+  // that sentence (text, or a list of text and nodes), or null. (aria-disabled
+  // keeps it in the tab order, so it has to stop the click itself.)
   function button(label, action, aria, run, off) {
     const el = h('button', { type: 'button', class: 'btn', 'aria-label': aria, data: { action } }, label);
     if (off) el.setAttribute('aria-disabled', 'true');
@@ -161,7 +181,7 @@ export function snapshotsCard(ctx) {
       try {
         if (value !== entry.name) {
           await snapshots.rename(entry.id, value);
-          say('done', 'Renamed the snapshot ' + quote(entry.name) + ' to ' + quote(value) + '.');
+          say('done', 'Renamed the snapshot ', quoted(entry.name), ' to ', quoted(value), '.');
         }
         renaming = null;
         focusAfter = focusRow ? { id: entry.id, action: 'rename' } : null;
@@ -213,12 +233,12 @@ export function snapshotsCard(ctx) {
       : null;
     const head = renaming === entry.id ? renameField(entry) : h('p', { class: 'snap__name' }, named(entry.name));
     const label = 'the snapshot ' + entry.name;
-    const unreadable = entry.readable ? null : 'The snapshot ' + quote(entry.name) + ' cannot be read, so it can only be deleted.';
+    const unreadable = entry.readable ? null : ['The snapshot ', quoted(entry.name), ' cannot be read, so it can only be deleted.'];
     const buttons = h('div', { class: 'card__buttons snap__buttons' },
-      button('Restore', 'restore', 'Restore ' + label, () => restore(entry), off ? READ_ONLY_SENTENCE : unreadable),
+      button('Restore', 'restore', 'Restore ' + label, () => once(() => restore(entry)), off ? READ_ONLY_SENTENCE : unreadable),
       button('Rename', 'rename', 'Rename ' + label, () => startRename(entry), off ? READ_ONLY_SENTENCE : null),
       button('Export', 'export', 'Export ' + label, () => save(entry), unreadable),
-      button('Delete', 'delete', 'Delete ' + label, (el) => remove(entry, el), off ? READ_ONLY_SENTENCE : null));
+      button('Delete', 'delete', 'Delete ' + label, (el) => once(() => remove(entry, el)), off ? READ_ONLY_SENTENCE : null));
     return h('li', { class: 'snap__item', data: { snapshot: entry.id } }, head, h('p', { class: 'snap__about' }, about), elsewhere, buttons);
   }
 
@@ -230,7 +250,7 @@ export function snapshotsCard(ctx) {
       input.focus();
       return;
     }
-    const item = listEl.querySelector('[data-snapshot="' + wanted.id + '"]');
+    const item = listEl.querySelector('[data-snapshot="' + CSS.escape(wanted.id) + '"]');
     if (!item) {
       input.focus();
       return;

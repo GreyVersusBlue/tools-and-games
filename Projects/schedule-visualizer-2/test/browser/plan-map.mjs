@@ -465,9 +465,20 @@ async function paintedUnderZoom(page) {
       const key = '#' + px.map((v) => v.toString(16).padStart(2, '0')).join('');
       seen.set(key, (seen.get(key) || 0) + 1);
     }
-    return { painted, of: data.length / 4, colours: Array.from(seen.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4), fit: canvas.parentElement.dataset.fit, zoom: zoom.textContent };
+    // SV2-72f: whether the fit could clear the buttons, and every floor whole on the stage
+    const root = canvas.closest('.mov');
+    const plan = root.movement ? root.movement.plan : root.safety ? root.safety.plan : root.scenarios ? root.scenarios.plan : document.querySelector('.scn').scenarios.plan;
+    const size = 24 * plan.view.zoom;
+    const whole = plan.world.slots.every((slot) => plan.view.x + slot.x * size >= -0.5 && plan.view.x + (slot.x + slot.w) * size <= plan.view.width + 0.5 && plan.view.y + (slot.y - 2) * size >= -0.5 && plan.view.y + (slot.y + slot.h) * size <= plan.view.height + 0.5);
+    return { painted, of: data.length / 4, colours: Array.from(seen.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4), fit: canvas.parentElement.dataset.fit, clear: canvas.parentElement.dataset.fitClear, whole, zoom: zoom.textContent };
   });
 }
+
+// SV2-72f: where no band clears the zoom buttons with every floor whole on
+// the stage, Fit is the plain fit, whole, with the buttons over some of it.
+// Of these sizes that is Movement on a phone on its side alone (its stage
+// 110 px, the floors 96 px tall at 25 %).
+const NOT_CLEAR = ['844 by 390 #movement'];
 
 // each size as the sections open, then the desktop sizes with Getting
 // started shown and with a scenario open (the lab's bar under its map)
@@ -506,8 +517,11 @@ for (const size of W1_CASES) {
         await page.waitForFunction((n) => Number(Array.from(document.querySelectorAll('#section canvas.mov-plan')).find((each) => each.getClientRects().length > 0).dataset.drawn) > n, { timeout: 10000 }, was);
         found[hash] = await paintedUnderZoom(page);
       }
-      const covered = Object.entries(found).filter(([, got]) => got.painted > 0);
+      const covered = Object.entries(found).filter(([, got]) => got.painted > 0 && got.clear !== 'false');
       assert.deepEqual(covered, [], 'painted cells under the zoom buttons at Fit: ' + JSON.stringify(found));
+      const named = (hash) => size.width + ' by ' + size.height + ' ' + hash;
+      assert.deepEqual(Object.keys(found).filter((hash) => found[hash].clear === 'false').map(named), size.started || size.scenario ? [] : W1_SECTIONS.map(named).filter((each) => NOT_CLEAR.includes(each)), 'a fit that could not clear the zoom buttons where one could, or none where none can: ' + JSON.stringify(found));
+      assert.deepEqual(Object.entries(found).filter(([, got]) => !got.whole), [], 'a floor off the stage at Fit: ' + JSON.stringify(found));
       assert.deepEqual(session.problems().errors, []);
     } finally {
       await session.close();
