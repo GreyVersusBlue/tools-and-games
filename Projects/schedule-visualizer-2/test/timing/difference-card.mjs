@@ -19,8 +19,11 @@
 //
 // Measured by SV2-69c on huginn (2026-10-19), five runs of this file:
 // load average 1.6 to 5.3: the first card 45.3 to 65.6 ms, a later card
-// 0.70 to 0.82 microseconds a lookup. The budgets are the worst of those,
-// rounded up. That a later
+// 0.70 to 0.82 microseconds a lookup. FIRST_CARD is the worst of those,
+// rounded up. LATER_CARD is set wider, at 5, because a lookup under a
+// microsecond is near the clock's own grain on a shared CI runner; the
+// fault it guards against (an index rebuilt on every lookup) measured 113
+// microseconds, so it is still caught. That a later
 // card does no routing and indexes nothing again, without the clock, is
 // test/ui/difference.test.mjs.
 
@@ -35,7 +38,7 @@ import { effectiveSchedule } from '../../engine/day-types.js';
 import { bigProject } from '../fixtures/big.mjs';
 
 const FIRST_CARD = 66; // ms
-const LATER_CARD = 1; // microseconds a lookup
+const LATER_CARD = 5; // microseconds a lookup
 const SLACK = 2; // as every timing file here: a CI runner is not this machine
 const BATCH = 2000;
 const RUNS = 21;
