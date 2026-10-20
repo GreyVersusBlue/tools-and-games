@@ -393,6 +393,11 @@ export function openPrintPreview(ctx, outputId, options) {
   function close() {
     if (!alive) return;
     alive = false;
+    // the document being laid out never will be now: its wait ends here, so
+    // nothing chained on a closing preview (ready(), the scenario's answer)
+    // waits for good
+    if (cutLayout) cutLayout();
+    cutLayout = null;
     observer.disconnect();
     element.close();
     element.remove();
@@ -502,13 +507,23 @@ export function openPrintPreview(ctx, outputId, options) {
     }
   }
 
+  // The document on show laid out (the contract above): a layout cut short
+  // because show() replaced its document ends its own wait without laying
+  // anything out, so the wait goes on to whichever document is newest, as
+  // settledNow() does, until none newer came while it waited. A closed
+  // preview ends every wait (close()).
+  function ready() {
+    const now = laidOut;
+    return now.then(() => (laidOut === now ? undefined : ready()));
+  }
+
   return {
     element,
     frame,
     close,
     closed,
     state,
-    ready: () => first.then(() => laidOut),
+    ready,
   };
 }
 
