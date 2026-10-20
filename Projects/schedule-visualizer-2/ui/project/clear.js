@@ -1,8 +1,16 @@
 // The Clear… card (spec 13.6): "Clear the building", "Clear the schedule" and
-// "Start a new project". Each says exactly what it removes and what stays,
-// asks, takes a snapshot first (storage/snapshots.js), and takes effect on
-// screen at once as one undo step (actions.replaceProject with the cleared
-// project and its own label).
+// "Start a new project". Each says beside its button exactly what it removes
+// and what stays, takes a snapshot first (storage/snapshots.js) and a
+// recovery point 'replace' (ARCHITECTURE 7: before every replace-everything
+// action), and takes effect on screen at once as one undo step
+// (actions.replaceProject with the cleared project and its own label), with a
+// toast that says what was done and offers Undo.
+//
+// It asks nothing when the snapshot is taken: spec 3.8 asks only before what
+// cannot be undone, and a clear with a snapshot and an undo step can be. When
+// no snapshot can be taken (the device keeps the most it keeps, or keeps no
+// snapshots at all) it asks, saying so, because going on without one is the
+// person's call.
 //
 // What each one removes, decided here (SV2-28):
 //   the building   everything drawn on every floor: rooms, other spaces,
@@ -33,6 +41,14 @@ import { pageSnapshots, AUTO_SNAPSHOT_NAMES, READ_ONLY_SENTENCE } from '../../st
 
 function quote(text) {
   return '“' + text + '”';
+}
+
+// A typed name inside a sentence that can only be text: in quotation marks
+// and isolated (U+2068 FIRST STRONG ISOLATE … U+2069 POP DIRECTIONAL
+// ISOLATE), so a name with a right-to-left override cannot turn the words
+// after it round.
+function quoteName(text) {
+  return '“\u2068' + text + '\u2069”';
 }
 
 // What is drawn in the building, counted.
@@ -114,7 +130,7 @@ export function scheduleWords(project) {
     c.groups > 0 ? count(c.groups, 'group') + ' with ' + (c.groups === 1 ? 'its schedule' : 'their schedules') : null,
     c.teachers > 0 ? count(c.teachers, 'teacher') : null,
     c.accepted > 0 ? count(c.accepted, 'accepted finding') : null,
-    c.scenario !== null ? 'the open scenario ' + quote(c.scenario) : null,
+    c.scenario !== null ? 'the open scenario ' + quoteName(c.scenario) : null,
   ].filter(Boolean);
   return {
     empty: parts.length === 0,
@@ -140,7 +156,7 @@ export const CLEARS = [
   {
     id: 'building',
     reason: 'clear-building',
-    button: 'Clear the building…',
+    button: 'Clear the building',
     title: 'Clear the building?',
     action: 'Clear the building',
     keep: 'Keep the building',
@@ -152,7 +168,7 @@ export const CLEARS = [
   {
     id: 'schedule',
     reason: 'clear-schedule',
-    button: 'Clear the schedule…',
+    button: 'Clear the schedule',
     title: 'Clear the schedule?',
     action: 'Clear the schedule',
     keep: 'Keep the schedule',
@@ -164,7 +180,7 @@ export const CLEARS = [
   {
     id: 'new',
     reason: 'new-project',
-    button: 'Start a new project…',
+    button: 'Start a new project',
     title: 'Start a new project in place of this one?',
     action: 'Start a new project',
     keep: 'Keep this project',
@@ -184,7 +200,7 @@ export function snapshotLine(room, name, what) {
 }
 
 export function clearCard(ctx) {
-  const lead = h('p', { class: 'card__lead' }, 'Each of these takes effect at once, after asking. A snapshot of the project is taken first, and Undo brings back what was removed.');
+  const lead = h('p', { class: 'card__lead' }, 'Each of these takes effect at once. A snapshot of the project is taken first, and Undo brings back what was removed. Only when no snapshot can be taken does it ask before going on.');
   const result = h('div', { data: { line: 'result' }, hidden: true });
   const rows = new Map();
 
@@ -196,11 +212,23 @@ export function clearCard(ctx) {
 
   const WHAT = { building: 'the building', schedule: 'the schedule', new: 'this project' };
 
-  async function run(entry, opener) {
-    const project = ctx.store.project;
+  // Ask before going on without a snapshot. `why` is what snapshots.room()
+  // answered, or what the take said when it failed. Resolves true to go on.
+  function askWithout(entry, project, why, opener) {
     const words = entry.words(project);
-    if (words.empty) {
-      say('done', words.removes);
+    return ctx.confirm({
+      title: entry.title,
+      body: [h('p', null, words.removes), h('p', null, words.keeps), h('p', null, snapshotLine(why, AUTO_SNAPSHOT_NAMES[entry.reason], WHAT[entry.id]))],
+      action: entry.action,
+      keep: entry.keep,
+      danger: true,
+      opener,
+    });
+  }
+
+  async function clear(entry, opener) {
+    if (entry.words(ctx.store.project).empty) {
+      say('done', entry.words(ctx.store.project).removes);
       return;
     }
     if (ctx.storage && ctx.storage.state.readOnly) {
@@ -208,56 +236,83 @@ export function clearCard(ctx) {
       return;
     }
     const snapshots = pageSnapshots();
-    const name = AUTO_SNAPSHOT_NAMES[entry.reason];
-    const room = snapshots ? await snapshots.room() : null;
-    const ok = await ctx.confirm({
-      title: entry.title,
-      body: [h('p', null, words.removes), h('p', null, words.keeps), h('p', null, snapshotLine(room, name, WHAT[entry.id]))],
-      action: entry.action,
-      keep: entry.keep,
-      danger: true,
-      opener,
-    });
-    if (!ok) {
-      say('done', 'Nothing was cleared.');
-      return;
-    }
+    let why = snapshots ? await snapshots.room() : null;
     let taken = null;
-    if (snapshots && room && !room.error && !room.full) {
+    if (why && !why.error && !why.full) {
       const answer = await snapshots.takeAuto(entry.reason);
-      if (!answer.ok) {
-        say('refused', 'Nothing was cleared, because the snapshot could not be taken first. ' + answer.text);
+      if (answer.ok) taken = answer.snapshot;
+      // the take's own sentence, after "No snapshot can be taken first:"
+      else why = answer.code === 'full' ? { ...why, full: true } : { ...why, error: answer.text.charAt(0).toLowerCase() + answer.text.slice(1) };
+    }
+    // the question, when there is one, describes the project it was asked of;
+    // what is cleared is made from that same project, read after every wait
+    let asked = null;
+    if (!taken) {
+      asked = ctx.store.project;
+      if (entry.words(asked).empty) {
+        say('done', entry.words(asked).removes);
         return;
       }
-      taken = answer.snapshot;
+      if (!(await askWithout(entry, asked, why, opener))) {
+        say('done', 'Nothing was cleared.');
+        return;
+      }
     }
-    // a new project replaces everything, and everything replaced gets a recovery point
-    if (entry.id === 'new' && ctx.storage) await ctx.storage.takeRecoveryPoint('replace');
-    const before = ctx.store.project;
-    ctx.store.apply(replaceProject, { project: entry.make(before, ctx), label: entry.label });
-    if (ctx.store.project === before) {
+    // everything replaced gets a recovery point (null when the device keeps none: it goes on)
+    if (ctx.storage) await ctx.storage.takeRecoveryPoint('replace');
+    const project = ctx.store.project;
+    if (asked && project !== asked) {
+      say('refused', 'Nothing was cleared, because the project changed while the question was open. Press ' + quote(entry.label) + ' again to clear it as it is now.');
+      return;
+    }
+    if (entry.words(project).empty) {
+      say('done', entry.words(project).removes);
+      return;
+    }
+    ctx.store.apply(replaceProject, { project: entry.make(project, ctx), label: entry.label });
+    if (ctx.store.project === project) {
       say('refused', 'Nothing was cleared.');
       return;
     }
-    const where = taken ? ' The snapshot ' + quote(taken.name) + ' has what was there.' : '';
+    const where = taken ? ' The snapshot ' + quoteName(taken.name) + ' has what was there.' : '';
     say('done', entry.done + where + ' Undo brings it back.');
     ctx.toast({ text: entry.done + where, action: { label: 'Undo', run: ctx.undo } });
+  }
+
+  // One clear at a time: a double press, or a press while one is under way,
+  // does nothing, so a clear never runs twice or takes two snapshots.
+  let busy = false;
+  async function run(entry, opener) {
+    if (busy) return;
+    busy = true;
+    try {
+      await clear(entry, opener);
+    } finally {
+      busy = false;
+    }
   }
 
   const element = card({ id: 'clear', title: 'Clear…' },
     lead,
     CLEARS.map((entry) => {
       const says = h('p', { data: { says: entry.id } });
+      const keeps = h('p', { class: 'clear__keeps', data: { keeps: entry.id } });
       const button = h('button', { type: 'button', class: 'btn', data: { action: 'clear-' + entry.id } }, entry.button);
       button.addEventListener('click', () => run(entry, button));
-      rows.set(entry.id, says);
-      return [says, h('div', { class: 'card__buttons' }, button)];
+      rows.set(entry.id, { says, keeps });
+      return h('div', { class: 'clear__row', data: { clear: entry.id } }, says, keeps, h('div', { class: 'card__buttons' }, button));
     }),
     result,
   );
 
   function update(project) {
-    for (const entry of CLEARS) rows.get(entry.id).textContent = entry.words(project).removes;
+    for (const entry of CLEARS) {
+      const words = entry.words(project);
+      const row = rows.get(entry.id);
+      row.says.textContent = words.removes;
+      row.keeps.textContent = words.empty ? '' : words.keeps;
+      row.keeps.hidden = words.empty;
+    }
   }
 
   update(ctx.store.project);
