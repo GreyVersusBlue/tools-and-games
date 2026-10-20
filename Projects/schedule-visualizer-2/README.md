@@ -164,7 +164,7 @@ row names a file it does not run.
 | `test/engine/scenario.test.mjs` | The scenario engine: apply, normalise, reconcile, the comparison, the difference map's numbers, compare with another file, the chip words |
 | `test/engine/evacuation.test.mjs` | Evacuation: every room's way out, the exits' rooms and people, the rooms with no way out, the door card's data |
 | `test/engine/scenario-actions.test.mjs` | The scenario lab's actions: start, rename, add and remove a change, discard, compare with another file, apply as one undo step |
-| `test/engine/prints-door-cards.test.mjs` | Door cards: which rooms and in what order, the cropped maps of the way out, the steps and their second sheet, rooms with no way out, and the floor plan's crop and route options |
+| `test/engine/prints-door-cards.test.mjs` | Door cards: which rooms and in what order, the cropped maps of the way out, the steps and their second sheet, rooms with no way out, and the floor plan's crop and route options; no label cut at a map's edge |
 | `test/engine/suggest.test.mjs` | Suggestions for a finding: the candidates, the two stages, the order, the sentence, at most five, "No small change clears this." |
 | `test/engine/prints-congestion-scenario.test.mjs` | The congestion report's scenario section: before its comparison comes, the changes, the figures with their signs, new and resolved findings, places busier and quieter, a change that no longer applies, a failed or stale comparison, typed names, the same from Movement and from the lab |
 | `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
@@ -176,10 +176,11 @@ row names a file it does not run.
 | `test/ui/schedule-address.test.mjs` | The Groups tab's addresses, its one Tab stop and a phone's history of the list and a group, with no browser |
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
 | `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
-| `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs |
+| `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs; Fit with no painted cell under the zoom buttons |
 | `test/ui/scenario-lane.test.mjs` | The scenario and suggestion lanes: a second pipeline on the shared route cache, the worker's answers, what the client keeps and drops, the main thread giving the worker's answers |
 | `test/ui/safety.test.mjs` | The Safety section's plain functions: OKLab, a way out in runs a floor, the first line, a room's line, the cursor's sentence, and the key's words past eight exits |
 | `test/ui/exit-colours.test.mjs` | The exits' colours, the `--exit-n` tokens of `ui/safety/safety.css`: in both themes 3:1 on the corridor, the floor and the stairs, 40 degrees of hue from `--problem` and `--warning`, every pair apart in OKLab, the dark blocks equal; repeating past eight |
+| `test/ui/renderer-labels.test.mjs` | The renderer's labels on a plan map's slot, on a context that records what is written: a door name never runs past the slot (slid along its edge, inside its dash on a halo, or left out); with `namesOver` the corridor names are written over the overlays on a halo |
 | `test/ui/scenarios-model.test.mjs` | The scenario lab's plain functions: a change that cancelled itself, the signs and the better or worse marks of the figures and of a group's row, which groups the comparison lists, the bar's words |
 | `test/ui/difference.test.mjs` | The difference map's plain functions: the five strengths against the largest change, both tints' contrast on the corridor in both themes, zero and exclusion zones left unpainted, every day type together, the transition chosen, the ten largest changes with ties, groups apart, the card's words with typed names |
 | `test/ui/fix-kinds.test.mjs` | The kinds Fix… is on (FIXABLE_KINDS) and the kinds the suggestion engine works on, read through its candidates, are the same set |
