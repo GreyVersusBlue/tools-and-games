@@ -168,7 +168,8 @@ test('index.html links the Scenarios and Safety sheets after Movement\'s: loaded
   for (const [name, file, own] of [['scenarios', 'ui/scenarios/scenarios.css', /^\.scn[-\w]*([\s>:[.]|$)/], ['safety', 'ui/safety/safety.css', /^\.sfy[-\w]*([\s>:[.]|$)/]]) {
     assert.match(source('index.html'), new RegExp('<link rel="stylesheet" href="' + file.replace(/[./]/g, '\\$&') + '" data-sheet="' + name + '">'), file);
     // SV2-67 and SV2-68: each sheet has its own rules now, every one under the section's own names (.sfy, .scn)
-    assert.deepEqual(source(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media[^{]*\{/g, '').match(/[^{}]+(?=\{)/g).flatMap((list) => list.split(',')).map((one) => one.trim()).filter((one) => !own.test(one)), [], file + ' styles something that is not the ' + name + ' section\'s own');
+    // SV2-72c: a block that only sets the exits' colours (--exit-n, on tokens.css's theme selectors) styles nothing
+    assert.deepEqual(source(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media[^{]*\{/g, '').replace(/[^{}]+\{(\s*--exit-\d+\s*:[^;{}]*;)+\s*\}/g, '').match(/[^{}]+(?=\{)/g).flatMap((list) => list.split(',')).map((one) => one.trim()).filter((one) => !own.test(one)), [], file + ' styles something that is not the ' + name + ' section\'s own');
   }
   const links = await page.$$eval('link[rel="stylesheet"]', (all) => all.map((link) => ({ href: link.getAttribute('href'), sheet: link.dataset.sheet || null, inHead: link.parentNode === document.head, loaded: link.sheet !== null })));
   const at = (sheet) => links.findIndex((link) => link.sheet === sheet);
