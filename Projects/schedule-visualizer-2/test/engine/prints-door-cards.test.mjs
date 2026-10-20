@@ -623,50 +623,116 @@ test('print.css has the door card\'s rules, the route\'s marks among them', () =
 
 // ---------------------------------------------------------------- SV2-72c item 5
 
-// Every label of a map's markup with the least box its text can take: 0.45
-// of its size a character (the plan's condensed face runs about 0.5) round
-// its anchor, a quarter turned for a name that runs down, 0.3 of the size
-// over and under its middle. A label whose least box leaves the picture is
-// cut on paper, whatever the face.
-function leastBoxes(svg) {
+// How wide a character of a printed plan is set, as a share of its size:
+// the plan's condensed face's Latin 0.5 (what plan-svg.js's fit() sizes a
+// label by); a script the face does not have, set in another face, 0.75; a
+// CJK or Hangul character, a fullwidth form, an emoji or another wide symbol
+// (U+1F3EB, a school) a whole em; a joiner or a variation selector nothing.
+// A corridor's name, in capitals 0.08em apart, is 1.15 of that.
+function ems(value) {
+  let total = 0;
+  for (const character of value) {
+    const code = character.codePointAt(0);
+    if (code === 0x200d || (code >= 0xfe00 && code <= 0xfe0f)) continue;
+    const wide = (code >= 0x1100 && code <= 0x115f) || (code >= 0x2600 && code <= 0x27bf) || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xff00 && code <= 0xff60) || code >= 0x1f000;
+    total += code < 0x0250 ? 0.5 : wide ? 1 : 0.75;
+  }
+  return total;
+}
+
+const unescape = (text) => text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+
+// Every label of a map's markup with the box its text is drawn in: ems()
+// wide round its anchor (a door name beside its dash runs away from it), a
+// quarter turned for a name that runs down, half its size over and under
+// its middle.
+function drawnBoxes(svg) {
   return Array.from(svg.matchAll(/<text class="([^"]+)" x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"([^>]*)>([^<]*)<\/text>/g)).map((match) => {
-    const [, cls, x, y, size, more, text] = match;
-    const words = text.replace(/&[a-z#0-9]+;/g, '_');
-    const half = (words.length * 0.45 * Number(size)) / 2;
-    const tall = Number(size) * 0.3;
+    const [, cls, x, y, size, more, raw] = match;
+    const text = unescape(raw);
+    const corridor = cls === 'plan__corridor-name';
+    const wide = ems(corridor ? text.toUpperCase() : text) * (corridor ? 1.15 : 1) * Number(size);
+    const half = wide / 2;
+    const tall = Number(size) * 0.5;
     const cx = Number(x);
     const cy = Number(y);
+    const key = cls + ' ' + x + ' ' + y + ' ' + raw;
     const side = /plan__exit-name--([we])/.exec(cls);
-    if (side) return { cls, text, left: side[1] === 'w' ? cx - half * 2 : cx, right: side[1] === 'w' ? cx : cx + half * 2, top: cy - tall, bottom: cy + tall };
-    if (/rotate\(-90/.test(more)) return { cls, text, left: cx - tall, right: cx + tall, top: cy - half, bottom: cy + half };
-    return { cls, text, left: cx - half, right: cx + half, top: cy - tall, bottom: cy + tall };
+    if (side) return { key, cls, text, left: side[1] === 'w' ? cx - wide : cx, right: side[1] === 'w' ? cx : cx + wide, top: cy - tall, bottom: cy + tall };
+    if (/rotate\(-90/.test(more)) return { key, cls, text, left: cx - tall, right: cx + tall, top: cy - half, bottom: cy + half };
+    return { key, cls, text, left: cx - half, right: cx + half, top: cy - tall, bottom: cy + tall };
   });
 }
 
-test('door cards: no label is cut at a map\'s edge (Room 303\'s card cut "Cafeteria" and a corridor\'s name), and the room\'s own number is on its map', () => {
+const viewBox = (svg) => svg.match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+const within = (box, [vx, vy, vw, vh]) => box.left >= vx - 1e-6 && box.right <= vx + vw + 1e-6 && box.top >= vy - 1e-6 && box.bottom <= vy + vh + 1e-6;
+
+// A window's labels judged both ways against the floor drawn whole, where
+// every label is drawn at the same place and size: one the window holds
+// whole is kept, one it would cut is left out. A label the window holds
+// whole that was left out is `lost`; one kept that the window cuts is `cut`.
+function judged(whole, cropped) {
+  const box = viewBox(cropped);
+  const kept = new Set(drawnBoxes(cropped).map((label) => label.key));
+  const lost = [];
+  const cut = [];
+  let labels = 0;
+  for (const label of drawnBoxes(whole)) {
+    const fits = within(label, box);
+    const shown = kept.has(label.key);
+    if (fits || shown) labels += 1;
+    if (fits && !shown) lost.push(label.text + ' (' + label.cls + ')');
+    if (shown && !fits) cut.push(label.text + ' (' + label.cls + ')');
+  }
+  return { labels, lost, cut };
+}
+
+test('door cards: every label a map\'s window holds whole is kept and none it would cut is (Room 303\'s card cut "Cafeteria"; Room 202\'s and Room 302\'s lost Bathrooms, which fit), and the room\'s own number is on its map', () => {
   const project = sampleSchool();
+  const floors = new Map(project.building.floors.map((floor) => ['Floor plan of ' + floor.name, floor]));
   const ids = project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room').map((space) => space.id));
   const cards = cardsOf(doorCards.render(project, null, { ...NOW, roomIds: ids }).html);
   let labels = 0;
+  const lost = [];
   const cut = [];
   for (const id of ids) {
     for (const figure of cards.get(id).matchAll(/<figure class="card__map"[\s\S]*?<\/figure>/g)) {
-      const [vx, vy, vw, vh] = figure[0].match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
-      for (const box of leastBoxes(figure[0])) {
-        labels += 1;
-        if (box.left < vx || box.right > vx + vw || box.top < vy || box.bottom > vy + vh) cut.push(id + ': ' + box.text + ' (' + box.cls + ')');
-      }
+      const svg = figure[0].match(/<svg[\s\S]*?<\/svg>/)[0];
+      const floor = floors.get(unescape(svg.match(/aria-label="([^"]+)"/)[1]));
+      const got = judged(planSvg(project, floor).svg, svg);
+      labels += got.labels;
+      lost.push(...got.lost.map((each) => id + ': ' + each));
+      cut.push(...got.cut.map((each) => id + ': ' + each));
     }
   }
   assert.ok(labels > 50, 'only ' + labels + ' labels on the sample\'s cards: the case reads nothing');
-  assert.deepEqual(cut, []);
+  assert.deepEqual(cut, [], 'a label kept on a card\'s map that its window cuts');
+  assert.deepEqual(lost, [], 'a label left out of a card\'s map that its window holds whole');
   // the starting room is in its window whole, so its number always stays
-  const room = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === 'rsample303');
-  assert.ok(/<text class="plan__number"[^>]*>303<\/text>/.test(cards.get('rsample303')), 'Room 303\'s number is not on its card\'s map');
-  assert.equal(room.number, '303');
+  for (const id of ids) {
+    const room = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === id);
+    assert.ok(new RegExp('<text class="plan__number"[^>]*>' + room.number + '</text>').test(cards.get(id)), 'Room ' + room.number + '\'s number is not on its card\'s map');
+  }
+  assert.ok(/<text class="plan__label"[^>]*>Bathrooms<\/text>/.test(cards.get('rsample202')), 'Room 202\'s card lost the Bathrooms beside its way out');
+  assert.ok(/<text class="plan__label"[^>]*>Bathrooms<\/text>/.test(cards.get('rsample302')), 'Room 302\'s card lost the Bathrooms beside its way out');
 });
 
-test('a window\'s labels: one the edge cuts is left out, one wholly inside stays, and with no window nothing is left out', () => {
+test('a card\'s own room at the floor\'s edge keeps its number, a number fit() made as wide as the room', () => {
+  // room 1A in the floor's two left columns, its number as long as its two cells let it be
+  const project = planProject([['AA###', 'AA...', 'AA...']], { doors: { '1A': [[1, 0, 'e']] }, exits: [[1, 4, 0, 'Out']], numbers: { '1A': '12345' } });
+  const html = doorCards.render(project, null, { ...NOW, roomIds: [roomId('1A')] }).html;
+  const card = cardsOf(html).get(roomId('1A'));
+  assert.ok(card, 'no card for the room');
+  const svg = card.match(/<svg[\s\S]*?<\/svg>/)[0];
+  const [vx] = viewBox(svg);
+  assert.equal(vx, 0, 'the window does not start at the floor\'s edge: the case tests nothing');
+  const number = drawnBoxes(planSvg(project, project.building.floors[0]).svg).find((label) => label.text === '12345');
+  assert.ok(number.right - number.left > 2 * 20 - 8, 'the number does not fill its room: the case tests nothing (' + (number.right - number.left) + ')');
+  assert.ok(/<text class="plan__number"[^>]*>12345<\/text>/.test(svg), 'the room\'s own number was left out of its card\'s map at the floor\'s edge');
+  assert.deepEqual(judged(planSvg(project, project.building.floors[0]).svg, svg).cut, []);
+});
+
+test('a window\'s labels: one the edge cuts is left out, one wholly inside stays, an emoji counts a whole em, and with no window nothing is left out', () => {
   const project = sampleSchool();
   const floor = project.building.floors.find((each) => each.spaces.some((space) => space.id === 'rsample101'));
   const all = planSvg(project, floor).svg;
@@ -680,10 +746,29 @@ test('a window\'s labels: one the edge cuts is left out, one wholly inside stays
   assert.equal(count(all) - count(whole), (all.match(/plan__exit-name/g) || []).length, 'a door name beyond the floor\'s edge is printed in part');
   // a window through the middle of the floor cuts some rooms in two
   const half = planSvg(project, floor, { crop: { x: 0, y: 0, width: Math.ceil(floor.width / 2), height: floor.height } }).svg;
-  const kept = leastBoxes(half);
-  const [vx, vy, vw, vh] = half.match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
-  for (const box of kept) assert.ok(box.left >= vx && box.right <= vx + vw && box.top >= vy && box.bottom <= vy + vh, box.text + ' is cut');
-  assert.ok(kept.length > 0 && kept.length < count(all), kept.length + ' of ' + count(all));
+  const got = judged(all, half);
+  assert.deepEqual(got.cut, []);
+  assert.deepEqual(got.lost, []);
+  assert.ok(got.labels > 0 && count(half) < count(all), count(half) + ' of ' + count(all));
+  // an other space three cells wide named in three emoji (U+1F3EB), its
+  // middle a cell and a half from the window's edge: at a whole em a
+  // character its label runs 2 units past that edge (at 0.75 it would fit)
+  const school = '\u{1F3EB}';
+  const emoji = planProject([['#####', '.....', '..aaa', '..aaa']], { exits: [[1, 0, 0, 'Out']] });
+  const space = emoji.building.floors[0].spaces.find((each) => each.kind !== 'room');
+  space.label = school.repeat(3);
+  const drawn = planSvg(emoji, emoji.building.floors[0]).svg;
+  const label = drawnBoxes(drawn).find((each) => each.text === school.repeat(3));
+  assert.ok(label, 'the emoji label is not drawn on the floor: the case tests nothing');
+  const crop = planSvg(emoji, emoji.building.floors[0], { crop: { x: 0, y: 0, width: 4, height: 5 } }).svg;
+  const middle = (label.left + label.right) / 2;
+  assert.ok(label.right > viewBox(crop)[2] && middle + (label.right - label.left) * 0.375 < viewBox(crop)[2], 'the emoji label is not at the window\'s edge: the case tests nothing (' + JSON.stringify(label) + ')');
+  const judgedEmoji = judged(drawn, crop);
+  assert.deepEqual(judgedEmoji.cut, [], 'an emoji label the window cuts was kept (counted narrower than an em)');
+  assert.deepEqual(judgedEmoji.lost, []);
+  // and a window that holds it whole keeps it
+  const wider = planSvg(emoji, emoji.building.floors[0], { crop: { x: 0, y: 0, width: 5, height: 5 } }).svg;
+  assert.ok(wider.includes('>' + school.repeat(3) + '</text>'), 'an emoji label wholly in its window was left out');
 });
 
 test('on a map with a route the corridor names are drawn over the way out, on a halo of paper; with no route as before', () => {

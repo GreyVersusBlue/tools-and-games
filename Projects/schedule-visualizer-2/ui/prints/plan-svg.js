@@ -73,14 +73,45 @@ export const PLAN_ROOM_DEFAULT = '#e9e4d9';
 const U = 20;
 const SIDES = ['n', 'e', 's', 'w'];
 // Labels, in units. A number that cannot be this small and still fit is
-// printed at the smallest size anyway: on paper a label is never left out.
+// printed at the smallest size anyway: on a floor drawn whole a label is
+// never left out. In a window (options.crop, a door card's map) a label the
+// window's edge would cut is left out instead, judged at the widths fit()
+// sizes it by (textEms), so a label that fits its window stays.
 const NUMBER_MAX = 15;
 const NUMBER_MIN = 4;
 const LABEL_MAX = 8;
 const NAME_MAX = 7;
 const NAME_MIN = 3.6;
-// How wide a character of the condensed face runs, as a share of its size.
+// How wide a character runs, as a share of its size: the plan's condensed
+// face's Latin about 0.5; a script the face does not have, which the browser
+// sets in another face, 0.75; a wide character (CJK, Hangul, fullwidth forms,
+// an emoji or another wide symbol) a whole em; a joiner or a variation
+// selector nothing.
 const CHARACTER = 0.5;
+const OTHER_SCRIPT = 0.75;
+const WIDE = 1;
+// A corridor's name is set in capitals 0.08em apart: 1.15 of that.
+const SPACED = 1.15;
+
+// a character that takes a whole em: East Asian wide, or an emoji or a wide symbol
+export function isWide(code) {
+  return (code >= 0x1100 && code <= 0x115f) || (code >= 0x2600 && code <= 0x27bf) || (code >= 0x2b00 && code <= 0x2bff)
+    || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff)
+    || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6)
+    || (code >= 0x1f000 && code <= 0x1faff) || code >= 0x20000;
+}
+const zeroWidth = (code) => code === 0x200d || (code >= 0xfe00 && code <= 0xfe0f) || (code >= 0x0300 && code <= 0x036f);
+
+// A label's width in ems, at the widths above: what fit() sizes it by and
+// what a window judges it by.
+export function textEms(value) {
+  let total = 0;
+  for (const character of String(value)) {
+    const code = character.codePointAt(0);
+    total += zeroWidth(code) ? 0 : code < 0x0250 ? CHARACTER : isWide(code) ? WIDE : OTHER_SCRIPT;
+  }
+  return total;
+}
 
 function n(value) {
   return String(Math.round(value * 100) / 100);
@@ -181,10 +212,10 @@ function doorStubs(doorEdges) {
   return stubs;
 }
 
-// The size a label of `length` characters can be and still fit `room` units.
-function fit(length, room, max) {
-  if (length === 0) return max;
-  return Math.min(max, room / (length * CHARACTER));
+// The size a label `ems` wide (textEms) can be and still fit `room` units.
+function fit(ems, room, max) {
+  if (!(ems > 0)) return max;
+  return Math.min(max, room / ems);
 }
 
 function fillFor(colour, strength, fallback) {
@@ -237,17 +268,19 @@ function cropOf(floor, asked) {
   return { x, y, width: right - x, height: bottom - y };
 }
 
-// Where an exit's door name is drawn, in units, on the safe side: a
-// character at 0.62 of the size in the plan's face (it runs about 0.5), 0.75
-// in a script the face does not have and the browser sets in another, 1.05
-// when wide, and the height of a line set round its centre with room over
-// and under (a fallback face's box runs to 0.8 of the size). One unit of
-// margin round it, so the name never touches the picture's edge.
+// Where the route's exit's door name is drawn, in units, on the safe side,
+// for the window to grow round it: a character at 0.62 of the size in the
+// plan's face (it runs about 0.5), 0.75 in a script the face does not have
+// and the browser sets in another, 1.05 when wide (isWide: an emoji too),
+// and the height of a line set round its centre with room over and under (a
+// fallback face's box runs to 0.8 of the size). One unit of margin round it,
+// so the name never touches the picture's edge. Whether a window keeps a
+// label is judged by labelBox, at the widths fit() uses.
 function ems(name) {
   let total = 0;
   for (const character of String(name)) {
     const code = character.codePointAt(0);
-    total += code < 0x0250 ? 0.62 : (code >= 0x1100 && (code <= 0x115f || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6) || code >= 0x20000)) ? 1.05 : 0.75;
+    total += zeroWidth(code) ? 0 : code < 0x0250 ? 0.62 : isWide(code) ? 1.05 : 0.75;
   }
   return total;
 }
@@ -269,15 +302,20 @@ function exitNameBox(name, side, x, y, at, gap) {
   return { left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 };
 }
 
-// A label's box, in units, on the safe side, set round (x, y) as print.css
-// sets every label of the plan (text-anchor middle, dominant-baseline
-// central): its characters at exitNameBox's widths, `spread` more each for
-// letter spacing (a corridor's name, in capitals, 0.08em apart and wider:
-// 0.2), half a size over and under the middle and 0.1 more for a fallback
-// face, and turned a quarter for a name that runs down.
-function labelBox(value, x, y, size, spread, down) {
-  const half = ((ems(value) + String(value).length * (spread || 0)) * size) / 2;
-  const tall = size * 0.6;
+// A label's box, in units, set round (x, y) as print.css sets every label
+// of the plan (text-anchor middle, dominant-baseline central): textEms wide
+// times `scale` (SPACED for a corridor's name), the widths fit() sized it by,
+// so a label fit() made to fit its room fits its window too (the sample's
+// Bathrooms on Room 202's and Room 302's cards were left out at 0.62 a
+// character, SV2-72c2); half a size over and under the middle; turned a
+// quarter for a name that runs down. A door name drawn beside its dash
+// (`side` 'w' or 'e') runs away from (x, y).
+function labelBox(value, x, y, size, scale, down, side) {
+  const wide = textEms(value) * (scale || 1) * size;
+  const half = wide / 2;
+  const tall = size * 0.5;
+  if (side === 'w') return { left: x - wide, right: x, top: y - tall, bottom: y + tall };
+  if (side === 'e') return { left: x, right: x + wide, top: y - tall, bottom: y + tall };
   return down ? { left: x - tall, right: x + tall, top: y - half, bottom: y + half } : { left: x - half, right: x + half, top: y - tall, bottom: y + tall };
 }
 
@@ -401,7 +439,7 @@ export function planSvg(project, floor, options) {
     const cy = y + (label === '' ? U * 0.5 : U * 0.3);
     out.push('<path class="plan__chevron" d="M' + n(x + U * 0.3) + ' ' + n(cy + U * 0.1) + 'L' + n(x + U * 0.5) + ' ' + n(cy - U * 0.1) + 'L' + n(x + U * 0.7) + ' ' + n(cy + U * 0.1) + '"/>');
     if (label !== '') {
-      const size = fit(label.length, U - 2, 8);
+      const size = fit(textEms(label), U - 2, 8);
       put(text(x + U / 2, y + U * 0.72, size, 'plan__letter', label), labelBox(label, x + U / 2, y + U * 0.72, size));
     }
   }
@@ -431,12 +469,12 @@ export function planSvg(project, floor, options) {
     const room = shape.anchor.w * U - 3;
     const mainTeacher = isRoom && space.teacherIds.length > 0 ? project.teachers.find((teacher) => teacher.id === space.teacherIds[0]) : null;
     const under = mainTeacher ? surname(mainTeacher.name) : '';
-    const underSize = fit(under.length, room, NAME_MAX);
+    const underSize = fit(textEms(under), room, NAME_MAX);
     const twoLines = under !== '' && shape.anchor.h >= 2 && underSize >= NAME_MIN && typeof words === 'string' && words.trim() !== '';
     if (typeof words === 'string' && words.trim() !== '') {
       // a number is as large as its room lets it be: at most 45% of the room's height (30% over a surname)
       const tall = shape.anchor.h * U * (twoLines ? 0.3 : 0.45);
-      const size = Math.max(NUMBER_MIN, fit(words.length, room, Math.min(isRoom ? NUMBER_MAX : LABEL_MAX, tall)));
+      const size = Math.max(NUMBER_MIN, fit(textEms(words), room, Math.min(isRoom ? NUMBER_MAX : LABEL_MAX, tall)));
       const y = cy - (twoLines ? underSize * 0.6 : 0);
       put(text(cx, y, size, isRoom ? 'plan__number' : 'plan__label', words, ' fill="' + ink + '"'), labelBox(words, cx, y, size));
       if (twoLines) {
@@ -466,11 +504,11 @@ export function planSvg(project, floor, options) {
     const cx = ((ax + bx + 1) / 2) * U;
     const cy = ((ay + by + 1) / 2) * U;
     const run = (across ? bx - ax + 1 : by - ay + 1) * U - 4;
-    const size = Math.max(NAME_MIN, fit(named.name.length * 1.15, run, NAME_MAX));
+    const size = Math.max(NAME_MIN, fit(textEms(named.name.toUpperCase()) * SPACED, run, NAME_MAX));
     // with a route the names go over it, on a halo of paper (SV2-72c: the
     // way out along MAIN CORRIDOR left "RIDOR" of it on Room 303's card)
     const markup = text(cx, cy, size, 'plan__corridor-name', named.name, (across ? '' : ' transform="rotate(-90 ' + n(cx) + ' ' + n(cy) + ')"') + (routed ? ' stroke="' + PLAN_PAPER + '" stroke-width="2.4" paint-order="stroke"' : ''));
-    const box = labelBox(named.name.toUpperCase(), cx, cy, size, 0.2, !across);
+    const box = labelBox(named.name.toUpperCase(), cx, cy, size, SPACED, !across);
     if (routed) namesOver.push(crop ? { markup, box } : markup);
     else put(markup, box);
   }
@@ -499,10 +537,11 @@ export function planSvg(project, floor, options) {
       const markup = across
         ? text((x + 0.5) * U, at + (side === 'n' ? -gap - 3 : gap + 4), 7.5, 'plan__exit-name', exit.doorName)
         : text(at + (side === 'w' ? -gap : gap), (y + 0.5) * U, 7.5, 'plan__exit-name plan__exit-name--' + side, exit.doorName);
-      const box = exitNameBox(exit.doorName, side, x, y, at, gap);
-      // the route's exit's name is always whole: the window grows to hold it
-      if (crop && routeExit === exit.cell) nameBox = box;
-      put(markup, box);
+      // the route's exit's name is always whole: the window grows to hold it, on the safe side
+      if (crop && routeExit === exit.cell) nameBox = exitNameBox(exit.doorName, side, x, y, at, gap);
+      put(markup, across
+        ? labelBox(exit.doorName, (x + 0.5) * U, at + (side === 'n' ? -gap - 3 : gap + 4), 7.5)
+        : labelBox(exit.doorName, at + (side === 'w' ? -gap : gap), (y + 0.5) * U, 7.5, 1, false, side));
     }
   }
 
