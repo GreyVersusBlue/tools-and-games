@@ -16,9 +16,12 @@
 //                         pipeline holding a candidate, and the main lane's
 //                         next run would work the schedule out again rather
 //                         than hand back the answer it had. Left out, a
-//                         pipeline of this call's own. (Today a pipeline has
-//                         a route cache of its own; one shared with the main
-//                         lane's is SV2-64's to add.)
+//                         pipeline of this call's own, with its own route
+//                         cache. The worker and the engine client's main-
+//                         thread path each keep one for suggestions made by
+//                         createPipeline({ cache: main.cache }), so it
+//                         shares the main lane's route cache and reuses its
+//                         distance fields without touching its answer.
 //     versions            { geometry, building, schedule }, the store's
 //                         counters for `project`. Only the geometry and
 //                         building counters are used, so the route cache and
