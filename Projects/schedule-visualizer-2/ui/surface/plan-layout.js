@@ -75,14 +75,22 @@ export const FIT_MARGIN = 20;
 export const STAGE_LEAST = 120;
 export const ZOOM_ROOM = 70;
 
-// `most` is the least a section asks for in place of STAGE_LEAST (Safety's
-// 160 on a phone on its side, SV2-72c W5); the floors' box still caps it.
+// `most` is a least a section asks for in place of STAGE_LEAST (Safety's
+// 160, SV2-72c W5). It is capped by the floors' box at Fit across the width
+// standing above the zoom buttons (the box, its top margin, ZOOM_GAP and
+// the zoom box's need), not by the box alone: a stage only as tall as the
+// box puts the floors beside the buttons at the least zoom (Safety on a
+// phone on its side was 137 px, the sample's floors 96 px tall at 25 %).
 export function stageLeast(layout, width, zoomRoom, most) {
-  const top = most > 0 ? most : STAGE_LEAST;
+  const own = most > 0;
+  const top = own ? most : STAGE_LEAST;
   if (!layout || !(width > 0)) return top;
-  const floor = Math.min(top, zoomRoom > 0 ? Math.ceil(zoomRoom) : ZOOM_ROOM);
+  const need = zoomRoom > 0 ? Math.ceil(zoomRoom) : ZOOM_ROOM;
+  const floor = Math.min(top, need);
   const zoom = clampZoom(Math.max(1, width - FIT_MARGIN * 2) / (layout.width * CELL));
-  return Math.max(floor, Math.min(top, Math.ceil(layout.height * CELL * zoom + FIT_MARGIN * 2)));
+  const box = layout.height * CELL * zoom;
+  const enough = own ? box + FIT_MARGIN + ZOOM_GAP + need : box + FIT_MARGIN * 2;
+  return Math.max(floor, Math.min(top, Math.ceil(enough)));
 }
 
 export function bestLayout(floors, width, height) {

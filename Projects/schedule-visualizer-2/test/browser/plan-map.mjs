@@ -535,16 +535,23 @@ test('SV2-72c item 9 (the SV2-57 review): a building one row high gets what the 
     });
     assert.ok(box < mouse.need, 'the floors\' box at Fit is not under what the zoom needs: the case tests nothing (' + box + ')');
     assert.ok(mouse.stage >= mouse.need - 0.5, 'under a mouse the stage is under what the zoom needs: ' + JSON.stringify(mouse));
-    // the pointer turns to a finger: the buttons grow to 44 px, and the stage with them
-    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, hasTouch: true, isMobile: false });
+    // the pointer turns to a finger: the buttons grow to 44 px, and the stage
+    // with them. Through the protocol, on a session kept open for the case
+    // (setViewport with hasTouch reloads the page; a session closed takes
+    // its touch emulation with it, SV2-72b)
+    const cdp = await page.createCDPSession();
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    if (!(await page.evaluate(() => matchMedia('(pointer: coarse)').matches))) await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }] });
     await page.waitForFunction(() => matchMedia('(pointer: coarse)').matches, { timeout: 5000 });
     await measuredAgain(page, 'lab-low', 'the pointer turned to a finger');
     const finger = await zoomNeed(page, 'lab-low');
     assert.equal(finger.need, 70, 'the zoom buttons under a finger are not 70 px with their margins: ' + JSON.stringify(finger));
     assert.ok(finger.stage >= finger.need - 0.5, 'the pointer turned to a finger and the stage was not measured again: ' + JSON.stringify(finger));
     // back to a mouse, and a root font twice the size: the buttons' line grows past 36 px
-    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, hasTouch: false, isMobile: false });
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await cdp.send('Emulation.setEmulatedMedia', { features: [] });
     await page.waitForFunction(() => !matchMedia('(pointer: coarse)').matches, { timeout: 5000 });
+    await cdp.detach();
     await page.evaluate(() => {
       document.documentElement.style.fontSize = '32px';
     });
