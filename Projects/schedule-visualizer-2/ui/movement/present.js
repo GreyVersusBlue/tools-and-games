@@ -78,8 +78,6 @@ export const CONTROLS_FADE_MS = 3000;
 export const LINE_FADE_MS = 2500;
 // The hotspot summary's length.
 export const HOTSPOTS_SHOWN = 5;
-// A focus this soon after a pointer went down is the pointer's, not the keyboard's.
-export const POINTER_FOCUS_MS = 800;
 // How long the map is given to be back at its size before it is put back where it was.
 export const RESTORE_WAIT_MS = 1000;
 
@@ -172,7 +170,7 @@ export function presentMode({ ctx, plan, env, bar, root }) {
   const button = h('button', { type: 'button', class: 'mov-link mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
 
   // ---- the panel: the groups on the map, the load, the busiest places
-  const panel = h('section', { class: 'mov-pres__panel', tabindex: '-1', 'aria-label': 'Presentation of the movement view: the key', data: { part: 'present-panel' } });
+  const panel = h('section', { class: 'mov-pres__panel', tabindex: '0', 'aria-label': 'Presentation of the movement view: the key', data: { part: 'present-panel' } });
   const groupsTitle = h('h2', { class: 'mov-pres__title' }, 'On the map');
   const groupsList = h('ul', { class: 'mov-pres__list', data: { present: 'groups' } });
   const groupsNote = h('p', { class: 'mov-pres__note', hidden: true });
@@ -290,8 +288,9 @@ export function presentMode({ ctx, plan, env, bar, root }) {
 
   // ---- the touch controls, which fade. The keyboard's focus in them holds
   // them on screen until it leaves; a finger's (a tapped button takes the
-  // focus) does not, or they would never fade for a touch user.
-  let pointerAt = -Infinity;
+  // focus) does not, or they would never fade for a touch user. Which one
+  // it was is the last of a key or a pointer pressed.
+  let lastInput = 'key';
   let held = false;
   function showControls() {
     touch.dataset.shown = 'true';
@@ -304,11 +303,11 @@ export function presentMode({ ctx, plan, env, bar, root }) {
   function onPointer(event) {
     if (!presenting) return;
     if (event.type === 'pointermove' && event.pointerType !== 'mouse') return;
-    pointerAt = performance.now();
+    if (event.type === 'pointerdown') lastInput = 'pointer';
     showControls();
   }
   touch.addEventListener('focusin', () => {
-    if (!presenting || performance.now() - pointerAt < POINTER_FOCUS_MS) return;
+    if (!presenting || lastInput !== 'key') return;
     held = true;
     touch.dataset.shown = 'true';
   });
@@ -374,6 +373,7 @@ export function presentMode({ ctx, plan, env, bar, root }) {
   // ---- the keys while presenting: on the page, before the shell's and the map's
   function onKey(event) {
     if (!presenting) return;
+    lastInput = 'key';
     if (event.key === 'Tab') return;
     event.stopPropagation();
     if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -527,6 +527,17 @@ export function presentMode({ ctx, plan, env, bar, root }) {
     // the browser's own way out is over by the time its event comes; ours is now
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    // the window comes back when full screen is over: the map is put back after the section measures it there
+    if (fullscreenElement() === root) {
+      const over = () => {
+        if (fullscreenElement() === root) return;
+        document.removeEventListener('fullscreenchange', over);
+        document.removeEventListener('webkitfullscreenchange', over);
+        requestAnimationFrame(tryPut);
+      };
+      document.addEventListener('fullscreenchange', over);
+      document.addEventListener('webkitfullscreenchange', over);
+    }
     delete root.dataset.present;
     delete root.dataset.presentRefused;
     plan.setLabelScale(1);
@@ -563,6 +574,14 @@ export function presentMode({ ctx, plan, env, bar, root }) {
       restoreTimer = null;
       putView();
     }, RESTORE_WAIT_MS, 'restore');
+    // full screen ends after the attribute goes, and the section may already
+    // be at its size by then, so no resize follows: each frame looks again
+    // until the map is put back (or the timer above does it)
+    const look = () => {
+      tryPut();
+      if (pendingRestore && !presenting) requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
     button.focus();
   }
 
@@ -573,6 +592,9 @@ export function presentMode({ ctx, plan, env, bar, root }) {
     pendingRestore = null;
     if (restoreTimer !== null) timers.clear(restoreTimer);
     restoreTimer = null;
+    // the scroll again, now the section is its own height (set while it was
+    // still the screen's, it was cut to 0), before Fit, which follows it
+    root.scrollTop = was.scroll;
     if (was.fitted) {
       plan.fit(true);
     } else {
@@ -589,8 +611,12 @@ export function presentMode({ ctx, plan, env, bar, root }) {
   }
 
   // the stage back at its size: the map goes back where it was
-  const stageWatch = new ResizeObserver(() => {
+  // once full screen is over and the plan map has measured its stage there
+  function tryPut() {
     if (pendingRestore && fullscreenElement() !== root && plan.view.width === plan.stage.clientWidth && plan.view.height === plan.stage.clientHeight) putView();
+  }
+  const stageWatch = new ResizeObserver(() => {
+    tryPut();
     if (presenting) draw(false);
   });
   stageWatch.observe(plan.stage);

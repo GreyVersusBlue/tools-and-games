@@ -91,7 +91,8 @@ function read(page) {
       rail: document.querySelector('.rail') ? document.querySelector('.rail').inert || Boolean(document.querySelector('.rail').closest('[inert]')) : null,
       topbar: document.querySelector('.topbar') ? Boolean(document.querySelector('.topbar').closest('[inert]')) : null,
       inspector: document.getElementById('inspector') ? Boolean(document.getElementById('inspector').closest('[inert]')) : null,
-      inertCount: document.querySelectorAll('[inert]').length,
+      // what the mode makes inert is outside the section; the legend card inside it docks by its own rule
+      inertCount: Array.from(document.querySelectorAll('[inert]')).filter((el) => !root.contains(el)).length,
     };
   });
 }
@@ -152,7 +153,14 @@ async function outOfMode(page, restoredBefore) {
     return !root.present.presenting && !root.dataset.present && document.fullscreenElement === null
       && Number(root.dataset.presentRestored || 0) > count
       && movement.view.width === movement.plan.stage.clientWidth && movement.view.height === movement.plan.stage.clientHeight;
-  }, { timeout: 10000 }, restoredBefore);
+  }, { timeout: 10000 }, restoredBefore).catch(async (error) => {
+    const found = await page.evaluate(() => {
+      const root = document.querySelector('.mov');
+      const movement = root.movement;
+      return { presenting: root.present.presenting, present: root.dataset.present || null, full: document.fullscreenElement !== null, restored: root.dataset.presentRestored || '0', view: [movement.view.width, movement.view.height], stage: [movement.plan.stage.clientWidth, movement.plan.stage.clientHeight], timers: (globalThis.__presentTimers || []).map((each) => each.what) };
+    });
+    throw new Error('out of the mode not reached: ' + JSON.stringify(found) + ' (' + error.message + ')');
+  });
 }
 const place = (view) => ({ zoom: view.zoom, x: view.x, y: view.y });
 const restoredCount = (page) => page.evaluate(() => Number(document.querySelector('.mov').dataset.presentRestored || 0));
@@ -567,8 +575,10 @@ for (const size of [{ width: 390, height: 844, upright: true }, { width: 844, he
       await outOfMode(page, count);
       now = await read(page);
       assert.equal(now.transition, before.transition, 'the transition');
+      assert.equal(before.fitted, true, 'the phone opened off Fit: the case tests the wrong thing');
+      assert.equal(now.fitted, true, 'the map is not at Fit again');
+      assert.equal(now.fit, before.fit, 'the stage\'s fit');
       assert.deepEqual(now.view, before.view, 'the zoom and place');
-      assert.equal(now.fitted, before.fitted);
       assert.equal(now.scroll, before.scroll);
       assert.equal(now.focus, 'present');
       assert.equal(now.labelScale, 1);
