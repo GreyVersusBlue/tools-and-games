@@ -2022,6 +2022,16 @@ kbd {
   bottom: calc(var(--toast-clear, 0px) + var(--s-3));
 }
 
+/* From 1200 px the scenario lab's panel is a column on the left of its map
+   (ui/scenarios/scenarios.css): a message starts right of it, never over the
+   forms. The lab measures how far the panel reaches in from the surface's
+   left edge (--toast-left, on the surface; SV2-72d). */
+@media (min-width: 1200px) {
+  .surface__layout[data-section="scenarios"][data-plan-map] ~ .toasts {
+    margin-left: calc(var(--toast-left, 0px) + var(--s-4));
+  }
+}
+
 /* On a phone the movement view's inspector is a sheet over the lower 55 % of
    the window: the first line and the top of the map stay on screen above it
    (DESIGN 5.3). "Show its N cells" in the sheet shuts it and moves the map
