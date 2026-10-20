@@ -6,11 +6,18 @@
 // restore (a recovery point first, one undo step), rename, export as a
 // project file, delete asked first, a traced image kept while a snapshot
 // names it and swept with the snapshot, the limit refused truthfully with
-// nothing replaced, the three clears (each saying what it removes, a
-// snapshot first, on screen at once, undone in one step), a clear and an
-// import going on without a snapshot only after saying so, an import taking
-// one, a read-only second tab. Then at 390 by 844 with touch: take, restore,
-// rename, clear the schedule and delete by finger, the card inside the screen. Then axe on the Project
+// nothing replaced, the three clears (each saying beside its button what it
+// removes and keeps, a snapshot and a recovery point first, on screen at once
+// with nothing asked, undone in one step), a clear and an import going on
+// without a snapshot only after asking, an import taking one, a read-only
+// second tab. SV2-28c: a clashing id taken again under a new one, a restore
+// with no recovery point said truthfully, a snapshot taken while a save was
+// under way still has its images stored, the sweep on delete sparing what
+// db.js protects, a name with a right-to-left override isolated in every
+// sentence, a double Enter or a double press doing one thing, an odd stored
+// id found again. Then at 390 by 844 with touch: take, restore,
+// rename, clear the schedule (asking nothing) and delete by finger, the card
+// inside the screen. Then axe on the Project
 // section with snapshots listed, light and dark.
 //
 // Every wait is on a state the page sets: #snapshots[data-snapshots] and
@@ -134,11 +141,45 @@ async function answer(label) {
 }
 
 // Take a snapshot by the keyboard: the name field, the name, Enter.
+// The result line is hidden first, so the wait is for this take's answer,
+// whichever it is, and a take that went wrong fails on the count with its
+// sentence, never on a wait.
 async function takeByKeyboard(name, count) {
+  await page.$eval('#snapshots [data-line="result"]', (el) => {
+    el.hidden = true;
+  });
   await page.focus('#snapshots [data-field="snapshot-name"]');
   await page.keyboard.type(name);
   await page.keyboard.press('Enter');
-  await listed(count);
+  await shows(() => document.querySelector('#snapshots [data-line="result"]').hidden === false);
+  await counted(count, 'taken by the keyboard: ' + (await result('snapshots')).join(' / '));
+}
+
+// Run fn(store) on the raw `sv2` database in one readwrite transaction over
+// `stores`; resolves when it commits.
+function rawWrite(stores, fn, arg) {
+  return page.evaluate(({ names, source, value }) => new Promise((resolve, reject) => {
+    const open = indexedDB.open('sv2');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction(names, 'readwrite');
+      // eslint-disable-next-line no-new-func
+      new Function('tx', 'value', source)(tx, value);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onabort = () => reject(tx.error);
+    };
+  }), { names: stores, source: '(' + fn.toString() + ')(tx, value)', value: arg === undefined ? null : arg });
+}
+
+// The card read again from the database (it draws on a visit).
+async function redraw(n) {
+  await page.evaluate(() => globalThis.sv2.navigate('#building'));
+  await page.evaluate(() => globalThis.sv2.navigate('#project'));
+  await listed(n);
 }
 
 const rowButton = (index, action) => '#snapshots .snap__item:nth-child(' + (index + 1) + ') [data-action="' + action + '"]';
@@ -150,7 +191,7 @@ const waitSaved = () => page.waitForFunction(() => document.getElementById('save
 test('the Snapshots card stands after Project file, says there are none yet and the limit, and has its name field', async () => {
   await listed(0);
   const order = await page.$$eval('.page > section.card', (all) => all.map((el) => el.id));
-  assert.deepEqual(order, ['saved', 'project-file', 'snapshots', 'recovery', 'settings', 'clear', 'sample-school', 'about']);
+  assert.deepEqual(order, ['saved', 'project-file', 'snapshots', 'recovery', 'transfer', 'settings', 'clear', 'sample-school', 'about']);
   assert.equal(await text('#snapshots [data-line="snapshots"]'), 'There are no snapshots yet. Take one before a large change; the tool also takes one by itself before it clears the building, the schedule or the whole project, and before an import replaces it. This device keeps up to ' + SNAPSHOT_LIMIT + '.');
   assert.equal(await page.$eval('#snapshots .snap__list', (el) => el.hidden), true);
   assert.equal(await page.$eval('#snapshots [data-field="snapshot-name"]', (el) => el.labels[0].textContent), 'Name');
@@ -271,13 +312,6 @@ test('delete asks first with buttons that name it; Keep it changes nothing; Dele
 });
 
 test('a traced image stays while a snapshot names it, and goes in the same step as the last snapshot that names it', async () => {
-  const withImage = (imageId) => page.evaluate((id) => {
-    const project = globalThis.sv2.store.project;
-    const floors = project.building.floors.map((floor, index) => (index === 0
-      ? { ...floor, image: id ? { imageId: id, opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 2, height: 2, missing: false } : null }
-      : floor));
-    globalThis.sv2.store.apply(globalThis.sv2Actions.replaceProject, { project: { ...project, building: { ...project.building, floors } }, label: 'Test: image ' + id });
-  }, imageId);
   await page.evaluate(() => globalThis.sv2.storage.putImage('isnapshot1', { blob: new Blob(['png bytes']), type: 'image/png', width: 2, height: 2 }));
   await withImage('isnapshot1');
   await takeByKeyboard('With the image', 2);
@@ -289,6 +323,9 @@ test('a traced image stays while a snapshot names it, and goes in the same step 
   await page.click(rowButton(0, 'restore'));
   await shows(() => globalThis.sv2.store.project.building.floors[0].image?.imageId === 'isnapshot1');
   await listed(2);
+  // restore stores the snapshot's images again through the session, which
+  // keeps them from every sweep until a save names them (db.js `fresh`)
+  await waitSaved();
   await page.click('#undo');
   await shows(() => globalThis.sv2.store.project.building.floors[0].image === null);
   await waitSaved();
@@ -299,6 +336,226 @@ test('a traced image stays while a snapshot names it, and goes in the same step 
   await answer('Delete this snapshot');
   await listed(1);
   assert.equal((await idb('images')).includes('isnapshot1'), false, 'nothing names it now: swept with the snapshot');
+});
+
+// ---------------------------------------------------------------- SV2-28c
+
+test('an id already on this device is not a snapshot lost: the take is refused by the database and taken again under a new id', async () => {
+  await dismissToast();
+  await rawWrite(['snapshots'], (tx) => {
+    const store = tx.objectStore('snapshots');
+    const got = store.getAll();
+    got.onsuccess = () => store.add({ ...got.result[0], id: 'nclash0001', name: 'Seeded', takenAt: '2026-08-01T09:00:00.000Z' });
+  });
+  await redraw(2);
+  // the page's next snapshot id is the one already stored
+  await page.evaluate(() => {
+    const ctx = globalThis.sv2.ctx;
+    const real = ctx.ids;
+    let first = true;
+    globalThis.sv2test.realIds = real;
+    ctx.ids = (prefix) => {
+      if (prefix === 'n' && first) {
+        first = false;
+        return 'nclash0001';
+      }
+      return real(prefix);
+    };
+  });
+  try {
+    await page.focus('#snapshots [data-field="snapshot-name"]');
+    await page.keyboard.type('After a clash');
+    await page.keyboard.press('Enter');
+    await shows(() => /After a clash|not kept/.test(document.querySelector('#snapshots [data-line="result"]').textContent));
+    await counted(3, 'the snapshot is stored, under a new id');
+    const stored = await idb('snapshots');
+    const taken = stored.find((record) => record.name === 'After a clash');
+    assert.ok(taken && taken.id !== 'nclash0001', 'the retry stored it under a new id');
+    assert.equal(stored.find((record) => record.id === 'nclash0001').name, 'Seeded', 'the record already there is not overwritten');
+    assert.deepEqual(await result('snapshots'), ['done', 'Took the snapshot “After a clash”.', 'status']);
+  } finally {
+    await page.evaluate(() => {
+      globalThis.sv2.ctx.ids = globalThis.sv2test.realIds;
+    });
+  }
+  await rawWrite(['snapshots'], (tx) => {
+    const store = tx.objectStore('snapshots');
+    const got = store.getAll();
+    got.onsuccess = () => {
+      for (const record of got.result) if (record.name === 'After a clash' || record.id === 'nclash0001') store.delete(record.id);
+    };
+  });
+  await redraw(1);
+});
+
+const BIDI = 'Bidi ‮live';
+
+test('a name with a right-to-left override is isolated in every sentence, and a double Enter takes one snapshot', async () => {
+  await dismissToast();
+  await page.focus('#snapshots [data-field="snapshot-name"]');
+  await page.keyboard.type(BIDI);
+  // two Enters in the same moment: the second submit lands while the first take is under way
+  await page.$eval('#snapshots form[data-form="take-snapshot"]', (form) => {
+    form.requestSubmit();
+    form.requestSubmit();
+  });
+  await shows(() => /Bidi|not/.test(document.querySelector('#snapshots [data-line="result"]').textContent));
+  assert.equal((await result('snapshots'))[0], 'done', (await result('snapshots'))[1]);
+  await counted(2, 'a double Enter takes one snapshot');
+  // the name is in its own <bdi>, the words after it outside
+  const isolated = (selector) => page.$eval(selector, (el) => {
+    const bdi = el.querySelector('bdi');
+    let rest = '';
+    for (let node = bdi ? bdi.nextSibling : null; node; node = node.nextSibling) rest += node.textContent;
+    return bdi ? [bdi.textContent, rest] : null;
+  });
+  assert.deepEqual(await isolated('#snapshots [data-line="result"] p'), [BIDI, '”.'], 'Took the snapshot …');
+
+  await page.click(rowButton(0, 'rename'));
+  await shows(() => document.activeElement && document.activeElement.dataset.field === 'snapshot-rename');
+  await page.keyboard.press('End');
+  await page.keyboard.type(' 2');
+  await page.keyboard.press('Enter');
+  await shows((name) => document.querySelector('#snapshots .snap__name')?.textContent === name, BIDI + ' 2');
+  assert.deepEqual(await page.$$eval('#snapshots [data-line="result"] p bdi', (all) => all.map((el) => el.textContent)), [BIDI, BIDI + ' 2'], 'Renamed the snapshot … to …');
+
+  await page.click(rowButton(0, 'delete'));
+  await page.waitForSelector('dialog.dialog[open]');
+  assert.deepEqual(await isolated('dialog.dialog[open] .dialog__title'), [BIDI + ' 2', '”?'], 'the delete question\'s title');
+  await answer('Delete this snapshot');
+  await listed(1);
+  assert.deepEqual(await isolated('#snapshots [data-line="result"] p'), [BIDI + ' 2', '”.'], 'Deleted the snapshot …');
+});
+
+test('a restore when the device keeps no recovery point says so truthfully, and that Undo still brings the project back', async () => {
+  await dismissToast();
+  await rename('Before the restore');
+  await page.evaluate(() => {
+    const storage = globalThis.sv2.storage;
+    globalThis.sv2test.realPoint = storage.takeRecoveryPoint;
+    // as the session answers when the recovery database is missing or full
+    storage.takeRecoveryPoint = () => Promise.resolve(null);
+  });
+  try {
+    await page.click(rowButton(0, 'restore'));
+    await shows((school) => globalThis.sv2.store.project.settings.schoolName === school, SCHOOL);
+    assert.deepEqual(await result('snapshots'), ['done', 'Restored the snapshot “Before moving 7th grade <i>again</i>”. No recovery point could be kept of what was here before, because this device is not keeping recovery points just now; Undo still puts it back while this tab stays open.', 'status']);
+    assert.equal(await page.$eval('.toast .toast__text bdi', (el) => el.textContent), 'Before moving 7th grade <i>again</i>', 'the toast\'s name is isolated too');
+  } finally {
+    await page.evaluate(() => {
+      globalThis.sv2.storage.takeRecoveryPoint = globalThis.sv2test.realPoint;
+    });
+  }
+  await dismissToast();
+  await page.click('#undo');
+  await shows(() => globalThis.sv2.store.project.settings.schoolName === 'Before the restore');
+  await rename(SCHOOL);
+  await listed(1);
+});
+
+const withImage = (imageId) => page.evaluate((id) => {
+  const project = globalThis.sv2.store.project;
+  const floors = project.building.floors.map((floor, index) => (index === 0
+    ? { ...floor, image: id ? { imageId: id, opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 2, height: 2, missing: false } : null }
+    : floor));
+  globalThis.sv2.store.apply(globalThis.sv2Actions.replaceProject, { project: { ...project, building: { ...project.building, floors } }, label: 'Test: image ' + id });
+}, imageId);
+
+test('a snapshot taken while a save of an older project is under way still has every image it names stored', async () => {
+  await dismissToast();
+  await page.evaluate(() => globalThis.sv2.storage.putImage('irace00001', { blob: new Blob(['race bytes']), type: 'image/png', width: 2, height: 2 }));
+  await withImage('irace00001');
+  await waitSaved();
+  await withImage(null);
+  await waitSaved();
+  assert.equal((await idb('images')).includes('irace00001'), false, 'nothing names it: swept by the save');
+  const id = await page.evaluate(async () => {
+    const { pageSnapshots } = await import(new URL('storage/snapshots.js', document.baseURI).href);
+    const project = globalThis.sv2.store.project;
+    // a save of the project without the image starts...
+    globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'schoolName', value: project.settings.schoolName + ' ' });
+    globalThis.sv2.storage.flush();
+    // ...and while it is under way the image comes back (an undo would do this), and a snapshot is taken
+    const floors = globalThis.sv2.store.project.building.floors.map((floor, index) => (index === 0
+      ? { ...floor, image: { imageId: 'irace00001', opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 2, height: 2, missing: false } }
+      : floor));
+    globalThis.sv2.store.apply(globalThis.sv2Actions.replaceProject, { project: { ...globalThis.sv2.store.project, building: { ...globalThis.sv2.store.project.building, floors } }, label: 'Test: image back' });
+    const taken = await pageSnapshots().take('Mid-save');
+    // and the project moves on without it before its own save
+    const now = globalThis.sv2.store.project;
+    globalThis.sv2.store.apply(globalThis.sv2Actions.replaceProject, { project: { ...now, building: { ...now.building, floors: now.building.floors.map((floor, index) => (index === 0 ? { ...floor, image: null } : floor)) } }, label: 'Test: image gone' });
+    return taken.id;
+  });
+  await waitSaved();
+  const stored = (await idb('snapshots')).find((record) => record.id === id);
+  assert.equal(stored.project.building.floors[0].image.imageId, 'irace00001', 'the snapshot names the image');
+  assert.ok((await idb('images')).includes('irace00001'), 'every image the snapshot names is stored');
+  await page.evaluate((snapshotId) => import(new URL('storage/snapshots.js', document.baseURI).href).then((module) => module.pageSnapshots().remove(snapshotId)), id);
+  await rename(SCHOOL);
+  await waitSaved();
+  await redraw(1);
+});
+
+test('a snapshot taken while the last change is being written waits for that write and is taken', async () => {
+  await dismissToast();
+  const answer = await page.evaluate(async () => {
+    const { pageSnapshots } = await import(new URL('storage/snapshots.js', document.baseURI).href);
+    globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'schoolName', value: 'Being written' });
+    // the write starts; nothing new waits behind it, so a flush now answers at once
+    globalThis.sv2.storage.flush();
+    try {
+      return { id: (await pageSnapshots().take('While writing')).id };
+    } catch (error) {
+      return { refused: error.message };
+    }
+  });
+  assert.deepEqual(Object.keys(answer), ['id'], 'taken, not refused: ' + answer.refused);
+  await page.evaluate((id) => import(new URL('storage/snapshots.js', document.baseURI).href).then((module) => module.pageSnapshots().remove(id)), answer.id);
+  await rename(SCHOOL);
+  await waitSaved();
+  await redraw(1);
+});
+
+test('deleting a snapshot spares an image stored this session that no save names yet, and one only a quarantined record names', async () => {
+  await dismissToast();
+  await page.evaluate(() => globalThis.sv2.storage.putImage('ifresh0001', { blob: new Blob(['fresh bytes']), type: 'image/png', width: 2, height: 2 }));
+  await rawWrite(['quarantine', 'images'], (tx) => {
+    tx.objectStore('quarantine').add({ at: '2026-10-20T12:00:00.000Z', raw: { savedAt: '2026-10-20T11:00:00.000Z', project: { building: { floors: [{ image: { imageId: 'iquaran001' } }] } } }, error: 'Test: set aside' });
+    tx.objectStore('images').put({ blob: new Blob(['aside bytes']), type: 'image/png', width: 2, height: 2 }, 'iquaran001');
+  });
+  await takeByKeyboard('To be deleted', 2);
+  await page.click(rowButton(0, 'delete'));
+  await page.waitForSelector('dialog.dialog[open]');
+  await answer('Delete this snapshot');
+  await listed(1);
+  const images = await idb('images');
+  assert.ok(images.includes('ifresh0001'), 'stored this session, named by no saved project yet: kept');
+  assert.ok(images.includes('iquaran001'), 'named by a record set aside in quarantine: kept');
+  await rawWrite(['quarantine', 'images'], (tx) => {
+    tx.objectStore('quarantine').clear();
+    tx.objectStore('images').delete('ifresh0001');
+    tx.objectStore('images').delete('iquaran001');
+  });
+});
+
+test('a stored id with quotes and brackets in it is found again: the focus goes into its rename field and back', async () => {
+  await dismissToast();
+  await rawWrite(['snapshots'], (tx) => {
+    const store = tx.objectStore('snapshots');
+    const got = store.getAll();
+    got.onsuccess = () => store.add({ ...got.result[0], id: 'n"] odd\\', name: 'Odd id', takenAt: '2099-01-01T00:00:00.000Z' });
+  });
+  await redraw(2);
+  assert.equal((await names())[0], 'Odd id');
+  await page.click(rowButton(0, 'rename'));
+  await page.waitForSelector('#snapshots [data-field="snapshot-rename"]');
+  await settled();
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.field), 'snapshot-rename', 'the focus is in the rename field of the row with the odd id');
+  await page.keyboard.press('Escape');
+  await settled();
+  assert.equal(await page.evaluate(() => document.activeElement.closest('.snap__item')?.dataset.snapshot + ' ' + document.activeElement.dataset.action), 'n"] odd\\ rename');
+  await rawWrite(['snapshots'], (tx) => tx.objectStore('snapshots').delete('n"] odd\\'));
+  await redraw(1);
 });
 
 test('at the limit a snapshot is refused in a sentence that names it and says what to do, and none is replaced', async () => {
@@ -336,12 +593,21 @@ test('at the limit a snapshot is refused in a sentence that names it and says wh
   });
 });
 
-test('clearing with no room for a snapshot says so before it asks, and goes on only when told', async () => {
+test('clearing with no room for a snapshot asks, says why, and goes on only when told', async () => {
   await page.evaluate(() => globalThis.sv2.navigate('#building'));
   await page.evaluate(() => globalThis.sv2.navigate('#project'));
   await listed(SNAPSHOT_LIMIT);
   assert.match(await text('#snapshots [data-line="snapshots"]'), /^There are 30 snapshots, .+ in all\. That is the most this device keeps: delete one to take another\.$/);
   await dismissToast();
+  // the project changes while the question is open: nothing is cleared, and it says why
+  await page.click('#clear [data-action="clear-schedule"]');
+  await page.waitForSelector('dialog.dialog[open]');
+  await rename(SCHOOL + ' ');
+  await answer('Clear the schedule');
+  await shows(() => document.querySelector('#clear [data-line="result"]').hidden === false);
+  assert.deepEqual(await result('clear'), ['refused', 'Nothing was cleared, because the project changed while the question was open. Press “Clear the schedule” again to clear it as it is now.', 'alert']);
+  assert.equal(await figure('groups'), '8');
+  await rename(SCHOOL);
   await page.click('#clear [data-action="clear-schedule"]');
   await page.waitForSelector('dialog.dialog[open]');
   assert.equal((await dialogTexts())[2], 'No snapshot can be taken first: this device already keeps 30 snapshots, the most it keeps, and none is replaced to make room. Undo still brings the schedule back while this tab stays open. To have a snapshot as well, keep this, delete one under Snapshots, and come back.');
@@ -349,6 +615,8 @@ test('clearing with no room for a snapshot says so before it asks, and goes on o
   await shows(() => document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '0');
   assert.equal((await idb('snapshots')).length, SNAPSHOT_LIMIT);
   assert.deepEqual(await result('clear'), ['done', 'Cleared the schedule. Undo brings it back.', 'status']);
+  const points = await idb('recovery');
+  assert.deepEqual([points[points.length - 1].reason, points[points.length - 1].project.groups.length], ['replace', 8], 'a recovery point of the schedule as it was');
   await page.click('#undo');
   await shows(() => document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '8');
 
@@ -376,33 +644,36 @@ test('clearing with no room for a snapshot says so before it asks, and goes on o
 
 // ---------------------------------------------------------------- clearing
 
-test('clear the building: it says what it removes and keeps, takes a snapshot first, shows at once, and one undo brings it back', async () => {
+// Press a clear and wait for either answer, so a question asked when none
+// should be fails on the assertion after, not on a wait.
+async function pressClear(id, figureName, wanted) {
+  await page.click('#clear [data-action="clear-' + id + '"]');
+  await shows((name, value) => document.querySelector('dialog.dialog[open]') !== null || document.querySelector('.figures__item[data-figure="' + name + '"] dd').textContent === value, figureName, wanted);
+  assert.equal(await page.$('dialog.dialog[open]'), null, 'nothing asked: a snapshot is taken first and Undo brings it back');
+}
+
+const newestPoint = async () => {
+  const points = await idb('recovery');
+  return points[points.length - 1];
+};
+
+test('clear the building: beside its button it says what it removes and keeps; pressed, it takes a snapshot and a recovery point and clears at once, asking nothing', async () => {
   await dismissToast();
   assert.equal(await text('#clear [data-says="building"]'), 'Removes everything drawn on all 3 floors: 13 rooms, 10 other spaces, 121 corridor cells, 4 stairs cells, 5 corridor names, 2 exits, 2 stairs connections and 1 area left out of the colour scale.');
-  await page.click('#clear [data-action="clear-building"]');
-  await page.waitForSelector('dialog.dialog[open]');
-  assert.equal(await text('dialog.dialog[open] .dialog__title'), 'Clear the building?');
-  assert.deepEqual(await dialogTexts(), [
-    'Removes everything drawn on all 3 floors: 13 rooms, 10 other spaces, 121 corridor cells, 4 stairs cells, 5 corridor names, 2 exits, 2 stairs connections and 1 area left out of the colour scale.',
-    'The floors stay, empty, with their names, sizes and any traced images. The schedule stays: a group in a room that is gone keeps the room\'s number, which reads "not in the building", and teachers keep their names but no longer have rooms.',
-    'A snapshot of the project as it is now, “Before clearing the building”, is taken first, so you can restore it from Snapshots at any time. Undo brings the building back too, while this tab stays open.',
-  ]);
-  assert.deepEqual(await dialogButtons(), ['Clear the building', 'Keep the building (focused)']);
-  await answer('Keep the building');
-  assert.deepEqual(await result('clear'), ['done', 'Nothing was cleared.', 'status']);
-  assert.equal(await figure('rooms'), '13');
-
-  await page.click('#clear [data-action="clear-building"]');
-  await page.waitForSelector('dialog.dialog[open]');
-  await answer('Clear the building');
-  await shows(() => document.querySelector('.figures__item[data-figure="rooms"] dd').textContent === '0');
+  assert.equal(await text('#clear [data-keeps="building"]'), 'The floors stay, empty, with their names, sizes and any traced images. The schedule stays: a group in a room that is gone keeps the room\'s number, which reads "not in the building", and teachers keep their names but no longer have rooms.');
+  assert.equal(await text('#clear [data-action="clear-building"]'), 'Clear the building');
+  await pressClear('building', 'rooms', '0');
   assert.deepEqual([await figure('floors'), await figure('exits'), await figure('groups')], ['3', '0', '8']);
   assert.equal(await text('#clear [data-says="building"]'), 'Nothing is drawn on any of the 3 floors, so there is nothing to clear.');
   await counted(2, 'a snapshot was taken before the building was cleared');
   assert.deepEqual(await names(), ['Before clearing the building', 'Before moving 7th grade <i>again</i>']);
   const auto = (await idb('snapshots')).find((record) => record.name === 'Before clearing the building');
   assert.equal(auto.project.building.floors[0].spaces.length > 0, true, 'the snapshot holds the building as it was');
-  assert.equal(await text('.toast .toast__text'), 'Cleared the building. The snapshot “Before clearing the building” has what was there.');
+  const point = await newestPoint();
+  assert.deepEqual([point.reason, point.summary.rooms], ['replace', 13], 'a recovery point of the building as it was');
+  assert.equal(await text('.toast .toast__text'), 'Cleared the building. The snapshot “⁨Before clearing the building⁩” has what was there.');
+  assert.equal(await text('.toast .toast__action'), 'Undo');
+  assert.deepEqual(await result('clear'), ['done', 'Cleared the building. The snapshot “⁨Before clearing the building⁩” has what was there. Undo brings it back.', 'status']);
   // on another screen at once too
   await page.evaluate(() => globalThis.sv2.navigate('#building'));
   await shows(() => document.querySelector('.surface__layout')?.dataset.section === 'building');
@@ -410,10 +681,11 @@ test('clear the building: it says what it removes and keeps, takes a snapshot fi
   await page.evaluate(() => globalThis.sv2.navigate('#project'));
   await listed(2);
 
-  // pressed again with nothing to remove, it asks nothing
+  // pressed again with nothing to remove, it does nothing and says so
   await page.click('#clear [data-action="clear-building"]');
   await shows(() => /nothing to clear/.test(document.querySelector('#clear [data-line="result"]').textContent));
   assert.equal(await page.$('dialog.dialog[open]'), null);
+  await counted(2, 'no snapshot of nothing');
 
   await dismissToast();
   await page.click('#undo');
@@ -421,37 +693,36 @@ test('clear the building: it says what it removes and keeps, takes a snapshot fi
   assert.equal(await text('.toast .toast__text'), 'Undid: Clear the building');
 });
 
-test('clear the schedule: the groups and teachers go at once with a snapshot first; the building stays', async () => {
+test('clear the schedule: a double press clears once with one snapshot; the groups and teachers go at once; the building stays', async () => {
   await dismissToast();
-  await page.click('#clear [data-action="clear-schedule"]');
-  await page.waitForSelector('dialog.dialog[open]');
-  assert.deepEqual(await dialogTexts(), [
-    'Removes 8 groups with their schedules and 12 teachers.',
-    'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, and the settings stay too.',
-    'A snapshot of the project as it is now, “Before clearing the schedule”, is taken first, so you can restore it from Snapshots at any time. Undo brings the schedule back too, while this tab stays open.',
-  ]);
-  await answer('Clear the schedule');
-  await shows(() => document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '0');
+  assert.equal(await text('#clear [data-keeps="schedule"]'), 'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, and the settings stay too.');
+  await page.$eval('#clear [data-action="clear-schedule"]', (button) => {
+    button.click();
+    button.click();
+  });
+  await shows(() => document.querySelector('dialog.dialog[open]') !== null || document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '0');
+  await settled();
+  const twice = [await page.$('dialog.dialog[open]') !== null, await page.$eval('#snapshots', (el) => Number(el.dataset.snapshots))];
+  assert.deepEqual(twice, [false, 3], 'a double press runs the clear once: one snapshot, and no second run asking to go on without one');
   assert.deepEqual([await figure('teachers'), await figure('rooms'), await figure('dayTypes')], ['0', '13', '2']);
-  await counted(3, 'a snapshot was taken before the schedule was cleared');
   assert.equal((await names())[0], 'Before clearing the schedule');
+  assert.equal((await newestPoint()).reason, 'replace');
   await page.click('#undo');
   await shows(() => document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '8');
+  assert.equal(await figure('teachers'), '12', 'one undo step: the clear ran once');
 });
 
 test('start a new project: a recovery point and a snapshot first, an empty project of its own at once, one undo back', async () => {
   await dismissToast();
   const id = await page.evaluate(() => globalThis.sv2.store.project.id);
+  assert.equal(await text('#clear [data-action="clear-new"]'), 'Start a new project');
   await page.click('#clear [data-action="clear-new"]');
-  await page.waitForSelector('dialog.dialog[open]');
-  assert.equal(await text('dialog.dialog[open] .dialog__title'), 'Start a new project in place of this one?');
-  assert.deepEqual(await dialogButtons(), ['Start a new project', 'Keep this project (focused)']);
-  await answer('Start a new project');
-  await shows(() => document.querySelector('.figures__item[data-figure="rooms"] dd').textContent === '0' && document.querySelector('.figures__item[data-figure="floors"] dd').textContent === '1');
+  await shows(() => document.querySelector('dialog.dialog[open]') !== null || (document.querySelector('.figures__item[data-figure="rooms"] dd').textContent === '0' && document.querySelector('.figures__item[data-figure="floors"] dd').textContent === '1'));
+  assert.equal(await page.$('dialog.dialog[open]'), null, 'nothing asked');
   assert.notEqual(await page.evaluate(() => globalThis.sv2.store.project.id), id);
   assert.equal(await page.$eval('#school-name', (el) => el.firstChild.textContent), 'Schedule Visualizer 2', 'no school name: the tool\'s own');
-  const recovery = await idb('recovery');
-  assert.deepEqual([recovery[recovery.length - 1].reason, recovery[recovery.length - 1].project.id], ['replace', id], 'the project replaced is the newest recovery point');
+  const recovery = await newestPoint();
+  assert.deepEqual([recovery.reason, recovery.project.id], ['replace', id], 'the project replaced is the newest recovery point');
   await counted(4, 'a snapshot was taken before the new project');
   assert.equal((await names())[0], 'Before starting a new project');
   // the earlier snapshots are of another project now, and say whose
@@ -581,11 +852,10 @@ test('on a phone with touch: the card fits the screen, and take, restore, rename
     await target.keyboard.type('Bus ride');
     await target.keyboard.press('Enter');
     await target.waitForFunction(() => document.querySelector('#snapshots .snap__name')?.textContent === 'Bus ride');
-    // clear the schedule by finger: asked, a snapshot first, at once
+    // clear the schedule by finger: a snapshot first, at once, nothing asked
     await target.tap('#clear [data-action="clear-schedule"]');
-    await target.waitForSelector('dialog.dialog[open]');
-    await target.tap('dialog.dialog[open] .btn--danger');
     await target.waitForFunction(() => document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '0');
+    assert.equal(await target.$('dialog.dialog[open]'), null, 'nothing asked');
     await listed(2, target);
     assert.deepEqual(await names(target), ['Before clearing the schedule', 'Bus ride']);
     await target.evaluate(() => globalThis.sv2.store.undo());

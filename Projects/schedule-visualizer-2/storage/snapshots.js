@@ -44,7 +44,7 @@ import { validate } from '../engine/validate.js';
 import { blankName, replaceProject } from '../engine/actions.js';
 import { writeProjectFile } from '../engine/project-file.js';
 import { exportFileName } from '../engine/exports.js';
-import { openDatabases, imageIdsOf, PROJECT_STORE, SNAPSHOT_STORE, IMAGE_STORE, CURRENT_KEY } from './db.js';
+import { openDatabases, imageIdsOf, sweepUnnamedImages, PROJECT_STORE, SNAPSHOT_STORE, IMAGE_STORE, QUARANTINE_STORE, CURRENT_KEY } from './db.js';
 import { pointSummary } from './recovery.js';
 
 // How many snapshots this device keeps. Why 30: the header.
@@ -63,10 +63,12 @@ export const AUTO_SNAPSHOT_NAMES = {
 
 export const NAME_NEEDED = 'A snapshot needs a name. Say what it comes before, such as “Before moving 7th grade”.';
 
-// The refusal at the limit: what the limit is, and what to do.
-export function fullSentence(limit) {
+// The refusal at the limit: what the limit is, how many there are (more than
+// the limit when another tab took one at the same moment), and what to do.
+export function fullSentence(limit, have) {
   const most = limit === undefined ? SNAPSHOT_LIMIT : limit;
-  return 'This device keeps at most ' + most + ' snapshots, and it has ' + most + '. Delete one you no longer need (export it first to keep it as a file), then take this one. No snapshot is ever replaced to make room.';
+  const there = Number.isFinite(have) ? have : most;
+  return 'This device keeps at most ' + most + ' snapshots, and it has ' + there + '. Delete one you no longer need (export it first to keep it as a file), then take this one. No snapshot is ever replaced to make room.';
 }
 
 export const READ_ONLY_SENTENCE = 'This tab is read-only while the project is open in another tab, so it cannot take, restore, rename or delete a snapshot. It can export one.';
@@ -173,12 +175,15 @@ export function snapshotFileName(project, takenAt, fallback) {
 // ------------------------------------------------------------ IndexedDB
 //
 // Each function works on the `sv2` database (an IDBDatabase) in one
-// transaction, and resolves once that transaction has committed.
+// transaction, and resolves once that transaction has committed. A request
+// that fails (an `add` whose id is already there: ConstraintError) aborts the
+// whole transaction, which then rejects with that error: nothing here calls
+// preventDefault on an error, because that would commit the rest as if the
+// failed request had worked.
 
 function finish(tx, value, refusal) {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve(value());
-    tx.onerror = (event) => event.preventDefault();
     tx.onabort = () => reject(refusal() || tx.error || new Error('The browser stopped the write.'));
   });
 }
@@ -194,7 +199,7 @@ export function addSnapshot(main, record, limit) {
   const counted = store.count();
   counted.onsuccess = () => {
     if (counted.result >= most) {
-      refusal = new SnapshotError(fullSentence(most), 'full');
+      refusal = new SnapshotError(fullSentence(most, counted.result), 'full');
       tx.abort();
       return;
     }
@@ -253,12 +258,13 @@ export function renameStored(main, id, name) {
 // Delete a snapshot and, in the same transaction, every traced image that
 // nothing names any more: not the saved project, not another snapshot, not
 // `keep` (the image ids of the project on screen, which may be ahead of its
-// last save).
+// last save), and not what db.js's sweep protects (a record set aside in
+// quarantine, an image stored this session that no saved project names yet).
 export function deleteStored(main, id, keep) {
   const named = new Set(keep || []);
   let refusal = null;
   let swept = [];
-  const tx = main.transaction([PROJECT_STORE, SNAPSHOT_STORE, IMAGE_STORE], 'readwrite');
+  const tx = main.transaction([PROJECT_STORE, SNAPSHOT_STORE, IMAGE_STORE, QUARANTINE_STORE], 'readwrite');
   const snapshots = tx.objectStore(SNAPSHOT_STORE);
   const there = snapshots.getKey(id);
   there.onsuccess = () => {
@@ -271,21 +277,9 @@ export function deleteStored(main, id, keep) {
     const current = tx.objectStore(PROJECT_STORE).get(CURRENT_KEY);
     current.onsuccess = () => {
       if (isObject(current.result)) for (const name of imageIdsOf(current.result.project)) named.add(name);
-      const cursor = snapshots.openCursor();
-      cursor.onsuccess = () => {
-        const at = cursor.result;
-        if (at) {
-          for (const name of imageIdsOf(at.value && at.value.project)) named.add(name);
-          at.continue();
-          return;
-        }
-        const images = tx.objectStore(IMAGE_STORE);
-        const keys = images.getAllKeys();
-        keys.onsuccess = () => {
-          swept = keys.result.filter((key) => !named.has(key));
-          for (const key of swept) images.delete(key);
-        };
-      };
+      sweepUnnamedImages(tx, named, (gone) => {
+        swept = gone;
+      });
     };
   };
   return finish(tx, () => ({ swept }), () => refusal);
@@ -326,10 +320,26 @@ export function startSnapshots(ctx, options) {
     await storage().ready;
     if (!storage().state.available) throw new SnapshotError('This browser is not keeping the project, so it cannot keep a snapshot either: ' + storage().state.error, 'unavailable');
     if (!opening) {
-      opening = (opts.open || openDatabases)({ clock: ctx.clock }).catch((error) => {
+      const mine = (opts.open || openDatabases)({ clock: ctx.clock }).then((dbs) => {
+        // db.js closes the connection when another tab upgrades the database,
+        // and the browser closes it when the database is deleted: either way
+        // the next call opens a new one instead of using the closed one
+        const forget = () => {
+          if (opening === mine) opening = null;
+        };
+        const own = dbs.main.onversionchange;
+        dbs.main.onversionchange = (event) => {
+          forget();
+          if (typeof own === 'function') own.call(dbs.main, event);
+          else dbs.main.close();
+        };
+        dbs.main.onclose = forget;
+        return dbs;
+      }, (error) => {
         opening = null;
         throw error;
       });
+      opening = mine;
     }
     return (await opening).main;
   }
@@ -355,20 +365,42 @@ export function startSnapshots(ctx, options) {
     return { count: known, limit: SNAPSHOT_LIMIT, full: known >= SNAPSHOT_LIMIT, error: null };
   }
 
+  // The saved copy brought up to what is on screen, so every image the
+  // snapshot names is in the images store. One flush is not enough: it may
+  // hand back a save already under way of an older project, and an image the
+  // project names again since (an undo after a save swept it) is put back
+  // only by a save of the project that names it (db.js restoreImages, from
+  // the images the session holds, which only the session can reach). So
+  // flush until nothing is pending. The caller builds the record in the same
+  // turn as the last check, so no change slips in between. flush() answers
+  // at once when nothing new is waiting even though a save is still being
+  // written, so a round that leaves it pending waits a moment before the
+  // next. A save that fails (or meets another tab's newer save) is not waited
+  // on: the snapshot is refused, and says why. Ten seconds bound a project
+  // that keeps changing.
+  async function savedFirst() {
+    const until = Date.now() + 10000;
+    while (storage().pending && Date.now() < until) {
+      await storage().flush();
+      const save = storage().state.save;
+      if (save === 'failed' || save === 'conflict') break;
+      if (storage().pending) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (storage().pending) throw new SnapshotError('The snapshot was not taken, because the project could not be saved first, so the traced images it names might not all be kept. Try again once the project is saved.', 'not-saved');
+  }
+
   // Take a snapshot of the project as it is now. Throws a SnapshotError with
   // the sentence to show.
   async function take(name) {
     editable();
     if (typeof name !== 'string' || blankName(name)) throw new SnapshotError(NAME_NEEDED, 'no-name');
     const db = await main();
-    // the saved copy and its images are brought up to what is on screen, so
-    // every image the snapshot names is in the images store
-    await storage().flush();
     let record = null;
     for (let tries = 0; tries < 2 && record === null; tries += 1) {
-      const fresh = snapshotRecord(ctx.store.project, { id: ctx.ids('n'), name, takenAt: ctx.clock().toISOString() });
+      await savedFirst();
+      const candidate = snapshotRecord(ctx.store.project, { id: ctx.ids('n'), name, takenAt: ctx.clock().toISOString() });
       try {
-        record = await addSnapshot(db, fresh, SNAPSHOT_LIMIT);
+        record = await addSnapshot(db, candidate, SNAPSHOT_LIMIT);
       } catch (error) {
         // an id already used on this device (another tab's): once more with a new one
         if (error && error.name === 'ConstraintError' && tries === 0) continue;
@@ -408,7 +440,8 @@ export function startSnapshots(ctx, options) {
   }
 
   // Put a snapshot's project in place of the one on screen: a recovery point
-  // of the present first, then one undo step. Resolves with { name, notes }.
+  // of the present first, then one undo step. Resolves with { name, notes,
+  // recoveryPoint } (recoveryPoint: whether the device kept one).
   async function restore(id) {
     editable();
     const opened = await open(id);
@@ -416,12 +449,14 @@ export function startSnapshots(ctx, options) {
       const value = await storage().getImage(imageId);
       if (value) await storage().putImage(imageId, value);
     }
-    await storage().takeRecoveryPoint('restore');
+    // null when the device could not keep it (no recovery database, no room):
+    // the restore goes on, Undo still brings the present back, and the card says so
+    const point = await storage().takeRecoveryPoint('restore');
     const before = ctx.store.project;
     ctx.store.apply(replaceProject, { project: opened.project, label: 'Restore the snapshot ' + quote(opened.record.name) });
     if (ctx.store.project === before) throw new SnapshotError('The snapshot was not restored. Nothing has changed.', 'refused');
     emit('restored');
-    return { name: opened.record.name, notes: opened.notes };
+    return { name: opened.record.name, notes: opened.notes, recoveryPoint: point !== null && point !== undefined };
   }
 
   async function rename(id, name) {

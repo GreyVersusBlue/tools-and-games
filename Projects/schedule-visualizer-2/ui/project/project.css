@@ -57,11 +57,19 @@
   max-width: 28rem;
 }
 
-#clear [data-says] {
+/* each clear: what it removes, what it keeps, then its button */
+.clear__row {
   margin-top: var(--s-4);
 }
 
-#clear [data-says] + .card__buttons {
+.clear__keeps {
+  margin-top: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.clear__row .card__buttons {
   margin-top: var(--s-2);
 }
 

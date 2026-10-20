@@ -142,6 +142,7 @@ export const GROUPS = {
     'browser/fix.mjs', // SV2-70
     'browser/m5-pass.mjs', // SV2-72f
     'browser/snapshots.mjs', // SV2-28
+    'browser/transfer.mjs', // SV2-29b
     'a11y/axe.mjs',
   ],
   a11y: [
