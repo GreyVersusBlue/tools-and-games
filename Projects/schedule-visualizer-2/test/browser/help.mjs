@@ -7,7 +7,8 @@
 // Close stay in view while the body scrolls, at 390 by 844 and at 844 by 390
 // with touch, and nothing is wider than the window. The parts' buttons move
 // to their part; the numbers follow the project's settings; Show Getting
-// started brings the card back; axe finds nothing in either theme.
+// started brings the card back; axe finds nothing in either theme, nor on
+// a phone, where the shortcuts' rows are laid out as a grid.
 //
 // Every wait is on a state the page sets: the dialog's open and data-styled,
 // the section's data-section, the card's hidden.
@@ -139,6 +140,10 @@ async function holdsItsEnds(page, what) {
       scroll: { top: scroller.scrollTop, height: scroller.scrollHeight, client: scroller.clientHeight, width: scroller.scrollWidth, clientWidth: scroller.clientWidth },
       window: { width: innerWidth, height: innerHeight },
       page: document.documentElement.scrollWidth,
+      table: (() => {
+        const wrap = dialog.querySelector('.help__table');
+        return { width: wrap.scrollWidth, clientWidth: wrap.clientWidth };
+      })(),
     };
   });
   const first = await measure();
@@ -150,6 +155,7 @@ async function holdsItsEnds(page, what) {
   assert.ok(first.scroll.client >= 120, what + ': the body has ' + first.scroll.client + ' px to read in');
   assert.ok(first.scroll.width <= first.scroll.clientWidth + 1, what + ': the body is wider than its box: ' + first.scroll.width + ' in ' + first.scroll.clientWidth);
   assert.ok(first.page <= first.window.width, what + ': the page is wider than the window');
+  assert.ok(first.table.width <= first.table.clientWidth + 1, what + ': the shortcuts scroll sideways: ' + first.table.width + ' in ' + first.table.clientWidth);
   await page.evaluate(() => {
     const scroller = document.querySelector('#help-dialog .help__scroll');
     scroller.scrollTop = scroller.scrollHeight;
@@ -252,9 +258,9 @@ test('Show Getting started brings the card back and puts the focus in it', async
   });
 });
 
-for (const theme of ['light', 'dark']) {
-  test('axe finds nothing in Help, in the ' + theme + ' theme', async () => {
-    const session = await openPlanner({ hash: '#safety', server, browser, theme, ...DESK });
+for (const [theme, size] of [['light', DESK], ['dark', DESK], ['light', UPRIGHT]]) {
+  test('axe finds nothing in Help, in the ' + theme + ' theme at ' + size.width + ' by ' + size.height, async () => {
+    const session = await openPlanner({ hash: '#safety', server, browser, theme, ...size });
     const { page } = session;
     try {
       await blurAll(page);
