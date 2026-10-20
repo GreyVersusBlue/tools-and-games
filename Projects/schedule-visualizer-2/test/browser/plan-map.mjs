@@ -104,7 +104,10 @@ async function stubShape(page) {
 // A map made through the module, in a slot of a test-only container put in
 // the section after what the section drew. `slot` sizes the slot; `foot` and
 // `head` are heights for a bar docked under the stage and a first line over it.
-async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot = 0, head = 0, low = false } = {}) {
+// `sticky` makes the foot sticky at the section's foot, as Movement's
+// playback bar is; `lift` puts in a building whose top rows are painted
+// right across and whose lower rows leave the zoom buttons' columns empty.
+async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot = 0, head = 0, low = false, sticky = false, lift = false } = {}) {
   // the modules first, in an evaluate of their own: an async evaluate that
   // also mounts the map came back "Promise was collected" from the protocol
   await page.evaluate(async () => {
@@ -129,10 +132,19 @@ async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot
       project.building.connections = [];
       project.building.zones = [];
     }
+    // 130 cells by 12: rows 0 to 3 a corridor across, rows 4 to 11 one from column 40 on
+    if (args.lift) {
+      const width = 130;
+      const height = 12;
+      const cells = Array.from({ length: width * height }, (_, cell) => (Math.floor(cell / width) < 4 || cell % width >= 40 ? '#' : '.')).join('');
+      project.building.floors = [{ ...project.building.floors[0], width, height, cells, spaces: [], exits: [], corridors: [], image: null }];
+      project.building.connections = [];
+      project.building.zones = [];
+    }
     const parts = {};
     if (args.foot > 0) {
       parts.foot = document.createElement('div');
-      parts.foot.style.cssText = 'flex: none; height: ' + args.foot + 'px; background: var(--card);';
+      parts.foot.style.cssText = 'flex: none; height: ' + args.foot + 'px; background: var(--card);' + (args.sticky ? ' position: sticky; bottom: 0; z-index: 2;' : '');
       parts.after = [parts.foot];
     }
     if (args.head > 0) {
@@ -150,7 +162,7 @@ async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot
     holder.append(place);
     map.setProject(project, null);
     globalThis.planMaps[args.name] = { map, place };
-  }, { name, slot, foot, head, low });
+  }, { name, slot, foot, head, low, sticky, lift });
   // styled by the module (data-styled), measured, drawn and docked
   await page.waitForFunction((which) => {
     const { map } = globalThis.planMaps[which];
@@ -577,6 +589,145 @@ test('SV2-72c item 9 (the SV2-57 review): a building one row high gets what the 
       document.documentElement.style.fontSize = '';
     });
     await unmount(page, 'lab-low');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// ---------------------------------------------------------------- SV2-72c2
+
+test('SV2-72c2 item 2: where Fit puts the floors beside the zoom buttons, Movement\'s legend is docked when its card would lie on a floor there, though a plain fit leaves its corner empty', async () => {
+  // a fourth floor, short and wide, stacked under the sample's three: a plain
+  // fit leaves the bottom right empty beside it, and the band beside the
+  // zoom buttons moves every floor right, under the card's corner
+  const session = await openPlanner({ width: 760, height: 560, hash: '#project', theme: 'light' });
+  const page = session.page;
+  try {
+    await page.evaluate(async () => {
+      const { sampleSchool } = await import('./data/sample-school.js');
+      const project = sampleSchool();
+      project.onboarding.dismissed = true;
+      const third = project.building.floors[2];
+      project.building.floors.push({ ...third, id: 'fsample004', name: 'Floor 4', level: 4, width: 80, height: 3, cells: '#'.repeat(240), spaces: [], exits: [], corridors: [], image: null });
+      globalThis.sv2.store.replace(project);
+    });
+    await go(page, '#movement');
+    await page.waitForFunction(() => document.querySelector('.mov') && document.querySelector('.mov').dataset.styled === 'true' && Number(document.querySelector('#movement-plan').dataset.drawn || 0) > 0, { timeout: 20000 });
+    await page.click('input[name="movement-arrange"][value="stacked"]');
+    await page.waitForFunction(() => document.querySelector('.mov').movement.world.how === 'stacked' && document.querySelector('.mov').movement.world.slots.length === 4, { timeout: 10000 });
+    const was = await page.evaluate(() => {
+      const drawn = Number(document.querySelector('#movement-plan').dataset.drawn);
+      document.querySelector('.mov [data-action="fit"]').click();
+      return drawn;
+    });
+    await page.waitForFunction((n) => Number(document.querySelector('#movement-plan').dataset.drawn) > n, { timeout: 10000 }, was);
+    const got = await page.evaluate(async () => {
+      const { fitClear, FIT_MARGIN } = await import('./ui/surface/plan-layout.js');
+      const movement = document.querySelector('.mov').movement;
+      const card = document.querySelector('.mov-legend');
+      const stage = movement.plan.stage;
+      const s = stage.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      const line = document.querySelector('.mov-legend-line');
+      return {
+        fit: stage.dataset.fit,
+        docked: card.dataset.docked,
+        width: movement.view.width,
+        height: movement.view.height,
+        line: line && !line.hidden ? line.offsetHeight : 0,
+        card: { left: c.left - s.left, top: c.top - s.top, right: c.right - s.left, bottom: c.bottom - s.top, w: card.offsetWidth, h: card.offsetHeight, right0: parseFloat(getComputedStyle(card).right) || 0, bottom0: parseFloat(getComputedStyle(card).bottom) || 0 },
+        view: { x: movement.view.x, y: movement.view.y, size: movement.view.size },
+        slots: movement.world.slots.map((slot) => ({ x: slot.x, y: slot.y, w: slot.w, h: slot.h })),
+        plain: (() => {
+          const world = movement.world;
+          const height = movement.view.height + (line && !line.hidden ? line.offsetHeight : 0);
+          const place = fitClear(world, movement.view.width, height, null, FIT_MARGIN);
+          return { ...place, height };
+        })(),
+      };
+    });
+    const boxes = (place, size) => got.slots.map((slot) => ({ left: place.x + slot.x * size, top: place.y + slot.y * size, right: place.x + (slot.x + slot.w) * size, bottom: place.y + (slot.y + slot.h) * size }));
+    const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    // the card where it rests on the stage as coversFloor reads it, on the undocked stage
+    const resting = { left: got.width - got.card.right0 - got.card.w, right: got.width - got.card.right0, top: got.plain.height - got.card.bottom0 - got.card.h, bottom: got.plain.height - got.card.bottom0 };
+    assert.equal(got.fit, 'beside', 'Fit did not put the floors beside the zoom buttons: the case tests nothing: ' + JSON.stringify(got));
+    assert.equal(boxes(got.plain, 24 * got.plain.zoom).some((box) => meets(box, resting)), false, 'a plain fit puts a floor under the card too: the case tests nothing: ' + JSON.stringify(got));
+    if (got.docked !== 'true') {
+      const shown = boxes(got.view, got.view.size).filter((box) => meets(box, got.card));
+      assert.deepEqual(shown, [], 'the legend\'s card stands over a floor at Fit (asked where a plain fit puts the floors): ' + JSON.stringify(got));
+    }
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// Pixels of a mounted map's canvas under its zoom buttons as drawn now (and
+// 4 px round them) that are not the paper, the empty floor or an edge line.
+const paintedUnderBox = (page, name) => page.evaluate((which) => {
+  const { map } = globalThis.planMaps[which];
+  const canvas = map.canvas;
+  const zoom = map.stage.querySelector('.mov-zoom');
+  const theme = (token) => getComputedStyle(canvas).getPropertyValue(token).trim();
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const allowed = ['--paper', '--grid', '--line'].map((token) => rgb(theme(token)));
+  const c = canvas.getBoundingClientRect();
+  const z = zoom.getBoundingClientRect();
+  const ratio = canvas.width / c.width;
+  const x0 = Math.max(0, Math.floor((z.left - c.left - 4) * ratio));
+  const y0 = Math.max(0, Math.floor((z.top - c.top - 4) * ratio));
+  const x1 = Math.min(canvas.width, Math.ceil((z.right - c.left + 4) * ratio));
+  const y1 = Math.min(canvas.height, Math.ceil((z.bottom - c.top + 4) * ratio));
+  const data = canvas.getContext('2d').getImageData(x0, y0, x1 - x0, y1 - y0).data;
+  let painted = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const px = [data[i], data[i + 1], data[i + 2]];
+    if (!allowed.some((ok) => ok.every((value, k) => Math.abs(value - px[k]) <= 6))) painted += 1;
+  }
+  return { painted, fit: map.stage.dataset.fit, under: map.stage.style.getPropertyValue('--mov-under'), top: map.root.scrollTop, zoomTop: z.top - c.top, coarse: matchMedia('(pointer: coarse)').matches };
+}, name);
+
+// Fit pressed, and the map drawn since.
+async function pressFit(page, name) {
+  const was = await page.evaluate((which) => {
+    const { map } = globalThis.planMaps[which];
+    const drawn = Number(map.canvas.dataset.drawn);
+    map.stage.querySelector('[data-action="fit"]').click();
+    return drawn;
+  }, name);
+  await page.waitForFunction((which, n) => Number(globalThis.planMaps[which].map.canvas.dataset.drawn) > n, { timeout: 10000 }, name, was);
+}
+
+test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage, Fit clears the zoom buttons where they are drawn: lifted over the foot at the section\'s top, at rest at its end', async () => {
+  const session = await openPlanner({ width: 844, height: 390, mobile: true, hash: '#scenarios', theme: 'light' });
+  const page = session.page;
+  try {
+    await bare(page);
+    // 230 px of section: a 100 px first line, the stage at its least, a 74 px sticky foot over the stage's foot
+    await mount(page, 'lab-lift', { slot: 'flex: 0 0 788px; height: 230px', head: 100, foot: 74, sticky: true, lift: true });
+    await page.waitForFunction(() => {
+      const { map } = globalThis.planMaps['lab-lift'];
+      return parseFloat(map.stage.style.getPropertyValue('--mov-under')) > 0 && map.root.dataset.dockedAt === '0';
+    }, { timeout: 10000 });
+    await pressFit(page, 'lab-lift');
+    const top = await paintedUnderBox(page, 'lab-lift');
+    assert.equal(top.coarse, true, 'the page is not under a finger');
+    assert.ok(parseFloat(top.under) >= 24, 'the zoom buttons are not lifted over the foot: the case tests nothing: ' + JSON.stringify(top));
+    assert.equal(top.painted, 0, 'painted cells under the zoom buttons lifted over the foot at Fit: ' + JSON.stringify(top));
+    // scrolled to its end the buttons rest at the stage's foot; Fit pressed there clears them where they rest
+    await page.evaluate(() => {
+      const { map } = globalThis.planMaps['lab-lift'];
+      map.root.scrollTop = map.root.scrollHeight;
+    });
+    await page.waitForFunction(() => {
+      const { map } = globalThis.planMaps['lab-lift'];
+      return map.root.scrollTop > 0 && map.root.dataset.dockedAt === String(Math.round(map.root.scrollTop)) && map.stage.style.getPropertyValue('--mov-under') === '0px';
+    }, { timeout: 10000 });
+    await pressFit(page, 'lab-lift');
+    const end = await paintedUnderBox(page, 'lab-lift');
+    assert.equal(end.painted, 0, 'painted cells under the zoom buttons at rest: ' + JSON.stringify(end));
+    await unmount(page, 'lab-lift');
     assert.deepEqual(session.problems().errors, []);
   } finally {
     await session.close();

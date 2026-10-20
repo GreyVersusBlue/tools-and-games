@@ -424,8 +424,15 @@ export const section = {
       const width = card.offsetWidth;
       const tall = card.offsetHeight;
       if (width === 0 || tall === 0) return false;
+      // where Fit puts the floors on that stage, round the zoom buttons: in
+      // the band beside them it moves them right, toward the card
+      // (fitClear, SV2-72c2), so a plain fit is not asked
+      const place = plan.fitAt(view.width, height, FIT_MARGIN);
+      if (!place) return false;
       probe.resize(view.width, height);
-      probe.fit({ x: 0, y: 0, w: world.width, h: world.height }, FIT_MARGIN);
+      probe.zoom = place.zoom;
+      probe.x = place.x;
+      probe.y = place.y;
       const style = getComputedStyle(card);
       const right = view.width - (parseFloat(style.right) || 0);
       // where the card rests: not lifted over the bar (--mov-under), which

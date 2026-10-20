@@ -82,6 +82,9 @@
 //   map.onLayout(fn)        fn() each time the floors are laid out, before
 //                           a fitted map is fitted again
 //   map.remeasure()         measure the section again
+//   map.fitAt(width, height)   where Fit would put the floors on a stage of
+//                           that size: { zoom, x, y, how, clear }, or null
+//                           (Movement's legend asks it, SV2-72c2)
 //   map.dock()              measure again where a message may lie (the
 //                           section's head moved with no change of size)
 //
@@ -332,21 +335,25 @@ export function createPlanMap(asked) {
     queuePaint();
   }
 
-  // Where the zoom buttons rest on the stage, in its pixels: its bottom
-  // left corner, not lifted over a bar (--mov-under moves with the scroll);
-  // null before the sheet has given it a box.
-  function zoomCorner() {
+  // Where the zoom buttons are drawn on a stage `height` tall, in its
+  // pixels: their bottom left corner, lifted as lift() lifts them over a
+  // sticky foot with the section as it is scrolled now (SV2-72c2: Fit had
+  // cleared them only where they rest, and Movement's playback bar lifts
+  // them 24 px on a phone on its side, over 100 in a short desktop window,
+  // until the section is scrolled); null before the sheet has given them a box.
+  function zoomCorner(height) {
     const w = zoomBox.offsetWidth;
     const h = zoomBox.offsetHeight;
     if (w === 0 || h === 0) return null;
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-    return { x: margin, y: view.height - margin - h, w, h };
+    const rest = height - margin - h;
+    return { x: margin, y: rest - Math.max(0, Math.min(liftNow(), rest)), w, h };
   }
 
   // Fit leaves the zoom buttons' corner clear of every painted cell (fitClear in ./plan-layout.js)
   function fit(quiet) {
     if (!world || view.width === 0) return;
-    const place = fitClear(world, view.width, view.height, zoomCorner(), FIT_MARGIN);
+    const place = fitClear(world, view.width, view.height, zoomCorner(view.height), FIT_MARGIN);
     view.zoom = place.zoom;
     view.x = place.x;
     view.y = place.y;
@@ -624,15 +631,35 @@ export function createPlanMap(asked) {
   // the section is at its end. How far it reaches up into the stage is
   // --mov-under on the stage, and they lift by that much, but never out of
   // the stage's top.
-  function lift() {
-    if (element.hidden) return;
+  // How far the foot reaches up into the stage now, never lifting the
+  // buttons out of the stage's top; 0 with no frame yet.
+  function liftNow() {
+    if (!parts || element.hidden) return 0;
     const shown = stage.getBoundingClientRect();
     const foot = footShown();
     const footTop = foot ? foot.getBoundingClientRect().top : shown.bottom;
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
     const most = Math.max(0, shown.height - zoomBox.offsetHeight - margin * 2);
-    const under = Math.round(Math.min(most, Math.max(0, shown.bottom - footTop))) + 'px';
-    if (stage.style.getPropertyValue('--mov-under') !== under) stage.style.setProperty('--mov-under', under);
+    return Math.round(Math.min(most, Math.max(0, shown.bottom - footTop)));
+  }
+  // A lift that changes with the section where it was (the foot grew, the
+  // window changed, the section was measured) moves the buttons over a
+  // fitted map, which is fitted again round them; one that changes because
+  // the section was scrolled leaves the map where it is, as any control does.
+  let liftScroll = null;
+  function lift() {
+    if (element.hidden) return;
+    const under = liftNow() + 'px';
+    const scrolled = parts && parts.root ? Math.round(parts.root.scrollTop) : 0;
+    const moved = stage.style.getPropertyValue('--mov-under') !== under;
+    if (moved) stage.style.setProperty('--mov-under', under);
+    if (moved && (liftScroll === null || scrolled === liftScroll) && fitted && world) {
+      // the section asks again where the fitted floors lie (Movement's legend)
+      for (const fn of layoutFns) fn();
+      fit(true);
+      queuePaint();
+    }
+    liftScroll = scrolled;
   }
 
   // what the zoom box needs of the stage: its height and its margin above
@@ -702,11 +729,13 @@ export function createPlanMap(asked) {
     }
   });
   onZoomBox.observe(zoomBox);
-  // a pointer of another kind (a mouse plugged into a tablet): the sheet's
-  // rules change the box, which the watchers above see; measured again now too
-  const coarse = matchMedia('(pointer: coarse)');
-  const onPointer = () => remeasure();
-  coarse.addEventListener('change', onPointer);
+  // A pointer of another kind (a mouse plugged into a tablet) needs no
+  // listener of its own: every rule of the sheets under (pointer: coarse)
+  // changes the size of a box watched here (the zoom box, the section, its
+  // first line and its foot), so the watchers measure again. SV2-72c2 took
+  // the listener out: the SV2-72c item 9 case in test/browser/plan-map.mjs
+  // passes without it, and with the zoom box unwatched fails at the root
+  // font's step, where no other box changes size.
 
   // A wheel over the map scrolls the section while the section has some way
   // to go that way and the map is not all on screen (the controls are shown
@@ -824,6 +853,12 @@ export function createPlanMap(asked) {
     showFloors,
     remeasure,
     dock,
+    // where Fit would put the floors on a stage of this size, round the zoom
+    // buttons as they are drawn: { zoom, x, y, how, clear } (fitClear), or null
+    fitAt(width, height, margin) {
+      if (!world || !(width > 0) || !(height > 0)) return null;
+      return fitClear(world, width, height, zoomCorner(height), margin === undefined ? FIT_MARGIN : margin);
+    },
     unmount() {
       if (gone) return;
       gone = true;
@@ -847,7 +882,6 @@ export function createPlanMap(asked) {
       watcher.disconnect();
       roomWatcher.disconnect();
       onZoomBox.disconnect();
-      coarse.removeEventListener('change', onPointer);
       stage.removeEventListener('wheel', onStageWheel, { capture: true });
       dark.removeEventListener('change', queuePaint);
       if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
