@@ -16,14 +16,21 @@
 //   reply        the reply code is shown; waiting for the sending device.
 //                After NO_CHANNEL_MS the dialog gains data-no-channel="true"
 //                and the plain statement; it keeps waiting
-//   receiving    parts arriving; data-parts="received/total"
+//   receiving    parts arriving; data-parts="received/total". After STALL_MS
+//                with nothing arriving on an open channel (here or in reply),
+//                data-stalled="true" and the plain statement; it keeps waiting
 //   checking     every part is in; the hash and the file are checked
 //   confirm      "Replace my project" or "Keep my project"
+//   read-only    this tab became the read-only one while the project came;
+//                nothing is asked, and the sending device is told
 //   replacing    the snapshot, the recovery point and the replacement
 //   applied      replaced; the sending device has been told
 //   kept         kept; the sending device has been told
 //   lost         the connection closed before the project was whole
-//   failed       the project did not arrive whole or could not be read
+//   failed       the project did not arrive whole or could not be read. With
+//                no reply to send (no header of this tool's to name the
+//                sending), the connection is closed, so the sending device
+//                ends too
 
 import { h } from '../../components/dom.js';
 import { figures } from '../../components/words.js';
@@ -34,9 +41,9 @@ import { CURRENT_VERSION } from '../../../engine/schema.js';
 import { takeAutoSnapshot, snapshotRoom } from '../../../storage/snapshots.js';
 import { holdsWords, importSafetyLine } from '../files.js';
 import { transferDialog } from './dialog.js';
-import { createPeer, peerAvailable, NO_CHANNEL_MS } from './peer.js';
+import { createPeer, peerAvailable, stallClock, NO_CHANNEL_MS, STALL_MS } from './peer.js';
 import { codeShown, codeTaken } from './codes.js';
-import { lines, progressLine, importRow, pasteAnywhere, subtleOf, messageOf } from './common.js';
+import { lines, progressLine, importRow, pasteAnywhere, subtleOf, messageOf, unavailableSentence, alternative } from './common.js';
 import { SENTENCES } from './words.js';
 
 export const SNAPSHOT_NAME = 'Before receiving a project from another device';
@@ -63,6 +70,7 @@ export function openReceive(ctx, opener) {
   let taken = null;
   let channel = null;
   let timer = null;
+  let stall = null;
   let closed = false;
   let offered = false;
   // the sending this reply will be about, once the header has come
@@ -74,12 +82,17 @@ export function openReceive(ctx, opener) {
     title: 'Receive a project from another device',
     opener,
     onClose() {
-      // closing while the question is asked is keeping this project
-      if (dialog.element.dataset.state === 'confirm') reply(false);
       closed = true;
       clearTimeout(timer);
+      if (stall) stall.stop();
       if (taken) taken.stop();
-      if (peer) peer.close();
+      // closing while the question is asked is keeping this project; the
+      // reply is let go before the connection is
+      if (dialog.element.dataset.state === 'confirm' && reply(false)) {
+        if (peer) peer.closeAfter();
+      } else if (peer) {
+        peer.close();
+      }
     },
   });
   const talk = lines();
@@ -98,16 +111,24 @@ export function openReceive(ctx, opener) {
 
   function failed(sentence) {
     clearTimeout(timer);
-    reply(false);
+    if (stall) stall.stop();
+    // with no reply to send, the closed connection is what tells the
+    // sending device; otherwise it ends the run once the reply is in
+    if (!reply(false) && peer) peer.close();
     dialog.show('failed', sentence, [importRow(dialog)]);
   }
 
   function noChannel() {
     if (closed || dialog.element.dataset.state !== 'reply' || dialog.element.dataset.noChannel === 'true') return;
     dialog.element.dataset.noChannel = 'true';
-    dialog.body.append(h('div', { class: 'xfer__alternative', data: { line: 'no-channel' } },
-      h('p', { role: 'alert' }, SENTENCES.noChannelReceiving),
-      importRow(dialog)));
+    dialog.body.append(alternative('no-channel', SENTENCES.noChannelReceiving, importRow(dialog)));
+  }
+
+  function stalled() {
+    const state = dialog.element.dataset.state;
+    if (closed || (state !== 'reply' && state !== 'receiving') || dialog.element.dataset.stalled === 'true') return;
+    dialog.element.dataset.stalled = 'true';
+    dialog.body.append(alternative('stalled', SENTENCES.stalledReceiving, importRow(dialog)));
   }
 
   async function replace(read, room) {
@@ -160,6 +181,12 @@ export function openReceive(ctx, opener) {
     const here = figures(ctx.store.project);
     const room = await snapshotRoom();
     if (closed) return;
+    if (readOnly(ctx)) {
+      // another tab became the editing one while the project came
+      reply(false);
+      dialog.show('read-only', SENTENCES.readOnly, []);
+      return;
+    }
     const school = read.project.settings.schoolName;
     const replaceButton = h('button', { type: 'button', class: 'btn btn--danger', data: { action: 'replace-project' } }, 'Replace my project');
     const keepButton = h('button', { type: 'button', class: 'btn', data: { action: 'keep-project' } }, 'Keep my project');
@@ -169,7 +196,9 @@ export function openReceive(ctx, opener) {
       dialog.show('kept', told ? SENTENCES.kept : 'You kept your project. Nothing was changed.', []);
     });
     dialog.show('confirm', 'The whole project has arrived and checks out. Replace your project with it?', [
-      h('p', { data: { line: 'arrived' } }, 'It ' + (school === '' ? 'has no school name' : 'is ' + school) + '. It holds ' + holdsWords(read.summary) + '.'),
+      // the name in a bdi of its own, so its script and any direction marks
+      // in it stay inside it (as Snapshots names do)
+      h('p', { data: { line: 'arrived' } }, ...(school === '' ? ['It has no school name'] : ['It is ', h('bdi', null, school)]), '. It holds ' + holdsWords(read.summary) + '.'),
       h('p', { data: { line: 'here' } }, 'It takes the place of everything in this project: ' + holdsWords({ ...here, images: 0 }) + '.'),
       h('p', { data: { line: 'safety' } }, importSafetyLine(room, SNAPSHOT_NAME, 'it')),
       h('div', { class: 'card__buttons xfer__ask' }, replaceButton, keepButton),
@@ -181,16 +210,26 @@ export function openReceive(ctx, opener) {
     channel = open;
     clearTimeout(timer);
     delete dialog.element.dataset.noChannel;
+    const statement = dialog.body.querySelector('[data-alternative="no-channel"]');
+    if (statement) statement.remove();
     const receiver = createReceiver({ subtle: subtleOf() });
     const progress = progressLine(dialog, 'Received');
     let finishing = false;
+    stall = stallClock(STALL_MS, stalled);
     channel.addEventListener('close', () => {
       replied = true;
+      stall.stop();
       const state = dialog.element.dataset.state;
       if (!closed && (state === 'reply' || state === 'receiving')) dialog.show('lost', SENTENCES.lostReceiving, [importRow(dialog)]);
     });
     channel.addEventListener('message', async (event) => {
       if (finishing || closed) return;
+      stall.poke();
+      if (dialog.element.dataset.stalled === 'true') {
+        delete dialog.element.dataset.stalled;
+        const said = dialog.body.querySelector('[data-alternative="stalled"]');
+        if (said) said.remove();
+      }
       if (!digest) digest = headerHash(event.data);
       let state;
       try {
@@ -206,6 +245,7 @@ export function openReceive(ctx, opener) {
       }
       if (!state.ended) return;
       finishing = true;
+      stall.stop();
       dialog.show('checking', SENTENCES.checking, []);
       let out;
       try {
@@ -250,7 +290,7 @@ export function openReceive(ctx, opener) {
 
   function start() {
     if (!peerAvailable() || !subtleOf()) {
-      dialog.show('unavailable', SENTENCES.noPeer, [importRow(dialog)]);
+      dialog.show('unavailable', unavailableSentence(), [importRow(dialog)]);
       return;
     }
     if (readOnly(ctx)) {

@@ -5,11 +5,27 @@
 import { h } from '../../components/dom.js';
 import { buildExport } from '../../../engine/exports.js';
 import { looksLikeCode } from './codes.js';
-import { partsWords } from './words.js';
+import { partsWords, SENTENCES } from './words.js';
+import { peerAvailable } from './peer.js';
 
 export function subtleOf() {
   const subtle = globalThis.crypto && globalThis.crypto.subtle;
   return subtle || null;
+}
+
+// Why this browser cannot send or receive: crypto.subtle is kept from a page
+// that is not a secure context (an http address), and that one is fixable.
+export function unavailableSentence() {
+  if (peerAvailable() && !subtleOf() && globalThis.isSecureContext === false) return SENTENCES.notSecure;
+  return SENTENCES.noPeer;
+}
+
+// The plain statement and the other way, added under the dialog's body;
+// `name` is its data-alternative, and its sentence carries data-line=name.
+export function alternative(name, sentence, ...rest) {
+  return h('div', { class: 'xfer__alternative', data: { alternative: name } },
+    h('p', { role: 'alert', data: { line: name } }, sentence),
+    ...rest);
 }
 
 export function messageOf(error) {

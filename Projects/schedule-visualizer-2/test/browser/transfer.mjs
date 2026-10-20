@@ -29,7 +29,11 @@ import { openPlanner, startServer, launch, TOOL_DIR } from './harness.mjs';
 import { SENTENCES } from '../../ui/project/transfer/words.js';
 import { SNAPSHOT_NAME } from '../../ui/project/transfer/receive.js';
 import { SENTENCES as ENGINE } from '../../engine/transfer.js';
-import { NO_CHANNEL_MS, BUFFER_HIGH } from '../../ui/project/transfer/peer.js';
+import * as PEER from '../../ui/project/transfer/peer.js';
+
+const { NO_CHANNEL_MS, BUFFER_HIGH } = PEER;
+// how long a channel may carry nothing before the screens say so
+const STALL_MS = PEER.STALL_MS || 20000;
 
 const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
@@ -113,6 +117,12 @@ async function reaches(page, id, states, timeout) {
   return page.$eval('#' + id, (el) => el.dataset.state);
 }
 
+// Where the dialog ends among `states`, or "still <state>" when it is not
+// there in time: an assertion on it names the state it sat in.
+async function endsIn(page, id, states, timeout) {
+  return reaches(page, id, states, timeout).catch(() => page.evaluate((which) => 'still ' + (document.getElementById(which)?.dataset.state || 'gone'), id));
+}
+
 // The text of the dialog's status line, and of a line in its body, checked
 // to have a box first.
 async function said(page, id, line) {
@@ -194,7 +204,7 @@ function idb(page, storeName) {
 
 // Sender's offer to receiver, receiver's reply to sender, by the paste
 // fields. Leaves both waiting on the transfer.
-async function connect(a, b, how) {
+async function connect(a, b, how, beforeAnswer) {
   if (how === 'tap') await a.page.tap('[data-action="send-project"]');
   else await press(a.page, '[data-action="send-project"]');
   await reaches(a.page, SEND, 'offer');
@@ -208,6 +218,7 @@ async function connect(a, b, how) {
   const answer = await codeOf(b.page, 'answer');
   await watchParts(a.page, SEND);
   await watchParts(b.page, RECEIVE);
+  if (beforeAnswer) await beforeAnswer();
   await paste(a.page, 'answer', answer, how);
   return { offer, answer };
 }
@@ -481,8 +492,10 @@ test('a read-only tab cannot receive, and says why', async () => {
 
 // A fake camera on the receiving page: a canvas showing the sending page's
 // QR code (or nothing), its captureStream as the camera's stream.
-async function fakeCamera(page, svgMarkup) {
-  await page.evaluate(async (markup) => {
+// `late` holds each camera back that many ms, as a browser asking for
+// permission does; `given` counts the streams handed over.
+async function fakeCamera(page, svgMarkup, late) {
+  await page.evaluate(async (markup, wait) => {
     const canvas = document.createElement('canvas');
     canvas.width = 960;
     canvas.height = 720;
@@ -500,14 +513,16 @@ async function fakeCamera(page, svgMarkup) {
       if (image) g.drawImage(image, 300, 180, 360, 360);
     };
     paint();
-    globalThis.sv2camera = { asked: 0, streams: [], timer: setInterval(paint, 50) };
+    globalThis.sv2camera = { asked: 0, given: 0, streams: [], timer: setInterval(paint, 50) };
     navigator.mediaDevices.getUserMedia = async () => {
       globalThis.sv2camera.asked += 1;
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
       const stream = canvas.captureStream(20);
       globalThis.sv2camera.streams.push(stream);
+      globalThis.sv2camera.given += 1;
       return stream;
     };
-  }, svgMarkup);
+  }, svgMarkup, late || 0);
 }
 
 const tracksLive = (page) => page.evaluate(() => globalThis.sv2camera.streams.flatMap((stream) => stream.getTracks()).filter((track) => track.readyState === 'live').length);
@@ -688,12 +703,318 @@ test('after ' + NO_CHANNEL_MS / 1000 + ' s with no channel both sides say so pla
     assert.equal(await said(b.page, RECEIVE, 'no-channel').then((text) => text.startsWith(SENTENCES.noChannelReceiving)), true);
     assert.equal(await reaches(b.page, RECEIVE, 'reply'), 'reply', 'still waiting');
 
-    // the late reply: the receiver still takes the project
+    // the late reply: the receiver still takes the project. The order the
+    // dialog changed in is kept: the statement has to go when the channel
+    // opens, before anything has arrived on it
+    await b.page.evaluate(() => {
+      const el = document.getElementById('transfer-receive');
+      globalThis.sv2order = [];
+      new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.type === 'attributes' && record.attributeName === 'data-state') globalThis.sv2order.push('state ' + el.dataset.state);
+          if (record.type === 'childList' && [...record.removedNodes].some((node) => node.nodeType === 1 && (node.matches('[data-line="no-channel"]') || node.querySelector('[data-line="no-channel"]')))) globalThis.sv2order.push('statement gone');
+        }
+      }).observe(el, { attributes: true, childList: true, subtree: true });
+    });
     await paste(a.page, 'answer', answer, 'keyboard');
     await reaches(b.page, RECEIVE, 'confirm');
     assert.equal(await b.page.$eval('#transfer-receive', (el) => el.dataset.noChannel === undefined), true, 'the statement goes once connected');
+    const order = await b.page.evaluate(() => globalThis.sv2order);
+    assert.ok(order.includes('statement gone') && order.indexOf('statement gone') < order.indexOf('state receiving'), 'the statement went when the channel opened, before the project began to arrive: ' + order.join(', '));
   } finally {
     await done(a, b, c);
+  }
+});
+
+// ---------------------------------------------------------------- the ends that have to come
+
+test('Scan, Stop and Scan again while the browser is still asking for the camera: one camera on at a time, and none after Close', async () => {
+  const b = await device({ width: 1280, height: 900 });
+  const camera = () => b.page.$eval('#transfer-receive .xfer__camera', (el) => el.dataset.camera);
+  try {
+    await fakeCamera(b.page, null, 400);
+    await press(b.page, '[data-action="receive-project"]');
+    await reaches(b.page, RECEIVE, 'offer');
+    // Stop while the browser asks: the camera it hands over late is let go
+    await press(b.page, '[data-action="scan-offer"]');
+    await b.page.waitForFunction(() => globalThis.sv2camera.asked === 1);
+    await press(b.page, '[data-action="scan-offer"]');
+    await b.page.waitForFunction(() => globalThis.sv2camera.given === 1);
+    await b.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    assert.equal(await camera(), 'off', 'a camera stopped while it was being asked for is never shown as on');
+    assert.equal(await tracksLive(b.page), 0, 'and its stream is stopped');
+
+    // Scan, Stop, Scan before the first camera comes
+    await press(b.page, '[data-action="scan-offer"]');
+    await b.page.waitForFunction(() => globalThis.sv2camera.asked === 2);
+    await press(b.page, '[data-action="scan-offer"]');
+    await press(b.page, '[data-action="scan-offer"]');
+    await b.page.waitForFunction(() => globalThis.sv2camera.given === 3, { timeout: 5000 });
+    await b.page.waitForFunction(() => document.querySelector('#transfer-receive .xfer__camera')?.dataset.camera === 'on' && Number(document.querySelector('#transfer-receive .xfer__camera').dataset.reads) >= 3, { timeout: 10000 });
+    assert.equal(await tracksLive(b.page), 1, 'one camera is on, the one the last Scan asked for');
+    await press(b.page, '#transfer-receive [data-action="close-transfer"]');
+    await b.page.waitForFunction(() => document.getElementById('transfer-receive') === null);
+    assert.equal(await tracksLive(b.page), 0, 'Close leaves no camera on');
+  } finally {
+    await done(b);
+  }
+});
+
+test('a detector that throws on every frame is given up on the first time, and the decoder reads the code', async () => {
+  const size = { width: 1280, height: 900 };
+  const a = await device(size);
+  const b = await device(size);
+  try {
+    await press(a.page, '[data-action="send-project"]');
+    await reaches(a.page, SEND, 'offer');
+    const markup = await a.page.$eval('#transfer-send svg.xfer__qr', (svg) => svg.outerHTML.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '));
+    await fakeCamera(b.page, markup);
+    await b.page.evaluate(() => {
+      globalThis.sv2detected = 0;
+      globalThis.BarcodeDetector = class {
+        static async getSupportedFormats() {
+          return ['qr_code'];
+        }
+
+        async detect() {
+          globalThis.sv2detected += 1;
+          throw new DOMException('the detector is broken here', 'NotSupportedError');
+        }
+      };
+    });
+    await press(b.page, '[data-action="receive-project"]');
+    await reaches(b.page, RECEIVE, 'offer');
+    await press(b.page, '[data-action="scan-offer"]');
+    assert.equal(await endsIn(b.page, RECEIVE, 'reply', 20000), 'reply', 'the code is read all the same');
+    assert.equal(await b.page.evaluate(() => globalThis.sv2detected), 1, 'the detector was asked once and then left');
+    assert.equal(await tracksLive(b.page), 0);
+  } finally {
+    await done(a, b);
+  }
+});
+
+test('the dialog lets go of the camera however it closes: by the element\'s own close(), and by Back taking the Project page away under it', async () => {
+  const b = await device({ width: 1280, height: 900 });
+  const cameraOn = () => b.page.waitForFunction(() => document.querySelector('#transfer-receive .xfer__camera')?.dataset.camera === 'on', { timeout: 10000 });
+  try {
+    await fakeCamera(b.page, null);
+    await press(b.page, '[data-action="receive-project"]');
+    await reaches(b.page, RECEIVE, 'offer');
+    await press(b.page, '[data-action="scan-offer"]');
+    await cameraOn();
+    assert.equal(await tracksLive(b.page), 1);
+    await b.page.evaluate(() => document.getElementById('transfer-receive').close());
+    await b.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    assert.equal(await tracksLive(b.page), 0, 'the element closed by itself stops the camera');
+    assert.equal(await b.page.evaluate(() => document.getElementById('transfer-receive')), null, 'and the dialog is gone');
+
+    // Back from Project to the page before it, with the dialog open
+    await b.page.evaluate(() => { location.hash = '#building'; });
+    await b.page.waitForFunction(() => document.querySelector('.surface__layout')?.dataset.section === 'building');
+    await b.page.evaluate(() => { location.hash = '#project'; });
+    await b.page.waitForFunction(() => document.querySelector('.surface__layout')?.dataset.section === 'project' && document.querySelector('[data-action="receive-project"]'));
+    await press(b.page, '[data-action="receive-project"]');
+    await reaches(b.page, RECEIVE, 'offer');
+    await press(b.page, '[data-action="scan-offer"]');
+    await cameraOn();
+    assert.equal(await tracksLive(b.page), 1);
+    await b.page.evaluate(() => history.back());
+    await b.page.waitForFunction(() => document.querySelector('.surface__layout')?.dataset.section === 'building');
+    await b.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    assert.equal(await tracksLive(b.page), 0, 'leaving the Project page stops the camera');
+    assert.equal(await b.page.evaluate(() => document.getElementById('transfer-receive')), null, 'and takes the dialog with it');
+    assert.equal(await b.page.evaluate(() => document.querySelector('dialog[open]')), null, 'no dialog is left open');
+    assert.deepEqual(b.session.problems().errors, []);
+  } finally {
+    await done(b);
+  }
+});
+
+test('a school name in another script, with a direction override in it, is set apart in the question', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  const b = await device({ width: 1280, height: 900 });
+  const NAME = 'مدرسة النور ‮ 7';
+  try {
+    await a.page.evaluate(async (value) => {
+      const { setSetting } = await import(new URL('engine/actions.js', location.href).href);
+      globalThis.sv2.store.apply(setSetting, { key: 'schoolName', value });
+    }, NAME);
+    await connect(a, b, 'keyboard');
+    await reaches(b.page, RECEIVE, 'confirm');
+    const line = await b.page.$eval('#transfer-receive [data-line="arrived"]', (el) => ({ text: el.textContent, isolated: [...el.querySelectorAll('bdi')].map((each) => each.textContent) }));
+    assert.deepEqual(line.isolated, [NAME], 'the name is a bdi of its own, so its direction stays inside it');
+    assert.ok(line.text.startsWith('It is ' + NAME + '. It holds '), line.text);
+  } finally {
+    await done(a, b);
+  }
+});
+
+test('Close at the question keeps the project, and the sender hears it was not taken', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  const b = await device({ width: 1280, height: 900 });
+  try {
+    await sample(a.page, true);
+    await sample(b.page, false);
+    await connect(a, b, 'keyboard');
+    await reaches(b.page, RECEIVE, 'confirm');
+    await press(b.page, '#transfer-receive [data-action="close-transfer"]');
+    await b.page.waitForFunction(() => document.getElementById('transfer-receive') === null);
+    assert.equal(await endsIn(a.page, SEND, SEND_ENDS), 'not-taken', 'the reply left before the connection was closed');
+    assert.equal(await said(a.page, SEND), SENTENCES.notTaken);
+    assert.equal(await figure(b.page, 'rooms'), '0');
+  } finally {
+    await done(a, b);
+  }
+});
+
+test('closing the connection in the middle of a sending settles sendFrames, with the frames left unsent', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  try {
+    await a.page.addScriptTag({ type: 'module', content: `
+      import { createPeer, sendFrames } from './ui/project/transfer/peer.js';
+      let opened;
+      const open = new Promise((resolve) => { opened = resolve; });
+      const one = createPeer({ onChannel: opened });
+      const two = createPeer({});
+      await one.accept(await two.answer(await one.offer()));
+      const channel = await open;
+      const frames = [];
+      for (let i = 0; i < 400; i += 1) frames.push(new Uint8Array(16392));
+      let sent = 0;
+      const sending = sendFrames(channel, frames, (index) => {
+        sent = index + 1;
+        if (index === 20) setTimeout(() => one.close(), 0);
+      }, one.signal).then(() => 'resolved', (error) => error.name);
+      const outcome = await Promise.race([sending, new Promise((resolve) => setTimeout(() => resolve('still waiting'), 3000))]);
+      two.close();
+      globalThis.sv2closing = { outcome, sent };
+    ` });
+    const result = await (await a.page.waitForFunction(() => globalThis.sv2closing, { timeout: 30000 })).jsonValue();
+    assert.equal(result.outcome, 'ChannelClosed', 'the sending ends when the connection is closed: ' + JSON.stringify(result));
+    assert.ok(result.sent < 400, 'and the rest are not sent: ' + JSON.stringify(result));
+  } finally {
+    await done(a);
+  }
+});
+
+test('a connection that stops carrying anything for ' + STALL_MS / 1000 + ' s: both sides say so with the project file, and keep waiting', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  const b = await device({ width: 1280, height: 900 });
+  try {
+    await sample(a.page, true);
+    // after the header and the first part, the sender's channel says
+    // everything is still waiting, as it does when the other side stops reading
+    await a.page.evaluate(() => {
+      const send = RTCDataChannel.prototype.send;
+      const real = Object.getOwnPropertyDescriptor(RTCDataChannel.prototype, 'bufferedAmount');
+      let sent = 0;
+      RTCDataChannel.prototype.send = function counted(data) {
+        sent += 1;
+        return send.call(this, data);
+      };
+      Object.defineProperty(RTCDataChannel.prototype, 'bufferedAmount', {
+        configurable: true,
+        get() {
+          return sent >= 2 ? 1 << 30 : real.get.call(this);
+        },
+      });
+    });
+    await connect(a, b, 'keyboard');
+    await reaches(b.page, RECEIVE, 'receiving');
+    await reaches(a.page, SEND, 'sending');
+    for (const [page, id, sentence, action] of [[a.page, SEND, SENTENCES.stalledSending, 'transfer-export'], [b.page, RECEIVE, SENTENCES.stalledReceiving, 'transfer-import']]) {
+      const told = await page.waitForFunction((which) => document.getElementById(which)?.dataset.stalled === 'true', { timeout: STALL_MS + 10000 }, id).then(() => true, () => false);
+      assert.ok(told, id + ' says the connection has stalled');
+      assert.equal(await said(page, id, 'stalled'), sentence);
+      assert.ok(await page.$('#' + id + ' [data-alternative="stalled"] [data-action="' + action + '"]'), id + ' offers the project file');
+    }
+    assert.equal(await reaches(a.page, SEND, 'sending'), 'sending', 'the sender keeps waiting');
+    assert.equal(await reaches(b.page, RECEIVE, 'receiving'), 'receiving', 'and so does the receiver');
+    assert.equal(await b.page.$eval('#' + RECEIVE, (el) => el.dataset.parts), '1/4');
+  } finally {
+    await done(a, b);
+  }
+});
+
+test('a start that is not this tool\'s is refused, and with no reply to send the receiver closes, so the sender ends with the project file', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  const b = await device({ width: 1280, height: 900 });
+  try {
+    await a.page.evaluate(() => {
+      const send = RTCDataChannel.prototype.send;
+      let first = true;
+      RTCDataChannel.prototype.send = function foreign(data) {
+        if (first && typeof data === 'string') {
+          first = false;
+          return send.call(this, JSON.stringify({ format: 'something-else', version: 1 }));
+        }
+        return send.call(this, data);
+      };
+    });
+    await connect(a, b, 'keyboard');
+    assert.equal(await endsIn(b.page, RECEIVE, RECEIVE_ENDS), 'failed');
+    assert.equal(await said(b.page, RECEIVE), ENGINE.foreign);
+    assert.equal(await endsIn(a.page, SEND, SEND_ENDS), 'lost', 'the sender does not sit waiting for a reply that cannot come');
+    assert.equal(await said(a.page, SEND), SENTENCES.lostSending);
+    assert.ok(await a.page.$('#transfer-send [data-action="transfer-export"]'), 'the project file is offered');
+  } finally {
+    await done(a, b);
+  }
+});
+
+test('a reply that cannot be read ends with the project file, like every other failure', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  const b = await device({ width: 1280, height: 900 });
+  try {
+    await sample(a.page, true);
+    await b.page.evaluate(() => {
+      const send = RTCDataChannel.prototype.send;
+      RTCDataChannel.prototype.send = function garbled(data) {
+        return send.call(this, typeof data === 'string' ? 'not a reply' : data);
+      };
+    });
+    await connect(a, b, 'keyboard');
+    await reaches(b.page, RECEIVE, 'confirm');
+    await press(b.page, '#transfer-receive [data-action="keep-project"]');
+    assert.equal(await endsIn(a.page, SEND, SEND_ENDS), 'failed');
+    assert.equal(await said(a.page, SEND), ENGINE.ackForeign);
+    assert.ok(await a.page.$('#transfer-send [data-action="transfer-export"]'), 'the project file is offered');
+  } finally {
+    await done(a, b);
+  }
+});
+
+test('a tab that becomes read-only while the project arrives is not asked, and the sender hears it was not taken', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  const b = await device({ width: 1280, height: 900 });
+  try {
+    await sample(a.page, true);
+    await connect(a, b, 'keyboard', () => b.page.evaluate(() => { globalThis.sv2.storage.state.readOnly = true; }));
+    assert.equal(await endsIn(b.page, RECEIVE, RECEIVE_ENDS.concat('read-only')), 'read-only', 'the question is not asked');
+    assert.equal(await said(b.page, RECEIVE), SENTENCES.readOnly);
+    assert.equal(await b.page.$('#transfer-receive [data-action="replace-project"]'), null);
+    assert.equal(await endsIn(a.page, SEND, SEND_ENDS), 'not-taken');
+  } finally {
+    await done(a, b);
+  }
+});
+
+test('a page that is not a secure context says that is why, on both sides', async () => {
+  const a = await device({ width: 1280, height: 900 });
+  try {
+    await a.page.evaluate(() => {
+      Object.defineProperty(globalThis, 'isSecureContext', { value: false, configurable: true });
+      Object.defineProperty(globalThis.crypto, 'subtle', { value: undefined, configurable: true });
+    });
+    await press(a.page, '[data-action="send-project"]');
+    assert.equal(await endsIn(a.page, SEND, 'unavailable'), 'unavailable');
+    assert.equal(await said(a.page, SEND), SENTENCES.notSecure);
+    await press(a.page, '#transfer-send [data-action="close-transfer"]');
+    await press(a.page, '[data-action="receive-project"]');
+    assert.equal(await endsIn(a.page, RECEIVE, 'unavailable'), 'unavailable');
+    assert.equal(await said(a.page, RECEIVE), SENTENCES.notSecure);
+  } finally {
+    await done(a);
   }
 });
 
