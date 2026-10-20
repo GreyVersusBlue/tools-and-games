@@ -144,6 +144,7 @@ export const GROUPS = {
     'browser/m5-pass.mjs', // SV2-72f
     'browser/snapshots.mjs', // SV2-28
     'browser/transfer.mjs', // SV2-29b
+    'browser/present.mjs', // SV2-31
     'a11y/axe.mjs',
   ],
   a11y: [

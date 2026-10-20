@@ -76,6 +76,7 @@ import { hotspotsPanel } from './hotspots.js';
 import { tablesPanel } from './tables.js';
 import { exportPanel } from './export.js';
 import { playbackBar } from './playback.js';
+import { presentMode, PRESENT_KEYS } from './present.js';
 
 const HEADLINE = 'This is the movement view.';
 const KEYS = 'Arrow keys move the cursor one cell and say what crosses it. Hold Space and press the arrows to move the map. = and - zoom in and out, 0 fits the map to the window. Escape puts the card away.';
@@ -138,6 +139,8 @@ export const section = {
   // Once, before anything is mounted: the map's keys go on the shell's list.
   start(ctx) {
     for (const key of MOVEMENT_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Movement', does: key.does, shown: key.shown });
+    // Present (P) and the keys of presentation mode, which ./present.js answers
+    for (const key of PRESENT_KEYS) ctx.shortcuts.add({ id: key.id, group: key.group, does: key.does, shown: key.shown });
   },
   mount(ctx) {
     const store = ctx.store;
@@ -284,6 +287,8 @@ export const section = {
     // the section's element is the plan map's root (div.mov), with the map in it
     const element = plan.root;
     element.append(empty);
+    // Present, at the end of the first line after Change (./present.js: presentation mode)
+    top.element.querySelector('.mov-line').append(' ', presentMode({ ctx, plan, env, bar: bar.element, root: element }).button);
 
     // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
     function placeFloors() {
