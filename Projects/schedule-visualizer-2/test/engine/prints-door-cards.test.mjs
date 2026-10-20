@@ -685,3 +685,18 @@ test('a window\'s labels: one the edge cuts is left out, one wholly inside stays
   for (const box of kept) assert.ok(box.left >= vx && box.right <= vx + vw && box.top >= vy && box.bottom <= vy + vh, box.text + ' is cut');
   assert.ok(kept.length > 0 && kept.length < count(all), kept.length + ' of ' + count(all));
 });
+
+test('on a map with a route the corridor names are drawn over the way out, on a halo of paper; with no route as before', () => {
+  const project = sampleSchool();
+  const markup = cardsOf(doorCards.render(project, null, { ...NOW, roomIds: ['rsample303'] }).html).get('rsample303');
+  let checked = 0;
+  for (const figure of markup.matchAll(/<figure class="card__map"[\s\S]*?<\/figure>/g)) {
+    const way = figure[0].indexOf('<g class="plan__way">');
+    for (const name of figure[0].matchAll(/<text class="plan__corridor-name"[^>]*>/g)) {
+      checked += 1;
+      assert.ok(way !== -1 && name.index > way, 'a corridor name is under the way out: ' + name[0]);
+      assert.ok(/paint-order="stroke"/.test(name[0]), 'a corridor name over the way out has no halo: ' + name[0]);
+    }
+  }
+  assert.ok(checked >= 3, 'Room 303\'s card has ' + checked + ' corridor names: the case reads nothing');
+});

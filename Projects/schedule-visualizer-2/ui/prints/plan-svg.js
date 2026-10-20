@@ -448,6 +448,8 @@ export function planSvg(project, floor, options) {
   }
 
   // corridor names, along the way the named cells run
+  const routed = Boolean(options && options.route && typeof options.route === 'object');
+  const namesOver = [];
   for (const named of floor.corridors) {
     if (typeof named.name !== 'string' || named.name.trim() === '' || named.cells.length === 0 || !shown(named.cells)) continue;
     let ax = Infinity;
@@ -465,7 +467,12 @@ export function planSvg(project, floor, options) {
     const cy = ((ay + by + 1) / 2) * U;
     const run = (across ? bx - ax + 1 : by - ay + 1) * U - 4;
     const size = Math.max(NAME_MIN, fit(named.name.length * 1.15, run, NAME_MAX));
-    put(text(cx, cy, size, 'plan__corridor-name', named.name, across ? '' : ' transform="rotate(-90 ' + n(cx) + ' ' + n(cy) + ')"'), labelBox(named.name.toUpperCase(), cx, cy, size, 0.2, !across));
+    // with a route the names go over it, on a halo of paper (SV2-72c: the
+    // way out along MAIN CORRIDOR left "RIDOR" of it on Room 303's card)
+    const markup = text(cx, cy, size, 'plan__corridor-name', named.name, (across ? '' : ' transform="rotate(-90 ' + n(cx) + ' ' + n(cy) + ')"') + (routed ? ' stroke="' + PLAN_PAPER + '" stroke-width="2.4" paint-order="stroke"' : ''));
+    const box = labelBox(named.name.toUpperCase(), cx, cy, size, 0.2, !across);
+    if (routed) namesOver.push(crop ? { markup, box } : markup);
+    else put(markup, box);
   }
 
   // exits: a thick dash on the edge that leads outside, the door name beyond it
@@ -504,6 +511,7 @@ export function planSvg(project, floor, options) {
     const way = routeMarkup(floor, options.route);
     if (way !== '') out.push(way);
   }
+  out.push(...namesOver);
 
   // cropped to what is drawn, with room around it for the door names; or to
   // the window asked for, edge to edge
