@@ -2039,6 +2039,72 @@ test('SV2-56b: the only group deleted while wide, then upright, Add a group, All
   });
 });
 
+// ---------------------------------------------------------------- SV2-72e
+
+// The review of SV2-56, finding 3 (probe-history.mjs, B): a finding's Show
+// beside the list (the inspector's panel, on a phone on its side) opened the
+// slot's address over the list with no mark, so a Delete on the phone, or
+// one on its side and then the turn upright, wrote the list in its place:
+// Back from the list was the list again. Every group or slot address the
+// schedule opens goes through one rule now (groups.js, `openAddress`).
+test('SV2-72e item 1: a finding\'s Show over the list, then a Delete on the phone or on its side and upright: Back from the list is the page before it, the list once', async () => {
+  const UPRIGHT = { width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  const SIDE = { width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  const slot = '#schedule/groups/' + C6 + '/' + DAY_A + '/1';
+  for (const where of ['upright', 'on its side']) {
+    await on('#project', { width: 844, height: 390, mobile: true }, async (p) => {
+      await go(p, '#schedule/groups');
+      await settled(p);
+      await p.click('.sch-group[data-group="' + C6 + '"]');
+      await shows(p, () => document.querySelector('.sch-editor__title')?.textContent === '6C' && document.querySelector('.sch').dataset.pending !== 'true');
+      assert.equal(await hashOf(p), '#schedule/groups', 'the case needs the page at the list, as a wide screen leaves it after a click');
+      await inspector(p, true);
+      await tap(p, '#inspector .sch-finding[data-finding^="room-double:' + DAY_A + ':1:"] [data-action="show"]');
+      await until(p, 'Show did not go to the slot\'s address', (hash) => location.hash === hash && document.querySelector('.sch').dataset.pending !== 'true', slot);
+      await inspector(p, false);
+      if (where === 'upright') {
+        await p.setViewport(UPRIGHT);
+        await drawnNarrow(p, true);
+        assert.deepEqual(await shownCards(p), [C6]);
+        await tap(p, '[data-action="delete"]');
+      } else {
+        await p.click('[data-action="delete"]');
+        await closeToast(p);
+        await until(p, '6C is still in the list', (id) => !document.querySelector('.sch-group[data-group="' + id + '"]') && document.querySelector('.sch').dataset.pending !== 'true', C6);
+        assert.equal(await hashOf(p), slot, 'the case needs the wide screen to have left the gone group\'s address');
+        await p.setViewport(UPRIGHT);
+        await drawnNarrow(p, true);
+      }
+      await closeToast(p);
+      await listIs(p, false);
+      await until(p, where + ': the page is not at the list, or is on a spent entry', () => location.hash === '#schedule/groups' && !(history.state && history.state.scheduleSpent) && document.querySelector('.sch').dataset.pending !== 'true');
+      assert.deepEqual(await backTo(p, '#project', 4), ['#schedule/groups', '#project'], where + ': Back from the list showed the list twice');
+    });
+  }
+});
+
+// SV2-54's case "from an entry the list was not under", with the link that
+// makes such an entry: Movement's "Fix it in the schedule" opens a slot's
+// address from #movement, by the same rule. There is no list under it, so
+// the gone group's address becomes the list's, and Back is Movement.
+test('SV2-72e item 1: Movement\'s link into a slot, then a Delete on a phone: the list in the slot\'s place, and Back is Movement', async () => {
+  await on('#project', { width: 390, height: 844, mobile: true }, async (p) => {
+    await go(p, '#movement');
+    await shows(p, () => document.querySelector('.mov')?.movement?.env !== undefined);
+    await p.evaluate((slot) => document.querySelector('.mov').movement.env.fix({ slot }), { groupId: C6, dayTypeId: DAY_A, period: 2 });
+    await waitForSection(p, 'schedule');
+    await settled(p);
+    await listIs(p, true);
+    assert.equal(await hashOf(p), '#schedule/groups/' + C6 + '/' + DAY_A + '/2');
+    assert.equal(await p.evaluate(() => history.state), null, 'opened from Movement, the entry is marked as having the list under it');
+    await tap(p, '[data-action="delete"]');
+    await closeToast(p);
+    await listIs(p, false);
+    await until(p, 'the Delete did not come to the list', () => location.hash === '#schedule/groups' && document.querySelector('.sch').dataset.pending !== 'true');
+    assert.deepEqual(await backTo(p, '#movement', 3), ['#schedule/groups', '#movement']);
+  });
+});
+
 test('SV2-54 item 5: on a phone a tap on the chosen card, on a slot\'s address Show went to, adds nothing to the history', async () => {
   await on('#schedule/groups', PHONE, async (p) => {
     await act(p, 'setSlot', { groupId: C6, dayTypeId: DAY_A, period: 3, slot: { label: 'Choir' } });

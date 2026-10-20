@@ -45,10 +45,12 @@ import { tabs } from '../components/tabs.js';
 import { periodWords } from '../components/words.js';
 import { scheduleModel } from './model.js';
 import { findingsPanel, SHEET as INSPECTOR_SHEET } from './checks.js';
-import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, stepOffSpent, placeInHistory } from './groups.js';
+import { mount as groups, matches as groupMatches, NARROW as GROUPS_NARROW, stepOffSpent, placeInHistory, openAddress } from './groups.js';
 import { readAddress, slotHash } from './address.js';
 
-export { slotHash };
+// for a link into the section from another (Movement's "Fix it in the
+// schedule"): the address, and the way to open it (groups.js)
+export { slotHash, openAddress };
 import { mount as grid, GRID_KEYS } from './grid/index.js';
 import { mount as teachers } from './teachers.js';
 import { mount as subjects } from './subjects.js';
