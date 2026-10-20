@@ -463,6 +463,41 @@ test('spec 18, run a scenario and apply it, by a finger alone at 390 by 844', as
   });
 });
 
+// Seen in SV2-72f's screens: at 844 by 390 Apply's summary of three changes
+// scrolled as a whole and opened scrolled to its buttons (the focus is on the
+// safe one, last), its question 69 px above the window's top.
+test('SV2-72f: Apply…\'s summary on a phone on its side with touch keeps its question and both buttons in view, its list scrolling between them', async () => {
+  await on('#project', SIDE, async (page) => {
+    const changes = [
+      { kind: 'move', dayTypeId: DAY_A, groupId: 'gsample07a', period: 2, roomId: 'rsample101' },
+      { kind: 'move', dayTypeId: DAY_A, groupId: 'gsample06a', period: 0, roomId: 'rsamplecaf' },
+      { kind: 'swapRooms', dayTypeId: DAY_A, groupA: 'gsample08a', groupB: 'gsample08b', period: 1 },
+    ];
+    await fixture(page, null, [['newScenario', { name: 'Library swap' }], ...changes.map((change) => ['addScenarioChange', { change }])]);
+    await go(page, '#scenarios');
+    await labReady(page);
+    await tap(page, '[data-action="apply"]');
+    await until(page, 'Apply… opened no summary', () => Boolean(document.querySelector('#scenario-apply[open]')));
+    const at = await page.evaluate(() => {
+      const dialog = document.getElementById('scenario-apply');
+      const inView = (el) => {
+        const rect = el.getBoundingClientRect();
+        return el.getClientRects().length > 0 && rect.top >= -0.5 && rect.bottom <= window.innerHeight + 0.5;
+      };
+      const body = dialog.querySelector('.dialog__body');
+      return {
+        title: inView(dialog.querySelector('.dialog__title')),
+        buttons: Array.from(dialog.querySelectorAll('.dialog__buttons .btn')).map(inView),
+        dialog: [dialog.getBoundingClientRect().top, dialog.getBoundingClientRect().bottom, dialog.scrollTop],
+        body: [body.scrollHeight, body.clientHeight],
+      };
+    });
+    assert.ok(at.body[0] > at.body[1] || at.dialog[2] > 0, 'the summary fits the window: the case tests nothing: ' + JSON.stringify(at));
+    assert.equal(at.title, true, 'the question is out of view: ' + JSON.stringify(at));
+    assert.deepEqual(at.buttons, [true, true], 'a button is out of view: ' + JSON.stringify(at));
+  });
+});
+
 // ------------------------------------------- spec 18: print door cards
 
 test('spec 18, print door cards, by the keyboard alone at 1280 by 800: one room shown from the list, a choice of two, then every room, on A4', async () => {
