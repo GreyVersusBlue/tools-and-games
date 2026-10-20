@@ -10,7 +10,7 @@
 //             round mark at its door to the square mark at the exit
 //   under     the key, docked under the map: each exit's number, colour and
 //             name, so the badge on a room says which exit without the
-//             colour; past ten exits, that the colours repeat; with the
+//             colour; past eight exits (EXIT_COUNT), that the colours repeat; with the
 //             badges too small to draw, that zooming in shows them; with a
 //             room picked, what the two marks mean (or, for a room with no
 //             way out, that it is framed and no route is drawn)
@@ -38,7 +38,7 @@ import { tabs } from '../components/tabs.js';
 import { count, figures } from '../components/words.js';
 import { createPlanMap } from '../surface/plan-map.js';
 import { slotAt } from '../surface/plan-layout.js';
-import { evacuationOverlay, exitColours, runsOf, EXIT_KEY_LEAST, EXIT_PRESETS } from '../surface/overlays/evacuation.js';
+import { evacuationOverlay, exitColours, exitPalette, runsOf, EXIT_KEY_LEAST, EXIT_COUNT } from '../surface/overlays/evacuation.js';
 import { drawStairLink } from '../surface/overlays/lanes.js';
 import { labelOn } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
@@ -68,7 +68,7 @@ export const MARKS_SAY = 'Round mark: the door the room is left by. Square mark:
 export const LOST_SAYS = 'The picked room is framed. It has no way out, so no route is drawn.';
 // under the key, when the badges are too small to draw (EXIT_KEY_LEAST)
 export const ZOOM_SAYS = 'Zoom in to see each room’s exit number on the map.';
-// under the key, past the colours there are
+// under the key, past the colours there are (EXIT_COUNT)
 export const REPEAT_SAYS = (n) => 'The colours repeat after exit ' + n + ': the number on each room says which exit.';
 // the live region, when the picked room is gone from the building
 export const GONE_SAYS = (name) => name + ' is no longer in the building; showing every room.';
@@ -131,8 +131,6 @@ export const section = {
     const store = ctx.store;
     adopt(store.project);
     let gone = false;
-    // the frame a draw waits for while the section is not yet on the page
-    let waiting = 0;
     let picture = null;
     let shown = null;
     let colours = [];
@@ -161,6 +159,10 @@ export const section = {
       name: 'safety',
       label: 'The evacuation map',
       keys: KEYS,
+      // the routes run along the corridors: their names are drawn over them
+      namesOver: true,
+      // a phone on its side keeps 160 px of map, the key scrolled to under it (W5)
+      least: 160,
       floorsRow: {
         value: () => memory.floors,
         change(value) {
@@ -176,14 +178,18 @@ export const section = {
     const empty = h('div', { class: 'mov-empty stub sfy-empty', hidden: true });
     element.append(empty);
 
-    // ---- the exits' colours, for the theme on screen
+    // ---- the exits' colours, for the theme on screen: the --exit-n tokens
+    // of ./safety.css, read where the section is (the page's root while it is
+    // not on the page yet, where the tokens are too)
     function exitColour(number) {
       const theme = plan.theme();
       const many = picture ? picture.exits.length : 0;
       const key = theme.corridor + ':' + many;
       if (key !== coloursKey) {
-        coloursKey = key;
-        colours = exitColours(many, theme);
+        const palette = exitPalette(getComputedStyle(element.isConnected ? element : document.documentElement));
+        // a reading with a token missing is used now and asked again at the next draw
+        coloursKey = palette.every(Boolean) ? key : '';
+        colours = exitColours(many, palette, theme.ink);
       }
       return colours[number - 1] || theme.ink;
     }
@@ -304,6 +310,12 @@ export const section = {
         if (!found) ctx.announce('Between floors.');
         else if (!row) ctx.announce(found.slot.floor.name + ': not a room.');
         else ctx.announce(cursorLine(row, picture));
+      } else if (ev.kind === 'enter') {
+        // Enter over a room picks it
+        const { room } = roomUnder(ev.x + 0.5, ev.y + 0.5);
+        if (room && picture.byRoom.has(room.id)) pick(room.id, { say: true });
+        else ctx.announce('There is no room under the cursor.');
+        return true;
       } else if (ev.kind === 'escape') {
         if (!memory.picked) return false;
         pick(null, { say: true });
@@ -311,16 +323,6 @@ export const section = {
       }
       return false;
     });
-    // Enter over a room picks it. The map makes Enter a press on the
-    // cursor's cell, which is a pan on this map, so the key is read here.
-    function onKey(event) {
-      if (event.key !== 'Enter' || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
-      const cursor = plan.cursor;
-      const { room } = roomUnder(cursor.x + 0.5, cursor.y + 0.5);
-      if (room && picture && picture.byRoom.has(room.id)) pick(room.id, { say: true });
-      else ctx.announce('There is no room under the cursor.');
-    }
-    plan.canvas.addEventListener('keydown', onKey);
 
     // the key and the lists follow a theme the device changes (the map draws itself again)
     const dark = matchMedia('(prefers-color-scheme: dark)');
@@ -337,9 +339,9 @@ export const section = {
       marks.hidden = !one;
       marks.textContent = row && !row.ok ? LOST_SAYS : MARKS_SAY;
       keyLine.dataset.mode = one ? 'one' : 'all';
-      const repeats = !one && picture.exits.length > EXIT_PRESETS.length;
+      const repeats = !one && picture.exits.length > EXIT_COUNT;
       repeat.hidden = !repeats;
-      repeat.textContent = repeats ? REPEAT_SAYS(EXIT_PRESETS.length) : '';
+      repeat.textContent = repeats ? REPEAT_SAYS(EXIT_COUNT) : '';
       drawZoomNote(plan.view.size);
       if (one) return;
       keyList.replaceChildren(...picture.exits.map((exit) => h('li', { class: 'sfy-key__item', data: { exit: exit.exitId, number: String(exit.number) } },
@@ -357,20 +359,6 @@ export const section = {
 
     function draw() {
       if (!picture || gone) return;
-      // The renderer keeps the theme it first reads (ui/surface/renderer.js),
-      // and a canvas not yet in the document reads no tokens at all: the key's
-      // colours wait until the shell has put the section on the page, which
-      // it does as soon as mount returns. One frame is asked for at a time,
-      // and none once the section is unmounted.
-      if (!element.isConnected) {
-        if (!waiting) {
-          waiting = requestAnimationFrame(() => {
-            waiting = 0;
-            draw();
-          });
-        }
-        return;
-      }
       if (memory.picked && !picture.byRoom.has(memory.picked)) memory.picked = null;
       if (memory.picked) memory.pickedName = picture.byRoom.get(memory.picked).name;
       lineWords.replaceChildren(...words(firstLine(shown, picture, memory.picked)));
@@ -436,8 +424,6 @@ export const section = {
       get chosen() { return Array.from(memory.chosen); },
       pick: (roomId) => pick(roomId, { bring: true }),
       colour: (number) => exitColour(number),
-      // a draw is waiting for the section to be put on the page
-      get waiting() { return waiting !== 0; },
     };
 
     return {
@@ -448,9 +434,6 @@ export const section = {
       },
       unmount() {
         gone = true;
-        if (waiting) cancelAnimationFrame(waiting);
-        waiting = 0;
-        plan.canvas.removeEventListener('keydown', onKey);
         dark.removeEventListener('change', onScheme);
         plan.unmount();
       },

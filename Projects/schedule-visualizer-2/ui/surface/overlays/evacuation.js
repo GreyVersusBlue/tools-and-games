@@ -15,21 +15,26 @@
 //
 // The first half of this file has no canvas in it and runs in Node:
 //
-//   exitColours(count, theme) -> ['#rrggbb', …]
-//     one colour an exit, in key order: EXIT_PRESETS, each made readable at
-//     3:1 against the theme's corridor, which in both themes is the lighter
-//     or the darker end of what a line lies on (corridor and card), so a
-//     line and the key's swatch both pass. Past EXIT_PRESETS.length exits
-//     the colours repeat (the key says so; the number is the exit's identity)
-//   EXIT_PRESETS   ten colours: the group presets' red, blue, orange,
-//     green and purple (ui/colour.js), with a blue grey, a sky, a dark brown,
-//     a pure blue and a violet, found by search so that every pair stays
-//     apart once made 3:1 in both themes. The presets' own yellow, made 3:1
-//     on a white corridor, came out an olive 0.067 from the orange and 0.121
-//     from the brown (the review's exits 7 and 9)
-//   EXIT_APART     the least OKLab distance between any two of the ten,
-//     after readable(), in either theme: 0.13, above the 0.121 of the pair
-//     called alike; the ten are at least 0.133 apart (blue and purple, dark)
+//   exitPalette(style) -> ['#rrggbb' or null, …]
+//     the exits' colours of the theme on screen: --exit-1 to --exit-EXIT_COUNT
+//     read from `style` (a getComputedStyle, or anything with
+//     getPropertyValue), null for one that is not a colour. The values are
+//     tokens of ui/safety/safety.css (SV2-72c), a categorical set clear of
+//     the hues of --problem and --warning (EXIT_HUE_CLEAR), each 3:1 on the
+//     corridor, the floor and the stairs; test/ui/exit-colours.test.mjs
+//     holds them
+//   exitColours(count, palette, fallback?) -> ['#rrggbb', …]
+//     one colour an exit, in key order: the palette, repeated past its
+//     length (the key says so; the number is the exit's identity); a token
+//     that could not be read is `fallback` ('#808080' when not given)
+//   EXIT_COUNT       8, the tokens there are
+//   EXIT_HUE_CLEAR   40, the least OKLCh hue angle, in degrees, between an
+//     exit's colour (one with chroma, EXIT_GREY or more) and --problem or
+//     --warning in either theme. SV2-67b's set began with the presets' red,
+//     on a safety map the problem colour: the first exit read as an alarm
+//   EXIT_APART     the least OKLab distance between any two of the set in
+//     either theme: 0.13 (SV2-67b's pair called alike was 0.121); the eight
+//     are at least 0.147 apart (light) and 0.158 (dark)
 //   oklab(colour) -> [L, a, b]   Björn Ottosson's OKLab, for that distance
 //   apart(a, b) -> number        the OKLab distance between two colours
 //   runsOf(route) -> [[{ floorId, cell }, …], …]
@@ -49,18 +54,33 @@
 //              in the problem colour from `lost`: { floorId, cells }
 //   EXIT_KEY_LEAST   the zoom (px a cell) under which badges are not drawn
 
-import { readable, labelOn, parse } from '../../colour.js';
+import { labelOn, parse } from '../../colour.js';
 
 export const EXIT_KEY_LEAST = 10;
 
-export const EXIT_PRESETS = Object.freeze(['#d1495b', '#0072b2', '#e69f00', '#009e73', '#9999aa', '#00aaff', '#664400', '#7b4ea3', '#0000ff', '#9900ee']);
+export const EXIT_COUNT = 8;
 
 export const EXIT_APART = 0.13;
 
-export function exitColours(count, theme) {
-  const surface = theme && parse(theme.corridor) ? theme.corridor : '#ffffff';
+export const EXIT_HUE_CLEAR = 40;
+
+// under this OKLCh chroma a colour is a grey, and has no hue to keep clear
+export const EXIT_GREY = 0.04;
+
+export function exitPalette(style) {
   const out = [];
-  for (let i = 0; i < count; i += 1) out.push(readable(EXIT_PRESETS[i % EXIT_PRESETS.length], surface, 3));
+  for (let n = 1; n <= EXIT_COUNT; n += 1) {
+    const value = style && typeof style.getPropertyValue === 'function' ? String(style.getPropertyValue('--exit-' + n)).trim() : '';
+    out.push(parse(value) ? value : null);
+  }
+  return out;
+}
+
+export function exitColours(count, palette, fallback) {
+  const list = Array.isArray(palette) && palette.length > 0 ? palette : [];
+  const other = fallback || '#808080';
+  const out = [];
+  for (let i = 0; i < count; i += 1) out.push(list.length > 0 ? list[i % list.length] || other : other);
   return out;
 }
 

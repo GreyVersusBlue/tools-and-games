@@ -5,6 +5,60 @@
    rules and ui/app.css's block for the plan map's sections; what is the
    evacuation view's and the door cards' alone goes here. */
 
+/* ---------- The exits' colours (SV2-72c) ----------
+
+   One colour an exit, in the key's order, --exit-1 to --exit-8; past eight
+   they repeat, and the number on each room says which exit (the key says
+   so). A categorical set that keeps clear of the severities: no colour's
+   hue is within 40 degrees of --problem's or --warning's in either theme
+   (the grey has no hue), so the first exit no longer reads as an alarm.
+   Each is at least 3:1 on --corridor, --grid and --stairs of its theme,
+   since a route lies on corridors and stairs and a frame and a badge on a
+   room over the floor, and every pair is at least 0.13 apart in OKLab
+   (ui/surface/overlays/evacuation.js EXIT_APART). test/ui/exit-colours.test.mjs
+   reads this file and tokens.css and holds all of it, and the two dark
+   blocks equal, as tokens.css's own test does for its blocks. The theme
+   selectors are tokens.css's, so the values are on the page's root and a
+   map read before its section is on the page gets them too. */
+
+:root,
+[data-theme="light"],
+[data-theme="auto"] {
+  --exit-1: #255ebc;    /* blue */
+  --exit-2: #0f641d;    /* green */
+  --exit-3: #661f75;    /* purple */
+  --exit-4: #238994;    /* teal */
+  --exit-5: #876fe4;    /* violet */
+  --exit-6: #768b09;    /* olive */
+  --exit-7: #404040;    /* grey */
+  --exit-8: #c34e97;    /* pink */
+}
+
+[data-theme="dark"] {
+  --exit-1: #87a9e1;    /* blue */
+  --exit-2: #37a643;    /* green */
+  --exit-3: #e9c6f1;    /* purple */
+  --exit-4: #61ebfa;    /* teal */
+  --exit-5: #846ce0;    /* violet */
+  --exit-6: #b7d341;    /* olive */
+  --exit-7: #808080;    /* grey */
+  --exit-8: #f07ec2;    /* pink */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]),
+  [data-theme="auto"] {
+    --exit-1: #87a9e1;    /* blue */
+    --exit-2: #37a643;    /* green */
+    --exit-3: #e9c6f1;    /* purple */
+    --exit-4: #61ebfa;    /* teal */
+    --exit-5: #846ce0;    /* violet */
+    --exit-6: #b7d341;    /* olive */
+    --exit-7: #808080;    /* grey */
+    --exit-8: #f07ec2;    /* pink */
+  }
+}
+
 /* ---------- The key, docked under the map ---------- */
 
 .sfy-key {

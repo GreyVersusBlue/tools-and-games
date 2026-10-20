@@ -28,6 +28,12 @@
 //                 bar's second row. Without it every floor is on the map, laid
 //                 out as fits the window best, and there is no row.
 //     keys        the sentence a screen reader is given for the map's keys
+//     least       the stage's least in px in place of STAGE_LEAST (120):
+//                 Safety asks 160, so a phone on its side keeps a map a
+//                 finger can use (SV2-72c, W5); the section then scrolls
+//                 its first line and its docked line away instead
+//     namesOver   true: corridor names are drawn over the overlays, on a halo
+//                 (Safety, whose routes run along the corridors; SV2-72c)
 //
 // A name or a frame left out is a TypeError naming it. The map makes its own
 // root, map.root (div.mov, the section's scrolling element, with map.element
@@ -59,6 +65,7 @@
 //   map.cellAt(floorId, cell)  a cell's middle in pixels, or null
 //   map.onCell(fn)          fn({ kind, x, y, inside }) for what is done to a cell:
 //                           'tap', 'hover', 'keyboard' (the cursor moved there),
+//                           'enter' (Enter on the cursor's cell; SV2-72c),
 //                           'escape' (fn returns true when it used the key),
 //                           'view' (the map moved under the pointer) and
 //                           'resize' (the stage changed size); x and y are in
@@ -94,7 +101,7 @@ import { createViewport, ZOOM_STEP } from './viewport.js';
 import { createRenderer } from './renderer.js';
 import { attachInput } from './input.js';
 import { attachCursor } from './cursor.js';
-import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, FIT_MARGIN } from './plan-layout.js';
+import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, fitClear, FIT_MARGIN } from './plan-layout.js';
 
 // The map's stylesheet: movement.css's .mov-* rules, for every section that
 // mounts it. A page that links it (data-sheet="movement", as index.html does)
@@ -159,7 +166,7 @@ export function keepOnStage(view, world) {
 // over the foot and the docked line, so with the first line scrolled away
 // the whole stage is on screen (110 px at 844 by 390 on a touch screen).
 //
-//   m = { world, width, zoomRoom, height, line, foot, docked, gap, bar }
+//   m = { world, width, zoomRoom, height, line, foot, docked, gap, bar, least }
 //     world, width, zoomRoom   the floors' layout, the stage's width, the zoom box's need
 //     height        the section's height (with an open sheet's height given back)
 //     line          the first line with the head's padding and edge
@@ -167,10 +174,12 @@ export function keepOnStage(view, world) {
 //     docked        the docked line alone
 //     gap           the foot's gap over what may grow over the map
 //     bar           the foot's whole height
+//     least         a section's own least (createPlanMap's option), which
+//                   may leave the docked line to be scrolled to under it
 //   -> { room, more, bar }   --mov-room, --mov-more and --mov-bar, in px
 export function stageRoom(m) {
   const has = Math.max(0, Math.floor(m.height - m.line - m.foot));
-  const least = Math.min(stageLeast(m.world, m.width, m.zoomRoom), Math.max(0, Math.floor(m.height - m.foot)));
+  const least = Math.min(stageLeast(m.world, m.width, m.zoomRoom, m.least), Math.max(0, Math.floor(m.height - (m.least > 0 ? m.foot - m.docked : m.foot))));
   return {
     room: Math.max(has, least),
     // what may grow over the map takes the map's height and the docked line, never the first line's
@@ -323,9 +332,26 @@ export function createPlanMap(asked) {
     queuePaint();
   }
 
+  // Where the zoom buttons rest on the stage, in its pixels: its bottom
+  // left corner, not lifted over a bar (--mov-under moves with the scroll);
+  // null before the sheet has given it a box.
+  function zoomCorner() {
+    const w = zoomBox.offsetWidth;
+    const h = zoomBox.offsetHeight;
+    if (w === 0 || h === 0) return null;
+    const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
+    return { x: margin, y: view.height - margin - h, w, h };
+  }
+
+  // Fit leaves the zoom buttons' corner clear of every painted cell (fitClear in ./plan-layout.js)
   function fit(quiet) {
     if (!world || view.width === 0) return;
-    view.fit({ x: 0, y: 0, w: world.width, h: world.height }, FIT_MARGIN);
+    const place = fitClear(world, view.width, view.height, zoomCorner(), FIT_MARGIN);
+    view.zoom = place.zoom;
+    view.x = place.x;
+    view.y = place.y;
+    // 'whole', 'above' or 'beside' the zoom buttons, for a test to read
+    stage.dataset.fit = place.how;
     fitted = true;
     shownLast = null;
     if (!quiet) {
@@ -411,6 +437,9 @@ export function createPlanMap(asked) {
         cursor: null,
         preview: null,
         overlays: overlays.slice(),
+        // a door name the slot would cut goes inside its dash (SV2-72c, W6)
+        clip: { x: slot.box.x, y: slot.box.y, w: slot.box.w, h: slot.box.h },
+        namesOver: options.namesOver === true,
       });
       g.restore();
       g.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -506,6 +535,8 @@ export function createPlanMap(asked) {
       queuePaint();
     },
     escape: () => emit({ kind: 'escape' }),
+    // Enter on the cursor's cell: a press here would be a pan, so it is said as itself
+    enter: (ev) => emit({ ...ev, kind: 'enter' }),
     shown: () => queuePaint(),
   };
   const input = attachInput(canvas, host);
@@ -556,6 +587,15 @@ export function createPlanMap(asked) {
   // the surface, measured as it is on screen now: when the stage changes
   // size (the foot under it grew or shrank, the window changed) and when
   // either of them is scrolled.
+  // The frame's foot as it is on screen: none when it has no box (not
+  // rendered, or a section's bar laid out as display: none), whose
+  // getBoundingClientRect() would read 0 everywhere, as if the foot stood
+  // at the window's top and lay over the whole stage (SV2-68's review)
+  function footShown() {
+    const foot = parts && parts.foot;
+    return foot && foot.getClientRects().length > 0 ? foot : null;
+  }
+
   let dockHost = null;
   function dock() {
     if (gone || !parts) return;
@@ -568,7 +608,7 @@ export function createPlanMap(asked) {
     const edge = surface.getBoundingClientRect();
     const foot = edge.top + surface.clientTop + surface.clientHeight;
     let top = foot;
-    for (const each of [zoomBox, parts.foot]) {
+    for (const each of [zoomBox, footShown()]) {
       if (!each) continue;
       const box = each.getBoundingClientRect();
       if (box.height > 0 && box.bottom > edge.top && box.top < foot) top = Math.min(top, box.top);
@@ -587,7 +627,8 @@ export function createPlanMap(asked) {
   function lift() {
     if (element.hidden) return;
     const shown = stage.getBoundingClientRect();
-    const footTop = parts.foot ? parts.foot.getBoundingClientRect().top : shown.bottom;
+    const foot = footShown();
+    const footTop = foot ? foot.getBoundingClientRect().top : shown.bottom;
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
     const most = Math.max(0, shown.height - zoomBox.offsetHeight - margin * 2);
     const under = Math.round(Math.min(most, Math.max(0, shown.bottom - footTop))) + 'px';
@@ -621,11 +662,12 @@ export function createPlanMap(asked) {
       const shape = parts.head ? getComputedStyle(parts.head) : null;
       line = tall(parts.line) + (shape ? (parseFloat(shape.paddingTop) || 0) + (parseFloat(shape.paddingBottom) || 0) + (parseFloat(shape.borderBottomWidth) || 0) : 0);
     }
-    const gap = parts.foot ? parseFloat(getComputedStyle(parts.foot).rowGap) || 0 : 0;
-    const more = parts.more && !parts.more.hidden ? tall(parts.more) + gap : 0;
+    const foot = footShown();
+    const gap = foot ? parseFloat(getComputedStyle(foot).rowGap) || 0 : 0;
+    const more = foot && parts.more && !parts.more.hidden ? tall(parts.more) + gap : 0;
     const docked = parts.under && !parts.under.hidden ? tall(parts.under) : 0;
-    const bar = tall(parts.foot);
-    const next = stageRoom({ world, width: stage.clientWidth, zoomRoom: zoomRoom(), height, line, foot: bar - more + docked, docked, gap, bar });
+    const bar = tall(foot);
+    const next = stageRoom({ world, width: stage.clientWidth, zoomRoom: zoomRoom(), height, line, foot: bar - more + docked, docked, gap, bar, least: options.least });
     const set = (key, value) => {
       if (root.style.getPropertyValue(key) !== value) root.style.setProperty(key, value);
     };
@@ -633,14 +675,38 @@ export function createPlanMap(asked) {
     set('--mov-more', next.more + 'px');
     set('--mov-bar', next.bar + 'px');
     // the foot's height this was measured with, for a test to wait on
-    root.dataset.measuredBar = String(parts.foot ? parts.foot.offsetHeight : 0);
+    root.dataset.measuredBar = String(foot ? foot.offsetHeight : 0);
+    // and the zoom box's need, the same
+    root.dataset.zoomRoom = String(zoomRoom());
   }
   // and where a message may lie, which moves with the foot's height whether
-  // or not the stage changes size
+  // or not the stage changes size. The zoom box is watched too: its size is
+  // the stage's least (zoomRoom) and the corner Fit keeps clear, and it
+  // changes with the pointer (44 px buttons under a finger) and the root's
+  // font (SV2-72c, the SV2-57 review's gap)
   const roomWatcher = new ResizeObserver(() => {
     room();
     dock();
   });
+  roomWatcher.observe(zoomBox);
+  let zoomSize = '';
+  const onZoomBox = new ResizeObserver(() => {
+    const size = zoomBox.offsetWidth + 'x' + zoomBox.offsetHeight;
+    if (size === zoomSize) return;
+    const first = zoomSize === '';
+    zoomSize = size;
+    // a fitted map is fitted again round the box as it is now
+    if (!first && fitted && world) {
+      fit(true);
+      queuePaint();
+    }
+  });
+  onZoomBox.observe(zoomBox);
+  // a pointer of another kind (a mouse plugged into a tablet): the sheet's
+  // rules change the box, which the watchers above see; measured again now too
+  const coarse = matchMedia('(pointer: coarse)');
+  const onPointer = () => remeasure();
+  coarse.addEventListener('change', onPointer);
 
   // A wheel over the map scrolls the section while the section has some way
   // to go that way and the map is not all on screen (the controls are shown
@@ -656,7 +722,8 @@ export function createPlanMap(asked) {
     // the foot lies over the map's foot until the section is at its end; the
     // map's foot is the docked line under it when it is there, so the wheel
     // brings that line above the foot too (SV2-55)
-    const foot = parts.foot ? Math.min(edge.bottom, parts.foot.getBoundingClientRect().top) : edge.bottom;
+    const shownFoot = footShown();
+    const foot = shownFoot ? Math.min(edge.bottom, shownFoot.getBoundingClientRect().top) : edge.bottom;
     const mapFoot = !parts.under || parts.under.hidden ? shown.bottom : Math.max(shown.bottom, parts.under.getBoundingClientRect().bottom);
     if (event.deltaY > 0) return root.scrollTop < most - 1 && mapFoot > foot + 1;
     return root.scrollTop > 0 && shown.top < edge.top - 1;
@@ -779,6 +846,8 @@ export function createPlanMap(asked) {
       }
       watcher.disconnect();
       roomWatcher.disconnect();
+      onZoomBox.disconnect();
+      coarse.removeEventListener('change', onPointer);
       stage.removeEventListener('wheel', onStageWheel, { capture: true });
       dark.removeEventListener('change', queuePaint);
       if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);

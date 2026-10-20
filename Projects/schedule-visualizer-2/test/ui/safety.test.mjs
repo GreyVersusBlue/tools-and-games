@@ -1,22 +1,19 @@
-// The Safety section's plain functions (SV2-67b): the exits' colours and how
-// far apart they are in both themes, a way out cut into runs a floor, the
-// first line, a room's line in the Door cards list, and the cursor's
-// sentence over a room. The section in a page is test/browser/safety.mjs.
+// The Safety section's plain functions (SV2-67b): OKLab, a way out cut into
+// runs a floor, the first line, a room's line in the Door cards list, and the
+// cursor's sentence over a room. The section in a page is
+// test/browser/safety.mjs. The exits' colours are tokens of
+// ui/safety/safety.css since SV2-72c, held by test/ui/exit-colours.test.mjs.
 //
 //   node test/ui/safety.test.mjs
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { exitColours, runsOf, apart, oklab, EXIT_APART, EXIT_PRESETS } from '../../ui/surface/overlays/evacuation.js';
-import { contrast } from '../../ui/colour.js';
+import { runsOf, apart, oklab } from '../../ui/surface/overlays/evacuation.js';
 import { safetyPicture, firstLine, roomLine } from '../../ui/safety/model.js';
 import { cursorLine, REPEAT_SAYS, GONE_SAYS } from '../../ui/safety/index.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { buildGraph } from '../../engine/graph.js';
-
-// the corridor of each theme (ui/tokens.css), which the colours are made 3:1 against
-const THEMES = { light: { corridor: '#ffffff' }, dark: { corridor: '#2a2f36' } };
 
 function sample() {
   const project = sampleSchool();
@@ -33,37 +30,8 @@ test('OKLab: white, black and a known colour where they should be, and a distanc
   assert.throws(() => oklab('not a colour'), TypeError);
 });
 
-for (const [name, theme] of Object.entries(THEMES)) {
-  test('the ten exit colours in the ' + name + ' theme: each 3:1 on the corridor, and every pair at least ' + EXIT_APART + ' apart in OKLab', () => {
-    const colours = exitColours(10, theme);
-    assert.equal(colours.length, 10);
-    for (const colour of colours) assert.ok(contrast(colour, theme.corridor) >= 3, colour + ' is ' + contrast(colour, theme.corridor).toFixed(2) + ':1 on ' + theme.corridor);
-    const close = [];
-    for (let i = 0; i < colours.length; i += 1) {
-      for (let j = i + 1; j < colours.length; j += 1) {
-        const d = apart(colours[i], colours[j]);
-        if (d < EXIT_APART) close.push('exits ' + (i + 1) + ' and ' + (j + 1) + ' (' + colours[i] + ', ' + colours[j] + ') are ' + d.toFixed(3) + ' apart');
-      }
-    }
-    assert.deepEqual(close, [], name + ': ' + close.join('; '));
-  });
-}
-
-test('exits 7 and 9, alike on the light theme before (#8c6d31 and #9e962c), are far apart now', () => {
-  const colours = exitColours(10, THEMES.light);
-  assert.ok(apart('#8c6d31', '#9e962c') < EXIT_APART, 'the pair called alike is not under the threshold: the threshold tests nothing');
-  assert.ok(apart(colours[6], colours[8]) >= EXIT_APART, colours[6] + ' and ' + colours[8]);
-});
-
-test('past ten exits the colours repeat in key order, and the key has the words for it', () => {
-  const colours = exitColours(12, THEMES.light);
-  assert.equal(EXIT_PRESETS.length, 10);
-  assert.equal(colours[10], colours[0]);
-  assert.equal(colours[11], colours[1]);
-  assert.equal(new Set(colours.slice(0, 10)).size, 10);
-  assert.equal(REPEAT_SAYS(10), 'The colours repeat after exit 10: the number on each room says which exit.');
-  // a theme with no corridor colour is read as white
-  assert.deepEqual(exitColours(3, {}), exitColours(3, THEMES.light));
+test('past eight exits the key has the words for the colours repeating', () => {
+  assert.equal(REPEAT_SAYS(8), 'The colours repeat after exit 8: the number on each room says which exit.');
 });
 
 test('runsOf: a way out down two stairs is three runs, one a floor, the first starting at the room\'s door', () => {

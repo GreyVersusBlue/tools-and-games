@@ -139,3 +139,73 @@ test('SV2-65b: the layout is ui/surface/plan-layout.js, and the old path under u
   assert.deepEqual(Object.keys(oldPath).sort(), Object.keys(planLayout).sort());
   for (const key of Object.keys(planLayout)) assert.equal(oldPath[key], planLayout[key], key + ' at the old path is not the same one');
 });
+
+// ---- SV2-72c item 1 (W1): Fit leaves the zoom buttons' corner clear
+
+import { fitClear, paintedUnder, ZOOM_GAP, FIT_MARGIN, bestLayout } from '../../ui/surface/plan-layout.js';
+import { sampleSchool } from '../../data/sample-school.js';
+
+// the zoom box as drawn: 12 px from the stage's edge, 38 px tall with a
+// mouse (46 with touch), about 170 px wide
+const corner = (height, tall = 38) => ({ x: 12, y: height - 12 - tall, w: 170, h: tall });
+const grown = (box) => ({ x: box.x - ZOOM_GAP, y: box.y - ZOOM_GAP, w: box.w + ZOOM_GAP * 2, h: box.h + ZOOM_GAP * 2 });
+
+// stages of a section: a desktop window's, a phone's upright and on its
+// side (110 px was the walk-through's, 160 W5's least); the box 38 px tall
+// with a mouse, 46 with touch
+const STAGES = [[1080, 640, 38], [920, 540, 38], [390, 470, 46], [844, 160, 46], [844, 110, 46], [900, 140, 38]];
+
+test('W1: the sample school at Fit has no painted cell under the zoom box on any stage of the walk-through, where a plain fit has', () => {
+  const floors = sampleSchool().building.floors;
+  let plainCovered = 0;
+  for (const [width, height, tall] of STAGES) {
+    const layout = layoutFloors(floors, bestLayout(floors, width, height));
+    const box = corner(height, tall);
+    const plain = fitClear(layout, width, height, null);
+    if (paintedUnder(layout, plain, grown(box))) plainCovered += 1;
+    const fitted = fitClear(layout, width, height, box);
+    assert.equal(fitted.clear, true, width + ' by ' + height + ': ' + JSON.stringify(fitted));
+    assert.equal(paintedUnder(layout, fitted, grown(box)), false, width + ' by ' + height + ': a painted cell under the zoom box at Fit');
+    assert.ok(fitted.zoom <= plain.zoom + 1e-9, 'a fit round the box is never larger than the plain one');
+  }
+  assert.ok(plainCovered >= 4, 'the plain fit covers a painted cell on only ' + plainCovered + ' stages: the case tests nothing');
+});
+
+test('W1: a plain fit with only empty cells under the box stands, number for number the viewport\'s own fit', () => {
+  // one floor whose drawing is all in its top right quarter
+  const floor = { id: 'f1', name: 'Floor 1', width: 40, height: 30, cells: Array(1200).fill('.'), spaces: [], exits: [], corridors: [] };
+  for (let y = 0; y < 15; y += 1) for (let x = 20; x < 40; x += 1) floor.cells[y * 40 + x] = 'c';
+  floor.cells[29 * 40] = '.';
+  // the drawn box is the corridor with its air; make it reach the corner by a lone empty frame
+  floor.spaces.push({ id: 'o1', kind: 'other', cells: [29 * 40 + 39], doors: [] });
+  const layout = layoutFloors([floor], 'side');
+  const fitted = fitClear(layout, 800, 500, corner(500));
+  assert.equal(fitted.how, 'whole');
+  const view = createViewport();
+  view.resize(800, 500);
+  view.fit({ x: 0, y: 0, w: layout.width, h: layout.height }, FIT_MARGIN);
+  assert.deepEqual([fitted.zoom, fitted.x, fitted.y], [view.zoom, view.x, view.y]);
+});
+
+test('W1: the band above the box is taken where it clears the corner, never wider or lower than the plain fit; the band beside only where it cannot', () => {
+  const floors = sampleSchool().building.floors;
+  // the three floors side by side on a wide low stage: above, though beside would be larger
+  const side = layoutFloors(floors, 'side');
+  const low = fitClear(side, 1120, 160, corner(160));
+  assert.equal(low.how, 'above', JSON.stringify(low));
+  const plain = fitClear(side, 1120, 160, null);
+  const size = (place) => CELL * place.zoom;
+  assert.ok(low.x >= plain.x - 1e-9 && low.x + side.width * size(low) <= plain.x + side.width * size(plain) + 1e-9, 'the map above the box is wider than the plain fit\'s');
+  assert.ok(low.y + side.height * size(low) <= plain.y + side.height * size(plain) + 1e-9, 'the map above the box runs lower than the plain fit\'s');
+  // stacked on a phone upright: above, its foot over the box
+  const stacked = layoutFloors(floors, 'stacked');
+  const high = fitClear(stacked, 390, 470, corner(470, 46));
+  assert.equal(high.how, 'above', JSON.stringify(high));
+  assert.ok(high.y + stacked.height * CELL * high.zoom <= 470 - 12 - 46 - ZOOM_GAP + 1e-9, 'the floors run down past the band above the box');
+  // a strip 60 px tall: 25 % is too tall for the band above, and the band beside clears the corner
+  const strip = fitClear(side, 844, 60, corner(60, 46));
+  assert.equal(strip.zoom, 0.25);
+  assert.equal(strip.how, 'beside', JSON.stringify(strip));
+  assert.equal(strip.clear, true, JSON.stringify(strip));
+  assert.ok(strip.x >= 12 + 170 + ZOOM_GAP - 1e-9, 'the floors start under the zoom box');
+});
