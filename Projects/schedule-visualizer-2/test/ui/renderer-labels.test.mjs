@@ -140,3 +140,20 @@ test('W6: a door name with no room beyond its dash inside the slot is drawn insi
   assert.deepEqual(name.map((w) => w.how), ['stroke', 'fill'], 'Door B is not drawn once, over its halo');
   assert.ok(name[1].x1 <= slot.px.x1 + 0.5, 'Door B runs past the floor\'s edge');
 });
+
+test('SV2-72c2 item 10: with namesOver a door name drawn inward, where a route ends at its exit\'s cell, is written after the overlays on a halo; without, before them as before', () => {
+  const project = sampleSchool();
+  const floor = project.building.floors.find((each) => each.exits.some((exit) => exit.doorName === 'Door A'));
+  const overlays = [(g) => g.mark('overlay')];
+  const order = (writes) => writes.map((w) => (w.how === 'mark' ? 'overlay' : w.how + ':' + w.text));
+  // on the map's slot Door A has no room beyond its dash, so it is drawn inward, over the corridor the route runs down
+  const plain = drawFloor(floor, project, (clip) => ({ clip, overlays }));
+  const inward = plain.writes.filter((w) => w.text === 'Door A');
+  assert.deepEqual(inward.map((w) => w.how), ['stroke', 'fill'], 'Door A is not drawn inward on a halo: the case tests nothing');
+  const under = order(plain.writes);
+  assert.ok(under.indexOf('fill:Door A') < under.indexOf('overlay'), 'Door A is not under the overlays without namesOver');
+  const over = order(drawFloor(floor, project, (clip) => ({ clip, overlays, namesOver: true })).writes);
+  const at = over.indexOf('fill:Door A');
+  assert.ok(at > over.indexOf('overlay'), 'with namesOver Door A is still under the overlays: the route is drawn over it');
+  assert.ok(over.indexOf('stroke:Door A') > over.indexOf('overlay') && over.indexOf('stroke:Door A') < at, 'Door A over the overlays has no halo under it');
+});

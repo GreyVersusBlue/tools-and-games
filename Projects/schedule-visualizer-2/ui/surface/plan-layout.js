@@ -15,7 +15,7 @@
 //   placeOf(layout, floorId, cell)      { x, y }: the top left of a floor's cell on the map, or null
 //   stageLeast(layout, width, zoomRoom) the least height the stage is given, in CSS pixels
 //   keepShift(view, layout, keep)       { dx, dy }: the pan that leaves `keep` px of the floors on the stage
-//   fitClear(layout, width, height, corner)   { zoom, x, y, how, clear }: the fit
+//   fitClear(layout, width, height, corner, margin)   { zoom, x, y, how, clear }: the fit
 //                                       that leaves no painted cell under `corner` (the zoom box)
 //   paintedUnder(layout, place, rect)   true when a painted cell lies under rect at that place
 //
@@ -152,8 +152,11 @@ export function keepShift(view, layout, keep) {
 // control (DESIGN 1, "never over the plan", holds at Fit, the picture every
 // section opens on).
 
-// The gap kept between the floors and the zoom box, in CSS pixels.
+// The gap kept between the floors and the zoom box, in CSS pixels; where
+// the floors' names would otherwise run off the stage's top, as little as
+// ZOOM_GAP_LEAST over the box.
 export const ZOOM_GAP = 8;
+export const ZOOM_GAP_LEAST = 4;
 
 // which cells of a floor are drawn on: 1 for a painted cell, kept by the floor object
 const paintedMasks = new WeakMap();
@@ -191,26 +194,29 @@ export function paintedUnder(layout, place, rect) {
 // l }, in the band's middle. At the least zoom a map can be larger than its
 // band; it is then kept to the band on the side `keep` names ('bottom' for
 // the band above the zoom box, 'left' for the band beside it), so the box's
-// corner stays clear and the map runs off the stage's other side.
+// corner stays clear and the map runs off the stage's other side. 'top'
+// keeps the band above the box with the map's top in it: the floors' names
+// stay whole and the margins over and under go first (Safety on a phone on
+// its side cut "Floor 1" by 2 px running off the top, SV2-72c2).
 function placeIn(layout, band, m, keep) {
   const zoom = clampZoom(Math.min(Math.max(1, band.w - m.l - m.r) / (layout.width * CELL), Math.max(1, band.h - m.t - m.b) / (layout.height * CELL)));
   const size = CELL * zoom;
   let x = band.x + m.l + (band.w - m.l - m.r - layout.width * size) / 2;
   let y = band.y + m.t + (band.h - m.t - m.b - layout.height * size) / 2;
   if (keep === 'left') x = Math.max(x, band.x + m.l);
-  if (keep === 'bottom') y = Math.min(y, band.y + band.h - m.b - layout.height * size);
+  if (keep === 'bottom' || keep === 'top') y = Math.min(y, band.y + band.h - m.b - layout.height * size);
+  if (keep === 'top') y = Math.max(y, band.y);
   return { zoom, x, y };
 }
 
 // corner = the zoom box on the stage { x, y, w, h }, or null when it has no
 // box yet. The band above the box is taken whenever it leaves the corner
 // clear with the map whole on the stage, the band beside it only when that
-// one cannot (a strip at the least zoom): the map in the band
-// above is no wider and no lower than the plain fit's, so a section that
-// asks where the plain fit puts the floors (Movement's legend, docked when
-// its card would lie on a floor: ui/movement/index.js coversFloor) is never
-// told a floor is clear of its card when the map as fitted is not. The band
-// beside moves the floors right, toward that card.
+// one cannot (a strip at the least zoom). The band beside moves the floors
+// right, toward a card on the stage's bottom right, so a section that asks
+// where the floors lie at Fit asks this, not a plain fit (the map's fitAt;
+// Movement's legend, docked when its card would lie on a floor:
+// ui/movement/index.js coversFloor, SV2-72c2).
 export function fitClear(layout, width, height, corner, margin) {
   const pad = margin === undefined ? FIT_MARGIN : margin;
   const all = { t: pad, r: pad, b: pad, l: pad };
@@ -227,14 +233,23 @@ export function fitClear(layout, width, height, corner, margin) {
     const seen = Math.max(0, Math.min(width, place.x + w) - Math.max(0, place.x)) * Math.max(0, Math.min(height, place.y + h) - Math.max(0, place.y));
     return seen / (w * h);
   };
-  const [above, beside] = [
-    { ...placeIn(layout, { x: 0, y: 0, w: width, h: Math.max(0, corner.y) }, { ...all, b: ZOOM_GAP }, 'bottom'), how: 'above' },
+  // the band above with the map's top kept on the stage: the gap over the
+  // box is what is left under the map, ZOOM_GAP_LEAST to ZOOM_GAP, and the
+  // corner is clear when no painted cell lies in the box or that gap
+  const band = { x: 0, y: 0, w: width, h: Math.max(0, corner.y) };
+  const kept = placeIn(layout, band, { ...all, b: ZOOM_GAP }, 'top');
+  const left = Math.max(ZOOM_GAP_LEAST, Math.min(ZOOM_GAP, corner.y - (kept.y + layout.height * CELL * kept.zoom)));
+  const keptBox = { x: box.x, y: corner.y - left, w: box.w, h: corner.h + left + ZOOM_GAP };
+  const [above, beside, off] = [
+    { ...kept, how: 'above', clear: !paintedUnder(layout, kept, keptBox) },
     { ...placeIn(layout, { x: corner.x + corner.w, y: 0, w: Math.max(0, width - corner.x - corner.w), h: height }, { ...all, l: ZOOM_GAP }, 'left'), how: 'beside' },
-  ].map((place) => ({ ...place, clear: !paintedUnder(layout, place, box), shown: onStage(place) }));
+    // a strip at the least zoom: the band above, the map run off the stage's top
+    { ...placeIn(layout, band, { ...all, b: ZOOM_GAP }, 'bottom'), how: 'above' },
+  ].map((place) => ({ ...place, clear: place.clear === undefined ? !paintedUnder(layout, place, box) : place.clear, shown: onStage(place) }));
   // above, clear and whole; else beside, clear and whole; else of those
-  // that are clear the one that shows more of the map, above on a tie
-  const clear = [above, beside].filter((place) => place.clear);
-  const pick = clear.find((place) => place.shown > 1 - 1e-9) || clear.sort((a, b) => b.shown - a.shown)[0] || above;
+  // that are clear the one that shows more of the map, the top kept on a tie
+  const clear = [above, beside, off].filter((place) => place.clear);
+  const pick = clear.find((place) => place.shown > 1 - 1e-9) || clear.sort((a, b) => b.shown - a.shown + (a === off ? 1e-9 : 0) - (b === off ? 1e-9 : 0))[0] || above;
   const { shown, ...place } = pick;
   return place;
 }

@@ -20,10 +20,12 @@
 //   underlay(g, view, floor),      drawn under the cells: a traced image
 //   overlays: [(g, view, floor, theme) => {}],   drawn over the plan and under
 //                                  the editor's marks: route lanes, loads
-//   namesOver,                     true: corridor names drawn over the overlays,
-//                                  on a halo of the corridor's colour, so a
-//                                  route along a corridor leaves its name
-//                                  readable (Safety; SV2-72c)
+//   namesOver,                     true: corridor names and door names drawn
+//                                  over the overlays, a corridor's and an
+//                                  inward door name on a halo of the
+//                                  corridor's colour, so a route along a
+//                                  corridor or into its exit leaves the name
+//                                  readable (Safety; SV2-72c, SV2-72c2)
 //   clip,                          { x, y, w, h } in cells: the part of the
 //                                  floor the caller shows (the plan map's
 //                                  slot). A door name that would run past it
@@ -439,6 +441,25 @@ export function createRenderer(canvas) {
       return { inward, x: at, y: y0 + s / 2, align: left ? 'right' : 'left', baseline: 'middle', box: { x0: left ? at - wide : at, x1: left ? at : at + wide, y0, y1: y0 + s } };
     };
     const fitsClip = (box) => !clipPx || (box.x0 >= clipPx.x0 - 0.5 && box.x1 <= clipPx.x1 + 0.5 && box.y0 >= clipPx.y0 - 0.5 && box.y1 <= clipPx.y1 + 0.5);
+    // each door name drawn: inward, on a halo of the corridor's colour
+    const doorNames = [];
+    function drawDoorNames() {
+      for (const { name, place, s: tall } of doorNames) {
+        g.font = font(600, tall);
+        g.textAlign = place.align;
+        g.textBaseline = place.baseline;
+        if (place.inward) {
+          g.lineJoin = 'round';
+          g.strokeStyle = t.corridor;
+          g.lineWidth = scene.namesOver ? 4 : 3;
+          g.strokeText(name, place.x, place.y);
+        }
+        g.fillStyle = contrast(t.accent, place.inward ? t.corridor : t.grid) >= 4.5 ? t.accent : t.ink;
+        g.fillText(name, place.x, place.y);
+      }
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+    }
     for (const exit of floor.exits) {
       const x = exit.cell % width;
       const y = Math.floor(exit.cell / width);
@@ -469,22 +490,13 @@ export function createRenderer(canvas) {
         // where the name goes: beyond the dash, outside the floor; inside it
         // when the caller's part of the floor would cut it there; else nowhere
         const place = [false, true].map((inward) => doorNamePlace(side, x, y, wide, s, gap, inward)).find((at) => fitsClip(at.box));
-        if (place) {
-          g.textAlign = place.align;
-          g.textBaseline = place.baseline;
-          if (place.inward) {
-            g.lineJoin = 'round';
-            g.strokeStyle = t.corridor;
-            g.lineWidth = 3;
-            g.strokeText(exit.doorName, place.x, place.y);
-          }
-          g.fillStyle = contrast(t.accent, place.inward ? t.corridor : t.grid) >= 4.5 ? t.accent : t.ink;
-          g.fillText(exit.doorName, place.x, place.y);
-          g.textAlign = 'center';
-          g.textBaseline = 'middle';
-        }
+        if (place) doorNames.push({ name: exit.doorName, place, s });
       }
     }
+    // the door names: here, or with namesOver over the overlays, so a route
+    // that ends at the exit's cell runs under a name drawn inward rather
+    // than over it (Safety's "Door A", SV2-72c2)
+    if (!scene.namesOver) drawDoorNames();
 
     // exclusion zones: a hatched rectangle and its label
     for (const zone of project.building.zones) {
@@ -637,7 +649,10 @@ export function createRenderer(canvas) {
       overlay(g, view, floor, t);
       g.restore();
     }
-    if (scene.namesOver) corridorNames(true);
+    if (scene.namesOver) {
+      corridorNames(true);
+      drawDoorNames();
+    }
 
     // ---- the editor's marks. None of these is ever printed.
 

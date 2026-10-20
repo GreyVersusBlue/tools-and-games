@@ -142,13 +142,13 @@ test('SV2-65b: the layout is ui/surface/plan-layout.js, and the old path under u
 
 // ---- SV2-72c item 1 (W1): Fit leaves the zoom buttons' corner clear
 
-import { fitClear, paintedUnder, ZOOM_GAP, FIT_MARGIN, bestLayout } from '../../ui/surface/plan-layout.js';
+import { fitClear, paintedUnder, ZOOM_GAP, ZOOM_GAP_LEAST, FIT_MARGIN, bestLayout } from '../../ui/surface/plan-layout.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
 // the zoom box as drawn: 12 px from the stage's edge, 38 px tall with a
 // mouse (46 with touch), about 170 px wide
 const corner = (height, tall = 38) => ({ x: 12, y: height - 12 - tall, w: 170, h: tall });
-const grown = (box) => ({ x: box.x - ZOOM_GAP, y: box.y - ZOOM_GAP, w: box.w + ZOOM_GAP * 2, h: box.h + ZOOM_GAP * 2 });
+const grown = (box, gap = ZOOM_GAP) => ({ x: box.x - gap, y: box.y - gap, w: box.w + gap * 2, h: box.h + gap * 2 });
 
 // stages of a section: a desktop window's, a phone's upright and on its
 // side (110 px was the walk-through's, 160 W5's least); the box 38 px tall
@@ -165,7 +165,9 @@ test('W1: the sample school at Fit has no painted cell under the zoom box on any
     if (paintedUnder(layout, plain, grown(box))) plainCovered += 1;
     const fitted = fitClear(layout, width, height, box);
     assert.equal(fitted.clear, true, width + ' by ' + height + ': ' + JSON.stringify(fitted));
-    assert.equal(paintedUnder(layout, fitted, grown(box)), false, width + ' by ' + height + ': a painted cell under the zoom box at Fit');
+    // the gap may close to ZOOM_GAP_LEAST over the box where the floors' names would run off the top
+    assert.equal(paintedUnder(layout, fitted, grown(box, ZOOM_GAP_LEAST)), false, width + ' by ' + height + ': a painted cell under the zoom box at Fit');
+    assert.ok(fitted.y >= -1e-9 || fitted.how === 'beside', width + ' by ' + height + ': the floors\' names run off the stage\'s top: ' + JSON.stringify(fitted));
     assert.ok(fitted.zoom <= plain.zoom + 1e-9, 'a fit round the box is never larger than the plain one');
   }
   assert.ok(plainCovered >= 4, 'the plain fit covers a painted cell on only ' + plainCovered + ' stages: the case tests nothing');
@@ -208,4 +210,46 @@ test('W1: the band above the box is taken where it clears the corner, never wide
   assert.equal(strip.how, 'beside', JSON.stringify(strip));
   assert.equal(strip.clear, true, JSON.stringify(strip));
   assert.ok(strip.x >= 12 + 170 + ZOOM_GAP - 1e-9, 'the floors start under the zoom box');
+});
+
+// ---- SV2-72c2
+
+test('item 9: on a phone on its side Safety\'s 160 px stage keeps the floors\' names whole at Fit, the map above the zoom box', () => {
+  const floors = sampleSchool().building.floors;
+  // 844 by 390 with touch: the stage 788 px wide beside the rail, 160 tall, the zoom box 182 by 46 at 12 px
+  const layout = layoutFloors(floors, bestLayout(floors, 788, 160));
+  const box = { x: 12, y: 160 - 12 - 46, w: 182, h: 46 };
+  const fitted = fitClear(layout, 788, 160, box);
+  assert.equal(fitted.how, 'above', JSON.stringify(fitted));
+  assert.equal(fitted.zoom, 0.25, 'the map is not at the least zoom: the case tests nothing');
+  assert.ok(layout.height * CELL * 0.25 > box.y - FIT_MARGIN - ZOOM_GAP, 'the map fits the band above with its margins: the case tests nothing');
+  assert.ok(fitted.y >= 0, 'the floors\' name row runs ' + (-fitted.y).toFixed(1) + ' px off the stage\'s top');
+  assert.ok(fitted.y + layout.height * CELL * fitted.zoom <= box.y - ZOOM_GAP_LEAST + 1e-9, 'the map runs into the gap over the zoom box');
+  assert.equal(paintedUnder(layout, fitted, grown(box, ZOOM_GAP_LEAST)), false);
+});
+
+test('item 7: a section\'s own least is capped by the floors\' box at Fit with its top margin, the gap and the zoom box\'s need over it, not by the box and two margins', () => {
+  // a building two rows high across 844 px: its box at Fit is 40.2 px
+  const low = { width: 40, height: 2 };
+  const zoom = Math.min(1, (844 - FIT_MARGIN * 2) / (low.width * CELL));
+  const box = low.height * CELL * zoom;
+  assert.equal(stageLeast(low, 844, 70), Math.ceil(box + FIT_MARGIN * 2), 'with no least of its own the stage gets the box and two margins');
+  assert.equal(stageLeast(low, 844, 70, 160), Math.ceil(box + FIT_MARGIN + ZOOM_GAP + 70), 'a least of 160 is not capped at the box, its top margin, the gap and the zoom box\'s need');
+  assert.equal(stageLeast(low, 844, 70, 160), 139);
+  // a building the least does not cap: 160 whole; and never under what the zoom box needs
+  assert.equal(stageLeast(SQUARE, 844, 70, 160), 160);
+  assert.equal(stageLeast(ONE_ROW, 844, 70, 160), Math.min(160, Math.ceil(ONE_ROW.height * CELL * 0.25 + FIT_MARGIN + ZOOM_GAP + 70)));
+  assert.equal(stageLeast(null, 844, 70, 160), 160, 'with no floors yet the least is the section\'s own');
+  assert.equal(stageLeast(SQUARE, 844, 70, 0), STAGE_LEAST, 'a least of 0 is no least of the section\'s own');
+});
+
+test('item 7: with a least of its own the stage may take the docked line, which is then scrolled to under it: the cap is the section less the foot, not less the foot and the docked line', () => {
+  // the phone on its side: 230 px of section, the bar 74 px, the docked line 46
+  const plain = stageRoom({ ...SIDE, height: 230 });
+  assert.equal(plain.room, 110, 'with no least of its own the stage is what is over the foot and the docked line');
+  const own = stageRoom({ ...SIDE, height: 230, least: 160 });
+  assert.equal(own.room, 230 - 74, 'the stage with a least of 160 is not the section less the bar alone');
+  assert.equal(stageRoom({ ...SIDE, height: 300, least: 160 }).room, 160, 'with room for its least the stage is the least');
+  // More is measured from what the section has under its first line, as before
+  assert.equal(own.more, plain.more);
 });
