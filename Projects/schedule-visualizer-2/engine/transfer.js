@@ -59,7 +59,8 @@ export const SIGNAL_VERSION = 1;
 export const SIGNAL_KINDS = { offer: 1, answer: 2 };
 export const SIGNAL_CHECK_BYTES = 4;
 // The most characters one QR code holds at error correction M (version 40,
-// byte mode). A code longer than this is refused when it is made.
+// byte mode). A code longer than this is refused when it is made and when
+// it is read.
 export const SIGNAL_MOST = 2331;
 // The most a code's description may unpack to. A browser's offer or answer
 // for one data channel is under 2 KB; deflate turns 100 KB of one letter
