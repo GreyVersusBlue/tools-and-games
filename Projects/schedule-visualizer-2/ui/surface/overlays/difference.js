@@ -43,7 +43,8 @@
 //         cells, connections            Int32Array: after less before
 //         before: { cells, connections } Int32Array: before's load as compared
 //         after:  { cells, connections } Int32Array: after's
-//         dayOfCell, dayOfConnection     Uint8Array: index into dayTypeIds
+//         dayOfCell, dayOfConnection     index into dayTypeIds: a Uint8Array, or
+//                                        a Uint16Array or Uint32Array past 256 day types
 //         largest                        the largest |change| of a cell outside the zones
 //         excluded, excludedConnections }
 //   differenceWords(delta) -> '14 busier' | '9 quieter' | 'no change'
@@ -108,6 +109,8 @@ export function differenceOf(before, after, options) {
   if (pairs.length === 0) return null;
   const first = pairs[0];
   const nodes = first.cells.busiest.length;
+  // wide enough for every day type's index (SV2-72d: a Uint8Array wrapped past 256)
+  const DayIndex = pairs.length <= 0x100 ? Uint8Array : pairs.length <= 0x10000 ? Uint16Array : Uint32Array;
   const links = first.connections.busiest.length;
   const out = {
     dayTypeId,
@@ -119,8 +122,8 @@ export function differenceOf(before, after, options) {
     connections: new Int32Array(links),
     before: { cells: new Int32Array(nodes), connections: new Int32Array(links) },
     after: { cells: new Int32Array(nodes), connections: new Int32Array(links) },
-    dayOfCell: new Uint8Array(nodes),
-    dayOfConnection: new Uint8Array(links),
+    dayOfCell: new DayIndex(nodes),
+    dayOfConnection: new DayIndex(links),
     largest: 0,
     excluded: first.excluded,
     excludedConnections: first.excludedConnections,

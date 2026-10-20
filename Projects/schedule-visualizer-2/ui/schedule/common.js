@@ -56,15 +56,6 @@ export function button(label, run, options) {
   return element;
 }
 
-// A button for something that is not built yet. It stays reachable by
-// keyboard so its reason can be read, and does nothing but say that reason:
-// `say()` is called on a press, for the caller to show it (a title is seen
-// by a mouse alone).
-export function notYet(label, reason, action, say) {
-  return h('button', { type: 'button', class: 'btn sch-btn--small', 'aria-disabled': 'true', title: reason, data: action ? { action } : null, on: say ? { click: () => say() } : null },
-    label, h('span', { class: 'vh' }, ' (' + reason + ')'));
-}
-
 // The screen a tab shows when it has nothing: what the thing is, one button.
 export function emptyState(text, action) {
   return h('div', { class: 'sch-empty' }, h('p', { class: 'sch-empty__text' }, text), action);
