@@ -437,6 +437,36 @@ test('a change whose room is deleted no longer applies, is listed with why, and 
   assert.equal(await page.$eval('.scn-dropped', (el) => el.hidden), true);
 });
 
+test('SV2-72d 1: "Remove them" takes every change that no longer applies out as one step of undo, and one Undo brings them back', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await start(page, 'Two dropped');
+  await page.evaluate(async () => {
+    const { addScenarioChange } = await import('./engine/actions.js');
+    const store = globalThis.sv2.store;
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 4, roomId: 'rsample101' } });
+    store.apply(addScenarioChange, { change: { kind: 'swapPeriods', dayTypeId: 'dsample00a', groupId: 'gsample06a', periodA: 0, periodB: 3 } });
+    const { deleteSpaces } = await import('./engine/actions.js');
+    store.apply(deleteSpaces, { spaceIds: ['rsample101'] });
+  });
+  await ready(page);
+  assert.equal(await page.$$eval('.scn-dropped__item', (items) => items.length), 2);
+  assert.equal(await seen(page, '[data-action="remove-dropped"]'), 'Remove them');
+  const entries = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.click('[data-action="remove-dropped"]');
+  await ready(page);
+  assert.deepEqual((await scenarioOf(page)).changes.map((change) => change.kind), ['swapPeriods']);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.history.past.length), entries + 1, 'one step of undo for both');
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.undoLabel), 'Remove from scenario Two dropped: 2 changes');
+  assert.equal(await seen(page, '.scn-status'), 'Removed 2 changes that no longer applied.');
+  // one Undo: both are back, still listed as no longer applying (the room is still gone)
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await ready(page);
+  assert.deepEqual((await scenarioOf(page)).changes.map((change) => change.kind), ['move', 'move', 'swapPeriods']);
+  assert.equal(await page.$$eval('.scn-dropped__item', (items) => items.length), 2);
+});
+
 test('the comparison is the scenario lane’s answer, figure by figure, edited groups marked in words', async () => {
   const page = wide.page;
   await fresh(page);

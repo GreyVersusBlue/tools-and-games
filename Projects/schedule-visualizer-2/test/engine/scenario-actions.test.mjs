@@ -13,7 +13,7 @@ import { applyChanges, reconcile, changeWords } from '../../engine/scenario.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
 import { school, clone, clock, makeIds, assertValid } from './helpers.mjs';
 
-const { newScenario, renameScenario, addScenarioChange, removeScenarioChange, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
+const { newScenario, renameScenario, addScenarioChange, removeScenarioChange, removeScenarioChanges, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
 
 const A = 'dsample00a';
 const B = 'dsample00b';
@@ -289,6 +289,60 @@ test('removeScenarioChange: by index into the scenario\'s changes, labelled with
   }
   store.undo();
   assert.equal(store.project.scenario.changes, list);
+});
+
+// ---------------------------------------------------------------- removeScenarioChanges (SV2-72d)
+
+test('SV2-72d removeScenarioChanges: several changes out as one undo entry, in any order; one Undo brings every one back', () => {
+  const store = withChanges([move(G7C, 1, 'rsample204'), swapPeriods(G8A, 5, 6), move(G6C, 2, 'rsample201')]);
+  const list = store.project.scenario.changes;
+  const start = counters(store);
+  const entries = store.history.past.length;
+  store.apply(removeScenarioChanges, { indexes: [2, 0] });
+  assert.deepEqual(store.project.scenario.changes, [swapPeriods(G8A, 5, 6)]);
+  assert.equal(store.project.scenario.changes[0], list[1], 'the change left is the same object');
+  assert.equal(store.history.past.length, entries + 1, 'one undo entry for both');
+  assert.equal(store.undoLabel, 'Remove from scenario Trial: 2 changes');
+  assert.deepEqual(counters(store), start, 'no counter moved');
+  assert.deepEqual(removeScenarioChanges.bumps, []);
+  store.undo();
+  assert.equal(store.project.scenario.changes, list, 'one Undo brings both back, the same objects in their places');
+  store.redo();
+  assert.deepEqual(store.project.scenario.changes, [swapPeriods(G8A, 5, 6)]);
+});
+
+test('SV2-72d removeScenarioChanges: one index is labelled with its words; an empty list is no step; a bad or repeated index refuses the whole step', () => {
+  const store = withChanges([move(G7C, 1, 'rsample204'), swapPeriods(G8A, 5, 6)]);
+  const list = store.project.scenario.changes;
+  const entries = store.history.past.length;
+  store.apply(removeScenarioChanges, { indexes: [] });
+  assert.equal(store.history.past.length, entries, 'no index, no entry');
+  for (const bad of [[2], [-1], [0.5], ['0'], [0, 2], [undefined]]) {
+    assert.throws(() => store.apply(removeScenarioChanges, { indexes: bad }), (error) => refusedWith('missing')(error) && error.message === 'That change is no longer in the scenario.', JSON.stringify(bad));
+  }
+  assert.throws(() => store.apply(removeScenarioChanges, { indexes: [1, 1] }), refusedWith('bad-value'));
+  assert.throws(() => store.apply(removeScenarioChanges, { indexes: 1 }), refusedWith('bad-value'));
+  assert.throws(() => store.apply(removeScenarioChanges, null), refusedWith('bad-value'));
+  assert.equal(store.project.scenario.changes, list, 'a refusal changed nothing');
+  assert.equal(store.history.past.length, entries);
+  store.apply(removeScenarioChanges, { indexes: [1] });
+  assert.equal(store.undoLabel, 'Remove from scenario Trial: 8A · A Day · Period 6 ↔ Period 7: Gym ↔ 303');
+  store.apply(discardScenario, {});
+  assert.throws(() => store.apply(removeScenarioChanges, { indexes: [0] }), refusedWith('no-scenario'));
+});
+
+test('SV2-72d removeScenarioChanges: the changes that no longer apply go in one step, and undoing it then the real edit makes them apply again', () => {
+  const store = withChanges([move(G7C, 1, 'rsample204'), move(G6C, 2, 'rsample201')]);
+  // the real schedule catches up with both: reconcile drops them as already there
+  store.apply(setSlot, { groupId: G7C, dayTypeId: A, period: 1, slot: { room: 'rsample204' } });
+  store.apply(setSlot, { groupId: G6C, dayTypeId: A, period: 2, slot: { room: 'rsample201' } });
+  const scenario = store.project.scenario;
+  const dropped = reconcile(store.project, scenario).dropped;
+  assert.equal(dropped.length, 2);
+  store.apply(removeScenarioChanges, { indexes: dropped.map((each) => scenario.changes.indexOf(each.change)) });
+  assert.deepEqual(store.project.scenario.changes, []);
+  store.undo();
+  assert.equal(store.project.scenario, scenario, 'one Undo, the scenario as it was');
 });
 
 // ---------------------------------------------------------------- discardScenario
