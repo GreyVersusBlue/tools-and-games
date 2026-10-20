@@ -539,3 +539,26 @@
   padding-left: var(--s-5);
   overflow-wrap: anywhere;
 }
+
+/* Apply's summary keeps its question and its two buttons in view however
+   many changes it lists, on a phone on its side too (SV2-72f; the Fix
+   dialog's rule, W4): the dialog is a column the window's height at the
+   most, and its body, the list, scrolls between them. */
+.scn-apply[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--s-4));
+  max-height: calc(100dvh - var(--s-4));
+}
+
+.scn-apply .dialog__title,
+.scn-apply .dialog__buttons {
+  flex: none;
+}
+
+.scn-apply .dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

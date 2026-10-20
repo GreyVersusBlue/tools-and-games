@@ -54,6 +54,8 @@ test('the limit is stated, and the refusal names it, says what to do, and promis
   assert.equal(SNAPSHOT_LIMIT, 30);
   assert.equal(fullSentence(), 'This device keeps at most 30 snapshots, and it has 30. Delete one you no longer need (export it first to keep it as a file), then take this one. No snapshot is ever replaced to make room.');
   assert.match(fullSentence(4), /^This device keeps at most 4 snapshots, and it has 4\./);
+  // the count as it is: another tab may have taken one past the limit at the same moment
+  assert.match(fullSentence(30, 31), /^This device keeps at most 30 snapshots, and it has 31\./);
 });
 
 test('the limit holds what storage/snapshots.js says it does at the size spec 3.13 promises', () => {
@@ -158,6 +160,51 @@ test('the page\'s snapshots refuse a read-only tab, a blank name and an unknown 
   assert.equal((await snapshots.room()).error, 'This browser is not keeping the project, so it cannot keep a snapshot either: IndexedDB is switched off.');
 });
 
+test('a connection closed under the page\'s snapshots (another tab upgrading the database) is opened again on the next call', async () => {
+  const opened = [];
+  const open = () => {
+    const main = {
+      closed: false,
+      onversionchange: null,
+      close() {
+        this.closed = true;
+      },
+      transaction() {
+        if (this.closed) throw new Error('The database connection is closing.');
+        const tx = {
+          objectStore: () => ({
+            count() {
+              const request = {};
+              setTimeout(() => {
+                request.result = 3;
+                if (request.onsuccess) request.onsuccess();
+                tx.oncomplete();
+              });
+              return request;
+            },
+          }),
+        };
+        return tx;
+      },
+    };
+    main.onversionchange = () => main.close(); // as db.js sets it
+    opened.push(main);
+    return Promise.resolve({ main, recovery: null });
+  };
+  const ctx = { store: { project: school() }, clock, ids: makeIds(9), storage: { state: { readOnly: false, available: true }, ready: Promise.resolve() } };
+  const snapshots = startSnapshots(ctx, { open });
+  assert.equal((await snapshots.room()).count, 3);
+  assert.equal((await snapshots.room()).count, 3);
+  assert.equal(opened.length, 1, 'one connection while it stays open');
+  opened[0].onversionchange({});
+  assert.equal(opened[0].closed, true, 'db.js\'s own answer to a version change still runs');
+  assert.deepEqual(await snapshots.room(), { count: 3, limit: SNAPSHOT_LIMIT, full: false, error: null }, 'the next call works, on a new connection');
+  assert.equal(opened.length, 2);
+  opened[1].onclose();
+  await snapshots.room();
+  assert.equal(opened.length, 3, 'a connection the browser closed is opened again too');
+});
+
 // ---------------------------------------------------------------- clearing
 
 test('clearing the building empties every floor and keeps the floors, the schedule and the teachers by name', () => {
@@ -238,7 +285,9 @@ test('each clear says exactly what it removes and what stays, and says so when t
   one.accepted = [{ findingId: 'x', reason: '', at: '2026-09-01T12:00:00.000Z', about: [] }];
   one.scenario = { name: HOSTILE, changes: [], compared: null };
   one.groups = one.groups.slice(0, 1);
-  assert.equal(scheduleWords(one).removes, 'Removes 1 group with its schedule, 12 teachers, 1 accepted finding and the open scenario “' + HOSTILE + '”.');
+  // the scenario's name is isolated (U+2068 … U+2069): HOSTILE ends in a right-to-left override, which must not turn round the words after it
+  assert.ok(HOSTILE.includes('\u202e'));
+  assert.equal(scheduleWords(one).removes, 'Removes 1 group with its schedule, 12 teachers, 1 accepted finding and the open scenario “\u2068' + HOSTILE + '\u2069”.');
 
   assert.deepEqual([buildingWords(clearedBuilding(project)).empty, buildingWords(clearedBuilding(project)).removes], [true, 'Nothing is drawn on any of the 3 floors, so there is nothing to clear.']);
   assert.deepEqual([scheduleWords(clearedSchedule(project)).empty, scheduleWords(clearedSchedule(project)).removes], [true, 'There are no groups, teachers, accepted findings or scenario, so there is nothing to clear.']);
@@ -248,9 +297,9 @@ test('each clear says exactly what it removes and what stays, and says so when t
 
 test('the three clears in the card\'s order, each with an action that names it and an automatic snapshot of its own', () => {
   assert.deepEqual(CLEARS.map((entry) => [entry.id, entry.button, entry.action, entry.keep, entry.label, AUTO_SNAPSHOT_NAMES[entry.reason]]), [
-    ['building', 'Clear the building…', 'Clear the building', 'Keep the building', 'Clear the building', 'Before clearing the building'],
-    ['schedule', 'Clear the schedule…', 'Clear the schedule', 'Keep the schedule', 'Clear the schedule', 'Before clearing the schedule'],
-    ['new', 'Start a new project…', 'Start a new project', 'Keep this project', 'Start a new project', 'Before starting a new project'],
+    ['building', 'Clear the building', 'Clear the building', 'Keep the building', 'Clear the building', 'Before clearing the building'],
+    ['schedule', 'Clear the schedule', 'Clear the schedule', 'Keep the schedule', 'Clear the schedule', 'Before clearing the schedule'],
+    ['new', 'Start a new project', 'Start a new project', 'Keep this project', 'Start a new project', 'Before starting a new project'],
   ]);
   const project = school();
   const made = CLEARS.map((entry) => entry.make(project, { ids: makeIds(6), clock, devicePaper: () => 'letter' }));

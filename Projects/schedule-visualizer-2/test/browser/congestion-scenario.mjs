@@ -37,6 +37,30 @@ const CHANGES = [
 
 const view = (fn, ...args) => page.evaluate(fn, ...args);
 
+// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
+// module script the page loads itself, and waited for by its key; a failed
+// load is kept under the key as `{ error }` and said. An import() awaited
+// inside page.evaluate came back "Promise was collected" (this file's case
+// 6 in SV2-28's full run; SV2-72e, SV2-72e2 in m2-pass.mjs), so a module is
+// loaded first and used in a synchronous evaluate after (SV2-72f).
+async function loadModule(key, file) {
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await page.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await page.waitForFunction(held, { timeout: 10000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
+}
+
 // The movement view has the answer for the project as it is now, and has drawn it.
 async function settled() {
   await page.waitForFunction(() => {
@@ -86,11 +110,10 @@ async function paperBack() {
     await page.waitForSelector('#print-preview[data-ready="true"][data-paper="letter portrait"]', { timeout: 20000 });
     return;
   }
-  await view(async () => {
-    if (globalThis.sv2.store.project.settings.paper.size === 'letter') return;
-    const bound = new Promise((resolve, reject) => setTimeout(() => reject(new Error('engine/actions.js did not load in 10 s')), 10000));
-    const { setSetting } = await Promise.race([import(new URL('engine/actions.js', location.href).href), bound]);
-    globalThis.sv2.store.apply(setSetting, { key: 'paper.size', value: 'letter' });
+  if (await view(() => globalThis.sv2.store.project.settings.paper.size === 'letter')) return;
+  await loadModule('actions', 'engine/actions.js');
+  await view(() => {
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSetting, { key: 'paper.size', value: 'letter' });
   });
 }
 
@@ -119,8 +142,9 @@ before(async () => {
   page = session.page;
   await settled();
   // the scenario, through the actions as the lab will apply them
-  await view(async (name, changes) => {
-    const actions = await import(new URL('engine/actions.js', location.href).href);
+  await loadModule('actions', 'engine/actions.js');
+  await view((name, changes) => {
+    const { actions } = globalThis.sv2modules;
     const store = globalThis.sv2.store;
     store.apply(actions.newScenario, { name });
     for (const change of changes) store.apply(actions.addScenarioChange, { change });
@@ -131,9 +155,9 @@ before(async () => {
 });
 
 after(async () => {
-  await view(async () => {
-    const actions = await import(new URL('engine/actions.js', location.href).href);
-    globalThis.sv2.store.apply(actions.discardScenario, {});
+  await loadModule('actions', 'engine/actions.js');
+  await view(() => {
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions.discardScenario, {});
   });
   const problems = session.problems();
   await session.close();
