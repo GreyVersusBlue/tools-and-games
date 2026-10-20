@@ -399,7 +399,7 @@ test('a change of theme paints again in the theme\'s tints', async () => {
   }
 });
 
-test('with no answer nothing is painted: the scenario discarded, and while a new one is first worked out', async () => {
+test('with no answer nothing is painted: the scenario discarded, the table hidden, the overlay drawing nothing on the next paint', async () => {
   const page = wide.page;
   await open(page, [MOVE]);
   await page.evaluate(async () => {
