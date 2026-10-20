@@ -28,6 +28,7 @@ import assert from 'node:assert/strict';
 import { EC_LEVELS, MIN_VERSION, MAX_VERSION, sizeOf, blockLayout, totalCodewords, reedSolomon, formatBits, versionBits, functionPatterns, byteCapacity, dataOrder, gfMul, gfDiv } from '../../vendor/qr-encode/qr-core.js';
 import { encodeQr, penalty, qrPathData, QrError, dataCodewords, interleave } from '../../vendor/qr-encode/qr-encode.js';
 import { decodeMatrix, decodeLuminance, luminanceOf, correct, formatTable } from '../../vendor/qr-decode/qr-decode.js';
+import { findFinders, FINDERS_MOST } from '../../vendor/qr-decode/qr-locate.js';
 import { seededRandom } from '../../engine/ids.js';
 
 const bits = (value, length) => value.toString(2).padStart(length, '0');
@@ -459,4 +460,79 @@ test('a frame with no code in it reads as null', () => {
   const cut = shot.luminance.slice();
   cut.fill(200, Math.floor(shot.height / 2) * shot.width);
   assert.equal(decodeLuminance(cut, shot.width, shot.height), null);
+});
+
+// ---------------------------------------------------------------- frames that cost (SV2-29c)
+
+// Columns of dark and light whose widths go 1:1:3:1:1, then a light gap,
+// across the whole frame: every row crosses a finder's proportions many
+// times, and each dark column runs the frame's full height.
+function stripes(width, height, module = 1) {
+  const columns = [];
+  [1, 1, 3, 1, 1, 1].forEach((w, i) => { for (let k = 0; k < w * module; k += 1) columns.push(i % 2 === 0 ? 30 : 220); });
+  const out = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) out[y * width + x] = columns[x % columns.length];
+  return out;
+}
+
+// The binarised frame behind a Proxy that counts reads, and stops the
+// search once they pass `budget`, so a search that walks too far fails at
+// once rather than after minutes. Work counted, not time.
+function counted(bits, budget) {
+  const state = { reads: 0 };
+  const proxy = new Proxy(bits, {
+    get(target, key) {
+      if (typeof key === 'string' && key.length > 0 && key.charCodeAt(0) >= 48 && key.charCodeAt(0) <= 57) {
+        state.reads += 1;
+        if (state.reads > budget) throw new RangeError('more than ' + budget + ' reads');
+      }
+      const value = target[key];
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  return { proxy, state };
+}
+
+test('the finder search reads a striped frame a bounded number of times, not once a row for every pixel of a column', () => {
+  // Tall and narrow, so the old walk (each row's centre run followed down
+  // the whole column: width × height² reads) is far past the budget, and a
+  // bounded walk (a few dozen reads a crossing) far inside it.
+  const width = 64;
+  const height = 2000;
+  const bits = stripes(width, height).map((v) => (v < 128 ? 1 : 0));
+  const budget = 20 * width * height;
+  const { proxy, state } = counted(bits, budget);
+  assert.deepEqual(findFinders(proxy, width, height), []);
+  assert.ok(state.reads <= budget, state.reads + ' reads');
+});
+
+test('a frame of stripes at 1080p reads as null, and a code beside stripes is still read', () => {
+  assert.equal(decodeLuminance(stripes(1920, 1080), 1920, 1080), null);
+  const symbol = encodeQr('SV2:beside-stripes-' + 'z'.repeat(80), { level: 'M' });
+  const shot = frameOf(symbol, { scale: 4, angle: 6, noise: 8 });
+  const width = shot.width + 240;
+  const { height } = shot;
+  const luminance = stripes(width, height, 2);
+  for (let y = 0; y < height; y += 1) luminance.set(shot.luminance.subarray(y * shot.width, (y + 1) * shot.width), y * width);
+  assert.equal(decodeLuminance(luminance, width, height)?.text, 'SV2:beside-stripes-' + 'z'.repeat(80));
+});
+
+test('the finder search keeps at most FINDERS_MOST places, however many finder-like squares a frame holds', () => {
+  // Finder patterns 7 pixels across, 4 apart: over 2,000 of them.
+  const width = 640;
+  const height = 480;
+  const bits = new Uint8Array(width * height);
+  for (let oy = 2; oy + 7 < height; oy += 11) {
+    for (let ox = 2; ox + 7 < width; ox += 11) {
+      for (let y = 0; y < 7; y += 1) {
+        for (let x = 0; x < 7; x += 1) {
+          const ring = Math.max(Math.abs(x - 3), Math.abs(y - 3));
+          bits[(oy + y) * width + ox + x] = ring === 2 ? 0 : 1;
+        }
+      }
+    }
+  }
+  const found = findFinders(bits, width, height);
+  assert.ok(found.length > 100, found.length + ' found: the squares must read as finders for this to test the cap');
+  assert.ok(found.length <= FINDERS_MOST, found.length + ' found');
 });
