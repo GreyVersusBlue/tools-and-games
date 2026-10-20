@@ -457,17 +457,26 @@ async function paintedUnderZoom(page) {
   });
 }
 
-for (const size of W1_SIZES) {
-  test('SV2-72c item 1 (W1): at Fit no painted cell lies under the zoom buttons in Movement, Scenarios and Safety, at ' + size.width + ' by ' + size.height + (size.mobile ? ' with touch' : ''), async () => {
-    const session = await openPlanner({ ...size, hash: '#project', theme: 'light' });
+// each size as the sections open, then the desktop sizes with Getting
+// started shown and with a scenario open (the lab's bar under its map)
+const W1_CASES = [...W1_SIZES, ...W1_SIZES.filter((each) => !each.mobile).flatMap((each) => [{ ...each, started: true }, { ...each, scenario: true }])];
+for (const size of W1_CASES) {
+  test('SV2-72c item 1 (W1): at Fit no painted cell lies under the zoom buttons in Movement, Scenarios and Safety, at ' + size.width + ' by ' + size.height + (size.mobile ? ' with touch' : '') + (size.started ? ', Getting started shown' : '') + (size.scenario ? ', a scenario open' : ''), async () => {
+    const session = await openPlanner({ width: size.width, height: size.height, mobile: size.mobile, hash: '#project', theme: 'light' });
     const page = session.page;
     try {
-      await page.evaluate(async () => {
+      await page.evaluate(async (started) => {
         const { sampleSchool } = await import('./data/sample-school.js');
         const project = sampleSchool();
-        project.onboarding.dismissed = true;
+        project.onboarding.dismissed = !started;
         globalThis.sv2.store.replace(project);
-      });
+      }, size.started === true);
+      if (size.scenario) {
+        await page.evaluate(async () => {
+          const actions = await import('./engine/actions.js');
+          globalThis.sv2.store.apply(actions.newScenario, { name: 'Trial' });
+        });
+      }
       const found = {};
       for (const hash of W1_SECTIONS) {
         await go(page, hash);
