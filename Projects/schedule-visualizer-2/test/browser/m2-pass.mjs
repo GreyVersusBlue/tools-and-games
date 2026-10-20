@@ -967,36 +967,43 @@ test('beside the Checks tab the inspector does not repeat its table: the counts,
   });
 });
 
-// ---------------------------------------------------------------- 14: Fix… says why
+// ---------------------------------------------------------------- 14: Fix… opens its dialog
+// (SV2-70: Fix… is built, so these two cases moved from a press that said
+// "Suggestions are not built yet" to a press that opens the Fix dialog; the
+// dialog's own cases are test/browser/fix.mjs)
 
-test('Fix… is not built yet: it is drawn dashed, says so in its title, and a press says the same in a message, by pointer and by keyboard', async () => {
+test('Fix… is a working button: drawn solid, its title says what it does, and a press opens the Fix dialog, by pointer and by keyboard', async () => {
   await on('#schedule/checks', DESK, async (p) => {
     const fix = '.sch-checks .sch-findings tbody tr [data-action="fix"]';
-    assert.equal(await p.$eval(fix, (el) => [el.getAttribute('aria-disabled'), el.title, el.disabled, getComputedStyle(el).borderTopStyle].join('|')), 'true|Suggestions are not built yet|false|dashed');
+    assert.equal(await p.$eval(fix, (el) => [el.getAttribute('aria-disabled'), el.title, el.disabled, getComputedStyle(el).borderTopStyle].join('|')), 'null|Small changes that would clear this, to try in a scenario|false|solid');
+    const opened = async () => {
+      await p.waitForSelector('#fix-dialog[open]');
+      assert.equal(await p.evaluate(() => location.hash), '#schedule/checks');
+      assert.equal(await count(p, '.toast'), 0);
+      await p.keyboard.press('Escape');
+      await p.waitForFunction(() => !document.querySelector('dialog[open]'));
+    };
     await p.click(fix);
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
-    assert.equal(await p.evaluate(() => location.hash), '#schedule/checks');
-    assert.equal(await count(p, 'dialog[open]'), 0);
-    await closeToast(p);
-    assert.equal(await count(p, '.toast'), 0);
+    await opened();
     await p.focus(fix);
     await p.keyboard.press('Enter');
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
-    await closeToast(p);
+    await opened();
     // the inspector's Fix… too
     await go(p, '#schedule/teachers');
     await settled(p);
     await p.focus('#inspector [data-action="fix"]');
     await p.keyboard.press(' ');
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
+    await opened();
   });
 });
 
-test('Fix… says why to a finger too', async () => {
+test('Fix… opens its dialog to a finger too', async () => {
   await on('#schedule/checks', PHONE, async (p) => {
     await tap(p, '.sch-checks .sch-findings tbody tr [data-action="fix"]');
-    await p.waitForSelector('.toast');
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
+    await p.waitForSelector('#fix-dialog[open]');
+    assert.equal(await count(p, '.toast'), 0);
+    await p.keyboard.press('Escape');
+    await p.waitForFunction(() => !document.querySelector('dialog[open]'));
   });
 });
 
