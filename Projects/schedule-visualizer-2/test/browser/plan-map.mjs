@@ -104,7 +104,7 @@ async function stubShape(page) {
 // A map made through the module, in a slot of a test-only container put in
 // the section after what the section drew. `slot` sizes the slot; `foot` and
 // `head` are heights for a bar docked under the stage and a first line over it.
-async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot = 0, head = 0 } = {}) {
+async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot = 0, head = 0, low = false } = {}) {
   // the modules first, in an evaluate of their own: an async evaluate that
   // also mounts the map came back "Promise was collected" from the protocol
   await page.evaluate(async () => {
@@ -122,6 +122,13 @@ async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot
       document.getElementById('section').append(holder);
     }
     const project = sampleSchool();
+    // a building one row high: its floors' box at Fit is under what the zoom buttons need
+    if (args.low) {
+      const width = 160;
+      project.building.floors = [{ ...project.building.floors[0], width, height: 1, cells: '#'.repeat(width), spaces: [], exits: [], corridors: [], image: null }];
+      project.building.connections = [];
+      project.building.zones = [];
+    }
     const parts = {};
     if (args.foot > 0) {
       parts.foot = document.createElement('div');
@@ -143,7 +150,7 @@ async function mount(page, name, { slot = 'flex: 0 0 600px; height: 480px', foot
     holder.append(place);
     map.setProject(project, null);
     globalThis.planMaps[args.name] = { map, place };
-  }, { name, slot, foot, head });
+  }, { name, slot, foot, head, low });
   // styled by the module (data-styled), measured, drawn and docked
   await page.waitForFunction((which) => {
     const { map } = globalThis.planMaps[which];
@@ -332,15 +339,11 @@ test('SV2-72c item 7: a renderer read off the page has the page\'s colours, and 
     island.append(canvas);
     document.body.append(island);
     const on = { ...renderer.theme() };
-    const root = getComputedStyle(document.documentElement);
-    const dark = getComputedStyle(island);
+    const read = (el) => ['--ink', '--corridor', '--accent'].map((name) => getComputedStyle(el).getPropertyValue(name).trim());
+    const page = read(document.documentElement);
+    const dark = read(island);
     island.remove();
-    return {
-      off: [off.ink, off.corridor, off.accent],
-      page: ['--ink', '--corridor', '--accent'].map((name) => root.getPropertyValue(name).trim()),
-      on: [on.ink, on.corridor, on.accent],
-      island: ['--ink', '--corridor', '--accent'].map((name) => dark.getPropertyValue(name).trim()),
-    };
+    return { off: [off.ink, off.corridor, off.accent], page, on: [on.ink, on.corridor, on.accent], island: dark };
   });
   assert.deepEqual(got.off, got.page, 'off the page the renderer did not read the page\'s tokens (#888888 for every one?)');
   assert.notDeepEqual(got.page, got.island, 'the page and the island have the same colours: the case tests nothing');
@@ -409,4 +412,157 @@ test('SV2-72c item 6: Enter on the cursor\'s cell is an onCell kind of its own, 
   await page.waitForFunction(() => document.querySelector('.sfy') && document.querySelector('.sfy').dataset.styled === 'true');
   assert.equal(await keydowns(page, '#safety-plan'), bareMap, 'Safety listens for keys on the map\'s canvas beside the map\'s own');
   assert.deepEqual(wide.problems().errors, []);
+});
+
+// ---------------------------------------------------------------- SV2-72c item 1 (W1)
+
+// The sizes of the M5 walk-through: two desktop windows, a phone upright and on its side with touch.
+const W1_SIZES = [
+  { width: 1440, height: 900, mobile: false },
+  { width: 1280, height: 800, mobile: false },
+  { width: 390, height: 844, mobile: true },
+  { width: 844, height: 390, mobile: true },
+];
+const W1_SECTIONS = ['#movement', '#scenarios', '#safety'];
+
+// Every pixel of the map's own canvas under the zoom buttons' box (and a
+// gap of 4 px round it) that is not the paper, the empty floor or a floor's
+// edge line: read from the canvas, so a painted cell under the box shows
+// whatever drew it there.
+async function paintedUnderZoom(page) {
+  return page.evaluate(() => {
+    const canvas = Array.from(document.querySelectorAll('#section canvas.mov-plan')).find((each) => each.getClientRects().length > 0);
+    const zoom = canvas.parentElement.querySelector('.mov-zoom');
+    const theme = (name) => getComputedStyle(canvas).getPropertyValue(name).trim();
+    const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const allowed = ['--paper', '--grid', '--line'].map((name) => rgb(theme(name)));
+    const c = canvas.getBoundingClientRect();
+    const z = zoom.getBoundingClientRect();
+    const ratio = canvas.width / c.width;
+    const x0 = Math.max(0, Math.floor((z.left - c.left - 4) * ratio));
+    const y0 = Math.max(0, Math.floor((z.top - c.top - 4) * ratio));
+    const x1 = Math.min(canvas.width, Math.ceil((z.right - c.left + 4) * ratio));
+    const y1 = Math.min(canvas.height, Math.ceil((z.bottom - c.top + 4) * ratio));
+    const data = canvas.getContext('2d').getImageData(x0, y0, x1 - x0, y1 - y0).data;
+    let painted = 0;
+    const seen = new Map();
+    for (let i = 0; i < data.length; i += 4) {
+      const px = [data[i], data[i + 1], data[i + 2]];
+      if (allowed.some((ok) => ok.every((value, k) => Math.abs(value - px[k]) <= 6))) continue;
+      painted += 1;
+      const key = '#' + px.map((v) => v.toString(16).padStart(2, '0')).join('');
+      seen.set(key, (seen.get(key) || 0) + 1);
+    }
+    return { painted, of: data.length / 4, colours: Array.from(seen.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4), fit: canvas.parentElement.dataset.fit, zoom: zoom.textContent };
+  });
+}
+
+for (const size of W1_SIZES) {
+  test('SV2-72c item 1 (W1): at Fit no painted cell lies under the zoom buttons in Movement, Scenarios and Safety, at ' + size.width + ' by ' + size.height + (size.mobile ? ' with touch' : ''), async () => {
+    const session = await openPlanner({ ...size, hash: '#project', theme: 'light' });
+    const page = session.page;
+    try {
+      await page.evaluate(async () => {
+        const { sampleSchool } = await import('./data/sample-school.js');
+        const project = sampleSchool();
+        project.onboarding.dismissed = true;
+        globalThis.sv2.store.replace(project);
+      });
+      const found = {};
+      for (const hash of W1_SECTIONS) {
+        await go(page, hash);
+        await page.waitForFunction(() => {
+          const canvas = Array.from(document.querySelectorAll('#section canvas.mov-plan')).find((each) => each.getClientRects().length > 0);
+          return canvas && canvas.closest('.mov').dataset.styled === 'true' && Number(canvas.dataset.drawn || 0) > 0 && canvas.parentElement.dataset.fit !== undefined;
+        }, { timeout: 20000 });
+        // Fit pressed, and the map painted since
+        const was = await page.evaluate(() => {
+          const canvas = Array.from(document.querySelectorAll('#section canvas.mov-plan')).find((each) => each.getClientRects().length > 0);
+          const drawn = Number(canvas.dataset.drawn);
+          canvas.parentElement.querySelector('[data-action="fit"]').click();
+          return drawn;
+        });
+        await page.waitForFunction((n) => Number(Array.from(document.querySelectorAll('#section canvas.mov-plan')).find((each) => each.getClientRects().length > 0).dataset.drawn) > n, { timeout: 10000 }, was);
+        found[hash] = await paintedUnderZoom(page);
+      }
+      const covered = Object.entries(found).filter(([, got]) => got.painted > 0);
+      assert.deepEqual(covered, [], 'painted cells under the zoom buttons at Fit: ' + JSON.stringify(found));
+      assert.deepEqual(session.problems().errors, []);
+    } finally {
+      await session.close();
+    }
+  });
+}
+
+// ---------------------------------------------------------------- SV2-72c item 9
+
+// The stage's height, and what the zoom buttons need of it as drawn now.
+const zoomNeed = (page, name) => page.evaluate((which) => {
+  const { map } = globalThis.planMaps[which];
+  const zoom = map.stage.querySelector('.mov-zoom');
+  const margin = parseFloat(getComputedStyle(zoom).left) || 0;
+  return { stage: map.stage.getBoundingClientRect().height, need: zoom.offsetHeight + margin * 2, coarse: matchMedia('(pointer: coarse)').matches, root: getComputedStyle(document.documentElement).fontSize };
+}, name);
+
+// The section measured with the zoom box as it is drawn now: the map's
+// room() writes the need it measured (data-zoom-room); a map that did not
+// measure again keeps the old one, and this fails saying so.
+async function measuredAgain(page, name, why) {
+  try {
+    await page.waitForFunction((which) => {
+      const { map } = globalThis.planMaps[which];
+      const zoom = map.stage.querySelector('.mov-zoom');
+      return map.root.dataset.zoomRoom === String(zoom.offsetHeight + (parseFloat(getComputedStyle(zoom).left) || 0) * 2);
+    }, { timeout: 5000 }, name);
+  } catch (error) {
+    assert.fail(why + ' and the section was not measured again: ' + JSON.stringify(await zoomNeed(page, name)) + ', data-zoom-room ' + (await page.evaluate((which) => globalThis.planMaps[which].map.root.dataset.zoomRoom, name)));
+  }
+}
+
+test('SV2-72c item 9 (the SV2-57 review): a building one row high gets what the zoom buttons need under a mouse, again when the pointer turns to a finger, and under a large root font', async () => {
+  const session = await openPlanner({ width: 1280, height: 800, hash: '#scenarios', theme: 'light' });
+  const page = session.page;
+  try {
+    await bare(page);
+    // 300 px of section under a 240 px first line: the stage is at its least
+    await mount(page, 'lab-low', { slot: 'flex: 0 0 844px; height: 300px', head: 240, low: true });
+    const mouse = await zoomNeed(page, 'lab-low');
+    assert.equal(mouse.coarse, false);
+    assert.equal(mouse.need, 62, 'the zoom buttons under a mouse are not 62 px with their margins: ' + JSON.stringify(mouse));
+    const box = await page.evaluate(() => {
+      const { map } = globalThis.planMaps['lab-low'];
+      return map.world.height * 24 * map.view.zoom + 40;
+    });
+    assert.ok(box < mouse.need, 'the floors\' box at Fit is not under what the zoom needs: the case tests nothing (' + box + ')');
+    assert.ok(mouse.stage >= mouse.need - 0.5, 'under a mouse the stage is under what the zoom needs: ' + JSON.stringify(mouse));
+    // the pointer turns to a finger: the buttons grow to 44 px, and the stage with them
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, hasTouch: true, isMobile: false });
+    await page.waitForFunction(() => matchMedia('(pointer: coarse)').matches, { timeout: 5000 });
+    await measuredAgain(page, 'lab-low', 'the pointer turned to a finger');
+    const finger = await zoomNeed(page, 'lab-low');
+    assert.equal(finger.need, 70, 'the zoom buttons under a finger are not 70 px with their margins: ' + JSON.stringify(finger));
+    assert.ok(finger.stage >= finger.need - 0.5, 'the pointer turned to a finger and the stage was not measured again: ' + JSON.stringify(finger));
+    // back to a mouse, and a root font twice the size: the buttons' line grows past 36 px
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, hasTouch: false, isMobile: false });
+    await page.waitForFunction(() => !matchMedia('(pointer: coarse)').matches, { timeout: 5000 });
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '32px';
+    });
+    await page.waitForFunction(() => {
+      const { map } = globalThis.planMaps['lab-low'];
+      const zoom = map.stage.querySelector('.mov-zoom');
+      return zoom.offsetHeight > 38;
+    }, { timeout: 5000 });
+    await measuredAgain(page, 'lab-low', 'the root font grew');
+    const large = await zoomNeed(page, 'lab-low');
+    assert.ok(large.need > 62, 'a root font of 32 px did not grow the zoom buttons: the case tests nothing: ' + JSON.stringify(large));
+    assert.ok(large.stage >= large.need - 0.5, 'under a large root font the stage is under what the zoom needs: ' + JSON.stringify(large));
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '';
+    });
+    await unmount(page, 'lab-low');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
 });

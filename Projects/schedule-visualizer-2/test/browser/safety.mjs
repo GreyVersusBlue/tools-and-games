@@ -630,6 +630,8 @@ for (const [name, size] of [['390 by 844 with touch', { width: 390, height: 844,
         };
       });
       assert.ok(shape.stage >= shape.least - 0.5, 'the stage is ' + shape.stage + ' px, under its least ' + shape.least);
+      // SV2-72c (W5): on a phone on its side Safety keeps 160 px of map (it had 135 under the first line and the key)
+      if (size.height < 500) assert.ok(shape.stage >= 160 - 0.5, 'on a phone on its side the stage is ' + shape.stage + ' px, under 160');
       assert.ok(shape.wide <= 0, 'the section runs ' + shape.wide + ' px off the side');
       assert.ok(shape.zoomInStage, 'the zoom buttons are not on the stage');
       // the key, under the stage, is reached by scrolling the section to its end

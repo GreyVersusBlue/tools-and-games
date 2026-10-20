@@ -159,6 +159,10 @@ export const section = {
       name: 'safety',
       label: 'The evacuation map',
       keys: KEYS,
+      // the routes run along the corridors: their names are drawn over them
+      namesOver: true,
+      // a phone on its side keeps 160 px of map, the key scrolled to under it (W5)
+      least: 160,
       floorsRow: {
         value: () => memory.floors,
         change(value) {

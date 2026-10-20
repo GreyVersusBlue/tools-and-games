@@ -15,6 +15,9 @@
 //   placeOf(layout, floorId, cell)      { x, y }: the top left of a floor's cell on the map, or null
 //   stageLeast(layout, width, zoomRoom) the least height the stage is given, in CSS pixels
 //   keepShift(view, layout, keep)       { dx, dy }: the pan that leaves `keep` px of the floors on the stage
+//   fitClear(layout, width, height, corner)   { zoom, x, y, how, clear }: the fit
+//                                       that leaves no painted cell under `corner` (the zoom box)
+//   paintedUnder(layout, place, rect)   true when a painted cell lies under rect at that place
 //
 // No DOM in here.
 
@@ -72,11 +75,14 @@ export const FIT_MARGIN = 20;
 export const STAGE_LEAST = 120;
 export const ZOOM_ROOM = 70;
 
-export function stageLeast(layout, width, zoomRoom) {
-  if (!layout || !(width > 0)) return STAGE_LEAST;
-  const floor = Math.min(STAGE_LEAST, zoomRoom > 0 ? Math.ceil(zoomRoom) : ZOOM_ROOM);
+// `most` is the least a section asks for in place of STAGE_LEAST (Safety's
+// 160 on a phone on its side, SV2-72c W5); the floors' box still caps it.
+export function stageLeast(layout, width, zoomRoom, most) {
+  const top = most > 0 ? most : STAGE_LEAST;
+  if (!layout || !(width > 0)) return top;
+  const floor = Math.min(top, zoomRoom > 0 ? Math.ceil(zoomRoom) : ZOOM_ROOM);
   const zoom = clampZoom(Math.max(1, width - FIT_MARGIN * 2) / (layout.width * CELL));
-  return Math.max(floor, Math.min(STAGE_LEAST, Math.ceil(layout.height * CELL * zoom + FIT_MARGIN * 2)));
+  return Math.max(floor, Math.min(top, Math.ceil(layout.height * CELL * zoom + FIT_MARGIN * 2)));
 }
 
 export function bestLayout(floors, width, height) {
@@ -120,4 +126,107 @@ export function keepShift(view, layout, keep) {
   if (view.y + down < keepY) dy = keepY - (view.y + down);
   else if (view.y > view.height - keepY) dy = view.height - keepY - view.y;
   return { dx, dy };
+}
+
+// ---- Fit with the zoom box's corner clear (SV2-72c, the M5 walk-through's
+// W1). The zoom buttons sit over the stage's bottom left corner, and a plain
+// fit puts the floors under them: Floor 3's lower rooms in Scenarios at 1440
+// and 1280, Room 303 on a phone. A fit that would put a painted cell (a
+// corridor, stairs, a room or another space, anything but an empty cell)
+// under the box is made instead in the stage less the box: in the band
+// above the box, or where that cannot clear it (a strip of a stage at the
+// least zoom), in the band right of it. Where the
+// plain fit puts only empty cells there (the drawn box's air, a gap between
+// floors, a building that does not reach the corner), it stands. The bands
+// are an inset at fit rather than the buttons moved where no floor is drawn:
+// every map keeps its buttons in the one place a finger and a test know,
+// and a pan or a zoom after Fit may still go under them, as it may under any
+// control (DESIGN 1, "never over the plan", holds at Fit, the picture every
+// section opens on).
+
+// The gap kept between the floors and the zoom box, in CSS pixels.
+export const ZOOM_GAP = 8;
+
+// which cells of a floor are drawn on: 1 for a painted cell, kept by the floor object
+const paintedMasks = new WeakMap();
+export function paintedMask(floor) {
+  const held = paintedMasks.get(floor);
+  if (held) return held;
+  const mask = new Uint8Array(floor.width * floor.height);
+  for (let cell = 0; cell < mask.length; cell += 1) if (floor.cells[cell] !== '.') mask[cell] = 1;
+  for (const space of floor.spaces) for (const cell of space.cells) if (cell >= 0 && cell < mask.length) mask[cell] = 1;
+  paintedMasks.set(floor, mask);
+  return mask;
+}
+
+// place = { zoom, x, y } (the map's top left on the stage), rect = { x, y, w, h } in stage px
+export function paintedUnder(layout, place, rect) {
+  const size = CELL * place.zoom;
+  for (const slot of layout.slots) {
+    const left = place.x + slot.x * size;
+    const top = place.y + slot.y * size;
+    const x0 = Math.max(0, Math.floor((rect.x - left) / size));
+    const y0 = Math.max(0, Math.floor((rect.y - top) / size));
+    const x1 = Math.min(slot.w, Math.ceil((rect.x + rect.w - left) / size));
+    const y1 = Math.min(slot.h, Math.ceil((rect.y + rect.h - top) / size));
+    if (x0 >= x1 || y0 >= y1) continue;
+    const mask = paintedMask(slot.floor);
+    const width = slot.floor.width;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) if (mask[(slot.box.y + y) * width + slot.box.x + x]) return true;
+    }
+  }
+  return false;
+}
+
+// The layout fitted in a band of the stage, with its own margins { t, r, b,
+// l }, in the band's middle. At the least zoom a map can be larger than its
+// band; it is then kept to the band on the side `keep` names ('bottom' for
+// the band above the zoom box, 'left' for the band beside it), so the box's
+// corner stays clear and the map runs off the stage's other side.
+function placeIn(layout, band, m, keep) {
+  const zoom = clampZoom(Math.min(Math.max(1, band.w - m.l - m.r) / (layout.width * CELL), Math.max(1, band.h - m.t - m.b) / (layout.height * CELL)));
+  const size = CELL * zoom;
+  let x = band.x + m.l + (band.w - m.l - m.r - layout.width * size) / 2;
+  let y = band.y + m.t + (band.h - m.t - m.b - layout.height * size) / 2;
+  if (keep === 'left') x = Math.max(x, band.x + m.l);
+  if (keep === 'bottom') y = Math.min(y, band.y + band.h - m.b - layout.height * size);
+  return { zoom, x, y };
+}
+
+// corner = the zoom box on the stage { x, y, w, h }, or null when it has no
+// box yet. The band above the box is taken whenever it leaves the corner
+// clear with the map whole on the stage, the band beside it only when that
+// one cannot (a strip at the least zoom): the map in the band
+// above is no wider and no lower than the plain fit's, so a section that
+// asks where the plain fit puts the floors (Movement's legend, docked when
+// its card would lie on a floor: ui/movement/index.js coversFloor) is never
+// told a floor is clear of its card when the map as fitted is not. The band
+// beside moves the floors right, toward that card.
+export function fitClear(layout, width, height, corner, margin) {
+  const pad = margin === undefined ? FIT_MARGIN : margin;
+  const all = { t: pad, r: pad, b: pad, l: pad };
+  const whole = placeIn(layout, { x: 0, y: 0, w: width, h: height }, all);
+  if (!corner || !(corner.w > 0) || !(corner.h > 0)) return { ...whole, how: 'whole', clear: true };
+  const box = { x: corner.x - ZOOM_GAP, y: corner.y - ZOOM_GAP, w: corner.w + ZOOM_GAP * 2, h: corner.h + ZOOM_GAP * 2 };
+  if (!paintedUnder(layout, whole, box)) return { ...whole, how: 'whole', clear: true };
+  // each band's fit, whether it clears the corner, and how much of the map
+  // is on the stage in it (all of it, except at the least zoom)
+  const onStage = (place) => {
+    const size = CELL * place.zoom;
+    const w = layout.width * size;
+    const h = layout.height * size;
+    const seen = Math.max(0, Math.min(width, place.x + w) - Math.max(0, place.x)) * Math.max(0, Math.min(height, place.y + h) - Math.max(0, place.y));
+    return seen / (w * h);
+  };
+  const [above, beside] = [
+    { ...placeIn(layout, { x: 0, y: 0, w: width, h: Math.max(0, corner.y) }, { ...all, b: ZOOM_GAP }, 'bottom'), how: 'above' },
+    { ...placeIn(layout, { x: corner.x + corner.w, y: 0, w: Math.max(0, width - corner.x - corner.w), h: height }, { ...all, l: ZOOM_GAP }, 'left'), how: 'beside' },
+  ].map((place) => ({ ...place, clear: !paintedUnder(layout, place, box), shown: onStage(place) }));
+  // above, clear and whole; else beside, clear and whole; else of those
+  // that are clear the one that shows more of the map, above on a tie
+  const clear = [above, beside].filter((place) => place.clear);
+  const pick = clear.find((place) => place.shown > 1 - 1e-9) || clear.sort((a, b) => b.shown - a.shown)[0] || above;
+  const { shown, ...place } = pick;
+  return place;
 }
